@@ -858,10 +858,13 @@ def apply_pec_mask_shmap(state: FDTDState, sharded_pec_mask, mesh,
     if sharded_pec_mask is None:
         return state
 
+    precomputed = isinstance(sharded_pec_mask, tuple)
+
     @partial(
         rank_shard_map,
         mesh=mesh,
-        in_specs=(P("x"), P("x"), P("x"), P("x")),
+        in_specs=(P("x"), P("x"), P("x"),
+                  (P("x"),) * 3 if precomputed else P("x")),
         out_specs=(P("x"), P("x"), P("x")),
         check_rep=False,
     )
@@ -885,8 +888,8 @@ def apply_pec_mask_shmap(state: FDTDState, sharded_pec_mask, mesh,
         # y and z have no ghosts and no periodic BC on this lane (the NU
         # runners install none), so they take the same zero-pad convention
         # ``rfx/nonuniform.py``'s ``apply_pec_mask(st, pec_mask)`` takes.
-        mask_ex, mask_ey, mask_ez = realized_pec_edge_masks(
-            mask, periodic=(True, False, False))
+        mask_ex, mask_ey, mask_ez = (mask if precomputed else
+            realized_pec_edge_masks(mask, periodic=(True, False, False)))
 
         # Force ghost rows to False so we never touch a neighbour rank's
         # cells.  Real cells span [ghost, nx_local - ghost).

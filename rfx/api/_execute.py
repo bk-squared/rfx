@@ -1842,19 +1842,14 @@ class _ExecuteMixin:
         # plus the declared sheets/wires.  Port clearing, wire-port liveness
         # and the reference-plane footprint all read THIS object from here
         # on; a sheet owns no cell, so it exists nowhere else.
-        from rfx.boundaries.pec import (
-            clear_edges as _clear_edges,
-            realized_pec_edge_masks as _rpem_fwd,
-        )
+        from rfx.conductors import kernel_conductors, clear_conductor_edges, at_kernel
         pec_sheets = tuple(pec_sheets or ())
         pec_wires = tuple(pec_wires or ())
         pec_mask_local = pec_mask
         pec_occupancy_local = pec_occupancy
-        pec_edge_masks_local = None
-        if pec_mask is not None or pec_sheets or pec_wires:
-            pec_edge_masks_local = _rpem_fwd(
-                pec_mask, sheets=pec_sheets, wires=pec_wires,
-                periodic=periodic_bool)
+        conductors = kernel_conductors(self, grid, materials, pec_mask,
+            pec_sheets, pec_wires, periodic=periodic_bool)
+        pec_edge_masks_local = conductors.pec_edges
         _msl_geometry_edges = pec_edge_masks_local  # before ANY port clearing
         lumped_port_sparam_specs: list = []
         wire_port_sparam_specs: list = []
@@ -2089,9 +2084,10 @@ class _ExecuteMixin:
             if pec_edge_masks_local is not None:
                 # ONE edge: the port's own component at its own cell
                 # (#931 §1.9, corrected).
-                pec_edge_masks_local = _clear_edges(
-                    pec_edge_masks_local, [(idx[0], idx[1], idx[2])],
-                    component=pe.component)
+                conductors = clear_conductor_edges(
+                    conductors, [(idx[0], idx[1], idx[2])],
+                    component=pe.component, entity_id=f"port[{self._ports.index(pe)}]")
+                pec_edge_masks_local = conductors.pec_edges
             if pec_mask_local is not None:
                 pec_mask_local = pec_mask_local.at[idx[0], idx[1], idx[2]].set(False)
             if pec_occupancy_local is not None:
@@ -2216,9 +2212,10 @@ class _ExecuteMixin:
                 if pec_edge_masks_local is not None and _msl_cells:
                     # Only the SUBSTRATE-NORMAL component — the edge the
                     # modal source drives (#931 §1.9, corrected).
-                    pec_edge_masks_local = _clear_edges(
-                        pec_edge_masks_local, _msl_cells,
-                        component=_msl_normal_component(mp))
+                    conductors = clear_conductor_edges(
+                        conductors, _msl_cells, component=_msl_normal_component(mp),
+                        entity_id=f"msl_port[{self._msl_ports.index(pe)}]")
+                    pec_edge_masks_local = conductors.pec_edges
                 for cell in _msl_cells:
                     if pec_mask_local is not None:
                         pec_mask_local = pec_mask_local.at[cell[0], cell[1], cell[2]].set(False)
@@ -2531,6 +2528,8 @@ class _ExecuteMixin:
             from rfx.runners._admission import admit
             admit(self, lane)
 
+        conductors, _ = at_kernel(self, conductors, lane=lane or "fwd_uniform")
+        pec_edge_masks_local = conductors.pec_edges
         result = _run(
             grid,
             materials,
@@ -3122,23 +3121,16 @@ class _ExecuteMixin:
                         "Local whole-domain overrides are supported only in one process.")
 
         # ---- Assemble full-domain materials ----
-        if gather_final_state:
-            self._pf_campaign_ctx = None
         _geometry_masks = [] if gather_final_state else None
         _assembly_entries = [] if gather_final_state else None
+        from rfx.conductors import assembled_materials, kernel_conductors, at_kernel
         _dnu_pec_sheets: list = []
         _dnu_pec_wires: list = []
         materials, debye_spec, lorentz_spec, pec_mask = (
-            self._assemble_materials_nu(
-                grid, pec_sheets=_dnu_pec_sheets, pec_wires=_dnu_pec_wires,
+            assembled_materials(
+                self, grid, nonuniform=True, pec_sheets=_dnu_pec_sheets, pec_wires=_dnu_pec_wires,
                 geometry_masks=_geometry_masks, assembly_entries=_assembly_entries)
         )
-        geometry_record = None
-        if gather_final_state:
-            from rfx.realized_geometry import record_from_assembly
-            geometry_record = record_from_assembly(
-                self, grid, materials, pec_mask, _dnu_pec_sheets, _dnu_pec_wires,
-                _geometry_masks, _assembly_entries, lane="run_distributed")
         del _geometry_masks, _assembly_entries
         if _dnu_pec_sheets or _dnu_pec_wires:
             # #931: this lane shards a CELL mask along x and realizes it
@@ -3234,6 +3226,11 @@ class _ExecuteMixin:
                 else (pec_mask | pec_mask_override)
             )
 
+        conductors = kernel_conductors(self, grid, materials, pec_mask,
+            _dnu_pec_sheets, _dnu_pec_wires, periodic=(False, False, False))
+        conductors, geometry_record = at_kernel(self, conductors,
+            lane="run_distributed" if gather_final_state else "fwd_distributed_nu")
+
         # Stage one input at a time. The source normalization above has
         # consumed concrete cell scalars (a material-driven source reads its
         # Cb from the staged slabs in the runner instead); no second
@@ -3253,22 +3250,18 @@ class _ExecuteMixin:
         sharded_materials = MaterialArrays(*staged)
         del materials, staged
 
-        if pec_mask is None:
+        if conductors.pec_edges is None:
             sharded_pec_mask = None
-        elif isinstance(pec_mask, jax.core.Tracer):
-            # A traced pec_mask_override (e.g. under jax.vmap) cannot be read
-            # on the host; stage it through the traceable split, one process.
+        elif any(isinstance(edge, jax.core.Tracer) for edge in conductors.pec_edges):
             if multiprocess:
-                raise ValueError(
-                    "a traced pec_mask_override is supported in one process only; "
-                    "pass a concrete mask when the devices span processes.")
-            sharded_pec_mask = jax.device_put(
-                shard_pec_mask_x_slab(pec_mask, sharded_grid),
-                NamedSharding(mesh, _P("x")))
+                raise ValueError("a traced pec_mask_override is supported in one process only")
+            sharded_pec_mask = tuple(jax.device_put(
+                shard_pec_mask_x_slab(edge, sharded_grid),
+                NamedSharding(mesh, _P("x"))) for edge in conductors.pec_edges)
         else:
-            sharded_pec_mask = stage_concrete_forward_array(
-                pec_mask, sharded_grid, mesh, True, ghost_value=False,
-            )
+            sharded_pec_mask = tuple(stage_concrete_forward_array(
+                edge, sharded_grid, mesh, True, ghost_value=False)
+                for edge in conductors.pec_edges)
         del pec_mask
         sharded_pec_occupancy = None
         if pec_occupancy_override is not None:
@@ -4581,8 +4574,9 @@ class _ExecuteMixin:
         _fwd_sheet_specs: list = []
         _fwd_pec_sheets: list = []
         _fwd_pec_wires: list = []
-        materials, debye_spec, lorentz_spec, pec_mask, _, _, kerr_chi3 = self._assemble_materials(
-            grid, sheet_specs=_fwd_sheet_specs,
+        from rfx.conductors import assembled_materials
+        materials, debye_spec, lorentz_spec, pec_mask, _, _, kerr_chi3 = assembled_materials(
+            self, grid, sheet_specs=_fwd_sheet_specs,
             pec_sheets=_fwd_pec_sheets, pec_wires=_fwd_pec_wires)
 
         if eps_override is not None or sigma_override is not None or mu_r_override is not None:
@@ -5294,14 +5288,15 @@ class _ExecuteMixin:
         _run_pec_sheets: list = []
         _run_pec_wires: list = []
         _geometry_masks, _assembly_entries = [], []
-        base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, _, kerr_chi3 = self._assemble_materials(
-            grid, sheet_specs=_run_sheet_specs,
+        from rfx.conductors import assembled_materials
+        base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, _, kerr_chi3 = assembled_materials(
+            self, grid, sheet_specs=_run_sheet_specs,
             pec_sheets=_run_pec_sheets, pec_wires=_run_pec_wires,
             geometry_masks=_geometry_masks, assembly_entries=_assembly_entries)
         from rfx.realized_geometry import attach_record, record_from_assembly
         geometry_record = record_from_assembly(
             self, grid, base_materials, pec_mask, _run_pec_sheets, _run_pec_wires,
-            _geometry_masks, _assembly_entries, lane=plan.lane)
+            _geometry_masks, _assembly_entries, lane=plan.lane) if plan.lane != "run_uniform" else None
         del _geometry_masks, _assembly_entries
 
         if plan.lane == "run_adi":
@@ -5456,7 +5451,7 @@ class _ExecuteMixin:
         _warn_if_nonfinite_result(_res, context="run")
         from rfx.current_moments import require_accumulated_current_moments
         require_accumulated_current_moments(self, _res, "run")
-        return attach_record(_res, geometry_record)
+        return _res
 
 
 def _reads_unrecorded_fields(result) -> bool:

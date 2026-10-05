@@ -164,5 +164,6 @@ def at_kernel(sim, conductors, *, lane, compact=True):
     ctx._realized = conductors
     sim._realized_geometry_record = None
     from rfx.realized_geometry import record_from_conductors
-    record = record_from_conductors(sim, conductors, lane=lane, compact=compact)
+    record = (record_from_conductors(sim, conductors, lane=lane, compact=compact)
+              if lane.startswith('run_') else None)
     return conductors, record

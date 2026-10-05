@@ -408,17 +408,13 @@ def run_uniform(
     # will use, and keep working on THOSE from here on — port clearing,
     # wire-port liveness, the sheet ctx and the run all read the same
     # object.  A sheet owns no cell, so it exists only here.
-    from rfx.boundaries.pec import (
-        clear_edges as _clear_edges,
-        realized_pec_edge_masks as _rpem,
-    )
+    from rfx.conductors import kernel_conductors, clear_conductor_edges, at_kernel
     _pec_periodic = _simulation.resolve_periodic(grid, periodic)
     pec_sheets = tuple(pec_sheets or ())
     pec_wires = tuple(pec_wires or ())
-    pec_edge_masks = None
-    if pec_mask is not None or pec_sheets or pec_wires:
-        pec_edge_masks = _rpem(pec_mask, sheets=pec_sheets, wires=pec_wires,
-                               periodic=_pec_periodic)
+    conductors = kernel_conductors(sim, grid, base_materials, pec_mask,
+        pec_sheets, pec_wires, periodic=_pec_periodic, sheet_specs=sheet_specs or ())
+    pec_edge_masks = conductors.pec_edges
     _msl_geometry_edges = pec_edge_masks  # before ANY port clearing
     if sim._msl_ports and use_kottke_pec:
         from rfx.boundaries.pec import PEC_INV_THRESHOLD, kottke_fenced_edge_masks
@@ -522,8 +518,10 @@ def run_uniform(
             # port sits on).
             if pec_edge_masks is not None:
                 idx = grid.position_to_index(pe.position)
-                pec_edge_masks = _clear_edges(
-                    pec_edge_masks, [idx], component=pe.component)
+                conductors = clear_conductor_edges(
+                    conductors, [idx], component=pe.component,
+                    entity_id=f"port[{sim._ports.index(pe)}]")
+                pec_edge_masks = conductors.pec_edges
 
     # One wire port and no lumped port: S11 is read from the main run's own
     # record (the fast path below), so s_param_n_steps cannot set its length.
@@ -634,9 +632,11 @@ def run_uniform(
                 # components as well would punch a width-long slot through
                 # the ground plane and the trace at the feed column
                 # (#931 §1.9, corrected).
-                pec_edge_masks = _clear_edges(
-                    pec_edge_masks, list(_msl_yz_cells(grid, mp)),
-                    component=_msl_normal_component(mp))
+                conductors = clear_conductor_edges(
+                    conductors, list(_msl_yz_cells(grid, mp)),
+                    component=_msl_normal_component(mp),
+                    entity_id=f"msl_port[{sim._msl_ports.index(pe)}]")
+                pec_edge_masks = conductors.pec_edges
 
     for pe in sim._probes:
         probes.append(_simulation.make_probe(grid, pe.position, pe.component))
@@ -904,6 +904,10 @@ def run_uniform(
         _stop_kwargs = {"stop_fn": _stop_with_bins,
                         "stop_interval": int(stop_interval)}
 
+    # The record and the call below read the same final conductor object.
+    conductors, geometry_record = at_kernel(sim, conductors, lane="run_uniform")
+    pec_edge_masks = conductors.pec_edges
+
     # Main simulation
     if until_decay is not None:
         sim_result = _simulation.run_until_decay(
@@ -1166,7 +1170,10 @@ def run_uniform(
         if _is_tfsf_2d_out(tfsf[0]):
             sim_result = _reconstruct_oblique_physical(sim_result, tfsf[0], grid, probes)
 
+    sim._campaign_ctx()._realized = conductors
+    sim._realized_geometry_record = None
     return Result(
+        realized_geometry=geometry_record,
         state=sim_result.state,
         time_series=sim_result.time_series,
         s_params=s_params,

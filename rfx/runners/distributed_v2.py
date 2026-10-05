@@ -739,23 +739,21 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # and its checks are done; drop it before this lane assembles its own
     # copy, so neither copy is on the device when the slabs are staged and
     # the time loop runs. A later preflight rebuilds it from the same key.
-    sim._pf_campaign_ctx = None
+    from rfx.conductors import assembled_materials, kernel_conductors, at_kernel
     _d_pec_sheets: list = []
     _d_pec_wires: list = []
     _geometry_masks, _assembly_entries = [], []
     grid = sim._build_grid()
     base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, *_assembly_rest = (
-        sim._assemble_materials(grid, pec_sheets=_d_pec_sheets,
+        assembled_materials(sim, grid, pec_sheets=_d_pec_sheets,
                                 pec_wires=_d_pec_wires,
                                    geometry_masks=_geometry_masks, assembly_entries=_assembly_entries)
     )
     # The rest (Kerr chi3 among it, refused above) is unused on this lane;
     # drop it now so no whole-domain array stays alive through the loop.
     del _assembly_rest
-    from rfx.realized_geometry import record_from_assembly
-    geometry_record = record_from_assembly(
-        sim, grid, base_materials, pec_mask, _d_pec_sheets, _d_pec_wires,
-        _geometry_masks, _assembly_entries, lane="run_distributed")
+    conductors = kernel_conductors(sim, grid, base_materials, pec_mask,
+        _d_pec_sheets, _d_pec_wires, periodic=sim._periodic_flags())
     del _geometry_masks, _assembly_entries
     from rfx.sources.wire_radius import require_radius_update
     require_radius_update(base_materials, lane="distributed_v2", unsupported=True)
@@ -969,9 +967,13 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # ``run_distributed``'s ``**kwargs``: that bag is read only for ``bloch``
     # and otherwise discarded (it was forwarded only to the pmap runner at one
     # device, until #1296).
-    sharded_pec_mask = (
-        None if pec_mask is None
-        else shard_x_slabs(pec_mask, n_devices, nx_per, ghost, False, shd))
+    conductors, geometry_record = at_kernel(sim, conductors, lane="run_distributed")
+    # Alignment rows are still PEC; ghosts are still excluded by the kernel.
+    sharded_pec_mask = (None if conductors.pec_edges is None else tuple(
+        shard_x_slabs(jnp.pad(edge, ((0, pad_x), (0, 0), (0, 0)),
+                             constant_values=True),
+                      n_devices, nx_per, ghost, False, shd)
+        for edge in conductors.pec_edges))
 
     # ------------------------------------------------------------------
     # Dispersive materials
