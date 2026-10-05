@@ -19,6 +19,18 @@ class Drives(NamedTuple):
     source_end_step: object = None
 
 
+class StepDrives(NamedTuple):
+    """The two Yee injection stages, owned by one step-context field.
+
+    Tables stay separate to retain their original sample dtypes and timing:
+    magnetic drives after H, electric drives after E. Clearing the context's
+    ``drives`` field suppresses both stages without changing the scan inputs.
+    """
+
+    electric: Drives
+    magnetic: Drives
+
+
 def drives_from_sources(meta, waves):
     """Adapt existing (i, j, k, component) sources without renormalizing them."""
     nodes, coef, wave_id, owner = {}, {}, {}, {}

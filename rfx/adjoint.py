@@ -195,7 +195,7 @@ def design_adjoint_scan(ctx, initial, xs):
         local = replace(base, design_box=base.design_box._replace(ca=coeffs[0], cb=coeffs[1]))
         if targets is not None:
             # Suppress primal drives. CPML and ordinary Yee updates are reused.
-            local = replace(local, src_meta=(), mag_src_meta=(), use_mag_sources=False,
+            local = replace(local, drives=None,
                             use_dft_planes=False, dft_meta=(), prb_meta=())
             monitor_cb = list(e_component_coeffs(ctx.materials, ctx.dt, ctx.periodic)[1])
             monitor_cb = [a.at[sl].set(b) for a, b in zip(monitor_cb, coeffs[1])]
