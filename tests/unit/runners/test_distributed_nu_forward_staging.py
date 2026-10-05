@@ -302,9 +302,10 @@ def _per_shard():
     dt = sim._build_nonuniform_grid().dt
     for kind in ("debye", "lorentz"):
         captures[0][kind] = _completed_slabs(captures[0][kind], captures[0]["sharded_materials"], sg, dt, mesh)
-    # The legacy runner takes cells and derives edges globally on entry. G1
-    # takes those final edge components explicitly. Keep the cell oracle,
-    # then compare every staged edge against that same global conversion.
+    # The legacy runner takes sharded cells and derives edges per slab. G1
+    # takes final edge components converted once globally. Keep the cell
+    # oracle; the edge comparison below uses the same global conversion as G1,
+    # so the independent witness is test_trace_and_eps_gradient_bits.
     from rfx.boundaries.pec import realized_pec_edge_masks
     grid = sim._build_nonuniform_grid()
     cells = sim._assemble_materials_nu(grid)[3]
