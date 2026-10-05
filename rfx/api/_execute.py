@@ -18,7 +18,7 @@ import math
 import os
 from typing import NamedTuple
 
-from rfx import _realized
+from rfx import _realized, conductors as _conductors
 
 import jax
 import jax.numpy as jnp
@@ -1359,38 +1359,11 @@ class _ExecuteMixin:
 
     def _auto_preflight(
         self, *, skip: bool = False, context: str = "forward",
-        check_ntff: bool | str = True,
-        conductors=None,
-    ) -> None:
-        """Emit a UserWarning if preflight finds issues (issue #66).
-
-        Called automatically at the start of ``forward()``, ``optimize()``,
-        and ``topology_optimize()`` so users discover physics violations
-        (under-resolved mesh, geometry in CPML, probe in PEC, ...) before
-        spending minutes of GPU compute. Pass ``skip_preflight=True`` at
-        the call site to opt out (tests, already-validated configs).
-
-        ``check_ntff`` gates the NTFF check family. ``run()`` passes
-        ``check_ntff="advisory"`` (issue #303): the λ/4 near-field gap
-        and sub-wavelength ground-plane (issue #334) advisories are
-        physics-relevant to any far-field computation and
-        run() is the common NTFF entry point, so they are surfaced as
-        warnings — but only ``forward(port_s11_freqs=...)`` / ``optimize``
-        (the inverse-design entry points) hard-fail on the PEC-overlap
-        error. Previously run() skipped the family entirely and still
-        printed "All checks passed", which contradicted explicit
-        ``sim.preflight()`` output on the same configuration.
-        """
-        if skip:
-            return
-        # preflight(strict=False) COLLECTS findings as issues; it only raises if
-        # a validator itself crashes (a bug, e.g. a non-ValueError). Let that
-        # propagate loudly (Phase D) — do NOT degrade a validator bug to a soft
-        # warning that hides it and lets a broken run proceed.
-        issues = self._preflight_impl(strict=False, check_ntff=check_ntff,
-                                      _conductors=conductors)
-        # One frame deeper than the gate: point at the caller of run()/forward().
-        self._run_preflight_gate(issues, context=context, stacklevel=4)
+        check_ntff: bool | str = True, conductors=None,
+        prepare=False, distributed=False,
+    ) -> _conductors._PreparedSolve | None:
+        """Delegate validation and optional solve ownership to the conductors layer."""
+        return _conductors.auto_preflight(self, skip=skip, context=context, check_ntff=check_ntff, conductors=conductors, prepare=prepare, distributed=distributed)
 
     def _run_preflight_gate(self, issues, *, context: str, stacklevel: int = 3) -> None:
         """Apply the same warning/error policy to full or scoped preflight."""
@@ -1846,16 +1819,11 @@ class _ExecuteMixin:
         # plus the declared sheets/wires.  Port clearing, wire-port liveness
         # and the reference-plane footprint all read THIS object from here
         # on; a sheet owns no cell, so it exists nowhere else.
-        from rfx.conductors import kernel_conductors, clear_conductor_edges, at_kernel
         pec_sheets = tuple(pec_sheets or ())
         pec_wires = tuple(pec_wires or ())
         pec_mask_local = pec_mask
         pec_occupancy_local = pec_occupancy
-        _drawn_materials = None if conductors is None else conductors.assembly[0]
-        conductors = kernel_conductors(self, grid, materials, pec_mask,
-            pec_sheets, pec_wires, periodic=periodic_bool, root=conductors,
-            sheet_specs=() if conductors is None else conductors.sheet_impedance)
-        pec_edge_masks_local = conductors.pec_edges
+        conductors, _drawn_materials, pec_edge_masks_local = _conductors.forward_products(self, grid, materials, pec_mask, pec_sheets, pec_wires, periodic_bool, conductors)
         _msl_geometry_edges = pec_edge_masks_local  # before ANY port clearing
         lumped_port_sparam_specs: list = []
         wire_port_sparam_specs: list = []
@@ -1960,10 +1928,7 @@ class _ExecuteMixin:
                 # tangential edges would open the conductor the port foot
                 # stands on.  The CELL clearing below stays: it is the
                 # volume/occupancy carrier the Kottke guard keys off.
-                conductors = clear_conductor_edges(conductors, _wp_live_cells,
-                    component=pe.component, entity_id=f"port[{_port_index}]",
-                    clear_cells=True, release_edges=False)
-                pec_mask_local = conductors.pec_cells
+                conductors, pec_mask_local, pec_edge_masks_local = _conductors.forward_port_stage(conductors, _wp_live_cells, pe.component, f"port[{_port_index}]", release_edges=False)
                 for cell in _wp_live_cells:
                     if pec_occupancy_local is not None:
                         pec_occupancy_local = pec_occupancy_local.at[cell[0], cell[1], cell[2]].set(0.0)
@@ -2089,15 +2054,7 @@ class _ExecuteMixin:
             if _drive_this_port:
                 sources.append(make_port_source(grid, lp, materials, n_steps))
             idx = grid.position_to_index(pe.position)
-            if pec_edge_masks_local is not None:
-                # ONE edge: the port's own component at its own cell
-                # (#931 §1.9, corrected).
-                conductors = clear_conductor_edges(
-                    conductors, [(idx[0], idx[1], idx[2])],
-                    component=pe.component, entity_id=f"port[{_port_index}]",
-                    clear_cells=True)
-                pec_edge_masks_local = conductors.pec_edges
-            pec_mask_local = conductors.pec_cells
+            conductors, pec_mask_local, pec_edge_masks_local = _conductors.forward_port_stage(conductors, [(idx[0], idx[1], idx[2])], pe.component, f"port[{_port_index}]")
             if pec_occupancy_local is not None:
                 pec_occupancy_local = pec_occupancy_local.at[idx[0], idx[1], idx[2]].set(0.0)
             _port_cleared_cells.append((int(idx[0]), int(idx[1]), int(idx[2])))
@@ -2135,8 +2092,7 @@ class _ExecuteMixin:
             if any(pe.eps_r_sub is None and getattr(pe, "mode", "uniform") == "laplace"
                    for pe in self._msl_ports):
                 # Read the drawn value before design/material overrides.
-                _static_eps_483 = (_drawn_materials.eps_r if _drawn_materials is not None
-                    else self._assemble_materials(grid, pec_sheets=[], pec_wires=[])[0].eps_r)
+                _static_eps_483 = _conductors.drawn_launch_eps(self, grid, _drawn_materials)
             for _msl_port_index, pe in enumerate(self._msl_ports):
                 # Use the same physical-to-port frame as run(). In a y-fed
                 # port feed_x names physical y, and y_lo/y_hi name width x.
@@ -2211,14 +2167,7 @@ class _ExecuteMixin:
                 # Clear PEC mask over the cross-section so the source/σ cells
                 # are not zeroed by the PEC update.
                 _msl_cells = list(_msl_yz_cells(grid, mp))
-                if pec_edge_masks_local is not None and _msl_cells:
-                    # Only the SUBSTRATE-NORMAL component — the edge the
-                    # modal source drives (#931 §1.9, corrected).
-                    conductors = clear_conductor_edges(
-                        conductors, _msl_cells, component=_msl_normal_component(mp),
-                        entity_id=f"msl_port[{_msl_port_index}]", clear_cells=True)
-                    pec_edge_masks_local = conductors.pec_edges
-                pec_mask_local = conductors.pec_cells
+                conductors, pec_mask_local, pec_edge_masks_local = _conductors.forward_port_stage(conductors, _msl_cells, _msl_normal_component(mp), f"msl_port[{_msl_port_index}]", skip_empty=True)
                 # The Laplace source AND termination extend beyond the
                 # trace footprint. Reserve that actual modal support from
                 # density edits, including its fringe and Kottke neighbours.
@@ -2528,9 +2477,7 @@ class _ExecuteMixin:
             from rfx.runners._admission import admit
             admit(self, lane)
 
-        conductors, _ = at_kernel(self, conductors, lane=lane or "fwd_uniform", pec_edges=pec_edge_masks_local, sheet_operator=sheet_impedance)
-        pec_edge_masks_local = conductors.pec_edges
-        sheet_impedance = conductors.sheet_operator
+        conductors, pec_edge_masks_local, sheet_impedance = _conductors.forward_kernel_inputs(self, conductors, lane or "fwd_uniform", pec_edge_masks_local, sheet_impedance)
         result = _run(
             grid,
             materials,
@@ -2978,7 +2925,6 @@ class _ExecuteMixin:
             stage_forward_array_x_slab,
             stage_concrete_forward_array,
             is_forward_sharded_override,
-            shard_pec_mask_x_slab,
             stage_forward_dispersion_x_slab,
         )
         from rfx.core.yee import MaterialArrays
@@ -3099,7 +3045,7 @@ class _ExecuteMixin:
         sharded_grid = build_sharded_nu_grid(
             grid, n_devices, exchange_interval=exchange_interval,
         )
-        from jax.sharding import Mesh, NamedSharding, PartitionSpec as _P
+        from jax.sharding import Mesh
         mesh = Mesh(np.array(devices), axis_names=("x",))
         multiprocess = any(d.process_index != jax.process_index() for d in devices)
         for name, override in (("eps_override", eps_override),
@@ -3125,24 +3071,7 @@ class _ExecuteMixin:
                         "Local whole-domain overrides are supported only in one process.")
 
         # ---- Assemble full-domain materials ----
-        _geometry_masks = [] if gather_final_state else None
-        _assembly_entries = [] if gather_final_state else None
-        from rfx.conductors import assembled_materials, solve_conductors, kernel_conductors, at_kernel
-        self._pf_campaign_ctx = None
-        self._realized_geometry_record = None
-        conductors = (assembly.take() if assembly is not None else
-            solve_conductors(self, grid, nonuniform=True,
-                preflight=dict(skip=skip_preflight,
-                    context="run" if gather_final_state else "forward",
-                    check_ntff="advisory" if gather_final_state else True)))
-        _dnu_pec_sheets: list = []
-        _dnu_pec_wires: list = []
-        materials, debye_spec, lorentz_spec, pec_mask = (
-            assembled_materials(
-                conductors, pec_sheets=_dnu_pec_sheets, pec_wires=_dnu_pec_wires,
-                geometry_masks=_geometry_masks, assembly_entries=_assembly_entries)
-        )
-        del _geometry_masks, _assembly_entries
+        conductors, (materials, debye_spec, lorentz_spec, pec_mask), _dnu_pec_sheets, _dnu_pec_wires = _conductors.distributed_solve_inputs(self, grid, assembly, skip_preflight, gather_final_state)
         if _dnu_pec_sheets or _dnu_pec_wires:
             # #931: this lane shards a CELL mask along x and realizes it
             # per slab.  A sheet and a sub-cell wire own no cell, so they
@@ -3237,13 +3166,7 @@ class _ExecuteMixin:
                 else (pec_mask | pec_mask_override)
             )
 
-        conductors = kernel_conductors(self, grid, materials, pec_mask,
-            _dnu_pec_sheets, _dnu_pec_wires, periodic=(False, False, False), root=conductors)
-        conductors, geometry_record = at_kernel(self, conductors,
-            lane="run_distributed" if gather_final_state else "fwd_distributed_nu",
-            pec_edges=conductors.pec_edges)
-
-        pec_edges = conductors.pec_edges
+        pec_edges, geometry_record = _conductors.distributed_kernel_inputs(self, conductors, grid, materials, pec_mask, _dnu_pec_sheets, _dnu_pec_wires, gather_final_state)
         del conductors
 
         # Stage one input at a time. The source normalization above has
@@ -3265,18 +3188,7 @@ class _ExecuteMixin:
         sharded_materials = MaterialArrays(*staged)
         del materials, staged
 
-        if pec_edges is None:
-            sharded_pec_mask = None
-        elif any(isinstance(edge, jax.core.Tracer) for edge in pec_edges):
-            if multiprocess:
-                raise ValueError("a traced pec_mask_override is supported in one process only")
-            sharded_pec_mask = tuple(jax.device_put(
-                shard_pec_mask_x_slab(edge, sharded_grid),
-                NamedSharding(mesh, _P("x"))) for edge in pec_edges)
-        else:
-            sharded_pec_mask = tuple(stage_concrete_forward_array(
-                edge, sharded_grid, mesh, True, ghost_value=False)
-                for edge in pec_edges)
+        sharded_pec_mask = _conductors.stage_distributed_edges(pec_edges, sharded_grid, mesh, multiprocess)
         del pec_mask, pec_edges
         sharded_pec_occupancy = None
         if pec_occupancy_override is not None:
@@ -4395,12 +4307,7 @@ class _ExecuteMixin:
         if port_s11_freqs is not None:
             self._validate_forward_sparameter_request()
 
-
-        # Keep preflight's public warning/refusal priority ahead of lane admission.
-        from rfx.conductors import prepare_solve
-        _solve_assembly = prepare_solve(self, distributed=distributed)
-        self._auto_preflight(skip=skip_preflight, context="forward",
-            conductors=None if skip_preflight else _solve_assembly.realized())
+        _solve_assembly = self._auto_preflight(skip=skip_preflight, context="forward", prepare=True, distributed=distributed)
 
         # ---- (2,4) stencil fence: reject order=4 on unsupported lanes ----
         self._check_stencil_order_supported(distributed=distributed)
@@ -4561,10 +4468,8 @@ class _ExecuteMixin:
                     kerr_chi3=None,
                     holds_ports=design_box_holds_ports,
                 )
-            conductors = _solve_assembly.take()
             _nu_fwd_call = functools.partial(
                 self._forward_nonuniform_from_materials,
-                conductors=conductors,
                 port_s11_freqs=port_s11_freqs,
                 eps_override=eps_override,
                 sigma_override=sigma_override,
@@ -4577,13 +4482,14 @@ class _ExecuteMixin:
                 checkpoint_every=checkpoint_every,
                 n_warmup=n_warmup,
             )
+            _nu_fwd_call, _nu_grid = _conductors.bind_solve_call(_solve_assembly, _nu_fwd_call)
             if ringdown is None:
                 result = _nu_fwd_call()
             else:
                 from rfx.ringdown import RingdownForward
                 result = RingdownForward(
                     self, ringdown, lane="graded", n_steps=plan.n_steps,
-                    grid=conductors.grid).run(_nu_fwd_call)
+                    grid=_nu_grid).run(_nu_fwd_call)
             if _nu_design_spec is not None:
                 result = result._replace(
                     design_box_held_edges=_nu_design_spec.held_edges)
@@ -4593,15 +4499,8 @@ class _ExecuteMixin:
 
         # ---- Uniform forward lane (plan.lane == "fwd_uniform") ----
         n_steps = plan.n_steps
-        conductors = _solve_assembly.take()
-        grid = conductors.grid
-        _fwd_sheet_specs: list = []
-        _fwd_pec_sheets: list = []
-        _fwd_pec_wires: list = []
-        from rfx.conductors import assembled_materials
-        materials, debye_spec, lorentz_spec, pec_mask, _, _, kerr_chi3 = assembled_materials(
-            conductors, sheet_specs=_fwd_sheet_specs,
-            pec_sheets=_fwd_pec_sheets, pec_wires=_fwd_pec_wires)
+        conductors, grid, assembly_inputs, _fwd_sheet_specs, _fwd_pec_sheets, _fwd_pec_wires = _conductors.uniform_solve_inputs(_solve_assembly)
+        materials, debye_spec, lorentz_spec, pec_mask, _, _, kerr_chi3 = assembly_inputs
 
         if eps_override is not None or sigma_override is not None or mu_r_override is not None:
             materials = materials._replace(
@@ -5025,12 +4924,8 @@ class _ExecuteMixin:
             devices=devices,
         )
 
-        # Keep preflight's public warning/refusal priority ahead of lane admission.
-        from rfx.conductors import prepare_solve
         _distributed_run = devices is not None and len(devices) > 1
-        _solve_assembly = prepare_solve(self, distributed=_distributed_run)
-        self._auto_preflight(skip=skip_preflight, context="run", check_ntff="advisory",
-            conductors=None if skip_preflight else _solve_assembly.realized())
+        _solve_assembly = self._auto_preflight(skip=skip_preflight, context="run", check_ntff="advisory", prepare=True, distributed=_distributed_run)
 
         # ---- (2,4) stencil fence: reject order=4 on unsupported lanes ----
         self._check_stencil_order_supported(distributed=_distributed_run)
@@ -5257,10 +5152,8 @@ class _ExecuteMixin:
                     self._warn_until_decay_dc_floor(
                         dt=_nu_dt_for_dc, n_table=decay_max_steps
                     )
-            conductors = _solve_assembly.take()
             _nu_call = functools.partial(
                 self._run_nonuniform,
-                conductors=conductors,
                 n_steps=n_steps,
                 conformal_pec=conformal_pec,
                 report_every=report_every,
@@ -5277,19 +5170,20 @@ class _ExecuteMixin:
                 radiated_flux_box=radiated_flux_box,
                 flux_env_checks=flux_env_checks,
             )
+            _nu_call, _nu_grid = _conductors.bind_solve_call(_solve_assembly, _nu_call)
             if ringdown is None:
                 _res = _nu_call()
             elif until_identified:
                 from rfx.ringdown import RingdownStop
                 _res = RingdownStop(
                     self, ringdown, lane="graded", n_max=n_steps,
-                    grid=conductors.grid).run(_nu_call)
+                    grid=_nu_grid).run(_nu_call)
                 n_steps = _res.ringdown.stop.n_stop
             else:
                 from rfx.ringdown import RingdownRun
                 _res = RingdownRun(
                     self, ringdown, lane="graded", n_steps=n_steps,
-                    grid=conductors.grid).run(_nu_call)
+                    grid=_nu_grid).run(_nu_call)
             self._warn_run_sparams_if_nonpassive(_res)
             self._warn_postrun_energy_witness(
                 _res,
@@ -5303,22 +5197,10 @@ class _ExecuteMixin:
             require_accumulated_current_moments(self, _res, "run")
             return _res
 
-        conductors = _solve_assembly.take()
-        grid = conductors.grid
-        _run_sheet_specs: list = []
-        _run_pec_sheets: list = []
-        _run_pec_wires: list = []
-        _geometry_masks, _assembly_entries = [], []
-        from rfx.conductors import assembled_materials
-        base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, _, kerr_chi3 = assembled_materials(
-            conductors, sheet_specs=_run_sheet_specs,
-            pec_sheets=_run_pec_sheets, pec_wires=_run_pec_wires,
-            geometry_masks=_geometry_masks, assembly_entries=_assembly_entries)
-        from rfx.realized_geometry import attach_record, record_from_assembly
-        geometry_record = record_from_assembly(
-            self, grid, base_materials, pec_mask, _run_pec_sheets, _run_pec_wires,
-            _geometry_masks, _assembly_entries, lane=plan.lane, conductors=conductors) if plan.lane != "run_uniform" else None
-        del _geometry_masks, _assembly_entries
+        conductors, grid, assembly_inputs, _run_sheet_specs, _run_pec_sheets, _run_pec_wires = _conductors.uniform_solve_inputs(_solve_assembly)
+        base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, _, kerr_chi3 = assembly_inputs
+        from rfx.realized_geometry import attach_record
+        geometry_record = _conductors.early_run_record(self, conductors, plan.lane)
 
         if plan.lane == "run_adi":
             from rfx.materials.thin_conductor import refuse_f0_sheets

@@ -338,3 +338,136 @@ def _traced_product(conductors):
     from rfx.core.jax_utils import is_tracer
     return any(is_tracer(leaf) for leaf in jax.tree.leaves(
         (conductors.materials, conductors.pec_edges, conductors.assembly)))
+
+def auto_preflight(sim, *, skip=False, context="forward", check_ntff=True,
+                   conductors=None, prepare=False, distributed=False):
+    """Emit a UserWarning if preflight finds issues (issue #66).
+
+    Called automatically at the start of ``forward()``, ``optimize()``,
+    and ``topology_optimize()`` so users discover physics violations
+    (under-resolved mesh, geometry in CPML, probe in PEC, ...) before
+    spending minutes of GPU compute. Pass ``skip_preflight=True`` at
+    the call site to opt out (tests, already-validated configs).
+
+    ``check_ntff`` gates the NTFF check family. ``run()`` passes
+    ``check_ntff="advisory"`` (issue #303): the λ/4 near-field gap
+    and sub-wavelength ground-plane (issue #334) advisories are
+    physics-relevant to any far-field computation and
+    run() is the common NTFF entry point, so they are surfaced as
+    warnings — but only ``forward(port_s11_freqs=...)`` / ``optimize``
+    (the inverse-design entry points) hard-fail on the PEC-overlap
+    error. Previously run() skipped the family entirely and still
+    printed "All checks passed", which contradicted explicit
+    ``sim.preflight()`` output on the same configuration.
+
+    ``prepare=True`` also returns an execution-local solve handoff. With
+    skipped preflight it stays lazy until lane admission; otherwise checks
+    read its assembled product before the selected runner takes ownership.
+    """
+    assembly = prepare_solve(sim, distributed=distributed) if prepare else None
+    if skip:
+        return assembly
+    if assembly is not None:
+        conductors = assembly.realized()
+    # A validator bug must propagate, rather than become an advisory.
+    issues = sim._preflight_impl(strict=False, check_ntff=check_ntff,
+                                 _conductors=conductors)
+    # gate -> this helper -> facade -> public entry -> user
+    sim._run_preflight_gate(issues, context=context, stacklevel=5)
+    return assembly
+
+
+def bind_solve_call(assembly, call):
+    """Consume a graded solve before ring-down adds internal probes."""
+    from functools import partial
+    root = assembly.take()
+    return partial(call, conductors=root), root.grid
+
+
+def uniform_solve_inputs(assembly):
+    """Return the solve grid, material tuple and legacy sheet/wire collectors."""
+    root = assembly.take()
+    sheets, wires, specs = [], [], []
+    materials = assembled_materials(root, pec_sheets=sheets, pec_wires=wires,
+                                    sheet_specs=specs)
+    return root, root.grid, materials, specs, sheets, wires
+
+
+def early_run_record(sim, root, lane):
+    """ADI/subgrid record timing remains at assembly, as before this move."""
+    if lane == "run_uniform":
+        return None
+    from rfx.realized_geometry import record_from_assembly
+    return record_from_assembly(sim, root.grid, root.materials, root.pec_cells,
+        root.sheets, root.wires, list(root.geometry_masks.items()),
+        list(root.assembly_entries), lane=lane, conductors=root)
+
+
+def forward_products(sim, grid, materials, cells, sheets, wires, periodic, root):
+    """Bind overrides while keeping the original substrate for MSL launches."""
+    drawn = None if root is None else root.assembly[0]
+    root = kernel_conductors(sim, grid, materials, cells, sheets, wires,
+        periodic=periodic, root=root,
+        sheet_specs=() if root is None else root.sheet_impedance)
+    return root, drawn, root.pec_edges
+
+
+def forward_port_stage(root, cells, component, entity_id, *,
+                       release_edges=True, skip_empty=False):
+    """Release only the driven component; preserve the wire's edge support."""
+    if not skip_empty or cells:
+        root = clear_conductor_edges(root, cells, component=component,
+            entity_id=entity_id, clear_cells=True, release_edges=release_edges)
+    return root, root.pec_cells, root.pec_edges
+
+
+def drawn_launch_eps(sim, grid, materials):
+    """Read the drawn substrate, including legacy direct-array entry points."""
+    if materials is None:
+        materials = sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])[0]
+    return materials.eps_r
+
+
+def forward_kernel_inputs(sim, root, lane, edges, sheet_operator):
+    root, _ = at_kernel(sim, root, lane=lane, pec_edges=edges,
+                        sheet_operator=sheet_operator)
+    return root, root.pec_edges, root.sheet_operator
+
+
+def distributed_solve_inputs(sim, grid, assembly, skip, gather):
+    """Consume the dispatch handoff without retaining it during slab staging."""
+    sim._pf_campaign_ctx = None
+    sim._realized_geometry_record = None
+    root = (assembly.take() if assembly is not None else
+        solve_conductors(sim, grid, nonuniform=True,
+            preflight=dict(skip=skip, context="run" if gather else "forward",
+                           check_ntff="advisory" if gather else True)))
+    sheets, wires = [], []
+    materials = assembled_materials(root, pec_sheets=sheets, pec_wires=wires)
+    return root, materials, sheets, wires
+
+
+def distributed_kernel_inputs(sim, root, grid, materials, cells, sheets, wires, gather):
+    root = kernel_conductors(sim, grid, materials, cells, sheets, wires,
+                            periodic=(False, False, False), root=root)
+    root, record = at_kernel(sim, root,
+        lane="run_distributed" if gather else "fwd_distributed_nu",
+        pec_edges=root.pec_edges)
+    return root.pec_edges, record
+
+
+def stage_distributed_edges(edges, grid, mesh, multiprocess):
+    """Stage final components with unchanged traced/concrete ownership rules."""
+    import jax
+    from jax.sharding import NamedSharding, PartitionSpec as P
+    from rfx.runners.distributed_nu import (
+        shard_pec_mask_x_slab, stage_concrete_forward_array)
+    if edges is None:
+        return None
+    if any(isinstance(edge, jax.core.Tracer) for edge in edges):
+        if multiprocess:
+            raise ValueError("a traced pec_mask_override is supported in one process only")
+        return tuple(jax.device_put(shard_pec_mask_x_slab(edge, grid),
+                                   NamedSharding(mesh, P("x"))) for edge in edges)
+    return tuple(stage_concrete_forward_array(
+        edge, grid, mesh, True, ghost_value=False) for edge in edges)
