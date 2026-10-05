@@ -547,6 +547,7 @@ class _ExecuteMixin:
 
 
     def _run_nonuniform(self, *, n_steps, compute_s_params=None, preflight=None,
+                        conductors=None,
                         s_param_freqs=None,
                         subpixel_smoothing: bool | str = False,
                         checkpoint: bool = False,
@@ -588,7 +589,7 @@ class _ExecuteMixin:
             )
         from rfx.runners.nonuniform import run_nonuniform_path
         return run_nonuniform_path(
-            self, preflight=preflight,
+            self, preflight=preflight, conductors=conductors,
             n_steps=n_steps,
             compute_s_params=compute_s_params,
             s_param_freqs=s_param_freqs,
@@ -2785,6 +2786,7 @@ class _ExecuteMixin:
         self,
         *,
         preflight=None,
+        conductors=None,
         eps_override: jnp.ndarray | None = None,
         sigma_override: jnp.ndarray | None = None,
         pec_mask_override: jnp.ndarray | None = None,
@@ -2841,7 +2843,7 @@ class _ExecuteMixin:
                 )
 
         result = run_nonuniform_path(
-            self, preflight=preflight,
+            self, preflight=preflight, conductors=conductors,
             n_steps=n_steps,
             s_param_freqs=(None if port_s11_freqs is None else
                            jnp.asarray(port_s11_freqs, dtype=jnp.float32)),
@@ -4550,9 +4552,13 @@ class _ExecuteMixin:
                     kerr_chi3=None,
                     holds_ports=design_box_holds_ports,
                 )
+            # Check declared inputs before ring-down attaches internal probes.
+            from rfx.conductors import solve_conductors
+            conductors = solve_conductors(self, self._build_nonuniform_grid(),
+                nonuniform=True, preflight=dict(skip=skip_preflight, context="forward"))
             _nu_fwd_call = functools.partial(
                 self._forward_nonuniform_from_materials,
-                preflight=dict(skip=skip_preflight, context="forward"),
+                conductors=conductors,
                 port_s11_freqs=port_s11_freqs,
                 eps_override=eps_override,
                 sigma_override=sigma_override,
@@ -4571,7 +4577,7 @@ class _ExecuteMixin:
                 from rfx.ringdown import RingdownForward
                 result = RingdownForward(
                     self, ringdown, lane="graded", n_steps=plan.n_steps,
-                    grid=self._build_nonuniform_grid()).run(_nu_fwd_call)
+                    grid=conductors.grid).run(_nu_fwd_call)
             if _nu_design_spec is not None:
                 result = result._replace(
                     design_box_held_edges=_nu_design_spec.held_edges)
@@ -5238,9 +5244,13 @@ class _ExecuteMixin:
                     self._warn_until_decay_dc_floor(
                         dt=_nu_dt_for_dc, n_table=decay_max_steps
                     )
+            # Check declared inputs before ring-down attaches internal probes.
+            from rfx.conductors import solve_conductors
+            conductors = solve_conductors(self, self._build_nonuniform_grid(),
+                nonuniform=True, preflight=dict(skip=skip_preflight, context="run", check_ntff="advisory"))
             _nu_call = functools.partial(
                 self._run_nonuniform,
-                preflight=dict(skip=skip_preflight, context="run", check_ntff="advisory"),
+                conductors=conductors,
                 n_steps=n_steps,
                 conformal_pec=conformal_pec,
                 report_every=report_every,
@@ -5263,13 +5273,13 @@ class _ExecuteMixin:
                 from rfx.ringdown import RingdownStop
                 _res = RingdownStop(
                     self, ringdown, lane="graded", n_max=n_steps,
-                    grid=self._build_nonuniform_grid()).run(_nu_call)
+                    grid=conductors.grid).run(_nu_call)
                 n_steps = _res.ringdown.stop.n_stop
             else:
                 from rfx.ringdown import RingdownRun
                 _res = RingdownRun(
                     self, ringdown, lane="graded", n_steps=n_steps,
-                    grid=self._build_nonuniform_grid()).run(_nu_call)
+                    grid=conductors.grid).run(_nu_call)
             self._warn_run_sparams_if_nonpassive(_res)
             self._warn_postrun_energy_witness(
                 _res,

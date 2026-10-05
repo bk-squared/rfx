@@ -435,3 +435,49 @@ def test_assembly_warning_keeps_origin_and_is_not_dropped(monkeypatch, scoped):
         assert caught[0].lineno == origin[0]
         ctx.realized()
         assert len(caught) == 1
+
+
+@pytest.mark.parametrize('lane', ['uniform', 'graded'])
+@pytest.mark.parametrize('entry', ['run', 'forward'])
+def test_ringdown_preflight_sees_only_declared_probes(monkeypatch, lane, entry):
+    """The channel probes belong to stepping, not declaration preflight."""
+    import rfx.conductors as products
+    from rfx.ringdown import RingdownSpec
+    from tests.unit.sparams.test_ringdown_run import _box
+    sim = _box(lane)
+    declared = tuple(map(id, sim._probes))
+    assert len(declared) == 1
+    events = []
+    preflight = sim.preflight
+    method = '_assemble_materials_nu' if lane == 'graded' else '_assemble_materials'
+    assemble = getattr(sim, method)
+    kernel = products.at_kernel
+
+    def assemble_once(*a, **kw):
+        events.append(('assembly', tuple(map(id, sim._probes))))
+        return assemble(*a, **kw)
+
+    def declared_preflight(**kw):
+        probes = tuple(map(id, sim._probes))
+        events.append(('preflight', probes))
+        assert probes == declared
+        assert kw['_conductors'].mode == 'solve'
+        return preflight(**kw)
+
+    def at_kernel(*a, **kw):
+        events.append(('kernel', tuple(map(id, sim._probes))))
+        return kernel(*a, **kw)
+
+    monkeypatch.setattr(sim, method, assemble_once)
+    monkeypatch.setattr(sim, 'preflight', declared_preflight)
+    monkeypatch.setattr(products, 'at_kernel', at_kernel)
+    kwargs = {'compute_s_params': True} if entry == 'run' else {}
+    if entry == 'forward' and lane == 'uniform':
+        kwargs['port_s11_freqs'] = np.linspace(8e9, 18e9, 11)
+    result = getattr(sim, entry)(n_steps=600, ringdown=RingdownSpec(), **kwargs)
+    assert [event for event, _ in events] == ['assembly', 'preflight', 'kernel']
+    assert events[0][1] == declared
+    assert events[2][1][:len(declared)] == declared
+    assert len(events[2][1]) > len(declared)
+    assert tuple(map(id, sim._probes)) == declared
+    assert result.time_series.shape == (600, len(declared))

@@ -716,7 +716,7 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
 
 
 def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=None,
-                        preflight=None,
+                        preflight=None, conductors=None,
                         eps_override=None, sigma_override=None,
                         pec_mask_override=None, pec_occupancy_override=None,
                         checkpoint=False,
@@ -894,28 +894,18 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     # DFT-plane / flux / wire-port accumulators simply stop accumulating).
     sizing_n = int(decay_max_steps) if until_decay is not None else n_steps
 
-    grid = build_nonuniform_grid(
-        sim._freq_max, sim._domain, sim._dx, sim._cpml_layers, sim._dz_profile,
-        dx_profile=sim._dx_profile, dy_profile=sim._dy_profile,
-        face_layers=sim._resolve_face_layers(),
-        pec_faces=sim._boundary_spec.pec_faces()
-            if sim._boundary_spec is not None else None,
-        pmc_faces=sim._boundary_spec.pmc_faces()
-            if sim._boundary_spec is not None else None,
-        cpml_axes="".join(
-            ax for ax in "xyz"
-            if ax not in (sim._periodic_axes or "")
-        ),
-        dt=getattr(sim, "_dt_pin", None),
-        dt_min_cell=getattr(sim, "_dt_min_cell", None),
-        dt_caller="Simulation",
-    )
+    # Public run/forward lend their preflighted solve object; internal callers
+    # without one still use the same builder here.
+    grid = conductors.grid if conductors is not None else sim._build_nonuniform_grid()
     _sheet_specs: list = []
     _pec_sheets: list = []
     _pec_wires: list = []
     _geometry_masks, _assembly_entries = ([], []) if lane == "run_nonuniform" else (None, None)
     from rfx.conductors import assembled_materials, solve_conductors, kernel_conductors, clear_conductor_edges, at_kernel
-    conductors = solve_conductors(sim, grid, nonuniform=True, preflight=preflight)
+    if conductors is None:
+        conductors = solve_conductors(sim, grid, nonuniform=True)
+    if preflight is not None:
+        sim._auto_preflight(conductors=conductors, **preflight)
     materials, debye_spec, lorentz_spec, pec_mask = assembled_materials(
         conductors, sheet_specs=_sheet_specs, pec_sheets=_pec_sheets,
         pec_wires=_pec_wires, geometry_masks=_geometry_masks, assembly_entries=_assembly_entries)
