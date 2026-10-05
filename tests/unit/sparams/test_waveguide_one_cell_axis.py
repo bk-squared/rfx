@@ -51,12 +51,11 @@ def test_te10_cutoff_impedance_and_height_witnesses():
 
 
 def test_one_cell_twoport_empty_guide():
-    # Flux extraction avoids the exact empty/reference S21 ratio identity.
-    result = _guide(1).compute_waveguide_s_matrix(num_periods=60, normalize='flux')
+    # No reference-run normalization: with normalize='flux' an empty guide's
+    # S11 is the device run minus itself (exactly 0) and cannot see a
+    # reflection. Raw S11 must stay below -40 dB and |S21| near 1.
+    result = _guide(1).compute_waveguide_s_matrix(num_periods=60, normalize=False)
     s = np.asarray(result.s_params)
     assert np.isfinite(s).all()
-    print('\nfrequencies GHz:', np.asarray(FREQS)/1e9)
-    print('|S11|:', np.abs(s[0, 0]))
-    print('|S21|:', np.abs(s[1, 0]))
-    np.testing.assert_allclose(np.abs(s[1, 0]), 1., atol=.03)
-    assert np.max(np.abs(s[0, 0])) < .03
+    assert np.max(np.abs(s[0, 0])) < .01
+    np.testing.assert_allclose(np.abs(s[1, 0]), 1., atol=.005)
