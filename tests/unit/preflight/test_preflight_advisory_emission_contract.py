@@ -79,17 +79,18 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 # still reads only the facade would record that as a SHRINKING surface and
 # invite someone to re-freeze the counts downward -- the surface would then be
 # unpinned wherever the code actually lives. Both paths are read and the sites
-# summed, so pure code motion leaves the frozen numbers below unchanged and
+# summed (including the execution-local conductor adapter), so pure code motion leaves the frozen numbers below unchanged and
 # only a real new advisory moves them. Globbed, not listed, for the reason
 # tests/unit/nonuniform/test_dz_only_dispatch_contract.py gives at its own
 # rfx/preflight/ row: a later leg must not have to remember this file.
 _PREFLIGHT_SRCS = (
     _REPO_ROOT / "rfx" / "api" / "_preflight.py",
+    _REPO_ROOT / "rfx" / "model" / "_conductor_preflight.py",
     *sorted((_REPO_ROOT / "rfx" / "preflight").glob("*.py")),
 )
 
 # ---------------------------------------------------------------------------
-# S1: frozen check-site surface (rfx/api/_preflight.py + rfx/preflight/).
+# S1: frozen check-site surface (facade, conductor adapter, check families).
 # ---------------------------------------------------------------------------
 
 _ISSUE_CLASSES = {
@@ -104,7 +105,7 @@ def _enumerate_emission_sites():
     its ``code=`` is a source literal or computed at runtime (``getattr``
     off a caught exception -- ``preflight()``'s own uncoded fallback).
 
-    Walks ``rfx/api/_preflight.py`` and every module of ``rfx/preflight/``
+    Walks the preflight facade, conductor adapter, and ``rfx/preflight/``
     and returns one flat list, so a site that changes FILE under #980 Phase
     3 does not change the totals frozen below. Line numbers are per file and
     were never part of the freeze anyway.

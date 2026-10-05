@@ -21,7 +21,7 @@ from jax import lax
 from rfx.runners._rank import mesh_ranks, rank_shard_map
 from jax.sharding import Mesh, PartitionSpec as P
 
-from rfx.boundaries.pec import realized_pec_edge_masks
+from rfx.model.conductors import distributed_mask_edges, distributed_mask_spec
 from rfx.core.yee import (
     EPS_0,
     MU_0,
@@ -834,9 +834,7 @@ def apply_pec_mask_shmap(state: FDTDState, sharded_pec_mask, mesh,
     re-zero PEC cells that live in another rank's slab; per V3 bullet 7,
     seam ghost cells must not be acted on.
 
-    A tuple carries the precomputed conductor object's component masks.
-    Direct low-level callers may still supply a cell mask; for that carrier
-    the implementation:
+    For legacy cell masks (instead of precomputed edge tuples), this:
       * computes the per-component edge masks on the local slab
         including ghost cells by CALLING
         ``rfx.boundaries.pec.realized_pec_edge_masks`` — the same
@@ -862,13 +860,10 @@ def apply_pec_mask_shmap(state: FDTDState, sharded_pec_mask, mesh,
     if sharded_pec_mask is None:
         return state
 
-    precomputed = isinstance(sharded_pec_mask, tuple)
-
     @partial(
         rank_shard_map,
         mesh=mesh,
-        in_specs=(P("x"), P("x"), P("x"),
-                  (P("x"),) * 3 if precomputed else P("x")),
+        in_specs=(P("x"), P("x"), P("x"), distributed_mask_spec(sharded_pec_mask)),
         out_specs=(P("x"), P("x"), P("x")),
         check_rep=False,
     )
@@ -892,8 +887,7 @@ def apply_pec_mask_shmap(state: FDTDState, sharded_pec_mask, mesh,
         # y and z have no ghosts and no periodic BC on this lane (the NU
         # runners install none), so they take the same zero-pad convention
         # ``rfx/nonuniform.py``'s ``apply_pec_mask(st, pec_mask)`` takes.
-        mask_ex, mask_ey, mask_ez = (mask if precomputed else
-            realized_pec_edge_masks(mask, periodic=(True, False, False)))
+        mask_ex, mask_ey, mask_ez = distributed_mask_edges(mask)
 
         # Force ghost rows to False so we never touch a neighbour rank's
         # cells.  Real cells span [ghost, nx_local - ghost).

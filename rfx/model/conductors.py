@@ -471,3 +471,20 @@ def stage_distributed_edges(edges, grid, mesh, multiprocess):
                                    NamedSharding(mesh, P("x"))) for edge in edges)
     return tuple(stage_concrete_forward_array(
         edge, grid, mesh, True, ghost_value=False) for edge in edges)
+
+
+def distributed_mask_spec(mask):
+    """Partition either a cell-mask array or three precomputed edge arrays."""
+    from jax.sharding import PartitionSpec as P
+    return (P("x"),) * 3 if isinstance(mask, tuple) else P("x")
+
+
+def distributed_mask_edges(mask):
+    """Use staged conductor edges, or realize legacy slab-local cell masks.
+
+    The slab's x ghosts carry the seam neighbours; the caller gates both
+    ghost rows out before applying the masks. The y/z faces do not wrap.
+    """
+    from rfx.boundaries.pec import realized_pec_edge_masks
+    return (mask if isinstance(mask, tuple) else
+            realized_pec_edge_masks(mask, periodic=(True, False, False)))
