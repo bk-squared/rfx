@@ -357,3 +357,13 @@ Decisions:
      (`tests/_absorber_witness.py`), agrees between the paths within its float32 floor, and the deeper
      face reflects less than the shallower one by the margin the single-device run shows. The
      restored-#1346 mutation makes the graded x-high face read like 8 layers.
+
+Addendum, 2026-10-05 (leader, after the PR1 implementer stopped on a mismatch). The uniform and graded
+copies differ on two inputs: a per-face depth above the budget on a face of a non-absorbing axis (the
+uniform grid raises, the graded grid ignores it), and a fractional depth on an absorbing face (the
+uniform grid truncates 1.5 to 1, the graded grid raises). Neither input reaches either builder through
+the public API: `Boundary` refuses a non-integer thickness and a thickness on a non-absorbing face before
+any grid is built (checked on 31ecbefb with `Simulation(boundary=…)`, uniform and graded). Only a direct
+call of `Grid(…, face_layers=…)` or `make_nonuniform_grid(…, face_layers=…)` reaches them. Decision: the
+record applies the strict rule to every face it is given — an integer between 0 and the budget, raising
+otherwise — so the two builders agree; no public result changes. A test pins both inputs on both builders.
