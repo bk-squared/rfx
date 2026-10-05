@@ -367,3 +367,19 @@ any grid is built (checked on 31ecbefb with `Simulation(boundary=…)`, uniform 
 call of `Grid(…, face_layers=…)` or `make_nonuniform_grid(…, face_layers=…)` reaches them. Decision: the
 record applies the strict rule to every face it is given — an integer between 0 and the budget, raising
 otherwise — so the two builders agree; no public result changes. A test pins both inputs on both builders.
+
+Addendum 2, 2026-10-05 (leader, second implementer stop). A reachable difference, through the exported
+low-level `rfx.run(grid, materials, n_steps, boundary="cpml")`: a uniform grid built with
+`cpml_axes="z"` has zero pads on x and y, yet `init_cpml` still builds full 8-layer absorbing profiles on
+the x and y faces, and `rfx.run` applies them because its own `cpml_axes` argument defaults to "xyz". The
+absorber then sits on the outermost eight cells of the physical domain on x and y. The graded builder
+gives no-op profiles there. `test_an_axis_outside_cpml_axes_keeps_its_pre_876_applied_depth` pins the
+uniform behaviour as a regression baseline (it guarded #876's clamp, not the physics of the dual knob).
+`Simulation` never reaches this: it passes one consistent axis set. Decision for PR1, which promises no
+result change: the record's realized depth is the pad (0 on those faces), and `init_cpml` keeps its
+present profile depth for faces outside the grid's absorbing axes, labelled in code as the legacy dual
+declaration with a pointer here; the structural contract allow-lists exactly that line. The dual
+declaration itself (grid axes vs the runner argument) is a separate decision, raised with the lead: the
+candidate is that the runner reads the grid's axes and refuses a conflicting explicit argument, with
+the #876 test rewritten with its reason. That change moves results on the low-level API and does not
+belong in this PR.
