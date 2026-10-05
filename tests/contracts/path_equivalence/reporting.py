@@ -91,8 +91,12 @@ def assert_record(report, record, known, witnesses=None):
         name = measurement['record']
         witness = (witnesses or {}).get(name)
         if witness is not None and measurement['difference'] > measurement['bar']:
-            drift = abs(measurement['relative'] - witness['relative'])
-            bar = max(measurement['relative_bar'], witness['relative_bar'])
+            # Existing witnesses were recorded relative to the leaf peak.
+            # Express that reference in the field units used by today's bar.
+            peak = measurement.get('peak', 0.0)
+            scale = measurement.get('leaf_peak', peak) / peak if peak else 1.0
+            drift = abs(measurement['relative'] - witness['relative'] * scale)
+            bar = max(measurement['relative_bar'], witness['relative_bar'] * scale)
             if drift > bar:
                 raise RuntimeError(f'{name}: S0 finding fingerprint changed: {drift:.9g} > bar {bar:.9g}')
     if failures:
