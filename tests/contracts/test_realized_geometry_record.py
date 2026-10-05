@@ -139,9 +139,9 @@ def test_cached_record_builds_once_across_readers(monkeypatch):
     calls = []
     build = records._build_record
 
-    def counted(*args):
+    def counted(*args, **kwargs):
         calls.append(args[0])
-        return build(*args)
+        return build(*args, **kwargs)
 
     monkeypatch.setattr(records, "_build_record", counted)
     record = sim.realized_geometry()
@@ -260,25 +260,18 @@ def test_run_assembly_witness_after_port_mutation(monkeypatch, nonuniform, poiso
     else:
         _stub_uniform_kernel(monkeypatch, cap)
     monkeypatch.setattr(sim, "_attach_run_settling_witness", lambda result, **k: result)
-    context_reads = []
-    active_context = sim._campaign_ctx()
-    context = sim._campaign_ctx
-    def shared_context():
-        value = context()
-        context_reads.append(value)
-        return value
-    monkeypatch.setattr(sim, "_campaign_ctx", shared_context)
+    def forbidden_context():
+        raise AssertionError("run must not read the diagnostic cache")
+    monkeypatch.setattr(sim, "_campaign_ctx", forbidden_context)
     if poison_context:
-        # A stale public report must not replace the configuration-keyed object.
         monkeypatch.setattr(sim, "realized_geometry", lambda: before)
     result = sim.run(n_steps=1, skip_preflight=True, compute_s_params=False)
     record = result.realized_geometry
     assert record.lane == ("run_nonuniform" if nonuniform else "run_uniform")
     _assert_runner_sheet(record, cap, cap["grid"])
     _assert_runner_sheet(after, cap, cap["grid"])
-    assert context_reads and all(ctx is active_context for ctx in context_reads)
-    assert record.conductors is active_context.realized()
-    assert assembly_calls == []  # the post-port standalone query assembled it once
+    assert record.conductors is None
+    assert len(assembly_calls) == 1
     assert record.pec_mask is None and record.edge_masks == () and record.materials is None
     assert record.sheets == () and record.wires == ()
     assert all(e.mask is None and not e.edge_masks and e.sheet is None for e in record.entities)
@@ -335,10 +328,9 @@ def test_asymmetric_entities_against_runner_witness(monkeypatch, nonuniform):
         _stub_uniform_kernel(monkeypatch, cap)
     monkeypatch.setattr(sim, "_attach_run_settling_witness", lambda result, **k: result)
     sim._campaign_ctx().realized(strict=True)
-    def no_second_assembly(*args, **kwargs):
-        raise AssertionError("run must reuse the preflight conductor object")
-    monkeypatch.setattr(sim, "_assemble_materials_nu" if nonuniform else "_assemble_materials",
-                        no_second_assembly)
+    def forbidden_context():
+        raise AssertionError("run must not read the diagnostic cache")
+    monkeypatch.setattr(sim, "_campaign_ctx", forbidden_context)
     record = sim.run(n_steps=1, skip_preflight=True, compute_s_params=False).realized_geometry
     grid = cap["grid"]
     assert record.entities[0].n_cells == 30

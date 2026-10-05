@@ -45,6 +45,7 @@ class RealizedConductors(_RealizedPEC):
     assembly: tuple = ()
     pad_fill_findings: tuple = ()
     sheet_operator: object = None
+    mode: str = "solve"
 
     @property
     def pec_mask(self):
@@ -64,9 +65,11 @@ class RealizedConductors(_RealizedPEC):
 def realized_conductors(sim, grid, *, nonuniform=False, assembly=None,
                         pec_sheets=(), pec_wires=(), sheet_specs=(),
                         geometry_masks=(), assembly_entries=(),
-                        pad_fill_findings=(), periodic=None):
+                        pad_fill_findings=(), periodic=None, mode="solve"):
     """Build from production collectors, assembling only when none were supplied."""
     from rfx.boundaries.pec import realized_pec_edge_masks
+    if mode not in ("solve", "audit"):
+        raise ValueError(f"Unknown conductor assembly mode: {mode}")
     if assembly is None:
         pec_sheets, pec_wires, sheet_specs = [], [], []
         geometry_masks, assembly_entries, pad_fill_findings = [], [], []
@@ -76,8 +79,9 @@ def realized_conductors(sim, grid, *, nonuniform=False, assembly=None,
         if nonuniform:
             assembly = sim._assemble_materials_nu(grid, **kwargs)
         else:
-            assembly = sim._assemble_materials(
-                grid, pad_fill_findings=pad_fill_findings, **kwargs)
+            if mode == "audit":
+                kwargs["pad_fill_findings"] = pad_fill_findings
+            assembly = sim._assemble_materials(grid, **kwargs)
     periodic = tuple(sim._periodic_flags() if periodic is None else periodic)
     cells = assembly[3]
     edges = None
@@ -92,7 +96,7 @@ def realized_conductors(sim, grid, *, nonuniform=False, assembly=None,
         'nonuniform' if nonuniform else 'uniform', grid, assembly[0], cells,
         edges, tuple(pec_sheets), tuple(sheet_specs), tuple(pec_wires), periodic,
         dict(geometry_masks), tuple(assembly_entries),
-        (ConductorStage(labels, 'assembly'),), tuple(assembly), tuple(pad_fill_findings))
+        (ConductorStage(labels, 'assembly'),), tuple(assembly), tuple(pad_fill_findings), mode=mode)
     return _with_sheet_spans(sim, result)
 
 
@@ -124,23 +128,20 @@ def _same_grid(a, b):
     return True
 
 
-def assembled_materials(sim, grid, *, nonuniform=False, **collectors):
-    """Share preflight's production products with a runner's existing collectors."""
-    ctx = sim._campaign_ctx()
-    root = getattr(ctx, '_assembled_conductors', None)
-    if root is None:
-        candidate = ctx._realized
-        if isinstance(candidate, RealizedConductors):
-            root = candidate
-    if root is None or not _same_grid(root.grid, grid):
-        root = realized_conductors(sim, grid, nonuniform=nonuniform)
-    if _traced_product(root):
-        # Products created inside an outer jit must not escape in a host cache.
-        sim._pf_campaign_ctx = None
-    else:
-        ctx._assembled_conductors = root
-        ctx._realized = root
-        ctx._kernel_bound = False
+def solve_conductors(sim, grid, *, nonuniform=False, preflight=None):
+    """Assemble once for execution and lend the pre-port object to its checks."""
+    import jax
+    with jax.ensure_compile_time_eval():
+        root = realized_conductors(sim, grid, nonuniform=nonuniform, mode="solve")
+    if preflight is not None:
+        sim._auto_preflight(conductors=root, **preflight)
+    return root
+
+
+def assembled_materials(root, **collectors):
+    """Unpack explicitly supplied solve products into legacy runner arguments."""
+    if root.mode != "solve":
+        raise ValueError("A runner cannot consume audit-mode conductors")
     for name, out in collectors.items():
         if out is not None:
             value = getattr(root, {'pec_sheets': 'sheets', 'pec_wires': 'wires',
@@ -150,25 +151,23 @@ def assembled_materials(sim, grid, *, nonuniform=False, **collectors):
 
 
 def kernel_conductors(sim, grid, materials, pec_cells, sheets=(), wires=(),
-                      *, periodic, sheet_specs=()):
-    """Use the assembly object when entering a runner; retain override stages."""
-    ctx = sim._campaign_ctx()
-    root = getattr(ctx, '_assembled_conductors', None)
-    if root is None and isinstance(ctx._realized, RealizedConductors):
-        root = ctx._realized
+                      *, periodic, sheet_specs=(), root=None):
+    """Carry explicit solve products forward, retaining material/PEC overrides."""
+    if root is not None and root.mode != "solve":
+        raise ValueError("A runner cannot consume audit-mode conductors")
     if (root is not None and _same_grid(root.grid, grid)
             and pec_cells is root.pec_cells
             and tuple(map(id, sheets)) == tuple(map(id, root.sheets))
             and tuple(map(id, wires)) == tuple(map(id, root.wires))
             and tuple(periodic) == root.periodic):
-        return root
-    # Internal material/PEC override entry points already have assembled products.
+        return replace(root, materials=materials, sheet_impedance=tuple(sheet_specs))
+    # Internal override/S-parameter entry points already have assembled products.
     obj = realized_conductors(sim, grid, nonuniform=hasattr(grid, 'dx_arr'),
         assembly=(materials, None, None, pec_cells), pec_sheets=sheets,
         pec_wires=wires, sheet_specs=sheet_specs, periodic=periodic,
         geometry_masks=() if root is None else root.geometry_masks.items(),
         assembly_entries=() if root is None else root.assembly_entries)
-    return obj
+    return obj if root is None else replace(obj, assembly=root.assembly)
 
 
 def at_kernel(sim, conductors, *, lane, pec_edges, sheet_operator=None, compact=True):
@@ -189,12 +188,7 @@ def at_kernel(sim, conductors, *, lane, pec_edges, sheet_operator=None, compact=
             conductors = replace(conductors, pec_edges=edges)
             _realized.ACTIVE.observe('conductors', dict(pec_edges=edges))
     if _traced_product(conductors):
-        sim._pf_campaign_ctx = None
         return conductors, None
-    ctx = sim._campaign_ctx()
-    ctx._realized = conductors
-    ctx._kernel_bound = True
-    sim._realized_geometry_record = None
     from rfx.realized_geometry import record_from_conductors
     record = (record_from_conductors(sim, conductors, lane=lane, compact=compact)
               if lane.startswith('run_') else None)

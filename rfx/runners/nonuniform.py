@@ -664,7 +664,7 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
         conductors = replace(kernel_conductors(sim, grid, materials, None,
             periodic=(False, False, False)), pec_edges=pec_edge_masks)
     original_edges = pec_edge_masks if geometry_edge_masks is None else geometry_edge_masks
-    for pe in sim._msl_ports:
+    for _msl_port_index, pe in enumerate(sim._msl_ports):
         # Issue #661: one shared projection of position -> port frame.
         mp = msl_port_from_entry(pe)
         port_mode = getattr(pe, "mode", "laplace")
@@ -710,12 +710,13 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
             conductors = clear_conductor_edges(
                 conductors, list(_msl_yz_cells(grid, mp)),
                 component=_msl_normal_component(mp),
-                entity_id=f"msl_port[{sim._msl_ports.index(pe)}]")
+                entity_id=f"msl_port[{_msl_port_index}]")
             pec_edge_masks = conductors.pec_edges
     return materials, conductors if return_object else pec_edge_masks
 
 
 def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=None,
+                        preflight=None,
                         eps_override=None, sigma_override=None,
                         pec_mask_override=None, pec_occupancy_override=None,
                         checkpoint=False,
@@ -913,9 +914,10 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     _pec_sheets: list = []
     _pec_wires: list = []
     _geometry_masks, _assembly_entries = ([], []) if lane == "run_nonuniform" else (None, None)
-    from rfx.conductors import assembled_materials, kernel_conductors, clear_conductor_edges, at_kernel
+    from rfx.conductors import assembled_materials, solve_conductors, kernel_conductors, clear_conductor_edges, at_kernel
+    conductors = solve_conductors(sim, grid, nonuniform=True, preflight=preflight)
     materials, debye_spec, lorentz_spec, pec_mask = assembled_materials(
-        sim, grid, nonuniform=True, sheet_specs=_sheet_specs, pec_sheets=_pec_sheets,
+        conductors, sheet_specs=_sheet_specs, pec_sheets=_pec_sheets,
         pec_wires=_pec_wires, geometry_masks=_geometry_masks, assembly_entries=_assembly_entries)
     del _geometry_masks, _assembly_entries
     if getattr(sim, "_interface_eps", "sampled") == "dual_average" and (
@@ -1004,7 +1006,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     _pec_sheets = tuple(_pec_sheets)
     _pec_wires = tuple(_pec_wires)
     conductors = kernel_conductors(sim, grid, materials, pec_mask,
-        _pec_sheets, _pec_wires, periodic=(False, False, False), sheet_specs=_sheet_specs)
+        _pec_sheets, _pec_wires, periodic=(False, False, False), sheet_specs=_sheet_specs, root=conductors)
     pec_edge_masks = conductors.pec_edges
     _msl_geometry_edges = pec_edge_masks  # before ANY port clearing
 
@@ -1087,7 +1089,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         }
         return min(rel, key=rel.get)
 
-    for pe in sim._ports:
+    for _port_index, pe in enumerate(sim._ports):
         idx = pos_to_nu_index(grid, pe.position)
         if pe.impedance == 0.0:
             # Current source with dV normalization; amplitude_kind (issue
@@ -1298,7 +1300,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 # its own cell (#931 §1.9, corrected).
                 conductors = clear_conductor_edges(
                     conductors, [(i, j, k)], component=pe.component,
-                    entity_id=f"port[{sim._ports.index(pe)}]")
+                    entity_id=f"port[{_port_index}]")
                 pec_edge_masks = conductors.pec_edges
             if pe.excite:
                 waveform = port_drive_waveform(

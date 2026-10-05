@@ -156,6 +156,7 @@ def run_uniform(
     # pre-built grid and materials passed in from Simulation.run()
     grid=None,
     base_materials=None,
+    conductors=None,
     debye_spec=None,
     lorentz_spec=None,
     pec_mask=None,
@@ -413,7 +414,7 @@ def run_uniform(
     pec_sheets = tuple(pec_sheets or ())
     pec_wires = tuple(pec_wires or ())
     conductors = kernel_conductors(sim, grid, base_materials, pec_mask,
-        pec_sheets, pec_wires, periodic=_pec_periodic, sheet_specs=sheet_specs or ())
+        pec_sheets, pec_wires, periodic=_pec_periodic, sheet_specs=sheet_specs or (), root=conductors)
     pec_edge_masks = conductors.pec_edges
     _msl_geometry_edges = pec_edge_masks  # before ANY port clearing
     if sim._msl_ports and use_kottke_pec:
@@ -440,7 +441,7 @@ def run_uniform(
     # this port's own clearing) is in hand.  Feed the S-param specs below.
     wire_port_live_cells = []
     wire_port_excites = []
-    for pe in sim._ports:
+    for _port_index, pe in enumerate(sim._ports):
         if pe.impedance == 0.0:
             # Auto-select source type based on boundary conditions:
             # - CPML (open): Cb/dx normalized (prevents DC on PEC surface)
@@ -520,7 +521,7 @@ def run_uniform(
                 idx = grid.position_to_index(pe.position)
                 conductors = clear_conductor_edges(
                     conductors, [idx], component=pe.component,
-                    entity_id=f"port[{sim._ports.index(pe)}]")
+                    entity_id=f"port[{_port_index}]")
                 pec_edge_masks = conductors.pec_edges
 
     # One wire port and no lumped port: S11 is read from the main run's own
@@ -574,7 +575,7 @@ def run_uniform(
             msl_port_from_entry,
             setup_msl_port,
         )
-        for pe in sim._msl_ports:
+        for _msl_port_index, pe in enumerate(sim._msl_ports):
             # Issue #661: one shared projection of position -> port frame.
             mp = msl_port_from_entry(pe)
             from rfx.sources.msl_port import validate_msl_port_geometry
@@ -635,7 +636,7 @@ def run_uniform(
                 conductors = clear_conductor_edges(
                     conductors, list(_msl_yz_cells(grid, mp)),
                     component=_msl_normal_component(mp),
-                    entity_id=f"msl_port[{sim._msl_ports.index(pe)}]")
+                    entity_id=f"msl_port[{_msl_port_index}]")
                 pec_edge_masks = conductors.pec_edges
 
     for pe in sim._probes:
@@ -1171,8 +1172,6 @@ def run_uniform(
         if _is_tfsf_2d_out(tfsf[0]):
             sim_result = _reconstruct_oblique_physical(sim_result, tfsf[0], grid, probes)
 
-    sim._campaign_ctx()._realized = conductors
-    sim._realized_geometry_record = None
     return Result(
         realized_geometry=geometry_record,
         state=sim_result.state,

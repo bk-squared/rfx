@@ -875,6 +875,7 @@ class _PreflightMixin:
         check_ad_memory: bool = False,
         n_steps_for_memory: int | None = None,
         available_memory_gb: float | None = None,
+        _conductors=None,
     ) -> "PreflightReport":
         """Run all pre-simulation checks and return warnings.
 
@@ -918,6 +919,20 @@ class _PreflightMixin:
             separately in ``flux_regions``, including for issue-free reports.
         """
         import warnings
+        if _conductors is not None:
+            # Execution lends its assembled, pre-port products for this call only.
+            # Bind the legacy validators to an isolated reader, never the public
+            # diagnostic cache (nor any instance override of that cache).
+            import copy
+            import weakref
+            from rfx.preflight.realization import _CampaignStaticsContext
+            self = copy.copy(self)
+            with jax.ensure_compile_time_eval():
+                ctx = _CampaignStaticsContext(self)
+            ctx.sim = weakref.proxy(self)
+            ctx._realized = _conductors
+            self._campaign_ctx = lambda: ctx
+            self._assemble_realized = lambda *a, **k: _conductors
         # Selection information belongs outside the captured legality findings.
         # Resolve before any validator reads a profile or fallback spacing.
         self._resolve_mesh()

@@ -87,7 +87,9 @@ class RealizedGeometry:
 
     ``entities`` are in geometry then thin-conductor declaration order.
     ``nodes`` include the far face of the last stored cell. ``edge_masks``
-    are the PEC edges handed to the kernel after driven port edge clearing.
+    preview the Yee PEC edges after driven port edge clearing. Yee Result
+    records are bound at the kernel; ADI/subgrid records describe pre-port
+    assembly (the subgrid refinement is not represented).
     ``ports`` identifies the driven edges separately. Result records omit
     dense masks, materials and sheet/wire specs; entity edge counts/ranges
     summarize the interior solver geometry. Request diagnostic arrays through
@@ -160,7 +162,7 @@ def _assembly_impl(sim, ctx):
     """Reuse production assembly; retain refused-model audit evidence too."""
     assembled = ctx.realized()
     if assembled is not None:
-        return assembled, {}, {}, []
+        return assembled, {}, {}, list(getattr(assembled, "pad_fill_findings", ()))
     if ctx.grid is None:
         raise ValueError(ctx.error)
     import copy
@@ -302,7 +304,7 @@ def _build_record(sim, ctx, *, compact=False):
                             tuple(refused.items()), tuple(refused_tc.items()),
                             tuple(tuple(row.items()) for row in pad_findings), ctx.lane,
                             snap=sim._snap)
-    return _conductor_view(record, assembled)
+    return record if compact else _conductor_view(record, assembled)
 
 
 def _pinned_entities(sim, ctx, assembled, nodes, sizes, *, compact=False):
@@ -394,19 +396,18 @@ def _ports(sim, ctx, assembled):
 def realized_geometry(sim):
     """Build once per preflight context and port configuration, without stepping."""
     ctx = sim._campaign_ctx()
-    if not getattr(ctx, '_kernel_bound', False):
-        from rfx.conductors import RealizedConductors, preview_port_stages
-        assembled = ctx.realized()
-        if isinstance(assembled, RealizedConductors):
-            if not hasattr(ctx, '_assembled_conductors'):
-                ctx._assembled_conductors = assembled
-            ctx._realized = preview_port_stages(sim, assembled)
     key = (id(ctx), *(tuple(id(p) for p in getattr(sim, attr, ())) for attr in
                      ("_ports", "_waveguide_ports", "_msl_ports", "_coaxial_ports", "_floquet_ports")))
     cached = getattr(sim, '_realized_geometry_record', None)
     if cached is not None and cached[0] == key:
         return cached[1]
-    record = _build_record(sim, ctx)
+    from rfx.conductors import RealizedConductors, preview_port_stages
+    assembled = ctx.realized()
+    if isinstance(assembled, RealizedConductors):
+        record = _record_from_conductors_impl(
+            sim, preview_port_stages(sim, assembled), lane=ctx.lane, compact=False)
+    else:
+        record = _build_record(sim, ctx)
     sim._realized_geometry_record = key, record
     return record
 
@@ -491,8 +492,9 @@ def _record_from_conductors_impl(sim, conductors, *, lane, compact=True):
             elif prefix == "thin_conductor":
                 ctx._entries.append(_EntryRealization(label=label, name=label, shape=entry.shape, kind="lossy"))
     record = _build_record(sim, ctx, compact=compact)
-    return _conductor_view(replace(record, lane=lane, limitations=("refined region not represented",)
-                   if lane == "run_subgridded" else ()), conductors)
+    record = replace(record, lane=lane, limitations=("refined region not represented",)
+                     if lane == "run_subgridded" else ())
+    return record if compact else _conductor_view(record, conductors)
 
 
 def _record_from_assembly(sim, grid, materials, pec_mask, sheets, wires,

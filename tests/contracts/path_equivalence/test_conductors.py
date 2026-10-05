@@ -52,8 +52,9 @@ def test_port_clearing_is_persistent():
 
 
 @pytest.mark.parametrize('lane', ['run_uniform', 'run_nonuniform', 'fwd_uniform', 'fwd_nonuniform'])
-def test_preflight_and_run_share_one_assembly(monkeypatch, lane):
+def test_preflight_and_run_share_one_assembly(monkeypatch, lane, kernel_objects):
     sim = build(('_geometry', 'pec_sheet'), lane)
+    sim._snap = 'declared'
     method = '_assemble_materials_nu' if lane.endswith('nonuniform') else '_assemble_materials'
     original = getattr(sim, method)
     calls = []
@@ -63,22 +64,33 @@ def test_preflight_and_run_share_one_assembly(monkeypatch, lane):
         return original(*args, **kwargs)
 
     monkeypatch.setattr(sim, method, count)
-    sim.preflight()
-    initial = sim._campaign_ctx().realized()
-    assert len(initial.sheets) == 1
-    assert any(edge.any() for edge in initial.edges)
+    audit = sim._campaign_ctx().realized()
+    assert len(audit.sheets) == 1
+    assert any(edge.any() for edge in audit.edges)
+    assert audit.mode == 'audit'
+    calls.clear()
+    seen = []
+    preflight = sim.preflight
+
+    def read(*args, **kwargs):
+        root = kwargs['_conductors']
+        assert root.mode == 'solve'
+        assert len(root.sheets) == 1
+        seen.append(root)
+        return preflight(*args, **kwargs)
+
+    monkeypatch.setattr(sim, 'preflight', read)
     runner = sim.forward if lane.startswith('fwd_') else sim.run
-    result = runner(n_steps=2, skip_preflight=True)
-    final = (sim._campaign_ctx().realized() if lane.startswith('fwd_')
-             else result.realized_geometry.conductors)
+    runner(n_steps=2)
     assert calls == [1]
-    assert final is initial
-    assert sim._campaign_ctx().realized() is final
-    assert sim.realized_geometry().conductors is final
+    assert len(seen) == 1
+    assert seen[0].pec_edges is kernel_objects[-1].pec_edges
+    assert sim._campaign_ctx().realized() is audit
+    assert kernel_objects[-1] is not audit
 
 
 @pytest.mark.parametrize('lane', ['run_uniform', 'run_nonuniform'])
-def test_record_reads_kernel_after_port_clearing(monkeypatch, lane):
+def test_record_reads_kernel_after_port_clearing(monkeypatch, lane, kernel_objects):
     from rfx import Box
     from .builders import point
     sim = build(('_ports', 'lumped_port'), lane)
@@ -87,30 +99,43 @@ def test_record_reads_kernel_after_port_clearing(monkeypatch, lane):
     original = realized_conductors(sim, grid, nonuniform=lane == 'run_nonuniform')
     idx = tuple(grid.index_of(a, x) for a, x in enumerate(point(5, 3, 3)))
     assert original.edges[2][idx]
-    result = sim.run(n_steps=2, skip_preflight=True)
-    final = result.realized_geometry.conductors
+    import rfx.realized_geometry as records
+    recorded = []
+    original_record = records.record_from_conductors
+
+    def record_operand(sim, conductors, **kwargs):
+        recorded.append(conductors)
+        return original_record(sim, conductors, **kwargs)
+
+    monkeypatch.setattr(records, 'record_from_conductors', record_operand)
+    result = sim.run(n_steps=2, skip_preflight=True, compute_s_params=False)
+    final = kernel_objects[-1]
+    assert result.realized_geometry.conductors is None
     assert not final.edges[2][idx]
     assert final.provenance[-1].stage == 'port-edge-clearing'
-    assert sim._campaign_ctx().realized() is final
+    assert recorded[-1] is final
+    assert not recorded[-1].edges[2][idx]
+    assert sim._campaign_ctx().realized().edges[2][idx]
     np.testing.assert_array_equal(sim.realized_geometry().edge_masks[2], final.edges[2])
 
 
 @pytest.mark.parametrize('graded', [False, True])
-def test_two_device_conductors_are_the_same_object_fields(graded, two_device_test):
+def test_two_device_conductors_are_the_same_object_fields(graded, two_device_test, kernel_objects):
     import jax
     if len(jax.devices()) < 2:
         return two_device_test()
     lane = 'run_nonuniform' if graded else 'run_uniform'
     a = build(('_geometry', 'pec_volume'), lane, graded=graded)
     b = build(('_geometry', 'pec_volume'), lane, graded=graded)
-    ca = a.run(n_steps=2, skip_preflight=True).realized_geometry.conductors
-    cb = b.run(n_steps=2, skip_preflight=True,
-               devices=jax.devices()[:2]).realized_geometry.conductors
+    a.run(n_steps=2, skip_preflight=True)
+    ca = kernel_objects[-1]
+    b.run(n_steps=2, skip_preflight=True, devices=jax.devices()[:2])
+    cb = kernel_objects[-1]
     for x, y in zip(ca.pec_edges, cb.pec_edges, strict=True):
         np.testing.assert_array_equal(x, y)
     np.testing.assert_array_equal(ca.pec_cells, cb.pec_cells)
     assert ca.provenance == cb.provenance
-    assert b._campaign_ctx().realized() is cb
+    assert b._pf_campaign_ctx is None
 
 
 @pytest.mark.parametrize('lane,distributed', [('run_uniform', False),
@@ -149,7 +174,7 @@ def test_dump_replay_moves_fields_and_identity_is_exact(lane, distributed, two_d
         np.testing.assert_array_equal(getattr(baseline.state, field), getattr(same.state, field))
     np.testing.assert_array_equal(baseline.time_series, same.time_series)
     assert not np.array_equal(baseline.time_series, changed.time_series)
-    assert changed.realized_geometry.conductors.edges[2][index]
+    assert changed.realized_geometry.conductors is None
 
 
 def test_kernel_rejects_port_edits_outside_object():
@@ -178,14 +203,14 @@ def test_sheet_spans_are_read_from_conductors(monkeypatch):
 
 
 @pytest.mark.parametrize('lane', ['run_uniform', 'run_nonuniform'])
-def test_standalone_record_matches_port_cleared_kernel(lane):
+def test_standalone_record_matches_port_cleared_kernel(lane, kernel_objects):
     from rfx import Box
     from .builders import point
     sim = build(('_ports', 'lumped_port'), lane)
     sim.add(Box(point(4, 2, 2), point(6, 4, 4)), material='pec')
     standalone = sim.realized_geometry()
-    result = sim.run(n_steps=2, skip_preflight=True, compute_s_params=False)
-    for a, b in zip(standalone.edge_masks, result.realized_geometry.conductors.edges, strict=True):
+    sim.run(n_steps=2, skip_preflight=True, compute_s_params=False)
+    for a, b in zip(standalone.edge_masks, kernel_objects[-1].edges, strict=True):
         np.testing.assert_array_equal(a, b)
 
 
@@ -199,7 +224,7 @@ def test_forward_does_not_cache_traced_conductors(geometry):
 
 
 @pytest.mark.parametrize('lane', ['run_uniform', 'run_nonuniform'])
-def test_sheet_operator_is_carried_by_kernel_object(monkeypatch, lane):
+def test_sheet_operator_is_carried_by_kernel_object(monkeypatch, lane, kernel_objects):
     import rfx.materials.thin_conductor as thin
     sim = build(('_thin_conductors', 'surface_impedance'), lane)
     outputs = []
@@ -211,8 +236,8 @@ def test_sheet_operator_is_carried_by_kernel_object(monkeypatch, lane):
         return result
 
     monkeypatch.setattr(thin, 'build_sheet_impedance_ctx', capture)
-    result = sim.run(n_steps=2, skip_preflight=True)
-    conductors = result.realized_geometry.conductors
+    sim.run(n_steps=2, skip_preflight=True)
+    conductors = kernel_objects[-1]
     assert len(conductors.sheet_impedance) == 1
     assert conductors.sheet_operator is outputs[-1]
 
@@ -245,3 +270,69 @@ def two_device_test(request, tmp_path):
                 process.wait()
         assert process.returncode == 0, output
     return run
+
+
+@pytest.fixture
+def kernel_objects(monkeypatch):
+    """Test-only retention; production Results must never own these arrays."""
+    import rfx.conductors as products
+    captured = []
+    original = products.at_kernel
+
+    def observe(*args, **kwargs):
+        c, record = original(*args, **kwargs)
+        captured.append(c)
+        return c, record
+
+    monkeypatch.setattr(products, 'at_kernel', observe)
+    return captured
+
+
+@pytest.mark.parametrize('lane', ['run_uniform', 'run_nonuniform'])
+def test_preflight_is_independent_of_call_order(lane):
+    from rfx import Box
+    from .builders import point
+    sim = build(('_ports', 'lumped_port'), lane)
+    sim.add(Box(point(4, 2, 2), point(6, 4, 4)), material='pec')
+
+    def report():
+        return [(str(issue), issue.code, issue.severity, issue.loc, issue.source)
+                for issue in sim.preflight()]
+
+    fresh = report()
+    assert any(row[1] == 'port_in_pec' for row in fresh)
+    sim.realized_geometry()
+    assert report() == fresh
+    sim.run(n_steps=2, skip_preflight=True, compute_s_params=False)
+    assert report() == fresh
+
+
+@pytest.mark.parametrize('lane', ['run_uniform', 'run_nonuniform'])
+def test_result_has_no_dense_conductor_reference(lane):
+    from dataclasses import fields, is_dataclass
+    from rfx.conductors import RealizedConductors
+    sim = build(('_geometry', 'pec_volume'), lane)
+    record = sim.run(n_steps=2, skip_preflight=True).realized_geometry
+
+    def inspect(value):
+        assert not isinstance(value, RealizedConductors)
+        if hasattr(value, 'shape'):
+            assert len(value.shape) <= 1
+        elif is_dataclass(value):
+            assert set(vars(value)) == {f.name for f in fields(value)}
+            for v in vars(value).values():
+                inspect(v)
+        elif isinstance(value, (tuple, list)):
+            for v in value:
+                inspect(v)
+
+    inspect(record)
+    assert record.conductors is None
+    assert sim.realized_geometry().conductors is not None
+
+
+def test_runner_refuses_an_audit_object():
+    from rfx.conductors import assembled_materials
+    sim = build(('_geometry', 'pec_volume'), 'run_uniform')
+    with pytest.raises(ValueError, match='audit-mode'):
+        assembled_materials(sim._campaign_ctx().realized())
