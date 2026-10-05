@@ -113,7 +113,7 @@ def _plane_route_edges(planes, end_state, *, nodes, cells, window, freqs, dt,
 
     Frequency-domain Ampere on the lattice, per edge::
 
-        J_post = curl(H_dft) - j w~ eps0 E_dft exp(-j w dt/2),
+        J_post = curl(H_dft) - j w~ eps0 E_dft,
         j w~   = (2j/dt) sin(w dt/2)
 
     The in-loop monitor sums ``J^{n+1/2} = curl H^{n+1/2}
@@ -141,7 +141,6 @@ def _plane_route_edges(planes, end_state, *, nodes, cells, window, freqs, dt,
     freqs = np.asarray(freqs, dtype=np.float64)
     w = 2.0 * np.pi * freqs[:, None, None]
     jw = (2j / dt) * np.sin(w * dt / 2.0)
-    half = np.exp(-1j * w * dt / 2.0)
     to_loop = np.exp(1j * w * dt * (float(stamp) - 0.5))
     end_phase = np.exp(-1j * w * (float(n_steps) + 0.5) * dt)
 
@@ -157,7 +156,7 @@ def _plane_route_edges(planes, end_state, *, nodes, cells, window, freqs, dt,
            "post": []}
 
     def add(comp, k, curl, e_name, pos, vol):
-        post = to_loop * (curl - jw * EPS_0 * P(e_name, k) * half)
+        post = to_loop * (curl - jw * EPS_0 * P(e_name, k))
         a = post - EPS_0 * end(e_name, k) * end_phase
         n = II.size
         out["pos"].append(np.stack(pos, axis=-1).reshape(n, 3))
@@ -708,22 +707,17 @@ def test_the_modules_own_conversion_matches_the_plane_route(kind):
     assert worst <= EQUALITY_BAR, worst
 
 
-def test_the_two_runners_stamp_dft_planes_one_step_apart():
-    """The plane probes of the two runners write different times on one state.
-
-    Both runners sample the plane probes at the same slot — electric field at
-    ``(n+1) dt``, magnetic at ``(n+1/2) dt`` — and ``rfx/simulation.py``
-    stamps it ``st.step * dt`` while ``rfx/nonuniform.py`` stamps it
-    ``step_idx * dt``, one whole timestep earlier. A magnitude spectrum cannot
-    see it; a current, which subtracts a scaled electric field from a
-    magnetic curl, carries it in full. This pins each lane to its constant
-    and the size of the difference to ``|exp(-j w dt) - 1|``.
+def test_the_two_runners_use_physical_plane_stamps():
+    """M2 history: E shifts by 0/-omega dt (uniform/NU), H by
+    +omega dt/2 or -omega dt/2. The independent Ampere route now uses
+    physical E and H spectra, with no extra H correction. Old equality
+    residuals were .0359-.1053; the unchanged EQUALITY_BAR still applies.
     """
     uni = _reference("uniform")
     gra = _reference("graded")
-    assert plane_stamp_steps(uni["grid"]) == UNIFORM_PLANE_STAMP_STEPS == 1.0
-    assert plane_stamp_steps(gra["grid"]) == NONUNIFORM_PLANE_STAMP_STEPS == 0.0
-    _e, wrong = _route_blocks(gra, stamp=UNIFORM_PLANE_STAMP_STEPS)
+    assert plane_stamp_steps(uni["grid"]) == UNIFORM_PLANE_STAMP_STEPS == 0.5
+    assert plane_stamp_steps(gra["grid"]) == NONUNIFORM_PLANE_STAMP_STEPS == 0.5
+    _e, wrong = _route_blocks(gra, stamp=1.5)
     a_wrong = _disagreement(gra["acc"], gra["monitor"], wrong, orders=("P",))
     one_step = float(np.max(np.abs(
         np.exp(-2j * np.pi * FREQS * float(gra["grid"].dt)) - 1.0)))
@@ -1098,7 +1092,7 @@ def test_the_public_run_matches_the_plane_route_with_a_port(lane):
     assert m is not None and res.current_moment_data is not None
     planes = {spec: np.asarray(res.dft_planes[f"{spec[0]}{spec[1]}"]
                                .accumulator) for spec in specs}
-    stamp = 1.0 if lane == "uniform" else 0.0
+    stamp = plane_stamp_steps(grid)  # M2: physical H stamp on both lanes.
     edges = _plane_route_edges(
         planes, res.state, nodes=[_node_line(grid, a) for a in range(3)],
         cells=[_cells(grid, a) for a in range(3)],

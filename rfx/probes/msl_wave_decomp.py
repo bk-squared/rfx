@@ -102,14 +102,8 @@ def _windowed_dft(ts_col: jnp.ndarray, dt: float,
     JAX-friendly (avoids ``jnp.fft.rfft`` overhead when only N freqs are
     needed; ``ts_col`` is float32, output is complex64).
     """
-    n = ts_col.shape[0]
-    # 0..n-1 hann window
-    win = 0.5 - 0.5 * jnp.cos(2.0 * jnp.pi * jnp.arange(n) / max(n - 1, 1))
-    sig = ts_col * win
-    t = jnp.arange(n, dtype=jnp.float32) * dt
-    # X(f) = sum_n sig[n] * exp(-j 2π f t[n])
-    phase = -2j * jnp.pi * jnp.asarray(freqs, dtype=jnp.float32)[:, None] * t[None, :]
-    return jnp.sum(sig[None, :].astype(jnp.complex64) * jnp.exp(phase), axis=1)
+    from rfx.measurement.dft import transform
+    return transform(ts_col, freqs, dt, 'E', window='hann') / dt
 
 
 _Q_EPS = 1e-30
@@ -186,7 +180,7 @@ class MSLPlaneProbeSet:
     dz_arr: jnp.ndarray      # full substrate-normal per-cell profile (V + I)
     dy_arr: jnp.ndarray      # full trace-width per-cell profile (I)
     direction: str            # port propagation direction ("+x" / "-x")
-    hs_phase: jnp.ndarray      # (n_freqs,) leapfrog E/H half-step phase (#240)
+    hs_phase: jnp.ndarray      # (n_freqs,) identity; half-step is owned by the DFT kernel
     delta: float                # adjacent-probe spacing (for diagnostics)
     # Append defaults so existing constructors remain valid. Extraction
     # refuses legacy metadata instead of silently retaining staggered I.
@@ -343,15 +337,9 @@ def register_msl_plane_probes(
 
     delta = float(abs(pxs[1] - pxs[0]))
 
-    # Leapfrog E/H half-step phase (issue #240; compute_msl_s_matrix
-    # rfx/api/_sparams.py:3311-3328). H is timestamped half a step behind
-    # E, so the recorded Hy/Hz DFT is missing exp(+jω·dt/2). Included for
-    # parity even though it is <=0.4 deg at typical dt — not dropped as
-    # "small enough".
-    hs_phase = jnp.exp(
-        1j * 2.0 * jnp.pi * jnp.asarray(freqs, dtype=jnp.float32)
-        * (float(grid.dt) * 0.5)
-    ).astype(jnp.complex64)
+    # M2: plane records already carry physical E/H stamps. Retain the
+    # public metadata field as an identity for existing projector callers.
+    hs_phase = jnp.ones(len(freqs), dtype=jnp.complex64)
 
     # Register 3 Ez planes and two bracketing planes for each H component.
     # The accumulators are filled inside the JIT scan body
@@ -466,11 +454,10 @@ def _i_from_plane(fr, plane_name: str, p: MSLPlaneProbeSet) -> jnp.ndarray:
 
     ``plane_name`` names the retained right Hy plane; its left neighbour
     and both Hz planes are registered by :func:`register_msl_plane_probes`.
-    Interpolate each H pair to the voltage E-node before the temporal
-    correction. Missing bracketing metadata or data is an error.
+    Interpolate each physically stamped H pair to the voltage E-node. Missing bracketing metadata or data is an error.
     Issue #514: this used to
     integrate a single pre-#80 Hy slab (~1.5x undercount vs. the closed
-    loop). It now applies the leapfrog E/H half-step phase (#240) and
+    loop). The shared DFT owns the half-step phase; this projector
     calls :func:`rfx.sources.msl_port.msl_loop_current` directly with the
     SAME trace span ``compute_msl_s_matrix`` uses, so the #140 sign
     convention comes from ``msl_loop_current``/``msl_axis_roles`` alone —

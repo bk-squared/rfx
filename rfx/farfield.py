@@ -683,25 +683,13 @@ def accumulate_ntff(
     them exact. (Before this was fixed E was stamped at ``n*dt`` — a full
     step early, so E ran half a step BEHIND H instead of half a step ahead.)
     """
-    # Phase arithmetic is pinned to the ACCUMULATOR's dtype (issue #646), not
-    # to a literal float32/complex64. ``dt`` arrives as a numpy float64 scalar
-    # (``grid.dt``); numpy scalars are strongly typed in JAX, so leaving it
-    # uncast makes this body return complex128 under x64 while the carry was
-    # allocated complex64 — a lax.scan carry-type mismatch. Casting it to the
-    # accumulator's real dtype is a no-op with x64 off (JAX already clamped
-    # float64 -> float32 there), so the default path stays bit-identical.
-    # Kahan summation still supplies the precision, as before.
+    # Shared phase output follows the accumulator dtype (issue #646), so
+    # x64 configuration cannot promote a complex64 scan carry. Kahan sums
+    # retain their existing compensation; host phase tables improve phase.
     _cdtype = ntff_data.x_lo.dtype
-    _rdtype = jnp.finfo(_cdtype).dtype
-    _dt = jnp.asarray(dt, dtype=_rdtype)
-    t = jnp.asarray(step_idx, dtype=_rdtype) * _dt
-    freqs_hi = jnp.asarray(box.freqs, dtype=_rdtype)
-    omega = jnp.asarray(2 * jnp.pi, dtype=_rdtype) * freqs_hi
-    _mj = jnp.asarray(-1j, dtype=_cdtype)
-    # The state handed to this function is post-E-update: E is the field at
-    # (n+1)*dt, H the half-step behind it at (n+1/2)*dt.
-    phase_e = jnp.exp(_mj * omega * (t + _dt)) * _dt
-    phase_h = jnp.exp(_mj * omega * (t + _dt * 0.5)) * _dt
+    from rfx.measurement.dft import phase
+    phase_e = phase(step_idx, box.freqs, dt, 'E', dtype=_cdtype)
+    phase_h = phase(step_idx, box.freqs, dt, 'H', dtype=_cdtype)
     # Stack [E_phase, E_phase, H_phase, H_phase] for the 4 tangential components
     ph = jnp.stack([phase_e, phase_e, phase_h, phase_h], axis=-1)
     ph = ph[:, None, None, :]  # (nf, 1, 1, 4)

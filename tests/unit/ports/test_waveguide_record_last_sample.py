@@ -1,9 +1,8 @@
 """A waveguide port's time record does not depend on how long the run is.
 
-The E update advances ``state.step`` before the port samples its modal V/I,
-so the last scan step addresses one slot past the record. That write is
-dropped; clamping it into the last slot used to put the NEXT step's sample
-there, so the last sample of a record was a sample one step later than its slot.
+M2 moves retained slots 1:N to 0:N-1 with their physical stamps. The
+historical exclusion of the final completed step is unchanged: slot N-1
+is now the empty padding slot, and a write for completed step N is dropped.
 """
 
 import numpy as np
@@ -37,7 +36,9 @@ def test_out_of_range_step_leaves_the_record_unchanged():
     grid = result.grid
     state = init_state((grid.nx, grid.ny, grid.nz))._replace(step=n_t)
     out = update_waveguide_port_probe(cfg, state, grid.dt, grid.dx)
-    assert np.any(np.asarray(cfg.v_ref_t)[-1:] != 0) or np.any(np.asarray(cfg.v_probe_t)[-1:] != 0)
+    # M2: same samples, new addresses; the last retained slot moved from N-1 to N-2.
+    assert np.any(np.asarray(cfg.v_ref_t)[-2:-1] != 0) or np.any(np.asarray(cfg.v_probe_t)[-2:-1] != 0)
+    assert np.asarray(cfg.v_ref_t)[-1] == np.asarray(cfg.v_probe_t)[-1] == 0
     for name in ("v_probe_t", "v_ref_t", "i_probe_t", "i_ref_t", "v_inc_t"):
         np.testing.assert_array_equal(np.asarray(getattr(out, name)),
                                       np.asarray(getattr(cfg, name)), err_msg=name)

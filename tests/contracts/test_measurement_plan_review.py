@@ -42,7 +42,7 @@ def test_review_metadata_mutations(row, change):
         channel = replace(owner.channels[0], e_time_offset=1.)
         owner = replace(owner, channels=(channel,))
     elif change == 'slot':
-        owner = replace(owner, channels=tuple(replace(c, slot_offset=0) for c in owner.channels))
+        owner = replace(owner, channels=tuple(replace(c, slot_offset=1) for c in owner.channels))
     elif change == 'availability':
         owner = replace(owner, availability='sampled')
     elif change == 'reference_stage':

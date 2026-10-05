@@ -87,11 +87,11 @@ def current_moment_owner(grid, monitor):
                     magnetic.extend((Node(component, *idx, weight), Node(component, *back, -weight)))
             prefix = f'block:{block}:component:{c}:weight:{w}:'
             previous = tuple(Node(n.component, n.i, n.j, n.k, -n.weight) for n in electric)
+            # Stencil terms form one projected current at the H half-step.
             for name, kind, nodes, stage in (('E', 'E', tuple(electric), 'post-injection'),
                                              ('E_prev', 'E', previous, 'pre-update'),
                                              ('H', 'H', tuple(magnetic), 'post-injection')):
-                channels.append(Channel(prefix+name, kind, nodes, sample_stage=stage,
-                                        e_time_offset=float(m.half_step)-1,
-                                        h_time_offset=float(m.half_step)-.5))
+                channels.append(Channel(prefix+name, 'H', nodes, sample_stage=stage,
+                                        e_time_offset=0., h_time_offset=float(m.half_step)-.5))
     return Owner('current_moment:0', 'current_moment', tuple(channels),
                  tuple(float(f) for f in m.freqs))

@@ -21,23 +21,6 @@
       },
       "witnesses": {}
     },
-    "nu-dft-plane-accumulator": {
-      "implementations": ["rfx/simulation.py:2686", "rfx/nonuniform.py:3103"],
-      "fingerprints": {
-        "f1": {"value": "dft_planes.ez_x_0.accumulator: numeric"}
-      },
-      "witnesses": {"default": {"f1": {"relative": 0.057911851742116896, "relative_bar": 0.0001}}, "w2": {"f1": {"relative": 0.053657325537183186, "relative_bar": 0.0001}}}
-    },
-    "nu-flux-accumulator": {
-      "implementations": ["rfx/simulation.py:2717", "rfx/nonuniform.py:3140"],
-      "fingerprints": {
-        "f1": {"value": "flux_monitors.flux_x_0.e1_dft: numeric"},
-        "f2": {"value": "flux_monitors.flux_x_0.e2_dft: numeric"},
-        "f3": {"value": "flux_monitors.flux_x_0.h1_dft: numeric"},
-        "f4": {"value": "flux_monitors.flux_x_0.h2_dft: numeric"}
-      },
-      "witnesses": {"default": {"f1": {"relative": 0.0580509329853314, "relative_bar": 0.0001}, "f2": {"relative": 0.05791182885042686, "relative_bar": 0.0001}, "f3": {"relative": 0.057888685595481264, "relative_bar": 0.0001}, "f4": {"relative": 0.05843369377690264, "relative_bar": 0.0001}}, "w2": {"f1": {"relative": 0.05388543501010911, "relative_bar": 0.0001}, "f2": {"relative": 0.05365727200274906, "relative_bar": 0.0001}, "f3": {"relative": 0.05345737401285307, "relative_bar": 0.0001}, "f4": {"relative": 0.05469321493803225, "relative_bar": 9.999999999999999e-05}}}
-    },
     "nu-lumped-dft-record-missing": {
       "implementations": ["rfx/api/_execute.py:2715", "rfx/api/_execute.py:2732", "rfx/runners/nonuniform.py:1356"],
       "fingerprints": {
@@ -78,18 +61,6 @@
     }
   },
   "cells": {
-    "_dft_planes:dft_plane:fwd_uniform:fwd_nonuniform:constant:12": {
-      "observers": ["nu-dft-plane-accumulator"]
-    },
-    "_dft_planes:dft_plane:fwd_uniform:fwd_nonuniform:constant:36": {
-      "observers": [{"cause": "nu-dft-plane-accumulator", "witness": "w2"}]
-    },
-    "_dft_planes:dft_plane:run_uniform:run_nonuniform:constant:12": {
-      "observers": ["nu-dft-plane-accumulator"]
-    },
-    "_dft_planes:dft_plane:run_uniform:run_nonuniform:constant:36": {
-      "observers": [{"cause": "nu-dft-plane-accumulator", "witness": "w2"}]
-    },
     "_flux_monitors:flux:fwd_uniform:fwd_nonuniform:constant:12": {
       "observers": ["forward-flux-record-missing"]
     },
@@ -97,10 +68,10 @@
       "observers": ["forward-flux-record-missing"]
     },
     "_flux_monitors:flux:run_uniform:run_nonuniform:constant:12": {
-      "observers": ["flux-dA-shape", "flux-dA2-missing", "nu-flux-accumulator"]
+      "observers": ["flux-dA-shape", "flux-dA2-missing"]
     },
     "_flux_monitors:flux:run_uniform:run_nonuniform:constant:36": {
-      "observers": ["flux-dA-shape", "flux-dA2-missing", {"cause": "nu-flux-accumulator", "witness": "w2"}]
+      "observers": ["flux-dA-shape", "flux-dA2-missing"]
     },
     "_ports:lumped_port:fwd_uniform:fwd_nonuniform:constant:12": {
       "port_dft": ["nu-lumped-dft-record-missing", "uniform-wire-dft-record-missing", "s-parameter-shape"],

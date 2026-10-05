@@ -68,7 +68,7 @@ def waveguide_owner(grid, cfg, *, port_id=0, mode_id=0):
                         nodes.append(Node(component, *idx, float(weighted[u, v])*factor,
                                           float(area[u, v])))
             channels.append(Channel(f'{"V" if kind == "E" else "I"}_{label}', kind,
-                                    tuple(nodes), slot_offset=1,
+                                    tuple(nodes), slot_offset=0,
                                     e_time_offset=0.0, h_time_offset=0.0))
     refs = tuple(ReferencePlane(name, axis, int(index), float(value)) for name, index, value in (
         ('source', cfg.x_index, cfg.source_x_m), ('reference', cfg.ref_x, cfg.reference_x_m),
@@ -76,7 +76,7 @@ def waveguide_owner(grid, cfg, *, port_id=0, mode_id=0):
     return Owner(f'waveguide_port:{port_id}:mode:{mode_id}', 'waveguide', tuple(channels),
                  tuple(float(f) for f in np.asarray(cfg.freqs)), refs, tuple(cfg.mode_indices),
                  f'{cfg.mode_type}{tuple(cfg.mode_indices)}: config transverse profiles times aperture_dA',
-                 ('waveguide writes step k to slot k+1',))
+                 ('record endpoint: one sample fewer; moved with #1466 (S1 drives)',))
 
 
 def msl_owner(grid, *, port_id, direction, voltage_indices, span, trace_planes,
@@ -90,7 +90,7 @@ def msl_owner(grid, *, port_id, direction, voltage_indices, span, trace_planes,
     prop, width = 'xyz'.index(direction[1]), 1 if direction[1] == 'x' else 0
     cells = [np.asarray(grid.cells(a)).astype(np.float32).astype(float) if nonuniform
              else np.asarray(grid.cells(a)) for a in range(3)]
-    offset = -1.0 if nonuniform else 0.0
+    offset = 0.0
     channels = []
     for number, p in enumerate(voltage_indices):
         nodes = []
@@ -125,8 +125,7 @@ def msl_owner(grid, *, port_id, direction, voltage_indices, span, trace_planes,
     return Owner(f'msl_port:{port_id}:mode:0', 'msl', tuple(channels),
                  tuple(float(f) for f in frequencies), tuple(refs),
                  mode_profile_reference='V: primal ladder; I: PEC trace planes and H stencil',
-                 known_differences=('MSL calculator projector requires PEC trace',
-                                    'uniform plane stamp n+1; NU plane stamp n'))
+                 known_differences=('MSL calculator projector requires PEC trace',))
 
 
 def coax_owner(grid, *, port_id, plane_indices, center_xy, pin_radius, outer_radius,

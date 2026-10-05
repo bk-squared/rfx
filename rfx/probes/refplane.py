@@ -29,8 +29,8 @@ the issue #313 Phase-0 comment — do not re-derive):
   (2nd-order de-stagger).  Loop legs sit half a cell outside the PEC
   trace bounding box (right-hand rule: positive current along the
   +line-axis direction).
-* ``exp(+j*omega*dt/2)`` is applied to the H-derived (current) phasors at
-  extraction — the Yee leapfrog half-step.  Comparator anchor: this
+* The shared DFT kernel stamps H-derived current at the Yee half-step,
+  applying ``exp(+j*omega*dt/2)`` relative to E exactly once.  Comparator anchor: this
   collapses the receive-cell Ohm-law phase from +0.008..+0.018 to ~0
   (measured, Phase 0).
 * Forward/backward split with a MEASURED two-plane line-invariant
@@ -393,8 +393,8 @@ def wire_refplane_step_vi(st, spec: WireRefPlaneSpec, dx):
     V = -sum(E over the gap cells) * dx (FDTD sign, potential of the
     trace relative to the return).  I_minus / I_plus are the Ampere-loop
     line integrals around the trace at the half-planes plane -/+ dx/2;
-    the caller averages them and applies the exp(+j*w*dt/2) half-step
-    correction AT EXTRACTION (raw phasors are accumulated uncorrected).
+    the caller averages them. The shared DFT kernel supplies the physical
+    H timestamp before extraction.
     """
     a, u, v = spec.line_axis, spec.u_axis, spec.v_axis
     e_field = getattr(st, spec.e_component)
@@ -423,17 +423,9 @@ def wire_refplane_step_vi(st, spec: WireRefPlaneSpec, dx):
 # ---------------------------------------------------------------------------
 
 def refplane_centered_current(i_minus, i_plus, freqs, dt):
-    """Plane-centred, half-step-corrected current phasor.
-
-    Averages the two adjacent Ampere loops (centres I on the V plane) and
-    applies the Yee leapfrog ``exp(+j*w*dt/2)`` correction to the
-    H-derived phasor (comparator anchor: collapses the receive-cell
-    Ohm-law phase from +0.008..+0.018 to ~0 — Phase 0, issue #313).
-    """
-    w = 2.0 * np.pi * np.asarray(freqs, dtype=np.float64)
-    hcorr = np.exp(+1j * w * dt / 2.0)
+    """Centre the two already physically stamped H spectra in space."""
     return 0.5 * (np.asarray(i_minus, dtype=np.complex128)
-                  + np.asarray(i_plus, dtype=np.complex128)) * hcorr
+                  + np.asarray(i_plus, dtype=np.complex128))
 
 
 def refplane_zc_two_plane(v1, i1, v2, i2):

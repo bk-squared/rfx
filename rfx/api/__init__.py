@@ -2815,37 +2815,8 @@ class Simulation(
         name : str or None
             Optional result key.
         """
-        if axis not in ("x", "y", "z"):
-            raise ValueError(f"axis must be 'x', 'y', or 'z', got {axis!r}")
-        if component not in ("ex", "ey", "ez", "hx", "hy", "hz"):
-            raise ValueError(f"component must be a field name, got {component!r}")
-
-        self._validate_declared_plane_coordinate(axis, coordinate)
-        if freqs is None:
-            if n_freqs <= 0:
-                raise ValueError(f"n_freqs must be positive, got {n_freqs}")
-            freqs_arr = None
-        else:
-            freqs_arr = jnp.asarray(freqs)
-            if freqs_arr.ndim != 1 or freqs_arr.size == 0:
-                raise ValueError("freqs must be a non-empty 1-D array")
-
-        if name is None:
-            name = f"{component}_{axis}_{len(self._dft_planes)}"
-
-        self._dft_planes.append(_DFTPlaneEntry(
-            name=name,
-            axis=axis,
-            coordinate=coordinate,
-            component=component,
-            freqs=freqs_arr,
-            n_freqs=n_freqs,
-        ))
-        if region is not None:
-            if not hasattr(self, "_dft_plane_regions"):
-                self._dft_plane_regions = {}
-            self._dft_plane_regions[name] = tuple(region)
-        return self
+        from rfx.measurement.setup import register_plane
+        return register_plane(self, axis, coordinate, component, freqs, n_freqs, name, region)
 
     def add_flux_monitor(
         self,
