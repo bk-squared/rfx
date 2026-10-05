@@ -290,7 +290,7 @@ def test_an_axis_outside_cpml_axes_keeps_its_pre_876_applied_depth():
     interpreting those zero pads as permission to truncate an 8-layer buffer
     to 1. Keep the depth, buffer and profile assertions below.
 
-    PR #PENDING (run-reads-grid-axes) now refuses a runner argument that adds
+    PR #1494 now refuses a runner argument that adds
     axes the grid did not declare. The runner defaults to the grid's axes,
     so these unused profiles no longer absorb inside the x/y physical domain.
     This is a runner contract change, not a change to init_cpml's allocation.
