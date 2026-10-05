@@ -1,0 +1,263 @@
+{
+  "causes": {
+    "refusal-message-runs-adi-material-gate": {
+      "implementations": ["rfx/runners/_admission.py:804", "rfx/api/_compile.py:989"],
+      "fingerprints": {
+        "f1": {"value": "ValueError: _assemble_materials (uniform lane): 1 PEC sheet(s) were classified, but rfx/runners/_admission.py:804 in _adi_homogeneous() passed no pec_sheets/pec_wires collector. A sheet owns no cell (#931 §1.3), so it cannot be returned in pec_mask and this caller would step or report a model with the conductor MISSING. Pass pec_sheets=[] / pec_wires=[]: realize them with rfx.boundaries.pec.realized_pec_edge_masks if this path steps fields, or drop them deliberately if it only reads cells.", "cells": ["_geometry:pec_sheet:fwd_adi:refusal:constant:0", "_geometry:pec_sheet:run_adi:refusal:constant:0", "_geometry:pec_sheet:run_subgridded:refusal:constant:0", "_geometry:pec_sheet:run_uniform:run_distributed:constant:12", "_pinned_sheets:pec_sheet:fwd_adi:refusal:constant:0", "_pinned_sheets:pec_sheet:run_adi:refusal:constant:0", "_pinned_sheets:pec_sheet:run_subgridded:refusal:constant:0", "_pinned_sheets:pec_sheet:run_uniform:run_distributed:constant:12", "_thin_conductors:pec_sheet:fwd_adi:refusal:constant:0", "_thin_conductors:pec_sheet:run_adi:refusal:constant:0", "_thin_conductors:pec_sheet:run_subgridded:refusal:constant:0", "_thin_conductors:pec_sheet:run_uniform:run_distributed:constant:12"]},
+        "f2": {"value": "ValueError: _assemble_materials (uniform lane): 1 PEC wire(s) were classified, but rfx/runners/_admission.py:804 in _adi_homogeneous() passed no pec_sheets/pec_wires collector. A sheet owns no cell (#931 §1.3), so it cannot be returned in pec_mask and this caller would step or report a model with the conductor MISSING. Pass pec_sheets=[] / pec_wires=[]: realize them with rfx.boundaries.pec.realized_pec_edge_masks if this path steps fields, or drop them deliberately if it only reads cells.", "cells": ["_geometry:pec_wire:fwd_adi:refusal:constant:0", "_geometry:pec_wire:run_adi:refusal:constant:0", "_geometry:pec_wire:run_subgridded:refusal:constant:0", "_geometry:pec_wire:run_uniform:run_distributed:constant:12"]},
+        "f3": {"value": "ValueError: _assemble_materials (uniform lane): 2 PEC sheet(s) were classified, but rfx/runners/_admission.py:804 in _adi_homogeneous() passed no pec_sheets/pec_wires collector. A sheet owns no cell (#931 §1.3), so it cannot be returned in pec_mask and this caller would step or report a model with the conductor MISSING. Pass pec_sheets=[] / pec_wires=[]: realize them with rfx.boundaries.pec.realized_pec_edge_masks if this path steps fields, or drop them deliberately if it only reads cells.", "cells": ["_msl_ports:msl_port:fwd_adi:refusal:constant:0", "_msl_ports:msl_port:run_adi:refusal:constant:0", "_msl_ports:msl_port:run_subgridded:refusal:constant:0", "_msl_ports:msl_port:run_uniform:run_distributed:constant:12"]}
+      },
+      "witnesses": {}
+    },
+    "distributed-mode2d-broadcast": {
+      "implementations": ["rfx/runners/uniform.py:134", "rfx/runners/_distributed_common.py:2573"],
+      "fingerprints": {
+        "f1": {"value": "ValueError: Incompatible types for broadcasting: input type=float32[10,13,2] and requested type=float32[10,13,1]"}
+      },
+      "witnesses": {}
+    },
+    "flux-dA-shape": {
+      "implementations": ["rfx/simulation.py:2717", "rfx/nonuniform.py:3140"],
+      "fingerprints": {
+        "f1": {"value": "flux_monitors.flux_x_0.dA: shape differs: (1, 1) vs (13, 12)"}
+      },
+      "witnesses": {}
+    },
+    "flux-dA2-missing": {
+      "implementations": ["rfx/simulation.py:2717", "rfx/nonuniform.py:3140"],
+      "fingerprints": {
+        "f1": {"value": "flux_monitors.flux_x_0.dA2: record missing on A"}
+      },
+      "witnesses": {}
+    },
+    "forward-flux-record-missing": {
+      "implementations": ["rfx/api/_execute.py:2709", "rfx/api/_execute.py:2732"],
+      "fingerprints": {
+        "f1": {"value": "flux_monitors: record missing on A and B"}
+      },
+      "witnesses": {}
+    },
+    "graded-distributed-ntff-refused": {
+      "implementations": ["rfx/nonuniform.py:3181", "rfx/api/_execute.py:5083"],
+      "fingerprints": {
+        "f1": {"value": "NotImplementedError: add_ntff_box() (NTFF box) is not supported on the distributed multi-device run() path; the corresponding result.flux_monitors / result.ntff_data / result.dft_planes would be None (rfx.runners.distributed_v2.run_distributed / rfx.runners.distributed.run_distributed result assembly). Remove the flux monitors / NTFF box / DFT plane probes, or omit devices=... (use a single-device run() instead)."}
+      },
+      "witnesses": {}
+    },
+    "graded-distributed-ports-refused": {
+      "implementations": ["rfx/runners/nonuniform.py:713", "rfx/api/_execute.py:3175", "rfx/api/_preflight.py:458"],
+      "fingerprints": {
+        "f1": {"value": "NotImplementedError: Lumped / wire ports (impedance > 0) are not yet supported on the distributed=True forward path; use distributed=False or replace with a current source (impedance=0).", "cells": ["_ports:lumped_port:run_nonuniform:run_distributed:graded:12"]},
+        "f2": {"value": "NotImplementedError: Phase B distributed+NU does not support lumped / wire ports yet. Use single-device for ports on NU meshes.", "cells": ["_ports:wire_port:run_nonuniform:run_distributed:graded:12", "_ports:wire_port:run_nonuniform:run_distributed:graded:36"]}
+      },
+      "witnesses": {}
+    },
+    "nu-dft-plane-accumulator": {
+      "implementations": ["rfx/simulation.py:2686", "rfx/nonuniform.py:3103"],
+      "fingerprints": {
+        "f1": {"value": "dft_planes.ez_x_0.accumulator: numeric"}
+      },
+      "witnesses": {"default": {"f1": {"relative": 0.057911851742116896, "relative_bar": 0.0001}}, "w2": {"f1": {"relative": 0.053657325537183186, "relative_bar": 0.0001}}}
+    },
+    "nu-flux-accumulator": {
+      "implementations": ["rfx/simulation.py:2717", "rfx/nonuniform.py:3140"],
+      "fingerprints": {
+        "f1": {"value": "flux_monitors.flux_x_0.e1_dft: numeric"},
+        "f2": {"value": "flux_monitors.flux_x_0.e2_dft: numeric"},
+        "f3": {"value": "flux_monitors.flux_x_0.h1_dft: numeric"},
+        "f4": {"value": "flux_monitors.flux_x_0.h2_dft: numeric"}
+      },
+      "witnesses": {"default": {"f1": {"relative": 0.0580509329853314, "relative_bar": 0.0001}, "f2": {"relative": 0.05791182885042686, "relative_bar": 0.0001}, "f3": {"relative": 0.057888685595481264, "relative_bar": 0.0001}, "f4": {"relative": 0.05843369377690264, "relative_bar": 0.0001}}, "w2": {"f1": {"relative": 0.05388543501010911, "relative_bar": 0.0001}, "f2": {"relative": 0.05365727200274906, "relative_bar": 0.0001}, "f3": {"relative": 0.05345737401285307, "relative_bar": 0.0001}, "f4": {"relative": 0.05469321493803225, "relative_bar": 9.999999999999999e-05}}}
+    },
+    "nu-lumped-dft-record-missing": {
+      "implementations": ["rfx/api/_execute.py:2715", "rfx/api/_execute.py:2732", "rfx/runners/nonuniform.py:1356"],
+      "fingerprints": {
+        "f1": {"value": "lumped_port_sparams: record missing on B"}
+      },
+      "witnesses": {}
+    },
+    "nu-missing-vref": {
+      "implementations": ["rfx/simulation.py:2621", "rfx/simulation.py:2579", "rfx/nonuniform.py:3092"],
+      "fingerprints": {
+        "f1": {"value": "sparam_time_records.0.V_ref: record missing on B", "records": ["port_samples"]},
+        "f2": {"value": "wire_port_sparams.0.V_ref: record missing on B", "cells": ["_ports:wire_port:fwd_uniform:fwd_nonuniform:constant:12", "_ports:wire_port:fwd_uniform:fwd_nonuniform:constant:36"], "records": ["port_dft"]}
+      },
+      "witnesses": {}
+    },
+    "port-time-record-missing": {
+      "implementations": ["rfx/runners/uniform.py:1206", "rfx/simulation.py:2621", "rfx/runners/nonuniform.py:1935", "rfx/runners/distributed_v2.py:1614"],
+      "fingerprints": {
+        "f1": {"value": "sparam_time_records.0.V_port: record missing on A", "cells": ["_ports:lumped_port:fwd_uniform:fwd_nonuniform:constant:12", "_ports:passive_port:fwd_uniform:fwd_nonuniform:constant:12"]},
+        "f2": {"value": "sparam_time_records: record missing on A and B", "cells": ["_ports:lumped_port:run_uniform:run_distributed:constant:12", "_ports:lumped_port:run_uniform:run_nonuniform:constant:12", "_ports:passive_port:run_uniform:run_nonuniform:constant:12"]},
+        "f3": {"value": "sparam_time_records: record missing on B", "cells": ["_ports:wire_port:run_uniform:run_distributed:constant:12", "_ports:wire_port:run_uniform:run_distributed:constant:36"]}
+      },
+      "witnesses": {}
+    },
+    "s-parameter-shape": {
+      "implementations": ["rfx/api/_execute.py:2668", "rfx/runners/nonuniform.py:1356"],
+      "fingerprints": {
+        "f1": {"value": "s_params: shape differs: (2,) vs (1, 1, 2)"}
+      },
+      "witnesses": {}
+    },
+    "uniform-wire-dft-record-missing": {
+      "implementations": ["rfx/runners/uniform.py:1212", "rfx/api/_execute.py:2719", "rfx/runners/nonuniform.py:1934"],
+      "fingerprints": {
+        "f1": {"value": "wire_port_sparams: record missing on A"}
+      },
+      "witnesses": {}
+    }
+  },
+  "cells": {
+    "_dft_planes:dft_plane:fwd_uniform:fwd_nonuniform:constant:12": {
+      "observers": ["nu-dft-plane-accumulator"]
+    },
+    "_dft_planes:dft_plane:fwd_uniform:fwd_nonuniform:constant:36": {
+      "observers": [{"cause": "nu-dft-plane-accumulator", "witness": "w2"}]
+    },
+    "_dft_planes:dft_plane:run_uniform:run_nonuniform:constant:12": {
+      "observers": ["nu-dft-plane-accumulator"]
+    },
+    "_dft_planes:dft_plane:run_uniform:run_nonuniform:constant:36": {
+      "observers": [{"cause": "nu-dft-plane-accumulator", "witness": "w2"}]
+    },
+    "_flux_monitors:flux:fwd_uniform:fwd_nonuniform:constant:12": {
+      "observers": ["forward-flux-record-missing"]
+    },
+    "_flux_monitors:flux:fwd_uniform:fwd_nonuniform:constant:36": {
+      "observers": ["forward-flux-record-missing"]
+    },
+    "_flux_monitors:flux:run_uniform:run_nonuniform:constant:12": {
+      "observers": ["flux-dA-shape", "flux-dA2-missing", "nu-flux-accumulator"]
+    },
+    "_flux_monitors:flux:run_uniform:run_nonuniform:constant:36": {
+      "observers": ["flux-dA-shape", "flux-dA2-missing", {"cause": "nu-flux-accumulator", "witness": "w2"}]
+    },
+    "_geometry:pec_sheet:fwd_adi:refusal:constant:0": {
+      "refusal": ["refusal-message-runs-adi-material-gate"]
+    },
+    "_geometry:pec_sheet:run_adi:refusal:constant:0": {
+      "refusal": ["refusal-message-runs-adi-material-gate"]
+    },
+    "_geometry:pec_sheet:run_subgridded:refusal:constant:0": {
+      "refusal": ["refusal-message-runs-adi-material-gate"]
+    },
+    "_geometry:pec_sheet:run_uniform:run_distributed:constant:12": {
+      "refusal": ["refusal-message-runs-adi-material-gate"]
+    },
+    "_geometry:pec_wire:fwd_adi:refusal:constant:0": {
+      "refusal": ["refusal-message-runs-adi-material-gate"]
+    },
+    "_geometry:pec_wire:run_adi:refusal:constant:0": {
+      "refusal": ["refusal-message-runs-adi-material-gate"]
+    },
+    "_geometry:pec_wire:run_subgridded:refusal:constant:0": {
+      "refusal": ["refusal-message-runs-adi-material-gate"]
+    },
+    "_geometry:pec_wire:run_uniform:run_distributed:constant:12": {
+      "refusal": ["refusal-message-runs-adi-material-gate"]
+    },
+    "_mode::run_uniform:run_distributed:constant:12": {
+      "probes": ["distributed-mode2d-broadcast"],
+      "realized": ["distributed-mode2d-broadcast"]
+    },
+    "_msl_ports:msl_port:fwd_adi:refusal:constant:0": {
+      "refusal": ["refusal-message-runs-adi-material-gate"]
+    },
+    "_msl_ports:msl_port:run_adi:refusal:constant:0": {
+      "refusal": ["refusal-message-runs-adi-material-gate"]
+    },
+    "_msl_ports:msl_port:run_subgridded:refusal:constant:0": {
+      "refusal": ["refusal-message-runs-adi-material-gate"]
+    },
+    "_msl_ports:msl_port:run_uniform:run_distributed:constant:12": {
+      "refusal": ["refusal-message-runs-adi-material-gate"]
+    },
+    "_ntff:ntff_box:run_nonuniform:run_distributed:graded:12": {
+      "observers": ["graded-distributed-ntff-refused"],
+      "probes": ["graded-distributed-ntff-refused"],
+      "realized": ["graded-distributed-ntff-refused"]
+    },
+    "_pinned_sheets:pec_sheet:fwd_adi:refusal:constant:0": {
+      "refusal": ["refusal-message-runs-adi-material-gate"]
+    },
+    "_pinned_sheets:pec_sheet:run_adi:refusal:constant:0": {
+      "refusal": ["refusal-message-runs-adi-material-gate"]
+    },
+    "_pinned_sheets:pec_sheet:run_subgridded:refusal:constant:0": {
+      "refusal": ["refusal-message-runs-adi-material-gate"]
+    },
+    "_pinned_sheets:pec_sheet:run_uniform:run_distributed:constant:12": {
+      "refusal": ["refusal-message-runs-adi-material-gate"]
+    },
+    "_ports:lumped_port:fwd_uniform:fwd_nonuniform:constant:12": {
+      "port_dft": ["nu-lumped-dft-record-missing", "uniform-wire-dft-record-missing", "s-parameter-shape"],
+      "port_samples": ["port-time-record-missing", "nu-missing-vref"]
+    },
+    "_ports:lumped_port:run_nonuniform:run_distributed:graded:12": {
+      "port_dft": ["graded-distributed-ports-refused"],
+      "port_samples": ["graded-distributed-ports-refused"],
+      "probes": ["graded-distributed-ports-refused"],
+      "realized": ["graded-distributed-ports-refused"]
+    },
+    "_ports:lumped_port:run_uniform:run_distributed:constant:12": {
+      "port_samples": ["port-time-record-missing"]
+    },
+    "_ports:lumped_port:run_uniform:run_nonuniform:constant:12": {
+      "port_samples": ["port-time-record-missing"]
+    },
+    "_ports:passive_port:fwd_uniform:fwd_nonuniform:constant:12": {
+      "port_dft": ["nu-lumped-dft-record-missing", "uniform-wire-dft-record-missing", "s-parameter-shape"],
+      "port_samples": ["port-time-record-missing", "nu-missing-vref"]
+    },
+    "_ports:passive_port:run_uniform:run_nonuniform:constant:12": {
+      "port_samples": ["port-time-record-missing"]
+    },
+    "_ports:wire_port:fwd_uniform:fwd_nonuniform:constant:12": {
+      "port_dft": ["nu-missing-vref", "s-parameter-shape"],
+      "port_samples": ["nu-missing-vref"]
+    },
+    "_ports:wire_port:fwd_uniform:fwd_nonuniform:constant:36": {
+      "port_dft": ["nu-missing-vref", "s-parameter-shape"],
+      "port_samples": ["nu-missing-vref"]
+    },
+    "_ports:wire_port:run_nonuniform:run_distributed:graded:12": {
+      "port_dft": ["graded-distributed-ports-refused"],
+      "port_samples": ["graded-distributed-ports-refused"],
+      "probes": ["graded-distributed-ports-refused"],
+      "realized": ["graded-distributed-ports-refused"]
+    },
+    "_ports:wire_port:run_nonuniform:run_distributed:graded:36": {
+      "port_dft": ["graded-distributed-ports-refused"],
+      "port_samples": ["graded-distributed-ports-refused"],
+      "probes": ["graded-distributed-ports-refused"],
+      "realized": ["graded-distributed-ports-refused"]
+    },
+    "_ports:wire_port:run_uniform:run_distributed:constant:12": {
+      "port_samples": ["port-time-record-missing"]
+    },
+    "_ports:wire_port:run_uniform:run_distributed:constant:36": {
+      "port_samples": ["port-time-record-missing"]
+    },
+    "_ports:wire_port:run_uniform:run_nonuniform:constant:12": {
+      "port_dft": ["uniform-wire-dft-record-missing"],
+      "port_samples": ["nu-missing-vref"]
+    },
+    "_ports:wire_port:run_uniform:run_nonuniform:constant:36": {
+      "port_dft": ["uniform-wire-dft-record-missing"],
+      "port_samples": ["nu-missing-vref"]
+    },
+    "_thin_conductors:pec_sheet:fwd_adi:refusal:constant:0": {
+      "refusal": ["refusal-message-runs-adi-material-gate"]
+    },
+    "_thin_conductors:pec_sheet:run_adi:refusal:constant:0": {
+      "refusal": ["refusal-message-runs-adi-material-gate"]
+    },
+    "_thin_conductors:pec_sheet:run_subgridded:refusal:constant:0": {
+      "refusal": ["refusal-message-runs-adi-material-gate"]
+    },
+    "_thin_conductors:pec_sheet:run_uniform:run_distributed:constant:12": {
+      "refusal": ["refusal-message-runs-adi-material-gate"]
+    }
+  }
+}
