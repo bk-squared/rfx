@@ -356,6 +356,29 @@ carry a similar leftover — and it has no default tolerance, because the right 
 depends on the structure's Q and on what the gradient is for.
 Measured in #1181; the witness above landed with #1186.
 
+**An optimization on a fixed record can walk into a design that the record does
+not settle.** The record length is usually chosen so that the starting design
+settles. During the descent the optimizer can build a weakly coupled, high-Q mode:
+for example a mode that the structure's symmetry keeps orthogonal to the port mode,
+coupled only through a small asymmetry the descent itself introduces. Its ringing
+outlasts the record, the truncated DFT reads a response the settled structure does
+not have, and the objective can keep improving on the truncated record while the
+settled response does not. A synthetic case: a dielectric insert in a rectangular
+waveguide whose permittivity varies only along the guide keeps every higher mode
+across the broad wall orthogonal to the dominant drive; once the permittivity may
+also vary across the wall, a higher mode held inside a high-permittivity region
+can couple to the drive very weakly and ring far longer than the record.
+
+What to do: judge the per-bin settling witness (`settling_witness` on the
+S-parameter result) on the final design, and periodically during the descent, on
+a concrete solve rather than inside the traced objective. When it fails, lengthen
+the record if the decay is within reach; when the decay time is far longer than any
+affordable record, lengthening does not help, and constraining the design space so
+that the mode cannot be excited (for instance tying parameters so the design keeps
+the symmetry that makes the mode orthogonal to the drive) removes the cause. This
+is a property of optimizing on a truncated record, not a solver defect; it has no
+tracking issue.
+
 ## Examples and validation coverage
 
 ### A shipped paper example's headline numbers are not WR-90 numbers.
