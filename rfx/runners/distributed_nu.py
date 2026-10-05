@@ -802,6 +802,17 @@ def init_cpml_for_sharded_nu(sharded_grid: ShardedNUGrid, n_devices: int,
         def shape(self):
             return (self.nx, self.ny, self.nz)
 
+        def boundary_cell(self, axis, side):
+            if side not in ("lo", "hi"):
+                raise ValueError(f"invalid boundary side: {side!r}")
+            if axis == "x":
+                return dx_boundary
+            if axis == "y":
+                return dy_boundary
+            if axis == "z":
+                return float(dz_arr[0 if side == "lo" else -1])
+            raise ValueError(f"invalid boundary axis: {axis!r}")
+
     grid_view = _SharedNUGridView()
     cpml_params, _single_state = init_cpml(
         grid_view, kappa_max=kappa_max, pec_faces=pec_faces,

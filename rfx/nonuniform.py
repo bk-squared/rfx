@@ -382,8 +382,7 @@ class NonUniformGrid(NamedTuple):
         them, so on a built grid both sides equal that scalar; z has no
         scalar and this is the only way to ask.
 
-        ``cpml.py`` fills all six of its per-face slots from the ONE scalar
-        today (G11). 0b replaces that with this accessor.
+        ``cpml.py`` fills its six per-face slots from this accessor.
         """
         if side not in ("lo", "hi"):
             raise ValueError(f"side must be 'lo' or 'hi', got {side!r}")
