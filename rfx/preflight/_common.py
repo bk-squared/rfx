@@ -50,6 +50,26 @@ from rfx._grid_metric import (
 from rfx.core.jax_utils import is_tracer
 
 
+def local_cell(grid, axis, x):
+    """Local rasterization resolution at the node nearest ``x``.
+
+    Use the smaller adjacent primal cell: a coarse neighbour alone must
+    not make a conductor count as the port's own trace. The first/last
+    node has only one physical adjacent cell; the final cells entry is a
+    node-provider, not an extra cell. A traced axis retains the boundary
+    tolerance because its local node cannot be resolved on the host.
+    """
+    cells = grid.cells(axis)
+    if is_tracer(cells):
+        return grid.boundary_cell(axis, "lo")
+    index = grid.index_of(axis, x)
+    if index == 0 or len(cells) == 1:
+        return float(cells[0])
+    if index == len(cells) - 1:
+        return float(cells[index - 1])
+    return float(min(cells[index - 1], cells[index]))
+
+
 def _fmt_len(meters: float) -> str:
     """Unit-adaptive length for warning text (issue #166).
 

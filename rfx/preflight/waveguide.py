@@ -66,6 +66,7 @@ from rfx.core.jax_utils import is_tracer
 from rfx.preflight._common import (
     _absorber_boundary_for_axis,
     _axis_pad_thickness_m,
+    local_cell,
     PreflightWarning,
     PreflightErrorWarning,
     PreflightConfigError,
@@ -1631,19 +1632,19 @@ def _validate_cfg_port_index_mirror_covariance(
                     rm = float(em.reference_plane if em.reference_plane
                                is not None else em.x_position)
                     domain_ext = float(self._domain[ax_i])
-                    # Half a primal cell at each reference plane. The
-                    # finer of the pair sets the resolvable asymmetry.
+                    # Half the local rasterization resolution at each
+                    # reference plane; the finer of the pair sets the tolerance.
                     # A post-processing plane may lie outside the mesh;
                     # there the adjacent boundary cell supplies the scale.
                     ref_cells = []
                     for coordinate in (rp, rm):
                         try:
-                            index = grid.index_of(axis, coordinate)
+                            cell = local_cell(grid, axis, coordinate)
                         except ValueError:
                             side = "lo" if coordinate < 0 else "hi"
                             ref_cells.append(float(grid.boundary_cell(axis, side)))
                         else:
-                            ref_cells.append(float(grid.cells(axis)[index]))
+                            ref_cells.append(cell)
                     tol = 0.5 * min(ref_cells)
                     if abs((rp + rm) - domain_ext) > tol:
                         _w.warn(PreflightWarning(

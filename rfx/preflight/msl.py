@@ -71,6 +71,7 @@ from rfx.preflight._common import (
     _ABSORBER_PROXIMITY_CELLS,
     _coord_near_absorber,
     PreflightWarning,
+    local_cell,
     profile_boundary_cell,
     profile_cell_at,
     profile_node_at,
@@ -567,9 +568,10 @@ def msl_nearest_downstream_reflector(
     on metal -- with nothing warned. The old scan read only volumetric
     ``geometry``, so a board built from sheets was invisible to it.
 
-    ``dx`` is the primal cell at the feed along propagation; ``width_cell``
-    is the primal cell at the trace centre along its width axis. Legacy
-    callers that supply only ``dx`` retain their cubic tolerance.
+    ``dx`` is the local rasterization resolution at the feed along
+    propagation; ``width_cell`` is the smaller resolution at the two trace
+    edges on its width axis. Legacy callers that supply only ``dx`` retain
+    their cubic tolerance.
 
     Axis generality (issue #661): the parameter names are the ``"+x"``-frame
     names. ``x_probe`` / ``x_feed`` are coordinates on the PROPAGATION axis,
@@ -766,13 +768,15 @@ def msl_probe_clearance_for_port(sim, pe, grid, *, probe_coordinates=None):
         return unavailable(f"realized probe coordinates are unavailable: {type(exc).__name__}")
     feed = float(pe.position[_MSL_AXIS_INDEX[axis]])
     try:
+        centre = float(pe.position[_MSL_AXIS_INDEX[width_axis]])
+        half_width = float(pe.width) / 2
         distance, label, unevaluated = msl_nearest_downstream_reflector(
             getattr(sim, "_geometry", ()), x_probe=feed, x_feed=feed,
             y_feed=float(pe.position[_MSL_AXIS_INDEX[width_axis]]),
             w_trace=float(pe.width),
-            dx=float(grid.cells(axis)[grid.index_of(axis, feed)]),
-            width_cell=float(grid.cells(width_axis)[grid.index_of(
-                width_axis, float(pe.position[_MSL_AXIS_INDEX[width_axis]]))]),
+            dx=local_cell(grid, axis, feed),
+            width_cell=min(local_cell(grid, width_axis, centre - half_width),
+                           local_cell(grid, width_axis, centre + half_width)),
             domain_y=float(sim._domain[_MSL_AXIS_INDEX[width_axis]]),
             direction=pe.direction,
             resolve_material=getattr(sim, "_resolve_material", None),

@@ -1,7 +1,8 @@
-### Fixed — Graded-mesh preflight uses local cells for MSL reflector and waveguide reference-plane tolerances (#PENDING)
+### Fixed — Graded-mesh preflight tolerances follow the smaller neighbouring local cell (#PENDING)
 
-MSL reflector screening reads the primal cell at the feed on the propagation
-and trace-width axes. Waveguide mirror auditing uses half the smaller primal
-cell at the two reference planes, with the adjacent boundary cell for a plane
-outside the mesh. Previously both checks used the boundary x-cell size and
-could omit findings inside a refined band. Uniform preflight output is unchanged.
+MSL reflector screening uses the local cell at the feed and at both strip
+edges; waveguide mirror auditing uses the finer resolution at its two
+reference planes. Local resolution is the smaller primal cell adjacent to
+the nearest node. Compared with the old boundary-cell tolerance, this can
+add or remove a finding on a graded mesh. Traced axes retain the boundary
+tolerance. Uniform preflight output is unchanged.
