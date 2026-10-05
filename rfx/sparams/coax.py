@@ -341,8 +341,6 @@ def compute_coaxial_line_reflection(
     admit(self, "coaxial_line_reflection")
 
     grid = self._build_grid()
-    from rfx.boundaries.axes import resolve_cpml_axes
-    cpml_axes = resolve_cpml_axes(grid, cpml_axes)
     nz = grid.shape[2]
     dz = float(grid.dx)
     center_xy = (float(port.position[0]), float(port.position[1]))
@@ -812,8 +810,6 @@ def compute_coaxial_two_port(
     admit(self, "coaxial_two_port")
 
     grid = self._build_grid()
-    from rfx.boundaries.axes import resolve_cpml_axes
-    cpml_axes = resolve_cpml_axes(grid, cpml_axes)
     nz = grid.shape[2]
     dz = float(grid.dx)
     center_xy = (float(port.position[0]), float(port.position[1]))
