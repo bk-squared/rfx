@@ -45,7 +45,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Read the live lane labels, and this PR's own
-        # Two different questions. LANE_LABELS is which lanes EXIST, so a lane
+        # LANE_LABELS is which lanes EXIST, so a lane
         # added after the script was written does not fail a PR; `grep` exits 1
         # on no match, which would fail the step -- hence `|| true`, and an
         # empty value makes the script fall back to its own list.
@@ -56,7 +56,10 @@ jobs:
         # .github/workflows/labeler.yml has not run yet, and when that job does
         # run its label change fires no event here at all, because an event
         # triggered by GITHUB_TOKEN creates no workflow run. Only a live read
-        # sees what the PR actually carries.
+        # sees what the PR actually carries. ISSUE_LANES_JSON carries the owner
+        # lanes of issues this PR closes, read through closingIssuesReferences.
+        # Only issues in this repository: a cross-repository reference's number
+        # would otherwise be looked up here (another issue, a PR, or none at all).
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -73,14 +76,26 @@ jobs:
             echo "$pr_labels"
             echo "EOF"
           } >> "$GITHUB_ENV"
+          closing_issues=$(gh pr view "$PR_NUMBER" --json closingIssuesReferences --jq '.closingIssuesReferences[] | select("\(.repository.owner.login)/\(.repository.name)" == env.GITHUB_REPOSITORY) | .number')
+          issue_lanes='[]'
+          while IFS= read -r issue; do
+            [ -n "$issue" ] || continue
+            labels=$(gh issue view "$issue" --json labels --jq '[.labels[].name | select(startswith("lane:"))]')
+            issue_lanes=$(jq -cn --argjson current "$issue_lanes" --argjson labels "$labels" '$current + $labels | unique')
+          done <<< "$closing_issues"
+          {
+            echo "ISSUE_LANES_JSON<<EOF"
+            echo "$issue_lanes"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
 
       - name: Check the PR body
         # The body is passed through the environment, never interpolated into
         # the shell: a body is attacker-controlled text and `${{ }}` inside a
         # `run:` block is a script injection.
-        # PR_LABELS_JSON reaches the script through GITHUB_ENV, set by the step
-        # above. It cross-checks the `Lane:` line against the labels the paths
-        # earned; it never satisfies the line on its own.
+        # PR_LABELS_JSON and ISSUE_LANES_JSON reach the script through GITHUB_ENV.
+        # They cross-check the `Lane:` line against the labels the paths earned
+        # or the owner lanes of closing issues; neither replaces the line.
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: python scripts/ci/check_pr_body.py

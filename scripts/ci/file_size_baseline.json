@@ -1,0 +1,21 @@
+{
+  "cap": 2000,
+  "files": {
+    "rfx/api/__init__.py": 4583,
+    "rfx/api/_execute.py": 5468,
+    "rfx/api/_preflight.py": 2261,
+    "rfx/api/_spec.py": 2277,
+    "rfx/interop/_design.py": 2094,
+    "rfx/nonuniform.py": 4115,
+    "rfx/preflight/msl.py": 2171,
+    "rfx/probes/probes.py": 2162,
+    "rfx/ringdown.py": 3022,
+    "rfx/runners/_distributed_common.py": 2649,
+    "rfx/runners/distributed_nu.py": 3135,
+    "rfx/simulation.py": 4317,
+    "rfx/sources/waveguide_port.py": 3509,
+    "rfx/sparams/_common.py": 2839,
+    "rfx/sparams/coax.py": 2132,
+    "rfx/subgridding/jit_runner.py": 2776
+  }
+}

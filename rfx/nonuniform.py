@@ -27,6 +27,8 @@ from rfx import _realized
 
 import jax
 import jax.numpy as jnp
+
+from rfx.core.drives import drive_layout, inject_drives
 import numpy as np
 
 from rfx.core.yee import (
@@ -382,8 +384,7 @@ class NonUniformGrid(NamedTuple):
         them, so on a built grid both sides equal that scalar; z has no
         scalar and this is the only way to ask.
 
-        ``cpml.py`` fills all six of its per-face slots from the ONE scalar
-        today (G11). 0b replaces that with this accessor.
+        ``cpml.py`` fills its six per-face slots from this accessor.
         """
         if side not in ("lo", "hi"):
             raise ValueError(f"side must be 'lo' or 'hi', got {side!r}")
@@ -949,8 +950,9 @@ def make_nonuniform_grid(
     elif is_tracer(dx_profile):
         # Tracer path (mesh-as-design-variable): stay in jnp and skip the
         # concrete boundary validation. Caller is responsible for keeping
-        # `dx_profile[0] == dx_profile[-1] == dx` (the CPML uses the
-        # boundary scalar). Mirrors the 2026-04-17 dz tracer refactor.
+        # `dx_profile[0] == dx_profile[-1] == dx` (the scalar `dx` still
+        # names the boundary cell; the CPML reads the traced end cells
+        # through `boundary_cell`). Mirrors the 2026-04-17 dz tracer refactor.
         dx_prof_phys = jnp.asarray(dx_profile, dtype=jnp.float32)
     else:
         dx_prof_phys = np.asarray(dx_profile, dtype=np.float64)
@@ -979,8 +981,8 @@ def make_nonuniform_grid(
         dy_prof_phys = np.full(ny_interior, float(dx))
         dy_boundary = float(dx)
     elif is_tracer(dy_profile):
-        # Tracer path: stay in jnp. Use the concrete scalar `dx` as the
-        # boundary cell size — the caller must align `dy_profile[0]` and
+        # Tracer path: stay in jnp. The scalar `dy` is the concrete `dx`
+        # (the CPML reads the traced end cells through `boundary_cell`) — the caller must align `dy_profile[0]` and
         # `dy_profile[-1]` with `dx` (same contract as the concrete path).
         dy_prof_phys = jnp.asarray(dy_profile, dtype=jnp.float32)
         dy_boundary = float(dx)
@@ -2633,6 +2635,7 @@ def _build_nu_scan(
     else:
         src_waveforms = jnp.zeros((n_steps, 0), dtype=jnp.float32)
     src_meta = [(s[0], s[1], s[2], s[3]) for s in sources]
+    drives = drive_layout(src_meta, src_waveforms.dtype)
     prb_meta = [(p[0], p[1], p[2], p[3]) for p in probes]
 
     state = init_state((grid.nx, grid.ny, grid.nz))
@@ -2984,10 +2987,7 @@ def _build_nu_scan(
                 new_rlc_states.append(rlc_st_new)
 
         # Sources (point sources + wire port excitation)
-        for idx_s, (si, sj, sk, sc) in enumerate(src_meta):
-            field = getattr(st, sc)
-            field = field.at[si, sj, sk].add(src_vals[idx_s])
-            st = st._replace(**{sc: field})
+        st = inject_drives(st, drives, src_vals)
 
         # Waveguide-port injection + DFT probe accumulation. The dx
         # arg is unused by the per-cell-weighted integrals (cfg already

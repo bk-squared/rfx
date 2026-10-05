@@ -265,6 +265,10 @@ class _WgGrid:
         self.nz = int(np.ceil(b_wg / dx)) + 1
         self.shape = (self.nx, self.ny, self.nz)
 
+    def boundary_cell(self, axis, side):
+        """The face cell CPML calibrates against (constant here)."""
+        return float(self.dx)
+
     def num_timesteps(self, num_periods):
         return int(num_periods / (10e9 * self.dt))
 

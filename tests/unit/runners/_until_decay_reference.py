@@ -26,8 +26,26 @@ from rfx.simulation import (
     ProgressReporter,
     _warn_static_remnant_cap_hit,
 )
+from rfx.core.drives import Drives, StepDrives
+
+import numpy as np
+
 import jax
 import jax.numpy as jnp
+
+
+def _reference_drives(meta, waves):
+    # Independent source-order adapter: do not use the production assembler.
+    nodes, coef, ids, owners = {}, {}, {}, {}
+    for index, (i, j, k, component) in enumerate(meta):
+        nodes.setdefault(component, []).append((i, j, k))
+        ids.setdefault(component, []).append(index)
+    for component, cells in nodes.items():
+        nodes[component] = tuple(np.asarray(cells, dtype=np.int32).T)
+        coef[component] = np.ones(len(cells), dtype=waves.dtype)
+        ids[component] = np.array(ids[component], dtype=np.int32)
+        owners[component] = ids[component].copy()
+    return Drives(nodes, coef, ids, None, owners)
 
 
 def run_until_decay_reference(
@@ -155,29 +173,6 @@ def run_until_decay_reference(
         cz = 0.0 if grid.is_2d else (grid.nz - 1) * dx / 2.0
         monitor_position = (cx, cy, cz)
     mon_idx = grid.position_to_index(monitor_position)
-    _step_ctx = _StepContext(
-        **_setup.ctx_kwargs,
-        use_fast_he=False,
-        use_snapshot=False,
-        use_monitor=True,
-        use_flux_window=False,
-        fast_coeffs=None,
-        flux_meta=flux_meta_decay if use_flux_monitors else (),
-        monitor_component=monitor_component,
-        mon_idx=mon_idx,
-        snapshot_extractor=None,
-    )
-    _core_step = make_core_step(_step_ctx)
-
-    @jax.jit
-    def _single_step(carry_in, step_idx, src_vals, mag_src_vals):
-        new_carry, probe_out, extras = _core_step(carry_in, step_idx, src_vals, mag_src_vals)
-        return (new_carry, probe_out, extras["monitor_val"])
-
-    if snapshot is not None:
-        snap_interval = validate_snapshot_spec(snapshot)
-        _take_snapshot = snapshot_extractor(snapshot)
-        snap_frames: list = []
     if sources:
         src_waveforms = jnp.stack(
             [
@@ -202,6 +197,32 @@ def run_until_decay_reference(
         )
     else:
         mag_src_waveforms = jnp.zeros((max_steps, 0), dtype=jnp.float32)
+    _step_ctx = _StepContext(
+        **_setup.ctx_kwargs,
+        drives=StepDrives(
+            _reference_drives(_setup.src_meta, src_waveforms.T),
+            _reference_drives(_setup.mag_src_meta, mag_src_waveforms.T)),
+        use_fast_he=False,
+        use_snapshot=False,
+        use_monitor=True,
+        use_flux_window=False,
+        fast_coeffs=None,
+        flux_meta=flux_meta_decay if use_flux_monitors else (),
+        monitor_component=monitor_component,
+        mon_idx=mon_idx,
+        snapshot_extractor=None,
+    )
+    _core_step = make_core_step(_step_ctx)
+
+    @jax.jit
+    def _single_step(carry_in, step_idx, src_vals, mag_src_vals):
+        new_carry, probe_out, extras = _core_step(carry_in, step_idx, src_vals, mag_src_vals)
+        return (new_carry, probe_out, extras["monitor_val"])
+
+    if snapshot is not None:
+        snap_interval = validate_snapshot_spec(snapshot)
+        _take_snapshot = snapshot_extractor(snapshot)
+        snap_frames: list = []
     use_absorbing = boundary in ("cpml", "upml")
     _ix0, _ix1 = (grid.pad_x_lo, grid.nx - grid.pad_x_hi)
     _iy0, _iy1 = (grid.pad_y_lo, grid.ny - grid.pad_y_hi)

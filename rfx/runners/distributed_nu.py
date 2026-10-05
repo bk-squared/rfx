@@ -44,6 +44,8 @@ from rfx import _realized
 
 import jax
 import jax.numpy as jnp
+
+from rfx.core.drives import drive_layout
 import numpy as np
 from jax import lax
 from rfx.runners._rank import mesh_ranks, rank_shard_map
@@ -780,8 +782,8 @@ def init_cpml_for_sharded_nu(sharded_grid: ShardedNUGrid, n_devices: int,
         """Minimal duck-typed view consumed by ``init_cpml``."""
 
         def __init__(self):
-            # ``init_cpml`` reads grid.dx, grid.dy (optional), grid.dz
-            # (optional), grid.cpml_layers, grid.dt, grid.shape (or
+            # ``init_cpml`` reads boundary_cell(axis, side) (below),
+            # grid.cpml_layers, grid.dt, grid.shape (or
             # grid.nx/ny/nz).
             self.dx = dx_boundary
             self.dy = dy_boundary
@@ -801,6 +803,17 @@ def init_cpml_for_sharded_nu(sharded_grid: ShardedNUGrid, n_devices: int,
         @property
         def shape(self):
             return (self.nx, self.ny, self.nz)
+
+        def boundary_cell(self, axis, side):
+            if side not in ("lo", "hi"):
+                raise ValueError(f"invalid boundary side: {side!r}")
+            if axis == "x":
+                return dx_boundary
+            if axis == "y":
+                return dy_boundary
+            if axis == "z":
+                return float(dz_arr[0 if side == "lo" else -1])
+            raise ValueError(f"invalid boundary axis: {axis!r}")
 
     grid_view = _SharedNUGridView()
     cpml_params, _single_state = init_cpml(
@@ -2196,6 +2209,9 @@ def run_nonuniform_distributed_pec(
         )
 
     sources = list(sources) if sources is not None else []
+    for source in sources:
+        if source.component not in ("ex", "ey", "ez"):
+            raise ValueError(f"distributed_nu: unsupported source component {source.component}")
     probes = list(probes) if probes is not None else []
 
     # Defer the `Mesh` import to runtime so module import remains
@@ -2602,10 +2618,14 @@ def run_nonuniform_distributed_pec(
             return new_state, new_db_st, new_lr_st
 
     def _inject_sources_shmap(st, src_vals_step, *, ranks):
+        # Construct host constants while tracing: the outer scan closes over
+        # Python metadata only, never concrete device or NumPy arrays.
+        source_drives = drive_layout(src_local_specs, src_vals_step.dtype,
+                                     electric_only_path="distributed_nu")
         return inject_sources_shmap(
             st, src_vals_step, mesh, n_src,
             src_local_specs, src_device_ids,
-            ranks=ranks)
+            ranks=ranks, drives=source_drives)
 
     def _sample_probes_shmap(st, *, ranks):
         return sample_probes_shmap(

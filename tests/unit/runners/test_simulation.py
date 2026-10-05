@@ -538,6 +538,10 @@ class _CompiledWgGrid:
             int(round(pos[2] / self.dx)),
         )
 
+    def boundary_cell(self, axis, side):
+        """The face cell CPML calibrates against (constant here)."""
+        return float(self.dx)
+
     def num_timesteps(self, num_periods):
         return int(num_periods / (self.freq_max * self.dt))
 

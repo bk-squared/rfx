@@ -15,6 +15,8 @@ from rfx import _realized
 import jax
 import numpy as np
 import jax.numpy as jnp
+
+from rfx.core.drives import drive_layout, inject_drives
 from jax import lax
 from rfx.runners._rank import mesh_ranks, rank_shard_map
 from jax.sharding import Mesh, PartitionSpec as P
@@ -1013,13 +1015,13 @@ def shard_stacked_psi(arr, shd):
 
 
 def inject_sources_shmap(st, src_vals_step, mesh, n_src,
-                         src_local_specs, src_device_ids, *, ranks):
+                         src_local_specs, src_device_ids, *, ranks, drives=None):
     """Inject sources on their owning device using ``shard_map``.
 
     ``shard_map`` gives each device its own slab; device identity inside
     the kernel comes from the explicit sharded rank input, and a source whose owner
     is some other device contributes ``jnp.where(... , 0.0)``.  So every
-    device runs the same unrolled add and only the owner's lands.
+    device runs the same grouped add and only the owner's lands.
 
     ``in_specs`` are ``ex``, ``ey``, ``ez`` sharded on ``P("x")`` and
     ``src_vals_step`` replicated (``P()``) -- it is a per-step scalar vector
@@ -1030,12 +1032,16 @@ def inject_sources_shmap(st, src_vals_step, mesh, n_src,
     that owner.  Both are Python data read at trace time, so the traced
     graph depends on their VALUES, not just their shapes.
 
-    Extracted verbatim from
-    ``distributed_nu.py::run_nonuniform_distributed_pec._inject_sources_shmap``
-    and ``distributed_v2.py::run_distributed._inject_sources_shmap``.
+    Shared by the uniform and graded runners. Their trace-time layout uses
+    these local indices; unchanged waveform samples arrive as scan inputs.
     """
     if n_src == 0:
         return st
+
+    if drives is None:
+        drives = drive_layout(src_local_specs, src_vals_step.dtype,
+                              electric_only_path="distributed")
+    device_ids = np.asarray(src_device_ids, dtype=np.int32)
 
     @partial(
         rank_shard_map,
@@ -1045,18 +1051,10 @@ def inject_sources_shmap(st, src_vals_step, mesh, n_src,
         check_rep=False,
     )
     def _inject(ex, ey, ez, sv, *, rank):
-        device_idx = rank
-        for idx_s in range(n_src):
-            li, lj, lk, lc = src_local_specs[idx_s]
-            dev_id = src_device_ids[idx_s]
-            val = jnp.where(device_idx == dev_id, sv[idx_s], 0.0)
-            if lc == "ex":
-                ex = ex.at[li, lj, lk].add(val)
-            elif lc == "ey":
-                ey = ey.at[li, lj, lk].add(val)
-            elif lc == "ez":
-                ez = ez.at[li, lj, lk].add(val)
-        return ex, ey, ez
+        from rfx.core.yee import FDTDState
+        local = FDTDState(ex, ey, ez, None, None, None, None)
+        local = inject_drives(local, drives, jnp.where(rank == device_ids, sv, 0.0))
+        return local.ex, local.ey, local.ez
 
     ex, ey, ez = _inject(ranks, st.ex, st.ey, st.ez, src_vals_step)
     return st._replace(ex=ex, ey=ey, ez=ez)

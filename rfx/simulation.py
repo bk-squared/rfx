@@ -16,6 +16,8 @@ from rfx import _realized
 
 import jax
 import jax.numpy as jnp
+
+from rfx.core.drives import StepDrives, drive_layout, inject_drives
 import numpy as np
 
 from rfx.grid import Grid
@@ -1458,7 +1460,6 @@ def _build_step_setup(
     use_wire_refplanes = len(wire_refplane_sparams) > 0
     use_lumped_rlc = len(lumped_rlc) > 0
     use_kerr = kerr_chi3 is not None
-    use_mag_sources = len(mag_sources) > 0
 
     # ---- #404 oblique-periodic complex Bloch path activation ----
     # An oblique (2D-aux) TFSF injects a tilted plane wave that a plain-periodic
@@ -1837,7 +1838,6 @@ def _build_step_setup(
         use_wire_refplanes=use_wire_refplanes,
         use_lumped_rlc=use_lumped_rlc,
         use_kerr=use_kerr,
-        use_mag_sources=use_mag_sources,
         use_sheet_impedance=sheet_impedance is not None,
         sheet_impedance=sheet_impedance,
         use_design_box=design_box_coeffs is not None,
@@ -1863,8 +1863,6 @@ def _build_step_setup(
         pec_faces_frozen=_pec_faces_frozen,
         pmc_faces_frozen=_pmc_faces_frozen,
         curl_boundary=CurlBoundary(_pec_faces_frozen, _pmc_faces_frozen, periodic),
-        src_meta=tuple(src_meta),
-        mag_src_meta=tuple(mag_src_meta),
         prb_meta=tuple(prb_meta),
         dft_meta=dft_meta,
         waveguide_meta=waveguide_meta,
@@ -1981,7 +1979,6 @@ class _StepContext:
     use_lumped_sparams: bool
     use_lumped_rlc: bool
     use_kerr: bool
-    use_mag_sources: bool
 
     # ---- output behaviour ----
     use_snapshot: bool
@@ -2015,8 +2012,9 @@ class _StepContext:
     pmc_faces_frozen: Any = frozenset()
 
     # ---- pre-extracted metadata ----
-    src_meta: tuple = ()
-    mag_src_meta: tuple = ()
+    # Sole source authority: None suppresses BOTH stages, including when xs
+    # still contains primal samples (the reciprocity adjoint pass).
+    drives: StepDrives | None = None
     prb_meta: tuple = ()
     dft_meta: tuple = ()
     flux_meta: tuple = ()
@@ -2061,6 +2059,15 @@ class _StepContext:
     accumulate_current_moments: Callable | None = None
     apply_kerr_ade: Callable | None = None
     update_rlc_element: Callable | None = None
+
+    @property
+    def src_meta(self):
+        """Read-only aperture view for legacy diagnostics, never a kernel input."""
+        if self.drives is None:
+            return ()
+        return tuple((i, j, k, component)
+                     for component, nodes in self.drives.electric.nodes.items()
+                     for i, j, k in zip(*nodes))
 
 
 def core_step_invariants(ctx: _StepContext) -> dict:
@@ -2144,6 +2151,8 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
     if invariants is None:
         invariants = core_step_invariants(ctx)
     ctx = invariants["ctx"]
+    drives = None if ctx.drives is None else ctx.drives.electric
+    mag_drives = None if ctx.drives is None else ctx.drives.magnetic
     materials = ctx.materials
     dt = ctx.dt
     dx = ctx.dx
@@ -2250,12 +2259,8 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
             # applied after H update so the Yee leapfrog ordering is
             # H^{n+1/2} += -dt/mu · M^{n+1/2}. The coefficient is
             # pre-baked into the waveform values at construction time.
-            if ctx.use_mag_sources:
-                for idx_m, (mi, mj, mk, mc) in enumerate(ctx.mag_src_meta):
-                    h_field = getattr(st, mc)
-                    h_field = h_field.at[mi, mj, mk].add(
-                        mag_src_vals[idx_m].astype(h_field.dtype))
-                    st = st._replace(**{mc: h_field})
+            if mag_drives is not None:
+                st = inject_drives(st, mag_drives, mag_src_vals)
 
             # Snapshot E^n before the linear E-update for the reactive Kerr
             # increment (#437): E^{n+1} = E^n + (E_lin - E^n)/(1 + chi3|E^n|^2/eps_r).
@@ -2505,10 +2510,8 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
 
         # Soft sources — cast source value to field dtype to avoid
         # mixed-precision scatter warnings (float32 -> float16).
-        for idx_s, (si, sj, sk, sc) in enumerate(ctx.src_meta):
-            field = getattr(st, sc)
-            field = field.at[si, sj, sk].add(src_vals[idx_s].astype(field.dtype))
-            st = st._replace(**{sc: field})
+        if drives is not None:
+            st = inject_drives(st, drives, src_vals)
 
         # Wire-port PHYSICAL V/I/V_port DFT accumulation AFTER soft-source
         # injection (issue #683, decided by measurement 2026-08-29;
@@ -3126,7 +3129,7 @@ def run(
         and not _ctx["use_conformal"]
         and not _ctx["use_lumped_rlc"]
         and not _ctx["use_kerr"]
-        and not _ctx["use_mag_sources"]
+        and not mag_sources
         # #677: the GPU baked fast path has an inline H+E update with no
         # sheet-operator slot, so a surface-impedance sheet is DELIBERATELY
         # unsupported here: an f0 sheet takes the standard path, which costs
@@ -3196,6 +3199,9 @@ def run(
     # ---- scan body (shared kernel; W6.1 kernel + W6.2 setup) ----
     _step_ctx = _StepContext(
         **_setup.ctx_kwargs,
+        drives=StepDrives(
+            drive_layout(_setup.src_meta, src_waveforms.dtype),
+            drive_layout(_setup.mag_src_meta, mag_src_waveforms.dtype)),
         # run()-specific overrides
         use_fast_he=use_fast_he,
         use_snapshot=snap_in_body,
@@ -3882,6 +3888,22 @@ def run_until_decay(
         monitor_position = (cx, cy, cz)
     mon_idx = grid.position_to_index(monitor_position)
 
+    # ---- precompute source waveforms up to max_steps ----
+    if sources:
+        src_waveforms = jnp.stack([s.waveform[:max_steps] if s.waveform.shape[0] >= max_steps
+                                   else jnp.pad(s.waveform, (0, max_steps - s.waveform.shape[0]))
+                                   for s in sources], axis=-1)
+    else:
+        src_waveforms = jnp.zeros((max_steps, 0), dtype=jnp.float32)
+
+    if mag_sources:
+        mag_src_waveforms = jnp.stack(
+            [s.waveform[:max_steps] if s.waveform.shape[0] >= max_steps
+             else jnp.pad(s.waveform, (0, max_steps - s.waveform.shape[0]))
+             for s in mag_sources], axis=-1)
+    else:
+        mag_src_waveforms = jnp.zeros((max_steps, 0), dtype=jnp.float32)
+
     # ---- shared kernel (W6.1 + W6.2 setup) ----
     # run_until_decay does NOT build the GPU fast-HE coeffs and uses the
     # historical rect (no-window) flux DFT: use_flux_window=False keeps the
@@ -3890,6 +3912,9 @@ def run_until_decay(
     # decay path onto windows is a deliberate follow-up.
     _step_ctx = _StepContext(
         **_setup.ctx_kwargs,
+        drives=StepDrives(
+            drive_layout(_setup.src_meta, src_waveforms.dtype),
+            drive_layout(_setup.mag_src_meta, mag_src_waveforms.dtype)),
         # decay-path-specific overrides
         use_fast_he=False,
         use_snapshot=False,
@@ -3976,22 +4001,6 @@ def run_until_decay(
 
     _run_chunk = _make_chunk_runner()
     _run_tail_chunk = _make_chunk_runner(keep_previous=True)
-
-    # ---- precompute source waveforms up to max_steps ----
-    if sources:
-        src_waveforms = jnp.stack([s.waveform[:max_steps] if s.waveform.shape[0] >= max_steps
-                                   else jnp.pad(s.waveform, (0, max_steps - s.waveform.shape[0]))
-                                   for s in sources], axis=-1)
-    else:
-        src_waveforms = jnp.zeros((max_steps, 0), dtype=jnp.float32)
-
-    if mag_sources:
-        mag_src_waveforms = jnp.stack(
-            [s.waveform[:max_steps] if s.waveform.shape[0] >= max_steps
-             else jnp.pad(s.waveform, (0, max_steps - s.waveform.shape[0]))
-             for s in mag_sources], axis=-1)
-    else:
-        mag_src_waveforms = jnp.zeros((max_steps, 0), dtype=jnp.float32)
 
     # ---- host chunk loop with decay check ----
     # Stop criterion depends on the boundary (issue #169):

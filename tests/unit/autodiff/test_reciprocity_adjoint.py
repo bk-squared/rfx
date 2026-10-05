@@ -413,3 +413,51 @@ def test_adjoint_settling(precision, steps):
         assert witness.shape == ()
         assert np.all(np.isfinite(grad))
         assert witness < 1e-5 if steps == STEPS else witness > 1e-1
+
+
+def test_clearing_drives_suppresses_electric_and_magnetic_sources(monkeypatch):
+    """One context field disables both injection stages, even with live xs."""
+    import rfx.simulation as runner
+    from rfx.core.yee import init_materials, init_state
+    from rfx.grid import Grid
+
+    contexts = []
+    original = runner.make_core_step
+    def capture(ctx, *args, **kwargs):
+        contexts.append(ctx)
+        return original(ctx, *args, **kwargs)
+    monkeypatch.setattr(runner, "make_core_step", capture)
+    grid = Grid(freq_max=1e9, domain=(.012,)*3, dx=.001,
+                cpml_layers=0, cpml_axes="")
+    runner.run(grid, init_materials(grid.shape), 1,
+        sources=[runner.SourceSpec(4, 4, 4, "ez", jnp.ones(1))],
+        mag_sources=[runner.MagneticSourceSpec(4, 4, 4, "hx", jnp.ones(1)*2)])
+    ctx = contexts[-1]
+    def step(context):
+        carry, _, _ = jax.jit(original(context))(
+            {"fdtd": init_state(grid.shape)}, jnp.int32(0), jnp.ones(1), jnp.ones(1)*2)
+        return carry["fdtd"]
+    driven = step(ctx)
+    assert np.max(np.abs(driven.ez)) > 0
+    assert np.max(np.abs(driven.hx)) > 0
+    suppressed = step(replace(ctx, drives=None))
+    for field in suppressed[:6]:
+        np.testing.assert_array_equal(field, jnp.zeros_like(field))
+
+
+def test_adjoint_zero_cotangent_has_no_primal_drive(monkeypatch):
+    """Exercise the actual adjoint context replacement and its full scan."""
+    import rfx.simulation as runner
+    original = runner.make_core_step
+    adjoint_contexts = []
+    def capture(ctx, *args, **kwargs):
+        if kwargs.get("design_hook") is not None and not ctx.use_dft_planes:
+            adjoint_contexts.append(ctx)
+        return original(ctx, *args, **kwargs)
+    monkeypatch.setattr(runner, "make_core_step", capture)
+    sim, eps = fixture("float32")
+    loss = objective(sim, steps=48, mode="adjoint")
+    gradient = jax.jit(jax.grad(lambda e: loss(e, None)*0.))(eps)
+    np.testing.assert_array_equal(gradient, jnp.zeros_like(gradient))
+    assert adjoint_contexts
+    assert all(ctx.drives is None for ctx in adjoint_contexts)

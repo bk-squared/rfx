@@ -204,38 +204,9 @@ def _cpml_profile(
 
 
 def _get_axis_cell_sizes(grid):
-    """Extract per-axis cell sizes from Grid or NonUniformGrid.
-
-    Returns (dx, dy, dz_lo, dz_hi) where dz_lo/dz_hi are the constant
-    cell sizes in the z-lo and z-hi CPML padding regions.  For uniform
-    grids all four values equal grid.dx.
-
-    On the mesh-as-design-variable path, ``dz_arr`` may be a JAX tracer;
-    indexed reads are preserved in-trace (no ``float()`` cast).
-
-    A CONCRETE ``dz_arr`` is read on the host through ``np.asarray`` first.
-    ``dz_arr[0]`` on a concrete ``jnp`` array is itself a jnp op, so under
-    ``jax.jit`` / ``jax.make_jaxpr`` / ``saved_residuals`` it returned a
-    tracer and the ``float()`` raised ``ConcretizationTypeError`` — which
-    made every non-uniform run untraceable as a whole, while eager
-    ``jax.grad`` (which never wraps the setup) worked. The array is not a
-    tracer, so reading it on the host is exactly what the eager path did.
-    """
-    dx = float(grid.dx)
-    dy = float(getattr(grid, 'dy', dx))
-    dz_arr = getattr(grid, 'dz', None)
-    if dz_arr is not None and len(dz_arr) > 0:
-        if is_tracer(dz_arr):
-            dz_lo = dz_arr[0]
-            dz_hi = dz_arr[-1]
-        else:
-            dz_host = np.asarray(dz_arr)
-            dz_lo = float(dz_host[0])
-            dz_hi = float(dz_host[-1])
-    else:
-        dz_lo = dx
-        dz_hi = dx
-    return dx, dy, dz_lo, dz_hi
+    """Return the six face cell widths, preserving traced mesh entries."""
+    return tuple(grid.boundary_cell(axis, side)
+                 for axis in "xyz" for side in ("lo", "hi"))
 
 
 def _pad_profile_at_end(p: CPMLParams, n_active: int, n_alloc: int) -> CPMLParams:
@@ -474,7 +445,7 @@ def init_cpml(grid, *, kappa_max: float | None = None,
     Parameters
     ----------
     grid : Grid or NonUniformGrid (duck-typed)
-        Simulation grid.  Reads ``dx``, optionally ``dy`` and ``dz``.
+        Simulation grid. Reads ``boundary_cell(axis, side)`` for each face.
     kappa_max : float or None
         Maximum κ stretching parameter for CFS-CPML.
     pec_faces : set of str or None
@@ -500,7 +471,7 @@ def init_cpml(grid, *, kappa_max: float | None = None,
     # absorber does not eat the first n interior cells on that side.
     noop_faces = set(pec_faces) | set(pmc_faces)
     n = grid.cpml_layers
-    dx, dy, dz_lo, dz_hi = _get_axis_cell_sizes(grid)
+    dx_x_lo, dx_x_hi, dx_y_lo, dx_y_hi, dz_lo, dz_hi = _get_axis_cell_sizes(grid)
 
     noop = _cpml_noop_profile(n)
     # T7 Phase 2 PR2: per-face active layer counts. The allocation
@@ -530,10 +501,10 @@ def init_cpml(grid, *, kappa_max: float | None = None,
                              sample_offset=sample_offset)
         return _pad_profile_at_start(_flip_profile(base), n_active, n)
 
-    prof_x_lo = _lo_face_profile("x_lo" in noop_faces, dx, "x_lo")
-    prof_x_hi = _hi_face_profile("x_hi" in noop_faces, dx, "x_hi")
-    prof_y_lo = _lo_face_profile("y_lo" in noop_faces, dy, "y_lo")
-    prof_y_hi = _hi_face_profile("y_hi" in noop_faces, dy, "y_hi")
+    prof_x_lo = _lo_face_profile("x_lo" in noop_faces, dx_x_lo, "x_lo")
+    prof_x_hi = _hi_face_profile("x_hi" in noop_faces, dx_x_hi, "x_hi")
+    prof_y_lo = _lo_face_profile("y_lo" in noop_faces, dx_y_lo, "y_lo")
+    prof_y_hi = _hi_face_profile("y_hi" in noop_faces, dx_y_hi, "y_hi")
     prof_z_lo = _lo_face_profile("z_lo" in noop_faces, dz_lo, "z_lo")
     prof_z_hi = _hi_face_profile("z_hi" in noop_faces, dz_hi, "z_hi")
 
@@ -541,17 +512,17 @@ def init_cpml(grid, *, kappa_max: float | None = None,
         x_lo=prof_x_lo, x_hi=prof_x_hi,
         y_lo=prof_y_lo, y_hi=prof_y_hi,
         z_lo=prof_z_lo, z_hi=prof_z_hi,
-        dx_x_lo=dx, dx_x_hi=dx,
-        dx_y_lo=dy, dx_y_hi=dy,
+        dx_x_lo=dx_x_lo, dx_x_hi=dx_x_hi,
+        dx_y_lo=dx_y_lo, dx_y_hi=dx_y_hi,
         dz_lo=dz_lo, dz_hi=dz_hi,
         magnetic=CPMLAxisParams(
-            x_lo=_lo_face_profile("x_lo" in noop_faces, dx, "x_lo", .5),
-            x_hi=_hi_face_profile("x_hi" in noop_faces, dx, "x_hi", -.5),
-            y_lo=_lo_face_profile("y_lo" in noop_faces, dy, "y_lo", .5),
-            y_hi=_hi_face_profile("y_hi" in noop_faces, dy, "y_hi", -.5),
+            x_lo=_lo_face_profile("x_lo" in noop_faces, dx_x_lo, "x_lo", .5),
+            x_hi=_hi_face_profile("x_hi" in noop_faces, dx_x_hi, "x_hi", -.5),
+            y_lo=_lo_face_profile("y_lo" in noop_faces, dx_y_lo, "y_lo", .5),
+            y_hi=_hi_face_profile("y_hi" in noop_faces, dx_y_hi, "y_hi", -.5),
             z_lo=_lo_face_profile("z_lo" in noop_faces, dz_lo, "z_lo", .5),
             z_hi=_hi_face_profile("z_hi" in noop_faces, dz_hi, "z_hi", -.5),
-            dx_x_lo=dx, dx_x_hi=dx, dx_y_lo=dy, dx_y_hi=dy,
+            dx_x_lo=dx_x_lo, dx_x_hi=dx_x_hi, dx_y_lo=dx_y_lo, dx_y_hi=dx_y_hi,
             dz_lo=dz_lo, dz_hi=dz_hi,
         ),
     )
@@ -808,7 +779,7 @@ def apply_cpml_e(
         # flipped hi-face profiles so the scan body stays uniform.
         px_lo = py_lo = pz_lo = cpml_params
         px_hi = py_hi = pz_hi = _flip_profile(cpml_params)
-        dx_x_lo = dx_x_hi = dx_y_lo = dx_y_hi = dz_lo = dz_hi = float(grid.dx)
+        (dx_x_lo, dx_x_hi, dx_y_lo, dx_y_hi, dz_lo, dz_hi) = _get_axis_cell_sizes(grid)
 
     # X-axis profiles (hi-face pre-flipped at init time — no jnp.flip here).
     b_x_lo = _clip_lo(px_lo.b, n_x, n)[:, None, None]
@@ -1101,7 +1072,7 @@ def apply_cpml_h(
     else:
         px_lo = py_lo = pz_lo = cpml_params
         px_hi = py_hi = pz_hi = _flip_profile(cpml_params)
-        dx_x_lo = dx_x_hi = dx_y_lo = dx_y_hi = dz_lo = dz_hi = float(grid.dx)
+        (dx_x_lo, dx_x_hi, dx_y_lo, dx_y_hi, dz_lo, dz_hi) = _get_axis_cell_sizes(grid)
 
     # X-axis profiles (hi-face pre-flipped at init time).
     b_x_lo = _clip_lo(px_lo.b, n_x, n)[:, None, None]

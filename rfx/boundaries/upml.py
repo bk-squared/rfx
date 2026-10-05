@@ -102,7 +102,8 @@ def _axis_sigma_E_H(grid, axis: str) -> tuple[jnp.ndarray, jnp.ndarray]:
         z = jnp.zeros(grid.shape, dtype=jnp.float32)
         return z, z
 
-    dx_x, dx_y, dz_lo, dz_hi = _get_axis_cell_sizes(grid)
+    # UPML runs on the uniform lane only (graded refuses it), where lo == hi.
+    dx_x, _, dx_y, _, dz_lo, dz_hi = _get_axis_cell_sizes(grid)
     pec_faces = getattr(grid, "pec_faces", None) or set()
     pmc_faces = getattr(grid, "pmc_faces", None) or set()
 

@@ -788,6 +788,39 @@ def test_a_line_that_contradicts_the_labels_fails() -> None:
     assert "labeler.yml" in problems[0]
 
 
+def test_a_line_naming_a_closing_issue_lane_passes() -> None:
+    env = dict(ONE_LABEL, ISSUE_LANES_JSON='["lane:crossval"]')
+    assert cpb.check(body("Lane: lane:crossval", ACCEPT), env=env) == []
+    assert cpb.check(body("Lane: lane:ci-infra", ACCEPT), env=env) == []
+
+
+def test_a_line_matching_neither_pr_nor_issue_lanes_fails() -> None:
+    env = dict(ONE_LABEL, ISSUE_LANES_JSON='["lane:crossval"]')
+    problems = cpb.check(body("Lane: lane:msl-port", ACCEPT), env=env)
+    assert len(problems) == 1
+    assert "paths earned this PR (lane:ci-infra)" in problems[0]
+    assert "issues this PR closes (lane:crossval)" in problems[0]
+
+
+@pytest.mark.parametrize("issue_lanes", [None, "", "[]"])
+def test_no_issue_lanes_preserves_the_pr_label_rule(issue_lanes: str | None) -> None:
+    env = dict(ONE_LABEL)
+    if issue_lanes is not None:
+        env["ISSUE_LANES_JSON"] = issue_lanes
+    assert cpb.issue_lane_labels(env) == ()
+    assert cpb.check(body("Lane: lane:ci-infra", ACCEPT), env=env) == []
+    problems = cpb.check(body("Lane: lane:crossval", ACCEPT), env=env)
+    assert len(problems) == 1
+    assert "issues this PR closes (none)" in problems[0]
+
+
+def test_an_issue_label_cannot_authorize_a_nonexistent_lane() -> None:
+    env = dict(ONE_LABEL, ISSUE_LANES_JSON='["lane:invented"]')
+    problems = cpb.check(body("Lane: lane:invented", ACCEPT), env=env)
+    assert len(problems) == 1
+    assert "is not a lane label on this repository" in problems[0]
+
+
 def test_a_line_that_agrees_with_the_single_label_passes() -> None:
     assert cpb.check(body("Lane: lane:ci-infra", ACCEPT), env=ONE_LABEL) == []
 
