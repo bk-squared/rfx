@@ -386,7 +386,7 @@ def _axis_buffer_depths(grid, n_alloc: int) -> tuple[int, int, int]:
     residual E energy dropping 1.6401e+01 -> 8.3653e+00 (-49%). Both
     clauses are therefore the same rule: clamp only where the grid
     positively states that the face allocated nothing AND that the axis is
-    one this grid absorbs on. PR #PENDING now defaults runner axes to the
+    one this grid absorbs on. PR #1494 now defaults runner axes to the
     grid and refuses explicit additions, so these unpadded-axis profiles
     are unused by the runner. The #876 buffer-depth rule remains intact.
     """
