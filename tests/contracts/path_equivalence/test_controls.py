@@ -173,3 +173,41 @@ def test_assembly_fingerprint_preserves_caller_and_message():
     expected = message.replace(str(root) + '/', '')
     assert fingerprint(message) == expected
     assert fingerprint(message.replace(':804', ':805')) != expected
+
+
+def test_shared_cause_does_not_accept_another_cells_fingerprint():
+    from .reporting import KnownFinding, assert_record, expand_findings, expectations
+    manifest = dict(causes={'assembly': dict(implementations=['rfx/example.py:1'],
+        fingerprints={'sheet': dict(value='ValueError: sheet', cells=['a']),
+                      'wire': dict(value='ValueError: wire', cells=['b'])}, witnesses={})},
+        cells={'a': {'refusal': ['assembly']}, 'b': {'refusal': ['assembly']}})
+    findings = expand_findings(manifest)
+    known, witnesses, _ = expectations(findings['a']['refusal'])
+    with pytest.raises(KnownFinding):
+        assert_record(dict(failures=['ValueError: sheet'], measurements=[]), 'refusal', known, witnesses)
+    with pytest.raises(RuntimeError, match='ValueError: wire'):
+        assert_record(dict(failures=['ValueError: wire'], measurements=[]), 'refusal', known, witnesses)
+
+
+def test_shared_witness_variant_keeps_record_scope_and_drift_check():
+    from .reporting import assert_record, expand_findings, expectations
+    manifest = dict(causes={'numeric': dict(implementations=['rfx/example.py:1'],
+        fingerprints={'plane': dict(value='dft_planes.p: numeric', records=['observers']),
+                      'probe': dict(value='time_series: numeric', records=['probes'])},
+        witnesses={'default': {'plane': dict(relative=0.1, relative_bar=1e-4)},
+                   'long': {'plane': dict(relative=0.2, relative_bar=1e-4)}})},
+        cells={'a': {'observers': ['numeric'], 'probes': ['numeric']},
+               'b': {'observers': [dict(cause='numeric', witness='long')]}})
+    findings = expand_findings(manifest)
+    known, witnesses, _ = expectations(findings['b']['observers'])
+    assert known == ['dft_planes.p: numeric']
+    assert witnesses == {'dft_planes.p': dict(relative=0.2, relative_bar=1e-4)}
+    assert expectations(findings['a']['observers'])[1]['dft_planes.p']['relative'] == 0.1
+    assert expectations(findings['a']['probes'])[0] == ['time_series: numeric']
+    report = dict(failures=['dft_planes.p: relative diff 0.21'], measurements=[
+        dict(record='dft_planes.p', relative=0.21, relative_bar=1e-4, difference=0.21, bar=1e-4)])
+    with pytest.raises(RuntimeError, match='fingerprint changed'):
+        assert_record(report, 'observers', known, witnesses)
+    manifest['cells']['b']['observers'][0]['witness'] = 'typo'
+    with pytest.raises(KeyError):
+        expand_findings(manifest)

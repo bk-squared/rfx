@@ -1,7 +1,7 @@
 # S0 mutation evidence
 
-Re-run after rebasing onto `9ed83eb8`, classifying the ADI assembly errors, and
-selecting the 111-cell PR subset: CPU, JAX 0.10.2, float32, two host CPU devices. Each run used the real builder,
+Re-run after deduplicating the findings into shared causes and witness variants,
+using the new manifest loader: CPU, JAX 0.10.2, float32, two host CPU devices. Each run used the real builder,
 execution/comparison code, and strict expected-failure classification. Mutations
 were isolated in subprocess runs with a 180-second timeout per run; none timed
 out. Edited files were restored byte for

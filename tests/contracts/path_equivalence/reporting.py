@@ -1,9 +1,41 @@
 """Record-level expected findings cannot hide a newly failing record."""
+import json
 from pathlib import Path
 
 
 class KnownFinding(AssertionError):
     pass
+
+
+def load_findings(path):
+    """Expand shared causes without broadening any cell's allowed failures."""
+    return expand_findings(json.loads(Path(path).read_text()))
+
+
+def expand_findings(manifest):
+    findings = {}
+    for cell, groups in manifest['cells'].items():
+        findings[cell] = {}
+        for record, references in groups.items():
+            entries = []
+            for reference in references:
+                cause = reference if isinstance(reference, str) else reference['cause']
+                spec = manifest['causes'][cause]
+                variant = 'default' if isinstance(reference, str) else reference['witness']
+                witnesses = spec['witnesses'].get('default', {}) if variant == 'default' else spec['witnesses'][variant]
+                assert witnesses.keys() <= spec['fingerprints'].keys(), cause
+                selected = []
+                for name, fingerprint_spec in spec['fingerprints'].items():
+                    if cell not in fingerprint_spec.get('cells', [cell]):
+                        continue
+                    if record not in fingerprint_spec.get('records', [record]):
+                        continue
+                    selected.append(dict(cause=cause, fingerprint=fingerprint_spec['value'],
+                                         **witnesses.get(name, {})))
+                assert selected, f'S0 cause has no fingerprints for {cell}/{record}: {cause}'
+                entries.extend(selected)
+            findings[cell][record] = entries
+    return findings
 
 
 def expectations(entries):

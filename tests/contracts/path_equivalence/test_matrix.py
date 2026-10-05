@@ -1,16 +1,15 @@
 """Generated S0 records: full weekly matrix and the declared PR subset."""
-import json
 from pathlib import Path
 
 import pytest
 
 from .builders import BUILDERS
 from .generation import generate, pr_subset
-from .reporting import KnownFinding, assert_record, expectations, group
+from .reporting import KnownFinding, assert_record, expectations, group, load_findings
 
 CELLS = generate(BUILDERS)
 _MANIFEST = Path(__file__).with_name('findings.json')
-FINDINGS = json.loads(_MANIFEST.read_text())
+FINDINGS = load_findings(_MANIFEST)
 
 
 def record_groups(cell):
