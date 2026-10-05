@@ -101,7 +101,6 @@ PR_REFUSAL_LANES = frozenset((
 
 # Cheapest measured 12-step witness per cause (cold solve cost, including failures).
 PR_FINDING_CHOICES = {
-    "refusal-message-runs-adi-material-gate": '_geometry:pec_sheet:run_uniform:run_distributed:constant:12',
     "distributed-mode2d-broadcast": "_mode::run_uniform:run_distributed:constant:12",
     "flux-dA-shape": "_flux_monitors:flux:run_uniform:run_nonuniform:constant:12",
     "flux-dA2-missing": "_flux_monitors:flux:run_uniform:run_nonuniform:constant:12",

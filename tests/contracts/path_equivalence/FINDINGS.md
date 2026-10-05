@@ -23,7 +23,6 @@ Conclusions: in the S0 PR body (leader)
 | distributed-mode2d-broadcast | `_mode`, U/D | Broadcasting `float32[10,13,2]` into `[10,13,1]`; N/A | [U :134](../../../rfx/runners/uniform.py#L134) / [D :2573](../../../rfx/runners/_distributed_common.py#L2573) |
 | graded-distributed-ports-refused | `_ports` lumped Ng/Dg; wire Ng/Dg 12/36 | Graded distributed port extraction refuses; N/A | [N :713](../../../rfx/runners/nonuniform.py#L713) / [Dg lumped :3175](../../../rfx/api/_execute.py#L3175), [Dg wire :458](../../../rfx/api/_preflight.py#L458) |
 | graded-distributed-ntff-refused | `_ntff`, Ng/Dg | Public distributed feature guard refuses NTFF; N/A | [N :3181](../../../rfx/nonuniform.py#L3181) / [Dg :5083](../../../rfx/api/_execute.py#L5083) |
-| refusal-message-runs-adi-material-gate | PEC sheet / wire geometry, MSL, pinned sheet, thin-conductor PEC sheet; each on D refusal, run_adi, fwd_adi, run_subgridded (20 cells) | Stops before stepping with internal `ValueError` because `_adi_homogeneous()` supplies no PEC collectors; not a refusal naming the input. Full message and caller line are fingerprinted; only the absolute checkout prefix is removed. N/A | [caller :804](../../../rfx/runners/_admission.py#L804) / [assembler :989](../../../rfx/api/_compile.py#L989) |
 
 DFT first differing step (zero-based): **2**, component **ez**, normal axis **x**,
 plane index **5**, coordinate **0.00390625 m**, frequency **5 GHz**, transverse
@@ -79,3 +78,10 @@ rows and `_solver`: 40 record checks passed and 20 matched the assembly-error
 finding. Every refusal stopped before scanning. The `_solver` builder now uses
 PEC boundaries; its subgridded refusal names `solver='adi'` and passes, so the
 former absorbing-boundary constructor conflict is not a finding.
+
+S1 G0: the 20 PEC/MSL refusal cells previously assigned to
+`refusal-message-runs-adi-material-gate` all produced strict XPASS once the ADI
+material gate assembled with explicit empty PEC collectors (it reads eps/sigma
+cells only; sheets and wires are refused by their own rows). Their finding entries
+were removed; all 20 passed when re-run without xfail. Remaining findings: 42
+checks, 24 cells, 13 causes.

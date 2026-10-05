@@ -801,7 +801,13 @@ def _adi_homogeneous(sim, grid) -> bool:
     if sim._uses_nonuniform_mesh:
         return False   # ADI refuses a graded mesh first; no uniform grid to read
     grid = sim._build_grid() if grid is None else grid
-    materials = sim._assemble_materials(grid)[0]
+    # The gate reads eps_r/sigma cells only. Sheets and wires are refused on
+    # ADI by their own (ungated) rows; collecting and dropping them is the
+    # assembler's explicit "I read cells only" (_refuse_uncollected_pec).
+    # Without it every refusal of a sheet/wire model ran this gate (message()
+    # lists carriers through refused() on every lane) and ended in the
+    # assembler's internal ValueError instead of the refusal.
+    materials = sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])[0]
     return adi_material_interface_refusal(materials.eps_r, materials.sigma) is None
 
 
