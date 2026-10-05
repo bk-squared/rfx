@@ -176,8 +176,13 @@ def test_port_equivalence(lane, kind, monkeypatch):
     for a, b in zip(got.state, expected.state):
         assert_peak(a, b)
     assert_peak(got.time_series, expected.time_series)
+    assert got.dft_planes and expected.dft_planes
+    if kind == 'wire':
+        assert got.s_params is not None
+        if lane == 'graded':
+            assert got.wire_port_sparams is not None
     # Compare all complex DFT/S leaves exposed by the public result.
-    for name in ('s_params', 'dft_planes', 'wire_port_dft'):
+    for name in ('s_params', 'dft_planes', 'wire_port_sparams'):
         a, b = getattr(got, name, None), getattr(expected, name, None)
         for x, y in zip(jax.tree.leaves(a), jax.tree.leaves(b)):
             if hasattr(x, 'dtype') and np.issubdtype(x.dtype, np.number):
@@ -237,3 +242,42 @@ def test_waveform_gradient_equivalence(lane, monkeypatch):
     expected = jax.grad(loss)(jnp.float32(1.))
     assert np.isfinite(expected) and abs(expected) > 0
     assert abs(got-expected) <= 1e-4*abs(expected)
+
+
+def test_uniform_magnetic_source_equivalence(monkeypatch):
+    import rfx.simulation as uniform
+    grid = Grid(freq_max=1e9, domain=(.012,)*3, dx=.001,
+                cpml_layers=0, cpml_axes='')
+    mats = MaterialArrays(jnp.ones(grid.shape), jnp.zeros(grid.shape), jnp.ones(grid.shape))
+    wave = jnp.sin(jnp.arange(12)*.7)*.01
+    mags = [uniform.MagneticSourceSpec(4, 4, 4, c, wave*(i+1))
+            for i, c in enumerate(('hx', 'hy', 'hx'))]
+    def run():
+        return uniform.run(grid, mats, 12, mag_sources=mags,
+                           probes=[ProbeSpec(4, 4, 4, 'hx')])
+    got = run()
+    monkeypatch.setattr(uniform, 'inject_drives', per_cell)
+    expected = run()
+    for a, b in zip(jax.tree.leaves(got), jax.tree.leaves(expected)):
+        if hasattr(a, 'dtype'):
+            assert_peak(a, b)
+
+
+def test_decay_preserves_unequal_waveform_padding(monkeypatch):
+    import rfx.simulation as uniform
+    grid = Grid(freq_max=1e9, domain=(.012,)*3, dx=.001,
+                cpml_layers=0, cpml_axes='')
+    mats = MaterialArrays(jnp.ones(grid.shape), jnp.zeros(grid.shape), jnp.ones(grid.shape))
+    sources = [SourceSpec(4, 4, 4, 'ez', jnp.array([.1, .2])),
+               SourceSpec(4, 4, 4, 'ez', jnp.array([.3, -.1, .2]))]
+    mags = [uniform.MagneticSourceSpec(4, 4, 4, 'hx', jnp.array([.1])),
+            uniform.MagneticSourceSpec(4, 4, 4, 'hx', jnp.array([.2, -.1]))]
+    def run():
+        return uniform.run_until_decay(grid, mats, sources=sources, mag_sources=mags,
+            probes=[ProbeSpec(4, 4, 4, 'ez')], min_steps=12, max_steps=12, check_interval=4)
+    got = run()
+    monkeypatch.setattr(uniform, 'inject_drives', per_cell)
+    expected = run()
+    for a, b in zip(jax.tree.leaves(got), jax.tree.leaves(expected)):
+        if hasattr(a, 'dtype'):
+            assert_peak(a, b)

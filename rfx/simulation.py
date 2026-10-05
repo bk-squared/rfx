@@ -1752,10 +1752,6 @@ def _build_step_setup(
     # ---- metadata tuples ----
     src_meta = [(s.i, s.j, s.k, s.component) for s in sources]
     mag_src_meta = [(s.i, s.j, s.k, s.component) for s in mag_sources]
-    drives = drives_from_sources(src_meta, jnp.stack([s.waveform for s in sources])
-                                 if sources else jnp.zeros((0, 0)))
-    mag_drives = drives_from_sources(mag_src_meta, jnp.stack([s.waveform for s in mag_sources])
-                                     if mag_sources else jnp.zeros((0, 0)))
     prb_meta = [(p.i, p.j, p.k, p.component) for p in probes]
     dft_meta = tuple(
         (probe.component, probe.axis, probe.index, probe.freqs, probe.region)
@@ -1869,8 +1865,6 @@ def _build_step_setup(
         pec_faces_frozen=_pec_faces_frozen,
         pmc_faces_frozen=_pmc_faces_frozen,
         curl_boundary=CurlBoundary(_pec_faces_frozen, _pmc_faces_frozen, periodic),
-        drives=drives,
-        mag_drives=mag_drives,
         src_meta=tuple(src_meta),
         mag_src_meta=tuple(mag_src_meta),
         prb_meta=tuple(prb_meta),
@@ -2154,6 +2148,12 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
     if invariants is None:
         invariants = core_step_invariants(ctx)
     ctx = invariants["ctx"]
+    drives = ctx.drives
+    mag_drives = ctx.mag_drives
+    if drives is None:
+        drives = drives_from_sources(ctx.src_meta, jnp.zeros((len(ctx.src_meta), 0)))
+    if mag_drives is None:
+        mag_drives = drives_from_sources(ctx.mag_src_meta, jnp.zeros((len(ctx.mag_src_meta), 0)))
     materials = ctx.materials
     dt = ctx.dt
     dx = ctx.dx
@@ -2261,7 +2261,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
             # H^{n+1/2} += -dt/mu · M^{n+1/2}. The coefficient is
             # pre-baked into the waveform values at construction time.
             if ctx.use_mag_sources:
-                st = inject_drives(st, ctx.mag_drives, mag_src_vals)
+                st = inject_drives(st, mag_drives, mag_src_vals)
 
             # Snapshot E^n before the linear E-update for the reactive Kerr
             # increment (#437): E^{n+1} = E^n + (E_lin - E^n)/(1 + chi3|E^n|^2/eps_r).
@@ -2511,7 +2511,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
 
         # Soft sources — cast source value to field dtype to avoid
         # mixed-precision scatter warnings (float32 -> float16).
-        st = inject_drives(st, ctx.drives, src_vals)
+        st = inject_drives(st, drives, src_vals)
 
         # Wire-port PHYSICAL V/I/V_port DFT accumulation AFTER soft-source
         # injection (issue #683, decided by measurement 2026-08-29;
@@ -3199,6 +3199,8 @@ def run(
     # ---- scan body (shared kernel; W6.1 kernel + W6.2 setup) ----
     _step_ctx = _StepContext(
         **_setup.ctx_kwargs,
+        drives=drives_from_sources(_setup.src_meta, src_waveforms.T),
+        mag_drives=drives_from_sources(_setup.mag_src_meta, mag_src_waveforms.T),
         # run()-specific overrides
         use_fast_he=use_fast_he,
         use_snapshot=snap_in_body,
@@ -3885,6 +3887,22 @@ def run_until_decay(
         monitor_position = (cx, cy, cz)
     mon_idx = grid.position_to_index(monitor_position)
 
+    # ---- precompute source waveforms up to max_steps ----
+    if sources:
+        src_waveforms = jnp.stack([s.waveform[:max_steps] if s.waveform.shape[0] >= max_steps
+                                   else jnp.pad(s.waveform, (0, max_steps - s.waveform.shape[0]))
+                                   for s in sources], axis=-1)
+    else:
+        src_waveforms = jnp.zeros((max_steps, 0), dtype=jnp.float32)
+
+    if mag_sources:
+        mag_src_waveforms = jnp.stack(
+            [s.waveform[:max_steps] if s.waveform.shape[0] >= max_steps
+             else jnp.pad(s.waveform, (0, max_steps - s.waveform.shape[0]))
+             for s in mag_sources], axis=-1)
+    else:
+        mag_src_waveforms = jnp.zeros((max_steps, 0), dtype=jnp.float32)
+
     # ---- shared kernel (W6.1 + W6.2 setup) ----
     # run_until_decay does NOT build the GPU fast-HE coeffs and uses the
     # historical rect (no-window) flux DFT: use_flux_window=False keeps the
@@ -3893,6 +3911,8 @@ def run_until_decay(
     # decay path onto windows is a deliberate follow-up.
     _step_ctx = _StepContext(
         **_setup.ctx_kwargs,
+        drives=drives_from_sources(_setup.src_meta, src_waveforms.T),
+        mag_drives=drives_from_sources(_setup.mag_src_meta, mag_src_waveforms.T),
         # decay-path-specific overrides
         use_fast_he=False,
         use_snapshot=False,
@@ -3979,22 +3999,6 @@ def run_until_decay(
 
     _run_chunk = _make_chunk_runner()
     _run_tail_chunk = _make_chunk_runner(keep_previous=True)
-
-    # ---- precompute source waveforms up to max_steps ----
-    if sources:
-        src_waveforms = jnp.stack([s.waveform[:max_steps] if s.waveform.shape[0] >= max_steps
-                                   else jnp.pad(s.waveform, (0, max_steps - s.waveform.shape[0]))
-                                   for s in sources], axis=-1)
-    else:
-        src_waveforms = jnp.zeros((max_steps, 0), dtype=jnp.float32)
-
-    if mag_sources:
-        mag_src_waveforms = jnp.stack(
-            [s.waveform[:max_steps] if s.waveform.shape[0] >= max_steps
-             else jnp.pad(s.waveform, (0, max_steps - s.waveform.shape[0]))
-             for s in mag_sources], axis=-1)
-    else:
-        mag_src_waveforms = jnp.zeros((max_steps, 0), dtype=jnp.float32)
 
     # ---- host chunk loop with decay check ----
     # Stop criterion depends on the boundary (issue #169):
