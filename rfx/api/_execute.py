@@ -1786,11 +1786,8 @@ class _ExecuteMixin:
 
         # Forward cpml_axes from the grid — when waveguide ports are
         # present the grid restricts CPML to the non-propagation axes.
-        # The default _run cpml_axes="xyz" builds CPML state for axes
-        # that have no padding, producing shape-broadcast errors like
-        # (8,1,1) vs (nx,ny,nz) during the scan (issue #29). The run()
-        # path forwards these explicitly (see Simulation.run in _execute.py),
-        # so does the waveguide compute path (see _sparams.py).
+        # Low-level runners also default to the grid. Keep this explicit
+        # value so the TFSF subset override below shares these flags.
         cpml_axes_run = grid.cpml_axes
         pec_axes_run = "".join(a for a in "xyz" if a not in cpml_axes_run)
         # The walls themselves come from the grid's per-face declaration

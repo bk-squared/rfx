@@ -87,9 +87,9 @@ def test_the_runner_absorbs_on_every_axis(monkeypatch, lane):
 
 
 @pytest.mark.parametrize("lane", LANES)
-def test_the_lane_defaults_to_absorbing_on_every_axis(lane):
+def test_the_lane_defaults_to_the_grids_absorbing_axes(lane):
     default = inspect.signature(getattr(Simulation, lane)).parameters["cpml_axes"].default
-    assert default == "xyz", f"{lane} defaults to cpml_axes={default!r}"
+    assert default is None, f"{lane} defaults to cpml_axes={default!r}"
 
 
 @pytest.mark.parametrize("axes", ["z", "xy", "x", ""])

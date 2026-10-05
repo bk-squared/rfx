@@ -1998,7 +1998,7 @@ def extract_waveguide_s_matrix(
     n_steps: int,
     *,
     boundary: str = "cpml",
-    cpml_axes: str = "x",
+    cpml_axes: str | None = None,
     pec_axes: str = "yz",
     periodic: tuple[bool, bool, bool] | None = None,
     debye: tuple | None = None,
@@ -2045,6 +2045,9 @@ def extract_waveguide_s_matrix(
         ``checkpoint=True, checkpoint_segments=K``).  See
         :meth:`Simulation.compute_waveguide_s_matrix` for full semantics.
     """
+    from rfx.boundaries.axes import resolve_cpml_axes
+    cpml_axes = resolve_cpml_axes(grid, cpml_axes)
+
     if len(port_cfgs) < 2:
         raise ValueError(
             "extract_waveguide_s_matrix requires at least two waveguide ports"
@@ -2153,7 +2156,7 @@ def extract_waveguide_s_matrix_flux(
     n_steps: int,
     *,
     boundary: str = "cpml",
-    cpml_axes: str = "x",
+    cpml_axes: str | None = None,
     pec_axes: str = "yz",
     periodic: tuple[bool, bool, bool] | None = None,
     debye: tuple | None = None,
@@ -2244,6 +2247,9 @@ def extract_waveguide_s_matrix_flux(
     Parameters mirror ``extract_waveguide_s_params_normalized``; see that
     function for argument documentation.
     """
+    from rfx.boundaries.axes import resolve_cpml_axes
+    cpml_axes = resolve_cpml_axes(grid, cpml_axes)
+
     if len(port_cfgs) < 2:
         raise ValueError(
             "extract_waveguide_s_matrix_flux requires at least two waveguide ports"
@@ -2457,7 +2463,7 @@ def extract_waveguide_s_params_normalized(
     n_steps: int,
     *,
     boundary: str = "cpml",
-    cpml_axes: str = "x",
+    cpml_axes: str | None = None,
     pec_axes: str = "yz",
     periodic: tuple[bool, bool, bool] | None = None,
     debye: tuple | None = None,
@@ -2551,6 +2557,9 @@ def extract_waveguide_s_params_normalized(
     jnp.ndarray
         Normalized S-matrix of shape (n_ports, n_ports, n_freqs), complex.
     """
+    from rfx.boundaries.axes import resolve_cpml_axes
+    cpml_axes = resolve_cpml_axes(grid, cpml_axes)
+
     if len(port_cfgs) < 2:
         raise ValueError(
             "extract_waveguide_s_params_normalized requires at least two waveguide ports"
@@ -2963,7 +2972,7 @@ def extract_multimode_s_matrix(
     n_steps: int,
     *,
     boundary: str = "cpml",
-    cpml_axes: str = "x",
+    cpml_axes: str | None = None,
     pec_axes: str = "yz",
     periodic: tuple[bool, bool, bool] | None = None,
     debye: tuple | None = None,
@@ -3007,6 +3016,9 @@ def extract_multimode_s_matrix(
     mode_map : list of (port_idx, mode_idx, mode_type, (m, n))
         Ordering of rows/columns in the S-matrix.
     """
+    from rfx.boundaries.axes import resolve_cpml_axes
+    cpml_axes = resolve_cpml_axes(grid, cpml_axes)
+
     from rfx.simulation import run as run_simulation
 
     # Flatten to a linear list, keeping track of (port_idx, mode_within_port)
@@ -3134,7 +3146,7 @@ def extract_multimode_s_matrix_flux(
     n_steps: int,
     *,
     boundary: str = "cpml",
-    cpml_axes: str = "x",
+    cpml_axes: str | None = None,
     pec_axes: str = "yz",
     periodic: tuple[bool, bool, bool] | None = None,
     debye: tuple | None = None,
@@ -3189,6 +3201,9 @@ def extract_multimode_s_matrix_flux(
     s_matrix : jnp.ndarray, shape (N, N, n_freqs)
     mode_map : list of (port_idx, mode_idx, mode_type, (m, n))
     """
+    from rfx.boundaries.axes import resolve_cpml_axes
+    cpml_axes = resolve_cpml_axes(grid, cpml_axes)
+
     from rfx.simulation import run as run_simulation
 
     flat_cfgs: list[WaveguidePortConfig] = []

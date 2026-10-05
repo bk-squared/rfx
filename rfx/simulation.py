@@ -2833,7 +2833,7 @@ def run(
     n_steps: int,
     *,
     boundary: str = "pec",
-    cpml_axes: str = "xyz",
+    cpml_axes: str | None = None,
     pec_axes: str | None = None,
     periodic: tuple[bool, bool, bool] | None = None,
     debye: tuple | None = None,
@@ -2889,7 +2889,8 @@ def run(
         DFTs instead of checkpoints; checkpoint options are unused.
         See the module docstring of ``rfx.adjoint``.
     boundary : "pec", "cpml", or "upml"
-    cpml_axes : axes string for CPML (default "xyz")
+    cpml_axes : str or None
+        Defaults to the grid's absorbing axes; explicit subsets are accepted.
     pec_axes : axes string or None
         Axes on which to enforce PEC after each update. If None, uses
         all non-periodic axes.
@@ -3024,6 +3025,9 @@ def run(
     -------
     SimResult with final state, time series, and optional NTFF data.
     """
+    from rfx.boundaries.axes import resolve_cpml_axes
+    cpml_axes = resolve_cpml_axes(grid, cpml_axes)
+
     sources = sources or []
     probes = probes or []
     dft_planes = dft_planes or []
@@ -3649,7 +3653,7 @@ def run_until_decay(
     monitor_component: str = "ez",
     monitor_position: tuple[float, float, float] | None = None,
     boundary: str = "pec",
-    cpml_axes: str = "xyz",
+    cpml_axes: str | None = None,
     pec_axes: str | None = None,
     periodic: tuple[bool, bool, bool] | None = None,
     debye: tuple | None = None,
@@ -3801,6 +3805,9 @@ def run_until_decay(
     -------
     SimResult
     """
+    from rfx.boundaries.axes import resolve_cpml_axes
+    cpml_axes = resolve_cpml_axes(grid, cpml_axes)
+
     if checkpoint_segments is not None:
         raise NotImplementedError(
             "checkpoint_segments is not supported by run_until_decay: "

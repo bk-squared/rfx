@@ -1598,7 +1598,7 @@ def extract_s_matrix(
     n_steps: int | None = None,
     *,
     boundary: str = "pec",
-    cpml_axes: str = "xyz",
+    cpml_axes: str | None = None,
     debye_spec: tuple[list, list[jnp.ndarray]] | None = None,
     lorentz_spec: tuple[list, list[jnp.ndarray]] | None = None,
     pec_edge_masks: object | None = None,
@@ -1619,7 +1619,8 @@ def extract_s_matrix(
     n_steps : int or None
         Defaults to ``grid.num_timesteps(num_periods=30)``.
     boundary : "pec" or "cpml"
-    cpml_axes : axes string for CPML (default "xyz")
+    cpml_axes : str or None
+        Defaults to the grid's absorbing axes; explicit subsets are accepted.
     debye_spec, lorentz_spec : optional ``(poles, masks)`` tuples
         Used to rebuild dispersive coefficients after port loading is
         folded into ``materials``.
@@ -1635,6 +1636,9 @@ def extract_s_matrix(
         when exciting port *j*). With ``return_vi_dump=True``, the bundle also
         carries replayable raw phasors.
     """
+    from rfx.boundaries.axes import resolve_cpml_axes
+    cpml_axes = resolve_cpml_axes(grid, cpml_axes)
+
     import numpy as np
     from rfx.core.yee import init_state, update_h
     from rfx.boundaries.pec import apply_pec
@@ -1940,7 +1944,7 @@ def extract_s_matrix_wire(
     n_steps: int | None = None,
     *,
     boundary: str = "pec",
-    cpml_axes: str = "xyz",
+    cpml_axes: str | None = None,
     debye_spec: tuple[list, list[jnp.ndarray]] | None = None,
     lorentz_spec: tuple[list, list[jnp.ndarray]] | None = None,
     pec_edge_masks: object | None = None,
@@ -1961,7 +1965,8 @@ def extract_s_matrix_wire(
     n_steps : int or None
         Defaults to ``grid.num_timesteps(num_periods=30)``.
     boundary : "pec" or "cpml"
-    cpml_axes : axes string for CPML (default "xyz")
+    cpml_axes : str or None
+        Defaults to the grid's absorbing axes; explicit subsets are accepted.
     debye_spec, lorentz_spec : optional dispersion specs
     return_vi_dump : bool
         When True, return a :class:`WirePortVIReplayBundle` containing the
@@ -1974,6 +1979,9 @@ def extract_s_matrix_wire(
         By default, returns an S-matrix. With ``return_vi_dump=True``, the
         bundle also carries raw phasors and per-port wire cell counts.
     """
+    from rfx.boundaries.axes import resolve_cpml_axes
+    cpml_axes = resolve_cpml_axes(grid, cpml_axes)
+
     import numpy as np
     from rfx.core.yee import init_state, update_h
     from rfx.boundaries.pec import apply_pec
