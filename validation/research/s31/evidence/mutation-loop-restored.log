@@ -1,0 +1,47 @@
+F                                                                        [100%]
+=================================== FAILURES ===================================
+_________________ test_production_step_scatter_count[uniform] __________________
+
+lane = 'uniform'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x12300c290>
+
+    @pytest.mark.parametrize('lane', ['uniform', 'graded', 'distributed', 'distributed_graded'])
+    def test_production_step_scatter_count(lane, monkeypatch):
+        original = jax.lax.scan
+        counts = []
+    
+        def scan(f, init, xs, *args, **kwargs):
+            sample = jax.tree.map(lambda x: x[0], xs)
+            lowered = jax.jit(f).lower(init, sample)
+            # Compile the actual production step, then inspect its StableHLO,
+            # before CPU's scatter-to-loop expansion removes scatter instructions.
+            lowered.compile()
+            hlo = lowered.as_text()
+            blocks = re.findall(r'"stablehlo.scatter"[\s\S]*?->[^\n]*', hlo)
+            count = sum(any(int(x)*int(y)*int(z) > 100 for x, y, z in
+                            re.findall(r'tensor<(\d+)x(\d+)x(\d+)x(?:f32|f64)', block))
+                        for block in blocks)
+            counts.append(count)
+            return original(f, init, xs, *args, **kwargs)
+    
+        monkeypatch.setattr(jax.lax, 'scan', scan)
+        run_case(lane, 1)
+        run_case(lane, 64)
+        assert len(counts) == 2 and counts[0] > 0, counts
+>       checked_counts(counts)
+
+tests/contracts/test_grouped_drives.py:99: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+counts = [15, 78]
+
+    def checked_counts(counts):
+        if os.environ.get('S31_CHECKS_OFF') != '1':
+>           assert counts[1] == counts[0], counts
+E           AssertionError: [15, 78]
+E           assert 78 == 15
+
+tests/contracts/test_grouped_drives.py:67: AssertionError
+=========================== short test summary info ============================
+FAILED tests/contracts/test_grouped_drives.py::test_production_step_scatter_count[uniform]
+1 failed in 3.55s

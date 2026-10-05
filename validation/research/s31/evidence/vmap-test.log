@@ -1,0 +1,11 @@
+.                                                                        [100%]
+=============================== warnings summary ===============================
+tests/unit/runners/test_vmap_sweep.py::test_explicit_current_sweep_is_bit_identical_to_run[pec]
+  /Users/byungkwankim/Documents/rfx-worktrees/s3-1/tests/unit/runners/test_vmap_sweep.py:318: UserWarning: [run] preflight found 3 advisory issue(s) - pass skip_preflight=True to suppress:
+    - dielectric 'substrate' on x: 12.2 cells per λ_eff (eps_r=6.00, freq_max=5GHz, dx=2mm). Need ≥15 cells/λ_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at ε interfaces.
+    - dielectric 'substrate' on y: 12.2 cells per λ_eff (eps_r=6.00, freq_max=5GHz, dx=2mm). Need ≥15 cells/λ_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at ε interfaces.
+    - dielectric 'substrate' on z: 12.2 cells per λ_eff (eps_r=6.00, freq_max=5GHz, dx=2mm). Need ≥15 cells/λ_eff for phase-accurate propagation. Yee without subpixel smoothing has 1st-order convergence at ε interfaces.
+    reference = build(eps_r=float(eps), amplitude_kind="current").run(n_steps=200)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+1 passed, 1 warning in 3.52s

@@ -1,0 +1,33 @@
+{
+  "before": "9ed83eb804874feec1f05f0cee75992c05da2182",
+  "after": "e5114ec284d7b4408242db5c7ed762637df571e4",
+  "files": {
+    "after.tar.gz": "927902019705231262d99104d897200247559b7aa080b1b1bb07255e51c9bd2e",
+    "._job.sh": "78acf971d9ea80bda1fa5af29893cfa89a7c9c649956bf2f63f9806584d0526e",
+    "measure_sources.py": "ced5339915d82ff19bc788f955e567200bbf6bae2efeada45c4b02de1298e072",
+    "._inputs": "78acf971d9ea80bda1fa5af29893cfa89a7c9c649956bf2f63f9806584d0526e",
+    "job.sh": "6db5a38e0b0ea35c75949f40bbc370d9161bd2a2c0ecac4c8ddac37305be076f",
+    "._measure_sources.py": "78acf971d9ea80bda1fa5af29893cfa89a7c9c649956bf2f63f9806584d0526e",
+    "before.tar.gz": "54a0fdbf17336856f46ff823ebb82e267e701dd92aebf9374d3f22fd09468a2e",
+    "._before.tar.gz": "78acf971d9ea80bda1fa5af29893cfa89a7c9c649956bf2f63f9806584d0526e",
+    "._after.tar.gz": "78acf971d9ea80bda1fa5af29893cfa89a7c9c649956bf2f63f9806584d0526e",
+    "inputs/params.json": "d3cce86c07d4f28f24a8b101fd1f01b874162faef3d66de1926f4c4d537d70d5",
+    "inputs/._p3_throughput_model.py": "78acf971d9ea80bda1fa5af29893cfa89a7c9c649956bf2f63f9806584d0526e",
+    "inputs/p3_throughput_model.py": "791691e744d885fd1aae1d27129ad75d0f2b02e205337e4607e485d388c8ea1c",
+    "inputs/._A3d": "78acf971d9ea80bda1fa5af29893cfa89a7c9c649956bf2f63f9806584d0526e",
+    "inputs/._d1_scene.py": "78acf971d9ea80bda1fa5af29893cfa89a7c9c649956bf2f63f9806584d0526e",
+    "inputs/d1_scene.py": "e392355c807ac3dff87cbc760448d48e2e5234b3e48733ed4bab94f38f1abd14",
+    "inputs/nonuniform_patch_demo.py": "6eaff4b7efbd659aaa43bae38aabf005c6014633e20169b9dcab5f94c1abc5a6",
+    "inputs/._params.json": "78acf971d9ea80bda1fa5af29893cfa89a7c9c649956bf2f63f9806584d0526e",
+    "inputs/._nonuniform_patch_demo.py": "78acf971d9ea80bda1fa5af29893cfa89a7c9c649956bf2f63f9806584d0526e",
+    "inputs/._A3c": "78acf971d9ea80bda1fa5af29893cfa89a7c9c649956bf2f63f9806584d0526e",
+    "inputs/A3d/._arm_scene.py": "78acf971d9ea80bda1fa5af29893cfa89a7c9c649956bf2f63f9806584d0526e",
+    "inputs/A3d/arm_scene.py": "fd9feaa4f137d583cfaeae99e26d7f40b2da687f47e785b938824ef0ef213e67",
+    "inputs/A3c/freeze_d1_scene.py": "5920c35feac8e2a69fc5e21c94fba576596edd75340e217c64240d403a34907a",
+    "inputs/A3c/._freeze_d1_scene.py": "78acf971d9ea80bda1fa5af29893cfa89a7c9c649956bf2f63f9806584d0526e",
+    "inputs/A3c/._expected_cells.json": "78acf971d9ea80bda1fa5af29893cfa89a7c9c649956bf2f63f9806584d0526e",
+    "inputs/A3c/expected_cells.json": "4dc5c9878ff89d0fef8ab5b18f3d6a4951846f93d3f385cce910e2fd64f088f9",
+    "inputs/A3c/tutorial_constants.json": "bd304d73121caf91a2d24383bd7c1476ee44a7fb1a9424c1940c6d578dc4e331",
+    "inputs/A3c/._tutorial_constants.json": "78acf971d9ea80bda1fa5af29893cfa89a7c9c649956bf2f63f9806584d0526e"
+  }
+}
