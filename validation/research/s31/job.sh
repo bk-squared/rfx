@@ -6,8 +6,7 @@ mkdir -p "$scratch" "$root/results"
 export TMPDIR="$scratch" PIP_CACHE_DIR="$scratch/pip-cache"
 export UV_CACHE_DIR="$scratch/uv-cache" UV_PYTHON_INSTALL_DIR="$scratch/python"
 export PYTHONDONTWRITEBYTECODE=1 MPLCONFIGDIR="$scratch/mpl"
-python -m venv "$scratch/bootstrap"
-"$scratch/bootstrap/bin/pip" install -q uv==0.12.19
+python -m pip install -q --target "$scratch/bootstrap" uv==0.12.19
 UV="$scratch/bootstrap/bin/uv"
 "$UV" venv -q --python 3.11.16 "$scratch/venv"
 PY="$scratch/venv/bin/python"
