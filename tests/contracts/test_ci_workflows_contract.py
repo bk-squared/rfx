@@ -341,6 +341,10 @@ def test_work_steps_skip_only_on_the_one_known_value(job: str) -> None:
         for step in steps
         if str(step.get("if", "")).strip()
         and str(step["if"]).strip() not in (WORK_IF, SKIP_IF)
+        and not (job == "guards-and-preflight" and (
+            "scripts/ci/check_data_budget.py" in step.get("run", "")
+            or step.get("name") == "Data budget already passed on the PR"
+        ))
     ]
     assert not wrong, (
         f"`{job}`: a step gates on something other than {WORK_IF!r} (do the work) "
@@ -520,7 +524,7 @@ def _data_budget_steps(job: str) -> list[dict]:
 
 
 def test_the_data_budget_runs_once_on_both_branches() -> None:
-    """In `guards-and-preflight`, ungated; nowhere in the six shards.
+    """In `guards-and-preflight`, on both verdicts except the merge queue.
 
     A PR that adds records under docs/ or scripts/ is a not-code diff, so a
     step gated on the code branch would never see the case it exists for. It
@@ -529,7 +533,12 @@ def test_the_data_budget_runs_once_on_both_branches() -> None:
     """
     steps = _data_budget_steps("guards-and-preflight")
     assert len(steps) == 1, [s.get("name") for s in steps]
-    assert not str(steps[0].get("if", "")).strip(), steps[0].get("if")
+    assert steps[0]["if"] == "github.event_name != 'merge_group'"
+    explainers = [s for s in load(PR_TESTS)["jobs"]["guards-and-preflight"]["steps"]
+                  if s.get("name") == "Data budget already passed on the PR"]
+    assert len(explainers) == 1
+    assert explainers[0]["if"] == "github.event_name == 'merge_group'"
+    assert explainers[0]["run"] == "echo 'PR-level gate, passed on the PR'"
     assert not _data_budget_steps("fast-suite")
 
 
@@ -802,6 +811,7 @@ def _classify(env: dict[str, str], tmp_path: Path) -> tuple[str, str]:
             "PATH": os.environ.get("PATH", ""),
             "HOME": os.environ.get("HOME", "/tmp"),
             "GITHUB_OUTPUT": str(output),
+            "TMPDIR": str(tmp_path),
             **env,
         },
         capture_output=True, text=True, timeout=120,
@@ -1021,3 +1031,45 @@ def test_build_configuration_is_code_even_before_it_exists(path: str) -> None:
 def test_a_requirements_file_that_is_not_the_build_is_not_code() -> None:
     """Root-scoped on purpose: the docs build has its own."""
     assert changed_paths.code_changed(["docs/requirements.txt"]) is False
+
+
+@pytest.mark.parametrize("filename,contexts", [
+    ("lint.yml", {"ruff"}),
+    ("pr-tests.yml", {"changes", "guards-and-preflight", "fast-suite (${{ matrix.group }})"}),
+    ("pr-body.yml", {"pr-body-contract"}),
+    ("changelog-fragment.yml", {"changelog-fragment"}),
+    ("docs-consistency.yml", {"docs-consistency"}),
+    ("public-docs-source.yml", {"public-docs-source", "api-reference"}),
+])
+def test_required_and_companion_workflows_run_on_merge_group(filename, contexts):
+    workflow = load(WORKFLOW_DIR / filename)
+    triggers = workflow.get("on", workflow.get(True))
+    assert triggers["merge_group"] == {"types": ["checks_requested"]}
+    assert "pull_request" in triggers
+    jobs = workflow["jobs"]
+    assert contexts <= {job.get("name", key) for key, job in jobs.items()}
+    assert all("if" not in job for job in jobs.values())
+    assert workflow["concurrency"] == {
+        "group": "${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}",
+        "cancel-in-progress": "${{ github.event_name == 'pull_request' }}",
+    }
+
+
+def test_classifier_receives_merge_group_shas():
+    steps = load(PR_TESTS)["jobs"]["changes"]["steps"]
+    classify = next(s for s in steps if s.get("id") == "classify")
+    assert "if" not in classify
+    for side in ("base", "head"):
+        assert classify["env"][f"{side.upper()}_SHA"] == (
+            "${{ github.event.pull_request." + side + ".sha || "
+            "github.event.merge_group." + side + "_sha }}"
+        )
+
+
+@pytest.mark.parametrize("base,head", [("HEAD", "HEAD"), ("not-a-sha", "HEAD"), ("", "")])
+def test_merge_group_runs_everything_even_for_empty_or_unknown_diff(tmp_path, base, head):
+    written, log = _classify(
+        {"EVENT_NAME": "merge_group", "BASE_SHA": base, "HEAD_SHA": head}, tmp_path,
+    )
+    assert written == "code_changed=true", log
+    assert "merge group always runs the full lane" in log

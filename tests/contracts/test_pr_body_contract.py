@@ -689,6 +689,7 @@ def test_workflow_exists_and_runs_the_script() -> None:
     assert any("scripts/ci/check_pr_body.py" in block for block in scripts)
     # `on:` parses as the boolean True in YAML 1.1; accept either spelling.
     triggers = data.get("on", data.get(True))
+    assert triggers["merge_group"] == {"types": ["checks_requested"]}
     assert set(triggers["pull_request"]["types"]) == {
         "opened", "edited", "reopened", "synchronize", "labeled", "unlabeled",
     }, (

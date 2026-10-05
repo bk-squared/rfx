@@ -13,6 +13,8 @@ name: changelog-fragment
 # were convention, not enforcement.
 
 on:
+  merge_group:
+    types: [checks_requested]
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled]
 
@@ -33,7 +35,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: PR gate already passed before queue admission
+        if: github.event_name == 'merge_group'
+        run: echo 'PR-level gate; the queue admits only PRs that passed it'
+
       - name: Check out repository
+        if: github.event_name != 'merge_group'
         # fetch-depth: 0 — the check diffs base.sha...head.sha, and a shallow
         # clone has neither commit's history to compute the merge base from.
         uses: actions/checkout@v4
@@ -41,11 +48,13 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Python
+        if: github.event_name != 'merge_group'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Require a changelog fragment
+        if: github.event_name != 'merge_group'
         # The checker is stdlib-only; nothing is installed.
         env:
           # toJSON, not join(..., ','): a label may contain a comma, and a

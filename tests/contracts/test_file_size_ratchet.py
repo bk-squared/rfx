@@ -167,7 +167,9 @@ def test_required_job_and_local_runner_bind_ratchet():
     assert not step.get("if") and not step.get("continue-on-error")
     assert step["run"] == "python scripts/ci/check_file_size_ratchet.py"
     # No HEAD_SHA: the checked-out merge with the base is what gets counted.
-    assert step["env"] == {"BASE_SHA": "${{ github.event.pull_request.base.sha }}"}
+    assert step["env"] == {
+        "BASE_SHA": "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}",
+    }
     local = (REPO / "scripts/ci/local.sh").read_text()
     assert 'BASE_SHA="$CHANGELOG_BASE" \\\n  "$PYTHON" scripts/ci/check_file_size_ratchet.py' in local
     assert "HEAD_SHA=" not in local.split("check_file_size_ratchet.py")[0].rsplit("begin", 1)[-1]
