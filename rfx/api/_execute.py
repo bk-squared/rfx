@@ -2925,6 +2925,7 @@ class _ExecuteMixin:
     def _execute_distributed_nonuniform_from_materials(
         self,
         *,
+        assembly=None,
         eps_override: jnp.ndarray | None = None,
         sigma_override: jnp.ndarray | None = None,
         pec_mask_override: jnp.ndarray | None = None,
@@ -3129,10 +3130,11 @@ class _ExecuteMixin:
         from rfx.conductors import assembled_materials, solve_conductors, kernel_conductors, at_kernel
         self._pf_campaign_ctx = None
         self._realized_geometry_record = None
-        conductors = solve_conductors(self, grid, nonuniform=True,
-            preflight=dict(skip=skip_preflight,
-                context="run" if gather_final_state else "forward",
-                check_ntff="advisory" if gather_final_state else True))
+        conductors = (assembly.take() if assembly is not None else
+            solve_conductors(self, grid, nonuniform=True,
+                preflight=dict(skip=skip_preflight,
+                    context="run" if gather_final_state else "forward",
+                    check_ntff="advisory" if gather_final_state else True)))
         _dnu_pec_sheets: list = []
         _dnu_pec_wires: list = []
         materials, debye_spec, lorentz_spec, pec_mask = (
@@ -4394,6 +4396,12 @@ class _ExecuteMixin:
             self._validate_forward_sparameter_request()
 
 
+        # Keep preflight's public warning/refusal priority ahead of lane admission.
+        from rfx.conductors import prepare_solve
+        _solve_assembly = prepare_solve(self, distributed=distributed)
+        self._auto_preflight(skip=skip_preflight, context="forward",
+            conductors=None if skip_preflight else _solve_assembly.realized())
+
         # ---- (2,4) stencil fence: reject order=4 on unsupported lanes ----
         self._check_stencil_order_supported(distributed=distributed)
 
@@ -4512,6 +4520,7 @@ class _ExecuteMixin:
             refuse_f0_sheets(self._thin_conductors,
                              "distributed non-uniform forward()")
             result = self._forward_distributed_nonuniform_from_materials(
+                assembly=_solve_assembly,
                 eps_override=eps_override,
                 sigma_override=sigma_override,
                 pec_mask_override=pec_mask_override,
@@ -4552,10 +4561,7 @@ class _ExecuteMixin:
                     kerr_chi3=None,
                     holds_ports=design_box_holds_ports,
                 )
-            # Check declared inputs before ring-down attaches internal probes.
-            from rfx.conductors import solve_conductors
-            conductors = solve_conductors(self, self._build_nonuniform_grid(),
-                nonuniform=True, preflight=dict(skip=skip_preflight, context="forward"))
+            conductors = _solve_assembly.take()
             _nu_fwd_call = functools.partial(
                 self._forward_nonuniform_from_materials,
                 conductors=conductors,
@@ -4587,13 +4593,12 @@ class _ExecuteMixin:
 
         # ---- Uniform forward lane (plan.lane == "fwd_uniform") ----
         n_steps = plan.n_steps
-        grid = self._build_grid()
+        conductors = _solve_assembly.take()
+        grid = conductors.grid
         _fwd_sheet_specs: list = []
         _fwd_pec_sheets: list = []
         _fwd_pec_wires: list = []
-        from rfx.conductors import assembled_materials, solve_conductors
-        conductors = solve_conductors(self, grid,
-            preflight=dict(skip=skip_preflight, context="forward"))
+        from rfx.conductors import assembled_materials
         materials, debye_spec, lorentz_spec, pec_mask, _, _, kerr_chi3 = assembled_materials(
             conductors, sheet_specs=_fwd_sheet_specs,
             pec_sheets=_fwd_pec_sheets, pec_wires=_fwd_pec_wires)
@@ -5020,8 +5025,14 @@ class _ExecuteMixin:
             devices=devices,
         )
 
-        # ---- (2,4) stencil fence: reject order=4 on unsupported lanes ----
+        # Keep preflight's public warning/refusal priority ahead of lane admission.
+        from rfx.conductors import prepare_solve
         _distributed_run = devices is not None and len(devices) > 1
+        _solve_assembly = prepare_solve(self, distributed=_distributed_run)
+        self._auto_preflight(skip=skip_preflight, context="run", check_ntff="advisory",
+            conductors=None if skip_preflight else _solve_assembly.realized())
+
+        # ---- (2,4) stencil fence: reject order=4 on unsupported lanes ----
         self._check_stencil_order_supported(distributed=_distributed_run)
 
         # ---- W6.3 unified lane dispatch: one place decides + rejects ----
@@ -5068,6 +5079,7 @@ class _ExecuteMixin:
                 "arguments.",
                 stacklevel=2,
             )
+            del _solve_assembly  # the fallback performs its own solve assembly
             return self.run(**{**_call_args, "devices": None,
                                "exchange_interval": 1,
                                "skip_preflight": True})
@@ -5156,6 +5168,7 @@ class _ExecuteMixin:
                         "are not gathered across processes. Use devices from one "
                         "process, or forward(distributed=True) for the probe traces.")
                 grid, result, geometry_record = self._execute_distributed_nonuniform_from_materials(
+                    assembly=_solve_assembly,
                     n_steps=n_steps, devices=devices,
                     exchange_interval=exchange_interval,
                     skip_preflight=skip_preflight, gather_final_state=True,
@@ -5171,7 +5184,7 @@ class _ExecuteMixin:
                 _res = run_distributed(
                     self, n_steps=n_steps, devices=devices,
                     exchange_interval=exchange_interval,
-                    preflight=dict(skip=skip_preflight, context="run", check_ntff="advisory"),
+                    assembly=_solve_assembly,
                     conformal_pec=conformal_pec,
                 )
             if compute_s_params:
@@ -5244,10 +5257,7 @@ class _ExecuteMixin:
                     self._warn_until_decay_dc_floor(
                         dt=_nu_dt_for_dc, n_table=decay_max_steps
                     )
-            # Check declared inputs before ring-down attaches internal probes.
-            from rfx.conductors import solve_conductors
-            conductors = solve_conductors(self, self._build_nonuniform_grid(),
-                nonuniform=True, preflight=dict(skip=skip_preflight, context="run", check_ntff="advisory"))
+            conductors = _solve_assembly.take()
             _nu_call = functools.partial(
                 self._run_nonuniform,
                 conductors=conductors,
@@ -5293,14 +5303,13 @@ class _ExecuteMixin:
             require_accumulated_current_moments(self, _res, "run")
             return _res
 
-        grid = self._build_grid()
+        conductors = _solve_assembly.take()
+        grid = conductors.grid
         _run_sheet_specs: list = []
         _run_pec_sheets: list = []
         _run_pec_wires: list = []
         _geometry_masks, _assembly_entries = [], []
-        from rfx.conductors import assembled_materials, solve_conductors
-        conductors = solve_conductors(self, grid,
-            preflight=dict(skip=skip_preflight, context="run", check_ntff="advisory"))
+        from rfx.conductors import assembled_materials
         base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, _, kerr_chi3 = assembled_materials(
             conductors, sheet_specs=_run_sheet_specs,
             pec_sheets=_run_pec_sheets, pec_wires=_run_pec_wires,

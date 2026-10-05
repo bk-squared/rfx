@@ -138,6 +138,43 @@ def solve_conductors(sim, grid, *, nonuniform=False, preflight=None):
     return root
 
 
+class _PreparedSolve:
+    """Execution-local ownership, transferred once to the selected runner.
+
+    With preflight disabled, assembly remains lazy until after lane admission.
+    The empty handoff can stay in dispatch frames without pinning dense arrays
+    while a distributed runner stages and drops its full-domain products.
+    """
+    def __init__(self, sim):
+        self.sim = sim
+        self._product = None
+        self._taken = False
+
+    def realized(self):
+        if self._taken:
+            raise RuntimeError("Solve assembly was already consumed")
+        if self._product is None:
+            nonuniform = self.sim._uses_nonuniform_mesh
+            grid = (self.sim._build_nonuniform_grid() if nonuniform
+                    else self.sim._build_grid())
+            self._product = solve_conductors(self.sim, grid, nonuniform=nonuniform)
+        return self._product
+
+    def take(self):
+        product = self.realized()
+        self._product = None
+        self._taken = True
+        return product
+
+
+def prepare_solve(sim, *, distributed=False):
+    """Keep solve ownership local to this execution, never in audit caches."""
+    if distributed:
+        sim._pf_campaign_ctx = None
+        sim._realized_geometry_record = None
+    return _PreparedSolve(sim)
+
+
 def assembled_materials(root, **collectors):
     """Unpack explicitly supplied solve products into legacy runner arguments."""
     if root.mode != "solve":

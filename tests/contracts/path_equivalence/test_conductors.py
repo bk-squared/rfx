@@ -346,8 +346,8 @@ def test_runner_refuses_an_audit_object():
         at_kernel(sim, audit, lane='run_uniform', pec_edges=audit.pec_edges)
 
 
-@pytest.mark.parametrize('graded', [False, True])
-def test_distributed_releases_dense_products_before_staging(monkeypatch, graded, two_device_test):
+@pytest.mark.parametrize('graded,entry', [(False, 'run'), (True, 'run'), (True, 'forward')])
+def test_distributed_releases_dense_products_before_staging(monkeypatch, graded, entry, two_device_test):
     import jax
     import weakref
     import rfx.conductors as products
@@ -380,14 +380,17 @@ def test_distributed_releases_dense_products_before_staging(monkeypatch, graded,
     staged = []
 
     def stage(*a, **kw):
-        assert roots and all(ref() is None for ref in roots)
+        assert len(roots) == 2 and all(ref() is None for ref in roots)
         assert sim._pf_campaign_ctx is None
         assert sim._realized_geometry_record is None
         staged.append(1)
         return original_stage(*a, **kw)
 
     monkeypatch.setattr(module, name, stage)
-    sim.run(n_steps=2, compute_s_params=False, devices=jax.devices()[:2])
+    if entry == 'forward':
+        sim.forward(n_steps=2, distributed=True, devices=jax.devices()[:2])
+    else:
+        sim.run(n_steps=2, compute_s_params=False, devices=jax.devices()[:2])
     assert staged
 
 
@@ -481,3 +484,39 @@ def test_ringdown_preflight_sees_only_declared_probes(monkeypatch, lane, entry):
     assert len(events[2][1]) > len(declared)
     assert tuple(map(id, sim._probes)) == declared
     assert result.time_series.shape == (600, len(declared))
+
+
+@pytest.mark.parametrize('entry', ['run', 'forward'])
+@pytest.mark.parametrize('graded', [False, True])
+@pytest.mark.parametrize('fence', ['_check_stencil_order_supported', '_dispatch_plan'])
+@pytest.mark.parametrize('skip', [False, True])
+def test_preflight_precedes_lane_refusals(monkeypatch, entry, graded, fence, skip):
+    """Preserve the public error priority, including the explicit skip escape."""
+    from rfx.preflight._common import PreflightIssue, PreflightReport
+    lane = ('fwd_' if entry == 'forward' else 'run_') + ('nonuniform' if graded else 'uniform')
+    sim = build(('_geometry', 'pec_volume'), lane)
+    seen = []
+    method = '_assemble_materials_nu' if graded else '_assemble_materials'
+    assemble = getattr(sim, method)
+
+    def assembly(*a, **kw):
+        seen.append('assembly')
+        return assemble(*a, **kw)
+
+    def preflight(**kw):
+        seen.append('preflight')
+        assert kw['_conductors'].mode == 'solve'
+        return PreflightReport([PreflightIssue('declaration refusal witness', severity='error')])
+
+    def lane_refusal(*a, **kw):
+        seen.append('lane')
+        raise NotImplementedError('lane refusal witness')
+
+    monkeypatch.setattr(sim, method, assembly)
+    monkeypatch.setattr(sim, 'preflight', preflight)
+    monkeypatch.setattr(sim, fence, lane_refusal)
+    error, reason = ((NotImplementedError, 'lane refusal witness') if skip
+                     else (ValueError, 'declaration refusal witness'))
+    with pytest.raises(error, match=reason):
+        getattr(sim, entry)(n_steps=2, skip_preflight=skip)
+    assert seen == (['lane'] if skip else ['assembly', 'preflight'])

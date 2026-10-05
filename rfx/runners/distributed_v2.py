@@ -597,7 +597,7 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
 
 
 def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
-                    _source_port_indices=None, _record_probes=None, preflight=None, **kwargs):
+                    _source_port_indices=None, _record_probes=None, preflight=None, assembly=None, **kwargs):
     """Run FDTD simulation distributed across multiple devices.
 
     Uses 1D slab decomposition along the x-axis.  Supports PEC and
@@ -740,8 +740,12 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     _d_pec_sheets: list = []
     _d_pec_wires: list = []
     _geometry_masks, _assembly_entries = [], []
-    grid = sim._build_grid()
-    conductors = solve_conductors(sim, grid, preflight=preflight)
+    if assembly is None:
+        grid = sim._build_grid()
+        conductors = solve_conductors(sim, grid, preflight=preflight)
+    else:
+        conductors = assembly.take()
+        grid = conductors.grid
     base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, *_assembly_rest = (
         assembled_materials(conductors, pec_sheets=_d_pec_sheets,
                                 pec_wires=_d_pec_wires,
