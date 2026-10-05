@@ -481,13 +481,12 @@ def init_cpml(grid, *, kappa_max: float | None = None,
     # preserved on the symmetric common case). Faces with an active
     # layer count below the budget get a no-op-padded profile so the
     # scan body sees identity updates in the padded region.
-    from rfx.boundaries.depths import resolve_face_depths
+    from rfx.boundaries.depths import grid_face_depths
 
     face_layers = getattr(grid, "face_layers", None) or {}
     grid_axes = getattr(grid, "cpml_axes", "xyz")
-    depths = {record.name: record.realized for record in resolve_face_depths(
-        budget=n, absorbing_axes=grid_axes, pec_faces=pec_faces,
-        pmc_faces=pmc_faces, face_layers=face_layers,
+    depths = {record.name: record.realized for record in grid_face_depths(
+        grid, budget=n, pec_faces=pec_faces, pmc_faces=pmc_faces,
     )}
     for face_name in depths:
         if face_name[0] not in grid_axes and face_name not in noop_faces:

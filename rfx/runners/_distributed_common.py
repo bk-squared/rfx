@@ -1936,14 +1936,10 @@ def _distributed_boundary_layers(grid, n_devices, *, pec_faces=None,
     """
     pec_faces = set(getattr(grid, "pec_faces", None) or ()) if pec_faces is None else set(pec_faces)
     pmc_faces = set(getattr(grid, "pmc_faces", None) or ()) if pmc_faces is None else set(pmc_faces)
-    walls = pec_faces | pmc_faces
-    budget = grid.cpml_layers if cpml_layers is None else cpml_layers
-    face_layers = getattr(grid, "face_layers", None) or {}
-    layers = {
-        f"{axis}_{side}": (0 if f"{axis}_{side}" in walls else
-                          int(face_layers.get(f"{axis}_{side}", budget)))
-        for axis in "xyz" for side in ("lo", "hi")
-    }
+    from rfx.boundaries.depths import grid_face_depths
+
+    layers = {face.name: face.realized for face in grid_face_depths(
+        grid, pec_faces=pec_faces, pmc_faces=pmc_faces, budget=cpml_layers)}
     pad_x = (-grid.nx) % n_devices
     nx_per = (grid.nx + pad_x) // n_devices
     for face, rank, width in (("x_lo", 0, nx_per),

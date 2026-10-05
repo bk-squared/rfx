@@ -397,7 +397,7 @@ def compute_rcs(
         if (_oblique or float(theta_inc) != 0.0 or float(phi_inc) != 0.0
                 or not isinstance(grid, Grid) or grid.is_2d or boundary != "cpml"
                 or cpml_layers <= 0
-                or any(v != cpml_layers for v in grid.face_layers.values())
+                or any(face.declared != cpml_layers for face in grid.boundary_depths)
                 or any(getattr(grid, f"pad_{axis}_{side}") != cpml_layers
                        for axis in "xyz" for side in ("lo", "hi"))):
             raise NotImplementedError(

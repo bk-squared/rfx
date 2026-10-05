@@ -656,15 +656,8 @@ def _validate_cfg_multiband_grading(self, _w) -> None:
     "uniform" up to 1 ppm of cell size — far below any grading a user
     can mean, and above float round-tripping in a computed profile.
 
-    Inherited caveat: ``_preflight_face_layers`` over-reports the
-    absorber on the non-port axes of a waveguide-port simulation (the
-    grid drops those axes from ``cpml_axes``, the helper does not).
-    This check inherits that, as every other consumer of the helper
-    does; the effect is a possible advisory on an axis whose absorber
-    the grid will not actually allocate. Advisory tier, so it costs a
-    line of noise, never a run.
     """
-    face_layers = None
+    realized_depths = None
     for ax_name, profile in (("x", self._dx_profile),
                              ("y", self._dy_profile),
                              ("z", self._dz_profile)):
@@ -705,10 +698,10 @@ def _validate_cfg_multiband_grading(self, _w) -> None:
                 ),
                 stacklevel=3,
             )
-        if face_layers is None:
-            face_layers = self._preflight_face_layers()
+        if realized_depths is None:
+            realized_depths = self._preflight_face_layers()
         for side in ("lo", "hi"):
-            layers = face_layers.get(f"{ax_name}_{side}", 0)
+            layers = realized_depths.get(f"{ax_name}_{side}", 0)
             if layers < 2 or len(p) < layers:
                 # layers < 2: "one uniform cell" is vacuous (no adjacent
                 # ratio exists inside a single-cell runway).
@@ -1101,8 +1094,8 @@ def _validate_cfg_nonuniform_limitations(
         # PEC/PMC (allocation 0) no longer reports a thin absorber that
         # does not exist, and a per-face `hi_thickness` is measured at the
         # thickness it actually allocates.
-        _face_layers = self._preflight_face_layers()
-        _z_layers = max(_face_layers["z_lo"], _face_layers["z_hi"])
+        _realized_depths = self._preflight_face_layers()
+        _z_layers = max(_realized_depths["z_lo"], _realized_depths["z_hi"])
         if (self._boundary == "cpml"
                 and _z_layers > 0
                 and not is_tracer(self._dz_profile)):
@@ -1121,11 +1114,11 @@ def _validate_cfg_nonuniform_limitations(
             _z_thick_by_face = {
                 _side: _thick[2]
                 for _side, _thick in (("lo", _ct_lo), ("hi", _ct_hi))
-                if _face_layers[f"z_{_side}"] > 0
+                if _realized_depths[f"z_{_side}"] > 0
             }
             _thin_side = min(_z_thick_by_face, key=_z_thick_by_face.get)
             cpml_z_thick = _z_thick_by_face[_thin_side]
-            _z_cells_reported = _face_layers[f"z_{_thin_side}"]
+            _z_cells_reported = _realized_depths[f"z_{_thin_side}"]
             if cpml_z_thick < cpml_thickness * 0.3:
                 _w.warn(
                     PreflightWarning(

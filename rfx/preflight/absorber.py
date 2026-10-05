@@ -352,7 +352,7 @@ def _validate_cfg_dispersive_pole_at_absorber_face(
 def _validate_cfg_compute_cpml_thickness(
     self, cpml_thickness: float
 ) -> tuple[list[float], list[float], set]:
-    """Per-face CPML thickness (2026-04). Mirrors Grid._face_pad:
+    """Per-face CPML thickness from the realized depth record:
     pec_faces / pmc_faces / periodic-axis faces consume 0 cells;
     remaining faces get their CPML thickness from that face's own cells
     on each axis, including non-uniform profiles. Under asymmetric
@@ -363,7 +363,7 @@ def _validate_cfg_compute_cpml_thickness(
 
     Issue #647: the per-face LAYER COUNT now comes from
     :meth:`_preflight_face_layers`, which reads
-    ``Boundary.lo_thickness`` / ``hi_thickness`` off the normalized
+    the realized per-face depth record from the normalized
     ``_boundary_spec``. Before that, every absorbing face was reported
     at the global ``cpml_layers`` budget, so
     ``z=Boundary(lo='pec', hi='cpml', hi_thickness=2)`` with
@@ -375,7 +375,7 @@ def _validate_cfg_compute_cpml_thickness(
     Returns ``(cpml_thick_lo, cpml_thick_hi, _pmc_faces_set)``.
     """
     _pmc_faces_set = set(self._boundary_spec.pmc_faces())
-    _face_layers = self._preflight_face_layers()
+    _realized_depths = self._preflight_face_layers()
     # ``cpml_thickness`` is the BUDGET thickness (cpml_layers * dx, or 0
     # on a non-absorbing boundary); per-cell thickness is that divided
     # by the budget layer count.
@@ -386,7 +386,7 @@ def _validate_cfg_compute_cpml_thickness(
 
     def _face_thickness(ax_idx: int, side: str) -> float:
         ax_name = "xyz"[ax_idx]
-        n_face = _face_layers[f"{ax_name}_{side}"]
+        n_face = _realized_depths[f"{ax_name}_{side}"]
         if n_face <= 0:
             return 0.0
         _prof = _axis_profiles[ax_idx]
@@ -430,9 +430,8 @@ def _validate_cfg_absorber_budget_vs_grid(self, _w, dx: float) -> None:
 
     The extent arithmetic mirrors ``rfx.grid.Grid.__init__``
     (``ceil(domain/dx) + 1 + pad_lo + pad_hi``) through
-    :meth:`_preflight_face_layers`; it inherits that helper's
-    waveguide-axis divergence, which makes this check UNDER-fire (never
-    over-fire) on waveguide-port simulations.
+    :meth:`_preflight_face_layers`, including the realized waveguide
+    axes (§7 Addendum 3).
 
     Issue #737/#742: skips any axis whose ``pad_lo`` and ``pad_hi`` are
     both 0 -- a PEC-closed or periodic-closed axis allocates no absorber
@@ -449,14 +448,14 @@ def _validate_cfg_absorber_budget_vs_grid(self, _w, dx: float) -> None:
     n_budget = int(self._cpml_layers or 0)
     if n_budget <= 0 or dx <= 0:
         return
-    face_layers = self._preflight_face_layers()
+    realized_depths = self._preflight_face_layers()
     for ax_idx, ax_name in enumerate("xyz"):
         if ax_name == "z" and self._mode.startswith("2d"):
             continue
         extent_m = (self._domain[ax_idx] if ax_idx < len(self._domain)
                     else self._domain[-1])
-        pad_lo = face_layers[f"{ax_name}_lo"]
-        pad_hi = face_layers[f"{ax_name}_hi"]
+        pad_lo = realized_depths[f"{ax_name}_lo"]
+        pad_hi = realized_depths[f"{ax_name}_hi"]
         if pad_lo <= 0 and pad_hi <= 0:
             # Issue #737/#742: no allocation on either face of this
             # axis (PEC/PMC-closed or periodic-closed) -- nothing to
@@ -488,47 +487,10 @@ def _validate_cfg_absorber_budget_vs_grid(self, _w, dx: float) -> None:
         )
 
 def _preflight_face_layers(self) -> dict[str, int]:
-    """Allocated absorbing layers per face — preflight's mirror of
-    ``rfx.grid.Grid._face_pad`` (issue #647).
+    """Realized absorbing pads; §7 Addendum 3 includes waveguide rewrites."""
+    from rfx.boundaries.depths import simulation_face_depths
 
-    Keyed off the normalized ``_boundary_spec``, which is correct for
-    BOTH legacy scalar construction (``boundary='cpml'`` +
-    ``pec_faces=`` + ``set_periodic_axes()`` are all folded into it by
-    ``_build_spec_from_legacy``) and per-face ``BoundarySpec``
-    construction. A face is allocated
-    ``Boundary.resolved_{lo,hi}_thickness(cpml_layers)`` cells when its
-    own token absorbs, and 0 otherwise — which is what makes PEC / PMC
-    / periodic faces fall out without a separate rule.
-
-    Known divergence from ``Grid._face_pad``, deliberately not
-    mirrored: the grid drops non-port axes from ``cpml_axes`` when
-    waveguide ports are present, so on such a simulation this
-    over-reports the absorber on the non-port axes. That is the
-    pre-existing behaviour every current warning is calibrated
-    against; changing it belongs to a waveguide-lane change, not here.
-    """
-    n_default = int(self._cpml_layers or 0)
-    out: dict[str, int] = {}
-    spec = self._boundary_spec
-    for ax_name, boundary in (("x", spec.x), ("y", spec.y),
-                              ("z", spec.z)):
-        for side in ("lo", "hi"):
-            face = f"{ax_name}_{side}"
-            token = getattr(boundary, side)
-            if token not in ("cpml", "upml"):
-                out[face] = 0
-            elif ax_name == "z" and self._mode.startswith("2d"):
-                # 2D modes collapse z to a single cell with NO absorber
-                # (Grid sets pad_z_lo = pad_z_hi = 0 and strips z from
-                # cpml_axes — rfx/grid.py). Without this mirror rule the
-                # z thickness is the full cpml budget and every 2D
-                # source/probe at z=0 false-trips absorber_overlap
-                # (issue #166).
-                out[face] = 0
-            else:
-                resolve = getattr(boundary, f"resolved_{side}_thickness")
-                out[face] = int(resolve(n_default))
-    return out
+    return {face.name: face.realized for face in simulation_face_depths(self)}
 
 def _validate_cfg_pec_faces_with_finite_pec(self, _w) -> None:
     """Warn about pec_faces + finite PEC objects co-existing.
@@ -1313,7 +1275,7 @@ def _conductor_in_thin_absorber_findings(self, dx) -> list[tuple]:
         return []
 
     try:
-        face_layers = self._preflight_face_layers()
+        realized_depths = self._preflight_face_layers()
     except Exception:
         # Whatever makes the boundary spec unreadable has its own check; this
         # advisory has nothing to say without per-face layer counts.
@@ -1339,7 +1301,7 @@ def _conductor_in_thin_absorber_findings(self, dx) -> list[tuple]:
             extent = self._domain[ax]
             for side, distance in (("lo", float(c1[ax])),
                                    ("hi", float(extent) - float(c2[ax]))):
-                layers = int(face_layers.get(f"{axis_name}_{side}", 0) or 0)
+                layers = int(realized_depths.get(f"{axis_name}_{side}", 0) or 0)
                 if layers <= 0 or layers > _THIN_ABSORBER_LAYER_FLOOR:
                     continue
                 cells = _realized_clearance_cells(distance, dx)

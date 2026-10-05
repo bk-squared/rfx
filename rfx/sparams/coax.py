@@ -103,20 +103,14 @@ def _require_absorption_on_every_axis(sim, cpml_axes: str | None, lane: str) -> 
     A face without an absorber is a PEC wall and closes the can again, so
     every face needs positive CPML thickness.
     """
-    for axis_name in "xyz":
-        face = getattr(sim._boundary_spec, axis_name)
-        if (
-            face.lo != "cpml"
-            or face.hi != "cpml"
-            or face.resolved_lo_thickness(sim._cpml_layers) <= 0
-            or face.resolved_hi_thickness(sim._cpml_layers) <= 0
-        ):
-            raise ValueError(
-                f"{lane}() requires positive CPML thickness on all six faces: "
-                "it absorbs on all three axes, and a face without an absorber "
-                "is a PEC wall that closes a metal can around the line "
-                "(issue 1218)."
-            )
+    from rfx.boundaries.depths import has_positive_cpml_faces
+    if not has_positive_cpml_faces(sim._boundary_spec, sim._cpml_layers):
+        raise ValueError(
+            f"{lane}() requires positive CPML thickness on all six faces: "
+            "it absorbs on all three axes, and a face without an absorber "
+            "is a PEC wall that closes a metal can around the line "
+            "(issue 1218)."
+        )
     if cpml_axes is not None and set(cpml_axes) != set("xyz"):
         raise ValueError(
             f"{lane}() absorbs on all three axes and accepts only "

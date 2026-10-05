@@ -319,15 +319,11 @@ def _face_plan(
 ) -> tuple[dict[str, int], dict[str, str], list[str]]:
     """Per-face absorber pad (cells), openEMS boundary string, and UPML faces.
 
-    Mirrors ``Grid.__init__``'s ``_face_pad``: a ``pec`` / ``pmc`` / ``periodic``
-    face gets ``pad = 0`` even when the axis participates in CPML, and an
-    absorbing face gets its per-face thickness (``lo_thickness`` /
-    ``hi_thickness``) or the scalar ``cpml_layers``.  Note the comment in
-    ``rfx/grid.py`` calls that per-face allocation "the Meep / OpenEMS / Tidy3D
-    convention" — so the pad side of the translation is already aligned; only
-    the *direction* of the absorber differs (D1).
+    Reads the boundary depth record used by rfx's grid builders. Only the
+    direction of the absorber differs in this translation (D1).
     """
-    pads: dict[str, int] = {}
+    from rfx.boundaries.depths import resolve_face_depths
+
     strings: dict[str, str] = {}
     upml_faces: list[str] = []
     for axis in _AXES:
@@ -358,14 +354,12 @@ def _face_plan(
                     "from hand-written XML) are not translations",
                 )
             if token == "pec":
-                pads[face] = 0
                 strings[face] = "PEC"
             elif token == "pmc":
-                pads[face] = 0
                 strings[face] = "PMC"
             elif token in _ABSORBING:
-                thickness = axis_payload.get(f"{side}_thickness")
-                layers = int(cpml_layers if thickness is None else thickness)
+                layers = next(record.realized for record in resolve_face_depths(
+                    boundary_spec, budget=cpml_layers) if record.name == face)
                 if layers <= 0:
                     raise _refuse(
                         f"absorbing face {face} with {layers} layers",
@@ -386,7 +380,6 @@ def _face_plan(
                         "strips CPML from periodic axes, so the two views "
                         "describe different absorbers",
                     )
-                pads[face] = layers
                 # D3: parameterised from the design, not the scripts' PML_8.
                 # D4: MUR is never emitted.
                 strings[face] = f"PML_{layers}"
@@ -396,6 +389,8 @@ def _face_plan(
                     upml_faces.append(face)
             else:
                 raise _refuse(f"boundary token {token!r} on face {face}", "unknown token")
+    pads = {record.name: record.realized
+            for record in resolve_face_depths(boundary_spec, budget=cpml_layers)}
     return pads, strings, upml_faces
 
 

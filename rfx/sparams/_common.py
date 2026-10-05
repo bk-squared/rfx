@@ -2156,17 +2156,10 @@ def _warn_thin_absorber_vs_guide_wavelength(
 
         if fc <= 0.0 or f_lo <= fc:
             continue
-        axis_boundary = getattr(boundary_spec, axis, None)
-        if axis_boundary is None:
-            continue
-        faces = []
-        for side in ("lo", "hi"):
-            if getattr(axis_boundary, side, None) not in ("cpml", "upml"):
-                continue
-            override = getattr(axis_boundary, f"{side}_thickness", None)
-            n_cells = int(cpml_layers if override is None else override)
-            if n_cells > 0:
-                faces.append((side, n_cells))
+        from rfx.boundaries.depths import grid_face_depths
+        faces = [(record.name.split("_")[1], record.realized)
+                 for record in grid_face_depths(grid, spec=boundary_spec, budget=cpml_layers)
+                 if record.name.startswith(axis + "_") and record.realized > 0]
         if not faces:
             continue
 

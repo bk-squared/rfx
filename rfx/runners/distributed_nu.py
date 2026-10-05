@@ -756,6 +756,7 @@ def init_cpml_for_sharded_nu(sharded_grid: ShardedNUGrid, n_devices: int,
         local slab portion of the y/z absorbing layer.
     """
     from rfx.boundaries.cpml import init_cpml
+    from rfx.boundaries.depths import grid_face_depths
 
     # Build a duck-typed full-domain grid view that ``init_cpml`` can
     # consume.  We need ``dx``, ``dy``, ``dz`` (cell-size arrays for NU),
@@ -782,20 +783,17 @@ def init_cpml_for_sharded_nu(sharded_grid: ShardedNUGrid, n_devices: int,
         """Minimal duck-typed view consumed by ``init_cpml``."""
 
         def __init__(self):
-            # ``init_cpml`` reads boundary_cell(axis, side) (below),
-            # grid.cpml_layers, grid.dt, grid.shape (or
-            # grid.nx/ny/nz).
             self.dx = dx_boundary
             self.dy = dy_boundary
             self.dz = jnp.asarray(dz_arr)
             self.cpml_layers = sharded_grid.cpml_layers
             self.face_layers = sharded_grid.face_layers
+            self.boundary_depths = grid_face_depths(
+                sharded_grid, pec_faces=pec_faces, pmc_faces=pmc_faces)
             self.dt = sharded_grid.dt
             self.nx = nx
             self.ny = ny
             self.nz = nz
-            # Optional kappa_max / pec_faces / pmc_faces; init_cpml
-            # falls back to these attrs when the kwargs are missing.
             self.kappa_max = kappa_max
             self.pec_faces = pec_faces
             self.pmc_faces = pmc_faces

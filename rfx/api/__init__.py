@@ -768,17 +768,8 @@ class Simulation(
                     getattr(getattr(self._boundary_spec, ax), side)
                 for ax in "xyz" for side in ("lo", "hi")
             }
-            _adi_thick = {
-                f"{ax}_{side}": getattr(
-                    getattr(self._boundary_spec, ax), f"{side}_thickness")
-                for ax in "xyz" for side in ("lo", "hi")
-            }
-            _nonuniform = (
-                set(_adi_faces.values()) != {"cpml"}
-                or any(t is not None and t != cpml_layers
-                       for t in _adi_thick.values())
-            )
-            if _nonuniform:
+            from rfx.boundaries.depths import adi_uniform_faces
+            if not adi_uniform_faces(self._boundary_spec, cpml_layers):
                 _layout = ", ".join(
                     f"{face}={tok!r}"
                     for face, tok in sorted(_adi_faces.items())
