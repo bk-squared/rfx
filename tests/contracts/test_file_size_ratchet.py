@@ -60,6 +60,14 @@ def test_growth_fails(tree, capsys):
     assert "split the file rather than raise the number" in err
 
 
+def test_bare_carriage_returns_count_as_lines(tree, capsys):
+    write_tree(tree)
+    (tree / "rfx/nested/a.py").write_bytes(b"x\r" * 4 + b"y\r\n")
+    code, err = run(tree, capsys)
+    assert code == 1
+    assert "rfx/nested/a.py: baseline 3, count 5" in err
+
+
 def test_unlisted_cap_breach_fails(tree, capsys):
     write_tree(tree, files={})
     code, err = run(tree, capsys)
@@ -158,10 +166,9 @@ def test_required_job_and_local_runner_bind_ratchet():
     assert "pip install" in steps[index + 1]["run"]
     assert not step.get("if") and not step.get("continue-on-error")
     assert step["run"] == "python scripts/ci/check_file_size_ratchet.py"
-    assert step["env"] == {
-        "BASE_SHA": "${{ github.event.pull_request.base.sha }}",
-        "HEAD_SHA": "${{ github.event.pull_request.head.sha }}",
-    }
+    # No HEAD_SHA: the checked-out merge with the base is what gets counted.
+    assert step["env"] == {"BASE_SHA": "${{ github.event.pull_request.base.sha }}"}
     local = (REPO / "scripts/ci/local.sh").read_text()
-    assert 'BASE_SHA="$CHANGELOG_BASE" HEAD_SHA="$CHANGELOG_HEAD"' in local
+    assert 'BASE_SHA="$CHANGELOG_BASE" \\\n  "$PYTHON" scripts/ci/check_file_size_ratchet.py' in local
+    assert "HEAD_SHA=" not in local.split("check_file_size_ratchet.py")[0].rsplit("begin", 1)[-1]
     assert '"$PYTHON" scripts/ci/check_file_size_ratchet.py || fail' in local

@@ -135,10 +135,12 @@ jobs:
           python scripts/ci/check_data_budget.py --base "$BASE_SHA" --head "$HEAD_SHA"
 
       # File structure is part of the 2.0 bar, including on not-code diffs.
+      # The files are read from the checked-out tree, which on a pull request is the
+      # merge with the base: two PRs that each fit can still exceed a number together,
+      # and a PR branched before main lowered an entry is judged on the lowered one.
       - name: File-size ratchet
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: python scripts/ci/check_file_size_ratchet.py
 
       - name: Install package with dev dependencies

@@ -74,7 +74,9 @@ def check(repo: Path, base: str = "", head: str = "") -> int:
     else:
         paths = [p.relative_to(repo).as_posix() for p in (repo / "rfx").rglob("*.py")]
     for path in sorted(paths):
-        count = read(path).count(b"\n")
+        data = read(path)
+        # Newlines as wc -l counts them, plus a bare CR, which Python also ends a line on.
+        count = data.count(b"\n") + data.count(b"\r") - data.count(b"\r\n")
         limit = current["files"].get(path, current["cap"])
         if count > limit:
             failures.append(f"{path}: baseline {limit}, count {count}")

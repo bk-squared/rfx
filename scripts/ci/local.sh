@@ -81,7 +81,8 @@ begin 3
   --base "$CHANGELOG_BASE" --head "$CHANGELOG_HEAD" || fail
 
 begin 4
-BASE_SHA="$CHANGELOG_BASE" HEAD_SHA="$CHANGELOG_HEAD" \
+# The working tree, so uncommitted growth counts too.
+BASE_SHA="$CHANGELOG_BASE" \
   "$PYTHON" scripts/ci/check_file_size_ratchet.py || fail
 
 begin 5
