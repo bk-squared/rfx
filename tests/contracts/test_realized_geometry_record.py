@@ -27,6 +27,16 @@ def _model(nonuniform=False):
     return sim
 
 
+def _stub_uniform_kernel(monkeypatch, captured=None):
+    """Keep setup and the conductor binding; replace only the stepping call."""
+    import rfx.simulation as kernels
+    def fake(grid, materials, n_steps, **kwargs):
+        if captured is not None:
+            captured.update(kwargs, grid=grid)
+        return kernels.SimResult(None, np.zeros((0, 0)), grid=grid, dt=grid.dt)
+    monkeypatch.setattr(kernels, "run", fake)
+
+
 def _compare(sim, record, report):
     """Comparison under mutation (a); negative controls below must reject drift."""
     rows = {row["entity"].split(" ")[0]: row for row in report if "axes" in row}
@@ -109,11 +119,9 @@ def test_comparison_rejects_corrupted_reader(mutation):
 
 
 def test_result_keeps_its_compact_run_record_without_stepping(monkeypatch):
-    from rfx import Result
-    import rfx.runners.uniform
     sim = _model()
     record = sim.realized_geometry()
-    monkeypatch.setattr(rfx.runners.uniform, "run_uniform", lambda *a, **k: Result(None, np.zeros((0, 0)), None, None))
+    _stub_uniform_kernel(monkeypatch)
     monkeypatch.setattr(sim, "_attach_run_settling_witness", lambda result, **k: result)
     result = sim.run(n_steps=1, skip_preflight=True, compute_s_params=False)
     assert result.realized_geometry is not record
@@ -228,8 +236,6 @@ def _assert_runner_sheet(record, captured, grid):
 @pytest.mark.parametrize("nonuniform", [False, True])
 @pytest.mark.parametrize("poison_context", [False, True])
 def test_run_assembly_witness_after_port_mutation(monkeypatch, nonuniform, poison_context):
-    from rfx import Result
-    import rfx.runners.uniform as uniform
     import rfx.runners.nonuniform as nu
     sim, before = _terminated_trace(nonuniform)
     before_ctx = sim._pf_campaign_ctx
@@ -252,26 +258,27 @@ def test_run_assembly_witness_after_port_mutation(monkeypatch, nonuniform, poiso
             return {"state": None, "time_series": np.zeros((0, 0))}
         monkeypatch.setattr(nu, "run_nonuniform", fake)
     else:
-        def fake(*args, **kwargs):
-            cap.update(kwargs)
-            return Result(None, np.zeros((0, 0)), None, None)
-        monkeypatch.setattr(uniform, "run_uniform", fake)
+        _stub_uniform_kernel(monkeypatch, cap)
     monkeypatch.setattr(sim, "_attach_run_settling_witness", lambda result, **k: result)
     context_reads = []
+    active_context = sim._campaign_ctx()
+    context = sim._campaign_ctx
+    def shared_context():
+        value = context()
+        context_reads.append(value)
+        return value
+    monkeypatch.setattr(sim, "_campaign_ctx", shared_context)
     if poison_context:
-        # A run must not read ANY preflight context, even if one is stale.
-        def stale_context():
-            context_reads.append(True)
-            return before_ctx[1]
-        monkeypatch.setattr(sim, "_campaign_ctx", stale_context)
+        # A stale public report must not replace the configuration-keyed object.
         monkeypatch.setattr(sim, "realized_geometry", lambda: before)
     result = sim.run(n_steps=1, skip_preflight=True, compute_s_params=False)
     record = result.realized_geometry
     assert record.lane == ("run_nonuniform" if nonuniform else "run_uniform")
     _assert_runner_sheet(record, cap, cap["grid"])
     _assert_runner_sheet(after, cap, cap["grid"])
-    assert context_reads == []
-    assert assembly_calls == [True]
+    assert context_reads and all(ctx is active_context for ctx in context_reads)
+    assert record.conductors is active_context.realized()
+    assert assembly_calls == []  # the post-port standalone query assembled it once
     assert record.pec_mask is None and record.edge_masks == () and record.materials is None
     assert record.sheets == () and record.wires == ()
     assert all(e.mask is None and not e.edge_masks and e.sheet is None for e in record.entities)
@@ -310,11 +317,9 @@ def test_subgrid_record_names_unrepresented_refinement(monkeypatch):
 
 @pytest.mark.parametrize("nonuniform", [False, True])
 def test_asymmetric_entities_against_runner_witness(monkeypatch, nonuniform):
-    from rfx import Result
     from rfx.boundaries.pec import realized_pec_edge_masks, realized_wall_planes
     from rfx.geometry.rasterize_grid import interior_lattice_mask
     from dataclasses import replace
-    import rfx.runners.uniform as uniform
     import rfx.runners.nonuniform as nu
     sim = _model(nonuniform)
     from rfx import PolylineWire
@@ -327,14 +332,13 @@ def test_asymmetric_entities_against_runner_witness(monkeypatch, nonuniform):
             return {"state": None, "time_series": np.zeros((0, 0))}
         monkeypatch.setattr(nu, "run_nonuniform", fake)
     else:
-        def fake(*args, **kwargs):
-            cap.update(kwargs)
-            return Result(None, np.zeros((0, 0)), None, None)
-        monkeypatch.setattr(uniform, "run_uniform", fake)
+        _stub_uniform_kernel(monkeypatch, cap)
     monkeypatch.setattr(sim, "_attach_run_settling_witness", lambda result, **k: result)
-    def no_preflight():
-        raise AssertionError("run must use its own assembly, not preflight")
-    monkeypatch.setattr(sim, "_campaign_ctx", no_preflight)
+    sim._campaign_ctx().realized(strict=True)
+    def no_second_assembly(*args, **kwargs):
+        raise AssertionError("run must reuse the preflight conductor object")
+    monkeypatch.setattr(sim, "_assemble_materials_nu" if nonuniform else "_assemble_materials",
+                        no_second_assembly)
     record = sim.run(n_steps=1, skip_preflight=True, compute_s_params=False).realized_geometry
     grid = cap["grid"]
     assert record.entities[0].n_cells == 30
@@ -404,8 +408,8 @@ def test_concrete_record_failure_propagates(monkeypatch, nonuniform):
         return Result(None, np.zeros((0, 0)), None, None)
 
     monkeypatch.setattr(records, "_record_from_assembly", fail_record)
-    monkeypatch.setattr(nu if nonuniform else uniform,
-                        "run_nonuniform" if nonuniform else "run_uniform", runner)
+    monkeypatch.setattr(nu if nonuniform else uniform._simulation,
+                        "run_nonuniform" if nonuniform else "run", runner)
     monkeypatch.setattr(sim, "_attach_run_settling_witness", lambda result, **k: result)
     with pytest.raises(ValueError, match="diagnostic aperture unavailable"):
         sim.run(n_steps=1, skip_preflight=True, compute_s_params=False)
@@ -414,15 +418,13 @@ def test_concrete_record_failure_propagates(monkeypatch, nonuniform):
 
 @pytest.mark.parametrize("nonuniform", [False, True])
 def test_lossy_run_record_retains_assembly_continuation(monkeypatch, nonuniform):
-    from rfx import Result
-    import rfx.runners.uniform as uniform
     import rfx.runners.nonuniform as nu
     kwargs = {"dz_profile": np.full(8, .001)} if nonuniform else {}
     sim = Simulation(freq_max=10e9, domain=(.0086, .0086, .008), dx=.001,
                      boundary="cpml", cpml_layers=4, **kwargs)
     sim.add_thin_conductor(Box((0., 0., .004), (.0086, .0086, .004)),
                            sigma_bulk=1e4, surface_impedance_f0=10e9)
-    monkeypatch.setattr(uniform, "run_uniform", lambda *a, **k: Result(None, np.zeros((0, 0)), None, None))
+    _stub_uniform_kernel(monkeypatch)
     monkeypatch.setattr(nu, "run_nonuniform", lambda *a, **k: {"state": None, "time_series": np.zeros((0, 0))})
     monkeypatch.setattr(sim, "_attach_run_settling_witness", lambda result, **k: result)
     record = sim.run(n_steps=1, skip_preflight=True, compute_s_params=False).realized_geometry

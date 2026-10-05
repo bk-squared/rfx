@@ -393,19 +393,27 @@ class _CampaignStaticsContext:
     # The realized conductor set (whole model) and per-entry realization
     # ------------------------------------------------------------------
 
-    def realized(self, *, strict=False):
+    def realized(self, *, strict=False, defer_warnings=False):
         """:class:`_RealizedPEC` from the PRODUCTION assembly (with the
         #931 sheet/wire collectors), once; ``None`` when the assembly
         raised (``assembly_error`` says why). Strict execution/build readers
         re-raise the original exception, including after a diagnostic read.
         """
+        import warnings
         if self._realized is None and self.assembly_error is None:
-            try:
-                self._realized = self.sim._assemble_realized(
-                    self.grid, nonuniform=(self.lane == "nonuniform"))
-            except self._NARROW_EXCS as exc:
-                self.assembly_error = f"{type(exc).__name__}: {exc}"
-                self._assembly_exception = exc
+            with warnings.catch_warnings(record=True) as emitted:
+                try:
+                    self._realized = self.sim._assemble_realized(
+                        self.grid, nonuniform=(self.lane == "nonuniform"))
+                except self._NARROW_EXCS as exc:
+                    self.assembly_error = f"{type(exc).__name__}: {exc}"
+                    self._assembly_exception = exc
+            self._assembly_warnings = tuple(emitted)
+        if not defer_warnings:
+            emitted = getattr(self, '_assembly_warnings', ())
+            self._assembly_warnings = ()
+            for warning in emitted:
+                warnings.warn(warning.message, warning.category, stacklevel=2)
         if strict and self._assembly_exception is not None:
             raise self._assembly_exception
         return self._realized
@@ -443,7 +451,7 @@ class _CampaignStaticsContext:
         from rfx.geometry.smoothing import continued_conductor_shape
         sim = self.sim
         out = []
-        assembled = self.realized()
+        assembled = self.realized(defer_warnings=True)
         products = {key: (cells, sheet, wire, shape)
                     for key, cells, sheet, wire, shape in
                     getattr(assembled, "assembly_entries", ())}
