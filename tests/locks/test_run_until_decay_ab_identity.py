@@ -12,8 +12,15 @@ The decay path is forced to run exactly ``N`` steps:
   * ``min_steps=N``       → no stop before N steps anyway.
   * ``check_interval>N``  → the decay-check branch is never even evaluated.
 
-Agreement level
----------------
+2026-10-06 scale update
+-----------------------
+The component-magnitude term below now uses max|E| or max|H| over both
+harnesses. The C*N*eps growth law and curl coupling are unchanged. Historical
+measurements below describe the earlier component-scale floor; they are not
+new measurements of the field-scale floor.
+
+Historical agreement level
+--------------------------
 Target was bit-identical (``np.array_equal``).  The two harnesses do NOT
 agree bit-for-bit — they agree to the float32 epsilon scale.  Re-measured on
 this fixture (CPU, jax 0.11.1, N=80, 2026-09-05): the probe series agrees to
@@ -86,6 +93,14 @@ that on the fields themselves (perturbing hx, not only the probe series), and
 red-lines the previous shared-E-floor behaviour so it cannot come back.
 """
 
+import pytest
+import numpy as np
+
+from rfx.grid import Grid
+from rfx.core.yee import init_materials, EPS_0, MU_0
+from rfx.sources.sources import GaussianPulse
+from rfx.simulation import run, run_until_decay, make_source, make_probe
+
 LOCK_PROVENANCE = {
     "fixture": "none",
     "generator": "hand-derived",
@@ -102,14 +117,6 @@ LOCK_PROVENANCE = {
     "host": "linux x86_64 jax 0.11.1 cpu; GPU evidence remilab RTX4090",
     "pinned_until": "2027-03-05",
 }
-
-import pytest
-import numpy as np
-
-from rfx.grid import Grid
-from rfx.core.yee import init_materials, EPS_0, MU_0
-from rfx.sources.sources import GaussianPulse
-from rfx.simulation import run, run_until_decay, make_source, make_probe
 
 # Pre-existing scan-vs-loop XLA agreement envelope (see module docstring).
 # Re-measured 2026-09-05 (CPU, jax 0.11.1, this fixture, N=80): probe 8.2e-7
@@ -190,11 +197,11 @@ _GPU_OBSERVED_TS_DIFF = 1.037e-10
 # above the H group's own ``C*N*eps*max|H|`` and ~660x above the correctly
 # coupled bound, i.e. at 22% (hx) / 18% (hy) of those components' own peaks --
 # a 10% single-element error and a 1% whole-array scale error in hx both
-# PASSED.  Each component therefore gets its own scale:
+# PASSED. Each field therefore gets its own scale (2026-10-06):
 #
-#     scale(c) = max( max|c| ,  k_cross * max|partner group| )
+#     scale(c) = max( max|own E/H group| , k_cross * max|partner group| )
 #
-# which (a) tracks each component's own roundoff, (b) preserves the property
+# which (a) tracks roundoff across the component's field, (b) preserves the property
 # the shared floor was introduced for -- a numerically-null component (hz for
 # an Ez source here; ez for a 2D TE case) is bounded by the coupled-state
 # roundoff, not by its own meaningless ~0 magnitude -- and (c) does so with the
@@ -250,7 +257,7 @@ def _reassoc_atol(arrays, n_steps):
 
     ``C * n_steps * finfo(dtype).eps * max|arrays|``.  Used for the probe time
     series (a single scalar observable).  For the Yee state use
-    :func:`_field_reassoc_atols`, which gives each component its own scale.
+    :func:`_field_reassoc_atols`, which keeps E and H scales separate.
     """
     arrays = [np.asarray(a) for a in arrays]
     dtype = arrays[0].dtype
@@ -264,7 +271,7 @@ def _field_reassoc_atols(arrays_by_comp, n_steps, grid, materials):
 
     ``arrays_by_comp`` maps a component name to the list of arrays being
     compared for it (one per harness).  Each component's floor is set by its
-    OWN peak, raised to the cross-coupled roundoff scale
+    FIELD's peak (E or H), raised to the cross-coupled roundoff scale
     (``k * max|partner group|``) when that is larger -- which is what bounds a
     numerically-null component.
 
@@ -288,12 +295,12 @@ def _field_reassoc_atols(arrays_by_comp, n_steps, grid, materials):
     atols, scales = {}, {}
     for comp, peak in peaks.items():
         if comp in _H_COMPS:
-            cross = k_he * max_e
+            group_peak, cross = max_h, k_he * max_e
         elif comp in _E_COMPS:
-            cross = k_eh * max_h
+            group_peak, cross = max_e, k_eh * max_h
         else:  # pragma: no cover - only the six Yee components are compared
-            cross = 0.0
-        scales[comp] = max(peak, cross)
+            group_peak, cross = peak, 0.0
+        scales[comp] = max(group_peak, cross)
         atols[comp] = _REASSOC_COHERENCE_C * float(n_steps) * eps * scales[comp]
     return atols, scales, peaks
 
@@ -344,9 +351,8 @@ def test_run_until_decay_ab_identity():
         f"max abs diff = {np.max(np.abs(ts_scan - ts_loop)):.3e}"
     )
 
-    # Final fields: every Yee component must match within ITS OWN derived
-    # envelope.  A single shared floor would be set by the dominant E
-    # component and would leave the H checks inert (see the derivation above).
+    # Final fields use separate E/H field peaks plus the existing curl
+    # coupling and recurrence-growth envelope; never an unscaled E floor for H.
     comps = _E_COMPS + _H_COMPS
     arrays_by_comp = {
         c: [np.asarray(getattr(res_scan.state, c)),
@@ -359,7 +365,8 @@ def test_run_until_decay_ab_identity():
     for comp in comps:
         a, b = arrays_by_comp[comp]
         atol = atols[comp]
-        floored_by = "own magnitude" if scales[comp] <= peaks[comp] else "curl coupling"
+        group_peak = max(peaks[c] for c in (_E_COMPS if comp in _E_COMPS else _H_COMPS))
+        floored_by = "field magnitude" if scales[comp] <= group_peak else "curl coupling"
         assert np.allclose(a, b, rtol=_RTOL, atol=atol), (
             f"final {comp} differs beyond its derived reassociation floor "
             f"(atol={atol:.3e}, scale={scales[comp]:.3e} set by {floored_by}, "
@@ -605,3 +612,28 @@ def test_checkpoint_segments_raises():
             probes=probes,
             checkpoint_segments=4,
         )
+
+
+@pytest.mark.parametrize('field', ['e', 'h'])
+@pytest.mark.parametrize('n_steps', [1, 80])
+def test_field_peak_scale_mutations(monkeypatch, field, n_steps):
+    # Isolate the own-magnitude term from the separately tested curl coupling.
+    monkeypatch.setattr(f'{__name__}._curl_roundoff_coupling', lambda *_: (0., 0.))
+    peak = np.float32(2.**20)
+    ulp = np.spacing(peak)
+    tiny = np.array([1e-8], dtype=np.float32)
+    arrays = {c: [tiny.copy(), tiny.copy()] for c in _E_COMPS + _H_COMPS}
+    arrays[field + 'x'] = [np.array([peak], dtype=np.float32)] * 2
+    comp = field + 'z'
+    atols, scales, _ = _field_reassoc_atols(arrays, n_steps, None, None)
+    assert scales[comp] == peak
+    for count in (1, 2):
+        noisy = tiny + count * ulp
+        assert np.allclose(tiny, noisy, rtol=_RTOL, atol=atols[comp])
+        old = _reassoc_atol([tiny, noisy], n_steps)
+        assert not np.allclose(tiny, noisy, rtol=_RTOL, atol=old)
+    # At N=1 the field floor is 4 ULP. N=80 intentionally admits 10 ULP;
+    # its existing recurrence envelope must instead reject an above-bar spike.
+    ten = np.allclose(tiny, tiny + 10 * ulp, rtol=_RTOL, atol=atols[comp])
+    assert bool(ten) == (n_steps == 80)
+    assert not np.allclose(tiny, tiny + 1.01 * atols[comp], rtol=_RTOL, atol=atols[comp])
