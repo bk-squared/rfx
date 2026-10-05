@@ -875,7 +875,6 @@ class _PreflightMixin:
         check_ad_memory: bool = False,
         n_steps_for_memory: int | None = None,
         available_memory_gb: float | None = None,
-        _conductors=None,
     ) -> "PreflightReport":
         """Run all pre-simulation checks and return warnings.
 
@@ -918,6 +917,24 @@ class _PreflightMixin:
             Empty if no issues found. Finite flux-window geometry is recorded
             separately in ``flux_regions``, including for issue-free reports.
         """
+        return self._preflight_impl(
+            strict=strict, check_ntff=check_ntff, check_resolution=check_resolution,
+            check_ad_memory=check_ad_memory, n_steps_for_memory=n_steps_for_memory,
+            available_memory_gb=available_memory_gb,
+        )
+
+    def _preflight_impl(
+        self,
+        *,
+        strict: bool = False,
+        check_ntff: bool | str = True,
+        check_resolution: bool = True,
+        check_ad_memory: bool = False,
+        n_steps_for_memory: int | None = None,
+        available_memory_gb: float | None = None,
+        _conductors=None,
+    ) -> "PreflightReport":
+        """Shared checks; execution lends its solve products only to this call."""
         import warnings
         if _conductors is not None:
             # Execution lends its assembled, pre-port products for this call only.

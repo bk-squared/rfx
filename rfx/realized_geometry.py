@@ -465,6 +465,13 @@ def _record_from_conductors_impl(sim, conductors, *, lane, compact=True):
     if any(is_tracer(edge) for edge in conductors.pec_edges or ()):
         return None
     assembly_entries = conductors.assembly_entries
+    # Legacy direct runners can receive arrays without per-entity collectors.
+    # Those arrays still define the kernel, but cannot support a geometry record.
+    # Do not reassemble or invent entity occupancy from the aggregate PEC mask.
+    observed = set(conductors.geometry_masks) | {entry[0] for entry in assembly_entries}
+    if any(id(entry) not in observed
+           for entry in (*sim._geometry, *sim._thin_conductors)):
+        return None
     ctx = object.__new__(_CampaignStaticsContext)
     ctx.sim, ctx.grid = sim, grid
     ctx.lane = "nonuniform" if hasattr(grid, "dx_arr") else "uniform"

@@ -1387,8 +1387,8 @@ class _ExecuteMixin:
         # a validator itself crashes (a bug, e.g. a non-ValueError). Let that
         # propagate loudly (Phase D) — do NOT degrade a validator bug to a soft
         # warning that hides it and lets a broken run proceed.
-        issues = self.preflight(strict=False, check_ntff=check_ntff,
-                                **({} if conductors is None else {"_conductors": conductors}))
+        issues = self._preflight_impl(strict=False, check_ntff=check_ntff,
+                                      _conductors=conductors)
         # One frame deeper than the gate: point at the caller of run()/forward().
         self._run_preflight_gate(issues, context=context, stacklevel=4)
 

@@ -75,7 +75,7 @@ def test_preflight_and_run_share_one_assembly(monkeypatch, lane, kernel_objects)
     monkeypatch.setattr(sim, "_campaign_ctx", forbidden_cache)
     calls.clear()
     seen = []
-    preflight = sim.preflight
+    preflight = sim._preflight_impl
 
     def read(*args, **kwargs):
         root = kwargs['_conductors']
@@ -84,7 +84,7 @@ def test_preflight_and_run_share_one_assembly(monkeypatch, lane, kernel_objects)
         seen.append(root)
         return preflight(*args, **kwargs)
 
-    monkeypatch.setattr(sim, 'preflight', read)
+    monkeypatch.setattr(sim, '_preflight_impl', read)
     runner = sim.forward if lane.startswith('fwd_') else sim.run
     runner(n_steps=2)
     assert calls == [1]
@@ -451,7 +451,7 @@ def test_ringdown_preflight_sees_only_declared_probes(monkeypatch, lane, entry):
     declared = tuple(map(id, sim._probes))
     assert len(declared) == 1
     events = []
-    preflight = sim.preflight
+    preflight = sim._preflight_impl
     method = '_assemble_materials_nu' if lane == 'graded' else '_assemble_materials'
     assemble = getattr(sim, method)
     kernel = products.at_kernel
@@ -472,7 +472,7 @@ def test_ringdown_preflight_sees_only_declared_probes(monkeypatch, lane, entry):
         return kernel(*a, **kw)
 
     monkeypatch.setattr(sim, method, assemble_once)
-    monkeypatch.setattr(sim, 'preflight', declared_preflight)
+    monkeypatch.setattr(sim, '_preflight_impl', declared_preflight)
     monkeypatch.setattr(products, 'at_kernel', at_kernel)
     kwargs = {'compute_s_params': True} if entry == 'run' else {}
     if entry == 'forward' and lane == 'uniform':
@@ -513,10 +513,32 @@ def test_preflight_precedes_lane_refusals(monkeypatch, entry, graded, fence, ski
         raise NotImplementedError('lane refusal witness')
 
     monkeypatch.setattr(sim, method, assembly)
-    monkeypatch.setattr(sim, 'preflight', preflight)
+    monkeypatch.setattr(sim, '_preflight_impl', preflight)
     monkeypatch.setattr(sim, fence, lane_refusal)
     error, reason = ((NotImplementedError, 'lane refusal witness') if skip
                      else (ValueError, 'declaration refusal witness'))
     with pytest.raises(error, match=reason):
         getattr(sim, entry)(n_steps=2, skip_preflight=skip)
     assert seen == (['lane'] if skip else ['assembly', 'preflight'])
+
+
+def test_direct_runner_without_collectors_neither_reassembles_nor_reads_cache(monkeypatch):
+    from rfx.runners.uniform import run_uniform
+    sim = build(('_geometry', 'pec_volume'), 'run_uniform')
+    grid = sim._build_grid()
+    materials, debye, lorentz, cells, shapes, _, kerr = sim._assemble_materials(grid)
+    expected = sim.run(n_steps=2, skip_preflight=True, compute_s_params=False)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError('direct array entry must not reassemble or read audit caches')
+
+    monkeypatch.setattr(sim, '_assemble_materials', forbidden)
+    monkeypatch.setattr(sim, '_campaign_ctx', forbidden)
+    actual = run_uniform(sim, n_steps=2, grid=grid, base_materials=materials,
+        debye_spec=debye, lorentz_spec=lorentz, pec_mask=cells, pec_shapes=shapes,
+        kerr_chi3=kerr, compute_s_params=False)
+    assert actual.realized_geometry is None
+    assert expected.realized_geometry is not None
+    np.testing.assert_array_equal(actual.time_series, expected.time_series)
+    for name in ('ex', 'ey', 'ez', 'hx', 'hy', 'hz'):
+        np.testing.assert_array_equal(getattr(actual.state, name), getattr(expected.state, name))

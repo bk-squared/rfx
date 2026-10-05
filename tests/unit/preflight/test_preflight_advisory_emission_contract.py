@@ -486,7 +486,7 @@ _FROZEN_LITERAL_CODE_COUNT = 83
 # conversion reads ``code=`` off the caught PreflightWarning instance rather
 # than naming a slug at the site -- the same shape as preflight()'s own two.
 _FROZEN_DYNAMIC_SITES_BY_FUNCTION = {
-    "preflight": 2,
+    "_preflight_impl": 2,
     # 2 -> 3, 2026-09-19 (#726): the msl fold-in block added beside the
     # waveguide one reads ``code=``/``source=`` off the caught
     # PreflightWarning instance in exactly the same way.
@@ -631,7 +631,7 @@ EMISSION_CLASSIFICATION = {
         "DIAGNOSTIC_ONLY on a technicality."),
 }
 
-_PREFLIGHT_CALL_NAMES = {"preflight", "_auto_preflight", "preflight_sparameters"}
+_PREFLIGHT_CALL_NAMES = {"preflight", "_preflight_impl", "_auto_preflight", "preflight_sparameters"}
 
 
 def _exported_surface() -> dict:
