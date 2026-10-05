@@ -42,7 +42,7 @@ for row, feature in (("eps", "dielectric"), ("sigma", "lossy"), ("mu", "mu")):
             TABLE[row][lane] = Cell("refuses", note="#1373: ADI read per-cell E material, so it "
                                     "refuses a material interface; its consumption witness "
                                     "is a whole-domain fill")
-        elif row in ("eps", "sigma") and lane in ("run_distributed", "fwd_distributed_nu"):
+        elif row in ("eps", "sigma") and lane in ("run_distributed", "run_distributed_nu", "fwd_distributed_nu"):
             TABLE[row][lane] = Cell(note="#1303, fixed by #1326")
 
 for lane in LANES:
@@ -64,7 +64,7 @@ for lane in LANES:
         TABLE["open_" + kind]["run_subgridded"] = Cell("refuses",
             note="all-face absorber outside subgrid production envelope")
     for port in ("lumped", "wire"):
-        if lane in ("run_adi", "fwd_adi", "fwd_distributed_nu"):
+        if lane in ("run_adi", "fwd_adi", "run_distributed_nu", "fwd_distributed_nu"):
             TABLE[port + "_none"][lane] = Cell("refuses")
         for kind in ("field", "current"):
             TABLE[port + "_" + kind][lane] = Cell("not reachable",
@@ -84,7 +84,7 @@ for row in ("eps", "sigma"):
     for lane in LANES:
         old = TABLE[row][lane]
         predicate = ("full-domain single-device helper sliced to owned rows"
-                     if lane in ("run_distributed", "fwd_distributed_nu") else
+                     if lane in ("run_distributed", "run_distributed_nu", "fwd_distributed_nu") else
                      "the operand the lane's kernel receives equals the shared helper applied to the lane's own cell array")
         TABLE[row][lane] = old._replace(note=(old.note + "; " if old.note else "") + predicate)
 

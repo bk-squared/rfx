@@ -62,9 +62,9 @@ from tests.unit.nonuniform.test_refinement_refused_on_graded_mesh import _box as
 N_STEPS = 40
 EFFECT_FLOOR = 1e-3
 PARITY_TOL = 1e-4
-PARITY_LANES = ("run_nonuniform", "run_distributed", "fwd_uniform",
+PARITY_LANES = ("run_nonuniform", "run_distributed", "run_distributed_nu", "fwd_uniform",
                 "fwd_nonuniform", "fwd_distributed_nu", "fwd_adi")
-GRADED = ("run_nonuniform", "fwd_nonuniform", "fwd_distributed_nu")
+GRADED = ("run_nonuniform", "run_distributed_nu", "fwd_nonuniform", "fwd_distributed_nu")
 ADI = ("run_adi", "fwd_adi")
 WAVEFORM = GaussianPulse(f0=5e9, bandwidth=0.8)
 # Modules whose lax.scan is a time loop; a refusal must come before any of them.
@@ -439,7 +439,7 @@ def _run(sim, lane, feature, *, entry=None):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         if entry.startswith("run_"):
-            if entry == "run_distributed":
+            if entry in ("run_distributed", "run_distributed_nu"):
                 kwargs["devices"] = _devices()
             # These cells compare field records; S-request cells opt in below.
             kwargs.update(compute_s_params=False)
@@ -1052,6 +1052,7 @@ BASE_ROWS = {
     "run_subgridded": _EVERY_BASE | {("_refinement", "slab")},
     "run_adi": _EVERY_BASE | {("_solver", "")},
     "run_distributed": _EVERY_BASE,
+    "run_distributed_nu": _EVERY_BASE | {("_dx_profile", "graded")},
     "fwd_uniform": _EVERY_BASE,
     "fwd_nonuniform": _EVERY_BASE | {("_dx_profile", "graded")},
     "fwd_distributed_nu": _EVERY_BASE | {("_dx_profile", "graded")},

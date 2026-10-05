@@ -1,7 +1,7 @@
 """Lane admission: a lane solves only the inputs it declares it carries.
 
 A ``Simulation`` is a declaration: materials, conductors, ports, sources,
-boundaries, a mesh and observers. Nine time-stepping lanes run it, and each
+boundaries, a mesh and observers. Ten time-stepping lanes run it, and each
 one solves only part of it. Until this module each lane listed the inputs it
 refused and solved every other one as if it had not been declared: ADI solved
 a μr = 4 block as vacuum, the graded ``run()`` solved a Kerr block as linear,
@@ -41,7 +41,7 @@ Row = tuple[str, str]
 
 LANES = (
     "run_uniform", "run_nonuniform", "run_subgridded", "run_adi",
-    "run_distributed", "fwd_uniform", "fwd_nonuniform", "fwd_distributed_nu",
+    "run_distributed", "run_distributed_nu", "fwd_uniform", "fwd_nonuniform", "fwd_distributed_nu",
     "fwd_adi",
 )
 
@@ -70,6 +70,7 @@ LANE_WORDS = {
     "run_subgridded": "subgridded run()",
     "run_adi": "ADI run()",
     "run_distributed": "multi-device run(devices=...)",
+    "run_distributed_nu": "graded multi-device run(devices=...)",
     "fwd_uniform": "uniform forward()",
     "fwd_nonuniform": "graded forward()",
     "fwd_distributed_nu": "forward(distributed=True)",
@@ -414,44 +415,46 @@ ROW_WORDS: dict[Row, str] = {
 # Per input row, the lanes that admit it: those whose cell in the table is
 # ``carries`` or ``ignorable``. ADMITS below is the same list read by lane.
 
+_DISTRIBUTED_NU = frozenset({"run_distributed_nu", "fwd_distributed_nu"})
 _ALL = frozenset(LANES)
+_OTHER_RUNNERS = _ALL - _DISTRIBUTED_NU
 _ADI = frozenset({"run_adi", "fwd_adi"})
-_GRADED = frozenset({"run_nonuniform", "fwd_nonuniform", "fwd_distributed_nu"})
+_GRADED = frozenset({"run_nonuniform", "fwd_nonuniform"}) | _DISTRIBUTED_NU
 _UNIFORM_YEE = frozenset({"run_uniform", "fwd_uniform"})
-_MESH_PINNED = _GRADED | {"run_distributed"}   # the lanes a dx/dy/dz profile reaches
-_NO_SHEETS = _ALL - {"run_subgridded", "run_adi", "run_distributed", "fwd_distributed_nu", "fwd_adi"}
+_MESH_PINNED = _GRADED   # the lanes a dx/dy/dz profile reaches
+_NO_SHEETS = _OTHER_RUNNERS - {"run_subgridded", "run_adi", "run_distributed", "fwd_adi"}
 
 _ADMITTED_ON: dict[Row, frozenset] = {
-    ("_freq_max", ""): _ALL,
-    ("_domain", ""): _ALL,
-    ("_dx", ""): _ALL,
-    ("_dt_pin", ""): _MESH_PINNED,
-    ("_dt_min_cell", ""): _MESH_PINNED,
+    ("_freq_max", ""): _OTHER_RUNNERS,
+    ("_domain", ""): _OTHER_RUNNERS,
+    ("_dx", ""): _OTHER_RUNNERS,
+    ("_dt_pin", ""): _MESH_PINNED - _DISTRIBUTED_NU,
+    ("_dt_min_cell", ""): _MESH_PINNED - _DISTRIBUTED_NU,
     ("_precision", ""): _UNIFORM_YEE,
     ("_solver", ""): _ADI,
-    ("_adi_cfl_factor", ""): _ALL,
+    ("_adi_cfl_factor", ""): _OTHER_RUNNERS,
     ("_stencil_order", ""): _UNIFORM_YEE,
-    ("_mode", ""): _UNIFORM_YEE | _ADI | {"run_distributed"},
+    ("_mode", ""): _UNIFORM_YEE | _ADI,
     # ADI carries a homogeneous fill only: LANE_GATES decides (#1373).
-    ("_materials", "eps"): _ALL - _ADI,
-    ("_materials", "sigma"): _ALL - _ADI,
-    ("_materials", "mu"): _ALL - _ADI,
-    ("_materials", "debye"): _ALL - _ADI - {"run_subgridded"},
-    ("_materials", "lorentz"): _ALL - _ADI - {"run_subgridded"},
-    ("_materials", "drude"): _ALL - _ADI - {"run_subgridded"},
+    ("_materials", "eps"): _OTHER_RUNNERS - _ADI,
+    ("_materials", "sigma"): _OTHER_RUNNERS - _ADI,
+    ("_materials", "mu"): _OTHER_RUNNERS - _ADI,
+    ("_materials", "debye"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},
+    ("_materials", "lorentz"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},
+    ("_materials", "drude"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},
     ("_materials", "kerr"): _UNIFORM_YEE,
-    ("_geometry", "pec_volume"): _ALL - _ADI,
+    ("_geometry", "pec_volume"): _OTHER_RUNNERS - _ADI,
     ("_geometry", "pec_sheet"): _NO_SHEETS,
     ("_geometry", "pec_wire"): _NO_SHEETS,
-    ("_thin_conductors", "lossy_sheet"): _ALL - _ADI - {"run_subgridded"},
+    ("_thin_conductors", "lossy_sheet"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},
     ("_thin_conductors", "pec_sheet"): _NO_SHEETS,
     ("_thin_conductors", "surface_impedance"): _NO_SHEETS,
     ("_pinned_sheets", "pec_sheet"): _NO_SHEETS,
-    ("_ports", "source"): _ALL,
-    ("_ports", "amplitude_kind"): _ALL - _ADI,
-    ("_ports", "lumped_port"): _ALL - _ADI - {"fwd_distributed_nu"},
-    ("_ports", "passive_port"): _ALL - _ADI - {"run_distributed", "fwd_distributed_nu"},
-    ("_ports", "wire_port"): _ALL - _ADI - {"fwd_distributed_nu"},
+    ("_ports", "source"): _OTHER_RUNNERS,
+    ("_ports", "amplitude_kind"): _OTHER_RUNNERS - _ADI,
+    ("_ports", "lumped_port"): _OTHER_RUNNERS - _ADI,
+    ("_ports", "passive_port"): _OTHER_RUNNERS - _ADI - {"run_distributed"},
+    ("_ports", "wire_port"): _OTHER_RUNNERS - _ADI,
     ("_msl_ports", "msl_port"): _NO_SHEETS,
     ("_waveguide_ports", "waveguide_port"): _NO_SHEETS,
     ("_coaxial_ports", "coax_port"): frozenset(),
@@ -462,27 +465,59 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_tfsf", "plane_wave"): frozenset({"run_uniform", "run_nonuniform", "fwd_uniform"}),
     ("_refinement", "slab"): frozenset(),
     ("_refinement", "relaxed_validation"): frozenset(),
-    ("_boundary", "cpml"): _ALL - _ADI - {"run_subgridded"},
+    ("_boundary", "cpml"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},
     ("_boundary", "upml"): _UNIFORM_YEE,
-    ("_pec_faces", "pec_face"): _ALL - _ADI - {"run_subgridded"},
-    ("_boundary_spec", "pmc_face"): _ALL - _ADI - {"run_subgridded", "run_distributed", "fwd_distributed_nu"},
+    ("_pec_faces", "pec_face"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},
+    ("_boundary_spec", "pmc_face"): _OTHER_RUNNERS - _ADI - {"run_subgridded", "run_distributed"},
     ("_boundary_spec", "conformal"): frozenset({"run_uniform"}),
     ("_boundary_spec", "conformal_s_matrix"): frozenset(),
-    ("_boundary_spec", "absorbing_lid"): _ALL - _ADI,
+    ("_boundary_spec", "absorbing_lid"): _OTHER_RUNNERS - _ADI,
     ("_periodic_axes", "periodic"): _UNIFORM_YEE,
-    ("_cpml_layers", "layers"): _ALL - _ADI - {"run_subgridded"},
+    ("_cpml_layers", "layers"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},
     ("_cpml_kappa_max", "kappa"): frozenset({"run_uniform", "run_distributed", "fwd_uniform"}),
     ("_interface_eps", "dual_average"): frozenset({"run_nonuniform", "fwd_nonuniform"}),
-    ("_dx_profile", "graded"): _MESH_PINNED,
-    ("_dy_profile", "graded"): _MESH_PINNED,
-    ("_dz_profile", "graded"): _MESH_PINNED,
-    ("_probes", "probe"): _ALL,
+    ("_dx_profile", "graded"): _MESH_PINNED - _DISTRIBUTED_NU,
+    ("_dy_profile", "graded"): _MESH_PINNED - _DISTRIBUTED_NU,
+    ("_dz_profile", "graded"): _MESH_PINNED - _DISTRIBUTED_NU,
+    ("_probes", "probe"): _OTHER_RUNNERS,
     ("_dft_planes", "dft_plane"): _NO_SHEETS,
     ("_flux_monitors", "flux"): frozenset({"run_uniform", "run_nonuniform", "fwd_uniform",
                                           "fwd_nonuniform", "fwd_adi"}),
-    ("_ntff", "ntff_box"): _ALL - _ADI - {"fwd_distributed_nu"},
+    ("_ntff", "ntff_box"): _OTHER_RUNNERS - _ADI,
     ("_current_moments", "block_moments"): _NO_SHEETS,
 }
+
+# Both public entries use distributed_nu.run_nonuniform_distributed_pec.
+# Define that runner's carried rows once; neither entry inherits uniform v2.
+_DISTRIBUTED_NU_ROWS = frozenset({
+    ('_adi_cfl_factor', ''),
+    ('_boundary', 'cpml'),
+    ('_boundary_spec', 'absorbing_lid'),
+    ('_cpml_layers', 'layers'),
+    ('_domain', ''),
+    ('_dt_min_cell', ''),
+    ('_dt_pin', ''),
+    ('_dx', ''),
+    ('_dx_profile', 'graded'),
+    ('_dy_profile', 'graded'),
+    ('_dz_profile', 'graded'),
+    ('_freq_max', ''),
+    ('_geometry', 'pec_volume'),
+    ('_materials', 'debye'),
+    ('_materials', 'drude'),
+    ('_materials', 'eps'),
+    ('_materials', 'lorentz'),
+    ('_materials', 'mu'),
+    ('_materials', 'sigma'),
+    ('_pec_faces', 'pec_face'),
+    ('_ports', 'amplitude_kind'),
+    ('_ports', 'source'),
+    ('_probes', 'probe'),
+    ('_thin_conductors', 'lossy_sheet'),
+})
+for _row in _DISTRIBUTED_NU_ROWS:
+    _ADMITTED_ON[_row] = _ADMITTED_ON[_row] | _DISTRIBUTED_NU
+
 
 # Calculator memberships are independent of every shared lane set. A new
 # lane capability therefore never silently expands a calculator's contract.

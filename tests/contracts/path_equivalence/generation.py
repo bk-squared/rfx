@@ -8,7 +8,7 @@ PAIRS = (
     ('run_uniform', 'run_nonuniform', False),
     ('run_uniform', 'run_distributed', False),
     ('fwd_uniform', 'fwd_nonuniform', False),
-    ('run_nonuniform', 'run_distributed', True),
+    ('run_nonuniform', 'run_distributed_nu', True),
 )
 LONG_ROWS = {('_dft_planes', 'dft_plane'), ('_flux_monitors', 'flux'), ('_ports', 'wire_port')}
 
@@ -70,19 +70,19 @@ PR_CHOICES = {
     "_cpml_layers": "_cpml_layers:layers:run_uniform:run_nonuniform:constant:12",
     "_current_moments": "_current_moments:block_moments:run_uniform:run_nonuniform:constant:12",
     "_domain": "_domain::run_uniform:run_nonuniform:constant:12",
-    "_dt_min_cell": "_dt_min_cell::run_nonuniform:run_distributed:graded:12",
-    "_dt_pin": "_dt_pin::run_nonuniform:run_distributed:graded:12",
+    "_dt_min_cell": "_dt_min_cell::run_nonuniform:run_distributed_nu:graded:12",
+    "_dt_pin": "_dt_pin::run_nonuniform:run_distributed_nu:graded:12",
     "_dx": "_dx::run_uniform:run_nonuniform:constant:12",
-    "_dx_profile": "_dx_profile:graded:run_nonuniform:run_distributed:graded:12",
-    "_dy_profile": "_dy_profile:graded:run_nonuniform:run_distributed:graded:12",
-    "_dz_profile": "_dz_profile:graded:run_nonuniform:run_distributed:graded:12",
+    "_dx_profile": "_dx_profile:graded:run_nonuniform:run_distributed_nu:graded:12",
+    "_dy_profile": "_dy_profile:graded:run_nonuniform:run_distributed_nu:graded:12",
+    "_dz_profile": "_dz_profile:graded:run_nonuniform:run_distributed_nu:graded:12",
     "_freq_max": "_freq_max::run_uniform:run_nonuniform:constant:12",
     "_geometry": "_geometry:pec_wire:run_uniform:run_nonuniform:constant:12",
     "_lumped_rlc": "_lumped_rlc:series_RL:run_uniform:run_nonuniform:constant:12",
     "_materials": "_materials:mu:run_uniform:run_distributed:constant:12",
     "_msl_ports": "_msl_ports:msl_port:run_uniform:run_nonuniform:constant:12",
     "_ntff": "_ntff:ntff_box:run_uniform:run_nonuniform:constant:12",
-    "_pec_faces": "_pec_faces:pec_face:run_nonuniform:run_distributed:graded:12",
+    "_pec_faces": "_pec_faces:pec_face:run_nonuniform:run_distributed_nu:graded:12",
     "_pinned_sheets": "_pinned_sheets:pec_sheet:run_uniform:run_nonuniform:constant:12",
     "_ports": "_ports:amplitude_kind:run_uniform:run_distributed:constant:12",
     "_probes": "_probes:probe:run_uniform:run_nonuniform:constant:12",
@@ -95,18 +95,15 @@ PR_CHOICES = {
 # Experimental ADI/subgrid refusals remain weekly unless selected as a cause witness.
 PR_REFUSAL_LANES = frozenset((
     'run_uniform', 'fwd_uniform', 'run_nonuniform', 'fwd_nonuniform',
-    'run_distributed', 'fwd_distributed_nu',
+    'run_distributed', 'run_distributed_nu', 'fwd_distributed_nu',
 ))
 
 
 # Cheapest measured 12-step witness per cause (cold solve cost, including failures).
 PR_FINDING_CHOICES = {
-    "distributed-mode2d-broadcast": "_mode::run_uniform:run_distributed:constant:12",
     "flux-dA-shape": "_flux_monitors:flux:run_uniform:run_nonuniform:constant:12",
     "flux-dA2-missing": "_flux_monitors:flux:run_uniform:run_nonuniform:constant:12",
     "forward-flux-record-missing": "_flux_monitors:flux:fwd_uniform:fwd_nonuniform:constant:12",
-    "graded-distributed-ntff-refused": "_ntff:ntff_box:run_nonuniform:run_distributed:graded:12",
-    "graded-distributed-ports-refused": "_ports:wire_port:run_nonuniform:run_distributed:graded:12",
     "nu-dft-plane-accumulator": "_dft_planes:dft_plane:run_uniform:run_nonuniform:constant:12",
     "nu-flux-accumulator": "_flux_monitors:flux:run_uniform:run_nonuniform:constant:12",
     "nu-lumped-dft-record-missing": "_ports:lumped_port:fwd_uniform:fwd_nonuniform:constant:12",

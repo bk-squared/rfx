@@ -10,6 +10,7 @@ import numpy as np
 
 from rfx import _realized
 from rfx.runners import _admission as admission
+from tests.contracts import path_disposition
 
 from .builders import BASE_ROWS, build, point
 from .comparison import compare, container, excluded, metadata
@@ -35,7 +36,7 @@ def solve(row, lane, graded, steps, dt):
         if cell_ports:
             from .builders import FREQS
             kwargs['s_param_freqs'] = FREQS
-        if lane == 'run_distributed':
+        if lane in ('run_distributed', 'run_distributed_nu'):
             devices = jax.devices('cpu')
             assert len(devices) == 2, 'S0 requires exactly two CPU devices'
             kwargs['devices'] = devices
@@ -225,7 +226,7 @@ def _entry_refusal(sim, cell, report):
         kwargs['checkpoint'] = False
     else:
         kwargs['compute_s_params'] = False
-    if cell.refused == 'run_distributed':
+    if cell.refused in ('run_distributed', 'run_distributed_nu'):
         kwargs['devices'] = jax.devices('cpu')[:2]
     with patch.object(sim, '_dispatch_plan', select), patch.object(jax.lax, 'scan', before_scan):
         try:
@@ -264,7 +265,7 @@ def execute(cell):
             except NotImplementedError as exc:
                 report['refusal'] = str(exc)
                 if cell.steps:
-                    if cell.refused == 'run_distributed' and cell.row[0] in ('_tfsf', '_waveguide_ports'):
+                    if path_disposition.cell(*cell.row, cell.refused).kind == path_disposition.FALLS_BACK:
                         # The public API intentionally selects another lane
                         # for these features. Test this lane's production
                         # admission gate, not an artificial forced-dispatch

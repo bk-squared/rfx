@@ -101,6 +101,9 @@ def enter(sim, lane):
 
 def electric(materials, eps, sigma, site, *, periodic=(False,) * 3,
              region=None, owned_start=None, owned_count=None):
+    # The NU run entry shares the forward runner's traced material site.
+    if site == "distributed.E" and ACTIVE.lane == "run_distributed_nu":
+        site = "distributed_nu.E"
     eps = ACTIVE.apply(site, "eps_e", eps)
     sigma = ACTIVE.apply(site, "sigma_e", sigma)
     payload = dict(eps_e=eps, sigma_e=sigma, materials=materials)

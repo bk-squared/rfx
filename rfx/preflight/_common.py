@@ -50,6 +50,30 @@ from rfx._grid_metric import (
 from rfx.core.jax_utils import is_tracer
 
 
+def local_cell(grid, axis, x):
+    """Local rasterization resolution at the node nearest ``x``.
+
+    Use the smaller adjacent primal cell: a coarse neighbour alone must
+    not make a conductor count as the port's own trace. The first/last
+    node has only one physical adjacent cell; the final cells entry is a
+    node-provider, not an extra cell. A traced axis retains the boundary
+    tolerance because its local node cannot be resolved on the host.
+
+    Not the same rule as ``rfx.geometry.rasterize_grid._local_cell`` (the
+    cell CONTAINING x) or ``rfx.preflight.mesh._local_cell`` (the coarsest
+    cell over an interval); this one is for preflight tolerances only.
+    """
+    cells = grid.cells(axis)
+    if is_tracer(cells):
+        return grid.boundary_cell(axis, "lo")
+    index = grid.index_of(axis, x)
+    if index == 0 or len(cells) == 1:
+        return float(cells[0])
+    if index == len(cells) - 1:
+        return float(cells[index - 1])
+    return float(min(cells[index - 1], cells[index]))
+
+
 def _fmt_len(meters: float) -> str:
     """Unit-adaptive length for warning text (issue #166).
 
@@ -165,7 +189,7 @@ def _axis_pad_thickness_m(grid, axis_idx: int, side: str) -> float:
             return float(a[:n].sum())
         if side == "hi" and a.size >= n + 1:
             return float(a[a.size - 1 - n:a.size - 1].sum())
-    scalar = float(getattr(grid, "dy", grid.dx)) if ax == "y" else float(grid.dx)
+    scalar = float(grid.boundary_cell(ax, side))
     return n * scalar
 
 

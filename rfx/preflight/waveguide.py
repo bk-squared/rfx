@@ -66,6 +66,7 @@ from rfx.core.jax_utils import is_tracer
 from rfx.preflight._common import (
     _absorber_boundary_for_axis,
     _axis_pad_thickness_m,
+    local_cell,
     PreflightWarning,
     PreflightErrorWarning,
     PreflightConfigError,
@@ -104,28 +105,12 @@ def resolve_waveguide_port_freqs(sim, entry):
 
 
 def _transverse_cell_size(grid, axis_name) -> float:
-    """The cell size along ONE axis, without assuming cubic cells.
+    """Primal width on the constant transverse axis of the uniform lane.
 
-    Repo engineering principle 2 (axis-aware formulas): a transverse span is
-    ``cells * that axis' own cell size``, never ``cells * dx``. The uniform
-    ``Grid`` carries only ``dx``, so ``getattr(grid, "dy", grid.dx)`` — the
-    pattern ``rfx/simulation.py``, ``rfx/boundaries/cpml.py`` and
-    ``rfx/geometry/smoothing.py`` already use — returns ``dx`` there and this
-    is numerically a no-op on every grid that reaches this family today.
-
-    The ``ndim`` guard is not decoration: ``NonUniformGrid`` binds ``dy_arr``
-    and ``dz`` to per-cell ARRAYS, and a bare ``getattr`` would hand an array
-    into scalar arithmetic. That grid never reaches this check —
-    :meth:`_check_waveguide_port_evanescent` routes a set ``_d*_profile`` to
-    the declared-geometry lane before the spans are computed — so the guard
-    protects a future caller, not a current one.
+    Profiled simulations take the declared-geometry route before this
+    helper is called (``_check_waveguide_port_evanescent``).
     """
-    if axis_name == "x":
-        return float(grid.dx)
-    value = getattr(grid, "d" + axis_name, None)
-    if value is None or is_tracer(value) or np.ndim(value) != 0:
-        return float(grid.dx)
-    return float(value)
+    return float(grid.cells(axis_name)[0])
 
 
 def _port_transverse_spans(self, entry, grid, realized=None):
@@ -241,7 +226,7 @@ def _port_transverse_spans(self, entry, grid, realized=None):
         }
         try:
             slc, aperture = self._range_to_slice(
-                value_range, self._domain[axis_idx], grid.dx, n_axis,
+                value_range, self._domain[axis_idx], float(grid.cells("x")[0]), n_axis,
                 grid.axis_pads[axis_idx],
             )
         except ValueError as exc:
@@ -253,7 +238,7 @@ def _port_transverse_spans(self, entry, grid, realized=None):
             out[axis_name] = rec
             continue
         rec["aperture"] = float(aperture)
-        # The INDEX math above stays on ``grid.dx`` because
+        # The INDEX math above preserves the uniform x-cell size because
         # ``_build_waveguide_port_config`` calls ``_range_to_slice`` with
         # ``grid.dx`` on every axis; mirroring it is the point. The SPAN
         # those indices cover is this axis' own, which is what the solve
@@ -677,8 +662,8 @@ def _check_waveguide_port_aperture_snap(self, grid, realized) -> None:
             # to a dy-derived span would be the cubic assumption wearing a
             # label (repo engineering principle 2).
             d_axis = _transverse_cell_size(grid, axis_name)
-            d_label = (f"dx={grid.dx * 1e3:.4f} mm"
-                       if d_axis == float(grid.dx)
+            d_label = (f"dx={grid.cells('x')[0] * 1e3:.4f} mm"
+                       if d_axis == float(grid.cells("x")[0])
                        else f"d{axis_name}={d_axis * 1e3:.4f} mm")
             if rec["aperture"] is None:
                 _w.warn(
@@ -1647,7 +1632,20 @@ def _validate_cfg_port_index_mirror_covariance(
                     rm = float(em.reference_plane if em.reference_plane
                                is not None else em.x_position)
                     domain_ext = float(self._domain[ax_i])
-                    tol = 0.5 * float(getattr(grid, "dx", 0.0) or 0.0)
+                    # Half the local rasterization resolution at each
+                    # reference plane; the finer of the pair sets the tolerance.
+                    # A post-processing plane may lie outside the mesh;
+                    # there the adjacent boundary cell supplies the scale.
+                    ref_cells = []
+                    for coordinate in (rp, rm):
+                        try:
+                            cell = local_cell(grid, axis, coordinate)
+                        except ValueError:
+                            side = "lo" if coordinate < 0 else "hi"
+                            ref_cells.append(float(grid.boundary_cell(axis, side)))
+                        else:
+                            ref_cells.append(cell)
+                    tol = 0.5 * min(ref_cells)
                     if abs((rp + rm) - domain_ext) > tol:
                         _w.warn(PreflightWarning(
                             f"waveguide port index mirror audit, reference "

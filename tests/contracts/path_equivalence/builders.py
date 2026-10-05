@@ -122,7 +122,7 @@ def build(row, lane, *, graded=False, dt=None):
         # Modal aperture dimensions are declarations, not inferred rounded
         # box lengths. Put both transverse walls exactly on grid nodes.
         kwargs['domain'] = point(10.3, 8, 7)
-    nu = lane in ('run_nonuniform', 'fwd_nonuniform') or graded
+    nu = lane in ('run_nonuniform', 'run_distributed_nu', 'fwd_nonuniform', 'fwd_distributed_nu') or graded
     if nu or row[0] in ('_dx_profile', '_dy_profile', '_dz_profile'):
         for axis, length in zip('xyz', kwargs['domain']):
             profile = np.full(int(np.ceil(length / DX)), DX)

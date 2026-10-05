@@ -39,7 +39,7 @@ def model(lane, row, fill=False):
     kw = dict(freq_max=10e9, domain=(12*MM, 11*MM, (20 if sg else 12)*MM),
               dx=MM, boundary="cpml" if row.startswith("open_") else "pec",
               cpml_layers=3)
-    if lane in ("run_nonuniform", "fwd_nonuniform", "fwd_distributed_nu"):
+    if lane in ("run_nonuniform", "run_distributed_nu", "fwd_nonuniform", "fwd_distributed_nu"):
         kw["dx_profile"] = np.array([MM]*4 + [MM/2]*8 + [MM]*4)
     if lane in ("run_adi", "fwd_adi"):
         kw["solver"] = "adi"
@@ -79,7 +79,7 @@ def model(lane, row, fill=False):
 
 
 def cell_materials(sim, lane):
-    if lane in ("run_nonuniform", "fwd_nonuniform", "fwd_distributed_nu"):
+    if lane in ("run_nonuniform", "run_distributed_nu", "fwd_nonuniform", "fwd_distributed_nu"):
         return sim._assemble_materials_nu(sim._build_nonuniform_grid())[0]
     return sim._assemble_materials(sim._build_grid())[0]
 
@@ -93,7 +93,7 @@ def run(sim, lane, row, steps=4):
     kw = dict(n_steps=steps, skip_preflight=True)
     if lane.startswith("run"):
         kw["compute_s_params"] = False
-        if lane == "run_distributed":
+        if lane in ("run_distributed", "run_distributed_nu"):
             kw["devices"] = jax.devices("cpu")[:2]
         if row == "conformal":
             kw["conformal_pec"] = True
@@ -115,7 +115,7 @@ def measured(lane, row):
             jax.block_until_ready(result.time_series)
     if dump.lane != lane:
         raise RuntimeError(f"expected lane {lane}, recorded {dump.lane}")
-    if lane in ("run_distributed", "fwd_distributed_nu"):
+    if lane in ("run_distributed", "run_distributed_nu", "fwd_distributed_nu"):
         dump.full_materials = cell_materials(sim, lane)
     return dump
 
@@ -134,11 +134,11 @@ def material_pairs(dump, row, axis):
                 {"aniso.E"} if row == "conformal" else
                 {"adi.E"} if dump.lane in ("run_adi", "fwd_adi") else
                 {"distributed.E"} if row != "mu" and dump.lane == "run_distributed" else
-                {"distributed_nu.E"} if row != "mu" and dump.lane == "fwd_distributed_nu" else
+                {"distributed_nu.E"} if row != "mu" and dump.lane in ("run_distributed_nu", "fwd_distributed_nu") else
                 set())
     if expected - sites:
         raise RuntimeError(f"no record at {sorted(expected - sites)}")
-    if row != "mu" and dump.lane in ("run_distributed", "fwd_distributed_nu"):
+    if row != "mu" and dump.lane in ("run_distributed", "run_distributed_nu", "fwd_distributed_nu"):
         spans = sorted((int(r["owned_start"]), int(r["owned_count"])) for r in records)
         end = 0
         for start, count in spans:
@@ -353,7 +353,7 @@ def test_dump_is_consumed(lane, row):
           f"traced_sites={sorted({r['site'] for r in same.records if r['traced']})}", file=sys.stderr)
 
 
-@pytest.mark.parametrize("lane", ["run_distributed", "fwd_distributed_nu"])
+@pytest.mark.parametrize("lane", ["run_distributed", "run_distributed_nu", "fwd_distributed_nu"])
 @pytest.mark.parametrize("row", ["eps", "sigma"])
 def test_ghost_row_mutation_is_detected(monkeypatch, lane, row):
     from rfx.runners import _distributed_common as dc
