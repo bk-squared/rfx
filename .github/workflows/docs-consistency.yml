@@ -20,6 +20,8 @@ name: docs-consistency
 # reads prose without the marker, so the split cannot drift back.
 
 on:
+  merge_group:
+    types: [checks_requested]
   push:
     branches: [main]
   pull_request:

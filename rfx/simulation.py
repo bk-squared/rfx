@@ -20,6 +20,7 @@ import jax.numpy as jnp
 from rfx.core.drives import StepDrives, drive_layout, inject_drives
 import numpy as np
 
+from rfx.boundaries.axes import drop_periodic_axes, resolve_cpml_axes
 from rfx.grid import Grid
 from rfx.core.jax_utils import recorded_scan
 from rfx.core.yee import (
@@ -1367,11 +1368,7 @@ def _build_step_setup(
     # ---- boundary configuration ----
     periodic = resolve_periodic(grid, periodic)
 
-    # Skip CPML / PEC on periodic axes.
-    axis_names = ("x", "y", "z")
-    for axis_name, is_periodic in zip(axis_names, periodic):
-        if is_periodic:
-            cpml_axes = cpml_axes.replace(axis_name, "")
+    cpml_axes = drop_periodic_axes(cpml_axes, periodic)  # no CPML/PEC on periodic axes
     # ---- the walls, per face, from the grid's declaration (#1164) ----
     # ``resolve_wall_faces`` is the one rule every entry point shares:
     # periodic -> none; a magnetic face is never an electric wall; a
@@ -2833,7 +2830,7 @@ def run(
     n_steps: int,
     *,
     boundary: str = "pec",
-    cpml_axes: str = "xyz",
+    cpml_axes: str | None = None,
     pec_axes: str | None = None,
     periodic: tuple[bool, bool, bool] | None = None,
     debye: tuple | None = None,
@@ -2889,7 +2886,7 @@ def run(
         DFTs instead of checkpoints; checkpoint options are unused.
         See the module docstring of ``rfx.adjoint``.
     boundary : "pec", "cpml", or "upml"
-    cpml_axes : axes string for CPML (default "xyz")
+    cpml_axes : str or None: the grid's absorbing axes when omitted; subsets accepted
     pec_axes : axes string or None
         Axes on which to enforce PEC after each update. If None, uses
         all non-periodic axes.
@@ -3024,6 +3021,7 @@ def run(
     -------
     SimResult with final state, time series, and optional NTFF data.
     """
+    cpml_axes = resolve_cpml_axes(grid, cpml_axes)
     sources = sources or []
     probes = probes or []
     dft_planes = dft_planes or []
@@ -3649,7 +3647,7 @@ def run_until_decay(
     monitor_component: str = "ez",
     monitor_position: tuple[float, float, float] | None = None,
     boundary: str = "pec",
-    cpml_axes: str = "xyz",
+    cpml_axes: str | None = None,
     pec_axes: str | None = None,
     periodic: tuple[bool, bool, bool] | None = None,
     debye: tuple | None = None,
@@ -3801,6 +3799,7 @@ def run_until_decay(
     -------
     SimResult
     """
+    cpml_axes = resolve_cpml_axes(grid, cpml_axes)
     if checkpoint_segments is not None:
         raise NotImplementedError(
             "checkpoint_segments is not supported by run_until_decay: "

@@ -24,6 +24,7 @@ from types import SimpleNamespace
 from typing import NamedTuple
 
 from rfx import _realized
+from rfx.boundaries.axes import padded_axes, resolve_cpml_axes
 
 import jax
 import jax.numpy as jnp
@@ -2475,6 +2476,7 @@ def _build_nu_scan(
     materials: MaterialArrays,
     n_steps: int,
     *,
+    cpml_axes: str | None = None,
     pec_mask=None,
     pec_sheets=(),
     pec_wires=(),
@@ -2510,6 +2512,7 @@ def _build_nu_scan(
     placeholder table; the source waveform arrays themselves define the
     table length when sources are present.
     """
+    cpml_axes = resolve_cpml_axes(grid, cpml_axes)
     from rfx.sources.wire_radius import require_radius_update
     require_radius_update(
         materials, lane="non-uniform Yee with dispersion/tensor or design-box updates",
@@ -2550,14 +2553,7 @@ def _build_nu_scan(
     cpml_params = None
     cpml_state_init = None
     cpml_grid = None
-    # Effective CPML axes after PEC/PMC closure. Axes whose lo+hi pad is
-    # zero are fully closed and the apply path's `state.e*[:, :, :n]`
-    # slices clip to the (small) axis length, breaking the broadcast
-    # against the (cpml_layers,) profile coefficients. Drop those axes
-    # from `apply_cpml_*` so the no-op branch passes psi through
-    # unchanged. Mirrors the uniform runner, which already threads
-    # `cpml_axes` from the grid (rfx/runners/uniform.py).
-    cpml_axes_eff = "xyz"
+    cpml_axes_eff = cpml_axes
 
     if use_cpml:
         from rfx.boundaries.cpml import init_cpml, apply_cpml_h, apply_cpml_e
@@ -2570,14 +2566,7 @@ def _build_nu_scan(
             grid, pec_faces=pec_faces, pmc_faces=pmc_faces,
         )
         cpml_grid = grid
-        cpml_axes_eff = "".join(
-            ax for ax, lo, hi in (
-                ("x", grid.pad_x_lo, grid.pad_x_hi),
-                ("y", grid.pad_y_lo, grid.pad_y_hi),
-                ("z", grid.pad_z_lo, grid.pad_z_hi),
-            )
-            if (lo + hi) > 0
-        )
+        cpml_axes_eff = padded_axes(grid, cpml_axes)
 
     # PMC enforcement (2026-04). The NU scan body previously never
     # zeroed H_tan on PMC faces, so a half-symmetric configuration
@@ -3268,6 +3257,7 @@ def run_nonuniform(
     materials: MaterialArrays,
     n_steps: int,
     *,
+    cpml_axes: str | None = None,
     pec_mask=None,
     pec_sheets=(),
     pec_wires=(),
@@ -3303,6 +3293,7 @@ def run_nonuniform(
 
     Parameters
     ----------
+    cpml_axes : str or None: axes with absorber pads when omitted; subsets accepted
     sources : list of (i, j, k, component, waveform_array)
     probes : list of (i, j, k, component)
     wire_ports : list of dict with keys:
@@ -3317,6 +3308,7 @@ def run_nonuniform(
     """
     setup = _build_nu_scan(
         grid, materials, n_steps,
+        cpml_axes=cpml_axes,
         pec_mask=pec_mask,
         pec_sheets=pec_sheets,
         pec_wires=pec_wires,
@@ -3783,6 +3775,7 @@ def run_nonuniform_until_decay(
     grid: NonUniformGrid,
     materials: MaterialArrays,
     *,
+    cpml_axes: str | None = None,
     decay_by: float = 1e-3,
     check_interval: int = 50,
     min_steps: int = 100,
@@ -3903,6 +3896,7 @@ def run_nonuniform_until_decay(
 
     setup = _build_nu_scan(
         grid, materials, max_steps,
+        cpml_axes=cpml_axes,
         pec_mask=pec_mask,
         pec_sheets=pec_sheets,
         pec_wires=pec_wires,

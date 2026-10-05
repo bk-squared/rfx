@@ -69,6 +69,7 @@ import jax.numpy as jnp
 from rfx._precision import HIGHEST
 import numpy as np
 
+from rfx.boundaries.axes import hi_face_is_wall, resolve_cpml_axes
 from rfx.core.yee import EPS_0, MU_0
 
 
@@ -750,10 +751,7 @@ def init_waveguide_port(
     # dead-end note's recommendation) remains the path to recovering
     # PEC-short closure without capping it via the half-weight kludge.
     #
-    # Detection: +face is PEC iff axis fully PEC (not in cpml_axes) OR per-
-    # face spec marks it PEC. Only fires when slice reaches the grid edge.
-    #
-    # Does NOT fire for a port built by ``Simulation``/``run_nonuniform``: those
+    # The hi-face drop (``hi_face_is_wall``) does NOT fire for a port built by ``Simulation``/``run_nonuniform``: those
     # hand ``WaveguidePort`` the guide's CELL span (issue #868), which ends one
     # index short of the array edge, so there is no cell past the wall left to
     # drop. It still fires for a low-level caller that passes the whole node
@@ -761,8 +759,6 @@ def init_waveguide_port(
     u_aperture_weights = np.ones_like(u_widths_np)
     v_aperture_weights = np.ones_like(v_widths_np)
     if boundary_grid is not None and u_axis_name is not None:
-        cpml_axes = getattr(boundary_grid, "cpml_axes", "")
-        pec_faces = getattr(boundary_grid, "pec_faces", set()) or set()
         # Stage 1 conformal PEC: when a +face is conformal, the
         # Dey-Mittra eps_correction handles the staircase shift at the
         # boundary cell. Zeroing the same cell here in the modal V/I
@@ -770,10 +766,8 @@ def init_waveguide_port(
         # 2026-04-29 first-attempt failure mode where PEC-short |S11|
         # diff vs OpenEMS regressed 0.025 → 0.094.
         conformal_faces = getattr(boundary_grid, "conformal_faces", set()) or set()
-        u_hi_face_pec = (u_axis_name not in cpml_axes) or (
-            f"{u_axis_name}_hi" in pec_faces)
-        v_hi_face_pec = (v_axis_name not in cpml_axes) or (
-            f"{v_axis_name}_hi" in pec_faces)
+        u_hi_face_pec = hi_face_is_wall(boundary_grid, u_axis_name)
+        v_hi_face_pec = hi_face_is_wall(boundary_grid, v_axis_name)
         u_hi_face_conformal = f"{u_axis_name}_hi" in conformal_faces
         v_hi_face_conformal = f"{v_axis_name}_hi" in conformal_faces
         if (u_hi == u_grid_size and u_hi_face_pec
@@ -1998,7 +1992,7 @@ def extract_waveguide_s_matrix(
     n_steps: int,
     *,
     boundary: str = "cpml",
-    cpml_axes: str = "x",
+    cpml_axes: str | None = None,
     pec_axes: str = "yz",
     periodic: tuple[bool, bool, bool] | None = None,
     debye: tuple | None = None,
@@ -2045,6 +2039,7 @@ def extract_waveguide_s_matrix(
         ``checkpoint=True, checkpoint_segments=K``).  See
         :meth:`Simulation.compute_waveguide_s_matrix` for full semantics.
     """
+    cpml_axes = resolve_cpml_axes(grid, cpml_axes)
     if len(port_cfgs) < 2:
         raise ValueError(
             "extract_waveguide_s_matrix requires at least two waveguide ports"
@@ -2153,7 +2148,7 @@ def extract_waveguide_s_matrix_flux(
     n_steps: int,
     *,
     boundary: str = "cpml",
-    cpml_axes: str = "x",
+    cpml_axes: str | None = None,
     pec_axes: str = "yz",
     periodic: tuple[bool, bool, bool] | None = None,
     debye: tuple | None = None,
@@ -2244,6 +2239,7 @@ def extract_waveguide_s_matrix_flux(
     Parameters mirror ``extract_waveguide_s_params_normalized``; see that
     function for argument documentation.
     """
+    cpml_axes = resolve_cpml_axes(grid, cpml_axes)
     if len(port_cfgs) < 2:
         raise ValueError(
             "extract_waveguide_s_matrix_flux requires at least two waveguide ports"
@@ -2457,7 +2453,7 @@ def extract_waveguide_s_params_normalized(
     n_steps: int,
     *,
     boundary: str = "cpml",
-    cpml_axes: str = "x",
+    cpml_axes: str | None = None,
     pec_axes: str = "yz",
     periodic: tuple[bool, bool, bool] | None = None,
     debye: tuple | None = None,
@@ -2551,6 +2547,7 @@ def extract_waveguide_s_params_normalized(
     jnp.ndarray
         Normalized S-matrix of shape (n_ports, n_ports, n_freqs), complex.
     """
+    cpml_axes = resolve_cpml_axes(grid, cpml_axes)
     if len(port_cfgs) < 2:
         raise ValueError(
             "extract_waveguide_s_params_normalized requires at least two waveguide ports"
@@ -2963,7 +2960,7 @@ def extract_multimode_s_matrix(
     n_steps: int,
     *,
     boundary: str = "cpml",
-    cpml_axes: str = "x",
+    cpml_axes: str | None = None,
     pec_axes: str = "yz",
     periodic: tuple[bool, bool, bool] | None = None,
     debye: tuple | None = None,
@@ -3007,6 +3004,7 @@ def extract_multimode_s_matrix(
     mode_map : list of (port_idx, mode_idx, mode_type, (m, n))
         Ordering of rows/columns in the S-matrix.
     """
+    cpml_axes = resolve_cpml_axes(grid, cpml_axes)
     from rfx.simulation import run as run_simulation
 
     # Flatten to a linear list, keeping track of (port_idx, mode_within_port)
@@ -3134,7 +3132,7 @@ def extract_multimode_s_matrix_flux(
     n_steps: int,
     *,
     boundary: str = "cpml",
-    cpml_axes: str = "x",
+    cpml_axes: str | None = None,
     pec_axes: str = "yz",
     periodic: tuple[bool, bool, bool] | None = None,
     debye: tuple | None = None,
@@ -3189,6 +3187,7 @@ def extract_multimode_s_matrix_flux(
     s_matrix : jnp.ndarray, shape (N, N, n_freqs)
     mode_map : list of (port_idx, mode_idx, mode_type, (m, n))
     """
+    cpml_axes = resolve_cpml_axes(grid, cpml_axes)
     from rfx.simulation import run as run_simulation
 
     flat_cfgs: list[WaveguidePortConfig] = []

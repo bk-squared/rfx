@@ -23,6 +23,8 @@ name: pr-tests
 # script, 15 s, so requiring it costs nothing.
 
 on:
+  merge_group:
+    types: [checks_requested]
   push:
     branches: [main]
   pull_request:
@@ -79,11 +81,11 @@ jobs:
         # Every input arrives through the environment. The decision is
         # scripts/ci/changed_paths.py (stdlib, unit-tested); the shell around it
         # is scripts/ci/classify_changes.sh, which answers `true` for any push
-        # to main and for any diff it could not compute.
+        # to main, every merge group, and any diff it could not compute.
         env:
           EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
           PUSH_BEFORE: ${{ github.event.before }}
           PUSH_AFTER: ${{ github.sha }}
         run: bash scripts/ci/classify_changes.sh
@@ -121,7 +123,12 @@ jobs:
       # workflow does not re-run on `labeled`, so the way a label counts is
       # re-running the failed job, and a re-run replays the ORIGINAL payload.
       # Only a live read sees a label applied after the push.
+      - name: Data budget already passed on the PR
+        if: github.event_name == 'merge_group'
+        run: echo 'PR-level gate, passed on the PR'
+
       - name: Data budget — measurement records go to rfx-archive
+        if: github.event_name != 'merge_group'
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -140,7 +147,7 @@ jobs:
       # and a PR branched before main lowered an entry is judged on the lowered one.
       - name: File-size ratchet
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: python scripts/ci/check_file_size_ratchet.py
 
       - name: Install package with dev dependencies

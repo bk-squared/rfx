@@ -87,7 +87,7 @@ def _coax_pec_edge_masks(pec_cells, periodic=(False, False, False), merge_with=N
     return tuple(np.asarray(e) | np.asarray(m) for e, m in zip(edges, merge_with))
 
 
-def _require_absorption_on_every_axis(sim, cpml_axes: str, lane: str) -> None:
+def _require_absorption_on_every_axis(sim, cpml_axes: str | None, lane: str) -> None:
     """Both coax line lanes absorb on x, y and z (issue 1218).
 
     With absorbers on z only, the lateral pads were vacuum backed by the PEC
@@ -117,7 +117,7 @@ def _require_absorption_on_every_axis(sim, cpml_axes: str, lane: str) -> None:
                 "is a PEC wall that closes a metal can around the line "
                 "(issue 1218)."
             )
-    if cpml_axes != "xyz":
+    if cpml_axes is not None and set(cpml_axes) != set("xyz"):
         raise ValueError(
             f"{lane}() absorbs on all three axes and accepts only "
             f"cpml_axes='xyz' (got {cpml_axes!r}). With absorbers on z only "
@@ -136,7 +136,7 @@ def compute_coaxial_line_reflection(
     freqs: jnp.ndarray | None = None,
     n_freqs: int = 11,
     field_scale: float = 1.0e4,
-    cpml_axes: str = "xyz",
+    cpml_axes: str | None = None,
     dut_offset_cells: int = 4,
     probe_count: int = 12,
     probe_start_cells: int = 8,
@@ -168,7 +168,7 @@ def compute_coaxial_line_reflection(
     PEC into CPML is numerically unstable.
 
     The line sits in open space: the run absorbs on all three axes
-    (``cpml_axes="xyz"``, the default and the only value accepted), so what
+    (``cpml_axes=None`` reads the grid; all three axes are required), so what
     leaves the line's unshielded ends — the open termination, and the pin and
     shell ending one cell past the matched feed — is absorbed as it would
     radiate from a cable. ``cpml_axes="z"`` is refused: it left the lateral
@@ -554,7 +554,7 @@ def compute_coaxial_two_port(
     freqs: jnp.ndarray | None = None,
     n_freqs: int = 11,
     field_scale: float = 1.0e4,
-    cpml_axes: str = "xyz",
+    cpml_axes: str | None = None,
     probe_count: int = 12,
     probe_start_cells: int = 8,
     probe_spacing_cells: int = 4,

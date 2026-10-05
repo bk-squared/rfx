@@ -375,8 +375,8 @@ def _axis_buffer_depths(grid, n_alloc: int) -> tuple[int, int, int]:
     0 for ``axis not in self.cpml_axes``), but ``init_cpml`` does not read
     ``cpml_axes`` at all: unless the face is PEC/PMC it still builds a
     REAL absorbing profile of length ``n_alloc`` there, and
-    ``rfx.simulation.run`` applies it whenever its own ``cpml_axes``
-    argument — a separate knob, defaulting to ``"xyz"`` — names the axis.
+    ``rfx.simulation.run`` historically applied it whenever its own
+    ``cpml_axes`` argument (then defaulting to ``"xyz"``) named the axis.
     So "pads of 0" on such an axis means "the grid allocates no padding
     cells", not "there is no absorber", and clamping on it thinned a real
     8-layer absorber to 1. Measured on
@@ -386,7 +386,9 @@ def _axis_buffer_depths(grid, n_alloc: int) -> tuple[int, int, int]:
     residual E energy dropping 1.6401e+01 -> 8.3653e+00 (-49%). Both
     clauses are therefore the same rule: clamp only where the grid
     positively states that the face allocated nothing AND that the axis is
-    one this grid absorbs on.
+    one this grid absorbs on. PR #1494 now defaults runner axes to the
+    grid and refuses explicit additions, so these unpadded-axis profiles
+    are unused by the runner. The #876 buffer-depth rule remains intact.
     """
     extents = _grid_extents(grid)
     depths = []

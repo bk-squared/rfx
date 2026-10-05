@@ -22,6 +22,8 @@ name: pr-body
 # label set is read from the API at check time rather than taken from the event
 # payload -- see the step below.
 on:
+  merge_group:
+    types: [checks_requested]
   pull_request:
     types: [opened, edited, reopened, synchronize, labeled, unlabeled]
 
@@ -41,10 +43,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: PR gate already passed before queue admission
+        if: github.event_name == 'merge_group'
+        run: echo 'PR-level gate; the queue admits only PRs that passed it'
+
       - name: Check out repository
+        if: github.event_name != 'merge_group'
         uses: actions/checkout@v4
 
       - name: Read the live lane labels, and this PR's own
+        if: github.event_name != 'merge_group'
         # LANE_LABELS is which lanes EXIST, so a lane
         # added after the script was written does not fail a PR; `grep` exits 1
         # on no match, which would fail the step -- hence `|| true`, and an
@@ -90,6 +98,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Check the PR body
+        if: github.event_name != 'merge_group'
         # The body is passed through the environment, never interpolated into
         # the shell: a body is attacker-controlled text and `${{ }}` inside a
         # `run:` block is a script injection.

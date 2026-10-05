@@ -15,7 +15,9 @@ import jax.numpy as jnp
 from rfx.core.dft_utils import dft_window_weight as _dft_window_weight
 from rfx.core.dft_utils import half_step_current_phase as _half_step_current_phase
 from rfx.grid import Grid
-from rfx.sources.sources import LumpedPort
+from rfx.boundaries.axes import resolve_cpml_axes
+from rfx.boundaries.cpml import apply_cpml_e, apply_cpml_h, init_cpml
+from rfx.sources.sources import LumpedPort, _wire_port_live_cells
 
 
 @dataclass(frozen=True)
@@ -1094,7 +1096,6 @@ def _wire_port_live_mid(grid, port, pec_edge_masks=None):
     as the port current. With ``pec_edge_masks=None`` — or no dead cells — this is
     bit-identical to the historical all-extent midpoint.
     """
-    from rfx.sources.sources import _wire_port_live_cells
 
     cells, live_flags, _ = _wire_port_live_cells(grid, port, pec_edge_masks)
     live = [c for c, l in zip(cells, live_flags) if l]
@@ -1137,7 +1138,6 @@ def wire_port_gap_voltage(state, grid, port, pec_edge_masks=None) -> jnp.ndarray
     ``S_kk = (V_port - Z0*I)/(V_port + Z0*I)`` against the whole-port Z0
     that #318 physically realizes as the series termination.
     """
-    from rfx.sources.sources import _wire_port_live_cells
 
     cells, live_flags, _ = _wire_port_live_cells(grid, port, pec_edge_masks)
     field = getattr(state, port.component)
@@ -1598,7 +1598,7 @@ def extract_s_matrix(
     n_steps: int | None = None,
     *,
     boundary: str = "pec",
-    cpml_axes: str = "xyz",
+    cpml_axes: str | None = None,
     debye_spec: tuple[list, list[jnp.ndarray]] | None = None,
     lorentz_spec: tuple[list, list[jnp.ndarray]] | None = None,
     pec_edge_masks: object | None = None,
@@ -1619,7 +1619,7 @@ def extract_s_matrix(
     n_steps : int or None
         Defaults to ``grid.num_timesteps(num_periods=30)``.
     boundary : "pec" or "cpml"
-    cpml_axes : axes string for CPML (default "xyz")
+    cpml_axes : str or None: the grid's absorbing axes when omitted; subsets accepted
     debye_spec, lorentz_spec : optional ``(poles, masks)`` tuples
         Used to rebuild dispersive coefficients after port loading is
         folded into ``materials``.
@@ -1635,6 +1635,7 @@ def extract_s_matrix(
         when exciting port *j*). With ``return_vi_dump=True``, the bundle also
         carries replayable raw phasors.
     """
+    cpml_axes = resolve_cpml_axes(grid, cpml_axes)
     import numpy as np
     from rfx.core.yee import init_state, update_h
     from rfx.boundaries.pec import apply_pec
@@ -1652,7 +1653,6 @@ def extract_s_matrix(
     use_cpml = boundary == "cpml" and grid.cpml_layers > 0
 
     if use_cpml:
-        from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
         cpml_params, cpml_state_init = init_cpml(grid)
 
     # Fold ALL port impedances into materials (once)
@@ -1940,7 +1940,7 @@ def extract_s_matrix_wire(
     n_steps: int | None = None,
     *,
     boundary: str = "pec",
-    cpml_axes: str = "xyz",
+    cpml_axes: str | None = None,
     debye_spec: tuple[list, list[jnp.ndarray]] | None = None,
     lorentz_spec: tuple[list, list[jnp.ndarray]] | None = None,
     pec_edge_masks: object | None = None,
@@ -1961,7 +1961,7 @@ def extract_s_matrix_wire(
     n_steps : int or None
         Defaults to ``grid.num_timesteps(num_periods=30)``.
     boundary : "pec" or "cpml"
-    cpml_axes : axes string for CPML (default "xyz")
+    cpml_axes : str or None: the grid's absorbing axes when omitted; subsets accepted
     debye_spec, lorentz_spec : optional dispersion specs
     return_vi_dump : bool
         When True, return a :class:`WirePortVIReplayBundle` containing the
@@ -1974,6 +1974,7 @@ def extract_s_matrix_wire(
         By default, returns an S-matrix. With ``return_vi_dump=True``, the
         bundle also carries raw phasors and per-port wire cell counts.
     """
+    cpml_axes = resolve_cpml_axes(grid, cpml_axes)
     import numpy as np
     from rfx.core.yee import init_state, update_h
     from rfx.boundaries.pec import apply_pec
@@ -1996,7 +1997,6 @@ def extract_s_matrix_wire(
     use_cpml = boundary == "cpml" and grid.cpml_layers > 0
 
     if use_cpml:
-        from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
         cpml_params, cpml_state_init = init_cpml(grid)
 
     # Fold ALL port impedances into materials (once), over LIVE cells only

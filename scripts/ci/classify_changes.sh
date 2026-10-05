@@ -10,8 +10,8 @@
 #
 # Inputs (all optional; a missing one falls open to "run everything"):
 #   EVENT_NAME   github.event_name
-#   BASE_SHA     github.event.pull_request.base.sha
-#   HEAD_SHA     github.event.pull_request.head.sha
+#   BASE_SHA     pull_request.base.sha or merge_group.base_sha
+#   HEAD_SHA     pull_request.head.sha or merge_group.head_sha
 #   PUSH_BEFORE  github.event.before
 #   PUSH_AFTER   github.sha
 #   GITHUB_OUTPUT  where to append `code_changed=`; stdout only when unset.
@@ -43,6 +43,11 @@ emit() {
   fi
   exit 0
 }
+
+# Exercise the combined queue tree in full, even for a docs-only or empty diff.
+if [ "$EVENT_NAME" = "merge_group" ]; then
+  emit true "merge group always runs the full lane"
+fi
 
 if [ "$EVENT_NAME" = "push" ]; then
   # A push to main is never skipped. Every merge is exercised in full: main is

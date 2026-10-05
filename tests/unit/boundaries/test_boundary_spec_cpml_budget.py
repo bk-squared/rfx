@@ -283,32 +283,29 @@ def test_a_grid_that_does_not_state_its_face_pads_keeps_the_full_buffer():
 
 
 def test_an_axis_outside_cpml_axes_keeps_its_pre_876_applied_depth():
-    """The licensing guard is two-sided: pads of 0 is not "no absorber".
+    """#876 keeps the per-axis buffer budget at 8, never clamped to 1.
 
-    ``Grid`` gives every axis outside ``cpml_axes`` per-face pads of 0
-    (``Grid._face_pad``), so those pads ARE stated and the first half of the
-    guard lets them through. But ``init_cpml`` never reads ``cpml_axes``:
-    unless the face is PEC/PMC it builds a REAL absorbing profile of length
-    ``cpml_layers`` for it, and ``rfx.simulation.run`` applies it whenever
-    its own ``cpml_axes`` argument — a separate knob defaulting to ``"xyz"``
-    — names the axis. Clamping there read "no padding cells" as "no
-    absorber" and cut a real 8-layer absorber to 1.
+    An axis outside Grid.cpml_axes has zero pads, but init_cpml still builds
+    real profiles and full-depth scratch buffers there. #876 guarded against
+    interpreting those zero pads as permission to truncate an 8-layer buffer
+    to 1. Keep the depth, buffer and profile assertions below.
 
-    Measured on this fixture through ``rfx.run`` for 200 steps: field digest
-    ``d5ffa08245a4cb82`` and residual E energy 1.6400655163e+01 with the
-    absorber intact, against ``4da793698805a454`` / 8.3652918424e+00 (-49%)
-    while the clamp applied to x and y. The first pair is also what
-    ``origin/main`` produces, i.e. this axis's answer is unchanged by #876.
-
-    The three assertions below are the applied depth at the three places it
-    is observable: the clamp's own return, the psi buffers those slices are
-    cut from, and the profile that proves the absorber was real.
+    PR #1494 now refuses a runner argument that adds
+    axes the grid did not declare. The runner defaults to the grid's axes,
+    so these unused profiles no longer absorb inside the x/y physical domain.
+    This is a runner contract change, not a change to init_cpml's allocation.
     """
     grid = Grid(freq_max=10e9, domain=(0.02, 0.02, 0.02),
                 cpml_axes="z", cpml_layers=8)
     assert grid.cpml_axes == "z"
     assert (grid.pad_x_lo, grid.pad_x_hi) == (0, 0)
     assert (grid.pad_y_lo, grid.pad_y_hi) == (0, 0)
+
+    from rfx import run
+    from rfx.core.yee import init_materials
+
+    with pytest.raises(ValueError, match="cpml_axes='xyz'.*cpml_axes='z'"):
+        run(grid, init_materials(grid.shape), 1, boundary="cpml", cpml_axes="xyz")
 
     # 1. the pre-#876 depth: min(cpml_layers, extent), NOT max(pad_lo, pad_hi)
     assert _axis_buffer_depths(grid, 8) == (8, 8, 8)
