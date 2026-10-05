@@ -319,3 +319,41 @@ this design's seed, and its tests are rewritten in B3 with the reason. The one-c
 #1205's `test_magnetic_wall_faces_not_shorted.py` and the ports lane's two #1162 tests on the same
 line (`lane:coax-mixed-port`) — is rebuilt in B3 as a line whose port and load sit at least two cells
 from any magnetic face, or on the face under the "full" convention with a migrated current loop.
+
+## 7. Decision record, 2026-10-05: S1 boundaries (the structure plan's realized-model stage)
+
+The PI's 2026-10-04 restructuring makes the remaining kernel work of §3 (B4, B6) part of stage S1:
+one declaration, one realized model, every path reads it. For boundaries the duplicated part today
+is not the absorber law (one `_cpml_profile` since #1374) but the **reading of the declaration into
+per-face depths**: the same rule — a wall face or a face on a non-absorbing axis gets no pad, an
+absorbing face gets its declared thickness or the scalar budget — is written out in `grid.py`
+(`Grid._face_pad`), in `nonuniform.py` (`_face_pad`, with a range check the uniform copy lacks), in
+`init_cpml` (`n_active`), in the multi-device builder (`_distributed_boundary_layers`, which omits the
+non-absorbing-axis test), in `api/_compile.py`, and again in several preflight readers. #1346 was two
+of these copies disagreeing (the graded grid dropped per-face depths, a 4/8 request built 8/8).
+
+Decisions:
+1. The boundary model gains one function that returns, per face, the kind, the declared depth, the
+   realized depth (pad cells) and the absorber's terminal plane — no coefficient arrays: `init_cpml`
+   stays the one coefficient builder and takes its depths from this record. Every place listed above
+   reads the record; no module outside `rfx/boundaries/` derives a per-face depth from the declaration.
+2. Two PRs. PR1: the record, the uniform and graded grid builders, `init_cpml`, `api/_compile.py`, and
+   the contracts below. PR2: the multi-device builder and the preflight readers. The TF/SF auxiliary
+   grids (own spacing, own depth) and the ψ-update copies (stage S3) are out of scope.
+3. Judges.
+   - Non-regression: every cell of the S0 path-equivalence matrix (#1484) that passes before passes
+     after, bit-for-bit on the realized record and within its own bars on fields; no committed test,
+     lock or frozen record changes value. Expected to move: nothing. A cell that moves stops the PR
+     for a written root cause.
+   - One source (structural): a contract test scans `rfx/` and fails if a module outside
+     `rfx/boundaries/` reads a declaration's per-face depth (`face_layers.get(…)`, `face_layers[…]`,
+     `resolved_lo/hi_thickness`, `lo/hi_thickness`) other than through the record. Mutation (a): the
+     scan disabled → red on a seeded file. Mutation (b): restore #1346 in the graded builder (per-face
+     depth replaced by the scalar budget while it still calls the record for everything else) →
+     the physical judge below goes red.
+   - Physical: an asymmetric declaration (x low 8 layers, x high 16, y PEC, z absorbing at 12) on the
+     uniform and the graded single-device paths (PR2 adds the two multi-device paths): the plane-wave
+     reflection of each x face, measured as a reflection coefficient over a band
+     (`tests/_absorber_witness.py`), agrees between the paths within its float32 floor, and the deeper
+     face reflects less than the shallower one by the margin the single-device run shows. The
+     restored-#1346 mutation makes the graded x-high face read like 8 layers.
