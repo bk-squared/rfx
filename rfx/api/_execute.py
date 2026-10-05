@@ -1954,9 +1954,11 @@ class _ExecuteMixin:
                 # tangential edges would open the conductor the port foot
                 # stands on.  The CELL clearing below stays: it is the
                 # volume/occupancy carrier the Kottke guard keys off.
+                conductors = clear_conductor_edges(conductors, _wp_live_cells,
+                    component=pe.component, entity_id=f"port[{self._ports.index(pe)}]",
+                    clear_cells=True, release_edges=False)
+                pec_mask_local = conductors.pec_cells
                 for cell in _wp_live_cells:
-                    if pec_mask_local is not None:
-                        pec_mask_local = pec_mask_local.at[cell[0], cell[1], cell[2]].set(False)
                     if pec_occupancy_local is not None:
                         pec_occupancy_local = pec_occupancy_local.at[cell[0], cell[1], cell[2]].set(0.0)
                     _port_cleared_cells.append((int(cell[0]), int(cell[1]), int(cell[2])))
@@ -2526,8 +2528,9 @@ class _ExecuteMixin:
             from rfx.runners._admission import admit
             admit(self, lane)
 
-        conductors, _ = at_kernel(self, conductors, lane=lane or "fwd_uniform", pec_edges=pec_edge_masks_local)
+        conductors, _ = at_kernel(self, conductors, lane=lane or "fwd_uniform", pec_edges=pec_edge_masks_local, sheet_operator=sheet_impedance)
         pec_edge_masks_local = conductors.pec_edges
+        sheet_impedance = conductors.sheet_operator
         result = _run(
             grid,
             materials,

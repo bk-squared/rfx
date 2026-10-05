@@ -27,6 +27,11 @@ def test_conductors_constant_grid_equivalence(row):
     if ca.pec_cells is not None:
         np.testing.assert_array_equal(ca.pec_cells, cb.pec_cells)
     assert len(ca.sheets) == len(cb.sheets)
+    for x, y in zip(ca.sheets, cb.sheets, strict=True):
+        assert x.entity_id and x.entity_id == y.entity_id
+        assert x.solved_spans == y.solved_spans
+        assert all(span is not None for axis, span in enumerate(x.solved_spans)
+                   if axis != x.normal_axis)
     assert len(ca.wires) == len(cb.wires)
 
 
@@ -91,10 +96,10 @@ def test_record_reads_kernel_after_port_clearing(monkeypatch, lane):
 
 
 @pytest.mark.parametrize('graded', [False, True])
-def test_two_device_conductors_are_the_same_object_fields(graded):
+def test_two_device_conductors_are_the_same_object_fields(graded, two_device_test):
     import jax
     if len(jax.devices()) < 2:
-        pytest.skip('two CPU devices required')
+        return two_device_test()
     lane = 'run_nonuniform' if graded else 'run_uniform'
     a = build(('_geometry', 'pec_volume'), lane, graded=graded)
     b = build(('_geometry', 'pec_volume'), lane, graded=graded)
@@ -110,13 +115,13 @@ def test_two_device_conductors_are_the_same_object_fields(graded):
 
 @pytest.mark.parametrize('lane,distributed', [('run_uniform', False),
     ('run_nonuniform', False), ('run_uniform', True), ('run_nonuniform', True)])
-def test_dump_replay_moves_fields_and_identity_is_exact(lane, distributed):
+def test_dump_replay_moves_fields_and_identity_is_exact(lane, distributed, two_device_test):
     import jax
     import jax.numpy as jnp
     from rfx import _realized
     from .builders import point
     if distributed and len(jax.devices()) < 2:
-        pytest.skip('two CPU devices required')
+        return two_device_test()
     sim = build(('_geometry', 'pec_volume'), lane, graded=lane == 'run_nonuniform')
     grid = sim._build_nonuniform_grid() if lane == 'run_nonuniform' else sim._build_grid()
     index = tuple(grid.index_of(a, x) for a, x in enumerate(point(2.1, 2.3, 2.2)))
@@ -170,3 +175,73 @@ def test_sheet_spans_are_read_from_conductors(monkeypatch):
     record = sim.realized_geometry()
     sim.preflight()
     assert record.conductors is c
+
+
+@pytest.mark.parametrize('lane', ['run_uniform', 'run_nonuniform'])
+def test_standalone_record_matches_port_cleared_kernel(lane):
+    from rfx import Box
+    from .builders import point
+    sim = build(('_ports', 'lumped_port'), lane)
+    sim.add(Box(point(4, 2, 2), point(6, 4, 4)), material='pec')
+    standalone = sim.realized_geometry()
+    result = sim.run(n_steps=2, skip_preflight=True, compute_s_params=False)
+    for a, b in zip(standalone.edge_masks, result.realized_geometry.conductors.edges, strict=True):
+        np.testing.assert_array_equal(a, b)
+
+
+@pytest.mark.parametrize('geometry', ['pec_volume', 'pec_sheet'])
+def test_forward_does_not_cache_traced_conductors(geometry):
+    import jax
+    sim = build(('_geometry', geometry), 'fwd_uniform')
+    traced = jax.jit(lambda: sim.forward(n_steps=2, skip_preflight=True).time_series)()
+    eager = sim.forward(n_steps=2, skip_preflight=True).time_series
+    np.testing.assert_array_equal(traced, eager)
+
+
+@pytest.mark.parametrize('lane', ['run_uniform', 'run_nonuniform'])
+def test_sheet_operator_is_carried_by_kernel_object(monkeypatch, lane):
+    import rfx.materials.thin_conductor as thin
+    sim = build(('_thin_conductors', 'surface_impedance'), lane)
+    outputs = []
+    original = thin.build_sheet_impedance_ctx
+
+    def capture(*args, **kwargs):
+        result = original(*args, **kwargs)
+        outputs.append(result)
+        return result
+
+    monkeypatch.setattr(thin, 'build_sheet_impedance_ctx', capture)
+    result = sim.run(n_steps=2, skip_preflight=True)
+    conductors = result.realized_geometry.conductors
+    assert len(conductors.sheet_impedance) == 1
+    assert conductors.sheet_operator is outputs[-1]
+
+
+@pytest.fixture
+def two_device_test(request, tmp_path):
+    """Run the same named cell on two CPUs when the parent has one device."""
+    def run():
+        import os
+        from pathlib import Path
+        import subprocess
+        import sys
+        env = dict(os.environ, JAX_PLATFORMS='cpu', JAX_ENABLE_X64='false',
+            XLA_FLAGS='--xla_force_host_platform_device_count=2',
+            PYTHONDONTWRITEBYTECODE='1', TMPDIR=str(tmp_path),
+            XDG_CACHE_HOME=str(tmp_path / 'cache'), MPLCONFIGDIR=str(tmp_path / 'mpl'))
+        process = subprocess.Popen([sys.executable, '-m', 'pytest', request.node.nodeid,
+            '-q', '-o', 'addopts=', '--basetemp=' + str(tmp_path / 'child')],
+            cwd=Path(__file__).resolve().parents[3], env=env,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        try:
+            output, _ = process.communicate(timeout=120)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.communicate()
+            pytest.fail('two-device conductor cell timed out')
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait()
+        assert process.returncode == 0, output
+    return run

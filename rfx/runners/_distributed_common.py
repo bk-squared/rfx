@@ -832,7 +832,9 @@ def apply_pec_mask_shmap(state: FDTDState, sharded_pec_mask, mesh,
     re-zero PEC cells that live in another rank's slab; per V3 bullet 7,
     seam ghost cells must not be acted on.
 
-    The implementation:
+    A tuple carries the precomputed conductor object's component masks.
+    Direct low-level callers may still supply a cell mask; for that carrier
+    the implementation:
       * computes the per-component edge masks on the local slab
         including ghost cells by CALLING
         ``rfx.boundaries.pec.realized_pec_edge_masks`` — the same

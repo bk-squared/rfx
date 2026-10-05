@@ -733,12 +733,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # model with the Box deleted). It also had to warn that redrawing a
     # sheet as a volume did NOT help. Both statements are now false here.
     # Those limitations also applied to the now-retired pmap runner.
-    # run()'s preflight memoizes the production assembly -- whole-domain
-    # materials and realized conductor masks -- on Simulation
-    # (rfx/preflight/realization.py::_campaign_ctx). Only preflight reads it,
-    # and its checks are done; drop it before this lane assembles its own
-    # copy, so neither copy is on the device when the slabs are staged and
-    # the time loop runs. A later preflight rebuilds it from the same key.
+    # Reuse preflight's collected production products. The record retains
+    # their conductor object; the kernel consumes its edge masks as slabs.
     from rfx.conductors import assembled_materials, kernel_conductors, at_kernel
     _d_pec_sheets: list = []
     _d_pec_wires: list = []
@@ -1311,13 +1307,10 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             st, mesh, n_devices, nx_local, pad_x=pad_x,
             pec_faces=e_wall_faces, ranks=ranks)
 
-        # 6b. Realized-PEC cell mask (#1053). Geometry PEC is distinct from
-        #     the declared domain faces above. Each rank realizes the
-        #     per-component edge masks on its own slab by calling the one
-        #     owner, rfx.boundaries.pec.realized_pec_edge_masks, and zeroes
-        #     only its REAL cells; the ghost rows are forced False inside the
-        #     kernel so a seam cell is zeroed exactly once, by the rank that
-        #     owns it.
+        # 6b. Realized conductor edges, distinct from domain walls. The
+        #     global object already applied the shared PEC rule. Each rank
+        #     zeros only owned rows; the kernel excludes ghosts so a seam
+        #     edge is zeroed once and exchanged from its owner.
         #
         #     POSITION IS LOAD-BEARING: after injection, immediately BEFORE
         #     the E ghost exchange. The exchange then hands the neighbour a

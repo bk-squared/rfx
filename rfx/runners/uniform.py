@@ -905,8 +905,9 @@ def run_uniform(
                         "stop_interval": int(stop_interval)}
 
     # The record and the call below read the same final conductor object.
-    conductors, geometry_record = at_kernel(sim, conductors, lane="run_uniform", pec_edges=pec_edge_masks)
+    conductors, geometry_record = at_kernel(sim, conductors, lane="run_uniform", pec_edges=pec_edge_masks, sheet_operator=sheet_ctx)
     pec_edge_masks = conductors.pec_edges
+    sheet_ctx = conductors.sheet_operator
 
     # Main simulation
     if until_decay is not None:

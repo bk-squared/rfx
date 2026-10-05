@@ -394,6 +394,13 @@ def _ports(sim, ctx, assembled):
 def realized_geometry(sim):
     """Build once per preflight context and port configuration, without stepping."""
     ctx = sim._campaign_ctx()
+    if not getattr(ctx, '_kernel_bound', False):
+        from rfx.conductors import RealizedConductors, preview_port_stages
+        assembled = ctx.realized()
+        if isinstance(assembled, RealizedConductors):
+            if not hasattr(ctx, '_assembled_conductors'):
+                ctx._assembled_conductors = assembled
+            ctx._realized = preview_port_stages(sim, assembled)
     key = (id(ctx), *(tuple(id(p) for p in getattr(sim, attr, ())) for attr in
                      ("_ports", "_waveguide_ports", "_msl_ports", "_coaxial_ports", "_floquet_ports")))
     cached = getattr(sim, '_realized_geometry_record', None)
@@ -454,7 +461,7 @@ def _mask_ranges(mask):
     return tuple((int(i.min()), int(i.max())) for i in indices) if indices[0].size else ()
 
 
-def record_from_conductors(sim, conductors, *, lane, compact=True):
+def _record_from_conductors_impl(sim, conductors, *, lane, compact=True):
     """Summarize the run's classifier outputs; never consult preflight caches."""
     from dataclasses import replace
     from rfx.preflight.realization import _CampaignStaticsContext, _EntryRealization
@@ -488,18 +495,32 @@ def record_from_conductors(sim, conductors, *, lane, compact=True):
                    if lane == "run_subgridded" else ()), conductors)
 
 
-def record_from_assembly(sim, grid, materials, pec_mask, sheets, wires,
-                         geometry_masks, assembly_entries, *, lane):
-    """Compatibility for experimental lanes with no conductor-object carrier."""
+def _record_from_assembly(sim, grid, materials, pec_mask, sheets, wires,
+                          geometry_masks, assembly_entries, *, lane,
+                          conductors=None, compact=True):
+    """Compatibility hook; production callers supply their kernel object."""
     from rfx.conductors import realized_conductors
+    if conductors is None:
+        conductors = realized_conductors(sim, grid,
+            nonuniform=hasattr(grid, 'dx_arr'), assembly=(materials, None, None, pec_mask),
+            pec_sheets=sheets, pec_wires=wires, geometry_masks=geometry_masks,
+            assembly_entries=assembly_entries)
+    return _record_from_conductors_impl(sim, conductors, lane=lane, compact=compact)
+
+
+def record_from_assembly(sim, grid, *args, **kwargs):
+    """Skip only traced coordinates; concrete record failures propagate."""
     from rfx.core.jax_utils import is_tracer
     if any(is_tracer(getattr(grid, name, None)) for name in ("dx_arr", "dy_arr", "dz")):
         return None
-    conductors = realized_conductors(sim, grid,
-        nonuniform=hasattr(grid, 'dx_arr'), assembly=(materials, None, None, pec_mask),
-        pec_sheets=sheets, pec_wires=wires, geometry_masks=geometry_masks,
-        assembly_entries=assembly_entries)
-    return record_from_conductors(sim, conductors, lane=lane)
+    return _record_from_assembly(sim, grid, *args, **kwargs)
+
+
+def record_from_conductors(sim, conductors, *, lane, compact=True):
+    return record_from_assembly(sim, conductors.grid, conductors.materials,
+        conductors.pec_cells, conductors.sheets, conductors.wires,
+        conductors.geometry_masks.items(), conductors.assembly_entries,
+        lane=lane, conductors=conductors, compact=compact)
 
 
 def attach_record(result, record):
