@@ -277,7 +277,7 @@ def _is_shared_setup(step: dict) -> bool:
 #: because a "not code" diff is exactly what they judge: a PR adding records
 #: under docs/ or scripts/ never reaches the code branch. Only in the job named
 #: here -- in `fast-suite` the same step would run six times.
-BOTH_BRANCH_GATES = {"guards-and-preflight": ("scripts/ci/check_data_budget.py",)}
+BOTH_BRANCH_GATES = {"guards-and-preflight": ("scripts/ci/check_data_budget.py", "scripts/ci/check_file_size_ratchet.py")}
 
 
 def _is_both_branch_gate(job: str, step: dict) -> bool:
