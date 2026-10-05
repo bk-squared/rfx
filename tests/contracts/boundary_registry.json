@@ -437,6 +437,11 @@
       "kind": "difference"
     },
     {
+      "file": "rfx/measurement/ports.py",
+      "function": "coax_owner",
+      "kind": "roll/diff"
+    },
+    {
       "file": "rfx/mesh_edges.py",
       "function": "_build",
       "kind": "difference"

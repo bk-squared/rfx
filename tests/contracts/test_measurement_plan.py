@@ -55,6 +55,12 @@ def observe(channel, fields):
     return sum(n.weight*getattr(fields, n.component)[n.i, n.j, n.k] for n in channel.nodes)
 
 
+def rounding_bound(channel, fields):
+    """float32 accumulation bound of observe(): eps32 * len * sum |w f| (a cancelling sum can be far smaller than its terms)."""
+    terms = [abs(float(n.weight*getattr(fields, n.component)[n.i, n.j, n.k])) for n in channel.nodes]
+    return float(np.finfo(np.float32).eps) * max(len(terms), 1) * sum(terms)
+
+
 def judge(plan, actual, row, nu):
     owners = {o.id: o for o in plan.owners}
     expected = {f'probe:{i}' for i in range(len(actual['probes']))}
@@ -142,7 +148,8 @@ def judge(plan, actual, row, nu):
                                         for j, c in enumerate(('ex', 'ey', 'ez', 'hx', 'hy', 'hz'))})
             for channel, p in zip(owner.channels, (cfg.probe_x, cfg.probe_x, cfg.ref_x, cfg.ref_x)):
                 oracle = (modal_voltage if channel.kind == 'E' else modal_current)(fields, cfg, p, 0.)
-                np.testing.assert_allclose(observe(channel, fields), oracle, rtol=4e-6, atol=2e-12)
+                np.testing.assert_allclose(observe(channel, fields), oracle, rtol=0,
+                                           atol=rounding_bound(channel, fields))
             # Linear sampling Jacobian is an independent exact node/weight oracle.
             import jax
             components = ('ex', 'ey', 'ez', 'hx', 'hy', 'hz')
