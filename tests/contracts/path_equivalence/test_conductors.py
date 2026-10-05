@@ -64,10 +64,15 @@ def test_preflight_and_run_share_one_assembly(monkeypatch, lane, kernel_objects)
         return original(*args, **kwargs)
 
     monkeypatch.setattr(sim, method, count)
-    audit = sim._campaign_ctx().realized()
+    audit_context = sim._campaign_ctx()
+    audit = audit_context.realized()
     assert len(audit.sheets) == 1
     assert any(edge.any() for edge in audit.edges)
     assert audit.mode == 'audit'
+    def forbidden_cache():
+        raise AssertionError("execution must not read the diagnostic cache")
+
+    monkeypatch.setattr(sim, "_campaign_ctx", forbidden_cache)
     calls.clear()
     seen = []
     preflight = sim.preflight
@@ -85,7 +90,7 @@ def test_preflight_and_run_share_one_assembly(monkeypatch, lane, kernel_objects)
     assert calls == [1]
     assert len(seen) == 1
     assert seen[0].pec_edges is kernel_objects[-1].pec_edges
-    assert sim._campaign_ctx().realized() is audit
+    assert audit_context.realized() is audit
     assert kernel_objects[-1] is not audit
 
 
@@ -336,3 +341,94 @@ def test_runner_refuses_an_audit_object():
     sim = build(('_geometry', 'pec_volume'), 'run_uniform')
     with pytest.raises(ValueError, match='audit-mode'):
         assembled_materials(sim._campaign_ctx().realized())
+
+
+@pytest.mark.parametrize('graded', [False, True])
+def test_distributed_releases_dense_products_before_staging(monkeypatch, graded, two_device_test):
+    import jax
+    import weakref
+    import rfx.conductors as products
+    import rfx.runners._distributed_common as common
+    import rfx.runners.distributed_nu as nu
+    if len(jax.devices()) < 2:
+        return two_device_test()
+    sim = build(('_geometry', 'pec_volume'), 'run_nonuniform' if graded else 'run_uniform',
+                graded=graded)
+    # A diagnostic query before the solve must not pin a second full domain.
+    sim.realized_geometry()
+    roots = []
+    original_build = products.realized_conductors
+    original_kernel = products.at_kernel
+
+    def build_product(*a, **kw):
+        root = original_build(*a, **kw)
+        roots.append(weakref.ref(root))
+        return root
+
+    def kernel(*a, **kw):
+        root, record = original_kernel(*a, **kw)
+        roots.append(weakref.ref(root))
+        return root, record
+
+    monkeypatch.setattr(products, 'realized_conductors', build_product)
+    monkeypatch.setattr(products, 'at_kernel', kernel)
+    module, name = (nu, 'stage_concrete_forward_array') if graded else (common, 'shard_x_slabs')
+    original_stage = getattr(module, name)
+    staged = []
+
+    def stage(*a, **kw):
+        assert roots and all(ref() is None for ref in roots)
+        assert sim._pf_campaign_ctx is None
+        assert sim._realized_geometry_record is None
+        staged.append(1)
+        return original_stage(*a, **kw)
+
+    monkeypatch.setattr(module, name, stage)
+    sim.run(n_steps=2, compute_s_params=False, devices=jax.devices()[:2])
+    assert staged
+
+
+@pytest.mark.parametrize('lane', ['run_uniform', 'run_nonuniform', 'fwd_uniform', 'fwd_nonuniform'])
+def test_equal_ports_have_distinct_provenance(lane, kernel_objects):
+    from rfx import Box
+    from .builders import point
+    sim = build(('_ports', 'lumped_port'), lane)
+    sim.add(Box(point(4, 2, 2), point(6, 4, 4)), material='pec')
+    sim._ports.append(sim._ports[0])
+    if lane.startswith('run_'):
+        sim.run(n_steps=2, skip_preflight=True, compute_s_params=False)
+    else:
+        sim.forward(n_steps=2, skip_preflight=True)
+    labels = [stage.entity_ids for stage in kernel_objects[-1].provenance
+              if stage.stage == 'port-edge-clearing']
+    assert labels == [('port[0]',), ('port[1]',)]
+
+
+@pytest.mark.parametrize('scoped', [False, True])
+def test_assembly_warning_keeps_origin_and_is_not_dropped(monkeypatch, scoped):
+    import inspect
+    import warnings
+    from contextlib import nullcontext
+    from rfx.preflight.realization import assembly_warning_scope
+    sim = build(('_geometry', 'pec_sheet'), 'run_uniform')
+    product = realized_conductors(sim, sim._build_grid(), mode='audit')
+    ctx = sim._campaign_ctx()
+    origin = []
+
+    def warned(*a, **kw):
+        origin.append(inspect.currentframe().f_lineno + 1)
+        warnings.warn('assembly witness', UserWarning)
+        return product
+
+    monkeypatch.setattr(sim, '_assemble_realized', warned)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        with assembly_warning_scope() if scoped else nullcontext():
+            ctx.entry_realizations()
+            # Deliberately no subsequent ctx.realized() read.
+        assert len(caught) == 1
+        assert str(caught[0].message) == 'assembly witness'
+        assert caught[0].filename == __file__
+        assert caught[0].lineno == origin[0]
+        ctx.realized()
+        assert len(caught) == 1

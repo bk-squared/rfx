@@ -943,7 +943,8 @@ class _PreflightMixin:
         # mask becomes a tracer before validators convert it to numpy.
         # Incoming mesh/design tracers remain tracers and retain the
         # validators' existing not-evaluable guards.
-        with warnings.catch_warnings(record=True) as caught, jax.ensure_compile_time_eval():
+        from rfx.preflight.realization import assembly_warning_scope
+        with warnings.catch_warnings(record=True) as caught, jax.ensure_compile_time_eval(), assembly_warning_scope():
             warnings.simplefilter("always")
             self._collect_flux_regions(issues)
             try:

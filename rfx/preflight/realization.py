@@ -66,6 +66,9 @@ edge here reds most of the corpus rather than one line of one report.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
+
 import jax.numpy as jnp
 import numpy as np
 
@@ -296,6 +299,25 @@ class _EntryRealization:
                                     periodic)
 
 
+# Deferral is scoped to one public preflight call. Standalone readers emit
+# directly; a scope exit flushes even when no later realization reader runs.
+_assembly_warning_readers = ContextVar("assembly_warning_readers", default=None)
+
+
+@contextmanager
+def assembly_warning_scope():
+    readers = []
+    token = _assembly_warning_readers.set(readers)
+    try:
+        yield
+    finally:
+        try:
+            for ctx in readers:
+                ctx._emit_assembly_warnings()
+        finally:
+            _assembly_warning_readers.reset(token)
+
+
 class _CampaignStaticsContext:
     """Shared lazily-built state for the issue-#703 campaign checks and
     every other preflight check that reads conductor geometry.
@@ -393,22 +415,40 @@ class _CampaignStaticsContext:
     # The realized conductor set (whole model) and per-entry realization
     # ------------------------------------------------------------------
 
-    def realized(self, *, strict=False):
+    def realized(self, *, strict=False, defer_warnings=False):
         """:class:`_RealizedPEC` from the PRODUCTION assembly (with the
         #931 sheet/wire collectors), once; ``None`` when the assembly
         raised (``assembly_error`` says why). Strict execution/build readers
         re-raise the original exception, including after a diagnostic read.
         """
+        import warnings
+        from contextlib import nullcontext
+        readers = _assembly_warning_readers.get()
+        defer = defer_warnings and readers is not None
         if self._realized is None and self.assembly_error is None:
-            try:
-                self._realized = self.sim._assemble_realized(
-                    self.grid, nonuniform=(self.lane == "nonuniform"))
-            except self._NARROW_EXCS as exc:
-                self.assembly_error = f"{type(exc).__name__}: {exc}"
-                self._assembly_exception = exc
+            with (warnings.catch_warnings(record=True) if defer else nullcontext([])) as emitted:
+                try:
+                    self._realized = self.sim._assemble_realized(
+                        self.grid, nonuniform=(self.lane == "nonuniform"))
+                except self._NARROW_EXCS as exc:
+                    self.assembly_error = f"{type(exc).__name__}: {exc}"
+                    self._assembly_exception = exc
+            if emitted:
+                self._assembly_warnings = tuple(emitted)
+                readers.append(self)
+        if not defer:
+            self._emit_assembly_warnings()
         if strict and self._assembly_exception is not None:
             raise self._assembly_exception
         return self._realized
+
+    def _emit_assembly_warnings(self):
+        import warnings
+        emitted = getattr(self, '_assembly_warnings', ())
+        self._assembly_warnings = ()
+        for warning in emitted:
+            warnings.warn_explicit(warning.message, warning.category,
+                                   warning.filename, warning.lineno)
 
     def assembled(self):
         """``(materials, pec_mask)`` — kept for callers that only read
@@ -443,7 +483,7 @@ class _CampaignStaticsContext:
         from rfx.geometry.smoothing import continued_conductor_shape
         sim = self.sim
         out = []
-        assembled = self.realized()
+        assembled = self.realized(defer_warnings=True)
         products = {key: (cells, sheet, wire, shape)
                     for key, cells, sheet, wire, shape in
                     getattr(assembled, "assembly_entries", ())}

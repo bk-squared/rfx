@@ -1850,6 +1850,7 @@ class _ExecuteMixin:
         pec_wires = tuple(pec_wires or ())
         pec_mask_local = pec_mask
         pec_occupancy_local = pec_occupancy
+        _drawn_materials = None if conductors is None else conductors.assembly[0]
         conductors = kernel_conductors(self, grid, materials, pec_mask,
             pec_sheets, pec_wires, periodic=periodic_bool, root=conductors,
             sheet_specs=() if conductors is None else conductors.sheet_impedance)
@@ -2127,19 +2128,14 @@ class _ExecuteMixin:
                 msl_port_from_entry,
                 setup_msl_port,
             )
-            # Issue #483: static eps for the launch fixture, assembled ONCE
-            # for all ports (hoisted per PR #486 review — the per-port
-            # re-assembly was wasteful eager-mode compute) and only when
-            # some port needs the auto branch.
+            # Issue #483: all automatic Laplace launches read the original
+            # drawn substrate, already carried by the solve assembly.
             _static_eps_483 = None
             if any(pe.eps_r_sub is None and getattr(pe, "mode", "uniform") == "laplace"
                    for pe in self._msl_ports):
-                # Dielectric read: the launch fixture samples eps_r at ONE
-                # substrate cell to learn eps_r_sub. Conductors play no
-                # part, so the #931 collectors are passed and dropped —
-                # the sheets this run realizes are collected and applied
-                # by the assembly that drives the scan, not here.
-                _static_eps_483 = conductors.assembly[0].eps_r
+                # Read the drawn value before design/material overrides.
+                _static_eps_483 = (_drawn_materials.eps_r if _drawn_materials is not None
+                    else self._assemble_materials(grid, pec_sheets=[], pec_wires=[])[0].eps_r)
             for _msl_port_index, pe in enumerate(self._msl_ports):
                 # Use the same physical-to-port frame as run(). In a y-fed
                 # port feed_x names physical y, and y_lo/y_hi name width x.
