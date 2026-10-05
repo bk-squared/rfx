@@ -68,8 +68,19 @@ def test_extra_absorbing_axis_is_refused(graded, decay):
 
 @pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
 def test_explicit_subset_still_runs(graded):
-    state = _pulse_run(_grid(graded, "xyz"), graded, cpml_axes="x")
-    assert np.any(np.asarray(state.ez))
+    """A subset is honoured: dropping x/y absorption changes the field near those faces.
+
+    The TF/SF and oblique-RCS paths pass a subset on purpose. On an all-axis
+    grid, a z-only run must differ from the default run where the pulse meets
+    the x/y profiles (about 0.7 of the peak, measured on both paths), so a
+    path that ignored the explicit subset would fail here.
+    """
+    grid = _grid(graded, "xyz")
+    default = np.asarray(_pulse_run(grid, graded).ez)
+    subset = np.asarray(_pulse_run(grid, graded, cpml_axes="z").ez)
+    assert np.any(subset)
+    near = (slice(0, 12), slice(0, 12), grid.nz // 2)
+    assert np.max(np.abs(subset[near] - default[near])) > 0.1 * np.max(np.abs(default[near]))
 
 
 @pytest.mark.parametrize("mode,periodic,explicit,expected", [

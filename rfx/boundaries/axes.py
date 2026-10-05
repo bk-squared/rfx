@@ -11,11 +11,12 @@ def resolve_cpml_axes(grid, cpml_axes: str | None = None) -> str:
     """
     grid_axes = getattr(grid, "cpml_axes", None)
     if grid_axes is None:
+        def pad(axis, side):
+            value = getattr(grid, f"pad_{axis}_{side}", None)
+            return grid.cpml_layers if value is None else value
+
         grid_axes = "".join(
-            axis for axis in "xyz"
-            if (getattr(grid, f"pad_{axis}_lo", grid.cpml_layers)
-                + getattr(grid, f"pad_{axis}_hi", grid.cpml_layers)) > 0
-        )
+            axis for axis in "xyz" if pad(axis, "lo") + pad(axis, "hi") > 0)
     if cpml_axes is None:
         return grid_axes
     ignored = set(getattr(grid, "periodic_axes", ""))
