@@ -32,10 +32,13 @@ automatic and informational; the line is the claim.
 What the labels do add is a cross-check. The workflow reads the PR's live label
 set and passes it in ``PR_LABELS_JSON`` (a JSON array of names, the same shape
 ``check_changelog_fragment.py`` reads). When the PR carries lane labels, the
-``Lane:`` line must name ONE of them: a line contradicting the paths means
-either the line is wrong or ``.github/labeler.yml`` is missing a path, and both
-are worth stopping for. A PR carrying no lane label is not cross-checked, which
-is what a local run sees and what a PR confined to unowned paths gets.
+``Lane:`` line must name ONE of them OR a lane of an issue the PR closes. The
+workflow reads those issues through GitHub closingIssuesReferences and passes
+their lane labels in ``ISSUE_LANES_JSON`` (a JSON array of names; absent or empty
+means no issue lanes). The named lane must still exist on the repository. A
+line matching neither set fails and reports both sets. Without a closing issue,
+the PR-label rule is unchanged. A PR carrying no lane label is not cross-checked,
+which is what a local run sees and what a PR confined to unowned paths gets.
 
 A lane label that is no longer a label on the repository takes no part in any
 of this: it is reported as a WARNING and then IGNORED, so a PR whose only lane
@@ -290,8 +293,20 @@ def pr_lane_labels(env: dict[str, str] | None = None) -> tuple[str, ...]:
     Absent, empty or unparseable means "no labels" rather than an error, which
     switches the cross-check off. A local run has no such variable.
     """
+    return _lane_labels_from_env("PR_LABELS_JSON", env)
+
+
+def issue_lane_labels(env: dict[str, str] | None = None) -> tuple[str, ...]:
+    """Lane labels of issues this PR closes; absent or empty means no lanes."""
+    return _lane_labels_from_env("ISSUE_LANES_JSON", env)
+
+
+def _lane_labels_from_env(
+    key: str, env: dict[str, str] | None = None,
+) -> tuple[str, ...]:
+    """Read a JSON array of label names, keeping only lane labels."""
     env = os.environ if env is None else env
-    raw = (env.get("PR_LABELS_JSON") or "").strip()
+    raw = (env.get(key) or "").strip()
     if not raw:
         return ()
     try:
@@ -339,6 +354,7 @@ def _check_lane(
     lanes: tuple[str, ...],
     source: str,
     pr_labels: tuple[str, ...] = (),
+    issue_labels: tuple[str, ...] = (),
 ) -> list[str]:
     """One ``Lane:`` line, and it must agree with any lane labels present.
 
@@ -346,6 +362,7 @@ def _check_lane(
     `.github/labeler.yml` from the paths the PR touches. They never satisfy the
     requirement on their own -- most PRs earn two or none, and neither says
     which lane owns the change. Empty switches the cross-check off.
+    *issue_labels* allows the owner lane of an issue this PR closes instead.
     """
     matches = [m for m in (LANE_RE.match(line) for line in lines) if m]
     # Only labels the repository still HAS can cross-check anything. A retired
@@ -354,6 +371,7 @@ def _check_lane(
     # same retired label, which fails the allowed-set branch above. Dropping it
     # here is what makes "warned and ignored" true of every path below.
     labelled = sorted(set(pr_labels) & set(lanes))
+    issue_lanes = sorted(set(issue_labels) & set(lanes))
 
     if len(matches) > 1:
         found = ", ".join(m.group(1) for m in matches)
@@ -382,13 +400,13 @@ def _check_lane(
             f"`Lane: {label}` is not a lane label on this repository. "
             f"Allowed ({source}): {', '.join(sorted(lanes))}."
         ]
-    if labelled and label not in labelled:
+    if labelled and label not in labelled and label not in issue_lanes:
         return [
             f"`Lane: {label}` is not among the lane labels the paths earned this "
-            f"PR ({', '.join(labelled)}). One of the two is wrong: either the "
-            f"line names the wrong lane, or `.github/labeler.yml` does not map "
-            f"a path this PR touches to {label}. Fix whichever it is -- the "
-            "labels are recomputed on every push."
+            f"PR ({', '.join(labelled)}) or the lane labels of issues this PR "
+            f"closes ({', '.join(issue_lanes) or 'none'}). Name a lane from either "
+            "set, or fix `.github/labeler.yml` if a path mapping is missing -- "
+            "PR labels are recomputed on every push."
         ]
     return []
 
@@ -536,7 +554,7 @@ def check(body: str, env: dict[str, str] | None = None) -> list[str]:
     lines = body_lines(body)
     labels = pr_lane_labels(env)
     return (
-        _check_lane(lines, lanes, lane_source, labels)
+        _check_lane(lines, lanes, lane_source, labels, issue_lane_labels(env))
         + _check_review(lines)
         + _check_closing_keywords(body)
     )
@@ -568,7 +586,8 @@ def failure_report(problems: list[str], env: dict[str, str] | None = None) -> st
         "",
         "The `lane:*` labels .github/labeler.yml applies from your changed paths",
         "do not replace the line -- most PRs earn two of them or none. When the PR",
-        "does carry lane labels, the line must name one of them.",
+        "does carry lane labels, the line must name one of them or a lane of an",
+        "issue this PR closes. The named lane must exist on the repository.",
         "",
         f"The separator before the verdict may be {DASH_NAMES}.",
         "",
