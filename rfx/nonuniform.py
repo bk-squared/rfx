@@ -25,6 +25,7 @@ from typing import NamedTuple
 
 from rfx import _realized
 from rfx.boundaries.axes import padded_axes, resolve_cpml_axes
+from rfx.boundaries.depths import resolve_face_depths
 
 import jax
 import jax.numpy as jnp
@@ -922,28 +923,13 @@ def make_nonuniform_grid(
     """
     _pec = pec_faces or set()
     _pmc = pmc_faces or set()
-    requested_layers = face_layers or {}
-
-    def _face_pad(axis: str, side: str) -> int:
-        face = f"{axis}_{side}"
-        if face in _pec or face in _pmc:
-            return 0
-        if axis not in cpml_axes:
-            return 0
-        depth = requested_layers.get(face, cpml_layers)
-        if int(depth) != depth or not 0 <= depth <= cpml_layers:
-            raise ValueError(
-                f"face_layers[{face!r}]={depth} must be an integer between "
-                f"0 and cpml_layers={cpml_layers} (the allocation budget)."
-            )
-        return int(depth)
-
-    pad_x_lo = _face_pad("x", "lo")
-    pad_x_hi = _face_pad("x", "hi")
-    pad_y_lo = _face_pad("y", "lo")
-    pad_y_hi = _face_pad("y", "hi")
-    pad_z_lo = _face_pad("z", "lo")
-    pad_z_hi = _face_pad("z", "hi")
+    boundary_depths = resolve_face_depths(
+        budget=cpml_layers, absorbing_axes=cpml_axes,
+        pec_faces=_pec, pmc_faces=_pmc, face_layers=face_layers,
+    )
+    (pad_x_lo, pad_x_hi, pad_y_lo, pad_y_hi, pad_z_lo, pad_z_hi) = (
+        record.realized for record in boundary_depths
+    )
     # --- x profile (uniform or provided) ---
     if dx_profile is None:
         nx_interior = int(round(domain_xy[0] / dx))
