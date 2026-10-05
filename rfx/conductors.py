@@ -10,6 +10,7 @@ from dataclasses import dataclass, replace
 import numpy as np
 
 from rfx.preflight.realization import _RealizedPEC
+from rfx.boundaries.pec import SheetSpec
 
 
 @dataclass(frozen=True)
@@ -18,6 +19,13 @@ class ConductorStage:
     stage: str
     component: str | None = None
     edges: tuple = ()
+
+
+@dataclass(frozen=True)
+class RealizedSheet(SheetSpec):
+    """The production footprint with its once-computed solved in-plane spans."""
+    entity_id: str = ""
+    solved_spans: tuple = (None, None, None)
 
 
 @dataclass(frozen=True)
@@ -79,21 +87,26 @@ def realized_conductors(sim, grid, *, nonuniform=False, assembly=None,
                    ((sim._geometry, 'geometry'), (sim._thin_conductors, 'thin_conductor'),
                     (getattr(sim, '_pinned_sheets', ()), 'pinned_sheet'))
                    for i, _ in enumerate(collection))
-    return RealizedConductors(
+    result = RealizedConductors(
         'nonuniform' if nonuniform else 'uniform', grid, assembly[0], cells,
         edges, tuple(pec_sheets), tuple(sheet_specs), tuple(pec_wires), periodic,
         dict(geometry_masks), tuple(assembly_entries),
         (ConductorStage(labels, 'assembly'),), tuple(assembly), tuple(pad_fill_findings))
+    return _with_sheet_spans(sim, result)
 
 
-def clear_conductor_edges(conductors, cells, *, component, entity_id):
+def clear_conductor_edges(conductors, cells, *, component, entity_id, clear_cells=False):
     """One persistent port-clearing stage; the incoming object stays unchanged."""
     from rfx.boundaries.pec import clear_edges
     if conductors.pec_edges is None:
         return conductors
     cells = tuple(tuple(int(i) for i in cell) for cell in cells)
     edges = clear_edges(conductors.pec_edges, cells, component=component)
-    return replace(conductors, pec_edges=edges, provenance=conductors.provenance + (
+    pec_cells = conductors.pec_cells
+    if clear_cells and pec_cells is not None:
+        for cell in cells:
+            pec_cells = pec_cells.at[cell].set(False)
+    return replace(conductors, pec_cells=pec_cells, pec_edges=edges, provenance=conductors.provenance + (
         ConductorStage((entity_id,), 'port-edge-clearing', component, cells),))
 
 
@@ -151,8 +164,10 @@ def kernel_conductors(sim, grid, materials, pec_cells, sheets=(), wires=(),
     return obj
 
 
-def at_kernel(sim, conductors, *, lane, compact=True):
+def at_kernel(sim, conductors, *, lane, pec_edges, compact=True):
     """Record/replay the exact object passed to the stepping call."""
+    if pec_edges is not conductors.pec_edges:
+        raise ValueError("PEC edges changed outside a conductor stage")
     from rfx import _realized
     if _realized.ACTIVE is not None:
         edges = conductors.pec_edges
@@ -167,3 +182,55 @@ def at_kernel(sim, conductors, *, lane, compact=True):
     record = (record_from_conductors(sim, conductors, lane=lane, compact=compact)
               if lane.startswith('run_') else None)
     return conductors, record
+
+
+def _with_sheet_spans(sim, conductors):
+    """Annotate collectors through the existing interior and solved-span rules."""
+    if not conductors.sheets:
+        return conductors
+    from dataclasses import fields
+    from rfx.preflight.realization import _CampaignStaticsContext, _EntryRealization, _shape_bounds
+    from rfx.realized_geometry import _node_arrays
+    from rfx.mesh_edges import sheet_continuation_masks, solved_sheet_span
+    from rfx.core.jax_utils import is_tracer
+    grid = conductors.grid
+    if any(is_tracer(getattr(grid, name, None)) for name in ('dx_arr', 'dy_arr', 'dz')):
+        return conductors
+    _, nodes = _node_arrays(sim, grid, conductors.lane == 'nonuniform')
+    products = {key: (cells, sheet, wire, shape)
+                for key, cells, sheet, wire, shape in conductors.assembly_entries}
+    ctx = object.__new__(_CampaignStaticsContext)
+    ctx.grid, ctx.periodic, ctx._entries = grid, conductors.periodic, []
+    owners = {}
+    for collection, prefix in ((sim._geometry, 'geometry'), (sim._thin_conductors, 'thin_conductor')):
+        for i, entry in enumerate(collection):
+            product = products.get(id(entry))
+            if product is None:
+                continue
+            cells, sheet, wire, shape = product
+            label = f'{prefix}[{i}]'
+            kind = 'volume' if cells is not None else 'sheet' if sheet is not None else 'wire' if wire is not None else 'lossy'
+            ctx._entries.append(_EntryRealization(label=label, name=label, shape=entry.shape,
+                kind=kind, cells=cells, sheet=sheet, wire=wire, solved_shape=shape))
+            if sheet is not None:
+                owners[id(sheet)] = label
+    interior = ctx.interior_pec_entries()
+    union, volume_edges = sheet_continuation_masks(interior, ctx.periodic, grid.shape)
+    spans = {}
+    for entry in interior:
+        bounds = _shape_bounds(entry.shape)
+        if entry.sheet is None or bounds is None:
+            continue
+        spans[entry.label] = tuple(None if a == entry.sheet.normal_axis else solved_sheet_span(
+            entry.sheet.footprint, a, nodes[a], float(bounds[0][a]), float(bounds[1][a]),
+            float(sim._domain[a]), union=union, volume_edges=volume_edges,
+            periodic='xyz'[a] in getattr(grid, 'periodic_axes', '')) for a in range(3))
+    replacements = {}
+    for sheet in conductors.sheets:
+        label = owners.get(id(sheet), '')
+        replacements[id(sheet)] = RealizedSheet(
+            **{f.name: getattr(sheet, f.name) for f in fields(SheetSpec)},
+            entity_id=label, solved_spans=spans.get(label, (None, None, None)))
+    return replace(conductors, sheets=tuple(replacements[id(s)] for s in conductors.sheets),
+        assembly_entries=tuple((key, cells, replacements.get(id(sheet), sheet), wire, shape)
+            for key, cells, sheet, wire, shape in conductors.assembly_entries))

@@ -1151,10 +1151,13 @@ def _sheet_solved_spans(ctx, boxes):
                 continue
             if float(e.hi[a] - e.lo[a]) <= 0.0:
                 continue
-            span = solved_sheet_span(fp, a, ctx.nodes[a], float(e.lo[a]),
-                                     float(e.hi[a]), float(domain[a]),
-                                     union=union, volume_edges=volume_edges,
-                                     periodic='xyz'[a] in getattr(ctx.grid, 'periodic_axes', ''))
+            if hasattr(e.sheet, 'solved_spans'):
+                span = e.sheet.solved_spans[a]
+            else:
+                span = solved_sheet_span(fp, a, ctx.nodes[a], float(e.lo[a]),
+                                         float(e.hi[a]), float(domain[a]),
+                                         union=union, volume_edges=volume_edges,
+                                         periodic='xyz'[a] in getattr(ctx.grid, 'periodic_axes', ''))
             if span is not None:
                 out.append((e, a, span))
     return out

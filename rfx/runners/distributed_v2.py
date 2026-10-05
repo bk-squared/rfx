@@ -967,7 +967,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # ``run_distributed``'s ``**kwargs``: that bag is read only for ``bloch``
     # and otherwise discarded (it was forwarded only to the pmap runner at one
     # device, until #1296).
-    conductors, geometry_record = at_kernel(sim, conductors, lane="run_distributed")
+    conductors, geometry_record = at_kernel(sim, conductors, lane="run_distributed", pec_edges=conductors.pec_edges)
     # Alignment rows are still PEC; ghosts are still excluded by the kernel.
     sharded_pec_mask = (None if conductors.pec_edges is None else tuple(
         shard_x_slabs(jnp.pad(edge, ((0, pad_x), (0, 0), (0, 0)),

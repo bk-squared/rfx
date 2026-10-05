@@ -443,6 +443,10 @@ class _CampaignStaticsContext:
         from rfx.geometry.smoothing import continued_conductor_shape
         sim = self.sim
         out = []
+        assembled = self.realized()
+        products = {key: (cells, sheet, wire, shape)
+                    for key, cells, sheet, wire, shape in
+                    getattr(assembled, "assembly_entries", ())}
 
         def _bounds(shape):
             lo, hi = _sorted_box_corners(shape)
@@ -488,12 +492,15 @@ class _CampaignStaticsContext:
             label = f"geometry[{i}]"
             lo, hi = _bounds(entry.shape)
             try:
-                solved = continued_conductor_shape(
-                    sim, self.grid, entry.shape, entry=entry)
-                cells, sheet, wire = classify_pec_entry(
-                    solved,
-                    self.coords, self.centres, self.cell_sizes,
-                    name=entry.material_name, grid=self.grid)
+                if id(entry) in products:
+                    cells, sheet, wire, solved = products[id(entry)]
+                else:
+                    # Refused-model diagnostics retain per-entity evidence.
+                    solved = continued_conductor_shape(
+                        sim, self.grid, entry.shape, entry=entry)
+                    cells, sheet, wire = classify_pec_entry(
+                        solved, self.coords, self.centres, self.cell_sizes,
+                        name=entry.material_name, grid=self.grid)
             except self._NARROW_EXCS as exc:
                 # A shape that cannot be rasterized is a FINDING, not a
                 # crash: preflight's job is to report. One unplaceable
@@ -532,12 +539,14 @@ class _CampaignStaticsContext:
                         sim, self.grid, tc.shape, entry=tc)))
                 continue
             try:
-                solved = continued_conductor_shape(
-                    sim, self.grid, tc.shape, entry=tc)
-                sheet = sheet_spec_from_shape(
-                    solved,
-                    self.coords, self.cell_sizes, name=label,
-                    lane=self.lane or "", refuse_thick=True, grid=self.grid)
+                if id(tc) in products:
+                    _, sheet, _, solved = products[id(tc)]
+                else:
+                    solved = continued_conductor_shape(
+                        sim, self.grid, tc.shape, entry=tc)
+                    sheet = sheet_spec_from_shape(
+                        solved, self.coords, self.cell_sizes, name=label,
+                        lane=self.lane or "", refuse_thick=True, grid=self.grid)
             except ValueError as exc:
                 out.append(_EntryRealization(
                     label=label, name=label, shape=tc.shape, kind="refused",

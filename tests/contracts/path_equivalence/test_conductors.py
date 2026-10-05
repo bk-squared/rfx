@@ -46,10 +46,10 @@ def test_port_clearing_is_persistent():
         c.pec_edges = after.pec_edges
 
 
-@pytest.mark.parametrize('lane', ['run_uniform', 'run_nonuniform'])
+@pytest.mark.parametrize('lane', ['run_uniform', 'run_nonuniform', 'fwd_uniform', 'fwd_nonuniform'])
 def test_preflight_and_run_share_one_assembly(monkeypatch, lane):
     sim = build(('_geometry', 'pec_sheet'), lane)
-    method = '_assemble_materials_nu' if lane == 'run_nonuniform' else '_assemble_materials'
+    method = '_assemble_materials_nu' if lane.endswith('nonuniform') else '_assemble_materials'
     original = getattr(sim, method)
     calls = []
 
@@ -60,8 +60,12 @@ def test_preflight_and_run_share_one_assembly(monkeypatch, lane):
     monkeypatch.setattr(sim, method, count)
     sim.preflight()
     initial = sim._campaign_ctx().realized()
-    result = sim.run(n_steps=2, skip_preflight=True)
-    final = result.realized_geometry.conductors
+    assert len(initial.sheets) == 1
+    assert any(edge.any() for edge in initial.edges)
+    runner = sim.forward if lane.startswith('fwd_') else sim.run
+    result = runner(n_steps=2, skip_preflight=True)
+    final = (sim._campaign_ctx().realized() if lane.startswith('fwd_')
+             else result.realized_geometry.conductors)
     assert calls == [1]
     assert final is initial
     assert sim._campaign_ctx().realized() is final
@@ -141,3 +145,28 @@ def test_dump_replay_moves_fields_and_identity_is_exact(lane, distributed):
     np.testing.assert_array_equal(baseline.time_series, same.time_series)
     assert not np.array_equal(baseline.time_series, changed.time_series)
     assert changed.realized_geometry.conductors.edges[2][index]
+
+
+def test_kernel_rejects_port_edits_outside_object():
+    from rfx.conductors import at_kernel
+    sim = build(('_geometry', 'pec_volume'), 'run_uniform')
+    c = realized_conductors(sim, sim._build_grid())
+    arrays = tuple(np.array(edge) for edge in c.pec_edges)
+    arrays[2][0, 0, 0] = True
+    with pytest.raises(ValueError, match='outside a conductor stage'):
+        at_kernel(sim, c, lane='run_uniform', pec_edges=arrays)
+
+
+def test_sheet_spans_are_read_from_conductors(monkeypatch):
+    import rfx.mesh_edges as shared
+    sim = build(('_geometry', 'pec_sheet'), 'run_uniform')
+    c = sim._campaign_ctx().realized()
+    assert any(span is not None for span in c.sheets[0].solved_spans)
+
+    def unexpected(*args, **kwargs):
+        raise AssertionError('a report recomputed the solved sheet span')
+
+    monkeypatch.setattr(shared, 'solved_sheet_span', unexpected)
+    record = sim.realized_geometry()
+    sim.preflight()
+    assert record.conductors is c

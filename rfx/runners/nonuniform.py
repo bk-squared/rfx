@@ -1634,7 +1634,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     admit(sim, lane, run_args={"conformal_pec": conformal_pec,
                                "compute_s_params": compute_s_params})
 
-    conductors, geometry_record = at_kernel(sim, conductors, lane=lane)
+    conductors, geometry_record = at_kernel(sim, conductors, lane=lane, pec_edges=pec_edge_masks)
     pec_edge_masks = conductors.pec_edges
     _shared_run_kwargs = dict(
         design_box=design_box,

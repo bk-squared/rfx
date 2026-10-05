@@ -2086,10 +2086,10 @@ class _ExecuteMixin:
                 # (#931 §1.9, corrected).
                 conductors = clear_conductor_edges(
                     conductors, [(idx[0], idx[1], idx[2])],
-                    component=pe.component, entity_id=f"port[{self._ports.index(pe)}]")
+                    component=pe.component, entity_id=f"port[{self._ports.index(pe)}]",
+                    clear_cells=True)
                 pec_edge_masks_local = conductors.pec_edges
-            if pec_mask_local is not None:
-                pec_mask_local = pec_mask_local.at[idx[0], idx[1], idx[2]].set(False)
+            pec_mask_local = conductors.pec_cells
             if pec_occupancy_local is not None:
                 pec_occupancy_local = pec_occupancy_local.at[idx[0], idx[1], idx[2]].set(0.0)
             _port_cleared_cells.append((int(idx[0]), int(idx[1]), int(idx[2])))
@@ -2214,11 +2214,9 @@ class _ExecuteMixin:
                     # modal source drives (#931 §1.9, corrected).
                     conductors = clear_conductor_edges(
                         conductors, _msl_cells, component=_msl_normal_component(mp),
-                        entity_id=f"msl_port[{self._msl_ports.index(pe)}]")
+                        entity_id=f"msl_port[{self._msl_ports.index(pe)}]", clear_cells=True)
                     pec_edge_masks_local = conductors.pec_edges
-                for cell in _msl_cells:
-                    if pec_mask_local is not None:
-                        pec_mask_local = pec_mask_local.at[cell[0], cell[1], cell[2]].set(False)
+                pec_mask_local = conductors.pec_cells
                 # The Laplace source AND termination extend beyond the
                 # trace footprint. Reserve that actual modal support from
                 # density edits, including its fringe and Kottke neighbours.
@@ -2528,7 +2526,7 @@ class _ExecuteMixin:
             from rfx.runners._admission import admit
             admit(self, lane)
 
-        conductors, _ = at_kernel(self, conductors, lane=lane or "fwd_uniform")
+        conductors, _ = at_kernel(self, conductors, lane=lane or "fwd_uniform", pec_edges=pec_edge_masks_local)
         pec_edge_masks_local = conductors.pec_edges
         result = _run(
             grid,
@@ -3229,7 +3227,8 @@ class _ExecuteMixin:
         conductors = kernel_conductors(self, grid, materials, pec_mask,
             _dnu_pec_sheets, _dnu_pec_wires, periodic=(False, False, False))
         conductors, geometry_record = at_kernel(self, conductors,
-            lane="run_distributed" if gather_final_state else "fwd_distributed_nu")
+            lane="run_distributed" if gather_final_state else "fwd_distributed_nu",
+            pec_edges=conductors.pec_edges)
 
         # Stage one input at a time. The source normalization above has
         # consumed concrete cell scalars (a material-driven source reads its

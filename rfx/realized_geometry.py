@@ -112,7 +112,11 @@ class RealizedGeometry:
     lane: str = "uniform"
     limitations: tuple[str, ...] = ()
     snap: str = "strict"
-    conductors: object = None
+
+    @property
+    def conductors(self):
+        """The source object of this view (outside the public record schema)."""
+        return getattr(self, '_conductors', None)
 
     def wall_planes(self, axis: int, **kwargs):
         """Read tangential PEC wall planes from the assembled edge masks."""
@@ -234,10 +238,13 @@ def _build_record(sim, ctx, *, compact=False):
                 rhi = float(nodes[a][i1 if cell_range is None else i1 + 1])
                 comparison = free_ends = None
                 if sheet is not None and a != int(sheet.normal_axis) and bounds is not None:
-                    span = solved_sheet_span(
-                        mask, a, nodes[a], float(bounds[0][a]), float(bounds[1][a]),
-                        float(sim._domain[a]), union=union, volume_edges=volume_edges,
-                        periodic='xyz'[a] in getattr(ctx.grid, 'periodic_axes', ''))
+                    if hasattr(sheet, 'solved_spans'):
+                        span = sheet.solved_spans[a]
+                    else:
+                        span = solved_sheet_span(
+                            mask, a, nodes[a], float(bounds[0][a]), float(bounds[1][a]),
+                            float(sim._domain[a]), union=union, volume_edges=volume_edges,
+                            periodic='xyz'[a] in getattr(ctx.grid, 'periodic_axes', ''))
                     if span is not None:
                         rlo, rhi = span.lo, span.hi
                         comparison = span.comparison_bounds(bounds[0][a], bounds[1][a], sim._domain[a])
@@ -286,7 +293,7 @@ def _build_record(sim, ctx, *, compact=False):
                                         float(nodes[a][end] - nodes[a][plo]),
                                         (plo, phi), float(sim._domain[a])))
     entities.extend(_pinned_entities(sim, ctx, assembled, nodes, sizes, compact=compact))
-    return RealizedGeometry(tuple(entities), _ports(sim, ctx, assembled), tuple(domain),
+    record = RealizedGeometry(tuple(entities), _ports(sim, ctx, assembled), tuple(domain),
                             tuple(_readonly(n) for n in nodes), tuple(_readonly(s) for s in sizes),
                             () if compact else tuple(_readonly(m) for m in assembled.edges),
                             None if compact or assembled.pec_mask is None else _readonly(assembled.pec_mask),
@@ -294,7 +301,8 @@ def _build_record(sim, ctx, *, compact=False):
                             None if compact else _freeze(assembled.materials), tuple(ctx.periodic),
                             tuple(refused.items()), tuple(refused_tc.items()),
                             tuple(tuple(row.items()) for row in pad_findings), ctx.lane,
-                            snap=sim._snap, conductors=assembled)
+                            snap=sim._snap)
+    return _conductor_view(record, assembled)
 
 
 def _pinned_entities(sim, ctx, assembled, nodes, sizes, *, compact=False):
@@ -476,8 +484,8 @@ def record_from_conductors(sim, conductors, *, lane, compact=True):
             elif prefix == "thin_conductor":
                 ctx._entries.append(_EntryRealization(label=label, name=label, shape=entry.shape, kind="lossy"))
     record = _build_record(sim, ctx, compact=compact)
-    return replace(record, lane=lane, limitations=("refined region not represented",)
-                   if lane == "run_subgridded" else ())
+    return _conductor_view(replace(record, lane=lane, limitations=("refined region not represented",)
+                   if lane == "run_subgridded" else ()), conductors)
 
 
 def record_from_assembly(sim, grid, materials, pec_mask, sheets, wires,
@@ -500,3 +508,10 @@ def attach_record(result, record):
     if isinstance(result, Result):
         return result._replace(realized_geometry=record)
     return result
+
+
+def _conductor_view(record, conductors):
+    # Keep the historical dataclass fields/serialization stable. The source
+    # object includes assembly bookkeeping and lane-specific grid types.
+    object.__setattr__(record, '_conductors', conductors)
+    return record
