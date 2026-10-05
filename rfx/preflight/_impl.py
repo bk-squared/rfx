@@ -1,4 +1,4 @@
-"""Preflight checks with an optional execution-local conductor reader.
+"""Run the preflight checks; execution may lend its conductors object for this call only.
 
 The solve object is lent to an isolated reader for this call only. Standalone
 preflight keeps using the diagnostic audit cache.

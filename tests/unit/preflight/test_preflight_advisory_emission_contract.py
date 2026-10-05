@@ -79,13 +79,12 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 # still reads only the facade would record that as a SHRINKING surface and
 # invite someone to re-freeze the counts downward -- the surface would then be
 # unpinned wherever the code actually lives. Both paths are read and the sites
-# summed (including the execution-local conductor adapter), so pure code motion leaves the frozen numbers below unchanged and
+# summed (the glob includes rfx/preflight/_impl.py), so pure code motion leaves the frozen numbers below unchanged and
 # only a real new advisory moves them. Globbed, not listed, for the reason
 # tests/unit/nonuniform/test_dz_only_dispatch_contract.py gives at its own
 # rfx/preflight/ row: a later leg must not have to remember this file.
 _PREFLIGHT_SRCS = (
     _REPO_ROOT / "rfx" / "api" / "_preflight.py",
-    _REPO_ROOT / "rfx" / "model" / "_conductor_preflight.py",
     *sorted((_REPO_ROOT / "rfx" / "preflight").glob("*.py")),
 )
 

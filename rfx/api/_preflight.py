@@ -923,7 +923,7 @@ class _PreflightMixin:
             available_memory_gb=available_memory_gb,
         )
 
-    from rfx.model._conductor_preflight import _preflight_impl
+    from rfx.preflight._impl import _preflight_impl
 
     def preflight_sparameters(
         self,
