@@ -1035,6 +1035,19 @@ class Simulation(
             shape=shape, material_name=material))
         return self
 
+    def measurement_plan(self, *, n_steps, path=None, frequencies=None,
+                         calculator_owners=()):
+        """Return a frozen observation plan on the grid this configuration builds.
+
+        This builds a host snapshot only; no stepping or post-processing path
+        consumes it. Calculator observations can be supplied from their actual
+        plane setup using the adapters in ``rfx.measurement.ports``.
+        """
+        from rfx.measurement.plan import build_measurement_plan
+        return build_measurement_plan(
+            self, self._build_realized_grid(), n_steps=n_steps, path=path,
+            frequencies=frequencies, calculator_owners=calculator_owners)
+
     def realized_geometry(self):
         """Return the immutable host record of this configuration's built geometry.
 
