@@ -649,6 +649,9 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             "sources. Falling back to single-device execution.",
             stacklevel=2,
         )
+        # The nested run builds its own solve product; release the one
+        # built for this call's preflight first.
+        assembly = None
         return sim.run(n_steps=n_steps)
 
     if sim._waveguide_ports:
@@ -657,6 +660,9 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             "Falling back to single-device execution.",
             stacklevel=2,
         )
+        # The nested run builds its own solve product; release the one
+        # built for this call's preflight first.
+        assembly = None
         return sim.run(n_steps=n_steps)
 
     refuse_unsupported_distributed_features(
