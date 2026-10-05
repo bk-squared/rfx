@@ -16,7 +16,8 @@ from tests.contracts.path_equivalence.builders import BUILDERS, FREQS, build
 
 ROWS = [('_probes', 'probe'), ('_dft_planes', 'dft_plane'), ('_flux_monitors', 'flux'),
         ('_ports', 'lumped_port'), ('_ports', 'passive_port'), ('_ports', 'wire_port'),
-        ('_waveguide_ports', 'waveguide_port')]
+        ('_waveguide_ports', 'waveguide_port'), ('_ntff', 'ntff_box'),
+        ('_current_moments', 'block_moments')]
 
 
 class SetupCaptured(Exception):
@@ -62,6 +63,8 @@ def rounding_bound(channel, fields):
 
 
 def judge(plan, actual, row, nu):
+    from tests.contracts.measurement_oracles import flux_samples, jacobian_nodes, judge_metadata
+    judge_metadata(plan, actual)
     owners = {o.id: o for o in plan.owners}
     expected = {f'probe:{i}' for i in range(len(actual['probes']))}
     for i, spec in enumerate(actual['probes']):
@@ -89,9 +92,10 @@ def judge(plan, actual, row, nu):
         shape = cfg.e1_dft.shape[1:]
         for c, channel in enumerate(owner.channels):
             area = cfg.dA if c in (0, 3) or cfg.dA2 is None else cfg.dA2
-            np.testing.assert_array_equal([n.area for n in channel.nodes], np.broadcast_to(area, shape).ravel())
-            assert all(n.weight == 1 for n in channel.nodes)
-            assert all((n.i, n.j, n.k)[cfg.axis] == cfg.index for n in channel.nodes)
+            np.testing.assert_array_equal([n.area for n in channel.nodes],
+                                          np.tile(np.broadcast_to(area, shape).ravel(), 1 if c < 2 else 2))
+            assert node_map(channel) == jacobian_nodes(
+                lambda fields: jnp.sum(flux_samples(nu, cfg, fields)[c]), actual['grid'].shape)
     if row[0] == '_ports':
         ids = [key for key in owners if key.startswith('port:')]
         expected.update(ids)
@@ -112,6 +116,9 @@ def judge(plan, actual, row, nu):
             widths = ([np.asarray(m[0]) for m in port_metric_axes(actual['grid'])] if nu else
                       [np.full(actual['grid'].shape[a], actual['grid'].dx) for a in range(3)])
             assert node_map(owner.channels[0]) == {(comp, *mid): -float(widths[axis][mid[axis]])}
+            if not nu:
+                from tests.contracts.measurement_monitors import judge_v_ref
+                judge_v_ref(owner, spec, actual['grid'])
             live = get('live_cells') or (mid,)
             gap = next((c for c in owner.channels if c.name == 'V_port'), None)
             if gap:
@@ -170,6 +177,8 @@ def judge(plan, actual, row, nu):
     if row[0] == '_flux_monitors' and not actual.get('flux_monitors'):
         assert owners['flux_plane:0'].availability == 'result missing'
         expected.add('flux_plane:0')
+    from tests.contracts.measurement_monitors import judge_monitors
+    expected.update(judge_monitors(plan, actual))
     assert set(owners) == expected, 'missing or extra measurement owner'
 
 
@@ -179,13 +188,22 @@ def judge(plan, actual, row, nu):
 def test_j1_actual_path_setup(row, mesh, forward):
     lane = ('fwd_' if forward else 'run_')+('uniform' if mesh == 'uniform' else 'nonuniform')
     sim = build(row, lane, graded=mesh == 'graded')
+    if row[0] == '_current_moments' and mesh == 'graded':
+        with pytest.raises(NotImplementedError) as refusal:
+            setup(sim, forward)
+        plan = measurement_plan(sim, n_steps=12, path=lane)
+        owner = next(o for o in plan.owners if o.kind == 'current_moment')
+        assert owner.channels == ()
+        assert owner.availability == f'unavailable: {refusal.value}'
+        assert plan == measurement_plan(sim, n_steps=12, path=lane)
+        return
     actual = setup(sim, forward)
     plan = build_measurement_plan(sim, actual['grid'], n_steps=12, path=lane, frequencies=FREQS)
     judge(plan, actual, row, mesh != 'uniform')
     assert plan == build_measurement_plan(sim, actual['grid'], n_steps=12, path=lane, frequencies=FREQS)
     assert plan.time_base.dt == float(actual['grid'].dt)
-    assert plan.time_base.time(7, 'E') == 7*plan.time_base.dt
-    assert plan.time_base.time(7, 'H') == 6.5*plan.time_base.dt
+    assert plan.time_base.time(7, 'E') == 8*plan.time_base.dt
+    assert plan.time_base.time(7, 'H') == 7.5*plan.time_base.dt
     with pytest.raises(FrozenInstanceError):
         plan.owners = ()
 
@@ -245,6 +263,8 @@ def test_s0_owner_inventory(row):
     sim = build(row, 'run_nonuniform' if row[0] in ('_dt_pin', '_dt_min_cell') else 'run_uniform')
     plan = measurement_plan(sim, n_steps=12)
     assert sum(o.kind == 'probe' for o in plan.owners) == len(sim._probes)
+    assert sum(o.kind == 'ntff' for o in plan.owners) == int(sim._ntff is not None)
+    assert sum(o.kind == 'current_moment' for o in plan.owners) == int(sim._current_moments is not None)
     for attr, kind in (('_dft_planes', 'dft_plane'), ('_flux_monitors', 'flux'),
                        ('_msl_ports', 'msl'), ('_coaxial_ports', 'coax')):
         assert sum(o.kind == kind for o in plan.owners) == len(getattr(sim, attr))
@@ -294,6 +314,8 @@ def test_msl_calculator_setup_and_projector(mesh, direction):
 
     with patch.object(sim, 'run', stop), pytest.raises(SetupCaptured):
         sim.compute_msl_s_matrix(n_steps=12, freqs=FREQS)
+    from tests.contracts.measurement_oracles import judge_metadata
+    judge_metadata(plan, actual)
     owner = next(o for o in plan.owners if o.kind == 'msl')
     meta = actual['port_idx_meta'][0]
     lo, hi = actual['trace_k_per_port'][0]
@@ -354,6 +376,8 @@ def test_coax_calculator_planes_and_voltage_weights():
                        reference_index=actual['z_dut'])
     plan = build_measurement_plan(sim, grid, n_steps=12, calculator_owners=(owner,))
     assert plan.owners == (owner,)
+    from tests.contracts.measurement_oracles import judge_metadata
+    judge_metadata(plan, actual)
     for channel, index in zip(owner.channels, indices):
         assert {n.k for n in channel.nodes} == {index}
         fields = SimpleNamespace(ex=np.random.default_rng(83).normal(size=grid.shape))

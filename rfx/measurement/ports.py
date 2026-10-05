@@ -69,7 +69,7 @@ def waveguide_owner(grid, cfg, *, port_id=0, mode_id=0):
                                           float(area[u, v])))
             channels.append(Channel(f'{"V" if kind == "E" else "I"}_{label}', kind,
                                     tuple(nodes), slot_offset=1,
-                                    e_time_offset=1.0, h_time_offset=.5))
+                                    e_time_offset=0.0, h_time_offset=0.0))
     refs = tuple(ReferencePlane(name, axis, int(index), float(value)) for name, index, value in (
         ('source', cfg.x_index, cfg.source_x_m), ('reference', cfg.ref_x, cfg.reference_x_m),
         ('probe', cfg.probe_x, cfg.probe_x_m)))
@@ -90,7 +90,7 @@ def msl_owner(grid, *, port_id, direction, voltage_indices, span, trace_planes,
     prop, width = 'xyz'.index(direction[1]), 1 if direction[1] == 'x' else 0
     cells = [np.asarray(grid.cells(a)).astype(np.float32).astype(float) if nonuniform
              else np.asarray(grid.cells(a)) for a in range(3)]
-    offset = 0.0 if nonuniform else 1.0
+    offset = -1.0 if nonuniform else 0.0
     channels = []
     for number, p in enumerate(voltage_indices):
         nodes = []
@@ -99,7 +99,7 @@ def msl_owner(grid, *, port_id, direction, voltage_indices, span, trace_planes,
             idx[prop], idx[width] = int(p), span['w_centre']
             nodes.append(Node('ez', *idx, float(cells[2][k])))
         channels.append(Channel(f'V:{number}', 'E', tuple(nodes),
-                                e_time_offset=offset, h_time_offset=offset-.5))
+                                e_time_offset=offset, h_time_offset=offset))
     # Current uses the right-handed transverse frame (a,b), including for y ports.
     a, b = ((1, 2) if prop == 0 else (2, 0))
     alo, ahi, blo, bhi = ((span['w_lo'], span['w_hi'], *trace_planes) if prop == 0
@@ -116,7 +116,7 @@ def msl_owner(grid, *, port_id, direction, voltage_indices, span, trace_planes,
                 nodes.append(Node('h'+'xyz'[comp], *idx,
                                   float(sign*s*interpolation*cells[comp][q])))
     channels.append(Channel('I', 'H', tuple(nodes), e_time_offset=offset,
-                            h_time_offset=offset-.5))
+                            h_time_offset=offset))
     refs = [ReferencePlane(f'probe:{i}', prop, int(p), float(grid.node_of(prop, int(p))))
             for i, p in enumerate(voltage_indices)]
     if reference_index is not None:
@@ -159,7 +159,7 @@ def coax_owner(grid, *, port_id, plane_indices, center_xy, pin_radius, outer_rad
             weights[i+di, j+dj] += float(length*(tu if di else 1-tu)*(tv if dj else 1-tv))
     channels = tuple(Channel(f'V:{n}', 'E', tuple(Node('ex', i, j, int(p), w)
                                                  for (i, j), w in sorted(weights.items())),
-                             e_time_offset=1.0, h_time_offset=.5)
+                             e_time_offset=0.0, h_time_offset=0.0)
                      for n, p in enumerate(plane_indices))
     refs = [ReferencePlane(f'probe:{i}', 2, int(p), float(grid.node_of(2, int(p))))
             for i, p in enumerate(plane_indices)]

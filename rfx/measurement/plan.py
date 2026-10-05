@@ -6,15 +6,21 @@ waveforms, material masks, or mutable array leaves in the result. Sampling
 weights and quadrature areas are separate: a raw DFT plane does not integrate
 its field, whereas a modal channel does.
 
-The requested M1 clock is E=n*dt, H=(n-.5)*dt. Current path offsets are explicit;
-the later S2 physical-leapfrog decision is recorded, not applied to stepping.
+TimeBase is physical leapfrog: scan step n has E=(n+1)*dt, H=(n+.5)*dt.
+Channel time offsets, in units of dt, describe TODAY's stamps relative to
+that clock (including raw H planes stamped as E). They do not change stepping.
+slot_offset describes storage only: scan step n writes record[n+slot_offset].
+It is independent of the timestamp; waveguide writes slot n+1 with zero time
+offset. Raw point probes have no Fourier stamp and use their physical
+sample time. Current-moment E contributions are stamped at the half-step current
+time; their pre-update/post-injection stages distinguish the two E states.
 Calculator-only observations require their actual setup (MSL/coax calculators
 choose planes independently of run()). Missing observations remain owners with
 an availability explanation, never invented run() channels.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from itertools import product
 
 import jax.numpy as jnp
@@ -38,8 +44,8 @@ class Channel:
     nodes: tuple[Node, ...]
     sample_stage: str = 'post-injection'
     slot_offset: int = 0
-    e_time_offset: float = 0.0
-    h_time_offset: float = -0.5
+    e_time_offset: float = -1.0
+    h_time_offset: float = -1.0
 
 
 @dataclass(frozen=True)
@@ -67,8 +73,8 @@ class Owner:
 class TimeBase:
     dt: float
     record_length: int
-    e_offset: float = 0.0
-    h_offset: float = -0.5
+    e_offset: float = 1.0
+    h_offset: float = 0.5
     host_step_dtype: str = 'int64'
     scan_step_dtype: str = 'int32'
     host_time_dtype: str = 'float64'
@@ -89,9 +95,7 @@ class MeasurementPlan:
     time_base: TimeBase
     owners: tuple[Owner, ...]
     schema_version: int = 1
-    known_differences: tuple[str, ...] = (
-        'M1 requested clock retained; S2 final decision moves E/H to n+1/n+0.5 in M2',
-    )
+    known_differences: tuple[str, ...] = ()
 
 
 def _frequencies(sim, entry=None, freqs=None):
@@ -214,7 +218,8 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
     for i, entry in enumerate(sim._probes):
         owners.append(Owner(f'probe:{i}', 'probe',
                             (Channel(entry.component, entry.component[0].upper(),
-                                     (Node(entry.component, *_index(grid, entry.position), 1.0),)),)))
+                                     (Node(entry.component, *_index(grid, entry.position), 1.0),),
+                                     e_time_offset=0., h_time_offset=0.),)))
     for i, entry in enumerate(sim._dft_planes):
         axis = 'xyz'.index(entry.axis)
         point = [0.0, 0.0, 0.0]
@@ -225,7 +230,7 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
         # Today's DFT plane gives H the E stamp; the MSL calculator corrects it later.
         channel = Channel(entry.component, entry.component[0].upper(),
                           _plane_nodes(grid, axis, index, entry.component, region),
-                          e_time_offset=offset, h_time_offset=offset)
+                          e_time_offset=offset-1, h_time_offset=offset-.5)
         owners.append(Owner(f'dft_plane:{i}', 'dft_plane', (channel,),
                             _frequencies(sim, entry), known_differences=(
                                 'uniform plane E stamp n+1; NU plane E stamp n',
@@ -260,12 +265,13 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
         for c, component in enumerate(_FLUX_COMPONENTS[axis]):
             # Weight belongs to the E/H product, not to each linear DFT.
             area = areas[(0, 1, 1, 0)[c]]
-            nodes = _plane_nodes(grid, axis, index, component, bounds)
-            nodes = tuple(Node(n.component, n.i, n.j, n.k, 1.0, float(a))
-                          for n, a in zip(nodes, area.flat))
+            planes = ((index, 1.0),) if c < 2 else ((max(index-1, 0), .5), (index, .5))
+            nodes = tuple(Node(n.component, n.i, n.j, n.k, weight, float(a))
+                          for plane, weight in planes
+                          for n, a in zip(_plane_nodes(grid, axis, plane, component, bounds), area.flat))
             offset = 0.0 if nu else 1.0
             channels.append(Channel(component, component[0].upper(), nodes,
-                                    e_time_offset=offset, h_time_offset=offset-.5))
+                                    e_time_offset=offset-1, h_time_offset=offset-1))
         owners.append(Owner(f'flux_plane:{i}', 'flux', tuple(channels), _frequencies(sim, entry),
                             known_differences=('uniform flux stamp n+1; NU flux stamp n',
                                                'uniform dA broadcast; NU staggered dA and dA2'),
@@ -300,12 +306,13 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
                             _frequencies(sim, freqs=(np.asarray(frequencies, dtype=np.float32)
                                                     if frequencies is not None else None)),
                             reference_planes=references,
-                            known_differences=('NU missing pre-injection V_ref',
-                                               'NU port weights retain solver-store float32 rounding')
+                            known_differences=(('NU missing pre-injection V_ref',
+                                                'NU port weights retain solver-store float32 rounding') if nu else ())
                             + (('wire reference planes belong to multi-drive scan, not diagonal forward',)
                                if references else ()),
-                            availability=('V/I unavailable in run without wire extent' if
-                                          entry.extent is None and path.startswith('run') else 'sampled')))
+                            availability=(('V/I unavailable in main scan; sampled in second scan when compute_s_params is on'
+                                           if not nu else 'V/I unavailable in run without wire extent')
+                                          if entry.extent is None and path.startswith('run') else 'sampled')))
         if entry.extent is None and edges is not None:
             from rfx.boundaries.pec import clear_edges
             edges = clear_edges(edges, list(live), component=entry.component)
@@ -320,6 +327,9 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
                 known_differences=(('coax calculator refuses NU; no run() measurement' if kind == 'coax'
                                     else 'MSL calculator owns V ladder and PEC-anchored I stencil'),)))
     owners.extend(supplied.values())
+    from .monitors import monitor_owners
+    owners.extend(monitor_owners(sim, grid))
+    owners = [with_clock_differences(owner) for owner in owners]
     ids = [o.id for o in owners]
     if len(ids) != len(set(ids)):
         raise ValueError('duplicate measurement owner id')
@@ -331,3 +341,12 @@ def measurement_plan(sim, *, n_steps, path=None, frequencies=None, calculator_ow
     return build_measurement_plan(
         sim, sim._build_realized_grid(), n_steps=n_steps, path=path,
         frequencies=frequencies, calculator_owners=calculator_owners)
+
+
+def with_clock_differences(owner):
+    """Enumerate every channel whose present stamp differs from the time base."""
+    flags = tuple(f'{c.name}: {c.kind} stamp offset {offset:+g} dt from physical clock'
+                  for c in owner.channels
+                  for offset in (c.e_time_offset if c.kind == 'E' else c.h_time_offset,)
+                  if offset != 0)
+    return replace(owner, known_differences=tuple(dict.fromkeys((*owner.known_differences, *flags))))
