@@ -62,8 +62,8 @@ uncovered cause or a stale/non-12-step witness. Costs use uncached solve times
 (or elapsed execution time when execution fails before both solves finish).
 Main-path refusal lanes are `run_uniform`, `fwd_uniform`, `run_nonuniform`,
 `fwd_nonuniform`, `run_distributed`, and `fwd_distributed_nu`. ADI and subgridded
-refusals run weekly unless chosen as a strict finding witness. All cause
-witnesses remain in the PR subset, including the internal assembly-error cause.
+refusals run weekly unless chosen as a strict finding witness. All remaining cause
+witnesses remain in the PR subset.
 The PR wall-time budget is 240 seconds, judged by the VESSL gate contract step
 and PR CI shard on comparable load. Shared-Mac wall time is not a budget gate.
 The remaining equivalence cells run weekly. With no environment variable the

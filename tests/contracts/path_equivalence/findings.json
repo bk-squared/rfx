@@ -1,14 +1,5 @@
 {
   "causes": {
-    "refusal-message-runs-adi-material-gate": {
-      "implementations": ["rfx/runners/_admission.py:804", "rfx/api/_compile.py:989"],
-      "fingerprints": {
-        "f1": {"value": "ValueError: _assemble_materials (uniform lane): 1 PEC sheet(s) were classified, but rfx/runners/_admission.py:804 in _adi_homogeneous() passed no pec_sheets/pec_wires collector. A sheet owns no cell (#931 §1.3), so it cannot be returned in pec_mask and this caller would step or report a model with the conductor MISSING. Pass pec_sheets=[] / pec_wires=[]: realize them with rfx.boundaries.pec.realized_pec_edge_masks if this path steps fields, or drop them deliberately if it only reads cells.", "cells": ["_geometry:pec_sheet:fwd_adi:refusal:constant:0", "_geometry:pec_sheet:run_adi:refusal:constant:0", "_geometry:pec_sheet:run_subgridded:refusal:constant:0", "_geometry:pec_sheet:run_uniform:run_distributed:constant:12", "_pinned_sheets:pec_sheet:fwd_adi:refusal:constant:0", "_pinned_sheets:pec_sheet:run_adi:refusal:constant:0", "_pinned_sheets:pec_sheet:run_subgridded:refusal:constant:0", "_pinned_sheets:pec_sheet:run_uniform:run_distributed:constant:12", "_thin_conductors:pec_sheet:fwd_adi:refusal:constant:0", "_thin_conductors:pec_sheet:run_adi:refusal:constant:0", "_thin_conductors:pec_sheet:run_subgridded:refusal:constant:0", "_thin_conductors:pec_sheet:run_uniform:run_distributed:constant:12"]},
-        "f2": {"value": "ValueError: _assemble_materials (uniform lane): 1 PEC wire(s) were classified, but rfx/runners/_admission.py:804 in _adi_homogeneous() passed no pec_sheets/pec_wires collector. A sheet owns no cell (#931 §1.3), so it cannot be returned in pec_mask and this caller would step or report a model with the conductor MISSING. Pass pec_sheets=[] / pec_wires=[]: realize them with rfx.boundaries.pec.realized_pec_edge_masks if this path steps fields, or drop them deliberately if it only reads cells.", "cells": ["_geometry:pec_wire:fwd_adi:refusal:constant:0", "_geometry:pec_wire:run_adi:refusal:constant:0", "_geometry:pec_wire:run_subgridded:refusal:constant:0", "_geometry:pec_wire:run_uniform:run_distributed:constant:12"]},
-        "f3": {"value": "ValueError: _assemble_materials (uniform lane): 2 PEC sheet(s) were classified, but rfx/runners/_admission.py:804 in _adi_homogeneous() passed no pec_sheets/pec_wires collector. A sheet owns no cell (#931 §1.3), so it cannot be returned in pec_mask and this caller would step or report a model with the conductor MISSING. Pass pec_sheets=[] / pec_wires=[]: realize them with rfx.boundaries.pec.realized_pec_edge_masks if this path steps fields, or drop them deliberately if it only reads cells.", "cells": ["_msl_ports:msl_port:fwd_adi:refusal:constant:0", "_msl_ports:msl_port:run_adi:refusal:constant:0", "_msl_ports:msl_port:run_subgridded:refusal:constant:0", "_msl_ports:msl_port:run_uniform:run_distributed:constant:12"]}
-      },
-      "witnesses": {}
-    },
     "distributed-mode2d-broadcast": {
       "implementations": ["rfx/runners/uniform.py:134", "rfx/runners/_distributed_common.py:2573"],
       "fingerprints": {
@@ -133,62 +124,14 @@
     "_flux_monitors:flux:run_uniform:run_nonuniform:constant:36": {
       "observers": ["flux-dA-shape", "flux-dA2-missing", {"cause": "nu-flux-accumulator", "witness": "w2"}]
     },
-    "_geometry:pec_sheet:fwd_adi:refusal:constant:0": {
-      "refusal": ["refusal-message-runs-adi-material-gate"]
-    },
-    "_geometry:pec_sheet:run_adi:refusal:constant:0": {
-      "refusal": ["refusal-message-runs-adi-material-gate"]
-    },
-    "_geometry:pec_sheet:run_subgridded:refusal:constant:0": {
-      "refusal": ["refusal-message-runs-adi-material-gate"]
-    },
-    "_geometry:pec_sheet:run_uniform:run_distributed:constant:12": {
-      "refusal": ["refusal-message-runs-adi-material-gate"]
-    },
-    "_geometry:pec_wire:fwd_adi:refusal:constant:0": {
-      "refusal": ["refusal-message-runs-adi-material-gate"]
-    },
-    "_geometry:pec_wire:run_adi:refusal:constant:0": {
-      "refusal": ["refusal-message-runs-adi-material-gate"]
-    },
-    "_geometry:pec_wire:run_subgridded:refusal:constant:0": {
-      "refusal": ["refusal-message-runs-adi-material-gate"]
-    },
-    "_geometry:pec_wire:run_uniform:run_distributed:constant:12": {
-      "refusal": ["refusal-message-runs-adi-material-gate"]
-    },
     "_mode::run_uniform:run_distributed:constant:12": {
       "probes": ["distributed-mode2d-broadcast"],
       "realized": ["distributed-mode2d-broadcast"]
-    },
-    "_msl_ports:msl_port:fwd_adi:refusal:constant:0": {
-      "refusal": ["refusal-message-runs-adi-material-gate"]
-    },
-    "_msl_ports:msl_port:run_adi:refusal:constant:0": {
-      "refusal": ["refusal-message-runs-adi-material-gate"]
-    },
-    "_msl_ports:msl_port:run_subgridded:refusal:constant:0": {
-      "refusal": ["refusal-message-runs-adi-material-gate"]
-    },
-    "_msl_ports:msl_port:run_uniform:run_distributed:constant:12": {
-      "refusal": ["refusal-message-runs-adi-material-gate"]
     },
     "_ntff:ntff_box:run_nonuniform:run_distributed:graded:12": {
       "observers": ["graded-distributed-ntff-refused"],
       "probes": ["graded-distributed-ntff-refused"],
       "realized": ["graded-distributed-ntff-refused"]
-    },
-    "_pinned_sheets:pec_sheet:fwd_adi:refusal:constant:0": {
-      "refusal": ["refusal-message-runs-adi-material-gate"]
-    },
-    "_pinned_sheets:pec_sheet:run_adi:refusal:constant:0": {
-      "refusal": ["refusal-message-runs-adi-material-gate"]
-    },
-    "_pinned_sheets:pec_sheet:run_subgridded:refusal:constant:0": {
-      "refusal": ["refusal-message-runs-adi-material-gate"]
-    },
-    "_pinned_sheets:pec_sheet:run_uniform:run_distributed:constant:12": {
-      "refusal": ["refusal-message-runs-adi-material-gate"]
     },
     "_ports:lumped_port:fwd_uniform:fwd_nonuniform:constant:12": {
       "port_dft": ["nu-lumped-dft-record-missing", "uniform-wire-dft-record-missing", "s-parameter-shape"],
@@ -246,18 +189,6 @@
     "_ports:wire_port:run_uniform:run_nonuniform:constant:36": {
       "port_dft": ["uniform-wire-dft-record-missing"],
       "port_samples": ["nu-missing-vref"]
-    },
-    "_thin_conductors:pec_sheet:fwd_adi:refusal:constant:0": {
-      "refusal": ["refusal-message-runs-adi-material-gate"]
-    },
-    "_thin_conductors:pec_sheet:run_adi:refusal:constant:0": {
-      "refusal": ["refusal-message-runs-adi-material-gate"]
-    },
-    "_thin_conductors:pec_sheet:run_subgridded:refusal:constant:0": {
-      "refusal": ["refusal-message-runs-adi-material-gate"]
-    },
-    "_thin_conductors:pec_sheet:run_uniform:run_distributed:constant:12": {
-      "refusal": ["refusal-message-runs-adi-material-gate"]
     }
   }
 }
