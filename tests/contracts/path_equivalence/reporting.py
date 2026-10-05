@@ -1,4 +1,5 @@
 """Record-level expected findings cannot hide a newly failing record."""
+from pathlib import Path
 
 
 class KnownFinding(AssertionError):
@@ -36,7 +37,11 @@ def fingerprint(failure):
     # same finding. Exceptions retain their entire message, so an unrelated
     # builder or runtime error cannot be accepted under an existing xfail.
     if group(failure) == 'execution':
-        return failure
+        # The assembler embeds its caller's absolute filename. Keep the caller,
+        # line and full error, but make the checkout prefix portable to CI.
+        prefix = str(Path(__file__).resolve().parents[3]) + '/'
+        return failure.replace(prefix + 'rfx/runners/_admission.py:',
+                               'rfx/runners/_admission.py:')
     if ': relative diff ' in failure:
         return failure.split(':', 1)[0] + ': numeric'
     return failure

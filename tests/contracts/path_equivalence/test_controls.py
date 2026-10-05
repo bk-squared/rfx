@@ -112,14 +112,18 @@ def test_observer_amplitudes_use_own_peak_and_metadata_is_exact():
     assert len(report['failures']) == 2
 
 
-def test_pr_subset_includes_every_cause_and_refusal():
+def test_pr_subset_includes_every_cause_and_main_path_refusal():
     from .test_matrix import CELLS, FINDINGS, PR_SUBSET
-    from .generation import PR_FINDING_CHOICES
     causes = {e['cause'] for groups in FINDINGS.values() for entries in groups.values() for e in entries}
-    assert causes <= PR_FINDING_CHOICES.keys()
-    assert {PR_FINDING_CHOICES[cause] for cause in causes} <= PR_SUBSET
-    assert all(c.steps == 12 for c in CELLS if c.id in PR_SUBSET and c.id in FINDINGS)
-    assert {c.id for c in CELLS if not c.equivalence} <= PR_SUBSET
+    selected_causes = {e['cause'] for identity, groups in FINDINGS.items() if identity in PR_SUBSET
+                       for entries in groups.values() for e in entries}
+    assert causes <= selected_causes
+    assert all(c.steps == 12 for c in CELLS if c.equivalence and c.id in PR_SUBSET and c.id in FINDINGS)
+    from .generation import PR_FINDING_CHOICES, PR_REFUSAL_LANES
+    assert {c.id for c in CELLS if not c.equivalence and c.refused in PR_REFUSAL_LANES} <= PR_SUBSET
+    witnesses = set(PR_FINDING_CHOICES.values())
+    assert all(c.id in witnesses for c in CELLS
+               if not c.equivalence and c.refused not in PR_REFUSAL_LANES and c.id in PR_SUBSET)
 
 
 @pytest.mark.parametrize('full', (None, '0', '1'))
@@ -139,3 +143,33 @@ def test_full_matrix_requires_explicit_opt_in(monkeypatch, full):
     pytest_collection_modifyitems(config, items)
     assert items == ([subset, weekly] if full == '1' else [subset])
     assert deselected == ([] if full == '1' else [weekly])
+
+
+@pytest.mark.parametrize('stage', ('refused', 'admit'))
+def test_refusal_tripwire_covers_query_and_message(monkeypatch, stage):
+    from types import SimpleNamespace
+    from . import execution
+    cell = SimpleNamespace(id='refusal-canary', equivalence=False, row=('_freq_max', ''),
+                           refused='run_adi', graded=False, steps=0)
+    monkeypatch.setattr(execution, 'build', lambda *args, **kwargs: object())
+    monkeypatch.setitem(admission.DETECTORS, cell.row, lambda sim: True)
+    monkeypatch.setattr(admission, 'refused', lambda *args: [cell.row])
+
+    def attempt_scan(*args):
+        execution.jax.lax.scan(None, None, None)
+        raise ValueError('internal assembly error after stepping')
+
+    monkeypatch.setattr(admission, stage, attempt_scan)
+    report = execution.execute(cell)
+    assert report['refusal_scan_started'] is True
+    assert report['failures'] == ['AssertionError: refusal reached a scan']
+
+
+def test_assembly_fingerprint_preserves_caller_and_message():
+    from pathlib import Path
+    from .reporting import fingerprint
+    root = Path(__file__).resolve().parents[3]
+    message = f'ValueError: classified, but {root}/rfx/runners/_admission.py:804 in _adi_homogeneous() passed no pec_sheets/pec_wires collector.'
+    expected = message.replace(str(root) + '/', '')
+    assert fingerprint(message) == expected
+    assert fingerprint(message.replace(':804', ':805')) != expected

@@ -46,6 +46,9 @@ def parameters():
 @pytest.mark.parametrize('cell,record', tuple(parameters()))
 def test_path_equivalence(cell, record, matrix_worker):
     report = matrix_worker(cell)
+    if not cell.equivalence:
+        # This assertion is outside KnownFinding: an xfail cannot hide stepping.
+        assert report.get('refusal_scan_started') is False, 'refusal reached a scan'
     unexamined = [f for f in report['failures'] if group(f) not in (*record_groups(cell), 'execution')]
     assert not unexamined, unexamined
     finding = FINDINGS.get(cell.id, {}).get(record, [])

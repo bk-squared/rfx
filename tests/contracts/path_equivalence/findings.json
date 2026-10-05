@@ -127,6 +127,70 @@
    }
   ]
  },
+ "_geometry:pec_sheet:fwd_adi:refusal:constant:0": {
+  "refusal": [
+   {
+    "cause": "adi-refusal-internal-assembly-error",
+    "fingerprint": "ValueError: _assemble_materials (uniform lane): 1 PEC sheet(s) were classified, but rfx/runners/_admission.py:804 in _adi_homogeneous() passed no pec_sheets/pec_wires collector. A sheet owns no cell (#931 \u00a71.3), so it cannot be returned in pec_mask and this caller would step or report a model with the conductor MISSING. Pass pec_sheets=[] / pec_wires=[]: realize them with rfx.boundaries.pec.realized_pec_edge_masks if this path steps fields, or drop them deliberately if it only reads cells."
+   }
+  ]
+ },
+ "_geometry:pec_sheet:run_adi:refusal:constant:0": {
+  "refusal": [
+   {
+    "cause": "adi-refusal-internal-assembly-error",
+    "fingerprint": "ValueError: _assemble_materials (uniform lane): 1 PEC sheet(s) were classified, but rfx/runners/_admission.py:804 in _adi_homogeneous() passed no pec_sheets/pec_wires collector. A sheet owns no cell (#931 \u00a71.3), so it cannot be returned in pec_mask and this caller would step or report a model with the conductor MISSING. Pass pec_sheets=[] / pec_wires=[]: realize them with rfx.boundaries.pec.realized_pec_edge_masks if this path steps fields, or drop them deliberately if it only reads cells."
+   }
+  ]
+ },
+ "_geometry:pec_sheet:run_subgridded:refusal:constant:0": {
+  "refusal": [
+   {
+    "cause": "adi-refusal-internal-assembly-error",
+    "fingerprint": "ValueError: _assemble_materials (uniform lane): 1 PEC sheet(s) were classified, but rfx/runners/_admission.py:804 in _adi_homogeneous() passed no pec_sheets/pec_wires collector. A sheet owns no cell (#931 \u00a71.3), so it cannot be returned in pec_mask and this caller would step or report a model with the conductor MISSING. Pass pec_sheets=[] / pec_wires=[]: realize them with rfx.boundaries.pec.realized_pec_edge_masks if this path steps fields, or drop them deliberately if it only reads cells."
+   }
+  ]
+ },
+ "_geometry:pec_sheet:run_uniform:run_distributed:constant:12": {
+  "refusal": [
+   {
+    "cause": "adi-refusal-internal-assembly-error",
+    "fingerprint": "ValueError: _assemble_materials (uniform lane): 1 PEC sheet(s) were classified, but rfx/runners/_admission.py:804 in _adi_homogeneous() passed no pec_sheets/pec_wires collector. A sheet owns no cell (#931 \u00a71.3), so it cannot be returned in pec_mask and this caller would step or report a model with the conductor MISSING. Pass pec_sheets=[] / pec_wires=[]: realize them with rfx.boundaries.pec.realized_pec_edge_masks if this path steps fields, or drop them deliberately if it only reads cells."
+   }
+  ]
+ },
+ "_geometry:pec_wire:fwd_adi:refusal:constant:0": {
+  "refusal": [
+   {
+    "cause": "adi-refusal-internal-assembly-error",
+    "fingerprint": "ValueError: _assemble_materials (uniform lane): 1 PEC wire(s) were classified, but rfx/runners/_admission.py:804 in _adi_homogeneous() passed no pec_sheets/pec_wires collector. A sheet owns no cell (#931 \u00a71.3), so it cannot be returned in pec_mask and this caller would step or report a model with the conductor MISSING. Pass pec_sheets=[] / pec_wires=[]: realize them with rfx.boundaries.pec.realized_pec_edge_masks if this path steps fields, or drop them deliberately if it only reads cells."
+   }
+  ]
+ },
+ "_geometry:pec_wire:run_adi:refusal:constant:0": {
+  "refusal": [
+   {
+    "cause": "adi-refusal-internal-assembly-error",
+    "fingerprint": "ValueError: _assemble_materials (uniform lane): 1 PEC wire(s) were classified, but rfx/runners/_admission.py:804 in _adi_homogeneous() passed no pec_sheets/pec_wires collector. A sheet owns no cell (#931 \u00a71.3), so it cannot be returned in pec_mask and this caller would step or report a model with the conductor MISSING. Pass pec_sheets=[] / pec_wires=[]: realize them with rfx.boundaries.pec.realized_pec_edge_masks if this path steps fields, or drop them deliberately if it only reads cells."
+   }
+  ]
+ },
+ "_geometry:pec_wire:run_subgridded:refusal:constant:0": {
+  "refusal": [
+   {
+    "cause": "adi-refusal-internal-assembly-error",
+    "fingerprint": "ValueError: _assemble_materials (uniform lane): 1 PEC wire(s) were classified, but rfx/runners/_admission.py:804 in _adi_homogeneous() passed no pec_sheets/pec_wires collector. A sheet owns no cell (#931 \u00a71.3), so it cannot be returned in pec_mask and this caller would step or report a model with the conductor MISSING. Pass pec_sheets=[] / pec_wires=[]: realize them with rfx.boundaries.pec.realized_pec_edge_masks if this path steps fields, or drop them deliberately if it only reads cells."
+   }
+  ]
+ },
+ "_geometry:pec_wire:run_uniform:run_distributed:constant:12": {
+  "refusal": [
+   {
+    "cause": "adi-refusal-internal-assembly-error",
+    "fingerprint": "ValueError: _assemble_materials (uniform lane): 1 PEC wire(s) were classified, but rfx/runners/_admission.py:804 in _adi_homogeneous() passed no pec_sheets/pec_wires collector. A sheet owns no cell (#931 \u00a71.3), so it cannot be returned in pec_mask and this caller would step or report a model with the conductor MISSING. Pass pec_sheets=[] / pec_wires=[]: realize them with rfx.boundaries.pec.realized_pec_edge_masks if this path steps fields, or drop them deliberately if it only reads cells."
+   }
+  ]
+ },
  "_mode::run_uniform:run_distributed:constant:12": {
   "probes": [
    {
@@ -138,6 +202,38 @@
    {
     "cause": "distributed-mode2d-broadcast",
     "fingerprint": "ValueError: Incompatible types for broadcasting: input type=float32[10,13,2] and requested type=float32[10,13,1]"
+   }
+  ]
+ },
+ "_msl_ports:msl_port:fwd_adi:refusal:constant:0": {
+  "refusal": [
+   {
+    "cause": "adi-refusal-internal-assembly-error",
+    "fingerprint": "ValueError: _assemble_materials (uniform lane): 2 PEC sheet(s) were classified, but rfx/runners/_admission.py:804 in _adi_homogeneous() passed no pec_sheets/pec_wires collector. A sheet owns no cell (#931 \u00a71.3), so it cannot be returned in pec_mask and this caller would step or report a model with the conductor MISSING. Pass pec_sheets=[] / pec_wires=[]: realize them with rfx.boundaries.pec.realized_pec_edge_masks if this path steps fields, or drop them deliberately if it only reads cells."
+   }
+  ]
+ },
+ "_msl_ports:msl_port:run_adi:refusal:constant:0": {
+  "refusal": [
+   {
+    "cause": "adi-refusal-internal-assembly-error",
+    "fingerprint": "ValueError: _assemble_materials (uniform lane): 2 PEC sheet(s) were classified, but rfx/runners/_admission.py:804 in _adi_homogeneous() passed no pec_sheets/pec_wires collector. A sheet owns no cell (#931 \u00a71.3), so it cannot be returned in pec_mask and this caller would step or report a model with the conductor MISSING. Pass pec_sheets=[] / pec_wires=[]: realize them with rfx.boundaries.pec.realized_pec_edge_masks if this path steps fields, or drop them deliberately if it only reads cells."
+   }
+  ]
+ },
+ "_msl_ports:msl_port:run_subgridded:refusal:constant:0": {
+  "refusal": [
+   {
+    "cause": "adi-refusal-internal-assembly-error",
+    "fingerprint": "ValueError: _assemble_materials (uniform lane): 2 PEC sheet(s) were classified, but rfx/runners/_admission.py:804 in _adi_homogeneous() passed no pec_sheets/pec_wires collector. A sheet owns no cell (#931 \u00a71.3), so it cannot be returned in pec_mask and this caller would step or report a model with the conductor MISSING. Pass pec_sheets=[] / pec_wires=[]: realize them with rfx.boundaries.pec.realized_pec_edge_masks if this path steps fields, or drop them deliberately if it only reads cells."
+   }
+  ]
+ },
+ "_msl_ports:msl_port:run_uniform:run_distributed:constant:12": {
+  "refusal": [
+   {
+    "cause": "adi-refusal-internal-assembly-error",
+    "fingerprint": "ValueError: _assemble_materials (uniform lane): 2 PEC sheet(s) were classified, but rfx/runners/_admission.py:804 in _adi_homogeneous() passed no pec_sheets/pec_wires collector. A sheet owns no cell (#931 \u00a71.3), so it cannot be returned in pec_mask and this caller would step or report a model with the conductor MISSING. Pass pec_sheets=[] / pec_wires=[]: realize them with rfx.boundaries.pec.realized_pec_edge_masks if this path steps fields, or drop them deliberately if it only reads cells."
    }
   ]
  },
@@ -158,6 +254,38 @@
    {
     "cause": "graded-distributed-ntff-refused",
     "fingerprint": "NotImplementedError: add_ntff_box() (NTFF box) is not supported on the distributed multi-device run() path; the corresponding result.flux_monitors / result.ntff_data / result.dft_planes would be None (rfx.runners.distributed_v2.run_distributed / rfx.runners.distributed.run_distributed result assembly). Remove the flux monitors / NTFF box / DFT plane probes, or omit devices=... (use a single-device run() instead)."
+   }
+  ]
+ },
+ "_pinned_sheets:pec_sheet:fwd_adi:refusal:constant:0": {
+  "refusal": [
+   {
+    "cause": "adi-refusal-internal-assembly-error",
+    "fingerprint": "ValueError: _assemble_materials (uniform lane): 1 PEC sheet(s) were classified, but rfx/runners/_admission.py:804 in _adi_homogeneous() passed no pec_sheets/pec_wires collector. A sheet owns no cell (#931 \u00a71.3), so it cannot be returned in pec_mask and this caller would step or report a model with the conductor MISSING. Pass pec_sheets=[] / pec_wires=[]: realize them with rfx.boundaries.pec.realized_pec_edge_masks if this path steps fields, or drop them deliberately if it only reads cells."
+   }
+  ]
+ },
+ "_pinned_sheets:pec_sheet:run_adi:refusal:constant:0": {
+  "refusal": [
+   {
+    "cause": "adi-refusal-internal-assembly-error",
+    "fingerprint": "ValueError: _assemble_materials (uniform lane): 1 PEC sheet(s) were classified, but rfx/runners/_admission.py:804 in _adi_homogeneous() passed no pec_sheets/pec_wires collector. A sheet owns no cell (#931 \u00a71.3), so it cannot be returned in pec_mask and this caller would step or report a model with the conductor MISSING. Pass pec_sheets=[] / pec_wires=[]: realize them with rfx.boundaries.pec.realized_pec_edge_masks if this path steps fields, or drop them deliberately if it only reads cells."
+   }
+  ]
+ },
+ "_pinned_sheets:pec_sheet:run_subgridded:refusal:constant:0": {
+  "refusal": [
+   {
+    "cause": "adi-refusal-internal-assembly-error",
+    "fingerprint": "ValueError: _assemble_materials (uniform lane): 1 PEC sheet(s) were classified, but rfx/runners/_admission.py:804 in _adi_homogeneous() passed no pec_sheets/pec_wires collector. A sheet owns no cell (#931 \u00a71.3), so it cannot be returned in pec_mask and this caller would step or report a model with the conductor MISSING. Pass pec_sheets=[] / pec_wires=[]: realize them with rfx.boundaries.pec.realized_pec_edge_masks if this path steps fields, or drop them deliberately if it only reads cells."
+   }
+  ]
+ },
+ "_pinned_sheets:pec_sheet:run_uniform:run_distributed:constant:12": {
+  "refusal": [
+   {
+    "cause": "adi-refusal-internal-assembly-error",
+    "fingerprint": "ValueError: _assemble_materials (uniform lane): 1 PEC sheet(s) were classified, but rfx/runners/_admission.py:804 in _adi_homogeneous() passed no pec_sheets/pec_wires collector. A sheet owns no cell (#931 \u00a71.3), so it cannot be returned in pec_mask and this caller would step or report a model with the conductor MISSING. Pass pec_sheets=[] / pec_wires=[]: realize them with rfx.boundaries.pec.realized_pec_edge_masks if this path steps fields, or drop them deliberately if it only reads cells."
    }
   ]
  },
@@ -392,6 +520,38 @@
    {
     "cause": "nu-missing-vref",
     "fingerprint": "sparam_time_records.0.V_ref: record missing on B"
+   }
+  ]
+ },
+ "_thin_conductors:pec_sheet:fwd_adi:refusal:constant:0": {
+  "refusal": [
+   {
+    "cause": "adi-refusal-internal-assembly-error",
+    "fingerprint": "ValueError: _assemble_materials (uniform lane): 1 PEC sheet(s) were classified, but rfx/runners/_admission.py:804 in _adi_homogeneous() passed no pec_sheets/pec_wires collector. A sheet owns no cell (#931 \u00a71.3), so it cannot be returned in pec_mask and this caller would step or report a model with the conductor MISSING. Pass pec_sheets=[] / pec_wires=[]: realize them with rfx.boundaries.pec.realized_pec_edge_masks if this path steps fields, or drop them deliberately if it only reads cells."
+   }
+  ]
+ },
+ "_thin_conductors:pec_sheet:run_adi:refusal:constant:0": {
+  "refusal": [
+   {
+    "cause": "adi-refusal-internal-assembly-error",
+    "fingerprint": "ValueError: _assemble_materials (uniform lane): 1 PEC sheet(s) were classified, but rfx/runners/_admission.py:804 in _adi_homogeneous() passed no pec_sheets/pec_wires collector. A sheet owns no cell (#931 \u00a71.3), so it cannot be returned in pec_mask and this caller would step or report a model with the conductor MISSING. Pass pec_sheets=[] / pec_wires=[]: realize them with rfx.boundaries.pec.realized_pec_edge_masks if this path steps fields, or drop them deliberately if it only reads cells."
+   }
+  ]
+ },
+ "_thin_conductors:pec_sheet:run_subgridded:refusal:constant:0": {
+  "refusal": [
+   {
+    "cause": "adi-refusal-internal-assembly-error",
+    "fingerprint": "ValueError: _assemble_materials (uniform lane): 1 PEC sheet(s) were classified, but rfx/runners/_admission.py:804 in _adi_homogeneous() passed no pec_sheets/pec_wires collector. A sheet owns no cell (#931 \u00a71.3), so it cannot be returned in pec_mask and this caller would step or report a model with the conductor MISSING. Pass pec_sheets=[] / pec_wires=[]: realize them with rfx.boundaries.pec.realized_pec_edge_masks if this path steps fields, or drop them deliberately if it only reads cells."
+   }
+  ]
+ },
+ "_thin_conductors:pec_sheet:run_uniform:run_distributed:constant:12": {
+  "refusal": [
+   {
+    "cause": "adi-refusal-internal-assembly-error",
+    "fingerprint": "ValueError: _assemble_materials (uniform lane): 1 PEC sheet(s) were classified, but rfx/runners/_admission.py:804 in _adi_homogeneous() passed no pec_sheets/pec_wires collector. A sheet owns no cell (#931 \u00a71.3), so it cannot be returned in pec_mask and this caller would step or report a model with the conductor MISSING. Pass pec_sheets=[] / pec_wires=[]: realize them with rfx.boundaries.pec.realized_pec_edge_masks if this path steps fields, or drop them deliberately if it only reads cells."
    }
   ]
  }

@@ -23,6 +23,7 @@ Conclusions: in the S0 PR body (leader)
 | distributed-mode2d-broadcast | `_mode`, U/D | Broadcasting `float32[10,13,2]` into `[10,13,1]`; N/A | [U :134](../../../rfx/runners/uniform.py#L134) / [D :2573](../../../rfx/runners/_distributed_common.py#L2573) |
 | graded-distributed-ports-refused | `_ports` lumped Ng/Dg; wire Ng/Dg 12/36 | Graded distributed port extraction refuses; N/A | [N :713](../../../rfx/runners/nonuniform.py#L713) / [Dg lumped :3175](../../../rfx/api/_execute.py#L3175), [Dg wire :458](../../../rfx/api/_preflight.py#L458) |
 | graded-distributed-ntff-refused | `_ntff`, Ng/Dg | Public distributed feature guard refuses NTFF; N/A | [N :3181](../../../rfx/nonuniform.py#L3181) / [Dg :5083](../../../rfx/api/_execute.py#L5083) |
+| adi-refusal-internal-assembly-error | PEC sheet / wire geometry, MSL, pinned sheet, thin-conductor PEC sheet; each on D refusal, run_adi, fwd_adi, run_subgridded (20 cells) | Stops before stepping with internal `ValueError` because `_adi_homogeneous()` supplies no PEC collectors; not a refusal naming the input. Full message and caller line are fingerprinted; only the absolute checkout prefix is removed. N/A | [caller :804](../../../rfx/runners/_admission.py#L804) / [assembler :989](../../../rfx/api/_compile.py#L989) |
 
 DFT first differing step (zero-based): **2**, component **ez**, normal axis **x**,
 plane index **5**, coordinate **0.00390625 m**, frequency **5 GHz**, transverse
@@ -46,10 +47,10 @@ The public API instead deliberately falls back to one device
 ([routing :5051](../../../rfx/api/_execute.py#L5051)); forced-dispatch recursion
 is a test artifact and is not retained as a finding.
 
-Record-check xfails before/after restoring per-leaf peaks (execution failures
+Record-check xfails before/after classifying the rebased main assembly errors (execution failures
 also fail their dependent record groups):
 
-| Category | a97cc1e6 | This review |
+| Category | 85ad0908 | This review |
 |---|---:|---:|
 | realized | 5 | 5 |
 | probes | 5 | 5 |
@@ -58,13 +59,13 @@ also fail their dependent record groups):
 | observers | 9 | 9 |
 | objective | 0 | 0 |
 | gradient | 0 | 0 |
-| refusal | 0 | 0 |
+| refusal | 0 | 20 |
 
-Total remains **42 checks**, **24 cells**, **13 causes** (excluding the separate
+Total: **42 → 62 checks**, **24 → 44 cells**, **13 → 14 causes** (excluding the separate
 declared-length semantic note). The five realized-group xfails are execution
 errors; none is a geometry or kernel-material mismatch.
 
-All 14 generated flux/NTFF cells were re-measured. Restoring per-leaf peaks
+The preceding comparator review re-measured all 14 generated flux/NTFF cells. Restoring per-leaf peaks
 restores four H-channel fingerprints in the existing two run-flux findings:
 `h1_dft` / `h2_dft` relative differences are `0.0578886856` / `0.0584336938`
 at 12 steps and `0.0534573740` / `0.0546932149` at 36 steps, each versus `1e-4`.
@@ -72,3 +73,9 @@ Implementation locations are in the flux row above. Uniform/distributed NTFF
 still passes with only its named Kahan residuals excluded: maximum physical-leaf
 relative difference `1.06943511e-7` versus `1e-4`. Metadata remain exact.
 The full matrix was not re-run in this review.
+
+The rebased refusal review re-ran all 36 cells across the five affected PEC/MSL
+rows and `_solver`: 40 record checks passed and 20 matched the assembly-error
+finding. Every refusal stopped before scanning. The `_solver` builder now uses
+PEC boundaries; its subgridded refusal names `solver='adi'` and passes, so the
+former absorbing-boundary constructor conflict is not a finding.

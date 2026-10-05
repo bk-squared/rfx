@@ -92,8 +92,16 @@ PR_CHOICES = {
 }
 
 
+# Experimental ADI/subgrid refusals remain weekly unless selected as a cause witness.
+PR_REFUSAL_LANES = frozenset((
+    'run_uniform', 'fwd_uniform', 'run_nonuniform', 'fwd_nonuniform',
+    'run_distributed', 'fwd_distributed_nu',
+))
+
+
 # Cheapest measured 12-step witness per cause (cold solve cost, including failures).
 PR_FINDING_CHOICES = {
+    "adi-refusal-internal-assembly-error": '_geometry:pec_sheet:run_uniform:run_distributed:constant:12',
     "distributed-mode2d-broadcast": "_mode::run_uniform:run_distributed:constant:12",
     "flux-dA-shape": "_flux_monitors:flux:run_uniform:run_nonuniform:constant:12",
     "flux-dA2-missing": "_flux_monitors:flux:run_uniform:run_nonuniform:constant:12",
@@ -111,15 +119,15 @@ PR_FINDING_CHOICES = {
 
 
 def pr_subset(cells, findings):
-    """All refusals, one strict witness per cause, and passing family representatives."""
-    chosen = {c.id for c in cells if not c.equivalence}
+    """Main-path refusals, one strict witness per cause, and passing families."""
+    chosen = {c.id for c in cells if not c.equivalence and c.refused in PR_REFUSAL_LANES}
     causes = {entry['cause'] for groups in findings.values()
               for entries in groups.values() for entry in entries}
     by_id = {c.id: c for c in cells}
     for cause in sorted(causes):
         assert cause in PR_FINDING_CHOICES, f'S0 needs PR finding cost selection: {cause}'
         identity = PR_FINDING_CHOICES[cause]
-        assert identity in by_id and by_id[identity].equivalence and by_id[identity].steps == 12, (
+        assert identity in by_id and by_id[identity].steps == 12, (
             f'S0 stale PR finding cell: {cause}')
         assert any(entry['cause'] == cause for entries in findings.get(identity, {}).values()
                    for entry in entries), f'S0 stale PR finding selection: {cause}'

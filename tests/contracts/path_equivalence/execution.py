@@ -195,7 +195,7 @@ def _comparison_canary():
             raise RuntimeError(f'S0 {helper.__name__} disabled: changed record accepted')
 
 
-def _entry_refusal(sim, cell):
+def _entry_refusal(sim, cell, report):
     # A selector (e.g. a profile) normally routes away from the lane whose
     # refusal is under test. Select that explicit lane after the real routing
     # validation; retain all of its real preparation and admission checks.
@@ -215,6 +215,7 @@ def _entry_refusal(sim, cell):
     def before_scan(*args, **kwargs):
         caller = sys._getframe(1).f_code.co_filename.replace('\\', '/')
         if any(part in caller for part in ('rfx/simulation.py', 'rfx/nonuniform.py', 'rfx/runners/', 'rfx/progress.py')):
+            report['refusal_scan_started'] = True
             raise RuntimeError('refusal reached the first kernel scan')
         return scan(*args, **kwargs)
 
@@ -240,6 +241,12 @@ def execute(cell):
     try:
         _comparison_canary()
         if not cell.equivalence:
+            report['refusal_scan_started'] = False
+
+            def before_refusal_scan(*args, **kwargs):
+                report['refusal_scan_started'] = True
+                raise AssertionError('refusal reached a scan')
+
             # Exercise the production refusal gate before any time-step scan.
             try:
                 sim = build(cell.row, cell.refused, graded=cell.graded)
@@ -250,9 +257,9 @@ def execute(cell):
                 report['refusal'] = str(exc)
                 return report
             assert admission.DETECTORS[cell.row](sim), f'builder did not activate {cell.row}'
-            assert cell.row in admission.refused(sim, cell.refused), f'{cell.refused} failed to refuse {cell.row}'
             try:
-                with patch.object(jax.lax, 'scan', side_effect=AssertionError('refusal reached a scan')):
+                with patch.object(jax.lax, 'scan', side_effect=before_refusal_scan):
+                    assert cell.row in admission.refused(sim, cell.refused), f'{cell.refused} failed to refuse {cell.row}'
                     admission.admit(sim, cell.refused)
             except NotImplementedError as exc:
                 report['refusal'] = str(exc)
@@ -264,7 +271,7 @@ def execute(cell):
                         # loop through the public single-device fallback.
                         report['routing_note'] = 'public API falls back to single-device; explicit lane admission refused'
                     else:
-                        report['entry_refusal'] = _entry_refusal(sim, cell)
+                        report['entry_refusal'] = _entry_refusal(sim, cell, report)
                 return report
             raise AssertionError(f'{cell.refused} failed to refuse {cell.row} before stepping')
         row = ('_materials', 'eps') if cell.row in BASE_ROWS else cell.row

@@ -4,7 +4,10 @@ Generated from `_ADMITTED_ON` / `ADMITS` and checked against path disposition.
 Every equivalence builder is constructed for both lanes during generation;
 each lane's admission detector must report the named row active. Refusal cells
 exercise the admission gate, and in-scope pairs also enter the public runner
-with a first-scan tripwire. Distributed TFSF/waveguide cells test the explicit
+with a first-scan tripwire. Refusal queries and admission-message construction
+also run under a scan tripwire; the no-step assertion is outside strict-xfail
+classification. Internal assembly errors are retained as findings, not accepted
+as feature-naming refusals. Distributed TFSF/waveguide cells test the explicit
 lane admission gate: their public API intentionally falls back to one device,
 so forcing that public dispatcher is not a refusal test.
 
@@ -15,7 +18,9 @@ absorbers are 1/2 cells, block corners are `(3.2, 2.1, 1.3) * dx` and
 excitation instead of the base soft source. `add_source()` internally occupies
 a zero-impedance `_PortEntry`; including that entry with these features would
 be a builder defect. Passive terminations retain the soft source. MSL adds its
-required ground and trace sheets.
+required ground and trace sheets. The `_solver` row uses ADI with PEC boundaries:
+ADI refuses absorbing boundaries at construction, so CPML would be a builder
+conflict. This row only exercises refusal; it produces no lossless field record.
 TFSF uses margin 1 so its boundary and adjacent cells are vacuum. Waveguide
 walls are explicit PEC; transverse modal dimensions are exactly `8 * dx` and
 `7 * dx` on both paths. Its x length remains fractional and the block remains
@@ -49,13 +54,18 @@ cannot hide under xfail. Unknown failures are never accepted by an xfail.
 The worker subprocess selects CPU and two host devices before importing JAX;
 it is bounded and reaped by the fixture. No test enables x64. Identical solves
 are cached within a run. DFT, flux and wire use 12 and 36 steps; others use 12.
-The PR selection includes all refusal cells, the cheapest measured 12-step
+The PR selection includes refusal cells on the main-path lanes only, the cheapest measured 12-step
 strict-xfail cell per finding cause, and the cheapest measured passing 12-step
 candidate per admission attribute family. A cell may witness several causes.
 `PR_FINDING_CHOICES` declares the cause witnesses; generation rejects an
 uncovered cause or a stale/non-12-step witness. Costs use uncached solve times
 (or elapsed execution time when execution fails before both solves finish).
-The PR wall-time budget is 240 seconds.
+Main-path refusal lanes are `run_uniform`, `fwd_uniform`, `run_nonuniform`,
+`fwd_nonuniform`, `run_distributed`, and `fwd_distributed_nu`. ADI and subgridded
+refusals run weekly unless chosen as a strict finding witness. All cause
+witnesses remain in the PR subset, including the internal assembly-error cause.
+The PR wall-time budget is 240 seconds, judged by the VESSL gate contract step
+and PR CI shard on comparable load. Shared-Mac wall time is not a budget gate.
 The remaining equivalence cells run weekly. With no environment variable the
 matrix runs this PR subset, including when a gate overrides pytest's slow filter.
 Only `RFX_S0_FULL=1` enables the full matrix; the weekly slow job sets it.

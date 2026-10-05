@@ -55,7 +55,7 @@ BUILDERS = {
     ('_dt_pin', ''): ({}, _nothing),
     ('_dt_min_cell', ''): ({'dt_min_cell': DX}, _nothing),
     ('_precision', ''): ({'precision': 'mixed'}, _nothing),
-    ('_solver', ''): ({'solver': 'adi', 'boundary': 'cpml'}, _nothing),
+    ('_solver', ''): ({'solver': 'adi', 'boundary': 'pec'}, _nothing),
     ('_adi_cfl_factor', ''): ({'adi_cfl_factor': 1.1}, _nothing),
     ('_stencil_order', ''): ({'stencil_order': 4}, _nothing),
     ('_mode', ''): ({'mode': '2d_tmz'}, _nothing),
