@@ -518,6 +518,7 @@ def msl_nearest_downstream_reflector(
     thin_conductors=(),
     pec_sigma_threshold: float = 1e6,
     signed_front_distance: bool = False,
+    width_cell: float | None = None,
 ):
     """Distance from ``x_probe`` to the nearest downstream conductor edge.
 
@@ -566,6 +567,10 @@ def msl_nearest_downstream_reflector(
     on metal -- with nothing warned. The old scan read only volumetric
     ``geometry``, so a board built from sheets was invisible to it.
 
+    ``dx`` is the primal cell at the feed along propagation; ``width_cell``
+    is the primal cell at the trace centre along its width axis. Legacy
+    callers that supply only ``dx`` retain their cubic tolerance.
+
     Axis generality (issue #661): the parameter names are the ``"+x"``-frame
     names. ``x_probe`` / ``x_feed`` are coordinates on the PROPAGATION axis,
     ``y_feed`` is the trace centreline on the WIDTH axis and ``domain_y``
@@ -593,6 +598,8 @@ def msl_nearest_downstream_reflector(
     from rfx.geometry.csg import Box as _Box
     from rfx.sources.msl_port import _MSL_AXIS_INDEX, msl_axis_roles
 
+    if width_cell is None:
+        width_cell = dx
     _prop_ax, _width_ax, _n_ax, sign = msl_axis_roles(direction)
     _ip = _MSL_AXIS_INDEX[_prop_ax]
     _iw = _MSL_AXIS_INDEX[_width_ax]
@@ -684,8 +691,8 @@ def msl_nearest_downstream_reflector(
         box_y_extent = box_y_hi - box_y_lo
         # Skip the line being measured (see docstring).
         if (
-            abs(box_y_extent - w_trace) <= dx
-            and box_y_lo - dx <= y_feed <= box_y_hi + dx
+            abs(box_y_extent - w_trace) <= width_cell
+            and box_y_lo - width_cell <= y_feed <= box_y_hi + width_cell
             and box_x_lo - dx <= x_feed <= box_x_hi + dx
         ):
             continue
@@ -762,7 +769,10 @@ def msl_probe_clearance_for_port(sim, pe, grid, *, probe_coordinates=None):
         distance, label, unevaluated = msl_nearest_downstream_reflector(
             getattr(sim, "_geometry", ()), x_probe=feed, x_feed=feed,
             y_feed=float(pe.position[_MSL_AXIS_INDEX[width_axis]]),
-            w_trace=float(pe.width), dx=float(grid.dx),
+            w_trace=float(pe.width),
+            dx=float(grid.cells(axis)[grid.index_of(axis, feed)]),
+            width_cell=float(grid.cells(width_axis)[grid.index_of(
+                width_axis, float(pe.position[_MSL_AXIS_INDEX[width_axis]]))]),
             domain_y=float(sim._domain[_MSL_AXIS_INDEX[width_axis]]),
             direction=pe.direction,
             resolve_material=getattr(sim, "_resolve_material", None),
@@ -887,8 +897,7 @@ def _msl_assemble_once(self):
                      np.asarray(grid.dz, dtype=float))
         else:
             grid = self._build_grid()
-            d = float(grid.dx)
-            sizes = tuple(np.full(int(n), d) for n in grid.shape)
+            sizes = tuple(grid.cells(axis) for axis in "xyz")
         # #931: assembled WITH the sheet/wire collectors, so the
         # realized ground (a sheet owns no cell) is known here.
         realized = self._assemble_realized(grid, nonuniform=bool(nonuniform))

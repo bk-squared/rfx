@@ -165,7 +165,7 @@ def _axis_pad_thickness_m(grid, axis_idx: int, side: str) -> float:
             return float(a[:n].sum())
         if side == "hi" and a.size >= n + 1:
             return float(a[a.size - 1 - n:a.size - 1].sum())
-    scalar = float(getattr(grid, "dy", grid.dx)) if ax == "y" else float(grid.dx)
+    scalar = float(grid.boundary_cell(ax, side))
     return n * scalar
 
 

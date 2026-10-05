@@ -142,7 +142,7 @@ def _check_coaxial_port_junction_aperture(self) -> None:
     realized = self._port_realized_edges(grid)
     if realized is None:
         return
-    dx = float(grid.dx)
+    dx = float(grid.cells("x")[0])
     pads = (int(grid.pad_x_lo), int(grid.pad_y_lo), int(grid.pad_z_lo))
     axis_names = ("x", "y", "z")
     for n, port in enumerate(self._coaxial_ports):

@@ -712,7 +712,7 @@ def _congruence_origin_shift(ctx, members, counts):
         return None
     if not all(exact for (_e, _lo, _hi, exact) in members):
         return None
-    d = float(ctx.grid.dx)
+    d = float(ctx.grid.cells("x")[0])
     fracs = np.array([ctx.sub_lattice_offsets(lo)
                       for (_e, lo, _hi, _x) in members])
 
