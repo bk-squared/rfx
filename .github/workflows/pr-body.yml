@@ -58,6 +58,8 @@ jobs:
         # triggered by GITHUB_TOKEN creates no workflow run. Only a live read
         # sees what the PR actually carries. ISSUE_LANES_JSON carries the owner
         # lanes of issues this PR closes, read through closingIssuesReferences.
+        # Only issues in this repository: a cross-repository reference's number
+        # would otherwise be looked up here (another issue, a PR, or none at all).
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -74,7 +76,7 @@ jobs:
             echo "$pr_labels"
             echo "EOF"
           } >> "$GITHUB_ENV"
-          closing_issues=$(gh pr view "$PR_NUMBER" --json closingIssuesReferences --jq '.closingIssuesReferences[].number')
+          closing_issues=$(gh pr view "$PR_NUMBER" --json closingIssuesReferences --jq '.closingIssuesReferences[] | select("\(.repository.owner.login)/\(.repository.name)" == env.GITHUB_REPOSITORY) | .number')
           issue_lanes='[]'
           while IFS= read -r issue; do
             [ -n "$issue" ] || continue
