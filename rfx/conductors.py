@@ -1,0 +1,168 @@
+"""Realized conductor products and the stages that change their edge masks.
+
+The classifier and Yee edge rules remain in rasterize_grid and boundaries.pec.
+This module owns their products, not another rasterization convention.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, replace
+
+import numpy as np
+
+from rfx.preflight.realization import _RealizedPEC
+
+
+@dataclass(frozen=True)
+class ConductorStage:
+    entity_ids: tuple[str, ...]
+    stage: str
+    component: str | None = None
+    edges: tuple = ()
+
+
+@dataclass(frozen=True)
+class RealizedConductors(_RealizedPEC):
+    lane: str
+    grid: object
+    materials: object
+    pec_cells: object
+    pec_edges: object
+    sheets: tuple
+    sheet_impedance: tuple
+    wires: tuple
+    periodic: tuple
+    geometry_masks: object
+    assembly_entries: tuple = ()
+    provenance: tuple[ConductorStage, ...] = ()
+    assembly: tuple = ()
+    pad_fill_findings: tuple = ()
+
+    @property
+    def pec_mask(self):
+        return self.pec_cells
+
+    @property
+    def sheet_specs(self):
+        return self.sheet_impedance
+
+    @property
+    def edges(self):
+        if self.pec_edges is None:
+            return tuple(np.zeros(self.grid.shape, dtype=bool) for _ in range(3))
+        return tuple(np.asarray(edge, dtype=bool) for edge in self.pec_edges)
+
+
+def realized_conductors(sim, grid, *, nonuniform=False, assembly=None,
+                        pec_sheets=(), pec_wires=(), sheet_specs=(),
+                        geometry_masks=(), assembly_entries=(),
+                        pad_fill_findings=(), periodic=None):
+    """Build from production collectors, assembling only when none were supplied."""
+    from rfx.boundaries.pec import realized_pec_edge_masks
+    if assembly is None:
+        pec_sheets, pec_wires, sheet_specs = [], [], []
+        geometry_masks, assembly_entries, pad_fill_findings = [], [], []
+        kwargs = dict(pec_sheets=pec_sheets, pec_wires=pec_wires,
+                      sheet_specs=sheet_specs, geometry_masks=geometry_masks,
+                      assembly_entries=assembly_entries)
+        if nonuniform:
+            assembly = sim._assemble_materials_nu(grid, **kwargs)
+        else:
+            assembly = sim._assemble_materials(
+                grid, pad_fill_findings=pad_fill_findings, **kwargs)
+    periodic = tuple(sim._periodic_flags() if periodic is None else periodic)
+    cells = assembly[3]
+    edges = None
+    if cells is not None or pec_sheets or pec_wires:
+        edges = realized_pec_edge_masks(cells, sheets=pec_sheets,
+                                       wires=pec_wires, periodic=periodic)
+    labels = tuple(f'{prefix}[{i}]' for collection, prefix in
+                   ((sim._geometry, 'geometry'), (sim._thin_conductors, 'thin_conductor'),
+                    (getattr(sim, '_pinned_sheets', ()), 'pinned_sheet'))
+                   for i, _ in enumerate(collection))
+    return RealizedConductors(
+        'nonuniform' if nonuniform else 'uniform', grid, assembly[0], cells,
+        edges, tuple(pec_sheets), tuple(sheet_specs), tuple(pec_wires), periodic,
+        dict(geometry_masks), tuple(assembly_entries),
+        (ConductorStage(labels, 'assembly'),), tuple(assembly), tuple(pad_fill_findings))
+
+
+def clear_conductor_edges(conductors, cells, *, component, entity_id):
+    """One persistent port-clearing stage; the incoming object stays unchanged."""
+    from rfx.boundaries.pec import clear_edges
+    if conductors.pec_edges is None:
+        return conductors
+    cells = tuple(tuple(int(i) for i in cell) for cell in cells)
+    edges = clear_edges(conductors.pec_edges, cells, component=component)
+    return replace(conductors, pec_edges=edges, provenance=conductors.provenance + (
+        ConductorStage((entity_id,), 'port-edge-clearing', component, cells),))
+
+
+def _same_grid(a, b):
+    """Only reuse a production assembly on the identical realized lattice."""
+    from rfx.core.jax_utils import is_tracer
+    if a.shape != b.shape or a.axis_pads != b.axis_pads:
+        return False
+    for axis in range(3):
+        x, y = a.cells(axis), b.cells(axis)
+        if is_tracer(x) or is_tracer(y) or not np.array_equal(x, y):
+            return False
+    return True
+
+
+def assembled_materials(sim, grid, *, nonuniform=False, **collectors):
+    """Share preflight's production products with a runner's existing collectors."""
+    ctx = sim._campaign_ctx()
+    root = getattr(ctx, '_assembled_conductors', None)
+    if root is None:
+        candidate = ctx._realized
+        if isinstance(candidate, RealizedConductors):
+            root = candidate
+    if root is None or not _same_grid(root.grid, grid):
+        root = realized_conductors(sim, grid, nonuniform=nonuniform)
+    ctx._assembled_conductors = root
+    ctx._realized = root
+    for name, out in collectors.items():
+        if out is not None:
+            value = getattr(root, {'pec_sheets': 'sheets', 'pec_wires': 'wires',
+                                  'sheet_specs': 'sheet_impedance'}.get(name, name))
+            out.extend(value.items() if name == 'geometry_masks' else value)
+    return root.assembly
+
+
+def kernel_conductors(sim, grid, materials, pec_cells, sheets=(), wires=(),
+                      *, periodic, sheet_specs=()):
+    """Use the assembly object when entering a runner; retain override stages."""
+    ctx = sim._campaign_ctx()
+    root = getattr(ctx, '_assembled_conductors', None)
+    if root is None and isinstance(ctx._realized, RealizedConductors):
+        root = ctx._realized
+    if (root is not None and _same_grid(root.grid, grid)
+            and pec_cells is root.pec_cells
+            and tuple(map(id, sheets)) == tuple(map(id, root.sheets))
+            and tuple(map(id, wires)) == tuple(map(id, root.wires))
+            and tuple(periodic) == root.periodic):
+        return root
+    # Internal material/PEC override entry points already have assembled products.
+    obj = realized_conductors(sim, grid, nonuniform=hasattr(grid, 'dx_arr'),
+        assembly=(materials, None, None, pec_cells), pec_sheets=sheets,
+        pec_wires=wires, sheet_specs=sheet_specs, periodic=periodic,
+        geometry_masks=() if root is None else root.geometry_masks.items(),
+        assembly_entries=() if root is None else root.assembly_entries)
+    return obj
+
+
+def at_kernel(sim, conductors, *, lane, compact=True):
+    """Record/replay the exact object passed to the stepping call."""
+    from rfx import _realized
+    if _realized.ACTIVE is not None:
+        edges = conductors.pec_edges
+        if edges is not None:
+            edges = _realized.ACTIVE.apply('conductors', 'pec_edges', edges)
+            conductors = replace(conductors, pec_edges=edges)
+            _realized.ACTIVE.observe('conductors', dict(pec_edges=edges))
+    ctx = sim._campaign_ctx()
+    ctx._realized = conductors
+    sim._realized_geometry_record = None
+    from rfx.realized_geometry import record_from_conductors
+    record = record_from_conductors(sim, conductors, lane=lane, compact=compact)
+    return conductors, record

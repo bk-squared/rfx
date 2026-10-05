@@ -653,23 +653,8 @@ def _assemble_realized(self, grid, *, nonuniform: bool):
     cell mask: a sheet owns no cell, and a volume's far face is a
     wall the cell mask does not mark (the #868 class).
     """
-    sheets: list = []
-    wires: list = []
-    sheet_specs: list = []
-    geometry_masks: list = []
-    if nonuniform:
-        mats, _, _, pec_mask = self._assemble_materials_nu(
-            grid, sheet_specs=sheet_specs, pec_sheets=sheets,
-            pec_wires=wires, geometry_masks=geometry_masks)
-    else:
-        mats, _, _, pec_mask, _, _, _ = self._assemble_materials(
-            grid, sheet_specs=sheet_specs, pec_sheets=sheets,
-            pec_wires=wires, geometry_masks=geometry_masks)
-    return _RealizedPEC(
-        lane="nonuniform" if nonuniform else "uniform", grid=grid,
-        materials=mats, pec_mask=pec_mask, sheets=sheets, wires=wires,
-        periodic=self._periodic_flags(), sheet_specs=sheet_specs,
-        geometry_masks=geometry_masks)
+    from rfx.conductors import realized_conductors
+    return realized_conductors(self, grid, nonuniform=nonuniform)
 
 def _port_realized_edges(self, grid):
     """:class:`_RealizedPEC` for the uniform lane, or ``None``.

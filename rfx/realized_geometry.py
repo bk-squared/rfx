@@ -87,7 +87,7 @@ class RealizedGeometry:
 
     ``entities`` are in geometry then thin-conductor declaration order.
     ``nodes`` include the far face of the last stored cell. ``edge_masks``
-    are the assembled PEC edges before any driven port edge is cleared.
+    are the PEC edges handed to the kernel after driven port edge clearing.
     ``ports`` identifies the driven edges separately. Result records omit
     dense masks, materials and sheet/wire specs; entity edge counts/ranges
     summarize the interior solver geometry. Request diagnostic arrays through
@@ -112,6 +112,7 @@ class RealizedGeometry:
     lane: str = "uniform"
     limitations: tuple[str, ...] = ()
     snap: str = "strict"
+    conductors: object = None
 
     def wall_planes(self, axis: int, **kwargs):
         """Read tangential PEC wall planes from the assembled edge masks."""
@@ -293,7 +294,7 @@ def _build_record(sim, ctx, *, compact=False):
                             None if compact else _freeze(assembled.materials), tuple(ctx.periodic),
                             tuple(refused.items()), tuple(refused_tc.items()),
                             tuple(tuple(row.items()) for row in pad_findings), ctx.lane,
-                            snap=sim._snap)
+                            snap=sim._snap, conductors=assembled)
 
 
 def _pinned_entities(sim, ctx, assembled, nodes, sizes, *, compact=False):
@@ -445,19 +446,23 @@ def _mask_ranges(mask):
     return tuple((int(i.min()), int(i.max())) for i in indices) if indices[0].size else ()
 
 
-def _record_from_assembly(sim, grid, materials, pec_mask, sheets, wires,
-                         geometry_masks, assembly_entries, *, lane):
+def record_from_conductors(sim, conductors, *, lane, compact=True):
     """Summarize the run's classifier outputs; never consult preflight caches."""
     from dataclasses import replace
-    from rfx.preflight.realization import _CampaignStaticsContext, _EntryRealization, _RealizedPEC
+    from rfx.preflight.realization import _CampaignStaticsContext, _EntryRealization
+    from rfx.core.jax_utils import is_tracer
+    grid = conductors.grid
+    if any(is_tracer(getattr(grid, name, None)) for name in ("dx_arr", "dy_arr", "dz")):
+        return None
+    if any(is_tracer(edge) for edge in conductors.pec_edges or ()):
+        return None
+    assembly_entries = conductors.assembly_entries
     ctx = object.__new__(_CampaignStaticsContext)
     ctx.sim, ctx.grid = sim, grid
     ctx.lane = "nonuniform" if hasattr(grid, "dx_arr") else "uniform"
     ctx.periodic = tuple(sim._periodic_flags()) if ctx.lane == "uniform" else (False, False, False)
     ctx.assembly_error = ctx._assembly_exception = None
-    ctx._realized = _RealizedPEC(lane=ctx.lane, grid=grid, materials=materials,
-                                pec_mask=pec_mask, sheets=sheets, wires=wires,
-                                periodic=ctx.periodic, geometry_masks=geometry_masks)
+    ctx._realized = conductors
     products = {key: (cells, sheet, wire, shape) for key, cells, sheet, wire, shape in assembly_entries}
     ctx._entries = []
     for collection, prefix in ((sim._geometry, "geometry"), (sim._thin_conductors, "thin_conductor")):
@@ -470,20 +475,23 @@ def _record_from_assembly(sim, grid, materials, pec_mask, sheets, wires,
                     shape=entry.shape, solved_shape=shape, kind=kind, cells=cells, sheet=sheet, wire=wire))
             elif prefix == "thin_conductor":
                 ctx._entries.append(_EntryRealization(label=label, name=label, shape=entry.shape, kind="lossy"))
-    record = _build_record(sim, ctx, compact=True)
+    record = _build_record(sim, ctx, compact=compact)
     return replace(record, lane=lane, limitations=("refined region not represented",)
                    if lane == "run_subgridded" else ())
 
 
-def record_from_assembly(sim, grid, *args, **kwargs):
-    """Skip host metadata only for traced mesh coordinates; other errors propagate."""
+def record_from_assembly(sim, grid, materials, pec_mask, sheets, wires,
+                         geometry_masks, assembly_entries, *, lane):
+    """Compatibility for experimental lanes with no conductor-object carrier."""
+    from rfx.conductors import realized_conductors
     from rfx.core.jax_utils import is_tracer
-
-    # These are the inputs to coords_from_nonuniform_grid's node coordinates.
-    # Inspect them before any host conversion or record construction.
     if any(is_tracer(getattr(grid, name, None)) for name in ("dx_arr", "dy_arr", "dz")):
         return None
-    return _record_from_assembly(sim, grid, *args, **kwargs)
+    conductors = realized_conductors(sim, grid,
+        nonuniform=hasattr(grid, 'dx_arr'), assembly=(materials, None, None, pec_mask),
+        pec_sheets=sheets, pec_wires=wires, geometry_masks=geometry_masks,
+        assembly_entries=assembly_entries)
+    return record_from_conductors(sim, conductors, lane=lane)
 
 
 def attach_record(result, record):
