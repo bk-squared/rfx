@@ -44,6 +44,8 @@ from rfx import _realized
 
 import jax
 import jax.numpy as jnp
+
+from rfx.core.drives import drives_from_sources
 from jax import lax
 import numpy as np
 from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
@@ -915,6 +917,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         src_waveforms = jnp.stack([s.waveform for s in sources], axis=-1)
     else:
         src_waveforms = jnp.zeros((n_steps, 0), dtype=jnp.float32)
+    source_drives = drives_from_sources(src_local_specs, src_waveforms.T)
 
     # ------------------------------------------------------------------
     # Create state directly on its owning devices and stage materials one
@@ -1103,7 +1106,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         return inject_sources_shmap(
             st, src_vals_step, mesh, n_src,
             src_local_specs, src_device_ids,
-            ranks=ranks)
+            ranks=ranks, drives=source_drives)
 
     def _sample_probes_shmap(st, *, ranks):
         """Keep masked samples local until the scan has finished."""

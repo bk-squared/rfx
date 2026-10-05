@@ -44,6 +44,8 @@ from rfx import _realized
 
 import jax
 import jax.numpy as jnp
+
+from rfx.core.drives import drives_from_sources
 import numpy as np
 from jax import lax
 from rfx.runners._rank import mesh_ranks, rank_shard_map
@@ -2319,6 +2321,7 @@ def run_nonuniform_distributed_pec(
         src_waveforms = jnp.stack([s.waveform for s in sources], axis=-1)
     else:
         src_waveforms = jnp.zeros((n_steps, 0), dtype=jnp.float32)
+    source_drives = drives_from_sources(src_local_specs, src_waveforms.T)
     src_waveforms_rep = _concrete_on_mesh(src_waveforms, rep)
 
     # ------------------------------------------------------------------
@@ -2605,7 +2608,7 @@ def run_nonuniform_distributed_pec(
         return inject_sources_shmap(
             st, src_vals_step, mesh, n_src,
             src_local_specs, src_device_ids,
-            ranks=ranks)
+            ranks=ranks, drives=source_drives)
 
     def _sample_probes_shmap(st, *, ranks):
         return sample_probes_shmap(

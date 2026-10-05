@@ -16,6 +16,8 @@ from rfx import _realized
 
 import jax
 import jax.numpy as jnp
+
+from rfx.core.drives import drives_from_sources, inject_drives
 import numpy as np
 
 from rfx.grid import Grid
@@ -1750,6 +1752,10 @@ def _build_step_setup(
     # ---- metadata tuples ----
     src_meta = [(s.i, s.j, s.k, s.component) for s in sources]
     mag_src_meta = [(s.i, s.j, s.k, s.component) for s in mag_sources]
+    drives = drives_from_sources(src_meta, jnp.stack([s.waveform for s in sources])
+                                 if sources else jnp.zeros((0, 0)))
+    mag_drives = drives_from_sources(mag_src_meta, jnp.stack([s.waveform for s in mag_sources])
+                                     if mag_sources else jnp.zeros((0, 0)))
     prb_meta = [(p.i, p.j, p.k, p.component) for p in probes]
     dft_meta = tuple(
         (probe.component, probe.axis, probe.index, probe.freqs, probe.region)
@@ -1863,6 +1869,8 @@ def _build_step_setup(
         pec_faces_frozen=_pec_faces_frozen,
         pmc_faces_frozen=_pmc_faces_frozen,
         curl_boundary=CurlBoundary(_pec_faces_frozen, _pmc_faces_frozen, periodic),
+        drives=drives,
+        mag_drives=mag_drives,
         src_meta=tuple(src_meta),
         mag_src_meta=tuple(mag_src_meta),
         prb_meta=tuple(prb_meta),
@@ -2015,6 +2023,8 @@ class _StepContext:
     pmc_faces_frozen: Any = frozenset()
 
     # ---- pre-extracted metadata ----
+    drives: Any = None
+    mag_drives: Any = None
     src_meta: tuple = ()
     mag_src_meta: tuple = ()
     prb_meta: tuple = ()
@@ -2251,11 +2261,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
             # H^{n+1/2} += -dt/mu · M^{n+1/2}. The coefficient is
             # pre-baked into the waveform values at construction time.
             if ctx.use_mag_sources:
-                for idx_m, (mi, mj, mk, mc) in enumerate(ctx.mag_src_meta):
-                    h_field = getattr(st, mc)
-                    h_field = h_field.at[mi, mj, mk].add(
-                        mag_src_vals[idx_m].astype(h_field.dtype))
-                    st = st._replace(**{mc: h_field})
+                st = inject_drives(st, ctx.mag_drives, mag_src_vals)
 
             # Snapshot E^n before the linear E-update for the reactive Kerr
             # increment (#437): E^{n+1} = E^n + (E_lin - E^n)/(1 + chi3|E^n|^2/eps_r).
@@ -2505,10 +2511,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
 
         # Soft sources — cast source value to field dtype to avoid
         # mixed-precision scatter warnings (float32 -> float16).
-        for idx_s, (si, sj, sk, sc) in enumerate(ctx.src_meta):
-            field = getattr(st, sc)
-            field = field.at[si, sj, sk].add(src_vals[idx_s].astype(field.dtype))
-            st = st._replace(**{sc: field})
+        st = inject_drives(st, ctx.drives, src_vals)
 
         # Wire-port PHYSICAL V/I/V_port DFT accumulation AFTER soft-source
         # injection (issue #683, decided by measurement 2026-08-29;
