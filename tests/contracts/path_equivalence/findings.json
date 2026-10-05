@@ -1,12 +1,5 @@
 {
   "causes": {
-    "distributed-mode2d-broadcast": {
-      "implementations": ["rfx/runners/uniform.py:134", "rfx/runners/_distributed_common.py:2573"],
-      "fingerprints": {
-        "f1": {"value": "ValueError: Incompatible types for broadcasting: input type=float32[10,13,2] and requested type=float32[10,13,1]"}
-      },
-      "witnesses": {}
-    },
     "flux-dA-shape": {
       "implementations": ["rfx/simulation.py:2717", "rfx/nonuniform.py:3140"],
       "fingerprints": {
@@ -25,21 +18,6 @@
       "implementations": ["rfx/api/_execute.py:2709", "rfx/api/_execute.py:2732"],
       "fingerprints": {
         "f1": {"value": "flux_monitors: record missing on A and B"}
-      },
-      "witnesses": {}
-    },
-    "graded-distributed-ntff-refused": {
-      "implementations": ["rfx/nonuniform.py:3181", "rfx/api/_execute.py:5083"],
-      "fingerprints": {
-        "f1": {"value": "NotImplementedError: add_ntff_box() (NTFF box) is not supported on the distributed multi-device run() path; the corresponding result.flux_monitors / result.ntff_data / result.dft_planes would be None (rfx.runners.distributed_v2.run_distributed / rfx.runners.distributed.run_distributed result assembly). Remove the flux monitors / NTFF box / DFT plane probes, or omit devices=... (use a single-device run() instead)."}
-      },
-      "witnesses": {}
-    },
-    "graded-distributed-ports-refused": {
-      "implementations": ["rfx/runners/nonuniform.py:713", "rfx/api/_execute.py:3175", "rfx/api/_preflight.py:458"],
-      "fingerprints": {
-        "f1": {"value": "NotImplementedError: Lumped / wire ports (impedance > 0) are not yet supported on the distributed=True forward path; use distributed=False or replace with a current source (impedance=0).", "cells": ["_ports:lumped_port:run_nonuniform:run_distributed:graded:12"]},
-        "f2": {"value": "NotImplementedError: Phase B distributed+NU does not support lumped / wire ports yet. Use single-device for ports on NU meshes.", "cells": ["_ports:wire_port:run_nonuniform:run_distributed:graded:12", "_ports:wire_port:run_nonuniform:run_distributed:graded:36"]}
       },
       "witnesses": {}
     },
@@ -124,24 +102,9 @@
     "_flux_monitors:flux:run_uniform:run_nonuniform:constant:36": {
       "observers": ["flux-dA-shape", "flux-dA2-missing", {"cause": "nu-flux-accumulator", "witness": "w2"}]
     },
-    "_mode::run_uniform:run_distributed:constant:12": {
-      "probes": ["distributed-mode2d-broadcast"],
-      "realized": ["distributed-mode2d-broadcast"]
-    },
-    "_ntff:ntff_box:run_nonuniform:run_distributed:graded:12": {
-      "observers": ["graded-distributed-ntff-refused"],
-      "probes": ["graded-distributed-ntff-refused"],
-      "realized": ["graded-distributed-ntff-refused"]
-    },
     "_ports:lumped_port:fwd_uniform:fwd_nonuniform:constant:12": {
       "port_dft": ["nu-lumped-dft-record-missing", "uniform-wire-dft-record-missing", "s-parameter-shape"],
       "port_samples": ["port-time-record-missing", "nu-missing-vref"]
-    },
-    "_ports:lumped_port:run_nonuniform:run_distributed:graded:12": {
-      "port_dft": ["graded-distributed-ports-refused"],
-      "port_samples": ["graded-distributed-ports-refused"],
-      "probes": ["graded-distributed-ports-refused"],
-      "realized": ["graded-distributed-ports-refused"]
     },
     "_ports:lumped_port:run_uniform:run_distributed:constant:12": {
       "port_samples": ["port-time-record-missing"]
@@ -163,18 +126,6 @@
     "_ports:wire_port:fwd_uniform:fwd_nonuniform:constant:36": {
       "port_dft": ["nu-missing-vref", "s-parameter-shape"],
       "port_samples": ["nu-missing-vref"]
-    },
-    "_ports:wire_port:run_nonuniform:run_distributed:graded:12": {
-      "port_dft": ["graded-distributed-ports-refused"],
-      "port_samples": ["graded-distributed-ports-refused"],
-      "probes": ["graded-distributed-ports-refused"],
-      "realized": ["graded-distributed-ports-refused"]
-    },
-    "_ports:wire_port:run_nonuniform:run_distributed:graded:36": {
-      "port_dft": ["graded-distributed-ports-refused"],
-      "port_samples": ["graded-distributed-ports-refused"],
-      "probes": ["graded-distributed-ports-refused"],
-      "realized": ["graded-distributed-ports-refused"]
     },
     "_ports:wire_port:run_uniform:run_distributed:constant:12": {
       "port_samples": ["port-time-record-missing"]

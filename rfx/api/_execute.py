@@ -3138,7 +3138,7 @@ class _ExecuteMixin:
             from rfx.realized_geometry import record_from_assembly
             geometry_record = record_from_assembly(
                 self, grid, materials, pec_mask, _dnu_pec_sheets, _dnu_pec_wires,
-                _geometry_masks, _assembly_entries, lane="run_distributed")
+                _geometry_masks, _assembly_entries, lane="run_distributed_nu")
         del _geometry_masks, _assembly_entries
         if _dnu_pec_sheets or _dnu_pec_wires:
             # #931: this lane shards a CELL mask along x and realizes it
@@ -3211,7 +3211,7 @@ class _ExecuteMixin:
         # Every declared input this lane does not carry is refused here,
         # after the specific refusals above and before the first step.
         from rfx.runners._admission import admit
-        admit(self, "fwd_distributed_nu")
+        admit(self, "run_distributed_nu" if gather_final_state else "fwd_distributed_nu")
 
         if eps_override is not None or sigma_override is not None:
             materials = materials._replace(
@@ -3401,7 +3401,7 @@ class _ExecuteMixin:
         disjoint lane-token sets:
 
         - forward: ``fwd_distributed_nu`` / ``fwd_nonuniform`` / ``fwd_uniform``
-        - run: ``run_distributed`` / ``run_nonuniform`` / ``run_adi`` /
+        - run: ``run_distributed`` / ``run_distributed_nu`` / ``run_nonuniform`` / ``run_adi`` /
           ``run_subgridded`` / ``run_uniform``
 
         ``n_steps`` is returned resolved for the NU/distributed lanes (whose
@@ -3628,8 +3628,8 @@ class _ExecuteMixin:
                 else:
                     grid = self._build_grid()
                     _n = grid.num_timesteps(num_periods=num_periods)
-            _reject_lane_precision("run_distributed")
-            return _DispatchPlan(lane="run_distributed", n_steps=_n)
+            _reject_lane_precision("run_distributed_nu" if is_nonuniform else "run_distributed")
+            return _DispatchPlan(lane="run_distributed_nu" if is_nonuniform else "run_distributed", n_steps=_n)
 
         # ---- Non-uniform mesh lane ----
         if is_nonuniform:
@@ -5052,9 +5052,9 @@ class _ExecuteMixin:
                 if float(p.impedance) > 0.0 and p.extent is not None))
 
         # ---- Distributed multi-device lane ----
-        if plan.lane == "run_distributed" and self._interface_eps == "dual_average":
+        if plan.lane in ("run_distributed", "run_distributed_nu") and self._interface_eps == "dual_average":
             raise ValueError("interface_eps='dual_average' is not supported on the distributed lane")
-        if plan.lane == "run_distributed" and (
+        if plan.lane in ("run_distributed", "run_distributed_nu") and (
                 self._tfsf is not None or self._waveguide_ports):
             # TFSF sources and waveguide ports need the whole domain on one
             # device. Re-run with every argument the caller gave, minus devices=;
@@ -5073,7 +5073,7 @@ class _ExecuteMixin:
             return self.run(**{**_call_args, "devices": None,
                                "exchange_interval": 1,
                                "skip_preflight": True})
-        if plan.lane == "run_distributed":
+        if plan.lane in ("run_distributed", "run_distributed_nu"):
             if self._dft_planes:
                 raise NotImplementedError(
                     "add_dft_plane_probe() is not supported on the "
@@ -5146,7 +5146,7 @@ class _ExecuteMixin:
             from rfx.runners._admission import admit_run_s_matrix
             admit_run_s_matrix(self, compute_s_params=compute_s_params,
                                conformal_pec=conformal_pec, distributed=True)
-            if self._uses_nonuniform_mesh:
+            if plan.lane == "run_distributed_nu":
                 from rfx.runners.distributed_v2 import _spans_other_processes
                 if devices is not None and _spans_other_processes(devices):
                     # The graded runner does not gather the final fields

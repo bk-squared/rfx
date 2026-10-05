@@ -108,7 +108,7 @@ KINDS = (CARRIES, REFUSES, FALLS_BACK, NOT_REACHABLE, IGNORABLE, UNCLASSIFIED)
 
 LANES = (
     "run_uniform", "run_nonuniform", "run_subgridded", "run_adi",
-    "run_distributed", "fwd_uniform", "fwd_nonuniform", "fwd_distributed_nu",
+    "run_distributed", "run_distributed_nu", "fwd_uniform", "fwd_nonuniform", "fwd_distributed_nu",
     "fwd_adi",
 )
 # Columns _dispatch_plan reports under another column's lane token.
@@ -160,11 +160,12 @@ def ignorable(why):
 
 def lanes(*, run_uniform, run_nonuniform, run_subgridded, run_adi,
           run_distributed, fwd_uniform, fwd_nonuniform, fwd_distributed_nu,
-          fwd_adi):
-    """One cell per lane; a missing lane is a TypeError at import."""
+          fwd_adi, run_distributed_nu=None):
+    """One cell per lane; NU entries share their runner cells by default."""
     return dict(run_uniform=run_uniform, run_nonuniform=run_nonuniform,
                 run_subgridded=run_subgridded, run_adi=run_adi,
-                run_distributed=run_distributed, fwd_uniform=fwd_uniform,
+                run_distributed=run_distributed, run_distributed_nu=(fwd_distributed_nu if run_distributed_nu is None else run_distributed_nu),
+                fwd_uniform=fwd_uniform,
                 fwd_nonuniform=fwd_nonuniform,
                 fwd_distributed_nu=fwd_distributed_nu, fwd_adi=fwd_adi)
 
@@ -281,6 +282,7 @@ CONFORMAL = dict(
     run_subgridded=_conformal("subgridded (SBP-SAT) lane"),
     run_adi=_conformal("ADI (solver='adi') lane"),
     run_distributed=_conformal("distributed multi-device lane"),
+    run_distributed_nu=_conformal("distributed multi-device lane"),
     fwd_uniform=_conformal("uniform forward lane"),
     fwd_nonuniform=_conformal("non-uniform forward lane"),
     fwd_distributed_nu=_conformal("distributed non-uniform forward lane"),
@@ -330,7 +332,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_subgridded=not_reachable("dt= needs a profile, and a refinement on a profiled mesh "
                                      "is refused (#1282)"),
         run_adi=not_reachable("dt= needs a profile, and ADI requires a uniform mesh"),
-        run_distributed=carries("the distributed graded grid's time step (same probe as run())"),
+        run_distributed=refuses("dt pin belongs to the graded runner", raises="dt="),
         fwd_uniform=not_reachable("dt= needs a profile, which sends the model to the graded lane"),
         fwd_nonuniform=carries("the graded grid's time step"),
         fwd_distributed_nu=carries("the distributed graded grid's time step"),
@@ -341,7 +343,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_nonuniform=carries("with dt=, read by the graded grid build"),
         run_subgridded=not_reachable("the constructor refuses it without dt=, and dt= needs a profile"),
         run_adi=not_reachable("the constructor refuses it without dt=, and dt= needs a profile"),
-        run_distributed=carries("with dt=, read by _build_nonuniform_grid"),
+        run_distributed=refuses("dt_min_cell belongs to the graded runner", raises="dt="),
         fwd_uniform=not_reachable("the constructor refuses it without dt="),
         fwd_nonuniform=carries("with dt=, read by the graded grid build"),
         fwd_distributed_nu=carries("with dt=, read by _build_nonuniform_grid"),
@@ -403,7 +405,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
                                 "a slab across a one-cell z domain is never one-sided"),
         run_adi=carries("3d and 2d_tmz; 2d_tez refused. A 3d box one z cell thick dies with an "
                         "IndexError (measured), so its model is three cells thick"),
-        run_distributed=carries("2d_tmz matched one device bit for bit (measured)"),
+        run_distributed=refuses("2-D distributed CPML has no absent-z-face guard (#1485)", raises="2-D mode"),
         fwd_uniform=carries("3d, 2d_tmz and 2d_tez"),
         fwd_nonuniform=GRADED_2D,
         fwd_distributed_nu=GRADED_2D,
@@ -465,7 +467,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
                                     "production validation; research/off drop it, see _refinement "
                                     "'relaxed_validation'"),
             run_adi=ADI_DISPERSIVE,
-            run_distributed=carries("uniform v2 and graded NU ADE; shared forward staging (#1461)"),
+            run_distributed=carries("uniform v2 ADE"),
             fwd_uniform=carries(),
             fwd_nonuniform=carries(),
             fwd_distributed_nu=carries(),
@@ -738,7 +740,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         "relaxed_validation": {
             **{lane: not_reachable("validation modes exist only on the subgridded lane; see 'slab'")
                for lane in ("run_uniform", "run_nonuniform", "run_adi", "run_distributed",
-                            "fwd_uniform", "fwd_nonuniform", "fwd_distributed_nu", "fwd_adi")},
+                            "run_distributed_nu", "fwd_uniform", "fwd_nonuniform", "fwd_distributed_nu", "fwd_adi")},
             "run_subgridded": admission(
                 "validation='research'/'off' with a dispersive pole, Kerr χ³ or a lumped RLC "
                 "element", RUN_SG, "validation='research' and 'off' ran the Debye, Lorentz and "
@@ -754,7 +756,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
             run_nonuniform=carries(),
             run_subgridded=_subgrid("subgrid_overlaps_absorber", "a CPML box: " + GUARDED_LID_NOTE),
             run_adi=ADI_ABSORBER,
-            run_distributed=carries("uniform v2 and graded NU slab-aware CPML (#1461)"),
+            run_distributed=carries("uniform v2 slab-aware CPML"),
             fwd_uniform=carries(),
             fwd_nonuniform=carries(),
             fwd_distributed_nu=carries(),
@@ -897,7 +899,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_nonuniform=carries(),
         run_subgridded=GRADED_REFINEMENT,
         run_adi=ADI_GRADED,
-        run_distributed=carries("shared NU run/forward staging, grading up to 5:1 (#1461)"),
+        run_distributed=not_reachable("profiles select run_distributed_nu"),
         fwd_uniform=not_reachable("a dx/dy/dz profile sends the model to the graded lane"),
         fwd_nonuniform=carries(),
         fwd_distributed_nu=carries(),
@@ -1651,6 +1653,29 @@ LANE_GATES.update({
 })
 
 
+# These refusals happen in the shared public run() entry before either
+# distributed runner. The NU carrier set is shared with forward(), while
+# these messages belong to run().
+for _attr, _feature in (
+    ("_materials", "kerr"), ("_ports", "passive_port"),
+    ("_msl_ports", "msl_port"), ("_coaxial_ports", "coax_port"),
+    ("_floquet_ports", "floquet_port"), ("_floquet_ports", "scan_angle"),
+    ("_lumped_rlc", "R"), ("_lumped_rlc", "series_RL"),
+    ("_flux_monitors", "flux"), ("_dft_planes", "dft_plane"),
+    ("_boundary", "upml"), ("_interface_eps", "dual_average"),
+):
+    TABLE[_attr][_feature]["run_distributed_nu"] = TABLE[_attr][_feature]["run_distributed"]
+TABLE["_cpml_kappa_max"]["kappa"]["run_distributed_nu"] = admission(
+    "cpml_kappa_max != 1", "graded multi-device run(devices=...)", "the NU runner has no kappa carrier")
+TABLE["_ntff"]["ntff_box"]["run_distributed_nu"] = refuses(
+    "the NU runner has no NTFF accumulation", raises="add_ntff_box() (NTFF box) is not supported")
+TABLE["_tfsf"]["plane_wave"]["run_distributed_nu"] = refuses(
+    "distributed nonuniform TFSF is refused at dispatch",
+    raises="Distributed + non-uniform does not support TFSF")
+TABLE["_waveguide_ports"]["waveguide_port"]["run_distributed_nu"] = falls_back(
+    "run_nonuniform", "single-device graded run with the same arguments")
+
+
 def cell(attr: str, feature: str, path: str) -> Cell:
     """The recorded disposition for one input and one execution path."""
     row = TABLE[attr][feature]
@@ -1662,6 +1687,6 @@ def cell(attr: str, feature: str, path: str) -> Cell:
 PLAIN_SOURCE_S_REQUEST = {
     path: refuses("rfx.runners._admission.refuse_plain_sources_s_matrix; "
                   "tests/unit/sparams/test_plain_source_refusal.py", raises="plain sources")
-    for path in ("run_uniform", "run_nonuniform", "run_subgridded", "run_distributed",
+    for path in ("run_uniform", "run_nonuniform", "run_subgridded", "run_distributed", "run_distributed_nu",
                  "s_matrix_scan", "fwd_uniform", "fwd_nonuniform")
 }
