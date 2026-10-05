@@ -26,8 +26,12 @@ class FaceDepth:
 
 def resolve_face_depths(spec=None, *, budget: int, absorbing_axes="xyz",
                         pec_faces=(), pmc_faces=(), periodic_axes="",
-                        mode="3d", face_layers=None) -> tuple[FaceDepth, ...]:
+                        mode="3d", face_layers=None,
+                        validate=True) -> tuple[FaceDepth, ...]:
     """Resolve six face kinds and depths; validate even suppressed faces.
+
+    ``validate=False`` is for the declaration-time model, which records the
+    declared depth and leaves the budget check to the grid build (as before).
 
     ``declared`` includes the scalar fallback on walls, retaining the legacy
     Grid.face_layers view. ``realized`` counts exterior pad cells. Terminal
@@ -47,7 +51,7 @@ def resolve_face_depths(spec=None, *, budget: int, absorbing_axes="xyz",
             valid = int(depth) == depth and 0 <= depth <= budget
         except (TypeError, ValueError, OverflowError):
             valid = False
-        if not valid:
+        if validate and not valid:
             raise ValueError(
                 f"face_layers[{name!r}]={depth} must be an integer between "
                 f"0 and cpml_layers={budget} (the allocation budget)."

@@ -132,7 +132,7 @@ def resolve_kinds(spec, *, mode: str, features: Features) -> BoundaryModel:
         raise ValueError(f"unknown origin {features.origin!r}")
     boundary = normalize_boundary(spec)
     depths = {record.name: record for record in resolve_face_depths(
-        boundary, budget=features.layers, mode=mode)}
+        boundary, budget=features.layers, mode=mode, validate=False)}
     faces, axes, departures = [], [], []
     for axis in "xyz":
         invariant = axis == "z" and mode in ("2d_tmz", "2d_tez")
