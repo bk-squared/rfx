@@ -948,8 +948,9 @@ def make_nonuniform_grid(
     elif is_tracer(dx_profile):
         # Tracer path (mesh-as-design-variable): stay in jnp and skip the
         # concrete boundary validation. Caller is responsible for keeping
-        # `dx_profile[0] == dx_profile[-1] == dx` (the CPML uses the
-        # boundary scalar). Mirrors the 2026-04-17 dz tracer refactor.
+        # `dx_profile[0] == dx_profile[-1] == dx` (the scalar `dx` still
+        # names the boundary cell; the CPML reads the traced end cells
+        # through `boundary_cell`). Mirrors the 2026-04-17 dz tracer refactor.
         dx_prof_phys = jnp.asarray(dx_profile, dtype=jnp.float32)
     else:
         dx_prof_phys = np.asarray(dx_profile, dtype=np.float64)
@@ -978,8 +979,8 @@ def make_nonuniform_grid(
         dy_prof_phys = np.full(ny_interior, float(dx))
         dy_boundary = float(dx)
     elif is_tracer(dy_profile):
-        # Tracer path: stay in jnp. Use the concrete scalar `dx` as the
-        # boundary cell size — the caller must align `dy_profile[0]` and
+        # Tracer path: stay in jnp. The scalar `dy` is the concrete `dx`
+        # (the CPML reads the traced end cells through `boundary_cell`) — the caller must align `dy_profile[0]` and
         # `dy_profile[-1]` with `dx` (same contract as the concrete path).
         dy_prof_phys = jnp.asarray(dy_profile, dtype=jnp.float32)
         dy_boundary = float(dx)

@@ -780,8 +780,8 @@ def init_cpml_for_sharded_nu(sharded_grid: ShardedNUGrid, n_devices: int,
         """Minimal duck-typed view consumed by ``init_cpml``."""
 
         def __init__(self):
-            # ``init_cpml`` reads grid.dx, grid.dy (optional), grid.dz
-            # (optional), grid.cpml_layers, grid.dt, grid.shape (or
+            # ``init_cpml`` reads boundary_cell(axis, side) (below),
+            # grid.cpml_layers, grid.dt, grid.shape (or
             # grid.nx/ny/nz).
             self.dx = dx_boundary
             self.dy = dy_boundary
