@@ -324,3 +324,10 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
     if len(ids) != len(set(ids)):
         raise ValueError('duplicate measurement owner id')
     return MeasurementPlan(path, TimeBase(float(grid.dt), int(n_steps)), tuple(owners))
+
+
+def measurement_plan(sim, *, n_steps, path=None, frequencies=None, calculator_owners=()):
+    """Frozen measurement plan on the grid this configuration builds (read-only; no path consumes it yet)."""
+    return build_measurement_plan(
+        sim, sim._build_realized_grid(), n_steps=n_steps, path=path,
+        frequencies=frequencies, calculator_owners=calculator_owners)

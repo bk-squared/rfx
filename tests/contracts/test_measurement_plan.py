@@ -11,7 +11,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx.measurement.plan import build_measurement_plan
+from rfx.measurement.plan import build_measurement_plan, measurement_plan
 from tests.contracts.path_equivalence.builders import BUILDERS, FREQS, build
 
 ROWS = [('_probes', 'probe'), ('_dft_planes', 'dft_plane'), ('_flux_monitors', 'flux'),
@@ -186,8 +186,8 @@ def test_j1_actual_path_setup(row, mesh, forward):
 @pytest.mark.parametrize('row', ROWS, ids=lambda r: r[1])
 def test_constant_profile_equal_nodes(row):
     uniform = build(row, 'run_uniform')
-    a = uniform.measurement_plan(n_steps=12, frequencies=FREQS)
-    b = build(row, 'run_nonuniform', dt=a.time_base.dt).measurement_plan(n_steps=12, frequencies=FREQS)
+    a = measurement_plan(uniform, n_steps=12, frequencies=FREQS)
+    b = measurement_plan(build(row, 'run_nonuniform', dt=a.time_base.dt), n_steps=12, frequencies=FREQS)
     for x, y in zip(a.owners, b.owners):
         assert x.id == y.id
         for channel in x.channels:
@@ -202,7 +202,7 @@ def test_j1_mutations_reject_weight_and_dropped_owner():
     row = ('_ports', 'wire_port')
     sim = build(row, 'run_nonuniform', graded=True)
     actual = setup(sim)
-    plan = sim.measurement_plan(n_steps=12, frequencies=FREQS)
+    plan = measurement_plan(sim, n_steps=12, frequencies=FREQS)
     owner = next(o for o in plan.owners if o.kind == 'wire')
     v = owner.channels[0]
     boundary = float(actual['grid'].cells(2)[0])
@@ -228,7 +228,7 @@ def test_j1_mutations_reject_weight_and_dropped_owner():
         return np.full_like(values, values[0])
 
     with patch.object(module, '_port_cells', boundary_cells):
-        bad_plan = sim.measurement_plan(n_steps=12, frequencies=FREQS)
+        bad_plan = measurement_plan(sim, n_steps=12, frequencies=FREQS)
     with pytest.raises(AssertionError):
         judge(bad_plan, actual, row, True)
 
@@ -236,7 +236,7 @@ def test_j1_mutations_reject_weight_and_dropped_owner():
 @pytest.mark.parametrize('row', list(BUILDERS), ids=lambda r: ':'.join(r))
 def test_s0_owner_inventory(row):
     sim = build(row, 'run_nonuniform' if row[0] in ('_dt_pin', '_dt_min_cell') else 'run_uniform')
-    plan = sim.measurement_plan(n_steps=12)
+    plan = measurement_plan(sim, n_steps=12)
     assert sum(o.kind == 'probe' for o in plan.owners) == len(sim._probes)
     for attr, kind in (('_dft_planes', 'dft_plane'), ('_flux_monitors', 'flux'),
                        ('_msl_ports', 'msl'), ('_coaxial_ports', 'coax')):
@@ -274,7 +274,7 @@ def test_msl_calculator_setup_and_projector(mesh, direction):
     from rfx.sources.msl_port import msl_loop_current
     from rfx.sparams._common import msl_modal_voltage
     sim = msl_sim(mesh, direction)
-    plan = sim.measurement_plan(n_steps=12, path='msl_uniform' if mesh == 'uniform' else 'msl_nonuniform',
+    plan = measurement_plan(sim, n_steps=12, path='msl_uniform' if mesh == 'uniform' else 'msl_nonuniform',
                                 frequencies=FREQS)
     actual = {}
 
@@ -365,7 +365,7 @@ def test_live_gap_excludes_pec_edges(mesh):
     sim = build(row, 'run_uniform' if mesh == 'uniform' else 'run_nonuniform', graded=mesh == 'graded')
     sim.add(Box(point(4, 2, 2), point(6, 4, 3)), material='pec')
     actual = setup(sim)
-    plan = sim.measurement_plan(n_steps=12, frequencies=FREQS)
+    plan = measurement_plan(sim, n_steps=12, frequencies=FREQS)
     judge(plan, actual, row, mesh != 'uniform')
     gap = next(c for o in plan.owners if o.kind == 'wire' for c in o.channels if c.name == 'V_port')
     assert len(gap.nodes) == 1
@@ -380,7 +380,7 @@ def test_multimode_waveguide_owners(mesh):
     mode_freqs = jnp.asarray([30e9, 50e9])
     sim._waveguide_ports[0] = replace(sim._waveguide_ports[0], n_modes=2, f0=40e9, freqs=mode_freqs)
     grid = sim._build_realized_grid()
-    plan = sim.measurement_plan(n_steps=12)
+    plan = measurement_plan(sim, n_steps=12)
     configs = (sim._build_waveguide_port_config(sim._waveguide_ports[0], grid, mode_freqs, 12) if mesh == 'uniform'
                else _build_waveguide_port_config_nu(sim, sim._waveguide_ports[0], grid, mode_freqs, 12))
     owners = [o for o in plan.owners if o.kind == 'waveguide']
@@ -407,7 +407,7 @@ def test_wire_reference_planes_use_forward_setup():
 
     with patch('rfx.simulation.run', stop), pytest.raises(SetupCaptured):
         compute_lumped_wire_s_matrix_via_scan(sim, FREQS, n_steps=12)
-    plan = sim.measurement_plan(n_steps=12, path='fwd_uniform', frequencies=FREQS)
+    plan = measurement_plan(sim, n_steps=12, path='fwd_uniform', frequencies=FREQS)
     for spec in actual['wire_refplane_sparams']:
         owner = next(o for o in plan.owners if o.id == f'port:{spec.port_index}:mode:0')
         plane = owner.reference_planes[1+spec.plane_slot]
@@ -420,7 +420,7 @@ def test_port_frequencies_retain_setup_float32_rounding(lane):
     sim = build(('_ports', 'wire_port'), lane)
     freqs = np.array([3e9+17, 5e9+19], dtype=np.float64)
     actual = setup(sim, forward=True, frequencies=freqs)
-    plan = sim.measurement_plan(n_steps=12, path=lane, frequencies=freqs)
+    plan = measurement_plan(sim, n_steps=12, path=lane, frequencies=freqs)
     owner = next(o for o in plan.owners if o.kind == 'wire')
     expected = actual['s_param_freqs'] if lane == 'fwd_nonuniform' else actual['wire_port_sparams'][0].freqs
     assert owner.frequencies == tuple(np.asarray(expected))

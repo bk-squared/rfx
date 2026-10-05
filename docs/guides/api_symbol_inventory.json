@@ -2810,12 +2810,6 @@
       "_removed_kwargs"
     ],
     "freeze_mesh": [],
-    "measurement_plan": [
-      "n_steps",
-      "path",
-      "frequencies",
-      "calculator_owners"
-    ],
     "mesh_intelligence_report": [
       "n_steps",
       "checkpoint_every",
