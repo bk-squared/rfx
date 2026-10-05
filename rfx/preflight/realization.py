@@ -702,7 +702,7 @@ def _assemble_realized(self, grid, *, nonuniform: bool):
     cell mask: a sheet owns no cell, and a volume's far face is a
     wall the cell mask does not mark (the #868 class).
     """
-    from rfx.conductors import realized_conductors
+    from rfx.model.conductors import realized_conductors
     return realized_conductors(self, grid, nonuniform=nonuniform, mode="audit")
 
 def _port_realized_edges(self, grid):

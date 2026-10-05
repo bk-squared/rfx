@@ -168,7 +168,7 @@ def _assembly_impl(sim, ctx):
     import copy
     from rfx.fidelity import _contract_refusals
     from rfx.runners.nonuniform import nu_thin_conductor_refusal
-    from rfx.conductors import realized_conductors
+    from rfx.model.conductors import realized_conductors
     nonuniform = ctx.lane == "nonuniform"
     refused = _contract_refusals(sim, ctx.grid, nonuniform)
     refused_tc = {i: why for i, tc in enumerate(sim._thin_conductors)
@@ -393,7 +393,7 @@ def realized_geometry(sim):
     cached = getattr(sim, '_realized_geometry_record', None)
     if cached is not None and cached[0] == key:
         return cached[1]
-    from rfx.conductors import RealizedConductors, preview_port_stages
+    from rfx.model.conductors import RealizedConductors, preview_port_stages
     assembled = ctx.realized()
     if isinstance(assembled, RealizedConductors):
         record = _record_from_conductors_impl(
@@ -500,7 +500,7 @@ def _record_from_assembly(sim, grid, materials, pec_mask, sheets, wires,
                           geometry_masks, assembly_entries, *, lane,
                           conductors=None, compact=True):
     """Compatibility hook; production callers supply their kernel object."""
-    from rfx.conductors import realized_conductors
+    from rfx.model.conductors import realized_conductors
     if conductors is None:
         conductors = realized_conductors(sim, grid,
             nonuniform=hasattr(grid, 'dx_arr'), assembly=(materials, None, None, pec_mask),

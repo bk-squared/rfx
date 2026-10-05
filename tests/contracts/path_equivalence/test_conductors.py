@@ -4,7 +4,7 @@ from dataclasses import FrozenInstanceError
 import numpy as np
 import pytest
 
-from rfx.conductors import clear_conductor_edges, realized_conductors
+from rfx.model.conductors import clear_conductor_edges, realized_conductors
 from .builders import build
 
 
@@ -183,7 +183,7 @@ def test_dump_replay_moves_fields_and_identity_is_exact(lane, distributed, two_d
 
 
 def test_kernel_rejects_port_edits_outside_object():
-    from rfx.conductors import at_kernel
+    from rfx.model.conductors import at_kernel
     sim = build(('_geometry', 'pec_volume'), 'run_uniform')
     c = realized_conductors(sim, sim._build_grid())
     arrays = tuple(np.array(edge) for edge in c.pec_edges)
@@ -280,7 +280,7 @@ def two_device_test(request, tmp_path):
 @pytest.fixture
 def kernel_objects(monkeypatch):
     """Test-only retention; production Results must never own these arrays."""
-    import rfx.conductors as products
+    import rfx.model.conductors as products
     captured = []
     original = products.at_kernel
 
@@ -315,7 +315,7 @@ def test_preflight_is_independent_of_call_order(lane):
 @pytest.mark.parametrize('lane', ['run_uniform', 'run_nonuniform'])
 def test_result_has_no_dense_conductor_reference(lane):
     from dataclasses import fields, is_dataclass
-    from rfx.conductors import RealizedConductors
+    from rfx.model.conductors import RealizedConductors
     sim = build(('_geometry', 'pec_volume'), lane)
     record = sim.run(n_steps=2, skip_preflight=True).realized_geometry
 
@@ -337,7 +337,7 @@ def test_result_has_no_dense_conductor_reference(lane):
 
 
 def test_runner_refuses_an_audit_object():
-    from rfx.conductors import assembled_materials, at_kernel
+    from rfx.model.conductors import assembled_materials, at_kernel
     sim = build(('_geometry', 'pec_volume'), 'run_uniform')
     with pytest.raises(ValueError, match='audit-mode'):
         assembled_materials(sim._campaign_ctx().realized())
@@ -350,7 +350,7 @@ def test_runner_refuses_an_audit_object():
 def test_distributed_releases_dense_products_before_staging(monkeypatch, graded, entry, two_device_test):
     import jax
     import weakref
-    import rfx.conductors as products
+    import rfx.model.conductors as products
     import rfx.runners._distributed_common as common
     import rfx.runners.distributed_nu as nu
     if len(jax.devices()) < 2:
@@ -444,7 +444,7 @@ def test_assembly_warning_keeps_origin_and_is_not_dropped(monkeypatch, scoped):
 @pytest.mark.parametrize('entry', ['run', 'forward'])
 def test_ringdown_preflight_sees_only_declared_probes(monkeypatch, lane, entry):
     """The channel probes belong to stepping, not declaration preflight."""
-    import rfx.conductors as products
+    import rfx.model.conductors as products
     from rfx.ringdown import RingdownSpec
     from tests.unit.sparams.test_ringdown_run import _box
     sim = _box(lane)

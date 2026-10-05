@@ -18,7 +18,8 @@ import math
 import os
 from typing import NamedTuple
 
-from rfx import _realized, conductors as _conductors
+from rfx import _realized
+from rfx.model import conductors as _conductors
 
 import jax
 import jax.numpy as jnp

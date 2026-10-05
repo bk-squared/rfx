@@ -742,7 +742,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # Drop any standalone diagnostic arrays before allocating solve products.
     sim._pf_campaign_ctx = None
     sim._realized_geometry_record = None
-    from rfx.conductors import assembled_materials, solve_conductors, kernel_conductors, at_kernel
+    from rfx.model.conductors import assembled_materials, solve_conductors, kernel_conductors, at_kernel
     _d_pec_sheets: list = []
     _d_pec_wires: list = []
     _geometry_masks, _assembly_entries = [], []

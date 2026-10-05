@@ -155,7 +155,7 @@ def test_cached_record_builds_once_across_readers(monkeypatch):
 
 
 def test_refused_occupancy_is_diagnostic_and_cached(monkeypatch):
-    import rfx.conductors as products
+    import rfx.model.conductors as products
     modes = []
     original = products.realized_conductors
 

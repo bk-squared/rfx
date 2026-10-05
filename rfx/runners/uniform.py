@@ -409,7 +409,7 @@ def run_uniform(
     # will use, and keep working on THOSE from here on — port clearing,
     # wire-port liveness, the sheet ctx and the run all read the same
     # object.  A sheet owns no cell, so it exists only here.
-    from rfx.conductors import kernel_conductors, clear_conductor_edges, at_kernel
+    from rfx.model.conductors import kernel_conductors, clear_conductor_edges, at_kernel
     _pec_periodic = _simulation.resolve_periodic(grid, periodic)
     pec_sheets = tuple(pec_sheets or ())
     pec_wires = tuple(pec_wires or ())

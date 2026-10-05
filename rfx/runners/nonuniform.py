@@ -657,7 +657,7 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
         msl_port_from_entry,
         setup_msl_port,
     )
-    from rfx.conductors import kernel_conductors, clear_conductor_edges
+    from rfx.model.conductors import kernel_conductors, clear_conductor_edges
     return_object = conductors is not None
     if conductors is None:
         from dataclasses import replace
@@ -901,7 +901,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     _pec_sheets: list = []
     _pec_wires: list = []
     _geometry_masks, _assembly_entries = ([], []) if lane == "run_nonuniform" else (None, None)
-    from rfx.conductors import assembled_materials, solve_conductors, kernel_conductors, clear_conductor_edges, at_kernel
+    from rfx.model.conductors import assembled_materials, solve_conductors, kernel_conductors, clear_conductor_edges, at_kernel
     if conductors is None:
         conductors = solve_conductors(sim, grid, nonuniform=True)
     if preflight is not None:
