@@ -125,8 +125,11 @@ def _measure(case, multi_process):
             bound = inspect.signature(f).bind(*entry_args, **entry_kwargs).arguments
             mask = bound.get("pec_mask_arg")
             if mask is not None:
-                slabs = np.asarray(mask).reshape(len(devices), -1, *mask.shape[1:])
-                boundary_ghosts_true = int(slabs[0, 0].sum() + slabs[-1, -1].sum())
+                masks = mask if isinstance(mask, tuple) else (mask,)
+                boundary_ghosts_true = 0
+                for component in masks:
+                    slabs = np.asarray(component).reshape(len(devices), -1, *component.shape[1:])
+                    boundary_ghosts_true += int(slabs[0, 0].sum() + slabs[-1, -1].sum())
             # The compiled program itself: a per-cell array that reaches the
             # scan by any route (closure, dict, host numpy copy, global) is
             # compiled in as a literal of at least one slab's worth of elements.

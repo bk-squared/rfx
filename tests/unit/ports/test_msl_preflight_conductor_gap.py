@@ -4,7 +4,6 @@ Build-only checks of actual PEC volume/sheet attachment on uniform and NU
 grids. No source profile solve, field evolution or Z0 accuracy claim.
 """
 from dataclasses import replace
-import copy
 import warnings
 
 import numpy as np
@@ -325,8 +324,7 @@ def test_lossy_sheet_ground_is_observed_without_becoming_a_pec_plane(nonuniform)
     assert gap["trace"] == pytest.approx(top, abs=1e-16)
     # Removing only the observational f0 sheet removes the ground; it was
     # never present in the hard PEC masks supplied to the source operator.
-    without_sheet = copy.copy(realized)
-    without_sheet.sheet_specs = ()
+    without_sheet = replace(realized, sheet_impedance=())
     with pytest.raises(ValueError, match="ground"):
         sim._msl_conductor_gap(sim._msl_ports[0], (*assembled[:4], without_sheet))
     for actual, original in zip(realized.edges, before):
