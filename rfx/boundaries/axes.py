@@ -31,3 +31,29 @@ def resolve_cpml_axes(grid, cpml_axes: str | None = None) -> str:
             "Explicit subsets of the grid's axes are accepted."
         )
     return "".join(axis for axis in "xyz" if axis in requested)
+
+
+def drop_periodic_axes(cpml_axes: str, periodic) -> str:
+    """Absorber axes left after removing the periodic ones (no CPML/PEC there)."""
+    return "".join(a for a, p in zip("xyz", periodic) if a in cpml_axes and not p)
+
+
+def padded_axes(grid, cpml_axes: str) -> str:
+    """The requested axes that carry an absorber pad on at least one face.
+
+    Axes whose lo+hi pad is zero are fully closed; the apply path's
+    ``state.e*[:, :, :n]`` slices would clip to the short axis and break the
+    broadcast against the ``(cpml_layers,)`` profile, so they are dropped and
+    the no-op branch passes psi through unchanged.
+    """
+    return "".join(a for a in "xyz" if a in cpml_axes
+                   and getattr(grid, f"pad_{a}_lo") + getattr(grid, f"pad_{a}_hi") > 0)
+
+
+def hi_face_is_wall(grid, axis: str) -> bool:
+    """Whether a grid's high face on ``axis`` is an electric wall.
+
+    True when the axis does not absorb at all or the face is declared PEC.
+    """
+    pec_faces = getattr(grid, "pec_faces", set()) or set()
+    return axis not in getattr(grid, "cpml_axes", "") or f"{axis}_hi" in pec_faces

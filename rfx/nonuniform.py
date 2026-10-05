@@ -24,6 +24,7 @@ from types import SimpleNamespace
 from typing import NamedTuple
 
 from rfx import _realized
+from rfx.boundaries.axes import padded_axes, resolve_cpml_axes
 
 import jax
 import jax.numpy as jnp
@@ -2511,9 +2512,7 @@ def _build_nu_scan(
     placeholder table; the source waveform arrays themselves define the
     table length when sources are present.
     """
-    from rfx.boundaries.axes import resolve_cpml_axes
     cpml_axes = resolve_cpml_axes(grid, cpml_axes)
-
     from rfx.sources.wire_radius import require_radius_update
     require_radius_update(
         materials, lane="non-uniform Yee with dispersion/tensor or design-box updates",
@@ -2554,13 +2553,6 @@ def _build_nu_scan(
     cpml_params = None
     cpml_state_init = None
     cpml_grid = None
-    # Effective CPML axes after PEC/PMC closure. Axes whose lo+hi pad is
-    # zero are fully closed and the apply path's `state.e*[:, :, :n]`
-    # slices clip to the (small) axis length, breaking the broadcast
-    # against the (cpml_layers,) profile coefficients. Drop those axes
-    # from `apply_cpml_*` so the no-op branch passes psi through
-    # unchanged. Mirrors the uniform runner, which already threads
-    # `cpml_axes` from the grid (rfx/runners/uniform.py).
     cpml_axes_eff = cpml_axes
 
     if use_cpml:
@@ -2574,14 +2566,7 @@ def _build_nu_scan(
             grid, pec_faces=pec_faces, pmc_faces=pmc_faces,
         )
         cpml_grid = grid
-        cpml_axes_eff = "".join(
-            ax for ax, lo, hi in (
-                ("x", grid.pad_x_lo, grid.pad_x_hi),
-                ("y", grid.pad_y_lo, grid.pad_y_hi),
-                ("z", grid.pad_z_lo, grid.pad_z_hi),
-            )
-            if ax in cpml_axes and (lo + hi) > 0
-        )
+        cpml_axes_eff = padded_axes(grid, cpml_axes)
 
     # PMC enforcement (2026-04). The NU scan body previously never
     # zeroed H_tan on PMC faces, so a half-symmetric configuration
@@ -3308,8 +3293,7 @@ def run_nonuniform(
 
     Parameters
     ----------
-    cpml_axes : str or None
-        Defaults to axes with absorber pads; explicit subsets are accepted.
+    cpml_axes : str or None: axes with absorber pads when omitted; subsets accepted
     sources : list of (i, j, k, component, waveform_array)
     probes : list of (i, j, k, component)
     wire_ports : list of dict with keys:
