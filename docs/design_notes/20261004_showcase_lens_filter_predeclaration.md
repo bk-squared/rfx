@@ -230,3 +230,26 @@ Two points the text left open, found by the implementer before any run:
 6. **Run outputs** are written on NFS under `byungkwan-workspace/rfx-showcase-runs/` (outside every
    git clone) and copied into rfx-archive by the leader; the job clones the public repository from
    GitHub at the given commit.
+
+## Amendment 3 (2026-10-05, leader; after the PI's review of the first showcase, before the runs it governs)
+The PI judged that start S2 (three εr = 6 slabs) hands the optimiser the resonator layout, so a filter
+grown from it does not show what the gradient finds. The S2 run and its three-mesh re-solve stay in the
+record unchanged; this amendment adds a second filter run and a rule for the frame the showcase shows.
+1. **Filter run F2, from the uniform start S1** (εr = 1.5 in every pixel). Same structure, mask,
+   objective (§2.2), record (§2.5.3 rules), witnesses (§2.5) and three-mesh re-solve (a/36, a/54,
+   a/72) as the first run. Optimiser: Adam, step 0.15 with cosine decay to 0.015 over **400**
+   iterations (the S1 trial reached J = 24.3 at iteration 30, against 11.5 for S2, so it is given
+   twice the budget); the design reported is the best iterate. The S1 start's FD and record-length
+   witnesses were measured in the trial (369367267413, `S1/`) and are reused; they are not re-run.
+   **Outcome rule, fixed now:** if F2's reported design is inside the mask on a/72 and passes §2.5's
+   witnesses, it becomes the showcase filter. If not, the showcase shows F2's curves without the
+   words "inside the mask", and the result is reported as it is; S2 is not substituted.
+2. **The showcase frame's iterate k\*.** Geometry, response and gradient are shown at one iterate
+   chosen by this rule, not by eye: with the progress fraction
+   p_k = (L_0 − L_k)/(L_0 − L_best) for the lens (L is already a log-directivity) and
+   p_k = (log J_0 − log J_k)/(log J_0 − log J_best) for the filter, k\* is the smallest k with
+   p_k ≥ 0.5. The frame also shows the best design's response faintly as the destination.
+3. **Gradient witness at k\*.** The gradient shown at k\* gets its own record-length witness
+   (`rfx.gradient_record_length_witness`, factor 1.5, ≤ 0.05 in norm over all variables). If it
+   fails, the frame uses the last iterate before k\* whose witness passes (searched downward in steps
+   of 10, ending at the start, whose witness passed), and the frame's caption names the iterate used.
