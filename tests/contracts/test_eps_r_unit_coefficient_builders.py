@@ -111,6 +111,9 @@ _SUBGRID = ("the SBP-SAT coupling takes SI eps, but no traced permittivity "
 # (file, qualified function) -> why no traced permittivity is divided through
 # EPS_0 here. May only shrink (ALLOWLIST_CEILING).
 NOT_A_TRACED_EPS_COEFFICIENT = {
+    ("rfx/measurement/monitors.py", "current_moment_owner"):
+        "measurement-plan description of the current-moment reduction: the vacuum constant EPS_0/dt scales "
+        "a recorded field difference; no permittivity, traced or not, is divided through it",
     ("rfx/materials/debye.py", "debye_pole_coeffs"):
         "material-independent ADE beta: EPS_0 multiplies the pole strength",
     ("rfx/materials/lorentz.py", "lorentz_pole_coeffs"):
@@ -176,7 +179,7 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
 
 # The allow-list's length when it was written. Lower it when a row goes; a PR
 # that raises it is adding an EPS_0 reader it says is not a coefficient.
-ALLOWLIST_CEILING = 47
+ALLOWLIST_CEILING = 48  # 47 -> 48: rfx/measurement/monitors.py current_moment_owner (S2 M1, vacuum constant)
 
 HELPER = "si_value_eps_r_grad"
 SHARED_ROUTES = {
