@@ -34,6 +34,7 @@ except ImportError:
 
 from rfx._grid_metric import cells_crossed, distinct_cell_sizes
 from rfx.core.jax_utils import is_tracer
+from rfx.sparams._grid_metrics import absorber_depth, junction_absorber_depth, node_distance
 
 from rfx.nonuniform import NonUniformGrid, interior_cells
 
@@ -42,16 +43,8 @@ def _msl_cell_profile(grid, axis: str, n: int) -> np.ndarray:
     """Per-cell size array (length ``n``, full/padded) along ``axis`` for
     MSL V/I integration. Graded-mesh aware.
 
-    ``NonUniformGrid`` (a NamedTuple) stores per-cell spacings as
-    ``dx_arr`` / ``dy_arr`` / ``dz`` and exposes NO ``*_profile``
-    attributes — so the legacy ``getattr(grid, "dy_profile", None)``
-    fell through to ``np.full(n, grid.dx)``, i.e. the SCALAR boundary-x
-    cell for every transverse cell (wrong axis AND scalar-not-per-cell).
-    This reads the real per-cell array on a NU grid. On a uniform
-    ``Grid`` it is byte-identical to the legacy path (``Grid`` is not a
-    ``NonUniformGrid``, so the per-cell branch is never taken): the
-    ``*_profile`` attr if present, else ``np.full(n, grid.dx)`` — the
-    legacy behaviour of using ``grid.dx`` for every axis is preserved.
+    NU integration retains its solver-facing primal arrays. Uniform grids
+    use their axis cell; optional legacy profiles still take precedence.
     """
     if isinstance(grid, NonUniformGrid):
         per_cell = {"x": grid.dx_arr, "y": grid.dy_arr, "z": grid.dz}[axis]
@@ -69,7 +62,7 @@ def _msl_cell_profile(grid, axis: str, n: int) -> np.ndarray:
     prof = getattr(grid, attr, None)
     if prof is not None:
         return np.asarray(prof, dtype=float)
-    return np.full(n, float(grid.dx), dtype=float)
+    return np.full(n, float(grid.boundary_cell(axis, "lo")), dtype=float)
 
 
 def msl_modal_voltage(ez_plane, *, j_centre: int, k_lo: int, k_hi: int,
@@ -530,7 +523,7 @@ def _msl_axis_spacing(grid, axis: int):
     from rfx.nonuniform import NonUniformGrid, interior_cells
 
     if not isinstance(grid, NonUniformGrid):
-        return float(grid.dx), False, True
+        return float(grid.boundary_cell(axis, "lo")), False, True
     arr = (grid.dx_arr, grid.dy_arr, grid.dz)[axis]
     pad_lo = (grid.pad_x_lo, grid.pad_y_lo, grid.pad_z_lo)[axis]
     pad_hi = (grid.pad_x_hi, grid.pad_y_hi, grid.pad_z_hi)[axis]
@@ -667,7 +660,7 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
         msl_min_probe_clearance,
         msl_nearest_downstream_reflector,
     )
-    from rfx.preflight._common import _fmt_len
+    from rfx.preflight._common import _fmt_len, local_cell
     from rfx.preflight.msl import (
         msl_auto_probe_ladder,
         msl_auto_probe_offset_cells,
@@ -693,12 +686,12 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
         _prop_ax, _width_ax, _, _dir_sign = _msl_axis_roles(pe.direction)
         _ip = _MSL_AX[_prop_ax]
         _iw = _MSL_AX[_width_ax]
-        # Issue #686: the bail-out is about THIS port's propagation axis.
+        # Grading gates propagation; tracing also gates width tolerances.
         dx_u, _graded, _evaluable = _msl_axis_spacing(grid, _ip)
-        if not _evaluable:
+        if not _evaluable or (not _graded and is_tracer(grid.cells(_iw))):
             _graded_skips.append(
                 f"{pe.name!r} (direction={pe.direction!r}): the "
-                f"{_prop_ax}-axis cell sizes are a traced "
+                f"{_prop_ax if not _evaluable else _width_ax}-axis cell sizes are a traced "
                 f"mesh-as-design-variable profile and cannot be inspected "
                 f"host-side; the stored offset and spacing are kept")
             resolved.append(pe)
@@ -786,7 +779,9 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
             x_feed=float(pe.position[_ip]),
             y_feed=float(pe.position[_iw]),
             w_trace=float(pe.width),
-            dx=dx_u,
+            dx=local_cell(grid, _ip, float(pe.position[_ip])),
+            width_cell=min(local_cell(grid, _iw, float(pe.position[_iw]) - float(pe.width) / 2),
+                           local_cell(grid, _iw, float(pe.position[_iw]) + float(pe.width) / 2)),
             domain_y=float(sim._domain[_iw]),
             direction=pe.direction,
             # Issue #685: same conductor rule as the assembler, and thin
@@ -1666,7 +1661,6 @@ def _warn_junction_probe_clearance(
     f_arr = np.asarray(freqs, dtype=float)
     f_max = float(f_arr.max())
     f_cen = 0.5 * (float(f_arr.min()) + f_max)
-    dx = float(grid.dx)
     for i, cfg in enumerate(cfgs):
         a = float(cfg.a)
         fc2 = _C0_SPARAMS / a  # TE20 cutoff for a TE10 port of width a
@@ -1693,8 +1687,8 @@ def _warn_junction_probe_clearance(
         if differing.size == 0:
             continue
         probe = int(cfg.probe_x)
-        nearest = int(differing[np.argmin(np.abs(differing - probe))])
-        clearance_m = abs(nearest - probe) * dx
+        clearance_m = min(node_distance(grid, ax, probe, int(node))
+                          for node in differing)
         alpha = 2.0 * np.pi * np.sqrt(max(fc2 ** 2 - f_cen ** 2, 0.0)) / _C0_SPARAMS
         if alpha <= 0.0:
             continue
@@ -1723,7 +1717,7 @@ def _warn_junction_cpml_thickness(grid, cfgs, freqs, cpml_layers):
 
     For each port compute the TE10 guide wavelength at band centre,
     ``lambda_g = lambda0 / sqrt(1 - (fc1 / f)^2)`` with ``fc1 = C0 / (2 a)``
-    and ``lambda0 = C0 / f``. If the CPML stack (``cpml_layers * dx``) is
+    and ``lambda0 = C0 / f``. If the thinnest active propagation pad is
     thinner than ``0.5 * lambda_g`` the absorber may under-drain guided energy.
     Heuristic from the validated campaign: 20 mm CPML produced |S11| ripple
     ~0.11, 48 mm passed. Emits ``warnings.warn`` per thin-CPML port; does not
@@ -1733,8 +1727,8 @@ def _warn_junction_cpml_thickness(grid, cfgs, freqs, cpml_layers):
 
     f_arr = np.asarray(freqs, dtype=float)
     f_cen = 0.5 * (float(f_arr.min()) + float(f_arr.max()))
-    cpml_m = int(cpml_layers) * float(grid.dx)
     for i, cfg in enumerate(cfgs):
+        cpml_m = junction_absorber_depth(grid, cfg.normal_axis, int(cpml_layers))
         a = float(cfg.a)
         fc1 = _C0_SPARAMS / (2.0 * a)  # TE10 cutoff
         if f_cen <= fc1:
@@ -2145,7 +2139,6 @@ def _warn_thin_absorber_vs_guide_wavelength(
     if f_arr.size == 0:
         return
     f_lo = float(f_arr.min())
-    dx = float(grid.dx)
     seen: set = set()
     for cfg in cfgs:
         # A multimode port arrives as a list of per-mode configs; the
@@ -2179,14 +2172,16 @@ def _warn_thin_absorber_vs_guide_wavelength(
 
         lambda_g = (_C0_SPARAMS / f_lo) / np.sqrt(1.0 - (fc / f_lo) ** 2)
         required_m = _FAR_PORT_LAMBDA_G_FRACTION * lambda_g
-        thin = [(side, n) for side, n in faces if n * dx < required_m]
+        depths = [(side, n, absorber_depth(grid, axis, side, n)) for side, n in faces]
+        thin = [(side, n, depth) for side, n, depth in depths if depth < required_m]
         if not thin:
             continue
         detail = ", ".join(
-            f"{axis}-{side} {n} cells = {n * dx * 1e3:.1f} mm "
-            f"({n * dx / lambda_g:.2f} lambda_g)"
-            for side, n in thin
+            f"{axis}-{side} {n} cells = {depth * 1e3:.1f} mm "
+            f"({depth / lambda_g:.2f} lambda_g)"
+            for side, n, depth in thin
         )
+        dx = min(float(grid.boundary_cell(axis, side)) for side, _, _ in thin)
         warnings.warn(
             f"compute_waveguide_s_matrix: absorber on the {axis} propagation "
             f"axis is thinner than the documented "
