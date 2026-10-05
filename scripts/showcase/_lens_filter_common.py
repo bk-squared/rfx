@@ -9,6 +9,7 @@ import argparse
 import dataclasses
 import math
 import os
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -59,6 +60,83 @@ def best_iterate(values):
     if not np.isfinite(values).all():
         raise ValueError("non-finite objective history")
     return int(np.argmin(values))  # numpy chooses the first occurrence
+
+
+def frame_progress(objectives, kind):
+    """Amendment 3 progress; reversals are allowed, no net improvement is not."""
+    values = np.asarray(objectives, dtype=float)
+    if values.ndim != 1 or values.size < 2 or not np.isfinite(values).all():
+        raise ValueError("expected a finite, one-dimensional objective history")
+    if kind not in ("lens", "filter"):
+        raise ValueError(f"unknown frame kind {kind}")
+    if kind == "filter" and np.any(values <= 0):
+        raise ValueError("filter log progress requires strictly positive objectives")
+    transformed = np.log(values) if kind == "filter" else values
+    improvement = transformed[0] - np.min(transformed)
+    if improvement <= 0:
+        raise ValueError("objective history does not improve")
+    return (transformed[0] - transformed) / improvement
+
+
+def frame_iterate(objectives, kind):
+    """Return the earliest iterate at half of the progress to the best."""
+    return int(np.flatnonzero(frame_progress(objectives, kind) >= .5)[0])
+
+
+def reuse_start_witnesses(source, name, out):
+    """Copy the overridden start's trial evidence without re-running it."""
+    origin = source / name
+    filenames = ["fd_float32.json", "rlw_start.json"]
+    for optional in ("x64_needed.json", "fd_float64.json"):
+        if (origin / optional).exists():
+            filenames.append(optional)
+    if "x64_needed.json" in filenames and "fd_float64.json" not in filenames:
+        raise RuntimeError("trial start requires its float64 FD witness")
+    for filename in filenames:
+        if not (origin / filename).is_file():
+            raise FileNotFoundError(origin / filename)
+    out.mkdir(parents=True, exist_ok=True)
+    for filename in filenames:
+        shutil.copy2(origin / filename, out / filename)
+    provenance = {"reused": True, "start": name, "source": str(origin.resolve()),
+                  "files": filenames, "reason": "Amendment 3: trial start witnesses reused, not re-run"}
+    dc.save_json(out / "start_witness_reuse.json", provenance)
+    return dc.load_json(out / "rlw_start.json")
+
+
+def frame(case, args, source):
+    """Witness a stored frame at the descent's mesh and record length."""
+    with np.load(source / "iterations.npz") as data:
+        objectives = np.asarray(data["objective"])
+        designs = np.asarray(data["eps"])
+    k_star = frame_iterate(objectives, case.CASE)
+    progress = frame_progress(objectives, case.CASE)
+    length = dc.load_json(source / "record_length.json")
+    model = setup(case, args.out, case.DESIGN_DX, args.precision, False)
+    if not math.isclose(length["dt_s"], model.grid.dt, rel_tol=1e-12):
+        raise ValueError("frame model timestep differs from the source record")
+    n = int(length["n_steps"])
+    candidates = list(range(k_star, -1, -10))
+    if candidates[-1] != 0:
+        candidates.append(0)
+    details = {"source": str(source.resolve()), "n_steps": n, "k_star": k_star,
+               "k_used": None, "progress": progress, "objective_values": objectives,
+               "witnesses": {}}
+    for k in candidates:
+        witness = rlw(case, model, designs[k], n, args.out, f"frame_{k}")
+        details["witnesses"][str(k)] = witness
+        # Amendment 3 judges the full-vector norm, not the per-FD-pixel ratios.
+        if witness["passed"]:
+            details["k_used"] = k
+            gradient = next(iter(witness["grad"].values()))[0]
+            dc.save_npz(args.out / "frame_gradient.npz", iteration=k, eps=designs[k],
+                        grad_eps=gradient, objective=objectives[k], n_steps=n)
+        dc.save_json(args.out / "frame.json", details)
+        if details["k_used"] is not None:
+            break
+    record(args.out, case, model, "frame", details)
+    if details["k_used"] is None:
+        raise RuntimeError("frame gradient witness failed through iterate 0")
 
 
 class ModelBase:
@@ -212,7 +290,7 @@ def optimize(case, model, e, n, count, out, stage):
     p = np.clip(fraction0, 1e-3, 1 - 1e-3)
     latent = np.log(p / (1 - p))
     psi = jnp.asarray(latent, dtype=jnp.float32)
-    schedule = lambda i: cosine_schedule(i, *case.LR, case.ITERATIONS, xp=jnp)
+    schedule = lambda i: cosine_schedule(i, *case.LR, (count if stage == "main" else case.ITERATIONS), xp=jnp)
     opt = optax.adam(schedule)
     state = opt.init(psi)
     store = dc.IterateStore(out / "iterations.npz", {"freqs_hz": case.FREQS})
@@ -333,14 +411,17 @@ def resolved(case, args, source):
 
 def main(case, argv=None):
     parser = argparse.ArgumentParser(description=case.__doc__)
-    parser.add_argument("--stage", choices=("timing", "fd", "rlw", "trial", "main", "resolve", "baselines", "describe"), required=True)
+    parser.add_argument("--stage", choices=("timing", "fd", "rlw", "trial", "main", "resolve", "baselines", "describe", "frame"), required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--record", type=Path, help="source trial/main record; never modified")
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--precision", choices=("float32", "float64"), default="float32")
-    parser.add_argument("--start", help="lens: primary or grin; filter: S1 or S2 for standalone checks")
+    parser.add_argument("--start", help="lens: primary or grin; filter: S1 or S2 (also overrides main trial selection)")
+    parser.add_argument("--iterations", type=int, help="main updates and cosine schedule length (at least 2)")
     parser.add_argument("--reported", action="store_true", help="FD/RLW: use best stored design")
     args = parser.parse_args(argv)
+    if args.iterations is not None and (args.stage != "main" or args.iterations < 2):
+        parser.error("--iterations requires --stage main and N >= 2")
     args.out.mkdir(parents=True, exist_ok=True)
     import jax
     jax.config.update("jax_default_matmul_precision", "highest")
@@ -358,10 +439,13 @@ def main(case, argv=None):
         record(args.out, case, model, args.stage, {"build_only": True})
         return 0
     source = args.record or args.out
-    if args.stage in ("main", "resolve") and source.resolve() == args.out.resolve():
-        raise SystemExit("--main/--resolve require --record and a distinct --out to preserve the source run")
+    if args.stage in ("main", "resolve", "frame") and source.resolve() == args.out.resolve():
+        raise SystemExit("--main/--resolve/--frame require --record and a distinct --out to preserve the source run")
     if args.stage == "trial" and case.CASE == "lens" and args.start not in (None, "primary"):
         raise SystemExit("the admission trial uses the primary start; GRIN is a reported secondary main run")
+    if args.stage == "frame":
+        frame(case, args, source)
+        return 0
     if args.stage == "resolve":
         resolved(case, args, source)
         return 0
@@ -374,7 +458,7 @@ def main(case, argv=None):
     name = args.start or ("primary" if case.CASE == "lens" else "S1")
     if name not in case.starts():
         raise SystemExit(f"unknown start {name}")
-    if case.CASE == "filter" and (source / "trial_selection.json").exists():
+    if case.CASE == "filter" and args.start is None and (source / "trial_selection.json").exists():
         name = dc.load_json(source / "trial_selection.json")["chosen_start"]
     e = case.starts()[name]
     if args.reported:
@@ -418,7 +502,7 @@ def main(case, argv=None):
             admission = dc.load_json(source / "trial_selection.json")
             if not admission["passed"]:
                 raise RuntimeError("trial did not meet the declared continuation rule; amendment required")
-            name = admission["chosen_start"] if case.CASE == "filter" else name
+            name = (args.start or admission["chosen_start"]) if case.CASE == "filter" else name
         names = list(case.starts()) if args.stage == "trial" and case.CASE == "filter" else [name]
         if args.stage == "main" and case.CASE == "lens" and args.start is None:
             names = ["primary", "grin"]
@@ -433,12 +517,15 @@ def main(case, argv=None):
             directory.mkdir(parents=True, exist_ok=True)
             dc.save_json(directory / "record_length.json", {"n_steps": n, "dt_s": model.grid.dt})
             e = case.starts()[name]
-            check = rlw(case, model, e, n, directory, "start")
+            reuse = (args.stage == "main" and case.CASE == "filter"
+                     and name != admission["chosen_start"])
+            check = (reuse_start_witnesses(source, name, directory) if reuse
+                     else rlw(case, model, e, n, directory, "start"))
             if not check["all_passed"]:
                 record(directory, case, model, args.stage, {"stopped": "start RLW", "witness": check})
                 raise RuntimeError("start gradient record-length witness failed; descent stopped")
             fd_data = (fd(case, model, e, n, directory, "float32")
-                       if case.CASE == "filter" or name == "primary" else None)
+                       if not reuse and (case.CASE == "filter" or name == "primary") else None)
             if fd_data is not None and fd_data["judgement"]["roundoff"]:
                 # Release compiled tapes before the independent x64 process
                 # uses this job's GPU. The model rebuilds its functions later.
@@ -450,7 +537,7 @@ def main(case, argv=None):
                 subprocess.run([sys.executable, str(Path(case.__file__)), "--stage", "fd", "--out", str(directory),
                                 "--start", name, "--precision", "float64", "--record", str(directory)]
                                + (["--smoke"] if args.smoke else []), env=env, check=True)
-            store = optimize(case, model, e, n, 30 if args.stage == "trial" else case.ITERATIONS,
+            store = optimize(case, model, e, n, 30 if args.stage == "trial" else (args.iterations or case.ITERATIONS),
                              directory, args.stage)
             results[name] = trial_pass(case, store)
             best, _ = selected_design(directory)
@@ -477,6 +564,8 @@ def main(case, argv=None):
                        "n_steps": n}
             dc.save_json(args.out / "trial_selection.json", details)
         else:
-            details = {"chosen_start": chosen_name, "starts_run": names, "n_steps": n}
+            details = {"chosen_start": chosen_name, "starts_run": names, "n_steps": n,
+                       "iterations": args.iterations or case.ITERATIONS,
+                       "start_witnesses_reused": case.CASE == "filter" and chosen_name != admission["chosen_start"]}
     record(args.out, case, model, args.stage, details)
     return 3 if args.stage == "trial" and not details["passed"] else 0

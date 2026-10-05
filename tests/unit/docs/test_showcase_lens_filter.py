@@ -229,3 +229,137 @@ def test_final_hold_note_requires_gates_and_same_iterate():
     assert visual.final_hold_text('lens', trend, freqs, ok, 149, 150) == ''
     assert visual.final_hold_text('filter', trend, freqs, ok, 200, 200) == 'inside the mask on three meshes'
     assert visual.lens_label('uniform_1.85') == 'uniform slab, εr = 1.85'
+
+
+def test_frame_iterate_lens():
+    # Half progress is exactly at 2; later reversals and ties do not change it.
+    assert common.frame_iterate([2., 1., 0., 1., -2., 0.], "lens") == 2
+
+
+def test_frame_iterate_filter():
+    # Linear progress would select 1, log progress first reaches half at 2.
+    assert common.frame_iterate([256., 64., 16., 32., 1.], "filter") == 2
+
+
+@pytest.mark.parametrize("kind,values", [
+    ("lens", [1., np.nan]), ("filter", [2., np.inf]),
+    ("lens", [1., 1.]), ("filter", [1., 2.]),
+    ("lens", []), ("lens", [1.]), ("lens", [[2., 1.]]),
+    ("filter", [2., 0.]), ("filter", [2., -1.]),
+    ("unknown", [2., 1.]),
+])
+def test_frame_iterate_refuses(kind, values):
+    with pytest.raises(ValueError):
+        common.frame_iterate(values, kind)
+
+
+def test_main_iterations_schedule(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    import jax.numpy as jnp
+    case = SimpleNamespace(UPPER=2.7, LR=(.15, .015), ITERATIONS=200,
+                           FREQS=np.array([1.]), loss=lambda x: jnp.sum(x ** 2))
+    model = SimpleNamespace(response_fn=lambda n: lambda e: e)
+    monkeypatch.setattr(common, "record", lambda *a: None)
+    store = common.optimize(case, model, np.array([1.5], dtype=np.float32),
+                            10, 4, tmp_path, "main")
+    rates = np.asarray(store.rows["lr"])
+    assert len(rates) == 5
+    assert rates[0] == pytest.approx(.15)
+    assert rates[3] == pytest.approx(.015)
+    assert rates[1] == pytest.approx(.11625)
+    assert common.cosine_schedule(3, *case.LR, case.ITERATIONS) > .14
+
+
+def test_reuse_start_witnesses(tmp_path):
+    source, out = tmp_path / "trial", tmp_path / "main"
+    origin = source / "S1"
+    origin.mkdir(parents=True)
+    files = {"fd_float32.json": {"judgement": {"roundoff": ["p"]}},
+             "fd_float64.json": {"judgement": {"all_judged_passed": True}},
+             "x64_needed.json": {"pixels": ["p"]},
+             "rlw_start.json": {"all_passed": True, "n_steps": 15252}}
+    for name, data in files.items():
+        common.dc.save_json(origin / name, data)
+    assert common.reuse_start_witnesses(source, "S1", out) == files["rlw_start.json"]
+    for name in files:
+        assert (out / name).read_bytes() == (origin / name).read_bytes()
+    provenance = common.dc.load_json(out / "start_witness_reuse.json")
+    assert provenance["reused"] is True and provenance["start"] == "S1"
+    assert provenance["source"] == str(origin.resolve())
+    assert set(provenance["files"]) == set(files)
+
+
+def test_main_start_and_iterations_cli(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    import jax
+    source, out = tmp_path / "trial", tmp_path / "main"
+    source.mkdir()
+    common.dc.save_json(source / "trial_selection.json",
+                        {"passed": True, "chosen_start": "S2"})
+    common.dc.save_json(source / "record_length.json", {"n_steps": 10, "dt_s": 1.})
+    model = SimpleNamespace(grid=SimpleNamespace(dt=1.), default_steps=10)
+    monkeypatch.setattr(jax, "default_backend", lambda: "gpu")
+    monkeypatch.setattr(common, "setup", lambda *a: model)
+    prepared, reused, counts = [], [], []
+    def prepare(case, model, names, n, out, allow_extension):
+        prepared.append((names, allow_extension))
+        return n
+    monkeypatch.setattr(common, "prepare", prepare)
+    def reuse(source, name, out):
+        reused.append(name)
+        return {"all_passed": True}
+    monkeypatch.setattr(common, "reuse_start_witnesses", reuse)
+    def witness(case, model, e, n, out, label):
+        assert label == "reported"
+        return {"all_passed": True}
+    monkeypatch.setattr(common, "rlw", witness)
+    monkeypatch.setattr(common, "fd", lambda *a: pytest.fail("FD must be reused"))
+    def optimize(case, model, e, n, count, out, stage):
+        np.testing.assert_array_equal(e, filt.starts()["S1"])
+        counts.append(count)
+        return None
+    monkeypatch.setattr(common, "optimize", optimize)
+    monkeypatch.setattr(common, "trial_pass", lambda *a: {})
+    monkeypatch.setattr(common, "selected_design", lambda *a: (filt.starts()["S1"], 0))
+    monkeypatch.setattr(common, "evaluate", lambda *a, **kw: {"reported": {"settled": True, "n_steps": 10}})
+    records = []
+    monkeypatch.setattr(common, "record", lambda *a: records.append(a[-1]))
+    assert common.main(filt, ["--stage", "main", "--record", str(source), "--out",
+                              str(out), "--start", "S1", "--iterations", "400"]) == 0
+    assert prepared == [(["S1"], False)]
+    assert reused == ["S1"] and counts == [400]
+    assert records[-1]["chosen_start"] == "S1"
+    assert records[-1]["start_witnesses_reused"] is True
+
+
+def test_frame_fallback_and_gradient(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    source, out = tmp_path / "main", tmp_path / "frame"
+    source.mkdir()
+    out.mkdir()
+    objectives = np.arange(50., -1., -1.)
+    common.dc.save_npz(source / "iterations.npz", objective=objectives,
+                       eps=np.arange(51.)[:, None])
+    common.dc.save_json(source / "record_length.json", {"n_steps": 123, "dt_s": .25})
+    # A reported-design extension must not change the descent frame's record.
+    common.dc.save_json(source / "reported_record_length.json", {"n_steps": 246, "dt_s": .25})
+    monkeypatch.setattr(common, "setup", lambda *a: SimpleNamespace(grid=SimpleNamespace(dt=.25)))
+    monkeypatch.setattr(common, "record", lambda *a: None)
+    tried = []
+    def witness(case, model, e, n, out, label):
+        assert n == 123
+        k = int(e[0])
+        tried.append(k)
+        return {"passed": k == 0, "all_passed": False,
+                "grad": {"": np.array([[42.]])}}
+    monkeypatch.setattr(common, "rlw", witness)
+    common.frame(lens, SimpleNamespace(out=out, precision="float32"), source)
+    result = common.dc.load_json(out / "frame.json")
+    assert tried == [25, 15, 5, 0]
+    assert result["k_star"] == 25 and result["k_used"] == 0
+    assert result["progress"][25] == .5
+    assert result["objective_values"] == objectives.tolist()
+    assert set(result["witnesses"]) == {"25", "15", "5", "0"}
+    with np.load(out / "frame_gradient.npz") as data:
+        np.testing.assert_array_equal(data["grad_eps"], [42.])
+        assert data["iteration"] == 0 and data["n_steps"] == 123

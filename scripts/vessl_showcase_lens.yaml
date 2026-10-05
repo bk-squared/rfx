@@ -12,8 +12,10 @@ env:
   OPENBLAS_NUM_THREADS: "1"
   RFX_SHOWlens_REF: "FILL_BEFORE_SUBMIT"
   RFX_SHOWCASE_PRESET: "FILL_BEFORE_SUBMIT"
-  RFX_DESIGN_MODE: "timing"
+  RFX_DESIGN_MODE: "timing"  # timing, fd, rlw, trial, main, resolve, baselines, describe, frame
   RFX_DESIGN_RECORD: ""
+  RFX_DESIGN_START: ""
+  RFX_DESIGN_ITERATIONS: ""
 mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
@@ -48,6 +50,12 @@ run: |-
   set -- --stage "$RFX_DESIGN_MODE" --out "$out"
   if [ -n "$RFX_DESIGN_RECORD" ]; then
     set -- "$@" --record "$RFX_DESIGN_RECORD"
+  fi
+  if [ -n "$RFX_DESIGN_START" ]; then
+    set -- "$@" --start "$RFX_DESIGN_START"
+  fi
+  if [ -n "$RFX_DESIGN_ITERATIONS" ]; then
+    set -- "$@" --iterations "$RFX_DESIGN_ITERATIONS"
   fi
   set +e
   { "$PY" scripts/showcase/design_lens.py "$@" 2>&1; echo "$?" > "$out/stage.rc"; } | tee "$out/stage.log"
