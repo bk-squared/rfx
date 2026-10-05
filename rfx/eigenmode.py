@@ -386,16 +386,20 @@ def _scalar_eigenmodes_to_vector(
             dpsi_dy = np.zeros_like(psi)
             dpsi_dz = np.zeros_like(psi)
 
+            # A singleton axis has no interior neighbour; its two boundary
+            # derivatives cancel, so retain the zero initialized above.
             # Interior central differences
             dpsi_dy[1:-1, :] = (psi[2:, :] - psi[:-2, :]) / (2 * dy)
             # Boundaries: one-sided (Neumann: dpsi/dn = 0 at walls,
             # but we compute gradient of the eigenfunction itself)
-            dpsi_dy[0, :] = (psi[1, :] - psi[0, :]) / dy
-            dpsi_dy[-1, :] = (psi[-1, :] - psi[-2, :]) / dy
+            if ny > 1:
+                dpsi_dy[0, :] = (psi[1, :] - psi[0, :]) / dy
+                dpsi_dy[-1, :] = (psi[-1, :] - psi[-2, :]) / dy
 
             dpsi_dz[:, 1:-1] = (psi[:, 2:] - psi[:, :-2]) / (2 * dz)
-            dpsi_dz[:, 0] = (psi[:, 1] - psi[:, 0]) / dz
-            dpsi_dz[:, -1] = (psi[:, -1] - psi[:, -2]) / dz
+            if nz > 1:
+                dpsi_dz[:, 0] = (psi[:, 1] - psi[:, 0]) / dz
+                dpsi_dz[:, -1] = (psi[:, -1] - psi[:, -2]) / dz
 
             ey = -dpsi_dz
             ez = dpsi_dy
@@ -407,12 +411,14 @@ def _scalar_eigenmodes_to_vector(
             dpsi_dz = np.zeros_like(psi)
 
             dpsi_dy[1:-1, :] = (psi[2:, :] - psi[:-2, :]) / (2 * dy)
-            dpsi_dy[0, :] = (psi[1, :] - psi[0, :]) / dy
-            dpsi_dy[-1, :] = (psi[-1, :] - psi[-2, :]) / dy
+            if ny > 1:
+                dpsi_dy[0, :] = (psi[1, :] - psi[0, :]) / dy
+                dpsi_dy[-1, :] = (psi[-1, :] - psi[-2, :]) / dy
 
             dpsi_dz[:, 1:-1] = (psi[:, 2:] - psi[:, :-2]) / (2 * dz)
-            dpsi_dz[:, 0] = (psi[:, 1] - psi[:, 0]) / dz
-            dpsi_dz[:, -1] = (psi[:, -1] - psi[:, -2]) / dz
+            if nz > 1:
+                dpsi_dz[:, 0] = (psi[:, 1] - psi[:, 0]) / dz
+                dpsi_dz[:, -1] = (psi[:, -1] - psi[:, -2]) / dz
 
             ey = dpsi_dy
             ez = dpsi_dz

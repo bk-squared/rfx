@@ -139,6 +139,10 @@ def _cell_centred_gradient(field: np.ndarray, widths: np.ndarray,
     n = field.shape[axis]
     w = np.asarray(widths, dtype=np.float64)
     field64 = np.asarray(field, dtype=np.float64)
+    if n == 1:
+        # There is no interior face. The two wall derivatives average to
+        # zero: both vanish for Neumann, and +/-2*field/w cancel for Dirichlet.
+        return np.zeros_like(field64)
     field_swap = np.moveaxis(field64, axis, 0)
     face = np.zeros_like(field_swap)
     face_spacing = 0.5 * (w[:-1] + w[1:])  # (n-1,)
