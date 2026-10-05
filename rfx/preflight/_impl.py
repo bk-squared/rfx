@@ -142,3 +142,7 @@ def _preflight_impl(
             print(f"  [FLUX REGION] {flux_region_message(record)}")
 
     return issues
+
+
+# Restored so rfx/api/__init__.py rewrites it to "Simulation._preflight_impl" like every other moved preflight body.
+_preflight_impl.__qualname__ = "_PreflightMixin._preflight_impl"
