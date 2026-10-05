@@ -801,7 +801,13 @@ def _adi_homogeneous(sim, grid) -> bool:
     if sim._uses_nonuniform_mesh:
         return False   # ADI refuses a graded mesh first; no uniform grid to read
     grid = sim._build_grid() if grid is None else grid
-    materials = sim._assemble_materials(grid)[0]
+    # The gate reads eps_r/sigma cells only. Sheets and wires are refused on
+    # ADI by their own (ungated) rows; collecting and dropping them is the
+    # assembler's explicit "I read cells only" (_refuse_uncollected_pec).
+    # Without it every refusal of a sheet/wire model ran this gate (message()
+    # lists carriers through refused() on every lane) and ended in the
+    # assembler's internal ValueError instead of the refusal.
+    materials = sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])[0]
     return adi_material_interface_refusal(materials.eps_r, materials.sigma) is None
 
 
@@ -850,15 +856,12 @@ def active(sim, run_args=None) -> list[Row]:
 
 def refused(sim, lane: str, run_args=None, grid=None) -> list[Row]:
     """The declared inputs ``lane`` does not admit. ``grid`` is the grid the
-    lane built, for its ``LANE_GATES``; without it a gate builds its own.
-    Ungated refusals decide the lane before any gate assembles its inputs."""
+    lane built, for its ``LANE_GATES``; without it a gate builds its own."""
     admits, gates, decided = ADMITS[lane], LANE_GATES.get(lane, {}), {}
-    pending = [row for row in active(sim, run_args) if row not in admits]
-    ungated = [row for row in pending if row not in gates]
-    if ungated:
-        return ungated
     out = []
-    for row in pending:
+    for row in active(sim, run_args):
+        if row in admits:
+            continue
         gate = gates.get(row)
         if gate is not None:
             if gate not in decided:

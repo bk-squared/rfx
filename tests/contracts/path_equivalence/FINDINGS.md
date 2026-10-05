@@ -80,7 +80,8 @@ PEC boundaries; its subgridded refusal names `solver='adi'` and passes, so the
 former absorbing-boundary constructor conflict is not a finding.
 
 S1 G0: the 20 PEC/MSL refusal cells previously assigned to
-`refusal-message-runs-adi-material-gate` all produced strict XPASS with the
-ungated-first admission change. Their finding entries were removed; all 20
-passed when re-run without xfail. Remaining findings: 42 checks, 24 cells, 13 causes.
-Interpretation: 리더가 채움
+`refusal-message-runs-adi-material-gate` all produced strict XPASS once the ADI
+material gate assembled with explicit empty PEC collectors (it reads eps/sigma
+cells only; sheets and wires are refused by their own rows). Their finding entries
+were removed; all 20 passed when re-run without xfail. Remaining findings: 42
+checks, 24 cells, 13 causes.
