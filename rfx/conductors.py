@@ -172,6 +172,8 @@ def kernel_conductors(sim, grid, materials, pec_cells, sheets=(), wires=(),
 
 def at_kernel(sim, conductors, *, lane, pec_edges, sheet_operator=None, compact=True):
     """Record/replay the exact object passed to the stepping call."""
+    if conductors.mode != "solve":
+        raise ValueError("A runner cannot consume audit-mode conductors")
     if pec_edges is not conductors.pec_edges:
         raise ValueError("PEC edges changed outside a conductor stage")
     if sheet_operator is not conductors.sheet_operator:

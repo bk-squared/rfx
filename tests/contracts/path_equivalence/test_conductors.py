@@ -337,10 +337,13 @@ def test_result_has_no_dense_conductor_reference(lane):
 
 
 def test_runner_refuses_an_audit_object():
-    from rfx.conductors import assembled_materials
+    from rfx.conductors import assembled_materials, at_kernel
     sim = build(('_geometry', 'pec_volume'), 'run_uniform')
     with pytest.raises(ValueError, match='audit-mode'):
         assembled_materials(sim._campaign_ctx().realized())
+    audit = sim._campaign_ctx().realized()
+    with pytest.raises(ValueError, match='audit-mode'):
+        at_kernel(sim, audit, lane='run_uniform', pec_edges=audit.pec_edges)
 
 
 @pytest.mark.parametrize('graded', [False, True])

@@ -168,7 +168,7 @@ def _assembly_impl(sim, ctx):
     import copy
     from rfx.fidelity import _contract_refusals
     from rfx.runners.nonuniform import nu_thin_conductor_refusal
-    from rfx.preflight.realization import _RealizedPEC
+    from rfx.conductors import realized_conductors
     nonuniform = ctx.lane == "nonuniform"
     refused = _contract_refusals(sim, ctx.grid, nonuniform)
     refused_tc = {i: why for i, tc in enumerate(sim._thin_conductors)
@@ -176,17 +176,9 @@ def _assembly_impl(sim, ctx):
     audit = copy.copy(sim)
     audit._geometry = [e for i, e in enumerate(sim._geometry) if i not in refused]
     audit._thin_conductors = [tc for i, tc in enumerate(sim._thin_conductors) if i not in refused_tc]
-    sheets, wires, masks, findings = [], [], [], []
-    if nonuniform:
-        result = audit._assemble_materials_nu(ctx.grid, pec_sheets=sheets, pec_wires=wires,
-                                             geometry_masks=masks)
-    else:
-        result = audit._assemble_materials(ctx.grid, pec_sheets=sheets, pec_wires=wires,
-                                          geometry_masks=masks, pad_fill_findings=findings)
-    assembled = _RealizedPEC(lane=ctx.lane, grid=ctx.grid, materials=result[0],
-                             pec_mask=result[3], sheets=sheets, wires=wires,
-                             periodic=ctx.periodic, geometry_masks=masks)
-    return assembled, refused, refused_tc, findings
+    assembled = realized_conductors(audit, ctx.grid, nonuniform=nonuniform,
+                                    periodic=ctx.periodic, mode="audit")
+    return assembled, refused, refused_tc, list(assembled.pad_fill_findings)
 
 
 def _build_record(sim, ctx, *, compact=False):

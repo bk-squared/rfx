@@ -154,7 +154,16 @@ def test_cached_record_builds_once_across_readers(monkeypatch):
     assert calls == [sim, sim]
 
 
-def test_refused_occupancy_is_diagnostic_and_cached():
+def test_refused_occupancy_is_diagnostic_and_cached(monkeypatch):
+    import rfx.conductors as products
+    modes = []
+    original = products.realized_conductors
+
+    def build(*args, **kwargs):
+        modes.append(kwargs.get("mode"))
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(products, "realized_conductors", build)
     sim = _model()
     sim.add(Box((0.001, 0.001, 0.001), (0.0011, 0.0011, 0.002)), material="pec")
     record = sim.realized_geometry()
@@ -167,6 +176,8 @@ def test_refused_occupancy_is_diagnostic_and_cached():
                if r["entity"].startswith(refused.label))
     assert "refused-by-contract" in [f["kind"] for f in row["findings"]]
     assert sim.realized_geometry() is record
+    assert modes == ["audit", "audit"]
+    assert record.conductors.mode == "audit"
 
 
 @pytest.mark.parametrize("entry", ["realized", "run", "forward"])
