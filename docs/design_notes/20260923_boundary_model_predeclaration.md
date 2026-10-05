@@ -383,3 +383,15 @@ declaration itself (grid axes vs the runner argument) is a separate decision, ra
 candidate is that the runner reads the grid's axes and refuses a conflicting explicit argument, with
 the #876 test rewritten with its reason. That change moves results on the low-level API and does not
 belong in this PR.
+
+Addendum 3, 2026-10-06 (leader, PR2 implementer stop). With a waveguide port, the grid absorbs only on
+the port axis (`_waveguide_cpml_axes`, `api/_compile.py`): a model declared `cpml` on every face is
+solved with electric walls and no pad on the transverse faces, while preflight's own face reader
+(`_preflight_face_layers`, `preflight/absorber.py`) reports the declared absorber there (4 layers on
+y and z for a 4-layer x-port guide), so its absorber advisories describe absorbers that do not exist.
+Decision for PR2: preflight reads the realized record, as every other reader does; on a waveguide model
+its transverse faces report 0 layers. This changes diagnostic output only, never a computed result; the
+PR lists every test whose expected advisories move and why. The rewrite itself — a feature silently
+turning declared absorbing faces into walls — is the same class as the TF/SF transverse period
+(§3 B5, decision 4: a full-aperture waveguide's admissible transverse set is {PEC}) and joins PR3:
+a declared absorber the feature cannot keep is refused or must be declared as the wall it becomes.
