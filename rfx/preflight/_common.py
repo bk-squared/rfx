@@ -58,6 +58,10 @@ def local_cell(grid, axis, x):
     node has only one physical adjacent cell; the final cells entry is a
     node-provider, not an extra cell. A traced axis retains the boundary
     tolerance because its local node cannot be resolved on the host.
+
+    Not the same rule as ``rfx.geometry.rasterize_grid._local_cell`` (the
+    cell CONTAINING x) or ``rfx.preflight.mesh._local_cell`` (the coarsest
+    cell over an interval); this one is for preflight tolerances only.
     """
     cells = grid.cells(axis)
     if is_tracer(cells):
