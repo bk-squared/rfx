@@ -7,7 +7,7 @@
     "rfx/api/_spec.py": 2277,
     "rfx/interop/_design.py": 2094,
     "rfx/nonuniform.py": 4115,
-    "rfx/preflight/msl.py": 2171,
+    "rfx/preflight/msl.py": 1964,
     "rfx/probes/probes.py": 2162,
     "rfx/ringdown.py": 3022,
     "rfx/runners/_distributed_common.py": 2649,
