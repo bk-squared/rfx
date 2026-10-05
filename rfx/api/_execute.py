@@ -2922,7 +2922,7 @@ class _ExecuteMixin:
 
     def _execute_distributed_nonuniform_from_materials(
         self,
-        *,
+        *, lane: str = "fwd_distributed_nu",
         eps_override: jnp.ndarray | None = None,
         sigma_override: jnp.ndarray | None = None,
         pec_mask_override: jnp.ndarray | None = None,
@@ -3211,7 +3211,7 @@ class _ExecuteMixin:
         # Every declared input this lane does not carry is refused here,
         # after the specific refusals above and before the first step.
         from rfx.runners._admission import admit
-        admit(self, "run_distributed_nu" if gather_final_state else "fwd_distributed_nu")
+        admit(self, lane)
 
         if eps_override is not None or sigma_override is not None:
             materials = materials._replace(
@@ -5160,7 +5160,7 @@ class _ExecuteMixin:
                 grid, result, geometry_record = self._execute_distributed_nonuniform_from_materials(
                     n_steps=n_steps, devices=devices,
                     exchange_interval=exchange_interval,
-                    skip_preflight=skip_preflight, gather_final_state=True,
+                    skip_preflight=skip_preflight, gather_final_state=True, lane="run_distributed_nu",
                 )
                 _res = Result(
                     state=result["final_state"], time_series=result["time_series"],
