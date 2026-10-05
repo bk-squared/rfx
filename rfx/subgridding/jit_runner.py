@@ -21,7 +21,7 @@ from rfx import _realized
 import jax
 import jax.numpy as jnp
 
-from rfx.core.drives import drives_from_sources, inject_drives
+from rfx.core.drives import drive_layout, inject_drives
 
 from rfx.core.yee import (
     FDTDState, MaterialArrays, init_state,
@@ -1761,8 +1761,8 @@ def _make_step_fn(ctx):
     prb_meta_c = ctx.get("prb_meta_c")
     src_meta = ctx.get("src_meta")
     src_meta_c = ctx.get("src_meta_c")
-    drives_f = drives_from_sources(src_meta, ctx["src_waveforms"].T)
-    drives_c = drives_from_sources(src_meta_c, ctx["src_waveforms_c"].T)
+    drives_f = drive_layout(src_meta, ctx["src_waveforms"].dtype, electric_only_path="subgridded fine")
+    drives_c = drive_layout(src_meta_c, ctx["src_waveforms_c"].dtype, electric_only_path="subgridded coarse")
     sync_box_shadow_from_fine = ctx.get("sync_box_shadow_from_fine")
     sync_coarse_interface_from_fine = ctx.get("sync_coarse_interface_from_fine")
     sync_coarse_shadow_from_fine = ctx.get("sync_coarse_shadow_from_fine")

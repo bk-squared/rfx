@@ -36,7 +36,7 @@ from dataclasses import dataclass, replace
 import jax
 import jax.numpy as jnp
 
-from rfx.core.drives import drives_from_sources, inject_drives
+from rfx.core.drives import drive_layout, inject_drives
 import numpy as np
 
 from rfx.core.yee import (MaterialArrays,
@@ -576,10 +576,8 @@ def _build_vmap_scan_fn(
         n2)`` complex accumulators, one per registered DFT plane (empty
         tuple if none).
         """
-        drives = drives_from_sources(
-            src_meta + list(j_src_meta),
-            jnp.concatenate((src_waveforms, prepared_j_waveforms), axis=1).T)
         fdtd = init_state(grid.shape)
+        drives = drive_layout(src_meta + list(j_src_meta), fdtd.ex.dtype)
 
         j_src_waveforms = prepared_j_waveforms
 
@@ -628,7 +626,8 @@ def _build_vmap_scan_fn(
                 from rfx.boundaries.pec import apply_pec_edges
                 st = apply_pec_edges(st, pec_edge_masks)
 
-            st = inject_drives(st, drives, jnp.concatenate((src_vals, j_src_vals)))
+            st = inject_drives(st, drives, jnp.concatenate((src_vals.astype(st.ex.dtype),
+                                                          j_src_vals.astype(st.ex.dtype))))
 
             # DFT-plane accumulation (rect window always — matches
             # Simulation.run()'s inline kernel, rfx/simulation.py:1512-1526).

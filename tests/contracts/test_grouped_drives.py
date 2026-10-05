@@ -25,7 +25,21 @@ def per_cell(state, drives, wave_t):
     return state
 
 
-def run_case(lane, n=4, amplitude=1.):
+def use_per_cell_reference(monkeypatch):
+    import importlib
+    from tests.unit.runners._until_decay_reference import _reference_drives
+    def layout(meta, dtype, **_kwargs):
+        return _reference_drives(meta, np.empty(0, dtype=dtype))
+    for name in ('rfx.simulation', 'rfx.nonuniform', 'rfx.vmap_sweep',
+                 'rfx.subgridding.jit_runner', 'rfx.runners.distributed_v2',
+                 'rfx.runners.distributed_nu', 'rfx.runners._distributed_common'):
+        module = importlib.import_module(name)
+        monkeypatch.setattr(module, 'drive_layout', layout)
+        if hasattr(module, 'inject_drives'):
+            monkeypatch.setattr(module, 'inject_drives', per_cell)
+
+
+def run_case(lane, n=4, amplitude=1., component="ez"):
     import rfx.simulation as uniform
     import rfx.nonuniform as graded
     if lane.startswith('distributed'):
@@ -40,7 +54,7 @@ def run_case(lane, n=4, amplitude=1.):
                          boundary='pec', cpml_layers=0, **options)
         for i in range(n):
             sim.add_source(position=(.003+i%4*.001, .003+(i//4)%4*.001,
-                                     .003+(i//16)%4*.001), component='ez',
+                                     .003+(i//16)%4*.001), component=component,
                            waveform=lambda t: jnp.sin(t*1e11)*.01)
         sim.add_probe(position=(.004, .004, .004), component='ez')
         return sim.run(n_steps=12, devices=jax.devices()[:2], compute_s_params=False)
@@ -73,8 +87,21 @@ def test_checker_is_live():
         checked_counts([1, 64])
 
 
-@pytest.mark.parametrize('lane', ['uniform', 'graded', 'distributed', 'distributed_graded'])
+@pytest.mark.parametrize('lane', ['uniform', 'graded', 'distributed', 'distributed_graded', 'vmap', 'subgridded'])
 def test_production_step_scatter_count(lane, monkeypatch):
+    import importlib
+    module = importlib.import_module({
+        'uniform': 'rfx.simulation', 'graded': 'rfx.nonuniform',
+        'distributed': 'rfx.runners._distributed_common',
+        'distributed_graded': 'rfx.runners._distributed_common',
+        'vmap': 'rfx.vmap_sweep', 'subgridded': 'rfx.subgridding.jit_runner',
+    }[lane])
+    inject = module.inject_drives
+    def checked_inject(state, drives, values):
+        assert drives.waves is None
+        assert all(isinstance(a, np.ndarray) for a in jax.tree.leaves(drives))
+        return inject(state, drives, values)
+    monkeypatch.setattr(module, 'inject_drives', checked_inject)
     original = jax.lax.scan
     counts = []
 
@@ -85,16 +112,25 @@ def test_production_step_scatter_count(lane, monkeypatch):
         # before CPU's scatter-to-loop expansion removes scatter instructions.
         lowered.compile()
         hlo = lowered.as_text()
-        blocks = re.findall(r'"stablehlo.scatter"[\s\S]*?->[^\n]*', hlo)
-        count = sum(any(int(x)*int(y)*int(z) > 100 for x, y, z in
-                        re.findall(r'tensor<(\d+)x(\d+)x(\d+)x(?:f32|f64)', block))
-                    for block in blocks)
+        count = full_field_scatters(hlo)
         counts.append(count)
         return original(f, init, xs, *args, **kwargs)
 
     monkeypatch.setattr(jax.lax, 'scan', scan)
-    run_case(lane, 1)
-    run_case(lane, 64)
+    for n in (1, 64):
+        if lane == 'vmap':
+            # Inspect the actual compiled batched production scan, including
+            # rank-four field operands after batching, not an unbatched proxy.
+            with monkeypatch.context() as patch:
+                patch.setattr(jax.lax, 'scan', original)
+                fn, args = vmap_case(n)
+                lowered = jax.jit(jax.vmap(fn)).lower(*args)
+                lowered.compile()
+                counts.append(full_field_scatters(lowered.as_text()))
+        elif lane == 'subgridded':
+            subgrid_case(n)
+        else:
+            run_case(lane, n)
     assert len(counts) == 2 and counts[0] > 0, counts
     checked_counts(counts)
     print(lane, 'full-field scatters (1, 64):', counts)
@@ -107,13 +143,10 @@ def assert_peak(got, expected, ulp=9):
     assert np.max(np.abs(got-expected), initial=0) <= tolerance
 
 
-@pytest.mark.parametrize('lane,module', [('uniform', 'rfx.simulation'), ('graded', 'rfx.nonuniform'),
-                                          ('distributed', 'rfx.runners._distributed_common'),
-                                          ('distributed_graded', 'rfx.runners._distributed_common')])
-def test_production_equivalence(lane, module, monkeypatch):
-    import importlib
+@pytest.mark.parametrize('lane', ['uniform', 'graded', 'distributed', 'distributed_graded'])
+def test_production_equivalence(lane, monkeypatch):
     got = run_case(lane)
-    monkeypatch.setattr(importlib.import_module(module), 'inject_drives', per_cell)
+    use_per_cell_reference(monkeypatch)
     expected = run_case(lane)
     for a, b in zip(jax.tree.leaves(got), jax.tree.leaves(expected)):
         if hasattr(a, 'dtype') and np.issubdtype(a.dtype, np.number):
@@ -164,14 +197,11 @@ def port_scene(kind, lane):
 @pytest.mark.parametrize('lane', ['uniform', 'graded'])
 @pytest.mark.parametrize('kind', ['wire', 'msl'])
 def test_port_equivalence(lane, kind, monkeypatch):
-    import rfx.simulation as uniform
-    import rfx.nonuniform as graded
     def run():
         return port_scene(kind, lane).run(n_steps=24, compute_s_params=kind == 'wire',
                                          s_param_freqs=jnp.array([1.8e9, 2e9, 2.2e9]) if kind == 'wire' else None)
     got = run()
-    monkeypatch.setattr(uniform, 'inject_drives', per_cell)
-    monkeypatch.setattr(graded, 'inject_drives', per_cell)
+    use_per_cell_reference(monkeypatch)
     expected = run()
     for a, b in zip(got.state, expected.state):
         assert_peak(a, b)
@@ -192,14 +222,11 @@ def test_port_equivalence(lane, kind, monkeypatch):
 
 @pytest.mark.parametrize('lane', ['uniform', 'graded'])
 def test_msl_s_equivalence(lane, monkeypatch):
-    import rfx.simulation as uniform
-    import rfx.nonuniform as graded
     def run():
         return port_scene('msl', lane).compute_msl_s_matrix(
             n_steps=32, freqs=jnp.array([1.8e9, 2e9, 2.2e9])).S
     got = np.asarray(run())
-    monkeypatch.setattr(uniform, 'inject_drives', per_cell)
-    monkeypatch.setattr(graded, 'inject_drives', per_cell)
+    use_per_cell_reference(monkeypatch)
     expected = np.asarray(run())
     assert np.all(np.isfinite(expected)) and np.max(np.abs(expected)) > 0
     assert np.max(np.abs(got-expected)) <= 1e-4*np.max(np.abs(expected))
@@ -222,7 +249,7 @@ def test_subgrid_fine_and_coarse_equivalence(monkeypatch):
         return sg.run_subgridded_jit(grid, init_materials(grid.shape),
             init_materials((cfg.nx_f, cfg.ny_f, cfg.nz_f)), cfg, 4, opts=opts)
     got = run()
-    monkeypatch.setattr(sg, 'inject_drives', per_cell)
+    use_per_cell_reference(monkeypatch)
     expected = run()
     for a, b in zip(jax.tree.leaves(got), jax.tree.leaves(expected)):
         if hasattr(a, 'dtype'):
@@ -231,14 +258,12 @@ def test_subgrid_fine_and_coarse_equivalence(monkeypatch):
 
 @pytest.mark.parametrize('lane', ['uniform', 'graded'])
 def test_waveform_gradient_equivalence(lane, monkeypatch):
-    import importlib
     def loss(amplitude):
         result = run_case(lane, amplitude=amplitude)
         ts = result['time_series'] if isinstance(result, dict) else result.time_series
         return jnp.sum(ts**2)
     got = jax.grad(loss)(jnp.float32(1.))
-    monkeypatch.setattr(importlib.import_module('rfx.simulation' if lane == 'uniform'
-                                               else 'rfx.nonuniform'), 'inject_drives', per_cell)
+    use_per_cell_reference(monkeypatch)
     expected = jax.grad(loss)(jnp.float32(1.))
     assert np.isfinite(expected) and abs(expected) > 0
     assert abs(got-expected) <= 1e-4*abs(expected)
@@ -256,7 +281,7 @@ def test_uniform_magnetic_source_equivalence(monkeypatch):
         return uniform.run(grid, mats, 12, mag_sources=mags,
                            probes=[ProbeSpec(4, 4, 4, 'hx')])
     got = run()
-    monkeypatch.setattr(uniform, 'inject_drives', per_cell)
+    use_per_cell_reference(monkeypatch)
     expected = run()
     for a, b in zip(jax.tree.leaves(got), jax.tree.leaves(expected)):
         if hasattr(a, 'dtype'):
@@ -276,8 +301,106 @@ def test_decay_preserves_unequal_waveform_padding(monkeypatch):
         return uniform.run_until_decay(grid, mats, sources=sources, mag_sources=mags,
             probes=[ProbeSpec(4, 4, 4, 'ez')], min_steps=12, max_steps=12, check_interval=4)
     got = run()
-    monkeypatch.setattr(uniform, 'inject_drives', per_cell)
+    use_per_cell_reference(monkeypatch)
     expected = run()
     for a, b in zip(jax.tree.leaves(got), jax.tree.leaves(expected)):
         if hasattr(a, 'dtype'):
             assert_peak(a, b)
+
+
+def full_field_scatters(hlo):
+    blocks = re.findall(r'"stablehlo.scatter"[\s\S]*?->[^\n]*', hlo)
+    return sum(any(np.prod([int(x) for x in dims.rstrip('x').split('x')][-3:]) > 100
+                   for dims in re.findall(r'tensor<((?:\d+x){3,})(?:f32|f64)', block))
+               for block in blocks)
+
+
+def vmap_case(n, *, mixed=False):
+    from rfx.vmap_sweep import _build_vmap_scan_fn
+    grid = Grid(freq_max=1e9, domain=(.012,)*3, dx=.001, cpml_layers=0, cpml_axes='')
+    sources = [SourceSpec(3+i%4, 3+(i//4)%4, 3+(i//16)%4, 'ez',
+                          jnp.array([.1, -.2, .3], dtype=jnp.float32)) for i in range(n)]
+    fn = _build_vmap_scan_fn(grid, 3, sources=sources,
+        j_source_meta=[(5, 5, 5, 'ez')] if mixed else [], probes=[ProbeSpec(4, 4, 4, 'ez')])
+    shape = (2,) + grid.shape
+    mats = MaterialArrays(jnp.ones(shape), jnp.zeros(shape), jnp.ones(shape))
+    waves = jnp.ones((2, 3, 1), dtype=jnp.float64) if mixed else jnp.zeros((2, 3, 0))
+    return fn, (mats, waves)
+
+
+def subgrid_case(n, *, component='ez', coarse=False):
+    from rfx.core.yee import init_materials
+    from rfx.subgridding.sbp_sat_3d import init_subgrid_3d
+    import rfx.subgridding.jit_runner as sg
+    grid = Grid(freq_max=1e9, domain=(.012,)*3, dx=.001, cpml_layers=0, cpml_axes='')
+    cfg, _ = init_subgrid_3d(grid.shape, .001, (3, 7, 3, 7, 3, 7), ratio=2)
+    sources = [(3+i%4, 3+(i//4)%4, 3+(i//16)%4, component,
+                jnp.array([.1, -.2, .3])) for i in range(n)]
+    opts = sg.SubgridRunOptions(sources_f=[] if coarse else sources,
+        sources_c=sources if coarse or component == 'ez' else [],
+        inject_sources_on_coarse_shadow=True)
+    return sg.run_subgridded_jit(grid, init_materials(grid.shape),
+        init_materials((cfg.nx_f, cfg.ny_f, cfg.nz_f)), cfg, 3, opts=opts)
+
+
+def test_distinct_waveforms_match_independent_source_table():
+    # This handwritten oracle never reads nodes, coefficients or wave IDs from
+    # the production Drives. Different cells, components and overlapping cells
+    # bind the assembler's mapping as well as the arithmetic.
+    sources = [(2, 3, 4, 'ez'), (4, 3, 2, 'ey'), (2, 3, 4, 'ez'), (5, 4, 3, 'ez')]
+    waves = jnp.array([[1., 2., -3.], [5., -7., 11.],
+                       [-13., 17., 19.], [23., 29., -31.]])
+    drives = drives_from_sources(sources, waves)
+    got = expected = init_state((8,)*3)
+    for step in range(3):
+        got = jax.jit(inject_drives)(got, drives, waves[:, step])
+        for source_index, (i, j, k, component) in enumerate(sources):
+            field = getattr(expected, component)
+            expected = expected._replace(**{component: field.at[i, j, k].add(waves[source_index, step])})
+        for actual, reference in zip(got, expected):
+            np.testing.assert_array_equal(actual, reference)
+
+
+@pytest.mark.parametrize('lane', ['distributed', 'distributed_graded', 'subgridded', 'subgridded_coarse'])
+@pytest.mark.parametrize('component', ['hx', 'hy', 'hz'])
+def test_electric_only_paths_refuse_h_sources(lane, component):
+    with pytest.raises(ValueError, match=rf'{lane.split("_")[0]}.*{component}'):
+        if lane.startswith('subgridded'):
+            subgrid_case(1, component=component, coarse=lane.endswith('coarse'))
+        elif lane == 'distributed_graded':
+            from rfx.nonuniform import make_nonuniform_grid
+            from rfx.runners.distributed_nu import build_sharded_nu_grid, run_nonuniform_distributed_pec
+            profile = np.full(12, .001)
+            grid = make_nonuniform_grid((.012, .012), profile, .001, cpml_layers=0)
+            sg = build_sharded_nu_grid(grid, 2)
+            mats = MaterialArrays(jnp.ones(grid.shape), jnp.zeros(grid.shape), jnp.ones(grid.shape))
+            run_nonuniform_distributed_pec(sg, mats, None, 3, n_devices=2,
+                sources=[SourceSpec(3, 3, 3, component, jnp.ones(3))])
+        else:
+            from dataclasses import replace
+            from rfx import Simulation
+            from rfx.runners.distributed_v2 import run_distributed
+            sim = Simulation(freq_max=1e9, domain=(.012,)*3, dx=.001,
+                             boundary='pec', cpml_layers=0)
+            sim.add_source(position=(.003,)*3, component='ez')
+            # Public add_source already refuses H. Exercise the runner's
+            # admission of a malformed realized source, before tracing.
+            sim._ports[0] = replace(sim._ports[0], component=component)
+            run_distributed(sim, n_steps=3, devices=jax.devices()[:2])
+
+
+def test_vmap_casts_mixed_sources_before_concatenation(monkeypatch):
+    from tests._x64_compat import enable_x64
+    import rfx.vmap_sweep as sweep
+    original = sweep.inject_drives
+    dtypes = []
+    def checked(state, drives, values):
+        dtypes.append(values.dtype)
+        assert values.dtype == state.ex.dtype == jnp.float32
+        assert drives.waves is None
+        return original(state, drives, values)
+    monkeypatch.setattr(sweep, 'inject_drives', checked)
+    with enable_x64():
+        fn, args = vmap_case(1, mixed=True)
+        jax.jit(jax.vmap(fn))(*args)
+    assert dtypes

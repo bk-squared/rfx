@@ -16,7 +16,7 @@ import jax
 import numpy as np
 import jax.numpy as jnp
 
-from rfx.core.drives import drives_from_sources, inject_drives
+from rfx.core.drives import drive_layout, inject_drives
 from jax import lax
 from rfx.runners._rank import mesh_ranks, rank_shard_map
 from jax.sharding import Mesh, PartitionSpec as P
@@ -1027,15 +1027,16 @@ def inject_sources_shmap(st, src_vals_step, mesh, n_src,
     that owner.  Both are Python data read at trace time, so the traced
     graph depends on their VALUES, not just their shapes.
 
-    Shared by the uniform and graded runners. Their setup passes a Drives
-    table with these local indices and the unchanged waveform columns.
+    Shared by the uniform and graded runners. Their trace-time layout uses
+    these local indices; unchanged waveform samples arrive as scan inputs.
     """
     if n_src == 0:
         return st
 
     if drives is None:
-        drives = drives_from_sources(src_local_specs, jnp.zeros((n_src, 0)))
-    device_ids = jnp.asarray(src_device_ids)
+        drives = drive_layout(src_local_specs, src_vals_step.dtype,
+                              electric_only_path="distributed")
+    device_ids = np.asarray(src_device_ids, dtype=np.int32)
 
     @partial(
         rank_shard_map,

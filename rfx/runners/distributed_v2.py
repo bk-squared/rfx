@@ -45,7 +45,7 @@ from rfx import _realized
 import jax
 import jax.numpy as jnp
 
-from rfx.core.drives import drives_from_sources
+from rfx.core.drives import drive_layout
 from jax import lax
 import numpy as np
 from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
@@ -856,6 +856,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     probes = []
     port_idx = -1
     for pe in sim._ports:
+        if pe.component not in ("ex", "ey", "ez"):
+            raise ValueError(f"distributed_v2: unsupported source component {pe.component}")
         if pe.impedance > 0.0 and pe.extent is None:
             port_idx += 1
             lp = LumpedPort(
@@ -917,7 +919,6 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         src_waveforms = jnp.stack([s.waveform for s in sources], axis=-1)
     else:
         src_waveforms = jnp.zeros((n_steps, 0), dtype=jnp.float32)
-    source_drives = drives_from_sources(src_local_specs, src_waveforms.T)
 
     # ------------------------------------------------------------------
     # Create state directly on its owning devices and stage materials one
@@ -1103,6 +1104,10 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
 
     def _inject_sources_shmap(st, src_vals_step, *, ranks):
         """Inject sources on their owning device using shard_map."""
+        # Construct host constants while tracing: the outer scan closes over
+        # Python metadata only, never concrete device or NumPy arrays.
+        source_drives = drive_layout(src_local_specs, src_vals_step.dtype,
+                                     electric_only_path="distributed_v2")
         return inject_sources_shmap(
             st, src_vals_step, mesh, n_src,
             src_local_specs, src_device_ids,

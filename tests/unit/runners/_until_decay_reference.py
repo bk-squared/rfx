@@ -26,10 +26,26 @@ from rfx.simulation import (
     ProgressReporter,
     _warn_static_remnant_cap_hit,
 )
-from rfx.core.drives import StepDrives, drives_from_sources
+from rfx.core.drives import Drives, StepDrives
+
+import numpy as np
 
 import jax
 import jax.numpy as jnp
+
+
+def _reference_drives(meta, waves):
+    # Independent source-order adapter: do not use the production assembler.
+    nodes, coef, ids, owners = {}, {}, {}, {}
+    for index, (i, j, k, component) in enumerate(meta):
+        nodes.setdefault(component, []).append((i, j, k))
+        ids.setdefault(component, []).append(index)
+    for component, cells in nodes.items():
+        nodes[component] = tuple(np.asarray(cells, dtype=np.int32).T)
+        coef[component] = np.ones(len(cells), dtype=waves.dtype)
+        ids[component] = np.array(ids[component], dtype=np.int32)
+        owners[component] = ids[component].copy()
+    return Drives(nodes, coef, ids, None, owners)
 
 
 def run_until_decay_reference(
@@ -184,8 +200,8 @@ def run_until_decay_reference(
     _step_ctx = _StepContext(
         **_setup.ctx_kwargs,
         drives=StepDrives(
-            drives_from_sources(_setup.src_meta, src_waveforms.T),
-            drives_from_sources(_setup.mag_src_meta, mag_src_waveforms.T)),
+            _reference_drives(_setup.src_meta, src_waveforms.T),
+            _reference_drives(_setup.mag_src_meta, mag_src_waveforms.T)),
         use_fast_he=False,
         use_snapshot=False,
         use_monitor=True,

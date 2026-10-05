@@ -17,7 +17,7 @@ from rfx import _realized
 import jax
 import jax.numpy as jnp
 
-from rfx.core.drives import StepDrives, drives_from_sources, inject_drives
+from rfx.core.drives import StepDrives, drive_layout, inject_drives
 import numpy as np
 
 from rfx.grid import Grid
@@ -3200,8 +3200,8 @@ def run(
     _step_ctx = _StepContext(
         **_setup.ctx_kwargs,
         drives=StepDrives(
-            drives_from_sources(_setup.src_meta, src_waveforms.T),
-            drives_from_sources(_setup.mag_src_meta, mag_src_waveforms.T)),
+            drive_layout(_setup.src_meta, src_waveforms.dtype),
+            drive_layout(_setup.mag_src_meta, mag_src_waveforms.dtype)),
         # run()-specific overrides
         use_fast_he=use_fast_he,
         use_snapshot=snap_in_body,
@@ -3913,8 +3913,8 @@ def run_until_decay(
     _step_ctx = _StepContext(
         **_setup.ctx_kwargs,
         drives=StepDrives(
-            drives_from_sources(_setup.src_meta, src_waveforms.T),
-            drives_from_sources(_setup.mag_src_meta, mag_src_waveforms.T)),
+            drive_layout(_setup.src_meta, src_waveforms.dtype),
+            drive_layout(_setup.mag_src_meta, mag_src_waveforms.dtype)),
         # decay-path-specific overrides
         use_fast_he=False,
         use_snapshot=False,
