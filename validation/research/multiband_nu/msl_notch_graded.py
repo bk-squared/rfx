@@ -19,9 +19,6 @@ The declaration this instrument implements is
 section 5 windows are frozen; this module computes their arithmetic and records
 HELD / FIRED.  It writes no sentence that interprets a measurement.
 
-Since #1512 the through-line ends at the ports' grid nodes. Historical
-records below predate that tail removal; the notch branch is unchanged.
-
 A second declaration follows it,
 ``docs/design_notes/20260922_msl_notch_fz_ladder_predeclaration.md``, and asks
 which cell carries the first-order error the first one left: the substrate cell
@@ -698,12 +695,7 @@ def build_graded(rung: str, placement: str,
     sim.add_material("substrate", eps_r=case.EPS_R_SUBSTRATE)
     sim.add(Box((0.0, 0.0, 0.0), (domain[0], domain[1], z_sheet)),
             material="substrate")
-    # #1512: end the through-line at each port's realized node; the central
-    # notch branch is unchanged. A one-cell allowance leaves a tail here.
-    from rfx.preflight.line_port_coverage import port_node_coordinate
-    line_lo, line_hi = [port_node_coordinate(sim, (xp, port_y, 0.0))
-                        for xp in b["port_x_m"]]
-    sim.add(Box((line_lo, y_lo_draw, z_sheet), (line_hi, y_hi_draw, z_sheet)),
+    sim.add(Box((0.0, y_lo_draw, z_sheet), (domain[0], y_hi_draw, z_sheet)),
             material="pec")
     sim.add(Box((x_lo_draw, y_hi_draw, z_sheet),
                 (x_hi_draw, y_open_draw, z_sheet)), material="pec")

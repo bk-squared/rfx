@@ -6821,6 +6821,69 @@
           "material": null,
           "n_cells": null
         },
+        "geometry|pec|0.000,2159.000,254.000um->24000.000,2759.000,254.000um": {
+          "axes": {
+            "x": {
+              "cell_um": 112.218604651,
+              "declared_extent_um": 24000.0,
+              "declared_um": [
+                0.0,
+                24000.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "realized_extent_um": 24000.0,
+              "realized_um": [
+                0.0,
+                24000.0
+              ],
+              "sub_cell": false
+            },
+            "y": {
+              "cell_um": 47.2440944882,
+              "declared_extent_um": 600.0,
+              "declared_um": [
+                2159.0,
+                2759.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "realized_extent_um": 600.0,
+              "realized_um": [
+                2159.0,
+                2759.0
+              ],
+              "sub_cell": false
+            },
+            "z": {
+              "cell_um": 42.3333333333,
+              "declared_extent_um": 0.0,
+              "declared_um": [
+                254.0,
+                254.0
+              ],
+              "face_residual_um": [
+                0.0,
+                0.0
+              ],
+              "realized_extent_um": 0.0,
+              "realized_um": [
+                254.0,
+                254.0
+              ],
+              "sub_cell": true
+            }
+          },
+          "findings": [],
+          "material": {
+            "kind": "pec"
+          },
+          "n_cells": 0
+        },
         "geometry|pec|11700.000,2759.000,254.000um->12300.000,14759.000,254.000um": {
           "axes": {
             "x": {
@@ -6856,69 +6919,6 @@
               "realized_um": [
                 2789.70866142,
                 14759.0
-              ],
-              "sub_cell": false
-            },
-            "z": {
-              "cell_um": 42.3333333333,
-              "declared_extent_um": 0.0,
-              "declared_um": [
-                254.0,
-                254.0
-              ],
-              "face_residual_um": [
-                0.0,
-                0.0
-              ],
-              "realized_extent_um": 0.0,
-              "realized_um": [
-                254.0,
-                254.0
-              ],
-              "sub_cell": true
-            }
-          },
-          "findings": [],
-          "material": {
-            "kind": "pec"
-          },
-          "n_cells": 0
-        },
-        "geometry|pec|2032.000,2159.000,254.000um->21968.000,2759.000,254.000um": {
-          "axes": {
-            "x": {
-              "cell_um": 109.633879781,
-              "declared_extent_um": 19936.0,
-              "declared_um": [
-                2032.0,
-                21968.0
-              ],
-              "face_residual_um": [
-                44.45,
-                44.45
-              ],
-              "realized_extent_um": 20024.9,
-              "realized_um": [
-                1987.55,
-                22012.45
-              ],
-              "sub_cell": false
-            },
-            "y": {
-              "cell_um": 47.2440944882,
-              "declared_extent_um": 600.0,
-              "declared_um": [
-                2159.0,
-                2759.0
-              ],
-              "face_residual_um": [
-                0.0,
-                0.0
-              ],
-              "realized_extent_um": 600.0,
-              "realized_um": [
-                2159.0,
-                2759.0
               ],
               "sub_cell": false
             },
@@ -9533,23 +9533,23 @@
           "material": null,
           "n_cells": null
         },
-        "geometry|pec|1651.000,1524.000,254.000um->31623.000,2124.000,254.000um": {
+        "geometry|pec|0.000,1524.000,254.000um->33200.000,2124.000,254.000um": {
           "axes": {
             "x": {
               "cell_um": 127.0,
-              "declared_extent_um": 29972.0,
+              "declared_extent_um": 33200.0,
               "declared_um": [
-                1651.0,
-                31623.0
+                0.0,
+                33200.0
               ],
               "face_residual_um": [
-                44.45,
-                44.45
+                0.0,
+                53.0
               ],
-              "realized_extent_um": 30060.9,
+              "realized_extent_um": 33147.0,
               "realized_um": [
-                1606.55,
-                31667.45
+                0.0,
+                33147.0
               ],
               "sub_cell": false
             },

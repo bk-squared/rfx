@@ -64,9 +64,6 @@ The combination gives a global-min notch depth ≈ -45.9 dB at L ≈ 7.0 mm and
 lets ``jax.grad`` flow cleanly through sigmoid → density → Yee → DFT
 extractor.
 
-The numerical readings here predate #1512's through-line tail removal at
-the ports. They have not been re-measured on the node-ended through-line.
-
 Two-branch physics
 ------------------
 An open stub of length L behind a feedline notches at the frequency where
@@ -258,11 +255,7 @@ def build_sim(freqs: jnp.ndarray) -> tuple[
     # DX = 4.72 is not an integer, and gcd(254 um, 600 um) = 2 um, so no
     # sane uniform dx puts both the substrate top and both trace edges on
     # node lines. That is disclosed here, not absorbed.
-    # #1512: only the through-line tails are trimmed, to the ports' grid nodes.
-    from rfx.preflight.line_port_coverage import port_node_coordinate
-    line_lo, line_hi = [port_node_coordinate(sim, (xp, y_trace, 0.0))
-                        for xp in (PORT_MARGIN, PORT_MARGIN + L_LINE)]
-    sim.add(Box((line_lo, trace_y_lo, H_SUB), (line_hi, trace_y_hi, H_SUB)),
+    sim.add(Box((0, trace_y_lo, H_SUB), (LX, trace_y_hi, H_SUB)),
             material="pec")
     assert_trace_sheet(sim, "through-line trace")
     # The stub is ROOTED at the edge the sheet actually realizes, not at the
