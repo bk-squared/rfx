@@ -289,7 +289,8 @@ def test_reuse_start_witnesses(tmp_path):
     assert set(provenance["files"]) == set(files)
 
 
-def test_main_start_and_iterations_cli(tmp_path, monkeypatch):
+@pytest.mark.parametrize("y_uniform", [False, True])
+def test_main_start_and_iterations_cli(tmp_path, monkeypatch, y_uniform):
     from types import SimpleNamespace
     import jax
     source, out = tmp_path / "trial", tmp_path / "main"
@@ -314,7 +315,8 @@ def test_main_start_and_iterations_cli(tmp_path, monkeypatch):
         return {"all_passed": True}
     monkeypatch.setattr(common, "rlw", witness)
     monkeypatch.setattr(common, "fd", lambda *a: pytest.fail("FD must be reused"))
-    def optimize(case, model, e, n, count, out, stage):
+    def optimize(case, model, e, n, count, out, stage, **kwargs):
+        assert kwargs == ({"y_uniform": True} if y_uniform else {})
         np.testing.assert_array_equal(e, filt.starts()["S1"])
         counts.append(count)
         return None
@@ -325,11 +327,13 @@ def test_main_start_and_iterations_cli(tmp_path, monkeypatch):
     records = []
     monkeypatch.setattr(common, "record", lambda *a: records.append(a[-1]))
     assert common.main(filt, ["--stage", "main", "--record", str(source), "--out",
-                              str(out), "--start", "S1", "--iterations", "400"]) == 0
+                              str(out), "--start", "S1", "--iterations", "400"]
+                       + (["--y-uniform"] if y_uniform else [])) == 0
     assert prepared == [(["S1"], False)]
     assert reused == ["S1"] and counts == [400]
     assert records[-1]["chosen_start"] == "S1"
     assert records[-1]["start_witnesses_reused"] is True
+    assert records[-1].get("y_uniform", False) is y_uniform
 
 
 def test_frame_fallback_and_gradient(tmp_path, monkeypatch):
@@ -363,3 +367,132 @@ def test_frame_fallback_and_gradient(tmp_path, monkeypatch):
     with np.load(out / "frame_gradient.npz") as data:
         np.testing.assert_array_equal(data["grad_eps"], [42.])
         assert data["iteration"] == 0 and data["n_steps"] == 123
+
+
+def _toy_filter(monkeypatch):
+    from types import SimpleNamespace
+    import jax.numpy as jnp
+    weights = jnp.arange(1, 161, dtype=jnp.float32).reshape(32, 5) / 160
+    case = SimpleNamespace(CASE="filter", UPPER=filt.UPPER, LR=filt.LR,
+                           ITERATIONS=filt.ITERATIONS, FREQS=filt.FREQS,
+                           loss=lambda e: jnp.sum(weights * (e - 2) ** 2))
+    model = SimpleNamespace(response_fn=lambda n: lambda e: e)
+    monkeypatch.setattr(common, "record", lambda out, case, model, stage, details:
+                        common.dc.save_json(out / "stage.json", details))
+    return case, model
+
+
+@pytest.mark.parametrize("count", [2, 7])
+def test_y_uniform_broadcast_and_storage(tmp_path, monkeypatch, count):
+    case, model = _toy_filter(monkeypatch)
+    start = np.broadcast_to(np.linspace(1.2, 6., 32, dtype=np.float32)[:, None], (32, 5))
+    common.optimize(case, model, start, 10, count, tmp_path, "main", y_uniform=True)
+    with np.load(tmp_path / "iterations.npz") as data:
+        for key in ("eps", "psi"):
+            assert data[key].shape == (count + 1, 32, 5)
+            np.testing.assert_array_equal(data[key], np.repeat(data[key][:, :, :1], 5, axis=2))
+        assert data["adam_mu"].shape == data["adam_nu"].shape == (count + 1, 32)
+        assert np.any(data["eps"][0] != data["eps"][-1])
+        chosen, index = common.selected_design(tmp_path)
+        np.testing.assert_array_equal(chosen, data["eps"][index])
+    for filename in ("selection.json", "stage.json"):
+        assert common.dc.load_json(tmp_path / filename)["y_uniform"] is True
+
+
+def test_y_uniform_gradient_column_sum(tmp_path, monkeypatch):
+    import jax
+    import jax.numpy as jnp
+    import optax
+    from types import SimpleNamespace
+    case, model = _toy_filter(monkeypatch)
+    original_adam = optax.adam
+    seen = []
+    def adam(schedule):
+        opt = original_adam(schedule)
+        def update(gradient, state):
+            seen.append(np.asarray(gradient))
+            return opt.update(gradient, state)
+        return SimpleNamespace(init=opt.init, update=update)
+    monkeypatch.setattr(optax, "adam", adam)
+    store = common.optimize(case, model, filt.starts()["S2"], 10, 4, tmp_path,
+                            "main", y_uniform=True)
+    for i, actual in enumerate(seen):
+        psi = jnp.asarray(store.rows["psi"][i])
+        fraction = jax.nn.sigmoid(psi)
+        g = jnp.asarray(store.rows["grad_eps"][i])
+        expected = jnp.sum(g * (case.UPPER - 1) * fraction * (1 - fraction), axis=1)
+        np.testing.assert_array_equal(actual, expected)
+        def objective(latent):
+            eps = 1 + (case.UPPER - 1) * jax.nn.sigmoid(latent)
+            return case.loss(jnp.broadcast_to(eps[:, None], (32, 5)))
+        np.testing.assert_allclose(actual, jax.grad(objective)(psi[:, 0]), rtol=3e-7)
+    assert len(seen) == 4
+
+
+@pytest.mark.parametrize("case,stage", [(lens, "main")] + [
+    (filt, stage) for stage in ("timing", "fd", "rlw", "trial", "resolve", "baselines", "describe", "frame")])
+def test_y_uniform_cli_refuses_case_and_stage(tmp_path, monkeypatch, capsys, case, stage):
+    monkeypatch.setattr(common, "setup", lambda *a: pytest.fail("must reject before setup"))
+    with pytest.raises(SystemExit) as error:
+        common.main(case, ["--stage", stage, "--out", str(tmp_path), "--y-uniform"])
+    assert error.value.code == 2
+    assert "--y-uniform requires filter --stage main" in capsys.readouterr().err
+
+
+def test_y_uniform_refuses_nonuniform_start(tmp_path, monkeypatch):
+    case, model = _toy_filter(monkeypatch)
+    start = filt.starts()["S1"]
+    start[3, 2] = np.nextafter(start[3, 2], np.float32(2.))
+    with pytest.raises(ValueError, match="requires each pixel row"):
+        common.optimize(case, model, start, 10, 2, tmp_path, "main", y_uniform=True)
+    assert not (tmp_path / "iterations.npz").exists()
+
+
+def test_default_optimizer_bit_identical(tmp_path, monkeypatch):
+    import jax
+    import jax.numpy as jnp
+    import optax
+    case, model = _toy_filter(monkeypatch)
+    start = np.linspace(1.2, 6., 160, dtype=np.float32).reshape(32, 5)
+    count = 4
+    # Original per-pixel update, including initialization and arithmetic order.
+    p = np.clip((np.asarray(start, dtype=float) - 1) / (case.UPPER - 1), 1e-3, 1 - 1e-3)
+    psi = jnp.asarray(np.log(p / (1 - p)), dtype=jnp.float32)
+    def schedule(i):
+        return common.cosine_schedule(i, *case.LR, count, xp=jnp)
+    opt = optax.adam(schedule)
+    state = opt.init(psi)
+    vg = jax.jit(jax.value_and_grad(lambda eps: (case.loss(eps), eps), has_aux=True))
+    expected = []
+    for i in range(count + 1):
+        fraction = jax.nn.sigmoid(psi)
+        eps = 1 + (case.UPPER - 1) * fraction
+        (value, response), g = vg(eps)
+        expected.append(dict(eps=eps, psi=psi, objective=value, response=response,
+                             grad_eps=g, lr=schedule(i), **common.dc.adam_state_arrays(state)))
+        if i != count:
+            updates, state = opt.update(g * (case.UPPER - 1) * fraction * (1 - fraction), state)
+            psi = optax.apply_updates(psi, updates)
+    store = common.optimize(case, model, start, 10, count, tmp_path, "main")
+    for i, row in enumerate(expected):
+        for key, value in row.items():
+            assert np.asarray(store.rows[key][i]).tobytes() == np.asarray(value).tobytes(), (i, key)
+    assert "y_uniform" not in common.dc.load_json(tmp_path / "selection.json")
+
+
+def test_y_uniform_cli_refuses_nonuniform_start(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    import jax
+    source, out = tmp_path / "trial", tmp_path / "main"
+    source.mkdir()
+    common.dc.save_json(source / "trial_selection.json",
+                        {"passed": True, "chosen_start": "S1"})
+    starts = filt.starts()
+    starts["S1"][0, 4] = 1.6
+    monkeypatch.setattr(filt, "starts", lambda: starts)
+    monkeypatch.setattr(jax, "default_backend", lambda: "gpu")
+    monkeypatch.setattr(common, "setup", lambda *a: SimpleNamespace(default_steps=10))
+    monkeypatch.setattr(common, "prepare", lambda *a, **kw: pytest.fail("must reject before prepare"))
+    with pytest.raises(ValueError, match="requires each pixel row"):
+        common.main(filt, ["--stage", "main", "--record", str(source),
+                           "--out", str(out), "--y-uniform"])

@@ -16,6 +16,7 @@ env:
   RFX_DESIGN_RECORD: ""
   RFX_DESIGN_START: ""
   RFX_DESIGN_ITERATIONS: ""
+  RFX_DESIGN_Y_UNIFORM: ""
 mount:
   /root/workspace/: volume://remilab-fs/personal-workspaces/
 run: |-
@@ -56,6 +57,9 @@ run: |-
   fi
   if [ -n "$RFX_DESIGN_ITERATIONS" ]; then
     set -- "$@" --iterations "$RFX_DESIGN_ITERATIONS"
+  fi
+  if [ -n "$RFX_DESIGN_Y_UNIFORM" ]; then
+    set -- "$@" --y-uniform
   fi
   set +e
   { "$PY" scripts/showcase/design_filter.py "$@" 2>&1; echo "$?" > "$out/stage.rc"; } | tee "$out/stage.log"

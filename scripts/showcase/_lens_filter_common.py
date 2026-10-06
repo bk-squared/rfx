@@ -272,7 +272,18 @@ def prepare(case, model, names, n, out, allow_extension=True):
     raise RuntimeError("start/baseline settling failed at the permitted record; descent stopped")
 
 
-def optimize(case, model, e, n, count, out, stage):
+def validate_y_uniform_start(e):
+    if np.shape(e) != (32, 5) or not np.all(np.asarray(e) == np.asarray(e)[:, :1]):
+        raise ValueError("--y-uniform requires each pixel row to be uniform across the guide width and height")
+
+
+def optimize(case, model, e, n, count, out, stage, *, y_uniform=False):
+    # With y_uniform, Adam holds 32 latents. Stored psi is their (32, 5)
+    # broadcast, so eps and psi retain the existing free-pixel array layout.
+    if y_uniform:
+        if case.CASE != "filter" or stage != "main":
+            raise ValueError("--y-uniform requires filter --stage main")
+        validate_y_uniform_start(e)
     import jax
     import jax.numpy as jnp
     import optax
@@ -289,31 +300,43 @@ def optimize(case, model, e, n, count, out, stage):
     # ~2e-9 and Adam never moved those pixels (PR 1477 review: 420 of 2250).
     p = np.clip(fraction0, 1e-3, 1 - 1e-3)
     latent = np.log(p / (1 - p))
+    if y_uniform:
+        latent = latent[:, 0]
     psi = jnp.asarray(latent, dtype=jnp.float32)
-    schedule = lambda i: cosine_schedule(i, *case.LR, (count if stage == "main" else case.ITERATIONS), xp=jnp)
+    def schedule(i):
+        return cosine_schedule(i, *case.LR, (count if stage == "main" else case.ITERATIONS), xp=jnp)
     opt = optax.adam(schedule)
     state = opt.init(psi)
     store = dc.IterateStore(out / "iterations.npz", {"freqs_hz": case.FREQS})
     for it in range(count + 1):
         t0 = time.perf_counter()
         fraction = jax.nn.sigmoid(psi)
+        stored_psi = psi
+        if y_uniform:
+            fraction = jnp.broadcast_to(fraction[:, None], np.shape(e))
+            stored_psi = jnp.broadcast_to(psi[:, None], np.shape(e))
         eps = 1 + (case.UPPER - 1) * fraction
         (value, r), g = vg(eps)
         jax.block_until_ready(g)
         if not np.isfinite(float(value)) or not np.isfinite(np.asarray(g)).all() or not np.isfinite(np.asarray(r)).all():
             dc.save_json(out / "nonfinite.json", {"iteration": it})
             raise RuntimeError(f"non-finite iterate {it}; descent stopped")
-        store.append(iteration=it, eps=eps, psi=psi, response=r, grad_eps=g, objective=value,
+        store.append(iteration=it, eps=eps, psi=stored_psi, response=r, grad_eps=g, objective=value,
                      lr=schedule(it), wall_s=time.perf_counter() - t0, **dc.adam_state_arrays(state))
         store.persist()
         best = best_iterate(store.rows["objective"])
         details = {"n_steps": n, "iteration": it, "best_iteration": best, "last_iteration": it,
                    "best_objective": float(store.rows["objective"][best]), "last_objective": float(value)}
+        if y_uniform:
+            details["y_uniform"] = True
         dc.save_json(out / "selection.json", details)
         record(out, case, model, stage, details)
         print(f"ITERATE {it}: objective={float(value):.9g} best={best} wall_s={store.rows['wall_s'][-1]}", flush=True)
         if it != count:
-            updates, state = opt.update(g * (case.UPPER - 1) * fraction * (1 - fraction), state)
+            grad_psi = g * (case.UPPER - 1) * fraction * (1 - fraction)
+            if y_uniform:
+                grad_psi = jnp.sum(grad_psi, axis=1)
+            updates, state = opt.update(grad_psi, state)
             psi = optax.apply_updates(psi, updates)
     return store
 
@@ -418,8 +441,12 @@ def main(case, argv=None):
     parser.add_argument("--precision", choices=("float32", "float64"), default="float32")
     parser.add_argument("--start", help="lens: primary or grin; filter: S1 or S2 (also overrides main trial selection)")
     parser.add_argument("--iterations", type=int, help="main updates and cosine schedule length (at least 2)")
+    parser.add_argument("--y-uniform", action="store_true",
+                        help="filter main: each pixel row is uniform across the guide width and height")
     parser.add_argument("--reported", action="store_true", help="FD/RLW: use best stored design")
     args = parser.parse_args(argv)
+    if args.y_uniform and (case.CASE != "filter" or args.stage != "main"):
+        parser.error("--y-uniform requires filter --stage main")
     if args.iterations is not None and (args.stage != "main" or args.iterations < 2):
         parser.error("--iterations requires --stage main and N >= 2")
     args.out.mkdir(parents=True, exist_ok=True)
@@ -507,6 +534,9 @@ def main(case, argv=None):
         if args.stage == "main" and case.CASE == "lens" and args.start is None:
             names = ["primary", "grin"]
         chosen_name = name
+        if args.y_uniform:
+            for start_name in names:
+                validate_y_uniform_start(case.starts()[start_name])
         # The trial already fixed the case record. A main job may not apply
         # another 1.5x start extension to that admitted record.
         n = prepare(case, model, names, n, args.out, allow_extension=args.stage == "trial")
@@ -522,7 +552,8 @@ def main(case, argv=None):
             check = (reuse_start_witnesses(source, name, directory) if reuse
                      else rlw(case, model, e, n, directory, "start"))
             if not check["all_passed"]:
-                record(directory, case, model, args.stage, {"stopped": "start RLW", "witness": check})
+                record(directory, case, model, args.stage, {"stopped": "start RLW", "witness": check,
+                       **({"y_uniform": True} if args.y_uniform else {})})
                 raise RuntimeError("start gradient record-length witness failed; descent stopped")
             fd_data = (fd(case, model, e, n, directory, "float32")
                        if not reuse and (case.CASE == "filter" or name == "primary") else None)
@@ -538,7 +569,7 @@ def main(case, argv=None):
                                 "--start", name, "--precision", "float64", "--record", str(directory)]
                                + (["--smoke"] if args.smoke else []), env=env, check=True)
             store = optimize(case, model, e, n, 30 if args.stage == "trial" else (args.iterations or case.ITERATIONS),
-                             directory, args.stage)
+                             directory, args.stage, **({"y_uniform": True} if args.y_uniform else {}))
             results[name] = trial_pass(case, store)
             best, _ = selected_design(directory)
             evaluate(case, model, case.baselines(), n, directory, "baselines")
@@ -557,6 +588,7 @@ def main(case, argv=None):
             dc.save_json(directory / "gradient_panel.json", {"colour_scale": witness["all_passed"],
                          "label": "gradient" if witness["all_passed"] else "not witnessed"})
             record(directory, case, model, args.stage, {"n_steps": n, "reported": end,
+                                                        **({"y_uniform": True} if args.y_uniform else {}),
                                                         "reported_rlw_passed": witness["all_passed"]})
         if args.stage == "trial":
             chosen = min(names, key=lambda k: results[k].get("iteration30_objective", 0))
@@ -567,5 +599,7 @@ def main(case, argv=None):
             details = {"chosen_start": chosen_name, "starts_run": names, "n_steps": n,
                        "iterations": args.iterations or case.ITERATIONS,
                        "start_witnesses_reused": case.CASE == "filter" and chosen_name != admission["chosen_start"]}
+    if args.y_uniform:
+        details["y_uniform"] = True
     record(args.out, case, model, args.stage, details)
     return 3 if args.stage == "trial" and not details["passed"] else 0
