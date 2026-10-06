@@ -11,25 +11,26 @@ on:
 
 jobs:
   fast:
+    # Durations are keyed by test, so changing the split count needs no file conversion.
     runs-on: ubuntu-latest
     timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
-        group: [1, 2, 3, 4, 5, 6]
+        group: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       - run: pip install -e ".[dev,cad]" "jax==0.10.2" "jaxlib==0.10.2"
-      - name: Fast selection, shard ${{ matrix.group }} of 6, store durations
+      - name: Fast selection, shard ${{ matrix.group }} of 12, store durations
         env:
           RFX_WEEKLY_RSS: "1"
         run: >
           mkdir -p durations &&
           pytest -v -ra -p no:cacheprovider
-          --splits 6 --group ${{ matrix.group }}
+          --splits 12 --group ${{ matrix.group }}
           --store-durations --durations-path durations/fast_${{ matrix.group }}.json
           || true
       - uses: actions/upload-artifact@v4

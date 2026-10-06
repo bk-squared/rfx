@@ -8,7 +8,7 @@ workflows call the scripts, that the scripts exist and are executable, and that
 
 The other half is the path-aware lane. `pr-tests.yml` must keep reporting the
 contexts the `main` ruleset requires (`guards-and-preflight`, `fast-suite (1)`
-through `(6)`) on every event, while doing no work when the diff touches nothing
+through `(12)`) on every event, while doing no work when the diff touches nothing
 the shards can observe. That is a shape a later edit can break silently -- a
 renamed job leaves a required context permanently unreported and no pull request
 can merge again -- so the shape is pinned here rather than discovered on a
@@ -155,15 +155,24 @@ def test_the_required_job_names_still_exist() -> None:
         assert name in jobs, f"pr-tests.yml no longer defines a `{name}` job"
 
 
-def test_the_fast_suite_still_reports_six_groups_under_the_protected_names() -> None:
+def test_the_fast_suite_still_reports_twelve_groups_under_the_protected_names() -> None:
     fast = load(PR_TESTS)["jobs"]["fast-suite"]
-    assert fast["strategy"]["matrix"]["group"] == [1, 2, 3, 4, 5, 6]
+    assert fast["strategy"]["matrix"]["group"] == list(range(1, 13))
     assert fast["name"] == "fast-suite (${{ matrix.group }})"
+
+
+def test_fast_suite_and_duration_regeneration_use_the_same_groups() -> None:
+    fast = load(PR_TESTS)["jobs"]["fast-suite"]
+    regen = load(WORKFLOW_DIR / "regen-durations.yml")["jobs"]["fast"]
+    assert fast["strategy"]["matrix"]["group"] == regen["strategy"]["matrix"]["group"]
+    for job in (fast, regen):
+        splits = re.findall(r"--splits\s+(\d+)", "\n".join(run_blocks(job)))
+        assert splits == [str(len(job["strategy"]["matrix"]["group"]))]
 
 
 def test_the_fast_suite_uses_only_python_311_on_both_events() -> None:
     matrix = load(PR_TESTS)["jobs"]["fast-suite"]["strategy"]["matrix"]
-    assert matrix == {"python-version": ["3.11"], "group": [1, 2, 3, 4, 5, 6]}
+    assert matrix == {"python-version": ["3.11"], "group": list(range(1, 13))}
 
 
 @pytest.mark.parametrize("path", workflow_files(), ids=lambda p: p.name)

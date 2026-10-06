@@ -219,6 +219,8 @@ are plugin estimates, including mean-duration fallback, not observed CI wall tim
 | slow (5-way) | 5 | 113.90 |
 | slow (5-way) | max | 119.63 |
 
+Since 2026-10-06 (PI decision), the fast lane uses a 12-way split; historical measurements below retain their original split counts.
+
 Earlier balance records follow.
 
 Every number here is anchored, because both of its inputs move. The collection grows with the

@@ -80,7 +80,7 @@ answers a different question — it never notices a missing fragment.
 Set `PYTHON=` once and every step and every script the runner calls uses that
 interpreter, ruff included.
 
-What it does NOT run is the heavy half — the six-shard fast suite and the
+What it does NOT run is the heavy half — the twelve-shard fast suite and the
 guard/preflight suite in `pr-tests.yml`, 22 to 42 minutes a shard. Those start only when
 the diff touches code:
 
@@ -100,7 +100,7 @@ git diff -z --name-only --no-renames origin/main...HEAD | python scripts/ci/chan
 EVENT_NAME=pull_request BASE_SHA=origin/main HEAD_SHA=HEAD bash scripts/ci/classify_changes.sh
 ```
 
-`guards-and-preflight` and `fast-suite (1)`…`(6)` keep their names and still report
+`guards-and-preflight` and `fast-suite (1)`…`(12)` keep their names and still report
 SUCCESS on every pull request — those are contexts the `main` ruleset requires, and a
 renamed or absent job leaves a required check unreported and blocks every merge.
 
@@ -112,12 +112,12 @@ classifier calls not-code. `test_the_lint_scope_covers_this_gates_own_script` pi
 docs or scripts diff would disarm exactly the gates that watch docs and scripts, so a
 later PR could shrink the ruff scope and the test forbidding it would never run. When
 the verdict is false, `guards-and-preflight` runs `pytest tests/contracts` in place of
-the guard suite; when it is true, the six shards collect the whole tree and pick them up
+the guard suite; when it is true, the twelve shards collect the whole tree and pick them up
 there. Count them yourself rather than trusting a number here:
 `grep -rl 'docs/\|scripts/\|workflows' tests/contracts/*.py | wc -l`.
 
 **`changes` must be a required check too**, alongside `ruff`,
-`guards-and-preflight`, `fast-suite (1)`…`(6)`, `pr-body-contract` and
+`guards-and-preflight`, `fast-suite (1)`…`(12)`, `pr-body-contract` and
 `changelog-fragment`, and since 2026-09-19 the ruleset requires it. `needs: changes`
 means a `changes` job that dies of a runner fault leaves the heavy jobs skipped by
 dependency, and a skipped job does not fail a required context — a merge would go

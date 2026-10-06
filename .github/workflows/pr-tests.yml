@@ -9,13 +9,13 @@ name: pr-tests
 # the tripwire/regression-locks gate merges.
 #
 # Path-aware since 2026-09-18: the `changes` job decides whether this event
-# touched anything the six physics shards can observe, and they skip their own
+# touched anything the twelve physics shards can observe, and they skip their own
 # steps when it did not. Their NAMES and their SUCCESS are unchanged, which is
 # what the ruleset reads. The contract tests run either way. A push to
 # main is never skipped.
 #
 # `changes` MUST BE A REQUIRED CHECK, alongside `ruff`, `guards-and-preflight`
-# and `fast-suite (1)`..`(6)`, and the `main` ruleset has required it since
+# and `fast-suite (1)`..`(12)`, and the `main` ruleset has required it since
 # 2026-09-19. Without it the gate has a hole: `needs: changes` means a `changes`
 # job that dies of a runner fault leaves the heavy jobs SKIPPED by dependency,
 # and a skipped job does not fail a required context — so a merge would go
@@ -49,8 +49,8 @@ jobs:
   #
   # The two heavy jobs below KEEP THEIR NAMES and still run on every event, so
   # the contexts main's ruleset requires (`guards-and-preflight`,
-  # `fast-suite (1)`..`(6)`) are always reported. When this job says the diff is
-  # not code, the six shards skip their steps individually and end SUCCESS with
+  # `fast-suite (1)`..`(12)`) are always reported. When this job says the diff is
+  # not code, the twelve shards skip their steps individually and end SUCCESS with
   # a line in the log saying why, and `guards-and-preflight` runs the contract
   # tests instead of the guard suite — those pin docs/, scripts/ and these
   # workflows, which is precisely what a "not code" diff changes.
@@ -160,7 +160,7 @@ jobs:
       # pinned by test_the_lint_scope_covers_this_gates_own_script, or change
       # scripts/dev/prune_worktrees.py past test_prune_worktrees.py, and the
       # forbidding test would never run. So the contracts run on BOTH branches:
-      # here when the diff is not code, and inside the six shards (which collect
+      # here when the diff is not code, and inside the twelve shards (which collect
       # the whole tree) when it is. Roughly 5 minutes.
       - name: Contract tests — the gates the shards are not running today
         if: needs.changes.outputs.code_changed == 'false'
@@ -177,7 +177,7 @@ jobs:
         run: |
           set -e
           echo 'The diff touches no file under rfx/, tests/, validation/ or'
-          echo 'examples/, and no build or lane configuration, so the six'
+          echo 'examples/, and no build or lane configuration, so the twelve'
           echo 'physics shards have nothing to observe. The contract tests'
           echo 'still run: they pin docs/, scripts/ and these workflows, which'
           echo 'IS what this diff changed. The changes job above lists the'
@@ -242,19 +242,16 @@ jobs:
     # the contexts main's ruleset requires, and a matrix that renames
     # them to `fast-suite (3.11, 1)` leaves every required check permanently
     # unreported, so no PR can merge.
-    # Groups 5 and 6 (added 2026-09-05, #890) produce `fast-suite (5)` / `(6)`,
-    # required since 2026-09-19 like (1)-(4).
+    # 2026-10-06 PI: twelve shards target ~25-30 min PR and merge-train test execution.
     name: fast-suite (${{ matrix.group }})
     runs-on: ubuntu-latest
-    # 75, not 60 (2026-10-01): with the durations priced on Python 3.11 the six groups predict
-    # 44-46 min each, and the same tests vary up to 1.22x between runners, so a slow runner
-    # reaches ~57 min. Shards 56-60 min and one cancel at 60 min were seen on 2026-09-30/10-01.
-    timeout-minutes: 75
+    # Max shard 3649 s / 2 = 1824.5 s ≈ 31 min; margin ×2 → 60 min (rounded).
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
         python-version: ["3.11"]
-        group: [1, 2, 3, 4, 5, 6]
+        group: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -284,7 +281,7 @@ jobs:
         if: needs.changes.outputs.code_changed != 'false'
         run: python -c "import jax, jaxlib, numpy; print('jax', jax.__version__, 'jaxlib', jaxlib.__version__, 'numpy', numpy.__version__)"
 
-      - name: Fast suite — Python ${{ matrix.python-version }}, shard ${{ matrix.group }} of 6
+      - name: Fast suite — Python ${{ matrix.python-version }}, shard ${{ matrix.group }} of 12
         if: needs.changes.outputs.code_changed != 'false'
         env:
           # issue #594 remedy (a): the same per-test RSS delta/peak reporter +
@@ -298,4 +295,4 @@ jobs:
           RFX_WEEKLY_RSS: "1"
         run: >
           pytest -q -ra -p no:cacheprovider
-          --splits 6 --group ${{ matrix.group }}
+          --splits 12 --group ${{ matrix.group }}
