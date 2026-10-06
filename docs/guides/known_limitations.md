@@ -21,7 +21,7 @@ not an accuracy guarantee, and a preflight pass is not a convergence study.
 
 ### Lossy sheets and sheet_effective_size
 
-Tracker: TODO-LEADER
+Tracker: TODO-NEW-ISSUE (lossy sheets bypass the sheet-size verdict without a size warning)
 
 Lossy sheets (`surface_impedance_f0`, or sigma below the PEC threshold) are not judged by `sheet_effective_size` (`rfx/materials/thin_conductor.py::ThinConductor.is_pec`, `rfx/preflight/realization.py::_CampaignStaticsContext.pec_entries`).
 
@@ -29,7 +29,7 @@ Lossy sheets (`surface_impedance_f0`, or sigma below the PEC threshold) are not 
 
 ### Experimental ADI
 
-Tracker: TODO-LEADER
+Tracker: #1487
 
 `solver="adi"` is outside the 2.0 supported scope.
   `boundary="cpml"` is refused: it is an unmatched conductivity sponge
@@ -38,7 +38,7 @@ Tracker: TODO-LEADER
 
 ### Distributed runs: reduced-frequency ghost exchange (exchange_interval > 1) is refused
 
-Tracker: TODO-LEADER
+Tracker: none — accepted limitation (refused at default: tests/unit/runners/test_distributed.py::TestExchangeInterval::test_interval_refused)
 
 exchange_interval > 1 is refused. With a one-cell ghost layer and the exchange skipped for K-1 steps, each slab updates its seam cells from the neighbour's stale values and injects energy every skipped step.
 In a lossless 48x16x16 mm PEC box (dx = 1 mm, float32, 2000 steps) the probe amplitude, relative to the single-device peak, reaches 2.0e2 for K=2 and 2.7e5 for K=4 on two devices, 4.6e7 (K=2) and 5.3e19 (K=4) on four devices, growing exponentially from the first skipped exchange, while K=1 stays within 1.0 of the peak.
@@ -64,7 +64,7 @@ domain, so drawing the strip "into the absorber" is not possible today.
 
 ### The default wire port is a mesh-sized probe.
 
-Tracker: TODO-LEADER
+Tracker: TODO-NEW-ISSUE (the default wire-port radius scales with the mesh without warning)
 
 `add_port(..., extent=...)`
 with `radius=None` acts as a probe of radius approximately `0.20 * dx` on a
@@ -79,7 +79,7 @@ Resolve larger wire ports geometrically with a coax feed or a volume wire.
 
 ### Positive subcell PEC filament radii are unsupported.
 
-Tracker: TODO-LEADER
+Tracker: none — accepted limitation (refused at default: tests/unit/ports/test_pec_filament_radius.py::test_every_positive_subcell_radius_refuses_before_scan)
 
 A PEC `PolylineWire`
 with `0 < a < 0.50 * d_min` refuses before stepping. Resolve the wire as a
@@ -98,13 +98,15 @@ model and its full-height oracle remain separate.
 
 ### Automatic preflight for compute_coax_msl_transition
 
-Tracker: TODO-LEADER
+Tracker: TODO-NEW-ISSUE (coax-to-MSL omits preflight families other than the shared sheet-size verdict)
 
-`compute_coax_msl_transition` runs no automatic preflight (`rfx/sparams/coax.py::compute_coax_msl_transition`).
+`compute_coax_msl_transition` checks sheet size through the shared preflight
+verdict by default, unless `skip_preflight=True`. The other preflight families
+do not run on this path.
 
 ### The coax→microstrip transition over-reads power by about a factor of three.
 
-Tracker: TODO-LEADER
+Tracker: #1479
 
 Measured twice independently on the MSL port's power-wave normalization: the
 returned matrix's own MSL-driven column power runs about 3x the incident power
@@ -129,7 +131,7 @@ above 17 GHz recorded by the Sheen low-pass filter case.
 
 ### The microstrip S-matrix can come back non-passive, and says so.
 
-Tracker: TODO-LEADER
+Tracker: none — accepted limitation (warns at default: tests/unit/autodiff/test_msl_forward_identity.py::test_a_nonpassive_extraction_is_named_bin_by_bin_in_one_warning)
 
 `compute_msl_s_matrix(...)` returns the S it extracted; it no longer projects it
 onto the passive set by default, so that the S a user reads and the S a gradient
@@ -147,7 +149,7 @@ reported, not gated.
 
 ### The fitted microstrip propagation constant sits 1.0 to 1.3 % above the Hammerstad–Jensen closed form on every in-band bin.
 
-Tracker: TODO-LEADER
+Tracker: TODO-NEW-ISSUE (the fitted microstrip beta offset has no default accuracy warning)
 
 On a 600 µm trace over
 250 µm of RO4350B a float64 refit of the probe phasors reads 1.32 … 1.33 % with
@@ -160,7 +162,7 @@ closed as characterized.
 
 ### Microstrip `Z0` and `beta` are unreadable when the probes sit near a reflector.
 
-Tracker: TODO-LEADER
+Tracker: none — accepted limitation (warns at default: tests/unit/ports/test_msl_clearance_diagnostic.py::test_the_guard_tells_it_when_the_clearance_is_insufficient)
 
 The N-probe fit rides the standing wave instead of measuring the
 line: across the three board runs tabulated in #726 the fitted `Z0` reached
@@ -179,7 +181,7 @@ used to contradict each other about this, and the measurement decided it.
 
 ### A pair of modes that no window of the record separates is completed as one mode, and every witness agrees.
 
-Tracker: TODO-LEADER
+Tracker: TODO-NEW-ISSUE (unresolved ring-down poles can blend while every in-record witness passes)
 
 `run(ringdown=...)` and
 `forward(ringdown=...)` identify the ringing's poles on the record's second
@@ -192,7 +194,7 @@ pair 0.03 % apart was resolved at about a fifth of its decay time.
 
 ### The early stop can end the run before a weak unresolved high-Q pair is resolved.
 
-Tracker: TODO-LEADER
+Tracker: TODO-NEW-ISSUE (early stop can accept a weak unresolved high-Q pair with misleading witnesses)
 
 The rule is `run(..., until_identified=True)`: stop once WE agrees
 twice and the record is half the decay time of the slowest mode that moves S.
@@ -208,7 +210,7 @@ enough to resolve them. Pinned as a strict xfail in
 
 ### A plain record shorter than a weakly coupled resonance's decay misreads S near it on any port, and the end-of-run witness can miss it.
 
-Tracker: TODO-LEADER
+Tracker: TODO-NEW-ISSUE (short plain records can miss a weak resonance despite a passing end-of-run witness)
 
 A lossless 50 × 50 × 25 mm PEC box with a one-cell 50 Ω
 port rings on TM110 at 4.148 GHz with Q ≈ 2000 (amplitude e-fold 153 ns); the port is its only loss.
@@ -284,7 +286,7 @@ an isolated scatterer use `rfx.rcs.compute_rcs`, whose sides absorb.
 
 ### Port-only ring-down completion can miss the gradient of a weakly coupled high-Q resonance.
 
-Tracker: TODO-LEADER
+Tracker: TODO-NEW-ISSUE (port-only ring-down identification can silently miss a resonance gradient)
 
 A pole and the completed S-parameter can be accurate while
 its material derivative is tens of percent wrong at the resonance bin. Add
@@ -309,7 +311,7 @@ identification-probe option; port-only identification remains the default).
 
 ### A gradient can be wrong by tens of percent on a record whose value is converged.
 
-Tracker: TODO-LEADER
+Tracker: TODO-NEW-ISSUE (finite-record gradients can be wrong after the value settling witness passes)
 
 Every frequency-domain quantity rfx differentiates is a DFT of a
 finite time record. A structure still ringing when the record ends leaves a term
@@ -358,7 +360,7 @@ Measured in #1181; the witness above landed with #1186.
 
 ### A shipped paper example's headline numbers are not WR-90 numbers.
 
-Tracker: TODO-LEADER
+Tracker: #1138
 
 `validation/tmtt_paper/waveguide_dielectric_taper.py` declares 22.86 × 10.16 mm.
 Its default SMOKE lane meshes at a commensurate dx = 1.27 mm and realizes WR-90
@@ -386,23 +388,23 @@ with physics assertions. Everything else in `examples/` and `validation/` is
 covered only as far as its build.
 → [#737](https://github.com/bk-squared/rfx/issues/737)
 
-### Patch-antenna cross-validation has no trustworthy quantitative accuracy baseline.
+### The RT5880 patch-antenna baseline is not gated on every change.
 
-Tracker: TODO-LEADER
+Tracker: #1471
 
-The integration case is a coarse same-geometry envelope and says so;
-the case that was supposed to carry the quantitative claim does not currently
-close it.
+The RT5880 patch-antenna baseline in `tests/crossval/rt5880_patch/` has a 1 %
+resonance-frequency gate and a 2 % resistance-at-resonance gate. Its accuracy
+test is marked `gpu` and `slow`, so it is not always-on.
 → [#715](https://github.com/bk-squared/rfx/issues/715)
 
 ### The weekly scientific-validation lane is red.
 
-Tracker: TODO-LEADER
+Tracker: #1501
 
-Two shards fail on the current
-schedule. Until it is green, a claim of "the weekly suite passes" is not
-available.
-→ [#1022](https://github.com/bk-squared/rfx/issues/1022)
+The latest weekly run, [37322809911](https://github.com/bk-squared/rfx/actions/runs/37322809911)
+on 2026-10-05, failed `slow-tests (3)`, `slow-tests (4)` and `weekly-a6000-lane`.
+That run does not support a claim that the weekly suite passes.
+→ [#1501](https://github.com/bk-squared/rfx/issues/1501)
 
 ---
 

@@ -93,7 +93,7 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # the page no longer names #1236 either.
 # #1373 (ADI refuses a material interface until 2.1) joined on 2026-10-03 with
 # the "Solver lanes" section; OPEN, checked by the session leader that day.
-CITED_ISSUES = frozenset({737, 715, 1022, 1221, 1230, 1373, 1512})
+CITED_ISSUES = frozenset({737, 715, 1501, 1221, 1230, 1373, 1512})
 
 # Numbers the prose names for provenance rather than as open work: a CLOSED
 # issue or PR recording a fix, measurement or settled decision. These are
@@ -165,7 +165,7 @@ def test_every_citation_link_points_at_the_issue_it_names():
 
 @pytest.mark.docs_consistency
 def test_no_entry_names_an_issue_it_does_not_cite():
-    """An issue mentioned in prose must be cited, or classified as resolved.
+    """An issue mentioned in prose must be cited, tracked, or classified as resolved.
 
     Otherwise a number can sit in a sentence, never appear in CITED_ISSUES, and
     outlive the issue it refers to. This caught #1043 on its first run, which is
@@ -173,7 +173,11 @@ def test_no_entry_names_an_issue_it_does_not_cite():
     """
     page = _page()
     cited = {int(text) for text, _ in CITATION_RE.findall(page)}
-    prose_only = {int(n) for n in INLINE_RE.findall(page)} - cited - RESOLVED_REFERENCES
+    # Tracker metadata is governed by the per-entry contract, not this legacy
+    # arrow/provenance inventory. New live trackers need not add arrow links.
+    tracked = {int(n) for line in page.splitlines() if line.startswith("Tracker: #")
+               for n in INLINE_RE.findall(line)}
+    prose_only = {int(n) for n in INLINE_RE.findall(page)} - cited - tracked - RESOLVED_REFERENCES
     assert not prose_only, (
         f"issues named in prose but never cited: {sorted(prose_only)}. Give the entry a "
         "`→ [#N](…)` line, or — if the number is a closed issue named for provenance — "

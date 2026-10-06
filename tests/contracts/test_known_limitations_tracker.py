@@ -1,5 +1,7 @@
 """Offline contract for every public limitation subject; no solver imports."""
+import ast
 import importlib.util
+import re
 from pathlib import Path
 
 import pytest
@@ -19,12 +21,26 @@ def test_every_limitation_has_a_valid_tracker():
     for entry in subjects:
         try:
             kl.trackers(entry)
+            # Resolve evidence without importing test modules (and thus JAX).
+            match = re.search(r'at default: (tests/[^)]+)\)', entry.body)
+            if match:
+                path, *names = match[1].split('::')
+                source = ROOT / path
+                assert source.is_file(), f'{entry.title}: missing evidence file {path}'
+                nodes = ast.parse(source.read_text()).body
+                for name in names:
+                    node = next((n for n in nodes if isinstance(n, (ast.ClassDef, ast.FunctionDef))
+                                 and n.name == name), None)
+                    assert node is not None, f'{entry.title}: missing evidence test {match[1]}'
+                    nodes = node.body
         except ValueError as exc:
             problems.append(str(exc))
     assert not problems, '\n' + '\n'.join(problems)
 
 
 @pytest.mark.parametrize('body', ['', 'Tracker: TODO-LEADER', 'Tracker: none',
+                                  'Tracker: TODO-NEW-ISSUE (silent gradient error)',
+                                  'Tracker: none — accepted limitation (documented)',
                                   'Tracker: none — accepted limitation ()',
                                   'Tracker: none — accepted limitation (   )',
                                   'Tracker: #1\nTracker: #2',
@@ -39,7 +55,7 @@ def test_missing_or_invalid_tracker_refuses(body):
 def test_all_leaf_subjects_count_and_section_headings_do_not():
     page = ('# Page\nintro\n## Standalone\nTracker: #1\n'
             '## Group\n### First\nTracker: #2, #3\n'
-            '### Second\nTracker: none — accepted limitation (finite resolution)\n'
+            '### Second\nTracker: none — accepted limitation (refused at default: tests/synthetic.py::test_refuses)\n'
             '## What this page is not\nfooter\n')
     subjects = kl.entries(page)
     assert [e.title for e in subjects] == ['Standalone', 'First', 'Second']

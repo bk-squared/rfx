@@ -54,8 +54,13 @@ def trackers(entry: Entry) -> set[int]:
     if len(lines) != 1:
         raise ValueError(f'{entry.title}: expected exactly one Tracker line')
     value = lines[0].strip()
-    accepted = re.fullmatch(r'none — accepted limitation \(([^\n()]+)\)', value)
-    if accepted and accepted[1].strip():
+    if value.startswith('TODO-NEW-ISSUE'):
+        raise ValueError(f'{entry.title}: leader must open a tracker: {value}')
+    accepted = re.fullmatch(
+        r'none — accepted limitation \((?:refused|warns) at default: '
+        r'tests/[^\s():]+\.py::(?:[A-Za-z_]\w*::)*test_\w+\)', value,
+    )
+    if accepted:
         return set()
     if not re.fullmatch(r'#\d+(?:(?:\s*,\s*|\s+)#\d+)*', value):
         raise ValueError(f'{entry.title}: invalid Tracker: {value}')

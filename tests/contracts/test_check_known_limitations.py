@@ -56,7 +56,7 @@ def test_all_trackers_closing_fails_even_if_currently_open(tmp_path):
 
 
 def test_accepted_entries_do_not_fail_on_historical_citations(tmp_path):
-    body = '## A\nHistory #7\nTracker: none — accepted limitation (finite resolution)\n'
+    body = '## A\nHistory #7\nTracker: none — accepted limitation (refused at default: tests/synthetic.py::test_refuses)\n'
     assert run_check(tmp_path, body).returncode == 0
 
 
@@ -170,3 +170,9 @@ def test_state_lookup_failure_is_not_a_green_sweep(tmp_path):
                             env=env, capture_output=True, text=True)
     assert result.returncode == 1
     assert 'Cannot complete tracker check' in result.stdout
+
+
+def test_pending_new_issue_fails_cli(tmp_path):
+    result = run_check(tmp_path, '## A\nTracker: TODO-NEW-ISSUE (silent gradient error)\n')
+    assert result.returncode == 1
+    assert 'leader must open a tracker' in result.stdout
