@@ -31,6 +31,7 @@ def converted_builder(case):
     for substrate, band, resolution in [
         ("ro4003c", "high", "sub4"), ("ro4003c", "high", "sub6"),
         ("ro4003c", "low", "sub4"), ("teflon", "high", "sub4"),
+        ("ro4003c", "low", "sub6"), ("teflon", "high", "sub6"),
     ] for geometry in ("thru", "open_stub")
 ]])
 def test_converted_fixture_port_coverage(case):

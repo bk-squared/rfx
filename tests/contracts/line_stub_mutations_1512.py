@@ -15,6 +15,16 @@ def main():
      'vacuum_eps': ('port.width, port.height, eps)[1]', 'port.width, port.height, eps)[1]; eps = 1.0'),
      'declared_first': ('result = None', 'result = None\n    if explicit is not None:\n        return float(explicit)'),
      'fundamental_only': ('return (2 * first - 1, 2 * last - 1) if first <= last else None', 'return (1, 1) if lo <= 1 <= hi else None'),
+     # The pre-fix rule: metal length alone, no open-end extension.
+     'no_end_extension': ('extension = open_end_extension(port.width, port.height, eps)', 'extension = 0.0'),
+     # An enumeration cap drops every odd order above 3.
+     'order_cap': ('    last = math.floor((hi + tol + 1) / 2)\n', '    last = min(math.floor((hi + tol + 1) / 2), 2)\n'),
+     # Coax eps read at the metal pin centre again (falls back to 1).
+     'coax_centre_eps': ('    if axis is not None:\n', '    if False:\n'),
+     # skip_preflight makes a skipped shape silent again.
+     'silent_skip': ('        if skipped:\n            _warn_uninspectable(skipped)\n', ''),
+     # A fixed stack level cannot serve entries of different depth.
+     'fixed_stacklevel': ('warnings.warn(_uninspectable_warning(skipped), stacklevel=level)', 'warnings.warn(_uninspectable_warning(skipped), stacklevel=4)'),
      # One uninspectable shape switches the whole check off again (the pre-isolation behaviour).
      'inspection_raises': ('            cache[key] = []\n', '            raise\n'),
     }
@@ -51,6 +61,14 @@ def main():
     a, b = mutations[sys.argv[1]]
     assert source.count(a) == 1
     exec(compile(source.replace(a, b), str(line_stub.__file__), 'exec'), line_stub.__dict__)
+    extra = {'no_end_extension': ['tests/unit/preflight/test_line_stub.py', 'tests/contracts/test_line_stub_refusal_1512.py',
+                                  '-k', 'independent_closed_form or tail_length_and_frequency or counts_the_open_end'],
+             'order_cap': ['tests/contracts/test_line_stub_refusal_1512.py', '-k', 'fifth_odd'],
+             'coax_centre_eps': ['tests/unit/preflight/test_line_stub.py', '-k', 'between_pin_and_shield'],
+             'silent_skip': ['tests/unit/preflight/test_line_stub.py', '-k', 'named_at_the_solve_entry'],
+             'fixed_stacklevel': ['tests/unit/preflight/test_line_stub.py', '-k', 'named_at_the_solve_entry']}
+    if sys.argv[1] in extra:
+        sys.exit(pytest.main(['-q', *extra[sys.argv[1]], '-o', 'addopts=']))
     if sys.argv[1] == 'inspection_raises':
         sys.exit(pytest.main(['-q', 'tests/unit/preflight/test_line_stub.py', '-k', 'uninspectable', '-o', 'addopts=']))
     if sys.argv[1] == 'declared_first':

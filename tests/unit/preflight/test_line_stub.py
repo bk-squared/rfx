@@ -7,6 +7,14 @@ from rfx import Box, Simulation
 from rfx.preflight.line_stub import line_stub_findings
 
 
+def closed_form(eps_r, width, height, length):
+    """Independent of rfx: quasi-static eps_eff, Hammerstad open end, quarter wave."""
+    u = width / height
+    eps_eff = (eps_r + 1)/2 + (eps_r - 1)/(2*math.sqrt(1 + 12/u))
+    extension = .412*height*(eps_eff + .3)*(u + .264)/((eps_eff - .258)*(u + .8))
+    return eps_eff, extension, 299792458/(4*(length + extension)*math.sqrt(eps_eff))
+
+
 def make_sim(direction='+x', *, endpoint=0., terminates=None, thin=False):
     sim = Simulation(domain=(.028, .012, .006), dx=.0005,
                      freq_max=40e9, boundary='cpml', cpml_layers=3)
@@ -39,8 +47,15 @@ def test_tail_length_and_frequency(direction, thin):
     findings = line_stub_findings(make_sim(direction, thin=thin))
     assert len(findings) == 1
     f = findings[0]
+    eps_eff, extension, frequency = closed_form(3.66, .002, .001, .002)
     assert f.overhang_m == pytest.approx(.002)
-    assert f.frequency_hz == pytest.approx(299792458 / (.008 * math.sqrt(f.eps_eff)))
+    assert f.eps_eff == pytest.approx(eps_eff, rel=1e-12)
+    assert f.end_extension_m == pytest.approx(extension, rel=1e-12)
+    assert f.effective_length_m == pytest.approx(.002 + extension, rel=1e-12)
+    assert f.frequency_hz == pytest.approx(frequency, rel=1e-12)
+    assert f.frequency_hz < 299792458 / (.008 * math.sqrt(eps_eff))
+    assert f"open-end extension {extension*1e3:.6g} mm" in f.message
+    assert f"effective length is {(.002 + extension)*1e3:.6g} mm" in f.message
     assert 'start the signal strip at that coordinate' in f.message
     assert '2 mm' in f.message
 
@@ -153,15 +168,16 @@ def test_realized_port_and_endpoint_coordinates_own_length(nonuniform):
     assert 'realized L; declared 1.5 mm' in finding.message
 
 
-@pytest.mark.parametrize('width_over_height', [2., 4.])
-def test_eps_eff_and_quarter_wave_have_an_independent_closed_form(width_over_height):
+@pytest.mark.parametrize('width_over_height,eps_r', [(2., 3.55), (4., 3.55), (1., 2.2), (3., 9.8)])
+def test_eps_eff_and_quarter_wave_have_an_independent_closed_form(width_over_height, eps_r):
     """Independent quasi-static expression plus full HJ1980 cross-check.
 
     Full HJ1980: https://qucs.sourceforge.net/tech/node75.html, eqs. 11.15–18.
     The production helper retains the HJ name but implements the simplified
     expression. The 1% comparison is to the full model, not a solver bound.
+    The open-end extension is Hammerstad's closed form, written out here and
+    not read from rfx; the stub's quarter wave is taken on realized L + extension.
     """
-    eps_r = 3.55
     u = width_over_height
     sim = Simulation(domain=(.028, .012, .006), dx=.0005,
                      freq_max=40e9, boundary='cpml', cpml_layers=3)
@@ -176,10 +192,17 @@ def test_eps_eff_and_quarter_wave_have_an_independent_closed_form(width_over_hei
     a = 1 + math.log((u**4 + (u/52)**2)/(u**4 + .432))/49 + math.log(1 + (u/18.1)**3)/18.7
     b = .564*((eps_r - .9)/(eps_r + 3))**.053
     full_hj = (eps_r + 1)/2 + (eps_r - 1)/2*(1 + 10/u)**(-a*b)
+    def extension(eps_eff):
+        return .412*.001*(eps_eff + .3)*(u + .264)/((eps_eff - .258)*(u + .8))
     assert finding.eps_eff == pytest.approx(expected, rel=1e-12)
-    assert finding.frequency_hz == pytest.approx(299792458/(4*.002*math.sqrt(expected)), rel=1e-12)
-    assert finding.eps_eff == pytest.approx(full_hj, rel=.01)
-    assert finding.frequency_hz == pytest.approx(299792458/(4*.002*math.sqrt(full_hj)), rel=.005)
+    assert finding.overhang_m == pytest.approx(.002, rel=1e-9)
+    assert finding.end_extension_m == pytest.approx(extension(expected), rel=1e-12)
+    assert .2e-3 < finding.end_extension_m < .6e-3
+    assert finding.frequency_hz == pytest.approx(
+        299792458/(4*(.002 + extension(expected))*math.sqrt(expected)), rel=1e-9)
+    assert finding.eps_eff == pytest.approx(full_hj, rel=.012)
+    assert finding.frequency_hz == pytest.approx(
+        299792458/(4*(.002 + extension(full_hj))*math.sqrt(full_hj)), rel=.006)
 
 
 def test_invalid_realization_stays_blocking_without_aborting_other_preflight_checks():
@@ -207,13 +230,15 @@ def test_realized_substrate_owns_frequency_and_decision(nonuniform, declared):
     if nonuniform:
         sim._dx_profile = np.full(56, .0005)
     f, = line_stub_findings(sim)
-    expected = (2.2 + 1)/2 + (2.2 - 1)/(2*math.sqrt(7))
+    expected, _, frequency = closed_form(2.2, .002, .001, .002)
     assert f.substrate_eps_r == 2.2
     assert f.eps_eff == pytest.approx(expected)
-    assert f.frequency_hz == pytest.approx(299792458/(.008*math.sqrt(expected)))
-    assert resonant_odd_orders(f, (4e9, 18e9)) is None
+    assert f.frequency_hz == pytest.approx(frequency)
+    # 22.6 GHz with the open-end extension (27.7 GHz on the metal length alone).
+    assert resonant_odd_orders(f, (4e9, 14e9)) is None
+    assert resonant_odd_orders(f, (4e9, 18e9)) is not None
     assert resonant_odd_orders(f, (20e9, 30e9)) is not None
-    message = stub_message(f, (4e9, 18e9))
+    message = stub_message(f, (4e9, 14e9))
     assert ('Realized substrate eps_r=2.2; declared port eps_r_sub=9.8' in message) == (declared == 9.8)
 
 
@@ -311,3 +336,55 @@ def test_an_uninspectable_shape_does_not_switch_the_refusal_off():
     assert any('is an open stub that shorts the port' in m for m in report)
     with pytest.raises(ValueError, match='is an open stub that shorts the port'):
         build(True).run(n_steps=1, skip_preflight=True)
+
+
+@pytest.mark.parametrize('method', ['run', 'forward', 'compute_msl_s_matrix'])
+def test_uninspectable_shape_is_named_at_the_solve_entry_without_preflight(method):
+    """skip_preflight must not make the skipped shape silent; the caller owns the warning."""
+    import warnings
+    from dataclasses import replace
+
+    class _NoBBox:
+        def mask(self, grid):
+            raise NotImplementedError
+
+        def mask_on_coords(self, x, y, z):
+            raise NotImplementedError
+
+    sim = make_sim(endpoint=.002)  # no tail: nothing to refuse, only the skip to report
+    sim._geometry.append(replace(sim._geometry[-1], shape=_NoBBox()))
+    kwargs = {'n_steps': 1}
+    if method != 'compute_msl_s_matrix':
+        kwargs['skip_preflight'] = True
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        try:
+            getattr(sim, method)(**kwargs)
+        except Exception:  # the shape cannot be assembled either; admission ran first
+            pass
+    skipped = [w for w in caught
+               if getattr(w.message, 'code', '') == 'line_stub_inspection_unavailable']
+    assert skipped, [str(w.message) for w in caught]
+    assert all('_NoBBox' in str(w.message) for w in skipped)
+    assert skipped[0].filename == __file__, (skipped[0].filename, skipped[0].lineno)
+
+
+def test_coax_permittivity_is_read_between_pin_and_shield():
+    """A fill that leaves the pin-centre cell uncovered still sets the stub frequency."""
+    def build(fill):
+        sim = Simulation(domain=(.012, .012, .012), dx=.001,
+                         freq_max=20e9, boundary='cpml', cpml_layers=2)
+        sim.add_material('fill', eps_r=2.1)
+        if fill:  # one side of the pin only; the pin-centre column stays unfilled
+            sim.add(Box((.0065, .004, .001), (.009, .008, .005)), material='fill')
+        sim.add(Box((.0055, .0055, .002), (.0065, .0065, .009)), material='pec')
+        sim.add_coaxial_port((.006, .006, .004), face='bottom', pin_length=.004)
+        return sim
+
+    f, = line_stub_findings(build(True))
+    assert f.overhang_m == pytest.approx(.002)
+    assert f.substrate_eps_r == 2.1 and f.eps_eff == 2.1
+    assert f.end_extension_m == 0.  # no open-end formula is applied to a coax pin
+    assert f.frequency_hz == pytest.approx(299792458/(4*.002*math.sqrt(2.1)), rel=1e-12)
+    empty, = line_stub_findings(build(False))
+    assert empty.eps_eff == 1.

@@ -25,16 +25,23 @@ class LineStubFinding:
     port_node_m: float = 0.0
     substrate_eps_r: float = 1.0
     declared_eps_r_sub: float | None = None
+    end_extension_m: float = 0.0
+
+    @property
+    def effective_length_m(self):
+        """Realized node-to-node length plus the open-end extension."""
+        return self.overhang_m + self.end_extension_m
 
     @property
     def message(self):
         return stub_message(self)
 
 
-def _permittivity(sim, port, point, grid, coords, cache):
+def _permittivity(sim, port, point, grid, coords, cache, axis=None):
     """Material owning the sampled stub node, using the assembler's masks.
 
-    Sample halfway along the stub and halfway through the substrate. Later
+    Sample halfway along the stub and halfway through the substrate (MSL) or
+    on the mid-annulus ring around the pin (coax, ``axis`` given). Later
     dielectric entries overwrite earlier ones, just as in assemble_cells.
     PEC does not overwrite dielectric epsilon. No material means fallback.
     """
@@ -42,8 +49,17 @@ def _permittivity(sim, port, point, grid, coords, cache):
         _material_cell_mask, centres_from_nonuniform_grid, centres_from_uniform_grid)
     explicit = getattr(port, "eps_r_sub", None)
     result = None
-    sample = tuple(int(np.argmin(np.abs(np.asarray(nodes) - x)))
-                   for nodes, x in zip(coords[:3], point))
+    points = [point]
+    if axis is not None:
+        # Coax: the field lives between pin and shield, and the pin-centre cell
+        # is metal. Sample the mid-annulus ring; later samples do not override.
+        radius = (port.pin_radius + port.outer_radius) / 2
+        points = []
+        for a in (a for a in range(3) if a != axis):
+            for offset in (-radius, radius):
+                points.append([x + offset * (b == a) for b, x in enumerate(point)])
+    samples = [tuple(int(np.argmin(np.abs(np.asarray(nodes) - x)))
+                     for nodes, x in zip(coords[:3], p)) for p in points]
     for entry in sim._geometry:
         material = sim._resolve_material(entry.material_name)
         if material.sigma >= sim._PEC_SIGMA_THRESHOLD:
@@ -55,7 +71,7 @@ def _permittivity(sim, port, point, grid, coords, cache):
                        else centres_from_uniform_grid(grid))
             cache[key] = np.asarray(_material_cell_mask(
                 entry.shape, coords, centres, grid=None if nonuniform else grid))
-        if cache[key][sample]:
+        if any(cache[key][sample] for sample in samples):
             result = float(material.eps_r)
     return result if result is not None else float(explicit if explicit is not None else 1.)
 
@@ -95,6 +111,17 @@ def _intervals(sim, grid, shape, coords, axis, lower, upper, cache):
             declared_lo, declared_hi = (bounds[0][axis], bounds[1][axis]) if bounds else (lo, hi)
             intervals.append((lo, hi, declared_lo, declared_hi))
     return intervals
+
+
+def open_end_extension(width, height, eps_eff):
+    """Hammerstad open-end length extension of a microstrip (declared w, h).
+
+    The fringing field at an open end makes the stub electrically longer than
+    its metal; without it a short stub's notch is placed too high (#1512).
+    """
+    u = width / height
+    return (0.412 * height * (eps_eff + 0.3) * (u + 0.264)
+            / ((eps_eff - 0.258) * (u + 0.8)))
 
 
 def line_stub_findings(sim, grid=None, uninspectable=None) -> list[LineStubFinding]:
@@ -219,16 +246,23 @@ def line_stub_findings(sim, grid=None, uninspectable=None) -> list[LineStubFindi
             if endpoints:
                 length, end, declared_length = max(endpoints)
                 point[axis] = (plane + end) / 2
-                substrate_eps = _permittivity(sim, port, point, grid, coords, cache)
+                substrate_eps = _permittivity(
+                    sim, port, point, grid, coords, cache,
+                    axis if collection == "_coaxial_ports" else None)
                 eps = substrate_eps
+                # Coax: no microstrip open-end formula applies to a pin tail, so
+                # the extension stays 0. ASSUMPTION, unverified: its end effect is small.
+                extension = 0.0
                 if collection == "_msl_ports":
                     eps = hammerstad_jensen_z0_eps_eff(
                         port.width, port.height, eps)[1]
+                    extension = open_end_extension(port.width, port.height, eps)
                 findings.append(LineStubFinding(
                     collection, index, getattr(port, "name", f"coaxial_{index}"),
                     "xyz"[axis], end, length, float(eps),
-                    299792458.0 / (4 * length * math.sqrt(eps)), declared_length, plane,
-                    substrate_eps, getattr(port, "eps_r_sub", None)))
+                    299792458.0 / (4 * (length + extension) * math.sqrt(eps)),
+                    declared_length, plane,
+                    substrate_eps, getattr(port, "eps_r_sub", None), extension))
     if uninspectable is not None:
         uninspectable.extend(dict.fromkeys(cache.get("uninspectable", [])))
     return findings
@@ -313,7 +347,9 @@ def stub_message(finding, band=None):
     return (
         f"The strip continues {finding.overhang_m*1e3:.6g} mm behind the port "
         f"and ends there (realized L; declared {finding.declared_overhang_m*1e3:.6g} mm); "
-        f"it is an open stub that shorts the port near {fq:.6g} GHz "
+        f"with the open-end extension {finding.end_extension_m*1e3:.6g} mm its effective "
+        f"length is {finding.effective_length_m*1e3:.6g} mm. "
+        f"It is an open stub that shorts the port near {fq:.6g} GHz "
         f"(quarter wave); stub frequencies {frequencies}, {relation}. "
         f"{band_text}"
         f"eps_eff={finding.eps_eff:.6g}; port {finding.port_name!r}. "
@@ -324,6 +360,36 @@ def stub_message(finding, band=None):
     )
 
 
+def _uninspectable_warning(skipped):
+    from rfx.preflight._common import PreflightWarning
+    return PreflightWarning(
+        f"Line-stub check could not inspect {len(skipped)} conductor shape(s) "
+        f"({'; '.join(skipped)}). They were skipped; the other conductors were "
+        "checked. This is not evidence that the skipped shapes leave no tail behind a port.",
+        code="line_stub_inspection_unavailable", source="line_stub_findings")
+
+
+def _warn_uninspectable(skipped):
+    """Solve-entry warning attributed to the first frame outside the rfx package.
+
+    Entries differ in depth (forward stages its declarations in one more frame),
+    so the stack level is counted, not fixed; no entry needs a line for it.
+    """
+    import os
+    import warnings
+    package = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + os.sep
+    level, frame = 1, sys._getframe(0)
+    try:
+        while frame.f_back is not None and (
+                os.path.abspath(frame.f_code.co_filename).startswith(package)
+                or "jax" + os.sep in frame.f_code.co_filename
+                or frame.f_code.co_filename.startswith("<")):
+            frame, level = frame.f_back, level + 1
+    finally:
+        del frame
+    warnings.warn(_uninspectable_warning(skipped), stacklevel=level)
+
+
 def require_no_resonant_line_stub(sim, freqs=None):
     """Unconditional admission, including skip_preflight and internal callers."""
     if not (sim._msl_ports or sim._coaxial_ports):
@@ -331,10 +397,15 @@ def require_no_resonant_line_stub(sim, freqs=None):
     import jax
     with jax.ensure_compile_time_eval():
         band = read_band(sim, freqs)
+        skipped = []
         try:
-            findings = line_stub_findings(sim)
-        except NotImplementedError:
-            return  # Unsupported inspection leaves admission to the owning lane.
+            findings = line_stub_findings(sim, uninspectable=skipped)
+        except NotImplementedError as exc:
+            # Unsupported inspection leaves admission to the owning lane, but not silently.
+            findings = []
+            skipped.append(str(exc))
+        if skipped:
+            _warn_uninspectable(skipped)
         for finding in findings:
             if resonant_odd_orders(finding, band) is not None:
                 raise ValueError(stub_message(finding, band))
@@ -369,11 +440,7 @@ def preflight_line_stubs(sim, warn):
                                         source="line_stub_findings"), stacklevel=3)
         return
     if skipped:
-        warn.warn(PreflightWarning(
-            f"Line-stub check could not inspect {len(skipped)} conductor shape(s) "
-            f"({'; '.join(skipped)}). They were skipped; the other conductors were "
-            "checked. This is not evidence that the skipped shapes leave no tail behind a port.",
-            code="line_stub_inspection_unavailable", source="line_stub_findings"), stacklevel=3)
+        warn.warn(_uninspectable_warning(skipped), stacklevel=3)
     for finding in findings:
         warn.warn(PreflightWarning(
             stub_message(finding, band), code="line_stub_behind_port",
