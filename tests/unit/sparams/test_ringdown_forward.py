@@ -68,9 +68,9 @@ BAR_VALUE_F32 = 1.5e-5
 #: and I divided by the incident wave. Measured 6.7e-8 .. 2.4e-7 on the
 #: bandwidth-0.42 pulse (a bin driven at 3.6e-4 of the peak). Bar: about 6x.
 BAR_VALUE_F32_INCIDENT = 1.5e-6
-#: the pre-M2 port DFT's worst S error against float64 at bins driven more than
-#: 40 dB below the band peak (weak-bin fixture, 3000 steps); see the test using it
-WEAK_BIN_FLOAT32_FLOOR = 9.1e-4
+#: K in the weak-bin bar max(own, K eps32 / a_rel): twice the measured maximum
+#: of err a_rel / eps32 (1.416), rounded up; see the test using it
+WEAK_BIN_K = 3
 #: The same under scoped x64 (the map in complex128), 600-step records:
 #: measured 3.8e-8 on the uniform lane (the complex64 rounding of run()'s
 #: (1, 1, nf) S container there) and 0.0 on the graded lane. Bar: about 5x.
@@ -433,18 +433,20 @@ def test_a_weakly_driven_bin_is_completed_as_run_completes_it():
     assert weighted <= BAR_VALUE_F32_INCIDENT, weighted
     # Where the bar is judged (S2 pre-declaration, decision record 2026-10-07):
     # at bins whose incident wave is within 40 dB of its band peak the bar is
-    # unchanged, run()'s own accumulator round-off. At weaker bins float32
-    # rounding divided by the incident wave sets the floor, and the judge is
-    # "no farther from the float64 value than the pre-M2 kernel's worst error
-    # on those bins", 9.1e-4 of peak (measured against a float64 DFT of the
-    # same port records; the one-kernel DFT reads 1.8e-4 there). Measured
-    # here, before and after M2 alike: 7.2e-6 over the 68 strong bins,
-    # 2.72e-4 at 17.5 GHz (incident wave -64 dB) over the 33 weak ones; M2
-    # lowered run()'s own round-off from 1.10e-3 to 1.95e-4, below that bin.
+    # unchanged, run()'s own accumulator round-off. At a weaker bin the
+    # float32 sums of terms of the order of the peak leave an absolute error of
+    # the order of eps32 x peak, that is eps32 / a_rel of that bin, so the bar
+    # there is max(own, K eps32 / a_rel). Measured err a_rel / eps32 over the
+    # 33 weak bins: 0.084 / 0.56 / 1.416 (min / median / max, the max at
+    # 17.5 GHz, a_rel 6.2e-4), the same before and after S2 M2; K = 3 is the
+    # smallest integer at least twice that maximum. M2 did not move the
+    # difference (2.72e-4 at 17.5 GHz, 7.2e-6 over the 68 strong bins, both
+    # sides); it lowered run()'s own round-off from 1.10e-3 to 1.95e-4.
     strong = a_rel >= 1.0e-2
     assert strong.any() and (~strong).any()
     assert err[strong].max() <= own, (err[strong].max(), own)
-    assert err[~strong].max() <= WEAK_BIN_FLOAT32_FLOOR, err[~strong].max()
+    weak_bar = np.maximum(own, WEAK_BIN_K * np.finfo(np.float32).eps / a_rel[~strong])
+    assert np.all(err[~strong] <= weak_bar), float(np.max(err[~strong] / weak_bar))
 
 
 def test_an_x64_run_weights_the_port_dft_in_complex128():
