@@ -57,7 +57,7 @@ def trackers(entry: Entry) -> set[int]:
     if value.startswith('TODO-NEW-ISSUE'):
         raise ValueError(f'{entry.title}: leader must open a tracker: {value}')
     accepted = re.fullmatch(
-        r'none — accepted limitation \((?:refused|warns) at default: '
+        r'none — accepted limitation \((?:refused at default|warns at default|diagnostic, does not enter the result): '
         r'tests/[^\s():]+\.py::(?:[A-Za-z_]\w*::)*test_\w+\)', value,
     )
     if accepted:

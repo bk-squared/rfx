@@ -21,7 +21,7 @@ not an accuracy guarantee, and a preflight pass is not a convergence study.
 
 ### Lossy sheets and sheet_effective_size
 
-Tracker: TODO-NEW-ISSUE (lossy sheets bypass the sheet-size verdict without a size warning)
+Tracker: #1138
 
 Lossy sheets (`surface_impedance_f0`, or sigma below the PEC threshold) are not judged by `sheet_effective_size` (`rfx/materials/thin_conductor.py::ThinConductor.is_pec`, `rfx/preflight/realization.py::_CampaignStaticsContext.pec_entries`).
 
@@ -64,7 +64,7 @@ domain, so drawing the strip "into the absorber" is not possible today.
 
 ### The default wire port is a mesh-sized probe.
 
-Tracker: TODO-NEW-ISSUE (the default wire-port radius scales with the mesh without warning)
+Tracker: #1138
 
 `add_port(..., extent=...)`
 with `radius=None` acts as a probe of radius approximately `0.20 * dx` on a
@@ -98,7 +98,7 @@ model and its full-height oracle remain separate.
 
 ### Automatic preflight for compute_coax_msl_transition
 
-Tracker: TODO-NEW-ISSUE (coax-to-MSL omits preflight families other than the shared sheet-size verdict)
+Tracker: #1479
 
 `compute_coax_msl_transition` checks sheet size through the shared preflight
 verdict by default, unless `skip_preflight=True`. The other preflight families
@@ -149,7 +149,7 @@ reported, not gated.
 
 ### The fitted microstrip propagation constant sits 1.0 to 1.3 % above the Hammerstad–Jensen closed form on every in-band bin.
 
-Tracker: TODO-NEW-ISSUE (the fitted microstrip beta offset has no default accuracy warning)
+Tracker: none — accepted limitation (diagnostic, does not enter the result: tests/unit/sparams/test_msl_fitted_beta_does_not_enter_s.py::test_s_is_bit_identical_when_the_fitted_beta_is_wrong)
 
 On a 600 µm trace over
 250 µm of RO4350B a float64 refit of the probe phasors reads 1.32 … 1.33 % with
@@ -181,7 +181,7 @@ used to contradict each other about this, and the measurement decided it.
 
 ### A pair of modes that no window of the record separates is completed as one mode, and every witness agrees.
 
-Tracker: TODO-NEW-ISSUE (unresolved ring-down poles can blend while every in-record witness passes)
+Tracker: #1514
 
 `run(ringdown=...)` and
 `forward(ringdown=...)` identify the ringing's poles on the record's second
@@ -194,7 +194,7 @@ pair 0.03 % apart was resolved at about a fifth of its decay time.
 
 ### The early stop can end the run before a weak unresolved high-Q pair is resolved.
 
-Tracker: TODO-NEW-ISSUE (early stop can accept a weak unresolved high-Q pair with misleading witnesses)
+Tracker: #1514
 
 The rule is `run(..., until_identified=True)`: stop once WE agrees
 twice and the record is half the decay time of the slowest mode that moves S.
@@ -210,7 +210,7 @@ enough to resolve them. Pinned as a strict xfail in
 
 ### A plain record shorter than a weakly coupled resonance's decay misreads S near it on any port, and the end-of-run witness can miss it.
 
-Tracker: TODO-NEW-ISSUE (short plain records can miss a weak resonance despite a passing end-of-run witness)
+Tracker: #1514
 
 A lossless 50 × 50 × 25 mm PEC box with a one-cell 50 Ω
 port rings on TM110 at 4.148 GHz with Q ≈ 2000 (amplitude e-fold 153 ns); the port is its only loss.
@@ -286,7 +286,7 @@ an isolated scatterer use `rfx.rcs.compute_rcs`, whose sides absorb.
 
 ### Port-only ring-down completion can miss the gradient of a weakly coupled high-Q resonance.
 
-Tracker: TODO-NEW-ISSUE (port-only ring-down identification can silently miss a resonance gradient)
+Tracker: #1514
 
 A pole and the completed S-parameter can be accurate while
 its material derivative is tens of percent wrong at the resonance bin. Add
@@ -311,7 +311,7 @@ identification-probe option; port-only identification remains the default).
 
 ### A gradient can be wrong by tens of percent on a record whose value is converged.
 
-Tracker: TODO-NEW-ISSUE (finite-record gradients can be wrong after the value settling witness passes)
+Tracker: #1514
 
 Every frequency-domain quantity rfx differentiates is a DFT of a
 finite time record. A structure still ringing when the record ends leaves a term
