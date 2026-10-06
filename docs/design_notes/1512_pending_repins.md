@@ -23,6 +23,8 @@ copies are converted too. The broad-E5 builder trims both ends only where the
 odd-resonance rule selects the case: RO4003C high sub4/sub6, RO4003C low sub4,
 and Teflon high sub4 (each for thru/open_stub). All other broad-E5 endpoint
 coordinates remain unchanged. Broad-E5 has no numerical pin changed here.
+The transition material-ownership unit fixture also starts at its port (8 mm
+back tail removed; estimated 6.208 GHz vs fallback 0–5 GHz). It has no RF pin.
 
 Reason for every eventual old→new entry: #1512 removes the open stub behind the
 line port; remeasure the new geometry on the current solver. Until that job is

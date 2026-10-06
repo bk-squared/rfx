@@ -141,3 +141,12 @@ def test_broad_sweep_converts_only_interval_members():
             converted.add((case.substrate_key, case.band_key, case.dx_resolution))
     assert converted == {('ro4003c', 'high', 'sub4'), ('ro4003c', 'high', 'sub6'),
                          ('ro4003c', 'low', 'sub4'), ('teflon', 'high', 'sub4')}
+
+
+def test_no_declared_conductor_does_not_build_a_grid(monkeypatch):
+    sim = Simulation(domain=(.012, .012, .012), dx=.001, freq_max=20e9)
+    sim.add_coaxial_port((.006, .006, .004), face='bottom', pin_length=.004)
+    def unexpected_grid():
+        raise AssertionError('empty signal geometry must not preempt calculator admission')
+    monkeypatch.setattr(sim, '_build_realized_grid', unexpected_grid)
+    assert stub.line_stub_findings(sim) == []

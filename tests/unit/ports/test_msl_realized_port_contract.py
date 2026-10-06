@@ -418,7 +418,8 @@ def test_coax_stub_cannot_overwrite_the_registered_junction_and_substrate(ground
     sim.add_material("substrate", eps_r=3., sigma=.02)
     sim.add(Box((0, 0, ground*DX), (32*DX, 24*DX, top*DX)), material="substrate")
     sim.add(Box((0, 0, ground*DX), (32*DX, 24*DX, ground*DX)), material="pec")
-    sim.add(Box((0, 10*DX, top*DX), (32*DX, 14*DX, top*DX)), material="pec")
+    # #1512: keep this material-ownership witness free of a resonant back stub.
+    sim.add(Box((8*DX, 10*DX, top*DX), (32*DX, 14*DX, top*DX)), material="pec")
     sim.add_coaxial_port(position=(8*DX, 12*DX, ground*DX), face="bottom",
                          pin_radius=DX, outer_radius=4.5*DX, terminates=2)
     sim.add_msl_port(position=(8*DX, 12*DX, ground*DX), width=4*DX,

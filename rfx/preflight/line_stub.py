@@ -99,13 +99,16 @@ def line_stub_findings(sim, grid=None) -> list[LineStubFinding]:
 
     if not (sim._msl_ports or sim._coaxial_ports):
         return []
+    entries = list(conductor_entries(sim))
+    if not entries and not getattr(sim, "_pinned_sheets", ()):
+        return []  # Generated coax metal is not a declared signal tail.
     grid = sim._build_realized_grid() if grid is None else grid
     coords = (coords_from_nonuniform_grid(grid) if hasattr(grid, "dx_arr")
               else coords_from_uniform_grid(grid))
     from rfx.geometry.smoothing import continued_conductor_shape
     conductors = [continued_conductor_shape(sim, grid, entry.shape, entry=entry,
                                             unextendable=[])
-                  for _, entry in conductor_entries(sim)]
+                  for _, entry in entries]
     nodes = (coords.x, coords.y, coords.z)
     for sheet in getattr(sim, "_pinned_sheets", ()):
         tangents = [a for a in range(3) if a != sheet.normal_axis]
