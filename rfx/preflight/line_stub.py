@@ -24,25 +24,41 @@ class LineStubFinding:
     frequency_hz: float
     declared_overhang_m: float = 0.0
     port_node_m: float = 0.0
+    substrate_eps_r: float = 1.0
+    declared_eps_r_sub: float | None = None
 
     @property
     def message(self):
         return stub_message(self)
 
 
-def _permittivity(sim, port, point):
+def _permittivity(sim, port, point, grid, coords, cache):
+    """Material owning the sampled stub node, using the assembler's masks.
+
+    Sample halfway along the stub and halfway through the substrate. Later
+    dielectric entries overwrite earlier ones, just as in assemble_cells.
+    PEC does not overwrite dielectric epsilon. No material means fallback.
+    """
+    from rfx.geometry.rasterize_grid import (
+        _material_cell_mask, centres_from_nonuniform_grid, centres_from_uniform_grid)
     explicit = getattr(port, "eps_r_sub", None)
-    if explicit is not None:
-        return float(explicit)
-    result = 1.0
+    result = None
+    sample = tuple(int(np.argmin(np.abs(np.asarray(nodes) - x)))
+                   for nodes, x in zip(coords[:3], point))
     for entry in sim._geometry:
-        bounds = declared_bounds(entry.shape)
-        if bounds is not None and all(lo <= x <= hi for lo, x, hi in
-                                      zip(bounds[0], point, bounds[1])):
-            material = sim._resolve_material(entry.material_name)
-            if material.sigma < sim._PEC_SIGMA_THRESHOLD:
-                result = float(material.eps_r)
-    return result
+        material = sim._resolve_material(entry.material_name)
+        if material.sigma >= sim._PEC_SIGMA_THRESHOLD:
+            continue
+        key = ('dielectric', id(entry))
+        if key not in cache:
+            nonuniform = hasattr(grid, 'dx_arr')
+            centres = (centres_from_nonuniform_grid(grid, coords) if nonuniform
+                       else centres_from_uniform_grid(grid))
+            cache[key] = np.asarray(_material_cell_mask(
+                entry.shape, coords, centres, grid=None if nonuniform else grid))
+        if cache[key][sample]:
+            result = float(material.eps_r)
+    return result if result is not None else float(explicit if explicit is not None else 1.)
 
 
 def _intervals(sim, grid, shape, coords, axis, lower, upper, cache):
@@ -129,15 +145,10 @@ def line_stub_findings(sim, grid=None) -> list[LineStubFinding]:
                 span = msl_cross_section_span(grid, msl_port_from_entry(port))
                 lower[2] = upper[2] = float(nodes[2][span["n_hi"]])
                 point[2] += port.height / 2
-                eps = _permittivity(sim, port, point)
-                eps = getattr(sim, "_msl_auto_probe_spacing", {}).get(
-                    port.name, hammerstad_jensen_z0_eps_eff(
-                        port.width, port.height, eps)[1])
             else:
                 letter, sign, _ = _FACE_CONFIG[port.face]
                 axis = "xyz".index(letter)
                 # The pin centre, never the annular outer conductor.
-                eps = _permittivity(sim, port, point)
             signal_shapes = conductors
             if collection == "_coaxial_ports":
                 # A solid ground wall through the pin centre is a junction
@@ -197,10 +208,17 @@ def line_stub_findings(sim, grid=None) -> list[LineStubFinding]:
                         endpoints.append((length, end, declared_length))
             if endpoints:
                 length, end, declared_length = max(endpoints)
+                point[axis] = (plane + end) / 2
+                substrate_eps = _permittivity(sim, port, point, grid, coords, cache)
+                eps = substrate_eps
+                if collection == "_msl_ports":
+                    eps = hammerstad_jensen_z0_eps_eff(
+                        port.width, port.height, eps)[1]
                 findings.append(LineStubFinding(
                     collection, index, getattr(port, "name", f"coaxial_{index}"),
                     "xyz"[axis], end, length, float(eps),
-                    299792458.0 / (4 * length * math.sqrt(eps)), declared_length, plane))
+                    299792458.0 / (4 * length * math.sqrt(eps)), declared_length, plane,
+                    substrate_eps, getattr(port, "eps_r_sub", None)))
     return findings
 
 
@@ -254,6 +272,11 @@ def stub_message(finding, band=None):
                        f"{first*fq:.6g}..{last*fq:.6g} GHz (odd orders {first}..{last})")
     band_text = ("" if band is None else
                  f"Read band {band[0]/1e9:.6g}..{band[1]/1e9:.6g} GHz; ")
+    mismatch = ""
+    declared = finding.declared_eps_r_sub
+    if declared is not None and abs(declared - finding.substrate_eps_r) > .01 * finding.substrate_eps_r:
+        mismatch = (f"Realized substrate eps_r={finding.substrate_eps_r:.6g}; "
+                    f"declared port eps_r_sub={declared:.6g}. ")
     return (
         f"The strip continues {finding.overhang_m*1e3:.6g} mm behind the port "
         f"and ends there (realized L; declared {finding.declared_overhang_m*1e3:.6g} mm); "
@@ -261,6 +284,7 @@ def stub_message(finding, band=None):
         f"(quarter wave); stub frequencies {frequencies}, {relation}. "
         f"{band_text}"
         f"eps_eff={finding.eps_eff:.6g}; port {finding.port_name!r}. "
+        f"{mismatch}"
         f"The port's realized grid node is {finding.axis}={finding.port_node_m*1e3:.9g} mm. "
         "Fix: start the signal strip at that coordinate (the port's grid node), "
         "so it covers the port node and nothing behind it (#1512)."

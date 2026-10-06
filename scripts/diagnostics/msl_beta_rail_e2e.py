@@ -55,10 +55,10 @@ flagged bins") stand. Committed evidence:
 docs/design_notes/issue681_rail_adjudication_report.json.
 
 #1512 geometry update: the 5 mm-feed adjudication configuration trims and
-grounds all three runs. At the historical 2.5 mm-feed default, A/A' are
-outside the refusal interval and retain the original missing-ground drawing;
-B is converted. Those default A/B drawings therefore differ, and A/A' still
-fail current ground-attachment preflight. No new RF measurement is recorded
+grounds all three runs. At the historical 2.5 mm-feed default, A/A'/B are
+outside the refusal interval using the realized substrate and share the
+original missing-ground drawing; they still fail current ground-attachment
+preflight. No new RF measurement is recorded
 here; the dated numbers above remain historical observations.
 
 Run:  python scripts/diagnostics/msl_beta_rail_e2e.py [--out out.json]

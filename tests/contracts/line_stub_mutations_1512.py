@@ -11,8 +11,9 @@ def main():
      'device_side': ('length = max(0.0, (plane - end) * sign)', 'length = max(0.0, ((hi if sign > 0 else lo) - plane) * sign)'),
      'declared_length': ('length = max(0.0, (plane - end) * sign)', 'length = declared_length'),
      'inner_default_band': ('return current[1]', 'return (0.0, float(sim._freq_max))'),
-     'substrate_eps': ('port.width, port.height, eps)[1])', 'port.width, port.height, eps)[1]); eps = _permittivity(sim, port, point)'),
-     'vacuum_eps': ('port.width, port.height, eps)[1])', 'port.width, port.height, eps)[1]); eps = 1.0'),
+     'substrate_eps': ('port.width, port.height, eps)[1]', 'port.width, port.height, eps)[1]; eps = substrate_eps'),
+     'vacuum_eps': ('port.width, port.height, eps)[1]', 'port.width, port.height, eps)[1]; eps = 1.0'),
+     'declared_first': ('result = None', 'result = None\n    if explicit is not None:\n        return float(explicit)'),
      'fundamental_only': ('return (2 * first - 1, 2 * last - 1) if first <= last else None', 'return (1, 1) if lo <= 1 <= hi else None'),
     }
     if sys.argv[1] == 'port_plane':
@@ -31,6 +32,8 @@ def main():
     a, b = mutations[sys.argv[1]]
     assert source.count(a) == 1
     exec(compile(source.replace(a, b), str(line_stub.__file__), 'exec'), line_stub.__dict__)
+    if sys.argv[1] == 'declared_first':
+        sys.exit(pytest.main(['-q', 'tests/unit/preflight/test_line_stub.py', '-k', 'realized_substrate_owns', '-o', 'addopts=']))
     if sys.argv[1] == 'inner_default_band':
         sys.exit(pytest.main(['-q', 'tests/contracts/test_line_stub_refusal_1512.py', '-k', 'actual_calculator', '-o', 'addopts=']))
     if sys.argv[1] in ('substrate_eps', 'vacuum_eps'):

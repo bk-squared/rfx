@@ -38,8 +38,7 @@ def _build(case):
 
 @pytest.mark.parametrize('case', ['ladder-vol1', 'ladder-vol2', 'ab-volume',
                                   'production', 'witness', 'inset-0', 'inset-fixed',
-                                  'beta-wide-correct', 'beta-wide-misdeclared',
-                                  'beta-default-misdeclared'])
+                                  'beta-wide-correct', 'beta-wide-misdeclared'])
 def test_volume_has_zero_realized_stub_and_passes_port_preflight(case):
     sim = _build(case)
     grid = sim._build_realized_grid()
@@ -69,3 +68,22 @@ def test_beta_default_outside_band_drawing_stays_unchanged():
     assert sim._geometry[1].shape.corner_lo[0] == .001
     finding, = line_stub_findings(sim)
     assert resonant_odd_orders(finding, (4e9, 18e9)) is None
+
+
+@pytest.mark.parametrize('wide', [False, True])
+def test_beta_arms_share_strip_geometry_and_stub_decision(wide):
+    from types import SimpleNamespace
+    from scripts.diagnostics.msl_beta_rail_e2e import _build, FREQS
+    from rfx.preflight.line_stub import require_no_resonant_line_stub
+    args = SimpleNamespace(domain_x=.04 if wide else .02, feed_x=.005 if wide else .0025)
+    arms = [_build(args, eps, spacing) for eps, spacing in [(2.2, None), (2.2, 2), (9.8, None)]]
+    assert all(sim._geometry == arms[0]._geometry for sim in arms)
+    for sim in arms:
+        require_no_resonant_line_stub(sim, FREQS)
+        findings = line_stub_findings(sim)
+        if wide:
+            assert findings == []
+        else:
+            assert len(findings) == 1
+            assert findings[0].frequency_hz == pytest.approx(line_stub_findings(arms[0])[0].frequency_hz)
+            assert sim._geometry[1].shape.corner_lo[0] == .001

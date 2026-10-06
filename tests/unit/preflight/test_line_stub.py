@@ -190,3 +190,49 @@ def test_invalid_realization_stays_blocking_without_aborting_other_preflight_che
     assert any('danger zone' in str(issue) for issue in report)
     with pytest.raises(ValueError, match='ZERO nodes'):
         sim.run(n_steps=1, skip_preflight=True)
+
+
+@pytest.mark.parametrize('nonuniform', [False, True])
+@pytest.mark.parametrize('declared', [2.2, 9.8])
+def test_realized_substrate_owns_frequency_and_decision(nonuniform, declared):
+    from dataclasses import replace
+    import numpy as np
+    from rfx.preflight.line_stub import resonant_odd_orders, stub_message
+    sim = make_sim()
+    sim.add_material('actual', eps_r=2.2)
+    sim._geometry[0] = replace(sim._geometry[0], material_name='actual')
+    sim._msl_ports[0] = replace(sim._msl_ports[0], eps_r_sub=declared)
+    # Registration-time HJ values must not override the realized substrate.
+    sim._msl_auto_probe_spacing[sim._msl_ports[0].name] = 7.38
+    if nonuniform:
+        sim._dx_profile = np.full(56, .0005)
+    f, = line_stub_findings(sim)
+    expected = (2.2 + 1)/2 + (2.2 - 1)/(2*math.sqrt(7))
+    assert f.substrate_eps_r == 2.2
+    assert f.eps_eff == pytest.approx(expected)
+    assert f.frequency_hz == pytest.approx(299792458/(.008*math.sqrt(expected)))
+    assert resonant_odd_orders(f, (4e9, 18e9)) is None
+    assert resonant_odd_orders(f, (20e9, 30e9)) is not None
+    message = stub_message(f, (4e9, 18e9))
+    assert ('Realized substrate eps_r=2.2; declared port eps_r_sub=9.8' in message) == (declared == 9.8)
+
+
+def test_substrate_is_sampled_under_stub_with_realized_masks_and_precedence():
+    from dataclasses import replace
+    sim = make_sim()
+    sim._msl_ports[0] = replace(sim._msl_ports[0], eps_r_sub=9.8)
+    sim.add_material('stub_only', eps_r=2.2)
+    # Ends before the port; starts above z=.5 mm but realizes onto that node.
+    sim.add(Box((0, 0, .00051), (.0016, .012, .00065)), material='stub_only')
+    f, = line_stub_findings(sim)
+    assert f.substrate_eps_r == 2.2
+    # Confirm the independently assembled material at the sampled stub node.
+    from rfx.sources.msl_port import _msl_position_to_index
+    grid = sim._build_realized_grid()
+    materials = sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])[0]
+    index = _msl_position_to_index(grid, (.001, .006, .0005))
+    assert float(materials.eps_r[index]) == pytest.approx(f.substrate_eps_r)
+    # With no realized dielectric, use the declaration.
+    sim._geometry = [e for e in sim._geometry if e.material_name == 'pec']
+    f, = line_stub_findings(sim)
+    assert f.substrate_eps_r == 9.8
