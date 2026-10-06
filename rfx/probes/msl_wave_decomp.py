@@ -305,16 +305,8 @@ def register_msl_plane_probes(
     j_lo, j_hi = span["w_lo"], span["w_hi"]     # trace-conductor width span
     k_lo = span["n_lo"]                          # ground plane proxy
 
-    # Per-axis cell-size arrays (uniform mesh only — see the NU refusal above).
-    def _profile(axis: str, n: int) -> np.ndarray:
-        attr = {"x": "dx_profile", "y": "dy_profile", "z": "dz_profile"}[axis]
-        prof = getattr(grid, attr, None)
-        if prof is not None:
-            return np.asarray(prof, dtype=float)
-        return np.full(n, float(grid.dx), dtype=float)
-
-    dy_arr = _profile("y", grid.ny)
-    dz_arr = _profile("z", grid.nz)
+    dy_arr = np.asarray(grid.cells('y'), dtype=float)
+    dz_arr = np.asarray(grid.cells('z'), dtype=float)
 
     # Trace search — IDENTICAL to compute_msl_s_matrix's trace_k_per_port
     # (rfx/api/_sparams.py): walk UP the substrate-normal axis from the

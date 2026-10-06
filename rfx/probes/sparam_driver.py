@@ -375,7 +375,7 @@ def compute_lumped_wire_s_matrix_via_scan(
             outboard_signs=plane_outboard,
             freqs=freqs,
             dt=float(grid.dt),
-            dx=float(grid.dx),
+            dx=float(grid.cells('x')[0]),
             return_line_diagnostics=return_refplane_diagnostics,
         )
         if return_refplane_diagnostics:

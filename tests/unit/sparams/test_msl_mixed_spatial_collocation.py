@@ -70,7 +70,11 @@ def _backend(target, direction, mode, captures):
                     assert entry.component == "hz"
                     profile = np.broadcast_to(0.25 * y_h[:, None] / U, yz_shape)
                 field = sign * H_GAIN * factor * profile
-                phase = np.exp(-1j * 2 * np.pi * freqs * grid.dt / 2)
+                # M2 history: mock physical H spectra directly. The old
+                # fixture baked in -omega*dt/2 for the consumer to undo;
+                # removing that extra correction measured .00233972 relative
+                # at the top bin, exactly the predicted half-step rotation.
+                phase = np.ones(n_f, dtype=complex)
             accumulator = (jnp.asarray(field, dtype=jnp.complex64)[None, :, :]
                            * jnp.asarray(phase, dtype=jnp.complex64)[:, None, None])
             planes[entry.name] = DFTPlaneProbe(

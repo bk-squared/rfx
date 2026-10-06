@@ -125,7 +125,7 @@ def port_voltage(state, grid: Grid, port: LumpedPort) -> jnp.ndarray:
     idx = grid.position_to_index(port.position)
     i, j, k = idx
     field = getattr(state, port.component)
-    return _port_voltage_value(field[i, j, k], grid.dx)
+    return _port_voltage_value(field[i, j, k], grid.cells(port.component[1])[idx['xyz'.index(port.component[1])]])
 
 
 def _port_curl_boundary(grid, periodic):
@@ -212,10 +212,20 @@ def port_current(state, grid: Grid, port: LumpedPort,
     float scalar
     """
     idx = tuple(grid.position_to_index(port.position))
-    dx = grid.dx
-
-    return _ampere_loop(state, idx, port.component, dx, periodic,
+    return _metric_ampere_loop(state, idx, port.component, grid, periodic,
                         boundary=_port_curl_boundary(grid, periodic))
+
+
+def _metric_ampere_loop(state, idx, component, grid, periodic, boundary=None):
+    """Ampere contour uses the transverse dual lengths at the E node."""
+    h_a, axis_a, h_b, axis_b = _ampere_loop_components(component)
+    da = float(grid.duals(axis_a)[idx[axis_a]])
+    db = float(grid.duals(axis_b)[idx[axis_b]])
+    if da == db:
+        return _ampere_loop(state, idx, component, da, periodic, boundary)
+    a, b = getattr(state, h_a), getattr(state, h_b)
+    return ((a[idx] - _bwd_h(a, idx, axis_a, periodic, boundary)) * db
+            - (b[idx] - _bwd_h(b, idx, axis_b, periodic, boundary)) * da)
 
 
 def _ampere_loop(state, idx, component, dx, periodic, boundary=None):
@@ -1096,7 +1106,7 @@ def wire_port_voltage(state, grid, port, pec_edge_masks=None) -> jnp.ndarray:
     """
     mid = _wire_port_live_mid(grid, port, pec_edge_masks)
     field = getattr(state, port.component)
-    return -field[mid[0], mid[1], mid[2]] * grid.dx
+    return -field[mid[0], mid[1], mid[2]] * grid.cells(port.component[1])[mid['xyz'.index(port.component[1])]]
 
 
 def wire_port_gap_voltage(state, grid, port, pec_edge_masks=None) -> jnp.ndarray:
@@ -1118,7 +1128,7 @@ def wire_port_gap_voltage(state, grid, port, pec_edge_masks=None) -> jnp.ndarray
     for cell, live in zip(cells, live_flags):
         if not live:
             continue
-        v_port = v_port - field[cell[0], cell[1], cell[2]] * grid.dx
+        v_port = v_port - field[cell[0], cell[1], cell[2]] * grid.cells(port.component[1])[cell['xyz'.index(port.component[1])]]
     return v_port
 
 
@@ -1147,9 +1157,7 @@ def wire_port_current(state, grid, port,
     float scalar
     """
     mid = _wire_port_live_mid(grid, port, pec_edge_masks)
-    dx = grid.dx
-
-    return _ampere_loop(state, tuple(mid), port.component, dx, periodic,
+    return _metric_ampere_loop(state, tuple(mid), port.component, grid, periodic,
                         boundary=_port_curl_boundary(grid, periodic))
 
 
@@ -1621,7 +1629,7 @@ def extract_s_matrix(
     if n_steps is None:
         n_steps = grid.num_timesteps(num_periods=30)
 
-    dt, dx = grid.dt, grid.dx
+    dt, dx = grid.dt, float(grid.cells('x')[0])
     use_cpml = boundary == "cpml" and grid.cpml_layers > 0
 
     if use_cpml:
@@ -1965,7 +1973,7 @@ def extract_s_matrix_wire(
     if n_steps is None:
         n_steps = grid.num_timesteps(num_periods=30)
 
-    dt, dx = grid.dt, grid.dx
+    dt, dx = grid.dt, float(grid.cells('x')[0])
     use_cpml = boundary == "cpml" and grid.cpml_layers > 0
 
     if use_cpml:
