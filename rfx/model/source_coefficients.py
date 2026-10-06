@@ -79,17 +79,18 @@ def dispersive_drive_model(materials, grid, periodic, debye_spec, lorentz_spec):
                            debye_spec=debye_spec, lorentz_spec=lorentz_spec)
 
 
-def debye_pole_term(materials, cell, component):
-    """``sum(beta)/eps0`` of one edge: what the Debye ADE update adds to
-    ``eps_r`` in its coefficient. It does not depend on eps_inf or sigma, so
-    it stays a host constant under a traced override."""
+def debye_pole_term(materials, cell, component, dt):
+    """The Debye poles' part of one edge's ADE coefficient, as the
+    conductivity that adds the same term: ``Cb = dt/(eps + sum(beta) +
+    sigma*dt/2)``, so ``sum(beta)`` equals a conductivity ``2*sum(beta)/dt``.
+    It does not depend on eps_inf or sigma, so it stays a host constant
+    under a traced override."""
     c = getattr(materials, "components", None)
     if c is None or c.debye is None:
         return 0.0
-    from rfx.core.yee import EPS_0
     axis = {"ex": 0, "ey": 1, "ez": 2}[str(component).lower()]
     beta = c.debye.coefficients[1][axis]
-    return float(beta[(slice(None),) + tuple(int(i) for i in cell)].sum()) / EPS_0
+    return 2.0 * float(beta[(slice(None),) + tuple(int(i) for i in cell)].sum()) / float(dt)
 
 
 def tensor_replaced_edges(materials, *, aniso_eps=None, aniso_inv_eps=None, upml=False):

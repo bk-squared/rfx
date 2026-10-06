@@ -3115,7 +3115,7 @@ class _ExecuteMixin:
                         grid, pe.waveform, n_steps)),
                 ))
                 material_drive.append((float(dV), _sc.debye_pole_term(
-                    drive_model, idx, pe.component)))
+                    drive_model, idx, pe.component, grid.dt)))
                 continue
             si, sj, sk, sc, wf = _nu_make_current_source(
                 grid, idx, pe.component, pe.waveform, n_steps,

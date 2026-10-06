@@ -1894,8 +1894,8 @@ def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks):
             owner = device == dev_id
             # A non-owner read someone else's cells; keep its masked branch
             # finite so the cotangent through the mask stays zero, not NaN.
-            cb = current_source_cb(jnp.where(owner, eps_c + pole, 1.0),
-                                   jnp.where(owner, sigma_c, 0.0), dt,
+            cb = current_source_cb(jnp.where(owner, eps_c, 1.0),
+                                   jnp.where(owner, sigma_c + pole, 0.0), dt,
                                    traced=True)
             out.append(jnp.where(owner, cb / dV, 0.0))
         return lax.psum(jnp.stack(out), "x")
@@ -2146,7 +2146,7 @@ def run_nonuniform_distributed_pec(
         ``Cb`` the coefficient of the source edge built from
         ``sharded_materials`` -- the arrays its E update receives, an
         override when there is one, traced when it is -- by
-        :func:`material_drive_scales`; ``(dV, sum(beta)/eps0)`` on a Debye edge.
+        :func:`material_drive_scales`; ``(dV, 2*sum(beta)/dt)`` on a Debye edge.
     """
     from rfx.sources.wire_radius import require_radius_update
     require_radius_update(sharded_materials, lane="distributed_nu", unsupported=True)
