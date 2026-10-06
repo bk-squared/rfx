@@ -3095,14 +3095,15 @@ class _ExecuteMixin:
                                 or sigma_override is not None)
         sources: list[SourceSpec] = []
         material_drive: list = []
+        from rfx.model import source_coefficients as _sc
+        drive_model = _sc.dispersive_drive_model(
+            materials, grid, self._periodic_flags(), debye_spec, lorentz_spec)
         for pe in self._ports:
             if pe.impedance > 0.0:
                 raise NotImplementedError(
-                    "Lumped / wire ports (impedance > 0) are not yet "
-                    "supported on the distributed=True forward path; "
-                    "use distributed=False or replace with a current "
-                    "source (impedance=0)."
-                )
+                    "Lumped / wire ports (impedance > 0) are not supported on "
+                    "the distributed=True forward path; use distributed=False "
+                    "or a current source (impedance=0).")
             idx = _nu_pos_to_idx(grid, pe.position)
             if (_drive_from_override
                     and not _needs_scale(pe.amplitude_kind, "cb_over_dv")):
@@ -3113,14 +3114,12 @@ class _ExecuteMixin:
                     waveform=jnp.asarray(_nu_current_source_samples(
                         grid, pe.waveform, n_steps)),
                 ))
-                material_drive.append(float(dV))
+                material_drive.append((float(dV), _sc.debye_pole_term(
+                    drive_model, idx, pe.component)))
                 continue
-            # Concrete drawn materials: make_current_source resolves eps /
-            # sigma to Python floats for the source-cell normalisation.
             si, sj, sk, sc, wf = _nu_make_current_source(
                 grid, idx, pe.component, pe.waveform, n_steps,
-                materials, amplitude_kind=pe.amplitude_kind,
-            )
+                drive_model, amplitude_kind=pe.amplitude_kind)
             sources.append(SourceSpec(
                 i=int(si), j=int(sj), k=int(sk),
                 component=sc, waveform=jnp.asarray(wf),

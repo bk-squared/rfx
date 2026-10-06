@@ -68,6 +68,30 @@ def resolve_run_sources(queue, materials, sim, grid, *, tensor=False):
     return sources
 
 
+def dispersive_drive_model(materials, grid, periodic, debye_spec, lorentz_spec):
+    """Materials a drive may read its coefficient from when a runner keeps
+    no realization of its own (the distributed lanes); plain models pass
+    through untouched."""
+    if debye_spec is None and lorentz_spec is None:
+        return materials
+    from rfx.model.materials import with_components
+    return with_components(materials, grid, periodic=periodic,
+                           debye_spec=debye_spec, lorentz_spec=lorentz_spec)
+
+
+def debye_pole_term(materials, cell, component):
+    """``sum(beta)/eps0`` of one edge: what the Debye ADE update adds to
+    ``eps_r`` in its coefficient. It does not depend on eps_inf or sigma, so
+    it stays a host constant under a traced override."""
+    c = getattr(materials, "components", None)
+    if c is None or c.debye is None:
+        return 0.0
+    from rfx.core.yee import EPS_0
+    axis = {"ex": 0, "ey": 1, "ez": 2}[str(component).lower()]
+    beta = c.debye.coefficients[1][axis]
+    return float(beta[(slice(None),) + tuple(int(i) for i in cell)].sum()) / EPS_0
+
+
 def tensor_replaced_edges(materials, *, aniso_eps=None, aniso_inv_eps=None, upml=False):
     """Audit predicate: edges whose tensor epsilon differs from the plain edge.
 

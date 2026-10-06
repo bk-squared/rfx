@@ -177,11 +177,11 @@ this condition now carries that measurement, and `docs/guides/sparameter_support
 has the full reading guidance. Settled in #726 (closed): the guard and preflight
 used to contradict each other about this, and the measurement decided it.
 
-### A source on a smoothed or conformal edge, in a distributed dispersive run, or in a subgrid is injected with a coefficient that differs from the field update's.
+### A source on a smoothed or conformal edge, in a dispersive `vmap` sweep, or in a subgrid is injected with a coefficient that differs from the field update's.
 
 Tracker: #1524
 
-The field increment a source adds on its edge is the update's coefficient times the drive. Three places still compute that coefficient apart from the update: a rectangular-waveguide port or plane-wave source whose edges touch `subpixel_smoothing` or conformal-PEC cells, a current source on a Debye/Lorentz edge in a distributed run (`devices=`, uniform or graded) or in a `vmap` sweep, and a current source in the experimental subgrid lane when a port is declared after it. The drive on those edges is scaled by the ratio of the two coefficients; S-parameters normalised to the incident wave are not known to move, absolute field and probe amplitudes are. Until it is fixed, read absolute amplitudes from such a run as uncalibrated, or declare the source on a plain edge.
+The field increment a source adds on its edge is the update's coefficient times the drive. Three places still compute that coefficient apart from the update: a rectangular-waveguide port or plane-wave source whose edges touch `subpixel_smoothing` or conformal-PEC cells, a current source on a Debye/Lorentz edge in a `vmap` sweep, and a current source in the experimental subgrid lane when a port is declared after it. The drive on those edges is scaled by the ratio of the two coefficients; S-parameters normalised to the incident wave are not known to move, absolute field and probe amplitudes are. Until it is fixed, read absolute amplitudes from such a run as uncalibrated, or declare the source on a plain edge.
 
 ---
 

@@ -1887,14 +1887,14 @@ def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks):
     def _scales(eps_local, sigma_local, *, rank):
         device = rank
         out = []
-        for dev_id, row0, cell, component, dV in drives:
+        for dev_id, row0, cell, component, dV, pole in drives:
             view = MaterialArrays(eps_r=eps_local[row0:],
                                   sigma=sigma_local[row0:], mu_r=None)
             eps_c, sigma_c = cell_component_e_materials(view, cell, component)
             owner = device == dev_id
             # A non-owner read someone else's cells; keep its masked branch
             # finite so the cotangent through the mask stays zero, not NaN.
-            cb = current_source_cb(jnp.where(owner, eps_c, 1.0),
+            cb = current_source_cb(jnp.where(owner, eps_c + pole, 1.0),
                                    jnp.where(owner, sigma_c, 0.0), dt,
                                    traced=True)
             out.append(jnp.where(owner, cb / dV, 0.0))
@@ -2146,7 +2146,7 @@ def run_nonuniform_distributed_pec(
         ``Cb`` the coefficient of the source edge built from
         ``sharded_materials`` -- the arrays its E update receives, an
         override when there is one, traced when it is -- by
-        :func:`material_drive_scales`.
+        :func:`material_drive_scales`; ``(dV, sum(beta)/eps0)`` on a Debye edge.
     """
     from rfx.sources.wire_radius import require_radius_update
     require_radius_update(sharded_materials, lane="distributed_nu", unsupported=True)
@@ -2325,7 +2325,7 @@ def run_nonuniform_distributed_pec(
         row0 = ghost if s.i == 0 else 0
         drives.append((src_device_ids[col], row0,
                        (src_local_specs[col][0] - row0, int(s.j), int(s.k)),
-                       s.component, float(dV)))
+                       s.component, *(dV if isinstance(dV, tuple) else (float(dV), 0.0))))
         drive_columns.append(col)
     drives = tuple(drives)
 
