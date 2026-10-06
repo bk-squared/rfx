@@ -201,11 +201,15 @@ def kernel_conductors(sim, grid, materials, pec_cells, sheets=(), wires=(),
             and tuple(periodic) == root.periodic):
         return replace(root, materials=materials, sheet_impedance=tuple(sheet_specs))
     # Internal override/S-parameter entry points already have assembled products.
-    obj = realized_conductors(sim, grid, nonuniform=hasattr(grid, 'dx_arr'),
-        assembly=(materials, None, None, pec_cells), pec_sheets=sheets,
-        pec_wires=wires, sheet_specs=sheet_specs, periodic=periodic,
-        geometry_masks=() if root is None else root.geometry_masks.items(),
-        assembly_entries=() if root is None else root.assembly_entries)
+    import jax
+    from rfx.model.source_admission import refuse_dead_soft_sources
+    with jax.ensure_compile_time_eval():
+        obj = realized_conductors(sim, grid, nonuniform=hasattr(grid, 'dx_arr'),
+            assembly=(materials, None, None, pec_cells), pec_sheets=sheets,
+            pec_wires=wires, sheet_specs=sheet_specs, periodic=periodic,
+            geometry_masks=() if root is None else root.geometry_masks.items(),
+            assembly_entries=() if root is None else root.assembly_entries)
+        refuse_dead_soft_sources(sim, obj)
     return obj if root is None else replace(obj, assembly=root.assembly)
 
 

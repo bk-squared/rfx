@@ -490,6 +490,7 @@ def _build_vmap_scan_fn(
     pec_sheets=(),
     pec_wires=(),
     dft_probes: list[DFTPlaneProbe] | None = None,
+    conductors=None,
 ):
     """Build a pure function ``f(materials, drives) -> (time_series, dft_accs)``
     suitable for vmap.
@@ -537,8 +538,8 @@ def _build_vmap_scan_fn(
     # this is the only place the batched lane can see them.
     pec_sheets = tuple(pec_sheets or ())
     pec_wires = tuple(pec_wires or ())
-    pec_edge_masks = None
-    if pec_mask is not None or pec_sheets or pec_wires:
+    pec_edge_masks = None if conductors is None else conductors.pec_edges
+    if conductors is None and (pec_mask is not None or pec_sheets or pec_wires):
         from rfx.boundaries.pec import realized_pec_edge_masks
         pec_edge_masks = realized_pec_edge_masks(
             pec_mask, sheets=pec_sheets, wires=pec_wires, periodic=periodic)
@@ -847,12 +848,17 @@ def _build_full_scan_fn(
             a for a in "xyz"
             if f"{a}_lo" in pec_faces_vm and f"{a}_hi" in pec_faces_vm)
 
+        from rfx.model.conductors import kernel_conductors
+        conductors = kernel_conductors(sim, grid, base_materials, pec_mask,
+            pec_sheets, pec_wires, periodic=periodic)
+
         if boundary == "cpml":
             # CPML requires its own state management.  For the vmapped path,
             # we build a scan function that includes CPML handling.
             run_one_fn = _build_vmap_scan_fn(
                 grid, n_steps,
                 use_cpml=True,
+                conductors=conductors,
                 sources=sources,
                 j_source_meta=j_source_meta,
                 probes=probes,
@@ -868,6 +874,7 @@ def _build_full_scan_fn(
             run_one_fn = _build_vmap_scan_fn(
                 grid, n_steps,
                 use_cpml=False,
+                conductors=conductors,
                 sources=sources,
                 # non-empty only for amplitude_kind='current' soft sources
                 # on a non-cpml boundary (issue #571): their Cb is material-

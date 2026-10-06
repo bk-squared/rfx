@@ -191,3 +191,82 @@ def test_traced_mesh_reports_unavailable_with_concrete_edges():
 
     with pytest.warns(UserWarning, match='check cannot run on a traced mesh'):
         jax.make_jaxpr(check)(root.grid.dx_arr)
+
+
+@pytest.mark.parametrize('amplitude_kind', ['field', 'current'])
+def test_vmap_fast_path_refuses_dead_source(amplitude_kind, monkeypatch):
+    import rfx.vmap_sweep as sweep
+    sim = model()
+    sim._ports[0] = replace(sim._ports[0], amplitude_kind=amplitude_kind)
+    sim.add_material('design', eps_r=2.)
+    sim.add(Box(point(1, 1, 1), point(2, 2, 2)), material='design')
+
+    def no_fallback(*args, **kwargs):
+        pytest.fail('this case must exercise the batched fast path')
+
+    monkeypatch.setattr(sweep, '_sequential_fallback', no_fallback)
+    with pytest.raises(ValueError, match='Soft source'):
+        sweep.vmap_material_sweep(sim, 'design.eps_r', [2., 3.], n_steps=3)
+
+
+@pytest.mark.parametrize('kind', ['volume', 'sheet', 'wire'])
+def test_vmap_adjacent_source_matches_scalar_run(kind):
+    from rfx.vmap_sweep import vmap_material_sweep
+    sim = model(kind=kind, adjacent=True)
+    sim.add_material('design', eps_r=2.)
+    sim.add(Box(point(1, 1, 1), point(2, 2, 2)), material='design')
+    swept = vmap_material_sweep(sim, 'design.eps_r', [2.], n_steps=3)
+    scalar = execute(sim, 'uniform')
+    np.testing.assert_array_equal(swept.time_series[0], scalar.time_series)
+    assert np.max(np.abs(swept.time_series)) > 0
+
+
+def test_topology_optimize_refuses_dead_source():
+    pytest.importorskip('optax')
+    from rfx.topology import TopologyDesignRegion, topology_optimize
+    sim = model()
+    region = TopologyDesignRegion(corner_lo=point(1, 1, 1),
+        corner_hi=point(2, 2, 2), material_bg='air', material_fg='fr4')
+    with pytest.raises(ValueError, match='Soft source'):
+        topology_optimize(sim, region, lambda result: -jnp.sum(result.time_series**2),
+            n_iterations=1, skip_preflight=True, verbose=False)
+
+
+def test_forward_concrete_pec_override_refuses_dead_source():
+    sim = model()
+    sim._geometry.clear()
+    grid = sim._build_grid()
+    mask = jnp.zeros(grid.shape, dtype=bool).at[6:8, 3:5, 3:5].set(True)
+    with pytest.raises(ValueError, match='Soft source'):
+        sim.forward(n_steps=3, skip_preflight=True, pec_mask_override=mask)
+
+
+def test_no_conductor_traced_mesh_does_not_warn():
+    import warnings
+    sim = model('graded')
+    sim._geometry.clear()
+    root = realized_conductors(sim, sim._build_nonuniform_grid(), nonuniform=True)
+    assert root.pec_edges is None
+
+    def check(cells):
+        refuse_dead_soft_sources(sim, replace(root, grid=root.grid._replace(dx_arr=cells)))
+        return cells
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        jax.make_jaxpr(check)(root.grid.dx_arr)
+    assert not caught
+
+
+def test_unchanged_kernel_conductors_do_not_repeat_admission(monkeypatch):
+    import rfx.model.source_admission as admission
+    calls = []
+    original = admission.refuse_dead_soft_sources
+
+    def check(sim, root):
+        calls.append(root)
+        return original(sim, root)
+
+    monkeypatch.setattr(admission, 'refuse_dead_soft_sources', check)
+    execute(model(adjacent=True), 'uniform')
+    assert len(calls) == 1

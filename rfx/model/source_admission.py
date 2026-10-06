@@ -17,7 +17,7 @@ def refuse_dead_soft_sources(sim, conductors):
     """
     sources = [(i, source) for i, source in enumerate(sim._ports)
                if source.impedance == 0.0]
-    if not sources:
+    if not sources or conductors.pec_edges is None:
         return
     grid = conductors.grid
     leaves = (tuple(grid.cells(a) for a in range(3)), conductors.pec_edges,
@@ -28,8 +28,6 @@ def refuse_dead_soft_sources(sim, conductors):
             "or traced conductor edges/source positions; no concrete "
             "realized edge classification is available.", UserWarning,
             stacklevel=3)
-        return
-    if conductors.pec_edges is None:
         return
     edges = tuple(np.asarray(edge, dtype=bool) for edge in conductors.pec_edges)
     if conductors.lane == 'nonuniform':
