@@ -884,15 +884,16 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                 sources.defer(make_wire_port_sources,
                               grid, wp, n_steps=n_steps, pec_edge_masks=wire_edges)
         elif pe.impedance == 0.0:
+            # Deferred like the ports: a load declared after this source is
+            # on the edge before the drive reads it.
             if sim._boundary == "cpml":
-                sources.append(make_j_source(grid, pe.position, pe.component,
-                                             pe.waveform, n_steps, materials,
-                                             amplitude_kind=pe.amplitude_kind))
+                sources.defer(make_j_source, grid, pe.position, pe.component,
+                              pe.waveform, n_steps,
+                              amplitude_kind=pe.amplitude_kind)
             else:
-                sources.append(make_source(grid, pe.position, pe.component,
-                                           pe.waveform, n_steps,
-                                           materials=materials,
-                                           amplitude_kind=pe.amplitude_kind))
+                sources.defer(make_source, grid, pe.position, pe.component,
+                              pe.waveform, n_steps,
+                              amplitude_kind=pe.amplitude_kind)
     if _record_probes is None:
         for pe in sim._probes:
             probes.append(make_probe(grid, pe.position, pe.component))

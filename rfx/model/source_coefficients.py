@@ -2,17 +2,24 @@
 from dataclasses import replace
 
 
-def edge_in_absorber_pad(grid, cell):
-    """The exact index spans populated by UPML's axis sigma builder."""
+def edge_in_absorber_pad(grid, cell, component=None):
+    """Whether the UPML update on this edge carries an absorber conductivity.
+
+    The UPML E update of a component uses only the conductivities of the
+    axes perpendicular to it, so an edge inside the pad of its own axis
+    alone keeps the interior coefficient. ``component=None`` asks about any
+    pad (a launch that drives more than one component).
+    """
     axes = getattr(grid, "cpml_axes", "xyz")
-    return any(axis in axes and (
+    own = component[-1] if component else None
+    return any(axis in axes and axis != own and (
         cell[a] < getattr(grid, f"pad_{axis}_lo", 0) or
         cell[a] >= grid.shape[a] - getattr(grid, f"pad_{axis}_hi", 0))
         for a, axis in enumerate("xyz"))
 
 
-def _refuse_pad_edge(grid, cell, label):
-    if edge_in_absorber_pad(grid, cell):
+def _refuse_pad_edge(grid, cell, label, component=None):
+    if edge_in_absorber_pad(grid, cell, component):
         raise ValueError(
             f"{label} edge {tuple(cell)} lies inside a UPML absorber pad; "
             "its source coefficient does not include the absorber operator. "
@@ -22,17 +29,25 @@ def _refuse_pad_edge(grid, cell, label):
 def resolve_run_sources(queue, materials, sim, grid, *, tensor=False):
     """Resolve after all stamps; preserve tensor branches pending their audit."""
     upml = sim._boundary == "upml" and grid.cpml_layers > 0
+    undriven = set()
     if upml:
         from rfx.sources.sources import _wire_port_cells, wire_port_from_entry
         from rfx.sources.msl_port import _msl_yz_cells, msl_port_from_entry
-        # Include passive ports and every declared wire edge, not only the
-        # excited source specs. Modal fringe source edges are checked below.
+        # Only a current drive multiplies the update coefficient. A source
+        # that prescribes the field increment and a port that is a load only
+        # inject nothing through it and are admitted anywhere.
         for n, port in enumerate(sim._ports):
             cells = (_wire_port_cells(grid, wire_port_from_entry(port))
                      if port.extent is not None else
                      [grid.position_to_index(port.position)])
+            prescribed = (port.impedance == 0.0
+                          and port.amplitude_kind == "field")
+            if prescribed or not getattr(port, "excite", True):
+                undriven.update((tuple(int(c) for c in cell), port.component)
+                                for cell in cells)
+                continue
             for cell in cells:
-                _refuse_pad_edge(grid, cell, f"source/port[{n}]")
+                _refuse_pad_edge(grid, cell, f"source/port[{n}]", port.component)
         for n, port in enumerate(sim._msl_ports):
             for cell in _msl_yz_cells(grid, msl_port_from_entry(port)):
                 _refuse_pad_edge(grid, cell, f"msl_port[{n}]")
@@ -46,8 +61,10 @@ def resolve_run_sources(queue, materials, sim, grid, *, tensor=False):
     sources = queue.resolve(materials)
     if upml:
         for source in sources:
-            cell = (source.i, source.j, source.k)
-            _refuse_pad_edge(grid, cell, f"{source.component} source")
+            cell = (int(source.i), int(source.j), int(source.k))
+            if (cell, source.component) not in undriven:
+                _refuse_pad_edge(grid, cell, f"{source.component} source",
+                                 source.component)
     return sources
 
 

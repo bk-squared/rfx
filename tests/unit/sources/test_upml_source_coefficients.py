@@ -40,21 +40,62 @@ def test_upml_interior_cell_owned_coefficient(lane, soft):
                                reference, rtol=3e-7)
 
 
-@pytest.mark.parametrize('lane', ['run', 'forward'])
-@pytest.mark.parametrize('kind', ['port', 'passive', 'soft', 'wire'])
-@pytest.mark.parametrize('axis_side', [(0, -1), (1, 1), (2, -1)])
-def test_upml_pad_source_refused(lane, kind, axis_side):
+def _pad_sim(kind, axis, side):
     sim = _upml_sim()
-    axis, side = axis_side
     pos = [.004] * 3
     pos[axis] = -.001 if side < 0 else .009
-    if kind == 'soft':
-        sim.add_source(tuple(pos), 'ez', waveform=jnp.ones_like, amplitude_kind='field')
+    if kind in ('soft_current', 'soft_field'):
+        sim.add_source(tuple(pos), 'ez', waveform=jnp.ones_like,
+                       amplitude_kind=kind[5:])
     else:
         sim.add_port(tuple(pos), 'ez', waveform=jnp.ones_like,
                      excite=kind != 'passive', extent=.001 if kind == 'wire' else None)
+    return sim
+
+
+@pytest.mark.parametrize('lane', ['run', 'forward'])
+@pytest.mark.parametrize('kind', ['port', 'soft_current', 'wire'])
+@pytest.mark.parametrize('axis_side', [(0, -1), (1, 1)])
+def test_upml_pad_current_drive_refused(lane, kind, axis_side):
+    # An Ez edge in the x or y pad: the UPML update carries that pad's
+    # conductivity and the drive's coefficient does not.
     with pytest.raises(ValueError, match='edge .* inside a UPML absorber pad'):
-        _solve_witness(sim, lane)
+        _solve_witness(_pad_sim(kind, *axis_side), lane)
+
+
+@pytest.mark.parametrize('lane', ['run', 'forward'])
+@pytest.mark.parametrize('kind,axis_side', [
+    ('passive', (0, -1)),       # a load only: nothing is injected
+    ('soft_field', (1, 1)),     # the field increment is prescribed
+    ('port', (2, -1)),          # Ez in the z pad: no perpendicular sigma
+    ('soft_current', (2, -1)),
+])
+def test_upml_pad_admits_what_has_no_coefficient_error(lane, kind, axis_side):
+    _solve_witness(_pad_sim(kind, *axis_side), lane)
+
+
+@pytest.mark.parametrize('component', ['ex', 'ey', 'ez'])
+def test_source_coefficient_is_the_upml_kernels_array(component):
+    # Tie to the array the UPML E update multiplies the curl by, so a change
+    # to that kernel cannot leave the source behind.
+    from dataclasses import replace
+    from rfx.boundaries.upml import init_upml
+    from rfx.core.yee import MaterialArrays
+    from rfx.grid import Grid
+    from rfx.model.materials import e_update_coefficient_at, with_components
+    grid = Grid(freq_max=8e9, domain=(.008,) * 3, dx=.001, cpml_layers=2)
+    shape = grid.shape
+    eps = jnp.ones(shape).at[shape[0] // 2:, :shape[1] // 2 + 1, :].set(4.)
+    sigma = jnp.zeros(shape).at[shape[0] // 2, :, shape[2] // 2:].set(.3)
+    materials = with_components(MaterialArrays(eps, sigma, jnp.ones(shape)),
+                                grid, periodic=(False,) * 3)
+    kernel = init_upml(grid, materials)
+    materials = materials._replace(components=replace(
+        materials.components, source_upml=True))
+    cell = tuple(n // 2 for n in shape)
+    got = e_update_coefficient_at(materials, cell, component, grid.dt)
+    want = getattr(kernel, f'cb_{component}')[cell]
+    np.testing.assert_allclose(float(got), float(want), rtol=3e-7)
 
 
 @pytest.mark.parametrize('lane', ['run', 'forward'])
