@@ -151,7 +151,7 @@ def _bits(a, b, label):
     assert a.shape == b.shape and a.dtype == b.dtype, label
     assert np.isfinite(a).all() and np.isfinite(b).all(), label + " nonfinite"
     assert a.tobytes() == b.tobytes(), (label, int(np.count_nonzero(a != b)),
-                                      float(np.max(np.abs(a - b))))
+                                      float(np.max(a != b)) if a.dtype == bool else float(np.max(np.abs(a - b))))
 
 
 def _cross_trace(a, b, label, summed=False):
@@ -302,6 +302,19 @@ def _per_shard():
     dt = sim._build_nonuniform_grid().dt
     for kind in ("debye", "lorentz"):
         captures[0][kind] = _completed_slabs(captures[0][kind], captures[0]["sharded_materials"], sg, dt, mesh)
+    # The legacy runner takes sharded cells and derives edges per slab. G1
+    # takes final edge components converted once globally. Keep the cell
+    # oracle; the edge comparison below uses the same global conversion as G1,
+    # so the independent witness is test_trace_and_eps_gradient_bits.
+    from rfx.boundaries.pec import realized_pec_edge_masks
+    grid = sim._build_nonuniform_grid()
+    cells = sim._assemble_materials_nu(grid)[3]
+    shd = NamedSharding(mesh, P("x"))
+    legacy_cells = jax.device_put(nu.shard_pec_mask_x_slab(cells, sg), shd)
+    _bits(captures[1]["sharded_pec_mask"], legacy_cells, "legacy PEC cells")
+    edges = realized_pec_edge_masks(cells, periodic=(False, False, False))
+    captures[1]["sharded_pec_mask"] = tuple(
+        jax.device_put(nu.shard_pec_mask_x_slab(edge, sg), shd) for edge in edges)
     checked = 0
     for name in captures[0]:
         if name in ("debye", "lorentz"):
@@ -312,7 +325,7 @@ def _per_shard():
                     assert x.device == y.device and x.index == y.index
                     _bits(x.data, y.data, str(path))
                     checked += 1
-    assert checked == 65 * len(jax.devices()), checked
+    assert checked == 67 * len(jax.devices()), checked
     print("RESULT " + json.dumps({"shard_arrays": checked, "version": jax.__version__}))
 
 

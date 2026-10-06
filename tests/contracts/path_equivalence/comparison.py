@@ -36,7 +36,29 @@ def metadata(name, key):
     return name.split('.')[0] in NAMED_RECORD_COLLECTIONS and key in OBSERVER_METADATA
 
 
-def compare(a, b, *, record, kind, measurements):
+def array_peak(*arrays):
+    """Maximum magnitude on both traces (also accepts a field's components)."""
+    return max((float(np.max(np.abs(np.asarray(a)), initial=0))
+                for a in arrays if a is not None), default=0.0)
+
+
+COMPONENT_GROUPS = (('ex', 'ey', 'ez'), ('hx', 'hy', 'hz'),
+                    ('e1_dft', 'e2_dft'), ('h1_dft', 'h2_dft'))
+
+
+def component_peaks(a, b):
+    """Sibling components of one recorded field; never combine E and H."""
+    peaks = {}
+    for group in COMPONENT_GROUPS:
+        keys = set(group) & (a.keys() | b.keys())
+        if keys:
+            peak = array_peak(*(tree[key] for tree in (a, b)
+                                for key in keys if key in tree))
+            peaks.update(dict.fromkeys(keys, peak))
+    return peaks
+
+
+def compare(a, b, *, record, kind, measurements, peak=None):
     """Record the evidence before asserting; absent records never pass."""
     if a is None or b is None:
         side = 'A and B' if a is None and b is None else 'A' if a is None else 'B'
@@ -44,13 +66,14 @@ def compare(a, b, *, record, kind, measurements):
     a, b = np.asarray(a), np.asarray(b)
     assert a.shape == b.shape, f"{record}: shape differs: {a.shape} vs {b.shape}"
     assert np.all(np.isfinite(a)) and np.all(np.isfinite(b)), f"{record}: nonfinite"
-    peak = max(float(np.max(np.abs(a), initial=0)), float(np.max(np.abs(b), initial=0)))
+    leaf_peak = array_peak(a, b)
+    peak = leaf_peak if peak is None else peak
     difference = float(np.max(np.abs(a.astype(np.complex128) - b.astype(np.complex128)), initial=0))
     bar = (0.0 if kind == 'exact' else
            STEP_ULPS * float(np.spacing(np.float32(peak))) if kind == 'step' else
            ACCUMULATED_RELATIVE * peak)
     relative = difference / peak if peak else (0.0 if difference == 0 else float('inf'))
     measurements.append(dict(record=record, kind=kind, difference=difference,
-                             peak=peak, relative=relative, bar=bar,
+                             peak=peak, leaf_peak=leaf_peak, relative=relative, bar=bar,
                              relative_bar=bar / peak if peak else 0.0))
     assert difference <= bar, f"{record}: relative diff {relative:.9g}; absolute diff {difference:.9g} > bar {bar:.9g}"

@@ -11,6 +11,7 @@ from rfx.core.drives import drives_from_sources, inject_drives
 from rfx.core.yee import MaterialArrays, init_state
 from rfx.grid import Grid
 from rfx.simulation import SourceSpec, ProbeSpec
+from tests.contracts.path_equivalence.comparison import array_peak, component_peaks, container
 
 
 def per_cell(state, drives, wave_t):
@@ -136,11 +137,27 @@ def test_production_step_scatter_count(lane, monkeypatch):
     print(lane, 'full-field scatters (1, 64):', counts)
 
 
-def assert_peak(got, expected, ulp=9):
+def assert_peak(got, expected, ulp=9, *, peak=None):
     got, expected = np.asarray(got), np.asarray(expected)
-    peak = np.max(np.abs(expected), initial=0)
+    peak = array_peak(got, expected) if peak is None else peak
     tolerance = ulp * abs(np.spacing(np.float32(peak)))
     assert np.max(np.abs(got-expected), initial=0) <= tolerance
+
+
+def assert_peak_tree(got, expected, *, peak=None):
+    """Retain component names until E/H peaks have been computed."""
+    got, expected = container(got), container(expected)
+    if isinstance(got, dict):
+        assert got.keys() == expected.keys()
+        peaks = component_peaks(got, expected)
+        for key in got:
+            assert_peak_tree(got[key], expected[key], peak=peaks.get(key))
+    elif isinstance(got, (tuple, list)):
+        assert len(got) == len(expected)
+        for a, b in zip(got, expected):
+            assert_peak_tree(a, b)
+    elif hasattr(got, 'dtype') and np.issubdtype(got.dtype, np.number):
+        assert_peak(got, expected, peak=peak)
 
 
 @pytest.mark.parametrize('lane', ['uniform', 'graded', 'distributed', 'distributed_graded'])
@@ -148,9 +165,7 @@ def test_production_equivalence(lane, monkeypatch):
     got = run_case(lane)
     use_per_cell_reference(monkeypatch)
     expected = run_case(lane)
-    for a, b in zip(jax.tree.leaves(got), jax.tree.leaves(expected)):
-        if hasattr(a, 'dtype') and np.issubdtype(a.dtype, np.number):
-            assert_peak(a, b)
+    assert_peak_tree(got, expected)
 
 
 def test_duplicates_magnetic_vmap_and_gradient():
@@ -203,8 +218,7 @@ def test_port_equivalence(lane, kind, monkeypatch):
     got = run()
     use_per_cell_reference(monkeypatch)
     expected = run()
-    for a, b in zip(got.state, expected.state):
-        assert_peak(a, b)
+    assert_peak_tree(got.state, expected.state)
     assert_peak(got.time_series, expected.time_series)
     assert got.dft_planes and expected.dft_planes
     if kind == 'wire':
@@ -251,9 +265,7 @@ def test_subgrid_fine_and_coarse_equivalence(monkeypatch):
     got = run()
     use_per_cell_reference(monkeypatch)
     expected = run()
-    for a, b in zip(jax.tree.leaves(got), jax.tree.leaves(expected)):
-        if hasattr(a, 'dtype'):
-            assert_peak(a, b)
+    assert_peak_tree(got, expected)
 
 
 @pytest.mark.parametrize('lane', ['uniform', 'graded'])
@@ -283,9 +295,7 @@ def test_uniform_magnetic_source_equivalence(monkeypatch):
     got = run()
     use_per_cell_reference(monkeypatch)
     expected = run()
-    for a, b in zip(jax.tree.leaves(got), jax.tree.leaves(expected)):
-        if hasattr(a, 'dtype'):
-            assert_peak(a, b)
+    assert_peak_tree(got, expected)
 
 
 def test_decay_preserves_unequal_waveform_padding(monkeypatch):
@@ -303,9 +313,7 @@ def test_decay_preserves_unequal_waveform_padding(monkeypatch):
     got = run()
     use_per_cell_reference(monkeypatch)
     expected = run()
-    for a, b in zip(jax.tree.leaves(got), jax.tree.leaves(expected)):
-        if hasattr(a, 'dtype'):
-            assert_peak(a, b)
+    assert_peak_tree(got, expected)
 
 
 def full_field_scatters(hlo):
@@ -404,3 +412,33 @@ def test_vmap_casts_mixed_sources_before_concatenation(monkeypatch):
         fn, args = vmap_case(1, mixed=True)
         jax.jit(jax.vmap(fn))(*args)
     assert dtypes
+
+
+@pytest.mark.parametrize('site', ['production', 'port', 'subgrid', 'magnetic', 'decay'])
+@pytest.mark.parametrize('field', ['e', 'h'])
+def test_field_peak_mutations(site, field):
+    from rfx.core.yee import FDTDState
+    strong = np.array([2.**20], dtype=np.float32)
+    tiny = np.array([1e-8], dtype=np.float32)
+    components = {c: tiny.copy() for c in ('ex', 'ey', 'ez', 'hx', 'hy', 'hz')}
+    components[field + 'x'] = strong
+    reference = FDTDState(**components, step=np.int32(1))
+
+    def wrap(state):
+        if site == 'port':
+            return state  # test_port_equivalence compares state directly.
+        if site == 'subgrid':
+            return dict(state_c=state, state_f=state)
+        return dict(state=state, time_series=tiny)
+
+    ulp = np.spacing(strong[0])
+    for count in (1, 2, 10):
+        changed = tiny + count * ulp
+        candidate = reference._replace(**{field + 'z': changed})
+        with pytest.raises(AssertionError):
+            assert_peak(changed, tiny)  # Old component-only call is red.
+        if count == 10:
+            with pytest.raises(AssertionError):
+                assert_peak_tree(wrap(candidate), wrap(reference))
+        else:
+            assert_peak_tree(wrap(candidate), wrap(reference))

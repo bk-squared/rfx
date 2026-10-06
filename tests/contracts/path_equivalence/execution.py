@@ -13,7 +13,7 @@ from rfx.runners import _admission as admission
 from tests.contracts import path_disposition
 
 from .builders import BASE_ROWS, build, point
-from .comparison import compare, container, excluded, metadata
+from .comparison import array_peak, compare, component_peaks, container, excluded, metadata
 
 
 @functools.lru_cache(maxsize=None)
@@ -80,17 +80,17 @@ def solve(row, lane, graded, steps, dt):
                 objective=objective, gradient=gradient, elapsed=time.perf_counter()-started)
 
 
-def _comparison(a, b, name, kind, report):
+def _comparison(a, b, name, kind, report, peak=None):
     try:
         if isinstance(a, (str, bool)) or isinstance(b, (str, bool)):
             assert a == b, f'{name}: {a!r} vs {b!r}'
         else:
-            compare(a, b, record=name, kind=kind, measurements=report['measurements'])
+            compare(a, b, record=name, kind=kind, measurements=report['measurements'], peak=peak)
     except AssertionError as exc:
         report['failures'].append(str(exc))
 
 
-def _tree(a, b, name, kind, report):
+def _tree(a, b, name, kind, report, peak=None):
     if a is None and b is None:
         return  # Optional fields inside a present record.
     if a is None or b is None:
@@ -99,6 +99,18 @@ def _tree(a, b, name, kind, report):
 
     a, b = container(a), container(b)
     if isinstance(a, dict) and isinstance(b, dict):
+        peaks = component_peaks(a, b) if kind != 'exact' else {}
+        # NTFF packs [Et1, Et2, Ht1, Ht2] on each face. The six faces
+        # belong to one surface field; residuals never contribute to its peak.
+        faces = ('x_lo', 'x_hi', 'y_lo', 'y_hi', 'z_lo', 'z_hi')
+        packed = name == 'ntff_data' and all(
+            np.ndim(tree[key]) > 0 and np.shape(tree[key])[-1] == 4
+            for tree in (a, b) for key in faces if key in tree and tree[key] is not None)
+        if packed:
+            field_peaks = {field: array_peak(*(
+                np.asarray(tree[key])[..., sl] for tree in (a, b)
+                for key in faces if key in tree and tree[key] is not None))
+                for field, sl in (('E', slice(0, 2)), ('H', slice(2, 4)))}
         for key in sorted(a.keys() | b.keys()):
             if excluded(name, key):
                 continue
@@ -108,9 +120,13 @@ def _tree(a, b, name, kind, report):
                 continue
             if key not in a or key not in b:
                 report['failures'].append(f"{name}.{key}: record missing on {'A' if key not in a else 'B'}")
+            elif packed and key in faces and a[key] is not None and b[key] is not None:
+                for field, sl in (('E', slice(0, 2)), ('H', slice(2, 4))):
+                    _comparison(np.asarray(a[key])[..., sl], np.asarray(b[key])[..., sl],
+                                f'{name}.{key}.{field}', kind, report, field_peaks[field])
             else:
                 _tree(a[key], b[key], f'{name}.{key}',
-                      'exact' if metadata(name, key) else kind, report)
+                      'exact' if metadata(name, key) else kind, report, peaks.get(key))
     elif isinstance(a, (tuple, list)) and isinstance(b, (tuple, list)):
         for i in range(max(len(a), len(b))):
             if i >= len(a) or i >= len(b):
@@ -120,7 +136,7 @@ def _tree(a, b, name, kind, report):
     elif isinstance(a, (dict, tuple, list)) or isinstance(b, (dict, tuple, list)):
         report['failures'].append(f'{name}: record structure differs: {type(a).__name__} vs {type(b).__name__}')
     else:
-        _comparison(a, b, name, kind, report)
+        _comparison(a, b, name, kind, report, peak)
 
 
 def _kernel_materials(capture):

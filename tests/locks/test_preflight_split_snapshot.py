@@ -683,6 +683,8 @@ def test_the_declared_reexport_surface_is_the_whole_import_block():
 # public members only, and every name below is private.
 # ---------------------------------------------------------------------------
 _REBOUND_ON_MIXIN = {
+    # S1 G1: the run-all-checks body moved out of rfx/api/_preflight.py.
+    "rfx.preflight._impl": ("_preflight_impl",),
     "rfx.preflight.msl": (
         "_check_msl_port_geometry", "_msl_assemble_once",
         "_msl_conductor_gap", "_msl_declared_face_geometry",

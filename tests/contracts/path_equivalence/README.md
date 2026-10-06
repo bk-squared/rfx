@@ -36,12 +36,17 @@ are excluded. The declared-length record semantics are documented once in
 FINDINGS.md. Kernel material views come from `_realized.capture`; E-side
 lumped terms are read at E, not from H's intentionally smaller container.
 
-`comparison.py` owns the bars: 9 float32 ULP at each numeric leaf's own peak per step;
-`1e-4` of that peak for accumulated records, objective and gradient. Forward
+`comparison.py` owns the bars: 9 float32 ULP at the field peak per step;
+`1e-4` of that peak for accumulated vector fields. Scalar quantities, objective
+and gradient keep their own peak. Forward
 cells use JVP of a design-permittivity multiplier, with squared probe samples
 as the objective. Current moments use their supported bounded design box.
-Each numeric leaf uses the larger peak of that leaf on the two paths, never
-another leaf's scale. Observer configuration and geometry (`OBSERVER_METADATA`,
+Named E components share the largest E magnitude on either path; H components
+share a separate H peak. Flux tangential components follow the same rule. NTFF
+faces are split into E/H slots, with separate peaks across the six faces.
+Different observers and different physical quantities (e.g. V and I) are not
+merged.
+Observer configuration and geometry (`OBSERVER_METADATA`,
 including frequencies, indices, windows and area weights) remain exact.
 The named `NTFF_KAHAN_RESIDUALS` list excludes `c_x_lo`, `c_x_hi`,
 `c_y_lo`, `c_y_hi`, `c_z_lo`, `c_z_hi`: these are internal Kahan carries, never

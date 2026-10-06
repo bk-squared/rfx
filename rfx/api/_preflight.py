@@ -917,109 +917,13 @@ class _PreflightMixin:
             Empty if no issues found. Finite flux-window geometry is recorded
             separately in ``flux_regions``, including for issue-free reports.
         """
-        import warnings
-        # Selection information belongs outside the captured legality findings.
-        # Resolve before any validator reads a profile or fallback spacing.
-        self._resolve_mesh()
-        issues = PreflightReport()
+        return self._preflight_impl(
+            strict=strict, check_ntff=check_ntff, check_resolution=check_resolution,
+            check_ad_memory=check_ad_memory, n_steps_for_memory=n_steps_for_memory,
+            available_memory_gb=available_memory_gb,
+        )
 
-        # Static geometry diagnostics must stay host-side under an outer
-        # jit, just like mesh selection. Otherwise even a concrete Box's
-        # mask becomes a tracer before validators convert it to numpy.
-        # Incoming mesh/design tracers remain tracers and retain the
-        # validators' existing not-evaluable guards.
-        with warnings.catch_warnings(record=True) as caught, jax.ensure_compile_time_eval():
-            warnings.simplefilter("always")
-            self._collect_flux_regions(issues)
-            try:
-                if check_resolution:
-                    self._validate_mesh_quality()
-                self._validate_simulation_config()
-                if check_ntff:
-                    self._validate_ntff_inverse_design(
-                        include_pec_overlap_error=(check_ntff != "advisory"),
-                    )
-            except ValueError as e:
-                # Collect (do NOT fail-on-first): the aggregated raise at the
-                # end escalates every finding at once under strict.
-                # Structurally-impossible configs raise PreflightConfigError
-                # with the slug set at the check site; any other ValueError is
-                # error-severity but uncoded.
-                issues.append(PreflightIssue(
-                    f"ERROR: {e}",
-                    severity="error",
-                    code=getattr(e, "code", "uncoded"),
-                    loc=getattr(e, "loc", None),
-                    source=getattr(e, "source", None),
-                ))
-
-        for w in caught:
-            msg = str(w.message)
-            # Collect (do NOT fail-on-first): aggregated raise at the end.
-            # Prefer the structured fields carried on the warning INSTANCE
-            # (PreflightWarning); fall back to the category-derived severity for
-            # the legacy ``warnings.warn(msg, PreflightErrorWarning)`` form, and
-            # to severity="warning"/code="uncoded" for any plain UserWarning.
-            inst = w.message
-            if isinstance(inst, PreflightWarning):
-                severity = inst.severity
-                code = inst.code
-                loc = inst.loc
-                source = inst.source
-            else:
-                severity = (
-                    "error" if issubclass(w.category, PreflightErrorWarning)
-                    else "warning"
-                )
-                code = "uncoded"
-                loc = None
-                source = None
-            issues.append(PreflightIssue(
-                msg, severity=severity, code=code, loc=loc, source=source
-            ))
-
-        if check_ad_memory:
-            if n_steps_for_memory is None:
-                raise ValueError("check_ad_memory=True requires n_steps_for_memory")
-            est = self.estimate_ad_memory(
-                n_steps_for_memory,
-                available_memory_gb=available_memory_gb,
-            )
-            if est.warning:
-                issues.append(PreflightIssue(
-                    est.warning, severity="warning", code="ad_memory"
-                ))
-
-        if strict and len(issues):   # PreflightReport refuses bool() (#980)
-            # Aggregate-then-raise: escalate ALL findings at once. Preserves the
-            # historical "strict escalates any issue to ValueError" contract,
-            # but reports every problem in one pass instead of fail-on-first
-            # (pydantic / Tidy3D pattern). For an errors-only gate that lets
-            # advisories through, call ``report.raise_for_failure()`` on a
-            # ``strict=False`` report instead.
-            raise ValueError(
-                f"preflight (strict) found {len(issues)} issue(s):\n  - "
-                + "\n  - ".join(issues)
-            )
-
-        if len(issues):              # PreflightReport refuses bool() (#980)
-            for iss in issues:
-                print(f"  [PREFLIGHT] {iss}")
-        elif check_ntff is True:
-            print("  [PREFLIGHT] All checks passed.")
-        elif check_ntff == "advisory":
-            print("  [PREFLIGHT] All checks passed (NTFF advisory tier; the "
-                  "PEC-overlap error check runs on forward()/preflight()).")
-        else:
-            print("  [PREFLIGHT] All checks passed (NTFF checks skipped; "
-                  "run sim.preflight() for the full set).")
-
-        if issues.flux_regions:
-            from rfx.probes.flux_region import flux_region_message
-            for record in issues.flux_regions:
-                print(f"  [FLUX REGION] {flux_region_message(record)}")
-
-        return issues
+    from rfx.preflight._impl import _preflight_impl
 
     def preflight_sparameters(
         self,

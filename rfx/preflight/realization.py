@@ -66,6 +66,9 @@ edge here reds most of the corpus rather than one line of one report.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
+
 import jax.numpy as jnp
 import numpy as np
 
@@ -296,6 +299,25 @@ class _EntryRealization:
                                     periodic)
 
 
+# Deferral is scoped to one public preflight call. Standalone readers emit
+# directly; a scope exit flushes even when no later realization reader runs.
+_assembly_warning_readers = ContextVar("assembly_warning_readers", default=None)
+
+
+@contextmanager
+def assembly_warning_scope():
+    readers = []
+    token = _assembly_warning_readers.set(readers)
+    try:
+        yield
+    finally:
+        try:
+            for ctx in readers:
+                ctx._emit_assembly_warnings()
+        finally:
+            _assembly_warning_readers.reset(token)
+
+
 class _CampaignStaticsContext:
     """Shared lazily-built state for the issue-#703 campaign checks and
     every other preflight check that reads conductor geometry.
@@ -393,22 +415,40 @@ class _CampaignStaticsContext:
     # The realized conductor set (whole model) and per-entry realization
     # ------------------------------------------------------------------
 
-    def realized(self, *, strict=False):
+    def realized(self, *, strict=False, defer_warnings=False):
         """:class:`_RealizedPEC` from the PRODUCTION assembly (with the
         #931 sheet/wire collectors), once; ``None`` when the assembly
         raised (``assembly_error`` says why). Strict execution/build readers
         re-raise the original exception, including after a diagnostic read.
         """
+        import warnings
+        from contextlib import nullcontext
+        readers = _assembly_warning_readers.get()
+        defer = defer_warnings and readers is not None
         if self._realized is None and self.assembly_error is None:
-            try:
-                self._realized = self.sim._assemble_realized(
-                    self.grid, nonuniform=(self.lane == "nonuniform"))
-            except self._NARROW_EXCS as exc:
-                self.assembly_error = f"{type(exc).__name__}: {exc}"
-                self._assembly_exception = exc
+            with (warnings.catch_warnings(record=True) if defer else nullcontext([])) as emitted:
+                try:
+                    self._realized = self.sim._assemble_realized(
+                        self.grid, nonuniform=(self.lane == "nonuniform"))
+                except self._NARROW_EXCS as exc:
+                    self.assembly_error = f"{type(exc).__name__}: {exc}"
+                    self._assembly_exception = exc
+            if emitted:
+                self._assembly_warnings = tuple(emitted)
+                readers.append(self)
+        if not defer:
+            self._emit_assembly_warnings()
         if strict and self._assembly_exception is not None:
             raise self._assembly_exception
         return self._realized
+
+    def _emit_assembly_warnings(self):
+        import warnings
+        emitted = getattr(self, '_assembly_warnings', ())
+        self._assembly_warnings = ()
+        for warning in emitted:
+            warnings.warn_explicit(warning.message, warning.category,
+                                   warning.filename, warning.lineno)
 
     def assembled(self):
         """``(materials, pec_mask)`` — kept for callers that only read
@@ -443,6 +483,10 @@ class _CampaignStaticsContext:
         from rfx.geometry.smoothing import continued_conductor_shape
         sim = self.sim
         out = []
+        assembled = self.realized(defer_warnings=True)
+        products = {key: (cells, sheet, wire, shape)
+                    for key, cells, sheet, wire, shape in
+                    getattr(assembled, "assembly_entries", ())}
 
         def _bounds(shape):
             lo, hi = _sorted_box_corners(shape)
@@ -488,12 +532,15 @@ class _CampaignStaticsContext:
             label = f"geometry[{i}]"
             lo, hi = _bounds(entry.shape)
             try:
-                solved = continued_conductor_shape(
-                    sim, self.grid, entry.shape, entry=entry)
-                cells, sheet, wire = classify_pec_entry(
-                    solved,
-                    self.coords, self.centres, self.cell_sizes,
-                    name=entry.material_name, grid=self.grid)
+                if id(entry) in products:
+                    cells, sheet, wire, solved = products[id(entry)]
+                else:
+                    # Refused-model diagnostics retain per-entity evidence.
+                    solved = continued_conductor_shape(
+                        sim, self.grid, entry.shape, entry=entry)
+                    cells, sheet, wire = classify_pec_entry(
+                        solved, self.coords, self.centres, self.cell_sizes,
+                        name=entry.material_name, grid=self.grid)
             except self._NARROW_EXCS as exc:
                 # A shape that cannot be rasterized is a FINDING, not a
                 # crash: preflight's job is to report. One unplaceable
@@ -532,12 +579,14 @@ class _CampaignStaticsContext:
                         sim, self.grid, tc.shape, entry=tc)))
                 continue
             try:
-                solved = continued_conductor_shape(
-                    sim, self.grid, tc.shape, entry=tc)
-                sheet = sheet_spec_from_shape(
-                    solved,
-                    self.coords, self.cell_sizes, name=label,
-                    lane=self.lane or "", refuse_thick=True, grid=self.grid)
+                if id(tc) in products:
+                    _, sheet, _, solved = products[id(tc)]
+                else:
+                    solved = continued_conductor_shape(
+                        sim, self.grid, tc.shape, entry=tc)
+                    sheet = sheet_spec_from_shape(
+                        solved, self.coords, self.cell_sizes, name=label,
+                        lane=self.lane or "", refuse_thick=True, grid=self.grid)
             except ValueError as exc:
                 out.append(_EntryRealization(
                     label=label, name=label, shape=tc.shape, kind="refused",
@@ -653,23 +702,8 @@ def _assemble_realized(self, grid, *, nonuniform: bool):
     cell mask: a sheet owns no cell, and a volume's far face is a
     wall the cell mask does not mark (the #868 class).
     """
-    sheets: list = []
-    wires: list = []
-    sheet_specs: list = []
-    geometry_masks: list = []
-    if nonuniform:
-        mats, _, _, pec_mask = self._assemble_materials_nu(
-            grid, sheet_specs=sheet_specs, pec_sheets=sheets,
-            pec_wires=wires, geometry_masks=geometry_masks)
-    else:
-        mats, _, _, pec_mask, _, _, _ = self._assemble_materials(
-            grid, sheet_specs=sheet_specs, pec_sheets=sheets,
-            pec_wires=wires, geometry_masks=geometry_masks)
-    return _RealizedPEC(
-        lane="nonuniform" if nonuniform else "uniform", grid=grid,
-        materials=mats, pec_mask=pec_mask, sheets=sheets, wires=wires,
-        periodic=self._periodic_flags(), sheet_specs=sheet_specs,
-        geometry_masks=geometry_masks)
+    from rfx.model.conductors import realized_conductors
+    return realized_conductors(self, grid, nonuniform=nonuniform, mode="audit")
 
 def _port_realized_edges(self, grid):
     """:class:`_RealizedPEC` for the uniform lane, or ``None``.

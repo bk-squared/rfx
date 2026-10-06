@@ -599,7 +599,7 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
 
 
 def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
-                    _source_port_indices=None, _record_probes=None, **kwargs):
+                    _source_port_indices=None, _record_probes=None, preflight=None, assembly=None, **kwargs):
     """Run FDTD simulation distributed across multiple devices.
 
     Uses 1D slab decomposition along the x-axis.  Supports PEC and
@@ -651,6 +651,9 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             "sources. Falling back to single-device execution.",
             stacklevel=2,
         )
+        # The nested run builds its own solve product; release the one
+        # built for this call's preflight first.
+        assembly = None
         return sim.run(n_steps=n_steps)
 
     if sim._waveguide_ports:
@@ -659,6 +662,9 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             "Falling back to single-device execution.",
             stacklevel=2,
         )
+        # The nested run builds its own solve product; release the one
+        # built for this call's preflight first.
+        assembly = None
         return sim.run(n_steps=n_steps)
 
     refuse_unsupported_distributed_features(
@@ -735,29 +741,29 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # model with the Box deleted). It also had to warn that redrawing a
     # sheet as a volume did NOT help. Both statements are now false here.
     # Those limitations also applied to the now-retired pmap runner.
-    # run()'s preflight memoizes the production assembly -- whole-domain
-    # materials and realized conductor masks -- on Simulation
-    # (rfx/preflight/realization.py::_campaign_ctx). Only preflight reads it,
-    # and its checks are done; drop it before this lane assembles its own
-    # copy, so neither copy is on the device when the slabs are staged and
-    # the time loop runs. A later preflight rebuilds it from the same key.
+    # Drop any standalone diagnostic arrays before allocating solve products.
     sim._pf_campaign_ctx = None
+    sim._realized_geometry_record = None
+    from rfx.model.conductors import assembled_materials, solve_conductors, kernel_conductors, at_kernel
     _d_pec_sheets: list = []
     _d_pec_wires: list = []
     _geometry_masks, _assembly_entries = [], []
-    grid = sim._build_grid()
+    if assembly is None:
+        grid = sim._build_grid()
+        conductors = solve_conductors(sim, grid, preflight=preflight)
+    else:
+        conductors = assembly.take()
+        grid = conductors.grid
     base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, *_assembly_rest = (
-        sim._assemble_materials(grid, pec_sheets=_d_pec_sheets,
+        assembled_materials(conductors, pec_sheets=_d_pec_sheets,
                                 pec_wires=_d_pec_wires,
                                    geometry_masks=_geometry_masks, assembly_entries=_assembly_entries)
     )
     # The rest (Kerr chi3 among it, refused above) is unused on this lane;
     # drop it now so no whole-domain array stays alive through the loop.
     del _assembly_rest
-    from rfx.realized_geometry import record_from_assembly
-    geometry_record = record_from_assembly(
-        sim, grid, base_materials, pec_mask, _d_pec_sheets, _d_pec_wires,
-        _geometry_masks, _assembly_entries, lane="run_distributed")
+    conductors = kernel_conductors(sim, grid, base_materials, pec_mask,
+        _d_pec_sheets, _d_pec_wires, periodic=sim._periodic_flags(), root=conductors)
     del _geometry_masks, _assembly_entries
     from rfx.sources.wire_radius import require_radius_update
     require_radius_update(base_materials, lane="distributed_v2", unsupported=True)
@@ -921,6 +927,9 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         src_waveforms = jnp.zeros((n_steps, 0), dtype=jnp.float32)
 
     # ------------------------------------------------------------------
+    conductors, geometry_record = at_kernel(sim, conductors, lane="run_distributed", pec_edges=conductors.pec_edges)
+    pec_edges = conductors.pec_edges
+    del conductors, base_materials
     # Create state directly on its owning devices and stage materials one
     # addressable slab at a time, without whole-domain slab stacks.
     # ------------------------------------------------------------------
@@ -973,9 +982,13 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # ``run_distributed``'s ``**kwargs``: that bag is read only for ``bloch``
     # and otherwise discarded (it was forwarded only to the pmap runner at one
     # device, until #1296).
-    sharded_pec_mask = (
-        None if pec_mask is None
-        else shard_x_slabs(pec_mask, n_devices, nx_per, ghost, False, shd))
+    # Alignment rows are still PEC; ghosts are still excluded by the kernel.
+    sharded_pec_mask = (None if pec_edges is None else tuple(
+        shard_x_slabs(jnp.pad(edge, ((0, pad_x), (0, 0), (0, 0)),
+                             constant_values=True),
+                      n_devices, nx_per, ghost, False, shd)
+        for edge in pec_edges))
+    del pec_edges
 
     # ------------------------------------------------------------------
     # Dispersive materials
@@ -993,7 +1006,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     debye, lorentz = stage_dispersion_slabs(
         materials, grid.dt, debye_spec, lorentz_spec,
         n_devices, nx_per, ghost, shd, nx=nx)
-    del base_materials, materials, pec_mask, pec_shapes
+    del materials, pec_mask, pec_shapes
     del debye_spec, lorentz_spec
     if pad_x > 0:
         if has_debye:
@@ -1317,13 +1330,10 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             st, mesh, n_devices, nx_local, pad_x=pad_x,
             pec_faces=e_wall_faces, ranks=ranks)
 
-        # 6b. Realized-PEC cell mask (#1053). Geometry PEC is distinct from
-        #     the declared domain faces above. Each rank realizes the
-        #     per-component edge masks on its own slab by calling the one
-        #     owner, rfx.boundaries.pec.realized_pec_edge_masks, and zeroes
-        #     only its REAL cells; the ghost rows are forced False inside the
-        #     kernel so a seam cell is zeroed exactly once, by the rank that
-        #     owns it.
+        # 6b. Realized conductor edges, distinct from domain walls. The
+        #     global object already applied the shared PEC rule. Each rank
+        #     zeros only owned rows; the kernel excludes ghosts so a seam
+        #     edge is zeroed once and exchanged from its owner.
         #
         #     POSITION IS LOAD-BEARING: after injection, immediately BEFORE
         #     the E ghost exchange. The exchange then hands the neighbour a

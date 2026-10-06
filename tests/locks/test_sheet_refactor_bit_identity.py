@@ -44,18 +44,11 @@ realization contract itself is
 ``tests/contracts/test_lattice_ownership_contract.py``.
 """
 
-LOCK_PROVENANCE = {
-    "fixture": "none",
-    "generator": "hand-derived (inline copy of the refactored expressions)",
-    "commit": "f31ab907",
-    "date": "2026-09-07",
-    "run_id": "local",
-    "host": "JAX cpu float32 (os / jax version not recorded in #678)",
-    "pinned_until": "2027-02-16",
-}
-
 import numpy as np
 import jax.numpy as jnp
+import pytest
+
+from tests.contracts.path_equivalence.comparison import array_peak
 
 from rfx.core.yee import (
     MaterialArrays,
@@ -71,12 +64,23 @@ from rfx.core.yee import (
 )
 from rfx.boundaries.pec import apply_pec_mask, realized_pec_edge_masks
 
+LOCK_PROVENANCE = {
+    "fixture": "none",
+    "generator": "hand-derived (inline copy of the refactored expressions)",
+    "commit": "f31ab907",
+    "date": "2026-09-07",
+    "run_id": "local",
+    "host": "JAX cpu float32 (os / jax version not recorded in #678)",
+    "pinned_until": "2027-02-16",
+}
+
 _SHAPE = (9, 8, 7)
 
 
 def _rand_state(rng):
     st = init_state(_SHAPE)
-    f = lambda: jnp.asarray(rng.standard_normal(_SHAPE).astype(np.float32))
+    def f():
+        return jnp.asarray(rng.standard_normal(_SHAPE).astype(np.float32))
     return st._replace(ex=f(), ey=f(), ez=f(), hx=f(), hy=f(), hz=f())
 
 
@@ -267,10 +271,7 @@ def test_update_kernels_equal_the_shared_curl_and_coefficient_helpers():
 
     ref = ref_uniform(st, mats)
     got = update_e(st, mats, dt, dx, periodic=per)
-    for g, r in zip((got.ex, got.ey, got.ez), ref):
-        r_np = np.asarray(r)
-        np.testing.assert_allclose(np.asarray(g), r_np, rtol=1e-5,
-                                   atol=1e-5 * np.abs(r_np).max())
+    _assert_e_fields((got.ex, got.ey, got.ez), ref)
 
     inv = [jnp.asarray(rng.random(n).astype(np.float32) + 0.5) for n in _SHAPE]
 
@@ -293,7 +294,34 @@ def test_update_kernels_equal_the_shared_curl_and_coefficient_helpers():
 
     ref = ref_nu(st, mats, *inv)
     got = jax.jit(update_e_nu)(st, mats, dt, *inv)
-    for g, r in zip((got.ex, got.ey, got.ez), ref):
-        r_np = np.asarray(r)
-        np.testing.assert_allclose(np.asarray(g), r_np, rtol=1e-5,
-                                   atol=1e-5 * np.abs(r_np).max())
+    _assert_e_fields((got.ex, got.ey, got.ez), ref)
+
+
+def _assert_e_fields(got, expected):
+    # This assembly lock retains its existing 1e-5 envelope; E components
+    # share the E field peak over both graphs. H is never included.
+    peak = array_peak(*got, *expected)
+    for g, r in zip(got, expected):
+        np.testing.assert_allclose(np.asarray(g), np.asarray(r), rtol=1e-5,
+                                   atol=1e-5 * peak)
+
+
+@pytest.mark.parametrize('component', [0, 1, 2])
+def test_assembly_field_peak_mutations(component):
+    # Both kernel sites above use this helper, independently of solver setup.
+    peak = np.float32(2.**20)
+    ulp = np.spacing(peak)
+    tiny = np.array([1e-8], dtype=np.float32)
+    expected = [tiny, tiny, tiny]
+    expected[(component + 1) % 3] = np.array([peak], dtype=np.float32)
+    candidate = expected.copy()
+    for count in (1, 2, 10):
+        noisy = tiny + count * ulp
+        candidate[component] = noisy
+        _assert_e_fields(candidate, expected)
+        with pytest.raises(AssertionError):
+            np.testing.assert_allclose(noisy, tiny, rtol=1e-5, atol=1e-5 * abs(tiny).max())
+    # 10 ULP is below this lock's existing 1e-5 bar. Test its actual boundary.
+    candidate[component] = tiny + 1.01e-5 * peak
+    with pytest.raises(AssertionError):
+        _assert_e_fields(candidate, expected)

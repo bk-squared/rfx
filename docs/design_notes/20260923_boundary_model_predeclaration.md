@@ -319,3 +319,67 @@ this design's seed, and its tests are rewritten in B3 with the reason. The one-c
 #1205's `test_magnetic_wall_faces_not_shorted.py` and the ports lane's two #1162 tests on the same
 line (`lane:coax-mixed-port`) — is rebuilt in B3 as a line whose port and load sit at least two cells
 from any magnetic face, or on the face under the "full" convention with a migrated current loop.
+
+## 7. Decision record, 2026-10-05: S1 boundaries (the structure plan's realized-model stage)
+
+The PI's 2026-10-04 restructuring makes the remaining kernel work of §3 (B4, B6) part of stage S1:
+one declaration, one realized model, every path reads it. For boundaries the duplicated part today
+is not the absorber law (one `_cpml_profile` since #1374) but the **reading of the declaration into
+per-face depths**: the same rule — a wall face or a face on a non-absorbing axis gets no pad, an
+absorbing face gets its declared thickness or the scalar budget — is written out in `grid.py`
+(`Grid._face_pad`), in `nonuniform.py` (`_face_pad`, with a range check the uniform copy lacks), in
+`init_cpml` (`n_active`), in the multi-device builder (`_distributed_boundary_layers`, which omits the
+non-absorbing-axis test), in `api/_compile.py`, and again in several preflight readers. #1346 was two
+of these copies disagreeing (the graded grid dropped per-face depths, a 4/8 request built 8/8).
+
+Decisions:
+1. The boundary model gains one function that returns, per face, the kind, the declared depth, the
+   realized depth (pad cells) and the absorber's terminal plane — no coefficient arrays: `init_cpml`
+   stays the one coefficient builder and takes its depths from this record. Every place listed above
+   reads the record; no module outside `rfx/boundaries/` derives a per-face depth from the declaration.
+2. Two PRs. PR1: the record, the uniform and graded grid builders, `init_cpml`, `api/_compile.py`, and
+   the contracts below. PR2: the multi-device builder and the preflight readers. The TF/SF auxiliary
+   grids (own spacing, own depth) and the ψ-update copies (stage S3) are out of scope.
+3. Judges.
+   - Non-regression: every cell of the S0 path-equivalence matrix (#1484) that passes before passes
+     after, bit-for-bit on the realized record and within its own bars on fields; no committed test,
+     lock or frozen record changes value. Expected to move: nothing. A cell that moves stops the PR
+     for a written root cause.
+   - One source (structural): a contract test scans `rfx/` and fails if a module outside
+     `rfx/boundaries/` reads a declaration's per-face depth (`face_layers.get(…)`, `face_layers[…]`,
+     `resolved_lo/hi_thickness`, `lo/hi_thickness`) other than through the record. Mutation (a): the
+     scan disabled → red on a seeded file. Mutation (b): restore #1346 in the graded builder (per-face
+     depth replaced by the scalar budget while it still calls the record for everything else) →
+     the physical judge below goes red.
+   - Physical: an asymmetric declaration (x low 8 layers, x high 16, y PEC, z absorbing at 12) on the
+     uniform and the graded single-device paths (PR2 adds the two multi-device paths): the plane-wave
+     reflection of each x face, measured as a reflection coefficient over a band
+     (`tests/_absorber_witness.py`), agrees between the paths within its float32 floor, and the deeper
+     face reflects less than the shallower one by the margin the single-device run shows. The
+     restored-#1346 mutation makes the graded x-high face read like 8 layers.
+
+Addendum, 2026-10-05 (leader, after the PR1 implementer stopped on a mismatch). The uniform and graded
+copies differ on two inputs: a per-face depth above the budget on a face of a non-absorbing axis (the
+uniform grid raises, the graded grid ignores it), and a fractional depth on an absorbing face (the
+uniform grid truncates 1.5 to 1, the graded grid raises). Neither input reaches either builder through
+the public API: `Boundary` refuses a non-integer thickness and a thickness on a non-absorbing face before
+any grid is built (checked on 31ecbefb with `Simulation(boundary=…)`, uniform and graded). Only a direct
+call of `Grid(…, face_layers=…)` or `make_nonuniform_grid(…, face_layers=…)` reaches them. Decision: the
+record applies the strict rule to every face it is given — an integer between 0 and the budget, raising
+otherwise — so the two builders agree; no public result changes. A test pins both inputs on both builders.
+
+Addendum 2, 2026-10-05 (leader, second implementer stop). A reachable difference, through the exported
+low-level `rfx.run(grid, materials, n_steps, boundary="cpml")`: a uniform grid built with
+`cpml_axes="z"` has zero pads on x and y, yet `init_cpml` still builds full 8-layer absorbing profiles on
+the x and y faces, and `rfx.run` applies them because its own `cpml_axes` argument defaults to "xyz". The
+absorber then sits on the outermost eight cells of the physical domain on x and y. The graded builder
+gives no-op profiles there. `test_an_axis_outside_cpml_axes_keeps_its_pre_876_applied_depth` pins the
+uniform behaviour as a regression baseline (it guarded #876's clamp, not the physics of the dual knob).
+`Simulation` never reaches this: it passes one consistent axis set. Decision for PR1, which promises no
+result change: the record's realized depth is the pad (0 on those faces), and `init_cpml` keeps its
+present profile depth for faces outside the grid's absorbing axes, labelled in code as the legacy dual
+declaration with a pointer here; the structural contract allow-lists exactly that line. The dual
+declaration itself (grid axes vs the runner argument) is a separate decision, raised with the lead: the
+candidate is that the runner reads the grid's axes and refuses a conflicting explicit argument, with
+the #876 test rewritten with its reason. That change moves results on the low-level API and does not
+belong in this PR.
