@@ -425,6 +425,8 @@ def test_coax_stub_cannot_overwrite_the_registered_junction_and_substrate(ground
     sim.add_msl_port(position=(8*DX, 12*DX, ground*DX), width=4*DX,
                      height=4*DX, direction="+x", eps_r_sub=3.)
     grid = sim._build_grid()
+    from rfx.preflight.line_stub import line_stub_findings
+    assert line_stub_findings(sim, grid) == []  # #1512: pinned port node, no tail.
     registered = sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])[0]
     join = grid.pad_z_lo+15  # exact half-cell tie must also select node 15
     i, j = grid.pad_x_lo+8, grid.pad_y_lo+12

@@ -1,5 +1,4 @@
 """Band-scoped #1512 admission, before any solver work (including bypass)."""
-from types import SimpleNamespace
 import warnings
 
 import numpy as np
@@ -31,7 +30,7 @@ def test_in_band_and_inclusive_near_edges_refuse(direction, ratio):
         stub.require_no_resonant_line_stub(sim, [fq/ratio])
     assert '6 mm behind the port' in str(error.value)
     assert 'eps_eff=1' in str(error.value)
-    assert 'start the strip no more than one cell behind the port plane' in str(error.value)
+    assert 'start the signal strip at that coordinate' in str(error.value)
 
 
 def test_third_odd_resonance_refuses_when_fundamental_is_far_below_band():
@@ -55,7 +54,7 @@ def test_every_entry_refuses_before_assembly(method, frequency_argument, skip):
     if method in ('run', 'forward'):
         kwargs['skip_preflight'] = skip
     # Missing calculator/material prerequisites must not hide admission.
-    with pytest.raises(ValueError, match='start the strip no more than one cell behind the port plane'):
+    with pytest.raises(ValueError, match='start the signal strip at that coordinate'):
         getattr(sim, method)(**kwargs)
 
 
@@ -70,21 +69,17 @@ def test_far_tail_is_advisory_and_zero_tail_has_no_finding():
     assert caught[0].message.code == 'line_stub_behind_port'
     assert 'outside the refusal interval' in str(caught[0].message)
     assert 'odd multiples' in str(caught[0].message)
-    assert 'start the strip no more than one cell behind the port plane' in str(caught[0].message)
+    assert 'start the signal strip at that coordinate' in str(caught[0].message)
     with warnings.catch_warnings(record=True) as caught:
         stub.preflight_line_stubs(line(0), warnings)
     assert not caught
     assert stub.line_stub_findings(line(0)) == []
 
 
-def test_port_band_and_fallback_and_nested_calculator_scope():
+def test_fallback_and_nested_calculator_scope():
     sim = line()
     fq = 299792458 / (4*.006)
     assert stub.read_band(sim) == (0., 100e9)
-    original = sim._msl_ports[0]
-    sim._msl_ports[0] = SimpleNamespace(freqs=np.array([1e9, 2e9]))
-    assert stub.read_band(sim) == (1e9, 2e9)
-    sim._msl_ports[0] = original
 
     @stub.line_stub_guard('freqs')
     def inner(self):
@@ -151,3 +146,28 @@ def test_no_declared_conductor_does_not_build_a_grid(monkeypatch):
         raise AssertionError('empty signal geometry must not preempt calculator admission')
     monkeypatch.setattr(sim, '_build_realized_grid', unexpected_grid)
     assert stub.line_stub_findings(sim) == []
+
+
+@pytest.mark.parametrize('differentiable', [False, True])
+def test_actual_calculator_band_governs_inner_run_and_forward(differentiable):
+    """Two steps exercise real nested entry points, not a decorated test double."""
+    from tests.unit.preflight.test_line_stub import make_sim
+    sim = make_sim()
+    sim._snap = "declared"
+    finding, = stub.line_stub_findings(sim)
+    requested = np.array([1e9, 2e9])
+    assert stub.resonant_odd_orders(finding, (0., sim._freq_max)) is not None
+    assert stub.resonant_odd_orders(finding, tuple(requested)) is None
+    kwargs = {}
+    if differentiable:
+        grid = sim._build_realized_grid()
+        kwargs['eps_override'] = sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])[0].eps_r
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = sim.compute_msl_s_matrix(freqs=requested, n_steps=2, **kwargs)
+    messages = [str(w.message) for w in caught if "The strip continues" in str(w.message)]
+    assert messages
+    assert all("Read band 1..2 GHz" in text for text in messages)
+    assert all("outside the refusal interval" in text for text in messages)
+    assert np.asarray(result.S).shape == (1, 1, 2)
+    assert stub._READ_BAND.get() is None

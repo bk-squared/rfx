@@ -41,7 +41,7 @@ def test_tail_length_and_frequency(direction, thin):
     f = findings[0]
     assert f.overhang_m == pytest.approx(.002)
     assert f.frequency_hz == pytest.approx(299792458 / (.008 * math.sqrt(f.eps_eff)))
-    assert 'start the strip no more than one cell behind the port plane' in f.message
+    assert 'start the signal strip at that coordinate' in f.message
     assert '2 mm' in f.message
 
 
@@ -147,5 +147,46 @@ def test_realized_port_and_endpoint_coordinates_own_length(nonuniform):
     finding, = line_stub_findings(sim, grid)
     assert finding.overhang_m == pytest.approx(float(nodes[0][p]) - endpoint)
     assert finding.declared_overhang_m == pytest.approx(.0015)
+    assert finding.port_node_m == pytest.approx(float(nodes[0][p]))
+    assert f"x={float(nodes[0][p])*1e3:.9g} mm" in finding.message
     assert finding.overhang_m != pytest.approx(finding.declared_overhang_m)
     assert 'realized L; declared 1.5 mm' in finding.message
+
+
+@pytest.mark.parametrize('width_over_height', [2., 4.])
+def test_eps_eff_and_quarter_wave_have_an_independent_closed_form(width_over_height):
+    """Independent quasi-static expression plus full HJ1980 cross-check.
+
+    Full HJ1980: https://qucs.sourceforge.net/tech/node75.html, eqs. 11.15–18.
+    The production helper retains the HJ name but implements the simplified
+    expression. The 1% comparison is to the full model, not a solver bound.
+    """
+    eps_r = 3.55
+    u = width_over_height
+    sim = Simulation(domain=(.028, .012, .006), dx=.0005,
+                     freq_max=40e9, boundary='cpml', cpml_layers=3)
+    sim.add_material('board', eps_r=eps_r)
+    sim.add(Box((0, 0, 0), (.028, .012, .001)), material='board')
+    sim.add(Box((0, 0, 0), (.028, .012, 0)), material='pec')
+    width = u * .001
+    sim.add(Box((0, .006-width/2, .001), (.028, .006+width/2, .001)), material='pec')
+    sim.add_msl_port((.002, .006, 0), width=width, height=.001, eps_r_sub=eps_r)
+    finding, = line_stub_findings(sim)
+    expected = (eps_r + 1)/2 + (eps_r - 1)/(2*math.sqrt(1 + 12/u))
+    a = 1 + math.log((u**4 + (u/52)**2)/(u**4 + .432))/49 + math.log(1 + (u/18.1)**3)/18.7
+    b = .564*((eps_r - .9)/(eps_r + 3))**.053
+    full_hj = (eps_r + 1)/2 + (eps_r - 1)/2*(1 + 10/u)**(-a*b)
+    assert finding.eps_eff == pytest.approx(expected, rel=1e-12)
+    assert finding.frequency_hz == pytest.approx(299792458/(4*.002*math.sqrt(expected)), rel=1e-12)
+    assert finding.eps_eff == pytest.approx(full_hj, rel=.01)
+    assert finding.frequency_hz == pytest.approx(299792458/(4*.002*math.sqrt(full_hj)), rel=.005)
+
+
+def test_invalid_realization_stays_blocking_without_aborting_other_preflight_checks():
+    from tests.unit.ports.test_msl_port_preflight import _build_sim, W_TRACE, H_SUB
+    sim = _build_sim(dx=1e-3, ly=W_TRACE + 8*H_SUB)
+    report = sim.preflight()
+    assert any(issue.code == 'line_stub_realization' for issue in report.errors)
+    assert any('danger zone' in str(issue) for issue in report)
+    with pytest.raises(ValueError, match='ZERO nodes'):
+        sim.run(n_steps=1, skip_preflight=True)

@@ -92,6 +92,26 @@
         "source": "_validate_mesh_quality"
       },
       {
+        "code": "line_stub_behind_port",
+        "loc": "_msl_ports[0]",
+        "numbers": [
+          1.5,
+          1.5,
+          29.6872,
+          29.6872,
+          89.0617,
+          148.436,
+          0.0,
+          0.16,
+          2.83269,
+          0.0,
+          11.0,
+          1512.0
+        ],
+        "severity": "warning",
+        "source": "line_stub_findings"
+      },
+      {
         "code": "lossless_q",
         "loc": null,
         "numbers": [
@@ -216,7 +236,7 @@
       }
     ],
     "n_errors": 0,
-    "n_issues": 14,
+    "n_issues": 15,
     "ok": true
   },
   "preflight_sparameters": {

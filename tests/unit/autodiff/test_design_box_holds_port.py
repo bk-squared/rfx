@@ -697,7 +697,7 @@ def _msl_board():
                 ((MSL_NX - 2) * DX, (MSL_NY - 2) * DX, MSL_ZP)), material="sub")
     sim.add_pinned_sheet(plane_index=2, i_range=(2, MSL_NX - 2),
                          j_range=(2, MSL_NY - 2), name="ground")
-    sim.add_pinned_sheet(plane_index=4, i_range=(2, MSL_NX - 2),
+    sim.add_pinned_sheet(plane_index=4, i_range=(5, MSL_NX - 5),
                          j_range=(8, 12), name="trace")
     pulse = GaussianPulse(f0=8e9, bandwidth=0.9)
     sim.add_msl_port(position=(5 * DX, 10 * DX, MSL_ZG), width=4 * DX,

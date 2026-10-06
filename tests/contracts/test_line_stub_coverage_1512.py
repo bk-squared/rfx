@@ -55,3 +55,6 @@ def test_converted_fixture_port_coverage(case):
             periodic=sim._periodic_flags())
         assert planes != (None, None), "extractor cannot find the trace at the port column"
         assert np.isfinite(planes).all()
+        occupied = np.flatnonzero(np.asarray(edges[0])[:, span['w_centre'], span['n_hi']])
+        endpoint = occupied[0] if pe.direction == '+x' else occupied[-1] + 1
+        assert endpoint == span['i_feed'], "realized signal endpoint must equal the port node"

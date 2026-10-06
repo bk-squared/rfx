@@ -143,9 +143,10 @@ def build(kind: str) -> Simulation:
                                    thickness=T_COPPER)
         else:
             sim.add(Box((x0, y0, z), (x1, y1, z + DX)), material="pec")
+    # #1512: the volume ground ends one cell above its declared lower face.
     sim.add_msl_port(
-        position=(PORT_MARGIN, Y_C, Z_GND_PLANE),
-        width=W_MSL, height=H_SUB, direction="+x", impedance=50.0,
+        position=(PORT_MARGIN, Y_C, Z_GND_PLANE + (DX if kind == "volume" else 0.0)),
+        width=W_MSL, height=H_SUB - (DX if kind == "volume" else 0.0), direction="+x", impedance=50.0,
         waveform=GaussianPulse(f0=8.5e9, bandwidth=1.6),
     )
     sim.add_probe(position=(X_PATCH0 + 0.7 * L, Y_C - 0.2 * W,

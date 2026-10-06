@@ -72,6 +72,7 @@ from rfx.sources.msl_port import (
     msl_probe_x_coords_n,
     setup_msl_port,
 )
+from tests._line_stub_geometry import trim_resonant_trace
 
 EPS_R, H_SUB, W_TRACE = 3.66, 254e-6, 600e-6
 # ON-LATTICE board (#931 §1.3): h_sub / dx = 3 exactly, so the laminate
@@ -437,6 +438,7 @@ def _board(domain, direction, feed, lat_c, *, trace_len_axis, dx=DX):
         width=W_TRACE, height=H_SUB, direction=direction, impedance=50.0,
         n_probe_offset=16,
     )
+    trim_resonant_trace(sim, 1)
     return sim
 
 
@@ -542,6 +544,7 @@ def test_probe_span_absorber_check_fires_on_the_propagation_axis():
     sim.add_msl_port(position=(L_LAT / 2, L_PROP - 1e-3, 0.0), width=W_TRACE,
                      height=H_SUB, direction="+y", impedance=50.0,
                      n_probe_offset=20, n_probe_spacing=6)
+    trim_resonant_trace(sim, 1)
     msgs = [m for m in _msl_warnings(sim)
             if "deepest" in m and "domain" in m]
     assert msgs, "probe-span absorber check did not fire"

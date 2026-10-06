@@ -23,6 +23,7 @@ class LineStubFinding:
     eps_eff: float
     frequency_hz: float
     declared_overhang_m: float = 0.0
+    port_node_m: float = 0.0
 
     @property
     def message(self):
@@ -199,7 +200,7 @@ def line_stub_findings(sim, grid=None) -> list[LineStubFinding]:
                 findings.append(LineStubFinding(
                     collection, index, getattr(port, "name", f"coaxial_{index}"),
                     "xyz"[axis], end, length, float(eps),
-                    299792458.0 / (4 * length * math.sqrt(eps)), declared_length))
+                    299792458.0 / (4 * length * math.sqrt(eps)), declared_length, plane))
     return findings
 
 
@@ -212,14 +213,14 @@ def read_band(sim, freqs=None):
     """The read interval, not the Gaussian pulse's centre/bandwidth."""
     if freqs is None:
         current = _READ_BAND.get()
-        if current is not None and current[0] is sim:
+        if current is not None and (current[0] is sim or all(
+                hasattr(sim, name) and getattr(current[0], name, None) is getattr(sim, name)
+                for name in ("_geometry", "_msl_ports", "_coaxial_ports"))):
+            # Execution preflight uses a shallow, read-only copy of this geometry.
             return current[1]
-        sets = [getattr(p, "freqs", None)
-                for p in (*sim._msl_ports, *sim._coaxial_ports)]
-        sets = [np.asarray(f, dtype=float).ravel() for f in sets if f is not None]
-        if not sets:
-            return 0.0, float(sim._freq_max)
-        freqs = np.concatenate(sets)
+        # MSL and coax entries have no frequency-set field. Their calculators
+        # own the requested frequencies; run/forward receive theirs explicitly.
+        return 0.0, float(sim._freq_max)
     try:
         values = np.asarray(freqs, dtype=float)
     except Exception as exc:
@@ -260,10 +261,9 @@ def stub_message(finding, band=None):
         f"(quarter wave); stub frequencies {frequencies}, {relation}. "
         f"{band_text}"
         f"eps_eff={finding.eps_eff:.6g}; port {finding.port_name!r}. "
-        "Fix: start the strip no more than one cell behind the port plane, so it covers "
-        "the port's own grid node and nothing beyond it (a strip drawn from exactly "
-        "the port plane can start one node ahead of the port, which port preflight "
-        "rejects) (#1512)."
+        f"The port's realized grid node is {finding.axis}={finding.port_node_m*1e3:.9g} mm. "
+        "Fix: start the signal strip at that coordinate (the port's grid node), "
+        "so it covers the port node and nothing behind it (#1512)."
     )
 
 
@@ -303,9 +303,17 @@ def preflight_line_stubs(sim, warn):
     """Advisory report; the solve's guard owns refusal and its exact read band."""
     if not (sim._msl_ports or sim._coaxial_ports):
         return
-    from rfx.preflight._common import PreflightWarning
+    from rfx.preflight._common import PreflightErrorWarning, PreflightWarning
     band = read_band(sim)
-    for finding in line_stub_findings(sim):
+    try:
+        findings = line_stub_findings(sim)
+    except ValueError as exc:
+        # Preserve the blocking realization error without aborting later checks.
+        # Solve admission still raises it unconditionally, even with preflight off.
+        warn.warn(PreflightErrorWarning(str(exc), code="line_stub_realization",
+                                        source="line_stub_findings"), stacklevel=3)
+        return
+    for finding in findings:
         warn.warn(PreflightWarning(
             stub_message(finding, band), code="line_stub_behind_port",
             source="line_stub_findings", loc=f"{finding.collection}[{finding.port_index}]"),
