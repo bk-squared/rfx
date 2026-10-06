@@ -66,10 +66,13 @@ def measure():
             lane = ("graded" if nonuniform else "uniform") + ("_two" if distributed else "_one")
             reference = trace(nonuniform, distributed, 2 * REFERENCE, REFERENCE)
             assert np.max(np.abs(reference)) > 0.1, "vacuous incident plane wave"
+            echoes = [trace(nonuniform, distributed, NEAR + FAR, source) for source in (NEAR, FAR)]
+            if distributed:
+                for source, samples in zip((NEAR, FAR), echoes):
+                    single = trace(nonuniform, False, NEAR + FAR, source)
+                    assert not np.array_equal(samples, single), "two-device echo trace silently used one device"
             returns[lane] = np.array([
-                _reflection_db(trace(nonuniform, distributed, NEAR + FAR, source),
-                               reference, DT, FREQS)
-                for source in (NEAR, FAR)
+                _reflection_db(samples, reference, DT, FREQS) for samples in echoes
             ])
     return returns
 

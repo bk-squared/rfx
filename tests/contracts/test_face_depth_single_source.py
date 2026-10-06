@@ -13,6 +13,12 @@ LEGACY_SITE = ("rfx/boundaries/cpml.py", "face_layers.get(face_name, n)")
 # docs/design_notes/20260923_boundary_model_predeclaration.md §7 Addendum 2.
 REALIZED_SITE = ("rfx/farfield.py", "faces.get(face, 0 if legacy is None else legacy)")
 # NTFF's legacy face_layers passes through realized pads; its scalar is only a fallback.
+DECLARED_SITES = {
+    ("rfx/grid.py", "record.declared"),  # Public legacy face_layers view preserves declared counts.
+    ("rfx/api/_compile.py", "record.declared"),  # Pass declared counts to the grid's resolver.
+    ("rfx/rcs.py", "face.declared"),  # Preserve the scalar-only phase-reference admission gate.
+}
+DECLARATION_MODULES = {"rfx/boundaries/depths.py", "rfx/boundaries/spec.py"}
 
 
 def _name_parts(node, bindings, seen=frozenset()):
@@ -66,6 +72,14 @@ def declaration_reads(source):
                 return node.attr == "face_layers"
             if isinstance(node, ast.BoolOp):
                 return any(mapping(value, seen) for value in node.values)
+            if isinstance(node, ast.Dict):
+                return any(key is None and mapping(value, seen)
+                           for key, value in zip(node.keys, node.values))
+            if isinstance(node, ast.Call):
+                if isinstance(node.func, ast.Name) and node.func.id == "dict":
+                    return any(mapping(arg, seen) for arg in node.args)
+                if isinstance(node.func, ast.Attribute) and node.func.attr == "copy":
+                    return mapping(node.func.value, seen)
             return (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
                     and node.func.id == "getattr" and len(node.args) > 1
                     and _name_parts(node.args[1], bindings) == "face_layers")
@@ -75,11 +89,32 @@ def declaration_reads(source):
             return key in {"lo_thickness", "hi_thickness", "resolved_lo_thickness", "resolved_hi_thickness"} or (
                 "_thickness" in key and any(part in key for part in ("?", "%", "{")))
 
+        def depth_record(node, seen=frozenset()):
+            if isinstance(node, ast.Name):
+                return (node.id in {"face", "record"}
+                        or (node.id in bindings and node.id not in seen
+                            and depth_record(bindings[node.id], seen | {node.id})))
+            if isinstance(node, ast.Attribute):
+                return node.attr == "boundary_depths"
+            if isinstance(node, ast.Subscript):
+                return depth_record(node.value, seen)
+            if isinstance(node, ast.Call):
+                return (isinstance(node.func, ast.Name) and node.func.id in {
+                    "resolve_face_depths", "grid_face_depths", "simulation_face_depths"})
+            return False
+
+        for node in nodes:
+            if isinstance(node, (ast.comprehension, ast.For)) and isinstance(node.target, ast.Name):
+                if depth_record(node.iter):
+                    bindings[node.target.id] = node.iter
+
         for node in nodes:
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                 scan(node, bindings)
                 continue
             matched = isinstance(node, ast.Attribute) and thickness(ast.Constant(node.attr))
+            if isinstance(node, ast.Attribute) and node.attr == "declared":
+                matched |= depth_record(node.value)
             if isinstance(node, ast.Subscript):
                 matched |= mapping(node.value) or thickness(node.slice)
             if isinstance(node, ast.Call):
@@ -90,6 +125,8 @@ def declaration_reads(source):
                 name = func.id if isinstance(func, ast.Name) else func.attr if isinstance(func, ast.Attribute) else ""
                 if name == "getattr" and len(node.args) > 1:
                     matched |= thickness(node.args[1])
+                    matched |= (_name_parts(node.args[1], bindings) == "declared"
+                                and depth_record(node.args[0]))
                 if name == "attrgetter":
                     matched |= any(thickness(arg) for arg in node.args)
             if matched:
@@ -102,10 +139,11 @@ def test_one_source_for_face_depths():
     seen = {}
     legacy = []
     realized = []
+    declared = []
     violations = []
     for path in sorted((ROOT / "rfx").rglob("*.py")):
         relative = path.relative_to(ROOT).as_posix()
-        if relative.startswith("rfx/boundaries/") and relative != LEGACY_SITE[0]:
+        if relative in DECLARATION_MODULES:
             continue
         reads = declaration_reads(path.read_text())
         if relative in DEFERRED:
@@ -116,12 +154,15 @@ def test_one_source_for_face_depths():
                     legacy.append(line)
                 elif (relative, expression) == REALIZED_SITE:
                     realized.append(line)
+                elif (relative, expression) in DECLARED_SITES:
+                    declared.append((relative, expression))
                 else:
                     violations.append(f"{relative}:{line}: {expression}")
     assert not violations, "Declaration-derived face depths outside the record:\n" + "\n".join(violations)
     assert seen == DEFERRED, "PR2 inventory changed; remove stale exceptions and reject new copies"
     assert len(legacy) == 1, "Addendum 2 permits exactly one legacy dual declaration site"
     assert len(realized) == 1, "NTFF permits exactly one realized-pad pass-through site"
+    assert len(declared) == len(DECLARED_SITES) and set(declared) == DECLARED_SITES
 
 
 @pytest.mark.parametrize("expression", [
@@ -162,6 +203,18 @@ value = 0
     'key = "{}_thickness".format(side); depth = getattr(boundary, key)',
     'depth = attrgetter(side + "_thickness")(boundary)',
     'key = "%s_thickness" % side; read = operator.attrgetter(key); depth = read(boundary)',
+    'fl = dict(grid.face_layers); depth = fl[face]',
+    'fl = dict(grid.face_layers); depth = fl.get(face)',
+    'fl = grid.face_layers.copy(); depth = fl.get(face)',
+    'fl = grid.face_layers.copy(); depth = fl[face]',
+    'fl = {**grid.face_layers}; depth = fl[face]',
+    'fl = {**grid.face_layers}; depth = fl.get(face)',
+    'depth = record.declared',
+    'depth = grid.boundary_depths[0].declared',
+    'item = grid.boundary_depths[0]; depth = item.declared',
+    'item = grid.boundary_depths[0]; depth = getattr(item, "declared")',
+    'depth = [item.declared for item in grid.boundary_depths]',
+    'records = resolve_face_depths(spec, budget=n); depth = [item.declared for item in records]',
 ])
 def test_seeded_indirect_declaration_read_is_detected(source):
     assert declaration_reads(source), "disabled widened scan accepted indirect declaration read"
@@ -173,3 +226,9 @@ forward(grid.face_layers)
 depths = {face.name: face.realized for face in grid.boundary_depths}
 depth = depths.get(face)
 """)
+
+
+@pytest.mark.parametrize("path", ["rfx/boundaries/pec.py", "rfx/boundaries/model.py", "rfx/boundaries/cpml.py"])
+def test_boundary_consumers_have_no_blanket_exemption(path):
+    assert path not in DECLARATION_MODULES
+    assert declaration_reads("depth = grid.face_layers.get(face)")

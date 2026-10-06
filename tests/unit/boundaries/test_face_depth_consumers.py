@@ -66,3 +66,30 @@ def test_waveguide_does_not_warn_about_unallocated_transverse_absorbers():
     report = sim.preflight()
     assert not any(issue.severity == "error" for issue in report), report
     assert "absorber_budget_exceeds_axis" not in {issue.code for issue in report}
+
+
+@pytest.mark.parametrize("model,nonuniform", [
+    (model, graded) for model in ("waveguide", "periodic", "pmc", "asymmetric")
+    for graded in (False, True)
+] + [("floquet", False), ("tmz", False)])
+def test_preflight_face_pads_match_realized_model(model, nonuniform):
+    # Floquet and 2-D stepping do not admit graded meshes; test their uniform realization.
+    kwargs = dict(dz_profile=np.linspace(0.8e-3, 1.2e-3, 16)) if nonuniform else {}
+    boundary = {
+        "periodic": BoundarySpec(x="periodic", y="cpml", z="cpml"),
+        "pmc": BoundarySpec(x=Boundary("pmc", "cpml"), y="cpml", z="cpml"),
+        "asymmetric": BoundarySpec(x=Boundary("cpml", "cpml", 2, 4), y="pec", z="cpml"),
+    }.get(model, "cpml")
+    sim = Simulation(freq_max=20e9, domain=(0.032, 0.016, 0.016), dx=1e-3,
+                     cpml_layers=4, boundary=boundary,
+                     mode="2d_tmz" if model == "tmz" else "3d", **kwargs)
+    if model == "waveguide":
+        sim.add_waveguide_port(0.008, direction="+x", f0=12e9, n_freqs=3,
+                              probe_offset=2, ref_offset=1)
+    elif model == "floquet":
+        sim.add_floquet_port(position=0.005, axis="z", f0=12e9)
+    grid = sim._build_realized_grid()
+    # §7 Addenda 3/4: advisories use actual pads, including feature-imposed periodic faces.
+    assert sim._preflight_face_layers() == {
+        f"{axis}_{side}": getattr(grid, f"pad_{axis}_{side}")
+        for axis in "xyz" for side in ("lo", "hi")}

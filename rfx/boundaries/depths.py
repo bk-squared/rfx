@@ -104,7 +104,7 @@ def simulation_face_depths(sim):
             if sim._waveguide_ports and not sim._uses_nonuniform_mesh else "xyz")
     return resolve_face_depths(
         sim._boundary_spec, budget=sim._cpml_layers, absorbing_axes=axes,
-        periodic_axes=sim._periodic_axes or "", mode=sim._mode,
+        periodic_axes="".join(a for a, yes in zip("xyz", sim._periodic_flags()) if yes), mode=sim._mode,
     )
 
 
@@ -119,3 +119,9 @@ def adi_uniform_faces(spec, budget):
     return all(face.kind == Kind.ABSORBER and face.declared == budget
                for face in resolve_face_depths(spec, budget=budget)) and all(
                    token == "cpml" for _, _, token in spec.faces())
+
+
+def distributed_electric_walls(grid):
+    """§7 Addendum 4: a zero-pad absorber has its PEC backing at the domain face."""
+    return frozenset(face.name for face in grid_face_depths(grid)
+                     if face.kind == Kind.PEC or (face.kind == Kind.ABSORBER and face.realized == 0))
