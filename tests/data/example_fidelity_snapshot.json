@@ -2633,7 +2633,7 @@
                 0.0
               ],
               "mesh_extent_um": 44000.0,
-              "n_cells": 334,
+              "n_cells": 178,
               "realized_extent_um": 44000.0,
               "realized_um": [
                 0.0,
@@ -2684,20 +2684,20 @@
         "geometry|substrate|12750.000,12750.000,1250.000um->31250.000,21250.000,2250.000um": {
           "axes": {
             "x": {
-              "cell_um": 124.412751678,
+              "cell_um": 247.666666667,
               "declared_extent_um": 18500.0,
               "declared_um": [
                 12750.0,
                 31250.0
               ],
               "face_residual_um": [
-                43.75,
-                81.25
+                87.5,
+                162.5
               ],
-              "realized_extent_um": 18537.5,
+              "realized_extent_um": 18575.0,
               "realized_um": [
-                12793.75,
-                31331.25
+                12837.5,
+                31412.5
               ],
               "sub_cell": false
             },
@@ -2740,6 +2740,10 @@
           },
           "findings": [
             {
+              "axis": "x",
+              "kind": "off-lattice-face"
+            },
+            {
               "axis": "y",
               "kind": "off-lattice-face"
             }
@@ -2752,7 +2756,7 @@
             "name": "substrate",
             "sigma": 0.01
           },
-          "n_cells": 22052
+          "n_cells": 11100
         },
         "out-of-scope": {
           "axes": {},
@@ -2773,7 +2777,7 @@
         "thin_conductor|pec|12750.000,12750.000,1250.000um->31250.000,21250.000,1250.000um": {
           "axes": {
             "x": {
-              "cell_um": 124.412751678,
+              "cell_um": 247.666666667,
               "declared_extent_um": 18500.0,
               "declared_um": [
                 12750.0,
@@ -2833,23 +2837,23 @@
           },
           "n_cells": 0
         },
-        "thin_conductor|pec|16000.000,16500.000,2250.000um->28000.000,17500.000,2250.000um": {
+        "thin_conductor|pec|12750.000,16500.000,2250.000um->31250.000,17500.000,2250.000um": {
           "axes": {
             "x": {
-              "cell_um": 124.982652657,
-              "declared_extent_um": 12000.0,
+              "cell_um": 247.666666667,
+              "declared_extent_um": 18500.0,
               "declared_um": [
-                16000.0,
-                28000.0
+                12750.0,
+                31250.0
               ],
               "face_residual_um": [
-                43.1610576923,
-                43.1610576923
+                0.0,
+                0.0
               ],
-              "realized_extent_um": 12086.3221154,
+              "realized_extent_um": 18500.0,
               "realized_um": [
-                15956.8389423,
-                28043.1610577
+                12750.0,
+                31250.0
               ],
               "sub_cell": false
             },
@@ -2899,22 +2903,64 @@
       },
       "preflight": [
         {
+          "code": "line_stub_behind_port",
+          "loc": "_msl_ports[0]",
+          "numbers": [
+            3.1625,
+            3.25,
+            0.364505,
+            3.527,
+            13.7022,
+            13.7022,
+            41.1065,
+            68.5109,
+            0.0,
+            0.6,
+            2.40509,
+            16.0,
+            1512.0
+          ],
+          "severity": "warning",
+          "source": "line_stub_findings"
+        },
+        {
+          "code": "line_stub_behind_port",
+          "loc": "_msl_ports[1]",
+          "numbers": [
+            3.1625,
+            3.25,
+            0.364505,
+            3.527,
+            13.7022,
+            13.7022,
+            41.1065,
+            68.5109,
+            0.0,
+            0.6,
+            2.40509,
+            28.0,
+            1512.0
+          ],
+          "severity": "warning",
+          "source": "line_stub_findings"
+        },
+        {
           "code": "msl_port_geometry",
           "loc": null,
           "numbers": [
             469.0,
             2.0,
             681.0,
-            40.0,
+            20.0,
             4.0,
-            7.0,
-            125.0,
+            3.0,
+            250.0,
             0.0,
             5.0,
-            40.0,
+            20.0,
             4.0,
-            7.0,
-            125.0,
+            3.0,
+            250.0,
             0.0,
             5.0,
             686.0

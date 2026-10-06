@@ -136,16 +136,12 @@ def build_microstrip_ports() -> Simulation:
 
     # Build the graded interior separately, then attach exactly eight uniform
     # cells at each end. All declarations below stay at their drawn coordinates.
-    # A node-ended 12 mm strip needs finer x cells to keep the solved free-edge
-    # extension below the 1% size verdict; its transverse mesh is unchanged.
-    profiles = {}
-    for axis, target in (("x", dx / 2), ("y", dx)):
-        profiles.update(edge_aware_profiles(
-            (domain[0] - 2 * pad, domain[1] - 2 * pad, domain[2]), target, boundary_cell=edge_dx,
-            sheets=[interior_box(ground), interior_box(trace)],
-            solids=[interior_box(substrate)],
-            faces={"x": [4e-3 + margin - pad, 16e-3 + margin - pad], "y": [5e-3 + margin - pad]}, axes=axis,
-        ))
+    profiles = edge_aware_profiles(
+        (domain[0] - 2 * pad, domain[1] - 2 * pad, domain[2]), 0.25e-3, boundary_cell=edge_dx,
+        sheets=[interior_box(ground), interior_box(trace)],
+        solids=[interior_box(substrate)],
+        faces={"x": [4e-3 + margin - pad, 16e-3 + margin - pad], "y": [5e-3 + margin - pad]}, axes="xy",
+    )
     profiles = {key: np.concatenate((np.full(8, edge_dx), cells, np.full(8, edge_dx)))
                 for key, cells in profiles.items()}
     sim = Simulation(
@@ -183,12 +179,7 @@ def build_microstrip_ports() -> Simulation:
         substrate,
         material="substrate",
     )
-    # #1512: the signal ends at the two ports' own grid nodes, with no back stub.
-    from rfx.preflight.line_port_coverage import port_node_coordinate
-    left_node = port_node_coordinate(sim, (4e-3 + margin, 5e-3 + margin, 1.25e-3))
-    right_node = port_node_coordinate(sim, (16e-3 + margin, 5e-3 + margin, 1.25e-3))
-    trace = Box((left_node, *trace.corner_lo[1:]), (right_node, *trace.corner_hi[1:]))
-    # The 1 mm drawn trace is 1 mm at its solved transverse free edges.
+    # The 1 mm drawn trace is 1 mm at its solved free edges.
     sim.add_thin_conductor(trace)
 
     common = {

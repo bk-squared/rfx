@@ -520,6 +520,14 @@
    "ref": "examples/tutorials/ports_and_sparams_101.py:114-148,315-321",
    "rows": 1,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
+  },
+  {
+   "code": "line_stub_behind_port",
+   "disposition": "intended",
+   "reason": "The tutorial keeps its geometry and mesh under #1512, like the two validation notch builders: its through-line leaves realized tails of 3.1625 mm (declared 3.25 mm) behind both ports. With eps_eff=2.405090 and an open-end extension of 0.3645 mm the effective length is 3.527 mm and its quarter-wave frequency 13.7022 GHz, outside the refusal interval for the 0..6 GHz read. Both findings are advisory; the geometry is deliberately unchanged.",
+   "ref": "https://github.com/bk-squared/rfx/issues/1512",
+   "rows": 2,
+   "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
   }
  ]
 }
