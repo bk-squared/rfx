@@ -74,6 +74,11 @@ moved, so the band that brackets its antiresonance moved with it:
     dip 8.800 GHz, |S11| = 0.6418 (the off-resonance match point, still OUTSIDE
         the resonance band — the assertion (2) thesis is intact)
 
+    #1512 geometry, run 369367268214 (all existing pins pass, unchanged):
+    max|S11| = 0.9844; in-band Im(Zin) crossing 7.458 GHz;
+    in-band peak Re(Zin) 1223 ohm at 7.5 GHz; band min|S11| = 0.885;
+    global dip 9.10 GHz, |S11| = 0.713.
+
 WHY IT MOVED DOWN while the isolated patch moved UP (Board H's Leg A went
 -6.17 -> -1.871 % on the same redraw): they are different features. The patch
 mode rises because a thinner cavity fringes less. THIS number is the port-plane
