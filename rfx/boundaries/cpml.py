@@ -1051,7 +1051,6 @@ def apply_cpml_h(
     # (#646 family: promote-never-pin).
     dt = grid.dt if is_tracer(grid.dt) else float(grid.dt)
     from rfx.model.materials import with_components
-    from rfx.core.yee import stored_h_materials
     magnetic_materials = materials if hasattr(materials, "mu_r") else None
     if periodic is None:
         periodic = tuple(a in getattr(grid, "periodic_axes", "") for a in "xyz")
@@ -1059,8 +1058,7 @@ def apply_cpml_h(
         mu = (1.0, 1.0, 1.0)
     else:
         magnetic_materials = with_components(magnetic_materials, grid, periodic=periodic)
-        widths = (grid.dx_arr, grid.dy_arr, grid.dz) if hasattr(grid, "dx_arr") else None
-        mu = stored_h_materials(magnetic_materials, periodic, widths)
+        mu = magnetic_materials.components.mu_update
     ch = tuple(dt / (m * MU_0) for m in mu)
 
     def _h_face(component, axis, lo):

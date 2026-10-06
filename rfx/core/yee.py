@@ -476,7 +476,7 @@ def update_h(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
     ex = state.ex.astype(_cdtype)
     ey = state.ey.astype(_cdtype)
     ez = state.ez.astype(_cdtype)
-    mu = (stored_h_materials(materials, periodic) if materials.components is not None
+    mu = (materials.components.mu_update if materials.components is not None
           else component_h_materials(materials, periodic))
     if _realized.ACTIVE is not None:
         mu = _realized.magnetic(materials, mu, "yee.H", periodic=periodic)
@@ -798,82 +798,15 @@ def cell_component_e_coeffs(materials, cell, component, dt,
     return e_update_coeffs(eps_r, sigma, dt)
 
 
-@partial(jax.custom_jvp, nondiff_argnums=(1,))
-def stored_h_materials(materials, periodic, cell_sizes=None):
-    """Read realized H operands with the original per-step linearization."""
-    return materials.components.mu_update
-
-
-@stored_h_materials.defjvp
-def _stored_h_materials_jvp(periodic, primals, tangents):
-    materials, widths = primals
-    tangent, dwidths = tangents
-    _, derivative = jax.jvp(
-        lambda m, d: component_h_materials(m, periodic, cell_sizes=d),
-        (materials._replace(components=None), widths),
-        (tangent._replace(components=None), dwidths))
-    return stored_h_materials(materials, periodic, widths), derivative
-
-
-@partial(jax.custom_jvp, nondiff_argnums=(1,))
-def stored_e_materials(materials, periodic):
-    """Read realized operands; retain the original per-step E transpose.
-
-    Moving the arithmetic mean outside the scan changes reverse-mode addition
-    order: sum then transpose differs by ULPs from transpose then sum. The
-    primal reads only the stored arrays; the JVP retains the old cell-to-edge
-    linearization at the consumption site, including lumped stamp ownership.
-    """
-    return materials.components.eps_update, materials.components.sigma_update
-
-
-@stored_e_materials.defjvp
-def _stored_e_materials_jvp(periodic, primals, tangents):
-    materials, = primals
-    tangent, = tangents
-    _, derivative = jax.jvp(
-        lambda m: component_e_materials(m, periodic),
-        (materials._replace(components=None),),
-        (tangent._replace(components=None),))
-    return stored_e_materials(materials, periodic), derivative
-
-
-def _e_component_coeffs(materials, dt, periodic):
-    """``((ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z))`` for a MaterialArrays.
-
-    :func:`component_e_materials` then :func:`e_update_coeffs`. This is the
-    entry every grid-wide E update uses.
-    """
-    eps, sig = (stored_e_materials(materials, periodic) if materials.components is not None
+def e_component_coeffs(materials, dt, periodic=(False, False, False)):
+    """Per-component E coefficients differentiated through their stored operands."""
+    eps, sig = ((materials.components.eps_update, materials.components.sigma_update)
+                if materials.components is not None
                 else component_e_materials(materials, periodic))
     if _realized.ACTIVE is not None:
         eps, sig = _realized.electric(materials, eps, sig, "yee.E", periodic=periodic)
     pairs = [e_update_coeffs(e, s, dt) for e, s in zip(eps, sig)]
     return tuple(p[0] for p in pairs), tuple(p[1] for p in pairs)
-
-
-@partial(jax.custom_jvp, nondiff_argnums=(2,))
-def _stored_e_component_coeffs(materials, dt, periodic):
-    """Stored E operands, with the legacy coefficient linearization."""
-    return _e_component_coeffs(materials, dt, periodic)
-
-
-@_stored_e_component_coeffs.defjvp
-def _e_component_coeffs_jvp(periodic, primals, tangents):
-    materials, dt = primals
-    tangent, ddt = tangents
-    _, derivative = jax.jvp(
-        lambda m, t: _e_component_coeffs(m, t, periodic),
-        (materials._replace(components=None), dt),
-        (tangent._replace(components=None), ddt))
-    return _stored_e_component_coeffs(materials, dt, periodic), derivative
-
-
-def e_component_coeffs(materials, dt, periodic=(False, False, False)):
-    """Per-component E coefficients from stored operands or raw legacy cells."""
-    if materials.components is None:
-        return _e_component_coeffs(materials, dt, periodic)
-    return _stored_e_component_coeffs(materials, dt, periodic)
 
 
 def edge_averaged_e_update_coeffs(eps_r, sigma, dt,
@@ -1192,7 +1125,7 @@ def update_h_nu(state: FDTDState, materials: MaterialArrays, dt: float,
         # metrics. Production grids pass their original cell lengths.
         cell_sizes = tuple(1 / jnp.where(v > 0, v, v[-2])
                            for v in (inv_dx_h, inv_dy_h, inv_dz_h))
-    mu = (stored_h_materials(materials, (False, False, False), cell_sizes)
+    mu = (materials.components.mu_update
           if materials.components is not None
           else component_h_materials(materials, cell_sizes=cell_sizes))
     if _realized.ACTIVE is not None:
@@ -1320,7 +1253,7 @@ def precompute_coeffs(
     -------
     UpdateCoeffs
     """
-    mu = (stored_h_materials(materials, periodic) if materials.components is not None
+    mu = (materials.components.mu_update if materials.components is not None
           else component_h_materials(materials, periodic))
     if _realized.ACTIVE is not None:
         mu = _realized.magnetic(materials, mu, "precompute.H", periodic=periodic)
@@ -1335,7 +1268,7 @@ def precompute_coeffs(
     # #1210: per-component eps/sigma, the mean over the four cells incident
     # to each component's edge. The arithmetic below is unchanged, so a
     # homogeneous grid bakes the same bits it baked before.
-    _eps_c, _sig_c = (stored_e_materials(materials, periodic) if materials.components is not None
+    _eps_c, _sig_c = ((materials.components.eps_update, materials.components.sigma_update) if materials.components is not None
                       else component_e_materials(materials, periodic))
     if _realized.ACTIVE is not None:
         _eps_c, _sig_c = _realized.electric(
@@ -1520,7 +1453,7 @@ def update_e_nu_aniso(state: FDTDState, materials: MaterialArrays,
     # per-component by construction. Where sigma is uniform (every lossless
     # subpixel fixture) the mean of four equal floats is that float, so those
     # runs keep their bytes. The graded-mesh lane installs no periodic BC.
-    sigma_ex, sigma_ey, sigma_ez = (stored_e_materials(materials, (False, False, False))[1] if materials.components is not None
+    sigma_ex, sigma_ey, sigma_ez = (materials.components.sigma_update if materials.components is not None
         else component_e_materials(materials, (False, False, False))[1])
 
     # The same arithmetic as update_e's, so one spelling (and its #1357
@@ -1616,7 +1549,7 @@ def update_e_aniso_inv(state: FDTDState, materials: MaterialArrays,
     # per-component by construction. Where sigma is uniform (every lossless
     # subpixel fixture) the mean of four equal floats is that float, so those
     # runs keep their bytes.
-    sigma_ex, sigma_ey, sigma_ez = (stored_e_materials(materials, periodic)[1] if materials.components is not None
+    sigma_ex, sigma_ey, sigma_ez = (materials.components.sigma_update if materials.components is not None
         else component_e_materials(materials, periodic)[1])
 
     # Per-component lossy update coefficients in inv-eps form
@@ -1677,7 +1610,7 @@ def update_e_aniso(state: FDTDState, materials: MaterialArrays,
     # per-component by construction. Where sigma is uniform (every lossless
     # subpixel fixture) the mean of four equal floats is that float, so those
     # runs keep their bytes.
-    sigma_ex, sigma_ey, sigma_ez = (stored_e_materials(materials, periodic)[1] if materials.components is not None
+    sigma_ex, sigma_ey, sigma_ez = (materials.components.sigma_update if materials.components is not None
         else component_e_materials(materials, periodic)[1])
 
     if _realized.ACTIVE is not None:
