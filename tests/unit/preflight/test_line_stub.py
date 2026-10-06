@@ -280,3 +280,34 @@ def test_the_placement_the_refusal_recommends_is_admitted(thin, port_x):
     rejected = [str(i) for i in getattr(build(port_x).preflight(), 'errors', [])
                 if 'MSL port' in str(i)]
     assert bool(rejected) == (printed < port_x)
+
+
+def test_an_uninspectable_shape_does_not_switch_the_refusal_off():
+    """A shape the lattice cannot place is skipped alone; the strip is still judged."""
+    from dataclasses import replace
+    from rfx.preflight.line_stub import resonant_odd_orders
+
+    class _NoBBox:  # the lattice refuses to place it (cf. the reflector-scan double)
+        def mask(self, grid):
+            raise NotImplementedError
+
+        def mask_on_coords(self, x, y, z):
+            raise NotImplementedError
+
+    def build(extra):
+        sim = make_sim()  # 2 mm open tail behind the port, band 0..40 GHz
+        if extra:
+            sim._geometry.append(replace(sim._geometry[-1], shape=_NoBBox()))
+        return sim
+
+    clean, = line_stub_findings(build(False))
+    assert resonant_odd_orders(clean, (0., 40e9)) is not None
+    skipped = []
+    found, = line_stub_findings(build(True), uninspectable=skipped)
+    assert found.overhang_m == pytest.approx(clean.overhang_m)
+    assert len(skipped) == 1 and '_NoBBox' in skipped[0]
+    report = [str(i) for i in build(True).preflight(strict=False, check_ntff=False)]
+    assert any('could not inspect 1 conductor shape' in m and '_NoBBox' in m for m in report)
+    assert any('is an open stub that shorts the port' in m for m in report)
+    with pytest.raises(ValueError, match='is an open stub that shorts the port'):
+        build(True).run(n_steps=1, skip_preflight=True)

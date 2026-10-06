@@ -71,7 +71,10 @@ def _intervals(sim, grid, shape, coords, axis, lower, upper, cache):
         try:
             cache[key] = _declared_conductor_lattice(sim, grid, shape, coords)
         except NotImplementedError as exc:
-            raise NotImplementedError(f"{type(shape).__name__}: {exc}") from exc
+            # One shape the lattice cannot place must not switch the check off
+            # for the conductors it can: skip this shape and say so.
+            cache[key] = []
+            cache.setdefault("uninspectable", []).append(f"{type(shape).__name__}: {exc}")
     for mask, cell_axes in cache[key]:
         indices = []
         for a, values in enumerate(nodes):
@@ -94,7 +97,7 @@ def _intervals(sim, grid, shape, coords, axis, lower, upper, cache):
     return intervals
 
 
-def line_stub_findings(sim, grid=None) -> list[LineStubFinding]:
+def line_stub_findings(sim, grid=None, uninspectable=None) -> list[LineStubFinding]:
     """Find attached straight signal tails ending at/before the domain face.
 
     MSL directions point into the device; a coax face supplies the equivalent
@@ -118,9 +121,15 @@ def line_stub_findings(sim, grid=None) -> list[LineStubFinding]:
     coords = (coords_from_nonuniform_grid(grid) if hasattr(grid, "dx_arr")
               else coords_from_uniform_grid(grid))
     from rfx.geometry.smoothing import continued_conductor_shape
-    conductors = [continued_conductor_shape(sim, grid, entry.shape, entry=entry,
-                                            unextendable=[])
-                  for _, entry in entries]
+    cache = {}
+    conductors = []
+    for _, entry in entries:
+        try:
+            conductors.append(continued_conductor_shape(
+                sim, grid, entry.shape, entry=entry, unextendable=[]))
+        except NotImplementedError as exc:
+            cache.setdefault("uninspectable", []).append(
+                f"{type(entry.shape).__name__}: {exc}")
     nodes = (coords.x, coords.y, coords.z)
     for sheet in getattr(sim, "_pinned_sheets", ()):
         tangents = [a for a in range(3) if a != sheet.normal_axis]
@@ -132,7 +141,6 @@ def line_stub_findings(sim, grid=None) -> list[LineStubFinding]:
             lower[a], upper[a] = float(nodes[a][lo + pad]), float(nodes[a][hi + pad])
         conductors.append(Box(tuple(lower), tuple(upper)))
     findings = []
-    cache = {}
     for collection in ("_msl_ports", "_coaxial_ports"):
         for index, port in enumerate(getattr(sim, collection)):
             point = list(map(float, port.position))
@@ -221,6 +229,8 @@ def line_stub_findings(sim, grid=None) -> list[LineStubFinding]:
                     "xyz"[axis], end, length, float(eps),
                     299792458.0 / (4 * length * math.sqrt(eps)), declared_length, plane,
                     substrate_eps, getattr(port, "eps_r_sub", None)))
+    if uninspectable is not None:
+        uninspectable.extend(dict.fromkeys(cache.get("uninspectable", [])))
     return findings
 
 
@@ -346,22 +356,24 @@ def preflight_line_stubs(sim, warn):
         return
     from rfx.preflight._common import PreflightErrorWarning, PreflightWarning
     band = read_band(sim)
+    skipped = []
     try:
-        findings = line_stub_findings(sim)
+        findings = line_stub_findings(sim, uninspectable=skipped)
     except NotImplementedError as exc:
-        shapes = sorted({type(e.shape).__name__
-                         for e in (*sim._geometry, *sim._thin_conductors)})
-        warn.warn(PreflightWarning(
-            f"Line-stub check could not inspect geometry ({', '.join(shapes)}): {exc}. "
-            "This is not evidence that the ports have no tails; the lane's own checks still apply.",
-            code="line_stub_inspection_unavailable", source="line_stub_findings"), stacklevel=3)
-        return
+        findings = []
+        skipped.append(str(exc))
     except ValueError as exc:
         # Preserve the blocking realization error without aborting later checks.
         # Solve admission still raises it unconditionally, even with preflight off.
         warn.warn(PreflightErrorWarning(str(exc), code="line_stub_realization",
                                         source="line_stub_findings"), stacklevel=3)
         return
+    if skipped:
+        warn.warn(PreflightWarning(
+            f"Line-stub check could not inspect {len(skipped)} conductor shape(s) "
+            f"({'; '.join(skipped)}). They were skipped; the other conductors were "
+            "checked. This is not evidence that the skipped shapes leave no tail behind a port.",
+            code="line_stub_inspection_unavailable", source="line_stub_findings"), stacklevel=3)
     for finding in findings:
         warn.warn(PreflightWarning(
             stub_message(finding, band), code="line_stub_behind_port",

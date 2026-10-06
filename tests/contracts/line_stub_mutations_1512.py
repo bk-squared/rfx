@@ -15,7 +15,8 @@ def main():
      'vacuum_eps': ('port.width, port.height, eps)[1]', 'port.width, port.height, eps)[1]; eps = 1.0'),
      'declared_first': ('result = None', 'result = None\n    if explicit is not None:\n        return float(explicit)'),
      'fundamental_only': ('return (2 * first - 1, 2 * last - 1) if first <= last else None', 'return (1, 1) if lo <= 1 <= hi else None'),
-     'inspection_raises': ('return  # Unsupported inspection leaves admission to the owning lane.', 'raise  # Mutant: leak the inspection failure.'),
+     # One uninspectable shape switches the whole check off again (the pre-isolation behaviour).
+     'inspection_raises': ('            cache[key] = []\n', '            raise\n'),
     }
     if sys.argv[1] in ('warning_wrapper', 'early_admission'):
         from functools import wraps
@@ -51,7 +52,7 @@ def main():
     assert source.count(a) == 1
     exec(compile(source.replace(a, b), str(line_stub.__file__), 'exec'), line_stub.__dict__)
     if sys.argv[1] == 'inspection_raises':
-        sys.exit(pytest.main(['-q', 'tests/contracts/test_line_stub_admission_order.py', '-k', 'uninspectable', '-o', 'addopts=']))
+        sys.exit(pytest.main(['-q', 'tests/unit/preflight/test_line_stub.py', '-k', 'uninspectable', '-o', 'addopts=']))
     if sys.argv[1] == 'declared_first':
         sys.exit(pytest.main(['-q', 'tests/unit/preflight/test_line_stub.py', '-k', 'realized_substrate_owns', '-o', 'addopts=']))
     if sys.argv[1] == 'inner_default_band':
