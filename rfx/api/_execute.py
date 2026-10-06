@@ -1851,18 +1851,10 @@ class _ExecuteMixin:
 
         for _port_index, pe in enumerate(self._ports):
             if pe.impedance == 0.0:
-                from rfx.simulation import make_j_source
-                # forward() uniform route: Cb-normalized helper regardless
-                # of boundary (pre-existing). amplitude_kind (issue #571)
-                # rescales inside the helper; None = legacy bit-identical.
-                sources.append(
-                    make_j_source(grid, pe.position, pe.component,
-                                  pe.waveform, n_steps, materials,
-                                  amplitude_kind=pe.amplitude_kind)
-                )
-                from rfx.api._source_semantics import guard_float16_source_increment
-                sources[-1] = sources[-1]._replace(waveform=guard_float16_source_increment(
-                    sources[-1].waveform, self._resolve_field_dtype(), pe.amplitude_kind))
+                from rfx.sources.port_drive import soft_source
+                sources.defer(soft_source, grid, pe.position, pe.component,
+                              pe.waveform, n_steps, amplitude_kind=pe.amplitude_kind,
+                              field_dtype=self._resolve_field_dtype())
                 continue
 
             # Sparam-eligible lumped/wire port — advance the multi-drive index.

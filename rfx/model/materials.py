@@ -722,6 +722,43 @@ def e_update_material_at(materials, cell, component, periodic=(False, False, Fal
     return c.eps_update[axis][cell], c.sigma_update[axis][cell]
 
 
+def e_update_coefficient_at(materials, cell, component, dt,
+                            periodic=(False, False, False), *, host=False):
+    """Read the run's electric-current coefficient on one realized edge.
+
+    Pole coefficients are sampled before constructing the scalar ADE operator;
+    this avoids rebuilding grid-sized coefficient arrays for every source.
+    ``host`` retains the graded current source's historical scalar arithmetic
+    on plain edges. All dispersive coefficients use the kernel's algebra.
+    """
+    from rfx.core.yee import e_update_coeffs
+    eps, sigma = e_update_material_at(materials, cell, component, periodic)
+    c = getattr(materials, "components", None)
+    axis = {"ex": 0, "ey": 1, "ez": 2}[str(component).lower()]
+    if c is not None and (c.debye is not None or c.lorentz is not None):
+        from rfx.materials.debye import debye_e_coeffs
+        from rfx.materials.lorentz import lorentz_e_coeffs, mixed_e_component_coeffs
+        operands = ((eps,) * 3, (sigma,) * 3)
+        pole_cell = (slice(None),) + tuple(cell)
+        dc = lc = None
+        if c.debye is not None:
+            alpha, beta = c.debye.coefficients
+            dc = debye_e_coeffs(operands, dt, alpha[pole_cell],
+                               tuple(b[pole_cell] for b in beta))
+        if c.lorentz is not None:
+            a, b, strength = c.lorentz.coefficients
+            lc = lorentz_e_coeffs(operands, dt, a[pole_cell], b[pole_cell],
+                                 tuple(v[pole_cell] for v in strength))
+        if dc is not None and lc is not None:
+            return mixed_e_component_coeffs(dc, lc, axis, dt)[1]
+        return (dc if dc is not None else lc).cb[axis]
+    if host:
+        from rfx.nonuniform import current_source_cb
+        return current_source_cb(eps, sigma, dt,
+                                 traced=is_tracer(eps) or is_tracer(sigma))
+    return e_update_coeffs(eps, sigma, dt)[1]
+
+
 def pole_component_weights(mask, periodic=(False, False, False)):
     """Current plain four-cell pole occupancy convention (#1260)."""
     if mask is None:
