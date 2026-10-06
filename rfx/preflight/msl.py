@@ -521,7 +521,7 @@ def msl_probe_clearance_for_port(sim, pe, grid, *, probe_coordinates=None):
         msl_probe_x_coords_n, msl_sampled_node_coordinates,
     )
 
-    axis, width_axis, _, sign = msl_axis_roles(pe.direction)
+    axis, width_axis, normal_axis, sign = msl_axis_roles(pe.direction)
     frequency = float(sim._freq_max)
     recommended = (msl_min_probe_clearance(frequency)
                    if np.isfinite(frequency) and frequency > 0 else None)
@@ -559,6 +559,7 @@ def msl_probe_clearance_for_port(sim, pe, grid, *, probe_coordinates=None):
                            local_cell(grid, width_axis, centre + half_width)),
             domain_y=float(sim._domain[_MSL_AXIS_INDEX[width_axis]]),
             direction=pe.direction,
+            ground_plane=float(pe.position[_MSL_AXIS_INDEX[normal_axis]]),
             resolve_material=getattr(sim, "_resolve_material", None),
             thin_conductors=getattr(sim, "_thin_conductors", ()),
             pec_sigma_threshold=getattr(sim, "_PEC_SIGMA_THRESHOLD", 1e6),
@@ -1552,7 +1553,7 @@ def _check_msl_port_geometry(
             _w.warn(
                 PreflightWarning(
                     f"MSL port '{pe.name}' (direction={pe.direction!r}): "
-                    f"deepest probe at x={x_deep*1e3:.2f}mm sits "
+                    f"deepest probe at {_prop_ax}={x_deep*1e3:.2f}mm sits "
                     f"{nearest_d*1e6:.0f}µm "
                     f"from a strong reflector candidate ({nearest_label}; "
                     f"distance estimated from registered conductor bounds); recommended "

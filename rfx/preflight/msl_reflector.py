@@ -27,6 +27,7 @@ def msl_nearest_downstream_reflector(
     pec_sigma_threshold: float = 1e6,
     signed_front_distance: bool = False,
     width_cell: float | None = None,
+    ground_plane: float | None = None,
 ):
     """Distance from ``x_probe`` to the nearest downstream conductor edge.
 
@@ -102,7 +103,9 @@ def msl_nearest_downstream_reflector(
       far-wall coordinate (latent arithmetic bug, now moot: the estimate
       is gone). A same-width series element that does NOT contain the
       feed plane is a genuine discontinuity and is still counted.
-    * **ground-plane-like boxes** (y-extent ≥ 80 % of the domain y).
+    * **ground conductors** entirely at or below ``ground_plane`` on the
+      substrate-normal axis, independent of their width. If that reference
+      is unavailable, retain the legacy width ≥ 80 % of domain heuristic.
     """
     from rfx.geometry.csg import Box as _Box
     from rfx.sources.msl_port import _MSL_AXIS_INDEX, msl_axis_roles
@@ -112,6 +115,7 @@ def msl_nearest_downstream_reflector(
     _prop_ax, _width_ax, _n_ax, sign = msl_axis_roles(direction)
     _ip = _MSL_AXIS_INDEX[_prop_ax]
     _iw = _MSL_AXIS_INDEX[_width_ax]
+    _in = _MSL_AXIS_INDEX[_n_ax]
     nearest_d = float("inf")
     nearest_label = None
     unevaluated: list[str] = []
@@ -205,8 +209,12 @@ def msl_nearest_downstream_reflector(
             and box_x_lo - dx <= x_feed <= box_x_hi + dx
         ):
             continue
-        # Skip ground-plane-like boxes.
-        if box_y_extent >= 0.8 * domain_y:
+        # The port reference, not lateral domain coverage, identifies ground.
+        # Use the upper bound so metal rising into the substrate still counts.
+        if ground_plane is not None:
+            if float(hi[_in]) <= ground_plane:
+                continue
+        elif box_y_extent >= 0.8 * domain_y:
             continue
         # Distance from x_probe to the nearest edge of this box,
         # measured ALONG the propagation direction.
