@@ -219,10 +219,9 @@ def port_current(state, grid: Grid, port: LumpedPort,
 def _metric_ampere_loop(state, idx, component, grid, periodic, boundary=None):
     """Ampere contour uses the transverse dual lengths at the E node."""
     h_a, axis_a, h_b, axis_b = _ampere_loop_components(component)
-    da = float(grid.duals(axis_a)[idx[axis_a]])
-    db = float(grid.duals(axis_b)[idx[axis_b]])
-    if da == db:
-        return _ampere_loop(state, idx, component, da, periodic, boundary)
+    da, db = grid.duals(axis_a)[idx[axis_a]], grid.duals(axis_b)[idx[axis_b]]
+    if not isinstance(da + db, jax.core.Tracer) and float(da) == float(db):
+        return _ampere_loop(state, idx, component, float(da), periodic, boundary)
     a, b = getattr(state, h_a), getattr(state, h_b)
     return ((a[idx] - _bwd_h(a, idx, axis_a, periodic, boundary)) * db
             - (b[idx] - _bwd_h(b, idx, axis_b, periodic, boundary)) * da)

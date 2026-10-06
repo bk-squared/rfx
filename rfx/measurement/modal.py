@@ -7,7 +7,7 @@ if TYPE_CHECKING:
 
 import jax.numpy as jnp
 
-from .dft import phase, transform
+from .dft import transform
 
 
 def record_waveguide(cfg: WaveguidePortConfig, state,
@@ -35,7 +35,10 @@ def record_waveguide(cfg: WaveguidePortConfig, state,
     # Preserve the historical sample set: scan step N-1 remains excluded.
     # Record the retained samples at slot n with the physical stamp.
     n_t = cfg.v_probe_t.shape[0]
-    step = jnp.where(state.step < n_t, jnp.asarray(state.step, dtype=jnp.int32)-1, n_t)
+    # A call before the first step (state.step == 0) has no slot: index n_t is
+    # dropped, where -1 would have written the last slot.
+    step = jnp.where((state.step >= 1) & (state.step < n_t),
+                     jnp.asarray(state.step, dtype=jnp.int32)-1, n_t)
     return cfg._replace(
         dt=float(dt),
         v_probe_t=cfg.v_probe_t.at[step].set(
@@ -48,8 +51,8 @@ def record_waveguide(cfg: WaveguidePortConfig, state,
             jnp.asarray(i_ref, cfg.i_ref_t.dtype), mode='drop'),
         v_inc_t=cfg.v_inc_t.at[step].set(
             jnp.asarray(v_inc, cfg.v_inc_t.dtype), mode='drop'),
-        n_steps_recorded=jnp.maximum(cfg.n_steps_recorded,
-                                     jnp.minimum(step + 1, n_t)),
+        n_steps_recorded=jnp.maximum(cfg.n_steps_recorded, jnp.minimum(
+            jnp.asarray(state.step, dtype=jnp.int32), n_t)),
     )
 
 
@@ -60,8 +63,12 @@ def rect_dft(time_series, freqs, dt, n_valid, kind='E'):
 
 
 def legacy_current_spectrum(cfg, current_dft):
-    """Compatibility for explicitly supplied, E-stamped legacy H spectra."""
-    if cfg.dt <= 0:
-        return current_dft
-    return current_dft * (phase(0, cfg.freqs, cfg.dt, 'H', dtype=current_dft.dtype)
-                          / phase(0, cfg.freqs, cfg.dt, 'E', dtype=current_dft.dtype))
+    """An E-stamped current spectrum turned to the H stamp.
+
+    No production caller since S2 M2 (records are stamped by the kernel).
+    Kept behind ``waveguide_port._co_located_current_spectrum`` because
+    tests/unit/sparams/test_rf_audit_fixes.py and the diagnostics scripts
+    convert spectra they formed at E's time with it.
+    """
+    from rfx.core.dft_utils import half_step_current_phase
+    return current_dft * half_step_current_phase(cfg.freqs, cfg.dt).astype(current_dft.dtype)

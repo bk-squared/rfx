@@ -95,6 +95,17 @@ class TimeBase:
                      * np.float64(self.dt))
 
 
+#: Sums that are not on the shared DFT kernel (rfx.measurement.dft), and the
+#: one case in which the kernel itself is less accurate. Decision record
+#: 2026-10-07 "M2 after two reviews", items 3 and 4.
+KERNEL_KNOWN_DIFFERENCES = (
+    'rfx/floquet.py update_floquet_dft: own sum, E and H stamped at one time; no caller in rfx/',
+    'subgridded runner: own lumped V/I sum stamped n dt, without the H half step',
+    'rfx/adjoint.py: own plane sum, physically stamped',
+    'traced dt or frequencies: the phase is evaluated in the trace; its float32 error grows with the step index',
+)
+
+
 @dataclass(frozen=True)
 class MeasurementPlan:
     path: str
@@ -333,7 +344,8 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
     ids = [o.id for o in owners]
     if len(ids) != len(set(ids)):
         raise ValueError('duplicate measurement owner id')
-    return MeasurementPlan(path, TimeBase(float(grid.dt), int(n_steps)), tuple(owners))
+    return MeasurementPlan(path, TimeBase(float(grid.dt), int(n_steps)), tuple(owners),
+                           known_differences=KERNEL_KNOWN_DIFFERENCES)
 
 
 def measurement_plan(sim, *, n_steps, path=None, frequencies=None, calculator_owners=()):

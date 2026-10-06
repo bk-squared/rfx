@@ -95,17 +95,6 @@ def register_msl_wave_probes(
     )
 
 
-def _windowed_dft(ts_col: jnp.ndarray, dt: float,
-                  freqs: jnp.ndarray) -> jnp.ndarray:
-    """Hann-windowed single-bin DFT of one time-series column at ``freqs``.
-
-    JAX-friendly (avoids ``jnp.fft.rfft`` overhead when only N freqs are
-    needed; ``ts_col`` is float32, output is complex64).
-    """
-    from rfx.measurement.dft import transform
-    return transform(ts_col, freqs, dt, 'E', window='hann') / dt
-
-
 _Q_EPS = 1e-30
 
 
@@ -180,7 +169,6 @@ class MSLPlaneProbeSet:
     dz_arr: jnp.ndarray      # full substrate-normal per-cell profile (V + I)
     dy_arr: jnp.ndarray      # full trace-width per-cell profile (I)
     direction: str            # port propagation direction ("+x" / "-x")
-    hs_phase: jnp.ndarray      # (n_freqs,) identity; half-step is owned by the DFT kernel
     delta: float                # adjacent-probe spacing (for diagnostics)
     # Append defaults so existing constructors remain valid. Extraction
     # refuses legacy metadata instead of silently retaining staggered I.
@@ -329,10 +317,6 @@ def register_msl_plane_probes(
 
     delta = float(abs(pxs[1] - pxs[0]))
 
-    # M2: plane records already carry physical E/H stamps. Retain the
-    # public metadata field as an identity for existing projector callers.
-    hs_phase = jnp.ones(len(freqs), dtype=jnp.complex64)
-
     # Register 3 Ez planes and two bracketing planes for each H component.
     # The accumulators are filled inside the JIT scan body
     # and surfaced through ``ForwardResult.dft_planes[name]``.
@@ -369,7 +353,6 @@ def register_msl_plane_probes(
         dz_arr=jnp.asarray(dz_arr, dtype=jnp.float32),
         dy_arr=jnp.asarray(dy_arr, dtype=jnp.float32),
         direction=mp.direction,
-        hs_phase=hs_phase,
         delta=delta,
         hy_left_name=hy_left_name,
         hz_left_name=hz_left_name,
@@ -470,8 +453,6 @@ def _i_from_plane(fr, plane_name: str, p: MSLPlaneProbeSet) -> jnp.ndarray:
         planes[p.hy_left_name].accumulator, planes[plane_name].accumulator, p.h_weights)
     hz_plane = msl_collocate_h_planes(
         planes[p.hz_left_name].accumulator, planes[p.hz_name].accumulator, p.h_weights)
-    hy_plane = hy_plane * p.hs_phase[:, None, None].astype(hy_plane.dtype)
-    hz_plane = hz_plane * p.hs_phase[:, None, None].astype(hz_plane.dtype)
     return msl_loop_current(
         hy_plane, hz_plane,
         j_lo=p.j_lo, j_hi=p.j_hi,

@@ -761,8 +761,12 @@ UNIFORM_PLANE_STAMP_STEPS = 0.5
 NONUNIFORM_PLANE_STAMP_STEPS = 0.5
 
 
-def plane_stamp_steps(grid) -> float:
-    """Physical H-plane/current offset, identical on both runners."""
+def plane_stamp_steps(grid=None) -> float:
+    """Physical H-plane/current offset, identical on both runners.
+
+    ``grid`` no longer selects anything; it stays so callers that pass
+    their grid (the stamp used to differ by runner) need no change.
+    """
     return 0.5
 
 

@@ -8,7 +8,7 @@
     "rfx/interop/_design.py": 2094,
     "rfx/nonuniform.py": 4012,
     "rfx/preflight/msl.py": 1964,
-    "rfx/probes/probes.py": 2142,
+    "rfx/probes/probes.py": 2141,
     "rfx/ringdown.py": 3021,
     "rfx/runners/_distributed_common.py": 2644,
     "rfx/runners/distributed_nu.py": 3133,

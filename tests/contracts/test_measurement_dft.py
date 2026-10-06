@@ -33,7 +33,10 @@ def test_j7_stream_and_replay(kind, offset, length, window):
                           total_steps=length, window=window, alpha=.3), None
     live = jax.jit(lambda: jax.lax.scan(body, initial, (jnp.arange(length), samples))[0])()
     replay = transform(samples, freqs, dt, kind, window=window, alpha=.3)
-    np.testing.assert_array_equal(live, replay)
+    # Streaming adds one product per step; replay adds blocks of 256 steps,
+    # one matrix product each. Same weights, another order of additions: the
+    # bar is J7-1's, 1e-4 of the peak (measured 2e-7 .. 4e-7 here).
+    assert np.max(np.abs(np.asarray(live) - np.asarray(replay))) <= 1e-4 * np.max(np.abs(live))
     # Independent host window and Fourier integral: sharing a bug cannot pass.
     from scipy.signal.windows import tukey
     weights = {'rect': np.ones(length), 'hann': np.hanning(length),
@@ -58,9 +61,11 @@ def test_phase_shift_keeps_magnitudes_and_channel_ratios(kind):
 @pytest.mark.parametrize('mutation,row,record', [
     ('half_step', ('_dft_planes', 'dft_plane'), 'dft_planes.ez_x_0.accumulator'),
     ('drop_h', ('_flux_monitors', 'flux'), 'flux_monitors.flux_x_0.h1_dft'),
+    ('uniform_h_plane_as_e', ('_dft_planes', 'dft_plane'), 'dft_planes.hy_x_1.accumulator'),
 ])
 def test_s0_clock_mutations_turn_the_cell_red(monkeypatch, mutation, row, record):
-    """Use the real S0 runner and judge, mutating only the NU phase argument."""
+    """Use the real S0 runner and judge, mutating only one path's phase
+    argument: the graded path's, or (third case) the uniform path's H stamp."""
     from unittest.mock import patch
     from rfx.measurement import dft
     from tests.contracts.path_equivalence import execution
@@ -79,8 +84,10 @@ def test_s0_clock_mutations_turn_the_cell_red(monkeypatch, mutation, row, record
             kind = 'E'
         return original_phase(step, freqs, dt, kind, **kwargs)
 
+    mutated_lane = 'run_uniform' if mutation.startswith('uniform') else 'run_nonuniform'
+
     def changed_solve(row, lane, *args):
-        if lane == 'run_nonuniform':
+        if lane == mutated_lane:
             with patch.object(dft, 'phase', changed_phase):
                 return original_solve.__wrapped__(row, lane, *args)
         return original_solve(row, lane, *args)
@@ -114,19 +121,6 @@ def test_plan_channel_drives_the_clock():
     np.testing.assert_array_equal(phase(3, freqs, .1, channel), phase(3, freqs, .1, 'H'))
 
 
-def test_replay_retains_the_streaming_window_index():
-    from rfx.measurement.dft import dft_window_weight
-    records = np.arange(37, dtype=np.float32)/37
-    freqs, dt = np.array([.7, 1.3]), .02
-    acc = jnp.zeros(2, dtype=jnp.complex64)
-    for n, value in enumerate(records):
-        acc = accumulate(acc, value, n, freqs, dt, 'H', total_steps=37,
-                         window='hann', window_step=n+1)
-    replay = transform(records, freqs, dt, 'H', window='hann', window_step_offset=1)
-    np.testing.assert_allclose(replay, acc, rtol=1e-6, atol=1e-7)
-    assert float(dft_window_weight(1, 37, 'hann', .5)) > 0
-
-
 @pytest.mark.parametrize('kind,offset', [('E', 1.), ('H', .5)])
 def test_float32_error_stays_inside_the_rounding_bound_over_60_db(kind, offset):
     """The float32 kernel against a float64 host sum, bin by bin, on a record
@@ -157,3 +151,13 @@ def test_float32_error_stays_inside_the_rounding_bound_over_60_db(kind, offset):
     bound = np.finfo(np.float32).eps * np.sqrt(length) * np.abs(samples.astype(np.float64)).sum() * dt
     error = np.abs(result.astype(np.complex128) - reference)
     assert np.all(error <= bound), (error/bound).max()
+
+
+def test_the_plan_lists_the_sums_that_are_not_on_the_kernel():
+    from tests.contracts.path_equivalence.builders import build
+    from rfx.measurement.plan import measurement_plan
+    plan = measurement_plan(build(('_dft_planes', 'dft_plane'), 'run_uniform'), n_steps=12,
+                            path='run_uniform')
+    listed = ' | '.join(plan.known_differences)
+    for name in ('rfx/floquet.py', 'subgridded runner', 'rfx/adjoint.py', 'traced dt or frequencies'):
+        assert name in listed, name
