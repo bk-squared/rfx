@@ -38,6 +38,8 @@ def _compare_shared_ports():
         kw = dict(n_steps=12, skip_preflight=True, compute_s_params=False)
         reference = sim.run(**kw)
         actual = sim.run(devices=devices, **kw)
+        # The comparison means nothing if devices= fell back to one device.
+        assert len(actual.state.ez.devices()) == 2, actual.state.ez.devices()
         pairs = [(reference.time_series, actual.time_series)]
         pairs += [(getattr(reference.state, c), getattr(actual.state, c))
                   for c in ("ex", "ey", "ez", "hx", "hy", "hz")]

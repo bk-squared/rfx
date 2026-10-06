@@ -64,7 +64,6 @@ from rfx.simulation import (
 )
 from rfx.sources.sources import LumpedPort, setup_lumped_port
 from rfx.sources.port_drive import PortSourceQueue
-from rfx.model.materials import with_components
 from rfx.materials.debye import DebyeCoeffs, DebyeState
 from rfx.materials.lorentz import LorentzCoeffs, LorentzState
 
@@ -902,7 +901,9 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         probes.extend(_record_probes)
 
     # All port loads must be present before any drive reads its E operands.
-    materials = with_components(materials, grid, periodic=(False, False, False))
+    # No whole-domain realization here: the slab kernels form their own edge
+    # means, so the drive reads the four cells around its edge directly (this
+    # path refuses periodic axes); M3 gives the slab kernel the realized rule.
     sources = sources.resolve(materials)
     del wire_edges
 
