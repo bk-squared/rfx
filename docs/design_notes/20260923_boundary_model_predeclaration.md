@@ -395,3 +395,15 @@ PR lists every test whose expected advisories move and why. The rewrite itself �
 turning declared absorbing faces into walls — is the same class as the TF/SF transverse period
 (§3 B5, decision 4: a full-aperture waveguide's admissible transverse set is {PEC}) and joins PR3:
 a declared absorber the feature cannot keep is refused or must be declared as the wall it becomes.
+
+Addendum 4, 2026-10-06 (leader, after PR2's two reviews). (1) Addendum 3's rule — preflight reports the
+realized record — covers every feature that changes the realized faces, not only waveguide ports: with a
+Floquet port (which sets the periodic axes itself) preflight reports the periodic faces as unpadded; the
+PR lists every advisory that appears or disappears. (2) A face declared `cpml` with zero layers is an
+electric wall on one device (the absorber's backing at the domain face). On two devices with the uniform
+mesh it gets no wall: the multi-device lane builds walls only from the declared PEC/PMC face lists, and a
+probe differs from the one-device run by up to 78 % of its peak (found by the fresh-eyes review; graded
+two-device and a declared PEC face agree). Same cause as this PR — a reader not taking the face from the
+record — and in a file the PR already touches, so it is fixed here: the multi-device walls come from the
+record (PEC faces and zero-depth absorber backings), judged by that probe equal to one device within the
+cross-trace bar, with the old wall rule as the mutation. This is the PR's one computed-result change.
