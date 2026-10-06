@@ -131,8 +131,10 @@ def _same_grid(a, b):
 def solve_conductors(sim, grid, *, nonuniform=False, preflight=None):
     """Assemble once for execution and lend the pre-port object to its checks."""
     import jax
+    from rfx.model.source_admission import refuse_dead_soft_sources
     with jax.ensure_compile_time_eval():
         root = realized_conductors(sim, grid, nonuniform=nonuniform, mode="solve")
+        refuse_dead_soft_sources(sim, root)
     if preflight is not None:
         sim._auto_preflight(conductors=root, **preflight)
     return root
