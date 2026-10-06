@@ -573,13 +573,51 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
             f"grid{(' (' + lane + ' lane)') if lane else ''} at plane "
             f"{'xyz'[a]}={plane}; it would silently vanish (#369 class). "
             "Widen the footprint to reach a node line or refine the mesh.")
+    end_rows = (_box_end_rows(np.asarray(fp, dtype=bool), a, node_axes, cell_sizes,
+                              lo, hi, grid) if is_box else (None, None, None))
     unwrapped = None
     if shape_3 != tuple(coords.shape):
         from rfx.boundaries.pec import _fold_sheet_nodes
         unwrapped = jnp.asarray(fp)
         fp = _fold_sheet_nodes(fp, coords.shape, xp=np)
     return SheetSpec(normal_axis=a, plane=plane, footprint=jnp.asarray(fp),
-                     name=name, unwrapped_footprint=unwrapped)
+                     name=name, unwrapped_footprint=unwrapped, end_rows=end_rows)
+
+
+def _box_end_rows(fp, normal_axis, node_axes, cell_sizes, lo, hi, grid):
+    """Node rows of a Box sheet footprint that lie ON a drawn free edge.
+
+    Per in-plane axis ``t``: the first / last occupied node index when the
+    drawn face coincides with that node (the shared ``NODE_TIE_REL`` band)
+    and the node is not the first / last node of the lattice line. A row on
+    the lattice's own end is a wall (or the absorber continuation) the sheet
+    runs into, not a free edge; a drawn face BETWEEN two nodes marks nothing
+    (the closed footprint's last row is then inside the metal). A footprint
+    that wraps a periodic seam is left unmarked.
+    """
+    out = [None, None, None]
+    for t in range(3):
+        if t == normal_axis:
+            continue
+        line = np.asarray(node_axes[t], dtype=np.float64)
+        rows = np.flatnonzero(fp.any(axis=tuple(b for b in range(3) if b != t)))
+        if rows.size < 2 or rows[-1] - rows[0] + 1 != rows.size:
+            continue
+        period = (float(grid.domain[t])
+                  if 'xyz'[t] in getattr(grid, 'periodic_axes', '') else None)
+        tol = NODE_TIE_REL * _local_cell(line, cell_sizes[t], 0.5 * (lo[t] + hi[t]))
+
+        def _on(node, face):
+            gap = abs(float(node) - float(face))
+            if period:
+                gap = min(gap % period, period - gap % period)
+            return gap <= tol
+
+        i0, i1 = int(rows[0]), int(rows[-1])
+        marked = tuple(i for i, face in ((i0, lo[t]), (i1, hi[t]))
+                       if 0 < i < line.size - 1 and _on(line[i], face))
+        out[t] = marked or None
+    return tuple(out)
 
 
 

@@ -191,6 +191,11 @@ class SheetSpec:
     # A physical in-plane interval distinguishes node 0 from its virtual
     # endpoint N until its edges have been enumerated.
     unwrapped_footprint: object | None = None
+    # Per axis: the node indices of the footprint's rows that lie ON a drawn
+    # free boundary of that axis (``None`` = none marked). Made with the
+    # footprint (``sheet_spec_from_shape``); read by the finite-R_s sheet
+    # operator only -- a PEC sheet has no weight to adjust.
+    end_rows: tuple = (None, None, None)
 
     @classmethod
     def from_node_ranges(cls, grid_shape, *, normal_axis: int, plane: int,

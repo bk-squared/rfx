@@ -196,8 +196,11 @@ def _build_record(sim, ctx, *, compact=False):
     declarations.extend((f"thin_conductor[{i}]", f"thin_conductor[{i}]", e.shape)
                         for i, e in enumerate(sim._thin_conductors))
     entities = []
+    f0_specs = _f0_specs_by_conductor(sim, assembled, refused_tc)
     for index, (label, name, shape) in enumerate(declarations):
         mask_error = None
+        node_based = False
+        f0_spec = None
         e = interior.get(label, conductors.get(label))
         bounds = _shape_bounds(shape)
         sheet = None if e is None else e.sheet
@@ -214,6 +217,9 @@ def _build_record(sim, ctx, *, compact=False):
             from rfx.geometry.rasterize_grid import interior_lattice_mask
             mask = interior_lattice_mask(
                 assembled.geometry_masks[id(sim._thin_conductors[index - len(sim._geometry)])], ctx.grid)
+            # An f0 sheet's mask is its NODE footprint (the DC fold's is cells).
+            node_based = sim._thin_conductors[index - len(sim._geometry)].surface_impedance_f0 is not None
+            f0_spec = f0_specs.get(index - len(sim._geometry)) if node_based else None
         else:
             # Retain the refused declaration's diagnostic occupancy once.
             # It is explicitly NOT a solved conductor and contributes no edges.
@@ -227,10 +233,15 @@ def _build_record(sim, ctx, *, compact=False):
             occ = np.where(mask)
             for a in range(3):
                 i0, i1 = int(occ[a].min()), int(occ[a].max())
-                cell_range = None if kind in ("sheet", "wire") else (i0, i1 + 1)
+                cell_range = None if kind in ("sheet", "wire") or node_based else (i0, i1 + 1)
                 rlo = float(nodes[a][i0])
                 rhi = float(nodes[a][i1 if cell_range is None else i1 + 1])
                 comparison = free_ends = None
+                if f0_spec is not None and a != int(f0_spec.normal_axis):
+                    rlo, rhi = _f0_solved_bounds(
+                        i0, i1, nodes[a], sizes[a], f0_spec.end_rows[a],
+                        int(getattr(ctx.grid, f"pad_{'xyz'[a]}_lo")),
+                        int(getattr(ctx.grid, f"pad_{'xyz'[a]}_hi")))
                 if sheet is not None and a != int(sheet.normal_axis) and bounds is not None:
                     if hasattr(sheet, 'solved_spans'):
                         span = sheet.solved_spans[a]
@@ -297,6 +308,36 @@ def _build_record(sim, ctx, *, compact=False):
                             tuple(tuple(row.items()) for row in pad_findings), ctx.lane,
                             snap=sim._snap)
     return record if compact else _conductor_view(record, assembled)
+
+
+def _f0_specs_by_conductor(sim, assembled, refused_tc):
+    """``thin_conductor`` index -> its ``SheetImpedanceSpec`` (assembly order)."""
+    f0 = [i for i, tc in enumerate(sim._thin_conductors)
+          if i not in refused_tc and getattr(tc, "surface_impedance_f0", None) is not None]
+    specs = tuple(getattr(assembled, "sheet_impedance", ()) or ())
+    return dict(zip(f0, specs)) if len(f0) == len(specs) else {}
+
+
+def _f0_solved_bounds(i0, i1, nodes, sizes, end_rows, pad_lo, pad_hi):
+    """In-plane ends of an f0 sheet as the sheet operator solves them.
+
+    A tangential row at node ``i`` loads its dual cell, half of the cell on
+    each side, times the row's weight on the sheet conductance: 1, or
+    ``END_ROW_WEIGHT`` on a row marked as lying on a drawn free edge. The
+    solved end is therefore ``weight * dual - inside half`` beyond the end
+    node (zero at weight 0.5 between equal cells). An end on the domain face
+    has no outside cell and stays on its node.
+    """
+    from rfx.materials.thin_conductor import END_ROW_WEIGHT
+    rows = end_rows or ()
+    lo, hi = float(nodes[i0]), float(nodes[i1])
+    if i0 > pad_lo and i0 >= 1:
+        w = END_ROW_WEIGHT if i0 in rows else 1.0
+        lo -= w * 0.5 * float(sizes[i0 - 1] + sizes[i0]) - 0.5 * float(sizes[i0])
+    if i1 < len(sizes) - pad_hi - 1 and i1 >= 1:
+        w = END_ROW_WEIGHT if i1 in rows else 1.0
+        hi += w * 0.5 * float(sizes[i1 - 1] + sizes[i1]) - 0.5 * float(sizes[i1 - 1])
+    return lo, hi
 
 
 def _pinned_entities(sim, ctx, assembled, nodes, sizes, *, compact=False):
