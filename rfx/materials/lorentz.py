@@ -36,9 +36,9 @@ from typing import NamedTuple
 import jax.numpy as jnp
 
 from rfx.core.yee import (
-    si_value_eps_r_grad, EPS_0, FDTDState, curl_h, ade_state_dtype, component_e_materials,
+    si_value_eps_r_grad, EPS_0, FDTDState, curl_h, ade_state_dtype,
 )
-from rfx.materials.debye import per_component, pole_edge_fractions, pole_reach
+from rfx.materials.debye import per_component, pole_reach
 
 
 class LorentzPole(NamedTuple):
@@ -247,20 +247,16 @@ def init_lorentz(
     shape = materials.eps_r.shape
     n_poles = len(poles)
 
-    if isinstance(mask, (list, tuple)):
-        if len(mask) != n_poles:
-            raise ValueError(
-                f"Expected {n_poles} Lorentz masks, got {len(mask)}"
-            )
-        pole_masks = [jnp.asarray(mask_i, dtype=bool) for mask_i in mask]
-    else:
-        shared_mask = None if mask is None else jnp.asarray(mask, dtype=bool)
-        pole_masks = [shared_mask] * n_poles
-
-    eps_c, sig_c = component_e_materials(materials, periodic)
+    from rfx.model.materials import with_components
+    components = with_components(materials, None, periodic=periodic,
+        lorentz_spec=(poles, mask)).components
+    eps_c, sig_c = components.eps_update, components.sigma_update
+    weights = [p.weights for p in components.lorentz]
+    if len(weights) != n_poles:
+        raise ValueError("realized lorentz poles do not match the requested poles")
 
     a, b, c = lorentz_pole_coeffs(
-        poles, dt, shape, [pole_edge_fractions(m, periodic) for m in pole_masks])
+        poles, dt, shape, weights)
     coeffs = lorentz_e_coeffs((eps_c, sig_c), dt, a, b, c)
 
     zeros = jnp.zeros((n_poles,) + shape, dtype=ade_state_dtype(field_dtype))

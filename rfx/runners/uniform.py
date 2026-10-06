@@ -23,7 +23,7 @@ from rfx.current_moments import monitor_for_simulation as _cm_for_sim
 from rfx.farfield import make_ntff_box
 from rfx.lumped import setup_rlc_materials, build_rlc_meta
 from rfx.core.yee import (
-    add_lumped_eps, edge_mean_components, permittivity_without_lumped,
+    add_lumped_eps,
 )
 
 
@@ -781,6 +781,11 @@ def run_uniform(
         from rfx.simulation import make_source as _make_src
         sources.append(_make_src(grid, tuple(center), comp, wf, n_steps))
 
+    from rfx.model.materials import with_components
+    materials = with_components(materials, grid,
+        periodic=_simulation.resolve_periodic(grid, periodic),
+        debye_spec=debye_spec, lorentz_spec=lorentz_spec)
+
     # Conformal PEC (Stage 1) permittivity, #1373: the same four-cell
     # edge mean of the volume permittivity the plain E update uses, on the
     # run's final periodic flags (after the TFSF / 2-D overrides), divided
@@ -788,9 +793,7 @@ def run_uniform(
     # is the plain path's value exactly.
     if conformal_weights is not None:
         w_ex, w_ey, w_ez = conformal_weights
-        eps_mean = edge_mean_components(
-            permittivity_without_lumped(materials),
-            _simulation.resolve_periodic(grid, periodic))
+        eps_mean = materials.components.eps
         eps_ex_c, eps_ey_c, eps_ez_c = conformal_eps_correction(
             eps_mean, w_ex, w_ey, w_ez)
         if aniso_eps is not None:

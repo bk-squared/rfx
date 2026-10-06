@@ -1195,6 +1195,10 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         )
         pec_edge_masks = conductors.pec_edges
 
+    from rfx.model.materials import with_components
+    materials = with_components(materials, grid, periodic=(False, False, False),
+        debye_spec=debye_spec, lorentz_spec=lorentz_spec)
+
     # Debye/Lorentz coefficients, AFTER the last stamp into ``materials``
     # (the wire, lumped and MSL port loads above), as the uniform lane builds
     # them. With a dispersive material anywhere in the model the E update runs

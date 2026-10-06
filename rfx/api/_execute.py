@@ -2197,6 +2197,9 @@ class _ExecuteMixin:
             for pe in self._ports:
                 probes.append(make_probe(grid, pe.position, pe.component))
 
+        from rfx.model.materials import with_components
+        materials = with_components(materials, grid, periodic=periodic_bool,
+            debye_spec=debye_spec, lorentz_spec=lorentz_spec)
         _, debye, lorentz = self._init_dispersion(
             materials, grid.dt, debye_spec, lorentz_spec,
             periodic=periodic_bool,
@@ -2369,15 +2372,12 @@ class _ExecuteMixin:
             refuse_h_side_conductor(
                 self, "the Kottke occupancy lane (RFX_PEC_OCC_KOTTKE=1)")
             from rfx.geometry.smoothing import kottke_inv_eps_from_occupancy
-            from rfx.core.yee import (
-                add_lumped_eps, edge_mean_components, permittivity_without_lumped,
-            )
+            from rfx.core.yee import add_lumped_eps
             # The plain path's four-cell edge mean (#1213), not the per-cell
             # value: occupancy only scales it where a conductor sits (#1373).
-            volume_eps = permittivity_without_lumped(materials)
             inv_baseline = tuple(
                 (1.0 / eps_c).astype(jnp.float32)
-                for eps_c in edge_mean_components(volume_eps, periodic_bool))
+                for eps_c in materials.components.eps)
             aniso_inv_eps_run = kottke_inv_eps_from_occupancy(
                 grid,
                 pec_occupancy_local,

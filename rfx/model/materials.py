@@ -1,4 +1,4 @@
-"""Cell-material assembly shared by uniform and profiled grids.
+"""Cell and per-component material assembly for uniform and profiled grids.
 
 The legacy entry points adapt only the return tuple. Grid-type branches keep
 existing lane-specific sampling, sheet folds and refusals; no new physics rule.
@@ -7,12 +7,19 @@ Conductors own their realized products in rfx.model.conductors.
 """
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
+from typing import NamedTuple
+
+import jax
 
 import jax.numpy as jnp
 
 from rfx.core.jax_utils import is_tracer
-from rfx.core.yee import MaterialArrays
+from rfx.core.yee import (
+    MaterialArrays, add_lumped_eps, cell_owned_component_materials,
+    component_h_materials, edge_averaged_materials, edge_mean_components,
+    lumped_components, lumped_total, permittivity_without_lumped,
+)
 from rfx.geometry.csg import Box, _grid_coords
 from rfx.geometry._pole_keying import _accumulate_pole_mask, _spec_from_pole_masks
 from rfx.geometry.rasterize_grid import (
@@ -643,3 +650,117 @@ def _fold_nonuniform_thin_conductors(
                 sigma=jnp.where(m, sigma_eff, materials.sigma),
             )
     return materials
+
+
+class ComponentCells(NamedTuple):
+    """Finished cell arrays and the occupancy specs returned by assemble_cells."""
+
+    materials: MaterialArrays
+    debye_spec: object = None
+    lorentz_spec: object = None
+
+
+class ComponentPole(NamedTuple):
+    """One pole's parameters and its three E-edge occupancy weights."""
+
+    pole: object
+    weights: object
+
+
+@jax.tree_util.register_dataclass
+@dataclass(frozen=True)
+class ComponentMaterials:
+    """Realized volume operands, separate stamps, and finished kernel arrays.
+
+    ``eps``/``sigma``/``mu`` hold volume values. ``*_update`` include only
+    the corresponding component's lumped/wire stamp, already added once.
+    UPML retains its historical cell-owned E convention explicitly. Tensor
+    corrections and design windows remain separate until their assembly stage
+    migrates; this step does not change their constitutive rule.
+    """
+
+    eps: tuple
+    sigma: tuple
+    mu: tuple
+    eps_lumped: tuple
+    sigma_lumped: tuple
+    mu_wire: tuple
+    eps_update: tuple
+    sigma_update: tuple
+    mu_update: tuple
+    upml_eps: tuple
+    upml_sigma: tuple
+    debye: tuple
+    lorentz: tuple
+    cells_view: MaterialArrays
+
+
+def pole_component_weights(mask, periodic=(False, False, False)):
+    """Current plain four-cell pole occupancy convention (#1260)."""
+    if mask is None:
+        return None
+    return edge_mean_components(jnp.asarray(mask, dtype=bool).astype(jnp.float32), periodic)
+
+
+def _realize_poles(spec, periodic, kind):
+    if spec is None:
+        return ()
+    poles, masks = spec
+    if isinstance(masks, (tuple, list)):
+        if len(masks) != len(poles):
+            raise ValueError(f"Expected {len(poles)} {kind} masks, got {len(masks)}")
+    else:
+        masks = [masks] * len(poles)
+    return tuple(ComponentPole(p, pole_component_weights(m, periodic))
+                 for p, m in zip(poles, masks))
+
+
+def realize_components(cells, grid, *, periodic):
+    """Realize final cells once, using the existing E/pole and H rules.
+
+    ``cells`` is a MaterialArrays or ComponentCells with dispersion specs.
+    ``grid=None`` is the uniform-metric compatibility path for direct ADE
+    callers. Only H uses primal widths on a graded grid in M2; E and poles
+    deliberately retain the plain arithmetic mean until M3.
+    """
+    if isinstance(cells, ComponentCells):
+        materials, debye_spec, lorentz_spec = cells
+    else:
+        materials, debye_spec, lorentz_spec = cells, None, None
+    # A cells view never contains another realization.
+    materials = materials._replace(components=None)
+    eps_lumped = lumped_components(materials.eps_r_lumped)
+    sigma_lumped = lumped_components(materials.sigma_lumped)
+    sigma_volume = materials.sigma
+    sigma_stamp = lumped_total(sigma_lumped)
+    if sigma_stamp is not None:
+        sigma_volume = sigma_volume - sigma_stamp
+    eps, sigma = edge_averaged_materials(
+        permittivity_without_lumped(materials), sigma_volume, periodic)
+    widths = ((grid.dx_arr, grid.dy_arr, grid.dz)
+              if hasattr(grid, "dx_arr") else None)
+    mu = component_h_materials(materials._replace(mu_r_wire=None),
+                               periodic, cell_sizes=widths)
+    mu_wire = lumped_components(materials.mu_r_wire)
+    eps_update = add_lumped_eps(eps, materials.eps_r_lumped)
+    sigma_update = tuple(s if p is None else s + p for s, p in zip(sigma, sigma_lumped))
+    mu_update = tuple(m if p is None else m + p for m, p in zip(mu, mu_wire))
+    upml_eps, upml_sigma = cell_owned_component_materials(materials)
+    return ComponentMaterials(
+        eps, sigma, mu, eps_lumped, sigma_lumped, mu_wire,
+        eps_update, sigma_update, mu_update, upml_eps, upml_sigma,
+        _realize_poles(debye_spec, periodic, "Debye"),
+        _realize_poles(lorentz_spec, periodic, "Lorentz"), materials)
+
+
+def with_components(materials, grid, *, periodic, debye_spec=None, lorentz_spec=None):
+    """Attach one realization after the last cell/stamp write, or reuse it.
+
+    Callers must not modify the cells after this boundary. Raw low-level
+    runner inputs enter here too; no global or identity cache is involved.
+    """
+    if materials.components is not None:
+        return materials
+    components = realize_components(
+        ComponentCells(materials, debye_spec, lorentz_spec), grid, periodic=periodic)
+    return materials._replace(components=components)

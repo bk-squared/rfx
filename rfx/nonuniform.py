@@ -2499,6 +2499,8 @@ def _build_nu_scan(
     table length when sources are present.
     """
     cpml_axes = resolve_cpml_axes(grid, cpml_axes)
+    from rfx.model.materials import with_components
+    materials = with_components(materials, grid, periodic=(False, False, False))
     from rfx.sources.wire_radius import require_radius_update
     require_radius_update(
         materials, lane="non-uniform Yee with dispersion/tensor or design-box updates",
@@ -2799,9 +2801,7 @@ def _build_nu_scan(
     if not (use_debye or use_lorentz) and aniso_eps is not None:
         _cpml_inv_eps_r = tuple(1.0 / e for e in aniso_eps)
     else:
-        from rfx.core.yee import component_e_materials as _comp_mats
-        _eps_edge_nu, _ = _comp_mats(materials, (False, False, False))
-        _cpml_inv_eps_r = tuple(1.0 / e for e in _eps_edge_nu)
+        _cpml_inv_eps_r = tuple(1.0 / e for e in materials.components.eps_update)
 
     # The per-cell arrays the step reads reach it through ``invariants`` so
     # that a jitted loop can pass them as an argument (_NUScanSetup). The

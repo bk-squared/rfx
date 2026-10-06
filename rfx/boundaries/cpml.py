@@ -1050,14 +1050,17 @@ def apply_cpml_h(
     # JAX, so the coefficients follow the ambient material dtype
     # (#646 family: promote-never-pin).
     dt = grid.dt if is_tracer(grid.dt) else float(grid.dt)
-    from rfx.core.yee import MaterialArrays, component_h_materials
+    from rfx.model.materials import with_components
+    from rfx.core.yee import stored_h_materials
     magnetic_materials = materials if hasattr(materials, "mu_r") else None
     if periodic is None:
         periodic = tuple(a in getattr(grid, "periodic_axes", "") for a in "xyz")
-    mu = component_h_materials(
-        magnetic_materials if magnetic_materials is not None else MaterialArrays(None, None, 1.0),
-        periodic=periodic,
-        cell_sizes=(grid.dx_arr, grid.dy_arr, grid.dz) if hasattr(grid, "dx_arr") else None)
+    if magnetic_materials is None:
+        mu = (1.0, 1.0, 1.0)
+    else:
+        magnetic_materials = with_components(magnetic_materials, grid, periodic=periodic)
+        widths = (grid.dx_arr, grid.dy_arr, grid.dz) if hasattr(grid, "dx_arr") else None
+        mu = stored_h_materials(magnetic_materials, periodic, widths)
     ch = tuple(dt / (m * MU_0) for m in mu)
 
     def _h_face(component, axis, lo):

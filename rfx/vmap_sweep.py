@@ -40,7 +40,7 @@ from rfx.core.drives import drive_layout, inject_drives
 import numpy as np
 
 from rfx.core.yee import (MaterialArrays,
-                          component_e_materials, init_state,
+                          init_state,
                           update_e, update_h)
 from rfx.geometry.rasterize_grid import (
     _material_cell_mask, centres_from_uniform_grid, coords_from_uniform_grid,
@@ -577,6 +577,8 @@ def _build_vmap_scan_fn(
         n2)`` complex accumulators, one per registered DFT plane (empty
         tuple if none).
         """
+        from rfx.model.materials import with_components
+        materials = with_components(materials, grid, periodic=periodic)
         fdtd = init_state(grid.shape)
         drives = drive_layout(src_meta + list(j_src_meta), fdtd.ex.dtype)
 
@@ -613,7 +615,7 @@ def _build_vmap_scan_fn(
                 # ``materials.eps_r``. Without this the two halves of one
                 # timestep integrate different media wherever an interface
                 # crosses the pad, and this lane stops reproducing ``run()``.
-                _eps_c, _ = component_e_materials(materials, periodic)
+                _eps_c = materials.components.eps_update
                 st, cpml_st = apply_cpml_e(
                     st, cpml_params, cpml_st, grid, cpml_axes,
                     materials=materials,

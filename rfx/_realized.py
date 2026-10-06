@@ -106,7 +106,8 @@ def electric(materials, eps, sigma, site, *, periodic=(False,) * 3,
         site = "distributed_nu.E"
     eps = ACTIVE.apply(site, "eps_e", eps)
     sigma = ACTIVE.apply(site, "sigma_e", sigma)
-    payload = dict(eps_e=eps, sigma_e=sigma, materials=materials)
+    # Keep the legacy cell-view payload; eps/sigma above are the consumed arrays.
+    payload = dict(eps_e=eps, sigma_e=sigma, materials=materials._replace(components=None))
     if owned_start is not None:
         payload.update(owned_start=owned_start, owned_count=owned_count)
     ACTIVE.observe(site, payload, region=region, periodic=periodic)
@@ -122,7 +123,7 @@ def scalar_electric(materials, site):
 def magnetic(materials, mu, site, *, periodic=(False,) * 3, cell_sizes=None):
     """Observe and replay the relative H operands returned by their owner."""
     mu = ACTIVE.apply(site, "mu_h", mu)
-    ACTIVE.observe(site, dict(mu_h=mu, materials=materials, cell_sizes=cell_sizes), periodic=periodic)
+    ACTIVE.observe(site, dict(mu_h=mu, materials=materials._replace(components=None), cell_sizes=cell_sizes), periodic=periodic)
     return mu
 
 
@@ -149,7 +150,7 @@ def sources(grid, materials, specs, site, *, dt=None):
     step = grid.dt if dt is None else dt
     raw = jax.vmap(pe.waveform)(jnp.arange(n, dtype=jnp.float32) * step)
     ACTIVE.observe(site, dict(waveforms=tables, raw_waveform=raw,
-                             materials=materials),
+                             materials=materials._replace(components=None)),
                    metadata=dict(grid=grid, cells=cells, declaration=pe))
     return specs
 
@@ -158,7 +159,7 @@ def face(materials, region, eps, mu, site):
     eps = ACTIVE.apply(site, "eps_e", (eps,))[0]
     mu = ACTIVE.apply(site, "mu_h", mu)
     ACTIVE.observe(site, dict(eps_e=(eps, eps), mu_h=mu,
-                             materials=materials), region=region)
+                             materials=materials._replace(components=None)), region=region)
     return eps, mu
 
 
