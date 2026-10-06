@@ -155,7 +155,11 @@ class _FDTDReached(RuntimeError):
 
 
 def _fit_to_scan(monkeypatch, factory):
-    def reached(*args, **kwargs):
+    def reached(grid, materials, *args, **kwargs):
+        from rfx.model.materials import validate_components
+        from rfx.simulation import resolve_periodic
+        assert materials.components is not None
+        validate_components(materials, grid=grid, periodic=resolve_periodic(grid, None))
         raise _FDTDReached("material fit reached FDTD")
 
     monkeypatch.setattr("rfx.simulation.run", reached)

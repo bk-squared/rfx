@@ -251,10 +251,10 @@ def edge_update_denominator(materials, cell, component, dt,
     A lumped element's current enters Ampere's law at its edge through the
     SAME coefficient the Yee update multiplies the curl by, ``Cb = 1/D0``, so
     the element's ``D0`` has to be built from the edge's own ``eps`` and
-    ``sigma``: :func:`rfx.core.yee.cell_component_e_materials` at the
-    element's cell and component -- the mean of the four incident cells'
-    volume material plus the lumped stamps on this edge (this cell, this
-    component: #1210, #1236), the values
+    ``sigma``: :func:`rfx.model.materials.e_update_material_at` at the
+    element's cell and component -- the stored update operands including
+    the lumped stamps on this edge (this cell, this component: #1210,
+    #1236), the values
     ``update_e`` turns into ``Cb``. Reading ``materials.eps_r[i, j, k]`` /
     ``sigma[i, j, k]`` instead is the single-cell value, which differs from
     what the update uses wherever the four cells around the edge are not one
@@ -270,9 +270,8 @@ def edge_update_denominator(materials, cell, component, dt,
     arithmetic stays in the arrays' dtype, so a traced material keeps its
     gradient.
     """
-    from rfx.core.yee import cell_component_e_materials
-    eps_r, sigma = cell_component_e_materials(materials, cell, component,
-                                              periodic)
+    from rfx.model.materials import e_update_material_at
+    eps_r, sigma = e_update_material_at(materials, cell, component, periodic)
     if as_float and not (is_tracer(eps_r) or is_tracer(sigma)):
         # Python floats: host arithmetic, nothing on a tape.
         return _denominator_si(float(eps_r), float(sigma), dt)

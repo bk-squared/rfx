@@ -15,8 +15,8 @@ from rfx.core.yee import MaterialArrays, add_lumped_eps, permittivity_without_lu
 from rfx.materials.debye import init_debye
 from rfx.materials.lorentz import init_lorentz
 from rfx.sources.waveguide_port import _node_span_to_cell_span
-from rfx.sources.sources import stamp_lumped_sigma as _stamp_lumped_sigma
 from rfx.sources.port_drive import port_drive_waveform
+from rfx.sources.sources import stamp_lumped_sigma as _stamp_lumped_sigma
 from rfx.nonuniform import (
     NonUniformGrid,
     e_node_dual_spacing_at,
@@ -351,6 +351,15 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
     )
 
 
+def _port_drive_source(grid, cell, component, excitation, n_steps, *, materials,
+                      sigma_port, unit_field):
+    """NU tuple source, built from the final realized materials."""
+    waveform = port_drive_waveform(
+        grid, cell, component, excitation, n_steps, materials,
+        sigma_port=sigma_port, unit_field=unit_field)
+    return (*cell, component, waveform)
+
+
 def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
                         n_steps, pec_edge_masks, *, geometry_edge_masks=None,
                         sheet_specs=(), drawn_eps_r=None, conductors=None):
@@ -363,8 +372,8 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
         nowhere to go; and
       * the feed's own termination conductance is stamped into
         ``materials_drive`` as well as ``materials`` before the feed is
-        built from it (#1256: the drive's Cb has to be the E update's, port
-        load included), and ``materials_drive`` carries any whole-grid
+        queued (#1256). The queue reads final realized materials after all
+        stamps; ``materials_drive`` carries any whole-grid
         eps/sigma override, traced or not (#1267).
 
     The substrate ``eps_r`` of the launch fixture -- the static-Laplace mode
@@ -437,9 +446,9 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
         materials_drive = setup_msl_port(      # #1256
             grid, mp, materials_drive, mode_profile=mode_profile)
         if pe.excite and pe.waveform is not None:
-            sources.extend(make_msl_port_sources(
-                grid, mp, materials_drive, n_steps, mode_profile=mode_profile,
-            ))
+            sources.defer(make_msl_port_sources,
+                grid, mp, n_steps=n_steps, mode_profile=mode_profile,
+            )
         if pec_edge_masks is not None:
             # Only the SUBSTRATE-NORMAL component: the edge the modal
             # source drives.  The three-component form opened a
@@ -792,7 +801,8 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     # Fold first, then put each capacitor on its own edge exactly once.
     aniso_eps = add_lumped_eps(aniso_eps, materials.eps_r_lumped)
 
-    sources = []
+    from rfx.sources.port_drive import PortSourceQueue
+    sources = PortSourceQueue()
     probes = []
     wire_port_specs = []
     lumped_port_specs = []
@@ -961,11 +971,10 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                     # Dead extent cells get no source (issue #318).
                     if not live:
                         continue
-                    waveform = port_drive_waveform(
+                    sources.defer(_port_drive_source,
                         grid, cell_ijk, pe.component, pe.waveform, sizing_n,
-                        materials_drive, sigma_port=drive_stamps[tuple(cell_ijk)][0],
+                        sigma_port=drive_stamps[tuple(cell_ijk)][0],
                         unit_field=drive_stamps[tuple(cell_ijk)][1])
-                    sources.append((*cell_ijk, pe.component, waveform))
 
             # Wire port S-param spec — include excite/direction so the
             # runner scan body can record V/I and the post-processing
@@ -1031,10 +1040,9 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                     entity_id=f"port[{_port_index}]")
                 pec_edge_masks = conductors.pec_edges
             if pe.excite:
-                waveform = port_drive_waveform(
-                    grid, idx, pe.component, pe.waveform, sizing_n, materials_drive,
+                sources.defer(_port_drive_source,
+                    grid, idx, pe.component, pe.waveform, sizing_n,
                     sigma_port=sigma_port, unit_field=1 / d_parallel)
-                sources.append((*idx, pe.component, waveform))
 
             # Explicit bins opt lumped ports into the same V/I accumulators
             # as a one-cell wire port (#1410). Graded forward returns a
@@ -1150,19 +1158,6 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             sp_freqs = np.linspace(
                 sim._freq_max / 10, sim._freq_max, 50)
 
-    # Lumped RLC: build per-element metadata + zero-init ADE states
-    rlc_metas: tuple = ()
-    rlc_states_init: tuple = ()
-    if sim._lumped_rlc:
-        from rfx.lumped import (build_rlc_meta, init_rlc_state,
-                                refuse_stacked_solved_elements)
-        rlc_metas = tuple(
-            build_rlc_meta(grid, spec, materials) for spec in sim._lumped_rlc
-        )
-        # #1245: at most one element with its own solve per realized edge.
-        refuse_stacked_solved_elements(sim._lumped_rlc, rlc_metas)
-        rlc_states_init = tuple(init_rlc_state() for _ in sim._lumped_rlc)
-
     # Waveguide ports: build per-port config via NU-aware
     # init_waveguide_port (duck-types on grid for per-axis widths).
     waveguide_port_cfgs = []
@@ -1198,6 +1193,20 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     from rfx.model.materials import with_components
     materials = with_components(materials, grid, periodic=(False, False, False),
         debye_spec=debye_spec, lorentz_spec=lorentz_spec)
+    sources = sources.resolve(materials)
+
+    # Lumped RLC: build per-element metadata + zero-init ADE states
+    rlc_metas: tuple = ()
+    rlc_states_init: tuple = ()
+    if sim._lumped_rlc:
+        from rfx.lumped import (build_rlc_meta, init_rlc_state,
+                                refuse_stacked_solved_elements)
+        rlc_metas = tuple(
+            build_rlc_meta(grid, spec, materials) for spec in sim._lumped_rlc
+        )
+        # #1245: at most one element with its own solve per realized edge.
+        refuse_stacked_solved_elements(sim._lumped_rlc, rlc_metas)
+        rlc_states_init = tuple(init_rlc_state() for _ in sim._lumped_rlc)
 
     # Debye/Lorentz coefficients, AFTER the last stamp into ``materials``
     # (the wire, lumped and MSL port loads above), as the uniform lane builds

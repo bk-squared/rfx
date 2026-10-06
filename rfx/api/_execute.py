@@ -1752,7 +1752,8 @@ class _ExecuteMixin:
                     r_val=_v.get("R"), c_val=_v.get("C"),
                 )
 
-        sources = []
+        from rfx.sources.port_drive import PortSourceQueue
+        sources = PortSourceQueue()
         probes = []
         # ── Effective boundary flags, resolved BEFORE the PEC realization ──
         # #931 §1.7: the realized PEC edge masks (Mx, My, Mz) are only
@@ -1895,19 +1896,14 @@ class _ExecuteMixin:
                     excitation=_drive_waveform,
                     radius=pe.radius,
                 )
-                # Live-cell-aware fold + injection (issue #318): dead
-                # extent cells inside PEC carry no port sigma and no
-                # source. ``pec_mask_local`` at this point still holds the
-                # assembled-geometry state for THIS port's cells (its own
-                # clearing happens just below), which is exactly the
-                # "live" definition.
+                # Capture the pre-clearing live-cell mask for the deferred drive.
                 materials = setup_wire_port(
                     grid, wp, materials,
                     pec_edge_masks=pec_edge_masks_local)
                 if _drive_this_port:
-                    sources.extend(make_wire_port_sources(
-                        grid, wp, materials, n_steps,
-                        pec_edge_masks=pec_edge_masks_local))
+                    sources.defer(make_wire_port_sources,
+                        grid, wp, n_steps=n_steps,
+                        pec_edge_masks=pec_edge_masks_local)
                 wp_cells = _wire_port_cells(grid, wp)
                 # Clear PEC mask/occupancy at LIVE wire cells only (issue
                 # #318 commit 2). Dead extent cells stay PEC — the old
@@ -2050,7 +2046,7 @@ class _ExecuteMixin:
             )
             materials = setup_lumped_port(grid, lp, materials)
             if _drive_this_port:
-                sources.append(make_port_source(grid, lp, materials, n_steps))
+                sources.defer(make_port_source, grid, lp, n_steps=n_steps)
             idx = grid.position_to_index(pe.position)
             conductors, pec_mask_local, pec_edge_masks_local = _conductors.forward_port_stage(conductors, [(idx[0], idx[1], idx[2])], pe.component, f"port[{_port_index}]")
             if pec_occupancy_local is not None:
@@ -2158,10 +2154,10 @@ class _ExecuteMixin:
                 materials = setup_msl_port(grid, mp, materials,
                                            mode_profile=mode_profile)
                 if pe.excite and pe.waveform is not None:
-                    sources.extend(make_msl_port_sources(
-                        grid, mp, materials, n_steps,
+                    sources.defer(make_msl_port_sources,
+                        grid, mp, n_steps=n_steps,
                         mode_profile=mode_profile,
-                    ))
+                    )
                 # Clear PEC mask over the cross-section so the source/σ cells
                 # are not zeroed by the PEC update.
                 _msl_cells = list(_msl_yz_cells(grid, mp))
@@ -2200,6 +2196,7 @@ class _ExecuteMixin:
         from rfx.model.materials import with_components
         materials = with_components(materials, grid, periodic=periodic_bool,
             debye_spec=debye_spec, lorentz_spec=lorentz_spec)
+        sources = sources.resolve(materials)
         _, debye, lorentz = self._init_dispersion(
             materials, grid.dt, debye_spec, lorentz_spec,
             periodic=periodic_bool,

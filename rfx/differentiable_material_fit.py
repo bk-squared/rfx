@@ -448,7 +448,7 @@ def differentiable_material_fit(
         spectrum (same normalization as the loss) — previously this field
         was always ``None``.
     """
-    from rfx.simulation import run as sim_run, make_port_source, make_probe
+    from rfx.simulation import run as sim_run, make_port_source, make_probe, resolve_periodic
     from rfx.sources.sources import LumpedPort, setup_lumped_port
 
     freqs = np.asarray(freqs, dtype=np.float64)
@@ -534,16 +534,21 @@ def differentiable_material_fit(
             materials = setup_lumped_port(grid, lp, materials)
             loaded_ports.append(lp)
 
+        from rfx.model.materials import with_components
+        periodic = resolve_periodic(grid, None)
+        materials = with_components(materials, grid, periodic=periodic,
+            debye_spec=debye_spec, lorentz_spec=lorentz_spec)
+
         # Initialize dispersion with traced poles
         debye = None
         if debye_spec is not None:
             debye_poles_spec, debye_masks = debye_spec
-            debye = init_debye(debye_poles_spec, materials, dt, mask=debye_masks)
+            debye = init_debye(debye_poles_spec, materials, dt, mask=debye_masks, periodic=periodic)
 
         lorentz = None
         if lorentz_spec is not None:
             lorentz_poles_spec, lorentz_masks = lorentz_spec
-            lorentz = init_lorentz(lorentz_poles_spec, materials, dt, mask=lorentz_masks)
+            lorentz = init_lorentz(lorentz_poles_spec, materials, dt, mask=lorentz_masks, periodic=periodic)
 
         # Build sources and probes
         sources = []

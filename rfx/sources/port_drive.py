@@ -3,7 +3,8 @@
 import jax
 import jax.numpy as jnp
 
-from rfx.core.yee import cell_component_e_coeffs
+from rfx.core.yee import e_update_coeffs
+from rfx.model.materials import e_update_material_at
 
 
 def stamped_drive(port, cell):
@@ -40,10 +41,35 @@ def port_drive_waveform(grid, cell, component, excitation, n_steps, materials,
     material and mesh derivatives. ``n_steps=None, time=t`` selects the
     eager single-step application instead of a precomputed waveform.
     """
-    cb = cell_component_e_coeffs(materials, cell, component, grid.dt)[1]
+    eps, sigma = e_update_material_at(materials, cell, component)
+    cb = e_update_coeffs(eps, sigma, grid.dt)[1]
     if n_steps is None:
         samples = excitation(time)
     else:
         times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
         samples = jax.vmap(excitation)(times)
     return (cb * sigma_port * unit_field) * samples
+
+
+class PortSourceQueue(list):
+    """Preserve source order while deferring port builders until realization.
+
+    Ordinary source specs can be appended/extended as usual. A deferred builder
+    receives final materials at resolve time; its other arguments (including
+    pre-clearing wire masks) are captured at registration time.
+    """
+
+    def defer(self, builder, *args, **kwargs):
+        from functools import partial
+        self.append(partial(builder, *args, **kwargs))
+
+    def resolve(self, materials):
+        from functools import partial
+        sources = []
+        for entry in self:
+            if isinstance(entry, partial):
+                built = entry(materials=materials)
+                sources.extend(built if isinstance(built, list) else [built])
+            else:
+                sources.append(entry)
+        return sources

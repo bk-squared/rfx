@@ -200,7 +200,8 @@ def _pre_override_drive(drawn):
         sig_l = _lumped_total(getattr(m, "sigma_lumped", None))
         return m._replace(
             eps_r=drawn.eps_r if eps_l is None else drawn.eps_r + eps_l,
-            sigma=drawn.sigma if sig_l is None else drawn.sigma + sig_l)
+            sigma=drawn.sigma if sig_l is None else drawn.sigma + sig_l,
+            components=None)
 
     def _port(grid, ijk, comp, wf, n, materials, *a, **kw):
         return inner_port(grid, ijk, comp, wf, n, _back(materials), *a, **kw)

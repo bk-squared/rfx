@@ -525,9 +525,9 @@ def test_the_applied_port_drives_use_the_update_s_own_coefficient(monkeypatch,
 
     if mutate:
         monkeypatch.setattr(
-            _src, "cell_component_e_coeffs",
-            lambda m, cell, comp, dt, periodic=(False, False, False):
-                e_update_coeffs(m.eps_r[tuple(cell)], m.sigma[tuple(cell)], dt))
+            _src, "e_update_material_at",
+            lambda m, cell, comp, periodic=(False, False, False):
+                (m.eps_r[tuple(cell)], m.sigma[tuple(cell)]))
 
     grid = Grid(freq_max=1e10, domain=(9e-3, 9e-3, 9e-3), dx=1e-3,
                 cpml_layers=0, cpml_axes="")

@@ -707,6 +707,21 @@ class ComponentMaterials:
     grid_key: tuple = field(metadata={"static": True})
 
 
+def e_update_material_at(materials, cell, component, periodic=(False, False, False)):
+    """Relative epsilon and conductivity of the realized E update at one edge.
+
+    Stamps are already included in the stored operands. Legacy callers without
+    a realization retain the single-edge averaging rule until they migrate.
+    """
+    c = getattr(materials, "components", None)
+    if c is None:
+        from rfx.core.yee import cell_component_e_materials
+        return cell_component_e_materials(materials, cell, component, periodic)
+    axis = {"ex": 0, "ey": 1, "ez": 2}[str(component).lower()]
+    cell = tuple(cell)
+    return c.eps_update[axis][cell], c.sigma_update[axis][cell]
+
+
 def pole_component_weights(mask, periodic=(False, False, False)):
     """Current plain four-cell pole occupancy convention (#1260)."""
     if mask is None:

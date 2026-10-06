@@ -380,7 +380,8 @@ def run_uniform(
         aniso_inv_eps, materials.eps_r_lumped, inverse=True)
 
     # Build sources and probes for the compiled runner
-    sources = []
+    from rfx.sources.port_drive import PortSourceQueue
+    sources = PortSourceQueue()
     mag_sources = []
     probes = []
     dft_planes = []
@@ -493,9 +494,9 @@ def run_uniform(
             materials = setup_wire_port(grid, wp, materials,
                                         pec_edge_masks=pec_edge_masks)
             if pe.excite:
-                sources.extend(_simulation.make_wire_port_sources(
-                    grid, wp, materials, n_steps,
-                    pec_edge_masks=pec_edge_masks))
+                sources.defer(_simulation.make_wire_port_sources,
+                    grid, wp, n_steps=n_steps,
+                    pec_edge_masks=pec_edge_masks)
             # No PEC clearing for a wire port (#931 §1.9, corrected):
             # a cell is LIVE exactly when the port component's own edge at
             # that index is not PEC, so releasing that component at the
@@ -512,7 +513,7 @@ def run_uniform(
             lumped_ports.append(lp)
             materials = setup_lumped_port(grid, lp, materials)
             if pe.excite:
-                sources.append(_simulation.make_port_source(grid, lp, materials, n_steps))
+                sources.defer(_simulation.make_port_source, grid, lp, n_steps=n_steps)
             # Release the realized PEC edge the lumped port DRIVES — its
             # own component at its own cell, and nothing else (#931 §1.9,
             # corrected: the three-component form opened the conductor the
@@ -622,10 +623,10 @@ def run_uniform(
                     sources.extend(e_specs)
                     mag_sources.extend(h_specs)
                 else:
-                    sources.extend(make_msl_port_sources(
-                        grid, mp, materials, n_steps,
+                    sources.defer(make_msl_port_sources,
+                        grid, mp, n_steps=n_steps,
                         mode_profile=mode_profile,
-                    ))
+                    )
             if pec_edge_masks is not None:
                 # Only the SUBSTRATE-NORMAL component over the
                 # cross-section: that is the edge the modal source drives
@@ -785,6 +786,7 @@ def run_uniform(
     materials = with_components(materials, grid,
         periodic=_simulation.resolve_periodic(grid, periodic),
         debye_spec=debye_spec, lorentz_spec=lorentz_spec)
+    sources = sources.resolve(materials)
 
     # Conformal PEC (Stage 1) permittivity, #1373: the same four-cell
     # edge mean of the volume permittivity the plain E update uses, on the

@@ -1701,7 +1701,6 @@ def compute_coax_msl_transition(
             stacklevel=2,
         )
 
-    # ---- MSL side (mirrors compute_mixed_s_matrix's MSL consumption) ---
     from rfx.sources.msl_port import validate_msl_port_geometry
     validate_msl_port_geometry(
         grid, msl_port_base, pec_edge_masks=_cx_pec_edge_masks,
@@ -1709,6 +1708,8 @@ def compute_coax_msl_transition(
         pec_faces=self._boundary_spec.pec_faces(), name=msl_pe.name)
     mode_profile = compute_msl_mode_profile(grid, msl_port_base, eps_r_sub_resolved)
     materials = setup_msl_port(grid, msl_port_base, materials, mode_profile=mode_profile)
+    from rfx.model.materials import with_components
+    materials = with_components(materials, grid, periodic=(False, False, False))
     z0_msl, eps_eff_msl = hammerstad_jensen_z0_eps_eff(
         msl_pe.width, msl_pe.height, eps_r_sub_resolved
     )
@@ -1902,7 +1903,6 @@ def compute_coax_msl_transition(
     j_probe_msl = int(grid.pad_y_lo) + int(round(y_centre / dz))
     k_probe_msl = int(round((msl_z_lo + 0.5 * msl_pe.height) / dz)) + int(grid.pad_z_lo)
 
-    # drive_idx 0 drives the coax port; drive_idx 1 drives the MSL port.
     for drive_idx in range(2):
         if drive_idx == 0:
             sources = list(spec_coax.electric_sources)
