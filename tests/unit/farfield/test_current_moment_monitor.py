@@ -2152,7 +2152,9 @@ def test_concrete_pec_overrides_are_measured(override, inside):
     of the conductor the run solves, and the guard reads it."""
     sim = _guard_sim()
     shape = sim._build_grid().shape
-    cell = (12, 12, 12) if inside else (5, 12, 12)
+    # Inside the monitor box (indices 9-15) but off the source's own Ez edge at
+    # (12, 12, 12): a soft source on a realized PEC edge is refused (#1508).
+    cell = (14, 14, 14) if inside else (5, 12, 12)
     if override == "pec_mask_override":
         arr = np.zeros(shape, dtype=bool)
         arr[cell] = True
