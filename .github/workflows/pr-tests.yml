@@ -28,6 +28,7 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, edited, reopened, synchronize]
 
 # Superseded runs on the same PR/branch are cancelled: a force-push or a
 # stacked-leg rebase used to leave the previous run queued, and on a busy day
@@ -99,6 +100,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      issues: read
     steps:
       - name: Check out repository
         # fetch-depth: 0 — the data budget diffs base.sha...head.sha, and a
@@ -140,6 +142,20 @@ jobs:
             export PR_LABELS_JSON
           fi
           python scripts/ci/check_data_budget.py --base "$BASE_SHA" --head "$HEAD_SHA"
+
+      - name: Known limitations PR tracker gate skipped
+        if: github.event_name != 'pull_request'
+        run: echo 'Known limitations closure check is PR-level; skipped on merge_group and push'
+
+      - name: Known limitations closed by this PR
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          CLOSING_ISSUES=$(gh pr view "$PR_NUMBER" --json closingIssuesReferences --jq '.closingIssuesReferences[] | select("\(.repository.owner.login)/\(.repository.name)" == env.GITHUB_REPOSITORY) | .number')
+          export CLOSING_ISSUES
+          python scripts/ci/check_known_limitations.py
 
       # File structure is part of the 2.0 bar, including on not-code diffs.
       # The files are read from the checked-out tree, which on a pull request is the

@@ -338,6 +338,8 @@ def test_the_required_gates_deselect_the_marker_and_the_docs_lane_selects_it() -
 #: Every required test allowed to read prose, and why. Adding one is a gate
 #: decision; it goes here, in the same change, where a reviewer reads it.
 GATE_OPT_OUTS = {
+    "tests/contracts/test_known_limitations_tracker.py::test_every_limitation_has_a_valid_tracker":
+        "Every known limitation must have an explicit tracker or accepted reason",
     "tests/contracts/test_known_limitations_citations.py::"
     "test_every_pinned_issue_keeps_its_entry":
         "a known-limitations entry must stay while its defect is open: the one "

@@ -5,6 +5,9 @@ is the companion to the [support matrix](support_matrix.md): that page says what
 is supported and within what limits, this one says what is known to be wrong or
 unevidenced inside those limits.
 
+Each subject has its own heading and a `Tracker:` line: issue/PR numbers, or
+`none — accepted limitation (<reason>)` for a deliberate untracked limit.
+
 Each entry gives the symptom you would see, the mechanism in one line, what to do
 about it now, and the tracking issue. **The issue is the evidence**: measured
 numbers, the fixture they came from, and the commit they were measured on live
@@ -14,16 +17,28 @@ a committed test pins the fix, not when someone believes it is better.
 Nothing here is a substitute for the repo's standing rule: a warning's absence is
 not an accuracy guarantee, and a preflight pass is not a convergence study.
 
+## General constraints
+
+### Lossy sheets and sheet_effective_size
+
+Tracker: TODO-LEADER
+
 Lossy sheets (`surface_impedance_f0`, or sigma below the PEC threshold) are not judged by `sheet_effective_size` (`rfx/materials/thin_conductor.py::ThinConductor.is_pec`, `rfx/preflight/realization.py::_CampaignStaticsContext.pec_entries`).
 
 ---
 
-- **Experimental ADI:** `solver="adi"` is outside the 2.0 supported scope.
+### Experimental ADI
+
+Tracker: TODO-LEADER
+
+`solver="adi"` is outside the 2.0 supported scope.
   `boundary="cpml"` is refused: it is an unmatched conductivity sponge
   (−10.4 dB reflection at 10 GHz). Use Yee with CPML for open structures,
   or ADI with `boundary="pec"` for closed cavities.
 
-## Distributed runs: reduced-frequency ghost exchange (exchange_interval > 1) is refused
+### Distributed runs: reduced-frequency ghost exchange (exchange_interval > 1) is refused
+
+Tracker: TODO-LEADER
 
 exchange_interval > 1 is refused. With a one-cell ghost layer and the exchange skipped for K-1 steps, each slab updates its seam cells from the neighbour's stale values and injects energy every skipped step.
 In a lossless 48x16x16 mm PEC box (dx = 1 mm, float32, 2000 steps) the probe amplitude, relative to the single-device peak, reaches 2.0e2 for K=2 and 2.7e5 for K=4 on two devices, 4.6e7 (K=2) and 5.3e19 (K=4) on four devices, growing exponentially from the first skipped exchange, while K=1 stays within 1.0 of the peak.
@@ -32,7 +47,10 @@ Use `exchange_interval=1`.
 
 ## Ports and extraction
 
-**A microstrip strip drawn past an MSL port to the domain edge is an open stub that can short the port.**
+### A microstrip strip drawn past an MSL port to the domain edge is an open stub that can short the port.
+
+Tracker: #1512
+
 rfx ends a two-conductor line at its port: the piece of strip between the port plane and an
 absorbing face ends at the absorber's entrance, so it is an open-ended stub. Near the frequency
 where that stub is a quarter guided wavelength long, its input shorts the port, the line between
@@ -44,7 +62,11 @@ record length. Start the strip at the port plane; the absorber pads lie outside 
 domain, so drawing the strip "into the absorber" is not possible today.
 → [#1512](https://github.com/bk-squared/rfx/issues/1512)
 
-**The default wire port is a mesh-sized probe.** `add_port(..., extent=...)`
+### The default wire port is a mesh-sized probe.
+
+Tracker: TODO-LEADER
+
+`add_port(..., extent=...)`
 with `radius=None` acts as a probe of radius approximately `0.20 * dx` on a
 square transverse mesh. Refinement therefore changes its series inductance;
 it is not a fixed-radius physical pin. Opt in to `radius=` in metres to use
@@ -55,7 +77,11 @@ nondispersive 3-D second-order Yee `run()` and `forward()`; other solvers,
 Debye/Lorentz, tensor/design-box updates and traced mesh metrics refuse it.
 Resolve larger wire ports geometrically with a coax feed or a volume wire.
 
-**Positive subcell PEC filament radii are unsupported.** A PEC `PolylineWire`
+### Positive subcell PEC filament radii are unsupported.
+
+Tracker: TODO-LEADER
+
+A PEC `PolylineWire`
 with `0 < a < 0.50 * d_min` refuses before stepping. Resolve the wire as a
 volume: refine the mesh until `a >= 0.50 * d_min`, using the smallest local
 cell at its vertices. The existing volume-wire rule and legacy `radius=0`
@@ -70,9 +96,16 @@ That one-edge feed has nonuniform longitudinal current, so the full-height
 wire-port Hankel oracle does not establish its accuracy. The port radius
 model and its full-height oracle remain separate.
 
+### Automatic preflight for compute_coax_msl_transition
+
+Tracker: TODO-LEADER
+
 `compute_coax_msl_transition` runs no automatic preflight (`rfx/sparams/coax.py::compute_coax_msl_transition`).
 
-**The coax→microstrip transition over-reads power by about a factor of three.**
+### The coax→microstrip transition over-reads power by about a factor of three.
+
+Tracker: TODO-LEADER
+
 Measured twice independently on the MSL port's power-wave normalization: the
 returned matrix's own MSL-driven column power runs about 3x the incident power
 (the coax-driven column reads 0.379 / 0.379 / 0.367 on the same run), and a
@@ -94,7 +127,10 @@ hide inside 1 %. That lane has its own limits — see the
 above 17 GHz recorded by the Sheen low-pass filter case.
 #838 was closed as not planned before 2.0 (PI decision, 2026-09-20); this is a standing limitation.
 
-**The microstrip S-matrix can come back non-passive, and says so.**
+### The microstrip S-matrix can come back non-passive, and says so.
+
+Tracker: TODO-LEADER
+
 `compute_msl_s_matrix(...)` returns the S it extracted; it no longer projects it
 onto the passive set by default, so that the S a user reads and the S a gradient
 differentiates are one function. When a bin's largest singular value exceeds 1
@@ -109,8 +145,11 @@ or below 1.02 on the open-stub notch at its 25 µm claims rung, in
 measured notch and thru values. Coarser meshes are
 reported, not gated.
 
-**The fitted microstrip propagation constant sits 1.0 to 1.3 % above the
-Hammerstad–Jensen closed form on every in-band bin.** On a 600 µm trace over
+### The fitted microstrip propagation constant sits 1.0 to 1.3 % above the Hammerstad–Jensen closed form on every in-band bin.
+
+Tracker: TODO-LEADER
+
+On a 600 µm trace over
 250 µm of RO4350B a float64 refit of the probe phasors reads 1.32 … 1.33 % with
 five cells under the strip and 0.97 … 1.04 % with ten, over 3.0–4.5 GHz; the
 offset is not attributed and no trend is claimed, because the strip is one cell
@@ -119,8 +158,11 @@ thick in each run. It is the FITTED `beta`, a diagnostic that does not enter S
 in the Microstrip-line row of the [support matrix](support_matrix.md); #830 is
 closed as characterized.
 
-**Microstrip `Z0` and `beta` are unreadable when the probes sit near a
-reflector.** The N-probe fit rides the standing wave instead of measuring the
+### Microstrip `Z0` and `beta` are unreadable when the probes sit near a reflector.
+
+Tracker: TODO-LEADER
+
+The N-probe fit rides the standing wave instead of measuring the
 line: across the three board runs tabulated in #726 the fitted `Z0` reached
 2.4x the analytic value and its ripple tracked `|S11|` in dB at r = 0.71-0.77,
 while `reliable` was True on 100 % of in-band bins. Those three runs carry no
@@ -135,8 +177,11 @@ used to contradict each other about this, and the measurement decided it.
 
 ## Ring-down completion and the early stop
 
-**A pair of modes that no window of the record separates is completed as one
-mode, and every witness agrees.** `run(ringdown=...)` and
+### A pair of modes that no window of the record separates is completed as one mode, and every witness agrees.
+
+Tracker: TODO-LEADER
+
+`run(ringdown=...)` and
 `forward(ringdown=...)` identify the ringing's poles on the record's second
 half. Two resonances closer than the record can resolve come back as one
 blended pole, and the completion from any window of that record makes the same
@@ -145,8 +190,11 @@ percent off near the pair. What to do: record longer. In the measured case, a
 pair 0.03 % apart was resolved at about a fifth of its decay time.
 #1381 was closed as a stated limit (PI decision, 2026-09-30); this is a standing limitation.
 
-**The early stop can end the run before a weak unresolved high-Q pair is
-resolved.** The rule is `run(..., until_identified=True)`: stop once WE agrees
+### The early stop can end the run before a weak unresolved high-Q pair is resolved.
+
+Tracker: TODO-LEADER
+
+The rule is `run(..., until_identified=True)`: stop once WE agrees
 twice and the record is half the decay time of the slowest mode that moves S.
 A weakly coupled pair of very high-Q modes (Q about 5e4, each feature 0.02–0.03
 in |S|, 40–60 MHz apart) beats inside a short record. The record reads the beat
@@ -158,8 +206,11 @@ features matter, use a fixed record (`run(n_steps=..., ringdown=...)`) long
 enough to resolve them. Pinned as a strict xfail in
 `tests/unit/sparams/test_ringdown_early_stop.py`.
 
-**A plain record shorter than a weakly coupled resonance's decay misreads S near it on any port,
-and the end-of-run witness can miss it.** A lossless 50 × 50 × 25 mm PEC box with a one-cell 50 Ω
+### A plain record shorter than a weakly coupled resonance's decay misreads S near it on any port, and the end-of-run witness can miss it.
+
+Tracker: TODO-LEADER
+
+A lossless 50 × 50 × 25 mm PEC box with a one-cell 50 Ω
 port rings on TM110 at 4.148 GHz with Q ≈ 2000 (amplitude e-fold 153 ns); the port is its only loss.
 On a plain 12 ns record, |S11| reads 0.975–1.009 around the mode (largest deviation 0.025);
 24 / 60 / 120 ns records: deviation 0.042 / 0.032 / 0.026. The end-of-run witness read −64 dB
@@ -173,12 +224,19 @@ What to do: record well past the slowest mode's decay, or use a one-cell wire po
 
 ## Solver lanes
 
-**ADI (`solver='adi'`) refuses a dielectric or conductivity interface until 2.1.** Its update reads each cell's own eps_r and sigma where the Yee lanes take the four-cell edge mean, so a material face sits half a cell off (+2.2 % on a slab-loaded PEC cavity's first resonance at 12 cells per loaded wavelength). A homogeneous fill runs (as a declared fill or a scalar override); a traced array override is refused because it cannot be inspected. Use `solver='yee'` otherwise.
+### ADI (`solver='adi'`) refuses a dielectric or conductivity interface until 2.1.
+
+Tracker: #1373
+
+Its update reads each cell's own eps_r and sigma where the Yee lanes take the four-cell edge mean, so a material face sits half a cell off (+2.2 % on a slab-loaded PEC cavity's first resonance at 12 cells per loaded wavelength). A homogeneous fill runs (as a declared fill or a scalar override); a traced array override is refused because it cannot be inspected. Use `solver='yee'` otherwise.
 → [#1373](https://github.com/bk-squared/rfx/issues/1373)
 
 ## Absorbing boundaries
 
-**Magnetic faces require the single-device second-order Yee image.**
+### Magnetic faces require the single-device second-order Yee image.
+
+Tracker: #1221
+
 Uniform and graded run/forward place the wall on the declared E-node face.
 Distributed kernels, subgridded and ADI lanes refuse magnetic faces.
 Waveguide-port execution also refuses magnetic faces: its aperture mode solver
@@ -190,7 +248,10 @@ the face is supported. These refusals remain until the corresponding
 kernels and smoothing extension are implemented.
 → [#1221](https://github.com/bk-squared/rfx/issues/1221)
 
-**With the mesh as a design variable, a ground plane still ends at the absorber.**
+### With the mesh as a design variable, a ground plane still ends at the absorber.
+
+Tracker: #1230
+
 A conductor drawn to an absorbing boundary is continued through the absorber, so
 a grounded board stays grounded inside it. When any mesh axis is traced
 (`dz_profile` and its siblings under `jax.grad`), nothing is continued and a
@@ -202,7 +263,10 @@ ground past the domain face by the absorber thickness, which fills every absorbe
 cell except the outermost row on the +x and +y faces.
 → [#1230](https://github.com/bk-squared/rfx/issues/1230)
 
-**A plane wave on absorbing side faces solves a periodic array, not an isolated object.**
+### A plane wave on absorbing side faces solves a periodic array, not an isolated object.
+
+Tracker: #1221
+
 With `add_tfsf_source` at normal incidence and absorbing y/z faces (the default
 `boundary='cpml'`), the grid adds absorber pads on y and z, but the run then wraps y and
 z periodically over the padded box. A finite scatterer is therefore solved as an array
@@ -218,8 +282,11 @@ an isolated scatterer use `rfx.rcs.compute_rcs`, whose sides absorb.
 
 ## Gradients and optimization
 
-**Port-only ring-down completion can miss the gradient of a weakly coupled
-high-Q resonance.** A pole and the completed S-parameter can be accurate while
+### Port-only ring-down completion can miss the gradient of a weakly coupled high-Q resonance.
+
+Tracker: TODO-LEADER
+
+A pole and the completed S-parameter can be accurate while
 its material derivative is tens of percent wrong at the resonance bin. Add
 interior field channels with
 `RingdownSpec(identification_probes=(((x, y, z), "ez"),))` on `run()` or
@@ -240,8 +307,11 @@ The weak-port cavity contract is in
 `tests/unit/sparams/test_ringdown_identification.py` (#1419, fixed by the
 identification-probe option; port-only identification remains the default).
 
-**A gradient can be wrong by tens of percent on a record whose value is
-converged.** Every frequency-domain quantity rfx differentiates is a DFT of a
+### A gradient can be wrong by tens of percent on a record whose value is converged.
+
+Tracker: TODO-LEADER
+
+Every frequency-domain quantity rfx differentiates is a DFT of a
 finite time record. A structure still ringing when the record ends leaves a term
 in every bin whose phase is `(ω − ω_r)·T`; a parameter that moves the resonance
 spins that phase, and because the phase grows with the record length the spin
@@ -286,7 +356,10 @@ Measured in #1181; the witness above landed with #1186.
 
 ## Examples and validation coverage
 
-**A shipped paper example's headline numbers are not WR-90 numbers.**
+### A shipped paper example's headline numbers are not WR-90 numbers.
+
+Tracker: TODO-LEADER
+
 `validation/tmtt_paper/waveguide_dielectric_taper.py` declares 22.86 × 10.16 mm.
 Its default SMOKE lane meshes at a commensurate dx = 1.27 mm and realizes WR-90
 exactly. Its paper lane does not: dx = 0.5 mm realizes 23.00 × 10.50 mm
@@ -301,7 +374,11 @@ and in the result block the run prints, and derives every analytic reference fro
 the realized walls, so a reader meets the right structure beside every number.
 The SMOKE half was #1100.
 
-**Committed examples are verified at build time, not by their results.** The
+### Committed examples are verified at build time, not by their results.
+
+Tracker: #737
+
+The
 example-fidelity gate builds every reachable example and pins the preflight rows
 it emits; it does not step time, and it does not check that any example's printed
 result is right. Six tutorials plus `hello_world` are additionally run end to end
@@ -309,13 +386,20 @@ with physics assertions. Everything else in `examples/` and `validation/` is
 covered only as far as its build.
 → [#737](https://github.com/bk-squared/rfx/issues/737)
 
-**Patch-antenna cross-validation has no trustworthy quantitative accuracy
-baseline.** The integration case is a coarse same-geometry envelope and says so;
+### Patch-antenna cross-validation has no trustworthy quantitative accuracy baseline.
+
+Tracker: TODO-LEADER
+
+The integration case is a coarse same-geometry envelope and says so;
 the case that was supposed to carry the quantitative claim does not currently
 close it.
 → [#715](https://github.com/bk-squared/rfx/issues/715)
 
-**The weekly scientific-validation lane is red.** Two shards fail on the current
+### The weekly scientific-validation lane is red.
+
+Tracker: TODO-LEADER
+
+Two shards fail on the current
 schedule. Until it is green, a claim of "the weekly suite passes" is not
 available.
 → [#1022](https://github.com/bk-squared/rfx/issues/1022)

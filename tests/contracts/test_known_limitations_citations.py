@@ -1,24 +1,12 @@
-"""`docs/guides/known_limitations.md` cites exactly the issues it was pinned to.
+"""Legacy citation inventory for the public known-limitations page.
 
-The page's own rule is that an entry leaves when its defect is fixed and a
-committed test pins the fix. Nothing enforced that, and the first revision of
-the page shipped two entries whose issues were already closed on `main`: #1090
-(fixed in 8bc6c084) and #1085 (fixed in 246cde5d). A public page that describes
-a defect the user does not have is the same class of wrong as one that hides a
-defect they do.
+These sets pin historical arrow citations and resolved references, not live
+issue state. An issue can close through a fix, a characterization, or acceptance
+of a standing limitation. The per-subject Tracker contract now lives in
+``test_known_limitations_tracker.py``; ``scripts/ci/check_known_limitations.py``
+checks PR closures and the weekly governance sweep reads live states.
 
-What this pins, and what it cannot
-----------------------------------
-The real invariant is "every cited issue is OPEN", and that cannot be checked
-here: the CI lanes have no network, and a test that shells out to `gh` would be
-a flake on every runner. So the set of cited numbers is pinned instead. Adding
-or removing an entry then has to come with an edit to CITED_ISSUES, which is the
-moment a reader is asked whether the tracker still agrees -- drift becomes a
-deliberate act rather than an oversight.
-
-The OPEN check itself belongs to the weekly audit, which has a network and a
-schedule. Last run by hand on 2026-09-23 with `gh issue view <N> --json state`:
-all five below OPEN.
+Keep this inventory in sync when the leader removes or rewrites audited entries.
 """
 from __future__ import annotations
 
@@ -32,9 +20,9 @@ PAGE = REPO_ROOT / "docs" / "guides" / "known_limitations.md"
 README = REPO_ROOT / "README.md"
 SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 
-# Every issue the page cites, verified OPEN on 2026-09-23. Edit this set in the
-# same change that adds or removes an entry, and re-check the tracker when you
-# do -- that re-check is the whole point of the set being written down.
+# Legacy arrow citations, not an assertion that these issues are still OPEN.
+# Edit this set when an audited entry is added or removed; the Tracker gate
+# and weekly sweep enforce live tracking separately.
 # #1101 (the port_aperture_snap advisory naming the wrong source for the
 # cutoff) left on 2026-09-19: the message now READS the built
 # ``cfg.f_cutoff`` and names the profile it came from, pinned by
