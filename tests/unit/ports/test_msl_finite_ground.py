@@ -9,7 +9,7 @@ DX = 0.002
 
 
 def synthetic_patch(direction="+y", *, front=0.0706, back_to_edge=True,
-                    offset=10, feed=.0246):
+                    offset=10, feed=.0246, spacing=2):
     prop = 0 if direction[-1] == "x" else 1
     width = 1 - prop
     sign = 1 if direction[0] == "+" else -1
@@ -38,7 +38,7 @@ def synthetic_patch(direction="+y", *, front=0.0706, back_to_edge=True,
     sim.add_msl_port(position=tuple(point(feed, .0483, .004)),
                      width=.010, height=.004, direction=direction,
                      eps_r_sub=3.2, mode="uniform", name="synthetic",
-                     n_probe_offset=offset, n_probe_spacing=2, n_probes=3)
+                     n_probe_offset=offset, n_probe_spacing=spacing, n_probes=3)
     return sim
 
 
@@ -99,3 +99,34 @@ def test_ground_upper_surface_and_wide_top_metal(ground_top, expected, thin):
         geometry[:1], x_probe=.024, x_feed=.024, y_feed=.0483,
         w_trace=.010, dx=DX, domain_y=.100, direction="+x")
     assert np.isinf(legacy)
+
+
+@pytest.mark.parametrize("direction", ["+x", "-x", "+y", "-y"])
+@pytest.mark.parametrize("ground_width", [.006, .010, .020, .044, .066],
+                         ids=["narrower-than-strip", "strip-width", "between",
+                              "patch-width", "wider-than-patch"])
+@pytest.mark.parametrize("ground_top", [.004, .002], ids=["on-plane", "below-plane"])
+def test_ground_side_metal_never_limits_auto_ladder_or_clearance(
+        direction, ground_width, ground_top):
+    """Geometry-only comparison: removing ground cannot move either reader."""
+    from dataclasses import replace
+
+    sim = synthetic_patch(direction, offset=None, spacing=None)
+    width_axis = 1 if direction[-1] == "x" else 0
+    ground = sim._geometry[1]
+    lo, hi = list(ground.shape.corner_lo), list(ground.shape.corner_hi)
+    lo[width_axis] = .0483 - ground_width / 2
+    hi[width_axis] = .0483 + ground_width / 2
+    lo[2] = hi[2] = ground_top
+    sim._geometry[1] = replace(ground, shape=Box(tuple(lo), tuple(hi)))
+    grid = sim._build_realized_grid()
+    with_ground, = sim._resolve_msl_probe_entries(grid)
+    clearance = msl_probe_clearance_for_port(sim, with_ground, grid)
+    sim._geometry.pop(1)
+    without_ground, = sim._resolve_msl_probe_entries(grid)
+    reference = msl_probe_clearance_for_port(sim, without_ground, grid)
+    assert with_ground.n_probe_offset == without_ground.n_probe_offset == 11
+    assert with_ground.n_probe_spacing == without_ground.n_probe_spacing == 2
+    assert clearance == reference
+    assert clearance.deepest_gap_m == pytest.approx(.0166)
+    assert clearance.status == "satisfied"
