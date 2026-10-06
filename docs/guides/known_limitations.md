@@ -32,6 +32,18 @@ Use `exchange_interval=1`.
 
 ## Ports and extraction
 
+**A microstrip strip drawn past an MSL port to the domain edge is an open stub that can short the port.**
+rfx ends a two-conductor line at its port: the piece of strip between the port plane and an
+absorbing face ends at the absorber's entrance, so it is an open-ended stub. Near the frequency
+where that stub is a quarter guided wavelength long, its input shorts the port, the line between
+the ports becomes a low-loss resonator and S is wrong. On a 24 mm, 50 Ω line (εr 3.66, h 254 µm,
+20–40 GHz) a 2 mm overhang behind each port gave |S11| −2.8 dB and |S21| −4.6 dB near 20 GHz; with
+the strip starting at the port planes the same line reads |S11| below −36 dB and |S21| within
+±0.25 dB. The bad band moves with the overhang length, not with the mesh, the absorber or the
+record length. Start the strip at the port plane; the absorber pads lie outside the declared
+domain, so drawing the strip "into the absorber" is not possible today.
+→ [#1512](https://github.com/bk-squared/rfx/issues/1512)
+
 **The default wire port is a mesh-sized probe.** `add_port(..., extent=...)`
 with `radius=None` acts as a probe of radius approximately `0.20 * dx` on a
 square transverse mesh. Refinement therefore changes its series inductance;
