@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Assemble the local f3a80981ec4b share batch; never upload anything.
 
-Run with --hero-dir DIR; missing heroes require --allow-placeholders. All output
+Run with --hero-dir, --archive-root and --assets-dir; missing heroes require --allow-placeholders. All output
 is restricted to .local_checks. Old assets are downloaded serially with curl and
 accepted only after matching both the old manifest's size and SHA-256.
 """
@@ -20,12 +20,12 @@ from PIL import Image, ImageDraw
 REPO = Path(__file__).resolve().parents[2]
 LOCAL = REPO / '.local_checks'
 OLD = 'https://remilab.cnu.ac.kr/share/7c02ad43c580/'
-ARCHIVE = Path('/Users/byungkwankim/Documents/rfx-archive/rfx/records')
-ASSETS = Path('/Users/byungkwankim/Documents/rfx-worktrees/rfx-research-showcase/showcase/assets/20261007')
 RUNS = {
     'grin-lens': ('lens', '20261004T182324Z-b184fc8e-main', '20261004T205610Z-b184fc8e-resolve', '4705f69e'),
     'waveguide-filter': ('filter', '20261006T162805Z-b8119151-main', '20261006T191443Z-b8119151-resolve', '9ed83eb8'),
 }
+#: Cases whose film is published; the lens film follows in a later batch.
+FILMS = ('filter',)
 SIZES = {'site': (1920, 1080), 'social': (1080, 1350), 'hero_4k': (3840, 2160)}
 
 
@@ -76,8 +76,9 @@ def assemble(args):
         sources.update({f'{short}_{name}.png': args.assets_dir / 'figures' / f'{short}_{name}.png'
                         for name in figures})
         prefix = folder.replace('-', '_')
-        sources.update({prefix + suffix: args.assets_dir / 'films' / (short + suffix)
-                        for suffix in ('.mp4', '_poster.png', '_social.mp4')})
+        if short in FILMS:
+            sources.update({prefix + suffix: args.assets_dir / 'films' / (short + suffix)
+                            for suffix in ('.mp4', '_poster.png', '_social.mp4')})
         for name, source in sources.items():
             shutil.copyfile(source, dest / name)
         files = list(sources)
@@ -124,8 +125,10 @@ def assemble(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--hero-dir', type=Path, required=True)
-    parser.add_argument('--archive-root', type=Path, default=ARCHIVE)
-    parser.add_argument('--assets-dir', type=Path, default=ASSETS)
+    parser.add_argument('--archive-root', type=Path, required=True,
+                        help='records directory holding 20261004-showcase-{lens,filter}/runs')
+    parser.add_argument('--assets-dir', type=Path, required=True,
+                        help='directory with figures/ and films/')
     parser.add_argument('--output-dir', type=Path, default=LOCAL / 'share/f3a80981ec4b')
     parser.add_argument('--allow-placeholders', action='store_true')
     assemble(parser.parse_args())
