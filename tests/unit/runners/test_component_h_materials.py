@@ -191,8 +191,15 @@ def test_h_builder_inventory_reads_the_shared_owner():
              tfsf_oblique_open.apply_methodB_h, waveguide_port.apply_waveguide_port_h,
              msl_port.make_msl_port_sources_jm,
              coaxial_port.build_coaxial_tem_plane_source_specs, disjoint_3d]
+    # Since S1 M2a the raw CPML/UPML entries read μ through the realized-model
+    # owner ``rfx.model.materials.h_components``, which itself calls the shared
+    # builder; either spelling reaches the one H-face rule.
+    from rfx.model.materials import h_components
+    assert "component_h_materials(" in inspect.getsource(h_components)
     for fn in sites:
-        assert "component_h_materials(" in inspect.getsource(fn), getattr(fn, "__qualname__", fn.__name__)
+        src = inspect.getsource(fn)
+        assert ("component_h_materials(" in src or "h_components(" in src), \
+            getattr(fn, "__qualname__", fn.__name__)
 
 
 def test_cpml_legacy_material_view_and_vacuum_fallback():

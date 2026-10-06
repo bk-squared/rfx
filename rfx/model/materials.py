@@ -836,8 +836,9 @@ def kernel_context(ctx):
 
 def h_components(materials, grid, *, periodic):
     """H-only compatibility entry for raw CPML callers; no E/pole allocation."""
-    if materials.components is not None:
-        return materials.components.mu_update
+    components = getattr(materials, "components", None)  # legacy views lack it
+    if components is not None:
+        return components.mu_update
     widths = (grid.dx_arr, grid.dy_arr, grid.dz) if hasattr(grid, "dx_arr") else None
     return component_h_materials(materials, periodic, cell_sizes=widths)
 
