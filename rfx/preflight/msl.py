@@ -560,6 +560,8 @@ def msl_probe_clearance_for_port(sim, pe, grid, *, probe_coordinates=None):
             domain_y=float(sim._domain[_MSL_AXIS_INDEX[width_axis]]),
             direction=pe.direction,
             ground_plane=float(pe.position[_MSL_AXIS_INDEX[normal_axis]]),
+            ground_cell=local_cell(
+                grid, normal_axis, float(pe.position[_MSL_AXIS_INDEX[normal_axis]])),
             resolve_material=getattr(sim, "_resolve_material", None),
             thin_conductors=getattr(sim, "_thin_conductors", ()),
             pec_sigma_threshold=getattr(sim, "_PEC_SIGMA_THRESHOLD", 1e6),

@@ -130,3 +130,21 @@ def test_ground_side_metal_never_limits_auto_ladder_or_clearance(
     assert clearance == reference
     assert clearance.deepest_gap_m == pytest.approx(.0166)
     assert clearance.status == "satisfied"
+
+
+@pytest.mark.parametrize("rise", [np.spacing(.004), .4 * DX])
+def test_ground_a_fraction_of_a_cell_above_the_reference_is_still_ground(rise):
+    # A ground top a rounding error or a rasterization residual above the port
+    # reference must not become "a conductor containing the feed" (it did:
+    # distance -52 mm to a domain-wide ground one ULP above the plane).
+    from types import SimpleNamespace
+    from rfx.preflight.msl_reflector import msl_nearest_downstream_reflector
+    ground = Box((0, 0, .002), (.14, .100, .004 + rise))
+    patch = Box((.070, .030, .008), (.104, .070, .008))
+    geometry = [SimpleNamespace(shape=patch, material_name="pec"),
+                SimpleNamespace(shape=ground, material_name="pec")]
+    distance, _, _ = msl_nearest_downstream_reflector(
+        geometry, x_probe=.024, x_feed=.024, y_feed=.0483,
+        w_trace=.010, dx=DX, domain_y=.100, direction="+x",
+        ground_plane=.004, ground_cell=DX)
+    assert distance == pytest.approx(.046)

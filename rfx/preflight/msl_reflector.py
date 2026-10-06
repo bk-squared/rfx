@@ -28,6 +28,7 @@ def msl_nearest_downstream_reflector(
     signed_front_distance: bool = False,
     width_cell: float | None = None,
     ground_plane: float | None = None,
+    ground_cell: float | None = None,
 ):
     """Distance from ``x_probe`` to the nearest downstream conductor edge.
 
@@ -211,8 +212,12 @@ def msl_nearest_downstream_reflector(
             continue
         # The port reference, not lateral domain coverage, identifies ground.
         # Use the upper bound so metal rising into the substrate still counts.
+        # Half a normal-axis cell of slack: a ground whose top sits a rounding
+        # error or a rasterization residual above the reference is still the
+        # ground, not a conductor containing the feed.
         if ground_plane is not None:
-            if float(hi[_in]) <= ground_plane:
+            if float(hi[_in]) <= ground_plane + 0.5 * (
+                    dx if ground_cell is None else ground_cell):
                 continue
         elif box_y_extent >= 0.8 * domain_y:
             continue
