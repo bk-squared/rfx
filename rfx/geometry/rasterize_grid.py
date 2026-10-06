@@ -1207,7 +1207,8 @@ def assert_declared_span_is_filled(name, shape, mask, grid, domain, *,
         return
     _, declared_hi = bounds
 
-    pads = grid.face_pads
+    pads = tuple(getattr(grid, f"pad_{axis}_{side}")
+                 for axis in "xyz" for side in ("lo", "hi"))
     eps = float(_np.finfo(float).eps)
     for axis in range(min(3, len(domain), len(declared_hi))):
         lo_pad, hi_pad = pads[2 * axis], pads[2 * axis + 1]
@@ -1236,14 +1237,16 @@ def assert_declared_span_is_filled(name, shape, mask, grid, domain, *,
             continue
         axis_name = "xyz"[axis]
         declared = float(domain[axis])
-        dx = float(grid.dx)
+        widths = _np.asarray(grid.cells(axis))[lo_pad:lo_pad + n_int - 1]
+        declared_cells = float(_np.interp(declared, _np.r_[0., _np.cumsum(widths)],
+                                          _np.arange(n_int)))
         if record is not None:
             record.append(dict(
                 entity=name, shape=shape, axis=axis_name, face=f"{axis_name}-hi",
                 empty_interior_nodes=empty_tail,
                 allowed_empty_interior_nodes=shortfall_limit,
                 declared_extent_m=declared,
-                declared_cells=declared / dx,
+                declared_cells=declared_cells,
                 interior_nodes=n_int,
                 last_filled_interior_node=n_int - 1 - empty_tail,
                 pad_cells=int(hi_pad),
@@ -1259,7 +1262,7 @@ def assert_declared_span_is_filled(name, shape, mask, grid, domain, *,
             f"vacuum and the structure would end in a facet inside its own "
             f"absorber (#1070, #831).\n"
             f"  declared {axis_name} extent: {declared * 1e6:.4f} um "
-            f"= {declared / dx!r} cells at dx = {dx * 1e6:.4f} um\n"
+            f"= {declared_cells!r} cells on this axis\n"
             f"  interior nodes on {axis_name}: {n_int}; "
             f"last filled: {n_int - 1 - empty_tail}\n"
             f"Likeliest cause: the grid was sized with one cell more than the "

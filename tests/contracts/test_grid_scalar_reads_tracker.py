@@ -122,7 +122,7 @@ ALLOWED_SCALAR_READS: dict[str, int] = {
     "rfx/checkpoint.py": 2,
     "rfx/farfield.py": 6,
     "rfx/geometry/conformal.py": 2,
-    "rfx/geometry/rasterize_grid.py": 4,
+    "rfx/geometry/rasterize_grid.py": 3,
     "rfx/geometry/smoothing.py": 6,
     "rfx/geometry/thin_wire.py": 1,
     "rfx/io.py": 1,

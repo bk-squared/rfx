@@ -190,6 +190,7 @@ class _CompileMixin:
         *,
         include_thin_conductors: bool = True,
         include_cpml_pad_extension: bool = True,
+        _check_declared_span: bool = True,
         sheet_specs: list | None = None,
         pec_sheets: list | None = None,
         pec_wires: list | None = None,
@@ -323,7 +324,7 @@ class _CompileMixin:
         # when a pad will actually be filled from that edge, and only on a
         # concrete mask -- under an outer jit the mask is a tracer and the
         # question cannot be asked on the host.
-        _check_pad_fill = (include_cpml_pad_extension
+        _check_pad_fill = (_check_declared_span and include_cpml_pad_extension
                            and self._boundary in ("cpml", "upml")
                            and self._cpml_layers > 0)
         from rfx.geometry.smoothing import continued_conductor_shape, warn_unextendable_shapes
@@ -356,23 +357,9 @@ class _CompileMixin:
                     _pec_wires.append(wire)
                 pec_shapes.append(solved_shape)
             else:
-                # #1070, and only here (review of PR #1136, C): the pad
-                # extension replicates eps/sigma/mu, never ``pec_mask``, so
-                # the vacuum-in-the-pad failure this checks for cannot happen
-                # to a PEC entry. Asking about one would report a condition
-                # that does not exist, in a message about dielectric pads.
-                # It has to sit AFTER classify_pec_entry, because that is
-                # what decides which an entry is.
-                # Read the DECLARED domain, not ``self._domain``: that
-                # attribute is a mesh descriptor and reading it RESOLVES the
-                # mesh. differentiable_material_fit builds its grid once and
-                # then assembles a brand-new Simulation carrying traced
-                # materials on every step; that object has never resolved
-                # its mesh, so the read would run the auto-mesh planner on a
-                # tracer, which refuses. Assembly is handed a built ``grid``
-                # and must not plan a mesh. ``domain`` is a required
-                # constructor argument, so the declaration is always there.
-                # GPU run 369367262302 on a6d6fce1, regression of PR #1136.
+                # Direct assembly checks dielectric masks only: pad extension
+                # copies material arrays, never PEC masks (#1070). The object
+                # builder defers this same rule until its masks are collected.
                 if _check_pad_fill and not is_tracer(mask):
                     assert_declared_span_is_filled(
                         entry.material_name, entry.shape, mask, grid,

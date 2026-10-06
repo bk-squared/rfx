@@ -79,9 +79,10 @@ def realized_conductors(sim, grid, *, nonuniform=False, assembly=None,
         if nonuniform:
             assembly = sim._assemble_materials_nu(grid, **kwargs)
         else:
-            if mode == "audit":
-                kwargs["pad_fill_findings"] = pad_fill_findings
-            assembly = sim._assemble_materials(grid, **kwargs)
+            assembly = sim._assemble_materials(grid, _check_declared_span=False, **kwargs)
+        from rfx.model.pad_fill import check_pad_fill
+        check_pad_fill(sim, grid, geometry_masks,
+                       record=pad_fill_findings if mode == "audit" else None)
     periodic = tuple(sim._periodic_flags() if periodic is None else periodic)
     cells = assembly[3]
     edges = None

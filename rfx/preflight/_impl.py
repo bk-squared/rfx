@@ -57,6 +57,8 @@ def _preflight_impl(
             if check_resolution:
                 self._validate_mesh_quality()
             self._validate_simulation_config()
+            from rfx.model.pad_fill import report_pad_fill
+            report_pad_fill(self, issues)
             if check_ntff:
                 self._validate_ntff_inverse_design(
                     include_pec_overlap_error=(check_ntff != "advisory"),
