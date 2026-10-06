@@ -236,3 +236,47 @@ def test_substrate_is_sampled_under_stub_with_realized_masks_and_precedence():
     sim._geometry = [e for e in sim._geometry if e.material_name == 'pec']
     f, = line_stub_findings(sim)
     assert f.substrate_eps_r == 9.8
+
+
+@pytest.mark.parametrize('thin', [False, True])
+@pytest.mark.parametrize('port_x', [.00213, .00237])
+def test_the_placement_the_refusal_recommends_is_admitted(thin, port_x):
+    """Follow the message literally: redraw the strip from the printed coordinate.
+
+    The port plane is off the node lines on purpose (nearest node behind it for
+    2.13 mm, ahead of it for 2.37 mm): a strip drawn from the declared plane is
+    what port preflight rejects, so the remedy must name the node, not the plane.
+    """
+    import re
+
+    def build(start):
+        sim = Simulation(domain=(.028, .012, .006), dx=.0005,
+                         freq_max=40e9, boundary='cpml', cpml_layers=3)
+        sim.add_material('board', eps_r=3.66)
+        sim.add(Box((0, 0, 0), (.028, .012, .001)), material='board')
+        sim.add(Box((0, 0, 0), (.028, .012, 0)), material='pec')
+        strip = Box((start, .005, .001), (.028, .007, .001))
+        if thin:
+            sim.add_thin_conductor(strip)
+        else:
+            sim.add(strip, material='pec')
+        sim.add_msl_port((port_x, .006, 0), width=.002, height=.001,
+                         direction='+x', eps_r_sub=3.66)
+        return sim
+
+    finding, = line_stub_findings(build(0.))
+    printed = float(re.search(r"grid node is x=([0-9.eE+-]+) mm", finding.message).group(1)) * 1e-3
+    assert printed != pytest.approx(port_x, abs=1e-5)
+    sim = build(printed)
+    assert line_stub_findings(sim) == []
+    report = sim.preflight()
+    # The fixture's 2 mm strip on 0.5 mm cells also trips the unrelated sheet-size
+    # check; only the port-attachment and stub errors are this test's subject.
+    blocking = [str(i) for i in getattr(report, 'errors', [])
+                if 'MSL port' in str(i) or 'stub' in str(i)]
+    assert not blocking, blocking
+    # The declared plane itself is the placement that fails, which is why the
+    # message names the node.
+    rejected = [str(i) for i in getattr(build(port_x).preflight(), 'errors', [])
+                if 'MSL port' in str(i)]
+    assert bool(rejected) == (printed < port_x)
