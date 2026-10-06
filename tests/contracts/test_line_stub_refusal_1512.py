@@ -31,7 +31,7 @@ def test_in_band_and_inclusive_near_edges_refuse(direction, ratio):
         stub.require_no_resonant_line_stub(sim, [fq/ratio])
     assert '6 mm behind the port' in str(error.value)
     assert 'eps_eff=1' in str(error.value)
-    assert 'start the strip at the port plane' in str(error.value)
+    assert 'start the strip no more than one cell behind the port plane' in str(error.value)
 
 
 def test_third_odd_resonance_refuses_when_fundamental_is_far_below_band():
@@ -55,12 +55,13 @@ def test_every_entry_refuses_before_assembly(method, frequency_argument, skip):
     if method in ('run', 'forward'):
         kwargs['skip_preflight'] = skip
     # Missing calculator/material prerequisites must not hide admission.
-    with pytest.raises(ValueError, match='start the strip at the port plane'):
+    with pytest.raises(ValueError, match='start the strip no more than one cell behind the port plane'):
         getattr(sim, method)(**kwargs)
 
 
 def test_far_tail_is_advisory_and_zero_tail_has_no_finding():
-    sim = line(.0001)
+    sim = line(.0005)
+    sim._freq_max = 20e9
     stub.require_no_resonant_line_stub(sim, [10e9, 20e9])
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter('always')
@@ -69,7 +70,7 @@ def test_far_tail_is_advisory_and_zero_tail_has_no_finding():
     assert caught[0].message.code == 'line_stub_behind_port'
     assert 'outside the refusal interval' in str(caught[0].message)
     assert 'odd multiples' in str(caught[0].message)
-    assert 'start the strip at the port plane' in str(caught[0].message)
+    assert 'start the strip no more than one cell behind the port plane' in str(caught[0].message)
     with warnings.catch_warnings(record=True) as caught:
         stub.preflight_line_stubs(line(0), warnings)
     assert not caught
@@ -115,7 +116,7 @@ def test_coax_declared_pin_tail_is_guarded(method):
 
 
 def test_public_preflight_reports_far_stub():
-    report = line(.0001).preflight()
+    report = line(.0005).preflight()
     assert any(f.code == 'line_stub_behind_port' for f in report)
 
 

@@ -22,16 +22,11 @@ class LineStubFinding:
     overhang_m: float
     eps_eff: float
     frequency_hz: float
+    declared_overhang_m: float = 0.0
 
     @property
     def message(self):
-        return (
-            f"Line port {self.port_name!r} has an open stub behind the port "
-            f"({self.overhang_m * 1e3:.6g} mm), ending inside the domain or "
-            "at the absorber entrance. It shorts the port near "
-            f"f = c/(4*L*sqrt(eps_eff)) = {self.frequency_hz / 1e9:.6g} GHz "
-            f"(eps_eff={self.eps_eff:.6g}). Start the strip at the port plane."
-        )
+        return stub_message(self)
 
 
 def _permittivity(sim, port, point):
@@ -49,20 +44,16 @@ def _permittivity(sim, port, point):
     return result
 
 
-def _intervals(sim, grid, shape, coords, axis, lower, upper):
+def _intervals(sim, grid, shape, coords, axis, lower, upper, cache):
     """Axial support in the signal aperture, retaining gaps in a shape."""
     from rfx.geometry.smoothing import _declared_conductor_lattice
     bounds = declared_bounds(shape)
     nodes = (coords.x, coords.y, coords.z)
-    if isinstance(shape, Box):
-        tol = 32 * np.finfo(float).eps * max(
-            *(abs(v) for b in bounds for v in b), 1e-12)
-        if all(bounds[0][a] <= upper[a] + tol and bounds[1][a] >= lower[a] - tol
-               for a in range(3) if a != axis):
-            return [(float(bounds[0][axis]), float(bounds[1][axis]))]
-        return []
     intervals = []
-    for mask, cell_axes in _declared_conductor_lattice(sim, grid, shape, coords):
+    key = id(shape)
+    if key not in cache:
+        cache[key] = _declared_conductor_lattice(sim, grid, shape, coords)
+    for mask, cell_axes in cache[key]:
         indices = []
         for a, values in enumerate(nodes):
             values = np.asarray(values)
@@ -78,7 +69,9 @@ def _intervals(sim, grid, shape, coords, axis, lower, upper):
         ends = np.flatnonzero(occupied & ~np.r_[occupied[1:], False])
         for first, last in zip(starts, ends):
             end = min(last + int(cell_axes[axis]), len(nodes[axis]) - 1)
-            intervals.append((float(nodes[axis][first]), float(nodes[axis][end])))
+            lo, hi = float(nodes[axis][first]), float(nodes[axis][end])
+            declared_lo, declared_hi = (bounds[0][axis], bounds[1][axis]) if bounds else (lo, hi)
+            intervals.append((lo, hi, declared_lo, declared_hi))
     return intervals
 
 
@@ -120,6 +113,7 @@ def line_stub_findings(sim, grid=None) -> list[LineStubFinding]:
             lower[a], upper[a] = float(nodes[a][lo + pad]), float(nodes[a][hi + pad])
         conductors.append(Box(tuple(lower), tuple(upper)))
     findings = []
+    cache = {}
     for collection in ("_msl_ports", "_coaxial_ports"):
         for index, port in enumerate(getattr(sim, collection)):
             point = list(map(float, port.position))
@@ -130,7 +124,9 @@ def line_stub_findings(sim, grid=None) -> list[LineStubFinding]:
                 width_axis = 1 - axis
                 lower[width_axis] -= port.width / 2
                 upper[width_axis] += port.width / 2
-                lower[2] = upper[2] = point[2] + port.height
+                from rfx.sources.msl_port import msl_cross_section_span, msl_port_from_entry
+                span = msl_cross_section_span(grid, msl_port_from_entry(port))
+                lower[2] = upper[2] = float(nodes[2][span["n_hi"]])
                 point[2] += port.height / 2
                 eps = _permittivity(sim, port, point)
                 eps = getattr(sim, "_msl_auto_probe_spacing", {}).get(
@@ -153,7 +149,11 @@ def line_stub_findings(sim, grid=None) -> list[LineStubFinding]:
                             and bounds[1][a] <= point[a] + port.pin_radius
                             for a in range(3) if a != axis):
                         signal_shapes.append(shape)
-            plane = float(port.position[axis])
+            declared_plane = float(port.position[axis])
+            from rfx.sources.msl_port import _msl_position_to_index
+            port_index = (span["i_feed"] if collection == "_msl_ports" else
+                          _msl_position_to_index(grid, port.position)[axis])
+            plane = float(nodes[axis][port_index])
             domain = float(sim._unresolved_domain[axis])
             tol = 32 * np.finfo(float).eps * max(domain, abs(plane), 1e-12)
             # Sweep separate rays across the signal aperture. Projecting all
@@ -161,15 +161,7 @@ def line_stub_findings(sim, grid=None) -> list[LineStubFinding]:
             # strip to this one across a transverse gap.
             rays = [(lower, upper)]
             if collection == "_msl_ports":
-                cuts = {lower[width_axis], upper[width_axis]}
-                for shape in conductors:
-                    bounds = declared_bounds(shape)
-                    if bounds is not None:
-                        cuts.update(float(b[width_axis]) for b in bounds
-                                    if lower[width_axis] <= b[width_axis]
-                                    <= upper[width_axis])
-                cuts = sorted(cuts)
-                samples = cuts + [(a + b) / 2 for a, b in zip(cuts, cuts[1:])]
+                samples = [float(nodes[width_axis][w]) for w in span["width_nodes"]]
                 rays = []
                 for sample in samples:
                     lo, hi = lower.copy(), upper.copy()
@@ -180,30 +172,34 @@ def line_stub_findings(sim, grid=None) -> list[LineStubFinding]:
                 intervals = sorted(interval for shape in signal_shapes
                                    for interval in _intervals(
                                        sim, grid, shape, coords, axis,
-                                       lower_ray, upper_ray))
+                                       lower_ray, upper_ray, cache))
                 merged = []
-                for lo, hi in intervals:
+                for lo, hi, declared_lo, declared_hi in intervals:
                     if merged and lo <= merged[-1][1] + tol:
                         merged[-1][1] = max(merged[-1][1], hi)
+                        merged[-1][2] = min(merged[-1][2], declared_lo)
+                        merged[-1][3] = max(merged[-1][3], declared_hi)
                     else:
-                        merged.append([lo, hi])
-                for lo, hi in merged:
+                        merged.append([lo, hi, declared_lo, declared_hi])
+                for lo, hi, declared_lo, declared_hi in merged:
                     if not lo - tol <= plane <= hi + tol:
                         continue
                     end = lo if sign > 0 else hi
-                    length = (plane - end) * sign
+                    declared_end = declared_lo if sign > 0 else declared_hi
+                    declared_length = max(0.0, (declared_plane - declared_end) * sign)
+                    length = max(0.0, (plane - end) * sign)
                     at_lo, at_hi = abs(end) <= tol, abs(end - domain) <= tol
                     if ((at_lo and not getattr(grid, f"pad_{'xyz'[axis]}_lo", 0))
                             or (at_hi and not getattr(grid, f"pad_{'xyz'[axis]}_hi", 0))):
                         continue  # A closed/periodic face is not an absorber entrance.
                     if length > tol and -tol <= end <= domain + tol:
-                        endpoints.append((length, end))
+                        endpoints.append((length, end, declared_length))
             if endpoints:
-                length, end = max(endpoints)
+                length, end, declared_length = max(endpoints)
                 findings.append(LineStubFinding(
                     collection, index, getattr(port, "name", f"coaxial_{index}"),
                     "xyz"[axis], end, length, float(eps),
-                    299792458.0 / (4 * length * math.sqrt(eps))))
+                    299792458.0 / (4 * length * math.sqrt(eps)), declared_length))
     return findings
 
 
@@ -243,24 +239,31 @@ def resonant_odd_orders(finding, band):
     return (2 * first - 1, 2 * last - 1) if first <= last else None
 
 
-def stub_message(finding, band):
+def stub_message(finding, band=None):
     fq = finding.frequency_hz / 1e9
-    orders = resonant_odd_orders(finding, band)
+    orders = None if band is None else resonant_odd_orders(finding, band)
     if orders is None:
-        relation = "outside the refusal interval for the band you read"
+        relation = ("at odd quarter-wave resonances" if band is None else
+                    "outside the refusal interval for the band you read")
         frequencies = f"{fq:.6g}, {3*fq:.6g}, {5*fq:.6g}, ... GHz (odd multiples)"
     else:
         first, last = orders
         relation = "inside/near the band you read"
         frequencies = (f"{first*fq:.6g} GHz (order {first})" if first == last else
                        f"{first*fq:.6g}..{last*fq:.6g} GHz (odd orders {first}..{last})")
+    band_text = ("" if band is None else
+                 f"Read band {band[0]/1e9:.6g}..{band[1]/1e9:.6g} GHz; ")
     return (
         f"The strip continues {finding.overhang_m*1e3:.6g} mm behind the port "
-        f"and ends there; it is an open stub that shorts the port near {fq:.6g} GHz "
+        f"and ends there (realized L; declared {finding.declared_overhang_m*1e3:.6g} mm); "
+        f"it is an open stub that shorts the port near {fq:.6g} GHz "
         f"(quarter wave); stub frequencies {frequencies}, {relation}. "
-        f"Read band {band[0]/1e9:.6g}..{band[1]/1e9:.6g} GHz; "
+        f"{band_text}"
         f"eps_eff={finding.eps_eff:.6g}; port {finding.port_name!r}. "
-        "Fix: start the strip at the port plane (#1512)."
+        "Fix: start the strip no more than one cell behind the port plane, so it covers "
+        "the port's own grid node and nothing beyond it (a strip drawn from exactly "
+        "the port plane can start one node ahead of the port, which port preflight "
+        "rejects) (#1512)."
     )
 
 

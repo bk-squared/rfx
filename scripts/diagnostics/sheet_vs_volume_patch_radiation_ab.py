@@ -71,6 +71,7 @@ import sys
 import numpy as np
 
 from rfx import Box, Simulation
+from rfx.preflight.line_port_coverage import local_port_cell
 from rfx.harminv import harminv
 from rfx.sources import GaussianPulse
 
@@ -133,6 +134,8 @@ def build(kind: str) -> Simulation:
             material="ro4003c")
     for _name, (x0, y0), (x1, y1), z in _FOILS:
         if kind == "sheet":
+            if _name == "feed":
+                x0 -= local_port_cell(sim, (PORT_MARGIN, Y_C, Z_GND_PLANE))
             # A 35 um foil is 0.18 of a cell: it is a sheet, and the
             # declaration says so.  thickness= is read only on the lossy
             # path; this is PEC copper, so it is documentation here.

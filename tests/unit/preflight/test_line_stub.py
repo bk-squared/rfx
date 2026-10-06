@@ -41,7 +41,7 @@ def test_tail_length_and_frequency(direction, thin):
     f = findings[0]
     assert f.overhang_m == pytest.approx(.002)
     assert f.frequency_hz == pytest.approx(299792458 / (.008 * math.sqrt(f.eps_eff)))
-    assert 'Start the strip at the port plane' in f.message
+    assert 'start the strip no more than one cell behind the port plane' in f.message
     assert '2 mm' in f.message
 
 
@@ -126,3 +126,26 @@ def test_boundary_without_absorber_is_not_an_open_end():
     sim.add(Box((0, .004, .001), (.010, .006, .001)), material='pec')
     sim.add_msl_port((.002, .005, 0), width=.002, height=.001)
     assert line_stub_findings(sim) == []
+
+
+@pytest.mark.parametrize('nonuniform', [False, True])
+def test_realized_port_and_endpoint_coordinates_own_length(nonuniform):
+    from dataclasses import replace
+    import numpy as np
+    from rfx.sources.msl_port import _msl_grid_geometry, _msl_position_to_index
+
+    sim = make_sim(endpoint=.0006, thin=True)
+    if nonuniform:
+        # Exercise a genuinely graded propagation axis, not only NU dispatch.
+        sim._dx_profile = np.r_[.0005, np.full(27, .00025), np.full(27, .00075), .0005]
+    port = sim._msl_ports[0]
+    sim._msl_ports[0] = replace(port, position=(.0021, *port.position[1:]))
+    grid = sim._build_realized_grid()
+    nodes, _ = _msl_grid_geometry(grid)
+    p = _msl_position_to_index(grid, sim._msl_ports[0].position)[0]
+    endpoint = next(float(x) for x in nodes[0] if x >= .0006)
+    finding, = line_stub_findings(sim, grid)
+    assert finding.overhang_m == pytest.approx(float(nodes[0][p]) - endpoint)
+    assert finding.declared_overhang_m == pytest.approx(.0015)
+    assert finding.overhang_m != pytest.approx(finding.declared_overhang_m)
+    assert 'realized L; declared 1.5 mm' in finding.message

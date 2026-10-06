@@ -58,8 +58,11 @@ the ports becomes a low-loss resonator and S is wrong. On a 24 mm, 50 Ω line (�
 20–40 GHz) a 2 mm overhang behind each port gave |S11| −2.8 dB and |S21| −4.6 dB near 20 GHz; with
 the strip starting at the port planes the same line reads |S11| below −36 dB and |S21| within
 ±0.25 dB. The bad band moves with the overhang length, not with the mesh, the absorber or the
-record length. Start the strip at the port plane; the absorber pads lie outside the declared
-domain, so drawing the strip "into the absorber" is not possible today.
+record length. The refusal uses the realized node-to-node overhang and reports both realized
+and declared lengths. Start the strip no more than one cell behind the port plane, so it covers
+the port's own grid node and nothing beyond it (a strip drawn from exactly the port plane can
+start one node ahead of the port, which port preflight rejects). The absorber pads lie outside
+the declared domain, so drawing the strip "into the absorber" is not possible today.
 → [#1512](https://github.com/bk-squared/rfx/issues/1512)
 
 ### The default wire port is a mesh-sized probe.
