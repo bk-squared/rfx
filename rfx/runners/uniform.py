@@ -451,18 +451,11 @@ def run_uniform(
             # boundary-selected (its native numerics are deliberate); the
             # KIND only rescales the waveform inside the helper. kind=None
             # threads through as a no-op (legacy, bit-identical).
-            if sim._boundary in ("cpml", "upml"):
-                sources.append(_simulation.make_j_source(grid, pe.position, pe.component,
-                                             pe.waveform, n_steps, materials,
-                                             amplitude_kind=pe.amplitude_kind))
-            else:
-                sources.append(_simulation.make_source(grid, pe.position, pe.component,
-                                           pe.waveform, n_steps,
-                                           materials=materials,
-                                           amplitude_kind=pe.amplitude_kind))
-            from rfx.api._source_semantics import guard_float16_source_increment
-            sources[-1] = sources[-1]._replace(waveform=guard_float16_source_increment(
-                sources[-1].waveform, field_dtype, pe.amplitude_kind))
+            from rfx.sources.port_drive import soft_source
+            sources.defer(soft_source, grid, pe.position, pe.component,
+                          pe.waveform, n_steps, amplitude_kind=pe.amplitude_kind,
+                          raw=sim._boundary not in ("cpml", "upml"),
+                          field_dtype=field_dtype)
             continue
         if pe.extent is not None:
             # Multi-cell wire port
@@ -570,7 +563,7 @@ def run_uniform(
             msl_normal_component as _msl_normal_component,
             compute_msl_mode_profile,
             make_msl_port_sources,
-            make_msl_port_sources_jm,
+            deferred_msl_sources_jm,
             msl_cell,
             msl_cross_section_span,
             msl_port_from_entry,
@@ -618,10 +611,9 @@ def run_uniform(
             if pe.excite and pe.waveform is not None:
                 if eigenmode_data is not None:
                     # Schelkunoff J+M one-sided launch: both E and H sources
-                    e_specs, h_specs = make_msl_port_sources_jm(
-                        grid, mp, materials, n_steps, eigenmode_data)
-                    sources.extend(e_specs)
-                    mag_sources.extend(h_specs)
+                    sources.defer(deferred_msl_sources_jm, grid, mp,
+                                  n_steps=n_steps, eigenmode_data=eigenmode_data,
+                                  magnetic_sources=mag_sources)
                 else:
                     sources.defer(make_msl_port_sources,
                         grid, mp, n_steps=n_steps,
@@ -786,7 +778,9 @@ def run_uniform(
     materials = with_components(materials, grid,
         periodic=_simulation.resolve_periodic(grid, periodic),
         debye_spec=debye_spec, lorentz_spec=lorentz_spec)
-    sources = sources.resolve(materials)
+    from rfx.model.source_coefficients import resolve_run_sources
+    sources = resolve_run_sources(sources, materials, sim, grid,
+        tensor=aniso_eps is not None or conformal_weights is not None)
 
     # Conformal PEC (Stage 1) permittivity, #1373: the same four-cell
     # edge mean of the volume permittivity the plain E update uses, on the

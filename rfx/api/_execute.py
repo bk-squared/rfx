@@ -1827,13 +1827,11 @@ class _ExecuteMixin:
         lumped_port_sparam_specs: list = []
         wire_port_sparam_specs: list = []
         wire_refplane_specs: list = []
-        # Resolve a freq array once for downstream auto-build (issue #72)
         if port_s11_freqs is not None:
             _s11_freqs_arr = jnp.asarray(port_s11_freqs, dtype=jnp.float32)
         else:
             _s11_freqs_arr = None
 
-        # Collect all port cell indices for Kottke dilation guard (issue #82).
         _port_cleared_cells: list[tuple[int, int, int]] = []
 
         # Multi-drive S-matrix hook (item-5 Stage 1): 0-based counter over the
@@ -1851,18 +1849,10 @@ class _ExecuteMixin:
 
         for _port_index, pe in enumerate(self._ports):
             if pe.impedance == 0.0:
-                from rfx.simulation import make_j_source
-                # forward() uniform route: Cb-normalized helper regardless
-                # of boundary (pre-existing). amplitude_kind (issue #571)
-                # rescales inside the helper; None = legacy bit-identical.
-                sources.append(
-                    make_j_source(grid, pe.position, pe.component,
-                                  pe.waveform, n_steps, materials,
-                                  amplitude_kind=pe.amplitude_kind)
-                )
-                from rfx.api._source_semantics import guard_float16_source_increment
-                sources[-1] = sources[-1]._replace(waveform=guard_float16_source_increment(
-                    sources[-1].waveform, self._resolve_field_dtype(), pe.amplitude_kind))
+                from rfx.sources.port_drive import soft_source
+                sources.defer(soft_source, grid, pe.position, pe.component,
+                              pe.waveform, n_steps, amplitude_kind=pe.amplitude_kind,
+                              field_dtype=self._resolve_field_dtype())
                 continue
 
             # Sparam-eligible lumped/wire port — advance the multi-drive index.
@@ -2196,7 +2186,9 @@ class _ExecuteMixin:
         from rfx.model.materials import with_components
         materials = with_components(materials, grid, periodic=periodic_bool,
             debye_spec=debye_spec, lorentz_spec=lorentz_spec)
-        sources = sources.resolve(materials)
+        from rfx.model.source_coefficients import resolve_run_sources
+        sources = resolve_run_sources(sources, materials, self, grid,
+            tensor=pec_occupancy_local is not None and os.environ.get("RFX_PEC_OCC_KOTTKE", "0") not in ("0", "", "false", "False"))
         _, debye, lorentz = self._init_dispersion(
             materials, grid.dt, debye_spec, lorentz_spec,
             periodic=periodic_bool,
@@ -3080,14 +3072,15 @@ class _ExecuteMixin:
                                 or sigma_override is not None)
         sources: list[SourceSpec] = []
         material_drive: list = []
+        from rfx.model import source_coefficients as _sc
+        drive_model = _sc.dispersive_drive_model(materials, debye_spec, lorentz_spec)
         for pe in self._ports:
             if pe.impedance > 0.0:
                 raise NotImplementedError(
                     "Lumped / wire ports (impedance > 0) are not yet "
                     "supported on the distributed=True forward path; "
                     "use distributed=False or replace with a current "
-                    "source (impedance=0)."
-                )
+                    "source (impedance=0).")
             idx = _nu_pos_to_idx(grid, pe.position)
             if (_drive_from_override
                     and not _needs_scale(pe.amplitude_kind, "cb_over_dv")):
@@ -3098,19 +3091,18 @@ class _ExecuteMixin:
                     waveform=jnp.asarray(_nu_current_source_samples(
                         grid, pe.waveform, n_steps)),
                 ))
-                material_drive.append(float(dV))
+                material_drive.append((float(dV), _sc.debye_pole_term(
+                    drive_model, idx, pe.component, grid.dt)))
                 continue
-            # Concrete drawn materials: make_current_source resolves eps /
-            # sigma to Python floats for the source-cell normalisation.
             si, sj, sk, sc, wf = _nu_make_current_source(
                 grid, idx, pe.component, pe.waveform, n_steps,
-                materials, amplitude_kind=pe.amplitude_kind,
-            )
+                drive_model, amplitude_kind=pe.amplitude_kind)
             sources.append(SourceSpec(
                 i=int(si), j=int(sj), k=int(sk),
                 component=sc, waveform=jnp.asarray(wf),
             ))
             material_drive.append(None)
+        del drive_model
 
         # Every declared input this lane does not carry is refused here,
         # after the specific refusals above and before the first step.

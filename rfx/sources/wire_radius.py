@@ -30,7 +30,8 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.core.jax_utils import is_tracer
-from rfx.core.yee import cell_component_e_materials, lumped_components
+from rfx.core.yee import lumped_components
+from rfx.model.materials import e_update_material_at
 
 
 LATTICE_RADIUS = math.exp(-np.euler_gamma) / math.sqrt(8.0)
@@ -135,7 +136,8 @@ def stamp_wire_radius(grid, materials, component, radius, cells):
     h_parts = list(materials.mu_r_wire or (None, None, None))
     # Read the background before any of this port's E quadrature stamps.
     own_eps = lumped_components(materials.eps_r_lumped)[axis]
-    eps = [cell_component_e_materials(materials, c, component)[0]
+    eps = [e_update_material_at(materials, c, component,
+            tuple(a in getattr(grid, "periodic_axes", "") for a in "xyz"))[0]
            - (0 if own_eps is None else own_eps[c]) for c in cells]
     for cell, eps_c in zip(cells, eps):
         local = []

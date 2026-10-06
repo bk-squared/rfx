@@ -705,6 +705,53 @@ class ComponentMaterials:
     cells_view: MaterialArrays
     periodic: tuple = field(metadata={"static": True})
     grid_key: tuple = field(metadata={"static": True})
+    source_upml: bool = field(default=False, metadata={"static": True})
+
+
+from types import SimpleNamespace  # noqa: E402
+
+
+class EdgePoles(NamedTuple):
+    """Pole specs for a lane that keeps no whole-domain realization (the
+    distributed runners): carried in the ``components`` slot of the materials
+    handed to the drive builders only. An edge's ADE terms are built from the
+    cells around that edge, by the functions the kernels' coefficients use."""
+
+    debye_spec: object
+    lorentz_spec: object
+
+    def at(self, cell, dt):
+        lo = tuple(max(int(i) - 1, 0) for i in cell)
+        window = tuple(slice(a, int(i) + 1) for a, i in zip(lo, cell))
+        local = (slice(None),) + tuple(int(i) - a for a, i in zip(lo, cell))
+        shape = tuple(int(i) + 1 - a for a, i in zip(lo, cell))
+        out = []
+        for spec, kind in ((self.debye_spec, "Debye"), (self.lorentz_spec, "Lorentz")):
+            if spec is None:
+                out.append(None)
+                continue
+            poles, masks = spec
+            masks = masks if isinstance(masks, (tuple, list)) else [masks] * len(poles)
+            cut = (poles, [m if m is None else m[window] for m in masks])
+            terms = _realize_poles(cut, (False,) * 3, kind, SimpleNamespace(dt=dt), shape).coefficients
+            out.append(tuple(tuple(v[local] for v in t) if isinstance(t, tuple) else t[local]
+                             for t in terms))
+        return out
+
+
+def _ade_cb(eps, sigma, dt, axis, debye_terms, lorentz_terms):
+    """The dispersive E update's curl coefficient on one edge."""
+    from rfx.materials.debye import debye_e_coeffs
+    from rfx.materials.lorentz import lorentz_e_coeffs, mixed_e_component_coeffs
+    operands = ((eps,) * 3, (sigma,) * 3)
+    dc = lc = None
+    if debye_terms is not None:
+        dc = debye_e_coeffs(operands, dt, *debye_terms)
+    if lorentz_terms is not None:
+        lc = lorentz_e_coeffs(operands, dt, *lorentz_terms)
+    if dc is not None and lc is not None:
+        return mixed_e_component_coeffs(dc, lc, axis, dt)[1]
+    return (dc if dc is not None else lc).cb[axis]
 
 
 def e_update_material_at(materials, cell, component, periodic=(False, False, False)):
@@ -714,12 +761,56 @@ def e_update_material_at(materials, cell, component, periodic=(False, False, Fal
     a realization retain the single-edge averaging rule until they migrate.
     """
     c = getattr(materials, "components", None)
-    if c is None:
+    if c is None or isinstance(c, EdgePoles):
         from rfx.core.yee import cell_component_e_materials
         return cell_component_e_materials(materials, cell, component, periodic)
     axis = {"ex": 0, "ey": 1, "ez": 2}[str(component).lower()]
     cell = tuple(cell)
     return c.eps_update[axis][cell], c.sigma_update[axis][cell]
+
+
+def e_update_coefficient_at(materials, cell, component, dt,
+                            periodic=(False, False, False), *, host=False):
+    """Read the run's electric-current coefficient on one realized edge.
+
+    Pole coefficients are sampled before constructing the scalar ADE operator;
+    this avoids rebuilding grid-sized coefficient arrays for every source.
+    ``host`` retains the graded current source's historical scalar arithmetic
+    on plain edges. All dispersive coefficients use the kernel's algebra.
+    """
+    from rfx.core.yee import e_update_coeffs
+    eps, sigma = e_update_material_at(materials, cell, component, periodic)
+    c = getattr(materials, "components", None)
+    axis = {"ex": 0, "ey": 1, "ez": 2}[str(component).lower()]
+    if isinstance(c, EdgePoles):
+        terms = c.at(cell, dt)
+        if terms[0] is None and terms[1] is None:
+            return e_update_coeffs(eps, sigma, dt)[1]
+        return _ade_cb(eps, sigma, dt, axis, *terms)
+    if c is not None and c.source_upml:
+        # Admission excludes pads. There sigma_perp=0; UPML still uses its
+        # cell-owned E operands, even at an interior material interface.
+        from rfx.boundaries.upml import _upml_e_coeffs_si, _upml_e_coeffs_eps_r
+        from rfx.core.yee import si_value_eps_r_grad
+        return si_value_eps_r_grad(
+            _upml_e_coeffs_si, _upml_e_coeffs_eps_r, jnp.float32(0),
+            c.upml_eps[axis][tuple(cell)],
+            c.upml_sigma[axis][tuple(cell)].astype(jnp.float32), jnp.float32(dt))[1]
+    if c is not None and (c.debye is not None or c.lorentz is not None):
+        pole_cell = (slice(None),) + tuple(cell)
+        dt_terms = lt_terms = None
+        if c.debye is not None:
+            alpha, beta = c.debye.coefficients
+            dt_terms = (alpha[pole_cell], tuple(b[pole_cell] for b in beta))
+        if c.lorentz is not None:
+            a, b, strength = c.lorentz.coefficients
+            lt_terms = (a[pole_cell], b[pole_cell], tuple(v[pole_cell] for v in strength))
+        return _ade_cb(eps, sigma, dt, axis, dt_terms, lt_terms)
+    if host:
+        from rfx.nonuniform import current_source_cb
+        return current_source_cb(eps, sigma, dt,
+                                 traced=is_tracer(eps) or is_tracer(sigma))
+    return e_update_coeffs(eps, sigma, dt)[1]
 
 
 def pole_component_weights(mask, periodic=(False, False, False)):

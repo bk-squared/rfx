@@ -53,6 +53,29 @@ def _compare_shared_ports():
         print(f"wire={wire} first_E={actual.time_series[0, 0]} "
               f"max_relative_peak_error={max(errors):.9g}")
 
+    # A current source declared BEFORE the port that loads its edge must see
+    # that load on two devices as it does on one (first E sample, H = 0).
+    firsts = {}
+    for source_first in (True, False):
+        sim = Simulation(freq_max=8e9, domain=(.008, .008, .008), dx=.001,
+                         boundary="cpml", cpml_layers=2)
+        pos = (.004, .004, .004)
+        declare = [lambda: sim.add_source(pos, "ez", waveform=jnp.ones_like,
+                                          amplitude_kind="current"),
+                   lambda: sim.add_port(pos, "ez", impedance=50.,
+                                        waveform=jnp.zeros_like)]
+        for step in (declare if source_first else declare[::-1]):
+            step()
+        sim.add_probe(pos, "ez")
+        kw = dict(n_steps=4, skip_preflight=True, compute_s_params=False)
+        one = float(np.asarray(sim.run(**kw).time_series)[0, 0])
+        two_run = sim.run(devices=devices, **kw)
+        assert len(two_run.state.ez.devices()) == 2
+        two = float(np.asarray(two_run.time_series)[0, 0])
+        assert abs(two - one) <= 3e-7 * abs(one), (source_first, one, two)
+        firsts[source_first] = two
+    assert abs(firsts[True] - firsts[False]) <= 3e-7 * abs(firsts[False]), firsts
+    print(f"soft source first_E by declaration order: {firsts}")
 
 if __name__ == "__main__":
     _compare_shared_ports()

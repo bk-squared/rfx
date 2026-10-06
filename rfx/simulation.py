@@ -27,7 +27,7 @@ from rfx.core.yee import (
     FDTDState, MaterialArrays, init_state,
     update_e, update_e_aniso, update_e_aniso_inv, update_e_box, update_h,
     e_update_coeffs, component_e_materials,
-    cell_component_e_coeffs, EPS_0, MU_0, curl_h, CurlBoundary,
+    EPS_0, MU_0, curl_h, CurlBoundary,
     map_lumped, lumped_components, lumped_total,
     precompute_coeffs, update_he_fast,
 )
@@ -355,10 +355,10 @@ def _source_cell_cb(grid: Grid, idx, materials, component,
     touches. Reading the owning cell here instead put 0.556x the declared
     current into an Ey source standing on an eps 1|9 step along y.
     ``materials.eps_r``/``sigma`` may be JAX tracers (forward/AD path) —
-    ``cell_component_e_coeffs`` indexes four cells and never calls ``float()``.
+    The model accessor reads the finished edge and retains JAX derivatives.
     """
-    return cell_component_e_coeffs(
-        materials, idx, component, grid.dt, periodic)[1]
+    from rfx.model.materials import e_update_coefficient_at
+    return e_update_coefficient_at(materials, idx, component, grid.dt, periodic)
 
 
 def _uniform_cell_volume(grid: Grid) -> float:

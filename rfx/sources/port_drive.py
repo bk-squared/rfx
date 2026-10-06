@@ -3,8 +3,7 @@
 import jax
 import jax.numpy as jnp
 
-from rfx.core.yee import e_update_coeffs
-from rfx.model.materials import e_update_material_at
+from rfx.model.materials import e_update_coefficient_at
 
 
 def stamped_drive(port, cell):
@@ -41,8 +40,7 @@ def port_drive_waveform(grid, cell, component, excitation, n_steps, materials,
     material and mesh derivatives. ``n_steps=None, time=t`` selects the
     eager single-step application instead of a precomputed waveform.
     """
-    eps, sigma = e_update_material_at(materials, cell, component)
-    cb = e_update_coeffs(eps, sigma, grid.dt)[1]
+    cb = e_update_coefficient_at(materials, cell, component, grid.dt)
     if n_steps is None:
         samples = excitation(time)
     else:
@@ -73,3 +71,15 @@ class PortSourceQueue(list):
             else:
                 sources.append(entry)
         return sources
+
+
+def soft_source(grid, position, component, waveform, n_steps, *, materials,
+                amplitude_kind=None, raw=False, field_dtype=None):
+    """Build a soft source after the final material and load realization."""
+    from rfx.simulation import make_source, make_j_source
+    from rfx.api._source_semantics import guard_float16_source_increment
+    builder = make_source if raw else make_j_source
+    source = builder(grid, position, component, waveform, n_steps,
+                     materials=materials, amplitude_kind=amplitude_kind)
+    return source._replace(waveform=guard_float16_source_increment(
+        source.waveform, field_dtype, amplitude_kind))

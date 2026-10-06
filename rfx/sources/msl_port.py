@@ -33,8 +33,7 @@ import numpy as np
 
 from rfx.sources._laplace import _solve_laplace_2d
 
-from rfx.core.yee import (EPS_0, MU_0,
-                          cell_component_e_coeffs as _cell_component_e_coeffs)
+from rfx.core.yee import EPS_0, MU_0
 from rfx.sources.sources import stamp_lumped_sigma as _stamp_lumped_sigma
 
 
@@ -1149,10 +1148,11 @@ def make_msl_port_sources_jm(
         hy_w = float(em.hy[j_loc, k_loc])
         hz_w = float(em.hz[j_loc, k_loc])
 
-        # #1210: the drive coefficient is the E update's own per-component Cb. The component driven here is
-        # "ez" (both e_specs below write ez); dx is folded in as before.
-        coeff_E = float(_cell_component_e_coeffs(
-            materials, (i, j, k), "ez", dt)[1]) / dx
+        # Each electric correction reads its own component's coefficient;
+        # transverse interfaces can give Ey and Ez different permittivities.
+        from rfx.model.materials import e_update_coefficient_at
+        coeff_E = float(e_update_coefficient_at(materials, (i, j, k), "ez", dt)) / dx
+        coeff_Ey = float(e_update_coefficient_at(materials, (i, j, k), "ey", dt)) / dx
 
         i_h = int(i) + h_i_offset  # H correction cell index
 
@@ -1170,7 +1170,7 @@ def make_msl_port_sources_jm(
             e_specs.append(SourceSpec(
                 i=int(i), j=int(j), k=int(k),
                 component="ey",
-                waveform=jnp.array(sign * coeff_E * hz_w, dtype=jnp.float32) * base_wave_e,
+                waveform=jnp.array(sign * coeff_Ey * hz_w, dtype=jnp.float32) * base_wave_e,
             ))
 
         # --- H correction at i_feed - 1 (driven by E profile) ---
@@ -1600,3 +1600,12 @@ def msl_loop_current(
     if sign > 0:
         i_loop = -i_loop
     return i_loop
+
+
+def deferred_msl_sources_jm(grid, port, n_steps, eigenmode_data,
+                            magnetic_sources, *, materials):
+    """Resolve both launch corrections together after the final stamp."""
+    electric, magnetic = make_msl_port_sources_jm(
+        grid, port, materials, n_steps, eigenmode_data)
+    magnetic_sources.extend(magnetic)
+    return electric

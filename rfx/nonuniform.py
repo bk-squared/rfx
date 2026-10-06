@@ -1988,7 +1988,7 @@ def make_current_source(grid: NonUniformGrid, position_ijk, component,
     # over the four cells its edge touches, and this coefficient exists to
     # equal it. ``cell_component_e_materials`` indexes four cells, so the
     # tracer branch is the same branch it always was.
-    from rfx.core.yee import cell_component_e_materials as _cell_comp_mats
+    from rfx.model.materials import e_update_coefficient_at
     if str(component).lower() not in ("ex", "ey", "ez"):
         raise ValueError(
             f"unknown component {component!r}: a current source injects an "
@@ -1996,9 +1996,7 @@ def make_current_source(grid: NonUniformGrid, position_ijk, component,
     materials_traced = (
         is_tracer(materials.eps_r) or is_tracer(materials.sigma)
     )
-    _eps_r_c, _sigma_c = _cell_comp_mats(materials, (i, j, k), component)
-    cb = current_source_cb(_eps_r_c, _sigma_c, grid.dt,
-                           traced=materials_traced)
+    cb = e_update_coefficient_at(materials, (i, j, k), component, grid.dt, host=True)
     dV, grid_traced = current_source_volume(grid, (i, j, k), component)
     any_traced = materials_traced or grid_traced
 

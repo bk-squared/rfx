@@ -358,12 +358,13 @@ def test_a_current_source_injects_the_update_s_own_coefficient(monkeypatch,
     from rfx.core.yee import e_component_coeffs
     from rfx.grid import Grid
     import rfx.simulation as _sim
+    import rfx.model.materials as _materials
 
     if mutate:
         monkeypatch.setattr(
-            _sim, "cell_component_e_coeffs",
+            _materials, "e_update_coefficient_at",
             lambda m, cell, comp, dt, periodic=(False, False, False):
-                e_update_coeffs(m.eps_r[tuple(cell)], m.sigma[tuple(cell)], dt))
+                e_update_coeffs(m.eps_r[tuple(cell)], m.sigma[tuple(cell)], dt)[1])
 
     grid = Grid(freq_max=1e10, domain=(9e-3, 9e-3, 9e-3), dx=1e-3,
                 cpml_layers=0, cpml_axes="")
@@ -525,9 +526,9 @@ def test_the_applied_port_drives_use_the_update_s_own_coefficient(monkeypatch,
 
     if mutate:
         monkeypatch.setattr(
-            _src, "e_update_material_at",
-            lambda m, cell, comp, periodic=(False, False, False):
-                (m.eps_r[tuple(cell)], m.sigma[tuple(cell)]))
+            _src, "e_update_coefficient_at",
+            lambda m, cell, comp, dt, periodic=(False, False, False):
+                e_update_coeffs(m.eps_r[tuple(cell)], m.sigma[tuple(cell)], dt)[1])
 
     grid = Grid(freq_max=1e10, domain=(9e-3, 9e-3, 9e-3), dx=1e-3,
                 cpml_layers=0, cpml_axes="")

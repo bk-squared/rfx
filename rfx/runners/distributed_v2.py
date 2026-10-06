@@ -884,15 +884,16 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                 sources.defer(make_wire_port_sources,
                               grid, wp, n_steps=n_steps, pec_edge_masks=wire_edges)
         elif pe.impedance == 0.0:
+            # Deferred like the ports: a load declared after this source is
+            # on the edge before the drive reads it.
             if sim._boundary == "cpml":
-                sources.append(make_j_source(grid, pe.position, pe.component,
-                                             pe.waveform, n_steps, materials,
-                                             amplitude_kind=pe.amplitude_kind))
+                sources.defer(make_j_source, grid, pe.position, pe.component,
+                              pe.waveform, n_steps,
+                              amplitude_kind=pe.amplitude_kind)
             else:
-                sources.append(make_source(grid, pe.position, pe.component,
-                                           pe.waveform, n_steps,
-                                           materials=materials,
-                                           amplitude_kind=pe.amplitude_kind))
+                sources.defer(make_source, grid, pe.position, pe.component,
+                              pe.waveform, n_steps,
+                              amplitude_kind=pe.amplitude_kind)
     if _record_probes is None:
         for pe in sim._probes:
             probes.append(make_probe(grid, pe.position, pe.component))
@@ -904,8 +905,12 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # No whole-domain realization here: the slab kernels form their own edge
     # means, so the drive reads the four cells around its edge directly (this
     # path refuses periodic axes); M3 gives the slab kernel the realized rule.
-    sources = sources.resolve(materials)
-    del wire_edges
+    # A dispersive edge's drive needs the ADE update's coefficient, as on one
+    # device (#1524); the pole terms are read edge by edge from the specs.
+    from rfx.model.source_coefficients import dispersive_drive_model
+    drive_materials = dispersive_drive_model(materials, debye_spec, lorentz_spec)
+    sources = sources.resolve(drive_materials)
+    del wire_edges, drive_materials
 
     # Map source/probe global indices to (device_id, local_index)
     src_device_ids = []
