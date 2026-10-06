@@ -1659,7 +1659,6 @@ class _ExecuteMixin:
         refused before the first step; an explicit ``False`` asks for
         staircase PEC and passes (#1299).
         """
-        _line_stub_scope = _line_stub_admit(self, port_s11_freqs)
         _conformal = (bool(self._boundary_spec.conformal_faces())
                       if conformal_pec is None else bool(conformal_pec))
         if _conformal and self._has_pec_to_conform():
@@ -1689,6 +1688,7 @@ class _ExecuteMixin:
             # itself realizes them correctly — ``_run_adi_from_materials``
             # calls ``realized_pec_edge_masks`` — so the whole defect was
             # the two arguments missing here.
+            _line_stub_scope = _line_stub_admit(self, port_s11_freqs)
             return self._run_adi_from_materials(
                 grid,
                 materials,
@@ -1710,7 +1710,7 @@ class _ExecuteMixin:
         self._require_no_refinement_without_a_subgrid(
             "forward()/optimize()/topology_optimize()/"
             "compute_lumped_wire_s_matrix_via_scan()")
-
+        _line_stub_scope = _line_stub_admit(self, port_s11_freqs)
         from rfx.simulation import (
             run as _run, resolve_periodic,
             make_probe,
@@ -4230,7 +4230,6 @@ class _ExecuteMixin:
         so the jitted value and gradient agree with a plain call to float32
         rounding, not necessarily bit for bit.
         """
-        _line_stub_scope = _line_stub_admit(self, port_s11_freqs)
         if gradient not in ("autodiff", "adjoint"):
             raise ValueError("gradient must be 'autodiff' or 'adjoint'")
         if gradient == "adjoint":
@@ -4289,10 +4288,9 @@ class _ExecuteMixin:
                 "eps_scale= for jax.grad. Use add_port(..., extent=...) for "
                 "differentiable probe-feed S11 objectives."
             )
-
         if port_s11_freqs is not None:
             self._validate_forward_sparameter_request()
-
+        _line_stub_scope = _line_stub_admit(self, port_s11_freqs)
         _solve_assembly = self._auto_preflight(skip=skip_preflight, context="forward", prepare=True, distributed=distributed)
 
         # ---- (2,4) stencil fence: reject order=4 on unsupported lanes ----
@@ -4854,7 +4852,6 @@ class _ExecuteMixin:
         # a devices= model that runs on one device is re-run with all of them.
         _call_args = dict(locals())
         del _call_args["self"]
-        _line_stub_scope = _line_stub_admit(self, s_param_freqs)
         _refuse_transformed_extended_tfsf(self._tfsf)
         validate_exchange_interval(exchange_interval)
         fixed_num_periods = n_steps is None
@@ -4910,7 +4907,7 @@ class _ExecuteMixin:
             s_param_n_steps=s_param_n_steps,
             devices=devices,
         )
-
+        _line_stub_scope = _line_stub_admit(self, s_param_freqs)
         _distributed_run = devices is not None and len(devices) > 1
         _solve_assembly = self._auto_preflight(skip=skip_preflight, context="run", check_ntff="advisory", prepare=True, distributed=_distributed_run)
 

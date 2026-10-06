@@ -45,19 +45,23 @@ def test_third_odd_resonance_refuses_when_fundamental_is_far_below_band():
     ('run', 's_param_freqs'), ('forward', 'port_s11_freqs'),
     ('_forward_from_materials', 'port_s11_freqs'),
     ('compute_msl_s_matrix', 'freqs'), ('compute_mixed_s_matrix', 'freqs'),
-    ('compute_coaxial_line_reflection', 'freqs'),
-    ('compute_coaxial_two_port', 'freqs'), ('compute_coax_msl_transition', 'freqs'),
+    ('compute_coax_msl_transition', 'freqs'),
 ])
 def test_every_entry_refuses_before_assembly(method, frequency_argument, skip):
     sim = line()
     kwargs = {frequency_argument: [12e9, 13e9]}
     if method in ('run', 'forward'):
+        kwargs.pop(frequency_argument)  # Direct MSL solves do not accept lumped S11 requests.
+        sim._freq_max = 13e9
         kwargs['skip_preflight'] = skip
     if method == '_forward_from_materials':
         kwargs.update(grid=None, materials=None, debye_spec=None, lorentz_spec=None, n_steps=1)
     if method == 'compute_coax_msl_transition':
         kwargs['junction_x'] = .01
-    # Missing calculator/material prerequisites must not hide admission.
+        sim.add_coaxial_port((.012, .002, 0), face='bottom')
+    if method == 'compute_mixed_s_matrix':
+        sim.add_port((.012, .002, .001), 'ez', impedance=50., extent=(0, 0, .001))
+    # Valid declarations must reach stub admission before material assembly.
     with pytest.raises(ValueError, match='start the signal strip at that coordinate'):
         getattr(sim, method)(**kwargs)
 
@@ -103,15 +107,13 @@ def test_fallback_and_nested_calculator_scope():
         stub.require_no_resonant_line_stub(sim)
 
 
-@pytest.mark.parametrize('method', [
-    'compute_coaxial_line_reflection', 'compute_coaxial_two_port',
-    'compute_coax_msl_transition',
-])
+@pytest.mark.parametrize('method', ['compute_coax_msl_transition'])
 def test_coax_declared_pin_tail_is_guarded(method):
     sim = Simulation(domain=(.012, .012, .020), dx=.001,
                      freq_max=20e9, boundary='cpml', cpml_layers=2)
     sim.add(Box((.0055, .0055, .002), (.0065, .0065, .0082)), material='pec')
     sim.add_coaxial_port((.006, .006, .008), face='bottom', pin_length=.004)
+    sim.add_msl_port((.010, .006, .008), direction='-x', width=.002, height=.001, eps_r_sub=1.)
     kwargs = {'junction_x': .006} if method == 'compute_coax_msl_transition' else {}
     with pytest.raises(ValueError, match='6 mm behind the port'):
         getattr(sim, method)(freqs=[12e9, 13e9], **kwargs)

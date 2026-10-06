@@ -207,7 +207,6 @@ def compute_coaxial_line_reflection(
     path. The AD↔FD gate is ``tests/unit/autodiff/test_coax_end_to_end_ad.py``.
     """
 
-    _line_stub_scope = _line_stub_admit(self, freqs)
     if self._boundary != "cpml" or self._cpml_layers <= 0:
         raise ValueError(
             "compute_coaxial_line_reflection() requires boundary='cpml' "
@@ -333,6 +332,7 @@ def compute_coaxial_line_reflection(
     from rfx.runners._admission import admit
     admit(self, "coaxial_line_reflection")
 
+    _line_stub_scope = _line_stub_admit(self, freqs)
     grid = self._build_grid()
     nz = grid.shape[2]
     dz = float(grid.dx)
@@ -679,7 +679,6 @@ def compute_coaxial_two_port(
     this sim still raise, because this method builds its own probes.
     """
 
-    _line_stub_scope = _line_stub_admit(self, freqs)
     if self._boundary != "cpml" or self._cpml_layers <= 0:
         raise ValueError(
             "compute_coaxial_two_port() requires boundary='cpml' "
@@ -803,6 +802,7 @@ def compute_coaxial_two_port(
     from rfx.runners._admission import admit
     admit(self, "coaxial_two_port")
 
+    _line_stub_scope = _line_stub_admit(self, freqs)
     grid = self._build_grid()
     nz = grid.shape[2]
     dz = float(grid.dx)
@@ -1376,7 +1376,6 @@ def compute_coax_msl_transition(
     -------
     CoaxMSLTransitionResult
     """
-    _line_stub_scope = _line_stub_admit(self, freqs)
     from rfx.sources.coaxial_port import (
         CoaxialPort as _CoaxPort,
         build_coaxial_tem_plane_source_specs,
@@ -1531,6 +1530,7 @@ def compute_coax_msl_transition(
             "(this method does not auto-detect it from geometry)."
         )
 
+    _line_stub_scope = _line_stub_admit(self, freqs)
     if not skip_preflight:
         # This lane owns its port checks; run only the shared sheet verdict.
         import warnings

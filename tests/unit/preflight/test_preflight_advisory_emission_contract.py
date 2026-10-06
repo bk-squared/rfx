@@ -448,7 +448,8 @@ def _enumerate_emission_sites():
 # it too.
 # 127 -> 128 (#1512): open signal tail behind a line port, one advisory site.
 # 128 -> 129 (#1512): blocking realization errors must not abort later checks.
-_FROZEN_TOTAL_SITES = 129
+# 129 -> 130 (#1512): explicit could-not-inspect advisory.
+_FROZEN_TOTAL_SITES = 130
 # 74 -> 73, 2026-09-15 (#1043 / PR #1047): ``conformal_nan`` was the only
 # site emitting that code, and the check was deleted when its own tripwire
 # XPASSed -- see the note on _FROZEN_TOTAL_SITES above.
@@ -475,7 +476,8 @@ _FROZEN_TOTAL_SITES = 129
 # 82 -> 83 (#1480): ``adi_absorber_unsupported``.
 # 83 -> 84 (#1512): ``line_stub_behind_port``.
 # 84 -> 85 (#1512): line_stub_realization retains the blocking build error.
-_FROZEN_LITERAL_CODE_COUNT = 85
+# 85 -> 86 (#1512): line_stub_inspection_unavailable names unsupported geometry.
+_FROZEN_LITERAL_CODE_COUNT = 86
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site

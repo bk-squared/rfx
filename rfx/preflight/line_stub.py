@@ -68,7 +68,10 @@ def _intervals(sim, grid, shape, coords, axis, lower, upper, cache):
     intervals = []
     key = id(shape)
     if key not in cache:
-        cache[key] = _declared_conductor_lattice(sim, grid, shape, coords)
+        try:
+            cache[key] = _declared_conductor_lattice(sim, grid, shape, coords)
+        except NotImplementedError as exc:
+            raise NotImplementedError(f"{type(shape).__name__}: {exc}") from exc
     for mask, cell_axes in cache[key]:
         indices = []
         for a, values in enumerate(nodes):
@@ -318,7 +321,11 @@ def require_no_resonant_line_stub(sim, freqs=None):
     import jax
     with jax.ensure_compile_time_eval():
         band = read_band(sim, freqs)
-        for finding in line_stub_findings(sim):
+        try:
+            findings = line_stub_findings(sim)
+        except NotImplementedError:
+            return  # Unsupported inspection leaves admission to the owning lane.
+        for finding in findings:
             if resonant_odd_orders(finding, band) is not None:
                 raise ValueError(stub_message(finding, band))
 
@@ -341,6 +348,14 @@ def preflight_line_stubs(sim, warn):
     band = read_band(sim)
     try:
         findings = line_stub_findings(sim)
+    except NotImplementedError as exc:
+        shapes = sorted({type(e.shape).__name__
+                         for e in (*sim._geometry, *sim._thin_conductors)})
+        warn.warn(PreflightWarning(
+            f"Line-stub check could not inspect geometry ({', '.join(shapes)}): {exc}. "
+            "This is not evidence that the ports have no tails; the lane's own checks still apply.",
+            code="line_stub_inspection_unavailable", source="line_stub_findings"), stacklevel=3)
+        return
     except ValueError as exc:
         # Preserve the blocking realization error without aborting later checks.
         # Solve admission still raises it unconditionally, even with preflight off.

@@ -244,7 +244,6 @@ def compute_msl_s_matrix(
     -------
     MSLSMatrixResult
     """
-    _line_stub_scope = _line_stub_admit(self, freqs)
     from rfx.probes.msl_wave_decomp import extract_msl_nprobe
     from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff
     from rfx.sources.msl_port import (
@@ -316,6 +315,7 @@ def compute_msl_s_matrix(
     # mesh. Missing z profiles are synthesized locally by the grid builder;
     # writing a derived profile into the declaration would freeze auto-mesh
     # state and change the resolved domain during the driver.
+    _line_stub_scope = _line_stub_admit(self, freqs)
     grid = self._build_realized_grid()
 
     if freqs is None:

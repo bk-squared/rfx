@@ -188,7 +188,6 @@ def compute_mixed_s_matrix(
     -------
     MixedSMatrixResult
     """
-    _line_stub_scope = _line_stub_admit(self, freqs)
     import dataclasses as _dc
 
     from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff
@@ -324,6 +323,7 @@ def compute_mixed_s_matrix(
     _refuse_f0_hj(self._thin_conductors, "MSL junction S-parameter")
     from rfx.runners._admission import admit
     admit(self, "mixed_s_matrix")
+    _line_stub_scope = _line_stub_admit(self, freqs)
     grid = self._build_grid()
 
     if freqs is None:
