@@ -29,6 +29,8 @@ def msl_nearest_downstream_reflector(
     width_cell: float | None = None,
     ground_plane: float | None = None,
     ground_cell: float | None = None,
+    port_position=None,
+    grid=None,
 ):
     """Distance from ``x_probe`` to the nearest downstream conductor edge.
 
@@ -114,6 +116,13 @@ def msl_nearest_downstream_reflector(
     if width_cell is None:
         width_cell = dx
     _prop_ax, _width_ax, _n_ax, sign = msl_axis_roles(direction)
+    # Production callers hand over the port's position (and the grid); the
+    # ground reference is its coordinate on the port's normal axis.
+    if port_position is not None and ground_plane is None:
+        ground_plane = float(port_position[_MSL_AXIS_INDEX[_n_ax]])
+        if grid is not None and ground_cell is None:
+            from rfx.preflight._common import local_cell
+            ground_cell = local_cell(grid, _n_ax, ground_plane)
     _ip = _MSL_AXIS_INDEX[_prop_ax]
     _iw = _MSL_AXIS_INDEX[_width_ax]
     _in = _MSL_AXIS_INDEX[_n_ax]
