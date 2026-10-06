@@ -31,6 +31,8 @@ body, exactly as they were, and so do not run at import time.
 
 from __future__ import annotations
 
+from rfx.preflight.line_stub import line_stub_guard as _line_stub_guard
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -57,7 +59,7 @@ from rfx.sparams._common import (
     _collocated_msl_h,
 )
 
-
+@_line_stub_guard("freqs")
 def compute_mixed_s_matrix(
     self,
     *,
@@ -825,8 +827,6 @@ def compute_mixed_s_matrix(
                     settling_db_runs[run_idx], settling_details[run_idx] = settling_db_from_named_records(
                         _channels, source_end_index=_source_end, dt=raw.get("dt", grid.dt),
                         freqs=freqs_arr, freq_max=self._freq_max, return_detail=True)
-
-
 
             # MSL line V (probe-0 plane) + closed-loop I, with the
             # leapfrog E/H half-step correction (mirrors

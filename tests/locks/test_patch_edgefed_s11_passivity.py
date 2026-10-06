@@ -187,6 +187,7 @@ W = 10.129e-3
 L = 8.595e-3
 W_MSL = 1.8e-3
 L_MSL = 8.0e-3
+# #1512: feed begins here; numerical re-pins pending (1512_pending_repins.md).
 PORT_MARGIN = 5.0e-3
 DX = 0.197e-3
 # Board height SNAPPED TO THE NODE LINE (#931 §1.3 off-lattice interfaces): the
@@ -259,7 +260,7 @@ def _build_patch_sim() -> Simulation:
     sim.add(Box((0, 0, Z_SUB_LO), (DOM_X, DOM_Y, Z_SUB_HI)),
             material="ro4003c")
     sim.add_thin_conductor(
-        Box((0, Y_C - W_MSL / 2, Z_SUB_HI),
+        Box((PORT_MARGIN, Y_C - W_MSL / 2, Z_SUB_HI),
             (PORT_MARGIN + L_MSL, Y_C + W_MSL / 2, Z_SUB_HI)),
         sigma_bulk=5.8e7)
     sim.add_thin_conductor(_patch_box(), sigma_bulk=5.8e7)

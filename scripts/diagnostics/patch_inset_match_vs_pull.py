@@ -127,13 +127,10 @@ BAR_DB = -40.0
 def build(inset_m: float | None, fed: bool = True, tip_fixed: bool = False):
     """inset_m None -> plain patch, no feed (the depth-independent ruler).
 
-    tip_fixed=True (fed arms only): translate the trace's open end AND the MSL
-    port by +inset along x, so the trace length (open end -> attachment point)
-    stays PORT_MARGIN + FEED_LEN = 13.18 mm at every depth.  The default sweep
-    keeps the open end at x = 0, so the stub lengthens by the inset depth and
-    the 2026-08-30 B1 result (open-stub reactive load, ~ -2.2 %/mm) is folded
-    into the "attachment" column.  With the tip fixed, the attachment column
-    isolates whatever the inset does that is NOT stub length.
+    #1512: the feed starts at the port plane. tip_fixed=True translates both
+    by +inset along x, preserving the device-side FEED_LEN. The default keeps
+    the port fixed, lengthening the device-side feed with inset. Historical
+    open-end measurements below predate removal of the 5 mm port-back stub.
 
     fed=False with an inset depth cuts the SAME notches but omits the feed
     line and the MSL port, driving the cavity with the ruler's own interior
@@ -169,7 +166,7 @@ def build(inset_m: float | None, fed: bool = True, tip_fixed: bool = False):
         x_tip = x_p0 + inset_m
         x_open = inset_m if (fed and tip_fixed) else 0.0   # trace open end
         if fed:
-            sim.add(Box((x_open, y_c - W_MSL / 2, z_tr_lo),
+            sim.add(Box((PORT_MARGIN + x_open, y_c - W_MSL / 2, z_tr_lo),
                         (x_tip, y_c + W_MSL / 2, z_tr_hi)), material="pec")
         if inset_m <= 0:
             sim.add(Box((x_p0, y_c - W / 2, z_tr_lo),

@@ -146,6 +146,7 @@ H_SUB = 0.787e-3
 W = 10.129e-3
 L = 8.595e-3
 W_MSL = 1.8e-3
+# #1512: feed begins here; numerical re-pins pending (1512_pending_repins.md).
 PORT_MARGIN = 5.0e-3
 FEED_LEN = 8.0e-3
 DOM_X, DOM_Y, DOM_Z = 29.747e-3, 18.130e-3, 12.787e-3
@@ -388,7 +389,7 @@ def _build(fed: bool):
                            sigma_bulk=5.8e7)                                # ground
     sim.add(substrate, material="ro4003c")
     if fed:
-        sim.add_thin_conductor(Box((0, y_c - W_MSL / 2, z_sub_hi),
+        sim.add_thin_conductor(Box((PORT_MARGIN, y_c - W_MSL / 2, z_sub_hi),
                                    (x_patch0, y_c + W_MSL / 2, z_sub_hi)),
                                sigma_bulk=5.8e7)                            # feed trace
     sim.add_thin_conductor(patch, sigma_bulk=5.8e7)

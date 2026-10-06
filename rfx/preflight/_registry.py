@@ -109,7 +109,6 @@ from __future__ import annotations
 
 from typing import Any, Callable, NamedTuple
 
-
 class ConfigCheckContext(NamedTuple):
     """Shared state computed ONCE per ``preflight()`` and handed to every
     check.
@@ -155,7 +154,6 @@ class ConfigCheckContext(NamedTuple):
     cpml_thick_hi: Any
     pmc_faces: Any
     absorber_label: str
-
 
 class ConfigCheck(NamedTuple):
     """One configuration check, as data.
@@ -444,5 +442,7 @@ def run_config_checks(sim: Any, ctx: ConfigCheckContext) -> None:
     so the concatenation here -- core first, extras appended -- is the
     contract, not an implementation choice.
     """
+    from rfx.preflight.line_stub import preflight_line_stubs
+    preflight_line_stubs(sim, ctx.warn)
     for check in (*CORE_CONFIG_CHECKS, *EXTRA_CONFIG_CHECKS):
         check.run(sim, ctx)

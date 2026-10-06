@@ -147,7 +147,7 @@ def build(kind: str, h_sub: float = H_SUB, dx: float = DX) -> Simulation:
     y_c = DOM_Y / 2.0
     foils = (
         ((0.0, 0.0), (DOM_X, DOM_Y), Z_GND, z_gnd_hi),
-        ((0.0, y_c - W_MSL / 2), (x_patch0, y_c + W_MSL / 2),
+        ((PORT_MARGIN, y_c - W_MSL / 2), (x_patch0, y_c + W_MSL / 2),
          z_sub_hi, z_sub_hi + t_metal),
         ((x_patch0, y_c - W / 2), (x_patch0 + L, y_c + W / 2),
          z_sub_hi, z_sub_hi + t_metal),

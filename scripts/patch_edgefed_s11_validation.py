@@ -107,7 +107,7 @@ def main() -> int:
             material="ro4003c")
     # 50 ohm microstrip feed trace, on the board's top face.
     sim.add_thin_conductor(
-        Box((0, Y_C - W_MSL / 2, Z_TRACE),
+        Box((PORT_MARGIN, Y_C - W_MSL / 2, Z_TRACE),
             (PORT_MARGIN + L_MSL, Y_C + W_MSL / 2, Z_TRACE)))
     # Edge-fed patch, abutting the feed trace on the same face. Sheet
     # footprints on one plane are UNIONED before the edge rule, so the shared

@@ -70,7 +70,7 @@ def build() -> Simulation:
     sim.add(Box((0, 0, 4e-3), (DOM_X, DOM_Y, 4e-3 + DX)), material="pec")
     sim.add(Box((0, 0, 4e-3 + DX), (DOM_X, DOM_Y, 4e-3 + DX + H_SUB)),
             material="ro4003c")
-    sim.add(Box((0, Y_C - W_MSL / 2, 4e-3 + DX + H_SUB + DX),
+    sim.add(Box((PORT_MARGIN, Y_C - W_MSL / 2, 4e-3 + DX + H_SUB + DX),
                 (PORT_MARGIN + L_MSL, Y_C + W_MSL / 2,
                  4e-3 + DX + H_SUB + 2 * DX)),
             material="pec")

@@ -18,6 +18,8 @@ step; the move itself is gated on bit identity of the extracted S arrays
 
 from __future__ import annotations
 
+from rfx.preflight.line_stub import line_stub_guard as _line_stub_guard
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -49,7 +51,7 @@ from rfx.sparams._common import (
     _msl_power_wave_scales,
 )
 
-
+@_line_stub_guard("freqs")
 def compute_msl_s_matrix(
     self,
     *,
@@ -731,8 +733,6 @@ def compute_msl_s_matrix(
                         _channels, source_end_index=_source_end,
                         dt=getattr(_ts_result, "dt", None) or grid.dt,
                         freqs=freqs_arr, freq_max=self._freq_max, return_detail=True)
-
-
 
             # Helper: integrate V and I per port from the recorded planes.
             v_per_port: list[list[np.ndarray]] = []

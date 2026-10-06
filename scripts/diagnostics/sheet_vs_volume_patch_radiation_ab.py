@@ -117,7 +117,7 @@ Y_C = DOM_Y / 2.0
 
 _FOILS = (
     ("ground", (0.0, 0.0), (DOM_X, DOM_Y), Z_GND_PLANE),
-    ("feed", (0.0, Y_C - W_MSL / 2), (X_PATCH0, Y_C + W_MSL / 2), Z_TRACE_PLANE),
+    ("feed", (PORT_MARGIN, Y_C - W_MSL / 2), (X_PATCH0, Y_C + W_MSL / 2), Z_TRACE_PLANE),
     ("patch", (X_PATCH0, Y_C - W / 2), (X_PATCH0 + L, Y_C + W / 2), Z_TRACE_PLANE),
 )
 

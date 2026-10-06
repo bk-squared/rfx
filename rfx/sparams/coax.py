@@ -26,6 +26,8 @@ they do not run at import time.
 
 from __future__ import annotations
 
+from rfx.preflight.line_stub import line_stub_guard as _line_stub_guard
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -49,7 +51,6 @@ from rfx.sparams._common import (
     _assemble_coax_msl_transition_from_voltages,
 )
 
-
 def _calculator_source_plane(grid, port):
     """Keep the calculator's derived half-cell source on its original node.
 
@@ -61,7 +62,6 @@ def _calculator_source_plane(grid, port):
     centre = port.position[2] + direction * port.pin_length / 2.0
     dz = float(grid.cells(2)[0])   # uniform z only (coax calculators refuse a graded mesh)
     return int(round(centre / dz)) + grid.pad_z_lo
-
 
 def _coax_pec_edge_masks(pec_cells, periodic=(False, False, False), merge_with=None):
     """The conductor cells of a coax line, as PEC E-edge masks.
@@ -85,7 +85,6 @@ def _coax_pec_edge_masks(pec_cells, periodic=(False, False, False), merge_with=N
     if merge_with is None:
         return tuple(edges)
     return tuple(np.asarray(e) | np.asarray(m) for e, m in zip(edges, merge_with))
-
 
 def _require_absorption_on_every_axis(sim, cpml_axes: str | None, lane: str) -> None:
     """Both coax line lanes absorb on x, y and z (issue 1218).
@@ -121,7 +120,7 @@ def _require_absorption_on_every_axis(sim, cpml_axes: str | None, lane: str) -> 
             "and grew with the record (issue 1218)."
         )
 
-
+@_line_stub_guard("freqs")
 def compute_coaxial_line_reflection(
     self,
     *,
@@ -541,6 +540,7 @@ def compute_coaxial_line_reflection(
         status=status,
     )
 
+@_line_stub_guard("freqs")
 def compute_coaxial_two_port(
     self,
     *,
@@ -1056,7 +1056,6 @@ def compute_coaxial_two_port(
                     _channels, source_end_index=source_end,
                     dt=result.dt, freqs=freqs, freq_max=self._freq_max, return_detail=True)
 
-
     if _traced_eps:
         v_bot_by_drive = jnp.stack(v_bot_list, axis=0)
         v_top_by_drive = jnp.stack(v_top_list, axis=0)
@@ -1124,6 +1123,7 @@ COAX_MSL_TRANSITION_REFUSAL_HINT = (
 )
 
 
+@_line_stub_guard("freqs")
 def compute_coax_msl_transition(
     self,
     *,

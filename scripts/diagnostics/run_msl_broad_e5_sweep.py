@@ -228,13 +228,17 @@ def build_simulation(case: CaseSpec, geo: dict) -> Simulation:
         material=f"sub_{sub.name.lower()}",
     )
 
-    # Trace strip at z_sub_top..z_sub_top + dx, centred in y, full x.
+    # #1512: remove only tails with an odd resonance inside/near the read band.
+    fq = C0 / (4 * geo["port_margin"] * np.sqrt(geo["eps_eff"]))
+    first_order = max(1, 2 * int(np.ceil((band.freq_lo_hz / 1.5 / fq - 1) / 2)) + 1)
+    trim = geo["port_margin"] if first_order * fq <= 1.5 * band.freq_hi_hz else 0.0
+    # Trace strip at z_sub_top..z_sub_top + dx, centred in y.
     y_centre = geo["domain_y_m"] / 2.0
     w = geo["w_m"]
     sim.add(
         Box(
-            (0.0, y_centre - w / 2, z_sub_top),
-            (geo["domain_x_m"], y_centre + w / 2, z_sub_top + geo["dx"]),
+            (trim, y_centre - w / 2, z_sub_top),
+            (geo["domain_x_m"] - trim, y_centre + w / 2, z_sub_top + geo["dx"]),
         ),
         material="pec",
     )

@@ -13,6 +13,8 @@ LEAF mixin module — it must NEVER do ``from rfx.api import ...`` or
 """
 from __future__ import annotations
 
+from rfx.preflight.line_stub import line_stub_guard as _line_stub_guard
+
 import functools
 import math
 import os
@@ -34,7 +36,6 @@ from rfx.materials.debye import init_debye  # noqa: F401  (local import in moved
 from rfx.materials.lorentz import init_lorentz  # noqa: F401  (local import in moved bodies)
 from rfx.adi import ADIState2D, run_adi_2d
 
-
 from rfx.boundaries.spec import BoundarySpec  # noqa: F401  (referenced by moved comments)
 from rfx.simulation import SnapshotSpec  # noqa: F401  (run() signature type-hint)
 from rfx.ringdown import RingdownSpec  # noqa: F401  (run() signature type-hint)
@@ -45,7 +46,6 @@ from rfx.api._spec import (
     _warn_if_nonfinite_result,
 )
 
-
 # ---------------------------------------------------------------------------
 # Phase 3 (issue #44 V3 §M6): module-level flag so the distributed=True
 # UserWarning fires exactly once per process.  Reset to False on import,
@@ -55,7 +55,6 @@ from rfx.api._spec import (
 # module; the ``global`` statement binds to this module's namespace.
 # ---------------------------------------------------------------------------
 _DISTRIBUTED_FIRST_CALL_WARNED: bool = False
-
 
 # ---------------------------------------------------------------------------
 # Arc-audit follow-up item 5(b): a removed public kwarg (currently just
@@ -84,7 +83,6 @@ _REMOVED_FORWARD_KWARGS: dict = {
     ),
 }
 
-
 def _reject_removed_forward_kwargs(removed_kwargs: dict) -> None:
     """Raise a TypeError for an unrecognised forward() kwarg, naming the
     reason and replacement for a KNOWN removed one (see
@@ -101,7 +99,6 @@ def _reject_removed_forward_kwargs(removed_kwargs: dict) -> None:
         "Simulation.forward() got unexpected keyword argument(s) "
         f"{sorted(removed_kwargs)}: " + " | ".join(parts)
     )
-
 
 def _staged_by_an_outer_trace() -> bool:
     """Whether ``forward()`` is being recorded into a compiled program (#1225).
@@ -1597,6 +1594,7 @@ class _ExecuteMixin:
         )
 
     @_declaration_setup_at_trace_time
+    @_line_stub_guard("port_s11_freqs")
     def _forward_from_materials(
         self,
         grid: Grid,
@@ -3824,6 +3822,7 @@ class _ExecuteMixin:
         )
 
     @_declaration_setup_at_trace_time
+    @_line_stub_guard("port_s11_freqs")
     def forward(
         self,
         *,
@@ -4640,6 +4639,7 @@ class _ExecuteMixin:
 
     # ---- run ----
 
+    @_line_stub_guard("s_param_freqs")
     def run(
         self,
         *,
