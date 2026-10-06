@@ -143,22 +143,29 @@ def test_every_kernel_entry_takes_a_traced_dt_and_traced_bins(kind):
     np.testing.assert_allclose(slope, finite, rtol=2e-2)
 
 
-def test_a_sweep_over_dt_keeps_one_table_set_and_one_compiled_replay():
-    """No table set and no compilation per (bins, dt): after 20 distinct dt
-    the kernel holds the most recent table set only and its replay has
-    compiled once. (Before: an lru_cache of 32 table sets and one compiled
-    replay per dt, +15.9 GB over 60 dt at 1001 bins.)"""
+def test_a_sweep_over_dt_keeps_no_table_and_one_compiled_replay():
+    """Nothing per (bins, dt): the kernel holds no table and no cache, its
+    replay compiles once for a record shape, and what a compiled scan holds
+    of the bins is four uint32 words each. (First M2 form: an lru_cache of
+    32 table sets of 8320 rows per bin and one compiled replay per dt,
+    +15.9 GB over 60 dt at 1001 bins.)"""
     import inspect
     bins, record = np.linspace(1e9, 10e9, 11), jnp.ones(100)
     transform(record, bins, 1.86e-12).block_until_ready()
     compiled = dft._replay._cache_size()
     for k in range(1, 21):
         transform(record, bins, 1.86e-12 * (1 + 1e-3 * k)).block_until_ready()
-        phase(3, bins, 1.86e-12 * (1 + 1e-3 * k))
     assert dft._replay._cache_size() == compiled
-    assert set(dft._recent) == {"key", "tables"}
-    assert dft._recent["tables"].shape == (dft._DIGITS, dft._BASE, 11)
-    static = inspect.signature(dft._replay.__wrapped__).parameters
-    assert {"offset", "window", "alpha"} >= {n for n, p in static.items()
-                                              if p.kind is p.KEYWORD_ONLY}
-    assert not hasattr(dft._tables, "cache_info")
+    static = {n for n, p in inspect.signature(dft._replay.__wrapped__).parameters.items()
+              if p.kind is p.KEYWORD_ONLY}
+    assert static == {"traced", "offset", "window", "alpha"}
+    assert not [n for n, v in vars(dft).items()
+                if not n.startswith("__")
+                and (isinstance(v, (dict, list)) or hasattr(v, "cache_info"))]
+    words = dft._words(bins, 1.86e-12, 0.5)
+    assert words.shape == (4, 11) and words.dtype == np.uint32
+    text = jax.jit(lambda n: phase(n, bins, 1.86e-12, "H")).lower(jnp.int32(3)).as_text()
+    import re
+    sizes = [int(np.prod([int(d) for d in m.split("x")]))
+             for m in re.findall(r"dense<[^>]*> : tensor<((?:\d+x)*\d+)x[a-z]", text)]
+    assert sizes and max(sizes) <= 4 * 11, sizes

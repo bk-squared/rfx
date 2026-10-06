@@ -106,8 +106,11 @@ def _case(monkeypatch, *, equal=False, incident=INCIDENT):
                 n_width = (5, 5 if equal else 9)[port]
                 sign = 1 if port == 0 else -1
                 field = sign * factor * profile / (0.75 * n_width * U)
-                phase = jnp.asarray(np.exp(-1j * np.pi * FREQS * grid.dt), dtype=dtype)
-                amplitude = current[port, drive] * phase
+                # History (S2 M2): was current * exp(-j pi f dt), an H plane
+                # stamped at E's time for an extractor that applied the half
+                # step. The DFT kernel stamps H itself; the plant is the
+                # physically stamped current.
+                amplitude = current[port, drive]
             planes[entry.name] = DFTPlaneProbe(
                 accumulator=jnp.asarray(field, dtype=dtype)[None, :, :] * amplitude[:, None, None],
                 freqs=entry.freqs, component=entry.component, axis=0, index=index,

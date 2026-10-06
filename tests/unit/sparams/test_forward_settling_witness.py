@@ -163,9 +163,11 @@ def test_recorded_s_channels_reproduce_accumulators(extent):
     meta, accs = raw[0]
     spectra = plain_dft(result.sparam_time_records[0], result.dt, meta.freqs)
     for col, slot in ((0, 0), (1, 1), (2, 2)) if extent is None else ((0, 0), (1, 1), (2, 3), (3, 4)):
-        got = spectra[:, col]
-        if col == 1:
-            got = got * np.exp(1j*np.pi*np.asarray(meta.freqs)*result.dt)
+        # plain_dft sums slot n at n dt. The accumulators are stamped with
+        # the time the field holds: E at (n+1) dt, the current (column 1) at
+        # (n+1/2) dt. History (S2 M2): they were stamped n dt and (n-1/2) dt.
+        offset = 0.5 if col == 1 else 1.0
+        got = spectra[:, col] * np.exp(-2j*np.pi*np.asarray(meta.freqs)*result.dt*offset)
         np.testing.assert_allclose(got, accs[slot], rtol=2e-5, atol=1e-20)
     assert result.settling_witness['route'] == 's_channels'
 

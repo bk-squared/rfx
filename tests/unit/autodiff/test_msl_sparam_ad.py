@@ -270,7 +270,11 @@ def _run_manufactured_assembly(*, use_x64: bool):
                     profile = np.broadcast_to(0.25 * y_h[:, None], shape)
                 sign = 1 if port == 0 else -1
                 field = sign * factor * profile / (0.75 * 5 * u)
-                amplitude = current[port, driven] * np.exp(-1j * np.pi * freqs * grid.dt)
+                # History (S2 M2): was current * exp(-j pi f dt), an H plane
+                # stamped at E's time for an extractor that applied the half
+                # step. The DFT kernel stamps H itself now; the plant is the
+                # physically stamped current (measured 8.97e-4 in S otherwise).
+                amplitude = current[port, driven]
             accumulator = (jnp.asarray(field, dtype=jnp.complex64)[None, :, :]
                            * jnp.asarray(amplitude, dtype=jnp.complex64)[:, None, None])
             planes[entry.name] = DFTPlaneProbe(

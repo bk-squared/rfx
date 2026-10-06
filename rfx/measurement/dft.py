@@ -2,15 +2,15 @@
 
 Slot n holds E at (n+1) dt and H at (n+1/2) dt.
 
-Concrete frequencies and dt: the phase comes from host float64 tables, split
-by the digits of the step index in base 64, so its float32 error does not
-grow with the record (pre-declaration 6.2 / 7.3). Four digits (256 rows per
-bin) are exact tables up to 64**4 = 16.8e6 steps; the part of the index
-above that multiplies one more host-reduced factor in the trace, whose
-float32 error grows only with that quotient (at most 127). A stored record
-builds only the digits its length needs. Only the most recent table set is
-kept, and stored-record replay receives it as an array argument, so a sweep
-over dt or frequencies accumulates neither tables nor compilations.
+Concrete frequencies and dt: the phase is exact integer arithmetic. The
+turns per step, f dt modulo one, and the stamp offset are prepared on the
+host in float64 as 64-bit fixed-point numbers (two uint32 words per bin);
+the scan forms n * turns + offset modulo one in wrapping uint32 arithmetic
+and takes one cosine and sine of the result. Its error does not grow with
+the step index (pre-declaration 6.2 / 7.3; measured <= 2e-7 rad in float32
+at every step up to 2**31). Nothing is tabulated and nothing is cached, so
+a compiled loop holds two words per bin and a sweep over dt or frequencies
+accumulates neither memory nor compilations.
 
 Traced frequencies or dt (a mesh or a bin list as a design variable): the
 phase is evaluated in the trace, exp(-j 2 pi f (n + offset) dt), with the
@@ -25,8 +25,6 @@ import numpy as np
 
 from .plan import Channel, TimeBase
 
-_BASE = 64
-_DIGITS = 4  # exact tables below 64**4 steps; see _unit for the rest
 _BLOCK = 256  # steps per matrix product in the stored-record replay
 
 
@@ -92,58 +90,56 @@ def _offset(kind, time_shift):
     return (clock.e_offset if kind == 'E' else clock.h_offset) + time_shift
 
 
-_recent = {}  # the most recent table set only: {'key': ..., 'tables': ...}
+def _fixed(turns):
+    """Turns modulo one as 64-bit fixed point: (high, low) uint32 words."""
+    scaled = np.mod(np.asarray(turns, np.float64), 1.0) * 2.0 ** 32  # exact: a power of two
+    high = np.floor(scaled)
+    low = np.floor((scaled - high) * 2.0 ** 32)
+    return np.stack([np.mod(high, 2.0 ** 32), low]).astype(np.uint32)
 
 
-def _tables(freqs, dt, dtype, digits=_DIGITS):
-    """Host table (digits, base, nf): exp(-j 2 pi f dt r base**d).
-
-    The turns f dt are reduced modulo one before every scaling (a power of
-    two, so exact), which keeps the float64 argument small at every digit.
-    """
-    key = (freqs.tobytes(), dt, dtype.str, digits)
-    if _recent.get('key') != key:
-        turns = np.fmod(freqs * dt, 1.0)
-        rows = np.arange(_BASE, dtype=np.float64)[:, None]
-        table = np.empty((digits, _BASE, freqs.size), dtype=dtype)
-        angle, part = np.empty((2, _BASE, freqs.size))  # two work arrays, no other temporaries
-        for digit in range(digits):
-            np.multiply(rows, turns, out=angle)
-            np.fmod(angle, 1.0, out=angle)
-            angle *= -2.0 * np.pi
-            table[digit].real = np.cos(angle, out=part)
-            table[digit].imag = np.sin(angle, out=part)
-            turns = np.fmod(turns * _BASE, 1.0)
-        _recent.clear()
-        _recent.update(key=key, tables=table)
-    return _recent['tables']
+def _words(freqs, dt, offset):
+    """Host constants of one channel: per-step turns and stamp offset, (4, nf) uint32."""
+    turns = np.fmod(freqs * dt, 1.0)
+    return np.concatenate([_fixed(turns), _fixed(turns * offset)])
 
 
-def _fractional(freqs, dt, offset, dtype, digits=_DIGITS):
-    """Stamp factors for steps n >= 0 and for -(n+1), and the factor of one
-    unit of the index above the tables (base**digits steps)."""
-    turns = freqs * dt
-    above = np.fmod(np.fmod(turns, 1.0) * float(_BASE) ** digits, 1.0)
-    return np.stack([np.exp(-2j * np.pi * turns * offset),
-                     np.exp(-2j * np.pi * turns * (offset - 1)),
-                     np.exp(-2j * np.pi * above)]).astype(dtype)
+def _high_product(a, b):
+    """High 32 bits of the 64-bit product of two uint32 arrays."""
+    a0, a1, b0, b1 = a & 0xFFFF, a >> 16, b & 0xFFFF, b >> 16
+    low, cross1, cross2 = a0 * b0, a0 * b1, a1 * b0
+    middle = (low >> 16) + (cross1 & 0xFFFF) + (cross2 & 0xFFFF)
+    return a1 * b1 + (cross1 >> 16) + (cross2 >> 16) + (middle >> 16)
 
 
-def _unit(step, tables, fractional):
-    """exp(-j 2 pi f dt (step + offset)) from the digit tables."""
-    n = jnp.asarray(step, dtype=jnp.int32)
-    # Negative steps support low-level callers sampling the initial state.
-    # -(n+1) also avoids overflow at the int32 lower bound.
+def _unit(step, words, dtype):
+    """exp(-j 2 pi (step * turns + offset)), the phase in 64-bit fixed point."""
+    n = jnp.asarray(step, dtype=jnp.int32)[..., None]
+    step_high, step_low, offset_high, offset_low = (jnp.asarray(w, jnp.uint32) for w in words)
+    # Negative steps (low-level callers sampling the initial state):
+    # n * turns = -(m * turns + turns) with m = -(n + 1) >= 0.
     negative = n < 0
-    index = jnp.where(negative, -(n + 1), n)
-    unit = tables[0][index % _BASE]
-    for digit in range(1, tables.shape[0]):
-        index = index // _BASE
-        unit = unit * tables[digit][index % _BASE]
-    above = (index // _BASE)[..., None]
-    unit = unit * jnp.where(above > 0, fractional[2] ** above, 1)
-    return jnp.where(negative[..., None], jnp.conj(unit) * fractional[1],
-                     unit * fractional[0])
+    m = jnp.where(negative, -(n + 1), n).astype(jnp.uint32)
+    low = m * step_low
+    high = m * step_high + _high_product(m, step_low)
+    low_n = low + step_low
+    high_n = high + step_high + (low_n < low).astype(jnp.uint32)
+    low_n, high_n = ~low_n + jnp.uint32(1), ~high_n + (low_n == 0).astype(jnp.uint32)
+    low, high = jnp.where(negative, low_n, low), jnp.where(negative, high_n, high)
+    total_low = low + offset_low
+    total = high + offset_high + (total_low < low).astype(jnp.uint32)
+    real = jnp.finfo(dtype).dtype
+    if real == jnp.float64:
+        angle = (2.0 * np.pi) * (total.astype(real) * 2.0 ** -32 + total_low.astype(real) * 2.0 ** -64)
+        return (jnp.cos(angle) - 1j * jnp.sin(angle)).astype(dtype)
+    # float32: the quarter turn from the top two bits, the remainder in
+    # [0, pi/2) so its cosine and sine keep full relative precision.
+    quarter = total >> 30
+    angle = (total & jnp.uint32(0x3FFFFFFF)).astype(real) * real.type(np.pi / 2 * 2.0 ** -30)
+    c, s = jnp.cos(angle), jnp.sin(angle)
+    cosine = jnp.select([quarter == 0, quarter == 1, quarter == 2], [c, -s, -c], s)
+    sine = jnp.select([quarter == 0, quarter == 1, quarter == 2], [s, c, -s], -c)
+    return (cosine - 1j * sine).astype(dtype)
 
 
 def _traced_unit(step, freqs, dt, offset, dtype):
@@ -158,7 +154,7 @@ def phase(step, freqs, dt, kind='E', *, dtype=None, time_shift=0.):
 
     ``time_shift`` is in steps; it supports explicitly staged channels and
     clock mutations. No caller applies an additional H half-step factor.
-    Concrete ``freqs`` and ``dt`` use the host tables; a traced one is
+    Concrete ``freqs`` and ``dt`` use the fixed-point phase; a traced one is
     evaluated in the trace (module docstring).
     """
     kind = _kind(kind)
@@ -168,9 +164,7 @@ def phase(step, freqs, dt, kind='E', *, dtype=None, time_shift=0.):
     if _traced(freqs, dt, time_shift):
         return _traced_unit(step, freqs, dt, offset, dtype) * jnp.asarray(dt, dtype=real)
     frequencies = np.asarray(freqs, dtype=np.float64).ravel()
-    unit = _unit(step, jnp.asarray(_tables(frequencies, float(dt), dtype)),
-                 jnp.asarray(_fractional(frequencies, float(dt), offset, dtype)))
-    return unit * jnp.asarray(dt, dtype=real)
+    return _unit(step, _words(frequencies, float(dt), offset), dtype) * jnp.asarray(dt, dtype=real)
 
 
 def accumulate(acc, sample, step, freqs, dt, kind='E', *, total_steps=1,
@@ -196,21 +190,17 @@ def transform(records, freqs, dt, kind='E', *, n_valid=None,
     dtype = np.dtype(jnp.result_type(records.dtype, jnp.complex64))
     limit = len(records) if n_valid is None else n_valid
     if _traced(freqs, dt):
-        return _replay(records, jnp.ravel(jnp.asarray(freqs)), None, dt, limit,
-                       offset=offset, window=window, alpha=alpha)
+        return _replay(records, jnp.ravel(jnp.asarray(freqs)), dt, limit,
+                       traced=True, offset=offset, window=window, alpha=alpha)
     frequencies = np.asarray(freqs, dtype=np.float64).ravel()
-    digits = 1
-    while _BASE ** digits < len(records) and digits < _DIGITS:
-        digits += 1
-    return _replay(records, jnp.asarray(_tables(frequencies, float(dt), dtype, digits)),
-                   jnp.asarray(_fractional(frequencies, float(dt), offset, dtype, digits)),
+    return _replay(records, jnp.asarray(_words(frequencies, float(dt), offset)),
                    jnp.asarray(dt, dtype=jnp.finfo(dtype).dtype), limit,
-                   offset=offset, window=window, alpha=alpha)
+                   traced=False, offset=offset, window=window, alpha=alpha)
 
 
-@partial(jax.jit, static_argnames=('offset', 'window', 'alpha'))
-def _replay(records, spectrum, fractional, dt, limit, *, offset, window, alpha):
-    """``spectrum`` is the table set, or the bins when ``fractional`` is None.
+@partial(jax.jit, static_argnames=('traced', 'offset', 'window', 'alpha'))
+def _replay(records, spectrum, dt, limit, *, traced, offset, window, alpha):
+    """``spectrum`` is the channel's fixed-point words, or the bins when ``traced``.
 
     The record is summed in blocks of ``_BLOCK`` steps, one matrix product
     per block, blocks added in order. The weights are the streaming
@@ -229,10 +219,10 @@ def _replay(records, spectrum, fractional, dt, limit, *, offset, window, alpha):
     def body(acc, item):
         n, block = item
         block = jnp.where(((n < limit) & (n < length))[:, None], block, 0)
-        if fractional is None:
+        if traced:
             unit = _traced_unit(n, spectrum, dt, offset, dtype)
         else:
-            unit = _unit(n, spectrum, fractional)
+            unit = _unit(n, spectrum, dtype)
         weight = unit * jnp.asarray(dt, dtype=real)
         weight *= jnp.broadcast_to(dft_window_weight(n, length, window, alpha), n.shape)[:, None]
         return acc + jnp.einsum('nf,nm->fm', weight, block.astype(dtype),

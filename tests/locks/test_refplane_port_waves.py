@@ -182,11 +182,15 @@ def _synthetic_line(freqs, zc_true, beta, dt):
 
     Forward (+x) wave ``f0 e^{-j beta x}``, backward ``g0 e^{+j beta x}``;
     V = f + g, I(+x) = (f - g)/Zc.  Raw loop currents are synthesized so
-    that ``refplane_centered_current`` (average + exp(+j w dt/2)) returns
-    the exact line current.
+    that ``refplane_centered_current`` (the average of the two loops)
+    returns the exact line current. History (S2 M2): the raw currents used to
+    be divided by exp(+j w dt/2), because that function applied the half
+    step; the DFT kernel stamps H at (n + 1/2) dt now and the function only
+    centres in space, so the raw currents are the physically stamped ones.
+    ``dt`` is kept in the signature for the callers.
     """
     w = 2 * np.pi * np.asarray(freqs, dtype=np.float64)
-    hcorr = np.exp(+1j * w * dt / 2)
+    hcorr = np.ones_like(w)
 
     def field(x, f0, g0):
         f = f0 * np.exp(-1j * beta * x)
