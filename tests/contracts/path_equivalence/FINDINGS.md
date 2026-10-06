@@ -10,8 +10,6 @@ Conclusions: in the S0 PR body (leader)
 | Cause | Cells / record | Witness vs bar | Implementation A / B |
 |---|---|---|---|
 | record-semantics-declared-length | Once, all U/N geometry declarations | `declared_length_m` = user domain on uniform, profile sum on NU; excluded from realized equality | [uniform :631](../../../rfx/api/__init__.py#L631) / [NU x :523](../../../rfx/api/__init__.py#L523), [NU y :535](../../../rfx/api/__init__.py#L535) |
-| nu-dft-plane-accumulator | `_dft_planes`, U/N and FU/FN, 12/36; accumulator | `0.0579118517` / `0.0536573255` vs `1e-4` | [U :2686](../../../rfx/simulation.py#L2686) / [N :3103](../../../rfx/nonuniform.py#L3103) |
-| nu-flux-accumulator | `_flux_monitors`, U/N, 12/36; e1/e2/h1/h2 DFT | max `0.0584336938` / `0.0546932149` vs `1e-4` | [U :2717](../../../rfx/simulation.py#L2717) / [N :3140](../../../rfx/nonuniform.py#L3140) |
 | flux-dA-shape | Same run cells; dA | `(1,1)` vs `(13,12)`; N/A | [U :2717](../../../rfx/simulation.py#L2717) / [N :3140](../../../rfx/nonuniform.py#L3140) |
 | flux-dA2-missing | Same run cells; dA2 | Missing on U; N/A | [U :2717](../../../rfx/simulation.py#L2717) / [N :3140](../../../rfx/nonuniform.py#L3140) |
 | forward-flux-record-missing | `_flux_monitors`, FU/FN, 12/36 | Missing on both forward result records; availability finding, not a measured path difference | [FU :2709](../../../rfx/api/_execute.py#L2709) / [FN :2732](../../../rfx/api/_execute.py#L2732) |

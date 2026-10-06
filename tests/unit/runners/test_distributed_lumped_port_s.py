@@ -13,6 +13,8 @@ import pytest
 
 from rfx import Box, DebyePole, Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
+from rfx.measurement import dft as measurement_dft
+from rfx.measurement.dft import transform as kernel_transform
 from rfx.sources.sources import GaussianPulse
 
 pytestmark = pytest.mark.distributed
@@ -205,8 +207,9 @@ def test_parity_detects_mutations(monkeypatch, mutation):
         def no_half_step(*args):
             # Only mutate replay; the single-device reference keeps its phase.
             with monkeypatch.context() as patch:
-                patch.setattr(dft_utils, "half_step_current_phase",
-                              lambda freqs, dt: jnp.ones_like(freqs, dtype=jnp.complex64))
+                # S2 M2: the half step is the H stamp of the one DFT kernel.
+                patch.setattr(measurement_dft, "transform", lambda r, f, dt, kind="E", **k:
+                              kernel_transform(r, f, dt, "E", **k))
                 return original(*args)
 
         monkeypatch.setattr(driver, "_lumped_recording_dfts", no_half_step)

@@ -2439,7 +2439,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
                 v_ref_dft = accs[4]
                 mi, mj, mk = wp_meta.mid_i, wp_meta.mid_j, wp_meta.mid_k
                 v_ref = -getattr(st, wp_meta.component)[mi, mj, mk] * dx
-                phase = port_dft_phase(step_idx, wp_meta.freqs, dt)
+                phase = port_dft_phase(step_idx, wp_meta.freqs, dt, dtype=v_ref_dft.dtype)
                 new_wire_refs.append((v_ref_dft + v_ref * phase, phase))
                 wire_ref_samples.append(v_ref)
 
@@ -2457,7 +2457,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
                 v_ref_dft_l = accs[2]
                 li, lj, lk = lp_meta.i, lp_meta.j, lp_meta.k
                 v_ref_l = _port_voltage_value(getattr(st, lp_meta.component)[li, lj, lk], dx)
-                phase_l = port_dft_phase(step_idx, lp_meta.freqs, dt)
+                phase_l = port_dft_phase(step_idx, lp_meta.freqs, dt, dtype=v_ref_dft_l.dtype)
                 new_lumped_refs.append((v_ref_dft_l + v_ref_l * phase_l, phase_l))
                 lumped_ref_samples.append(v_ref_l)
 
@@ -2477,11 +2477,11 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
                 v_dft_r, im_dft_r, ip_dft_r = accs
                 v_r, im_r, ip_r = wire_refplane_step_vi(st, rp_meta, dx)
                 refplane_samples.append(jnp.stack((v_r, im_r, ip_r)))
-                phase_r = port_dft_phase(step_idx, rp_meta.freqs, dt)
+                phase_r = port_dft_phase(step_idx, rp_meta.freqs, dt, dtype=v_dft_r.dtype)
                 new_refplane_accs.append((
                     v_dft_r + v_r * phase_r,
-                    im_dft_r + im_r * port_dft_phase(step_idx, rp_meta.freqs, dt, 'H'),
-                    ip_dft_r + ip_r * port_dft_phase(step_idx, rp_meta.freqs, dt, 'H'),
+                    im_dft_r + im_r * port_dft_phase(step_idx, rp_meta.freqs, dt, 'H', dtype=v_dft_r.dtype),
+                    ip_dft_r + ip_r * port_dft_phase(step_idx, rp_meta.freqs, dt, 'H', dtype=v_dft_r.dtype),
                 ))
 
         # Soft sources — cast source value to field dtype to avoid
@@ -2548,7 +2548,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
                 # as EXACTLY the pre/post lane difference.)
                 i_val = _ampere_loop(
                     st, (mi, mj, mk), wp_meta.component, dx, periodic, boundary=ctx.curl_boundary)
-                i_phase = port_dft_phase(step_idx, wp_meta.freqs, dt, 'H')
+                i_phase = port_dft_phase(step_idx, wp_meta.freqs, dt, 'H', dtype=i_dft.dtype)
                 port_samples.append(jnp.stack((v, i_val, v_port,
                                                 wire_ref_samples[len(new_wire_accs)])))
                 new_wire_accs.append((
@@ -2584,7 +2584,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
                 # #692: shared loop — see the wire-port block above.
                 i_val_l = _ampere_loop(
                     st, (li, lj, lk), lp_meta.component, dx, periodic, boundary=ctx.curl_boundary)
-                i_phase_l = port_dft_phase(step_idx, lp_meta.freqs, dt, 'H')
+                i_phase_l = port_dft_phase(step_idx, lp_meta.freqs, dt, 'H', dtype=i_dft_l.dtype)
                 port_samples.append(jnp.stack((v_l, i_val_l,
                                                 lumped_ref_samples[len(new_lumped_accs)])))
                 new_lumped_accs.append((

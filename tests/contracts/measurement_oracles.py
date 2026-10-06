@@ -99,7 +99,9 @@ def judge_metadata(plan, actual):
                 bins = jnp.array([.01])
                 env = dict(jnp=jnp, step_idx=jnp.int32(3), dt=1., sp_freqs=bins,
                            wp_meta=SimpleNamespace(freqs=bins), lp_meta=SimpleNamespace(freqs=bins),
-                           port_dft_phase=port_dft_phase)
+                           port_dft_phase=port_dft_phase,
+                           **{name: SimpleNamespace(dtype=jnp.complex64) for name in (
+                               'v_dft', 'i_dft', 'v_ref_dft', 'v_ref_dft_l', 'i_dft_l')})
                 lumped_uniform = owner.kind == 'lumped' and not nu
                 phase = eval(assignment(nu, 'phase_l' if lumped_uniform else 'phase',
                                         'lp_meta' if lumped_uniform else 'sp_freqs' if nu else 'wp_meta'), env)

@@ -281,16 +281,18 @@ def test_w0_catches_a_rebuild_that_reads_the_wrong_h_samples(monkeypatch):
 
 
 def _replay_without_half_step(monkeypatch):
-    """The W0 replay accumulates the current without its half-step phase."""
-    import jax.numpy as jnp
+    """The W0 replay accumulates the current without its half-step phase.
 
+    Since S2 M2 the half step is the H stamp of the one DFT kernel, so the
+    defect is the replay stamping the current as an E sample."""
     import rfx.core.dft_utils as dft_utils
     orig = rd._emulate_accumulators
+    phase = dft_utils.port_dft_phase
 
     def replay(*a, **k):
         with monkeypatch.context() as m:
-            m.setattr(dft_utils, "half_step_current_phase",
-                      lambda freqs, dt: jnp.ones(jnp.shape(freqs), dtype=jnp.complex64))
+            m.setattr(dft_utils, "port_dft_phase",
+                      lambda step, freqs, dt, kind="E", **kw: phase(step, freqs, dt, "E", **kw))
             return orig(*a, **k)
 
     monkeypatch.setattr(rd, "_emulate_accumulators", replay)

@@ -10,6 +10,8 @@ import numpy as np
 import pytest
 
 from rfx import Box, Simulation
+from rfx.measurement import dft as measurement_dft
+from rfx.measurement.dft import transform as kernel_transform
 from rfx.sources.sources import GaussianPulse
 
 pytestmark = pytest.mark.distributed
@@ -249,8 +251,9 @@ def test_mutations(monkeypatch, mutation):
         original_dft = driver._lumped_recording_dfts
         def dft(*args):
             with monkeypatch.context() as patch:
-                patch.setattr(dft_utils, "half_step_current_phase",
-                              lambda f, dt: jnp.ones_like(f, dtype=jnp.complex64))
+                # S2 M2: the half step is the H stamp of the one DFT kernel.
+                patch.setattr(measurement_dft, "transform", lambda r, f, dt, kind="E", **k:
+                              kernel_transform(r, f, dt, "E", **k))
                 return original_dft(*args)
         monkeypatch.setattr(driver, "_lumped_recording_dfts", dft)
     # Without the load stamp a port has no source impedance to drive behind

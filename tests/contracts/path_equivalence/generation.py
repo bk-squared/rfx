@@ -69,6 +69,7 @@ PR_CHOICES = {
     "_cpml_kappa_max": "_cpml_kappa_max:kappa:run_uniform:run_distributed:constant:12",
     "_cpml_layers": "_cpml_layers:layers:run_uniform:run_nonuniform:constant:12",
     "_current_moments": "_current_moments:block_moments:run_uniform:run_nonuniform:constant:12",
+    "_dft_planes": "_dft_planes:dft_plane:run_uniform:run_nonuniform:constant:12",
     "_domain": "_domain::run_uniform:run_nonuniform:constant:12",
     "_dt_min_cell": "_dt_min_cell::run_nonuniform:run_distributed_nu:graded:12",
     "_dt_pin": "_dt_pin::run_nonuniform:run_distributed_nu:graded:12",

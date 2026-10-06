@@ -125,3 +125,35 @@ def test_replay_retains_the_streaming_window_index():
     replay = transform(records, freqs, dt, 'H', window='hann', window_step_offset=1)
     np.testing.assert_allclose(replay, acc, rtol=1e-6, atol=1e-7)
     assert float(dft_window_weight(1, 37, 'hann', .5)) > 0
+
+
+@pytest.mark.parametrize('kind,offset', [('E', 1.), ('H', .5)])
+def test_float32_error_stays_inside_the_rounding_bound_over_60_db(kind, offset):
+    """The float32 kernel against a float64 host sum, bin by bin, on a record
+    that rings for its whole length (5 GHz, decaying to e^-3) and whose
+    spectrum falls 68 dB between its line and 120 GHz.
+
+    Bound, absolute and the same at every bin: eps32 * sqrt(N) * A with
+    A = sum |x(n)| dt, the largest any partial sum can be. Each of the N
+    additions rounds by at most eps32/2 of the partial sum, the weight and the
+    product by as much again, and independent roundings add in quadrature. It
+    is a statistical bound, not a worst case (that one is N eps32 A). Relative
+    to a bin it is bound / |X(f)|: 1.5e-7 * sqrt(N) at the line and 4.4e-2 at
+    the weakest bin here, which is why a bin driven far below the peak cannot
+    be held to the 1e-4 cross-trace bar. Measured 2026-10-07: 0.04 (E) and
+    0.18 (H) of the bound; 1.2e-5 of the bin's own magnitude at worst.
+    """
+    with jax.enable_x64(False):
+        length, dt = 12000, 1.9e-12
+        n = np.arange(length)
+        samples = (np.exp(-n/(length/3.)) * np.cos(2*np.pi*5e9*n*dt)).astype(np.float32)
+        freqs = np.concatenate([[5e9], np.geomspace(6e9, 120e9, 40)])
+        result = np.asarray(transform(samples, freqs, dt, kind))
+        assert result.dtype == np.complex64
+    reference = (np.exp(-2j*np.pi*freqs[:, None]*(n+offset)*dt)
+                 @ samples.astype(np.float64)) * dt
+    magnitude = np.abs(reference)
+    assert magnitude.min() <= 1e-3 * magnitude.max()  # the 60 dB premise
+    bound = np.finfo(np.float32).eps * np.sqrt(length) * np.abs(samples.astype(np.float64)).sum() * dt
+    error = np.abs(result.astype(np.complex128) - reference)
+    assert np.all(error <= bound), (error/bound).max()

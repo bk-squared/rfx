@@ -3049,8 +3049,8 @@ def _build_nu_scan(
                 i_val = wire_port_current(
                     st.hx, st.hy, st.hz, comp, mi, mj, mk,
                     dual_xi, dual_yj, dual_zk, boundary=curl_boundary)
-                phase = port_dft_phase(step_idx, sp_freqs, dt)
-                i_phase = port_dft_phase(step_idx, sp_freqs, dt, 'H')
+                phase = port_dft_phase(step_idx, sp_freqs, dt, dtype=v_dft.dtype)
+                i_phase = port_dft_phase(step_idx, sp_freqs, dt, 'H', dtype=i_dft.dtype)
                 port_samples.append(jnp.stack((v, i_val, v_port)))
                 new_wire_sp.append((
                     v_dft + v * phase,

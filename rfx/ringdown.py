@@ -1172,8 +1172,8 @@ def _emulate_accumulators(lane: str, pm: _PortMeta, e32, h32, dt):
         step_idx, e, hx, hy, hz = xs
         v_dft, i_dft, vp_dft = carry
         v, v_port, i_val = _port_vi(lane, pm, pm.raw, e, hx, hy, hz)
-        phase = port_dft_phase(step_idx, freqs, dt)
-        i_phase = port_dft_phase(step_idx, freqs, dt, 'H')
+        phase = port_dft_phase(step_idx, freqs, dt, dtype=v_dft.dtype)
+        i_phase = port_dft_phase(step_idx, freqs, dt, 'H', dtype=i_dft.dtype)
         return (v_dft + v * phase, i_dft + i_val * i_phase,
                 vp_dft + v_port * phase), (v_port, i_val)
 
