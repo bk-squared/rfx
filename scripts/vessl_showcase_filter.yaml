@@ -18,7 +18,7 @@ env:
   RFX_DESIGN_ITERATIONS: ""
   RFX_DESIGN_Y_UNIFORM: ""
 mount:
-  /root/workspace/: volume://remilab-fs/personal-workspaces/
+  /root/workspace/byungkwan-workspace/rfx-showcase-runs/: volume://remilab-fs/rfx-showcase-runs
 run: |-
   set -eu
   # Clone the public repository from GitHub; never fetch into the NFS reference
