@@ -54,8 +54,10 @@ def test_cross_kind_s_is_the_float64_dft_of_both_records_at_the_physical_stamps(
     seen, assemble = _capture(monkeypatch)
     _mixed_result()
     # The power-wave S as assembled from the spectra. (The returned S then has
-    # its off-diagonal magnitude replaced by the flux channel's; that step
-    # reads no time stamp.)
+    # its off-diagonal taken through the flux channel, which changes its
+    # magnitude and its phase by up to 3.4e-3 rad on this fixture; that step
+    # reads no time stamp -- main -> M2 the returned and the assembled S turn
+    # by the same amount at every bin.)
     S = seen["S"]
     assert len(seen["runs"]) == 2  # one driven run per port
     host = [np.zeros_like(a, dtype=np.complex128) for a in seen["spectra"]]

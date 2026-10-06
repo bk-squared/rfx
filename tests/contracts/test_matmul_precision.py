@@ -173,10 +173,9 @@ def test_ntff_far_field():
 def test_port_extraction_cores():
     """The traced cores of the coax S solve and the MSL fit.
 
-    The waveguide ``_rect_dft`` left this list with S2 M2: it replays the
-    record through ``rfx.measurement.dft``, a scan of sums with no matrix
-    product, so there is no product precision to pin (the case passed with
-    zero products found)."""
+    The waveguide ``_rect_dft`` replays its record through
+    ``rfx.measurement.dft`` since S2 M2: 256-step blocks, one matrix product
+    each, which must stay at the highest precision like the others."""
     from rfx.probes.msl_wave_decomp import _lstsq_alpha_gamma
     from rfx.sources.coaxial_port import (_coaxial_line_reflection_jnp,
                                           _solve_two_port_from_wave_amplitudes_jnp)
