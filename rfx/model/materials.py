@@ -798,8 +798,10 @@ def validate_components(materials, *, periodic, grid=None):
     components = materials.components
     if components.periodic != tuple(periodic):
         raise ValueError("realized material periodic flags differ from the kernel")
-    for name in ("eps_r", "sigma", "mu_r"):
-        if getattr(components.cells_view, name) is not getattr(materials, name):
+    # The lumped/wire records are inputs of the realization too (review of
+    # M2a, round 3): replacing one alone must not reuse the old components.
+    for name in ("eps_r", "sigma", "mu_r", "sigma_lumped", "eps_r_lumped", "mu_r_wire"):
+        if getattr(components.cells_view, name, None) is not getattr(materials, name, None):
             raise ValueError(f"stale realized material: {name} cell array changed")
     if grid is not None and components.grid_key and components.grid_key != _grid_key(grid):
         raise ValueError("realized material grid differs from the kernel")
