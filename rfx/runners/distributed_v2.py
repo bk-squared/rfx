@@ -63,6 +63,8 @@ from rfx.simulation import (
     make_port_source,
 )
 from rfx.sources.sources import LumpedPort, setup_lumped_port
+from rfx.sources.port_drive import PortSourceQueue
+from rfx.model.materials import with_components
 from rfx.materials.debye import DebyeCoeffs, DebyeState
 from rfx.materials.lorentz import LorentzCoeffs, LorentzState
 
@@ -70,7 +72,7 @@ from rfx.materials.lorentz import LorentzCoeffs, LorentzState
 # ``distributed.py`` until its pmap runner was retired; the names this module
 # does not call are still bound here so callers that import them from it keep
 # working.
-from rfx.runners._distributed_common import (
+from rfx.runners._distributed_common import (  # noqa: F401 -- compatibility re-exports
     gather_array_x,
     _split_state,
     _split_materials,
@@ -86,7 +88,7 @@ from rfx.runners._distributed_common import (
     _apply_cpml_e_distributed,
     _apply_cpml_h_distributed,
 )
-from rfx.runners._distributed_common import (
+from rfx.runners._distributed_common import (  # noqa: F401 -- compatibility re-exports
     apply_pec_face_shmap,
     apply_pec_mask_shmap,
     apply_pmc_face_shmap,
@@ -858,7 +860,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # ------------------------------------------------------------------
     # Build sources and probes
     # ------------------------------------------------------------------
-    sources = []
+    sources = PortSourceQueue()
     probes = []
     port_idx = -1
     for pe in sim._ports:
@@ -872,7 +874,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             )
             materials = setup_lumped_port(grid, lp, materials)
             if _source_port_indices is None or port_idx in _source_port_indices:
-                sources.append(make_port_source(grid, lp, materials, n_steps))
+                sources.defer(make_port_source, grid, lp, n_steps=n_steps)
         elif pe.impedance > 0.0 and pe.extent is not None:
             from rfx.sources.sources import wire_port_from_entry, setup_wire_port
             from rfx.simulation import make_wire_port_sources
@@ -880,8 +882,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             wp = wire_port_from_entry(pe)
             materials = setup_wire_port(grid, wp, materials, pec_edge_masks=wire_edges)
             if _source_port_indices is None or port_idx in _source_port_indices:
-                sources.extend(make_wire_port_sources(
-                    grid, wp, materials, n_steps, pec_edge_masks=wire_edges))
+                sources.defer(make_wire_port_sources,
+                              grid, wp, n_steps=n_steps, pec_edge_masks=wire_edges)
         elif pe.impedance == 0.0:
             if sim._boundary == "cpml":
                 sources.append(make_j_source(grid, pe.position, pe.component,
@@ -899,6 +901,9 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         # Global cells enter the ordinary owner mapping below independently.
         probes.extend(_record_probes)
 
+    # All port loads must be present before any drive reads its E operands.
+    materials = with_components(materials, grid, periodic=(False, False, False))
+    sources = sources.resolve(materials)
     del wire_edges
 
     # Map source/probe global indices to (device_id, local_index)
