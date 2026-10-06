@@ -26,6 +26,18 @@ def converted_builder(case):
     return _build(True)[0]
 
 
+@pytest.fixture
+def _release_case_memory():
+    """Each case builds a fine board; without this the file holds them all
+    (4.3 GB for 15 cases against 0.7-1.4 GB each), which tipped the 14-worker
+    contract gate over its 32 GiB limit (2026-10-07)."""
+    yield
+    import gc
+    import jax
+    jax.clear_caches()   # measured: 2.8 GB with it, 3.7 GB with gc alone
+    gc.collect()
+
+
 @pytest.mark.parametrize("case", ["uniform", "nu", "harminv-fed", *[
     f"broad-{substrate}-{band}-{geometry}-{resolution}"
     for substrate, band, resolution in [
@@ -34,7 +46,7 @@ def converted_builder(case):
         ("ro4003c", "low", "sub6"), ("teflon", "high", "sub6"),
     ] for geometry in ("thru", "open_stub")
 ]])
-def test_converted_fixture_port_coverage(case):
+def test_converted_fixture_port_coverage(case, _release_case_memory):
     sim = converted_builder(case)
     grid = sim._build_realized_grid()
     report = sim.preflight()
