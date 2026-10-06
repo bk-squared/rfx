@@ -20,6 +20,20 @@ def test_split_phase_at_100000_steps(kind, offset):
 
 
 @pytest.mark.parametrize('kind,offset', [('E', 1.), ('H', .5)])
+@pytest.mark.parametrize('turns', [.7, 1.3, 2.3, 7.9])
+def test_stamp_offset_multiplies_the_whole_product(kind, offset, turns):
+    """f dt above one: the H half step carries half of floor(f dt) turns too."""
+    from fractions import Fraction
+    with jax.enable_x64(False):
+        dt = 1e-12
+        f = turns / dt
+        for n in (0, 7, 100000):
+            actual = complex(np.asarray(phase(n, [f], dt, kind))[0]) / np.float32(dt)
+            angle = float(Fraction(f * dt) * (Fraction(n) + Fraction(offset)) % 1)
+            assert abs(actual - np.exp(-2j * np.pi * angle)) <= 1e-6
+
+
+@pytest.mark.parametrize('kind,offset', [('E', 1.), ('H', .5)])
 @pytest.mark.parametrize('length', [37, 513])
 @pytest.mark.parametrize('window', ['rect', 'hann', 'tukey'])
 def test_j7_stream_and_replay(kind, offset, length, window):

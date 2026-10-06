@@ -100,7 +100,9 @@ def _fixed(turns):
 
 def _words(freqs, dt, offset):
     """Host constants of one channel: per-step turns and stamp offset, (4, nf) uint32."""
-    turns = np.fmod(freqs * dt, 1.0)
+    # The offset multiplies the whole product: reducing f dt modulo one
+    # first would drop offset * floor(f dt) turns (half a turn for H).
+    turns = freqs * dt
     return np.concatenate([_fixed(turns), _fixed(turns * offset)])
 
 
