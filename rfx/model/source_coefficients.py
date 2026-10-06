@@ -68,29 +68,29 @@ def resolve_run_sources(queue, materials, sim, grid, *, tensor=False):
     return sources
 
 
-def dispersive_drive_model(materials, grid, periodic, debye_spec, lorentz_spec):
-    """Materials a drive may read its coefficient from when a runner keeps
-    no realization of its own (the distributed lanes); plain models pass
-    through untouched."""
+def dispersive_drive_model(materials, debye_spec, lorentz_spec):
+    """Materials a drive reads its coefficient from on a lane that keeps no
+    realization of its own (the distributed lanes). Nothing whole-domain is
+    built: a dispersive model carries its pole specs, read edge by edge."""
     if debye_spec is None and lorentz_spec is None:
         return materials
-    from rfx.model.materials import with_components
-    return with_components(materials, grid, periodic=periodic,
-                           debye_spec=debye_spec, lorentz_spec=lorentz_spec)
+    from rfx.model.materials import EdgePoles
+    return materials._replace(components=EdgePoles(debye_spec, lorentz_spec))
 
 
-def debye_pole_term(materials, cell, component, dt):
+def debye_pole_term(drive_model, cell, component, dt):
     """The Debye poles' part of one edge's ADE coefficient, as the
     conductivity that adds the same term: ``Cb = dt/(eps + sum(beta) +
     sigma*dt/2)``, so ``sum(beta)`` equals a conductivity ``2*sum(beta)/dt``.
     It does not depend on eps_inf or sigma, so it stays a host constant
     under a traced override."""
-    c = getattr(materials, "components", None)
-    if c is None or c.debye is None:
+    from rfx.model.materials import EdgePoles
+    c = getattr(drive_model, "components", None)
+    debye = c.at(cell, dt)[0] if isinstance(c, EdgePoles) else None
+    if debye is None:
         return 0.0
     axis = {"ex": 0, "ey": 1, "ez": 2}[str(component).lower()]
-    beta = c.debye.coefficients[1][axis]
-    return 2.0 * float(beta[(slice(None),) + tuple(int(i) for i in cell)].sum()) / float(dt)
+    return 2.0 * float(debye[1][axis].sum()) / float(dt)
 
 
 def tensor_replaced_edges(materials, *, aniso_eps=None, aniso_inv_eps=None, upml=False):

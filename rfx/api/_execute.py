@@ -3096,14 +3096,14 @@ class _ExecuteMixin:
         sources: list[SourceSpec] = []
         material_drive: list = []
         from rfx.model import source_coefficients as _sc
-        drive_model = _sc.dispersive_drive_model(
-            materials, grid, self._periodic_flags(), debye_spec, lorentz_spec)
+        drive_model = _sc.dispersive_drive_model(materials, debye_spec, lorentz_spec)
         for pe in self._ports:
             if pe.impedance > 0.0:
                 raise NotImplementedError(
-                    "Lumped / wire ports (impedance > 0) are not supported on "
-                    "the distributed=True forward path; use distributed=False "
-                    "or a current source (impedance=0).")
+                    "Lumped / wire ports (impedance > 0) are not yet "
+                    "supported on the distributed=True forward path; "
+                    "use distributed=False or replace with a current "
+                    "source (impedance=0).")
             idx = _nu_pos_to_idx(grid, pe.position)
             if (_drive_from_override
                     and not _needs_scale(pe.amplitude_kind, "cb_over_dv")):
@@ -3125,6 +3125,7 @@ class _ExecuteMixin:
                 component=sc, waveform=jnp.asarray(wf),
             ))
             material_drive.append(None)
+        del drive_model
 
         # Every declared input this lane does not carry is refused here,
         # after the specific refusals above and before the first step.

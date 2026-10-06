@@ -905,14 +905,10 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # No whole-domain realization here: the slab kernels form their own edge
     # means, so the drive reads the four cells around its edge directly (this
     # path refuses periodic axes); M3 gives the slab kernel the realized rule.
-    drive_materials = materials
-    if debye_spec is not None or lorentz_spec is not None:
-        # A dispersive edge's drive needs the ADE update's coefficient, as on
-        # one device (#1524). Realized for the drives only, then dropped.
-        from rfx.model.materials import with_components
-        drive_materials = with_components(
-            materials, grid, periodic=(False, False, False),
-            debye_spec=debye_spec, lorentz_spec=lorentz_spec)
+    # A dispersive edge's drive needs the ADE update's coefficient, as on one
+    # device (#1524); the pole terms are read edge by edge from the specs.
+    from rfx.model.source_coefficients import dispersive_drive_model
+    drive_materials = dispersive_drive_model(materials, debye_spec, lorentz_spec)
     sources = sources.resolve(drive_materials)
     del wire_edges, drive_materials
 
