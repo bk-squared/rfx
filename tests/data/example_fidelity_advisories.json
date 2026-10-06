@@ -188,7 +188,7 @@
   {
    "code": "line_stub_behind_port",
    "disposition": "intended",
-   "reason": "The existing graded validation geometry is retained under #1512: its through-line extends from x=0 to 24 mm behind ports at x=2 and 22 mm. Each realized tail is 2.032 mm, with eps_eff=2.869386 and quarter-wave frequency 21.7742 GHz, outside the refusal interval for the 0..7 GHz band. Both findings are tolerated to preserve the geometry underlying the historical readings; they refer to through-line tails, not the intentional mid-line notch branch.",
+   "reason": "The existing graded validation geometry is retained under #1512: its through-line extends from x=0 to 24 mm behind ports at x=2 and 22 mm. Each realized tail is 2.032 mm, with eps_eff=2.869386, an open-end extension of 0.105 mm and quarter-wave frequency 20.6997 GHz on the effective length, outside the refusal interval for the 0..7 GHz band. Both findings are tolerated to preserve the geometry underlying the historical readings; they refer to through-line tails, not the intentional mid-line notch branch.",
    "ref": "https://github.com/bk-squared/rfx/issues/1512",
    "rows": 2,
    "variant": "validation/research/multiband_nu/msl_notch_graded.py::build_graded::A_off"
@@ -348,7 +348,7 @@
   {
    "code": "line_stub_behind_port",
    "disposition": "intended",
-   "reason": "The tuning validation keeps its existing through-line and historical readings under #1512. Ports at x=1.6 and 31.6 mm leave realized tails of 1.651 and 1.524 mm, with quarter-wave frequencies 26.7990 and 29.0323 GHz at eps_eff=2.869386. These lie outside the refusal interval for 0..9 GHz (and the 6 GHz target). The builder has no notch branch yet; both advisories describe the through-line tails and are deliberately retained without changing geometry.",
+   "reason": "The tuning validation keeps its existing through-line and historical readings under #1512. Ports at x=1.6 and 31.6 mm leave realized tails of 1.651 and 1.524 mm, with quarter-wave frequencies 25.1897 and 27.1529 GHz at eps_eff=2.869386 on the effective lengths (open-end extension 0.105 mm). These lie outside the refusal interval for 0..9 GHz (and the 6 GHz target). The builder has no notch branch yet; both advisories describe the through-line tails and are deliberately retained without changing geometry.",
    "ref": "https://github.com/bk-squared/rfx/issues/1512",
    "rows": 2,
    "variant": "validation/tmtt_paper/msl_stub_notch_tuning.py::build_sim::f_target"
