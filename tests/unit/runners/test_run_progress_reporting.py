@@ -159,8 +159,11 @@ def _msl_thru():
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (0.012, domain_y, 0.0008)), material="sub")
     sim.add(Box((0, 0, 0), (0.012, domain_y, 0)), material="pec")
-    sim.add_thin_conductor(Box((0.0, y_c - 0.0006, 0.0008),
-                               (0.012, y_c + 0.0006, 0.0008)))
+    # #1512: the strip spans the two port nodes (2 and 10 mm). Drawn across the whole
+    # domain it left 2 mm open stubs whose effective quarter wave (23.8 GHz) is within
+    # 1.5x of the 2-18 GHz read.
+    sim.add_thin_conductor(Box((0.002, y_c - 0.0006, 0.0008),
+                               (0.010, y_c + 0.0006, 0.0008)))
     sim.add_msl_port(position=(0.002, y_c, 0.0), width=0.0012, height=0.0008,
                      direction="+x", impedance=50.0, eps_r_sub=2.2, name="p1")
     sim.add_msl_port(position=(0.010, y_c, 0.0), width=0.0012, height=0.0008,

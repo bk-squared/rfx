@@ -103,7 +103,11 @@ def test_main_paths_build_drives_and_rlc_after_realization(monkeypatch, graded, 
     sim.add(Box((.005, .002, .002), (.010, .009, .010)), material="slab")
     if kind == "msl":
         sim.add(Box((.002, .002, .003), (.010, .009, .003)), material="pec")
-        sim.add(Box((.002, .004, .005), (.010, .006, .005)), material="pec")
+        # #1512: the strip starts at the port's grid node. Drawn from 2 mm it left a 3 mm
+        # open stub whose effective quarter wave (11.9 GHz) is within 1.5x of 0..8 GHz.
+        from rfx.preflight.line_port_coverage import port_node_coordinate
+        node = port_node_coordinate(sim, (.005, .005, .003))
+        sim.add(Box((node, .004, .005), (.010, .006, .005)), material="pec")
         sim.add_msl_port(position=(.005, .005, .003), width=.002, height=.002,
                          direction="+x", impedance=50., waveform=jnp.ones_like, eps_r_sub=4.)
     else:

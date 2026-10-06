@@ -369,10 +369,14 @@ def test_transition_readers_use_the_same_center_and_bounding_plane(lane, monkeyp
     sim.add_material("substrate", eps_r=3.)
     sim.add(Box((0, 0, 16*DX), (32*DX, 32*DX, 20*DX)), material="substrate")
     sim.add(Box((0, 0, 16*DX), (32*DX, 32*DX, 16*DX)), material="pec")
-    sim.add(Box((10*DX, 12.4*DX, 20*DX), (32*DX, 13.4*DX, 20*DX)), material="pec")
+    # #1512: the strip ends at the port node (26 mm); drawn on to 32 mm it left a
+    # 6 mm open stub whose effective quarter wave (7.27 GHz) is within 1.5x of 0..5 GHz.
+    sim.add(Box((10*DX, 12.4*DX, 20*DX), (26*DX, 13.4*DX, 20*DX)), material="pec")
     sim.add_msl_port(position=(26*DX, 12.9*DX, 16*DX), width=DX,
                      height=4*DX, direction="-x", eps_r_sub=3.,
                      n_probe_offset=3, n_probe_spacing=2, n_probes=3)
+    from rfx.preflight.line_stub import line_stub_findings
+    assert line_stub_findings(sim) == []
     if lane == "coax":
         sim.add_coaxial_port(position=(10*DX, 12.9*DX, 16*DX), face="bottom",
                              pin_radius=DX, outer_radius=5*DX, terminates=2)
