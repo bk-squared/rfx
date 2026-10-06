@@ -296,6 +296,13 @@ jobs:
           # a no-op beyond this flag when nothing is anomalous. (Variable
           # name kept for continuity with the weekly lane's wiring.)
           RFX_WEEKLY_RSS: "1"
+          # Two workers per 4-vCPU runner, each capped at two BLAS threads: the shard's
+          # time is test execution (setup ~30 s), and one test in this lane peaks at 8-9 GB of
+          # the runner's 16 GB, so two workers, not four (measurement in this PR).
+          OMP_NUM_THREADS: "2"
+          OPENBLAS_NUM_THREADS: "2"
+          MKL_NUM_THREADS: "2"
         run: >
           pytest -q -ra -p no:cacheprovider
+          -n 2 --dist loadfile
           --splits 6 --group ${{ matrix.group }}
