@@ -277,7 +277,7 @@ def _is_shared_setup(step: dict) -> bool:
 #: because a "not code" diff is exactly what they judge: a PR adding records
 #: under docs/ or scripts/ never reaches the code branch. Only in the job named
 #: here -- in `fast-suite` the same step would run six times.
-BOTH_BRANCH_GATES = {"guards-and-preflight": ("scripts/ci/check_data_budget.py", "scripts/ci/check_file_size_ratchet.py", "scripts/ci/check_known_limitations.py")}
+BOTH_BRANCH_GATES = {"guards-and-preflight": ("scripts/ci/check_data_budget.py", "scripts/ci/check_file_size_ratchet.py")}
 
 
 def _is_both_branch_gate(job: str, step: dict) -> bool:
@@ -343,9 +343,7 @@ def test_work_steps_skip_only_on_the_one_known_value(job: str) -> None:
         and str(step["if"]).strip() not in (WORK_IF, SKIP_IF)
         and not (job == "guards-and-preflight" and (
             "scripts/ci/check_data_budget.py" in step.get("run", "")
-            or "scripts/ci/check_known_limitations.py" in step.get("run", "")
-            or step.get("name") in {"Data budget already passed on the PR",
-                                    "Known limitations PR tracker gate skipped"}
+            or step.get("name") == "Data budget already passed on the PR"
         ))
     ]
     assert not wrong, (

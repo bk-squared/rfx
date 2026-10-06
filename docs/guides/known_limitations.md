@@ -98,7 +98,7 @@ model and its full-height oracle remain separate.
 
 ### Automatic preflight for compute_coax_msl_transition
 
-Tracker: #1479
+Tracker: #1138
 
 `compute_coax_msl_transition` checks sheet size through the shared preflight
 verdict by default, unless `skip_preflight=True`. The other preflight families
@@ -162,7 +162,7 @@ closed as characterized.
 
 ### Microstrip `Z0` and `beta` are unreadable when the probes sit near a reflector.
 
-Tracker: none — accepted limitation (warns at default: tests/unit/ports/test_msl_clearance_diagnostic.py::test_the_guard_tells_it_when_the_clearance_is_insufficient)
+Tracker: none — accepted limitation (diagnostic, does not enter the result: tests/unit/sparams/test_msl_power_normalization.py::test_reference_metadata_is_neither_fitted_z0_nor_the_50_ohm_load)
 
 The N-probe fit rides the standing wave instead of measuring the
 line: across the three board runs tabulated in #726 the fitted `Z0` reached
@@ -388,14 +388,13 @@ with physics assertions. Everything else in `examples/` and `validation/` is
 covered only as far as its build.
 → [#737](https://github.com/bk-squared/rfx/issues/737)
 
-### The RT5880 patch-antenna baseline is not gated on every change.
+### The RT5880 patch-antenna accuracy figure is not claimed for 2.0.
 
 Tracker: #1471
 
-The RT5880 patch-antenna baseline in `tests/crossval/rt5880_patch/` has a 1 %
-resonance-frequency gate and a 2 % resistance-at-resonance gate. Its accuracy
-test is marked `gpu` and `slow`, so it is not always-on.
-→ [#715](https://github.com/bk-squared/rfx/issues/715)
+The patch-antenna accuracy figure of 0.097 % is not claimed for 2.0 because
+its record length predates the current settling witness. It is being
+re-measured in [#1471](https://github.com/bk-squared/rfx/issues/1471).
 
 ### The weekly scientific-validation lane is red.
 

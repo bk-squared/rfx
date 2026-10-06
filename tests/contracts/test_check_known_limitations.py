@@ -80,7 +80,7 @@ def test_missing_tracker_fails_cli(tmp_path):
 
 
 def workflow():
-    return yaml.safe_load((ROOT / '.github/workflows/pr-tests.yml').read_text())
+    return yaml.safe_load((ROOT / '.github/workflows/pr-body.yml').read_text())
 
 
 @pytest.mark.parametrize('owner,name,expected', [
@@ -88,10 +88,15 @@ def workflow():
 ])
 def test_workflow_filters_closing_references_to_this_repository(tmp_path, owner, name, expected):
     """Run the actual workflow shell and its jq expression, with a fake gh read."""
-    job = workflow()['jobs']['guards-and-preflight']
+    job = workflow()['jobs']['pr-body-contract']
     step = next(s for s in job['steps'] if s['name'] == 'Known limitations closed by this PR')
-    assert step['if'] == "github.event_name == 'pull_request'"
-    assert job['permissions']['issues'] == 'read'
+    assert step['if'] == "github.event_name != 'merge_group'"
+    assert workflow()['permissions']['issues'] == 'read'
+    assert step['env']['GH_TOKEN'] == '${{ github.token }}'
+    reader = next(s for s in job['steps'] if 'closingIssuesReferences' in s.get('run', ''))
+    assert reader['if'] == "github.event_name != 'merge_group'"
+    assert job['steps'].index(reader) < job['steps'].index(step)
+    assert sum('closingIssuesReferences' in s.get('run', '') for s in job['steps']) == 1
     assert not step.get('continue-on-error', False)
     assert not job.get('if')
     # PyYAML's YAML 1.1 loader spells GitHub's 'on' key as True.
@@ -101,8 +106,16 @@ def test_workflow_filters_closing_references_to_this_repository(tmp_path, owner,
     gh = bindir / 'gh'
     gh.write_text('#!' + sys.executable + '\n' + '''import json, os, subprocess, sys
 args = sys.argv[1:]
-assert args[:3] == ['pr', 'view', '42']
-payload = json.loads(os.environ['FAKE_CLOSING_JSON'])
+if args[:2] == ['label', 'list']:
+    payload = [{'name': 'lane:ci-infra'}]
+elif args[:3] == ['pr', 'view', '42']:
+    payload = (json.loads(os.environ['FAKE_CLOSING_JSON'])
+               if args[args.index('--json') + 1] == 'closingIssuesReferences'
+               else {'labels': []})
+elif args[:2] == ['issue', 'view']:
+    payload = {'labels': []}
+else:
+    raise AssertionError(args)
 if '--jq' in args:
     sys.exit(subprocess.run(['jq', '-r', args[args.index('--jq') + 1]],
         input=json.dumps(payload), text=True).returncode)
@@ -118,18 +131,39 @@ print(json.dumps(payload))
     env = {**os.environ, 'PATH': str(bindir) + os.pathsep + os.environ['PATH'],
            'KL_PYTHON': sys.executable, 'KL_SCRIPT': str(SCRIPT), 'KL_PAGE': str(page),
            'OPEN_ISSUES': '', 'GITHUB_REPOSITORY': 'bk-squared/rfx', 'PR_NUMBER': '42',
+           'GITHUB_ENV': str(tmp_path / 'github-env'),
+           'GITHUB_STEP_SUMMARY': str(tmp_path / 'summary.md'),
            'FAKE_CLOSING_JSON': json.dumps({'closingIssuesReferences': [
                {'number': 7, 'repository': {'owner': {'login': owner}, 'name': name}}]})}
+    read = subprocess.run(['bash', '-e', '-c', reader['run']], env=env,
+                          capture_output=True, text=True)
+    assert read.returncode == 0, read.stdout + read.stderr
+    # Apply the real reader's GITHUB_ENV output as Actions does between steps.
+    lines = iter(Path(env['GITHUB_ENV']).read_text().splitlines())
+    for line in lines:
+        key, delimiter = line.split('<<', 1)
+        value = []
+        for item in lines:
+            if item == delimiter:
+                break
+            value.append(item)
+        env[key] = '\n'.join(value)
+    assert 'CLOSING_ISSUES' in env
     result = subprocess.run(['bash', '-e', '-c', step['run']], env=env,
                             capture_output=True, text=True)
     assert result.returncode == expected, result.stdout + result.stderr
 
 
-def test_non_pr_events_skip_with_a_reason_and_weekly_still_reports():
-    steps = workflow()['jobs']['guards-and-preflight']['steps']
-    skip = next(s for s in steps if s['name'] == 'Known limitations PR tracker gate skipped')
-    assert skip['if'] == "github.event_name != 'pull_request'"
-    assert 'PR-level' in skip['run'] and 'push' in skip['run'] and 'merge_group' in skip['run']
+def test_merge_group_skips_and_body_edits_do_not_restart_physics():
+    steps = workflow()['jobs']['pr-body-contract']['steps']
+    skip = next(s for s in steps if s['name'] == 'PR gate already passed before queue admission')
+    assert skip['if'] == "github.event_name == 'merge_group'"
+    assert 'PR-level' in skip['run']
+    heavy_path = ROOT / '.github/workflows/pr-tests.yml'
+    heavy = yaml.safe_load(heavy_path.read_text())
+    assert heavy[True]['pull_request'] is None  # origin/main's default trigger list
+    assert 'scripts/ci/check_known_limitations.py' not in heavy_path.read_text()
+    assert 'edited' in workflow()[True]['pull_request']['types']
     weekly = yaml.safe_load((ROOT / '.github/workflows/governance-audit.yml').read_text())
     step = next(s for s in weekly['jobs']['audit']['steps'] if '--sweep' in s.get('run', ''))
     assert '!cancelled()' in step['if']

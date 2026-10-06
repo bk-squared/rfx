@@ -22,7 +22,10 @@ def test_every_limitation_has_a_valid_tracker():
         try:
             kl.trackers(entry)
             # Resolve evidence without importing test modules (and thus JAX).
-            match = re.search(r'at default: (tests/[^)]+)\)', entry.body)
+            match = re.search(
+                r'(?:at default|diagnostic, does not enter the result): (tests/[^)]+)\)',
+                entry.body,
+            )
             if match:
                 path, *names = match[1].split('::')
                 source = ROOT / path
@@ -67,3 +70,18 @@ def test_legacy_bold_subject_cannot_evade_tracker_contract(subject):
     entry, = kl.entries('# Page\n## Section\n' + subject + '\nAvoid this.\n')
     with pytest.raises(ValueError):
         kl.trackers(entry)
+
+
+@pytest.mark.parametrize('reason', [
+    'refused at default', 'warns at default', 'diagnostic, does not enter the result',
+])
+@pytest.mark.parametrize('reference,error', [
+    ('tests/contracts/no_such_evidence.py::test_missing', 'missing evidence file'),
+    ('tests/contracts/test_known_limitations_tracker.py::test_missing', 'missing evidence test'),
+])
+def test_all_acceptance_forms_require_existing_evidence(tmp_path, monkeypatch, reason, reference, error):
+    page = tmp_path / 'synthetic.md'
+    page.write_text(f'## Subject\nTracker: none — accepted limitation ({reason}: {reference})\n')
+    monkeypatch.setattr(kl, 'PAGE', page)
+    with pytest.raises(AssertionError, match=error):
+        test_every_limitation_has_a_valid_tracker()
