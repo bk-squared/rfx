@@ -481,13 +481,23 @@ def init_cpml(grid, *, kappa_max: float | None = None,
     # preserved on the symmetric common case). Faces with an active
     # layer count below the budget get a no-op-padded profile so the
     # scan body sees identity updates in the padded region.
-    face_layers = getattr(grid, "face_layers", None) or {
-        f: n for f in ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi")
-    }
+    from rfx.boundaries.depths import resolve_face_depths
+
+    face_layers = getattr(grid, "face_layers", None) or {}
+    grid_axes = getattr(grid, "cpml_axes", "xyz")
+    depths = {record.name: record.realized for record in resolve_face_depths(
+        budget=n, absorbing_axes=grid_axes, pec_faces=pec_faces,
+        pmc_faces=pmc_faces, face_layers=face_layers,
+    )}
+    for face_name in depths:
+        if face_name[0] not in grid_axes and face_name not in noop_faces:
+            # Legacy dual declaration: preserve profile depth outside grid axes.
+            # docs/design_notes/20260923_boundary_model_predeclaration.md §7 Addendum 2.
+            depths[face_name] = int(face_layers.get(face_name, n))
 
     def _lo_face_profile(is_noop: bool, cell_size, face_name: str,
                          sample_offset: float = 0.0) -> CPMLParams:
-        n_active = int(face_layers.get(face_name, n))
+        n_active = depths[face_name]
         if is_noop or n_active == 0:
             return noop
         p = _cpml_profile(n_active, grid.dt, cell_size, kappa_max=kappa_max,
@@ -496,7 +506,7 @@ def init_cpml(grid, *, kappa_max: float | None = None,
 
     def _hi_face_profile(is_noop: bool, cell_size, face_name: str,
                          sample_offset: float = 0.0) -> CPMLParams:
-        n_active = int(face_layers.get(face_name, n))
+        n_active = depths[face_name]
         if is_noop or n_active == 0:
             return noop
         base = _cpml_profile(n_active, grid.dt, cell_size, kappa_max=kappa_max,
