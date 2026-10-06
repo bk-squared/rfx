@@ -356,8 +356,11 @@ carry a similar leftover — and it has no default tolerance, because the right 
 depends on the structure's Q and on what the gradient is for.
 Measured in #1181; the witness above landed with #1186.
 
-**An optimization on a fixed record can walk into a design that the record does
-not settle.** The record length is usually chosen so that the starting design
+### An optimization on a fixed record can walk into a design that the record does not settle.
+
+Tracker: #1514
+
+The record length is usually chosen so that the starting design
 settles. During the descent the optimizer can build a weakly coupled, high-Q mode:
 for example a mode that the structure's symmetry keeps orthogonal to the port mode,
 coupled only through a small asymmetry the descent itself introduces. Its ringing
@@ -376,8 +379,9 @@ the record if the decay is within reach; when the decay time is far longer than 
 affordable record, lengthening does not help, and constraining the design space so
 that the mode cannot be excited (for instance tying parameters so the design keeps
 the symmetry that makes the mode orthogonal to the drive) removes the cause. This
-is a property of optimizing on a truncated record, not a solver defect; it has no
-tracking issue.
+is a property of optimizing on a truncated record, not a solver defect. At default
+settings nothing flags it during the descent, so it is tracked with the same cause
+as the witness blind spot near weakly coupled resonances.
 
 ## Examples and validation coverage
 
