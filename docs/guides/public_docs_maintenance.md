@@ -28,6 +28,8 @@ Use small documentation PRs unless a feature PR must include docs to remain accu
 
 Before publishing a release or merging a docs-heavy feature:
 
+- Re-audit docs/guides/known_limitations.md: every entry true on the release commit (tests/contracts/test_known_limitations_tracker.py, scripts/ci/check_known_limitations.py)
+
 ```bash
 python scripts/check_public_docs_manifest.py
 python scripts/check_public_docs_sync.py --format text

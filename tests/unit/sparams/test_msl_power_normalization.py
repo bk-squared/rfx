@@ -186,14 +186,21 @@ def test_reference_metadata_is_neither_fitted_z0_nor_the_50_ohm_load(monkeypatch
     import rfx.probes.msl_wave_decomp as decomp
 
     sim, _, references, _ = _case(monkeypatch)
+    baseline = _compute(sim)
+    original_fit = decomp.extract_msl_nprobe
 
     def diagnostic_fit(v, x, i1, beta0, *, z0_hj=None):
-        return dict(z0=jnp.full(v.shape[0], 777 + 13j), beta=jnp.full(v.shape[0], 123),
-                    q=jnp.ones(v.shape[0]), beta_railed=jnp.zeros(v.shape[0], dtype=bool))
+        fitted = original_fit(v, x, i1, beta0, z0_hj=z0_hj)
+        return {**fitted, "z0": jnp.full(v.shape[0], 777 + 13j)}
 
     monkeypatch.setattr(decomp, "extract_msl_nprobe", diagnostic_fit)
     dump = tmp_path / "metadata.npz"
-    result = _compute(sim, enforce_passivity=False, raw_3probe_dump_path=str(dump))
+    result = _compute(sim, raw_3probe_dump_path=str(dump))
+    # Only the fitted diagnostic changed; physical V/I and the HJ reference
+    # stayed fixed. This fails if production S ever reads the fitted Z0.
+    assert not np.array_equal(result.Z0, baseline.Z0)
+    np.testing.assert_array_equal(result.beta, baseline.beta)
+    np.testing.assert_array_equal(result.S, baseline.S)
     assert np.shape(result.reference_impedances) == (2,)
     assert np.all(np.abs(references - 50) > 1)
     assert np.all(np.abs(result.Z0) > 700)

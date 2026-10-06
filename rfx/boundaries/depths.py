@@ -69,3 +69,59 @@ def resolve_face_depths(spec=None, *, budget: int, absorbing_axes="xyz",
         realized = int(depth) if kind == Kind.ABSORBER and axis in absorbing_axes and not invariant else 0
         records.append(FaceDepth(name, kind, int(depth), realized))
     return tuple(records)
+
+
+def grid_face_depths(grid, *, spec=None, pec_faces=None, pmc_faces=None, budget=None):
+    """Read a grid's record, or resolve the legacy grid-like declaration."""
+    records = getattr(grid, "boundary_depths", None)
+    if (records is not None
+            and (budget is None or budget == grid.cpml_layers)
+            and (pec_faces is None or set(pec_faces) == set(getattr(grid, "pec_faces", ()) or ()))
+            and (pmc_faces is None or set(pmc_faces) == set(getattr(grid, "pmc_faces", ()) or ()))):
+        return records
+    # A runner disabling CPML via all-wall overrides still has the grid's
+    # allocation budget; validate its declarations against that allocation.
+    allocation = getattr(grid, "cpml_layers", 0)
+    return resolve_face_depths(
+        spec, budget=allocation if budget is None or budget == 0 else budget,
+        absorbing_axes=getattr(grid, "cpml_axes", "xyz"),
+        pec_faces=(getattr(grid, "pec_faces", ()) or ()) if pec_faces is None else pec_faces,
+        pmc_faces=(getattr(grid, "pmc_faces", ()) or ()) if pmc_faces is None else pmc_faces,
+        periodic_axes=getattr(grid, "periodic_axes", ""),
+        mode=getattr(grid, "mode", "3d"),
+        face_layers=getattr(grid, "face_layers", None),
+    )
+
+
+def simulation_face_depths(sim):
+    """Realized pad depths before allocating metrics, including waveguide axes.
+
+    §7 Addendum 3: uniform waveguide grids pad only their port-normal axes;
+    diagnostics must describe those actual pads. The NU builder does not make
+    that transverse rewrite and keeps its declared absorbing axes.
+    """
+    axes = (sim._waveguide_cpml_axes()
+            if sim._waveguide_ports and not sim._uses_nonuniform_mesh else "xyz")
+    return resolve_face_depths(
+        sim._boundary_spec, budget=sim._cpml_layers, absorbing_axes=axes,
+        periodic_axes="".join(a for a, yes in zip("xyz", sim._periodic_flags()) if yes), mode=sim._mode,
+    )
+
+
+def has_positive_cpml_faces(spec, budget):
+    """The coax lane requires CPML, not UPML, on all six nonzero faces."""
+    return (all(token == "cpml" for _, _, token in spec.faces())
+            and all(face.realized > 0 for face in resolve_face_depths(spec, budget=budget)))
+
+
+def adi_uniform_faces(spec, budget):
+    """ADI's scalar-only absorber cannot carry a wall or a depth override."""
+    return all(face.kind == Kind.ABSORBER and face.declared == budget
+               for face in resolve_face_depths(spec, budget=budget)) and all(
+                   token == "cpml" for _, _, token in spec.faces())
+
+
+def distributed_electric_walls(grid):
+    """§7 Addendum 4: a zero-pad absorber has its PEC backing at the domain face."""
+    return frozenset(face.name for face in grid_face_depths(grid)
+                     if face.kind == Kind.PEC or (face.kind == Kind.ABSORBER and face.realized == 0))

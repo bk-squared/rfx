@@ -293,7 +293,9 @@ def test_junction_clearance_reads_material_and_component_edges(difference, expec
     with warnings.catch_warnings(record=True) as record:
         warnings.simplefilter("always")
         _warn_junction_probe_clearance(
-            SimpleNamespace(dx=0.02), [cfg], dev_sigma, [ref_sigma],
+            SimpleNamespace(is_constant=lambda axis: True,
+                            boundary_cell=lambda axis, side: 0.02),
+            [cfg], dev_sigma, [ref_sigma],
             np.array([4.5e9, 6.5e9]),
             device_pec_edges=dev_edges, ref_pec_edges=[ref_edges],
         )

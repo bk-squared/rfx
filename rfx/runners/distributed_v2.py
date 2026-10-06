@@ -995,7 +995,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # ------------------------------------------------------------------
     has_debye = debye_spec is not None
     has_lorentz = lorentz_spec is not None
-    e_wall_faces = _pec_faces_frozen
+    from rfx.boundaries.depths import distributed_electric_walls
+    e_wall_faces = distributed_electric_walls(grid)
     if has_debye or has_lorentz:
         from rfx.boundaries.pec import resolve_wall_faces
 

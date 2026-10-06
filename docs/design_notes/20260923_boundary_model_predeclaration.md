@@ -383,3 +383,27 @@ declaration itself (grid axes vs the runner argument) is a separate decision, ra
 candidate is that the runner reads the grid's axes and refuses a conflicting explicit argument, with
 the #876 test rewritten with its reason. That change moves results on the low-level API and does not
 belong in this PR.
+
+Addendum 3, 2026-10-06 (leader, PR2 implementer stop). With a waveguide port, the grid absorbs only on
+the port axis (`_waveguide_cpml_axes`, `api/_compile.py`): a model declared `cpml` on every face is
+solved with electric walls and no pad on the transverse faces, while preflight's own face reader
+(`_preflight_face_layers`, `preflight/absorber.py`) reports the declared absorber there (4 layers on
+y and z for a 4-layer x-port guide), so its absorber advisories describe absorbers that do not exist.
+Decision for PR2: preflight reads the realized record, as every other reader does; on a waveguide model
+its transverse faces report 0 layers. This changes diagnostic output only, never a computed result; the
+PR lists every test whose expected advisories move and why. The rewrite itself — a feature silently
+turning declared absorbing faces into walls — is the same class as the TF/SF transverse period
+(§3 B5, decision 4: a full-aperture waveguide's admissible transverse set is {PEC}) and joins PR3:
+a declared absorber the feature cannot keep is refused or must be declared as the wall it becomes.
+
+Addendum 4, 2026-10-06 (leader, after PR2's two reviews). (1) Addendum 3's rule — preflight reports the
+realized record — covers every feature that changes the realized faces, not only waveguide ports: with a
+Floquet port (which sets the periodic axes itself) preflight reports the periodic faces as unpadded; the
+PR lists every advisory that appears or disappears. (2) A face declared `cpml` with zero layers is an
+electric wall on one device (the absorber's backing at the domain face). On two devices with the uniform
+mesh it gets no wall: the multi-device lane builds walls only from the declared PEC/PMC face lists, and a
+probe differs from the one-device run by up to 78 % of its peak (found by the fresh-eyes review; graded
+two-device and a declared PEC face agree). Same cause as this PR — a reader not taking the face from the
+record — and in a file the PR already touches, so it is fixed here: the multi-device walls come from the
+record (PEC faces and zero-depth absorber backings), judged by that probe equal to one device within the
+cross-trace bar, with the old wall rule as the mutation. This is the PR's one computed-result change.

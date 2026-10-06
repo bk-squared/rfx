@@ -85,6 +85,12 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_ENV"
           closing_issues=$(gh pr view "$PR_NUMBER" --json closingIssuesReferences --jq '.closingIssuesReferences[] | select("\(.repository.owner.login)/\(.repository.name)" == env.GITHUB_REPOSITORY) | .number')
+          # Share the same repository-filtered references with the limitation gate.
+          {
+            echo "CLOSING_ISSUES<<EOF"
+            echo "$closing_issues"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
           issue_lanes='[]'
           while IFS= read -r issue; do
             [ -n "$issue" ] || continue
@@ -96,6 +102,14 @@ jobs:
             echo "$issue_lanes"
             echo "EOF"
           } >> "$GITHUB_ENV"
+
+      - name: Known limitations closed by this PR
+        if: github.event_name != 'merge_group'
+        # CLOSING_ISSUES comes from the single filtered read above. This fast
+        # required job already re-runs on body edits, unlike the physics suite.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/ci/check_known_limitations.py
 
       - name: Check the PR body
         if: github.event_name != 'merge_group'

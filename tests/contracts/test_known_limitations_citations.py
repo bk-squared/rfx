@@ -1,24 +1,12 @@
-"""`docs/guides/known_limitations.md` cites exactly the issues it was pinned to.
+"""Legacy citation inventory for the public known-limitations page.
 
-The page's own rule is that an entry leaves when its defect is fixed and a
-committed test pins the fix. Nothing enforced that, and the first revision of
-the page shipped two entries whose issues were already closed on `main`: #1090
-(fixed in 8bc6c084) and #1085 (fixed in 246cde5d). A public page that describes
-a defect the user does not have is the same class of wrong as one that hides a
-defect they do.
+These sets pin historical arrow citations and resolved references, not live
+issue state. An issue can close through a fix, a characterization, or acceptance
+of a standing limitation. The per-subject Tracker contract now lives in
+``test_known_limitations_tracker.py``; ``scripts/ci/check_known_limitations.py``
+checks PR closures and the weekly governance sweep reads live states.
 
-What this pins, and what it cannot
-----------------------------------
-The real invariant is "every cited issue is OPEN", and that cannot be checked
-here: the CI lanes have no network, and a test that shells out to `gh` would be
-a flake on every runner. So the set of cited numbers is pinned instead. Adding
-or removing an entry then has to come with an edit to CITED_ISSUES, which is the
-moment a reader is asked whether the tracker still agrees -- drift becomes a
-deliberate act rather than an oversight.
-
-The OPEN check itself belongs to the weekly audit, which has a network and a
-schedule. Last run by hand on 2026-09-23 with `gh issue view <N> --json state`:
-all five below OPEN.
+Keep this inventory in sync when the leader removes or rewrites audited entries.
 """
 from __future__ import annotations
 
@@ -32,9 +20,9 @@ PAGE = REPO_ROOT / "docs" / "guides" / "known_limitations.md"
 README = REPO_ROOT / "README.md"
 SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 
-# Every issue the page cites, verified OPEN on 2026-09-23. Edit this set in the
-# same change that adds or removes an entry, and re-check the tracker when you
-# do -- that re-check is the whole point of the set being written down.
+# Legacy arrow citations, not an assertion that these issues are still OPEN.
+# Edit this set when an audited entry is added or removed; the Tracker gate
+# and weekly sweep enforce live tracking separately.
 # #1101 (the port_aperture_snap advisory naming the wrong source for the
 # cutoff) left on 2026-09-19: the message now READS the built
 # ``cfg.f_cutoff`` and names the profile it came from, pinned by
@@ -105,7 +93,7 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # the page no longer names #1236 either.
 # #1373 (ADI refuses a material interface until 2.1) joined on 2026-10-03 with
 # the "Solver lanes" section; OPEN, checked by the session leader that day.
-CITED_ISSUES = frozenset({737, 715, 1022, 1221, 1230, 1373})
+CITED_ISSUES = frozenset({737, 1501, 1221, 1230, 1373, 1512})
 
 # Numbers the prose names for provenance rather than as open work: a CLOSED
 # issue or PR recording a fix, measurement or settled decision. These are
@@ -177,7 +165,7 @@ def test_every_citation_link_points_at_the_issue_it_names():
 
 @pytest.mark.docs_consistency
 def test_no_entry_names_an_issue_it_does_not_cite():
-    """An issue mentioned in prose must be cited, or classified as resolved.
+    """An issue mentioned in prose must be cited, tracked, or classified as resolved.
 
     Otherwise a number can sit in a sentence, never appear in CITED_ISSUES, and
     outlive the issue it refers to. This caught #1043 on its first run, which is
@@ -185,7 +173,11 @@ def test_no_entry_names_an_issue_it_does_not_cite():
     """
     page = _page()
     cited = {int(text) for text, _ in CITATION_RE.findall(page)}
-    prose_only = {int(n) for n in INLINE_RE.findall(page)} - cited - RESOLVED_REFERENCES
+    # Tracker metadata is governed by the per-entry contract, not this legacy
+    # arrow/provenance inventory. New live trackers need not add arrow links.
+    tracked = {int(n) for line in page.splitlines() if line.startswith("Tracker: #")
+               for n in INLINE_RE.findall(line)}
+    prose_only = {int(n) for n in INLINE_RE.findall(page)} - cited - tracked - RESOLVED_REFERENCES
     assert not prose_only, (
         f"issues named in prose but never cited: {sorted(prose_only)}. Give the entry a "
         "`→ [#N](…)` line, or — if the number is a closed issue named for provenance — "

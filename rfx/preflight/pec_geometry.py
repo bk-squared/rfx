@@ -623,7 +623,7 @@ def _validate_cfg_pec_face_short_of_domain_wall(self, _w, ctx) -> None:
         return          # non-uniform lane: no interior slices
     from rfx.boundaries.pec import realized_wall_planes
 
-    face_layers = self._preflight_face_layers()
+    realized_depths = self._preflight_face_layers()
     shape = tuple(ctx.grid.shape)
     rows = []
     for e in ctx.interior_pec_entries():
@@ -643,7 +643,7 @@ def _validate_cfg_pec_face_short_of_domain_wall(self, _w, ctx) -> None:
                 step = 1 if side == "lo" else -1
                 if face - wall != step:
                     continue
-                if face_layers.get(f"{'xyz'[a]}_{side}", 0):
+                if realized_depths.get(f"{'xyz'[a]}_{side}", 0):
                     continue    # absorbing face: no wall
                 rows.append((e, a, side, face, wall))
     if not rows:

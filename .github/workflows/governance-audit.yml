@@ -57,3 +57,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           DAYS: ${{ inputs.days || '7' }}
         run: python scripts/ci/governance_audit.py --days "$DAYS"
+
+      - name: Report stale known-limitations trackers
+        # Still report when another governance section is red; never required.
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/ci/check_known_limitations.py --sweep

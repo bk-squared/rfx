@@ -1315,14 +1315,8 @@ class _PreflightMixin:
         else:
             # Both lanes absorb on all three axes (issue 1218): a face without
             # an absorber is a PEC wall that closes a can around the line.
-            if any(
-                face.lo != "cpml"
-                or face.hi != "cpml"
-                or face.resolved_lo_thickness(self._cpml_layers) <= 0
-                or face.resolved_hi_thickness(self._cpml_layers) <= 0
-                for face in (self._boundary_spec.x, self._boundary_spec.y,
-                             self._boundary_spec.z)
-            ):
+            from rfx.boundaries.depths import has_positive_cpml_faces
+            if not has_positive_cpml_faces(self._boundary_spec, self._cpml_layers):
                 failed.append("positive CPML thickness on all six faces")
             if any(token != "cpml"
                    for _, _, token in self._boundary_spec.faces()):

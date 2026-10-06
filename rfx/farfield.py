@@ -234,8 +234,7 @@ def _ntff_face_pads(grid, box: NTFFBox | None = None):
                 pads[face] = int(explicit)
             else:
                 faces = getattr(grid, "face_layers", None) or {}
-                # Legacy objects may use None for an unspecified scalar pad;
-                # treat it like an absent attribute (no padding).
+                # Legacy face_layers holds realized pads; the scalar is only a fallback.
                 legacy = getattr(grid, "cpml_layers", 0)
                 pads[face] = int(faces.get(face, 0 if legacy is None else legacy))
     return pads

@@ -126,8 +126,8 @@ def test_builder_checks_once(monkeypatch, graded):
         return original(*args, **kwargs)
     monkeypatch.setattr(raster, 'assert_declared_span_is_filled', spy)
     monkeypatch.setattr(pad_fill, 'assert_declared_span_is_filled', spy)
-    import rfx.api._compile as compile_module
-    monkeypatch.setattr(compile_module, 'assert_declared_span_is_filled', spy)
+    import rfx.model.materials as materials_module
+    monkeypatch.setattr(materials_module, 'assert_declared_span_is_filled', spy)
     sim = _graded_rig(monkeypatch) if graded else _rig(10)
     grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
     realized_conductors(sim, grid, nonuniform=graded, mode='audit')

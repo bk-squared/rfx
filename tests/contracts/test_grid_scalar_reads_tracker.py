@@ -129,7 +129,6 @@ ALLOWED_SCALAR_READS: dict[str, int] = {
     "rfx/materials/thin_conductor.py": 2,
     "rfx/nonuniform.py": 8,
     "rfx/preflight/realization.py": 1,
-    "rfx/probes/flux_region.py": 5,
     "rfx/probes/msl_wave_decomp.py": 1,
     "rfx/probes/probes.py": 7,
     "rfx/probes/sparam_driver.py": 1,
@@ -144,7 +143,6 @@ ALLOWED_SCALAR_READS: dict[str, int] = {
     "rfx/sources/msl_port.py": 5,
     "rfx/sources/sources.py": 3,
     "rfx/sources/waveguide_port.py": 1,
-    "rfx/sparams/_common.py": 5,
     "rfx/sparams/coax.py": 3,  # 4 until #1212 removed compute_coaxial_s_matrix
     "rfx/sparams/mixed.py": 3,
     "rfx/sparams/msl.py": 1,
