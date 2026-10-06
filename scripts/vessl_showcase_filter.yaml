@@ -16,6 +16,7 @@ env:
   RFX_DESIGN_RECORD: ""
   RFX_DESIGN_START: ""
   RFX_DESIGN_ITERATIONS: ""
+  RFX_DESIGN_ITERATES: ""
   RFX_DESIGN_Y_UNIFORM: ""
 mount:
   /root/workspace/byungkwan-workspace/rfx-showcase-runs/: volume://remilab-fs/rfx-showcase-runs
@@ -54,6 +55,9 @@ run: |-
   fi
   if [ -n "$RFX_DESIGN_START" ]; then
     set -- "$@" --start "$RFX_DESIGN_START"
+  fi
+  if [ -n "$RFX_DESIGN_ITERATES" ]; then
+    set -- "$@" --iterates "$RFX_DESIGN_ITERATES"
   fi
   if [ -n "$RFX_DESIGN_ITERATIONS" ]; then
     set -- "$@" --iterations "$RFX_DESIGN_ITERATIONS"

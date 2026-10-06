@@ -496,3 +496,27 @@ def test_y_uniform_cli_refuses_nonuniform_start(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="requires each pixel row"):
         common.main(filt, ["--stage", "main", "--record", str(source),
                            "--out", str(out), "--y-uniform"])
+
+
+def test_frame_video_iterates_witnessed_once_each(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    source, out = tmp_path / "main", tmp_path / "frame"
+    source.mkdir()
+    out.mkdir()
+    common.dc.save_npz(source / "iterations.npz", objective=np.arange(50., -1., -1.),
+                       eps=np.arange(51.)[:, None])
+    common.dc.save_json(source / "record_length.json", {"n_steps": 123, "dt_s": .25})
+    monkeypatch.setattr(common, "setup", lambda *a: SimpleNamespace(grid=SimpleNamespace(dt=.25)))
+    monkeypatch.setattr(common, "record", lambda *a: None)
+    tried = []
+    def witness(case, model, e, n, out, label):
+        k = int(e[0])
+        tried.append(k)
+        return {"passed": k != 7, "worst": float(k), "grad": {"": np.array([[1.]])}}
+    monkeypatch.setattr(common, "rlw", witness)
+    common.frame(lens, SimpleNamespace(out=out, precision="float32", iterates=[0, 7, 25, 50]), source)
+    result = common.dc.load_json(out / "frame.json")
+    # k* = 25 passes first; the film list reuses it and witnesses the rest once.
+    assert tried == [25, 0, 7, 50]
+    assert result["video_witnesses"] == {"0": {"passed": True, "worst": 0.0}, "7": {"passed": False, "worst": 7.0},
+                                         "25": {"passed": True, "worst": 25.0}, "50": {"passed": True, "worst": 50.0}}

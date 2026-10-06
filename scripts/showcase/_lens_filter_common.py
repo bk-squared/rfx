@@ -134,6 +134,17 @@ def frame(case, args, source):
         dc.save_json(args.out / "frame.json", details)
         if details["k_used"] is not None:
             break
+    # Every further iterate a film shows gets the same record-length witness;
+    # failures are recorded, not raised, so the film can hold an earlier frame.
+    if getattr(args, "iterates", None):
+        details["video_witnesses"] = {}
+        for k in args.iterates:
+            if str(k) in details["witnesses"]:
+                w = details["witnesses"][str(k)]
+            else:
+                w = rlw(case, model, designs[k], n, args.out, f"frame_{k}")
+            details["video_witnesses"][str(k)] = {"passed": bool(w["passed"]), "worst": w["worst"]}
+            dc.save_json(args.out / "frame.json", details)
     record(args.out, case, model, "frame", details)
     if details["k_used"] is None:
         raise RuntimeError("frame gradient witness failed through iterate 0")
@@ -443,8 +454,12 @@ def main(case, argv=None):
     parser.add_argument("--iterations", type=int, help="main updates and cosine schedule length (at least 2)")
     parser.add_argument("--y-uniform", action="store_true",
                         help="filter main: each pixel row is uniform across the guide width and height")
+    parser.add_argument("--iterates", type=lambda text: [int(k) for k in text.replace(",", " ").split()],
+                        help="frame: further stored iterations to witness, comma-separated")
     parser.add_argument("--reported", action="store_true", help="FD/RLW: use best stored design")
     args = parser.parse_args(argv)
+    if args.iterates is not None and (args.stage != "frame" or any(k < 0 for k in args.iterates)):
+        parser.error("--iterates requires --stage frame and nonnegative iterations")
     if args.y_uniform and (case.CASE != "filter" or args.stage != "main"):
         parser.error("--y-uniform requires filter --stage main")
     if args.iterations is not None and (args.stage != "main" or args.iterations < 2):
