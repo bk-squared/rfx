@@ -7,7 +7,7 @@ Conductors own their realized products in rfx.model.conductors.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import NamedTuple
 
 import jax
@@ -660,11 +660,21 @@ class ComponentCells(NamedTuple):
     lorentz_spec: object = None
 
 
-class ComponentPole(NamedTuple):
-    """One pole's parameters and its three E-edge occupancy weights."""
+class ComponentDispersion(NamedTuple):
+    """ADE pole coefficients; weights exist only for dt-less direct callers."""
 
-    pole: object
+    poles: tuple
+    coefficients: object
     weights: object
+    dt: object
+
+
+class KernelComponents(NamedTuple):
+    """Only component operands read by a time step (no assembly arrays)."""
+
+    eps_update: tuple
+    sigma_update: tuple
+    mu_update: tuple
 
 
 @jax.tree_util.register_dataclass
@@ -690,9 +700,11 @@ class ComponentMaterials:
     mu_update: tuple
     upml_eps: tuple
     upml_sigma: tuple
-    debye: tuple
-    lorentz: tuple
+    debye: ComponentDispersion | None
+    lorentz: ComponentDispersion | None
     cells_view: MaterialArrays
+    periodic: tuple = field(metadata={"static": True})
+    grid_key: tuple = field(metadata={"static": True})
 
 
 def pole_component_weights(mask, periodic=(False, False, False)):
@@ -702,17 +714,23 @@ def pole_component_weights(mask, periodic=(False, False, False)):
     return edge_mean_components(jnp.asarray(mask, dtype=bool).astype(jnp.float32), periodic)
 
 
-def _realize_poles(spec, periodic, kind):
+def _realize_poles(spec, periodic, kind, grid, shape):
     if spec is None:
-        return ()
+        return None
     poles, masks = spec
     if isinstance(masks, (tuple, list)):
         if len(masks) != len(poles):
             raise ValueError(f"Expected {len(poles)} {kind} masks, got {len(masks)}")
     else:
         masks = [masks] * len(poles)
-    return tuple(ComponentPole(p, pole_component_weights(m, periodic))
-                 for p, m in zip(poles, masks))
+    weights = tuple(pole_component_weights(m, periodic) for m in masks)
+    if grid is None:
+        return ComponentDispersion(tuple(poles), None, weights, None)
+    if kind == "Debye":
+        from rfx.materials.debye import debye_pole_coeffs as build
+    else:
+        from rfx.materials.lorentz import lorentz_pole_coeffs as build
+    return ComponentDispersion(tuple(poles), build(poles, grid.dt, shape, weights), None, grid.dt)
 
 
 def realize_components(cells, grid, *, periodic):
@@ -749,8 +767,9 @@ def realize_components(cells, grid, *, periodic):
     return ComponentMaterials(
         eps, sigma, mu, eps_lumped, sigma_lumped, mu_wire,
         eps_update, sigma_update, mu_update, upml_eps, upml_sigma,
-        _realize_poles(debye_spec, periodic, "Debye"),
-        _realize_poles(lorentz_spec, periodic, "Lorentz"), materials)
+        _realize_poles(debye_spec, periodic, "Debye", grid, materials.eps_r.shape),
+        _realize_poles(lorentz_spec, periodic, "Lorentz", grid, materials.eps_r.shape),
+        materials, tuple(periodic), _grid_key(grid))
 
 
 def with_components(materials, grid, *, periodic, debye_spec=None, lorentz_spec=None):
@@ -760,7 +779,76 @@ def with_components(materials, grid, *, periodic, debye_spec=None, lorentz_spec=
     runner inputs enter here too; no global or identity cache is involved.
     """
     if materials.components is not None:
+        validate_components(materials, periodic=periodic, grid=grid)
         return materials
     components = realize_components(
         ComponentCells(materials, debye_spec, lorentz_spec), grid, periodic=periodic)
     return materials._replace(components=components)
+
+
+def _grid_key(grid):
+    if grid is None:
+        return ()
+    return (tuple(grid.shape), tuple(id(getattr(grid, name, None))
+                                    for name in ("dx_arr", "dy_arr", "dz")))
+
+
+def validate_components(materials, *, periodic, grid=None):
+    """Reject stale assembly views before entering any compiled time loop."""
+    components = materials.components
+    if components.periodic != tuple(periodic):
+        raise ValueError("realized material periodic flags differ from the kernel")
+    for name in ("eps_r", "sigma", "mu_r"):
+        if getattr(components.cells_view, name) is not getattr(materials, name):
+            raise ValueError(f"stale realized material: {name} cell array changed")
+    if grid is not None and components.grid_key and components.grid_key != _grid_key(grid):
+        raise ValueError("realized material grid differs from the kernel")
+
+
+def kernel_materials(materials, *, keep_eps=False, electric=True, magnetic=True, epsilon=True):
+    """Drop assembly-only leaves before a scan/jitted step sees materials.
+
+    Diagnostic captures explicitly observe cell arrays too. Kerr reads cell
+    epsilon; all other step operands come from the realized components.
+    """
+    from rfx import _realized
+    if _realized.ACTIVE is not None:
+        return materials
+    c = materials.components
+    return MaterialArrays(
+        materials.eps_r if keep_eps else jnp.zeros((), materials.eps_r.dtype), None, None,
+        mu_r_wire=True if materials.mu_r_wire is not None else None,
+        components=KernelComponents(c.eps_update if electric and epsilon else (),
+                                    c.sigma_update if electric else (),
+                                    c.mu_update if magnetic else ()))
+
+
+def kernel_context(ctx):
+    """Select only the operands of the enabled uniform update branches."""
+    return replace(ctx, materials=kernel_materials(
+        ctx.materials, keep_eps=ctx.use_kerr,
+        electric=not (ctx.use_debye or ctx.use_lorentz or ctx.use_upml or ctx.use_fast_he),
+        magnetic=not (ctx.use_upml or ctx.use_fast_he),
+        epsilon=ctx.aniso_eps is None and ctx.aniso_inv_eps is None))
+
+
+def h_components(materials, grid, *, periodic):
+    """H-only compatibility entry for raw CPML callers; no E/pole allocation."""
+    if materials.components is not None:
+        return materials.components.mu_update
+    widths = (grid.dx_arr, grid.dy_arr, grid.dz) if hasattr(grid, "dx_arr") else None
+    return component_h_materials(materials, periodic, cell_sizes=widths)
+
+
+def validate_dispersion(realized, poles, dt):
+    """Cached ADE coefficients belong to the realization's poles and timestep."""
+    if realized.coefficients is None:
+        return
+    def same(a, b):
+        return a is b or (not is_tracer(a) and not is_tracer(b)
+                          and jnp.ndim(a) == jnp.ndim(b) == 0 and bool(a == b))
+    if not same(realized.dt, dt):
+        raise ValueError("realized ADE coefficients have a different timestep")
+    if not all(same(a, b) for p, q in zip(realized.poles, poles)
+               for a, b in zip(p, q)):
+        raise ValueError("realized ADE coefficients have different pole parameters")

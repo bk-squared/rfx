@@ -1,6 +1,6 @@
 """Down-only call-site budget for material averaging outside its owner.
 
-Counts direct calls, imported aliases and attribute calls of the five helpers.
+Counts direct calls, imported aliases and attribute calls of the seven helpers.
 Arbitrary runtime rebinding / computed getattr is outside this syntactic gate.
 Both directions are checked: removing a call must lower its budget immediately.
 """
@@ -10,17 +10,19 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 HELPERS = frozenset({"component_e_materials", "component_h_materials",
                      "cell_component_e_materials", "edge_averaged_materials",
-                     "edge_mean_components"})
+                     "edge_mean_components", "cell_owned_component_materials",
+                     "permittivity_without_lumped"})
 EXCLUDED = {"rfx/core/yee.py", "rfx/model/materials.py"}
 
-# May only shrink. The base (5a7e4f28) has 46 sites in 26 modules, including
-# two import aliases in nonuniform.py that a name-only grep misses.
+# May only shrink. With seven helpers the base (5a7e4f28) has 52 sites in
+# 27 modules (the original five: 46 in 26), including two nonuniform.py aliases.
 ALLOWED_CALLS = {'rfx/adi.py': 3,
  'rfx/current_moments.py': 2,
  'rfx/lumped.py': 1,
  'rfx/nonuniform.py': 1,
- 'rfx/runners/_distributed_common.py': 6,
+ 'rfx/runners/_distributed_common.py': 7,
  'rfx/runners/distributed_nu.py': 2,
+ 'rfx/runners/nonuniform.py': 1,
  'rfx/simulation.py': 3,
  'rfx/sources/coaxial_port.py': 1,
  'rfx/sources/msl_port.py': 1,
@@ -29,7 +31,7 @@ ALLOWED_CALLS = {'rfx/adi.py': 3,
  'rfx/sources/tfsf_oblique_open.py': 1,
  'rfx/sources/waveguide_port.py': 1,
  'rfx/sources/wire_radius.py': 1,
- 'rfx/sparams/waveguide.py': 1,
+ 'rfx/sparams/waveguide.py': 2,
  'rfx/subgridding/disjoint_3d.py': 1,
  'rfx/subgridding/jit_runner.py': 2,
  'rfx/subgridding/sbp_sat_1d.py': 1,

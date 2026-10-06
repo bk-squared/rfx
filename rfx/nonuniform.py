@@ -2499,7 +2499,7 @@ def _build_nu_scan(
     table length when sources are present.
     """
     cpml_axes = resolve_cpml_axes(grid, cpml_axes)
-    from rfx.model.materials import with_components
+    from rfx.model.materials import kernel_materials, with_components
     materials = with_components(materials, grid, periodic=(False, False, False))
     from rfx.sources.wire_radius import require_radius_update
     require_radius_update(
@@ -2808,11 +2808,11 @@ def _build_nu_scan(
     # CPML profiles and spacing vectors stay in the closure: they are not
     # grid-sized.
     invariants = {
-        "materials": materials,
+        "materials": kernel_materials(materials, electric=not (use_debye or use_lorentz), epsilon=aniso_eps is None),
         "pec_edge_masks": pec_edge_masks,
         "pec_occupancy": pec_occupancy,
         "pec_static_edge_masks": pec_static_edge_masks,
-        "cpml_inv_eps_r": _cpml_inv_eps_r,
+        "cpml_inv_eps_r": _cpml_inv_eps_r if use_cpml else None,
         "debye_coeffs": debye_coeffs if use_debye else None,
         "lorentz_coeffs": lorentz_coeffs if use_lorentz else None,
         "aniso_eps": aniso_eps,

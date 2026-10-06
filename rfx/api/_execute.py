@@ -1714,7 +1714,7 @@ class _ExecuteMixin:
             "compute_lumped_wire_s_matrix_via_scan()")
 
         from rfx.simulation import (
-            run as _run,
+            run as _run, resolve_periodic,
             make_probe,
             make_port_source,
             make_wire_port_sources,
@@ -1760,7 +1760,7 @@ class _ExecuteMixin:
         # the port setup below reads those masks, so the flag resolution
         # moves ahead of it.  The Floquet SOURCE injection stays where it
         # was, so the source list order is unchanged.
-        periodic_bool = self._periodic_flags()
+        periodic_bool = resolve_periodic(grid, self._periodic_flags())
 
         # Forward cpml_axes from the grid — when waveguide ports are
         # present the grid restricts CPML to the non-propagation axes.

@@ -577,8 +577,8 @@ def _build_vmap_scan_fn(
         n2)`` complex accumulators, one per registered DFT plane (empty
         tuple if none).
         """
-        from rfx.model.materials import with_components
-        materials = with_components(materials, grid, periodic=periodic)
+        from rfx.model.materials import kernel_materials, with_components
+        materials = kernel_materials(with_components(materials, grid, periodic=periodic))
         fdtd = init_state(grid.shape)
         drives = drive_layout(src_meta + list(j_src_meta), fdtd.ex.dtype)
 

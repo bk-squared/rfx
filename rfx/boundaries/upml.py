@@ -202,6 +202,7 @@ def init_upml(
     *,
     axes: str = "xyz",
     aniso_eps=None,
+    periodic=None,
 ) -> UPMLCoeffs:
     """Build static UPML coefficients for uniform-grid Yee updates.
 
@@ -228,8 +229,11 @@ def init_upml(
     from rfx.model.materials import with_components
     from rfx.sources.wire_radius import require_radius_update
     require_radius_update(materials, lane="UPML", unsupported=True)
+    from rfx.simulation import resolve_periodic
+    if periodic is None:
+        periodic = tuple(a in getattr(grid, "periodic_axes", "") for a in "xyz")
     components = with_components(materials, grid,
-        periodic=tuple(a in getattr(grid, "periodic_axes", "") for a in "xyz")).components
+        periodic=resolve_periodic(grid, periodic)).components
     mu_abs = tuple(m * jnp.float32(MU_0) for m in components.mu_update)
     # #1236: a lumped element (a port's load, an RLC R or C) loads its own E
     # edge only. This lane's E coefficients stay CELL-owned for the volume --

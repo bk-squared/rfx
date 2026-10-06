@@ -247,16 +247,16 @@ def init_lorentz(
     shape = materials.eps_r.shape
     n_poles = len(poles)
 
-    from rfx.model.materials import with_components
+    from rfx.model.materials import validate_dispersion, with_components
     components = with_components(materials, None, periodic=periodic,
         lorentz_spec=(poles, mask)).components
     eps_c, sig_c = components.eps_update, components.sigma_update
-    weights = [p.weights for p in components.lorentz]
-    if len(weights) != n_poles:
+    realized = components.lorentz
+    if realized is None or len(realized.poles) != n_poles:
         raise ValueError("realized lorentz poles do not match the requested poles")
-
-    a, b, c = lorentz_pole_coeffs(
-        poles, dt, shape, weights)
+    validate_dispersion(realized, poles, dt)
+    a, b, c = (realized.coefficients if realized.coefficients is not None else
+                  lorentz_pole_coeffs(poles, dt, shape, realized.weights))
     coeffs = lorentz_e_coeffs((eps_c, sig_c), dt, a, b, c)
 
     zeros = jnp.zeros((n_poles,) + shape, dtype=ade_state_dtype(field_dtype))

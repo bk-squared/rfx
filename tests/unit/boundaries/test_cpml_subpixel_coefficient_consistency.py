@@ -354,6 +354,16 @@ def test_the_coefficient_is_threaded_exactly_when_the_e_update_is_anisotropic(
     seen = []
     edge_mean_matches = []
     orig = _cpml.apply_cpml_e
+    from rfx.model import materials as material_model
+    from rfx.core.yee import component_e_materials
+    realize = material_model.realize_components
+    expected_eps = []
+    def observe_cells(cells, grid, *, periodic):
+        # The scan now carries only consumed operands, not assembly cells.
+        raw = cells.materials if isinstance(cells, material_model.ComponentCells) else cells
+        expected_eps.append(component_e_materials(raw, periodic)[0])
+        return realize(cells, grid, periodic=periodic)
+    monkeypatch.setattr(material_model, "realize_components", observe_cells)
 
     def spy(*a, **kw):
         inv = kw.get("inv_eps_r_update")
@@ -362,8 +372,7 @@ def test_the_coefficient_is_threaded_exactly_when_the_e_update_is_anisotropic(
             # inside the scan these are tracers: compare in JAX, report at run time
             import jax
             import jax.numpy as jnp
-            from rfx.core.yee import component_e_materials
-            eps_c, _ = component_e_materials(kw["materials"])
+            eps_c = expected_eps[-1]
             ok = jnp.all(jnp.stack([jnp.all(i == 1.0 / e)
                                     for i, e in zip(inv, eps_c)]))
             jax.debug.callback(lambda v: edge_mean_matches.append(bool(v)), ok)

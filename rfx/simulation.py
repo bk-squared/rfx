@@ -1576,7 +1576,7 @@ def _build_step_setup(
         from rfx.boundaries.upml import init_upml
         from rfx.boundaries.upml import apply_upml_e, apply_upml_h
         upml_coeffs = init_upml(grid, materials, axes=cpml_axes,
-                                aniso_eps=aniso_eps)
+                                aniso_eps=aniso_eps, periodic=periodic)
 
     if use_debye:
         debye_coeffs, debye_state = debye
@@ -2090,14 +2090,12 @@ def core_step_invariants(ctx: _StepContext) -> dict:
     # amplify (see that function's ``inv_eps_r_update`` docstring for the
     # derivation and the measured spectral radius). ``None`` on every path
     # that has no anisotropic array, which keeps those byte-identical.
-    # The guard mirrors ``_update_e_with_optional_dispersion``'s own
-    # ``debye is None and lorentz is None``: with a dispersion model active the
-    # E update never consults the anisotropic arrays, so neither may this.
+    # With dispersion active the E update ignores anisotropic arrays,
+    # so the CPML coefficient must also ignore them.
     #
     # Plain and dispersive updates share the realized E-edge permittivity.
     # #1260 made the DISPERSIVE update per-component as well: its ε_∞ is the
-    # same ``component_e_materials`` mean, so a dispersive run threads the same
-    # array. (It used to fall back to the cell's ``materials.eps_r``.)
+    # same ``component_e_materials`` mean, also threaded for dispersive runs.
     _aniso_is_live = not (ctx.use_debye or ctx.use_lorentz)
     if _aniso_is_live and aniso_inv_eps is not None:
         cpml_inv_eps_r = aniso_inv_eps
@@ -2116,7 +2114,9 @@ def core_step_invariants(ctx: _StepContext) -> dict:
         )
         _sheet_coeffs = _sheet_update_coeffs(
             ctx.sheet_impedance.sigma_sheet, materials, ctx.dt)
-    return {"ctx": ctx, "cpml_inv_eps_r": cpml_inv_eps_r,
+    from rfx.model.materials import kernel_context
+    ctx = kernel_context(ctx)
+    return {"ctx": ctx, "cpml_inv_eps_r": cpml_inv_eps_r if ctx.use_cpml else None,
             "sheet_coeffs": _sheet_coeffs}
 
 

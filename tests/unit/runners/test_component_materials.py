@@ -32,7 +32,7 @@ def test_realized_volume_stamps_poles_and_metric(periodic, graded):
                               mu_r_wire=(None, None, stamp))
     grid = SimpleNamespace(dx_arr=jnp.array([.9, 1.1, .8]),
                            dy_arr=jnp.array([.7, 1.3]),
-                           dz=jnp.array([1., 1.1, .9, 1.2])) if graded else None
+                           dz=jnp.array([1., 1.1, .9, 1.2]), shape=shape, dt=1e-12) if graded else None
     d = DebyePole(1.2, 2e-11)
     lorentz_pole = LorentzPole(2e10, 1e9, 3e20)
     specs = model.ComponentCells(cells, ([d], [a > 20]), ([lorentz_pole], [a < 30]))
@@ -45,8 +45,17 @@ def test_realized_volume_stamps_poles_and_metric(periodic, graded):
     assert_tree_equal(result.eps, yee.edge_mean_components(cells.eps_r - stamp, periodic))
     assert_tree_equal(result.sigma, yee.edge_mean_components(cells.sigma - 2 * stamp, periodic))
     assert_tree_equal((result.upml_eps, result.upml_sigma), yee.cell_owned_component_materials(cells))
-    assert_tree_equal(result.debye[0].weights, yee.edge_mean_components((a > 20).astype(jnp.float32), periodic))
-    assert_tree_equal(result.lorentz[0].weights, yee.edge_mean_components((a < 30).astype(jnp.float32), periodic))
+    dw = (yee.edge_mean_components((a > 20).astype(jnp.float32), periodic),)
+    lw = (yee.edge_mean_components((a < 30).astype(jnp.float32), periodic),)
+    if graded:
+        from rfx.materials.debye import debye_pole_coeffs
+        from rfx.materials.lorentz import lorentz_pole_coeffs
+        assert result.debye.weights is result.lorentz.weights is None
+        assert_tree_equal(result.debye.coefficients, debye_pole_coeffs([d], grid.dt, shape, dw))
+        assert_tree_equal(result.lorentz.coefficients, lorentz_pole_coeffs([lorentz_pole], grid.dt, shape, lw))
+    else:
+        assert_tree_equal(result.debye.weights, dw)
+        assert_tree_equal(result.lorentz.weights, lw)
     assert result.cells_view.components is None
     with pytest.raises(FrozenInstanceError):
         result.eps = ()
@@ -101,7 +110,7 @@ def test_one_realization_for_a_main_path_with_both_poles(monkeypatch, graded, en
                                 **({"compute_s_params": False} if entry == "run" else {}))
     jax.block_until_ready(result.time_series)
     assert len(count) == 1
-    assert len(count[0].debye) == len(count[0].lorentz) == 1
+    assert len(count[0].debye.poles) == len(count[0].lorentz.poles) == 1
     jax.clear_caches()
 
 
@@ -153,4 +162,112 @@ def test_graded_forward_design_gradient_matches_finite_difference():
         relative = abs(gradient - finite_difference) / abs(gradient)
         print(f"delta={delta} AD={gradient:.12g} FD={finite_difference:.12g} relative={relative:.12g}")
         assert relative < 1e-3
+    jax.clear_caches()
+
+
+@pytest.mark.parametrize("quantity", ["eps_r", "sigma", "mu_r"])
+@pytest.mark.parametrize("entry", ["step", "debye", "lorentz"])
+def test_stale_realization_is_rejected(quantity, entry):
+    from dataclasses import MISSING, fields
+    from rfx.simulation import _StepContext, core_step_invariants
+    cells = yee.init_materials((4, 3, 5))
+    materials = model.with_components(cells, None, periodic=(False,) * 3,
+        debye_spec=([DebyePole(1.2, 2e-11)], None),
+        lorentz_spec=([LorentzPole(2e10, 1e9, 3e20)], None))
+    materials = materials._replace(**{quantity: getattr(materials, quantity) * 2})
+    with pytest.raises(ValueError, match="stale realized material"):
+        if entry == "step":
+            kwargs = {f.name: False for f in fields(_StepContext)
+                      if f.default is MISSING and f.default_factory is MISSING}
+            kwargs.update(grid=None, materials=materials, dt=1e-12, dx=.001,
+                          periodic=(False,) * 3, pec_axes="", stencil_order=2)
+            core_step_invariants(_StepContext(**kwargs))
+        elif entry == "debye":
+            init_debye([DebyePole(1.2, 2e-11)], materials, 1e-12)
+        else:
+            init_lorentz([LorentzPole(2e10, 1e9, 3e20)], materials, 1e-12)
+
+
+def test_realization_reuse_checks_periodic_and_grid():
+    cells = yee.init_materials((4, 3, 5))
+    grid = SimpleNamespace(shape=cells.eps_r.shape)
+    materials = model.with_components(cells, grid, periodic=(False,) * 3)
+    assert model.with_components(materials, grid, periodic=(False,) * 3) is materials
+    with pytest.raises(ValueError, match="periodic"):
+        model.with_components(materials, grid, periodic=(True, False, False))
+    with pytest.raises(ValueError, match="grid"):
+        model.with_components(materials, SimpleNamespace(shape=(5, 3, 5)), periodic=(False,) * 3)
+
+
+def test_step_materials_have_no_cell_or_pole_arrays():
+    cells = yee.init_materials((4, 3, 5))
+    materials = model.with_components(cells, None, periodic=(False,) * 3)
+    slim = model.kernel_materials(materials)
+    assert slim.eps_r.shape == ()  # dtype token for CPML, not the cell epsilon
+    assert slim.sigma is slim.mu_r is None
+    assert slim.components._fields == ("eps_update", "sigma_update", "mu_update")
+    assert slim.components.eps_update is materials.components.eps_update
+    assert slim.components.mu_update is materials.components.mu_update
+
+
+def test_raw_cpml_h_does_not_realize_electric_materials(monkeypatch):
+    from rfx.boundaries.cpml import apply_cpml_h, init_cpml
+    sim = Simulation(freq_max=8e9, domain=(.006, .005, .007), dx=.001,
+                     boundary="cpml", cpml_layers=2)
+    grid = sim._build_grid()
+    materials = sim._assemble_materials(grid)[0]
+    params, state = init_cpml(grid)
+    def forbidden(*args, **kwargs):
+        raise AssertionError("CPML H must not realize E or poles")
+    monkeypatch.setattr(model, "realize_components", forbidden)
+    monkeypatch.setattr(model, "edge_averaged_materials", forbidden)
+    result = apply_cpml_h(yee.init_state(grid.shape), params, state, grid,
+                         "xyz", materials=materials)
+    jax.block_until_ready(result)
+    jax.clear_caches()
+
+
+@pytest.mark.parametrize("mode", ["2d_tmz", "2d_tez"])
+def test_two_dimensional_forward_resolves_realization_periodic_flags(mode):
+    sim = Simulation(freq_max=8e9, domain=(.006, .005, .001), dx=.001,
+                     boundary="cpml", cpml_layers=2, mode=mode)
+    component = "ez" if mode == "2d_tmz" else "ex"
+    sim.add_material("block", eps_r=3., debye_poles=[DebyePole(1.2, 2e-11)])
+    sim.add(Box((.002, .001, 0), (.004, .004, .001)), material="block")
+    sim.add_source((.003, .002, 0), component, waveform=lambda t: jnp.ones_like(t),
+                   amplitude_kind="field")
+    sim.add_probe((.003, .003, 0), component)
+    run = sim.run(n_steps=3, skip_preflight=True, compute_s_params=False)
+    forward = sim.forward(n_steps=3, skip_preflight=True)
+    np.testing.assert_array_equal(run.time_series, forward.time_series)
+    jax.clear_caches()
+
+
+def test_upml_reuses_explicit_kernel_periodic_flags():
+    from rfx.boundaries.upml import init_upml
+    sim = Simulation(freq_max=8e9, domain=(.006, .005, .007), dx=.001,
+                     boundary="upml", cpml_layers=2)
+    grid = sim._build_grid()
+    periodic = (True, False, False)
+    materials = model.with_components(sim._assemble_materials(grid)[0], grid,
+                                     periodic=periodic)
+    coeffs = init_upml(grid, materials, periodic=periodic)
+    jax.block_until_ready(coeffs)
+    jax.clear_caches()
+
+
+@pytest.mark.parametrize("family", ["debye", "lorentz"])
+@pytest.mark.parametrize("mismatch", ["dt", "pole"])
+def test_cached_pole_coefficients_reject_stale_parameters(family, mismatch):
+    cells = yee.init_materials((4, 3, 5))
+    grid = SimpleNamespace(shape=cells.eps_r.shape, dt=1e-12)
+    pole = DebyePole(1.2, 2e-11) if family == "debye" else LorentzPole(2e10, 1e9, 3e20)
+    materials = model.with_components(cells, grid, periodic=(False,) * 3,
+                                     **{family + "_spec": ([pole], None)})
+    init = init_debye if family == "debye" else init_lorentz
+    init([type(pole)(*pole)], materials, grid.dt)  # equal scalar parameters are reusable
+    if mismatch == "pole":
+        pole = pole._replace(**{pole._fields[0]: pole[0] * 2})
+    with pytest.raises(ValueError, match="realized ADE coefficients"):
+        init([pole], materials, grid.dt * (2 if mismatch == "dt" else 1))
     jax.clear_caches()
