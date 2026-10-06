@@ -26,7 +26,7 @@ they do not run at import time.
 
 from __future__ import annotations
 
-from rfx.preflight.line_stub import line_stub_guard as _line_stub_guard
+from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
 
 import jax
 import jax.numpy as jnp
@@ -120,7 +120,6 @@ def _require_absorption_on_every_axis(sim, cpml_axes: str | None, lane: str) -> 
             "and grew with the record (issue 1218)."
         )
 
-@_line_stub_guard("freqs")
 def compute_coaxial_line_reflection(
     self,
     *,
@@ -208,6 +207,7 @@ def compute_coaxial_line_reflection(
     path. The AD↔FD gate is ``tests/unit/autodiff/test_coax_end_to_end_ad.py``.
     """
 
+    _line_stub_scope = _line_stub_admit(self, freqs)
     if self._boundary != "cpml" or self._cpml_layers <= 0:
         raise ValueError(
             "compute_coaxial_line_reflection() requires boundary='cpml' "
@@ -540,7 +540,6 @@ def compute_coaxial_line_reflection(
         status=status,
     )
 
-@_line_stub_guard("freqs")
 def compute_coaxial_two_port(
     self,
     *,
@@ -680,6 +679,7 @@ def compute_coaxial_two_port(
     this sim still raise, because this method builds its own probes.
     """
 
+    _line_stub_scope = _line_stub_admit(self, freqs)
     if self._boundary != "cpml" or self._cpml_layers <= 0:
         raise ValueError(
             "compute_coaxial_two_port() requires boundary='cpml' "
@@ -1123,7 +1123,6 @@ COAX_MSL_TRANSITION_REFUSAL_HINT = (
 )
 
 
-@_line_stub_guard("freqs")
 def compute_coax_msl_transition(
     self,
     *,
@@ -1377,6 +1376,7 @@ def compute_coax_msl_transition(
     -------
     CoaxMSLTransitionResult
     """
+    _line_stub_scope = _line_stub_admit(self, freqs)
     from rfx.sources.coaxial_port import (
         CoaxialPort as _CoaxPort,
         build_coaxial_tem_plane_source_specs,

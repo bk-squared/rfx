@@ -13,7 +13,7 @@ LEAF mixin module — it must NEVER do ``from rfx.api import ...`` or
 """
 from __future__ import annotations
 
-from rfx.preflight.line_stub import line_stub_guard as _line_stub_guard
+from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
 
 import functools
 import math
@@ -1594,7 +1594,6 @@ class _ExecuteMixin:
         )
 
     @_declaration_setup_at_trace_time
-    @_line_stub_guard("port_s11_freqs")
     def _forward_from_materials(
         self,
         grid: Grid,
@@ -1660,6 +1659,7 @@ class _ExecuteMixin:
         refused before the first step; an explicit ``False`` asks for
         staircase PEC and passes (#1299).
         """
+        _line_stub_scope = _line_stub_admit(self, port_s11_freqs)
         _conformal = (bool(self._boundary_spec.conformal_faces())
                       if conformal_pec is None else bool(conformal_pec))
         if _conformal and self._has_pec_to_conform():
@@ -3822,7 +3822,6 @@ class _ExecuteMixin:
         )
 
     @_declaration_setup_at_trace_time
-    @_line_stub_guard("port_s11_freqs")
     def forward(
         self,
         *,
@@ -4231,6 +4230,7 @@ class _ExecuteMixin:
         so the jitted value and gradient agree with a plain call to float32
         rounding, not necessarily bit for bit.
         """
+        _line_stub_scope = _line_stub_admit(self, port_s11_freqs)
         if gradient not in ("autodiff", "adjoint"):
             raise ValueError("gradient must be 'autodiff' or 'adjoint'")
         if gradient == "adjoint":
@@ -4639,7 +4639,6 @@ class _ExecuteMixin:
 
     # ---- run ----
 
-    @_line_stub_guard("s_param_freqs")
     def run(
         self,
         *,
@@ -4855,6 +4854,7 @@ class _ExecuteMixin:
         # a devices= model that runs on one device is re-run with all of them.
         _call_args = dict(locals())
         del _call_args["self"]
+        _line_stub_scope = _line_stub_admit(self, s_param_freqs)
         _refuse_transformed_extended_tfsf(self._tfsf)
         validate_exchange_interval(exchange_interval)
         fixed_num_periods = n_steps is None

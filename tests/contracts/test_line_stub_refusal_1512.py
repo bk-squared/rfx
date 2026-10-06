@@ -53,6 +53,10 @@ def test_every_entry_refuses_before_assembly(method, frequency_argument, skip):
     kwargs = {frequency_argument: [12e9, 13e9]}
     if method in ('run', 'forward'):
         kwargs['skip_preflight'] = skip
+    if method == '_forward_from_materials':
+        kwargs.update(grid=None, materials=None, debye_spec=None, lorentz_spec=None, n_steps=1)
+    if method == 'compute_coax_msl_transition':
+        kwargs['junction_x'] = .01
     # Missing calculator/material prerequisites must not hide admission.
     with pytest.raises(ValueError, match='start the signal strip at that coordinate'):
         getattr(sim, method)(**kwargs)
@@ -81,13 +85,15 @@ def test_fallback_and_nested_calculator_scope():
     fq = 299792458 / (4*.006)
     assert stub.read_band(sim) == (0., 100e9)
 
-    @stub.line_stub_guard('freqs')
     def inner(self):
+        _line_stub_scope = stub.line_stub_admission(self)
         assert stub.read_band(self) == (fq*.1, fq*.2)
+        assert stub.read_band(self, [90e9]) == (fq*.1, fq*.2)
+        assert stub.read_band(line()) == (0., 100e9)
         raise RuntimeError('body reached')
 
-    @stub.line_stub_guard('freqs')
     def outer(self, *, freqs):
+        _line_stub_scope = stub.line_stub_admission(self, freqs)
         inner(self)
 
     with pytest.raises(RuntimeError, match='body reached'):
@@ -106,8 +112,9 @@ def test_coax_declared_pin_tail_is_guarded(method):
                      freq_max=20e9, boundary='cpml', cpml_layers=2)
     sim.add(Box((.0055, .0055, .002), (.0065, .0065, .0082)), material='pec')
     sim.add_coaxial_port((.006, .006, .008), face='bottom', pin_length=.004)
+    kwargs = {'junction_x': .006} if method == 'compute_coax_msl_transition' else {}
     with pytest.raises(ValueError, match='6 mm behind the port'):
-        getattr(sim, method)(freqs=[12e9, 13e9])
+        getattr(sim, method)(freqs=[12e9, 13e9], **kwargs)
 
 
 def test_public_preflight_reports_far_stub():
@@ -170,4 +177,4 @@ def test_actual_calculator_band_governs_inner_run_and_forward(differentiable):
     assert all("Read band 1..2 GHz" in text for text in messages)
     assert all("outside the refusal interval" in text for text in messages)
     assert np.asarray(result.S).shape == (1, 1, 2)
-    assert stub._READ_BAND.get() is None
+    assert stub.read_band(sim) == (0., sim._freq_max)

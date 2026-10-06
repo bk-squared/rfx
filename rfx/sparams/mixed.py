@@ -31,7 +31,7 @@ body, exactly as they were, and so do not run at import time.
 
 from __future__ import annotations
 
-from rfx.preflight.line_stub import line_stub_guard as _line_stub_guard
+from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
 
 import jax
 import jax.numpy as jnp
@@ -59,7 +59,6 @@ from rfx.sparams._common import (
     _collocated_msl_h,
 )
 
-@_line_stub_guard("freqs")
 def compute_mixed_s_matrix(
     self,
     *,
@@ -189,6 +188,7 @@ def compute_mixed_s_matrix(
     -------
     MixedSMatrixResult
     """
+    _line_stub_scope = _line_stub_admit(self, freqs)
     import dataclasses as _dc
 
     from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff

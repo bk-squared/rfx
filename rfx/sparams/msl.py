@@ -18,7 +18,7 @@ step; the move itself is gated on bit identity of the extracted S arrays
 
 from __future__ import annotations
 
-from rfx.preflight.line_stub import line_stub_guard as _line_stub_guard
+from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
 
 import jax
 import jax.numpy as jnp
@@ -51,7 +51,6 @@ from rfx.sparams._common import (
     _msl_power_wave_scales,
 )
 
-@_line_stub_guard("freqs")
 def compute_msl_s_matrix(
     self,
     *,
@@ -245,6 +244,7 @@ def compute_msl_s_matrix(
     -------
     MSLSMatrixResult
     """
+    _line_stub_scope = _line_stub_admit(self, freqs)
     from rfx.probes.msl_wave_decomp import extract_msl_nprobe
     from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff
     from rfx.sources.msl_port import (

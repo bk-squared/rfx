@@ -10,12 +10,25 @@ def main():
      'drop_refusal': ('                raise ValueError(stub_message(finding, band))', '                return'),
      'device_side': ('length = max(0.0, (plane - end) * sign)', 'length = max(0.0, ((hi if sign > 0 else lo) - plane) * sign)'),
      'declared_length': ('length = max(0.0, (plane - end) * sign)', 'length = declared_length'),
-     'inner_default_band': ('return current[1]', 'return (0.0, float(sim._freq_max))'),
+     'inner_default_band': ('return current\n', 'return (0.0, float(sim._freq_max))\n'),
      'substrate_eps': ('port.width, port.height, eps)[1]', 'port.width, port.height, eps)[1]; eps = substrate_eps'),
      'vacuum_eps': ('port.width, port.height, eps)[1]', 'port.width, port.height, eps)[1]; eps = 1.0'),
      'declared_first': ('result = None', 'result = None\n    if explicit is not None:\n        return float(explicit)'),
      'fundamental_only': ('return (2 * first - 1, 2 * last - 1) if first <= last else None', 'return (1, 1) if lo <= 1 <= hi else None'),
     }
+    if sys.argv[1] == 'warning_wrapper':
+        from functools import wraps
+        from rfx import Simulation
+        def wrap(function):
+            @wraps(function)
+            def guarded(self, *args, **kwargs):
+                return function(self, *args, **kwargs)
+            return guarded
+        for name in ('run', 'forward', '_forward_from_materials', 'compute_msl_s_matrix',
+                     'compute_mixed_s_matrix', 'compute_coaxial_line_reflection',
+                     'compute_coaxial_two_port', 'compute_coax_msl_transition'):
+            setattr(Simulation, name, wrap(getattr(Simulation, name)))
+        sys.exit(pytest.main(['-q', 'tests/contracts/test_line_stub_warning_attribution.py', '-o', 'addopts=']))
     if sys.argv[1] == 'port_plane':
         import importlib
         for name, y, z in (

@@ -1,10 +1,9 @@
 """Band-scoped admission for open signal tails behind line ports (#1512)."""
 from __future__ import annotations
 
-from contextvars import ContextVar
 from dataclasses import dataclass
-from functools import wraps
 import math
+import sys
 
 import numpy as np
 
@@ -222,20 +221,41 @@ def line_stub_findings(sim, grid=None) -> list[LineStubFinding]:
     return findings
 
 
-# The calculator's requested band must survive its internal run()/forward()
-# calls, which record probe planes without passing S-frequency arguments.
-_READ_BAND = ContextVar("line_stub_read_band", default=None)
+@dataclass(frozen=True)
+class _ReadScope:
+    simulation: object
+    band: tuple[float, float]
+
+
+def _active_band(sim):
+    """Outermost live entry owns the band, without a wrapper or retained frame.
+
+    Each synchronous entry holds its admission result in `_line_stub_scope`.
+    Reading only live ancestor frames makes normal/exceptional return end the
+    scope automatically, and keeps unrelated simulations and threads isolated.
+    Preflight's read-only shallow copy shares the geometry/port containers.
+    """
+    frame = sys._getframe(1)
+    band = None
+    try:
+        while frame is not None:
+            scope = frame.f_locals.get('_line_stub_scope')
+            if isinstance(scope, _ReadScope) and (scope.simulation is sim or all(
+                    hasattr(sim, name) and getattr(scope.simulation, name, None) is getattr(sim, name)
+                    for name in ('_geometry', '_msl_ports', '_coaxial_ports'))):
+                band = scope.band
+            frame = frame.f_back
+        return band
+    finally:
+        del frame
 
 
 def read_band(sim, freqs=None):
     """The read interval, not the Gaussian pulse's centre/bandwidth."""
+    current = _active_band(sim)
+    if current is not None:
+        return current
     if freqs is None:
-        current = _READ_BAND.get()
-        if current is not None and (current[0] is sim or all(
-                hasattr(sim, name) and getattr(current[0], name, None) is getattr(sim, name)
-                for name in ("_geometry", "_msl_ports", "_coaxial_ports"))):
-            # Execution preflight uses a shallow, read-only copy of this geometry.
-            return current[1]
         # MSL and coax entries have no frequency-set field. Their calculators
         # own the requested frequencies; run/forward receive theirs explicitly.
         return 0.0, float(sim._freq_max)
@@ -303,24 +323,14 @@ def require_no_resonant_line_stub(sim, freqs=None):
                 raise ValueError(stub_message(finding, band))
 
 
-def line_stub_guard(frequency_argument):
-    """One-line entry-point wrapper; preserves the signature and restores scope."""
-    def decorate(function):
-        @wraps(function)
-        def guarded(self, *args, **kwargs):
-            if not (self._msl_ports or self._coaxial_ports):
-                return function(self, *args, **kwargs)
-            band = read_band(self, kwargs.get(frequency_argument))
-            current = _READ_BAND.get()
-            if current is None or current[0] is not self or current[1] != band:
-                require_no_resonant_line_stub(self, band)
-            token = _READ_BAND.set((self, band))
-            try:
-                return function(self, *args, **kwargs)
-            finally:
-                _READ_BAND.reset(token)
-        return guarded
-    return decorate
+def line_stub_admission(sim, freqs=None):
+    """Store the returned scope in the entry body; never wrap a warning emitter."""
+    if not (sim._msl_ports or sim._coaxial_ports):
+        return None
+    band = read_band(sim, freqs)
+    if _active_band(sim) is None:
+        require_no_resonant_line_stub(sim, band)
+    return _ReadScope(sim, band)
 
 
 def preflight_line_stubs(sim, warn):
