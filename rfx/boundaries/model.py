@@ -8,16 +8,13 @@ point's fields with it.
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from enum import Enum
 from inspect import signature
 
 import jax
 
 from rfx.boundaries import cpml, upml
 from rfx.boundaries.spec import normalize_boundary
-
-
-FACES = tuple(f"{axis}_{side}" for axis in "xyz" for side in ("lo", "hi"))
+from rfx.boundaries.depths import FACES, Kind, resolve_face_depths
 
 
 class _DefaultBoundary(str):
@@ -25,13 +22,6 @@ class _DefaultBoundary(str):
 
 
 DEFAULT_BOUNDARY = _DefaultBoundary("cpml")
-
-
-class Kind(str, Enum):
-    PEC = "PEC"
-    PMC = "PMC"
-    ABSORBER = "ABSORBER"
-    PERIODIC = "PERIODIC"
 
 
 @dataclass(frozen=True)
@@ -141,6 +131,8 @@ def resolve_kinds(spec, *, mode: str, features: Features) -> BoundaryModel:
     if features.origin not in ("declared", "default", "feature"):
         raise ValueError(f"unknown origin {features.origin!r}")
     boundary = normalize_boundary(spec)
+    depths = {record.name: record for record in resolve_face_depths(
+        boundary, budget=features.layers, mode=mode, validate=False)}
     faces, axes, departures = [], [], []
     for axis in "xyz":
         invariant = axis == "z" and mode in ("2d_tmz", "2d_tez")
@@ -151,18 +143,18 @@ def resolve_kinds(spec, *, mode: str, features: Features) -> BoundaryModel:
                          paired and axis in features.bloch_axes))
         for side in ("lo", "hi"):
             name = f"{axis}_{side}"
-            token = getattr(declaration, side)
-            kind = Kind.ABSORBER if token in ("cpml", "upml") else Kind(token.upper())
+            kind = depths[name].kind
             origin = dict(features.face_origins).get(name, features.origin)
             if invariant:
                 equivalent = Kind.PEC if mode == "2d_tmz" else Kind.PMC
-                if features.explicit_faces and kind != equivalent:
-                    departures.append(f"{name}: declared {kind.value}; {mode} equivalent {equivalent.value}; fixed in B5")
+                token = getattr(declaration, side)
+                declared_kind = Kind.ABSORBER if token in ("cpml", "upml") else Kind(token.upper())
+                if features.explicit_faces and declared_kind != equivalent:
+                    departures.append(f"{name}: declared {declared_kind.value}; {mode} equivalent {equivalent.value}; fixed in B5")
                 kind = equivalent
                 if not features.explicit_faces:
                     origin = "feature"
-            thickness = getattr(declaration, f"{side}_thickness")
-            layers = (features.layers if thickness is None else thickness) if kind == Kind.ABSORBER else 0
+            layers = depths[name].realized
             faces.append(Face(name, kind, origin, layers, declaration.conformal))
     absorber = boundary.absorber_type if any(f.kind == Kind.ABSORBER for f in faces) else None
     metadata = replace(features, layers=features.layers if absorber else 0, face_origins=(),

@@ -11,6 +11,7 @@ LEAF mixin module — it must NEVER do ``from rfx.api import ...`` or
 from __future__ import annotations
 
 from rfx._grid_metric import nearest_uniform_index
+from rfx.boundaries.depths import resolve_face_depths
 
 import math  # noqa: F401  (used by moved method bodies)
 from dataclasses import replace
@@ -155,14 +156,9 @@ class _CompileMixin:
         ``lo_thickness`` / ``hi_thickness`` default to the scalar
         ``cpml_layers`` (the symmetric common case — no padding).
         """
-        n_default = self._cpml_layers
-        out = {}
-        for axis_name, boundary in (("x", self._boundary_spec.x),
-                                    ("y", self._boundary_spec.y),
-                                    ("z", self._boundary_spec.z)):
-            out[f"{axis_name}_lo"] = boundary.resolved_lo_thickness(n_default)
-            out[f"{axis_name}_hi"] = boundary.resolved_hi_thickness(n_default)
-        return out
+        return {record.name: record.declared for record in resolve_face_depths(
+            self._boundary_spec, budget=self._cpml_layers, mode=self._mode,
+        )}
 
     # Threshold above which sigma is treated as PEC (use mask instead).
     _PEC_SIGMA_THRESHOLD = 1e6
