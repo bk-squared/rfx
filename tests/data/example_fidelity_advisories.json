@@ -500,9 +500,9 @@
   {
    "code": "msl_port_geometry",
    "disposition": "intended",
-   "reason": "#1138: edge-aware x/y profiles grade the propagation axis; this tutorial builds the MSL setup only. The two short-feed probe-clearance warnings and skipped automatic offset solve are reported without claiming fitted Z0/beta or a settled S-matrix.",
+   "reason": "#1138: edge-aware x/y profiles grade the propagation axis; this tutorial builds the MSL setup only. The skipped automatic offset solve is reported without claiming fitted Z0/beta or a settled S-matrix. (Two earlier probe-clearance rows named this tutorial's own finite ground sheet as the reflector, at -11.25 mm; a conductor at the port's ground reference is no longer a reflector candidate, so they are gone.)",
    "ref": "examples/tutorials/ports_and_sparams_101.py:114-148,315-321",
-   "rows": 3,
+   "rows": 1,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
   }
  ]
