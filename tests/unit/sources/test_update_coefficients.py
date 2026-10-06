@@ -221,3 +221,28 @@ def test_msl_jm_each_component(kind):
         )
         reference = sign * grid.dt / (EPS * eps + beta) / grid.dx
         np.testing.assert_allclose(spec.waveform[0], reference, rtol=3e-7)
+
+
+@pytest.mark.parametrize('kind', ['debye', 'lorentz'])
+@pytest.mark.parametrize('passive_first', [False, True])
+def test_ade_port_reads_later_port_stamp(kind, passive_first):
+    sim = Simulation(freq_max=8e9, domain=(.008,) * 3, dx=.001,
+                     cpml_layers=0, boundary='pec')
+    poles = ({'debye_poles': [DebyePole(2., 1 / (2 * np.pi * 9e9))]}
+             if kind == 'debye' else
+             {'lorentz_poles': [LorentzPole(2 * np.pi * 9e9, 2e9, 2 * (2 * np.pi * 9e9)**2)]})
+    sim.add_material('slab', eps_r=2., **poles)
+    sim.add(Box((.004, 0, 0), (.008,) * 3), material='slab')
+    pos = (.004,) * 3
+    if passive_first:
+        sim.add_port(pos, 'ez', impedance=75., excite=False)
+    sim.add_port(pos, 'ez', waveform=jnp.ones_like)
+    if not passive_first:
+        sim.add_port(pos, 'ez', impedance=75., excite=False)
+    sim.add_probe(pos, 'ez')
+    result = sim.run(n_steps=2, skip_preflight=True, compute_s_params=False)
+    dt = sim._build_grid().dt
+    beta = EPS * dt / (2 / (2 * np.pi * 9e9) + dt) if kind == 'debye' else 0
+    reference = dt / (1.5 * EPS + beta + (20 + 1 / .075) * dt / 2) * 20000
+    np.testing.assert_allclose(np.asarray(result.time_series).reshape(-1)[0],
+                               reference, rtol=3e-7)

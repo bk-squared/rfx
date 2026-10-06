@@ -405,10 +405,9 @@ def test_discovery_finds_a_missed_builder():
         "                                   sigma_perp, eps_r, sigma_mat, dt)\n",
         "        eps_abs = eps_r * jnp.float32(EPS_0)\n"
         "        return sigma_perp, (dt / eps_abs) / (1.0 + sigma_mat)\n")
-    # The two spellings nothing hands to the helper any more surface too.
+    # The model's interior-source accessor still routes both shared UPML
+    # spellings through the AD helper. Only the planted local builder is new.
     assert unclassified(_parse(REPO, planted)) == [
-        "rfx/boundaries/upml.py::_upml_e_coeffs_eps_r",
-        "rfx/boundaries/upml.py::_upml_e_coeffs_si",
         "rfx/boundaries/upml.py::init_upml._e_coeffs"]
     new_file = ("from rfx.core.yee import EPS_0 as _E0\n\n\n"
                 "def new_cb(eps_r, dt):\n    return dt / (eps_r * _E0)\n")

@@ -1827,13 +1827,11 @@ class _ExecuteMixin:
         lumped_port_sparam_specs: list = []
         wire_port_sparam_specs: list = []
         wire_refplane_specs: list = []
-        # Resolve a freq array once for downstream auto-build (issue #72)
         if port_s11_freqs is not None:
             _s11_freqs_arr = jnp.asarray(port_s11_freqs, dtype=jnp.float32)
         else:
             _s11_freqs_arr = None
 
-        # Collect all port cell indices for Kottke dilation guard (issue #82).
         _port_cleared_cells: list[tuple[int, int, int]] = []
 
         # Multi-drive S-matrix hook (item-5 Stage 1): 0-based counter over the
@@ -2188,7 +2186,9 @@ class _ExecuteMixin:
         from rfx.model.materials import with_components
         materials = with_components(materials, grid, periodic=periodic_bool,
             debye_spec=debye_spec, lorentz_spec=lorentz_spec)
-        sources = sources.resolve(materials)
+        from rfx.model.source_coefficients import resolve_run_sources
+        sources = resolve_run_sources(sources, materials, self, grid,
+            tensor=pec_occupancy_local is not None and os.environ.get("RFX_PEC_OCC_KOTTKE", "0") not in ("0", "", "false", "False"))
         _, debye, lorentz = self._init_dispersion(
             materials, grid.dt, debye_spec, lorentz_spec,
             periodic=periodic_bool,

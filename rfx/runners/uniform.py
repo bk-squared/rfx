@@ -778,7 +778,9 @@ def run_uniform(
     materials = with_components(materials, grid,
         periodic=_simulation.resolve_periodic(grid, periodic),
         debye_spec=debye_spec, lorentz_spec=lorentz_spec)
-    sources = sources.resolve(materials)
+    from rfx.model.source_coefficients import resolve_run_sources
+    sources = resolve_run_sources(sources, materials, sim, grid,
+        tensor=aniso_eps is not None or conformal_weights is not None)
 
     # Conformal PEC (Stage 1) permittivity, #1373: the same four-cell
     # edge mean of the volume permittivity the plain E update uses, on the

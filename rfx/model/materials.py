@@ -705,6 +705,7 @@ class ComponentMaterials:
     cells_view: MaterialArrays
     periodic: tuple = field(metadata={"static": True})
     grid_key: tuple = field(metadata={"static": True})
+    source_upml: bool = field(default=False, metadata={"static": True})
 
 
 def e_update_material_at(materials, cell, component, periodic=(False, False, False)):
@@ -735,6 +736,15 @@ def e_update_coefficient_at(materials, cell, component, dt,
     eps, sigma = e_update_material_at(materials, cell, component, periodic)
     c = getattr(materials, "components", None)
     axis = {"ex": 0, "ey": 1, "ez": 2}[str(component).lower()]
+    if c is not None and c.source_upml:
+        # Admission excludes pads. There sigma_perp=0; UPML still uses its
+        # cell-owned E operands, even at an interior material interface.
+        from rfx.boundaries.upml import _upml_e_coeffs_si, _upml_e_coeffs_eps_r
+        from rfx.core.yee import si_value_eps_r_grad
+        return si_value_eps_r_grad(
+            _upml_e_coeffs_si, _upml_e_coeffs_eps_r, jnp.float32(0),
+            c.upml_eps[axis][tuple(cell)],
+            c.upml_sigma[axis][tuple(cell)].astype(jnp.float32), jnp.float32(dt))[1]
     if c is not None and (c.debye is not None or c.lorentz is not None):
         from rfx.materials.debye import debye_e_coeffs
         from rfx.materials.lorentz import lorentz_e_coeffs, mixed_e_component_coeffs
