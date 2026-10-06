@@ -245,7 +245,7 @@ jobs:
     # 2026-10-06 PI: twelve shards target ~25-30 min PR and merge-train test execution.
     name: fast-suite (${{ matrix.group }})
     runs-on: ubuntu-latest
-    # Max shard 3649 s / 2 = 1824.5 s ≈ 31 min; margin ×2 → 60 min (rounded).
+    # 12-way pytest-split estimate at 728b1eccb: max 1726 s (28.8 min); x1.22 runner variance ~35 min, plus install and JAX import ~40 min, so 60 min leaves margin.
     timeout-minutes: 60
     strategy:
       fail-fast: false

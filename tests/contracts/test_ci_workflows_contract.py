@@ -474,7 +474,7 @@ def test_the_contract_tests_run_when_the_diff_is_not_code() -> None:
 
 
 def test_the_contract_tests_run_when_the_diff_is_code() -> None:
-    """On the code branch the six shards collect the whole tree, contracts included."""
+    """On the code branch the twelve shards collect the whole tree, contracts included."""
     fast = load(PR_TESTS)["jobs"]["fast-suite"]
     suite = "\n".join(
         str(step.get("run", ""))
