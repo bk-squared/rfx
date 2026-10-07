@@ -476,3 +476,28 @@ bit-identical; the kind of a transverse face of a full-aperture guide changes fr
 PEC and nothing else in the record changes. Readers that branch on the kind (multi-device walls,
 preflight, exporters) are in the reach table, each shown to give the same realized walls for
 "ABSORBER, depth 0" and "PEC".
+
+Addendum 5b, 2026-10-07 (leader, second implementer stop). Three points the stop raised.
+(1) `FaceDepth.declared` on a wall face. On the committed two-port guide the transverse faces read
+(ABSORBER, declared 1, realized 0) and after the PEC declaration (PEC, declared 16, realized 0): a PEC
+face cannot carry a thickness (`Boundary` refuses it), so the field falls back to the scalar budget. On a
+wall that field is the legacy scalar view and means nothing physical. Identity for a converted script is
+therefore judged on: realized depth of every face, pad counts, grid shape, the physical position of
+every face's terminal plane computed from the REALIZED pads, and every computed result the test reads.
+The kind and the `declared` field of a full-aperture guide's transverse faces may change; nothing else.
+(2) `model.realize` places `terminal_m` from the DECLARED layers (`rfx/boundaries/model.py:~202`), so for
+a face declared absorbing but realized with depth 0 it reports a plane the grid does not have. That is a
+reader not on the realized record — the class this stage removes. In PR3a: list every reader of
+`terminal_m` in the reach table; if none feeds a computed result, make `realize` take the plane from the
+realized depth and show no result moves; if one does, stop on that item and report which.
+(3) The S0 path-equivalence TF/SF cell (`tests/contracts/path_equivalence/builders.py`, plane wave over a
+finite eps_r 2.5 box, default absorbing transverse faces) is the arrangement PR3a refuses: its realized
+permittivity is not invariant along y or z, and declaring y, z periodic is a different grid (no pads; the
+periods do not share the cell). The cell stays in the matrix on every path by redrawing its dielectric as
+a laterally invariant slab (same x extent and permittivity, spanning the whole transverse extent
+including the pads), which keeps the legacy wrap and the realized grid. Its numbers are those of a
+different structure and are re-recorded; this is the one fixture whose values change in PR3a, listed in
+the PR with the old finite-box arrangement kept as a refusal judge. No other committed value may move.
+The same rule applies to any other committed TF/SF case the census finds non-invariant: report each
+with its structure before converting; a case that pins a physical number (a lock, an oracle, a
+cross-validation record) is NOT converted by the implementer — stop on it and report.
