@@ -37,14 +37,15 @@ def invariant(value, axis, shape):
         dims = tuple(array.shape)
         # ADE coefficients and states store poles before the three spatial
         # dimensions. A pole count equal to nx must not be mistaken for x.
-        spatial = len(dims) - 3 if len(dims) >= 3 and dims[-3:] == tuple(shape) else None
-        # The Yee update also accepts three-dimensional material arrays
-        # broadcast across one or more axes. Their non-singleton axes still
-        # have to be invariant; a singleton axis is constant by construction.
-        if len(dims) == 3 and all(n in (1, size) for n, size in zip(dims, shape)):
-            spatial = 0
+        # Both material arrays and pole coefficients can broadcast singleton
+        # spatial dimensions. Non-singleton dimensions must remain invariant.
+        spatial = (len(dims) - 3 if len(dims) >= 3
+                   and all(n in (1, size) for n, size in zip(dims[-3:], shape)) else None)
         if spatial is None:
             continue
+        index = spatial + axis
+        if dims[index] == 1:
+            continue  # broadcasting is constant even when its value is traced
         # JVP/linearization carries a concrete primal when the design value
         # is known. Inspect that realized value without changing its trace.
         while hasattr(array, "primal"):
@@ -53,7 +54,6 @@ def invariant(value, axis, shape):
             host = np.asarray(array)
         except Exception as exc:
             return False, f"{name} ({type(exc).__name__}: invariance unavailable)"
-        index = spatial + axis
         first = np.take(host, [0], axis=index)
         if not np.array_equal(host, np.broadcast_to(first, host.shape)):
             return False, name

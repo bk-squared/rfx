@@ -193,7 +193,8 @@ def test_transformed_finite_scatterer_is_refused(skip, transform):
 
 
 @pytest.mark.parametrize("axis, face", [(1, "y_lo, y_hi"), (2, "z_lo, z_hi")])
-def test_pole_count_equal_to_grid_extent_does_not_shift_spatial_axes(axis, face):
+@pytest.mark.parametrize("broadcast", [False, True])
+def test_pole_count_equal_to_grid_extent_does_not_shift_spatial_axes(axis, face, broadcast):
     from rfx.boundaries.tfsf import check_arrays
 
     sim = Simulation(freq_max=10e9, domain=(.01,) * 3, dx=.001, cpml_layers=2)
@@ -201,11 +202,25 @@ def test_pole_count_equal_to_grid_extent_does_not_shift_spatial_axes(axis, face)
     grid = sim._build_grid()
     assert grid.shape == (15, 15, 15)
     # Fifteen poles, then x/y/z. Variation in propagation x is admissible.
-    coefficients = np.ones((15, 15, 15, 15))
-    coefficients[:, 7, :, :] = 2.
+    shape = (15, 1, 15 if axis == 1 else 1, 15 if axis == 2 else 1) if broadcast else (15,) * 4
+    coefficients = np.ones(shape)
+    if not broadcast:
+        coefficients[:, 7, :, :] = 2.
     assert check_arrays(sim._tfsf, grid, {"debye": coefficients}) == ("y", "z")
     pad = [slice(None)] * 4
     pad[axis + 1] = 0
     coefficients[tuple(pad)] = 3.
     with pytest.raises(ValueError, match=face + ".*debye"):
         check_arrays(sim._tfsf, grid, {"debye": coefficients})
+
+
+def test_traced_singleton_transverse_axis_is_constant():
+    import jax
+    import jax.numpy as jnp
+    from rfx.boundaries.tfsf import invariant
+
+    @jax.jit
+    def check(value):
+        return jnp.asarray(invariant(value, 1, (15, 15, 15))[0])
+
+    assert bool(check(jnp.arange(15.).reshape(15, 1, 1)))
