@@ -131,7 +131,9 @@ begin 7
 
 begin 8
 selection_dir=$(mktemp -d) || fail
-# Keep evidence in the temporary directory for inspection.
+# Quote the concrete path now so EXIT always removes this exact scratch directory.
+printf -v selection_cleanup 'rm -rf -- %q' "$selection_dir"
+trap "$selection_cleanup" EXIT
 central_path_args=()
 if [ "${RFX_GATE_CENTRAL_PATHS:-}" = "1" ]; then
   central_path_args+=(--central-paths)
@@ -190,7 +192,7 @@ else
     retry_outcome=0
     "$PYTHON" scripts/ci/gate_stage2_outcome.py "$retry_status" \
       "$selection_dir/retry.xml" "$selection_dir/retry-collection" \
-      "$selection_dir/retry-outcome" || retry_outcome=$?
+      "$selection_dir/retry-outcome" --must-run "$selection_dir/first-outcome.json" || retry_outcome=$?
     echo "selected-tests first execution:"
     cat "$selection_dir/first-outcome.json"
     echo

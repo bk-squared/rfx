@@ -28,10 +28,13 @@ def junit_key(node: str) -> tuple[str, str]:
     return ".".join(names[:-1]), names[-1]
 
 
-def classify(status: int, report: Path, collection: Path) -> dict:
-    result = dict(outcome="FAIL", files=[], nodes=[], collected=0, reported=0, parallel=False)
+def classify(status: int, report: Path, collection: Path, must_run: list[str] | None = None) -> dict:
+    result = dict(outcome="FAIL", files=[], nodes=[], must_run=[], never_executed=[],
+                  collected=0, reported=0, parallel=False)
+    required = set(must_run or [])
+    result["never_executed"] = sorted(required)
     if status == 5:
-        result["outcome"] = "NOTHING"
+        result["outcome"] = "FAIL" if required else "NOTHING"
         return result
     try:
         records = [json.loads(p.read_text()) for p in sorted(collection.glob("*.json"))]
@@ -64,8 +67,9 @@ def classify(status: int, report: Path, collection: Path) -> dict:
             if not list(case.iter("error")) and not list(case.iter("failure")):
                 successful.add(node)
         result["reported"] = len(seen)
+        result["never_executed"] = sorted(required - successful)
         if status == 0:
-            if not problems and successful == set(nodes):
+            if not problems and successful == set(nodes) and not result["never_executed"]:
                 result["outcome"] = "PASS"
             return result
         if status != 1:
@@ -82,6 +86,7 @@ def classify(status: int, report: Path, collection: Path) -> dict:
         crash_files = {n.split("::", 1)[0] for n in crashed}
         missing_files = {n.split("::", 1)[0] for n in nodes if n not in seen}
         result.update(outcome="RETRY", nodes=crashed,
+                      must_run=sorted(set(crashed) | (set(nodes) - seen)),
                       files=sorted(crash_files | missing_files),
                       parallel=bool(missing_files - crash_files))
     except (OSError, ET.ParseError, ValueError, TypeError):
@@ -95,14 +100,18 @@ def main() -> int:
     parser.add_argument("report", type=Path)
     parser.add_argument("collection", type=Path)
     parser.add_argument("output", type=Path)
+    parser.add_argument("--must-run", type=Path, help="First execution outcome JSON")
     args = parser.parse_args()
-    result = classify(args.status, args.report, args.collection)
+    must_run = json.loads(args.must_run.read_text())["must_run"] if args.must_run else None
+    result = classify(args.status, args.report, args.collection, must_run)
     args.output.with_suffix(".json").write_text(json.dumps(result))
     args.output.with_suffix(".files").write_text("".join(f"{p}\n" for p in result["files"]))
     args.output.with_suffix(".mode").write_text("parallel" if result["parallel"] else "serial")
     print(f'collected {result["collected"]}; results {result["reported"]}; {result["outcome"]}')
     for node in result["nodes"]:
         print(f"worker crash: {node}")
+    for node in result["never_executed"]:
+        print(f"never executed successfully in retry: {node}")
     return {"PASS": 0, "NOTHING": 5, "FAIL": 1, "RETRY": 10}[result["outcome"]]
 
 

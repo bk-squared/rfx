@@ -301,3 +301,71 @@ def test_real_collection_after_deselection(tmp_path, workers):
     assert len(records) == (1 if workers == "0" else 2)
     assert all(len(json.loads(p.read_text())) == 3 for p in records)
     assert outcome.classify(0, tmp_path / "junit.xml", directory)["outcome"] == "PASS"
+
+
+def test_junit_case_outside_collection(tmp_path):
+    path = report(tmp_path, ["crash"])
+    tree = ET.parse(path)
+    ET.SubElement(tree.getroot(), "testcase", classname="unknown", name="test_extra")
+    tree.write(path)
+    assert outcome.classify(1, path, collection(tmp_path))["outcome"] == "FAIL"
+
+
+def test_collection_records_must_be_identical(tmp_path):
+    directory = collection(tmp_path)
+    (directory / "z-worker.json").write_text(json.dumps([NODE, "other.py::test_unrun"]))
+    assert outcome.classify(0, report(tmp_path, ["pass"]), directory)["outcome"] == "FAIL"
+
+
+@pytest.mark.parametrize("shrinks", [True, False], ids=["shrinking", "identical"])
+def test_real_xdist_retry_collection(tmp_path, shrinks):
+    pytest.importorskip("xdist")
+    # Reviewer's envdep case: one crashed file, therefore its retry is serial.
+    count = '3 if os.environ.get("PYTEST_XDIST_WORKER") else 1' if shrinks else '3'
+    assertion = 'assert i == 0, "REAL FAILURE in a node only the first run collected"' if shrinks else 'pass'
+    (tmp_path / "test_a.py").write_text(
+        'import os, pathlib, pytest\n'
+        f'N = {count}\n'
+        'def test_crash():\n'
+        '    marker = pathlib.Path(__file__).with_name("crashed.marker")\n'
+        '    if not marker.exists():\n'
+        '        marker.write_text("x")\n'
+        '        os._exit(7)\n'
+        '@pytest.mark.parametrize("i", range(N))\n'
+        f'def test_after(i): {assertion}\n')
+    (tmp_path / "files").write_text("test_a.py\n")
+    result = run_fragment(tmp_path)
+    assert result.returncode == (1 if shrinks else 0), result.stdout + result.stderr
+    first = json.loads((tmp_path / "first-outcome.json").read_text())
+    assert first["outcome"] == "RETRY"
+    assert first["collected"] == 4
+    assert first["reported"] == 1
+    assert not first["parallel"]
+    assert set(first["must_run"]) == {"test_a.py::test_crash", *(
+        f"test_a.py::test_after[{i}]" for i in range(3))}
+    retry = json.loads((tmp_path / "retry-outcome.json").read_text())
+    assert retry["outcome"] == ("FAIL" if shrinks else "PASS")
+    assert retry["collected"] == (2 if shrinks else 4)
+    missing = [f"test_a.py::test_after[{i}]" for i in (1, 2)] if shrinks else []
+    assert retry["never_executed"] == missing
+    for node in missing:
+        assert f"never executed successfully in retry: {node}" in result.stdout
+
+
+@pytest.mark.parametrize("status", [0, 1])
+def test_selection_cleanup_on_exit(tmp_path, status):
+    source = (ROOT / "scripts/ci/local.sh").read_text()
+    setup = source.split('selection_dir=$(mktemp -d)', 1)[1].split('central_path_args=()', 1)[0]
+    setup = 'selection_dir=$(mktemp -d)' + setup
+    summary = source[source.index('\necho\necho "all '):]
+    script = ('set -uo pipefail\nfail() { exit 1; }\nSTEP_NAMES=(selected-tests)\n'
+              + setup + '\nprintf "%s\\n" "$selection_dir"\n'
+              + ('fail\n' if status else summary))
+    result = subprocess.run(["/bin/bash", "-c", script],
+                            env=dict(os.environ, TMPDIR=str(tmp_path)),
+                            capture_output=True, text=True, timeout=10)
+    assert result.returncode == status, result.stderr
+    scratch = Path(result.stdout.splitlines()[0])
+    assert not scratch.exists()
+    if status == 0:
+        assert "all 1 steps passed" in result.stdout
