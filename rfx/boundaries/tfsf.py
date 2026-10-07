@@ -37,6 +37,11 @@ def invariant(value, axis, shape):
         dims = tuple(array.shape)
         spatial = next((offset for offset in range(len(dims) - 2)
                         if dims[offset:offset + 3] == tuple(shape)), None)
+        # The Yee update also accepts three-dimensional material arrays
+        # broadcast across one or more axes. Their non-singleton axes still
+        # have to be invariant; a singleton axis is constant by construction.
+        if len(dims) == 3 and all(n in (1, size) for n, size in zip(dims, shape)):
+            spatial = 0
         if spatial is None:
             continue
         # JVP/linearization carries a concrete primal when the design value

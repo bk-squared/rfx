@@ -140,14 +140,16 @@ def test_finite_scatterer_refuses_every_dispatch_path(skip, path):
         sim.run(n_steps=1, skip_preflight=skip, **kwargs)
 
 
-def test_low_level_material_override_is_checked_before_kernel(monkeypatch):
+@pytest.mark.parametrize("broadcast", [False, True])
+def test_low_level_material_override_is_checked_before_kernel(monkeypatch, broadcast):
     import jax.numpy as jnp
     import rfx.simulation as kernel
     from rfx.sources.tfsf import init_tfsf
     sim = plane()
     grid = sim._build_grid()
     materials = sim._assemble_materials(grid)[0]
-    materials = materials._replace(mu_r=jnp.ones(grid.shape).at[:, 0, :].set(2.))
+    shape = (1, grid.ny, 1) if broadcast else grid.shape
+    materials = materials._replace(mu_r=jnp.ones(shape).at[:, 0, :].set(2.))
     source = init_tfsf(grid.nx, grid.dx, grid.dt, cpml_layers=2,
                        tfsf_margin=1, f0=5e9, bandwidth=.5)
 
