@@ -311,7 +311,7 @@ def test_explicit_current_sweep_is_bit_identical_to_run(build, monkeypatch, requ
 
     if build is _make_dielectric_sim and jax.default_backend() != "cpu":
         # GPU only: on CPU the two programs are bit-identical and the test must stay exact.
-        request.applymarker(pytest.mark.xfail(strict=True, reason=(
+        request.applymarker(pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
             "#1540 on GPU the PEC-walled sweep differs from run() by 21 ULP at the trace "
             "peak (RTX 2070 SUPER, VESSL 369367268751); cause undetermined")))
     def forbid_fallback(*args, **kwargs):
