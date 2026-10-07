@@ -181,3 +181,22 @@ def test_transformed_finite_scatterer_is_refused(skip, transform):
     argument = jnp.array([1.]) if transform == "vmap" else jnp.array(1.)
     with pytest.raises(ValueError, match=r"TF/SF y_lo, y_hi"):
         getattr(jax, transform)(loss)(argument)
+
+
+@pytest.mark.parametrize("axis, face", [(1, "y_lo, y_hi"), (2, "z_lo, z_hi")])
+def test_pole_count_equal_to_grid_extent_does_not_shift_spatial_axes(axis, face):
+    from rfx.boundaries.tfsf import check_arrays
+
+    sim = Simulation(freq_max=10e9, domain=(.01,) * 3, dx=.001, cpml_layers=2)
+    sim.add_tfsf_source(f0=5e9, margin=1)
+    grid = sim._build_grid()
+    assert grid.shape == (15, 15, 15)
+    # Fifteen poles, then x/y/z. Variation in propagation x is admissible.
+    coefficients = np.ones((15, 15, 15, 15))
+    coefficients[:, 7, :, :] = 2.
+    assert check_arrays(sim._tfsf, grid, {"debye": coefficients}) == ("y", "z")
+    pad = [slice(None)] * 4
+    pad[axis + 1] = 0
+    coefficients[tuple(pad)] = 3.
+    with pytest.raises(ValueError, match=face + ".*debye"):
+        check_arrays(sim._tfsf, grid, {"debye": coefficients})

@@ -35,8 +35,9 @@ def invariant(value, axis, shape):
     """
     for name, array in _leaves(value, "update"):
         dims = tuple(array.shape)
-        spatial = next((offset for offset in range(len(dims) - 2)
-                        if dims[offset:offset + 3] == tuple(shape)), None)
+        # ADE coefficients and states store poles before the three spatial
+        # dimensions. A pole count equal to nx must not be mistaken for x.
+        spatial = len(dims) - 3 if len(dims) >= 3 and dims[-3:] == tuple(shape) else None
         # The Yee update also accepts three-dimensional material arrays
         # broadcast across one or more axes. Their non-singleton axes still
         # have to be invariant; a singleton axis is constant by construction.
