@@ -13,7 +13,8 @@ import jax
 import jax.numpy as jnp
 
 from rfx.core.dft_utils import dft_window_weight as _dft_window_weight
-from rfx.core.dft_utils import half_step_current_phase as _half_step_current_phase
+from rfx.measurement.dft import phase as _dft_phase, accumulate as _accumulate
+from rfx.measurement.plan import field_channel
 from rfx.grid import Grid
 from rfx.boundaries.axes import resolve_cpml_axes
 from rfx.boundaries.cpml import apply_cpml_e, apply_cpml_h, init_cpml
@@ -89,11 +90,10 @@ def update_dft_probe(
 
     X(f) += x(t) * exp(-j*2π*f*t) * dt
     """
-    t = state.step * dt
     field = getattr(state, probe.component)
     value = field[probe.index[0], probe.index[1], probe.index[2]]
 
-    phase = jnp.exp(-1j * 2.0 * jnp.pi * probe.freqs * t)
+    phase = (_dft_phase(state.step-1, probe.freqs, dt, field_channel(probe.component)) / dt)
     weight = _dft_window_weight(state.step, probe.total_steps, probe.window, probe.window_alpha)
     new_acc = probe.accumulator + value * phase * dt * weight
 
@@ -125,7 +125,7 @@ def port_voltage(state, grid: Grid, port: LumpedPort) -> jnp.ndarray:
     idx = grid.position_to_index(port.position)
     i, j, k = idx
     field = getattr(state, port.component)
-    return _port_voltage_value(field[i, j, k], grid.dx)
+    return _port_voltage_value(field[i, j, k], grid.cells(port.component[1])[idx['xyz'.index(port.component[1])]])
 
 
 def _port_curl_boundary(grid, periodic):
@@ -212,10 +212,19 @@ def port_current(state, grid: Grid, port: LumpedPort,
     float scalar
     """
     idx = tuple(grid.position_to_index(port.position))
-    dx = grid.dx
-
-    return _ampere_loop(state, idx, port.component, dx, periodic,
+    return _metric_ampere_loop(state, idx, port.component, grid, periodic,
                         boundary=_port_curl_boundary(grid, periodic))
+
+
+def _metric_ampere_loop(state, idx, component, grid, periodic, boundary=None):
+    """Ampere contour uses the transverse dual lengths at the E node."""
+    h_a, axis_a, h_b, axis_b = _ampere_loop_components(component)
+    da, db = grid.duals(axis_a)[idx[axis_a]], grid.duals(axis_b)[idx[axis_b]]
+    if not isinstance(da + db, jax.core.Tracer) and float(da) == float(db):
+        return _ampere_loop(state, idx, component, float(da), periodic, boundary)
+    a, b = getattr(state, h_a), getattr(state, h_b)
+    return ((a[idx] - _bwd_h(a, idx, axis_a, periodic, boundary)) * db
+            - (b[idx] - _bwd_h(b, idx, axis_b, periodic, boundary)) * da)
 
 
 def _ampere_loop(state, idx, component, dx, periodic, boundary=None):
@@ -446,7 +455,7 @@ def update_sparam_probe(
     i = port_current(state, grid, port)
     v_inc = port.excitation(t)
 
-    phase = jnp.exp(-1j * 2.0 * jnp.pi * probe.freqs * t)
+    phase = (_dft_phase(state.step-1, probe.freqs, dt, 'E') / dt)
     # Yee half-step: I is H-derived (H^{n+1/2}) while V is E-derived
     # (E^{n+1}); advance the current sample by dt/2 so both DFT channels
     # share one reference time (rfx/core/dft_utils). The 2026-09-05 scope
@@ -454,7 +463,7 @@ def update_sparam_probe(
     # — E = E^{n+1} at the sample — did not hold at the pre-injection slot.
     # The slot above is now post-injection, so the premise holds here for
     # the same reason it holds on the wire lane.
-    i_phase = phase * _half_step_current_phase(probe.freqs, dt)
+    i_phase = (_dft_phase(state.step-1, probe.freqs, dt, 'H') / dt)
     weight = _dft_window_weight(state.step, probe.total_steps, probe.window, probe.window_alpha)
     new_v = probe.v_dft + v * phase * dt * weight
     new_i = probe.i_dft + i * i_phase * dt * weight
@@ -482,9 +491,8 @@ def update_lumped_drive_ref_probe(
     :func:`update_sparam_probe`.  Mirrors
     :func:`update_wire_drive_ref_probe` on the wire family.
     """
-    t = state.step * dt
     v_ref = port_voltage(state, grid, port)
-    phase = jnp.exp(-1j * 2.0 * jnp.pi * probe.freqs * t)
+    phase = (_dft_phase(state.step-1, probe.freqs, dt, 'E') / dt)
     weight = _dft_window_weight(state.step, probe.total_steps, probe.window,
                                 probe.window_alpha)
     old_ref = probe.v_ref_dft if probe.v_ref_dft is not None else 0.0
@@ -647,36 +655,14 @@ def init_dft_plane_probe(
     )
 
 
-def update_dft_plane_probe(
-    probe: DFTPlaneProbe, state, dt: float,
-) -> DFTPlaneProbe:
-    """Accumulate one timestep into the plane DFT."""
-    t = state.step * dt
-    field = getattr(state, probe.component)
-
-    region = probe.region
-    if region is None:
-        lo1 = lo2 = 0
-        if probe.axis == 0:
-            hi1, hi2 = field.shape[1], field.shape[2]
-        elif probe.axis == 1:
-            hi1, hi2 = field.shape[0], field.shape[2]
-        else:
-            hi1, hi2 = field.shape[0], field.shape[1]
-    else:
-        lo1, hi1, lo2, hi2 = region
-
-    if probe.axis == 0:
-        plane = field[probe.index, lo1:hi1, lo2:hi2]
-    elif probe.axis == 1:
-        plane = field[lo1:hi1, probe.index, lo2:hi2]
-    else:
-        plane = field[lo1:hi1, lo2:hi2, probe.index]
-
-    phase = jnp.exp(-1j * 2.0 * jnp.pi * probe.freqs * t)
-    weight = _dft_window_weight(state.step, probe.total_steps, probe.window, probe.window_alpha)
-    new_acc = probe.accumulator + plane[None, :, :] * phase[:, None, None] * dt * weight
-    return probe._replace(accumulator=new_acc)
+def update_dft_plane_probe(probe: DFTPlaneProbe, state, dt: float) -> DFTPlaneProbe:
+    """Accumulate a plane with its physical component clock."""
+    from rfx.measurement.accumulators import plane_sample
+    sample = plane_sample(state, probe.component, probe.axis, probe.index, probe.region)
+    return probe._replace(accumulator=_accumulate(
+        probe.accumulator, sample, state.step-1, probe.freqs, dt, field_channel(probe.component),
+        total_steps=probe.total_steps, window=probe.window, alpha=probe.window_alpha,
+        window_step=state.step))
 
 
 # ---------------------------------------------------------------------------
@@ -822,7 +808,6 @@ def update_flux_monitor(
     mon: FluxMonitor, state, dt: float,
 ) -> FluxMonitor:
     """Accumulate one timestep of E and H tangential fields."""
-    t = state.step * dt
     e1_name, e2_name, h1_name, h2_name = _FLUX_COMPONENTS[mon.axis]
 
     def _slice(field):
@@ -837,16 +822,13 @@ def update_flux_monitor(
     h1 = _slice(getattr(state, h1_name))
     h2 = _slice(getattr(state, h2_name))
 
-    phase = jnp.exp(-1j * 2.0 * jnp.pi * mon.freqs * t)
-    weight = _dft_window_weight(state.step, mon.total_steps, mon.window, mon.window_alpha)
-    kernel = phase[:, None, None] * dt * weight
-
-    return mon._replace(
-        e1_dft=mon.e1_dft + e1[None, :, :] * kernel,
-        e2_dft=mon.e2_dft + e2[None, :, :] * kernel,
-        h1_dft=mon.h1_dft + h1[None, :, :] * kernel,
-        h2_dft=mon.h2_dft + h2[None, :, :] * kernel,
-    )
+    values = (e1, e2, h1, h2)
+    names = ('e1_dft', 'e2_dft', 'h1_dft', 'h2_dft')
+    return mon._replace(**{
+        name: _accumulate(getattr(mon, name), value, state.step-1, mon.freqs, dt,
+                          'E' if k < 2 else 'H', total_steps=mon.total_steps,
+                          window=mon.window, alpha=mon.window_alpha, window_step=state.step)
+        for k, (name, value) in enumerate(zip(names, values))})
 
 
 def flux_spectrum(mon: FluxMonitor, *, exact_f64: bool = False) -> jnp.ndarray:
@@ -1123,7 +1105,7 @@ def wire_port_voltage(state, grid, port, pec_edge_masks=None) -> jnp.ndarray:
     """
     mid = _wire_port_live_mid(grid, port, pec_edge_masks)
     field = getattr(state, port.component)
-    return -field[mid[0], mid[1], mid[2]] * grid.dx
+    return -field[mid[0], mid[1], mid[2]] * grid.cells(port.component[1])[mid['xyz'.index(port.component[1])]]
 
 
 def wire_port_gap_voltage(state, grid, port, pec_edge_masks=None) -> jnp.ndarray:
@@ -1145,7 +1127,7 @@ def wire_port_gap_voltage(state, grid, port, pec_edge_masks=None) -> jnp.ndarray
     for cell, live in zip(cells, live_flags):
         if not live:
             continue
-        v_port = v_port - field[cell[0], cell[1], cell[2]] * grid.dx
+        v_port = v_port - field[cell[0], cell[1], cell[2]] * grid.cells(port.component[1])[cell['xyz'.index(port.component[1])]]
     return v_port
 
 
@@ -1174,9 +1156,7 @@ def wire_port_current(state, grid, port,
     float scalar
     """
     mid = _wire_port_live_mid(grid, port, pec_edge_masks)
-    dx = grid.dx
-
-    return _ampere_loop(state, tuple(mid), port.component, dx, periodic,
+    return _metric_ampere_loop(state, tuple(mid), port.component, grid, periodic,
                         boundary=_port_curl_boundary(grid, periodic))
 
 
@@ -1261,11 +1241,11 @@ def update_wire_sparam_probe(
     v_port = wire_port_gap_voltage(state, grid, port, pec_edge_masks=pec_edge_masks)
     v_inc = port.excitation(t) / n_live
 
-    phase = jnp.exp(-1j * 2.0 * jnp.pi * probe.freqs * t)
+    phase = (_dft_phase(state.step-1, probe.freqs, dt, 'E') / dt)
     # Yee half-step: H (hence the Ampere-loop current) is at n+1/2 while E
     # (voltage / gap voltage) is at n+1; advance the current sample by dt/2
     # so both DFT channels share the same reference time (rfx/core/dft_utils).
-    i_phase = phase * _half_step_current_phase(probe.freqs, dt)
+    i_phase = (_dft_phase(state.step-1, probe.freqs, dt, 'H') / dt)
     weight = _dft_window_weight(state.step, probe.total_steps, probe.window, probe.window_alpha)
     new_v = probe.v_dft + v * phase * dt * weight
     new_i = probe.i_dft + i_val * i_phase * dt * weight
@@ -1297,9 +1277,8 @@ def update_wire_drive_ref_probe(
     physical V/I/V_port channels are accumulated post-injection by
     ``update_wire_sparam_probe``.
     """
-    t = state.step * dt
     v_ref = wire_port_voltage(state, grid, port, pec_edge_masks=pec_edge_masks)
-    phase = jnp.exp(-1j * 2.0 * jnp.pi * probe.freqs * t)
+    phase = (_dft_phase(state.step-1, probe.freqs, dt, 'E') / dt)
     weight = _dft_window_weight(state.step, probe.total_steps, probe.window,
                                 probe.window_alpha)
     old_ref = probe.v_ref_dft if probe.v_ref_dft is not None else 0.0
@@ -1649,7 +1628,7 @@ def extract_s_matrix(
     if n_steps is None:
         n_steps = grid.num_timesteps(num_periods=30)
 
-    dt, dx = grid.dt, grid.dx
+    dt, dx = grid.dt, float(grid.cells('x')[0])
     use_cpml = boundary == "cpml" and grid.cpml_layers > 0
 
     if use_cpml:
@@ -1993,7 +1972,7 @@ def extract_s_matrix_wire(
     if n_steps is None:
         n_steps = grid.num_timesteps(num_periods=30)
 
-    dt, dx = grid.dt, grid.dx
+    dt, dx = grid.dt, float(grid.cells('x')[0])
     use_cpml = boundary == "cpml" and grid.cpml_layers > 0
 
     if use_cpml:

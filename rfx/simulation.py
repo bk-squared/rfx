@@ -1713,18 +1713,9 @@ def _build_step_setup(
     flux_meta_8: tuple = ()
     flux_meta_11: tuple = ()
     if use_flux_monitors:
-        from rfx.probes.probes import _FLUX_COMPONENTS as _FC
-        flux_meta_8 = tuple(
-            (fm.axis, fm.index, fm.freqs, _FC[fm.axis],
-             fm.lo1, fm.hi1, fm.lo2, fm.hi2)
-            for fm in flux_monitors
-        )
-        flux_meta_11 = tuple(
-            (fm.axis, fm.index, fm.freqs, _FC[fm.axis],
-             fm.lo1, fm.hi1, fm.lo2, fm.hi2,
-             fm.total_steps, fm.window, fm.window_alpha)
-            for fm in flux_monitors
-        )
+        from rfx.measurement.accumulators import flux_metadata
+        flux_meta_8 = flux_metadata(flux_monitors, window=False)
+        flux_meta_11 = flux_metadata(flux_monitors, window=True)
         carry_init["flux_monitors"] = tuple(
             (fm.e1_dft, fm.e2_dft, fm.h1_dft, fm.h2_dft) for fm in flux_monitors
         )
@@ -1750,10 +1741,8 @@ def _build_step_setup(
     src_meta = [(s.i, s.j, s.k, s.component) for s in sources]
     mag_src_meta = [(s.i, s.j, s.k, s.component) for s in mag_sources]
     prb_meta = [(p.i, p.j, p.k, p.component) for p in probes]
-    dft_meta = tuple(
-        (probe.component, probe.axis, probe.index, probe.freqs, probe.region)
-        for probe in dft_planes
-    )
+    from rfx.measurement.accumulators import plane_metadata
+    dft_meta = plane_metadata(dft_planes)
     waveguide_meta = tuple(waveguide_ports)
 
     # ---- #1179 design box: fence, then build its coefficients once ----
@@ -2443,9 +2432,6 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
         if ctx.use_wire_sparams or ctx.use_lumped_sparams:
             from rfx.probes.probes import _ampere_loop, _port_voltage_value
             from rfx.core.dft_utils import port_dft_phase
-            # Both families advance their H-derived current by dt/2 to the
-            # E time level; one import for both blocks.
-            from rfx.core.dft_utils import half_step_current_phase as _half_i_phase
         if ctx.use_wire_sparams:
             new_wire_refs = []
             wire_ref_samples = []
@@ -2453,8 +2439,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
                 v_ref_dft = accs[4]
                 mi, mj, mk = wp_meta.mid_i, wp_meta.mid_j, wp_meta.mid_k
                 v_ref = -getattr(st, wp_meta.component)[mi, mj, mk] * dx
-                t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
-                phase = jnp.exp(-1j * 2.0 * jnp.pi * wp_meta.freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
+                phase = port_dft_phase(step_idx, wp_meta.freqs, dt, dtype=v_ref_dft.dtype)
                 new_wire_refs.append((v_ref_dft + v_ref * phase, phase))
                 wire_ref_samples.append(v_ref)
 
@@ -2472,7 +2457,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
                 v_ref_dft_l = accs[2]
                 li, lj, lk = lp_meta.i, lp_meta.j, lp_meta.k
                 v_ref_l = _port_voltage_value(getattr(st, lp_meta.component)[li, lj, lk], dx)
-                phase_l = port_dft_phase(step_idx, lp_meta.freqs, dt)
+                phase_l = port_dft_phase(step_idx, lp_meta.freqs, dt, dtype=v_ref_dft_l.dtype)
                 new_lumped_refs.append((v_ref_dft_l + v_ref_l * phase_l, phase_l))
                 lumped_ref_samples.append(v_ref_l)
 
@@ -2484,6 +2469,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
         # physical channels below the source loop) does not apply.
         if ctx.use_wire_refplanes:
             from rfx.probes.refplane import wire_refplane_step_vi
+            from rfx.core.dft_utils import port_dft_phase
             new_refplane_accs = []
             refplane_samples = []
             for accs, rp_meta in zip(carry["wire_refplane_accs"],
@@ -2491,12 +2477,11 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
                 v_dft_r, im_dft_r, ip_dft_r = accs
                 v_r, im_r, ip_r = wire_refplane_step_vi(st, rp_meta, dx)
                 refplane_samples.append(jnp.stack((v_r, im_r, ip_r)))
-                t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
-                phase_r = jnp.exp(-1j * 2.0 * jnp.pi * rp_meta.freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
+                phase_r = port_dft_phase(step_idx, rp_meta.freqs, dt, dtype=v_dft_r.dtype)
                 new_refplane_accs.append((
                     v_dft_r + v_r * phase_r,
-                    im_dft_r + im_r * phase_r,
-                    ip_dft_r + ip_r * phase_r,
+                    im_dft_r + im_r * port_dft_phase(step_idx, rp_meta.freqs, dt, 'H', dtype=v_dft_r.dtype),
+                    ip_dft_r + ip_r * port_dft_phase(step_idx, rp_meta.freqs, dt, 'H', dtype=v_dft_r.dtype),
                 ))
 
         # Soft sources — cast source value to field dtype to avoid
@@ -2563,13 +2548,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
                 # as EXACTLY the pre/post lane difference.)
                 i_val = _ampere_loop(
                     st, (mi, mj, mk), wp_meta.component, dx, periodic, boundary=ctx.curl_boundary)
-                # Yee half-step: I is H-derived (H^{n+1/2}) while V/V_port are
-                # E-derived (E^{n+1}); advance the current sample by dt/2 so
-                # both DFT channels share a reference time
-                # (`dft_utils.half_step_current_phase`). The
-                # E-derived channels keep the uncorrected `phase`.
-                i_phase = phase * _half_i_phase(
-                    wp_meta.freqs.astype(jnp.float64), dt).astype(jnp.complex64)
+                i_phase = port_dft_phase(step_idx, wp_meta.freqs, dt, 'H', dtype=i_dft.dtype)
                 port_samples.append(jnp.stack((v, i_val, v_port,
                                                 wire_ref_samples[len(new_wire_accs)])))
                 new_wire_accs.append((
@@ -2605,12 +2584,7 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
                 # #692: shared loop — see the wire-port block above.
                 i_val_l = _ampere_loop(
                     st, (li, lj, lk), lp_meta.component, dx, periodic, boundary=ctx.curl_boundary)
-                # Yee half-step: I is H-derived (H^{n+1/2}), V is E-derived
-                # (E^{n+1}).  Withheld on this lane until the slot above
-                # was post-injection, because that is the correction's
-                # premise (2026-09-05 scope note).
-                i_phase_l = phase_l * _half_i_phase(
-                    lp_meta.freqs.astype(jnp.float64), dt).astype(jnp.complex64)
+                i_phase_l = port_dft_phase(step_idx, lp_meta.freqs, dt, 'H', dtype=i_dft_l.dtype)
                 port_samples.append(jnp.stack((v_l, i_val_l,
                                                 lumped_ref_samples[len(new_lumped_accs)])))
                 new_lumped_accs.append((
@@ -2676,93 +2650,13 @@ def make_core_step(ctx: _StepContext, invariants: dict | None = None,
                 carry["current_moments"], st, e_prev_slab,
                 ctx.current_moments, dt, step_idx)
 
+        from rfx.measurement.accumulators import planes, flux
         if ctx.use_dft_planes:
-            t_plane = st.step * dt
-            new_dft_planes = []
-            plane_samples = []
-            for acc, (component, axis, index, freqs, region) in zip(
-                carry["dft_planes"], ctx.dft_meta
-            ):
-                field = getattr(st, component)
-                if region is None:
-                    lo1 = lo2 = 0
-                    if axis == 0:
-                        hi1, hi2 = field.shape[1], field.shape[2]
-                    elif axis == 1:
-                        hi1, hi2 = field.shape[0], field.shape[2]
-                    else:
-                        hi1, hi2 = field.shape[0], field.shape[1]
-                else:
-                    lo1, hi1, lo2, hi2 = region
-                if axis == 0:
-                    plane = field[index, lo1:hi1, lo2:hi2]
-                elif axis == 1:
-                    plane = field[lo1:hi1, index, lo2:hi2]
-                else:
-                    plane = field[lo1:hi1, lo2:hi2, index]
-                phase = jnp.exp(-1j * 2.0 * jnp.pi * freqs * t_plane)
-                plane_samples.append(plane)
-                new_dft_planes.append(
-                    acc + plane[None, :, :] * phase[:, None, None] * dt
-                )
-
-        # Flux monitor DFT accumulation (co-located E/H, finite-size region).
+            new_dft_planes, plane_samples = planes(
+                st, carry["dft_planes"], ctx.dft_meta, dt, step_idx)
         if ctx.use_flux_monitors:
-            t_flux = st.step * dt
-            new_flux_accs = []
-            if ctx.use_flux_window:
-                from rfx.core.dft_utils import dft_window_weight as _dft_w
-            for (e1_acc, e2_acc, h1_acc, h2_acc), fmeta in zip(
-                carry["flux_monitors"], ctx.flux_meta
-            ):
-                if ctx.use_flux_window:
-                    (ax, idx, fqs, comp_names, _lo1, _hi1, _lo2, _hi2,
-                     _tot_steps, _win_name, _win_alpha) = fmeta
-                else:
-                    (ax, idx, fqs, comp_names, _lo1, _hi1, _lo2, _hi2) = fmeta
-                e1n, e2n, h1n, h2n = comp_names
-                # H-fields are offset by +dx/2 along the normal axis on
-                # the Yee grid.  Average H at idx-1 and idx to co-locate
-                # with E at idx, giving a correct Poynting cross-product.
-                # Slice to the finite-size region [lo1:hi1, lo2:hi2].
-                idx_m1 = max(idx - 1, 0)
-                if ax == 0:
-                    e1 = getattr(st, e1n)[idx, _lo1:_hi1, _lo2:_hi2]
-                    e2 = getattr(st, e2n)[idx, _lo1:_hi1, _lo2:_hi2]
-                    h1 = (getattr(st, h1n)[idx_m1, _lo1:_hi1, _lo2:_hi2] + getattr(st, h1n)[idx, _lo1:_hi1, _lo2:_hi2]) * 0.5
-                    h2 = (getattr(st, h2n)[idx_m1, _lo1:_hi1, _lo2:_hi2] + getattr(st, h2n)[idx, _lo1:_hi1, _lo2:_hi2]) * 0.5
-                elif ax == 1:
-                    e1 = getattr(st, e1n)[_lo1:_hi1, idx, _lo2:_hi2]
-                    e2 = getattr(st, e2n)[_lo1:_hi1, idx, _lo2:_hi2]
-                    h1 = (getattr(st, h1n)[_lo1:_hi1, idx_m1, _lo2:_hi2] + getattr(st, h1n)[_lo1:_hi1, idx, _lo2:_hi2]) * 0.5
-                    h2 = (getattr(st, h2n)[_lo1:_hi1, idx_m1, _lo2:_hi2] + getattr(st, h2n)[_lo1:_hi1, idx, _lo2:_hi2]) * 0.5
-                else:
-                    e1 = getattr(st, e1n)[_lo1:_hi1, _lo2:_hi2, idx]
-                    e2 = getattr(st, e2n)[_lo1:_hi1, _lo2:_hi2, idx]
-                    h1 = (getattr(st, h1n)[_lo1:_hi1, _lo2:_hi2, idx_m1] + getattr(st, h1n)[_lo1:_hi1, _lo2:_hi2, idx]) * 0.5
-                    h2 = (getattr(st, h2n)[_lo1:_hi1, _lo2:_hi2, idx_m1] + getattr(st, h2n)[_lo1:_hi1, _lo2:_hi2, idx]) * 0.5
-                t_f64 = t_flux.astype(jnp.float64) if hasattr(t_flux, 'astype') else jnp.float64(t_flux)
-                fqs64 = fqs.astype(jnp.float64)
-                # E is at time t_flux = step*dt; H is at t_flux - dt/2
-                phase_e = jnp.exp(-1j * 2.0 * jnp.pi * fqs64 * t_f64)
-                phase_h = jnp.exp(-1j * 2.0 * jnp.pi * fqs64 * (t_f64 - jnp.float64(dt * 0.5)))
-                if ctx.use_flux_window:
-                    # Streaming DFT window weight (rect=1.0 default; Tukey/Hann
-                    # suppress late-time contributions from CPML reflections).
-                    _w = _dft_w(st.step, _tot_steps, _win_name, _win_alpha).astype(jnp.float64)
-                    kernel_e = (phase_e[:, None, None] * dt * _w).astype(jnp.complex128)
-                    kernel_h = (phase_h[:, None, None] * dt * _w).astype(jnp.complex128)
-                else:
-                    kernel_e = (phase_e[:, None, None] * dt).astype(jnp.complex128)
-                    kernel_h = (phase_h[:, None, None] * dt).astype(jnp.complex128)
-                # Preserve the declared storage when x64 phase arithmetic
-                # is wider than this monitor's complex64 accumulators.
-                new_flux_accs.append((
-                    (e1_acc + e1.astype(jnp.float64)[None, :, :] * kernel_e).astype(e1_acc.dtype),
-                    (e2_acc + e2.astype(jnp.float64)[None, :, :] * kernel_e).astype(e2_acc.dtype),
-                    (h1_acc + h1.astype(jnp.float64)[None, :, :] * kernel_h).astype(h1_acc.dtype),
-                    (h2_acc + h2.astype(jnp.float64)[None, :, :] * kernel_h).astype(h2_acc.dtype),
-                ))
+            new_flux_accs = flux(st, carry["flux_monitors"], ctx.flux_meta, dt,
+                                 step_idx, window_step=st.step)
 
         # ---- per-step extras (caller-specific outputs) ----
         extras: dict = {}

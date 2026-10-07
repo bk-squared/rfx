@@ -105,9 +105,14 @@ def _install_manufactured_backends(monkeypatch, sim, grid, profiles, direction, 
                     field = np.broadcast_to(
                         0.25 * centres[width][lo_w:hi_w][:, None] / U, shape)
                 field = orientation * sign * s * field
-                # Invert ONLY temporal staggering here. Spatial coordinates
-                # remain the actual H centres, so production must interpolate.
-                phase = np.exp(-1j * 2 * np.pi * np.asarray(entry.freqs) * grid.dt / 2)
+                # Spatial coordinates remain the actual H centres, so
+                # production must interpolate. History (S2 M2): this plant
+                # also carried exp(-j omega dt / 2), an H plane stamped at E's
+                # time, which the extractor then undid; the DFT kernel stamps
+                # H at (n + 1/2) dt itself now, so the plant is the physically
+                # stamped field (left in, the current read 1.75e-3 off, the
+                # omega dt / 2 of the 1.2 GHz bin).
+                phase = np.ones(len(np.asarray(entry.freqs)))
                 field_scale = scale
             accumulator = (jnp.asarray(field, dtype=jnp.complex64)[None, :, :]
                            * jnp.asarray(phase, dtype=jnp.complex64)[:, None, None]

@@ -13,6 +13,8 @@ import pytest
 
 from rfx import Box, DebyePole, Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
+from rfx.measurement import dft as measurement_dft
+from rfx.measurement.dft import transform as kernel_transform
 from rfx.sources.sources import GaussianPulse
 
 pytestmark = pytest.mark.distributed
@@ -205,8 +207,9 @@ def test_parity_detects_mutations(monkeypatch, mutation):
         def no_half_step(*args):
             # Only mutate replay; the single-device reference keeps its phase.
             with monkeypatch.context() as patch:
-                patch.setattr(dft_utils, "half_step_current_phase",
-                              lambda freqs, dt: jnp.ones_like(freqs, dtype=jnp.complex64))
+                # S2 M2: the half step is the H stamp of the one DFT kernel.
+                patch.setattr(measurement_dft, "transform", lambda r, f, dt, kind="E", **k:
+                              kernel_transform(r, f, dt, "E", **k))
                 return original(*args)
 
         monkeypatch.setattr(driver, "_lumped_recording_dfts", no_half_step)
@@ -343,31 +346,44 @@ def test_drive_only_order_mutation(monkeypatch):
     print("mutation=drive_only_order: numerical parity GREEN; shared step check RED")
 
 
-def test_host_dft_warning_fix_preserves_s(monkeypatch):
+def test_host_dft_is_the_float64_sum_of_the_recorded_v_and_i(monkeypatch):
+    """The distributed driver's S against the same driver fed an independent
+    host DFT of the recorded V and I: NumPy float64, E at (n+1) dt and H at
+    (n+1/2) dt. Cross-trace bar for a quantity summed over the record, 1e-4
+    of the peak. (Until S2 M2 this test swapped in the old float32 phase
+    helpers; the driver no longer calls them.) The driver must still not ask
+    for float64 on a float32 run."""
     import warnings
-    import jax.numpy as jnp
-    from rfx.core import dft_utils
+    from rfx.probes import sparam_driver as driver
+    from rfx.probes.probes import _ampere_loop_values, _port_voltage_value
     from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
     sim = _model()
     kwargs = dict(n_steps=320, devices=jax.devices("cpu")[:2])
     with warnings.catch_warnings(record=True) as caught:
         actual, _ = compute_lumped_wire_s_matrix_via_scan(sim, FREQS, **kwargs)
     assert not any("float64 requested" in str(w.message) for w in caught)
+    calls = []
 
-    def old_phase(step, freqs, dt):
-        t = jnp.asarray(step, dtype=jnp.float32) * dt
-        return jnp.exp(-1j * 2. * jnp.pi * jnp.asarray(freqs).astype(jnp.float64)
-                       * t.astype(jnp.float64)).astype(jnp.complex64) * dt
+    def host_dfts(samples, freqs, dt, dx):
+        fields = np.asarray(samples).reshape(len(samples), -1, 5)
+        v = np.asarray(_port_voltage_value(fields[:, :, 0], dx), dtype=np.float64)
+        i = np.asarray(_ampere_loop_values(*(fields[:, :, k] for k in range(1, 5)), dx),
+                       dtype=np.float64)
+        n = np.arange(len(v), dtype=np.float64)
+        w = -2j * np.pi * np.asarray(freqs, dtype=np.float64)[:, None] * float(dt)
+        calls.append(len(v))
+        return ((np.exp(w * (n + 1.0)) @ v).T * float(dt),
+                (np.exp(w * (n + 0.5)) @ i).T * float(dt))
 
-    old_half = dft_utils.half_step_current_phase
-    monkeypatch.setattr(dft_utils, "port_dft_phase", old_phase)
-    monkeypatch.setattr(dft_utils, "half_step_current_phase",
-                        lambda f, dt: old_half(f.astype(jnp.float64), dt))
+    monkeypatch.setattr(driver, "_lumped_recording_dfts", host_dfts)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
-        before, _ = compute_lumped_wire_s_matrix_via_scan(sim, FREQS, **kwargs)
-    np.testing.assert_array_equal(actual, before)
-    print(f"host_dft_warning_fix: {actual.size} complex S entries bit-identical; max_delta=0")
+        reference, _ = compute_lumped_wire_s_matrix_via_scan(sim, FREQS, **kwargs)
+    assert calls and all(length == 320 for length in calls)
+    delta = float(np.max(np.abs(np.asarray(actual) - np.asarray(reference)))
+                  / np.max(np.abs(np.asarray(reference))))
+    print(f"host float64 DFT of the records: {np.size(actual)} S entries, max_delta/peak={delta:.3g}")
+    assert delta <= 1e-4, delta
 
 
 def test_explicit_opt_out_keeps_s_options_inert(monkeypatch):

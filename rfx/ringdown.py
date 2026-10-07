@@ -15,8 +15,9 @@ closed form::
     z = exp(-j 2 pi f dt),   N = index of the LAST recorded sample,
     Y_T(f) = dt * sum_{n=0..N} y_n z**n.
 
-Sample ``n`` is paired with the time ``n dt``, as rfx's port accumulators pair
-``step`` with ``t = step * dt``. ``1 - lambda_k z`` is evaluated as
+The analytic model uses a slot-relative ``n dt`` clock. Physical port
+stamps add a common E phase, which cancels in S; channel-level comparisons
+use the shared physical-clock DFT. ``1 - lambda_k z`` is evaluated as
 ``-expm1(s_k dt - j 2 pi f dt)`` so a slow pole next to a bin keeps its
 digits.
 
@@ -1155,16 +1156,15 @@ def _emulate_accumulators(lane: str, pm: _PortMeta, e32, h32, dt):
     """rfx's wire-port DFT accumulation re-run on the probe samples (W0).
 
     The scan body is the lane's wire block with the field reads replaced by
-    the probe samples: ``t = float32(step) * dt``, the kernel
-    ``exp(-j 2 pi f t)`` cast to complex64 and times ``dt``, the current's
-    kernel times ``half_step_current_phase``, a sequential complex64 sum.
+    the probe samples, using the shared physical E/H phase kernel and a
+    sequential sum in the run's accumulator dtype.
     Returns ``((v, i, v_port) accumulators as numpy arrays of the run's dtype,
     (v_port, i) per step)`` -- the per-step series are the values the scan
     accumulated, in the dtype it computed them in (float32 on a float32 run).
     """
     import jax
     import jax.numpy as jnp
-    from rfx.core.dft_utils import half_step_current_phase as _half_i_phase
+    from rfx.core.dft_utils import port_dft_phase
 
     freqs = pm.freqs
 
@@ -1172,12 +1172,8 @@ def _emulate_accumulators(lane: str, pm: _PortMeta, e32, h32, dt):
         step_idx, e, hx, hy, hz = xs
         v_dft, i_dft, vp_dft = carry
         v, v_port, i_val = _port_vi(lane, pm, pm.raw, e, hx, hy, hz)
-        t = step_idx.astype(jnp.float32) * dt
-        t_f64 = t.astype(jnp.float64)
-        phase = jnp.exp(-1j * 2.0 * jnp.pi * freqs.astype(jnp.float64)
-                        * t_f64).astype(jnp.complex64) * dt
-        i_phase = phase * _half_i_phase(
-            freqs.astype(jnp.float64), dt).astype(jnp.complex64)
+        phase = port_dft_phase(step_idx, freqs, dt, dtype=v_dft.dtype)
+        i_phase = port_dft_phase(step_idx, freqs, dt, 'H', dtype=i_dft.dtype)
         return (v_dft + v * phase, i_dft + i_val * i_phase,
                 vp_dft + v_port * phase), (v_port, i_val)
 
@@ -1189,8 +1185,6 @@ def _emulate_accumulators(lane: str, pm: _PortMeta, e32, h32, dt):
     xs = (jnp.arange(n, dtype=jnp.int32), jnp.asarray(e32),
           jnp.asarray(h32["hx"]), jnp.asarray(h32["hy"]), jnp.asarray(h32["hz"]))
     with warnings.catch_warnings():
-        # rfx's own kernel requests float64 that x64-off JAX serves as
-        # float32; the emulation repeats the request, and its warning.
         warnings.simplefilter("ignore")
         final, per_step = jax.jit(lambda c, x: jax.lax.scan(body, c, x))(init, xs)
     return tuple(np.asarray(a) for a in final), tuple(np.asarray(a) for a in per_step)
@@ -1353,7 +1347,7 @@ W1_BAR = 1.0e-4
 #: defects 0.044-0.96 (the wrong H loop 0.71-0.96, the midpoint voltage of a
 #: 3-cell port 0.54-0.67, the half-step phase dropped 0.044-0.074, the current
 #: one step late 0.088-0.15, every channel one step late 0.088-0.15). Limit:
-#: the run's accumulators build their phase 2 pi f float32(step) dt in float32,
+#: before M2, the run built 2 pi f float32(step) dt in float32,
 #: so on a very long ringing record they drift from the float64 DFT of the
 #: probes -- the lossless box reads 2.3e-4 at 60k steps, 5.5e-4 at 120k, 8.5e-4
 #: at 180k and 1.1e-3 at 240k (jitted), where the check NaNs a correct record.
@@ -2992,10 +2986,15 @@ class RingdownForward(RingdownRun):
         # is not the port's V and I unseen. (An S-level reading divides by the
         # incident wave and amplified float32 rounding where the drive is weak.)
         plain = rj.plain_dft(Y, dt, f_bins)
+        from rfx.measurement.dft import phase
+        # The analytic completion is slot-relative. Compare its actual V/I
+        # conversion (including `half` above) on the physical E clock.
+        # Checking a separate replay would miss a broken completion mapping.
+        stamp = phase(0, f_bins, dt, 'E', dtype=cdt) / dt
         worst = []
         for p in range(len(pms)):
-            for ours, theirs in ((plain[:, 2 * p], accs[p][3]),
-                                 (plain[:, 2 * p + 1] * half, accs[p][1])):
+            for ours, theirs in ((plain[:, 2 * p] * stamp, accs[p][3]),
+                                 (plain[:, 2 * p + 1] * stamp * half, accs[p][1])):
                 theirs = jnp.asarray(theirs)
                 ours = ours.astype(theirs.dtype)
                 worst.append(jnp.max(jnp.abs(ours - theirs))

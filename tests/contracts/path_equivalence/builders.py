@@ -38,6 +38,13 @@ def _add(method, *args, **kwargs):
     return {}, lambda sim: getattr(sim, method)(*args, **kwargs)
 
 
+def _planes(sim):
+    # An E plane and an H plane: the two are stamped half a step apart, so a
+    # path that stamps its H plane as E must not pass on the E plane alone.
+    sim.add_dft_plane_probe(axis='x', coordinate=4*DX, freqs=FREQS)
+    sim.add_dft_plane_probe(axis='x', coordinate=4*DX, freqs=FREQS, component='hy')
+
+
 def _microstrip(sim):
     # Minimal physical prerequisites of an MSL declaration: both longitudinal
     # conductor surfaces exist at its declared ground and trace heights.
@@ -103,7 +110,7 @@ BUILDERS = {
     ('_dy_profile', 'graded'): ({}, _nothing),
     ('_dz_profile', 'graded'): ({}, _nothing),
     ('_probes', 'probe'): ({}, _nothing),
-    ('_dft_planes', 'dft_plane'): _add('add_dft_plane_probe', axis='x', coordinate=4*DX, freqs=FREQS),
+    ('_dft_planes', 'dft_plane'): ({}, _planes),
     ('_flux_monitors', 'flux'): _add('add_flux_monitor', axis='x', coordinate=4*DX, freqs=FREQS),
     ('_ntff', 'ntff_box'): _add('add_ntff_box', point(1, 1, 1), point(9, 6, 5), freqs=FREQS),
     ('_current_moments', 'block_moments'): _add('add_current_moment_monitor', point(1, 1, 1), point(9, 6, 5), block_size=2*DX, freqs=FREQS),

@@ -163,7 +163,7 @@ def design_adjoint_scan(ctx, initial, xs):
         raise NotImplementedError("gradient='adjoint' requires E DFT monitors; time-domain objectives unsupported")
     freqs_host = []
     for meta in ctx.dft_meta:
-        if meta[0] not in ("ex", "ey", "ez"):
+        if meta[0].name not in ("ex", "ey", "ez"):
             raise NotImplementedError("gradient='adjoint' does not support H DFT planes")
         f = np.asarray(meta[3])
         if (not np.all(np.isfinite(f)) or np.any(f <= 0)
@@ -210,7 +210,7 @@ def design_adjoint_scan(ctx, initial, xs):
             if targets is not None:
                 n = prev.step
                 for m, w in zip(ctx.dft_meta, weights):
-                    c = m[0]
+                    c = m[0].name
                     slot = _plane_slice(m, ctx.grid.shape)
                     basis = _wavelet_basis(jnp.asarray(m[3], dtype=dtype), ctx.dt,
                                            wavelet_length, n.astype(dtype))

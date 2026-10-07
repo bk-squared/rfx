@@ -2189,31 +2189,8 @@ class _ExecuteMixin:
         # JIT scan body actually accumulates plane-resolved DFT, then
         # carry the result back through ForwardResult.dft_planes for
         # plane-integrated V/I objectives (known gap #4, 2026-05-05).
-        dft_planes = []
-        if self._dft_planes:
-            from rfx.probes.probes import init_dft_plane_probe
-            _axis_to_index = {"x": 0, "y": 1, "z": 2}
-            for pe in self._dft_planes:
-                axis_idx = _axis_to_index[pe.axis]
-                plane_pos = [0.0, 0.0, 0.0]
-                plane_pos[axis_idx] = pe.coordinate
-                grid_index = grid.position_to_index(tuple(plane_pos))[axis_idx]
-                freqs_arr = (
-                    pe.freqs if pe.freqs is not None
-                    else jnp.linspace(self._freq_max / 10,
-                                      self._freq_max, pe.n_freqs)
-                )
-                dft_planes.append(
-                    init_dft_plane_probe(
-                        axis=axis_idx,
-                        index=grid_index,
-                        component=pe.component,
-                        freqs=freqs_arr,
-                        grid_shape=grid.shape,
-                        dft_total_steps=n_steps,
-                        region=getattr(self, "_dft_plane_regions", {}).get(pe.name),
-                    )
-                )
+        from rfx.measurement.setup import build_planes
+        dft_planes = build_planes(self, grid, n_steps)
 
         # Waveguide ports (differentiable DFT accumulation inside scan)
         waveguide_ports = []

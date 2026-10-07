@@ -1,6 +1,6 @@
 """Immutable, host-only snapshot of today's measurement conventions.
 
-M1 is observational: no runner imports this module. Call the builder once with
+The shared DFT reads this physical clock. Call the builder once with
 its realized grid and retain the returned snapshot. There are no buffers,
 waveforms, material masks, or mutable array leaves in the result. Sampling
 weights and quadrature areas are separate: a raw DFT plane does not integrate
@@ -8,12 +8,12 @@ its field, whereas a modal channel does.
 
 TimeBase is physical leapfrog: scan step n has E=(n+1)*dt, H=(n+.5)*dt.
 Channel time offsets, in units of dt, describe TODAY's stamps relative to
-that clock (including raw H planes stamped as E). They do not change stepping.
+that clock; active record stamps have zero offset. They do not change stepping.
 slot_offset describes storage only: scan step n writes record[n+slot_offset].
-It is independent of the timestamp; waveguide writes slot n+1 with zero time
-offset. Raw point probes have no Fourier stamp and use their physical
-sample time. Current-moment E contributions are stamped at the half-step current
-time; their pre-update/post-injection stages distinguish the two E states.
+It is independent of the timestamp; waveguide retains its historical
+endpoint exclusion while storing the retained samples at slot n. Raw point probes have no Fourier stamp and use their physical
+sample time. Current-moment stencil contributions form a current channel at the H time;
+their pre-update/post-injection stages distinguish the two E states.
 Calculator-only observations require their actual setup (MSL/coax calculators
 choose planes independently of run()). Missing observations remain owners with
 an availability explanation, never invented run() channels.
@@ -44,8 +44,14 @@ class Channel:
     nodes: tuple[Node, ...]
     sample_stage: str = 'post-injection'
     slot_offset: int = 0
-    e_time_offset: float = -1.0
-    h_time_offset: float = -1.0
+    e_time_offset: float = 0.0
+    h_time_offset: float = 0.0
+
+
+def field_channel(component, nodes=(), **metadata):
+    """Declare a field channel once, before any DFT consumer sees it."""
+    kind = {'ex': 'E', 'ey': 'E', 'ez': 'E', 'hx': 'H', 'hy': 'H', 'hz': 'H'}[component]
+    return Channel(component, kind, nodes, **metadata)
 
 
 @dataclass(frozen=True)
@@ -87,6 +93,17 @@ class TimeBase:
             raise ValueError('channel kind must be E or H')
         return float((np.float64(n) + (self.e_offset if kind == 'E' else self.h_offset))
                      * np.float64(self.dt))
+
+
+#: Sums that are not on the shared DFT kernel (rfx.measurement.dft), and the
+#: one case in which the kernel itself is less accurate. Decision record
+#: 2026-10-07 "M2 after two reviews", items 3 and 4.
+KERNEL_KNOWN_DIFFERENCES = (
+    'rfx/floquet.py update_floquet_dft: own sum, E and H stamped at one time; no caller in rfx/',
+    'subgridded runner: own lumped V/I sum stamped n dt, without the H half step',
+    'rfx/adjoint.py: own plane sum, physically stamped',
+    'traced dt or frequencies: the phase is evaluated in the trace; its float32 error grows with the step index',
+)
 
 
 @dataclass(frozen=True)
@@ -217,7 +234,7 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
     owners = []
     for i, entry in enumerate(sim._probes):
         owners.append(Owner(f'probe:{i}', 'probe',
-                            (Channel(entry.component, entry.component[0].upper(),
+                            (field_channel(entry.component,
                                      (Node(entry.component, *_index(grid, entry.position), 1.0),),
                                      e_time_offset=0., h_time_offset=0.),)))
     for i, entry in enumerate(sim._dft_planes):
@@ -226,15 +243,11 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
         point[axis] = entry.coordinate
         index = _index(grid, tuple(point))[axis]
         region = getattr(sim, '_dft_plane_regions', {}).get(entry.name)
-        offset = 0.0 if nu else 1.0
-        # Today's DFT plane gives H the E stamp; the MSL calculator corrects it later.
-        channel = Channel(entry.component, entry.component[0].upper(),
+        channel = field_channel(entry.component,
                           _plane_nodes(grid, axis, index, entry.component, region),
-                          e_time_offset=offset-1, h_time_offset=offset-.5)
+                          e_time_offset=0., h_time_offset=0.)
         owners.append(Owner(f'dft_plane:{i}', 'dft_plane', (channel,),
-                            _frequencies(sim, entry), known_differences=(
-                                'uniform plane E stamp n+1; NU plane E stamp n',
-                                'raw H plane uses E stamp; consumer owns half-step correction')))
+                            _frequencies(sim, entry)))
     from rfx.probes.flux_region import resolve_flux_region
     from rfx.probes.probes import init_flux_monitor, _FLUX_COMPONENTS
     from rfx.boundaries.pec import resolve_wall_faces
@@ -269,12 +282,10 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
             nodes = tuple(Node(n.component, n.i, n.j, n.k, weight, float(a))
                           for plane, weight in planes
                           for n, a in zip(_plane_nodes(grid, axis, plane, component, bounds), area.flat))
-            offset = 0.0 if nu else 1.0
-            channels.append(Channel(component, component[0].upper(), nodes,
-                                    e_time_offset=offset-1, h_time_offset=offset-1))
+            channels.append(field_channel(component, nodes,
+                                    e_time_offset=0., h_time_offset=0.))
         owners.append(Owner(f'flux_plane:{i}', 'flux', tuple(channels), _frequencies(sim, entry),
-                            known_differences=('uniform flux stamp n+1; NU flux stamp n',
-                                               'uniform dA broadcast; NU staggered dA and dA2'),
+                            known_differences=('uniform dA broadcast; NU staggered dA and dA2',),
                             availability='result missing' if path.startswith('fwd') else 'sampled'))
     edges = _pec_edges(sim, grid) if any(p.impedance and p.extent is not None for p in sim._ports) else None
     from rfx.sources.sources import WirePort, _wire_port_live_cells
@@ -333,7 +344,8 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
     ids = [o.id for o in owners]
     if len(ids) != len(set(ids)):
         raise ValueError('duplicate measurement owner id')
-    return MeasurementPlan(path, TimeBase(float(grid.dt), int(n_steps)), tuple(owners))
+    return MeasurementPlan(path, TimeBase(float(grid.dt), int(n_steps)), tuple(owners),
+                           known_differences=KERNEL_KNOWN_DIFFERENCES)
 
 
 def measurement_plan(sim, *, n_steps, path=None, frequencies=None, calculator_owners=()):

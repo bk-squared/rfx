@@ -34,12 +34,11 @@ Relation to the post-processing route
 The same current can be built after the run from recorded frequency-domain
 planes (DFT plane probes), in the frequency domain::
 
-    J_dft = curl(H_dft) - j w_tilde eps0 E_dft exp(-j w dt / 2),
+    J_dft = curl(H_dft) - j w_tilde eps0 E_dft,
     j w_tilde = (2j/dt) sin(w dt / 2)
 
 and drops the field left standing at the end of the record. The time-domain
-form here is the same quantity with a different time stamp and that one term
-kept. Writing ``A`` for this module's accumulator and ``E^N`` for the final
+form here is the same physical-clock quantity with that one term kept. Writing ``A`` for this module's accumulator and ``E^N`` for the final
 electric field, the algebra is exact::
 
     sum_n (E^{n+1} - E^n) e^{-j w (n+1/2) dt}
@@ -49,10 +48,9 @@ so that
 
     post_J_dft = exp(-j w dt (s - 1/2)) * ( A + eps0 E^N e^{-j w (N+1/2) dt} )
 
-where ``s`` is the time, in units of dt, that the recording runner's plane
-probes wrote on the state they sampled — 1 on the uniform lane, 0 on the
-graded-mesh lane, which is a measured difference between the two runners and
-not a choice (see :data:`UNIFORM_PLANE_STAMP_STEPS`).
+Here ``s = 1/2`` on both runners: H planes use the physical half-step,
+while E planes use the physical integer step. The former common E/H plane
+stamps (uniform 1, graded 0) were removed by M2.
 :func:`to_post_processing_convention` applies exactly that, and
 :func:`end_of_record_moments` supplies the end term from the final state.
 The stamp this module uses, ``(n + 1/2) dt``, is the physical one: the
@@ -664,7 +662,6 @@ def accumulate_current_moments(data, state, e_prev_slab,
     m = monitor
     acc, comp = data
     cdtype = acc.dtype
-    rdtype = jnp.finfo(cdtype).dtype
 
     curl_x, curl_y, curl_z = slab_curl_h(state, m)
     ex_new, ey_new, ez_new = slab_e_snapshot(state, m)
@@ -677,12 +674,9 @@ def accumulate_current_moments(data, state, e_prev_slab,
 
     moments = _reduce_to_blocks(m, jx, jy, jz).astype(cdtype)
 
-    _dt = jnp.asarray(dt, dtype=rdtype)
-    t = (jnp.asarray(step_idx, dtype=rdtype)
-         + jnp.asarray(m.half_step, dtype=rdtype)) * _dt
-    omega = jnp.asarray(2.0 * jnp.pi, dtype=rdtype) * jnp.asarray(
-        m.freqs, dtype=rdtype)
-    phase = jnp.exp(jnp.asarray(-1j, dtype=cdtype) * omega * t) * _dt
+    from rfx.measurement.dft import phase as dft_phase
+    phase = dft_phase(step_idx, m.freqs, dt, 'H', dtype=cdtype,
+                      time_shift=m.half_step-.5)
 
     val = moments[None, :, :, :] * phase[:, None, None, None]
     # Kahan compensated summation, as in ``accumulate_ntff``.
@@ -761,24 +755,19 @@ def end_of_record_moments(monitor: CurrentMomentMonitor, state, n_steps, dt):
     return mom[None, :, :, :] * ph[:, None, None, None]
 
 
-# Where each runner's DFT plane probe stamps the state it samples, in units
-# of dt, counting the scan step as n. Both runners sample the SAME state (E at
-# (n+1)dt, H at (n+1/2)dt) at the same slot, and then stamp it differently:
-#
-#   rfx/simulation.py      t = st.step * dt   -> (n+1) dt   (st.step is n+1
-#                                                 after update_e)
-#   rfx/nonuniform.py      t = step_idx * dt  ->  n dt
-#
-# These stamps differ by a full timestep. The constants let callers state
-# which record they hold rather than guess; see the recording expressions above.
-UNIFORM_PLANE_STAMP_STEPS = 1.0
-NONUNIFORM_PLANE_STAMP_STEPS = 0.0
+# The H-derived current's physical clock; E planes independently use n+1.
+# M2 history: formerly 1 (uniform) and 0 (NU), when both kinds shared a stamp.
+UNIFORM_PLANE_STAMP_STEPS = 0.5
+NONUNIFORM_PLANE_STAMP_STEPS = 0.5
 
 
-def plane_stamp_steps(grid) -> float:
-    """Which of the two stamps the DFT plane probes of this grid's runner use."""
-    return (NONUNIFORM_PLANE_STAMP_STEPS if getattr(grid, "dx_arr", None)
-            is not None else UNIFORM_PLANE_STAMP_STEPS)
+def plane_stamp_steps(grid=None) -> float:
+    """Physical H-plane/current offset, identical on both runners.
+
+    ``grid`` no longer selects anything; it stays so callers that pass
+    their grid (the stamp used to differ by runner) need no change.
+    """
+    return 0.5
 
 
 def to_post_processing_convention(accumulator, end_term, dt, freqs, *,
@@ -789,7 +778,7 @@ def to_post_processing_convention(accumulator, end_term, dt, freqs, *,
     term, and by nothing else; both are exact algebra, not corrections. The
     current here sits at ``(n + 1/2) dt`` because it is the difference of two
     electric fields; the post-processing route inherits whatever time its
-    plane probes wrote on the state, so::
+    H plane probes wrote on the state (physical default s=1/2), so::
 
         post_J = exp(-j w dt (s - 1/2)) * (A + eps0 E^N e^{-j w (N+1/2) dt})
 

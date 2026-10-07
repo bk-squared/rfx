@@ -525,6 +525,11 @@
     },
     {
       "file": "rfx/probes/probes.py",
+      "function": "_metric_ampere_loop",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/probes/probes.py",
       "function": "extract_s_matrix",
       "kind": "boundary"
     },

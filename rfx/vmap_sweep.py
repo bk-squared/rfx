@@ -47,6 +47,7 @@ from rfx.geometry.rasterize_grid import (
     extend_cpml_pad_materials,
 )
 from rfx.materials.thin_conductor import apply_thin_conductor
+from rfx.measurement.accumulators import plane_metadata, planes
 from rfx.probes.probes import DFTPlaneProbe, init_dft_plane_probe
 from rfx.simulation import (
     SourceSpec,
@@ -545,9 +546,7 @@ def _build_vmap_scan_fn(
             pec_mask, sheets=pec_sheets, wires=pec_wires, periodic=periodic)
     use_pec_edges = pec_edge_masks is not None
     use_dft = len(dft_probes) > 0
-    dft_meta = tuple(
-        (p.component, p.axis, p.index, p.freqs) for p in dft_probes
-    )
+    dft_meta = plane_metadata(dft_probes)
     dft_acc_init = tuple(p.accumulator for p in dft_probes)
 
     if use_cpml:
@@ -632,25 +631,12 @@ def _build_vmap_scan_fn(
             st = inject_drives(st, drives, jnp.concatenate((src_vals.astype(st.ex.dtype),
                                                           j_src_vals.astype(st.ex.dtype))))
 
-            # DFT-plane accumulation (rect window always — matches
-            # Simulation.run()'s inline kernel, rfx/simulation.py:1512-1526).
-            # ``t`` is derived from the STATE's own step counter, not the
-            # scan xs step index, so it matches run() bit-for-bit under vmap.
+            # DFT-plane accumulation, rect window, through the one measurement
+            # kernel run() uses (S2 M2). The slot comes from the STATE's own
+            # step counter, not the scan xs index (#404): slot st.step - 1
+            # holds E at st.step * dt and H half a step earlier.
             if use_dft:
-                t_plane = st.step * dt
-                new_dft_accs = []
-                for acc, (component, axis, index, freqs) in zip(dft_accs, dft_meta):
-                    field = getattr(st, component)
-                    if axis == 0:
-                        plane = field[index, :, :]
-                    elif axis == 1:
-                        plane = field[:, index, :]
-                    else:
-                        plane = field[:, :, index]
-                    phase = jnp.exp(-1j * 2.0 * jnp.pi * freqs * t_plane)
-                    new_dft_accs.append(
-                        acc + plane[None, :, :] * phase[:, None, None] * dt)
-                dft_accs = tuple(new_dft_accs)
+                dft_accs = tuple(planes(st, dft_accs, dft_meta, dt, st.step - 1)[0])
 
             # Probe samples
             samples = [getattr(st, pc)[pi, pj, pk]

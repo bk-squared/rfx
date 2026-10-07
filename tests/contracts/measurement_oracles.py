@@ -34,40 +34,33 @@ def assignment(nu, name, dependency=None):
 
 
 def stamp(nu, family, kind):
-    """Read plane/flux stamp expressions from the actual scan body."""
-    env = dict(jnp=jnp, step_idx=jnp.int32(3), st=SimpleNamespace(step=jnp.int32(4)), dt=1.)
-    name = 't_plane' if family == 'dft_plane' else 't_flux'
-    time = eval(assignment(nu, name), env)
-    if family == 'flux':
-        env.update(t_f64=time, fqs64=jnp.array([.01]))
-        phase = eval(assignment(nu, 'phase_'+kind.lower()), env)[0]
-        return float(-jnp.angle(phase)/(2*jnp.pi*.01))
-    return float(time)
-
-
-@lru_cache(None)
-def flux_code(nu):
-    matches = []
-    for n in ast.walk(tree(nu)):
-        if not isinstance(n, ast.For):
-            continue
-        body = n.body
-        for i, statement in enumerate(body):
-            if (isinstance(statement, ast.Assign)
-                    and any(isinstance(t, ast.Name) and t.id == 'idx_m1' for t in statement.targets)):
-                assert isinstance(body[i+1], ast.If)
-                matches.append([statement, body[i+1]])
-    assert len(matches) == 1
-    return compile(ast.Module(body=matches[0], type_ignores=[]), '<production flux sampler>', 'exec')
+    """Execute the actual scan's shared-accumulator call with a unit field."""
+    from rfx.measurement.accumulators import planes, flux
+    from rfx.measurement.plan import field_channel
+    shape = (3, 3, 3)
+    state = SimpleNamespace(step=jnp.int32(4), **{c: jnp.ones(shape) for c in COMPONENTS})
+    bins = np.array([.01])
+    acc = jnp.zeros((1, 3, 3), dtype=jnp.complex64)
+    name = 'planes' if family == 'dft_plane' else 'flux'
+    calls = [n for n in ast.walk(tree(nu)) if isinstance(n, ast.Call)
+             and isinstance(n.func, ast.Name) and n.func.id == name]
+    assert len(calls) == 1
+    dft_meta = ((field_channel(kind.lower()+'z'), 0, 1, bins, None),)
+    flux_meta = ((0, 1, bins, tuple(field_channel(c) for c in ('ey', 'ez', 'hy', 'hz')), 0, 3, 0, 3),)
+    env = dict(planes=planes, flux=flux, st=state, dt=1., step_idx=jnp.int32(3),
+               carry={'dft_planes': (acc,), 'flux_monitors': ((acc, acc, acc, acc),)},
+               dft_meta=dft_meta, flux_meta=flux_meta,
+               ctx=SimpleNamespace(dft_meta=dft_meta, flux_meta=flux_meta))
+    value = eval(compile(ast.Expression(calls[0]), '<production accumulator>', 'eval'), env)
+    spectrum = value[0][0] if name == 'planes' else value[0][0 if kind == 'E' else 2]
+    return float(-jnp.angle(spectrum[0, 0, 0])/(2*jnp.pi*.01))
 
 
 def flux_samples(nu, cfg, fields):
+    from rfx.measurement.accumulators import flux_samples as sample
     from rfx.probes.probes import _FLUX_COMPONENTS
-    env = dict(st=fields, ax=cfg.axis, idx=cfg.index,
-               _lo1=cfg.lo1, _hi1=cfg.hi1, _lo2=cfg.lo2, _hi2=cfg.hi2)
-    env.update(zip(('e1n', 'e2n', 'h1n', 'h2n'), _FLUX_COMPONENTS[cfg.axis]))
-    exec(flux_code(nu), env)
-    return tuple(env[c] for c in ('e1', 'e2', 'h1', 'h2'))
+    return sample(fields, cfg.axis, cfg.index, _FLUX_COMPONENTS[cfg.axis],
+                  (cfg.lo1, cfg.hi1, cfg.lo2, cfg.hi2))
 
 
 def jacobian_nodes(function, shape):
@@ -82,9 +75,9 @@ def jacobian_nodes(function, shape):
 
 def judge_metadata(plan, actual):
     """Compare every channel's pair of offsets and record slot to production."""
-    from rfx.core.dft_utils import port_dft_phase, half_step_current_phase
+    from rfx.core.dft_utils import port_dft_phase
     from rfx.sources.waveguide_port import (
-        update_waveguide_port_probe, _rect_dft, _co_located_current_spectrum,
+        update_waveguide_port_probe, _rect_dft,
     )
     nu = 'nonuniform' in plan.path
     for owner in plan.owners:
@@ -102,19 +95,13 @@ def judge_metadata(plan, actual):
             if owner.kind in ('dft_plane', 'flux', 'msl', 'coax'):
                 family = 'flux' if owner.kind == 'flux' else 'dft_plane'
                 e, h = stamp(nu, family, 'E'), stamp(nu, family, 'H')
-                if owner.kind == 'msl':
-                    correction = eval(assignment('rfx/sparams/msl.py', '_hs_phase'),
-                                      dict(jnp=jnp, freqs_arr=jnp.array([.01]), grid=SimpleNamespace(dt=1.),
-                                           hy_plane=jnp.zeros(1, dtype=jnp.complex64)))
-                    h += float(-jnp.angle(correction[0])/(2*jnp.pi*.01))
-                elif owner.kind == 'coax':
-                    h = 3.5  # No H projector; inactive offset remains the physical default.
             elif owner.kind in ('wire', 'lumped'):
                 bins = jnp.array([.01])
                 env = dict(jnp=jnp, step_idx=jnp.int32(3), dt=1., sp_freqs=bins,
                            wp_meta=SimpleNamespace(freqs=bins), lp_meta=SimpleNamespace(freqs=bins),
-                           port_dft_phase=port_dft_phase, _half_i_phase=half_step_current_phase)
-                env['t_f64'] = eval(assignment(nu, 't', 'step_idx'), env)
+                           port_dft_phase=port_dft_phase,
+                           **{name: SimpleNamespace(dtype=jnp.complex64) for name in (
+                               'v_dft', 'i_dft', 'v_ref_dft', 'v_ref_dft_l', 'i_dft_l')})
                 lumped_uniform = owner.kind == 'lumped' and not nu
                 phase = eval(assignment(nu, 'phase_l' if lumped_uniform else 'phase',
                                         'lp_meta' if lumped_uniform else 'sp_freqs' if nu else 'wp_meta'), env)
@@ -136,10 +123,12 @@ def judge_metadata(plan, actual):
                 slot = int(indices[0])-3
                 phase = _rect_dft(recorded.v_probe_t, recorded.freqs, 1., recorded.n_steps_recorded)
                 e = float(-jnp.angle(phase[0])/(2*jnp.pi*.01))
-                h = float(-jnp.angle(_co_located_current_spectrum(recorded, phase)[0])/(2*jnp.pi*.01))
+                h_phase = _rect_dft(recorded.v_probe_t, recorded.freqs, 1., recorded.n_steps_recorded, 'H')
+                h = float(-jnp.angle(h_phase[0])/(2*jnp.pi*.01))
             elif owner.kind == 'current_moment':
                 # The actual monitor supplies the accumulator's half-step stamp.
-                e = h = 3+float(actual['current_moments'].half_step)
+                e, h = 4., 3+float(actual['current_moments'].half_step)
+                assert channel.kind == 'H'  # Contributions form the current at the H time.
             else:
                 # Raw probes have no Fourier stamp. They return post-update state
                 # in scan order, so their clock is the physical sample time.

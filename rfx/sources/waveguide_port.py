@@ -66,7 +66,6 @@ from typing import NamedTuple
 
 import jax.numpy as jnp
 
-from rfx._precision import HIGHEST
 import numpy as np
 
 from rfx.boundaries.axes import hi_face_is_wall, resolve_cpml_axes
@@ -1412,55 +1411,8 @@ def overlap_modal_amplitude(
 
 def update_waveguide_port_probe(cfg: WaveguidePortConfig, state,
                                 dt: float, dx: float) -> WaveguidePortConfig:
-    """Record per-step modal V and I at ref and probe planes.
-
-    The S-parameter spectra are computed POST-SCAN by
-    ``_extract_global_waves_from_time_series`` via a rectangular
-    full-record DFT on the recorded arrays. No in-scan windowed DFT
-    accumulators are kept (Phase 2 cleanup, 2026-04-25). The previous
-    in-scan windowed/gated path silently integrated partially-decayed
-    standing waves and produced ``|S11| → ∞`` as the gate widened.
-    """
-    t = state.step * dt
-
-    v_ref = modal_voltage(state, cfg, cfg.ref_x, dx)
-    v_probe = modal_voltage(state, cfg, cfg.probe_x, dx)
-    i_ref = modal_current(state, cfg, cfg.ref_x, dx)
-    i_probe = modal_current(state, cfg, cfg.probe_x, dx)
-
-    arg = (t - cfg.src_t0) / cfg.src_tau
-    v_inc = cfg.src_amp * (-2.0 * arg) * jnp.exp(-(arg ** 2))
-
-    # Write per-step modal V/I into the time-series carry. The carry
-    # length is fixed at trace time (= dft_total_steps); ``state.step``
-    # is a JAX scalar and has already been advanced by the E update, so
-    # the last scan step writes one slot past the buffer. That write is
-    # DROPPED, not clamped: clamping overwrote the last slot with the next
-    # step's sample, so the record's last sample depended on how long the
-    # run was.
-    #
-    # Also stamp ``cfg.dt`` from the scan's authoritative ``dt`` so the
-    # post-scan rect DFT (``_extract_global_waves_from_time_series``)
-    # uses the right ``Δt`` even when the caller initialised the cfg
-    # via the low-level ``init_waveguide_port`` without passing ``dt=``
-    # (legacy path used by ``tests/unit/ports/test_waveguide_port.py`` Python loops).
-    n_t = cfg.v_probe_t.shape[0]
-    step = jnp.asarray(state.step, dtype=jnp.int32)
-    return cfg._replace(
-        dt=float(dt),
-        v_probe_t=cfg.v_probe_t.at[step].set(
-            jnp.asarray(v_probe, cfg.v_probe_t.dtype), mode='drop'),
-        v_ref_t=cfg.v_ref_t.at[step].set(
-            jnp.asarray(v_ref, cfg.v_ref_t.dtype), mode='drop'),
-        i_probe_t=cfg.i_probe_t.at[step].set(
-            jnp.asarray(i_probe, cfg.i_probe_t.dtype), mode='drop'),
-        i_ref_t=cfg.i_ref_t.at[step].set(
-            jnp.asarray(i_ref, cfg.i_ref_t.dtype), mode='drop'),
-        v_inc_t=cfg.v_inc_t.at[step].set(
-            jnp.asarray(v_inc, cfg.v_inc_t.dtype), mode='drop'),
-        n_steps_recorded=jnp.maximum(cfg.n_steps_recorded,
-                                     jnp.minimum(step + 1, n_t)),
-    )
+    from rfx.measurement.modal import record_waveguide
+    return record_waveguide(cfg, state, dt, dx)
 
 
 def _compute_beta(
@@ -1557,31 +1509,9 @@ def _compute_mode_impedance(
     raise ValueError(f"mode_type must be 'TE' or 'TM', got {mode_type!r}")
 
 
-def _co_located_current_spectrum(
-    cfg: WaveguidePortConfig,
-    current_dft: jnp.ndarray,
-) -> jnp.ndarray:
-    """Correct the H-derived DFT for Yee leapfrog time staggering.
-
-    The waveguide-port probe runs at the end of a scan-body iteration,
-    after `update_h` and `update_e`. At that point `state.step = n+1`,
-    `E` is at time ``(n+1)·dt`` and `H` is at ``(n+1/2)·dt``. The
-    accumulator pairs both samples with phase ``exp(-jω·(n+1)·dt)``, so
-    the raw I DFT carries an extra factor ``exp(-jω·dt/2)`` relative to
-    the true DFT of H at its own timestamp. To recover the true DFT we
-    multiply by ``exp(+jω·dt/2)`` — applied here before any modal
-    decomposition so V and I are time-aligned at the E timestep.
-
-    Before 2026-04-22 the sign here was `-jω·dt/2`, which amplified the
-    very error it was supposed to cancel. The observable symptom was a
-    residual imaginary component of `V/I` on an empty guide (mean
-    ``∠(Z_formula / Z_actual)`` ≈ −8°). The current sign drops that to
-    ≈ −1° on the same diagnostic (`scripts/isolate_extractor_vs_engine.py`).
-    """
-    if cfg.dt <= 0.0:
-        return current_dft
-    omega = 2 * jnp.pi * cfg.freqs
-    return current_dft * jnp.exp(+1j * omega * (0.5 * cfg.dt))
+def _co_located_current_spectrum(cfg: WaveguidePortConfig, current_dft: jnp.ndarray) -> jnp.ndarray:
+    from rfx.measurement.modal import legacy_current_spectrum
+    return legacy_current_spectrum(cfg, current_dft)
 
 
 def _extract_global_waves(
@@ -1597,42 +1527,15 @@ def _extract_global_waves(
         dt=cfg.dt,
         dx=cfg.dx,
     )
-    current_dft = _co_located_current_spectrum(cfg, current_dft)
     forward = 0.5 * (voltage_dft + z_mode * current_dft)
     backward = 0.5 * (voltage_dft - z_mode * current_dft)
     return forward, backward
 
 
 def _rect_dft(time_series: jnp.ndarray, freqs: jnp.ndarray, dt: float,
-              n_valid: jnp.ndarray | int) -> jnp.ndarray:
-    """Rectangular full-record DFT matching OpenEMS ``utilities.DFT_time2freq``.
-
-    Computes the single-sided spectrum::
-
-        V(f) = 2 · dt · Σ_n V(t_n) · exp(-j 2π f t_n)
-
-    where ``t_n = n · dt`` and the sum runs over ``n in [0, n_valid)``.
-    No window function, no time gate beyond ``n_valid`` — the integrand
-    is the literal recorded time series. For a finite-energy waveform
-    (transient pulse + decaying ringdown) this Fourier transform is
-    finite at every frequency; for a non-decaying standing wave the
-    integral grows with N, which is the architectural failure mode the
-    in-scan windowed accumulator silently exhibits.
-
-    Reference: ``/usr/lib/python3/dist-packages/openEMS/utilities.py`` lines 21-35.
-    """
-    n = jnp.arange(time_series.shape[0])
-    t = n.astype(time_series.dtype) * jnp.asarray(dt, dtype=time_series.dtype)
-    mask = (n < n_valid).astype(time_series.dtype)
-    masked_v = time_series * mask
-    omega = 2.0 * jnp.pi * freqs.astype(time_series.dtype)
-    # Build the DFT outer product: phase shape (n_steps, n_freqs).
-    # complex dtype follows the freqs precision (complex64 by default,
-    # complex128 under JAX_ENABLE_X64).
-    phase = jnp.exp(-1j * omega[None, :] * t[:, None])
-    return 2.0 * jnp.asarray(dt, dtype=phase.dtype) * jnp.einsum(
-        "n,nf->f", masked_v.astype(phase.dtype), phase, precision=HIGHEST
-    )
+              n_valid: jnp.ndarray | int, kind: str = 'E') -> jnp.ndarray:
+    from rfx.measurement.modal import rect_dft
+    return rect_dft(time_series, freqs, dt, n_valid, kind)
 
 
 def _extract_global_waves_from_time_series(
@@ -1649,7 +1552,7 @@ def _extract_global_waves_from_time_series(
     """
     n_valid = cfg.n_steps_recorded
     voltage_dft = _rect_dft(voltage_t, cfg.freqs, cfg.dt, n_valid)
-    current_dft = _rect_dft(current_t, cfg.freqs, cfg.dt, n_valid)
+    current_dft = _rect_dft(current_t, cfg.freqs, cfg.dt, n_valid, 'H')
     return _extract_global_waves(cfg, voltage_dft, current_dft)
 
 
@@ -1922,6 +1825,7 @@ def settling_db_from_port_records(final_cfgs, *, freqs=None, freq_max=None,
     sensitivities are judged by a separate witness
     """
     from rfx.core.jax_utils import is_tracer
+    from rfx.measurement.modal import recorded as _recorded
     from rfx.probes.settling import source_end_step
 
     final_cfgs = tuple(final_cfgs)
@@ -1941,12 +1845,11 @@ def settling_db_from_port_records(final_cfgs, *, freqs=None, freq_max=None,
             distance = max(abs(float(cfg.source_x_m) - float(x))
                            for other in final_cfgs
                            for x in (other.reference_x_m, other.probe_x_m))
-            drives.append((cfg.v_inc_t, distance))
+            drives.append((_recorded(cfg, "v_inc_t"), distance))
         if drives:
-            source_end = source_end_step(
-                drives, len(final_cfgs[0].v_inc_t), final_cfgs[0].dt)
+            source_end = source_end_step(drives, len(drives[0][0]), final_cfgs[0].dt)
     named = [
-        (f"port{port_index}/{name}", getattr(cfg, name))
+        (f"port{port_index}/{name}", _recorded(cfg, name))
         for port_index, cfg in enumerate(final_cfgs)
         for name in _SETTLING_RECORD_NAMES
     ]
@@ -3115,12 +3018,8 @@ def _modal_net_power(cfg: WaveguidePortConfig) -> np.ndarray:
     recorded V/I convention; callers use magnitudes / signed differences.
     """
     v_dft = np.array(_rect_dft(cfg.v_ref_t, cfg.freqs, cfg.dt, cfg.n_steps_recorded))
-    i_dft = np.array(_rect_dft(cfg.i_ref_t, cfg.freqs, cfg.dt, cfg.n_steps_recorded))
-    # Yee half-step co-location: the H-derived current DFT carries a spurious exp(-jω·dt/2)
-    # (H sampled at (n+1/2)·dt, E at (n+1)·dt), so the raw V·conj(I) mixes reactive power
-    # Im(V·I*)·sin(ω·dt/2) into the real net power. Correct I before the product, exactly as the
-    # wave-decomposition extractors do (_extract_global_waves, the overlap path). RF-audit 2026-07-23.
-    i_dft = np.asarray(_co_located_current_spectrum(cfg, i_dft))
+    i_dft = np.array(_rect_dft(cfg.i_ref_t, cfg.freqs, cfg.dt, cfg.n_steps_recorded, 'H'))
+    # The shared kernel already stamps current at the physical H half-step.
     return 0.5 * np.real(v_dft * np.conj(i_dft))
 
 
@@ -3391,8 +3290,6 @@ def update_overlap_dft(
     At extraction time these are combined with frequency-dependent mode
     impedance to yield forward/backward modal amplitudes.
     """
-    t = state.step * dt
-
     p1_ref, p2_ref = _overlap_cross_products(state, cfg, cfg.ref_x, dx)
     p1_probe, p2_probe = _overlap_cross_products(state, cfg, cfg.probe_x, dx)
 
@@ -3402,13 +3299,15 @@ def update_overlap_dft(
     # knobs but those fields were also removed from
     # ``WaveguidePortConfig``. The S-param result is unchanged for runs
     # that previously used ``dft_window='rect'`` and no early gate.
-    phase = jnp.exp(-1j * 2.0 * jnp.pi * cfg.freqs * t)
+    from rfx.measurement.dft import phase as dft_phase
+    phase = dft_phase(state.step-1, cfg.freqs, dt, 'E')
+    h_phase = dft_phase(state.step-1, cfg.freqs, dt, 'H')
 
     return OverlapDFTAccumulators(
-        p1_ref_dft=acc.p1_ref_dft + p1_ref * phase * dt,
-        p2_ref_dft=acc.p2_ref_dft + p2_ref * phase * dt,
-        p1_probe_dft=acc.p1_probe_dft + p1_probe * phase * dt,
-        p2_probe_dft=acc.p2_probe_dft + p2_probe * phase * dt,
+        p1_ref_dft=acc.p1_ref_dft + p1_ref * phase,
+        p2_ref_dft=acc.p2_ref_dft + p2_ref * h_phase,
+        p1_probe_dft=acc.p1_probe_dft + p1_probe * phase,
+        p2_probe_dft=acc.p2_probe_dft + p2_probe * h_phase,
     )
 
 
@@ -3469,8 +3368,8 @@ def extract_waveguide_sparams_overlap(
         dx=cfg.dx,
     )
     c_stored = mode_self_overlap(cfg, cfg.dx)
-    p2_ref = _co_located_current_spectrum(cfg, acc.p2_ref_dft)
-    p2_probe = _co_located_current_spectrum(cfg, acc.p2_probe_dft)
+    p2_ref = acc.p2_ref_dft
+    p2_probe = acc.p2_probe_dft
 
     # Convert cross-product DFTs to global forward/backward waves
     fwd_ref, bwd_ref = _overlap_to_waves(

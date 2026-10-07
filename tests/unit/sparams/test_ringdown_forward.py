@@ -68,6 +68,9 @@ BAR_VALUE_F32 = 1.5e-5
 #: and I divided by the incident wave. Measured 6.7e-8 .. 2.4e-7 on the
 #: bandwidth-0.42 pulse (a bin driven at 3.6e-4 of the peak). Bar: about 6x.
 BAR_VALUE_F32_INCIDENT = 1.5e-6
+#: K in the weak-bin bar max(own, K eps32 / a_rel): twice the measured maximum
+#: of err a_rel / eps32 (1.416), rounded up; see the test using it
+WEAK_BIN_K = 3
 #: The same under scoped x64 (the map in complex128), 600-step records:
 #: measured 3.8e-8 on the uniform lane (the complex64 rounding of run()'s
 #: (1, 1, nf) S container there) and 0.0 on the graded lane. Bar: about 5x.
@@ -428,7 +431,48 @@ def test_a_weakly_driven_bin_is_completed_as_run_completes_it():
     assert r.ringdown.report.ok
     assert np.all(np.isfinite(S)) and c <= rd.CONSISTENCY_BAR
     assert weighted <= BAR_VALUE_F32_INCIDENT, weighted
-    assert err.max() <= own, (err.max(), own)
+    # Where the bar is judged (S2 pre-declaration, decision record 2026-10-07):
+    # at bins whose incident wave is within 40 dB of its band peak the bar is
+    # unchanged, run()'s own accumulator round-off. At a weaker bin the
+    # float32 sums of terms of the order of the peak leave an absolute error of
+    # the order of eps32 x peak, that is eps32 / a_rel of that bin, so the bar
+    # there is max(own, K eps32 / a_rel). Measured err a_rel / eps32 over the
+    # 33 weak bins: 0.084 / 0.56 / 1.416 (min / median / max, the max at
+    # 17.5 GHz, a_rel 6.2e-4), the same before and after S2 M2; K = 3 is the
+    # smallest integer at least twice that maximum. M2 did not move the
+    # difference (2.72e-4 at 17.5 GHz, 7.2e-6 over the 68 strong bins, both
+    # sides); it lowered run()'s own round-off from 1.10e-3 to 1.95e-4.
+    strong = a_rel >= 1.0e-2
+    assert strong.any() and (~strong).any()
+    assert err[strong].max() <= own, (err[strong].max(), own)
+    weak_bar = np.maximum(own, WEAK_BIN_K * np.finfo(np.float32).eps / a_rel[~strong])
+    assert np.all(err[~strong] <= weak_bar), float(np.max(err[~strong] / weak_bar))
+
+
+def test_an_x64_run_weights_the_port_dft_in_complex128():
+    """Under float64 the port V and I accumulators are complex128 and so are
+    their Fourier weights (S2 pre-declaration 7.3): S is the float64 sum of the
+    run's own port record at the port's bins, with E at (n+1) dt and H at
+    (n+1/2) dt. Until M2 the weights were complex64 on an x64 run too, and the
+    weak bins of this pulse carried their rounding: 2.5e-5 of peak before M2,
+    5.6e-5 with the one kernel and complex64 weights (3000 steps), 2e-12 now."""
+    pulse = GaussianPulse(f0=13.0e9, bandwidth=0.42, cutoff=4.5)
+    with enable_x64():
+        f = _box("uniform", pulse=pulse, precision="float64").forward(
+            n_steps=600, skip_preflight=True, port_s11_freqs=FREQS)
+        meta, accs = f.wire_port_sparams[0]
+        assert all(np.asarray(accs[k]).dtype == np.complex128 for k in (1, 3))
+        record = np.asarray(f.sparam_time_records[0], dtype=np.float64)
+        bins = np.asarray(meta.freqs, dtype=np.float64)
+        S = np.asarray(f.s_params).ravel()
+    n = np.arange(record.shape[0], dtype=np.float64)
+    dt = float(f.dt)
+    vp = np.exp(-2j * np.pi * bins[:, None] * (n + 1.0) * dt) @ record[:, 2]
+    ii = np.exp(-2j * np.pi * bins[:, None] * (n + 0.5) * dt) @ record[:, 1]
+    ref = (vp - 50.0 * ii) / (vp + 50.0 * ii)
+    err = float(np.max(np.abs(S - ref)) / np.max(np.abs(ref)))
+    print(f"\n[x64, 600 steps] |S - float64 sum of the record| {err:.3g} of peak")
+    assert err <= 1.0e-9, err
 
 
 def _stub_identification(monkeypatch):

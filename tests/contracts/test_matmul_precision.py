@@ -171,7 +171,11 @@ def test_ntff_far_field():
 
 
 def test_port_extraction_cores():
-    """The traced cores of the waveguide DFT, the coax S solve and the MSL fit."""
+    """The traced cores of the coax S solve and the MSL fit.
+
+    The waveguide ``_rect_dft`` replays its record through
+    ``rfx.measurement.dft`` since S2 M2: 256-step blocks, one matrix product
+    each, which must stay at the highest precision like the others."""
     from rfx.probes.msl_wave_decomp import _lstsq_alpha_gamma
     from rfx.sources.coaxial_port import (_coaxial_line_reflection_jnp,
                                           _solve_two_port_from_wave_amplitudes_jnp)
@@ -180,7 +184,7 @@ def test_port_extraction_cores():
     ts = jnp.linspace(0.0, 1.0, 64, dtype=jnp.float32)
     freqs = jnp.array([1e9, 2e9], jnp.float32)
     text = jax.jit(lambda y: _rect_dft(y, freqs, 1e-11, 64)).lower(ts).as_text()
-    _assert_all_highest(text, "waveguide _rect_dft")
+    assert _assert_all_highest(text, "waveguide _rect_dft") >= 1
 
     a = jnp.ones((2, 2, 3), jnp.complex64) + jnp.eye(2, dtype=jnp.complex64)[:, :, None]
     text = jax.jit(lambda a: _solve_two_port_from_wave_amplitudes_jnp(a, 0.5 * a).s_params).lower(a)

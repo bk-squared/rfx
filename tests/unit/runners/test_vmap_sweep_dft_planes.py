@@ -244,6 +244,25 @@ class TestVmapDftPlaneFastPath:
                 ref.dft_planes, rtol=1e-6, ctx=f"cpml eps_r={ev}",
             )
 
+    def test_an_h_plane_matches_run(self):
+        """An H plane is stamped half a step before E by the one kernel on
+        both paths (S2 M2). Until then this path stamped H at E's time:
+        against run() the hy plane read 0.0060 .. 0.0599 of its peak
+        (omega dt / 2 at 0.5 .. 5 GHz); through the shared kernel 0.0."""
+        def sim(eps_r):
+            s = _dft_sim("cpml", eps_r=eps_r)
+            s.add_dft_plane_probe(axis="x", coordinate=0.010, component="hy",
+                                  n_freqs=4, name="p2")
+            return s
+
+        eps_values = np.array([2.0, 6.0])
+        vmap_res = vmap_material_sweep(sim(4.0), "substrate.eps_r", eps_values, n_steps=60)
+        for idx, ev in enumerate(eps_values):
+            ref = sim(float(ev)).run(n_steps=60)
+            _assert_dft_planes_match(
+                {k: v[idx] for k, v in vmap_res.dft_planes.items()},
+                ref.dft_planes, rtol=1e-6, ctx=f"h plane eps_r={ev}")
+
     def test_dft_plane_matches_run_pec(self):
         """Non-CPML (plain PEC-wall) boundary takes the OTHER
         ``_build_vmap_scan_fn`` branch (``use_cpml=False``) -- pin it too,

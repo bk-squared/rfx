@@ -10,6 +10,8 @@ import numpy as np
 import pytest
 
 from rfx import Box, Simulation
+from rfx.measurement import dft as measurement_dft
+from rfx.measurement.dft import transform as kernel_transform
 from rfx.sources.sources import GaussianPulse
 
 pytestmark = pytest.mark.distributed
@@ -249,8 +251,9 @@ def test_mutations(monkeypatch, mutation):
         original_dft = driver._lumped_recording_dfts
         def dft(*args):
             with monkeypatch.context() as patch:
-                patch.setattr(dft_utils, "half_step_current_phase",
-                              lambda f, dt: jnp.ones_like(f, dtype=jnp.complex64))
+                # S2 M2: the half step is the H stamp of the one DFT kernel.
+                patch.setattr(measurement_dft, "transform", lambda r, f, dt, kind="E", **k:
+                              kernel_transform(r, f, dt, "E", **k))
                 return original_dft(*args)
         monkeypatch.setattr(driver, "_lumped_recording_dfts", dft)
     # Without the load stamp a port has no source impedance to drive behind
@@ -285,10 +288,21 @@ def test_one_device_bytes_against_main(monkeypatch, case, planes):
     monkeypatch.setattr(driver, "compute_lumped_wire_s_matrix_via_scan",
                         namespace["compute_lumped_wire_s_matrix_via_scan"])
     expected = sim.run(**kwargs)
-    for name in ("s_params", "freqs", "time_series"):
+    for name in ("freqs", "time_series"):
         a, b = np.asarray(getattr(actual, name)), np.asarray(getattr(expected, name))
         assert a.dtype == b.dtype and a.shape == b.shape and a.tobytes() == b.tobytes()
         print(f"main-byte-parity case={case} planes={planes} {name} entries={a.size} max_delta=0")
+    # History (S2 M2, 2026-10-07): S was byte-equal to the beb0d3fd driver's.
+    # The host DFT of the recorded V/I is now the shared measurement kernel,
+    # whose phase comes from split tables, so the arithmetic differs while the
+    # records do not: measured 1.79e-7 of the peak on lumped_distributed
+    # (fields and time series byte-equal). S is a quantity summed over the
+    # record: cross-trace bar 1e-4 of its peak.
+    a, b = np.asarray(actual.s_params), np.asarray(expected.s_params)
+    assert a.dtype == b.dtype and a.shape == b.shape
+    delta = float(np.max(np.abs(a - b)) / np.max(np.abs(b)))
+    assert delta <= 1e-4, delta
+    print(f"main-parity case={case} planes={planes} s_params entries={a.size} max_delta/peak={delta:.3g}")
     for component in ("ex", "ey", "ez", "hx", "hy", "hz", "step"):
         a = np.asarray(getattr(actual.state, component))
         b = np.asarray(getattr(expected.state, component))

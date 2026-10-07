@@ -1,4 +1,4 @@
-"""Concrete measurement descriptions; stepping does not consume these yet."""
+"""Physical-clock measurement descriptions and shared DFT primitives."""
 
 from rfx.measurement.plan import build_measurement_plan, measurement_plan
 

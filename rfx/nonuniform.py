@@ -2695,10 +2695,8 @@ def _build_nu_scan(
     # DFT plane probe carry + static metadata
     if use_dft_planes:
         carry_init["dft_planes"] = tuple(probe.accumulator for probe in dft_planes)
-        dft_meta = tuple(
-            (probe.component, probe.axis, probe.index, probe.freqs, probe.region)
-            for probe in dft_planes
-        )
+        from rfx.measurement.accumulators import plane_metadata
+        dft_meta = plane_metadata(dft_planes)
     else:
         dft_meta = ()
 
@@ -2707,13 +2705,8 @@ def _build_nu_scan(
     # no per-axis time weighting; the axis-aware area element dA already
     # lives on each FluxMonitor (handles graded tangential cells).
     if use_flux_monitors:
-        from rfx.probes.probes import _FLUX_COMPONENTS as _FC
-        flux_meta = tuple(
-            (fm.axis, fm.index, fm.freqs, _FC[fm.axis],
-             fm.lo1, fm.hi1, fm.lo2, fm.hi2,
-             fm.total_steps, fm.window, fm.window_alpha)
-            for fm in flux_monitors
-        )
+        from rfx.measurement.accumulators import flux_metadata
+        flux_meta = flux_metadata(flux_monitors, window=True)
         carry_init["flux_monitors"] = tuple(
             (fm.e1_dft, fm.e2_dft, fm.h1_dft, fm.h2_dft)
             for fm in flux_monitors
@@ -3025,10 +3018,9 @@ def _build_nu_scan(
         #
         # PASSIVE ports are unaffected either way: I reads H only, and the
         # source loop writes E only, at the SOURCE cell.
-        t = step_idx.astype(jnp.float32) * dt
         new_wire_sp = None
         if use_wire_ports:
-            from rfx.core.dft_utils import half_step_current_phase as _half_i_phase
+            from rfx.core.dft_utils import port_dft_phase
             new_wire_sp = []
             port_samples = []
             for (v_dft, i_dft, vinc_dft, v_port_dft), \
@@ -3055,14 +3047,8 @@ def _build_nu_scan(
                 i_val = wire_port_current(
                     st.hx, st.hy, st.hz, comp, mi, mj, mk,
                     dual_xi, dual_yj, dual_zk, boundary=curl_boundary)
-                t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
-                phase = jnp.exp(-1j * 2.0 * jnp.pi * sp_freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
-                # Yee half-step: I is H-derived (H^{n+1/2}) while V/V_port are
-                # E-derived (E^{n+1}); advance the current sample by dt/2 so
-                # both DFT channels share a reference time
-                # (`dft_utils.half_step_current_phase`).
-                i_phase = phase * _half_i_phase(
-                    sp_freqs.astype(jnp.float64), dt).astype(jnp.complex64)
+                phase = port_dft_phase(step_idx, sp_freqs, dt, dtype=v_dft.dtype)
+                i_phase = port_dft_phase(step_idx, sp_freqs, dt, 'H', dtype=i_dft.dtype)
                 port_samples.append(jnp.stack((v, i_val, v_port)))
                 new_wire_sp.append((
                     v_dft + v * phase,
@@ -3071,82 +3057,13 @@ def _build_nu_scan(
                     v_port_dft + v_port * phase,
                 ))
 
-        # DFT plane probe accumulation (identical math to uniform path)
-        new_dft_planes = None
+        from rfx.measurement.accumulators import planes, flux
+        new_dft_planes = new_flux_monitors = None
         if use_dft_planes:
-            t_plane = step_idx.astype(jnp.float32) * dt
-            new_dft_planes = []
-            plane_samples = []
-            for acc, (component, axis, index, freqs, region) in zip(
-                carry["dft_planes"], dft_meta
-            ):
-                field = getattr(st, component)
-                if region is None:
-                    lo1 = lo2 = 0
-                    if axis == 0:
-                        hi1, hi2 = field.shape[1], field.shape[2]
-                    elif axis == 1:
-                        hi1, hi2 = field.shape[0], field.shape[2]
-                    else:
-                        hi1, hi2 = field.shape[0], field.shape[1]
-                else:
-                    lo1, hi1, lo2, hi2 = region
-                if axis == 0:
-                    plane = field[index, lo1:hi1, lo2:hi2]
-                elif axis == 1:
-                    plane = field[lo1:hi1, index, lo2:hi2]
-                else:
-                    plane = field[lo1:hi1, lo2:hi2, index]
-                phase = jnp.exp(-1j * 2.0 * jnp.pi * freqs * t_plane)
-                plane_samples.append(plane)
-                new_dft_planes.append(
-                    acc + plane[None, :, :] * phase[:, None, None] * dt
-                )
-
-        # Flux monitor accumulation (mirrors uniform scan body in
-        # rfx/simulation.py). H is offset +dx/2 along the normal axis on
-        # the Yee grid; average H at idx-1 and idx to co-locate with E at
-        # idx for a correct Poynting cross-product. E is sampled at
-        # t=step*dt, H at t-dt/2.
-        new_flux_monitors = None
+            new_dft_planes, plane_samples = planes(
+                st, carry["dft_planes"], dft_meta, dt, step_idx)
         if use_flux_monitors:
-            from rfx.core.dft_utils import dft_window_weight as _dft_w
-            t_flux = step_idx.astype(jnp.float32) * dt
-            new_flux_monitors = []
-            for (e1_acc, e2_acc, h1_acc, h2_acc), (
-                ax, idx, fqs, comp_names, _lo1, _hi1, _lo2, _hi2,
-                _tot_steps, _win_name, _win_alpha,
-            ) in zip(carry["flux_monitors"], flux_meta):
-                e1n, e2n, h1n, h2n = comp_names
-                idx_m1 = max(idx - 1, 0)
-                if ax == 0:
-                    e1 = getattr(st, e1n)[idx, _lo1:_hi1, _lo2:_hi2]
-                    e2 = getattr(st, e2n)[idx, _lo1:_hi1, _lo2:_hi2]
-                    h1 = (getattr(st, h1n)[idx_m1, _lo1:_hi1, _lo2:_hi2] + getattr(st, h1n)[idx, _lo1:_hi1, _lo2:_hi2]) * 0.5
-                    h2 = (getattr(st, h2n)[idx_m1, _lo1:_hi1, _lo2:_hi2] + getattr(st, h2n)[idx, _lo1:_hi1, _lo2:_hi2]) * 0.5
-                elif ax == 1:
-                    e1 = getattr(st, e1n)[_lo1:_hi1, idx, _lo2:_hi2]
-                    e2 = getattr(st, e2n)[_lo1:_hi1, idx, _lo2:_hi2]
-                    h1 = (getattr(st, h1n)[_lo1:_hi1, idx_m1, _lo2:_hi2] + getattr(st, h1n)[_lo1:_hi1, idx, _lo2:_hi2]) * 0.5
-                    h2 = (getattr(st, h2n)[_lo1:_hi1, idx_m1, _lo2:_hi2] + getattr(st, h2n)[_lo1:_hi1, idx, _lo2:_hi2]) * 0.5
-                else:
-                    e1 = getattr(st, e1n)[_lo1:_hi1, _lo2:_hi2, idx]
-                    e2 = getattr(st, e2n)[_lo1:_hi1, _lo2:_hi2, idx]
-                    h1 = (getattr(st, h1n)[_lo1:_hi1, _lo2:_hi2, idx_m1] + getattr(st, h1n)[_lo1:_hi1, _lo2:_hi2, idx]) * 0.5
-                    h2 = (getattr(st, h2n)[_lo1:_hi1, _lo2:_hi2, idx_m1] + getattr(st, h2n)[_lo1:_hi1, _lo2:_hi2, idx]) * 0.5
-                t_f64 = t_flux.astype(jnp.float64)
-                fqs64 = fqs.astype(jnp.float64)
-                _w = _dft_w(step_idx, _tot_steps, _win_name, _win_alpha).astype(jnp.float64)
-                phase_e = jnp.exp(-1j * 2.0 * jnp.pi * fqs64 * t_f64)
-                phase_h = jnp.exp(-1j * 2.0 * jnp.pi * fqs64 * (t_f64 - jnp.float64(dt * 0.5)))
-                kernel_e = (phase_e[:, None, None] * dt * _w).astype(jnp.complex128)
-                kernel_h = (phase_h[:, None, None] * dt * _w).astype(jnp.complex128)
-                new_flux_monitors.append((
-                    e1_acc + e1.astype(jnp.float64)[None, :, :] * kernel_e,
-                    e2_acc + e2.astype(jnp.float64)[None, :, :] * kernel_e,
-                    h1_acc + h1.astype(jnp.float64)[None, :, :] * kernel_h,
-                    h2_acc + h2.astype(jnp.float64)[None, :, :] * kernel_h,
-                ))
+            new_flux_monitors = flux(st, carry["flux_monitors"], flux_meta, dt, step_idx)
 
         # NTFF: accumulate tangential E/H DFT on 6 box faces
         new_ntff = None

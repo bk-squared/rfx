@@ -831,14 +831,7 @@ def compute_mixed_s_matrix(
 
 
 
-            # MSL line V (probe-0 plane) + closed-loop I, with the
-            # leapfrog E/H half-step correction (mirrors
-            # compute_msl_s_matrix line-for-line; see that method for
-            # the full derivation comments).
-            _hs_phase = jnp.exp(
-                1j * 2.0 * jnp.pi * jnp.asarray(freqs_arr)
-                * (float(grid.dt) * 0.5)
-            )
+            # MSL planes already carry physical E/H stamps from the shared DFT.
             for p_idx, meta in enumerate(port_idx_meta):
                 nm = names[p_idx]
                 for q_idx in range(len(probe_xs[p_idx])):
@@ -859,8 +852,6 @@ def compute_mixed_s_matrix(
                 hy_plane, hz_plane = _collocated_msl_h(
                     planes, h_names[p_idx], h_stencils[p_idx]["weights"],
                 )
-                hy_plane = hy_plane * _hs_phase[:, None, None].astype(hy_plane.dtype)
-                hz_plane = hz_plane * _hs_phase[:, None, None].astype(hz_plane.dtype)
                 k_tr_lo, k_tr_hi = trace_k_per_port[p_idx]
                 i_f = msl_loop_current(
                     hy_plane, hz_plane,

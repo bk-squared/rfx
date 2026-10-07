@@ -375,7 +375,7 @@ def compute_lumped_wire_s_matrix_via_scan(
             outboard_signs=plane_outboard,
             freqs=freqs,
             dt=float(grid.dt),
-            dx=float(grid.dx),
+            dx=float(grid.cells('x')[0]),
             return_line_diagnostics=return_refplane_diagnostics,
         )
         if return_refplane_diagnostics:
@@ -483,28 +483,15 @@ def _lumped_recording_probes(grid, ports, live_cells=None):
 
 def _lumped_recording_dfts(samples, freqs, dt, dx):
     """Host DFT of post-injection V and Yee-staggered I using scan helpers."""
-    import jax
-    from rfx.core.dft_utils import port_dft_phase, half_step_current_phase
+    from rfx.measurement.dft import transform
     from rfx.probes.probes import _ampere_loop_values, _port_voltage_value
 
     fields = np.asarray(samples).reshape(len(samples), -1, 5)
     v = _port_voltage_value(fields[:, :, 0], dx)
     i = _ampere_loop_values(*(fields[:, :, k] for k in range(1, 5)), dx)
-    vd = np.zeros((fields.shape[1], len(freqs)), dtype=np.complex128)
-    id_ = np.zeros_like(vd)
-    # Bounded phase workspace on the host, independent of scan length.
-    # Frequencies enter the uniform scan as float32 even with x64 enabled.
-    with jax.default_device(jax.devices("cpu")[0]):
-        f = jnp.asarray(freqs, dtype=jnp.float32)
-        phase_dtype = jnp.float64 if jax.config.x64_enabled else jnp.float32
-        half = half_step_current_phase(f.astype(phase_dtype), dt).astype(jnp.complex64)
-        for start in range(0, len(samples), 256):
-            stop = min(start + 256, len(samples))
-            phase = port_dft_phase(jnp.arange(start, stop)[:, None], f[None, :], dt)
-            e_phase, h_phase = np.asarray(phase), np.asarray(phase * half)
-            vd += np.einsum("np,nf->pf", v[start:stop], e_phase, dtype=np.complex128)
-            id_ += np.einsum("np,nf->pf", i[start:stop], h_phase, dtype=np.complex128)
-    return vd, id_
+    f = np.asarray(freqs, dtype=np.float32)
+    return (np.asarray(transform(v, f, dt, 'E')).T,
+            np.asarray(transform(i, f, dt, 'H')).T)
 
 
 def _distributed_port_cells(grid, ports, pec_edge_masks=None):

@@ -104,8 +104,16 @@ def _build_planted_sim(scale: float):
                     profile = np.broadcast_to(0.25 * y_h[:, None], shape)
                 sign = 1 if port == 0 else -1
                 field = sign * factor * profile / (0.75 * 5 * U)
-                amplitude = current[port, driven] * np.exp(
-                    -1j * np.pi * FREQS * grid.dt)
+                # History (S2 M2): the plant used to stamp this H plane at
+                # E's time, current * exp(-j pi f dt), because the extractor
+                # then applied the half step. The DFT kernel now stamps H at
+                # (n + 1/2) dt itself and the extractor applies nothing, so
+                # the plant supplies the physically stamped current. Left
+                # as it was, the returned S is off by the omega dt / 2 the
+                # extractor no longer removes (1.17e-3 .. 2.34e-3 rad at
+                # these bins, dt = 4.65e-13 s): 1.789e-3 predicted from the
+                # planted V and I, 1.789e-3 measured.
+                amplitude = current[port, driven]
             planes[entry.name] = DFTPlaneProbe(
                 accumulator=(
                     jnp.asarray(field, dtype=jnp.complex64)[None, :, :]
