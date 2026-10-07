@@ -744,9 +744,6 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     from rfx.runners._admission import admit
     admit(sim, "run_distributed", run_args={"conformal_pec": kwargs.get("conformal_pec")})
     materials = base_materials
-    wire_edges = None
-    if any(pe.extent is not None for pe in sim._ports):
-        wire_edges = conductors.pec_edges
 
     _distributed_boundary_layers(
         grid, n_devices,
@@ -809,7 +806,9 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     sources = PortSourceQueue()
     probes = []
     port_idx = -1
-    for pe in sim._ports:
+    wire_edges = None
+    from rfx.model.conductors import lumped_port_stage
+    for _port_index, pe in enumerate(sim._ports):
         if pe.component not in ("ex", "ey", "ez"):
             raise ValueError(f"distributed_v2: unsupported source component {pe.component}")
         if pe.impedance > 0.0 and pe.extent is None:
@@ -819,6 +818,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                 impedance=pe.impedance, excitation=pe.waveform,
             )
             materials = setup_lumped_port(grid, lp, materials)
+            conductors = lumped_port_stage(conductors, pe, f"port[{_port_index}]")
             if _source_port_indices is None or port_idx in _source_port_indices:
                 sources.defer(make_port_source, grid, lp, n_steps=n_steps)
         elif pe.impedance > 0.0 and pe.extent is not None:
@@ -826,6 +826,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             from rfx.simulation import make_wire_port_sources
             port_idx += 1
             wp = wire_port_from_entry(pe)
+            wire_edges = conductors.pec_edges
             materials = setup_wire_port(grid, wp, materials, pec_edge_masks=wire_edges)
             if _source_port_indices is None or port_idx in _source_port_indices:
                 sources.defer(make_wire_port_sources,

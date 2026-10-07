@@ -410,7 +410,7 @@ def run_uniform(
     # will use, and keep working on THOSE from here on — port clearing,
     # wire-port liveness, the sheet ctx and the run all read the same
     # object.  A sheet owns no cell, so it exists only here.
-    from rfx.model.conductors import kernel_conductors, clear_conductor_edges, at_kernel
+    from rfx.model.conductors import kernel_conductors, clear_conductor_edges, lumped_port_stage, at_kernel
     _pec_periodic = _simulation.resolve_periodic(grid, periodic)
     pec_sheets = tuple(pec_sheets or ())
     pec_wires = tuple(pec_wires or ())
@@ -511,12 +511,8 @@ def run_uniform(
             # own component at its own cell, and nothing else (#931 §1.9,
             # corrected: the three-component form opened the conductor the
             # port sits on).
-            if pec_edge_masks is not None:
-                idx = grid.position_to_index(pe.position)
-                conductors = clear_conductor_edges(
-                    conductors, [idx], component=pe.component,
-                    entity_id=f"port[{_port_index}]")
-                pec_edge_masks = conductors.pec_edges
+            conductors = lumped_port_stage(conductors, pe, f"port[{_port_index}]")
+            pec_edge_masks = conductors.pec_edges
 
     # One wire port and no lumped port: S11 is read from the main run's own
     # record (the fast path below), so s_param_n_steps cannot set its length.

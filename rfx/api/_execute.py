@@ -1997,7 +1997,7 @@ class _ExecuteMixin:
             if _drive_this_port:
                 sources.defer(make_port_source, grid, lp, n_steps=n_steps)
             idx = grid.position_to_index(pe.position)
-            conductors, pec_mask_local, pec_edge_masks_local = _conductors.forward_port_stage(conductors, [(idx[0], idx[1], idx[2])], pe.component, f"port[{_port_index}]")
+            conductors, pec_mask_local, pec_edge_masks_local = _conductors.forward_lumped_port_stage(conductors, pe, f"port[{_port_index}]")
             if pec_occupancy_local is not None:
                 pec_occupancy_local = pec_occupancy_local.at[idx[0], idx[1], idx[2]].set(0.0)
             _port_cleared_cells.append((int(idx[0]), int(idx[1]), int(idx[2])))
