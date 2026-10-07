@@ -48,6 +48,7 @@ def conductor_width_axes(root, sim, mask, *, kind, sheet, node_based,
     occupied = np.where(mask)
     result = []
     for a in range(3):
+        periodic = 'xyz'[a] in getattr(root.grid, 'periodic_axes', '')
         i0, i1 = int(occupied[a].min()), int(occupied[a].max())
         cell_range = None if kind in ('sheet', 'wire') or node_based else (i0, i1 + 1)
         lo = float(nodes[a][i0])
@@ -57,12 +58,12 @@ def conductor_width_axes(root, sim, mask, *, kind, sheet, node_based,
             i0, i1, lo, hi = _f0_solved_bounds(
                 mask, a, nodes[a], sizes[a], f0_spec.end_rows[a],
                 int(getattr(root.grid, f"pad_{'xyz'[a]}_lo")),
-                int(getattr(root.grid, f"pad_{'xyz'[a]}_hi")), root.periodic[a])
+                int(getattr(root.grid, f"pad_{'xyz'[a]}_hi")), periodic)
         if sheet is not None and a != int(sheet.normal_axis) and bounds is not None:
             span = (sheet.solved_spans[a] if hasattr(sheet, 'solved_spans') else
                     solved_sheet_span(mask, a, nodes[a], float(bounds[0][a]),
                         float(bounds[1][a]), float(sim._domain[a]), union=union,
-                        volume_edges=volume_edges, periodic=root.periodic[a]))
+                        volume_edges=volume_edges, periodic=periodic))
             if span is not None:
                 lo, hi = span.lo, span.hi
                 comparison = span.comparison_bounds(bounds[0][a], bounds[1][a], sim._domain[a])
@@ -107,6 +108,7 @@ class RealizedConductors(_RealizedPEC):
     pad_fill_findings: tuple = ()
     sheet_operator: object = None
     mode: str = "solve"
+    assembly_from_sim: bool = True
 
     sheet_context = SheetConductors.sheet_context
     width_axes = conductor_width_axes
@@ -275,7 +277,8 @@ def kernel_conductors(sim, grid, materials, pec_cells, sheets=(), wires=(),
             geometry_masks=() if root is None else root.geometry_masks.items(),
             assembly_entries=() if root is None else root.assembly_entries)
         refuse_dead_soft_sources(sim, obj)
-    return obj if root is None else replace(obj, assembly=root.assembly)
+    return (replace(obj, assembly_from_sim=False) if root is None else
+            replace(obj, assembly=root.assembly, assembly_from_sim=root.assembly_from_sim))
 
 
 def at_kernel(sim, conductors, *, lane, pec_edges, sheet_operator=None, compact=True):
@@ -473,15 +476,13 @@ def early_run_record(sim, root, lane):
 
 
 def forward_products(sim, grid, materials, cells, sheets, wires, periodic, root,
-                     sheet_operator=None, *, debye=None, lorentz=None, kerr=None):
+                     sheet_operator=None):
     """Bind overrides while keeping the original substrate for MSL launches."""
     unbound = root is None
     drawn = None if unbound else root.assembly[0]
     root = kernel_conductors(sim, grid, materials, cells, sheets, wires,
         periodic=periodic, root=root,
         sheet_specs=() if root is None else root.sheet_impedance)
-    if unbound:
-        root = replace(root, assembly=(materials, debye, lorentz, cells, (), (), kerr))
     return replace(root, sheet_operator=sheet_operator), drawn, root.pec_edges
 
 

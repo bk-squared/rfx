@@ -1781,7 +1781,7 @@ class _ExecuteMixin:
         pec_wires = tuple(pec_wires or ())
         pec_mask_local = pec_mask
         pec_occupancy_local = pec_occupancy
-        conductors, _drawn_materials, pec_edge_masks_local = _conductors.forward_products(self, grid, materials, pec_mask, pec_sheets, pec_wires, periodic_bool, conductors, sheet_impedance, debye=debye_spec, lorentz=lorentz_spec, kerr=kerr_chi3)
+        conductors, _drawn_materials, pec_edge_masks_local = _conductors.forward_products(self, grid, materials, pec_mask, pec_sheets, pec_wires, periodic_bool, conductors, sheet_impedance)
         _msl_geometry_edges = pec_edge_masks_local  # before ANY port clearing
         lumped_port_sparam_specs: list = []
         wire_port_sparam_specs: list = []

@@ -1165,12 +1165,19 @@ def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
     periodic = sim._periodic_flags()
     with jax.ensure_compile_time_eval(), _warnings.catch_warnings():
         _warnings.simplefilter("ignore")
+        from rfx.model.conductors import realized_conductors
+        model = conductors
+        # The census is the declared sim, not topology/mixed caller arrays.
+        # Kernel-only products lack the sim's dispersive/Kerr assembly too.
+        if (model is None or not model.assembly_from_sim
+                or any(is_tracer(v) for v in jax.tree.leaves(
+                    (model.materials, model.assembly)))):
+            model = realized_conductors(sim, grid, nonuniform=nonuniform)
         if conductors is None:
-            from rfx.model.conductors import realized_conductors
-            conductors = realized_conductors(sim, grid, nonuniform=nonuniform)
-        sheet_specs, pec_sheets, pec_wires = conductors.sheet_specs, conductors.sheets, conductors.wires
-        materials, debye, lorentz, pec_mask = conductors.assembly[:4]
-        kerr = None if nonuniform else conductors.assembly[6]
+            conductors = model
+        sheet_specs, pec_sheets, pec_wires = model.sheet_specs, model.sheets, model.wires
+        materials, debye, lorentz, pec_mask = model.assembly[:4]
+        kerr = None if nonuniform else model.assembly[6]
         replace = {name: ov[name] for name in ("eps_r", "sigma", "mu_r")
                    if ov.get(name) is not None}
         if replace:
@@ -1215,7 +1222,8 @@ def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
         if sheet_specs or conductors.sheet_operator is not None:
             ctx = conductors.sheet_operator
             if ctx is None:
-                ctx = conductors.sheet_context(conductors.pec_edges)
+                owner = conductors if conductors.sheet_specs else model
+                ctx = owner.sheet_context(conductors.pec_edges)
             check((ctx.mask_ex, ctx.mask_ey, ctx.mask_ez),
                   "a surface-impedance sheet")
         for poles in (debye, lorentz):
