@@ -6,7 +6,7 @@ No hidden mutable state.
 
 from __future__ import annotations
 
-from functools import partial
+from functools import partial, wraps
 from typing import NamedTuple
 
 from rfx import _realized
@@ -1491,17 +1491,20 @@ def update_he_fast(state: FDTDState, coeffs: UpdateCoeffs, *, boundary=None) -> 
                      step=state.step + 1)
 
 
-def update_e_nu_aniso(state: FDTDState, materials: MaterialArrays,
-                      eps_ex, eps_ey, eps_ez, dt, inv_dx, inv_dy, inv_dz,
-                      *, boundary=None, cell_sizes=None) -> FDTDState:
-    """NU tensor update; raw conductivity requires declared primal metrics."""
-    metrics = _nu_e_metric_kwargs(materials, (inv_dx, inv_dy, inv_dz), cell_sizes)
-    return _update_e_nu_aniso(state, materials, eps_ex, eps_ey, eps_ez, dt,
-                            inv_dx, inv_dy, inv_dz, boundary=boundary, **metrics)
+def _require_nu_aniso_metrics(update):
+    """Validate raw-cell metrics before the anisotropic builder is traced."""
+    @wraps(update)
+    def checked(state, materials, eps_ex, eps_ey, eps_ez, dt,
+                inv_dx, inv_dy, inv_dz, *, boundary=None, cell_sizes=None):
+        metrics = _nu_e_metric_kwargs(materials, (inv_dx, inv_dy, inv_dz), cell_sizes)
+        return update(state, materials, eps_ex, eps_ey, eps_ez, dt,
+                      inv_dx, inv_dy, inv_dz, boundary=boundary, **metrics)
+    return checked
 
 
+@_require_nu_aniso_metrics
 @partial(jax.jit, static_argnames=("boundary",))
-def _update_e_nu_aniso(state: FDTDState, materials: MaterialArrays,
+def update_e_nu_aniso(state: FDTDState, materials: MaterialArrays,
                       eps_ex: jnp.ndarray, eps_ey: jnp.ndarray, eps_ez: jnp.ndarray,
                       dt: float,
                       inv_dx: jnp.ndarray, inv_dy: jnp.ndarray, inv_dz: jnp.ndarray,
