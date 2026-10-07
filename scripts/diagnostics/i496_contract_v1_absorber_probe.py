@@ -83,7 +83,7 @@ def build(kind, cpml, dx, *, left_ref=None, right_ref=None, pad_domain=False):
     dom_x = BASE_DOMAIN[0] + 2.0 * pad
     sim = Simulation(freq_max=max(float(FREQS[-1]), F0),
                      domain=(dom_x, BASE_DOMAIN[1], BASE_DOMAIN[2]),
-                     boundary="cpml", cpml_layers=cpml)
+                     boundary={"x": "cpml", "y": "pec", "z": "pec"}, cpml_layers=cpml)
     if kind == "pec_short":
         sim.add_material("pec_like", eps_r=1.0, sigma=1e10)
         lo, hi = PEC_BOX
