@@ -14,7 +14,7 @@ import jax
 
 from rfx.boundaries import cpml, upml
 from rfx.boundaries.spec import normalize_boundary
-from rfx.boundaries.depths import FACES, Kind, resolve_face_depths
+from rfx.boundaries.depths import FACES, Kind, resolve_face_depths, grid_face_depths
 
 
 class _DefaultBoundary(str):
@@ -187,6 +187,7 @@ def realize(model: BoundaryModel, grid) -> Realization:
     domain = model.declaration.domain
     if domain is None:
         domain = grid.domain
+    depths = {face.name: face.realized for face in grid_face_depths(grid)}
     planes, periods = [], []
     for ax, axis in enumerate(model.axes):
         length = domain[ax]
@@ -199,7 +200,7 @@ def realize(model: BoundaryModel, grid) -> Realization:
                 planes.append(FacePlane(face.name, face.kind, None))
             elif face.kind == Kind.ABSORBER:
                 cells = grid.cells(ax)
-                pad = face.layers
+                pad = depths[face.name]
                 # Last stored width supplies a bounding node, not a pad cell.
                 widths = cells[:pad] if side == "lo" else cells[len(cells) - 1 - pad:len(cells) - 1]
                 terminal = plane + (-1 if side == "lo" else 1) * sum(widths)

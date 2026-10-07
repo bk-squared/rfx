@@ -1008,6 +1008,10 @@ def admit(sim, lane: str, *, run_args=None, grid=None) -> None:
     ``lane`` does not carry every input ``sim`` declares. ``run_args`` are
     the call's static arguments that ``CALL_GATES`` read; ``grid`` is the
     grid the lane built, for its ``LANE_GATES``."""
+    from rfx.boundaries.features import admit_waveguide
+    from rfx.boundaries.tfsf import admit_simulation
+    admit_waveguide(sim, lane=lane)
+    admit_simulation(sim)
     from rfx.sources.wire_radius import require_radius_support
     require_radius_support(sim, lane)
     rows = refused(sim, lane, run_args, grid)

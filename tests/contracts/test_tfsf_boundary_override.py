@@ -26,10 +26,10 @@ def test_uniform_entry_points_use_tfsf_boundary_policy(monkeypatch, entry, kind,
 def test_methodb_helper_change_reaches_both_entry_points(monkeypatch, entry):
     original = tfsf.tfsf_boundary_flags
 
-    def changed(cfg):
+    def changed(cfg, grid=None):
         if tfsf.is_tfsf_methodB(cfg):
             return (False, True, False), "xz"
-        return original(cfg)
+        return original(cfg, grid)
 
     monkeypatch.setattr(tfsf, "tfsf_boundary_flags", changed)
     _capture_policy(monkeypatch, entry, "methodB", ((False, True, False), "xz"))

@@ -1380,7 +1380,7 @@ def _validate_cfg_thin_absorber(self, _w, dx) -> None:
                     angle_deg=entry.angle_deg, waveform=entry.waveform,
                     method=entry.method, closed_box=entry.closed_box,
                 )
-                periodic, _ = tfsf_boundary_flags(cfg)
+                periodic, _ = tfsf_boundary_flags(cfg, grid)
     except (ValueError, TypeError, AttributeError, KeyError, IndexError, NotImplementedError):
         # An unavailable grid has no realized depth to report. Keep the
         # existing configuration diagnostics; do not guess from declarations.

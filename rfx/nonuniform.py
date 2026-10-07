@@ -2514,11 +2514,8 @@ def _build_nu_scan(
     # The far-field integral is over the SCATTERED field, which it only is
     # when the Huygens box encloses the whole injected region. Same check the
     # uniform lane runs (rfx/simulation.py), same helper.
-    if use_tfsf and use_ntff:
-        from rfx.farfield import require_box_encloses_injected_region
-        from rfx.sources.tfsf import tfsf_injection_planes
-        require_box_encloses_injected_region(
-            ntff_box, tfsf_injection_planes(tfsf[0]), shape=grid.shape)
+    from rfx.boundaries.tfsf import admit_setup
+    admit_setup(locals(), nonuniform=True)
 
     # CPML: only initialize when cpml_layers > 0 (skip for PEC boundary)
     use_cpml = grid.cpml_layers > 0

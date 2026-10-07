@@ -248,6 +248,8 @@ def init_tfsf_2d(
 
     # i0_x: 2D x-index that maps to 3D x_lo
     i0_x = n_cpml_2d + n_margin_x
+    # Legacy rewrite, PR3b: this oblique auxiliary wrap is unchanged by
+    # boundary-model predeclaration Addendum 5 (the parent pads are included).
     i0_y = 0  # periodic transverse, no padding
 
     # Source position

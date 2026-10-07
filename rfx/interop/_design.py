@@ -832,6 +832,7 @@ EXPORTED_SIMULATION_ATTRS: tuple[str, ...] = (
     "_adi_cfl_factor",
     "_boundary",
     "_boundary_spec",
+    "_boundary_explicit",
     # B1 descriptor derived from the exported boundary and feature entries.
     "_boundary_model",
     "_coaxial_ports",
@@ -910,6 +911,7 @@ EXPORTED_SIMULATION_ATTRS: tuple[str, ...] = (
 #: preflight/driver pass, which is exactly why they are not design state.
 EXCLUDED_SIMULATION_ATTRS: tuple[str, ...] = (
     "_mesh_resolution",
+    "_boundary_default_warned",
     # crop rectangles for the internal MSL DFT planes; exists only while
     # compute_msl_s_matrix runs and is removed on exit (never a design input)
     "_dft_plane_regions",
@@ -961,26 +963,9 @@ def _msl_ports_with_resolved_offsets(sim: Any) -> list[Any]:
 # Boundary section
 # ---------------------------------------------------------------------------
 
-def _predict_legacy_spec(
-    boundary: str, pec_faces: set[str], periodic_axes: str
-) -> BoundarySpec:
-    """Pure mirror of ``Simulation._build_spec_from_legacy``.
-
-    Used to decide which construction path reproduces a recorded boundary
-    state; kept as a separate function so the choice is made before any
-    ``Simulation`` is built (and so the mirror is testable on its own).
-    """
-    from rfx.boundaries.spec import Boundary
-
-    axes = {}
-    for axis in "xyz":
-        if axis in periodic_axes:
-            axes[axis] = Boundary(lo="periodic", hi="periodic")
-        else:
-            lo = "pec" if f"{axis}_lo" in pec_faces else boundary
-            hi = "pec" if f"{axis}_hi" in pec_faces else boundary
-            axes[axis] = Boundary(lo=lo, hi=hi)
-    return BoundarySpec(x=axes["x"], y=axes["y"], z=axes["z"])
+from rfx.boundaries.serialization import (
+    predict_legacy_spec as _predict_legacy_spec, restore_constructor_default,
+)
 
 
 def _dump_boundary(sim: Any) -> dict[str, Any]:
@@ -994,6 +979,7 @@ def _dump_boundary(sim: Any) -> dict[str, Any]:
         # BoundarySpec.to_dict / from_dict are reused verbatim — the boundary
         # vocabulary lives in rfx/boundaries/spec.py, not here.
         "spec": spec.to_dict(),
+        **({"explicit": False} if not sim._boundary_explicit else {}),
         # Derived views, emitted explicitly rather than re-derived: _boundary
         # and _cpml_layers can disagree with the spec on the legacy
         # scalar + set_periodic_axes() path, and _periodic_axes is also
@@ -1028,7 +1014,7 @@ def _plan_boundary(payload: dict, *, has_floquet: bool) -> _BoundaryPlan:
     therefore means reproducing the path, which is decided from the document
     rather than guessed.
     """
-    _require_exact_keys(payload, {"spec", "legacy"}, what="boundary")
+    _require_exact_keys(payload, {"spec", "legacy"} | ({"explicit"} & set(payload)), what="boundary")
     spec_payload = payload["spec"]
     if not isinstance(spec_payload, dict):
         raise _refuse(
@@ -1798,6 +1784,7 @@ def simulation_from_design(document: Any) -> Any:
         has_floquet=bool(floquet_payloads),
     )
 
+    plan = restore_constructor_default(plan, document["boundary"])
     sim = Simulation(
         freq_max=check_number(domain["freq_max"], what="domain.freq_max"),
         domain=check_vector(domain["extent"], 3, what="domain.extent"),

@@ -237,14 +237,14 @@ def test_every_cell_says_what_it_needs_to():
 
 
 def test_lane_columns_are_the_lanes_dispatch_plan_selects():
-    tree = ast.parse((ROOT / "rfx/api/_execute.py").read_text())
+    tree = ast.parse((ROOT / "rfx/api/_dispatch.py").read_text())
     lanes = set()
     for node in ast.walk(tree):
         if not (isinstance(node, ast.Call) and getattr(node.func, "id", "") == "_DispatchPlan"):
             continue
         lane = [kw.value for kw in node.keywords if kw.arg == "lane"]
         assert not node.args and len(lane) == 1 and isinstance(lane[0], (ast.Constant, ast.IfExp)), (
-            f"rfx/api/_execute.py:{node.lineno}: a _DispatchPlan whose lane is not a keyword "
+            f"rfx/api/_dispatch.py:{node.lineno}: a _DispatchPlan whose lane is not a keyword "
             "constant or conditional constants; this test reads those lane keywords")
         values = (lane[0].body, lane[0].orelse) if isinstance(lane[0], ast.IfExp) else lane
         assert all(isinstance(value, ast.Constant) for value in values)

@@ -59,6 +59,8 @@ def _preflight_impl(
             if check_resolution:
                 self._validate_mesh_quality()
             self._validate_simulation_config()
+            from rfx.boundaries.tfsf import report
+            report(self, issues, root=_conductors)
             from rfx.model.pad_fill import report_pad_fill
             report_pad_fill(self, issues)
             if check_ntff:

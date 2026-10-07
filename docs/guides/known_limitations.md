@@ -292,21 +292,20 @@ ground past the domain face by the absorber thickness, which fills every absorbe
 cell except the outermost row on the +x and +y faces.
 → [#1230](https://github.com/bk-squared/rfx/issues/1230)
 
-### A plane wave on absorbing side faces solves a periodic array, not an isolated object.
+### A plane wave requires compatible transverse faces and an invariant absorber replacement.
 
 Tracker: #1221
 
-With `add_tfsf_source` at normal incidence and absorbing y/z faces (the default
-`boundary='cpml'`), the grid adds absorber pads on y and z, but the run then wraps y and
-z periodically over the padded box. A finite scatterer is therefore solved as an array
-whose period is the interior plus both pads plus one cell (37 mm for a 20 mm interior
-with 8 mm pads at 1 mm cells), not as one object and not as the array the domain
-suggests. For a 12 mm dielectric cube the backscatter differs from the isolated
-object's by several dB at 7 GHz and by up to about 20–30 dB as the period approaches one
-free-space wavelength, and the run does not settle (the settling witness reports
-undetermined). An empty box or a laterally infinite slab is unaffected. For an array,
-declare the period you mean: `BoundarySpec(x='cpml', y='periodic', z='periodic')`; for
-an isolated scatterer use `rfx.rcs.compute_rcs`, whose sides absorb.
+At normal incidence, `add_tfsf_source` refuses absorbing transverse faces when
+realized materials, conductors or localized field updates vary along that axis,
+including in the pads. The refusal also applies with `skip_preflight=True`.
+For an array, declare its axes periodic; for a finite scatterer use
+`closed_box=True`. For propagation along x with E along z, the admitted wall
+pairs are PMC on y and PEC on z; either pair may instead be periodic.
+The uniform plane-wave lane retains its existing padded periodic wrap for an
+invariant absorber pair and reports the affected faces in preflight. Its grid
+and period do not change. The oblique transverse-wavevector lane retains its
+existing behavior.
 → [#1221](https://github.com/bk-squared/rfx/issues/1221)
 
 ## Gradients and optimization
