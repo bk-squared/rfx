@@ -345,9 +345,11 @@ def _f0_solved_bounds(mask, axis, nodes, sizes, end_rows, pad_lo, pad_hi, period
         occupied[rows % n] = True
         if occupied.all():
             return 0, n, float(nodes[0]), float(nodes[n])
-        starts = np.flatnonzero(occupied & ~np.roll(occupied, 1))
-        if starts.size == 1:
-            i0 = int(starts[0])
+        # Where the one occupied run around the period begins: its rising edge,
+        # or node 0 when the run starts there without wrapping.
+        rising = np.flatnonzero(np.diff(occupied.astype(np.int8)) == 1) + 1
+        if rising.size + int(occupied[0] and not occupied[-1]) == 1:
+            i0 = int(rising[0]) if rising.size else 0
             i1 = i0 + int(occupied.sum()) - 1
         free_lo = free_hi = True
 
