@@ -423,8 +423,8 @@ _GRADED = frozenset({"run_nonuniform", "fwd_nonuniform"}) | _DISTRIBUTED_NU
 _UNIFORM_YEE = frozenset({"run_uniform", "fwd_uniform"})
 _MESH_PINNED = _GRADED   # the lanes a dx/dy/dz profile reaches
 _NO_SHEETS = _OTHER_RUNNERS - {"run_subgridded", "run_adi", "run_distributed", "fwd_adi"}
-# Graded forward remains refused: the G3 sheet JVP did not match single-device.
-_PEC_EDGES = _NO_SHEETS | {"run_distributed", "run_distributed_nu"}
+# PEC edges are carried by both graded entries and uniform distributed runs.
+_PEC_EDGES = _NO_SHEETS | {"run_distributed"} | _DISTRIBUTED_NU
 
 _ADMITTED_ON: dict[Row, frozenset] = {
     ("_freq_max", ""): _OTHER_RUNNERS,
@@ -505,6 +505,10 @@ _DISTRIBUTED_NU_ROWS = frozenset({
     ('_dz_profile', 'graded'),
     ('_freq_max', ''),
     ('_geometry', 'pec_volume'),
+    ('_geometry', 'pec_sheet'),
+    ('_geometry', 'pec_wire'),
+    ('_thin_conductors', 'pec_sheet'),
+    ('_pinned_sheets', 'pec_sheet'),
     ('_materials', 'debye'),
     ('_materials', 'drude'),
     ('_materials', 'eps'),
