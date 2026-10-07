@@ -52,7 +52,7 @@ def _build_twoport_sim(*, kind: str, left_ref=None, right_ref=None):
     sim = Simulation(
         freq_max=max(float(FREQS[-1]), F0),
         domain=DOMAIN,
-        boundary="cpml",
+        boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=CPML_LAYERS,
     )
     if kind == "pec_short":

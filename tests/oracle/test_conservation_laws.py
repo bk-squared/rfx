@@ -43,7 +43,7 @@ def _build_waveguide_sim(
     sim = Simulation(
         freq_max=max(float(freqs[-1]), f0),
         domain=WAVEGUIDE_DOMAIN,
-        boundary="cpml",
+        boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=10,
         dx=dx,
     )
