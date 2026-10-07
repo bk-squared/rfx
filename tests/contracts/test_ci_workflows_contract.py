@@ -665,8 +665,8 @@ def _runbook_steps() -> list[str]:
 
 
 @pytest.mark.docs_consistency
-def test_local_sh_and_the_runbook_list_the_same_steps_in_the_same_order() -> None:
-    assert _local_sh_steps() == _runbook_steps()
+def test_local_sh_preserves_the_runbook_baseline_before_selected_tests() -> None:
+    assert _local_sh_steps() == [*_runbook_steps(), "selected-tests"]
 
 
 def test_local_sh_runs_the_real_entry_points() -> None:
@@ -679,6 +679,7 @@ def test_local_sh_runs_the_real_entry_points() -> None:
         "scripts/ci/check_data_budget.py",
         "scripts/ci/check_pr_body.py --file",
         "pytest tests/contracts",
+        "scripts/ci/select_gate_tests.py",
     ):
         assert entry_point in text, f"scripts/ci/local.sh no longer runs {entry_point}"
 
