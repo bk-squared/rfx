@@ -407,3 +407,58 @@ two-device and a declared PEC face agree). Same cause as this PR — a reader no
 record — and in a file the PR already touches, so it is fixed here: the multi-device walls come from the
 record (PEC faces and zero-depth absorber backings), judged by that probe equal to one device within the
 cross-trace bar, with the old wall rule as the mutation. This is the PR's one computed-result change.
+
+Addendum 5, 2026-10-07 (leader, before PR3 starts; scope approved by the lead, [L:245043]). PR3 is the class
+Addendum 3 named: a feature that silently rewrites declared faces. Two features do it today.
+(a) A waveguide port: `_waveguide_cpml_axes` (`api/_compile.py`) makes the grid absorb only on the port
+axes, so a model declared `cpml` on every face (the default) is solved with electric walls on the
+transverse faces. `boundaries/depths.py` reads that method — a reader of the feature, not of the declaration.
+(b) A TF/SF plane-wave source: `add_tfsf_source` requires `boundary='cpml'` and the run then wraps the
+transverse axes periodically, pads included. On the default box a finite scatterer is solved as an array
+of period N·dx with the pads (37 mm on the 2026-10-05 record, rfx-archive `20261005-tfsf-transverse-period`,
+f8b3b79a: backscatter off by several dB at 7 GHz and 20–30 dB toward c/period).
+B5 as written also moves computed results (an aperture port in a larger absorbing domain, the graded
+lane's waveguide runs, a pad-free periodic grid, Floquet k_t, RCS, the 2-D invariant axis, port
+resolution moving from registration to dispatch). Stage S1's judge is "expected to move: nothing".
+Decision: two PRs.
+PR3a — no computed result changes; what was silently rewritten is refused or must be declared.
+ 1. Waveguide. This departs from decision 4, which refused every full-aperture guide whose transverse
+    faces are absorbing, the default included. Reason (lead, 2026-10-07): `Simulation`'s `boundary`
+    defaults to `cpml`, so that rule breaks every waveguide script over an absorber the user never
+    declared. Rule now, for a guide whose REALIZED aperture equals the realized cross-section:
+    - `boundary` not passed (the default applied): the transverse faces default to PEC, the guide's
+      walls. The face record holds PEC there, and the run says so once (a warning naming the faces until
+      stage S2's diagnostics exist). This is the realized model of today; nothing computed moves.
+    - an absorbing transverse face passed explicitly (`boundary='cpml'`, or a `Boundary`/`BoundarySpec`
+      naming an absorber on that face): refused at dispatch, also with preflight bypassed; the message
+      gives the declaration to write (PEC on the transverse faces, absorber on the port axis).
+    - PEC transverse faces declared: kept, bit-identical to today.
+    Telling "not passed" from "passed 'cpml'" needs a sentinel default on `Simulation(boundary=...)`;
+    that change is part of this PR, and `sim._boundary` keeps reading 'cpml' for the default so no other
+    reader changes. Committed scripts that pass `boundary='cpml'` explicitly with a full-aperture guide
+    are converted to the PEC declaration; their realized record and results must be bit-identical before
+    and after. An aperture port smaller than the cross-section keeps today's behaviour in PR3a, labelled
+    in code as the legacy rewrite with a pointer here (it moves in PR3b).
+ 2. TF/SF: a declared transverse absorber pair is kept as today's periodic wrap (pads included, so the
+    realized grid does not move) only when decision 4's two conditions hold — the periodic pair is in
+    every active feature's admissible set, and materials, conductors, loads, localized field updates and
+    the source profile are invariant along that axis; a preflight finding names the face. Otherwise
+    refused, naming the face and the feature, with the two ways out (declare the axis periodic for an
+    array; `closed_box=True` for a finite scatterer). The add-time guard that demands `boundary='cpml'`
+    is lifted so the admissible declarations (periodic, or PMC/PEC per polarization) can be written.
+ 3. The face record takes the realized faces from the resolved declaration; no module outside
+    `rfx/boundaries/` asks a feature which axes absorb (`_waveguide_cpml_axes` loses its readers).
+PR3b — everything in B5 that moves a number: the realized-aperture port inside an absorbing domain, the
+pad-free periodic grid, Floquet with k_t, RCS, the invariant 2-D axis, dispatch-time port resolution.
+Judges (PR3a). Non-regression: the S0 path-equivalence matrix and every committed lock, oracle and frozen
+record unchanged; converted scripts bit-identical on the realized record. Refusals, each with preflight
+enabled and bypassed, on every path (uniform, graded, both multi-device, subgridded): explicit-`cpml` full-aperture guide refused; the
+default (no `boundary` passed) accepted with PEC transverse faces in the record and one warning; the same guide with PEC transverse faces declared runs and equals today's
+run bit-for-bit; a laterally invariant slab under a TF/SF plane wave accepted with the finding; a finite
+scatterer under the same source refused (the 37 mm array of the record is the reproduction); `closed_box`
+unaffected. Mutations, helpers kept: invariance predicate made unconditional; a replacement outside the
+admissible set allowed; the silent waveguide rewrite restored — each turns its judge red.
+Memory: ledger grep for "waveguide transverse", "TF/SF period", "37 mm" — none; #1221 entries concern PMC
+planes. Design note §2 decision 4 and §3 B5; Addendum 3. First-pass count of files calling
+`add_waveguide_port` without an explicit boundary declaration: 31 of 158 by text heuristic (the note's
+earlier heuristic said 17); the build-only census in the PR is authoritative.
