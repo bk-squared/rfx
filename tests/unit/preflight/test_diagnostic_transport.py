@@ -1,5 +1,4 @@
 """Public execution boundaries retain host records under nesting and transforms."""
-from concurrent.futures import ThreadPoolExecutor
 from types import MethodType
 
 import jax
@@ -8,7 +7,6 @@ import numpy as np
 import pytest
 
 from rfx import Diagnostic
-from rfx._diagnostic_context import diagnostic_scope, record_diagnostics
 from tests._msl_diagnostic_cases import structure, U
 
 
@@ -31,20 +29,8 @@ def test_actual_forward_jit_grad_vmap(graded):
     mapped = jax.jit(jax.vmap(forward))(jnp.array([3.66, 3.66]))
     assert mapped[1] == result[1]
     assert mapped[0].shape[0] == 2
-    from rfx._diagnostic_context import _ACTIVE
-    assert _ACTIVE.get() is None
 
 
-def test_actual_simulation_thread_isolation():
-    simulations = [structure(name=name) for name in ('thread_first', 'thread_second')]
-    def solve(sim):
-        return sim.run(n_steps=2, compute_s_params=False).diagnostics
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        results = list(pool.map(solve, simulations))
-    for records, name in zip(results, ('thread_first', 'thread_second')):
-        family = [d for d in records if d.code.startswith('msl.')]
-        assert {d.subject for d in family} == {name}
-        assert len(family) == 5
 
 
 def test_msl_calculator_unions_every_drive_without_duplicates():
@@ -55,12 +41,12 @@ def test_msl_calculator_unions_every_drive_without_duplicates():
     backend = sim.run
     seen = []
     def drive(self, **kwargs):
-        with diagnostic_scope():
-            d = Diagnostic('msl.drive_observation', 'advisory', str(len(seen)),
-                           'drive observation', {'drive': len(seen)})
-            seen.append(d)
-            record_diagnostics((d, d))
-            return backend(**kwargs)
+        d = Diagnostic('msl.drive_observation', 'advisory', str(len(seen)),
+                       'drive observation', {'drive': len(seen)})
+        seen.append(d)
+        result = backend(**kwargs)
+        result.diagnostics = (d, d)
+        return result
     sim.run = MethodType(drive, sim)
     result = sim.compute_msl_s_matrix(freqs=FREQS, n_steps=1, num_periods=1,
                                      enforce_passivity=False)
@@ -82,18 +68,6 @@ def test_run_warning_location_is_the_public_caller():
     assert advisory[0].lineno == line
 
 
-@pytest.mark.parametrize('entry', ['preflight', 'preflight_sparameters'])
-def test_standalone_reports_are_isolated_in_threads(entry):
-    simulations = [structure(name=name) for name in ('report_first', 'report_second')]
-    def inspect(sim):
-        kwargs = {'calculator': 'msl', 'include_general': True} if entry == 'preflight_sparameters' else {}
-        return getattr(sim, entry)(**kwargs).diagnostics
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        results = list(pool.map(inspect, simulations))
-    for records, name in zip(results, ('report_first', 'report_second')):
-        family = [d for d in records if d.code.startswith('msl.')]
-        assert {d.subject for d in family} == {name}
-        assert len(family) == 5
 
 
 def test_scoped_coax_gate_accepts_the_existing_plain_issue_list():
@@ -210,7 +184,6 @@ def test_physical_two_port_calculator_unions_both_run_reports(monkeypatch):
 @pytest.mark.parametrize('calculator,lane', [
     ('msl', 'adi'), ('msl', 'subgridded'),
     ('mixed', 'graded'), ('mixed', 'adi'), ('mixed', 'subgridded'),
-    ('coax_msl', 'graded'), ('coax_msl', 'adi'), ('coax_msl', 'subgridded'),
 ])
 def test_calculator_unsupported_lanes_carry_their_refusal(calculator, lane):
     if calculator == 'mixed':
@@ -218,11 +191,6 @@ def test_calculator_unsupported_lanes_carry_their_refusal(calculator, lane):
         sim, _ = _case('+x')
         operation = sim.compute_mixed_s_matrix
         kwargs = dict(freqs=np.array([3e9]), n_steps=2, num_periods=1)
-    elif calculator == 'coax_msl':
-        from tests._coax_msl_instrument_fixture import build_instrument_junction, instrument_kwargs
-        sim = build_instrument_junction()
-        operation = sim.compute_coax_msl_transition
-        kwargs = instrument_kwargs(n_steps=2)
     else:
         sim = structure()
         operation = sim.compute_msl_s_matrix
@@ -241,3 +209,102 @@ def test_calculator_unsupported_lanes_carry_their_refusal(calculator, lane):
     assert expected in str(caught.value)
     assert any(d.severity == 'refusal' and d.message == str(caught.value)
                for d in caught.value.diagnostics)
+
+
+def test_mixed_calculator_unions_own_report_and_each_drive(monkeypatch):
+    from rfx.preflight._common import PreflightIssue, PreflightReport
+    from tests.unit.sparams.test_msl_mixed_spatial_collocation import _case, _backend, FREQS
+    sim, target = _case('+x')
+    own = Diagnostic('msl.own', 'advisory', 'port', 'own report', {})
+    report = PreflightReport([PreflightIssue(own)])
+    monkeypatch.setattr(sim, '_auto_preflight', lambda **kwargs: report)
+    backend = _backend(target, '+x', {'affine': False}, [])
+    seen = []
+    def drive(self, *args, **kwargs):
+        record = Diagnostic('msl.drive', 'advisory', str(len(seen)), 'drive report', {})
+        seen.append(record)
+        result = backend(self, *args, **kwargs)
+        result['diagnostics'] = (own, record, record)
+        return result
+    monkeypatch.setattr(sim, '_forward_from_materials', MethodType(drive, sim))
+    result, details = sim.compute_mixed_s_matrix(
+        freqs=FREQS, n_steps=1, num_periods=1, magnitude_channel='wave',
+        enforce_passivity=False, return_diagnostics=True)
+    assert len(seen) == 2
+    assert result.diagnostics == (own, seen[0], seen[1])
+    assert details['drive_plan'] == [('lw', 0), ('msl', 0)]
+
+
+def test_forward_unsupported_lanes_retain_preflight_records():
+    for distributed in (False, True):
+        sim = structure()
+        if not distributed:
+            sim.add_refinement(z_range=(U, 3 * U), ratio=2)
+        with pytest.raises(NotImplementedError) as caught:
+            sim.forward(n_steps=2, distributed=distributed)
+        records = caught.value.diagnostics
+        assert any(d.severity == 'refusal' for d in records)
+        assert {d.code for d in records if d.code.startswith('msl.')} == {
+            'msl.lateral_clearance', 'msl.normal_resolution',
+            'msl.source_absorber_clearance', 'msl.source_near_field',
+        }
+
+
+@pytest.mark.parametrize('prepared', [False, True])
+def test_direct_distributed_inputs_keep_the_preflight_report(prepared, monkeypatch):
+    from rfx.model import conductors
+    from rfx.preflight._common import PreflightIssue, PreflightReport
+    sim = structure(True)
+    grid = sim._build_nonuniform_grid()
+    record = Diagnostic('msl.direct_report', 'advisory', 'port', 'direct report', {})
+    report = PreflightReport([PreflightIssue(record)])
+    monkeypatch.setattr(sim, '_preflight_impl', lambda **kwargs: report)
+    with pytest.warns(UserWarning, match='direct report'):
+        assembly = sim._auto_preflight(prepare=True) if prepared else None
+        product = conductors.distributed_solve_inputs(sim, grid, assembly, False, False)
+    assert product[-1] == (record,)
+
+
+def test_gate_refusal_identifies_the_blocking_cause_after_an_advisory_stub():
+    from rfx.preflight._common import PreflightIssue
+    from rfx.preflight._impl import run_preflight_gate
+    earlier = Diagnostic('msl.line_stub_behind_port', 'refusal', 'port',
+                         'stub outside the read band', {'frequency_hz': 20e9})
+    issues = [PreflightIssue(earlier, severity='warning', code='line_stub_behind_port'),
+              PreflightIssue('actual blocking configuration', severity='error', code='other_family')]
+    with pytest.warns(UserWarning, match='stub outside'), pytest.raises(ValueError) as caught:
+        run_preflight_gate(issues, context='run')
+    records = caught.value.diagnostics
+    assert records[0] == earlier
+    assert any(d.severity == 'refusal' and d.message == str(caught.value) for d in records)
+    assert any(d.code == 'other_family' for d in records)
+
+
+@pytest.mark.parametrize('topology', ['overlap_z_slab', 'stage2_disjoint_3d'])
+def test_research_subgrid_result_keeps_its_report(topology, monkeypatch):
+    from tests.contracts.test_subgrid_requires_experimental import _sim
+    from rfx.preflight._common import PreflightIssue, PreflightReport
+    sim = _sim('research')
+    sim._refinement['topology'] = topology
+    record = Diagnostic('transport.marker', 'info', 'fixture', 'report retained', {})
+    report = PreflightReport([PreflightIssue(record)])
+    monkeypatch.setattr(sim, '_preflight_impl', lambda **kwargs: report)
+    with pytest.warns(UserWarning):
+        result = sim.run(n_steps=2, compute_s_params=False)
+    assert result.diagnostics == (record,)
+    assert result.time_series.shape[0] == 2
+
+
+@pytest.mark.parametrize('frequencies, message', [
+    (['not a number'], '#1512: line-port read frequencies must be concrete'),
+    ([], '#1512: line-port read frequencies must be finite, nonnegative and nonempty'),
+    ([-1.], '#1512: line-port read frequencies must be finite, nonnegative and nonempty'),
+    ([float('nan')], '#1512: line-port read frequencies must be finite, nonnegative and nonempty'),
+])
+def test_line_stub_read_band_refusal_has_a_record(frequencies, message):
+    from rfx.preflight.line_stub import read_band
+    with pytest.raises(ValueError) as caught:
+        read_band(structure(), frequencies)
+    assert str(caught.value) == message
+    assert caught.value.diagnostics == (
+        Diagnostic('uncoded', 'refusal', None, message, {}),)

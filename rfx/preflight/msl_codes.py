@@ -766,8 +766,6 @@ def msl_error(diagnostic, *, error=None):
 
 def placement_warning(message):
     """Keep the original UserWarning category and caller's stack level."""
-    from rfx._diagnostic_context import record_diagnostics
-
     diagnostic = msl_diagnostic(
         "msl.probe_placement_note",
         message,
@@ -776,5 +774,4 @@ def placement_warning(message):
     )
     warning = UserWarning(diagnostic.message)
     warning.diagnostic = diagnostic
-    record_diagnostics((diagnostic,))
     return warning

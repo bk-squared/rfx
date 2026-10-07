@@ -134,6 +134,7 @@ def build_flux_monitor_cfgs(sim, grid, n_steps, entries=None):
 def run_uniform(
     sim,
     *,
+    diagnostics=(),
     n_steps: int,
     until_decay=None,
     decay_check_interval: int = 50,
@@ -873,7 +874,7 @@ def run_uniform(
     # the specific refusals above and before the first step.
     from rfx.runners._admission import admit
     admit(sim, "run_uniform", run_args={"compute_s_params": compute_s_params,
-                                        "conformal_pec": conformal_pec})
+                                        "conformal_pec": conformal_pec}, diagnostics=diagnostics)
     from rfx.runners._admission import admit_run_s_matrix
     admit_run_s_matrix(sim, compute_s_params=compute_s_params,
                        conformal_pec=conformal_pec)
@@ -1168,6 +1169,7 @@ def run_uniform(
             sim_result = _reconstruct_oblique_physical(sim_result, tfsf[0], grid, probes)
 
     return Result(
+        diagnostics=diagnostics,
         realized_geometry=geometry_record,
         state=sim_result.state,
         time_series=sim_result.time_series,

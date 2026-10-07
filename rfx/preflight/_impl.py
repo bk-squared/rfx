@@ -50,7 +50,7 @@ def _preflight_impl(
     # Incoming mesh/design tracers remain tracers and retain the
     # validators' existing not-evaluable guards.
     from rfx.preflight.realization import assembly_warning_scope
-    with PreflightReport.capture_warnings(record=True) as caught, jax.ensure_compile_time_eval(), assembly_warning_scope():
+    with warnings.catch_warnings(record=True) as caught, jax.ensure_compile_time_eval(), assembly_warning_scope():
         warnings.simplefilter("always")
         self._collect_flux_regions(issues)
         try:
@@ -154,9 +154,7 @@ _preflight_impl.__qualname__ = "_PreflightMixin._preflight_impl"
 
 def run_preflight_gate(issues, *, context: str, stacklevel: int = 3) -> None:
     """Apply the same warning/error policy to full or scoped preflight."""
-    from rfx._diagnostic_context import record_diagnostics
     issues = PreflightReport(issues)
-    record_diagnostics(issues.diagnostics)
     if not len(issues):          # PreflightReport refuses bool() (#980)
         return
     import warnings
@@ -178,7 +176,8 @@ def run_preflight_gate(issues, *, context: str, stacklevel: int = 3) -> None:
         # proceeds. Re-raise (aligns with Tidy3D/Meep raise-on-setup-error).
         # skip_preflight=True remains the explicit escape hatch.
         detail = "\n  - ".join(errors)
-        raise issues.exception(
+        from rfx._diagnostic_transport import diagnostic_refusal
+        raise diagnostic_refusal(ValueError(
             f"[{context}] preflight found {len(errors)} blocking error(s) "
             f"(pass skip_preflight=True to bypass):\n  - {detail}"
-        )
+        ), issues.diagnostics, causes=PreflightReport(errors).diagnostics)

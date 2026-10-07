@@ -466,11 +466,6 @@ class PreflightReport(list):
         error.diagnostics = self.diagnostics
         return error
 
-    @staticmethod
-    def capture_warnings(**kwargs):
-        from rfx._diagnostic_context import capture_warnings
-        return capture_warnings(**kwargs)
-
     @property
     def diagnostics(self) -> tuple[Diagnostic, ...]:
         """Complete tuple, including mechanical records for unmoved families."""

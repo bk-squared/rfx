@@ -28,7 +28,7 @@ def run_disjoint_stage2_path(
     grid_coarse,
     n_steps: int,
     *,
-    _warn_experimental=True,
+    _warn_experimental=True, diagnostics=(),
 ):
     """Run a minimal research-only Stage-2 disjoint z-slab smoke path.
 
@@ -38,7 +38,7 @@ def run_disjoint_stage2_path(
     gates pass.
     """
     from rfx.subgridding._notice import require_experimental, warn_experimental
-    require_experimental(sim)
+    require_experimental(sim, diagnostics=diagnostics)
     if _warn_experimental:
         warn_experimental()
     from rfx.api import Result
@@ -143,6 +143,7 @@ def run_disjoint_stage2_path(
         time_series = jnp.zeros((int(n_steps), 0), dtype=state.ex_f.dtype)
 
     return Result(
+        diagnostics=diagnostics,
         state=state,
         time_series=time_series,
         s_params=None,

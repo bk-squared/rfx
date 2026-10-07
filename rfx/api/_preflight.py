@@ -1088,7 +1088,7 @@ class _PreflightMixin:
                 from rfx.preflight.msl import (
                     preflight_msl_probe_clearance,
                 )
-                with PreflightReport.capture_warnings(record=True) as _msl_caught:
+                with _mslmod.catch_warnings(record=True) as _msl_caught:
                     _mslmod.simplefilter("always")
                     preflight_msl_probe_clearance(
                         self, _mslmod, skip=bool(include_general))
@@ -1106,7 +1106,7 @@ class _PreflightMixin:
             _wg_entries = list(self._waveguide_ports)
             if _wg_entries:
                 import warnings as _wmod
-                with PreflightReport.capture_warnings(record=True) as _wg_caught:
+                with _wmod.catch_warnings(record=True) as _wg_caught:
                     _wmod.simplefilter("always")
                     self._preflight_waveguide_setup(
                         _wmod,

@@ -478,6 +478,7 @@ class _ExecuteMixin:
         pec_mask_coarse,
         n_steps,
         *,
+        diagnostics=(),
         compute_s_params=None,
         s_param_freqs=None,
         s_param_n_steps=None,
@@ -495,7 +496,7 @@ class _ExecuteMixin:
             base_materials_coarse,
             pec_mask_coarse,
             n_steps,
-            compute_s_params=compute_s_params,
+            compute_s_params=compute_s_params, diagnostics=diagnostics,
             s_param_freqs=s_param_freqs,
             s_param_n_steps=s_param_n_steps,
             conformal_pec=conformal_pec,
@@ -504,7 +505,7 @@ class _ExecuteMixin:
     # ---- non-uniform mesh run path ----
 
 
-    def _run_nonuniform(self, *, n_steps, compute_s_params=None, preflight=None,
+    def _run_nonuniform(self, *, diagnostics=(), n_steps, compute_s_params=None, preflight=None,
                         conductors=None,
                         s_param_freqs=None,
                         subpixel_smoothing: bool | str = False,
@@ -547,7 +548,7 @@ class _ExecuteMixin:
             )
         from rfx.runners.nonuniform import run_nonuniform_path
         return run_nonuniform_path(
-            self, preflight=preflight, conductors=conductors,
+            self, preflight=preflight, conductors=conductors, diagnostics=diagnostics,
             n_steps=n_steps,
             compute_s_params=compute_s_params,
             s_param_freqs=s_param_freqs,
@@ -1319,37 +1320,12 @@ class _ExecuteMixin:
         self, *, skip: bool = False, context: str = "forward",
         check_ntff: bool | str = True, conductors=None,
         prepare=False, distributed=False,
-    ) -> _conductors._PreparedSolve | None:
+    ) -> _conductors._PreparedSolve | _conductors.PreflightReport:
         """Delegate validation and optional solve ownership to the conductors layer."""
         return _conductors.auto_preflight(self, skip=skip, context=context, check_ntff=check_ntff, conductors=conductors, prepare=prepare, distributed=distributed)
 
     def _run_preflight_gate(self, issues, *, context: str, stacklevel: int = 3) -> None:
-        """Apply the same warning/error policy to full or scoped preflight."""
-        if not len(issues):          # PreflightReport refuses bool() (#980)
-            return
-        import warnings
-        errors = [i for i in issues if getattr(i, "severity", "warning") == "error"]
-        warns = [i for i in issues if getattr(i, "severity", "warning") != "error"]
-        if warns:
-            body = "\n  - ".join(warns)
-            warnings.warn(
-                f"[{context}] preflight found {len(warns)} advisory issue(s) - "
-                f"pass skip_preflight=True to suppress:\n  - {body}",
-                UserWarning, stacklevel=stacklevel,
-            )
-        if errors:
-            # Error-severity findings are structurally-impossible configs
-            # (e.g. upml+refinement, Floquet+non-uniform-z) whose validators
-            # raise ValueError. run()/forward() used to call those validators
-            # directly so the error PROPAGATED; routing through preflight must
-            # preserve that hard-fail, else a known-invalid run silently
-            # proceeds. Re-raise (aligns with Tidy3D/Meep raise-on-setup-error).
-            # skip_preflight=True remains the explicit escape hatch.
-            detail = "\n  - ".join(errors)
-            raise ValueError(
-                f"[{context}] preflight found {len(errors)} blocking error(s) "
-                f"(pass skip_preflight=True to bypass):\n  - {detail}"
-            )
+        return _conductors.run_preflight_gate(issues, context=context, stacklevel=stacklevel)
 
     def _run_adi_from_materials(
         self,
@@ -1358,6 +1334,7 @@ class _ExecuteMixin:
         debye_spec,
         lorentz_spec,
         *,
+        diagnostics=(),
         n_steps: int,
         pec_mask: jnp.ndarray | None = None,
         pec_sheets: object = (),
@@ -1408,7 +1385,7 @@ class _ExecuteMixin:
         # after the specific refusals above and before the first step.
         # A declared material interface is one (#1373, LANE_GATES).
         from rfx.runners._admission import admit
-        admit(self, lane, run_args={"conformal_pec": conformal_pec})
+        admit(self, lane, run_args={"conformal_pec": conformal_pec}, diagnostics=diagnostics)
 
         # The arrays this lane steps can differ from the declaration: a
         # concrete eps_override / sigma_override. Read them too, before the
@@ -1474,6 +1451,7 @@ class _ExecuteMixin:
                     step=jnp.asarray(n_steps, dtype=jnp.int32),
                 )
                 return Result(
+                    diagnostics=diagnostics,
                     state=state,
                     time_series=probe_data,
                     s_params=None, freqs=None,
@@ -1481,6 +1459,7 @@ class _ExecuteMixin:
                     freq_range=(self._freq_max / 10, self._freq_max, self._boundary),
                 )
             return ForwardResult(
+                diagnostics=diagnostics,
                 time_series=probe_data,
                 ntff_data=None, ntff_box=None,
                 grid=grid_out,
@@ -1536,6 +1515,7 @@ class _ExecuteMixin:
                 step=jnp.asarray(n_steps, dtype=jnp.int32),
             )
             return Result(
+                diagnostics=diagnostics,
                 state=state,
                 time_series=probe_data,
                 s_params=None,
@@ -1546,6 +1526,7 @@ class _ExecuteMixin:
             )
 
         return ForwardResult(
+            diagnostics=diagnostics,
             time_series=probe_data,
             ntff_data=None,
             ntff_box=None,
@@ -1561,6 +1542,7 @@ class _ExecuteMixin:
         debye_spec: tuple | None,
         lorentz_spec: tuple | None,
         *,
+        diagnostics=(),
         n_steps: int,
         conductors=None,
         checkpoint: bool = True,
@@ -1659,7 +1641,7 @@ class _ExecuteMixin:
                 pec_sheets=tuple(pec_sheets or ()),
                 pec_wires=tuple(pec_wires or ()),
                 return_state=False,
-                lane="fwd_adi",
+                lane="fwd_adi", diagnostics=diagnostics,
             )
 
         # The uniform forward lane has no subgrid (#1240). forward() (and
@@ -1669,7 +1651,7 @@ class _ExecuteMixin:
         # lane, compute_mixed_s_matrix refuses it first).
         self._require_no_refinement_without_a_subgrid(
             "forward()/optimize()/topology_optimize()/"
-            "compute_lumped_wire_s_matrix_via_scan()")
+            "compute_lumped_wire_s_matrix_via_scan()", diagnostics=diagnostics)
         _line_stub_scope = _line_stub_admit(self, port_s11_freqs)
 
         from rfx.simulation import (
@@ -2398,7 +2380,7 @@ class _ExecuteMixin:
         # after the specific refusals above and before the first step.
         if lane is not None:
             from rfx.runners._admission import admit
-            admit(self, lane)
+            admit(self, lane, diagnostics=diagnostics)
 
         conductors, pec_edge_masks_local, sheet_impedance = _conductors.forward_kernel_inputs(self, conductors, lane or "fwd_uniform", pec_edge_masks_local, sheet_impedance)
         result = _run(
@@ -2582,6 +2564,7 @@ class _ExecuteMixin:
             }
 
         return ForwardResult(
+            diagnostics=diagnostics,
             time_series=result.time_series,
             ntff_data=result.ntff_data,
             ntff_box=result.ntff_box,
@@ -2604,6 +2587,7 @@ class _ExecuteMixin:
     @staticmethod
     def _pack_nu_forward_result(
         *,
+        diagnostics=(),
         time_series,
         grid,
         ntff_data=None,
@@ -2618,43 +2602,13 @@ class _ExecuteMixin:
         current_moment_data=None,
         current_moment_monitor=None,
     ) -> ForwardResult:
-        """Assemble the minimal ``ForwardResult`` for both NU forward lanes.
-
-        The single-device (:meth:`_forward_nonuniform_from_materials`) and
-        distributed (:meth:`_forward_distributed_nonuniform_from_materials`)
-        lanes are a hand-maintained mirror pair whose only shared concern is
-        this final ``ForwardResult`` assembly. Each lane extracts its own
-        per-lane field values (the single-device lane reads a ``Result``
-        object; the distributed lane reads a runner dict and forces the
-        unsupported observables to ``None``) and passes them here as explicit
-        parameters — there is no closure capture of caller locals, matching
-        the W6.1 ``_StepContext`` / W6.6 builder precedents. Centralising the
-        constructor keeps the two lanes' output schema from drifting apart.
-
-        ``wire_port_sparams`` is the per-port ``(meta, accs)`` pair tuple
-        the single-device lane's ``Result`` carries; the distributed lane
-        has no wire-port accumulators and leaves it ``None``.
-        """
-        return ForwardResult(
-            time_series=time_series,
-            ntff_data=ntff_data,
-            ntff_box=ntff_box,
-            grid=grid,
-            s_params=s_params,
-            freqs=freqs,
-            dft_planes=dft_planes,
-            wire_port_sparams=wire_port_sparams,
-            sparam_time_records=sparam_time_records,
-            dft_time_records=dft_time_records,
-            dt=dt,
-            current_moment_data=current_moment_data,
-            current_moment_monitor=current_moment_monitor,
-        )
+        return _conductors.pack_nu_forward_result(time_series=time_series, grid=grid, ntff_data=ntff_data, ntff_box=ntff_box, s_params=s_params, freqs=freqs, dft_planes=dft_planes, wire_port_sparams=wire_port_sparams, sparam_time_records=sparam_time_records, dft_time_records=dft_time_records, dt=dt, current_moment_data=current_moment_data, current_moment_monitor=current_moment_monitor, diagnostics=diagnostics)
 
     @_declaration_setup_at_trace_time
     def _forward_nonuniform_from_materials(
         self,
         *,
+        diagnostics=(),
         preflight=None,
         conductors=None,
         eps_override: jnp.ndarray | None = None,
@@ -2713,7 +2667,7 @@ class _ExecuteMixin:
                 )
 
         result = run_nonuniform_path(
-            self, preflight=preflight, conductors=conductors,
+            self, preflight=preflight, conductors=conductors, diagnostics=diagnostics,
             n_steps=n_steps,
             s_param_freqs=(None if port_s11_freqs is None else
                            jnp.asarray(port_s11_freqs, dtype=jnp.float32)),
@@ -2729,6 +2683,7 @@ class _ExecuteMixin:
             lane="fwd_nonuniform",
         )
         return self._pack_nu_forward_result(
+            diagnostics=result.diagnostics,
             time_series=result.time_series,
             ntff_data=result.ntff_data,
             ntff_box=result.ntff_box,
@@ -2794,7 +2749,7 @@ class _ExecuteMixin:
 
     def _execute_distributed_nonuniform_from_materials(
         self,
-        *, lane: str = "fwd_distributed_nu",
+        *, lane: str = "fwd_distributed_nu", diagnostics=(),
         assembly=None,
         eps_override: jnp.ndarray | None = None,
         sigma_override: jnp.ndarray | None = None,
@@ -2994,20 +2949,20 @@ class _ExecuteMixin:
                         "Local whole-domain overrides are supported only in one process.")
 
         # ---- Assemble full-domain materials ----
-        conductors, (materials, debye_spec, lorentz_spec, pec_mask), _dnu_pec_sheets, _dnu_pec_wires = _conductors.distributed_solve_inputs(self, grid, assembly, skip_preflight, gather_final_state)
+        conductors, (materials, debye_spec, lorentz_spec, pec_mask), _dnu_pec_sheets, _dnu_pec_wires, diagnostics = _conductors.distributed_solve_inputs(self, grid, assembly, skip_preflight, gather_final_state, diagnostics)
         if _dnu_pec_sheets or _dnu_pec_wires:
             # #931: this lane shards a CELL mask along x and realizes it
             # per slab.  A sheet and a sub-cell wire own no cell, so they
             # have no sharded carrier here yet and would be silently
             # absent from every rank.  Refuse instead of running the wrong
             # geometry.
-            raise NotImplementedError(
+            raise _conductors.diagnostic_refusal(NotImplementedError(
                 "distributed=True on the non-uniform forward lane does not "
                 "realize PEC sheets or sub-cell wires (#931): the lane "
                 "shards a primal-cell mask along x and a sheet owns no "
                 "cell, so a declared sheet would vanish on every rank. "
                 "Draw the conductor as a volume (a Box at least one cell "
-                "thick) or run the single-device non-uniform lane.")
+                "thick) or run the single-device non-uniform lane."), diagnostics)
 
         # ---- Sources / probes (lumped/wire/coax ports unsupported here). ----
         if self._lumped_rlc:
@@ -3066,7 +3021,7 @@ class _ExecuteMixin:
         # Every declared input this lane does not carry is refused here,
         # after the specific refusals above and before the first step.
         from rfx.runners._admission import admit
-        admit(self, lane)
+        admit(self, lane, diagnostics=diagnostics)
 
         if eps_override is not None or sigma_override is not None:
             materials = materials._replace(
@@ -3171,11 +3126,11 @@ class _ExecuteMixin:
             material_drive=tuple(material_drive),
         )
 
-        return grid, result, geometry_record
+        return grid, dict(result, diagnostics=diagnostics), geometry_record
 
-    def _forward_distributed_nonuniform_from_materials(self, **kwargs) -> ForwardResult:
+    def _forward_distributed_nonuniform_from_materials(self, *, diagnostics=(), **kwargs) -> ForwardResult:
         """Pack the shared distributed graded solve for differentiable callers."""
-        grid, result, _ = self._execute_distributed_nonuniform_from_materials(**kwargs)
+        grid, result, _ = self._execute_distributed_nonuniform_from_materials(diagnostics=diagnostics, **kwargs)
         # ---- Repackage into ForwardResult via the shared lane helper.
         # Both the distributed runner and the single-device NU runner
         # return time_series with layout ``(n_steps, n_probes)``; we
@@ -3184,6 +3139,7 @@ class _ExecuteMixin:
         # NTFF / S-param / freq observables, so those stay ``None``.
         ts = result.get("time_series")
         return self._pack_nu_forward_result(
+            diagnostics=result.get("diagnostics", diagnostics),
             time_series=ts,
             grid=grid,
             ntff_data=None,
@@ -3215,6 +3171,7 @@ class _ExecuteMixin:
         self,
         *,
         mode: str,
+        diagnostics=(),
         n_steps: int | None,
         num_periods: float,
         # forward-only inputs
@@ -3345,11 +3302,11 @@ class _ExecuteMixin:
             if distributed:
                 # NU-only in v1.6.2 (DP3 locked decision).
                 if not is_nonuniform:
-                    raise NotImplementedError(
+                    raise _conductors.diagnostic_refusal(NotImplementedError(
                         "distributed=True on forward() is currently implemented "
                         "only for non-uniform meshes; use run(..., devices=...) "
                         "for the uniform distributed path."
-                    )
+                    ), diagnostics)
                 # Reject TFSF / waveguide ports up front (V3 §3 unsupported).
                 if self._tfsf is not None:
                     raise NotImplementedError(
@@ -4238,7 +4195,7 @@ class _ExecuteMixin:
 
         # ---- W6.3 unified lane dispatch: one place decides + rejects ----
         plan = self._dispatch_plan(
-            mode="forward",
+            mode="forward", diagnostics=_solve_assembly.diagnostics,
             n_steps=n_steps,
             num_periods=num_periods,
             distributed=distributed,
@@ -4351,6 +4308,7 @@ class _ExecuteMixin:
             refuse_f0_sheets(self._thin_conductors,
                              "distributed non-uniform forward()")
             result = self._forward_distributed_nonuniform_from_materials(
+                diagnostics=_solve_assembly.diagnostics,
                 assembly=_solve_assembly,
                 eps_override=eps_override,
                 sigma_override=sigma_override,
@@ -4547,7 +4505,7 @@ class _ExecuteMixin:
                                "mu_r": mu_r_override,
                                "pec_mask": pec_mask_override,
                                "pec_occupancy": pec_occupancy_override},
-            lane="fwd_uniform",
+            lane="fwd_uniform", diagnostics=_solve_assembly.diagnostics,
         )
         if ringdown is None:
             _res = _fwd_call()
@@ -4840,6 +4798,7 @@ class _ExecuteMixin:
 
         _distributed_run = devices is not None and len(devices) > 1
         _solve_assembly = self._auto_preflight(skip=skip_preflight, context="run", check_ntff="advisory", prepare=True, distributed=_distributed_run)
+        _diagnostics = _solve_assembly.diagnostics
 
         # ---- (2,4) stencil fence: reject order=4 on unsupported lanes ----
         self._check_stencil_order_supported(distributed=_distributed_run)
@@ -4851,7 +4810,7 @@ class _ExecuteMixin:
         # NU/distributed lanes (the uniform/adi/subgridded lanes resolve it
         # below from the grid they build and reuse).
         plan = self._dispatch_plan(
-            mode="run",
+            mode="run", diagnostics=_diagnostics,
             n_steps=n_steps,
             num_periods=num_periods,
             devices=devices,
@@ -4860,7 +4819,7 @@ class _ExecuteMixin:
         n_steps = plan.n_steps
         if plan.lane == "run_subgridded":
             from rfx.subgridding._notice import require_experimental
-            require_experimental(self)
+            require_experimental(self, diagnostics=_diagnostics)
         if _realized.ACTIVE is not None:
             _realized.enter(self, plan.lane)
         if ringdown is not None:
@@ -4891,7 +4850,7 @@ class _ExecuteMixin:
             del _solve_assembly  # the fallback performs its own solve assembly
             return self.run(**{**_call_args, "devices": None,
                                "exchange_interval": 1,
-                               "skip_preflight": True})
+                               "skip_preflight": True})._replace(diagnostics=_diagnostics)
         if plan.lane in ("run_distributed", "run_distributed_nu"):
             if self._dft_planes:
                 raise NotImplementedError(
@@ -4906,7 +4865,7 @@ class _ExecuteMixin:
                 refuse_unsupported_distributed_features,
             )
             refuse_unsupported_distributed_features(
-                self, lane="distributed multi-device run()")
+                self, lane="distributed multi-device run()", diagnostics=_diagnostics)
             _dist_conformal = bool(conformal_pec and self._has_pec_to_conform())
             # One device on a graded mesh is the non-uniform lane, which
             # carries neither snapshot nor conformal_pec, nor until_decay on
@@ -4980,9 +4939,10 @@ class _ExecuteMixin:
                     assembly=_solve_assembly,
                     n_steps=n_steps, devices=devices,
                     exchange_interval=exchange_interval,
-                    skip_preflight=skip_preflight, gather_final_state=True, lane="run_distributed_nu",
+                    skip_preflight=skip_preflight, gather_final_state=True, lane="run_distributed_nu", diagnostics=_diagnostics,
                 )
                 _res = Result(
+                    diagnostics=result.get("diagnostics", _diagnostics),
                     state=result["final_state"], time_series=result["time_series"],
                     s_params=None, freqs=None, grid=grid, dt=grid.dt,
                     freq_range=(self._freq_max / 10, self._freq_max, self._boundary),
@@ -4991,7 +4951,7 @@ class _ExecuteMixin:
             else:
                 from rfx.runners.distributed_v2 import run_distributed
                 _res = run_distributed(
-                    self, n_steps=n_steps, devices=devices,
+                    self, n_steps=n_steps, devices=devices, diagnostics=_diagnostics,
                     exchange_interval=exchange_interval,
                     assembly=_solve_assembly,
                     conformal_pec=conformal_pec,
@@ -5142,7 +5102,7 @@ class _ExecuteMixin:
                 pec_sheets=tuple(_run_pec_sheets),
                 pec_wires=tuple(_run_pec_wires),
                 return_state=True,
-                lane="run_adi",
+                lane="run_adi", diagnostics=_diagnostics,
                 conformal_pec=conformal_pec,
             )
             _res = self._attach_run_settling_witness(_res, n_steps=n_steps)
@@ -5186,7 +5146,7 @@ class _ExecuteMixin:
                     "or non-uniform lane.")
             _res = self._run_subgridded(
                 grid, base_materials, pec_mask,
-                n_steps=subgrid_n_steps,
+                n_steps=subgrid_n_steps, diagnostics=_diagnostics,
                 conformal_pec=conformal_pec,
                 compute_s_params=compute_s_params,
                 s_param_freqs=s_param_freqs,
@@ -5213,7 +5173,7 @@ class _ExecuteMixin:
         _field_dtype = self._resolve_field_dtype()
         _uniform_call = functools.partial(
             run_uniform,
-            self, conductors=conductors,
+            self, conductors=conductors, diagnostics=_diagnostics,
             n_steps=n_steps,
             until_decay=until_decay,
             decay_check_interval=decay_check_interval,

@@ -1,6 +1,5 @@
 """Independent contracts for immutable records, legacy bridges and result transport."""
 import ast
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import FrozenInstanceError
 import json
 from pathlib import Path
@@ -10,7 +9,7 @@ import jax.numpy as jnp
 import pytest
 
 from rfx import Diagnostic, MATERIAL_LIBRARY
-from rfx._diagnostic_context import diagnostic_scope, diagnostic_result, record_diagnostics
+from rfx._diagnostic_transport import merge_diagnostics, diagnostic_refusal
 from rfx.api._spec import Result, ForwardResult, MSLSMatrixResult, MixedSMatrixResult, CoaxMSLTransitionResult
 from rfx.preflight._common import PreflightIssue, PreflightReport, PreflightWarning, PreflightErrorWarning, PreflightConfigError
 
@@ -88,18 +87,17 @@ def test_old_positional_results_and_material_imports():
     assert ForwardResult(jnp.ones(1)).diagnostics == ()
     for cls in (Result, ForwardResult):
         assert cls._fields[-1] == 'diagnostics'
-    for cls in (MSLSMatrixResult, MixedSMatrixResult, CoaxMSLTransitionResult):
+    for cls in (MSLSMatrixResult, MixedSMatrixResult):
         assert cls.__dataclass_fields__['diagnostics'].default == ()
+    assert 'diagnostics' not in CoaxMSLTransitionResult.__dataclass_fields__
 
 
 @pytest.mark.parametrize('result_kind', ['run', 'forward'])
 def test_jit_grad_vmap_static_metadata_without_tracer_leaks(result_kind):
     d = observation()
     def objective(x):
-        with diagnostic_scope():
-            record_diagnostics((d,))
-            result = Result(None, x ** 2, None, None) if result_kind == 'run' else ForwardResult(x ** 2)
-            return diagnostic_result(result)
+        return (Result(None, x ** 2, None, None, diagnostics=(d,))
+                if result_kind == 'run' else ForwardResult(x ** 2, diagnostics=(d,)))
     with jax.checking_leaks():
         result = jax.jit(objective)(jnp.array(3.))
         assert result.diagnostics == (d,)
@@ -112,48 +110,16 @@ def test_jit_grad_vmap_static_metadata_without_tracer_leaks(result_kind):
 
 def test_nested_drive_union_preserves_changed_observations():
     d1, d2 = observation('first'), observation('second')
-    with diagnostic_scope():
-        for d in (d1, d1, d2):
-            with diagnostic_scope():
-                record_diagnostics((d,))
-                drive = diagnostic_result(Result(None, None, None, None))
-                assert drive.diagnostics == (d,)
-        result, inspection = diagnostic_result(Result(None, None, None, None), {'raw': True})
-    assert result.diagnostics == (d1, d2)
-    assert inspection == {'raw': True}
-    with diagnostic_scope():
-        assert diagnostic_result(ForwardResult(None)).diagnostics == ()
-
-
-def test_scopes_are_isolated_in_threads_and_after_refusal():
-    from threading import Barrier
-    barrier = Barrier(2)
-    def run(name):
-        with diagnostic_scope():
-            record_diagnostics((observation(name),))
-            barrier.wait(timeout=10)
-            return diagnostic_result(ForwardResult(None)).diagnostics
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        first, second = list(pool.map(run, ('first', 'second')))
-    assert [d.subject for d in first] == ['first']
-    assert [d.subject for d in second] == ['second']
-    with pytest.raises(ValueError) as caught:
-        with diagnostic_scope():
-            record_diagnostics(first)
-            raise ValueError('unsupported path')
-    assert caught.value.diagnostics[0] == first[0]
-    assert caught.value.diagnostics[-1].severity == 'refusal'
-    with diagnostic_scope():
-        assert diagnostic_result(ForwardResult(None)).diagnostics == ()
+    drives = [Result(None, None, None, None, diagnostics=(d,)) for d in (d1, d1, d2)]
+    assert merge_diagnostics((d1,), *(drive.diagnostics for drive in drives)) == (d1, d2)
+    assert merge_diagnostics() == ()
+    assert ForwardResult(None).diagnostics == ()
 
 
 def test_an_earlier_refusal_level_observation_does_not_hide_a_new_cause():
     earlier = Diagnostic('msl.line_stub_behind_port', 'refusal', 'port',
                          'stub outside this read band', {'frequency_hz': 20e9})
-    with pytest.raises(NotImplementedError) as caught:
-        with diagnostic_scope():
-            record_diagnostics((earlier,))
-            raise NotImplementedError('this path does not drive MSL ports')
-    assert caught.value.diagnostics[0] == earlier
-    assert caught.value.diagnostics[-1].message == 'this path does not drive MSL ports'
-    assert caught.value.diagnostics[-1].severity == 'refusal'
+    error = diagnostic_refusal(NotImplementedError('this path does not drive MSL ports'), (earlier,))
+    assert error.diagnostics[0] == earlier
+    assert error.diagnostics[-1].message == 'this path does not drive MSL ports'
+    assert error.diagnostics[-1].severity == 'refusal'

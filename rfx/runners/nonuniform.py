@@ -462,7 +462,7 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
     return materials, conductors if return_object else pec_edge_masks
 
 
-def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=None,
+def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, s_param_freqs=None,
                         preflight=None, conductors=None,
                         eps_override=None, sigma_override=None,
                         pec_mask_override=None, pec_occupancy_override=None,
@@ -652,7 +652,8 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     if conductors is None:
         conductors = solve_conductors(sim, grid, nonuniform=True)
     if preflight is not None:
-        sim._auto_preflight(conductors=conductors, **preflight)
+        from rfx._diagnostic_transport import merge_diagnostics, report_diagnostics
+        diagnostics = merge_diagnostics(diagnostics, report_diagnostics(sim._auto_preflight(conductors=conductors, **preflight)))
     materials, debye_spec, lorentz_spec, pec_mask = assembled_materials(
         conductors, sheet_specs=_sheet_specs, pec_sheets=_pec_sheets,
         pec_wires=_pec_wires, geometry_masks=_geometry_masks, assembly_entries=_assembly_entries)
@@ -1372,7 +1373,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     # the specific refusals above and before the first step.
     from rfx.runners._admission import admit
     admit(sim, lane, run_args={"conformal_pec": conformal_pec,
-                               "compute_s_params": compute_s_params})
+                               "compute_s_params": compute_s_params}, diagnostics=diagnostics)
 
     conductors, geometry_record = at_kernel(sim, conductors, lane=lane, pec_edges=pec_edge_masks, sheet_operator=sheet_ctx)
     pec_edge_masks = conductors.pec_edges
@@ -1623,6 +1624,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         )
 
     return Result(
+        diagnostics=diagnostics,
         realized_geometry=geometry_record,
         state=r["state"],
         time_series=r["time_series"],

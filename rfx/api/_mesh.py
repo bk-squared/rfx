@@ -241,7 +241,7 @@ class _MeshMixin:
         if findings:
             raise ValueError(" ".join(findings))
 
-    def _require_no_refinement_without_a_subgrid(self, entry):
+    def _require_no_refinement_without_a_subgrid(self, entry, *, diagnostics=()):
         """Refuse a refinement on an entry point with no subgridded lane.
 
         Only ``run()`` dispatches to the subgridded lane. The other entry
@@ -259,7 +259,8 @@ class _MeshMixin:
             return
         z_lo, z_hi = ref["z_range"]
         ratio = ref["ratio"]
-        raise NotImplementedError(
+        from rfx._diagnostic_transport import diagnostic_refusal
+        raise diagnostic_refusal(NotImplementedError(
             f"add_refinement(z_range=({z_lo * 1e3:g}, {z_hi * 1e3:g}) mm, "
             f"ratio={ratio}) is refused on {entry}: there is no "
             f"subgridded lane behind {entry}, so the refinement would be "
@@ -270,7 +271,7 @@ class _MeshMixin:
             "vmap_material_sweep() also take a non-uniform mesh: a dz_profile "
             f"whose cells between z = {z_lo * 1e3:g} and {z_hi * 1e3:g} mm "
             "are as fine as the refinement asked for (the coarse cell there "
-            f"divided by {ratio}) gives them that resolution.")
+            f"divided by {ratio}) gives them that resolution."), diagnostics)
 
     def _require_uniform_mesh(self, consumer):
         if self._uses_nonuniform_mesh:

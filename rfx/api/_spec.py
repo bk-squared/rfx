@@ -2226,7 +2226,6 @@ class CoaxMSLTransitionResult:
     flux_monitors: dict | None = None
     ladder_voltages: dict | None = None
     settling_witness: tuple | None = None
-    diagnostics: tuple[Diagnostic, ...] = ()
 
 
 __all__ = [

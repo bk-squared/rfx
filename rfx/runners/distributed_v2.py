@@ -493,7 +493,7 @@ def refuse_distributed_periodic(sim, *, lane, bloch=None):
         )
 
 
-def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
+def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostics=()):
     """Refuse what the multi-device lanes would silently drop or get wrong.
 
     Periodic/Bloch boundaries, reference-plane or passive ports, Kerr materials,
@@ -562,14 +562,15 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
 
     msl = getattr(sim, "_msl_ports", None) or ()
     if msl:
-        raise NotImplementedError(
+        from rfx._diagnostic_transport import diagnostic_refusal
+        raise diagnostic_refusal(NotImplementedError(
             f"add_msl_port() port(s) ({len(msl)}): not supported on the {lane} path; "
             "the lane never drives or terminates microstrip ports, so a model fed "
             "only by them returns a zero field, with no warning "
             "(rfx.runners.distributed_v2.run_distributed / "
             "rfx.runners.distributed.run_distributed have no MSL port update). "
             f"Remove the MSL ports, or {single_device_hint}."
-        )
+        ), diagnostics)
 
     if getattr(sim, "_refinement", None) is not None:
         raise NotImplementedError(
@@ -599,7 +600,7 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
         )
 
 
-def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
+def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_interval=1,
                     _source_port_indices=None, _record_probes=None, preflight=None, assembly=None, **kwargs):
     """Run FDTD simulation distributed across multiple devices.
 
@@ -632,6 +633,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     -------
     Result
     """
+    from rfx._diagnostic_transport import merge_diagnostics, report_diagnostics
+    diagnostics = merge_diagnostics(diagnostics, report_diagnostics(assembly))
     validate_exchange_interval(exchange_interval)
     from rfx.sources.tfsf import _refuse_extended_tfsf
     _refuse_extended_tfsf(sim._tfsf, "the distributed runner")
@@ -655,7 +658,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         # The nested run builds its own solve product; release the one
         # built for this call's preflight first.
         assembly = None
-        return sim.run(n_steps=n_steps)
+        result = sim.run(n_steps=n_steps)
+        return result._replace(diagnostics=merge_diagnostics(diagnostics, result.diagnostics))
 
     if sim._waveguide_ports:
         warnings.warn(
@@ -666,10 +670,11 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         # The nested run builds its own solve product; release the one
         # built for this call's preflight first.
         assembly = None
-        return sim.run(n_steps=n_steps)
+        result = sim.run(n_steps=n_steps)
+        return result._replace(diagnostics=merge_diagnostics(diagnostics, result.diagnostics))
 
     refuse_unsupported_distributed_features(
-        sim, lane="distributed (v2) runner", bloch=kwargs.get("bloch"))
+        sim, lane="distributed (v2) runner", bloch=kwargs.get("bloch"), diagnostics=diagnostics)
 
     # Only now, past the single-device fallbacks above: those return through
     # ``sim.run()``, which DOES accumulate the monitor.
@@ -751,7 +756,9 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     _geometry_masks, _assembly_entries = [], []
     if assembly is None:
         grid = sim._build_grid()
-        conductors = solve_conductors(sim, grid, preflight=preflight)
+        conductors = solve_conductors(sim, grid)
+        if preflight is not None:
+            diagnostics = merge_diagnostics(diagnostics, report_diagnostics(sim._auto_preflight(conductors=conductors, **preflight)))
     else:
         conductors = assembly.take()
         grid = conductors.grid
@@ -1644,6 +1651,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         ntff_data = ntff_layout.assemble(buffer)
 
     return Result(
+        diagnostics=diagnostics,
         realized_geometry=geometry_record,
         ntff_data=ntff_data, ntff_box=ntff_box,
         state=final_state,

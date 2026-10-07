@@ -307,12 +307,13 @@ def read_band(sim, freqs=None):
         # MSL and coax entries have no frequency-set field. Their calculators
         # own the requested frequencies; run/forward receive theirs explicitly.
         return 0.0, float(sim._freq_max)
+    from rfx._diagnostic_transport import diagnostic_refusal
     try:
         values = np.asarray(freqs, dtype=float)
     except Exception as exc:
-        raise ValueError("#1512: line-port read frequencies must be concrete") from exc
+        raise diagnostic_refusal(ValueError("#1512: line-port read frequencies must be concrete")) from exc
     if not values.size or not np.isfinite(values).all() or (values < 0).any():
-        raise ValueError("#1512: line-port read frequencies must be finite, nonnegative and nonempty")
+        raise diagnostic_refusal(ValueError("#1512: line-port read frequencies must be finite, nonnegative and nonempty"))
     return float(values.min()), float(values.max())
 
 
@@ -358,9 +359,7 @@ def _warn_uninspectable(skipped):
             frame, level = frame.f_back, level + 1
     finally:
         del frame
-    from rfx._diagnostic_context import record_diagnostics
     warning = _uninspectable_warning(skipped)
-    record_diagnostics((warning.diagnostic,))
     warnings.warn(warning, stacklevel=level)
 
 
