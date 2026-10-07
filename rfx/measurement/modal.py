@@ -51,9 +51,25 @@ def record_waveguide(cfg: WaveguidePortConfig, state,
             jnp.asarray(i_ref, cfg.i_ref_t.dtype), mode='drop'),
         v_inc_t=cfg.v_inc_t.at[step].set(
             jnp.asarray(v_inc, cfg.v_inc_t.dtype), mode='drop'),
+        # The count of samples written: the dropped last step is not one.
         n_steps_recorded=jnp.maximum(cfg.n_steps_recorded, jnp.minimum(
-            jnp.asarray(state.step, dtype=jnp.int32), n_t)),
+            jnp.asarray(state.step, dtype=jnp.int32), n_t - 1)),
     )
+
+
+def recorded(cfg, name):
+    """A port's time record cut to the samples written (no unwritten tail).
+
+    A full scan leaves the last slot unwritten; a reader of the raw record
+    (the settling witness, the source-end search) must not take that zero
+    for a sample, or a source still on at the end reads as having ended.
+    """
+    from rfx.core.jax_utils import is_tracer
+    record, count = getattr(cfg, name), getattr(cfg, 'n_steps_recorded', None)
+    if count is None or is_tracer(count) or is_tracer(record):
+        return record
+    count = int(count)
+    return record[:count] if 0 < count < len(record) else record
 
 
 

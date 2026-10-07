@@ -1825,6 +1825,7 @@ def settling_db_from_port_records(final_cfgs, *, freqs=None, freq_max=None,
     sensitivities are judged by a separate witness
     """
     from rfx.core.jax_utils import is_tracer
+    from rfx.measurement.modal import recorded as _recorded
     from rfx.probes.settling import source_end_step
 
     final_cfgs = tuple(final_cfgs)
@@ -1844,12 +1845,11 @@ def settling_db_from_port_records(final_cfgs, *, freqs=None, freq_max=None,
             distance = max(abs(float(cfg.source_x_m) - float(x))
                            for other in final_cfgs
                            for x in (other.reference_x_m, other.probe_x_m))
-            drives.append((cfg.v_inc_t, distance))
+            drives.append((_recorded(cfg, "v_inc_t"), distance))
         if drives:
-            source_end = source_end_step(
-                drives, len(final_cfgs[0].v_inc_t), final_cfgs[0].dt)
+            source_end = source_end_step(drives, len(drives[0][0]), final_cfgs[0].dt)
     named = [
-        (f"port{port_index}/{name}", getattr(cfg, name))
+        (f"port{port_index}/{name}", _recorded(cfg, name))
         for port_index, cfg in enumerate(final_cfgs)
         for name in _SETTLING_RECORD_NAMES
     ]

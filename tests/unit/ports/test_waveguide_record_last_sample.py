@@ -43,3 +43,24 @@ def test_out_of_range_step_leaves_the_record_unchanged():
         np.testing.assert_array_equal(np.asarray(getattr(out, name)),
                                       np.asarray(getattr(cfg, name)), err_msg=name)
     assert int(out.n_steps_recorded) <= n_t
+
+
+def test_a_source_still_on_at_the_end_is_not_read_as_ended():
+    """The unwritten last slot is not a sample: the count excludes it, and a
+    reader of the raw record sees a drive that is still on, not one that fell
+    to zero on the last step."""
+    from rfx.measurement.modal import recorded
+    from rfx.probes.settling import source_end_step
+    from rfx.sources.waveguide_port import settling_db_from_port_records
+
+    sim = _guide()
+    result = sim.run(n_steps=40)       # the pulse is still rising at step 40
+    cfg = next(iter(result.waveguide_ports.values()))
+    n_t = cfg.v_inc_t.shape[0]
+    assert int(cfg.n_steps_recorded) == n_t - 1
+    drive = np.asarray(recorded(cfg, "v_inc_t"))
+    assert drive.shape == (n_t - 1,) and drive[-1] != 0
+    assert source_end_step([(drive, 0.0)], n_t, cfg.dt) is None
+    _, detail = settling_db_from_port_records([cfg], return_detail=True)
+    assert detail["status"] == "undetermined"
+    assert "source end is unavailable" in detail["reason"], detail["reason"]

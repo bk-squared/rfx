@@ -54,7 +54,9 @@ def source_end_step(drives, n_steps, dt, *, tolerance=1e-6,
         raw = np.asarray(samples)
         w = (np.abs(raw.astype(np.complex128)) if np.iscomplexobj(raw)
              else np.abs(np.asarray(raw, dtype=np.float64)))
-        if w.ndim != 1 or len(w) != n_steps:
+        # A recorded table may lack the scan's last step (the waveguide
+        # port does not write it); it then speaks for the steps it holds.
+        if w.ndim != 1 or not n_steps - 1 <= len(w) <= n_steps:
             available = False
             continue
         if not np.isfinite(w).all():
@@ -63,7 +65,7 @@ def source_end_step(drives, n_steps, dt, *, tolerance=1e-6,
         on = np.flatnonzero(w > float(tolerance) * peak)
         off = int(on[-1]) + 1 if on.size else 0
         rows.append((w, peak, off))
-        if off >= n_steps and peak > 0:
+        if off >= len(w) and peak > 0:
             available = False
         if distance is None or not np.isfinite(distance) or distance < 0:
             available = False
@@ -80,6 +82,7 @@ def simulation_source_end_step(sim, n_steps, dt, records, grid=None,
     Unknown plane/volume drives must not silently disappear from coverage.
     TF/SF uses its waveform and box diagonal in addition to point drives.
     """
+    from rfx.measurement.modal import recorded
     from rfx.sources.sources import GaussianPulse
 
     if dt is None or is_tracer(dt):
@@ -102,7 +105,7 @@ def simulation_source_end_step(sim, n_steps, dt, records, grid=None,
                 axis = "xyz".index(cfg.normal_axis)
                 distance = max(abs(float(p[axis]) - float(cfg.source_x_m))
                                for p in positions)
-                drives.append((cfg.v_inc_t, distance))
+                drives.append((recorded(cfg, "v_inc_t"), distance))
     for pe in (*getattr(sim, "_ports", ()), *getattr(sim, "_msl_ports", ())):
         if getattr(pe, "impedance", None) != 0 and not getattr(pe, "excite", True):
             continue
