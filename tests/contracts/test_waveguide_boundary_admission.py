@@ -165,11 +165,14 @@ def test_copy_has_its_own_default_warning(clone, monkeypatch):
     assert sum(issubclass(w.category, WaveguideBoundaryWarning) for w in caught) == 2
 
 
-def test_design_document_preserves_omitted_boundary():
+def test_design_document_exports_resolved_default_boundary():
     from rfx.interop import design_to_dict, simulation_from_design
     original = guide()
     rebuilt = simulation_from_design(design_to_dict(original))
-    assert rebuilt._boundary_explicit is False
+    assert rebuilt._boundary_explicit is True
+    assert rebuilt._boundary_spec.to_dict() == {
+        "x": {"lo": "cpml", "hi": "cpml"},
+        "y": {"lo": "pec", "hi": "pec"}, "z": {"lo": "pec", "hi": "pec"}}
     assert rebuilt._build_grid().boundary_depths[2].kind == Kind.PEC
 
 
@@ -196,7 +199,7 @@ def test_terminal_planes_use_realized_pads():
 @pytest.mark.parametrize("skip", [False, True])
 @pytest.mark.parametrize("path", ["uniform", "nonuniform", "distributed_v2",
                                   "distributed_nu", "subgridded", "adi"])
-def test_explicit_guide_refuses_every_dispatch_path(skip, path):
+def test_explicit_guide_rule_on_every_dispatch_path(skip, path, monkeypatch):
     import jax
     import numpy as np
     mesh = {"dz_profile": np.full(10, .001)} if path in ("nonuniform", "distributed_nu") else {}
@@ -209,8 +212,16 @@ def test_explicit_guide_refuses_every_dispatch_path(skip, path):
     if path == "subgridded":
         sim.add_refinement(z_range=(0., .004), ratio=2, validation="research")
     kwargs = {"devices": jax.devices()} if path.startswith("distributed") else {}
-    with pytest.raises(ValueError, match=r"full-aperture waveguide requires PEC"):
-        sim.run(n_steps=1, skip_preflight=skip, **kwargs)
+    if path in ("nonuniform", "distributed_nu"):
+        import rfx.runners.nonuniform as kernel
+        def stop(*args, **kwargs):
+            raise Admitted
+        monkeypatch.setattr(kernel, "run_nonuniform", stop)
+        with pytest.raises(Admitted):
+            sim.run(n_steps=1, skip_preflight=skip, **kwargs)
+    else:
+        with pytest.raises(ValueError, match=r"full-aperture waveguide requires PEC"):
+            sim.run(n_steps=1, skip_preflight=skip, **kwargs)
 
 
 @pytest.mark.parametrize("skip", [False, True])

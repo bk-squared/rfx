@@ -48,10 +48,10 @@ def test_finite_box_is_refused(skip):
         plane(finite=True).run(n_steps=1, skip_preflight=skip)
 
 
-def test_sheet_edge_mask_refusal_names_the_feature():
+def test_slotted_sheet_edge_mask_refusal_names_the_feature():
     sim = Simulation(freq_max=10e9, domain=(.03, .01, .001), dx=.001,
                      cpml_layers=2, mode="2d_tmz")
-    sim.add_thin_conductor(Box((.015, -1., -1.), (.016, 1., 1.)), sigma_bulk=5.8e7)
+    sim.add_thin_conductor(Box((.015, -1., -1.), (.016, .004, 1.)), sigma_bulk=5.8e7)
     sim.add_tfsf_source(f0=5e9, margin=1)
     with pytest.raises(ValueError, match=r"y_lo, y_hi: .*pec_edge_masks"):
         sim._dispatch_plan(mode="run", n_steps=1, num_periods=1)
@@ -156,7 +156,7 @@ def test_finite_scatterer_refuses_every_dispatch_path(skip, path):
 
 
 @pytest.mark.parametrize("broadcast", [False, True])
-def test_low_level_material_override_is_checked_before_kernel(monkeypatch, broadcast):
+def test_low_level_explicit_wrap_keeps_caller_declaration(monkeypatch, broadcast):
     import jax.numpy as jnp
     import rfx.simulation as kernel
     from rfx.sources.tfsf import init_tfsf
@@ -172,7 +172,7 @@ def test_low_level_material_override_is_checked_before_kernel(monkeypatch, broad
         raise Admitted
 
     monkeypatch.setattr(kernel, "make_core_step", stop)
-    with pytest.raises(ValueError, match=r"y_lo, y_hi.*mu_r"):
+    with pytest.raises(Admitted):
         kernel.run(grid, materials, 1, tfsf=source, cpml_axes="x",
                    periodic=(False, True, True), pec_axes="")
 
