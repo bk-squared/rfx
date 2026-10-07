@@ -1,1 +1,0 @@
-### Changed — direct `rfx.apply_thin_conductor` calls with a graded grid now use local dual spacing, matching graded assembly, instead of uniform `dx`.
