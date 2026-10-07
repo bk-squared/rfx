@@ -1,4 +1,4 @@
-"""Lock: S between a wire port and a microstrip port carries one time stamp.
+"""S between a wire port and a microstrip port carries one time stamp.
 
 A wire port's V and I and a microstrip port's E and H planes are records of
 different kinds. Until S2 M2 the wire port's were stamped n dt and the
@@ -7,7 +7,7 @@ phase error of -/+ omega dt (1.614e-13 s on this fixture: 4.1e-3 rad at
 4 GHz; magnitudes equal to 1e-6). M2 corrected it (pre-declaration,
 decision record "M2 after two reviews", item 1).
 
-The lock: every spectrum the S assembly receives, and the S it assembles, equal
+The check: every spectrum the S assembly receives, and the S it assembles, equal
 what a NumPy float64 DFT of the run's own time records gives with E at
 (n+1) dt and H at (n+1/2) dt -- the wire port's V/I record and the
 microstrip port's modal V and loop I projected from the recorded planes.
