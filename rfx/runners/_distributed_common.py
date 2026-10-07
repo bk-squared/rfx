@@ -210,7 +210,7 @@ def stage_dispersion_slabs(materials, dt, debye_spec, lorentz_spec,
     return tuple(out)
 
 
-from rfx.model.electric_metrics import slab_cell_sizes
+from rfx.model.electric_metrics import slab_cell_sizes, slab_metric_kwargs
 
 
 def stage_slab_pole_coeffs(poles, masks, dt, kind, mesh, nx_per, nx, shape, *, grid=None):
@@ -1237,7 +1237,7 @@ def slab_e_component_materials(materials, nx_per, nx, rank=None, *, cell_sizes=N
                                 x_lo_replicated),
         eps_r_lumped=map_lumped(getattr(materials, "eps_r_lumped", None),
                                 x_lo_replicated))
-    eps_edge, sig_edge = component_e_materials(view, (False, False, False), cell_sizes=cell_sizes)
+    eps_edge, sig_edge = component_e_materials(view, (False, False, False), **({} if cell_sizes is None else dict(cell_sizes=cell_sizes)))
     eps_cell, sig_cell = cell_owned_component_materials(materials)
     model_cell = _slab_model_rows(nx_local, nx_per, nx, rank)
 
@@ -1296,7 +1296,7 @@ def slab_e_materials_shmap(mat, mesh, nx_per, nx, *, ranks, grid=None):
              check_rep=False)
     def _mean(local, *, rank):
         return slab_e_component_materials(local, nx_per, nx, rank=rank,
-                                          cell_sizes=slab_cell_sizes(grid, rank))
+                                          **slab_metric_kwargs(grid, rank))
 
     return jax.checkpoint(_mean)(ranks, MaterialArrays(
         eps_r=mat.eps_r, sigma=mat.sigma, mu_r=mat.mu_r,

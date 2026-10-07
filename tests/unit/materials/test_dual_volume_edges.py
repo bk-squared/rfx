@@ -123,6 +123,29 @@ def test_equal_cells_are_bit_identical_per_transverse_component():
             assert np.asarray(actual[axis]).tobytes() == np.asarray(plain[axis]).tobytes()
 
 
+@pytest.mark.parametrize('tensor', [False, True])
+def test_raw_nu_update_requires_primal_metrics(tensor):
+    from rfx.core.yee import init_state, update_e_nu, update_e_nu_aniso
+    g = MetricGrid(([1.,2.,4.],[3.,2.,1.],[2.,5.,3.]))
+    m = MaterialArrays(jnp.arange(27,dtype=jnp.float32).reshape(g.shape)+1,
+                       jnp.full(g.shape,.1),jnp.ones(g.shape))
+    inv = tuple(jnp.asarray(1/d) for d in g.widths)
+    state = init_state(g.shape)._replace(ex=jnp.ones(g.shape),ey=jnp.ones(g.shape),ez=jnp.ones(g.shape))
+    c = realize_components(m,g,periodic=(False,)*3)
+    def update(mat, metric=inv, **kwargs):
+        if tensor:
+            return update_e_nu_aniso(state,mat,*c.eps_update,g.dt,*metric,**kwargs)
+        return update_e_nu(state,mat,g.dt,*metric,**kwargs)
+    with pytest.raises(ValueError,match='requires realized component materials or primal'):
+        update(m)
+    with pytest.raises(ValueError,match='requires realized component materials or primal'):
+        jax.jit(lambda d:update(m,metric=d))(inv)
+    got=update(m,cell_sizes=electric_cell_sizes(g))
+    expected=update(m._replace(components=c))
+    for a,b in zip(jax.tree.leaves(got),jax.tree.leaves(expected)):
+        np.testing.assert_array_equal(a,b)
+
+
 @pytest.mark.parametrize('kind', ['debye', 'lorentz'])
 def test_distributed_drive_window_reads_weighted_poles(kind):
     g = MetricGrid(([1., 2., 4.], [3., 2., 1.], [2., 5., 3.]))

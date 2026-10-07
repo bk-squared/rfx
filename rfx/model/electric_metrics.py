@@ -1,6 +1,15 @@
 """One-dimensional electric material metrics for distributed slabs."""
 import numpy as np
 import jax.numpy as jnp
+from typing import NamedTuple
+
+
+class SlabElectricMetrics(NamedTuple):
+    """Primal operands passed explicitly into the distributed compiled program."""
+    e_cell_sizes: tuple
+    nx: int
+    nx_per_rank: int
+    nx_local: int
 
 
 def slab_cell_sizes(grid, rank):
@@ -23,8 +32,7 @@ def slab_cell_sizes(grid, rank):
             continue
         if widths is None:
             raise ValueError("graded electric materials require primal cell widths")
-        widths = np.asarray(widths)
-        if np.all(widths == widths[0]):
+        if not exact and np.all(np.asarray(widths) == np.asarray(widths)[0]):
             out.append(None)
         elif axis == 0:
             indices = rank * grid.nx_per_rank - 1 + jnp.arange(grid.nx_local)
@@ -32,6 +40,12 @@ def slab_cell_sizes(grid, rank):
         else:
             out.append(jnp.asarray(widths))
     return tuple(out)
+
+
+def slab_metric_kwargs(grid, rank):
+    """Keep the historical equal-cell call signature for callback adapters."""
+    widths = slab_cell_sizes(grid, rank)
+    return {} if widths is None or all(w is None for w in widths) else dict(cell_sizes=widths)
 
 
 def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks, grid=None):
@@ -104,3 +118,23 @@ def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks, grid=None):
 
     return _scales(ranks, eps_r, sigma)
 
+
+def stage_forward_dispersion_x_slab(materials, dt, spec, sharded_grid, mesh, kind):
+    """Stage fixed pole terms; epsilon/sigma E coefficients wait for the loop.
+
+    Pole masks take the same slab halo and boundary replication as the shared
+    material means. No differentiable coefficients pass through eager
+    shard_map setup, and no whole-domain ADE arrays are allocated.
+    """
+    import jax
+    from rfx.runners.distributed_nu import stage_concrete_forward_array, stage_slab_pole_coeffs
+
+    if spec is None:
+        return None
+    poles, masks = spec
+    masks = jax.tree.map(
+        lambda mask: stage_concrete_forward_array(mask, sharded_grid, mesh, False),
+        masks)
+    return stage_slab_pole_coeffs(
+        poles, masks, dt, kind, mesh, sharded_grid.nx_per_rank,
+        sharded_grid.nx, materials.eps_r.shape, grid=sharded_grid)

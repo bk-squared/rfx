@@ -47,7 +47,7 @@ import jax.numpy as jnp
 
 from rfx.core.drives import drive_layout
 import numpy as np
-from jax import lax
+from jax import lax, shard_map
 from rfx.runners._rank import mesh_ranks, rank_shard_map
 from jax.sharding import PartitionSpec as P
 
@@ -1027,24 +1027,6 @@ def stage_forward_array_x_slab(arr, sharded_grid, mesh, pad_value=0.0):
     )
 
 
-def stage_forward_dispersion_x_slab(materials, dt, spec, sharded_grid, mesh, kind):
-    """Stage fixed pole terms; epsilon/sigma E coefficients wait for the loop.
-
-    Pole masks take the same slab halo and boundary replication as the shared
-    material means. No differentiable coefficients pass through eager
-    shard_map setup, and no whole-domain ADE arrays are allocated.
-    """
-    if spec is None:
-        return None
-    poles, masks = spec
-    masks = jax.tree.map(
-        lambda mask: stage_concrete_forward_array(mask, sharded_grid, mesh, False),
-        masks)
-    return stage_slab_pole_coeffs(
-        poles, masks, dt, kind, mesh, sharded_grid.nx_per_rank,
-        sharded_grid.nx, materials.eps_r.shape, grid=sharded_grid)
-
-
 def shard_debye_coeffs_x_slab(debye_coeffs, sharded_grid: ShardedNUGrid,
                               mesh):
     """Slab-shard a full-domain ``DebyeCoeffs`` along x.
@@ -1844,7 +1826,7 @@ def _apply_cpml_h_local_nu(state: FDTDState, cpml_params, cpml_state,
     return new_state, new_cpml
 
 
-from rfx.model.electric_metrics import material_drive_scales
+from rfx.model.electric_metrics import material_drive_scales, SlabElectricMetrics, stage_forward_dispersion_x_slab
 
 
 def run_nonuniform_distributed_pec(
@@ -2929,13 +2911,14 @@ def run_nonuniform_distributed_pec(
         return steps, table
 
     @jax.jit
-    def run_fn(c0, invariants, warmup_xs, opt_xs, *, ranks):
+    def run_fn(c0, invariants, warmup_xs, opt_xs, *, ranks, e_cell_sizes):
+        electric_grid = SlabElectricMetrics(e_cell_sizes, nx_real, nx_per, nx_local)
         if drives:
             # #1279: the drive sees the materials the E update sees -- the
             # override, on the tape when traced -- read in the program.
             materials = invariants[0]
             scales = material_drive_scales(
-                materials.eps_r, materials.sigma, mesh, drives, dt, ranks=ranks, grid=sharded_grid)
+                materials.eps_r, materials.sigma, mesh, drives, dt, ranks=ranks, grid=electric_grid)
             if _realized.ACTIVE is not None:
                 scales = _realized.runtime_drive(scales, tuple(drive_columns))
             if warmup_xs is not None:
@@ -2946,7 +2929,7 @@ def run_nonuniform_distributed_pec(
         # slab_e_materials_shmap for why not inside the loop. Dispersive E
         # coefficients are finished from these same means inside the loop.
         e_materials = slab_e_materials_shmap(
-            invariants[0], mesh, nx_per, nx_real, ranks=ranks, grid=sharded_grid)
+            invariants[0], mesh, nx_per, nx_real, ranks=ranks, grid=electric_grid)
         scan_step = partial(step_fn, invariants=invariants, e_materials=e_materials, ranks=ranks)
         # Optional warmup scan: stop_gradient the carry at boundary so
         # AD does not see the warmup steps.  Probe samples from the
@@ -3022,7 +3005,7 @@ def run_nonuniform_distributed_pec(
          (inv_dx_sharded, inv_dy_rep, inv_dz_rep,
           inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep, *cell_sizes)),
         warmup_xs, opt_xs,
-        ranks=mesh_ranks(mesh))
+        ranks=mesh_ranks(mesh), e_cell_sizes=sharded_grid.e_cell_sizes)
     final_state_sharded = final_carry["fdtd"]
     final_cpml_sharded = final_carry.get("cpml") if use_cpml else None
     final_debye_sharded = final_carry.get("debye") if use_debye else None
