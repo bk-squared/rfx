@@ -5,7 +5,7 @@
   the quasi-static value 1/(1 + f/2). The difference falls as 1/width (0.15 dB at 16 cells, 0.10 dB at 24).
 - The edge rows on a drawn free edge now carry half of the sheet conductance; the set of loaded edges is unchanged.
   A sheet that runs wall to wall, and an edge drawn between two nodes, are unchanged. Uniform and graded meshes.
-- A good conductor is effectively unchanged: a patch with R_s = 1.07 ohm/sq keeps its resonance (25.399 GHz) and
-  its Q moves from 27.304 to 27.309.
+- Measured on a patch with R_s = 1.07 ohm/sq (two of its four edges on nodes): the resonance stays at 25.399 GHz
+  and Q moves from 27.304 to 27.309.
 - `sim.realized_geometry()` reports an f0 conductor by its node footprint and solved extent; it was one cell too
   long on every in-plane axis.
