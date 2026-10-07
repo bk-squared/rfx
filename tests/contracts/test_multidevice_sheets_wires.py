@@ -20,26 +20,26 @@ STEPS = 300
 KINDS = ('sheet_x_seam', 'sheet_z_cross', 'sheet_z_edge', 'wire_x_cross', 'wire_z_seam')
 # Measured float32 max_t |multi-single| / max_t |single|, per probe.
 MEASURED = {
-    ('sheet_x_seam', False, 'pec'): (0, 0),
-    ('sheet_z_cross', False, 'pec'): (0, 0),
-    ('sheet_z_edge', False, 'pec'): (0, 0),
-    ('wire_x_cross', False, 'pec'): (0, 0),
-    ('wire_z_seam', False, 'pec'): (0, 0),
-    ('sheet_x_seam', True, 'pec'): (0, 0),
-    ('sheet_z_cross', True, 'pec'): (0, 0),
-    ('sheet_z_edge', True, 'pec'): (0, 0),
-    ('wire_x_cross', True, 'pec'): (0, 0),
-    ('wire_z_seam', True, 'pec'): (0, 0),
-    ('sheet_x_seam', False, 'cpml'): (8.858390174e-06, 4.120632002e-05),
-    ('sheet_z_cross', False, 'cpml'): (2.135175237e-06, 4.732910384e-05),
-    ('sheet_z_edge', False, 'cpml'): (2.570882543e-06, 3.363429641e-05),
-    ('wire_x_cross', False, 'cpml'): (1.009433163e-06, 4.949859886e-06),
-    ('wire_z_seam', False, 'cpml'): (9.534178389e-06, 3.207571353e-05),
-    ('sheet_x_seam', True, 'cpml'): (9.636387404e-06, 3.420851863e-05),
-    ('sheet_z_cross', True, 'cpml'): (2.496851494e-06, 3.244226536e-05),
-    ('sheet_z_edge', True, 'cpml'): (2.645492259e-06, 4.210601401e-05),
-    ('wire_x_cross', True, 'cpml'): (8.705042092e-07, 6.864503121e-06),
-    ('wire_z_seam', True, 'cpml'): (7.589248526e-06, 2.719858458e-05),
+    ('sheet_x_seam', False, 'pec'): {'conductor': (0, 0)},
+    ('sheet_z_cross', False, 'pec'): {'conductor': (0, 0)},
+    ('sheet_z_edge', False, 'pec'): {'conductor': (0, 0)},
+    ('wire_x_cross', False, 'pec'): {'conductor': (0, 0)},
+    ('wire_z_seam', False, 'pec'): {'conductor': (0, 0)},
+    ('sheet_x_seam', True, 'pec'): {'conductor': (0, 0)},
+    ('sheet_z_cross', True, 'pec'): {'conductor': (0, 0)},
+    ('sheet_z_edge', True, 'pec'): {'conductor': (0, 0)},
+    ('wire_x_cross', True, 'pec'): {'conductor': (0, 0)},
+    ('wire_z_seam', True, 'pec'): {'conductor': (0, 0)},
+    ('sheet_x_seam', False, 'cpml'): {'conductor': (8.858390174e-06, 4.120632002e-05), 'empty': (4.503315267356811e-06, 5.9312609664630145e-05)},
+    ('sheet_z_cross', False, 'cpml'): {'conductor': (2.135175237e-06, 4.732910384e-05), 'empty': (1.8594737412058748e-06, 2.1051429939689115e-05)},
+    ('sheet_z_edge', False, 'cpml'): {'conductor': (2.570882543e-06, 3.363429641e-05), 'empty': (1.8594737412058748e-06, 2.1051429939689115e-05)},
+    ('wire_x_cross', False, 'cpml'): {'conductor': (1.009433163e-06, 4.949859886e-06), 'empty': (7.053798753986484e-07, 5.264490482659312e-06)},
+    ('wire_z_seam', False, 'cpml'): {'conductor': (9.534178389e-06, 3.207571353e-05), 'empty': (4.503315267356811e-06, 5.9312609664630145e-05)},
+    ('sheet_x_seam', True, 'cpml'): {'conductor': (9.636387404e-06, 3.420851863e-05), 'empty': (4.891567186859902e-06, 4.07846127927769e-05)},
+    ('sheet_z_cross', True, 'cpml'): {'conductor': (2.496851494e-06, 3.244226536e-05), 'empty': (1.936479748110287e-06, 1.9140967197017744e-05)},
+    ('sheet_z_edge', True, 'cpml'): {'conductor': (2.645492259e-06, 4.210601401e-05), 'empty': (1.936479748110287e-06, 1.9140967197017744e-05)},
+    ('wire_x_cross', True, 'cpml'): {'conductor': (8.705042092e-07, 6.864503121e-06), 'empty': (1.0786160373754683e-06, 5.5382238315360155e-06)},
+    ('wire_z_seam', True, 'cpml'): {'conductor': (7.589248526e-06, 2.719858458e-05), 'empty': (4.891567186859902e-06, 4.07846127927769e-05)},
 }
 
 
@@ -51,7 +51,7 @@ def _devices(count=2):
 
 def _build(kind, graded, boundary, conductor=True, count=2):
     profile = np.array([.001] + [.0009, .0011]*6 + [.001, .001])
-    sim = Simulation(freq_max=15e9, domain=(.031, .015, .013), dx=.001,
+    sim = Simulation(freq_max=15e9, domain=(.030 if kind == 'sheet_z_high_padded' else .031, .015, .013), dx=.001,
                      boundary=boundary, cpml_layers=4 if boundary == 'cpml' else 0,
                      snap='declared', **({'dy_profile': profile} if graded else {}))
     grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
@@ -61,6 +61,7 @@ def _build(kind, graded, boundary, conductor=True, count=2):
     left, right = (seam-.005, seam+.005) if count == 2 else (
         grid.node_of(0, per-2), grid.node_of(0, 2*per+2))
     shapes = {
+        'sheet_z_high_padded': Box((.020, .003, .006), (grid.node_of(0, grid.shape[0]-1), .011, .006)),
         'sheet_x_seam': Box((seam, .003, .002), (seam, .011, .010)),
         'sheet_z_cross': Box((left, .003, .006), (right, .011, .006)),
         'sheet_z_edge': Box((seam-.006, .003, .006), (seam, .011, .006)),
@@ -154,6 +155,16 @@ def test_b1_three_slabs(monkeypatch, graded):
     _owned_masks(monkeypatch, 'sheet_z_cross', graded, 'pec', count=3)
 
 
+@pytest.mark.parametrize('graded', [False, True])
+def test_b1_high_x_padding(monkeypatch, graded):
+    kind = 'sheet_z_high_padded'
+    _, grid, _ = _build(kind, graded, 'pec')
+    assert grid.shape[0] % 2 != 0
+    root = _reference(kind, graded, 'pec')
+    assert any(np.asarray(edge)[-1].any() for edge in root.pec_edges)
+    _owned_masks(monkeypatch, kind, graded, 'pec')
+
+
 def _traces(kind, graded, boundary, conductor=True, distributed=False, count=2):
     sim, grid, _ = _build(kind, graded, boundary, conductor=conductor, count=count)
     result = sim.run(n_steps=STEPS, devices=_devices(count) if distributed else None,
@@ -175,7 +186,15 @@ def _field_parity(kind, graded, boundary, count=2):
     rel = np.max(np.abs(multi-single), axis=0)/peaks
     visibility = np.max(np.abs(single-empty), axis=0)/np.max(np.abs(empty), axis=0)
     print(f'B2 {kind} graded={graded} boundary={boundary} slabs={count}: rel={rel.tolist()} visibility={visibility.tolist()}')
-    assert np.all(rel <= GATE), rel
+    if boundary == 'pec':
+        assert np.array_equal(multi, single), rel
+    else:
+        assert np.all(rel <= GATE), rel
+        empty_multi, empty_multi_dt = _traces(kind, graded, boundary, conductor=False,
+                                              distributed=True, count=count)
+        assert empty_multi_dt == empty_dt
+        empty_rel = np.max(np.abs(empty_multi-empty), axis=0)/np.max(np.abs(empty), axis=0)
+        print(f'B2 empty {kind} graded={graded}: rel={empty_rel.tolist()}')
     assert np.max(visibility) > 100*GATE, visibility
 
 
@@ -248,50 +267,113 @@ def test_b3_sheet_contact_wire_port(monkeypatch):
     assert np.all(delta <= 1e-3), delta
 
 
-# Decision record 1: recorded values are observations, not hard-coded controls.
-MEASURED_JVP = {
-    'volume': (0.002868985990062356, 0.0010550093138590455),
-    'empty': (0.0024162980262190104, 0.0025435416027903557),
-    'sheet': (0.004277050960808992, 0.0012863829033449292),
-}
-
-
-def _graded_forward_control(kind, amplitude, distributed):
+# Decision record 2, measured before pinning: primal and block JVP are exact.
+def _graded_forward_sheet(amplitude, distributed):
     sim = Simulation(freq_max=15e9, domain=(.015, .011, .009), dx=.001,
-                     boundary='pec', dy_profile=np.array([.001]+[.0009, .0011]*4+[.001, .001]),
+                     boundary='pec', cpml_layers=0,
+                     dy_profile=np.array([.001]+[.0009, .0011]*4+[.001, .001]),
                      snap='declared')
-    if kind != 'empty':
-        sim.add(Box((.008, .002, .002),
-                    (.009 if kind == 'volume' else .008, .009, .007)), material='pec')
-    sim.add_source((.003, .004, .003), 'ez', amplitude_kind='field')
+    sim.add(Box((.008, .002, .002), (.008, .009, .007)), material='pec')
+    sim.add_source((.003, .004, .003), 'ez')
     for pos in ((.006, .005, .004), (.011, .007, .006)):
         sim.add_probe(pos, 'ez')
     grid = sim._build_nonuniform_grid()
-    return sim.forward(n_steps=180, eps_override=jnp.ones(grid.shape)*amplitude,
+    lo = [grid.index_of(i, v) for i, v in enumerate((.006, .003, .003))]
+    hi = [grid.index_of(i, v) for i, v in enumerate((.010, .008, .006))]
+    block = np.zeros(grid.shape, np.float32)
+    block[lo[0]:hi[0], lo[1]:hi[1], lo[2]:hi[2]] = 1
+    eps = 1+(amplitude-1)*jnp.asarray(block)
+    return sim.forward(n_steps=180, eps_override=eps,
                        distributed=distributed, devices=_devices() if distributed else None,
                        checkpoint=False, skip_preflight=True).time_series
 
 
-def test_graded_forward_jvp_against_controls():
-    differences = {}
-    for kind in ('volume', 'empty', 'sheet'):
-        single = jax.jvp(lambda a: _graded_forward_control(kind, a, False),
-                         (jnp.float32(1.1),), (jnp.float32(1),))
-        multi = jax.jvp(lambda a: _graded_forward_control(kind, a, True),
-                        (jnp.float32(1.1),), (jnp.float32(1),))
-        for name, reference, actual in zip(('primal', 'jvp'), single, multi):
-            reference, actual = np.asarray(reference), np.asarray(actual)
-            assert reference.shape == actual.shape == (180, 2)
-            assert reference.dtype == actual.dtype == np.float32
-            peak = np.max(np.abs(reference), axis=0)
-            assert np.all(peak > 0)
-            relative = np.max(np.abs(actual-reference), axis=0)/peak
-            assert np.all(np.isfinite(relative))
-            print(f'graded forward {kind} {name}: {relative.tolist()}')
-            if name == 'jvp':
-                differences[kind] = relative
-    limit = 2*np.maximum(differences['volume'], differences['empty'])
-    assert np.all(differences['sheet'] <= limit), (differences, limit)
+def test_graded_forward_default_source_block_jvp():
+    single = jax.jvp(lambda a: _graded_forward_sheet(a, False),
+                     (jnp.float32(2),), (jnp.float32(1),))
+    multi = jax.jvp(lambda a: _graded_forward_sheet(a, True),
+                    (jnp.float32(2),), (jnp.float32(1),))
+    for name, reference, actual in zip(('primal', 'jvp'), single, multi):
+        reference, actual = np.asarray(reference), np.asarray(actual)
+        assert reference.shape == actual.shape == (180, 2)
+        assert reference.dtype == actual.dtype == np.float32
+        peak = np.max(np.abs(reference), axis=0)
+        assert np.all(peak > 0)
+        relative = np.max(np.abs(actual-reference), axis=0)/peak
+        print(f'graded forward default source {name}: rel={relative.tolist()}')
+        assert np.array_equal(reference, actual), relative
+
+
+def _lumped_model(kind, boundary):
+    from rfx.sources.sources import GaussianPulse
+    sim = Simulation(freq_max=15e9, domain=(.031, .015, .013), dx=.001,
+                     boundary=boundary, cpml_layers=4 if boundary == 'cpml' else 0,
+                     snap='declared')
+    shape = {
+        'volume': Box((.016, .007, .003), (.017, .008, .010)),
+        'sheet': Box((.016, .003, .003), (.016, .011, .010)),
+        'wire': PolylineWire(((.016, .007, .003), (.016, .007, .010)), radius=0),
+    }[kind]
+    sim.add(shape, material='pec')
+    sim.add_port((.016, .007, .005), 'ez', impedance=50,
+                 waveform=GaussianPulse(f0=7e9, bandwidth=1.2))
+    for pos, component in (((.015, .007, .005), 'ez'), ((.019, .009, .008), 'ez'),
+                           ((.014, .006, .004), 'ex'), ((.027, .008, .007), 'ez'),
+                           ((.016, .007, .005), 'ez')):
+        sim.add_probe(pos, component)
+    return sim
+
+
+@pytest.mark.parametrize('kind', ['volume', 'sheet', 'wire'])
+@pytest.mark.parametrize('boundary', ['pec', 'cpml'])
+def test_lumped_port_on_conductor(monkeypatch, kind, boundary):
+    single_sim = _lumped_model(kind, boundary)
+    grid = single_sim._build_grid()
+    root = C.solve_conductors(single_sim, grid)
+    # Locate the driven edge from physical nodes, independently of the stage.
+    index = tuple(int(np.flatnonzero(np.isclose(
+        [grid.node_of(a, i) for i in range(grid.shape[a])], position,
+        rtol=0, atol=1e-12))[0]) for a, position in enumerate((.016, .007, .005)))
+    expected = [np.asarray(edge).copy() for edge in root.pec_edges]
+    assert expected[2][index]
+    expected[2][index] = False
+    freqs = np.array([1e9, 2.5e9, 5e9, 7.5e9, 10e9])
+    kwargs = dict(n_steps=STEPS, s_param_n_steps=320, s_param_freqs=freqs,
+                  compute_s_params=True, skip_preflight=True)
+    single = single_sim.run(**kwargs)
+    staged = []
+    original = D.shard_x_slabs
+
+    def capture(*args, **kw):
+        result = original(*args, **kw)
+        if args[0].dtype == jnp.bool_:
+            staged.append(np.asarray(result))
+        return result
+
+    monkeypatch.setattr(D, 'shard_x_slabs', capture)
+    multi_sim = _lumped_model(kind, boundary)
+    assert multi_sim._build_grid().dt == grid.dt
+    multi = multi_sim.run(devices=_devices(), **kwargs)
+    assert len(staged) >= 3 and len(staged) % 3 == 0
+    # Main run and S-matrix drive scans must both release exactly this edge.
+    for offset in range(0, len(staged), 3):
+        for component, reference in enumerate(expected):
+            slabs = staged[offset+component].reshape(2, -1, *grid.shape[1:])
+            owned = slabs[:, 1:-1].reshape(-1, *grid.shape[1:])[:grid.shape[0]]
+            np.testing.assert_array_equal(owned, reference)
+    reference, actual = np.asarray(single.time_series), np.asarray(multi.time_series)
+    assert reference.dtype == actual.dtype == np.float32
+    peaks = np.max(np.abs(reference), axis=0)
+    assert np.all(peaks > 0)
+    relative = np.max(np.abs(actual-reference), axis=0)/peaks
+    print(f'lumped {boundary} {kind}: peak={peaks.tolist()} rel={relative.tolist()}')
+    if boundary == 'pec':
+        assert np.array_equal(actual, reference), relative
+    else:
+        assert np.all(relative <= GATE), relative
+    delta = np.abs(multi.s_params[0, 0]-single.s_params[0, 0])
+    print(f'lumped S11 {boundary} {kind}: frequencies={freqs.tolist()} delta={delta.tolist()}')
+    assert np.all(delta <= 1e-3), delta
 
 
 @pytest.fixture(autouse=True)
