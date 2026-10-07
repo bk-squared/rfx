@@ -11,6 +11,10 @@ import xml.etree.ElementTree as ET
 
 import pytest
 
+# The gate runs this file inside an xdist worker; the fake sessions below must not
+# inherit that identity (a fixture here keys its collection on PYTEST_XDIST_WORKER).
+_BASE_ENV = {k: v for k, v in os.environ.items() if not k.startswith("PYTEST_XDIST")}
+
 ROOT = Path(__file__).resolve().parents[2]
 HELPER = ROOT / "scripts/ci/gate_stage2_outcome.py"
 SPEC = importlib.util.spec_from_file_location("gate_stage2_outcome", HELPER)
@@ -131,7 +135,7 @@ def run_fragment(tmp_path, workers="2", fake=False, first=0, retry=0, kinds=None
     scripts = tmp_path / "scripts"
     scripts.mkdir(exist_ok=True)
     (scripts / "ci").symlink_to(ROOT / "scripts/ci", target_is_directory=True)
-    env = dict(os.environ, SESSION_DIR=str(tmp_path), REAL_PYTHON=sys.executable,
+    env = dict(_BASE_ENV, SESSION_DIR=str(tmp_path), REAL_PYTHON=sys.executable,
                PYTEST_ADDOPTS="-n 2 --dist loadfile --max-worker-restart=0 -p xdist.plugin",
                PYTEST_DISABLE_PLUGIN_AUTOLOAD="1", PYTHONDONTWRITEBYTECODE="1",
                PYTEST_DEBUG_TEMPROOT=str(tmp_path),
@@ -288,7 +292,7 @@ def test_real_collection_after_deselection(tmp_path, workers):
         'def test_parameter(value): pass\n'
         'def test_deselected(): assert False\n')
     directory = tmp_path / "collection"
-    env = dict(os.environ, PYTEST_ADDOPTS="", PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
+    env = dict(_BASE_ENV, PYTEST_ADDOPTS="", PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
                PYTHONPATH=str(ROOT / "scripts/ci"), RFX_GATE_COLLECTION_DIR=str(directory),
                PYTEST_DEBUG_TEMPROOT=str(tmp_path), PYTHONDONTWRITEBYTECODE="1")
     result = subprocess.run(
@@ -362,7 +366,7 @@ def test_selection_cleanup_on_exit(tmp_path, status):
               + setup + '\nprintf "%s\\n" "$selection_dir"\n'
               + ('fail\n' if status else summary))
     result = subprocess.run(["/bin/bash", "-c", script],
-                            env=dict(os.environ, TMPDIR=str(tmp_path)),
+                            env=dict(_BASE_ENV, TMPDIR=str(tmp_path)),
                             capture_output=True, text=True, timeout=10)
     assert result.returncode == status, result.stderr
     scratch = Path(result.stdout.splitlines()[0])
