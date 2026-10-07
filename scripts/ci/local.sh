@@ -127,7 +127,7 @@ begin 7
   -o addopts="" -m "not gpu and not docs_consistency" --strict-markers || fail
 
 begin 8
-selection_dir=$(mktemp -d "$PWD/.gate-selection.XXXXXX") || fail
+selection_dir=$(mktemp -d) || fail
 trap 'rm -rf "$selection_dir"' EXIT
 "$PYTHON" scripts/ci/select_gate_tests.py \
   --base "$CHANGELOG_BASE" --head "$CHANGELOG_HEAD" \
@@ -142,10 +142,14 @@ if [ "${#selected_tests[@]}" -eq 0 ]; then
   echo "nothing selected"
 else
   "$PYTHON" -m pytest "${selected_tests[@]}" -q \
-    -o addopts="" -m "not gpu and not docs_consistency" --strict-markers || selected_status=$?
+    -o addopts="" -m "not gpu and not slow and not slow_physics and not docs_consistency" --strict-markers || selected_status=$?
 fi
 cat "$selection_dir/summary"
-[ "$selected_status" -eq 0 ] || fail
+if [ "$selected_status" -eq 5 ]; then
+  echo "nothing to run (all selected tests deselected or no tests collected)"
+elif [ "$selected_status" -ne 0 ]; then
+  fail
+fi
 
 echo
 echo "all ${#STEP_NAMES[@]} steps passed"

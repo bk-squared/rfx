@@ -3,7 +3,11 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import re
+import shlex
+import subprocess
+import tomllib
 import sys
 from pathlib import Path
 
@@ -141,12 +145,12 @@ def test_git_diff_arguments_and_untracked_worktree(monkeypatch):
         "rfx/materials/debye.py", "tests/unit/test_new.py",
     ]
     assert calls == [["merge-base", "base", "HEAD"],
-                     ["diff", "--name-only", "-z", "abc", "--"],
+                     ["diff", "--name-only", "--no-renames", "-z", "abc", "--"],
                      ["ls-files", "--others", "--exclude-standard", "-z"]]
     calls.clear()
     assert selector.changed_paths("base", "head", ROOT) == ["rfx/materials/debye.py"]
     assert calls == [["merge-base", "base", "head"],
-                     ["diff", "--name-only", "-z", "abc", "head", "--"]]
+                     ["diff", "--name-only", "--no-renames", "-z", "abc", "head", "--"]]
 
 
 def test_local_stage_numbers_and_separate_session():
@@ -157,9 +161,10 @@ def test_local_stage_numbers_and_separate_session():
     stage = text.split("\nbegin 8\n")[1]
     assert '"$PYTHON" -m pytest "${selected_tests[@]}" -q' in stage
     assert ' -x' not in stage
-    assert '-o addopts="" -m "not gpu and not docs_consistency" --strict-markers' in stage
+    assert '-o addopts="" -m ' in stage
+    assert "selection_dir=$(mktemp -d) || fail" in stage
     assert 'echo "nothing selected"' in stage
-    assert stage.index('cat "$selection_dir/summary"') < stage.index('[ "$selected_status" -eq 0 ] || fail')
+    assert stage.index('cat "$selection_dir/summary"') < stage.index('if [ "$selected_status" -eq 5 ]; then')
 
 
 @pytest.mark.parametrize("source", ["import rfx", "from rfx import nonuniform"])
@@ -198,3 +203,84 @@ def test_cli_stdout_and_summary(monkeypatch, tmp_path, capsys, summary_file):
     assert "0 recorded tests, 0.000000 s" in summary
     if summary_file:
         assert output.err == ""
+
+
+@pytest.mark.parametrize("changed", ["rfx/core_x.py", "rfx/runners.py", "rfx/nonuniform_extra.py"])
+def test_similar_names_are_not_central_paths(changed, sources, durations):
+    assert selector.select_tests([changed], sources, durations).files == ()
+
+
+@pytest.mark.parametrize("changed", [[], ["rfx/materials/debye.py"]])
+def test_syntax_error_is_selected_even_over_budget(changed, sources):
+    broken = "tests/unit/test_broken.py"
+    sources[broken] = "def test_broken(:\n    pass\n"
+    result = selector.select_tests(changed, sources, {f"{broken}::test_broken": 401})
+    assert broken in result.files
+    assert broken not in result.excluded
+
+
+def test_selected_stage_markers_match_pyproject():
+    config = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    options = shlex.split(config["tool"]["pytest"]["ini_options"]["addopts"])
+    default_expression = options[options.index("-m") + 1]
+    stage = (ROOT / "scripts/ci/local.sh").read_text().split("\nbegin 8\n")[1]
+    stage_expression = re.search(r'-m "([^"]+)"', stage).group(1)
+
+    def excluded_markers(expression):
+        terms = expression.split(" and ")
+        assert all(re.fullmatch(r"not [a-z_]+", term) for term in terms)
+        return {term.removeprefix("not ") for term in terms}
+
+    assert excluded_markers(stage_expression) == excluded_markers(default_expression)
+
+
+@pytest.mark.parametrize("use_head", [False, True])
+def test_rename_preserves_old_imports_and_central_expansion(tmp_path, use_head):
+    repo = tmp_path / "repo"
+    (repo / "rfx/core").mkdir(parents=True)
+    (repo / "rfx/other").mkdir()
+
+    def git(*args):
+        return subprocess.run(
+            ["git", *args], cwd=repo, capture_output=True, text=True,
+            check=True, timeout=60,
+            env={
+                "PATH": os.environ.get("PATH", ""), "HOME": str(repo),
+                "GIT_CONFIG_GLOBAL": str(repo / "gitconfig"),
+                "GIT_CONFIG_SYSTEM": "/dev/null",
+                "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid",
+                "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@example.invalid",
+            },
+        ).stdout.strip()
+
+    (repo / "rfx/core/a.py").write_text("x = 1\n" * 40)
+    git("init", "-q", "-b", "main")
+    git("config", "diff.renames", "true")
+    git("add", "-A")
+    git("commit", "-qm", "base")
+    base = git("rev-parse", "HEAD")
+    git("mv", "rfx/core/a.py", "rfx/other/a2.py")
+    git("commit", "-qm", "rename")
+    assert git("diff", "--name-status", base, "HEAD") == "R100\trfx/core/a.py\trfx/other/a2.py"
+    sources = {
+        "tests/unit/test_old.py": "import rfx.core.a",
+        "tests/unit/test_new.py": "import rfx.other.a2",
+        "tests/unit/runners/test_runner.py": "",
+        "tests/unit/autodiff/test_ad.py": "",
+    }
+    paths = selector.changed_paths(base, "HEAD" if use_head else None, repo)
+    assert set(selector.select_tests(paths, sources, {}).files) == set(sources)
+    assert set(paths) == {"rfx/core/a.py", "rfx/other/a2.py"}
+
+
+@pytest.mark.parametrize("status", [0, 1, 2, 3, 4, 5, 130])
+def test_selected_status_handling_in_isolated_bash(status):
+    stage = (ROOT / "scripts/ci/local.sh").read_text().split("\nbegin 8\n")[1]
+    handling = stage.split('cat "$selection_dir/summary"\n', 1)[1].split('\necho\n', 1)[0]
+    result = subprocess.run(
+        ["bash", "-c", 'fail() { exit 1; }; selected_status="$1";\n' + handling,
+         "selected-status", str(status)],
+        capture_output=True, text=True, timeout=10,
+    )
+    assert result.returncode == (0 if status in (0, 5) else 1)
+    assert ("nothing to run" in result.stdout) == (status == 5)

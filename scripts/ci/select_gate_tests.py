@@ -89,12 +89,19 @@ def select_tests(
     edited = changed & tests
     modules = {name for path in changed if (name := module_name(path)) is not None}
     candidates = set(edited)
-    if modules:
-        candidates.update(
-            path for path in tests
-            if not path.startswith(CONTRACT_DIR)
-            and directly_imports(test_sources[path], modules, path)
-        )
+    invalid = set()
+    for path in tests:
+        if path.startswith(CONTRACT_DIR):
+            continue
+        try:
+            imports_changed = directly_imports(test_sources[path], modules, path)
+        except SyntaxError:
+            # Let pytest report the broken file, even without an import match.
+            invalid.add(path)
+            candidates.add(path)
+        else:
+            if imports_changed:
+                candidates.add(path)
     if any(
         path.startswith(prefix) if prefix.endswith("/") else path == prefix
         for path in changed for prefix in CENTRAL_PATHS
@@ -106,7 +113,7 @@ def select_tests(
         totals[nodeid.split("::", 1)[0]] += seconds
     excluded = {
         path: totals[path] for path in sorted(candidates)
-        if totals[path] > MAX_FILE_SECONDS and path not in edited
+        if totals[path] > MAX_FILE_SECONDS and path not in edited and path not in invalid
     }
     selected = candidates - excluded.keys()
     not_run = [
@@ -125,7 +132,7 @@ def changed_paths(base: str, head: str | None, root: Path) -> list[str]:
         return subprocess.check_output(["git", *args], cwd=root, text=True)
 
     merge_base = git("merge-base", base, head or "HEAD").strip()
-    paths = git("diff", "--name-only", "-z", merge_base, *([head] if head else []), "--").split("\0")
+    paths = git("diff", "--name-only", "--no-renames", "-z", merge_base, *([head] if head else []), "--").split("\0")
     if head is None:
         paths += git("ls-files", "--others", "--exclude-standard", "-z").split("\0")
     return [path for path in paths if path]
