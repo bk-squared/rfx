@@ -238,10 +238,11 @@ def _build_record(sim, ctx, *, compact=False):
                 rhi = float(nodes[a][i1 if cell_range is None else i1 + 1])
                 comparison = free_ends = None
                 if f0_spec is not None and a != int(f0_spec.normal_axis):
-                    rlo, rhi = _f0_solved_bounds(
-                        i0, i1, nodes[a], sizes[a], f0_spec.end_rows[a],
+                    i0, i1, rlo, rhi = _f0_solved_bounds(
+                        mask, a, nodes[a], sizes[a], f0_spec.end_rows[a],
                         int(getattr(ctx.grid, f"pad_{'xyz'[a]}_lo")),
-                        int(getattr(ctx.grid, f"pad_{'xyz'[a]}_hi")))
+                        int(getattr(ctx.grid, f"pad_{'xyz'[a]}_hi")),
+                        'xyz'[a] in getattr(ctx.grid, 'periodic_axes', ''))
                 if sheet is not None and a != int(sheet.normal_axis) and bounds is not None:
                     if hasattr(sheet, 'solved_spans'):
                         span = sheet.solved_spans[a]
@@ -318,26 +319,49 @@ def _f0_specs_by_conductor(sim, assembled, refused_tc):
     return dict(zip(f0, specs)) if len(f0) == len(specs) else {}
 
 
-def _f0_solved_bounds(i0, i1, nodes, sizes, end_rows, pad_lo, pad_hi):
-    """In-plane ends of an f0 sheet as the sheet operator solves them.
+def _f0_solved_bounds(mask, axis, nodes, sizes, end_rows, pad_lo, pad_hi, periodic):
+    """In-plane node range and ends of an f0 sheet as the sheet operator solves them.
 
     A tangential row at node ``i`` loads its dual cell, half of the cell on
     each side, times the row's weight on the sheet conductance: 1, or
-    ``END_ROW_WEIGHT`` on a row marked as lying on a drawn free edge. The
-    solved end is therefore ``weight * dual - inside half`` beyond the end
-    node (zero at weight 0.5 between equal cells). An end on the domain face
-    has no outside cell and stays on its node.
+    ``END_ROW_WEIGHT`` on a row marked as lying on a drawn face. The solved
+    end is therefore ``weight * dual - inside half`` beyond the end node
+    (zero at weight 0.5 between equal cells). On a non-periodic axis an end
+    on the domain face has no outside cell and stays on its node. A periodic
+    axis has no wall: the occupied rows are read as one run around the
+    period (a strip ending on the seam ends at node N, one that starts there
+    starts at node 0), and a sheet spanning the whole period has no end.
     """
+    from rfx.core.jax_utils import is_tracer
     from rfx.materials.thin_conductor import END_ROW_WEIGHT
-    rows = end_rows or ()
-    lo, hi = float(nodes[i0]), float(nodes[i1])
-    if i0 > pad_lo and i0 >= 1:
-        w = END_ROW_WEIGHT if i0 in rows else 1.0
-        lo -= w * 0.5 * float(sizes[i0 - 1] + sizes[i0]) - 0.5 * float(sizes[i0])
-    if i1 < len(sizes) - pad_hi - 1 and i1 >= 1:
-        w = END_ROW_WEIGHT if i1 in rows else 1.0
-        hi += w * 0.5 * float(sizes[i1 - 1] + sizes[i1]) - 0.5 * float(sizes[i1 - 1])
-    return lo, hi
+    n = len(sizes)
+    rows = np.flatnonzero(mask.any(axis=tuple(b for b in range(mask.ndim) if b != axis)))
+    marked = (np.zeros(n, dtype=bool) if end_rows is None or is_tracer(end_rows)
+              else np.asarray(end_rows, dtype=bool))
+    i0, i1 = int(rows[0]), int(rows[-1])
+    free_lo, free_hi = i0 > pad_lo, i1 < n - pad_hi - 1
+    if periodic:
+        occupied = np.zeros(n, dtype=bool)
+        occupied[rows % n] = True
+        if occupied.all():
+            return 0, n, float(nodes[0]), float(nodes[n])
+        starts = np.flatnonzero(occupied & ~np.roll(occupied, 1))
+        if starts.size == 1:
+            i0 = int(starts[0])
+            i1 = i0 + int(occupied.sum()) - 1
+        free_lo = free_hi = True
+
+    def at(i):
+        return float(nodes[i % n]) + (i // n) * float(nodes[n] - nodes[0])
+
+    lo, hi = at(i0), at(i1)
+    if free_lo:
+        w = END_ROW_WEIGHT if marked[i0 % n] else 1.0
+        lo -= w * 0.5 * float(sizes[(i0 - 1) % n] + sizes[i0 % n]) - 0.5 * float(sizes[i0 % n])
+    if free_hi:
+        w = END_ROW_WEIGHT if marked[i1 % n] else 1.0
+        hi += w * 0.5 * float(sizes[(i1 - 1) % n] + sizes[i1 % n]) - 0.5 * float(sizes[(i1 - 1) % n])
+    return i0, i1, lo, hi
 
 
 def _pinned_entities(sim, ctx, assembled, nodes, sizes, *, compact=False):

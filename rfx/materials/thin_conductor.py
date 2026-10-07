@@ -597,8 +597,8 @@ class SheetImpedanceSpec:
     sigma_sheet: object   # (nx, ny, nz) float — G/d_dual at sheet cells
     plane: int | None = None   # realized node plane (#931); None = read from mask
     unwrapped_footprint: object | None = None
-    # ``SheetSpec.end_rows`` of the footprint: per axis, node rows on a drawn
-    # free edge (``None`` = none; a traced-mesh footprint marks none).
+    # ``SheetSpec.end_rows`` of the footprint: per axis, a boolean vector of
+    # the node rows on a drawn face (``rasterize_grid.sheet_end_rows``).
     end_rows: tuple = (None, None, None)
 
 
@@ -710,24 +710,28 @@ def build_sheet_impedance_ctx(sheet_specs, pec_edge_masks=None,
 def sheet_end_row_masks(specs, sheets, edge_masks, periodic):
     """Per-component masks of the sheet edges that lie ON a drawn free edge.
 
-    ``specs[k].end_rows`` names, per in-plane axis ``t``, the node rows of
-    sheet ``k`` on a drawn free boundary of ``t`` (made with the footprint by
-    ``rfx.geometry.rasterize_grid.sheet_spec_from_shape``). The edges of the
-    OTHER in-plane component on such a row run along the drawn boundary line:
+    ``specs[k].end_rows[t]`` marks the node rows of axis ``t`` on a drawn face
+    of sheet ``k`` (``rfx.geometry.rasterize_grid.sheet_end_rows``). The edges
+    of the OTHER in-plane component on such a row run along the drawn face:
     for a z-normal sheet, Ex on the marked y rows and Ey on the marked x
-    columns. An edge is an end row of the run when some sheet marks it and no
-    sheet has it as an interior edge -- two sheets abutting on one node row
-    each mark it, and the row then carries half of each (a seam of equal
-    sheets is continuous); a row inside another sheet stays at full weight.
-    ``edge_masks`` is the run's final sheet edge set (PEC-owned edges already
-    removed), so an end row that continues into PEC is not in the result.
-    Returns three entries, ``None`` where a component has no end row.
+    columns. Such an edge is a FREE-edge row of its sheet when the sheet does
+    not carry the same edge one row further on both sides -- so a sheet that
+    spans a whole period, and any row the footprint continues past, is not
+    one. An edge is an end row of the run when some sheet has it as a
+    free-edge row and no sheet has it as any other edge: two sheets abutting
+    on one node row each mark it, and the row then carries half of the SUM of
+    their conductances (a seam of equal sheets is continuous); a row inside
+    another sheet stays at full weight. ``edge_masks`` is the run's final
+    sheet edge set (PEC-owned edges already removed), so an end row that
+    continues into PEC is not in the result. Returns three entries, ``None``
+    where a component has no end row.
     """
-    from rfx.boundaries.pec import realized_pec_edge_masks
+    from rfx.boundaries.pec import _shift, realized_pec_edge_masks
     from rfx.core.jax_utils import is_tracer
     marked = [None, None, None]
     interior = [None, None, None]
-    if not any(rows is not None for sp in specs for rows in sp.end_rows):
+    if not any(rows is not None for sp in specs
+               for rows in getattr(sp, "end_rows", ())):
         return tuple(marked)
     for sp, sheet in zip(specs, sheets, strict=True):
         a = int(sp.normal_axis)
@@ -736,14 +740,17 @@ def sheet_end_row_masks(specs, sheets, edge_masks, periodic):
             if c == a:
                 continue
             t = 3 - a - c
-            sel = np.zeros((own[c].shape[t],), dtype=bool)
-            if sp.end_rows[t] is not None:
-                sel[list(sp.end_rows[t])] = True
-            bshape = [1, 1, 1]
-            bshape[t] = sel.size
-            sel = jnp.asarray(sel.reshape(bshape))
-            on, off = own[c] & sel, own[c] & ~sel
-            marked[c] = on if marked[c] is None else marked[c] | on
+            on = None
+            rows = sp.end_rows[t]
+            if rows is not None:
+                bshape = [1, 1, 1]
+                bshape[t] = own[c].shape[t]
+                continued = (_shift(own[c], t, periodic, +1)
+                             & _shift(own[c], t, periodic, -1))
+                on = own[c] & jnp.reshape(jnp.asarray(rows), bshape) & ~continued
+            off = own[c] if on is None else own[c] & ~on
+            if on is not None:
+                marked[c] = on if marked[c] is None else marked[c] | on
             interior[c] = off if interior[c] is None else interior[c] | off
     out = []
     for c in range(3):

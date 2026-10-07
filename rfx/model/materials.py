@@ -27,7 +27,7 @@ from rfx.geometry.rasterize_grid import (
     cell_sizes_from_nonuniform_grid, cell_sizes_from_uniform_grid,
     centres_from_nonuniform_grid, centres_from_uniform_grid,
     classify_pec_entry, coords_from_nonuniform_grid, extend_cpml_pad_materials,
-    refuse_vaporized_sheets, sheet_footprint_traced, sheet_spec_from_shape,
+    refuse_vaporized_sheets, sheet_end_rows, sheet_footprint_traced, sheet_spec_from_shape,
 )
 from rfx.geometry.smoothing import continued_conductor_shape
 from rfx.materials.debye import DebyePole
@@ -600,6 +600,7 @@ def _fold_nonuniform_thin_conductors(
                 # the shape's own traced node sampler, as before #931.
                 if any(is_tracer(c) for c in (coords.x, coords.y, coords.z)):
                     m = sheet_footprint_traced(tc.shape, coords, n_axis)
+                    _end_rows = sheet_end_rows(tc.shape, coords, n_axis)
                 else:
                     _spec = sheet_spec_from_shape(
                         tc.shape, coords, cell_sizes, normal_axis=n_axis,
