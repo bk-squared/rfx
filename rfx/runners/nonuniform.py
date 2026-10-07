@@ -1380,7 +1380,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         ntff_data=ntff_data_init,
         current_moments=current_moments,
         waveguide_ports=waveguide_port_cfgs if waveguide_port_cfgs else None,
-        tfsf=tfsf_pair,
+        tfsf=tfsf_pair, _feature_tfsf=True,
         emit_time_series=emit_time_series,
     )
     if stop_fn is not None:

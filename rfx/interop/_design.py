@@ -964,12 +964,12 @@ def _msl_ports_with_resolved_offsets(sim: Any) -> list[Any]:
 # ---------------------------------------------------------------------------
 
 from rfx.boundaries.serialization import (
-    predict_legacy_spec as _predict_legacy_spec, restore_constructor_default,
+    predict_legacy_spec as _predict_legacy_spec, export_spec, restore_legacy_boundary,
 )
 
 
 def _dump_boundary(sim: Any) -> dict[str, Any]:
-    spec = sim._boundary_spec
+    spec = export_spec(sim)
     if not isinstance(spec, BoundarySpec):
         raise _refuse(
             f"_boundary_spec is a {type(spec).__name__}, expected BoundarySpec; "
@@ -979,7 +979,6 @@ def _dump_boundary(sim: Any) -> dict[str, Any]:
         # BoundarySpec.to_dict / from_dict are reused verbatim — the boundary
         # vocabulary lives in rfx/boundaries/spec.py, not here.
         "spec": spec.to_dict(),
-        **({"explicit": False} if not sim._boundary_explicit else {}),
         # Derived views, emitted explicitly rather than re-derived: _boundary
         # and _cpml_layers can disagree with the spec on the legacy
         # scalar + set_periodic_axes() path, and _periodic_axes is also
@@ -988,7 +987,8 @@ def _dump_boundary(sim: Any) -> dict[str, Any]:
             "boundary": check_text(sim._boundary, what="_boundary"),
             "cpml_layers": _integer(sim._cpml_layers, what="_cpml_layers"),
             "cpml_kappa_max": check_number(sim._cpml_kappa_max, what="_cpml_kappa_max"),
-            "pec_faces": sorted(check_text(f, what="_pec_faces entry") for f in sim._pec_faces),
+            "pec_faces": sorted(check_text(f, what="_pec_faces entry") for f in
+                                (spec.pec_faces() if spec != sim._boundary_spec else sim._pec_faces)),
             "periodic_axes": check_text(sim._periodic_axes, what="_periodic_axes"),
         },
     }
@@ -1014,7 +1014,7 @@ def _plan_boundary(payload: dict, *, has_floquet: bool) -> _BoundaryPlan:
     therefore means reproducing the path, which is decided from the document
     rather than guessed.
     """
-    _require_exact_keys(payload, {"spec", "legacy"} | ({"explicit"} & set(payload)), what="boundary")
+    _require_exact_keys(payload, {"spec", "legacy"}, what="boundary")
     spec_payload = payload["spec"]
     if not isinstance(spec_payload, dict):
         raise _refuse(
@@ -1784,7 +1784,6 @@ def simulation_from_design(document: Any) -> Any:
         has_floquet=bool(floquet_payloads),
     )
 
-    plan = restore_constructor_default(plan, document["boundary"])
     sim = Simulation(
         freq_max=check_number(domain["freq_max"], what="domain.freq_max"),
         domain=check_vector(domain["extent"], 3, what="domain.extent"),
@@ -2008,7 +2007,7 @@ def simulation_from_design(document: Any) -> Any:
             off_cells=values["off_cells"])
 
     _assert_round_trip(sim, document)
-    return sim
+    return restore_legacy_boundary(sim)
 
 
 # ---------------------------------------------------------------------------

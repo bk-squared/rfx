@@ -2216,8 +2216,8 @@ class Simulation(
             read physical fields. ``"methodB"`` currently requires
             ``polarization='ez'`` and a single-device uniform grid.
         """
-        if closed_box and self._boundary != "cpml":
-            raise ValueError("Closed-box TFSF requires boundary='cpml'")
+        from rfx.boundaries.tfsf import validate_source_boundary
+        validate_source_boundary(self, closed_box=closed_box)
         if self._cpml_layers <= 0:
             raise ValueError("TFSF plane-wave source requires cpml_layers > 0")
         if self._mode not in ("3d", "2d_tmz", "2d_tez"):

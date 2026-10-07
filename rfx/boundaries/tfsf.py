@@ -4,10 +4,19 @@ Only the realized update arrays can establish invariance. Declared geometry
 and read-only monitors are not used as proxies for those arrays.
 """
 from dataclasses import fields, is_dataclass
+import warnings
 
 import numpy as np
 
 from rfx.boundaries.depths import Kind, grid_face_depths
+
+
+def validate_source_boundary(sim, *, closed_box):
+    """Addendum 5c does not admit the previously unsupported UPML source."""
+    if any(token == "upml" for _, _, token in sim._boundary_spec.faces()):
+        raise ValueError("TFSF plane-wave source refuses boundary='upml'")
+    if closed_box and sim._boundary != "cpml":
+        raise ValueError("Closed-box TFSF requires boundary='cpml'")
 
 
 def _leaves(value, name):
@@ -27,12 +36,30 @@ def _leaves(value, name):
             yield from _leaves(child, f"{name}.{key}")
 
 
+class UnjudgedTFSFInvarianceWarning(UserWarning):
+    """The legacy operator is retained for a material unavailable at tracing."""
+
+
+def _without_duplicated_end_edge(name, host, axis, index):
+    """Ignore only main's empty final edge in that mask component's direction.
+
+    Addendum 5c(3): the arrays sent to the kernel remain untouched. This is
+    not an exemption for slots, other components, materials, or pad rows.
+    """
+    mask = any(name.endswith(f"{family}.{axis}") for family in
+               ("pec_edge_masks", "conductor_edges"))
+    if mask and host.dtype == np.bool_ and not np.any(np.take(host, -1, axis=index)):
+        return np.take(host, np.arange(host.shape[index] - 1), axis=index)
+    return host
+
+
 def invariant(value, axis, shape):
     """Exact equality over each full spatial array, pads included.
 
-    Unknown traced inputs cannot establish this predicate. A caller using a
-    traced transverse structure must explicitly declare its periodic axis.
+    Unknown traced inputs return None; Addendum 5c(5) preserves their legacy
+    operator and reports that invariance was not judged.
     """
+    unjudged = ""
     for name, array in _leaves(value, "update"):
         dims = tuple(array.shape)
         # ADE coefficients and states store poles before the three spatial
@@ -53,11 +80,16 @@ def invariant(value, axis, shape):
         try:
             host = np.asarray(array)
         except Exception as exc:
+            from jax.errors import TracerArrayConversionError
+            if isinstance(exc, TracerArrayConversionError):
+                unjudged = name
+                continue
             return False, f"{name} ({type(exc).__name__}: invariance unavailable)"
+        host = _without_duplicated_end_edge(name, host, axis, index)
         first = np.take(host, [0], axis=index)
         if not np.array_equal(host, np.broadcast_to(first, host.shape)):
             return False, name
-    return True, ""
+    return (None, unjudged) if unjudged else (True, "")
 
 
 def _refuse(axis, feature):
@@ -74,10 +106,7 @@ def replacement_axes(cfg, grid, *, requirements=(), records=None):
     electric = getattr(cfg, "electric_component", getattr(cfg, "polarization", "ez"))[-1]
     magnetic = "y" if electric == "z" else "z"
     records = {face.name: face for face in (grid_face_depths(grid) if records is None else records)}
-    for side in ("lo", "hi"):
-        face = records[f"x_{side}"]
-        if face.kind != Kind.ABSORBER or face.realized == 0:
-            raise ValueError(f"TF/SF x_{side} requires {{ABSORBER}} with positive realized depth.")
+    # Propagation-axis walls keep main's operator (Addendum 5c(5)).
     result = []
     for axis, wall in ((magnetic, Kind.PMC), (electric, Kind.PEC)):
         # Legacy rewrite, PR3b: the oblique transverse wavevector is not
@@ -88,13 +117,13 @@ def replacement_axes(cfg, grid, *, requirements=(), records=None):
             continue  # the existing invariant 2-D lane is PR3b
         pair = tuple(records[f"{axis}_{side}"].kind for side in ("lo", "hi"))
         allowed = (Kind.PERIODIC, wall)
-        if pair == (Kind.ABSORBER, Kind.ABSORBER):
+        if pair in ((Kind.ABSORBER,) * 2, (wall,) * 2):
             for requirement in requirements:
                 if any(face.startswith(axis + "_") for face in requirement.faces):
                     if Kind.PERIODIC not in requirement.admissible:
                         _refuse(axis, requirement.feature)
             result.append(axis)
-        elif pair not in ((Kind.PERIODIC,) * 2, (wall,) * 2):
+        elif pair != (Kind.PERIODIC,) * 2:
             raise ValueError(
                 f"TF/SF {axis}_lo, {axis}_hi must be a pair in "
                 f"{{{', '.join(kind.value for kind in allowed)}}}; got "
@@ -116,13 +145,18 @@ def check_arrays(cfg, grid, values, *, localized=(), requirements=(), records=No
                         _refuse(axis, name)
                     shape = tuple(box.bounds[2*i+1] - box.bounds[2*i] for i in range(3))
                     okay, feature = invariant(box, index, shape)
-                    if not okay:
+                    if okay is False:
                         _refuse(axis, feature)
         for name, updates in localized:
             if updates is not None and len(updates):
                 _refuse(axis, name)
         okay, feature = invariant(values, "xyz".index(axis), grid.shape)
-        if not okay:
+        if okay is None:
+            warnings.warn(
+                f"TF/SF {axis}_lo, {axis}_hi: invariance was not judged for traced "
+                f"{feature}; the legacy periodic operator is retained (Addendum 5c).",
+                UnjudgedTFSFInvarianceWarning, stacklevel=2)
+        elif not okay:
             _refuse(axis, feature)
     return axes
 
@@ -165,51 +199,33 @@ def boundary_flags(cfg, grid=None):
     from rfx.sources.tfsf import is_tfsf_methodB
     if getattr(cfg, "closed_box", False):
         return (False, False, False), "xyz"
-    flags = [False, not is_tfsf_methodB(cfg), True]
-    if grid is not None:
-        records = grid_face_depths(grid)
-        for axis in (1, 2):
-            # Legacy rewrite, PR3b (Addendum 5): preserve the oblique
-            # transverse-wavevector operator, including its padded wrap.
-            if getattr(cfg, "angle_deg", 0) != 0 and "xyz"[axis] == getattr(cfg, "transverse_axis", "y"):
-                continue
-            if all(face.kind in (Kind.PEC, Kind.PMC) for face in records[2*axis:2*axis+2]):
-                flags[axis] = False
-    return tuple(flags), "xy" if is_tfsf_methodB(cfg) else "x"
+    # Addendum 5c(2): admitted declared walls retain main's wrap. Finite
+    # transverse structure is refused before this operator is selected.
+    return (False, not is_tfsf_methodB(cfg), True), "xy" if is_tfsf_methodB(cfg) else "x"
 
 
-def admit_setup(values, *, nonuniform=False):
+def admit_setup(*, grid, tfsf, materials, waveguide_ports, ntff, updates,
+                localized, periodic, pec_faces=None, pmc_faces=None,
+                feature_owned=False, nonuniform=False):
     """Last check on actual low-level inputs, including AD material overrides."""
     from rfx.boundaries.features import admit_grid_waveguide
-    admit_grid_waveguide(values["grid"], values.get("waveguide_ports"))
-    if values.get("tfsf") is None:
+    admit_grid_waveguide(grid, waveguide_ports)
+    if tfsf is None:
         return
-    cfg = values["tfsf"][0]
-    if values["use_ntff"]:
+    cfg = tfsf[0]
+    if ntff is not None:
         from rfx.farfield import require_box_encloses_injected_region
         from rfx.sources.tfsf import tfsf_injection_planes
         require_box_encloses_injected_region(
-            values["ntff_box" if nonuniform else "ntff"],
-            tfsf_injection_planes(cfg), shape=values["grid"].shape)
-    if getattr(cfg, "closed_box", False):
+            ntff, tfsf_injection_planes(cfg), shape=grid.shape)
+    if getattr(cfg, "closed_box", False) or not feature_owned:
+        # Explicit low-level periodic flags are the caller's declaration,
+        # not a feature rewrite (Addendum 5c(5)).
         return
-    arrays = {name: values.get(name) for name in (
-        "materials", "debye", "lorentz", "aniso_eps", "aniso_inv_eps", "pec_mask",
-        "pec_edge_masks", "pec_occupancy", "conformal_weights", "sheet_impedance",
-        "kerr_chi3", "design_box", "design_occupancy")}
-    from rfx.boundaries.pec import realized_pec_edge_masks
-    if values.get("pec_sheets") or values.get("pec_wires"):
-        arrays["conductor_edges"] = realized_pec_edge_masks(
-            values.get("pec_mask"), sheets=values.get("pec_sheets") or (),
-            wires=values.get("pec_wires") or (),
-            periodic=values.get("periodic", (False, False, False)))
-    check_arrays(cfg, values["grid"], arrays,
+    check_arrays(cfg, grid, dict(materials=materials, **updates),
                  # The low-level RCS path does not install the slab wrap.
                  # Its open transverse operator is unchanged in PR3a.
                  active_axes=None if nonuniform else tuple(
-                     axis for axis, wraps in zip("xyz", values["periodic"]) if wraps),
-                 records=grid_face_depths(values["grid"], pec_faces=values.get("pec_faces"),
-                                          pmc_faces=values.get("pmc_faces")),
-                 localized=tuple((name, values.get(name)) for name in (
-                     "sources", "mag_sources", "waveguide_ports", "wire_ports", "wire_port_sparams",
-                     "lumped_port_sparams", "lumped_rlc", "rlc_metas")))
+                     axis for axis, wraps in zip("xyz", periodic) if wraps),
+                 records=grid_face_depths(grid, pec_faces=pec_faces, pmc_faces=pmc_faces),
+                 localized=localized)

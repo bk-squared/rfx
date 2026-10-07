@@ -187,20 +187,20 @@ def realize(model: BoundaryModel, grid) -> Realization:
     domain = model.declaration.domain
     if domain is None:
         domain = grid.domain
-    depths = {face.name: face.realized for face in grid_face_depths(grid)}
+    records = {face.name: face for face in grid_face_depths(grid)}
     planes, periods = [], []
     for ax, axis in enumerate(model.axes):
         length = domain[ax]
         if axis.pairing:
             periods.append((axis.name, length))
         for side in ("lo", "hi"):
-            face = model.face(f"{axis.name}_{side}")
+            face = records[f"{axis.name}_{side}"]
             plane = 0.0 if side == "lo" else length
             if axis.invariant:
                 planes.append(FacePlane(face.name, face.kind, None))
             elif face.kind == Kind.ABSORBER:
                 cells = grid.cells(ax)
-                pad = depths[face.name]
+                pad = face.realized
                 # Last stored width supplies a bounding node, not a pad cell.
                 widths = cells[:pad] if side == "lo" else cells[len(cells) - 1 - pad:len(cells) - 1]
                 terminal = plane + (-1 if side == "lo" else 1) * sum(widths)

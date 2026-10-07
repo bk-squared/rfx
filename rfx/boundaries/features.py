@@ -11,7 +11,7 @@ import inspect
 from pathlib import Path
 import warnings
 
-from rfx.boundaries.depths import Kind, resolve_face_depths
+from rfx.boundaries.depths import Kind, grid_face_depths, resolve_face_depths
 
 
 class WaveguideBoundaryWarning(UserWarning):
@@ -55,10 +55,12 @@ def full_aperture(sim, entry, grid):
 
 
 def guide_faces(sim, grid):
+    # Addendum 5c(1): only a zero-depth absorbing face was rewritten on main.
+    zero_depth = {face.name for face in grid_face_depths(grid) if face.realized == 0}
     return frozenset(f"{axis}_{side}"
                      for entry in sim._waveguide_ports if full_aperture(sim, entry, grid)
                      for axis in "xyz" if axis != entry.direction[1]
-                     for side in ("lo", "hi"))
+                     for side in ("lo", "hi") if f"{axis}_{side}" in zero_depth)
 
 
 def _guide_declaration(sim, faces):
@@ -140,7 +142,9 @@ def _warn_caller(message):
 
 def admit_waveguide(sim, *, lane="dispatch"):
     """Refuse explicit transverse absorbers without changing a realized grid."""
-    if not sim._waveguide_ports:
+    if not sim._waveguide_ports or sim._uses_nonuniform_mesh:
+        # Main's graded builder keeps real transverse absorbers, including
+        # distributed run's graded fallback. Nothing is rewritten (5c(1)).
         return
     grid = sim._build_realized_grid()
     if sim._uses_nonuniform_mesh:

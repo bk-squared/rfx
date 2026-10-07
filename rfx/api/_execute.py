@@ -2243,7 +2243,7 @@ class _ExecuteMixin:
             cpml_axes=cpml_axes_run,
             pec_axes=pec_axes_run,
             periodic=periodic_bool,
-            tfsf=tfsf_run,
+            tfsf=tfsf_run, _feature_tfsf=True,
             debye=debye,
             lorentz=lorentz,
             sources=sources,
