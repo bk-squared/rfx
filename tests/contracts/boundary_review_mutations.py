@@ -112,6 +112,19 @@ def main():
 
         model.realize = declared
         judge = "test_realized_kind_agrees_with_default_grid_record"
+    elif mode == "unrelated-kinds-relabeled":
+        from dataclasses import replace
+        from rfx.boundaries import model
+        original = model.realize
+
+        def relabel(boundary, grid):
+            result = original(boundary, grid)
+            kinds = {f.name: f.kind for f in grid.boundary_depths}
+            return replace(result, faces=tuple(replace(f, kind=kinds[f.name])
+                                                for f in result.faces))
+
+        model.realize = relabel
+        judge = "test_guide_relabel_does_not_relabel_the_floquet_declaration"
     else:
         raise ValueError(mode)
     return pytest.main([

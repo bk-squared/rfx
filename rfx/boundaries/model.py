@@ -195,8 +195,10 @@ def realize(model: BoundaryModel, grid) -> Realization:
             periods.append((axis.name, length))
         for side in ("lo", "hi"):
             name = f"{axis.name}_{side}"
-            # NU stores depths but no kinds; its declaration still owns kinds.
-            face = records[name] if hasattr(grid, "boundary_depths") else model.face(name)
+            # PR3a relabels only the full-guide default faces. Other feature
+            # departures (including Floquet) retain their declared kinds.
+            guide_faces = getattr(grid, "_waveguide_admission", ((),))[0]
+            face = records[name] if name in guide_faces else model.face(name)
             plane = 0.0 if side == "lo" else length
             if axis.invariant:
                 planes.append(FacePlane(face.name, face.kind, None))

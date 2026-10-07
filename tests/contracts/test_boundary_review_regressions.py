@@ -169,6 +169,20 @@ def test_nonuniform_without_stored_kinds_keeps_declared_wall_kinds():
         "ABSORBER", "ABSORBER", "PMC", "PMC", "PEC", "PEC")
 
 
+def test_guide_relabel_does_not_relabel_the_floquet_declaration():
+    from rfx.boundaries.model import realize
+    sim = Simulation(freq_max=20e9, domain=(.024, .020, .016), dx=.001,
+                     cpml_layers=8, boundary="cpml")
+    sim.add_floquet_port(.003, freqs=np.array([10e9]), f0=10e9)
+    grid = sim._build_grid()
+    assert tuple(face.kind.value for face in grid.boundary_depths) == (
+        "PERIODIC", "PERIODIC", "PERIODIC", "PERIODIC", "ABSORBER", "ABSORBER")
+    actual = realize(sim.boundary_model(), grid)
+    assert tuple(face.kind.value for face in actual.faces) == (
+        "ABSORBER", "ABSORBER", "ABSORBER", "ABSORBER", "ABSORBER", "ABSORBER")
+    assert actual.periods == ()
+
+
 @pytest.mark.parametrize("skip", [False, True])
 def test_main_document_without_provenance_keeps_its_realized_walls(skip, monkeypatch):
     from rfx.interop import design_to_dict, simulation_from_design
