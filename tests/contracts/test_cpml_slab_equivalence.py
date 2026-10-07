@@ -9,6 +9,7 @@ import pytest
 from rfx.boundaries.cpml import apply_cpml_e, apply_cpml_h, init_cpml
 from rfx.core.yee import EPS_0, MU_0, init_materials, init_state
 from rfx.grid import Grid
+from tests._x64_compat import enable_x64
 
 FACES = tuple(f"{a}_{s}" for a in "xyz" for s in ("lo", "hi"))
 
@@ -109,6 +110,21 @@ def test_equivalence_check_rejects_a_changed_field():
     wrong = state._replace(ez=state.ez.at[1, 2, 3].add(1))
     with pytest.raises(AssertionError):
         _assert_equal((wrong, psi), (state, psi))
+
+
+def test_float64_corrections_with_float32_fields_equal_whole_array():
+    """Each wider slab sum rounds to the field work dtype, as scatter does."""
+    with enable_x64():
+        grid, params, psi, state, materials = _scene()
+        materials = materials._replace(
+            eps_r=materials.eps_r.astype(jnp.float64),
+            mu_r=materials.mu_r.astype(jnp.float64))
+        for magnetic, apply in ((False, apply_cpml_e), (True, apply_cpml_h)):
+            actual = apply(state, params, psi, grid, materials=materials)
+            expected = _whole_array(
+                state, params, psi, grid, materials, FACES, magnetic)
+            assert all(v.dtype == jnp.float32 for v in actual[0])
+            _assert_equal(actual, expected)
 
 
 def test_face_selection_intersects_axes_and_preserves_other_psi():

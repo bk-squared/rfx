@@ -66,5 +66,8 @@ def apply_ordered(field, terms):
     """Add slab corrections in production order, including overlap rounding."""
     for sl, value in terms:
         starts = tuple(window.indices(size)[0] for window, size in zip(sl, field.shape))
-        field = jax.lax.dynamic_update_slice(field, field[sl] + value, starts)
+        # Match .at[sl].add: promote the operands for the addition, then
+        # cast its result back to the destination's work dtype per update.
+        updated = (field[sl] + value).astype(field.dtype)
+        field = jax.lax.dynamic_update_slice(field, updated, starts)
     return field
