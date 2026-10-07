@@ -150,6 +150,92 @@ def frame(case, args, source):
         raise RuntimeError("frame gradient witness failed through iterate 0")
 
 
+def field(case, args, source):
+    """Display-only raw pulse DFTs; one forward solve per stored iterate."""
+    metadata = dc.load_json(source / "result.json")
+    if metadata["id"] != f"design-{case.CASE}":
+        raise ValueError("field record belongs to a different case")
+    saved = metadata["model"]
+    if saved["precision"] != args.precision or bool(saved["smoke"]) != args.smoke:
+        raise ValueError("field precision/smoke must match the stored model")
+    length = dc.load_json(source / "record_length.json")
+    n = int(length["n_steps"])
+    if n <= 0 or n != length["n_steps"]:
+        raise ValueError("field requires a positive integer record length")
+    with np.load(source / "iterations.npz") as data:
+        designs = np.asarray(data["eps"])
+    if designs.shape[1:] != case.SHAPE or any(k >= len(designs) for k in args.iterates):
+        raise ValueError("field iterate outside stored designs or incompatible design shape")
+    freqs = np.asarray(saved["freqs_hz"], dtype=float)
+    if freqs.ndim != 1 or not np.isfinite(freqs).all():
+        raise ValueError("invalid record frequencies")
+    bands = [(1e10, 1e10)] if case.CASE == "lens" else [
+        (10e9, 10.6e9), (8.2e9, 9e9), (11.6e9, 12.4e9)]
+    selected = []
+    for lo, hi in bands:
+        bins = freqs[(freqs >= lo) & (freqs <= hi)]
+        if not bins.size:
+            raise ValueError("record has no field frequency in a required band")
+        selected.append(bins[np.argmin(abs(bins - (lo + hi) / 2))])
+    freqs = np.asarray(selected, dtype=np.float32)
+    model = setup(case, args.out, saved["dx_m"], args.precision, args.smoke,
+                  **({"field_drive": True} if case.CASE == "filter" else {}))
+    if (not math.isclose(length["dt_s"], model.grid.dt, rel_tol=1e-12)
+            or tuple(saved["grid_shape"]) != tuple(model.grid.shape)):
+        raise ValueError("field grid/timestep differs from source record")
+    planes = [("xz", "y", .063), ("yz", "x", .063)] if case.CASE == "lens" else [("xy", "z", .00508)]
+    for name, normal, offset in planes:
+        for component in ("ex", "ey", "ez"):
+            model.sim.add_dft_plane_probe(axis=normal, coordinate=offset, component=component,
+                                          freqs=freqs, name=f"{name}_{component}")
+    drive = ("Ex current dipole at (0.063, 0.063, 0.027) m; default source pulse"
+             if case.CASE == "lens" else
+             "left TE10 port, +x, amplitude=1 modulated_gaussian; right port amplitude=0")
+    drive += "; raw rectangular DFT sum E(t)*exp(-2j*pi*f*t)*dt; no incident/source or peak normalization; native Yee components"
+    details = {"source": str(source.resolve()), "n_steps": n, "files": [],
+               "planes": [p[0] for p in planes], "freqs_hz": freqs,
+               "drive": drive, "display_only": True, "iterates": {},
+               "settling": {"field_monitor_tail_judged": False,
+                            "note": "The field monitor's own tail was not judged. Response settling witnesses do not certify these plane fields."}}
+    import jax.numpy as jnp
+    for k in dict.fromkeys(args.iterates):
+        eps = np.ones(model.grid.shape, dtype=np.float32)
+        block = case.expand_pixels(designs[k], model.dx).astype(np.float32)
+        hi = model.hi
+        if case.CASE == "filter":
+            block = np.pad(block, ((0, 0), (0, 1), (0, 1)), mode="edge")
+            hi = (hi[0], hi[1] + 1, hi[2] + 1)
+        eps[tuple(slice(a, b) for a, b in zip(model.lo, hi))] = block
+        result = model.sim.forward(eps_override=jnp.asarray(eps), n_steps=n,
+                                   checkpoint=False, skip_preflight=True)
+        arrays = {"iterate": np.int64(k), "freqs_hz": freqs,
+                  "planes": np.asarray(details["planes"]), "drive": np.asarray(drive),
+                  "n_steps": np.int64(n), "dx_m": np.float32(model.dx)}
+        peaks = {}
+        for name, normal, _ in planes:
+            probes = [result.dft_planes[f"{name}_{c}"] for c in ("ex", "ey", "ez")]
+            axis = "xyz".index(normal)
+            index = int(probes[0].index)
+            if any(int(p.index) != index for p in probes):
+                raise ValueError("field component planes have different indices")
+            efield = np.stack([np.asarray(p.accumulator) for p in probes], axis=1).astype(np.complex64)
+            uv = [a for a in range(3) if a != axis]
+            arrays.update({f"{name}_u_m": np.asarray([model.grid.node_of(uv[0], i) for i in range(model.grid.shape[uv[0]])], dtype=np.float32),
+                           f"{name}_v_m": np.asarray([model.grid.node_of(uv[1], i) for i in range(model.grid.shape[uv[1]])], dtype=np.float32),
+                           f"{name}_axes": np.asarray(name),
+                           f"{name}_offset_m": np.float32(model.grid.node_of(axis, index)),
+                           f"{name}_E": efield, f"{name}_eps": np.take(eps, index, axis=axis)})
+            if not np.isfinite(efield).all():
+                raise ValueError("non-finite field monitor output")
+            peaks[name] = np.sqrt(np.sum(abs(efield.astype(np.complex128)) ** 2, axis=1)).max(axis=(1, 2))
+        filename = f"field_{k}.npz"
+        dc.save_npz(args.out / filename, **arrays)
+        details["files"].append(filename)
+        details["iterates"][str(k)] = {"peak_abs_E": peaks}
+        dc.save_json(args.out / "field.json", details)
+        record(args.out, case, model, "field", details)
+
+
 class ModelBase:
     def preflight(self):
         with warnings.catch_warnings(record=True) as caught:
@@ -194,8 +280,8 @@ def record(out, case, model, stage, details):
     _record.write_result(out, rec, _record.data_files(out))
 
 
-def setup(case, out, dx, precision, smoke):
-    model = case.Model(dx, precision, smoke)
+def setup(case, out, dx, precision, smoke, **kwargs):
+    model = case.Model(dx, precision, smoke, **kwargs)
     description = model.describe()
     print(f"MESH {case.CASE}: {description}", flush=True)
     messages = model.preflight()
@@ -445,7 +531,7 @@ def resolved(case, args, source):
 
 def main(case, argv=None):
     parser = argparse.ArgumentParser(description=case.__doc__)
-    parser.add_argument("--stage", choices=("timing", "fd", "rlw", "trial", "main", "resolve", "baselines", "describe", "frame"), required=True)
+    parser.add_argument("--stage", choices=("timing", "fd", "rlw", "trial", "main", "resolve", "baselines", "describe", "frame", "field"), required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--record", type=Path, help="source trial/main record; never modified")
     parser.add_argument("--smoke", action="store_true")
@@ -455,11 +541,16 @@ def main(case, argv=None):
     parser.add_argument("--y-uniform", action="store_true",
                         help="filter main: each pixel row is uniform across the guide width and height")
     parser.add_argument("--iterates", type=lambda text: [int(k) for k in text.replace(",", " ").split()],
-                        help="frame: further stored iterations to witness, comma-separated")
+                        help="frame/field: stored iterations, comma-separated (required for field)")
     parser.add_argument("--reported", action="store_true", help="FD/RLW: use best stored design")
     args = parser.parse_args(argv)
-    if args.iterates is not None and (args.stage != "frame" or any(k < 0 for k in args.iterates)):
-        parser.error("--iterates requires --stage frame and nonnegative iterations")
+    if args.iterates is not None and (args.stage not in ("frame", "field") or not args.iterates or any(k < 0 for k in args.iterates)):
+        parser.error("--iterates requires --stage frame/field and nonnegative iterations")
+    if args.stage == "field":
+        if not args.iterates or args.record is None or args.record.resolve() == args.out.resolve():
+            parser.error("field requires --iterates, --record and a distinct --out")
+        if args.start is not None or args.reported or args.precision != "float32":
+            parser.error("field does not support --start, --reported or float64")
     if args.y_uniform and (case.CASE != "filter" or args.stage != "main"):
         parser.error("--y-uniform requires filter --stage main")
     if args.iterations is not None and (args.stage != "main" or args.iterations < 2):
@@ -473,8 +564,8 @@ def main(case, argv=None):
         raise SystemExit("float32 stages require JAX_ENABLE_X64=0")
     if not args.smoke and args.stage != "describe" and jax.default_backend() == "cpu":
         raise SystemExit("full solves are VESSL GPU only; use --smoke on the Mac")
-    if args.smoke and args.stage not in ("timing", "fd"):
-        raise SystemExit("--smoke supports --stage timing only; it cannot create trial admission")
+    if args.smoke and args.stage not in ("timing", "fd", "field"):
+        raise SystemExit("--smoke supports timing, fd and stored smoke field records; it cannot create trial admission")
     if args.stage == "describe":
         for dx in case.MESHES:
             model = setup(case, args.out, dx, args.precision, False)
@@ -485,6 +576,9 @@ def main(case, argv=None):
         raise SystemExit("--main/--resolve/--frame require --record and a distinct --out to preserve the source run")
     if args.stage == "trial" and case.CASE == "lens" and args.start not in (None, "primary"):
         raise SystemExit("the admission trial uses the primary start; GRIN is a reported secondary main run")
+    if args.stage == "field":
+        field(case, args, source)
+        return 0
     if args.stage == "frame":
         frame(case, args, source)
         return 0

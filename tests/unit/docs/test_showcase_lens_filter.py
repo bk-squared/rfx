@@ -1,4 +1,4 @@
-"""Closed-form contracts only; no FDTD solves and no global precision changes."""
+"""Driver contracts and one coarse field smoke; no global precision changes."""
 import sys
 from pathlib import Path
 
@@ -520,3 +520,67 @@ def test_frame_video_iterates_witnessed_once_each(tmp_path, monkeypatch):
     assert tried == [25, 0, 7, 50]
     assert result["video_witnesses"] == {"0": {"passed": True, "worst": 0.0}, "7": {"passed": False, "worst": 7.0},
                                          "25": {"passed": True, "worst": 25.0}, "50": {"passed": True, "worst": 50.0}}
+
+
+@pytest.mark.parametrize("extra", [[], ["--iterates", ""], ["--iterates", "-1"],
+    ["--iterates", "0", "--start", "S1"], ["--iterates", "0", "--reported"],
+    ["--iterates", "0", "--precision", "float64"], ["--iterates", "0", "--iterations", "2"]])
+def test_field_cli_validation(tmp_path, extra):
+    with pytest.raises(SystemExit, match="2"):
+        common.main(filt, ["--stage", "field", "--record", str(tmp_path / "source"),
+                           "--out", str(tmp_path / "out"), *extra])
+
+
+@pytest.mark.parametrize("same", [False, True])
+def test_field_requires_distinct_record(tmp_path, same):
+    argv = ["--stage", "field", "--iterates", "0", "--out", str(tmp_path)]
+    if same:
+        argv += ["--record", str(tmp_path)]
+    with pytest.raises(SystemExit, match="2"):
+        common.main(filt, argv)
+
+
+def test_field_filter_smoke(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    model = filt.Model(filt.SMOKE_DX, smoke=True)
+    source, out = tmp_path / "source", tmp_path / "out"
+    source.mkdir()
+    out.mkdir()
+    common.dc.save_json(source / "result.json", {"id": "design-filter", "model": model.describe()})
+    common.dc.save_json(source / "record_length.json", {"n_steps": 240, "dt_s": model.grid.dt})
+    common.dc.save_npz(source / "iterations.npz", eps=filt.starts()["S1"][None])
+    # Count forward calls and reject any accidental response/gradient solve.
+    from rfx import Simulation
+    forward = Simulation.forward
+    calls = []
+    def counted(self, **kwargs):
+        calls.append(kwargs["n_steps"])
+        return forward(self, **kwargs)
+    monkeypatch.setattr(Simulation, "forward", counted)
+    monkeypatch.setattr(filt.Model, "response_fn", lambda *a, **k: pytest.fail("response solve"))
+    args = SimpleNamespace(out=out, precision="float32", smoke=True, iterates=[0])
+    assert common.main(filt, ["--stage", "field", "--record", str(source),
+                              "--iterates", "0", "--out", str(out), "--smoke"]) == 0
+    assert calls == [240]
+    with np.load(out / "field_0.npz", allow_pickle=False) as data:
+        assert set(data.files) == {"iterate", "freqs_hz", "planes", "drive", "n_steps", "dx_m",
+                                   "xy_u_m", "xy_v_m", "xy_axes", "xy_offset_m", "xy_E", "xy_eps"}
+        assert data["planes"].tolist() == ["xy"]
+        assert data["xy_axes"].item() == "xy"
+        assert data["xy_E"].shape == (3, 3, len(data["xy_u_m"]), len(data["xy_v_m"]))
+        assert data["xy_eps"].shape == data["xy_E"].shape[2:]
+        assert data["xy_E"].dtype == np.complex64
+        assert data["xy_eps"].dtype == np.float32
+        assert np.isfinite(data["xy_E"]).all()
+        assert np.max(abs(data["xy_E"])) > 0
+        np.testing.assert_allclose(data["freqs_hz"], [10.3e9, 8.6e9, 12e9])
+        np.testing.assert_allclose(data["xy_u_m"], [model.grid.node_of(0, i) for i in range(model.grid.shape[0])])
+        assert data["xy_u_m"][0] < 0  # CPML coordinates retain their physical origin.
+    details = common.dc.load_json(out / "field.json")
+    assert details["files"] == ["field_0.npz"]
+    assert details["settling"]["field_monitor_tail_judged"] is False
+    assert len(details["iterates"]["0"]["peak_abs_E"]["xy"]) == 3
+    args.iterates = [1]
+    with pytest.raises(ValueError, match="outside stored designs"):
+        common.field(filt, args, source)
+    assert calls == [240]

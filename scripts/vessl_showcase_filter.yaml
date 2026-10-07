@@ -12,7 +12,7 @@ env:
   OPENBLAS_NUM_THREADS: "1"
   RFX_SHOWfilter_REF: "FILL_BEFORE_SUBMIT"
   RFX_SHOWCASE_PRESET: "FILL_BEFORE_SUBMIT"
-  RFX_DESIGN_MODE: "timing"  # timing, fd, rlw, trial, main, resolve, baselines, describe, frame
+  RFX_DESIGN_MODE: "timing"  # timing, fd, rlw, trial, main, resolve, baselines, describe, frame, field
   RFX_DESIGN_RECORD: ""
   RFX_DESIGN_START: ""
   RFX_DESIGN_ITERATIONS: ""
