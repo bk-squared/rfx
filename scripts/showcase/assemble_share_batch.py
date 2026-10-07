@@ -24,8 +24,8 @@ RUNS = {
     'grin-lens': ('lens', '20261004T182324Z-b184fc8e-main', '20261004T205610Z-b184fc8e-resolve', '4705f69e'),
     'waveguide-filter': ('filter', '20261006T162805Z-b8119151-main', '20261006T191443Z-b8119151-resolve', '9ed83eb8'),
 }
-#: Cases whose film is published; the lens film follows in a later batch.
-FILMS = ('filter',)
+#: Cases whose film is published.
+FILMS = ('lens', 'filter')
 SIZES = {'site': (1920, 1080), 'social': (1080, 1350), 'hero_4k': (3840, 2160)}
 
 
