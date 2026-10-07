@@ -4,7 +4,8 @@
 PI 2026-10-05 and the structure plan §11 put file structure in the 2.0 bar.
 The only way to add lines to a listed file is to remove at least as many from
 it. Split the file instead of raising its baseline; comparisons use numbers,
-never source text. Counts are newline bytes, exactly like wc -l.
+never source text. Counts exclude blank and comment-only terminated lines;
+string contents use the same byte-level rule, without token analysis.
 
 BASE_SHA/HEAD_SHA (or --base/--head) select Git snapshots. Without HEAD_SHA,
 check the working tree, including uncommitted edits. An absent baseline at
@@ -30,10 +31,18 @@ def git(repo: Path, *args: str) -> bytes:
     ).stdout
 
 
+def code_lines(data: bytes) -> int:
+    # Preserve wc -l's unterminated-tail behavior and treat CR like LF.
+    lines = data.replace(b"\r\n", b"\n").replace(b"\r", b"\n").split(b"\n")[:-1]
+    return sum(bool(line.strip()) and not line.strip().startswith(b"#") for line in lines)
+
+
 def baseline(raw: bytes) -> dict:
     data = json.loads(raw)
-    if not isinstance(data, dict) or set(data) != {"cap", "files"}:
-        raise ValueError("baseline must contain cap and files")
+    if not isinstance(data, dict) or set(data) not in ({"cap", "files"}, {"cap", "files", "counts"}):
+        raise ValueError("baseline must contain cap and files, with optional counts")
+    if "counts" in data and data["counts"] != "code-lines":
+        raise ValueError("counts must be code-lines")
     if type(data["cap"]) is not int or data["cap"] < 0:
         raise ValueError("cap must be a nonnegative integer")
     if not isinstance(data["files"], dict):
@@ -51,34 +60,43 @@ def check(repo: Path, base: str = "", head: str = "") -> int:
         lambda path: (repo / path).read_bytes()
     )
     current = baseline(read(BASELINE))
+    if current.get("counts") != "code-lines":
+        raise ValueError("current baseline counts must be code-lines")
     failures = []
+    transition = False
     if base:
         # ls-tree fails for a bad revision but returns empty for an absent file.
         if git(repo, "ls-tree", base, "--", BASELINE):
             previous = baseline(git(repo, "show", f"{base}:{BASELINE}"))
-            if current["cap"] > previous["cap"]:
-                failures.append(
-                    f"{BASELINE}: cap baseline {previous['cap']}, count {current['cap']}"
-                )
-            for path, value in current["files"].items():
-                old = previous["files"].get(path)
-                if old is None or value > old:
+            transition = "counts" not in previous
+            if not transition:
+                if current["cap"] > previous["cap"]:
                     failures.append(
-                        f"{path}: baseline {old if old is not None else 'unlisted'}, "
-                        f"count {value} in proposed baseline"
+                        f"{BASELINE}: cap baseline {previous['cap']}, count {current['cap']}"
                     )
+                for path, value in current["files"].items():
+                    old = previous["files"].get(path)
+                    if old is None or value > old:
+                        failures.append(
+                            f"{path}: baseline {old if old is not None else 'unlisted'}, "
+                            f"count {value} in proposed baseline"
+                        )
     if head:
         paths = [p.decode() for p in git(
             repo, "ls-tree", "-r", "--name-only", "-z", head, "--", "rfx/",
         ).split(b"\0") if p.endswith(b".py")]
     else:
         paths = [p.relative_to(repo).as_posix() for p in (repo / "rfx").rglob("*.py")]
+    if transition:
+        for path in sorted(current["files"].keys() - set(paths)):
+            failures.append(f"{path}: transition baseline entry has no source file")
     for path in sorted(paths):
         data = read(path)
-        # Newlines as wc -l counts them, plus a bare CR, which Python also ends a line on.
-        count = data.count(b"\n") + data.count(b"\r") - data.count(b"\r\n")
+        count = code_lines(data)
         limit = current["files"].get(path, current["cap"])
-        if count > limit:
+        if transition and path in current["files"] and count != limit:
+            failures.append(f"{path}: transition baseline {limit} must equal actual count {count}")
+        elif count > limit:
             failures.append(f"{path}: baseline {limit}, count {count}")
         elif path in current["files"] and count < limit:
             print(f"lower {path} to {count} in {BASELINE}", file=sys.stderr)
