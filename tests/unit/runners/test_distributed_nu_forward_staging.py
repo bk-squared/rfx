@@ -23,6 +23,8 @@ import pytest
 from rfx import Box, DebyePole, Simulation
 from rfx.core.yee import EPS_0, MaterialArrays, init_state
 from rfx.materials.debye import init_debye
+from rfx.model.materials import with_components
+from rfx.model.electric_metrics import slab_cell_sizes
 from rfx.materials.lorentz import init_lorentz, lorentz_pole
 from rfx.nonuniform import make_current_source, position_to_index
 from rfx.runners import distributed_nu as nu
@@ -84,8 +86,10 @@ def _legacy_forward(self, *, eps_override=None, sigma_override=None,
     )
     if pec_mask_override is not None:
         mask = pec_mask_override if mask is None else mask | pec_mask_override
-    debye = None if db_spec is None else init_debye(db_spec[0], materials, grid.dt, mask=db_spec[1])
-    lorentz = None if lr_spec is None else init_lorentz(lr_spec[0], materials, grid.dt, mask=lr_spec[1])
+    realized = with_components(materials, grid, periodic=(False, False, False),
+                               debye_spec=db_spec, lorentz_spec=lr_spec)
+    debye = None if db_spec is None else init_debye(db_spec[0], realized, grid.dt, mask=db_spec[1])
+    lorentz = None if lr_spec is None else init_lorentz(lr_spec[0], realized, grid.dt, mask=lr_spec[1])
     sg = nu.build_sharded_nu_grid(grid, len(devices))
     mesh = Mesh(np.array(devices), ("x",))
     shd = NamedSharding(mesh, P("x"))
@@ -233,7 +237,8 @@ def _completed_slabs(staged, materials, sg, dt, mesh):
     @partial(shard_map, mesh=mesh, in_specs=(P("x"), P("x")), out_specs=P("x"), check_rep=False)
     def complete(c, m):
         rank = jax.lax.axis_index("x")
-        means = common.slab_e_component_materials(m, sg.nx_per_rank, sg.nx, rank)
+        means = common.slab_e_component_materials(m, sg.nx_per_rank, sg.nx, rank,
+                                                  cell_sizes=slab_cell_sizes(sg, rank))
         return common.slab_dispersion_coeffs(c, means, dt, sg.nx_per_rank, sg.nx, rank)
 
     return jax.jit(complete)(coeffs, materials), state
@@ -447,7 +452,9 @@ def _multipole_shards():
     ):
         actual = nu.stage_forward_dispersion_x_slab(
             placed, grid.dt, (poles, masks), sg, mesh, kind)
-        coeffs, state = init(poles, materials, grid.dt, mask=masks)
+        realized = with_components(materials, grid, periodic=(False, False, False),
+                                   **{kind + "_spec": (poles, masks)})
+        coeffs, state = init(poles, realized, grid.dt, mask=masks)
         expected = split_c(coeffs, sg, mesh), split_s(state, sg, mesh)
         actual = _completed_slabs(actual, placed, sg, grid.dt, mesh)
         checked += _check_slabs(actual, expected, sg)

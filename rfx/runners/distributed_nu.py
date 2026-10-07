@@ -47,7 +47,7 @@ import jax.numpy as jnp
 
 from rfx.core.drives import drive_layout
 import numpy as np
-from jax import lax, shard_map
+from jax import lax
 from rfx.runners._rank import mesh_ranks, rank_shard_map
 from jax.sharding import PartitionSpec as P
 
