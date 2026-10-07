@@ -299,7 +299,7 @@ def _msl_normal_bounds(grid, port):
 
 
 def validate_msl_port_geometry(grid, port, *, pec_edge_masks=None,
-                               sheet_specs=(), sheet_impedance=None,
+                               sheet_specs=(), sheet_impedance=None, conductors=None,
                                pec_faces=(), periodic=(False, False, False),
                                name=None):
     """Require the source interval to meet its actual conductor surfaces.
@@ -311,7 +311,7 @@ def validate_msl_port_geometry(grid, port, *, pec_edge_masks=None,
     """
     from rfx.boundaries.pec import realized_wall_planes
     from rfx.geometry.rasterize_grid import _box_axis_closed, _local_cell
-    from rfx.materials.thin_conductor import build_sheet_impedance_ctx
+    from rfx.model.conductors import SheetConductors
 
     nodes, sizes = _msl_grid_geometry(grid)
     span = msl_cross_section_span(grid, port)
@@ -322,9 +322,10 @@ def validate_msl_port_geometry(grid, port, *, pec_edge_masks=None,
         raise ValueError(f"{label}: propagation and width axes must both be resolved")
     hard = (tuple(np.zeros(grid.shape, dtype=bool) for _ in range(3))
             if pec_edge_masks is None else tuple(np.asarray(m, dtype=bool) for m in pec_edge_masks))
-    if sheet_impedance is None and sheet_specs:
-        sheet_impedance = build_sheet_impedance_ctx(
-            sheet_specs, pec_edge_masks=pec_edge_masks, periodic=periodic)
+    if sheet_impedance is None:
+        if conductors is None:
+            conductors = SheetConductors(tuple(sheet_specs), tuple(periodic))
+        sheet_impedance = conductors.sheet_context(pec_edge_masks)
     observed = hard
     if sheet_impedance is not None:
         observed = tuple(h | np.asarray(getattr(sheet_impedance, f"mask_e{ax}"), dtype=bool)

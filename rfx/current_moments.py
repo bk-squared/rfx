@@ -948,7 +948,7 @@ def weight_dtype_for(sim):
             else np.float32)
 
 
-def monitor_for_simulation(sim, grid, periodic=None, *, overrides=None):
+def monitor_for_simulation(sim, grid, periodic=None, *, overrides=None, conductors=None):
     """The monitor a ``Simulation`` declared, realized against the built grid.
 
     ``Simulation.add_current_moment_monitor`` only records the declaration;
@@ -990,8 +990,11 @@ def monitor_for_simulation(sim, grid, periodic=None, *, overrides=None):
         grid, corner_lo=corner_lo, corner_hi=corner_hi,
         block_size=block_size, freqs=freqs, order=order,
         periodic=periodic, dtype=weight_dtype_for(sim), **(extra or {}))
+    if conductors is None:
+        from rfx.model.conductors import realized_conductors
+        conductors = realized_conductors(sim, grid, nonuniform=hasattr(grid, 'dx_arr'))
     refuse_current_the_monitor_cannot_see(sim, grid, monitor,
-                                          overrides=overrides)
+                                         overrides=overrides, conductors=conductors)
     refuse_blocks_too_large(monitor, freqs)
     return monitor
 
@@ -1067,7 +1070,7 @@ def _outside_slab_refusal(monitor, grid, what, component, index):
 
 
 def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
-                                          overrides=None):
+                                          overrides=None, conductors=None):
     """Refuse, before the run, a model whose current the monitor cannot see.
 
     The monitor's pattern is the radiation of the ELECTRIC current inside its
@@ -1160,19 +1163,21 @@ def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
 
     nonuniform = getattr(grid, "dx_arr", None) is not None
     periodic = sim._periodic_flags()
-    sheet_specs, pec_sheets, pec_wires = [], [], []
     with jax.ensure_compile_time_eval(), _warnings.catch_warnings():
         _warnings.simplefilter("ignore")
-        if nonuniform:
-            materials, debye, lorentz, pec_mask = sim._assemble_materials_nu(
-                grid, sheet_specs=sheet_specs, pec_sheets=pec_sheets,
-                pec_wires=pec_wires)
-            kerr = None
-        else:
-            (materials, debye, lorentz, pec_mask, _shapes, _bshapes,
-             kerr) = sim._assemble_materials(
-                grid, sheet_specs=sheet_specs, pec_sheets=pec_sheets,
-                pec_wires=pec_wires)
+        from rfx.model.conductors import realized_conductors
+        model = conductors
+        # The census is the declared sim, not topology/mixed caller arrays.
+        # Kernel-only products lack the sim's dispersive/Kerr assembly too.
+        if (model is None or not model.assembly_from_sim
+                or any(is_tracer(v) for v in jax.tree.leaves(
+                    (model.materials, model.assembly)))):
+            model = realized_conductors(sim, grid, nonuniform=nonuniform)
+        if conductors is None:
+            conductors = model
+        sheet_specs, pec_sheets, pec_wires = model.sheet_specs, model.sheets, model.wires
+        materials, debye, lorentz, pec_mask = model.assembly[:4]
+        kerr = None if nonuniform else model.assembly[6]
         replace = {name: ov[name] for name in ("eps_r", "sigma", "mu_r")
                    if ov.get(name) is not None}
         if replace:
@@ -1214,9 +1219,11 @@ def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
                                           wires=tuple(pec_wires),
                                           periodic=periodic),
                   "a conductor (PEC volume, sheet or wire)")
-        if sheet_specs:
-            from rfx.materials.thin_conductor import build_sheet_impedance_ctx
-            ctx = build_sheet_impedance_ctx(sheet_specs, periodic=periodic)
+        if sheet_specs or conductors.sheet_operator is not None:
+            ctx = conductors.sheet_operator
+            if ctx is None:
+                owner = conductors if conductors.sheet_specs else model
+                ctx = owner.sheet_context(conductors.pec_edges)
             check((ctx.mask_ex, ctx.mask_ey, ctx.mask_ez),
                   "a surface-impedance sheet")
         for poles in (debye, lorentz):

@@ -409,7 +409,7 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
     if conductors is None:
         from dataclasses import replace
         conductors = replace(kernel_conductors(sim, grid, materials, None,
-            periodic=(False, False, False)), pec_edges=pec_edge_masks)
+            periodic=(False, False, False), sheet_specs=sheet_specs), pec_edges=pec_edge_masks)
     original_edges = pec_edge_masks if geometry_edge_masks is None else geometry_edge_masks
     for _msl_port_index, pe in enumerate(sim._msl_ports):
         # Issue #661: one shared projection of position -> port frame.
@@ -427,7 +427,7 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
         # substrate eps_r read concretely under the trace centre.
         from rfx.sources.msl_port import validate_msl_port_geometry
         validate_msl_port_geometry(
-            grid, mp, pec_edge_masks=original_edges, sheet_specs=sheet_specs,
+            grid, mp, pec_edge_masks=original_edges, conductors=conductors,
             pec_faces=sim._boundary_spec.pec_faces(), name=pe.name)
         span = msl_cross_section_span(grid, mp)
         k_mid = (span["n_lo"] + span["n_hi"]) // 2
@@ -1338,7 +1338,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     _declared_periodic = tuple(
         axis in getattr(sim, "_periodic_axes", "") for axis in "xyz")
     current_moments = _cm_for_sim(
-        sim, grid, periodic=_declared_periodic,
+        sim, grid, periodic=_declared_periodic, conductors=conductors,
         overrides={"eps_r": eps_override, "sigma": sigma_override,
                    "pec_mask": pec_mask_override,
                    "pec_occupancy": pec_occupancy_override,
@@ -1348,9 +1348,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     # assembler emitted, against the FINAL realized PEC edges of this run
     # (PEC wins on overlapping edges). Crossing-normal refusal lives in the
     # builder.
-    from rfx.materials.thin_conductor import build_sheet_impedance_ctx
-    sheet_ctx = build_sheet_impedance_ctx(
-        _sheet_specs, pec_edge_masks=pec_edge_masks)
+    sheet_ctx = conductors.sheet_context(pec_edge_masks)
     if sheet_ctx is not None:
         # v1 fences (loud, never silent): the sheet operator replaces the
         # standard E update at its edges, which is only correct against the

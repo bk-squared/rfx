@@ -1781,7 +1781,7 @@ class _ExecuteMixin:
         pec_wires = tuple(pec_wires or ())
         pec_mask_local = pec_mask
         pec_occupancy_local = pec_occupancy
-        conductors, _drawn_materials, pec_edge_masks_local = _conductors.forward_products(self, grid, materials, pec_mask, pec_sheets, pec_wires, periodic_bool, conductors)
+        conductors, _drawn_materials, pec_edge_masks_local = _conductors.forward_products(self, grid, materials, pec_mask, pec_sheets, pec_wires, periodic_bool, conductors, sheet_impedance)
         _msl_geometry_edges = pec_edge_masks_local  # before ANY port clearing
         lumped_port_sparam_specs: list = []
         wire_port_sparam_specs: list = []
@@ -2164,7 +2164,7 @@ class _ExecuteMixin:
         # numbers the forward run does.
         from rfx.current_moments import monitor_for_simulation as _cm_for_sim
         current_moments_fwd = _cm_for_sim(
-            self, grid, periodic_bool,
+            self, grid, periodic_bool, conductors=conductors,
             overrides={**(monitor_overrides or {}), "design_box": design_box,
                        "design_occupancy": design_occupancy})
 
@@ -4463,18 +4463,7 @@ class _ExecuteMixin:
         # loss — measured on an x-periodic f0 sheet at dx = 2 mm, 35 loaded
         # Ex edges through run() against 30 through forward().
         # ``self._periodic_flags()`` is the single spelling (#931 §1.7).
-        from rfx.materials.thin_conductor import build_sheet_impedance_ctx
-        from rfx.boundaries.pec import realized_pec_edge_masks as _rpem
-        _fwd_periodic = self._periodic_flags()
-        _fwd_sheet_ctx = build_sheet_impedance_ctx(
-            _fwd_sheet_specs,
-            pec_edge_masks=(
-                None if (pec_mask is None and not _fwd_pec_sheets
-                         and not _fwd_pec_wires)
-                else _rpem(pec_mask, sheets=tuple(_fwd_pec_sheets),
-                           wires=tuple(_fwd_pec_wires),
-                           periodic=_fwd_periodic)),
-            periodic=_fwd_periodic)
+        _fwd_sheet_ctx = _conductors.forward_sheet_context(conductors, pec_mask)
         # #679: the same UPML refusal run_uniform carries. forward() reaches
         # the solver by its own route (it never enters run_uniform), so
         # WITHOUT this the eps_override / forward() channel silently ran the

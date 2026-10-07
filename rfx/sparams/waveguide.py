@@ -512,8 +512,10 @@ def compute_waveguide_s_matrix(
     _wg_sheet_specs: list = []
     _wg_pec_sheets: list = []
     _wg_pec_wires: list = []
-    base_materials, debye_spec, lorentz_spec, pec_mask_wg, pec_shapes, boundary_pec_shapes, _ = self._assemble_materials(
-        grid, sheet_specs=_wg_sheet_specs, pec_sheets=_wg_pec_sheets,
+    from rfx.model.conductors import realized_conductors, assembled_materials
+    conductors = realized_conductors(self, grid)
+    base_materials, debye_spec, lorentz_spec, pec_mask_wg, pec_shapes, boundary_pec_shapes, _ = assembled_materials(
+        conductors, sheet_specs=_wg_sheet_specs, pec_sheets=_wg_pec_sheets,
         pec_wires=_wg_pec_wires)
     _wg_pec_sheets = tuple(_wg_pec_sheets)
     _wg_pec_wires = tuple(_wg_pec_wires)
@@ -547,12 +549,7 @@ def compute_waveguide_s_matrix(
     # sheets and wires — built ONCE and handed to every device run of
     # the extractors below.  This replaces the sigma=1e10 CELL fold
     # this lane used to do (see the note at the old fold site).
-    from rfx.boundaries.pec import realized_pec_edge_masks as _rpem
-    _wg_pec_edge_masks = None
-    if pec_mask_wg is not None or _wg_pec_sheets or _wg_pec_wires:
-        _wg_pec_edge_masks = _rpem(
-            pec_mask_wg, sheets=_wg_pec_sheets, wires=_wg_pec_wires,
-            periodic=self._periodic_flags())
+    _wg_pec_edge_masks = conductors.pec_edges
     # The junction geometry census also needs these edges when Kottke
     # below encodes PEC in inverse permittivity and clears solver masks.
     _wg_geometry_pec_edges = _wg_pec_edge_masks
@@ -560,9 +557,7 @@ def compute_waveguide_s_matrix(
     # edge exclusion uses the same realized edges so sheet and PEC
     # never contend for one edge.  The vacuum REFERENCE runs never
     # receive the ctx (explicit strip at the extractor call sites).
-    from rfx.materials.thin_conductor import build_sheet_impedance_ctx as _build_sheet_ctx
-    _wg_sheet_ctx = _build_sheet_ctx(
-        _wg_sheet_specs, pec_edge_masks=_wg_pec_edge_masks)
+    _wg_sheet_ctx = conductors.sheet_context(_wg_pec_edge_masks)
     if _wg_sheet_ctx is not None and subpixel_smoothing:
         raise ValueError(
             "surface-impedance (surface_impedance_f0) sheets are not "
@@ -621,7 +616,8 @@ def compute_waveguide_s_matrix(
             _ref_edges_i = None
             if (_ref_pec_mask is not None or _ref_pec_sheets
                     or _ref_pec_wires):
-                _ref_edges_i = _rpem(
+                from rfx.boundaries.pec import realized_pec_edge_masks
+                _ref_edges_i = realized_pec_edge_masks(
                     _ref_pec_mask, sheets=tuple(_ref_pec_sheets),
                     wires=tuple(_ref_pec_wires))
             ref_pec_edge_masks_per_port.append(_ref_edges_i)

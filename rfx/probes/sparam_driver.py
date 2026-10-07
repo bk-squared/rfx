@@ -140,26 +140,19 @@ def compute_lumped_wire_s_matrix_via_scan(
         _sheet_specs: list = []
         _pec_sheets: list = []
         _pec_wires: list = []
-        materials, debye_spec, lorentz_spec, pec_mask, _, _, _ = \
-            sim._assemble_materials(grid, sheet_specs=_sheet_specs,
-                                    pec_sheets=_pec_sheets, pec_wires=_pec_wires)
+        from rfx.model.conductors import realized_conductors, assembled_materials
+        conductors = realized_conductors(sim, grid)
+        materials, debye_spec, lorentz_spec, pec_mask, _, _, _ = assembled_materials(
+            conductors, sheet_specs=_sheet_specs, pec_sheets=_pec_sheets,
+            pec_wires=_pec_wires)
         _pec_sheets = tuple(_pec_sheets)
         _pec_wires = tuple(_pec_wires)
         # #931 §1.7: the realized PEC edges of this model — volumes, sheets and
         # wires — read once here, under the RUN's #689 flags (preflight refuses
         # lumped/wire S-params under periodic axes (#206), so this is normally
         # the non-periodic convention — but the flags are read, not assumed).
-        from rfx.boundaries.pec import realized_pec_edge_masks as _rpem
-        _pec_edge_masks = None
-        if pec_mask is not None or _pec_sheets or _pec_wires:
-            _pec_edge_masks = _rpem(pec_mask, sheets=_pec_sheets,
-                                    wires=_pec_wires,
-                                    periodic=sim._periodic_flags())
-        # #677: node-thin sheet ctx, applied by every per-drive forward run.
-        from rfx.materials.thin_conductor import build_sheet_impedance_ctx
-        _sheet_ctx = build_sheet_impedance_ctx(
-            _sheet_specs, pec_edge_masks=_pec_edge_masks,
-            periodic=sim._periodic_flags())
+        _pec_edge_masks = conductors.pec_edges
+        _sheet_ctx = conductors.sheet_context(_pec_edge_masks)
 
     if n_steps is None:
         n_steps = grid.num_timesteps(num_periods=30)
@@ -271,7 +264,7 @@ def compute_lumped_wire_s_matrix_via_scan(
                 port_s11_freqs=freqs,
                 _sparam_drive_idx=j,
                 _return_raw_port_sparams=True,
-                sheet_impedance=_sheet_ctx,
+                sheet_impedance=_sheet_ctx, conductors=conductors,
                 conformal_pec=conformal_pec,
             )
 

@@ -841,7 +841,7 @@ def _msl_conductor_gap(self, pe, assembled):
     port = msl_port_from_entry(pe)
     validate_msl_port_geometry(
         grid, port, pec_edge_masks=realized.edges,
-        sheet_specs=realized.sheet_specs, periodic=realized.periodic,
+        conductors=realized, periodic=realized.periodic,
         pec_faces=self._boundary_spec.pec_faces(), name=pe.name)
     span = msl_cross_section_span(grid, port)
     nodes, _ = _msl_grid_geometry(grid)

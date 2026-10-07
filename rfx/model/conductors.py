@@ -29,6 +29,68 @@ class RealizedSheet(SheetSpec):
 
 
 @dataclass(frozen=True)
+class ConductorWidthAxis:
+    """The solved interval consumed by the geometry record, in metres."""
+    first: int
+    last: int
+    cell_range: tuple | None
+    lo: float
+    hi: float
+    comparison: object = None
+    free_ends: object = None
+
+
+def conductor_width_axes(root, sim, mask, *, kind, sheet, node_based,
+                         f0_spec, bounds, sizes, nodes, interior):
+    """One record product: PEC solved spans, DC cells, or weighted f0 nodes."""
+    from rfx.mesh_edges import solved_sheet_span, sheet_continuation_masks
+    union, volume_edges = sheet_continuation_masks(interior, root.periodic, root.grid.shape)
+    occupied = np.where(mask)
+    result = []
+    for a in range(3):
+        periodic = 'xyz'[a] in getattr(root.grid, 'periodic_axes', '')
+        i0, i1 = int(occupied[a].min()), int(occupied[a].max())
+        cell_range = None if kind in ('sheet', 'wire') or node_based else (i0, i1 + 1)
+        lo = float(nodes[a][i0])
+        hi = float(nodes[a][i1 if cell_range is None else i1 + 1])
+        comparison = free_ends = None
+        if f0_spec is not None and a != int(f0_spec.normal_axis):
+            i0, i1, lo, hi = _f0_solved_bounds(
+                mask, a, nodes[a], sizes[a], f0_spec.end_rows[a],
+                int(getattr(root.grid, f"pad_{'xyz'[a]}_lo")),
+                int(getattr(root.grid, f"pad_{'xyz'[a]}_hi")), periodic)
+        if sheet is not None and a != int(sheet.normal_axis) and bounds is not None:
+            span = (sheet.solved_spans[a] if hasattr(sheet, 'solved_spans') else
+                    solved_sheet_span(mask, a, nodes[a], float(bounds[0][a]),
+                        float(bounds[1][a]), float(sim._domain[a]), union=union,
+                        volume_edges=volume_edges, periodic=periodic))
+            if span is not None:
+                lo, hi = span.lo, span.hi
+                comparison = span.comparison_bounds(bounds[0][a], bounds[1][a], sim._domain[a])
+                free_ends = (span.free_lo, span.free_hi)
+        result.append(ConductorWidthAxis(i0, i1, cell_range, lo, hi, comparison, free_ends))
+    return tuple(result)
+
+
+@dataclass(frozen=True)
+class SheetConductors:
+    """Sheet products for standalone geometry callers with existing collectors.
+
+    No assembly is performed here. Production callers lend RealizedConductors;
+    this smaller view preserves the geometry validator's collector API.
+    """
+    sheet_impedance: tuple
+    periodic: tuple
+
+    def sheet_context(self, pec_edges):
+        """Build the operator for the explicitly selected conductor stage."""
+        from rfx.materials.thin_conductor import build_sheet_impedance_ctx
+        return build_sheet_impedance_ctx(self.sheet_impedance,
+                                         pec_edge_masks=pec_edges,
+                                         periodic=self.periodic)
+
+
+@dataclass(frozen=True)
 class RealizedConductors(_RealizedPEC):
     lane: str
     grid: object
@@ -46,6 +108,10 @@ class RealizedConductors(_RealizedPEC):
     pad_fill_findings: tuple = ()
     sheet_operator: object = None
     mode: str = "solve"
+    assembly_from_sim: bool = True
+
+    sheet_context = SheetConductors.sheet_context
+    width_axes = conductor_width_axes
 
     @property
     def pec_mask(self):
@@ -211,7 +277,8 @@ def kernel_conductors(sim, grid, materials, pec_cells, sheets=(), wires=(),
             geometry_masks=() if root is None else root.geometry_masks.items(),
             assembly_entries=() if root is None else root.assembly_entries)
         refuse_dead_soft_sources(sim, obj)
-    return obj if root is None else replace(obj, assembly=root.assembly)
+    return (replace(obj, assembly_from_sim=False) if root is None else
+            replace(obj, assembly=root.assembly, assembly_from_sim=root.assembly_from_sim))
 
 
 def at_kernel(sim, conductors, *, lane, pec_edges, sheet_operator=None, compact=True):
@@ -228,9 +295,7 @@ def at_kernel(sim, conductors, *, lane, pec_edges, sheet_operator=None, compact=
         if edges is not None:
             edges = _realized.ACTIVE.apply('conductors', 'pec_edges', edges)
             if edges is not conductors.pec_edges and conductors.sheet_operator is not None:
-                from rfx.materials.thin_conductor import build_sheet_impedance_ctx
-                conductors = replace(conductors, sheet_operator=build_sheet_impedance_ctx(
-                    conductors.sheet_impedance, pec_edge_masks=edges))
+                conductors = replace(conductors, sheet_operator=conductors.sheet_context(edges))
             conductors = replace(conductors, pec_edges=edges)
             _realized.ACTIVE.observe('conductors', dict(pec_edges=edges))
     if _traced_product(conductors):
@@ -410,13 +475,15 @@ def early_run_record(sim, root, lane):
         list(root.assembly_entries), lane=lane, conductors=root)
 
 
-def forward_products(sim, grid, materials, cells, sheets, wires, periodic, root):
+def forward_products(sim, grid, materials, cells, sheets, wires, periodic, root,
+                     sheet_operator=None):
     """Bind overrides while keeping the original substrate for MSL launches."""
-    drawn = None if root is None else root.assembly[0]
+    unbound = root is None
+    drawn = None if unbound else root.assembly[0]
     root = kernel_conductors(sim, grid, materials, cells, sheets, wires,
         periodic=periodic, root=root,
         sheet_specs=() if root is None else root.sheet_impedance)
-    return root, drawn, root.pec_edges
+    return replace(root, sheet_operator=sheet_operator), drawn, root.pec_edges
 
 
 def forward_port_stage(root, cells, component, entity_id, *,
@@ -495,3 +562,59 @@ def distributed_mask_edges(mask):
     from rfx.boundaries.pec import realized_pec_edge_masks
     return (mask if isinstance(mask, tuple) else
             realized_pec_edge_masks(mask, periodic=(True, False, False)))
+
+
+def forward_sheet_context(root, cells):
+    """The outer forward context precedes port clearing and includes overrides."""
+    from rfx.boundaries.pec import realized_pec_edge_masks
+    edges = (None if cells is None and not root.sheets and not root.wires else
+             realized_pec_edge_masks(cells, sheets=root.sheets, wires=root.wires,
+                                     periodic=root.periodic))
+    return root.sheet_context(edges)
+
+
+def _f0_solved_bounds(mask, axis, nodes, sizes, end_rows, pad_lo, pad_hi, periodic):
+    """In-plane node range and ends of an f0 sheet as the sheet operator solves them.
+
+    A tangential row at node ``i`` loads its dual cell, half of the cell on
+    each side, times the row's weight on the sheet conductance: 1, or
+    ``END_ROW_WEIGHT`` on a row marked as lying on a drawn face. The solved
+    end is therefore ``weight * dual - inside half`` beyond the end node
+    (zero at weight 0.5 between equal cells). On a non-periodic axis an end
+    on the domain face has no outside cell and stays on its node. A periodic
+    axis has no wall: the occupied rows are read as one run around the
+    period (a strip ending on the seam ends at node N, one that starts there
+    starts at node 0), and a sheet spanning the whole period has no end.
+    """
+    from rfx.core.jax_utils import is_tracer
+    from rfx.materials.thin_conductor import END_ROW_WEIGHT
+    n = len(sizes)
+    rows = np.flatnonzero(mask.any(axis=tuple(b for b in range(mask.ndim) if b != axis)))
+    marked = (np.zeros(n, dtype=bool) if end_rows is None or is_tracer(end_rows)
+              else np.asarray(end_rows, dtype=bool))
+    i0, i1 = int(rows[0]), int(rows[-1])
+    free_lo, free_hi = i0 > pad_lo, i1 < n - pad_hi - 1
+    if periodic:
+        occupied = np.zeros(n, dtype=bool)
+        occupied[rows % n] = True
+        if occupied.all():
+            return 0, n, float(nodes[0]), float(nodes[n])
+        # Where the one occupied run around the period begins: its rising edge,
+        # or node 0 when the run starts there without wrapping.
+        rising = np.flatnonzero(np.diff(occupied.astype(np.int8)) == 1) + 1
+        if rising.size + int(occupied[0] and not occupied[-1]) == 1:
+            i0 = int(rising[0]) if rising.size else 0
+            i1 = i0 + int(occupied.sum()) - 1
+        free_lo = free_hi = True
+
+    def at(i):
+        return float(nodes[i % n]) + (i // n) * float(nodes[n] - nodes[0])
+
+    lo, hi = at(i0), at(i1)
+    if free_lo:
+        w = END_ROW_WEIGHT if marked[i0 % n] else 1.0
+        lo -= w * 0.5 * float(sizes[(i0 - 1) % n] + sizes[i0 % n]) - 0.5 * float(sizes[i0 % n])
+    if free_hi:
+        w = END_ROW_WEIGHT if marked[i1 % n] else 1.0
+        hi += w * 0.5 * float(sizes[(i1 - 1) % n] + sizes[i1 % n]) - 0.5 * float(sizes[(i1 - 1) % n])
+    return i0, i1, lo, hi
