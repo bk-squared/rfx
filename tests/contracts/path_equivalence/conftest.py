@@ -2,13 +2,11 @@
 import json
 import os
 from pathlib import Path
-import queue
-import signal
-import subprocess
 import sys
-import threading
 
 import pytest
+
+from .worker_client import WorkerClient
 
 
 @pytest.fixture(scope='module')
@@ -20,54 +18,15 @@ def matrix_worker(tmp_path_factory):
                TMPDIR=str(directory))
     root = Path(__file__).resolve().parents[3]
     env['PYTHONPATH'] = str(root)
-    pending = queue.Queue()
     with (directory / 'stderr.txt').open('w+') as errors:
-        process = subprocess.Popen(
+        client = WorkerClient(
             [sys.executable, '-m', 'tests.contracts.path_equivalence.worker'],
-            cwd=root, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-            stderr=errors, text=True, bufsize=1, start_new_session=True)
-
-        def read():
-            for line in process.stdout:
-                pending.put(line)
-            pending.put(None)
-
-        reader = threading.Thread(target=read, daemon=True)
-        reader.start()
-        cache = {}
-
-        def request(cell):
-            if cell.id not in cache:
-                process.stdin.write(json.dumps({'cell': cell.id}) + '\n')
-                process.stdin.flush()
-                try:
-                    response = pending.get(timeout=120)
-                except queue.Empty:
-                    pytest.fail(f'S0 worker timed out: {cell.id}')
-                assert response is not None, f'S0 worker exited: {errors.name}'
-                result = json.loads(response)
-                assert 'worker_error' not in result, result.get('worker_error')
-                assert result['cell'] == cell.id
-                cache[cell.id] = result
-            return cache[cell.id]
-
+            cwd=root, env=env, errors=errors)
         try:
-            yield request
+            yield client
         finally:
-            if process.stdin:
-                process.stdin.close()
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                pass
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            process.wait(timeout=5)
-            reader.join(timeout=5)
-            process.stdout.close()
-            (directory / 'measurements.json').write_text(json.dumps(list(cache.values()), indent=2))
+            client.close()
+            (directory / 'measurements.json').write_text(json.dumps(list(client.cache.values()), indent=2))
 
 
 def pytest_configure(config):
