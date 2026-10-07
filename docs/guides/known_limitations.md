@@ -296,7 +296,7 @@ cell except the outermost row on the +x and +y faces.
 
 Tracker: #1221
 
-At normal incidence, `add_tfsf_source` refuses absorbing transverse faces when
+At normal incidence, dispatch refuses absorbing transverse faces for a TF/SF plane wave when
 realized materials, conductors or localized field updates vary along that axis,
 including in the pads. The refusal also applies with `skip_preflight=True`.
 For an array, declare its axes periodic; for a finite scatterer use
