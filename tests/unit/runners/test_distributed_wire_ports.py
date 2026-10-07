@@ -264,3 +264,8 @@ def test_mutations(monkeypatch, mutation):
     with pytest.raises(expected[0], match=expected[1]):
         _parity("ex")
     print(f"wire mutation={mutation}: RED")
+
+
+if __name__ == "__main__":
+    for case in ("ez", "ex", "dead", "dielectric"):
+        _parity(case, n_devices=int(sys.argv[1]))
