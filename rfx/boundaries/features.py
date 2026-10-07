@@ -131,6 +131,8 @@ def admit_waveguide(sim, *, lane="dispatch"):
     if not sim._waveguide_ports:
         return
     grid = sim._build_realized_grid()
+    if sim._uses_nonuniform_mesh:
+        lane += " (nonuniform)"
     faces = guide_faces(sim, grid)
     periodic = sorted(face for face in faces if sim._periodic_flags()["xyz".index(face[0])])
     if periodic:
