@@ -349,8 +349,9 @@
     },
     {
       "file": "rfx/core/yee.py",
-      "function": "edge_mean_components.mean4",
-      "kind": "neighbour"
+      "function": "_edge_mean_component",
+      "kind": "neighbour",
+      "count": 5
     },
     {
       "file": "rfx/core/yee.py",
