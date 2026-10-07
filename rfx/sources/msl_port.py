@@ -1152,8 +1152,8 @@ def make_msl_port_sources_jm(
         # Each electric correction reads its own component's coefficient;
         # transverse interfaces can give Ey and Ez different permittivities.
         from rfx.model.materials import e_update_coefficient_at
-        coeff_E = float(e_update_coefficient_at(materials, (i, j, k), "ez", dt)) / dx
-        coeff_Ey = float(e_update_coefficient_at(materials, (i, j, k), "ey", dt)) / dx
+        coeff_E = float(e_update_coefficient_at(materials, (i, j, k), "ez", dt, grid=grid)) / dx
+        coeff_Ey = float(e_update_coefficient_at(materials, (i, j, k), "ey", dt, grid=grid)) / dx
 
         i_h = int(i) + h_i_offset  # H correction cell index
 

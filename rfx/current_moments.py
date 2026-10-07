@@ -1204,7 +1204,8 @@ def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
                         monitor, grid, what, c,
                         tuple(v[0] for v in np.nonzero(bad)))
 
-        eps_c, sig_c = component_e_materials(materials, periodic)
+        from rfx.model.materials import electric_cell_sizes
+        eps_c, sig_c = component_e_materials(materials, periodic, cell_sizes=electric_cell_sizes(grid))
         check([(np.asarray(e) != 1.0) | (np.asarray(g) != 0.0)
                for e, g in zip(eps_c, sig_c)],
               "a dielectric or lossy material")

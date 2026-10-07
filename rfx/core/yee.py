@@ -602,7 +602,7 @@ def curl_h_nu(hx, hy, hz, inv_dx, inv_dy, inv_dz, *, boundary=None):
                      inv_dz[None, None, :]))
 
 
-def _material_bwd_neighbour(arr, ax, periodic):
+def _material_bwd_neighbour(arr, ax, periodic, *, array_module=jnp):
     """The cell one step back along ``ax``, with the MATERIAL's outside rule.
 
     ``jnp.roll(arr, 1, axis=ax)`` on a periodic axis and on a length-1 axis
@@ -620,15 +620,15 @@ def _material_bwd_neighbour(arr, ax, periodic):
     over the cells that exist.
     """
     if arr.shape[ax] == 1 or periodic[ax]:
-        return jnp.roll(arr, 1, axis=ax)
+        return array_module.roll(arr, 1, axis=ax)
     first = [slice(None)] * arr.ndim
     first[ax] = slice(0, 1)
     body = [slice(None)] * arr.ndim
     body[ax] = slice(0, arr.shape[ax] - 1)
-    return jnp.concatenate([arr[tuple(first)], arr[tuple(body)]], axis=ax)
+    return array_module.concatenate([arr[tuple(first)], arr[tuple(body)]], axis=ax)
 
 
-def edge_averaged_materials(eps_r, sigma, periodic=(False, False, False)):
+def edge_averaged_materials(eps_r, sigma, periodic=(False, False, False), *, cell_sizes=None):
     """Per-E-component ``(eps_r, sigma)``: the mean over the edge's four cells.
 
     THE one spelling of the material-to-edge rule (#1210). Every lane that
@@ -664,11 +664,52 @@ def edge_averaged_materials(eps_r, sigma, periodic=(False, False, False)):
     exactly in binary floating point. That is what keeps every vacuum fixture
     and every uniform-dielectric lock byte-for-byte where it was.
     """
-    return (edge_mean_components(eps_r, periodic),
-            edge_mean_components(sigma, periodic))
+    return (edge_mean_components(eps_r, periodic, cell_sizes=cell_sizes),
+            edge_mean_components(sigma, periodic, cell_sizes=cell_sizes))
 
 
-def edge_mean_components(arr, periodic=(False, False, False)):
+def _edge_mean_four(values, weights=None):
+    """One constitutive rule for volume epsilon, sigma and pole occupancy.
+
+    Weights are products of the two incident primal widths. A missing weight
+    selects the original equal-cell arithmetic, including its operation order.
+    """
+    if weights is None:
+        return ((values[0] + values[1]) + (values[2] + values[3])) * 0.25
+    weighted = tuple(v * w for v, w in zip(values, weights))
+    return ((weighted[0] + weighted[1]) + (weighted[2] + weighted[3])) / (
+        (weights[0] + weights[1]) + (weights[2] + weights[3]))
+
+
+def _edge_mean_component(arr, t1, t2, periodic, cell_sizes, array_module=jnp):
+    a1 = _material_bwd_neighbour(arr, t1, periodic, array_module=array_module)
+    a2 = _material_bwd_neighbour(arr, t2, periodic, array_module=array_module)
+    a12 = _material_bwd_neighbour(a1, t2, periodic, array_module=array_module)
+    weights = None
+    if cell_sizes is not None and any(cell_sizes[t] is not None for t in (t1, t2)):
+        pairs = []
+        for t in (t1, t2):
+            d = cell_sizes[t]
+            if d is None:
+                pairs.append((1.0, 1.0))
+            else:
+                shape = [1, 1, 1]
+                shape[t] = arr.shape[t]
+                d = array_module.asarray(d, dtype=arr.dtype).reshape(shape)
+                pairs.append((d, _material_bwd_neighbour(d, t, periodic, array_module=array_module)))
+        (b, bm), (c, cm) = pairs
+        weights = (b*c, bm*c, b*cm, bm*cm)
+    return _edge_mean_four((arr, a1, a2, a12), weights)
+
+
+@partial(jax.jit, static_argnums=(1, 2, 3))
+def _weighted_edge_mean_component(arr, t1, t2, periodic, cell_sizes):
+    # Fuse the weighted products and neighbour selection during eager
+    # realization too; do not retain full-grid weighted temporary arrays.
+    return _edge_mean_component(arr, t1, t2, periodic, cell_sizes)
+
+
+def edge_mean_components(arr, periodic=(False, False, False), *, cell_sizes=None, array_module=jnp):
     """``(mean_x, mean_y, mean_z)``: a cell array averaged over each E edge's
     four incident cells -- the arithmetic of :func:`edge_averaged_materials`,
     which calls it for ``eps_r`` and ``sigma``.
@@ -677,19 +718,20 @@ def edge_mean_components(arr, periodic=(False, False, False)):
     parallel along the edge exactly as a conductivity is, so the edge carries
     ``delta_eps`` times the fraction of its four cells that hold the pole. The
     caller passes the pole's cell mask as a float array and gets that fraction
-    back, per component (0, 0.25, 0.5, 0.75 or 1, each exact).
+    back, per component. Equal cells give exact quarters; graded cells use
+    the same primal-area fractions as epsilon and sigma. ``cell_sizes`` is
+    a tuple of one-dimensional widths, with None for constant axes.
     """
     def mean4(t1, t2):
-        a1 = _material_bwd_neighbour(arr, t1, periodic)
-        a2 = _material_bwd_neighbour(arr, t2, periodic)
-        a12 = _material_bwd_neighbour(a1, t2, periodic)
-        # Pairwise, so the homogeneous sum is exact (F4/#1210).
-        return ((arr + a1) + (a2 + a12)) * 0.25
+        if (array_module is jnp and cell_sizes is not None
+                and any(cell_sizes[t] is not None for t in (t1, t2))):
+            return _weighted_edge_mean_component(arr, t1, t2, tuple(periodic), cell_sizes)
+        return _edge_mean_component(arr, t1, t2, periodic, cell_sizes, array_module)
 
     return tuple(mean4(*[t for t in range(3) if t != c]) for c in range(3))
 
 
-def component_e_materials(materials, periodic=(False, False, False)):
+def component_e_materials(materials, periodic=(False, False, False), *, cell_sizes=None):
     """Per-component ``(eps_r, sigma)`` of a :class:`MaterialArrays` (#1210).
 
     The volume part is edge-averaged; the lumped stamps
@@ -708,7 +750,8 @@ def component_e_materials(materials, periodic=(False, False, False)):
     sig_l = lumped_total(sig_parts)
     if sig_l is not None:
         sig_v = sig_v - sig_l
-    eps_c, sig_c = edge_averaged_materials(eps_v, sig_v, periodic)
+    eps_c, sig_c = edge_averaged_materials(
+        eps_v, sig_v, periodic, **({} if cell_sizes is None else dict(cell_sizes=cell_sizes)))
     # Each stamp back on its OWN component (#1236).
     eps_c = add_lumped_eps(eps_c, getattr(materials, "eps_r_lumped", None))
     sig_c = tuple(s if part is None else s + part
@@ -720,7 +763,7 @@ _E_COMPONENT_AXIS = {"ex": 0, "ey": 1, "ez": 2}
 
 
 def cell_component_e_materials(materials, cell, component,
-                               periodic=(False, False, False)):
+                               periodic=(False, False, False), *, cell_sizes=None):
     """``(eps_r, sigma)`` the E update uses for ONE component at ONE cell.
 
     :func:`component_e_materials` restricted to a single node, by indexing the
@@ -782,7 +825,14 @@ def cell_component_e_materials(materials, cell, component,
         v = [arr[i] for i in idxs]
         if any(part is not None for part in parts):
             v = [a - lumped_at(parts, i) for a, i in zip(v, idxs)]
-        m = ((v[0] + v[1]) + (v[2] + v[3])) * 0.25
+        weights = None
+        if cell_sizes is not None and any(cell_sizes[t] is not None for t in (t1, t2)):
+            weights = [jnp.asarray(1.0, dtype=arr.dtype) for _ in idxs]
+            for t in (t1, t2):
+                if cell_sizes[t] is not None:
+                    d = jnp.asarray(cell_sizes[t], dtype=arr.dtype)
+                    weights = [w * d[i[t]] for w, i in zip(weights, idxs)]
+        m = _edge_mean_four(v, weights)
         own = parts[axis]
         return m if own is None else m + own[cell]
 

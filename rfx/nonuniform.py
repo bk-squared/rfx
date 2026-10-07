@@ -1996,7 +1996,7 @@ def make_current_source(grid: NonUniformGrid, position_ijk, component,
     materials_traced = (
         is_tracer(materials.eps_r) or is_tracer(materials.sigma)
     )
-    cb = e_update_coefficient_at(materials, (i, j, k), component, grid.dt, host=True)
+    cb = e_update_coefficient_at(materials, (i, j, k), component, grid.dt, host=True, grid=grid)
     dV, grid_traced = current_source_volume(grid, (i, j, k), component)
     any_traced = materials_traced or grid_traced
 
@@ -2601,9 +2601,9 @@ def _build_nu_scan(
     # in step_fn (after apply_pec_mask, before sources/DFT sampling).
     use_sheet_impedance = sheet_impedance is not None
     if use_sheet_impedance:
-        from rfx.materials.thin_conductor import sheet_update_coeffs
+        from rfx.model.sheet_coefficients import sheet_update_coeffs
         sheet_coeffs = sheet_update_coeffs(
-            sheet_impedance.sigma_sheet, materials, dt)
+            sheet_impedance.sigma_sheet, materials, grid)
 
     if sources:
         src_waveforms = jnp.stack([jnp.array(s[4]) for s in sources], axis=-1)
@@ -2933,7 +2933,7 @@ def _build_nu_scan(
         # H^{n+1/2} the E update consumed.
         if use_sheet_impedance:
             from rfx.core.yee import curl_h_nu as _curl_h_nu
-            from rfx.materials.thin_conductor import (
+            from rfx.model.sheet_coefficients import (
                 apply_sheet_impedance_e as _apply_sheet_e)
             _scd = jnp.promote_types(st.ex.dtype, jnp.float32)
             _curls = _curl_h_nu(

@@ -357,8 +357,8 @@ def _source_cell_cb(grid: Grid, idx, materials, component,
     ``materials.eps_r``/``sigma`` may be JAX tracers (forward/AD path) —
     The model accessor reads the finished edge and retains JAX derivatives.
     """
-    from rfx.model.materials import e_update_coefficient_at
-    return e_update_coefficient_at(materials, idx, component, grid.dt, periodic)
+    from rfx.model.materials import e_update_coefficient_at, electric_grid_kwargs
+    return e_update_coefficient_at(materials, idx, component, grid.dt, periodic, **electric_grid_kwargs(grid))
 
 
 def _uniform_cell_volume(grid: Grid) -> float:
@@ -885,123 +885,7 @@ def _held_edge_masks(held_edges, write_bounds):
     return masks
 
 
-def _design_box_edge_coeffs(bounds, eps_r_box, sigma_box, materials, dt, shape,
-                            held_edges=()):
-    """Per-component ``(Ca, Cb)`` over the design box's write window (#1210).
-
-    The box works in EDGE (per-E-component) values, and what it is handed
-    decides how each value is made:
-
-    * a CELL quantity -- the design permittivity always, and a single design
-      conductivity array -- is written into a COPY of the background over the
-      computation window and turned into edge values by the same four-cell
-      average as the rest of the grid (``component_e_materials``). The
-      window's minus-side context supplies the neighbour cells outside the box
-      on its faces, and its plus-side layer is written because a cell's value
-      reaches the edges on its plus faces. The box lane then equals what
-      ``update_e`` would do with the design values in ``materials``.
-    * a 3-tuple ``(sigma_x, sigma_y, sigma_z)`` is ALREADY per edge (#1216,
-      the sheet lane: one conductivity per Yee edge, component ``c`` at the
-      same box index). It is taken as-is and NOT averaged again: it replaces
-      the edge conductivity at the box indices, and every other edge in the
-      window -- the plus-side layer included -- keeps the background edge
-      value. A box-shaped edge array cannot address the plus-face edge layer
-      a cell array reaches, which is why a single array ``s`` and the tuple of
-      its own averages agree on the box's edges and not on that layer.
-
-    ``sigma_box=None`` keeps the window's own conductivity.
-
-    ``held_edges`` (``(axis, i, j, k)`` tuples, all inside the write window)
-    are a port's edges held out of the design (:class:`DesignBoxSpec`). Each
-    one gets the coefficient ``materials`` itself gives it — the same
-    arithmetic over the same window with no design value in it, which is the
-    grid-wide ``update_e`` coefficient bit for bit, the port's own load
-    included — so the drive built from ``materials`` before the time loop
-    meets the update it was built for, and the design values' derivative
-    through that edge is exactly zero.
-
-    At a box cell carrying a lumped load -- a held port's, or a passive
-    termination's (an MSL port with ``excite=False``) -- a CELL design value
-    is that cell's volume material: the load is added back on top of it, so
-    the average that removes every stamp before it spreads the cell over its
-    edges finds the design value there and not the design value less the
-    load (which was a negative conductance, and NaN, before). That is what a
-    whole-grid ``eps_override`` / ``sigma_override`` does, since the ports
-    stamp their loads on top of the override. A per-edge conductivity has no
-    such reading and is refused over an unheld load
-    (:func:`_resolve_design_box`).
-    """
-    held = tuple(held_edges or ())
-    write_bounds, win, inner, box_local = _design_box_window(bounds, shape)
-
-    def _cell_value(box_value, record):
-        # A lumped load lives on its own edge; keep it off the cell volume.
-        total = lumped_total(record)
-        if total is None:
-            return box_value
-        return box_value + jnp.asarray(total)[win][box_local]
-
-    eps_box = jnp.asarray(eps_r_box)
-    eps = jnp.asarray(materials.eps_r)[win]
-    # Promote the BACKGROUND to the design dtype, never the other way: a
-    # traced float64 design permittivity cast down to the float32 background
-    # would silently lose the precision the x64 AD lanes run for (#646).
-    eps = eps.astype(jnp.promote_types(eps.dtype, eps_box.dtype))
-    eps = eps.at[box_local].set(_cell_value(
-        eps_box, getattr(materials, "eps_r_lumped", None)))
-
-    per_edge = isinstance(sigma_box, (tuple, list))
-    sig = jnp.asarray(materials.sigma)[win]
-    if not per_edge and sigma_box is not None:
-        sig_box = jnp.asarray(sigma_box)
-        sig = sig.astype(jnp.promote_types(sig.dtype, sig_box.dtype))
-        sig = sig.at[box_local].set(_cell_value(
-            sig_box, getattr(materials, "sigma_lumped", None)))
-
-    # A lumped stamp in the window's context layer is edge-owned, not a cell
-    # volume, so it is removed before the average and added back at its cell,
-    # on its own component — the same rule ``component_e_materials`` applies
-    # grid-wide (#1210, #1236). The design box itself is fenced off port and
-    # source cells, except a port's own edges on explicit opt-in (held).
-    win_mats = MaterialArrays(
-        eps_r=eps, sigma=sig, mu_r=None,
-        eps_r_lumped=map_lumped(
-            getattr(materials, "eps_r_lumped", None),
-            lambda a: jnp.asarray(a)[win].astype(eps.dtype)),
-        sigma_lumped=map_lumped(
-            getattr(materials, "sigma_lumped", None),
-            lambda a: jnp.asarray(a)[win].astype(sig.dtype)))
-    eps_c, sig_c = component_e_materials(win_mats, (False, False, False))
-
-    if per_edge:
-        def _put(edge_bg, edge_box):
-            edge_box = jnp.asarray(edge_box)
-            edge_bg = edge_bg.astype(
-                jnp.promote_types(edge_bg.dtype, edge_box.dtype))
-            return edge_bg.at[box_local].set(edge_box)
-        sig_c = tuple(_put(bg, v) for bg, v in zip(sig_c, sigma_box))
-
-    pairs = [e_update_coeffs(e, s_, dt) for e, s_ in zip(eps_c, sig_c)]
-    ca = tuple(p[0][inner] for p in pairs)
-    cb = tuple(p[1][inner] for p in pairs)
-    if held:
-        bg_mats = MaterialArrays(
-            eps_r=jnp.asarray(materials.eps_r)[win],
-            sigma=jnp.asarray(materials.sigma)[win], mu_r=None,
-            eps_r_lumped=map_lumped(
-                getattr(materials, "eps_r_lumped", None),
-                lambda a: jnp.asarray(a)[win]),
-            sigma_lumped=map_lumped(
-                getattr(materials, "sigma_lumped", None),
-                lambda a: jnp.asarray(a)[win]))
-        bg = [e_update_coeffs(e, s_, dt) for e, s_ in
-              zip(*component_e_materials(bg_mats, (False, False, False)))]
-        masks = _held_edge_masks(held, write_bounds)
-        ca = tuple(a if m is None else jnp.where(m, b[0][inner], a)
-                   for a, b, m in zip(ca, bg, masks))
-        cb = tuple(c if m is None else jnp.where(m, b[1][inner], c)
-                   for c, b, m in zip(cb, bg, masks))
-    return write_bounds, ca, cb
+from rfx.model.materials import _design_box_edge_coeffs
 
 
 def _resolve_design_box(
@@ -1291,7 +1175,7 @@ def _resolve_design_box(
         # over the window (#1210). See _design_box_edge_coeffs.
         write_bounds, ca, cb = _design_box_edge_coeffs(
             bounds, eps_r, tuple(jnp.asarray(s) for s in sigma), materials,
-            dt, tuple(grid.shape), held_edges=held)
+            dt, tuple(grid.shape), held_edges=held, grid=grid)
         return _DesignBoxCoeffs(bounds=write_bounds, ca=ca, cb=cb)
     sigma = jnp.asarray(sigma)
     if tuple(jnp.shape(sigma)) != box_shape:
@@ -1306,7 +1190,7 @@ def _resolve_design_box(
     # back as a design (volume) value would count that load twice.
     write_bounds, ca, cb = _design_box_edge_coeffs(
         bounds, eps_r, None if spec.sigma is None else sigma, materials, dt,
-        tuple(grid.shape), held_edges=held)
+        tuple(grid.shape), held_edges=held, grid=grid)
     return _DesignBoxCoeffs(bounds=write_bounds, ca=ca, cb=cb)
 
 

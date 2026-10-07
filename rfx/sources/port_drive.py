@@ -3,7 +3,7 @@
 import jax
 import jax.numpy as jnp
 
-from rfx.model.materials import e_update_coefficient_at
+from rfx.model.materials import e_update_coefficient_at, electric_grid_kwargs
 
 
 def stamped_drive(port, cell):
@@ -40,7 +40,7 @@ def port_drive_waveform(grid, cell, component, excitation, n_steps, materials,
     material and mesh derivatives. ``n_steps=None, time=t`` selects the
     eager single-step application instead of a precomputed waveform.
     """
-    cb = e_update_coefficient_at(materials, cell, component, grid.dt)
+    cb = e_update_coefficient_at(materials, cell, component, grid.dt, **electric_grid_kwargs(grid))
     if n_steps is None:
         samples = excitation(time)
     else:

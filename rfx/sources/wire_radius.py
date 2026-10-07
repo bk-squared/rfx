@@ -137,7 +137,7 @@ def stamp_wire_radius(grid, materials, component, radius, cells):
     # Read the background before any of this port's E quadrature stamps.
     own_eps = lumped_components(materials.eps_r_lumped)[axis]
     eps = [e_update_material_at(materials, c, component,
-            tuple(a in getattr(grid, "periodic_axes", "") for a in "xyz"))[0]
+            tuple(a in getattr(grid, "periodic_axes", "") for a in "xyz"), grid=grid)[0]
            - (0 if own_eps is None else own_eps[c]) for c in cells]
     for cell, eps_c in zip(cells, eps):
         local = []

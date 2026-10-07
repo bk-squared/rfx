@@ -3018,7 +3018,7 @@ class _ExecuteMixin:
         sources: list[SourceSpec] = []
         material_drive: list = []
         from rfx.model import source_coefficients as _sc
-        drive_model = _sc.dispersive_drive_model(materials, debye_spec, lorentz_spec)
+        drive_model = _sc.dispersive_drive_model(materials, debye_spec, lorentz_spec, grid)
         for pe in self._ports:
             if pe.impedance > 0.0:
                 raise NotImplementedError(

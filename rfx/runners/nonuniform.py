@@ -82,6 +82,10 @@ def assemble_interface_eps_nu(sim, grid, materials):
     eps = np.asarray(cell.eps_r, dtype=np.float64)
     volume_eps = np.asarray(permittivity_without_lumped(materials), dtype=np.float64)
     live = np.ones(grid.shape, dtype=np.float64) if pec is None else (~np.asarray(pec)).astype(np.float64)
+    if any(not grid.is_constant(a) for a in range(3)):
+        from rfx.model.materials import geometric_interface_components
+        return tuple(jnp.asarray(e, dtype=materials.eps_r.dtype) for e in
+                     geometric_interface_components(eps, live, volume_eps, widths))
     components = []
     for c in range(3):
         num, den = eps * live, live
