@@ -61,6 +61,18 @@ def guide_faces(sim, grid):
                      for side in ("lo", "hi"))
 
 
+def _guide_declaration(sim, faces):
+    declaration = {}
+    for axis in "xyz":
+        if any(face.startswith(axis + "_") for face in faces):
+            declaration[axis] = "pec"
+        else:
+            value = getattr(sim._boundary_spec, axis).to_dict()
+            declaration[axis] = (value["lo"] if len(value) == 2 and value["lo"] == value["hi"]
+                                 else value)
+    return declaration
+
+
 def _record_defaults(sim, grid):
     if sim._waveguide_ports:
         faces = guide_faces(sim, grid)
@@ -73,7 +85,7 @@ def _record_defaults(sim, grid):
             if not isinstance(state, list) or len(state) != 2 or state[1] != id(sim):
                 state = [False, id(sim)]
                 sim._boundary_default_warned = state
-        grid._waveguide_admission = (incompatible, _guide_axes(sim), explicit, state)
+        grid._waveguide_admission = (incompatible, _guide_declaration(sim, faces), explicit, state)
     if sim._waveguide_ports and not explicit:
         # The uniform legacy grid already has these electric backing walls.
         # Do not change pads, allocation axes, or the NU operator (PR3b).
@@ -142,7 +154,7 @@ def admit_waveguide(sim, *, lane="dispatch"):
     incompatible = sorted(face.name for face in declared
                           if face.name in faces and face.kind != Kind.PEC)
     if incompatible and boundary_was_explicit(sim):
-        _refuse_guide(incompatible, _guide_axes(sim), lane)
+        _refuse_guide(incompatible, _guide_declaration(sim, faces), lane)
     if incompatible and (any(getattr(grid, f"pad_{face}") for face in incompatible)
                          or any(sim._periodic_flags()["xyz".index(face[0])] for face in incompatible)):
         raise ValueError(
@@ -155,8 +167,7 @@ def admit_waveguide(sim, *, lane="dispatch"):
         state[0] = True
 
 
-def _refuse_guide(faces, axes, lane):
-    declaration = {axis: "cpml" if axis in axes else "pec" for axis in "xyz"}
+def _refuse_guide(faces, declaration, lane):
     raise ValueError(
         f"{lane}: full-aperture waveguide requires PEC on {', '.join(faces)}; "
         f"declare boundary={declaration!r} (absorber on the port axis).")
@@ -171,9 +182,9 @@ def admit_grid_waveguide(grid, ports):
     record = getattr(grid, "_waveguide_admission", None)
     if record is None:
         return
-    faces, axes, explicit, state = record
+    faces, declaration, explicit, state = record
     if faces and explicit:
-        _refuse_guide(faces, axes, "low-level dispatch")
+        _refuse_guide(faces, declaration, "low-level dispatch")
     elif faces and any(getattr(grid, f"pad_{face}") or face[0] in grid.periodic_axes for face in faces):
         raise ValueError("Full-aperture waveguide defaults would change realized transverse "
                          "pads or an active periodic feature; this requires PR3b.")

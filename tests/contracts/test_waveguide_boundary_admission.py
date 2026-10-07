@@ -57,6 +57,23 @@ def test_explicit_absorber_is_refused_at_dispatch(skip, method, boundary):
 
 
 @pytest.mark.parametrize("skip", [False, True])
+def test_refusal_declaration_preserves_port_axis_depths(skip):
+    import ast
+    from rfx.boundaries.spec import Boundary, BoundarySpec
+
+    sim = guide(BoundarySpec(x=Boundary("cpml", "cpml", 2, 3), y="cpml", z="cpml"))
+    with pytest.raises(ValueError) as caught:
+        sim.run(n_steps=1, skip_preflight=skip)
+    declaration = ast.literal_eval(str(caught.value).split("declare boundary=", 1)[1].split(" (", 1)[0])
+    assert declaration == {"x": {"lo": "cpml", "hi": "cpml", "lo_thickness": 2, "hi_thickness": 3},
+                           "y": "pec", "z": "pec"}
+    for model in (sim, guide(declaration)):
+        grid = model._build_grid()
+        assert grid.shape == (46, 21, 11)
+        assert tuple(face.realized for face in grid.boundary_depths) == (2, 3, 0, 0, 0, 0)
+
+
+@pytest.mark.parametrize("skip", [False, True])
 def test_default_records_pec_and_warns_once_at_caller(skip, monkeypatch):
     sim = guide()
     grid = sim._build_grid()
