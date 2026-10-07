@@ -194,13 +194,15 @@ def realize(model: BoundaryModel, grid) -> Realization:
         if axis.pairing:
             periods.append((axis.name, length))
         for side in ("lo", "hi"):
-            face = records[f"{axis.name}_{side}"]
+            name = f"{axis.name}_{side}"
+            # NU stores depths but no kinds; its declaration still owns kinds.
+            face = records[name] if hasattr(grid, "boundary_depths") else model.face(name)
             plane = 0.0 if side == "lo" else length
             if axis.invariant:
                 planes.append(FacePlane(face.name, face.kind, None))
             elif face.kind == Kind.ABSORBER:
                 cells = grid.cells(ax)
-                pad = face.realized
+                pad = records[name].realized
                 # Last stored width supplies a bounding node, not a pad cell.
                 widths = cells[:pad] if side == "lo" else cells[len(cells) - 1 - pad:len(cells) - 1]
                 terminal = plane + (-1 if side == "lo" else 1) * sum(widths)

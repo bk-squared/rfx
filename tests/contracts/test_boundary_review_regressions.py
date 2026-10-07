@@ -60,7 +60,8 @@ def test_declared_invariant_walls_keep_the_reported_legacy_wrap(skip, monkeypatc
 @pytest.mark.parametrize("skip", [False, True])
 def test_localized_updates_are_not_invariant(skip):
     sim = plane()
-    sim.add_lumped_rlc((.01, .005, .005), component="ez", R=50.)
+    # Two series elements use a localized ADE update, not conductivity folding.
+    sim.add_lumped_rlc((.01, .005, .005), component="ez", R=50., C=1e-12)
     with pytest.raises(ValueError, match=r"y_lo, y_hi: _lumped_rlc"):
         sim.run(n_steps=1, skip_preflight=skip)
 
@@ -88,7 +89,7 @@ def test_propagation_axis_wall_keeps_main_admission(skip, monkeypatch):
 @pytest.mark.parametrize("skip", [False, True])
 @pytest.mark.parametrize("slot", [False, True])
 def test_only_the_duplicated_end_edge_is_exempt(skip, slot, monkeypatch):
-    sim = plane()
+    sim = plane(snap="declared")
     ranges = [(-1., .004), (.006, 1.)] if slot else [(-1., 1.)]
     for lo, hi in ranges:
         sim.add_thin_conductor(Box((.014, lo, -1.), (.014, hi, 1.)), sigma_bulk=5.8e7)
@@ -156,6 +157,16 @@ def test_realized_kind_agrees_with_default_grid_record():
     actual = realize(sim.boundary_model(), sim._build_grid())
     assert tuple(face.kind.value for face in actual.faces) == (
         "ABSORBER", "ABSORBER", "PEC", "PEC", "PEC", "PEC")
+
+
+def test_nonuniform_without_stored_kinds_keeps_declared_wall_kinds():
+    from rfx.boundaries.model import realize
+    sim = Simulation(freq_max=10e9, domain=(.04, .02, .01), dx=.001,
+                     cpml_layers=4, dz_profile=np.full(10, .001),
+                     boundary={"x": "cpml", "y": "pmc", "z": "pec"})
+    actual = realize(sim.boundary_model(), sim._build_nonuniform_grid())
+    assert tuple(face.kind.value for face in actual.faces) == (
+        "ABSORBER", "ABSORBER", "PMC", "PMC", "PEC", "PEC")
 
 
 @pytest.mark.parametrize("skip", [False, True])
