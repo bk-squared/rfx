@@ -424,7 +424,7 @@ _FREQS = np.linspace(4.5e9, 8.0e9, 4)
 _F0 = float(_FREQS.mean())
 
 
-def _two_port(cpml_layers, *, boundary="cpml", freqs=_FREQS, dx=0.004):
+def _two_port(cpml_layers, *, boundary=BoundarySpec(x="cpml", y="pec", z="pec"), freqs=_FREQS, dx=0.004):
     sim = Simulation(
         freq_max=float(freqs[-1]),
         domain=(0.12, 0.04, 0.02),
@@ -760,7 +760,7 @@ def test_advisory_uses_the_lowest_cutoff_mode_of_a_multimode_port():
     dx = 0.004
     sim = Simulation(
         freq_max=float(_FREQS[-1]), domain=(0.12, 0.04, 0.02), dx=dx,
-        boundary="cpml", cpml_layers=10,
+        boundary={"x": "cpml", "y": "pec", "z": "pec"}, cpml_layers=10,
     )
     for pos, direction in ((0.02, "+x"), (0.10, "-x")):
         sim.add_waveguide_port(
@@ -865,7 +865,7 @@ def test_advisory_dedupe_key_keeps_cutoffs_apart_on_one_axis():
     """
     sim = Simulation(
         freq_max=float(_FREQS[-1]), domain=(0.12, 0.08, 0.02), dx=0.004,
-        boundary="cpml", cpml_layers=6,
+        boundary={"x": "cpml", "y": "pec", "z": "pec"}, cpml_layers=6,
     )
     for pos, direction, mode in ((0.02, "+x", (1, 0)), (0.10, "-x", (2, 0))):
         sim.add_waveguide_port(
