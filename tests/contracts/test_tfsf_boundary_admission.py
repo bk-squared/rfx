@@ -8,7 +8,13 @@ from rfx import Box, Simulation
 
 
 @pytest.fixture(autouse=True)
-def release_boards():
+def release_boards(monkeypatch):
+    import jax
+
+    def no_steps(*args, **kwargs):
+        raise AssertionError("admission judge reached a field scan")
+
+    monkeypatch.setattr(jax.lax, "scan", no_steps)
     yield
     gc.collect()
 
