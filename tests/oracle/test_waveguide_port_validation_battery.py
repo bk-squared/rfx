@@ -93,7 +93,7 @@ def _build_sim(
     sim_kwargs = dict(
         freq_max=max(float(freqs[-1]), f0),
         domain=DOMAIN,
-        boundary="cpml",
+        boundary={"x": "cpml", "y": "pec", "z": "pec"},
     )
     if cpml_layers is not None:
         sim_kwargs["cpml_layers"] = cpml_layers

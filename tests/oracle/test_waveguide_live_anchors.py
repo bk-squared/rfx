@@ -45,7 +45,7 @@ def _live_build_sim(freqs_hz, *, pec_short_x=None):
         freq_max=max(float(freqs[-1]), f0),
         domain=DOMAIN,
         dx=LIVE_DX,
-        boundary="cpml",
+        boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=10,
     )
     if pec_short_x is not None:
