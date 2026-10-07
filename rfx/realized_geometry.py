@@ -196,8 +196,11 @@ def _build_record(sim, ctx, *, compact=False):
     declarations.extend((f"thin_conductor[{i}]", f"thin_conductor[{i}]", e.shape)
                         for i, e in enumerate(sim._thin_conductors))
     entities = []
+    f0_specs = _f0_specs_by_conductor(sim, assembled, refused_tc)
     for index, (label, name, shape) in enumerate(declarations):
         mask_error = None
+        node_based = False
+        f0_spec = None
         e = interior.get(label, conductors.get(label))
         bounds = _shape_bounds(shape)
         sheet = None if e is None else e.sheet
@@ -214,6 +217,9 @@ def _build_record(sim, ctx, *, compact=False):
             from rfx.geometry.rasterize_grid import interior_lattice_mask
             mask = interior_lattice_mask(
                 assembled.geometry_masks[id(sim._thin_conductors[index - len(sim._geometry)])], ctx.grid)
+            # An f0 sheet's mask is its NODE footprint (the DC fold's is cells).
+            node_based = sim._thin_conductors[index - len(sim._geometry)].surface_impedance_f0 is not None
+            f0_spec = f0_specs.get(index - len(sim._geometry)) if node_based else None
         else:
             # Retain the refused declaration's diagnostic occupancy once.
             # It is explicitly NOT a solved conductor and contributes no edges.
@@ -227,10 +233,16 @@ def _build_record(sim, ctx, *, compact=False):
             occ = np.where(mask)
             for a in range(3):
                 i0, i1 = int(occ[a].min()), int(occ[a].max())
-                cell_range = None if kind in ("sheet", "wire") else (i0, i1 + 1)
+                cell_range = None if kind in ("sheet", "wire") or node_based else (i0, i1 + 1)
                 rlo = float(nodes[a][i0])
                 rhi = float(nodes[a][i1 if cell_range is None else i1 + 1])
                 comparison = free_ends = None
+                if f0_spec is not None and a != int(f0_spec.normal_axis):
+                    i0, i1, rlo, rhi = _f0_solved_bounds(
+                        mask, a, nodes[a], sizes[a], f0_spec.end_rows[a],
+                        int(getattr(ctx.grid, f"pad_{'xyz'[a]}_lo")),
+                        int(getattr(ctx.grid, f"pad_{'xyz'[a]}_hi")),
+                        'xyz'[a] in getattr(ctx.grid, 'periodic_axes', ''))
                 if sheet is not None and a != int(sheet.normal_axis) and bounds is not None:
                     if hasattr(sheet, 'solved_spans'):
                         span = sheet.solved_spans[a]
@@ -297,6 +309,61 @@ def _build_record(sim, ctx, *, compact=False):
                             tuple(tuple(row.items()) for row in pad_findings), ctx.lane,
                             snap=sim._snap)
     return record if compact else _conductor_view(record, assembled)
+
+
+def _f0_specs_by_conductor(sim, assembled, refused_tc):
+    """``thin_conductor`` index -> its ``SheetImpedanceSpec`` (assembly order)."""
+    f0 = [i for i, tc in enumerate(sim._thin_conductors)
+          if i not in refused_tc and getattr(tc, "surface_impedance_f0", None) is not None]
+    specs = tuple(getattr(assembled, "sheet_impedance", ()) or ())
+    return dict(zip(f0, specs)) if len(f0) == len(specs) else {}
+
+
+def _f0_solved_bounds(mask, axis, nodes, sizes, end_rows, pad_lo, pad_hi, periodic):
+    """In-plane node range and ends of an f0 sheet as the sheet operator solves them.
+
+    A tangential row at node ``i`` loads its dual cell, half of the cell on
+    each side, times the row's weight on the sheet conductance: 1, or
+    ``END_ROW_WEIGHT`` on a row marked as lying on a drawn face. The solved
+    end is therefore ``weight * dual - inside half`` beyond the end node
+    (zero at weight 0.5 between equal cells). On a non-periodic axis an end
+    on the domain face has no outside cell and stays on its node. A periodic
+    axis has no wall: the occupied rows are read as one run around the
+    period (a strip ending on the seam ends at node N, one that starts there
+    starts at node 0), and a sheet spanning the whole period has no end.
+    """
+    from rfx.core.jax_utils import is_tracer
+    from rfx.materials.thin_conductor import END_ROW_WEIGHT
+    n = len(sizes)
+    rows = np.flatnonzero(mask.any(axis=tuple(b for b in range(mask.ndim) if b != axis)))
+    marked = (np.zeros(n, dtype=bool) if end_rows is None or is_tracer(end_rows)
+              else np.asarray(end_rows, dtype=bool))
+    i0, i1 = int(rows[0]), int(rows[-1])
+    free_lo, free_hi = i0 > pad_lo, i1 < n - pad_hi - 1
+    if periodic:
+        occupied = np.zeros(n, dtype=bool)
+        occupied[rows % n] = True
+        if occupied.all():
+            return 0, n, float(nodes[0]), float(nodes[n])
+        # Where the one occupied run around the period begins: its rising edge,
+        # or node 0 when the run starts there without wrapping.
+        rising = np.flatnonzero(np.diff(occupied.astype(np.int8)) == 1) + 1
+        if rising.size + int(occupied[0] and not occupied[-1]) == 1:
+            i0 = int(rising[0]) if rising.size else 0
+            i1 = i0 + int(occupied.sum()) - 1
+        free_lo = free_hi = True
+
+    def at(i):
+        return float(nodes[i % n]) + (i // n) * float(nodes[n] - nodes[0])
+
+    lo, hi = at(i0), at(i1)
+    if free_lo:
+        w = END_ROW_WEIGHT if marked[i0 % n] else 1.0
+        lo -= w * 0.5 * float(sizes[(i0 - 1) % n] + sizes[i0 % n]) - 0.5 * float(sizes[i0 % n])
+    if free_hi:
+        w = END_ROW_WEIGHT if marked[i1 % n] else 1.0
+        hi += w * 0.5 * float(sizes[(i1 - 1) % n] + sizes[i1 % n]) - 0.5 * float(sizes[(i1 - 1) % n])
+    return i0, i1, lo, hi
 
 
 def _pinned_entities(sim, ctx, assembled, nodes, sizes, *, compact=False):

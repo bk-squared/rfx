@@ -27,7 +27,7 @@ from rfx.geometry.rasterize_grid import (
     cell_sizes_from_nonuniform_grid, cell_sizes_from_uniform_grid,
     centres_from_nonuniform_grid, centres_from_uniform_grid,
     classify_pec_entry, coords_from_nonuniform_grid, extend_cpml_pad_materials,
-    refuse_vaporized_sheets, sheet_footprint_traced, sheet_spec_from_shape,
+    refuse_vaporized_sheets, sheet_end_rows, sheet_footprint_traced, sheet_spec_from_shape,
 )
 from rfx.geometry.smoothing import continued_conductor_shape
 from rfx.materials.debye import DebyePole
@@ -590,6 +590,7 @@ def _fold_nonuniform_thin_conductors(
             bshape = [1, 1, 1]
             bshape[n_axis] = int(d_norm.shape[0])
             _plane = None
+            _end_rows = (None, None, None)
             if _f0 is not None:
                 # #931 G4 by construction: the f0 sheet takes the SAME
                 # footprint and plane a PEC sheet on this shape gets
@@ -599,6 +600,7 @@ def _fold_nonuniform_thin_conductors(
                 # the shape's own traced node sampler, as before #931.
                 if any(is_tracer(c) for c in (coords.x, coords.y, coords.z)):
                     m = sheet_footprint_traced(tc.shape, coords, n_axis)
+                    _end_rows = sheet_end_rows(tc.shape, coords, n_axis)
                 else:
                     _spec = sheet_spec_from_shape(
                         tc.shape, coords, cell_sizes, normal_axis=n_axis,
@@ -606,6 +608,7 @@ def _fold_nonuniform_thin_conductors(
                         refuse_thick=True)
                     m = _spec.footprint
                     _plane = _spec.plane
+                    _end_rows = _spec.end_rows
                 # #674 guard: the realization normalizes ONE E node along the
                 # sheet normal, so the rasterized sheet must occupy exactly
                 # one layer there — and must not have vaporized.
@@ -639,7 +642,8 @@ def _fold_nonuniform_thin_conductors(
                         jnp.ones_like(materials.sigma), 0.0)
                     sheet_specs.append(SheetImpedanceSpec(
                         mask=m, normal_axis=n_axis, g_sheet=g_sheet,
-                        sigma_sheet=sigma_sheet, plane=_plane))
+                        sigma_sheet=sigma_sheet, plane=_plane,
+                        end_rows=_end_rows))
                 continue
             m = tc.shape.mask_on_coords(coords.x, coords.y, coords.z)
             if geometry_masks is not None:

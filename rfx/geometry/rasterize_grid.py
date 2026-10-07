@@ -573,14 +573,66 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
             f"grid{(' (' + lane + ' lane)') if lane else ''} at plane "
             f"{'xyz'[a]}={plane}; it would silently vanish (#369 class). "
             "Widen the footprint to reach a node line or refine the mesh.")
+    end_rows = sheet_end_rows(shape, coords, a, grid=grid)
     unwrapped = None
     if shape_3 != tuple(coords.shape):
         from rfx.boundaries.pec import _fold_sheet_nodes
         unwrapped = jnp.asarray(fp)
         fp = _fold_sheet_nodes(fp, coords.shape, xp=np)
     return SheetSpec(normal_axis=a, plane=plane, footprint=jnp.asarray(fp),
-                     name=name, unwrapped_footprint=unwrapped)
+                     name=name, unwrapped_footprint=unwrapped, end_rows=end_rows)
 
+
+def sheet_end_rows(shape, coords: GridCoords, normal_axis: int, *, grid=None):
+    """Node rows that lie ON a drawn face of a sheet, per in-plane axis.
+
+    The one marking of a finite-R_s sheet's END ROWS, for every shape and for
+    concrete and traced node lines alike. Entry ``t`` is a boolean vector over
+    the nodes of axis ``t``: True where a node coincides with the low or the
+    high DRAWN face of the shape on that axis -- the faces of its axis-aligned
+    bounding box (``sheet_bounds``) -- within the node tie band. ``None`` on
+    the normal axis, for a shape that declares no bounds, and where the two
+    faces coincide.
+
+    A face drawn BETWEEN two nodes matches no node. On a non-periodic axis
+    the first and the last node of the lattice line are a wall (or the end of
+    the absorber continuation), never an end row; on a periodic axis the seam
+    node is an ordinary node and a face on either image of it marks it.
+    Whether a marked row really is a free edge of the footprint is decided
+    from the footprint itself by the sheet operator
+    (``rfx.materials.thin_conductor.sheet_end_row_masks``), so a curved or
+    rotated outline, whose bounding-box face touches it in a point, gets no
+    end row from here.
+    """
+    from rfx.materials.thin_conductor import sheet_bounds
+    lo, hi = sheet_bounds(shape)
+    out = [None, None, None]
+    if lo is None or hi is None:
+        return tuple(out)
+    for t, nodes in enumerate((coords.x, coords.y, coords.z)):
+        if t == int(normal_axis) or float(hi[t]) == float(lo[t]):
+            continue
+        traced = is_tracer(nodes)
+        xp = jnp if traced else np
+        c = jnp.asarray(nodes) if traced else np.asarray(nodes, dtype=np.float64)
+        if c.size < 2:
+            continue
+        band = _node_tie_band(c, xp)
+        period = (float(grid.domain[t])
+                  if 'xyz'[t] in getattr(grid, 'periodic_axes', '') else None)
+        row = None
+        for face in (float(lo[t]), float(hi[t])):
+            gap = xp.abs(c - face)
+            if period:
+                gap = xp.minimum(gap % period, period - gap % period)
+            hit = gap <= band(max(abs(face), period or 0.0))
+            row = hit if row is None else row | hit
+        if not period:
+            keep = np.ones((c.size,), dtype=bool)
+            keep[[0, -1]] = False
+            row = row & keep
+        out[t] = row
+    return tuple(out)
 
 
 def refuse_vaporized_sheets(sheets, *, lane: str = "",
@@ -657,8 +709,29 @@ def sheet_footprint_traced(shape, coords: GridCoords, normal_axis: int):
             axes.append(jnp.zeros(c.shape, dtype=bool).at[
                 nearest_node_index(c, mid, d_local, xp=jnp)].set(True))
         else:
-            axes.append((c >= float(lo[t])) & (c <= float(hi[t])))
+            # The concrete rule's on-lattice band (``_box_axis_closed``), at
+            # the node line's own precision: a traced line is float32, and a
+            # face drawn on a node otherwise loses that row to rounding.
+            band = _node_tie_band(c, jnp)
+            axes.append((c >= float(lo[t]) - band(float(lo[t])))
+                        & (c <= float(hi[t]) + band(float(hi[t]))))
     return axes[0][:, None, None] & axes[1][None, :, None] & axes[2][None, None, :]
+
+
+def _node_tie_band(c, xp):
+    """``face -> tolerance per node`` for "this node is ON that drawn face".
+
+    ``NODE_TIE_REL`` of the smaller cell at each node, plus a few ulp of the
+    coordinate in the node line's own dtype: a float64 host line keeps the
+    1e-9-cell band, a float32 (traced) line is only exact to its rounding.
+    """
+    if c.size < 2:
+        return lambda face: 0.0
+    gaps = xp.diff(c)
+    cell = xp.minimum(xp.concatenate((gaps[:1], gaps)),
+                      xp.concatenate((gaps, gaps[-1:])))
+    ulp = 16.0 * float(np.finfo(c.dtype).eps)
+    return lambda face: NODE_TIE_REL * cell + ulp * abs(face)
 
 
 def _box_zero_axes(lo, hi):

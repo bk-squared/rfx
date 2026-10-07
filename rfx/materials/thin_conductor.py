@@ -61,6 +61,15 @@ from rfx.geometry.csg import Shape
 # refines) while remaining a lossy sheet, not a PEC.
 _PEC_SIGMA_THRESHOLD = 1e6
 
+# Weight on the sheet conductance of an f0 sheet's END ROWS: the tangential E
+# edges whose node row lies ON a drawn free edge of the sheet (Ex on the
+# y-boundary rows and Ey on the x-boundary columns of a z-normal sheet). Such a
+# row's dual cell is half inside the drawn metal, so at full weight the strip
+# is solved one cell wider than drawn; at 0.5 it is solved at the drawn width,
+# as the DC fold already is after its four-cell average. 1.0 restores the
+# full-weight rule. One value for every sheet and every path.
+END_ROW_WEIGHT = 0.5
+
 
 def leontovich_rs(f0, sigma_bulk):
     """Band-centre Leontovich surface resistance (ohms per square).
@@ -540,7 +549,8 @@ def apply_thin_conductor(
             sheet_specs.append(SheetImpedanceSpec(
                 mask=mask, normal_axis=n_axis, g_sheet=g_sheet,
                 sigma_sheet=sigma_sheet, plane=spec.plane,
-                unwrapped_footprint=spec.unwrapped_footprint))
+                unwrapped_footprint=spec.unwrapped_footprint,
+                end_rows=spec.end_rows))
         # Materials are returned UNCHANGED: assembled arrays are sheet-free
         # by design since #677. A caller that runs the fields without
         # applying the sheet ctx must refuse f0 sheets at its entry point
@@ -587,6 +597,9 @@ class SheetImpedanceSpec:
     sigma_sheet: object   # (nx, ny, nz) float — G/d_dual at sheet cells
     plane: int | None = None   # realized node plane (#931); None = read from mask
     unwrapped_footprint: object | None = None
+    # ``SheetSpec.end_rows`` of the footprint: per axis, a boolean vector of
+    # the node rows on a drawn face (``rasterize_grid.sheet_end_rows``).
+    end_rows: tuple = (None, None, None)
 
 
 @dataclass(frozen=True)
@@ -607,6 +620,12 @@ class SheetImpedanceCtx:
     mask_ey: object
     mask_ez: object
     sigma_sheet: object   # accumulated over sheets; 0 off-sheet
+    # END-ROW edge masks (subsets of ``mask_e*``; ``None`` = no end row on
+    # that component): the edges that take ``END_ROW_WEIGHT`` on their sheet
+    # conductance. See :func:`sheet_end_row_masks`.
+    end_ex: object = None
+    end_ey: object = None
+    end_ez: object = None
 
 
 def build_sheet_impedance_ctx(sheet_specs, pec_edge_masks=None,
@@ -682,8 +701,103 @@ def build_sheet_impedance_ctx(sheet_specs, pec_edge_masks=None,
         mask_ex = mask_ex & ~pex
         mask_ey = mask_ey & ~pey
         mask_ez = mask_ez & ~pez
+    end = sheet_end_row_masks(specs, sheets, (mask_ex, mask_ey, mask_ez), periodic)
     return SheetImpedanceCtx(mask_ex=mask_ex, mask_ey=mask_ey,
-                             mask_ez=mask_ez, sigma_sheet=sigma_sheet)
+                             mask_ez=mask_ez, sigma_sheet=sigma_sheet,
+                             end_ex=end[0], end_ey=end[1], end_ez=end[2])
+
+
+def sheet_end_row_masks(specs, sheets, edge_masks, periodic):
+    """Per-component masks of the sheet edges that lie ON a drawn free edge.
+
+    ``specs[k].end_rows[t]`` marks the node rows of axis ``t`` on a drawn face
+    of sheet ``k`` (``rfx.geometry.rasterize_grid.sheet_end_rows``). The edges
+    of the OTHER in-plane component on such a row run along the drawn face:
+    for a z-normal sheet, Ex on the marked y rows and Ey on the marked x
+    columns. Such an edge is a FREE-edge row of its sheet when the sheet does
+    not carry the same edge one row further on both sides -- so a sheet that
+    spans a whole period, and any row the footprint continues past, is not
+    one. An edge is an end row of the run when some sheet has it as a
+    free-edge row and no sheet has it as any other edge: two sheets abutting
+    on one node row each mark it, and the row then carries half of the SUM of
+    their conductances (a seam of equal sheets is continuous); a row inside
+    another sheet stays at full weight. ``edge_masks`` is the run's final
+    sheet edge set (PEC-owned edges already removed), so an end row that
+    continues into PEC is not in the result. Returns three entries, ``None``
+    where a component has no end row.
+    """
+    from rfx.boundaries.pec import _shift, realized_pec_edge_masks
+    from rfx.core.jax_utils import is_tracer
+    marked = [None, None, None]
+    interior = [None, None, None]
+    if not any(rows is not None for sp in specs
+               for rows in getattr(sp, "end_rows", ())):
+        return tuple(marked)
+    for sp, sheet in zip(specs, sheets, strict=True):
+        a = int(sp.normal_axis)
+        own = realized_pec_edge_masks(None, sheets=[sheet], periodic=periodic)
+        for c in range(3):
+            if c == a:
+                continue
+            t = 3 - a - c
+            on = None
+            rows = sp.end_rows[t]
+            if rows is not None:
+                bshape = [1, 1, 1]
+                bshape[t] = own[c].shape[t]
+                continued = (_shift(own[c], t, periodic, +1)
+                             & _shift(own[c], t, periodic, -1))
+                on = own[c] & jnp.reshape(jnp.asarray(rows), bshape) & ~continued
+            off = own[c] if on is None else own[c] & ~on
+            if on is not None:
+                marked[c] = on if marked[c] is None else marked[c] | on
+            interior[c] = off if interior[c] is None else interior[c] | off
+    out = []
+    for c in range(3):
+        m = None if marked[c] is None else marked[c] & ~interior[c] & edge_masks[c]
+        out.append(m if m is not None and (is_tracer(m) or bool(jnp.any(m))) else None)
+    return tuple(out)
+
+
+@dataclass(frozen=True)
+class SheetCoeffs:
+    """``(A, B)`` of :func:`sheet_update_coeffs`, plus the END-ROW pair.
+
+    Unpacks and indexes as the two full-weight arrays, exactly what the
+    function returned before end rows existed; ``end`` holds ``(A_end,
+    B_end)``, the same coefficients with the sheet conductance scaled by
+    ``END_ROW_WEIGHT``. A dataclass, not a tuple subclass: every field is a
+    grid array the compiled loop must take as an argument, and the lifting
+    helper (``rfx.core.jax_utils``) rebuilds tuples from their items alone.
+    """
+
+    a: object
+    b: object
+    a_end: object
+    b_end: object
+
+    def __iter__(self):
+        return iter((self.a, self.b))
+
+    def __len__(self):
+        return 2
+
+    def __getitem__(self, index):
+        return (self.a, self.b)[index]
+
+    @property
+    def end(self):
+        return (self.a_end, self.b_end)
+
+
+def _register_sheet_coeffs():
+    import jax
+    jax.tree_util.register_pytree_node(
+        SheetCoeffs, lambda c: ((c.a, c.b, c.a_end, c.b_end), None),
+        lambda _, children: SheetCoeffs(*children))
+
+
+_register_sheet_coeffs()
 
 
 def sheet_update_coeffs(sigma_sheet, materials, dt):
@@ -713,9 +827,17 @@ def sheet_update_coeffs(sigma_sheet, materials, dt):
     """
     # #1357: these bits, the eps_r-unit derivative (``/ eps`` squares
     # eps_r*EPS_0 in the VJP and overflows float32).
-    return si_value_eps_r_grad(_sheet_coeffs_si, _sheet_coeffs_eps_r,
+    a, b = si_value_eps_r_grad(_sheet_coeffs_si, _sheet_coeffs_eps_r,
                                materials.eps_r, materials.sigma, sigma_sheet,
                                dt)
+    if END_ROW_WEIGHT == 1.0:
+        return a, b
+    # The caller holds no edge mask here, so the end-row pair is built for
+    # every node; ``apply_sheet_impedance_e`` reads it on the end rows only.
+    a_end, b_end = si_value_eps_r_grad(
+        _sheet_coeffs_si, _sheet_coeffs_eps_r, materials.eps_r,
+        materials.sigma, END_ROW_WEIGHT * sigma_sheet, dt)
+    return SheetCoeffs(a, b, a_end, b_end)
 
 
 def _sheet_coeffs_si(eps_r, sigma, sigma_sheet, dt):
@@ -766,20 +888,20 @@ def apply_sheet_impedance_e(state, e_prev, curls, ctx, coeffs):
     coeffs : (A, B) from :func:`sheet_update_coeffs`.
     """
     a, b = coeffs
+    end = getattr(coeffs, "end", None)
     _fdtype = state.ex.dtype
     _cdtype = jnp.promote_types(_fdtype, jnp.float32)
-    ex = jnp.where(
-        ctx.mask_ex,
-        (a * e_prev[0].astype(_cdtype) + b * curls[0]).astype(_fdtype),
-        state.ex)
-    ey = jnp.where(
-        ctx.mask_ey,
-        (a * e_prev[1].astype(_cdtype) + b * curls[1]).astype(_fdtype),
-        state.ey)
-    ez = jnp.where(
-        ctx.mask_ez,
-        (a * e_prev[2].astype(_cdtype) + b * curls[2]).astype(_fdtype),
-        state.ez)
+
+    def _component(c, mask, end_mask, field):
+        new = a * e_prev[c].astype(_cdtype) + b * curls[c]
+        if end is not None and end_mask is not None:
+            new = jnp.where(
+                end_mask, end[0] * e_prev[c].astype(_cdtype) + end[1] * curls[c], new)
+        return jnp.where(mask, new.astype(_fdtype), field)
+
+    ex = _component(0, ctx.mask_ex, getattr(ctx, "end_ex", None), state.ex)
+    ey = _component(1, ctx.mask_ey, getattr(ctx, "end_ey", None), state.ey)
+    ez = _component(2, ctx.mask_ez, getattr(ctx, "end_ez", None), state.ez)
     return state._replace(ex=ex, ey=ey, ez=ez)
 
 
