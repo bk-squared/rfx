@@ -138,8 +138,12 @@ def admit_simulation(sim, *, root=None):
         if root is None:
             root = realized_conductors(sim, sim._build_realized_grid(),
                                       nonuniform=sim._uses_nonuniform_mesh)
-        return check_arrays(sim._tfsf, root.grid,
-                            (root.assembly, root.pec_edges, root.sheet_impedance),
+        names = ("materials", "debye", "lorentz", "pec_mask", "pec_shapes",
+                 "boundary_pec_shapes", "kerr_chi3")
+        values = {names[i] if i < len(names) else f"assembly[{i}]": value
+                  for i, value in enumerate(root.assembly)}
+        values.update(pec_edge_masks=root.pec_edges, sheet_impedance=root.sheet_impedance)
+        return check_arrays(sim._tfsf, root.grid, values,
                             localized=tuple((name, getattr(sim, name, ())) for name in
                                             ("_ports", "_lumped_rlc", "_waveguide_ports",
                                              "_msl_ports", "_coaxial_ports", "_floquet_ports")),

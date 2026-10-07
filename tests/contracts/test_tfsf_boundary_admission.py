@@ -44,8 +44,17 @@ def stop_at_runner(monkeypatch):
 
 @pytest.mark.parametrize("skip", [False, True])
 def test_finite_box_is_refused(skip):
-    with pytest.raises(ValueError, match=r"TF/SF y_lo, y_hi: .*periodic.*closed_box=True"):
+    with pytest.raises(ValueError, match=r"TF/SF y_lo, y_hi: .*eps_r.*periodic.*closed_box=True"):
         plane(finite=True).run(n_steps=1, skip_preflight=skip)
+
+
+def test_sheet_edge_mask_refusal_names_the_feature():
+    sim = Simulation(freq_max=10e9, domain=(.03, .01, .001), dx=.001,
+                     cpml_layers=2, mode="2d_tmz")
+    sim.add_thin_conductor(Box((.015, -1., -1.), (.016, 1., 1.)), sigma_bulk=5.8e7)
+    sim.add_tfsf_source(f0=5e9, margin=1)
+    with pytest.raises(ValueError, match=r"y_lo, y_hi: .*pec_edge_masks"):
+        sim._dispatch_plan(mode="run", n_steps=1, num_periods=1)
 
 
 @pytest.mark.parametrize("skip", [False, True])
