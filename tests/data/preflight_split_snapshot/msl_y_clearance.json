@@ -16,6 +16,28 @@
         "source": "_validate_mesh_quality"
       },
       {
+        "code": "line_stub_behind_port",
+        "loc": "_msl_ports[0]",
+        "numbers": [
+          2.0,
+          2.0,
+          0.105481,
+          2.10548,
+          21.0143,
+          21.0143,
+          63.0429,
+          105.071,
+          0.0,
+          0.5,
+          2.86939,
+          0.0,
+          2.0,
+          1512.0
+        ],
+        "severity": "warning",
+        "source": "line_stub_findings"
+      },
+      {
         "code": "pec_faces_finite_pec",
         "loc": null,
         "numbers": [
@@ -185,7 +207,7 @@
       }
     ],
     "n_errors": 0,
-    "n_issues": 9,
+    "n_issues": 10,
     "ok": true
   },
   "preflight_sparameters": {

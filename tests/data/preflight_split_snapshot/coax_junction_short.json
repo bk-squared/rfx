@@ -28,6 +28,50 @@
         "source": "_validate_mesh_quality"
       },
       {
+        "code": "line_stub_behind_port",
+        "loc": "_msl_ports[0]",
+        "numbers": [
+          1.5,
+          1.5,
+          0.121599,
+          1.6216,
+          27.4611,
+          27.4611,
+          82.3832,
+          137.305,
+          0.0,
+          0.16,
+          2.83269,
+          0.0,
+          11.0,
+          1512.0
+        ],
+        "severity": "warning",
+        "source": "line_stub_findings"
+      },
+      {
+        "code": "line_stub_behind_port",
+        "loc": "_coaxial_ports[0]",
+        "numbers": [
+          0.1,
+          0.1,
+          0.0,
+          0.1,
+          517.191,
+          517.191,
+          1551.57,
+          2585.96,
+          0.0,
+          0.16,
+          2.1,
+          0.0,
+          2.5,
+          1512.0
+        ],
+        "severity": "warning",
+        "source": "line_stub_findings"
+      },
+      {
         "code": "uncoded",
         "loc": null,
         "numbers": [
@@ -198,7 +242,7 @@
       }
     ],
     "n_errors": 1,
-    "n_issues": 12,
+    "n_issues": 14,
     "ok": false
   }
 }

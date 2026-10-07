@@ -444,5 +444,7 @@ def run_config_checks(sim: Any, ctx: ConfigCheckContext) -> None:
     so the concatenation here -- core first, extras appended -- is the
     contract, not an implementation choice.
     """
+    from rfx.preflight.line_stub import preflight_line_stubs
+    preflight_line_stubs(sim, ctx.warn)
     for check in (*CORE_CONFIG_CHECKS, *EXTRA_CONFIG_CHECKS):
         check.run(sim, ctx)

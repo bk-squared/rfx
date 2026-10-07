@@ -74,6 +74,11 @@ moved, so the band that brackets its antiresonance moved with it:
     dip 8.800 GHz, |S11| = 0.6418 (the off-resonance match point, still OUTSIDE
         the resonance band — the assertion (2) thesis is intact)
 
+    #1512 geometry, run 369367268214 (all existing pins pass, unchanged):
+    max|S11| = 0.9844; in-band Im(Zin) crossing 7.458 GHz;
+    in-band peak Re(Zin) 1223 ohm at 7.5 GHz; band min|S11| = 0.885;
+    global dip 9.10 GHz, |S11| = 0.713.
+
 WHY IT MOVED DOWN while the isolated patch moved UP (Board H's Leg A went
 -6.17 -> -1.871 % on the same redraw): they are different features. The patch
 mode rises because a thinner cavity fringes less. THIS number is the port-plane
@@ -178,6 +183,7 @@ import numpy as np
 import pytest
 
 from rfx import Box, Simulation
+from rfx.preflight.line_port_coverage import local_port_cell
 from rfx.sources import GaussianPulse
 
 # --- issue #80 reproduction geometry (mirrors scripts/patch_edgefed_s11_validation.py) ---
@@ -187,6 +193,7 @@ W = 10.129e-3
 L = 8.595e-3
 W_MSL = 1.8e-3
 L_MSL = 8.0e-3
+# #1512: port plane; feed covers its node with one local-cell drawing allowance.
 PORT_MARGIN = 5.0e-3
 DX = 0.197e-3
 # Board height SNAPPED TO THE NODE LINE (#931 §1.3 off-lattice interfaces): the
@@ -259,7 +266,7 @@ def _build_patch_sim() -> Simulation:
     sim.add(Box((0, 0, Z_SUB_LO), (DOM_X, DOM_Y, Z_SUB_HI)),
             material="ro4003c")
     sim.add_thin_conductor(
-        Box((0, Y_C - W_MSL / 2, Z_SUB_HI),
+        Box((PORT_MARGIN - local_port_cell(sim, (PORT_MARGIN, Y_C, Z_SUB_LO)), Y_C - W_MSL / 2, Z_SUB_HI),
             (PORT_MARGIN + L_MSL, Y_C + W_MSL / 2, Z_SUB_HI)),
         sigma_bulk=5.8e7)
     sim.add_thin_conductor(_patch_box(), sigma_bulk=5.8e7)

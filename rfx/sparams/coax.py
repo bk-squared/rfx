@@ -26,6 +26,9 @@ they do not run at import time.
 
 from __future__ import annotations
 
+from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
+from rfx.sparams._grid_metrics import _calculator_source_plane
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -48,19 +51,6 @@ from rfx.sparams._common import (
     _ladder_split_witness,
     _assemble_coax_msl_transition_from_voltages,
 )
-
-
-def _calculator_source_plane(grid, port):
-    """Keep the calculator's derived half-cell source on its original node.
-
-    This is an internal one-cell descriptor, not a declared coordinate.
-    Preserve its float64 half-to-even arithmetic independently of the
-    declared-coordinate tie rule.
-    """
-    direction = 1 if port.face == "bottom" else -1
-    centre = port.position[2] + direction * port.pin_length / 2.0
-    dz = float(grid.cells(2)[0])   # uniform z only (coax calculators refuse a graded mesh)
-    return int(round(centre / dz)) + grid.pad_z_lo
 
 
 def _coax_pec_edge_masks(pec_cells, periodic=(False, False, False), merge_with=None):
@@ -334,6 +324,7 @@ def compute_coaxial_line_reflection(
     from rfx.runners._admission import admit
     admit(self, "coaxial_line_reflection")
 
+    _line_stub_scope = _line_stub_admit(self, freqs)
     grid = self._build_grid()
     nz = grid.shape[2]
     dz = float(grid.dx)
@@ -803,6 +794,7 @@ def compute_coaxial_two_port(
     from rfx.runners._admission import admit
     admit(self, "coaxial_two_port")
 
+    _line_stub_scope = _line_stub_admit(self, freqs)
     grid = self._build_grid()
     nz = grid.shape[2]
     dz = float(grid.dx)
@@ -1531,6 +1523,7 @@ def compute_coax_msl_transition(
             "(this method does not auto-detect it from geometry)."
         )
 
+    _line_stub_scope = _line_stub_admit(self, freqs)
     if not skip_preflight:
         # This lane owns its port checks; run only the shared sheet verdict.
         import warnings

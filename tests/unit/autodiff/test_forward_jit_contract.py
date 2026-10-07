@@ -111,7 +111,7 @@ def _wire(graded):
 
 def _msl(graded):
     sim = _board(graded, domain_xy=(24, 12))
-    sim.add(Box((2 * MM, 5 * MM, 3 * MM), (22 * MM, 7 * MM, 4 * MM)),
+    sim.add(Box((5 * MM, 5 * MM, 3 * MM), (22 * MM, 7 * MM, 4 * MM)),
             material="pec")
     sim.add_msl_port(position=(5 * MM, 6 * MM, 1 * MM), width=2 * MM,
                      height=2 * MM, direction="+x", impedance=50.0,

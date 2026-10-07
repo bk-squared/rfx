@@ -31,6 +31,8 @@ body, exactly as they were, and so do not run at import time.
 
 from __future__ import annotations
 
+from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -322,6 +324,7 @@ def compute_mixed_s_matrix(
     _refuse_f0_hj(self._thin_conductors, "MSL junction S-parameter")
     from rfx.runners._admission import admit
     admit(self, "mixed_s_matrix")
+    _line_stub_scope = _line_stub_admit(self, freqs)
     grid = self._build_grid()
 
     if freqs is None:

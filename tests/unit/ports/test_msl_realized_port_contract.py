@@ -369,10 +369,14 @@ def test_transition_readers_use_the_same_center_and_bounding_plane(lane, monkeyp
     sim.add_material("substrate", eps_r=3.)
     sim.add(Box((0, 0, 16*DX), (32*DX, 32*DX, 20*DX)), material="substrate")
     sim.add(Box((0, 0, 16*DX), (32*DX, 32*DX, 16*DX)), material="pec")
-    sim.add(Box((10*DX, 12.4*DX, 20*DX), (32*DX, 13.4*DX, 20*DX)), material="pec")
+    # #1512: the strip ends at the port node (26 mm); drawn on to 32 mm it left a
+    # 6 mm open stub whose effective quarter wave (7.27 GHz) is within 1.5x of 0..5 GHz.
+    sim.add(Box((10*DX, 12.4*DX, 20*DX), (26*DX, 13.4*DX, 20*DX)), material="pec")
     sim.add_msl_port(position=(26*DX, 12.9*DX, 16*DX), width=DX,
                      height=4*DX, direction="-x", eps_r_sub=3.,
                      n_probe_offset=3, n_probe_spacing=2, n_probes=3)
+    from rfx.preflight.line_stub import line_stub_findings
+    assert line_stub_findings(sim) == []
     if lane == "coax":
         sim.add_coaxial_port(position=(10*DX, 12.9*DX, 16*DX), face="bottom",
                              pin_radius=DX, outer_radius=5*DX, terminates=2)
@@ -418,12 +422,15 @@ def test_coax_stub_cannot_overwrite_the_registered_junction_and_substrate(ground
     sim.add_material("substrate", eps_r=3., sigma=.02)
     sim.add(Box((0, 0, ground*DX), (32*DX, 24*DX, top*DX)), material="substrate")
     sim.add(Box((0, 0, ground*DX), (32*DX, 24*DX, ground*DX)), material="pec")
-    sim.add(Box((0, 10*DX, top*DX), (32*DX, 14*DX, top*DX)), material="pec")
+    # #1512: keep this material-ownership witness free of a resonant back stub.
+    sim.add(Box((8*DX, 10*DX, top*DX), (32*DX, 14*DX, top*DX)), material="pec")
     sim.add_coaxial_port(position=(8*DX, 12*DX, ground*DX), face="bottom",
                          pin_radius=DX, outer_radius=4.5*DX, terminates=2)
     sim.add_msl_port(position=(8*DX, 12*DX, ground*DX), width=4*DX,
                      height=4*DX, direction="+x", eps_r_sub=3.)
     grid = sim._build_grid()
+    from rfx.preflight.line_stub import line_stub_findings
+    assert line_stub_findings(sim, grid) == []  # #1512: pinned port node, no tail.
     registered = sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])[0]
     join = grid.pad_z_lo+15  # exact half-cell tie must also select node 15
     i, j = grid.pad_x_lo+8, grid.pad_y_lo+12

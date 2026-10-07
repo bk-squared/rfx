@@ -2903,10 +2903,50 @@
       },
       "preflight": [
         {
-          "code": "msl_port_geometry",
+          "code": "line_stub_behind_port",
+          "loc": "_msl_ports[0]",
+          "numbers": [
+            3.1625,
+            3.25,
+            0.364505,
+            3.527,
+            13.7022,
+            13.7022,
+            41.1065,
+            68.5109,
+            0.0,
+            0.6,
+            2.40509,
+            16.0,
+            1512.0
+          ],
           "severity": "warning",
+          "source": "line_stub_findings"
+        },
+        {
+          "code": "line_stub_behind_port",
+          "loc": "_msl_ports[1]",
+          "numbers": [
+            3.1625,
+            3.25,
+            0.364505,
+            3.527,
+            13.7022,
+            13.7022,
+            41.1065,
+            68.5109,
+            0.0,
+            0.6,
+            2.40509,
+            28.0,
+            1512.0
+          ],
+          "severity": "warning",
+          "source": "line_stub_findings"
+        },
+        {
+          "code": "msl_port_geometry",
           "loc": null,
-          "source": "_check_msl_port_geometry",
           "numbers": [
             469.0,
             2.0,
@@ -2924,13 +2964,13 @@
             0.0,
             5.0,
             686.0
-          ]
+          ],
+          "severity": "warning",
+          "source": "_check_msl_port_geometry"
         },
         {
           "code": "thin_absorber",
-          "severity": "warning",
           "loc": "x_lo, x_hi, y_lo, y_hi, z_lo, z_hi",
-          "source": "_validate_cfg_thin_absorber",
           "numbers": [
             3.0,
             4.0,
@@ -2958,7 +2998,9 @@
             1.0,
             8.0,
             16.0
-          ]
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_thin_absorber"
         }
       ]
     },
@@ -7034,6 +7076,50 @@
       },
       "preflight": [
         {
+          "code": "line_stub_behind_port",
+          "loc": "_msl_ports[0]",
+          "numbers": [
+            2.032,
+            2.0,
+            0.105481,
+            2.13748,
+            20.6997,
+            20.6997,
+            62.0991,
+            103.498,
+            0.0,
+            0.7,
+            2.86939,
+            0.0,
+            2.032,
+            1512.0
+          ],
+          "severity": "warning",
+          "source": "line_stub_findings"
+        },
+        {
+          "code": "line_stub_behind_port",
+          "loc": "_msl_ports[1]",
+          "numbers": [
+            2.032,
+            2.0,
+            0.105481,
+            2.13748,
+            20.6997,
+            20.6997,
+            62.0991,
+            103.498,
+            0.0,
+            0.7,
+            2.86939,
+            1.0,
+            21.968,
+            1512.0
+          ],
+          "severity": "warning",
+          "source": "line_stub_findings"
+        },
+        {
           "code": "lossless_q",
           "loc": null,
           "numbers": [
@@ -9692,6 +9778,50 @@
         }
       },
       "preflight": [
+        {
+          "code": "line_stub_behind_port",
+          "loc": "_msl_ports[0]",
+          "numbers": [
+            1.651,
+            1.6,
+            0.105481,
+            1.75648,
+            25.1897,
+            25.1897,
+            75.5691,
+            125.948,
+            0.0,
+            0.9,
+            2.86939,
+            0.0,
+            1.651,
+            1512.0
+          ],
+          "severity": "warning",
+          "source": "line_stub_findings"
+        },
+        {
+          "code": "line_stub_behind_port",
+          "loc": "_msl_ports[1]",
+          "numbers": [
+            1.524,
+            1.6,
+            0.105481,
+            1.62948,
+            27.1529,
+            27.1529,
+            81.4588,
+            135.765,
+            0.0,
+            0.9,
+            2.86939,
+            1.0,
+            31.623,
+            1512.0
+          ],
+          "severity": "warning",
+          "source": "line_stub_findings"
+        },
         {
           "code": "lossless_q",
           "loc": null,

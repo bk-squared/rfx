@@ -11,6 +11,7 @@ import rfx.runners.nonuniform  # noqa: F401 - monkeypatch below targets this
                               # with 'module rfx.runners has no attribute
                               # nonuniform'.
 from rfx import Box, Simulation
+from rfx.preflight.line_port_coverage import port_node_coordinate
 
 
 class _StopBeforeSolve(RuntimeError):
@@ -53,7 +54,7 @@ def test_waveguide_driver_preserves_declared_mesh_on_solve_failure(monkeypatch, 
 
 def test_msl_driver_preserves_auto_mesh_on_solve_failure(monkeypatch):
     sim = _board()
-    sim.add(Box((0, 0.002, 0.001), (0.012, 0.004, 0.001)), material="pec")
+    sim.add(Box((port_node_coordinate(sim, (0.003, 0.003, 0)), 0.002, 0.001), (0.012, 0.004, 0.001)), material="pec")
     sim.add_msl_port(position=(0.003, 0.003, 0), width=0.002, height=0.001,
                      direction="+x", impedance=50, n_probe_offset=3,
                      n_probe_spacing=2, n_probes=3, eps_r_sub=4.4)

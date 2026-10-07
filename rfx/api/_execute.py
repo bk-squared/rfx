@@ -13,6 +13,9 @@ LEAF mixin module — it must NEVER do ``from rfx.api import ...`` or
 """
 from __future__ import annotations
 
+from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
+from rfx.api._removed_kwargs import _reject_removed_forward_kwargs
+
 import functools
 import math
 import os
@@ -55,52 +58,6 @@ from rfx.api._spec import (
 # module; the ``global`` statement binds to this module's namespace.
 # ---------------------------------------------------------------------------
 _DISTRIBUTED_FIRST_CALL_WARNED: bool = False
-
-
-# ---------------------------------------------------------------------------
-# Arc-audit follow-up item 5(b): a removed public kwarg (currently just
-# `design_mask`, issue #625) used to surface as the bare Python default --
-# `TypeError: _ExecuteMixin.forward() got an unexpected keyword argument
-# 'design_mask'` -- which leaks this mixin's internal class name (the
-# public surface is `Simulation.forward`, never `_ExecuteMixin.forward`)
-# and gives no reason or replacement. `forward()` now accepts
-# `**_removed_kwargs` and calls this helper so a removed kwarg gets a
-# `TypeError` naming the actual reason and the one-line migration path
-# instead. Deliberately still a `TypeError` (not some other exception
-# type) -- `tests/unit/autodiff/test_design_mask_removed.py` pins "the kwarg is
-# rejected" via `pytest.raises(TypeError, match="design_mask")`, and this
-# only changes the MESSAGE, not the exception class or that contract.
-# ---------------------------------------------------------------------------
-_REMOVED_FORWARD_KWARGS: dict = {
-    "design_mask": (
-        "removed entirely in issue #625, not deprecated: it was measured "
-        "to save ZERO reverse-mode AD memory (partial-eval residuals have "
-        "whole-array granularity) while corrupting the gradient in every "
-        "configuration tested. For memory relief use checkpoint_every / "
-        "checkpoint_segments; to restrict which cells carry a derivative, "
-        "wrap eps_override yourself: eps = jnp.where(region, eps, "
-        "jax.lax.stop_gradient(eps)) -- see CHANGELOG.md 'Removed — "
-        "design_mask' and docs/public/guide/memory-reduction.mdx."
-    ),
-}
-
-
-def _reject_removed_forward_kwargs(removed_kwargs: dict) -> None:
-    """Raise a TypeError for an unrecognised forward() kwarg, naming the
-    reason and replacement for a KNOWN removed one (see
-    ``_REMOVED_FORWARD_KWARGS``) instead of leaking ``_ExecuteMixin`` (the
-    internal mixin, not the public ``Simulation.forward`` surface)."""
-    parts = []
-    for name in removed_kwargs:
-        reason = _REMOVED_FORWARD_KWARGS.get(name)
-        if reason is not None:
-            parts.append(f"'{name}' was {reason}")
-        else:
-            parts.append(f"'{name}' is not a recognised forward() keyword argument")
-    raise TypeError(
-        "Simulation.forward() got unexpected keyword argument(s) "
-        f"{sorted(removed_kwargs)}: " + " | ".join(parts)
-    )
 
 
 def _staged_by_an_outer_trace() -> bool:
@@ -1691,6 +1648,7 @@ class _ExecuteMixin:
             # itself realizes them correctly — ``_run_adi_from_materials``
             # calls ``realized_pec_edge_masks`` — so the whole defect was
             # the two arguments missing here.
+            _line_stub_scope = _line_stub_admit(self, port_s11_freqs)
             return self._run_adi_from_materials(
                 grid,
                 materials,
@@ -1712,6 +1670,7 @@ class _ExecuteMixin:
         self._require_no_refinement_without_a_subgrid(
             "forward()/optimize()/topology_optimize()/"
             "compute_lumped_wire_s_matrix_via_scan()")
+        _line_stub_scope = _line_stub_admit(self, port_s11_freqs)
 
         from rfx.simulation import (
             run as _run, resolve_periodic,
@@ -4270,6 +4229,7 @@ class _ExecuteMixin:
 
         if port_s11_freqs is not None:
             self._validate_forward_sparameter_request()
+        _line_stub_scope = _line_stub_admit(self, port_s11_freqs)
 
         _solve_assembly = self._auto_preflight(skip=skip_preflight, context="forward", prepare=True, distributed=distributed)
 
@@ -4887,6 +4847,7 @@ class _ExecuteMixin:
             s_param_n_steps=s_param_n_steps,
             devices=devices,
         )
+        _line_stub_scope = _line_stub_admit(self, s_param_freqs)
 
         _distributed_run = devices is not None and len(devices) > 1
         _solve_assembly = self._auto_preflight(skip=skip_preflight, context="run", check_ntff="advisory", prepare=True, distributed=_distributed_run)

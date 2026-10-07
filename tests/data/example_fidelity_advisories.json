@@ -186,6 +186,14 @@
    "variant": "validation/research/issue770_offdiag_adjudication.py::build_fix_t::uniform-both"
   },
   {
+   "code": "line_stub_behind_port",
+   "disposition": "intended",
+   "reason": "The existing graded validation geometry is retained under #1512: its through-line extends from x=0 to 24 mm behind ports at x=2 and 22 mm. Each realized tail is 2.032 mm, with eps_eff=2.869386, an open-end extension of 0.105 mm and quarter-wave frequency 20.6997 GHz on the effective length, outside the refusal interval for the 0..7 GHz band. Both findings are tolerated to preserve the geometry underlying the historical readings; they refer to through-line tails, not the intentional mid-line notch branch.",
+   "ref": "https://github.com/bk-squared/rfx/issues/1512",
+   "rows": 2,
+   "variant": "validation/research/multiband_nu/msl_notch_graded.py::build_graded::A_off"
+  },
+  {
    "code": "lossless_q",
    "disposition": "intended",
    "reason": "The substrate is declared lossless because both frozen records are: the openEMS tutorial and the Palace run solve eps_r 3.66 with no tan_delta, and this arm is compared with them. The arm quotes a notch FREQUENCY and an |S21| magnitude, never a Q, and it carries the case's own ring-down witness (-40 dB) to show the record ended after the lossless stub stopped ringing.",
@@ -336,6 +344,14 @@
    "ref": "validation/tmtt_paper/beam_steering_superstrate.py:139 | https://github.com/bk-squared/rfx/issues/1138",
    "rows": 1,
    "variant": "validation/tmtt_paper/beam_steering_superstrate.py::build_problem::default"
+  },
+  {
+   "code": "line_stub_behind_port",
+   "disposition": "intended",
+   "reason": "The tuning validation keeps its existing through-line and historical readings under #1512. Ports at x=1.6 and 31.6 mm leave realized tails of 1.651 and 1.524 mm, with quarter-wave frequencies 25.1897 and 27.1529 GHz at eps_eff=2.869386 on the effective lengths (open-end extension 0.105 mm). These lie outside the refusal interval for 0..9 GHz (and the 6 GHz target). The builder has no notch branch yet; both advisories describe the through-line tails and are deliberately retained without changing geometry.",
+   "ref": "https://github.com/bk-squared/rfx/issues/1512",
+   "rows": 2,
+   "variant": "validation/tmtt_paper/msl_stub_notch_tuning.py::build_sim::f_target"
   },
   {
    "code": "lossless_q",
@@ -503,6 +519,14 @@
    "reason": "#1138: edge-aware x/y profiles grade the propagation axis; this tutorial builds the MSL setup only. The skipped automatic offset solve is reported without claiming fitted Z0/beta or a settled S-matrix. (Two earlier probe-clearance rows named this tutorial's own finite ground sheet as the reflector, at -11.25 mm; a conductor at the port's ground reference is no longer a reflector candidate, so they are gone.)",
    "ref": "examples/tutorials/ports_and_sparams_101.py:114-148,315-321",
    "rows": 1,
+   "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
+  },
+  {
+   "code": "line_stub_behind_port",
+   "disposition": "intended",
+   "reason": "The tutorial keeps its geometry and mesh under #1512, like the two validation notch builders: its through-line leaves realized tails of 3.1625 mm (declared 3.25 mm) behind both ports. With eps_eff=2.405090 and an open-end extension of 0.3645 mm the effective length is 3.527 mm and its quarter-wave frequency 13.7022 GHz, outside the refusal interval for the 0..6 GHz read. Both findings are advisory; the geometry is deliberately unchanged.",
+   "ref": "https://github.com/bk-squared/rfx/issues/1512",
+   "rows": 2,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
   }
  ]

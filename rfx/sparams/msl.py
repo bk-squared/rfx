@@ -18,6 +18,8 @@ step; the move itself is gated on bit identity of the extracted S arrays
 
 from __future__ import annotations
 
+from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -314,6 +316,7 @@ def compute_msl_s_matrix(
     # mesh. Missing z profiles are synthesized locally by the grid builder;
     # writing a derived profile into the declaration would freeze auto-mesh
     # state and change the resolved domain during the driver.
+    _line_stub_scope = _line_stub_admit(self, freqs)
     grid = self._build_realized_grid()
 
     if freqs is None:

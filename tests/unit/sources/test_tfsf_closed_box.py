@@ -326,7 +326,7 @@ def test_port_material_fold_is_checked_after_setup(entry, on_face):
     # Each sheet is clear of the source shell; only the load cells between
     # them cross it. Those conductivities are added during port setup.
     for height in (z, z + 0.004):
-        sim.add(Box((0.007, 0.007, height), (0.011, 0.009, height)), material="pec")
+        sim.add(Box((0.007 if height == z else 0.009, 0.007, height), (0.011, 0.009, height)), material="pec")
     sim.add_msl_port((0.009, 0.008, z), width=0.002, height=0.004,
                      excite=False, mode="uniform", name="passive")
     if on_face:
