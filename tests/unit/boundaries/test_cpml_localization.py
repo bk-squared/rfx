@@ -15,6 +15,8 @@ from rfx.core.yee import init_state, init_materials, update_h, update_e, update_
 from rfx.grid import Grid
 from rfx.nonuniform import make_nonuniform_grid
 
+_product = cpml
+
 _BASE = Path(__file__).resolve().parents[3] / 'validation/research/nu_cost/g4/cpml_baseline.py'
 _spec = importlib.util.spec_from_file_location('cpml_g4_baseline', _BASE)
 old = importlib.util.module_from_spec(_spec)
@@ -34,6 +36,18 @@ if os.environ.get('RFX_G4_REJECTED_CANDIDATE') == '1':
     cpml = _candidate
 
 FIXTURES = ['uniform8', 'graded8', 'mixed8', 'uniform4', 'uniform16', 'periodic8', 'kappa8']
+
+
+def psi_layout(state, *, to_old):
+    """Convert xyz storage to/from derivative, component, remaining-axis order."""
+    converted = {}
+    for name in state._fields:
+        _, component, face = name.split('_')
+        order = ["xyz".index(face[0]), "xyz".index(component[1])]
+        order += [axis for axis in range(3) if axis not in order]
+        converted[name] = getattr(state, name).transpose(
+            order if to_old else tuple(np.argsort(order)))
+    return state._replace(**converted)
 
 
 def fixture(name, dz=None):
@@ -58,6 +72,8 @@ def runner(name, implementation, dz=None, eps=None, steps=200, history=False):
     grid = fixture(name, dz)
     shape = (grid.nx, grid.ny, grid.nz)
     params, psi = cpml.init_cpml(grid)
+    if cpml is _product and implementation is not _product:
+        psi = psi_layout(psi, to_old=True)
     state = init_state(shape)
     materials = init_materials(shape)
     if eps is not None:
@@ -90,6 +106,9 @@ def runner(name, implementation, dz=None, eps=None, steps=200, history=False):
 
 
 def differences(reference, candidate):
+    reference = (reference[0], psi_layout(reference[1], to_old=False))
+    if cpml is not _product:
+        candidate = (candidate[0], psi_layout(candidate[1], to_old=False))
     records = []
     for group, a, b in zip(('field', 'psi'), reference, candidate):
         for name in a._fields:
