@@ -116,7 +116,9 @@ def test_record_and_context_cells(lane, model):
                                    'fwd_distributed_nu', 'run_adi', 'fwd_adi', 'run_subgridded'])
 def test_refused_cells_and_distributed_dc_record(lane, model):
     sim = _record_model(model)
-    if lane == 'run_distributed' and model == 'dc':
+    # A DC lossy conductor is admitted on the multi-device paths, uniform and graded
+    # (rfx/runners/_admission.py, '_thin_conductors'/'lossy_sheet' rows); ADI and subgridded refuse it.
+    if model == 'dc' and lane in ('run_distributed', 'run_distributed_nu', 'fwd_distributed_nu'):
         admit(sim, lane)
         record = sim.realized_geometry()
         assert record.entities[0].axes[1].extent_m == pytest.approx(5*DX, rel=1e-9)
