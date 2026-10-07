@@ -17,7 +17,7 @@
 #   CHANGELOG_BASE=origin/main CHANGELOG_HEAD=HEAD scripts/ci/local.sh
 #
 #   RFX_GATE_STAGE2_WORKERS=8 scripts/ci/local.sh  # positive integer; empty inherits pytest
-# Selected worker-crash-only failures retry their files once, serially, with the same marks.
+# Worker-crash-only failures retry crashed and unreported files once with the same marks.
 #
 # $PYTHON is exported, so every step and every script this one calls uses it.
 #
@@ -131,7 +131,7 @@ begin 7
 
 begin 8
 selection_dir=$(mktemp -d) || fail
-trap 'rm -rf "$selection_dir"' EXIT
+# Keep evidence in the temporary directory for inspection.
 central_path_args=()
 if [ "${RFX_GATE_CENTRAL_PATHS:-}" = "1" ]; then
   central_path_args+=(--central-paths)
@@ -144,48 +144,68 @@ selected_tests=()
 while IFS= read -r test_file; do
   selected_tests+=("$test_file")
 done < "$selection_dir/files"
-# Bash 3.2 needs the guarded expansion below for empty arrays under set -u.
+# Bash 3.2 needs guarded expansion for empty arrays under set -u.
 stage2_worker_args=()
 if [ -n "${RFX_GATE_STAGE2_WORKERS:-}" ]; then
-  if [[ ! "$RFX_GATE_STAGE2_WORKERS" =~ ^[0-9]+$ ]] || [[ ! "$RFX_GATE_STAGE2_WORKERS" =~ [1-9] ]]; then
+  if [[ ! "$RFX_GATE_STAGE2_WORKERS" =~ ^[1-9][0-9]*$ ]]; then
     echo "RFX_GATE_STAGE2_WORKERS must be a positive integer" >&2
     fail
   fi
   stage2_worker_args=(-n "$RFX_GATE_STAGE2_WORKERS" --dist loadfile)
 fi
-selected_status=0
+stage2_pytest() {
+  RFX_GATE_COLLECTION_DIR="$selection_dir/$1-collection" \
+    PYTHONPATH="$PWD/scripts/ci${PYTHONPATH:+:$PYTHONPATH}" \
+    "$PYTHON" -m pytest "${@:2}" -q \
+    -p rfx_gate_collection -p no:cacheprovider \
+    -o addopts="" -m "not gpu and not slow and not slow_physics and not docs_consistency" --strict-markers \
+    --junitxml="$selection_dir/$1.xml"
+}
+cat "$selection_dir/summary"
 if [ "${#selected_tests[@]}" -eq 0 ]; then
   echo "nothing selected"
 else
-  "$PYTHON" -m pytest "${selected_tests[@]}" -q \
-    -o addopts="" -m "not gpu and not slow and not slow_physics and not docs_consistency" --strict-markers \
-    ${stage2_worker_args[@]+"${stage2_worker_args[@]}"} \
-    --junitxml="$selection_dir/selected.xml" || selected_status=$?
-fi
-cat "$selection_dir/summary"
-if [ "$selected_status" -eq 5 ]; then
-  echo "nothing to run (all selected tests deselected or no tests collected)"
-elif [ "$selected_status" -ne 0 ]; then
+  selected_status=0
+  stage2_pytest selected "${selected_tests[@]}" \
+    ${stage2_worker_args[@]+"${stage2_worker_args[@]}"} || selected_status=$?
   outcome_status=0
   "$PYTHON" scripts/ci/gate_stage2_outcome.py "$selected_status" \
-    "$selection_dir/selected.xml" "$selection_dir/files" \
-    "$selection_dir/retry-files" "$selection_dir/crashed-nodes" || outcome_status=$?
-  if [ "$outcome_status" -ne 10 ]; then
+    "$selection_dir/selected.xml" "$selection_dir/selected-collection" \
+    "$selection_dir/first-outcome" || outcome_status=$?
+  echo "Thread timeout worker deaths use the same retry path; a repeated timeout fails."
+  if [ "$outcome_status" -eq 5 ]; then
+    echo "nothing to run (all selected tests deselected or no tests collected)"
+  elif [ "$outcome_status" -eq 10 ]; then
+    retry_tests=()
+    while IFS= read -r test_file; do
+      retry_tests+=("$test_file")
+    done < "$selection_dir/first-outcome.files"
+    retry_worker_args=(-n 0)
+    if [ "$(cat "$selection_dir/first-outcome.mode")" = parallel ]; then
+      retry_worker_args=(${stage2_worker_args[@]+"${stage2_worker_args[@]}"})
+    fi
+    retry_status=0
+    stage2_pytest retry "${retry_tests[@]}" \
+      ${retry_worker_args[@]+"${retry_worker_args[@]}"} || retry_status=$?
+    retry_outcome=0
+    "$PYTHON" scripts/ci/gate_stage2_outcome.py "$retry_status" \
+      "$selection_dir/retry.xml" "$selection_dir/retry-collection" \
+      "$selection_dir/retry-outcome" || retry_outcome=$?
+    echo "selected-tests first execution:"
+    cat "$selection_dir/first-outcome.json"
+    echo
+    echo "retried files: ${#retry_tests[@]}; retry exit status: $retry_status"
+    echo "selected-tests retry result:"
+    cat "$selection_dir/retry-outcome.json"
+    echo
+    if [ "$retry_outcome" -ne 0 ]; then
+      fail
+    fi
+  elif [ "$outcome_status" -ne 0 ]; then
+    echo "retried files: 0; retry result: not run"
     fail
-  fi
-  retry_tests=()
-  while IFS= read -r test_file; do
-    retry_tests+=("$test_file")
-  done < "$selection_dir/retry-files"
-  retry_status=0
-  "$PYTHON" -m pytest "${retry_tests[@]}" -q \
-    -o addopts="" -m "not gpu and not slow and not slow_physics and not docs_consistency" --strict-markers \
-    -n 0 || retry_status=$?
-  echo "selected-tests worker crash nodeids:"
-  cat "$selection_dir/crashed-nodes"
-  echo "selected-tests serial retry exit status: $retry_status"
-  if [ "$retry_status" -ne 0 ]; then
-    fail
+  else
+    echo "retried files: 0; retry result: not needed"
   fi
 fi
 

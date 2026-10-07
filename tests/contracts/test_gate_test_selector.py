@@ -219,12 +219,13 @@ def test_local_stage_numbers_and_separate_session():
     assert names[-2:] == ["contract-tests", "selected-tests"]
     assert [int(n) for n in re.findall(r"^begin (\d+)$", text, re.M)] == list(range(len(names)))
     stage = text.split("\nbegin 8\n")[1]
-    assert '"$PYTHON" -m pytest "${selected_tests[@]}" -q' in stage
+    assert 'stage2_pytest selected "${selected_tests[@]}"' in stage
+    assert '"$PYTHON" -m pytest "${@:2}" -q' in stage
     assert ' -x' not in stage
     assert '-o addopts="" -m ' in stage
     assert "selection_dir=$(mktemp -d) || fail" in stage
     assert 'echo "nothing selected"' in stage
-    assert stage.index('cat "$selection_dir/summary"') < stage.index('if [ "$selected_status" -eq 5 ]; then')
+    assert stage.index('cat "$selection_dir/summary"') < stage.index('if [ "$outcome_status" -eq 5 ]; then')
 
 
 @pytest.mark.parametrize("source", ["import rfx", "from rfx import nonuniform"])
@@ -334,13 +335,12 @@ def test_rename_preserves_old_imports_and_central_expansion(tmp_path, use_head):
 
 
 @pytest.mark.parametrize("status", [0, 1, 2, 3, 4, 5, 130])
-def test_selected_status_handling_in_isolated_bash(status):
-    stage = (ROOT / "scripts/ci/local.sh").read_text().split("\nbegin 8\n")[1]
-    handling = stage.split('cat "$selection_dir/summary"\n', 1)[1].split('\necho\n', 1)[0]
-    result = subprocess.run(
-        ["bash", "-c", 'fail() { exit 1; }; selected_status="$1";\n' + handling,
-         "selected-status", str(status)],
-        capture_output=True, text=True, timeout=10,
-    )
+def test_selected_status_handling_in_isolated_bash(tmp_path, status):
+    # The stage now needs collection + JUnit evidence, even for exit zero.
+    spec = importlib.util.spec_from_file_location(
+        "stage2_contract", ROOT / "tests/contracts/test_gate_stage2_outcome.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    result = module.run_fragment(tmp_path, fake=True, first=status, retry=1)
     assert result.returncode == (0 if status in (0, 5) else 1)
     assert ("nothing to run" in result.stdout) == (status == 5)
