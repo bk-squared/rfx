@@ -28,6 +28,7 @@ from __future__ import annotations
 
 from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
 from rfx.sparams._grid_metrics import _calculator_source_plane
+from rfx.model.conductors import coax_declared_conductors, coax_kernel_conductors
 
 import jax
 import jax.numpy as jnp
@@ -364,9 +365,10 @@ def compute_coaxial_line_reflection(
     R_dut = float(dut_impedance) if dut_impedance is not None else R_feed
 
     materials, _, _ = self._build_materials(grid)
+    stamp_entities = []
     materials, shell_inner, pec_cells = stamp_coaxial_line(
         grid, materials, center_xy=center_xy, z_lo_index=z_dut,
-        z_hi_index=z_hi_coax, pin_radius=a, outer_radius=b,
+        z_hi_index=z_hi_coax, pin_radius=a, outer_radius=b, realized_entities=stamp_entities,
     )
     materials = stamp_coaxial_annular_resistor(
         grid, materials, center_xy=center_xy, z_index=z_feed, pin_radius=a,
@@ -421,10 +423,12 @@ def compute_coaxial_line_reflection(
                     grid_shape=grid.shape, dft_total_steps=int(n_steps),
                 )
             )
+    conductors = coax_kernel_conductors(self, grid, materials, pec_cells,
+        _coax_pec_edge_masks(pec_cells), stamp_entities)
     result = _run(
         grid, materials, int(n_steps), boundary="cpml", cpml_axes=cpml_axes,
         sources=list(spec.electric_sources), mag_sources=list(spec.magnetic_sources),
-        dft_planes=planes, pec_edge_masks=_coax_pec_edge_masks(pec_cells),
+        dft_planes=planes, pec_edge_masks=conductors.pec_edges,
         return_state=False,
     )
     if result.dft_planes is None:
@@ -841,9 +845,10 @@ def compute_coaxial_two_port(
     R_feed = float(feed_impedance) if feed_impedance is not None else float(z_tem)
 
     materials, _, _ = self._build_materials(grid)
+    stamp_entities = []
     materials, shell_inner, pec_cells = stamp_coaxial_line(
         grid, materials, center_xy=center_xy, z_lo_index=z_lo_coax_bot,
-        z_hi_index=z_hi_coax_top, pin_radius=a, outer_radius=b,
+        z_hi_index=z_hi_coax_top, pin_radius=a, outer_radius=b, realized_entities=stamp_entities,
     )
     materials = stamp_coaxial_annular_resistor(
         grid, materials, center_xy=center_xy, z_index=z_feed_top, pin_radius=a,
@@ -921,7 +926,8 @@ def compute_coaxial_two_port(
 
     # Realized once, outside the per-drive loop: the geometry does not change
     # between the two drives and the realization is not cheap.
-    _coax_edges = _coax_pec_edge_masks(pec_cells)
+    conductors = coax_kernel_conductors(self, grid, materials, pec_cells,
+        _coax_pec_edge_masks(pec_cells), stamp_entities)
 
     _traced_eps = eps_scale is not None
     if _traced_eps:
@@ -959,7 +965,7 @@ def compute_coaxial_two_port(
             grid, materials, int(n_steps), boundary="cpml", cpml_axes=cpml_axes,
             sources=list(spec.electric_sources), mag_sources=list(spec.magnetic_sources),
             probes=witness_probes, dft_planes=planes, record_dft=True,
-            pec_edge_masks=_coax_edges, return_state=False,
+            pec_edge_masks=conductors.pec_edges, return_state=False,
             **_flux_run_kwargs,
         )
         if result.dft_planes is None:
@@ -1570,20 +1576,11 @@ def compute_coax_msl_transition(
             "layer; check both registrations reference the SAME "
             "physical ground plane."
         )
-    _cx_pec_sheets: list = []
-    _cx_pec_wires: list = []
-    materials, debye_spec, lorentz_spec, pec_mask, _, _, _ = \
-        self._assemble_materials(
-            grid, pec_sheets=_cx_pec_sheets, pec_wires=_cx_pec_wires)
-    from rfx.boundaries.pec import (
-        realized_pec_edge_masks as _rpem_cx,
-    )
-    _cx_pec_edge_masks = None
-    if pec_mask is not None or _cx_pec_sheets or _cx_pec_wires:
-        _cx_pec_edge_masks = _rpem_cx(
-            pec_mask, sheets=tuple(_cx_pec_sheets),
-            wires=tuple(_cx_pec_wires),
-            periodic=self._periodic_flags())
+    declared_conductors = coax_declared_conductors(self, grid)
+    materials, debye_spec, lorentz_spec, pec_mask, _, _, _ = declared_conductors.assembly
+    # Board stage: both MSL geometry readers use these pre-stamp edges.
+    # The owner makes the coax/board union only for the kernel stage below.
+    _cx_pec_edge_masks = declared_conductors.pec_edges
 
     if freqs is None:
         freqs_arr = np.asarray(
@@ -1648,9 +1645,10 @@ def compute_coax_msl_transition(
     z_tem = coaxial_tem_characteristic_impedance(a, b)
     r_feed = float(feed_impedance) if feed_impedance is not None else float(z_tem)
     junction_materials = materials
+    stamp_entities = []
     materials, shell_inner, coax_pec_cells = stamp_coaxial_line(
         grid, materials, center_xy=center_xy, z_lo_index=z_stub_lo,
-        z_hi_index=z_stub_hi, pin_radius=a, outer_radius=b,
+        z_hi_index=z_stub_hi, pin_radius=a, outer_radius=b, realized_entities=stamp_entities,
     )
     materials = stamp_coaxial_annular_resistor(
         grid, materials, center_xy=center_xy, z_index=z_feed,
@@ -1896,6 +1894,9 @@ def compute_coax_msl_transition(
     j_probe_msl = int(grid.pad_y_lo) + int(round(y_centre / dz))
     k_probe_msl = int(round((msl_z_lo + 0.5 * msl_pe.height) / dz)) + int(grid.pad_z_lo)
 
+    conductors = coax_kernel_conductors(self, grid, materials, coax_pec_cells,
+        _coax_pec_edge_masks(coax_pec_cells), stamp_entities, root=declared_conductors,
+        skip_preflight=skip_preflight)
     for drive_idx in range(2):
         if drive_idx == 0:
             sources = list(spec_coax.electric_sources)
@@ -1940,8 +1941,7 @@ def compute_coax_msl_transition(
             grid, materials, int(n_steps), boundary="cpml", cpml_axes="xyz",
             sources=sources, mag_sources=mag_sources, probes=witness_probes,
             dft_planes=planes, record_dft=True,
-            pec_edge_masks=_coax_pec_edge_masks(
-                coax_pec_cells, merge_with=_cx_pec_edge_masks),
+            pec_edge_masks=conductors.pec_edges,
             return_state=False,
             **_flux_run_kwargs,
         )

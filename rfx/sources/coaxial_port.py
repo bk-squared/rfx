@@ -1583,6 +1583,8 @@ def stamp_coaxial_line(
     outer_radius: float = SMA_OUTER_RADIUS,
     eps_r: float = PTFE_EPS_R,
     shell_thickness_m: float = SHELL_THICKNESS_M,
+    realized_entities: list | None = None,
+    port_id: str = "coaxial_port[0]",
 ):
     """Stamp a coextensive coax line (z-axis) and return its conductor cells.
 
@@ -1738,6 +1740,12 @@ def stamp_coaxial_line(
     eps = np.where(dielectric, float(eps_r), eps)
     sig = np.where(dielectric, 0.0, sig)
     materials = materials._replace(eps_r=jnp.asarray(eps), sigma=jnp.asarray(sig))
+    if realized_entities is not None:
+        from rfx.model.coax import coax_stamp_entities
+        realized_entities.extend(coax_stamp_entities(
+            grid, center=center, height=height, a=a, b=b, outer_radius=shell_outer_radius,
+            pin=pin_mask, shell=shell, bore=shell_inner_mask, outer=outer_mask,
+            dielectric=dielectric, port_id=port_id))
     return materials, shell_inner_radius, np.asarray(shell | pin_mask)
 
 
