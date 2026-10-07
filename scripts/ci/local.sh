@@ -129,7 +129,11 @@ begin 7
 begin 8
 selection_dir=$(mktemp -d) || fail
 trap 'rm -rf "$selection_dir"' EXIT
-"$PYTHON" scripts/ci/select_gate_tests.py \
+central_path_args=()
+if [ "${RFX_GATE_CENTRAL_PATHS:-}" = "1" ]; then
+  central_path_args+=(--central-paths)
+fi
+"$PYTHON" scripts/ci/select_gate_tests.py ${central_path_args[@]+"${central_path_args[@]}"} \
   --base "$CHANGELOG_BASE" --head "$CHANGELOG_HEAD" \
   --durations .test_durations --summary "$selection_dir/summary" \
   > "$selection_dir/files" || fail

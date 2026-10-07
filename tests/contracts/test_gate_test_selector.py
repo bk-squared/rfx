@@ -63,7 +63,7 @@ def test_debye_selects_only_direct_imports(sources, durations):
 
 
 def test_central_change_adds_runners_and_autodiff_except_over_budget(sources, durations):
-    result = selector.select_tests(["rfx/api/_execute.py"], sources, durations)
+    result = selector.select_tests(["rfx/api/_execute.py"], sources, durations, central_paths=True)
     assert set(result.files) == {
         "tests/unit/runners/test_light.py", "tests/unit/autodiff/test_boundary.py",
         "tests/unit/autodiff/test_unknown.py",
@@ -71,16 +71,76 @@ def test_central_change_adds_runners_and_autodiff_except_over_budget(sources, du
     assert result.excluded == {"tests/unit/runners/test_heavy.py": 401}
 
 
+def test_execute_defaults_to_only_direct_imports(sources, durations):
+    direct = "tests/unit/runners/test_direct.py"
+    sources[direct] = "from rfx.api._execute import execute"
+    sources["tests/unit/test_execute.py"] = "import rfx.api._execute"
+    result = selector.select_tests(["rfx/api/_execute.py"], sources, durations)
+    assert set(result.files) == {direct, "tests/unit/test_execute.py"}
+    assert not result.excluded
+
+
+def test_disabled_central_summary_reports_full_set(sources, durations):
+    result = selector.select_tests(["rfx/api/_execute.py"], sources, durations)
+    line = (
+        "central paths changed; full runners/autodiff suite not run (--central-paths disabled): "
+        "4 files, recorded 901.000000 s"
+    )
+    assert line in result.summary().splitlines()
+    for changed, enabled in [(["rfx/api/_execute.py"], True), ([], False),
+                             (["rfx/materials/debye.py"], False)]:
+        assert "central paths changed" not in selector.select_tests(
+            changed, sources, durations, central_paths=enabled,
+        ).summary()
+
+
+@pytest.mark.parametrize("value,expected", [(None, []), ("", []), ("0", []),
+                                           ("true", []), ("1", ["--central-paths"])])
+def test_local_central_flag_is_opt_in(value, expected):
+    stage = (ROOT / "scripts/ci/local.sh").read_text().split("\nbegin 8\n")[1]
+    fragment = stage.split("central_path_args=()", 1)[1].split('"$PYTHON"', 1)[0]
+    assert 'scripts/ci/select_gate_tests.py ${central_path_args[@]+"${central_path_args[@]}"}' in stage
+    env = dict(os.environ)
+    env.pop("RFX_GATE_CENTRAL_PATHS", None)
+    if value is not None:
+        env["RFX_GATE_CENTRAL_PATHS"] = value
+    result = subprocess.run(
+        ["bash", "-uc", "central_path_args=()" + fragment
+         + 'for arg in ${central_path_args[@]+"${central_path_args[@]}"}; do echo "$arg"; done'],
+        env=env, capture_output=True, text=True, check=True, timeout=10,
+    )
+    assert result.stdout.splitlines() == expected
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_cli_central_paths_switch(monkeypatch, tmp_path, capsys, enabled):
+    durations = tmp_path / "durations.json"
+    durations.write_text("{}")
+    args = ["select_gate_tests.py", "--base", "base", "--durations", str(durations)]
+    if enabled:
+        args.append("--central-paths")
+    monkeypatch.setattr(sys, "argv", args)
+    monkeypatch.setattr(selector.subprocess, "check_output", lambda *a, **k: str(ROOT))
+    monkeypatch.setattr(selector, "changed_paths", lambda *a: ["rfx/api/_execute.py"])
+    monkeypatch.setattr(selector, "read_test_sources", lambda *a: {
+        "tests/unit/runners/test_runner.py": "",
+    })
+    assert selector.main() == 0
+    output = capsys.readouterr()
+    assert output.out == ("tests/unit/runners/test_runner.py\n" if enabled else "")
+    assert ("central paths changed" in output.err) is not enabled
+
+
 def test_changed_test_overrides_budget(sources, durations):
     heavy = "tests/unit/runners/test_heavy.py"
-    result = selector.select_tests(["rfx/api/_execute.py", heavy], sources, durations)
+    result = selector.select_tests(["rfx/api/_execute.py", heavy], sources, durations, central_paths=True)
     assert heavy in result.files
     assert not result.excluded
     assert selector.select_tests([heavy], sources, durations).files == (heavy,)
 
 
 def test_not_run_summary_matches_recorded_tests(sources, durations):
-    result = selector.select_tests(["rfx/api/_execute.py"], sources, durations)
+    result = selector.select_tests(["rfx/api/_execute.py"], sources, durations, central_paths=True)
     assert result.not_run_count == 3
     assert result.not_run_seconds == 413.5
     assert result.selected_seconds == 500
@@ -98,7 +158,7 @@ def test_execute_selects_real_regressions():
     )
     sources = {path: (ROOT / path).read_text() for path in paths}
     durations = json.loads((ROOT / ".test_durations").read_text())
-    result = selector.select_tests(["rfx/api/_execute.py"], sources, durations)
+    result = selector.select_tests(["rfx/api/_execute.py"], sources, durations, central_paths=True)
     assert set(result.files) == set(paths)
 
 
@@ -129,7 +189,7 @@ def test_deleted_test_and_contract_are_not_selected(sources):
     "rfx/nonuniform.py", "rfx/measurement/example.py", "rfx/model/example.py",
 ])
 def test_other_central_paths(path, sources, durations):
-    assert "tests/unit/runners/test_light.py" in selector.select_tests([path], sources, durations).files
+    assert "tests/unit/runners/test_light.py" in selector.select_tests([path], sources, durations, central_paths=True).files
 
 
 def test_git_diff_arguments_and_untracked_worktree(monkeypatch):
@@ -207,7 +267,7 @@ def test_cli_stdout_and_summary(monkeypatch, tmp_path, capsys, summary_file):
 
 @pytest.mark.parametrize("changed", ["rfx/core_x.py", "rfx/runners.py", "rfx/nonuniform_extra.py"])
 def test_similar_names_are_not_central_paths(changed, sources, durations):
-    assert selector.select_tests([changed], sources, durations).files == ()
+    assert selector.select_tests([changed], sources, durations, central_paths=True).files == ()
 
 
 @pytest.mark.parametrize("changed", [[], ["rfx/materials/debye.py"]])
@@ -269,7 +329,7 @@ def test_rename_preserves_old_imports_and_central_expansion(tmp_path, use_head):
         "tests/unit/autodiff/test_ad.py": "",
     }
     paths = selector.changed_paths(base, "HEAD" if use_head else None, repo)
-    assert set(selector.select_tests(paths, sources, {}).files) == set(sources)
+    assert set(selector.select_tests(paths, sources, {}, central_paths=True).files) == set(sources)
     assert set(paths) == {"rfx/core/a.py", "rfx/other/a2.py"}
 
 

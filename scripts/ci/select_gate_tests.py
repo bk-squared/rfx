@@ -62,6 +62,8 @@ class Selection:
     selected_seconds: float
     not_run_count: int
     not_run_seconds: float
+    central_skipped_count: int | None
+    central_skipped_seconds: float
 
     def summary(self) -> str:
         lines = [
@@ -72,12 +74,18 @@ class Selection:
             "No pytest collection or marker evaluation is performed.",
             f"excluded by >{MAX_FILE_SECONDS} s rule: {len(self.excluded)} files",
         ]
+        if self.central_skipped_count is not None:
+            lines.append(
+                "central paths changed; full runners/autodiff suite not run (--central-paths disabled): "
+                f"{self.central_skipped_count} files, recorded {self.central_skipped_seconds:.6f} s"
+            )
         lines.extend(f"  {path}: {seconds:.6f} s" for path, seconds in self.excluded.items())
         return "\n".join(lines) + "\n"
 
 
 def select_tests(
-    changed_paths: Iterable[str], test_sources: Mapping[str, str], durations: Mapping[str, float]
+    changed_paths: Iterable[str], test_sources: Mapping[str, str], durations: Mapping[str, float],
+    *, central_paths: bool = False,
 ) -> Selection:
     """Pure selection over repo-relative paths, source text, and recorded nodeids.
 
@@ -102,11 +110,13 @@ def select_tests(
         else:
             if imports_changed:
                 candidates.add(path)
-    if any(
+    central_changed = any(
         path.startswith(prefix) if prefix.endswith("/") else path == prefix
         for path in changed for prefix in CENTRAL_PATHS
-    ):
-        candidates.update(path for path in tests if path.startswith(CENTRAL_TEST_DIRS))
+    )
+    central_tests = {path for path in tests if path.startswith(CENTRAL_TEST_DIRS)}
+    if central_changed and central_paths:
+        candidates.update(central_tests)
     candidates = {path for path in candidates if not path.startswith(CONTRACT_DIR)}
     totals: dict[str, float] = defaultdict(float)
     for nodeid, seconds in durations.items():
@@ -123,6 +133,8 @@ def select_tests(
     return Selection(
         tuple(sorted(selected)), excluded, sum(totals[path] for path in sorted(selected)),
         len(not_run), sum(not_run),
+        len(central_tests) if central_changed and not central_paths else None,
+        sum(totals[path] for path in sorted(central_tests)),
     )
 
 
@@ -152,11 +164,14 @@ def main() -> int:
     parser.add_argument("--head", help="omit to include the working tree")
     parser.add_argument("--durations", type=Path, default=Path(".test_durations"))
     parser.add_argument("--summary", type=Path)
+    parser.add_argument("--central-paths", action="store_true",
+                        help="include runners/autodiff for central path changes")
     args = parser.parse_args()
     root = Path(subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True).strip())
     result = select_tests(
         changed_paths(args.base, args.head, root), read_test_sources(root),
         json.loads(args.durations.read_text(encoding="utf-8")),
+        central_paths=args.central_paths,
     )
     if args.summary:
         args.summary.write_text(result.summary(), encoding="utf-8")
