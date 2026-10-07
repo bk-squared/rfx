@@ -66,7 +66,8 @@ def _waveguide_sim() -> Simulation:
     """
     from tests._pec_short_advisory_fixture import build
 
-    return build(_WG_FREQS, dx=2e-3, cpml=8)
+    return build(_WG_FREQS, dx=2e-3, cpml=8,
+                 boundary={"x": "cpml", "y": "pec", "z": "pec"})
 
 
 def _msl_sim() -> Simulation:
