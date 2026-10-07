@@ -1,8 +1,9 @@
 ### Changed — Boundary feature rewrites now require compatible declarations or reported defaults (#PENDING)
 
-Uniform full-aperture waveguides default omitted transverse boundaries to PEC and warn
-once; explicitly absorbing transverse faces are refused with the PEC declaration
-to write. TF/SF plane waves refuse non-invariant transverse absorber replacements,
-even when preflight is skipped. Invariant uniform cases retain their padded
-periodic wrap and report the affected faces. Transverse periodic and compatible
-PEC/PMC declarations are accepted; finite scatterers can use `closed_box=True`.
+Full-aperture waveguides whose transverse absorbers realized zero depth now default
+omitted transverse boundaries to PEC and warn once; explicit absorbers there are
+refused. Non-uniform guides retain their transverse absorbers. TF/SF plane waves
+refuse non-invariant transverse absorber or compatible-wall replacements, even
+with preflight skipped. Invariant cases keep the reported legacy periodic wrap;
+traced overrides report when invariance cannot be judged. Declare periodic faces
+for an array, or use `closed_box=True` for a finite scatterer. UPML remains refused.

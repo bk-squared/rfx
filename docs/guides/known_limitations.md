@@ -300,12 +300,15 @@ At normal incidence, dispatch refuses absorbing transverse faces for a TF/SF pla
 realized materials, conductors or localized field updates vary along that axis,
 including in the pads. The refusal also applies with `skip_preflight=True`.
 For an array, declare its axes periodic; for a finite scatterer use
-`closed_box=True`. For propagation along x with E along z, the admitted wall
-pairs are PMC on y and PEC on z; either pair may instead be periodic.
+`closed_box=True` or `rfx.rcs.compute_rcs`. For propagation along x with E along z, the admitted wall
+pairs are PMC on y and PEC on z; either pair may instead be periodic. A wall
+pair keeps the legacy wrap only for an invariant model; finite transverse
+structure with those walls is refused. UPML remains unsupported for TF/SF.
 The uniform plane-wave lane retains its existing padded periodic wrap for an
 invariant absorber pair and reports the affected faces in preflight. Its grid
-and period do not change. The oblique transverse-wavevector lane retains its
-existing behavior.
+and period do not change. Traced material overrides retain the legacy operator
+with a warning when invariance cannot be judged. The oblique transverse-wavevector
+lane retains its existing behavior.
 → [#1221](https://github.com/bk-squared/rfx/issues/1221)
 
 ## Gradients and optimization
