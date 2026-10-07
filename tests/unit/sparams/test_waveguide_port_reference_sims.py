@@ -47,7 +47,7 @@ from tests._realized_geometry import assert_wall_planes, realized
 def _tiny_two_port(*, dx=0.004, n_modes=1):
     s = Simulation(
         freq_max=10e9, domain=(0.12, 0.04, 0.02),
-        boundary="cpml", cpml_layers=10, dx=dx,
+        boundary={"x": "cpml", "y": "pec", "z": "pec"}, cpml_layers=10, dx=dx,
     )
     common = dict(
         mode=(1, 0), mode_type="TE", freqs=jnp.linspace(4.5e9, 8e9, 3),
