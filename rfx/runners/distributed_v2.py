@@ -797,9 +797,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     materials = base_materials
     wire_edges = None
     if any(pe.extent is not None for pe in sim._ports):
-        from rfx.boundaries.pec import realized_pec_edge_masks
-        if pec_mask is not None:
-            wire_edges = realized_pec_edge_masks(pec_mask, periodic=sim._periodic_flags())
+        wire_edges = conductors.pec_edges
 
     _distributed_boundary_layers(
         grid, n_devices,
