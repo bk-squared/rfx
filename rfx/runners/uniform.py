@@ -575,7 +575,7 @@ def run_uniform(
             from rfx.sources.msl_port import validate_msl_port_geometry
             validate_msl_port_geometry(
                 grid, mp, pec_edge_masks=_msl_geometry_edges,
-                sheet_specs=sheet_specs, periodic=_pec_periodic,
+                conductors=conductors, periodic=_pec_periodic,
                 pec_faces=sim._boundary_spec.pec_faces(), name=pe.name)
             mode_profile = None
             eigenmode_data = None
@@ -827,7 +827,7 @@ def run_uniform(
     # In-loop block current moments (rfx.current_moments). Built here rather
     # than at declaration time so the slab window and the block map come from
     # the grid the solve actually builds, not from the declared corners.
-    current_moments = _cm_for_sim(sim, grid, periodic)
+    current_moments = _cm_for_sim(sim, grid, periodic, conductors=conductors)
 
     # Lumped RLC elements
     rlc_metas = None
@@ -845,11 +845,7 @@ def run_uniform(
     # realized PEC edges of this run (after the port clearing above —
     # PEC wins on overlapping edges). Crossing-normal refusal lives in the
     # builder.
-    from rfx.materials.thin_conductor import build_sheet_impedance_ctx
-    sheet_ctx = build_sheet_impedance_ctx(
-        sheet_specs,
-        pec_edge_masks=pec_edge_masks,
-        periodic=_pec_periodic)
+    sheet_ctx = conductors.sheet_context(pec_edge_masks)
     if sim._tfsf is not None and sim._tfsf.closed_box:
         nonvacuum = list(pec_edge_masks or ())
         # These operators can replace the scalar material/PEC update.

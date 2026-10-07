@@ -282,6 +282,19 @@ def _is_shared_setup(step: dict) -> bool:
     return any(marker in text for marker in SHARED_SETUP)
 
 
+#: A kernel setting of the runner that every pytest process needs, on either
+#: branch of `guards-and-preflight` (both run the contract tests). It costs a
+#: fraction of a second, so it is not "work" the verdict exists to skip.
+RUNNER_SETUP = ("sysctl -w vm.max_map_count",)
+
+
+def _is_runner_setup(job: str, step: dict) -> bool:
+    lines = [line.strip() for line in str(step.get("run", "")).splitlines() if line.strip()]
+    return (job == "guards-and-preflight"
+            and any(marker in line for line in lines for marker in RUNNER_SETUP)
+            and all(line.startswith(("sysctl ", "sudo sysctl ")) for line in lines))
+
+
 #: Gates about the DIFF rather than the code, which must run on both branches
 #: because a "not code" diff is exactly what they judge: a PR adding records
 #: under docs/ or scripts/ never reaches the code branch. Only in the job named
@@ -328,6 +341,7 @@ def test_every_step_after_checkout_is_gated_on_the_verdict(job: str) -> None:  #
         for step in steps[1:]
         if not str(step.get("if", "")).strip()
         and not _is_shared_setup(step)
+        and not _is_runner_setup(job, step)
         and not _is_both_branch_gate(job, step)
     ]
     assert not ungated, f"`{job}` steps run regardless of the verdict: {ungated}"
@@ -1083,3 +1097,26 @@ def test_merge_group_runs_everything_even_for_empty_or_unknown_diff(tmp_path, ba
     )
     assert written == "code_changed=true", log
     assert "merge group always runs the full lane" in log
+
+
+@pytest.mark.parametrize("workflow,jobs", [
+    (PR_TESTS, ("guards-and-preflight", "fast-suite")),
+    (WORKFLOW_DIR / "validation.yml", ("slow-tests",)),
+    (WORKFLOW_DIR / "regen-durations.yml", ("fast", "slow")),
+])
+def test_test_jobs_raise_the_mapping_limit_before_pytest(workflow, jobs) -> None:
+    """A pytest process must not start under the default 65,530 mappings.
+
+    JAX keeps each compiled program mapped until its test module ends; on
+    2026-10-07 a compile-heavy module took one process to 65,521 mappings and it
+    died inside the compiler. The step has to come before the first pytest call.
+    """
+    for job in jobs:
+        steps = load(workflow)["jobs"][job]["steps"]
+        runs = [str(step.get("run", "")) for step in steps]
+        raise_at = next((i for i, run in enumerate(runs)
+                         if "sysctl -w vm.max_map_count=" in run), None)
+        first_pytest = next(i for i, run in enumerate(runs) if "pytest" in run)
+        assert raise_at is not None and raise_at < first_pytest, job
+        value = int(runs[raise_at].split("vm.max_map_count=")[1].split()[0])
+        assert value >= 262144, value

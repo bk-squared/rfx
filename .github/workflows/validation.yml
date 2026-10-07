@@ -100,6 +100,16 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Raise the memory-mapping limit for the test process
+        # JAX keeps every compiled program mapped until its test module ends. On
+        # 2026-10-07 one compile-heavy module took a pytest process to 65,521 of
+        # the default 65,530 mappings and it died inside the compiler (measured
+        # on the pre-push gate machine). The first command prints this runner's
+        # value before the change.
+        run: |
+          sysctl vm.max_map_count
+          sudo sysctl -w vm.max_map_count=262144
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:

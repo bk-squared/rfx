@@ -352,26 +352,10 @@ def assemble_cells(
     # rfx.vmap_sweep depends
     # on being able to observe the state just before this stage — see
     # ``include_thin_conductors`` in this function's docstring (#642).
-    if include_thin_conductors and nonuniform:
-        # NU uses local dual spacing and PEC-first order, and refuses non-Box DC.
-        materials = _fold_nonuniform_thin_conductors(
-            sim, grid, materials, _coords, _cell_sizes, _pec_sheets,
+    if include_thin_conductors:
+        materials, pec_mask = _fold_thin_conductors(
+            sim, grid, materials, pec_mask, pec_shapes, _pec_sheets,
             sheet_specs, geometry_masks, assembly_entries, conductor_findings)
-    elif include_thin_conductors:
-        # Uniform preserves declaration order and its existing sheet sampler.
-        for tc in sim._thin_conductors:
-            geometry_key = id(tc)
-            tc = replace(tc, shape=continued_conductor_shape(
-                sim, grid, tc.shape, entry=tc, unextendable=conductor_findings))
-            materials, pec_mask = apply_thin_conductor(
-                grid, tc, materials, pec_mask=pec_mask,
-                sheet_specs=sheet_specs, sheets=_pec_sheets,
-                geometry_masks=geometry_masks, geometry_key=geometry_key)
-            if assembly_entries is not None:
-                assembly_entries.append((geometry_key, None,
-                                         _pec_sheets[-1] if tc.is_pec else None, None, tc.shape))
-            if tc.is_pec:
-                pec_shapes.append(tc.shape)
 
     # Node-pinned PEC sheets (add_pinned_sheet): built from node indices,
     # so the same call gives the same footprint here and on the NU lane.
@@ -491,169 +475,22 @@ def _optional_pec_mask(mask, has_pec_cells):
     return mask if has_pec else None
 
 
-def _fold_nonuniform_thin_conductors(
-    sim, grid, materials, coords, cell_sizes, _pec_sheets,
-    sheet_specs, geometry_masks, assembly_entries, conductor_findings,
-):
-    """Preserve the profiled-grid fold: PEC first, lossy local E-node duals."""
-    from rfx.runners.nonuniform import nu_thin_conductor_refusal
-    # Thin conductors. A PEC thin conductor is a SHEET (#931 §1.3): one
-    # node plane (nearest node to its mid-plane, tie -> lower), a closed
-    # footprint, no cell. It is emitted as a SheetSpec, never OR'd into
-    # pec_mask; the run lanes realize it through
-    # rfx.boundaries.pec.realized_pec_edge_masks. A shape thicker than one
-    # local cell along its normal is refused ("not a sheet; use add()").
-    if sim._thin_conductors:
-        conductors = [replace(tc, shape=continued_conductor_shape(
-                        sim, grid, tc.shape, entry=tc, unextendable=conductor_findings))
-                      for tc in sim._thin_conductors]
-        conductor_keys = {id(tc): id(original)
-                          for tc, original in zip(conductors, sim._thin_conductors, strict=True)}
-        pec_tcs = [tc for tc in conductors
-                   if getattr(tc, "is_pec", False)]
-        lossy_tcs = [tc for tc in conductors
-                     if not getattr(tc, "is_pec", False)]
-        for tc in pec_tcs:
-            _pec_sheets.append(sheet_spec_from_shape(
-                tc.shape, coords, cell_sizes, name="thin_conductor",
-                lane="non-uniform", refuse_thick=True))
-            if assembly_entries is not None:
-                assembly_entries.append((conductor_keys[id(tc)], None, _pec_sheets[-1], None, tc.shape))
-        # #373: lossy (non-PEC) thin conductors fold into sigma using the LOCAL
-        # spacing NORMAL to the sheet, not a uniform grid.dx. The sheet has
-        # bulk conductivity sigma_bulk and physical thickness t but is realized
-        # on ONE E node along its normal; preserving the sheet resistance
-        # R_s = 1/(sigma_bulk*t) needs sigma_eff = sigma_bulk*t/d_norm with
-        # d_norm the length that node's sigma actually acts over.
-        #
-        # That length is the DUAL spacing (d[k-1]+d[k])/2, NOT the primal cell
-        # d[k] (#669 review). The NU E update divides the curl at node k by
-        # inv_d_e[k] = 2/(d[k-1]+d[k]) (rfx/nonuniform.py), so multiplying the
-        # discrete Ampere law at that node by (d[k-1]+d[k])/2 turns the loss
-        # term into a surface current sigma_eff*dual*E — the realized sheet
-        # conductance is sigma_eff*dual. Dividing by the primal d[k] instead
-        # realizes R_s*d[k]/dual, correct only where the two adjacent cells are
-        # equal (all uniform meshes, and NU nodes away from a grading step) and
-        # wrong by the local cell ratio ON a transition: measured attenuation
-        # ratio 1.2021 (0.25/0.50 mm step) and 0.6214 (1.00/0.25 mm step)
-        # against the matched-mesh case, where a mesh-independent sheet must
-        # give 1.000. This corrects the legacy #373 DC fold as well as the
-        # #669 Leontovich mode — NU DC thin conductors at grading transitions
-        # now realize their specified sheet resistance instead of a
-        # cell-ratio-scaled one.
-        #
-        # AD-safe: sigma_eff is a smooth function of the sigma_bulk*t DoF times
-        # a grid quantity built with jnp (so a traced dz_profile still flows),
-        # and jnp.where keeps the sigma field (an AD-live material)
-        # differentiable.
-        for tc in lossy_tcs:
-            if assembly_entries is not None:
-                assembly_entries.append((conductor_keys[id(tc)], None, None, None, tc.shape))
-            _f0 = getattr(tc, "surface_impedance_f0", None)
-            if _f0 is not None:
-                # #674: a surface-impedance sheet may be ANY
-                # ``mask_on_coords`` shape — the fold below is per occupied
-                # cell and shape-agnostic, and the rasterization on this lane
-                # has been coords-based since #369. What the shape still owes
-                # is an axis-aligned bounding box, because the sheet NORMAL
-                # (hence which axis' dual spacing normalizes the fold) is read
-                # from it. ``sheet_bounds`` reads Box's corner_lo/corner_hi
-                # first, so a Box takes bit-identically the arithmetic it took
-                # before this generalization.
-                lo, hi = sheet_bounds(tc.shape)
-                if lo is None or hi is None:
-                    # Defensive mirror of the add-time check (issue #669):
-                    # a surface-impedance sheet must fail LOUD, never
-                    # warn-and-skip (the #369 silently-vaporized-metal
-                    # class). Reachable only for a ThinConductor built
-                    # outside add_thin_conductor().
-                    raise ValueError(
-                        "surface-impedance (surface_impedance_f0) thin "
-                        "conductor requires a shape with an axis-aligned "
-                        "bounding box (Box corner_lo/corner_hi, or "
-                        "Shape.bounding_box()) to locate its normal; "
-                        "refusing to skip it on the non-uniform path.")
-            else:
-                # Legacy DC fold: left as #373 shipped it for Box sheets. A
-                # non-Box DC sheet used to warn and be skipped, which solved
-                # the board without that conductor; since 2.0 it is refused.
-                # Folding it instead stays the separate decision #674 left.
-                _refusal = nu_thin_conductor_refusal(tc)
-                if _refusal is not None:
-                    raise NotImplementedError(_refusal)
-                lo = tc.shape.corner_lo
-                hi = tc.shape.corner_hi
-            extents = [float(hi[i]) - float(lo[i]) for i in range(3)]
-            n_axis = min(range(3), key=lambda i: extents[i])  # sheet normal axis
-            d_norm = e_node_dual_spacings(
-                (grid.dx_arr, grid.dy_arr, grid.dz)[n_axis])
-            bshape = [1, 1, 1]
-            bshape[n_axis] = int(d_norm.shape[0])
-            _plane = None
-            _end_rows = (None, None, None)
-            if _f0 is not None:
-                # #931 G4 by construction: the f0 sheet takes the SAME
-                # footprint and plane a PEC sheet on this shape gets
-                # (sheet_spec_from_shape: nearest node to the mid-plane,
-                # closed Box footprint). A traced mesh (mesh-as-design-
-                # variable) has no static plane; there the footprint keeps
-                # the shape's own traced node sampler, as before #931.
-                if any(is_tracer(c) for c in (coords.x, coords.y, coords.z)):
-                    m = sheet_footprint_traced(tc.shape, coords, n_axis)
-                    _end_rows = sheet_end_rows(tc.shape, coords, n_axis)
-                else:
-                    _spec = sheet_spec_from_shape(
-                        tc.shape, coords, cell_sizes, normal_axis=n_axis,
-                        name="thin_conductor", lane="non-uniform",
-                        refuse_thick=True)
-                    m = _spec.footprint
-                    _plane = _spec.plane
-                    _end_rows = _spec.end_rows
-                # #674 guard: the realization normalizes ONE E node along the
-                # sheet normal, so the rasterized sheet must occupy exactly
-                # one layer there — and must not have vaporized.
-                check_sheet_occupancy(m, n_axis, lane="non-uniform")
-                if geometry_masks is not None:
-                    geometry_masks.append((conductor_keys[id(tc)], m))
-                # Leontovich band-centre surface-impedance mode (#669/#677):
-                # since #677 the sheet does NOT fold into materials.sigma
-                # (that realized it as a full-cell slab and moved resonances
-                # by geometry, issue #677). It is emitted as a
-                # SheetImpedanceSpec with sigma_sheet = (1/Rs0)/d_norm per
-                # node — d_norm the LOCAL E-node dual spacing along the
-                # sheet normal (#671), so sigma_sheet * Rs0 * d_norm == 1 on
-                # every layer of a graded mesh — and realized NODE-THIN by
-                # the per-step operator on the sheet edge set. Thickness
-                # deliberately does not enter (Leontovich loss is
-                # thickness-independent). eps_r stays at background (a sheet
-                # is a surface, not a dielectric fill).
-                #
-                # The sheet is not resident in materials.sigma. Operator
-                # isolation tests use strip_sheet_impedance to omit it;
-                # the waveguide calculator builds an independent empty
-                # guide with no device geometry or sheet declarations.
-                from rfx.materials.thin_conductor import (
-                    SheetImpedanceSpec, leontovich_rs)
-                rs0 = leontovich_rs(_f0, tc.sigma_bulk)
-                g_sheet = 1.0 / rs0
-                if sheet_specs is not None:
-                    sigma_sheet = jnp.where(
-                        m, (g_sheet / d_norm).reshape(bshape) *
-                        jnp.ones_like(materials.sigma), 0.0)
-                    sheet_specs.append(SheetImpedanceSpec(
-                        mask=m, normal_axis=n_axis, g_sheet=g_sheet,
-                        sigma_sheet=sigma_sheet, plane=_plane,
-                        end_rows=_end_rows))
-                continue
-            m = tc.shape.mask_on_coords(coords.x, coords.y, coords.z)
-            if geometry_masks is not None:
-                geometry_masks.append((conductor_keys[id(tc)], m))
-            sigma_eff = tc.sigma_bulk * (tc.thickness / d_norm.reshape(bshape))
-            materials = materials._replace(
-                eps_r=jnp.where(m, tc.eps_r, materials.eps_r),
-                sigma=jnp.where(m, sigma_eff, materials.sigma),
-            )
-    return materials
+def _fold_thin_conductors(sim, grid, materials, pec_mask, pec_shapes, pec_sheets,
+                          sheet_specs, geometry_masks, assembly_entries, findings):
+    """Continue declarations and apply the one model fold in declared order."""
+    for declared in sim._thin_conductors:
+        key = id(declared)
+        tc = replace(declared, shape=continued_conductor_shape(
+            sim, grid, declared.shape, entry=declared, unextendable=findings))
+        materials, pec_mask = apply_thin_conductor(
+            grid, tc, materials, pec_mask=pec_mask, sheet_specs=sheet_specs,
+            sheets=pec_sheets, geometry_masks=geometry_masks, geometry_key=key)
+        if assembly_entries is not None:
+            assembly_entries.append((key, None, pec_sheets[-1] if tc.is_pec else None,
+                                     None, tc.shape))
+        if tc.is_pec:
+            pec_shapes.append(tc.shape)
+    return materials, pec_mask
 
 
 class ComponentCells(NamedTuple):

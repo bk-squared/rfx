@@ -409,39 +409,10 @@ def pinned_sheet_realized(grid, sheet: PinnedSheet) -> dict:
     return out
 
 
-def _pec_sheet_spec(conductor, grid, *, lane: str):
-    """The :class:`SheetSpec` of a thin conductor on a uniform Grid (#931)."""
-    from rfx.geometry.csg import _grid_coords
-    from rfx.geometry.rasterize_grid import (
-        GridCoords, cell_sizes_from_uniform_grid, sheet_spec_from_shape)
-    x, y, z = _grid_coords(grid)
-    coords = GridCoords(x=x, y=y, z=z, shape=tuple(grid.shape))
-    return sheet_spec_from_shape(
-        conductor.shape, coords, cell_sizes_from_uniform_grid(grid),
-        name="thin_conductor", lane=lane, refuse_thick=True, grid=grid)
-
-
-
 def _thin_conductor_cell_mask(shape, grid):
-    """DC sheet sampling with the periodic normal plane identified first."""
-    if getattr(grid, 'periodic_axes', ''):
-        from rfx._periodic import periodic_mask, plane_coordinate
-        from rfx.geometry.csg import _grid_coords
-        lo, hi = sheet_bounds(shape)
-        normal = None if lo is None or hi is None else min(range(3), key=lambda a: hi[a] - lo[a])
-        if normal is not None and hi[normal] - lo[normal] <= float(grid.cells(normal)[0]):
-            mid = .5 * (lo[normal] + hi[normal])
-            sample = list(_grid_coords(grid))
-            shift = mid - plane_coordinate(grid, normal, mid)
-            if shift:
-                sample[normal] = sample[normal] + shift
-            mask = periodic_mask(grid, shape, sample,
-                                 axes=tuple(a for a in range(3) if a != normal))
-        else:
-            mask = shape.mask(grid)
-    else:
-        mask = shape.mask(grid)
-    return mask
+    """Compatibility entry for geometry continuation's DC sampler."""
+    from rfx.model.thin_conductors import dc_cell_mask
+    return dc_cell_mask(shape, grid)
 
 
 def apply_thin_conductor(
@@ -486,89 +457,10 @@ def apply_thin_conductor(
     -------
     (materials, pec_mask) — updated material arrays and PEC mask.
     """
-    if conductor.is_pec:
-        # #931 §1.3: a PEC thin conductor is a sheet — one plane, closed
-        # footprint, no cell. Thicker than one local cell is refused.
-        spec = _pec_sheet_spec(conductor, grid, lane="uniform")
-        if sheets is None:
-            raise ValueError(
-                "PEC thin conductor (add_thin_conductor with sigma_bulk >= "
-                "1e6 and no surface_impedance_f0) is a SHEET (#931) and this "
-                "lane collects no sheets (apply_thin_conductor(sheets=None)); "
-                "refusing to drop it silently.")
-        sheets.append(spec)
-        return materials, pec_mask
-
-    if conductor.surface_impedance_f0 is not None:
-        # Leontovich (band-centre) surface-impedance mode (issues #669/#677):
-        # the sheet is a resistive sheet of sheet resistance Rs0 =
-        # sqrt(pi*f0*mu0/sigma_bulk). Since #677 it is NOT folded into
-        # ``materials.sigma`` (that realized the sheet as a full-cell slab —
-        # the conductor surfaces moved half a cell each side and toggling f0
-        # moved resonances by GEOMETRY — measured shifts of 1.01 and
-        # 3.22 GHz on the #677 coupled-resonator A/B). Instead it is
-        # emitted as a :class:`SheetImpedanceSpec` and realized NODE-THIN by
-        # the per-step operator :func:`apply_sheet_impedance_e` on exactly
-        # the tangential E edges ``apply_pec_mask`` would zero — for a
-        # SINGLE sheet the PEC and f0 footprints are structurally identical,
-        # so the f0 toggle changes loss, never geometry. That identity is
-        # per sheet, not per stack: for two sheets on ADJACENT layers the f0
-        # path leaves the vacuum gap edge lossless (#690) while the PEC path
-        # still fuses the films, because ``pec_mask`` is a cell mask with no
-        # normal attached. ``eps_r`` is deliberately left at the background
-        # value (the sheet is a surface, not a dielectric fill).
-        #
-        # Thickness deliberately does NOT enter: Leontovich loss for a
-        # conductor much thicker than its skin depth is thickness-
-        # independent. ``sigma_sheet = G/d_dual`` with G = 1/Rs0 keeps
-        # ``sigma_sheet * d_dual == 1/Rs0`` exactly per node (the O2 tooth;
-        # grid.dx is both primal and dual on this uniform cubic lane).
-        #
-        # #674: any ``mask_on_coords`` shape may deliver ``mask``; it must
-        # rasterize to ONE cell layer along its normal
-        # (``check_sheet_occupancy``).
-        lo, hi = sheet_bounds(conductor.shape)
-        if lo is None or hi is None:
-            raise ValueError(
-                "surface-impedance (surface_impedance_f0) thin conductor "
-                "requires a shape with an axis-aligned bounding box (Box "
-                "corner_lo/corner_hi, or Shape.bounding_box()) — the sheet "
-                "normal is read from it; refusing to fold it blind.")
-        # #931 G4 by construction: the f0 sheet takes the SAME footprint
-        # and plane the PEC sheet on this shape gets.
-        spec = _pec_sheet_spec(conductor, grid, lane="uniform")
-        mask = spec.footprint
-        if geometry_masks is not None:
-            geometry_masks.append((geometry_key, mask))
-        n_axis = spec.normal_axis
-        check_sheet_occupancy(mask, n_axis, lane="uniform")
-        g_sheet = 1.0 / leontovich_rs(conductor.surface_impedance_f0,
-                                      conductor.sigma_bulk)
-        if sheet_specs is not None:
-            sigma_sheet = jnp.where(mask, g_sheet / grid.dx, 0.0)
-            sheet_specs.append(SheetImpedanceSpec(
-                mask=mask, normal_axis=n_axis, g_sheet=g_sheet,
-                sigma_sheet=sigma_sheet, plane=spec.plane,
-                unwrapped_footprint=spec.unwrapped_footprint,
-                end_rows=spec.end_rows))
-        # Materials are returned UNCHANGED: assembled arrays are sheet-free
-        # by design since #677. A caller that runs the fields without
-        # applying the sheet ctx must refuse f0 sheets at its entry point
-        # (see Simulation lanes) — the assembly itself is not the fence.
-        return materials, pec_mask
-
-    # Lossy thin conductor (DC fold): effective conductivity preserves
-    # the DC sheet resistance R_s = 1/(sigma_bulk*t).
-    mask = _thin_conductor_cell_mask(conductor.shape, grid)
-    if geometry_masks is not None:
-        geometry_masks.append((geometry_key, mask))
-
-    sigma_eff = conductor.sigma_bulk * (conductor.thickness / grid.dx)
-
-    eps_r = jnp.where(mask, conductor.eps_r, materials.eps_r)
-    sigma = jnp.where(mask, sigma_eff, materials.sigma)
-
-    return materials._replace(eps_r=eps_r, sigma=sigma), pec_mask
+    from rfx.model.thin_conductors import fold_thin_conductor
+    return fold_thin_conductor(
+        grid, conductor, materials, pec_mask, sheet_specs=sheet_specs,
+        sheets=sheets, geometry_masks=geometry_masks, geometry_key=geometry_key)
 
 
 # ---------------------------------------------------------------------------

@@ -42,8 +42,25 @@ and gradient keep their own peak. Forward
 cells use JVP of a design-permittivity multiplier, with squared probe samples
 as the objective. Current moments use their supported bounded design box.
 Named E components share the largest E magnitude on either path; H components
-share a separate H peak. Flux tangential components follow the same rule. NTFF
-faces are split into E/H slots, with separate peaks across the six faces.
+share a separate H peak by default. Flux tangential components follow the same
+rule. The caller opts in by passing the scene's impedance range, for example
+`_tree(..., paired_impedance=wave_impedance_range(10))` for nonmagnetic media
+with relative permittivity from 1 to 10. The helper returns
+`(Z0 / sqrt(eps_r_max), Z0)` using `Z0 = sqrt(MU_0 / EPS_0)` from the solver's
+constants (approximately 376.730313668 ohm). With `(z_low, z_high)`, the peaks
+are `max(E, z_low * H)` and `max(H, E / z_high)`, in SI units. A propagating
+wave with impedance inside those bounds retains both own peaks. A single
+positive finite number Z uses Z in both directions; using vacuum Z alone
+for an eps_r = 10 wave raises the E peak by sqrt(10). There is no default
+vacuum impedance. Bounds must be positive, finite, ordered numbers, not bools.
+An absent partner or a nonfinite converted partner retains the own peak.
+NTFF faces are split into E/H slots with peaks across the six faces, and use
+the same option. The matrix runner does not opt any cell in.
+
+In the prompting case, the step bar is 9 ULP of E/Z0, approximately
+7.9e-7 of E/Z0: 22% of H's own peak when H sits 109 dB below E/Z0.
+The accumulated bar is 1e-4 of E/Z0, or 28 times H's own peak there.
+This option is for bit-level trace checks, not for judging H accuracy.
 Different observers and different physical quantities (e.g. V and I) are not
 merged.
 Observer configuration and geometry (`OBSERVER_METADATA`,
