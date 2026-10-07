@@ -309,6 +309,7 @@ def validate_msl_port_geometry(grid, port, *, pec_edge_masks=None,
     This validates attachment and the open substrate interval, not modal
     accuracy or the approximation of a coarse trace width.
     """
+    from rfx.preflight.msl_codes import msl_geometry_error, msl_text
     from rfx.boundaries.pec import realized_wall_planes
     from rfx.geometry.rasterize_grid import _box_axis_closed, _local_cell
     from rfx.materials.thin_conductor import build_sheet_impedance_ctx
@@ -319,7 +320,7 @@ def validate_msl_port_geometry(grid, port, *, pec_edge_masks=None,
     p, lower, upper = span["i_feed"], span["n_lo"], span["n_hi"]
     label = f"MSL port {name!r}" if name is not None else "MSL port"
     if len(nodes[ip]) < 2 or len(nodes[iw]) < 2:
-        raise ValueError(f"{label}: propagation and width axes must both be resolved")
+        raise msl_geometry_error(msl_text('attachment_axes', owner=label), subject=name)
     hard = (tuple(np.zeros(grid.shape, dtype=bool) for _ in range(3))
             if pec_edge_masks is None else tuple(np.asarray(m, dtype=bool) for m in pec_edge_masks))
     if sheet_impedance is None and sheet_specs:
@@ -344,7 +345,7 @@ def validate_msl_port_geometry(grid, port, *, pec_edge_masks=None,
         width_nodes = np.append(width_nodes, float(grid.domain[iw]))
     widths = np.flatnonzero(_box_axis_closed(width_nodes, port.y_lo, port.y_hi, local))
     if not len(widths):
-        raise ValueError(f"{label}: the declared width contains no grid node")
+        raise msl_geometry_error(msl_text('attachment_width', owner=label), subject=name)
     widths = sorted({int(w) % len(nodes[iw]) for w in widths} | {span["w_centre"]})
     if (span["width_axis"] in getattr(grid, "periodic_axes", "")
             and 0 in span["width_nodes"]):
@@ -355,9 +356,7 @@ def validate_msl_port_geometry(grid, port, *, pec_edge_masks=None,
         for side, boundary_node in (("lo", 0), ("hi", grid.shape[axis]-1)):
             face = f"{'xyz'[axis]}_{side}"
             if face in faces and boundary_node in indices:
-                raise ValueError(
-                    f"{label}: the source touches domain PEC face {face}, which "
-                    "zeros its substrate-normal E component. Move the port off that wall.")
+                raise msl_geometry_error(msl_text('attachment_wall', owner=label, face=face), subject=name)
 
     def along_trace(w, k):
         if 'z' in getattr(grid, 'periodic_axes', ''):
@@ -381,36 +380,23 @@ def validate_msl_port_geometry(grid, port, *, pec_edge_masks=None,
                 alternatives = sorted(set(realized_wall_planes(
                     observed, 2, ij=ij, periodic=periodic)) | domain_planes)
                 locations = [float(nodes[2][j]) for j in alternatives]
-                raise ValueError(
-                    f"{label}: declared {role} at z={declared:.9g} m maps to node "
-                    f"{k} (z={nodes[2][k % len(nodes[2])]:.9g} m), but no longitudinal conductor "
-                    f"edge meets it at width node {w}. Observed conductor planes "
-                    f"on this column are {locations} m. Make the port ground/trace "
-                    "declarations agree with the realized conductor surfaces.")
+                raise msl_geometry_error(msl_text('attachment_missing', owner=label, role=role, declared_plane_m=declared, plane_index=k, realized_plane_m=nodes[2][k % len(nodes[2])], width_node=w, observed_plane_m=locations), subject=name)
         # A volume owns internal planes too. Its substrate-facing surface
         # must leave ALL normal source edges live, not merely appear in a
         # tangential-wall census. Also catches posts crossing the port.
         occupied = [k for k in range(lower, upper)
                     if hard[2][msl_cell(port.direction, p, w, k)]]
         if occupied:
-            raise ValueError(
-                f"{label}: substrate interval [{lower}, {upper}) intersects PEC "
-                f"normal edges {occupied} at width node {w}; use the substrate-facing "
-                "surfaces, not a plane inside the ground/trace volume.")
+            raise msl_geometry_error(msl_text('attachment_occupied', owner=label, lower_node=lower, upper_node=upper, occupied_node=occupied, width_node=w), subject=name)
         loaded = [k for k in range(lower, upper)
                   if observed[2][msl_cell(port.direction, p, w, k)]]
         if loaded:
-            raise ValueError(
-                f"{label}: surface-impedance sheet edges {loaded} load the "
-                f"substrate-normal source at width node {w}. Move the port "
-                "off the intersecting sheet.")
+            raise msl_geometry_error(msl_text('attachment_loaded', owner=label, loaded_node=loaded, width_node=w), subject=name)
         ij = msl_cell(port.direction, p, w, lower)[:2]
         intervening = [k for k in realized_wall_planes(observed, 2, ij=ij, periodic=periodic)
                       if lower < k < upper]
         if intervening:
-            raise ValueError(
-                f"{label}: additional conductor planes {intervening} lie inside "
-                f"the substrate interval [{lower}, {upper}); the port cannot span them.")
+            raise msl_geometry_error(msl_text('attachment_intervening', owner=label, intervening_node=intervening, lower_node=lower, upper_node=upper), subject=name)
 
 
 def _axis_cell_size(grid, axis: str, idx: int) -> float:

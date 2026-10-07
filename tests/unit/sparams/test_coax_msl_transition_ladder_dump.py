@@ -296,7 +296,7 @@ def test_ladder_dump_witness_covers_every_numeric_field():
     from rfx.api._spec import CoaxMSLTransitionResult
 
     names = {f.name for f in dataclasses.fields(CoaxMSLTransitionResult)}
-    non_numeric = {"port_names", "status"}
+    non_numeric = {"port_names", "status", "diagnostics"}
     nested_numeric = {"settling_witness"}
     opt_in_payloads = {"flux_monitors", "ladder_voltages", *_LADDER_WITNESS_FIELDS}
     assert names == set(_NUMERIC_FIELDS) | nested_numeric | non_numeric | opt_in_payloads, (

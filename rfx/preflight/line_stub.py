@@ -7,6 +7,7 @@ import sys
 
 import numpy as np
 
+from rfx.preflight.msl_codes import msl_diagnostic, msl_text, stub_diagnostic, msl_error
 from rfx.geometry.csg import Box, declared_bounds
 from rfx.geometry.port_termination import conductor_entries
 
@@ -326,46 +327,16 @@ def resonant_odd_orders(finding, band):
 
 
 def stub_message(finding, band=None):
-    fq = finding.frequency_hz / 1e9
-    orders = None if band is None else resonant_odd_orders(finding, band)
-    if orders is None:
-        relation = ("at odd quarter-wave resonances" if band is None else
-                    "outside the refusal interval for the band you read")
-        frequencies = f"{fq:.6g}, {3*fq:.6g}, {5*fq:.6g}, ... GHz (odd multiples)"
-    else:
-        first, last = orders
-        relation = "inside/near the band you read"
-        frequencies = (f"{first*fq:.6g} GHz (order {first})" if first == last else
-                       f"{first*fq:.6g}..{last*fq:.6g} GHz (odd orders {first}..{last})")
-    band_text = ("" if band is None else
-                 f"Read band {band[0]/1e9:.6g}..{band[1]/1e9:.6g} GHz; ")
-    mismatch = ""
-    declared = finding.declared_eps_r_sub
-    if declared is not None and abs(declared - finding.substrate_eps_r) > .01 * finding.substrate_eps_r:
-        mismatch = (f"Realized substrate eps_r={finding.substrate_eps_r:.6g}; "
-                    f"declared port eps_r_sub={declared:.6g}. ")
-    return (
-        f"The strip continues {finding.overhang_m*1e3:.6g} mm behind the port "
-        f"and ends there (realized L; declared {finding.declared_overhang_m*1e3:.6g} mm); "
-        f"with the open-end extension {finding.end_extension_m*1e3:.6g} mm its effective "
-        f"length is {finding.effective_length_m*1e3:.6g} mm. "
-        f"It is an open stub that shorts the port near {fq:.6g} GHz "
-        f"(quarter wave); stub frequencies {frequencies}, {relation}. "
-        f"{band_text}"
-        f"eps_eff={finding.eps_eff:.6g}; port {finding.port_name!r}. "
-        f"{mismatch}"
-        f"The port's realized grid node is {finding.axis}={finding.port_node_m*1e3:.9g} mm. "
-        "Fix: start the signal strip at that coordinate (the port's grid node), "
-        "so it covers the port node and nothing behind it (#1512)."
-    )
+    return stub_diagnostic(finding, band).message
 
 
 def _uninspectable_warning(skipped):
     from rfx.preflight._common import PreflightWarning
     return PreflightWarning(
-        f"Line-stub check could not inspect {len(skipped)} conductor shape(s) "
-        f"({'; '.join(skipped)}). They were skipped; the other conductors were "
-        "checked. This is not evidence that the skipped shapes leave no tail behind a port.",
+        msl_diagnostic('msl.line_stub_inspection_unavailable',
+                       msl_text('line_stub_inspection_unavailable',
+                                shape_count=len(skipped), shapes='; '.join(skipped)),
+                       source='line_stub_findings'),
         code="line_stub_inspection_unavailable", source="line_stub_findings")
 
 
@@ -387,7 +358,10 @@ def _warn_uninspectable(skipped):
             frame, level = frame.f_back, level + 1
     finally:
         del frame
-    warnings.warn(_uninspectable_warning(skipped), stacklevel=level)
+    from rfx._diagnostic_context import record_diagnostics
+    warning = _uninspectable_warning(skipped)
+    record_diagnostics((warning.diagnostic,))
+    warnings.warn(warning, stacklevel=level)
 
 
 def require_no_resonant_line_stub(sim, freqs=None):
@@ -404,11 +378,16 @@ def require_no_resonant_line_stub(sim, freqs=None):
             # Unsupported inspection leaves admission to the owning lane, but not silently.
             findings = []
             skipped.append(str(exc))
+        except ValueError as exc:
+            msl_error(msl_diagnostic(
+                'msl.line_stub_realization', msl_text('line_stub_realization', detail=exc),
+                source='line_stub_findings'), error=exc)
+            raise
         if skipped:
             _warn_uninspectable(skipped)
         for finding in findings:
             if resonant_odd_orders(finding, band) is not None:
-                raise ValueError(stub_message(finding, band))
+                raise msl_error(stub_diagnostic(finding, band))
 
 
 def line_stub_admission(sim, freqs=None):
@@ -436,13 +415,15 @@ def preflight_line_stubs(sim, warn):
     except ValueError as exc:
         # Preserve the blocking realization error without aborting later checks.
         # Solve admission still raises it unconditionally, even with preflight off.
-        warn.warn(PreflightErrorWarning(str(exc), code="line_stub_realization",
+        warn.warn(PreflightErrorWarning(msl_diagnostic(
+            'msl.line_stub_realization', msl_text('line_stub_realization', detail=str(exc)),
+            source='line_stub_findings'), code="line_stub_realization",
                                         source="line_stub_findings"), stacklevel=3)
         return
     if skipped:
         warn.warn(_uninspectable_warning(skipped), stacklevel=3)
     for finding in findings:
         warn.warn(PreflightWarning(
-            stub_message(finding, band), code="line_stub_behind_port",
+            stub_diagnostic(finding, band), code="line_stub_behind_port", severity="warning",
             source="line_stub_findings", loc=f"{finding.collection}[{finding.port_index}]"),
             stacklevel=3)

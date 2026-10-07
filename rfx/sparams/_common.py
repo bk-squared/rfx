@@ -654,6 +654,7 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
         return entries
 
     import dataclasses
+    from rfx.preflight.msl_codes import msl_text, msl_join, placement_warning
     import warnings
 
     from rfx.api._preflight import (
@@ -690,10 +691,7 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
         dx_u, _graded, _evaluable = _msl_axis_spacing(grid, _ip)
         if not _evaluable or (not _graded and is_tracer(grid.cells(_iw))):
             _graded_skips.append(
-                f"{pe.name!r} (direction={pe.direction!r}): the "
-                f"{_prop_ax if not _evaluable else _width_ax}-axis cell sizes are a traced "
-                f"mesh-as-design-variable profile and cannot be inspected "
-                f"host-side; the stored offset and spacing are kept")
+                msl_text('placement_traced', port_name=pe.name, direction=pe.direction, axis=_prop_ax if not _evaluable else _width_ax))
             resolved.append(pe)
             continue
         if _graded:
@@ -702,10 +700,7 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
             _lengths = _auto_lengths.get(pe.name)
             if _lengths is None:
                 _graded_skips.append(
-                    f"{pe.name!r} (direction={pe.direction!r}): the "
-                    f"propagation axis {_prop_ax} is GRADED and the lengths "
-                    f"its automatic probe ladder was counted from were not "
-                    f"recorded; the stored offset and spacing are kept")
+                    msl_text('placement_missing_lengths', port_name=pe.name, direction=pe.direction, propagation_axis=_prop_ax))
                 resolved.append(pe)
                 continue
             from rfx.nonuniform import interior_cells as _interior_cells
@@ -723,18 +718,10 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
                 n_probe_spacing=(None if sp_eps_eff is not None
                                  else pe.n_probe_spacing))
             _ladder_txt = (
-                f"offset {_off} + {int(pe.n_probes) - 1} x spacing {_sp} "
-                f"cells of {_fmt_len(_cell)}")
+                msl_text('placement_ladder', runway_offset_cells=_off, probe_intervals=int(pe.n_probes) - 1, runway_spacing_cells=_sp, runway_cell_m=_cell))
             if not _one_zone:
                 _graded_skips.append(
-                    f"{pe.name!r} (direction={pe.direction!r}): the "
-                    f"propagation axis {_prop_ax} is GRADED and this port's "
-                    f"automatic probe ladder counted in its runway cell "
-                    f"({_ladder_txt}) would cross a grading ramp, so no "
-                    f"cell count names one length along it; the offset "
-                    f"{int(pe.n_probe_offset)} and spacing "
-                    f"{int(pe.n_probe_spacing)} counted in the boundary "
-                    f"cell at registration are kept")
+                    msl_text('placement_crosses_ramp', port_name=pe.name, direction=pe.direction, propagation_axis=_prop_ax, ladder=_ladder_txt, stored_offset_cells=int(pe.n_probe_offset), stored_spacing_cells=int(pe.n_probe_spacing)))
                 resolved.append(pe)
                 continue
             _fields = {}
@@ -743,11 +730,7 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
             if sp_eps_eff is not None and _sp != int(pe.n_probe_spacing):
                 _fields["n_probe_spacing"] = _sp
             _graded_skips.append(
-                f"{pe.name!r} (direction={pe.direction!r}): the "
-                f"propagation axis {_prop_ax} is GRADED; the automatic "
-                f"probe ladder is counted in this port's own runway cell "
-                f"({_ladder_txt}, probe 0 {_fmt_len(_off * _cell)} "
-                f"from the source)")
+                msl_text('placement_uniform_zone', port_name=pe.name, direction=pe.direction, propagation_axis=_prop_ax, ladder=_ladder_txt, first_probe_distance_m=_off * _cell))
             resolved.append(
                 dataclasses.replace(pe, **_fields) if _fields else pe)
             continue
@@ -793,9 +776,7 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
         )
         if _unevaluated:
             _graded_skips.append(
-                f"{pe.name!r} (direction={pe.direction!r}): the downstream "
-                f"reflector scan could not evaluate "
-                f"{len(_unevaluated)} conductor(s) — "
+                msl_text('placement_uninspected', port_name=pe.name, direction=pe.direction, unevaluated_conductor_count=len(_unevaluated))
                 + "; ".join(_unevaluated)
                 + "; the upstream-only offset and the registration spacing, "
                 "counted in this axis's cell, are kept")
@@ -853,39 +834,18 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
                 MSL_PROBE_CLEARANCE_GUIDANCE as _MSL_PROBE_CLEARANCE_GUIDANCE,
             )
             warnings.warn(
-                f"MSL port {pe.name!r}: the upstream and downstream "
-                f"probe clearances are mutually unsatisfiable on this "
-                f"feed (upstream needs n_probe_offset >= {off_min} "
-                f"cells = max(λ/4π, 5·h_sub)/dx; downstream needs "
-                f"<= {off_max} cells to keep the deepest of "
-                f"{int(pe.n_probes)} probes ≥ "
-                f"{clear*1e6:.0f}µm (λ_g/4 at f_max) clear of the "
-                f"reflector {d_refl*1e3:.2f}mm from the feed). "
-                f"The feed line is too short for a clean N-probe "
-                f"measurement (issue #469) — keeping the upstream-priority "
-                f"offset {off_min}, which puts the deep probes inside the "
-                f"reflector's near field. "
+                placement_warning(msl_text('placement_empty_interval', port_name=pe.name, offset_min_cells=off_min, offset_max_cells=off_max, probe_count=int(pe.n_probes), recommended_reflector_gap_m=clear, feed_reflector_gap_m=d_refl)
                 + _MSL_PROBE_CLEARANCE_EFFECT + " "
-                + _MSL_PROBE_CLEARANCE_GUIDANCE,
+                + _MSL_PROBE_CLEARANCE_GUIDANCE),
                 stacklevel=3,
             )
             resolved.append(
                 dataclasses.replace(pe, **_fields) if _fields else pe
             )
     if _graded_skips:
-        warnings.warn(
-            "MSL auto probe-offset interval solve (issue #469) SKIPPED for "
-            + str(len(_graded_skips)) + " port(s), so the downstream "
-            "reflector clearance is NOT enforced for them and no auto probe "
-            "spacing is widened (#681; on a graded propagation axis both "
-            "would count reflector and absorber distances in cells of more "
-            "than one size). Per port: " + "; ".join(_graded_skips)
-            + ". This used to be silent for every non-uniform mesh (issue "
-            "#686). Set n_probe_offset explicitly on these ports, or make "
-            "the propagation axis uniform, if the deepest probe's "
-            "clearance matters.",
-            stacklevel=3,
-        )
+        warnings.warn(placement_warning(msl_text(
+            'placement_graded_skipped', port_count=len(_graded_skips),
+            details=msl_join('; ', _graded_skips, indexed=True))), stacklevel=3)
     return resolved
 
 

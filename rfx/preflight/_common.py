@@ -48,6 +48,7 @@ from rfx._grid_metric import (
     NODE_TOUCH_REL, cells_crossed, is_one_cell_size, nearest_node_index,
 )
 from rfx.core.jax_utils import is_tracer
+from rfx.diagnostic_records import Diagnostic, from_legacy
 
 
 def local_cell(grid, axis, x):
@@ -274,10 +275,17 @@ class PreflightWarning(UserWarning):
         message,
         *,
         code: str = "uncoded",
-        severity: str = "warning",
+        severity: str | None = None,
         loc: str | None = None,
         source: str | None = None,
     ) -> None:
+        severity = severity or (message.legacy_severity if isinstance(message, Diagnostic) else "warning")
+        self.diagnostic = message if isinstance(message, Diagnostic) else from_legacy(
+            message, code=code, severity=severity, loc=loc, source=source)
+        if isinstance(message, Diagnostic):
+            source = source if source is not None else message.source
+            code = message.code if code == "uncoded" else code
+            message = message.message
         super().__init__(message)
         self.message = str(message)
         self.code = code
@@ -337,6 +345,13 @@ class PreflightConfigError(ValueError):
         loc: str | None = None,
         source: str | None = None,
     ) -> None:
+        self.diagnostic = message if isinstance(message, Diagnostic) else from_legacy(
+            message, code=code, severity="error", loc=loc, source=source, refusal=True)
+        self.diagnostics = (self.diagnostic,)
+        if isinstance(message, Diagnostic):
+            loc, source = message.subject, message.source
+            code = message.code if code == "uncoded" else code
+            message = message.message
         super().__init__(message)
         self.code = code
         self.loc = loc
@@ -384,12 +399,24 @@ class PreflightIssue(str):
         cls,
         message,
         *,
-        severity: str = "warning",
+        severity: str | None = None,
         code: str = "uncoded",
         loc: str | None = None,
         source: str | None = None,
+        diagnostic: Diagnostic | None = None,
     ):
+        if isinstance(message, Diagnostic):
+            severity = severity or message.legacy_severity
+            code = message.code if code == "uncoded" else code
+            diagnostic, message = message, message.message
+        severity = severity or "warning"
+        if diagnostic is None:
+            diagnostic = getattr(message, "diagnostic", None)
+        if diagnostic is None:
+            diagnostic = from_legacy(message, code=code, severity=severity,
+                                     loc=loc, source=source)
         obj = super().__new__(cls, str(message))
+        obj.diagnostic = diagnostic
         obj.severity = severity
         obj.code = code
         obj.loc = loc
@@ -432,6 +459,23 @@ class PreflightReport(list):
     def __init__(self, issues=(), *, flux_regions=None):
         super().__init__(issues)
         self.flux_regions = [] if flux_regions is None else list(flux_regions)
+
+    def exception(self, message):
+        """Preserve the historical ValueError text and attach the complete tuple."""
+        error = ValueError(message)
+        error.diagnostics = self.diagnostics
+        return error
+
+    @staticmethod
+    def capture_warnings(**kwargs):
+        from rfx._diagnostic_context import capture_warnings
+        return capture_warnings(**kwargs)
+
+    @property
+    def diagnostics(self) -> tuple[Diagnostic, ...]:
+        """Complete tuple, including mechanical records for unmoved families."""
+        return tuple(getattr(issue, "diagnostic", None) or from_legacy(issue)
+                     for issue in self)
 
     # Class attribute, not a module-level constant: the module namespace of
     # ``rfx.api._preflight`` is pinned by set equality
@@ -519,7 +563,7 @@ class PreflightReport(list):
         errors = self.errors
         if errors:
             detail = "\n  - ".join(str(e) for e in errors)
-            raise ValueError(
+            raise self.exception(
                 f"preflight found {len(errors)} blocking error(s):\n  - {detail}"
             )
         return self

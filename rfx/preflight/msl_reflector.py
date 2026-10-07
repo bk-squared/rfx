@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from rfx.preflight.msl_codes import msl_text
+
 
 def msl_nearest_downstream_reflector(
     geometry,
@@ -249,9 +251,10 @@ def msl_nearest_downstream_reflector(
         if d < nearest_d:
             nearest_d = d
             _how = " (bounding box)" if _from_bbox else ""
-            nearest_label = (
-                f"{_what}{_how} at {_prop_ax}∈[{box_x_lo*1e3:.2f},"
-                f"{box_x_hi*1e3:.2f}]mm "
-                f"{_width_ax}∈[{box_y_lo*1e3:.2f},{box_y_hi*1e3:.2f}]mm"
-            )
+            nearest_label = msl_text(
+                'reflector_bounds', owner=_what, kind=_how,
+                propagation_axis=_prop_ax, width_axis=_width_ax,
+                reflector_lo_m=box_x_lo, reflector_hi_m=box_x_hi,
+                reflector_width_lo_m=box_y_lo, reflector_width_hi_m=box_y_hi)
+
     return nearest_d, nearest_label, unevaluated

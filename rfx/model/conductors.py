@@ -13,6 +13,9 @@ from rfx.preflight.realization import _RealizedPEC
 from rfx.boundaries.pec import SheetSpec
 
 
+from rfx.preflight._impl import run_preflight_gate
+from rfx._diagnostic_context import diagnostic_scope, diagnostic_result
+
 @dataclass(frozen=True)
 class ConductorStage:
     entity_ids: tuple[str, ...]

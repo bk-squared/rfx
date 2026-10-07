@@ -1062,7 +1062,7 @@ class _PreflightMixin:
                 f"{type(exc).__name__}: {exc}",
                 severity="error",
                 code=getattr(exc, "code", f"sparam_routing_{key}"),
-                source="preflight_sparameters",
+                source="preflight_sparameters", diagnostic=getattr(exc, "diagnostic", None),
             ))
 
         # Waveguide setup audits (post-v1.8 plan item 2, sections 2-1/2-4 of
@@ -1088,14 +1088,14 @@ class _PreflightMixin:
                 from rfx.preflight.msl import (
                     preflight_msl_probe_clearance,
                 )
-                with _mslmod.catch_warnings(record=True) as _msl_caught:
+                with PreflightReport.capture_warnings(record=True) as _msl_caught:
                     _mslmod.simplefilter("always")
                     preflight_msl_probe_clearance(
                         self, _mslmod, skip=bool(include_general))
                 for _rec in _msl_caught:
                     _inst = _rec.message
                     issues.append(PreflightIssue(
-                        str(_inst),
+                        _inst,
                         severity=getattr(_inst, "severity", "warning"),
                         code=getattr(_inst, "code", "msl_port_geometry"),
                         source=getattr(_inst, "source",
@@ -1106,7 +1106,7 @@ class _PreflightMixin:
             _wg_entries = list(self._waveguide_ports)
             if _wg_entries:
                 import warnings as _wmod
-                with _wmod.catch_warnings(record=True) as _wg_caught:
+                with PreflightReport.capture_warnings(record=True) as _wg_caught:
                     _wmod.simplefilter("always")
                     self._preflight_waveguide_setup(
                         _wmod,
@@ -1116,7 +1116,7 @@ class _PreflightMixin:
                 for _rec in _wg_caught:
                     _inst = _rec.message
                     issues.append(PreflightIssue(
-                        str(_inst),
+                        _inst,
                         severity=getattr(_inst, "severity", "warning"),
                         code=getattr(_inst, "code", "uncoded"),
                         loc=getattr(_inst, "loc", None),
@@ -1133,7 +1133,7 @@ class _PreflightMixin:
         _errors = issues.errors
         if strict and _errors:
             _advisory = len(issues) - len(_errors)
-            raise ValueError(
+            raise issues.exception(
                 f"preflight_sparameters (strict) found {len(_errors)} "
                 f"error-severity issue(s)"
                 + (f" (plus {_advisory} advisory/informational finding(s), "
