@@ -501,3 +501,38 @@ the PR with the old finite-box arrangement kept as a refusal judge. No other com
 The same rule applies to any other committed TF/SF case the census finds non-invariant: report each
 with its structure before converting; a case that pins a physical number (a lock, an oracle, a
 cross-validation record) is NOT converted by the implementer — stop on it and report.
+
+Addendum 5c, 2026-10-08 (leader, after two independent implementations were reviewed; decisions by the
+lead, [L:2de396]). Addendum 5 rested on assumptions about the paths that were not checked against the
+code; four were wrong. What is assumed now is written per path, and each line is to be confirmed by
+reading the code and by a build before it is relied on.
+(1) Where the waveguide rule applies. Checked (both reviews, reproduced): on the uniform single-device
+path a full-aperture guide declared `cpml` is built with realized transverse depth 0 (electric walls);
+on the non-uniform path the same declaration builds real transverse absorbers (8-cell pads on the
+reviewers' case), so nothing is rewritten there. Rule: the default-to-PEC and the refusal of an explicit
+absorbing transverse face apply on a path if and only if, on main, that path realizes depth 0 on a
+declared absorbing transverse face of a full-aperture guide. Every other path keeps today's behaviour in
+PR3a, unchanged and unrefused. To be confirmed per path by the implementer (code read + build):
+distributed_v2, distributed_nu, subgridded, ADI. That uniform and graded meshes solve different models
+for one declaration is a PR3b item; PR3a measures it once (S11 and S21 over the band, one WR-90
+full-aperture case, default declaration, uniform against graded) and reports the curves.
+(2) A declared PMC or PEC transverse wall under a TF/SF plane wave. On main the wrap overwrites it
+silently. PR3a: refused unless the model is invariant along that axis (then wall and wrap give the same
+field and today's run is kept bit-identically, with the finding); honouring walls on a non-invariant
+model is PR3b. `boundary='upml'` with a TF/SF plane wave stays refused, as on main.
+(3) Invariance of conductor masks. The legacy wrap leaves the last transverse edge row of a tangential
+conductor mask empty, so a conductor sheet spanning the whole transverse extent is not invariant on the
+realized arrays, and main leaks −57.7 dB through such a plate (reviewer, reproduced). The invariance
+check ignores that duplicated end edge, so the sheet runs as today, bit-identically. The seam is recorded
+in the ledger with its number as a PR3b item.
+(4) The RCS tutorial (`examples/tutorials/rcs_scattering.py`: PEC sphere, default absorbing faces, plane
+wave) solves an array, the arrangement PR3a refuses. It is converted to `closed_box=True` in this PR and
+its snapshot regenerated; it is the second fixture whose values change (after the S0 TF/SF cell), with
+before/after in the PR.
+(5) Not a feature rewrite, so not refused: a low-level `rfx.run(..., periodic=..., tfsf=...)` call in
+which the caller passes the periodic flags; a wall on the PROPAGATION axis of a TF/SF source (as on
+main). A traced material override that cannot be judged at trace time keeps today's behaviour, with a
+finding that the invariance was not judged.
+(6) The frozen design format gains no field. Export of a default full-aperture guide writes the resolved
+declaration (PEC transverse faces, absorber on the port axis); any other default-boundary model exports
+exactly as on main; a document written by main imports and runs as it did on main.
