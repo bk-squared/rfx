@@ -24,7 +24,7 @@ def _guide(*, precision="float32", solver="yee", nonuniform=False, n_modes=1):
         freq_max=12e9,
         domain=(0.09, 0.04, 0.02),
         dx=0.005,
-        boundary="cpml",
+        boundary="cpml" if nonuniform else {"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=4,
         precision=precision,
         solver="yee",
