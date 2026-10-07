@@ -354,7 +354,7 @@ GATE_OPT_OUTS = {
 #: as documentation takes it out of the required lanes, so a new entry here is
 #: something a reviewer should see: a number check must not leave this way.
 DOCS_CONSISTENCY_TESTS = frozenset({
-    "tests/contracts/test_ci_workflows_contract.py::test_local_sh_and_the_runbook_list_the_same_steps_in_the_same_order",
+    "tests/contracts/test_ci_workflows_contract.py::test_local_sh_preserves_the_runbook_baseline_before_selected_tests",
     "tests/contracts/test_ci_workflows_contract.py::test_the_runbook_says_changes_must_be_a_required_check",
     "tests/contracts/test_ci_workflows_contract.py::test_the_runbook_tells_authors_to_run_it_before_every_push",
     "tests/contracts/test_empty_window_gradient_caveat_docpin.py::test_autodiff_guide_pins_fd_necessary_not_sufficient",
