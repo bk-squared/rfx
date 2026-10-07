@@ -1,5 +1,6 @@
 """Slab operands and ordered write-back for the single-device CPML update."""
 
+import jax
 import jax.numpy as jnp
 
 from rfx.core.yee import h_neighbor
@@ -64,16 +65,6 @@ def slab_neighbor(arr, axis, depth, lo, forward, boundary=None, *,
 def apply_ordered(field, terms):
     """Add slab corrections in production order, including overlap rounding."""
     for sl, value in terms:
-        pads = []
-        mask = True
-        for axis, (window, size) in enumerate(zip(sl, field.shape)):
-            start, stop, _ = window.indices(size)
-            pads.append((start, size - stop))
-            if start != 0 or stop != size:
-                shape = [1, 1, 1]
-                shape[axis] = size
-                index = jnp.arange(size).reshape(shape)
-                mask = (index >= start) & (index < stop)
-        correction = jnp.pad(value, pads)
-        field = jnp.where(mask, field + correction, field)
+        starts = tuple(window.indices(size)[0] for window, size in zip(sl, field.shape))
+        field = jax.lax.dynamic_update_slice(field, field[sl] + value, starts)
     return field
