@@ -40,8 +40,12 @@ class WorkerClient:
         if cell.id not in self.cache:
             if self.process is None:
                 self._start()
-            self.process.stdin.write(json.dumps({'cell': cell.id}) + '\n')
-            self.process.stdin.flush()
+            try:
+                self.process.stdin.write(json.dumps({'cell': cell.id}) + '\n')
+                self.process.stdin.flush()
+            except OSError:
+                self.close()
+                pytest.fail(f'S0 worker exited: {self.errors.name}')
             try:
                 response = self.pending.get(timeout=self.timeout)
             except queue.Empty:
@@ -50,9 +54,15 @@ class WorkerClient:
             if response is None:
                 self.close()
                 pytest.fail(f'S0 worker exited: {self.errors.name}')
-            result = json.loads(response)
+            try:
+                result = json.loads(response)
+            except json.JSONDecodeError:
+                self.close()
+                raise
             assert 'worker_error' not in result, result.get('worker_error')
-            assert result['cell'] == cell.id
+            if result['cell'] != cell.id:
+                self.close()
+                pytest.fail(f'S0 worker cell mismatch: expected {cell.id}, got {result["cell"]}')
             self.cache[cell.id] = result
         return self.cache[cell.id]
 
@@ -60,13 +70,18 @@ class WorkerClient:
         process = self.process
         if process is None:
             return
-        process.poll()
         try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except ProcessLookupError:
-            pass
-        process.wait(timeout=5)
-        process.stdin.close()
-        self.reader.join(timeout=5)
-        process.stdout.close()
-        self.process = None
+            process.poll()
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                pass
+            process.wait(timeout=5)
+            try:
+                process.stdin.close()
+            except OSError:
+                pass
+            self.reader.join(timeout=5)
+            process.stdout.close()
+        finally:
+            self.process = None

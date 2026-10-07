@@ -25,8 +25,10 @@ def matrix_worker(tmp_path_factory):
         try:
             yield client
         finally:
-            client.close()
-            (directory / 'measurements.json').write_text(json.dumps(list(client.cache.values()), indent=2))
+            try:
+                client.close()
+            finally:
+                (directory / 'measurements.json').write_text(json.dumps(list(client.cache.values()), indent=2))
 
 
 def pytest_configure(config):
