@@ -759,24 +759,41 @@ def sheet_end_row_masks(specs, sheets, edge_masks, periodic):
     return tuple(out)
 
 
-class SheetCoeffs(tuple):
+@dataclass(frozen=True)
+class SheetCoeffs:
     """``(A, B)`` of :func:`sheet_update_coeffs`, plus the END-ROW pair.
 
-    Unpacks as the two full-weight arrays, exactly what the function returned
-    before end rows existed; ``end`` holds ``(A_end, B_end)``, the same
-    coefficients with the sheet conductance scaled by ``END_ROW_WEIGHT``.
+    Unpacks and indexes as the two full-weight arrays, exactly what the
+    function returned before end rows existed; ``end`` holds ``(A_end,
+    B_end)``, the same coefficients with the sheet conductance scaled by
+    ``END_ROW_WEIGHT``. A dataclass, not a tuple subclass: every field is a
+    grid array the compiled loop must take as an argument, and the lifting
+    helper (``rfx.core.jax_utils``) rebuilds tuples from their items alone.
     """
 
-    def __new__(cls, a, b, a_end, b_end):
-        obj = super().__new__(cls, (a, b))
-        obj.end = (a_end, b_end)
-        return obj
+    a: object
+    b: object
+    a_end: object
+    b_end: object
+
+    def __iter__(self):
+        return iter((self.a, self.b))
+
+    def __len__(self):
+        return 2
+
+    def __getitem__(self, index):
+        return (self.a, self.b)[index]
+
+    @property
+    def end(self):
+        return (self.a_end, self.b_end)
 
 
 def _register_sheet_coeffs():
     import jax
     jax.tree_util.register_pytree_node(
-        SheetCoeffs, lambda c: ((c[0], c[1], c.end[0], c.end[1]), None),
+        SheetCoeffs, lambda c: ((c.a, c.b, c.a_end, c.b_end), None),
         lambda _, children: SheetCoeffs(*children))
 
 
