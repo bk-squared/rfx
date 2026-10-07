@@ -428,6 +428,11 @@
     },
     {
       "file": "rfx/geometry/rasterize_grid.py",
+      "function": "_node_tie_band",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/geometry/rasterize_grid.py",
       "function": "axis_cell_sizes",
       "kind": "roll/diff"
     },
@@ -532,6 +537,11 @@
       "file": "rfx/probes/probes.py",
       "function": "init_flux_monitor.face_weights",
       "kind": "boundary"
+    },
+    {
+      "file": "rfx/realized_geometry.py",
+      "function": "_f0_solved_bounds",
+      "kind": "roll/diff"
     },
     {
       "file": "rfx/runners/_distributed_common.py",
