@@ -1894,6 +1894,9 @@ def compute_coax_msl_transition(
     j_probe_msl = int(grid.pad_y_lo) + int(round(y_centre / dz))
     k_probe_msl = int(round((msl_z_lo + 0.5 * msl_pe.height) / dz)) + int(grid.pad_z_lo)
 
+    conductors = coax_kernel_conductors(self, grid, materials, coax_pec_cells,
+        _coax_pec_edge_masks(coax_pec_cells), stamp_entities, root=declared_conductors,
+        skip_preflight=skip_preflight)
     for drive_idx in range(2):
         if drive_idx == 0:
             sources = list(spec_coax.electric_sources)
@@ -1934,8 +1937,6 @@ def compute_coax_msl_transition(
                 self, grid, int(n_steps), entries=extra_flux_monitors)}
             if extra_flux_monitors else {}
         )
-        conductors = coax_kernel_conductors(self, grid, materials, coax_pec_cells,
-            _coax_pec_edge_masks(coax_pec_cells), stamp_entities, root=declared_conductors)
         result = _run(
             grid, materials, int(n_steps), boundary="cpml", cpml_axes="xyz",
             sources=sources, mag_sources=mag_sources, probes=witness_probes,

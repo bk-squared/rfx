@@ -77,9 +77,8 @@ def test_kernel_reads_owner_and_record_keeps_stamp(monkeypatch, lane, call):
         assert {e.label for e in ctx.interior_pec_entries()} >= {
             'coaxial_port[0]/shell', 'coaxial_port[0]/pin'}
         findings = dict(root.stamp_check_findings)
-        assert set(findings) == {'sheet-size', 'pad-fill'}
-        assert not findings['pad-fill']
         if lane == 'transition':
+            assert root.stamp_check_findings == ()
             declared = captured['declared']
             assert len(record.entities) == len(sim._geometry) + 3
             assert root.assembly_entries == declared.assembly_entries
@@ -87,8 +86,9 @@ def test_kernel_reads_owner_and_record_keeps_stamp(monkeypatch, lane, call):
             for owned, drawn in zip(root.pec_edges, declared.pec_edges, strict=True):
                 assert np.all(owned[np.asarray(drawn)])
         else:
+            assert set(findings) == {'sheet-size', 'pad-fill'}
+            assert not findings['pad-fill']
             assert not findings['sheet-size']
-        print(f'{lane}: radii={expected}; checks={findings}')
         sim.add_material('invalidate_coax_view', eps_r=2.)
         assert not any(e.provenance == 'coax stamp' for e in sim.realized_geometry().entities)
         raise KernelInspected
@@ -206,8 +206,6 @@ def test_transition_restored_state_and_board_readers(monkeypatch, overlap, offse
             np.testing.assert_array_equal(emitted, owned)
             differences.append(int(np.count_nonzero(owned != board_edges)))
         assert all(differences), 'fixture must distinguish board edges from the kernel union'
-        print(f'{overlap}: junction={k}; stamped PEC/dielectric at or above=0/0; '
-              f'feed-column PEC=23; validation=None; trace=(36, 36); union additions={differences}')
         raise KernelInspected
 
     monkeypatch.setattr(calculators, 'coax_declared_conductors', board)
@@ -220,6 +218,70 @@ def test_transition_restored_state_and_board_readers(monkeypatch, overlap, offse
     monkeypatch.setattr('rfx.simulation.run', kernel)
     with pytest.raises(KernelInspected):
         sim.compute_coax_msl_transition(**fixture.instrument_kwargs(1))
+
+
+@pytest.mark.parametrize('reader', ['stamp_check_findings', 'context_from_conductors', '_campaign_ctx'])
+def test_diagnostic_failure_reaches_kernel_and_records_finding(monkeypatch, reader):
+    import warnings
+    import rfx.sparams.coax as calculators
+    seen = {}
+
+    def fail(*args, **kwargs):
+        raise RuntimeError('injected diagnostic failure')
+
+    def handover(sim, *args, **kwargs):
+        # Inject only into the new handover's reads, not existing admission.
+        with monkeypatch.context() as patch:
+            if reader == '_campaign_ctx':
+                patch.setattr(sim, reader, fail)
+            else:
+                module = 'rfx.model.coax' if reader == 'stamp_check_findings' else 'rfx.preflight.realization'
+                patch.setattr(f'{module}.{reader}', fail)
+            with warnings.catch_warnings(record=True) as emitted:
+                warnings.simplefilter('always')
+                root = coax_kernel_conductors(sim, *args, **kwargs)
+            assert not emitted
+        seen['root'] = root
+        assert root.stamp_check_findings == (('read-failed', ('RuntimeError', 'injected diagnostic failure')),)
+        if reader == '_campaign_ctx':
+            assert sim._coax_geometry is None
+        else:
+            assert sim._coax_geometry[1] is root
+        return root
+
+    def kernel(*args, **kwargs):
+        assert kwargs['pec_edge_masks'] is seen['root'].pec_edges
+        raise KernelInspected
+
+    monkeypatch.setattr(calculators, 'coax_kernel_conductors', handover)
+    monkeypatch.setattr('rfx.simulation.run', kernel)
+    with pytest.raises(KernelInspected):
+        _coax_line_result()
+
+
+def test_skip_preflight_has_no_findings_or_sheet_reads(monkeypatch):
+    import rfx.sparams.coax as calculators
+    seen = {}
+
+    def forbidden(*args, **kwargs):
+        pytest.fail('skip_preflight must not read sheet-size findings')
+
+    def handover(sim, *args, **kwargs):
+        assert kwargs['skip_preflight'] is True
+        root = coax_kernel_conductors(sim, *args, **kwargs)
+        seen['root'] = root
+        assert root.stamp_check_findings == ()
+        return root
+
+    def kernel(*args, **kwargs):
+        assert kwargs['pec_edge_masks'] is seen['root'].pec_edges
+        raise KernelInspected
+
+    monkeypatch.setattr('rfx.preflight.pec_geometry._warn_sheet_effective_size', forbidden)
+    monkeypatch.setattr(calculators, 'coax_kernel_conductors', handover)
+    monkeypatch.setattr('rfx.simulation.run', kernel)
+    with pytest.raises(KernelInspected):
+        _coax_msl_result()
 
 
 def test_traced_handover_does_not_publish_tracers():

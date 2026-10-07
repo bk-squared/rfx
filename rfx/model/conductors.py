@@ -139,7 +139,8 @@ def coax_declared_conductors(sim, grid):
         pec_wires=wires, geometry_masks=masks, assembly_entries=entries)
 
 
-def coax_kernel_conductors(sim, grid, materials, cells, edges, entities, *, root=None):
+def coax_kernel_conductors(sim, grid, materials, cells, edges, entities, *, root=None,
+                           skip_preflight=False):
     """Own the stamp and union AFTER the calculator's existing port operations.
 
     No classification, sampling, material update or new acceptance gate occurs.
@@ -158,8 +159,16 @@ def coax_kernel_conductors(sim, grid, materials, cells, edges, entities, *, root
     sim._realized_geometry_record = None
     if not _traced_product(root):
         from rfx.model.coax import stamp_check_findings
-        root = replace(root, stamp_check_findings=stamp_check_findings(sim, root))
-        sim._coax_geometry = (sim._campaign_ctx(), root)
+        ctx = None
+        try:
+            ctx = sim._campaign_ctx()
+            if not skip_preflight:
+                root = replace(root, stamp_check_findings=stamp_check_findings(sim, root))
+        except Exception as exc:
+            root = replace(root, stamp_check_findings=root.stamp_check_findings + (
+                ('read-failed', (type(exc).__name__, str(exc))),))
+        if ctx is not None:
+            sim._coax_geometry = (ctx, root)
     return root
 
 
