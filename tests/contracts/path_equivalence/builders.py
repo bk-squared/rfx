@@ -151,7 +151,11 @@ def build(row, lane, *, graded=False, dt=None):
             y='pec', z='pec')
     sim = Simulation(**kwargs)
     sim.add_material('block', eps_r=2.5)
-    sim.add(Box(point(3.2, 2.1, 1.3), point(6.4, 4.3, 3.2)), material='block')
+    if row[0] == '_tfsf':
+        # Addendum 5b: same x slab and eps, invariant through transverse pads.
+        sim.add(Box(point(3.2, -100, -100), point(6.4, 100, 100)), material='block')
+    else:
+        sim.add(Box(point(3.2, 2.1, 1.3), point(6.4, 4.3, 3.2)), material='block')
     # add_source is a zero-impedance _PortEntry internally. Driven port,
     # waveguide and TFSF declarations provide their own excitation and must
     # not also carry that entry (their public APIs reject the combination).
