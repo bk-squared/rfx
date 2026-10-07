@@ -162,7 +162,8 @@ def test_unequal_cells_use_normal_dual(kind):
     assert len(occupied) > 0
     assert np.unique(occupied[:, 2]).tolist() == [6]
     conductance = 1234*(h/7) if kind == 'dc' else 1/float(leontovich_rs(5e9, 1234))
-    np.testing.assert_allclose(arr[arr != 0], conductance/(1.5*h), rtol=2e-7)
+    divisor = 2*h if kind == 'dc' else 1.5*h
+    np.testing.assert_allclose(arr[arr != 0], conductance/divisor, rtol=2e-7)
 
 
 def test_uniform_x64_keeps_scalar_sheet_precision():
