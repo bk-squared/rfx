@@ -462,3 +462,17 @@ Memory: ledger grep for "waveguide transverse", "TF/SF period", "37 mm" — none
 planes. Design note §2 decision 4 and §3 B5; Addendum 3. First-pass count of files calling
 `add_waveguide_port` without an explicit boundary declaration: 31 of 158 by text heuristic (the note's
 earlier heuristic said 17); the build-only census in the PR is authoritative.
+
+Addendum 5a, 2026-10-07 (leader, after the PR3a implementer stopped on a mismatch). Addendum 5 asked for
+the realized face record of a converted waveguide script to be bit-identical before and after. It cannot
+be: on main the transverse faces of a full-aperture guide are recorded as kind ABSORBER with realized
+depth 0 (the absorber's electric backing wall at the domain face, Addendum 4), and declaring them PEC —
+or defaulting them to PEC — changes the recorded kind to PEC (reproduced by the implementer on
+`tests/unit/sparams/test_waveguide_twoport_contract_v1.py`: four transverse kinds ABSORBER → PEC, shape
+and pads equal). That change of label is the purpose of the PR: the record now says what is solved.
+Corrected requirement: before and after, the realized depth of every face, the pad counts, the grid
+shape and every face's terminal plane are equal, and every computed result the test reads is
+bit-identical; the kind of a transverse face of a full-aperture guide changes from ABSORBER (depth 0) to
+PEC and nothing else in the record changes. Readers that branch on the kind (multi-device walls,
+preflight, exporters) are in the reach table, each shown to give the same realized walls for
+"ABSORBER, depth 0" and "PEC".
