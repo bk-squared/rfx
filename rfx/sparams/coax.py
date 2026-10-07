@@ -1578,6 +1578,8 @@ def compute_coax_msl_transition(
         )
     declared_conductors = coax_declared_conductors(self, grid)
     materials, debye_spec, lorentz_spec, pec_mask, _, _, _ = declared_conductors.assembly
+    # Board stage: both MSL geometry readers use these pre-stamp edges.
+    # The owner makes the coax/board union only for the kernel stage below.
     _cx_pec_edge_masks = declared_conductors.pec_edges
 
     if freqs is None:

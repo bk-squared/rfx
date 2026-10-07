@@ -23,8 +23,14 @@ def test_kernel_reads_owner_and_record_keeps_stamp(monkeypatch, lane, call):
     import rfx.sparams.coax as calculators
     captured = {}
 
-    def handover(sim, *args, **kwargs):
-        root = coax_kernel_conductors(sim, *args, **kwargs)
+    def handover(sim, grid, materials, cells, edges, entities, **kwargs):
+        root = coax_kernel_conductors(sim, grid, materials, cells, edges, entities, **kwargs)
+        if lane != 'transition':
+            assert kwargs.get('root') is None, 'line calculator received a board stage'
+            assert root.pec_cells is cells
+            assert root.pec_edges is edges, 'line calculator merged additional edges'
+            for actual, expected in zip(edges, calculators._coax_pec_edge_masks(cells), strict=True):
+                np.testing.assert_array_equal(actual, expected)
         # Equal values in a fresh tuple distinguish reading the returned owner
         # from bypassing it with the original local masks (even if equal).
         root = replace(root, pec_edges=tuple(np.array(e, copy=True) for e in root.pec_edges))
@@ -91,6 +97,129 @@ def test_kernel_reads_owner_and_record_keeps_stamp(monkeypatch, lane, call):
     monkeypatch.setattr('rfx.simulation.run', kernel)
     with pytest.raises(KernelInspected):
         call()
+
+
+@pytest.mark.parametrize('overlap,offset', [('pin', 0), ('shell', 8)])
+def test_transition_restored_state_and_board_readers(monkeypatch, overlap, offset):
+    import rfx.sparams.coax as calculators
+    import rfx.sources.coaxial_port as coax
+    import rfx.sources.msl_port as msl
+    import rfx.probes.msl_wave_decomp as probe
+    import tests._coax_msl_instrument_fixture as fixture
+
+    # Synthetic stage instrumentation: put the stamp under the existing feed;
+    # widen y to retain the required wall-to-CPML clearance. No RF claim.
+    monkeypatch.setattr(fixture, 'DOMAIN', (12.5e-3, 3.6e-3, 3.9e-3))
+    sim = fixture.build_instrument_junction()
+    sim._coaxial_ports[0] = sim._coaxial_ports[0]._replace(
+        position=(fixture.FEED_X-offset*fixture.DX, fixture.Y_C, fixture.GROUND))
+    seen = {}
+    calls = []
+    declared = calculators.coax_declared_conductors
+    stamp = coax.stamp_coaxial_line
+    resistor = coax.stamp_coaxial_annular_resistor
+    source = coax.build_coaxial_tem_plane_source_specs
+    setup = msl.setup_msl_port
+    validate = msl.validate_msl_port_geometry
+    trace = probe.realized_trace_planes_on_column
+
+    def board(*args, **kwargs):
+        root = declared(*args, **kwargs)
+        seen['board'] = root
+        return root
+
+    def line(grid, materials, **kwargs):
+        calls.append('stamp')
+        result = stamp(grid, materials, **kwargs)
+        seen.update(pre=materials, stamp=result, stamp_cells=result[2].copy(),
+                    junction=kwargs['z_hi_index']+1)
+        return result
+
+    def stamp_arguments(kwargs):
+        assert kwargs['shell_inner_radius'] is seen['stamp'][1]
+        assert kwargs['pec_cell_mask'] is seen['stamp'][2]
+        np.testing.assert_array_equal(kwargs['pec_cell_mask'], seen['stamp_cells'])
+
+    def load(*args, **kwargs):
+        calls.append('resistor')
+        stamp_arguments(kwargs)
+        seen['loaded'] = resistor(*args, **kwargs)
+        return seen['loaded']
+
+    def tem(**kwargs):
+        calls.append('source')
+        stamp_arguments(kwargs)
+        return source(**kwargs)
+
+    def setup_msl(grid, port, materials, **kwargs):
+        calls.append('setup')
+        k = seen['junction']
+        for field in ('eps_r', 'sigma'):
+            actual = np.asarray(getattr(materials, field))
+            np.testing.assert_array_equal(actual[:, :, k:], getattr(seen['pre'], field)[:, :, k:])
+            np.testing.assert_array_equal(actual[:, :, :k], getattr(seen['loaded'], field)[:, :, :k])
+        seen['final'] = setup(grid, port, materials, **kwargs)
+        return seen['final']
+
+    def validate_board(*args, **kwargs):
+        calls.append('validate')
+        assert kwargs['pec_edge_masks'] is seen['board'].pec_edges, 'validation needs board-only edges'
+        result = validate(*args, **kwargs)
+        assert result is None  # main e46544a on both overlap fixtures
+        return result
+
+    def trace_board(edges, *args, **kwargs):
+        calls.append('trace')
+        assert edges is seen['board'].pec_edges, 'trace reader needs board-only edges'
+        result = trace(edges, *args, **kwargs)
+        assert result == (36, 36)  # main e46544a: k_trace_lo and upper plane
+        return result
+
+    def kernel(grid, materials, n_steps, **kwargs):
+        root = sim._coax_geometry[1]
+        record = sim.realized_geometry()
+        assert record.conductors is root
+        assert kwargs['pec_edge_masks'] is root.pec_edges
+        assert root.materials is materials
+        assert calls == ['stamp', 'resistor', 'source', 'validate', 'setup', 'trace']
+        for field in ('eps_r', 'sigma'):
+            np.testing.assert_array_equal(getattr(root.materials, field), getattr(seen['final'], field))
+        k = seen['junction']
+        assert k == 33
+        entities = {e.entity_id.rsplit('/', 1)[1]: e for e in root.stamped_entities}
+        recorded = {e.label.rsplit('/', 1)[1]: e for e in record.entities if e.provenance == 'coax stamp'}
+        stamped = entities['shell'].cells | entities['pin'].cells
+        np.testing.assert_array_equal(stamped, seen['stamp_cells'])
+        assert stamped[:, :, k:].sum() == 0
+        i, j, _ = grid.position_to_index((fixture.FEED_X, fixture.Y_C, fixture.GROUND))
+        assert entities[overlap].cells[i, j, :k].sum() == 23
+        for name, entity in entities.items():
+            np.testing.assert_array_equal(recorded[name].mask, entity.cells)
+            assert entity.cells[:, :, k:].sum() == 0
+            assert entity.provenance == 'coax stamp'
+        np.testing.assert_array_equal(root.pec_cells, seen['board'].pec_cells | stamped)
+        coax_edges = calculators._coax_pec_edge_masks(stamped)
+        differences = []
+        for owned, emitted, board_edges, coax_edges in zip(
+                root.pec_edges, record.edge_masks, seen['board'].pec_edges, coax_edges, strict=True):
+            np.testing.assert_array_equal(owned, board_edges | coax_edges)
+            np.testing.assert_array_equal(emitted, owned)
+            differences.append(int(np.count_nonzero(owned != board_edges)))
+        assert all(differences), 'fixture must distinguish board edges from the kernel union'
+        print(f'{overlap}: junction={k}; stamped PEC/dielectric at or above=0/0; '
+              f'feed-column PEC=23; validation=None; trace=(36, 36); union additions={differences}')
+        raise KernelInspected
+
+    monkeypatch.setattr(calculators, 'coax_declared_conductors', board)
+    monkeypatch.setattr(coax, 'stamp_coaxial_line', line)
+    monkeypatch.setattr(coax, 'stamp_coaxial_annular_resistor', load)
+    monkeypatch.setattr(coax, 'build_coaxial_tem_plane_source_specs', tem)
+    monkeypatch.setattr(msl, 'setup_msl_port', setup_msl)
+    monkeypatch.setattr(msl, 'validate_msl_port_geometry', validate_board)
+    monkeypatch.setattr(probe, 'realized_trace_planes_on_column', trace_board)
+    monkeypatch.setattr('rfx.simulation.run', kernel)
+    with pytest.raises(KernelInspected):
+        sim.compute_coax_msl_transition(**fixture.instrument_kwargs(1))
 
 
 def test_traced_handover_does_not_publish_tracers():
