@@ -289,8 +289,10 @@ RUNNER_SETUP = ("sysctl -w vm.max_map_count",)
 
 
 def _is_runner_setup(job: str, step: dict) -> bool:
-    return job == "guards-and-preflight" and any(
-        marker in str(step.get("run", "")) for marker in RUNNER_SETUP)
+    lines = [line.strip() for line in str(step.get("run", "")).splitlines() if line.strip()]
+    return (job == "guards-and-preflight"
+            and any(marker in line for line in lines for marker in RUNNER_SETUP)
+            and all(line.startswith(("sysctl ", "sudo sysctl ")) for line in lines))
 
 
 #: Gates about the DIFF rather than the code, which must run on both branches
@@ -1099,6 +1101,8 @@ def test_merge_group_runs_everything_even_for_empty_or_unknown_diff(tmp_path, ba
 
 @pytest.mark.parametrize("workflow,jobs", [
     (PR_TESTS, ("guards-and-preflight", "fast-suite")),
+    (WORKFLOW_DIR / "validation.yml", ("slow-tests",)),
+    (WORKFLOW_DIR / "regen-durations.yml", ("fast", "slow")),
 ])
 def test_test_jobs_raise_the_mapping_limit_before_pytest(workflow, jobs) -> None:
     """A pytest process must not start under the default 65,530 mappings.
