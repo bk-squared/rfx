@@ -211,11 +211,39 @@ def test_transition_requires_exact_counts(tree, capsys, monkeypatch, value, expe
     assert code == expected
     if expected:
         assert f"transition baseline {value} must equal actual count 3" in err
+        assert "set the entry to 3" in err
+        assert "split the file" not in err
 
 
 def test_transition_allows_new_exact_entry(tree, capsys, monkeypatch):
-    mock_base(monkeypatch, files={}, legacy=True)
+    mock_base(monkeypatch, cap=3, files={}, legacy=True)
     write_tree(tree)
+    assert run(tree, capsys, "--base", "base") == (0, "")
+
+
+@pytest.mark.parametrize("case", ["cap", "listed", "unlisted"])
+def test_transition_rejects_legacy_limit_increases(tree, capsys, monkeypatch, case):
+    mock_base(monkeypatch, cap=10, files={"rfx/nested/a.py": 30}, legacy=True)
+    files = {"rfx/nested/a.py": 50 if case == "listed" else 30}
+    cap = 9999 if case == "cap" else 10
+    if case == "unlisted":
+        files["rfx/nested/b.py"] = 40
+        (tree / "rfx/nested/b.py").write_bytes(b"x\n" * 40)
+    write_tree(tree, files=files, count=files["rfx/nested/a.py"], cap=cap)
+    code, err = run(tree, capsys, "--base", "base")
+    assert code == 1
+    expected = {
+        "cap": f"{gate.BASELINE}: cap baseline 10, count 9999",
+        "listed": "rfx/nested/a.py: baseline 30, count 50 in proposed baseline",
+        "unlisted": "rfx/nested/b.py: baseline 10, count 40 in proposed baseline",
+    }[case]
+    assert err == expected + "; split the file rather than raise the number.\n"
+
+
+def test_transition_lowering_legacy_limits_passes(tree, capsys, monkeypatch):
+    mock_base(monkeypatch, cap=10, files={"rfx/nested/a.py": 30}, legacy=True)
+    write_tree(tree, files={"rfx/nested/a.py": 20, "rfx/nested/b.py": 8}, count=20, cap=9)
+    (tree / "rfx/nested/b.py").write_bytes(b"x\n" * 8)
     assert run(tree, capsys, "--base", "base") == (0, "")
 
 
@@ -226,6 +254,7 @@ def test_transition_rejects_missing_listed_source(tree, capsys, monkeypatch):
     code, err = run(tree, capsys, "--base", "base")
     assert code == 1
     assert "transition baseline entry has no source file" in err
+    assert "split the file" not in err
 
 
 @pytest.mark.parametrize("counts", [None, "newline-bytes", 1])

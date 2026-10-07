@@ -23,6 +23,7 @@ import sys
 
 REPO = Path(__file__).resolve().parents[2]
 BASELINE = "scripts/ci/file_size_baseline.json"
+SPLIT_ADVICE = "; split the file rather than raise the number."
 
 
 def git(repo: Path, *args: str) -> bytes:
@@ -69,18 +70,18 @@ def check(repo: Path, base: str = "", head: str = "") -> int:
         if git(repo, "ls-tree", base, "--", BASELINE):
             previous = baseline(git(repo, "show", f"{base}:{BASELINE}"))
             transition = "counts" not in previous
-            if not transition:
-                if current["cap"] > previous["cap"]:
+            if current["cap"] > previous["cap"]:
+                failures.append(
+                    f"{BASELINE}: cap baseline {previous['cap']}, count {current['cap']}"
+                    + SPLIT_ADVICE
+                )
+            for path, value in current["files"].items():
+                old = previous["files"].get(path, previous["cap"] if transition else None)
+                if old is None or value > old:
                     failures.append(
-                        f"{BASELINE}: cap baseline {previous['cap']}, count {current['cap']}"
+                        f"{path}: baseline {old if old is not None else 'unlisted'}, "
+                        f"count {value} in proposed baseline" + SPLIT_ADVICE
                     )
-                for path, value in current["files"].items():
-                    old = previous["files"].get(path)
-                    if old is None or value > old:
-                        failures.append(
-                            f"{path}: baseline {old if old is not None else 'unlisted'}, "
-                            f"count {value} in proposed baseline"
-                        )
     if head:
         paths = [p.decode() for p in git(
             repo, "ls-tree", "-r", "--name-only", "-z", head, "--", "rfx/",
@@ -95,13 +96,16 @@ def check(repo: Path, base: str = "", head: str = "") -> int:
         count = code_lines(data)
         limit = current["files"].get(path, current["cap"])
         if transition and path in current["files"] and count != limit:
-            failures.append(f"{path}: transition baseline {limit} must equal actual count {count}")
+            failures.append(
+                f"{path}: transition baseline {limit} must equal actual count {count}; "
+                f"set the entry to {count}."
+            )
         elif count > limit:
-            failures.append(f"{path}: baseline {limit}, count {count}")
+            failures.append(f"{path}: baseline {limit}, count {count}" + SPLIT_ADVICE)
         elif path in current["files"] and count < limit:
             print(f"lower {path} to {count} in {BASELINE}", file=sys.stderr)
     for failure in failures:
-        print(f"{failure}; split the file rather than raise the number.", file=sys.stderr)
+        print(failure, file=sys.stderr)
     return int(bool(failures))
 
 
