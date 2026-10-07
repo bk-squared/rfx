@@ -53,7 +53,7 @@ def _build_single_port_sim(freqs_hz, direction: str, port_x: float):
     sim = Simulation(
         freq_max=max(float(freqs[-1]), f0),
         domain=DOMAIN,
-        boundary="cpml",
+        boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=10,
     )
     sim.add_waveguide_port(
