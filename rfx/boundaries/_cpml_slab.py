@@ -2,6 +2,8 @@
 
 import jax.numpy as jnp
 
+from rfx.core.yee import h_neighbor
+
 ALL_FACES = tuple(f"{axis}_{side}" for axis in "xyz" for side in ("lo", "hi"))
 
 
@@ -13,7 +15,8 @@ def selected_faces(axes, faces):
     return frozenset(face for face in faces if face[0] in axes)
 
 
-def slab_neighbor(arr, axis, depth, lo, forward, boundary=None):
+def slab_neighbor(arr, axis, depth, lo, forward, boundary=None, *,
+                  h_neighbor=h_neighbor):
     """Neighbor operand restricted to one face, including its terminal image.
 
     Match the whole-array forward zero extension or backward H neighbor,
@@ -36,21 +39,25 @@ def slab_neighbor(arr, axis, depth, lo, forward, boundary=None):
             part = jnp.pad(part, pads)
         return part
 
+    if size == 1:
+        return h_neighbor(arr, axis, boundary=boundary)
+
     part = take(max(0, start - 1), stop - 1)
-    periodic = boundary.periodic if boundary is not None else (False,) * 3
-    from rfx.boundaries.pmc import magnetic_image_faces
-    images = (magnetic_image_faces(boundary.pmc_faces, arr.shape, periodic)
-              if boundary is not None else frozenset())
+
+    def terminal(index):
+        # Read only the terminal plane through the shared boundary convention.
+        # Interior operands above are slices of the original field.
+        at = [slice(None)] * 3
+        at[axis] = index
+        edge = h_neighbor(arr, axis, boundary=boundary, index=tuple(at))
+        return jnp.expand_dims(edge, axis)
+
     if start == 0:
-        edge = (take(size - 1, size) if periodic[axis]
-                else -take(0, 1) if f"{'xyz'[axis]}_lo" in images
-                else jnp.zeros_like(take(0, 1)))
-        part = jnp.concatenate((edge, part), axis=axis)
-    if stop == size and f"{'xyz'[axis]}_hi" in images:
-        edge = take(size - 1, size) + 2 * take(size - 2, size - 1)
+        part = jnp.concatenate((terminal(0), part), axis=axis)
+    if stop == size:
         sl = [slice(None)] * 3
         sl[axis] = slice(None, -1)
-        part = jnp.concatenate((part[tuple(sl)], edge), axis=axis)
+        part = jnp.concatenate((part[tuple(sl)], terminal(size - 1)), axis=axis)
     return part
 
 

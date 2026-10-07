@@ -17,7 +17,7 @@ from typing import NamedTuple
 import jax.numpy as jnp
 import numpy as np
 
-from rfx.core.yee import EPS_0, MU_0, si_value_eps_r_grad
+from rfx.core.yee import EPS_0, MU_0, si_value_eps_r_grad, h_neighbor
 from rfx.boundaries._cpml_slab import ALL_FACES, selected_faces, slab_neighbor, apply_ordered
 from rfx.core.jax_utils import is_tracer
 
@@ -841,7 +841,7 @@ def apply_cpml_e(
     if "x_lo" in faces:
         # --- X-lo: Ey correction from dHz/dx ---
         hz_xlo = state.hz[:n_x, :, :]
-        hz_shifted_xlo = slab_neighbor(state.hz, 0, n_x, True, False, boundary=boundary)
+        hz_shifted_xlo = slab_neighbor(state.hz, 0, n_x, True, False, boundary=boundary, h_neighbor=h_neighbor)
         curl_hz_dx_xlo = (hz_xlo - hz_shifted_xlo) / dx_x_lo
 
         new_psi_ey_xlo = b_x_lo * cpml_state.psi_ey_xlo + c_x_lo * curl_hz_dx_xlo
@@ -853,7 +853,7 @@ def apply_cpml_e(
     if "x_hi" in faces:
         # --- X-hi: Ey correction from dHz/dx ---
         hz_xhi = state.hz[-n_x:, :, :]
-        hz_shifted_xhi = slab_neighbor(state.hz, 0, n_x, False, False, boundary=boundary)
+        hz_shifted_xhi = slab_neighbor(state.hz, 0, n_x, False, False, boundary=boundary, h_neighbor=h_neighbor)
         curl_hz_dx_xhi = (hz_xhi - hz_shifted_xhi) / dx_x_hi
 
         new_psi_ey_xhi = b_x_hi * cpml_state.psi_ey_xhi + c_x_hi * curl_hz_dx_xhi
@@ -865,7 +865,7 @@ def apply_cpml_e(
     if "x_lo" in faces:
         # --- X-lo: Ez correction from dHy/dx ---
         hy_xlo = state.hy[:n_x, :, :]
-        hy_shifted_xlo = slab_neighbor(state.hy, 0, n_x, True, False, boundary=boundary)
+        hy_shifted_xlo = slab_neighbor(state.hy, 0, n_x, True, False, boundary=boundary, h_neighbor=h_neighbor)
         curl_hy_dx_xlo = (hy_xlo - hy_shifted_xlo) / dx_x_lo
 
         new_psi_ez_xlo = b_x_lo * cpml_state.psi_ez_xlo + c_x_lo * curl_hy_dx_xlo
@@ -877,7 +877,7 @@ def apply_cpml_e(
     if "x_hi" in faces:
         # --- X-hi: Ez correction from dHy/dx ---
         hy_xhi = state.hy[-n_x:, :, :]
-        hy_shifted_xhi = slab_neighbor(state.hy, 0, n_x, False, False, boundary=boundary)
+        hy_shifted_xhi = slab_neighbor(state.hy, 0, n_x, False, False, boundary=boundary, h_neighbor=h_neighbor)
         curl_hy_dx_xhi = (hy_xhi - hy_shifted_xhi) / dx_x_hi
 
         new_psi_ez_xhi = b_x_hi * cpml_state.psi_ez_xhi + c_x_hi * curl_hy_dx_xhi
@@ -893,7 +893,7 @@ def apply_cpml_e(
     if "y_lo" in faces:
         # --- Y-lo: Ex correction from dHz/dy ---
         hz_ylo = state.hz[:, :n_y, :]
-        hz_shifted_ylo = slab_neighbor(state.hz, 1, n_y, True, False, boundary=boundary)
+        hz_shifted_ylo = slab_neighbor(state.hz, 1, n_y, True, False, boundary=boundary, h_neighbor=h_neighbor)
         curl_hz_dy_ylo = (hz_ylo - hz_shifted_ylo) / dx_y_lo
 
 
@@ -907,7 +907,7 @@ def apply_cpml_e(
     if "y_hi" in faces:
         # --- Y-hi: Ex correction from dHz/dy ---
         hz_yhi = state.hz[:, -n_y:, :]
-        hz_shifted_yhi = slab_neighbor(state.hz, 1, n_y, False, False, boundary=boundary)
+        hz_shifted_yhi = slab_neighbor(state.hz, 1, n_y, False, False, boundary=boundary, h_neighbor=h_neighbor)
         curl_hz_dy_yhi = (hz_yhi - hz_shifted_yhi) / dx_y_hi
 
 
@@ -921,7 +921,7 @@ def apply_cpml_e(
     if "y_lo" in faces:
         # --- Y-lo: Ez correction from dHx/dy ---
         hx_ylo = state.hx[:, :n_y, :]
-        hx_shifted_ylo = slab_neighbor(state.hx, 1, n_y, True, False, boundary=boundary)
+        hx_shifted_ylo = slab_neighbor(state.hx, 1, n_y, True, False, boundary=boundary, h_neighbor=h_neighbor)
         curl_hx_dy_ylo = (hx_ylo - hx_shifted_ylo) / dx_y_lo
 
 
@@ -935,7 +935,7 @@ def apply_cpml_e(
     if "y_hi" in faces:
         # --- Y-hi: Ez correction from dHx/dy ---
         hx_yhi = state.hx[:, -n_y:, :]
-        hx_shifted_yhi = slab_neighbor(state.hx, 1, n_y, False, False, boundary=boundary)
+        hx_shifted_yhi = slab_neighbor(state.hx, 1, n_y, False, False, boundary=boundary, h_neighbor=h_neighbor)
         curl_hx_dy_yhi = (hx_yhi - hx_shifted_yhi) / dx_y_hi
 
 
@@ -953,7 +953,7 @@ def apply_cpml_e(
     if "z_lo" in faces:
         # --- Z-lo: Ex correction from dHy/dz ---
         hy_zlo = state.hy[:, :, :n_z]
-        hy_shifted_zlo = slab_neighbor(state.hy, 2, n_z, True, False, boundary=boundary)
+        hy_shifted_zlo = slab_neighbor(state.hy, 2, n_z, True, False, boundary=boundary, h_neighbor=h_neighbor)
         curl_hy_dz_zlo = (hy_zlo - hy_shifted_zlo) / dz_lo
 
 
@@ -968,7 +968,7 @@ def apply_cpml_e(
     if "z_hi" in faces:
         # --- Z-hi: Ex correction from dHy/dz ---
         hy_zhi = state.hy[:, :, -n_z:]
-        hy_shifted_zhi = slab_neighbor(state.hy, 2, n_z, False, False, boundary=boundary)
+        hy_shifted_zhi = slab_neighbor(state.hy, 2, n_z, False, False, boundary=boundary, h_neighbor=h_neighbor)
         curl_hy_dz_zhi = (hy_zhi - hy_shifted_zhi) / dz_hi
 
 
@@ -982,7 +982,7 @@ def apply_cpml_e(
     if "z_lo" in faces:
         # --- Z-lo: Ey correction from dHx/dz ---
         hx_zlo = state.hx[:, :, :n_z]
-        hx_shifted_zlo = slab_neighbor(state.hx, 2, n_z, True, False, boundary=boundary)
+        hx_shifted_zlo = slab_neighbor(state.hx, 2, n_z, True, False, boundary=boundary, h_neighbor=h_neighbor)
         curl_hx_dz_zlo = (hx_zlo - hx_shifted_zlo) / dz_lo
 
 
@@ -996,7 +996,7 @@ def apply_cpml_e(
     if "z_hi" in faces:
         # --- Z-hi: Ey correction from dHx/dz ---
         hx_zhi = state.hx[:, :, -n_z:]
-        hx_shifted_zhi = slab_neighbor(state.hx, 2, n_z, False, False, boundary=boundary)
+        hx_shifted_zhi = slab_neighbor(state.hx, 2, n_z, False, False, boundary=boundary, h_neighbor=h_neighbor)
         curl_hx_dz_zhi = (hx_zhi - hx_shifted_zhi) / dz_hi
 
 

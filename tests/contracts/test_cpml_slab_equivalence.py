@@ -120,3 +120,26 @@ def test_face_selection_intersects_axes_and_preserves_other_psi():
         _assert_equal(actual, expected)
         with pytest.raises(ValueError, match="unknown CPML faces"):
             apply(state, params, psi, grid, faces=("x_middle",))
+
+
+@pytest.mark.parametrize("axis", range(3))
+@pytest.mark.parametrize("mode", ("zero", "periodic", "pmc"))
+def test_slab_h_neighbour_matches_shared_boundary_images(axis, mode):
+    from rfx.boundaries._cpml_slab import slab_neighbor
+    from rfx.core.yee import CurlBoundary, h_neighbor
+
+    faces = frozenset({f"{'xyz'[axis]}_lo", f"{'xyz'[axis]}_hi"})
+    boundary = CurlBoundary(
+        pmc_faces=faces if mode == "pmc" else frozenset(),
+        periodic=tuple(mode == "periodic" and a == axis for a in range(3)))
+    for size in (1, 5):
+        shape = [4, 6, 7]
+        shape[axis] = size
+        field = jnp.arange(np.prod(shape), dtype=jnp.float32).reshape(shape)
+        whole = h_neighbor(field, axis, boundary=boundary)
+        for depth in {1, size}:
+            for lo in (False, True):
+                sl = [slice(None)] * 3
+                sl[axis] = slice(None, depth) if lo else slice(-depth, None)
+                actual = slab_neighbor(field, axis, depth, lo, False, boundary)
+                np.testing.assert_array_equal(actual, whole[tuple(sl)])
