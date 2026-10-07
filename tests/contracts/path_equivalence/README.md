@@ -42,7 +42,13 @@ and gradient keep their own peak. Forward
 cells use JVP of a design-permittivity multiplier, with squared probe samples
 as the objective. Current moments use their supported bounded design box.
 Named E components share the largest E magnitude on either path; H components
-share a separate H peak. Flux tangential components follow the same rule. NTFF
+share a separate H peak by default. Flux tangential components follow the same
+rule. Opt in with `_tree(..., paired_impedance=VACUUM_IMPEDANCE)` (or directly
+with `component_peaks`): each group uses the larger of its own peak and the
+paired peak converted by Z0, `max(E, Z0 * H)` and `max(H, E / Z0)`, with vacuum
+Z0 = 376.730313668 ohm. This is meant for scenes where one field is near zero
+by physics; such tests should use a propagating pulse. An absent partner keeps
+its own peak. No existing test opts in. NTFF
 faces are split into E/H slots, with separate peaks across the six faces.
 Different observers and different physical quantities (e.g. V and I) are not
 merged.

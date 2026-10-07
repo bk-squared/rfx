@@ -90,7 +90,7 @@ def _comparison(a, b, name, kind, report, peak=None):
         report['failures'].append(str(exc))
 
 
-def _tree(a, b, name, kind, report, peak=None):
+def _tree(a, b, name, kind, report, peak=None, *, paired_impedance=None):
     if a is None and b is None:
         return  # Optional fields inside a present record.
     if a is None or b is None:
@@ -99,7 +99,7 @@ def _tree(a, b, name, kind, report, peak=None):
 
     a, b = container(a), container(b)
     if isinstance(a, dict) and isinstance(b, dict):
-        peaks = component_peaks(a, b) if kind != 'exact' else {}
+        peaks = component_peaks(a, b, paired_impedance=paired_impedance) if kind != 'exact' else {}
         # NTFF packs [Et1, Et2, Ht1, Ht2] on each face. The six faces
         # belong to one surface field; residuals never contribute to its peak.
         faces = ('x_lo', 'x_hi', 'y_lo', 'y_hi', 'z_lo', 'z_hi')
@@ -126,13 +126,15 @@ def _tree(a, b, name, kind, report, peak=None):
                                 f'{name}.{key}.{field}', kind, report, field_peaks[field])
             else:
                 _tree(a[key], b[key], f'{name}.{key}',
-                      'exact' if metadata(name, key) else kind, report, peaks.get(key))
+                      'exact' if metadata(name, key) else kind, report, peaks.get(key),
+                      paired_impedance=paired_impedance)
     elif isinstance(a, (tuple, list)) and isinstance(b, (tuple, list)):
         for i in range(max(len(a), len(b))):
             if i >= len(a) or i >= len(b):
                 report['failures'].append(f"{name}.{i}: record missing on {'A' if i >= len(a) else 'B'}")
             else:
-                _tree(a[i], b[i], f'{name}.{i}', kind, report)
+                _tree(a[i], b[i], f'{name}.{i}', kind, report,
+                      paired_impedance=paired_impedance)
     elif isinstance(a, (dict, tuple, list)) or isinstance(b, (dict, tuple, list)):
         report['failures'].append(f'{name}: record structure differs: {type(a).__name__} vs {type(b).__name__}')
     else:

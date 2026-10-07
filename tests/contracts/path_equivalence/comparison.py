@@ -3,6 +3,8 @@ from dataclasses import fields, is_dataclass
 
 import numpy as np
 
+from rfx.microstrip import _ETA_0 as VACUUM_IMPEDANCE
+
 STEP_ULPS = 9
 ACCUMULATED_RELATIVE = 1e-4
 
@@ -46,8 +48,16 @@ COMPONENT_GROUPS = (('ex', 'ey', 'ez'), ('hx', 'hy', 'hz'),
                     ('e1_dft', 'e2_dft'), ('h1_dft', 'h2_dft'))
 
 
-def component_peaks(a, b):
-    """Sibling components of one recorded field; never combine E and H."""
+def component_peaks(a, b, *, paired_impedance=None):
+    """Share sibling peaks, keeping E and H separate by default.
+
+    With a positive paired impedance Z0, use max(E, Z0 * H) and
+    max(H, E / Z0). This is for scenes with one field near zero by physics;
+    such tests should use a propagating pulse. An absent partner is unchanged.
+    """
+    if paired_impedance is not None:
+        if not np.isfinite(paired_impedance) or paired_impedance <= 0:
+            raise ValueError('paired_impedance must be finite and positive')
     peaks = {}
     for group in COMPONENT_GROUPS:
         keys = set(group) & (a.keys() | b.keys())
@@ -55,6 +65,14 @@ def component_peaks(a, b):
             peak = array_peak(*(tree[key] for tree in (a, b)
                                 for key in keys if key in tree))
             peaks.update(dict.fromkeys(keys, peak))
+    if paired_impedance is not None:
+        for electric, magnetic in zip(COMPONENT_GROUPS[::2], COMPONENT_GROUPS[1::2]):
+            e_keys, h_keys = set(electric) & peaks.keys(), set(magnetic) & peaks.keys()
+            if e_keys and h_keys:
+                e_peak = max(peaks[key] for key in e_keys)
+                h_peak = max(peaks[key] for key in h_keys)
+                peaks.update(dict.fromkeys(e_keys, max(e_peak, paired_impedance * h_peak)))
+                peaks.update(dict.fromkeys(h_keys, max(h_peak, e_peak / paired_impedance)))
     return peaks
 
 
