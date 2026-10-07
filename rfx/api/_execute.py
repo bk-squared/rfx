@@ -14,6 +14,7 @@ LEAF mixin module — it must NEVER do ``from rfx.api import ...`` or
 from __future__ import annotations
 
 from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
+from rfx.api._removed_kwargs import _reject_removed_forward_kwargs
 
 import functools
 import math
@@ -36,6 +37,7 @@ from rfx.materials.debye import init_debye  # noqa: F401  (local import in moved
 from rfx.materials.lorentz import init_lorentz  # noqa: F401  (local import in moved bodies)
 from rfx.adi import ADIState2D, run_adi_2d
 
+
 from rfx.boundaries.spec import BoundarySpec  # noqa: F401  (referenced by moved comments)
 from rfx.simulation import SnapshotSpec  # noqa: F401  (run() signature type-hint)
 from rfx.ringdown import RingdownSpec  # noqa: F401  (run() signature type-hint)
@@ -45,6 +47,7 @@ from rfx.api._spec import (
     MATERIAL_LIBRARY,
     _warn_if_nonfinite_result,
 )
+
 
 # ---------------------------------------------------------------------------
 # Phase 3 (issue #44 V3 §M6): module-level flag so the distributed=True
@@ -56,49 +59,6 @@ from rfx.api._spec import (
 # ---------------------------------------------------------------------------
 _DISTRIBUTED_FIRST_CALL_WARNED: bool = False
 
-# ---------------------------------------------------------------------------
-# Arc-audit follow-up item 5(b): a removed public kwarg (currently just
-# `design_mask`, issue #625) used to surface as the bare Python default --
-# `TypeError: _ExecuteMixin.forward() got an unexpected keyword argument
-# 'design_mask'` -- which leaks this mixin's internal class name (the
-# public surface is `Simulation.forward`, never `_ExecuteMixin.forward`)
-# and gives no reason or replacement. `forward()` now accepts
-# `**_removed_kwargs` and calls this helper so a removed kwarg gets a
-# `TypeError` naming the actual reason and the one-line migration path
-# instead. Deliberately still a `TypeError` (not some other exception
-# type) -- `tests/unit/autodiff/test_design_mask_removed.py` pins "the kwarg is
-# rejected" via `pytest.raises(TypeError, match="design_mask")`, and this
-# only changes the MESSAGE, not the exception class or that contract.
-# ---------------------------------------------------------------------------
-_REMOVED_FORWARD_KWARGS: dict = {
-    "design_mask": (
-        "removed entirely in issue #625, not deprecated: it was measured "
-        "to save ZERO reverse-mode AD memory (partial-eval residuals have "
-        "whole-array granularity) while corrupting the gradient in every "
-        "configuration tested. For memory relief use checkpoint_every / "
-        "checkpoint_segments; to restrict which cells carry a derivative, "
-        "wrap eps_override yourself: eps = jnp.where(region, eps, "
-        "jax.lax.stop_gradient(eps)) -- see CHANGELOG.md 'Removed — "
-        "design_mask' and docs/public/guide/memory-reduction.mdx."
-    ),
-}
-
-def _reject_removed_forward_kwargs(removed_kwargs: dict) -> None:
-    """Raise a TypeError for an unrecognised forward() kwarg, naming the
-    reason and replacement for a KNOWN removed one (see
-    ``_REMOVED_FORWARD_KWARGS``) instead of leaking ``_ExecuteMixin`` (the
-    internal mixin, not the public ``Simulation.forward`` surface)."""
-    parts = []
-    for name in removed_kwargs:
-        reason = _REMOVED_FORWARD_KWARGS.get(name)
-        if reason is not None:
-            parts.append(f"'{name}' was {reason}")
-        else:
-            parts.append(f"'{name}' is not a recognised forward() keyword argument")
-    raise TypeError(
-        "Simulation.forward() got unexpected keyword argument(s) "
-        f"{sorted(removed_kwargs)}: " + " | ".join(parts)
-    )
 
 def _staged_by_an_outer_trace() -> bool:
     """Whether ``forward()`` is being recorded into a compiled program (#1225).
@@ -1711,6 +1671,7 @@ class _ExecuteMixin:
             "forward()/optimize()/topology_optimize()/"
             "compute_lumped_wire_s_matrix_via_scan()")
         _line_stub_scope = _line_stub_admit(self, port_s11_freqs)
+
         from rfx.simulation import (
             run as _run, resolve_periodic,
             make_probe,
@@ -4288,9 +4249,11 @@ class _ExecuteMixin:
                 "eps_scale= for jax.grad. Use add_port(..., extent=...) for "
                 "differentiable probe-feed S11 objectives."
             )
+
         if port_s11_freqs is not None:
             self._validate_forward_sparameter_request()
         _line_stub_scope = _line_stub_admit(self, port_s11_freqs)
+
         _solve_assembly = self._auto_preflight(skip=skip_preflight, context="forward", prepare=True, distributed=distributed)
 
         # ---- (2,4) stencil fence: reject order=4 on unsupported lanes ----
@@ -4908,6 +4871,7 @@ class _ExecuteMixin:
             devices=devices,
         )
         _line_stub_scope = _line_stub_admit(self, s_param_freqs)
+
         _distributed_run = devices is not None and len(devices) > 1
         _solve_assembly = self._auto_preflight(skip=skip_preflight, context="run", check_ntff="advisory", prepare=True, distributed=_distributed_run)
 

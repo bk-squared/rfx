@@ -51,6 +51,7 @@ from rfx.sparams._common import (
     _msl_power_wave_scales,
 )
 
+
 def compute_msl_s_matrix(
     self,
     *,
@@ -733,6 +734,8 @@ def compute_msl_s_matrix(
                         _channels, source_end_index=_source_end,
                         dt=getattr(_ts_result, "dt", None) or grid.dt,
                         freqs=freqs_arr, freq_max=self._freq_max, return_detail=True)
+
+
 
             # Helper: integrate V and I per port from the recorded planes.
             v_per_port: list[list[np.ndarray]] = []

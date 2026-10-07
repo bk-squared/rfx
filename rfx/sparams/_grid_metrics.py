@@ -30,3 +30,16 @@ def junction_absorber_depth(grid, axis, default_cells):
         if n > 0:
             depths.append(absorber_depth(grid, axis, side, n))
     return min(depths, default=float("inf"))
+
+
+def _calculator_source_plane(grid, port):
+    """Keep the calculator's derived half-cell source on its original node.
+
+    This is an internal one-cell descriptor, not a declared coordinate.
+    Preserve its float64 half-to-even arithmetic independently of the
+    declared-coordinate tie rule.
+    """
+    direction = 1 if port.face == "bottom" else -1
+    centre = port.position[2] + direction * port.pin_length / 2.0
+    dz = float(grid.cells(2)[0])   # uniform z only (coax calculators refuse a graded mesh)
+    return int(round(centre / dz)) + grid.pad_z_lo

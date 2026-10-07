@@ -109,6 +109,7 @@ from __future__ import annotations
 
 from typing import Any, Callable, NamedTuple
 
+
 class ConfigCheckContext(NamedTuple):
     """Shared state computed ONCE per ``preflight()`` and handed to every
     check.
@@ -154,6 +155,7 @@ class ConfigCheckContext(NamedTuple):
     cpml_thick_hi: Any
     pmc_faces: Any
     absorber_label: str
+
 
 class ConfigCheck(NamedTuple):
     """One configuration check, as data.
