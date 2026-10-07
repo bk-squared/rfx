@@ -27,7 +27,7 @@ def _make_straight_waveguide_sim(
     sim = Simulation(
         freq_max=f_max,
         domain=(length, a_wg, b_wg),
-        boundary="cpml",
+        boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=10,
     )
     if freqs is None:
@@ -126,7 +126,7 @@ def test_normalized_s_matrix_with_obstacle():
     sim = Simulation(
         freq_max=10e9,
         domain=(length, a_wg, b_wg),
-        boundary="cpml",
+        boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=10,
     )
 
