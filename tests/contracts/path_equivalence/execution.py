@@ -13,7 +13,7 @@ from rfx.runners import _admission as admission
 from tests.contracts import path_disposition
 
 from .builders import BASE_ROWS, build, point
-from .comparison import array_peak, compare, component_peaks, container, excluded, metadata
+from .comparison import array_peak, compare, component_peaks, container, excluded, metadata, paired_field_peaks
 
 
 @functools.lru_cache(maxsize=None)
@@ -111,6 +111,9 @@ def _tree(a, b, name, kind, report, peak=None, *, paired_impedance=None):
                 np.asarray(tree[key])[..., sl] for tree in (a, b)
                 for key in faces if key in tree and tree[key] is not None))
                 for field, sl in (('E', slice(0, 2)), ('H', slice(2, 4)))}
+            if kind != 'exact' and paired_impedance is not None:
+                field_peaks['E'], field_peaks['H'] = paired_field_peaks(
+                    field_peaks['E'], field_peaks['H'], paired_impedance)
         for key in sorted(a.keys() | b.keys()):
             if excluded(name, key):
                 continue

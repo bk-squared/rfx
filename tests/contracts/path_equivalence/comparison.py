@@ -1,9 +1,13 @@
 """The S0 cross-trace bars, including exact prerequisites."""
 from dataclasses import fields, is_dataclass
+from math import isfinite, sqrt
+from numbers import Real
 
 import numpy as np
 
-from rfx.microstrip import _ETA_0 as VACUUM_IMPEDANCE
+from rfx.core.yee import MU_0, EPS_0
+
+VACUUM_IMPEDANCE = sqrt(MU_0 / EPS_0)
 
 STEP_ULPS = 9
 ACCUMULATED_RELATIVE = 1e-4
@@ -48,16 +52,53 @@ COMPONENT_GROUPS = (('ex', 'ey', 'ez'), ('hx', 'hy', 'hz'),
                     ('e1_dft', 'e2_dft'), ('h1_dft', 'h2_dft'))
 
 
-def component_peaks(a, b, *, paired_impedance=None):
-    """Share sibling peaks, keeping E and H separate by default.
+FIELD_PAIRS = {
+    ('ex', 'ey', 'ez'): ('hx', 'hy', 'hz'),
+    ('e1_dft', 'e2_dft'): ('h1_dft', 'h2_dft'),
+}
 
-    With a positive paired impedance Z0, use max(E, Z0 * H) and
-    max(H, E / Z0). This is for scenes with one field near zero by physics;
-    such tests should use a propagating pulse. An absent partner is unchanged.
+
+def _positive_float(value):
+    if isinstance(value, (bool, np.bool_)) or not isinstance(value, Real):
+        raise ValueError('impedance must be finite and positive, and a real number')
+    value = float(value)
+    if not isfinite(value) or value <= 0:
+        raise ValueError('impedance must be finite and positive')
+    return value
+
+
+def wave_impedance_range(eps_r_max):
+    """Scene impedance bounds for nonmagnetic dielectrics including vacuum."""
+    eps_r_max = _positive_float(eps_r_max)
+    if eps_r_max < 1:
+        raise ValueError('eps_r_max must be at least 1')
+    return VACUUM_IMPEDANCE / sqrt(eps_r_max), VACUUM_IMPEDANCE
+
+
+def paired_field_peaks(e_peak, h_peak, paired_impedance):
+    """Convert partner peaks in SI units, without propagating nonfinite bars."""
+    if paired_impedance is None:
+        return e_peak, h_peak
+    if isinstance(paired_impedance, tuple) and len(paired_impedance) == 2:
+        z_low, z_high = map(_positive_float, paired_impedance)
+    else:
+        z_low = z_high = _positive_float(paired_impedance)
+    if z_low > z_high:
+        raise ValueError('paired_impedance requires z_low <= z_high')
+    paired_e, paired_h = z_low * h_peak, e_peak / z_high
+    return (max(e_peak, paired_e) if isfinite(paired_e) else e_peak,
+            max(h_peak, paired_h) if isfinite(paired_h) else h_peak)
+
+
+def component_peaks(a, b, *, paired_impedance=None):
+    """Share sibling peaks; optionally pair using caller-supplied SI impedance.
+
+    A scalar Z uses max(E, Z * H), max(H, E / Z). A (z_low, z_high)
+    range uses max(E, z_low * H), max(H, E / z_high). An absent partner
+    is unchanged. No scene impedance is assumed by default.
     """
     if paired_impedance is not None:
-        if not np.isfinite(paired_impedance) or paired_impedance <= 0:
-            raise ValueError('paired_impedance must be finite and positive')
+        paired_field_peaks(0., 0., paired_impedance)  # Validate even without fields.
     peaks = {}
     for group in COMPONENT_GROUPS:
         keys = set(group) & (a.keys() | b.keys())
@@ -66,13 +107,14 @@ def component_peaks(a, b, *, paired_impedance=None):
                                 for key in keys if key in tree))
             peaks.update(dict.fromkeys(keys, peak))
     if paired_impedance is not None:
-        for electric, magnetic in zip(COMPONENT_GROUPS[::2], COMPONENT_GROUPS[1::2]):
+        for electric, magnetic in FIELD_PAIRS.items():
             e_keys, h_keys = set(electric) & peaks.keys(), set(magnetic) & peaks.keys()
             if e_keys and h_keys:
                 e_peak = max(peaks[key] for key in e_keys)
                 h_peak = max(peaks[key] for key in h_keys)
-                peaks.update(dict.fromkeys(e_keys, max(e_peak, paired_impedance * h_peak)))
-                peaks.update(dict.fromkeys(h_keys, max(h_peak, e_peak / paired_impedance)))
+                e_peak, h_peak = paired_field_peaks(e_peak, h_peak, paired_impedance)
+                peaks.update(dict.fromkeys(e_keys, e_peak))
+                peaks.update(dict.fromkeys(h_keys, h_peak))
     return peaks
 
 
