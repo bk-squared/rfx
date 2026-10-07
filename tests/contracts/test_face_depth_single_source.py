@@ -242,6 +242,8 @@ def feature_axis_reads(source):
             if (isinstance(node, ast.Attribute) and node.attr in names)
             or (isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id in names)
             or (isinstance(node, ast.ImportFrom) and any(alias.name in names for alias in node.names))
+            or (isinstance(node, ast.ImportFrom) and node.module == "rfx.sources.tfsf"
+                and any(alias.name == "tfsf_boundary_flags" for alias in node.names))
             or (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
                 and node.func.id == "getattr" and len(node.args) > 1
                 and isinstance(node.args[1], ast.Constant) and node.args[1].value in names)]
@@ -263,6 +265,7 @@ def test_feature_axis_readers_belong_to_boundaries():
     "axes = getattr(sim, '_waveguide_cpml_axes')()",
     "from rfx.boundaries.features import _guide_axes as axes; axes(sim)",
     "axes = _guide_axes(sim)",
+    "from rfx.sources.tfsf import tfsf_boundary_flags; axes = tfsf_boundary_flags(cfg)",
 ])
 def test_seeded_feature_axis_read_is_detected(source):
     assert feature_axis_reads(source), "disabled scan accepted a feature axis reader"

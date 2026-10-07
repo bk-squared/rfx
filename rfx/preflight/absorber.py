@@ -1368,7 +1368,8 @@ def _validate_cfg_thin_absorber(self, _w, dx) -> None:
         else:
             cpml_axes = grid.cpml_axes
             if self._tfsf is not None:
-                from rfx.sources.tfsf import init_tfsf, tfsf_boundary_flags
+                from rfx.sources.tfsf import init_tfsf
+                from rfx.boundaries.tfsf import boundary_flags as tfsf_boundary_flags
                 entry = self._tfsf
                 cfg, _ = init_tfsf(
                     grid.nx, float(grid.cells("x")[0]), grid.dt,

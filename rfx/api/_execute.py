@@ -1736,7 +1736,7 @@ class _ExecuteMixin:
             # The legacy slab's concrete vacuum check runs via preflight.
             # The closed box also checks the final realized operators below,
             # after material overrides and port setup (including AD values).
-            from rfx.sources.tfsf import tfsf_boundary_flags
+            from rfx.boundaries.tfsf import boundary_flags as tfsf_boundary_flags
             periodic_bool, cpml_axes_run = tfsf_boundary_flags(tfsf_run[0], grid)
             # Match run(): closed-box CPML exteriors retain their PEC
             # backing. An empty string withholds those walls.
