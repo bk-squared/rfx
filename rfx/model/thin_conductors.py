@@ -91,7 +91,10 @@ def fold_thin_conductor(grid, conductor, materials, pec_mask=None, *,
         geometry_masks.append((geometry_key, mask))
     # Keep the path's existing metric and precision: a Python scalar on
     # uniform grids, the solver's dual array on profiled grids.
-    dual = grid.dx
+    # Uniform grid: one cell size on every axis, so any axis's dual spacing is the divisor (a mask-shape DC
+    # conductor has no declared normal here). Asked of the grid, not read from the scalar attribute, and kept a
+    # Python float so the arithmetic is main's exactly (decision record 3).
+    dual = None if nonuniform else float(grid.duals(0)[0])
     if nonuniform:
         dual = e_node_dual_spacings((grid.dx_arr, grid.dy_arr, grid.dz)[normal])
         view = [1, 1, 1]
