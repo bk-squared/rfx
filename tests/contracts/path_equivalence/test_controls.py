@@ -85,10 +85,10 @@ def test_matrix_canary_rejects_disabled_container_traversal(monkeypatch, skipped
     from . import execution
     original = execution._tree
 
-    def skip_container(a, b, *args):
+    def skip_container(a, b, *args, **kwargs):
         if isinstance(a, skipped_type):
             return
-        return original(a, b, *args)
+        return original(a, b, *args, **kwargs)
 
     monkeypatch.setattr(execution, '_tree', skip_container)
     with pytest.raises(RuntimeError, match='disabled'):
