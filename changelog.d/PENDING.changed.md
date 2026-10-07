@@ -1,1 +1,1 @@
-### Changed — the thin-conductor fold is shared by the uniform and graded paths with no change in results.
+### Changed — direct `rfx.apply_thin_conductor` calls with a graded grid now use local dual spacing, matching graded assembly, instead of uniform `dx`.

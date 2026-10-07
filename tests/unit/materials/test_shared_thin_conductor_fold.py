@@ -175,3 +175,135 @@ def test_uniform_x64_keeps_scalar_sheet_precision():
         expected = 1.0 / float(leontovich_rs(5e9, 1000)) / grid.dx
         assert actual.dtype == np.float64
         np.testing.assert_allclose(actual, expected, rtol=1e-12, atol=0)
+
+
+def dc_overlap_fixture(lane, order=('a', 'b')):
+    """Two distinct DC sheets: 12 shared cells, plus exclusive cells each."""
+    h = 1/1024
+    kw = {}
+    if lane != 'uniform':
+        kw['dz_profile'] = (np.full(8, h) if lane == 'equal' else
+                            np.array([1, 1, .5, 1.5, .6, 1.4, 1, 1])*h)
+    sim = Simulation(freq_max=15e9, domain=(12*h, 10*h, 8*h), dx=h,
+                     boundary='cpml', cpml_layers=2, **kw)
+    declarations = {
+        'a': (Box((2*h, 2*h, 4*h), (8*h, 7*h, 4.1*h)), 1234, 2.5),
+        'b': (Box((5*h, 3*h, 4*h), (10*h, 9*h, 4.1*h)), 77, 4.5),
+    }
+    for name in order:
+        shape, sigma, eps = declarations[name]
+        sim.add_thin_conductor(shape, sigma_bulk=sigma, thickness=h/7, eps_r=eps)
+    grid = sim._build_grid() if lane == 'uniform' else sim._build_nonuniform_grid()
+    return sim, grid
+
+
+@pytest.mark.parametrize('lane', ('uniform', 'equal', 'graded'))
+def test_dc_overlap_last_declaration_wins(lane):
+    from rfx.model.materials import assemble_cells
+    results = []
+    for order in (('a', 'b'), ('b', 'a')):
+        sim, grid = dc_overlap_fixture(lane, order)
+        mats = assemble_cells(sim, grid)[0]
+        results.append(mats)
+        # User-coordinate cell names: A-only (3,3,4), B-only (9,8,4),
+        # overlap (6,4,4), and vacuum (1,1,4). The graded node at z=4h
+        # has adjacent cells 1.5h and .6h, hence dual=1.05h.
+        dual = grid.dx * (1.05 if lane == 'graded' else 1)
+        last = (77, 4.5) if order[-1] == 'b' else (1234, 2.5)
+        for xyz, (sigma, eps) in [((3, 3, 4), (1234, 2.5)),
+                                  ((9, 8, 4), (77, 4.5)),
+                                  ((6, 4, 4), last), ((1, 1, 4), (0, 1))]:
+            index = tuple(i+p for i, p in zip(xyz, grid.axis_pads))
+            np.testing.assert_allclose(mats.sigma[index], sigma*(grid.dx/7)/dual, rtol=2e-7)
+            assert mats.eps_r[index] == eps
+    assert np.count_nonzero(results[0].sigma != results[1].sigma) == 12
+    assert np.count_nonzero(results[0].eps_r != results[1].eps_r) == 12
+
+
+@pytest.mark.parametrize('nu', (False, True))
+def test_dc_geometry_mask_records_declared_conductor(nu):
+    from rfx.model.materials import assemble_cells
+    sim, grid = dc_overlap_fixture('equal' if nu else 'uniform', order=('a',))
+    masks = []
+    mats = assemble_cells(sim, grid, geometry_masks=masks)[0]
+    assert len(masks) == 1
+    key, mask = masks[0]
+    assert key == id(sim._thin_conductors[0])
+    expected = np.zeros(grid.shape, dtype=bool)
+    px, py, pz = grid.axis_pads
+    expected[px+2:px+8, py+2:py+7, pz+4] = True
+    np.testing.assert_array_equal(mask, expected)
+    np.testing.assert_array_equal(np.asarray(mats.sigma) != 0, expected)
+
+
+def test_periodic_dc_cells_cross_seam():
+    from rfx.boundaries.spec import BoundarySpec
+    from rfx.model.materials import assemble_cells
+    h = 1/1024
+    sim = Simulation(freq_max=15e9, domain=(12*h, 10*h, 8*h), dx=h,
+                     boundary=BoundarySpec(x='periodic', y='periodic', z='cpml'),
+                     cpml_layers=2)
+    # Finite subcell thickness exercises DC plane identification itself;
+    # a zero-thickness Box is also wrapped by the generic shape sampler.
+    sim.add_thin_conductor(Box((11.5*h, 8*h, 2*h), (11.7*h, 13*h, 6*h)),
+                           sigma_bulk=1234, thickness=h/7, eps_r=3.5)
+    grid = sim._build_grid()
+    mats = assemble_cells(sim, grid)[0]
+    expected = np.zeros(grid.shape, dtype=bool)
+    expected[0, [0, 1, 2, 8, 9], grid.pad_z_lo+2:grid.pad_z_lo+6] = True
+    np.testing.assert_array_equal(np.asarray(mats.sigma) != 0, expected)
+    np.testing.assert_allclose(np.asarray(mats.sigma)[expected], 1234/7, rtol=1e-7)
+    np.testing.assert_array_equal(np.asarray(mats.eps_r)[expected], 3.5)
+
+
+def test_f0_fold_refuses_multilayer_occupancy(monkeypatch):
+    # Isolate the fold's defensive occupancy gate from the rasterizer's
+    # own geometry checks: a malformed producer must not multiply loss.
+    import jax.numpy as jnp
+    import rfx.model.thin_conductors as fold
+    from types import SimpleNamespace
+    from rfx.core.yee import init_materials
+    from rfx.materials.thin_conductor import apply_thin_conductor
+    sim, grid = build('f0_on')
+    original = fold.sheet_spec_from_shape
+
+    def multilayer(*args, **kwargs):
+        spec = original(*args, **kwargs)
+        mask = spec.footprint | jnp.roll(spec.footprint, 1, axis=spec.normal_axis)
+        return SimpleNamespace(**{**vars(spec), 'footprint': mask})
+
+    monkeypatch.setattr(fold, 'sheet_spec_from_shape', multilayer)
+    with pytest.raises(ValueError, match='rasterizes to 2 cell layers'):
+        apply_thin_conductor(grid, sim._thin_conductors[0], init_materials(grid.shape),
+                             sheet_specs=[])
+
+
+def test_uniform_thin_pec_shape_collector():
+    from rfx.model.materials import assemble_cells
+    sim, grid = build('thin_pec')
+    sheets = []
+    out = assemble_cells(sim, grid, pec_sheets=sheets)
+    assert len(out[4]) == 1
+    assert out[4][0] == sim._thin_conductors[0].shape
+    assert len(sheets) == 1
+    assert out[3] is None
+
+
+def float64_material_sheet_fixture(nu=True):
+    sim, grid = build('f0_on', nu)
+    h = grid.dx
+    sim.add_material('d64', eps_r=np.float64(2), sigma=np.float64(.125))
+    sim.add(Box((2*h, 2*h, 2*h), (8*h, 7*h, 6*h)), material='d64')
+    return sim, grid
+
+
+def test_graded_x64_sheet_preserves_material_dtype():
+    from rfx.materials.thin_conductor import leontovich_rs
+    with jax.enable_x64():
+        sim, grid = float64_material_sheet_fixture()
+        root = realized_conductors(sim, grid, nonuniform=True)
+        spec, = root.sheet_impedance
+        assert root.materials.sigma.dtype == np.float64
+        assert spec.sigma_sheet.dtype == np.float64
+        expected = np.float32(1 / float(leontovich_rs(5e9, 1000)) / grid.dx)
+        np.testing.assert_array_equal(np.asarray(spec.sigma_sheet)[np.asarray(spec.mask)], expected)

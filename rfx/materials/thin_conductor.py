@@ -415,10 +415,48 @@ def _thin_conductor_cell_mask(shape, grid):
     return dc_cell_mask(shape, grid)
 
 
-def apply_thin_conductor(grid, conductor, materials, pec_mask=None,
-                         sheet_specs=None, sheets=None, geometry_masks=None,
-                         geometry_key=None):
-    """Compatibility entry; all grid types use the model layer's single fold."""
+def apply_thin_conductor(
+    grid: Grid,
+    conductor: ThinConductor,
+    materials: MaterialArrays,
+    pec_mask: jnp.ndarray | None = None,
+    sheet_specs: list | None = None,
+    sheets: list | None = None,
+    geometry_masks: list | None = None,
+    geometry_key: int | None = None,
+) -> tuple[MaterialArrays, jnp.ndarray | None]:
+    """Apply thin conductor subcell correction to material arrays.
+
+    For lossy conductors (σ < 1e6, no f0): modifies σ_eff in the material
+    arrays (DC fold).  For PEC thin sheets (σ >= 1e6): emits a
+    :class:`~rfx.boundaries.pec.SheetSpec` into ``sheets`` (#931) — the
+    PEC mask is returned UNCHANGED; a sheet owns no cell.
+
+    Parameters
+    ----------
+    grid : Grid
+    conductor : ThinConductor
+    materials : MaterialArrays
+    pec_mask : bool array or None
+        Existing PEC (volume) mask, passed through untouched.
+    sheets : list or None
+        Collector for PEC sheets.  A PEC thin conductor with no collector
+        raises: the lane would otherwise simulate no sheet at all (the
+        #369 vaporized-metal class).
+    sheet_specs : list or None
+        Collector for surface-impedance (``surface_impedance_f0``) sheets
+        (#677). An f0-mode conductor no longer touches the material arrays;
+        when a list is passed, a :class:`SheetImpedanceSpec` is appended to
+        it for the caller to assemble into a runtime
+        :class:`SheetImpedanceCtx`. When ``None`` (legacy callers), the f0
+        branch still validates the sheet but emits nothing — the assembled
+        arrays are sheet-free either way, and lanes that cannot apply the
+        ctx must refuse f0 sheets at their entry point.
+
+    Returns
+    -------
+    (materials, pec_mask) — updated material arrays and PEC mask.
+    """
     from rfx.model.thin_conductors import fold_thin_conductor
     return fold_thin_conductor(
         grid, conductor, materials, pec_mask, sheet_specs=sheet_specs,

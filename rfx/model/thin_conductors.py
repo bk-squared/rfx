@@ -100,7 +100,11 @@ def fold_thin_conductor(grid, conductor, materials, pec_mask=None, *,
     if f0 is not None:
         conductance = 1.0 / leontovich_rs(f0, conductor.sigma_bulk)
         if sheet_specs is not None:
-            sigma_sheet = jnp.where(mask, conductance / dual, 0.0)
+            density = conductance / dual
+            if nonuniform:
+                # Preserve main's promotion when material sigma is float64.
+                density = density * jnp.ones_like(materials.sigma)
+            sigma_sheet = jnp.where(mask, density, 0.0)
             sheet_specs.append(SheetImpedanceSpec(
                 mask=mask, normal_axis=normal, g_sheet=conductance,
                 sigma_sheet=sigma_sheet, plane=plane,
