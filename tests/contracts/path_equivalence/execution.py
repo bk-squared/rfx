@@ -14,6 +14,7 @@ from tests.contracts import path_disposition
 
 from .builders import BASE_ROWS, build, point
 from .comparison import array_peak, compare, component_peaks, container, excluded, metadata, paired_field_peaks
+from .generation import record_groups
 
 
 @functools.lru_cache(maxsize=None)
@@ -183,6 +184,16 @@ RECORDS = ('time_series', 'sparam_time_records', 'dft_planes', 'flux_monitors',
            'ntff_data', 'current_moment_data', 'lumped_port_sparams', 'wire_port_sparams', 's_params')
 
 
+def _final_fields(result):
+    state = getattr(result, 'state', None)
+    fields = {}
+    for name in ('ex', 'ey', 'ez', 'hx', 'hy', 'hz'):
+        value = getattr(state, name, None)
+        assert value is not None, f'final_fields.{name}: record missing'
+        fields[name] = np.asarray(value)
+    return fields
+
+
 def _samples(value, row, lane):
     if value is None:
         return None
@@ -314,7 +325,11 @@ def execute(cell):
             _tree(_kernel_materials(a['capture']), _kernel_materials(b['capture']), 'kernel', 'exact', report)
         except AssertionError as exc:
             report['failures'].append(f'kernel: {exc}')
-        for name in RECORDS:
+        final_fields = 'final_fields' in record_groups(cell)
+        if final_fields:
+            _tree(_final_fields(a['result']), _final_fields(b['result']),
+                  'final_fields', 'step', report, paired_impedance=cell.final_field_impedance)
+        for name in (() if final_fields else RECORDS):
             x, y = getattr(a['result'], name, None), getattr(b['result'], name, None)
             x = None if isinstance(x, (tuple, list, dict)) and not x else x
             y = None if isinstance(y, (tuple, list, dict)) and not y else y

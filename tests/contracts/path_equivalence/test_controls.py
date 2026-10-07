@@ -211,3 +211,69 @@ def test_shared_witness_variant_keeps_record_scope_and_drift_check():
     manifest['cells']['b']['observers'][0]['witness'] = 'typo'
     with pytest.raises(KeyError):
         expand_findings(manifest)
+
+
+def test_long_cpml_final_field_contract():
+    from .generation import record_groups
+    from .test_matrix import CELLS, FINDINGS, PR_SUBSET
+    expected = {
+        '_boundary:cpml:run_uniform:run_distributed:constant:240',
+        '_boundary:cpml:run_nonuniform:run_distributed_nu:graded:240',
+    }
+    long = [c for c in CELLS if c.steps == 240]
+    assert {c.id for c in long} == expected
+    assert not expected & (PR_SUBSET | FINDINGS.keys())
+    for cell in long:
+        assert record_groups(cell) == ('realized', 'final_fields')
+        assert cell.final_field_impedance == pytest.approx((238.26517096338856, 376.73031366686166))
+        short, = [c for c in CELLS if c.id == cell.id.rsplit(':', 1)[0] + ':12']
+        assert record_groups(short) == ('realized', 'probes')
+    assert all(c.final_field_impedance is None for c in CELLS if c.id not in expected)
+
+
+def test_final_fields_require_all_six_components_in_si_units():
+    from types import SimpleNamespace
+    from .execution import _final_fields
+    state = {name: np.array([value], dtype=np.float32) for name, value in
+             zip(('ex', 'ey', 'ez', 'hx', 'hy', 'hz'), (1e6, 1., 2., 1e-3, 1e-4, 1e-5))}
+    fields = _final_fields(SimpleNamespace(state=SimpleNamespace(**state)))
+    assert fields.keys() == state.keys()
+    assert all(np.array_equal(fields[name], value) for name, value in state.items())
+    for missing in state:
+        incomplete = dict(state, **{missing: None})
+        with pytest.raises(AssertionError, match=f'final_fields.{missing}: record missing'):
+            _final_fields(SimpleNamespace(state=SimpleNamespace(**incomplete)))
+
+
+@pytest.mark.parametrize('graded', (False, True))
+def test_execute_uses_paired_peak_only_for_long_final_fields(monkeypatch, graded):
+    from types import SimpleNamespace
+    from . import execution
+    from .test_matrix import CELLS
+    cell, = [c for c in CELLS if c.steps == 240 and c.graded == graded]
+    grid = SimpleNamespace(dt=1.)
+    from collections import namedtuple
+    geometry = namedtuple("Geometry", "nodes")(np.array([0.]))
+    sim = SimpleNamespace(_build_realized_grid=lambda: grid)
+    monkeypatch.setattr(execution, 'build', lambda *args, **kwargs: sim)
+    monkeypatch.setitem(admission.DETECTORS, cell.row, lambda sim: True)
+    monkeypatch.setattr(execution, '_kernel_materials', lambda capture: {})
+    state = {name: np.array([v], dtype=np.float32) for name, v in
+             zip(('ex', 'ey', 'ez', 'hx', 'hy', 'hz'), (1., 0., 0., 1e-6, 0., 0.))}
+
+    def solve(row, lane, graded, steps, dt):
+        values = dict(state)
+        if lane == cell.b:
+            values['hy'] = np.array([1e-9], dtype=np.float32)
+        return dict(grid=grid, geometry=geometry, capture=None, elapsed=0.,
+                    result=SimpleNamespace(dt=1., state=SimpleNamespace(**values)))
+
+    monkeypatch.setattr(execution, 'solve', solve)
+    report = execution.execute(cell)
+    assert not report['failures'], report
+    measured = {m['record']: m for m in report['measurements']}
+    assert {k for k in measured if k.startswith('final_fields.')} == {
+        'final_fields.' + name for name in state}
+    assert measured['final_fields.hy']['difference'] > 0
+    assert measured['final_fields.hy']['peak'] == pytest.approx(1. / 376.73031366686166)
+    assert all(m['bar'] == 0 for k, m in measured.items() if not k.startswith('final_fields.'))

@@ -4,25 +4,12 @@ from pathlib import Path
 import pytest
 
 from .builders import BUILDERS
-from .generation import generate, pr_subset
+from .generation import generate, pr_subset, record_groups
 from .reporting import KnownFinding, assert_record, expectations, group, load_findings
 
 CELLS = generate(BUILDERS)
 _MANIFEST = Path(__file__).with_name('findings.json')
 FINDINGS = load_findings(_MANIFEST)
-
-
-def record_groups(cell):
-    if not cell.equivalence:
-        return ('refusal',)
-    groups = ['realized', 'probes']
-    if cell.row[0] in ('_ports', '_msl_ports', '_waveguide_ports', '_floquet_ports'):
-        groups.extend(('port_samples', 'port_dft'))
-    if cell.row[0] in ('_dft_planes', '_flux_monitors', '_ntff', '_current_moments'):
-        groups.append('observers')
-    if cell.a.startswith('fwd_'):
-        groups.extend(('objective', 'gradient'))
-    return tuple(groups)
 
 
 PR_SUBSET = pr_subset(CELLS, FINDINGS)

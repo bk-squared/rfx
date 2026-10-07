@@ -4,13 +4,32 @@ from dataclasses import dataclass
 from rfx.runners import _admission as admission
 from tests.contracts import path_disposition as disposition
 
+from .comparison import wave_impedance_range
+
 PAIRS = (
     ('run_uniform', 'run_nonuniform', False),
     ('run_uniform', 'run_distributed', False),
     ('fwd_uniform', 'fwd_nonuniform', False),
     ('run_nonuniform', 'run_distributed_nu', True),
 )
+# Final fields only: tighten to exact zero when the slab path calls the one
+# CPML update. Issue #1535 stays open as the structural cause.
+FINAL_FIELD_IMPEDANCE = {
+    (('_boundary', 'cpml'), 'run_uniform', 'run_distributed', 240): wave_impedance_range(2.5),
+    (('_boundary', 'cpml'), 'run_nonuniform', 'run_distributed_nu', 240): wave_impedance_range(2.5),
+}
+
 LONG_ROWS = {('_dft_planes', 'dft_plane'), ('_flux_monitors', 'flux'), ('_ports', 'wire_port')}
+
+
+def record_lengths(row, a, b, equivalent):
+    if not equivalent:
+        return (12,)
+    if row == ('_boundary', 'cpml') and (a, b) in (
+            ('run_uniform', 'run_distributed'),
+            ('run_nonuniform', 'run_distributed_nu')):
+        return (12, 240)
+    return (12, 36) if row in LONG_ROWS else (12,)
 
 
 @dataclass(frozen=True)
@@ -24,8 +43,27 @@ class Cell:
     steps: int
 
     @property
+    def final_field_impedance(self):
+        return FINAL_FIELD_IMPEDANCE.get((self.row, self.a, self.b, self.steps))
+
+    @property
     def id(self):
         return ':'.join((*self.row, self.a, self.b, 'graded' if self.graded else 'constant', str(self.steps)))
+
+
+def record_groups(cell):
+    if not cell.equivalence:
+        return ('refusal',)
+    if cell.steps == 240:
+        return ('realized', 'final_fields')
+    groups = ['realized', 'probes']
+    if cell.row[0] in ('_ports', '_msl_ports', '_waveguide_ports', '_floquet_ports'):
+        groups.extend(('port_samples', 'port_dft'))
+    if cell.row[0] in ('_dft_planes', '_flux_monitors', '_ntff', '_current_moments'):
+        groups.append('observers')
+    if cell.a.startswith('fwd_'):
+        groups.extend(('objective', 'gradient'))
+    return tuple(groups)
 
 
 def generate(builders):
@@ -49,7 +87,7 @@ def generate(builders):
                         sim = build(row, lane, graded=graded)
                         assert admission.DETECTORS[row](sim), f'S0 inactive builder: {row}, {lane}'
                         validated.add(key)
-            for steps in ((12, 36) if equivalent and row in LONG_ROWS else (12,)):
+            for steps in record_lengths(row, a, b, equivalent):
                 cells.append(Cell(row, a, b, graded, equivalent,
                                   None if equivalent else b if on_a else a, steps))
     # These paths are outside equivalence scope: only their refusals run.

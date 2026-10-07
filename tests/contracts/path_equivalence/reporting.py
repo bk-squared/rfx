@@ -53,6 +53,8 @@ def group(failure):
         return 'realized'
     if failure.startswith('time_series'):
         return 'probes'
+    if failure.startswith('final_fields'):
+        return 'final_fields'
     if failure.startswith(('objective:', 'gradient:')):
         return failure.split(':', 1)[0]
     if failure.startswith('sparam_time_records'):

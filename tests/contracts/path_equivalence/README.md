@@ -55,7 +55,8 @@ for an eps_r = 10 wave raises the E peak by sqrt(10). There is no default
 vacuum impedance. Bounds must be positive, finite, ordered numbers, not bools.
 An absent partner or a nonfinite converted partner retains the own peak.
 NTFF faces are split into E/H slots with peaks across the six faces, and use
-the same option. The matrix runner does not opt any cell in.
+the same option. Only the two long CPML final-field records opt in, as declared
+in `generation.FINAL_FIELD_IMPEDANCE`; all existing cells retain their own peaks.
 
 In the prompting case, the step bar is 9 ULP of E/Z0, approximately
 7.9e-7 of E/Z0: 22% of H's own peak when H sits 109 dB below E/Z0.
@@ -75,12 +76,29 @@ cannot hide under xfail. Unknown failures are never accepted by an xfail.
 
 The worker subprocess selects CPU and two host devices before importing JAX;
 it is bounded and reaped by the fixture. No test enables x64. Identical solves
-are cached within a run. DFT, flux and wire use 12 and 36 steps; others use 12.
-The PR selection includes refusal cells on the main-path lanes only, the cheapest measured 12-step
-strict-xfail cell per finding cause, and the cheapest measured passing 12-step
-candidate per admission attribute family. A cell may witness several causes.
-`PR_FINDING_CHOICES` declares the cause witnesses; generation rejects an
-uncovered cause or a stale/non-12-step witness. Costs use uncached solve times
+are cached within a run. DFT, flux and wire use 12 and 36 steps. Only the
+`_boundary:cpml` row adds 240-step cells for `run_uniform:run_distributed`
+(constant) and `run_nonuniform:run_distributed_nu` (graded): two cells total.
+Their 12-step cells remain and compare probes. The long cells request only
+`realized` and `final_fields`. The worker reuses the gathered `result.state`,
+compares all six final components through `_tree` / `comparison.compare` with
+kind `step`, using raw SI E and H and `wave_impedance_range(2.5)` for the
+base dielectric block (eps_r = 2.5). All six components must pass at 9 float32
+ULP of the impedance-paired peak, with no exclusions or finding entries.
+This opt-in applies only to `final_fields`; exact realized prerequisites and
+all existing record comparisons retain their behavior. Tighten these two cells
+to exact zero when the slab path calls the one CPML update; issue #1535 stays
+open as the structural cause.
+
+The PR selection includes main-path refusal cells, one cost-selected 12-step
+strict-xfail witness per finding cause, and the cheapest measured passing
+12-step candidate per admission attribute family. A cell may witness several
+causes. `PR_FINDING_CHOICES` declares the cause witnesses; generation rejects
+an uncovered cause or a stale/wrong-length witness. Both 240-step cells run
+only in the full matrix: the existing passing-candidate rule requires 12 steps,
+so the graded long cell is not eligible. See FINDINGS.md for local component
+measurements and MUTATIONS.md for the error-injection controls and solve costs.
+Costs use uncached solve times
 (or elapsed execution time when execution fails before both solves finish).
 Main-path refusal lanes are `run_uniform`, `fwd_uniform`, `run_nonuniform`,
 `fwd_nonuniform`, `run_distributed`, and `fwd_distributed_nu`. ADI and subgridded

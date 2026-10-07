@@ -2,10 +2,39 @@
 
 `U`, `N`, `D` = uniform, constant-profile NU, two-device uniform;
 `Ng/Dg` = matching graded single/two-device lanes; `F` = forward.
-Lengths are 12 steps unless `12/36` is shown. Numeric bars are relative to
+Lengths are 12 steps unless `12/36` or `240` is shown. Numeric bars are relative to
 peak: `1e-4` accumulated; per-step uses 9 float32 ULP at peak. `N/A` denotes
 schema, missing-record, or execution findings, not a numeric discrepancy.
 Conclusions: in the S0 PR body (leader)
+
+Long CPML cells pass at <= 5.375 ULP of the paired peak; the earlier eta0*H
+per-family peak comparison had maxima of 64–630 ULP because eta0*H is
+17x–265x below E at step 240 (the SI per-family control now reads 86–856 ULP
+at its maxima, since float32 spacing changes under impedance scaling).
+
+Local Mac measurement, two CPU devices, float32, 240 steps, using
+`wave_impedance_range(2.5)` with raw SI fields; margin is `9 - measured ULP`.
+The paired E / H peaks are `4.5197653770` / `0.011997349863` for U/D and
+`10.0697326660` / `0.026729286975` for Ng/Dg.
+
+| Pair | Component | Paired-peak ULP | Margin (ULP) | Bar / difference |
+|---|---|---:|---:|---:|
+| U/D | ex | 1.062500 | 7.937500 | 8.471x |
+| U/D | ey | 1.500000 | 7.500000 | 6.000x |
+| U/D | ez | 2.000000 | 7.000000 | 4.500x |
+| U/D | hx | 2.203125 | 6.796875 | 4.085x |
+| U/D | hy | 5.375000 | 3.625000 | 1.674x |
+| U/D | hz | 1.661133 | 7.338867 | 5.418x |
+| Ng/Dg | ex | 1.000000 | 8.000000 | 9.000x |
+| Ng/Dg | ey | 2.000000 | 7.000000 | 4.500x |
+| Ng/Dg | ez | 1.500000 | 7.500000 | 6.000x |
+| Ng/Dg | hx | 1.726563 | 7.273438 | 5.213x |
+| Ng/Dg | hy | 3.343750 | 5.656250 | 2.692x |
+| Ng/Dg | hz | 2.328979 | 6.671021 | 3.864x |
+
+Uniform Hy exceeds 4.5 ULP: its margin is less than 2x. All components pass
+9 ULP, with no numeric witness or finding entry. Issue #1535 remains open;
+tighten to exact zero once the slab path calls the one CPML update.
 
 | Cause | Cells / record | Witness vs bar | Implementation A / B |
 |---|---|---|---|
