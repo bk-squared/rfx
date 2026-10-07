@@ -9,6 +9,7 @@ from rfx.boundaries import serialization, tfsf
 
 def main():
     mode = sys.argv[1]
+    path = "tests/contracts/test_boundary_review_regressions.py"
     if mode == "walls-ignored":
         original = tfsf.replacement_axes
 
@@ -61,10 +62,60 @@ def main():
     elif mode == "legacy-document-becomes-explicit":
         serialization.restore_legacy_boundary = lambda sim: sim
         judge = "test_main_document_without_provenance"
+    elif mode == "graded-guide-refused":
+        from rfx.boundaries import features
+        original = features.admit_waveguide
+
+        def refuse(sim, **kwargs):
+            if sim._uses_nonuniform_mesh and sim._waveguide_ports:
+                raise ValueError("mutant refuses the graded guide")
+            return original(sim, **kwargs)
+
+        features.admit_waveguide = refuse
+        judge = "test_nonuniform_default_keeps_real_absorbers_without_default_warning"
+    elif mode == "propagation-wall-refused":
+        original = tfsf.replacement_axes
+
+        def refuse(cfg, grid, **kwargs):
+            from rfx.boundaries.depths import Kind, grid_face_depths
+            records = kwargs.get("records") or grid_face_depths(grid)
+            if any(f.name.startswith("x_") and f.kind != Kind.ABSORBER for f in records):
+                raise ValueError("mutant refuses the propagation-axis wall")
+            return original(cfg, grid, **kwargs)
+
+        tfsf.replacement_axes = refuse
+        judge = "test_propagation_axis_wall_keeps_main_admission"
+    elif mode == "export-adds-format-key":
+        from rfx.interop import _design
+        original = _design._dump_boundary
+        _design._dump_boundary = lambda sim: dict(original(sim), explicit=False)
+        judge = "test_default_export_does_not_extend_the_frozen_schema"
+    elif mode == "caller-wrap-rejudged":
+        original = tfsf.admit_setup
+
+        def rejudge(**kwargs):
+            kwargs["feature_owned"] = True
+            return original(**kwargs)
+
+        tfsf.admit_setup = rejudge
+        path = "tests/contracts/test_tfsf_boundary_admission.py"
+        judge = "test_low_level_explicit_wrap_keeps_caller_declaration"
+    elif mode == "realized-kind-ignored":
+        from dataclasses import replace
+        from rfx.boundaries import model
+        original = model.realize
+
+        def declared(boundary, grid):
+            result = original(boundary, grid)
+            return replace(result, faces=tuple(replace(f, kind=boundary.face(f.name).kind)
+                                                for f in result.faces))
+
+        model.realize = declared
+        judge = "test_realized_kind_agrees_with_default_grid_record"
     else:
         raise ValueError(mode)
     return pytest.main([
-        "tests/contracts/test_boundary_review_regressions.py", "-q", "-k", judge,
+        path, "-q", "-k", judge,
         "--basetemp=.pr3/mutation-" + mode, "-o", "cache_dir=.pr3/pytest-cache",
     ])
 
