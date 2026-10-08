@@ -582,7 +582,7 @@ def distributed_kernel_inputs(sim, root, grid, materials, cells, sheets, wires, 
     root = kernel_conductors(sim, grid, materials, cells, sheets, wires,
                             periodic=(False, False, False), root=root)
     root, record = at_kernel(sim, root,
-        lane="run_distributed" if gather else "fwd_distributed_nu",
+        lane="run_distributed_nu" if gather else "fwd_distributed_nu",
         pec_edges=root.pec_edges)
     return root.pec_edges, record
 
