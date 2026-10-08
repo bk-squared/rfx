@@ -44,6 +44,7 @@ import numpy as np
 import pytest
 
 from rfx import Simulation
+from tests.contracts.path_equivalence.comparison import compare
 
 try:
     from jax import enable_x64
@@ -69,7 +70,7 @@ def test_forward_matches_plain():
         sim.forward(n_steps=100, n_warmup=40).time_series
     )
     assert ts_plain.shape == ts_warm.shape
-    np.testing.assert_allclose(ts_plain, ts_warm, rtol=1e-5, atol=1e-10)
+    compare(ts_plain, ts_warm, record="graded.warmup_probe", kind="step", measurements=[])
 
 
 def test_warmup_grad_finite_and_same_sign():
@@ -112,7 +113,7 @@ def test_n_warmup_composes_with_checkpoint_every():
     ts_combo = np.asarray(
         sim.forward(n_steps=80, n_warmup=16, checkpoint_every=16).time_series
     )
-    np.testing.assert_allclose(ts_plain, ts_combo, rtol=1e-5, atol=1e-10)
+    compare(ts_plain, ts_combo, record="graded.warmup_checkpoint_probe", kind="step", measurements=[])
 
 
 def test_uniform_forward_rejects_n_warmup():

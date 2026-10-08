@@ -18,6 +18,7 @@ import jax
 import jax.numpy as jnp
 
 from rfx import GaussianPulse, Simulation
+from tests.contracts.path_equivalence.comparison import compare
 
 
 def _sim():
@@ -46,4 +47,4 @@ def test_graded_forward_traces_as_a_whole_and_the_jit_gradient_is_the_eager_one(
     g_eager = np.asarray(jax.grad(loss)(x))
     g_jit = np.asarray(jax.jit(jax.grad(loss))(x))
     assert np.isfinite(g_eager).all() and np.linalg.norm(g_eager) > 0
-    np.testing.assert_allclose(g_jit, g_eager, rtol=1e-6, atol=0)
+    compare(g_jit, g_eager, record="graded.jit_grad_vs_eager", kind="accumulated", measurements=[])

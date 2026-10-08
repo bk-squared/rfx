@@ -5,6 +5,7 @@ import numpy as np
 import pytest
 
 from rfx.measurement.dft import accumulate, phase, transform
+from tests.contracts.path_equivalence.comparison import compare
 
 
 @pytest.mark.parametrize('kind,offset', [('E', 1.), ('H', .5)])
@@ -203,7 +204,7 @@ def test_n_valid_masks_tail_across_replay_blocks(kind, offset, length):
             traced = np.asarray(replay(jnp.asarray(k, dtype=jnp.int32)))
             for actual in (eager, traced):
                 assert np.max(np.abs(actual - reference)) <= 1e-5 * np.max(np.abs(reference))
-            np.testing.assert_allclose(traced, eager, rtol=1e-6, atol=1e-9)
+            compare(traced, eager, record=f'replay.{kind}.{k}', kind='accumulated', measurements=[])
             assert len(traces) == 1, 'n_valid values must reuse one trace'
             assert replay._cache_size() == 1
         # The kernel's own replay compiled once for this record shape, not per n_valid
