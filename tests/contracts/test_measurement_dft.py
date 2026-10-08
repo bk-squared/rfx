@@ -175,3 +175,97 @@ def test_the_plan_lists_the_sums_that_are_not_on_the_kernel():
     listed = ' | '.join(plan.known_differences)
     for name in ('rfx/floquet.py', 'subgridded runner', 'rfx/adjoint.py', 'traced dt or frequencies'):
         assert name in listed, name
+
+
+@pytest.mark.parametrize('kind,offset', [('E', 1.), ('H', .5)])
+@pytest.mark.parametrize('length', [300, 513])
+def test_n_valid_masks_tail_across_replay_blocks(kind, offset, length):
+    """Physical stamps: E=(n+1)dt, H=(n+1/2)dt; integral uses exp(-jwt)."""
+    with jax.enable_x64(False):
+        records = np.random.default_rng(1527).normal(size=(length, 2)).astype(np.float32)
+        freqs, dt = np.array([2.3, 17.1, 63.7]), .002
+        traces = []
+        from rfx.measurement import dft as kernel
+        transform(records, freqs, dt, kind, n_valid=1)      # compile once for this shape
+        compiled = kernel._replay._cache_size()
+
+        @jax.jit
+        def replay(n_valid):
+            # Python executes only when tracing, never for a cached executable.
+            traces.append(None)
+            return transform(records, freqs, dt, kind, n_valid=n_valid)
+
+        for k in (1, 255, 256, 257, length - 1, length):
+            stamps = (np.arange(k, dtype=np.float64) + offset) * dt
+            reference = (np.exp(-2j * np.pi * freqs[:, None] * stamps)
+                         @ records[:k].astype(np.float64)) * dt
+            eager = np.asarray(transform(records, freqs, dt, kind, n_valid=k))
+            traced = np.asarray(replay(jnp.asarray(k, dtype=jnp.int32)))
+            for actual in (eager, traced):
+                assert np.max(np.abs(actual - reference)) <= 1e-5 * np.max(np.abs(reference))
+            np.testing.assert_allclose(traced, eager, rtol=1e-6, atol=1e-9)
+            assert len(traces) == 1, 'n_valid values must reuse one trace'
+            assert replay._cache_size() == 1
+        # The kernel's own replay compiled once for this record shape, not per n_valid
+        # (the outer jit above would not retrace for an int32 scalar either way).
+        assert kernel._replay._cache_size() <= compiled + 1
+
+
+def test_high_product_extreme_words_and_random():
+    from rfx.measurement.dft import _high_product
+
+    rng = np.random.default_rng(1527)
+    words = np.concatenate([np.array([0, 1, 0xFFFFFFFF, 0x80000000,
+                                     0xFFFF0000, 0x0000FFFF], dtype=np.uint32),
+                            rng.integers(0, 2**32, size=64, dtype=np.uint32)])
+    # All pairs include carries from both cross products, not just squares.
+    a, b = np.meshgrid(words, words, indexing='ij')
+    expected = np.array([(int(x) * int(y)) >> 32 for x, y in zip(a.flat, b.flat)],
+                        dtype=np.uint32).reshape(a.shape)
+    with jax.enable_x64(False):
+        actual = jax.jit(_high_product)(jnp.asarray(a), jnp.asarray(b))
+    np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.parametrize('kind,offset', [('E', 1), ('H', .5)])
+@pytest.mark.parametrize('x64', [False, True])
+def test_negative_phase_zero_low_word(kind, offset, x64):
+    from fractions import Fraction
+
+    # Binary-exact f*dt=k/2**32 gives a zero low word in the 64-bit turns.
+    numerators = [1, 0x0000FFFF, 0x80000000, 0xFFFF0000, 0xFFFFFFFF]
+    dt = .5
+    freqs = np.array(numerators, dtype=np.float64) / 2**31
+    steps = np.array([-1, -2, -255, -65536, -100000, -2**31], dtype=np.int32)
+    expected = np.array([
+        [np.exp(-2j * np.pi * float((Fraction(k, 2**32)
+                                    * (int(n) + Fraction(offset))) % 1))
+         for k in numerators] for n in steps])
+    with jax.enable_x64(x64):
+        actual = np.asarray(jax.jit(lambda n: phase(n, freqs, dt, kind))(steps)) / dt
+    error = np.abs(np.angle(actual.astype(np.complex128) / expected))
+    assert np.max(error) <= 1e-6
+    if x64:
+        # A missing negation carry is only 2*pi/2**32 (~1.46e-9) rad:
+        # the float32 bar alone cannot distinguish it.
+        assert np.max(error) <= 1e-12
+
+
+@pytest.mark.parametrize('kind,offset', [('E', 1), ('H', .5)])
+def test_negative_phase_low_word_carry(kind, offset):
+    """f dt = K / 2**64 with a low word that carries when one turn step is added."""
+    from fractions import Fraction
+
+    numerators = [2**33 - 1, (0x1234 << 32) + 0xFFFFFFFF, (0x80000 << 32) + 0xFFFF0001]
+    dt = .5
+    freqs = np.array([float(Fraction(k, 2**63)) for k in numerators])    # exact: f*dt = K/2**64
+    assert [Fraction(f) * Fraction(dt) for f in freqs] == [Fraction(k, 2**64) for k in numerators]
+    steps = np.array([-2, -3, -100000], dtype=np.int32)
+    expected = np.array([
+        [np.exp(-2j * np.pi * float((Fraction(k, 2**64) * (int(n) + Fraction(offset))) % 1))
+         for k in numerators] for n in steps])
+    with jax.enable_x64(True):
+        actual = np.asarray(jax.jit(lambda n: phase(n, freqs, dt, kind))(steps)) / dt
+    error = np.abs(np.angle(actual.astype(np.complex128) / expected))
+    # Without the carry from the low word the phase is 2*pi/2**32 (1.46e-9 rad) off.
+    assert np.max(error) <= 1e-12, error
