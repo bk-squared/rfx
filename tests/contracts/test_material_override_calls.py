@@ -43,6 +43,9 @@ def _scope_override_writes(tree):
         if name in ("_replace", "MaterialArrays") and any(
                 kw.arg in FIELDS and uses(kw.value) for kw in node.keywords):
             hits.append(node.lineno)
+        # A positional constructor names no field; any override in it counts.
+        elif name == "MaterialArrays" and any(uses(arg) for arg in node.args):
+            hits.append(node.lineno)
     return hits
 
 
@@ -85,4 +88,5 @@ def test_counter_catches_direct_and_aliased_inputs():
     assert override_writes(ast.parse("m = m._replace(eps_r=eps_override)")) == [1]
     assert override_writes(ast.parse("e = eps_override\nm = m._replace(eps_r=e)")) == [2]
     assert override_writes(ast.parse("e = design_box.eps_r\nm = MaterialArrays(eps_r=e)")) == [2]
+    assert override_writes(ast.parse("m = MaterialArrays(eps_override, m.sigma, m.mu_r)")) == [1]
     assert not override_writes(ast.parse("m = apply_material_overrides(m, eps_override=e)"))
