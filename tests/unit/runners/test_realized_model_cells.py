@@ -178,7 +178,9 @@ def material_pairs(dump, row, axis):
             if stamps is not None and stamps[axis] is not None:
                 ref = ref + np.asarray(stamps[axis])
         else:
-            eps, sig = component_e_materials(mats, r["periodic"])
+            from rfx.model.materials import electric_cell_sizes
+            eps, sig = component_e_materials(mats, r["periodic"],
+                cell_sizes=electric_cell_sizes(dump.sim._build_realized_grid()))
             ref = np.asarray(sig[axis] if row == "sigma" else eps[axis])
         got = r[quantity][axis]
         if r["region"] is not None:
@@ -219,7 +221,8 @@ def drive_pairs(dump, row):
         materials = r["materials"]
         if row == "override_drive":
             materials = materials._replace(eps_r=override_epsilon(dump.sim, dump.lane))
-        eps, sig = component_e_materials(materials)
+        from rfx.model.materials import electric_cell_sizes
+        eps, sig = component_e_materials(materials, cell_sizes=electric_cell_sizes(grid))
         expected = []
         for i, j, k, component in r["cells"]:
             axis = "xyz".index(component[1])

@@ -162,7 +162,8 @@ def test_unequal_cells_use_normal_dual(kind):
     assert len(occupied) > 0
     assert np.unique(occupied[:, 2]).tolist() == [6]
     conductance = 1234*(h/7) if kind == 'dc' else 1/float(leontovich_rs(5e9, 1234))
-    np.testing.assert_allclose(arr[arr != 0], conductance/(1.5*h), rtol=2e-7)
+    divisor = 2*h if kind == 'dc' else 1.5*h
+    np.testing.assert_allclose(arr[arr != 0], conductance/divisor, rtol=2e-7)
 
 
 def test_uniform_x64_keeps_scalar_sheet_precision():
@@ -207,14 +208,14 @@ def test_dc_overlap_last_declaration_wins(lane):
         results.append(mats)
         # User-coordinate cell names: A-only (3,3,4), B-only (9,8,4),
         # overlap (6,4,4), and vacuum (1,1,4). The graded node at z=4h
-        # has adjacent cells 1.5h and .6h, hence dual=1.05h.
-        dual = grid.dx * (1.05 if lane == 'graded' else 1)
+        # occupies the .6h cell above the 1.5h cell.
+        primal = grid.dx * (.6 if lane == 'graded' else 1)
         last = (77, 4.5) if order[-1] == 'b' else (1234, 2.5)
         for xyz, (sigma, eps) in [((3, 3, 4), (1234, 2.5)),
                                   ((9, 8, 4), (77, 4.5)),
                                   ((6, 4, 4), last), ((1, 1, 4), (0, 1))]:
             index = tuple(i+p for i, p in zip(xyz, grid.axis_pads))
-            np.testing.assert_allclose(mats.sigma[index], sigma*(grid.dx/7)/dual, rtol=2e-7)
+            np.testing.assert_allclose(mats.sigma[index], sigma*(grid.dx/7)/primal, rtol=2e-7)
             assert mats.eps_r[index] == eps
     assert np.count_nonzero(results[0].sigma != results[1].sigma) == 12
     assert np.count_nonzero(results[0].eps_r != results[1].eps_r) == 12

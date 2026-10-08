@@ -286,15 +286,16 @@ def _collectives(grad=False):
         c0, invariants, warmup, opt = args
         materials, mask, occupancy, debye, lorentz, cpml, spacings = invariants
 
-        def loss(eps, sigma, occ, db, lr, ranks):
+        def loss(eps, sigma, occ, db, lr, ranks, e_cell_sizes):
             # These are the loop inputs reached by the three design gradients;
             # replicated spacings/CPML coefficients are constants in that AD.
             inv = (materials._replace(eps_r=eps, sigma=sigma), mask, occ,
                    db, lr, cpml, spacings)
-            return jnp.sum(entry(c0, inv, warmup, opt, ranks=ranks)[1] ** 2)
+            return jnp.sum(entry(c0, inv, warmup, opt, ranks=ranks, e_cell_sizes=e_cell_sizes)[1] ** 2)
 
         compiled = jax.jit(jax.grad(loss, argnums=(0, 1, 2, 3, 4))).lower(
-            materials.eps_r, materials.sigma, occupancy, debye, lorentz, kwargs["ranks"]).compile()
+            materials.eps_r, materials.sigma, occupancy, debye, lorentz, kwargs["ranks"],
+            kwargs["e_cell_sizes"]).compile()
     else:
         compiled = entry.lower(*args, **kwargs).compile()
     hlo = compiled.as_text()

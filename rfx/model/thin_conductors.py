@@ -36,7 +36,7 @@ def dc_cell_mask(shape, grid):
 def fold_thin_conductor(grid, conductor, materials, pec_mask=None, *,
                         sheet_specs=None, sheets=None, geometry_masks=None,
                         geometry_key=None):
-    """Emit PEC/f0 products or fold DC sigma*t/dual; never overwrite PEC cells."""
+    """Emit PEC/f0 products or fold DC sigma*t/cell width; never overwrite PEC cells."""
     nonuniform = hasattr(grid, 'dx_arr')
     lane = 'non-uniform' if nonuniform else 'uniform'
     coords = GridCoords(*_grid_coords(grid), shape=tuple(grid.shape))
@@ -113,6 +113,9 @@ def fold_thin_conductor(grid, conductor, materials, pec_mask=None, *,
                 sigma_sheet=sigma_sheet, plane=plane,
                 unwrapped_footprint=unwrapped, end_rows=end_rows))
         return materials, pec_mask
-    sigma_eff = conductor.sigma_bulk * (conductor.thickness / dual)
+    # The weighted E-edge mean integrates cell-owned DC sigma over its primal width.
+    divisor = ((grid.dx_arr, grid.dy_arr, grid.dz)[normal].reshape(view)
+               if nonuniform else dual)
+    sigma_eff = conductor.sigma_bulk * (conductor.thickness / divisor)
     return materials._replace(eps_r=jnp.where(mask, conductor.eps_r, materials.eps_r),
                               sigma=jnp.where(mask, sigma_eff, materials.sigma)), pec_mask

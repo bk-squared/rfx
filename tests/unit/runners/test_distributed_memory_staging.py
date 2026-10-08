@@ -440,7 +440,7 @@ def _direct_dispersion_slabs():
         dt = np.float64(1e-12)
         sg = SimpleNamespace(n_devices=n, ghost_width=1, pad_x=pad, nx=nx,
                              nx_padded=n * 4, nx_per_rank=4, nx_local=6, ny=3, nz=4,
-                             dt=dt)
+                             dt=dt, e_cell_sizes=(None, None, None))
         materials = MaterialArrays(
             eps_r=jnp.asarray(rng.uniform(1, 6, shape).astype(np.float32)),
             sigma=jnp.asarray(rng.uniform(0, 0.1, shape).astype(np.float32)),

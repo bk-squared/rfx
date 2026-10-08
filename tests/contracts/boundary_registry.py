@@ -23,7 +23,7 @@ from pathlib import Path
 WALL_PREFIXES = ("apply_pec", "apply_pmc", "apply_cpml", "apply_upml", "apply_adi_cpml",
                  "init_cpml", "init_upml")
 WALL_HELPERS = {"_apply_fine_pec_axes", "precompute_coeffs"}
-NEIGHBOURS = {"_shift_fwd", "_shift_bwd", "_diff_fwd", "_diff_bwd", "_diff_fwd_o", "_diff_bwd_o",
+NEIGHBOURS = {"h_neighbor", "slab_neighbor", "_shift_fwd", "_shift_bwd", "_diff_fwd", "_diff_bwd", "_diff_fwd_o", "_diff_bwd_o",
               "_bwd_h", "_bwd_neighbor", "_material_bwd_neighbour"}
 ROOT = Path(__file__).resolve().parents[2]
 

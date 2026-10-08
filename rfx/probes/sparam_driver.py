@@ -177,11 +177,10 @@ def compute_lumped_wire_s_matrix_via_scan(
     wire_mode = any(is_wire)
     if wire_mode and devices is not None:
         # Geometry only: release the assembled materials before any scan stages slabs.
-        from rfx.boundaries.pec import realized_pec_edge_masks
-        assembled = sim._assemble_materials(grid)
-        _pec_edge_masks = (realized_pec_edge_masks(assembled[3], periodic=sim._periodic_flags())
-                           if assembled[3] is not None else None)
-        del assembled
+        from rfx.model.conductors import realized_conductors
+        conductors = realized_conductors(sim, grid)
+        _pec_edge_masks = conductors.pec_edges
+        del conductors
 
     n_ports = len(eligible)
     z0 = np.asarray([pe.impedance for pe in eligible], dtype=np.float64)

@@ -463,7 +463,7 @@ def test_the_aniso_updates_decay_with_the_edge_averaged_sigma(monkeypatch,
     if mutate:
         monkeypatch.setattr(
             _yee, "component_e_materials",
-            lambda m, periodic=(False, False, False): (
+            lambda m, periodic=(False, False, False), *, cell_sizes=None: (
                 (m.eps_r,) * 3, (m.sigma,) * 3))
 
     idx = np.indices(SHAPE)[2]
@@ -493,7 +493,8 @@ def test_the_aniso_updates_decay_with_the_edge_averaged_sigma(monkeypatch,
     nu_inv = jnp.ones(SHAPE[0], jnp.float32)
     out_nu = update_e_nu_aniso(st, mats, eps, eps, eps, DT,
                                nu_inv, jnp.ones(SHAPE[1], jnp.float32),
-                               jnp.ones(SHAPE[2], jnp.float32))
+                               jnp.ones(SHAPE[2], jnp.float32),
+                               cell_sizes=(None, None, None))
     got_nu = float(np.asarray(out_nu.ex)[cell])
 
     expect = ca_owned if mutate else ca_edge

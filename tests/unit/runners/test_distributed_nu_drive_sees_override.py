@@ -223,7 +223,9 @@ def _stepper_cb(grid, eps, sigma):
                       step=jnp.int32(0))
     mats = MaterialArrays(jnp.asarray(eps), jnp.asarray(sigma),
                           jnp.ones(grid.shape, jnp.float32))
-    new = update_e_nu(state, mats, grid.dt, grid.inv_dx, grid.inv_dy, grid.inv_dz)
+    from rfx.model.materials import electric_cell_sizes
+    new = update_e_nu(state, mats, grid.dt, grid.inv_dx, grid.inv_dy, grid.inv_dz,
+                      cell_sizes=electric_cell_sizes(grid))
     curl = curl_h_nu(*h, grid.inv_dx, grid.inv_dy, grid.inv_dz)
     return {c: np.asarray(getattr(new, c), np.float64) / np.asarray(curl[a], np.float64)
             for a, c in enumerate(("ex", "ey", "ez"))}
@@ -308,9 +310,9 @@ def _frozen_drive():
     without the drive's own derivative (a witness of its size)."""
     real = nu.material_drive_scales
 
-    def frozen(eps_r, sigma, mesh, drives, dt, *, ranks=None):
+    def frozen(eps_r, sigma, mesh, drives, dt, *, ranks=None, grid=None):
         return real(jax.lax.stop_gradient(eps_r), jax.lax.stop_gradient(sigma),
-                    mesh, drives, dt, ranks=ranks)
+                    mesh, drives, dt, ranks=ranks, grid=grid)
 
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(nu, "material_drive_scales", frozen)
@@ -488,15 +490,15 @@ def _drive_from_drawn(sim):
     """Mutation (b): the in-program four-cell mean and Cb are still what
     builds the drive, but the arrays handed to them are the materials as
     DRAWN, staged the way the runner stages a geometry array."""
-    grid = sim._build_nonuniform_grid()
+    drawn_grid = sim._build_nonuniform_grid()
     drawn = _drawn(sim)
     real = nu.material_drive_scales
 
-    def from_drawn(eps_r, sigma, mesh, drives, dt, *, ranks=None):
-        sg = nu.build_sharded_nu_grid(grid, mesh.devices.size)
+    def from_drawn(eps_r, sigma, mesh, drives, dt, *, ranks=None, grid=None):
+        sg = nu.build_sharded_nu_grid(drawn_grid, mesh.devices.size)
         return real(nu.stage_concrete_forward_array(drawn.eps_r, sg, mesh, 1.0),
                     nu.stage_concrete_forward_array(drawn.sigma, sg, mesh, 0.0),
-                    mesh, drives, dt, ranks=ranks)
+                    mesh, drives, dt, ranks=ranks, grid=grid)
 
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(nu, "material_drive_scales", from_drawn)
@@ -510,11 +512,11 @@ def _seam_reads_its_own_row():
     replicates its own row where its i-1 cells (the neighbour's) belong."""
     real = nu.material_drive_scales
 
-    def own_row(eps_r, sigma, mesh, drives, dt, *, ranks=None):
+    def own_row(eps_r, sigma, mesh, drives, dt, *, ranks=None, grid=None):
         ghost = 1
-        drives = tuple((dev, ghost, (cell[0] + row0 - ghost, cell[1], cell[2]), comp, dV)
-                       for dev, row0, cell, comp, dV in drives)
-        return real(eps_r, sigma, mesh, drives, dt, ranks=ranks)
+        drives = tuple((dev, ghost, (cell[0] + row0 - ghost, cell[1], cell[2]), comp, dV, pole)
+                       for dev, row0, cell, comp, dV, pole in drives)
+        return real(eps_r, sigma, mesh, drives, dt, ranks=ranks, grid=grid)
 
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(nu, "material_drive_scales", own_row)

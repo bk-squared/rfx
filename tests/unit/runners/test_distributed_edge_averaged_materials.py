@@ -629,8 +629,8 @@ def test_vacuum_and_homogeneous_models_keep_mains_bits(monkeypatch, lane, eps_r,
     byte for byte -- the fields too on the run lane."""
     new = _filled_record(lane, eps_r, sigma)
 
-    def main_rule(materials, nx_per, nx, rank=None):
-        slab_e_component_materials(materials, nx_per, nx, rank)   # traced, unused
+    def main_rule(materials, nx_per, nx, rank=None, *, cell_sizes=None):
+        slab_e_component_materials(materials, nx_per, nx, rank, cell_sizes=cell_sizes)   # traced, unused
         return cell_owned_component_materials(materials)
 
     with monkeypatch.context() as patch:

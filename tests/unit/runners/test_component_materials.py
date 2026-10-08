@@ -37,16 +37,17 @@ def test_realized_volume_stamps_poles_and_metric(periodic, graded):
     lorentz_pole = LorentzPole(2e10, 1e9, 3e20)
     specs = model.ComponentCells(cells, ([d], [a > 20]), ([lorentz_pole], [a < 30]))
     result = model.realize_components(specs, grid, periodic=periodic)
+    e_widths = model.electric_cell_sizes(grid)
     assert_tree_equal((result.eps_update, result.sigma_update),
-                      yee.component_e_materials(cells, periodic))
+                      yee.component_e_materials(cells, periodic, cell_sizes=e_widths))
     widths = (grid.dx_arr, grid.dy_arr, grid.dz) if graded else None
     assert_tree_equal(result.mu_update, yee.component_h_materials(
         cells, periodic, cell_sizes=widths))
-    assert_tree_equal(result.eps, yee.edge_mean_components(cells.eps_r - stamp, periodic))
-    assert_tree_equal(result.sigma, yee.edge_mean_components(cells.sigma - 2 * stamp, periodic))
+    assert_tree_equal(result.eps, yee.edge_mean_components(cells.eps_r - stamp, periodic, cell_sizes=e_widths))
+    assert_tree_equal(result.sigma, yee.edge_mean_components(cells.sigma - 2 * stamp, periodic, cell_sizes=e_widths))
     assert_tree_equal((result.upml_eps, result.upml_sigma), yee.cell_owned_component_materials(cells))
-    dw = (yee.edge_mean_components((a > 20).astype(jnp.float32), periodic),)
-    lw = (yee.edge_mean_components((a < 30).astype(jnp.float32), periodic),)
+    dw = (yee.edge_mean_components((a > 20).astype(jnp.float32), periodic, cell_sizes=e_widths),)
+    lw = (yee.edge_mean_components((a < 30).astype(jnp.float32), periodic, cell_sizes=e_widths),)
     if graded:
         from rfx.materials.debye import debye_pole_coeffs
         from rfx.materials.lorentz import lorentz_pole_coeffs

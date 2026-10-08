@@ -210,7 +210,10 @@ def stage_dispersion_slabs(materials, dt, debye_spec, lorentz_spec,
     return tuple(out)
 
 
-def stage_slab_pole_coeffs(poles, masks, dt, kind, mesh, nx_per, nx, shape):
+from rfx.model.electric_metrics import slab_cell_sizes, slab_metric_kwargs
+
+
+def stage_slab_pole_coeffs(poles, masks, dt, kind, mesh, nx_per, nx, shape, *, grid=None):
     """Fixed ADE terms and zero carry; E coefficient slots stay ``None``.
 
     The compiled setup contains only pole-mask means and their fixed ADE
@@ -224,7 +227,7 @@ def stage_slab_pole_coeffs(poles, masks, dt, kind, mesh, nx_per, nx, shape):
     def local(local_masks, *, rank):
         shape_local = (nx_per + 2,) + shape[1:]
         fractions = [None] * len(poles) if local_masks is None else [
-            slab_pole_fractions(m, nx_per, nx, rank=rank) for m in
+            slab_pole_fractions(m, nx_per, nx, rank=rank, cell_sizes=slab_cell_sizes(grid, rank)) for m in
             (local_masks if isinstance(local_masks, (tuple, list)) else [local_masks] * len(poles))]
         if len(fractions) != len(poles):
             raise ValueError(f"Expected {len(poles)} {kind} masks, got {len(fractions)}")
@@ -1180,19 +1183,10 @@ def _slab_model_rows(nx_local, nx_per, nx, rank):
     return ((local >= 1) & (local < nx_local - 1) & (rows < nx))[:, None, None]
 
 
-def slab_pole_fractions(mask, nx_per, nx, rank=None):
-    """Pole-mask means with slab_e_component_materials' halo/face convention."""
-    if mask is None:
-        return None
-    if rank is None:
-        raise ValueError("slab rank must be supplied as data")
-    cell = jnp.asarray(mask, dtype=bool).astype(jnp.float32)
-    edge = edge_mean_components(_slab_x_lo_view(cell, rank))
-    real = _slab_model_rows(cell.shape[0], nx_per, nx, rank)
-    return tuple(jnp.where(real, e, cell) for e in edge)
+from rfx.model.materials import slab_pole_fractions
 
 
-def slab_e_component_materials(materials, nx_per, nx, rank=None):
+def slab_e_component_materials(materials, nx_per, nx, rank=None, *, cell_sizes=None):
     """Per-E-component ``(eps_r, sigma)`` of one x slab, by the single-device
     rule (#1303).
 
@@ -1243,7 +1237,7 @@ def slab_e_component_materials(materials, nx_per, nx, rank=None):
                                 x_lo_replicated),
         eps_r_lumped=map_lumped(getattr(materials, "eps_r_lumped", None),
                                 x_lo_replicated))
-    eps_edge, sig_edge = component_e_materials(view, (False, False, False))
+    eps_edge, sig_edge = component_e_materials(view, (False, False, False), **({} if cell_sizes is None else dict(cell_sizes=cell_sizes)))
     eps_cell, sig_cell = cell_owned_component_materials(materials)
     model_cell = _slab_model_rows(nx_local, nx_per, nx, rank)
 
@@ -1279,7 +1273,7 @@ def slab_e_coeffs(materials, nx_per, nx, dt, rank=None):
         slab_e_component_materials(materials, nx_per, nx, rank), dt)
 
 
-def slab_e_materials_shmap(mat, mesh, nx_per, nx, *, ranks):
+def slab_e_materials_shmap(mat, mesh, nx_per, nx, *, ranks, grid=None):
     """:func:`slab_e_component_materials` of every slab, as x-sharded
     arrays, for a runner that averages once, before its time loop, and
     forms the coefficients (:func:`component_e_coeffs`) inside it.
@@ -1301,7 +1295,8 @@ def slab_e_materials_shmap(mat, mesh, nx_per, nx, *, ranks):
     @partial(rank_shard_map, mesh=mesh, in_specs=(P("x"),), out_specs=P("x"),
              check_rep=False)
     def _mean(local, *, rank):
-        return slab_e_component_materials(local, nx_per, nx, rank=rank)
+        return slab_e_component_materials(local, nx_per, nx, rank=rank,
+                                          **slab_metric_kwargs(grid, rank))
 
     return jax.checkpoint(_mean)(ranks, MaterialArrays(
         eps_r=mat.eps_r, sigma=mat.sigma, mu_r=mat.mu_r,

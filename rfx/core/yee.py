@@ -6,7 +6,7 @@ No hidden mutable state.
 
 from __future__ import annotations
 
-from functools import partial
+from functools import partial, wraps
 from typing import NamedTuple
 
 from rfx import _realized
@@ -602,7 +602,7 @@ def curl_h_nu(hx, hy, hz, inv_dx, inv_dy, inv_dz, *, boundary=None):
                      inv_dz[None, None, :]))
 
 
-def _material_bwd_neighbour(arr, ax, periodic):
+def _material_bwd_neighbour(arr, ax, periodic, *, array_module=jnp):
     """The cell one step back along ``ax``, with the MATERIAL's outside rule.
 
     ``jnp.roll(arr, 1, axis=ax)`` on a periodic axis and on a length-1 axis
@@ -620,15 +620,15 @@ def _material_bwd_neighbour(arr, ax, periodic):
     over the cells that exist.
     """
     if arr.shape[ax] == 1 or periodic[ax]:
-        return jnp.roll(arr, 1, axis=ax)
+        return array_module.roll(arr, 1, axis=ax)
     first = [slice(None)] * arr.ndim
     first[ax] = slice(0, 1)
     body = [slice(None)] * arr.ndim
     body[ax] = slice(0, arr.shape[ax] - 1)
-    return jnp.concatenate([arr[tuple(first)], arr[tuple(body)]], axis=ax)
+    return array_module.concatenate([arr[tuple(first)], arr[tuple(body)]], axis=ax)
 
 
-def edge_averaged_materials(eps_r, sigma, periodic=(False, False, False)):
+def edge_averaged_materials(eps_r, sigma, periodic=(False, False, False), *, cell_sizes=None):
     """Per-E-component ``(eps_r, sigma)``: the mean over the edge's four cells.
 
     THE one spelling of the material-to-edge rule (#1210). Every lane that
@@ -664,11 +664,43 @@ def edge_averaged_materials(eps_r, sigma, periodic=(False, False, False)):
     exactly in binary floating point. That is what keeps every vacuum fixture
     and every uniform-dielectric lock byte-for-byte where it was.
     """
-    return (edge_mean_components(eps_r, periodic),
-            edge_mean_components(sigma, periodic))
+    return (edge_mean_components(eps_r, periodic, cell_sizes=cell_sizes),
+            edge_mean_components(sigma, periodic, cell_sizes=cell_sizes))
 
 
-def edge_mean_components(arr, periodic=(False, False, False)):
+def _edge_mean_four(values):
+    """The unchanged equal-transverse-cell arithmetic and operation order."""
+    return ((values[0] + values[1]) + (values[2] + values[3])) * 0.25
+
+
+def _edge_mean_pair(lo, hi, fraction):
+    """One pass of the separable primal-area rule for E materials and poles."""
+    return lo + (hi - lo) * fraction
+
+
+def _edge_mean_component(arr, t1, t2, periodic, cell_sizes, array_module=jnp):
+    if cell_sizes is not None and any(cell_sizes[t] is not None for t in (t1, t2)):
+        result = arr
+        for t in (t1, t2):
+            d = cell_sizes[t]
+            if d is None:
+                fraction = 0.5
+            else:
+                shape = [1, 1, 1]
+                shape[t] = arr.shape[t]
+                d = array_module.asarray(d, dtype=arr.dtype).reshape(shape)
+                lo = _material_bwd_neighbour(d, t, periodic, array_module=array_module)
+                fraction = d / (lo + d)
+            lo = _material_bwd_neighbour(result, t, periodic, array_module=array_module)
+            result = _edge_mean_pair(lo, result, fraction)
+        return result
+    a1 = _material_bwd_neighbour(arr, t1, periodic, array_module=array_module)
+    a2 = _material_bwd_neighbour(arr, t2, periodic, array_module=array_module)
+    a12 = _material_bwd_neighbour(a1, t2, periodic, array_module=array_module)
+    return _edge_mean_four((arr, a1, a2, a12))
+
+
+def edge_mean_components(arr, periodic=(False, False, False), *, cell_sizes=None, array_module=jnp):
     """``(mean_x, mean_y, mean_z)``: a cell array averaged over each E edge's
     four incident cells -- the arithmetic of :func:`edge_averaged_materials`,
     which calls it for ``eps_r`` and ``sigma``.
@@ -677,19 +709,17 @@ def edge_mean_components(arr, periodic=(False, False, False)):
     parallel along the edge exactly as a conductivity is, so the edge carries
     ``delta_eps`` times the fraction of its four cells that hold the pole. The
     caller passes the pole's cell mask as a float array and gets that fraction
-    back, per component (0, 0.25, 0.5, 0.75 or 1, each exact).
+    back, per component. Equal cells give exact quarters; graded cells use
+    the same primal-area fractions as epsilon and sigma. ``cell_sizes`` is
+    a tuple of one-dimensional widths, with None for constant axes.
     """
     def mean4(t1, t2):
-        a1 = _material_bwd_neighbour(arr, t1, periodic)
-        a2 = _material_bwd_neighbour(arr, t2, periodic)
-        a12 = _material_bwd_neighbour(a1, t2, periodic)
-        # Pairwise, so the homogeneous sum is exact (F4/#1210).
-        return ((arr + a1) + (a2 + a12)) * 0.25
+        return _edge_mean_component(arr, t1, t2, periodic, cell_sizes, array_module)
 
     return tuple(mean4(*[t for t in range(3) if t != c]) for c in range(3))
 
 
-def component_e_materials(materials, periodic=(False, False, False)):
+def component_e_materials(materials, periodic=(False, False, False), *, cell_sizes=None):
     """Per-component ``(eps_r, sigma)`` of a :class:`MaterialArrays` (#1210).
 
     The volume part is edge-averaged; the lumped stamps
@@ -708,7 +738,8 @@ def component_e_materials(materials, periodic=(False, False, False)):
     sig_l = lumped_total(sig_parts)
     if sig_l is not None:
         sig_v = sig_v - sig_l
-    eps_c, sig_c = edge_averaged_materials(eps_v, sig_v, periodic)
+    eps_c, sig_c = edge_averaged_materials(
+        eps_v, sig_v, periodic, **({} if cell_sizes is None else dict(cell_sizes=cell_sizes)))
     # Each stamp back on its OWN component (#1236).
     eps_c = add_lumped_eps(eps_c, getattr(materials, "eps_r_lumped", None))
     sig_c = tuple(s if part is None else s + part
@@ -720,7 +751,7 @@ _E_COMPONENT_AXIS = {"ex": 0, "ey": 1, "ez": 2}
 
 
 def cell_component_e_materials(materials, cell, component,
-                               periodic=(False, False, False)):
+                               periodic=(False, False, False), *, cell_sizes=None):
     """``(eps_r, sigma)`` the E update uses for ONE component at ONE cell.
 
     :func:`component_e_materials` restricted to a single node, by indexing the
@@ -782,7 +813,19 @@ def cell_component_e_materials(materials, cell, component,
         v = [arr[i] for i in idxs]
         if any(part is not None for part in parts):
             v = [a - lumped_at(parts, i) for a, i in zip(v, idxs)]
-        m = ((v[0] + v[1]) + (v[2] + v[3])) * 0.25
+        if cell_sizes is not None and any(cell_sizes[t] is not None for t in (t1, t2)):
+            fractions = []
+            for t in (t1, t2):
+                if cell_sizes[t] is None:
+                    fractions.append(0.5)
+                else:
+                    d = jnp.asarray(cell_sizes[t], dtype=arr.dtype)
+                    fractions.append(d[cell[t]] / (d[back(cell[t], t)] + d[cell[t]]))
+            hi = _edge_mean_pair(v[2], v[0], fractions[0])
+            lo = _edge_mean_pair(v[3], v[1], fractions[0])
+            m = _edge_mean_pair(lo, hi, fractions[1])
+        else:
+            m = _edge_mean_four(v)
         own = parts[axis]
         return m if own is None else m + own[cell]
 
@@ -798,11 +841,12 @@ def cell_component_e_coeffs(materials, cell, component, dt,
     return e_update_coeffs(eps_r, sigma, dt)
 
 
-def e_component_coeffs(materials, dt, periodic=(False, False, False)):
+def e_component_coeffs(materials, dt, periodic=(False, False, False), *, cell_sizes=None):
     """Per-component E coefficients differentiated through their stored operands."""
     eps, sig = ((materials.components.eps_update, materials.components.sigma_update)
                 if materials.components is not None
-                else component_e_materials(materials, periodic))
+                else component_e_materials(materials, periodic,
+                    **({} if cell_sizes is None else dict(cell_sizes=cell_sizes))))
     if _realized.ACTIVE is not None:
         eps, sig = _realized.electric(materials, eps, sig, "yee.E", periodic=periodic)
     pairs = [e_update_coeffs(e, s, dt) for e, s in zip(eps, sig)]
@@ -1154,9 +1198,24 @@ def update_h_nu(state: FDTDState, materials: MaterialArrays, dt: float,
     return state._replace(hx=hx, hy=hy, hz=hz)
 
 
+def _nu_e_metric_kwargs(materials, inverse_duals, cell_sizes):
+    """Raw NU cells require primal metrics, including an explicit constant axis.
+
+    Rounded inverse duals cannot establish primal-cell constancy. Grid callers
+    supply electric_cell_sizes(grid), whose None axes use grid.is_constant.
+    """
+    if materials.components is not None:
+        return {}
+    if cell_sizes is not None:
+        return dict(cell_sizes=cell_sizes)
+    raise ValueError(
+        "non-uniform E update requires realized component materials or primal "
+        "cell_sizes; unequal or traced dual metrics cannot select the E-edge material rule")
+
+
 def update_e_nu(state: FDTDState, materials: MaterialArrays, dt: float,
                 inv_dx: jnp.ndarray, inv_dy: jnp.ndarray, inv_dz: jnp.ndarray,
-                *, boundary=None) -> FDTDState:
+                *, boundary=None, cell_sizes=None) -> FDTDState:
     """E update for non-uniform Yee grid.
 
     The E-curl differences two H cell-centres, whose separation is the
@@ -1184,7 +1243,8 @@ def update_e_nu(state: FDTDState, materials: MaterialArrays, dt: float,
     # periodic BC (the NU boundary carries no periodic axes), the same assumption
     # ``update_e_box``'s ``inv_d`` branch documents.
     (ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z) = e_component_coeffs(
-        materials, dt, (False, False, False))
+        materials, dt, (False, False, False),
+        **_nu_e_metric_kwargs(materials, (inv_dx, inv_dy, inv_dz), cell_sizes))
 
     # Backward differences with same shape (zero-pad via _shift_bwd)
     curl_x, curl_y, curl_z = curl_h_nu(hx, hy, hz, inv_dx, inv_dy, inv_dz, boundary=boundary)
@@ -1425,12 +1485,24 @@ def update_he_fast(state: FDTDState, coeffs: UpdateCoeffs, *, boundary=None) -> 
                      step=state.step + 1)
 
 
+def _require_nu_aniso_metrics(update):
+    """Validate raw-cell metrics before the anisotropic builder is traced."""
+    @wraps(update)
+    def checked(state, materials, eps_ex, eps_ey, eps_ez, dt,
+                inv_dx, inv_dy, inv_dz, *, boundary=None, cell_sizes=None):
+        metrics = _nu_e_metric_kwargs(materials, (inv_dx, inv_dy, inv_dz), cell_sizes)
+        return update(state, materials, eps_ex, eps_ey, eps_ez, dt,
+                      inv_dx, inv_dy, inv_dz, boundary=boundary, **metrics)
+    return checked
+
+
+@_require_nu_aniso_metrics
 @partial(jax.jit, static_argnames=("boundary",))
 def update_e_nu_aniso(state: FDTDState, materials: MaterialArrays,
                       eps_ex: jnp.ndarray, eps_ey: jnp.ndarray, eps_ez: jnp.ndarray,
                       dt: float,
                       inv_dx: jnp.ndarray, inv_dy: jnp.ndarray, inv_dz: jnp.ndarray,
-                      *, boundary=None) -> FDTDState:
+                      *, boundary=None, cell_sizes=None) -> FDTDState:
     """Non-uniform E update with per-component anisotropic permittivity.
 
     Same backward-difference structure as :func:`update_e_nu` (E-update
@@ -1454,7 +1526,8 @@ def update_e_nu_aniso(state: FDTDState, materials: MaterialArrays,
     # subpixel fixture) the mean of four equal floats is that float, so those
     # runs keep their bytes. The graded-mesh lane installs no periodic BC.
     sigma_ex, sigma_ey, sigma_ez = (materials.components.sigma_update if materials.components is not None
-        else component_e_materials(materials, (False, False, False))[1])
+        else component_e_materials(materials, (False, False, False),
+            **({} if cell_sizes is None else dict(cell_sizes=cell_sizes)))[1])
 
     # The same arithmetic as update_e's, so one spelling (and its #1357
     # eps_r-unit derivative) serves both.

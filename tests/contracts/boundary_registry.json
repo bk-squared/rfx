@@ -203,6 +203,21 @@
       "kind": "difference"
     },
     {
+      "file": "rfx/boundaries/_cpml_slab.py",
+      "function": "slab_neighbor",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/boundaries/_cpml_slab.py",
+      "function": "slab_neighbor.terminal",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/boundaries/cpml.py",
+      "function": "apply_cpml_e",
+      "kind": "neighbour"
+    },
+    {
       "file": "rfx/boundaries/cpml.py",
       "function": "apply_cpml_h",
       "kind": "neighbour"
@@ -293,7 +308,7 @@
       "file": "rfx/core/yee.py",
       "function": "_diff_bwd_o",
       "kind": "neighbour",
-      "count": 3
+      "count": 4
     },
     {
       "file": "rfx/core/yee.py",
@@ -334,8 +349,9 @@
     },
     {
       "file": "rfx/core/yee.py",
-      "function": "edge_mean_components.mean4",
-      "kind": "neighbour"
+      "function": "_edge_mean_component",
+      "kind": "neighbour",
+      "count": 5
     },
     {
       "file": "rfx/core/yee.py",
@@ -473,6 +489,11 @@
     },
     {
       "file": "rfx/nonuniform.py",
+      "function": "_bwd_neighbor",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/nonuniform.py",
       "function": "make_band_profile",
       "kind": "roll/diff"
     },
@@ -527,6 +548,11 @@
       "function": "_ampere_loop",
       "kind": "neighbour",
       "count": 2
+    },
+    {
+      "file": "rfx/probes/probes.py",
+      "function": "_bwd_h",
+      "kind": "neighbour"
     },
     {
       "file": "rfx/probes/probes.py",

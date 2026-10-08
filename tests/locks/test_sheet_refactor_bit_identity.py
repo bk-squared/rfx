@@ -274,12 +274,13 @@ def test_update_kernels_equal_the_shared_curl_and_coefficient_helpers():
     _assert_e_fields((got.ex, got.ey, got.ez), ref)
 
     inv = [jnp.asarray(rng.random(n).astype(np.float32) + 0.5) for n in _SHAPE]
+    cell_sizes = tuple(1 / d for d in inv)
 
     @jax.jit
     def ref_nu(st, mats, inv_dx, inv_dy, inv_dz):
         # The graded-mesh lane installs no periodic BC (#1210 docstring).
         (eps_x, eps_y, eps_z), (sig_x, sig_y, sig_z) = edge_averaged_materials(
-            mats.eps_r, mats.sigma, (False, False, False))
+            mats.eps_r, mats.sigma, (False, False, False), cell_sizes=cell_sizes)
         out = []
         for e_r, s_v, fld, curl in zip(
                 (eps_x, eps_y, eps_z), (sig_x, sig_y, sig_z),
@@ -293,7 +294,7 @@ def test_update_kernels_equal_the_shared_curl_and_coefficient_helpers():
         return tuple(out)
 
     ref = ref_nu(st, mats, *inv)
-    got = jax.jit(update_e_nu)(st, mats, dt, *inv)
+    got = jax.jit(update_e_nu)(st, mats, dt, *inv, cell_sizes=cell_sizes)
     _assert_e_fields((got.ex, got.ey, got.ez), ref)
 
 

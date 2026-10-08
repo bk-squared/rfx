@@ -26,8 +26,8 @@ must differ from ``sheet`` while still differing from ``none``.
 The distributed lanes were absent from this battery because they refused
 every kind of declared PEC. #1053 gave the shard_map lane
 (``rfx/runners/distributed_v2.py``) a realized-PEC mask stage, so ``volume``
-now has a row there; ``sheet`` and ``thin`` own no cell on that lane and its
-narrowed refusal is asserted in the same row.
+now has a row there. G3 carries sheet edges on that lane too, so ``sheet``
+and ``thin`` use the same parity and visibility checks.
 """
 
 from __future__ import annotations
@@ -184,9 +184,8 @@ def test_the_shmap_distributed_lane_realizes_the_same_conductor():
     21-node domain pads to 22 and splits at x = 11 mm, and the conductor's
     4–16 mm footprint straddles that.
 
-    A sheet and a sub-cell wire own no cell, the mask is the lane's only
-    carrier, and nothing else there realizes them — so those stay refused,
-    and this row asserts the refusal rather than leaving it to a unit test.
+    G3 carries realized sheet edges through the same slab stage. Sheet and
+    thin-conductor cases must meet the volume's parity and visibility gates.
     A silent drop on either half is exactly what this file exists to catch.
     """
     import jax
@@ -211,8 +210,13 @@ def test_the_shmap_distributed_lane_realizes_the_same_conductor():
         f"{distributed:.8e} with the conductor, {empty:.8e} without")
 
     for kind in ("sheet", "thin"):
-        with pytest.raises(NotImplementedError, match="SHEETS"):
-            _peak(_build(kind), devices=devs)
+        single = _peak(_build(kind))
+        distributed = _peak(_build(kind), devices=devs)
+        print(f"G3 {kind}: single={single:.12g} distributed={distributed:.12g} empty={empty:.12g}")
+        assert distributed == pytest.approx(single, rel=V2_LANE_REL_GATE), (
+            kind, distributed, single)
+        assert distributed != pytest.approx(empty, rel=100 * V2_LANE_REL_GATE), (
+            kind, distributed, empty)
 
 
 def _adi_conductor(kind, mode="3d", **kwargs):

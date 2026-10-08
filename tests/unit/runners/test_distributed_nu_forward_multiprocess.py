@@ -27,6 +27,7 @@ import numpy as np
 import pytest
 
 from rfx.runners import distributed_nu as nu
+from rfx.runners import _rank as rank_adapter
 from tests.unit.runners.test_distributed_nu_forward_arguments import loop_program as _loop_program
 from tests.unit.runners.test_distributed_nu_forward_staging import _model
 
@@ -170,7 +171,7 @@ def _mutate(kind):
 
         def no_halo(arr, sg, mesh, pad_value):
             result = original(arr, sg, mesh, pad_value)
-            return nu.shard_map(lambda slab: slab.at[0].set(0).at[-1].set(0),
+            return rank_adapter.shard_map(lambda slab: slab.at[0].set(0).at[-1].set(0),
                                 mesh=mesh, in_specs=nu.P("x"), out_specs=nu.P("x"),
                                 check_rep=False)(result)
 

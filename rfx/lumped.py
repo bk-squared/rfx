@@ -245,7 +245,7 @@ def _series_needs_ade(spec: LumpedRLCSpec) -> bool:
 
 def edge_update_denominator(materials, cell, component, dt,
                             periodic=(False, False, False), *,
-                            as_float=False):
+                            as_float=False, grid=None):
     """``D0 = eps/dt + sigma/2`` of the E update at one element's edge.
 
     A lumped element's current enters Ampere's law at its edge through the
@@ -271,7 +271,7 @@ def edge_update_denominator(materials, cell, component, dt,
     gradient.
     """
     from rfx.model.materials import e_update_material_at
-    eps_r, sigma = e_update_material_at(materials, cell, component, periodic)
+    eps_r, sigma = e_update_material_at(materials, cell, component, periodic, grid=grid)
     if as_float and not (is_tracer(eps_r) or is_tracer(sigma)):
         # Python floats: host arithmetic, nothing on a tape.
         return _denominator_si(float(eps_r), float(sigma), dt)
@@ -390,7 +390,7 @@ def build_rlc_meta(grid, spec: LumpedRLCSpec, materials, *,
     # #1163: the edge's own E-update denominator, not the cell's (series
     # and parallel alike).
     D0 = edge_update_denominator(
-        materials, (i, j, k), spec.component, dt, periodic, as_float=True)
+        materials, (i, j, k), spec.component, dt, periodic, as_float=True, grid=grid)
 
     if has_inductor:
         # gamma = dt * d_par / (L * dual_area) is the inductor's implicit
@@ -526,7 +526,7 @@ def build_rlc_meta_traced(grid, spec: LumpedRLCSpec, materials, *,
     # the edge's own E-update denominator (same as the concrete twin), for
     # series and parallel elements.
     D0 = edge_update_denominator(
-        materials, (i, j, k), spec.component, dt, periodic)
+        materials, (i, j, k), spec.component, dt, periodic, grid=grid)
 
     R = _resolve_value(spec.R, r_val)
     L = _resolve_value(spec.L, l_val)

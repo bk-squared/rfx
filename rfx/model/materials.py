@@ -560,6 +560,7 @@ class EdgePoles(NamedTuple):
 
     debye_spec: object
     lorentz_spec: object
+    grid: object = None
 
     def at(self, cell, dt):
         lo = tuple(max(int(i) - 1, 0) for i in cell)
@@ -574,7 +575,11 @@ class EdgePoles(NamedTuple):
             poles, masks = spec
             masks = masks if isinstance(masks, (tuple, list)) else [masks] * len(poles)
             cut = (poles, [m if m is None else m[window] for m in masks])
-            terms = _realize_poles(cut, (False,) * 3, kind, SimpleNamespace(dt=dt), shape).coefficients
+            widths = electric_cell_sizes(self.grid)
+            widths = None if widths is None else tuple(
+                None if d is None else d[w] for d, w in zip(widths, window))
+            terms = _realize_poles(cut, (False,) * 3, kind, SimpleNamespace(dt=dt), shape,
+                                   cell_sizes=widths).coefficients
             out.append(tuple(tuple(v[local] for v in t) if isinstance(t, tuple) else t[local]
                              for t in terms))
         return out
@@ -595,7 +600,7 @@ def _ade_cb(eps, sigma, dt, axis, debye_terms, lorentz_terms):
     return (dc if dc is not None else lc).cb[axis]
 
 
-def e_update_material_at(materials, cell, component, periodic=(False, False, False)):
+def e_update_material_at(materials, cell, component, periodic=(False, False, False), *, grid=None, cell_sizes=None):
     """Relative epsilon and conductivity of the realized E update at one edge.
 
     Stamps are already included in the stored operands. Legacy callers without
@@ -604,14 +609,16 @@ def e_update_material_at(materials, cell, component, periodic=(False, False, Fal
     c = getattr(materials, "components", None)
     if c is None or isinstance(c, EdgePoles):
         from rfx.core.yee import cell_component_e_materials
-        return cell_component_e_materials(materials, cell, component, periodic)
+        return cell_component_e_materials(materials, cell, component, periodic,
+                                         cell_sizes=(cell_sizes if cell_sizes is not None else
+                                             electric_cell_sizes(c.grid if isinstance(c, EdgePoles) else grid)))
     axis = {"ex": 0, "ey": 1, "ez": 2}[str(component).lower()]
     cell = tuple(cell)
     return c.eps_update[axis][cell], c.sigma_update[axis][cell]
 
 
 def e_update_coefficient_at(materials, cell, component, dt,
-                            periodic=(False, False, False), *, host=False):
+                            periodic=(False, False, False), *, host=False, grid=None):
     """Read the run's electric-current coefficient on one realized edge.
 
     Pole coefficients are sampled before constructing the scalar ADE operator;
@@ -620,14 +627,14 @@ def e_update_coefficient_at(materials, cell, component, dt,
     on plain edges. All dispersive coefficients use the kernel's algebra.
     """
     from rfx.core.yee import e_update_coeffs
-    eps, sigma = e_update_material_at(materials, cell, component, periodic)
+    eps, sigma = e_update_material_at(materials, cell, component, periodic, grid=grid)
     c = getattr(materials, "components", None)
     axis = {"ex": 0, "ey": 1, "ez": 2}[str(component).lower()]
     if isinstance(c, EdgePoles):
         terms = c.at(cell, dt)
-        if terms[0] is None and terms[1] is None:
-            return e_update_coeffs(eps, sigma, dt)[1]
-        return _ade_cb(eps, sigma, dt, axis, *terms)
+        if terms[0] is not None or terms[1] is not None:
+            return _ade_cb(eps, sigma, dt, axis, *terms)
+        c = None  # Plain graded drives retain their historical host arithmetic.
     if c is not None and c.source_upml:
         # Admission excludes pads. There sigma_perp=0; UPML still uses its
         # cell-owned E operands, even at an interior material interface.
@@ -654,14 +661,43 @@ def e_update_coefficient_at(materials, cell, component, dt,
     return e_update_coeffs(eps, sigma, dt)[1]
 
 
-def pole_component_weights(mask, periodic=(False, False, False)):
-    """Current plain four-cell pole occupancy convention (#1260)."""
+def electric_cell_sizes(grid):
+    """One-dimensional primal metrics; None axes retain the equal-cell path."""
+    if grid is None:
+        return None
+    if hasattr(grid, "cells"):
+        return tuple(None if grid.is_constant(a) else grid.cells(a) for a in range(3))
+    # Legacy direct realization accepts metric records as well as grid classes.
+    # A shape/dt-only record declares equal cells. Width records use the same
+    # terminal-node duplicate convention as component_h_materials.
+    if not hasattr(grid, "dx_arr"):
+        return None
+    import numpy as np
+    out = []
+    for d, n in zip((grid.dx_arr, grid.dy_arr, grid.dz), grid.shape):
+        xp = jnp if is_tracer(d) else np
+        d = xp.asarray(d)
+        if d.shape[0] == n - 1:
+            d = xp.concatenate((d, d[-1:]))
+        out.append(None if not is_tracer(d) and np.all(d == d[0]) else d)
+    return tuple(out)
+
+
+def electric_grid_kwargs(grid):
+    """Equal-cell readers keep their original call signature and arithmetic."""
+    widths = electric_cell_sizes(grid)
+    return {} if widths is None or all(d is None for d in widths) else dict(grid=grid)
+
+
+def pole_component_weights(mask, periodic=(False, False, False), *, cell_sizes=None):
+    """Dual-volume pole occupancy, using the electric material rule."""
     if mask is None:
         return None
-    return edge_mean_components(jnp.asarray(mask, dtype=bool).astype(jnp.float32), periodic)
+    return edge_mean_components(jnp.asarray(mask, dtype=bool).astype(jnp.float32), periodic,
+                                cell_sizes=cell_sizes)
 
 
-def _realize_poles(spec, periodic, kind, grid, shape):
+def _realize_poles(spec, periodic, kind, grid, shape, *, cell_sizes=None):
     if spec is None:
         return None
     poles, masks = spec
@@ -670,7 +706,7 @@ def _realize_poles(spec, periodic, kind, grid, shape):
             raise ValueError(f"Expected {len(poles)} {kind} masks, got {len(masks)}")
     else:
         masks = [masks] * len(poles)
-    weights = tuple(pole_component_weights(m, periodic) for m in masks)
+    weights = tuple(pole_component_weights(m, periodic, cell_sizes=cell_sizes) for m in masks)
     if grid is None:
         return ComponentDispersion(tuple(poles), None, weights, None)
     if kind == "Debye":
@@ -685,8 +721,8 @@ def realize_components(cells, grid, *, periodic):
 
     ``cells`` is a MaterialArrays or ComponentCells with dispersion specs.
     ``grid=None`` is the uniform-metric compatibility path for direct ADE
-    callers. Only H uses primal widths on a graded grid in M2; E and poles
-    deliberately retain the plain arithmetic mean until M3.
+    callers. E materials and pole fractions use the same primal dual-volume
+    weights; constant transverse axes retain the original arithmetic.
     """
     if isinstance(cells, ComponentCells):
         materials, debye_spec, lorentz_spec = cells
@@ -701,7 +737,8 @@ def realize_components(cells, grid, *, periodic):
     if sigma_stamp is not None:
         sigma_volume = sigma_volume - sigma_stamp
     eps, sigma = edge_averaged_materials(
-        permittivity_without_lumped(materials), sigma_volume, periodic)
+        permittivity_without_lumped(materials), sigma_volume, periodic,
+        cell_sizes=electric_cell_sizes(grid))
     widths = ((grid.dx_arr, grid.dy_arr, grid.dz)
               if hasattr(grid, "dx_arr") else None)
     mu = component_h_materials(materials._replace(mu_r_wire=None),
@@ -714,8 +751,10 @@ def realize_components(cells, grid, *, periodic):
     return ComponentMaterials(
         eps, sigma, mu, eps_lumped, sigma_lumped, mu_wire,
         eps_update, sigma_update, mu_update, upml_eps, upml_sigma,
-        _realize_poles(debye_spec, periodic, "Debye", grid, materials.eps_r.shape),
-        _realize_poles(lorentz_spec, periodic, "Lorentz", grid, materials.eps_r.shape),
+        _realize_poles(debye_spec, periodic, "Debye", grid, materials.eps_r.shape,
+                       cell_sizes=electric_cell_sizes(grid)),
+        _realize_poles(lorentz_spec, periodic, "Lorentz", grid, materials.eps_r.shape,
+                       cell_sizes=electric_cell_sizes(grid)),
         materials, tuple(periodic), _grid_key(grid))
 
 
@@ -802,3 +841,158 @@ def validate_dispersion(realized, poles, dt):
     if not all(same(a, b) for p, q in zip(realized.poles, poles)
                for a, b in zip(p, q)):
         raise ValueError("realized ADE coefficients have different pole parameters")
+
+
+def _design_box_edge_coeffs(bounds, eps_r_box, sigma_box, materials, dt, shape,
+                            held_edges=(), *, grid=None):
+    """Per-component ``(Ca, Cb)`` over the design box's write window (#1210).
+
+    The box works in EDGE (per-E-component) values, and what it is handed
+    decides how each value is made:
+
+    * a CELL quantity -- the design permittivity always, and a single design
+      conductivity array -- is written into a COPY of the background over the
+      computation window and turned into edge values by the same four-cell
+      average as the rest of the grid (``component_e_materials``). The
+      window's minus-side context supplies the neighbour cells outside the box
+      on its faces, and its plus-side layer is written because a cell's value
+      reaches the edges on its plus faces. The box lane then equals what
+      ``update_e`` would do with the design values in ``materials``.
+    * a 3-tuple ``(sigma_x, sigma_y, sigma_z)`` is ALREADY per edge (#1216,
+      the sheet lane: one conductivity per Yee edge, component ``c`` at the
+      same box index). It is taken as-is and NOT averaged again: it replaces
+      the edge conductivity at the box indices, and every other edge in the
+      window -- the plus-side layer included -- keeps the background edge
+      value. A box-shaped edge array cannot address the plus-face edge layer
+      a cell array reaches, which is why a single array ``s`` and the tuple of
+      its own averages agree on the box's edges and not on that layer.
+
+    ``sigma_box=None`` keeps the window's own conductivity.
+
+    ``held_edges`` (``(axis, i, j, k)`` tuples, all inside the write window)
+    are a port's edges held out of the design (:class:`DesignBoxSpec`). Each
+    one gets the coefficient ``materials`` itself gives it — the same
+    arithmetic over the same window with no design value in it, which is the
+    grid-wide ``update_e`` coefficient bit for bit, the port's own load
+    included — so the drive built from ``materials`` before the time loop
+    meets the update it was built for, and the design values' derivative
+    through that edge is exactly zero.
+
+    At a box cell carrying a lumped load -- a held port's, or a passive
+    termination's (an MSL port with ``excite=False``) -- a CELL design value
+    is that cell's volume material: the load is added back on top of it, so
+    the average that removes every stamp before it spreads the cell over its
+    edges finds the design value there and not the design value less the
+    load (which was a negative conductance, and NaN, before). That is what a
+    whole-grid ``eps_override`` / ``sigma_override`` does, since the ports
+    stamp their loads on top of the override. A per-edge conductivity has no
+    such reading and is refused over an unheld load
+    (:func:`_resolve_design_box`).
+    """
+    from rfx.simulation import _design_box_window, _held_edge_masks
+    from rfx.core.yee import component_e_materials, e_update_coeffs, map_lumped
+    held = tuple(held_edges or ())
+    write_bounds, win, inner, box_local = _design_box_window(bounds, shape)
+
+    def _cell_value(box_value, record):
+        # A lumped load lives on its own edge; keep it off the cell volume.
+        total = lumped_total(record)
+        if total is None:
+            return box_value
+        return box_value + jnp.asarray(total)[win][box_local]
+
+    eps_box = jnp.asarray(eps_r_box)
+    eps = jnp.asarray(materials.eps_r)[win]
+    # Promote the BACKGROUND to the design dtype, never the other way: a
+    # traced float64 design permittivity cast down to the float32 background
+    # would silently lose the precision the x64 AD lanes run for (#646).
+    eps = eps.astype(jnp.promote_types(eps.dtype, eps_box.dtype))
+    eps = eps.at[box_local].set(_cell_value(
+        eps_box, getattr(materials, "eps_r_lumped", None)))
+
+    per_edge = isinstance(sigma_box, (tuple, list))
+    sig = jnp.asarray(materials.sigma)[win]
+    if not per_edge and sigma_box is not None:
+        sig_box = jnp.asarray(sigma_box)
+        sig = sig.astype(jnp.promote_types(sig.dtype, sig_box.dtype))
+        sig = sig.at[box_local].set(_cell_value(
+            sig_box, getattr(materials, "sigma_lumped", None)))
+
+    # A lumped stamp in the window's context layer is edge-owned, not a cell
+    # volume, so it is removed before the average and added back at its cell,
+    # on its own component — the same rule ``component_e_materials`` applies
+    # grid-wide (#1210, #1236). The design box itself is fenced off port and
+    # source cells, except a port's own edges on explicit opt-in (held).
+    win_mats = MaterialArrays(
+        eps_r=eps, sigma=sig, mu_r=None,
+        eps_r_lumped=map_lumped(
+            getattr(materials, "eps_r_lumped", None),
+            lambda a: jnp.asarray(a)[win].astype(eps.dtype)),
+        sigma_lumped=map_lumped(
+            getattr(materials, "sigma_lumped", None),
+            lambda a: jnp.asarray(a)[win].astype(sig.dtype)))
+    widths = electric_cell_sizes(grid)
+    widths = None if widths is None else tuple(
+        None if d is None else d[w] for d, w in zip(widths, win))
+    eps_c, sig_c = component_e_materials(win_mats, (False, False, False), cell_sizes=widths)
+
+    if per_edge:
+        def _put(edge_bg, edge_box):
+            edge_box = jnp.asarray(edge_box)
+            edge_bg = edge_bg.astype(
+                jnp.promote_types(edge_bg.dtype, edge_box.dtype))
+            return edge_bg.at[box_local].set(edge_box)
+        sig_c = tuple(_put(bg, v) for bg, v in zip(sig_c, sigma_box))
+
+    pairs = [e_update_coeffs(e, s_, dt) for e, s_ in zip(eps_c, sig_c)]
+    ca = tuple(p[0][inner] for p in pairs)
+    cb = tuple(p[1][inner] for p in pairs)
+    if held:
+        bg_mats = MaterialArrays(
+            eps_r=jnp.asarray(materials.eps_r)[win],
+            sigma=jnp.asarray(materials.sigma)[win], mu_r=None,
+            eps_r_lumped=map_lumped(
+                getattr(materials, "eps_r_lumped", None),
+                lambda a: jnp.asarray(a)[win]),
+            sigma_lumped=map_lumped(
+                getattr(materials, "sigma_lumped", None),
+                lambda a: jnp.asarray(a)[win]))
+        bg = [e_update_coeffs(e, s_, dt) for e, s_ in
+              zip(*component_e_materials(bg_mats, (False, False, False), cell_sizes=widths))]
+        masks = _held_edge_masks(held, write_bounds)
+        ca = tuple(a if m is None else jnp.where(m, b[0][inner], a)
+                   for a, b, m in zip(ca, bg, masks))
+        cb = tuple(c if m is None else jnp.where(m, b[1][inner], c)
+                   for c, b, m in zip(cb, bg, masks))
+    return write_bounds, ca, cb
+
+
+def slab_pole_fractions(mask, nx_per, nx, rank=None, *, cell_sizes=None):
+    """Pole-mask means with slab_e_component_materials' halo/face convention."""
+    from rfx.runners._distributed_common import _slab_x_lo_view, _slab_model_rows
+    if mask is None:
+        return None
+    if rank is None:
+        raise ValueError("slab rank must be supplied as data")
+    cell = jnp.asarray(mask, dtype=bool).astype(jnp.float32)
+    edge = edge_mean_components(_slab_x_lo_view(cell, rank), cell_sizes=cell_sizes)
+    real = _slab_model_rows(cell.shape[0], nx_per, nx, rank)
+    return tuple(jnp.where(real, e, cell) for e in edge)
+
+
+def geometric_interface_components(eps, live, fallback, widths):
+    """Geometric cell-centre epsilon with PEC cells excluded by its opt-in rule.
+
+    Both its numerator and live volume take the same dual-volume edge rule.
+    NumPy retains this concrete geometric stage's float64 arithmetic; the
+    caller casts its final tensor to the existing material dtype.
+    """
+    import numpy as np
+    numerator = edge_mean_components(eps * live, cell_sizes=widths, array_module=np)
+    denominator = edge_mean_components(live, cell_sizes=widths, array_module=np)
+    out = []
+    for num, den in zip(numerator, denominator):
+        value = fallback.copy()
+        np.divide(num, den, out=value, where=den > 0)
+        out.append(value)
+    return tuple(out)

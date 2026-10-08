@@ -134,7 +134,7 @@ def test_dual_spacing_is_the_e_update_metric():
                           np.asarray(uniform))
 
 
-def _graded_sheet_sigma(zc, **tc_kwargs):
+def _graded_sheet_sigma(zc, *, realized=False, **tc_kwargs):
     """Assemble the #373 graded fixture and return
     (sigma at the sheet node, primal cell, dual spacing)."""
     dx = 0.5e-3
@@ -171,37 +171,48 @@ def _graded_sheet_sigma(zc, **tc_kwargs):
     k = ks[0]
     primal = float(np.asarray(grid.dz)[k])
     dual = float(np.asarray(e_node_dual_spacings(grid.dz))[k])
-    return float(sigma[tuple(nz[0])]), primal, dual
+    values = float(sigma[tuple(nz[0])]), primal, dual
+    if realized:
+        from rfx.model.materials import realize_components
+        components = realize_components(mats, grid, periodic=(False,) * 3)
+        widths = np.asarray(grid.cells(2), dtype=float)
+        duals = np.r_[widths[0], (widths[:-1] + widths[1:]) / 2]
+        # An interior footprint edge, away from transverse mask boundaries.
+        i, j = [(nz[:, axis].min() + nz[:, axis].max()) // 2
+                for axis in (0, 1)]
+        conductances = [np.sum(np.asarray(edge)[i, j, :] * duals)
+                        for edge in components.sigma_update[:2]]
+        return (*values, 1.0 / np.asarray(conductances))
+    return values
 
 
 def test_dc_fold_uses_dual_spacing_at_a_grading_transition():
-    """The LEGACY #373 DC fold is corrected too: on a 0.5/1.5 mm transition
-    node the sheet realizes R_s = 1/(sigma_bulk*t) against the DUAL spacing.
-
-    Before this fix it divided by the primal cell, so a DC thin conductor
-    sitting on a grading step realized R_s * d[k]/dual — here 1.5x its
-    specified sheet resistance. Correcting it CHANGES those numbers, which is
-    the point: they were wrong.
-    """
+    """A DC sheet realizes its declared resistance across a grading step."""
     sigma_bulk, t = 1.0e3, 35e-6
     rs_spec = 1.0 / (sigma_bulk * t)
 
+    # The old diagnostic assumed the cell value was read at the node. Since
+    # the E-edge mean (#1210), the solver realizes sum(sigma_edge * dual) over
+    # node planes. On main this was 2.5% off sigma*t between 0.9h|1.1h cells
+    # while that diagnostic passed. Record: rfx-archive/rfx/records/
+    # 20261008-dc-sheet-realized-conductance-unequal-cells/.
     # matched node (deep in the coarse region): primal == dual, unchanged
-    sig, primal, dual = _graded_sheet_sigma(8.0e-3, sigma_bulk=sigma_bulk,
-                                            thickness=t)
+    sig, primal, dual, rs = _graded_sheet_sigma(
+        8.0e-3, sigma_bulk=sigma_bulk, thickness=t, realized=True)
     assert abs(dual / primal - 1.0) < 1e-6
-    assert abs(1.0 / (sig * dual) / rs_spec - 1.0) < 1e-4
+    assert np.all(abs(rs / rs_spec - 1.0) < 1e-4)
+    assert abs(1.0 / (sig * primal) / rs_spec - 1.0) < 1e-4
 
     # ON the transition: dual = 1.0 mm, primal = 1.5 mm
-    sig, primal, dual = _graded_sheet_sigma(4.0e-3, sigma_bulk=sigma_bulk,
-                                            thickness=t)
+    sig, primal, dual, rs = _graded_sheet_sigma(
+        4.0e-3, sigma_bulk=sigma_bulk, thickness=t, realized=True)
     assert abs(primal / dual - 1.5) < 1e-3, (primal, dual)
-    assert abs(1.0 / (sig * dual) / rs_spec - 1.0) < 1e-4, (
-        f"DC sheet realizes R_s = {1.0 / (sig * dual):.4f} against the dual "
-        f"spacing, specified {rs_spec:.4f}")
-    # and the primal normalization is NOT what was used (guard against the
-    # assertion above going blind if the fixture stops being graded)
-    assert abs(1.0 / (sig * primal) / rs_spec - 1.0) > 0.3
+    assert np.all(abs(rs / rs_spec - 1.0) < 1e-4), (
+        f"DC sheet realizes R_s = {rs} over its node planes, specified {rs_spec:.4f}")
+    assert abs(1.0 / (sig * primal) / rs_spec - 1.0) < 1e-4
+    # The node-dual divisor is not used for this cell-owned DC conductivity;
+    # retain the grading witness with the same 0.3 gate.
+    assert abs(1.0 / (sig * dual) / rs_spec - 1.0) > 0.3
 
 
 def test_leontovich_fold_uses_dual_spacing_at_a_grading_transition():
@@ -216,8 +227,8 @@ def test_leontovich_fold_uses_dual_spacing_at_a_grading_transition():
 
 
 def test_graded_fold_stays_on_the_ad_path():
-    """The dual-spacing fold keeps the sigma_bulk*t DoF differentiable at a
-    transition node: d/dt sum(sigma) == n_cells * sigma_bulk / dual."""
+    """The primal-width fold keeps the sigma_bulk*t DoF differentiable at a
+    transition node: d/dt sum(sigma) == n_cells * sigma_bulk / primal."""
     import jax
 
     dx = 0.5e-3
@@ -242,8 +253,8 @@ def test_graded_fold_stays_on_the_ad_path():
     sigma0 = np.asarray(assemble_materials_nu(sim, grid)[0].sigma)
     n_cells = int((sigma0 > 0).sum())
     k = int(np.argwhere(sigma0 > 0)[0][2])
-    dual = float(np.asarray(e_node_dual_spacings(grid.dz))[k])
-    g_analytic = n_cells * sigma_bulk / dual
+    primal = float(np.asarray(grid.dz)[k])
+    g_analytic = n_cells * sigma_bulk / primal
 
     def loss(thickness):
         sim._thin_conductors[0] = ThinConductor(

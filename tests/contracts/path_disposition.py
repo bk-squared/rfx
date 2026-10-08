@@ -190,8 +190,6 @@ def _adi(what, fragment):
 
 _SHEET_OWNS_NO_CELL = "a sheet or wire owns no cell, and this lane applies PEC from a cell mask (#931)"
 SUBGRID_SHEETS = refuses(_SHEET_OWNS_NO_CELL, raises="does not realize PEC sheets or wires")
-DIST_SHEETS = refuses(_SHEET_OWNS_NO_CELL, raises="does not realize declared PEC SHEETS")
-DIST_FWD_SHEETS = refuses(_SHEET_OWNS_NO_CELL, raises="forward lane does not realize PEC sheets")
 ADI_INTERIOR_PEC = _adi("interior PEC", "adi_interior_pec_unsupported")
 ADI_THIN = _adi("thin-conductor corrections", "does not support thin-conductor corrections")
 ADI_SOFT_SOURCES = _adi("every port but add_source() soft sources", "supports only add_source()-style soft sources")
@@ -509,10 +507,11 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
             run_nonuniform=carries(),
             run_subgridded=SUBGRID_SHEETS,
             run_adi=ADI_INTERIOR_PEC,
-            run_distributed=DIST_SHEETS,
+            run_distributed=carries("realized PEC edges sliced per slab"),
             fwd_uniform=carries(),
             fwd_nonuniform=carries(),
-            fwd_distributed_nu=DIST_FWD_SHEETS,
+            run_distributed_nu=carries("realized PEC edges sliced per slab"),
+            fwd_distributed_nu=carries("realized PEC edges sliced per slab"),
             fwd_adi=ADI_INTERIOR_PEC,
         ) for shape in ("pec_sheet", "pec_wire")},
     },
@@ -534,10 +533,11 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
             run_nonuniform=carries("realized as a PEC sheet"),
             run_subgridded=SUBGRID_SHEETS,
             run_adi=ADI_THIN,
-            run_distributed=DIST_SHEETS,
+            run_distributed=carries("realized PEC edges sliced per slab"),
             fwd_uniform=carries("realized as a PEC sheet"),
             fwd_nonuniform=carries("realized as a PEC sheet"),
-            fwd_distributed_nu=DIST_FWD_SHEETS,
+            run_distributed_nu=carries("realized PEC edges sliced per slab"),
+            fwd_distributed_nu=carries("realized PEC edges sliced per slab"),
             fwd_adi=ADI_THIN,
         ),
         "surface_impedance": lanes(
@@ -557,10 +557,11 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_nonuniform=carries(),
         run_subgridded=SUBGRID_SHEETS,
         run_adi=ADI_INTERIOR_PEC,
-        run_distributed=DIST_SHEETS,
+        run_distributed=carries("realized PEC edges sliced per slab"),
         fwd_uniform=carries(),
         fwd_nonuniform=carries(),
-        fwd_distributed_nu=DIST_FWD_SHEETS,
+        run_distributed_nu=carries("realized PEC edges sliced per slab"),
+        fwd_distributed_nu=carries("realized PEC edges sliced per slab"),
         fwd_adi=ADI_INTERIOR_PEC,
     )},
 

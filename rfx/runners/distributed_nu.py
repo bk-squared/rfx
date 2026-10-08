@@ -280,6 +280,7 @@ class ShardedNUGrid(_NamedTuple):
     face_layers: dict[str, int] | None = None
     dy_cells: object = None
     dz_cells: object = None
+    e_cell_sizes: object = None
 
 
 def split_1d_with_ghost(arr: "np.ndarray", n_devices: int, nx_per: int,
@@ -409,6 +410,7 @@ def build_sharded_nu_grid(
     x_starts = tuple(d * nx_per for d in range(n_devices))
     x_stops = tuple(min((d + 1) * nx_per, nx) for d in range(n_devices))
 
+    from rfx.model.materials import electric_cell_sizes
     return ShardedNUGrid(
         nx=nx,
         ny=ny,
@@ -435,6 +437,7 @@ def build_sharded_nu_grid(
         face_layers=grid.face_layers,
         dy_cells=np.asarray(grid.dy_arr),
         dz_cells=np.asarray(grid.dz),
+        e_cell_sizes=electric_cell_sizes(grid),
     )
 
 
@@ -1022,24 +1025,6 @@ def stage_forward_array_x_slab(arr, sharded_grid, mesh, pad_value=0.0):
         split_array_x(arr, sharded_grid.n_devices, sharded_grid.ghost_width,
                       pad_value), NamedSharding(mesh, P("x")),
     )
-
-
-def stage_forward_dispersion_x_slab(materials, dt, spec, sharded_grid, mesh, kind):
-    """Stage fixed pole terms; epsilon/sigma E coefficients wait for the loop.
-
-    Pole masks take the same slab halo and boundary replication as the shared
-    material means. No differentiable coefficients pass through eager
-    shard_map setup, and no whole-domain ADE arrays are allocated.
-    """
-    if spec is None:
-        return None
-    poles, masks = spec
-    masks = jax.tree.map(
-        lambda mask: stage_concrete_forward_array(mask, sharded_grid, mesh, False),
-        masks)
-    return stage_slab_pole_coeffs(
-        poles, masks, dt, kind, mesh, sharded_grid.nx_per_rank,
-        sharded_grid.nx, materials.eps_r.shape)
 
 
 def shard_debye_coeffs_x_slab(debye_coeffs, sharded_grid: ShardedNUGrid,
@@ -1841,66 +1826,7 @@ def _apply_cpml_h_local_nu(state: FDTDState, cpml_params, cpml_state,
     return new_state, new_cpml
 
 
-def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks):
-    """``Cb/dV`` of each material-driven current source, read from the slabs
-    the E update receives (#1279). Called inside the runner's jitted program.
-
-    A current source enters the field as ``E += Cb * I(t) / dV``, and ``Cb =
-    (dt/eps)/(1 + sigma*dt/(2*eps))`` has to be taken from the permittivity
-    the field is stepped with -- under an override, the override. The host
-    cannot read it when it is an x-sharded override whose slabs live in
-    other processes, or when it is traced, so each device reads it from its
-    own staged slab here. The per-edge rule is the one ``make_current_source``
-    and the single-device E update use: the mean over the four cells incident
-    to the edge (#1210), which this lane's own E update takes too since
-    #1303 (:func:`rfx.runners._distributed_common.slab_e_component_materials`).
-
-    ``eps_r`` / ``sigma`` : the staged ``(n_devices * nx_local, ny, nz)``
-        arrays on ``P("x")`` -- ghost rows filled by the staging with the
-        neighbour's real cells for every override form
-        (``stage_forward_array_x_slab``, ``stage_sharded_forward_override``,
-        ``stage_concrete_forward_array``).
-    ``drives`` : static tuple of ``(dev_id, row0, cell, component, dV)``,
-        one per material-driven source. The edge's owner reads the four
-        cells :func:`rfx.core.yee.cell_component_e_materials` names for
-        ``cell`` in its local slab from row ``row0`` on. ``row0 = 0`` keeps
-        the left ghost row, so an Ey/Ez edge on a rank's first real cell
-        takes its i-1 cells from the left neighbour. On the domain's x-lo
-        face (global ``i == 0``) that row is vacuum padding, and ``row0``
-        is the ghost width: the helper then replicates the boundary cell,
-        the single-device rule. ``dV`` is the E node's control volume
-        (:func:`rfx.nonuniform.current_source_volume`).
-
-    Returns a replicated ``(len(drives),)`` float32 vector: every device
-    computes its own four-cell mean, the owner's is kept by the mask and
-    ``psum`` hands it to all. The arithmetic is
-    :func:`rfx.nonuniform.current_source_cb`'s traced branch, the one the
-    single-device lane uses for a traced override, so a traced (or
-    sharded) permittivity stays on the tape and the gradient flows back to
-    the design's owning slabs through the staging transpose.
-    """
-    from rfx.core.yee import cell_component_e_materials
-    from rfx.nonuniform import current_source_cb
-
-    @partial(rank_shard_map, mesh=mesh, in_specs=(P("x"), P("x")),
-             out_specs=P(), check_rep=False)
-    def _scales(eps_local, sigma_local, *, rank):
-        device = rank
-        out = []
-        for dev_id, row0, cell, component, dV, pole in drives:
-            view = MaterialArrays(eps_r=eps_local[row0:],
-                                  sigma=sigma_local[row0:], mu_r=None)
-            eps_c, sigma_c = cell_component_e_materials(view, cell, component)
-            owner = device == dev_id
-            # A non-owner read someone else's cells; keep its masked branch
-            # finite so the cotangent through the mask stays zero, not NaN.
-            cb = current_source_cb(jnp.where(owner, eps_c, 1.0),
-                                   jnp.where(owner, sigma_c + pole, 0.0), dt,
-                                   traced=True)
-            out.append(jnp.where(owner, cb / dV, 0.0))
-        return lax.psum(jnp.stack(out), "x")
-
-    return _scales(ranks, eps_r, sigma)
+from rfx.model.electric_metrics import material_drive_scales, SlabElectricMetrics, stage_forward_dispersion_x_slab
 
 
 def run_nonuniform_distributed_pec(
@@ -2985,13 +2911,14 @@ def run_nonuniform_distributed_pec(
         return steps, table
 
     @jax.jit
-    def run_fn(c0, invariants, warmup_xs, opt_xs, *, ranks):
+    def run_fn(c0, invariants, warmup_xs, opt_xs, *, ranks, e_cell_sizes):
+        electric_grid = SlabElectricMetrics(e_cell_sizes, nx_real, nx_per, nx_local)
         if drives:
             # #1279: the drive sees the materials the E update sees -- the
             # override, on the tape when traced -- read in the program.
             materials = invariants[0]
             scales = material_drive_scales(
-                materials.eps_r, materials.sigma, mesh, drives, dt, ranks=ranks)
+                materials.eps_r, materials.sigma, mesh, drives, dt, ranks=ranks, grid=electric_grid)
             if _realized.ACTIVE is not None:
                 scales = _realized.runtime_drive(scales, tuple(drive_columns))
             if warmup_xs is not None:
@@ -3002,7 +2929,7 @@ def run_nonuniform_distributed_pec(
         # slab_e_materials_shmap for why not inside the loop. Dispersive E
         # coefficients are finished from these same means inside the loop.
         e_materials = slab_e_materials_shmap(
-            invariants[0], mesh, nx_per, nx_real, ranks=ranks)
+            invariants[0], mesh, nx_per, nx_real, ranks=ranks, grid=electric_grid)
         scan_step = partial(step_fn, invariants=invariants, e_materials=e_materials, ranks=ranks)
         # Optional warmup scan: stop_gradient the carry at boundary so
         # AD does not see the warmup steps.  Probe samples from the
@@ -3078,7 +3005,7 @@ def run_nonuniform_distributed_pec(
          (inv_dx_sharded, inv_dy_rep, inv_dz_rep,
           inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep, *cell_sizes)),
         warmup_xs, opt_xs,
-        ranks=mesh_ranks(mesh))
+        ranks=mesh_ranks(mesh), e_cell_sizes=sharded_grid.e_cell_sizes)
     final_state_sharded = final_carry["fdtd"]
     final_cpml_sharded = final_carry.get("cpml") if use_cpml else None
     final_debye_sharded = final_carry.get("debye") if use_debye else None

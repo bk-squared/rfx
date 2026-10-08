@@ -1979,7 +1979,7 @@ class _ExecuteMixin:
             if _drive_this_port:
                 sources.defer(make_port_source, grid, lp, n_steps=n_steps)
             idx = grid.position_to_index(pe.position)
-            conductors, pec_mask_local, pec_edge_masks_local = _conductors.forward_port_stage(conductors, [(idx[0], idx[1], idx[2])], pe.component, f"port[{_port_index}]")
+            conductors, pec_mask_local, pec_edge_masks_local = _conductors.forward_lumped_port_stage(conductors, pe, f"port[{_port_index}]")
             if pec_occupancy_local is not None:
                 pec_occupancy_local = pec_occupancy_local.at[idx[0], idx[1], idx[2]].set(0.0)
             _port_cleared_cells.append((int(idx[0]), int(idx[1]), int(idx[2])))
@@ -2950,20 +2950,6 @@ class _ExecuteMixin:
 
         # ---- Assemble full-domain materials ----
         conductors, (materials, debye_spec, lorentz_spec, pec_mask), _dnu_pec_sheets, _dnu_pec_wires, diagnostics = _conductors.distributed_solve_inputs(self, grid, assembly, skip_preflight, gather_final_state, diagnostics)
-        if _dnu_pec_sheets or _dnu_pec_wires:
-            # #931: this lane shards a CELL mask along x and realizes it
-            # per slab.  A sheet and a sub-cell wire own no cell, so they
-            # have no sharded carrier here yet and would be silently
-            # absent from every rank.  Refuse instead of running the wrong
-            # geometry.
-            raise _conductors.diagnostic_refusal(NotImplementedError(
-                "distributed=True on the non-uniform forward lane does not "
-                "realize PEC sheets or sub-cell wires (#931): the lane "
-                "shards a primal-cell mask along x and a sheet owns no "
-                "cell, so a declared sheet would vanish on every rank. "
-                "Draw the conductor as a volume (a Box at least one cell "
-                "thick) or run the single-device non-uniform lane."), diagnostics)
-
         # ---- Sources / probes (lumped/wire/coax ports unsupported here). ----
         if self._lumped_rlc:
             raise NotImplementedError(
@@ -2987,7 +2973,7 @@ class _ExecuteMixin:
         sources: list[SourceSpec] = []
         material_drive: list = []
         from rfx.model import source_coefficients as _sc
-        drive_model = _sc.dispersive_drive_model(materials, debye_spec, lorentz_spec)
+        drive_model = _sc.dispersive_drive_model(materials, debye_spec, lorentz_spec, grid)
         for pe in self._ports:
             if pe.impedance > 0.0:
                 raise NotImplementedError(

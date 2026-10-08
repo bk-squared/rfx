@@ -133,7 +133,8 @@ def test_corec2_e_update_uses_mean_spacing():
     # Production wiring: the runner passes the E array (1st) to update_e_nu.
     inv_dz_e, _ = _profile_to_inv_arrays(np.asarray(dz))
     inv_xy_e, _ = _profile_to_inv_arrays(np.full(nx, dx, dtype=np.float64))
-    new = update_e_nu(state, mats, dt, inv_xy_e, inv_xy_e, inv_dz_e)
+    new = update_e_nu(state, mats, dt, inv_xy_e, inv_xy_e, inv_dz_e,
+                      cell_sizes=(None, None, dz))
 
     # curl_x = dHz/dy - dHy/dz = -discrete(dHy/dz); ex = (dt/eps)*curl_x
     # => discrete(dHy/dz) = -ex * eps / dt

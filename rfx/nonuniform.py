@@ -609,15 +609,12 @@ def e_node_dual_spacings(profile_full):
 
         dual[k] = (d[k-1] + d[k]) / 2     (k >= 1);   dual[0] = d[0]
 
-    which is exactly ``1/inv_d_e``. Anything folded into ``materials.sigma``
-    at an E node is a volumetric quantity whose realized SHEET value is
-    ``sigma * dual[k]`` — never ``sigma * d[k]``. Dividing a sheet fold by
-    the primal cell ``d[k]`` instead realizes ``Rs * d[k]/dual[k]``, which
-    is right only where the two adjacent cells are equal; on a grading
-    transition it is wrong by up to the local cell ratio (issue #669 review:
-    a Leontovich sheet on a 0.25/0.50 mm transition node measured an
-    attenuation ratio of 1.2021 against the matched-mesh case, and 0.6214 on
-    a 1.00/0.25 mm one, where a mesh-independent sheet must give 1.000).
+    which is exactly ``1/inv_d_e``. An f0 sheet uses this node dual;
+    a DC fold uses the occupied cell's primal width ``d[k]`` before the
+    E-edge mean, realizing ``sigma_bulk * thickness`` integrated over duals.
+    The #669 Leontovich measurement gave ratios 1.2021 on a 0.25/0.50 mm
+    transition and 0.6214 on a 1.00/0.25 mm transition against a matched mesh
+    (expected 1.000), motivating the node dual for f0 sheets.
 
     Computed as ``(d[k-1]+d[k])/2`` rather than ``1/inv_d_e`` so a uniform
     profile returns the cell size bit-exactly (``0.5*(d+d) == d`` in
@@ -1996,7 +1993,7 @@ def make_current_source(grid: NonUniformGrid, position_ijk, component,
     materials_traced = (
         is_tracer(materials.eps_r) or is_tracer(materials.sigma)
     )
-    cb = e_update_coefficient_at(materials, (i, j, k), component, grid.dt, host=True)
+    cb = e_update_coefficient_at(materials, (i, j, k), component, grid.dt, host=True, grid=grid)
     dV, grid_traced = current_source_volume(grid, (i, j, k), component)
     any_traced = materials_traced or grid_traced
 

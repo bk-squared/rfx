@@ -315,8 +315,9 @@ def test_an_axis_outside_cpml_axes_keeps_its_pre_876_applied_depth():
     # 2. the buffers the apply_cpml_e/h face slices are cut from
     assert state.psi_ey_xlo.shape[0] == 8
     assert state.psi_ez_xhi.shape[0] == 8
-    assert state.psi_ex_ylo.shape[0] == 8
-    assert state.psi_ez_yhi.shape[0] == 8
+    # psi is now stored in field axis order.
+    assert state.psi_ex_ylo.shape[1] == 8
+    assert state.psi_ez_yhi.shape[1] == 8
 
     # 3. and the profile on those faces really absorbs — this is what makes
     #    the depth matter at all. A no-op layer is exactly (b=1, c=0); the

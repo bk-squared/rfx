@@ -82,6 +82,10 @@ def assemble_interface_eps_nu(sim, grid, materials):
     eps = np.asarray(cell.eps_r, dtype=np.float64)
     volume_eps = np.asarray(permittivity_without_lumped(materials), dtype=np.float64)
     live = np.ones(grid.shape, dtype=np.float64) if pec is None else (~np.asarray(pec)).astype(np.float64)
+    if any(not grid.is_constant(a) for a in range(3)):
+        from rfx.model.materials import geometric_interface_components
+        return tuple(jnp.asarray(e, dtype=materials.eps_r.dtype) for e in
+                     geometric_interface_components(eps, live, volume_eps, widths))
     components = []
     for c in range(3):
         num, den = eps * live, live
@@ -648,7 +652,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     _pec_sheets: list = []
     _pec_wires: list = []
     _geometry_masks, _assembly_entries = ([], []) if lane == "run_nonuniform" else (None, None)
-    from rfx.model.conductors import assembled_materials, solve_conductors, kernel_conductors, clear_conductor_edges, at_kernel
+    from rfx.model.conductors import assembled_materials, solve_conductors, kernel_conductors, lumped_port_stage, at_kernel
     if conductors is None:
         conductors = solve_conductors(sim, grid, nonuniform=True)
     if preflight is not None:
@@ -1032,13 +1036,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                 materials, (i, j, k), sigma_port, pe.component)
             materials_drive = _stamp_lumped_sigma(    # #1256, #1236
                 materials_drive, (i, j, k), sigma_port, pe.component)
-            if pec_edge_masks is not None:
-                # The lumped port drives ONE edge: its own component at
-                # its own cell (#931 §1.9, corrected).
-                conductors = clear_conductor_edges(
-                    conductors, [(i, j, k)], component=pe.component,
-                    entity_id=f"port[{_port_index}]")
-                pec_edge_masks = conductors.pec_edges
+            conductors = lumped_port_stage(conductors, pe, f"port[{_port_index}]")
+            pec_edge_masks = conductors.pec_edges
             if pe.excite:
                 sources.defer(_port_drive_source,
                     grid, idx, pe.component, pe.waveform, sizing_n,
