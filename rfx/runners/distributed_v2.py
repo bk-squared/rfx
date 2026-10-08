@@ -756,17 +756,6 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     nx, ny, nz = grid.shape
     layout = Slab(nx, n_devices)
     pad_x = layout.pad_x
-    if pad_x > 0:
-        _pad_x = ((0, pad_x), (0, 0), (0, 0))
-        if debye_spec is not None:
-            d_poles, d_masks = debye_spec
-            d_masks = [jnp.pad(m, _pad_x, constant_values=False) for m in d_masks]
-            debye_spec = (d_poles, d_masks)
-        if lorentz_spec is not None:
-            l_poles, l_masks = lorentz_spec
-            l_masks = [jnp.pad(m, _pad_x, constant_values=False) for m in l_masks]
-            lorentz_spec = (l_poles, l_masks)
-
     nx_per, ghost, nx_local = layout.nx_per_rank, layout.ghost_width, layout.nx_local
 
     use_cpml = sim._boundary == "cpml" and grid.cpml_layers > 0
@@ -922,12 +911,6 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         n_devices, nx_per, ghost, shd, nx=nx)
     del materials, pec_mask, pec_shapes
     del debye_spec, lorentz_spec
-    if pad_x > 0:
-        if has_debye:
-            del d_poles, d_masks
-        if has_lorentz:
-            del l_poles, l_masks
-
     if has_debye:
         debye_coeffs_sharded, debye_state_sharded = debye
     else:

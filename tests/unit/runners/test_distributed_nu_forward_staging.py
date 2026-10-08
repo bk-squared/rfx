@@ -570,9 +570,29 @@ def test_zero_lorentz_cc_mutation():
     _child("cc")
 
 
+
+def _vmap_local_bits():
+    sim = _model("mixed")
+    eps, kwargs = _inputs(sim, "mixed")
+    batch = jnp.stack([eps, eps * 1.1])
+    f = lambda e: _forward(sim, e, kwargs)
+    expected = jnp.stack([f(e) for e in batch])
+    actual = jax.vmap(f)(batch)
+    _bits(actual, expected, "vmap local eps: both batch members")
+    print("RESULT " + json.dumps({"devices": len(jax.devices("cpu")),
+                                  "batch": 2, "both_members_bit_identical": True}))
+
+
+@pytest.mark.parametrize("devices", [2, 3])
+def test_vmap_local_eps_matches_both_single_calls(devices):
+    _child("vmap_local", devices=devices)
+
+
 if __name__ == "__main__":
     command, *args = sys.argv[1:]
-    if command == "memory":
+    if command == "vmap_local":
+        _vmap_local_bits()
+    elif command == "memory":
         _memory(*args)
     elif command == "before":
         _memory(args[0], legacy=True)

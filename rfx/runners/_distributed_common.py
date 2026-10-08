@@ -8,9 +8,12 @@ CPML kernel retains its per-axis, per-face spacing implementation.
 
 from __future__ import annotations
 
-from rfx.stepping.slab import Slab, Fill, cut
+from rfx.stepping.slab import (
+    Slab, Fill, cut, cut_poles, cut_pole_coeffs, fill_pole_rows, stage_poles,
+    _vacuum_dispersion_values, vacuum_dispersion_values, shard_stacked, shard_stacked_poles,
+)
 
-from functools import lru_cache, partial
+from functools import partial
 
 from rfx import _realized
 
@@ -109,10 +112,14 @@ __all__ = [
 
 
 def split_array_x(arr, n_devices, ghost=1, pad_value=0.0):
+    if arr.shape[0] % n_devices:
+        raise ValueError('split_array_x requires x length divisible by n_devices')
     return cut(arr, Slab(arr.shape[0], n_devices, ghost), Fill(pad_value, pad_value), mesh=None)
 
 
 def shard_x_slabs(arr, n_devices, nx_per, ghost, pad_value, sharding):
+    if arr.ndim != 3:
+        raise ValueError('shard_x_slabs requires a 3-D array')
     return cut(arr, Slab(n_devices * nx_per, n_devices, ghost), Fill(pad_value, pad_value), mesh=sharding)
 
 
@@ -131,7 +138,7 @@ def stage_dispersion_slabs(materials, dt, debye_spec, lorentz_spec,
             continue
         poles, masks = spec
         masks = jax.tree.map(
-            lambda a: shard_x_slabs(a, n_devices, nx_per, ghost, False, sharding),
+            lambda a: cut(a, Slab(nx, n_devices, ghost), "pole_mask", mesh=sharding),
             masks)
         out.append(stage_slab_pole_coeffs(
             poles, masks, dt, kind, sharding.mesh, nx_per, nx,
@@ -149,10 +156,6 @@ def stage_slab_pole_coeffs(poles, masks, dt, kind, mesh, nx_per, nx, shape, *, g
     factors, never differentiable epsilon/sigma coefficients. In particular,
     forward does not execute a large eager shard_map on every call (#1260).
     """
-    from jax.sharding import NamedSharding
-
-    @partial(rank_shard_map, mesh=mesh, in_specs=P("x"), out_specs=P("x"),
-             check_rep=False)
     def local(local_masks, *, rank):
         shape_local = (nx_per + 2,) + shape[1:]
         fractions = [None] * len(poles) if local_masks is None else [
@@ -168,68 +171,15 @@ def stage_slab_pole_coeffs(poles, masks, dt, kind, mesh, nx_per, nx, shape, *, g
             coeffs = LorentzCoeffs(ca=None, cb=None, cc=None, a=a, b=b, c=c)
         return _pad_slab_dispersion_coeffs(coeffs, dt, nx_per, nx, rank=rank)
 
-    coeffs = jax.jit(local)(mesh_ranks(mesh), masks)
-    n_devices = mesh.size
     state_type = DebyeState if kind == "debye" else LorentzState
-    state_shape = (n_devices * len(poles), nx_per + 2) + shape[1:]
-    zeros = jnp.zeros(state_shape, dtype=ade_state_dtype(),
-                      device=NamedSharding(mesh, P("x")))
-    return coeffs, state_type(*(zeros for _ in state_type._fields))
+    return stage_poles(local, masks, Slab(nx, mesh.size), shape[1:], mesh=mesh,
+                       n_poles=len(poles), state_type=state_type,
+                       dtype=ade_state_dtype(), kind=kind)
 
-
-@lru_cache(maxsize=None)
-def _vacuum_dispersion_values(kind, n_poles, dt):
-    """Per field, the coefficient ``init_debye`` / ``init_lorentz`` give ONE
-    vacuum cell (eps_r 1, sigma 0, no pole reaching it) at this ``dt``
-    (#1302): Debye ``ca = 1, cb = dt/eps_0, cc = 1/eps_0, alpha = beta = 0``;
-    Lorentz ``ca = 1, cb = dt/eps_0, cc = 1/eps_0, a = b = c = 0``.
-
-    No pole reaches the cell (all-False masks), so the pole parameters do not
-    enter; placeholder poles only fix the pole count. Returned as Python
-    floats (one per field, equal across components and poles, checked).
-    """
-    with jax.ensure_compile_time_eval():
-        one = jnp.ones((1, 1, 1))
-        vacuum = MaterialArrays(eps_r=one, sigma=jnp.zeros((1, 1, 1)), mu_r=one)
-        masks = [jnp.zeros((1, 1, 1), dtype=bool)] * n_poles
-        if kind == "debye":
-            coeffs, _ = init_debye([DebyePole(1.0, 1e-11)] * n_poles, vacuum, dt,
-                                   mask=masks)
-        else:
-            coeffs, _ = init_lorentz([LorentzPole(1.0, 1.0, 1.0)] * n_poles, vacuum,
-                                     dt, mask=masks)
-    values = {}
-    for name, field in zip(coeffs._fields, coeffs):
-        leaves = [float(v) for leaf in jax.tree.leaves(field)
-                  for v in np.asarray(leaf).ravel()]
-        if len(set(leaves)) != 1:
-            raise AssertionError(f"vacuum {kind} {name} is not one value: {leaves}")
-        values[name] = leaves[0]
-    return values
-
-
-def vacuum_dispersion_values(coeffs, dt):
-    """:func:`_vacuum_dispersion_values` for a coefficient bundle's type and
-    pole count (a per-pole field's leading axis)."""
-    if isinstance(coeffs, DebyeCoeffs):
-        kind, n_poles = "debye", coeffs.alpha.shape[0]
-    else:
-        kind, n_poles = "lorentz", coeffs.a.shape[0]
-    return _vacuum_dispersion_values(kind, int(n_poles), float(dt))
 
 
 def _pad_slab_dispersion_coeffs(coeffs, dt, nx_per, nx, rank=None):
-    """Fill the rows outside the domain -- the physical-face ghost and the
-    x-hi alignment pad -- with the vacuum-cell coefficients (#1302); interior
-    ghosts are real cells and keep their values."""
-    if rank is None:
-        raise ValueError("slab rank must be supplied as data")
-    rows = rank * nx_per + jnp.arange(nx_per + 2) - 1
-    real = ((rows >= 0) & (rows < nx))[:, None, None]
-    vacuum = vacuum_dispersion_values(coeffs, dt)
-    return type(coeffs)(*(
-        jax.tree.map(lambda a, _v=vacuum[name]: jnp.where(real, a, _v), field)
-        for name, field in zip(coeffs._fields, coeffs)))
+    return fill_pole_rows(coeffs, dt, nx_per, nx, rank=rank)
 
 
 def slab_dispersion_coeffs(coeffs, e_materials, dt, nx_per, nx, rank=None):
@@ -264,23 +214,7 @@ def gather_array_x(slabs, ghost=1):
 
 
 def split_poles_x(arr, n_poles, n_devices, ghost):
-    """Split a per-pole array ``(n_poles, nx, ny, nz)`` into x-slabs.
-
-    Applies :func:`split_array_x` to each pole and stacks the results on
-    axis 1, giving ``(n_devices, n_poles, nx_local, ny, nz)``. Ghost cells
-    at the physical x boundaries are padded with ``0.0``, which is the
-    correct fill for every array this is used on: the polarization state
-    fields of Debye/Lorentz, and Lorentz's ``a``/``b``/``c`` coefficients.
-
-    NOT for a coefficient whose ghost fill must be non-zero --
-    ``_split_lorentz_coeffs`` splits ``cc`` with ``pad_value=1/EPS_0``
-    through :func:`split_array_x` directly, and its comment records the
-    NaN-in-backward reason. That call is deliberately not routed here.
-    """
-    return jnp.stack([
-        split_array_x(arr[p], n_devices, ghost, pad_value=0.0)
-        for p in range(n_poles)
-    ], axis=1)
+    return cut_poles(arr[:n_poles], Slab(arr.shape[1], n_devices, ghost), "state")
 
 
 def unstack_and_gather(sharded_arr, n_devices, nx_local, ghost, pad_x, nx):
@@ -845,60 +779,7 @@ def apply_pec_mask_shmap(state: FDTDState, sharded_pec_mask, mesh,
 
 
 # ---------------------------------------------------------------------------
-# Device-axis merge + x-slab sharding (host side, eager)
-# ---------------------------------------------------------------------------
-#
-# These three take an array whose leading axis is the DEVICE axis, fold that
-# axis into the next one, and ``jax.device_put`` the result onto an
-# x-sharding.  They run at setup time, outside any ``jit``/``shard_map``
-# trace, so lifting them out of their enclosing closures cannot change a
-# jaxpr -- the only thing that moved into the signature is ``shd``, a
-# ``NamedSharding`` the caller already had in hand (#1038 leg 1).
-#
-# The bodies are the pre-move bodies verbatim.  They are three FUNCTIONS and
-# not one, on purpose: ``shard_stacked``'s generic ``*rest`` form would
-# numerically subsume the other two, but that would be an algebra change on a
-# leg whose whole contract is byte-identical motion.  Merging them is a later
-# decision with its own evidence, not a side effect of de-duplication.
-
-
-def shard_stacked(arr, shd):
-    """Merge the device axis into x, then shard.
-
-    ``(n_devices, nx_local, ny, nz) -> (n_devices*nx_local, ny, nz)``.
-
-    Extracted verbatim from four byte-identical copies that carried two
-    different names: ``distributed_nu.py::shard_debye_coeffs_x_slab._shard_3d``,
-    ``distributed_nu.py::shard_lorentz_coeffs_x_slab._shard_3d``,
-    ``distributed_nu.py::run_nonuniform_distributed_pec._shard_stacked`` and
-    ``distributed_v2.py::run_distributed._shard_stacked``.  All four bodies
-    hashed ``ab71430ea8cb``.
-    """
-    n_dev = arr.shape[0]
-    rest = arr.shape[1:]
-    return jax.device_put(arr.reshape(n_dev * rest[0], *rest[1:]), shd)
-
-
-def shard_stacked_poles(arr, shd):
-    """Merge the device axis into the pole axis, then shard.
-
-    ``(n_devices, n_poles, nx_local, ny, nz) ->``
-    ``(n_devices*n_poles, nx_local, ny, nz)``, so ``P("x")`` hands each
-    device ``(n_poles, nx_local, ny, nz)``.
-
-    Extracted verbatim from the four ``_shard_4d`` copies in
-    ``distributed_nu.py`` (``shard_debye_coeffs_x_slab``,
-    ``shard_debye_state_x_slab``, ``shard_lorentz_coeffs_x_slab``,
-    ``shard_lorentz_state_x_slab``), body ``2883a7c93bd2`` on all four.
-
-    NOT the same text as ``distributed_v2.py::_shard_stacked_5d``, which
-    computes the same thing through a named intermediate; that copy is
-    outside this leg's byte-identical set and is deliberately left alone.
-    """
-    n_dev, n_poles, nx_loc, ny_a, nz_a = arr.shape
-    return jax.device_put(
-        arr.reshape(n_dev * n_poles, nx_loc, ny_a, nz_a), shd,
-    )
+# CPML face-depth packing remains with the absorber adapters (#1535).
 
 
 def shard_stacked_psi(arr, shd):
@@ -1467,110 +1348,21 @@ def _split_materials(materials, n_devices, ghost=1):
 # ---------------------------------------------------------------------------
 
 def _split_debye_coeffs(coeffs: DebyeCoeffs, n_devices, ghost=1, *, dt):
-    """Split DebyeCoeffs arrays along x into per-device slabs.
-
-    3-D arrays (nx, ny, nz) are split with ghost cells.
-    4-D arrays (n_poles, nx, ny, nz) are split per-pole along x.
-    A per-E-component field (#1260) is a 3-tuple of such arrays; each is
-    split the same way. The physical-face ghosts take the vacuum-cell
-    coefficients at ``dt`` (:func:`vacuum_dispersion_values`, #1302), the
-    rule the slab staging uses.
-    """
-    vacuum = vacuum_dispersion_values(coeffs, dt)
-
-    def _split3(name):
-        return lambda arr: split_array_x(arr, n_devices, ghost,
-                                         pad_value=vacuum[name])
-
-    def _split4(name):
-        # (n_poles, nx, ny, nz) -> (n_devices, n_poles, nx_local, ny, nz)
-        return lambda arr: jnp.stack([
-            split_array_x(arr[p], n_devices, ghost, pad_value=vacuum[name])
-            for p in range(arr.shape[0])
-        ], axis=1)
-
-    return DebyeCoeffs(
-        ca=jax.tree.map(_split3("ca"), coeffs.ca),
-        cb=jax.tree.map(_split3("cb"), coeffs.cb),
-        cc=jax.tree.map(_split4("cc"), coeffs.cc),
-        alpha=jax.tree.map(_split4("alpha"), coeffs.alpha),
-        beta=jax.tree.map(_split4("beta"), coeffs.beta),
-    )
+    return cut_pole_coeffs(coeffs, Slab(jax.tree.leaves(coeffs.ca)[0].shape[0], n_devices, ghost),
+                           "debye", dt=dt)
 
 
 def _split_debye_state(state: DebyeState, n_devices, ghost=1):
-    """Split DebyeState arrays along x into per-device slabs.
-
-    Each field is (n_poles, nx, ny, nz) — split each pole along x.
-    """
-    n_poles = state.px.shape[0]
-
-    def _split_poles(arr):
-        # (n_devices, n_poles, nx_local, ny, nz)
-        return split_poles_x(arr, n_poles, n_devices, ghost)
-
-    return DebyeState(
-        px=_split_poles(state.px),
-        py=_split_poles(state.py),
-        pz=_split_poles(state.pz),
-    )
+    return cut_poles(state, Slab(state.px.shape[1], n_devices, ghost), "debye_state")
 
 
 def _split_lorentz_coeffs(coeffs: LorentzCoeffs, n_devices, ghost=1, *, dt):
-    """Split LorentzCoeffs arrays along x into per-device slabs (a
-    per-E-component field, #1260, split leaf by leaf). The physical-face
-    ghosts take the vacuum-cell coefficients at ``dt``
-    (:func:`vacuum_dispersion_values`, #1302), the rule the slab staging
-    uses."""
-    vacuum = vacuum_dispersion_values(coeffs, dt)
-    ca = jax.tree.map(
-        lambda arr: split_array_x(arr, n_devices, ghost, pad_value=vacuum["ca"]),
-        coeffs.ca)
-    cb = jax.tree.map(
-        lambda arr: split_array_x(arr, n_devices, ghost, pad_value=vacuum["cb"]),
-        coeffs.cb)
-    # cc = 1 / safe_gamma; the mixed Debye+Lorentz path computes
-    # `gamma_base = 1 / cc`, so padding cc=0 at physical-boundary ghosts
-    # yields gamma_base=inf and `numer_base = ca*gamma_base = 0*inf = NaN`.
-    # Forward stays bit-perfect (ghost cells drop before output assembly),
-    # but in backward `cb_mixed[ghost] * curl = 0 * NaN = NaN` leaks the
-    # NaN from the ghost's cb_mixed into real cells' hy/hz gradients and
-    # ultimately into d_loss/d_eps at the first/last x cells.  The vacuum
-    # cc value (1/EPS_0) keeps gamma_base=EPS_0 finite at ghosts.
-    cc = jax.tree.map(
-        lambda arr: split_array_x(arr, n_devices, ghost,
-                                  pad_value=vacuum["cc"]),
-        coeffs.cc)
-
-    n_poles = coeffs.a.shape[0]
-
-    def _split_poles(arr):
-        return split_poles_x(arr, n_poles, n_devices, ghost)
-
-    return LorentzCoeffs(
-        ca=ca, cb=cb,
-        a=_split_poles(coeffs.a),
-        b=_split_poles(coeffs.b),
-        c=jax.tree.map(_split_poles, coeffs.c),
-        cc=cc,
-    )
+    return cut_pole_coeffs(coeffs, Slab(jax.tree.leaves(coeffs.ca)[0].shape[0], n_devices, ghost),
+                           "lorentz", dt=dt)
 
 
 def _split_lorentz_state(state: LorentzState, n_devices, ghost=1):
-    """Split LorentzState arrays along x into per-device slabs."""
-    n_poles = state.px.shape[0]
-
-    def _split_poles(arr):
-        return split_poles_x(arr, n_poles, n_devices, ghost)
-
-    return LorentzState(
-        px=_split_poles(state.px),
-        py=_split_poles(state.py),
-        pz=_split_poles(state.pz),
-        px_prev=_split_poles(state.px_prev),
-        py_prev=_split_poles(state.py_prev),
-        pz_prev=_split_poles(state.pz_prev),
-    )
+    return cut_poles(state, Slab(state.px.shape[1], n_devices, ghost), "lorentz_state")
 
 
 # ---------------------------------------------------------------------------

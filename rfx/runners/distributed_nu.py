@@ -41,7 +41,9 @@ from __future__ import annotations
 from functools import partial
 
 from rfx import _realized
-from rfx.stepping.slab import Slab, Fill, cut, forward_sharding as _forward_sharding
+from rfx.stepping.slab import (
+    Slab, Fill, cut, cut_poles, cut_pole_coeffs, forward_sharding as _forward_sharding,
+)
 
 import jax
 import jax.numpy as jnp
@@ -288,7 +290,7 @@ class ShardedNUGrid(_NamedTuple):
 def split_1d_with_ghost(arr: "np.ndarray", n_devices: int, nx_per: int,
                         nx_local: int, ghost: int,
                         pad_value: float) -> "np.ndarray":
-    return np.asarray(cut(arr, Slab(n_devices * nx_per, n_devices, ghost), Fill(pad_value, pad_value), mesh=None))
+    return np.asarray(cut(arr, Slab(n_devices * nx_per, n_devices, ghost), Fill(pad_value, pad_value), mesh=None, host=True))
 
 
 def build_sharded_nu_grid(
@@ -712,14 +714,6 @@ def shard_cpml_state_x_slab(cpml_state_stacked, sharded_grid: ShardedNUGrid,
 # ``(n_poles, nx_local, ny, nz)`` for pole-axis arrays, exactly the
 # layout the local helper expects.
 #
-# Padding policy (matches the no-Debye / no-Lorentz dummy paths in
-# ``rfx/runners/distributed_v2.py``):
-#   * Debye coeffs: ca, cb, cc -> pad with 0; alpha, beta -> pad with 0
-#   * Lorentz coeffs: ca, cb, cc -> pad with 0; a, b, c -> pad with 0
-# Pad cells correspond to vacuum + high-x PEC padding; with ca=0/alpha=0
-# the polarisation update is a no-op there, which matches single-device
-# behaviour for cells that have no Debye/Lorentz pole.
-
 def _concrete_on_mesh(arr, sharding):
     """Place concrete data on addressable devices only (also for replication)."""
     if isinstance(arr, jax.core.Tracer):
@@ -765,232 +759,22 @@ def stage_forward_array_x_slab(arr, sharded_grid, mesh, pad_value=0.0):
     return cut(arr, Slab.from_grid(sharded_grid), Fill(pad_value, pad_value), mesh=mesh)
 
 
-def shard_debye_coeffs_x_slab(debye_coeffs, sharded_grid: ShardedNUGrid,
-                              mesh):
-    """Slab-shard a full-domain ``DebyeCoeffs`` along x.
-
-    Layout
-    ------
-    Inputs:
-        ca, cb : (nx, ny, nz)
-        cc, alpha, beta : (n_poles, nx, ny, nz)
-    After pad-to-divisible (high-x PEC padding handled by
-    ``_split_debye_coeffs``) and reshape:
-        ca, cb : sharded along ``P("x")`` over (n_devices*nx_local, ny, nz)
-        cc, alpha, beta : sharded along ``P("x")`` over
-                          (n_devices*n_poles, nx_local, ny, nz)
-    """
-    if debye_coeffs is None:
-        return None
-
-    from jax.sharding import NamedSharding, PartitionSpec as _P
-    from rfx.materials.debye import DebyeCoeffs
-    from rfx.runners._distributed_common import (
-        _split_debye_coeffs, vacuum_dispersion_values,
-    )
-
-    n_devices = sharded_grid.n_devices
-    ghost = sharded_grid.ghost_width
-    pad_x = sharded_grid.pad_x
-    # Rows outside the domain -- the x-hi alignment pad here, the
-    # physical-face ghosts in the splitter -- take the coefficients
-    # init_debye gives a vacuum cell (#1302), as the slab staging does.
-    vacuum = vacuum_dispersion_values(debye_coeffs, sharded_grid.dt)
-
-    # Pad along x to nx_padded so the canonical splitter sees a clean
-    # multiple of n_devices.
-    if pad_x > 0:
-        pad3 = ((0, pad_x), (0, 0), (0, 0))
-        pad4 = ((0, 0), (0, pad_x), (0, 0), (0, 0))
-
-        def _pad(name):
-            # A per-E-component field (#1260) is a tuple of such arrays.
-            return lambda arr: jnp.pad(arr, pad3 if arr.ndim == 3 else pad4,
-                                       constant_values=vacuum[name])
-
-        debye_coeffs_padded = DebyeCoeffs(*(
-            jax.tree.map(_pad(name), field)
-            for name, field in zip(debye_coeffs._fields, debye_coeffs)))
-    else:
-        debye_coeffs_padded = debye_coeffs
-
-    coeffs_slabs = _split_debye_coeffs(
-        debye_coeffs_padded, n_devices, ghost, dt=sharded_grid.dt,
-    )
-
-    shd = NamedSharding(mesh, _P("x"))
-
-    def _shard_3d(arr):
-        # (n_devices, nx_local, ny, nz) -> (n_devices*nx_local, ny, nz)
-        return shard_stacked(arr, shd)
-
-    def _shard_4d(arr):
-        # (n_devices, n_poles, nx_local, ny, nz) ->
-        # (n_devices*n_poles, nx_local, ny, nz)
-        return shard_stacked_poles(arr, shd)
-
-    return DebyeCoeffs(
-        ca=jax.tree.map(_shard_3d, coeffs_slabs.ca),
-        cb=jax.tree.map(_shard_3d, coeffs_slabs.cb),
-        cc=jax.tree.map(_shard_4d, coeffs_slabs.cc),
-        alpha=jax.tree.map(_shard_4d, coeffs_slabs.alpha),
-        beta=jax.tree.map(_shard_4d, coeffs_slabs.beta),
-    )
+def shard_debye_coeffs_x_slab(debye_coeffs, sharded_grid: ShardedNUGrid, mesh):
+    return cut_pole_coeffs(debye_coeffs, Slab.from_grid(sharded_grid), "debye",
+                           dt=sharded_grid.dt, mesh=mesh)
 
 
-def shard_debye_state_x_slab(debye_state, sharded_grid: ShardedNUGrid,
-                             mesh):
-    """Slab-shard a full-domain ``DebyeState`` along x.
-
-    Each ``p[xyz]`` has shape ``(n_poles, nx, ny, nz)`` and ends up
-    sharded along ``P("x")`` over ``(n_devices*n_poles, nx_local, ny, nz)``.
-    """
-    if debye_state is None:
-        return None
-
-    from jax.sharding import NamedSharding, PartitionSpec as _P
-    from rfx.materials.debye import DebyeState
-    from rfx.runners._distributed_common import _split_debye_state
-
-    n_devices = sharded_grid.n_devices
-    ghost = sharded_grid.ghost_width
-    pad_x = sharded_grid.pad_x
-
-    if pad_x > 0:
-        pad4 = ((0, 0), (0, pad_x), (0, 0), (0, 0))
-        debye_state_padded = DebyeState(
-            px=jnp.pad(debye_state.px, pad4, constant_values=0.0),
-            py=jnp.pad(debye_state.py, pad4, constant_values=0.0),
-            pz=jnp.pad(debye_state.pz, pad4, constant_values=0.0),
-        )
-    else:
-        debye_state_padded = debye_state
-
-    state_slabs = _split_debye_state(debye_state_padded, n_devices, ghost)
-
-    shd = NamedSharding(mesh, _P("x"))
-
-    def _shard_4d(arr):
-        return shard_stacked_poles(arr, shd)
-
-    return DebyeState(
-        px=_shard_4d(state_slabs.px),
-        py=_shard_4d(state_slabs.py),
-        pz=_shard_4d(state_slabs.pz),
-    )
+def shard_debye_state_x_slab(debye_state, sharded_grid: ShardedNUGrid, mesh):
+    return cut_poles(debye_state, Slab.from_grid(sharded_grid), "debye_state", mesh=mesh)
 
 
-def shard_lorentz_coeffs_x_slab(lorentz_coeffs, sharded_grid: ShardedNUGrid,
-                                mesh):
-    """Slab-shard a full-domain ``LorentzCoeffs`` along x.
-
-    Layout
-    ------
-    Inputs:
-        ca, cb, cc : (nx, ny, nz)
-        a, b, c : (n_poles, nx, ny, nz)
-    """
-    if lorentz_coeffs is None:
-        return None
-
-    from jax.sharding import NamedSharding, PartitionSpec as _P
-    from rfx.materials.lorentz import LorentzCoeffs
-    from rfx.runners._distributed_common import (
-        _split_lorentz_coeffs, vacuum_dispersion_values,
-    )
-
-    n_devices = sharded_grid.n_devices
-    ghost = sharded_grid.ghost_width
-    pad_x = sharded_grid.pad_x
-    # The vacuum-cell coefficients of init_lorentz (#1302); cc = 1/EPS_0
-    # there also keeps `gamma_base = 1/cc` finite in the mixed
-    # Debye+Lorentz path (see `_split_lorentz_coeffs`).
-    vacuum = vacuum_dispersion_values(lorentz_coeffs, sharded_grid.dt)
-
-    if pad_x > 0:
-        pad3 = ((0, pad_x), (0, 0), (0, 0))
-        pad4 = ((0, 0), (0, pad_x), (0, 0), (0, 0))
-
-        def _pad(name):
-            # Per-E-component fields (#1260) are tuples: pad every leaf.
-            return lambda arr: jnp.pad(arr, pad3 if arr.ndim == 3 else pad4,
-                                       constant_values=vacuum[name])
-
-        lorentz_coeffs_padded = LorentzCoeffs(*(
-            jax.tree.map(_pad(name), field)
-            for name, field in zip(lorentz_coeffs._fields, lorentz_coeffs)))
-    else:
-        lorentz_coeffs_padded = lorentz_coeffs
-
-    coeffs_slabs = _split_lorentz_coeffs(
-        lorentz_coeffs_padded, n_devices, ghost, dt=sharded_grid.dt,
-    )
-
-    shd = NamedSharding(mesh, _P("x"))
-
-    def _shard_3d(arr):
-        return shard_stacked(arr, shd)
-
-    def _shard_4d(arr):
-        return shard_stacked_poles(arr, shd)
-
-    return LorentzCoeffs(
-        ca=jax.tree.map(_shard_3d, coeffs_slabs.ca),
-        cb=jax.tree.map(_shard_3d, coeffs_slabs.cb),
-        cc=jax.tree.map(_shard_3d, coeffs_slabs.cc),
-        a=_shard_4d(coeffs_slabs.a),
-        b=_shard_4d(coeffs_slabs.b),
-        c=jax.tree.map(_shard_4d, coeffs_slabs.c),
-    )
+def shard_lorentz_coeffs_x_slab(lorentz_coeffs, sharded_grid: ShardedNUGrid, mesh):
+    return cut_pole_coeffs(lorentz_coeffs, Slab.from_grid(sharded_grid), "lorentz",
+                           dt=sharded_grid.dt, mesh=mesh)
 
 
-def shard_lorentz_state_x_slab(lorentz_state, sharded_grid: ShardedNUGrid,
-                               mesh):
-    """Slab-shard a full-domain ``LorentzState`` along x.
-
-    Each ``p[xyz]`` and ``p[xyz]_prev`` has shape
-    ``(n_poles, nx, ny, nz)`` and ends up sharded along ``P("x")`` over
-    ``(n_devices*n_poles, nx_local, ny, nz)``.
-    """
-    if lorentz_state is None:
-        return None
-
-    from jax.sharding import NamedSharding, PartitionSpec as _P
-    from rfx.materials.lorentz import LorentzState
-    from rfx.runners._distributed_common import _split_lorentz_state
-
-    n_devices = sharded_grid.n_devices
-    ghost = sharded_grid.ghost_width
-    pad_x = sharded_grid.pad_x
-
-    if pad_x > 0:
-        pad4 = ((0, 0), (0, pad_x), (0, 0), (0, 0))
-        lorentz_state_padded = LorentzState(
-            px=jnp.pad(lorentz_state.px, pad4, constant_values=0.0),
-            py=jnp.pad(lorentz_state.py, pad4, constant_values=0.0),
-            pz=jnp.pad(lorentz_state.pz, pad4, constant_values=0.0),
-            px_prev=jnp.pad(lorentz_state.px_prev, pad4, constant_values=0.0),
-            py_prev=jnp.pad(lorentz_state.py_prev, pad4, constant_values=0.0),
-            pz_prev=jnp.pad(lorentz_state.pz_prev, pad4, constant_values=0.0),
-        )
-    else:
-        lorentz_state_padded = lorentz_state
-
-    state_slabs = _split_lorentz_state(lorentz_state_padded, n_devices, ghost)
-
-    shd = NamedSharding(mesh, _P("x"))
-
-    def _shard_4d(arr):
-        return shard_stacked_poles(arr, shd)
-
-    return LorentzState(
-        px=_shard_4d(state_slabs.px),
-        py=_shard_4d(state_slabs.py),
-        pz=_shard_4d(state_slabs.pz),
-        px_prev=_shard_4d(state_slabs.px_prev),
-        py_prev=_shard_4d(state_slabs.py_prev),
-        pz_prev=_shard_4d(state_slabs.pz_prev),
-    )
+def shard_lorentz_state_x_slab(lorentz_state, sharded_grid: ShardedNUGrid, mesh):
+    return cut_poles(lorentz_state, Slab.from_grid(sharded_grid), "lorentz_state", mesh=mesh)
 
 
 def _update_e_dispersive_local_nu(

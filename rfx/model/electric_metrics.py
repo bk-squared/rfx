@@ -127,13 +127,14 @@ def stage_forward_dispersion_x_slab(materials, dt, spec, sharded_grid, mesh, kin
     shard_map setup, and no whole-domain ADE arrays are allocated.
     """
     import jax
-    from rfx.runners.distributed_nu import stage_concrete_forward_array, stage_slab_pole_coeffs
+    from rfx.runners._distributed_common import stage_slab_pole_coeffs
+    from rfx.stepping.slab import Slab, cut
 
     if spec is None:
         return None
     poles, masks = spec
     masks = jax.tree.map(
-        lambda mask: stage_concrete_forward_array(mask, sharded_grid, mesh, False),
+        lambda mask: cut(mask, Slab.from_grid(sharded_grid), "pole_mask", mesh=mesh),
         masks)
     return stage_slab_pole_coeffs(
         poles, masks, dt, kind, mesh, sharded_grid.nx_per_rank,
