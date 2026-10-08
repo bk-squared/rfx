@@ -313,6 +313,8 @@ lane retains its existing behavior.
 
 ### Full-aperture guides on a graded mesh require explicit transverse boundaries.
 
+Tracker: #1221
+
 The non-uniform and distributed non-uniform paths refuse a full-aperture waveguide
 when `boundary` was omitted, including with preflight skipped. Their default keeps
 transverse absorbers, so the port would not be in a guide. For an x-directed guide,
