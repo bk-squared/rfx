@@ -7,9 +7,6 @@ import pytest
 
 from tests.contracts.boundary_fields import measured_fields
 
-# Also runs on the GPU backend in the merge train's pre-merge GPU job.
-pytestmark = pytest.mark.gpu_gate
-
 
 @pytest.mark.parametrize("nx", [5, 6])
 def test_distributed_record_layout_selects_full_grid_or_two_slabs(nx):

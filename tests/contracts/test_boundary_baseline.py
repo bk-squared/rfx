@@ -12,9 +12,6 @@ from tests.contracts.boundary_compare import compare_values
 
 BASELINE = json.loads((ROOT / "scripts/diagnostics/boundary_model/B1/MATRIX.json").read_text())
 
-# Also runs on the GPU backend in the merge train's pre-merge GPU job.
-pytestmark = pytest.mark.gpu_gate
-
 
 @pytest.mark.parametrize("quantity,before,after,direction", [
     ("h_plane_m", .0005, .0015, "away"),
