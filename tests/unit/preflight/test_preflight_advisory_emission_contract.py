@@ -449,7 +449,11 @@ def _enumerate_emission_sites():
 # 127 -> 128 (#1512): open signal tail behind a line port, one advisory site.
 # 128 -> 129 (#1512): blocking realization errors must not abort later checks.
 # 129 -> 130 (#1512): explicit could-not-inspect advisory.
-_FROZEN_TOTAL_SITES = 130
+# 130 -> 131 (#1560): one ``PreflightErrorWarning`` in
+# ``_validate_cfg_source_on_reflector_plane``, existing code ``source_decoupled`` -- a source
+# or port edge tangential in a declared PEC wall is shorted; assembly refuses it on every
+# path and preflight reports the same finding as an error (was the #1075 advisory text).
+_FROZEN_TOTAL_SITES = 131
 # 74 -> 73, 2026-09-15 (#1043 / PR #1047): ``conformal_nan`` was the only
 # site emitting that code, and the check was deleted when its own tripwire
 # XPASSed -- see the note on _FROZEN_TOTAL_SITES above.
