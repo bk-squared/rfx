@@ -253,3 +253,61 @@ record unchanged; this amendment adds a second filter run and a rule for the fra
    (`rfx.gradient_record_length_witness`, factor 1.5, ≤ 0.05 in norm over all variables). If it
    fails, the frame uses the last iterate before k\* whose witness passes (searched downward in steps
    of 10, ending at the start, whose witness passed), and the frame's caption names the iterate used.
+
+## Amendment 5 (2026-10-08, leader; before any run it governs) — two more objectives on the same lens
+(Number 4 is not used in this note.) The PI asked that the showcase state its optimisation problem
+plainly and show that the same code serves other objectives. The first lens run (§1) maximises
+boresight directivity. This amendment adds two runs on the **same structure, variables, bounds, mesh,
+record rules, optimiser and start** (§1.1, §1.3: 2,250 free values, 1 ≤ εr ≤ 2.7, Adam 0.10 → 0.01 over
+150 iterations, primary start εr = 1.85) that differ only in the objective. Both objectives read the
+directivity pattern D_f(θ, φ) in dBi that §1.2 already computes on the 73 × 73 grid (θ every 2.5°), at
+the three frequencies 9.5, 10.0, 10.5 GHz; nothing in the solver or the far-field transform changes.
+
+Where the first design stands (stored record, 10 GHz, 1.0 mm mesh): boresight 19.0 dBi; the largest
+directivity in any direction with θ ≥ 25° is 3.8 dBi (15.3 dB below the peak); the pattern is 15.0–13.7 dBi
+at θ = 10° and 9.2–6.0 dBi at θ = 15°.
+
+**Notation.** relu(x) = max(x, 0). For a set of grid directions R, Q_R(v) = sqrt(mean_R relu(v)⁴ + δ⁴) − δ²
+with δ = 0.1 dB: a smooth measure of the worst violations in R (dB²), zero when none.
+
+1. **Objective M — a pencil beam under a flat sidelobe mask.**
+   Mask (judged against, at each of the three frequencies): D(θ = 0) ≥ 18.0 dBi, and D ≤ −2.0 dBi in
+   every grid direction with θ ≥ 25° (sidelobes and back radiation at least 20 dB below an 18 dBi beam).
+   The optimiser aims 1 dB inside:
+   J_M = mean_f [ relu(19.0 − D_f(0))² + Q_S(D_f + 3.0) ], S = {θ ≥ 25°}.
+2. **Objective F — a flat-top beam.**
+   Mask (judged against, each frequency): 13.0 ≤ D ≤ 15.0 dBi in every grid direction with θ ≤ 12.5°, and
+   D ≤ 0.0 dBi in every grid direction with θ ≥ 32.5°; the band between is free. The optimiser aims
+   0.5 dB inside the window and 1 dB inside the outer bound:
+   J_F = mean_f [ mean_C (relu(13.5 − D_f)² + relu(D_f − 14.5)²) + Q_O(D_f + 1.0) ],
+   C = {θ ≤ 12.5°}, O = {θ ≥ 32.5°}.
+   (Power check: 14 dBi over a 12.5° cone carries 30 % of the radiated power, so the window is not
+   excluded by conservation; whether a 3 λ0 aperture of εr ≤ 2.7 reaches it is what the run finds.)
+3. **Design reported and frame iterate.** The best iterate by J. The progress fraction for the frame
+   rule of Amendment 3 is p_k = (log(J_0 + ε) − log(J_k + ε)) / (log(J_0 + ε) − log(J_best + ε)) with
+   ε = 1e-3 dB² (J can reach zero).
+4. **Witnesses.** §1.5 items 1–3 and 6 unchanged in form, with L replaced by J_M or J_F: gradient
+   against central differences at the start on the same three pixels; gradient record-length witness
+   at the start and at the reported design (and at every iterate a film shows, Amendment 3.3);
+   per-bin settling for the start and the reported design. A 30-iteration trial (§3) comes first and
+   carries the start witnesses.
+   **Mesh trend (judged for any promotional number), replacing §1.5 item 4 for these runs:** the
+   reported design re-solved at 1.5, 1.0 and 0.75 mm. Reported per mesh and frequency: D(0), the
+   largest D in the outer region (S or O), and for F the smallest and largest D in C. Judged: between
+   1.0 and 0.75 mm, D(0) and the two window extremes change by at most 0.3 dB and the largest outer-region
+   level by at most 1.0 dB, and no change is larger than the one between 1.5 and 1.0 mm. A promotional
+   number is the 0.75 mm value. §1.5 item 5 (aperture bound) applies to D(0) of M.
+5. **Outcome rule, fixed now.** A run "meets its mask" only if the reported design satisfies every
+   mask inequality at all three frequencies on the 0.75 mm mesh and passes the witnesses. Otherwise the
+   showcase shows the achieved pattern against the mask without those words, with the achieved worst
+   values, and the result is reported as it is. The mask levels above are not adjusted after a run;
+   a different mask is a new amendment decided with the PI.
+6. **What is shown.** For each run: the frame at k\* and at the reported design, the pattern cut against
+   its mask, the three-mesh values. The first run's film is unchanged; the two runs appear beside it as
+   "the same two passes, another objective". Every showcase output names its objective in words before
+   any result.
+7. **Memory read (R1).** Ledger: the lens run's own entries (settled at the declared record on every
+   mesh; gradient witnesses pass at all 151 iterates) — consistent, the runs reuse that record length
+   and re-witness it; the filter's fixed-record limitation ("inverse design on a fixed record can descend
+   into designs that do not settle on that record") — applies here too, which is why item 4 keeps the
+   per-bin settling witness on the reported design and the gradient witness on every shown iterate.
