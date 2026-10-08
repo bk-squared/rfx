@@ -46,6 +46,7 @@ def _dispatch_plan(
     n_steps: int | None,
     num_periods: float,
     # forward-only inputs
+    tfsf_material_overrides: tuple = (),
     distributed: bool = False,
     port_s11_freqs: object | None = None,
     checkpoint_segments: int | None = None,
@@ -82,7 +83,7 @@ def _dispatch_plan(
     from rfx.boundaries.features import admit_waveguide
     admit_waveguide(self, lane=f"{mode} dispatch")
     from rfx.boundaries.tfsf import admit_simulation
-    admit_simulation(self)
+    admit_simulation(self, material_overrides=tfsf_material_overrides)
     # Constructor checks cover explicit profiles only. Geometry can make
     # auto mesh non-uniform later, so validate the declared solver against
     # the completed mesh before ANY Yee lane (including distributed) wins

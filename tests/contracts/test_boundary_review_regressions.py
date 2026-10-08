@@ -104,8 +104,9 @@ def test_only_the_duplicated_end_edge_is_exempt(skip, slot, monkeypatch):
 
 @pytest.mark.parametrize("skip", [False, True])
 @pytest.mark.parametrize("transform", ["jit", "jit_grad", "vmap"])
-def test_traced_override_is_admitted_with_unjudged_finding(skip, transform, monkeypatch):
-    sim = plane()
+@pytest.mark.parametrize("finite", [False, True])
+def test_traced_override_is_admitted_with_unjudged_finding(skip, transform, finite, monkeypatch):
+    sim = plane(finite=finite)
     shape = sim._build_grid().shape
     stop_kernel(monkeypatch)
 
@@ -119,6 +120,34 @@ def test_traced_override_is_admitted_with_unjudged_finding(skip, transform, monk
     with pytest.warns(UnjudgedTFSFInvarianceWarning, match="invariance was not judged"):
         with pytest.raises(Admitted):
             fn(argument)
+
+
+
+@pytest.mark.parametrize("skip", [False, True])
+def test_concrete_override_replaces_finite_base_for_admission(skip, monkeypatch):
+    sim = plane(finite=True)
+    stop_kernel(monkeypatch, periodic=(False, True, True))
+    with pytest.raises(Admitted):
+        sim.forward(n_steps=1, eps_override=jnp.full(sim._build_grid().shape, 2.),
+                    skip_preflight=skip)
+
+
+@pytest.mark.parametrize("skip", [False, True])
+@pytest.mark.parametrize("component", ["sigma", "mu_r"])
+def test_override_does_not_hide_an_unoverridden_material(skip, component):
+    sim = plane(finite=True)
+    sim.add_material("other", eps_r=2.5, **{component: 2.})
+    sim._geometry.clear()
+    sim.add(Box((.008, .003, .003), (.012, .007, .007)), material="other")
+    shape = sim._build_grid().shape
+
+    @jax.jit
+    def solve(value):
+        return sim.forward(n_steps=1, eps_override=jnp.ones(shape) * value,
+                           skip_preflight=skip).time_series
+
+    with pytest.raises(ValueError, match="TF/SF y_lo, y_hi: .*" + component):
+        solve(jnp.array(2.))
 
 
 def test_default_provenance_survives_convergence_factory(monkeypatch):

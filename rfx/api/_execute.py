@@ -1288,10 +1288,10 @@ class _ExecuteMixin:
     def _auto_preflight(
         self, *, skip: bool = False, context: str = "forward",
         check_ntff: bool | str = True, conductors=None,
-        prepare=False, distributed=False,
+        prepare=False, distributed=False, tfsf_material_overrides=(),
     ) -> _conductors._PreparedSolve | None:
         """Delegate validation and optional solve ownership to the conductors layer."""
-        return _conductors.auto_preflight(self, skip=skip, context=context, check_ntff=check_ntff, conductors=conductors, prepare=prepare, distributed=distributed)
+        return _conductors.auto_preflight(self, skip=skip, context=context, check_ntff=check_ntff, conductors=conductors, prepare=prepare, distributed=distributed, tfsf_material_overrides=tfsf_material_overrides)
 
     def _run_preflight_gate(self, issues, *, context: str, stacklevel: int = 3) -> None:
         """Apply the same warning/error policy to full or scoped preflight."""
@@ -2232,7 +2232,7 @@ class _ExecuteMixin:
         # after the specific refusals above and before the first step.
         if lane is not None:
             from rfx.runners._admission import admit
-            admit(self, lane)
+            admit(self, lane, run_args={"tfsf_materials": materials} if self._tfsf is not None else None)
 
         conductors, pec_edge_masks_local, sheet_impedance = _conductors.forward_kernel_inputs(self, conductors, lane or "fwd_uniform", pec_edge_masks_local, sheet_impedance)
         result = _run(
@@ -3742,7 +3742,7 @@ class _ExecuteMixin:
             self._validate_forward_sparameter_request()
         _line_stub_scope = _line_stub_admit(self, port_s11_freqs)
 
-        _solve_assembly = self._auto_preflight(skip=skip_preflight, context="forward", prepare=True, distributed=distributed)
+        _solve_assembly = self._auto_preflight(skip=skip_preflight, context="forward", prepare=True, distributed=distributed, tfsf_material_overrides=(eps_override, sigma_override, mu_r_override))
 
         # ---- (2,4) stencil fence: reject order=4 on unsupported lanes ----
         self._check_stencil_order_supported(distributed=distributed)
@@ -3757,7 +3757,7 @@ class _ExecuteMixin:
             checkpoint_segments=checkpoint_segments,
             emit_time_series=emit_time_series,
             checkpoint_every=checkpoint_every,
-            n_warmup=n_warmup,
+            n_warmup=n_warmup, tfsf_material_overrides=(eps_override, sigma_override, mu_r_override),
         )
         if _realized.ACTIVE is not None:
             _realized.enter(self, plan.lane)

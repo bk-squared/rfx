@@ -564,7 +564,7 @@ def _traced_product(conductors):
         (conductors.materials, conductors.pec_edges, conductors.assembly)))
 
 def auto_preflight(sim, *, skip=False, context="forward", check_ntff=True,
-                   conductors=None, prepare=False, distributed=False):
+                   conductors=None, prepare=False, distributed=False, tfsf_material_overrides=()):
     """Emit a UserWarning if preflight finds issues (issue #66).
 
     Called automatically at the start of ``forward()``, ``optimize()``,
@@ -594,8 +594,12 @@ def auto_preflight(sim, *, skip=False, context="forward", check_ntff=True,
     if assembly is not None:
         conductors = assembly.realized()
     # A validator bug must propagate, rather than become an advisory.
-    issues = sim._preflight_impl(strict=False, check_ntff=check_ntff,
-                                 _conductors=conductors)
+    if getattr(sim, "_tfsf", None) is not None and any(v is not None for v in tfsf_material_overrides):
+        issues = sim._preflight_impl(strict=False, check_ntff=check_ntff,
+            _conductors=conductors, _tfsf_material_overrides=tfsf_material_overrides)
+    else:
+        issues = sim._preflight_impl(strict=False, check_ntff=check_ntff,
+                                     _conductors=conductors)
     # gate -> this helper -> facade -> public entry -> user
     sim._run_preflight_gate(issues, context=context, stacklevel=5)
     return assembly

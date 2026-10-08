@@ -59,6 +59,16 @@ def main():
 
         tfsf.invariant = assume
         judge = "test_traced_override_is_admitted_with_unjudged_finding"
+    elif mode == "base-assembly-rejudged":
+        original = tfsf.admit_simulation
+
+        def ignore(sim, **kwargs):
+            kwargs.pop("material_overrides", None)
+            kwargs.pop("materials", None)
+            return original(sim, **kwargs)
+
+        tfsf.admit_simulation = ignore
+        judge = "test_concrete_override_replaces_finite_base_for_admission"
     elif mode == "legacy-document-becomes-explicit":
         serialization.restore_legacy_boundary = lambda sim: sim
         judge = "test_main_document_without_provenance"

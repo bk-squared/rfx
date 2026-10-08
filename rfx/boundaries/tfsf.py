@@ -161,7 +161,7 @@ def check_arrays(cfg, grid, values, *, localized=(), requirements=(), records=No
     return axes
 
 
-def admit_simulation(sim, *, root=None):
+def admit_simulation(sim, *, root=None, materials=None, material_overrides=()):
     """Dispatch and preflight use the production rasterization, never shapes."""
     if sim._tfsf is None or sim._tfsf.closed_box:
         return ()
@@ -176,6 +176,19 @@ def admit_simulation(sim, *, root=None):
                  "boundary_pec_shapes", "kerr_chi3")
         values = {names[i] if i < len(names) else f"assembly[{i}]": value
                   for i, value in enumerate(root.assembly)}
+        if materials is not None:
+            values["materials"] = materials
+        replacements = {name: value for name, value in
+                        zip(("eps_r", "sigma", "mu_r"), material_overrides)
+                        if value is not None}
+        # Match forward's replacement semantics, including removal of folded
+        # material views. Unoverridden components and conductors still count.
+        if "eps_r" in replacements:
+            replacements["eps_r_lumped"] = None
+        if "sigma" in replacements:
+            replacements["sigma_lumped"] = None
+        if replacements:
+            values["materials"] = values["materials"]._replace(**replacements)
         values.update(pec_edge_masks=root.pec_edges, sheet_impedance=root.sheet_impedance)
         return check_arrays(sim._tfsf, root.grid, values,
                             localized=tuple((name, getattr(sim, name, ())) for name in
@@ -185,13 +198,13 @@ def admit_simulation(sim, *, root=None):
                             records=grid_face_depths(root.grid, spec=sim._boundary_spec))
 
 
-def report(sim, issues, *, root=None):
+def report(sim, issues, *, root=None, material_overrides=()):
     from rfx.preflight._common import PreflightIssue
-    axes = admit_simulation(sim, root=root)
+    axes = admit_simulation(sim, root=root, material_overrides=material_overrides)
     if axes and not sim._uses_nonuniform_mesh:
         faces = ", ".join(f"{axis}_{side}" for axis in axes for side in ("lo", "hi"))
         issues.append(PreflightIssue(
-            f"TF/SF invariant faces {faces} are solved periodic, including their pads.",
+            f"TF/SF faces {faces} are solved periodic, including their pads.",
             severity="warning", code="tfsf_transverse_periodic"))
 
 

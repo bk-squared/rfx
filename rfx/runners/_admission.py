@@ -1016,7 +1016,7 @@ def admit(sim, lane: str, *, run_args=None, grid=None) -> None:
     from rfx.boundaries.features import admit_waveguide
     from rfx.boundaries.tfsf import admit_simulation
     admit_waveguide(sim, lane=lane)
-    admit_simulation(sim)
+    admit_simulation(sim, materials=(run_args or {}).get("tfsf_materials"))
 
 
 def refuse_plain_sources_s_matrix(sim, *, main_record=False):
