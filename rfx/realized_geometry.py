@@ -56,6 +56,11 @@ class EntityGeometry:
     node_count: int = 0
     edge_counts: tuple[int, ...] = ()
     edge_ranges: tuple = ()
+    radii_m: tuple[float, float] | None = None
+    declared_radii_m: tuple[float, float] | None = None
+    provenance: str | None = None
+    port_id: str | None = None
+    sampling: str | None = None
 
 
 @dataclass(frozen=True)
@@ -278,6 +283,9 @@ def _build_record(sim, ctx, *, compact=False):
                                         float(nodes[a][end] - nodes[a][plo]),
                                         (plo, phi), float(sim._domain[a])))
     entities.extend(_pinned_entities(sim, ctx, assembled, nodes, sizes, compact=compact))
+    if assembled.stamped_entities:
+        from rfx.model.coax import stamped_geometry_entities
+        entities.extend(stamped_geometry_entities(assembled, nodes, sizes, compact=compact))
     record = RealizedGeometry(tuple(entities), _ports(sim, ctx, assembled), tuple(domain),
                             tuple(_readonly(n) for n in nodes), tuple(_readonly(s) for s in sizes),
                             () if compact else tuple(_readonly(m) for m in assembled.edges),
@@ -394,6 +402,11 @@ def realized_geometry(sim):
     if cached is not None and cached[0] == key:
         return cached[1]
     from rfx.model.conductors import RealizedConductors, preview_port_stages
+    stamped = getattr(sim, '_coax_geometry', None)
+    if stamped is not None and stamped[0] is ctx:
+        record = _record_from_conductors_impl(sim, stamped[1], lane='coax', compact=False)
+        sim._realized_geometry_record = key, record
+        return record
     assembled = ctx.realized()
     if isinstance(assembled, RealizedConductors):
         record = _record_from_conductors_impl(
@@ -457,7 +470,7 @@ def _mask_ranges(mask):
 def _record_from_conductors_impl(sim, conductors, *, lane, compact=True):
     """Summarize the run's classifier outputs; never consult preflight caches."""
     from dataclasses import replace
-    from rfx.preflight.realization import _CampaignStaticsContext, _EntryRealization
+    from rfx.preflight.realization import context_from_conductors
     from rfx.core.jax_utils import is_tracer
     grid = conductors.grid
     if any(is_tracer(getattr(grid, name, None)) for name in ("dx_arr", "dy_arr", "dz")):
@@ -472,24 +485,7 @@ def _record_from_conductors_impl(sim, conductors, *, lane, compact=True):
     if any(id(entry) not in observed
            for entry in (*sim._geometry, *sim._thin_conductors)):
         return None
-    ctx = object.__new__(_CampaignStaticsContext)
-    ctx.sim, ctx.grid = sim, grid
-    ctx.lane = "nonuniform" if hasattr(grid, "dx_arr") else "uniform"
-    ctx.periodic = tuple(sim._periodic_flags()) if ctx.lane == "uniform" else (False, False, False)
-    ctx.assembly_error = ctx._assembly_exception = None
-    ctx._realized = conductors
-    products = {key: (cells, sheet, wire, shape) for key, cells, sheet, wire, shape in assembly_entries}
-    ctx._entries = []
-    for collection, prefix in ((sim._geometry, "geometry"), (sim._thin_conductors, "thin_conductor")):
-        for i, entry in enumerate(collection):
-            label = f"{prefix}[{i}]"
-            if id(entry) in products:
-                cells, sheet, wire, shape = products[id(entry)]
-                kind = "volume" if cells is not None else "sheet" if sheet is not None else "wire" if wire is not None else "lossy"
-                ctx._entries.append(_EntryRealization(label=label, name=getattr(entry, "material_name", label),
-                    shape=entry.shape, solved_shape=shape, kind=kind, cells=cells, sheet=sheet, wire=wire))
-            elif prefix == "thin_conductor":
-                ctx._entries.append(_EntryRealization(label=label, name=label, shape=entry.shape, kind="lossy"))
+    ctx = context_from_conductors(sim, conductors)
     record = _build_record(sim, ctx, compact=compact)
     record = replace(record, lane=lane, limitations=("refined region not represented",)
                      if lane == "run_subgridded" else ())

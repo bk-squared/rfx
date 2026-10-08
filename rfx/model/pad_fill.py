@@ -3,7 +3,7 @@ from rfx.core.jax_utils import is_tracer
 from rfx.geometry.rasterize_grid import assert_declared_span_is_filled
 
 
-def check_pad_fill(sim, grid, geometry_masks, *, record=None):
+def check_pad_fill(sim, grid, geometry_masks, *, record=None, conductors=None):
     """Use the same projected hi-face rule on uniform and graded grids."""
     if sim._boundary not in ("cpml", "upml") or sim._cpml_layers <= 0:
         return
@@ -14,6 +14,11 @@ def check_pad_fill(sim, grid, geometry_masks, *, record=None):
             assert_declared_span_is_filled(
                 entry.material_name, entry.shape, mask, grid,
                 sim._unresolved_domain, record=record)
+    # Stamped PEC volumes, like declared PEC, are not dielectric pad fills.
+    for entity in getattr(conductors, 'stamped_entities', ()):
+        if entity.kind == 'material':
+            assert_declared_span_is_filled(entity.entity_id, entity.shape,
+                entity.cells, grid, sim._unresolved_domain, record=record)
 
 
 def report_pad_fill(sim, issues):

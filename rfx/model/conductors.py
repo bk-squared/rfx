@@ -109,6 +109,8 @@ class RealizedConductors(_RealizedPEC):
     sheet_operator: object = None
     mode: str = "solve"
     assembly_from_sim: bool = True
+    stamped_entities: tuple = ()
+    stamp_check_findings: tuple = ()
 
     sheet_context = SheetConductors.sheet_context
     width_axes = conductor_width_axes
@@ -126,6 +128,48 @@ class RealizedConductors(_RealizedPEC):
         if self.pec_edges is None:
             return tuple(np.zeros(self.grid.shape, dtype=bool) for _ in range(3))
         return tuple(np.asarray(edge, dtype=bool) for edge in self.pec_edges)
+
+
+def coax_declared_conductors(sim, grid):
+    """Collect the transition's existing assembly, without a second assembly."""
+    sheets, wires, masks, entries = [], [], [], []
+    assembly = sim._assemble_materials(grid, pec_sheets=sheets, pec_wires=wires,
+                                      geometry_masks=masks, assembly_entries=entries)
+    return realized_conductors(sim, grid, assembly=assembly, pec_sheets=sheets,
+        pec_wires=wires, geometry_masks=masks, assembly_entries=entries)
+
+
+def coax_kernel_conductors(sim, grid, materials, cells, edges, entities, *, root=None,
+                           skip_preflight=False):
+    """Own the stamp and union AFTER the calculator's existing port operations.
+
+    No classification, sampling, material update or new acceptance gate occurs.
+    A concrete solve lends its last kernel product to realized_geometry(); a
+    traced solve must not leave a tracer in the simulation's diagnostic cache.
+    """
+    if root is None:
+        root = realized_conductors(sim, grid, assembly=(materials, None, None, None))
+    if root.pec_edges is not None:
+        edges = tuple(np.asarray(e) | np.asarray(m) for e, m in zip(edges, root.pec_edges))
+    cells = cells if root.pec_cells is None else np.asarray(root.pec_cells) | cells
+    root = replace(root, materials=materials, pec_cells=cells, pec_edges=edges,
+        stamped_entities=tuple(entities), provenance=root.provenance + (
+            ConductorStage(tuple(e.entity_id for e in entities), 'coax stamp'),))
+    sim._coax_geometry = None
+    sim._realized_geometry_record = None
+    if not _traced_product(root):
+        from rfx.model.coax import stamp_check_findings
+        ctx = None
+        try:
+            ctx = sim._campaign_ctx()
+            if not skip_preflight:
+                root = replace(root, stamp_check_findings=stamp_check_findings(sim, root))
+        except Exception as exc:
+            root = replace(root, stamp_check_findings=root.stamp_check_findings + (
+                ('read-failed', (type(exc).__name__, str(exc))),))
+        if ctx is not None:
+            sim._coax_geometry = (ctx, root)
+    return root
 
 
 def realized_conductors(sim, grid, *, nonuniform=False, assembly=None,
