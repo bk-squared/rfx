@@ -64,3 +64,22 @@ def test_a_source_still_on_at_the_end_is_not_read_as_ended():
     _, detail = settling_db_from_port_records([cfg], return_detail=True)
     assert detail["status"] == "undetermined"
     assert "source end is unavailable" in detail["reason"], detail["reason"]
+
+
+def test_before_first_step_leaves_every_record_and_count_unchanged():
+    from rfx.sources.waveguide_port import update_waveguide_port_probe
+    from rfx.core.yee import init_state
+
+    result = _guide().run(n_steps=2)
+    cfg = next(iter(result.waveguide_ports.values()))
+    grid = result.grid
+    state = init_state((grid.nx, grid.ny, grid.nz))._replace(step=0)
+    # Nonzero fields make an erroneous last-slot V/I write observable too.
+    state = state._replace(ey=state.ey + 1, hz=state.hz + 1)
+    names = ('v_probe_t', 'v_ref_t', 'i_probe_t', 'i_ref_t', 'v_inc_t')
+    before = {name: np.asarray(getattr(cfg, name)).copy() for name in names}
+    count = np.asarray(cfg.n_steps_recorded).copy()
+    out = update_waveguide_port_probe(cfg, state, grid.dt, grid.dx)
+    for name in names:
+        np.testing.assert_array_equal(np.asarray(getattr(out, name)), before[name], err_msg=name)
+    np.testing.assert_array_equal(np.asarray(out.n_steps_recorded), count)

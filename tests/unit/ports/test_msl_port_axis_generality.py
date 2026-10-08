@@ -707,7 +707,9 @@ def test_equivalence_harness_can_move():
 
     lat_c = L_LAT / 2.0
     w_bad = W_TRACE + DX
-    sim = Simulation(freq_max=F_MAX, domain=(L_LAT, L_PROP, LZ), dx=DX,
+    # Same snap mode as _thru, which it is compared with (#1138): without it
+    # the sheet-size preflight refuses the off-mesh trace and the control never runs.
+    sim = Simulation(snap="declared", freq_max=F_MAX, domain=(L_LAT, L_PROP, LZ), dx=DX,
                      cpml_layers=8,
                      boundary=BoundarySpec(x="cpml", y="cpml",
                                            z=Boundary(lo="pec", hi="cpml")))
