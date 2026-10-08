@@ -1967,10 +1967,8 @@ def make_current_source(grid: NonUniformGrid, position_ijk, component,
     Native amplitude convention (issue #571): ``'current'`` —
     ``amplitude_kind`` of None or ``'current'`` is bit-identical to the
     historical output (no extra multiply). ``amplitude_kind='field'``
-    rescales by ``dV/Cb`` via
-    ``rfx.api._source_semantics.source_amplitude_scale``, computed AFTER
-    the tracer-safe cb/dV resolution below so the GEO-C3
-    differentiable-material path is preserved unchanged.
+    returns the waveform directly, without reading a material coefficient.
+    The shared builder preserves the current drive's differentiable Cb/dV.
     """
     i, j, k = position_ijk
 
@@ -1993,22 +1991,14 @@ def make_current_source(grid: NonUniformGrid, position_ijk, component,
     materials_traced = (
         is_tracer(materials.eps_r) or is_tracer(materials.sigma)
     )
-    cb = e_update_coefficient_at(materials, (i, j, k), component, grid.dt, host=True, grid=grid)
+    from rfx.model.source_coefficients import source_table
     dV, grid_traced = current_source_volume(grid, (i, j, k), component)
     any_traced = materials_traced or grid_traced
-
-    # Normalized waveform: Cb * I(t) / dV
-    # This ensures power = ∫(J·E)dV is independent of cell size
-    waveform = (cb / dV) * current_source_samples(grid, waveform_fn, n_steps)
-
-    from rfx.api._source_semantics import needs_scale, source_amplitude_scale
-    if needs_scale(amplitude_kind, "cb_over_dv"):
-        # only 'field' lands here (scale dV/Cb). Python-level dispatch on
-        # the kind string (issue #571 dossier): cb/dV may be tracers on
-        # the GEO-C3 / mesh-as-design-variable paths, so never gate the
-        # multiply on the scale VALUE.
-        waveform = source_amplitude_scale(
-            amplitude_kind, "cb_over_dv", cb=cb, dV=dV) * waveform
+    waveform = source_table(
+        current_source_samples(grid, waveform_fn, n_steps), amplitude_kind,
+        native="cb_over_dv", volume=dV,
+        coefficient=lambda: e_update_coefficient_at(
+            materials, (i, j, k), component, grid.dt, host=True, grid=grid))
 
     waveform_out = waveform if any_traced else np.array(waveform)
     return (i, j, k, component, waveform_out)

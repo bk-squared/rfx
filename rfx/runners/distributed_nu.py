@@ -2904,11 +2904,8 @@ def run_nonuniform_distributed_pec(
     # arrays become whole-domain compiled constants on every device. Keep
     # their tracer-valued counterparts shared by all scans, including remat.
     def _drive_xs(xs, scales):
-        # (cb/dV) * I(t): the product make_current_source forms, per column.
-        steps, table = xs
-        for n, col in enumerate(drive_columns):
-            table = table.at[:, col].set(scales[n] * table[:, col])
-        return steps, table
+        from rfx.model.source_coefficients import scale_source_columns
+        return scale_source_columns(xs, scales, drive_columns)
 
     @jax.jit
     def run_fn(c0, invariants, warmup_xs, opt_xs, *, ranks, e_cell_sizes):

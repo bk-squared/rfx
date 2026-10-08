@@ -1428,7 +1428,7 @@ class _ExecuteMixin:
             sigma=jnp.broadcast_to(materials.sigma, grid.shape))
 
         dt = float(grid.dt * self._adi_cfl_factor)
-        times = jnp.arange(n_steps, dtype=jnp.float32) * dt
+        from rfx.model.source_coefficients import field_source_samples
 
         grid_out = copy.copy(grid)
         grid_out.dt = dt
@@ -1448,7 +1448,7 @@ class _ExecuteMixin:
             sources_3d = []
             for pe in self._ports:
                 i, j, k = grid.position_to_index(pe.position)
-                waveform = jax.vmap(pe.waveform)(times)
+                waveform = field_source_samples(pe.waveform, n_steps, dt)
                 sources_3d.append((i, j, k, pe.component, waveform))
 
             shape = grid.shape
@@ -1500,7 +1500,7 @@ class _ExecuteMixin:
         sources = []
         for pe in self._ports:
             i, j, _ = grid.position_to_index(pe.position)
-            waveform = jax.vmap(pe.waveform)(times)
+            waveform = field_source_samples(pe.waveform, n_steps, dt)
             sources.append((i, j, waveform))
 
         # The 2-D TMz lane carries only Ez, so its realized PEC mask is
@@ -3010,9 +3010,8 @@ class _ExecuteMixin:
         # cell. Such a source hands the runner its current I(t) and its dV,
         # and the runner builds Cb inside its jitted program from the staged
         # slabs its E update receives (``material_drive_scales``). Without an
-        # override, and for a 'field' source (whose amplitude is divided by
-        # the same Cb), the table is built here from the drawn materials as
-        # before.
+        # override, build the table here. A 'field' table is always the
+        # declared waveform, independent of drawn or overridden materials.
         _drive_from_override = (eps_override is not None
                                 or sigma_override is not None)
         sources: list[SourceSpec] = []

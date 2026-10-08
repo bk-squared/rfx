@@ -31,22 +31,11 @@ uniform + cpml/upml   ``Cb`` (NEITHER —     ``amplitude_kind='current'`` with 
                                             one float multiply/divide pair)
 ====================  ====================  =====================================
 
-The conversion FORMULA lives here and nowhere else. The source-building
-helpers (``rfx.simulation.make_source`` — native ``'raw'``,
-``rfx.simulation.make_j_source`` — native ``'cb'``,
-``rfx.nonuniform.make_current_source`` — native ``'cb_over_dv'``) each
-declare their native coefficient and, when :func:`needs_scale` says a
-conversion applies, multiply the waveform by
-:func:`source_amplitude_scale`. ``kind=None`` or a kind matching the
-native convention skips the multiply entirely, keeping legacy output
-bit-identical for internal callers.
-
-Tracer safety (issue #571 dossier): whether to apply the multiply is
-decided by :func:`needs_scale` on the PYTHON-LEVEL ``(kind, native)``
-string pair — never by comparing the scale VALUE, which may be a JAX
-tracer (``cb``/``dV`` are traced on the differentiable-materials /
-mesh-as-design-variable paths and ``scale != 1.0`` would raise
-``ConcretizationTypeError`` there).
+Product tables are built by ``rfx.model.source_coefficients.source_table``.
+It returns field samples directly, without coefficient cancellation, and
+preserves the historical current product order for each low-level native.
+``source_amplitude_scale`` remains the scalar conversion API for external
+callers; it is not used to construct product field tables.
 
 2D-grid convention: a 2D grid is treated as ONE CELL DEEP, so
 ``dV = dx * dy * dz_one_cell`` with the missing axes duck-typed to

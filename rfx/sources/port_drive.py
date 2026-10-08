@@ -46,7 +46,8 @@ def port_drive_waveform(grid, cell, component, excitation, n_steps, materials,
     else:
         times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
         samples = jax.vmap(excitation)(times)
-    return (cb * sigma_port * unit_field) * samples
+    from rfx.model.source_coefficients import source_table
+    return source_table(samples, native="cb", coefficient=cb * sigma_port * unit_field)
 
 
 class PortSourceQueue(list):

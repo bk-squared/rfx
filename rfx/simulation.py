@@ -377,28 +377,21 @@ def make_source(grid: Grid, position, component, waveform_fn, n_steps,
     Prefer ``make_j_source`` for resonance detection.
 
     Native amplitude convention (issue #571): ``'field'`` — ``E += w``.
-    ``amplitude_kind='current'`` rescales the waveform by ``Cb/dV`` via
-    ``rfx.api._source_semantics.source_amplitude_scale`` and REQUIRES
+    ``amplitude_kind='current'`` uses the shared source-table builder's
+    ``Cb/dV`` coefficient and REQUIRES
     ``materials`` (for Cb at the source cell). ``amplitude_kind`` of
     None or ``'field'`` is bit-identical to the historical output (no
     multiply is applied at all). ``materials`` is accepted and unused in
     that legacy/native case.
     """
-    from rfx.api._source_semantics import needs_scale, source_amplitude_scale
+    from rfx.model.source_coefficients import uniform_source_table
     idx = grid.position_to_index(position)
-    times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
-    waveform = jax.vmap(waveform_fn)(times)
-    if needs_scale(amplitude_kind, "raw"):
-        # only 'current' lands here
-        if materials is None:
-            raise ValueError(
-                "make_source(amplitude_kind='current') needs materials "
-                "for the Cb normalization at the source cell")
-        scale = source_amplitude_scale(
-            amplitude_kind, "raw",
-            cb=_source_cell_cb(grid, idx, materials, component),
-            dV=_uniform_cell_volume(grid))
-        waveform = scale * waveform
+    if amplitude_kind == "current" and materials is None:
+        raise ValueError(
+            "make_source(amplitude_kind='current') needs materials "
+            "for the Cb normalization at the source cell")
+    waveform = uniform_source_table(
+        grid, idx, component, waveform_fn, n_steps, materials, amplitude_kind)
     return SourceSpec(i=idx[0], j=idx[1], k=idx[2],
                       component=component, waveform=waveform)
 
@@ -422,8 +415,8 @@ def make_j_source(grid: Grid, position, component, waveform_fn, n_steps, materia
 
     Native amplitude convention (issue #571): ``'cb'`` — ``E += Cb*w`` —
     which is NEITHER named kind (the legacy open-uniform third contract).
-    ``amplitude_kind='current'`` rescales by ``1/dV``, ``'field'`` by
-    ``1/Cb``, both via ``rfx.api._source_semantics.source_amplitude_scale``.
+    ``amplitude_kind='current'`` uses ``Cb*w/dV``; ``'field'`` returns the
+    waveform directly through the shared source-table builder.
     None is bit-identical to the historical output (no multiply applied).
 
     Parameters
@@ -436,26 +429,12 @@ def make_j_source(grid: Grid, position, component, waveform_fn, n_steps, materia
     materials : MaterialArrays (for Cb computation at source cell)
     amplitude_kind : 'field' | 'current' | None (issue #571, above)
     """
-    from rfx.api._source_semantics import needs_scale, source_amplitude_scale
+    from rfx.model.source_coefficients import uniform_source_table
     idx = grid.position_to_index(position)
     i, j, k = idx
-    cb = _source_cell_cb(grid, idx, materials, component)
-
-    times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
-    # Cb normalization: the source enters the update equation through
-    # the Cb coefficient (dt/eps/(1+loss)). This ensures:
-    # 1. No DC accumulation on PEC (Cb scales with dt)
-    # 2. Proper coupling to cavity modes
-    # Power scales as Cb²·dx³ — weaker at fine grids, but Harminv
-    # with bandpass filtering reliably extracts modes at all resolutions.
-    waveform = cb * jax.vmap(waveform_fn)(times)
-    if needs_scale(amplitude_kind, "cb"):
-        # Python-level dispatch (issue #571 dossier): the scale may be a
-        # tracer ('field' -> 1/Cb with traced materials), so never gate
-        # the multiply on its value.
-        waveform = source_amplitude_scale(
-            amplitude_kind, "cb", cb=cb,
-            dV=_uniform_cell_volume(grid)) * waveform
+    waveform = uniform_source_table(
+        grid, idx, component, waveform_fn, n_steps, materials, amplitude_kind,
+        native="cb")
     return SourceSpec(i=i, j=j, k=k,
                       component=component, waveform=waveform)
 

@@ -9,15 +9,12 @@ from dataclasses import replace
 import numpy as np
 from rfx import _realized
 
-import jax
 import jax.numpy as jnp
 
 from rfx.core.yee import EPS_0, MU_0
 from rfx.probes.probes import PreDecisionLumpedDiagonalWarning
 from rfx.grid import Grid
 from rfx.sources.sources import stamp_lumped_sigma as _stamp_lumped_sigma
-from rfx.core.yee import cell_component_e_coeffs as _cell_component_e_coeffs
-from rfx.sources.port_drive import port_drive_waveform
 
 
 def _run_subgridded_once(
@@ -258,9 +255,7 @@ def _run_subgridded_once(
         return idx
 
     # Build sources on fine grid
-    sources_f = []
-    sources_c = []
-    times = jnp.arange(n_steps, dtype=jnp.float32) * dt
+    source_requests = []
     # Local x/y windows keep an overlapping coarse shadow grid.  The validated
     # central-source lane therefore co-injects soft sources on that coarse
     # shadow by default; explicit source/projection knobs remain diagnostic
@@ -391,50 +386,7 @@ def _run_subgridded_once(
 
     for pe in sim._ports:
         if pe.impedance == 0.0:
-            # Soft source — normalization depends on boundary type:
-            # PEC: raw field add (matches make_source in uniform runner)
-            # CPML/UPML: J-source Cb normalized (matches make_j_source)
-            # amplitude_kind (issue #571) rides on top: the native
-            # coefficient stays boundary-selected exactly as before; an
-            # explicit kind only rescales the waveform. kind=None is the
-            # legacy bit-identical no-op (needs_scale dispatches on the
-            # Python-level kind string — never on a scale value).
-            from rfx.api._source_semantics import (
-                needs_scale, source_amplitude_scale)
-            idx = _pos_to_fine_idx(pe.position)
-            i, j, k = idx
-            raw_waveform = jax.vmap(pe.waveform)(times)
-            native = "cb" if sim._boundary in ("cpml", "upml") else "raw"
-            if native == "cb" or needs_scale(pe.amplitude_kind, native):
-                # #1210: the drive coefficient is the E update's own per-component Cb.
-                cb = float(_cell_component_e_coeffs(
-                    mats_f, idx, pe.component, dt)[1])
-            else:
-                cb = None  # not needed on the raw no-conversion path
-            waveform = cb * raw_waveform if native == "cb" else raw_waveform
-            if needs_scale(pe.amplitude_kind, native):
-                # dV on the fine grid: cubic cells, one cell deep is moot
-                # (3D); dx_f**3 = dx*dy*dz duck convention (#571).
-                waveform = source_amplitude_scale(
-                    pe.amplitude_kind, native, cb=cb, dV=dx_f ** 3) * waveform
-            sources_f.append(
-                (
-                    i,
-                    j,
-                    k,
-                    pe.component,
-                    np.array(waveform) * fine_source_scale,
-                )
-            )
-            if inject_sources_on_coarse_shadow:
-                sources_c.extend(
-                    _coarse_shadow_source_entries(
-                        pe.position,
-                        idx,
-                        pe.component,
-                        waveform,
-                    )
-                )
+            source_requests.append((pe, _pos_to_fine_idx(pe.position), None))
             continue
 
         # Port conductance -> sigma. The general axis-aware form is
@@ -457,15 +409,10 @@ def _run_subgridded_once(
                 if pec_mask_f is not None:
                     pec_mask_f = pec_mask_f.at[i, j, k].set(False)
 
-            # Precompute Cb-corrected waveforms
             if pe.excite and pe.waveform is not None:
-                for cell in cells:
-                    i, j, k = cell
-                    waveform = port_drive_waveform(
-                        fine_grid, cell, pe.component, pe.waveform, n_steps,
-                        mats_f, sigma_port=sigma_port_per_cell,
-                        unit_field=1 / (n_cells * dx_f))
-                    sources_f.append((i, j, k, pe.component, np.array(waveform)))
+                source_requests.extend(
+                    (pe, cell, (sigma_port_per_cell, 1 / (n_cells * dx_f)))
+                    for cell in cells)
         else:
             # Lumped port
             idx = _pos_to_fine_idx(pe.position)
@@ -477,10 +424,15 @@ def _run_subgridded_once(
                 pec_mask_f = pec_mask_f.at[i, j, k].set(False)
 
             if pe.excite and pe.waveform is not None:
-                waveform = port_drive_waveform(
-                    fine_grid, idx, pe.component, pe.waveform, n_steps, mats_f,
-                    sigma_port=sigma_port, unit_field=1 / dx_f)
-                sources_f.append((i, j, k, pe.component, np.array(waveform)))
+                source_requests.append((pe, idx, (sigma_port, 1 / dx_f)))
+
+    from rfx.model.source_coefficients import subgrid_source_tables
+    sources_f, sources_c = subgrid_source_tables(
+        source_requests, fine_grid, mats_f, n_steps,
+        native="cb" if sim._boundary in ("cpml", "upml") else "raw",
+        fine_scale=fine_source_scale, volume=dx_f ** 3,
+        shadow_entries=(_coarse_shadow_source_entries
+                        if inject_sources_on_coarse_shadow else None))
 
     # Build probes on fine grid
     probe_indices_f = []
