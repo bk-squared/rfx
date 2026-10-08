@@ -318,7 +318,7 @@ def test_simulation_adi_default_refuses_internal_pec_geometry():
         dx=dx,
     )
     sim.add(Box((0.008, 0.008, 0.0), (0.012, 0.012, 0.01)), material="pec")
-    sim.add_source((0.01, 0.01, 0.0), "ez", amplitude_kind="field")
+    sim.add_source((0.004, 0.006, 0.005), "ez", amplitude_kind="field")
     sim.add_probe((0.01, 0.01, 0.0), "ez")
 
     # Build-time (no solve): drawn extent == realized extent in x and y.

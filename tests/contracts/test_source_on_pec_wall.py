@@ -11,7 +11,7 @@ import pytest
 
 from rfx import Box, Simulation
 from rfx.boundaries import pec
-from rfx.boundaries.spec import BoundarySpec
+from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.core.yee import FDTDState
 from rfx.model import source_admission as admission
 from rfx.model.conductors import realized_conductors, solve_conductors
@@ -155,6 +155,30 @@ def test_b3_mixed_record(path):
     sim.add_source((0, 7 * DX, 5 * DX), 'ez', amplitude_kind='current')
     with pytest.raises(ValueError, match='x_lo'):
         execute(sim, path)
+
+
+@pytest.mark.parametrize('path', ('uniform_run', 'uniform_forward', 'graded_run', 'graded_forward'))
+@pytest.mark.parametrize('component', ('ex', 'ey'))
+def test_z_lo_pec_other_faces_cpml_refuses(path, component):
+    sim = model(path, boundary=BoundarySpec(x='cpml', y='cpml',
+                                            z=Boundary(lo='pec', hi='cpml')))
+    sim.add_source((6 * DX, 7 * DX, 0), component, amplitude_kind='current')
+    with pytest.raises(ValueError, match='z_lo') as exc:
+        execute(sim, path)
+    assert 'shorted' in str(exc.value)
+
+
+@pytest.mark.parametrize('path', ('uniform_run', 'uniform_forward', 'graded_run', 'graded_forward'))
+def test_z_lo_pec_other_faces_cpml_admits_cpml_source(path):
+    """The same mixed box admits its CPML-face source; evidence checks base bits."""
+    sim = model(path, boundary=BoundarySpec(x='cpml', y='cpml',
+                                            z=Boundary(lo='pec', hi='cpml')))
+    sim.add_source((0, 7 * DX, 5 * DX), 'ez', amplitude_kind='current')
+    sim.add_probe((4 * DX, 7 * DX, 5 * DX), 'ez')
+    sim.add_probe((13 * DX, 9 * DX, 4 * DX), 'ez')
+    result = execute(sim, path, steps=2)
+    assert np.asarray(result.time_series).shape == (2, 2)
+    assert np.all(np.isfinite(result.time_series))
 
 
 CONTROL_PATHS = [(path, case) for path in PATHS

@@ -95,6 +95,7 @@ def _dead_sources(sim, conductors):
         if wall_faces:
             yield (message + f"Declared PEC wall face(s): {', '.join(wall_faces)}. "
                    f"Realized driven indices: {cells}. "
+                   "This declaration raises because its tangential E edges in a PEC wall are shorted. "
                    "Move it at least one cell off the wall, or orient it normal to the wall.")
         else:
             if source.extent is not None:
