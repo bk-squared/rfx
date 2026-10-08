@@ -578,6 +578,7 @@ def extend_shapes_into_cpml_pad(
 
 def _declared_conductor_lattice(sim, grid, shape, coords):
     """Classify once on the same lattice the assembler uses, before growth."""
+    from rfx.geometry.csg import Box
     from rfx.geometry.rasterize_grid import (
         cell_centres_from_nodes, cell_sizes_from_nonuniform_grid,
         cell_sizes_from_uniform_grid, classify_pec_entry, sheet_spec_from_shape)
@@ -594,6 +595,10 @@ def _declared_conductor_lattice(sim, grid, shape, coords):
                 sheet = sheet_spec_from_shape(
                     shape, coords, sizes, name=name, refuse_thick=True, grid=grid)
                 return [(np.asarray(sheet.footprint), (False, False, False))]
+            if not isinstance(shape, Box):
+                from rfx.model.thin_conductors import admit_dc_film
+                film = admit_dc_film(shape, grid, snap=sim._snap, emit=False)
+                return [(np.asarray(film.mask), (False, False, False))]
             if getattr(grid, 'periodic_axes', ''):
                 from rfx.materials.thin_conductor import _thin_conductor_cell_mask
                 return [(np.asarray(_thin_conductor_cell_mask(shape, grid)),

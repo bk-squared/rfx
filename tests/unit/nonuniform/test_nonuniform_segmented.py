@@ -23,6 +23,7 @@ import numpy as np
 import pytest
 
 from rfx import Simulation
+from tests.contracts.path_equivalence.comparison import compare
 
 
 def _build_sim():
@@ -47,7 +48,7 @@ def test_segmented_forward_matches_plain(n_steps, chunk):
         sim.forward(n_steps=n_steps, checkpoint_every=chunk).time_series
     )
     assert ts_plain.shape == ts_seg.shape
-    np.testing.assert_allclose(ts_plain, ts_seg, rtol=1e-5, atol=1e-10)
+    compare(ts_plain, ts_seg, record="graded.segmented_probe", kind="step", measurements=[])
 
 
 def test_segmented_grad_matches_plain():

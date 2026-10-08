@@ -46,6 +46,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+import jax
 import jax.numpy as jnp
 
 from rfx.grid import Grid
@@ -234,8 +235,18 @@ class ThinConductor:
         ``sigma_bulk`` a legal differentiable DoF in f0 mode. Pinned by
         tests/unit/materials/test_thin_conductor.py (is_pec-order pin).
         """
-        return (self.surface_impedance_f0 is None) and (
-            self.sigma_bulk >= _PEC_SIGMA_THRESHOLD)
+        from rfx.core.jax_utils import is_tracer
+        if self.surface_impedance_f0 is not None:
+            return False
+        if is_tracer(self.sigma_bulk):
+            try:
+                return bool(self.sigma_bulk >= _PEC_SIGMA_THRESHOLD)
+            except jax.errors.TracerBoolConversionError as exc:
+                raise ValueError(
+                    'sigma_bulk: the PEC/lossy class cannot be decided for an '
+                    'abstract value; keep sigma_bulk concrete or differentiate '
+                    'without jit.') from exc
+        return self.sigma_bulk >= _PEC_SIGMA_THRESHOLD
 
     @property
     def r_s_leontovich(self):
@@ -424,6 +435,7 @@ def apply_thin_conductor(
     sheets: list | None = None,
     geometry_masks: list | None = None,
     geometry_key: int | None = None,
+    snap: str = 'strict',
 ) -> tuple[MaterialArrays, jnp.ndarray | None]:
     """Apply thin conductor subcell correction to material arrays.
 
@@ -460,7 +472,7 @@ def apply_thin_conductor(
     from rfx.model.thin_conductors import fold_thin_conductor
     return fold_thin_conductor(
         grid, conductor, materials, pec_mask, sheet_specs=sheet_specs,
-        sheets=sheets, geometry_masks=geometry_masks, geometry_key=geometry_key)
+        sheets=sheets, geometry_masks=geometry_masks, geometry_key=geometry_key, snap=snap)
 
 
 # ---------------------------------------------------------------------------

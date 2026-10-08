@@ -30,6 +30,7 @@ from rfx.api import Simulation
 from rfx.geometry.csg import Box
 from rfx.probes.probes import DFTPlaneProbe
 from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff
+from tests.contracts.path_equivalence.comparison import compare
 from tests._printed_numbers import agrees, printed_after
 
 # ---------------------------------------------------------------------------
@@ -357,9 +358,9 @@ def test_live_thru_eps_override_matches_the_plain_call():
     RUNNERS land on the same S once the post-processing no longer differs.
 
     MEASURED (CPU float32, freqs 2-18 GHz x 4, num_periods=2.0): max|dS| =
-    6.664e-08 across the 16 complex entries, no entry outside rtol=1e-5 /
-    atol=1e-7. That residual is the two lanes' float32 arithmetic, not the
-    projection.
+    6.664e-08 across the 16 complex entries. That residual is the two lanes'
+    float32 arithmetic, not the projection; the bar is the cross-trace one
+    for a quantity summed over the record (1e-4 of the peak).
 
     WHAT THIS TEST CANNOT SEE, measured rather than assumed: restoring
     ``enforce_passivity: bool = True`` moves the plain call's S here by only
@@ -382,8 +383,8 @@ def test_live_thru_eps_override_matches_the_plain_call():
             eps_override=_noop_eps_override(sim))
 
     assert plain.S_raw is None, "the plain call must return the raw extraction"
-    np.testing.assert_allclose(np.asarray(override.S), np.asarray(plain.S),
-                               rtol=1e-5, atol=1e-7)
+    compare(override.S, plain.S, record="msl_thru_s.forward_vs_run",
+            kind="accumulated", measurements=[])
 
 
 def test_the_raw_path_warning_has_a_rounding_floor():

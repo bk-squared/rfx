@@ -23,6 +23,7 @@ import numpy as np
 
 from rfx import GaussianPulse, Simulation
 from rfx.geometry import Box
+from tests.contracts.path_equivalence.comparison import compare
 
 
 def _pec_sim():
@@ -53,7 +54,7 @@ def test_forward_wrappable_in_outer_jit():
     eager = float(loss(eps))
     jitted = float(jax.jit(loss)(eps))  # must not raise
     assert np.isfinite(jitted)
-    assert abs(eager - jitted) <= 1e-6 * (abs(eager) + 1e-12), (eager, jitted)
+    compare(jitted, eager, record="pec_box.jit_value_vs_eager", kind="accumulated", measurements=[])
 
 
 def test_grad_wrappable_in_outer_jit():
@@ -91,7 +92,7 @@ def test_real_interior_pec_under_outer_jit_matches_eager():
     loss = _reflected_energy_loss(s)
     eager = float(loss(eps))
     jitted = float(jax.jit(loss)(eps))
-    assert abs(eager - jitted) <= 1e-5 * (abs(eager) + 1e-12), (eager, jitted)
+    compare(jitted, eager, record="interior_pec.jit_value_vs_eager", kind="accumulated", measurements=[])
     g_plain = jax.grad(loss)(eps)
     g_jit = jax.jit(jax.grad(loss))(eps)
     assert np.allclose(np.asarray(g_plain), np.asarray(g_jit), rtol=3e-4, atol=1e-6)

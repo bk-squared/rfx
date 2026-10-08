@@ -351,8 +351,8 @@ def test_distributed_releases_dense_products_before_staging(monkeypatch, graded,
     import jax
     import weakref
     import rfx.model.conductors as products
-    import rfx.runners._distributed_common as common
-    import rfx.runners.distributed_nu as nu
+    import rfx.runners.distributed_v2 as common
+    import rfx.stepping.slab as nu
     if len(jax.devices()) < 2:
         return two_device_test()
     sim = build(('_geometry', 'pec_volume'), 'run_nonuniform' if graded else 'run_uniform',
@@ -375,7 +375,7 @@ def test_distributed_releases_dense_products_before_staging(monkeypatch, graded,
 
     monkeypatch.setattr(products, 'realized_conductors', build_product)
     monkeypatch.setattr(products, 'at_kernel', kernel)
-    module, name = (nu, 'stage_concrete_forward_array') if graded else (common, 'shard_x_slabs')
+    module, name = (nu if graded else common), 'cut'
     original_stage = getattr(module, name)
     staged = []
 

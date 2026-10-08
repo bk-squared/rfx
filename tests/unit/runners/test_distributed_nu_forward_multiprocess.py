@@ -28,6 +28,7 @@ import pytest
 
 from rfx.runners import distributed_nu as nu
 from rfx.runners import _rank as rank_adapter
+from rfx.stepping import slab as slab_placement
 from tests.unit.runners.test_distributed_nu_forward_arguments import loop_program as _loop_program
 from tests.unit.runners.test_distributed_nu_forward_staging import _model
 
@@ -167,7 +168,7 @@ def _mutate(kind):
         # Keep the module globals so the closure gate can instrument jit/scan.
         exec(source, vars(nu))
     elif kind == "halo":
-        original = nu.stage_sharded_forward_override
+        original = slab_placement._halo
 
         def no_halo(arr, sg, mesh, pad_value):
             result = original(arr, sg, mesh, pad_value)
@@ -175,7 +176,7 @@ def _mutate(kind):
                                 mesh=mesh, in_specs=nu.P("x"), out_specs=nu.P("x"),
                                 check_rep=False)(result)
 
-        nu.stage_sharded_forward_override = no_halo
+        slab_placement._halo = no_halo
     elif kind == "whole":
         retained = []
 
@@ -184,9 +185,9 @@ def _mutate(kind):
             # through the loop, as happens when a caller owns the local design.
             local = jnp.asarray(np.asarray(arr), device=jax.devices()[0])
             retained.append(local)
-            return nu.stage_forward_array_x_slab(local[:sg.nx], sg, mesh, pad_value)
+            return slab_placement.cut(local[:sg.nx], sg, pad_value, mesh=mesh)
 
-        nu.stage_sharded_forward_override = copy_whole
+        slab_placement._halo = copy_whole
     else:
         raise AssertionError(kind)
 

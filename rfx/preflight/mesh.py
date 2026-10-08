@@ -781,16 +781,7 @@ def _validate_cfg_thin_conductor_graded_node(self, _w) -> None:
         return
 
     for i, tc in enumerate(tcs):
-        # Bounds source (issue #674): a surface-impedance sheet may be any
-        # ``mask_on_coords`` shape, so read its bounding box; the legacy DC
-        # fold is still Box-only on this lane (it warn-and-skips a non-Box
-        # sheet), and advising about a sheet that is not folded would be
-        # worse than silence.
-        if getattr(tc, "surface_impedance_f0", None) is not None:
-            lo, hi = sheet_bounds(tc.shape)
-        else:
-            lo = getattr(tc.shape, "corner_lo", None)
-            hi = getattr(tc.shape, "corner_hi", None)
+        lo, hi = sheet_bounds(tc.shape)
         if lo is None or hi is None:
             continue
         extents = [float(hi[a]) - float(lo[a]) for a in range(3)]
@@ -826,8 +817,17 @@ def _validate_cfg_thin_conductor_graded_node(self, _w) -> None:
 
         # Bounding-box centre first — for a Box that is the whole story,
         # and it is bit-identically the probe this check has always run.
-        hit = _occupied_layers((0.5,))
-        if hit.size == 0:
+        from rfx.geometry.csg import Box
+        dc_film = tc.surface_impedance_f0 is None and not isinstance(tc.shape, Box)
+        if dc_film:
+            from rfx.model.thin_conductors import admit_dc_film
+            grid = self._build_realized_grid()
+            film = admit_dc_film(tc.shape, grid, snap=self._snap, emit=False)
+            hit = np.flatnonzero(np.asarray(film.mask).any(axis=_other))
+            hit = hit - int(getattr(grid, f'pad_{"xyz"[n_axis]}_lo'))
+        else:
+            hit = _occupied_layers((0.5,))
+        if hit.size == 0 and not dc_film:
             # #674: a PATTERNED sheet can have its bbox centre inside a
             # clearance hole, which would read as "no sheet here" and
             # silently drop the advisory. Fan out before giving up.

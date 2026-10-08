@@ -10,7 +10,7 @@ import xml.etree.ElementTree as ET
 
 
 def crash_nodeid(problem: ET.Element) -> str | None:
-    """xdist crash reports are pytest setup errors, not arbitrary failure text."""
+    """xdist 3.8 / pytest 9.1 encode all crash phases as setup errors in XML."""
     text = problem.text or ""
     match = re.fullmatch(r"worker 'gw[0-9]+' crashed while running '(.+)'", text)
     if (problem.tag == "error" and match
@@ -30,14 +30,16 @@ def junit_key(node: str) -> tuple[str, str]:
 
 def classify(status: int, report: Path, collection: Path, must_run: list[str] | None = None) -> dict:
     result = dict(outcome="FAIL", files=[], nodes=[], must_run=[], never_executed=[],
-                  collected=0, reported=0, parallel=False)
+                  collected=0, reported=0, parallel=False, collection_skips=0, skipped_collectors=[],
+                  diagnostics=[])
     required = set(must_run or [])
     result["never_executed"] = sorted(required)
     if status == 5:
         result["outcome"] = "FAIL" if required else "NOTHING"
         return result
     try:
-        records = [json.loads(p.read_text()) for p in sorted(collection.glob("*.json"))]
+        paths = sorted(collection.glob("*.json"))
+        records = [json.loads(p.read_text()) for p in paths]
         if not records or not records[0]:
             return result
         if any(not isinstance(r, list) or r != records[0] for r in records):
@@ -47,8 +49,27 @@ def classify(status: int, report: Path, collection: Path, must_run: list[str] | 
             return result
         keys = {junit_key(n): n for n in nodes}
         if len(keys) != len(nodes):
+            result["diagnostics"].append(f"ambiguous collected nodeids: {nodes!r}")
             return result  # Ambiguous JUnit names cannot prove execution coverage.
         result["collected"] = len(nodes)
+        skip_records = [json.loads(p.with_suffix(".skips").read_text())
+                        if p.with_suffix(".skips").exists() else [] for p in paths]
+        if any(not isinstance(r, list) or r != skip_records[0] for r in skip_records):
+            result["diagnostics"].append("inconsistent collection skip records")
+            return result
+        skips = {}
+        skip_names = {}
+        for record in skip_records[0]:
+            if (not isinstance(record, list) or len(record) != 2
+                    or any(not isinstance(value, str) for value in record)):
+                result["diagnostics"].append(f"invalid collection skip: {record!r}")
+                return result
+            key = junit_key(record[0])
+            if key in keys or key in skips:
+                result["diagnostics"].append(f"ambiguous collection skip: {record[0]}")
+                return result
+            skips[key] = record[1]
+            skip_names[key] = record[0]
         root = ET.parse(report).getroot()
         suites = list(root.iter("testsuite"))
         if not suites:
@@ -58,19 +79,42 @@ def classify(status: int, report: Path, collection: Path, must_run: list[str] | 
         if declared != len(problems):
             return result
         seen = set()
+        seen_skips = set()
         successful = set()
+        problem_nodes = {}
         for case in root.iter("testcase"):
-            node = keys.get((case.get("classname"), case.get("name")))
+            key = (case.get("classname"), case.get("name"))
+            node = keys.get(key)
             if node is None:
-                return result
+                skipped = case.find("skipped")
+                if (key in skips and len(case) == 1 and skipped is not None
+                        and skipped.get("message") == "collection skipped"
+                        and skipped.text == skips[key]):
+                    seen_skips.add(key)
+                    result["collection_skips"] = len(seen_skips)
+                    result["skipped_collectors"] = sorted(skip_names[k] for k in seen_skips)
+                    continue
+                result["diagnostics"].append(f"unaccounted testcase: classname={key[0]!r}, name={key[1]!r}")
+                continue
             seen.add(node)
+            for problem in list(case.iter("error")) + list(case.iter("failure")):
+                problem_nodes[problem] = node
+                crash = crash_nodeid(problem)
+                if crash is not None and crash != node:
+                    result["diagnostics"].append(f"crash nodeid {crash!r} disagrees with testcase {node!r}")
             if not list(case.iter("error")) and not list(case.iter("failure")):
                 successful.add(node)
         result["reported"] = len(seen)
         result["never_executed"] = sorted(required - successful)
+        for key in skips.keys() - seen_skips:
+            result["diagnostics"].append(f"unreported collection skip: {key!r}")
+        if result["diagnostics"]:
+            return result
         if status == 0:
             if not problems and successful == set(nodes) and not result["never_executed"]:
                 result["outcome"] = "PASS"
+            for node in sorted(set(nodes) - seen):
+                result["diagnostics"].append(f"unreported collected nodeid: {node}")
             return result
         if status != 1:
             return result
@@ -79,7 +123,10 @@ def classify(status: int, report: Path, collection: Path, must_run: list[str] | 
         crashed = []
         for problem in problems:
             node = crash_nodeid(problem)
-            if node not in nodes:
+            if node not in nodes or problem_nodes.get(problem) != node:
+                result["diagnostics"].append(
+                    f"unrecognised problem: {problem.tag} {problem.get('message')!r}; "
+                    f"testcase={problem_nodes.get(problem)!r}, crash nodeid={node!r}")
                 return result
             if node not in crashed:
                 crashed.append(node)
@@ -89,8 +136,8 @@ def classify(status: int, report: Path, collection: Path, must_run: list[str] | 
                       must_run=sorted(set(crashed) | (set(nodes) - seen)),
                       files=sorted(crash_files | missing_files),
                       parallel=bool(missing_files - crash_files))
-    except (OSError, ET.ParseError, ValueError, TypeError):
-        pass
+    except (OSError, ET.ParseError, ValueError, TypeError) as error:
+        result["diagnostics"].append(f"invalid evidence: {error}")
     return result
 
 
@@ -108,6 +155,11 @@ def main() -> int:
     args.output.with_suffix(".files").write_text("".join(f"{p}\n" for p in result["files"]))
     args.output.with_suffix(".mode").write_text("parallel" if result["parallel"] else "serial")
     print(f'collected {result["collected"]}; results {result["reported"]}; {result["outcome"]}')
+    for diagnostic in result["diagnostics"]:
+        print(diagnostic)
+    for node in result["skipped_collectors"]:
+        # A selected module skipped wholesale at collection ran nothing: say so on every outcome.
+        print(f"collection skip accepted (no test of it ran): {node}")
     for node in result["nodes"]:
         print(f"worker crash: {node}")
     for node in result["never_executed"]:

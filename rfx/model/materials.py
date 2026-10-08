@@ -484,7 +484,7 @@ def _fold_thin_conductors(sim, grid, materials, pec_mask, pec_shapes, pec_sheets
             sim, grid, declared.shape, entry=declared, unextendable=findings))
         materials, pec_mask = apply_thin_conductor(
             grid, tc, materials, pec_mask=pec_mask, sheet_specs=sheet_specs,
-            sheets=pec_sheets, geometry_masks=geometry_masks, geometry_key=key)
+            sheets=pec_sheets, geometry_masks=geometry_masks, geometry_key=key, snap=sim._snap)
         if assembly_entries is not None:
             assembly_entries.append((key, None, pec_sheets[-1] if tc.is_pec else None,
                                      None, tc.shape))

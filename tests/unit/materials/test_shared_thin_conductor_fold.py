@@ -133,13 +133,16 @@ def test_overlap_order_and_paths():
 
 
 def test_dc_nonbox_admission_stays_path_specific():
-    sim, grid = build('disc', radius=.4)
-    sigma = products(sim, grid)['materials.sigma']
-    assert np.count_nonzero(sigma) > 0
-    np.testing.assert_array_equal(sigma[sigma != 0], 1000 * .1)
-    sim, grid = build('disc', True, radius=.4)
-    with pytest.raises(NotImplementedError, match="non-Box shape"):
-        products(sim, grid, True)
+    """DC admission declaration replaces the old per-path tiny-disc asymmetry."""
+    for nonuniform in (False, True):
+        sim, grid = build('disc', nonuniform, radius=.4)
+        with pytest.raises(ValueError, match='Cylinder.*A_d=.*A_r='):
+            products(sim, grid, nonuniform)
+        sim._snap = 'declared'
+        with pytest.warns(UserWarning, match='Cylinder.*A_d=.*A_r='):
+            sigma = products(sim, grid, nonuniform)['materials.sigma']
+        assert np.count_nonzero(sigma) > 0
+        np.testing.assert_array_equal(sigma[sigma != 0], 1000 * .1)
 
 
 @pytest.mark.parametrize('kind', ('dc', 'f0'))

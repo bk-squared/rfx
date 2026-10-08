@@ -10,6 +10,7 @@ import pytest
 
 from rfx import Box, GaussianPulse
 from tests._x64_compat import enable_x64
+from tests.contracts.path_equivalence.comparison import compare
 from tests.unit.autodiff.test_design_box_tape import (
     _sim, _box_cells, _eps_design, BOX_LO, BOX_HI, F0,
 )
@@ -102,7 +103,13 @@ def test_g1_eps(precision, lossy, point):
         err = errors(results[1][1], results[0][1])[0]
         print(f"G1 eps {precision=} {lossy=} {point=} {settling=} error={err}", flush=True)
         assert settling["decay_db"] >= 100
-        np.testing.assert_allclose(results[0][0], results[1][0], rtol=1e-6)
+        # Two traces of one objective summed over the record: float64 keeps 1e-6;
+        # float32 takes the cross-trace bar for a summed quantity.
+        if precision == "float64":
+            np.testing.assert_allclose(results[0][0], results[1][0], rtol=1e-6)
+        else:
+            compare(results[0][0], results[1][0], record="g1_eps.value",
+                    kind="accumulated", measurements=[])
         assert err <= (1e-5 if precision == "float64" else 1e-4)
 
 
@@ -136,7 +143,13 @@ def test_g1_sigma(precision, lossy, point):
                    for mode in ("autodiff", "adjoint")]
         err = errors(results[1][1], results[0][1])
         print(f"G1 {precision=} {lossy=} {point=} values={[float(r[0]) for r in results]} errors={err}", flush=True)
-        np.testing.assert_allclose(results[0][0], results[1][0], rtol=1e-6)
+        # Two traces of one objective summed over the record: float64 keeps 1e-6;
+        # float32 takes the cross-trace bar for a summed quantity.
+        if precision == "float64":
+            np.testing.assert_allclose(results[0][0], results[1][0], rtol=1e-6)
+        else:
+            compare(results[0][0], results[1][0], record="g1_sigma.value",
+                    kind="accumulated", measurements=[])
         assert max(err) <= (1e-5 if precision == "float64" else 1e-4)
 
 

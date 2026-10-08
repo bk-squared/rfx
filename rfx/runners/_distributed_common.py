@@ -8,6 +8,8 @@ CPML kernel retains its per-axis, per-face spacing implementation.
 
 from __future__ import annotations
 
+from rfx.stepping.slab import Slab, Fill, cut
+
 from functools import lru_cache, partial
 
 from rfx import _realized
@@ -102,89 +104,16 @@ __all__ = [
 # defined, so ``rfx.runners.distributed.split_array_x`` / ``.gather_array_x``
 # still resolve for its external importers.
 #
-# Both are closure-free and use only ``jnp``, so this module stays the
-# dependency-DAG leaf (inventory §2.5): it imports nothing from
-# ``rfx.runners.*``.
+# Spatial placement delegates to rfx.stepping.slab; gather retains its
+# original shape-only operation. The public re-exports remain identical.
 
 
 def split_array_x(arr, n_devices, ghost=1, pad_value=0.0):
-    """Split a 3D array into N slabs along x with ghost cells.
-
-    Parameters
-    ----------
-    arr : ndarray, shape (nx, ny, nz)
-    n_devices : int
-    ghost : int
-        Number of ghost cells on each side.
-    pad_value : float
-        Value used for ghost cells at the physical boundary (device 0
-        left ghost and device N-1 right ghost).  Default 0.0 is correct
-        for field arrays; use 1.0 for eps_r and mu_r to avoid division
-        by zero in the Yee update.
-
-    Returns
-    -------
-    slabs : ndarray, shape (n_devices, nx_local + 2*ghost, ny, nz)
-    """
-    nx = arr.shape[0]
-    nx_per = nx // n_devices
-    slabs = []
-    for i in range(n_devices):
-        x_start = i * nx_per
-        x_end = x_start + nx_per
-
-        # Desired range including ghosts
-        want_lo = x_start - ghost
-        want_hi = x_end + ghost
-
-        # Clamp to valid array range
-        g_lo = max(0, want_lo)
-        g_hi = min(nx, want_hi)
-
-        slab_data = arr[g_lo:g_hi]
-
-        # Pad where the desired range exceeds array bounds
-        pad_lo = g_lo - want_lo   # > 0 when want_lo < 0
-        pad_hi = want_hi - g_hi   # > 0 when want_hi > nx
-
-        if pad_lo > 0 or pad_hi > 0:
-            pad_widths = [(pad_lo, pad_hi)] + [(0, 0)] * (arr.ndim - 1)
-            slab_data = jnp.pad(slab_data, pad_widths, mode='constant',
-                                constant_values=pad_value)
-
-        slabs.append(slab_data)
-    return jnp.stack(slabs)
+    return cut(arr, Slab(arr.shape[0], n_devices, ghost), Fill(pad_value, pad_value), mesh=None)
 
 
 def shard_x_slabs(arr, n_devices, nx_per, ghost, pad_value, sharding):
-    """Place padded x slabs directly, constructing only addressable shards.
-
-    ``arr`` already includes any high-x alignment padding. Physical-boundary
-    ghosts use ``pad_value``; interior ghosts copy the adjacent slab's cells,
-    exactly as in ``shard_stacked(split_array_x(...))``. No device-axis stack
-    or whole-domain reshape is staged on the default device.
-    """
-    if arr.ndim != 3:
-        raise ValueError(f"shard_x_slabs stages 3-D (x, y, z) arrays, got shape {arr.shape}")
-    nx_local = nx_per + 2 * ghost
-    shape = (n_devices * nx_local,) + arr.shape[1:]
-
-    def slab(index):
-        rank = (index[0].start or 0) // nx_local
-        want_lo = rank * nx_per - ghost
-        want_hi = (rank + 1) * nx_per + ghost
-        lo, hi = max(0, want_lo), min(arr.shape[0], want_hi)
-        data = arr[lo:hi]
-        if lo != want_lo or hi != want_hi:
-            data = jnp.pad(
-                data, ((lo - want_lo, want_hi - hi), (0, 0), (0, 0)),
-                constant_values=pad_value,
-            )
-        return data
-
-    # No ``dtype=`` argument: jax.make_array_from_callback gained it only after
-    # 0.5.0 (the VESSL image runs 0.4.33). Slicing and jnp.pad keep arr's dtype.
-    return jax.make_array_from_callback(shape, sharding, slab)
+    return cut(arr, Slab(n_devices * nx_per, n_devices, ghost), Fill(pad_value, pad_value), mesh=sharding)
 
 
 def stage_dispersion_slabs(materials, dt, debye_spec, lorentz_spec,
@@ -1508,16 +1437,9 @@ def update_e_nu_shmap(st, mat, mesh, dt,
 
 
 def _split_state(state, n_devices, ghost=1):
-    """Split an FDTDState into per-device slabs with ghost cells."""
-    return FDTDState(
-        ex=split_array_x(state.ex, n_devices, ghost),
-        ey=split_array_x(state.ey, n_devices, ghost),
-        ez=split_array_x(state.ez, n_devices, ghost),
-        hx=split_array_x(state.hx, n_devices, ghost),
-        hy=split_array_x(state.hy, n_devices, ghost),
-        hz=split_array_x(state.hz, n_devices, ghost),
-        step=jnp.broadcast_to(state.step, (n_devices,)),
-    )
+    layout = Slab(state.ex.shape[0], n_devices, ghost)
+    return FDTDState(*(cut(field, layout, "state", mesh=None) for field in state[:6]),
+                     step=jnp.broadcast_to(state.step, (n_devices,)))
 
 
 def magnetic_low_ghost(mu_r, rank, ghost=1):
@@ -1531,28 +1453,12 @@ def magnetic_low_ghost(mu_r, rank, ghost=1):
 
 
 def _split_materials(materials, n_devices, ghost=1):
-    """Split MaterialArrays into per-device slabs with ghost cells.
-
-    Uses pad_value=1.0 for eps_r and mu_r (vacuum) to prevent
-    division-by-zero in Yee updates at boundary ghost cells, and
-    pad_value=0.0 for sigma (lossless). The per-component lumped records
-    (#1236) are split like ``sigma`` (a ghost holds no stamp).
-    """
+    """Legacy stacked material record; radius support is still refused."""
     from rfx.sources.wire_radius import require_radius_update
     require_radius_update(materials, lane="distributed material split", unsupported=True)
-
-    def _split_lumped(arr):
-        return split_array_x(arr, n_devices, ghost, pad_value=0.0)
-
-    return MaterialArrays(
-        eps_r=split_array_x(materials.eps_r, n_devices, ghost, pad_value=1.0),
-        sigma=split_array_x(materials.sigma, n_devices, ghost, pad_value=0.0),
-        mu_r=split_array_x(materials.mu_r, n_devices, ghost, pad_value=1.0),
-        sigma_lumped=map_lumped(
-            getattr(materials, "sigma_lumped", None), _split_lumped),
-        eps_r_lumped=map_lumped(
-            getattr(materials, "eps_r_lumped", None), _split_lumped),
-    )
+    return cut(materials, Slab(materials.eps_r.shape[0], n_devices, ghost),
+               dict(eps_r="eps_r", sigma="sigma", mu_r="mu_r",
+                    sigma_lumped="lumped", eps_r_lumped="lumped"), mesh=None)
 
 
 

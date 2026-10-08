@@ -265,13 +265,20 @@ def test_volumetric_nonbox_conductor_still_stops_and_warns(nonuniform, legacy_dc
         sim.add(shape, material="pec")
     grid = sim._build_nonuniform_grid() if nonuniform else sim._build_grid()
     try:
+        if legacy_dc:
+            # DC admission R1 replaces unchecked uniform volume admission.
+            with pytest.raises(ValueError, match="Sphere.*ambiguous normal/layers"):
+                continued_conductor_shape(sim, grid, shape)
+            with pytest.raises(ValueError, match="Sphere.*ambiguous normal/layers"):
+                _arrays(sim, nonuniform)
+            return
         with pytest.warns(UserWarning, match="Sphere has no pad continuation"):
             solved = continued_conductor_shape(sim, grid, shape)
         assert solved is shape
         with pytest.warns(UserWarning, match="Sphere has no pad continuation"):
             _, _, arrays = _arrays(sim, nonuniform)
         # The outermost x pad is beyond the sphere; no copied metal there.
-        occupied = arrays["sigma"] > 0 if legacy_dc else arrays["cells"]
+        occupied = arrays["cells"]
         assert not occupied[0].any()
         assert occupied[grid.pad_x_lo].any()
     finally:

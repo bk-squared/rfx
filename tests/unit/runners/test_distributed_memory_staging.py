@@ -412,7 +412,8 @@ def test_direct_slabs_callback_only_builds_addressable_shards(monkeypatch):
         return result
 
     monkeypatch.setattr(jax, "make_array_from_callback", local_callback)
-    shard_x_slabs(ReadRecorder(), 2, 4, 1, 0.0, None)
+    mesh = Mesh(np.array(jax.devices()[:2]), ("x",))
+    shard_x_slabs(ReadRecorder(), 2, 4, 1, 0.0, NamedSharding(mesh, P("x")))
     assert len(seen) == 1
     assert reads == [slice(3, 8)]
     expected = np.pad(np.asarray(values)[3:8], ((0, 1), (0, 0), (0, 0)))
@@ -473,7 +474,7 @@ def _addressable_dispersion_slabs():
     """A remote rank stages only its own pole-mask halo before shard_map."""
     devices = jax.devices("cpu")[:2]
     mesh = Mesh(np.array(devices), ("x",))
-    local_only = SimpleNamespace(mesh=mesh)
+    local_only = NamedSharding(mesh, P("x"))
     values = jnp.arange(8 * 3 * 4, dtype=jnp.float32).reshape(8, 3, 4) + 1
     materials = MaterialArrays(values, values * 0.001, jnp.ones_like(values))
     mask = values > 10

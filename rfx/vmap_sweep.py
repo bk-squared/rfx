@@ -281,7 +281,7 @@ def _apply_batched_thin_conductors(
             # off the full assembly, so the collector here is deliberately
             # discarded (it would be a per-batch-element duplicate).
             mats, _ = apply_thin_conductor(grid, tc, mats, pec_mask=None,
-                                           sheets=[])
+                                           sheets=[], snap=sim._snap)
         return mats.eps_r, mats.sigma, mats.mu_r
 
     return jax.vmap(_one)(eps_r, sigma, mu_r)

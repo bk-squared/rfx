@@ -129,6 +129,8 @@ def test_nothing(tmp_path):
 
 def run_fragment(tmp_path, workers="2", fake=False, first=0, retry=0, kinds=None):
     """Execute verbatim local.sh selected-stage fragment, never the entire gate."""
+    # Isolate even when the caller keeps temporary files inside this worktree.
+    (tmp_path / "pytest.ini").write_text("[pytest]\n")
     stage = (ROOT / "scripts/ci/local.sh").read_text().split("selected_tests=()", 1)[1]
     stage = "selected_tests=()" + stage.split('\necho\necho "all ', 1)[0]
     (tmp_path / "summary").write_text("selection summary\n")
@@ -373,3 +375,155 @@ def test_selection_cleanup_on_exit(tmp_path, status):
     assert not scratch.exists()
     if status == 0:
         assert "all 1 steps passed" in result.stdout
+
+
+# Frozen pytest 9.1.1 / xdist 3.8.0 output; provenance and reproduction in fixtures.
+REAL_REPORTS = ROOT / "tests/contracts/fixtures/gate_stage2"
+REAL_NODES = [
+    "test_a.py::test_before", "test_a.py::test_crash", "test_a.py::test_after",
+    "test_b.py::test_one", "test_b.py::test_two",
+    "test_c.py::test_one", "test_c.py::test_two",
+]
+OPTIONAL_SKIP = [
+    "test_optional.py",
+    "('test_optional.py', 2, 'Skipped: optional dependency unavailable')",
+]
+MESH_SKIP = [
+    "tests/unit/geometry/test_mesh_import.py",
+    "('tests/unit/geometry/test_mesh_import.py', 11, \"Skipped: optional 'cad' extra (trimesh) not installed\")",
+]
+
+
+def recorded_collection(tmp_path, nodes, skips):
+    directory = collection(tmp_path, nodes)
+    (directory / "worker.skips").write_text(json.dumps(skips))
+    return directory
+
+
+@pytest.mark.parametrize("phase", ["call", "setup", "teardown"])
+def test_real_crash_reports(tmp_path, phase):
+    result = outcome.classify(1, REAL_REPORTS / f"{phase}.xml",
+                              recorded_collection(tmp_path, REAL_NODES, [OPTIONAL_SKIP]))
+    assert result["outcome"] == "RETRY"
+    assert result["nodes"] == ["test_a.py::test_crash"]
+    assert result["files"] == ["test_a.py"]
+    assert result["must_run"] == ["test_a.py::test_after", "test_a.py::test_crash"]
+    assert (result["collected"], result["reported"], result["collection_skips"]) == (7, 6, 1)
+    assert not result["parallel"]
+
+
+def test_real_queued_report(tmp_path):
+    result = outcome.classify(1, REAL_REPORTS / "queued.xml", collection(
+        tmp_path, REAL_NODES + ["test_d.py::test_one", "test_d.py::test_two"]))
+    assert result["outcome"] == "RETRY"
+    assert result["nodes"] == ["test_a.py::test_crash"]
+    assert result["files"] == ["test_a.py", "test_d.py"]
+    assert result["must_run"] == ["test_a.py::test_after", "test_a.py::test_crash",
+                                  "test_d.py::test_one", "test_d.py::test_two"]
+    assert (result["collected"], result["reported"]) == (9, 6)
+    assert result["parallel"]
+
+
+def test_real_collection_skip_report(tmp_path):
+    result = outcome.classify(0, REAL_REPORTS / "collection_skip.xml", recorded_collection(
+        tmp_path, ["test_pass.py::test_pass"], [MESH_SKIP]))
+    assert result["outcome"] == "PASS"
+    assert result["nodes"] == result["files"] == result["must_run"] == []
+    assert (result["collected"], result["reported"], result["collection_skips"]) == (1, 1, 1)
+
+
+@pytest.mark.parametrize("must_run", [None, ["test_assertion.py::test_assertion"]])
+def test_real_assertion_report(tmp_path, must_run):
+    result = outcome.classify(1, REAL_REPORTS / "assertion.xml", collection(
+        tmp_path, ["test_assertion.py::test_assertion"]), must_run)
+    assert result["outcome"] == "FAIL"
+    assert result["files"] == result["nodes"] == []
+
+
+def test_real_mixed_report(tmp_path):
+    result = outcome.classify(1, REAL_REPORTS / "mixed.xml", collection(
+        tmp_path, REAL_NODES + ["test_d.py::test_one", "test_d.py::test_two"]))
+    assert result["outcome"] == "FAIL"
+    assert result["files"] == result["nodes"] == []
+
+
+@pytest.mark.parametrize("skips", [[], [["unknown.py", MESH_SKIP[1]]],
+                                  [[MESH_SKIP[0], "unverified reason"]]])
+def test_real_collection_skip_needs_evidence(tmp_path, skips):
+    directory = recorded_collection(tmp_path, ["test_pass.py::test_pass"], skips)
+    result = outcome.classify(0, REAL_REPORTS / "collection_skip.xml", directory)
+    assert result["outcome"] == "FAIL"
+    assert "unaccounted testcase: classname='', name='tests.unit.geometry.test_mesh_import'" in result["diagnostics"]
+    assert result["reported"] == 1
+
+
+def test_real_collection_skip_cannot_satisfy_must_run(tmp_path):
+    result = outcome.classify(0, REAL_REPORTS / "collection_skip.xml", recorded_collection(
+        tmp_path, ["test_pass.py::test_pass"], [MESH_SKIP]),
+        ["tests/unit/geometry/test_mesh_import.py::test_needed"])
+    assert result["outcome"] == "FAIL"
+    assert result["never_executed"] == ["tests/unit/geometry/test_mesh_import.py::test_needed"]
+
+
+def test_accepted_collection_skip_is_printed_on_pass(tmp_path):
+    directory = recorded_collection(tmp_path, ["test_pass.py::test_pass"], [MESH_SKIP])
+    run = subprocess.run([sys.executable, str(HELPER), "0",
+                          str(REAL_REPORTS / "collection_skip.xml"), str(directory),
+                          str(tmp_path / "outcome")], capture_output=True, text=True, timeout=10)
+    assert run.returncode == 0
+    assert "collected 1; results 1; PASS" in run.stdout
+    assert ("collection skip accepted (no test of it ran): "
+            "tests/unit/geometry/test_mesh_import.py") in run.stdout
+
+
+def test_unaccounted_case_is_printed(tmp_path):
+    directory = collection(tmp_path, ["test_pass.py::test_pass"])
+    run = subprocess.run([sys.executable, str(HELPER), "0",
+                          str(REAL_REPORTS / "collection_skip.xml"), str(directory),
+                          str(tmp_path / "outcome")], capture_output=True, text=True, timeout=10)
+    assert run.returncode == 1
+    assert "collected 1; results 1; FAIL" in run.stdout
+    assert "unaccounted testcase: classname='', name='tests.unit.geometry.test_mesh_import'" in run.stdout
+
+
+def test_collection_skip_workers_must_agree(tmp_path):
+    directory = recorded_collection(tmp_path, ["test_pass.py::test_pass"], [MESH_SKIP])
+    (directory / "other.json").write_text('["test_pass.py::test_pass"]')
+    (directory / "other.skips").write_text('[]')
+    result = outcome.classify(0, REAL_REPORTS / "collection_skip.xml", directory)
+    assert result["outcome"] == "FAIL"
+    assert result["diagnostics"] == ["inconsistent collection skip records"]
+
+
+def test_crash_case_and_node_must_agree(tmp_path):
+    path = report(tmp_path, ["crash"])
+    tree = ET.parse(path)
+    tree.find("testcase").set("name", "test_other")
+    tree.write(path)
+    result = outcome.classify(1, path, collection(tmp_path, [NODE, "test_fake.py::test_other"]))
+    assert result["outcome"] == "FAIL"
+    assert result["diagnostics"] == [
+        "crash nodeid 'test_fake.py::test_crash' disagrees with testcase 'test_fake.py::test_other'"]
+
+
+def test_real_collection_skip_recording(tmp_path):
+    (tmp_path / "pytest.ini").write_text("[pytest]\n")
+    (tmp_path / "test_pass.py").write_text("def test_pass(): pass\n")
+    (tmp_path / "test_optional.py").write_text(
+        'import pytest\npytest.skip("optional dependency unavailable", allow_module_level=True)\n')
+    directory = tmp_path / "collection"
+    env = dict(_BASE_ENV, PYTEST_ADDOPTS="", PYTEST_DISABLE_PLUGIN_AUTOLOAD="1",
+               PYTHONPATH=str(ROOT / "scripts/ci"), RFX_GATE_COLLECTION_DIR=str(directory),
+               PYTHONDONTWRITEBYTECODE="1")
+    run = subprocess.run([sys.executable, "-m", "pytest", "-c", "pytest.ini", "-q",
+                          "-p", "rfx_gate_collection", "-p", "no:cacheprovider",
+                          "--junitxml=junit.xml"], cwd=tmp_path, env=env,
+                         capture_output=True, text=True, timeout=20)
+    assert run.returncode == 0, run.stdout + run.stderr
+    assert json.loads(next(directory.glob("*.json")).read_text()) == ["test_pass.py::test_pass"]
+    skips = json.loads(next(directory.glob("*.skips")).read_text())
+    assert skips == [["test_optional.py",
+                      f"('{tmp_path}/test_optional.py', 2, 'Skipped: optional dependency unavailable')"]]
+    result = outcome.classify(0, tmp_path / "junit.xml", directory)
+    assert result["outcome"] == "PASS"
+    assert result["collection_skips"] == 1
