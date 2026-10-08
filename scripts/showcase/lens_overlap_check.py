@@ -83,7 +83,7 @@ def main():
     report,maps=compare(args.record,args.forward,args.adjoint,args.iterate,args.far_field_key)
     args.out.mkdir(parents=True,exist_ok=True)
     np.savez_compressed(args.out/'overlap_maps.npz',**maps)
-    (args.out/'overlap.json').write_text(json.dumps(report,indent=2)+'\n')
+    (args.out/'overlap.json').write_text(json.dumps(report,indent=2,default=lambda o:o.item() if hasattr(o,"item") else str(o))+'\n')
     os.environ.setdefault('MPLCONFIGDIR',str(args.out/'mplconfig'))
     import matplotlib
     matplotlib.use('Agg')
@@ -95,6 +95,6 @@ def main():
             image=ax.pcolormesh(maps[plane+'_u_m']*1e3,maps[plane+'_v_m']*1e3,array.T,cmap='RdBu_r',vmin=-limit,vmax=limit,shading='nearest')
             ax.set(xlabel=plane[0]+' (mm)',ylabel='z (mm)',title=title);ax.set_aspect('equal')
         fig.colorbar(image,ax=axes);fig.savefig(args.out/f'overlap_{plane}.png',dpi=160);plt.close(fig)
-    print(json.dumps(report,indent=2))
+    print(json.dumps(report,indent=2,default=lambda o:o.item() if hasattr(o,"item") else str(o)))
 
 if __name__=='__main__':main()
