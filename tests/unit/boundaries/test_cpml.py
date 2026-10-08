@@ -43,7 +43,7 @@ from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
 from rfx.boundaries.pec import apply_pec
 from rfx.sources.sources import GaussianPulse
 
-pytestmark = pytest.mark.gpu
+pytestmark = [pytest.mark.gpu, pytest.mark.gpu_gate]
 
 
 def _reflection_db_vs_clean_reference(f0, freq_max, n_layers, n_steps,

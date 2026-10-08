@@ -59,6 +59,9 @@ DESIGN_BOX = ((9 * MM, 3 * MM, 1.5 * MM), (11 * MM, 5 * MM, 2.5 * MM))
 THETA = np.linspace(0.2, 2.9, 4)
 PHI = np.array([0.0, 1.5])
 
+# Also runs on the GPU backend in the merge train's pre-merge GPU job.
+pytestmark = pytest.mark.gpu_gate
+
 
 def _ulp_at_peak(plain, other):
     """``max|plain - other|`` in float32 spacings at ``max|plain|``."""
