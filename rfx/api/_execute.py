@@ -4848,9 +4848,9 @@ class _ExecuteMixin:
                 stacklevel=2,
             )
             del _solve_assembly  # the fallback performs its own solve assembly
-            return self.run(**{**_call_args, "devices": None,
+            return _conductors.result_with_diagnostics(self.run(**{**_call_args, "devices": None,
                                "exchange_interval": 1,
-                               "skip_preflight": True})._replace(diagnostics=_diagnostics)
+                               "skip_preflight": True}), _diagnostics)
         if plan.lane in ("run_distributed", "run_distributed_nu"):
             if self._dft_planes:
                 raise NotImplementedError(

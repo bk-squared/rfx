@@ -308,3 +308,38 @@ def test_line_stub_read_band_refusal_has_a_record(frequencies, message):
     assert str(caught.value) == message
     assert caught.value.diagnostics == (
         Diagnostic('uncoded', 'refusal', None, message, {}),)
+
+
+@pytest.mark.parametrize('kind', ['tfsf', 'waveguide'])
+@pytest.mark.parametrize('entry', ['api', 'v2'])
+def test_native_fallback_keeps_parent_and_child_reports(kind, entry, monkeypatch):
+    from rfx import Result, Simulation
+    from rfx.preflight._common import PreflightIssue, PreflightReport
+    from rfx.runners.distributed_v2 import run_distributed
+    sim = Simulation(freq_max=15e9, domain=(24e-3, 12e-3, 12e-3),
+                     dx=1e-3, boundary='cpml')
+    if kind == 'tfsf':
+        sim.add_tfsf_source(f0=7.5e9, bandwidth=0.5)
+    else:
+        sim.add_waveguide_port(x_position=6e-3, y_range=(2e-3, 10e-3),
+                              z_range=(2e-3, 10e-3), mode=(1, 0), mode_type='TE',
+                              direction='+x', f0=7.5e9, bandwidth=0.5)
+    shared = Diagnostic('transport.shared', 'info', None, 'shared report', {})
+    parent = Diagnostic('transport.parent', 'info', None, 'parent report', {})
+    child = Diagnostic('transport.child', 'info', None, 'child report', {})
+    report = PreflightReport([PreflightIssue(shared), PreflightIssue(parent)])
+    monkeypatch.setattr(sim, '_preflight_impl', lambda **kwargs: report)
+    public_run = sim.run
+    payload = np.zeros((2, 0))
+    native_result = Result(None, payload, None, None, None,
+                           diagnostics=(shared, child, child))
+    monkeypatch.setattr(sim, 'run', lambda **kwargs: native_result)
+    devices = jax.devices('cpu')[:2]
+    assert len(devices) == 2
+    with pytest.warns(UserWarning, match='Falling back to single-device'):
+        result = (public_run(n_steps=2, devices=devices, compute_s_params=False)
+                  if entry == 'api' else run_distributed(
+                      sim, n_steps=2, devices=devices, diagnostics=report.diagnostics))
+    assert result.diagnostics == (shared, parent, child)
+    assert result.time_series is payload
+    assert native_result.diagnostics == (shared, child, child)

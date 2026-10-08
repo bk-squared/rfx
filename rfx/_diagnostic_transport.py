@@ -29,6 +29,13 @@ def report_diagnostics(report):
     return tuple(getattr(report, "diagnostics", ()))
 
 
+def result_with_diagnostics(result, diagnostics):
+    """Merge a fallback's parent and child reports; unchanged records are a no-op."""
+    existing = report_diagnostics(result)
+    merged = merge_diagnostics(diagnostics, existing)
+    return result if merged == existing else result._replace(diagnostics=merged)
+
+
 def diagnostic_refusal(error, diagnostics=(), *, causes=None):
     """Attach preceding observations and known causes at the admission raise site."""
     cause = tuple(getattr(error, "diagnostics", ()) if causes is None else causes)

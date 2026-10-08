@@ -633,7 +633,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     -------
     Result
     """
-    from rfx._diagnostic_transport import merge_diagnostics, report_diagnostics
+    from rfx._diagnostic_transport import merge_diagnostics, report_diagnostics, result_with_diagnostics
     diagnostics = merge_diagnostics(diagnostics, report_diagnostics(assembly))
     validate_exchange_interval(exchange_interval)
     from rfx.sources.tfsf import _refuse_extended_tfsf
@@ -659,7 +659,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         # built for this call's preflight first.
         assembly = None
         result = sim.run(n_steps=n_steps)
-        return result._replace(diagnostics=merge_diagnostics(diagnostics, result.diagnostics))
+        return result_with_diagnostics(result, diagnostics)
 
     if sim._waveguide_ports:
         warnings.warn(
@@ -671,7 +671,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         # built for this call's preflight first.
         assembly = None
         result = sim.run(n_steps=n_steps)
-        return result._replace(diagnostics=merge_diagnostics(diagnostics, result.diagnostics))
+        return result_with_diagnostics(result, diagnostics)
 
     refuse_unsupported_distributed_features(
         sim, lane="distributed (v2) runner", bloch=kwargs.get("bloch"), diagnostics=diagnostics)

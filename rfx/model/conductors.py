@@ -15,7 +15,7 @@ from rfx.boundaries.pec import SheetSpec
 
 
 from rfx.preflight._impl import run_preflight_gate
-from rfx._diagnostic_transport import pack_nu_forward_result, report_diagnostics, diagnostic_refusal, merge_diagnostics
+from rfx._diagnostic_transport import pack_nu_forward_result, report_diagnostics, diagnostic_refusal, merge_diagnostics, result_with_diagnostics
 
 @dataclass(frozen=True)
 class ConductorStage:
