@@ -22,8 +22,10 @@ MODEL_ALLOWANCE = 0.10
     (50.0, 0.0, 1e-12),
 ], ids=["RC-300", "RLC-300", "RL-300", "RC-50"])
 def test_series_load_reads_its_closed_form(r_ohm, l_h, c_f, record_property):
-    sim, line = build(dx=0.05e-3, cells=69, rlc=(r_ohm, l_h, c_f))
+    sim, line = build(dx=0.05e-3, cells=69, rlc=(r_ohm, l_h, c_f),
+                      axial_positions=(.05e-3, 3.30e-3), declared_separation=3.25e-3)
     assert line.port == (21, 3, 3) and line.load == (86, 3, 3)
+    record_property("realized_d_m", line.length)
     el, = sim._lumped_rlc
     assert (el.R, el.L, el.C, el.topology) == (r_ohm, l_h, c_f, "series")
     result = sim.forward(port_s11_freqs=FREQS, num_periods=NUM_PERIODS,

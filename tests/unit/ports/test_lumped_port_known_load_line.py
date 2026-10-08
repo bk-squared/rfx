@@ -25,7 +25,7 @@ MESHES = (.25e-3, .125e-3, .0625e-3)
 
 
 def _build(kind, r_over_zc):
-    return build(kind, ratio=r_over_zc)[0]
+    return _mesh(kind, r_over_zc, MESHES[0])[0]
 
 
 def _magnetic_plane_advisory_fixture(kind, r_over_zc):
@@ -59,7 +59,7 @@ def _magnetic_plane_advisory_fixture(kind, r_over_zc):
 
 def _mesh(kind, ratio, dx):
     return build(kind, ratio=ratio, dx=dx, cells=round(2.25e-3 / dx),
-                 axial_positions=(.3075e-3, 1.5575e-3))
+                 axial_positions=(.25e-3, 1.5e-3), declared_separation=1.25e-3)
 
 
 @lru_cache(maxsize=None)
@@ -93,6 +93,7 @@ def test_line_on_magnetic_plane_preflight_reports_in_plane_wave(kind):
 @pytest.mark.parametrize("r_over_zc", [0.5, 1.0, 2.0])
 def test_lumped_port_s11_matches_the_closed_form_of_its_load(r_over_zc, kind, record_property):
     _, line = _mesh(kind, r_over_zc, MESHES[0])
+    record_property("realized_d_m", line.length)
     pure = input_reflection(line, FREQS_HZ, r_over_zc * line.zc)
     predicted = input_reflection(line, FREQS_HZ, r_over_zc * line.zc,
                                  element_l=element_inductance(line))
@@ -140,6 +141,7 @@ def test_internal_coax_three_mesh_trend(kind, r_over_zc, record_property):
     errors, phases = [], []
     for dx in MESHES:
         _, line = _mesh(kind, r_over_zc, dx)
+        record_property(f"realized_d_{dx}", line.length)
         measured = _s11(kind, r_over_zc, dx)
         pure = input_reflection(line, FREQS_HZ, r_over_zc * line.zc)
         predicted = input_reflection(line, FREQS_HZ, r_over_zc * line.zc,
@@ -167,3 +169,14 @@ def test_residual_check_rejects_missing_inductance_and_shifted_load():
                              FREQS_HZ, line.zc, element_l=element_inductance(line))
     with pytest.raises(AssertionError, match="complex residual"):
         assert_predicted_residual(moved, pure, predicted)
+
+
+def test_geometry_and_trend_checks_reject_restored_defects():
+    from dataclasses import replace
+    from tests._interior_tem_line import assert_realized_separation
+
+    _, line = _mesh("lumped", 1., MESHES[0])
+    with pytest.raises(AssertionError):
+        assert_realized_separation(replace(line, length=line.length + line.dx), 1.25e-3)
+    with pytest.raises(AssertionError):
+        assert_first_order(MESHES, [1., 1., 1.])

@@ -60,7 +60,7 @@ def impedance(gap):
 
 def build(kind="lumped", *, dx=0.25e-3, cells=9, gap=1, ratio=2.,
           two=False, load="resistor", rlc=None, profile=None, port_factor=1.,
-          load_shift=0, cpml_layers=20, axial_positions=None):
+          load_shift=0, cpml_layers=20, axial_positions=None, declared_separation=None):
     """One radial lumped edge or a gap-cell wire, away from exterior walls.
 
     Default declarations snap to x nodes 1 and cells-3 before padding.
@@ -137,7 +137,21 @@ def build(kind="lumped", *, dx=0.25e-3, cells=9, gap=1, ratio=2.,
     assert grid.shape[1:] == (9, 8 + gap)
     line = Line(zc, float(xs[ip[0]]), float(xs[il[0]] - xs[ip[0]]),
                 float(xs[-1] - xs[il[0]]), tuple(ip), tuple(il), gap, dx, tuple(grid.shape))
+    if declared_separation is not None:
+        assert_realized_separation(line, declared_separation, axial_positions)
     return sim, line
+
+
+def assert_realized_separation(line, declared, positions=None):
+    """Fixed physical circuit across a ladder; tolerance is floating roundoff.
+
+    1e-14 m is over nine orders below the smallest cell, not a mesh allowance.
+    """
+    print(f"dx={line.dx:.9g} m: declared d={declared:.12g} m; realized d={line.length:.12g} m")
+    np.testing.assert_allclose(line.length, declared, rtol=0, atol=1e-14)
+    if positions is not None:
+        np.testing.assert_allclose([line.left, line.left + line.length],
+                                   positions, rtol=0, atol=1e-14)
 
 
 # Fourier convention: DFT kernel exp(-j omega t); a delay has exp(-j beta d),
@@ -239,9 +253,19 @@ def assert_first_order(dxs, errors):
     return order
 
 
-def chain(kind, dut):
-    """Original internal cross-sections and separations, now continued into CPML."""
-    dx, cells, gap = (0.1e-3, 305, 1) if kind == "lumped" else (0.025e-3, 1205, 4)
-    return build(kind, dx=dx, cells=cells, gap=gap,
+def chain(kind, dut, *, dx=None, separation=.0301):
+    """Fixed lumped circuit across meshes; original four-cell wire unchanged."""
+    if kind == "wire":
+        assert dx is None and separation == .0301
+        sim, line = build(kind, dx=.025e-3, cells=1205, gap=4,
+                          ratio={"res_half": .5, "res_double": 2., "matched": 1.}.get(dut, 1.),
+                          load=dut if dut in ("short", "open") else "resistor")
+        # Preserve the exact declarations/geometry of the tracker-1549 case.
+        assert_realized_separation(line, .030025)
+        return sim, line
+    dx = .1e-3 if dx is None else dx
+    positions = (.1e-3, .1e-3 + separation)
+    return build(kind, dx=dx, cells=round((separation + .4e-3) / dx), gap=1,
+                 axial_positions=positions, declared_separation=separation,
                  ratio={"res_half": .5, "res_double": 2., "matched": 1.}.get(dut, 1.),
                  load=dut if dut in ("short", "open") else "resistor")

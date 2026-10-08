@@ -31,12 +31,14 @@ NUM_PERIODS = 40.
 
 
 def build(kind, r_over_zc):
-    return build_line(kind, ratio=r_over_zc)[0]
+    return build_line(kind, ratio=r_over_zc, axial_positions=(.25e-3, 1.5e-3),
+                      declared_separation=1.25e-3)[0]
 
 
 def measure(kind, r_over_zc):
     start = time.monotonic()
-    sim, line = build_line(kind, ratio=r_over_zc)
+    sim, line = build_line(kind, ratio=r_over_zc, axial_positions=(.25e-3, 1.5e-3),
+                      declared_separation=1.25e-3)
     result = sim.forward(port_s11_freqs=FREQS, num_periods=NUM_PERIODS, skip_preflight=True)
     measured = np.asarray(result.s_params).reshape(-1)
     pure = input_reflection(line, FREQS, r_over_zc * line.zc)

@@ -85,8 +85,8 @@ def _known_load_line(load_ratio, *, profile):
 
     dx=0.25 mm; PEC sheets y=2/5 and z=2/4, inner filament (3,3).
     Unequal exterior margins; the line continues through longitudinal CPML. Grading changes x cells only and keeps
-    this realized cross-section. Declarations at x=1.23 and 6.31 cells
-    are deliberately off-node; the oracle uses the resulting nodes.
+    this realized cross-section. Both declarations are shared mesh nodes,
+    and their realized separation is asserted before the solve.
     """
     from tests._interior_tem_line import build
 
@@ -94,7 +94,9 @@ def _known_load_line(load_ratio, *, profile):
     if profile is not None:
         widths = np.array([1, .8, 1.2, .9, 1.1, .8, 1.2, 1, 1]
                           if profile == "graded" else [1] * 9) * .25e-3
-    return build(ratio=load_ratio, profile=widths)[0]
+    d = 1.2e-3 if profile == "graded" else 1.25e-3
+    return build(ratio=load_ratio, profile=widths, axial_positions=(.25e-3, .25e-3+d),
+                 declared_separation=d)[0]
 
 
 @pytest.mark.parametrize("load_ratio", [2.0, 1.0])
@@ -103,13 +105,18 @@ def test_lumped_known_load_graded(load_ratio, record_property):
                                           assert_predicted_residual)
 
     widths = np.array([1, .8, 1.2, .9, 1.1, .8, 1.2, 1, 1]) * .25e-3
-    sim, line = build(ratio=load_ratio, profile=widths)
+    sim, line = build(ratio=load_ratio, profile=widths,
+                      axial_positions=(.25e-3, 1.45e-3), declared_separation=1.2e-3)
+    record_property("realized_d_m", line.length)
     result = sim.forward(port_s11_freqs=[1e9], num_periods=20, skip_preflight=True)
     magnitude = float(np.abs(result.s_params[0, 0, 0]))
     expected = float(abs(input_reflection(line, [1e9], load_ratio * line.zc)[0]))
     print(f"graded R/Zc={load_ratio:g}: |S11|={magnitude:.9g}, TEM={expected:.9g}")
     record_property("closed_form_s11_magnitude", expected)
     record_property("new_s11_magnitude", magnitude)
+    import json
+    measured = np.asarray(result.s_params).reshape(-1)
+    record_property("s11", json.dumps(np.stack([measured.real, measured.imag], axis=-1).tolist()))
     assert abs(magnitude - expected) < 0.01
     # Retain the original magnitude bar and add D1(ii), on the same requested
     # 1 GHz bin and snapped Ez planes; local transverse cell size stays dx.
@@ -163,7 +170,7 @@ def test_graded_known_load_three_mesh_trend(load_ratio, record_property):
 
     Subdivide each axial interval by 1/2/4 and scale the transverse lattice
     with dx. Physical declarations and the total axial domain stay fixed;
-    each oracle uses its own snapped separation. No coefficient is refitted.
+    each oracle asserts the same 1.2 mm realized separation. No coefficient is refitted.
     """
     import json
     from tests._interior_tem_line import (
@@ -179,7 +186,8 @@ def test_graded_known_load_three_mesh_trend(load_ratio, record_property):
     for dx, refinement in zip(meshes, (1, 2, 4)):
         sim, line = build(dx=dx, cells=9 * refinement, ratio=load_ratio,
                           profile=np.repeat(widths / refinement, refinement),
-                          axial_positions=(.3075e-3, 1.5775e-3))
+                          axial_positions=(.25e-3, 1.45e-3), declared_separation=1.2e-3)
+        record_property(f"realized_d_{dx}", line.length)
         result = sim.forward(port_s11_freqs=freqs, num_periods=40, skip_preflight=True)
         measured = np.asarray(result.s_params).reshape(-1)
         pure = input_reflection(line, freqs, load_ratio * line.zc)

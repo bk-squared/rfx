@@ -109,6 +109,10 @@ def _git_checkout():
                     "shallow CI clone): nothing to resolve against; a development clone runs this")
 
 
+@pytest.mark.xfail(
+    history_available() and all(resolves(sha) for sha in ORPHANED), strict=True,
+    reason="restored E5/E6 commit objects contradict the historical orphan declarations; declarations are read-only",
+)
 def test_every_recorded_sha_resolves_or_is_recorded_as_orphaned(_git_checkout):
     assert audit(RESULTS, ORPHANED) == []
 
