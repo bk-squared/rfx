@@ -30,7 +30,8 @@ def junit_key(node: str) -> tuple[str, str]:
 
 def classify(status: int, report: Path, collection: Path, must_run: list[str] | None = None) -> dict:
     result = dict(outcome="FAIL", files=[], nodes=[], must_run=[], never_executed=[],
-                  collected=0, reported=0, parallel=False, collection_skips=0, diagnostics=[])
+                  collected=0, reported=0, parallel=False, collection_skips=0, skipped_collectors=[],
+                  diagnostics=[])
     required = set(must_run or [])
     result["never_executed"] = sorted(required)
     if status == 5:
@@ -57,6 +58,7 @@ def classify(status: int, report: Path, collection: Path, must_run: list[str] | 
             result["diagnostics"].append("inconsistent collection skip records")
             return result
         skips = {}
+        skip_names = {}
         for record in skip_records[0]:
             if (not isinstance(record, list) or len(record) != 2
                     or any(not isinstance(value, str) for value in record)):
@@ -67,6 +69,7 @@ def classify(status: int, report: Path, collection: Path, must_run: list[str] | 
                 result["diagnostics"].append(f"ambiguous collection skip: {record[0]}")
                 return result
             skips[key] = record[1]
+            skip_names[key] = record[0]
         root = ET.parse(report).getroot()
         suites = list(root.iter("testsuite"))
         if not suites:
@@ -89,6 +92,7 @@ def classify(status: int, report: Path, collection: Path, must_run: list[str] | 
                         and skipped.text == skips[key]):
                     seen_skips.add(key)
                     result["collection_skips"] = len(seen_skips)
+                    result["skipped_collectors"] = sorted(skip_names[k] for k in seen_skips)
                     continue
                 result["diagnostics"].append(f"unaccounted testcase: classname={key[0]!r}, name={key[1]!r}")
                 continue
@@ -153,6 +157,9 @@ def main() -> int:
     print(f'collected {result["collected"]}; results {result["reported"]}; {result["outcome"]}')
     for diagnostic in result["diagnostics"]:
         print(diagnostic)
+    for node in result["skipped_collectors"]:
+        # A selected module skipped wholesale at collection ran nothing: say so on every outcome.
+        print(f"collection skip accepted (no test of it ran): {node}")
     for node in result["nodes"]:
         print(f"worker crash: {node}")
     for node in result["never_executed"]:

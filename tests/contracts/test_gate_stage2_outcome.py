@@ -465,6 +465,17 @@ def test_real_collection_skip_cannot_satisfy_must_run(tmp_path):
     assert result["never_executed"] == ["tests/unit/geometry/test_mesh_import.py::test_needed"]
 
 
+def test_accepted_collection_skip_is_printed_on_pass(tmp_path):
+    directory = recorded_collection(tmp_path, ["test_pass.py::test_pass"], [MESH_SKIP])
+    run = subprocess.run([sys.executable, str(HELPER), "0",
+                          str(REAL_REPORTS / "collection_skip.xml"), str(directory),
+                          str(tmp_path / "outcome")], capture_output=True, text=True, timeout=10)
+    assert run.returncode == 0
+    assert "collected 1; results 1; PASS" in run.stdout
+    assert ("collection skip accepted (no test of it ran): "
+            "tests/unit/geometry/test_mesh_import.py") in run.stdout
+
+
 def test_unaccounted_case_is_printed(tmp_path):
     directory = collection(tmp_path, ["test_pass.py::test_pass"])
     run = subprocess.run([sys.executable, str(HELPER), "0",
