@@ -588,20 +588,14 @@ def distributed_kernel_inputs(sim, root, grid, materials, cells, sheets, wires, 
 
 
 def stage_distributed_edges(edges, grid, mesh, multiprocess):
-    """Stage final components with unchanged traced/concrete ownership rules."""
+    """Stage final edge components; traced geometry remains single-process."""
     import jax
-    from jax.sharding import NamedSharding, PartitionSpec as P
-    from rfx.runners.distributed_nu import (
-        shard_pec_mask_x_slab, stage_concrete_forward_array)
+    from rfx.stepping.slab import Slab, cut
     if edges is None:
         return None
-    if any(isinstance(edge, jax.core.Tracer) for edge in edges):
-        if multiprocess:
-            raise ValueError("a traced pec_mask_override is supported in one process only")
-        return tuple(jax.device_put(shard_pec_mask_x_slab(edge, grid),
-                                   NamedSharding(mesh, P("x"))) for edge in edges)
-    return tuple(stage_concrete_forward_array(
-        edge, grid, mesh, True, ghost_value=False) for edge in edges)
+    if multiprocess and any(isinstance(edge, jax.core.Tracer) for edge in edges):
+        raise ValueError("a traced pec_mask_override is supported in one process only")
+    return cut(edges, Slab.from_grid(grid), "pec_edge", mesh=mesh)
 
 
 def distributed_mask_spec(mask):

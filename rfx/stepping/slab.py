@@ -172,12 +172,17 @@ def cut(array, layout, kind, *, mesh=None):
     ``kind`` is a FILL key. ``Fill`` is also accepted for legacy coefficient
     adapters whose dt-dependent values are outside the spatial-array table.
     Tuples (including optional per-component records) map over their leaves.
+    A field-to-kind mapping cuts a named record and leaves omitted fields at
+    their record defaults (for legacy material bundles).
     Concrete placement constructs only addressable shards. Local tracers keep
     slice/pad/stack on the tape; x-sharded designs exchange their owned halos.
     """
     fill = FILL[kind] if isinstance(kind, str) else kind
     if array is None:
         return None
+    if isinstance(kind, dict):
+        return type(array)(**{name: cut(getattr(array, name), layout, tag, mesh=mesh)
+                              for name, tag in kind.items()})
     if isinstance(array, (tuple, list, dict)):
         return jax.tree.map(lambda a: cut(a, layout, kind, mesh=mesh), array)
     if array.shape[0] not in (layout.nx, layout.nx_padded):

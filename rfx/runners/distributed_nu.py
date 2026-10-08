@@ -41,6 +41,7 @@ from __future__ import annotations
 from functools import partial
 
 from rfx import _realized
+from rfx.stepping.slab import Slab, Fill, cut, forward_sharding as _forward_sharding
 
 import jax
 import jax.numpy as jnp
@@ -281,53 +282,13 @@ class ShardedNUGrid(_NamedTuple):
     dy_cells: object = None
     dz_cells: object = None
     e_cell_sizes: object = None
+    layout: Slab | None = None
 
 
 def split_1d_with_ghost(arr: "np.ndarray", n_devices: int, nx_per: int,
                         nx_local: int, ghost: int,
                         pad_value: float) -> "np.ndarray":
-    """Split a 1-D inverse-spacing array into per-device slabs with ghost cells.
-
-    This is the canonical split helper shared between the NU metadata builder
-    and the distributed_v2 runner.  It produces a ``(n_devices, nx_local)``
-    NumPy array where each row is one rank's slab including ``ghost`` cells on
-    each side.
-
-    Parameters
-    ----------
-    arr : np.ndarray  shape (n_devices * nx_per,)
-        Padded global inverse-spacing array (output of
-        ``_build_sharded_inv_dx_arrays``).
-    n_devices : int
-    nx_per : int
-        Real cells per device (``arr.shape[0] // n_devices``).
-    nx_local : int
-        ``nx_per + 2 * ghost``.
-    ghost : int
-        Ghost width (typically 1).
-    pad_value : float
-        Value to fill boundary ghost cells (1.0 for inv_dx, 0.0 for inv_dx_h).
-
-    Returns
-    -------
-    slabs : np.ndarray  shape (n_devices, nx_local)
-    """
-    slabs = np.zeros((n_devices, nx_local), dtype=arr.dtype)
-    for d in range(n_devices):
-        lo = d * nx_per
-        hi = lo + nx_per
-        slabs[d, ghost:ghost + nx_per] = arr[lo:hi]
-        # left ghost
-        if d > 0:
-            slabs[d, 0] = arr[lo - 1]
-        else:
-            slabs[d, 0] = pad_value
-        # right ghost
-        if d < n_devices - 1:
-            slabs[d, -1] = arr[hi]
-        else:
-            slabs[d, -1] = pad_value
-    return slabs
+    return np.asarray(cut(arr, Slab(n_devices * nx_per, n_devices, ghost), Fill(pad_value, pad_value), mesh=None))
 
 
 def build_sharded_nu_grid(
@@ -386,14 +347,9 @@ def build_sharded_nu_grid(
 
     nx, ny, nz = grid.nx, grid.ny, grid.nz
 
-    # Pad nx to nearest multiple of n_devices (PEC cells on high-x end)
-    pad_x = 0
-    if nx % n_devices != 0:
-        pad_x = n_devices - (nx % n_devices)
-    nx_padded = nx + pad_x
-
-    nx_per = nx_padded // n_devices
-    nx_local = nx_per + 2 * ghost
+    layout = Slab(nx, n_devices, ghost)
+    pad_x, nx_padded = layout.pad_x, layout.nx_padded
+    nx_per, nx_local = layout.nx_per_rank, layout.nx_local
 
     # Build padded inverse-spacing arrays (reuses existing Phase B helper)
     inv_dx_global, inv_dx_h_global, dx_padded = _build_sharded_inv_dx_arrays(
@@ -407,8 +363,7 @@ def build_sharded_nu_grid(
     inv_dz_h = np.asarray(grid.inv_dz_h, dtype=np.float32)
 
     # Rank x-range bookkeeping
-    x_starts = tuple(d * nx_per for d in range(n_devices))
-    x_stops = tuple(min((d + 1) * nx_per, nx) for d in range(n_devices))
+    x_starts, x_stops = zip(*layout.owned)
 
     from rfx.model.materials import electric_cell_sizes
     return ShardedNUGrid(
@@ -438,6 +393,7 @@ def build_sharded_nu_grid(
         dy_cells=np.asarray(grid.dy_arr),
         dz_cells=np.asarray(grid.dz),
         e_cell_sizes=electric_cell_sizes(grid),
+        layout=layout,
     )
 
 
@@ -446,156 +402,11 @@ def build_sharded_nu_grid(
 # ---------------------------------------------------------------------------
 
 def shard_pec_occupancy_x_slab(global_occupancy, sharded_grid: ShardedNUGrid):
-    """Slice a global PEC occupancy field along x using the slab ownership of
-    :class:`ShardedNUGrid`.
-
-    The PEC occupancy field is a float ``(nx, ny, nz)`` array with values in
-    ``[0, 1]`` (0 = no conductor, 1 = full PEC).  This is the soft / relaxed
-    analogue of :func:`shard_pec_mask_x_slab` and mirrors its slab layout
-    convention exactly: each rank owns the cells in its real-cell range, and
-    the ghost cells at the slab seam carry the neighbour rank's occupancy so
-    that the per-component occupancy (the §1.6 noisy-OR of the four
-    incident cells, from the shared helper) sees the correct neighbour at
-    the first / last real cell.
-
-    Parameters
-    ----------
-    global_occupancy : (nx, ny, nz) jnp.ndarray, or None
-        Full-domain PEC occupancy.  Returns ``None`` if ``global_occupancy``
-        is ``None`` so callers can do an unconditional call.
-    sharded_grid : ShardedNUGrid
-
-    Returns
-    -------
-    sharded_occupancy : (n_devices * nx_local, ny, nz) jnp.ndarray, or None
-        x-sharded occupancy with ``P("x")`` layout.  Each device sees
-        ``(nx_local, ny, nz)``.
-
-    Notes
-    -----
-    Ghost cells at physical domain boundaries are padded with ``0.0``
-    (no occupancy) — the #689/#931 zero pad.  Since #931
-    :func:`shard_pec_mask_x_slab` pads with ``False`` for the same reason,
-    so the hard and soft twins agree at the domain edge as the contract
-    requires.  The boundary face's own PEC is enforced separately by
-    :func:`_apply_pec_face_nu_shmap`.
-    """
-    if global_occupancy is None:
-        return None
-
-    n_devices = sharded_grid.n_devices
-    nx_per = sharded_grid.nx_per_rank
-    nx_local = sharded_grid.nx_local
-    ghost = sharded_grid.ghost_width
-    pad_x = sharded_grid.pad_x
-    ny = sharded_grid.ny
-    nz = sharded_grid.nz
-
-    # Pad along x with occupancy=0.0 (no soft PEC in the high-x pad cells)
-    if pad_x > 0:
-        pad_widths = [(0, pad_x), (0, 0), (0, 0)]
-        global_occupancy = jnp.pad(
-            global_occupancy, pad_widths, constant_values=0.0
-        )
-
-    nx_padded = global_occupancy.shape[0]
-    assert nx_padded == n_devices * nx_per, (
-        f"sharded_pec_occupancy: padded shape {nx_padded} != "
-        f"n_devices*nx_per_rank = {n_devices * nx_per}"
-    )
-
-    dtype = global_occupancy.dtype
-    slabs = jnp.zeros((n_devices, nx_local, ny, nz), dtype=dtype)
-    for d in range(n_devices):
-        lo = d * nx_per
-        hi = lo + nx_per
-        slabs = slabs.at[d, ghost:ghost + nx_per, :, :].set(
-            global_occupancy[lo:hi]
-        )
-        if d > 0:
-            slabs = slabs.at[d, 0, :, :].set(global_occupancy[lo - 1])
-        # else: domain boundary at x_lo — leave ghost row at 0.0
-        if d < n_devices - 1:
-            slabs = slabs.at[d, -1, :, :].set(global_occupancy[hi])
-        # else: domain boundary at x_hi — leave ghost row at 0.0
-
-    return slabs.reshape(n_devices * nx_local, ny, nz)
+    return None if global_occupancy is None else cut(global_occupancy, Slab.from_grid(sharded_grid), "pec_occupancy", mesh=None).reshape(-1, *global_occupancy.shape[1:])
 
 
 def shard_pec_mask_x_slab(global_mask, sharded_grid: ShardedNUGrid):
-    """Slice a global PEC mask along x using the slab ownership of
-    :class:`ShardedNUGrid`.
-
-    The PEC mask is a boolean ``(nx, ny, nz)`` array.  Sharding it along
-    the same x-slab partition as ``eps_r`` / ``sigma`` ensures that a
-    PEC cell at global x-index ``i`` is owned by exactly one rank
-    (``rank = i // nx_per_rank``) and not double-zeroed by the union of
-    multiple ranks' ``apply_pec_mask`` calls.
-
-    This helper handles ``pad_x`` padding (PEC=True for high-x padded
-    cells) and the canonical split-with-ghost slabbing convention used
-    by ``_split_state`` / ``_split_materials``.
-
-    Parameters
-    ----------
-    global_mask : (nx, ny, nz) jnp.ndarray bool, or None
-        Full-domain PEC mask.  Returns ``None`` if ``global_mask`` is
-        ``None`` so callers can do an unconditional call.
-    sharded_grid : ShardedNUGrid
-
-    Returns
-    -------
-    sharded_mask : (n_devices * nx_local, ny, nz) jnp.ndarray bool, or None
-        The mask reshaped to be x-sharded with ``P("x")``.  Each device
-        sees ``(nx_local, ny, nz)``.
-    """
-    if global_mask is None:
-        return None
-
-    n_devices = sharded_grid.n_devices
-    nx_per = sharded_grid.nx_per_rank
-    nx_local = sharded_grid.nx_local
-    ghost = sharded_grid.ghost_width
-    pad_x = sharded_grid.pad_x
-    ny = sharded_grid.ny
-    nz = sharded_grid.nz
-
-    # Pad along x with PEC=True (consistent with high-x PEC padding)
-    if pad_x > 0:
-        pad_widths = [(0, pad_x), (0, 0), (0, 0)]
-        global_mask = jnp.pad(global_mask, pad_widths, constant_values=True)
-
-    nx_padded = global_mask.shape[0]
-    assert nx_padded == n_devices * nx_per, (
-        f"sharded_pec_mask: padded mask shape {nx_padded} != "
-        f"n_devices*nx_per_rank = {n_devices * nx_per}"
-    )
-
-    # Build per-device slabs with ghost cells.  Ghost cells at the
-    # PHYSICAL boundary are False — the #689/#931 zero pad, "no conductor
-    # outside the domain", the same convention the single-device lane and
-    # ``shard_pec_occupancy_x_slab`` use.  They were True until #931,
-    # which was inert under the old neighbour rule (a vacuum cell was
-    # never zeroed however its neighbour read) but under the volume rule
-    # would put a spurious PEC wall on the whole x_lo / x_hi node plane of
-    # the outer ranks, shorting a CPML face.  The domain face's own PEC is
-    # applied by ``_apply_pec_face_nu_shmap``, not by this mask.  INTERIOR
-    # ghosts still carry the neighbour rank's PEC status, which is what
-    # makes the first/last real cell see its true x neighbour.
-    slabs = jnp.zeros((n_devices, nx_local, ny, nz), dtype=jnp.bool_)
-    for d in range(n_devices):
-        lo = d * nx_per
-        hi = lo + nx_per
-        slabs = slabs.at[d, ghost:ghost + nx_per, :, :].set(global_mask[lo:hi])
-        if d > 0:
-            slabs = slabs.at[d, 0, :, :].set(global_mask[lo - 1])
-        # else: domain boundary at x_lo — ghost stays False (zero pad)
-        if d < n_devices - 1:
-            slabs = slabs.at[d, -1, :, :].set(global_mask[hi])
-        # else: domain boundary at x_hi — ghost stays False (zero pad)
-
-    # Reshape to sharded layout: (n_devices * nx_local, ny, nz)
-    return slabs.reshape(n_devices * nx_local, ny, nz)
+    return None if global_mask is None else cut(global_mask, Slab.from_grid(sharded_grid), "pec_cell", mesh=None).reshape(-1, *global_mask.shape[1:])
 
 
 # Ghost-exchange one field component on an x-sharded array.
@@ -919,26 +730,6 @@ def _concrete_on_mesh(arr, sharding):
     return jax.make_array_from_callback(host.shape, sharding, lambda index: host[index])
 
 
-def _forward_sharding(arr):
-    """Find the primal placement through AD/batching on supported JAX versions.
-
-    JAX 0.4.x tracers do not carry sharding in their abstract values. Inspect
-    only placement metadata of the primal, never its values or host contents.
-    """
-    from jax.sharding import NamedSharding
-
-    if isinstance(arr, jax.core.Tracer):
-        if hasattr(arr, "primal"):
-            return _forward_sharding(arr.primal)
-        if hasattr(arr, "val") and hasattr(arr, "batch_dim"):
-            sharding = _forward_sharding(arr.val)
-            if sharding is not None and arr.batch_dim is not None:
-                spec = list(sharding.spec) + [None] * (arr.val.ndim - len(sharding.spec))
-                del spec[arr.batch_dim]
-                return NamedSharding(sharding.mesh, P(*spec))
-            return sharding
-    sharding = getattr(arr, "sharding", None)
-    return sharding if isinstance(sharding, NamedSharding) else None
 
 
 def is_forward_sharded_override(arr, sharded_grid, mesh):
@@ -962,69 +753,16 @@ def is_forward_sharded_override(arr, sharded_grid, mesh):
 
 
 def stage_sharded_forward_override(arr, sharded_grid, mesh, pad_value=0.0):
-    """Differentiable input halo; the time-step ghost exchange is unchanged.
-
-    Only each device's owned rows and two neighbouring rows are live locally.
-    The transpose sends ghost cotangents back to their owners. Alignment pad
-    and physical ghosts are constants, hence have zero design gradient.
-    """
-    sg = sharded_grid
-    dtype = arr.dtype
-    if sg.ghost_width != 1:
-        raise NotImplementedError("sharded forward overrides require exchange_interval=1")
-    right = [(i, i + 1) for i in range(sg.n_devices - 1)]
-    left = [(i + 1, i) for i in range(sg.n_devices - 1)]
-
-    def halo(local, *, rank):
-        lo = lax.ppermute(local[-1:], "x", right)
-        hi = lax.ppermute(local[:1], "x", left)
-        slab = jnp.concatenate((lo, local, hi), axis=0)
-        indices = rank * sg.nx_per_rank + jnp.arange(sg.nx_local) - 1
-        real = (indices >= 0) & (indices < sg.nx)
-        return jnp.where(real[:, None, None], slab, jnp.asarray(pad_value, dtype))
-
-    return jax.jit(rank_shard_map(halo, mesh=mesh, in_specs=P("x"),
-                            out_specs=P("x"), check_rep=False))(mesh_ranks(mesh), arr)
+    return cut(arr, Slab.from_grid(sharded_grid), Fill(pad_value, pad_value), mesh=mesh)
 
 
 def stage_concrete_forward_array(arr, sharded_grid, mesh, pad_value=0.0,
                                  ghost_value=None):
-    """Place geometry slab by slab, including legacy physical/alignment pads."""
-    from jax.sharding import NamedSharding
-
-    sg = sharded_grid
-    host = np.asarray(arr)
-    shape = (sg.n_devices * sg.nx_local, sg.ny, sg.nz)
-    ghost_value = pad_value if ghost_value is None else ghost_value
-
-    def slab(index):
-        rank = (index[0].start or 0) // sg.nx_local
-        indices = np.arange(rank * sg.nx_per_rank - sg.ghost_width,
-                            (rank + 1) * sg.nx_per_rank + sg.ghost_width)
-        data = np.full((sg.nx_local, sg.ny, sg.nz), ghost_value, dtype=host.dtype)
-        padded = (indices >= sg.nx) & (indices < sg.nx_padded)
-        real = (indices >= 0) & (indices < sg.nx)
-        data[padded] = pad_value
-        data[real] = host[indices[real]]
-        return data
-
-    return jax.make_array_from_callback(shape, NamedSharding(mesh, P("x")), slab)
+    return cut(arr, Slab.from_grid(sharded_grid), Fill(pad_value, pad_value if ghost_value is None else ghost_value), mesh=mesh)
 
 
 def stage_forward_array_x_slab(arr, sharded_grid, mesh, pad_value=0.0):
-    """Traceable placement for a local whole-domain or global x-sharded input."""
-    from jax.sharding import NamedSharding
-    from rfx.runners._distributed_common import split_array_x
-
-    if is_forward_sharded_override(arr, sharded_grid, mesh):
-        return stage_sharded_forward_override(arr, sharded_grid, mesh, pad_value)
-    if sharded_grid.pad_x:
-        arr = jnp.pad(arr, ((0, sharded_grid.pad_x), (0, 0), (0, 0)),
-                      constant_values=pad_value)
-    return shard_stacked(
-        split_array_x(arr, sharded_grid.n_devices, sharded_grid.ghost_width,
-                      pad_value), NamedSharding(mesh, P("x")),
-    )
+    return cut(arr, Slab.from_grid(sharded_grid), Fill(pad_value, pad_value), mesh=mesh)
 
 
 def shard_debye_coeffs_x_slab(debye_coeffs, sharded_grid: ShardedNUGrid,
@@ -2164,30 +1902,17 @@ def run_nonuniform_distributed_pec(
     # ------------------------------------------------------------------
     # Sharded inverse-spacing arrays (1-D)
     # ------------------------------------------------------------------
-    inv_dx_slabs = split_1d_with_ghost(
-        sharded_grid.inv_dx_global, n_devices, nx_per, nx_local, ghost,
-        pad_value=1.0,
-    )
-    inv_dx_h_slabs = split_1d_with_ghost(
-        sharded_grid.inv_dx_h_global, n_devices, nx_per, nx_local, ghost,
-        pad_value=0.0,
-    )
-    inv_dx_sharded = _concrete_on_mesh(
-        inv_dx_slabs.reshape(n_devices * nx_local), shd)
-    inv_dx_h_sharded = _concrete_on_mesh(
-        inv_dx_h_slabs.reshape(n_devices * nx_local), shd)
+    layout = Slab.from_grid(sharded_grid)
+    inv_dx_sharded = cut(sharded_grid.inv_dx_global, layout, "inv_dx", mesh=mesh)
+    inv_dx_h_sharded = cut(sharded_grid.inv_dx_h_global, layout, "inv_dx_h", mesh=mesh)
     inv_dy_rep = _concrete_on_mesh(sharded_grid.inv_dy, rep)
     inv_dy_h_rep = _concrete_on_mesh(sharded_grid.inv_dy_h, rep)
     inv_dz_rep = _concrete_on_mesh(sharded_grid.inv_dz, rep)
     inv_dz_h_rep = _concrete_on_mesh(sharded_grid.inv_dz_h, rep)
     # The face permeability uses original cell lengths, including the true
     # neighbour across each x split, rather than inverse-metric round trips.
-    width_slabs = np.stack([
-        sharded_grid.dx_padded[np.clip(
-            np.arange(r * nx_per - ghost, (r + 1) * nx_per + ghost),
-            0, len(sharded_grid.dx_padded) - 1)] for r in range(n_devices)])
     cell_sizes = (
-        _concrete_on_mesh(width_slabs.reshape(n_devices * nx_local), shd),
+        cut(sharded_grid.dx_padded, layout, "width", mesh=mesh),
         _concrete_on_mesh(sharded_grid.dy_cells if sharded_grid.dy_cells is not None
                           else 1 / np.where(sharded_grid.inv_dy_h > 0,
                                             sharded_grid.inv_dy_h, sharded_grid.inv_dy_h[-2]), rep),

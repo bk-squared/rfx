@@ -2777,20 +2777,15 @@ class _ExecuteMixin:
         host, construct shards directly using ``distributed_override_layout``.
         On multiple processes each caller supplies the same concrete array.
         """
-        shape, sharding = self.distributed_override_layout(devices)
+        _, sharding = self.distributed_override_layout(devices)
         host = np.asarray(array)
         expected = self._build_nonuniform_grid().shape
         if host.shape != expected:
             raise ValueError(f"local override must have grid shape {expected}; got {host.shape}")
 
-        def slab(index):
-            lo, hi, _ = index[0].indices(shape[0])
-            data = np.full((hi - lo, *shape[1:]), pad_value, dtype=host.dtype)
-            count = max(0, min(hi, host.shape[0]) - lo)
-            data[:count] = host[lo:lo + count]
-            return data
-
-        return jax.make_array_from_callback(shape, sharding, slab)
+        from rfx.stepping.slab import Slab, Fill, cut
+        return cut(host, Slab(expected[0], sharding.mesh.size, 0),
+                   Fill(pad_value, pad_value), mesh=sharding.mesh)
 
     def _execute_distributed_nonuniform_from_materials(
         self,
@@ -2845,8 +2840,6 @@ class _ExecuteMixin:
             build_sharded_nu_grid,
             init_cpml_for_sharded_nu,
             run_nonuniform_distributed_pec,
-            stage_forward_array_x_slab,
-            stage_concrete_forward_array,
             is_forward_sharded_override,
             stage_forward_dispersion_x_slab,
         )
@@ -3084,14 +3077,10 @@ class _ExecuteMixin:
         # during the scan.
         if _realized.ACTIVE is not None:
             _realized.sources(grid, materials, sources, "distributed_nu.sources")
+        from rfx.stepping.slab import cut
         staged = []
-        for name, pad_value in (("eps_r", 1.0), ("sigma", 0.0), ("mu_r", 1.0)):
-            override = eps_override if name == "eps_r" else sigma_override if name == "sigma" else None
-            stage = (stage_concrete_forward_array if override is None
-                     else stage_forward_array_x_slab)
-            staged.append(stage(
-                getattr(materials, name), sharded_grid, mesh, pad_value,
-            ))
+        for name in ("eps_r", "sigma", "mu_r"):
+            staged.append(cut(getattr(materials, name), sharded_grid.layout, name, mesh=mesh))
             materials = materials._replace(**{name: None})
         sharded_materials = MaterialArrays(*staged)
         del materials, staged
@@ -3100,9 +3089,8 @@ class _ExecuteMixin:
         del pec_mask, pec_edges
         sharded_pec_occupancy = None
         if pec_occupancy_override is not None:
-            sharded_pec_occupancy = stage_forward_array_x_slab(
-                pec_occupancy_override, sharded_grid, mesh, 0.0,
-            )
+            sharded_pec_occupancy = cut(
+                pec_occupancy_override, sharded_grid.layout, "pec_occupancy", mesh=mesh)
 
         sharded_debye = stage_forward_dispersion_x_slab(
             sharded_materials, grid.dt, debye_spec, sharded_grid, mesh, "debye",

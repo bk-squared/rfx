@@ -36,6 +36,7 @@ from functools import partial
 from rfx.runners._exchange_interval import validate_exchange_interval
 
 from rfx import _realized
+from rfx.stepping.slab import Slab, cut
 
 import jax
 import jax.numpy as jnp
@@ -753,29 +754,10 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         cpml_layers=grid.cpml_layers if sim._boundary == "cpml" else 0,
     )
     nx, ny, nz = grid.shape
-    # Pad nx to nearest multiple of n_devices (PEC-filled padding cells)
-    pad_x = 0
-    if nx % n_devices != 0:
-        pad_x = n_devices - (nx % n_devices)
-    nx_padded = nx + pad_x
-
+    layout = Slab(nx, n_devices)
+    pad_x = layout.pad_x
     if pad_x > 0:
         _pad_x = ((0, pad_x), (0, 0), (0, 0))
-        materials = MaterialArrays(
-            eps_r=jnp.pad(materials.eps_r, _pad_x, constant_values=1.0),
-            sigma=jnp.pad(materials.sigma, _pad_x, constant_values=0.0),
-            mu_r=jnp.pad(materials.mu_r, _pad_x, constant_values=1.0),
-            # #1236: the lumped records ride along (a pad cell holds none),
-            # so the slab update can keep each stamp on its own component.
-            sigma_lumped=map_lumped(
-                materials.sigma_lumped,
-                lambda a: jnp.pad(a, _pad_x, constant_values=0.0)),
-            eps_r_lumped=map_lumped(
-                materials.eps_r_lumped,
-                lambda a: jnp.pad(a, _pad_x, constant_values=0.0)),
-        )
-        if pec_mask is not None:
-            pec_mask = jnp.pad(pec_mask, _pad_x, constant_values=True)
         if debye_spec is not None:
             d_poles, d_masks = debye_spec
             d_masks = [jnp.pad(m, _pad_x, constant_values=False) for m in d_masks]
@@ -785,9 +767,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             l_masks = [jnp.pad(m, _pad_x, constant_values=False) for m in l_masks]
             lorentz_spec = (l_poles, l_masks)
 
-    nx_per = nx_padded // n_devices
-    ghost = 1
-    nx_local = nx_per + 2 * ghost
+    nx_per, ghost, nx_local = layout.nx_per_rank, layout.ghost_width, layout.nx_local
 
     use_cpml = sim._boundary == "cpml" and grid.cpml_layers > 0
     n_cpml = grid.cpml_layers if use_cpml else 0
@@ -892,25 +872,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # Create state directly on its owning devices and stage materials one
     # addressable slab at a time, without whole-domain slab stacks.
     # ------------------------------------------------------------------
-    from rfx.runners._distributed_common import shard_x_slabs
 
-    # #1053 leg 1: carry the realized-PEC cell mask into the sharded world.
-    # ``pec_mask`` is the full-domain primal-cell occupancy of every declared
-    # PEC VOLUME, already padded to ``nx_padded`` above (with ``True``, the
-    # high-x alignment convention ``shard_pec_mask_x_slab`` also uses). Until
-    # now this lane built it and dropped it on the floor.
-    #
-    # ``pad_value=False`` fills the PHYSICAL-boundary ghost rows -- device 0's
-    # left ghost and device N-1's right ghost. It must be False and not True:
-    # a True there puts a spurious PEC wall on the whole x_lo / x_hi node
-    # plane of the outer ranks and shorts a CPML face (#689/#931, recorded at
-    # distributed_nu.py:538-547). Interior ghost rows get the seam
-    # neighbour's real value from the slicing, which is what lets a rank's
-    # first/last real cell see its true x neighbour under the four-incident-
-    # cell rule.
-    #
-    # The direct sharder preserves the same ghost and alignment convention
-    # as split_array_x + shard_stacked, including False boundary mask ghosts.
     shd = _x_sharding(mesh)
     rep = _rep_sharding(mesh)
 
@@ -922,17 +884,13 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     )
 
     sharded_materials = MaterialArrays(
-        eps_r=shard_x_slabs(materials.eps_r, n_devices, nx_per, ghost, 1.0, shd),
-        sigma=shard_x_slabs(materials.sigma, n_devices, nx_per, ghost, 0.0, shd),
-        mu_r=shard_x_slabs(materials.mu_r, n_devices, nx_per, ghost, 1.0, shd),
+        eps_r=cut(materials.eps_r, layout, "eps_r", mesh=mesh),
+        sigma=cut(materials.sigma, layout, "sigma", mesh=mesh),
+        mu_r=cut(materials.mu_r, layout, "mu_r", mesh=mesh),
         # #1236: a lumped element loads its own E edge only; the slab update
         # needs the per-component record for that (None when no stamp).
-        sigma_lumped=map_lumped(
-            materials.sigma_lumped,
-            lambda a: shard_x_slabs(a, n_devices, nx_per, ghost, 0.0, shd)),
-        eps_r_lumped=map_lumped(
-            materials.eps_r_lumped,
-            lambda a: shard_x_slabs(a, n_devices, nx_per, ghost, 0.0, shd)),
+        sigma_lumped=cut(materials.sigma_lumped, layout, "lumped", mesh=mesh),
+        eps_r_lumped=cut(materials.eps_r_lumped, layout, "lumped", mesh=mesh),
     )
 
     # #1053 leg 1. ``None`` whenever the model declares no PEC volume. The
@@ -942,11 +900,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # and otherwise discarded (it was forwarded only to the pmap runner at one
     # device, until #1296).
     # Alignment rows are still PEC; ghosts are still excluded by the kernel.
-    sharded_pec_mask = (None if pec_edges is None else tuple(
-        shard_x_slabs(jnp.pad(edge, ((0, pad_x), (0, 0), (0, 0)),
-                             constant_values=True),
-                      n_devices, nx_per, ghost, False, shd)
-        for edge in pec_edges))
+    sharded_pec_mask = cut(pec_edges, layout, "pec_edge", mesh=mesh)
     del pec_edges
 
     # ------------------------------------------------------------------
