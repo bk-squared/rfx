@@ -131,14 +131,67 @@ def test_jd_no_print_and_no_hardcoded_emission_bypass():
         else:
             assert 'print(' not in text
         parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+
+        def raw_text(node):
+            """Text written at the site: a literal, an f-string, a join/format, or a sum of them."""
+            if isinstance(node, ast.JoinedStr):
+                return True
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                return any(c.isalnum() for c in node.value)
+            if isinstance(node, ast.BinOp):
+                return raw_text(node.left) or raw_text(node.right)
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                if node.func.attr == 'format':
+                    return True
+                # ', '.join(names) lists data; a separator with words in it is prose.
+                if node.func.attr == 'join':
+                    return raw_text(node.func.value)
+            return False
+
+        def function_of(node):
+            while node is not None and not isinstance(node, ast.FunctionDef):
+                node = parents.get(node)
+            return getattr(node, 'name', None)
+
+        # A site that stops calling the table is as much a bypass as one that
+        # appends to it: no raise or warn in the family may carry text written
+        # at the site. The one exception is an internal consistency error that
+        # is caught and re-rendered by its caller.
+        allowed_raw = {('rfx/preflight/msl.py', '_msl_declared_face_geometry')}
+        for n in ast.walk(tree):
+            site = None
+            if isinstance(n, ast.Raise) and isinstance(n.exc, ast.Call) and n.exc.args:
+                site = n.exc.args[0]
+            elif (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                    and n.func.attr == 'warn' and n.args):
+                site = n.args[0]
+            if site is not None and raw_text(site):
+                assert (name, function_of(n)) in allowed_raw, (
+                    f"{name}:{n.lineno} emits text written at the site; route it through the code table")
+            # Messages collected in a list and emitted later (the placement notes) are
+            # emission too: only table text and data labels may be collected.
+            if (isinstance(n, ast.Call) and isinstance(n.func, ast.Attribute)
+                    and n.func.attr in ('append', 'extend', 'insert')):
+                for argument in n.args:
+                    prose = (isinstance(argument, ast.JoinedStr) and any(
+                        isinstance(part, ast.Constant) and len(str(part.value).split()) >= 2
+                        for part in argument.values)) or (
+                        isinstance(argument, ast.Constant) and isinstance(argument.value, str)
+                        and len(argument.value.split()) >= 2)
+                    # The reflector scan's reasons for a conductor it could not evaluate are
+                    # forwarded text (as on main; they reach the user inside
+                    # msl.reflector_scan_incomplete). Nothing else may collect prose.
+                    forwarded = (name == 'rfx/preflight/msl_reflector.py'
+                                 and isinstance(n.func.value, ast.Name)
+                                 and n.func.value.id == 'unevaluated')
+                    assert not prose or forwarded, (
+                        f"{name}:{n.lineno} collects text written at the site; use the code table")
         for n in ast.walk(tree):
             if isinstance(n, ast.BinOp):
-                left_calls = [x for x in ast.walk(n.left) if isinstance(x, ast.Call)
-                              and isinstance(x.func, ast.Name) and x.func.id == 'msl_text']
-                if left_calls:
-                    assert not isinstance(n.right, ast.JoinedStr), (name, n.lineno)
-                    if isinstance(n.right, ast.Constant) and isinstance(n.right.value, str):
-                        assert not any(c.isalnum() for c in n.right.value), (name, n.lineno)
+                for table_side, other in ((n.left, n.right), (n.right, n.left)):
+                    if any(isinstance(x, ast.Call) and isinstance(x.func, ast.Name)
+                           and x.func.id == 'msl_text' for x in ast.walk(table_side)):
+                        assert not raw_text(other), (name, n.lineno)
             if not isinstance(n, ast.Call) or not isinstance(n.func, ast.Name):
                 continue
             fn = n.func.id

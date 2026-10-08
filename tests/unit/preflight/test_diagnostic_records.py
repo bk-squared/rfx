@@ -193,3 +193,14 @@ def test_an_earlier_advisory_does_not_hide_a_new_refusal():
     assert error.diagnostics[0] == earlier
     assert error.diagnostics[-1].message == 'this path does not drive MSL ports'
     assert error.diagnostics[-1].severity == 'refusal'
+
+
+@pytest.mark.parametrize("word", ["critical", "advisory", "note"])
+def test_an_unknown_severity_word_is_kept_and_advises(word):
+    """Worked before the record existed: the word is kept on the issue and treated as a warning."""
+    from rfx.preflight._common import PreflightIssue, PreflightReport, PreflightWarning
+
+    issue = PreflightIssue("x", severity=word)
+    assert issue.severity == word and issue.diagnostic.severity == "advisory"
+    assert PreflightWarning("x", severity=word).severity == word
+    assert PreflightReport([issue]).ok

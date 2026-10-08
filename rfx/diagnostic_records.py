@@ -139,8 +139,12 @@ def from_legacy(
 
 
 def for_legacy_issue(diagnostic, message, severity):
-    """Match the actual issue: errors block, warnings advise, and info informs."""
-    level = {"error": "refusal", "warning": "advisory", "info": "info"}[severity]
+    """Match the actual issue: errors block, warnings advise, and info informs.
+
+    Any other severity word advises, as the report's own filter has always
+    treated it (only "error" blocks, only "info" is a record).
+    """
+    level = {"error": "refusal", "warning": "advisory", "info": "info"}.get(severity, "advisory")
     text = str(message)
     if diagnostic.severity == level and diagnostic.message == text:
         return diagnostic
