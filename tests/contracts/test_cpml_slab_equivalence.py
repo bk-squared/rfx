@@ -23,6 +23,17 @@ def _whole_array(state, params, psi, grid, materials, faces, magnetic):
     kind, source = ("h", "e") if magnetic else ("e", "h")
     profiles = params.magnetic if magnetic else params
     fields = {c: getattr(state, kind + c) for c in "xyz"}
+    coefficients = []
+    for target in range(3):
+        material = materials.eps_r
+        if magnetic:
+            # Uniform Yee H faces use the harmonic mean with the backward
+            # cell on the component axis; the outer cell is edge-replicated.
+            mu = materials.mu_r
+            indices = jnp.maximum(jnp.arange(mu.shape[target]) - 1, 0)
+            backward = jnp.take(mu, indices, axis=target)
+            material = jnp.where(backward == mu, mu, 2 / (1 / backward + 1 / mu))
+        coefficients.append(float(grid.dt) / (material * (MU_0 if magnetic else EPS_0)))
     changes = {}
     for axis, (a, pairs) in enumerate(zip("xyz", (((1, 2, -1), (2, 1, 1)),
                                                 ((0, 2, 1), (2, 0, -1)),
@@ -53,9 +64,7 @@ def _whole_array(state, params, psi, grid, materials, faces, magnetic):
                 curl = (difference / grid.boundary_cell(a, side))[sl]
                 updated = b * getattr(psi, key) + c * curl
                 changes[key] = updated
-                coefficient = float(grid.dt) / (materials.mu_r * MU_0 if magnetic
-                                                else materials.eps_r * EPS_0)
-                coefficient = coefficient[sl]
+                coefficient = coefficients[target][sl]
                 signed = (-sign if magnetic else sign) * coefficient
                 field = fields[component].at[sl].add(signed * updated)
                 # The x branch multiplies the coefficient first; the y/z
@@ -73,11 +82,13 @@ def _assert_equal(actual, expected):
         np.testing.assert_array_equal(value, reference)
 
 
-def _scene():
+def _scene(wall="z_hi", varying_mu=False):
     h = 1 / 512
+    depths = (2, 4, 3, 2, 4, 0) if wall == "z_hi" else (0, 2, 3, 4, 2, 3)
     grid = Grid(freq_max=5e9, domain=(9*h, 12*h, 15*h), dx=h,
-                cpml_layers=4, face_layers=dict(zip(FACES, (2, 4, 3, 2, 4, 0))),
-                pec_faces=frozenset({"z_hi"}))
+                cpml_layers=4, face_layers=dict(zip(FACES, depths)),
+                pec_faces=frozenset({wall}))
+    assert grid.face_pads == depths
     params, psi = init_cpml(grid, kappa_max=3.0)
     rng = np.random.default_rng(952)
     state = init_state(grid.shape)
@@ -86,16 +97,19 @@ def _scene():
     psi = psi._replace(**{k: jnp.asarray(rng.normal(size=v.shape), jnp.float32)
                          for k, v in zip(psi._fields, psi)})
     materials = init_materials(grid.shape)
-    # Constant mu avoids component averaging in this operator contract;
-    # eps varies along all three unequal axes, including the absorber.
+    # Eps, and optionally mu, vary along all three axes, including absorbers.
     eps = jnp.asarray(rng.uniform(1, 4, grid.shape), jnp.float32)
-    materials = materials._replace(eps_r=eps)
+    mu = (jnp.asarray(rng.uniform(1, 3, grid.shape), jnp.float32)
+          if varying_mu else materials.mu_r)
+    materials = materials._replace(eps_r=eps, mu_r=mu)
     return grid, params, psi, state, materials
 
 
+@pytest.mark.parametrize("wall", ("z_hi", "x_lo"), ids=("hi-wall", "lo-wall"))
+@pytest.mark.parametrize("varying_mu", (False, True), ids=("constant-mu", "varying-mu"))
 @pytest.mark.parametrize("magnetic", (False, True))
-def test_slab_update_equals_whole_array_per_face_subset(magnetic):
-    grid, params, psi, state, materials = _scene()
+def test_slab_update_equals_whole_array_per_face_subset(magnetic, varying_mu, wall):
+    grid, params, psi, state, materials = _scene(wall, varying_mu)
     apply = apply_cpml_h if magnetic else apply_cpml_e
     for enabled in itertools.product((False, True), repeat=6):
         faces = tuple(f for f, active in zip(FACES, enabled) if active)
@@ -153,7 +167,7 @@ def test_slab_h_neighbour_matches_shared_boundary_images(axis, mode):
         shape[axis] = size
         field = jnp.arange(np.prod(shape), dtype=jnp.float32).reshape(shape)
         whole = h_neighbor(field, axis, boundary=boundary)
-        for depth in {1, size}:
+        for depth in {1, (size + 1) // 2, size}:
             for lo in (False, True):
                 sl = [slice(None)] * 3
                 sl[axis] = slice(None, depth) if lo else slice(-depth, None)

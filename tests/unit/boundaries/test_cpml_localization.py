@@ -158,6 +158,8 @@ def _arrays(state, *, reference=False):
 def _assert_identity(reference, candidate, *, peaks=None):
     a, b = _arrays(reference, reference=True), _arrays(candidate)
     assert len(a) == len(b) == 30
+    # Jitted null-by-symmetry psi has no scale; family-scale 27-62 ULP stays flat at 200/400/800, fields 0.28.
+    # Psi stays bitwise-judged with jit off; rfx #952 reviewer decision 2026-10-08.
     for key in a if peaks is None else FIELD_NAMES:
         assert a[key].dtype == b[key].dtype == np.float32
         assert a[key].shape == b[key].shape
