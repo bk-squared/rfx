@@ -2,7 +2,8 @@
 
 Full-aperture waveguides whose transverse absorbers realized zero depth now default
 omitted transverse boundaries to PEC and warn once; explicit absorbers there are
-refused. Non-uniform guides retain their transverse absorbers. TF/SF plane waves
+refused. Graded full-aperture guides now refuse an omitted boundary: declare the
+side walls explicitly; explicitly declared absorbers retain the open cross-section. TF/SF plane waves
 refuse non-invariant transverse absorber or compatible-wall replacements, even
 with preflight skipped. Invariant cases keep the reported legacy periodic wrap;
 traced overrides report when invariance cannot be judged. Declare periodic faces

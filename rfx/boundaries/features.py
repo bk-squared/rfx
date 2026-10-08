@@ -141,10 +141,11 @@ def _warn_caller(message):
 
 
 def admit_waveguide(sim, *, lane="dispatch"):
-    """Refuse explicit transverse absorbers without changing a realized grid."""
-    if not sim._waveguide_ports or sim._uses_nonuniform_mesh:
-        # Main's graded builder keeps real transverse absorbers, including
-        # distributed run's graded fallback. Nothing is rewritten (5c(1)).
+    """Refuse undeclared guide models without changing a realized grid."""
+    if not sim._waveguide_ports:
+        return
+    if sim._uses_nonuniform_mesh:
+        _admit_graded_guide(sim, lane)
         return
     grid = sim._build_realized_grid()
     if sim._uses_nonuniform_mesh:
@@ -169,6 +170,23 @@ def admit_waveguide(sim, *, lane="dispatch"):
         _warn_caller("Waveguide boundary default: " + ", ".join(incompatible)
                      + " are solved as PEC electric walls.")
         state[0] = True
+
+
+def _admit_graded_guide(sim, lane):
+    # Addendum 5d: real transverse pads are retained only by an explicit
+    # declaration. Unknown imported provenance keeps main's behavior (5c(6)).
+    if boundary_was_explicit(sim) is not False:
+        return
+    grid = sim._build_realized_grid()
+    faces = sorted({f"{axis}_{side}"
+                    for entry in sim._waveguide_ports if full_aperture(sim, entry, grid)
+                    for axis in "xyz" if axis != entry.direction[1]
+                    for side in ("lo", "hi")})
+    if faces:
+        raise ValueError(
+            f"{lane}: full-aperture waveguide boundary was not declared on {', '.join(faces)}; "
+            "the graded mesh keeps absorbers there, so the port would not be in a guide; "
+            f"declare boundary={_guide_declaration(sim, faces)!r} (absorber on the port axis).")
 
 
 def _refuse_guide(faces, declaration, lane):

@@ -82,7 +82,7 @@ def main():
             return original(sim, **kwargs)
 
         features.admit_waveguide = refuse
-        judge = "test_nonuniform_default_keeps_real_absorbers_without_default_warning"
+        judge = "test_nonuniform_explicit_absorbers_keep_real_pads_without_default_warning"
     elif mode == "propagation-wall-refused":
         original = tfsf.replacement_axes
 

@@ -311,6 +311,17 @@ with a warning when invariance cannot be judged. The oblique transverse-wavevect
 lane retains its existing behavior.
 → [#1221](https://github.com/bk-squared/rfx/issues/1221)
 
+### Full-aperture guides on a graded mesh require explicit transverse boundaries.
+
+The non-uniform and distributed non-uniform paths refuse a full-aperture waveguide
+when `boundary` was omitted, including with preflight skipped. Their default keeps
+transverse absorbers, so the port would not be in a guide. For an x-directed guide,
+write `boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'}`; substitute the port axis for
+other directions. Explicit absorbers retain the open cross-section. Uniform and
+graded builders can still differ by one transverse node when the width is not a
+whole number of cells; matching their boundary declarations does not remove that
+difference. → [#1221](https://github.com/bk-squared/rfx/issues/1221)
+
 ## Gradients and optimization
 
 ### A gradient with respect to conductivity does not settle with record length on lossless or nearly lossless design cells

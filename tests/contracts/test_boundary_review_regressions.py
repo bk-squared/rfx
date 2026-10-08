@@ -177,6 +177,8 @@ def test_default_provenance_survives_waveguide_reference_factory(monkeypatch):
     sim = guide(dz_profile=np.full(10, .001))
     sim.add_waveguide_port(.03, direction="-x", f0=8e9, probe_offset=2, ref_offset=1)
     with pytest.raises(Admitted):
+        waveguide._empty_waveguide_reference(sim)
+    with pytest.raises(ValueError, match="graded mesh keeps absorbers"):
         sim.compute_waveguide_s_matrix(n_steps=8, normalize=True)
 
 
@@ -251,9 +253,9 @@ def test_warning_names_the_user_helper_frame(monkeypatch):
 
 
 @pytest.mark.parametrize("skip", [False, True])
-def test_nonuniform_default_keeps_real_absorbers_without_default_warning(skip, monkeypatch):
+def test_nonuniform_explicit_absorbers_keep_real_pads_without_default_warning(skip, monkeypatch):
     import rfx.runners.nonuniform as kernel
-    sim = guide(dz_profile=np.full(10, .001))
+    sim = guide("cpml", dz_profile=np.full(10, .001))
     def stop(grid, *args, **kwargs):
         assert grid.shape == (49, 29, 19)
         assert tuple(getattr(grid, f"pad_{a}_{side}") for a in "xyz" for side in ("lo", "hi")) == (4,) * 6
