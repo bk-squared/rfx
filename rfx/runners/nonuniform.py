@@ -14,6 +14,7 @@ from rfx.core.jax_utils import is_tracer
 from rfx.core.yee import MaterialArrays, add_lumped_eps, permittivity_without_lumped
 from rfx.materials.debye import init_debye
 from rfx.materials.lorentz import init_lorentz
+from rfx.model.overrides import apply_material_overrides
 from rfx.sources.waveguide_port import _node_span_to_cell_span
 from rfx.sources.port_drive import port_drive_waveform
 from rfx.sources.sources import stamp_lumped_sigma as _stamp_lumped_sigma
@@ -694,14 +695,8 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         # A whole-grid override REPLACES the array, so any lumped stamp that
         # was folded into it is gone; its #1210 record goes with it, or the
         # E update would add back a load the override does not carry.
-        materials = materials._replace(
-            eps_r=eps_override if eps_override is not None else materials.eps_r,
-            sigma=sigma_override if sigma_override is not None else materials.sigma,
-            eps_r_lumped=(None if eps_override is not None
-                          else materials.eps_r_lumped),
-            sigma_lumped=(None if sigma_override is not None
-                          else materials.sigma_lumped),
-        )
+        materials = apply_material_overrides(
+            materials, eps_override=eps_override, sigma_override=sigma_override)
         materials_drive = materials     # #1267: the drive sees the override
     elif design_box is not None:
         # #1183, the same rule at the same place: the design permittivity
@@ -709,11 +704,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         # ``eps_override`` array does one branch up. Without it the two
         # halves of one grid step at two precisions -- the float32 rounding
         # of ``eps_r * EPS_0`` alone moves the field by ~1e-7 relative.
-        _design_dtype = jnp.promote_types(
-            materials.eps_r.dtype, jnp.result_type(design_box.eps_r))
-        if _design_dtype != materials.eps_r.dtype:
-            materials = materials._replace(
-                eps_r=materials.eps_r.astype(_design_dtype))
+        materials = apply_material_overrides(materials, design_box=design_box)
 
     if pec_mask_override is not None:
         pec_mask = pec_mask_override if pec_mask is None else (pec_mask | pec_mask_override)
