@@ -29,14 +29,15 @@ def uniform_source_table(grid, cell, component, waveform, n_steps, materials,
     """Uniform and sweep adapters share samples, edge reads and product order."""
     import jax
     import jax.numpy as jnp
-    from rfx.model.materials import e_update_coefficient_at
+    from rfx.model.materials import e_update_coefficient_at, electric_grid_kwargs
     from rfx.simulation import _uniform_cell_volume
     times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
     return source_table(
         jax.vmap(waveform)(times), kind, native=native,
         volume=_uniform_cell_volume(grid),
         coefficient=lambda: e_update_coefficient_at(
-            materials, cell, component, grid.dt, periodic, grid=grid))
+            materials, cell, component, grid.dt, periodic,
+            **electric_grid_kwargs(grid)))
 
 
 def vacuum_source_table(samples, kind, dt, volume):
