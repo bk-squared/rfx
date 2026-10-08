@@ -311,3 +311,11 @@ with δ = 0.1 dB: a smooth measure of the worst violations in R (dB²), zero whe
    and re-witness it; the filter's fixed-record limitation ("inverse design on a fixed record can descend
    into designs that do not settle on that record") — applies here too, which is why item 4 keeps the
    per-bin settling witness on the reported design and the gradient witness on every shown iterate.
+
+**Amendment 5, clarifications (2026-10-08, leader; found while the driver was written, before any run).**
+(a) The regions S, C, O are defined on the grid's nominal angles (multiples of 2.5°). The grid's rows
+sit up to 1e-4 rad from those angles, and a literal comparison would have left the row at nominal
+12.5° out of C; C is the six rows 0°–12.5° (432 directions), S the rows from 25°, O the rows from 32.5°.
+(b) §3's continuation rule A (band-mean boresight ≥ 2 dB above the start's at iteration 30) belongs to
+the boresight objective. The trials of objectives M and F continue to the full run by rule B's form:
+J at iteration 30 ≤ 0.5 × J at the start, no NaN.

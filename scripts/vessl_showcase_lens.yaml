@@ -13,6 +13,7 @@ env:
   RFX_SHOWlens_REF: "FILL_BEFORE_SUBMIT"
   RFX_SHOWCASE_PRESET: "FILL_BEFORE_SUBMIT"
   RFX_DESIGN_MODE: "timing"  # timing, fd, rlw, trial, main, resolve, baselines, describe, frame, field
+  RFX_DESIGN_OBJECTIVE: ""  # empty = boresight; mask or flattop
   RFX_DESIGN_RECORD: ""
   RFX_DESIGN_START: ""
   RFX_DESIGN_ITERATIONS: ""
@@ -35,7 +36,8 @@ run: |-
   short=$(echo "$sha" | cut -c1-8)
   git -C "$src" checkout -q --detach "$sha"
   test "$(git -C "$src" rev-parse HEAD)" = "$sha"
-  out="$runs/20261004-showcase-lens/$(date -u +%Y%m%dT%H%M%SZ)-$short-$RFX_DESIGN_MODE"
+  objective=${RFX_DESIGN_OBJECTIVE:-boresight}
+  out="$runs/20261004-showcase-lens/$(date -u +%Y%m%dT%H%M%SZ)-$short-$RFX_DESIGN_MODE-$objective"
   mkdir -p "$out"
   echo "$sha" > "$out/commit.txt"
   cd "$src"
@@ -50,7 +52,7 @@ run: |-
   export PYTHONPATH="$src"
   "$PY" -c "import jax, rfx; print(jax.__version__, jax.devices(), rfx.__file__)" > "$out/probe.txt"
   nvidia-smi > "$out/nvidia_smi.txt" 2>&1 || true
-  set -- --stage "$RFX_DESIGN_MODE" --out "$out"
+  set -- --stage "$RFX_DESIGN_MODE" --out "$out" --objective "$objective"
   if [ -n "$RFX_DESIGN_RECORD" ]; then
     set -- "$@" --record "$RFX_DESIGN_RECORD"
   fi

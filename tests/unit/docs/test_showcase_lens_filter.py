@@ -584,3 +584,151 @@ def test_field_filter_smoke(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="outside stored designs"):
         common.field(filt, args, source)
     assert calls == [240]
+
+
+def _aim_pattern(objective):
+    db = np.full((3, 73, 73), -3. if objective == 'mask' else -1.)
+    if objective == 'mask':
+        db[:, 0, :] = 19.
+    else:
+        db[:, lens.REGIONS['C'], :] = 13.5
+    return 10 ** (db / 10)
+
+
+@pytest.mark.parametrize('objective,region,offset', [('mask', 'S', 3), ('flattop', 'O', 1)])
+def test_lens_extra_objective_answers(objective, region, offset):
+    import jax
+    import jax.numpy as jnp
+    pattern = _aim_pattern(objective)
+    assert float(lens.loss(jnp.asarray(pattern), objective)) == pytest.approx(0, abs=2e-7)
+    row = np.flatnonzero(lens.REGIONS[region])[0]
+    pattern[0, row, 7] = 10 ** ((2 - offset) / 10)
+    n = lens.REGIONS[region].sum() * 72
+    expected = (np.sqrt(2 ** 4 / n + .1 ** 4) - .1 ** 2) / 3
+    assert float(lens.loss(jnp.asarray(pattern), objective)) == pytest.approx(expected, rel=2e-5)
+    gradient = np.asarray(jax.grad(lambda x: lens.loss(x, objective))(jnp.asarray(pattern)))
+    assert np.isfinite(gradient).all() and gradient[0, row, 7] != 0
+    original = float(lens.loss(jnp.asarray(pattern), objective))
+    pattern[:, row, 72] = 1e9
+    assert float(lens.loss(jnp.asarray(pattern), objective)) == original
+    assert lens.summary(pattern, objective)['mask_met'] is False
+
+
+def test_lens_region_coordinates_and_counts():
+    assert {k: int(v.sum() * 72) for k, v in lens.REGIONS.items()} == {'S': 4536, 'C': 432, 'O': 4320}
+    assert np.flatnonzero(lens.REGIONS['S'])[0] == 10
+    assert np.flatnonzero(lens.REGIONS['O'])[0] == 13
+    assert np.flatnonzero(lens.REGIONS['C'])[-1] == 5
+    assert np.rad2deg(lens.THETA[5]) > 12.5
+
+
+@pytest.mark.parametrize('objective', ['mask', 'flattop'])
+def test_lens_mask_verdict_and_extrema(objective):
+    pattern = _aim_pattern(objective)
+    s = lens.summary(pattern, objective)
+    assert s['mask_met'] and np.all(s['mask_met_per_frequency'])
+    region = 'S' if objective == 'mask' else 'O'
+    row = np.flatnonzero(lens.REGIONS[region])[1]
+    pattern[1, row, 4] = 10 ** ((-1.9 if objective == 'mask' else .1) / 10)
+    s = lens.summary(pattern, objective)
+    assert s['mask_met_per_frequency'].tolist() == [True, False, True]
+    assert s['outer_max_theta_rad'][1] == lens.THETA[row]
+    assert s['outer_max_phi_rad'][1] == lens.PHI[4]
+    pattern = _aim_pattern(objective)
+    if objective == 'mask':
+        pattern[2, 0, :] = 10 ** (17.9 / 10)
+    else:
+        pattern[2, 2, 5] = 10 ** (15.1 / 10)
+        assert lens.summary(pattern, objective)['window_max_dbi'][2] == pytest.approx(15.1)
+    assert lens.summary(pattern, objective)['mask_met_per_frequency'].tolist() == [True, True, False]
+
+
+@pytest.mark.parametrize('objective', ['mask', 'flattop'])
+def test_lens_zero_progress(objective):
+    values = [10., 1., 0., 2.]
+    transformed = np.log(np.asarray(values) + .001)
+    expected = (transformed[0] - transformed) / (transformed[0] - transformed[2])
+    np.testing.assert_array_equal(common.frame_progress(values, objective), expected)
+    assert common.frame_iterate(values, objective) == 2
+
+
+@pytest.mark.parametrize('stage', ['fd', 'rlw', 'trial', 'main', 'resolve', 'frame', 'baselines', 'describe', 'timing', 'field'])
+def test_lens_objective_mismatch_refused(tmp_path, monkeypatch, stage):
+    source = tmp_path / 'source'
+    source.mkdir()
+    common.dc.save_json(source / 'result.json', {'objective': 'mask'})
+    monkeypatch.setattr(common, 'setup', lambda *a: pytest.fail('must reject before setup'))
+    with pytest.raises(SystemExit, match='2'):
+        common.main(lens, ['--stage', stage, '--record', str(source), '--out', str(tmp_path / 'out'), '--objective', 'flattop'])
+    assert not (tmp_path / 'out').exists()
+
+
+def test_lens_boresight_original_arithmetic():
+    import jax.numpy as jnp
+    response = np.random.default_rng(4).uniform(.001, 100., (3, 73, 73)).astype(np.float32)
+    expected = -jnp.mean(jnp.log(jnp.maximum(jnp.asarray(response)[:, 0, :].mean(axis=1), 1e-30)))
+    assert np.asarray(lens.loss(jnp.asarray(response))).tobytes() == np.asarray(expected).tobytes()
+    np.testing.assert_array_equal(lens.summary(response)['boresight_dbi'],
+                                  10 * np.log10(np.maximum(response[:, 0, :].mean(axis=1), 1e-30)))
+    assert lens.with_objective('boresight').objective_metadata == {'objective': 'boresight'}
+
+
+def test_lens_window_single_violation():
+    import jax.numpy as jnp
+    pattern = _aim_pattern('flattop')
+    pattern[0, 2, 8] = 10 ** (16.5 / 10)
+    assert float(lens.loss(jnp.asarray(pattern), 'flattop')) == pytest.approx(4 / (432 * 3), rel=2e-5)
+
+
+@pytest.mark.parametrize('objective', ['mask', 'flattop'])
+@pytest.mark.parametrize('failure', [None, 'fd', 'start', 'reported', 'mesh', 'mask'])
+def test_lens_resolve_eligibility(tmp_path, monkeypatch, objective, failure):
+    from types import SimpleNamespace
+    case = lens.with_objective(objective)
+    source, out = tmp_path / 'source', tmp_path / 'out'
+    source.mkdir()
+    out.mkdir()
+    common.dc.save_npz(source / 'iterations.npz', objective=[1., 0.], eps=np.zeros((2, *lens.SHAPE)))
+    common.dc.save_json(source / 'record_length.json', {'n_steps': 10, 'dt_s': 1., 'passed': failure != 'start'})
+    common.dc.save_json(source / 'reported.json', {'reported': {'settled': failure != 'reported'}})
+    common.dc.save_json(source / 'fd_float32.json', {'judgement': {'all_judged_passed': failure != 'fd'}})
+    for label in ('start', 'reported'):
+        common.dc.save_json(source / f'rlw_{label}.json', {'all_passed': True})
+    monkeypatch.setattr(common, 'setup', lambda *a: SimpleNamespace(grid=SimpleNamespace(dt=1.)))
+    monkeypatch.setattr(common, 'record', lambda *a: None)
+    calls = []
+    def evaluate(case, model, designs, n, directory, label):
+        assert list(designs) == ['reported']
+        i = len(calls)
+        calls.append(i)
+        row = case.summary(_aim_pattern(objective))
+        row['boresight_dbi'] = np.array([19., 19., 19.]) + [0., .2, .3 if failure != 'mesh' else .6][i]
+        row['settled'] = True
+        if failure == 'mask' and i == 2:
+            row['mask_met'] = False
+            row['mask_met_per_frequency'] = [True, False, True]
+        return {'reported': row}
+    monkeypatch.setattr(common, 'evaluate', evaluate)
+    common.resolved(case, SimpleNamespace(out=out, precision='float32'), source)
+    result = common.dc.load_json(out / 'eligibility.json')
+    assert result['meets_mask'] is (failure is None)
+    trend = common.dc.load_json(out / 'mesh_trend.json')
+    assert trend['outer_max_dbi']['limit_db'] == 1.
+    assert trend['boresight_dbi']['limit_db'] == .3
+    assert np.shape(trend['boresight_dbi']['values_dbi']) == (3, 3)
+    assert ('window_min_dbi' in trend) is (objective == 'flattop')
+
+
+def test_lens_boresight_smoke_original(tmp_path):
+    import jax.numpy as jnp
+    model = lens.Model(lens.SMOKE_DX, smoke=True)
+    response = model.response_fn(model.default_steps)(lens.starts()['primary'])
+    original = -jnp.mean(jnp.log(jnp.maximum(response[:, 0, :].mean(axis=1), 1e-30)))
+    assert np.asarray(lens.with_objective('boresight').loss(response)).tobytes() == np.asarray(original).tobytes()
+    d = np.asarray(response)
+    bore = 10 * np.log10(np.maximum(d[:, 0, :].mean(axis=1), 1e-30))
+    bound = 10 * np.log10(4 * np.pi * .09 ** 2 / (299792458. / lens.FREQS) ** 2)
+    expected = {'boresight_dbi': bore, 'mean_boresight_dbi': float(bore.mean()),
+                'aperture_bound_dbi': bound, 'above_aperture_bound': bore > bound}
+    for key, value in expected.items():
+        assert np.asarray(lens.summary(response)[key]).tobytes() == np.asarray(value).tobytes()

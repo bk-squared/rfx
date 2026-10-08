@@ -56,17 +56,112 @@ def baselines():
             "grin": starts()["grin"]}
 
 
-def loss(response):
+def loss(response, objective="boresight"):
+    if objective != "boresight":
+        return mask_loss(response, objective)
+
     import jax.numpy as jnp
     return -jnp.mean(jnp.log(jnp.maximum(response[:, 0, :].mean(axis=1), 1e-30)))
 
 
-def summary(response):
+def summary(response, objective="boresight"):
+    if objective != "boresight":
+        return mask_summary(response, objective)
+
     d = np.asarray(response)
     bore = 10 * np.log10(np.maximum(d[:, 0, :].mean(axis=1), 1e-30))
     bound = 10 * np.log10(4 * np.pi * .09 ** 2 / (299792458. / FREQS) ** 2)
     return {"boresight_dbi": bore, "mean_boresight_dbi": float(bore.mean()),
             "aperture_bound_dbi": bound, "above_aperture_bound": bore > bound}
+
+
+THETA = np.r_[0., np.linspace(1e-4, np.pi - 1e-4, 73)[1:]]
+PHI = np.linspace(0., 2 * np.pi, 73)
+# Regions by the grid's nominal angles (multiples of 2.5 degrees): the row at
+# nominal 12.5 degrees sits 5e-5 degrees above it and belongs to C (Amendment 5
+# clarification).
+NOMINAL_DEG = 2.5 * np.arange(73)
+REGIONS = {"S": NOMINAL_DEG >= 25, "C": NOMINAL_DEG <= 12.5, "O": NOMINAL_DEG >= 32.5}
+
+
+def objective_spec(objective):
+    if objective == "boresight":
+        return {"objective": objective}
+    if objective not in ("mask", "flattop"):
+        raise ValueError(f"unknown lens objective {objective}")
+    names = ("S",) if objective == "mask" else ("C", "O")
+    return {"objective": objective, "objective_words": (
+        "Pencil beam under a flat sidelobe mask" if objective == "mask" else "Flat-top beam"),
+        "mask_dbi": ({"boresight_min": 18., "outer_max": -2.} if objective == "mask"
+                     else {"window_min": 13., "window_max": 15., "outer_max": 0.}),
+        "aim_dbi": ({"boresight_min": 19., "outer_max": -3.} if objective == "mask"
+                    else {"window_min": 13.5, "window_max": 14.5, "outer_max": -1.}),
+        "delta_db": .1, "progress_epsilon_db2": 1e-3, "linear_floor": 1e-30,
+        "regions": {name: {"predicate": {"S": "nominal theta >= 25 degrees", "C": "nominal theta <= 12.5 degrees",
+                                         "O": "nominal theta >= 32.5 degrees"}[name], "theta_indices": np.flatnonzero(REGIONS[name]),
+                            "theta_rad": THETA[REGIONS[name]], "phi_indices": np.arange(72),
+                            "directions": int(REGIONS[name].sum() * 72)} for name in names},
+        "phi_endpoint": "exclude column 72 (2pi); retain column 0; solver quadrature unchanged"}
+
+
+def mask_loss(response, objective):
+    import jax.numpy as jnp
+    objective_spec(objective)
+    d = 10 * jnp.log10(jnp.maximum(response[:, :, :72], 1e-30))
+    def q(region, offset):
+        v = jnp.maximum(d[:, REGIONS[region], :] + offset, 0)
+        return jnp.sqrt(jnp.mean(v ** 4, axis=(1, 2)) + .1 ** 4) - .1 ** 2
+    if objective == "mask":
+        bore = 10 * jnp.log10(jnp.maximum(response[:, 0, :].mean(axis=1), 1e-30))
+        return jnp.mean(jnp.maximum(19 - bore, 0) ** 2 + q("S", 3))
+    c = d[:, REGIONS["C"], :]
+    return jnp.mean(jnp.mean(jnp.maximum(13.5 - c, 0) ** 2 +
+                             jnp.maximum(c - 14.5, 0) ** 2, axis=(1, 2)) + q("O", 1))
+
+
+def mask_summary(response, objective):
+    spec = objective_spec(objective)
+    result = summary(response)
+    if objective == "flattop":
+        for key in ("aperture_bound_dbi", "above_aperture_bound"):
+            result.pop(key)
+    d = 10 * np.log10(np.maximum(np.asarray(response)[:, :, :72], 1e-30))
+    region = REGIONS["S" if objective == "mask" else "O"]
+    outer = d[:, region, :]
+    index = np.argmax(outer.reshape(len(d), -1), axis=1)
+    ti, pi = np.unravel_index(index, outer.shape[1:])
+    worst = outer.reshape(len(d), -1)[np.arange(len(d)), index]
+    met = worst <= spec["mask_dbi"]["outer_max"]
+    result.update(outer_max_dbi=worst, outer_max_theta_rad=THETA[region][ti],
+                  outer_max_phi_rad=PHI[pi])
+    if objective == "mask":
+        met &= result["boresight_dbi"] >= 18
+    else:
+        c = d[:, REGIONS["C"], :]
+        lo, hi = c.min(axis=(1, 2)), c.max(axis=(1, 2))
+        result.update(window_min_dbi=lo, window_max_dbi=hi)
+        met &= (lo >= 13) & (hi <= 15)
+    result.update(mask_met_per_frequency=met, mask_met=bool(np.all(met)))
+    return result
+
+
+def with_objective(objective):
+    """Bind a case locally: no module-global objective can leak between runs."""
+    from types import SimpleNamespace
+    from functools import partial
+    spec = objective_spec(objective)
+    class ObjectiveModel(Model):
+        def evaluate(self, e, n_steps, normalize="flux"):
+            response, row = super().evaluate(e, n_steps, normalize)
+            if objective != "boresight":
+                for key in summary(response):
+                    row.pop(key)
+                row.update(summary(response, objective))
+            return response, row
+    return SimpleNamespace(**{**vars(sys.modules[__name__]), "OBJECTIVE": objective,
+                              "objective_metadata": spec, "Model": ObjectiveModel,
+                              "loss": partial(loss, objective=objective),
+                              "summary": partial(summary, objective=objective)})
 
 
 class Model(common.ModelBase):

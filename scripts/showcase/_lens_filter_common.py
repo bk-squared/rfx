@@ -67,11 +67,15 @@ def frame_progress(objectives, kind):
     values = np.asarray(objectives, dtype=float)
     if values.ndim != 1 or values.size < 2 or not np.isfinite(values).all():
         raise ValueError("expected a finite, one-dimensional objective history")
-    if kind not in ("lens", "filter"):
+    if kind not in ("lens", "filter", "mask", "flattop"):
         raise ValueError(f"unknown frame kind {kind}")
     if kind == "filter" and np.any(values <= 0):
         raise ValueError("filter log progress requires strictly positive objectives")
     transformed = np.log(values) if kind == "filter" else values
+    if kind in ("mask", "flattop"):
+        if np.any(values < 0):
+            raise ValueError("mask progress requires nonnegative objectives")
+        transformed = np.log(values + 1e-3)
     improvement = transformed[0] - np.min(transformed)
     if improvement <= 0:
         raise ValueError("objective history does not improve")
@@ -109,8 +113,10 @@ def frame(case, args, source):
     with np.load(source / "iterations.npz") as data:
         objectives = np.asarray(data["objective"])
         designs = np.asarray(data["eps"])
-    k_star = frame_iterate(objectives, case.CASE)
-    progress = frame_progress(objectives, case.CASE)
+    kind = getattr(case, "OBJECTIVE", "boresight")
+    kind = case.CASE if kind == "boresight" else kind
+    k_star = frame_iterate(objectives, kind)
+    progress = frame_progress(objectives, kind)
     length = dc.load_json(source / "record_length.json")
     model = setup(case, args.out, case.DESIGN_DX, args.precision, False)
     if not math.isclose(length["dt_s"], model.grid.dt, rel_tol=1e-12):
@@ -265,7 +271,8 @@ class ModelBase:
 
 def record(out, case, model, stage, details):
     """Rewrite a schema-validated result after every iterate and every stage."""
-    dc.save_json(out / "stage.json", {"stage": stage, **details})
+    metadata = getattr(case, "objective_metadata", {})
+    dc.save_json(out / "stage.json", {"stage": stage, **details, **metadata})
     source_path = out / f"source_{model.precision}.json"
     if not source_path.exists():
         dc.save_json(source_path, _record.source_block(case.REPO, model.precision))
@@ -278,6 +285,9 @@ def record(out, case, model, stage, details):
                _record.claim("record length", details.get("n_steps", model.default_steps), "steps", "stage.json"),
                _record.claim("stage measurements", details, "1", "stage.json")],
            "derived": [], "out_of_scope": ["realized gain"] if case.CASE == "lens" else []}
+    rec.update(metadata)
+    if metadata.get("objective_words"):
+        rec["question"] = metadata["objective_words"]
     if model.smoke:
         rec["out_of_scope"].append("scientific or promotional numbers: CPU smoke only")
     _record.write_result(out, rec, _record.data_files(out))
@@ -443,7 +453,9 @@ def optimize(case, model, e, n, count, out, stage, *, y_uniform=False):
 
 def trial_pass(case, store):
     objective = np.asarray(store.rows["objective"])
-    if case.CASE == "lens":
+    # Amendment 5 clarification: the boresight gate belongs to the boresight objective;
+    # the mask objectives use the J gate (J at iteration 30 <= half its start value).
+    if case.CASE == "lens" and getattr(case, "OBJECTIVE", "boresight") == "boresight":
         first = case.summary(store.rows["response"][0])["mean_boresight_dbi"]
         last = case.summary(store.rows["response"][-1])["mean_boresight_dbi"]
         return {"passed": bool(last - first >= 2), "improvement_db": last - first}
@@ -510,7 +522,8 @@ def resolved(case, args, source):
     length = dc.load_json(length_path if length_path.exists() else source / "record_length.json")
     duration = length["n_steps"] * length["dt_s"]
     designs = {"reported": e}
-    if case.CASE == "lens":
+    new_objective = getattr(case, "OBJECTIVE", "boresight") != "boresight"
+    if case.CASE == "lens" and not new_objective:
         bas = dc.load_json(source / "baselines.json")
         designs.update(no_lens=case.baselines()["no_lens"], grin=case.baselines()["grin"],
                        best_uniform=case.baselines()[bas["best_uniform"]])
@@ -532,7 +545,20 @@ def resolved(case, args, source):
         all_rows.append(rows)
         record(directory, case, model, "resolve", {"n_steps": n, "best_iteration": best, "measurements": rows})
     trend = {}
-    if case.CASE == "lens":
+    if new_objective:
+        limits = {"boresight_dbi": .3, "outer_max_dbi": 1.}
+        if case.OBJECTIVE == "flattop":
+            limits.update(window_min_dbi=.3, window_max_dbi=.3)
+        for key, limit in limits.items():
+            values = np.asarray([r["reported"][key] for r in all_rows])
+            changes = np.abs(np.diff(values, axis=0))
+            trend[key] = {"values_dbi": values, "limit_db": limit,
+                          "signed_changes_db": np.diff(values, axis=0),
+                          "absolute_changes_db": changes,
+                          "passed_per_bin": (changes[1] <= limit) & (changes[1] <= changes[0]),
+                          "settled_each_mesh": [r["reported"]["settled"] for r in all_rows],
+                          "fine_value_dbi": values[-1]}
+    elif case.CASE == "lens":
         for name in designs:
             values = np.asarray([row[name]["boresight_dbi"] for row in all_rows])
             changes = np.abs(np.diff(values, axis=0))
@@ -575,6 +601,25 @@ def resolved(case, args, source):
     eligibility = {"fd_passed": bool(fd_passed), "rlw_passed": witness_passes,
                    "mesh_witnesses_passed": bool(mesh_passed),
                    "promotional_number_eligible": bool(fd_passed and all(witness_passes.values()) and mesh_passed)}
+    if new_objective:
+        start_path = source / "record_length.json"
+        start_settled = dc.load_json(start_path).get("passed", False)
+        # Per-start files overwrite record_length without a verdict; use the
+        # concrete preparation measurements in that case.
+        attempts = sorted(source.glob("settling_start_attempt*.json"))
+        if attempts:
+            rows = dc.load_json(attempts[-1])
+            start_settled = all(row["settled"] for row in rows.values() if isinstance(row, dict))
+        reported_path = source / "reported.json"
+        reported_settled = (reported_path.exists() and
+                            dc.load_json(reported_path)["reported"]["settled"])
+        witnesses = bool(eligibility["promotional_number_eligible"] and start_settled and reported_settled)
+        eligibility.update(objective=case.OBJECTIVE, meshes_m=case.MESHES, freqs_hz=case.FREQS,
+                           start_settled=bool(start_settled), reported_settled=bool(reported_settled),
+                           witnesses_passed=witnesses, promotional_number_eligible=witnesses,
+                           mask_met_each_mesh=[r["reported"]["mask_met_per_frequency"] for r in all_rows],
+                           fine_mesh_m=case.MESHES[-1],
+                           meets_mask=bool(witnesses and all_rows[-1]["reported"]["mask_met"]))
     dc.save_json(args.out / "eligibility.json", eligibility)
     record(args.out, case, model, "resolve", {"best_iteration": best, "trend": trend, **eligibility})
 
@@ -595,7 +640,18 @@ def main(case, argv=None):
     parser.add_argument("--reported", action="store_true", help="FD/RLW: use best stored design")
     parser.add_argument("--drive", choices=("feed", "reciprocal"), default="feed")
     parser.add_argument("--empty", action="store_true", help="reciprocal field: remove lens, feed and reflector")
+    if case.CASE == "lens":
+        parser.add_argument("--objective", choices=("boresight", "mask", "flattop"), default="boresight")
     args = parser.parse_args(argv)
+    if case.CASE == "lens":
+        case = case.with_objective(args.objective)
+        if args.record is not None:
+            path = args.record / "result.json"
+            if not path.exists():
+                path = args.record / "stage.json"
+            saved = dc.load_json(path).get("objective", "boresight") if path.exists() else "boresight"
+            if saved != args.objective:
+                parser.error(f"record objective {saved} differs from requested {args.objective}")
     if args.drive != "feed" and (args.stage != "field" or case.CASE != "lens"):
         parser.error("--drive reciprocal requires lens --stage field")
     if args.empty and not (args.stage == "field" and args.drive == "reciprocal"):
@@ -699,7 +755,8 @@ def main(case, argv=None):
                 raise RuntimeError("trial did not meet the declared continuation rule; amendment required")
             name = (args.start or admission["chosen_start"]) if case.CASE == "filter" else name
         names = list(case.starts()) if args.stage == "trial" and case.CASE == "filter" else [name]
-        if args.stage == "main" and case.CASE == "lens" and args.start is None:
+        if (args.stage == "main" and case.CASE == "lens" and args.start is None
+                and getattr(case, "OBJECTIVE", "boresight") == "boresight"):
             names = ["primary", "grin"]
         chosen_name = name
         if args.y_uniform:
@@ -733,8 +790,11 @@ def main(case, argv=None):
                 jax.clear_caches()
                 gc.collect()
                 env = {**os.environ, "JAX_ENABLE_X64": "1"}
+                if case.CASE == "lens" and case.OBJECTIVE != "boresight":
+                    record(directory, case, model, args.stage, {"n_steps": n})
                 subprocess.run([sys.executable, str(Path(case.__file__)), "--stage", "fd", "--out", str(directory),
                                 "--start", name, "--precision", "float64", "--record", str(directory)]
+                               + (["--objective", case.OBJECTIVE] if case.CASE == "lens" else [])
                                + (["--smoke"] if args.smoke else []), env=env, check=True)
             store = optimize(case, model, e, n, 30 if args.stage == "trial" else (args.iterations or case.ITERATIONS),
                              directory, args.stage, **({"y_uniform": True} if args.y_uniform else {}))
