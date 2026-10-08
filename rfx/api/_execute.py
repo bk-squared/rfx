@@ -1403,7 +1403,7 @@ class _ExecuteMixin:
 
         # Refuse after realization: a sheet/wire must reach this lane even
         # though it owns no volume cell. This is independent of preflight.
-        self._validate_adi_interior_pec(pec_edge_masks)
+        _conductors.admit_adi_sources(self, grid, pec_edge_masks)
 
         # Every declared input this lane does not carry is refused here,
         # after the specific refusals above and before the first step.

@@ -253,6 +253,16 @@ def _same_grid(a, b):
     return True
 
 
+def admit_adi_sources(sim, grid, pec_edges):
+    """Cover direct ADI material entries before their existing interior guard."""
+    from types import SimpleNamespace
+    from rfx.model.source_admission import refuse_dead_soft_sources
+    refuse_dead_soft_sources(sim, SimpleNamespace(
+        grid=grid, lane='uniform', pec_edges=pec_edges,
+        assembly_entries=(), sheets=()))
+    sim._validate_adi_interior_pec(pec_edges)
+
+
 def solve_conductors(sim, grid, *, nonuniform=False, preflight=None):
     """Assemble once for execution and lend the pre-port object to its checks."""
     import jax

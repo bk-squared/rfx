@@ -6,17 +6,22 @@
         "loc": null,
         "numbers": [
           0.0,
+          0.0,
           0.0075,
           0.0075,
-          1075.0,
-          1.0
+          0.0,
+          7.0,
+          7.0,
+          0.0,
+          7.0,
+          7.0
         ],
-        "severity": "warning",
+        "severity": "error",
         "source": "_validate_cfg_source_on_reflector_plane"
       }
     ],
-    "n_errors": 0,
+    "n_errors": 1,
     "n_issues": 1,
-    "ok": true
+    "ok": false
   }
 }
