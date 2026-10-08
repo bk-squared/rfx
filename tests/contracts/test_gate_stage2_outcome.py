@@ -527,3 +527,28 @@ def test_real_collection_skip_recording(tmp_path):
     result = outcome.classify(0, tmp_path / "junit.xml", directory)
     assert result["outcome"] == "PASS"
     assert result["collection_skips"] == 1
+
+
+def test_plugin_clears_jax_caches_only_when_a_module_ends(monkeypatch):
+    """The stage-2 plugin frees compiled programs between modules, never inside one (#1528)."""
+    import types
+
+    import jax
+
+    spec = importlib.util.spec_from_file_location(
+        "rfx_gate_collection_under_test", ROOT / "scripts/ci/rfx_gate_collection.py")
+    plugin = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(plugin)
+    calls = []
+    monkeypatch.setattr(jax, "clear_caches", lambda: calls.append("cleared"))
+    module_a, module_b = object(), object()
+    first = types.SimpleNamespace(module=module_a)
+    second = types.SimpleNamespace(module=module_a)
+    third = types.SimpleNamespace(module=module_b)
+
+    plugin.pytest_runtest_teardown(first, second)
+    assert calls == []
+    plugin.pytest_runtest_teardown(second, third)
+    assert calls == ["cleared"]
+    plugin.pytest_runtest_teardown(third, None)
+    assert calls == ["cleared", "cleared"]
