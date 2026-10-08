@@ -2,7 +2,6 @@
 from dataclasses import replace
 import itertools
 import json
-import warnings
 
 import jax
 import jax.numpy as jnp
@@ -102,6 +101,7 @@ def test_b2_path_zero_sets(path, record_property):
     fields = values[11, :3]
     masks = pec.wall_edge_masks(grid.shape, FACES)
     differences = []
+    equal_sets = []
     counts = {}
     for face, c in itertools.product(FACES, range(3)):
         axis = 'xyz'.index(face[0])
@@ -112,12 +112,12 @@ def test_b2_path_zero_sets(path, record_property):
         plane = tuple(plane)
         actual = fields[c][plane] == 0
         want = masks[c][plane]
+        equal_sets.append(np.array_equal(actual, want))
         counts[f'{face}:e{"xyz"[c]}'] = int(actual.sum())
         for index in np.argwhere(actual != want):
             differences.append([face, c, index.tolist(), bool(actual[tuple(index)])])
     record_property('b2_sets', json.dumps(dict(path=path, counts=counts, differences=differences)))
-    if differences:
-        warnings.warn(f'B2 FINDING {path}: {differences}', UserWarning)
+    assert all(equal_sets), f'B2 {path}: {differences}'
 
 
 @pytest.mark.parametrize('path', PATHS)
@@ -135,7 +135,7 @@ def test_b3_soft_wall(path, case, amplitude_kind):
     with pytest.raises(ValueError, match=r'Soft source _ports\[0\]') as exc:
         execute(sim, path)
     for text in (*face.split(','), str(pos), component, 'grid index',
-                 'at least one cell', 'normal to the wall'):
+                 'at least one cell inside the domain, off the wall'):
         assert text in str(exc.value)
 
 
@@ -179,6 +179,87 @@ def test_z_lo_pec_other_faces_cpml_admits_cpml_source(path):
     result = execute(sim, path, steps=2)
     assert np.asarray(result.time_series).shape == (2, 2)
     assert np.all(np.isfinite(result.time_series))
+
+
+@pytest.mark.parametrize('mode,component', [
+    ('2d_tmz', c) for c in ('ez', 'ex', 'ey', 'hx', 'hy')
+] + [('2d_tez', c) for c in ('ex', 'ey', 'hz')])
+@pytest.mark.parametrize('boundary', ('pec', 'cpml'))
+def test_invariant_axis_sources_admitted(mode, component, boundary):
+    """Equivalent invariant-axis kinds are not declared walls; base bits are captured separately."""
+    sim = Simulation(freq_max=15e9, domain=DOMAIN, dx=DX, mode=mode, boundary=boundary)
+    sim.add_source((6 * DX, 7 * DX, 0), component if component.startswith('e') else 'ez',
+                   amplitude_kind='field')
+    if component.startswith('h'):
+        # add_source accepts only E; exercise the existing internal H carrier.
+        sim._ports[0] = replace(sim._ports[0], component=component)
+    sim.add_probe((4 * DX, 7 * DX, 0), component)
+    sim.add_probe((13 * DX, 9 * DX, 0), component)
+    result = execute(sim, 'uniform_run', steps=2)
+    assert np.asarray(result.time_series).shape == (2, 2)
+    assert np.all(np.isfinite(result.time_series))
+
+
+@pytest.mark.parametrize('mode,component', (('2d_tmz', 'ez'), ('2d_tez', 'ey')))
+def test_two_d_declared_in_plane_wall_still_refuses(mode, component):
+    sim = Simulation(freq_max=15e9, domain=DOMAIN, dx=DX, mode=mode, boundary='pec')
+    sim.add_source((0, 7 * DX, 0), component, amplitude_kind='field')
+    with pytest.raises(ValueError, match='x_lo') as exc:
+        execute(sim, 'uniform_run')
+    assert 'z_lo' not in str(exc.value) and 'z_hi' not in str(exc.value)
+
+
+@pytest.mark.parametrize('graded', (False, True))
+@pytest.mark.parametrize('with_sources', (False, True))
+def test_assembly_reads_boundary_only_once_when_declared(monkeypatch, graded, with_sources):
+    sim = model('graded_run' if graded else 'uniform_run')
+    if with_sources:
+        sim.add_source((6 * DX, 7 * DX, 5 * DX), 'ez', amplitude_kind='field')
+        sim.add_source((8 * DX, 9 * DX, 4 * DX), 'ey', amplitude_kind='field')
+    grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
+    calls = []
+    original = Simulation.boundary_model
+    def spy(self):
+        calls.append(self)
+        return original(self)
+    monkeypatch.setattr(Simulation, 'boundary_model', spy)
+    solve_conductors(sim, grid, nonuniform=graded)
+    assert calls == ([sim] if with_sources else [])
+
+
+@pytest.mark.parametrize('path', ('uniform_run', 'graded_run'))
+def test_absorber_backing_plane_source_admitted(path):
+    sim = model(path, boundary='cpml')
+    graded = path == 'graded_run'
+    grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
+    assert grid.pad_x_lo > 0
+    position = (-grid.pad_x_lo * DX, 7 * DX, 5 * DX)
+    if graded:
+        from rfx.nonuniform import position_to_index
+        cell = position_to_index(grid, position)
+    else:
+        cell = grid.position_to_index(position)
+    # The graded lookup clamps exterior coordinates to the physical interface.
+    # Only uniform placement reaches the backing and discriminates falsifier (d).
+    assert cell[0] == (grid.pad_x_lo if graded else 0)
+    sim.add_source(position, 'ez', amplitude_kind='current')
+    sim.add_probe((4 * DX, 7 * DX, 5 * DX), 'ez')
+    sim.add_probe((13 * DX, 9 * DX, 4 * DX), 'ez')
+    result = execute(sim, path, steps=2)
+    assert np.asarray(result.time_series).shape == (2, 2)
+    assert np.all(np.isfinite(result.time_series))
+
+
+@pytest.mark.parametrize('path', ('uniform_run', 'graded_run'))
+@pytest.mark.parametrize('x,face', ((-0.4 * DX, 'x_lo'), (DOMAIN[0] + 0.4 * DX, 'x_hi')))
+def test_outside_coordinate_reports_domain_and_wall(path, x, face):
+    sim = model(path)
+    sim.add_source((x, 7 * DX, 5 * DX), 'ez', amplitude_kind='field')
+    with pytest.raises(ValueError, match=face) as exc:
+        execute(sim, path)
+    assert f'Declared x coordinate {x} is outside domain [0, {DOMAIN[0]}]' in str(exc.value)
+    assert 'at least one cell inside the domain, off the wall' in str(exc.value)
+    assert 'orient it normal' not in str(exc.value)
 
 
 CONTROL_PATHS = [(path, case) for path in PATHS
@@ -326,3 +407,11 @@ def test_falsifier_c_boundary_string_is_red(monkeypatch):
                         lambda sim: FACES if sim._boundary == 'pec' else ())
     with pytest.raises(pytest.fail.Exception, match='DID NOT RAISE'):
         test_b3_mixed_record('uniform_run')
+
+
+def test_falsifier_d_absorber_backings_are_red(monkeypatch):
+    from rfx.boundaries.model import electric_faces
+    monkeypatch.setattr(admission, 'declared_pec_faces',
+                        lambda sim: electric_faces(sim.boundary_model()))
+    with pytest.raises(ValueError, match='x_lo'):
+        test_absorber_backing_plane_source_admitted('uniform_run')

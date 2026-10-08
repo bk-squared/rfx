@@ -149,8 +149,8 @@ def test_message_states_refusal_and_remedy():
                  "source_decoupled")
     assert "Soft source _ports[0]" in msg
     assert "grid index" in msg and "Declared PEC wall face(s): x_lo" in msg
-    assert "at least one cell off the wall" in msg
-    assert "orient it normal to the wall" in msg
+    assert "at least one cell inside the domain, off the wall" in msg
+    assert "orient it normal to the wall" not in msg
 
 
 @pytest.mark.parametrize("face,position,component", [

@@ -12,8 +12,11 @@ from rfx.preflight._common import _component_is_dead, _H_LOOP
 
 
 def declared_pec_faces(sim):
-    """Read declared walls, excluding absorber backings, from the record."""
-    return tuple(f.name for f in sim.boundary_model().faces if f.kind == Kind.PEC)
+    """Read declared walls, excluding absorber backings and invariant axes."""
+    model = sim.boundary_model()
+    invariant = {axis.name for axis in model.axes if axis.invariant}
+    return tuple(f.name for f in model.faces
+                 if f.kind == Kind.PEC and f.name[0] not in invariant)
 
 
 def wall_source_findings(sim, grid, *, nonuniform=False):
@@ -34,8 +37,10 @@ def refuse_dead_soft_sources(sim, conductors):
 
 
 def _dead_sources(sim, conductors):
+    if not sim._ports:
+        return
     faces = declared_pec_faces(sim)
-    if not sim._ports or (conductors.pec_edges is None and not faces):
+    if conductors.pec_edges is None and not faces:
         return
     grid = conductors.grid
     leaves = (tuple(grid.cells(a) for a in range(3)), conductors.pec_edges,
@@ -93,10 +98,18 @@ def _dead_sources(sim, conductors):
         message = (f"{label} _ports[{index}] at {tuple(source.position)} "
                    f"({component}), grid index {cells[0]}, is dead: {reason}. ")
         if wall_faces:
+            outside = []
+            for axis in sorted({face[0] for face in wall_faces}):
+                coordinate = source.position['xyz'.index(axis)]
+                length = sim._domain['xyz'.index(axis)]
+                if coordinate < 0 or coordinate > length:
+                    outside.append(f"Declared {axis} coordinate {coordinate} is outside "
+                                   f"domain [0, {length}]. ")
             yield (message + f"Declared PEC wall face(s): {', '.join(wall_faces)}. "
                    f"Realized driven indices: {cells}. "
                    "This declaration raises because its tangential E edges in a PEC wall are shorted. "
-                   "Move it at least one cell off the wall, or orient it normal to the wall.")
+                   + ''.join(outside)
+                   + "Move it at least one cell inside the domain, off the wall.")
         else:
             if source.extent is not None:
                 # Keep the geometry-only wire guard and its live-cell message.

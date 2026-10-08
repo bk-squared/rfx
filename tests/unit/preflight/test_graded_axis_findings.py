@@ -352,7 +352,7 @@ def test_a_source_a_coarse_half_cell_from_the_far_wall_is_caught():
                  if getattr(i, "code", None) == "source_decoupled")
     assert issue.severity == "error"
     text = str(issue)
-    assert "z_hi" in text and "at least one cell off the wall" in text, text
+    assert "z_hi" in text and "at least one cell inside the domain, off the wall" in text, text
 
 
 def test_a_source_outside_the_fine_wall_half_cell_is_not_flagged():
