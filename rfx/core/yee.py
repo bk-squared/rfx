@@ -1199,21 +1199,15 @@ def update_h_nu(state: FDTDState, materials: MaterialArrays, dt: float,
 
 
 def _nu_e_metric_kwargs(materials, inverse_duals, cell_sizes):
-    """Raw NU cells need primal metrics; concrete constant duals prove equality.
+    """Raw NU cells require primal metrics, including an explicit constant axis.
 
-    Dual lengths alone do not provide the declared primal widths on a graded
-    axis. A traced metric cannot prove constancy at setup, so that case also
-    requires a realization or explicit primal metrics.
+    Rounded inverse duals cannot establish primal-cell constancy. Grid callers
+    supply electric_cell_sizes(grid), whose None axes use grid.is_constant.
     """
     if materials.components is not None:
         return {}
     if cell_sizes is not None:
         return dict(cell_sizes=cell_sizes)
-    from rfx.core.jax_utils import is_tracer
-    import numpy as np
-    if all(not is_tracer(d) and np.all(np.asarray(d) == np.asarray(d)[0])
-           for d in inverse_duals):
-        return {}
     raise ValueError(
         "non-uniform E update requires realized component materials or primal "
         "cell_sizes; unequal or traced dual metrics cannot select the E-edge material rule")

@@ -14,6 +14,7 @@ from rfx.boundaries.pmc import apply_pmc_faces
 from rfx.core.yee import init_state, init_materials, update_h, update_e, update_h_nu, update_e_nu
 from rfx.grid import Grid
 from rfx.nonuniform import make_nonuniform_grid
+from rfx.model.materials import electric_cell_sizes
 from tests.contracts.path_equivalence.comparison import (
     compare, component_peaks, wave_impedance_range,
 )
@@ -113,7 +114,8 @@ def runner(name, implementation, dz=None, eps=None, steps=200, history=False,
         st, ps = implementation.apply_cpml_h(st, params, ps, grid, axes, materials)
         st = apply_pmc_faces(st, pmc)
         if nu:
-            st = update_e_nu(st, materials, grid.dt, grid.inv_dx, grid.inv_dy, grid.inv_dz)
+            st = update_e_nu(st, materials, grid.dt, grid.inv_dx, grid.inv_dy, grid.inv_dz,
+                             cell_sizes=electric_cell_sizes(grid))
         else:
             st = update_e(st, materials, grid.dt, grid.dx, periodic=periodic)
         st, ps = implementation.apply_cpml_e(st, params, ps, grid, axes, materials)

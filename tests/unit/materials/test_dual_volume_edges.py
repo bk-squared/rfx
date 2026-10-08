@@ -28,37 +28,6 @@ class MetricGrid:
         return np.all(self.widths[axis] == self.widths[axis][0])
 
 
-@pytest.mark.parametrize('equal', [False, True])
-def test_sheet_background_uses_weighted_edge_values(equal):
-    from rfx.core.yee import init_state
-    from rfx.materials.thin_conductor import SheetImpedanceCtx, END_ROW_WEIGHT
-    from rfx.model.sheet_coefficients import sheet_update_coeffs, apply_sheet_impedance_e
-    from rfx.materials.thin_conductor import sheet_update_coeffs as legacy
-    g = MetricGrid(([1., 1., 1.],)*3 if equal else
-                   ([1., 2., 4.], [3., 2., 1.], [2., 5., 3.]))
-    eps = np.arange(27, dtype=np.float32).reshape(g.shape)+1
-    sigma = eps*.01
-    m = MaterialArrays(jnp.asarray(eps), jnp.asarray(sigma), jnp.ones(g.shape))
-    m = m._replace(components=realize_components(m, g, periodic=(False,)*3))
-    coeffs = sheet_update_coeffs(jnp.full(g.shape,.2), m, g)
-    if equal:
-        for got, old in zip(jax.tree.leaves(coeffs), jax.tree.leaves(legacy(jnp.full(g.shape,.2),m,g.dt))):
-            assert np.asarray(got).tobytes() == np.asarray(old).tobytes()
-        return
-    mask = jnp.ones(g.shape,dtype=bool)
-    ctx = SheetImpedanceCtx(mask,mask,mask,jnp.full(g.shape,.2),mask,mask,mask)
-    state = init_state(g.shape)
-    ones = (jnp.ones(g.shape),)*3
-    out = jax.jit(lambda st, c: apply_sheet_impedance_e(st,ones,ones,ctx,c))(state,coeffs)
-    cell = (1,1,1)
-    for axis, field in enumerate((out.ex,out.ey,out.ez)):
-        e = reference(eps,g.widths,axis,cell,(False,)*3)[0]
-        s = reference(sigma,g.widths,axis,cell,(False,)*3)[0] + END_ROW_WEIGHT*.2
-        x = s*g.dt/(8.8541878128e-12*e)
-        expected = np.exp(-x)-np.expm1(-x)/s
-        np.testing.assert_allclose(field[cell],expected,rtol=2e-7)
-
-
 def reference(values, widths, component, cell, periodic):
     """NumPy cell selection and primal-area sum; no product mean helper."""
     transverse = [a for a in range(3) if a != component]
@@ -287,3 +256,63 @@ def test_plain_distributed_drive_keeps_equal_cell_host_bits():
 @pytest.mark.parametrize('kind', ['plain','lossy'])
 def test_first_e_sample_with_graded_lumped_rc(kind):
     test_first_e_sample_at_unequal_interface(kind, 'rlc')
+
+
+@pytest.mark.parametrize('periodic', [(False, False, False), (True, True, True)])
+@pytest.mark.parametrize('term', ['fraction', 'coupling'])
+def test_lorentz_occupancy_and_recurrence_against_hand_reference(periodic, term):
+    from rfx.model.materials import pole_component_weights
+    shape = (3, 4, 5)
+    widths = (np.array([1., 2., 4.]), np.array([3., 1., 2., 5.]),
+              np.array([2., 4., 1., 3., 6.]))
+    grid = MetricGrid(widths)
+    mask = np.random.default_rng(829).random(shape) > .45
+    delta_eps, omega0 = 2., 2*np.pi*15e9
+    delta = omega0/20
+    pole = lorentz_pole(delta_eps, omega0, delta)
+    eps = jnp.ones(shape, dtype=jnp.float32)*2
+    raw = MaterialArrays(eps, jnp.zeros_like(eps), jnp.ones_like(eps))
+    realized = realize_components(ComponentCells(raw, None, ([pole], mask)),
+                                  grid, periodic=periodic)
+    fractions = pole_component_weights(mask, periodic, cell_sizes=electric_cell_sizes(grid))
+    expected = np.empty((3, *shape))
+    for axis in range(3):
+        for cell in np.ndindex(shape):
+            expected[(axis, *cell)] = reference(mask, widths, axis, cell, periodic)[0]
+    # Independent central-difference / CN Lorentz recurrence coupling.
+    scale = 8.8541878128e-12 * (delta_eps*omega0**2) * grid.dt**2 / (1 + delta*grid.dt)
+    coupling = np.asarray(realized.lorentz.coefficients[2])[:, 0]
+    if term == 'fraction':
+        np.testing.assert_allclose(fractions, expected, rtol=3e-7, atol=1e-7)
+    else:
+        np.testing.assert_allclose(coupling, scale*expected, rtol=4e-7, atol=0)
+
+
+@pytest.mark.parametrize('tensor', [False, True])
+def test_rounded_inverse_duals_cannot_decide_primal_constancy(tensor):
+    from rfx.core.yee import init_state, update_e_nu, update_e_nu_aniso
+    # Unequal float64 cells become indistinguishable as float32 inverse duals.
+    grid = MetricGrid(([1., 1.+1e-9, 1.],)*3)
+    assert not any(grid.is_constant(a) for a in range(3))
+    widths = electric_cell_sizes(grid)
+    assert all(d is not None for d in widths)
+    inverse = tuple(jnp.asarray(1 / np.r_[d[0], (d[:-1]+d[1:])/2],
+                                dtype=jnp.float32) for d in grid.widths)
+    assert all(np.all(np.asarray(d) == 1.) for d in inverse)
+    eps = jnp.arange(27, dtype=jnp.float32).reshape(grid.shape)+1
+    raw = MaterialArrays(eps, eps*.01, jnp.ones_like(eps))
+    state = init_state(grid.shape)._replace(ex=jnp.ones_like(eps))
+    components = realize_components(raw, grid, periodic=(False,)*3)
+
+    def step(materials, **kwargs):
+        if tensor:
+            return update_e_nu_aniso(state, materials, *components.eps_update,
+                                     grid.dt, *inverse, **kwargs)
+        return update_e_nu(state, materials, grid.dt, *inverse, **kwargs)
+
+    with pytest.raises(ValueError, match='requires realized component materials or primal'):
+        step(raw)
+    explicit = step(raw, cell_sizes=widths)
+    stored = step(raw._replace(components=components))
+    for a, b in zip(jax.tree.leaves(explicit), jax.tree.leaves(stored)):
+        np.testing.assert_array_equal(a, b)

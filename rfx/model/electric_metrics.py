@@ -67,7 +67,7 @@ def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks, grid=None):
         neighbour's real cells for every override form
         (``stage_forward_array_x_slab``, ``stage_sharded_forward_override``,
         ``stage_concrete_forward_array``).
-    ``drives`` : static tuple of ``(dev_id, row0, cell, component, dV)``,
+    ``drives`` : static tuple of ``(dev_id, row0, cell, component, dV, pole)``,
         one per material-driven source. The edge's owner reads the four
         cells :func:`rfx.core.yee.cell_component_e_materials` names for
         ``cell`` in its local slab from row ``row0`` on. ``row0 = 0`` keeps

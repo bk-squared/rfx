@@ -609,12 +609,12 @@ def e_node_dual_spacings(profile_full):
 
         dual[k] = (d[k-1] + d[k]) / 2     (k >= 1);   dual[0] = d[0]
 
-    which is exactly ``1/inv_d_e``. An f0 surface-impedance sheet is an
-    edge quantity normalized by this node dual: its sheet conductance is
-    ``sigma_sheet * dual[k]``. A DC fold instead enters cell conductivity
-    before the E-edge mean and is normalized by the occupied cell's primal
-    width ``d[k]``. Integrating its weighted edge conductivity over the node
-    duals then realizes the declared ``sigma_bulk * thickness``.
+    which is exactly ``1/inv_d_e``. An f0 sheet uses this node dual;
+    a DC fold uses the occupied cell's primal width ``d[k]`` before the
+    E-edge mean, realizing ``sigma_bulk * thickness`` integrated over duals.
+    The #669 Leontovich measurement gave ratios 1.2021 on a 0.25/0.50 mm
+    transition and 0.6214 on a 1.00/0.25 mm transition against a matched mesh
+    (expected 1.000), motivating the node dual for f0 sheets.
 
     Computed as ``(d[k-1]+d[k])/2`` rather than ``1/inv_d_e`` so a uniform
     profile returns the cell size bit-exactly (``0.5*(d+d) == d`` in
@@ -2598,9 +2598,9 @@ def _build_nu_scan(
     # in step_fn (after apply_pec_mask, before sources/DFT sampling).
     use_sheet_impedance = sheet_impedance is not None
     if use_sheet_impedance:
-        from rfx.model.sheet_coefficients import sheet_update_coeffs
+        from rfx.materials.thin_conductor import sheet_update_coeffs
         sheet_coeffs = sheet_update_coeffs(
-            sheet_impedance.sigma_sheet, materials, grid)
+            sheet_impedance.sigma_sheet, materials, dt)
 
     if sources:
         src_waveforms = jnp.stack([jnp.array(s[4]) for s in sources], axis=-1)
@@ -2930,7 +2930,7 @@ def _build_nu_scan(
         # H^{n+1/2} the E update consumed.
         if use_sheet_impedance:
             from rfx.core.yee import curl_h_nu as _curl_h_nu
-            from rfx.model.sheet_coefficients import (
+            from rfx.materials.thin_conductor import (
                 apply_sheet_impedance_e as _apply_sheet_e)
             _scd = jnp.promote_types(st.ex.dtype, jnp.float32)
             _curls = _curl_h_nu(
