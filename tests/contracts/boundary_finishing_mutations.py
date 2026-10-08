@@ -33,6 +33,28 @@ def main(mode):
         registry.measure = admit
         path = "tests/contracts/test_realized_boundary.py"
         judge = "test_no_unlisted_departures and waveguide-cpml and not nonuniform and not wire-fast and not adi"
+    elif mode == "default-twin-treated-as-explicit":
+        from rfx.boundaries import features
+        original = features.boundary_was_explicit
+
+        def explicit(sim):
+            original(sim)
+            return True
+
+        features.boundary_was_explicit = explicit
+        path = "tests/contracts/test_realized_boundary.py"
+        judge = "test_default_waveguide_twin_records_its_walls"
+    elif mode == "default-wrap-invariance-unconditional":
+        from rfx.boundaries import tfsf
+        original = tfsf.invariant
+
+        def invariant(*args):
+            original(*args)
+            return True, ""
+
+        tfsf.invariant = invariant
+        path = "tests/contracts/test_boundary_finishing.py"
+        judge = "test_default_wrap_accepts_slab_and_refuses_original_box"
     else:
         raise ValueError(mode)
     return pytest.main([path, "-q", "-k", judge, "--tb=short",
