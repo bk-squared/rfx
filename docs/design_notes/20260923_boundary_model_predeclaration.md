@@ -536,3 +536,37 @@ finding that the invariance was not judged.
 (6) The frozen design format gains no field. Export of a default full-aperture guide writes the resolved
 declaration (PEC transverse faces, absorber on the port axis); any other default-boundary model exports
 exactly as on main; a document written by main imports and runs as it did on main.
+
+## Addendum 5d (2026-10-08, lead decision L:0f6340 after measurement) — the default full-aperture guide on the graded mesh is refused
+
+Addendum 5c (1) kept today's behaviour on the paths where main keeps real absorbers on the transverse faces of a
+full-aperture guide (non-uniform, distributed_nu) and asked for one measurement. The measurement is in: with the
+boundary not passed, the graded path solves a structure without side walls. Against the uniform path on the
+two-port contract fixture, |S11| is 14.5-19.4 dB lower on 16 of 20 bins and |S21| is above 0 dB on 13 of 20 bins
+(max +0.93 dB). That is a non-physical result handed over silently, so 5c (1) is replaced for these paths:
+
+1. Non-uniform and distributed_nu: a full-aperture waveguide port with the boundary NOT passed is refused at
+   dispatch (run, forward, the waveguide S-matrix calculator, with and without preflight). The message names the
+   transverse faces and the way through: declare them, e.g. `boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'}` for a
+   guide along x. This is a stopgap against a silently wrong result; the structural fix (one boundary model realized
+   the same way on every path) stays the first item of PR3b, cause issue tracker 1221.
+2. An explicitly declared transverse absorber on these paths keeps today's behaviour (the user asked for an open
+   cross-section and gets it). An explicitly declared wall keeps today's behaviour.
+3. Measured basis for the way through (rfx-archive `rfx/records/20261008-s1-pr3a-guide-default-uniform-vs-graded/`):
+   with the side walls declared, the graded path equals the uniform path where both realize the same cross-section
+   (0.937 mm cell, 44 nodes on both: |S21| within 0.001 dB, |S11| within 0.03 dB, phase within 0.01 deg, 20 bins).
+   At cells where a 40 mm width is not a whole number of cells the uniform builder realizes one more node than the
+   graded builder (41.22 vs 39.35 mm at 1.874 mm), and the two differ by that width: |S21| within 0.18 dB, |S11|
+   within 0.8 dB off the null bin, phase up to 5.8 deg near cutoff. That one-node difference is a PR3b item, not
+   part of this refusal.
+4. Judge: one contract test pins both sides on a guide whose cross-section is a whole number of cells on both
+   paths: default on the graded path is refused before any field step; explicit walls on the graded path agree with
+   the uniform default guide on |S11|, |S21| (dB) and S21 phase at every bin, with a bar derived from the measured
+   0.03 dB / 0.01 deg (bar: 0.1 dB and 0.1 deg; a deep-null bin below -40 dB is excluded from the |S11| comparison
+   by name). Mutation: the refusal removed on the graded path turns the first half red.
+5. What this assumes about each path, checked: uniform, distributed_v2, subgridded realize depth 0 and are governed
+   by Addendum 5 (default -> walls with one warning; explicit absorber refused) — build outputs in the PR3a report
+   (`BASE_PATHS`): pads (4,4,0,0,0,0). Non-uniform and distributed_nu realize real pads (4 on all faces) — same
+   report. ADI: not reachable (constructor refuses the absorber). Not checked by the leader: whether distributed_nu
+   reaches the same dispatch point as the single-device graded path for the default-provenance test; the implementer
+   confirms by reading and by a build, and reports.
