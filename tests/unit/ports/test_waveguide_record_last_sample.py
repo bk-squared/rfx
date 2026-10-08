@@ -83,3 +83,21 @@ def test_before_first_step_leaves_every_record_and_count_unchanged():
     for name in names:
         np.testing.assert_array_equal(np.asarray(getattr(out, name)), before[name], err_msg=name)
     np.testing.assert_array_equal(np.asarray(out.n_steps_recorded), count)
+
+
+def test_the_first_completed_step_writes_slot_zero():
+    """Step 1 is the first sample and lands in slot 0 (a guard of `> 1` would drop it)."""
+    from rfx.sources.waveguide_port import update_waveguide_port_probe
+    from rfx.core.yee import init_state
+
+    result = _guide().run(n_steps=2)
+    cfg = next(iter(result.waveguide_ports.values()))
+    grid = result.grid
+    blank = cfg._replace(v_inc_t=cfg.v_inc_t * 0, n_steps_recorded=cfg.n_steps_recorded * 0)
+    state = init_state((grid.nx, grid.ny, grid.nz))._replace(step=1)
+    out = update_waveguide_port_probe(blank, state, grid.dt, grid.dx)
+    arg = (float(grid.dt) - float(cfg.src_t0)) / float(cfg.src_tau)
+    expected = float(cfg.src_amp) * (-2.0 * arg) * np.exp(-(arg ** 2))    # the drive at t = 1 dt
+    assert expected != 0
+    np.testing.assert_allclose(np.asarray(out.v_inc_t)[0], expected, rtol=1e-5)
+    assert int(out.n_steps_recorded) == 1

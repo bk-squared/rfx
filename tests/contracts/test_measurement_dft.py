@@ -185,6 +185,9 @@ def test_n_valid_masks_tail_across_replay_blocks(kind, offset, length):
         records = np.random.default_rng(1527).normal(size=(length, 2)).astype(np.float32)
         freqs, dt = np.array([2.3, 17.1, 63.7]), .002
         traces = []
+        from rfx.measurement import dft as kernel
+        transform(records, freqs, dt, kind, n_valid=1)      # compile once for this shape
+        compiled = kernel._replay._cache_size()
 
         @jax.jit
         def replay(n_valid):
@@ -203,6 +206,9 @@ def test_n_valid_masks_tail_across_replay_blocks(kind, offset, length):
             np.testing.assert_allclose(traced, eager, rtol=1e-6, atol=1e-9)
             assert len(traces) == 1, 'n_valid values must reuse one trace'
             assert replay._cache_size() == 1
+        # The kernel's own replay compiled once for this record shape, not per n_valid
+        # (the outer jit above would not retrace for an int32 scalar either way).
+        assert kernel._replay._cache_size() <= compiled + 1
 
 
 def test_high_product_extreme_words_and_random():
@@ -243,3 +249,23 @@ def test_negative_phase_zero_low_word(kind, offset, x64):
         # A missing negation carry is only 2*pi/2**32 (~1.46e-9) rad:
         # the float32 bar alone cannot distinguish it.
         assert np.max(error) <= 1e-12
+
+
+@pytest.mark.parametrize('kind,offset', [('E', 1), ('H', .5)])
+def test_negative_phase_low_word_carry(kind, offset):
+    """f dt = K / 2**64 with a low word that carries when one turn step is added."""
+    from fractions import Fraction
+
+    numerators = [2**33 - 1, (0x1234 << 32) + 0xFFFFFFFF, (0x80000 << 32) + 0xFFFF0001]
+    dt = .5
+    freqs = np.array([float(Fraction(k, 2**63)) for k in numerators])    # exact: f*dt = K/2**64
+    assert [Fraction(f) * Fraction(dt) for f in freqs] == [Fraction(k, 2**64) for k in numerators]
+    steps = np.array([-2, -3, -100000], dtype=np.int32)
+    expected = np.array([
+        [np.exp(-2j * np.pi * float((Fraction(k, 2**64) * (int(n) + Fraction(offset))) % 1))
+         for k in numerators] for n in steps])
+    with jax.enable_x64(True):
+        actual = np.asarray(jax.jit(lambda n: phase(n, freqs, dt, kind))(steps)) / dt
+    error = np.abs(np.angle(actual.astype(np.complex128) / expected))
+    # Without the carry from the low word the phase is 2*pi/2**32 (1.46e-9 rad) off.
+    assert np.max(error) <= 1e-12, error
