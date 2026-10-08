@@ -152,6 +152,9 @@ def frame(case, args, source):
 
 def field(case, args, source):
     """Display-only raw pulse DFTs; one forward solve per stored iterate."""
+    if getattr(args, "drive", "feed") == "reciprocal":
+        from lens_reciprocal_field import run
+        return run(case, args, source)
     metadata = dc.load_json(source / "result.json")
     if metadata["id"] != f"design-{case.CASE}":
         raise ValueError("field record belongs to a different case")
@@ -543,7 +546,13 @@ def main(case, argv=None):
     parser.add_argument("--iterates", type=lambda text: [int(k) for k in text.replace(",", " ").split()],
                         help="frame/field: stored iterations, comma-separated (required for field)")
     parser.add_argument("--reported", action="store_true", help="FD/RLW: use best stored design")
+    parser.add_argument("--drive", choices=("feed", "reciprocal"), default="feed")
+    parser.add_argument("--empty", action="store_true", help="reciprocal field: remove lens, feed and reflector")
     args = parser.parse_args(argv)
+    if args.drive != "feed" and (args.stage != "field" or case.CASE != "lens"):
+        parser.error("--drive reciprocal requires lens --stage field")
+    if args.empty and not (args.stage == "field" and args.drive == "reciprocal"):
+        parser.error("--empty requires --stage field --drive reciprocal")
     if args.iterates is not None and (args.stage not in ("frame", "field") or not args.iterates or any(k < 0 for k in args.iterates)):
         parser.error("--iterates requires --stage frame/field and nonnegative iterations")
     if args.stage == "field":

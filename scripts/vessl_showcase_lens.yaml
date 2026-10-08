@@ -17,6 +17,8 @@ env:
   RFX_DESIGN_START: ""
   RFX_DESIGN_ITERATIONS: ""
   RFX_DESIGN_ITERATES: ""
+  RFX_DESIGN_DRIVE: "feed"
+  RFX_DESIGN_EMPTY: "0"
 mount:
   /root/workspace/byungkwan-workspace/rfx-showcase-runs/: volume://remilab-fs/rfx-showcase-runs
 run: |-
@@ -60,6 +62,12 @@ run: |-
   fi
   if [ -n "$RFX_DESIGN_ITERATIONS" ]; then
     set -- "$@" --iterations "$RFX_DESIGN_ITERATIONS"
+  fi
+  if [ "${RFX_DESIGN_DRIVE:-feed}" != "feed" ]; then
+    set -- "$@" --drive "$RFX_DESIGN_DRIVE"
+  fi
+  if [ "${RFX_DESIGN_EMPTY:-0}" = "1" ]; then
+    set -- "$@" --empty
   fi
   set +e
   { "$PY" scripts/showcase/design_lens.py "$@" 2>&1; echo "$?" > "$out/stage.rc"; } | tee "$out/stage.log"
