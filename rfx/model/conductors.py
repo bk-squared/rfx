@@ -14,8 +14,6 @@ from rfx.preflight.realization import _RealizedPEC
 from rfx.boundaries.pec import SheetSpec
 
 
-from rfx.preflight._impl import run_preflight_gate
-from rfx._diagnostic_transport import pack_nu_forward_result, report_diagnostics, diagnostic_refusal, merge_diagnostics, result_with_diagnostics
 
 @dataclass(frozen=True)
 class ConductorStage:
@@ -503,7 +501,7 @@ def auto_preflight(sim, *, skip=False, context="forward", check_ntff=True,
     # gate -> this helper -> facade -> public entry -> user
     sim._run_preflight_gate(issues, context=context, stacklevel=5)
     if assembly is not None:
-        assembly.diagnostics = report_diagnostics(issues)
+        assembly.diagnostics = tuple(getattr(issues, "diagnostics", ()))
     return assembly if prepare else issues
 
 
@@ -511,7 +509,11 @@ def bind_solve_call(assembly, call):
     """Consume a graded solve before ring-down adds internal probes."""
     from functools import partial
     root = assembly.take()
-    return partial(call, conductors=root, diagnostics=assembly.diagnostics), root.grid
+    return partial(
+        call,
+        conductors=root,
+        diagnostics=assembly.diagnostics,
+    ), root.grid
 
 
 def uniform_solve_inputs(assembly):
@@ -572,17 +574,21 @@ def forward_kernel_inputs(sim, root, lane, edges, sheet_operator):
     return root, root.pec_edges, root.sheet_operator
 
 
-def distributed_solve_inputs(sim, grid, assembly, skip, gather, diagnostics=()):
+def distributed_solve_inputs(sim, grid, assembly, skip, gather):
     """Consume the dispatch handoff without retaining it during slab staging."""
     sim._pf_campaign_ctx = None
     sim._realized_geometry_record = None
     if assembly is None:
         root = solve_conductors(sim, grid, nonuniform=True)
-        report = sim._auto_preflight(conductors=root, skip=skip,
-            context="run" if gather else "forward", check_ntff="advisory" if gather else True)
-        diagnostics = merge_diagnostics(diagnostics, report_diagnostics(report))
+        report = sim._auto_preflight(
+            conductors=root,
+            skip=skip,
+            context="run" if gather else "forward",
+            check_ntff="advisory" if gather else True,
+        )
+        diagnostics = tuple(getattr(report, "diagnostics", ()))
     else:
-        diagnostics = merge_diagnostics(diagnostics, assembly.diagnostics)
+        diagnostics = assembly.diagnostics
         root = assembly.take()
     sheets, wires = [], []
     materials = assembled_materials(root, pec_sheets=sheets, pec_wires=wires)

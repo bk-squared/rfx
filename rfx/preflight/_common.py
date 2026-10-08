@@ -48,7 +48,7 @@ from rfx._grid_metric import (
     NODE_TOUCH_REL, cells_crossed, is_one_cell_size, nearest_node_index,
 )
 from rfx.core.jax_utils import is_tracer
-from rfx.diagnostic_records import Diagnostic, from_legacy
+from rfx.diagnostic_records import Diagnostic, from_legacy, for_legacy_issue
 
 
 def local_cell(grid, axis, x):
@@ -280,12 +280,22 @@ class PreflightWarning(UserWarning):
         source: str | None = None,
     ) -> None:
         severity = severity or (message.legacy_severity if isinstance(message, Diagnostic) else "warning")
-        self.diagnostic = message if isinstance(message, Diagnostic) else from_legacy(
-            message, code=code, severity=severity, loc=loc, source=source)
+        self.diagnostic = (
+            message
+            if isinstance(message, Diagnostic)
+            else from_legacy(
+                message,
+                code=code,
+                severity=severity,
+                loc=loc,
+                source=source,
+            )
+        )
         if isinstance(message, Diagnostic):
             source = source if source is not None else message.source
             code = message.code if code == "uncoded" else code
             message = message.message
+        self.diagnostic = for_legacy_issue(self.diagnostic, message, severity)
         super().__init__(message)
         self.message = str(message)
         self.code = code
@@ -345,8 +355,19 @@ class PreflightConfigError(ValueError):
         loc: str | None = None,
         source: str | None = None,
     ) -> None:
-        self.diagnostic = message if isinstance(message, Diagnostic) else from_legacy(
-            message, code=code, severity="error", loc=loc, source=source, refusal=True)
+        self.diagnostic = (
+            message
+            if isinstance(message, Diagnostic)
+            else from_legacy(
+                message,
+                code=code,
+                severity="error",
+                loc=loc,
+                source=source,
+                refusal=True,
+            )
+        )
+        self.diagnostic = for_legacy_issue(self.diagnostic, self.diagnostic.message, "error")
         self.diagnostics = (self.diagnostic,)
         if isinstance(message, Diagnostic):
             loc, source = message.subject, message.source
@@ -413,10 +434,15 @@ class PreflightIssue(str):
         if diagnostic is None:
             diagnostic = getattr(message, "diagnostic", None)
         if diagnostic is None:
-            diagnostic = from_legacy(message, code=code, severity=severity,
-                                     loc=loc, source=source)
+            diagnostic = from_legacy(
+                message,
+                code=code,
+                severity=severity,
+                loc=loc,
+                source=source,
+            )
         obj = super().__new__(cls, str(message))
-        obj.diagnostic = diagnostic
+        obj.diagnostic = for_legacy_issue(diagnostic, message, severity)
         obj.severity = severity
         obj.code = code
         obj.loc = loc

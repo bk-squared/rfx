@@ -15,6 +15,9 @@ from __future__ import annotations
 
 from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
 from rfx.api._removed_kwargs import _reject_removed_forward_kwargs
+from rfx.api._forward_result import pack_nu_forward_result
+from rfx.preflight._impl import run_preflight_gate
+from rfx._diagnostic_transport import diagnostic_refusal, result_with_diagnostics, merge_diagnostics
 
 import functools
 import math
@@ -162,130 +165,7 @@ def _declaration_setup_at_trace_time(entry):
     return staged_entry
 
 
-def _refplane_conductor_mask(pec_mask, sheet_ctx, pec_sheets=()):
-    """Full conductor footprint for the reference-plane trace scan (#695).
-
-    ``pec_mask | (sheet footprints)`` — #931 §1.9: the footprint is the
-    cells of the PEC VOLUMES union the footprints of the SHEETS.  Neither
-    an f0 sheet (#677) nor a PEC sheet (#931) contributes to ``pec_mask``
-    or to ``materials.sigma``, so the bare ``pec_mask`` this used to pass
-    made a sheet-traced transmission line look like an empty
-    cross-section.  ``sheet_ctx.sigma_sheet`` is ``> 0`` exactly on the f0
-    sheet cells; PEC sheets arrive as ``SheetSpec``s.
-
-    Returns ``pec_mask`` unchanged when there is nothing to add, or when
-    an input is traced — this caller already requires concrete values and
-    a traced OR would only relocate the failure.
-    """
-    from rfx.core.jax_utils import is_tracer
-    from rfx.materials.thin_conductor import conductor_footprint
-
-    masks = []
-    if pec_mask is not None and is_tracer(pec_mask):
-        return pec_mask
-    if sheet_ctx is not None:
-        sig = getattr(sheet_ctx, "sigma_sheet", None)
-        if sig is not None:
-            if is_tracer(sig):
-                return pec_mask
-            masks.append(jnp.asarray(sig) > 0.0)
-    for sp in (pec_sheets or ()):
-        masks.append(jnp.asarray(sp.footprint))
-    if not masks:
-        return pec_mask
-    return conductor_footprint(pec_mask=pec_mask, sheet_masks=masks)
-
-
-def _refplane_reject_msl_ladder_in_plane_zone(
-    sim, grid, port_entry, *, line_axis, outboard_sign, i_port, i_far,
-):
-    """Crossing guard, microstrip leg: no microstrip de-embedding probe may
-    sit inside a lumped/wire port's reference-plane zone.
-
-    A microstrip port is not a point: its N-probe de-embedding ladder
-    reaches back toward the DUT by ``n_probe_offset + n * n_probe_spacing``
-    cells, so the port position can sit far outside the plane zone while an
-    inner rung sits INSIDE it (on the probe-fed microstrip fixture the feed
-    snaps to index 77, far beyond a 2N plane at 53, while the default
-    ``n_probes=5`` ladder's last rung is index 51 — invisible to the
-    port-position check above).
-
-    The ladder walked here is the one the S-matrix drivers actually probe:
-    ``_resolve_msl_auto_offsets`` re-derives auto probe offsets (#469) and
-    auto spacings (#681) from the registered geometry, and the resolved
-    ladder can be LONGER than the registration ladder (a widened spacing)
-    or SHORTER (a short feed floors the spacing at two cells). Walking
-    ``sim._msl_ports`` as registered would miss a crossing the run makes,
-    or report one it never makes. The resolver is idempotent (it restarts
-    from the stored lower edge every call), so the result is the same
-    whether the caller installed the registered or the resolved entries.
-    Its clearance warnings are suppressed here: they belong to the driver
-    that probes the ladder, which has already emitted them once.
-
-    Message class stays "reach past another port" (frozen by
-    tests/locks/test_refplane_port_waves.py::
-    test_refplane_crossing_guard_rejects_planes_past_other_port), with the
-    offending rung named. Line-axis indices only (conservative): a
-    TRANSVERSELY separated microstrip port on a parallel trace also trips.
-    """
-    import warnings
-
-    from rfx.api._sparams import _resolve_msl_auto_offsets
-    from rfx.sources.msl_port import (
-        MSLPort,
-        msl_axis_roles,
-        msl_probe_x_coords_n,
-    )
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        entries = _resolve_msl_auto_offsets(sim, list(sim._msl_ports), grid)
-    axis_index = {"x": 0, "y": 1, "z": 2}
-    for msl_entry in entries:
-        x_feed, y_centre, z_lo = (float(c) for c in msl_entry.position)
-        port_model = MSLPort(
-            feed_x=x_feed,
-            y_lo=y_centre - float(msl_entry.width) / 2.0,
-            y_hi=y_centre + float(msl_entry.width) / 2.0,
-            z_lo=z_lo,
-            z_hi=z_lo + float(msl_entry.height),
-            direction=msl_entry.direction,
-            impedance=float(msl_entry.impedance),
-            excitation=msl_entry.waveform,
-        )
-        prop_axis_name = msl_axis_roles(msl_entry.direction)[0]
-        prop_axis = axis_index[prop_axis_name]
-        probe_coords = msl_probe_x_coords_n(
-            grid, port_model,
-            n_probes=int(msl_entry.n_probes),
-            n_offset_cells=int(msl_entry.n_probe_offset),
-            n_spacing_cells=int(msl_entry.n_probe_spacing),
-        )
-        for rung, rung_coord in enumerate(probe_coords):
-            rung_point = list(msl_entry.position)
-            rung_point[prop_axis] = float(rung_coord)
-            rung_index = int(
-                grid.position_to_index(tuple(rung_point))[line_axis])
-            in_zone = (
-                (i_port < rung_index <= i_far) if outboard_sign > 0
-                else (i_far <= rung_index < i_port))
-            if in_zone:
-                raise ValueError(
-                    "reference_plane_cells: the reference planes of the "
-                    f"port at {port_entry.position} (indices up to "
-                    f"{i_far} on axis {line_axis}) reach past another "
-                    f"port at {msl_entry.position} — its MSL de-embedding "
-                    f"probe {rung} at {prop_axis_name} = {rung_coord:.6g} m "
-                    f"(index {rung_index}) lies inside the plane zone. "
-                    "Reduce N so both planes stay on the uniform line "
-                    "between the ports, or reduce n_probes / "
-                    "n_probe_offset / n_probe_spacing so the ladder stays "
-                    "outboard of the 2N plane (an AUTO offset/spacing is "
-                    "the resolved value the run probes, not the "
-                    "registration default). Note: this check compares "
-                    "line-axis indices only (conservative), so a "
-                    "TRANSVERSELY separated MSL port on a different "
-                    "parallel trace also trips it.")
+from rfx.api._refplane_checks import _refplane_conductor_mask, _refplane_reject_msl_ladder_in_plane_zone
 
 
 def _refplane_reject_planes_off_the_uniform_line(
@@ -496,7 +376,8 @@ class _ExecuteMixin:
             base_materials_coarse,
             pec_mask_coarse,
             n_steps,
-            compute_s_params=compute_s_params, diagnostics=diagnostics,
+            compute_s_params=compute_s_params,
+            diagnostics=diagnostics,
             s_param_freqs=s_param_freqs,
             s_param_n_steps=s_param_n_steps,
             conformal_pec=conformal_pec,
@@ -505,7 +386,9 @@ class _ExecuteMixin:
     # ---- non-uniform mesh run path ----
 
 
-    def _run_nonuniform(self, *, diagnostics=(), n_steps, compute_s_params=None, preflight=None,
+    def _run_nonuniform(self, *,
+                        diagnostics=(),
+                        n_steps, compute_s_params=None, preflight=None,
                         conductors=None,
                         s_param_freqs=None,
                         subpixel_smoothing: bool | str = False,
@@ -548,7 +431,10 @@ class _ExecuteMixin:
             )
         from rfx.runners.nonuniform import run_nonuniform_path
         return run_nonuniform_path(
-            self, preflight=preflight, conductors=conductors, diagnostics=diagnostics,
+            self,
+            preflight=preflight,
+            conductors=conductors,
+            diagnostics=diagnostics,
             n_steps=n_steps,
             compute_s_params=compute_s_params,
             s_param_freqs=s_param_freqs,
@@ -563,8 +449,7 @@ class _ExecuteMixin:
             decay_energy_consecutive=decay_energy_consecutive,
             radiated_flux_box=radiated_flux_box,
             flux_env_checks=flux_env_checks,
-            **({} if stop_fn is None else
-               {"stop_fn": stop_fn, "stop_interval": stop_interval}),
+            **({} if stop_fn is None else {"stop_fn": stop_fn, "stop_interval": stop_interval}),
             conformal_pec=conformal_pec,
         )
 
@@ -1325,7 +1210,7 @@ class _ExecuteMixin:
         return _conductors.auto_preflight(self, skip=skip, context=context, check_ntff=check_ntff, conductors=conductors, prepare=prepare, distributed=distributed)
 
     def _run_preflight_gate(self, issues, *, context: str, stacklevel: int = 3) -> None:
-        return _conductors.run_preflight_gate(issues, context=context, stacklevel=stacklevel)
+        return run_preflight_gate(issues, context, stacklevel)
 
     def _run_adi_from_materials(
         self,
@@ -1385,7 +1270,12 @@ class _ExecuteMixin:
         # after the specific refusals above and before the first step.
         # A declared material interface is one (#1373, LANE_GATES).
         from rfx.runners._admission import admit
-        admit(self, lane, run_args={"conformal_pec": conformal_pec}, diagnostics=diagnostics)
+        admit(
+            self,
+            lane,
+            run_args={"conformal_pec": conformal_pec},
+            diagnostics=diagnostics,
+        )
 
         # The arrays this lane steps can differ from the declaration: a
         # concrete eps_override / sigma_override. Read them too, before the
@@ -1454,14 +1344,17 @@ class _ExecuteMixin:
                     diagnostics=diagnostics,
                     state=state,
                     time_series=probe_data,
-                    s_params=None, freqs=None,
-                    grid=grid_out, dt=dt,
+                    s_params=None,
+                    freqs=None,
+                    grid=grid_out,
+                    dt=dt,
                     freq_range=(self._freq_max / 10, self._freq_max, self._boundary),
                 )
             return ForwardResult(
                 diagnostics=diagnostics,
                 time_series=probe_data,
-                ntff_data=None, ntff_box=None,
+                ntff_data=None,
+                ntff_box=None,
                 grid=grid_out,
                 dt=dt,
             )
@@ -1641,7 +1534,8 @@ class _ExecuteMixin:
                 pec_sheets=tuple(pec_sheets or ()),
                 pec_wires=tuple(pec_wires or ()),
                 return_state=False,
-                lane="fwd_adi", diagnostics=diagnostics,
+                lane="fwd_adi",
+                diagnostics=diagnostics,
             )
 
         # The uniform forward lane has no subgrid (#1240). forward() (and
@@ -1650,8 +1544,9 @@ class _ExecuteMixin:
         # callers never carry a refinement (run() sends one to the subgridded
         # lane, compute_mixed_s_matrix refuses it first).
         self._require_no_refinement_without_a_subgrid(
-            "forward()/optimize()/topology_optimize()/"
-            "compute_lumped_wire_s_matrix_via_scan()", diagnostics=diagnostics)
+            "forward()/optimize()/topology_optimize()/compute_lumped_wire_s_matrix_via_scan()",
+            diagnostics=diagnostics,
+        )
         _line_stub_scope = _line_stub_admit(self, port_s11_freqs)
 
         from rfx.simulation import (
@@ -2380,7 +2275,11 @@ class _ExecuteMixin:
         # after the specific refusals above and before the first step.
         if lane is not None:
             from rfx.runners._admission import admit
-            admit(self, lane, diagnostics=diagnostics)
+            admit(
+                self,
+                lane,
+                diagnostics=diagnostics,
+            )
 
         conductors, pec_edge_masks_local, sheet_impedance = _conductors.forward_kernel_inputs(self, conductors, lane or "fwd_uniform", pec_edge_masks_local, sheet_impedance)
         result = _run(
@@ -2573,8 +2472,9 @@ class _ExecuteMixin:
             freqs=freqs_out,
             lumped_port_sparams=result.lumped_port_sparams,
             sparam_time_records=result.sparam_time_records,
-            dft_time_records={entry.name: rec for entry, rec in zip(
-                self._dft_planes, result.dft_time_records or ())},
+            dft_time_records={
+                entry.name: rec for entry, rec in zip(self._dft_planes, result.dft_time_records or ())
+            },
             wire_port_sparams=result.wire_port_sparams,
             dft_planes=dft_planes_out,
             # The scan's own step: stencil_order=4 derates it below grid.dt.
@@ -2584,25 +2484,7 @@ class _ExecuteMixin:
             adjoint_settling=result.adjoint_settling,
         )
 
-    @staticmethod
-    def _pack_nu_forward_result(
-        *,
-        diagnostics=(),
-        time_series,
-        grid,
-        ntff_data=None,
-        ntff_box=None,
-        s_params=None,
-        freqs=None,
-        dft_planes=None,
-        wire_port_sparams=None,
-        sparam_time_records=None,
-        dft_time_records=None,
-        dt=None,
-        current_moment_data=None,
-        current_moment_monitor=None,
-    ) -> ForwardResult:
-        return _conductors.pack_nu_forward_result(time_series=time_series, grid=grid, ntff_data=ntff_data, ntff_box=ntff_box, s_params=s_params, freqs=freqs, dft_planes=dft_planes, wire_port_sparams=wire_port_sparams, sparam_time_records=sparam_time_records, dft_time_records=dft_time_records, dt=dt, current_moment_data=current_moment_data, current_moment_monitor=current_moment_monitor, diagnostics=diagnostics)
+    _pack_nu_forward_result = staticmethod(pack_nu_forward_result)
 
     @_declaration_setup_at_trace_time
     def _forward_nonuniform_from_materials(
@@ -2667,10 +2549,14 @@ class _ExecuteMixin:
                 )
 
         result = run_nonuniform_path(
-            self, preflight=preflight, conductors=conductors, diagnostics=diagnostics,
+            self,
+            preflight=preflight,
+            conductors=conductors,
+            diagnostics=diagnostics,
             n_steps=n_steps,
-            s_param_freqs=(None if port_s11_freqs is None else
-                           jnp.asarray(port_s11_freqs, dtype=jnp.float32)),
+            s_param_freqs=(
+                None if port_s11_freqs is None else jnp.asarray(port_s11_freqs, dtype=jnp.float32)
+            ),
             eps_override=eps_override,
             sigma_override=sigma_override,
             pec_mask_override=pec_mask_override,
@@ -2696,8 +2582,7 @@ class _ExecuteMixin:
             dft_time_records=getattr(result, "dft_time_records", None),
             dt=getattr(result, "dt", None),
             current_moment_data=getattr(result, "current_moment_data", None),
-            current_moment_monitor=getattr(
-                result, "current_moment_monitor", None),
+            current_moment_monitor=getattr(result, "current_moment_monitor", None),
         )
 
     def distributed_override_layout(self, devices=None):
@@ -2744,7 +2629,8 @@ class _ExecuteMixin:
 
     def _execute_distributed_nonuniform_from_materials(
         self,
-        *, lane: str = "fwd_distributed_nu", diagnostics=(),
+        *, lane: str = "fwd_distributed_nu",
+        diagnostics=(),
         assembly=None,
         eps_override: jnp.ndarray | None = None,
         sigma_override: jnp.ndarray | None = None,
@@ -2942,7 +2828,14 @@ class _ExecuteMixin:
                         "Local whole-domain overrides are supported only in one process.")
 
         # ---- Assemble full-domain materials ----
-        conductors, (materials, debye_spec, lorentz_spec, pec_mask), _dnu_pec_sheets, _dnu_pec_wires, diagnostics = _conductors.distributed_solve_inputs(self, grid, assembly, skip_preflight, gather_final_state, diagnostics)
+        (
+            conductors,
+            (materials, debye_spec, lorentz_spec, pec_mask),
+            _dnu_pec_sheets,
+            _dnu_pec_wires,
+            solve_diagnostics,
+        ) = _conductors.distributed_solve_inputs(self, grid, assembly, skip_preflight, gather_final_state)
+        diagnostics = merge_diagnostics(diagnostics, solve_diagnostics)
         # ---- Sources / probes (lumped/wire/coax ports unsupported here). ----
         if self._lumped_rlc:
             raise NotImplementedError(
@@ -2999,7 +2892,11 @@ class _ExecuteMixin:
         # Every declared input this lane does not carry is refused here,
         # after the specific refusals above and before the first step.
         from rfx.runners._admission import admit
-        admit(self, lane, diagnostics=diagnostics)
+        admit(
+            self,
+            lane,
+            diagnostics=diagnostics,
+        )
 
         if eps_override is not None or sigma_override is not None:
             materials = materials._replace(
@@ -3099,11 +2996,23 @@ class _ExecuteMixin:
             material_drive=tuple(material_drive),
         )
 
-        return grid, dict(result, diagnostics=diagnostics), geometry_record
+        return (
+            grid,
+            dict(
+                result,
+                diagnostics=diagnostics,
+            ),
+            geometry_record,
+        )
 
-    def _forward_distributed_nonuniform_from_materials(self, *, diagnostics=(), **kwargs) -> ForwardResult:
+    def _forward_distributed_nonuniform_from_materials(
+        self, *, diagnostics=(), **kwargs
+    ) -> ForwardResult:
         """Pack the shared distributed graded solve for differentiable callers."""
-        grid, result, _ = self._execute_distributed_nonuniform_from_materials(diagnostics=diagnostics, **kwargs)
+        grid, result, _ = self._execute_distributed_nonuniform_from_materials(
+            diagnostics=diagnostics,
+            **kwargs,
+        )
         # ---- Repackage into ForwardResult via the shared lane helper.
         # Both the distributed runner and the single-device NU runner
         # return time_series with layout ``(n_steps, n_probes)``; we
@@ -3119,8 +3028,7 @@ class _ExecuteMixin:
             ntff_box=None,
             s_params=None,
             freqs=None,
-            dft_planes=result.get("dft_planes")
-                if hasattr(result, "get") else None,
+            dft_planes=result.get("dft_planes") if hasattr(result, "get") else None,
             wire_port_sparams=None,
             dt=getattr(grid, "dt", None),
         )
@@ -3275,7 +3183,7 @@ class _ExecuteMixin:
             if distributed:
                 # NU-only in v1.6.2 (DP3 locked decision).
                 if not is_nonuniform:
-                    raise _conductors.diagnostic_refusal(NotImplementedError(
+                    raise diagnostic_refusal(NotImplementedError(
                         "distributed=True on forward() is currently implemented "
                         "only for non-uniform meshes; use run(..., devices=...) "
                         "for the uniform distributed path."
@@ -4168,7 +4076,8 @@ class _ExecuteMixin:
 
         # ---- W6.3 unified lane dispatch: one place decides + rejects ----
         plan = self._dispatch_plan(
-            mode="forward", diagnostics=_solve_assembly.diagnostics,
+            mode="forward",
+            diagnostics=_solve_assembly.diagnostics,
             n_steps=n_steps,
             num_periods=num_periods,
             distributed=distributed,
@@ -4474,11 +4383,15 @@ class _ExecuteMixin:
             design_box=_design_spec,
             gradient=gradient,
             design_occupancy=_design_occ_spec,
-            monitor_overrides={"eps_r": eps_override, "sigma": sigma_override,
-                               "mu_r": mu_r_override,
-                               "pec_mask": pec_mask_override,
-                               "pec_occupancy": pec_occupancy_override},
-            lane="fwd_uniform", diagnostics=_solve_assembly.diagnostics,
+            monitor_overrides={
+                "eps_r": eps_override,
+                "sigma": sigma_override,
+                "mu_r": mu_r_override,
+                "pec_mask": pec_mask_override,
+                "pec_occupancy": pec_occupancy_override,
+            },
+            lane="fwd_uniform",
+            diagnostics=_solve_assembly.diagnostics,
         )
         if ringdown is None:
             _res = _fwd_call()
@@ -4783,7 +4696,8 @@ class _ExecuteMixin:
         # NU/distributed lanes (the uniform/adi/subgridded lanes resolve it
         # below from the grid they build and reuse).
         plan = self._dispatch_plan(
-            mode="run", diagnostics=_diagnostics,
+            mode="run",
+            diagnostics=_diagnostics,
             n_steps=n_steps,
             num_periods=num_periods,
             devices=devices,
@@ -4792,7 +4706,10 @@ class _ExecuteMixin:
         n_steps = plan.n_steps
         if plan.lane == "run_subgridded":
             from rfx.subgridding._notice import require_experimental
-            require_experimental(self, diagnostics=_diagnostics)
+            require_experimental(
+                self,
+                diagnostics=_diagnostics,
+            )
         if _realized.ACTIVE is not None:
             _realized.enter(self, plan.lane)
         if ringdown is not None:
@@ -4821,7 +4738,7 @@ class _ExecuteMixin:
                 stacklevel=2,
             )
             del _solve_assembly  # the fallback performs its own solve assembly
-            return _conductors.result_with_diagnostics(self.run(**{**_call_args, "devices": None,
+            return result_with_diagnostics(self.run(**{**_call_args, "devices": None,
                                "exchange_interval": 1,
                                "skip_preflight": True}), _diagnostics)
         if plan.lane in ("run_distributed", "run_distributed_nu"):
@@ -4838,7 +4755,10 @@ class _ExecuteMixin:
                 refuse_unsupported_distributed_features,
             )
             refuse_unsupported_distributed_features(
-                self, lane="distributed multi-device run()", diagnostics=_diagnostics)
+                self,
+                lane="distributed multi-device run()",
+                diagnostics=_diagnostics,
+            )
             _dist_conformal = bool(conformal_pec and self._has_pec_to_conform())
             # One device on a graded mesh is the non-uniform lane, which
             # carries neither snapshot nor conformal_pec, nor until_decay on
@@ -4910,21 +4830,32 @@ class _ExecuteMixin:
                         "process, or forward(distributed=True) for the probe traces.")
                 grid, result, geometry_record = self._execute_distributed_nonuniform_from_materials(
                     assembly=_solve_assembly,
-                    n_steps=n_steps, devices=devices,
+                    n_steps=n_steps,
+                    devices=devices,
                     exchange_interval=exchange_interval,
-                    skip_preflight=skip_preflight, gather_final_state=True, lane="run_distributed_nu", diagnostics=_diagnostics,
+                    skip_preflight=skip_preflight,
+                    gather_final_state=True,
+                    lane="run_distributed_nu",
+                    diagnostics=_diagnostics,
                 )
                 _res = Result(
                     diagnostics=result.get("diagnostics", _diagnostics),
-                    state=result["final_state"], time_series=result["time_series"],
-                    s_params=None, freqs=None, grid=grid, dt=grid.dt,
+                    state=result["final_state"],
+                    time_series=result["time_series"],
+                    s_params=None,
+                    freqs=None,
+                    grid=grid,
+                    dt=grid.dt,
                     freq_range=(self._freq_max / 10, self._freq_max, self._boundary),
                     realized_geometry=geometry_record,
                 )
             else:
                 from rfx.runners.distributed_v2 import run_distributed
                 _res = run_distributed(
-                    self, n_steps=n_steps, devices=devices, diagnostics=_diagnostics,
+                    self,
+                    n_steps=n_steps,
+                    devices=devices,
+                    diagnostics=_diagnostics,
                     exchange_interval=exchange_interval,
                     assembly=_solve_assembly,
                     conformal_pec=conformal_pec,
@@ -5075,7 +5006,8 @@ class _ExecuteMixin:
                 pec_sheets=tuple(_run_pec_sheets),
                 pec_wires=tuple(_run_pec_wires),
                 return_state=True,
-                lane="run_adi", diagnostics=_diagnostics,
+                lane="run_adi",
+                diagnostics=_diagnostics,
                 conformal_pec=conformal_pec,
             )
             _res = self._attach_run_settling_witness(_res, n_steps=n_steps)
@@ -5118,8 +5050,11 @@ class _ExecuteMixin:
                     "(a Box at least one cell thick) or use the uniform "
                     "or non-uniform lane.")
             _res = self._run_subgridded(
-                grid, base_materials, pec_mask,
-                n_steps=subgrid_n_steps, diagnostics=_diagnostics,
+                grid,
+                base_materials,
+                pec_mask,
+                n_steps=subgrid_n_steps,
+                diagnostics=_diagnostics,
                 conformal_pec=conformal_pec,
                 compute_s_params=compute_s_params,
                 s_param_freqs=s_param_freqs,
@@ -5146,7 +5081,9 @@ class _ExecuteMixin:
         _field_dtype = self._resolve_field_dtype()
         _uniform_call = functools.partial(
             run_uniform,
-            self, conductors=conductors, diagnostics=_diagnostics,
+            self,
+            conductors=conductors,
+            diagnostics=_diagnostics,
             n_steps=n_steps,
             until_decay=until_decay,
             decay_check_interval=decay_check_interval,
@@ -5176,8 +5113,9 @@ class _ExecuteMixin:
             kerr_chi3=kerr_chi3,
             field_dtype=_field_dtype,
             sheet_specs=_run_sheet_specs,
-            **({} if report_every is None else
-               {"report_every": report_every, "report_label": report_label}),
+            **(
+                {} if report_every is None else {"report_every": report_every, "report_label": report_label}
+            ),
         )
         if ringdown is None:
             _res = _uniform_call()

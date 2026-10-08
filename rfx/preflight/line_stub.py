@@ -313,7 +313,9 @@ def read_band(sim, freqs=None):
     except Exception as exc:
         raise diagnostic_refusal(ValueError("#1512: line-port read frequencies must be concrete")) from exc
     if not values.size or not np.isfinite(values).all() or (values < 0).any():
-        raise diagnostic_refusal(ValueError("#1512: line-port read frequencies must be finite, nonnegative and nonempty"))
+        raise diagnostic_refusal(
+            ValueError("#1512: line-port read frequencies must be finite, nonnegative and nonempty")
+        )
     return float(values.min()), float(values.max())
 
 
@@ -334,11 +336,18 @@ def stub_message(finding, band=None):
 def _uninspectable_warning(skipped):
     from rfx.preflight._common import PreflightWarning
     return PreflightWarning(
-        msl_diagnostic('msl.line_stub_inspection_unavailable',
-                       msl_text('line_stub_inspection_unavailable',
-                                shape_count=len(skipped), shapes='; '.join(skipped)),
-                       source='line_stub_findings'),
-        code="line_stub_inspection_unavailable", source="line_stub_findings")
+        msl_diagnostic(
+            "msl.line_stub_inspection_unavailable",
+            msl_text(
+                "line_stub_inspection_unavailable",
+                shape_count=len(skipped),
+                shapes="; ".join(skipped),
+            ),
+            source="line_stub_findings",
+        ),
+        code="line_stub_inspection_unavailable",
+        source="line_stub_findings",
+    )
 
 
 def _warn_uninspectable(skipped):
@@ -360,7 +369,10 @@ def _warn_uninspectable(skipped):
     finally:
         del frame
     warning = _uninspectable_warning(skipped)
-    warnings.warn(warning, stacklevel=level)
+    warnings.warn(
+        warning,
+        stacklevel=level,
+    )
 
 
 def require_no_resonant_line_stub(sim, freqs=None):
@@ -378,15 +390,29 @@ def require_no_resonant_line_stub(sim, freqs=None):
             findings = []
             skipped.append(str(exc))
         except ValueError as exc:
-            msl_error(msl_diagnostic(
-                'msl.line_stub_realization', msl_text('line_stub_realization', detail=exc),
-                source='line_stub_findings'), error=exc)
+            msl_error(
+                msl_diagnostic(
+                    "msl.line_stub_realization",
+                    msl_text(
+                        "line_stub_realization",
+                        detail=exc,
+                    ),
+                    source="line_stub_findings",
+                ),
+                error=exc,
+            )
             raise
         if skipped:
             _warn_uninspectable(skipped)
         for finding in findings:
             if resonant_odd_orders(finding, band) is not None:
-                raise msl_error(stub_diagnostic(finding, band))
+                raise msl_error(
+                    stub_diagnostic(
+                        finding,
+                        band,
+                        severity="refusal",
+                    )
+                )
 
 
 def line_stub_admission(sim, freqs=None):
@@ -414,15 +440,32 @@ def preflight_line_stubs(sim, warn):
     except ValueError as exc:
         # Preserve the blocking realization error without aborting later checks.
         # Solve admission still raises it unconditionally, even with preflight off.
-        warn.warn(PreflightErrorWarning(msl_diagnostic(
-            'msl.line_stub_realization', msl_text('line_stub_realization', detail=str(exc)),
-            source='line_stub_findings'), code="line_stub_realization",
-                                        source="line_stub_findings"), stacklevel=3)
+        warn.warn(
+            PreflightErrorWarning(
+                msl_diagnostic(
+                    "msl.line_stub_realization",
+                    msl_text(
+                        "line_stub_realization",
+                        detail=str(exc),
+                    ),
+                    source="line_stub_findings",
+                ),
+                code="line_stub_realization",
+                source="line_stub_findings",
+            ),
+            stacklevel=3,
+        )
         return
     if skipped:
         warn.warn(_uninspectable_warning(skipped), stacklevel=3)
     for finding in findings:
-        warn.warn(PreflightWarning(
-            stub_diagnostic(finding, band), code="line_stub_behind_port", severity="warning",
-            source="line_stub_findings", loc=f"{finding.collection}[{finding.port_index}]"),
-            stacklevel=3)
+        warn.warn(
+            PreflightWarning(
+                stub_diagnostic(finding, band),
+                code="line_stub_behind_port",
+                severity="warning",
+                source="line_stub_findings",
+                loc=f"{finding.collection}[{finding.port_index}]",
+            ),
+            stacklevel=3,
+        )

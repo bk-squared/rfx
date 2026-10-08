@@ -3,6 +3,11 @@
 Lengths enter in metres, frequencies in Hz, fractions as ratios. Display-unit
 conversion belongs here. A Message carries observations through composed
 fragments; it is not accepted from arbitrary caller-authored message text.
+
+Value names in the table name the input fields. Numeric tuples/lists flatten to
+<name>_0, <name>_1, ...; indexed port summaries prefix these with port_<index>_.
+Severity in the table is the default: a warning record is advisory, while the
+same finding becomes refusal only at a blocking error/raise site.
 """
 
 from dataclasses import dataclass
@@ -292,10 +297,23 @@ TEMPLATES.update(
         "material_unavailable": " The declared-material column extent is unavailable.",
         "gap_unavailable": "The conductor-plane gap is unavailable because attachment was not validated.",
         "offset_interval_empty": "no compliant n_probe_offset exists on this feed length (interval empty)",
-        "near_field_ramp_remedy": " Put the port and its probes inside one uniform zone of the profile, or extend that zone to hold the standoff. REPORT-ONLY: nothing is refused.",
-        "near_field_scope": " REPORT-ONLY: nothing is refused, and the rule is derived from ONE fixture at W/h = 2 — a much wider trace may need more (the first higher-order microstrip mode scales with W + 2·h, which one fixture cannot separate from h).",
-        "reflector_bounds_remedy": ". Give those shapes an axis-aligned bounding box (or place the probes explicitly with n_probe_offset) before trusting `compute_msl_s_matrix`'s Z₀ / |S11| here.",
-        "automatic_kept_count": " The driver keeps that count because, counted in this runway's own cells, the probe ladder would cross a grading ramp.",
+        "near_field_ramp_remedy": (
+            ' Put the port and its probes inside one uniform zone of the profile, or extend that '
+            'zone to hold the standoff. REPORT-ONLY: nothing is refused.'
+        ),
+        "near_field_scope": (
+            ' REPORT-ONLY: nothing is refused, and the rule is derived from ONE fixture at W/h = 2'
+            ' — a much wider trace may need more (the first higher-order microstrip mode scales '
+            'with W + 2·h, which one fixture cannot separate from h).'
+        ),
+        "reflector_bounds_remedy": (
+            '. Give those shapes an axis-aligned bounding box (or place the probes explicitly with'
+            " n_probe_offset) before trusting `compute_msl_s_matrix`'s Z₀ / |S11| here."
+        ),
+        "automatic_kept_count": (
+            " The driver keeps that count because, counted in this runway's own cells, the probe "
+            'ladder would cross a grading ramp.'
+        ),
         "automatic_floor": " add_msl_port's auto offset already floors to",
     }
 )
@@ -361,7 +379,7 @@ CODE_LEVELS.update(
             "line_stub_inspection_unavailable",
             "advisory",
         ),
-        "msl.line_stub_behind_port": ("line_stub_behind_port", "refusal"),
+        "msl.line_stub_behind_port": ("line_stub_behind_port", "advisory"),
     }
 )
 
@@ -426,6 +444,9 @@ TEMPLATES.update(
         "{propagation_axis} is GRADED; the automatic probe ladder is "
         "counted in this port's own runway cell ({ladder}, probe 0 "
         "{first_probe_distance_m:len|} from the source)",
+        "placement_uninspected_remedy": (
+            "; the upstream-only offset and the registration spacing, counted in this axis's cell, are kept"
+        ),
         "placement_uninspected": "{port_name!r} (direction={direction!r}): the downstream reflector "
         "scan could not evaluate {unevaluated_conductor_count} conductor(s) "
         "— ",
@@ -464,6 +485,7 @@ VARIANTS = {
         "placement_crosses_ramp",
         "placement_uniform_zone",
         "placement_uninspected",
+        "placement_uninspected_remedy",
         "placement_empty_interval",
         "placement_graded_skipped",
     ),
@@ -519,6 +541,7 @@ class CodeDefinition:
 
 # Shared fragments used by more than one check remain in this same table.
 _FRAGMENTS = {
+    "reflector_scan_incomplete": ("reflector_bounds_remedy",),
     "normal_resolution": ("conductor_gap", "material_column", "declared_faces"),
     "trace_face_alignment": (
         "declared_interface",
@@ -653,7 +676,7 @@ def msl_text(key, **values):
     return message
 
 
-def msl_diagnostic(code, message, *, subject=None, source="_check_msl_port_geometry"):
+def msl_diagnostic(code, message, *, subject=None, source="_check_msl_port_geometry", severity=None):
     if not isinstance(message, Message):
         raise TypeError("MSL messages must be rendered through the catalog")
     forwarded = getattr(message, "diagnostic", None)
@@ -665,11 +688,16 @@ def msl_diagnostic(code, message, *, subject=None, source="_check_msl_port_geome
         return forwarded
     entry = CODES[code]
     return Diagnostic(
-        code, entry.severity, subject, str(message), message.values, source=source
+        code,
+        severity or entry.severity,
+        subject,
+        str(message),
+        message.values,
+        source=source,
     )
 
 
-def stub_diagnostic(finding, band=None):
+def stub_diagnostic(finding, band=None, *, severity="advisory"):
     fq = finding.frequency_hz / 1e9
     from rfx.preflight.line_stub import resonant_odd_orders
 
@@ -707,7 +735,11 @@ def stub_diagnostic(finding, band=None):
     band_text = (
         ""
         if band is None
-        else msl_text("stub_band", band_lo_hz=msl_value(band[0], band[0] / 1e9), band_hi_hz=msl_value(band[1], band[1] / 1e9))
+        else msl_text(
+            "stub_band",
+            band_lo_hz=msl_value(band[0], band[0] / 1e9),
+            band_hi_hz=msl_value(band[1], band[1] / 1e9),
+        )
     )
     mismatch = ""
     declared = finding.declared_eps_r_sub
@@ -741,6 +773,7 @@ def stub_diagnostic(finding, band=None):
         "msl.line_stub_behind_port",
         message,
         subject=finding.port_name,
+        severity=severity,
         source="line_stub_findings",
     )
 

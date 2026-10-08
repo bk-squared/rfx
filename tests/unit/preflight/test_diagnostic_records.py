@@ -11,7 +11,13 @@ import pytest
 from rfx import Diagnostic, MATERIAL_LIBRARY
 from rfx._diagnostic_transport import merge_diagnostics, diagnostic_refusal
 from rfx.api._spec import Result, ForwardResult, MSLSMatrixResult, MixedSMatrixResult, CoaxMSLTransitionResult
-from rfx.preflight._common import PreflightIssue, PreflightReport, PreflightWarning, PreflightErrorWarning, PreflightConfigError
+from rfx.preflight._common import (
+    PreflightIssue,
+    PreflightReport,
+    PreflightWarning,
+    PreflightErrorWarning,
+    PreflightConfigError,
+)
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -30,18 +36,33 @@ def test_frozen_leaf_json_and_public_export():
         d.code = 'changed'
     with pytest.raises(TypeError):
         d.values['length_m'] = 4
-    assert json.loads(json.dumps(d.to_dict(), allow_nan=False)) == {
-        'code': 'msl.example', 'severity': 'advisory', 'subject': 'port',
-        'message': 'length 2 mm', 'values': {'length_m': .002}, 'path': None, 'source': None,
+    assert json.loads(
+        json.dumps(
+            d.to_dict(),
+            allow_nan=False,
+        )
+    ) == {
+        "code": "msl.example",
+        "severity": "advisory",
+        "subject": "port",
+        "message": "length 2 mm",
+        "values": {"length_m": 0.002},
+        "path": None,
+        "source": None,
     }
-    with pytest.raises(ValueError, match='severity'):
-        Diagnostic('x', 'error', None, 'x', {})
+    with pytest.raises(
+        ValueError,
+        match="severity",
+    ):
+        Diagnostic("x", "error", None, "x", {})
     for n in ast.walk(ast.parse((ROOT / 'rfx/diagnostic_records.py').read_text())):
         if isinstance(n, ast.ImportFrom):
             assert not (n.module or '').startswith(('rfx.api', 'rfx.preflight', 'rfx.runners'))
 
 
-@pytest.mark.parametrize('severity,legacy', [('info','info'),('advisory','warning'),('warning','error'),('refusal','error')])
+@pytest.mark.parametrize('severity,legacy', [
+    ('info', 'info'), ('advisory', 'warning'), ('warning', 'warning'), ('refusal', 'error'),
+])
 def test_severity_mapping(severity, legacy):
     d = Diagnostic('x', severity, 'p', 'message', {})
     assert d.legacy_severity == legacy
@@ -50,20 +71,40 @@ def test_severity_mapping(severity, legacy):
 
 def test_warning_issue_report_bridges_and_refusal():
     d = observation()
-    warning = PreflightWarning(d, code='legacy_slug')
-    issue = PreflightIssue(warning, code=warning.code, severity=warning.severity)
+    warning = PreflightWarning(
+        d,
+        code="legacy_slug",
+    )
+    issue = PreflightIssue(
+        warning,
+        code=warning.code,
+        severity=warning.severity,
+    )
     assert str(warning) == str(issue) == d.message
     assert issue.code == 'legacy_slug' and issue.diagnostic is d
-    unmoved = PreflightIssue('old 7 mm', code='old_code')
+    unmoved = PreflightIssue(
+        "old 7 mm",
+        code="old_code",
+    )
     assert unmoved.diagnostic.code == 'old_code' and unmoved.diagnostic.values == {}
     report = PreflightReport([issue, unmoved])
     assert report.diagnostics == (d, unmoved.diagnostic)
     refusal = Diagnostic('msl.refusal', 'refusal', 'p', 'refused', {})
-    error = PreflightConfigError(refusal, code='old_refusal')
+    error = PreflightConfigError(
+        refusal,
+        code="old_refusal",
+    )
     assert str(error) == 'refused' and error.diagnostics == (refusal,)
     assert PreflightErrorWarning(refusal).diagnostic is refusal
     with pytest.raises(ValueError) as caught:
-        PreflightReport([PreflightIssue(refusal, severity='error')]).raise_for_failure()
+        PreflightReport(
+            [
+                PreflightIssue(
+                    refusal,
+                    severity="error",
+                )
+            ]
+        ).raise_for_failure()
     assert caught.value.diagnostics == (refusal,)
 
 
@@ -71,7 +112,14 @@ def test_record_and_legacy_report_copy_and_pickle_keep_immutable_values():
     import copy
     import pickle
     diagnostic = Diagnostic('msl.example', 'advisory', 'port', 'length 2 mm', {'length_m': .002})
-    report = PreflightReport([PreflightIssue(diagnostic, code='legacy_slug')])
+    report = PreflightReport(
+        [
+            PreflightIssue(
+                diagnostic,
+                code="legacy_slug",
+            )
+        ]
+    )
     for restored in (copy.deepcopy(report), pickle.loads(pickle.dumps(report))):
         assert restored.diagnostics == (diagnostic,)
         assert restored[0].code == 'legacy_slug'
@@ -96,8 +144,21 @@ def test_old_positional_results_and_material_imports():
 def test_jit_grad_vmap_static_metadata_without_tracer_leaks(result_kind):
     d = observation()
     def objective(x):
-        return (Result(None, x ** 2, None, None, diagnostics=(d,))
-                if result_kind == 'run' else ForwardResult(x ** 2, diagnostics=(d,)))
+        return (
+            Result(
+                None,
+                x**2,
+                None,
+                None,
+                diagnostics=(d,),
+            )
+            if result_kind == "run"
+            else ForwardResult(
+                x**2,
+                diagnostics=(d,),
+            )
+        )
+
     with jax.checking_leaks():
         result = jax.jit(objective)(jnp.array(3.))
         assert result.diagnostics == (d,)
@@ -110,14 +171,23 @@ def test_jit_grad_vmap_static_metadata_without_tracer_leaks(result_kind):
 
 def test_nested_drive_union_preserves_changed_observations():
     d1, d2 = observation('first'), observation('second')
-    drives = [Result(None, None, None, None, diagnostics=(d,)) for d in (d1, d1, d2)]
+    drives = [
+        Result(
+            None,
+            None,
+            None,
+            None,
+            diagnostics=(d,),
+        )
+        for d in (d1, d1, d2)
+    ]
     assert merge_diagnostics((d1,), *(drive.diagnostics for drive in drives)) == (d1, d2)
     assert merge_diagnostics() == ()
     assert ForwardResult(None).diagnostics == ()
 
 
-def test_an_earlier_refusal_level_observation_does_not_hide_a_new_cause():
-    earlier = Diagnostic('msl.line_stub_behind_port', 'refusal', 'port',
+def test_an_earlier_advisory_does_not_hide_a_new_refusal():
+    earlier = Diagnostic('msl.line_stub_behind_port', 'advisory', 'port',
                          'stub outside this read band', {'frequency_hz': 20e9})
     error = diagnostic_refusal(NotImplementedError('this path does not drive MSL ports'), (earlier,))
     assert error.diagnostics[0] == earlier

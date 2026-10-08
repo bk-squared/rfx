@@ -28,7 +28,7 @@ LENGTHS = {
     'feed_m': r"' at [xyz]=" + L,
     'source_clearance_m': r'CPML = ' + L,
     'source_buffer_m': r'domain edge \+ ' + L + ' calibrated',
-    'first_probe_distance_m': r'(?:puts probe 0 |grid puts probe 0 )' + L,
+    'first_probe_distance_m': r'(?:puts probe 0 |grid puts probe 0 |, probe 0 )' + L,
     'standoff_m': r'standoff of \d+ cells \(' + L,
     'decay_length_m': '2·h_sub/π = ' + L,
     'automatic_cell_m': r"in this runway's " + L + ' cells',
@@ -145,6 +145,34 @@ SCALARS.update({
 LENGTHS['feed_reflector_gap_m'] = r'the reflector ' + L + ' from the feed'
 
 
+# Additional observations found by the reviewer's independent setup matrix.
+# No unknown numeric key is ignored: printed() raises for any new key.
+LENGTHS.update({
+    'five_heights_m': r'five substrate thicknesses, ' + L,
+    'automatic_height_m': r'5·h_sub = ' + L,
+    'automatic_wavelength_m': r'λ_eff/\(4π\) at f_max = ' + L,
+    'source_snap_m': r'mm, ' + L + ' from the declared feed',
+    'scalar_cell_m': r'scalar dx cell \(' + L,
+    'runway_cell_m': r'cells of ' + L,
+})
+SCALARS.update({
+    'port_count': (r'SKIPPED for ' + N + ' port', 1),
+    'runway_offset_cells': (r'(?:runway cell|own runway cell) \(offset ' + N, 1),
+    'probe_intervals': (r'offset [\d.]+ \+ ' + N + ' x spacing', 1),
+    'runway_spacing_cells': (r'x spacing ' + N + ' cells', 1),
+    'stored_offset_cells': (r'; the offset ' + N + ' and spacing', 1),
+    'stored_spacing_cells': (r'; the offset [\d.]+ and spacing ' + N + ' counted', 1),
+    'source_node_m': (r'source on the node at [xy]=' + N + 'mm', 1e-3),
+    'substrate_eps_r': (r'Realized substrate eps_r=' + N, 1),
+    'declared': (r'declared port eps_r_sub=' + N, 1),
+    'last_frequency_hz': (r'stub frequencies [\d.eE+-]+?\.\.' + N + ' GHz', 1e9),
+    'first_order': (r'orders? ' + N, 1),
+    'last_order': (r'odd orders [\d]+\.\.' + N, 1),
+    'standoff_height_ratio': (r'(?:µm|mm|m) = ' + N + '·h_sub', 1),
+    'automatic_offset_cells': (r'(?:cells, |cell \([^)]+\), )(?:at least )?' + N + ' cells', 1),
+})
+
+
 def precision(token, scale):
     mantissa, _, exponent = token.lower().partition('e')
     decimals = len(mantissa.split('.')[1]) if '.' in mantissa else 0
@@ -152,6 +180,12 @@ def precision(token, scale):
 
 
 def printed(key, text):
+    if key.startswith('port_') and key.split('_', 2)[1].isdigit():
+        _, index, field = key.split('_', 2)
+        # Each indexed port owns one semicolon-separated per-port description.
+        details = text.split('Per port: ', 1)[1]
+        sections = re.split(r"; (?=['\"])", details)
+        return printed(field, sections[int(index)])
     if key.startswith(('observed_plane_m_', 'occupied_node_', 'loaded_node_', 'intervening_node_')):
         prefix, index = key.rsplit('_', 1)
         wording = {
@@ -208,7 +242,11 @@ def printed(key, text):
     return float(token) * scale, precision(token, scale)
 
 
-@pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
+@pytest.mark.parametrize(
+    "graded",
+    [False, True],
+    ids=["uniform", "graded"],
+)
 def test_every_family_value_is_recovered_from_printed_text(graded):
     codes = set()
     checked = set()
@@ -221,13 +259,22 @@ def test_every_family_value_is_recovered_from_printed_text(graded):
                     continue
                 parsed, tolerance = printed(key, d.message)
                 assert math.isfinite(value)
-                assert abs(parsed - value) <= tolerance + math.ulp(parsed) + math.ulp(value), (d.code, key, parsed, value)
+                assert abs(parsed - value) <= tolerance + math.ulp(parsed) + math.ulp(value), (
+                    d.code,
+                    key,
+                    parsed,
+                    value,
+                )
                 checked.add(key)
     assert len(codes) == 22
     assert len(checked) >= 70
 
 
-@pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
+@pytest.mark.parametrize(
+    "graded",
+    [False, True],
+    ids=["uniform", "graded"],
+)
 def test_family_values_survive_actual_run_results_and_refusals(graded):
     from dataclasses import replace
     from unittest.mock import patch
@@ -252,7 +299,10 @@ def test_family_values_survive_actual_run_results_and_refusals(graded):
     def solve(name, sim):
         nonlocal returned, refused
         try:
-            result = sim.run(n_steps=2, compute_s_params=False)
+            result = sim.run(
+                n_steps=2,
+                compute_s_params=False,
+            )
             returned += 1
         except (ValueError, NotImplementedError) as error:
             result = error
@@ -264,36 +314,152 @@ def test_family_values_survive_actual_run_results_and_refusals(graded):
 
     # Keep both open tails outside the read band, so unconditional stub
     # admission allows the crossed-probe geometry to reach its run warning.
-    sim = structure(graded, offset=10, freq_max=1e9)
-    sim._msl_ports.append(replace(sim._msl_ports[0], name='opposite',
-                                  position=(12 * U, 6 * U, 0), direction='-x'))
+    sim = structure(
+        graded,
+        offset=10,
+        freq_max=1e9,
+    )
+    sim._msl_ports.append(
+        replace(
+            sim._msl_ports[0],
+            name="opposite",
+            position=(12 * U, 6 * U, 0),
+            direction="-x",
+        )
+    )
     solve('cross_feed_outside_stub_band', sim)
     # The graded ladder clamps to realized end nodes. A declared end a
     # quarter-cell before the last node makes that node lie in the absorber.
-    solve('realized_end_outside_declared_domain',
-          structure(graded, offset=40, length=31.75 * U))
+    solve(
+        "realized_end_outside_declared_domain",
+        structure(
+            graded,
+            offset=40,
+            length=31.75 * U,
+        ),
+    )
 
     sim = structure(graded)
     grid = sim._build_realized_grid()
     clearance = msl.msl_probe_clearance_for_port(sim, sim._msl_ports[0], grid)
-    unavailable = replace(clearance, status='unavailable', note='no probe metadata',
-                          unevaluated_conductors=('unsupported conductor',))
-    with patch.object(msl, 'msl_probe_clearance_for_port', return_value=unavailable):
-        solve('incomplete_scan', sim)
+    unavailable = replace(
+        clearance,
+        status="unavailable",
+        note="no probe metadata",
+        unevaluated_conductors=("unsupported conductor",),
+    )
+    with patch.object(
+        msl,
+        "msl_probe_clearance_for_port",
+        return_value=unavailable,
+    ):
+        solve("incomplete_scan", sim)
         # These two calculator-report checks are not called by run(). Exercise
         # their public entry on each grid rather than claim solver reach.
-        inspect('calculator_unavailable', sim.preflight_sparameters(calculator='msl'))
-    with patch.object(msl, 'msl_probe_clearance_for_port', side_effect=ValueError('scan unavailable')):
-        inspect('calculator_scan_failed', sim.preflight_sparameters(calculator='msl'))
+        inspect(
+            "calculator_unavailable",
+            sim.preflight_sparameters(
+                calculator="msl",
+            ),
+        )
+    with patch.object(
+        msl,
+        "msl_probe_clearance_for_port",
+        side_effect=ValueError("scan unavailable"),
+    ):
+        inspect(
+            "calculator_scan_failed",
+            sim.preflight_sparameters(
+                calculator="msl",
+            ),
+        )
     for name, error in [('stub_realization', ValueError('conductor realization failed')),
                         ('stub_inspection', NotImplementedError('unsupported conductor'))]:
-        with patch.object(stub, 'line_stub_findings', side_effect=error):
+        with patch.object(
+            stub,
+            "line_stub_findings",
+            side_effect=error,
+        ):
             solve(name, structure(graded))
-    sim = structure(graded, feed=16 * U)
-    sim._geometry[-1] = replace(sim._geometry[-1], shape=Box(
-        (0, 4 * U, 2 * U), (32 * U, 8 * U, 2 * U)))
+    sim = structure(
+        graded,
+        feed=16 * U,
+    )
+    sim._geometry[-1] = replace(
+        sim._geometry[-1],
+        shape=Box((0, 4 * U, 2 * U), (32 * U, 8 * U, 2 * U)),
+    )
     solve('stub_behind_port', sim)
     assert returned > 0 and refused > 0
     # Literal identities are independently declared in the path contract.
     from tests.unit.preflight.test_msl_diagnostic_identity import EXPECTED_LEGACY
     assert checked == set(EXPECTED_LEGACY)
+
+
+@pytest.mark.parametrize(
+    "graded",
+    [False, True],
+    ids=["base_z", "graded_z"],
+)
+def test_review_matrix_numeric_keys_are_all_parsed(graded):
+    import warnings
+    from tests._msl_review_cases import additional_cases
+    observed = set()
+    for sim in additional_cases(graded):
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            reports = [
+                sim.preflight(),
+                sim.preflight_sparameters(
+                    calculator="msl",
+                ),
+            ]
+        for report in reports:
+            for diagnostic in report.diagnostics:
+                if not diagnostic.code.startswith('msl.'):
+                    continue
+                for key, value in diagnostic.values.items():
+                    if not isinstance(value, (int, float)):
+                        continue
+                    parsed, tolerance = printed(key, diagnostic.message)
+                    assert abs(parsed - value) <= tolerance + math.ulp(parsed) + math.ulp(value), (
+                        diagnostic.code, key, parsed, value)
+                    observed.add((diagnostic.code, key))
+    expected = {
+        ('msl.source_near_field', key) for key in (
+            'five_heights_m', 'standoff_height_ratio', 'automatic_wavelength_m',
+            'automatic_height_m', 'source_node_m', 'source_snap_m',
+            'scalar_cell_m', 'automatic_offset_cells')
+    } | {
+        ('msl.probe_placement_note', key) for key in (
+            'port_count', 'port_0_runway_offset_cells', 'port_0_probe_intervals',
+            'port_0_runway_spacing_cells', 'port_0_runway_cell_m',
+            'port_0_stored_offset_cells', 'port_0_stored_spacing_cells',
+            'port_0_first_probe_distance_m')
+    } | {
+        ('msl.line_stub_behind_port', key) for key in (
+            'substrate_eps_r', 'declared', 'last_frequency_hz', 'first_order', 'last_order')
+    }
+    assert expected <= observed, expected - observed
+    with pytest.raises(KeyError):
+        printed('new_unparsed_quantity', 'some number 1')
+
+
+@pytest.mark.parametrize(
+    "graded",
+    [False, True],
+    ids=["uniform", "graded"],
+)
+def test_nonzero_read_band_values_on_a_real_refusal(graded):
+    from tests._msl_review_cases import additional_cases
+    from rfx.preflight.line_stub import require_no_resonant_line_stub
+    sim = list(additional_cases(graded))[-1]
+    with pytest.raises(ValueError) as caught:
+        require_no_resonant_line_stub(sim, [3e9, 100e9])
+    record = caught.value.diagnostics[-1]
+    assert record.severity == 'refusal'
+    assert record.values['band_lo_hz'] == 3e9
+    for key, value in record.values.items():
+        if isinstance(value, (int, float)):
+            parsed, tolerance = printed(key, record.message)
+            assert abs(parsed - value) <= tolerance + math.ulp(parsed) + math.ulp(value), (key, parsed, value)

@@ -869,8 +869,12 @@ def run_uniform(
     # Every declared input this lane does not carry is refused here, after
     # the specific refusals above and before the first step.
     from rfx.runners._admission import admit
-    admit(sim, "run_uniform", run_args={"compute_s_params": compute_s_params,
-                                        "conformal_pec": conformal_pec}, diagnostics=diagnostics)
+    admit(
+        sim,
+        "run_uniform",
+        run_args={"compute_s_params": compute_s_params, "conformal_pec": conformal_pec},
+        diagnostics=diagnostics,
+    )
     from rfx.runners._admission import admit_run_s_matrix
     admit_run_s_matrix(sim, compute_s_params=compute_s_params,
                        conformal_pec=conformal_pec)
@@ -1176,10 +1180,7 @@ def run_uniform(
         current_moment_data=sim_result.current_moment_data,
         current_moment_monitor=current_moments,
         dft_planes=(
-            {
-                entry.name: probe
-                for entry, probe in zip(sim._dft_planes, sim_result.dft_planes or ())
-            }
+            {entry.name: probe for entry, probe in zip(sim._dft_planes, sim_result.dft_planes or ())}
             if sim._dft_planes
             else None
         ),
@@ -1187,11 +1188,11 @@ def run_uniform(
             {
                 entry.name: fm
                 for entry, fm in zip(
-                    getattr(sim, '_flux_monitors', []),
+                    getattr(sim, "_flux_monitors", []),
                     sim_result.flux_monitors or (),
                 )
             }
-            if getattr(sim, '_flux_monitors', [])
+            if getattr(sim, "_flux_monitors", [])
             else None
         ),
         waveguide_ports=waveguide_ports_result,
@@ -1204,11 +1205,11 @@ def run_uniform(
         # (find_resonances, an FFT of time_series) needs the real one.
         dt=sim_result.dt,
         sparam_time_records=sim_result.sparam_time_records,
-        dft_time_records={entry.name: rec for entry, rec in zip(
-            sim._dft_planes, sim_result.dft_time_records or ())},
+        dft_time_records={
+            entry.name: rec for entry, rec in zip(sim._dft_planes, sim_result.dft_time_records or ())
+        },
         settling_db=s_settling["db"] if s_settling else None,
         settling_witness=s_settling,
         freq_range=(sim._freq_max / 10, sim._freq_max, sim._boundary),
-        wire_port_sparams=(sim_result.wire_port_sparams
-                           if keep_wire_port_sparams else None),
+        wire_port_sparams=(sim_result.wire_port_sparams if keep_wire_port_sparams else None),
     )

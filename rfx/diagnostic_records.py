@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import math
 from numbers import Integral, Real
-from types import MappingProxyType
 from typing import Literal, Mapping
 
 
@@ -13,9 +12,25 @@ Severity = Literal["info", "advisory", "warning", "refusal"]
 LEGACY_SEVERITY = {
     "info": "info",
     "advisory": "warning",
-    "warning": "error",
+    "warning": "warning",
     "refusal": "error",
 }
+
+
+class _ImmutableValues(dict):
+    """Scalar mapping compatible with dataclasses.asdict, deepcopy and pickle."""
+
+    def _immutable(self, *args, **kwargs):
+        raise TypeError("diagnostic values are immutable")
+
+    __setitem__ = __delitem__ = clear = pop = popitem = setdefault = update = __ior__ = _immutable
+
+    def __deepcopy__(self, memo):
+        # Validated values are immutable scalars or strings.
+        return self
+
+    def __reduce__(self):
+        return type(self), (dict(self),)
 
 
 @dataclass(frozen=True)
@@ -57,7 +72,7 @@ class Diagnostic:
             elif not isinstance(value, str):
                 raise TypeError(f"diagnostic value {name!r} must be a scalar or string")
             values[name] = value
-        object.__setattr__(self, "values", MappingProxyType(values))
+        object.__setattr__(self, "values", _ImmutableValues(values))
 
     @property
     def legacy_severity(self) -> str:
@@ -112,7 +127,7 @@ def from_legacy(
         "refusal"
         if refusal
         else {
-            "error": "warning",
+            "error": "refusal",
             "warning": "advisory",
             "info": "info",
         }.get(severity, "advisory"),
@@ -120,4 +135,17 @@ def from_legacy(
         str(message),
         {},
         source=source,
+    )
+
+
+def for_legacy_issue(diagnostic, message, severity):
+    """Match the actual issue: errors block, warnings advise, and info informs."""
+    level = {"error": "refusal", "warning": "advisory", "info": "info"}[severity]
+    text = str(message)
+    if diagnostic.severity == level and diagnostic.message == text:
+        return diagnostic
+    return replace(
+        diagnostic,
+        severity=level,
+        message=text,
     )

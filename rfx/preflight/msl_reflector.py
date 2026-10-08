@@ -252,9 +252,15 @@ def msl_nearest_downstream_reflector(
             nearest_d = d
             _how = " (bounding box)" if _from_bbox else ""
             nearest_label = msl_text(
-                'reflector_bounds', owner=_what, kind=_how,
-                propagation_axis=_prop_ax, width_axis=_width_ax,
-                reflector_lo_m=box_x_lo, reflector_hi_m=box_x_hi,
-                reflector_width_lo_m=box_y_lo, reflector_width_hi_m=box_y_hi)
+                "reflector_bounds",
+                owner=_what,
+                kind=_how,
+                propagation_axis=_prop_ax,
+                width_axis=_width_ax,
+                reflector_lo_m=box_x_lo,
+                reflector_hi_m=box_x_hi,
+                reflector_width_lo_m=box_y_lo,
+                reflector_width_hi_m=box_y_hi,
+            )
 
     return nearest_d, nearest_label, unevaluated

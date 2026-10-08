@@ -100,7 +100,6 @@ _MSL_REALIZED_THICKNESS_TOL = 0.083
 # Existing layout proxy, not a bound on modal contamination or S error.
 # Larger epsilon and frequency give a SMALLER wavelength and clearance;
 # this is not a conservative quarter-wavelength rule for the whole band.
-MSL_EPS_EFF_PROXY = 5.0
 
 
 # --------------------------------------------------------------------------
@@ -211,242 +210,92 @@ def preflight_msl_probe_clearance(self, _w, *, skip: bool = False) -> None:
         try:
             record = msl_probe_clearance_for_port(self, pe, grid)
         except Exception as exc:  # noqa: BLE001
-            _w.warn(PreflightWarning(
-                msl_diagnostic('msl.probe_clearance_scan_failed', msl_text('probe_clearance_scan_failed', port_name=pe.name, type_exc___name=type(exc).__name__, exc=exc), subject=pe.name, source='preflight_sparameters'),
-                code="msl_port_geometry",
-                source="preflight_sparameters"), stacklevel=3)
+            _w.warn(
+                PreflightWarning(
+                    msl_diagnostic(
+                        "msl.probe_clearance_scan_failed",
+                        msl_text(
+                            "probe_clearance_scan_failed",
+                            port_name=pe.name,
+                            type_exc___name=type(exc).__name__,
+                            exc=exc,
+                        ),
+                        subject=pe.name,
+                        source="preflight_sparameters",
+                    ),
+                    code="msl_port_geometry",
+                    source="preflight_sparameters",
+                ),
+                stacklevel=3,
+            )
             continue
         if record.status == "satisfied":
             continue
         if record.status == "unavailable":
-            _w.warn(PreflightWarning(
-                msl_diagnostic('msl.probe_clearance_unavailable', msl_text('probe_clearance_unavailable', port_name=pe.name, record_note=record.note, msl_probe_clearance_guidance=MSL_PROBE_CLEARANCE_GUIDANCE), subject=pe.name, source='preflight_sparameters'),
-                code="msl_port_geometry",
-                source="preflight_sparameters"), stacklevel=3)
+            _w.warn(
+                PreflightWarning(
+                    msl_diagnostic(
+                        "msl.probe_clearance_unavailable",
+                        msl_text(
+                            "probe_clearance_unavailable",
+                            port_name=pe.name,
+                            record_note=record.note,
+                            msl_probe_clearance_guidance=MSL_PROBE_CLEARANCE_GUIDANCE,
+                        ),
+                        subject=pe.name,
+                        source="preflight_sparameters",
+                    ),
+                    code="msl_port_geometry",
+                    source="preflight_sparameters",
+                ),
+                stacklevel=3,
+            )
             continue
         gap = record.deepest_gap_m
-        gap_txt = ("unknown" if gap is None
-                   else msl_text('clearance_gap', reflector_gap_m=gap))
-        _w.warn(PreflightWarning(
-            msl_diagnostic('msl.reflector_clearance', msl_text('reflector_clearance_calculator', port_name=pe.name, gap_txt=gap_txt, record_reflector=record.reflector, recommended_reflector_gap_m=msl_min_probe_clearance(float(self._freq_max)), msl_probe_clearance_effect=MSL_PROBE_CLEARANCE_EFFECT, msl_probe_clearance_guidance=MSL_PROBE_CLEARANCE_GUIDANCE), subject=pe.name, source='preflight_sparameters'),
-            code="msl_port_geometry",
-            source="preflight_sparameters"), stacklevel=3)
+        gap_txt = (
+            "unknown"
+            if gap is None
+            else msl_text(
+                "clearance_gap",
+                reflector_gap_m=gap,
+            )
+        )
+        _w.warn(
+            PreflightWarning(
+                msl_diagnostic(
+                    "msl.reflector_clearance",
+                    msl_text(
+                        "reflector_clearance_calculator",
+                        port_name=pe.name,
+                        gap_txt=gap_txt,
+                        record_reflector=record.reflector,
+                        recommended_reflector_gap_m=msl_min_probe_clearance(float(self._freq_max)),
+                        msl_probe_clearance_effect=MSL_PROBE_CLEARANCE_EFFECT,
+                        msl_probe_clearance_guidance=MSL_PROBE_CLEARANCE_GUIDANCE,
+                    ),
+                    subject=pe.name,
+                    source="preflight_sparameters",
+                ),
+                code="msl_port_geometry",
+                source="preflight_sparameters",
+            ),
+            stacklevel=3,
+        )
 
 
-def msl_min_probe_clearance(freq_max: float) -> float:
-    """Existing layout recommendation: λ_g/4 at ``freq_max`` and epsilon=5.
-
-    The two-wave fit includes both forward and backward propagating waves;
-    standing waves alone do not invalidate it. This distance is a geometry
-    warning threshold, not a proof of modal purity or an accuracy bound.
-    Lower frequencies have longer wavelengths, so this is not the largest
-    quarter-wavelength clearance over the band. The threshold is unchanged.
-    """
-    c0 = 2.998e8
-    lambda_g_min = c0 / (float(freq_max) * (MSL_EPS_EFF_PROXY ** 0.5))
-    return 0.25 * lambda_g_min
-
-
-# Issue #80 Fix B / issue #823: the MSL feed's own near-field standoff.
-# ``add_msl_port`` has floored its AUTO ``n_probe_offset`` to
-# ``max(3, lam_cells, round(5*h_sub/dx))`` since issue #80 (rfx/api/__init__.py,
-# the ``_hsub_cells`` term). That same rule is stated three more times in this
-# file (check 4's compliant-interval endpoint, check 4a's ``_abs_off_lo``, and
-# ``_validate_forward_sparameter_request``'s explicit-offset guard). This is
-# the ONE place it is computed; every one of those sites calls it, so they
-# cannot disagree about the same port.
-_MSL_NEAR_FIELD_STANDOFF_H_SUB = 5.0
-_MSL_NEAR_FIELD_MIN_OFFSET_CELLS = 3
-
-
-def msl_source_near_field_standoff_cells(h_sub_m: float, dx_m: float) -> int:
-    """Cells probe 0 must clear the MSL feed plane by: ``max(3, round(5*h/dx))``.
-
-    NOT a new constant. This is the issue-#80 "Fix B" source-fringing rule
-    (``~5*h_sub``) that ``rfx.api.Simulation.add_msl_port`` already applies to
-    AUTO ``n_probe_offset``. Driver-time recounting uses the runway cell
-    unless the ladder crosses a grading ramp; that fallback can fall short.
-    Here ``dx_m`` is the runway cell size. What issue #823 adds is
-    (a) a derivation of WHY that scale is
-    the right one and how much margin it carries, and (b) advisories at the two
-    places an EXPLICIT offset, or a method-level probe ladder, can under-provision
-    it without anything saying so.
-
-    Derivation (issue #823, measured on the settled attempt-3 witness run VESSL
-    369367257533; committed dump ``scripts/diagnostics/
-    _coax_msl_transition_settled_run_logs/
-    witnesses_369367257533_attempt3_x64-0_ladders.npz``, reproduced by
-    ``tests/unit/sparams/test_msl_ladder_standoff.py::
-    test_near_field_decay_length_matches_the_substrate_transverse_resonance``)
-    ------------------------------------------------------------------------
-    Fit the two-wave model on a clean window of that fixture's own 9-probe MSL
-    ladder (``msl[0:6]``, 3.4-8.4 mm from the feed), extrapolate it to all nine
-    planes, and read the relative excess ``rho(d) = |V_meas - V_2wave|/|V_2wave|``
-    against the distance ``d`` from the port's feed plane:
-
-        d (mm)    8.4     7.4     6.4     5.4     4.4     3.4     2.4     1.4     0.4
-        6 GHz   2.8e-3  9.6e-4  1.6e-3  1.1e-3  1.2e-4  1.4e-3  3.2e-3  7.6e-3  0.818
-        8 GHz   2.9e-3  9.5e-4  1.3e-3  9.0e-4  1.6e-4  1.2e-3  2.8e-3  6.5e-3  1.019
-       10 GHz   2.4e-3  8.8e-4  9.3e-4  5.9e-4  2.2e-4  1.0e-3  2.6e-3  6.3e-3  1.275
-
-    The six far columns are a flat float32 noise floor (median 1.27e-3 / 1.09e-3 /
-    9.0e-4). Subtracting it, the two near-port probes give a decay length
-    ``delta = 1.0mm / ln(excess(0.4)/excess(1.4))`` = 0.2056 / 0.1908 / 0.1831 mm,
-    mean 0.1932 mm.
-
-    PHYSICAL ANCHOR: a grounded substrate of thickness ``h`` supports a transverse
-    quarter-wave resonance ``k_z = pi/(2h)``; below cutoff the feed's evanescent
-    content decays longitudinally as
-    ``delta_nf = 1/sqrt((pi/2h)^2 - omega^2 mu0 eps0 eps_r)``. For h = 300um,
-    eps_r = 3.66 that is 0.19119 / 0.19135 / 0.19155 mm at 6/8/10 GHz (low-frequency
-    limit ``2h/pi`` = 0.19099 mm; the transverse cutoff
-    ``f_tr = c/(4 h sqrt(eps_r))`` = 130.6 GHz, so the dispersion correction is
-    < 0.3% across this band). Model 0.19099 mm vs measured 0.1932 mm: 1.1% on the
-    mean, +/-8% per bin. The scale is a property of the SUBSTRATE, not of the
-    fixture -- which is what licenses stating it as a rule at all.
-
-    AMPLITUDE and TOLERANCE: extrapolating each bin's excess back to the feed
-    plane with its own delta gives ``R0`` = 5.72 / 8.28 / 11.32 (worst 11.323).
-    Against ``rho_max = 0.02`` -- the coax lane's own documented two-wave
-    fit-residual bar, the only committed number of that kind in this family --
-    ``d_min = delta_nf * ln(R0/rho_max)`` = 1.2106 mm = ``4.0354 * h_sub``, i.e.
-    dimensionlessly ``(2/pi)*ln(R0/rho_max)``. INDEPENDENT-ish check: the model
-    predicts ``rho(1.4mm) = 7.4e-3`` at 10 GHz against a measured 6.3e-3 (17%);
-    note the two model parameters were themselves fitted from the only two
-    contaminated points, so this re-evaluation is a consistency check, not a
-    falsification test. The genuinely independent content is ``delta`` vs
-    ``2h/pi`` above.
-
-    WHAT SHIPS: ``5*h_sub``, the repo's EXISTING constant -- 24% above the
-    4.0354*h floor, i.e. a predicted ``rho(5h) = 4.4e-3`` against the 0.02 bar.
-    Reusing it keeps ONE number in the repo. Its measured cost on the
-    coax<->MSL fixtures is one over-flagged probe slot per attempt-2/3 ladder
-    (d = 1.4 mm, rho = 7.6e-3, clean by that bar); the advisories are
-    report-only, so that costs nothing.
-
-    LIMITATION (not resolved by this work): the anchor is the substrate's
-    transverse resonance, so the rule is written in ``h`` alone. The first
-    higher-order microstrip mode scales with ``(W + 2h)``, and this derivation
-    rests on ONE fixture at ``W/h = 2`` -- a much wider trace could need more
-    than ``5*h``. One fixture cannot separate W from h.
-
-    Degenerate inputs (non-positive ``h_sub_m`` or ``dx_m``) return the floor
-    rather than raising: an advisory predicate must never crash a run.
-    """
-    floor = _MSL_NEAR_FIELD_MIN_OFFSET_CELLS
-    try:
-        h = float(h_sub_m)
-        dx = float(dx_m)
-    except (TypeError, ValueError):
-        return floor
-    if not (h > 0.0) or not (dx > 0.0) or not (math.isfinite(h) and math.isfinite(dx)):
-        return floor
-    return max(floor, int(round(_MSL_NEAR_FIELD_STANDOFF_H_SUB * h / dx)))
-
-
-# ``add_msl_port``'s automatic probe ladder, as LENGTHS counted in a cell.
-#
-# The automatic offset clears two near-field scales of the launch, and both
-# are lengths: the source fringing (``5*h_sub``, the standoff above) and
-# ``lambda_eff/(4*pi)`` at f_max. The automatic spacing keeps the ladder span
-# at ``lambda_eff/8``. ``add_msl_port`` counts them in the simulation's scalar
-# cell; on a graded propagation axis the driver-time resolver
-# (``rfx.sparams._common._resolve_msl_auto_offsets``) counts the same lengths
-# in the runway cell at the port, and preflight check 5 and the S-parameter
-# routing check ask what the automatic offset would be. All four call the
-# functions below, so they cannot disagree about a port. With the scalar cell
-# they return the integers ``add_msl_port`` has always stored.
-
-_MSL_AUTO_MIN_SPACING_CELLS = 2
-
-
-def msl_auto_probe_offset_cells(near_field_m: float, h_sub_m: float,
-                                cell_m: float) -> int:
-    """The automatic ``n_probe_offset`` counted in ``cell_m``.
-
-    ``max(3, round(near_field_m / cell_m), round(5*h_sub_m / cell_m))``, where
-    ``near_field_m`` is ``lambda_eff/(4*pi)`` at f_max as ``add_msl_port``
-    stored it and the fringing term is
-    :func:`msl_source_near_field_standoff_cells`.
-    """
-    return max(msl_source_near_field_standoff_cells(h_sub_m, cell_m),
-               int(round(float(near_field_m) / float(cell_m))))
-
-
-def msl_auto_probe_spacing_cells(span_m: float, n_probes: int,
-                                 cell_m: float) -> int:
-    """The automatic ``n_probe_spacing`` counted in ``cell_m``: the ladder
-    span ``span_m`` (``lambda_eff/8``) split into ``n_probes - 1`` steps,
-    never below two cells."""
-    return max(_MSL_AUTO_MIN_SPACING_CELLS,
-               int(round(float(span_m) / (int(n_probes) - 1) / float(cell_m))))
-
-
-def msl_auto_probe_offset_term(near_field_m: float, h_sub_m: float,
-                               cell_m: float) -> str:
-    """Name the term that sets :func:`msl_auto_probe_offset_cells`, with its
-    length, for advisory text."""
-    n = msl_auto_probe_offset_cells(near_field_m, h_sub_m, cell_m)
-    lam_cells = int(round(float(near_field_m) / float(cell_m)))
-    fringe_cells = int(round(
-        _MSL_NEAR_FIELD_STANDOFF_H_SUB * float(h_sub_m) / float(cell_m)))
-    terms = []
-    if lam_cells == n:
-        terms.append(msl_text('automatic_wavelength_term', automatic_wavelength_m=near_field_m))
-    if fringe_cells == n:
-        terms.append(
-            msl_text('automatic_height_term', automatic_height_m=_MSL_NEAR_FIELD_STANDOFF_H_SUB * h_sub_m))
-    if not terms:
-        return msl_text('automatic_minimum_term', automatic_minimum_cells=_MSL_NEAR_FIELD_MIN_OFFSET_CELLS)
-    return msl_join(" and ", terms)
-
-
-def msl_auto_probe_ladder(profile, scalar_dx: float, feed_m: float,
-                          direction_sign: float, n_probes: int,
-                          near_field_m: float, h_sub_m: float, span_m: float,
-                          *, n_probe_offset=None, n_probe_spacing=None):
-    """The automatic probe ladder counted in the runway cell at a port.
-
-    Returns ``(n_probe_offset, n_probe_spacing, runway_cell, on_one_zone)``.
-
-    ``profile`` holds the propagation axis's interior cells with the first
-    interior node at 0 (a declared ``dx_profile``, or ``interior_cells`` of a
-    built grid); ``None`` means every cell is ``scalar_dx``. The runway cell is
-    the one beside the node the source is stamped on, on the side the port
-    launches into. An explicit ``n_probe_offset`` or ``n_probe_spacing`` is
-    returned as given; only the automatic ones are counted here.
-
-    ``on_one_zone`` says whether the span from that node through the deepest
-    probe crosses cells of one size. Where it does not, a count of runway
-    cells names no single length along the ladder, and the caller must not
-    use the counts.
-    """
-    node = profile_node_at(scalar_dx, profile, feed_m)
-    cell = profile_cell_at(scalar_dx, profile, node,
-                           toward="hi" if direction_sign > 0 else "lo")
-    off = (int(n_probe_offset) if n_probe_offset is not None
-           else msl_auto_probe_offset_cells(near_field_m, h_sub_m, cell))
-    sp = (int(n_probe_spacing) if n_probe_spacing is not None
-          else msl_auto_probe_spacing_cells(span_m, n_probes, cell))
-    reach = (off + (int(n_probes) - 1) * sp) * cell
-    on_one_zone = profile_span_is_uniform(
-        scalar_dx, profile, node, reach if direction_sign > 0 else -reach)
-    return off, sp, cell, on_one_zone
-
-
-def msl_axis_runs_interval_solve(profile) -> bool:
-    """Whether the driver runs the #469 interval solve on this axis.
-
-    It does on an axis with no profile or a profile of one cell size, where
-    an automatic offset is only the LOWER edge: a downstream reflector can
-    move it to the interval midpoint. On a graded axis it does not, and the
-    count is the one the driver uses.
-    """
-    if profile is None:
-        return True
-    if is_tracer(profile):
-        return False
-    return is_one_cell_size(np.asarray(profile, dtype=float))
+from rfx.preflight._msl_probe_rules import (
+    msl_min_probe_clearance,
+    msl_source_near_field_standoff_cells,
+    msl_auto_probe_offset_cells,
+    msl_auto_probe_spacing_cells,
+    msl_auto_probe_offset_term,
+    msl_auto_probe_ladder,
+    msl_axis_runs_interval_solve,
+    MSL_EPS_EFF_PROXY,
+    _MSL_NEAR_FIELD_STANDOFF_H_SUB,
+    _MSL_NEAR_FIELD_MIN_OFFSET_CELLS,
+    _MSL_AUTO_MIN_SPACING_CELLS,
+)
 
 
 from rfx.preflight.msl_reflector import msl_nearest_downstream_reflector  # noqa: E402,F401  (re-export)
@@ -529,86 +378,7 @@ def msl_probe_clearance_for_port(sim, pe, grid, *, probe_coordinates=None):
     )
 
 
-def msl_absorber_compliant_offset_max(
-    grid,
-    port,
-    *,
-    n_probes: int,
-    n_spacing: int,
-    off_lo: int,
-    domain_x: float,
-    ct_lo: float,
-    ct_hi: float,
-    dx: float,
-    guess_hi: int,
-) -> int | None:
-    """Largest ``n_probe_offset >= off_lo`` (up to ``guess_hi``) whose
-    resulting GRID-SNAPPED deepest probe clears both
-    :func:`_coord_in_absorber` and :func:`_coord_near_absorber`.
-
-    Issue #510 review finding (BLOCKING 1): the first version of this
-    check derived the advertised interval endpoint by algebraically
-    INVERTING the two predicates — ``int((headroom - margin) / dx) -
-    (n_probes-1)*n_spacing``. Float division plus truncation, combined
-    with :func:`_coord_near_absorber`'s boundary sitting at exactly
-    ``n_cells*dx``, put the computed endpoint on the wrong side of an FP
-    knife edge whenever the true boundary landed within about one ULP
-    of an exact multiple of ``dx`` — reviewer's brute-force sweep found
-    roughly 12,000 ``(dx, n_spacing, feed, domain)`` combinations where
-    the ADVERTISED endpoint itself still tripped the warning it claimed
-    to clear.
-
-    This walks candidate offsets DOWN from ``guess_hi`` and asks the
-    REAL predicate at each one (via ``msl_probe_x_coords_n``, the same
-    grid-index/clamping arithmetic the extractor uses), rather than
-    computing an answer algebraically. The returned value, if any, is
-    verified compliant by construction — it cannot land on the wrong
-    side of the boundary the way an algebraic inversion can.
-
-    Returns ``None`` if no offset in ``[off_lo, guess_hi]`` clears
-    (the compliant interval is empty).
-
-    Axis generality (issue #661): ``domain_x`` / ``ct_lo`` / ``ct_hi``
-    describe the port's PROPAGATION axis, not x specifically —
-    ``msl_probe_x_coords_n`` already walks whichever axis ``port.direction``
-    names, so the caller passes that axis's domain extent and CPML
-    thicknesses.
-    """
-    from rfx.sources.msl_port import (
-        msl_axis_roles as _axis_roles,
-        msl_probe_x_coords_n as _probe_x_coords_n,
-    )
-
-    # The proximity band is measured inward from where the absorber begins,
-    # so its width is the cell AT THAT FACE -- the absorber pad replicates
-    # it -- and the two faces need not agree on a profiled axis. Read off
-    # the grid this function is already walking, through the step-0a
-    # accessor; ``dx`` is the answer on a uniform grid and the fallback for
-    # anything that cannot answer (G17).
-    _prop_axis = _axis_roles(port.direction)[0]
-    try:
-        _cell_lo = float(grid.boundary_cell(_prop_axis, "lo"))
-        _cell_hi = float(grid.boundary_cell(_prop_axis, "hi"))
-    except (AttributeError, TypeError, ValueError):
-        _cell_lo = _cell_hi = float(dx)
-
-    off = guess_hi
-    while off >= off_lo:
-        ladder = _probe_x_coords_n(
-            grid, port, n_probes=n_probes,
-            n_offset_cells=off, n_spacing_cells=n_spacing,
-        )
-        x_deep_candidate = ladder[-1]
-        if not (
-            _coord_in_absorber(x_deep_candidate, domain_x, ct_lo, ct_hi)
-            or _coord_near_absorber(x_deep_candidate, domain_x, ct_lo, 0.0,
-                                    _cell_lo)
-            or _coord_near_absorber(x_deep_candidate, domain_x, 0.0, ct_hi,
-                                    _cell_hi)
-        ):
-            return off
-        off -= 1
-    return None
+from rfx.preflight._msl_probe_rules import msl_absorber_compliant_offset_max
 
 
 def _msl_assemble_once(self):
@@ -951,30 +721,76 @@ def _check_msl_port_geometry(
                 _w.simplefilter("always")
                 _probe_entries = _resolver(_msl_grid)
             for _placement_note in _placement_notes:
-                _w.warn(PreflightWarning(
-                    msl_diagnostic('msl.probe_placement_note', msl_text('probe_placement_note', detail=_placement_note.message), subject=None), code="msl_port_geometry",
-                    source="_check_msl_port_geometry"), stacklevel=3)
+                _w.warn(
+                    PreflightWarning(
+                        msl_diagnostic(
+                            "msl.probe_placement_note",
+                            msl_text(
+                                "probe_placement_note",
+                                detail=_placement_note.message,
+                            ),
+                            subject=None,
+                        ),
+                        code="msl_port_geometry",
+                        source="_check_msl_port_geometry",
+                    ),
+                    stacklevel=3,
+                )
         except (TypeError, ValueError, AttributeError) as exc:
-            _w.warn(PreflightWarning(
-                msl_diagnostic('msl.probe_placement_failed', msl_text('probe_placement_failed', exc=exc), subject=None),
-                code="msl_port_geometry", severity="error",
-                source="_check_msl_port_geometry"), stacklevel=3)
+            _w.warn(
+                PreflightWarning(
+                    msl_diagnostic(
+                        "msl.probe_placement_failed",
+                        msl_text(
+                            "probe_placement_failed",
+                            exc=exc,
+                        ),
+                        subject=None,
+                    ),
+                    code="msl_port_geometry",
+                    severity="error",
+                    source="_check_msl_port_geometry",
+                ),
+                stacklevel=3,
+            )
 
     for pe in _probe_entries:
         _gap = None
         if _msl_assembled is None:
-            _w.warn(PreflightWarning(
-                msl_diagnostic('msl.conductor_assembly_unavailable', msl_text('conductor_assembly_unavailable', port_name=pe.name), subject=pe.name),
-                code="msl_port_conductor_planes", severity="error",
-                source="_check_msl_port_geometry"))
+            _w.warn(
+                PreflightWarning(
+                    msl_diagnostic(
+                        "msl.conductor_assembly_unavailable",
+                        msl_text(
+                            "conductor_assembly_unavailable",
+                            port_name=pe.name,
+                        ),
+                        subject=pe.name,
+                    ),
+                    code="msl_port_conductor_planes",
+                    severity="error",
+                    source="_check_msl_port_geometry",
+                )
+            )
         else:
             try:
                 _gap = self._msl_conductor_gap(pe, _msl_assembled)
             except ValueError as exc:
-                _w.warn(PreflightWarning(
-                    msl_diagnostic('msl.conductor_attachment', msl_text('conductor_attachment', exc=exc), subject=pe.name),
-                    code="msl_port_conductor_planes", severity="error",
-                    source="_check_msl_port_geometry"))
+                _w.warn(
+                    PreflightWarning(
+                        msl_diagnostic(
+                            "msl.conductor_attachment",
+                            msl_text(
+                                "conductor_attachment",
+                                exc=exc,
+                            ),
+                            subject=pe.name,
+                        ),
+                        code="msl_port_conductor_planes",
+                        severity="error",
+                        source="_check_msl_port_geometry",
+                    )
+                )
         # A blocking attachment finding does not hide independent
         # clearance/reflection diagnostics useful for repairing the model.
         # Issue #661: every check below runs on the port's OWN axes.
@@ -1024,11 +840,15 @@ def _check_msl_port_geometry(
         _standoff_on_one_zone = profile_span_is_uniform(
             dx, _prop_profile, _feed_node,
             _nf_std_cells * _runway_cell * float(_dir_sign))
-        _ramp_txt = (
-            msl_text('standoff_ramp', propagation_axis=_prop_ax)
+        _ramp_txt = msl_text(
+            "standoff_ramp",
+            propagation_axis=_prop_ax,
         )
-        _absolute_faces = (
-            msl_text('declared_faces', normal_axis=_norm_ax, declared_ground_m=_declared_ground, declared_trace_m=_declared_trace)
+        _absolute_faces = msl_text(
+            "declared_faces",
+            normal_axis=_norm_ax,
+            declared_ground_m=_declared_ground,
+            declared_trace_m=_declared_trace,
         )
         _face = None
         _face_grid = _msl_assembled[0] if _msl_assembled is not None else _msl_grid
@@ -1056,14 +876,43 @@ def _check_msl_port_geometry(
         clearance_lo = trace_y_lo - y_abs_lo
         clearance_hi = y_abs_hi - trace_y_hi
         for side, c, buf in (
-            (msl_text('width_low_side', width_axis=_width_ax), clearance_lo, cpml_thick_lo[_iw]),
-            (msl_text('width_high_side', width_axis=_width_ax), clearance_hi, cpml_thick_hi[_iw]),
+            (
+                msl_text(
+                    "width_low_side",
+                    width_axis=_width_ax,
+                ),
+                clearance_lo,
+                cpml_thick_lo[_iw],
+            ),
+            (
+                msl_text(
+                    "width_high_side",
+                    width_axis=_width_ax,
+                ),
+                clearance_hi,
+                cpml_thick_hi[_iw],
+            ),
         ):
             if c < recommended:
                 pct = max(0.0, (1.0 - c / recommended)) * 15.0
                 _w.warn(
                     PreflightWarning(
-                        msl_diagnostic('msl.lateral_clearance', msl_text('lateral_clearance', port_name=pe.name, trace_width_m=w_trace, substrate_height_m=h_sub, side=side, lateral_clearance_m=c, cpml_buffer_m=buf, recommended_clearance_m=recommended, bias_fraction=msl_value(pct / 100.0, pct), width_axis=_width_ax), subject=pe.name),
+                        msl_diagnostic(
+                            "msl.lateral_clearance",
+                            msl_text(
+                                "lateral_clearance",
+                                port_name=pe.name,
+                                trace_width_m=w_trace,
+                                substrate_height_m=h_sub,
+                                side=side,
+                                lateral_clearance_m=c,
+                                cpml_buffer_m=buf,
+                                recommended_clearance_m=recommended,
+                                bias_fraction=msl_value(pct / 100.0, pct),
+                                width_axis=_width_ax,
+                            ),
+                            subject=pe.name,
+                        ),
                         code="msl_port_geometry",
                         source="_check_msl_port_geometry",
                     ),
@@ -1076,14 +925,26 @@ def _check_msl_port_geometry(
         _real = (self._msl_realized_substrate(pe, _inr, assembled=_msl_assembled)
                  if _msl_assembled is not None else None)
         _material_txt = (
-            msl_text('material_column', material_slots=_real['n'], material_extent_m=_real['h_real'])
-            if _real is not None else
-            msl_text('material_unavailable')
+            msl_text(
+                "material_column",
+                material_slots=_real["n"],
+                material_extent_m=_real["h_real"],
+            )
+            if _real is not None
+            else msl_text("material_unavailable")
         )
         _gap_txt = (
-            msl_text('conductor_gap', conductor_gap_m=_gap['h'], normal_intervals=_gap['n'], normal_axis=_norm_ax, ground_m=_gap['ground'], trace_m=_gap['trace'], substrate_height_m=h_sub)
-            if _gap is not None else
-            msl_text('gap_unavailable')
+            msl_text(
+                "conductor_gap",
+                conductor_gap_m=_gap["h"],
+                normal_intervals=_gap["n"],
+                normal_axis=_norm_ax,
+                ground_m=_gap["ground"],
+                trace_m=_gap["trace"],
+                substrate_height_m=h_sub,
+            )
+            if _gap is not None
+            else msl_text("gap_unavailable")
         )
         _rel_gap = ((_gap["h"] - h_sub) / h_sub
                     if _gap is not None and h_sub > 0 else None)
@@ -1091,7 +952,19 @@ def _check_msl_port_geometry(
         if _gap is not None and _gap["n"] < 4:
             _w.warn(
                 PreflightWarning(
-                    msl_diagnostic('msl.normal_resolution', msl_text('normal_resolution', port_name=pe.name, normal_intervals=_gap['n'], gap_txt=_gap_txt, material_txt=_material_txt, recommended_cell_m=h_sub / 4, absolute_faces=_absolute_faces), subject=pe.name),
+                    msl_diagnostic(
+                        "msl.normal_resolution",
+                        msl_text(
+                            "normal_resolution",
+                            port_name=pe.name,
+                            normal_intervals=_gap["n"],
+                            gap_txt=_gap_txt,
+                            material_txt=_material_txt,
+                            recommended_cell_m=h_sub / 4,
+                            absolute_faces=_absolute_faces,
+                        ),
+                        subject=pe.name,
+                    ),
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),
@@ -1165,21 +1038,54 @@ def _check_msl_port_geometry(
             n_below = n_above - 1
             dx_low = h_sub / n_above                        # frac=0
             dx_high = h_sub / n_below if n_below >= 1 else None
-            _iface_txt = (
-                msl_text('declared_interface', normal_axis=_norm_ax, declared_trace_m=_face['trace'], interface_fraction=frac, interface_cell_m=_face['d_iface'])
+            _iface_txt = msl_text(
+                "declared_interface",
+                normal_axis=_norm_ax,
+                declared_trace_m=_face["trace"],
+                interface_fraction=frac,
+                interface_cell_m=_face["d_iface"],
             )
             _snap_txt = (
-                msl_text('alignment_profile', absolute_faces=_absolute_faces)
-                if _face["nonuniform"] else
-                msl_text('alignment_translated', absolute_faces=_absolute_faces)
-                if _declared_ground != 0.0 else
-                msl_text('alignment_uniform_two_spacings', finer_cell_m=dx_low, finer_intervals=n_above, coarser_cell_m=dx_high, coarser_intervals=n_below, absolute_faces=_absolute_faces)
-                if dx_high is not None else
-                msl_text('alignment_uniform_one_spacing', finer_cell_m=dx_low, finer_intervals=n_above, absolute_faces=_absolute_faces)
+                msl_text(
+                    "alignment_profile",
+                    absolute_faces=_absolute_faces,
+                )
+                if _face["nonuniform"]
+                else msl_text(
+                    "alignment_translated",
+                    absolute_faces=_absolute_faces,
+                )
+                if _declared_ground != 0.0
+                else msl_text(
+                    "alignment_uniform_two_spacings",
+                    finer_cell_m=dx_low,
+                    finer_intervals=n_above,
+                    coarser_cell_m=dx_high,
+                    coarser_intervals=n_below,
+                    absolute_faces=_absolute_faces,
+                )
+                if dx_high is not None
+                else msl_text(
+                    "alignment_uniform_one_spacing",
+                    finer_cell_m=dx_low,
+                    finer_intervals=n_above,
+                    absolute_faces=_absolute_faces,
+                )
             )
             _w.warn(
                 PreflightWarning(
-                    msl_diagnostic('msl.trace_face_alignment', msl_text('trace_face_alignment', port_name=pe.name, iface_txt=_iface_txt, gap_txt=_gap_txt, material_txt=_material_txt, snap_txt=_snap_txt), subject=pe.name),
+                    msl_diagnostic(
+                        "msl.trace_face_alignment",
+                        msl_text(
+                            "trace_face_alignment",
+                            port_name=pe.name,
+                            iface_txt=_iface_txt,
+                            gap_txt=_gap_txt,
+                            material_txt=_material_txt,
+                            snap_txt=_snap_txt,
+                        ),
+                        subject=pe.name,
+                    ),
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),
@@ -1195,7 +1101,19 @@ def _check_msl_port_geometry(
                 and abs(_rel_gap) > _MSL_REALIZED_THICKNESS_TOL):
             _w.warn(
                 PreflightWarning(
-                    msl_diagnostic('msl.conductor_gap_mismatch', msl_text('conductor_gap_mismatch', port_name=pe.name, gap_difference_fraction=_rel_gap, gap_tolerance_fraction=_MSL_REALIZED_THICKNESS_TOL, gap_txt=_gap_txt, material_txt=_material_txt, absolute_faces=_absolute_faces), subject=pe.name),
+                    msl_diagnostic(
+                        "msl.conductor_gap_mismatch",
+                        msl_text(
+                            "conductor_gap_mismatch",
+                            port_name=pe.name,
+                            gap_difference_fraction=_rel_gap,
+                            gap_tolerance_fraction=_MSL_REALIZED_THICKNESS_TOL,
+                            gap_txt=_gap_txt,
+                            material_txt=_material_txt,
+                            absolute_faces=_absolute_faces,
+                        ),
+                        subject=pe.name,
+                    ),
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),
@@ -1227,7 +1145,20 @@ def _check_msl_port_geometry(
             )
             _w.warn(
                 PreflightWarning(
-                    msl_diagnostic('msl.source_absorber_clearance', msl_text('source_absorber_clearance', port_name=pe.name, propagation_axis=_prop_ax, feed_m=x_feed, direction=pe.direction, source_clearance_m=x_clearance, source_buffer_m=_x_buf, recommended_clearance_m=recommended), subject=pe.name),
+                    msl_diagnostic(
+                        "msl.source_absorber_clearance",
+                        msl_text(
+                            "source_absorber_clearance",
+                            port_name=pe.name,
+                            propagation_axis=_prop_ax,
+                            feed_m=x_feed,
+                            direction=pe.direction,
+                            source_clearance_m=x_clearance,
+                            source_buffer_m=_x_buf,
+                            recommended_clearance_m=recommended,
+                        ),
+                        subject=pe.name,
+                    ),
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),
@@ -1290,8 +1221,12 @@ def _check_msl_port_geometry(
         _offset_counts_one_distance = (
             _standoff_on_one_zone and _ladder_on_one_zone)
         _interval_ramp_txt = (
-            _ramp_txt if not _standoff_on_one_zone else
-            msl_text('ladder_ramp', propagation_axis=_prop_ax)
+            _ramp_txt
+            if not _standoff_on_one_zone
+            else msl_text(
+                "ladder_ramp",
+                propagation_axis=_prop_ax,
+            )
         )
 
         if _ladder_dup_count > 0:
@@ -1304,7 +1239,21 @@ def _check_msl_port_geometry(
             # honest, clamped x_deep).
             _w.warn(
                 PreflightWarning(
-                    msl_diagnostic('msl.probe_ladder_clamped', msl_text('probe_ladder_clamped', port_name=pe.name, direction=pe.direction, probe_count=n_pr, probe_offset_cells=n_off, probe_spacing_cells=n_sp, distinct_probe_count=n_pr - _ladder_dup_count, duplicate_probe_count=_ladder_dup_count, probe_m=_probe_ladder), subject=pe.name),
+                    msl_diagnostic(
+                        "msl.probe_ladder_clamped",
+                        msl_text(
+                            "probe_ladder_clamped",
+                            port_name=pe.name,
+                            direction=pe.direction,
+                            probe_count=n_pr,
+                            probe_offset_cells=n_off,
+                            probe_spacing_cells=n_sp,
+                            distinct_probe_count=n_pr - _ladder_dup_count,
+                            duplicate_probe_count=_ladder_dup_count,
+                            probe_m=_probe_ladder,
+                        ),
+                        subject=pe.name,
+                    ),
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),
@@ -1319,9 +1268,22 @@ def _check_msl_port_geometry(
         nearest_label = _clearance.reflector
         _unevaluated = _clearance.unevaluated_conductors
         if _clearance.note is not None:
-            _w.warn(PreflightWarning(
-                msl_diagnostic('msl.reflector_scan_unavailable', msl_text('reflector_scan_unavailable', port_name=pe.name, clearance_note=_clearance.note), subject=pe.name), code="msl_port_geometry",
-                source="_check_msl_port_geometry"), stacklevel=3)
+            _w.warn(
+                PreflightWarning(
+                    msl_diagnostic(
+                        "msl.reflector_scan_unavailable",
+                        msl_text(
+                            "reflector_scan_unavailable",
+                            port_name=pe.name,
+                            clearance_note=_clearance.note,
+                        ),
+                        subject=pe.name,
+                    ),
+                    code="msl_port_geometry",
+                    source="_check_msl_port_geometry",
+                ),
+                stacklevel=3,
+            )
 
         if _unevaluated:
             # Issue #685: this scan could not distinguish "nothing is
@@ -1329,9 +1291,18 @@ def _check_msl_port_geometry(
             # letting an unplaceable conductor read as a clean line.
             _w.warn(
                 PreflightWarning(
-                    msl_diagnostic('msl.reflector_scan_incomplete', msl_text('reflector_scan_incomplete', port_name=pe.name, direction=pe.direction, unevaluated_conductor_count=len(_unevaluated))
-                    + "; ".join(_unevaluated)
-                    + msl_text('reflector_bounds_remedy'), subject=pe.name),
+                    msl_diagnostic(
+                        "msl.reflector_scan_incomplete",
+                        msl_text(
+                            "reflector_scan_incomplete",
+                            port_name=pe.name,
+                            direction=pe.direction,
+                            unevaluated_conductor_count=len(_unevaluated),
+                        )
+                        + "; ".join(_unevaluated)
+                        + msl_text("reflector_bounds_remedy"),
+                        subject=pe.name,
+                    ),
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),
@@ -1374,14 +1345,36 @@ def _check_msl_port_geometry(
             # 5*h/dx)) this line spelled out before.
             _hsub_cells = _nf_std_cells
             interval_txt = (
-                _interval_ramp_txt if not _offset_counts_one_distance
-                else msl_text('reflector_interval', reflector_offset_min_cells=_hsub_cells, reflector_offset_max_cells=off_max)
+                _interval_ramp_txt
+                if not _offset_counts_one_distance
+                else msl_text(
+                    "reflector_interval",
+                    reflector_offset_min_cells=_hsub_cells,
+                    reflector_offset_max_cells=off_max,
+                )
                 if off_max >= _hsub_cells
-                else msl_text('offset_interval_empty')
+                else msl_text("offset_interval_empty")
             )
             _w.warn(
                 PreflightWarning(
-                    msl_diagnostic('msl.reflector_clearance', msl_text('reflector_clearance_general', port_name=pe.name, direction=pe.direction, propagation_axis=_prop_ax, deepest_probe_m=x_deep, reflector_gap_m=nearest_d, nearest_label=nearest_label, recommended_reflector_gap_m=min_probe_clear, eps_eff_proxy=MSL_EPS_EFF_PROXY, msl_probe_clearance_effect=MSL_PROBE_CLEARANCE_EFFECT, interval_txt=interval_txt, msl_probe_clearance_guidance=MSL_PROBE_CLEARANCE_GUIDANCE), subject=pe.name),
+                    msl_diagnostic(
+                        "msl.reflector_clearance",
+                        msl_text(
+                            "reflector_clearance_general",
+                            port_name=pe.name,
+                            direction=pe.direction,
+                            propagation_axis=_prop_ax,
+                            deepest_probe_m=x_deep,
+                            reflector_gap_m=nearest_d,
+                            nearest_label=nearest_label,
+                            recommended_reflector_gap_m=min_probe_clear,
+                            eps_eff_proxy=MSL_EPS_EFF_PROXY,
+                            msl_probe_clearance_effect=MSL_PROBE_CLEARANCE_EFFECT,
+                            interval_txt=interval_txt,
+                            msl_probe_clearance_guidance=MSL_PROBE_CLEARANCE_GUIDANCE,
+                        ),
+                        subject=pe.name,
+                    ),
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),
@@ -1448,15 +1441,33 @@ def _check_msl_port_geometry(
                 - (n_pr - 1) * n_sp
             )
         _abs_interval_txt = (
-            _interval_ramp_txt if not _offset_counts_one_distance
-            else msl_text('absorber_interval', absorber_offset_min_cells=_abs_off_lo, absorber_offset_max_cells=_abs_off_max)
+            _interval_ramp_txt
+            if not _offset_counts_one_distance
+            else msl_text(
+                "absorber_interval",
+                absorber_offset_min_cells=_abs_off_lo,
+                absorber_offset_max_cells=_abs_off_max,
+            )
             if _abs_off_max is not None and _abs_off_max >= _abs_off_lo
-            else msl_text('offset_interval_empty')
+            else msl_text("offset_interval_empty")
         )
         if _coord_in_absorber(x_deep, _domain_x, cpml_thick_lo[_ip], cpml_thick_hi[_ip]):
             _w.warn(
                 PreflightWarning(
-                    msl_diagnostic('msl.probe_in_absorber', msl_text('probe_in_absorber', port_name=pe.name, direction=pe.direction, deepest_probe_index=_deep_idx, propagation_axis=_prop_ax, deepest_probe_m=x_deep, domain_extent_m=_domain_x, abs_interval_txt=_abs_interval_txt), subject=pe.name),
+                    msl_diagnostic(
+                        "msl.probe_in_absorber",
+                        msl_text(
+                            "probe_in_absorber",
+                            port_name=pe.name,
+                            direction=pe.direction,
+                            deepest_probe_index=_deep_idx,
+                            propagation_axis=_prop_ax,
+                            deepest_probe_m=x_deep,
+                            domain_extent_m=_domain_x,
+                            abs_interval_txt=_abs_interval_txt,
+                        ),
+                        subject=pe.name,
+                    ),
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),
@@ -1477,7 +1488,21 @@ def _check_msl_port_geometry(
             # absorber is active strictly beyond it, not at it.
             _w.warn(
                 PreflightWarning(
-                    msl_diagnostic('msl.probe_near_absorber', msl_text('probe_near_absorber', port_name=pe.name, direction=pe.direction, deepest_probe_index=_deep_idx, propagation_axis=_prop_ax, deepest_probe_m=x_deep, absorber_proximity_cells=_ABSORBER_PROXIMITY_CELLS, absorber_margin_m=_abs_margin, abs_interval_txt=_abs_interval_txt), subject=pe.name),
+                    msl_diagnostic(
+                        "msl.probe_near_absorber",
+                        msl_text(
+                            "probe_near_absorber",
+                            port_name=pe.name,
+                            direction=pe.direction,
+                            deepest_probe_index=_deep_idx,
+                            propagation_axis=_prop_ax,
+                            deepest_probe_m=x_deep,
+                            absorber_proximity_cells=_ABSORBER_PROXIMITY_CELLS,
+                            absorber_margin_m=_abs_margin,
+                            abs_interval_txt=_abs_interval_txt,
+                        ),
+                        subject=pe.name,
+                    ),
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),
@@ -1521,12 +1546,32 @@ def _check_msl_port_geometry(
                 # trailing possessive, and let "feed plane at x=..."
                 # below carry the coordinate exactly once.
                 _other_owner_txt = (
-                    msl_text('other_msl_owner', other_name=_other_name) if _other_name is not None
-                    else msl_text('other_lumped_owner', other_component=_other.component)
+                    msl_text(
+                        "other_msl_owner",
+                        other_name=_other_name,
+                    )
+                    if _other_name is not None
+                    else msl_text(
+                        "other_lumped_owner",
+                        other_component=_other.component,
+                    )
                 )
                 _w.warn(
                     PreflightWarning(
-                        msl_diagnostic('msl.probe_crosses_feed', msl_text('probe_crosses_feed', port_name=pe.name, direction=pe.direction, propagation_axis=_prop_ax, span_lo_m=_span_lo, span_hi_m=_span_hi, other_owner_txt=_other_owner_txt, other_feed_m=_other_x), subject=pe.name),
+                        msl_diagnostic(
+                            "msl.probe_crosses_feed",
+                            msl_text(
+                                "probe_crosses_feed",
+                                port_name=pe.name,
+                                direction=pe.direction,
+                                propagation_axis=_prop_ax,
+                                span_lo_m=_span_lo,
+                                span_hi_m=_span_hi,
+                                other_owner_txt=_other_owner_txt,
+                                other_feed_m=_other_x,
+                            ),
+                            subject=pe.name,
+                        ),
                         code="msl_port_geometry",
                         source="_check_msl_port_geometry",
                     ),
@@ -1567,9 +1612,14 @@ def _check_msl_port_geometry(
         _nf_real = (abs(float(_probe_ladder[0]) - _src_node)
                     if _probe_ladder and _prop_profile is not None else None)
         _nf_snap_txt = (
-            msl_text('source_snap', propagation_axis=_prop_ax, source_node_m=_src_node, source_snap_m=abs(x_feed - _src_node))
-            if (_prop_profile is not None
-                and abs(x_feed - _src_node) > 1e-3 * _runway_cell) else ""
+            msl_text(
+                "source_snap",
+                propagation_axis=_prop_ax,
+                source_node_m=_src_node,
+                source_snap_m=abs(x_feed - _src_node),
+            )
+            if (_prop_profile is not None and abs(x_feed - _src_node) > 1e-3 * _runway_cell)
+            else ""
         )
         # ONE emission site, two readings of the same finding: how far this
         # port's probe 0 sits from its own feed plane against the source
@@ -1591,11 +1641,24 @@ def _check_msl_port_geometry(
             # distance below is read off the ladder the extractor itself uses
             # rather than recomputed from a cell size.
             _nf_msg = (
-                msl_text('near_field_ramp', port_name=pe.name, direction=pe.direction, five_heights_m=5.0 * h_sub, ramp_txt=_ramp_txt)
-                + (msl_text('near_field_distance', first_probe_distance_m=_nf_real, first_probe_height_ratio=_nf_real / h_sub)
-                   + _nf_snap_txt
-                   if _nf_real is not None else "")
-                + msl_text('near_field_ramp_remedy')
+                msl_text(
+                    "near_field_ramp",
+                    port_name=pe.name,
+                    direction=pe.direction,
+                    five_heights_m=5.0 * h_sub,
+                    ramp_txt=_ramp_txt,
+                )
+                + (
+                    msl_text(
+                        "near_field_distance",
+                        first_probe_distance_m=_nf_real,
+                        first_probe_height_ratio=_nf_real / h_sub,
+                    )
+                    + _nf_snap_txt
+                    if _nf_real is not None
+                    else ""
+                )
+                + msl_text("near_field_ramp_remedy")
             )
         elif _nf_off is not None and int(_nf_off) < _nf_cells:
             _nf_realized = (_nf_real if _nf_real is not None
@@ -1631,49 +1694,114 @@ def _check_msl_port_geometry(
                 _nf_none_term = msl_auto_probe_offset_term(
                     _nf_lengths[0], h_sub, _nf_none_cell)
                 _nf_none_txt = (
-                    msl_text('automatic_ramp', nf_none_term=_nf_none_term, scalar_cell_m=dx, automatic_offset_cells=_nf_none_off)
-                    if _nf_on_ramp else
-                    msl_text('automatic_uniform', nf_none_term=_nf_none_term, automatic_cell_m=_nf_none_cell)
-                    + ("at least " if msl_axis_runs_interval_solve(
-                        _prop_profile) else "")
-                    + msl_text('automatic_count', automatic_offset_cells=_nf_none_off))
+                    msl_text(
+                        "automatic_ramp",
+                        nf_none_term=_nf_none_term,
+                        scalar_cell_m=dx,
+                        automatic_offset_cells=_nf_none_off,
+                    )
+                    if _nf_on_ramp
+                    else msl_text(
+                        "automatic_uniform",
+                        nf_none_term=_nf_none_term,
+                        automatic_cell_m=_nf_none_cell,
+                    )
+                    + ("at least " if msl_axis_runs_interval_solve(_prop_profile) else "")
+                    + msl_text(
+                        "automatic_count",
+                        automatic_offset_cells=_nf_none_off,
+                    )
+                )
             _nf_opening = (
-                msl_text('near_field_automatic_opening', near_field_offset_cells=int(_nf_off))
-                if _nf_is_auto else
-                msl_text('near_field_explicit_opening', near_field_offset_cells=int(_nf_off))
+                msl_text(
+                    "near_field_automatic_opening",
+                    near_field_offset_cells=int(_nf_off),
+                )
+                if _nf_is_auto
+                else msl_text(
+                    "near_field_explicit_opening",
+                    near_field_offset_cells=int(_nf_off),
+                )
             )
             _nf_auto_txt = (
-                msl_text('automatic_choice', near_field_offset_cells=int(_nf_off))
-                + (msl_auto_probe_offset_term(_nf_lengths[0], h_sub, dx)
-                   if _nf_lengths is not None else "its near-field lengths")
-                + msl_text('automatic_shortfall', scalar_cell_m=dx, runway_cell_m=_runway_cell)
-                + (msl_text('automatic_kept_count') if _nf_on_ramp else "")
-                if _nf_is_auto else ""
+                msl_text(
+                    "automatic_choice",
+                    near_field_offset_cells=int(_nf_off),
+                )
+                + (
+                    msl_auto_probe_offset_term(_nf_lengths[0], h_sub, dx)
+                    if _nf_lengths is not None
+                    else "its near-field lengths"
+                )
+                + msl_text(
+                    "automatic_shortfall",
+                    scalar_cell_m=dx,
+                    runway_cell_m=_runway_cell,
+                )
+                + (msl_text("automatic_kept_count") if _nf_on_ramp else "")
+                if _nf_is_auto
+                else ""
             )
             _nf_remedy = (
-                msl_text('remedy_automatic', standoff_cells=_nf_cells, near_field_offset_cells=int(_nf_off))
-                if _nf_is_auto else
-                msl_text('remedy_none_clears', standoff_cells=_nf_cells, nf_none_txt=_nf_none_txt)
-                if _nf_none_clears else
-                msl_text('remedy_none_short', standoff_cells=_nf_cells, nf_none_txt=_nf_none_txt)
-                if _nf_none_txt else
-                msl_text('remedy_explicit', standoff_cells=_nf_cells)
+                msl_text(
+                    "remedy_automatic",
+                    standoff_cells=_nf_cells,
+                    near_field_offset_cells=int(_nf_off),
+                )
+                if _nf_is_auto
+                else msl_text(
+                    "remedy_none_clears",
+                    standoff_cells=_nf_cells,
+                    nf_none_txt=_nf_none_txt,
+                )
+                if _nf_none_clears
+                else msl_text(
+                    "remedy_none_short",
+                    standoff_cells=_nf_cells,
+                    nf_none_txt=_nf_none_txt,
+                )
+                if _nf_none_txt
+                else msl_text(
+                    "remedy_explicit",
+                    standoff_cells=_nf_cells,
+                )
             )
             _nf_msg = (
-                msl_text('near_field_owner', port_name=pe.name, direction=pe.direction)
-                + _nf_opening +
-                msl_text('near_field_uniform', first_probe_distance_m=_nf_realized, first_probe_height_ratio=_nf_realized / h_sub, standoff_cells=_nf_cells, standoff_m=_nf_cells * _runway_cell)
-                + ("" if _nf_is_auto else
-                   msl_text('automatic_floor'))
-                + ")." + _nf_snap_txt + _nf_auto_txt +
-                msl_text('near_field_witness', decay_length_m=2.0 * h_sub / math.pi, reference_height_ratio=5.0, first_probe_height_ratio=_nf_realized / h_sub, reference_amplitude=11.32 * math.exp(-_nf_realized / (2.0 * h_sub / math.pi)))
-                + _nf_remedy +
-                msl_text('near_field_scope')
+                msl_text(
+                    "near_field_owner",
+                    port_name=pe.name,
+                    direction=pe.direction,
+                )
+                + _nf_opening
+                + msl_text(
+                    "near_field_uniform",
+                    first_probe_distance_m=_nf_realized,
+                    first_probe_height_ratio=_nf_realized / h_sub,
+                    standoff_cells=_nf_cells,
+                    standoff_m=_nf_cells * _runway_cell,
+                )
+                + ("" if _nf_is_auto else msl_text("automatic_floor"))
+                + ")."
+                + _nf_snap_txt
+                + _nf_auto_txt
+                + msl_text(
+                    "near_field_witness",
+                    decay_length_m=2.0 * h_sub / math.pi,
+                    reference_height_ratio=5.0,
+                    first_probe_height_ratio=_nf_realized / h_sub,
+                    reference_amplitude=11.32 * math.exp(-_nf_realized / (2.0 * h_sub / math.pi)),
+                )
+                + _nf_remedy
+                + msl_text("near_field_scope")
             )
         if _nf_msg is not None:
             _w.warn(
                 PreflightWarning(
-                    msl_diagnostic('msl.source_near_field', _nf_msg, subject=pe.name),
+                    msl_diagnostic(
+                        "msl.source_near_field",
+                        _nf_msg,
+                        subject=pe.name,
+                    ),
                     code="msl_port_geometry",
                     source="_check_msl_port_geometry",
                 ),

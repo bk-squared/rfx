@@ -670,7 +670,11 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         return result_with_diagnostics(result, diagnostics)
 
     refuse_unsupported_distributed_features(
-        sim, lane="distributed (v2) runner", bloch=kwargs.get("bloch"), diagnostics=diagnostics)
+        sim,
+        lane="distributed (v2) runner",
+        bloch=kwargs.get("bloch"),
+        diagnostics=diagnostics,
+    )
 
     # Only now, past the single-device fallbacks above: those return through
     # ``sim.run()``, which DOES accumulate the monitor.
@@ -729,7 +733,9 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         grid = sim._build_grid()
         conductors = solve_conductors(sim, grid)
         if preflight is not None:
-            diagnostics = merge_diagnostics(diagnostics, report_diagnostics(sim._auto_preflight(conductors=conductors, **preflight)))
+            diagnostics = merge_diagnostics(
+                diagnostics, report_diagnostics(sim._auto_preflight(conductors=conductors, **preflight))
+            )
     else:
         conductors = assembly.take()
         grid = conductors.grid
@@ -1553,7 +1559,8 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     return Result(
         diagnostics=diagnostics,
         realized_geometry=geometry_record,
-        ntff_data=ntff_data, ntff_box=ntff_box,
+        ntff_data=ntff_data,
+        ntff_box=ntff_box,
         state=final_state,
         time_series=time_series,
         s_params=None,

@@ -23,7 +23,11 @@ def require_experimental(sim, *, diagnostics=None):
     refinement = getattr(sim, "_refinement", None)
     if refinement is not None and refinement.get("validation", "production") == "production":
         from rfx.runners._admission import admit
-        admit(sim, "run_subgridded", diagnostics=diagnostics)
+        admit(
+            sim,
+            "run_subgridded",
+            diagnostics=diagnostics,
+        )
 
 
 def warn_experimental():

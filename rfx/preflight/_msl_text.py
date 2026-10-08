@@ -74,7 +74,7 @@ def render(key, template, fields):
                 for index, item in enumerate(value)
                 if isinstance(item, Real)
             )
-        elif isinstance(value, str) and len(value) <= 160:
+        elif isinstance(value, str):
             values[name] = value
     result = Message(SIFormatter().vformat(template, (), fields), values, templates)
     if template == "{detail}" and hasattr(fields["detail"], "diagnostic"):

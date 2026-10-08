@@ -38,7 +38,10 @@ def run_disjoint_stage2_path(
     gates pass.
     """
     from rfx.subgridding._notice import require_experimental, warn_experimental
-    require_experimental(sim, diagnostics=diagnostics)
+    require_experimental(
+        sim,
+        diagnostics=diagnostics,
+    )
     from rfx.model.source_coefficients import vacuum_source_table
     if _warn_experimental:
         warn_experimental()

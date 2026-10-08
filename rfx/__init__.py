@@ -267,6 +267,7 @@ from rfx.convergence import (
 #     replay_smatrix_from_port_vi_dump, save_optimization_trajectory,
 #     render_artifact_markdown, validate_artifact_report, build_*_report/artifact
 __all__ = [
+    "Diagnostic",
     # grid / core simulation entry points
     "Grid", "NonUniformGrid", "make_nonuniform_grid",
     "make_band_profile",

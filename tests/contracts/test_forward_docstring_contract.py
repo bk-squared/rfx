@@ -117,7 +117,10 @@ def test_all_is_curated_subset():
     assert "subtract_flux_monitors" in names
     # #1448 B1: ForwardResult is the public return type of forward(), alongside Result.
     assert "ForwardResult" in names
-    assert len(names) < 219, f"rfx.__all__ too large to be curated: {len(names)}"
+    # #1534 adds Diagnostic, the public immutable record carried by results.
+    # Admit exactly this one-name expansion; keep future growth guarded.
+    assert "Diagnostic" in names
+    assert len(names) < 220, f"rfx.__all__ too large to be curated: {len(names)}"
     missing = [n for n in names if not hasattr(rfx, n)]
     assert not missing, f"rfx.__all__ lists names not on the package: {missing}"
 

@@ -37,7 +37,7 @@ EXPECTED_LEGACY.update({
 })
 EXPECTED_REFUSALS = {
     'msl.probe_placement_failed', 'msl.conductor_assembly_unavailable',
-    'msl.conductor_attachment', 'msl.line_stub_realization', 'msl.line_stub_behind_port',
+    'msl.conductor_attachment', 'msl.line_stub_realization',
 }
 
 
@@ -47,8 +47,11 @@ def path_observations():
     for path in ('uniform', 'graded', 'distributed', 'distributed_nu'):
         sim = structure(path in ('graded', 'distributed_nu'))
         try:
-            result = sim.run(n_steps=2, compute_s_params=False,
-                             **({'devices': jax.devices()} if path.startswith('distributed') else {}))
+            result = sim.run(
+                n_steps=2,
+                compute_s_params=False,
+                **({"devices": jax.devices()} if path.startswith("distributed") else {}),
+            )
             status = 'returns'
         except (ValueError, NotImplementedError) as error:
             result, status = error, 'refuses'
@@ -59,12 +62,22 @@ def path_observations():
 
 def test_jd_path_identity():
     # The second CPU is needed to reach the real multi-device admission fence.
-    env = dict(os.environ, JAX_PLATFORMS='cpu', PYTHONPATH=str(ROOT),
-               XLA_FLAGS='--xla_force_host_platform_device_count=2')
+    env = dict(
+        os.environ,
+        JAX_PLATFORMS="cpu",
+        PYTHONPATH=str(ROOT),
+        XLA_FLAGS="--xla_force_host_platform_device_count=2",
+    )
     code = ('import json; from tests.unit.preflight.test_msl_diagnostic_identity import path_observations; '
             'print("JD_RESULT=" + json.dumps(path_observations()))')
-    process = subprocess.run([sys.executable, '-c', code], cwd=ROOT, env=env,
-                             capture_output=True, text=True, timeout=120)
+    process = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
     assert process.returncode == 0, process.stdout + process.stderr
     observations = json.loads(next(line.removeprefix('JD_RESULT=')
                                    for line in process.stdout.splitlines() if line.startswith('JD_RESULT=')))
@@ -80,32 +93,93 @@ def test_jd_path_identity():
     assert all(signature == signatures['uniform'] for signature in signatures.values())
 
 
+FAMILY_MODULES = (
+    "rfx/preflight/msl.py",
+    "rfx/preflight/msl_reflector.py",
+    "rfx/preflight/line_stub.py",
+    "rfx/preflight/line_port_coverage.py",
+    "rfx/sparams/_common.py",
+    "rfx/sources/msl_port.py",
+    "rfx/preflight/_msl_probe_rules.py",
+)
+
+
 def test_jd_no_print_and_no_hardcoded_emission_bypass():
-    files = ('msl', 'msl_reflector', 'line_stub', 'line_port_coverage')
-    for name in files:
-        text = (ROOT / 'rfx/preflight' / f'{name}.py').read_text()
-        assert 'print(' not in text
-        for n in ast.walk(ast.parse(text)):
+    from rfx.preflight.msl_codes import CODES, TEMPLATES
+    # These are the only opaque messages: inspection exceptions or forwarded
+    # placement advice. Another code must not use one as a prose escape hatch.
+    opaque = {
+        'probe_placement_note': 'msl.probe_placement_note',
+        'line_stub_realization': 'msl.line_stub_realization',
+        'probe_placement_failed': 'msl.probe_placement_failed',
+        'probe_clearance_scan_failed': 'msl.probe_clearance_scan_failed',
+        'conductor_attachment': 'msl.conductor_attachment',
+    }
+    from string import Formatter
+    for key, template in TEMPLATES.items():
+        fields = {field for _, field, _, _ in Formatter().parse(template)}
+        if fields & {'detail', 'exc'}:
+            assert key in opaque, key
+    for name in FAMILY_MODULES:
+        text = (ROOT / name).read_text()
+        tree = ast.parse(text)
+        if name in ('rfx/sparams/_common.py', 'rfx/sources/msl_port.py'):
+            selected = {'_resolve_msl_auto_offsets', 'validate_msl_port_geometry'}
+            tree.body = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in selected]
+            assert not any(isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+                           and n.func.id == 'print' for n in ast.walk(tree)), name
+        else:
+            assert 'print(' not in text
+        parents = {child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)}
+        for n in ast.walk(tree):
+            if isinstance(n, ast.BinOp):
+                left_calls = [x for x in ast.walk(n.left) if isinstance(x, ast.Call)
+                              and isinstance(x.func, ast.Name) and x.func.id == 'msl_text']
+                if left_calls:
+                    assert not isinstance(n.right, ast.JoinedStr), (name, n.lineno)
+                    if isinstance(n.right, ast.Constant) and isinstance(n.right.value, str):
+                        assert not any(c.isalnum() for c in n.right.value), (name, n.lineno)
             if not isinstance(n, ast.Call) or not isinstance(n.func, ast.Name):
                 continue
-            if n.func.id in ('PreflightWarning', 'PreflightErrorWarning', 'PreflightConfigError'):
-                assert isinstance(n.args[0], ast.Call), (name, n.lineno)
-                assert isinstance(n.args[0].func, ast.Name)
-                assert n.args[0].func.id in ('msl_diagnostic', 'stub_diagnostic'), (name, n.lineno)
-            if n.func.id == 'msl_diagnostic':
-                argument = n.args[1]
+            fn = n.func.id
+            if fn in ('PreflightWarning', 'PreflightErrorWarning', 'PreflightConfigError'):
+                # Other families in shared modules remain outside this migration.
+                if name.startswith('rfx/preflight/'):
+                    assert isinstance(n.args[0], ast.Call), (name, n.lineno)
+                    assert isinstance(n.args[0].func, ast.Name)
+                    assert n.args[0].func.id in ('msl_diagnostic', 'stub_diagnostic'), (name, n.lineno)
+            if fn in ('msl_diagnostic', 'msl_geometry_error', 'placement_warning'):
+                argument = n.args[1] if fn == 'msl_diagnostic' else n.args[0]
                 assert isinstance(argument, (ast.Call, ast.Name, ast.BinOp)), (name, n.lineno)
-                # No retained lookup followed by a caller-authored message substitution.
                 if isinstance(argument, ast.Call):
                     assert isinstance(argument.func, ast.Name) and argument.func.id == 'msl_text'
+            if fn == 'msl_text':
+                key = ast.literal_eval(n.args[0])
+                outer = parents.get(n)
+                while outer is not None:
+                    if isinstance(outer, ast.Call) and isinstance(outer.func, ast.Name):
+                        emitter = outer.func.id
+                        code = (ast.literal_eval(outer.args[0]) if emitter == 'msl_diagnostic' else
+                                {'msl_geometry_error': 'msl.conductor_attachment',
+                                 'placement_warning': 'msl.probe_placement_note'}.get(emitter))
+                        if code is not None:
+                            assert key in CODES[code].templates, (name, n.lineno, code, key)
+                            if key in opaque:
+                                assert code == opaque[key], (name, n.lineno, code, key)
+                            break
+                    outer = parents.get(outer)
 
 
-@pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
+@pytest.mark.parametrize(
+    "graded",
+    [False, True],
+    ids=["uniform", "graded"],
+)
 def test_byte_identity_and_every_code_reached(graded):
     from rfx.preflight.msl_codes import CODES
     assert {code: entry.legacy_slug for code, entry in CODES.items()} == EXPECTED_LEGACY
     assert {code for code, entry in CODES.items() if entry.severity == 'refusal'} == EXPECTED_REFUSALS
-    expected = json.loads((ROOT / 'tests/data/msl_diagnostic_messages.json').read_text())
+    from tests._msl_diagnostic_golden import GOLDEN as expected
     found = set()
     for case, messages in captured_cases(graded).items():
         key = ('graded' if graded else 'uniform') + '/' + case
@@ -115,22 +189,40 @@ def test_byte_identity_and_every_code_reached(graded):
             assert message.diagnostic.message == str(message)
             assert EXPECTED_LEGACY[message.diagnostic.code] == message.code
             assert message.diagnostic.severity == (
-                "refusal" if message.diagnostic.code in EXPECTED_REFUSALS else "advisory")
+                "refusal" if message.severity == "error" else "advisory")
     assert found == set(EXPECTED_LEGACY)
 
 
 def test_two_simulations_alternating_do_not_retain_findings():
-    first, second = structure(name='first'), structure(name='second')
+    first, second = (
+        structure(
+            name="first",
+        ),
+        structure(
+            name="second",
+        ),
+    )
     for sim, name in [(first, 'first'), (second, 'second'), (first, 'first')]:
-        result = sim.run(n_steps=2, compute_s_params=False)
+        result = sim.run(
+            n_steps=2,
+            compute_s_params=False,
+        )
         family = [d for d in result.diagnostics if d.code.startswith('msl.')]
         assert {d.code for d in family} == EXPECTED
         assert {d.subject for d in family} == {name}
-        clean = sim.run(n_steps=2, compute_s_params=False, skip_preflight=True)
+        clean = sim.run(
+            n_steps=2,
+            compute_s_params=False,
+            skip_preflight=True,
+        )
         assert clean.diagnostics == ()
 
 
-@pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
+@pytest.mark.parametrize(
+    "graded",
+    [False, True],
+    ids=["uniform", "graded"],
+)
 def test_every_family_warning_construction_executes(graded, record_property):
     targets = set()
     for name in ('msl', 'msl_reflector', 'line_stub', 'line_port_coverage'):

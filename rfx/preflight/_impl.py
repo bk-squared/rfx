@@ -115,10 +115,16 @@ def _preflight_impl(
             code = "uncoded"
             loc = None
             source = None
-        issues.append(PreflightIssue(
-            msg, severity=severity, code=code, loc=loc, source=source,
-            diagnostic=getattr(inst, "diagnostic", None),
-        ))
+        issues.append(
+            PreflightIssue(
+                msg,
+                severity=severity,
+                code=code,
+                loc=loc,
+                source=source,
+                diagnostic=getattr(inst, "diagnostic", None),
+            )
+        )
 
     if check_ad_memory:
         if n_steps_for_memory is None:
@@ -168,7 +174,7 @@ def _preflight_impl(
 _preflight_impl.__qualname__ = "_PreflightMixin._preflight_impl"
 
 
-def run_preflight_gate(issues, *, context: str, stacklevel: int = 3) -> None:
+def run_preflight_gate(issues, context: str, stacklevel: int = 3) -> None:
     """Apply the same warning/error policy to full or scoped preflight."""
     issues = PreflightReport(issues)
     if not len(issues):          # PreflightReport refuses bool() (#980)
@@ -181,7 +187,8 @@ def run_preflight_gate(issues, *, context: str, stacklevel: int = 3) -> None:
         warnings.warn(
             f"[{context}] preflight found {len(warns)} advisory issue(s) - "
             f"pass skip_preflight=True to suppress:\n  - {body}",
-            UserWarning, stacklevel=stacklevel + 1,
+            UserWarning,
+            stacklevel=stacklevel + 1,
         )
     if errors:
         # Error-severity findings are structurally-impossible configs
@@ -193,7 +200,12 @@ def run_preflight_gate(issues, *, context: str, stacklevel: int = 3) -> None:
         # skip_preflight=True remains the explicit escape hatch.
         detail = "\n  - ".join(errors)
         from rfx._diagnostic_transport import diagnostic_refusal
-        raise diagnostic_refusal(ValueError(
-            f"[{context}] preflight found {len(errors)} blocking error(s) "
-            f"(pass skip_preflight=True to bypass):\n  - {detail}"
-        ), issues.diagnostics, causes=PreflightReport(errors).diagnostics)
+
+        raise diagnostic_refusal(
+            ValueError(
+                f"[{context}] preflight found {len(errors)} blocking error(s) "
+                f"(pass skip_preflight=True to bypass):\n  - {detail}"
+            ),
+            issues.diagnostics,
+            causes=PreflightReport(errors).diagnostics,
+        )

@@ -43,3 +43,58 @@ def _calculator_source_plane(grid, port):
     centre = port.position[2] + direction * port.pin_length / 2.0
     dz = float(grid.cells(2)[0])   # uniform z only (coax calculators refuse a graded mesh)
     return int(round(centre / dz)) + grid.pad_z_lo
+
+
+def _msl_axis_spacing(grid, axis: int):
+    """Cell spacing along one grid axis, and whether that axis is GRADED.
+
+    Returns ``(spacing_m, graded, evaluable)``:
+
+    * uniform :class:`~rfx.grid.Grid` — ``(grid.dx, False, True)``: every
+      axis carries the one scalar spacing.
+    * :class:`~rfx.nonuniform.NonUniformGrid` — the axis's own interior
+      cell-size array decides. ``graded`` is True when max/min differ by
+      more than 1e-6 relative.  ``spacing_m`` is the (single) interior
+      cell size when the axis is ungraded, ``None`` when it is graded.
+    * traced (mesh-as-design-variable) profiles — ``(None, None, False)``:
+      the answer is not available host-side.
+
+    Issue #686: the #469 probe-offset interval solve used to bail on ANY
+    non-uniform grid (``getattr(grid, "dz", None) is not None``). Its
+    stated reason — "cell-counted intervals are ill-defined under graded
+    dx" — is a statement about the PROPAGATION axis, and a ``dz_profile``
+    does not grade dx. For a microstrip the propagation axis is x or y,
+    so on a z-graded mesh (the boundary-fitted stackup case) the interval
+    is perfectly well defined and the solve simply never ran.
+    """
+    from rfx.core.jax_utils import is_tracer
+    from rfx.nonuniform import NonUniformGrid, interior_cells
+
+    if not isinstance(grid, NonUniformGrid):
+        return float(grid.boundary_cell(axis, "lo")), False, True
+    arr = (grid.dx_arr, grid.dy_arr, grid.dz)[axis]
+    pad_lo = (grid.pad_x_lo, grid.pad_y_lo, grid.pad_z_lo)[axis]
+    pad_hi = (grid.pad_x_hi, grid.pad_y_hi, grid.pad_z_hi)[axis]
+    if is_tracer(arr):
+        return None, None, False
+    cells = np.asarray(interior_cells(np.asarray(arr), pad_lo, pad_hi),
+                       dtype=np.float64)
+    if cells.size == 0:
+        return None, None, False
+    lo, hi = float(cells.min()), float(cells.max())
+    if lo <= 0.0:
+        return None, None, False
+    graded = (hi - lo) / lo > 1e-6
+    return (None if graded else lo), graded, True
+
+
+def _msl_axis_cell_f64(grid, axis: int) -> float:
+    """The cell of an ungraded axis, from the float64 cell spine.
+
+    ``_msl_axis_spacing`` reads the float32 solver store, which is what the
+    interval solve has always counted in. A count compared with the one
+    ``add_msl_port`` made in its float64 scalar is read here instead, so an
+    axis whose cell IS that scalar reproduces the stored count exactly.
+    """
+    pad_lo = (grid.pad_x_lo, grid.pad_y_lo, grid.pad_z_lo)[axis]
+    return float(np.asarray(grid.cells(axis), dtype=np.float64)[pad_lo])

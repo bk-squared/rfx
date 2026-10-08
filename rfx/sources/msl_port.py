@@ -320,7 +320,13 @@ def validate_msl_port_geometry(grid, port, *, pec_edge_masks=None,
     p, lower, upper = span["i_feed"], span["n_lo"], span["n_hi"]
     label = f"MSL port {name!r}" if name is not None else "MSL port"
     if len(nodes[ip]) < 2 or len(nodes[iw]) < 2:
-        raise msl_geometry_error(msl_text('attachment_axes', owner=label), subject=name)
+        raise msl_geometry_error(
+            msl_text(
+                "attachment_axes",
+                owner=label,
+            ),
+            subject=name,
+        )
     hard = (tuple(np.zeros(grid.shape, dtype=bool) for _ in range(3))
             if pec_edge_masks is None else tuple(np.asarray(m, dtype=bool) for m in pec_edge_masks))
     if sheet_impedance is None:
@@ -346,7 +352,13 @@ def validate_msl_port_geometry(grid, port, *, pec_edge_masks=None,
         width_nodes = np.append(width_nodes, float(grid.domain[iw]))
     widths = np.flatnonzero(_box_axis_closed(width_nodes, port.y_lo, port.y_hi, local))
     if not len(widths):
-        raise msl_geometry_error(msl_text('attachment_width', owner=label), subject=name)
+        raise msl_geometry_error(
+            msl_text(
+                "attachment_width",
+                owner=label,
+            ),
+            subject=name,
+        )
     widths = sorted({int(w) % len(nodes[iw]) for w in widths} | {span["w_centre"]})
     if (span["width_axis"] in getattr(grid, "periodic_axes", "")
             and 0 in span["width_nodes"]):
@@ -357,7 +369,14 @@ def validate_msl_port_geometry(grid, port, *, pec_edge_masks=None,
         for side, boundary_node in (("lo", 0), ("hi", grid.shape[axis]-1)):
             face = f"{'xyz'[axis]}_{side}"
             if face in faces and boundary_node in indices:
-                raise msl_geometry_error(msl_text('attachment_wall', owner=label, face=face), subject=name)
+                raise msl_geometry_error(
+                    msl_text(
+                        "attachment_wall",
+                        owner=label,
+                        face=face,
+                    ),
+                    subject=name,
+                )
 
     def along_trace(w, k):
         if 'z' in getattr(grid, 'periodic_axes', ''):
@@ -381,23 +400,62 @@ def validate_msl_port_geometry(grid, port, *, pec_edge_masks=None,
                 alternatives = sorted(set(realized_wall_planes(
                     observed, 2, ij=ij, periodic=periodic)) | domain_planes)
                 locations = [float(nodes[2][j]) for j in alternatives]
-                raise msl_geometry_error(msl_text('attachment_missing', owner=label, role=role, declared_plane_m=declared, plane_index=k, realized_plane_m=nodes[2][k % len(nodes[2])], width_node=w, observed_plane_m=locations), subject=name)
+                raise msl_geometry_error(
+                    msl_text(
+                        "attachment_missing",
+                        owner=label,
+                        role=role,
+                        declared_plane_m=declared,
+                        plane_index=k,
+                        realized_plane_m=nodes[2][k % len(nodes[2])],
+                        width_node=w,
+                        observed_plane_m=locations,
+                    ),
+                    subject=name,
+                )
         # A volume owns internal planes too. Its substrate-facing surface
         # must leave ALL normal source edges live, not merely appear in a
         # tangential-wall census. Also catches posts crossing the port.
         occupied = [k for k in range(lower, upper)
                     if hard[2][msl_cell(port.direction, p, w, k)]]
         if occupied:
-            raise msl_geometry_error(msl_text('attachment_occupied', owner=label, lower_node=lower, upper_node=upper, occupied_node=occupied, width_node=w), subject=name)
+            raise msl_geometry_error(
+                msl_text(
+                    "attachment_occupied",
+                    owner=label,
+                    lower_node=lower,
+                    upper_node=upper,
+                    occupied_node=occupied,
+                    width_node=w,
+                ),
+                subject=name,
+            )
         loaded = [k for k in range(lower, upper)
                   if observed[2][msl_cell(port.direction, p, w, k)]]
         if loaded:
-            raise msl_geometry_error(msl_text('attachment_loaded', owner=label, loaded_node=loaded, width_node=w), subject=name)
+            raise msl_geometry_error(
+                msl_text(
+                    "attachment_loaded",
+                    owner=label,
+                    loaded_node=loaded,
+                    width_node=w,
+                ),
+                subject=name,
+            )
         ij = msl_cell(port.direction, p, w, lower)[:2]
         intervening = [k for k in realized_wall_planes(observed, 2, ij=ij, periodic=periodic)
                       if lower < k < upper]
         if intervening:
-            raise msl_geometry_error(msl_text('attachment_intervening', owner=label, intervening_node=intervening, lower_node=lower, upper_node=upper), subject=name)
+            raise msl_geometry_error(
+                msl_text(
+                    "attachment_intervening",
+                    owner=label,
+                    intervening_node=intervening,
+                    lower_node=lower,
+                    upper_node=upper,
+                ),
+                subject=name,
+            )
 
 
 def _axis_cell_size(grid, axis: str, idx: int) -> float:
