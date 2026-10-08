@@ -451,6 +451,53 @@ def trial_pass(case, store):
             "initial_objective": float(objective[0]), "iteration30_objective": float(objective[-1])}
 
 
+def synchronized_wall_times(function, argument, *, block, clock=time.perf_counter):
+    """One excluded warm-up followed by three completed, synchronised calls."""
+    block(argument)
+    block(function(argument))
+    samples = []
+    for _ in range(3):
+        block(argument)  # exclude any pending input work from the clock
+        start = clock()
+        result = function(argument)
+        block(result)
+        samples.append(float(clock() - start))
+    return samples
+
+
+def timing_summary(case, model, design, n_steps, gradient_times, forward_iteration):
+    """Jitted forward objective + response, matching value_and_grad(has_aux=True)."""
+    import jax
+    import jax.numpy as jnp
+    response = model.response_fn(n_steps)
+    def objective(eps):
+        r = response(eps)
+        return case.loss(r), r
+    function = jax.jit(objective)
+    design = jnp.asarray(design, dtype=jnp.float32)
+    forward = synchronized_wall_times(function, design, block=jax.block_until_ready)
+    gradient = [float(x) for x in gradient_times]
+    if not gradient or not np.isfinite(forward + gradient).all():
+        raise ValueError("timing samples must be finite and include post-compilation gradient entries")
+    devices = sorted(design.devices(), key=lambda device: device.id)
+    return {"forward_wall_s": forward, "forward_wall_s_median": float(np.median(forward)),
+            "value_and_grad_wall_s": gradient,
+            "value_and_grad_wall_s_median": float(np.median(gradient)),
+            "device_name": ", ".join(device.device_kind for device in devices),
+            "device_platform": devices[0].platform,
+            "mesh": {"dx_m": float(model.dx), "grid_shape": list(model.grid.shape)},
+            "n_steps": int(n_steps), "dt_s": float(model.grid.dt),
+            "checkpointed_reverse_mode": "yes" if case.CASE == "filter" else "no",
+            "checkpoint_segments": sqrt_segments(n_steps) if case.CASE == "filter" else None,
+            "checkpoint_scope": "FDTD time stepping; lens uses uncheckpointed design-box reverse mode",
+            "far_field_row_rematerialization": case.CASE == "lens",
+            "forward_iteration": int(forward_iteration),
+            "value_and_grad_iterations": list(range(1, len(gradient) + 1)),
+            "forward_warmup_calls_excluded": 1,
+            "forward_definition": "jitted objective value and auxiliary response, no differentiation; includes observable transforms, excludes host checks and file I/O",
+            "value_and_grad_definition": "existing iterations.npz wall_s[1:]; includes latent conversion, synchronisation and host finite checks; compilation entry excluded"}
+
+
 def selected_design(directory):
     with np.load(directory / "iterations.npz") as data:
         index = best_iterate(data["objective"])
@@ -611,10 +658,13 @@ def main(case, argv=None):
     details = {"n_steps": n}
     if args.stage == "timing":
         t0 = time.perf_counter()
-        optimize(case, model, e, n, 2, args.out, "timing")
-        best, _ = selected_design(args.out)
+        store = optimize(case, model, e, n, 2, args.out, "timing")
+        best, best_index = selected_design(args.out)
         details["eager_check"] = evaluate(case, model, {"reported": best}, n, args.out, "timing_eager")
         details.update(wall_s=time.perf_counter() - t0, smoke=args.smoke)
+        summary = timing_summary(case, model, best, n, store.rows["wall_s"][1:], best_index)
+        dc.save_json(args.out / "timing_summary.json", summary)
+        details.update(summary)
     elif args.stage == "fd":
         # Observe all actual solver field dtypes, not just design-array dtype.
         import rfx.simulation as simulation
