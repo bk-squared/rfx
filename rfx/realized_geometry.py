@@ -61,6 +61,8 @@ class EntityGeometry:
     provenance: str | None = None
     port_id: str | None = None
     sampling: str | None = None
+    realized_footprint_area_m2: float | None = None
+    declared_footprint_area_m2: float | None = None
 
 
 @dataclass(frozen=True)
@@ -172,12 +174,11 @@ def _assembly_impl(sim, ctx):
         raise ValueError(ctx.error)
     import copy
     from rfx.fidelity import _contract_refusals
-    from rfx.runners.nonuniform import nu_thin_conductor_refusal
+    from rfx.model.thin_conductors import dc_film_refusals
     from rfx.model.conductors import realized_conductors
     nonuniform = ctx.lane == "nonuniform"
     refused = _contract_refusals(sim, ctx.grid, nonuniform)
-    refused_tc = {i: why for i, tc in enumerate(sim._thin_conductors)
-                  if nonuniform and (why := nu_thin_conductor_refusal(tc)) is not None}
+    refused_tc = dc_film_refusals(sim, ctx.grid)
     audit = copy.copy(sim)
     audit._geometry = [e for i, e in enumerate(sim._geometry) if i not in refused]
     audit._thin_conductors = [tc for i, tc in enumerate(sim._thin_conductors) if i not in refused_tc]
@@ -226,7 +227,16 @@ def _build_record(sim, ctx, *, compact=False):
             # Retain the refused declaration's diagnostic occupancy once.
             # It is explicitly NOT a solved conductor and contributes no edges.
             try:
-                mask = ctx.rasterize(shape)
+                tc_index = index - len(sim._geometry)
+                if tc_index in refused_tc:
+                    from rfx.model.thin_conductors import admit_dc_film, DCFilmAdmissionError
+                    try:
+                        mask = np.asarray(admit_dc_film(
+                            shape, ctx.grid, snap='declared', emit=False).mask)
+                    except DCFilmAdmissionError:
+                        mask = ctx.rasterize(shape)
+                else:
+                    mask = ctx.rasterize(shape)
             except Exception as exc:
                 mask = None
                 mask_error = f"{type(exc).__name__}: {exc}"
@@ -261,15 +271,28 @@ def _build_record(sim, ctx, *, compact=False):
                 continued = tuple(f"{'xyz'[a]}-{'hi' if side else 'lo'}"
                                   for a in range(3) for side in (0, 1)
                                   if bounds[side][a] != solved_bounds[side][a])
+        areas = (None, None)
+        tc_index = index - len(sim._geometry)
+        if tc_index >= 0:
+            tc = sim._thin_conductors[tc_index]
+            if not tc.is_pec and tc.surface_impedance_f0 is None and mask is not None:
+                from rfx.materials.thin_conductor import sheet_bounds, sheet_normal_axis
+                from rfx.model.thin_conductors import dc_footprint_areas
+                lo, hi = sheet_bounds(shape)
+                if lo is not None and hi is not None:
+                    areas = dc_footprint_areas(shape, ctx.grid, mask, sheet_normal_axis(lo, hi))
+            if tc_index in refused_tc:
+                kind = 'refused'
         entities.append(EntityGeometry(
             label, name, kind, tuple(axes),
             int(mask.sum()) if mask is not None and kind not in ("sheet", "wire") else 0,
             plane, walls, None if compact or mask is None else _readonly(mask), edges,
-            None if e is None else e.error, None if compact else _freeze(sheet),
+            refused_tc.get(tc_index, None if e is None else e.error), None if compact else _freeze(sheet),
             None if bounds is None else tuple(tuple(float(v) for v in b) for b in bounds[:2]),
             continued, mask_error, "diagnostic" if kind == "refused" else "solved",
             int(mask.sum()) if mask is not None and kind in ("sheet", "wire") else 0,
-            edge_counts, edge_ranges))
+            edge_counts, edge_ranges, realized_footprint_area_m2=areas[0],
+            declared_footprint_area_m2=areas[1]))
         if compact and e is not None:
             e._edges = None
     domain = []

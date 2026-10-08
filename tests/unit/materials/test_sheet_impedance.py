@@ -1861,23 +1861,27 @@ def test_box_and_equivalent_mask_shape_fold_bit_identically(lane):
 
 
 def test_dc_fold_also_accepts_a_mask_shape_on_the_uniform_lane():
-    """The legacy DC fold was never Box-only on the uniform lane (it reads
-    ``shape.mask``); pin that #674 did not change it. The NU DC path refuses
-    a non-Box shape (2.0); it used to warn and solve without the conductor."""
-    # The DC fold samples ``shape.mask`` half-open (a sigma-fill volume
-    # model, unchanged by #931), so the equivalent mask shape is half-open.
+    """DC admission declaration: unknown area needs declared acceptance on both lanes."""
     sig_box, _, _, _ = _uniform_sigma(_box_sheet(U_Z, U_FOOT))
-    sig_msk, _, _, _ = _uniform_sigma(_planar_sheet(U_Z, U_FOOT, closed=False))
-    assert _sha(sig_box) == _sha(sig_msk)
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        sim = Simulation(freq_max=10e9, domain=(NU_L, NU_L, 0), dx=NU_DX,
-                         dz_profile=NU_DZ, boundary="cpml", cpml_layers=6)
-        sim.add_thin_conductor(_planar_sheet(NU_Z, NU_FOOT),
-                               sigma_bulk=SIGMA_BULK, thickness=THICKNESS)
-    with pytest.raises(NotImplementedError, match="non-Box shape"):
-        assemble_materials_nu(sim, _nu_grid(sim))
+    for nonuniform in (False, True):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            sim = (Simulation(freq_max=10e9, domain=(NU_L, NU_L, 0), dx=NU_DX,
+                              dz_profile=NU_DZ, boundary="cpml", cpml_layers=6)
+                   if nonuniform else Simulation(freq_max=10e9, domain=U_DOMAIN, dx=U_DX))
+            shape = (_planar_sheet(NU_Z, NU_FOOT) if nonuniform
+                     else _planar_sheet(U_Z, U_FOOT, closed=False))
+            sim.add_thin_conductor(shape, sigma_bulk=SIGMA_BULK, thickness=THICKNESS)
+        grid = _nu_grid(sim) if nonuniform else sim._build_grid()
+        assemble = sim._assemble_materials_nu if nonuniform else sim._assemble_materials
+        with pytest.raises(ValueError, match="cannot judge"):
+            assemble(grid)
+        sim._snap = 'declared'
+        with pytest.warns(UserWarning, match="cannot judge"):
+            sigma = np.asarray(assemble(grid)[0].sigma)
+        assert np.any(sigma > 0)
+        if not nonuniform:
+            assert _sha(sig_box) == _sha(sigma)
 
 
 # ---------------------------------------------------------------------------

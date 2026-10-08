@@ -234,6 +234,11 @@ class ThinConductor:
         ``sigma_bulk`` a legal differentiable DoF in f0 mode. Pinned by
         tests/unit/materials/test_thin_conductor.py (is_pec-order pin).
         """
+        from rfx.core.jax_utils import is_tracer
+        if is_tracer(self.sigma_bulk):
+            # Conductivity differentiation belongs to the lossy branch; the
+            # discontinuous PEC threshold is not a differentiable parameter.
+            return False
         return (self.surface_impedance_f0 is None) and (
             self.sigma_bulk >= _PEC_SIGMA_THRESHOLD)
 
@@ -424,6 +429,7 @@ def apply_thin_conductor(
     sheets: list | None = None,
     geometry_masks: list | None = None,
     geometry_key: int | None = None,
+    snap: str = 'strict',
 ) -> tuple[MaterialArrays, jnp.ndarray | None]:
     """Apply thin conductor subcell correction to material arrays.
 
@@ -460,7 +466,7 @@ def apply_thin_conductor(
     from rfx.model.thin_conductors import fold_thin_conductor
     return fold_thin_conductor(
         grid, conductor, materials, pec_mask, sheet_specs=sheet_specs,
-        sheets=sheets, geometry_masks=geometry_masks, geometry_key=geometry_key)
+        sheets=sheets, geometry_masks=geometry_masks, geometry_key=geometry_key, snap=snap)
 
 
 # ---------------------------------------------------------------------------

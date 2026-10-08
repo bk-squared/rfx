@@ -263,6 +263,8 @@ def _validate_cfg_campaign_statics(self, _w) -> None:
     guard that cannot evaluate the model must not be indistinguishable
     from a guard that found nothing (#685 class).
     """
+    from rfx.model.thin_conductors import warn_dc_films
+    warn_dc_films(self, _w)
     try:
         has_conductor = any(
             self._resolve_material(e.material_name).sigma

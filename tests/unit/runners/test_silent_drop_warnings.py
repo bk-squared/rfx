@@ -654,8 +654,7 @@ def test_upml_refuses_kottke_pec_and_its_remedies_run():
 
 
 def test_fidelity_report_names_the_nu_thin_conductor_refusal():
-    """The report explains the model run() would refuse, instead of
-    raising itself."""
+    """The DC admission declaration replaces blanket NU refusal with the area bar."""
     def build():
         sim = Simulation(freq_max=10e9, domain=(0.012, 0.012, 0.0), dx=1e-3,
                          dz_profile=np.array([1e-3] * 4 + [0.5e-3] * 4
@@ -668,7 +667,7 @@ def test_fidelity_report_names_the_nu_thin_conductor_refusal():
         sim.add_probe((0.009, 0.006, 0.009), "ez")
         return sim
     sim = _quiet(build)
-    with pytest.raises(NotImplementedError, match="non-Box shape"):
+    with pytest.raises(ValueError, match="Cylinder.*A_d=.*A_r="):
         sim.run(n_steps=4, skip_preflight=True)
     report = _quiet(lambda: sim.fidelity_report(print_report=False))
     found = [f for row in report for f in row.get("findings", ())

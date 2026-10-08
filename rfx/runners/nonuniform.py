@@ -158,27 +158,6 @@ def build_nonuniform_grid(
         )
 
 
-def nu_thin_conductor_refusal(tc) -> str | None:
-    """Why the non-uniform assembler refuses this thin conductor, or None.
-
-    A lossy DC sheet (``add_thin_conductor`` with ``sigma_bulk`` and no
-    ``surface_impedance_f0``) folds by its Box corners here; a shape
-    without them has no fold on this lane. ``fidelity_report()`` reads the
-    same answer to report the refusal instead of raising.
-    """
-    if (getattr(tc, "is_pec", False)
-            or getattr(tc, "surface_impedance_f0", None) is not None):
-        return None
-    if (getattr(tc.shape, "corner_lo", None) is not None
-            and getattr(tc.shape, "corner_hi", None) is not None):
-        return None
-    return ("a lossy thin conductor (add_thin_conductor without "
-            "surface_impedance_f0) with a non-Box shape "
-            f"({type(tc.shape).__name__}) is not implemented on the "
-            "non-uniform lane; skipping it would leave the conductor out of "
-            "the solve. Instead: draw it as a Box, or run on a uniform mesh.")
-
-
 def assemble_materials_nu(
     sim,
     grid: NonUniformGrid,
