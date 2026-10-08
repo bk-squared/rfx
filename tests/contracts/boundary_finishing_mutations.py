@@ -12,11 +12,14 @@ def main(mode):
 
         def implicit(sim, **kwargs):
             saved = sim._boundary_spec
+            periodic = sim._periodic_axes
             sim._boundary_spec = BoundarySpec.uniform("cpml")
+            sim._periodic_axes = ""
             try:
                 return original(sim, **kwargs)
             finally:
                 sim._boundary_spec = saved
+                sim._periodic_axes = periodic
 
         Simulation._build_grid = implicit
         path = "tests/contracts/test_boundary_finishing.py"
