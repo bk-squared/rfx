@@ -221,11 +221,10 @@ def test_parity_detects_mutations(monkeypatch, mutation):
 @pytest.mark.parametrize("explicit", [False, True])
 @pytest.mark.parametrize("channel", [False, True])
 def test_pmc_matched_line_refused(explicit, channel):
-    from tests.unit.ports.test_lumped_two_port_matched_line import _build
-    sim = _build("lumped")
-    if channel:
-        sim = _model(channel=True, magnetic=True)
-        # This row checks admission, not the old half-cell line's matching.
+    # Admission has its own magnetic-face witness; the through-line fixture
+    # now intentionally uses absorbing x ends and no magnetic side walls.
+    sim = _model(channel=channel, magnetic=True,
+                 boundary=BoundarySpec(x="cpml", y="pmc", z="pec"))
     with pytest.raises(NotImplementedError, match=r"PMC magnetic face.*y_lo.*distributed_v2.*magnetic image"):
         sim.run(n_steps=8, devices=jax.devices("cpu")[:2], skip_preflight=True,
                 **({"compute_s_params": True} if explicit else {}))

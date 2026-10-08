@@ -1,12 +1,8 @@
-"""Two ports on the internal PEC TEM coax (the old PMC-width line is retired).
+"""Two radial shunt ports on a TEM line continued through both absorbers.
 
-The transverse Dirichlet solution gives C'=3.75 epsilon0 and Zc=eta0/3.75. At dx=0.1 mm,
-the (10,9,9) grid realizes port nodes (1,3,3) and (6,3,3): 0.5 mm
-separation, with unequal 0.1/0.3 mm open end stubs. Declared separation
-is 0.508 mm. Internal sheets and a filament define the cross-section;
-no transverse boundary wall is part of the line. ABCD multiplication
-includes both stubs. Bars remain 0.05 on reflection magnitude, 0.01 on
-transmission magnitude and 1 degree on phase. No fitted reference offset.
+The pure-R network remains the oracle. The series-cell residual prediction
+and the slow ladder's fitted order are separate checks. S21's prediction
+check currently exposes a discrepancy; first order alone does not excuse it.
 """
 from functools import lru_cache
 
@@ -15,19 +11,28 @@ import json
 import numpy as np
 import pytest
 
-from tests._interior_tem_line import build, two_port
+from tests._interior_tem_line import (build, two_port, element_inductance,
+                                      assert_predicted_residual, assert_first_order, residuals)
 
 FREQS_HZ = np.array([1.0, 2.5, 5.0, 7.5, 10.0]) * 1e9
 CLOSED_FORM_ATOL = 0.05
 
 
+MESHES = (.1e-3, .05e-3, .025e-3)
+
+
+def _mesh(kind, dx):
+    return build(kind, two=True, dx=dx, cells=round(.9e-3 / dx),
+                 axial_positions=(.123e-3, .631e-3))
+
+
 def _build(kind):
-    return build(kind, two=True, dx=0.1e-3)[0]
+    return _mesh(kind, MESHES[0])[0]
 
 
 @lru_cache(maxsize=None)
-def _s_matrix(kind):
-    res = _build(kind).run(compute_s_params=True, s_param_freqs=FREQS_HZ,
+def _s_matrix(kind, dx=.1e-3):
+    res = _mesh(kind, dx)[0].run(compute_s_params=True, s_param_freqs=FREQS_HZ,
                            skip_preflight=True)
     return np.asarray(res.s_params)
 
@@ -38,13 +43,13 @@ def _expected(kind):
 
 
 @pytest.mark.parametrize("kind", ["lumped", "wire"])
-def test_a_line_matched_at_both_ends_reflects_nothing(kind, record_property):
-    """Zc loads with the realized open stubs, not fictitious zero-length ends."""
+def test_two_shunt_ports_match_the_pure_network_magnitude(kind, record_property):
+    """Shunt ports reflect even when both reference resistances equal Zc."""
     s11 = np.abs(_s_matrix(kind)[0, 0])
     record_property("measured_s11", json.dumps(s11.tolist()))
     record_property("closed_form_s11", json.dumps(np.abs(_expected(kind)[0, 0]).tolist()))
     assert np.abs(s11 - np.abs(_expected(kind)[0, 0])).max() <= CLOSED_FORM_ATOL, (
-        f"{kind}: TEM with open stubs; read {np.round(s11, 5)} "
+        f"{kind}: TEM through line; read {np.round(s11, 5)} "
         f"at {FREQS_HZ / 1e9} GHz")
 
 
@@ -58,12 +63,12 @@ def test_the_two_lanes_agree_on_the_diagonal_of_the_same_cells():
 
 
 def test_the_wire_off_diagonal_matches_the_closed_form(record_property):
-    """Wire transmission agrees with the TEM network including its stubs."""
+    """Wire transmission agrees with the TEM network including both through branches."""
     s21 = np.abs(_s_matrix("wire")[1, 0])
     record_property("measured_s21", json.dumps(s21.tolist()))
     record_property("closed_form_s21", json.dumps(np.abs(_expected("wire")[1, 0]).tolist()))
     assert np.abs(s21 - np.abs(_expected("wire")[1, 0])).max() <= 0.01, (
-        f"TEM with open stubs; wire read {np.round(s21, 5)}")
+        f"TEM through line; wire read {np.round(s21, 5)}")
 
 
 def test_the_lumped_off_diagonal_matches_the_closed_form(record_property):
@@ -72,7 +77,7 @@ def test_the_lumped_off_diagonal_matches_the_closed_form(record_property):
     record_property("measured_s21", json.dumps(s21.tolist()))
     record_property("closed_form_s21", json.dumps(np.abs(_expected("lumped")[1, 0]).tolist()))
     assert np.abs(s21 - np.abs(_expected("lumped")[1, 0])).max() <= 0.01, (
-        f"TEM with open stubs; lumped read {np.round(s21, 5)}")
+        f"TEM through line; lumped read {np.round(s21, 5)}")
 
 
 def test_the_two_lanes_agree_on_every_entry_of_the_same_cells():
@@ -90,16 +95,33 @@ def test_the_two_lanes_agree_on_every_entry_of_the_same_cells():
         f"{np.round(np.abs(wire), 6)}")
 
 
-PHASE_GATE_DEG = 1.0
-
-
 @pytest.mark.parametrize("kind", ["lumped", "wire"])
-def test_s21_lags_by_the_electrical_length_of_the_line(kind, record_property):
-    """Complex TEM transmission, including both unequal open end stubs."""
-    s21 = _s_matrix(kind)[1, 0]
-    expected = _expected(kind)[1, 0]
-    err_deg = np.degrees(np.angle(s21 * np.conj(expected)))
-    record_property("phase_error_deg", json.dumps(err_deg.tolist()))
-    print(f"{kind}: maximum transmission phase error {max(abs(err_deg)):.9g} deg")
-    assert np.abs(err_deg).max() <= PHASE_GATE_DEG, (
-        f"{kind}: phase errors {err_deg} deg, bar {PHASE_GATE_DEG}")
+def test_complex_s_matches_the_predicted_cell_residual(kind, record_property):
+    # Old S21 phase bar: 1 degree. New bar: 10% of the residual predicted by
+    # series L=0.214*mu0*dx at each port in the ABCD network (D1), in every
+    # entry/bin, alongside the unchanged 0.05/0.01 magnitude guards above.
+    _, line = _mesh(kind, MESHES[0])
+    pure = two_port(line, FREQS_HZ)
+    predicted = two_port(line, FREQS_HZ, element_l=element_inductance(line))
+    measured = _s_matrix(kind)
+    record_property("residuals", json.dumps(residuals(measured, pure, predicted)))
+    assert_predicted_residual(measured, pure, predicted)
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("kind", ["lumped", "wire"])
+def test_two_port_three_mesh_trend(kind, record_property):
+    errors, phases, curves = [], [], []
+    for dx in MESHES:
+        _, line = _mesh(kind, dx)
+        pure = two_port(line, FREQS_HZ)
+        predicted = two_port(line, FREQS_HZ, element_l=element_inductance(line))
+        measured = _s_matrix(kind, dx)
+        curves.append((measured, pure, predicted))
+        record_property(f"residuals_{dx}", json.dumps(residuals(measured, pure, predicted)))
+        errors.append(abs(measured - pure).reshape(-1))
+        phases.append(abs(np.angle(measured / pure)).reshape(-1))
+    record_property("complex_order", json.dumps(assert_first_order(MESHES, errors).tolist()))
+    record_property("phase_order", json.dumps(assert_first_order(MESHES, phases).tolist()))
+    for measured, pure, predicted in curves:
+        assert_predicted_residual(measured, pure, predicted)

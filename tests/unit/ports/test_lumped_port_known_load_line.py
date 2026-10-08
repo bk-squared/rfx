@@ -1,13 +1,7 @@
-"""Known resistors on an internal PEC lattice coax after #1221 B3b.
+"""Pure-R shunt-network oracle on an internal TEM line through both absorbers.
 
-The former one-cell PEC/PMC channel used magnetic side walls as its width.
-The rebuilt solve uses tests._interior_tem_line: internal PEC outer sheets,
-a filament inner conductor, asymmetric radial air edges, C'=3.75 epsilon0, Zc=eta0/3.75.
-At dx=0.25 mm the grid is (10,9,9), port/load nodes (1,3,3)/(6,3,3),
-with unequal 1/3-cell open end stubs. The declared separation is 5.08 cells;
-the oracle uses its realized 5 cells. Each stub contributes j*tan(beta*l)/Zc.
-The 0.05 magnitude bar, ordinary passivity and lane identity gates remain.
-The magnetic-plane advisory below intentionally retains its separate probe.
+D1: the cheap mesh checks the predicted one-cell residual; the slow ladder
+also establishes first-order convergence to the unchanged pure-R answer.
 """
 from functools import lru_cache
 
@@ -20,13 +14,14 @@ import jax.numpy as jnp
 from rfx import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.sources.sources import GaussianPulse
-from tests._interior_tem_line import build, input_reflection
+from tests._interior_tem_line import (build, input_reflection, element_inductance,
+                                      assert_predicted_residual, assert_first_order, residuals)
 
 ETA0 = 376.730313668
 DX = 1e-3
 N_NODES = 5
 FREQS_HZ = np.array([1.0, 2.5, 5.0, 7.5, 10.0]) * 1e9
-CLOSED_FORM_ATOL = 0.05
+MESHES = (.25e-3, .125e-3, .0625e-3)
 
 
 def _build(kind, r_over_zc):
@@ -62,11 +57,17 @@ def _magnetic_plane_advisory_fixture(kind, r_over_zc):
 
 
 
+def _mesh(kind, ratio, dx):
+    return build(kind, ratio=ratio, dx=dx, cells=round(2.25e-3 / dx),
+                 axial_positions=(.3075e-3, 1.5575e-3))
+
+
 @lru_cache(maxsize=None)
-def _s11(kind, r_over_zc):
-    res = _build(kind, r_over_zc).forward(
+def _s11(kind, r_over_zc, dx=.25e-3):
+    sim, _ = _mesh(kind, r_over_zc, dx)
+    res = sim.forward(
         port_s11_freqs=jnp.asarray(FREQS_HZ),
-        num_periods=20.0,
+        num_periods=40.0,
         skip_preflight=True,
     )
     return np.asarray(res.s_params).reshape(-1)
@@ -91,19 +92,14 @@ def test_line_on_magnetic_plane_preflight_reports_in_plane_wave(kind):
 @pytest.mark.parametrize("kind", ["lumped", "wire"])
 @pytest.mark.parametrize("r_over_zc", [0.5, 1.0, 2.0])
 def test_lumped_port_s11_matches_the_closed_form_of_its_load(r_over_zc, kind, record_property):
-    """The realized coax includes both open end stubs in its TEM answer."""
-    _, line = build(kind, ratio=r_over_zc)
-    gamma = np.abs(input_reflection(line, FREQS_HZ, r_over_zc * line.zc))
-    s11 = np.abs(_s11(kind, r_over_zc))
-    err = np.abs(s11 - gamma)
-    record_property("measured_magnitude", json.dumps(s11.tolist()))
-    record_property("closed_form_magnitude", json.dumps(gamma.tolist()))
-    print(f"{kind} R/Zc={r_over_zc}: magnitude error {max(err):.9g}")
-    assert err.max() <= CLOSED_FORM_ATOL, (
-        f"R = {r_over_zc} Zc: closed form |S11| = {np.round(gamma, 5)}; "
-        f"lumped read {np.round(s11, 5)} (per-bin error {np.round(err, 5)}) "
-        f"at {FREQS_HZ / 1e9} GHz"
-    )
+    _, line = _mesh(kind, r_over_zc, MESHES[0])
+    pure = input_reflection(line, FREQS_HZ, r_over_zc * line.zc)
+    predicted = input_reflection(line, FREQS_HZ, r_over_zc * line.zc,
+                                 element_l=element_inductance(line))
+    measured = _s11(kind, r_over_zc)
+    record_property("s11", json.dumps(np.stack([measured.real, measured.imag], axis=-1).tolist()))
+    record_property("residuals", json.dumps(residuals(measured, pure, predicted)))
+    assert_predicted_residual(measured, pure, predicted)
 
 
 @pytest.mark.parametrize("r_over_zc", [0.5, 1.0, 2.0])
@@ -137,23 +133,37 @@ def test_lumped_and_one_cell_wire_port_agree_on_the_same_cell(r_over_zc):
     )
 
 
-def test_internal_coax_axial_mesh_trend(record_property):
-    """Fixed transverse cells and declarations, three axial mesh resolutions.
+@pytest.mark.slow
+@pytest.mark.parametrize("kind", ["lumped", "wire"])
+@pytest.mark.parametrize("r_over_zc", [.5, 1., 2.])
+def test_internal_coax_three_mesh_trend(kind, r_over_zc, record_property):
+    errors, phases = [], []
+    for dx in MESHES:
+        _, line = _mesh(kind, r_over_zc, dx)
+        measured = _s11(kind, r_over_zc, dx)
+        pure = input_reflection(line, FREQS_HZ, r_over_zc * line.zc)
+        predicted = input_reflection(line, FREQS_HZ, r_over_zc * line.zc,
+                                     element_l=element_inductance(line))
+        record_property(f"s11_{dx}", json.dumps(np.stack([measured.real, measured.imag], axis=-1).tolist()))
+        record_property(f"residuals_{dx}", json.dumps(residuals(measured, pure, predicted)))
+        assert_predicted_residual(measured, pure, predicted)
+        errors.append(np.abs(measured - pure))
+        phases.append(np.abs(np.angle(measured / pure)))
+    record_property("complex_order", json.dumps(assert_first_order(MESHES, errors).tolist()))
+    record_property("phase_order", json.dumps(assert_first_order(MESHES, phases).tolist()))
 
-    The transverse lattice TEM impedance stays eta0/3.75. The end cells stay
-    0.25 mm as required by the NU grid; the seven interior cells subdivide
-    by 1/2/4. Report the snapped lengths separately. This measures axial
-    trend, not convergence of a continuum round coax or of the point feed.
-    """
-    errors = []
-    for refinement in (1, 2, 4):
-        profile = np.r_[.25e-3, np.full(7 * refinement, .25e-3 / refinement), .25e-3]
-        sim, line = build(ratio=2., profile=profile)
-        result = sim.forward(port_s11_freqs=FREQS_HZ, num_periods=40., skip_preflight=True)
-        s11 = np.asarray(result.s_params).reshape(-1)
-        expected = input_reflection(line, FREQS_HZ, 2 * line.zc)
-        error = float(np.max(np.abs(np.abs(s11) - np.abs(expected))))
-        errors.append(error)
-        record_property(f"mesh_{refinement}", str((line.shape, line.left, line.length, line.right, error)))
-        print(f"axial subdivision {refinement}: {line}, max magnitude error={error:.9g}")
-    assert errors[2] < errors[1] < errors[0] <= CLOSED_FORM_ATOL
+
+def test_residual_check_rejects_missing_inductance_and_shifted_load():
+    """Arithmetic sensitivity: removing the check must make this test red."""
+    from dataclasses import replace
+
+    _, line = _mesh("lumped", 1., MESHES[0])
+    pure = input_reflection(line, FREQS_HZ, line.zc)
+    predicted = input_reflection(line, FREQS_HZ, line.zc,
+                                 element_l=element_inductance(line))
+    with pytest.raises(AssertionError, match="complex residual"):
+        assert_predicted_residual(predicted, pure, pure)
+    moved = input_reflection(replace(line, length=line.length + line.dx),
+                             FREQS_HZ, line.zc, element_l=element_inductance(line))
+    with pytest.raises(AssertionError, match="complex residual"):
+        assert_predicted_residual(moved, pure, predicted)

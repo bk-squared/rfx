@@ -1,34 +1,14 @@
-"""Live drift locks on ten internally conducted, asymmetric TEM coax lines.
+"""Live locks on internal TEM lines continued through both CPML ends.
 
-Re-pin history, 2026-10-05 (#1162 after #1221 B3b): the old 1 mm rung
-used PEC domain plates and one-cell PMC side walls; B3b moved its magnetic
-image to the E nodes and changed the realized line. The full OLD complex
-curves remain, unchanged, in tests/fixtures/lumped_wire_chain_battery/fixture.json,
-solves[{lumped,wire}_{short,open,res_half,res_double,matched}_1000um],
-producer c3936b3b, 2026-09-23, VESSL 369367263710/369367263711.
-OLD endpoint values (1 GHz -> 10 GHz) are recorded below, not overwritten.
+The previous internal open-stub curves are historical in commit 2a1053f3;
+the older terminal battery remains in tests/fixtures/lumped_wire_chain_battery/fixture.json. They cannot serve
+as baselines for a different circuit. Expectations now come from the exact
+shunt-network formula, not newly pinned measurement records.
 
-The replacement uses internal PEC sheets y=2/5, z=2/(3+gap), a filament
-at (3,3), and unequal exterior margins 2/3 and 2/4 cells. The radial feed
-is off the cross-section symmetry planes. Only longitudinal PMC ends
-remain: their 1-cell/3-cell open stubs enter the TEM closed form.
-C' follows the realized transverse Dirichlet cell problem; Zc=eta0/(C'/eps0).
-Lumped: gap=1, dx=100 um, shape=(306,9,9), port/load x nodes=1/302,
-Zc=eta0/3.75, realized length=30.1 mm (declared 30.108 mm).
-Wire: gap=4, dx=25 um, shape=(1206,9,12), x nodes=1/1202,
-Zc=111.23520365290427 ohm from the 7-node Dirichlet solve,
-realized length=30.025 mm (declared 30.027 mm). The wire still has FOUR
-live cells; the load is a series chain of four R/4 resistors.
-
-Fresh CPU float32 records use 20 periods and 91 bins at 1..10 GHz.
-The original bars remain: 2 dB magnitude, -20 dB matched floor, 1% on
-phase crossings and electrical-length slope, passivity <=1.02, and the
-phase direction. Each reflecting solve is also judged directly against
-the TEM line plus both open stubs with those same bars. No fitted length
-or impedance enters that oracle. The old battery replay records are
-historical and remain separate from these new live locks.
+The one-cell lumped and four-cell wire cross-sections/separations are retained.
+D3 moves the matched -20 dB floor to the load-plane Gamma_L; raw S11 is
+reported because a matched shunt plus the line beyond it reflects at the port.
 """
-from dataclasses import asdict
 import json
 
 import numpy as np
@@ -37,15 +17,15 @@ import pytest
 from tests import _chain_battery_drift as drift
 from tests import _electrical_length as EL
 from tests._interior_tem_line import chain, input_reflection
-from tests._interior_tem_pins import PINS
 
+# The commit identifies the solver revision used to exercise the hand-derived
+# oracle; expected values are formulas, not pinned measurements from that commit.
 LOCK_PROVENANCE = {
-    "fixture": "tests/_interior_tem_pins.py",
-    "generator": "tests._interior_tem_line.chain + Simulation.forward",
-    # Unchanged product-code revision; the new fixture is committed with these pins.
-    "commit": "0993dc71963d9b274db387f95f9b8962874029d4",
-    "date": "2026-10-05",
-    "run_id": "local CPU #1162 rebuild",
+    "fixture": "tests/_interior_tem_line.py",
+    "generator": "closed-form shunt network; tests._interior_tem_line.chain",
+    "commit": "4c7bbf2fb",
+    "date": "2026-10-08",
+    "run_id": "local CPU #1162 through-line rebuild; unresolved rows remain red",
     "host": "JAX CPU float32",
     "pinned_until": "2027-03-23",
 }
@@ -56,6 +36,40 @@ DUTS = ("short", "open", "res_half", "res_double", "matched")
 FREQS = np.linspace(1e9, 10e9, 91)
 NUM_PERIODS = 20.
 REMEASURE = "re-measure chain(kind, dut).forward(port_s11_freqs=FREQS, num_periods=20) on CPU"
+
+
+def load_plane_reflection(line, freqs, s):
+    """D3, closed-form inverse, independent of product extractors.
+
+    DFT kernel exp(-j omega t); delay exp(-j beta d), beta=2pi f/c0.
+    At the load: r=(ZL||Zc-Zc)/(ZL||Zc+Zc)=-Zc/(2ZL+Zc).
+    At the port: q=r exp(-2j beta d), Zport=Zc(1+q)/2,
+    S=(q-1)/(q+3), so q=(1+3S)/(1-S), r=q exp(2j beta d).
+    Solving gives ZL=-Zc(1+r)/(2r), hence Gamma_L=(1+3r)/(1-r).
+    The last form remains finite at an open circuit (r=0).
+
+    Old floor: raw |S11| <= 0.1. New: |Gamma_L| <= 0.1 (same -20 dB).
+    Derivation: matched ZL=Zc has |r|=1/3, so raw |S| ranges 1/5..1/2
+    (-13.9794..-6.0206 dB); its load-plane Gamma_L is exactly zero.
+    """
+    q = (1 + 3 * s) / (1 - s)
+    r = q * np.exp(4j * np.pi * np.asarray(freqs) * line.length / 299792458.)
+    return (1 + 3 * r) / (1 - r)
+
+
+def matched_findings(line, freqs, s, *, report=None):
+    return drift.bound_findings("matched |Gamma_L|", freqs,
+                               load_plane_reflection(line, freqs, s), report=report)
+
+
+def test_matched_floor_rejects_both_resistor_mutations():
+    _, line = chain("lumped", "matched")
+    assert not matched_findings(line, FREQS, input_reflection(line, FREQS, line.zc))
+    for ratio in (.5, 2.):
+        s = input_reflection(line, FREQS, ratio * line.zc)
+        np.testing.assert_allclose(load_plane_reflection(line, FREQS, s),
+                                   (ratio - 1) / (ratio + 1), atol=1e-14)
+        assert matched_findings(line, FREQS, s), "removed matched floor check"
 
 
 @pytest.fixture(scope="module")
@@ -77,12 +91,9 @@ def _reflecting_findings(driver, reference, live, *, report):
 
 @pytest.mark.parametrize("dut", DUTS)
 @pytest.mark.parametrize("kind", KINDS)
-def test_the_coarsest_mesh_still_solves_to_its_stored_s11(driver, kind, dut, record_property):
+def test_chain_matches_the_exact_shunt_network(driver, kind, dut, record_property):
     key = f"{kind}_{dut}"
-    entry = PINS[key]
     sim, line = chain(kind, dut)
-    moved = drift.realized_differences(entry["line"], asdict(line))
-    assert not moved, drift.stale_record(FAMILY, key, moved, REMEASURE)
     result = sim.forward(port_s11_freqs=FREQS, num_periods=NUM_PERIODS, skip_preflight=True)
     specs = result.lumped_port_sparams if kind == "lumped" else result.wire_port_sparams
     assert len(specs) == 1
@@ -94,36 +105,31 @@ def test_the_coarsest_mesh_still_solves_to_its_stored_s11(driver, kind, dut, rec
         assert tuple(spec.live_cells) == tuple((line.port[0], 3, 3 + k) for k in range(4))
         assert spec.excite
     live = np.asarray(result.s_params).reshape(-1)
-    stored = drift.complex_array(entry["s11"])
     zload = {"short": 0., "open": np.inf, "res_half": .5 * line.zc,
              "res_double": 2 * line.zc, "matched": line.zc}[dut]
     analytic = input_reflection(line, FREQS, zload)
     record_property("freqs_hz", json.dumps(FREQS.tolist()))
-    for name, values in (("stored_s11", stored), ("live_s11", live), ("closed_form", analytic)):
+    for name, values in (("live_s11", live), ("closed_form", analytic)):
         record_property(name, json.dumps([[float(v.real), float(v.imag)] for v in values]))
     assert np.isfinite(live).all()
-    assert max(abs(live)) <= 1.02
     report = []
     if dut == "matched":
-        findings = drift.bound_findings("matched |S11|", FREQS, live, report=report)
-        findings += drift.bound_findings("matched TEM |S11|", FREQS, analytic)
+        gamma_load = load_plane_reflection(line, FREQS, live)
+        record_property("gamma_load", json.dumps([[v.real, v.imag] for v in gamma_load]))
+        record_property("raw_port_db", json.dumps((20 * np.log10(abs(live))).tolist()))
+        print(f"{key}: raw port dB {20 * np.log10(abs(live))}")
+        findings = matched_findings(line, FREQS, live, report=report)
+        findings += matched_findings(line, FREQS, analytic)
     else:
-        findings = _reflecting_findings(driver, stored, live, report=report)
-        findings += _reflecting_findings(driver, analytic, live, report=report)
+        # The original 1.02 passivity bar stays on reflecting DUTs. D3 judges
+        # matched ONLY via |Gamma_L|<=0.1, not raw |S|. That also implies
+        # |q|<=1.1/2.9 and |S|<=(1+|q|)/(3-|q|)<=10/19, so removing the
+        # redundant matched raw 1.02 guard does not weaken the verdict.
+        assert max(abs(live)) <= 1.02
+        findings = _reflecting_findings(driver, analytic, live, report=report)
     print(f"[battery drift] {key}: " + "; ".join(report))
-    assert not findings, drift.stale_record(FAMILY, key, findings, REMEASURE)
+    assert not findings, f"{key}: exact through-line network verdict: {findings}"
 
-
-# OLD lumped_short: (-0.31498000025749207+0.9490987062454224j) -> (-0.9997029900550842+0.024372028186917305j)
-# OLD lumped_open: (0.3412729799747467-0.9399644136428833j) -> (0.9250831604003906+0.3797631561756134j)
-# OLD lumped_res_half: (-0.1078980565071106+0.32007065415382385j) -> (-0.3335723876953125+0.008125212043523788j)
-# OLD lumped_res_double: (0.09750854223966599-0.31413817405700684j) -> (0.33289608359336853-0.008143632672727108j)
-# OLD lumped_matched: (-0.004983312916010618+0.0036159285809844732j) -> (-0.0003804727748502046-5.96065319768968e-06j)
-# OLD wire_short: (-0.31498000025749207+0.9490987062454224j) -> (-0.9997029900550842+0.024372028186917305j)
-# OLD wire_open: (0.3412729799747467-0.9399644136428833j) -> (0.9250831604003906+0.3797631561756134j)
-# OLD wire_res_half: (-0.1078980565071106+0.32007065415382385j) -> (-0.3335723876953125+0.008125212043523788j)
-# OLD wire_res_double: (0.09750854223966599-0.31413817405700684j) -> (0.33289608359336853-0.008143632672727108j)
-# OLD wire_matched: (-0.004983312916010618+0.0036159285809844732j) -> (-0.0003804727748502046-5.96065319768968e-06j)
 
 
 def test_the_crossing_rule_excuses_only_a_crossing_that_can_have_left_the_sweep():

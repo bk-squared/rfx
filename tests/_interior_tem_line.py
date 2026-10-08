@@ -8,8 +8,8 @@ The Dirichlet transverse-cell Laplacian gives C'/eps0=3.75 for gap=1
 we solve the same finite Dirichlet system; no S measurement enters Zc.
 This is the TEM solution of the realized cells, not a round-wire formula.
 
-Only the longitudinal ends are PMC (open circuits), on declared E nodes.
-They are not transverse side walls. Both open stubs enter the line oracle.
+The line continues through 20 CPML cells at each longitudinal end.
+The port and load are shunts across a through line, not terminal loads.
 Non-integral port/load declarations are snapped; the realized coordinates,
 not the declarations, enter the longitudinal transform.
 """
@@ -60,27 +60,30 @@ def impedance(gap):
 
 def build(kind="lumped", *, dx=0.25e-3, cells=9, gap=1, ratio=2.,
           two=False, load="resistor", rlc=None, profile=None, port_factor=1.,
-          load_shift=0):
+          load_shift=0, cpml_layers=20, axial_positions=None):
     """One radial lumped edge or a gap-cell wire, away from exterior walls.
 
-    The port is declared at x=1.23 dx and the load at (cells-2.69) dx;
-    x snaps to nodes 1 and cells-3 on uniform grids. Open stubs are 1 and
-    3 cells long. Domain z extends four cells past the upper conductor.
+    Default declarations snap to x nodes 1 and cells-3 before padding.
+    axial_positions holds fixed physical declarations for mesh ladders.
+    load_shift moves only the fixture; a mutation must retain its nominal oracle.
     """
     domain = (cells * dx, 8 * dx, (7 + gap) * dx)
     profiles = {} if profile is None else dict(
         dx_profile=np.asarray(profile), dy_profile=np.full(8, dx),
         dz_profile=np.full(7 + gap, dx))
     sim = Simulation(freq_max=10e9, domain=domain, dx=dx,
-                     boundary=BoundarySpec(x="pmc", y="pec", z="pec"), **profiles)
+                     boundary=BoundarySpec(x="cpml", y="pec", z="pec"),
+                     cpml_layers=cpml_layers, **profiles)
     for y in (2 * dx, 5 * dx):
         sim.add(Box((0, y, 2 * dx), (domain[0], y, (3 + gap) * dx)), material="pec")
     for z in (2 * dx, (3 + gap) * dx):
         sim.add(Box((0, 2 * dx, z), (domain[0], 5 * dx, z)), material="pec")
-    sim.add(PolylineWire(((0, 3 * dx, 3 * dx), (domain[0], 3 * dx, 3 * dx)),
+    sim.add(PolylineWire(((-(cpml_layers + 1) * dx, 3 * dx, 3 * dx),
+                          (domain[0] + (cpml_layers + 1) * dx, 3 * dx, 3 * dx)),
                          radius=0), material="pec")
-    port = (1.23 * dx, 3 * dx, 3 * dx)
-    load_pos = ((cells - 2.69 + load_shift) * dx, 3 * dx, 3 * dx)
+    xp, xl = axial_positions or (1.23 * dx, (cells - 2.69) * dx)
+    port = (xp, 3 * dx, 3 * dx)
+    load_pos = (xl + load_shift * dx, 3 * dx, 3 * dx)
     zc = impedance(gap)
     for pos in ((port, load_pos) if two else (port,)):
         sim.add_port(position=pos, component="ez", impedance=zc * port_factor,
@@ -99,7 +102,7 @@ def build(kind="lumped", *, dx=0.25e-3, cells=9, gap=1, ratio=2.,
     grid = sim._build_grid() if profile is None else sim._build_nonuniform_grid()
     if profile is None:
         index = grid.position_to_index
-        xs = np.arange(grid.shape[0]) * float(grid.dx)
+        xs = (np.arange(grid.shape[0]) - grid.pad_x_lo) * float(grid.dx)
     else:
         from rfx.nonuniform import position_to_index
         from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
@@ -124,6 +127,11 @@ def build(kind="lumped", *, dx=0.25e-3, cells=9, gap=1, ratio=2.,
     assert not ez[3:5, 2:3 + gap].any()
     assert ey[2:5, 2].all() and ey[2:5, 3 + gap].all()
     assert ez[2, 2:3 + gap].all() and ez[5, 2:3 + gap].all()
+    # Every physical Ex layer, including both CPML pads, has the same
+    # internal inner/outer conductor cross-section. Last Ex slot is unused.
+    for ix in range(grid.shape[0] - 1):
+        np.testing.assert_array_equal(np.asarray(hard[0])[ix, 2:6, 2:4 + gap], expected_ex)
+    assert grid.pad_x_lo == grid.pad_x_hi == cpml_layers
     ip, il = index(port), index(load_pos)
     assert ip[1:] == il[1:] == (3, 3)
     assert grid.shape[1:] == (9, 8 + gap)
@@ -132,53 +140,107 @@ def build(kind="lumped", *, dx=0.25e-3, cells=9, gap=1, ratio=2.,
     return sim, line
 
 
-def input_reflection(line, freqs, zload):
-    """RLC in parallel with the far open stub, transformed, plus near stub."""
-    beta = 2 * np.pi * np.asarray(freqs) / C0
-    if np.all(np.asarray(zload) == 0):
-        yin = (-1j / np.tan(beta * line.length) + 1j * np.tan(beta * line.left)) / line.zc
-        return (1 - line.zc * yin) / (1 + line.zc * yin)
-    yload = 1 / np.asarray(zload, dtype=complex) + 1j * np.tan(beta * line.right) / line.zc
-    t = np.tan(beta * line.length)
-    yin = (yload + 1j * t / line.zc) / (1 + 1j * line.zc * yload * t)
-    yin += 1j * np.tan(beta * line.left) / line.zc
-    return (1 - line.zc * yin) / (1 + line.zc * yin)
+# Fourier convention: DFT kernel exp(-j omega t); a delay has exp(-j beta d),
+# and a series inductor has impedance +j omega L. Frequencies and reference
+# planes below are exactly those requested from the solve (snapped Ez nodes).
+MU0 = 1.25663706212e-6
+CELL_L_COEFFICIENT = 0.214
 
 
-def two_port(line, freqs):
-    """Shunt-open-stub / TEM line / shunt-open-stub ABCD network."""
-    beta = 2 * np.pi * np.asarray(freqs) / C0
-    out = np.empty((2, 2, len(beta)), dtype=complex)
-    for k, b in enumerate(beta):
-        near = np.array([[1, 0], [1j * np.tan(b * line.left) / line.zc, 1]])
-        far = np.array([[1, 0], [1j * np.tan(b * line.right) / line.zc, 1]])
-        tl = np.array([[np.cos(b * line.length), 1j * line.zc * np.sin(b * line.length)],
-                       [1j * np.sin(b * line.length) / line.zc, np.cos(b * line.length)]])
-        a, bb, c, d = (near @ tl @ far).ravel()
-        den = a + bb / line.zc + c * line.zc + d
-        out[:, :, k] = [[(a + bb / line.zc - c * line.zc - d) / den, 2 / den],
-                        [2 / den, (-a + bb / line.zc - c * line.zc + d) / den]]
-    return out
+def element_inductance(line):
+    """Measured gap=1 lattice coefficient, not a fitted reference-plane shift."""
+    assert line.gap == 1, "0.214 was measured only for the one-cell cross-section"
+    return CELL_L_COEFFICIENT * MU0 * line.dx
+
+
+def input_reflection(line, freqs, zload, *, element_l=0.):
+    """Pure-load oracle by default; optional series L predicts its residual.
+
+    Zt=Zload||Zc, r=(Zt-Zc)/(Zt+Zc)=-Zc/(2 Zload+Zc),
+    q=r exp(-2j beta d). The near through branch gives Zjunction=Zc(1+q)/2.
+    Add the source cell's series L at its reference terminal. L=0 yields
+    S=(q-1)/(q+3). No product extraction or measured calibration enters here.
+    """
+    w = 2 * np.pi * np.asarray(freqs)
+    zl = np.asarray(zload) + 1j * w * element_l
+    # Complex infinity arithmetic otherwise produces nan in 2*zl. An absent
+    # shunt has exactly zero load-junction reflection.
+    with np.errstate(invalid="ignore", divide="ignore"):
+        r = np.where(np.isinf(zl), 0., -line.zc / (2 * zl + line.zc))
+    q = r * np.exp(-2j * w * line.length / C0)
+    zin = line.zc * (1 + q) / 2 + 1j * w * element_l
+    return (zin - line.zc) / (zin + line.zc)
+
+
+def two_port(line, freqs, *, element_l=0.):
+    """ABCD = series(jwL) shunt(1/Zc) TEM(d) shunt(1/Zc) series(jwL).
+
+    With L=0: S11=(-2 cos(theta)-j sin(theta))/(4 cos(theta)+5j sin(theta)),
+    S21=2/(4 cos(theta)+5j sin(theta)). Both references are Zc.
+    """
+    out = []
+    for f in freqs:
+        w = 2 * np.pi * f
+        theta = w * line.length / C0
+        series = np.array([[1, 1j * w * element_l], [0, 1]])
+        shunt = np.array([[1, 0], [1 / line.zc, 1]])
+        tl = np.array([[np.cos(theta), 1j * line.zc * np.sin(theta)],
+                       [1j * np.sin(theta) / line.zc, np.cos(theta)]])
+        a, b, c, d = (series @ shunt @ tl @ shunt @ series).ravel()
+        den = a + b / line.zc + c * line.zc + d
+        out.append([[(a + b / line.zc - c * line.zc - d) / den, 2 / den],
+                    [2 / den, (-a + b / line.zc - c * line.zc + d) / den]])
+    return np.moveaxis(np.array(out), 0, -1)
 
 
 def extract_load(line, freqs, s11):
-    """Undo the near stub, line transform, then the far stub (no calibration)."""
-    beta = 2 * np.pi * np.asarray(freqs) / C0
-    yin = (1 - s11) / (line.zc * (1 + s11))
-    yin -= 1j * np.tan(beta * line.left) / line.zc
-    t = np.tan(beta * line.length)
-    yload = (yin - 1j * t / line.zc) / (1 - 1j * line.zc * yin * t)
-    yload -= 1j * np.tan(beta * line.right) / line.zc
-    return 1 / yload
+    """Invert the pure shunt network, without subtracting element inductance.
+
+    q=(1+3S)/(1-S), r=q exp(2j beta d), Zload=-Zc(1+r)/(2r).
+    Thus the extracted residual includes BOTH source and load cell effects.
+    """
+    q = (1 + 3 * s11) / (1 - s11)
+    r = q * np.exp(4j * np.pi * np.asarray(freqs) * line.length / C0)
+    return -line.zc * (1 + r) / (2 * r)
+
+
+def residuals(measured, pure, predicted):
+    return dict(measured_phase_deg=np.degrees(np.angle(measured / pure)).tolist(),
+                predicted_phase_deg=np.degrees(np.angle(predicted / pure)).tolist(),
+                measured_abs_ds=np.abs(measured - pure).tolist(),
+                predicted_abs_ds=np.abs(predicted - pure).tolist())
+
+
+def assert_predicted_residual(measured, pure, predicted):
+    """D1(ii): each complex and signed phase residual within 10% of prediction.
+
+    Replaces the old magnitude-only 0.05 bar with the measured cell model:
+    |(Smeas-Spure)-(Spred-Spure)| <= 0.1 |Spred-Spure| in every bin.
+    A zero-inductance prediction cannot erase the observed mesh residual.
+    """
+    delta = predicted - pure
+    assert np.all(np.abs(measured - predicted) <= .1 * np.abs(delta)), (
+        f"complex residual differs by >10% of prediction: {residuals(measured, pure, predicted)}")
+    phase = np.angle(measured / pure)
+    expected_phase = np.angle(predicted / pure)
+    assert np.all(np.abs(phase - expected_phase) <= .1 * np.abs(expected_phase)), (
+        f"phase residual differs by >10% of prediction: {residuals(measured, pure, predicted)}")
+
+
+def assert_first_order(dxs, errors):
+    """D1(i), per bin: log(error)=p log(dx)+b; report fitted p.
+
+    New order interval derives from the 10% residual allowance across a 4x
+    ladder: |p-1| <= log(1.1/0.9)/log(4), not a single-mesh verdict.
+    """
+    order = np.polyfit(np.log(dxs), np.log(errors), 1)[0]
+    print(f"fitted orders: {order}")
+    assert np.all(np.abs(order - 1) <= np.log(1.1 / .9) / np.log(4)), order
+    return order
 
 
 def chain(kind, dut):
-    """30 mm-class line; preserve a one-cell lumped and four-cell wire feed.
-
-    Realized length is 30.1 mm at 100 um for lumped and 30.025 mm at
-    25 um for wire. These resolutions keep the original 1% phase bars;
-    the unequal open end stubs are respectively 1 and 3 local cells.
-    """
+    """Original internal cross-sections and separations, now continued into CPML."""
     dx, cells, gap = (0.1e-3, 305, 1) if kind == "lumped" else (0.025e-3, 1205, 4)
     return build(kind, dx=dx, cells=cells, gap=gap,
                  ratio={"res_half": .5, "res_double": 2., "matched": 1.}.get(dut, 1.),

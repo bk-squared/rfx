@@ -84,8 +84,7 @@ def _known_load_line(load_ratio, *, profile):
     """Internal lattice coax, asymmetric transverse cells: Zc=eta0/3.75.
 
     dx=0.25 mm; PEC sheets y=2/5 and z=2/4, inner filament (3,3).
-    Unequal exterior margins and open longitudinal end stubs; the latter
-    enter the analytic transform. Grading changes x cells only and keeps
+    Unequal exterior margins; the line continues through longitudinal CPML. Grading changes x cells only and keeps
     this realized cross-section. Declarations at x=1.23 and 6.31 cells
     are deliberately off-node; the oracle uses the resulting nodes.
     """
@@ -100,7 +99,8 @@ def _known_load_line(load_ratio, *, profile):
 
 @pytest.mark.parametrize("load_ratio", [2.0, 1.0])
 def test_lumped_known_load_graded(load_ratio, record_property):
-    from tests._interior_tem_line import build, input_reflection
+    from tests._interior_tem_line import (build, input_reflection, element_inductance,
+                                          assert_predicted_residual)
 
     widths = np.array([1, .8, 1.2, .9, 1.1, .8, 1.2, 1, 1]) * .25e-3
     sim, line = build(ratio=load_ratio, profile=widths)
@@ -111,6 +111,12 @@ def test_lumped_known_load_graded(load_ratio, record_property):
     record_property("closed_form_s11_magnitude", expected)
     record_property("new_s11_magnitude", magnitude)
     assert abs(magnitude - expected) < 0.01
+    # Retain the original magnitude bar and add D1(ii), on the same requested
+    # 1 GHz bin and snapped Ez planes; local transverse cell size stays dx.
+    pure = input_reflection(line, [1e9], load_ratio * line.zc)
+    predicted = input_reflection(line, [1e9], load_ratio * line.zc,
+                                 element_l=element_inductance(line))
+    assert_predicted_residual(np.asarray(result.s_params).reshape(-1), pure, predicted)
 
 
 def test_lumped_uniform_profile_lane_parity():
@@ -148,3 +154,42 @@ def test_lumped_before_passive_wire_preserves_wire_index():
     assert selected.wire_port_sparams[1][0][7]
     for actual, expected in zip(selected_acc, default_acc):
         np.testing.assert_allclose(actual, expected, rtol=0, atol=0)
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("load_ratio", [1., 2.])
+def test_graded_known_load_three_mesh_trend(load_ratio, record_property):
+    """D1(i) on the graded fixture itself, at its always-on 1 GHz bin.
+
+    Subdivide each axial interval by 1/2/4 and scale the transverse lattice
+    with dx. Physical declarations and the total axial domain stay fixed;
+    each oracle uses its own snapped separation. No coefficient is refitted.
+    """
+    import json
+    from tests._interior_tem_line import (
+        build, input_reflection, element_inductance, assert_predicted_residual,
+        assert_first_order, residuals,
+    )
+
+    widths = np.array([1, .8, 1.2, .9, 1.1, .8, 1.2, 1, 1]) * .25e-3
+    meshes = np.array([.25e-3, .125e-3, .0625e-3])
+    freqs = np.array([1e9])
+    errors, phases, curves = [], [], []
+    record_property("freqs_hz", json.dumps(freqs.tolist()))
+    for dx, refinement in zip(meshes, (1, 2, 4)):
+        sim, line = build(dx=dx, cells=9 * refinement, ratio=load_ratio,
+                          profile=np.repeat(widths / refinement, refinement),
+                          axial_positions=(.3075e-3, 1.5775e-3))
+        result = sim.forward(port_s11_freqs=freqs, num_periods=40, skip_preflight=True)
+        measured = np.asarray(result.s_params).reshape(-1)
+        pure = input_reflection(line, freqs, load_ratio * line.zc)
+        predicted = input_reflection(line, freqs, load_ratio * line.zc,
+                                     element_l=element_inductance(line))
+        curves.append((measured, pure, predicted))
+        record_property(f"residuals_{dx}", json.dumps(residuals(measured, pure, predicted)))
+        errors.append(abs(measured - pure))
+        phases.append(abs(np.angle(measured / pure)))
+    record_property("complex_order", json.dumps(assert_first_order(meshes, errors).tolist()))
+    record_property("phase_order", json.dumps(assert_first_order(meshes, phases).tolist()))
+    for measured, pure, predicted in curves:
+        assert_predicted_residual(measured, pure, predicted)
