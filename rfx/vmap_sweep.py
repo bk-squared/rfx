@@ -1055,23 +1055,27 @@ def vmap_material_sweep(
         # vector division difference in Cb/dV (8972096 vs 8972095 in the
         # PEC eps_r=6 fixture). Only source preparation is serial; the
         # field evolution below remains vmapped (#1373).
-        from rfx.simulation import make_j_source
+        from rfx.model.source_coefficients import uniform_source_table
+        from rfx.simulation import resolve_periodic
+        source_periodic = resolve_periodic(
+            grid, tuple(a in sim._periodic_axes for a in "xyz"))
         dynamic_sources = [
             pe for pe in sim._ports
             if pe.impedance == 0.0 and pe.amplitude_kind == "current"
         ]
         prepared_drives = []
-        make_drive = make_j_source if sim._boundary == "cpml" else make_source
+        native = "cb" if sim._boundary == "cpml" else "raw"
         for batch_idx in range(len(param_values)):
             mats = MaterialArrays(
                 eps_r=batched_materials.eps_r[batch_idx],
                 sigma=batched_materials.sigma[batch_idx],
                 mu_r=batched_materials.mu_r[batch_idx],
             )
-            waveforms = [make_drive(
-                grid, pe.position, pe.component, pe.waveform, n_steps,
-                materials=mats, amplitude_kind=pe.amplitude_kind,
-            ).waveform for pe in dynamic_sources]
+            waveforms = [uniform_source_table(
+                grid, grid.position_to_index(pe.position), pe.component,
+                pe.waveform, n_steps, mats, pe.amplitude_kind,
+                native=native, periodic=source_periodic,
+            ) for pe in dynamic_sources]
             prepared_drives.append(
                 jnp.stack(waveforms, axis=-1) if waveforms else
                 jnp.zeros((n_steps, 0), dtype=jnp.float32))

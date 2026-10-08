@@ -2,6 +2,101 @@
 from dataclasses import replace
 
 
+def source_table(samples, kind=None, *, native="raw", coefficient=None, volume=1.0):
+    """Build per-step E increments from samples and a final edge coefficient.
+
+    A field increment has no material operand, including under AD. A callable
+    coefficient is read only for a material-dependent drive, after all stamps.
+    ``native`` preserves low-level helpers' historical None contracts and the
+    current-drive product order (open uniform: Cb*w then 1/dV). Distributed
+    slabs may supply their already resolved Cb/dV as a native ``cb`` factor;
+    the same multiplication then builds their table inside the program.
+    """
+    from rfx.api._source_semantics import needs_scale
+    needs_scale(kind, native)  # validate Python-level dispatch, never a tracer
+    if kind == "field" or (kind is None and native == "raw"):
+        return samples
+    cb = coefficient() if callable(coefficient) else coefficient
+    if kind == "current" and native == "cb":
+        return (1.0 / volume) * (cb * samples)
+    if kind == "current" or native == "cb_over_dv":
+        return (cb / volume) * samples
+    return cb * samples
+
+
+def uniform_source_table(grid, cell, component, waveform, n_steps, materials,
+                         kind=None, *, native="raw", periodic=(False,) * 3):
+    """Uniform and sweep adapters share samples, edge reads and product order."""
+    import jax
+    import jax.numpy as jnp
+    from rfx.model.materials import e_update_coefficient_at, electric_grid_kwargs
+    from rfx.simulation import _uniform_cell_volume
+    times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
+    return source_table(
+        jax.vmap(waveform)(times), kind, native=native,
+        volume=_uniform_cell_volume(grid),
+        coefficient=lambda: e_update_coefficient_at(
+            materials, cell, component, grid.dt, periodic,
+            **electric_grid_kwargs(grid)))
+
+
+def vacuum_source_table(samples, kind, dt, volume):
+    """The disjoint research stepper updates homogeneous vacuum only."""
+    from rfx.core.yee import e_update_coeffs
+    return source_table(samples, kind, volume=volume,
+                        coefficient=lambda: e_update_coeffs(1.0, 0.0, dt)[1])
+
+
+def field_source_samples(waveform, n_steps, dt):
+    """ADI's prescribed field table, using its solver-specific timestep."""
+    import jax
+    import jax.numpy as jnp
+    return source_table(jax.vmap(waveform)(jnp.arange(n_steps, dtype=jnp.float32) * dt), "field")
+
+
+def scale_source_columns(xs, scales, columns):
+    """Finish distributed current tables from slab-local Cb/dV reads."""
+    steps, table = xs
+    for n, col in enumerate(columns):
+        table = table.at[:, col].set(source_table(
+            table[:, col], native="cb", coefficient=scales[n]))
+    return steps, table
+
+
+def subgrid_source_tables(requests, grid, materials, n_steps, *, native,
+                          fine_scale, volume, shadow_entries=None):
+    """Resolve fine-grid drives after every load; project completed soft tables.
+
+    Port descriptors retain their own Norton load and unit-voltage shape;
+    their coefficient, like a soft current's, reads the final fine materials.
+    """
+    import jax
+    import jax.numpy as jnp
+    import numpy as np
+    from rfx.model.materials import e_update_coefficient_at
+    from rfx.sources.port_drive import port_drive_waveform
+
+    fine, coarse = [], []
+    times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
+    for pe, cell, drive in requests:
+        if drive is None:
+            waveform = source_table(
+                jax.vmap(pe.waveform)(times), pe.amplitude_kind, native=native,
+                volume=volume,
+                coefficient=lambda: float(e_update_coefficient_at(
+                    materials, cell, pe.component, grid.dt)))
+            fine.append((*cell, pe.component, np.array(waveform) * fine_scale))
+            if shadow_entries is not None:
+                coarse.extend(shadow_entries(pe.position, cell, pe.component, waveform))
+        else:
+            sigma, unit_field = drive
+            waveform = port_drive_waveform(
+                grid, cell, pe.component, pe.waveform, n_steps, materials,
+                sigma_port=sigma, unit_field=unit_field)
+            fine.append((*cell, pe.component, np.array(waveform)))
+    return fine, coarse
+
+
 def edge_in_absorber_pad(grid, cell, component=None):
     """Whether the UPML update on this edge carries an absorber conductivity.
 
