@@ -227,6 +227,20 @@ def clear_conductor_edges(conductors, cells, *, component, entity_id, clear_cell
         ConductorStage((entity_id,), 'port-edge-clearing' if release_edges else 'port-cell-clearing', component, cells),))
 
 
+def lumped_port_stage(conductors, port, entity_id, *, clear_cells=False):
+    """Release the single driven PEC edge after loading a lumped port."""
+    if port.impedance <= 0 or port.extent is not None or conductors.pec_edges is None:
+        return conductors
+    grid = conductors.grid
+    if conductors.lane == 'nonuniform':
+        from rfx.nonuniform import position_to_index
+        cell = position_to_index(grid, port.position)
+    else:
+        cell = grid.position_to_index(port.position)
+    return clear_conductor_edges(conductors, [cell], component=port.component,
+                                 entity_id=entity_id, clear_cells=clear_cells)
+
+
 def _same_grid(a, b):
     """Only reuse a production assembly on the identical realized lattice."""
     from rfx.core.jax_utils import is_tracer
@@ -424,19 +438,12 @@ def _with_sheet_spans(sim, conductors):
 def preview_port_stages(sim, conductors):
     """Apply the default run's port stages for a standalone geometry view."""
     grid = conductors.grid
-    if conductors.lane == 'nonuniform':
-        from rfx.nonuniform import position_to_index
-        def locate(position):
-            return position_to_index(grid, position)
-    else:
-        locate = grid.position_to_index
     done = {entity for stage in conductors.provenance
             if stage.stage == 'port-edge-clearing' for entity in stage.entity_ids}
     for i, port in enumerate(sim._ports):
         label = f'port[{i}]'
-        if port.impedance > 0 and port.extent is None and label not in done:
-            conductors = clear_conductor_edges(conductors, [locate(port.position)],
-                component=port.component, entity_id=label)
+        if label not in done:
+            conductors = lumped_port_stage(conductors, port, label)
     if sim._msl_ports:
         from rfx.sources.msl_port import (
             msl_port_from_entry, _msl_yz_cells, msl_normal_component)
@@ -528,6 +535,12 @@ def forward_products(sim, grid, materials, cells, sheets, wires, periodic, root,
         periodic=periodic, root=root,
         sheet_specs=() if root is None else root.sheet_impedance)
     return replace(root, sheet_operator=sheet_operator), drawn, root.pec_edges
+
+
+def forward_lumped_port_stage(root, port, entity_id):
+    """Keep forward's cell/occupancy products alongside the owned edge stage."""
+    root = lumped_port_stage(root, port, entity_id, clear_cells=True)
+    return root, root.pec_cells, root.pec_edges
 
 
 def forward_port_stage(root, cells, component, entity_id, *,

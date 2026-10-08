@@ -34,9 +34,8 @@ is ``False`` (the zero pad), not ``True``: under the volume rule a
 ``True`` ghost would put a spurious wall on the whole x_lo/x_hi node
 plane of the outer ranks.
 
-Sheets are not on this lane: it shards a CELL mask and a sheet owns no
-cell, so ``forward(distributed=True)`` refuses one loudly. That refusal is
-pinned here too, next to the single-device lane's positive sheet result.
+G3 carries realized sheet edges on this lane. The public sheet behavior is
+pinned in tests/contracts/test_multidevice_sheets_wires.py.
 """
 
 import os
@@ -256,18 +255,5 @@ def test_soft_equals_hard_on_the_distributed_lane_including_faces(axis, idx):
     assert _distributed_occ_nnz(occ) == _distributed_nnz(g) == _oracle_counts(g)
 
 
-def test_the_distributed_nu_forward_lane_refuses_a_sheet():
-    """It shards a CELL mask; a silently-absent sheet is not acceptable."""
-    import warnings
-
-    import rfx
-
-    # #1138: geometry[0] x solved +11.67 % off; this test checks the distributed nu forward lane refuses a sheet.
-    sim = rfx.Simulation(snap="declared", freq_max=10e9, domain=(0.06, 0.01, 0.01), dx=1e-3,
-                         cpml_layers=4, dz_profile=np.full(18, 1e-3))
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        sim.add(rfx.Box((0.002, 0.002, 0.005), (0.008, 0.008, 0.005)),
-                material="pec")
-    with pytest.raises(NotImplementedError, match="PEC sheets"):
-        sim.forward(distributed=True, n_steps=2)
+# Graded forward sheet admission and JVP controls are pinned by
+# tests/contracts/test_multidevice_sheets_wires.py.

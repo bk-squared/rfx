@@ -7,7 +7,7 @@ from rfx.runners import _admission as admission
 
 
 @pytest.mark.parametrize("lane", (
-    "run_distributed", "run_distributed_nu", "fwd_distributed_nu", "run_adi", "fwd_adi", "run_subgridded",
+    "run_adi", "fwd_adi", "run_subgridded",
 ))
 @pytest.mark.parametrize("kind,feature", (
     ("sheet", "a PEC sheet (a zero-thickness PEC Box)"),

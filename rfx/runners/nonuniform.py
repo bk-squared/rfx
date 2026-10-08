@@ -648,7 +648,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     _pec_sheets: list = []
     _pec_wires: list = []
     _geometry_masks, _assembly_entries = ([], []) if lane == "run_nonuniform" else (None, None)
-    from rfx.model.conductors import assembled_materials, solve_conductors, kernel_conductors, clear_conductor_edges, at_kernel
+    from rfx.model.conductors import assembled_materials, solve_conductors, kernel_conductors, lumped_port_stage, at_kernel
     if conductors is None:
         conductors = solve_conductors(sim, grid, nonuniform=True)
     if preflight is not None:
@@ -1031,13 +1031,8 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 materials, (i, j, k), sigma_port, pe.component)
             materials_drive = _stamp_lumped_sigma(    # #1256, #1236
                 materials_drive, (i, j, k), sigma_port, pe.component)
-            if pec_edge_masks is not None:
-                # The lumped port drives ONE edge: its own component at
-                # its own cell (#931 §1.9, corrected).
-                conductors = clear_conductor_edges(
-                    conductors, [(i, j, k)], component=pe.component,
-                    entity_id=f"port[{_port_index}]")
-                pec_edge_masks = conductors.pec_edges
+            conductors = lumped_port_stage(conductors, pe, f"port[{_port_index}]")
+            pec_edge_masks = conductors.pec_edges
             if pe.excite:
                 sources.defer(_port_drive_source,
                     grid, idx, pe.component, pe.waveform, sizing_n,

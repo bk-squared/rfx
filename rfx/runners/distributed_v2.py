@@ -12,14 +12,10 @@ sources, point probes, lumped ports, and dispersive materials
 
 A direct one-device call uses the same ``shard_map`` path on a one-device mesh.
 
-Declared PEC (#1053): a PEC VOLUME is realized here.  ``pec_mask`` is
-sharded with the material arrays and applied in both step bodies after
-source injection and immediately before the E ghost exchange, which is
-``distributed_nu``'s stage 8 at the #1041 ordering.  Declared SHEETS and
-sub-cell WIRES own no cell, this lane has no other carrier for them, and
-they are refused rather than silently dropped. A direct one-device call
-also realizes the PEC mask. ``Simulation.run(devices=...)`` routes here
-only for ``len(devices) > 1``; otherwise it uses the single-device lane.
+Declared PEC volumes, sheets and sub-cell wires share the conductor object's
+edge masks. Each slab applies only owned rows after source injection and
+before E ghost exchange; the high-side slab owns a seam node plane.
+``Simulation.run(devices=...)`` routes here only for ``len(devices) > 1``.
 
 Known limitations (transparent single-device fallback):
 - TFSF plane-wave sources: require full-domain field injection, not
@@ -28,7 +24,6 @@ Known limitations (transparent single-device fallback):
   cross-section on one device.  Detected and warned at runtime.
 - Non-divisible nx: automatically padded to nearest multiple of n_devices
   with PEC-filled cells, then trimmed after gathering.
-- Declared PEC sheets and sub-cell wires: refused (see above).
 
 The public entry point ``run_distributed`` has an identical signature to the
 retired pmap version so callers retain the same entry-point arguments.
@@ -717,31 +712,6 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         raise NotImplementedError(
             "distributed_v2 is a uniform-grid runner; use sim.run(devices=...) "
             "for a non-uniform grid (shared distributed NU staging).")
-    # Declared PEC on this lane, after #1053: VOLUMES are realized, SHEETS
-    # and WIRES are not.
-    #
-    # A volume is carried as ``pec_mask``, which #1053 legs 1-2 shard next
-    # to the material arrays and apply in both step bodies through
-    # ``apply_pec_mask_shmap`` — after source injection and the domain
-    # faces, immediately before the E ghost exchange, i.e. distributed_nu's
-    # stage 8 at the #1041 ordering. Gated end-to-end against the
-    # single-device lane by tests/unit/runners/
-    # test_distributed_v2_pec_body_seam.py (three bodies; seam-face body
-    # 3.074e-05 relative against a 1e-3 gate, 3.203e-01 with the stage one
-    # step late).
-    #
-    # A sheet and a sub-cell wire own no cell, so the mask carries neither.
-    # Nothing else on this lane does either: the step body's only other PEC
-    # is the DOMAIN FACE (``_apply_pec_shmap``). Declaring one here would
-    # put metal in the model that is absent from every rank with no sign of
-    # it, so both are still refused.
-    #
-    # The pre-#1053 refusal covered volumes too, because the mask was
-    # assembled and then dropped (measured then: a two-device run probing
-    # inside a declared PEC Box returned a trace bit-identical to the same
-    # model with the Box deleted). It also had to warn that redrawing a
-    # sheet as a volume did NOT help. Both statements are now false here.
-    # Those limitations also applied to the now-retired pmap runner.
     # Drop any standalone diagnostic arrays before allocating solve products.
     sim._pf_campaign_ctx = None
     sim._realized_geometry_record = None
@@ -768,38 +738,12 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     del _geometry_masks, _assembly_entries
     from rfx.sources.wire_radius import require_radius_update
     require_radius_update(base_materials, lane="distributed_v2", unsupported=True)
-    if _d_pec_sheets or _d_pec_wires:
-        _d_declared = []
-        if _d_pec_sheets:
-            _d_declared.append(f"{len(_d_pec_sheets)} PEC sheet(s)")
-        if _d_pec_wires:
-            _d_declared.append(f"{len(_d_pec_wires)} sub-cell wire(s)")
-        raise NotImplementedError(
-            "run_distributed_v2() does not realize declared PEC SHEETS or "
-            "sub-cell WIRES: this lane carries geometry PEC only as a cell "
-            "mask, and a sheet or a wire owns no cell to begin with, so it "
-            "would be absent from every rank with no sign of it. Declared "
-            f"here: {', '.join(_d_declared)}. A declared PEC VOLUME is a "
-            "different case and DOES run here: since #1053 this lane shards "
-            "pec_mask and applies it in both step bodies, at the #1041 "
-            "ordering. So redrawing a sheet as a volume does realize metal "
-            "on this lane — but a volume is not the same object as a sheet "
-            "(it shorts the normal E edge between its two faces, #690), so "
-            "redraw only if that is the conductor you meant. Otherwise use "
-            "sim.run() without devices=, which realizes all three, or model "
-            "the conductor as a sigma fill, which rides in the material "
-            "arrays this lane does shard.")
     # Every declared input this lane does not carry is refused here, after
     # the single-device fallbacks (judged on the lane they fall back to) and
     # the specific refusals above, and before the first step.
     from rfx.runners._admission import admit
     admit(sim, "run_distributed", run_args={"conformal_pec": kwargs.get("conformal_pec")})
     materials = base_materials
-    wire_edges = None
-    if any(pe.extent is not None for pe in sim._ports):
-        from rfx.boundaries.pec import realized_pec_edge_masks
-        if pec_mask is not None:
-            wire_edges = realized_pec_edge_masks(pec_mask, periodic=sim._periodic_flags())
 
     _distributed_boundary_layers(
         grid, n_devices,
@@ -862,7 +806,9 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     sources = PortSourceQueue()
     probes = []
     port_idx = -1
-    for pe in sim._ports:
+    wire_edges = None
+    from rfx.model.conductors import lumped_port_stage
+    for _port_index, pe in enumerate(sim._ports):
         if pe.component not in ("ex", "ey", "ez"):
             raise ValueError(f"distributed_v2: unsupported source component {pe.component}")
         if pe.impedance > 0.0 and pe.extent is None:
@@ -872,6 +818,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                 impedance=pe.impedance, excitation=pe.waveform,
             )
             materials = setup_lumped_port(grid, lp, materials)
+            conductors = lumped_port_stage(conductors, pe, f"port[{_port_index}]")
             if _source_port_indices is None or port_idx in _source_port_indices:
                 sources.defer(make_port_source, grid, lp, n_steps=n_steps)
         elif pe.impedance > 0.0 and pe.extent is not None:
@@ -879,6 +826,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             from rfx.simulation import make_wire_port_sources
             port_idx += 1
             wp = wire_port_from_entry(pe)
+            wire_edges = conductors.pec_edges
             materials = setup_wire_port(grid, wp, materials, pec_edge_masks=wire_edges)
             if _source_port_indices is None or port_idx in _source_port_indices:
                 sources.defer(make_wire_port_sources,
@@ -1440,9 +1388,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
 
         st = _inject_sources_shmap(st, src_vals, ranks=ranks)
 
-        # 5. PEC boundaries (domain faces only; a declared PEC VOLUME is
-        #    realized at stage 5b below, and declared sheets/wires are
-        #    refused -- see the NotImplementedError in run_distributed).
+        # 5. PEC boundaries (domain faces only; conductor edges follow).
         #    Injection runs BEFORE the face, matching distributed_nu stage 7.
         #    The two lanes therefore both differ from the single-device lane,
         #    which applies the faces before its soft-source loop; the
