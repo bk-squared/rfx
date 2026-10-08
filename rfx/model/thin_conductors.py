@@ -24,6 +24,10 @@ class DCFilmAdmissionError(ValueError):
     code = 'dc_film_area'
     source = 'admit_dc_film'
 
+    def __init__(self, message, *, code='dc_film_area'):
+        super().__init__(message)
+        self.code = code
+
 
 @dataclass(frozen=True)
 class DCFilmGeometry:
@@ -68,21 +72,32 @@ def admit_dc_film(shape, grid, *, snap='strict', emit=True):
     if lo is None or hi is None:
         raise DCFilmAdmissionError(
             f'{name} DC film: cannot locate layers without a bounding_box(); '
-            'provide bounds and footprint_area(normal), or draw a Box.')
+            'provide bounds and footprint_area(normal), or draw a Box.', code='dc_film_layers')
+    if any(is_tracer(v) for v in jax.tree_util.tree_leaves((lo, hi))):
+        raise DCFilmAdmissionError(
+            f'{name} DC film: cannot judge traced shape bounds (including radius); '
+            'keep shape parameters concrete for layer/area admission.', code='dc_film_unchecked')
     extents = np.asarray(hi, dtype=float) - np.asarray(lo, dtype=float)
     normal = int(np.argmin(extents))
     if (np.any(~np.isfinite(extents)) or np.any(extents < 0)
             or np.count_nonzero(np.isclose(extents, extents[normal], rtol=1e-12, atol=0)) != 1):
         raise DCFilmAdmissionError(
             f'{name} DC film: ambiguous normal/layers for bounding extents '
-            f'{extents.tolist()}; draw a single planar film or use add() for a volume.')
+            f'{extents.tolist()}; draw a single planar film or use add() for a volume.',
+            code='dc_film_layers')
     coords = list(_grid_coords(grid))
     mid = .5 * (lo[normal] + hi[normal])
     traced = any(is_tracer(c) for c in coords)
     if traced:
+        if snap != 'declared':
+            raise DCFilmAdmissionError(
+                f'{name} DC film: cannot judge layer/area on a traced mesh; '
+                'use a Box, or snap="declared" to run without these checks.',
+                code='dc_film_unchecked')
         if emit:
             warnings.warn(PreflightWarning(
                 f'{name} DC film: area/layer check not evaluated on traced coordinates; '
+                'snap="declared" runs without checking area or the one-layer rule; '
                 'check the same geometry on a concrete mesh.', code='dc_film_unchecked',
                 source='admit_dc_film'), stacklevel=2)
         # Keep the coordinate-dependent Box selection and cross-section traced.
@@ -102,7 +117,7 @@ def admit_dc_film(shape, grid, *, snap='strict', emit=True):
         if extents[normal] > local * (1 + 1e-9):
             raise DCFilmAdmissionError(
                 f'{name} DC film: multiple layers, normal extent {extents[normal]:.12g} m '
-                f'exceeds local cell {local:.12g} m; use add() for a volume.')
+                f'exceeds local cell {local:.12g} m; use add() for a volume.', code='dc_film_layers')
         plane_lo, plane_hi = list(lo), list(hi)
         plane_lo[normal] = plane_hi[normal] = mid
         control = dc_cell_mask(Box(tuple(plane_lo), tuple(plane_hi)), grid)
@@ -118,14 +133,23 @@ def admit_dc_film(shape, grid, *, snap='strict', emit=True):
         if layers != 1:
             raise DCFilmAdmissionError(
                 f'{name} DC film: {layers} occupied layers (empty or nonplanar); '
-                'a film requires exactly one nonempty layer.')
+                'a film requires exactly one nonempty layer.', code='dc_film_layers')
         realized, declared = dc_footprint_areas(shape, grid, mask, normal)
     error = None if declared is None else np.sqrt(realized / declared) - 1
     if error is None or abs(error) > _SHEET_EFFECTIVE_SIZE_TOL:
+        clipped = any(
+            'xyz'[a] not in getattr(grid, 'periodic_axes', '')
+            and (lo[a] < float(coords[a][0]) or hi[a] > float(coords[a][-1]))
+            for a in range(3) if a != normal)
         reason = ('cannot judge: no positive footprint_area(normal)' if error is None
                   else f'e=sqrt(A_r/A_d)-1={error:+.12g}, bar={_SHEET_EFFECTIVE_SIZE_TOL:.12g}')
+        remedy = ('Implement footprint_area(normal) to make this custom shape judgeable'
+                  if error is None else
+                  'The in-plane bounding box is clipped by the grid extent; enlarge the '
+                  'domain/grid or move the film inside it' if clipped else
+                  'Refine the in-plane mesh or draw a Box')
         message = (f'{name} DC film: A_d={declared!r} m^2, A_r={realized:.12g} m^2; '
-                   f'{reason}. Refine the in-plane mesh, draw a Box, or use '
+                   f'{reason}. {remedy}, or use '
                    'snap="declared" to accept the declared geometry.')
         if snap != 'declared':
             raise DCFilmAdmissionError(message)
@@ -155,16 +179,24 @@ def warn_dc_films(sim, warn):
                and not isinstance(tc.shape, Box) for tc in sim._thin_conductors):
         return
     grid = sim._build_realized_grid()
-    for tc in sim._thin_conductors:
+    for i, tc in enumerate(sim._thin_conductors):
         if tc.is_pec or tc.surface_impedance_f0 is not None or isinstance(tc.shape, Box):
             continue
         try:
             # Emit declared findings directly, including when the diagnostic
             # assembly cache contains a previous strict refusal.
-            admit_dc_film(tc.shape, grid, snap=sim._snap)
+            with warnings.catch_warnings(record=True) as findings:
+                warnings.simplefilter('always')
+                admit_dc_film(tc.shape, grid, snap=sim._snap)
         except DCFilmAdmissionError as exc:
-            warn.warn(PreflightWarning(str(exc), code='dc_film_area', severity='error',
-                                       source='admit_dc_film'))
+            warn.warn(PreflightWarning(str(exc), code=exc.code, severity='error',
+                                       source=exc.source, loc=f'thin_conductors[{i}]'))
+        else:
+            for finding in findings:
+                message = finding.message
+                warn.warn(PreflightWarning(str(message), code=message.code,
+                    severity=message.severity, source=message.source,
+                    loc=f'thin_conductors[{i}]'))
 
 
 def dc_cell_mask(shape, grid):

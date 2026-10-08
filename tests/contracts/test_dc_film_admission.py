@@ -147,7 +147,8 @@ def test_b4_small_disc_refusal_and_declared_finding(lane, radius):
         products(sim, grid)
     assert any(getattr(w.message, 'code', None) == 'dc_film_area' for w in caught) == expected_refusal
     findings = sim.preflight().by_code('dc_film_area')
-    assert any(f.severity == 'warning' for f in findings) == expected_refusal
+    assert len(findings) == int(expected_refusal)
+    assert all(f.severity == 'warning' for f in findings)
     entity = sim.realized_geometry().entities[0]
     assert entity.realized_footprint_area_m2 == pytest.approx(area, rel=1e-7)
     assert entity.declared_footprint_area_m2 == pytest.approx(declared, rel=1e-12)
@@ -163,8 +164,9 @@ def test_b4_structural_refusals(lane, snap, kind):
     elif kind == 'empty':
         shape = replace(shape, center=(.2, .2, shape.center[2]))
     sim._thin_conductors[0] = replace(sim._thin_conductors[0], shape=shape)
-    with pytest.raises(ValueError, match=r'(Cylinder|Sphere).*layers'):
+    with pytest.raises(ValueError, match=r'(Cylinder|Sphere).*layers') as caught:
         products(sim, grid)
+    assert caught.value.code == 'dc_film_layers'
 
 
 @pytest.mark.parametrize('lane', ['uniform', 'equal', 'normal', 'inplane'])
@@ -208,22 +210,141 @@ def test_parameter_tracers_keep_geometry_checks(lane, parameter, value):
         return jnp.sum(assemble_cells(sim, grid)[0].sigma)
 
     try:
-        got = float(jax.jit(jax.grad(total))(value))
+        got = float(jax.grad(total)(value))
+        np.testing.assert_allclose(got, baseline/value, rtol=4e-7, atol=0)
+        if parameter == 'sigma_bulk':
+            with pytest.raises(ValueError, match='sigma_bulk.*PEC/lossy class.*abstract.*without jit'):
+                jax.jit(jax.grad(total))(value)
+        else:
+            got = float(jax.jit(jax.grad(total))(value))
+            np.testing.assert_allclose(got, baseline/value, rtol=4e-7, atol=0)
     finally:
         sim._thin_conductors[0] = conductor
-    np.testing.assert_allclose(got, baseline/value, rtol=4e-7, atol=0)
 
 
-def test_coordinate_tracer_reports_unevaluated_check():
+@pytest.mark.parametrize('lane', ['uniform', 'normal'])
+def test_plain_grad_copper_retains_concrete_pec_products(lane):
+    sim, grid, disc = model(lane)
+    conductor = replace(sim._thin_conductors[0], shape=Box(*disc.bounding_box()))
+    observed = []
+
+    def total(sigma):
+        sim._thin_conductors[0] = replace(conductor, sigma_bulk=sigma)
+        sheets = []
+        cells = assemble_cells(sim, grid, pec_sheets=sheets)[0]
+        assert len(sheets) == 1
+        observed.append((cells.sigma, sheets[0].footprint))
+        return jnp.sum(cells.sigma)
+
+    try:
+        concrete = total(5.8e7)
+        value, derivative = jax.value_and_grad(total)(5.8e7)
+    finally:
+        sim._thin_conductors[0] = conductor
+    assert float(concrete) == float(value) == float(derivative) == 0
+    for before, traced in zip(observed[0], observed[1]):
+        np.testing.assert_array_equal(before, traced)
+
+
+@pytest.mark.parametrize('snap', ['strict', 'declared'])
+@pytest.mark.parametrize('kind', ['admitted', 'tall', 'small', 'unknown', 'outside'])
+def test_coordinate_tracer_requires_declared_override(snap, kind):
     def total(profile):
-        sim = Simulation(10e9, (.048, .048, .024), dx=H, boundary='pec', dz_profile=profile)
-        sim.add_thin_conductor(Cylinder((.02317, .02431, .01227), 10.5*H, 0),
-                               sigma_bulk=SIGMA, thickness=T)
+        sim = Simulation(10e9, (.048, .048, .024), dx=H, boundary='pec',
+                         dz_profile=profile, snap=snap)
+        shape = Cylinder((.024, .024, .01227),
+                         (2.5 if kind == 'small' else 10.5)*H,
+                         2.5*H if kind == 'tall' else 0)
+        if kind == 'unknown':
+            shape = UnknownArea(shape)
+        elif kind == 'outside':
+            shape = replace(shape, center=(.2, .2, .01227))
+        sim.add_thin_conductor(shape, sigma_bulk=SIGMA, thickness=T)
         return jnp.sum(assemble_cells(sim, sim._build_nonuniform_grid())[0].sigma)
 
-    with pytest.warns(UserWarning, match='not evaluated on traced coordinates'):
-        derivative = jax.jit(jax.grad(total))(jnp.full(24, H))
-    assert np.isfinite(np.asarray(derivative)).all()
+    call = jax.jit(jax.grad(total))
+    if snap == 'strict':
+        with pytest.raises(ValueError, match='cannot judge layer/area on a traced mesh.*Box.*declared'):
+            call(jnp.full(24, H))
+    else:
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter('always')
+            derivative = call(jnp.full(24, H))
+        findings = [w.message for w in caught if getattr(w.message, 'code', None) == 'dc_film_unchecked']
+        assert len(findings) == 1
+        assert 'without checking area or the one-layer rule' in str(findings[0])
+        assert np.isfinite(np.asarray(derivative)).all()
+
+
+@pytest.mark.parametrize('lane', ['uniform', 'normal'])
+@pytest.mark.parametrize('kind', ['small', 'unknown', 'sphere', 'tall'])
+def test_preflight_has_one_finding_per_film_even_after_cached_assembly(lane, kind):
+    sim, _, shape = model(lane, radius=2.5, centre=(24, 24), snap='declared',
+                          height=2.5 if kind == 'tall' else 0)
+    if kind == 'unknown':
+        shape = UnknownArea(shape)
+    elif kind == 'sphere':
+        shape = Sphere(shape.center, 2.5*H)
+    sim._thin_conductors[0] = replace(sim._thin_conductors[0], shape=shape)
+    sim.add_thin_conductor(shape, sigma_bulk=SIGMA, thickness=T)
+    code = 'dc_film_layers' if kind in ('sphere', 'tall') else 'dc_film_area'
+    for _ in range(2):
+        findings = sim.preflight().by_code(code)
+        assert len(findings) == 2
+        assert {f.loc for f in findings} == {'thin_conductors[0]', 'thin_conductors[1]'}
+        assert not sim.preflight().by_code('dc_film_area' if code == 'dc_film_layers' else 'dc_film_layers')
+
+
+@pytest.mark.parametrize('snap', ['strict', 'declared'])
+def test_traced_preflight_has_one_finding(snap):
+    def check(profile):
+        sim = Simulation(10e9, (.048, .048, .024), dx=H, boundary='pec',
+                         dz_profile=profile, snap=snap)
+        sim.add_thin_conductor(Cylinder((.024, .024, .01227), 2.5*H, 0),
+                               sigma_bulk=SIGMA, thickness=T)
+        findings = sim.preflight(check_ntff=False, check_resolution=False).by_code('dc_film_unchecked')
+        assert len(findings) == 1
+        assert findings[0].severity == ('error' if snap == 'strict' else 'warning')
+        return jnp.sum(profile)
+
+    assert np.isfinite(float(jax.jit(check)(jnp.full(24, H))))
+
+
+@pytest.mark.parametrize('lane', ['uniform', 'normal'])
+def test_unknown_area_remedy_names_custom_shape_method(lane):
+    sim, grid, shape = model(lane)
+    sim._thin_conductors[0] = replace(sim._thin_conductors[0], shape=UnknownArea(shape))
+    with pytest.raises(ValueError, match='Implement footprint_area\\(normal\\).*snap="declared"') as caught:
+        products(sim, grid)
+    assert 'draw a Box' not in str(caught.value)
+
+
+@pytest.mark.parametrize('lane', ['uniform', 'normal'])
+def test_clipped_disc_message_names_grid_extent(lane):
+    sim, grid, _ = model(lane, centre=(2.17, 24.31))
+    with pytest.raises(ValueError, match='A_d=.*A_r=.*clipped by the grid extent') as caught:
+        products(sim, grid)
+    assert 'Refine' not in str(caught.value)
+    sim._snap = 'declared'
+    with pytest.warns(UserWarning, match='clipped by the grid extent'):
+        products(sim, grid)
+
+
+@pytest.mark.parametrize('lane', ['uniform', 'normal'])
+@pytest.mark.parametrize('snap', ['strict', 'declared'])
+def test_traced_radius_refuses_without_raw_tracer_error(lane, snap):
+    sim, grid, shape = model(lane, snap=snap)
+    conductor = sim._thin_conductors[0]
+
+    def total(radius):
+        sim._thin_conductors[0] = replace(conductor, shape=replace(shape, radius=radius))
+        return jnp.sum(assemble_cells(sim, grid)[0].sigma)
+
+    try:
+        with pytest.raises(ValueError, match='Cylinder.*traced shape bounds.*radius.*concrete'):
+            jax.jit(jax.grad(total))(shape.radius)
+    finally:
+        sim._thin_conductors[0] = conductor
 
 
 @pytest.mark.parametrize('offset', [.27, 11.73])

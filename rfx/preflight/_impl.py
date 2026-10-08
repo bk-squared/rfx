@@ -54,6 +54,8 @@ def _preflight_impl(
         warnings.simplefilter("always")
         self._collect_flux_regions(issues)
         try:
+            from rfx.model.thin_conductors import warn_dc_films
+            warn_dc_films(self, warnings)
             if check_resolution:
                 self._validate_mesh_quality()
             self._validate_simulation_config()
@@ -69,16 +71,30 @@ def _preflight_impl(
             # Structurally-impossible configs raise PreflightConfigError
             # with the slug set at the check site; any other ValueError is
             # error-severity but uncoded.
-            issues.append(PreflightIssue(
-                f"ERROR: {e}",
-                severity="error",
-                code=getattr(e, "code", "uncoded"),
-                loc=getattr(e, "loc", None),
-                source=getattr(e, "source", None),
-            ))
+            duplicate_dc = (getattr(e, 'source', None) == 'admit_dc_film'
+                and any(getattr(w.message, 'source', None) == 'admit_dc_film'
+                        and getattr(w.message, 'loc', None) is not None
+                        and str(w.message) == str(e) for w in caught))
+            if not duplicate_dc:
+                issues.append(PreflightIssue(
+                    f"ERROR: {e}",
+                    severity="error",
+                    code=getattr(e, "code", "uncoded"),
+                    loc=getattr(e, "loc", None),
+                    source=getattr(e, "source", None),
+                ))
 
+    # The explicit per-film reader owns DC findings. Diagnostic assembly may
+    # replay the same warning, including from its cache. Preserve separate
+    # declarations even when they share a shape and identical message text.
+    dc_findings = {str(w.message) for w in caught
+                   if getattr(w.message, 'source', None) == 'admit_dc_film'
+                   and getattr(w.message, 'loc', None) is not None}
     for w in caught:
         msg = str(w.message)
+        if (getattr(w.message, 'source', None) == 'admit_dc_film'
+                and getattr(w.message, 'loc', None) is None and msg in dc_findings):
+            continue
         # Collect (do NOT fail-on-first): aggregated raise at the end.
         # Prefer the structured fields carried on the warning INSTANCE
         # (PreflightWarning); fall back to the category-derived severity for

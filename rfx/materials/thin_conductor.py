@@ -46,6 +46,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+import jax
 import jax.numpy as jnp
 
 from rfx.grid import Grid
@@ -235,12 +236,17 @@ class ThinConductor:
         tests/unit/materials/test_thin_conductor.py (is_pec-order pin).
         """
         from rfx.core.jax_utils import is_tracer
-        if is_tracer(self.sigma_bulk):
-            # Conductivity differentiation belongs to the lossy branch; the
-            # discontinuous PEC threshold is not a differentiable parameter.
+        if self.surface_impedance_f0 is not None:
             return False
-        return (self.surface_impedance_f0 is None) and (
-            self.sigma_bulk >= _PEC_SIGMA_THRESHOLD)
+        if is_tracer(self.sigma_bulk):
+            try:
+                return bool(self.sigma_bulk >= _PEC_SIGMA_THRESHOLD)
+            except jax.errors.TracerBoolConversionError as exc:
+                raise ValueError(
+                    'sigma_bulk: the PEC/lossy class cannot be decided for an '
+                    'abstract value; keep sigma_bulk concrete or differentiate '
+                    'without jit.') from exc
+        return self.sigma_bulk >= _PEC_SIGMA_THRESHOLD
 
     @property
     def r_s_leontovich(self):
