@@ -38,6 +38,7 @@ the plain call's.
 from __future__ import annotations
 
 import functools
+import platform
 
 import jax
 import jax.numpy as jnp
@@ -398,14 +399,16 @@ def test_the_fallback_records_the_time_stepping_over_opaque_operands(
     assert error <= MAX_REL_SUMMED, error
 
 
-# CPU only: on GPU the same case reads 0 ULP (VESSL 369367268759).
+# Arm64 CPU only. Measured: 34 ULP on macOS arm64; within the bar on x86-64
+# Linux (VESSL 369367268769) and 0 ULP on GPU (VESSL 369367268759).
 @pytest.mark.xfail(
-    jax.default_backend() == "cpu",
+    jax.default_backend() == "cpu"
+    and platform.machine().lower() in ("arm64", "aarch64"),
     strict=True,
     raises=AssertionError,
     reason="#1543 with the slab-local absorber the forced fallback reads 34 ULP "
-           "plain-vs-jit on CPU (0 with the switch on); model is literals in "
-           "one program and run-time values in the other",
+           "plain-vs-jit on arm64 CPU (0 with the switch on); model is literals "
+           "in one program and run-time values in the other",
 )
 def test_the_fallback_probe_record_equals_the_plain_call(fallback_solve):
     """Per-step agreement remains subject to the CPU fallback's known drift."""
