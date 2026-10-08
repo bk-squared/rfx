@@ -14,11 +14,12 @@ def build(case,entry):
     if case=='pmc-cpml': b=BoundarySpec(x='pmc',y='cpml',z='cpml')
     if case=='pec-zlo': b=BoundarySpec(x='cpml',y='cpml',z=Boundary(lo='pec',hi='cpml'))
     if case=='periodic-xy': b=BoundarySpec(x='periodic',y='periodic',z='cpml')
-    if case.startswith('waveguide-'): b=BoundarySpec(x='cpml',y=case.split('-')[1],z=case.split('-')[1])
+    if case.startswith('waveguide-') and case!='waveguide-default': b=BoundarySpec(x='cpml',y=case.split('-')[1],z=case.split('-')[1])
     kw={}
     if entry=='nonuniform': kw['dz_profile']=np.full(16,dx)
     if entry=='adi': kw['solver']='adi'
-    sim=Simulation(freq_max=20e9,domain=domain,dx=dx,boundary=b,cpml_layers=8,**kw)
+    if case!='waveguide-default': kw['boundary']=b
+    sim=Simulation(freq_max=20e9,domain=domain,dx=dx,cpml_layers=8,**kw)
     if entry=='subgridded': sim.add_refinement((.006,.010),ratio=2)
     if case=='tfsf': sim.add_tfsf_source(f0=10e9,margin=3)
     elif case.startswith('waveguide-'):

@@ -147,7 +147,15 @@
           "n_cells": null
         }
       },
-      "preflight": []
+      "preflight": [
+        {
+          "code": "tfsf_transverse_periodic",
+          "loc": null,
+          "numbers": [],
+          "severity": "warning",
+          "source": null
+        }
+      ]
     },
     "examples/inverse_design/multilayer_ar_coating.py::_build_simulation::default": {
       "fidelity": {
@@ -3526,7 +3534,15 @@
           "n_cells": null
         }
       },
-      "preflight": []
+      "preflight": [
+        {
+          "code": "tfsf_transverse_periodic",
+          "loc": null,
+          "numbers": [],
+          "severity": "warning",
+          "source": null
+        }
+      ]
     },
     "examples/tutorials/slab_rt_flux_monitor.py::build_sim::with_slab=True": {
       "fidelity": {
@@ -3746,6 +3762,13 @@
           ],
           "severity": "warning",
           "source": "_validate_mesh_quality"
+        },
+        {
+          "code": "tfsf_transverse_periodic",
+          "loc": null,
+          "numbers": [],
+          "severity": "warning",
+          "source": null
         }
       ]
     },

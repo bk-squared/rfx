@@ -14,7 +14,11 @@ from tests.contracts.boundary_fields import measure, measured_fields
 
 ROOT = Path(__file__).resolve().parents[2]
 BASELINE = json.loads((ROOT / "scripts/diagnostics/boundary_model/B1/MATRIX.json").read_text())
-CELLS = BASELINE["cells"]
+# PR3a supersedes the explicit-guide departure rows without rewriting B1's record.
+GUIDE_REFUSAL_ENTRIES = {"run", "forward", "distributed", "sweep", "gpu-query", "subgridded"}
+CELLS = [dict(c, status="REFUSED_AT_DISPATCH", departures=[])
+         if c["case"] == "waveguide-cpml" and c["entry"] in GUIDE_REFUSAL_ENTRIES else c
+         for c in BASELINE["cells"]]
 BY_CELL = {(c["case"], c["entry"]): c for c in CELLS}
 
 
@@ -44,6 +48,14 @@ def compare_departures(problems):
 @pytest.mark.parametrize("cell", [pytest.param(c, id=f"{c['case']}--{c['entry']}",
                                               marks=pytest.mark.xdist_group(f"{c['case']}--{c['entry']}")) for c in CELLS])
 def test_no_unlisted_departures(cell):
+    if cell["status"] == "REFUSED_AT_DISPATCH":
+        with pytest.raises(ValueError) as caught:
+            measured(cell["case"], cell["entry"])
+        message = str(caught.value)
+        assert "full-aperture waveguide requires PEC" in message
+        assert all(face in message for face in ("y_lo", "y_hi", "z_lo", "z_hi"))
+        assert "declare boundary=" in message and "'y': 'pec'" in message and "'z': 'pec'" in message
+        return
     # The public sponge refusal supersedes B1; retain the historical record.
     if adi_absorber_cell(cell["case"], cell["entry"]):
         with pytest.raises(ValueError, match="unmatched graded-conductivity sponge"):
@@ -151,3 +163,43 @@ def test_cpu_gpu_query_dispatch(case, expected):
     _, _, _, records = measure(case, "gpu-query")
     assert any(r["fast_trace_calls"] > 0 for r in records) == expected
     jax.clear_caches()
+
+
+@pytest.mark.parametrize("entry", sorted(GUIDE_REFUSAL_ENTRIES))
+def test_default_waveguide_twin_records_its_walls(entry, monkeypatch):
+    import warnings
+    from rfx.boundaries.depths import Kind
+    from rfx.boundaries.features import WaveguideBoundaryWarning
+    from rfx.boundaries.model import realize
+    from tests.contracts.boundary_cases import build
+    from tests.contracts.boundary_fields import execute
+
+    class Admitted(Exception):
+        pass
+
+    def stop(*args, **kwargs):
+        raise Admitted
+
+    sim, _ = build("waveguide-default", "run" if entry == "gpu-query" else entry)
+    grid = sim._build_grid()
+    assert tuple(f.kind for f in grid.boundary_depths) == (
+        Kind.ABSORBER, Kind.ABSORBER, Kind.PEC, Kind.PEC, Kind.PEC, Kind.PEC)
+    assert tuple(f.realized for f in grid.boundary_depths) == (8, 8, 0, 0, 0, 0)
+    assert tuple(f.kind for f in realize(sim.boundary_model(), grid).faces) == tuple(
+        f.kind for f in grid.boundary_depths)
+    monkeypatch.setattr(jax.lax, "scan", stop)
+    if entry == "gpu-query":
+        monkeypatch.setattr(jax, "default_backend", lambda: "gpu")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        # Each sweep invocation constructs a distinct Simulation copy.
+        for _ in range(1 if entry == "sweep" else 2):
+            if entry == "subgridded":
+                with pytest.raises(NotImplementedError, match="subgridded lane is unstable and unverified"):
+                    execute(sim, entry)
+            else:
+                with pytest.raises(Admitted):
+                    execute(sim, "run" if entry == "gpu-query" else entry)
+    defaults = [w for w in caught if issubclass(w.category, WaveguideBoundaryWarning)]
+    assert len(defaults) == 1
+    assert all(face in str(defaults[0].message) for face in ("y_lo", "y_hi", "z_lo", "z_hi"))

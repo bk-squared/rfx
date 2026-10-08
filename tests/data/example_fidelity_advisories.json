@@ -528,6 +528,30 @@
    "ref": "https://github.com/bk-squared/rfx/issues/1512",
    "rows": 2,
    "variant": "examples/tutorials/ports_and_sparams_101.py::build_microstrip_ports::default"
+  },
+  {
+   "code": "tfsf_transverse_periodic",
+   "disposition": "intended",
+   "reason": "The realized transverse material arrays are invariant; PR3a retains the padded periodic wrap and reports the faces solved periodically.",
+   "ref": "rfx/boundaries/tfsf.py:201-208",
+   "rows": 1,
+   "variant": "examples/inverse_design/field_observable_shielding.py::_build_sim::default"
+  },
+  {
+   "code": "tfsf_transverse_periodic",
+   "disposition": "intended",
+   "reason": "The realized transverse material arrays are invariant; PR3a retains the padded periodic wrap and reports the faces solved periodically.",
+   "ref": "rfx/boundaries/tfsf.py:201-208",
+   "rows": 1,
+   "variant": "examples/tutorials/slab_rt_flux_monitor.py::build_sim::with_slab=False"
+  },
+  {
+   "code": "tfsf_transverse_periodic",
+   "disposition": "intended",
+   "reason": "The realized transverse material arrays are invariant; PR3a retains the padded periodic wrap and reports the faces solved periodically.",
+   "ref": "rfx/boundaries/tfsf.py:201-208",
+   "rows": 1,
+   "variant": "examples/tutorials/slab_rt_flux_monitor.py::build_sim::with_slab=True"
   }
  ]
 }

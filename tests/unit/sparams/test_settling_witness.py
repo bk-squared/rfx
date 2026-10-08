@@ -417,7 +417,7 @@ _WG_FREQS = np.linspace(8.2e9, 12.4e9, 5)
 
 def _wg_two_port():
     sim = Simulation(freq_max=float(_WG_FREQS[-1]), domain=(0.12, 0.04, 0.02),
-                     dx=0.004, boundary="cpml", cpml_layers=10)
+                     dx=0.004, boundary={"x": "cpml", "y": "pec", "z": "pec"}, cpml_layers=10)
     for x, direction in ((0.02, "+x"), (0.10, "-x")):
         sim.add_waveguide_port(
             x, direction=direction, mode=(1, 0), mode_type="TE",
