@@ -16,6 +16,13 @@ from rfx.runners._rank import mesh_ranks
 from rfx.sources.sources import _wire_port_live_cells, wire_port_from_entry
 
 GATE = 1e-3
+# PEC walls: multi and single device differ only by float32 rounding, which a
+# lossless box carries forward; one rounding per step bounds it at
+# n_steps * eps(float32) of the peak. Measured 0 on arm64 and up to 2e-6 on
+# x86-64 (same code, 180 steps), so bit-equality is not a portable bar.
+def _rounding_bar(n_steps):
+    return n_steps*float(np.finfo(np.float32).eps)
+
 STEPS = 300
 KINDS = ('sheet_x_seam', 'sheet_z_cross', 'sheet_z_edge', 'wire_x_cross', 'wire_z_seam')
 # Measured float32 max_t |multi-single| / max_t |single|, per probe.
@@ -140,7 +147,6 @@ def _owned_masks(monkeypatch, kind, graded, boundary, count=2):
                         assert owners[gi] == rank, 'seam belongs to the high-side slab'
         assert np.count_nonzero(applications > 1) == 0
         np.testing.assert_array_equal(applications, np.asarray(reference).astype(np.int32))
-    print(f'B1 {kind} graded={graded} boundary={boundary} slabs={count}: exact; duplicates=0 ghosts=0')
 
 
 @pytest.mark.parametrize('kind', KINDS)
@@ -185,16 +191,16 @@ def _field_parity(kind, graded, boundary, count=2):
     assert np.all(peaks > 0)
     rel = np.max(np.abs(multi-single), axis=0)/peaks
     visibility = np.max(np.abs(single-empty), axis=0)/np.max(np.abs(empty), axis=0)
-    print(f'B2 {kind} graded={graded} boundary={boundary} slabs={count}: rel={rel.tolist()} visibility={visibility.tolist()}')
     if boundary == 'pec':
-        assert np.array_equal(multi, single), rel
+        assert np.all(rel <= _rounding_bar(STEPS)), rel
     else:
         assert np.all(rel <= GATE), rel
         empty_multi, empty_multi_dt = _traces(kind, graded, boundary, conductor=False,
                                               distributed=True, count=count)
         assert empty_multi_dt == empty_dt
         empty_rel = np.max(np.abs(empty_multi-empty), axis=0)/np.max(np.abs(empty), axis=0)
-        print(f'B2 empty {kind} graded={graded}: rel={empty_rel.tolist()}')
+        # The absorber alone accounts for a difference of this size (MEASURED).
+        assert np.all(empty_rel <= GATE), empty_rel
     assert np.max(visibility) > 100*GATE, visibility
 
 
@@ -263,11 +269,10 @@ def test_b3_sheet_contact_wire_port(monkeypatch):
     for position, live_count in reader_counts:
         assert live_count == by_position[position], ('load/drive live count', position, live_count)
     delta = np.abs(multi.s_params[0, 0]-single.s_params[0, 0])
-    print(f'B3 frequencies={FREQS.tolist()} live={counts} abs_S11_difference={delta.tolist()}')
     assert np.all(delta <= 1e-3), delta
 
 
-# Decision record 2, measured before pinning: primal and block JVP are exact.
+# Decision records 2-3: primal and block JVP agree to accumulated float32 rounding.
 def _graded_forward_sheet(amplitude, distributed):
     sim = Simulation(freq_max=15e9, domain=(.015, .011, .009), dx=.001,
                      boundary='pec', cpml_layers=0,
@@ -300,8 +305,7 @@ def test_graded_forward_default_source_block_jvp():
         peak = np.max(np.abs(reference), axis=0)
         assert np.all(peak > 0)
         relative = np.max(np.abs(actual-reference), axis=0)/peak
-        print(f'graded forward default source {name}: rel={relative.tolist()}')
-        assert np.array_equal(reference, actual), relative
+        assert np.all(relative <= _rounding_bar(180)), relative
 
 
 def _lumped_model(kind, boundary):
@@ -366,13 +370,11 @@ def test_lumped_port_on_conductor(monkeypatch, kind, boundary):
     peaks = np.max(np.abs(reference), axis=0)
     assert np.all(peaks > 0)
     relative = np.max(np.abs(actual-reference), axis=0)/peaks
-    print(f'lumped {boundary} {kind}: peak={peaks.tolist()} rel={relative.tolist()}')
     if boundary == 'pec':
-        assert np.array_equal(actual, reference), relative
+        assert np.all(relative <= _rounding_bar(STEPS)), relative
     else:
         assert np.all(relative <= GATE), relative
     delta = np.abs(multi.s_params[0, 0]-single.s_params[0, 0])
-    print(f'lumped S11 {boundary} {kind}: frequencies={freqs.tolist()} delta={delta.tolist()}')
     assert np.all(delta <= 1e-3), delta
 
 
