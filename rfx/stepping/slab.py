@@ -194,8 +194,12 @@ def cut(array, layout, kind, *, mesh=None):
     if mesh is not None and not isinstance(array, jax.core.Tracer):
         xp = np if isinstance(array, np.ndarray) else jnp
         shape = (layout.n_devices * layout.nx_local, *array.shape[1:])
+        def slab(index):
+            # Closed-over concrete arrays may be staged while a caller traces.
+            with jax.ensure_compile_time_eval():
+                return _slice(array, layout, (index[0].start or 0) // layout.nx_local, fill, xp)
         return jax.make_array_from_callback(shape, sharding or NamedSharding(mesh, P('x')),
-            lambda index: _slice(array, layout, (index[0].start or 0) // layout.nx_local, fill, xp))
+                                           slab)
     # Match the historical local AD program: align first, then slice and stack.
     arr = array[:layout.nx] if array.shape[0] != layout.nx else array
     arr = _pad(arr, 0, layout.pad_x, fill.alignment, jnp)

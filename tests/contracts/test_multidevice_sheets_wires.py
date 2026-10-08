@@ -10,7 +10,7 @@ from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
 from rfx import Box, PolylineWire, Simulation
 from rfx.core.yee import init_state
 from rfx.model import conductors as C
-from rfx.runners import _distributed_common as D
+from rfx.runners import distributed_v2 as D
 from rfx.runners._distributed_common import apply_pec_mask_shmap
 from rfx.runners._rank import mesh_ranks
 from rfx.sources.sources import _wire_port_live_cells, wire_port_from_entry
@@ -106,18 +106,18 @@ def _owned_masks(monkeypatch, kind, graded, boundary, count=2):
     devices = _devices(count)
     expected = _reference(kind, graded, boundary, count)
     staged = []
-    original = C.stage_distributed_edges if graded else D.shard_x_slabs
+    original = C.stage_distributed_edges if graded else D.cut
 
     def capture(*args, **kwargs):
         result = original(*args, **kwargs)
         if graded:
             staged.extend(result)
-        elif args[0].dtype == jnp.bool_:
-            staged.append(result)
+        elif args[2] == "pec_edge":
+            staged.extend(result)
         return result
 
     with monkeypatch.context() as patch:
-        patch.setattr(C if graded else D, 'stage_distributed_edges' if graded else 'shard_x_slabs', capture)
+        patch.setattr(C if graded else D, 'stage_distributed_edges' if graded else 'cut', capture)
         sim, grid, _ = _build(kind, graded, boundary, count=count)
         sim.run(n_steps=2, devices=devices, compute_s_params=False, skip_preflight=True)
     assert len(staged) == 3
@@ -347,15 +347,15 @@ def test_lumped_port_on_conductor(monkeypatch, kind, boundary):
                   compute_s_params=True, skip_preflight=True)
     single = single_sim.run(**kwargs)
     staged = []
-    original = D.shard_x_slabs
+    original = D.cut
 
     def capture(*args, **kw):
         result = original(*args, **kw)
-        if args[0].dtype == jnp.bool_:
-            staged.append(np.asarray(result))
+        if args[2] == "pec_edge":
+            staged.extend(np.asarray(edge) for edge in result)
         return result
 
-    monkeypatch.setattr(D, 'shard_x_slabs', capture)
+    monkeypatch.setattr(D, 'cut', capture)
     multi_sim = _lumped_model(kind, boundary)
     assert multi_sim._build_grid().dt == grid.dt
     multi = multi_sim.run(devices=_devices(), **kwargs)
