@@ -55,6 +55,19 @@ def main(mode):
         tfsf.invariant = invariant
         path = "tests/contracts/test_boundary_finishing.py"
         judge = "test_default_wrap_accepts_slab_and_refuses_original_box"
+    elif mode == "decay-reference-rejects-feature-provenance":
+        import inspect
+        from tests.unit.runners import _until_decay_reference as reference
+        from tests.unit.runners import test_decay_chunking as decay
+
+        source = inspect.getsource(reference.run_until_decay_reference)
+        source = source.replace("    _feature_tfsf: bool = False,\n", "")
+        source = source.replace("        _feature_tfsf=_feature_tfsf,\n", "")
+        namespace = dict(reference.__dict__)
+        exec(compile(source, reference.__file__, "exec"), namespace)
+        decay.run_until_decay_reference = namespace["run_until_decay_reference"]
+        path = "tests/unit/runners/test_decay_chunking.py"
+        judge = "test_decay_chunks_match_old_loop_per_stop_branch and None-None-point"
     else:
         raise ValueError(mode)
     return pytest.main([path, "-q", "-k", judge, "--tb=short",
