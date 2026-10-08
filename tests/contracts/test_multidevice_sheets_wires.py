@@ -176,7 +176,8 @@ def _traces(kind, graded, boundary, conductor=True, distributed=False, count=2):
     result = sim.run(n_steps=STEPS, devices=_devices(count) if distributed else None,
                      compute_s_params=False, skip_preflight=True)
     assert result.realized_geometry.lane == (
-        "run_distributed" if distributed else "run_nonuniform" if graded else "run_uniform")
+        ("run_distributed_nu" if graded else "run_distributed") if distributed
+        else "run_nonuniform" if graded else "run_uniform")
     return np.asarray(result.time_series), grid.dt
 
 
