@@ -1,0 +1,326 @@
+"""1549: independently declared backing faces and run/forward kernel identity."""
+from contextlib import ExitStack
+from dataclasses import fields, is_dataclass
+import gc
+import inspect
+from unittest.mock import patch
+
+import jax
+import numpy as np
+import pytest
+
+from rfx import Box, GaussianPulse, Simulation
+from rfx.boundaries.depths import Kind
+from rfx.boundaries.model import realize
+from rfx.boundaries.spec import Boundary, BoundarySpec
+
+# Classes W/R remain separate rows so a leader can explicitly defer either.
+NAMED_EXCEPTIONS = {}
+CASES = ('absorbing', 'mixed', 'pmc', 'periodic', 'asymmetric',
+         'plane', 'closed_box', 'W-guide')
+PATHS = ('uniform', 'graded', 'distributed-uniform', 'distributed-graded')
+ALL_FACES = frozenset(f'{a}_{s}' for a in 'xyz' for s in ('lo', 'hi'))
+# Entry-specific observer lists are not boundary operators. These are the
+# exclusions from the survey's broad kernel-context capture, by exact name.
+MONITOR_EXCLUSIONS = ('prb_meta', 'dft_meta', 'flux_meta', 'waveguide_meta',
+                      'wire_sparam_meta', 'wire_refplane_meta', 'lumped_sparam_meta')
+BOUNDARY_INPUTS = ('periodic', 'pec_axes', 'pec_faces_frozen', 'pmc_faces_frozen',
+                  'curl_boundary', 'cpml_axes', 'cpml_params', 'upml_coeffs',
+                  'pec_edge_masks', 'pec_static_edge_masks', 'pec_occupancy',
+                  'conformal_weights', 'sheet_impedance', 'bloch', 'tfsf_cfg',
+                  'use_cpml', 'use_upml', 'use_pec_faces', 'use_pmc_faces',
+                  'use_pec_edges', 'use_pec_occupancy', 'use_sheet_impedance')
+
+
+class Captured(Exception):
+    """The factory is built; no field step may execute."""
+
+
+def model(case, path='uniform'):
+    boundary = {
+        'absorbing': 'cpml',
+        'mixed': BoundarySpec(x='cpml', y='pec', z='pec'),
+        'pmc': BoundarySpec(x='cpml', y='pmc', z='pec'),
+        'periodic': BoundarySpec(x='cpml', y='periodic', z='pec'),
+        'asymmetric': BoundarySpec(x=Boundary(lo='cpml', hi='pec'), y='pec', z='pec'),
+        'plane': 'cpml', 'closed_box': 'cpml',
+        'W-guide': BoundarySpec(x='cpml', y='pec', z='pec'),
+    }[case]
+    mesh = {'dz_profile': np.full(10, .001)} if path.endswith('graded') else {}
+    sim = Simulation(20e9, (.04, .02, .01), dx=.001, cpml_layers=4,
+                     boundary=boundary, **mesh)
+    if case in ('plane', 'closed_box'):
+        sim.add_tfsf_source(f0=10e9, margin=3, closed_box=case == 'closed_box')
+    elif case == 'W-guide':
+        sim.add_waveguide_port(.01, f0=10e9, freqs=np.array([10e9]),
+                              probe_offset=2, ref_offset=1)
+    else:
+        sim.add_source((.01, .01, .005), 'ez', amplitude_kind='field')
+    sim.add_probe((.025, .01, .005), 'ez')
+    return sim
+
+
+def expected_faces(sim, grid, case, path):
+    record = realize(sim.boundary_model(), grid)
+    periodic = {a for a, yes in zip('xyz', sim._periodic_flags()) if yes}
+    # The plane-wave declaration chooses a wrapped transverse pair on the
+    # uniform path; graded paths install no periodic stencil (Addendum 5e).
+    if case == 'plane' and not path.endswith('graded'):
+        periodic.update('yz')
+    return frozenset(f.name for f in record.faces
+                     if f.kind in (Kind.PEC, Kind.ABSORBER) and f.name[0] not in periodic)
+
+
+def freeze(value):
+    if isinstance(value, (np.ndarray, jax.Array)):
+        return np.asarray(value).copy()
+    if is_dataclass(value):
+        return {f.name: freeze(getattr(value, f.name)) for f in fields(value)}
+    if isinstance(value, tuple) and hasattr(value, '_fields'):
+        return {k: freeze(v) for k, v in value._asdict().items()}
+    if isinstance(value, dict):
+        return {k: freeze(v) for k, v in value.items()}
+    if isinstance(value, (tuple, list)):
+        return tuple(freeze(v) for v in value)
+    return value
+
+
+def assert_equal(left, right, path='boundary'):
+    if isinstance(left, np.ndarray):
+        assert isinstance(right, np.ndarray), path
+        assert left.dtype == right.dtype, f'{path}: dtype {left.dtype} != {right.dtype}'
+        assert np.array_equal(left, right), f'{path}: arrays differ (shape {left.shape} / {right.shape})'
+    elif isinstance(left, dict):
+        assert left.keys() == right.keys(), f'{path}: keys differ'
+        for key in left:
+            assert_equal(left[key], right[key], f'{path}/{key}')
+    elif isinstance(left, tuple):
+        assert len(left) == len(right), path
+        for index, (a, b) in enumerate(zip(left, right)):
+            assert_equal(a, b, f'{path}/{index}')
+    else:
+        assert left == right, f'{path}: {left!r} != {right!r}'
+
+
+def closure_values(fun):
+    values = {}
+    for name, cell in zip(fun.__code__.co_freevars, fun.__closure__ or ()):
+        try:
+            values[name] = cell.cell_contents
+        except ValueError:
+            pass  # inactive branch's uninitialized cell
+    return values
+
+
+def capture(sim, entry, path, invoke=None):
+    import rfx.simulation as kernel
+    import rfx.nonuniform as nu
+    captured = {}
+    setup_original = kernel._build_step_setup
+    nu_original = nu._build_nu_scan
+    jit_original = jax.jit
+    grid_original = sim._build_nonuniform_grid
+
+    def built_grid(*args, **kwargs):
+        grid = grid_original(*args, **kwargs)
+        captured['grid'] = grid
+        return grid
+
+    def setup(*args, **kwargs):
+        result = setup_original(*args, **kwargs)
+        captured['psi'] = freeze(result.carry_init.get('cpml'))
+        bound = inspect.signature(setup_original).bind(*args, **kwargs)
+        bound.apply_defaults()
+        captured['sheets'] = freeze(bound.arguments['pec_sheets'])
+        return result
+
+    def factory(ctx, *args, **kwargs):
+        captured.update(grid=ctx.grid, faces=ctx.pec_faces_frozen, backend='uniform')
+        captured['boundary'] = {name: freeze(getattr(ctx, name)) for name in BOUNDARY_INPUTS}
+        # Capture the shared factory's derived absorber/material boundary
+        # coefficients too; this builds invariants, never advances fields.
+        invariants = kernel.core_step_invariants(ctx)
+        captured['invariants'] = {k: freeze(v) for k, v in invariants.items() if k != 'ctx'}
+        raise Captured
+
+    def nu_factory(*args, **kwargs):
+        result = nu_original(*args, **kwargs)
+        closure = closure_values(result.step_fn_inv)
+        captured.update(grid=args[0], faces=closure['_pec_faces_frozen'], backend='graded')
+        raise Captured
+
+    def distributed_factory(fun=None, *args, **kwargs):
+        # Both distributed runners build their complete step closure before
+        # handing the driver to jit. Stop at that builder boundary, before
+        # even tracing a field update. The recorded free variable is the
+        # actual pec_faces argument of the CPML step's wall application.
+        if fun is not None and fun.__module__ == 'rfx.runners.distributed_v2' and fun.__name__ in ('_run_cpml', '_run_pec'):
+            driver = closure_values(fun)
+            step = driver['step_fn_cpml' if fun.__name__ == '_run_cpml' else 'step_fn_pec']
+            bound = closure_values(step)
+            frame = inspect.currentframe().f_back
+            captured.update(grid=frame.f_locals['grid'],
+                            faces=bound['e_wall_faces'] if fun.__name__ == '_run_cpml' else bound['_pec_faces_frozen'],
+                            backend='distributed-uniform')
+            raise Captured
+        if fun is not None and fun.__module__ == 'rfx.runners.distributed_nu' and fun.__name__ == 'run_fn':
+            frame = inspect.currentframe().f_back
+            # The step omits pec_faces. Resolve that actual default inside
+            # the unmodified wall factory and stop at its shard-map builder;
+            # no state is read and no field operation is traced or executed.
+            from rfx.runners.distributed_nu import _apply_pec_face_nu_shmap
+            from rfx.runners import _distributed_common as walls
+            assert 'grid' in captured
+            captured['backend'] = 'distributed-graded'
+
+            def wall_factory(body, **kwargs):
+                captured['faces'] = closure_values(body)['pec_faces']
+                raise Captured
+
+            with patch.object(walls, 'rank_shard_map', wall_factory):
+                _apply_pec_face_nu_shmap(None, frame.f_locals['mesh'],
+                    frame.f_locals['n_devices'], frame.f_locals['nx_local'],
+                    pad_x=frame.f_locals['pad_x'], ranks=None)
+            raise AssertionError('distributed wall factory was not observed')
+        return jit_original(fun, *args, **kwargs)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError('backing-wall factory judge reached a field scan')
+
+    with ExitStack() as stack:
+        for obj, name, replacement in ((sim, '_build_nonuniform_grid', built_grid),
+                                       (kernel, '_build_step_setup', setup),
+                                       (kernel, 'make_core_step', factory),
+                                       (nu, '_build_nu_scan', nu_factory),
+                                       (jax, 'jit', distributed_factory),
+                                       (jax.lax, 'scan', forbidden)):
+            stack.enter_context(patch.object(obj, name, replacement))
+        with pytest.raises(Captured):
+            if invoke is not None:
+                invoke()
+            else:
+                kw = {'n_steps': 1, 'skip_preflight': True}
+                if entry == 'forward':
+                    kw['checkpoint'] = False
+                if path.startswith('distributed'):
+                    assert len(jax.devices('cpu')) >= 2
+                    kw['devices'] = jax.devices('cpu')[:2]
+                    if entry == 'forward':
+                        kw['distributed'] = True
+                getattr(sim, entry)(**kw)
+    return captured
+
+
+def refusal(case, entry, path):
+    if case == 'closed_box' and path != 'uniform':
+        return 'uniform, single-device'
+    if case == 'pmc' and path.startswith('distributed'):
+        return 'PMC|pmc'
+    if path == 'distributed-uniform' and entry == 'forward':
+        return 'only for non-uniform meshes'
+    if case == 'periodic' and path != 'uniform':
+        return 'periodic'
+    if case == 'pmc' and path.startswith('distributed'):
+        return 'PMC|pmc'
+    if case in ('plane', 'closed_box') and path == 'distributed-graded':
+        return 'TFSF'
+    if case in ('plane', 'closed_box') and path == 'graded' and entry == 'forward':
+        return 'TFSF|uniform'
+    if case == 'W-guide' and path == 'distributed-graded' and entry == 'forward':
+        return 'Waveguide|waveguide'
+    return None
+
+
+@pytest.fixture(autouse=True)
+def release_builds():
+    yield
+    jax.clear_caches()
+    gc.collect()
+
+
+@pytest.mark.parametrize('case', CASES)
+@pytest.mark.parametrize('entry', ('run', 'forward'))
+@pytest.mark.parametrize('path', PATHS)
+def test_wall_matrix(case, entry, path):
+    reason = refusal(case, entry, path)
+    if reason:
+        with pytest.raises((ValueError, NotImplementedError), match=reason):
+            capture(model(case, path), entry, path)
+        return
+    sim = model(case, path)
+    got = capture(sim, entry, path)
+    expected = expected_faces(sim, got['grid'], case, path)
+    assert got['faces'] == expected, f'{case}/{entry}/{path}: actual walls {sorted(got["faces"])} != declared {sorted(expected)}'
+
+
+@pytest.mark.parametrize('case', (*CASES, 'tube'))
+def test_uniform_boundary_inputs_equal(case):
+    pair = [capture(tube() if case == 'tube' else model(case), entry, 'uniform')
+            for entry in ('run', 'forward')]
+    for name in ('faces', 'boundary', 'psi', 'invariants', 'sheets'):
+        assert_equal(pair[0][name], pair[1][name], name)
+
+
+def tube():
+    """Issue 1549's 28-line model, unchanged geometry and 20 layers."""
+    dx, nx, layers = 25e-6, 2, 20
+    sim = Simulation(freq_max=10e9, domain=(nx*dx, 8*dx, 11*dx), dx=dx,
+                     cpml_layers=layers, boundary=BoundarySpec(x='cpml', y='pec', z='pec'))
+    for y in (2*dx, 5*dx):
+        sim.add(Box((0, y, 2*dx), (nx*dx, y, 7*dx)), material='pec')
+    for z in (2*dx, 7*dx):
+        sim.add(Box((0, 2*dx, z), (nx*dx, 5*dx, z)), material='pec')
+    sim.add_source((1.23*dx, 3*dx, 5*dx), 'ez', amplitude_kind='field',
+                   waveform=GaussianPulse(f0=5e9, bandwidth=1.6))
+    sim.add_probe((dx, 3*dx, 5*dx), 'ez')
+    sim.add_probe(((nx+layers)*dx, 4*dx, 4*dx), 'ez')
+    return sim
+
+
+def test_issue_probe_records_equal():
+    records = [np.asarray(getattr(tube(), entry)(n_steps=600, skip_preflight=True,
+                                               checkpoint=False).time_series)
+               for entry in ('run', 'forward')]
+    assert records[0].dtype == records[1].dtype
+    assert np.array_equal(*records), f'1549 probes differ: max delta {np.max(np.abs(records[0]-records[1]))}'
+
+
+@pytest.mark.slow
+def test_issue_pulse_never_grows():
+    res = tube().forward(n_steps=7000, skip_preflight=True, checkpoint=False)
+    a = np.asarray(res.time_series)
+    peak_end = int(np.ceil(4/(5e9*1.6*np.pi*res.dt)))
+    peak = np.max(np.abs(a[:peak_end]))
+    after = np.max(np.abs(a[peak_end:]))
+    assert np.isfinite(a).all()
+    assert after <= peak, f'1549 post-pulse peak {after} exceeds pulse peak {peak}; window ends {peak_end}'
+    print(f'1549 pulse_end={peak_end} peak={peak} post_peak={after} dt={res.dt}')
+
+
+@pytest.mark.parametrize('normalize,n_modes', [(False, 1), (True, 1), ('flux', 1),
+                                              (False, 2), ('flux', 2)])
+def test_class_W_calculator(normalize, n_modes):
+    sim = Simulation(30e9, (.04, .02, .01), dx=.001, cpml_layers=4,
+                     boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'})
+    for position, direction in ((.01, '+x'), (.03, '-x')):
+        sim.add_waveguide_port(position, direction=direction, f0=20e9,
+                              freqs=np.array([20e9]), n_modes=n_modes,
+                              probe_offset=2, ref_offset=1)
+    got = capture(sim, 'calculator', 'uniform', invoke=lambda: sim.compute_waveguide_s_matrix(
+        n_steps=1, normalize=normalize))
+    assert got['faces'] == expected_faces(sim, got['grid'], 'W-guide', 'uniform')
+
+
+def test_class_R_oblique_calculator():
+    from rfx.core.yee import init_materials
+    from rfx.rcs import compute_rcs
+    sim = Simulation(15e9, (.06, .08, .006), dx=.002, cpml_layers=6, boundary='cpml')
+    grid = sim._build_grid()
+    got = capture(sim, 'calculator', 'uniform', invoke=lambda: compute_rcs(
+        grid, init_materials(grid.shape), n_steps=1, f0=5e9, bandwidth=.5,
+        theta_inc=20., polarization='ez', theta_obs=np.array([np.pi/2]),
+        phi_obs=np.array([np.pi]), freqs=np.array([5e9]), cpml_layers=6, tfsf_margin=6))
+    record = realize(sim.boundary_model(), got['grid'])
+    expected = frozenset(f.name for f in record.faces if f.kind in (Kind.PEC, Kind.ABSORBER)
+                         and f.name[0] != 'z')  # Method B wraps only z.
+    assert got['faces'] == expected

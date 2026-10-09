@@ -185,7 +185,9 @@ def record_chain(line, dut, live, record_property):
 
 
 @pytest.mark.parametrize("kind,dut", [
-    pytest.param(kind, dut, id=f"{kind}-{dut}", marks=((WIRE_XFAIL, pytest.mark.slow) if kind == "wire" else ()))
+    pytest.param(kind, dut, id=f"{kind}-{dut}", marks=(
+        ((WIRE_XFAIL, pytest.mark.slow) if dut in ("matched", "res_double") else (pytest.mark.slow,))
+        if kind == "wire" else ()))
     for kind in ("lumped", "wire") for dut in DUTS
 ])
 def test_chain_load_plane_magnitude(kind, dut, record_property):
