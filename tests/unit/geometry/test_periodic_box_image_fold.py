@@ -106,3 +106,41 @@ def test_a_periodic_pec_volume_mask_is_a_jax_array_as_before():
         warnings.simplefilter('ignore')
         mask = sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])[3]
     assert isinstance(mask, jax.Array) and mask.dtype == bool
+
+
+def _line_sheet_footprint(y, boundary="periodic"):
+    from rfx import Box, Simulation
+    from rfx.boundaries.spec import BoundarySpec
+
+    sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1e-3,
+                     boundary=BoundarySpec(x="pec", y=boundary, z="pec"))
+    sim.add_thin_conductor(Box((0.01, y, 0.005), (0.01, y, 0.015)),
+                           sigma_bulk=5.8e7, thickness=35e-6)
+    return np.asarray(sim.realized_geometry().sheets[0].footprint)
+
+
+def test_zero_width_sheet_on_the_periodic_seam_is_the_same_line_as_anywhere_else():
+    """A sheet of zero in-plane width is one line of nodes. On the seam of a
+    periodic axis (y = 0 or y = L) it used to get no periodic image at all and
+    die with an internal error; it is the line at node 0, like the same sheet
+    drawn mid-domain and shifted there."""
+    middle = _line_sheet_footprint(0.01)
+    expected = np.zeros_like(middle)
+    expected[10, 0, 5:16] = True          # written by hand: x plane 10, y node 0, z 5..15 mm
+    assert np.array_equal(np.roll(middle, -10, axis=1), expected)
+    for y in (0.0, 0.02):
+        assert np.array_equal(_line_sheet_footprint(y), expected), y
+
+
+def test_zero_width_sheet_on_the_seam_runs():
+    from rfx import Box, Simulation
+    from rfx.boundaries.spec import BoundarySpec
+
+    sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1e-3,
+                     boundary=BoundarySpec(x="pec", y="periodic", z="pec"))
+    sim.add_thin_conductor(Box((0.01, 0.0, 0.005), (0.01, 0.0, 0.015)),
+                           sigma_bulk=5.8e7, thickness=35e-6)
+    sim.add_source((0.005, 0.01, 0.01), "ez")
+    sim.add_probe((0.012, 0.01, 0.01), "ez")
+    result = sim.run(n_steps=20, skip_preflight=True)
+    assert np.all(np.isfinite(np.asarray(result.time_series)))

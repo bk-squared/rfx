@@ -111,8 +111,10 @@ def _fill_image_range(grid, shape, axis, *, closed_footprint=False, padding=0.):
             # Preserve endpoint expression roundoff, including a bound one
             # float step outside [0,L]; it must not add an exterior image.
             return nearest if abs(q - nearest) <= 8 * math.ulp(max(1., abs(q))) else q
-        return range(math.floor(period_quotient(lo)),
-                     math.ceil(period_quotient(hi)))
+        # A footprint of zero width on a multiple of L is one rim, not none:
+        # it keeps the image that puts it on node 0.
+        first = math.floor(period_quotient(lo))
+        return range(first, max(math.ceil(period_quotient(hi)), first + 1))
     return range(math.floor(float(lo) / length),
                  math.floor(float(hi) / length) + 1)
 
