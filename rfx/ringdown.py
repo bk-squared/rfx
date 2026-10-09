@@ -1450,9 +1450,10 @@ class RingdownRun:
         keys = []
         seen = set()
 
-        def add(comp, idx):
+        def add(comp, idx, *, wire=True):
             key = (comp, tuple(int(v) for v in idx))
-            if key not in seen:
+            # Wire node spans can include an outside component entry.
+            if key not in seen and (not wire or field_index(self.grid, _node_position(self.grid, key[1]), comp) == key[1]):
                 seen.add(key)
                 keys.append(key)
 
@@ -1493,7 +1494,7 @@ class RingdownRun:
                     raise ValueError("identification probe position is outside the probeable interior (absorber pad or domain)")
             idx = tuple(int(v) for v in field_index(self.grid, position, component))
             identification_keys.append((component, idx))
-            add(component, idx)
+            add(component, idx, wire=False)
         self.identification_keys = tuple(identification_keys)
         for comp, idx in keys:
             pos = _node_position(self.grid, idx)

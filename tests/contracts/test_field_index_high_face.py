@@ -1,4 +1,4 @@
-"""High-face component resolution: declaration R1–R5, decisions 1–3."""
+"""High-face component resolution: declaration R1–R5, decisions 1–4."""
 
 import jax
 import numpy as np
@@ -284,3 +284,280 @@ def test_c2b_rlc(lane, boundary, axis, record_property):
         record_property('C2b', 'bit-identical; nonzero')
     finally:
         jax.clear_caches()
+
+
+@pytest.mark.parametrize('component,axis', [(c, a) for c, axes in DISPLACED.items() for a in axes])
+def test_c1_periodic_last_entry(component, axis):
+    grid = model('uniform_run', axis, 'periodic')._build_grid()
+    pos = list(C)
+    pos[axis] = L[axis] - .001
+    assert field_index(grid, pos, component)[axis] == (19, 15, 11)[axis]
+
+
+def subgrid_response(entity, top, d, monkeypatch):
+    from rfx.subgridding import jit_runner
+    sim = Simulation(freq_max=10e9, domain=L, dx=.001, boundary='pec')
+    sim.add_refinement((.003, top), ratio=2, validation='off')
+    point = (*C[:2], top - d * .0005)
+    pulse = GaussianPulse(f0=5e9, bandwidth=.8)
+    sim.add_source(point if entity == 'source' else C,
+                   'ez' if entity == 'source' else 'ex', waveform=pulse)
+    sim.add_probe(C if entity == 'source' else point,
+                  'ex' if entity == 'source' else 'ez')
+    seen = []
+    original = jit_runner.run_subgridded_jit
+
+    def capture(*args, **kwargs):
+        opts = kwargs['opts']
+        seen.append(tuple(opts.sources_f[0][:3]) if entity == 'source'
+                    else tuple(opts.probe_indices_f[0]))
+        return original(*args, **kwargs)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(jit_runner, 'run_subgridded_jit', capture)
+        data = np.asarray(sim.run(n_steps=200).time_series)
+    assert np.all(np.isfinite(data)) and np.max(np.abs(data)) > 0
+    assert len(seen) == 1
+    return data, seen[0]
+
+
+@pytest.mark.parametrize('entity', ('source', 'probe'))
+@pytest.mark.parametrize('top', (.009, .012))
+def test_c6_subgrid_interface_and_wall(entity, top, monkeypatch, record_property):
+    try:
+        wall, index = subgrid_response(entity, top, 0., monkeypatch)
+        record_property('peak', float(np.max(np.abs(wall))))
+        record_property('fine_index', index)
+        assert index == ((23, 17, 12) if top == .009 else (23, 17, 17))
+        if top == .012:
+            half, half_index = subgrid_response(entity, top, .5, monkeypatch)
+            assert half_index == (23, 17, 17)
+            assert_identical(wall, half)
+    finally:
+        jax.clear_caches()
+
+
+def ringdown_wall_model(graded, full):
+    kwargs = {'dz_profile': np.array([1] + [.9, 1.1] * 5 + [1]) * .001} if graded else {}
+    sim = Simulation(freq_max=10e9, domain=L, dx=.001, boundary='pec', cpml_layers=0, **kwargs)
+    start = 0. if full else (.0079 if graded else .008)
+    sim.add_port((*C[:2], start), 'ez', impedance=50., extent=.012-start,
+                 waveform=GaussianPulse(f0=5e9, bandwidth=.8))
+    return sim
+
+
+@pytest.mark.parametrize('graded', (False, True))
+@pytest.mark.parametrize('full', (False, True))
+def test_c7_ringdown_wire_to_wall(graded, full, monkeypatch, record_property):
+    from rfx.ringdown import RingdownRun, RingdownSpec
+    planned = []
+    original = RingdownRun._plan_probes
+
+    def capture(self):
+        keys = original(self)
+        planned.extend(keys)
+        return keys
+
+    monkeypatch.setattr(RingdownRun, '_plan_probes', capture)
+    sim = ringdown_wall_model(graded, full)
+    steps = 4000 if graded else 3000
+    try:
+        result = sim.run(n_steps=steps, s_param_n_steps=steps,
+                         s_param_freqs=np.linspace(3e9, 9e9, 7),
+                         compute_s_params=True, ringdown=RingdownSpec(), skip_preflight=True)
+        assert result.ringdown is not None
+        record_property('completed', bool(result.ringdown.report.completed))
+        record_property('failure', result.ringdown.report.failure)
+        assert planned
+        for component, index in planned:
+            for axis in DISPLACED[component]:
+                assert index[axis] != (20, 16, 12)[axis]
+    finally:
+        jax.clear_caches()
+
+
+def consumer_fixture(*, port=False, metal=False):
+    from rfx import Box
+    sim = Simulation(freq_max=10e9, domain=L, dx=.001, boundary='pec')
+    point = (.020, .0087, .0064)
+    if metal:
+        sim.add(Box((.019, .008, .005), (.020, .010, .007)), material='pec')
+    if port:
+        sim.add_port(point, 'ex', impedance=50., waveform=GaussianPulse(f0=5e9, bandwidth=.8))
+    grid = sim._build_grid()
+    return sim, grid, point
+
+
+@pytest.mark.parametrize('consumer', (
+    'measurement_probe', 'measurement_port', 'settling_drive', 'settling_probe',
+    'preflight_probe', 'conductor_release', 'source_admission', 'source_coefficients',
+    'sample_field', 'port_voltage', 'port_current', 'init_sparam_probe',
+    'port_terminal', 'material_fit', 'current_moments', 'rlc', 'source_stamp',
+    'sparam_recording', 'realized_geometry', 'vmap_source', 'eager_port',
+    'decay_monitor', 'design_box_port', 'design_box_source'))
+def test_c8_consumers(consumer, monkeypatch):
+    import importlib
+    from types import SimpleNamespace
+    import jax.numpy as jnp
+    from rfx.model.conductors import realized_conductors
+    from rfx.sources.sources import LumpedPort
+    sim, grid, point = consumer_fixture(port=True)
+    cell = (19, 9, 6)
+    entry = sim._ports[0]
+    port = LumpedPort(point, 'ex', 50., GaussianPulse(f0=5e9, bandwidth=.8))
+    if consumer.startswith('measurement_'):
+        from rfx.measurement.plan import build_measurement_plan
+        sim.add_probe(point, 'ex')
+        plan = build_measurement_plan(sim, grid, n_steps=2)
+        owner = next(o for o in plan.owners if o.id == ('probe:0' if consumer.endswith('probe') else 'port:0:mode:0'))
+        nodes = owner.channels[0].nodes
+        assert nodes and {(n.i, n.j, n.k) for n in nodes} == {cell}
+    elif consumer.startswith('settling_'):
+        from rfx.probes.settling import drive_cells, source_dominated_columns
+        if consumer == 'settling_drive':
+            assert drive_cells(grid, [entry]) == frozenset({cell})
+        else:
+            assert source_dominated_columns(grid, [entry], {cell}) == frozenset({0})
+    elif consumer in ('preflight_probe', 'source_admission', 'material_fit'):
+        sim, grid, point = consumer_fixture(metal=True)
+        if consumer == 'preflight_probe':
+            sim.add_probe(point, 'ex')
+            assert len(sim.preflight().by_code('port_in_pec')) == 1
+        elif consumer == 'source_admission':
+            from rfx.model.source_admission import _dead_sources
+            sim.add_source(point, 'ex')
+            messages = list(_dead_sources(sim, realized_conductors(sim, grid)))
+            assert len(messages) == 1 and 'grid index (19, 9, 6)' in messages[0]
+        else:
+            fit = importlib.import_module('rfx.differentiable_material_fit')
+            sim.add_port(point, 'ex')
+            model = realized_conductors(sim, grid)
+            with pytest.raises(NotImplementedError, match='PEC edge'):
+                fit._require_ports_clear_of_pec(sim, grid, model.pec_cells, model.sheets, model.wires)
+    elif consumer == 'conductor_release':
+        from dataclasses import replace
+        from rfx.model.conductors import lumped_port_stage
+        root = realized_conductors(sim, grid)
+        masks = tuple(jnp.ones(grid.shape, dtype=bool) for _ in range(3))
+        released = lumped_port_stage(replace(root, pec_edges=masks), entry, 'port[0]')
+        assert not bool(released.pec_edges[0][cell])
+        assert bool(released.pec_edges[0][20, 9, 6])
+        assert released.provenance[-1].edges == (cell,)
+    elif consumer == 'source_coefficients':
+        from rfx.model import source_coefficients
+        # Exercise the pad-edge admission consumer with a PEC x face and
+        # absorbers on y/z; no field solve is substituted or bypassed.
+        sim = Simulation(freq_max=10e9, domain=L, dx=.001,
+                         boundary={'x': 'pec', 'y': 'upml', 'z': 'upml'}, cpml_layers=2)
+        sim.add_source(point, 'ex', amplitude_kind='current')
+        grid = sim._build_grid()
+        assert sim._boundary == 'upml'
+        seen = []
+        original = source_coefficients._refuse_pad_edge
+
+        def capture(g, index, *args):
+            seen.append(index)
+            return original(g, index, *args)
+
+        monkeypatch.setattr(source_coefficients, '_refuse_pad_edge', capture)
+        queue = SimpleNamespace(resolve=lambda materials: [])
+        from rfx.model.materials import realize_components
+        materials = sim._assemble_materials(grid)[0]
+        materials = materials._replace(components=realize_components(
+            materials, grid, periodic=(False, False, False)))
+        source_coefficients.resolve_run_sources(queue, materials, sim, grid)
+        assert seen == [(19, 11, 8)]
+    elif consumer in ('sample_field', 'port_voltage', 'port_current', 'init_sparam_probe'):
+        from rfx.probes import probes
+        from rfx.core.yee import init_state
+        state = init_state(grid.shape)
+        state = state._replace(ex=state.ex.at[cell].set(3.), hz=state.hz.at[cell].set(7.))
+        if consumer == 'sample_field':
+            assert float(probes.sample_field(state, grid, probes.FieldMonitor(point, 'ex'))) == 3.
+        elif consumer == 'port_voltage':
+            assert float(probes.port_voltage(state, grid, port)) == pytest.approx(-.003)
+        elif consumer == 'port_current':
+            assert float(probes.port_current(state, grid, port)) == pytest.approx(.007)
+        else:
+            assert probes.init_sparam_probe(grid, port, FREQS).port_index == cell
+    elif consumer == 'port_terminal':
+        from rfx.geometry.port_termination import port_terminal_points
+        nodes = tuple([grid.node_of(a, i) for i in range(grid.shape[a])] for a in range(3))
+        start, end = port_terminal_points('_ports', entry, grid, nodes)
+        np.testing.assert_allclose(start, (.019, .009, .006), rtol=0, atol=1e-9)
+        np.testing.assert_allclose(end, (.020, .009, .006), rtol=0, atol=1e-9)
+    elif consumer == 'current_moments':
+        from rfx.current_moments import refuse_current_the_monitor_cannot_see
+        # With zero absorber layers the last stored displaced entry is
+        # outside. This low-level census permits CPML declarations.
+        sim = Simulation(freq_max=10e9, domain=L, dx=.001, boundary='cpml', cpml_layers=0)
+        sim.add_source(point, 'ex', amplitude_kind='current')
+        grid = sim._build_grid()
+        monitor = SimpleNamespace(i_lo=0, i_hi=21, j_lo=0, j_hi=17, k_lo=0, k_hi=13)
+        refuse_current_the_monitor_cannot_see(sim, grid, monitor)
+    elif consumer == 'rlc':
+        from rfx.lumped import LumpedRLCSpec, build_rlc_meta
+        meta = build_rlc_meta(grid, LumpedRLCSpec(position=point, component='ex', R=50., L=1e-9),
+                              sim._assemble_materials(grid)[0])
+        assert (meta.i, meta.j, meta.k) == cell
+    elif consumer == 'source_stamp':
+        from rfx.sources.sources import setup_lumped_port
+        materials = setup_lumped_port(grid, port, sim._assemble_materials(grid)[0])
+        assert set(port._drive_stamps) == {cell}
+        assert float(materials.sigma[cell]) > 0
+    elif consumer == 'sparam_recording':
+        from rfx.probes.sparam_driver import _lumped_recording_probes
+        probes, _ = _lumped_recording_probes(grid, [entry])
+        assert (probes[0].i, probes[0].j, probes[0].k) == cell
+    elif consumer == 'realized_geometry':
+        assert sim.realized_geometry().ports[0].edges == (cell,)
+    elif consumer == 'vmap_source':
+        sweep = importlib.import_module('rfx.vmap_sweep')
+        sim._ports.clear()
+        sim.add_source(point, 'ex', amplitude_kind='current')
+        seen = []
+
+        def capture(*args, **kwargs):
+            seen.extend(kwargs['j_source_meta'])
+            return lambda *args: None
+
+        monkeypatch.setattr(sweep, '_build_vmap_scan_fn', capture)
+        sweep._build_full_scan_fn(sim, grid, sim._assemble_materials(grid)[0], 2)
+        assert seen == [(19, 9, 6, 'ex')]
+    elif consumer == 'eager_port':
+        import rfx.simulation as stepping
+        from rfx.stepping.probe_loop import make_probe_step
+        monkeypatch.setattr(stepping, 'make_core_step', lambda ctx, **kwargs: ctx)
+        ctx, _ = make_probe_step(grid, sim._assemble_materials(grid)[0], [port], 0,
+                                use_cpml=False, cpml_params=None, cpml_axes='',
+                                debye=None, lorentz=None, pec_edge_masks=None, curl_boundary=None)
+        assert tuple(int(a[0]) for a in ctx.drives.electric.nodes['ex']) == cell
+    elif consumer == 'decay_monitor':
+        import rfx.simulation as stepping
+
+        class Captured(Exception):
+            pass
+
+        def capture(ctx):
+            assert ctx.mon_idx == cell
+            raise Captured
+
+        monkeypatch.setattr(stepping, 'core_step_invariants', capture)
+        with pytest.raises(Captured):
+            stepping.run_until_decay(grid, sim._assemble_materials(grid)[0], min_steps=1,
+                                     max_steps=2, monitor_position=point, monitor_component='ex')
+    else:
+        if consumer == 'design_box_source':
+            sim._ports.clear()
+            sim.add_source(point, 'ex')
+        kwargs = dict(design_box=((.018, .008, .005), (.018, .009, .006)),
+                      design_eps_override=jnp.ones((1, 2, 2)), design_sigma_override=None,
+                      design_occupancy_override=None, eps_override=None, sigma_override=None,
+                      mu_r_override=None, pec_occupancy_override=None, debye_spec=None,
+                      lorentz_spec=None, kerr_chi3=None, holds_ports=True)
+        if consumer == 'design_box_source':
+            with pytest.raises(ValueError, match='holds a soft source'):
+                sim._resolve_design_box_override(grid, **kwargs)
+        else:
+            spec, _ = sim._resolve_design_box_override(grid, **kwargs)
+            assert spec.held_edges == ((0, 19, 9, 6),)

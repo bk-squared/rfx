@@ -6,6 +6,7 @@ simulation, avoiding the need to store full time-series.
 
 from __future__ import annotations
 
+from rfx._grid_metric import field_index
 from dataclasses import dataclass
 from typing import NamedTuple
 
@@ -18,7 +19,7 @@ from rfx.measurement.plan import field_channel
 from rfx.grid import Grid
 from rfx.boundaries.axes import resolve_cpml_axes
 from rfx.boundaries.cpml import apply_cpml_e, apply_cpml_h, init_cpml
-from rfx.sources.sources import LumpedPort, _wire_port_live_cells, field_index
+from rfx.sources.sources import LumpedPort, _wire_port_live_cells, _wire_port_cells
 
 
 @dataclass(frozen=True)
@@ -1230,7 +1231,6 @@ def update_wire_sparam_probe(
     all-cells count, the historical behaviour and the degenerate
     no-dead-cells case).
     """
-    from rfx.sources.sources import _wire_port_cells
 
     t = state.step * dt  # keep traceable: float(state.step) leaked the tracer
     if n_live is None:

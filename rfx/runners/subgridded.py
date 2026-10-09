@@ -237,6 +237,13 @@ def _run_subgridded_once(
     )
     has_pec_f = bool(jnp.any(pec_mask_f)) if pec_mask_f is not None else False
 
+    # An interior fine-grid end is a coarse/fine interface, not a wall.
+    high_wall = tuple(
+        end == grid_coarse.shape[a]
+        and getattr(grid_coarse, f"pad_{'xyz'[a]}_hi", 0) == 0
+        and 'xyz'[a] not in grid_coarse.periodic_axes
+        for a, end in enumerate((fi_hi, fj_hi, fk_hi)))
+
     # Helper: convert physical position to fine-grid index
     def _pos_to_fine_idx(pos, component=None):
         idx = (
@@ -253,8 +260,11 @@ def _run_subgridded_once(
                 f"the fine grid shape ({nx_f}, {ny_f}, {nz_f}). "
                 f"Widen z_range in add_refinement() to cover all sources and probes.",
             )
-        return (idx if component is None else field_index(
-            fine_grid, (pos[0] - x_off, pos[1] - y_off, pos[2] - z_off), component))
+        if component is None or not any(high_wall):
+            return idx
+        resolved = field_index(
+            fine_grid, (pos[0] - x_off, pos[1] - y_off, pos[2] - z_off), component)
+        return tuple(resolved[a] if high_wall[a] else idx[a] for a in range(3))
 
     # Build sources on fine grid
     source_requests = []

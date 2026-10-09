@@ -148,17 +148,13 @@ def test_absorber_probe_refuses(lane):
 def test_identification_node_that_resolves_elsewhere_refuses(monkeypatch):
     sim = _box("uniform")
     grid = sim._build_grid()
-    original = rd._lane_resolver
+    original = rd.field_index
 
-    def resolver(lane, grid):
-        resolve = original(lane, grid)
+    def shifted(grid, position, component):
+        idx = original(grid, position, component)
+        return (idx[0] + 1, *idx[1:]) if position == (.006, .005, .002) else idx
 
-        def shifted(position):
-            idx = resolve(position)
-            return (idx[0] + 1, *idx[1:]) if position == (.006, .005, .002) else idx
-        return shifted
-
-    monkeypatch.setattr(rd, "_lane_resolver", resolver)
+    monkeypatch.setattr(rd, "field_index", shifted)
     with pytest.raises(RuntimeError, match="resolves to"):
         rd.RingdownRun(sim, rd.RingdownSpec(identification_probes=(((.0061, .005, .002), "ez"),)),
                        lane="uniform", n_steps=600, grid=grid)

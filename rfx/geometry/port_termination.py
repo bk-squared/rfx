@@ -1,4 +1,5 @@
 """Declared port terminations and exact contact diagnostics."""
+from rfx._grid_metric import field_index
 from dataclasses import dataclass
 from numbers import Integral
 from types import SimpleNamespace
@@ -199,7 +200,7 @@ def port_terminal_points(collection, port, grid, nodes):
         return tuple(port.position), tuple(tip)
     axis = "xyz".index(port.component[-1])
     if port.extent is None:
-        index = index_of(port.position)
+        index = field_index(grid, port.position, port.component)
         start = tuple(float(nodes[a][index[a]]) for a in range(3))
         end = list(start)
         end[axis] = float(nodes[axis][min(index[axis]+1, len(nodes[axis])-1)])
