@@ -1107,13 +1107,16 @@ _TFSF_RLC_DECAY = 1e-3
     (0.0, "series"), (1e-9, "series"), (0.0, "parallel"),
 ], ids=["series-RC", "series-RLC", "parallel-RC"])
 def test_tfsf_plane_wave_on_a_lumped_rlc_decays(l_h, topology):
-    sim = Simulation(freq_max=16e9, domain=(0.02, 0.02, 0.02), dx=0.02 / 20,
-                     boundary="cpml", cpml_layers=8, mode="3d")
+    # Declare the legacy transverse period, including its eight-cell pads and
+    # bounding node; translated coordinates retain the same sampled nodes.
+    sim = Simulation(freq_max=16e9, domain=(0.02, 0.037, 0.037), dx=0.02 / 20,
+                     boundary={"x": "cpml", "y": "periodic", "z": "periodic"},
+                     cpml_layers=8, mode="3d")
     sim.add_tfsf_source(f0=8e9, bandwidth=0.6, polarization="ez", direction="+x",
                         waveform="modulated_gaussian")
-    sim.add_lumped_rlc(position=(0.010, 0.010, 0.010), component="ez",
+    sim.add_lumped_rlc(position=(0.010, 0.018, 0.018), component="ez",
                        R=50.0, L=l_h, C=0.20e-12, topology=topology)
-    sim.add_vector_probe((0.010, 0.010, 0.010))
+    sim.add_vector_probe((0.010, 0.018, 0.018))
     ts = np.abs(np.asarray(
         sim.run(n_steps=_TFSF_RLC_STEPS, skip_preflight=True).time_series))
     assert np.all(np.isfinite(ts)), (
