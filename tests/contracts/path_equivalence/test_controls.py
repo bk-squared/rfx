@@ -177,8 +177,7 @@ def test_assembly_fingerprint_preserves_caller_and_message():
 
 def test_shared_cause_does_not_accept_another_cells_fingerprint():
     from .reporting import KnownFinding, assert_record, expand_findings, expectations
-    manifest = dict(causes={'assembly': dict(implementations=['rfx/example.py:1'],
-        fingerprints={'sheet': dict(value='ValueError: sheet', cells=['a']),
+    manifest = dict(causes={'assembly': dict(fingerprints={'sheet': dict(value='ValueError: sheet', cells=['a']),
                       'wire': dict(value='ValueError: wire', cells=['b'])}, witnesses={})},
         cells={'a': {'refusal': ['assembly']}, 'b': {'refusal': ['assembly']}})
     findings = expand_findings(manifest)
@@ -191,8 +190,7 @@ def test_shared_cause_does_not_accept_another_cells_fingerprint():
 
 def test_shared_witness_variant_keeps_record_scope_and_drift_check():
     from .reporting import assert_record, expand_findings, expectations
-    manifest = dict(causes={'numeric': dict(implementations=['rfx/example.py:1'],
-        fingerprints={'plane': dict(value='dft_planes.p: numeric', records=['observers']),
+    manifest = dict(causes={'numeric': dict(fingerprints={'plane': dict(value='dft_planes.p: numeric', records=['observers']),
                       'probe': dict(value='time_series: numeric', records=['probes'])},
         witnesses={'default': {'plane': dict(relative=0.1, relative_bar=1e-4)},
                    'long': {'plane': dict(relative=0.2, relative_bar=1e-4)}})},

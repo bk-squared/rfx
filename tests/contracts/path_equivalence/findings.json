@@ -1,35 +1,30 @@
 {
   "causes": {
     "flux-dA-shape": {
-      "implementations": ["rfx/simulation.py:2717", "rfx/nonuniform.py:3140"],
       "fingerprints": {
         "f1": {"value": "flux_monitors.flux_x_0.dA: shape differs: (1, 1) vs (13, 12)"}
       },
       "witnesses": {}
     },
     "flux-dA2-missing": {
-      "implementations": ["rfx/simulation.py:2717", "rfx/nonuniform.py:3140"],
       "fingerprints": {
         "f1": {"value": "flux_monitors.flux_x_0.dA2: record missing on A"}
       },
       "witnesses": {}
     },
     "forward-flux-record-missing": {
-      "implementations": ["rfx/api/_execute.py:2709", "rfx/api/_execute.py:2732"],
       "fingerprints": {
         "f1": {"value": "flux_monitors: record missing on A and B"}
       },
       "witnesses": {}
     },
     "nu-lumped-dft-record-missing": {
-      "implementations": ["rfx/api/_execute.py:2715", "rfx/api/_execute.py:2732", "rfx/runners/nonuniform.py:1356"],
       "fingerprints": {
         "f1": {"value": "lumped_port_sparams: record missing on B"}
       },
       "witnesses": {}
     },
     "nu-missing-vref": {
-      "implementations": ["rfx/simulation.py:2621", "rfx/simulation.py:2579", "rfx/nonuniform.py:3092"],
       "fingerprints": {
         "f1": {"value": "sparam_time_records.0.V_ref: record missing on B", "records": ["port_samples"]},
         "f2": {"value": "wire_port_sparams.0.V_ref: record missing on B", "cells": ["_ports:wire_port:fwd_uniform:fwd_nonuniform:constant:12", "_ports:wire_port:fwd_uniform:fwd_nonuniform:constant:36"], "records": ["port_dft"]}
@@ -37,7 +32,6 @@
       "witnesses": {}
     },
     "port-time-record-missing": {
-      "implementations": ["rfx/runners/uniform.py:1206", "rfx/simulation.py:2621", "rfx/runners/nonuniform.py:1935", "rfx/runners/distributed_v2.py:1614"],
       "fingerprints": {
         "f1": {"value": "sparam_time_records.0.V_port: record missing on A", "cells": ["_ports:lumped_port:fwd_uniform:fwd_nonuniform:constant:12", "_ports:passive_port:fwd_uniform:fwd_nonuniform:constant:12"]},
         "f2": {"value": "sparam_time_records: record missing on A and B", "cells": ["_ports:lumped_port:run_uniform:run_distributed:constant:12", "_ports:lumped_port:run_uniform:run_nonuniform:constant:12", "_ports:passive_port:run_uniform:run_nonuniform:constant:12"]},
@@ -46,14 +40,12 @@
       "witnesses": {}
     },
     "s-parameter-shape": {
-      "implementations": ["rfx/api/_execute.py:2668", "rfx/runners/nonuniform.py:1356"],
       "fingerprints": {
         "f1": {"value": "s_params: shape differs: (2,) vs (1, 1, 2)"}
       },
       "witnesses": {}
     },
     "uniform-wire-dft-record-missing": {
-      "implementations": ["rfx/runners/uniform.py:1212", "rfx/api/_execute.py:2719", "rfx/runners/nonuniform.py:1934"],
       "fingerprints": {
         "f1": {"value": "wire_port_sparams: record missing on A"}
       },

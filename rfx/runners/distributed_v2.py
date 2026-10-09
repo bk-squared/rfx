@@ -789,7 +789,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     probes = []
     port_idx = -1
     wire_edges = None
-    from rfx.model.conductors import lumped_port_stage
+    from rfx.model.conductors import lumped_port_stage, publish_port_release
     for _port_index, pe in enumerate(sim._ports):
         if pe.component not in ("ex", "ey", "ez"):
             raise ValueError(f"distributed_v2: unsupported source component {pe.component}")
@@ -809,6 +809,10 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
             port_idx += 1
             wp = wire_port_from_entry(pe)
             wire_edges = conductors.pec_edges
+            from rfx.sources.sources import _wire_port_live_cells
+            cells, live, _ = _wire_port_live_cells(grid, wp, wire_edges)
+            conductors = publish_port_release(conductors, [c for c, on in zip(cells, live) if on],
+                component=pe.component, entity_id=f"port[{_port_index}]", kind="wire")
             materials = setup_wire_port(grid, wp, materials, pec_edge_masks=wire_edges)
             if _source_port_indices is None or port_idx in _source_port_indices:
                 sources.defer(make_wire_port_sources,

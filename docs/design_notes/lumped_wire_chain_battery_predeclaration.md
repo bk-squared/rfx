@@ -138,3 +138,36 @@ Written after the battery ran. Nothing above is edited; what changed is recorded
    a magnetic-wall node plane returns the same `|S11| = 1` for every load while `forward()` is right
    (its own tracker issue). The battery measures `forward()`.
 
+
+## Decision record 2026-10-08 — the observables move with the circuit (comparator correction)
+
+The text above is unchanged. It was written for a load that TERMINATES the line (a wall or a
+resistor at the far end). The fixtures were rebuilt so that the internal TEM line runs through the
+absorber at both ends (no open stub, no wall as a line's end); the port and the load are then
+SHUNT elements on a through line. Two consequences, both properties of the circuit:
+
+- A matched shunt load is in parallel with the matched line beyond it, so the raw port `|S11|` is
+  between -14 and -6 dB for any electrical length; an open is an absent element (`S11 = -1/3`,
+  flat, with no electrical-length feature).
+- The raw-S phase slope of a shunt network is not `2 beta d`. Applying the old slope rule to the
+  new circuit read -8 % (half) and -20 % (double) — the model was wrong, not the solver: every
+  realized port and load node equals the node the closed form assumes (three meshes, two
+  separations, both port kinds), and the same records agree with the exact shunt network.
+
+Decision (lead, 2026-10-06 for the matched row; 2026-10-08 for the others):
+
+1. Every row is judged at the load plane: `Gamma_L` de-embedded with the exact network of the
+   circuit actually built (formula written in the test file, no product extractor): short `-1`,
+   half `-1/3`, double `+1/3`, matched `0` (floor `|Gamma_L| <= -20 dB`), open `+1` — an open
+   element must be invisible. Magnitude within 2 dB; phase against the prediction that adds the
+   measured one-cell element inductance (`0.214 mu0 dx` per element, rfx-archive
+   `rfx/records/20261007-1162-lumped-cell-inductance/`), judged as a three-mesh trend, not at one bin.
+2. Electrical length is judged by the bar's own definition (v2 bar item 5), once, on the short
+   row: the network is a one-port there, so the reflection-phase slope with the port's own
+   reflection removed (`tests/_electrical_length.py`), within 1 %. No new observable (no ripple
+   spacing) is introduced. If that slope cannot be formed on this circuit, the curve and the
+   reason go to the PI as a criterion question before anything else is chosen.
+3. The raw port `|S11|` is reported with every row and not judged.
+
+This is a correction of the comparator, not a change of a bar: the floors and tolerances are the
+ones above, applied to the quantity they were meant for.

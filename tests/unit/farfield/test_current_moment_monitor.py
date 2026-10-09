@@ -35,6 +35,7 @@ outside the source's block, over the source block's.
 
 from __future__ import annotations
 
+import ast
 import functools
 import importlib.util
 import sys
@@ -1239,29 +1240,40 @@ def test_monitor_mutations_are_caught(kind, name):
 
 def _load_mutated(path: Path, name: str, replacements):
     """Import a copy of a runner module with the given text edits applied."""
-    src = path.read_text()
+    original = src = path.read_text()
     for old, new in replacements:
         assert src.count(old) == 1, (path.name, src.count(old), old[:60])
         src = src.replace(old, new)
+
+    # Moving a slot must retain every call, including reduction and phase.
+    def calls(text):
+        return sorted(ast.dump(node) for node in ast.walk(ast.parse(text))
+                      if isinstance(node, ast.Call))
+    assert calls(src) == calls(original)
     spec = importlib.util.spec_from_loader(name, loader=None)
     mod = importlib.util.module_from_spec(spec)
     mod.__file__ = str(path)
     sys.modules[name] = mod
-    exec(compile(src, str(path), "exec"), mod.__dict__)
+    try:
+        exec(compile(src, str(path), "exec"), mod.__dict__)
+    except BaseException:
+        sys.modules.pop(name, None)
+        raise
     return mod
 
 
-UNIFORM_SRC = REPO_ROOT / "rfx" / "simulation.py"
+UNIFORM_RUNNER_SRC = REPO_ROOT / "rfx" / "simulation.py"
+UNIFORM_SRC = REPO_ROOT / "rfx" / "stepping" / "uniform.py"
 GRADED_SRC = REPO_ROOT / "rfx" / "nonuniform.py"
 
 _SNAP_UNI = ("        if ctx.use_current_moments:\n"
-             "            e_prev_slab = _slab_e_snapshot(st, ctx.current_moments)\n")
+             "            frame.e_prev_slab = _slab_e_snapshot(frame.st, ctx.current_moments)\n")
 _ACC_UNI = ("        if ctx.use_current_moments:\n"
-            "            cm_new = ctx.accumulate_current_moments(\n"
-            "                carry[\"current_moments\"], st, e_prev_slab,\n"
-            "                ctx.current_moments, dt, step_idx)\n")
-_SRCLOOP_UNI = "        # Soft sources — cast source value to field dtype"
-_RLC_UNI = "        # Lumped RLC ADE update (after E update + boundaries, before sources)"
+            "            frame.cm_new = ctx.accumulate_current_moments(\n"
+            "                frame.carry[\"current_moments\"], frame.st, frame.e_prev_slab,\n"
+            "                ctx.current_moments, dt, frame.step_idx)\n")
+_RLC_UNI = ("        if ctx.use_lumped_rlc:\n"
+            "            frame.new_rlc_states = []")
 
 _SNAP_NU = ("        if use_current_moments:\n"
             "            e_prev_slab = _slab_e_snapshot(st, current_moments)\n")
@@ -1275,7 +1287,7 @@ _RLC_NU = "        # Lumped RLC ADE update (after E update + boundaries, before 
 
 
 def _runner_mutations(kind):
-    """Three ways of getting the snapshot slot wrong, in the runner's own text.
+    """Three ways of getting the snapshot slot wrong, in its owning source.
 
     ``after the E update`` and ``after the source loop`` both break the vacuum
     identity, because the difference of the two electric fields no longer
@@ -1285,21 +1297,95 @@ def _runner_mutations(kind):
     witness cannot see, so the closed-form check is what has to catch it.
     """
     if kind == "uniform":
-        snap, acc, srcloop, rlc = _SNAP_UNI, _ACC_UNI, _SRCLOOP_UNI, _RLC_UNI
-        path, name = UNIFORM_SRC, "_mutated_rfx_simulation"
-        entry = "run"
+        snap, acc, rlc = _SNAP_UNI, _ACC_UNI, _RLC_UNI
+        # Split only this observer out of AFTER_SOURCES and attach it at
+        # BEFORE_SOURCES. Moving after_sources itself would also move ports,
+        # NTFF, planes and flux, which is a different defect.
+        before_sources = [
+            (acc, ""),
+            ("    attachments = {", "    def moved_current_moments(frame):\n"
+             + acc + "\n    attachments = {"),
+            ("or ctx.use_lumped_sparams or ctx.use_wire_refplanes) else ()),",
+             "or ctx.use_lumped_sparams or ctx.use_wire_refplanes) else ())"
+             " + (moved_current_moments,),"),
+        ]
     else:
         snap, acc, srcloop, rlc = _SNAP_NU, _ACC_NU, _SRCLOOP_NU, _RLC_NU
-        path, name = GRADED_SRC, "_mutated_rfx_nonuniform"
-        entry = "run_nonuniform"
+        before_sources = [(acc, ""), (srcloop, acc + srcloop)]
     return {
-        "snapshot taken after the E update": (
-            path, name + "_a", entry, [(snap, ""), (rlc, snap + rlc)]),
-        "snapshot taken after the source loop": (
-            path, name + "_b", entry, [(snap, ""), (acc, snap + acc)]),
-        "accumulated before the source loop": (
-            path, name + "_c", entry, [(acc, ""), (srcloop, acc + srcloop)]),
+        "snapshot taken after the E update": [(snap, ""), (rlc, snap + rlc)],
+        "snapshot taken after the source loop": [(snap, ""), (acc, snap + acc)],
+        "accumulated before the source loop": before_sources,
     }
+
+
+def _slot_case(kind, edits):
+    """Load private source copies, and route the case through their real step.
+
+    The uniform snapshot lives in prepare(); the accumulation lives in the
+    AFTER_SOURCES observer. Move just their guarded blocks: snapshot to the
+    constitutive kernel before RLC, snapshot to just before accumulation, or
+    accumulation to its own BEFORE_SOURCES attachment. All other observers
+    and the declared sequence remain in place.
+
+    Relative imports need a private name inside rfx.stepping. A separately
+    compiled simulation.py copy imports that exact private step module in
+    make_core_step. Neither production module is replaced in sys.modules.
+    The unmutated-copy canary uses this identical loading/binding path.
+    """
+    names = []
+    try:
+        if kind == "uniform":
+            step_name = "rfx.stepping._current_moment_slot_copy"
+            step = _load_mutated(UNIFORM_SRC, step_name, edits)
+            names.append(step_name)
+            make_step = step.make_uniform_step
+            executed = []
+
+            def observed_step(*args, **kwargs):
+                core = make_step(*args, **kwargs)
+                assert core.__module__ == step_name
+
+                def observed_core(*values):
+                    executed.append(core)
+                    return core(*values)
+                return observed_core
+
+            step.make_uniform_step = observed_step
+            name = "rfx._current_moment_runner_copy"
+            mod = _load_mutated(UNIFORM_RUNNER_SRC, name, [(
+                "    from rfx.stepping.uniform import make_uniform_step",
+                f"    from {step_name} import make_uniform_step")])
+            names.append(name)
+            case = CASE_BUILDERS[kind](with_planes=False, runner=mod.run)
+            assert executed, "the copied runner never executed the copied step"
+            return case
+        name = "rfx._current_moment_nonuniform_copy"
+        mod = _load_mutated(GRADED_SRC, name, edits)
+        names.append(name)
+        return CASE_BUILDERS[kind](with_planes=False, runner=mod.run_nonuniform)
+    finally:
+        for name in reversed(names):
+            sys.modules.pop(name, None)
+
+
+def _slot_witnesses(case, record_property):
+    vac = _vacuum_against_the_closed_form(case)
+    analytic, _vol = _analytic_source_moment(case)
+    g = _source_block(case)
+    src_err = float(np.max(np.abs(case["acc"][..., 0][:, g, 2] - analytic)
+                           / np.abs(analytic)))
+    record_property("vac", vac)
+    record_property("src_err", src_err)
+    return vac, src_err
+
+
+@pytest.mark.parametrize("kind", ["uniform", "graded"])
+def test_unmutated_snapshot_slot_copy_is_green(kind, record_property):
+    """The identical copy loader/binding path preserves both witnesses."""
+    vac, src_err = _slot_witnesses(_slot_case(kind, []), record_property)
+    assert vac <= VACUUM_BAR[kind], vac
+    assert src_err <= 1e-4, src_err
 
 
 @pytest.mark.parametrize("kind", ["uniform", "graded"])
@@ -1309,25 +1395,15 @@ def _runner_mutations(kind):
                  marks=pytest.mark.slow),
     pytest.param("accumulated before the source loop",
                  marks=pytest.mark.slow)])
-def test_snapshot_slot_mutations_in_the_runner(kind, mut):
+def test_snapshot_slot_mutations_in_the_runner(kind, mut, record_property):
     """Move the snapshot or the accumulate call in a copy of the runner.
 
     Not a switch turned off: every helper call stays, the monitor is still
     built, reduced and phased, and only the STEP at which the electric field
     is read moves.
     """
-    path, modname, entry, edits = _runner_mutations(kind)[mut]
-    mod = _load_mutated(path, modname, edits)
-    try:
-        case = CASE_BUILDERS[kind](with_planes=False,
-                                   runner=getattr(mod, entry))
-    finally:
-        sys.modules.pop(modname, None)
-    vac = _vacuum_against_the_closed_form(case)
-    analytic, _vol = _analytic_source_moment(case)
-    g = _source_block(case)
-    src_err = float(np.max(np.abs(case["acc"][..., 0][:, g, 2] - analytic)
-                           / np.abs(analytic)))
+    case = _slot_case(kind, _runner_mutations(kind)[mut])
+    vac, src_err = _slot_witnesses(case, record_property)
     vac_red = vac > VACUUM_BAR[kind]
     src_red = src_err > 1e-4
     if mut == "accumulated before the source loop":

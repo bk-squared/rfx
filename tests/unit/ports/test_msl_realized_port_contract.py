@@ -296,7 +296,7 @@ def test_forward_density_reservation_preserves_derivatives_outside_the_port(monk
     np.testing.assert_array_equal(derivative, [0., 3.])
 
 
-def test_kottke_density_guard_covers_the_outer_fringe_neighbour(monkeypatch):
+def test_kottke_release_preserves_the_nonincident_fringe_neighbour(monkeypatch):
     import jax.numpy as jnp
     import rfx.geometry.smoothing as smoothing
     import rfx.simulation as stepping
@@ -304,14 +304,14 @@ def test_kottke_density_guard_covers_the_outer_fringe_neighbour(monkeypatch):
     grid = sim._build_grid()
     # Four cells of lateral Laplace padding: trace ends at w=14,
     # last fringe source at w=18. Its positive w=19 neighbour is NOT
-    # among the four incident owners, but Kottke's dilation reads it.
+    # among the four incident owners and retains its design occupancy.
     edge, neighbour, remote = (8, 18, 8), (8, 19, 8), (2, 2, 2)
     density = jnp.zeros(grid.shape).at[neighbour].set(1.).at[remote].set(.4)
     original = smoothing.kottke_inv_eps_from_occupancy
     seen = []
 
     def observe(grid_arg, actual, **kwargs):
-        assert actual[neighbour] == 0.
+        assert actual[neighbour] == 1.
         assert actual[remote] == pytest.approx(.4)
         seen.append(True)
         return original(grid_arg, actual, **kwargs)

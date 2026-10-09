@@ -1,62 +1,34 @@
-"""A one-cell lumped port on a line terminated in a known resistor.
+"""Pure-R shunt-network oracle on an internal TEM line through both absorbers.
 
-Root cause this pins (scripts/diagnostics/lumped_port_known_load_line.py):
-the lumped lane sampled its physical V/I BEFORE source injection, read its
-diagonal with the PASSIVE port-branch algebra ``(V + Z0·I)/(V - Z0·I)`` on a
-DRIVEN port, and withheld the Yee half-step current phase.  On the fixture
-below it returned |S11| 0.714 / 1.248 / 4.757 where the closed form is
-0.333 / 0 / 0.333 — two of the three grossly non-passive.  The wire family
-had already been corrected on all three counts (#683, #764, half-step
-phase); a one-cell WIRE port is the SAME cell (setup_wire_port with
-n_live=1 folds the same sigma, apply_wire_port with n_live=1 adds the same
-injection), so the two lanes must agree here, and both must land on the
-closed form.
-
-The pre-B3b half-cell-wall fixture is a 4-cell air-filled parallel-plate channel: PEC plates on z,
-magnetic walls on y and behind the port, one cell wide and one cell high so
-the TEM line impedance is Zc = eta0.  The port sits at node 1 with its
-reference impedance set to Zc; a resistor R sits at node 3 and the magnetic
-wall beyond it carries no current, so the line is terminated in R alone.
-Then |S11| = |(R - Zc)/(R + Zc)| at EVERY frequency, independent of line
-length, of beta, and of the mesh's numerical dispersion.
+D1: the cheap mesh checks the predicted one-cell residual; the slow ladder
+also establishes first-order convergence to the unchanged pure-R answer.
 """
+from functools import lru_cache
+
+import json
 
 import numpy as np
 import pytest
-
 import jax.numpy as jnp
 
 from rfx import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.sources.sources import GaussianPulse
+from tests._interior_tem_line import (build, input_reflection, element_inductance,
+                                      assert_predicted_residual, assert_first_order, residuals, assert_solved_ports)
 
 ETA0 = 376.730313668
 DX = 1e-3
 N_NODES = 5
 FREQS_HZ = np.array([1.0, 2.5, 5.0, 7.5, 10.0]) * 1e9
-
-# An EMPIRICAL envelope on a fixture whose convergence is not shown, not a
-# discretization estimate.  Measured 2026-09-21: both lanes sit 0.00043 from
-# the closed form at 1 GHz, rising to 0.04206 at 10 GHz.
-#
-# What is known about that residual: it is antisymmetric in R (+0.0339 at
-# R = Zc/2, -0.0339 at R = 2 Zc, at 10 GHz) and fits ONE effective reference
-# impedance — Zc_eff/eta0 = 1.0805 from one load and 1.0782 from the other.
-# No cause is claimed.  The fixture cannot be mesh-refined: its cross-section
-# is one cell in each transverse direction BY CONSTRUCTION, which is how
-# Zc = eta0*h/w is arranged, so refining dx on the fixed structure leaves the
-# one-cell port no longer bridging the gap and |S11| goes to about 1.0 at
-# every load.  That the wire lane reads the same residual separates lane from
-# lane on a shared fixture; it is not a second witness for the fixture.
-#
-# So this bound is a lock on measured behaviour, not a derived error bar.
-# Widening it needs a written root cause, the same as any other gate; the
-# evidence these tests carry is the low-frequency agreement and the passivity
-# bound below, not the size of this number.
-CLOSED_FORM_ATOL = 0.05
+MESHES = (.25e-3, .125e-3, .0625e-3)
 
 
 def _build(kind, r_over_zc):
+    return _mesh(kind, r_over_zc, MESHES[0])[0]
+
+
+def _magnetic_plane_advisory_fixture(kind, r_over_zc):
     sim = Simulation(
         freq_max=10e9,
         domain=((N_NODES - 1) * DX, DX, DX),
@@ -84,19 +56,28 @@ def _build(kind, r_over_zc):
     return sim
 
 
-def _s11(kind, r_over_zc):
-    res = _build(kind, r_over_zc).forward(
+
+def _mesh(kind, ratio, dx):
+    return build(kind, ratio=ratio, dx=dx, cells=round(2.25e-3 / dx),
+                 axial_positions=(.25e-3, 1.5e-3), declared_separation=1.25e-3)
+
+
+@lru_cache(maxsize=None)
+def _s11(kind, r_over_zc, dx=.25e-3):
+    sim, line = _mesh(kind, r_over_zc, dx)
+    res = sim.forward(
         port_s11_freqs=jnp.asarray(FREQS_HZ),
-        num_periods=20.0,
+        num_periods=40.0,
         skip_preflight=True,
     )
+    assert_solved_ports(res, line, kind)
     return np.asarray(res.s_params).reshape(-1)
 
 
 @pytest.mark.parametrize("kind", ["lumped", "wire"])
 def test_line_on_magnetic_plane_preflight_reports_in_plane_wave(kind):
     """The advisory must allow a TEM wave along the line on the y_lo plane."""
-    report = _build(kind, 0.5).preflight()
+    report = _magnetic_plane_advisory_fixture(kind, 0.5).preflight()
     messages = [str(issue) for issue in report.issues
                 if issue.code == "source_decoupled"]
     assert len(messages) == 1
@@ -109,20 +90,18 @@ def test_line_on_magnetic_plane_preflight_reports_in_plane_wave(kind):
 
 
 
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason="#1221 B3b: ports lane re-judges with the moved walls")
 @pytest.mark.parametrize("kind", ["lumped", "wire"])
 @pytest.mark.parametrize("r_over_zc", [0.5, 1.0, 2.0])
-def test_lumped_port_s11_matches_the_closed_form_of_its_load(r_over_zc, kind):
-    """|S11| of a driven one-cell lumped port is |(R - Zc)/(R + Zc)|."""
-    gamma = abs((r_over_zc - 1.0) / (r_over_zc + 1.0))
-    s11 = np.abs(_s11(kind, r_over_zc))
-    err = np.abs(s11 - gamma)
-    assert err.max() <= CLOSED_FORM_ATOL, (
-        f"R = {r_over_zc} Zc: closed form |S11| = {gamma:.5f} at every bin; "
-        f"lumped read {np.round(s11, 5)} (per-bin error {np.round(err, 5)}) "
-        f"at {FREQS_HZ / 1e9} GHz"
-    )
+def test_lumped_port_s11_matches_the_closed_form_of_its_load(r_over_zc, kind, record_property):
+    _, line = _mesh(kind, r_over_zc, MESHES[0])
+    record_property("realized_d_m", line.length)
+    pure = input_reflection(line, FREQS_HZ, r_over_zc * line.zc)
+    predicted = input_reflection(line, FREQS_HZ, r_over_zc * line.zc,
+                                 element_l=element_inductance(line))
+    measured = _s11(kind, r_over_zc)
+    record_property("s11", json.dumps(np.stack([measured.real, measured.imag], axis=-1).tolist()))
+    record_property("residuals", json.dumps(residuals(measured, pure, predicted)))
+    assert_predicted_residual(measured, pure, predicted)
 
 
 @pytest.mark.parametrize("r_over_zc", [0.5, 1.0, 2.0])
@@ -154,3 +133,71 @@ def test_lumped_and_one_cell_wire_port_agree_on_the_same_cell(r_over_zc):
         f"R = {r_over_zc} Zc: lumped {np.round(np.abs(lumped), 6)} vs wire "
         f"{np.round(np.abs(wire), 6)} on the identical cell"
     )
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("kind", ["lumped", "wire"])
+@pytest.mark.parametrize("r_over_zc", [.5, 1., 2.])
+def test_internal_coax_three_mesh_trend(kind, r_over_zc, record_property):
+    errors, phases = [], []
+    for dx in MESHES:
+        _, line = _mesh(kind, r_over_zc, dx)
+        record_property(f"realized_d_{dx}", line.length)
+        measured = _s11(kind, r_over_zc, dx)
+        pure = input_reflection(line, FREQS_HZ, r_over_zc * line.zc)
+        predicted = input_reflection(line, FREQS_HZ, r_over_zc * line.zc,
+                                     element_l=element_inductance(line))
+        record_property(f"s11_{dx}", json.dumps(np.stack([measured.real, measured.imag], axis=-1).tolist()))
+        record_property(f"residuals_{dx}", json.dumps(residuals(measured, pure, predicted)))
+        assert_predicted_residual(measured, pure, predicted)
+        errors.append(np.abs(measured - pure))
+        phases.append(np.abs(np.angle(measured / pure)))
+    record_property("complex_order", json.dumps(assert_first_order(MESHES, errors).tolist()))
+    record_property("phase_order", json.dumps(assert_first_order(MESHES, phases).tolist()))
+
+
+def test_residual_check_rejects_missing_inductance_and_shifted_load():
+    """Arithmetic sensitivity: removing the check must make this test red."""
+    from dataclasses import replace
+
+    _, line = _mesh("lumped", 1., MESHES[0])
+    pure = input_reflection(line, FREQS_HZ, line.zc)
+    predicted = input_reflection(line, FREQS_HZ, line.zc,
+                                 element_l=element_inductance(line))
+    with pytest.raises(AssertionError, match="complex residual"):
+        assert_predicted_residual(predicted, pure, pure)
+    moved = input_reflection(replace(line, length=line.length + line.dx),
+                             FREQS_HZ, line.zc, element_l=element_inductance(line))
+    with pytest.raises(AssertionError, match="complex residual"):
+        assert_predicted_residual(moved, pure, predicted)
+
+
+def test_geometry_and_trend_checks_reject_restored_defects():
+    from dataclasses import replace
+    from tests._interior_tem_line import assert_realized_separation
+
+    _, line = _mesh("lumped", 1., MESHES[0])
+    with pytest.raises(AssertionError):
+        assert_realized_separation(replace(line, length=line.length + line.dx), 1.25e-3)
+    with pytest.raises(AssertionError):
+        assert_first_order(MESHES, [1., 1., 1.])
+    # A solved spec displaced from the declared snap must be observable even
+    # before comparing the measured spectrum (no extra FDTD solve here).
+    from types import SimpleNamespace
+    spec = SimpleNamespace(i=line.port[0]+1, j=line.port[1], k=line.port[2])
+    result = SimpleNamespace(lumped_port_sparams=((spec, None),))
+    with pytest.raises(AssertionError, match="solved port cell"):
+        assert_solved_ports(result, line)
+
+
+@pytest.mark.parametrize("errors", [[.1, .5, .025], [.1, .2, .025], [.1, 1e-9, .025]],
+                         ids=["middle-high", "nonmonotone", "middle-low"])
+def test_order_rejects_reviewers_middle_mesh_mutations(errors):
+    with pytest.raises(AssertionError, match="successive mesh orders"):
+        assert_first_order([.1, .05, .025], errors)
+
+
+@pytest.mark.parametrize("bad", [0., np.nan, np.inf, -1.])
+def test_order_refuses_nonpositive_or_nonfinite_errors(bad):
+    with pytest.raises(AssertionError, match="finite and strictly positive"):
+        assert_first_order([.1, .05, .025], [.1, bad, .025])

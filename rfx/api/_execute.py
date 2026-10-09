@@ -1669,8 +1669,6 @@ class _ExecuteMixin:
         else:
             _s11_freqs_arr = None
 
-        _port_cleared_cells: list[tuple[int, int, int]] = []
-
         # Multi-drive S-matrix hook (item-5 Stage 1): 0-based counter over the
         # sparam-eligible lumped/wire ports (impedance != 0) in registration
         # order. When ``_sparam_drive_idx`` is set, only the port whose counter
@@ -1735,9 +1733,8 @@ class _ExecuteMixin:
                 # Clear PEC mask/occupancy at LIVE wire cells only (issue
                 # #318 commit 2). Dead extent cells stay PEC — the old
                 # all-cells clearing punched a one-cell in-plane
-                # conductivity hole in the DUT conductor. The Kottke
-                # occupancy-neighbor clearing below keys off
-                # ``_port_cleared_cells`` and is scoped the same way.
+                # conductivity hole in the DUT conductor. Only live edges
+                # publish incident cells for occupancy release.
                 from rfx.sources.sources import _wire_port_live_cells
                 _, wp_live_flags, _ = _wire_port_live_cells(
                     grid, wp, pec_edge_masks_local)
@@ -1748,12 +1745,8 @@ class _ExecuteMixin:
                 # releasing that component is a no-op, and releasing the two
                 # tangential edges would open the conductor the port foot
                 # stands on.  The CELL clearing below stays: it is the
-                # volume/occupancy carrier the Kottke guard keys off.
-                conductors, pec_mask_local, pec_edge_masks_local = _conductors.forward_port_stage(conductors, _wp_live_cells, pe.component, f"port[{_port_index}]", release_edges=False)
-                for cell in _wp_live_cells:
-                    if pec_occupancy_local is not None:
-                        pec_occupancy_local = pec_occupancy_local.at[cell[0], cell[1], cell[2]].set(0.0)
-                    _port_cleared_cells.append((int(cell[0]), int(cell[1]), int(cell[2])))
+                # volume carrier; the stage also publishes live port edges.
+                conductors, pec_mask_local, pec_edge_masks_local = _conductors.forward_port_stage(conductors, _wp_live_cells, pe.component, f"port[{_port_index}]", port_kind="wire", release_edges=False)
                 # Register a JIT-integrated S-param accumulator for this
                 # WirePort when forward(port_s11_freqs=...) was requested
                 # (issue #79 follow-up to PR #72). Mirrors the lumped
@@ -1876,9 +1869,6 @@ class _ExecuteMixin:
                 sources.defer(make_port_source, grid, lp, n_steps=n_steps)
             idx = grid.position_to_index(pe.position)
             conductors, pec_mask_local, pec_edge_masks_local = _conductors.forward_lumped_port_stage(conductors, pe, f"port[{_port_index}]")
-            if pec_occupancy_local is not None:
-                pec_occupancy_local = pec_occupancy_local.at[idx[0], idx[1], idx[2]].set(0.0)
-            _port_cleared_cells.append((int(idx[0]), int(idx[1]), int(idx[2])))
             # Register a JIT-integrated S-param accumulator for this
             # lumped port when the user requested forward(port_s11_freqs=...)
             # (issue #72). Skipping passive ports keeps S11 indexing
@@ -1988,30 +1978,9 @@ class _ExecuteMixin:
                 # Clear PEC mask over the cross-section so the source/σ cells
                 # are not zeroed by the PEC update.
                 _msl_cells = list(_msl_yz_cells(grid, mp))
-                conductors, pec_mask_local, pec_edge_masks_local = _conductors.forward_port_stage(conductors, _msl_cells, _msl_normal_component(mp), f"msl_port[{_msl_port_index}]", skip_empty=True)
-                # The Laplace source AND termination extend beyond the
-                # trace footprint. Reserve that actual modal support from
-                # density edits, including its fringe and Kottke neighbours.
-                _msl_density_cells = (mode_profile["cell_indices"]
-                                      if mode_profile is not None else _msl_cells)
-                _port_cleared_cells.extend(tuple(map(int, c)) for c in _msl_density_cells)
-                if pec_occupancy_local is not None and _msl_density_cells:
-                    # Ez[i,j,k] is owned by four primal cells (#931 §1.2),
-                    # including (i-1,j-1,k). The existing six-face Kottke
-                    # guard below cannot reserve that diagonal owner.
-                    # Reserve only this fixed port region; keep the traced
-                    # design density and its derivatives elsewhere intact.
-                    reserved = set()
-                    for i, j, k in _msl_density_cells:
-                        for di, dj in ((0, 0), (-1, 0), (0, -1), (-1, -1)):
-                            idx = [i + di, j + dj, k]
-                            for axis in (0, 1):
-                                if periodic_bool[axis] or grid.shape[axis] == 1:
-                                    idx[axis] %= grid.shape[axis]
-                            if all(0 <= idx[a] < grid.shape[a] for a in range(3)):
-                                reserved.add(tuple(idx))
-                    indices = tuple(np.asarray(sorted(reserved), dtype=int).T)
-                    pec_occupancy_local = pec_occupancy_local.at[indices].set(0.0)
+                conductors, pec_mask_local, pec_edge_masks_local = _conductors.forward_port_stage(
+                    conductors, _msl_cells, _msl_normal_component(mp), f"msl_port[{_msl_port_index}]",
+                    port_kind="microstrip", skip_empty=True, released_edges=(mode_profile["cell_indices"] if mode_profile is not None else _msl_cells))
 
         for pe in self._probes:
             probes.append(make_probe(grid, pe.position, pe.component))
@@ -2101,64 +2070,8 @@ class _ExecuteMixin:
                     comp = {"z": "ey", "x": "ez", "y": "ez"}[fpe.axis]
                 from rfx.simulation import make_source as _make_src
                 sources.append(_make_src(grid, tuple(center), comp, wf, n_steps))
-        # ── Port guard on the occupancy (issue #82; runs on both lanes) ──
-        # The tensor lane (``RFX_PEC_OCC_KOTTKE=1``) used to dilate the
-        # occupancy by one cell on every face, so a probe-fed patch one
-        # cell above its port wrote the patch into the port's inv_eps
-        # (60x–223 % AD gradient mismatch); clearing the six face
-        # neighbours of every port cell matched that reach. Since #1197
-        # the lane uses the contract's incidence rule, whose reach is the
-        # four backward incident cells — the plain lane's reach all along,
-        # which this guard never covered (in-plane diagonals). Kept as is;
-        # the gap is one for the port lane, noted on #1197.
-        if pec_occupancy_local is not None and _port_cleared_cells:
-            for ci, cj, ck in _port_cleared_cells:
-                for di, dj, dk in ((1,0,0),(-1,0,0),(0,1,0),(0,-1,0),(0,0,1),(0,0,-1)):
-                    ni = min(max(ci + di, 0), grid.nx - 1)
-                    nj = min(max(cj + dj, 0), grid.ny - 1)
-                    nk = min(max(ck + dk, 0), grid.nz - 1)
-                    pec_occupancy_local = pec_occupancy_local.at[ni, nj, nk].set(0.0)
-
-        # #1183: a design occupancy box may not overlap the cells the port
-        # setup CLEARS. A port cell's occupancy is forced to 0 above — the
-        # cell itself, its six face neighbours, and an MSL port's in-plane
-        # diagonal owners — because the port drives that edge and the
-        # conductor around it would short the drive. The design box writes
-        # its own occupancy over its window AFTER that clearing is decided,
-        # so a box reaching those cells realizes metal the same run would
-        # have cleared through ``pec_occupancy_override``. Measured on a
-        # 50 ohm Ez port inside the box: the value moves 99 % and the
-        # gradient 98 %, with no error.
-        if design_occupancy is not None and _port_cleared_cells:
-            _cleared = set()
-            for _ci, _cj, _ck in _port_cleared_cells:
-                _cleared.add((_ci, _cj, _ck))
-                for _d in ((1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0),
-                           (0, 0, 1), (0, 0, -1),
-                           (-1, -1, 0)):  # the MSL in-plane diagonal owner
-                    _cleared.add((
-                        min(max(_ci + _d[0], 0), grid.nx - 1),
-                        min(max(_cj + _d[1], 0), grid.ny - 1),
-                        min(max(_ck + _d[2], 0), grid.nz - 1)))
-            _b = design_occupancy.bounds
-            # The WRITE window, which is the box grown one cell on the plus
-            # side (rfx.boundaries.pec.pec_occupancy_box_keep).
-            _w = tuple((_b[2 * d], min(_b[2 * d + 1] + 1, grid.shape[d]))
-                       for d in range(3))
-            _hits = sorted(
-                c for c in _cleared
-                if all(_w[d][0] <= c[d] < _w[d][1] for d in range(3)))
-            if _hits:
-                raise ValueError(
-                    f"the design occupancy box (cells {_b}) covers port-"
-                    f"cleared cell(s) {_hits[:6]}"
-                    + (f" and {len(_hits) - 6} more" if len(_hits) > 6 else "")
-                    + ". A port forces the occupancy to zero at its own "
-                    "cell and around it before the run, so the design "
-                    "values written there would realize metal the same "
-                    "occupancy handed to pec_occupancy_override would not "
-                    "(#1183). Move the box off the port, or use "
-                    "pec_occupancy_override.")
+        pec_occupancy_local = _conductors.release_port_occupancy(pec_occupancy_local, conductors)
+        _conductors.refuse_port_design_box(design_occupancy, conductors)
 
         # Tensor lane (opt-in via ``RFX_PEC_OCC_KOTTKE=1``): when
         # ``pec_occupancy_local`` is supplied, build an ``aniso_inv_eps``

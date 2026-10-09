@@ -1,111 +1,72 @@
-"""Two one-cell ports on a line matched at both ends.
+"""Two radial shunt ports on a TEM line continued through both absorbers.
 
-The single-port known-load line
-(tests/unit/ports/test_lumped_port_known_load_line.py) gives the DIAGONAL an
-exact answer. This fixture gives the OFF-DIAGONAL one, which the lumped family
-did not have: two one-cell ports on the same parallel-plate channel, each
-carrying ``impedance = Zc``, so each folds a ``Zc`` conductance into its own
-cell and the line is matched at both ends. Then
-
-    S11 = 0   and   S21 = exp(-j beta L),  |S21| = 1
-
-at every frequency, independent of the line length.
-
-What it pins
-------------
-Both entries, on both lanes, against the closed form — and lumped against wire
-on the identical cells, where the two must agree because they ARE the same
-port (same sigma, same injection, same V/I channels at ``n_live = 1``).
-
-These historical numbers precede the B3b declared-face image.
-B3b keeps the thresholds below; only failed closed-form assertions are
-strict xfails for the ports lane to re-judge with the moved walls.
-
-This fixture is what moved the lumped off-diagonal. Measured here across the
-2026-09-21 work:
-
-    lumped  |S11|  1.24831 -> 0.04206      (closed form 0)
-    lumped  |S21|  2.24752 -> 1.00005      (closed form 1)
-    wire    |S21|  1.00005 (unchanged)
-
-The diagonal moved when a driven port started reading its terminal V/I pair.
-The off-diagonal moved when the lumped N-port decomposition stopped being a
-separately calibrated per-cell convention and became the wire family's
-whole-port decomposition evaluated at one live cell — the per-cell frame built
-its incident wave as ``(-V_ref + Z0 I)``, negated and on the pre-injection
-sample, and read 2.25 where the closed form is 1 while the wire lane on the
-same cells read 1.00005. One port cannot have two answers.
+The pure-R network remains the oracle. The series-cell residual prediction
+and the slow ladder's fitted order are separate checks. The receiving-port
+S21 model is not established: its three predictions are reported only. The
+residual verdict is the fixed-separation three-mesh trend; the pure-network
+magnitude also retains its always-on 0.01 bar.
 """
+from functools import lru_cache
+
+import json
+import sys
+from unittest.mock import patch
 
 import numpy as np
 import pytest
 
-C0 = 299792458.0
+from tests._interior_tem_line import (build, two_port, element_inductance,
+                                      assert_predicted_residual, assert_first_order, residuals, assert_solved_ports)
 
-from rfx import Simulation
-from rfx.boundaries.spec import Boundary, BoundarySpec
-from rfx.sources.sources import GaussianPulse
-
-ETA0 = 376.730313668
-DX = 1e-3
-N_NODES = 5
 FREQS_HZ = np.array([1.0, 2.5, 5.0, 7.5, 10.0]) * 1e9
-
-# The same empirical envelope the single-port line uses, for the same reason:
-# this cross-section is one cell by construction, so the fixture admits no mesh
-# refinement and the bound is measured behaviour, not a derived error bar.
 CLOSED_FORM_ATOL = 0.05
 
 
+MESHES = (.1e-3, .05e-3, .025e-3)
+
+
+def _mesh(kind, dx):
+    return build(kind, two=True, dx=dx, cells=round(.9e-3 / dx),
+                 axial_positions=(.1e-3, .6e-3), declared_separation=.5e-3)
+
+
 def _build(kind):
-    sim = Simulation(
-        freq_max=10e9,
-        domain=((N_NODES - 1) * DX, DX, DX),
-        dx=DX,
-        boundary=BoundarySpec(
-            x=Boundary(lo="pmc", hi="pmc"),
-            y=Boundary(lo="pmc", hi="pmc"),
-            z=Boundary(lo="pec", hi="pec"),
-        ),
-    )
-    extra = {} if kind == "lumped" else {"extent": DX}
-    for node in (1, N_NODES - 2):
-        sim.add_port(
-            position=(node * DX, 0.0, 0.0), component="ez", impedance=ETA0,
-            waveform=GaussianPulse(f0=5e9, bandwidth=1.6), **extra,
-        )
-    return sim
+    return _mesh(kind, MESHES[0])[0]
 
 
-def _s_matrix(kind):
-    res = _build(kind).run(
-        compute_s_params=True, s_param_freqs=FREQS_HZ, skip_preflight=True,
-    )
+@lru_cache(maxsize=None)
+def _s_matrix(kind, dx=.1e-3):
+    sim, line = _mesh(kind, dx)
+    forward = sim._forward_from_materials
+    checked = []
+
+    def checked_scan(*args, **kwargs):
+        raw = forward(*args, **kwargs)
+        if isinstance(raw, dict) and "lumped" in raw:
+            assert_solved_ports(raw, line, kind, two=True)
+            checked.append(True)
+        return raw
+
+    with patch.object(sim, "_forward_from_materials", checked_scan):
+        res = sim.run(compute_s_params=True, s_param_freqs=FREQS_HZ,
+                      skip_preflight=True)
+    assert len(checked) == 2, "both independent port drives must expose their solved specs"
     return np.asarray(res.s_params)
 
 
-def _realized_port_separation(kind):
-    """Port-to-port distance the GRID built, in metres, and its cell size.
-
-    Read off the built grid rather than the declared geometry: the test is
-    about where the ports ended up, and a rasterization change that moved
-    them would otherwise be hidden by the declaration agreeing with itself.
-    """
-    sim = _build(kind)
-    grid = sim._build_grid()
-    idx = [grid.position_to_index(pe.position) for pe in sim._ports]
-    n_cells = abs(int(idx[1][0]) - int(idx[0][0]))
-    return n_cells * float(grid.dx), float(grid.dx)
+def _expected(kind):
+    _, line = _mesh(kind, MESHES[0])
+    return two_port(line, FREQS_HZ)
 
 
 @pytest.mark.parametrize("kind", ["lumped", "wire"])
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason="#1221 B3b: ports lane re-judges with the moved walls")
-def test_a_line_matched_at_both_ends_reflects_nothing(kind):
-    """S11 = 0 in closed form, because each port terminates the line in Zc."""
+def test_two_shunt_ports_match_the_pure_network_magnitude(kind, record_property):
+    """Shunt ports reflect even when both reference resistances equal Zc."""
     s11 = np.abs(_s_matrix(kind)[0, 0])
-    assert s11.max() <= CLOSED_FORM_ATOL, (
-        f"{kind}: closed form |S11| = 0 at every bin; read {np.round(s11, 5)} "
+    record_property("measured_s11", json.dumps(s11.tolist()))
+    record_property("closed_form_s11", json.dumps(np.abs(_expected(kind)[0, 0]).tolist()))
+    assert np.abs(s11 - np.abs(_expected(kind)[0, 0])).max() <= CLOSED_FORM_ATOL, (
+        f"{kind}: TEM through line; read {np.round(s11, 5)} "
         f"at {FREQS_HZ / 1e9} GHz")
 
 
@@ -116,29 +77,6 @@ def test_the_two_lanes_agree_on_the_diagonal_of_the_same_cells():
     assert np.allclose(lumped, wire, rtol=0.0, atol=1e-6), (
         f"lumped {np.round(np.abs(lumped), 6)} vs wire "
         f"{np.round(np.abs(wire), 6)} on the identical cells")
-
-
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason="#1221 B3b: ports lane re-judges with the moved walls")
-def test_the_wire_off_diagonal_matches_the_closed_form():
-    """|S21| = 1 on a matched lossless line. The wire lane reads it."""
-    s21 = np.abs(_s_matrix("wire")[1, 0])
-    assert np.abs(s21 - 1.0).max() <= 0.01, (
-        f"closed form |S21| = 1 at every bin; wire read {np.round(s21, 5)}")
-
-
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason="#1221 B3b: ports lane re-judges with the moved walls")
-def test_the_lumped_off_diagonal_matches_the_closed_form():
-    """|S21| = 1 on a matched lossless line. The lumped lane reads it too.
-
-    The gate is the wire lane's own measured envelope on this fixture, 0.01
-    against a worst bin of 0.00459. Before the lumped decomposition became
-    the wire one at n_live = 1, this read 2.24752.
-    """
-    s21 = np.abs(_s_matrix("lumped")[1, 0])
-    assert np.abs(s21 - 1.0).max() <= 0.01, (
-        f"closed form |S21| = 1 at every bin; lumped read {np.round(s21, 5)}")
 
 
 def test_the_two_lanes_agree_on_every_entry_of_the_same_cells():
@@ -156,49 +94,88 @@ def test_the_two_lanes_agree_on_every_entry_of_the_same_cells():
         f"{np.round(np.abs(wire), 6)}")
 
 
-# The port's reference plane is not the cell it occupies. MEASURED on this
-# fixture: two one-cell ports two cells apart read as 1.5001 cells apart at
-# 1 GHz, rising to 1.514 at 10 GHz, and the wire lane gives the same numbers
-# to every digit. Magnitudes are unaffected (|S21| = 1.000055 ... 1.00459).
-# The offset is half a cell, frequency-independent to four digits at the low
-# end where the mesh's own dispersion is smallest; the climb above it is that
-# dispersion. This is a statement of what was measured, on both lanes, before
-# and after the 2026-09-21 work — NOT a claim about its cause.
-#
-# So the electrical length this line presents is the realized port separation
-# less half a cell. Against that, the residual phase error is 0.0002 deg at
-# 1 GHz and 0.1684 deg at 10 GHz. The gate below is 1.0 deg across the band,
-# a measured envelope with 5.9x margin on the worst bin.
-PHASE_GATE_DEG = 1.0
-REFERENCE_PLANE_OFFSET_CELLS = 0.5
+@pytest.mark.parametrize("kind", ["lumped", "wire"])
+def test_diagonal_matches_the_predicted_cell_residual(kind, record_property):
+    # S11/S22 retain D1(ii); the three S21 alternatives are reported below.
+    _, line = _mesh(kind, MESHES[0])
+    pure = two_port(line, FREQS_HZ)
+    predicted = two_port(line, FREQS_HZ, element_l=element_inductance(line))
+    measured = _s_matrix(kind)
+    record_property("residuals", json.dumps(residuals(measured, pure, predicted)))
+    record_transmission_predictions(line, measured, pure, predicted, record_property)
+    for k in (0, 1):
+        assert_predicted_residual(measured[k, k], pure[k, k], predicted[k, k])
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("kind", ["lumped", "wire"])
+def test_two_port_three_mesh_trend(kind, record_property):
+    errors, phases, curves = [], [], []
+    for dx in MESHES:
+        _, line = _mesh(kind, dx)
+        pure = two_port(line, FREQS_HZ)
+        predicted = two_port(line, FREQS_HZ, element_l=element_inductance(line))
+        measured = _s_matrix(kind, dx)
+        curves.append((measured, pure, predicted))
+        record_property(f"residuals_{dx}", json.dumps(residuals(measured, pure, predicted)))
+        errors.append(abs(measured - pure).reshape(-1))
+        phases.append(abs(np.angle(measured / pure)).reshape(-1))
+    # S21 receiving-port residual model is not established: measured -1.141
+    # deg lies between -1.440 and -0.958 at 100 um, 10 GHz. No coefficient
+    # is fitted; the three predictions are report-only. Its verdict is this trend.
+    record_property("complex_order", json.dumps(assert_first_order(MESHES, errors).tolist()))
+    record_property("phase_order", json.dumps(assert_first_order(MESHES, phases).tolist()))
+    for dx, (measured, pure, predicted) in zip(MESHES, curves):
+        _, line = _mesh(kind, dx)
+        record_transmission_predictions(line, measured, pure, predicted, record_property)
+        for k in (0, 1):
+            assert_predicted_residual(measured[k, k], pure[k, k], predicted[k, k])
+
+
+def record_transmission_predictions(line, measured, pure, predicted, record_property):
+    """Receiver-only read alternatives; source denominator and loading fixed.
+
+    DFT exp(-j omega t). With receiving branch current Ib, I_into=-Ib,
+    b_R=(R Ib-R I_into)/(2 sqrt(R)); reading R+jwL instead multiplies b by
+    1+jwL/(2R). The product reads -E dx and an Ampere loop, not an explicit
+    added jwL voltage (rfx/probes/probes.py:258,253,1542). Its passive cell
+    update gives -I_H/V_R=cos(w dt/2)/R+j*(2/dt)*sin(w dt/2)*eps0*dx.
+    Therefore the R-only Ampere read multiplies b_R by
+    (1+cos(w dt/2)+j*R*eps0*dx*(2/dt)*sin(w dt/2))/2.
+    None of these receiving-port residual predictions is asserted.
+    The pure-network |S21| bar remains 0.01 per bin; only the residual
+    MODEL is report-only, with convergence judged by the slow ladder.
+    """
+    w = 2 * np.pi * FREQS_HZ
+    dt = .99 * line.dx / (299792458. * np.sqrt(3))
+    r_only = predicted[1, 0]
+    r_plus_l = r_only * (1 + .5j * w * element_inductance(line) / line.zc)
+    displacement = r_only * (1 + np.cos(w * dt / 2)
+                             + 1j * line.zc * 8.8541878128e-12 * line.dx
+                             * (2 / dt) * np.sin(w * dt / 2)) / 2
+    values = dict(dx_m=line.dx, realized_d_m=line.length,
+                  measured_abs_s21=abs(measured[1, 0]).tolist(),
+                  pure_abs_s21=abs(pure[1, 0]).tolist(),
+                  measured_phase_deg=np.degrees(np.angle(measured[1, 0] / pure[1, 0])).tolist())
+    for name, curve in (("R_only", r_only), ("R_plus_jwL", r_plus_l),
+                        ("R_only_displacement", displacement)):
+        values[name] = residuals(measured[1, 0], pure[1, 0], curve)
+    print(f"S21 report-only predictions: {values}", file=sys.stderr)
+    record_property(f"s21_predictions_{line.dx}", json.dumps(values))
+
+
+def assert_transmission_magnitude(measured, pure):
+    assert np.all(abs(abs(measured) - abs(pure)) <= .01), "pure-network |S21| error exceeds 0.01"
 
 
 @pytest.mark.parametrize("kind", ["lumped", "wire"])
-@pytest.mark.xfail(strict=True, raises=AssertionError,
-                   reason="#1221 B3b: ports lane re-judges with the moved walls")
-def test_s21_lags_by_the_electrical_length_of_the_line(kind):
-    """S21 carries the phase of the line it crosses, not just its magnitude.
+def test_transmission_matches_pure_network_magnitude(kind, record_property):
+    measured, pure = _s_matrix(kind)[1, 0], _expected(kind)[1, 0]
+    record_property("s21_phase_residual_deg", json.dumps(np.degrees(np.angle(measured / pure)).tolist()))
+    record_property("s21_magnitude_error", json.dumps((abs(measured) - abs(pure)).tolist()))
+    assert_transmission_magnitude(measured, pure)
 
-    |S21| = 1 alone cannot see a sign error in the incident wave: the whole
-    point of the wave definition is which way the phase runs. This gates the
-    COMPLEX S21 against exp(-j*beta*L_eff) on the air line, beta = omega/c.
-    """
-    l_realized, dx = _realized_port_separation(kind)
-    l_eff = l_realized - REFERENCE_PLANE_OFFSET_CELLS * dx
-    beta = 2.0 * np.pi * FREQS_HZ / C0
-    s21 = _s_matrix(kind)[1, 0]
 
-    measured_lag_deg = np.degrees(-np.angle(s21))
-    expected_lag_deg = np.degrees(beta * l_eff)
-    err_deg = np.degrees(np.angle(s21 * np.conj(np.exp(-1j * beta * l_eff))))
-
-    worst = int(np.argmax(np.abs(err_deg)))
-    assert np.abs(err_deg).max() <= PHASE_GATE_DEG, (
-        f"{kind}: S21 lags beta*L_eff by "
-        f"{measured_lag_deg[worst]:.4f} deg at "
-        f"{FREQS_HZ[worst] / 1e9:.1f} GHz where the line's electrical length "
-        f"is {expected_lag_deg[worst]:.4f} deg "
-        f"(L_eff = {l_eff * 1e3:.4f} mm = realized {l_realized * 1e3:.4f} mm "
-        f"less half a cell); error {err_deg[worst]:+.4f} deg against a "
-        f"{PHASE_GATE_DEG} deg gate. Per bin: {np.round(err_deg, 4)} at "
-        f"{FREQS_HZ / 1e9} GHz")
+def test_transmission_magnitude_detects_removed_check():
+    with pytest.raises(AssertionError, match="pure-network"):
+        assert_transmission_magnitude(np.array([.52]), np.array([.5]))

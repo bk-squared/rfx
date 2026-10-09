@@ -1616,19 +1616,17 @@ def extract_s_matrix(
     """
     cpml_axes = resolve_cpml_axes(grid, cpml_axes)
     import numpy as np
-    from rfx.core.yee import init_state, update_h
-    from rfx.boundaries.pec import apply_pec
+    from rfx.core.yee import init_state
     from rfx.materials.debye import init_debye
     from rfx.materials.lorentz import init_lorentz
-    from rfx.simulation import _update_e_with_optional_dispersion
-    from rfx.sources.sources import setup_lumped_port, apply_lumped_port
+    from rfx.sources.sources import setup_lumped_port
 
     n_ports = len(ports)
     n_freqs = len(freqs)
     if n_steps is None:
         n_steps = grid.num_timesteps(num_periods=30)
 
-    dt, dx = grid.dt, float(grid.cells('x')[0])
+    dt = grid.dt
     use_cpml = boundary == "cpml" and grid.cpml_layers > 0
 
     if use_cpml:
@@ -1672,63 +1670,23 @@ def extract_s_matrix(
         debye_state = debye[1] if debye is not None else None
         lorentz_state = lorentz[1] if lorentz is not None else None
 
+        from rfx.stepping.probe_loop import make_probe_step
+        core, source_values = make_probe_step(
+            grid, mats, ports, j, use_cpml=use_cpml,
+            cpml_params=cpml_params if use_cpml else None, cpml_axes=cpml_axes,
+            debye=debye, lorentz=lorentz, pec_edge_masks=pec_edge_masks,
+            curl_boundary=curl_boundary, wire=False)
+        carry = {"fdtd": state, "sprobes": tuple(sprobes)}
+        if use_cpml:
+            carry["cpml"] = cpml_state
+        if debye is not None:
+            carry["debye"] = debye_state
+        if lorentz is not None:
+            carry["lorentz"] = lorentz_state
         for step in range(n_steps):
-            t = step * dt
-            state = update_h(state, mats, dt, dx)
-            if use_cpml:
-                state, cpml_state = apply_cpml_h(
-                    state, cpml_params, cpml_state, grid, cpml_axes,
-                    materials=mats)
-
-            state, debye_state, lorentz_state = _update_e_with_optional_dispersion(
-                state,
-                mats,
-                dt,
-                dx,
-                debye=(debye[0], debye_state) if debye is not None else None,
-                lorentz=(lorentz[0], lorentz_state) if lorentz is not None else None,
-                boundary=curl_boundary,
-            )
-
-            if use_cpml:
-                state, cpml_state = apply_cpml_e(
-                    state, cpml_params, cpml_state, grid, cpml_axes,
-                    materials=mats, boundary=curl_boundary)
-            state = apply_pec(state)
-
-            # Apply interior PEC mask (e.g. ground plane, scatterers
-            # added via ``Box(..., material="pec")``).  Without this,
-            # eval simulations driven from ``run(compute_s_params=True)``
-            # for lumped ports lose the ground-plane / scatterer
-            # geometry — antenna stops coupling and |S11| collapses
-            # toward 0 dB across the band, producing a 9–10 dB
-            # train/eval disconnect identical in shape to the prior
-            # time-gating-heuristic bug (issue #72).
-            if pec_edge_masks is not None:
-                from rfx.boundaries.pec import apply_pec_edges
-                # #931 §1.7: the realized (Mx, My, Mz) of the caller's
-                # geometry, sheets included — a sheet-declared ground
-                # plane owns no cell and used to vanish from this eager
-                # re-run entirely.
-                state = apply_pec_edges(state, pec_edge_masks)
-
-            # PRE-injection drive-sample reference at all ports (the
-            # historical #72 slot): the #308 receive-wave sign and the
-            # incident-wave denominator are calibrated against it.
-            for i in range(n_ports):
-                sprobes[i] = update_lumped_drive_ref_probe(
-                    sprobes[i], state, grid, ports[i], dt)
-
-            # Excite only port j
-            state = apply_lumped_port(state, grid, ports[j], t, mats)
-
-            # Physical V / I AFTER injection — the terminal pair of the
-            # driven circuit (known-load decision run; see
-            # update_sparam_probe).  At a passive port this reads the same
-            # field as the slot above.
-            for i in range(n_ports):
-                sprobes[i] = update_sparam_probe(
-                    sprobes[i], state, grid, ports[i], dt)
+            carry, _, extras = core(carry, jnp.int32(step), source_values(step * dt), jnp.zeros(0))
+            sprobes = extras["sprobes"]
+            carry["sprobes"] = sprobes
 
         # Collect per-(drive j, receive i) V/I DFT phasors for the shared
         # wave decomposer (``decompose_lumped_s_matrix``) — single source of
@@ -1955,14 +1913,11 @@ def extract_s_matrix_wire(
     """
     cpml_axes = resolve_cpml_axes(grid, cpml_axes)
     import numpy as np
-    from rfx.core.yee import init_state, update_h
-    from rfx.boundaries.pec import apply_pec
+    from rfx.core.yee import init_state
     from rfx.materials.debye import init_debye
     from rfx.materials.lorentz import init_lorentz
-    from rfx.simulation import _update_e_with_optional_dispersion
     from rfx.sources.sources import (
         setup_wire_port,
-        apply_wire_port,
         _wire_port_cells,
         _wire_port_live_cells,
     )
@@ -1972,7 +1927,7 @@ def extract_s_matrix_wire(
     if n_steps is None:
         n_steps = grid.num_timesteps(num_periods=30)
 
-    dt, dx = grid.dt, float(grid.cells('x')[0])
+    dt = grid.dt
     use_cpml = boundary == "cpml" and grid.cpml_layers > 0
 
     if use_cpml:
@@ -2035,69 +1990,23 @@ def extract_s_matrix_wire(
         debye_state = debye[1] if debye is not None else None
         lorentz_state = lorentz[1] if lorentz is not None else None
 
+        from rfx.stepping.probe_loop import make_probe_step
+        core, source_values = make_probe_step(
+            grid, mats, ports, j, use_cpml=use_cpml,
+            cpml_params=cpml_params if use_cpml else None, cpml_axes=cpml_axes,
+            debye=debye, lorentz=lorentz, pec_edge_masks=pec_edge_masks,
+            curl_boundary=curl_boundary, wire=True)
+        carry = {"fdtd": state, "sprobes": tuple(sprobes)}
+        if use_cpml:
+            carry["cpml"] = cpml_state
+        if debye is not None:
+            carry["debye"] = debye_state
+        if lorentz is not None:
+            carry["lorentz"] = lorentz_state
         for step in range(n_steps):
-            t = step * dt
-            state = update_h(state, mats, dt, dx)
-            if use_cpml:
-                state, cpml_state = apply_cpml_h(
-                    state, cpml_params, cpml_state, grid, cpml_axes,
-                    materials=mats)
-
-            state, debye_state, lorentz_state = _update_e_with_optional_dispersion(
-                state,
-                mats,
-                dt,
-                dx,
-                debye=(debye[0], debye_state) if debye is not None else None,
-                lorentz=(lorentz[0], lorentz_state) if lorentz is not None else None,
-                boundary=curl_boundary,
-            )
-
-            if use_cpml:
-                state, cpml_state = apply_cpml_e(
-                    state, cpml_params, cpml_state, grid, cpml_axes,
-                    materials=mats, boundary=curl_boundary)
-            state = apply_pec(state)
-
-            if pec_edge_masks is not None:
-                from rfx.boundaries.pec import apply_pec_edges
-                # #931 §1.7: the realized (Mx, My, Mz) of the caller's
-                # geometry, sheets included — a sheet-declared ground
-                # plane owns no cell and used to vanish from this eager
-                # re-run entirely.
-                state = apply_pec_edges(state, pec_edge_masks)
-
-            # Record the PRE-injection drive-sample REFERENCE channel at
-            # the historical (#72) slot — the #308/#313 off-diagonal
-            # calibration is pinned against this sample (issue #683 x
-            # #764 decomposer recalibration; bit-identical to the
-            # pre-#683 v_dft).
-            for i in range(n_ports):
-                sprobes[i] = update_wire_drive_ref_probe(
-                    sprobes[i], state, grid, ports[i], dt,
-                    pec_edge_masks=pec_edge_masks)
-
-            # Excite only port j (live cells only, issue #318)
-            state = apply_wire_port(state, grid, ports[j], t, mats,
-                                    pec_edge_masks=pec_edge_masks)
-
-            # Record the PHYSICAL V / I / V_port channels at all ports
-            # AFTER source injection (issue #683, decided by measurement
-            # 2026-08-29 — docs/design_notes/
-            # issue683_sampling_order_decision_protocol.md section 9).
-            # The pre-injection sample is not any field time level of the
-            # discrete update and fails the known-load circuit law at the
-            # driven port; the post-injection sample is the true E^{n+1}.
-            # Passive ports (every i != j) read identically on either
-            # side: the injection writes only port j's live cells, and I
-            # reads H only.  This keeps the eager path in lockstep with
-            # the production-scan driver (rfx/simulation.py wire block),
-            # which flipped in the same commit —
-            # test_sparam_driver_matches_eager pins that.
-            for i in range(n_ports):
-                sprobes[i] = update_wire_sparam_probe(
-                    sprobes[i], state, grid, ports[i], dt,
-                    n_live=port_n_live[i], pec_edge_masks=pec_edge_masks)
+            carry, _, extras = core(carry, jnp.int32(step), source_values(step * dt), jnp.zeros(0))
+            sprobes = extras["sprobes"]
+            carry["sprobes"] = sprobes
 
         # Collect per-(drive j, receive i) midpoint V/I DFT phasors for the
         # shared wire wave decomposer (``decompose_wire_s_matrix``) — single

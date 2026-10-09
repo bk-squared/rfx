@@ -60,7 +60,7 @@ def _dead_sources(sim, conductors):
     from rfx.model.conductors import lumped_port_stage
     from rfx.sources.sources import _wire_port_cells, wire_port_from_entry
     released = conductors
-    for index, source in enumerate(sim._ports):
+    for index, source in enumerate(sim._ports if conductors.pec_edges is not None else ()):
         released = lumped_port_stage(released, source, f'port[{index}]')
     walls = wall_edge_masks(grid.shape, faces)
     edges = (walls if released.pec_edges is None else

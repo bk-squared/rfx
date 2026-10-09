@@ -32,8 +32,7 @@ share profiles with two interior widths `0.9 * dx`, `1.1 * dx`. Uniform keeps
 its computed dt and NU pins that exact value. Every cell checks exact dt first.
 Geometry equality covers realized nodes, cell sizes, ranges, bounds, masks,
 and materials. Lane labels, declared fields and declaration-derived residuals
-are excluded. The declared-length record semantics are documented once in
-FINDINGS.md. Kernel material views come from `_realized.capture`; E-side
+are excluded (noted in FINDINGS.md). Kernel material views come from `_realized.capture`; E-side
 lumped terms are read at E, not from H's intentionally smaller container.
 
 `comparison.py` owns the bars: 9 float32 ULP at the field peak per step;
@@ -101,8 +100,8 @@ expected and does not provide ADI coverage.
 Run PR tests: `python -m pytest tests/contracts/path_equivalence -q`.
 Run full tests: `RFX_S0_FULL=1 python -m pytest tests/contracts/path_equivalence -q -o addopts="" -m "not gpu"`.
 The fixture writes raw measurements in its pytest temporary directory.
-`findings.json` stores each fingerprint and witness variant once in `causes`,
-alongside implementation file:line references. Optional cell/record scopes on
+`findings.json` stores each fingerprint and witness variant once in `causes`.
+A key under `causes` names an observed record difference, not a mechanism. Optional cell/record scopes on
 a fingerprint preserve which failures each cell accepts. `cells` maps records
 to cause IDs, with a witness-variant reference only when it differs from the
 default. The loader expands this into the existing strict-finding checks.

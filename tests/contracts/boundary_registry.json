@@ -765,11 +765,6 @@
     },
     {
       "file": "rfx/simulation.py",
-      "function": "make_core_step.core_step",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/simulation.py",
       "function": "run",
       "kind": "boundary"
     },
@@ -837,6 +832,36 @@
       "file": "rfx/sources/tfsf_2d.py",
       "function": "_update_h_tmz",
       "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/stepping/uniform.py",
+      "function": "apply_pec_faces",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/uniform.py",
+      "function": "make_uniform_step.e_boundary",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/uniform.py",
+      "function": "make_uniform_step.e_update",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/uniform.py",
+      "function": "make_uniform_step.h_boundary",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/uniform.py",
+      "function": "make_uniform_step.h_update",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/uniform.py",
+      "function": "make_uniform_step.pec",
+      "kind": "boundary"
     },
     {
       "file": "rfx/subgridding/disjoint_3d.py",
@@ -952,11 +977,6 @@
     {
       "file": "rfx/vmap_sweep.py",
       "function": "_build_vmap_scan_fn",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/vmap_sweep.py",
-      "function": "_build_vmap_scan_fn.run_one.step_fn",
       "kind": "boundary"
     }
   ]

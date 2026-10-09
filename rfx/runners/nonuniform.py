@@ -433,16 +433,15 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
             sources.defer(make_msl_port_sources,
                 grid, mp, n_steps=n_steps, mode_profile=mode_profile,
             )
-        if pec_edge_masks is not None:
-            # Only the SUBSTRATE-NORMAL component: the edge the modal
-            # source drives.  The three-component form opened a
-            # width-long slot in the ground plane at the feed (#931
-            # §1.9, corrected).
-            conductors = clear_conductor_edges(
-                conductors, list(_msl_yz_cells(grid, mp)),
-                component=_msl_normal_component(mp),
-                entity_id=f"msl_port[{_msl_port_index}]")
-            pec_edge_masks = conductors.pec_edges
+        # Only the SUBSTRATE-NORMAL component: the edge the modal
+        # source drives.  The three-component form opened a
+        # width-long slot in the ground plane at the feed (#931
+        # §1.9, corrected).
+        conductors = clear_conductor_edges(
+            conductors, list(_msl_yz_cells(grid, mp)),
+            component=_msl_normal_component(mp),
+            entity_id=f"msl_port[{_msl_port_index}]", port_kind="microstrip", released_edges=mode_profile["cell_indices"])
+        pec_edge_masks = conductors.pec_edges
     return materials, conductors if return_object else pec_edge_masks
 
 
@@ -632,7 +631,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     _pec_sheets: list = []
     _pec_wires: list = []
     _geometry_masks, _assembly_entries = ([], []) if lane == "run_nonuniform" else (None, None)
-    from rfx.model.conductors import assembled_materials, solve_conductors, kernel_conductors, lumped_port_stage, at_kernel
+    from rfx.model.conductors import assembled_materials, solve_conductors, kernel_conductors, lumped_port_stage, publish_port_release, release_port_occupancy, at_kernel
     if conductors is None:
         conductors = solve_conductors(sim, grid, nonuniform=True)
     if preflight is not None:
@@ -933,6 +932,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
             # all-extent midpoint.
             _live_cells = tuple(
                 c for c, live in zip(_cells_ijk, live_flags) if live)
+            conductors = publish_port_release(conductors, _live_cells,
+                component=pe.component, entity_id=f"port[{_port_index}]", kind="wire")
             mid_cell = list(_live_cells[len(_live_cells) // 2])
 
             if pe.radius is not None:
@@ -1353,6 +1354,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     conductors, geometry_record = at_kernel(sim, conductors, lane=lane, pec_edges=pec_edge_masks, sheet_operator=sheet_ctx)
     pec_edge_masks = conductors.pec_edges
     sheet_ctx = conductors.sheet_operator
+    pec_occupancy_override = release_port_occupancy(pec_occupancy_override, conductors)
     _shared_run_kwargs = dict(
         design_box=design_box,
         sheet_impedance=sheet_ctx,

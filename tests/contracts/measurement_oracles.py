@@ -20,7 +20,12 @@ COMPONENTS = ('ex', 'ey', 'ez', 'hx', 'hy', 'hz')
 @lru_cache(None)
 def tree(nu):
     path = nu if isinstance(nu, str) else ('rfx/nonuniform.py' if nu else 'rfx/simulation.py')
-    return ast.parse((ROOT / path).read_text())
+    result = ast.parse((ROOT / path).read_text())
+    if nu is False:
+        # Keep the original runner in scope and recognize its extracted phases.
+        for step in sorted((ROOT / 'rfx/stepping').glob('*.py')):
+            result.body.extend(ast.parse(step.read_text()).body)
+    return result
 
 
 def assignment(nu, name, dependency=None):
@@ -51,6 +56,7 @@ def stamp(nu, family, kind):
                carry={'dft_planes': (acc,), 'flux_monitors': ((acc, acc, acc, acc),)},
                dft_meta=dft_meta, flux_meta=flux_meta,
                ctx=SimpleNamespace(dft_meta=dft_meta, flux_meta=flux_meta))
+    env['frame'] = SimpleNamespace(st=state, carry=env['carry'], step_idx=env['step_idx'])
     value = eval(compile(ast.Expression(calls[0]), '<production accumulator>', 'eval'), env)
     spectrum = value[0][0] if name == 'planes' else value[0][0 if kind == 'E' else 2]
     return float(-jnp.angle(spectrum[0, 0, 0])/(2*jnp.pi*.01))
@@ -89,7 +95,8 @@ def judge_metadata(plan, actual):
                            and isinstance(n.value.value, ast.Name) and n.value.value.id == 'record']
                 assert indices
                 slots = {int(eval(compile(ast.Expression(index), '<production record slot>', 'eval'),
-                                  dict(step_idx=jnp.int32(3))))-3 for index in indices}
+                                  dict(step_idx=jnp.int32(3),
+                                       frame=SimpleNamespace(step_idx=jnp.int32(3)))))-3 for index in indices}
                 assert len(slots) == 1
                 slot = slots.pop()
             if owner.kind in ('dft_plane', 'flux', 'msl', 'coax'):
@@ -102,6 +109,7 @@ def judge_metadata(plan, actual):
                            port_dft_phase=port_dft_phase,
                            **{name: SimpleNamespace(dtype=jnp.complex64) for name in (
                                'v_dft', 'i_dft', 'v_ref_dft', 'v_ref_dft_l', 'i_dft_l')})
+                env['frame'] = SimpleNamespace(step_idx=env['step_idx'])
                 lumped_uniform = owner.kind == 'lumped' and not nu
                 phase = eval(assignment(nu, 'phase_l' if lumped_uniform else 'phase',
                                         'lp_meta' if lumped_uniform else 'sp_freqs' if nu else 'wp_meta'), env)
