@@ -812,7 +812,7 @@ def _update_e_dispersive_local_nu(
 
 def _apply_cpml_e_local_nu(state: FDTDState, cpml_params, cpml_state,
                            n_cpml: int, dt: float, ghost: int,
-                           n_devices: int, eps_r=None, pad_x: int = 0, *, rank=None):
+                           n_devices: int, eps_r=None, pad_x: int = 0, *, rank=None, e_loss=None, e_curl_coeff=None):
     """Per-rank slab-aware CPML E-field correction with NU per-axis dx.
 
     Mirrors :func:`rfx.boundaries.cpml.apply_cpml_e` but operates on a
@@ -835,12 +835,14 @@ def _apply_cpml_e_local_nu(state: FDTDState, cpml_params, cpml_state,
         #1303), including on dispersive models (#1260). ``None`` falls back
         to the vacuum scalar ``dt / eps_0``
         (bit-identical to the pre-#205 behaviour).
+    e_loss, e_curl_coeff : tuples of three slab arrays or None
+        The E update's loss, or its in-loop Debye/mixed curl coefficient.
+        The latter overrides epsilon and loss for both psi and kappa terms.
     """
     if rank is None:
         raise ValueError("slab rank must be supplied as data")
-    from rfx.boundaries.cpml import (CPMLAxisParams, _ce_eps_r, _ce_si,
+    from rfx.boundaries.cpml import (CPMLAxisParams,
                                      _flip_profile)
-    from rfx.core.yee import si_value_eps_r_grad
 
     if isinstance(cpml_params, CPMLAxisParams):
         # Each face has its own profile, including no-op PEC faces (#1235).
@@ -897,28 +899,11 @@ def _apply_cpml_e_local_nu(state: FDTDState, cpml_params, cpml_state,
     # extent. x faces drive Ey/Ez, y faces Ex/Ez, z faces Ex/Ey. When eps_r
     # is None every face is the vacuum scalar dt/eps_0 (bit-identical to
     # pre-#205).
-    if eps_r is not None:
-        eps_x, eps_y, eps_z = (tuple(eps_r) if isinstance(eps_r, (tuple, list))
-                               else (eps_r,) * 3)
-
-        def _ce(eps_face):
-            # Sliced to the face BEFORE the division: the time loop then
-            # holds face-sized coefficients, not a slab per component.
-            # Each face at its own depth (#1365: walls one identity row).
-            # #1357: ``dt / (eps_face * EPS_0)``'s bits (cpml._ce_si), the
-            # eps_r-unit derivative, as the single-device apply_cpml_e.
-            return si_value_eps_r_grad(_ce_si, _ce_eps_r, eps_face, dt)
-
-        ce_ey_xlo, ce_ey_xhi = _ce(eps_y[xlo, :, :]), _ce(eps_y[xhi, :, :])
-        ce_ez_xlo, ce_ez_xhi = _ce(eps_z[xlo, :, :]), _ce(eps_z[xhi, :, :])
-        ce_ex_ylo, ce_ex_yhi = _ce(eps_x[:, :n_ylo, :]), _ce(eps_x[:, -n_yhi:, :])
-        ce_ez_ylo, ce_ez_yhi = _ce(eps_z[:, :n_ylo, :]), _ce(eps_z[:, -n_yhi:, :])
-        ce_ex_zlo, ce_ex_zhi = _ce(eps_x[:, :, :n_zlo]), _ce(eps_x[:, :, -n_zhi:])
-        ce_ey_zlo, ce_ey_zhi = _ce(eps_y[:, :, :n_zlo]), _ce(eps_y[:, :, -n_zhi:])
-    else:
-        ce_ey_xlo = ce_ey_xhi = ce_ez_xlo = ce_ez_xhi = cpml_coeff_e_vacuum(dt)
-        ce_ex_ylo = ce_ex_yhi = ce_ez_ylo = ce_ez_yhi = ce_ey_xlo
-        ce_ex_zlo = ce_ex_zhi = ce_ey_zlo = ce_ey_zhi = ce_ey_xlo
+    from rfx.boundaries.electric_coefficient import slab_face_coefficients
+    (ce_ey_xlo, ce_ey_xhi, ce_ez_xlo, ce_ez_xhi,
+     ce_ex_ylo, ce_ex_yhi, ce_ez_ylo, ce_ez_yhi,
+     ce_ex_zlo, ce_ex_zhi, ce_ey_zlo, ce_ey_zhi) = slab_face_coefficients(
+        eps_r, dt, cpml_state, ghost, pad_x, e_loss=e_loss, e_curl_coeff=e_curl_coeff)
 
     device_idx = rank
     is_first = (device_idx == 0)
@@ -1857,7 +1842,7 @@ def run_nonuniform_distributed_pec(
                 P("x"), P("x"), P("x"),
                 P("x"), P("x"), P("x"),
             ) if _has_lr else ()
-            out_specs_full = base_out + db_out + lr_out
+            out_specs_full = base_out + db_out + lr_out + (P("x"),)
 
             @partial(
                 rank_shard_map,
@@ -1983,6 +1968,10 @@ def run_nonuniform_distributed_pec(
                     e_old=(ex_old_local, ey_old_local, ez_old_local),
                 )
 
+                from rfx.boundaries.electric_coefficient import dispersive_curl
+                absorber_curl = dispersive_curl(
+                    db_local[0] if db_local is not None else None,
+                    lr_local[0] if lr_local is not None else None, dt)
                 outs = (new_st.ex, new_st.ey, new_st.ez, new_st.step)
                 if _has_db:
                     outs = outs + (new_db.px, new_db.py, new_db.pz)
@@ -1991,7 +1980,7 @@ def run_nonuniform_distributed_pec(
                         new_lr.px, new_lr.py, new_lr.pz,
                         new_lr.px_prev, new_lr.py_prev, new_lr.pz_prev,
                     )
-                return outs
+                return outs + (absorber_curl,)
 
             # Build flat input tuple matching in_specs_full ordering
             call_args = [
@@ -2048,7 +2037,7 @@ def run_nonuniform_distributed_pec(
 
             new_state = st._replace(ex=new_ex, ey=new_ey, ez=new_ez,
                                     step=new_step)
-            return new_state, new_db_st, new_lr_st
+            return new_state, new_db_st, new_lr_st, results[-1]
 
     def _inject_sources_shmap(st, src_vals_step, *, ranks):
         # Construct host constants while tracing: the outer scan closes over
@@ -2164,7 +2153,7 @@ def run_nonuniform_distributed_pec(
         )
         return new_st, new_cs
 
-    def _apply_cpml_e_shmap(st, cs, cpml_params, materials, e_materials, *, ranks):
+    def _apply_cpml_e_shmap(st, cs, cpml_params, materials, e_materials, e_curl_coeff, *, ranks):
         # The psi coefficient takes the permittivity the E update of this
         # step used (#1043): each component's four-cell edge mean -- the one
         # run_fn built before the loop, including dispersive models.
@@ -2178,7 +2167,8 @@ def run_nonuniform_distributed_pec(
                 P("x"), P("x"), P("x"), P("x"),  # y-face psi
                 P("x"), P("x"), P("x"), P("x"),  # z-face psi
                 P("x"),  # materials (material-aware CPML coeff, #205)
-                P("x"),  # the four-cell eps means
+                P("x"),  # the four-cell eps/sigma means
+                P("x"),  # the E update's in-loop dispersive curl coefficient
             ),
             out_specs=(
                 P("x"), P("x"), P("x"),               # ex, ey, ez
@@ -2192,10 +2182,12 @@ def run_nonuniform_distributed_pec(
                psi_ey_xlo, psi_ey_xhi, psi_ez_xlo, psi_ez_xhi,
                psi_ex_ylo, psi_ex_yhi, psi_ez_ylo, psi_ez_yhi,
                psi_ex_zlo, psi_ex_zhi, psi_ey_zlo, psi_ey_zhi,
-               mat_slab, means_eps, *, rank):
+               mat_slab, means, curl, *, rank):
             _st = FDTDState(ex=ex, ey=ey, ez=ez,
                             hx=hx, hy=hy, hz=hz, step=jnp.int32(0))
-            eps_r_slab = means_eps
+            from rfx.boundaries.electric_coefficient import loss_terms
+            eps_r_slab = means[0]
+            loss = loss_terms(means, dt) if curl is None else None
             _cs = cs._replace(
                 psi_ey_xlo=psi_ey_xlo, psi_ey_xhi=psi_ey_xhi,
                 psi_ez_xlo=psi_ez_xlo, psi_ez_xhi=psi_ez_xhi,
@@ -2207,7 +2199,7 @@ def run_nonuniform_distributed_pec(
             new_st, new_cs = _apply_cpml_e_local_nu(
                 _st, cpml_params, _cs, n_cpml_local, dt, ghost, n_devices,
                 eps_r=eps_r_slab, pad_x=pad_x,
-                rank=rank)
+                rank=rank, e_loss=loss, e_curl_coeff=curl)
             return (new_st.ex, new_st.ey, new_st.ez,
                     new_cs.psi_ey_xlo, new_cs.psi_ey_xhi,
                     new_cs.psi_ez_xlo, new_cs.psi_ez_xhi,
@@ -2224,7 +2216,7 @@ def run_nonuniform_distributed_pec(
             cs.psi_ey_xlo, cs.psi_ey_xhi, cs.psi_ez_xlo, cs.psi_ez_xhi,
             cs.psi_ex_ylo, cs.psi_ex_yhi, cs.psi_ez_ylo, cs.psi_ez_yhi,
             cs.psi_ex_zlo, cs.psi_ex_zhi, cs.psi_ey_zlo, cs.psi_ey_zhi,
-            materials, e_materials,
+            materials, e_materials, e_curl_coeff,
         )
         new_st = st._replace(ex=ex, ey=ey, ez=ez)
         new_cs = cs._replace(
@@ -2289,8 +2281,9 @@ def run_nonuniform_distributed_pec(
         #    - Debye-only / Lorentz-only / mixed: dispersive NU ADE
         #      with the snapshotted ex_old/ey_old/ez_old (NEVER the
         #      post-ghost-exchange E from the previous step's stage 9).
+        absorber_curl = None
         if use_dispersion:
-            st, db_st, lr_st = _update_e_dispersive_shmap(
+            st, db_st, lr_st, absorber_curl = _update_e_dispersive_shmap(
                 st, sharded_materials, db_st, lr_st,
                 ex_old_snapshot, ey_old_snapshot, ez_old_snapshot,
                 debye_coeffs, lorentz_coeffs, spacings, e_materials,
@@ -2302,7 +2295,7 @@ def run_nonuniform_distributed_pec(
         if use_cpml:
             st, cs = _apply_cpml_e_shmap(
                 st, cs, cpml_params, sharded_materials,
-                e_materials[0], ranks=ranks)
+                e_materials, absorber_curl, ranks=ranks)
 
         # 6. Source injection (rank-conditional via shard_map)
         st = _inject_sources_shmap(st, src_vals, ranks=ranks)

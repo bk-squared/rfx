@@ -1945,10 +1945,10 @@ def core_step_invariants(ctx: _StepContext) -> dict:
         )
         _sheet_coeffs = _sheet_update_coeffs(
             ctx.sheet_impedance.sigma_sheet, materials, ctx.dt)
-    from rfx.model.materials import kernel_context
-    ctx = kernel_context(ctx)
+    from rfx.stepping.absorber import cpml_context
+    ctx, e_loss = cpml_context(ctx)
     return {"ctx": ctx, "cpml_inv_eps_r": cpml_inv_eps_r if ctx.use_cpml else None,
-            "sheet_coeffs": _sheet_coeffs}
+            "sheet_coeffs": _sheet_coeffs, "e_loss": e_loss}
 
 
 def make_core_step(ctx: _StepContext, invariants: dict | None = None,

@@ -106,6 +106,7 @@ def make_uniform_step(
     aniso_inv_eps = ctx.aniso_inv_eps
     cpml_inv_eps_r = invariants["cpml_inv_eps_r"]
     _sheet_coeffs = invariants["sheet_coeffs"]
+    from rfx.boundaries.electric_coefficient import dispersive_curl, in_loop_loss
 
     if ctx.use_sheet_impedance:
         from rfx.materials.thin_conductor import (
@@ -294,6 +295,10 @@ def make_uniform_step(
                     frame.st, ctx.cpml_params, frame.cpml_new, grid, ctx.cpml_axes,
                     materials=materials,
                     inv_eps_r_update=cpml_inv_eps_r,
+                    e_loss=in_loop_loss(invariants["e_loss"], dt),
+                    e_curl_coeff=dispersive_curl(
+                        ctx.debye_coeffs if ctx.use_debye else None,
+                        ctx.lorentz_coeffs if ctx.use_lorentz else None, dt),
                     boundary=ctx.curl_boundary)
             # Re-enforce Kottke-frozen E cells after CPML-E correction.
 

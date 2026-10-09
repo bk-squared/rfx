@@ -1709,7 +1709,7 @@ def _apply_cpml_e_distributed(
     state, cpml_params, cpml_state, n_cpml, dt, dx,
     n_devices, ghost=1, axis_name="devices", eps_r=None, pad_x: int = 0,
     separate_x_terms: bool = False,
-    *, rank=None,
+    *, rank=None, e_loss=None, e_curl_coeff=None,
 ):
     """Apply CPML E-field correction on a distributed slab.
 
@@ -1748,6 +1748,19 @@ def _apply_cpml_e_distributed(
         models (#1260). ``None`` falls back to
         the vacuum scalar ``dt / eps_0`` (bit-identical to the pre-#205
         behaviour).
+    e_loss : tuple of three arrays or None
+        Loss from the E update's component epsilon and conductivity.
+        Each array has the field slab's layout, including ghost rows.
+        Face slices divide the historical coefficient by ``1 + loss``.
+        The caller forms loss inside the time loop when E does so.
+        A zero loss retains the historical lossless coefficient bits.
+    e_curl_coeff : tuple of three arrays or None
+        The Debye or mixed update's actual in-loop curl coefficient.
+        Overrides epsilon and loss on every component and face.
+        The mixed model supplies its combined coefficient, not Lorentz.cb.
+        The arrays use the same slab and ghost layout as ``e_loss``.
+        Lorentz-only models use ``e_loss`` because poles do not enter Cb.
+        Both inputs default to None for callers representing lossless media.
     pad_x : int
         Number of alignment-pad cells appended to the high-x end of the
         last rank's slab so that ``(nx + pad_x) % n_devices == 0``
@@ -1762,8 +1775,7 @@ def _apply_cpml_e_distributed(
     """
     if rank is None:
         raise ValueError("slab rank must be supplied as data")
-    from rfx.boundaries.cpml import CPMLAxisParams, _ce_eps_r, _ce_si
-    from rfx.core.yee import si_value_eps_r_grad
+    from rfx.boundaries.cpml import CPMLAxisParams
     if not isinstance(cpml_params, CPMLAxisParams):
         raise TypeError("distributed CPML requires per-face CPMLAxisParams")
     n_xlo, n_xhi = cpml_state.psi_ey_xlo.shape[0], cpml_state.psi_ey_xhi.shape[0]
@@ -1777,30 +1789,11 @@ def _apply_cpml_e_distributed(
     # supplied). Each face slice broadcasts element-wise against its
     # correction array (x faces account for the ghost offset; y/z faces have
     # no x-ghost). x faces drive Ey/Ez, y faces Ex/Ez, z faces Ex/Ey.
-    if eps_r is not None:
-        eps_x, eps_y, eps_z = (tuple(eps_r) if isinstance(eps_r, (tuple, list))
-                               else (eps_r,) * 3)
-        xhi_ = (slice(-(x_hi_edge + n_xhi), -x_hi_edge) if x_hi_edge > 0
-                else slice(-n_xhi, None))
-
-        def _ce(eps_face):
-            # Sliced to the face BEFORE the division: the time loop then
-            # holds face-sized coefficients, not a slab per component.
-            # Each face at its own depth (#1365: walls one identity row).
-            # #1357: ``dt / (eps_face * EPS_0)``'s bits (cpml._ce_si), the
-            # eps_r-unit derivative, as the single-device apply_cpml_e.
-            return si_value_eps_r_grad(_ce_si, _ce_eps_r, eps_face, dt)
-
-        ce_ey_xlo, ce_ey_xhi = _ce(eps_y[g:g + n_xlo]), _ce(eps_y[xhi_])
-        ce_ez_xlo, ce_ez_xhi = _ce(eps_z[g:g + n_xlo]), _ce(eps_z[xhi_])
-        ce_ex_ylo, ce_ex_yhi = _ce(eps_x[:, :n_ylo]), _ce(eps_x[:, -n_yhi:])
-        ce_ez_ylo, ce_ez_yhi = _ce(eps_z[:, :n_ylo]), _ce(eps_z[:, -n_yhi:])
-        ce_ex_zlo, ce_ex_zhi = _ce(eps_x[:, :, :n_zlo]), _ce(eps_x[:, :, -n_zhi:])
-        ce_ey_zlo, ce_ey_zhi = _ce(eps_y[:, :, :n_zlo]), _ce(eps_y[:, :, -n_zhi:])
-    else:
-        ce_ey_xlo = ce_ey_xhi = ce_ez_xlo = ce_ez_xhi = cpml_coeff_e_vacuum(dt)
-        ce_ex_ylo = ce_ex_yhi = ce_ez_ylo = ce_ez_yhi = ce_ey_xlo
-        ce_ex_zlo = ce_ex_zhi = ce_ey_zlo = ce_ey_zhi = ce_ey_xlo
+    from rfx.boundaries.electric_coefficient import slab_face_coefficients
+    (ce_ey_xlo, ce_ey_xhi, ce_ez_xlo, ce_ez_xhi,
+     ce_ex_ylo, ce_ex_yhi, ce_ez_ylo, ce_ez_yhi,
+     ce_ex_zlo, ce_ex_zhi, ce_ey_zlo, ce_ey_zhi) = slab_face_coefficients(
+        eps_r, dt, cpml_state, ghost, pad_x, e_loss=e_loss, e_curl_coeff=e_curl_coeff)
 
     px_lo, px_hi = cpml_params.x_lo, cpml_params.x_hi
     py_lo, py_hi = cpml_params.y_lo, cpml_params.y_hi

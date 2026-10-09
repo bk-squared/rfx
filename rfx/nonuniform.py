@@ -2519,7 +2519,7 @@ def _build_nu_scan(
     from rfx.boundaries.tfsf import admit_setup
 
     from rfx.boundaries.setup import nonuniform_boundaries
-    from rfx.boundaries.cpml import apply_cpml_h, apply_cpml_e
+    from rfx.stepping.absorber import apply_cpml_h, apply_cpml_e_step as apply_cpml_e, material_loss_operands
     (use_cpml, cpml_params, cpml_state_init, cpml_grid, cpml_axes_eff,
      curl_boundary, _pec_faces_frozen, _pmc_faces_frozen, use_pmc_faces) = nonuniform_boundaries(
          grid, cpml_axes, pec_faces, pmc_faces)
@@ -2762,7 +2762,7 @@ def _build_nu_scan(
         "pec_edge_masks": pec_edge_masks,
         "pec_occupancy": pec_occupancy,
         "pec_static_edge_masks": pec_static_edge_masks,
-        "cpml_inv_eps_r": _cpml_inv_eps_r if use_cpml else None,
+        "cpml_inv_eps_r": _cpml_inv_eps_r if use_cpml else None, "e_loss": material_loss_operands(materials, eps=aniso_eps if not use_lorentz else None) if use_cpml and not use_debye else None,
         "debye_coeffs": debye_coeffs if use_debye else None,
         "lorentz_coeffs": lorentz_coeffs if use_lorentz else None,
         "aniso_eps": aniso_eps,
@@ -2873,9 +2873,9 @@ def _build_nu_scan(
         if use_cpml:
             st, cpml_new = apply_cpml_e(st, cpml_params, cpml_new,
                                          cpml_grid, cpml_axes_eff,
-                                         materials=materials,
+                                         materials=materials, e_loss=invariants["e_loss"],
                                          inv_eps_r_update=_cpml_inv_eps_r,
-                                         boundary=curl_boundary)
+                                         boundary=curl_boundary, debye=debye_coeffs, lorentz=lorentz_coeffs)
 
         # PEC, per face (#1164)
         st = apply_pec_faces(st, _pec_faces_frozen)
