@@ -19,6 +19,13 @@ not an accuracy guarantee, and a preflight pass is not a convergence study.
 
 ## General constraints
 
+### Intermediate conductor occupancy is an artificial loss; a source on a partly occupied edge is scaled by the same weight
+
+At occupancy strictly between 0 and 1, the field on an edge is scaled every step by a weight; this is physical only at 0 and 1.
+Since this change, a source on such an edge is scaled by the same weight on single-device forward runs, as multi-device runs already did.
+A resistive sheet or lumped RLC element on such an edge is NOT scaled: its update replaces the field after the weight.
+Tracker: #1373
+
 ### Placing a solve on CPU in a process whose default backend is GPU
 
 Tracker: #952

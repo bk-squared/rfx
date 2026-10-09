@@ -31,6 +31,7 @@ import jax
 import jax.numpy as jnp
 
 from rfx.core.drives import drive_layout, inject_drives
+from rfx.model.source_coefficients import drive_table
 import numpy as np
 
 from rfx.core.yee import (
@@ -2565,11 +2566,9 @@ def _build_nu_scan(
         sheet_coeffs = sheet_update_coeffs(
             sheet_impedance.sigma_sheet, materials, dt)
 
-    if sources:
-        src_waveforms = jnp.stack([jnp.array(s[4]) for s in sources], axis=-1)
-    else:
-        src_waveforms = jnp.zeros((n_steps, 0), dtype=jnp.float32)
     src_meta = [(s[0], s[1], s[2], s[3]) for s in sources]
+    src_waveforms = drive_table([jnp.array(s[4]) for s in sources], src_meta, n_steps,
+        occupancy=pec_occupancy, sheet_edge_masks=pec_static_edge_masks)
     drives = drive_layout(src_meta, src_waveforms.dtype)
     prb_meta = [(p[0], p[1], p[2], p[3]) for p in probes]
 

@@ -3,6 +3,37 @@ from rfx._grid_metric import field_index
 from dataclasses import replace
 
 
+def drive_table(series, meta, n_steps, *, occupancy=None, periodic=(False,) * 3,
+                sheet_edge_masks=None, design=None, shape=None, pad=False):
+    """Stack resolved drives, storing each electric edge's occupancy weight.
+
+    Occupancy is the released input used by this lane's step. The optional
+    design window replaces its background weight, including static masks.
+    Traced occupancy stays traced through the gather and table product.
+    With neither occupancy nor a design window, return the original stack
+    without any multiplication. Magnetic columns are never multiplied.
+    ``pad`` retains the decay runner's truncation/zero-padding to n_steps.
+    """
+    import jax.numpy as jnp
+    from rfx.model.occupancy import build_edge_keep
+
+    if pad:
+        series = [s[:n_steps] if s.shape[0] >= n_steps else
+                  jnp.pad(s, (0, n_steps - s.shape[0])) for s in series]
+    table = (jnp.stack(series, axis=-1) if series else
+             jnp.zeros((n_steps, 0), dtype=jnp.float32))
+    if not series or (occupancy is None and design is None):
+        return table
+    keep = build_edge_keep(occupancy, dtype=table.dtype, periodic=periodic,
+                           sheet_edge_masks=sheet_edge_masks,
+                           design=design, shape=shape)
+    for column, (i, j, k, component) in enumerate(meta):
+        if component in ('ex', 'ey', 'ez'):
+            weight = keep[('ex', 'ey', 'ez').index(component)][i, j, k]
+            table = table.at[:, column].set(table[:, column] * weight)
+    return table
+
+
 def source_table(samples, kind=None, *, native="raw", coefficient=None, volume=1.0):
     """Build per-step E increments from samples and a final edge coefficient.
 

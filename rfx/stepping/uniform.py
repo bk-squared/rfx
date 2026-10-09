@@ -1,7 +1,12 @@
 """Uniform Yee kernels and observations attached to the physical sequence.
 
-The frame is Python trace-time bookkeeping, never a scan carry or a pytree.
-Only its arrays leave a step, with the existing runner carry signature.
+The step is one pass over STEP_SEQUENCE. A kernel is the lane's own arithmetic
+for one physical stage and may be absent. A hook point is a fixed time in the
+step at which measurements or an adjoint attach, and where no lane arithmetic
+runs. The frame carries the arrays of this step only. Conductors, the occupancy
+weight included, act on the updated E before sheets, lumped elements and sources;
+a source's own occupancy weight is already in its stored drive table, so the
+loop only adds it.
 """
 from __future__ import annotations
 

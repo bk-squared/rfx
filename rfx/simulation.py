@@ -18,6 +18,7 @@ import jax
 import jax.numpy as jnp
 
 from rfx.core.drives import StepDrives, drive_layout, inject_drives
+from rfx.model.source_coefficients import drive_table
 import numpy as np
 
 from rfx.boundaries.axes import drop_periodic_axes, resolve_cpml_axes
@@ -2331,10 +2332,10 @@ def run(
     if _realized.ACTIVE is not None:
         _realized.sources(grid, materials, sources, "uniform.sources")
     # ---- precompute source waveform matrix (n_steps, n_sources) ----
-    if sources:
-        src_waveforms = jnp.stack([s.waveform for s in sources], axis=-1)
-    else:
-        src_waveforms = jnp.zeros((n_steps, 0), dtype=jnp.float32)
+    src_waveforms = drive_table([s.waveform for s in sources], _setup.src_meta, n_steps,
+        occupancy=pec_occupancy, periodic=periodic,
+        sheet_edge_masks=_ctx["pec_static_edge_masks"],
+        design=design_occupancy, shape=grid.shape)
 
     # ---- magnetic source (H-field) waveform matrix ----
     if mag_sources:
@@ -3037,12 +3038,9 @@ def run_until_decay(
     mon_idx = _grid_metric.field_index(grid, monitor_position, monitor_component)
 
     # ---- precompute source waveforms up to max_steps ----
-    if sources:
-        src_waveforms = jnp.stack([s.waveform[:max_steps] if s.waveform.shape[0] >= max_steps
-                                   else jnp.pad(s.waveform, (0, max_steps - s.waveform.shape[0]))
-                                   for s in sources], axis=-1)
-    else:
-        src_waveforms = jnp.zeros((max_steps, 0), dtype=jnp.float32)
+    src_waveforms = drive_table([s.waveform for s in sources], _setup.src_meta, max_steps,
+        occupancy=pec_occupancy, periodic=_setup.periodic, pad=True,
+        sheet_edge_masks=_setup.ctx_kwargs["pec_static_edge_masks"])
 
     if mag_sources:
         mag_src_waveforms = jnp.stack(
