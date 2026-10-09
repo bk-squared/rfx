@@ -71,6 +71,7 @@ rfx = ["py.typed"]
 testpaths = ["tests"]
 addopts = "-m 'not gpu and not slow and not slow_physics and not docs_consistency'"
 markers = [
+    "gpu_gate: backend numerical contracts run on CPU in CI and on GPU before merge",
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "gpu: tests that need GPU — too slow on CPU or GPU-specific (select with '-m gpu')",
     "gpu_gate: run by the merge train's pre-merge GPU job on PRs that touch the time-step or absorber code ('-m gpu_gate' on the GPU backend); ADDITIVE to gpu or to no mark. A file earns it only if it takes seconds to a few minutes on an 8-12 GB card and passes or strict-xfails on main on GPU",
