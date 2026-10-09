@@ -223,14 +223,16 @@ def _warn_half_sheet_film(sim, grid, tc, i, warn):
     if len(occupied) != 1:
         return  # No single occupied film layer to estimate.
     dx = float(np.asarray(widths[normal])[occupied[0]])
-    conductance = float(tc.sigma_bulk) * float(tc.thickness)
-    if conductance <= 0:
-        return  # A zero-loss declaration cannot exceed the positive loading bar.
-    rs = 1 / conductance
+    try:
+        conductance = float(tc.sigma_bulk) * float(tc.thickness)
+    except (TypeError, ValueError):
+        return  # Not a scalar declaration; the assembly reports it.
     f = float(sim._freq_max)
-    x, t, a = half_sheet_film_error(rs, dx, f)
-    if x <= 3.0:
+    # Judge the loading before any dB arithmetic: a near-insulating film has 0/0 there.
+    if not conductance > 0 or 2*np.pi*f*dx/299792458.0 * 376.730313668 * conductance <= 3.0:
         return
+    rs = 1 / conductance
+    x, t, a = half_sheet_film_error(rs, dx, f)
     dxmax = 3 * rs * 299792458.0 / (2 * np.pi * f * 376.730313668)
     warn.warn(PreflightWarning(
         f"lossy film of {rs:.3g} ohm/sq is realized as two half-sheets one cell "

@@ -97,6 +97,31 @@ def test_t4_occupied_graded_cell(z, count):
         assert '(k0 dx)(eta0/Rs) = 12,' in str(found[0])
 
 
+@pytest.mark.parametrize('axis', [0, 1])
+@pytest.mark.parametrize('pos,count', [(.009, 0), (.0045, 1)])
+def test_t4_normal_axis_x_and_y(axis, pos, count):
+    """The occupied width is read along the film's own normal, not along z."""
+    profile = np.array([.0015]*6 + [.000375] + [.0015]*5)
+    lo, hi = [.003]*3, [.015]*3
+    lo[axis] = hi[axis] = pos
+    kw = {('dx_profile', 'dy_profile')[axis]: profile}
+    sim = Simulation(10e9, (0 if axis == 0 else .018, 0 if axis == 1 else .018, .018),
+                     dx=.0015, boundary='pec', **kw)
+    sim.add_thin_conductor(Box(tuple(lo), tuple(hi)), sigma_bulk=1/(10*35e-6), thickness=35e-6)
+    found = findings(sim)
+    assert len(found) == count
+    if count:
+        assert '(0.0015 m)' in str(found[0])
+
+
+@pytest.mark.parametrize('sigma', [1e-14, 1e-18])
+def test_near_insulating_film_adds_no_finding(sigma):
+    """0/0 in the dB arithmetic must not leak a numpy warning into the report."""
+    report = model(sigma=sigma).preflight()
+    assert report.by_code(CODE) == []
+    assert not [f for f in report if 'invalid value' in str(f)]
+
+
 def test_t5_nonbox_and_existing_admission_findings():
     from tests.contracts.test_dc_film_admission import model as disc_model
 
