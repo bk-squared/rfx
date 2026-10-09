@@ -32,8 +32,7 @@ share profiles with two interior widths `0.9 * dx`, `1.1 * dx`. Uniform keeps
 its computed dt and NU pins that exact value. Every cell checks exact dt first.
 Geometry equality covers realized nodes, cell sizes, ranges, bounds, masks,
 and materials. Lane labels, declared fields and declaration-derived residuals
-are excluded. The declared-length record semantics are documented once in
-FINDINGS.md. Kernel material views come from `_realized.capture`; E-side
+are excluded (noted in FINDINGS.md). Kernel material views come from `_realized.capture`; E-side
 lumped terms are read at E, not from H's intentionally smaller container.
 
 `comparison.py` owns the bars: 9 float32 ULP at the field peak per step;
