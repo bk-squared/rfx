@@ -457,6 +457,11 @@ def test_o3_mean_s21_drift_lock(record_property):
     pytest run of this file by up to 8.7e-8 (Rs0 = 1e-6). Two GPU runs, both on an RTX
     2070 SUPER (JAX 0.6.2, CUDA 12), differ from the CPU values by up to 3.66e-7
     (Rs0 = 5): a GPU-versus-CPU offset; the two GPU runs agree with each other to 5.5e-8.
+    On the re-pinned tree (branch head ac16407d, 2026-10-10): an x86 Linux CPU run
+    (Xeon Gold 6526Y, same Python and JAX) reads -1.788e-07 / -2.384e-07 / -1.192e-07
+    from these Mac values (3, 4 and 2 float32 ULP); its first two readings are
+    bit-identical to the GitHub-hosted runner's. A GPU run on this tree: not measured.
+    The largest difference over both sets is still the 3.66e-7 GPU offset. Hence 4e-7.
     For scale: the tree before #1213 (cd237692) reads 0.999843 / 0.997062 / 0.996813,
     6.3e-4 / 6.3e-4 / 5.7e-4 away. Records: bk-squared/rfx-archive
     rfx/records/20260927-1292-locked-results/ (R5).
