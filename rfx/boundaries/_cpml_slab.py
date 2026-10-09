@@ -77,6 +77,8 @@ def apply_ordered(field, terms):
                 start, stop, _ = window.indices(size)
                 pads.append((start, size - stop))
                 if start != 0 or stop != size:
+                    # A face slab restricts one axis; the mask is that axis's.
+                    assert mask is True, "a CPML slab restricts exactly one axis"
                     shape = [1, 1, 1]
                     shape[axis] = size
                     index = jnp.arange(size).reshape(shape)

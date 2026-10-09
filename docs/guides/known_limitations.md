@@ -26,9 +26,12 @@ Tracker: #952
 The absorber write-back is selected from the process's default backend at trace
 time. A process whose default backend is GPU but which places a solve on its CPU
 device therefore uses the GPU form there. A plain call and a `jax.jit` call of
-the same solve can then differ by 31–48 float32 ULP at the probe record peak
-(measured on seven machines). Results on the GPU, and in a CPU-only process, are
-not affected. Use the GPU device or a CPU-only process to avoid this spread.
+the same solve can then differ by up to 63 float32 ULP at the probe record peak
+(5e-6 of the peak): 31–63 ULP measured on a uniform mesh for records of 120 to
+480 steps on nine machines, unchanged from 480 to 3840 steps on the one where
+longer records were run; a graded-mesh case read 0. Results on the GPU, and in a
+CPU-only process, are not affected. Use the GPU device or a CPU-only process to
+avoid this spread.
 
 ### Lossy sheets and sheet_effective_size
 

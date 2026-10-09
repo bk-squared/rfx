@@ -96,12 +96,12 @@ def test_selected_backend_probe_plain_vs_jit(graded, steps, record_property):
         jax.clear_caches()
 
 
-def _field_comparison(a, b, label, record_property, *, assert_bar):
+def _field_comparison(a, b, label, record_property, *, assert_bar, kind="step"):
     peaks = component_peaks(a, b)
     measurements, errors = [], []
     for key in a:
         try:
-            compare(a[key], b[key], record=f"{label}/{key}", kind="step",
+            compare(a[key], b[key], record=f"{label}/{key}", kind=kind,
                     peak=peaks[key], measurements=measurements)
         except AssertionError as exc:
             errors.append(str(exc))
@@ -129,16 +129,17 @@ def test_selected_backend_six_fields_against_other_form(monkeypatch, lane, recor
                     for key in ("ex", "ey", "ez", "hx", "hy", "hz")}
 
     # On GPU the two compiled forms are compared (measured bitwise on seven card
-    # classes). On CPU a compiled comparison of this scene says nothing about
-    # the absorber: the current source leaves a static ez of 3e5 at its cell and
-    # the late H beside it is the rounding of that field, so even the slab form
-    # differs from its own uncompiled result by a tenth of the H peak. There the
-    # two forms are compared uncompiled, where they must be equal.
+    # classes). On CPU this scene is a poor compiled witness whatever the form:
+    # the current source leaves a static ez of 3e5 at its cell, and the slab
+    # form alone differs from its own uncompiled result by 0.1-0.2 % of the E
+    # peak and a tenth or more of the H peak (measured, Mac arm64, 400 steps).
+    # There the two forms are compared uncompiled, where they are bit-equal.
     eager = backend == "cpu"
     steps = 40 if eager else 400     # uncompiled steps cost 0.3 s each
     try:
         _field_comparison(fields(selected, eager), fields(other, eager),
                           f"{backend}/{lane}/{'eager' if eager else 'compiled'}/{steps}",
-                          record_property, assert_bar=True)
+                          record_property, assert_bar=True,
+                          kind="exact" if eager else "step")
     finally:
         jax.clear_caches()
