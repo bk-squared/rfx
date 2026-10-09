@@ -419,3 +419,65 @@ def test_vmap_cut_places_logical_x_and_preserves_transpose(devices, axis):
     batched_grad = jax.grad(lambda b: jnp.sum(jax.vmap(f, in_axes=axis)(b)**2))(inputs)
     single_grads = jnp.stack([jax.grad(lambda a: jnp.sum(f(a)**2))(a) for a in batch])
     np.testing.assert_array_equal(batched_grad, jnp.moveaxis(single_grads, 0, axis))
+
+
+@pytest.mark.parametrize('devices,expected', [
+    (2, [(0, 1), (0, 2), (0, 3), (0, 4), (0, 5), (0, 6),
+         (1, 1), (1, 2), (1, 3), (1, 4), (1, 5)]),
+    (3, [(0, 1), (0, 2), (0, 3), (0, 4), (1, 1), (1, 2),
+         (1, 3), (1, 4), (2, 1), (2, 2), (2, 3)]),
+])
+def test_owner_and_local_index_literal_table(devices, expected):
+    layout = Slab(11, devices)
+    assert [(layout.owner(i), layout.local_index(i)) for i in range(11)] == expected
+    for i in (-1, 11):
+        with pytest.raises(ValueError, match='outside'):
+            layout.owner(i)
+        with pytest.raises(ValueError, match='outside'):
+            layout.local_index(i)
+
+
+@pytest.mark.parametrize('devices', [2, 3])
+def test_owned_values_reads_only_owner_and_preserves_gradient(devices):
+    from rfx.stepping.slab import owned_values
+    from rfx.stepping.rank import mesh_ranks
+    if len(jax.devices()) < devices:
+        pytest.skip('requires three virtual CPU devices configured before import')
+    mesh = Mesh(np.asarray(jax.devices()[:devices]), ('x',))
+    # Different values on every rank, row and component expose wrong ownership.
+    arrays = tuple(jax.device_put(
+        jnp.arange(devices * 6 * 2 * 3, dtype=jnp.float32).reshape(-1, 2, 3) + c * 1000,
+        NamedSharding(mesh, P('x'))) for c in range(3))
+    nodes = ((0, 2, 1, 2, 'ex'), (1, 1, 0, 1, 'ey'), (devices-1, 3, 1, 0, 'ez'))
+    ranks = mesh_ranks(mesh)
+    read = jax.jit(lambda a, r: owned_values(a, mesh, nodes, ranks=r))
+    actual = read(arrays, ranks)
+    # Slab-local: row r holds a node's value only where r owns it, zero elsewhere.
+    host = [np.arange(devices * 6 * 2 * 3, dtype=np.float32).reshape(-1, 2, 3) + c * 1000
+            for c in range(3)]
+    expected = np.zeros((devices, len(nodes)), np.float32)
+    for n, (owner, i, j, k, component) in enumerate(nodes):
+        expected[owner, n] = host[('ex', 'ey', 'ez').index(component)][owner * 6 + i, j, k]
+    assert actual.dtype == np.float32 and actual.shape == (devices, len(nodes))
+    assert actual.sharding.is_equivalent_to(NamedSharding(mesh, P('x')), 2)
+    np.testing.assert_array_equal(actual, expected)
+    gradients = jax.grad(lambda a: jnp.sum(read(a, ranks)))(arrays)
+    for c, gradient in enumerate(gradients):
+        expected_grad = np.zeros((devices * 6, 2, 3), np.float32)
+        owner, i, j, k, _ = nodes[c]
+        expected_grad[owner * 6 + i, j, k] = 1
+        np.testing.assert_array_equal(gradient, expected_grad)
+    # A magnetic node keeps its column: 1 on its owner, 0 elsewhere.
+    magnetic = np.asarray(owned_values(arrays, mesh, nodes + ((devices - 1, 1, 0, 0, 'hy'),), ranks=ranks))
+    np.testing.assert_array_equal(magnetic[:, :3], expected)
+    np.testing.assert_array_equal(magnetic[:, 3], np.eye(devices, dtype=np.float32)[devices - 1])
+
+
+def test_empty_owned_values_builds_no_shard_map(monkeypatch):
+    import rfx.stepping.slab as slab
+    mesh = Mesh(np.asarray(jax.devices()[:1]), ('x',))
+    def forbidden(*args, **kwargs):
+        raise AssertionError('empty nodes must not build a shard_map')
+    monkeypatch.setattr(slab, 'rank_shard_map', forbidden)
+    actual = slab.owned_values((), mesh, (), ranks=None)
+    assert actual.shape == (1, 0) and actual.dtype == jnp.float32

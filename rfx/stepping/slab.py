@@ -1,11 +1,11 @@
 """Whole-domain x arrays to owned slabs and neighbour ghosts.
 
 This module owns placement and source ownership, not field updates,
-CPML state or gathering. A mesh result merges rank and local x;
+CPML state or gathering. Owned-node reads use the same layout. A mesh result merges rank and local x;
 without a mesh the leading axes are (rank, local x), for legacy callers.
 """
 from dataclasses import dataclass
-from functools import lru_cache
+from functools import lru_cache, partial
 from typing import NamedTuple
 
 import jax
@@ -84,6 +84,16 @@ class Slab:
                       min((r + 1) * self.nx_per_rank, self.nx))
                      for r in range(self.n_devices))
 
+    def owner(self, i) -> int:
+        """Slab owning a real global x row (host metadata only)."""
+        if not 0 <= i < self.nx:
+            raise ValueError(f'x row {i} outside [0, {self.nx})')
+        return int(i // self.nx_per_rank)
+
+    def local_index(self, i) -> int:
+        """Local row of a real global x row, including the low ghost."""
+        return int(i - self.owned[self.owner(i)][0] + self.ghost_width)
+
     @property
     def faces(self):
         return tuple((r == 0, r == self.n_devices - 1) for r in range(self.n_devices))
@@ -92,6 +102,30 @@ class Slab:
     def from_grid(cls, grid):
         layout = getattr(grid, 'layout', None)
         return layout if layout is not None else cls(grid.nx, grid.n_devices, grid.ghost_width)
+
+
+def owned_values(arrays, mesh, nodes, *, ranks):
+    """Slab-local float32 values at static (owner, i, j, k, component) nodes.
+
+    Arrays are x-sharded slabs in (ex, ey, ez) order; the result is
+    (mesh.size, len(nodes)) sharded on x. Row r holds a node's value where
+    slab r owns it and zero off the owner; nothing is reduced across slabs.
+    A magnetic node reads 1 on its owner, so columns stay aligned with nodes.
+    """
+    if not nodes:
+        return jnp.zeros((mesh.size, 0), dtype=jnp.float32)
+
+    @partial(rank_shard_map, mesh=mesh, in_specs=(P('x'),),
+             out_specs=P('x'), check_rep=False)
+    def read(local_arrays, *, rank):
+        values = [jnp.where(rank == owner,
+                            local_arrays[('ex', 'ey', 'ez').index(component)][i, j, k]
+                            if component in ('ex', 'ey', 'ez') else jnp.float32(1),
+                            jnp.float32(0))
+                  for owner, i, j, k, component in nodes]
+        return jnp.asarray(values, dtype=jnp.float32)[None, :]
+
+    return read(ranks, arrays)
 
 
 def forward_sharding(arr):

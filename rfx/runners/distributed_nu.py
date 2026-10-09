@@ -42,7 +42,7 @@ from functools import partial
 
 from rfx import _realized
 from rfx.stepping.slab import (
-    Slab, Fill, cut, cut_poles, cut_pole_coeffs, forward_sharding as _forward_sharding,
+    Slab, Fill, cut, cut_poles, cut_pole_coeffs, owned_values, forward_sharding as _forward_sharding,
 )
 
 import jax
@@ -1324,10 +1324,10 @@ def run_nonuniform_distributed_pec(
         4b. E update + ADE polarisation update       via shard_map  [if Debye/Lorentz]
             (uses snapshotted ex_old/ey_old/ez_old, not post-exchange E)
         5. apply_cpml_e (Phase 2C, NU + slab-aware)  via shard_map  [if CPML]
+        5b. Multiply published soft-PEC factors                    [if occupancy]
         6. Source injection (rank-conditional)       via shard_map
         7. apply_pec on physical domain faces        via shard_map
         8. apply_pec_mask (geometry + override)      via shard_map
-        8b. apply_pec_occupancy (soft PEC)           via shard_map  [if occupancy]
         9. Ghost exchange of E                       via lax.ppermute
        10. Probe accumulation (rank-conditional sum) via lax.psum
 
@@ -1643,19 +1643,21 @@ def run_nonuniform_distributed_pec(
     src_device_ids = []
     src_local_specs = []
     for s in sources:
-        dev_id = s.i // nx_per
-        local_i = (s.i % nx_per) + ghost
+        dev_id = layout.owner(s.i)
+        local_i = layout.local_index(s.i)
         src_device_ids.append(int(dev_id))
         src_local_specs.append((int(local_i), int(s.j), int(s.k), s.component))
 
     prb_device_ids = []
     prb_local_specs = []
     for p in probes:
-        dev_id = p.i // nx_per
-        local_i = (p.i % nx_per) + ghost
+        dev_id = layout.owner(p.i)
+        local_i = layout.local_index(p.i)
         prb_device_ids.append(int(dev_id))
         prb_local_specs.append((int(local_i), int(p.j), int(p.k), p.component))
 
+    source_nodes = tuple((owner, *spec) for owner, spec in
+                         zip(src_device_ids, src_local_specs))
     n_src = len(sources)
     n_prb = len(probes)
 
@@ -2229,6 +2231,12 @@ def run_nonuniform_distributed_pec(
                 st, cs, cpml_params, sharded_materials,
                 e_materials, absorber_curl, ranks=ranks)
 
+        # 5b. Published soft-PEC factors; both ghost rows carry one.
+        if edge_keep is not None:
+            keep_x, keep_y, keep_z = edge_keep
+            st = st._replace(ex=st.ex * keep_x, ey=st.ey * keep_y,
+                             ez=st.ez * keep_z)
+
         # 6. Source injection (rank-conditional via shard_map)
         st = _inject_sources_shmap(st, src_vals, ranks=ranks)
 
@@ -2241,17 +2249,11 @@ def run_nonuniform_distributed_pec(
             st = _apply_pec_mask_nu_shmap(
                 st, sharded_pec_mask, mesh, n_devices, nx_local, ranks=ranks)
 
-        # 8b. Published soft-PEC factors; both ghost rows carry one.
-        if edge_keep is not None:
-            keep_x, keep_y, keep_z = edge_keep
-            st = st._replace(ex=st.ex * keep_x, ey=st.ey * keep_y,
-                             ez=st.ez * keep_z)
-
         # 9. Ghost exchange of E so the next step's H update sees the
         #    neighbour rank's E at the seam.  LAST in the E half-step, after
         #    the PEC stages: the H update at a rank's last real cell reads
         #    Ey/Ez on its right ghost plane, and that plane's PEC edges are
-        #    zeroed by the OWNER rank (stages 8/8b act on real cells only).
+        #    zeroed by the OWNER rank (stages 7/8 impose the hard conductors).
         #    Exchanging before the PEC stages handed the ghost the
         #    un-zeroed value — the #931 seam-cell divergence (2.107e-01
         #    final-step error on a one-cell body at rank 1's first real
@@ -2333,10 +2335,11 @@ def run_nonuniform_distributed_pec(
     # Per-cell arrays must enter the jit as arguments: captured concrete
     # arrays become whole-domain compiled constants on every device. Keep
     # their tracer-valued counterparts shared by all scans, including remat.
-    def _drive_xs(xs, scales, ranks):
+    def _drive_xs(xs, scales, ranks, weights=None):
         from rfx.model.source_coefficients import slab_drive_table
         return slab_drive_table(xs, mesh, src_device_ids, src_local_specs,
-                                ranks=ranks, scales=scales, columns=drive_columns)
+                                ranks=ranks, scales=scales, columns=drive_columns,
+                                weights=weights)
 
     edge_keep = None
     if sharded_pec_occupancy is not None:
@@ -2354,9 +2357,15 @@ def run_nonuniform_distributed_pec(
                 invariants[0].eps_r, invariants[0].sigma, mesh, drives, dt, ranks=ranks, grid=electric_grid)
             if _realized.ACTIVE is not None:
                 scales = jnp.broadcast_to(_realized.runtime_drive(jnp.sum(scales, axis=0), tuple(drive_columns)), scales.shape)
+        # Occupancy is the last float32 drive factor, read slab-locally on the
+        # source's owner; scans only add the stored samples.
+        weights = None
+        edge_keep = invariants[2]
+        if edge_keep is not None and n_src:
+            weights = owned_values(edge_keep, mesh, source_nodes, ranks=ranks)
         if warmup_xs is not None:
-            warmup_xs = _drive_xs(warmup_xs, scales, ranks)
-        opt_xs = _drive_xs(opt_xs, scales, ranks)
+            warmup_xs = _drive_xs(warmup_xs, scales, ranks, weights)
+        opt_xs = _drive_xs(opt_xs, scales, ranks, weights)
         # #1303: each component's four-cell mean, built once for the
         # warm-up and the optimize scans (and every remat segment) -- see
         # slab_e_materials_shmap for why not inside the loop. Dispersive E
