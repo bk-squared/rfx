@@ -7,35 +7,78 @@ step to read the array; until then the tests pin it against each step.
 """
 from functools import partial
 
-import jax
 import jax.numpy as jnp
 
-from rfx.boundaries.pec import _volume_occupancy_masks, realized_pec_edge_masks
+from rfx.boundaries.pec import _shift, realized_pec_edge_masks
 
 
-@partial(jax.jit, static_argnames=('dtype', 'periodic'), inline=True)
 def _edge_factors(occupancy, sheet_edge_masks, *, dtype, periodic):
-    # Compile the full expression as the existing scan does. Eager primitive
-    # boundaries round intermediate noisy-OR values differently on CPU.
+    """keep = prod(1 - o) over the four cells of each E edge, products only.
+
+    One subtraction per cell, then multiplies in a fixed association:
+    ``((1-o)(1-o_t1)) * ((1-o_t2)(1-o_t1t2))`` with t1 < t2 the two axes
+    transverse to the component. No multiply feeds an add or a subtract, so
+    there is nothing a compiler can fuse: the float32 result is the same
+    eager, under jit, inside a scan and per slab (the former ``1 - M`` with
+    its chained noisy-OR was 1 ULP apart between those contexts on
+    non-dyadic occupancies). Outside a non-periodic wall the occupancy reads
+    0 through the one neighbour rule (``_shift``), so the factor there is 1.
+    """
     occ = jnp.clip(occupancy.astype(dtype), 0.0, 1.0)
-    masks = _volume_occupancy_masks(occ, periodic)
-    if sheet_edge_masks is not None:
-        masks = tuple(jnp.maximum(m, s.astype(m.dtype))
-                      for m, s in zip(masks, sheet_edge_masks))
-    return tuple(1.0 - m for m in masks)
+    keep = []
+    for c in range(3):
+        t1, t2 = (t for t in range(3) if t != c)
+        back1 = _shift(occ, t1, periodic, +1)
+        k = ((1.0 - occ) * (1.0 - back1)) * (
+            (1.0 - _shift(occ, t2, periodic, +1))
+            * (1.0 - _shift(back1, t2, periodic, +1)))
+        if sheet_edge_masks is not None:
+            k = jnp.where(sheet_edge_masks[c].astype(bool), jnp.zeros_like(k), k)
+        keep.append(k)
+    return tuple(keep)
+
+
+def _window_factors(box, design_occupancy, occ, *, dtype, periodic):
+    """The same product on a design box's window (tape stays window-sized).
+
+    Window arithmetic of ``rfx.boundaries.pec.pec_occupancy_box_keep``: the
+    write window is the box grown one cell on the plus side, the computation
+    window one more cell on the minus side for the backward neighbours. A
+    written value equals the whole-domain product of the merged occupancy
+    bit for bit.
+    """
+    if any(periodic):
+        # The existing refusal, verbatim, from the step's own helper.
+        from rfx.boundaries.pec import pec_occupancy_box_keep
+        pec_occupancy_box_keep(box, design_occupancy, shape=occ.shape,
+                               dtype=dtype, pec_occupancy=occ, periodic=periodic)
+    lo = tuple(int(v) for v in box[0::2])
+    hi = tuple(int(v) for v in box[1::2])
+    c_lo = tuple(max(v - 1, 0) for v in lo)
+    c_hi = tuple(min(v + 1, n) for v, n in zip(hi, occ.shape))
+    win = tuple(slice(a, b) for a, b in zip(c_lo, c_hi))
+    write = tuple(slice(a, b) for a, b in zip(lo, c_hi))
+    inner = tuple(slice(a - c, b - c) for a, b, c in zip(lo, c_hi, c_lo))
+    box_local = tuple(slice(a - c, b - c) for a, b, c in zip(lo, hi, c_lo))
+    local = jnp.asarray(occ)[win].astype(dtype).at[box_local].set(
+        jnp.asarray(design_occupancy).astype(dtype))
+    # A window that starts inside the lattice has real neighbours in its
+    # context layer; where it starts on the wall, ``_shift`` pads as the
+    # whole-domain call does.
+    keep = _edge_factors(local, None, dtype=dtype, periodic=(False,) * 3)
+    return write, tuple(k[inner] for k in keep)
 
 
 def build_edge_keep(occupancy, *, dtype=jnp.float32,
                     periodic=(False, False, False), sheet_edge_masks=None,
-                    released_cells=None, shape=None, design=None,
-                    inside_slab=False):
-    """Main's clipped, chained noisy-OR, followed by its sheet maximum.
+                    released_cells=None, shape=None, design=None):
+    """The factor each E edge is multiplied by, as three arrays on the E edges.
 
-    ``released_cells`` are integer cell indices, shape (N, 3), including N=0.
-    The caller's port guard remains responsible for its existing neighbour
-    reach. Design values replace their cells; their positive write window
-    replaces the background edge keep, just as the pre-weight field rewrite.
-    No occupancy and no design input publishes None, even with static sheets.
+    ``released_cells`` are integer cell indices, shape (N, 3), including N=0,
+    set to 0 before the factor is formed. Design values replace their cells;
+    their write window replaces the background factor (including its static
+    sheet fold), as the step's window rewrite does. No occupancy and no
+    design input gives None, even with static sheets.
     """
     if occupancy is None and design is None:
         return None
@@ -48,19 +91,11 @@ def build_edge_keep(occupancy, *, dtype=jnp.float32,
         if cells.ndim != 2 or cells.shape[1] != 3 or not jnp.issubdtype(cells.dtype, jnp.integer):
             raise ValueError("released_cells must be an integer array of shape (N, 3)")
         occ = occ.at[cells[:, 0], cells[:, 1], cells[:, 2]].set(0.0)
-    # A slab already compiles this expression in its shard_map. A second jit
-    # boundary changes CPU fusion/rounding relative to that lane's operator.
-    factors = _edge_factors.__wrapped__ if inside_slab else _edge_factors
-    keep = factors(occ, sheet_edge_masks if occupancy is not None else None,
-                   dtype=dtype, periodic=periodic)
+    keep = _edge_factors(occ, sheet_edge_masks if occupancy is not None else None,
+                         dtype=dtype, periodic=periodic)
     if design is not None:
-        # Reuse the window's established clipping and arithmetic. Its
-        # pre-weight rewrite deliberately replaces, rather than compounds,
-        # the background factor (including its static sheet fold).
-        from rfx.boundaries.pec import pec_occupancy_box_keep
-        write, window_keep = pec_occupancy_box_keep(
-            design.bounds, design.occupancy, shape=occ.shape, dtype=dtype,
-            pec_occupancy=occ, periodic=periodic)
+        write, window_keep = _window_factors(
+            design.bounds, design.occupancy, occ, dtype=dtype, periodic=periodic)
         keep = tuple(k.at[write].set(w) for k, w in zip(keep, window_keep))
     return keep
 
@@ -96,7 +131,7 @@ def publish_slab_occupancy(materials, cut_occupancy, mesh):
     @partial(shard_map, mesh=mesh, in_specs=P('x'),
              out_specs=(P('x'), P('x'), P('x')), check_rep=False)
     def local(cells):
-        keep = build_edge_keep(cells[:-1], dtype=jnp.float32, inside_slab=True)
+        keep = build_edge_keep(cells[:-1], dtype=jnp.float32)
         return tuple(jnp.concatenate((jnp.ones_like(k[:1]), k[1:],
                                        jnp.ones_like(k[:1])), axis=0)
                      for k in keep)

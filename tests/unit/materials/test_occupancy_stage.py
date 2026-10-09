@@ -1,7 +1,13 @@
-"""Published occupancy factors match the unmodified lane operators.
+"""The published occupancy factor: one value in every compile context.
 
-The numerical oracle below owns its four-cell product; it never calls a
-product mask/weight helper. Ghost values are not part of the slab contract.
+The factor is prod(1 - o) over the four cells of an E edge, written as one
+subtraction per cell followed by multiplies only. ``reference32`` below is
+the same association in NumPy float32 — IEEE arithmetic with no compiler —
+and the builder must equal it BITWISE eager, under jit, inside a scan and per
+slab. ``reference`` is the float64 product, the independent value. Against
+the steps' own in-loop formers (``1 - M``, whose rounding depends on where
+they are compiled) the bar is one float32 ULP of 1.0. Ghost values are not
+part of the slab contract.
 """
 import inspect
 from unittest.mock import patch
@@ -39,6 +45,46 @@ def reference(occupancy, periodic=(False, False, False)):
     return result
 
 
+ULP1 = float(np.spacing(np.float32(1.0)))       # 1.19e-7; the two forms differ by at most half of it per stage
+
+
+def reference32(occupancy, periodic=(False, False, False), sheets=None):
+    """((1-o)(1-o_t1)) * ((1-o_t2)(1-o_t1t2)), t1 < t2, in NumPy float32."""
+    occ = np.clip(np.asarray(occupancy, np.float32), np.float32(0), np.float32(1))
+
+    def back(arr, axis):
+        out = np.roll(arr, 1, axis=axis)
+        if not periodic[axis] and arr.shape[axis] != 1:
+            face = [slice(None)] * 3
+            face[axis] = 0
+            out[tuple(face)] = np.float32(0)
+        return out
+    one = np.float32(1)
+    result = []
+    for c in range(3):
+        t1, t2 = (t for t in range(3) if t != c)
+        b1 = back(occ, t1)
+        k = ((one - occ) * (one - b1)).astype(np.float32) * (
+            (one - back(occ, t2)) * (one - back(b1, t2))).astype(np.float32)
+        k = k.astype(np.float32)
+        if sheets is not None:
+            k = np.where(np.asarray(sheets[c], bool), np.float32(0), k)
+        result.append(k)
+    return result
+
+
+NON_DYADIC = [0.2, 0.37, 'random']
+
+
+def cells_for(value, shape=(13, 9, 7)):
+    if value == 'random':
+        return np.random.default_rng(202).uniform(0, .85, shape).astype(np.float32)
+    cells = np.zeros(shape, np.float32)
+    cells[5:7, 3:6, 2:4] = value
+    cells[0, 1:4, 0:2] = value          # on two walls
+    return cells
+
+
 def material(shape):
     return MaterialArrays(jnp.ones(shape), jnp.zeros(shape), jnp.ones(shape))
 
@@ -56,6 +102,64 @@ def test_independent_four_cell_product(shape, binary, periodic):
             np.testing.assert_array_equal(got, expected)
         else:
             np.testing.assert_allclose(got, expected, rtol=0, atol=2.4e-7)
+    for got, expected in zip(actual, reference32(cells, periodic)):
+        assert np.array_equal(np.asarray(got), expected)
+
+
+def _contexts(cells, periodic, sheets):
+    x = jnp.asarray(cells)
+    masks = None if sheets is None else tuple(jnp.asarray(m) for m in sheets)
+
+    def f(v):
+        return build_edge_keep(v, periodic=periodic, sheet_edge_masks=masks)
+
+    def in_scan():
+        def body(carry, _):
+            return carry, f(x + 0.0 * carry)
+        return tuple(k[-1] for k in jax.lax.scan(body, jnp.float32(0.), None, length=2)[1])
+
+    def into_field():
+        field = jnp.full(x.shape, jnp.float32(0.731))
+
+        def body(carry, _):
+            return tuple(c * k for c, k in zip(carry, f(x))), None
+        return jax.lax.scan(body, (field,) * 3, None, length=1)[0]
+    return {'eager': f(x), 'jit': jax.jit(f)(x), 'in a scan': jax.jit(in_scan)(),
+            'into a field in a scan': jax.jit(into_field)()}
+
+
+def _assert_one_value_in_every_context(value, periodic, with_sheet):
+    cells = cells_for(value)
+    sheets = None
+    if with_sheet:
+        sheets = [np.zeros(cells.shape, bool) for _ in range(3)]
+        sheets[1][6, 2:7, 1:5] = True
+        sheets[2][6, 2:7, 1:5] = True
+    expected = reference32(cells, periodic, sheets)
+    got = _contexts(cells, periodic, sheets)
+    for name in ('eager', 'jit', 'in a scan'):
+        for actual, ref in zip(got[name], expected):
+            assert np.array_equal(np.asarray(actual), ref), name
+    for actual, ref in zip(got['into a field in a scan'], expected):
+        assert np.array_equal(np.asarray(actual), (np.float32(0.731) * ref).astype(np.float32))
+    for actual, ref in zip(got['eager'], reference(cells, periodic)):
+        keep = np.asarray(actual, np.float64)
+        if sheets is None:
+            np.testing.assert_allclose(keep, ref, rtol=0, atol=2.4e-7)
+
+
+@pytest.mark.parametrize('with_sheet', [False, True])
+@pytest.mark.parametrize('periodic', [(False, False, False), (False, True, True)])
+@pytest.mark.parametrize('value', NON_DYADIC)
+def test_one_value_in_every_compile_context(value, periodic, with_sheet):
+    _assert_one_value_in_every_context(value, periodic, with_sheet)
+
+
+@pytest.mark.gpu_gate
+def test_one_value_in_every_compile_context_on_this_backend():
+    """The same bitwise comparison, run on a GPU by the merge train's gate."""
+    for value in NON_DYADIC:
+        _assert_one_value_in_every_context(value, (False, False, False), False)
 
 
 @pytest.mark.parametrize('lane', ['uniform', 'graded'])
@@ -99,9 +203,13 @@ def test_published_matches_lane_operator(lane, sheet, monkeypatch):
     sim.forward(n_steps=3, pec_occupancy_override=cells, skip_preflight=True, checkpoint=False).time_series.block_until_ready()
     jax.effects_barrier()
     assert published and applied
+    # The step's in-loop former is 1 - M; its last bit depends on the compile
+    # context, so the published product is held to one ULP of 1.0 against it.
     for row in applied:
         for expected, actual in zip(row, published[0]):
-            np.testing.assert_array_equal(actual, expected)
+            np.testing.assert_allclose(actual, expected, rtol=0, atol=ULP1)
+            binary = (expected == 0) | (expected == 1)
+            assert np.array_equal(actual[binary], expected[binary])
 
 
 @pytest.mark.parametrize('n_devices', [2, 3])
@@ -124,11 +232,17 @@ def test_slab_owned_rows_match_operator_and_reference(n_devices):
     st = st._replace(ex=ones, ey=ones, ez=ones)
     effective = _apply_pec_occupancy_nu_shmap(st, slabs, mesh, n_devices, layout.nx_local, ranks=mesh_ranks(mesh))
     refs = reference(cells)
-    for component, keep, ref in zip((effective.ex, effective.ey, effective.ez), result.edge_keep, refs):
+    whole = [np.asarray(k) for k in build_edge_keep(jnp.asarray(cells))]
+    exact = reference32(cells)
+    for c, (component, keep, ref) in enumerate(zip((effective.ex, effective.ey, effective.ez), result.edge_keep, refs)):
         for rank, (lo, hi) in enumerate(layout.owned):
             owned = slice(rank * layout.nx_local + 1, rank * layout.nx_local + 1 + hi - lo)
-            np.testing.assert_array_equal(np.asarray(keep)[owned], np.asarray(component)[owned])
-            np.testing.assert_allclose(np.asarray(keep)[owned], ref[lo:hi], rtol=0, atol=2.4e-7)
+            got = np.asarray(keep)[owned]
+            # per slab == whole domain == NumPy float32, bit for bit
+            assert np.array_equal(got, whole[c][lo:hi])
+            assert np.array_equal(got, exact[c][lo:hi])
+            np.testing.assert_allclose(got, np.asarray(component)[owned], rtol=0, atol=ULP1)
+            np.testing.assert_allclose(got, ref[lo:hi], rtol=0, atol=2.4e-7)
 
 
 def test_released_cells_and_empty_are_exact():
@@ -155,24 +269,44 @@ def test_absent_input_publishes_none():
     assert build_edge_keep(None, sheet_edge_masks=(jnp.ones((4, 5, 6)),)*3) is None
 
 
-def test_design_replaces_the_preweight_window_and_is_traced():
+def test_design_window_equals_the_whole_domain_product_bit_for_bit():
     from rfx.simulation import DesignOccupancySpec
     from rfx.boundaries.pec import apply_pec_occupancy, apply_pec_occupancy_box, pec_occupancy_box_keep
-    shape = (7, 6, 5); bounds = (2, 4, 1, 4, 2, 3)
-    background = jnp.full(shape, .25); x = jnp.full((2, 3, 1), .5)
-    def f(v):
-        return build_edge_keep(background, design=DesignOccupancySpec(bounds, v))
-    one = jnp.ones(shape); st = init_state(shape)._replace(ex=one, ey=one, ez=one)
-    write, keep = pec_occupancy_box_keep(bounds, x, shape=shape, dtype=jnp.float32, pec_occupancy=background)
-    expected = apply_pec_occupancy_box(apply_pec_occupancy(st, background), st, write, keep)
-    for a, b in zip(f(x), (expected.ex, expected.ey, expected.ez)):
-        np.testing.assert_array_equal(a, b)
-    merged = np.asarray(background).copy()
-    merged[2:4, 1:4, 2:3] = np.asarray(x)
-    for actual, independent in zip(f(x), reference(merged)):
-        np.testing.assert_allclose(actual, independent, rtol=0, atol=2.4e-7)
-    grad = jax.grad(lambda v: sum(jnp.sum(a) for a in f(v)))(x)
-    assert np.isfinite(grad).all() and np.any(np.asarray(grad) != 0)
+    shape = (7, 6, 5)
+    rng = np.random.default_rng(7)
+    background_np = rng.uniform(0, .6, shape).astype(np.float32)
+    background = jnp.asarray(background_np)
+    for bounds in ((2, 4, 1, 4, 2, 3), (0, 2, 0, 3, 0, 2), (4, 7, 3, 6, 2, 5)):
+        box = tuple(slice(bounds[2 * a], bounds[2 * a + 1]) for a in range(3))
+        x_np = rng.uniform(0, .9, tuple(bounds[2 * a + 1] - bounds[2 * a] for a in range(3))).astype(np.float32)
+        x = jnp.asarray(x_np)
+
+        def f(v):
+            return build_edge_keep(background, design=DesignOccupancySpec(bounds, v))
+        merged = background_np.copy()
+        merged[box] = x_np
+        for mode in (f, jax.jit(f)):
+            for actual, exact in zip(mode(x), reference32(merged)):
+                assert np.array_equal(np.asarray(actual), exact), bounds
+        # and within one ULP of 1.0 of what the step's window rewrite gives today
+        one = jnp.ones(shape); st = init_state(shape)._replace(ex=one, ey=one, ez=one)
+        write, keep = pec_occupancy_box_keep(bounds, x, shape=shape, dtype=jnp.float32, pec_occupancy=background)
+        today = apply_pec_occupancy_box(apply_pec_occupancy(st, background), st, write, keep)
+        for a, b in zip(f(x), (today.ex, today.ey, today.ez)):
+            np.testing.assert_allclose(a, b, rtol=0, atol=ULP1)
+        grad = jax.grad(lambda v: sum(jnp.sum(a) for a in f(v)))(x)
+        assert np.isfinite(grad).all() and np.any(np.asarray(grad) != 0)
+
+
+def test_gradient_is_the_same_whole_domain_and_under_jit():
+    cells = jnp.asarray(cells_for('random'))
+
+    def total(v):
+        return sum(jnp.sum(k * k) for k in build_edge_keep(v))
+    eager = np.asarray(jax.grad(total)(cells))
+    jitted = np.asarray(jax.jit(jax.grad(total))(cells))
+    assert np.isfinite(eager).all() and np.any(eager != 0)
+    np.testing.assert_allclose(jitted, eager, rtol=1e-6, atol=1e-6)
 
 
 def test_one_publication_builder_definition():
