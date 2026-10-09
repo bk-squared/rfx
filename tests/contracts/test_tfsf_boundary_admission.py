@@ -139,7 +139,7 @@ def test_archived_37mm_array_is_refused(skip):
 @pytest.mark.parametrize("skip", [False, True])
 @pytest.mark.parametrize("path", ["uniform", "nonuniform", "distributed_v2",
                                   "distributed_nu", "subgridded", "adi"])
-def test_finite_scatterer_refuses_every_dispatch_path(skip, path):
+def test_finite_scatterer_refuses_every_dispatch_path(skip, path, monkeypatch):
     import jax
     mesh = {"dz_profile": np.full(10, .001)} if path in ("nonuniform", "distributed_nu") else {}
     if path == "adi":
@@ -148,6 +148,9 @@ def test_finite_scatterer_refuses_every_dispatch_path(skip, path):
             plane(finite=True, **mesh)
         return  # this declaration cannot reach ADI dispatch
     sim = plane(finite=True, **mesh)
+    if path in ("nonuniform", "distributed_nu"):
+        assert_graded_admitted(sim, skip, path == "distributed_nu", monkeypatch)
+        return  # Addendum 5e: these paths install no transverse wrap.
     if path == "subgridded":
         sim.add_refinement(z_range=(0., .004), ratio=2, validation="research")
     kwargs = {"devices": jax.devices()} if path.startswith("distributed") else {}
@@ -224,3 +227,71 @@ def test_traced_singleton_transverse_axis_is_constant():
         return jnp.asarray(invariant(value, 1, (15, 15, 15))[0])
 
     assert bool(check(jnp.arange(15.).reshape(15, 1, 1)))
+
+
+def assert_graded_admitted(sim, skip, distributed, monkeypatch):
+    import jax
+    import rfx.nonuniform as kernel
+
+    assert not any(issue.code == "tfsf_transverse_periodic" for issue in sim.preflight(check_ntff=False))
+    original = kernel._build_nu_scan
+
+    def stop(grid, *args, **kwargs):
+        # Literals measured on main 4acbd7925; the real factory includes
+        # the low-level admission and NTFF enclosure check, but no step.
+        assert grid.shape == (25, 15, 15)
+        assert tuple(getattr(grid, f"pad_{a}_{s}") for a in "xyz" for s in ("lo", "hi")) == (2,) * 6
+        original(grid, *args, **kwargs)
+        raise Admitted
+
+    monkeypatch.setattr(kernel, "_build_nu_scan", stop)
+    kwargs = {}
+    if distributed:
+        assert len(jax.devices()) >= 2, "run this judge with two CPU devices"
+        kwargs["devices"] = jax.devices()
+        # Main's dispatch refusal is retained; this is not a boundary rewrite.
+        with pytest.raises(ValueError, match=r"Distributed \+ non-uniform does not support TFSF"):
+            sim.run(n_steps=1, skip_preflight=skip, **kwargs)
+        return
+    with pytest.raises(Admitted):
+        sim.run(n_steps=1, skip_preflight=skip, **kwargs)
+
+
+@pytest.mark.parametrize("finite", [False, True])
+@pytest.mark.parametrize("skip", [False, True])
+@pytest.mark.parametrize("distributed", [False, True])
+def test_graded_plane_wave_keeps_absorbers(finite, skip, distributed, monkeypatch):
+    sim = plane(finite=finite, dz_profile=np.full(10, .001))
+    assert_graded_admitted(sim, skip, distributed, monkeypatch)
+
+
+def oblique_plane(finite_axis, polarization):
+    sim = Simulation(10e9, (.02, .01, .01), dx=.001, cpml_layers=2)
+    lo, hi = [.008, -1., -1.], [.012, 1., 1.]
+    lo["xyz".index(finite_axis)], hi["xyz".index(finite_axis)] = .003, .007
+    sim.add_material("box", eps_r=2.5)
+    sim.add(Box(tuple(lo), tuple(hi)), material="box")
+    sim.add_tfsf_source(f0=5e9, margin=1, angle_deg=20, method="bloch", polarization=polarization)
+    return sim
+
+
+@pytest.mark.parametrize("skip", [False, True])
+@pytest.mark.parametrize("polarization,non_tilt", [("ez", "z"), ("ey", "y")])
+def test_oblique_non_tilt_finite_box_refuses(skip, polarization, non_tilt):
+    sim = oblique_plane(non_tilt, polarization)
+    with pytest.raises(ValueError, match=rf"TF/SF {non_tilt}_lo, {non_tilt}_hi: .*periodic.*closed_box=True"):
+        sim.run(n_steps=1, skip_preflight=skip)
+
+
+@pytest.mark.parametrize("skip", [False, True])
+@pytest.mark.parametrize("polarization,tilt", [("ez", "y"), ("ey", "z")])
+def test_oblique_tilt_finite_box_reports_unjudged(skip, polarization, tilt, monkeypatch):
+    sim = oblique_plane(tilt, polarization)
+    findings = [issue for issue in sim.preflight(check_ntff=False) if issue.code == "tfsf_transverse_periodic"]
+    assert len(findings) == 1
+    text = str(findings[0])
+    assert all(face in text for face in ("y_lo", "y_hi", "z_lo", "z_hi"))
+    assert f"not judged for invariance along {tilt} at oblique incidence" in text
+    stop_at_runner(monkeypatch)
+    with pytest.raises(Admitted):
+        sim.run(n_steps=1, skip_preflight=skip)

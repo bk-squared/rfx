@@ -296,7 +296,7 @@ cell except the outermost row on the +x and +y faces.
 
 Tracker: #1221
 
-At normal incidence, dispatch refuses absorbing transverse faces for a TF/SF plane wave when
+On the uniform mesh at normal incidence, dispatch refuses absorbing transverse faces for a TF/SF plane wave when
 realized materials, conductors or localized field updates vary along that axis,
 including in the pads. The refusal also applies with `skip_preflight=True`.
 For an array, declare its axes periodic; for a finite scatterer use
@@ -307,8 +307,10 @@ structure with those walls is refused. UPML remains unsupported for TF/SF.
 The uniform plane-wave lane retains its existing padded periodic wrap for an
 invariant absorber pair and reports the affected faces in preflight. Its grid
 and period do not change. Traced material overrides retain the legacy operator
-with a warning when invariance cannot be judged. The oblique transverse-wavevector
-lane retains its existing behavior.
+with a warning when invariance cannot be judged. At oblique incidence the tilt
+axis keeps its operator and is reported as not judged for invariance.
+The graded mesh keeps its transverse absorbers under a plane wave: no wrap and
+no refusal from this rule (the experimental operator remains a PR3b item).
 → [#1221](https://github.com/bk-squared/rfx/issues/1221)
 
 ### Full-aperture guides on a graded mesh require explicit transverse boundaries.

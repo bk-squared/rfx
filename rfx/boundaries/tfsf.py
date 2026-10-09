@@ -163,7 +163,8 @@ def check_arrays(cfg, grid, values, *, localized=(), requirements=(), records=No
 
 def admit_simulation(sim, *, root=None, materials=None, material_overrides=()):
     """Dispatch and preflight use the production rasterization, never shapes."""
-    if sim._tfsf is None or sim._tfsf.closed_box:
+    # Addendum 5e: the graded operator retains absorbers, with no wrap to admit.
+    if sim._tfsf is None or sim._tfsf.closed_box or sim._uses_nonuniform_mesh:
         return ()
     import jax
     from rfx.boundaries.model import collect_requirements
@@ -201,10 +202,19 @@ def admit_simulation(sim, *, root=None, materials=None, material_overrides=()):
 def report(sim, issues, *, root=None, material_overrides=()):
     from rfx.preflight._common import PreflightIssue
     axes = admit_simulation(sim, root=root, material_overrides=material_overrides)
+    note = ""
+    if (not sim._uses_nonuniform_mesh and sim._tfsf is not None
+            and not sim._tfsf.closed_box and sim._tfsf.angle_deg != 0):
+        grid = root.grid if root is not None else sim._build_realized_grid()
+        axes = tuple(axis for axis, wraps, size in
+                     zip("xyz", boundary_flags(sim._tfsf)[0], grid.shape) if wraps and size > 1)
+        tilt = "y" if sim._tfsf.polarization == "ez" else "z"
+        if tilt in axes:
+            note = f" Structure not judged for invariance along {tilt} at oblique incidence."
     if axes and not sim._uses_nonuniform_mesh:
         faces = ", ".join(f"{axis}_{side}" for axis in axes for side in ("lo", "hi"))
         issues.append(PreflightIssue(
-            f"TF/SF faces {faces} are solved periodic, including their pads.",
+            f"TF/SF faces {faces} are solved periodic, including their pads." + note,
             severity="warning", code="tfsf_transverse_periodic"))
 
 
@@ -231,14 +241,15 @@ def admit_setup(*, grid, tfsf, materials, waveguide_ports, ntff, updates,
         from rfx.sources.tfsf import tfsf_injection_planes
         require_box_encloses_injected_region(
             ntff, tfsf_injection_planes(cfg), shape=grid.shape)
-    if getattr(cfg, "closed_box", False) or not feature_owned:
+    if getattr(cfg, "closed_box", False) or not feature_owned or nonuniform:
         # Explicit low-level periodic flags are the caller's declaration,
         # not a feature rewrite (Addendum 5c(5)).
+        # The graded operator installs no periodic wrap (Addendum 5e).
         return
     check_arrays(cfg, grid, dict(materials=materials, **updates),
                  # The low-level RCS path does not install the slab wrap.
                  # Its open transverse operator is unchanged in PR3a.
-                 active_axes=None if nonuniform else tuple(
+                 active_axes=tuple(
                      axis for axis, wraps in zip("xyz", periodic) if wraps),
                  records=grid_face_depths(grid, pec_faces=pec_faces, pmc_faces=pmc_faces),
                  localized=localized)

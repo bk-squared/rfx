@@ -149,3 +149,37 @@ def test_refusal_substitutes_port_axis(axis):
         sim.run(n_steps=1, skip_preflight=True)
     expected = {a: "cpml" if a == axis else "pec" for a in "xyz"}
     assert f"boundary={expected!r}" in str(caught.value)
+
+
+@pytest.mark.parametrize("skip", [False, True])
+@pytest.mark.parametrize("distributed", [False, True])
+@pytest.mark.parametrize("full", [False, True])
+def test_explicit_aperture_ranges_on_graded_mesh(full, distributed, skip, monkeypatch):
+    sim = Simulation(12e9, (.06, .02, .01), dx=.002, cpml_layers=8,
+                     dz_profile=np.full(5, .002))
+    sim.add_waveguide_port(.010, direction="+x", y_range=(0., .02 if full else .01),
+                           z_range=(0., .01), f0=11e9, probe_offset=2, ref_offset=1)
+    original = sim._dispatch_plan
+
+    class Admitted(Exception):
+        pass
+
+    def stop(**kwargs):
+        plan = original(**kwargs)
+        assert plan.lane == ("run_distributed_nu" if distributed else "run_nonuniform")
+        grid = sim._build_realized_grid()
+        # Main 4acbd7925 build: both aperture declarations keep these pads.
+        assert grid.shape == (47, 27, 22)
+        assert tuple(getattr(grid, f"pad_{a}_{s}") for a in "xyz" for s in ("lo", "hi")) == (8,) * 6
+        raise Admitted
+
+    monkeypatch.setattr(sim, "_dispatch_plan", stop)
+    if distributed:
+        assert len(jax.devices()) >= 2, "run this judge with two CPU devices"
+    kwargs = {"devices": jax.devices()} if distributed else {}
+    if full:
+        with pytest.raises(ValueError, match=r"y_lo.*z_hi.*graded mesh keeps absorbers.*boundary="):
+            sim.run(n_steps=1, skip_preflight=skip, **kwargs)
+    else:
+        with pytest.raises(Admitted):
+            sim.run(n_steps=1, skip_preflight=skip, **kwargs)
