@@ -2288,7 +2288,12 @@ def run(
         # no occupancy slot at all -- it would drop the design variable and
         # return an all-zero gradient, which reads like a converged design.
         and not _ctx["use_design_occupancy"]
-        and aniso_eps is None
+        # Either permittivity tensor (Stage 1, or the inverse one that
+        # ``subpixel_smoothing="kottke_pec"`` and the occupancy tensor build):
+        # the baked coefficients come from the scalar realized permittivity,
+        # so a tensor would be dropped (kottke_pec returned the unsmoothed
+        # field bit for bit on this path).
+        and aniso_eps is None and aniso_inv_eps is None
         and periodic == (False, False, False)
     )
     # On GPU the baked-PEC path eliminates expensive scatter-update
