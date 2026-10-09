@@ -404,3 +404,37 @@ another objective", with its objective named in words before any result.
 aperture physics failed; check beamwidth, geometry and the literature's own terms first) — item 2 is that
 check. Ledger: the lens entries (settled at the declared record on every mesh; gradient witnesses pass at all
 151 iterates of the first run) — consistent, the run reuses the record length and re-witnesses it.
+
+**Amendment 6, note (2026-10-09, leader; geometry only, no run) — what a wider sector would take.**
+Asked by the lead while the PI decides whether ±30° on the present block is the wanted "wide" field of view.
+Full-thickness coverage half-angle θc of a block of width W and thickness t = 30 mm whose lower face is h above
+the source: tan θc = (W/2) / (h + t). Present block: W = 90 mm, h = 45 mm, θc = 31°. Cell counts are for the
+driver's domain rule (18 mm of air round the block and above it, plate 18 mm above the floor, source 9 mm above
+the plate, 15 mm absorber on every face). Memory is scaled by cell count from the present 1.0 mm run (26.5 GB
+of gradient arguments reported by the solver; about 40 GB for the 1.5× record of the gradient witness, derived);
+both scaled columns are estimates, not measurements. The 0.75 mm mesh is used only for the forward re-solve of
+the reported design (no gradient), which needs a few GB at any of these sizes.
+
+| target θc | change | W (mm) | h (mm) | free values | cells at 1.0 mm (ratio) | gradient / witness memory (est.) | cells at 0.75 mm | fits |
+|---|---|---|---|---|---|---|---|---|
+| 31° (present) | none | 90 | 45 | 2,250 | 3.72 M (1.00) | 26.5 / 40 GB | 8.8 M | 48 GB card, except the float64 start check |
+| 45° | wider block | 150 | 45 | 6,250 | 7.11 M (1.91) | 51 / 76 GB | 16.8 M | 141 GB card |
+| 45° | closer source | 90 | 15 | 2,250 | 2.98 M (0.80) | 21 / 32 GB | 7.0 M | 48 GB card |
+| 60° | wider block only | 260 | 45 | 18,490 | 16.2 M (4.34) | 115 / 174 GB | 38.0 M | no (witness exceeds 141 GB) |
+| 60° | closer source and wider block | 156 | 15 | 6,760 | 6.02 M (1.62) | 43 / 65 GB | 14.2 M | 141 GB card |
+
+The float64 repeat of the start check asked for one 29.8 GiB block on the present grid and did not fit 48 GB;
+scaled by 1.9 it is about 57 GiB plus the rest of that run, which should fit 141 GB but is not measured.
+Time per iteration scales with the cell count (11.3 s measured on the present grid).
+
+What changes besides size. (i) Moving the source to 15 mm (0.5 λ0) below the block puts the block in the
+source's near field: the ray picture above is then only a guide, and the first (boresight) design no longer
+shares the structure, so "the same structure, another objective" would need the boresight run repeated on the
+new geometry or the two shown as different structures. (ii) A wider block keeps the source distance and the
+first design's structure class but not its size; the boresight run would also have to be repeated at 150 mm
+for a like-for-like pair, and its directivity would rise with the aperture. (iii) Power: the ideal conical
+sector is 8.3 dBi at ±45° and 6.0 dBi at ±60°, against 7.5 dBi at the source's own boresight and 1.5 dBi /
+−3.4 dBi at its 45° / 60° directions (worst plane, stored pattern); a ±60° flat-top therefore lowers the
+centre below the source's own boresight level to lift the edges by 8–9 dB. (iv) The literature read gives no
+achieved flat-top wider than ±30° from an aperture under 5 λ0 in full text (wider ones are templates for 18 λ0
+or targets without numbers). None of these geometries is declared; a change of geometry is a new amendment.

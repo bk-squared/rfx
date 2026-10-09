@@ -12,6 +12,181 @@ import design_lens as lens
 import _visual_data as visual
 
 
+def test_wide_stored_record():
+    import jax.numpy as jnp
+    path = Path('/Users/byungkwankim/mnt/remilab-fs/personal-workspaces/byungkwan-workspace/rfx-showcase-runs/20261004-showcase-lens/20261004T182324Z-b184fc8e-main/iterations.npz')
+    if not path.is_file():
+        pytest.skip(f'stored record absent: {path}')
+    # Open the real target once; expected numbers are the independent float64 read.
+    with np.load(path, allow_pickle=False) as stored:
+        response = stored['response']
+    assert response.shape == (151, 3, 73, 73)
+    assert response.dtype == np.float32
+    first = lens.summary(response[0], 'wide')
+    np.testing.assert_allclose(first['smooth_min_dbi'], [5.01894048, 2.85652214, .51121956], atol=1e-4, rtol=0)
+    np.testing.assert_allclose(first['sector_min_dbi'], [2.71386773, .38507152, -1.90578981], atol=1e-4, rtol=0)
+    np.testing.assert_allclose(first['sector_max_dbi'], [12.62092062, 12.18094386, 12.35116166], atol=1e-4, rtol=0)
+    np.testing.assert_allclose(first['outside_max_dbi'], [5.23780215, 5.68598373, 4.41078657], atol=1e-4, rtol=0)
+    assert first['objective'] == pytest.approx(-2.79556073, abs=1e-4)
+    for i, expected in [(0, -2.79556073), (150, 6.55280328)]:
+        assert float(lens.loss(jnp.asarray(response[i]), 'wide')) == pytest.approx(expected, abs=1e-4)
+
+
+def test_wide_region_and_constant():
+    import jax.numpy as jnp
+    spec = lens.objective_spec('wide')
+    region = spec['regions']['C_W']
+    assert spec['objective_words'] == 'Wide flat-top beam (±30°)'
+    assert spec['tau_db'] == .5
+    assert spec['judged'] == {'ripple_max_db': 2., 'level_min_dbi': 7.5}
+    assert spec['linear_floor'] == 1e-30
+    assert region['directions'] == 936
+    assert region['predicate'] == 'nominal theta <= 30 degrees'
+    np.testing.assert_array_equal(region['theta_indices'], np.arange(13))
+    np.testing.assert_array_equal(region['phi_indices'], np.arange(72))
+    assert lens.WIDE_REGION[12] and not lens.WIDE_REGION[13]
+    pattern = np.full((3, 73, 73), 1e-20, np.float32)
+    constants = np.array([1., 10., 100.], np.float32)
+    pattern[:, :13, :72] = constants[:, None, None]
+    pattern[:, :, 72] = 1e20  # Duplicated endpoint cannot change sector metrics.
+    result = lens.summary(pattern, 'wide')
+    np.testing.assert_allclose(result['smooth_min_dbi'], [0., 10., 20.], atol=1e-5)
+    np.testing.assert_array_equal(result['ripple_db'], np.zeros(3))
+    np.testing.assert_array_equal(result['meets_ripple'], [True, True, True])
+    np.testing.assert_array_equal(result['meets_level'], [False, True, True])
+    value = lens.loss(jnp.asarray(pattern), 'wide')
+    assert value.shape == () and value.dtype == jnp.float32
+    assert float(value) == pytest.approx(-10., abs=1e-5)
+    pattern[:, 13, :72] = 1e20
+    assert float(lens.loss(jnp.asarray(pattern), 'wide')) == float(value)
+    for function in (lens.objective_spec, lens.with_objective):
+        with pytest.raises(ValueError, match='unknown lens objective'):
+            function('unknown')
+    for function in (lens.loss, lens.summary):
+        with pytest.raises(ValueError, match='unknown lens objective'):
+            function(pattern, 'unknown')
+
+
+def test_wide_floor_gradient():
+    import jax
+    import jax.numpy as jnp
+    pattern = jnp.ones((3, 73, 73), dtype=jnp.float32).at[:, 12, 71].set(1e-30)
+    value, gradient = jax.value_and_grad(lambda x: lens.loss(x, 'wide'))(pattern)
+    assert np.isfinite(value)
+    assert np.isfinite(gradient).all()
+    # One -300 dBi direction dominates; the remaining exponentials underflow.
+    expected = 300. - .5 * np.log(936.)
+    assert float(value) == pytest.approx(expected, abs=1e-4)
+
+
+def test_wide_summary_power_and_rolloff():
+    theta = np.r_[0., np.linspace(1e-4, np.pi - 1e-4, 73)[1:]]
+    degrees = np.rad2deg(theta)
+    db = np.full((3, 73, 73), 8.)
+    # Linear cuts with crossings at 36/60 degrees and 33/45 degrees.
+    for phi, slope in [(0, .5), (18, 1.)]:
+        db[:, 13:, phi] = 8. - slope * (degrees[13:] - 30.)
+    db[1, :, 18] = 8.  # Neither crossing reached.
+    db[2, 13:, 0] = 4.  # Only the -3 dB crossing reached.
+    pattern = 10 ** (db / 10)
+    result = lens.summary(pattern, 'wide')
+    np.testing.assert_allclose(result['rolloff_deg'][0], [24., 12.], atol=1e-12)
+    assert np.isnan(result['rolloff_deg'][1, 1])
+    assert np.isnan(result['rolloff_deg'][2, 0])
+    weights = np.sin(theta)[None, :, None]
+    expected = (pattern[:, :13, :72] * weights[:, :13]).sum(axis=(1, 2)) / (pattern[:, :, :72] * weights).sum(axis=(1, 2))
+    np.testing.assert_allclose(result['cone_power_fraction'], expected)
+    np.testing.assert_allclose(result['outside_minus_sector_min_db'], 0., atol=1e-12)
+    np.testing.assert_allclose(result['boresight_dbi'], 10 * np.log10(pattern[:, 0].mean(axis=1)))
+    # Both thresholds in a single interval require separate interpolations.
+    db[:] = 8.
+    db[:, 13:, 0] = -22.
+    result = lens.summary(10 ** (db / 10), 'wide')
+    np.testing.assert_allclose(result['rolloff_deg'][:, 0], .4 * (degrees[13] - degrees[12]), atol=1e-12)
+
+
+@pytest.mark.parametrize('last,passed', [(-4.9, True), (-4.7, False), (np.nan, False)])
+def test_wide_trial_gate(last, passed):
+    from types import SimpleNamespace
+    store = SimpleNamespace(rows={'objective': [-2.8, last]})
+    assert common.trial_pass(lens.with_objective('wide'), store)['passed'] is passed
+
+
+def test_wide_progress_and_nan_history():
+    from types import SimpleNamespace
+    values = [-2., -5., -8.]
+    np.testing.assert_array_equal(common.frame_progress(values, 'wide'), [0., .5, 1.])
+    assert common.frame_iterate(values, 'wide') == 1
+    store = SimpleNamespace(rows={'objective': [-2.8, np.nan, -4.9]})
+    assert not common.trial_pass(lens.with_objective('wide'), store)['passed']
+
+
+def test_wide_describe_metadata(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    captured, meshes = [], []
+    def setup(case, out, dx, precision, smoke):
+        meshes.append(dx)
+        return SimpleNamespace(precision=precision, smoke=smoke, default_steps=10,
+                               describe=lambda: {'dx_m': dx})
+    monkeypatch.setattr(common, 'setup', setup)
+    monkeypatch.setattr(common._record, 'source_block', lambda *a: {})
+    monkeypatch.setattr(common._record, 'write_result', lambda out, rec, files: captured.append(rec))
+    assert common.main(lens, ['--stage', 'describe', '--objective', 'wide', '--out', str(tmp_path)]) == 0
+    assert meshes == [1.5e-3, 1e-3, .75e-3]
+    assert captured[0]['question'] == 'Wide flat-top beam (±30°)'
+    assert captured[0]['objective'] == 'wide'
+    stage = common.dc.load_json(tmp_path / 'stage.json')
+    assert stage['regions']['C_W']['directions'] == 936
+    assert stage['build_only'] is True
+
+
+@pytest.mark.parametrize('stage', ['trial', 'main', 'resolve', 'frame', 'fd', 'rlw', 'describe'])
+def test_wide_cli_mismatch(tmp_path, stage):
+    source = tmp_path / 'source'
+    source.mkdir()
+    common.dc.save_json(source / 'result.json', {'objective': 'mask'})
+    with pytest.raises(SystemExit, match='2'):
+        common.main(lens, ['--stage', stage, '--objective', 'wide', '--record', str(source),
+                           '--out', str(tmp_path / 'out')])
+
+
+@pytest.mark.parametrize('failure', [None, 'fd', 'start', 'reported', 'mesh', 'ripple', 'level', 'rlw'])
+def test_wide_resolve_eligibility(tmp_path, monkeypatch, failure):
+    from types import SimpleNamespace
+    case = lens.with_objective('wide')
+    source, out = tmp_path / 'source', tmp_path / 'out'
+    source.mkdir()
+    out.mkdir()
+    common.dc.save_npz(source / 'iterations.npz', objective=[-2., -8.], eps=np.zeros((2, *lens.SHAPE)))
+    common.dc.save_json(source / 'record_length.json', {'n_steps': 10, 'dt_s': 1., 'passed': failure != 'start'})
+    common.dc.save_json(source / 'reported.json', {'reported': {'settled': failure != 'reported'}})
+    common.dc.save_json(source / 'fd_float32.json', {'judgement': {'all_judged_passed': failure != 'fd'}})
+    for label in ('start', 'reported'):
+        common.dc.save_json(source / f'rlw_{label}.json', {'all_passed': failure != 'rlw'})
+    monkeypatch.setattr(common, 'setup', lambda *a: SimpleNamespace(grid=SimpleNamespace(dt=1.)))
+    monkeypatch.setattr(common, 'record', lambda *a: None)
+    calls = []
+    def evaluate(case, model, designs, n, directory, label):
+        assert list(designs) == ['reported']
+        i = len(calls)
+        calls.append(i)
+        row = dict(sector_min_dbi=np.full(3, 8. + [0., .2, .6 if failure == 'mesh' else .3][i]),
+                   sector_max_dbi=np.full(3, 9.), outside_max_dbi=np.full(3, 4.),
+                   meets_ripple=[True, not (failure == 'ripple' and i == 2), True],
+                   meets_level=[True, True, not (failure == 'level' and i == 2)], settled=True)
+        return {'reported': row}
+    monkeypatch.setattr(common, 'evaluate', evaluate)
+    common.resolved(case, SimpleNamespace(out=out, precision='float32'), source)
+    result = common.dc.load_json(out / 'eligibility.json')
+    assert result['meets_wide'] is (failure is None)
+    assert 'meets_mask' not in result
+    trend = common.dc.load_json(out / 'mesh_trend.json')
+    assert set(trend) == {'sector_min_dbi', 'sector_max_dbi', 'outside_max_dbi'}
+    for key, limit in [('sector_min_dbi', .3), ('sector_max_dbi', .3), ('outside_max_dbi', 1.)]:
+        assert trend[key]['limit_db'] == limit
+        assert np.shape(trend[key]['values_dbi']) == (3, 3)
+
+
 @pytest.mark.parametrize("case,pitch", [(lens, .003), (filt, .00254)], ids=["lens", "filter"])
 def test_pixel_cell_physical_map(case, pitch):
     free = np.arange(np.prod(case.SHAPE)).reshape(case.SHAPE)

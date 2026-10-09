@@ -5,6 +5,7 @@ The physical domain is 126 x 126 x 120 mm; CPML is outside that domain.
 """
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -57,6 +58,8 @@ def baselines():
 
 
 def loss(response, objective="boresight"):
+    if objective == "wide":
+        return wide_loss(response)
     if objective != "boresight":
         return mask_loss(response, objective)
 
@@ -65,6 +68,8 @@ def loss(response, objective="boresight"):
 
 
 def summary(response, objective="boresight"):
+    if objective == "wide":
+        return wide_summary(response)
     if objective != "boresight":
         return mask_summary(response, objective)
 
@@ -82,11 +87,30 @@ PHI = np.linspace(0., 2 * np.pi, 73)
 # clarification).
 NOMINAL_DEG = 2.5 * np.arange(73)
 REGIONS = {"S": NOMINAL_DEG >= 25, "C": NOMINAL_DEG <= 12.5, "O": NOMINAL_DEG >= 32.5}
+# Sector half-angle of objective W. Amendment 6 declares 30 degrees with its two
+# judged levels; another half-angle needs its own amendment (the judged levels
+# below belong to 30 degrees only).
+WIDE_HALF_DEG = float(os.environ.get("RFX_DESIGN_SECTOR_DEG", "30"))
+if WIDE_HALF_DEG % 2.5 or not 10 <= WIDE_HALF_DEG <= 60:
+    raise ValueError("RFX_DESIGN_SECTOR_DEG must be a multiple of 2.5 between 10 and 60")
+WIDE_REGION = NOMINAL_DEG <= WIDE_HALF_DEG
+WIDE_OUTSIDE = NOMINAL_DEG >= WIDE_HALF_DEG + 30
 
 
 def objective_spec(objective):
     if objective == "boresight":
         return {"objective": objective}
+    if objective == "wide":
+        region = WIDE_REGION
+        return {"objective": objective, "objective_words": f"Wide flat-top beam (±{WIDE_HALF_DEG:g}°)",
+                "sector_half_deg": WIDE_HALF_DEG,
+                "tau_db": .5, "judged": {"ripple_max_db": 2., "level_min_dbi": 7.5},
+                "linear_floor": 1e-30,
+                "regions": {"C_W": {"predicate": f"nominal theta <= {WIDE_HALF_DEG:g} degrees",
+                                      "theta_indices": np.flatnonzero(region),
+                                      "theta_rad": THETA[region], "phi_indices": np.arange(72),
+                                      "directions": int(region.sum() * 72)}},
+                "phi_endpoint": "exclude column 72 (2pi); retain column 0; solver quadrature unchanged"}
     if objective not in ("mask", "flattop"):
         raise ValueError(f"unknown lens objective {objective}")
     names = ("S",) if objective == "mask" else ("C", "O")
@@ -102,6 +126,58 @@ def objective_spec(objective):
                             "theta_rad": THETA[REGIONS[name]], "phi_indices": np.arange(72),
                             "directions": int(REGIONS[name].sum() * 72)} for name in names},
         "phi_endpoint": "exclude column 72 (2pi); retain column 0; solver quadrature unchanged"}
+
+
+def wide_loss(response):
+    import jax.numpy as jnp
+    from jax.scipy.special import logsumexp
+    d = 10 * jnp.log10(jnp.maximum(response[:, WIDE_REGION, :72], 1e-30))
+    tau = jnp.asarray(.5, dtype=d.dtype)
+    m = -tau * (logsumexp(-d / tau, axis=(1, 2)) - jnp.log(jnp.asarray(int(WIDE_REGION.sum()) * 72, dtype=d.dtype)))
+    return -jnp.mean(m)
+
+
+def wide_summary(response):
+    spec = objective_spec("wide")
+    linear = np.asarray(response)[:, :, :72]
+    d = 10 * np.log10(np.maximum(linear, spec["linear_floor"]))
+    sector = d[:, WIDE_REGION, :]
+    lo, hi = sector.min(axis=(1, 2)), sector.max(axis=(1, 2))
+    # Shift by the hard minimum: every exponential argument is nonpositive.
+    m = lo - spec["tau_db"] * np.log(np.exp(-(sector - lo[:, None, None]) /
+                                            spec["tau_db"]).mean(axis=(1, 2)))
+    outside = d[:, WIDE_OUTSIDE, :].max(axis=(1, 2))
+    # Plain Riemann sum on the driver's grid, with sin(theta) weights and
+    # the duplicated phi endpoint excluded from numerator and denominator.
+    power = linear * np.sin(THETA)[None, :, None]
+    fraction = power[:, WIDE_REGION, :].sum(axis=(1, 2)) / power.sum(axis=(1, 2))
+    angles = np.rad2deg(THETA)
+    rolloff = np.full((len(d), 2), np.nan)
+    for f in range(len(d)):
+        for plane, phi in enumerate((0, 18)):
+            cut = d[f, :, phi]
+            crossings = []
+            start = 1
+            for drop in (3., 15.):
+                threshold = lo[f] - drop
+                below = np.flatnonzero(cut[start:] < threshold) + start
+                if not len(below):
+                    break
+                i = int(below[0])
+                crossings.append(angles[i - 1] + (threshold - cut[i - 1]) *
+                                 (angles[i] - angles[i - 1]) / (cut[i] - cut[i - 1]))
+                # Both thresholds can cross within the same grid interval.
+                start = i
+            if len(crossings) == 2:
+                rolloff[f, plane] = crossings[1] - crossings[0]
+    return {"sector_min_dbi": lo, "sector_max_dbi": hi, "ripple_db": hi - lo,
+            "smooth_min_dbi": m, "outside_max_dbi": outside,
+            "outside_minus_sector_min_db": outside - lo,
+            "boresight_dbi": summary(response)["boresight_dbi"],
+            "cone_power_fraction": fraction, "rolloff_deg": rolloff,
+            "meets_ripple": hi - lo <= spec["judged"]["ripple_max_db"],
+            "meets_level": lo >= spec["judged"]["level_min_dbi"],
+            "objective": float(-m.mean())}
 
 
 def mask_loss(response, objective):
