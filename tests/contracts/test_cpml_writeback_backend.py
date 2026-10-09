@@ -76,17 +76,20 @@ def _emit(measurements, record_property):
 @pytest.mark.parametrize("graded", (False, True), ids=("uniform", "graded"))
 @pytest.mark.parametrize("steps", (120, 240, 480))
 def test_selected_backend_probe_plain_vs_jit(graded, steps, record_property):
-    from tests.unit.autodiff.test_forward_jit_contract import _lumped_open
+    from tests.unit.autodiff.test_forward_jit_contract import _lumped_open, _run
 
     sim = _lumped_open(graded)
 
     def solve():
-        return sim.forward(n_steps=steps, skip_preflight=True,
-                           checkpoint=False).time_series
+        # Retain the contract's summed output in the traced program as well.
+        # Returning only the probe permits different compiler elimination.
+        return _run(sim, graded, None if graded else "s", "box", steps, None)
 
     measurements = []
     try:
-        compare(solve(), jax.jit(solve)(), kind="step", measurements=measurements,
+        plain, _ = solve()
+        compiled, _ = jax.jit(solve)()
+        compare(plain, compiled, kind="step", measurements=measurements,
                 record=f"{jax.default_backend()}/{_cpml_slab.writeback_form()}/"
                        f"{'graded' if graded else 'uniform'}/probe/{steps}")
     finally:
