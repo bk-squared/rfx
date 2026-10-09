@@ -366,7 +366,7 @@ def test_c7_ringdown_wire_to_wall(graded, full, monkeypatch, record_property):
                          s_param_freqs=np.linspace(3e9, 9e9, 7),
                          compute_s_params=True, ringdown=RingdownSpec(), skip_preflight=True)
         assert result.ringdown is not None
-        record_property('completed', bool(result.ringdown.report.completed))
+        assert result.ringdown.report.completed, result.ringdown.report.failure
         record_property('failure', result.ringdown.report.failure)
         assert planned
         for component, index in planned:

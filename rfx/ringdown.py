@@ -1452,8 +1452,8 @@ class RingdownRun:
 
         def add(comp, idx, *, wire=True):
             key = (comp, tuple(int(v) for v in idx))
-            # Wire node spans can include an outside component entry.
-            if key not in seen and (not wire or field_index(self.grid, _node_position(self.grid, key[1]), comp) == key[1]):
+            # Drop only a wire node that is an outside component entry; any other mis-resolution stays for the round-trip check.
+            if key not in seen and (not wire or tuple(map(int, resolve(p := _node_position(self.grid, key[1])))) != key[1] or field_index(self.grid, p, comp) == key[1]):
                 seen.add(key)
                 keys.append(key)
 
