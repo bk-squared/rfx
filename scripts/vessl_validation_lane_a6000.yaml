@@ -1,5 +1,5 @@
 name: rfx-weekly-a6000
-description: "Weekly validation lane on a6000: the highmem selection (one multi-GB peak at a time, incl. the ~24 GB oblique-TFSF AD test that no GitHub runner fits) and the gpu-marked suite, at a pinned SHA cloned from the NFS checkout"
+description: "Weekly validation lane on a6000: the highmem selection (one multi-GB peak at a time, incl. the ~24 GB oblique-TFSF AD test that no GitHub runner fits) and the gpu-marked suite, at a pinned SHA cloned from the public repository"
 tags: [rfx, weekly, validation, a6000]
 resources:
   cluster: remilab-c0
@@ -22,10 +22,10 @@ run: |-
   # takes the source from the public repository, so it does not touch the NFS clone.
   WORK=/tmp/rfx-weekly-src
   rm -rf "$WORK"
-  git clone -q --no-checkout https://github.com/bk-squared/rfx.git "$WORK"
+  git clone -q --no-checkout --filter=blob:none https://github.com/bk-squared/rfx.git "$WORK"
   cd "$WORK"
   case "$RFX_SHA" in origin/*) ;; *) git cat-file -e "$RFX_SHA^{commit}" 2>/dev/null || git fetch -q origin "$RFX_SHA";; esac
-  SHA=$(git rev-parse --short=8 "$RFX_SHA")
+  SHA=$(git rev-parse --short=8 "$RFX_SHA^{commit}")
   OUT=/results/weekly_a6000_${SHA}_$(date -u +%Y%m%dT%H%M%SZ)
   mkdir -p "$OUT"
   git checkout -q --detach "$SHA"
