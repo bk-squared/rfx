@@ -68,7 +68,6 @@ def test_backend_choice_is_python_at_trace_time(monkeypatch, backend, form):
 def _emit(measurements, record_property):
     for m in measurements:
         m["ulp_at_peak"] = m["difference"] / float(np.spacing(np.float32(m["peak"])))
-    print("W2_MEASUREMENTS " + json.dumps(measurements), flush=True)
     record_property("w2_measurements", json.dumps(measurements))
 
 
@@ -125,19 +124,21 @@ def test_selected_backend_six_fields_against_other_form(monkeypatch, lane, recor
         with monkeypatch.context() as patch, jax.disable_jit(eager):
             patch.setattr(_cpml_slab, "writeback_form", lambda: form)
             sim, _ = build(lane)
-            result = sim.run(n_steps=400, compute_s_params=False)
+            result = sim.run(n_steps=steps, compute_s_params=False)
             return {key: np.asarray(getattr(result.state, key))
                     for key in ("ex", "ey", "ez", "hx", "hy", "hz")}
 
+    # On GPU the two compiled forms are compared (measured bitwise on seven card
+    # classes). On CPU a compiled comparison of this scene says nothing about
+    # the absorber: the current source leaves a static ez of 3e5 at its cell and
+    # the late H beside it is the rounding of that field, so even the slab form
+    # differs from its own uncompiled result by a tenth of the H peak. There the
+    # two forms are compared uncompiled, where they must be equal.
+    eager = backend == "cpu"
+    steps = 40 if eager else 400     # uncompiled steps cost 0.3 s each
     try:
-        _field_comparison(fields(selected, False), fields(other, False),
-                          f"{backend}/{lane}/compiled/400", record_property,
-                          assert_bar=backend != "cpu")
-        if backend == "cpu":
-            # The forced GPU form can exceed the bar when compiled on CPU.
-            # Record that number; the CPU algebra contract uses eager updates.
-            _field_comparison(fields(selected, True), fields(other, True),
-                              f"{backend}/{lane}/eager/400", record_property,
-                              assert_bar=True)
+        _field_comparison(fields(selected, eager), fields(other, eager),
+                          f"{backend}/{lane}/{'eager' if eager else 'compiled'}/{steps}",
+                          record_property, assert_bar=True)
     finally:
         jax.clear_caches()

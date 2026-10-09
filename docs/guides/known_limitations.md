@@ -21,7 +21,7 @@ not an accuracy guarantee, and a preflight pass is not a convergence study.
 
 ### Placing a solve on CPU in a process whose default backend is GPU
 
-Tracker: #1560
+Tracker: #952
 
 The absorber write-back is selected from the process's default backend at trace
 time. A process whose default backend is GPU but which places a solve on its CPU
