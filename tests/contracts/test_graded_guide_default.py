@@ -26,7 +26,7 @@ def guide(*, graded=True, boundary=None, dielectric=False):
         sim.add_material("slab", eps_r=2.)
         sim.add(Box((.028, 0., 0.), (.032, .02, .01)), material="slab")
     for position, direction in ((.010, "+x"), (.050, "-x")):
-        sim.add_waveguide_port(position, direction=direction, freqs=np.array([10e9, 11e9, 12e9]),
+        sim.add_waveguide_port(position, direction=direction, freqs=np.array([9e9, 9.5e9, 10e9, 10.5e9, 11e9, 11.5e9, 12e9, 12.5e9, 13e9]),
                                f0=11e9, bandwidth=.6, probe_offset=2, ref_offset=1)
     return sim
 
@@ -77,9 +77,9 @@ def test_declared_walls_match_uniform_guide():
     reflection = np.abs(actual_db[0] - expected_db[0])
     transmission = np.abs(actual_db[1] - expected_db[1])
     phase = np.abs(np.angle(actual[1, 0] / expected[1, 0], deg=True))
-    print("5d bins GHz", [10, 11, 12], "S11 dB differences", reflection.tolist(),
+    print("5d bins GHz", [9, 9.5, 10, 10.5, 11, 11.5, 12, 12.5, 13], "S11 dB differences", reflection.tolist(),
           "S21 dB differences", transmission.tolist(), "S21 degree differences", phase.tolist(),
-          "excluded S11 bins GHz", np.array([10, 11, 12])[deep_null_below_minus_40_db].tolist())
+          "excluded S11 bins GHz", np.array([9, 9.5, 10, 10.5, 11, 11.5, 12, 12.5, 13])[deep_null_below_minus_40_db].tolist())
     assert np.all(reflection[reflection_bins] < .1)
     assert np.all(transmission < .1)
     assert np.all(phase < .1)
