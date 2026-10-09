@@ -187,8 +187,8 @@ jobs:
         run: |
           set -e
           echo 'The diff touches no file under rfx/, tests/, validation/ or'
-          echo 'examples/, and no build or lane configuration, so the twelve'
-          echo 'physics shards have nothing to observe. The contract tests'
+          echo 'examples/, and no build or lane configuration, so the physics'
+          echo 'suite has nothing to observe. The contract tests'
           echo 'still run: they pin docs/, scripts/ and these workflows, which'
           echo 'IS what this diff changed. The changes job above lists the'
           echo 'paths; the classifier is scripts/ci/changed_paths.py.'
