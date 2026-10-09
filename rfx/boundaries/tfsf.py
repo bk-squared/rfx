@@ -206,8 +206,11 @@ def report(sim, issues, *, root=None, material_overrides=()):
     if (not sim._uses_nonuniform_mesh and sim._tfsf is not None
             and not sim._tfsf.closed_box and sim._tfsf.angle_deg != 0):
         grid = root.grid if root is not None else sim._build_realized_grid()
+        # The registration entry, not an initialized config: open oblique
+        # Method B absorbs on y and wraps z only (sources/tfsf.py).
+        wrapped = (False, sim._tfsf.method != "methodB", True)
         axes = tuple(axis for axis, wraps, size in
-                     zip("xyz", boundary_flags(sim._tfsf)[0], grid.shape) if wraps and size > 1)
+                     zip("xyz", wrapped, grid.shape) if wraps and size > 1)
         tilt = "y" if sim._tfsf.polarization == "ez" else "z"
         if tilt in axes:
             note = f" Structure not judged for invariance along {tilt} at oblique incidence."

@@ -283,6 +283,28 @@ def test_oblique_non_tilt_finite_box_refuses(skip, polarization, non_tilt):
         sim.run(n_steps=1, skip_preflight=skip)
 
 
+def test_oblique_method_b_finding_names_only_the_wrapped_axis(monkeypatch):
+    # Open oblique Method B absorbs on y and wraps z: the finding must not
+    # call the y faces periodic (verification recheck R1).
+    import rfx.simulation as kernel
+    sim = Simulation(freq_max=10e9, domain=(.02, .01, .01), dx=.001, cpml_layers=2)
+    sim.add_tfsf_source(f0=5e9, margin=1, angle_deg=20, method="methodB")
+    findings = [issue for issue in sim.preflight(check_ntff=False) if issue.code == "tfsf_transverse_periodic"]
+    assert len(findings) == 1
+    text = str(findings[0])
+    assert "z_lo, z_hi" in text and "y_lo" not in text and "not judged" not in text
+    seen = []
+
+    def stop(*args, **kwargs):
+        seen.append(tuple(kwargs["periodic"]))
+        raise Admitted
+
+    monkeypatch.setattr(kernel, "_build_step_setup", stop)
+    with pytest.raises(Admitted):
+        sim.run(n_steps=1, skip_preflight=True)
+    assert seen == [(False, False, True)]
+
+
 @pytest.mark.parametrize("skip", [False, True])
 @pytest.mark.parametrize("polarization,tilt", [("ez", "y"), ("ey", "z")])
 def test_oblique_tilt_finite_box_reports_unjudged(skip, polarization, tilt, monkeypatch):
