@@ -706,6 +706,12 @@ def _edge_mean_pair(lo, hi, fraction):
     under jit and per device (one last bit on a graded mesh). A fused exact
     product rounds the same sum the same way, so this value has one bit
     pattern in every compile context, also when a stamp is added after it.
+
+    That holds for operands that arrive as rounded arrays. A caller that
+    forms the cells as a product in the same compiled program (a traced
+    ``background + rho * contrast``) can still have THAT multiply fused into
+    the subtraction here; non-finite cells and differences below about 1e-28
+    (float32) are outside it as well.
     """
     spec = _EXACT_PARTS.get(str(getattr(hi, "dtype", "")))
     if spec is None or not hasattr(fraction, "dtype") or fraction.dtype != hi.dtype:
@@ -875,7 +881,8 @@ def cell_component_e_materials(materials, cell, component,
             lo = _edge_mean_pair(v[3], v[1], fractions[0])
             m = _edge_mean_pair(lo, hi, fractions[1])
         else:
-            m = _edge_mean_four(v)
+            # the grid-wide order: (cell + back t1) + (back t2 + both)
+            m = _edge_mean_four((v[0], v[2], v[1], v[3]))
         own = parts[axis]
         return m if own is None else m + own[cell]
 

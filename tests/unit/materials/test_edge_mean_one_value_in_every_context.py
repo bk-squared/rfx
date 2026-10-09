@@ -17,7 +17,8 @@ import numpy as np
 import pytest
 
 from rfx.core.yee import (
-    MaterialArrays, component_e_materials, edge_mean_components,
+    MaterialArrays, cell_component_e_materials, component_e_materials,
+    edge_mean_components,
 )
 
 SHAPE = (12, 9, 7)
@@ -101,7 +102,7 @@ def _contexts(fn, x):
 
 
 def _assert_equal_bits(got, want, label):
-    got = np.asarray(got)
+    got, want = np.atleast_1d(np.asarray(got)), np.atleast_1d(np.asarray(want))
     assert got.dtype == want.dtype, (label, got.dtype)
     unequal = int((got.view(np.uint8) != want.view(np.uint8)).reshape(got.shape + (-1,)).any(-1).sum())
     assert unequal == 0, f"{label}: {unequal} of {got.size} entries differ in their bits"
@@ -205,6 +206,46 @@ def test_gradient_is_the_area_weight():
             k = np.maximum(src[2] - s2, 0)
             np.add.at(weight, (src[0], j, k), w * ones)
     assert np.max(np.abs(grad - weight)) < 1e-5
+
+
+def test_gradient_in_the_cell_sizes_is_the_plain_formula_s():
+    periodic = (False, False, False)
+    arr, sizes = _fields(np.float32)
+    x = jnp.asarray(arr)
+
+    def plain(d1):
+        shape = [1, 1, 1]
+        shape[1] = SHAPE[1]
+        d = d1.reshape(shape)
+        back = jnp.concatenate([d[:, :1], d[:, :-1]], axis=1)
+        lo = jnp.concatenate([x[:, :1], x[:, :-1]], axis=1)
+        r = lo + (x - lo) * (d / (back + d))
+        lo2 = jnp.concatenate([r[:, :, :1], r[:, :, :-1]], axis=2)
+        return jnp.sum(lo2 + (r - lo2) * 0.5)
+
+    def ours(d1):
+        return jnp.sum(edge_mean_components(x, periodic, cell_sizes=(None, d1, None))[0])
+
+    want = np.asarray(jax.grad(plain)(jnp.asarray(sizes[1])))
+    got = np.asarray(jax.grad(ours)(jnp.asarray(sizes[1])))
+    assert np.max(np.abs(got - want)) <= 1e-4 * np.max(np.abs(want))
+
+
+@pytest.mark.parametrize("graded", [True, False])
+def test_single_edge_form_is_the_grid_wide_value(graded):
+    """A source or a port reads one edge through the single-edge form; the
+    kernel reads the grid-wide array. Same edge, same bits."""
+    periodic = (False, False, False)
+    eps, sizes = _fields(np.float32)
+    sigma, _ = _fields(np.float32, seed=11)
+    cell_sizes = tuple(jnp.asarray(s) for s in sizes) if graded else None
+    materials = MaterialArrays(eps_r=jnp.asarray(eps), sigma=jnp.asarray(sigma), mu_r=jnp.ones(SHAPE, jnp.float32))
+    grid_eps, grid_sig = jax.jit(lambda m: component_e_materials(m, periodic, cell_sizes=cell_sizes))(materials)
+    for component, name in enumerate(("ex", "ey", "ez")):
+        for cell in ((0, 0, 0), (3, 4, 2), (11, 8, 6), (5, 0, 6), (1, 8, 0)):
+            e, s = cell_component_e_materials(materials, cell, name, periodic, cell_sizes=cell_sizes)
+            _assert_equal_bits(np.asarray(e), np.asarray(grid_eps[component][cell]), f"eps {name} {cell}")
+            _assert_equal_bits(np.asarray(s), np.asarray(grid_sig[component][cell]), f"sigma {name} {cell}")
 
 
 def test_float64_fields_have_one_value_too():
