@@ -112,3 +112,38 @@ def test_h7_uniform_probe_energy_gradient(record_property):
     record_property('relative_error', relative)
     assert np.isfinite(automatic) and abs(finite) > 0
     assert relative <= 1e-4
+
+
+def test_design_window_weight_replaces_the_background():
+    """The window's own value weights a source inside it (uniform forward).
+
+    Mutation: with ``design=`` not passed the background value is used and
+    the first assertion fails.
+    """
+    from types import SimpleNamespace
+    background = np.full((6, 6, 6), np.float32(.5))
+    window = SimpleNamespace(bounds=(2, 4, 2, 4, 2, 4),
+                             occupancy=jnp.full((2, 2, 2), .3, jnp.float32))
+    table = drive_table([jnp.ones(3, jnp.float32)], [(3, 3, 3, 'ez')], 3,
+                        occupancy=jnp.asarray(background), design=window,
+                        shape=background.shape)
+    inside = (np.float32(1) - np.float32(.3)) ** 4
+    assert abs(float(table[0, 0]) - float(inside)) <= np.spacing(np.float32(1))
+    without = drive_table([jnp.ones(3, jnp.float32)], [(3, 3, 3, 'ez')], 3,
+                          occupancy=jnp.asarray(background), shape=background.shape)
+    assert abs(float(without[0, 0]) - float(np.float32(.5) ** 4)) <= np.spacing(np.float32(1))
+
+
+def test_periodic_axis_wraps_the_incident_cell():
+    """On a periodic x axis the last cell is incident on an Ez edge at i = 0.
+
+    Mutation: with ``periodic=`` not passed the edge reads no wrapped cell
+    and the weight is 1.
+    """
+    cells = np.zeros((6, 6, 6), np.float32)
+    cells[5, 3, 3] = .3
+    kwargs = dict(occupancy=jnp.asarray(cells), shape=cells.shape)
+    wrapped = drive_table([jnp.ones(3, jnp.float32)], [(0, 3, 3, 'ez')], 3,
+                          periodic=(True, False, False), **kwargs)
+    assert abs(float(wrapped[0, 0]) - float(np.float32(1) - np.float32(.3))) <= np.spacing(np.float32(1))
+    assert float(drive_table([jnp.ones(3, jnp.float32)], [(0, 3, 3, 'ez')], 3, **kwargs)[0, 0]) == 1.0
