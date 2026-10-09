@@ -1232,7 +1232,7 @@ _MANUAL_FENCES: dict[tuple[str, str, str], tuple[str, str]] = {
 #: call, and a row that stops matching the source is reported as stale, so
 #: this list cannot silently outlive its call site.
 _NON_FENCE_F0_QUERIES: dict[tuple[str, str, str], str] = {
-    ("rfx/api/__init__.py", "_ad_memory_static_accounting", "has_f0_sheets"):
+    ("rfx/api/_ad_memory.py", "_ad_memory_static_accounting", "has_f0_sheets"):
         "#696 memory ACCOUNTING: adds the sheet operator's three edge masks "
         "+ sigma_sheet to the forward working-set estimate. It changes a "
         "reported number, never whether the lane runs.",
