@@ -501,3 +501,47 @@ def test_c3_global_sigma_sweep_retains_film():
         local = jax.tree.map(lambda a: a[row], batch)
         eps, sigma = component_e_materials(local)
         assert_expected(sigma, eps, widths, 9)
+
+
+@pytest.mark.parametrize('normal', range(3))
+def test_c1_rectangular_coverage_and_volume_preservation(normal):
+    from rfx.materials.thin_conductor import ThinConductor, apply_thin_conductor
+    from rfx.grid import Grid
+    grid = Grid(freq_max=10e9, domain=(.008,) * 3, dx=H, cpml_layers=0)
+    cells = init_materials(grid.shape)._replace(
+        eps_r=jnp.full(grid.shape, 4.), sigma=jnp.full(grid.shape, .025))
+    tangents = [a for a in range(3) if a != normal]
+    lo, hi = [.002] * 3, [.006] * 3
+    lo[normal] = hi[normal] = .004
+    tc = ThinConductor(shape=Box(tuple(lo), tuple(hi)), sigma_bulk=1000., thickness=1e-5)
+    result, _ = apply_thin_conductor(grid, tc, cells)
+    assert result.eps_r is cells.eps_r and result.sigma is cells.sigma
+    assert result.sigma_film[normal] is None
+    for component in tangents:
+        transverse = next(a for a in tangents if a != component)
+        expected = np.zeros(grid.shape, dtype=np.float32)
+        # Four cells along the E edge direction; at the transverse ends,
+        # a single occupied incident cell gives half coverage.
+        for along in range(2, 6):
+            for across, weight in [(2, .5), (3, 1.), (4, 1.), (5, 1.), (6, .5)]:
+                index = [0, 0, 0]
+                index[normal], index[component], index[transverse] = 4, along, across
+                expected[tuple(index)] = G * weight / H
+        np.testing.assert_array_max_ulp(result.sigma_film[component], expected, maxulp=1)
+
+
+def test_c1_later_declaration_replaces_touched_edges():
+    from rfx.materials.thin_conductor import ThinConductor, apply_thin_conductor
+    from rfx.grid import Grid
+    grid = Grid(freq_max=10e9, domain=(.008,) * 3, dx=H, cpml_layers=0)
+    cells = init_materials(grid.shape)
+    a = ThinConductor(Box((.002, .002, .004), (.006, .006, .004)), 1000., 1e-5)
+    b = ThinConductor(Box((.004, .003, .004), (.007, .007, .004)), 2000., 1e-5)
+    first, _ = apply_thin_conductor(grid, a, cells)
+    final, _ = apply_thin_conductor(grid, b, first)
+    # Ex: exclusive A interior, shared B interior, B half-covered low end.
+    for index, expected in [((3, 3, 4), G/H), ((5, 4, 4), 2*G/H),
+                            ((5, 3, 4), G/H)]:
+        assert float(final.sigma_film[0][index]) == pytest.approx(expected, rel=1e-7)
+    np.testing.assert_array_equal(final.sigma, 0.)
+    np.testing.assert_array_equal(final.eps_r, 1.)

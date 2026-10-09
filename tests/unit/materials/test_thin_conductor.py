@@ -429,7 +429,8 @@ def test_lossy_thin_conductor_nonuniform_uses_local_dz():
     k = int(nz[0][2])
     dz_local = float((np.asarray(grid.dz)[k - 1] + np.asarray(grid.dz)[k]) / 2)
     assert abs(dz_local - 1.5e-3) < 1e-9, "sheet must land in the coarse region"
-    sigma_cell = float(sigma[tuple(nz[len(nz) // 2])])
+    # Use an interior tangential edge (coverage one), not a half-covered end.
+    sigma_cell = float(sigma[tuple((nz.min(axis=0) + nz.max(axis=0)) // 2)])
 
     # Uses LOCAL dz (1.5mm), NOT the uniform grid.dx (0.5mm, which would be 3x).
     sigma_local = sigma_bulk * t / dz_local

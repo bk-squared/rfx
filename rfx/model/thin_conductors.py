@@ -196,6 +196,13 @@ def admit_dc_plane(conductor, grid, *, pmc_faces=None, mode=None):
         raise DCFilmAdmissionError(
             "a film on one node plane has no volume; its eps_r is not modelled",
             code='dc_film_permittivity')
+    lo, hi = sheet_bounds(conductor.shape)
+    if not isinstance(conductor.shape, Box) and (
+            lo is None or hi is None or
+            any(is_tracer(v) for v in jax.tree_util.tree_leaves((lo, hi)))):
+        # Preserve the non-Box admission's descriptive bounds refusal before
+        # the node selector attempts any concrete geometry arithmetic.
+        admit_dc_film(conductor.shape, grid, emit=False)
     normal, plane = dc_film_plane(conductor.shape, grid)
     if mode is None:
         mode = getattr(grid, 'mode', '3d')
@@ -281,8 +288,10 @@ def warn_dc_films(sim, warn):
                                        source=exc.source, loc=f'thin_conductors[{i}]'))
         else:
             normal, plane = dc_film_plane(tc.shape, grid)
-            face = ('xyz'[normal] + '_lo' if plane == 0 else
-                    'xyz'[normal] + '_hi' if plane == grid.shape[normal] - 1 else None)
+            face = None
+            if not is_tracer(plane):
+                face = ('xyz'[normal] + '_lo' if plane == 0 else
+                        'xyz'[normal] + '_hi' if plane == grid.shape[normal] - 1 else None)
             if face in sim._boundary_spec.pec_faces():
                 warn.warn(PreflightWarning(
                     f"lossy thin conductor {i} on PEC domain face {face} has no effect",
