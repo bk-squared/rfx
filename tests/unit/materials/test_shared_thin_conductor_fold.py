@@ -66,7 +66,7 @@ def build(case, nu=False, h=1/1024, order=('dc', 'pec', 'f0'), radius=2.5):
         elif case == 'mixed':
             thin(box, 'dc')
             thin(Box(p(7, 2, 1), p(7, 6, 5)), 'pec')
-            thin(Box(p(5.4, 8.2, 1.3), p(5.4, 9.2, 5.3)), 'f0')
+            thin(Box(p(5.4, 8.2, 1.3), p(5.4, 12.2, 5.3)), 'f0')
         elif case == 'overlap':
             for kind in order:
                 thin(box, kind, sigma=1234, thickness=h/7)
