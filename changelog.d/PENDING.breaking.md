@@ -1,9 +1,11 @@
-Lossy thin conductors now act on tangential electric edges of their declared node
-plane. Results of every lossy-film model change. There is no conduction across
-the film, and it no longer changes a cell's permittivity.
-Lossy films with `eps_r != 1`, on a PMC face, or normal to a 2-D model's invariant
-axis are refused. An f0 sheet sharing active edges with a lossy film and a film
-edge inside a design box are also refused.
-A `sigma_override` or global sigma sweep replaces volume conductivity while
-leaving a declared film in place. UPML and CPML now solve the same film.
-the preflight finding dc_film_half_sheet_error (added in #1575) is removed with its cause
+### BREAKING — a lossy thin film acts on its declared node plane: results of every lossy-film model change (#PENDING)
+
+- `add_thin_conductor` below the PEC threshold is now one resistive sheet on the tangential E edges of its declared plane
+  (before: two half-sheets a cell apart plus conduction across the film). Against the ideal sheet, normal incidence,
+  lambda/20 cells: within 0.11 dB from 1000 to 1 ohm/sq (before: -10 dB transmitted at 10 ohm/sq).
+- A film in front of a conductor resonates where declared on either side (before: up to 15 % low); a film no longer
+  replaces the permittivity of a cell; UPML and CPML models solve the same film.
+- Refused: `eps_r != 1` on a lossy film; a film on a PMC face or normal to a 2-D model's invariant axis; an f0 sheet
+  sharing edges with a lossy film; a film edge inside a design box.
+- A `sigma_override` or a global sigma sweep replaces the volume conductivity and leaves a declared film in place.
+- The preflight finding `dc_film_half_sheet_error` (#1575) is removed with its cause.
