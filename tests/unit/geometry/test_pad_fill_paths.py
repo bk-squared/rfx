@@ -47,7 +47,8 @@ def test_solve_refuses_shortfall(monkeypatch, graded, distributed, method, skip_
     sim = _graded_rig(monkeypatch) if graded else _rig(10)
     kwargs = dict(n_steps=1, skip_preflight=skip_preflight)
     if distributed:
-        assert len(jax.devices()) >= 2
+        if len(jax.devices()) < 2:
+            pytest.skip(f'needs two devices on one backend, found {len(jax.devices())}')
         kwargs['devices'] = jax.devices()[:2]
         if method == 'forward':
             kwargs['distributed'] = True
@@ -102,7 +103,8 @@ def test_exact_face_runs(graded, distributed, method):
     sim.add(Box((0, 0, 2*DX), (12*DX, 8*DX, 4*DX)), material='slab')
     kw = dict(n_steps=1, skip_preflight=True)
     if distributed:
-        assert len(jax.devices()) >= 2
+        if len(jax.devices()) < 2:
+            pytest.skip(f'needs two devices on one backend, found {len(jax.devices())}')
         kw['devices'] = jax.devices()[:2]
         if method == 'forward':
             kw['distributed'] = True

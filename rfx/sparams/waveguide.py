@@ -581,10 +581,10 @@ def compute_waveguide_s_matrix(
     # G-AD-WIRE-WG2: public eps_override / sigma_override channel.
     # Mirror the MSL pattern: replace eps_r / sigma on the assembled
     # materials *after* the PEC fold so PEC boundaries are untouched.
-    if eps_override is not None:
-        materials = materials._replace(eps_r=eps_override)
-    if sigma_override is not None:
-        materials = materials._replace(sigma=sigma_override)
+    from rfx.model.overrides import apply_material_overrides
+    materials = apply_material_overrides(
+        materials, eps_override=eps_override, sigma_override=sigma_override,
+        keep_lumped=True)
 
     # Per-port straight-guide reference materials for interior-PEC
     # junctions. Each reference sim is a geometry carrier: assemble its

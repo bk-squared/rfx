@@ -1747,6 +1747,8 @@ def _source_decoupled_whole_boundary_sim():
         freq_max=10e9, domain=(0.02, 0.015, 0.015), dx=1e-3,
         boundary="pec", cpml_layers=0,
     )
+    # Assembly now refuses this declaration: a tangential source in a PEC
+    # wall is shorted. Issue 1075 previously covered only the advisory.
     sim.add_source((0.0, 0.0075, 0.0075), component="ez",
                    amplitude_kind="field")
     return sim

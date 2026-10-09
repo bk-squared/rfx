@@ -40,7 +40,9 @@ def _box(lane, *, x_cells=25, x="cpml", y="cpml", z=None, plate=False, layers=8,
         freq_max=15e9, domain=(x_cells * dx, 24 * dx, z_cells * dx),
         dx=dx, cpml_layers=layers, boundary="pec" if legacy_pec else BoundarySpec(**boundaries), **profiles,
     )
-    sim.add_source((max(1, min(6, x_cells - 2)) * dx, 9 * dx, (2 if plate else 10) * dx), "ez")
+    # Never on the x_hi node plane: on a PEC high face a tangential source is shorted and refused
+    # (a one-cell box has only the two face planes, so its source sits on the low one).
+    sim.add_source((min(max(1, min(6, x_cells - 2)), x_cells - 1) * dx, 9 * dx, (2 if plate else 10) * dx), "ez")
     for pos in ((max(1, min(3, x_cells - 3)), 9, 2 if plate else 10),
                 (min(12, x_cells - 1), 15, 3 if plate else 10)):
         sim.add_probe(tuple(v * dx for v in pos), "ez")

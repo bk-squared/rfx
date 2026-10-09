@@ -138,7 +138,7 @@ def assemble_cells(
         kerr_chi3 is a float32 array of chi3 values or None.
 
     Materials/poles retain declaration order and float32 initialization.
-    Overrides and design boxes remain downstream until M4.
+    Overrides and design boxes enter the cell stage in ``model.overrides``.
     """
     # Start with vacuum
     eps_r = jnp.ones(grid.shape, dtype=jnp.float32)
@@ -891,46 +891,19 @@ def _design_box_edge_coeffs(bounds, eps_r_box, sigma_box, materials, dt, shape,
     """
     from rfx.simulation import _design_box_window, _held_edge_masks
     from rfx.core.yee import component_e_materials, e_update_coeffs, map_lumped
+    from rfx.model.overrides import apply_material_overrides
     held = tuple(held_edges or ())
     write_bounds, win, inner, box_local = _design_box_window(bounds, shape)
 
-    def _cell_value(box_value, record):
-        # A lumped load lives on its own edge; keep it off the cell volume.
-        total = lumped_total(record)
-        if total is None:
-            return box_value
-        return box_value + jnp.asarray(total)[win][box_local]
-
-    eps_box = jnp.asarray(eps_r_box)
-    eps = jnp.asarray(materials.eps_r)[win]
-    # Promote the BACKGROUND to the design dtype, never the other way: a
-    # traced float64 design permittivity cast down to the float32 background
-    # would silently lose the precision the x64 AD lanes run for (#646).
-    eps = eps.astype(jnp.promote_types(eps.dtype, eps_box.dtype))
-    eps = eps.at[box_local].set(_cell_value(
-        eps_box, getattr(materials, "eps_r_lumped", None)))
-
     per_edge = isinstance(sigma_box, (tuple, list))
-    sig = jnp.asarray(materials.sigma)[win]
-    if not per_edge and sigma_box is not None:
-        sig_box = jnp.asarray(sigma_box)
-        sig = sig.astype(jnp.promote_types(sig.dtype, sig_box.dtype))
-        sig = sig.at[box_local].set(_cell_value(
-            sig_box, getattr(materials, "sigma_lumped", None)))
-
     # A lumped stamp in the window's context layer is edge-owned, not a cell
     # volume, so it is removed before the average and added back at its cell,
     # on its own component — the same rule ``component_e_materials`` applies
     # grid-wide (#1210, #1236). The design box itself is fenced off port and
     # source cells, except a port's own edges on explicit opt-in (held).
-    win_mats = MaterialArrays(
-        eps_r=eps, sigma=sig, mu_r=None,
-        eps_r_lumped=map_lumped(
-            getattr(materials, "eps_r_lumped", None),
-            lambda a: jnp.asarray(a)[win].astype(eps.dtype)),
-        sigma_lumped=map_lumped(
-            getattr(materials, "sigma_lumped", None),
-            lambda a: jnp.asarray(a)[win].astype(sig.dtype)))
+    win_mats = apply_material_overrides(
+        materials, eps_override=eps_r_box, sigma_override=sigma_box,
+        window=win, box_local=box_local)
     widths = electric_cell_sizes(grid)
     widths = None if widths is None else tuple(
         None if d is None else d[w] for d, w in zip(widths, win))

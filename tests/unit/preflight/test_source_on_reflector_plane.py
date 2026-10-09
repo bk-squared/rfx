@@ -1,24 +1,4 @@
-"""P1.6 ``source_decoupled`` -- which faces count as a reflector (issue #1075).
-
-``_validate_cfg_source_on_reflector_plane`` (``rfx/preflight/sources.py``) has
-had its four-way component rule since it was written, and no behavioural test:
-the only committed witness was one snapshot fixture, built on a per-face
-``BoundarySpec``. That hid a hole. The check walked
-``Simulation._pec_faces``, which is populated ONLY by an explicit
-``pec_faces=`` kwarg or by a per-face ``BoundarySpec``. The scalar
-``boundary="pec"`` -- a PEC box on all six faces, realized as
-``apply_pec(axes=pec_axes)`` -- leaves that set empty, so the loop body never
-ran and the advisory was silently skipped on the commonest way of asking for a
-PEC wall (measured: "All checks passed", see
-``scripts/diagnostics/issue1075_source_on_face.py`` arm A).
-
-This file gates both halves: the face set (the #1075 fix) and the component
-rule it has always had, so a future narrowing of either fails here rather than
-in a snapshot diff. The message assertions are deliberately about the LANE
-SPLIT and not about the whole string -- the exact text is pinned by
-``tests/locks/test_preflight_split_snapshot.py``, and duplicating it here would
-make one wording change red in two places for no extra information.
-"""
+"""PEC tangential declarations are errors; other reflector advice is unchanged."""
 
 from __future__ import annotations
 
@@ -50,6 +30,8 @@ def _issue(sim, code):
     hits = [i for i in report.issues if i.code == code]
     assert len(hits) == 1, f"expected exactly one {code}, got {len(hits)}"
     # PreflightIssue subclasses str -- the issue IS its message.
+    if "Declared PEC wall face(s):" in str(hits[0]):
+        assert hits[0].severity == "error"
     return str(hits[0])
 
 
@@ -125,7 +107,7 @@ def test_strict_preflight_raises_on_whole_boundary_pec_face():
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         with pytest.raises(ValueError,
-                           match="sits on the PEC x_lo plane"):
+                           match="Declared PEC wall face\\(s\\): x_lo"):
             sim.preflight(strict=True)
 
 
@@ -162,26 +144,13 @@ def test_two_spellings_of_one_wall_agree():
 # The message has to be true on BOTH lanes (#1075)
 # ---------------------------------------------------------------------------
 
-def test_message_states_the_lane_split():
-    """It used to say "silently discarded", which is false on one lane.
-
-    Measured (``scripts/diagnostics/issue1075_source_on_face.py``): the
-    distributed lanes return a probe peak of exactly 0 for this placement --
-    they apply the PEC face after injection since #1041/#1055 -- while the
-    single-device lane, which applies it before injection, returns 8.92558e5
-    against 4.00560e6 for the same source one cell inside. Both halves have to
-    be in the text, or the advisory sends a reader looking for a zero they
-    will not find.
-    """
+def test_message_states_refusal_and_remedy():
     msg = _issue(_sim("pec", (0.0, CY, CZ), "ez", cpml_layers=0),
                  "source_decoupled")
-    assert "distributed" in msg
-    assert "single-device" in msg
-    assert "exactly zero" in msg
-    assert "numerically inconsistent" in msg
-    assert "silently discarded" not in msg
-    # The remedy survives the rewrite.
-    assert "offset" in msg and "one cell" in msg
+    assert "Soft source _ports[0]" in msg
+    assert "grid index" in msg and "Declared PEC wall face(s): x_lo" in msg
+    assert "at least one cell inside the domain, off the wall" in msg
+    assert "orient it normal to the wall" not in msg
 
 
 @pytest.mark.parametrize("face,position,component", [

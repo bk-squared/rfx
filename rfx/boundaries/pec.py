@@ -95,8 +95,29 @@ def resolve_wall_faces(grid, periodic, pec_axes=None):
     return frozenset(pec), magnetic_image_faces(pmc, grid.shape, periodic)
 
 
+def wall_edge_masks(shape, faces):
+    """Tangential E edges zeroed by ``apply_pec_faces``, including face rims.
+
+    The normal Ez high-z ghost row is excluded: it is storage cleanup,
+    not a tangential wall edge. Absorber backings are included only when
+    the caller explicitly supplies their faces; admission supplies PEC only.
+    """
+    masks = tuple(np.zeros(shape, dtype=bool) for _ in range(3))
+    for face in faces:
+        axis = "xyz".index(face[0])
+        plane = [slice(None)] * 3
+        plane[axis] = 0 if face.endswith("lo") else -1
+        for component, mask in enumerate(masks):
+            if component != axis:
+                mask[tuple(plane)] = True
+    return masks
+
+
 def apply_pec_faces(state, faces: set[str]) -> object:
     """Apply PEC (E_tan = 0) on specific boundary faces.
+
+    Its tangential zero set is ``wall_edge_masks(state.ex.shape, faces)``;
+    the extra Ez high-z ghost cleanup below is excluded from that set.
 
     Parameters
     ----------

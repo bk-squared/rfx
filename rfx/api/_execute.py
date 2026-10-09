@@ -26,6 +26,7 @@ from typing import NamedTuple
 
 from rfx import _realized
 from rfx.model import conductors as _conductors
+from rfx.model.overrides import apply_material_overrides
 
 import jax
 import jax.numpy as jnp
@@ -1264,7 +1265,7 @@ class _ExecuteMixin:
 
         # Refuse after realization: a sheet/wire must reach this lane even
         # though it owns no volume cell. This is independent of preflight.
-        self._validate_adi_interior_pec(pec_edge_masks)
+        _conductors.admit_adi_sources(self, grid, pec_edge_masks)
 
         # Every declared input this lane does not carry is refused here,
         # after the specific refusals above and before the first step.
@@ -2899,20 +2900,8 @@ class _ExecuteMixin:
         )
 
         if eps_override is not None or sigma_override is not None:
-            materials = materials._replace(
-                eps_r=(
-                    eps_override if eps_override is not None
-                    else materials.eps_r
-                ),
-                sigma=(
-                    sigma_override if sigma_override is not None
-                    else materials.sigma
-                ),
-                eps_r_lumped=(None if eps_override is not None
-                              else materials.eps_r_lumped),
-                sigma_lumped=(None if sigma_override is not None
-                              else materials.sigma_lumped),
-            )
+            materials = apply_material_overrides(
+                materials, eps_override=eps_override, sigma_override=sigma_override)
         if pec_mask_override is not None:
             pec_mask = (
                 pec_mask_override if pec_mask is None
@@ -4267,15 +4256,9 @@ class _ExecuteMixin:
         materials, debye_spec, lorentz_spec, pec_mask, _, _, kerr_chi3 = assembly_inputs
 
         if eps_override is not None or sigma_override is not None or mu_r_override is not None:
-            materials = materials._replace(
-                eps_r=eps_override if eps_override is not None else materials.eps_r,
-                sigma=sigma_override if sigma_override is not None else materials.sigma,
-                mu_r=mu_r_override if mu_r_override is not None else materials.mu_r,
-                eps_r_lumped=(None if eps_override is not None
-                              else materials.eps_r_lumped),
-                sigma_lumped=(None if sigma_override is not None
-                              else materials.sigma_lumped),
-            )
+            materials = apply_material_overrides(
+                materials, eps_override=eps_override, sigma_override=sigma_override,
+                mu_r_override=mu_r_override)
 
         if pec_mask_override is not None:
             pec_mask = pec_mask_override if pec_mask is None else (pec_mask | pec_mask_override)
@@ -4356,11 +4339,7 @@ class _ExecuteMixin:
             # ~1e-7 relative, which is 1e9 x the difference between the two
             # formulations. ``_assemble_materials`` pins float32 (#646
             # promote-never-pin), so the promotion belongs here.
-            _design_dtype = jnp.promote_types(
-                materials.eps_r.dtype, jnp.result_type(_design_spec.eps_r))
-            if _design_dtype != materials.eps_r.dtype:
-                materials = materials._replace(
-                    eps_r=materials.eps_r.astype(_design_dtype))
+            materials = apply_material_overrides(materials, design_box=_design_spec)
 
         _fwd_call = functools.partial(
             self._forward_from_materials,

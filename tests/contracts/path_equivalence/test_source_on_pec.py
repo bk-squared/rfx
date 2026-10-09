@@ -47,10 +47,21 @@ def model(path='uniform', kind='volume', *, adjacent=False, component='ez'):
     return sim
 
 
+def test_the_cpu_lane_sees_two_devices():
+    """The multi-device rows below skip when fewer than two devices exist (a one-GPU
+    node). On the CPU lane the root conftest forces two host devices, so there a
+    count below two is a broken environment and must be red, not 26 quiet skips."""
+    if jax.default_backend() != 'cpu':
+        pytest.skip('one accelerator: the multi-device rows skip by design')
+    assert len(jax.devices()) >= 2, jax.devices()
+
+
 def execute(sim, path, *, entry='run', skip=True):
     kwargs = dict(n_steps=3, skip_preflight=skip)
     if 'distributed' in path:
-        assert len(jax.devices()) >= 2
+        if len(jax.devices()) < 2:
+            # One accelerator (or one host device): the multi-device rows cannot run here.
+            pytest.skip(f'needs two devices on one backend, found {len(jax.devices())}')
         kwargs['devices'] = jax.devices()[:2]
         if entry == 'forward':
             kwargs['distributed'] = True

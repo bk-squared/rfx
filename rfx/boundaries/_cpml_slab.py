@@ -62,8 +62,30 @@ def slab_neighbor(arr, axis, depth, lo, forward, boundary=None, *,
     return part
 
 
+def writeback_form():
+    """Choose the write-back with a Python value when the caller is traced."""
+    return "padded" if jax.default_backend() == "gpu" else "slab"
+
+
 def apply_ordered(field, terms):
     """Add slab corrections in production order, including overlap rounding."""
+    if writeback_form() == "padded":
+        for sl, value in terms:
+            pads = []
+            mask = True
+            for axis, (window, size) in enumerate(zip(sl, field.shape)):
+                start, stop, _ = window.indices(size)
+                pads.append((start, size - stop))
+                if start != 0 or stop != size:
+                    # A face slab restricts one axis; the mask is that axis's.
+                    assert mask is True, "a CPML slab restricts exactly one axis"
+                    shape = [1, 1, 1]
+                    shape[axis] = size
+                    index = jnp.arange(size).reshape(shape)
+                    mask = (index >= start) & (index < stop)
+            correction = jnp.pad(value, pads)
+            field = jnp.where(mask, (field + correction).astype(field.dtype), field)
+        return field
     for sl, value in terms:
         starts = tuple(window.indices(size)[0] for window, size in zip(sl, field.shape))
         # Match .at[sl].add: promote the operands for the addition, then

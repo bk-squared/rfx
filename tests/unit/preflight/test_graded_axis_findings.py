@@ -348,9 +348,11 @@ def test_a_source_a_coarse_half_cell_from_the_far_wall_is_caught():
     """
     report = _pec_box_with_source_below_z_hi(_z_ends(0.2 * _DX, _DX), 0.3e-3)
     assert "source_decoupled" in _codes(report), _codes(report)
-    text = next(str(i) for i in report.issues
-                if getattr(i, "code", None) == "source_decoupled")
-    assert "z_hi" in text and "(1 mm)" in text, text
+    issue = next(i for i in report.issues
+                 if getattr(i, "code", None) == "source_decoupled")
+    assert issue.severity == "error"
+    text = str(issue)
+    assert "z_hi" in text and "at least one cell inside the domain, off the wall" in text, text
 
 
 def test_a_source_outside_the_fine_wall_half_cell_is_not_flagged():

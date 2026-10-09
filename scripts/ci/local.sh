@@ -126,7 +126,7 @@ begin 7
 # The same flags the required gate in pr-tests.yml uses. Without `-o addopts=""`
 # the local run silently collects two fewer tests than CI does, which is the
 # local-is-weaker-than-CI gap these scripts exist to close. Costs about 27 s.
-"$PYTHON" -m pytest tests/contracts -q -x \
+PYTHONPATH="$PWD/scripts/ci${PYTHONPATH:+:$PYTHONPATH}" "$PYTHON" -m pytest tests/contracts -q -x -p rfx_gate_memory \
   -o addopts="" -m "not gpu and not docs_consistency" --strict-markers || fail
 
 begin 8
@@ -159,7 +159,7 @@ stage2_pytest() {
   RFX_GATE_COLLECTION_DIR="$selection_dir/$1-collection" \
     PYTHONPATH="$PWD/scripts/ci${PYTHONPATH:+:$PYTHONPATH}" \
     "$PYTHON" -m pytest "${@:2}" -q \
-    -p rfx_gate_collection -p no:cacheprovider \
+    -p rfx_gate_collection -p rfx_gate_memory -p no:cacheprovider \
     -o addopts="" -m "not gpu and not slow and not slow_physics and not docs_consistency" --strict-markers \
     --junitxml="$selection_dir/$1.xml"
 }
