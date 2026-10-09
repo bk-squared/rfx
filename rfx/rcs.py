@@ -571,7 +571,7 @@ def compute_rcs(
     # (byte-identical: `_run_kw` collapses to the pre-relaxation call).
     _run_kw = dict(boundary=boundary, tfsf=(tfsf_cfg, tfsf_st), ntff=ntff_box)
     if _oblique:
-        _run_kw.update(cpml_axes="xy", periodic=(False, False, True), pec_axes="")
+        _run_kw.update(cpml_axes="xy", periodic=(False, False, True))
     result = run(grid, materials, n_steps, **_run_kw)
 
     # --- 4. Compute far-field from NTFF data ---
