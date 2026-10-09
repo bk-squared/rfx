@@ -220,12 +220,47 @@ def test_published_matches_lane_operator(lane, sheet, monkeypatch):
             assert np.array_equal(actual, e32)
 
 
+def step_occupancy_on_ones(cells, n_devices):
+    """Run the production step, setting E=1 at the preceding face stage.
+
+    Observe before ghost exchange so callers can also pin inert ghost rows.
+    No occupancy arithmetic is implemented by this fixture.
+    """
+    import rfx.runners.distributed_nu as nu
+    from rfx.nonuniform import make_nonuniform_grid
+    from rfx.stepping.slab import Slab, cut
+    from rfx.core.yee import FDTDState
+    shape = cells.shape
+    grid = make_nonuniform_grid(
+        ((shape[0] - 1) * .001, (shape[1] - 1) * .001),
+        np.full(shape[2] - 1, .001), .001, cpml_layers=0)
+    sg = nu.build_sharded_nu_grid(grid, n_devices)
+    layout = Slab.from_grid(sg)
+    mesh = Mesh(np.asarray(jax.devices()[:n_devices]), ('x',))
+    slabs = cut(jnp.asarray(cells), layout, 'pec_occupancy', mesh=mesh)
+    mat = MaterialArrays(*(cut(v, layout, kind, mesh=mesh)
+                           for v, kind in zip(material(shape)[:3], ('eps_r', 'sigma', 'mu_r'))))
+    observed = []
+    exchange = nu._exchange_e_ghosts_nu
+    def ones(st, *args, **kwargs):
+        return st._replace(ex=jnp.ones_like(st.ex), ey=jnp.ones_like(st.ey), ez=jnp.ones_like(st.ez))
+    def record(st, *args, **kwargs):
+        jax.debug.callback(lambda *v: observed.append(FDTDState(*map(np.asarray, v))), *st)
+        return exchange(st, *args, **kwargs)
+    with patch.object(nu, '_apply_pec_face_nu_shmap', ones), patch.object(nu, '_exchange_e_ghosts_nu', record):
+        result = nu.run_nonuniform_distributed_pec(
+            sg, mat, None, 1, n_devices=n_devices,
+            devices=jax.devices()[:n_devices], sharded_pec_occupancy=slabs)
+        jax.block_until_ready(result)
+        jax.effects_barrier()
+    assert len(observed) == 1
+    return observed[0]
+
+
 @pytest.mark.parametrize('n_devices', [2, 3])
 def test_slab_owned_rows_match_operator_and_reference(n_devices):
     if len(jax.devices()) < n_devices:
         pytest.skip('requires three virtual CPU devices configured before import')
-    from rfx.runners.distributed_nu import _apply_pec_occupancy_nu_shmap
-    from rfx.runners._rank import mesh_ranks
     from rfx.stepping.slab import Slab, cut
     shape = (11, 7, 5)
     cells = np.random.default_rng(202).uniform(0, .85, shape).astype(np.float32)
@@ -235,10 +270,7 @@ def test_slab_owned_rows_match_operator_and_reference(n_devices):
     mesh = Mesh(np.asarray(jax.devices()[:n_devices]), ('x',))
     slabs = cut(jnp.asarray(cells), layout, 'pec_occupancy', mesh=mesh)
     result = publish_slab_occupancy(material(slabs.shape), slabs, mesh)
-    st = init_state(slabs.shape)
-    ones = jnp.ones(slabs.shape)
-    st = st._replace(ex=ones, ey=ones, ez=ones)
-    effective = _apply_pec_occupancy_nu_shmap(st, slabs, mesh, n_devices, layout.nx_local, ranks=mesh_ranks(mesh))
+    effective = step_occupancy_on_ones(cells, n_devices)
     refs = reference(cells)
     whole = [np.asarray(k) for k in build_edge_keep(jnp.asarray(cells))]
     exact = reference32(cells)
@@ -249,8 +281,9 @@ def test_slab_owned_rows_match_operator_and_reference(n_devices):
             # per slab == whole domain == NumPy float32, bit for bit
             assert np.array_equal(got, whole[c][lo:hi])
             assert np.array_equal(got, exact[c][lo:hi])
-            np.testing.assert_allclose(got, np.asarray(component)[owned], rtol=0, atol=ULP1)
-            np.testing.assert_allclose(got, ref[lo:hi], rtol=0, atol=2.4e-7)
+            # Consumption check, not a value pin: the slab step multiplies the published array.
+            np.testing.assert_array_equal(got, np.asarray(component)[owned])
+            np.testing.assert_allclose(np.asarray(component)[owned], ref[lo:hi], rtol=0, atol=2.4e-7)
 
     # Gradient through the cut and the per-slab builder against the whole domain
     # (a derivative of a product is a sum of products: equal to rounding, not bitwise).

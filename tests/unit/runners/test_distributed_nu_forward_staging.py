@@ -17,6 +17,8 @@ import jax.numpy as jnp
 from functools import partial
 from jax.experimental.shard_map import shard_map
 from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
+from rfx.stepping.slab import Slab, cut
+
 import numpy as np
 import pytest
 
@@ -101,7 +103,7 @@ def _legacy_forward(self, *, eps_override=None, sigma_override=None,
     slabs = _split_materials(padded, len(devices), sg.ghost_width)
     placed = MaterialArrays(*(shard_stacked(a, shd) for a in slabs[:3]))
     pec = nu.shard_pec_mask_x_slab(mask, sg)
-    occupancy = nu.shard_pec_occupancy_x_slab(pec_occupancy_override, sg)
+    occupancy = None if pec_occupancy_override is None else cut(pec_occupancy_override, Slab.from_grid(sg), "pec_occupancy", mesh=None).reshape(-1, *pec_occupancy_override.shape[1:])
     cpml_params, cpml_stacked = nu.init_cpml_for_sharded_nu(
         sg, len(devices), pec_faces=getattr(self, "_pec_faces", None))
     cpml = nu.shard_cpml_state_x_slab(cpml_stacked, sg, mesh)
