@@ -2,18 +2,21 @@
 
 The pure-R network remains the oracle. The series-cell residual prediction
 and the slow ladder's fitted order are separate checks. The receiving-port
-S21 model is not established: its three predictions are reported only, and
-the verdict is the fixed-separation three-mesh trend.
+S21 model is not established: its three predictions are reported only. The
+residual verdict is the fixed-separation three-mesh trend; the pure-network
+magnitude also retains its always-on 0.01 bar.
 """
 from functools import lru_cache
 
 import json
+import sys
+from unittest.mock import patch
 
 import numpy as np
 import pytest
 
 from tests._interior_tem_line import (build, two_port, element_inductance,
-                                      assert_predicted_residual, assert_first_order, residuals)
+                                      assert_predicted_residual, assert_first_order, residuals, assert_solved_ports)
 
 FREQS_HZ = np.array([1.0, 2.5, 5.0, 7.5, 10.0]) * 1e9
 CLOSED_FORM_ATOL = 0.05
@@ -33,8 +36,21 @@ def _build(kind):
 
 @lru_cache(maxsize=None)
 def _s_matrix(kind, dx=.1e-3):
-    res = _mesh(kind, dx)[0].run(compute_s_params=True, s_param_freqs=FREQS_HZ,
-                           skip_preflight=True)
+    sim, line = _mesh(kind, dx)
+    forward = sim._forward_from_materials
+    checked = []
+
+    def checked_scan(*args, **kwargs):
+        raw = forward(*args, **kwargs)
+        if isinstance(raw, dict) and "lumped" in raw:
+            assert_solved_ports(raw, line, kind, two=True)
+            checked.append(True)
+        return raw
+
+    with patch.object(sim, "_forward_from_materials", checked_scan):
+        res = sim.run(compute_s_params=True, s_param_freqs=FREQS_HZ,
+                      skip_preflight=True)
+    assert len(checked) == 2, "both independent port drives must expose their solved specs"
     return np.asarray(res.s_params)
 
 
@@ -127,8 +143,8 @@ def record_transmission_predictions(line, measured, pure, predicted, record_prop
     Therefore the R-only Ampere read multiplies b_R by
     (1+cos(w dt/2)+j*R*eps0*dx*(2/dt)*sin(w dt/2))/2.
     None of these receiving-port residual predictions is asserted.
-    The former single-mesh |S21|-magnitude bar of 0.01 is replaced by the
-    leader's trend-only S21 verdict; both magnitudes remain reported here.
+    The pure-network |S21| bar remains 0.01 per bin; only the residual
+    MODEL is report-only, with convergence judged by the slow ladder.
     """
     w = 2 * np.pi * FREQS_HZ
     dt = .99 * line.dx / (299792458. * np.sqrt(3))
@@ -144,5 +160,22 @@ def record_transmission_predictions(line, measured, pure, predicted, record_prop
     for name, curve in (("R_only", r_only), ("R_plus_jwL", r_plus_l),
                         ("R_only_displacement", displacement)):
         values[name] = residuals(measured[1, 0], pure[1, 0], curve)
-    print(f"S21 report-only predictions: {values}")
+    print(f"S21 report-only predictions: {values}", file=sys.stderr)
     record_property(f"s21_predictions_{line.dx}", json.dumps(values))
+
+
+def assert_transmission_magnitude(measured, pure):
+    assert np.all(abs(abs(measured) - abs(pure)) <= .01), "pure-network |S21| error exceeds 0.01"
+
+
+@pytest.mark.parametrize("kind", ["lumped", "wire"])
+def test_transmission_matches_pure_network_magnitude(kind, record_property):
+    measured, pure = _s_matrix(kind)[1, 0], _expected(kind)[1, 0]
+    record_property("s21_phase_residual_deg", json.dumps(np.degrees(np.angle(measured / pure)).tolist()))
+    record_property("s21_magnitude_error", json.dumps((abs(measured) - abs(pure)).tolist()))
+    assert_transmission_magnitude(measured, pure)
+
+
+def test_transmission_magnitude_detects_removed_check():
+    with pytest.raises(AssertionError, match="pure-network"):
+        assert_transmission_magnitude(np.array([.52]), np.array([.5]))

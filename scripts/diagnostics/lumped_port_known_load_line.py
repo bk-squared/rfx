@@ -23,7 +23,7 @@ import numpy as np
 
 from tests._interior_tem_line import (
     build as build_line, input_reflection, element_inductance,
-    assert_predicted_residual, residuals,
+    assert_predicted_residual, residuals, assert_solved_ports,
 )
 
 FREQS = np.array([1., 2.5, 5., 7.5, 10.]) * 1e9
@@ -40,6 +40,7 @@ def measure(kind, r_over_zc):
     sim, line = build_line(kind, ratio=r_over_zc, axial_positions=(.25e-3, 1.5e-3),
                       declared_separation=1.25e-3)
     result = sim.forward(port_s11_freqs=FREQS, num_periods=NUM_PERIODS, skip_preflight=True)
+    assert_solved_ports(result, line, kind)
     measured = np.asarray(result.s_params).reshape(-1)
     pure = input_reflection(line, FREQS, r_over_zc * line.zc)
     predicted = input_reflection(line, FREQS, r_over_zc * line.zc,

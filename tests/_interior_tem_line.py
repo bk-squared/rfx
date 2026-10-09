@@ -14,6 +14,7 @@ Non-integral port/load declarations are snapped; the realized coordinates,
 not the declarations, enter the longitudinal transform.
 """
 from dataclasses import dataclass
+import sys
 
 import numpy as np
 
@@ -60,7 +61,8 @@ def impedance(gap):
 
 def build(kind="lumped", *, dx=0.25e-3, cells=9, gap=1, ratio=2.,
           two=False, load="resistor", rlc=None, profile=None, port_factor=1.,
-          load_shift=0, cpml_layers=20, axial_positions=None, declared_separation=None):
+          load_shift=0, cpml_layers=20, axial_positions=None, declared_separation=None,
+          precision="float32"):
     """One radial lumped edge or a gap-cell wire, away from exterior walls.
 
     Default declarations snap to x nodes 1 and cells-3 before padding.
@@ -73,7 +75,7 @@ def build(kind="lumped", *, dx=0.25e-3, cells=9, gap=1, ratio=2.,
         dz_profile=np.full(7 + gap, dx))
     sim = Simulation(freq_max=10e9, domain=domain, dx=dx,
                      boundary=BoundarySpec(x="cpml", y="pec", z="pec"),
-                     cpml_layers=cpml_layers, **profiles)
+                     cpml_layers=cpml_layers, precision=precision, **profiles)
     for y in (2 * dx, 5 * dx):
         sim.add(Box((0, y, 2 * dx), (domain[0], y, (3 + gap) * dx)), material="pec")
     for z in (2 * dx, (3 + gap) * dx):
@@ -132,7 +134,17 @@ def build(kind="lumped", *, dx=0.25e-3, cells=9, gap=1, ratio=2.,
     for ix in range(grid.shape[0] - 1):
         np.testing.assert_array_equal(np.asarray(hard[0])[ix, 2:6, 2:4 + gap], expected_ex)
     assert grid.pad_x_lo == grid.pad_x_hi == cpml_layers
+    # The load index is the declaration's snap: Result/ForwardResult expose
+    # no assembled RLC cell record. A moved load is independently caught by
+    # the measured residual check. Ports are checked against solved specs by
+    # assert_solved_ports after the scan, not certified by this recomputation.
     ip, il = index(port), index(load_pos)
+    if not two and load == "short":
+        # A PEC short DOES expose assembled edges: read the actual radial
+        # bridge from the realized Ez mask, independently of its declaration.
+        short_x = np.flatnonzero(np.asarray(hard[2])[:, 3, 3])
+        assert len(short_x) == 1, f"expected one assembled short bridge, got {short_x}"
+        il = (int(short_x[0]), 3, 3)
     assert ip[1:] == il[1:] == (3, 3)
     assert grid.shape[1:] == (9, 8 + gap)
     line = Line(zc, float(xs[ip[0]]), float(xs[il[0]] - xs[ip[0]]),
@@ -147,7 +159,7 @@ def assert_realized_separation(line, declared, positions=None):
 
     1e-14 m is over nine orders below the smallest cell, not a mesh allowance.
     """
-    print(f"dx={line.dx:.9g} m: declared d={declared:.12g} m; realized d={line.length:.12g} m")
+    print(f"dx={line.dx:.9g} m: declared d={declared:.12g} m; realized d={line.length:.12g} m", file=sys.stderr)
     np.testing.assert_allclose(line.length, declared, rtol=0, atol=1e-14)
     if positions is not None:
         np.testing.assert_allclose([line.left, line.left + line.length],
@@ -242,15 +254,47 @@ def assert_predicted_residual(measured, pure, predicted):
 
 
 def assert_first_order(dxs, errors):
-    """D1(i), per bin: log(error)=p log(dx)+b; report fitted p.
+    """Report the fitted order and judge BOTH adjacent mesh ratios, per bin.
 
-    New order interval derives from the 10% residual allowance across a 4x
-    ladder: |p-1| <= log(1.1/0.9)/log(4), not a single-mesh verdict.
+    Retain the existing |p-1| <= log(1.1/.9)/log(4) interval. Applying it
+    separately to both adjacent pairs strengthens the old endpoint-only bar;
+    a middle-mesh excursion can no longer disappear from the regression.
     """
+    dxs, errors = np.asarray(dxs, dtype=float), np.asarray(errors, dtype=float)
+    assert np.all(np.isfinite(errors) & (errors > 0)), "mesh errors must be finite and strictly positive"
+    assert dxs.ndim == 1 and len(dxs) == len(errors) >= 3, "need at least three matching meshes"
+    assert np.all(np.isfinite(dxs) & (dxs > 0)) and np.all(np.diff(dxs) < 0), "meshes must decrease strictly"
+    denominator = np.log(dxs[:-1] / dxs[1:]).reshape((-1,) + (1,) * (errors.ndim - 1))
+    pairs = np.log(errors[:-1] / errors[1:]) / denominator
     order = np.polyfit(np.log(dxs), np.log(errors), 1)[0]
-    print(f"fitted orders: {order}")
-    assert np.all(np.abs(order - 1) <= np.log(1.1 / .9) / np.log(4)), order
+    print(f"fitted orders: {order}; successive orders: {pairs}", file=sys.stderr)
+    assert np.all(np.abs(pairs - 1) <= np.log(1.1 / .9) / np.log(4)), f"successive mesh orders: {pairs}"
     return order
+
+
+def assert_solved_ports(result, line, kind="lumped", *, two=False):
+    """Read cells from the scan's actual DFT specs, including graded metadata.
+
+    run's S-matrix driver does not retain lumped specs on Result; its raw
+    scan result does, so that fixture checks each raw record before extraction.
+    """
+    if isinstance(result, dict):
+        entries = result[kind]
+    else:
+        entries = getattr(result, f"{kind}_port_sparams", None)
+        if entries is None:
+            entries = result.wire_port_sparams  # graded lumped lane uses wire metadata
+    assert entries and len(entries) == (2 if two else 1), "missing solved port specs"
+    expected = (line.port, line.load) if two else (line.port,)
+    for (spec, _), cell in zip(entries, expected):
+        if hasattr(spec, "i"):
+            actual = (spec.i, spec.j, spec.k)
+        elif hasattr(spec, "live_cells"):
+            actual = tuple(spec.live_cells[0])
+        else:
+            actual = tuple(spec[13][0])
+        assert actual == cell, f"solved port cell {actual} != declared snap {cell}"
+    print(f"solved {kind} port cells={expected}; realized d={line.length:.12g} m", file=sys.stderr)
 
 
 def chain(kind, dut, *, dx=None, separation=.0301):

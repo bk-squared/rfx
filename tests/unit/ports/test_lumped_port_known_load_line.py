@@ -15,7 +15,7 @@ from rfx import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.sources.sources import GaussianPulse
 from tests._interior_tem_line import (build, input_reflection, element_inductance,
-                                      assert_predicted_residual, assert_first_order, residuals)
+                                      assert_predicted_residual, assert_first_order, residuals, assert_solved_ports)
 
 ETA0 = 376.730313668
 DX = 1e-3
@@ -64,12 +64,13 @@ def _mesh(kind, ratio, dx):
 
 @lru_cache(maxsize=None)
 def _s11(kind, r_over_zc, dx=.25e-3):
-    sim, _ = _mesh(kind, r_over_zc, dx)
+    sim, line = _mesh(kind, r_over_zc, dx)
     res = sim.forward(
         port_s11_freqs=jnp.asarray(FREQS_HZ),
         num_periods=40.0,
         skip_preflight=True,
     )
+    assert_solved_ports(res, line, kind)
     return np.asarray(res.s_params).reshape(-1)
 
 
@@ -180,3 +181,23 @@ def test_geometry_and_trend_checks_reject_restored_defects():
         assert_realized_separation(replace(line, length=line.length + line.dx), 1.25e-3)
     with pytest.raises(AssertionError):
         assert_first_order(MESHES, [1., 1., 1.])
+    # A solved spec displaced from the declared snap must be observable even
+    # before comparing the measured spectrum (no extra FDTD solve here).
+    from types import SimpleNamespace
+    spec = SimpleNamespace(i=line.port[0]+1, j=line.port[1], k=line.port[2])
+    result = SimpleNamespace(lumped_port_sparams=((spec, None),))
+    with pytest.raises(AssertionError, match="solved port cell"):
+        assert_solved_ports(result, line)
+
+
+@pytest.mark.parametrize("errors", [[.1, .5, .025], [.1, .2, .025], [.1, 1e-9, .025]],
+                         ids=["middle-high", "nonmonotone", "middle-low"])
+def test_order_rejects_reviewers_middle_mesh_mutations(errors):
+    with pytest.raises(AssertionError, match="successive mesh orders"):
+        assert_first_order([.1, .05, .025], errors)
+
+
+@pytest.mark.parametrize("bad", [0., np.nan, np.inf, -1.])
+def test_order_refuses_nonpositive_or_nonfinite_errors(bad):
+    with pytest.raises(AssertionError, match="finite and strictly positive"):
+        assert_first_order([.1, .05, .025], [.1, bad, .025])

@@ -1,6 +1,7 @@
 """Requested graded forward bins, numerical subset witness and AD (#1410)."""
 
 import jax
+import sys
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -48,7 +49,7 @@ def test_port_bins_subset_matches_default():
     np.testing.assert_array_equal(selected.freqs, request)
     expected = np.asarray(default.s_params)[..., indices]
     delta = np.max(np.abs(np.asarray(selected.s_params) - expected))
-    print(f"subset max |dS|={delta:.9g}")
+    print(f"subset max |dS|={delta:.9g}", file=sys.stderr)
     np.testing.assert_allclose(selected.s_params, expected, rtol=0, atol=2e-7)
     for actual, baseline in zip(selected.wire_port_sparams[0][1],
                                 default.wire_port_sparams[0][1]):
@@ -70,7 +71,7 @@ def test_narrow_port_band_gradient():
     assert np.isfinite(value)
     assert np.isfinite(gradient).all()
     norm = float(jnp.linalg.norm(gradient))
-    print(f"narrow-band gradient norm={norm:.9g}")
+    print(f"narrow-band gradient norm={norm:.9g}", file=sys.stderr)
     assert norm > 0
 
 
@@ -102,16 +103,17 @@ def _known_load_line(load_ratio, *, profile):
 @pytest.mark.parametrize("load_ratio", [2.0, 1.0])
 def test_lumped_known_load_graded(load_ratio, record_property):
     from tests._interior_tem_line import (build, input_reflection, element_inductance,
-                                          assert_predicted_residual)
+                                          assert_predicted_residual, assert_solved_ports)
 
     widths = np.array([1, .8, 1.2, .9, 1.1, .8, 1.2, 1, 1]) * .25e-3
     sim, line = build(ratio=load_ratio, profile=widths,
                       axial_positions=(.25e-3, 1.45e-3), declared_separation=1.2e-3)
     record_property("realized_d_m", line.length)
     result = sim.forward(port_s11_freqs=[1e9], num_periods=20, skip_preflight=True)
+    assert_solved_ports(result, line)
     magnitude = float(np.abs(result.s_params[0, 0, 0]))
     expected = float(abs(input_reflection(line, [1e9], load_ratio * line.zc)[0]))
-    print(f"graded R/Zc={load_ratio:g}: |S11|={magnitude:.9g}, TEM={expected:.9g}")
+    print(f"graded R/Zc={load_ratio:g}: |S11|={magnitude:.9g}, TEM={expected:.9g}", file=sys.stderr)
     record_property("closed_form_s11_magnitude", expected)
     record_property("new_s11_magnitude", magnitude)
     import json
@@ -126,18 +128,33 @@ def test_lumped_known_load_graded(load_ratio, record_property):
     assert_predicted_residual(np.asarray(result.s_params).reshape(-1), pure, predicted)
 
 
-def test_lumped_uniform_profile_lane_parity():
+def test_lumped_uniform_profile_lane_parity(record_property):
     request = np.array([1.0, 2.5, 5.0, 7.5, 10.0], dtype=np.float32) * 1e9
-    uniform = _known_load_line(2.0, profile=None).forward(
-        port_s11_freqs=request, num_periods=20, skip_preflight=True)
-    graded = _known_load_line(2.0, profile="flat").forward(
-        port_s11_freqs=request, num_periods=20, skip_preflight=True)
+    from tests._interior_tem_line import build, assert_solved_ports
+
+    # Lane parity, not a continuum-accuracy solve: five axial 1 mm cells,
+    # 8x8 transverse cells, 20 CPML cells per end (46x9x9 nodes), 100 steps.
+    # Source/load are distinct interior nodes, with the same shunt load and
+    # all five requested frequencies; retain the original complex 1e-5 bar.
+    uniform_sim, line = build(dx=1e-3, cells=5, ratio=2.,
+                              axial_positions=(1e-3, 3e-3), declared_separation=2e-3)
+    graded_sim, graded_line = build(dx=1e-3, cells=5, ratio=2., profile=np.full(5, 1e-3),
+                                    axial_positions=(1e-3, 3e-3), declared_separation=2e-3)
+    uniform = uniform_sim.forward(port_s11_freqs=request, n_steps=100, skip_preflight=True)
+    graded = graded_sim.forward(port_s11_freqs=request, n_steps=100, skip_preflight=True)
+    assert_solved_ports(uniform, line)
+    assert_solved_ports(graded, graded_line)
     np.testing.assert_array_equal(graded.freqs, request)
     np.testing.assert_array_equal(uniform.freqs, request)
     # Uniform squeezes a single lumped diagonal to (nf,); graded is a matrix.
     uniform_s11 = np.asarray(uniform.s_params).reshape(1, -1)[0]
+    assert np.isfinite(uniform_s11).all() and np.isfinite(graded.s_params).all()
+    record_property("interior_cells", "5x8x8; 20 CPML cells at each x end")
+    record_property("n_steps", 100)
+    record_property("uniform_abs_s11", np.abs(uniform_s11).tolist())
+    record_property("graded_abs_s11", np.abs(graded.s_params[0, 0]).tolist())
     delta = np.max(np.abs(np.asarray(graded.s_params[0, 0]) - uniform_s11))
-    print(f"lumped lane parity max |dS|={delta:.9g}")
+    print(f"lumped lane parity max |dS|={delta:.9g}", file=sys.stderr)
     np.testing.assert_allclose(graded.s_params[0, 0], uniform_s11,
                                rtol=0, atol=1e-5)
 
@@ -175,7 +192,7 @@ def test_graded_known_load_three_mesh_trend(load_ratio, record_property):
     import json
     from tests._interior_tem_line import (
         build, input_reflection, element_inductance, assert_predicted_residual,
-        assert_first_order, residuals,
+        assert_first_order, residuals, assert_solved_ports,
     )
 
     widths = np.array([1, .8, 1.2, .9, 1.1, .8, 1.2, 1, 1]) * .25e-3
@@ -189,6 +206,7 @@ def test_graded_known_load_three_mesh_trend(load_ratio, record_property):
                           axial_positions=(.25e-3, 1.45e-3), declared_separation=1.2e-3)
         record_property(f"realized_d_{dx}", line.length)
         result = sim.forward(port_s11_freqs=freqs, num_periods=40, skip_preflight=True)
+        assert_solved_ports(result, line)
         measured = np.asarray(result.s_params).reshape(-1)
         pure = input_reflection(line, freqs, load_ratio * line.zc)
         predicted = input_reflection(line, freqs, load_ratio * line.zc,

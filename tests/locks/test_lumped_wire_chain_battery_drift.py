@@ -10,6 +10,7 @@ Every DUT is judged at the load plane by the appended lead ruling.
 Raw S11 is reported only; phase is a three-mesh trend, not a one-bin bar.
 """
 import json
+import sys
 from functools import lru_cache
 
 import numpy as np
@@ -18,17 +19,18 @@ import pytest
 from tests import _chain_battery_drift as drift
 from tests import _electrical_length as EL
 from tests._interior_tem_line import (chain, input_reflection, element_inductance,
-                                      assert_first_order)
+                                      assert_first_order, assert_solved_ports)
 
-# The commit identifies the solver revision used to exercise the hand-derived
-# oracle; expected values are formulas, not pinned measurements from that commit.
+# No measurement artifact is pinned: all expected values are hand-derived.
+# The gate requires dates even for fixture="none". pinned_until is the next
+# review deadline for this formula-based lock, not a numerical baseline pin.
 LOCK_PROVENANCE = {
-    "fixture": "tests/_interior_tem_line.py",
-    "generator": "closed-form shunt network; tests._interior_tem_line.chain",
-    "commit": "4c7bbf2fb",
-    "date": "2026-10-08",
-    "run_id": "local CPU #1162 fixed-plane through-line rebuild; tracker 1549 wire xfail",
-    "host": "JAX CPU float32",
+    "fixture": "none",
+    "generator": "hand-derived shunt network; tests._interior_tem_line.chain",
+    "commit": "unknown",
+    "date": "2026-10-09",
+    "run_id": "none; live solves against formulas, no pinned measurement",
+    "host": "none; no stored measurement",
     "pinned_until": "2027-03-23",
 }
 FAMILY = "lumped / wire internal TEM coax"
@@ -36,7 +38,7 @@ DRIVER = "scripts/diagnostics/lumped_wire_chain_battery_measure.py"
 # The wire rows still run (weekly lane, ~100 s each while they diverge) so that the fix of
 # tracker 1549 shows up as an unexpected pass; they are not run before merge.
 WIRE_XFAIL = pytest.mark.xfail(
-    strict=True, reason="conductors through the absorber grow at the cross-section's transverse resonance; tracker 1549")
+    strict=True, raises=AssertionError, reason="conductors through the absorber grow at the cross-section's transverse resonance; #1549")
 # The 2 dB magnitude bar is a statement about a converged mesh. For the 2*Zc row the one-cell
 # element inductance leaves 2.03 / 1.06 / 0.55 dB at 100 / 50 / 25 um (first order in dx), so
 # the always-on run of that row uses the 50 um mesh; the 100 um value is part of the slow
@@ -138,10 +140,16 @@ def prediction(line, dut, *, dispersive=False):
     return (zin-line.zc)/(zin+line.zc)
 
 
-@lru_cache(maxsize=None)
 def measured_chain(kind, dut, dx=None):
+    # Normalize omitted, explicit None and explicit default BEFORE caching.
+    return _measured_chain(kind, dut, .1e-3 if kind == "lumped" and dx is None else dx)
+
+
+@lru_cache(maxsize=None)
+def _measured_chain(kind, dut, dx):
     sim, line = chain(kind, dut, dx=dx)
     result = sim.forward(port_s11_freqs=FREQS, num_periods=NUM_PERIODS, skip_preflight=True)
+    assert_solved_ports(result, line, kind)
     specs = result.lumped_port_sparams if kind == "lumped" else result.wire_port_sparams
     assert len(specs) == 1
     spec = specs[0][0]
@@ -167,10 +175,11 @@ def record_chain(line, dut, live, record_property):
         record['predicted_phase_deg'] = np.degrees(np.angle(pred)).tolist()
         record['measured_abs_dGamma'] = abs(gamma-GAMMA[dut]).tolist()
         record['predicted_abs_dGamma'] = abs(pred-GAMMA[dut]).tolist()
+        record['complex_limit'] = complex_load_plane_limit(line, dut).tolist()
         if dut != 'matched':
             record['measured_phase_residual_deg'] = np.degrees(np.angle(gamma/GAMMA[dut])).tolist()
             record['predicted_phase_residual_deg'] = np.degrees(np.angle(pred/GAMMA[dut])).tolist()
-    print(f"{dut} dx={line.dx}: raw port dB={record['raw_port_db']}; load-plane report={record}")
+    print(f"{dut} dx={line.dx}: raw port dB={record['raw_port_db']}; load-plane report={record}", file=sys.stderr)
     record_property(f"chain_{line.dx}", json.dumps(record))
     return gamma
 
@@ -183,6 +192,38 @@ def test_chain_load_plane_magnitude(kind, dut, record_property):
     line, live = measured_chain(kind, dut, dx=ALWAYS_ON_DX.get(dut) if kind == "lumped" else None)
     gamma = record_chain(line, dut, live, record_property)
     assert_load_plane_magnitude(dut, gamma)
+    # The element coefficient is measured only for gap=1. A healthy four-cell
+    # wire must reach XPASS, not remain xfailed on an unmeasured-model assertion.
+    if line.gap == 1:
+        assert_load_plane_complex(line, dut, gamma)
+
+
+def complex_load_plane_limit(line, dut):
+    """Leader's declared complex identity margin, with the same pure inverse.
+
+    e_pred(f) = |Gamma_L,pred(f) - Gamma_ideal|, where prediction includes
+    0.214*mu0*dx at port and load and is passed through the same pure
+    de-embedding as the measurement. limit(f) = e_pred(f) + 0.5*max(e_pred).
+    The 0.5 is a declared margin, not a fit; on the stored round-2 records
+    the measured deviation exceeds the prediction by at most
+    0.0075 / 0.0038 / 0.0019 at 100 / 50 / 25 um (proportional to dx),
+    against a margin term of at least 0.028 / 0.014 / 0.007.
+    """
+    predicted = load_plane_reflection(line, FREQS, prediction(line, dut))
+    e_pred = abs(predicted-GAMMA[dut])
+    return e_pred + .5*np.max(e_pred)
+
+
+def assert_load_plane_complex(line, dut, gamma):
+    limit = complex_load_plane_limit(line, dut)
+    half_nearest = .5*min(abs(GAMMA[dut]-GAMMA[other]) for other in DUTS if other != dut)
+    assert np.isfinite(limit).all() and np.max(limit) < half_nearest, (
+        f"{dut}: mesh is too coarse for this verdict: max limit={np.max(limit)}, "
+        f"half nearest row distance={half_nearest}")
+    assert np.isfinite(gamma).all(), "non-finite load-plane reflection"
+    assert np.all(abs(gamma-GAMMA[dut]) <= limit), (
+        f"{dut}: complex load-plane error exceeds element bound: "
+        f"error={abs(gamma-GAMMA[dut])}; limit={limit}")
 
 
 def assert_short_electrical_length(line, live):
@@ -191,6 +232,9 @@ def assert_short_electrical_length(line, live):
     reflected = propagation_reflection(live)
     reference = -np.exp(-4j * np.pi * FREQS * line.length / 299792458.)
     mask = EL.transmitting_bins(reflected) & EL.transmitting_bins(reference)
+    keep = np.flatnonzero(mask)
+    assert keep.size >= 3, f"short reflection slope needs three bins; got {keep.size} (open has no traveling reflection)"
+    assert np.all(np.diff(keep) == 1), "short reflection slope mask is not one contiguous run of bins"
     ratio = EL.electrical_length_ratio(FREQS, reflected, reference, mask)
     assert abs(ratio) <= EL.ELECTRICAL_LENGTH_FRAC, f"short reflection slope error {ratio:.9g} exceeds 1%"
     return ratio, reflected, reference, mask
@@ -203,7 +247,7 @@ def test_short_electrical_length(record_property):
         record_property(name, json.dumps(np.stack([values.real, values.imag], axis=-1).tolist()))
     record_property("mask", json.dumps(mask.tolist()))
     record_property("electrical_length_error", ratio)
-    print(f"short d={line.length}: reflection slope error={ratio:.9g}, contiguous bins={sum(mask)}")
+    print(f"short d={line.length}: reflection slope error={ratio:.9g}, contiguous bins={sum(mask)}", file=sys.stderr)
 
 
 @pytest.mark.slow
@@ -216,6 +260,9 @@ def test_chain_load_plane_three_mesh_trend(dut, record_property):
         errors.append(np.linalg.norm(gamma-GAMMA[dut]))
         if dut != "matched":
             phase_errors.append(np.linalg.norm(np.angle(gamma/GAMMA[dut])))
+        if dut == "short":
+            bias = assert_short_electrical_length(line, live)[0]
+            record_property(f"junction_L0_length_bias_{dx}", bias)
     # The continuum load-plane phase is constant. Compare residual norms over
     # the SAME full band: individual bins may be stationary at zero residual.
     # Old raw-S crossing-frequency (1%) and phase-direction verdicts are
@@ -235,6 +282,7 @@ def test_chain_refined_load_plane_magnitude(dut, dx, record_property):
     line, live = measured_chain("lumped", dut, dx)
     gamma = record_chain(line, dut, live, record_property)
     assert_load_plane_magnitude(dut, gamma)
+    assert_load_plane_complex(line, dut, gamma)
 
 
 @pytest.mark.parametrize("dut", DUTS)
@@ -339,3 +387,65 @@ def test_the_electrical_length_is_the_ratio_of_two_delays():
     assert EL.electrical_length_ratio(freqs, longer, line, kept[:60].tolist()
                                       + [False] * 61) == pytest.approx(0.02, abs=1e-12)
     assert EL.ELECTRICAL_LENGTH_FRAC == 0.01
+
+
+@pytest.mark.parametrize("dut", DUTS)
+def test_complex_verdict_rejects_every_row_swap(dut):
+    line, _ = measured_chain("lumped", dut, ALWAYS_ON_DX.get(dut))
+    for other in DUTS:
+        if other != dut:
+            other_line, live = measured_chain("lumped", other, ALWAYS_ON_DX.get(other))
+            gamma = load_plane_reflection(other_line, FREQS, live)
+            with pytest.raises(AssertionError, match="complex load-plane"):
+                assert_load_plane_complex(line, dut, gamma)
+
+
+def test_open_curve_has_no_short_electrical_length():
+    line, live = measured_chain("lumped", "open")
+    with pytest.raises(AssertionError, match="short reflection slope"):
+        assert_short_electrical_length(line, live)
+
+
+@pytest.mark.parametrize("scale", [1.02, 1.012, 1.008, .988, .992])
+def test_stored_short_length_mutations(scale, record_property):
+    # Reuse the session's 100 um record, with no extra solve. The L=0 junction
+    # removal leaves a measured bias; this records the asymmetric 1% window.
+    from dataclasses import replace
+    line, live = measured_chain("lumped", "short")
+    baseline = assert_short_electrical_length(line, live)[0]
+    altered = replace(line, length=line.length/scale)
+    reading = (1+baseline)*scale-1
+    record_property("declared_length_scale", 1/scale)
+    record_property("electrical_length_error", reading)
+    if abs(reading) > EL.ELECTRICAL_LENGTH_FRAC:
+        with pytest.raises(AssertionError, match="slope error"):
+            assert_short_electrical_length(altered, live)
+    else:
+        assert assert_short_electrical_length(altered, live)[0] == pytest.approx(reading)
+
+
+def test_default_chain_mesh_uses_one_cache_entry():
+    first = measured_chain("lumped", "short")
+    before = _measured_chain.cache_info()
+    assert measured_chain("lumped", "short", dx=None) is first
+    assert measured_chain("lumped", "short", .1e-3) is first
+    after = _measured_chain.cache_info()
+    assert after.misses == before.misses and after.hits == before.hits + 2
+
+
+def test_healthy_wire_curves_are_not_hidden_by_the_one_cell_model(monkeypatch):
+    """Synthetic healthy wire rows must pass the body, so #1549 can XPASS."""
+    _, line = chain("wire", "matched")
+    loads = dict(short=0., open=np.inf, res_half=line.zc/2,
+                 res_double=2*line.zc, matched=line.zc)
+    for dut, load in loads.items():
+        curve = input_reflection(line, FREQS, load)
+        monkeypatch.setitem(globals(), "measured_chain", lambda *a, _s=curve, **kw: (line, _s))
+        test_chain_load_plane_magnitude("wire", dut, lambda *a: None)
+
+
+def test_complex_verdict_refuses_a_mesh_that_cannot_separate_rows():
+    from dataclasses import replace
+    _, line = chain("lumped", "matched")
+    with pytest.raises(AssertionError, match="mesh is too coarse for this verdict"):
+        assert_load_plane_complex(replace(line, dx=4*line.dx), "matched", np.zeros(len(FREQS)))
