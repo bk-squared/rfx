@@ -433,11 +433,18 @@ def test_o3_loss_ladder_strictly_decreasing():
 #:   0.9964331388473511 / 0.9962416887283325.
 #: - 2026-10-10: PR 1527 (one DFT kernel and one time stamp for every spectrum) changed
 #:   how the DFT phase is formed, so the microstrip plane spectra round differently.
-#:   Bisected on the capture machine over the 87 commits since the previous pin: the
-#:   5 ohm/sq value is bit-exact up to the commit before 2a3b68812 (that PR's merge) and
-#:   +4.768e-07 (8 float32 ULP) from it, unchanged through 4a42dbc9a. Moves on this
-#:   machine: 0 / -2.384e-07 / +4.768e-07. Far inside that PR's declared bar (1e-4 of
-#:   the peak); the PR's gate did not run this slow-marked lock.
+#:   Measured on the capture machine: on 3ad40ce59, the commit before that PR's merge,
+#:   all three values equal the previous pins exactly; on the merge 2a3b68812 they read
+#:   0 / -2.384e-07 / +4.768e-07 from them (0, 4 and 8 float32 steps). The 5 ohm/sq value
+#:   was also bisected over the 87 commits on main from the one that introduced the
+#:   previous pin (292e39033) to 4a42dbc9a: one first-moved commit, 2a3b68812, and the
+#:   same reading on every later commit tried. Far inside that PR's declared bar (1e-4 of
+#:   the peak); its gate did not run this slow-marked lock.
+#:   What the weekly lane saw (GitHub-hosted runner, main 2d03240fb, 2026-10-09): the
+#:   1 ohm/sq value at -4.77e-07 from the previous pin - this machine's -2.384e-07 move
+#:   plus an x86-versus-Mac offset of the same size on the new tree (below). The test
+#:   stopped there, so that runner's 5 ohm/sq reading was not taken.
+#:   Records: bk-squared/rfx-archive rfx/records/20261010-o3-lock-repin/.
 O3_MEAN_S21 = {"rs_tiny": 0.9992086291313171,
                "rs1": 0.996432900428772, "rs5": 0.9962421655654907}
 O3_DRIFT_TOL = 4e-7
@@ -448,34 +455,36 @@ def test_o3_mean_s21_drift_lock(record_property):
     """The O3 ladder's values, locked. A code change that moves the in-band mean |S21|
     of this board at Rs0 = 1e-6, 1 or 5 ohm/sq by more than O3_DRIFT_TOL turns this red.
 
-    #1266 rescaled this source by 76.568 (port drive = stamped conductance × source field); main with the same pure rescale reads the same values, so the re-pin carries no physics change.
+    #1266 rescaled this source by 76.568 (port drive = stamped conductance × source field); main with the same pure rescale reads the same values, so the re-pin carries no physics change; a rescale alone moves these values by up to 2.1e-6 (×76.6) and 3e-7 (×64).
 
-    Tolerance: the largest difference measured between runs of this fixture on one tree
-    across run conditions, rounded up to one significant figure. On 1d10ee45
-    (2026-09-27): CPU at 8 and 4 threads and with XLA's CPU ISA capped at AVX2 gave the
-    same values to 4e-10; OPENBLAS_CORETYPE=Haswell moved them by up to 3.2e-8; a CPU
-    pytest run of this file by up to 8.7e-8 (Rs0 = 1e-6). Two GPU runs, both on an RTX
-    2070 SUPER (JAX 0.6.2, CUDA 12), differ from the CPU values by up to 3.66e-7
-    (Rs0 = 5): a GPU-versus-CPU offset; the two GPU runs agree with each other to 5.5e-8.
-    On the re-pinned tree (branch head ac16407d, 2026-10-10): an x86 Linux CPU run
-    (Xeon Gold 6526Y, same Python and JAX) reads -1.788e-07 / -2.384e-07 / -1.192e-07
-    from these Mac values (3, 4 and 2 float32 ULP); its first two readings are
-    bit-identical to the GitHub-hosted runner's. A GPU run on this tree: not measured.
-    The largest difference over both sets is still the 3.66e-7 GPU offset. Hence 4e-7.
-    The GitHub-hosted runner's CPU model varies from run to run and its 5 ohm/sq reading
-    on this tree is not measured: if the weekly lane on another runner model reads beyond
+    Tolerance: 4e-7, carried over from the previous pin, not re-derived. It was the
+    largest difference measured between runs of this fixture on one tree (1d10ee45,
+    2026-09-27) across run conditions, rounded up to one significant figure: CPU at 8 and
+    4 threads and with XLA's CPU ISA capped at AVX2 gave the same values to 4e-10;
+    OPENBLAS_CORETYPE=Haswell moved them by up to 3.2e-8; a CPU pytest run of this file by
+    up to 8.7e-8 (Rs0 = 1e-6). Two GPU runs, both on an RTX 2070 SUPER (JAX 0.6.2, CUDA
+    12), differ from the CPU values by up to 3.66e-7 (Rs0 = 5): a GPU-versus-CPU offset;
+    the two GPU runs agree with each other to 5.5e-8.
+    On the re-pinned tree (2026-10-10) only this was measured: an x86 Linux CPU run (Xeon
+    Gold 6526Y, same Python and JAX) reads -1.788e-07 / -2.384e-07 / -1.192e-07 from
+    these Mac values (3, 4 and 2 float32 steps); its first two readings equal the
+    GitHub-hosted runner's of 2026-10-09. A GPU run on this tree: not measured. The
+    values are float32, so the bar is 6 steps of 2**-24; the x86 reading of the 1 ohm/sq
+    value already sits 4 steps from its pin, which is centred on the Mac. The
+    GitHub-hosted runner's CPU model varies from run to run and its 5 ohm/sq reading on
+    this tree is not measured: if the weekly lane on another runner model reads beyond
     the tolerance with no code change, add that reading here and re-derive the tolerance
-    by the same rule; the pinned values stay.
+    from the readings of this tree; the pinned values stay.
     For scale: the tree before #1213 (cd237692) reads 0.999843 / 0.997062 / 0.996813,
     6.3e-4 / 6.3e-4 / 5.7e-4 away. Records: bk-squared/rfx-archive
     rfx/records/20260927-1292-locked-results/ (R5).
 
-    All three values are read and recorded before any is judged, so one run shows the
-    whole ladder on the machine that ran it.
+    Every value is recorded as soon as it is read and all are judged afterwards, so one
+    run shows the whole ladder on the machine that ran it.
     """
-    got = {tag: float(np.mean(np.abs(np.asarray(_settled(tag)[0].S)[1, 0, GATE])))
-           for tag in O3_MEAN_S21}
+    got = {}
     for tag, want in O3_MEAN_S21.items():
+        got[tag] = float(np.mean(np.abs(np.asarray(_settled(tag)[0].S)[1, 0, GATE])))
         record_property(f"o3_mean_s21_{tag}", got[tag])
         print(f"[O3 drift] {tag}: mean|S21|(gate) = {got[tag]!r} (locked {want!r}, "
               f"diff {got[tag] - want:+.3e}, tol {O3_DRIFT_TOL:.1e})", file=sys.stderr)
