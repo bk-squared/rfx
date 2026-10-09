@@ -85,6 +85,7 @@ Heavy tests are ``@pytest.mark.slow`` (weekly lane); the fast lane keeps
 the threading witness and the NU smoke.
 """
 
+import sys
 import warnings
 
 import numpy as np
@@ -425,40 +426,55 @@ def test_o3_loss_ladder_strictly_decreasing():
             f"{s21[a]:.6f} -> {s21[b]:.6f}")
 
 
-#: Drift lock (issues 1292/1266): re-captured on 90f2603e, 2026-10-03,
-#: Mac CPU, Python 3.11.2 / JAX 0.10.2, float32, after the port source rescale.
-#: The tolerance is the largest difference measured between runs of the
-#: same tree under different run conditions, see test_o3_mean_s21_drift_lock.
+#: Drift lock (issues 1292/1266). Captured on main 4a42dbc9a, 2026-10-10, Mac CPU,
+#: Python 3.11 / JAX 0.10.2, float32.
+#: Re-pin history:
+#: - 2026-10-03, 90f2603e, after the port source rescale: 0.9992086291313171 /
+#:   0.9964331388473511 / 0.9962416887283325.
+#: - 2026-10-10: PR 1527 (one DFT kernel and one time stamp for every spectrum) changed
+#:   how the DFT phase is formed, so the microstrip plane spectra round differently.
+#:   Bisected on the capture machine over the 87 commits since the previous pin: the
+#:   5 ohm/sq value is bit-exact up to the commit before 2a3b68812 (that PR's merge) and
+#:   +4.768e-07 (8 float32 ULP) from it, unchanged through 4a42dbc9a. Moves on this
+#:   machine: 0 / -2.384e-07 / +4.768e-07. Far inside that PR's declared bar (1e-4 of
+#:   the peak); the PR's gate did not run this slow-marked lock.
 O3_MEAN_S21 = {"rs_tiny": 0.9992086291313171,
-               "rs1": 0.9964331388473511, "rs5": 0.9962416887283325}
+               "rs1": 0.996432900428772, "rs5": 0.9962421655654907}
 O3_DRIFT_TOL = 4e-7
 
 
 @pytest.mark.slow
-def test_o3_mean_s21_drift_lock():
+def test_o3_mean_s21_drift_lock(record_property):
     """The O3 ladder's values, locked. A code change that moves the in-band mean |S21|
     of this board at Rs0 = 1e-6, 1 or 5 ohm/sq by more than O3_DRIFT_TOL turns this red.
 
-    #1266 rescaled this source by 76.568 (port drive = stamped conductance × source field); main with the same pure rescale reads the same values, so the re-pin carries no physics change; a rescale alone moves these values by up to 2.1e-6 (×76.6) and 3e-7 (×64).
+    #1266 rescaled this source by 76.568 (port drive = stamped conductance × source field); main with the same pure rescale reads the same values, so the re-pin carries no physics change.
 
     Tolerance: the largest difference measured between runs of this fixture on one tree
-    (1d10ee45, 2026-09-27) across run conditions, rounded up to one significant figure.
-    CPU at 8 and 4 threads and with XLA's CPU ISA capped at AVX2 gave the same values to
-    4e-10; OPENBLAS_CORETYPE=Haswell moved them by up to 3.2e-8; a CPU pytest run of
-    this file by up to 8.7e-8 (Rs0 = 1e-6). Two GPU runs, both on an RTX 2070 SUPER
-    (JAX 0.6.2, CUDA 12), differ from the CPU values by up to 3.66e-7 (Rs0 = 5): a
-    GPU-versus-CPU offset; the two GPU runs agree with each other to 5.5e-8. Hence 4e-7.
+    across run conditions, rounded up to one significant figure. On 1d10ee45
+    (2026-09-27): CPU at 8 and 4 threads and with XLA's CPU ISA capped at AVX2 gave the
+    same values to 4e-10; OPENBLAS_CORETYPE=Haswell moved them by up to 3.2e-8; a CPU
+    pytest run of this file by up to 8.7e-8 (Rs0 = 1e-6). Two GPU runs, both on an RTX
+    2070 SUPER (JAX 0.6.2, CUDA 12), differ from the CPU values by up to 3.66e-7
+    (Rs0 = 5): a GPU-versus-CPU offset; the two GPU runs agree with each other to 5.5e-8.
     For scale: the tree before #1213 (cd237692) reads 0.999843 / 0.997062 / 0.996813,
     6.3e-4 / 6.3e-4 / 5.7e-4 away. Records: bk-squared/rfx-archive
     rfx/records/20260927-1292-locked-results/ (R5).
+
+    All three values are read and recorded before any is judged, so one run shows the
+    whole ladder on the machine that ran it.
     """
+    got = {tag: float(np.mean(np.abs(np.asarray(_settled(tag)[0].S)[1, 0, GATE])))
+           for tag in O3_MEAN_S21}
     for tag, want in O3_MEAN_S21.items():
-        got = float(np.mean(np.abs(np.asarray(_settled(tag)[0].S)[1, 0, GATE])))
-        print(f"[O3 drift] {tag}: mean|S21|(gate) = {got:.9f} (locked {want:.9f}, "
-              f"diff {got - want:+.2e}, tol {O3_DRIFT_TOL:.1e})")
-        assert abs(got - want) <= O3_DRIFT_TOL, (
-            f"{tag}: in-band mean |S21| {got:.9f} moved {got - want:+.3e} from the locked "
-            f"{want:.9f} (tolerance {O3_DRIFT_TOL:.1e}, the measured run-to-run spread)")
+        record_property(f"o3_mean_s21_{tag}", got[tag])
+        print(f"[O3 drift] {tag}: mean|S21|(gate) = {got[tag]!r} (locked {want!r}, "
+              f"diff {got[tag] - want:+.3e}, tol {O3_DRIFT_TOL:.1e})", file=sys.stderr)
+    moved = {tag: got[tag] - want for tag, want in O3_MEAN_S21.items()
+             if abs(got[tag] - want) > O3_DRIFT_TOL}
+    assert not moved, (
+        f"in-band mean |S21| moved from the locked values by more than {O3_DRIFT_TOL:.1e} "
+        f"(the measured run-to-run spread): {moved}; all readings: {got}")
 
 
 # --------------------------------------------------------------------------
