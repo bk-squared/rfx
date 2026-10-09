@@ -440,7 +440,7 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
         conductors = clear_conductor_edges(
             conductors, list(_msl_yz_cells(grid, mp)),
             component=_msl_normal_component(mp),
-            entity_id=f"msl_port[{_msl_port_index}]", released_edges=mode_profile["cell_indices"])
+            entity_id=f"msl_port[{_msl_port_index}]", port_kind="microstrip", released_edges=mode_profile["cell_indices"])
         pec_edge_masks = conductors.pec_edges
     return materials, conductors if return_object else pec_edge_masks
 

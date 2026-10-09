@@ -245,7 +245,12 @@ def publish_port_release(conductors, cells, *, component, entity_id, kind):
 
 def release_port_occupancy(occupancy, conductors):
     """Keep port edges free of design metal; warn once for this application."""
-    if occupancy is None or not len(conductors.released_cells):
+    if occupancy is None:
+        return occupancy
+    if np.shape(occupancy) != conductors.grid.shape:
+        raise ValueError(f"Port occupancy shape {np.shape(occupancy)} differs from "
+                         f"conductors grid shape {conductors.grid.shape}.")
+    if not len(conductors.released_cells):
         return occupancy
     import warnings
     from rfx.core.jax_utils import is_tracer
@@ -279,14 +284,13 @@ def refuse_port_design_box(design, conductors):
                          "Move the box off the port, or use pec_occupancy_override.")
 
 
-def clear_conductor_edges(conductors, cells, *, component, entity_id, clear_cells=False, release_edges=True, released_edges=None, port_kind=None):
+def clear_conductor_edges(conductors, cells, *, component, entity_id, port_kind, clear_cells=False, release_edges=True, released_edges=None):
     """One persistent port-clearing stage; the incoming object stays unchanged."""
     from rfx.boundaries.pec import clear_edges
     cells = tuple(tuple(int(i) for i in cell) for cell in cells)
     conductors = publish_port_release(conductors,
         cells if released_edges is None else released_edges, component=component,
-        entity_id=entity_id, kind=port_kind or ("microstrip" if entity_id.startswith("msl_port")
-                                               else "lumped" if release_edges else "wire"))
+        entity_id=entity_id, kind=port_kind)
     if conductors.pec_edges is None:
         return conductors
     edges = (clear_edges(conductors.pec_edges, cells, component=component)
@@ -310,7 +314,7 @@ def lumped_port_stage(conductors, port, entity_id, *, clear_cells=False):
     else:
         cell = grid.position_to_index(port.position)
     return clear_conductor_edges(conductors, [cell], component=port.component,
-                                 entity_id=entity_id, clear_cells=clear_cells)
+                                 entity_id=entity_id, port_kind="lumped", clear_cells=clear_cells)
 
 
 def _same_grid(a, b):
@@ -527,7 +531,11 @@ def preview_port_stages(sim, conductors):
         if label not in done:
             if port.impedance > 0 and port.extent is not None:
                 from rfx.sources.sources import wire_port_from_entry, _wire_port_live_cells
-                cells, live, _ = _wire_port_live_cells(grid, wire_port_from_entry(port), conductors.pec_edges)
+                try:
+                    cells, live, _ = _wire_port_live_cells(grid, wire_port_from_entry(port), conductors.pec_edges)
+                except ValueError:
+                    # A geometry preview still exists when the wire cannot drive.
+                    continue
                 conductors = publish_port_release(conductors, [c for c, on in zip(cells, live) if on],
                     component=port.component, entity_id=label, kind="wire")
             else:
@@ -548,7 +556,7 @@ def preview_port_stages(sim, conductors):
                     eps = entry.eps_r_sub if entry.eps_r_sub is not None else float(conductors.materials.eps_r[centre])
                     support = compute_msl_mode_profile(grid, port, eps)["cell_indices"]
                 conductors = clear_conductor_edges(conductors, _msl_yz_cells(grid, port),
-                    component=msl_normal_component(port), entity_id=label, released_edges=support)
+                    component=msl_normal_component(port), entity_id=label, port_kind="microstrip", released_edges=support)
     return conductors
 
 
@@ -640,11 +648,11 @@ def forward_lumped_port_stage(root, port, entity_id):
 
 
 def forward_port_stage(root, cells, component, entity_id, *,
-                       release_edges=True, skip_empty=False, released_edges=None):
+                       port_kind, release_edges=True, skip_empty=False, released_edges=None):
     """Release only the driven component; preserve the wire's edge support."""
     if not skip_empty or cells:
         root = clear_conductor_edges(root, cells, component=component,
-            entity_id=entity_id, clear_cells=True, release_edges=release_edges,
+            entity_id=entity_id, port_kind=port_kind, clear_cells=True, release_edges=release_edges,
             released_edges=released_edges)
     return root, root.pec_cells, root.pec_edges
 

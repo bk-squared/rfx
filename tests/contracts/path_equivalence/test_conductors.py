@@ -40,7 +40,7 @@ def test_port_clearing_is_persistent():
     c = realized_conductors(sim, sim._build_grid())
     cell = tuple(int(k) for k in np.argwhere(c.edges[2])[0])
     before = tuple(np.array(m) for m in c.edges)
-    after = clear_conductor_edges(c, [cell], component='ez', entity_id='port[0]')
+    after = clear_conductor_edges(c, [cell], component='ez', entity_id='port[0]', port_kind='lumped')
     assert after is not c
     assert not after.edges[2][cell]
     for old, original in zip(c.edges, before, strict=True):

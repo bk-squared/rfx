@@ -8,7 +8,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx import Simulation, GaussianPulse
+from rfx import Box, Simulation, GaussianPulse
 from rfx.model import conductors as products
 from rfx.nonuniform import position_to_index
 
@@ -110,6 +110,8 @@ def independent_cells(component, edge, shape, periodic):
 @pytest.mark.parametrize('placement', ['interior', 'face', 'touch', 'away'])
 @pytest.mark.parametrize('p', [.5, 1.])
 def test_c1_c2_c4_kernel_occupancy(monkeypatch, lane, kind, placement, p):
+    if lane == 'topology':
+        pytest.importorskip('optax')
     sim, grid, edge, component = model(lane, kind)
     lo, hi = box(edge, component, kind, placement)
     occupancy = jnp.zeros(grid.shape).at[tuple(slice(a,b) for a,b in zip(lo,hi))].set(p)
@@ -184,13 +186,77 @@ def test_c4_zero_and_traced_warning(monkeypatch,lane):
     seen = capture(monkeypatch,sim,grid,lane,jnp.zeros(grid.shape))
     assert not seen['warnings']
     root=seen['conductors']
+    assert len(root.released_cells) > 0
+    expected = np.array([(7,7,4), (7,8,4), (8,7,4), (8,8,4)])
     with pytest.warns(UserWarning,match='port\\[0\\]') as caught:
         grad=jax.grad(lambda x:jnp.sum(products.release_port_occupancy(x,root)))(jnp.zeros(grid.shape))
     assert len(caught)==1
-    np.testing.assert_array_equal(np.asarray(grad)[tuple(root.released_cells.T)],0.)
+    np.testing.assert_array_equal(np.asarray(grad)[tuple(expected.T)],0.)
     with pytest.warns(UserWarning,match='port\\[0\\]') as caught:
         jax.jit(lambda x:products.release_port_occupancy(x,root))(jnp.zeros(grid.shape)).block_until_ready()
     assert len(caught)==1
+
+
+# Literal expectations for these fixed fixtures, independent of the publisher.
+GRADIENT_CELLS = {
+    'ex': [(8,7,3), (8,7,4), (8,8,3), (8,8,4)],
+    'ey': [(7,8,3), (7,8,4), (8,8,3), (8,8,4)],
+    'ez': [(7,7,4), (7,8,4), (8,7,4), (8,8,4)],
+    'wire': [(7,7,4), (7,7,5), (7,7,6), (7,7,7),
+             (7,8,4), (7,8,5), (7,8,6), (7,8,7),
+             (8,7,4), (8,7,5), (8,7,6), (8,7,7),
+             (8,8,4), (8,8,5), (8,8,6), (8,8,7)],
+    'msl-uniform': [
+        (7,5,6), (7,5,7), (7,5,8), (7,5,9),
+        (7,6,6), (7,6,7), (7,6,8), (7,6,9),
+        (7,7,6), (7,7,7), (7,7,8), (7,7,9),
+        (7,8,6), (7,8,7), (7,8,8), (7,8,9),
+        (7,9,6), (7,9,7), (7,9,8), (7,9,9),
+        (7,10,6), (7,10,7), (7,10,8), (7,10,9),
+        (7,11,6), (7,11,7), (7,11,8), (7,11,9),
+        (7,12,6), (7,12,7), (7,12,8), (7,12,9),
+        (7,13,6), (7,13,7), (7,13,8), (7,13,9),
+        (7,14,6), (7,14,7), (7,14,8), (7,14,9),
+        (7,15,6), (7,15,7), (7,15,8), (7,15,9),
+        (7,16,6), (7,16,7), (7,16,8), (7,16,9),
+        (7,17,6), (7,17,7), (7,17,8), (7,17,9),
+        (7,18,6), (7,18,7), (7,18,8), (7,18,9),
+        (8,5,6), (8,5,7), (8,5,8), (8,5,9),
+        (8,6,6), (8,6,7), (8,6,8), (8,6,9),
+        (8,7,6), (8,7,7), (8,7,8), (8,7,9),
+        (8,8,6), (8,8,7), (8,8,8), (8,8,9),
+        (8,9,6), (8,9,7), (8,9,8), (8,9,9),
+        (8,10,6), (8,10,7), (8,10,8), (8,10,9),
+        (8,11,6), (8,11,7), (8,11,8), (8,11,9),
+        (8,12,6), (8,12,7), (8,12,8), (8,12,9),
+        (8,13,6), (8,13,7), (8,13,8), (8,13,9),
+        (8,14,6), (8,14,7), (8,14,8), (8,14,9),
+        (8,15,6), (8,15,7), (8,15,8), (8,15,9),
+        (8,16,6), (8,16,7), (8,16,8), (8,16,9),
+        (8,17,6), (8,17,7), (8,17,8), (8,17,9),
+        (8,18,6), (8,18,7), (8,18,8), (8,18,9)],
+    'msl-graded': [
+        (7,7,6), (7,7,7), (7,7,8), (7,7,9),
+        (7,8,6), (7,8,7), (7,8,8), (7,8,9),
+        (7,9,6), (7,9,7), (7,9,8), (7,9,9),
+        (7,10,6), (7,10,7), (7,10,8), (7,10,9),
+        (7,11,6), (7,11,7), (7,11,8), (7,11,9),
+        (7,12,6), (7,12,7), (7,12,8), (7,12,9),
+        (7,13,6), (7,13,7), (7,13,8), (7,13,9),
+        (7,14,6), (7,14,7), (7,14,8), (7,14,9),
+        (7,15,6), (7,15,7), (7,15,8), (7,15,9),
+        (7,16,6), (7,16,7), (7,16,8), (7,16,9),
+        (8,7,6), (8,7,7), (8,7,8), (8,7,9),
+        (8,8,6), (8,8,7), (8,8,8), (8,8,9),
+        (8,9,6), (8,9,7), (8,9,8), (8,9,9),
+        (8,10,6), (8,10,7), (8,10,8), (8,10,9),
+        (8,11,6), (8,11,7), (8,11,8), (8,11,9),
+        (8,12,6), (8,12,7), (8,12,8), (8,12,9),
+        (8,13,6), (8,13,7), (8,13,8), (8,13,9),
+        (8,14,6), (8,14,7), (8,14,8), (8,14,9),
+        (8,15,6), (8,15,7), (8,15,8), (8,15,9),
+        (8,16,6), (8,16,7), (8,16,8), (8,16,9)],
+}
 
 
 @pytest.mark.parametrize('lane',['uniform','graded'])
@@ -199,17 +265,24 @@ def test_c5_result_gradient(lane,kind):
     sim,grid,edge,component=model(lane,kind)
     sim.add_probe(tuple(float(grid.node_of(a,edge[a]+(a==0))) for a in range(3)),component)
     root=products.preview_port_stages(sim,products.realized_conductors(sim,grid,nonuniform=lane=='graded'))
+    assert len(root.released_cells) > 0
+    expected = np.array(GRADIENT_CELLS[f'msl-{lane}' if kind == 'msl' else kind])
+    np.testing.assert_array_equal(root.released_cells, expected)
     lo,hi=box(edge,component,kind,'interior')
     occupancy=jnp.zeros(grid.shape).at[tuple(slice(a,b) for a,b in zip(lo,hi))].set(.5)
     def loss(o):
         r=sim.forward(pec_occupancy_override=o,n_steps=40,checkpoint=False,skip_preflight=True)
         return jnp.sum(r.time_series**2)
-    with pytest.warns(UserWarning,match='Port occupancy release:'):
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
         grad=np.asarray(jax.grad(loss)(occupancy))
+    released = [w for w in caught if 'Port occupancy release:' in str(w.message)]
+    assert len(released) == 1, ('C4 forward warning count', len(released))
+    assert released[0].category is UserWarning
     assert np.isfinite(grad).all()
-    np.testing.assert_array_equal(grad[tuple(root.released_cells.T)],0.)
+    np.testing.assert_array_equal(grad[tuple(expected.T)],0.)
     region=np.asarray(occupancy)>0
-    region[tuple(root.released_cells.T)]=False
+    region[tuple(expected.T)]=False
     assert np.any(grad[region]!=0), 'dead objective'
 
 
@@ -272,6 +345,66 @@ def test_c6_design_box_names_port(monkeypatch,kind):
     with pytest.raises(ValueError,match=r'port-cleared.*(?:msl_port|port)\[0\]'):
         sim.forward(design_box=(point,point),design_occupancy_override=jnp.ones((1,1,1))*.5,
                     n_steps=2,skip_preflight=True)
+
+
+@pytest.mark.parametrize('cell,admitted', [((9,8,4), True), ((8,8,5), True), ((7,7,4), False)])
+def test_r7_design_box_cell_set(monkeypatch, cell, admitted):
+    sim, grid, _, _ = model('uniform', 'ez')
+    import rfx.simulation as kernel
+    seen = {}
+    occupancy = jnp.full((1,1,1), .5)
+    def observe(*args, **kwargs):
+        seen['design'] = kwargs['design_occupancy']
+        raise Captured
+    monkeypatch.setattr(kernel, 'run', observe)
+    point = tuple(float(grid.node_of(a, i)) for a, i in enumerate(cell))
+    if admitted:
+        with pytest.raises(Captured):
+            sim.forward(design_box=(point,point), design_occupancy_override=occupancy,
+                        n_steps=2, checkpoint=False, skip_preflight=True)
+        assert seen['design'].bounds == tuple(v for i in cell for v in (i,i+1))
+        np.testing.assert_array_equal(seen['design'].occupancy, occupancy)
+    else:
+        with pytest.raises(ValueError, match=r'port-cleared.*port\[0\]'):
+            sim.forward(design_box=(point,point), design_occupancy_override=occupancy,
+                        n_steps=2, checkpoint=False, skip_preflight=True)
+        assert not seen
+
+
+@pytest.mark.parametrize('lane', ['uniform', 'graded'])
+def test_wire_dead_edge_releases_only_live_edges(monkeypatch, lane):
+    sim, grid, _, _ = model(lane, 'wire')
+    lo = tuple(float(grid.node_of(a, i)) for a, i in enumerate((8,8,7)))
+    hi = tuple(float(grid.node_of(a, i)) for a, i in enumerate((9,9,8)))
+    sim.add(Box(lo, hi), material='pec')
+    occupancy = jnp.full(grid.shape, .5)
+    seen = capture(monkeypatch, sim, grid, lane, occupancy)
+    root, actual = seen['conductors'], np.asarray(seen['occupancy'])
+    assert root.released_port_edges == (
+        ('port[0]', 'ez', (8,8,4)), ('port[0]', 'ez', (8,8,5)), ('port[0]', 'ez', (8,8,6)))
+    assert root.pec_edges[2][8,8,7]
+    for cells in [
+            [(7,7,4), (7,8,4), (8,7,4), (8,8,4)],
+            [(7,7,5), (7,8,5), (8,7,5), (8,8,5)],
+            [(7,7,6), (7,8,6), (8,7,6), (8,8,6)]]:
+        assert np.prod([1.-np.float64(actual[c]) for c in cells], dtype=np.float64) == 1.
+    for cell in [(7,7,7), (7,8,7), (8,7,7), (8,8,7)]:
+        assert actual[cell] == .5
+
+
+def test_all_dead_wire_has_geometry_preview():
+    sim, _, _, _ = model('uniform', 'wire')
+    sim.add(Box((.008,.008,.004), (.009,.009,.008)), material='pec')
+    assert sim.realized_geometry() is not None
+
+
+def test_release_rejects_wrong_occupancy_shape():
+    sim, grid, _, _ = model('uniform', 'ez')
+    root = products.preview_port_stages(sim, products.realized_conductors(sim, grid))
+    wrong = jnp.zeros((16,17,13))
+    with pytest.raises(ValueError) as caught:
+        products.release_port_occupancy(wrong, root)
+    assert '(16, 17, 13)' in str(caught.value) and '(17, 17, 13)' in str(caught.value)
 
 
 @pytest.mark.parametrize('lane', ['uniform', 'graded'])

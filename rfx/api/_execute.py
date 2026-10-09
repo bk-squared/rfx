@@ -1869,7 +1869,7 @@ class _ExecuteMixin:
                 # tangential edges would open the conductor the port foot
                 # stands on.  The CELL clearing below stays: it is the
                 # volume carrier; the stage also publishes live port edges.
-                conductors, pec_mask_local, pec_edge_masks_local = _conductors.forward_port_stage(conductors, _wp_live_cells, pe.component, f"port[{_port_index}]", release_edges=False)
+                conductors, pec_mask_local, pec_edge_masks_local = _conductors.forward_port_stage(conductors, _wp_live_cells, pe.component, f"port[{_port_index}]", port_kind="wire", release_edges=False)
                 # Register a JIT-integrated S-param accumulator for this
                 # WirePort when forward(port_s11_freqs=...) was requested
                 # (issue #79 follow-up to PR #72). Mirrors the lumped
@@ -2103,7 +2103,7 @@ class _ExecuteMixin:
                 _msl_cells = list(_msl_yz_cells(grid, mp))
                 conductors, pec_mask_local, pec_edge_masks_local = _conductors.forward_port_stage(
                     conductors, _msl_cells, _msl_normal_component(mp), f"msl_port[{_msl_port_index}]",
-                    skip_empty=True, released_edges=(mode_profile["cell_indices"] if mode_profile is not None else _msl_cells))
+                    port_kind="microstrip", skip_empty=True, released_edges=(mode_profile["cell_indices"] if mode_profile is not None else _msl_cells))
 
         for pe in self._probes:
             probes.append(make_probe(grid, pe.position, pe.component))
