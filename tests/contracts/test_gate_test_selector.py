@@ -97,7 +97,7 @@ def test_disabled_central_summary_reports_full_set(sources, durations):
 @pytest.mark.parametrize("value,expected", [(None, []), ("", []), ("0", []),
                                            ("true", []), ("1", ["--central-paths"])])
 def test_local_central_flag_is_opt_in(value, expected):
-    stage = (ROOT / "scripts/ci/local.sh").read_text().split("\nbegin 8\n")[1]
+    stage = (ROOT / "scripts/ci/local.sh").read_text().split("\nbegin 9\n")[1]
     fragment = stage.split("central_path_args=()", 1)[1].split('"$PYTHON"', 1)[0]
     assert 'scripts/ci/select_gate_tests.py ${central_path_args[@]+"${central_path_args[@]}"}' in stage
     env = dict(os.environ)
@@ -218,7 +218,7 @@ def test_local_stage_numbers_and_separate_session():
     names = re.search(r"^STEP_NAMES=\(([^)]*)\)", text, re.M).group(1).split()
     assert names[-2:] == ["contract-tests", "selected-tests"]
     assert [int(n) for n in re.findall(r"^begin (\d+)$", text, re.M)] == list(range(len(names)))
-    stage = text.split("\nbegin 8\n")[1]
+    stage = text.split("\nbegin 9\n")[1]
     assert 'stage2_pytest selected "${selected_tests[@]}"' in stage
     assert '"$PYTHON" -m pytest "${@:2}" -q' in stage
     assert ' -x' not in stage
@@ -284,7 +284,7 @@ def test_selected_stage_markers_match_pyproject():
     config = tomllib.loads((ROOT / "pyproject.toml").read_text())
     options = shlex.split(config["tool"]["pytest"]["ini_options"]["addopts"])
     default_expression = options[options.index("-m") + 1]
-    stage = (ROOT / "scripts/ci/local.sh").read_text().split("\nbegin 8\n")[1]
+    stage = (ROOT / "scripts/ci/local.sh").read_text().split("\nbegin 9\n")[1]
     stage_expression = re.search(r'-m "([^"]+)"', stage).group(1)
 
     def excluded_markers(expression):

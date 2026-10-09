@@ -692,6 +692,7 @@ def test_local_sh_runs_the_real_entry_points() -> None:
         "scripts/ci/check_changelog_fragment.py",
         "scripts/ci/check_data_budget.py",
         "scripts/ci/check_pr_body.py --file",
+        "scripts/check_api_reference.py",
         "pytest tests/contracts",
         "scripts/ci/select_gate_tests.py",
     ):
