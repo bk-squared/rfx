@@ -2,6 +2,7 @@
 from dataclasses import replace
 from types import SimpleNamespace
 import warnings
+from time import perf_counter
 
 import jax
 import jax.numpy as jnp
@@ -295,14 +296,6 @@ def test_c6_coax_refusal(monkeypatch):
         sim.forward(pec_occupancy_override=jnp.zeros(sim._build_grid().shape),n_steps=2,skip_preflight=True)
 
 
-def test_waveguide_empty_release(monkeypatch):
-    from tests.unit.autodiff.test_waveguide_forward import _wr90_sim
-    sim=_wr90_sim();grid=sim._build_grid()
-    seen=capture(monkeypatch,sim,grid,'uniform',jnp.ones(grid.shape)*.5)
-    assert seen['conductors'].released_cells.shape==(0,3)
-    assert seen['conductors'].released_cells.dtype==np.int32
-
-
 @pytest.mark.parametrize('kind',['ex','ey','ez','wire','msl'])
 def test_c6_graded_distributed_refusal(monkeypatch,kind):
     sim,grid,_,_=model('graded',kind)
@@ -342,7 +335,7 @@ def test_c6_design_box_names_port(monkeypatch,kind):
     import rfx.simulation as kernel
     monkeypatch.setattr(kernel,'run',lambda *a,**k:pytest.fail('stepped'))
     point=tuple(x*.001 for x in edge)
-    with pytest.raises(ValueError,match=r'port-cleared.*(?:msl_port|port)\[0\]'):
+    with pytest.raises(ValueError,match=r'(?:msl_port|port)\[0\].*port-cleared'):
         sim.forward(design_box=(point,point),design_occupancy_override=jnp.ones((1,1,1))*.5,
                     n_steps=2,skip_preflight=True)
 
@@ -365,7 +358,7 @@ def test_r7_design_box_cell_set(monkeypatch, cell, admitted):
         assert seen['design'].bounds == tuple(v for i in cell for v in (i,i+1))
         np.testing.assert_array_equal(seen['design'].occupancy, occupancy)
     else:
-        with pytest.raises(ValueError, match=r'port-cleared.*port\[0\]'):
+        with pytest.raises(ValueError, match=r'port\[0\].*port-cleared'):
             sim.forward(design_box=(point,point), design_occupancy_override=occupancy,
                         n_steps=2, checkpoint=False, skip_preflight=True)
         assert not seen
@@ -444,3 +437,214 @@ def test_preview_matches_modal_support(monkeypatch, lane, mode):
     seen = capture(monkeypatch, sim, grid, lane, jnp.zeros(grid.shape))
     assert preview.released_port_edges == seen['conductors'].released_port_edges
     np.testing.assert_array_equal(preview.released_cells, seen['conductors'].released_cells)
+
+
+# W6: replaces "a waveguide-port model publishes no released cells" (shape (0, 3)).
+WG_LAYERS = (12, 13, 14, 15, 16, 22, 23)
+WG_CELLS = np.array([(i, j, k) for i in WG_LAYERS
+                     for j in range(11) for k in range(5)], dtype=np.int32)
+WG_GRADED_CELLS = np.array([(i, j, k) for i in WG_LAYERS
+                            for j in range(7, 19) for k in range(7, 13)
+                            if (j, k) != (7, 7)], dtype=np.int32)
+
+
+def waveguide_model(lane='uniform'):
+    from tests.unit.autodiff.test_waveguide_forward import _wr90_sim
+    sim = _wr90_sim()
+    if lane == 'graded':
+        sim._dx_profile = np.array([.002]*8 + [.0019, .0021]*4 + [.002]*9)
+    grid = sim._build_nonuniform_grid() if lane == 'graded' else sim._build_grid()
+    return sim, grid
+
+
+@pytest.mark.parametrize('axis', ['x', 'y', 'z'])
+@pytest.mark.parametrize('direction', ['+', '-'])
+def test_w1_literal_waveguide_cells(axis, direction):
+    if axis == 'x' and direction == '+':
+        sim, grid = waveguide_model()
+    else:
+        domain = {'x': (.05,.02286,.01016), 'y': (.02286,.05,.01016),
+                  'z': (.02286,.01016,.05)}[axis]
+        ranges = {'x': dict(y_range=(0.,.02286), z_range=(0.,.01016)),
+                  'y': dict(x_range=(0.,.02286), z_range=(0.,.01016)),
+                  'z': dict(x_range=(0.,.02286), y_range=(0.,.01016))}[axis]
+        sim = Simulation(freq_max=12e9, domain=domain, dx=.002,
+                         boundary='cpml', cpml_layers=8)
+        sim.add_waveguide_port(.01 if direction == '+' else .04,
+                               direction=direction+axis, **ranges)
+        grid = sim._build_grid()
+    cfg = sim._build_waveguide_port_config(sim._waveguide_ports[0], grid, jnp.array([10e9]), 40)
+    # Read once from these six real public-API ports, then pinned as literals.
+    planes = (13, 16, 23) if direction == '+' else (28, 25, 18)
+    layers = WG_LAYERS if direction == '+' else (17, 18, 24, 25, 27, 28, 29)
+    edge_planes = {13, 14, 16, 23} if direction == '+' else {18, 25, 28, 29}
+    assert (cfg.x_index, cfg.ref_x, cfg.probe_x) == planes
+    assert (cfg.u_lo, cfg.u_hi, cfg.v_lo, cfg.v_hi) == (0, 11, 0, 5)
+    assert cfg.normal_axis == axis and cfg.direction == direction+axis
+    root = products.realized_conductors(sim, grid)
+    if axis == 'x' and direction == '+':
+        expected = WG_CELLS
+    else:
+        coords = {'x': lambda p,u,v: (p,u,v), 'y': lambda p,u,v: (u,p,v),
+                  'z': lambda p,u,v: (u,v,p)}[axis]
+        expected = np.array(sorted(coords(p,u,v) for p in layers
+                                   for u in range(11) for v in range(5)), np.int32)
+    components = {'x': ('ey', 'ez'), 'y': ('ex', 'ez'), 'z': ('ex', 'ey')}[axis]
+    assert (cfg.e_u_component, cfg.e_v_component) == components
+    root = products.waveguide_port_stage(root, cfg, 'waveguide_port[0]')
+    np.testing.assert_array_equal(root.released_cells, expected)
+    assert root.released_cells.dtype == np.int32
+    assert {e[1] for e in root.released_port_edges} == set(components)
+    assert {e[2]['xyz'.index(axis)] for e in root.released_port_edges} == edge_planes
+
+
+@pytest.mark.parametrize('lane', ['uniform', 'graded'])
+@pytest.mark.parametrize('region', ['whole', 'source', 'measurement'])
+@pytest.mark.parametrize('p', [.5, 1.])
+def test_w2_waveguide_kernel_weights(monkeypatch, lane, region, p):
+    sim, grid = waveguide_model(lane)
+    expected = WG_GRADED_CELLS if lane == 'graded' else WG_CELLS
+    us, vs = (range(8, 19), range(8, 13)) if lane == 'graded' else (range(11), range(5))
+    occupancy = np.zeros(grid.shape, np.float32)
+    if region == 'whole':
+        occupancy[:] = p
+    else:
+        layers = (12, 13) if region == 'source' else (22, 23)
+        selected = expected[np.isin(expected[:, 0], layers)]
+        occupancy[tuple(selected.T)] = p
+    seen = capture(monkeypatch, sim, grid, lane, jnp.asarray(occupancy))
+    actual = np.asarray(seen['occupancy'])
+    def factor(i, j, k):
+        return 1. if min(i, j, k) < 0 else 1. - np.float64(actual[i, j, k])
+    for i in (13, 14, 16, 23):
+        for j in us:
+            for k in vs:
+                # Test-owned four-cell products for Ey and Ez, including clipping.
+                ey_weight = factor(i,j,k)*factor(i-1,j,k)*factor(i,j,k-1)*factor(i-1,j,k-1)
+                ez_weight = factor(i,j,k)*factor(i-1,j,k)*factor(i,j-1,k)*factor(i-1,j-1,k)
+                assert ey_weight == 1. and ez_weight == 1., (i, j, k, ey_weight, ez_weight)
+    np.testing.assert_array_equal(seen['conductors'].released_cells, expected)
+    outside = np.ones(grid.shape, bool)
+    outside[tuple(expected.T)] = False
+    assert actual[outside].tobytes() == occupancy[outside].tobytes()
+    assert len(seen['warnings']) == 1
+    message = str(seen['warnings'][0].message)
+    count = '497 cells' if lane == 'graded' else '385 cells'
+    for part in ('waveguide_port[0]', 'source 13 (also 14)', 'reference 16', 'measurement 23', count):
+        assert part in message
+    assert len(message) < 300
+
+
+def test_w3_waveguide_source_record():
+    sim, grid = waveguide_model()
+    zero = jnp.zeros(grid.shape)
+    occupied = zero.at[12:14, :11, :5].set(1.)
+    baseline = sim.forward(pec_occupancy_override=zero, n_steps=40, checkpoint=False, skip_preflight=True)
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore', UserWarning)
+        result = sim.forward(pec_occupancy_override=occupied, n_steps=40, checkpoint=False, skip_preflight=True)
+    a, b = np.asarray(result.time_series), np.asarray(baseline.time_series)
+    assert np.max(np.abs(a)) > 0.
+    assert a.dtype == b.dtype and a.tobytes() == b.tobytes(), np.max(np.abs(a-b))
+
+
+@pytest.mark.parametrize('lane', ['uniform', 'graded'])
+def test_w4_waveguide_warning_and_gradient(lane):
+    sim, grid = waveguide_model(lane)
+    expected = WG_GRADED_CELLS if lane == 'graded' else WG_CELLS
+    beside = (24, 13, 10) if lane == 'graded' else (24, 5, 2)
+    def loss(o):
+        result = sim.forward(pec_occupancy_override=o, n_steps=40, checkpoint=False, skip_preflight=True)
+        return jnp.sum(result.time_series**2)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        loss(jnp.zeros(grid.shape)).block_until_ready()
+    assert not [w for w in caught if 'Port occupancy release:' in str(w.message)]
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        gradient = np.asarray(jax.grad(loss)(jnp.zeros(grid.shape)))
+    released = [w for w in caught if 'Port occupancy release:' in str(w.message)]
+    assert len(released) == 1 and 'waveguide_port[0]' in str(released[0].message)
+    np.testing.assert_array_equal(gradient[tuple(expected.T)], 0.)
+    assert np.isfinite(gradient).all()
+    assert gradient[beside] != 0., gradient[beside]
+
+
+@pytest.mark.parametrize('cell,admitted', [((23,5,2), False), ((24,5,2), True)])
+def test_w5_waveguide_design_box(monkeypatch, cell, admitted):
+    sim, grid = waveguide_model()
+    import rfx.simulation as kernel
+    def stop(*args, **kwargs):
+        raise Captured
+    monkeypatch.setattr(kernel, 'run', stop)
+    point = tuple(float(grid.node_of(a, i)) for a, i in enumerate(cell))
+    error = Captured if admitted else ValueError
+    kwargs = {} if admitted else {'match': r'waveguide_port\[0\].*port-cleared'}
+    with pytest.raises(error, **kwargs):
+        sim.forward(design_box=(point,point), design_occupancy_override=jnp.ones((1,1,1))*.5,
+                    n_steps=2, checkpoint=False, skip_preflight=True)
+
+
+@pytest.mark.parametrize('mutation', ['removed', 'source_only'])
+def test_w7_waveguide_mutations(monkeypatch, mutation):
+    if mutation == 'removed':
+        monkeypatch.setattr(products, 'waveguide_port_stage', lambda root, cfg, entity: root)
+    else:
+        publish = products.publish_port_release
+        def source_only(root, cells, **kwargs):
+            if kwargs['kind'] == 'waveguide':
+                cells = [cell for cell in cells if cell[0] == 13]
+            return publish(root, cells, **kwargs)
+        monkeypatch.setattr(products, 'publish_port_release', source_only)
+    with pytest.raises(AssertionError):
+        test_w1_literal_waveguide_cells('x', '+')
+    with pytest.MonkeyPatch.context() as capture_patch:
+        with pytest.raises(AssertionError):
+            test_w2_waveguide_kernel_weights(capture_patch, 'uniform', 'measurement', .5)
+    if mutation == 'removed':
+        with pytest.raises(AssertionError):
+            test_w3_waveguide_source_record()
+    else:
+        test_w3_waveguide_source_record()
+
+
+@pytest.mark.parametrize('lane', ['uniform', 'graded'])
+def test_waveguide_without_occupancy_does_not_publish(monkeypatch, lane):
+    sim, grid = waveguide_model(lane)
+    def forbidden(*args, **kwargs):
+        pytest.fail('no-occupancy forward enumerated waveguide edges')
+    monkeypatch.setattr(products, 'waveguide_port_stage', forbidden)
+    seen = capture(monkeypatch, sim, grid, lane)
+    assert seen['conductors'].released_cells.shape == (0, 3)
+    assert not seen['conductors'].released_port_edges
+    assert seen['occupancy'] is None
+
+
+def test_two_large_waveguide_ports_publication_cost_and_bounded_refusal():
+    sim = Simulation(freq_max=12e9, domain=(.04,.08,.04), dx=.001,
+                     boundary='cpml', cpml_layers=8)
+    for sign, position in (('+', .01), ('-', .03)):
+        sim.add_waveguide_port(position, direction=sign+'x',
+                               y_range=(0.,.08), z_range=(0.,.04))
+    grid = sim._build_grid()
+    configs = [sim._build_waveguide_port_config(entry, grid, jnp.array([10e9]), 2)
+               for entry in sim._waveguide_ports]
+    assert all((cfg.u_hi-cfg.u_lo, cfg.v_hi-cfg.v_lo) == (80,40) for cfg in configs)
+    root = products.realized_conductors(sim, grid)
+    start = perf_counter()
+    for i, config in enumerate(configs):
+        root = products.waveguide_port_stage(root, config, f'waveguide_port[{i}]')
+    elapsed = perf_counter()-start
+    print(f'80x40 two-port publication: {elapsed:.6f}s')
+    assert elapsed < 10., elapsed
+    assert len(root.released_port_edges) == 51200
+    design = SimpleNamespace(bounds=tuple(v for n in grid.shape for v in (0,n-1)))
+    start = perf_counter()
+    with pytest.raises(ValueError) as caught:
+        products.refuse_port_design_box(design, root)
+    message = str(caught.value)
+    print(f'80x40 two-port refusal: {perf_counter()-start:.6f}s; {len(message)} characters')
+    assert message.startswith('waveguide_port[0], waveguide_port[1]:')
+    sample = sorted(map(tuple, root.released_cells.tolist()))[:6]
+    assert f'cell(s) {sample} and {len(root.released_cells)-6} more' in message
+    assert len(message) < 600

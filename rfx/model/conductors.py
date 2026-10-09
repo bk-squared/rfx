@@ -115,6 +115,7 @@ class RealizedConductors(_RealizedPEC):
     released_port_edges: tuple = ()
     released_cells: np.ndarray = field(default_factory=lambda: np.empty((0, 3), dtype=np.int32))
     _released_port_details: tuple = ()
+    _waveguide_port_planes: tuple = ()
     stamped_entities: tuple = ()
     stamp_check_findings: tuple = ()
 
@@ -220,13 +221,14 @@ def realized_conductors(sim, grid, *, nonuniform=False, assembly=None,
 def publish_port_release(conductors, cells, *, component, entity_id, kind):
     """Publish the incident cells once, in realized indices, for each port edge."""
     edges = list(conductors.released_port_edges)
+    known = set(edges)
     details = list(conductors._released_port_details)
     released = set(map(tuple, conductors.released_cells.tolist()))
     transverse = [a for a in range(3) if a != "xyz".index(component[1])]
     shape = conductors.grid.shape
     for cell in cells:
         edge = (entity_id, component, tuple(map(int, cell)))
-        if edge in edges:
+        if edge in known:
             continue
         incident = set()
         for da, db in ((0, 0), (-1, 0), (0, -1), (-1, -1)):
@@ -239,11 +241,63 @@ def publish_port_release(conductors, cells, *, component, entity_id, kind):
             if all(0 <= index[a] < shape[a] for a in range(3)):
                 incident.add(tuple(index))
         edges.append(edge)
+        known.add(edge)
         details.append((entity_id, kind, component, edge[2], tuple(sorted(incident))))
         released.update(incident)
     return replace(conductors, released_port_edges=tuple(edges),
                    released_cells=np.asarray(sorted(released), dtype=np.int32).reshape(-1, 3),
                    _released_port_details=tuple(details))
+
+
+def waveguide_port_stage(conductors, config, entity_id):
+    """Publish R1's transverse E entries from a compiled waveguide config."""
+    if isinstance(config, list):
+        for mode_config in config:
+            conductors = waveguide_port_stage(conductors, mode_config, entity_id)
+        return conductors
+    normal = 'xyz'.index(config.normal_axis)
+    transverse = [a for a in range(3) if a != normal]
+    edges = []
+    for p in sorted({config.x_index, config.x_index + 1, config.ref_x, config.probe_x}):
+        for u in range(config.u_lo, config.u_hi):
+            for v in range(config.v_lo, config.v_hi):
+                index = [0, 0, 0]
+                index[normal] = p
+                index[transverse[0]], index[transverse[1]] = u, v
+                edges.append(tuple(index))
+    for component in (config.e_u_component, config.e_v_component):
+        conductors = publish_port_release(conductors, edges, component=component,
+                                         entity_id=entity_id, kind='waveguide')
+    planes = dict(conductors._waveguide_port_planes)
+    planes[entity_id] = (config.normal_axis, config.x_index, config.ref_x, config.probe_x)
+    return replace(conductors, _waveguide_port_planes=tuple(planes.items()))
+
+
+def _port_release_description(conductors):
+    descriptions = []
+    waveguides = {}
+    for entity, kind, component, edge, cells in conductors._released_port_details:
+        if kind == 'waveguide':
+            waveguides.setdefault(entity, set()).update(cells)
+        else:
+            descriptions.append(f"{entity} ({kind}, {component}, edge {edge}): cells {cells}")
+    planes = dict(conductors._waveguide_port_planes)
+    for entity, cells in waveguides.items():
+        axis, source, reference, measurement = planes[entity]
+        descriptions.append(
+            f"{entity} (waveguide, normal {axis}, source {source} (also {source + 1}), "
+            f"reference {reference}, measurement {measurement}): {len(cells)} cells")
+    return "; ".join(descriptions)
+
+
+def prepare_port_occupancy(conductors, waveguide_configs, occupancy, design):
+    """Publish only for an occupancy input, then release and guard its box."""
+    if occupancy is not None or design is not None:
+        for i, config in enumerate(waveguide_configs):
+            conductors = waveguide_port_stage(conductors, config, f'waveguide_port[{i}]')
+    occupancy = release_port_occupancy(occupancy, conductors)
+    refuse_port_design_box(design, conductors)
+    return conductors, occupancy
 
 
 def release_port_occupancy(occupancy, conductors):
@@ -259,9 +313,7 @@ def release_port_occupancy(occupancy, conductors):
     from rfx.core.jax_utils import is_tracer
     indices = tuple(conductors.released_cells.T)
     if is_tracer(occupancy) or np.any(np.asarray(occupancy)[indices] != 0):
-        ports = "; ".join(
-            f"{entity} ({kind}, {component}, edge {edge}): cells {cells}"
-            for entity, kind, component, edge, cells in conductors._released_port_details)
+        ports = _port_release_description(conductors)
         warnings.warn("Port occupancy release: " + ports
                       + ". Each driven edge is kept free of design metal.",
                       UserWarning, stacklevel=2)
@@ -276,13 +328,15 @@ def refuse_port_design_box(design, conductors):
     bounds = design.bounds
     window = tuple((bounds[2*a], min(bounds[2*a+1]+1, conductors.grid.shape[a]))
                    for a in range(3))
-    hits = [tuple(c) for c in conductors.released_cells.tolist()
-            if all(window[a][0] <= c[a] < window[a][1] for a in range(3))]
+    hits = {tuple(c) for c in conductors.released_cells.tolist()
+            if all(window[a][0] <= c[a] < window[a][1] for a in range(3))}
     if hits:
         ports = sorted({entity for entity, _, _, _, cells in conductors._released_port_details
                         if any(c in hits for c in cells)})
-        raise ValueError(f"the design occupancy box (cells {bounds}) covers port-cleared "
-                         f"cell(s) {hits} for {', '.join(ports)}. A port forces the "
+        sample = sorted(hits)[:6]
+        remainder = f" and {len(hits) - 6} more" if len(hits) > 6 else ""
+        raise ValueError(f"{', '.join(ports)}: the design occupancy box (cells {bounds}) "
+                         f"covers port-cleared cell(s) {sample}{remainder}. A port forces the "
                          "occupancy to zero around its driven edges before the run. "
                          "Move the box off the port, or use pec_occupancy_override.")
 

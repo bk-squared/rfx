@@ -632,7 +632,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     _pec_sheets: list = []
     _pec_wires: list = []
     _geometry_masks, _assembly_entries = ([], []) if lane == "run_nonuniform" else (None, None)
-    from rfx.model.conductors import assembled_materials, solve_conductors, kernel_conductors, lumped_port_stage, publish_port_release, release_port_occupancy, at_kernel
+    from rfx.model.conductors import assembled_materials, solve_conductors, kernel_conductors, lumped_port_stage, publish_port_release, prepare_port_occupancy, at_kernel
     if conductors is None:
         conductors = solve_conductors(sim, grid, nonuniform=True)
     if preflight is not None:
@@ -1354,10 +1354,11 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         diagnostics=diagnostics,
     )
 
+    conductors, pec_occupancy_override = prepare_port_occupancy(
+        conductors, waveguide_port_cfgs, pec_occupancy_override, None)
     conductors, geometry_record = at_kernel(sim, conductors, lane=lane, pec_edges=pec_edge_masks, sheet_operator=sheet_ctx)
     pec_edge_masks = conductors.pec_edges
     sheet_ctx = conductors.sheet_operator
-    pec_occupancy_override = release_port_occupancy(pec_occupancy_override, conductors)
     _shared_run_kwargs = dict(
         design_box=design_box,
         sheet_impedance=sheet_ctx,
