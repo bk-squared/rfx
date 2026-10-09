@@ -603,3 +603,86 @@ refusal names ("declare y='periodic'") does not exist there.
 4. Per-path statement, corrected: a waveguide port on the subgridded path ends in main's existing NotImplementedError
    on both trees, so "default → walls" is not reachable there; distributed_v2 reaches the uniform rule through the
    single-device fallback.
+
+
+## Addendum 6 (2026-10-10, leader; lead decision L:13914c) — one rule for the conducting plane behind an absorbing face (tracker 1549)
+
+This addendum is the specification of the 1549 fix. It was written before the implementation; the cause was
+measured first (lane records `1549-forward-run/`: kernel-input comparison of run() and forward(), substitution both
+ways, open-face reflection with and without the plane).
+
+### Physics
+An absorbing boundary (CPML) ends on a conducting plane: tangential E is zero on the outermost node plane. `run()`
+applies that plane on every absorbing face; `forward()` and several other entries withhold it. Where the absorber is
+deep enough the two models are the same to rounding (8/10 layers: E within 5.5 ULP, H within 6.0 ULP on the paired
+scale; open-face reflection equal within 0.001 dB at 6-14 layers, 0.1 dB at 20). Where a conductor runs through the
+absorber the unterminated plane is unstable: a closed tube of four PEC sheets through 20+ layers grows 1.5e5 per
+100 ps and returns NaN from `forward()`, while `run()` stays finite. Substitution both ways confirmed the cause
+(lane records `1549-forward-run/`).
+
+### Rule (the invariant)
+The set of faces on which a run forces tangential E to zero is a function of the realized boundary record only:
+- a face on a periodic axis: none;
+- a PMC face: none (magnetic wall);
+- a declared PEC face: yes;
+- an absorbing face (any realized depth): yes — its backing plane.
+In code this is `rfx.boundaries.pec.resolve_wall_faces(grid, periodic)` called WITHOUT a `pec_axes` argument, which
+equals `rfx.boundaries.model.electric_faces(record)` minus the faces of periodic axes. No high-level entry computes its
+own selection.
+
+### Sites that withhold the backing plane today (leader read on main 1c688c4c4)
+| site | entry | today | change |
+|---|---|---|---|
+| `rfx/api/_execute.py:1700` | forward (and everything built on it: grad, optimize, topology, lumped/wire scan S, mixed S, MSL S with eps override) | `pec_axes` = axes not absorbing | pass None |
+| `rfx/api/_execute.py:1743` | forward with a plane wave | `""` unless closed_box | pass None (wrapped axes are excluded by `periodic`) |
+| `rfx/runners/uniform.py:664` | run with waveguide ports | axes not absorbing | CLASS W — see below |
+| `rfx/sparams/waveguide.py:901, 1051` | uniform waveguide S matrix | axes not absorbing | CLASS W |
+| `rfx/sources/waveguide_port.py` defaults `pec_axes="yz"` (5 functions) | low-level waveguide helpers | yz | CLASS W |
+| `rfx/rcs.py:574` | `compute_rcs` at oblique incidence | `""` | CLASS R — see below |
+| `rfx/runners/distributed_v2.py:905` + `rfx/boundaries/depths.py:124 distributed_electric_walls` | multi-device uniform | declared PEC and zero-depth absorbers only (dispersive models add all faces) | all electric faces of the record |
+Already on the rule: run() without waveguide ports (`uniform.py:391` None), `vmap_sweep.py:786`, the coax calculators,
+the graded mesh, multi-device graded, subgridded coarse grid (survey step 5; to be re-confirmed by the code survey).
+The kernel parameter `pec_axes` of the low-level functions (`rfx.run`, `rfx.simulation`) stays: a low-level caller's
+explicit flags are the caller's declaration (same stance as Addendum 5c (5)). High-level entries stop passing it.
+
+### Classes W and R — predeclared inclusion rule (lead condition 3)
+W (waveguide-port entries: the absorber on the port axis is unbacked on run AND on the S calculator) and R (oblique
+RCS) are changed in the same commit series but INCLUDED in this PR only if, with the change, every committed lock,
+oracle and contract that reads them passes without touching a pinned value or tolerance. If any pin moves beyond its
+committed tolerance, that class is reverted to today's selection in this PR, listed with the measured shifts, and goes
+to PR3b. The contract test below then carries an explicit, named exception list (not a per-entry computation).
+
+### Judges (lead condition 1)
+1. `tests/contracts/test_backing_wall_one_rule.py`, always-on, no field step (stop at the kernel factory):
+   for each declaration in a matrix {all absorbing; absorber on x only + PEC elsewhere; PMC pair on one axis; one
+   periodic axis; lo absorber / hi PEC on one axis; default plane wave; closed_box plane wave; full-aperture guide with
+   declared walls} and each entry {run, forward} on each path where the entry is admitted {uniform, graded,
+   multi-device uniform, multi-device graded}: the electric wall faces the kernel is built with equal the set derived
+   INDEPENDENTLY from the realized record (`realize(sim.boundary_model(), grid)`: kinds PEC and ABSORBER, minus periodic
+   axes) — the expected set is not computed by calling `resolve_wall_faces`.
+2. Same file: for the same declarations, every boundary input the uniform kernel receives is byte-equal between run()
+   and forward() (the spy of the 1549 survey: wall faces, curl-boundary record, periodic flags, absorber parameters
+   and psi shapes, PEC edge masks, sheets) — entry-specific monitor lists excluded by name.
+3. The issue's case: the 28-line model with 20 layers; forward() and run() probe records byte-equal over 600 steps
+   (always-on, small grid); and a `slow` test: forward() over 7000 steps never exceeds the pulse peak.
+4. Mutations (helper calls kept): the forward entry passes "axes not absorbing" again → 1 and 3 red; the multi-device
+   wall set drops positive-depth absorbers → 1 red; the plane-wave branch passes "" → 1 red.
+
+### Census (lead condition 2)
+Before/after on the same base, serial: tests/locks, tests/oracle, tests/contracts, tests/unit/{autodiff,sparams,
+runners,boundaries,sources,ports,preflight} and the weekly `slow`/`slow_physics` selection on VESSL CPU long. Report
+every test whose outcome changes and, for each value compared with a tolerance in a changed-outcome test, the shift.
+Locks that pin a number a user receives are re-pinned in this PR only with the measured shift and the cause sentence
+written in the test; a long list of non-user pins may take the strict-xfail route naming 1549. Expectation (stated
+before the census; the census decides): no reflection-class pin moves; forward-lane pins move at rounding level only.
+Remove the `xfail(strict)` marks that name 1549 (ports' four-cell wire rows) when they pass.
+
+### Not in this PR
+Why the unterminated plane is unstable only with a closed tube and 20+ layers (not needed for the fix; ledger line).
+The Mac-only exact-equality failure of `test_grid_absorbing_axes[decay-graded]` (separate small PR).
+
+### Relation to earlier addenda
+Addendum 4 put the backing plane of a ZERO-depth absorber at the domain face on the multi-device path; the
+multi-device uniform path still leaves a positive-depth absorber unbacked unless the model is dispersive
+(`rfx/runners/distributed_v2.py:905-912`). This addendum makes it every electric face of the record, on every path.
+Addendum 5c (5) stands: low-level callers' explicit flags are their declaration.
