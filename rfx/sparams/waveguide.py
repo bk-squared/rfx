@@ -519,6 +519,25 @@ def compute_waveguide_s_matrix(
         pec_wires=_wg_pec_wires)
     _wg_pec_sheets = tuple(_wg_pec_sheets)
     _wg_pec_wires = tuple(_wg_pec_wires)
+    # The smoothed tensor (Stage 1 and "kottke_pec") is built from the DECLARED
+    # shapes and replaces the cell permittivity in the E update, so an
+    # eps_override would never reach the solve: S came back identical with a
+    # slab's permittivity doubled, and d/d(eps_override) was zero (#1524).
+    # sigma_override is read by the tensor kernels and is not affected.
+    if eps_override is not None and subpixel_smoothing:
+        self._refuse_unsupported_run_kwargs(
+            "waveguide S-matrix with eps_override",
+            {"subpixel_smoothing": subpixel_smoothing},
+            instead="declare the permittivity as a material instead of "
+                    "eps_override",
+            entry="compute_waveguide_s_matrix()",
+            reason_overrides={
+                "subpixel_smoothing":
+                    "the smoothed permittivity tensor is built from the "
+                    "declared shapes and replaces the cell permittivity in "
+                    "the E update, so eps_override would not reach the "
+                    "solve",
+            })
     # A Debye/Lorentz E update reads neither the smoothed permittivity tensor
     # nor the Dey-Mittra eps correction built below, so both would be
     # dropped; refused as on run()'s uniform lane (rfx/runners/uniform.py).
