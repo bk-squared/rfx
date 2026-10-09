@@ -2995,6 +2995,9 @@ class _ExecuteMixin:
 
         bounds = self._design_box_bounds_from_corners(grid, design_box)
 
+        from rfx.model.thin_conductors import refuse_design_films
+        refuse_design_films(self, grid, bounds)
+
         # A port whose cells are in the box. The step-level check
         # (``rfx.simulation._resolve_design_box``) sees only the ports that
         # left a source or an S-param accumulator behind, so a PASSIVE load

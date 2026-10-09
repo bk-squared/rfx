@@ -205,13 +205,13 @@ def _extend_batched_cpml_pad(
 
     Returns
     -------
-    (eps_r, sigma, mu_r) — same shapes as the inputs.
+    (eps_r, sigma, mu_r, sigma_film) — cell arrays and optional component record.
     """
     plx, phx = grid.pad_x_lo, grid.pad_x_hi
     ply, phy = grid.pad_y_lo, grid.pad_y_hi
     plz, phz = grid.pad_z_lo, grid.pad_z_hi
     if max(plx, phx, ply, phy, plz, phz) <= 0:
-        return eps_r, sigma, mu_r, None
+        return eps_r, sigma, mu_r
 
     def _one(e, s, m):
         # ``dispersion_pole_mask`` is batch-invariant (pole masks are

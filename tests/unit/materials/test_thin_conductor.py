@@ -80,17 +80,14 @@ def test_thin_conductor_preserves_outside():
     )
 
     shape_box = Box((0.005, 0.005, 0.0), (0.01, 0.01, 0.001))
-    # Use lossy conductor (below PEC threshold) so sigma is modified, not pec_mask
+    # A lossy conductor (below PEC threshold) writes the film record, not pec_mask.
     tc = ThinConductor(shape=shape_box, sigma_bulk=1e4, thickness=35e-6, eps_r=1.0)
     materials, _ = apply_thin_conductor(grid, tc, materials)
 
     mask = shape_box.mask(grid)
 
-    # Inside: eps_r should be 1.0 (conductor), sigma should be thin-conductor value
-    inside_idx = np.argwhere(np.array(mask))
-    if len(inside_idx) > 0:
-        i, j, k = inside_idx[len(inside_idx) // 2]
-        assert float(materials.eps_r[i, j, k]) == 1.0
+    # A film has no volume: every cell retains its background permittivity.
+    np.testing.assert_array_equal(materials.eps_r, np.float32(4.4))
 
     # Outside: eps_r should still be 4.4, sigma should still be 0.025
     outside_idx = np.argwhere(~np.array(mask))

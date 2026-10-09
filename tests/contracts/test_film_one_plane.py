@@ -190,6 +190,50 @@ def test_c4_f0_overlap(graded):
         sim.run(n_steps=2, compute_s_params=False)
 
 
+@pytest.mark.parametrize('graded', [False, True])
+def test_c4_original_mixed_overlap_refused(graded):
+    from dataclasses import replace
+    from tests.unit.materials.test_shared_thin_conductor_fold import build, products
+    h = 1 / 1024
+    sim, grid = build('mixed', nu=graded, h=h)
+    sim._thin_conductors[-1] = replace(sim._thin_conductors[-1], shape=Box(
+        tuple(v * h for v in (5.4, 2.2, 1.3)),
+        tuple(v * h for v in (5.4, 6.2, 5.3))))
+    with pytest.raises(ValueError, match='an f0 sheet and a lossy film share edges'):
+        products(sim, grid, nu=graded)
+
+
+@pytest.mark.parametrize('inside', [False, True], ids=['outside', 'inside'])
+def test_c4_topology_design_film(inside):
+    from rfx.topology import TopologyDesignRegion, topology_optimize
+    sim, _ = model()
+    sim.add_material('design_dielectric', eps_r=2.2)
+    lo, hi = (8 * H, 9 * H) if inside else (2 * H, 3 * H)
+    region = TopologyDesignRegion((lo, 2 * H, 2 * H), (hi, 3 * H, 3 * H),
+                                  material_fg='design_dielectric')
+    def objective(result):
+        return jnp.sum((result.time_series * 1e-8) ** 2)
+    if inside:
+        with pytest.raises(ValueError, match='contains edges of thin conductor 0'):
+            topology_optimize(sim, region, objective, n_iterations=2, verbose=False)
+    else:
+        with _realized.capture() as capture:
+            _realized.enter(sim, 'topology_optimize')
+            result = topology_optimize(sim, region, objective, n_iterations=2, verbose=False)
+        assert len(result.loss_history) == 2
+        assert np.all(np.isfinite(result.loss_history))
+        records = [r for r in capture.records if 'sigma_e' in r]
+        assert records
+        for record in records:
+            for c in range(3):
+                expected = np.zeros((3, 4, 4), dtype=np.float32)
+                if c != 0:
+                    expected[1] = G / H
+                np.testing.assert_array_max_ulp(
+                    record['sigma_e'][c][8:11, 2:6, 2:6], expected, maxulp=1)
+            assert record['materials'].sigma_film[1] is not None
+
+
 @pytest.mark.parametrize('graded', [False, 'up'])
 @pytest.mark.parametrize('impedance', [0., 50.])
 def test_c6_source_port_coefficient(graded, impedance):

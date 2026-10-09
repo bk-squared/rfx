@@ -134,11 +134,11 @@ def test_dual_spacing_is_the_e_update_metric():
                           np.asarray(uniform))
 
 
-def _graded_sheet_sigma(zc, *, realized=False, **tc_kwargs):
+def _graded_sheet_sigma(zc, *, realized=False, profile=None, **tc_kwargs):
     """Assemble the #373 graded fixture and return
     (sigma at the sheet node, primal cell, dual spacing)."""
     dx = 0.5e-3
-    dz = [0.5e-3] * 8 + [1.5e-3] * 8
+    dz = [0.5e-3] * 8 + [1.5e-3] * 8 if profile is None else profile
     L = 24 * dx
     sim = Simulation(freq_max=10e9, domain=(L, L, 0), dx=dx, dz_profile=dz,
                      boundary="cpml", cpml_layers=6)
@@ -192,6 +192,7 @@ def test_dc_fold_uses_dual_spacing_at_a_grading_transition():
     """A DC sheet realizes its declared resistance across a grading step."""
     sigma_bulk, t = 1.0e3, 35e-6
     rs_spec = 1.0 / (sigma_bulk * t)
+    spacings = [0.75e-3] * 8 + [1.5e-3] * 8
 
     # The old diagnostic assumed the cell value was read at the node. Since
     # the E-edge mean (#1210), the solver realizes sum(sigma_edge * dual) over
@@ -200,21 +201,23 @@ def test_dc_fold_uses_dual_spacing_at_a_grading_transition():
     # 20261008-dc-sheet-realized-conductance-unequal-cells/.
     # matched node (deep in the coarse region): primal == dual, unchanged
     sig, primal, dual, rs = _graded_sheet_sigma(
-        8.0e-3, sigma_bulk=sigma_bulk, thickness=t, realized=True)
+        9.0e-3, sigma_bulk=sigma_bulk, thickness=t, realized=True, profile=spacings)
     assert abs(dual / primal - 1.0) < 1e-6
     assert np.all(abs(rs / rs_spec - 1.0) < 1e-4)
     assert abs(1.0 / (sig * dual) / rs_spec - 1.0) < 1e-4
 
-    # ON the transition: dual = 1.0 mm, primal = 1.5 mm
+    # ON the 0.75 | 1.5 mm transition: G is the hand surface conductance.
+    conductance = sigma_bulk * t
     sig, primal, dual, rs = _graded_sheet_sigma(
-        4.0e-3, sigma_bulk=sigma_bulk, thickness=t, realized=True)
-    assert abs(primal / dual - 1.5) < 1e-3, (primal, dual)
+        sum(spacings[:8]), sigma_bulk=sigma_bulk, thickness=t,
+        realized=True, profile=spacings)
+    assert abs(dual / ((spacings[7] + spacings[8]) / 2) - 1.0) < 1e-6
     assert np.all(abs(rs / rs_spec - 1.0) < 1e-4), (
         f"DC sheet realizes R_s = {rs} over its node planes, specified {rs_spec:.4f}")
-    assert abs(1.0 / (sig * dual) / rs_spec - 1.0) < 1e-4
-    # The node-dual divisor is not used for this cell-owned DC conductivity;
-    # retain the grading witness with the same 0.3 gate.
-    assert abs(1.0 / (sig * dual) / rs_spec - 1.0) > 0.3
+    assert abs(sig * dual / conductance - 1.0) < 1e-4
+    # Either primal width would misrepresent this same plane's conductance.
+    for primal_width in spacings[7:9]:
+        assert abs(sig * primal_width / conductance - 1.0) > 0.3
 
 
 def test_leontovich_fold_uses_dual_spacing_at_a_grading_transition():
