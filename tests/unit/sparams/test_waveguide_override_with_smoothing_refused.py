@@ -36,6 +36,26 @@ def test_eps_override_with_smoothing_is_refused_before_the_solve(smoothing):
     assert "subpixel_smoothing" in text and "eps_override would not reach the solve" in text
 
 
+def test_the_refusal_comes_before_the_override_is_used():
+    """A wrong-shaped override is refused for the combination, not for its shape."""
+    sim = _sim()
+    with pytest.raises(NotImplementedError, match="eps_override would not reach the solve"):
+        sim.compute_waveguide_s_matrix(n_steps=50, eps_override=jnp.ones((2, 2, 2)),
+                                       subpixel_smoothing=True)
+
+
+@pytest.mark.parametrize("off", [False, None])
+def test_smoothing_switched_off_by_any_falsy_value_is_not_refused(off):
+    import warnings
+    sim = _sim()
+    ones = jnp.ones(sim._build_grid().shape, dtype=jnp.float32)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        result = sim.compute_waveguide_s_matrix(n_steps=20, eps_override=ones * 3.0,
+                                                subpixel_smoothing=off)
+    assert np.all(np.isfinite(np.asarray(result.s_params)))
+
+
 @pytest.mark.parametrize("kwargs", ["override", "smoothing", "sigma_and_smoothing"])
 def test_each_input_alone_is_still_admitted(kwargs):
     """Only the combination is refused; sigma_override is read by the tensor kernels."""

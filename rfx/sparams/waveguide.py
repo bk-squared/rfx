@@ -524,7 +524,7 @@ def compute_waveguide_s_matrix(
     # eps_override would never reach the solve: S came back identical with a
     # slab's permittivity doubled, and d/d(eps_override) was zero (#1524).
     # sigma_override is read by the tensor kernels and is not affected.
-    if eps_override is not None:
+    if eps_override is not None and subpixel_smoothing:
         self._refuse_unsupported_run_kwargs(
             "waveguide S-matrix with eps_override",
             {"subpixel_smoothing": subpixel_smoothing},
