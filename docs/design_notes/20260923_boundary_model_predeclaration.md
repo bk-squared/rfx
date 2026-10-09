@@ -570,3 +570,36 @@ two-port contract fixture, |S11| is 14.5-19.4 dB lower on 16 of 20 bins and |S21
    report. ADI: not reachable (constructor refuses the absorber). Not checked by the leader: whether distributed_nu
    reaches the same dispatch point as the single-device graded path for the default-provenance test; the implementer
    confirms by reading and by a build, and reports.
+
+## Addendum 5e (2026-10-09, leader, after the verification review of PR3a) — the plane-wave rule applies only where the wrap is installed; the finding names every wrapped face
+
+Addendum 5 asked for the plane-wave (TF/SF) refusal "on every path". The premise was not checked per path, the same
+error Addendum 5c (1) corrected for the guide. Checked now by reading main: the graded-mesh stepper installs no
+periodic boundary at all (`rfx/runners/nonuniform.py:1300-1303`: the assembler passes `periodic=(False, False,
+False)` unconditionally; `rfx/sources/tfsf.py::tfsf_boundary_flags` says "not used by the non-uniform runner"), and
+the reviewer reproduced it (transverse faces ABSORBER, realized depth 4, no periodic stencil). So on the non-uniform
+and distributed_nu paths nothing is rewritten, a finite scatterer is not turned into an array, and the remedy the
+refusal names ("declare y='periodic'") does not exist there.
+
+1. Non-uniform and distributed_nu: the plane-wave boundary rule of Addendum 5 does not apply. A plane wave with a
+   finite or an invariant model keeps main's behaviour: no refusal from this rule, no `tfsf_transverse_periodic`
+   finding. Existing refusals of that path (oblique incidence, incidence along z, forward "uniform only") are
+   untouched. What a two-plane plane-wave slab between transverse absorbers solves on the graded mesh is not
+   characterized here (support matrix: experimental); it is a PR3b item under cause issue 1221, not a PR3a change.
+2. Uniform path, oblique incidence (Bloch method): the wrapped transverse axis along which the wavevector is tilted
+   keeps main's operator in PR3a (the field is not invariant there by construction; judging a structure along it
+   needs the Bloch-period statement and belongs to PR3b). It is no longer silent: the `tfsf_transverse_periodic`
+   finding names every face that is solved periodic, including the tilt axis's, and says for the tilt axis that the
+   structure was not judged for invariance there. The other transverse axis is judged and refused as at normal
+   incidence.
+3. Judges added with this addendum: (a) graded mesh, plane wave, finite box and invariant slab: admitted, same realized
+   grid and pads as main, no finding of this rule (mutation: the uniform rule applied on the graded path → red);
+   (b) uniform, oblique incidence: a box finite along the non-tilt axis is refused; a box finite only along the tilt
+   axis is admitted and the finding names the tilt-axis faces with the not-judged wording (mutation: oblique treated
+   as "no axis to judge" → red; mutation: tilt-axis faces dropped from the finding → red); (c) graded guide
+   (Addendum 5d): a port whose ranges are given explicitly and cover the whole aperture is refused like the
+   ranges-omitted port; a port covering part of the aperture is admitted on the graded mesh with the boundary not
+   passed (mutations: explicit-range port not refused → red; partial-aperture port refused → red).
+4. Per-path statement, corrected: a waveguide port on the subgridded path ends in main's existing NotImplementedError
+   on both trees, so "default → walls" is not reachable there; distributed_v2 reaches the uniform rule through the
+   single-device fallback.
