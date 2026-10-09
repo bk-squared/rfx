@@ -122,6 +122,7 @@ def adi_uniform_faces(spec, budget):
 
 
 def distributed_electric_walls(grid):
-    """§7 Addendum 4: a zero-pad absorber has its PEC backing at the domain face."""
+    """Every electric face carries a wall, including positive-depth absorbers."""
     return frozenset(face.name for face in grid_face_depths(grid)
-                     if face.kind == Kind.PEC or (face.kind == Kind.ABSORBER and face.realized == 0))
+                     if face.kind in (Kind.PEC, Kind.ABSORBER)
+                     and face.name[0] not in (getattr(grid, "periodic_axes", "") or ""))

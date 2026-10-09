@@ -921,13 +921,6 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     has_lorentz = lorentz_spec is not None
     from rfx.boundaries.depths import distributed_electric_walls
     e_wall_faces = distributed_electric_walls(grid)
-    if has_debye or has_lorentz:
-        from rfx.boundaries.pec import resolve_wall_faces
-
-        # ADE runs need the single-device PEC backing on the absorber's
-        # outer node planes too. Keep this separate from the declared walls
-        # that determine the CPML profiles and their required slab depth.
-        e_wall_faces, _ = resolve_wall_faces(grid, (False, False, False))
     debye, lorentz = stage_dispersion_slabs(
         materials, grid.dt, debye_spec, lorentz_spec,
         n_devices, nx_per, ghost, shd, nx=nx)
