@@ -84,6 +84,12 @@ def assert_record(report, record, known, witnesses=None):
     unexpected = [f for f in failures if fingerprint(f) not in known]
     if unexpected:
         raise RuntimeError('\n'.join(unexpected))
+    # Each known text is checked on its own: a finding that stopped occurring
+    # must not stay listed behind another finding of the same record.
+    seen = {fingerprint(f) for f in failures}
+    gone = [k for k in known if k not in seen]
+    if gone:
+        raise RuntimeError('known finding no longer occurs; delete it from findings.json:\n' + '\n'.join(gone))
     # An existing xfail cannot hide m2 changing the SAME failing record.
     # This checks the finding's measured fingerprint with the original bar;
     # the cross-path verdict remains a failure, never a widened pass.

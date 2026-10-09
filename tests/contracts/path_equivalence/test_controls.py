@@ -209,3 +209,15 @@ def test_shared_witness_variant_keeps_record_scope_and_drift_check():
     manifest['cells']['b']['observers'][0]['witness'] = 'typo'
     with pytest.raises(KeyError):
         expand_findings(manifest)
+
+
+def test_a_known_finding_that_stopped_occurring_fails_even_beside_another():
+    from .reporting import KnownFinding, assert_record
+    known = ['s_params: shape differs: (2,) vs (1, 1, 2)', 'lumped_port_sparams: record missing on B']
+    both = dict(failures=list(known), measurements=[])
+    with pytest.raises(KnownFinding):
+        assert_record(both, 'port_dft', known)
+    one_fixed = dict(failures=known[:1], measurements=[])
+    with pytest.raises(RuntimeError, match='no longer occurs.*\\n.*lumped_port_sparams'):
+        assert_record(one_fixed, 'port_dft', known)
+
