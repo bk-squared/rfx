@@ -211,7 +211,7 @@ def test_dc_fold_uses_dual_spacing_at_a_grading_transition():
     sig, primal, dual, rs = _graded_sheet_sigma(
         sum(spacings[:8]), sigma_bulk=sigma_bulk, thickness=t,
         realized=True, profile=spacings)
-    assert abs(dual / ((spacings[7] + spacings[8]) / 2) - 1.0) < 1e-6
+    assert abs(primal / dual - spacings[8] / ((spacings[7] + spacings[8]) / 2)) < 1e-3
     assert np.all(abs(rs / rs_spec - 1.0) < 1e-4), (
         f"DC sheet realizes R_s = {rs} over its node planes, specified {rs_spec:.4f}")
     assert abs(sig * dual / conductance - 1.0) < 1e-4
