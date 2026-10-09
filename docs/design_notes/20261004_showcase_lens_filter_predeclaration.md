@@ -319,3 +319,88 @@ sit up to 1e-4 rad from those angles, and a literal comparison would have left t
 (b) §3's continuation rule A (band-mean boresight ≥ 2 dB above the start's at iteration 30) belongs to
 the boresight objective. The trials of objectives M and F continue to the full run by rule B's form:
 J at iteration 30 ≤ 0.5 × J at the start, no NaN.
+
+## Amendment 6 (2026-10-09, leader; before any run it governs) — a wide flat-top beam; objective F withdrawn
+**Why.** Objective M (Amendment 5) ran and did not meet its mask: the largest directivity beyond 25° stayed
+4.5–4.9 dB above the −2 dBi ceiling at 1.0 mm because the skirt of a 3 λ0 aperture's main beam itself crosses
+25°; the mask had been written without reference to the aperture. Objective F never ran its descent (the
+start check's float64 repeat did not fit a 48 GB card). The PI then asked that further objectives be derived
+from the literature, and chose a **wide flat-top beam (wide field of view)**. Objective F (13–15 dBi inside
+12.5°) is withdrawn; objective M stays reported as it ran. This amendment declares objective W on the
+**same structure, variables, bounds, mesh, record rules, optimiser and start** as §1 (2,250 free values,
+1 ≤ εr ≤ 2.7, Adam 0.10 → 0.01 over 150 iterations, start εr = 1.85), reading the same directivity pattern
+D_f(θ, φ) in dBi on the 73 × 73 grid at 9.5, 10.0, 10.5 GHz.
+
+**1. What "wide flat-top" means in the literature read** (23 sources, 14 in full text; record: private archive,
+`rfx/records/20261004-showcase-lens/objective-survey/extraction_E_wide_flat_top.md`; two papers' numbers
+re-read by the leader in the downloaded originals: Kumar & Ghosh, PIER Letters 100, 2021; Hong & Nguyen,
+J. Electromagn. Eng. Sci., 2026). For lenses, metasurfaces, transmitarrays and superstrates of 1.8–18 λ over
+one feed: the flat region is stated as the angular width within 1 dB (sometimes 2 dB) of the flat level;
+achieved half-widths run from ±10° to ±30°, the widest read in full text being ±29°/±30° at −1 dB from a 1.76 λ
+aperture with 7.5 dBi realised gain; ripple 1–2 dB; edge roll-off (−3 → −15 dB) 18°–29°; level outside the
+sector −8 to −15 dB relative to the flat level; flat-region gain 7.5–14 dBi. Wider sectors (±45° constant-flux,
+±60°) appear only as templates for an 18 λ aperture or as targets without achieved numbers.
+
+**2. What this block can support (checked before declaring).**
+(a) *Geometry.* The source sits 45 mm below the block's lower face and 75 mm below its upper face; the block
+is 90 mm wide. In a principal plane, rays within atan(45/75) = 31° of boresight cross the full thickness,
+rays between 31° and 45° leave through a side wall, and rays beyond 45° do not enter the block.
+(b) *Path budget.* The block can add at most 30 mm × (√2.7 − 1) = 19.3 mm (0.64 λ0) of path difference.
+Collimating the source fully needs √(45² + 45²) − 45 = 18.6 mm at the edge of the lower face (the first design
+uses nearly all of the budget); a beam that stays spread needs less correction than full collimation.
+The path budget does not limit a ±30° sector.
+(c) *Aperture.* A 3 λ0 aperture gives an edge slope of about λ0/L = 19°; the sector edge cannot be sharper.
+(d) *Power.* An ideal conical sector of half-angle 30° has 11.7 dBi; about 90 % of the radiated power goes
+into the upper hemisphere (stored patterns), so the ceiling is about 11.3 dBi.
+(e) *Where the designs stand* (stored 1.0 mm records; smallest / largest directivity over all grid directions
+with θ ≤ 30°, at 9.5 / 10 / 10.5 GHz): source over its plate without the block 4.9 / 4.8 / 4.7 to 7.5 / 7.5 / 7.4 dBi;
+uniform start 2.7 / 0.4 / −1.9 to 12.6 / 12.2 / 12.4 dBi; first (boresight) design −4.9 / −8.1 / −14.0 to
+18.6 / 19.0 / 18.9 dBi.
+(f) *What the block cannot do.* The source alone radiates 3.1–3.7 dBi in some directions with θ ≥ 60°
+(the plane across the dipole), by rays that never meet the block. The level outside the sector is therefore
+not something this block controls, and a sector wider than about ±31° asks the block to lift directions its
+full thickness does not reach; ±45° would need a wider block or a closer source. **The sector declared is
+±30°.**
+
+**3. Objective W.** C = the 13 grid rows with nominal θ ≤ 30° × the 72 distinct φ columns = 936 grid
+directions (the duplicated φ endpoint dropped, nominal angles as in Amendment 5 clarification (a); the
+θ = 0 row enters as 72 copies of one direction, which only weights boresight slightly in the smooth minimum). For each frequency the smooth minimum over C,
+m_f = −τ · ln( mean_C exp(−D_f / τ) ), τ = 0.5 dB,
+and **J_W = − mean_f m_f** (dB, minimised): raise the weakest direction of the sector. Because the pattern
+integrates to a fixed total, raising the minimum flattens the sector and moves power into it; no level is
+prescribed and no term acts outside the sector (item 2(f)).
+
+**4. Judged, at each of the three frequencies, on the 0.75 mm mesh** (hard minimum and maximum over all grid
+directions of C, not the smooth m_f):
+- **ripple:** max_C D − min_C D ≤ 2.0 dB (the literature's 1–2 dB);
+- **level:** min_C D ≥ 7.5 dBi (every direction of the ±30° cone at least as high as the source's own
+  boresight directivity, 7.5 dBi, and equal to the gain the widest flat-top read reports).
+These two conditions hold over the whole cone, all φ, at three frequencies. The literature's numbers are per
+principal plane at one frequency, so the bar is stricter than any paper read; the source alone has 2.6 dB of
+ripple over this cone. A result slightly outside is reported with its numbers under item 6.
+**Reported, not judged:** the largest D with θ ≥ 60° and its difference from min_C D (literature −8 to −15 dB;
+item 2(f) says why it is not a bar here); the angle between the −3 dB and −15 dB points relative to min_C D
+in the two principal planes (literature 18°–29°); boresight D; the fraction of radiated power inside the cone.
+
+**5. Trial, witnesses, mesh trend.** As Amendment 5 items 3–4 with these replacements. Trial continuation:
+J_W at iteration 30 ≤ J_W at the start − 2.0 dB, no NaN. Progress fraction for the frame rule:
+p_k = (J_0 − J_k) / (J_0 − J_best). Mesh trend (1.5, 1.0, 0.75 mm): min_C D and max_C D change by at most
+0.3 dB between 1.0 and 0.75 mm and by no more than between 1.5 and 1.0 mm; the reported outside level by at
+most 1.0 dB. Gradient against central differences at the start on the same three pixels (float64 repeat
+if a ladder is round-off dominated, on a card that holds it); gradient record-length witness at the start, at
+the reported design and at every iterate a film shows; per-bin settling at the start and the reported design.
+
+**6. Outcome rule, fixed now.** The words "a ±30° flat-top beam" are used only if both judged conditions of
+item 4 hold at all three frequencies on the 0.75 mm mesh and the witnesses pass. Otherwise the showcase shows
+the achieved pattern with its ripple and minimum, without those words. The sector, τ and the two levels are
+not adjusted after a run; a different sector is a new amendment decided with the PI.
+
+**7. What is shown.** The pattern cut over the ±30° sector with the 2 dB band drawn at the achieved level,
+for the source alone, the first design and this design; the three-mesh values; the frames of Amendment 3.
+The first design's film is unchanged; this design appears after it as "the same two simulations per iteration,
+another objective", with its objective named in words before any result.
+
+**8. Memory read (R1).** Session memory `objective-feasibility-before-predeclare` (a mask declared without
+aperture physics failed; check beamwidth, geometry and the literature's own terms first) — item 2 is that
+check. Ledger: the lens entries (settled at the declared record on every mesh; gradient witnesses pass at all
+151 iterates of the first run) — consistent, the run reuses the record length and re-witnesses it.
