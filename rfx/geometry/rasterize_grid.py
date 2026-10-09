@@ -422,7 +422,13 @@ def pec_volume_cell_mask(shape, centres: GridCoords, cell_sizes, *, grid=None):
         def sample(x, y, z):
             return pec_volume_cell_mask(
                 shape, GridCoords(x, y, z, (len(x), len(y), len(z))), cell_sizes)
-        return periodic_mask(grid, shape, centres[:3], sample=sample)
+        box_lo, box_hi = shape.corner_lo, shape.corner_hi
+        return jnp.asarray(periodic_mask(
+            grid, shape, centres[:3], sample=sample,
+            axis_samplers=tuple(
+                (lambda line, t=t: _box_axis_volume(
+                    line, float(box_lo[t]), float(box_hi[t]), cell_sizes[t]))
+                for t in range(3))))
     lo = getattr(shape, "corner_lo", None)
     hi = getattr(shape, "corner_hi", None)
     if lo is not None and hi is not None:
@@ -543,20 +549,24 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
     shape_3 = tuple(len(line) for line in node_axes)
     is_box = getattr(shape, "corner_lo", None) is not None
     if is_box:
+        def axis_sample(t, line):
+            if t == a:
+                m = np.zeros((len(line),), dtype=bool)
+                m[plane] = True
+                return m
+            d_t = _local_cell(node_axes[t], cell_sizes[t],
+                              0.5 * (lo[t] + hi[t]))
+            return np.asarray(_box_axis_closed(line, lo[t], hi[t], d_t))
+
         def sample(x, y, z):
-            masks = []
-            for t, line in enumerate((x, y, z)):
-                if t == a:
-                    m = np.zeros((len(line),), dtype=bool)
-                    m[plane] = True
-                    masks.append(m)
-                else:
-                    d_t = _local_cell(node_axes[t], cell_sizes[t],
-                                      0.5 * (lo[t] + hi[t]))
-                    masks.append(np.asarray(_box_axis_closed(line, lo[t], hi[t], d_t)))
+            masks = [axis_sample(t, line) for t, line in enumerate((x, y, z))]
             return masks[0][:, None, None] & masks[1][None, :, None] & masks[2][None, None, :]
+        # Per-axis samplers: the image fold costs the sum of the image
+        # counts, not their product (see periodic_mask).
         fp = periodic_mask(grid, shape, node_axes, sample=sample,
-                           axes=tuple(t for t in range(3) if t != a), closed_footprint=True)
+                           axes=tuple(t for t in range(3) if t != a), closed_footprint=True,
+                           axis_samplers=tuple(
+                               (lambda line, t=t: axis_sample(t, line)) for t in range(3)))
     else:
         sample = [np.asarray(n, dtype=np.float64) for n in node_axes]
         sample[a] = np.asarray([requested_mid], dtype=np.float64)
