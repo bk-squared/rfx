@@ -8,8 +8,8 @@ workflows call the scripts, that the scripts exist and are executable, and that
 
 The other half is the path-aware lane. `pr-tests.yml` must keep reporting the
 contexts the `main` ruleset requires (`guards-and-preflight`, `fast-suite (1)`
-through `(12)`) on every event, while doing no work when the diff touches nothing
-the shards can observe. That is a shape a later edit can break silently -- a
+through `(12)`) on every event, while running only contracts in the shards when
+the diff is not code. That is a shape a later edit can break silently -- a
 renamed job leaves a required context permanently unreported and no pull request
 can merge again -- so the shape is pinned here rather than discovered on a
 Friday.
@@ -165,9 +165,11 @@ def test_fast_suite_and_duration_regeneration_use_the_same_groups() -> None:
     fast = load(PR_TESTS)["jobs"]["fast-suite"]
     regen = load(WORKFLOW_DIR / "regen-durations.yml")["jobs"]["fast"]
     assert fast["strategy"]["matrix"]["group"] == regen["strategy"]["matrix"]["group"]
-    for job in (fast, regen):
-        splits = re.findall(r"--splits\s+(\d+)", "\n".join(run_blocks(job)))
+    for job, blocks in ((fast, run_blocks(_physics_suite_step(fast))),
+                        (regen, run_blocks(regen))):
+        splits = re.findall(r"--splits\s+(\d+)", "\n".join(blocks))
         assert splits == [str(len(job["strategy"]["matrix"]["group"]))]
+        assert "--group ${{ matrix.group }}" in "\n".join(blocks)
 
 
 def test_the_fast_suite_uses_only_python_311_on_both_events() -> None:
@@ -235,7 +237,7 @@ def test_fast_suite_records_the_resolved_versions() -> None:
     steps = load(PR_TESTS)["jobs"]["fast-suite"]["steps"]
     records = [s for s in steps if s.get("name", "").startswith("Record the resolved JAX/numpy versions")]
     assert len(records) == 1
-    assert records[0].get("if") == WORK_IF
+    assert "if" not in records[0]
     for package in ("jax", "jaxlib", "numpy"):
         assert f"{package}.__version__" in records[0]["run"]
 
@@ -271,6 +273,19 @@ def test_the_heavy_jobs_wait_for_the_verdict(job: str) -> None:
 #: The only two `if:` forms a step in a heavy job may carry.
 WORK_IF = "needs.changes.outputs.code_changed != 'false'"
 SKIP_IF = "needs.changes.outputs.code_changed == 'false'"
+
+
+def _fast_suite_test_steps(fast: dict) -> list[dict]:
+    return [
+        step for step in fast["steps"]
+        if re.search(r"(?m)^\s*(?:python -m )?pytest(?:\s|$)", step.get("run", ""))
+    ]
+
+
+def _physics_suite_step(fast: dict) -> dict:
+    steps = [step for step in _fast_suite_test_steps(fast) if step.get("if") == WORK_IF]
+    assert len(steps) == 1, steps
+    return steps[0]
 
 #: Steps that legitimately run on BOTH branches, because both need them: an
 #: interpreter and the installed package. Matched against `uses:` or `run:`.
@@ -324,8 +339,8 @@ def test_every_step_after_checkout_is_gated_on_the_verdict(job: str) -> None:  #
     steps and no reason, and an ungated step that runs the fast suite would spend
     the half hour the gate exists to save.
 
-    The exception is the shared setup -- an interpreter and the package -- which
-    both branches need, because the false branch still runs the contract tests.
+    In fast-suite exactly two test steps have complementary gates; every other
+    step is shared by both branches. The other job keeps its setup exceptions.
 
     The `steps[1:]` slice is only meaningful if step 0 really is the checkout, so
     this asserts it here rather than trusting a sibling test to have run: a step
@@ -336,6 +351,19 @@ def test_every_step_after_checkout_is_gated_on_the_verdict(job: str) -> None:  #
         f"`{job}` step 0 is not the checkout, so everything below scans the "
         f"wrong steps: {steps[0]}"
     )
+    if job == "fast-suite":
+        test_steps = _fast_suite_test_steps({"steps": steps})
+        assert len(test_steps) == 2, test_steps
+        contracts = [step for step in test_steps if "pytest tests/contracts " in step["run"]]
+        assert len(contracts) == 1, contracts
+        assert contracts[0].get("if") == SKIP_IF
+        physics = [step for step in test_steps if step is not contracts[0]]
+        assert physics[0].get("if") == WORK_IF
+        for step in steps[1:]:
+            if step not in test_steps:
+                assert "if" not in step, step
+        assert not any("Nothing to run" in step.get("name", "") for step in steps)
+        return
     ungated = [
         step.get("name", step.get("uses", "?"))
         for step in steps[1:]
@@ -375,7 +403,7 @@ def test_work_steps_skip_only_on_the_one_known_value(job: str) -> None:
     )
 
 
-@pytest.mark.parametrize("job", HEAVY_JOBS)
+@pytest.mark.parametrize("job", ("guards-and-preflight",))
 def test_a_skipped_job_says_why_in_its_log(job: str) -> None:
     """A green job that did nothing has to explain itself, or it reads as a pass."""
     steps = load(PR_TESTS)["jobs"][job]["steps"]
@@ -432,15 +460,21 @@ def test_both_branches_have_a_gate_that_runs_pytest() -> None:
 
 @pytest.mark.parametrize("flag", GATE_PYTEST_FLAGS)
 def test_every_required_gate_overrides_the_marker_filter(flag: str) -> None:
-    """Both gates, not only the one that happened to be written first.
+    """Both executing gates, not only the one that happened to be written first.
 
     The contract-test step was added later and omitted these, so a future `slow`
     mark inside `tests/contracts` would have deselected itself out of the ONLY
     test run on a docs-only PR while the check stayed green.
     """
+    guards = [step for step in _gate_pytest_steps() if step.get("if") == WORK_IF]
+    contracts = [
+        step for step in _fast_suite_test_steps(load(PR_TESTS)["jobs"]["fast-suite"])
+        if "pytest tests/contracts " in step["run"]
+    ]
+    assert len(guards) == len(contracts) == 1
     missing = [
         step.get("name", "?")
-        for step in _gate_pytest_steps()
+        for step in [*guards, *contracts]
         if flag not in str(step.get("run", ""))
     ]
     assert not missing, f"{flag} missing from required gate step(s): {missing}"
@@ -475,27 +509,41 @@ def test_the_contract_tests_run_when_the_diff_is_not_code() -> None:
     `test_the_lint_scope_covers_this_gates_own_script`, and the test forbidding
     it would never run.
     """
-    steps = load(PR_TESTS)["jobs"]["guards-and-preflight"]["steps"]
-    on_the_skip_path = [
-        str(step.get("run", ""))
-        for step in steps
-        if str(step.get("if", "")).strip() == SKIP_IF
+    jobs = load(PR_TESTS)["jobs"]
+    fast = jobs["fast-suite"]
+    contracts = [
+        step for step in _fast_suite_test_steps(fast)
+        if step.get("if") == SKIP_IF
     ]
-    assert on_the_skip_path, "guards-and-preflight has no not-code branch at all"
-    assert any(
-        "pytest tests/contracts" in block for block in on_the_skip_path
-    ), f"the not-code branch does not run the contract tests: {on_the_skip_path}"
+    assert len(contracts) == 1, contracts
+    suite = contracts[0]["run"]
+    assert "pytest tests/contracts " in suite
+    assert "--collect-only" not in suite
+    assert "--ignore" not in suite
+    assert re.findall(r"--splits\s+(\d+)", suite) == ["12"]
+    assert "--group ${{ matrix.group }}" in suite
+    assert fast["strategy"]["matrix"]["group"] == list(range(1, 13))
+
+    floors = [
+        step for step in jobs["guards-and-preflight"]["steps"]
+        if step.get("if") == SKIP_IF
+    ]
+    assert len(floors) == 1, floors
+    floor = floors[0]["run"]
+    collect_calls = [line for line in floor.splitlines() if "python -m pytest" in line]
+    assert len(collect_calls) == 1, collect_calls
+    for required in ("--collect-only", "tests/contracts", *GATE_PYTEST_FLAGS[:2]):
+        assert required in collect_calls[0], collect_calls[0]
+    assert re.search(r'if \[ "\$collected" -lt 500 \]; then\s+.*?\bexit 1\s+fi',
+                     floor, re.DOTALL), floor
+    assert "pytest tests/contracts" not in floor
 
 
 def test_the_contract_tests_run_when_the_diff_is_code() -> None:
     """On the code branch the twelve shards collect the whole tree, contracts included."""
     fast = load(PR_TESTS)["jobs"]["fast-suite"]
-    suite = "\n".join(
-        str(step.get("run", ""))
-        for step in fast["steps"]
-        if "--splits" in str(step.get("run", ""))
-    )
-    assert suite, "the fast-suite job no longer runs a sharded pytest"
+    suite = _physics_suite_step(fast)["run"]
+    assert "--splits" in suite, "the fast-suite job no longer runs a sharded pytest"
     assert "tests/contracts" not in suite, (
         "the sharded suite now names tests/contracts explicitly -- check it is "
         f"not being ignored: {suite}"

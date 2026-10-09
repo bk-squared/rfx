@@ -9,8 +9,8 @@ name: pr-tests
 # the tripwire/regression-locks gate merges.
 #
 # Path-aware since 2026-09-18: the `changes` job decides whether this event
-# touched anything the twelve physics shards can observe, and they skip their own
-# steps when it did not. Their NAMES and their SUCCESS are unchanged, which is
+# touched anything the physics suite can observe; the twelve shards run only
+# contracts when it did not. Their NAMES are unchanged, which is
 # what the ruleset reads. The contract tests run either way. A push to
 # main is never skipped.
 #
@@ -50,9 +50,9 @@ jobs:
   # The two heavy jobs below KEEP THEIR NAMES and still run on every event, so
   # the contexts main's ruleset requires (`guards-and-preflight`,
   # `fast-suite (1)`..`(12)`) are always reported. When this job says the diff is
-  # not code, the twelve shards skip their steps individually and end SUCCESS with
-  # a line in the log saying why, and `guards-and-preflight` runs the contract
-  # tests instead of the guard suite — those pin docs/, scripts/ and these
+  # not code, the twelve shards run the contract tests, and
+  # `guards-and-preflight` checks their collect-count floor instead of running
+  # the guard suite. The contracts pin docs/, scripts/ and these
   # workflows, which is precisely what a "not code" diff changes.
   #
   # Step-level `if:`, not job-level, is deliberate. GitHub's "Troubleshooting
@@ -61,7 +61,7 @@ jobs:
   # job shows no steps and no reason, and the same page says a skipped WORKFLOW
   # stays Pending and blocks the merge, which is a one-character edit away
   # (`paths:` filters) from where we are. Keeping the jobs alive and skipping
-  # their steps keeps the reason in the log and keeps that trap shut.
+  # inapplicable suites keeps the reason in the log and keeps that trap shut.
   changes:
     name: changes
     runs-on: ubuntu-latest
@@ -118,7 +118,7 @@ jobs:
           sudo sysctl -w vm.max_map_count=262144
 
       # Ungated on purpose: BOTH branches of the verdict need an interpreter and
-      # the package. The false branch still runs tests/contracts below.
+      # the package. The false branch still collects tests/contracts below.
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -163,25 +163,25 @@ jobs:
       - name: Install package with dev dependencies
         run: pip install -e ".[dev]" "jax==0.10.2" "jaxlib==0.10.2"
 
-      # tests/contracts/ is where the repo pins things the SHARDS cannot see:
+      # tests/contracts/ is where the repo pins the not-code surface:
       # much of it asserts on docs/, scripts/, .github/workflows/, CHANGELOG.md
       # and README.md. Skipping it on a "not code" diff would disarm exactly the
       # gates that guard "not code" — a later PR could shrink the ruff scope
       # pinned by test_the_lint_scope_covers_this_gates_own_script, or change
       # scripts/dev/prune_worktrees.py past test_prune_worktrees.py, and the
       # forbidding test would never run. So the contracts run on BOTH branches:
-      # here when the diff is not code, and inside the twelve shards (which collect
-      # the whole tree) when it is.
-      - name: Contract tests — the gates the shards are not running today
+      # in the twelve shards, contracts alone when the diff is not code and
+      # inside the whole tree when it is. This step checks the collect-count floor.
+      - name: Contract tests — collect-count floor (the shards run the tests)
         if: needs.changes.outputs.code_changed == 'false'
-        # Same flags as the guard suite below, for the same reason: this is the
-        # ONLY test run on the not-code branch, so it is a required gate, and
+        # Same collection flags as the contract shards, so the floor counts
+        # the tests that the required not-code gate will run, and
         # `-o addopts=""` overrides the pyproject marker filter so a future
         # slow/slow_physics mark inside tests/contracts cannot silently deselect
         # from it. (Two gallery-precompute tests are slow-marked today; they add
         # 27 s.) The explicit -m keeps the job CPU-safe and leaves the
-        # docs_consistency tests to their own non-required workflow, and
-        # --strict-markers turns a marker typo into an error. The collect-count
+        # docs_consistency tests to their own non-required workflow. The shards
+        # use --strict-markers to reject marker typos. The collect-count
         # floor catches the other way a gate goes quiet: a path that stopped
         # matching collects nothing and passes.
         run: |
