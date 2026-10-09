@@ -1565,14 +1565,7 @@ class _ExecuteMixin:
         # Low-level runners also default to the grid. Keep this explicit
         # value so the TFSF subset override below shares these flags.
         cpml_axes_run = grid.cpml_axes
-        pec_axes_run = "".join(a for a in "xyz" if a not in cpml_axes_run)
-        # The walls themselves come from the grid's per-face declaration
-        # (``resolve_wall_faces`` in the scan setup, #1164): a closed box
-        # (boundary="pec") declares six PEC faces and gets them on this
-        # lane as on run() (#1193); a magnetic face is never overwritten
-        # by an axis wall (#1194's regression). ``pec_axes_run`` only
-        # withholds the PEC backing on absorber axes, as this lane always
-        # has.
+        pec_axes_run = None
 
         # Differentiable TFSF plane-wave (#404): build the 2D/1D-aux TFSF cfg and
         # force its boundary (transverse-periodic + CPML on the propagation axis),
@@ -1606,9 +1599,7 @@ class _ExecuteMixin:
             # after material overrides and port setup (including AD values).
             from rfx.boundaries.tfsf import boundary_flags as tfsf_boundary_flags
             periodic_bool, cpml_axes_run = tfsf_boundary_flags(tfsf_run[0], grid)
-            # Match run(): closed-box CPML exteriors retain their PEC
-            # backing. An empty string withholds those walls.
-            pec_axes_run = None if self._tfsf.closed_box else ""
+            pec_axes_run = None
 
 
         # #931 §1.7: realize (Mx, My, Mz) ONCE, here, from the volume cells
