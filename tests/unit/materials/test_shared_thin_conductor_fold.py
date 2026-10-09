@@ -198,8 +198,8 @@ def dc_overlap_fixture(lane, order=('a', 'b')):
     sim = Simulation(freq_max=15e9, domain=(12*h, 10*h, 8*h), dx=h,
                      boundary='cpml', cpml_layers=2, **kw)
     declarations = {
-        'a': (Box((2*h, 2*h, 4*h), (8*h, 7*h, 4.1*h)), 1234, 2.5),
-        'b': (Box((5*h, 3*h, 4*h), (10*h, 9*h, 4.1*h)), 77, 4.5),
+        'a': (Box((2*h, 2*h, 4*h), (8*h, 7*h, 4.1*h)), 1234, 1),
+        'b': (Box((5*h, 3*h, 4*h), (10*h, 9*h, 4.1*h)), 77, 1),
     }
     for name in order:
         shape, sigma, eps = declarations[name]
@@ -209,20 +209,49 @@ def dc_overlap_fixture(lane, order=('a', 'b')):
 
 
 @pytest.mark.parametrize('lane', ('uniform', 'equal', 'graded'))
-def test_dc_overlap_last_declaration_wins(lane):
+def test_dc_overlap_adds_and_is_order_independent(lane):
     from rfx.model.materials import assemble_cells
+    records = []
     for order in (('a', 'b'), ('b', 'a')):
         sim, grid = dc_overlap_fixture(lane, order)
-        with pytest.raises(ValueError, match='a film on one node plane has no volume; its eps_r is not modelled'):
-            assemble_cells(sim, grid)
+        mats = assemble_cells(sim, grid)[0]
+        records.append(mats)
+        h = 1/1024
+        dual = h * ((1.5 + .6)/2 if lane == 'graded' else 1.)
+        px, py, pz = grid.axis_pads
+        # Two rectangular footprints, with half weight only transverse to
+        # each E edge. Expected arrays are sums of hand-written rectangles.
+        expected_x, expected_y = np.zeros(grid.shape), np.zeros(grid.shape)
+        for xlo, xhi, ylo, yhi, sigma in [(2, 8, 2, 7, 1234), (5, 10, 3, 9, 77)]:
+            density = sigma*(h/7)/dual
+            for x in range(xlo, xhi):
+                for y in range(ylo, yhi+1):
+                    expected_x[px+x, py+y, pz+4] += density*(.5 if y in (ylo, yhi) else 1.)
+            for x in range(xlo, xhi+1):
+                for y in range(ylo, yhi):
+                    expected_y[px+x, py+y, pz+4] += density*(.5 if x in (xlo, xhi) else 1.)
+        for actual, expected in zip(mats.sigma_film[:2], (expected_x, expected_y)):
+            np.testing.assert_allclose(actual, expected, rtol=2e-7, atol=0)
+        assert mats.sigma_film[2] is None
+        np.testing.assert_array_equal(mats.sigma, 0.)
+        np.testing.assert_array_equal(mats.eps_r, 1.)
+    for a, b in zip(records[0].sigma_film[:2], records[1].sigma_film[:2]):
+        np.testing.assert_array_equal(a, b)
 
 
 @pytest.mark.parametrize('nu', (False, True))
 def test_dc_geometry_mask_records_declared_conductor(nu):
     from rfx.model.materials import assemble_cells
     sim, grid = dc_overlap_fixture('equal' if nu else 'uniform', order=('a',))
-    with pytest.raises(ValueError, match='a film on one node plane has no volume; its eps_r is not modelled'):
-        assemble_cells(sim, grid, geometry_masks=[])
+    masks = []
+    assemble_cells(sim, grid, geometry_masks=masks)
+    assert len(masks) == 1
+    key, mask = masks[0]
+    assert key == id(sim._thin_conductors[0])
+    expected = np.zeros(grid.shape, dtype=bool)
+    px, py, pz = grid.axis_pads
+    expected[px+2:px+8, py+2:py+7, pz+4] = True
+    np.testing.assert_array_equal(mask, expected)
 
 
 def test_periodic_dc_cells_cross_seam():
@@ -232,11 +261,30 @@ def test_periodic_dc_cells_cross_seam():
     sim = Simulation(freq_max=15e9, domain=(12*h, 10*h, 8*h), dx=h,
                      boundary=BoundarySpec(x='periodic', y='periodic', z='cpml'),
                      cpml_layers=2)
-    # Finite subcell thickness exercises DC plane identification itself;
-    # a zero-thickness Box is also wrapped by the generic shape sampler.
+    # Normal x wraps to node zero; the in-plane y footprint wraps the seam.
     sim.add_thin_conductor(Box((11.5*h, 8*h, 2*h), (11.7*h, 13*h, 6*h)),
-                           sigma_bulk=1234, thickness=h/7, eps_r=3.5)
+                           sigma_bulk=1234, thickness=h/7, eps_r=1.)
     grid = sim._build_grid()
+    mats = assemble_cells(sim, grid)[0]
+    expected_y, expected_z = np.zeros(grid.shape), np.zeros(grid.shape)
+    pad = grid.pad_z_lo
+    for y in [8, 9, 0, 1, 2]:
+        for z in range(2, 7):
+            expected_y[0, y, pad+z] = 1234/7 * (.5 if z in (2, 6) else 1.)
+    for y in [8, 9, 0, 1, 2, 3]:
+        expected_z[0, y, pad+2:pad+6] = 1234/7 * (.5 if y in (8, 3) else 1.)
+    assert mats.sigma_film[0] is None
+    for actual, expected in zip(mats.sigma_film[1:], (expected_y, expected_z)):
+        np.testing.assert_allclose(actual, expected, rtol=1e-7, atol=0)
+    np.testing.assert_array_equal(mats.eps_r, 1.)
+    np.testing.assert_array_equal(mats.sigma, 0.)
+
+
+@pytest.mark.parametrize('lane', ('uniform', 'equal', 'graded'))
+def test_dc_permittivity_refused(lane):
+    from rfx.model.materials import assemble_cells
+    sim, grid = dc_overlap_fixture(lane, order=('a',))
+    sim._thin_conductors[0] = dataclasses.replace(sim._thin_conductors[0], eps_r=2.5)
     with pytest.raises(ValueError, match='a film on one node plane has no volume; its eps_r is not modelled'):
         assemble_cells(sim, grid)
 

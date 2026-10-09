@@ -575,18 +575,177 @@ def test_c1_rectangular_coverage_and_volume_preservation(normal):
         np.testing.assert_array_max_ulp(result.sigma_film[component], expected, maxulp=1)
 
 
-def test_c1_later_declaration_replaces_touched_edges():
+@pytest.mark.parametrize('lane', ['uniform', 'graded', 'periodic'])
+def test_c1_abutting_films_equal_spanning_film(lane):
+    from rfx.boundaries.spec import BoundarySpec
+    widths = np.full(12, H)
+    if lane == 'graded':
+        widths[5:7] = [.00075, .0015]
+    nodes = np.r_[0., np.cumsum(widths)]
+    periodic = lane == 'periodic'
+    # The periodic junction is node zero: [8, 12) and [0, 4).
+    pieces = [(8, 12), (0, 4)] if periodic else [(2, 6), (6, 10)]
+    whole = (8, 16) if periodic else (2, 10)
+
+    def assemble(intervals):
+        sim = Simulation(freq_max=10e9, domain=(float(widths.sum()), .012, .008),
+                         dx=H, boundary=(BoundarySpec(x='periodic', y='pec', z='pec')
+                                         if periodic else 'pec'),
+                         **({'dx_profile': widths} if lane == 'graded' else {}))
+        for low, high in intervals:
+            xlow = float(nodes[low])
+            xhigh = high*H if high > 12 else float(nodes[high])
+            sim.add_thin_conductor(Box((xlow, .002, .004), (xhigh, .010, .004)),
+                                   sigma_bulk=1000., thickness=1e-5)
+        grid = sim._build_realized_grid()
+        return grid, sim._assemble_materials(grid)[0]
+
+    grid, spanning = assemble([whole])
+    expected_x, expected_y = np.zeros(grid.shape), np.zeros(grid.shape)
+    xcells = [8, 9, 10, 11, 0, 1, 2, 3] if periodic else list(range(2, 10))
+    xnodes = ([8, 9, 10, 11, 0, 1, 2, 3, 4] if periodic else list(range(2, 11)))
+    for x in xcells:
+        expected_x[x, 2:11, 4] = G/H
+        expected_x[x, [2, 10], 4] /= 2
+    for x in xnodes:
+        expected_y[x, 2:10, 4] = G/H * (.5 if x in (xnodes[0], xnodes[-1]) else 1.)
+    # At the graded junction the incident widths give 1/3 + 2/3 = 1.
+    # At the periodic junction they give 1/2 + 1/2 = 1.
+    records = [spanning]
+    for order in (pieces, pieces[::-1]):
+        _, result = assemble(order)
+        records.append(result)
+    for result in records:
+        assert result.sigma_film[2] is None
+        for actual, expected in zip(result.sigma_film[:2], (expected_x, expected_y)):
+            np.testing.assert_allclose(actual, expected, rtol=2e-7, atol=0)
+        for actual, reference in zip(result.sigma_film[:2], spanning.sigma_film[:2]):
+            np.testing.assert_array_max_ulp(actual, reference, maxulp=1)
+    for a, b in zip(records[1].sigma_film[:2], records[2].sigma_film[:2]):
+        np.testing.assert_array_equal(a, b)
+
+
+def test_c1_overlapping_films_add_in_either_order():
     from rfx.materials.thin_conductor import ThinConductor, apply_thin_conductor
     from rfx.grid import Grid
     grid = Grid(freq_max=10e9, domain=(.008,) * 3, dx=H, cpml_layers=0)
-    cells = init_materials(grid.shape)
-    a = ThinConductor(Box((.002, .002, .004), (.006, .006, .004)), 1000., 1e-5)
-    b = ThinConductor(Box((.004, .003, .004), (.007, .007, .004)), 2000., 1e-5)
-    first, _ = apply_thin_conductor(grid, a, cells)
-    final, _ = apply_thin_conductor(grid, b, first)
-    # Ex: exclusive A interior, shared B interior, B half-covered low end.
-    for index, expected in [((3, 3, 4), G/H), ((5, 4, 4), 2*G/H),
-                            ((5, 3, 4), G/H)]:
-        assert float(final.sigma_film[0][index]) == pytest.approx(expected, rel=1e-7)
-    np.testing.assert_array_equal(final.sigma, 0.)
-    np.testing.assert_array_equal(final.eps_r, 1.)
+    shape = Box((.002, .002, .004), (.006, .006, .004))
+    a, b = (ThinConductor(shape, sigma, 1e-5) for sigma in (1000., 2000.))
+    records = []
+    for order in ((a, b), (b, a)):
+        result = init_materials(grid.shape)
+        for conductor in order:
+            result, _ = apply_thin_conductor(grid, conductor, result)
+        records.append(result)
+        for component in (0, 1):
+            expected = np.zeros(grid.shape)
+            for along in range(2, 6):
+                for across in range(2, 7):
+                    index = (along, across, 4) if component == 0 else (across, along, 4)
+                    expected[index] = (G + 2*G)/H * (.5 if across in (2, 6) else 1.)
+            np.testing.assert_allclose(result.sigma_film[component], expected, rtol=2e-7)
+        assert result.sigma_film[2] is None
+        np.testing.assert_array_equal(result.eps_r, 1.)
+        np.testing.assert_array_equal(result.sigma, 0.)
+    for a, b in zip(records[0].sigma_film[:2], records[1].sigma_film[:2]):
+        np.testing.assert_array_equal(a, b)
+
+
+@pytest.mark.parametrize('graded', [False, 'up'])
+@pytest.mark.parametrize('transform', [jax.grad, jax.value_and_grad])
+def test_c4_traced_permittivity_refused(graded, transform):
+    from dataclasses import replace
+    from rfx.model.thin_conductors import DCFilmAdmissionError
+    sim, _ = model(graded)
+    conductor = sim._thin_conductors[0]
+
+    def objective(eps):
+        sim._thin_conductors[0] = replace(conductor, eps_r=eps)
+        return jnp.sum(sim.forward(n_steps=2).time_series)
+
+    with pytest.raises(DCFilmAdmissionError, match='a film on one node plane has no volume; its eps_r is not modelled') as error:
+        transform(objective)(4.)
+    assert error.value.code == 'dc_film_permittivity'
+
+
+def test_c4_occupancy_design_box_refuses_film():
+    sim, widths = model()
+    x = float(widths[:9].sum())
+    box = ((x - widths[8], .001, .001), (x - widths[8]/4, .002, .002))
+    with pytest.raises(ValueError, match='contains edges of thin conductor 0'):
+        sim.forward(n_steps=2, design_box=box,
+                    design_occupancy_override=jnp.ones((2, 2, 2)))
+
+
+def test_c2_coax_junction_splices_film_record():
+    from rfx.model.thin_conductors import splice_junction_materials
+    shape = (2, 3, 4)
+    stub = init_materials(shape)._replace(eps_r=jnp.full(shape, 2.), sigma=jnp.full(shape, 3.),
+        sigma_film=(jnp.full(shape, 5.), None, jnp.full(shape, 7.)))
+    junction = init_materials(shape)._replace(eps_r=jnp.full(shape, 11.), sigma=jnp.full(shape, 13.),
+        sigma_film=(jnp.full(shape, 17.), jnp.full(shape, 19.), None))
+    result = splice_junction_materials(stub, junction, 2)
+    for actual, below, above in [(result.eps_r, 2., 11.), (result.sigma, 3., 13.),
+                                (result.sigma_film[0], 5., 17.),
+                                (result.sigma_film[1], 0., 19.),
+                                (result.sigma_film[2], 7., 0.)]:
+        expected = np.empty(shape)
+        expected[:, :, :2], expected[:, :, 2:] = below, above
+        np.testing.assert_array_equal(actual, expected)
+
+
+@pytest.mark.parametrize('param', ['sub.eps_r', 'eps_r'])
+def test_c3_sweep_results_retain_film(param):
+    from rfx import GaussianPulse
+    from rfx.vmap_sweep import vmap_material_sweep
+
+    def build(value=2.2, film=True):
+        sim = Simulation(freq_max=10e9, domain=(.024, .024, .004), dx=H,
+                         boundary='cpml', cpml_layers=6)
+        sim.add_material('sub', eps_r=value if param == 'sub.eps_r' else 2.2)
+        sim.add(Box((.018, 0, 0), (.020, .024, .004)), material='sub')
+        if param == 'eps_r':
+            # Fill the background too: global sweeps replace non-vacuum cells.
+            sim.add_material('global', eps_r=value)
+            sim.add(Box((0, 0, 0), (.024, .024, .004)), material='global')
+        if film:
+            sim.add_thin_conductor(Box((.012, -1, -1), (.012, 1, 1)),
+                                   sigma_bulk=1e4, thickness=1e-5)
+        sim.add_source((.006, .012, .002), component='ez',
+                       waveform=GaussianPulse(f0=10e9, bandwidth=.8), amplitude_kind='current')
+        sim.add_probe((.016, .012, .002), component='ez')
+        return sim
+
+    values = [2.2, 3.]
+    sweep = np.asarray(vmap_material_sweep(build(), param, values, n_steps=200).time_series)
+    bare = np.asarray(vmap_material_sweep(build(film=False), param, values, n_steps=200).time_series)
+    for row, value in enumerate(values):
+        reference = np.asarray(build(value).run(n_steps=200, compute_s_params=False).time_series)
+        actual = sweep[row].reshape(reference.shape)
+        peak = np.max(np.abs(reference))
+        assert peak > 0
+        assert np.max(np.abs(actual - reference)) <= 1e-4*peak
+        assert np.max(np.abs(actual - bare[row].reshape(reference.shape))) > 1e-2*peak
+
+
+@pytest.mark.parametrize('graded', [False, True])
+def test_c4_msl_port_f0_and_film_refused_in_sheet_context(graded, monkeypatch):
+    from tests.unit.ports.test_msl_realized_port_contract import _model
+    import rfx.sources.msl_port as msl
+    sim, _ = _model(nonuniform=graded, trace_kind='f0')
+    trace = sim._thin_conductors[0].shape
+    sim.add_thin_conductor(trace, sigma_bulk=1000., thickness=1e-5)
+    reached = []
+    original = msl.validate_msl_port_geometry
+
+    def observed(*args, **kwargs):
+        # Both runners already lend the realized materials to this builder;
+        # the standalone SheetConductors fallback is therefore not taken.
+        assert kwargs['conductors'].materials.sigma_film is not None
+        reached.append(True)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(msl, 'validate_msl_port_geometry', observed)
+    with pytest.raises(ValueError, match='an f0 sheet and a lossy film share edges'):
+        sim.run(n_steps=2, compute_s_params=False)
+    assert reached == [True]

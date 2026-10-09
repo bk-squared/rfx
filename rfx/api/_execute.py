@@ -2947,12 +2947,16 @@ class _ExecuteMixin:
                 "PERMITTIVITY design box (#1179) and needs "
                 "design_eps_override with it.")
 
+        bounds = self._design_box_bounds_from_corners(grid, design_box)
+
+        from rfx.model.thin_conductors import refuse_design_films
+        refuse_design_films(self, grid, bounds)
+
         if not _want_eps:
             # The occupancy box reads no material array and runs after the
             # E update and the absorber, so the material-path fences below
             # do not apply to it: whatever computed E, both formulations
             # arrive at this slot with the same field.
-            bounds = self._design_box_bounds_from_corners(grid, design_box)
             return None, DesignOccupancySpec(
                 bounds=bounds, occupancy=design_occupancy_override)
 
@@ -2993,10 +2997,6 @@ class _ExecuteMixin:
                 "built from the background permittivity. Use eps_override "
                 "for a design region that is itself the conductor.")
 
-        bounds = self._design_box_bounds_from_corners(grid, design_box)
-
-        from rfx.model.thin_conductors import refuse_design_films
-        refuse_design_films(self, grid, bounds)
 
         # A port whose cells are in the box. The step-level check
         # (``rfx.simulation._resolve_design_box``) sees only the ports that

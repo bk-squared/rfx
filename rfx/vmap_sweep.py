@@ -205,7 +205,7 @@ def _extend_batched_cpml_pad(
 
     Returns
     -------
-    (eps_r, sigma, mu_r, sigma_film) — cell arrays and optional component record.
+    (eps_r, sigma, mu_r) — the three extended cell arrays.
     """
     plx, phx = grid.pad_x_lo, grid.pad_x_hi
     ply, phy = grid.pad_y_lo, grid.pad_y_hi

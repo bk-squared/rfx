@@ -192,7 +192,7 @@ def admit_dc_plane(conductor, grid, *, pmc_faces=None, mode=None):
     """Admission shared by Box/non-Box folds and the diagnostic audit."""
     if conductor.is_pec or conductor.surface_impedance_f0 is not None:
         return
-    if not is_tracer(conductor.eps_r) and conductor.eps_r != 1:
+    if is_tracer(conductor.eps_r) or conductor.eps_r != 1:
         raise DCFilmAdmissionError(
             "a film on one node plane has no volume; its eps_r is not modelled",
             code='dc_film_permittivity')
@@ -241,8 +241,7 @@ def _fold_dc_plane(grid, conductor, materials, mask, normal):
             merged.append(previous)
             continue
         weight = jnp.where(on_plane, weights[component], 0)
-        merged.append(jnp.where(weight > 0, density * weight,
-                                0 if previous is None else previous))
+        merged.append(density * weight + (0 if previous is None else previous))
     n_cells = grid.shape[normal] - (not periodic[normal])
     layer = jnp.minimum(plane, n_cells - 1)
     cell_mask = jnp.broadcast_to(jnp.expand_dims(footprint, normal), mask.shape)

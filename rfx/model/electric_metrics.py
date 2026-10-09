@@ -164,8 +164,6 @@ def _slab_model_rows(nx_local, nx_per, nx, rank):
     return ((local >= 1) & (local < nx_local - 1) & (rows < nx))[:, None, None]
 
 
-
-
 def material_record_drive_scales(materials, mesh, drives, dt, *, ranks, grid):
     """Bind source coefficients to all conductivity carriers of the slab."""
     return material_drive_scales(materials.eps_r, materials.sigma, mesh, drives,

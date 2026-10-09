@@ -9,3 +9,4 @@
   sharing edges with a lossy film; a film edge inside a design box.
 - A `sigma_override` or a global sigma sweep replaces the volume conductivity and leaves a declared film in place.
 - The preflight finding `dc_film_half_sheet_error` (#1575) is removed with its cause.
+- Overlapping lossy films add their conductances (before: the later declaration replaced the earlier); abutting films equal one spanning film.
