@@ -255,9 +255,8 @@ def test_explicit_staircase_s_matrix_is_allowed(ports):
 
 @pytest.mark.parametrize("conformal", [False, True])
 def test_device_fallback_preserves_explicit_conformal(conformal, two_devices):
-    # Only the staircase conversion is bit-identical to the old padded ring.
-    # The conformal conversion changes fields and remains an unconverted case.
-    sim = _sim(True, tfsf=True, periodic_tfsf=not conformal)
+    # Both routes solve the same explicitly declared periodic cell.
+    sim = _sim(True, tfsf=True, periodic_tfsf=True)
     expected = sim.run(n_steps=N_STEPS, skip_preflight=True, conformal_pec=conformal)
     got = sim.run(
         n_steps=N_STEPS,
