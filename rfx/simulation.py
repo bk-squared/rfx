@@ -2261,7 +2261,8 @@ def run(
         # the baked step applies no per-face masks after its H update, so a
         # magnetic wall would be neither electric nor magnetic there (#1164)
         and not _ctx["use_pmc_faces"]
-        and not _ctx["use_tfsf"]
+        # the baked step has no slot for a TFSF or a waveguide-port correction
+        and not (_ctx["use_tfsf"] or _ctx["use_waveguide_ports"])
         and not _ctx["use_debye"]
         and not _ctx["use_lorentz"]
         and not _ctx["use_pec_edges"]

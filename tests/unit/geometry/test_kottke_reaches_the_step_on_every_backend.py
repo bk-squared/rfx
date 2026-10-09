@@ -80,3 +80,78 @@ def test_the_baked_fast_path_is_not_taken_with_an_inverse_tensor(monkeypatch):
     stage1 = _trace(True)
     assert not built
     _judge(plain, stage1, kottke)
+
+
+def _told_it_is_on_a_gpu(monkeypatch):
+    import jax
+    import rfx.simulation as simulation
+    built = []
+    original = simulation.precompute_coeffs
+
+    def spy(*args, **kwargs):
+        built.append(True)
+        return original(*args, **kwargs)
+    monkeypatch.setattr(simulation, "precompute_coeffs", spy)
+    monkeypatch.setattr(jax, "default_backend", lambda: "gpu")
+    return built
+
+
+def test_the_occupancy_tensor_of_forward_is_not_dropped_either(monkeypatch):
+    """forward() with RFX_PEC_OCC_KOTTKE=1 turns the occupancy into the same
+    inverse tensor and hands the step no occupancy, so nothing else kept it
+    off the baked path: the CONDUCTOR was dropped (probe 0.79 of its peak
+    away from the general path)."""
+    import jax.numpy as jnp
+
+    def trace(occupancy):
+        sim = Simulation(freq_max=20e9, domain=(0.024, 0.020, 0.016), dx=1e-3,
+                         boundary="pec", cpml_layers=0)
+        sim.add_source((0.004, 0.005, 0.004), "ez", amplitude_kind="current")
+        sim.add_probe((0.019, 0.014, 0.011), "ez")
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            result = sim.forward(n_steps=300, pec_occupancy_override=occupancy,
+                                 skip_preflight=True, checkpoint=False)
+        return np.asarray(result.time_series)[:, 0].astype(np.float64), sim
+
+    monkeypatch.setenv("RFX_PEC_OCC_KOTTKE", "1")
+    empty, sim = trace(None)
+    occ = np.zeros(sim._build_grid().shape, np.float32)
+    occ[10:14, 8:12, 6:10] = 0.7
+    occ[11:13, 9:11, 7:9] = 1.0
+    general, _ = trace(jnp.asarray(occ))
+    built = _told_it_is_on_a_gpu(monkeypatch)
+    told, _ = trace(jnp.asarray(occ))
+    assert not built, "the occupancy tensor took the baked scalar-coefficient path"
+    peak = np.max(np.abs(empty))
+    assert np.max(np.abs(general - empty)) / peak > 1e-2      # the conductor matters here
+    assert np.array_equal(told, general)
+
+
+def test_a_waveguide_port_is_not_dropped_by_the_baked_path(monkeypatch):
+    """Reachable only through rfx.simulation.run (the public port requires an
+    absorber), but the same hand-kept exclusion list: the port's E and H
+    corrections sit outside the baked step, so the port radiated nothing."""
+    import jax.numpy as jnp
+    import rfx.simulation as simulation
+    from rfx.core.yee import init_materials
+    from rfx.grid import Grid
+    from rfx.sources.waveguide_port import WaveguidePort, init_waveguide_port
+
+    def peak():
+        grid = Grid(freq_max=12e9, domain=(0.060, 0.02286, 0.01016), dx=1.27e-3, cpml_layers=0)
+        port = WaveguidePort(x_index=8, y_slice=(0, grid.shape[1]), z_slice=(0, grid.shape[2]),
+                             a=0.02286, b=0.01016, mode=(1, 0), mode_type="TE", direction="+x")
+        cfg = init_waveguide_port(port, grid.dx, jnp.linspace(8e9, 11e9, 5), f0=10e9,
+                                  dft_total_steps=200, dt=grid.dt, grid=grid)
+        probe = simulation.make_probe(grid, (0.030, 0.0114, 0.005), "ez")
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            result = simulation.run(grid, init_materials(grid.shape), 200, boundary="pec",
+                                    waveguide_ports=[cfg], probes=[probe])
+        return float(np.max(np.abs(np.asarray(result.time_series))))
+    general = peak()
+    built = _told_it_is_on_a_gpu(monkeypatch)
+    told = peak()
+    assert general > 0
+    assert not built and told == general
