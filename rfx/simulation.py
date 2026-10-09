@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any, Callable, NamedTuple
 
-from rfx import _realized
+from rfx import _realized, _grid_metric
 
 import jax
 import jax.numpy as jnp
@@ -385,7 +385,7 @@ def make_source(grid: Grid, position, component, waveform_fn, n_steps,
     that legacy/native case.
     """
     from rfx.model.source_coefficients import uniform_source_table
-    idx = grid.position_to_index(position)
+    idx = _grid_metric.field_index(grid, position, component)
     if amplitude_kind == "current" and materials is None:
         raise ValueError(
             "make_source(amplitude_kind='current') needs materials "
@@ -430,7 +430,7 @@ def make_j_source(grid: Grid, position, component, waveform_fn, n_steps, materia
     amplitude_kind : 'field' | 'current' | None (issue #571, above)
     """
     from rfx.model.source_coefficients import uniform_source_table
-    idx = grid.position_to_index(position)
+    idx = _grid_metric.field_index(grid, position, component)
     i, j, k = idx
     waveform = uniform_source_table(
         grid, idx, component, waveform_fn, n_steps, materials, amplitude_kind,
@@ -446,7 +446,7 @@ def make_port_source(grid: Grid, port, materials: MaterialArrays, n_steps):
     ``setup_lumped_port()``.
     """
     from rfx.sources.port_drive import stamped_drive, port_drive_waveform
-    idx = grid.position_to_index(port.position)
+    idx = _grid_metric.field_index(grid, port.position, port.component)
     i, j, k = idx
 
     waveform = port_drive_waveform(
@@ -490,7 +490,7 @@ def make_wire_port_sources(grid, port, materials, n_steps, pec_edge_masks=None):
 
 def make_probe(grid: Grid, position, component):
     """Create a ProbeSpec from a physical position."""
-    idx = grid.position_to_index(position)
+    idx = _grid_metric.field_index(grid, position, component)
     return ProbeSpec(i=idx[0], j=idx[1], k=idx[2], component=component)
 
 
@@ -3049,7 +3049,7 @@ def run_until_decay(
         cy = (grid.ny - 1) * dx / 2.0
         cz = 0.0 if grid.is_2d else (grid.nz - 1) * dx / 2.0
         monitor_position = (cx, cy, cz)
-    mon_idx = grid.position_to_index(monitor_position)
+    mon_idx = _grid_metric.field_index(grid, monitor_position, monitor_component)
 
     # ---- precompute source waveforms up to max_steps ----
     if sources:

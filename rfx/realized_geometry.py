@@ -6,6 +6,7 @@ Arrays are read-only numpy arrays; this API is not an autodiff interface.
 """
 from __future__ import annotations
 
+from rfx._grid_metric import field_index
 from dataclasses import dataclass
 
 import numpy as np
@@ -369,7 +370,7 @@ def _ports(sim, ctx, assembled):
     rows = []
     for i, pe in enumerate(sim._ports):
         if pe.extent is None:
-            cells = (tuple(int(k) for k in locate(pe.position)),)
+            cells = (tuple(int(k) for k in field_index(grid, pe.position, pe.component)),)
         else:
             a = 'xyz'.index(pe.component[1])
             end = list(pe.position)

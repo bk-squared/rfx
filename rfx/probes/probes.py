@@ -18,7 +18,7 @@ from rfx.measurement.plan import field_channel
 from rfx.grid import Grid
 from rfx.boundaries.axes import resolve_cpml_axes
 from rfx.boundaries.cpml import apply_cpml_e, apply_cpml_h, init_cpml
-from rfx.sources.sources import LumpedPort, _wire_port_live_cells
+from rfx.sources.sources import LumpedPort, _wire_port_live_cells, field_index
 
 
 @dataclass(frozen=True)
@@ -31,7 +31,7 @@ class FieldMonitor:
 
 def sample_field(state, grid: Grid, monitor: FieldMonitor) -> float:
     """Sample a field component at a monitor position."""
-    idx = grid.position_to_index(monitor.position)
+    idx = field_index(grid, monitor.position, monitor.component)
     field = getattr(state, monitor.component)
     return field[idx[0], idx[1], idx[2]]
 
@@ -63,7 +63,7 @@ def init_dft_probe(
     dft_window_alpha: float = 0.25,
 ) -> DFTProbe:
     """Create a DFT probe at a point for given frequencies."""
-    idx = grid.position_to_index(position)
+    idx = field_index(grid, position, component)
     # Accumulator dtype follows the x64 state (issue #477 residual): under
     # x64 the per-step update (field * complex phase) is complex128, and a
     # hardcoded complex64 accumulator breaks the scan-carry dtype contract.
@@ -122,7 +122,7 @@ def port_voltage(state, grid: Grid, port: LumpedPort) -> jnp.ndarray:
     -------
     float scalar
     """
-    idx = grid.position_to_index(port.position)
+    idx = field_index(grid, port.position, port.component)
     i, j, k = idx
     field = getattr(state, port.component)
     return _port_voltage_value(field[i, j, k], grid.cells(port.component[1])[idx['xyz'.index(port.component[1])]])
@@ -211,7 +211,7 @@ def port_current(state, grid: Grid, port: LumpedPort,
     -------
     float scalar
     """
-    idx = tuple(grid.position_to_index(port.position))
+    idx = tuple(field_index(grid, port.position, port.component))
     return _metric_ampere_loop(state, idx, port.component, grid, periodic,
                         boundary=_port_curl_boundary(grid, periodic))
 
@@ -384,7 +384,7 @@ def init_sparam_probe(
     -------
     SParamProbe
     """
-    idx = grid.position_to_index(port.position)
+    idx = field_index(grid, port.position, port.component)
     n = len(freqs)
     zeros = jnp.zeros(n, dtype=jnp.complex64)
     return SParamProbe(

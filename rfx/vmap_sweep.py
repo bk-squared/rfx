@@ -31,6 +31,7 @@ Limitations
 
 from __future__ import annotations
 
+from rfx._grid_metric import field_index
 from dataclasses import dataclass, replace
 
 import jax
@@ -704,7 +705,7 @@ def _build_full_scan_fn(
                 sources.append(make_source(grid, pe.position, pe.component,
                                            pe.waveform, n_steps))
             elif pe.amplitude_kind == "current":
-                idx = grid.position_to_index(pe.position)
+                idx = field_index(grid, pe.position, pe.component)
                 j_source_meta.append((idx[0], idx[1], idx[2], pe.component))
             else:
                 sources.append(make_source(grid, pe.position, pe.component,
@@ -1023,7 +1024,7 @@ def vmap_material_sweep(
                 mu_r=batched_materials.mu_r[batch_idx],
             )
             waveforms = [uniform_source_table(
-                grid, grid.position_to_index(pe.position), pe.component,
+                grid, field_index(grid, pe.position, pe.component), pe.component,
                 pe.waveform, n_steps, mats, pe.amplitude_kind,
                 native=native, periodic=source_periodic,
             ) for pe in dynamic_sources]

@@ -21,7 +21,7 @@ import math
 import os
 from typing import NamedTuple
 
-from rfx import _realized
+from rfx import _realized, _grid_metric
 from rfx.model import conductors as _conductors
 from rfx.model.overrides import apply_material_overrides
 from rfx.model import occupancy as _occupancy
@@ -1441,7 +1441,7 @@ class _ExecuteMixin:
 
             probes_3d = []
             for pe in self._probes:
-                i, j, k = grid.position_to_index(pe.position)
+                i, j, k = _grid_metric.field_index(grid, pe.position, pe.component)
                 probes_3d.append((i, j, k, pe.component))
 
             eps_r_3d = materials.eps_r
@@ -1449,7 +1449,7 @@ class _ExecuteMixin:
 
             sources_3d = []
             for pe in self._ports:
-                i, j, k = grid.position_to_index(pe.position)
+                i, j, k = _grid_metric.field_index(grid, pe.position, pe.component)
                 waveform = field_source_samples(pe.waveform, n_steps, dt)
                 sources_3d.append((i, j, k, pe.component, waveform))
 
@@ -1492,7 +1492,7 @@ class _ExecuteMixin:
         # ---- 2D TMz path ----
         probes = []
         for pe in self._probes:
-            i, j, _ = grid.position_to_index(pe.position)
+            i, j, _ = _grid_metric.field_index(grid, pe.position, pe.component)
             probes.append((i, j, pe.component))
 
         # Coefficient derivatives use eps_r units (#1357), including 2-D ADI.
@@ -1501,7 +1501,7 @@ class _ExecuteMixin:
 
         sources = []
         for pe in self._ports:
-            i, j, _ = grid.position_to_index(pe.position)
+            i, j, _ = _grid_metric.field_index(grid, pe.position, pe.component)
             waveform = field_source_samples(pe.waveform, n_steps, dt)
             sources.append((i, j, waveform))
 
@@ -1991,7 +1991,7 @@ class _ExecuteMixin:
             materials = setup_lumped_port(grid, lp, materials)
             if _drive_this_port:
                 sources.defer(make_port_source, grid, lp, n_steps=n_steps)
-            idx = grid.position_to_index(pe.position)
+            idx = _grid_metric.field_index(grid, pe.position, pe.component)
             conductors, pec_mask_local, pec_edge_masks_local = _conductors.forward_lumped_port_stage(conductors, pe, f"port[{_port_index}]")
             # Register a JIT-integrated S-param accumulator for this
             # lumped port when the user requested forward(port_s11_freqs=...)
@@ -2249,7 +2249,7 @@ class _ExecuteMixin:
             if self._lumped_rlc:
                 mask = jnp.zeros(grid.shape, dtype=bool)
                 for spec in self._lumped_rlc:
-                    mask = mask.at[grid.position_to_index(spec.position)].set(True)
+                    mask = mask.at[_grid_metric.field_index(grid, spec.position, spec.component)].set(True)
                 nonvacuum.append(mask)
             for spec in (design_box, design_occupancy):
                 if spec is not None:
@@ -2711,7 +2711,6 @@ class _ExecuteMixin:
         )
         from rfx.core.yee import MaterialArrays
         from rfx.nonuniform import (
-            position_to_index as _nu_pos_to_idx,
             make_current_source as _nu_make_current_source,
             current_source_samples as _nu_current_source_samples,
             current_source_volume as _nu_current_source_volume,
@@ -2884,7 +2883,7 @@ class _ExecuteMixin:
                     "supported on the distributed=True forward path; "
                     "use distributed=False or replace with a current "
                     "source (impedance=0).")
-            idx = _nu_pos_to_idx(grid, pe.position)
+            idx = _grid_metric.field_index(grid, pe.position, pe.component)
             if (_drive_from_override
                     and not _needs_scale(pe.amplitude_kind, "cb_over_dv")):
                 dV, _ = _nu_current_source_volume(grid, idx, pe.component)
@@ -2968,7 +2967,7 @@ class _ExecuteMixin:
 
         probes: list[ProbeSpec] = []
         for pe in self._probes:
-            idx = _nu_pos_to_idx(grid, pe.position)
+            idx = _grid_metric.field_index(grid, pe.position, pe.component)
             probes.append(ProbeSpec(
                 i=int(idx[0]), j=int(idx[1]), k=int(idx[2]),
                 component=pe.component,
@@ -3488,7 +3487,7 @@ class _ExecuteMixin:
                 # A plain soft source: caught as a source cell at the step --
                 # except on a held port edge, where a port's drive is
                 # accepted, so it is refused here whatever it sits on.
-                _src = self._design_box_index_of(grid, _pe.position)
+                _src = _grid_metric.field_index(grid, _pe.position, _pe.component)
                 if holds_ports and _in_window(_src):
                     raise ValueError(
                         f"the design box (cells {bounds}) holds a soft "
@@ -3499,7 +3498,7 @@ class _ExecuteMixin:
                         f"eps_override.")
                 continue
             _axis = _axis_of[_pe.component]
-            _lo = list(self._design_box_index_of(grid, _pe.position))
+            _lo = list(self._design_box_index_of(grid, _pe.position) if _pe.extent is not None else _grid_metric.field_index(grid, _pe.position, _pe.component))
             _cell_lo = list(_lo)
             _cell_hi = list(_lo)
             if getattr(_pe, "extent", None) is not None:

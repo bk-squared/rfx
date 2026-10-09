@@ -328,3 +328,24 @@ def is_one_cell_size(sizes) -> bool:
     if s.size == 0:
         return True
     return bool(np.all(np.isclose(s, s[0], rtol=SAME_CELL_RTOL, atol=0.0)))
+
+
+def field_index(grid, position, component):
+    """Resolve one Yee component, keeping displaced high-face entries inside.
+
+    Node lookup and interior rounding stay unchanged. A graded grid has no
+    periodic axes; a uniform grid owns its periodic-axis record.
+    """
+    if hasattr(grid, "position_to_index"):
+        index = list(grid.position_to_index(position))
+    else:
+        from rfx.nonuniform import position_to_index
+        index = list(position_to_index(grid, position))
+    displaced = {"ex": (0,), "ey": (1,), "ez": (2,),
+                 "hx": (1, 2), "hy": (0, 2), "hz": (0, 1)}
+    periodic = getattr(grid, "periodic_axes", "")
+    for axis in displaced[component]:
+        if (grid.shape[axis] > 1 and "xyz"[axis] not in periodic
+                and index[axis] == grid.shape[axis] - 1):
+            index[axis] -= 1
+    return tuple(index)

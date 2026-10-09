@@ -54,6 +54,7 @@ which stay in the facade with the realization family. The third,
 
 from __future__ import annotations
 
+from rfx._grid_metric import field_index
 import math
 
 import numpy as np
@@ -604,11 +605,7 @@ def _validate_cfg_port_inside_pec(self, _w, dx: float) -> None:
         if component not in ("ex", "ey", "ez", "hx", "hy", "hz"):
             continue
         try:
-            if is_nonuniform:
-                from rfx.nonuniform import position_to_index as _nu_p2i
-                idx = tuple(int(v) for v in _nu_p2i(grid, pos))
-            else:
-                idx = tuple(int(v) for v in grid.position_to_index(pos))
+            idx = tuple(int(v) for v in field_index(grid, pos, component))
         except (ValueError, TypeError, IndexError, AttributeError):
             continue
         if not realized.component_is_dead(component, idx):
@@ -830,11 +827,14 @@ def half_node_split_findings(sim, grid=None) -> list[str]:
     # (key, label, position) per point feature; a wire port's two ends
     # share its key.
     points = []
+    point_components = {}
     for pe in getattr(sim, "_ports", ()):
         pos = tuple(float(v) for v in pe.position)
         kind = ("add_source" if float(pe.impedance) == 0.0
                 and pe.extent is None else "add_port")
         points.append((id(pe), f"{kind} at {pos}", pos))
+        if pe.extent is None:
+            point_components[id(pe)] = pe.component
         if pe.extent is not None:
             end = list(pos)
             end["xyz".index(pe.component[-1])] += float(pe.extent)
@@ -844,6 +844,7 @@ def half_node_split_findings(sim, grid=None) -> list[str]:
     for pr in getattr(sim, "_probes", ()):
         pos = tuple(float(v) for v in pr.position)
         points.append((id(pr), f"add_probe at {pos}", pos))
+        point_components[id(pr)] = pr.component
     if not points:
         return []
 
@@ -964,7 +965,8 @@ def half_node_split_findings(sim, grid=None) -> list[str]:
     seen = set()
     for pkey, label, pos in points:
         try:
-            idx = (position_to_index(grid, pos) if nonuniform
+            idx = (field_index(grid, pos, point_components[pkey]) if pkey in point_components
+                   else position_to_index(grid, pos) if nonuniform
                    else grid.position_to_index(pos))
         except ValueError:
             continue          # outside the grid: reported elsewhere
@@ -1060,9 +1062,11 @@ def trace_far_end_findings(sim, grid=None) -> list[str]:
                 continue
             if nu:
                 from rfx.nonuniform import position_to_index
-                port_node = position_to_index(grid, pe.position)
+                port_node = (position_to_index(grid, pe.position) if pe.extent is not None
+                             else field_index(grid, pe.position, pe.component))
             else:
-                port_node = grid.position_to_index(pe.position)
+                port_node = (grid.position_to_index(pe.position) if pe.extent is not None
+                             else field_index(grid, pe.position, pe.component))
             for dimension, a in enumerate(tangent):
                 first, last = int(occupied[dimension].min()), int(occupied[dimension].max())
                 if not first <= port_node[a] <= last:

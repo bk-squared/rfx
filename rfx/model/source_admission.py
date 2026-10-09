@@ -1,4 +1,5 @@
 """Source admission against geometry conductors and declared PEC walls."""
+from rfx._grid_metric import field_index
 import warnings
 from types import SimpleNamespace
 
@@ -66,17 +67,11 @@ def _dead_sources(sim, conductors):
     edges = (walls if released.pec_edges is None else
              tuple(wall | np.asarray(body, dtype=bool)
                    for wall, body in zip(walls, released.pec_edges)))
-    if conductors.lane == 'nonuniform':
-        from rfx.nonuniform import position_to_index
-        def locate(position):
-            return position_to_index(grid, position)
-    else:
-        locate = grid.position_to_index
     for index, source in enumerate(sim._ports):
         component = source.component.lower()
         cells = (_wire_port_cells(grid, wire_port_from_entry(source))
                  if source.extent is not None else
-                 [tuple(int(v) for v in locate(source.position))])
+                 [tuple(int(v) for v in field_index(grid, source.position, component))])
         if not cells or not all(_component_is_dead(edges, component, cell)
                                 for cell in cells):
             continue

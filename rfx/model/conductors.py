@@ -5,6 +5,7 @@ This module owns their products, not another rasterization convention.
 """
 from __future__ import annotations
 
+from rfx._grid_metric import field_index
 from dataclasses import dataclass, field, replace
 
 import numpy as np
@@ -308,11 +309,7 @@ def lumped_port_stage(conductors, port, entity_id, *, clear_cells=False):
     if port.impedance <= 0 or port.extent is not None:
         return conductors
     grid = conductors.grid
-    if conductors.lane == 'nonuniform':
-        from rfx.nonuniform import position_to_index
-        cell = position_to_index(grid, port.position)
-    else:
-        cell = grid.position_to_index(port.position)
+    cell = field_index(grid, port.position, port.component)
     return clear_conductor_edges(conductors, [cell], component=port.component,
                                  entity_id=entity_id, port_kind="lumped", clear_cells=clear_cells)
 

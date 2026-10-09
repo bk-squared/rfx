@@ -6,6 +6,7 @@ stamp on the build-local descriptor for subsequent source assembly.
 
 from __future__ import annotations
 
+from rfx._grid_metric import field_index
 from dataclasses import dataclass, field
 
 import math
@@ -342,7 +343,7 @@ def add_point_source(
     component : "ex", "ey", or "ez"
     value : field value to add
     """
-    idx = grid.position_to_index(position)
+    idx = field_index(grid, position, component)
     i, j, k = idx
 
     field = getattr(state, component)
@@ -365,7 +366,7 @@ def add_lumped_port(
 
     For Stage 2 — simplified version for Stage 1 acts as hard source.
     """
-    idx = grid.position_to_index(position)
+    idx = field_index(grid, position, component)
     i, j, k = idx
     dx = grid.dx
 
@@ -411,7 +412,7 @@ def setup_lumped_port(grid: Grid, port: LumpedPort, materials) -> object:
     Uses the 3D formula σ = d_parallel / (Z0 · d_perp1 · d_perp2)
     which reduces to 1/(Z0·dx) for cubic cells.
     """
-    idx = grid.position_to_index(port.position)
+    idx = field_index(grid, port.position, port.component)
     sp = port_sigma(grid, idx, port.component, port.impedance)
     port._drive_stamps.clear()
     port._drive_stamps[tuple(idx)] = (sp, 1 / port_d_parallel(grid, idx, port.component))
@@ -425,7 +426,7 @@ def apply_lumped_port(state, grid: Grid, port: LumpedPort, t: float, materials) 
     """
     from rfx.sources.port_drive import stamped_drive, port_drive_waveform
 
-    idx = grid.position_to_index(port.position)
+    idx = field_index(grid, port.position, port.component)
     i, j, k = idx
     increment = port_drive_waveform(
         grid, idx, port.component, port.excitation, None, materials,

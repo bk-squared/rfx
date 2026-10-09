@@ -72,6 +72,7 @@ with a plane wave on a sheet of pure 2 nH elements on 1 mm cells it read
 
 from __future__ import annotations
 
+from rfx._grid_metric import field_index
 from dataclasses import dataclass
 from typing import NamedTuple
 
@@ -329,7 +330,7 @@ def setup_rlc_materials(grid, spec: LumpedRLCSpec, materials):
 
     Returns updated MaterialArrays.
     """
-    idx = _resolve_position_to_index(grid, spec.position)
+    idx = field_index(grid, spec.position, spec.component)
     i, j, k = idx
 
     # Series topology with multiple components: ADE handles R and C
@@ -376,7 +377,7 @@ def build_rlc_meta(grid, spec: LumpedRLCSpec, materials, *,
     """
     from rfx.sources.sources import port_d_parallel as _d_par
     from rfx.sources.sources import port_dual_transverse as _dual_t
-    idx = _resolve_position_to_index(grid, spec.position)
+    idx = field_index(grid, spec.position, spec.component)
     i, j, k = idx
     d_par = _d_par(grid, idx, spec.component)
     _b, _c = _dual_t(grid, idx, spec.component)
@@ -460,7 +461,7 @@ def setup_rlc_materials_traced(grid, spec: LumpedRLCSpec, materials, *,
     spec float is used, so a plain ``forward()`` on a sim with a registered RLC
     element correctly reflects the element (no more silent no-op).
     """
-    idx = _resolve_position_to_index(grid, spec.position)
+    idx = field_index(grid, spec.position, spec.component)
     i, j, k = idx
 
     # Series topology with multiple components: ADE handles R and C (static).
@@ -510,7 +511,7 @@ def build_rlc_meta_traced(grid, spec: LumpedRLCSpec, materials, *,
     """
     from rfx.sources.sources import port_d_parallel as _d_par
     from rfx.sources.sources import port_dual_transverse as _dual_t
-    idx = _resolve_position_to_index(grid, spec.position)
+    idx = field_index(grid, spec.position, spec.component)
     i, j, k = idx
     d_par = _d_par(grid, idx, spec.component)
     _b, _c = _dual_t(grid, idx, spec.component)
