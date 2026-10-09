@@ -380,7 +380,9 @@ def test_the_jit_scan_lane_calls_the_shared_loop_with_the_runs_periodic_flags():
     finally:
         _probes._ampere_loop = real
 
-    from_scan = [c for c in calls if c["file"].endswith("rfx/simulation.py")]
+    from_scan = [c for c in calls
+                 if (c["file"].endswith("rfx/simulation.py")
+                     or c["file"].endswith("rfx/stepping/uniform.py"))]
     assert from_scan, (
         "rfx/simulation.py's scan body never called the shared Ampere loop — "
         "it is spelling the six branches inline again. Callers seen: "
