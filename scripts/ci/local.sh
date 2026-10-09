@@ -11,7 +11,7 @@
 # Those are 35 minutes, and `.github/workflows/pr-tests.yml` only starts them
 # when the diff touches code (`scripts/ci/changed_paths.py` decides).
 #
-#   scripts/ci/local.sh                 # the nine steps; pr-body reports skipped
+#   scripts/ci/local.sh                 # the ten steps; pr-body reports skipped
 #   scripts/ci/local.sh /tmp/body.md    # also check that PR body
 #   PYTHON=.venv/bin/python scripts/ci/local.sh
 #   CHANGELOG_BASE=origin/main CHANGELOG_HEAD=HEAD scripts/ci/local.sh
@@ -21,12 +21,12 @@
 #
 # $PYTHON is exported, so every step and every script this one calls uses it.
 #
-# The first eight step names are listed in docs/agent/agent-runbook.mdx.
+# The first nine step names are listed in docs/agent/agent-runbook.mdx.
 # The final selected-tests session extends that baseline (issue #1528).
 
 set -uo pipefail
 
-STEP_NAMES=(ruff docs-hygiene changelog-fragment data-budget file-size-ratchet pr-body workflow-yaml contract-tests selected-tests)
+STEP_NAMES=(ruff docs-hygiene changelog-fragment data-budget file-size-ratchet pr-body workflow-yaml api-reference contract-tests selected-tests)
 
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
@@ -123,13 +123,21 @@ if bad:
 PYEOF
 
 begin 7
+# The inventory half of the api-reference job of public-docs-source: a changed
+# public signature without a regenerated docs/guides/api_symbol_inventory.json.
+# That job is path-filtered and not a required check, so nothing else stops it
+# before the merge (PR 1570 reached main red on it, 2026-10-09). The rendered
+# HTML half needs pdoc and stays in CI.
+"$PYTHON" scripts/check_api_reference.py || fail
+
+begin 8
 # The same flags the required gate in pr-tests.yml uses. Without `-o addopts=""`
 # the local run silently collects two fewer tests than CI does, which is the
 # local-is-weaker-than-CI gap these scripts exist to close. Costs about 27 s.
 PYTHONPATH="$PWD/scripts/ci${PYTHONPATH:+:$PYTHONPATH}" "$PYTHON" -m pytest tests/contracts -q -x -p rfx_gate_memory \
   -o addopts="" -m "not gpu and not docs_consistency" --strict-markers || fail
 
-begin 8
+begin 9
 selection_dir=$(mktemp -d) || fail
 # Quote the concrete path now so EXIT always removes this exact scratch directory.
 printf -v selection_cleanup 'rm -rf -- %q' "$selection_dir"

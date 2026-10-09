@@ -41,6 +41,42 @@ Lossy sheets (`surface_impedance_f0`, or sigma below the PEC threshold) are not 
 
 ---
 
+### A low-resistance thin film transmits too little and absorbs too much on a coarse mesh
+
+Tracker: #1572
+
+A lossy film from `add_thin_conductor` (sheet resistance `Rs = 1/(sigma_bulk * thickness)`) carries its conductance on the
+two node planes that bound one cell, half on each. Two half-sheets one cell apart are not one sheet, and the error grows with
+`(k0 dx)(eta0/Rs)`. Measured at normal incidence in vacuum, 10 GHz, cells of lambda/20 / lambda/40 / lambda/80, against the
+declared sheet:
+
+| Rs (ohm/sq) | transmitted power (dB) | absorbed power (dB) |
+|---|---|---|
+| 100 | -0.7 / -0.2 / -0.05 | +0.7 / +0.2 / +0.05 |
+| 30 | -3.6 / -1.2 / -0.3 | +1.9 / +1.0 / +0.3 |
+| 10 | -10.3 / -5.3 / -2.1 | +2.8 / +2.3 / +1.4 |
+
+At 377 ohm/sq and above every error is within 0.2 dB on lambda/20. Reflected power is within 0.8 dB at every sheet
+resistance. The absorbed power saturates at +3 dB (twice the declared sheet's). Oblique incidence, a film on a dielectric,
+graded meshes and multi-device runs were not measured.
+
+In front of a conductor the same realization moves a resonance, at any sheet resistance: the two planes are the declared one
+and the next one toward higher coordinate, so the film sits about half a cell off its declared distance. Measured for a film
+7.5 mm (a quarter wave at 10 GHz) from a PEC wall, normal incidence, the same three cells; declared absorption maximum 9.99 GHz:
+
+| Rs (ohm/sq), wall side | absorption maximum (GHz) | shift |
+|---|---|---|
+| 300, wall on the low-coordinate side of the film | 8.51 / 9.18 / 9.57 | -15 / -8 / -4 % |
+| 300, wall on the high-coordinate side | 10.27 / not resolved / not resolved | +2.8 % |
+| 377, wall on the low-coordinate side | 8.67 / not resolved / not resolved | -13 % |
+
+At 377 ohm/sq with the wall on the low side the reflection at 10 GHz is -18 dB on lambda/20 where the declared sheet has a
+null. The shift halves when the cell halves. `preflight()` does not report this case: `(k0 dx)(eta0/Rs)` is 0.3 there.
+What to do now: keep the cell across the film below about `3 Rs / (k0 eta0)` when transmitted or absorbed power matters, and
+compare two meshes. For a film at distance D from a conductor on its low side the measured shift is about 0.8 dx/D
+(dx/D from 0.2 to 0.05): compare two meshes and extrapolate to dx = 0. `preflight()` reports the expected error (`dc_film_half_sheet_error`) when `(k0 dx)(eta0/Rs)` exceeds 3 at
+`freq_max`.
+
 ### Experimental ADI
 
 Tracker: #1487

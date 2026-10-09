@@ -171,7 +171,7 @@ jobs:
       # scripts/dev/prune_worktrees.py past test_prune_worktrees.py, and the
       # forbidding test would never run. So the contracts run on BOTH branches:
       # here when the diff is not code, and inside the twelve shards (which collect
-      # the whole tree) when it is. Roughly 5 minutes.
+      # the whole tree) when it is.
       - name: Contract tests — the gates the shards are not running today
         if: needs.changes.outputs.code_changed == 'false'
         # Same flags as the guard suite below, for the same reason: this is the
@@ -198,7 +198,12 @@ jobs:
             echo "FAIL: tests/contracts collected only $collected tests (<500) — silent deselection?"
             exit 1
           fi
+          # Three workers, one file per worker: run serially the suite no longer
+          # fits this job (2026-10-09: 6052 tests, 57 % done when the 30 min limit
+          # cancelled it, on two PRs that changed one JSON file). The shards on
+          # the code branch already split the same files across twelve jobs.
           python -m pytest tests/contracts -q -ra -p no:cacheprovider \
+            -n 3 --dist loadfile \
             -o addopts="" -m "not gpu and not docs_consistency" --strict-markers
 
       # `!= 'false'`, not `== 'true'`: an empty or unexpected output — a

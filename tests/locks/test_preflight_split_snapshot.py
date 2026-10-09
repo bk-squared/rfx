@@ -1383,6 +1383,9 @@ def _upml_nonuniform_lane_sim():
     return mod._sim("upml", dz_profile=mod.DZ)
 
 
+# #PENDING: this is the only one of 66 snapshot fixtures gaining
+# dc_film_half_sheet_error (warning, thin_conductors[0]); occupied dz=1.5 mm,
+# Rs=28.5714 ohm/sq, x=4.14523. All pre-existing structured numbers are unchanged.
 def _thin_conductor_graded_node_sim():
     """A LOSSY sheet landing exactly on the 0.5 / 1.5 mm grading step.
 

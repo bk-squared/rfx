@@ -172,13 +172,91 @@ def dc_film_refusals(sim, grid):
     return refused
 
 
-def warn_dc_films(sim, warn):
-    """Expose assembly refusals through the existing structured finding carrier."""
+def half_sheet_film_error(rs_ohm, dx_normal_m, freq_hz):
+    """Normal-incidence two-half-sheet error against the declared ideal sheet.
+
+    Return float64 (electrical loading x, transmitted dB, absorbed dB).
+    This numpy-only estimate does not change the DC realization.
+    """
+    rs, dx, freq = (np.asarray(v, dtype=np.float64)
+                    for v in (rs_ohm, dx_normal_m, freq_hz))
+    theta = 2 * np.pi * freq * dx / 299792458.0
+    y = 376.730313668 / rs
+    g = y / 2
+    c, s = np.cos(theta), np.sin(theta)
+    den = 2*c + 2*g*c + 1j*s*(2 + 2*g + g*g)
+    t2 = 2 / den
+    r2 = (-2*g*c - 1j*s*g*g) / den
+    t1, r1 = 2 / (2 + y), -y / (2 + y)
+    transmitted_db = 20 * np.log10(np.abs(t2) / np.abs(t1))
+    absorbed_db = 10 * np.log10(
+        (1 - np.abs(r2)**2 - np.abs(t2)**2)
+        / (1 - np.abs(r1)**2 - np.abs(t1)**2))
+    return theta * y, transmitted_db, absorbed_db
+
+
+def _warn_half_sheet_film(sim, grid, tc, i, warn):
+    """Read the fold's occupied cell width; traced inputs are not judgeable."""
     from rfx.preflight._common import PreflightWarning
-    if not any(not tc.is_pec and tc.surface_impedance_f0 is None
-               and not isinstance(tc.shape, Box) for tc in sim._thin_conductors):
+
+    lo, hi = sheet_bounds(tc.shape)
+    if lo is None or hi is None:
+        return
+    coords = _grid_coords(grid)
+    widths = tuple(grid.cells(a) for a in range(3))
+    if any(is_tracer(v) for v in jax.tree_util.tree_leaves(
+            (tc.sigma_bulk, tc.thickness, coords, widths, lo, hi, sim._freq_max))):
+        return
+    normal = sheet_normal_axis(lo, hi)
+    with jax.ensure_compile_time_eval():
+        if isinstance(tc.shape, Box):
+            # Exactly the Box branches in fold_thin_conductor below.
+            mask = (tc.shape.mask_on_coords(*coords) if hasattr(grid, 'dx_arr')
+                    else dc_cell_mask(tc.shape, grid))
+        else:
+            try:
+                mask = admit_dc_film(tc.shape, grid, snap=sim._snap, emit=False).mask
+            except DCFilmAdmissionError:
+                return  # The existing admission finding owns this refusal.
+        occupied = np.flatnonzero(np.asarray(mask).any(
+            axis=tuple(a for a in range(3) if a != normal)))
+    if len(occupied) != 1:
+        return  # No single occupied film layer to estimate.
+    dx = float(np.asarray(widths[normal])[occupied[0]])
+    try:
+        conductance = float(tc.sigma_bulk) * float(tc.thickness)
+    except (TypeError, ValueError):
+        return  # Not a scalar declaration; the assembly reports it.
+    f = float(sim._freq_max)
+    # Judge the loading before any dB arithmetic: a near-insulating film has 0/0 there.
+    if not conductance > 0 or 2*np.pi*f*dx/299792458.0 * 376.730313668 * conductance <= 3.0:
+        return
+    rs = 1 / conductance
+    x, t, a = half_sheet_film_error(rs, dx, f)
+    dxmax = 3 * rs * 299792458.0 / (2 * np.pi * f * 376.730313668)
+    warn.warn(PreflightWarning(
+        f"lossy film of {rs:.3g} ohm/sq is realized as two half-sheets one cell "
+        f"({dx:.3g} m) apart: at freq_max = {f/1e9:.3g} GHz, "
+        f"(k0 dx)(eta0/Rs) = {x:.2g}, transmitted power is about {t:.1f} dB "
+        f"and absorbed power about {a:+.1f} dB off the declared sheet at normal "
+        "incidence; reflected power stays within 1 dB. Use cells of at most "
+        f"{dxmax:.3g} m across the film or check on two meshes (tracker 1572).",
+        code='dc_film_half_sheet_error', severity='warning',
+        source='warn_dc_films', loc=f'thin_conductors[{i}]'))
+
+
+def warn_dc_films(sim, warn):
+    """Expose DC admission and two-plane errors through the finding carrier."""
+    from rfx.preflight._common import PreflightWarning
+    if not any(tc.surface_impedance_f0 is None
+               and (is_tracer(tc.sigma_bulk) or not tc.is_pec)
+               for tc in sim._thin_conductors):
         return
     grid = sim._build_realized_grid()
+    for i, tc in enumerate(sim._thin_conductors):
+        if (tc.surface_impedance_f0 is None and not is_tracer(tc.sigma_bulk)
+                and not tc.is_pec):
+            _warn_half_sheet_film(sim, grid, tc, i, warn)
     for i, tc in enumerate(sim._thin_conductors):
         if tc.is_pec or tc.surface_impedance_f0 is not None or isinstance(tc.shape, Box):
             continue

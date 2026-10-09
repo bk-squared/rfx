@@ -137,6 +137,12 @@ def _enumerate_emission_sites():
 
     for src in _PREFLIGHT_SRCS:
         _V().visit(ast.parse(src.read_text()))
+    # The DC estimator lives beside its realization, outside the check families.
+    # Scan its emitter too; legacy admission adapters retain their existing scope.
+    film = ast.parse((_REPO_ROOT / "rfx/model/thin_conductors.py").read_text())
+    for node in film.body:
+        if isinstance(node, ast.FunctionDef) and node.name == "_warn_half_sheet_film":
+            _V().visit(node)
     return sites
 
 
@@ -453,7 +459,8 @@ def _enumerate_emission_sites():
 # ``_validate_cfg_source_on_reflector_plane``, existing code ``source_decoupled`` -- a source
 # or port edge tangential in a declared PEC wall is shorted; assembly refuses it on every
 # path and preflight reports the same finding as an error (was the #1075 advisory text).
-_FROZEN_TOTAL_SITES = 131
+# 131 -> 132 (#PENDING): DC film two-plane error, one model-owned emitter.
+_FROZEN_TOTAL_SITES = 132
 # 74 -> 73, 2026-09-15 (#1043 / PR #1047): ``conformal_nan`` was the only
 # site emitting that code, and the check was deleted when its own tripwire
 # XPASSed -- see the note on _FROZEN_TOTAL_SITES above.
@@ -481,7 +488,8 @@ _FROZEN_TOTAL_SITES = 131
 # 83 -> 84 (#1512): ``line_stub_behind_port``.
 # 84 -> 85 (#1512): line_stub_realization retains the blocking build error.
 # 85 -> 86 (#1512): line_stub_inspection_unavailable names unsupported geometry.
-_FROZEN_LITERAL_CODE_COUNT = 86
+# 86 -> 87 (#PENDING): dc_film_half_sheet_error.
+_FROZEN_LITERAL_CODE_COUNT = 87
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site
