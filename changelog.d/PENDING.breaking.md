@@ -6,3 +6,4 @@ axis are refused. An f0 sheet sharing active edges with a lossy film and a film
 edge inside a design box are also refused.
 A `sigma_override` or global sigma sweep replaces volume conductivity while
 leaving a declared film in place. UPML and CPML now solve the same film.
+the preflight finding dc_film_half_sheet_error (added in #1575) is removed with its cause

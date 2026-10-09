@@ -217,6 +217,7 @@ def test_c4_topology_design_film(inside):
         with pytest.raises(ValueError, match='contains edges of thin conductor 0'):
             topology_optimize(sim, region, objective, n_iterations=2, verbose=False)
     else:
+        pytest.importorskip("optax")
         with _realized.capture() as capture:
             _realized.enter(sim, 'topology_optimize')
             result = topology_optimize(sim, region, objective, n_iterations=2, verbose=False)

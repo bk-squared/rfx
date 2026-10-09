@@ -444,6 +444,9 @@ def topology_optimize(
     monitor_for_simulation(sim, grid, sim._periodic_flags(),
                            overrides={"design_region": design_region_cells})
 
+    from rfx.model.thin_conductors import refuse_design_films
+    refuse_design_films(sim, grid, tuple(v for a, b in zip(lo_idx, hi_idx) for v in (a, b + 1)))
+
     try:
         import optax
     except ImportError:
@@ -485,8 +488,6 @@ def topology_optimize(
     _topo_pec_wires: list = []
     base_materials, debye_spec, lorentz_spec, base_pec_mask, *_ = sim._assemble_materials(
         grid, pec_sheets=_topo_pec_sheets, pec_wires=_topo_pec_wires)
-    from rfx.model.thin_conductors import refuse_design_films
-    refuse_design_films(sim, grid, tuple(v for a, b in zip(lo_idx, hi_idx) for v in (a, b + 1)))
     base_mu_r = base_materials.mu_r
 
     # Initialize density

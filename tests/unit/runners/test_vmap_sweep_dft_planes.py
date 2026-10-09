@@ -811,25 +811,11 @@ class TestVmapBatchedPadByteIdentity:
                         npt.assert_array_equal(a[idx], b)
 
     def test_thin_conductor_fixture_is_live(self):
-        """Control for the non-PEC rows above: the conductor must sit ON
-        the column the pad replicates FROM, and the pad must nevertheless
-        carry the background material. Without this the equality above
-        could hold because the conductor is nowhere near a pad -- exactly
-        the vacuous-fixture failure mode #643's own matrix needed a
-        control for.
+        """The film record continues through the x-lo pad at G / d_dual.
 
-        #931 SCOPE: ``sigma_bulk = 1e4`` with no ``surface_impedance_f0``
-        is the DC fold -- a lossy VOLUME model that stamps
-        ``sigma_eff = sigma_bulk * thickness / dx`` into the material
-        arrays. Design note §1.8 fences it out of the ownership contract,
-        so the 175 S/m assertion below stays as written: a SHEET owns no
-        cell and writes no material, but this is not a sheet. The PEC row
-        of the matrix above is, and it writes nothing at all -- which is
-        why the two rows need separate controls.
-
-        The conductor has sigma_eff = 175 S/m at the interior face and
-        through the x-lo pad. Individual assembly and the material sweep
-        must realize the same continued conductor."""
+        The y-normal film owns plane 5, with x/z tangential components.
+        Cell conductivity stays zero and volume permittivity is preserved.
+        """
         def sim_fn(eps_r):
             sim = _matrix_sim((0.0, 0.0, 0.0), (0.02, 0.02, 0.02),
                               eps_r=eps_r)
@@ -848,33 +834,36 @@ class TestVmapBatchedPadByteIdentity:
 
         plx = grid.pad_x_lo
         assert plx > 0
-        # (y, z) inside the conductor bar: 0.008..0.012 m at dx=0.002 is
-        # interior nodes 4 and 5, i.e. grid index pad + 4.
-        jy = grid.pad_y_lo + 4
-        kz = grid.pad_z_lo + 4
+        # Mid-plane y=0.010 is node 5; z=0.010 is inside the footprint.
+        jy = grid.pad_y_lo + 5
+        kz = grid.pad_z_lo + 5
         # sigma_eff = sigma_bulk * thickness / dx
         sigma_eff = 1.0e4 * 35e-6 / 0.002
 
         for idx, v in enumerate(values):
             eps = np.asarray(batched.eps_r[idx])
             sig = np.asarray(batched.sigma[idx])
-            # Half 1: the conductor really is on the replication source.
-            assert sig[plx, jy, kz] == pytest.approx(sigma_eff), (
-                f"conductor absent from the x-lo interior edge column "
-                f"(sigma={sig[plx, jy, kz]}, expected {sigma_eff}) -- the "
-                f"fixture no longer exercises #642 and the equality test "
-                f"above is vacuous")
-            assert eps[plx, jy, kz] == pytest.approx(1.0)
-            # The declared conducting bar continues through the pad.
-            npt.assert_array_equal(
-                sig[:plx, jy, kz], np.full(plx, sigma_eff, dtype=sig.dtype),
-                err_msg="continued conductor is absent from the x-lo pad")
-            npt.assert_array_equal(
-                eps[:plx, jy, kz], np.ones(plx, dtype=eps.dtype))
+            bare = _matrix_sim((0.0, 0.0, 0.0), (0.02, 0.02, 0.02),
+                               eps_r=float(v))._assemble_materials(grid)[0]
+            npt.assert_array_equal(eps, np.asarray(bare.eps_r))
+            npt.assert_array_equal(sig[:plx + 1, jy, kz], 0.0)
+            for component in (0, 2):
+                film = np.asarray(batched.sigma_film[component][idx])
+                assert film[plx, jy, kz] == pytest.approx(sigma_eff)
+                npt.assert_array_equal(
+                    film[:plx, jy, kz],
+                    np.full(plx, sigma_eff, dtype=film.dtype),
+                    err_msg="continued film is absent from the x-lo pad")
             individual = sim_fn(float(v))._assemble_materials(grid)[0]
             for name in ("eps_r", "sigma", "mu_r"):
                 npt.assert_array_equal(np.asarray(getattr(batched, name)[idx]),
                                        np.asarray(getattr(individual, name)))
+
+            for a, b in zip(batched.sigma_film, individual.sigma_film):
+                if a is None:
+                    assert b is None
+                else:
+                    npt.assert_array_equal(np.asarray(a[idx]), np.asarray(b))
 
     def test_matrix_is_not_vacuous_swept_value_reaches_the_pad(self):
         """Control for the whole matrix above: at least one row must have
