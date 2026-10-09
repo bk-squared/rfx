@@ -17,12 +17,18 @@ def _edge_factors(occupancy, sheet_edge_masks, *, dtype, periodic):
 
     One subtraction per cell, then multiplies in a fixed association:
     ``((1-o)(1-o_t1)) * ((1-o_t2)(1-o_t1t2))`` with t1 < t2 the two axes
-    transverse to the component. No multiply feeds an add or a subtract, so
-    there is nothing a compiler can fuse: the float32 result is the same
-    eager, under jit, inside a scan and per slab (the former ``1 - M`` with
-    its chained noisy-OR was 1 ULP apart between those contexts on
-    non-dyadic occupancies). Outside a non-periodic wall the occupancy reads
-    0 through the one neighbour rule (``_shift``), so the factor there is 1.
+    transverse to the component. Inside this expression no multiply feeds an
+    add or a subtract, so the float32 array it returns is the same eager,
+    under jit, inside a scan and per slab (the former ``1 - M`` with its
+    chained noisy-OR was 1 ULP apart between those contexts on non-dyadic
+    occupancies). That holds when the array is an output, an input, or is
+    multiplied into a field. A caller that inlines this builder in its own
+    compiled program and then ADDS or SUBTRACTS the factor (``1 - keep``) can
+    still have the last multiply fused: build the array once, outside the
+    loop, and pass it in. Outside a non-periodic wall the occupancy reads 0
+    through the one neighbour rule (``_shift``), so the factor there is 1.
+    Where the four-cell product is below half an ULP of 1 the old form gave
+    exactly 0; this one keeps the product (at most about 3e-8).
     """
     occ = jnp.clip(occupancy.astype(dtype), 0.0, 1.0)
     keep = []

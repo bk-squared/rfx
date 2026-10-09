@@ -208,8 +208,16 @@ def test_published_matches_lane_operator(lane, sheet, monkeypatch):
     for row in applied:
         for expected, actual in zip(row, published[0]):
             np.testing.assert_allclose(actual, expected, rtol=0, atol=ULP1)
-            binary = (expected == 0) | (expected == 1)
-            assert np.array_equal(actual[binary], expected[binary])
+    # Exactness is a statement about the OCCUPANCY: an edge whose four cells
+    # are all 0, or one of which is 1, has factor exactly 1 or 0. (Where the
+    # operator rounds a tiny product to 0 the published factor keeps it.)
+    exact = reference32(np.asarray(cells))
+    full = reference(np.asarray(cells))
+    for actual, e32, e64 in zip(published[0], exact, full):
+        if not sheet:
+            binary = (e64 == 0) | (e64 == 1)
+            assert np.array_equal(actual[binary], e64[binary].astype(np.float32))
+            assert np.array_equal(actual, e32)
 
 
 @pytest.mark.parametrize('n_devices', [2, 3])
@@ -243,6 +251,39 @@ def test_slab_owned_rows_match_operator_and_reference(n_devices):
             assert np.array_equal(got, exact[c][lo:hi])
             np.testing.assert_allclose(got, np.asarray(component)[owned], rtol=0, atol=ULP1)
             np.testing.assert_allclose(got, ref[lo:hi], rtol=0, atol=2.4e-7)
+
+    # Gradient through the cut and the per-slab builder against the whole domain
+    # (a derivative of a product is a sum of products: equal to rounding, not bitwise).
+    def slab_total(v):
+        keep = publish_slab_occupancy(material(slabs.shape), cut(v, layout, 'pec_occupancy', mesh=mesh), mesh).edge_keep
+        total = 0.
+        for k in keep:
+            for rank, (lo, hi) in enumerate(layout.owned):
+                total = total + jnp.sum(k[rank * layout.nx_local + 1: rank * layout.nx_local + 1 + hi - lo] ** 2)
+        return total
+    g_slab = np.asarray(jax.grad(slab_total)(jnp.asarray(cells)))
+    g_whole = np.asarray(jax.grad(lambda v: sum(jnp.sum(k ** 2) for k in build_edge_keep(v)))(jnp.asarray(cells)))
+    assert np.isfinite(g_slab).all() and np.any(g_slab != 0)
+    np.testing.assert_allclose(g_slab, g_whole, rtol=0, atol=1e-6 * np.max(np.abs(g_whole)))
+
+
+@pytest.mark.parametrize('n_ranks', [2, 3, 4])
+def test_a_slab_with_its_low_ghost_row_gives_the_whole_domain_bits(n_ranks):
+    """The per-slab arithmetic with no devices: any slab count, PR lane.
+
+    A slab reads its own cells and one low ghost row; rank 0's ghost is the
+    zero outside the lattice. (The compile context of the real shard_map is
+    covered by the two-device case above.)
+    """
+    shape = (13, 7, 5)
+    cells = np.random.default_rng(31).uniform(0, .9, shape).astype(np.float32)
+    whole = [np.asarray(k) for k in build_edge_keep(jnp.asarray(cells))]
+    edges = np.linspace(0, shape[0], n_ranks + 1).astype(int)
+    for lo, hi in zip(edges[:-1], edges[1:]):
+        ghost = cells[lo - 1:lo] if lo else np.zeros((1,) + shape[1:], np.float32)
+        local = [np.asarray(k) for k in build_edge_keep(jnp.asarray(np.concatenate((ghost, cells[lo:hi]))))]
+        for c in range(3):
+            assert np.array_equal(local[c][1:], whole[c][lo:hi])
 
 
 def test_released_cells_and_empty_are_exact():
