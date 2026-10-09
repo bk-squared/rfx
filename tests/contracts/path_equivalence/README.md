@@ -101,8 +101,8 @@ expected and does not provide ADI coverage.
 Run PR tests: `python -m pytest tests/contracts/path_equivalence -q`.
 Run full tests: `RFX_S0_FULL=1 python -m pytest tests/contracts/path_equivalence -q -o addopts="" -m "not gpu"`.
 The fixture writes raw measurements in its pytest temporary directory.
-`findings.json` stores each fingerprint and witness variant once in `causes`,
-alongside implementation file:line references. Optional cell/record scopes on
+`findings.json` stores each fingerprint and witness variant once in `causes`.
+A key under `causes` names an observed record difference, not a mechanism. Optional cell/record scopes on
 a fingerprint preserve which failures each cell accepts. `cells` maps records
 to cause IDs, with a witness-variant reference only when it differs from the
 default. The loader expands this into the existing strict-finding checks.
