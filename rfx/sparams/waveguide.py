@@ -755,7 +755,7 @@ def compute_waveguide_s_matrix(
             ref_shifts_mm.append(desired_ref - planes["reference"])
             desired_refs_mm.append(desired_ref)
 
-        mm_pec_axes = "".join(axis for axis in "xyz" if axis not in grid.cpml_axes)
+        mm_pec_axes = None
         if normalize == "flux":
             from rfx.core.yee import init_materials as _init_vacuum_materials
             ref_materials = _init_vacuum_materials(grid.shape)
@@ -905,7 +905,7 @@ def compute_waveguide_s_matrix(
         )
         ref_shifts.append(desired_ref - planes["reference"])
 
-    _pec_axes = "".join(axis for axis in "xyz" if axis not in grid.cpml_axes)
+    _pec_axes = None
     # The G-WI5 runtime guardrail that stood here -- "conformal=True is
     # KNOWN to produce NaN S-parameters at fine mesh" -- was DELETED
     # 2026-09-15 (#1043 / PR #1047). The NaN was the CPML psi coefficient

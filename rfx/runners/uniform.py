@@ -595,7 +595,7 @@ def run_uniform(
 
     if sim._waveguide_ports:
         cpml_axes = grid.cpml_axes
-        pec_axes = "".join(axis for axis in "xyz" if axis not in cpml_axes)
+        pec_axes = None
         for pe in sim._waveguide_ports:
             freqs_arr = (
                 pe.freqs
