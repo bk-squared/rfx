@@ -122,8 +122,9 @@ def _line_sheet_footprint(y, boundary="periodic"):
 def test_zero_width_sheet_on_the_periodic_seam_is_the_same_line_as_anywhere_else():
     """A sheet of zero in-plane width is one line of nodes. On the seam of a
     periodic axis (y = 0 or y = L) it used to get no periodic image at all and
-    die with an internal error; it is the line at node 0, like the same sheet
-    drawn mid-domain and shifted there."""
+    die with an internal error; alone, it is the line at node 0, like the same
+    sheet drawn mid-domain and shifted there. (How it joins a NEIGHBOURING sheet
+    across the seam follows the rule wide sheets already have there; not pinned.)"""
     middle = _line_sheet_footprint(0.01)
     expected = np.zeros_like(middle)
     expected[10, 0, 5:16] = True          # written by hand: x plane 10, y node 0, z 5..15 mm
