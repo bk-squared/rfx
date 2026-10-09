@@ -19,6 +19,17 @@ not an accuracy guarantee, and a preflight pass is not a convergence study.
 
 ## General constraints
 
+### Placing a solve on CPU in a process whose default backend is GPU
+
+Tracker: #1560
+
+The absorber write-back is selected from the process's default backend at trace
+time. A process whose default backend is GPU but which places a solve on its CPU
+device therefore uses the GPU form there. A plain call and a `jax.jit` call of
+the same solve can then differ by 31–48 float32 ULP at the probe record peak
+(measured on seven machines). Results on the GPU, and in a CPU-only process, are
+not affected. Use the GPU device or a CPU-only process to avoid this spread.
+
 ### Lossy sheets and sheet_effective_size
 
 Tracker: #1138
