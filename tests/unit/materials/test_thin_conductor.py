@@ -40,7 +40,7 @@ def test_thin_conductor_sigma_eff():
     inside_idx = np.argwhere(np.array(mask))
     if len(inside_idx) > 0:
         i, j, k = inside_idx[len(inside_idx) // 2]
-        sigma_val = float(materials.sigma[i, j, k])
+        sigma_val = float(materials.sigma_film[0][i, j, k])
         assert abs(sigma_val - expected_sigma_eff) / max(expected_sigma_eff, 1e-30) < 0.01, \
             f"Lossy: σ_eff={sigma_val:.4e}, expected={expected_sigma_eff:.4e}"
 
@@ -65,7 +65,7 @@ def test_thin_conductor_sigma_eff():
     outside_idx = np.argwhere(~np.array(mask))
     if len(outside_idx) > 0:
         i, j, k = outside_idx[0]
-        assert float(materials.sigma[i, j, k]) == 0.0
+        assert float(materials.sigma_film[0][i, j, k]) == 0.0
 
 
 def test_thin_conductor_preserves_outside():
@@ -419,7 +419,7 @@ def test_lossy_thin_conductor_nonuniform_uses_local_dz():
                        if sim._boundary_spec is not None else None),
             cpml_axes="".join(a for a in "xyz"
                               if a not in (sim._periodic_axes or "")))
-        sigma = np.asarray(assemble_materials_nu(sim, grid)[0].sigma)
+        sigma = np.asarray(assemble_materials_nu(sim, grid)[0].sigma_film[0])
 
     assert not any("not yet supported" in str(wi.message).lower() for wi in w), \
         "#373: lossy thin conductor on NU must no longer warn-and-skip"
@@ -427,7 +427,7 @@ def test_lossy_thin_conductor_nonuniform_uses_local_dz():
     nz = np.argwhere(sigma > 0)
     assert len(nz) > 0, "#373: lossy thin conductor produced no sigma cells"
     k = int(nz[0][2])
-    dz_local = float(np.asarray(grid.dz)[k])
+    dz_local = float((np.asarray(grid.dz)[k - 1] + np.asarray(grid.dz)[k]) / 2)
     assert abs(dz_local - 1.5e-3) < 1e-9, "sheet must land in the coarse region"
     sigma_cell = float(sigma[tuple(nz[len(nz) // 2])])
 
@@ -484,16 +484,18 @@ def test_lossy_thin_conductor_nonuniform_ad_gate():
     # Closed form computed from the CONCRETE state first (before grad mutates
     # the conductor): Σσ = n_cells · sigma_bulk · t / dz_local
     # ⇒ dΣσ/dt = n_cells · sigma_bulk / dz_local.
-    sigma0 = np.asarray(assemble_materials_nu(sim, grid)[0].sigma)
-    n_cells = int((sigma0 > 0).sum())
+    sigma0 = np.asarray(assemble_materials_nu(sim, grid)[0].sigma_film[0])
+    # Old expectation counted 12*12 cell samples. One Ex component has
+    # 12*(.5+11+.5)=144 total footprint weight on the node plane.
+    n_cells = 12 * 12
     k = int(np.argwhere(sigma0 > 0)[0][2])
-    dz_local = float(np.asarray(grid.dz)[k])
+    dz_local = float((np.asarray(grid.dz)[k - 1] + np.asarray(grid.dz)[k]) / 2)
     g_analytic = n_cells * sigma_bulk / dz_local
 
     def loss(thickness):
         sim._thin_conductors[0] = ThinConductor(
             shape=shape, sigma_bulk=sigma_bulk, thickness=thickness)
-        return jnp.sum(assemble_materials_nu(sim, grid)[0].sigma)
+        return jnp.sum(assemble_materials_nu(sim, grid)[0].sigma_film[0])
 
     g = float(jax.grad(loss)(t0))
     # restore the concrete conductor so the mutated (traced) one does not leak.
@@ -656,7 +658,7 @@ def test_leontovich_dc_limit_equivalence_o1b():
                                            init_materials(grid.shape), None,
                                            sheet_specs=specs)
             if name == "dc":
-                arr_dc = float(jnp.max(mats.sigma))
+                arr_dc = float(jnp.max(mats.sigma_film[0]))
                 # rtol 1e-9 is the ALGEBRA gate; the DC fold's array write
                 # goes through the float32 material arrays, so the pure-x64
                 # DC algebra is the comparand and the array is pinned to it
@@ -692,7 +694,7 @@ def test_leontovich_dc_limit_equivalence_o1b():
             mats_nu = assemble_materials_nu(sim, grid_nu,
                                             sheet_specs=specs)[0]
             if name == "dc":
-                sig = np.asarray(mats_nu.sigma)
+                sig = np.asarray(mats_nu.sigma_film[0])
             else:
                 # #677: sheet-free arrays + one emitted spec
                 assert float(np.asarray(mats_nu.sigma).max()) == 0.0

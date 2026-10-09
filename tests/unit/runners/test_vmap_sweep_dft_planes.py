@@ -805,6 +805,11 @@ class TestVmapBatchedPadByteIdentity:
                         f"disagrees with run() at {param}={v} (#642)"),
                 )
 
+            if want.sigma_film is not None:
+                for a, b in zip(batched.sigma_film, want.sigma_film):
+                    if a is not None:
+                        npt.assert_array_equal(a[idx], b)
+
     def test_thin_conductor_fixture_is_live(self):
         """Control for the non-PEC rows above: the conductor must sit ON
         the column the pad replicates FROM, and the pad must nevertheless

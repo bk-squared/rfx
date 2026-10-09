@@ -107,7 +107,7 @@ def products(sim, grid, nu=False):
 def assert_products_equal(a, b, *, dc_ulp=0):
     assert a.keys() == b.keys()
     for name in a:
-        if name == 'materials.sigma' and dc_ulp:
+        if name.startswith('materials.sigma_film[') and a[name].dtype.kind == 'f' and dc_ulp:
             np.testing.assert_array_max_ulp(a[name], b[name], maxulp=dc_ulp)
         else:
             np.testing.assert_array_equal(a[name], b[name], err_msg=name)
@@ -140,9 +140,9 @@ def test_dc_nonbox_admission_stays_path_specific():
             products(sim, grid, nonuniform)
         sim._snap = 'declared'
         with pytest.warns(UserWarning, match='Cylinder.*A_d=.*A_r='):
-            sigma = products(sim, grid, nonuniform)['materials.sigma']
+            sigma = products(sim, grid, nonuniform)['materials.sigma_film[0]']
         assert np.count_nonzero(sigma) > 0
-        np.testing.assert_array_equal(sigma[sigma != 0], 1000 * .1)
+        np.testing.assert_array_equal(sigma[sigma != 0], 1000 * .1 / 2)
 
 
 @pytest.mark.parametrize('kind', ('dc', 'f0'))
@@ -160,13 +160,20 @@ def test_unequal_cells_use_normal_dual(kind):
         sim.add_thin_conductor(Box((2*h, 2*h, 4*h), (8*h, 7*h, 4*h)), **kwargs)
     grid = sim._build_nonuniform_grid()
     root = realized_conductors(sim, grid, nonuniform=True)
-    arr = np.asarray(root.materials.sigma if kind == 'dc' else root.sheet_impedance[0].sigma_sheet)
+    arr = np.asarray(root.materials.sigma_film[0] if kind == 'dc' else root.sheet_impedance[0].sigma_sheet)
     occupied = np.argwhere(arr != 0)
     assert len(occupied) > 0
     assert np.unique(occupied[:, 2]).tolist() == [6]
     conductance = 1234*(h/7) if kind == 'dc' else 1/float(leontovich_rs(5e9, 1234))
-    divisor = 2*h if kind == 'dc' else 1.5*h
-    np.testing.assert_allclose(arr[arr != 0], conductance/divisor, rtol=2e-7)
+    divisor = (h + 2*h) / 2  # d_dual at the film plane
+    if kind == 'dc':
+        # Ex has half coverage on the two y ends, full coverage inside.
+        expected = np.zeros(grid.shape)
+        expected[4:10, 4:10, 6] = conductance/divisor
+        expected[4:10, (4, 9), 6] /= 2
+        np.testing.assert_allclose(arr, expected, rtol=2e-7)
+    else:
+        np.testing.assert_allclose(arr[arr != 0], conductance/divisor, rtol=2e-7)
 
 
 def test_uniform_x64_keeps_scalar_sheet_precision():
@@ -204,40 +211,18 @@ def dc_overlap_fixture(lane, order=('a', 'b')):
 @pytest.mark.parametrize('lane', ('uniform', 'equal', 'graded'))
 def test_dc_overlap_last_declaration_wins(lane):
     from rfx.model.materials import assemble_cells
-    results = []
     for order in (('a', 'b'), ('b', 'a')):
         sim, grid = dc_overlap_fixture(lane, order)
-        mats = assemble_cells(sim, grid)[0]
-        results.append(mats)
-        # User-coordinate cell names: A-only (3,3,4), B-only (9,8,4),
-        # overlap (6,4,4), and vacuum (1,1,4). The graded node at z=4h
-        # occupies the .6h cell above the 1.5h cell.
-        primal = grid.dx * (.6 if lane == 'graded' else 1)
-        last = (77, 4.5) if order[-1] == 'b' else (1234, 2.5)
-        for xyz, (sigma, eps) in [((3, 3, 4), (1234, 2.5)),
-                                  ((9, 8, 4), (77, 4.5)),
-                                  ((6, 4, 4), last), ((1, 1, 4), (0, 1))]:
-            index = tuple(i+p for i, p in zip(xyz, grid.axis_pads))
-            np.testing.assert_allclose(mats.sigma[index], sigma*(grid.dx/7)/primal, rtol=2e-7)
-            assert mats.eps_r[index] == eps
-    assert np.count_nonzero(results[0].sigma != results[1].sigma) == 12
-    assert np.count_nonzero(results[0].eps_r != results[1].eps_r) == 12
+        with pytest.raises(ValueError, match='a film on one node plane has no volume; its eps_r is not modelled'):
+            assemble_cells(sim, grid)
 
 
 @pytest.mark.parametrize('nu', (False, True))
 def test_dc_geometry_mask_records_declared_conductor(nu):
     from rfx.model.materials import assemble_cells
     sim, grid = dc_overlap_fixture('equal' if nu else 'uniform', order=('a',))
-    masks = []
-    mats = assemble_cells(sim, grid, geometry_masks=masks)[0]
-    assert len(masks) == 1
-    key, mask = masks[0]
-    assert key == id(sim._thin_conductors[0])
-    expected = np.zeros(grid.shape, dtype=bool)
-    px, py, pz = grid.axis_pads
-    expected[px+2:px+8, py+2:py+7, pz+4] = True
-    np.testing.assert_array_equal(mask, expected)
-    np.testing.assert_array_equal(np.asarray(mats.sigma) != 0, expected)
+    with pytest.raises(ValueError, match='a film on one node plane has no volume; its eps_r is not modelled'):
+        assemble_cells(sim, grid, geometry_masks=[])
 
 
 def test_periodic_dc_cells_cross_seam():
@@ -252,12 +237,8 @@ def test_periodic_dc_cells_cross_seam():
     sim.add_thin_conductor(Box((11.5*h, 8*h, 2*h), (11.7*h, 13*h, 6*h)),
                            sigma_bulk=1234, thickness=h/7, eps_r=3.5)
     grid = sim._build_grid()
-    mats = assemble_cells(sim, grid)[0]
-    expected = np.zeros(grid.shape, dtype=bool)
-    expected[0, [0, 1, 2, 8, 9], grid.pad_z_lo+2:grid.pad_z_lo+6] = True
-    np.testing.assert_array_equal(np.asarray(mats.sigma) != 0, expected)
-    np.testing.assert_allclose(np.asarray(mats.sigma)[expected], 1234/7, rtol=1e-7)
-    np.testing.assert_array_equal(np.asarray(mats.eps_r)[expected], 3.5)
+    with pytest.raises(ValueError, match='a film on one node plane has no volume; its eps_r is not modelled'):
+        assemble_cells(sim, grid)
 
 
 def test_f0_fold_refuses_multilayer_occupancy(monkeypatch):

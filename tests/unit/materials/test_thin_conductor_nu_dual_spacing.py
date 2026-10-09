@@ -163,7 +163,7 @@ def _graded_sheet_sigma(zc, *, realized=False, **tc_kwargs):
             assert len(specs) == 1
             sigma = np.asarray(specs[0].sigma_sheet)
         else:
-            sigma = np.asarray(mats.sigma)
+            sigma = np.asarray(mats.sigma_film[0])
     nz = np.argwhere(sigma > 0)
     assert len(nz) > 0
     ks = sorted({int(i[2]) for i in nz})
@@ -171,7 +171,9 @@ def _graded_sheet_sigma(zc, *, realized=False, **tc_kwargs):
     k = ks[0]
     primal = float(np.asarray(grid.dz)[k])
     dual = float(np.asarray(e_node_dual_spacings(grid.dz))[k])
-    values = float(sigma[tuple(nz[0])]), primal, dual
+    # Interior weight is one; the first occupied Ex edge has half weight.
+    interior = tuple((nz[:, a].min() + nz[:, a].max()) // 2 for a in range(3))
+    values = float(sigma[interior]), primal, dual
     if realized:
         from rfx.model.materials import realize_components
         components = realize_components(mats, grid, periodic=(False,) * 3)
@@ -201,7 +203,7 @@ def test_dc_fold_uses_dual_spacing_at_a_grading_transition():
         8.0e-3, sigma_bulk=sigma_bulk, thickness=t, realized=True)
     assert abs(dual / primal - 1.0) < 1e-6
     assert np.all(abs(rs / rs_spec - 1.0) < 1e-4)
-    assert abs(1.0 / (sig * primal) / rs_spec - 1.0) < 1e-4
+    assert abs(1.0 / (sig * dual) / rs_spec - 1.0) < 1e-4
 
     # ON the transition: dual = 1.0 mm, primal = 1.5 mm
     sig, primal, dual, rs = _graded_sheet_sigma(
@@ -209,7 +211,7 @@ def test_dc_fold_uses_dual_spacing_at_a_grading_transition():
     assert abs(primal / dual - 1.5) < 1e-3, (primal, dual)
     assert np.all(abs(rs / rs_spec - 1.0) < 1e-4), (
         f"DC sheet realizes R_s = {rs} over its node planes, specified {rs_spec:.4f}")
-    assert abs(1.0 / (sig * primal) / rs_spec - 1.0) < 1e-4
+    assert abs(1.0 / (sig * dual) / rs_spec - 1.0) < 1e-4
     # The node-dual divisor is not used for this cell-owned DC conductivity;
     # retain the grading witness with the same 0.3 gate.
     assert abs(1.0 / (sig * dual) / rs_spec - 1.0) > 0.3
@@ -250,16 +252,18 @@ def test_graded_fold_stays_on_the_ad_path():
             pmc_faces=sim._boundary_spec.pmc_faces(),
             cpml_axes="xyz")
     shape = sim._thin_conductors[0].shape
-    sigma0 = np.asarray(assemble_materials_nu(sim, grid)[0].sigma)
-    n_cells = int((sigma0 > 0).sum())
+    sigma0 = np.asarray(assemble_materials_nu(sim, grid)[0].sigma_film[0])
+    # Old expectation used occupied cells / primal. Ex weights on a
+    # [6,18) by [6,18) footprint sum to 12*(.5+11+.5)=144.
+    n_cells = 12 * 12
     k = int(np.argwhere(sigma0 > 0)[0][2])
-    primal = float(np.asarray(grid.dz)[k])
-    g_analytic = n_cells * sigma_bulk / primal
+    dual = float((np.asarray(grid.dz)[k - 1] + np.asarray(grid.dz)[k]) / 2)
+    g_analytic = n_cells * sigma_bulk / dual
 
     def loss(thickness):
         sim._thin_conductors[0] = ThinConductor(
             shape=shape, sigma_bulk=sigma_bulk, thickness=thickness)
-        return jnp.sum(assemble_materials_nu(sim, grid)[0].sigma)
+        return jnp.sum(assemble_materials_nu(sim, grid)[0].sigma_film[0])
 
     g = float(jax.grad(loss)(t0))
     sim._thin_conductors[0] = ThinConductor(
