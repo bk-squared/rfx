@@ -206,23 +206,10 @@ def test_a_sheet_is_realized_on_the_single_device_lane():
 
 def _distributed_occ_nnz(occ, n_devices=1):
     """The SOFT twin of ``_distributed_nnz``; real cells only."""
-    from rfx.runners.distributed_nu import _apply_pec_occupancy_nu_shmap
+    from tests.unit.materials.test_occupancy_stage import step_occupancy_on_ones
     nx_per = NX // n_devices
     nx_local = nx_per + 2 * GHOST
-    slabs = np.zeros((n_devices * nx_local, NY, NZ), np.float32)
-    for d in range(n_devices):
-        lo, hi = d * nx_per, (d + 1) * nx_per
-        base = d * nx_local
-        slabs[base + GHOST:base + GHOST + nx_per] = occ[lo:hi]
-        slabs[base] = occ[lo - 1] if d > 0 else 0.0
-        slabs[base + nx_local - 1] = occ[hi] if d < n_devices - 1 else 0.0
-    shape = (n_devices * nx_local, NY, NZ)
-    mesh = Mesh(np.asarray(jax.devices()[:n_devices]).reshape(n_devices), ("x",))
-    st = init_state(shape)
-    one = jnp.ones(shape, jnp.float32)
-    out = _apply_pec_occupancy_nu_shmap(st._replace(ex=one, ey=one, ez=one),
-                                        jnp.asarray(slabs), mesh, n_devices,
-                                        nx_local, ranks=mesh_ranks(mesh))
+    out = step_occupancy_on_ones(occ, n_devices)
     tot = [0, 0, 0]
     for c, comp in enumerate((out.ex, out.ey, out.ez)):
         a = np.asarray(comp)
@@ -245,7 +232,7 @@ def test_soft_equals_hard_on_the_distributed_lane_including_faces(axis, idx):
     single-device lane in tests/contracts; this is the shmap twin, which
     is where the two spellings drifted apart before (``rfx/boundaries/pec.py``
     used to record that ``apply_pec_occupancy``,
-    ``_apply_pec_occupancy_nu_shmap`` and ``geometry/smoothing.py`` still
+    the former in-step occupancy helper and ``geometry/smoothing.py`` still
     spelled the rule with ``roll`` while the hard path zero-padded, so hard
     and soft disagreed at a non-periodic domain face and no test
     discriminated). The face rows are the discriminating ones.

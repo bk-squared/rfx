@@ -130,7 +130,7 @@ def _placement_violations(source, path):
     for node in ast.walk(ast.parse(source)):
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
-        if node.name == '_split_lumped':
+        if node.name in ('_split_lumped', 'shard_pec_occupancy_x_slab'):
             violations.append((str(path), node.name, node.lineno, 'removed helper'))
         if node.name in RETIRED:
             # Import compatibility may retain only one return delegating to cut.
