@@ -50,7 +50,11 @@ CASES = [((-0.0004, 0.0003), (0.0011, 0.0009)),
          ((-0.0300, -0.0200), (0.0300, 0.0200)),
          # entirely outside the base period: only shifted images contribute
          ((0.0061, 0.0041), (0.0079, 0.0052)),
-         ((-0.0052, 0.0021), (-0.0034, 0.0032))]
+         ((-0.0052, 0.0021), (-0.0034, 0.0032)),
+         # on the lattice and on the periodic seam (closed-footprint rims)
+         ((0.0, 0.0), (0.003, 0.002)),
+         ((-0.003, 0.001), (0.0, 0.004)),
+         ((0.001, -0.002), (0.015, 0.0))]
 
 
 @pytest.mark.parametrize('kind', ['sheet', 'volume'])
@@ -66,8 +70,7 @@ def test_per_axis_fold_equals_the_nested_fold(kind, lo, hi, monkeypatch):
     def nested(*args, **kwargs):       # the old route: outer-product sampler only
         kwargs.pop('axis_samplers', None)
         return original(*args, **kwargs)
-    for module in ('rfx._periodic', 'rfx.geometry.rasterize_grid'):
-        monkeypatch.setattr(module + '.periodic_mask', nested, raising=False)
+    # Both callers import the function inside their bodies, from this module.
     monkeypatch.setattr(periodic, 'periodic_mask', nested)
     try:
         slow = _assembled(_sim(kind, lo, hi))
@@ -88,8 +91,18 @@ def test_assembly_time_grows_with_the_sum_of_image_counts(kind):
         _assembled(sim)
         return time.perf_counter() - start
     seconds(0.004)                      # warm-up
-    few, many = seconds(0.016), seconds(1.024)   # 16 and 1024 periods per axis
-    # Linear growth is 64x on the image part alone; the nested fold was 4096x
-    # (measured 0.28 s at 128 periods, so about 18 s here). A generous bound
-    # that a product law cannot meet and a loaded machine can.
-    assert many < 2.0, (few, many)
+    many = seconds(1.024)               # 1024 periods per axis
+    # The nested fold took 18 s (sheet) and 45 s (volume) here; the per-axis
+    # fold takes about 0.02 s. A bound a product law cannot meet and a loaded
+    # machine can.
+    assert many < 2.0, many
+
+
+def test_a_periodic_pec_volume_mask_is_a_jax_array_as_before():
+    import jax
+    sim = _sim('volume', (-0.0052, -0.0031), (0.0047, 0.0029))
+    grid = sim._build_grid()
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        mask = sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])[3]
+    assert isinstance(mask, jax.Array) and mask.dtype == bool
