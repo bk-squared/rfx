@@ -11,7 +11,7 @@
 # Those are 35 minutes, and `.github/workflows/pr-tests.yml` only starts them
 # when the diff touches code (`scripts/ci/changed_paths.py` decides).
 #
-#   scripts/ci/local.sh                 # the nine steps; pr-body reports skipped
+#   scripts/ci/local.sh                 # the ten steps; pr-body reports skipped
 #   scripts/ci/local.sh /tmp/body.md    # also check that PR body
 #   PYTHON=.venv/bin/python scripts/ci/local.sh
 #   CHANGELOG_BASE=origin/main CHANGELOG_HEAD=HEAD scripts/ci/local.sh
