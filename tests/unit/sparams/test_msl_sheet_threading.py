@@ -462,6 +462,10 @@ def test_o3_mean_s21_drift_lock(record_property):
     from these Mac values (3, 4 and 2 float32 ULP); its first two readings are
     bit-identical to the GitHub-hosted runner's. A GPU run on this tree: not measured.
     The largest difference over both sets is still the 3.66e-7 GPU offset. Hence 4e-7.
+    The GitHub-hosted runner's CPU model varies from run to run and its 5 ohm/sq reading
+    on this tree is not measured: if the weekly lane on another runner model reads beyond
+    the tolerance with no code change, add that reading here and re-derive the tolerance
+    by the same rule; the pinned values stay.
     For scale: the tree before #1213 (cd237692) reads 0.999843 / 0.997062 / 0.996813,
     6.3e-4 / 6.3e-4 / 5.7e-4 away. Records: bk-squared/rfx-archive
     rfx/records/20260927-1292-locked-results/ (R5).
