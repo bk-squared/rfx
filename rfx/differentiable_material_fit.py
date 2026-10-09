@@ -61,6 +61,7 @@ Example
 
 from __future__ import annotations
 
+from rfx._grid_metric import field_index
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -361,7 +362,7 @@ def _require_ports_clear_of_pec(sim, grid, pec_mask, pec_sheets, pec_wires) -> N
         pec_mask, sheets=pec_sheets, wires=pec_wires,
         periodic=resolve_periodic(grid, None))
     for pe in sim._ports:
-        if edge_is_pec(edges, pe.component, *grid.position_to_index(pe.position)):
+        if edge_is_pec(edges, pe.component, *field_index(grid, pe.position, pe.component)):
             raise NotImplementedError(
                 "differentiable_material_fit() does not support add_port() "
                 f"on a PEC edge (position={pe.position} m, component={pe.component}) "

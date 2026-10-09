@@ -65,6 +65,7 @@ is one of the 30 numbers a block keeps (3 components x 10 weights).
 
 from __future__ import annotations
 
+from rfx._grid_metric import field_index
 from typing import NamedTuple
 
 import numpy as np
@@ -1252,7 +1253,8 @@ def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
     fed = [np.zeros(tuple(int(v) for v in grid.shape), bool) for _ in range(3)]
     for pe in list(getattr(sim, "_ports", ()) or ()):
         c = "xyz".index(str(pe.component)[-1])
-        start = _index(grid, tuple(pe.position))
+        start = (_index(grid, tuple(pe.position)) if pe.extent is not None else
+                 field_index(grid, tuple(pe.position), pe.component))
         stop = start
         if getattr(pe, "extent", None) is not None:
             end = list(pe.position)
@@ -1265,7 +1267,7 @@ def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
             fed[c][tuple(idx)] = True
     for spec_rlc in list(getattr(sim, "_lumped_rlc", ()) or ()):
         c = "xyz".index(str(spec_rlc.component)[-1])
-        fed[c][tuple(_index(grid, tuple(spec_rlc.position)))] = True
+        fed[c][tuple(field_index(grid, tuple(spec_rlc.position), spec_rlc.component))] = True
     check(fed, "a source, port or lumped element")
 
     for pe in list(getattr(sim, "_msl_ports", ()) or ()):

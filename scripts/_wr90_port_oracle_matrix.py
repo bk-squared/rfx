@@ -559,7 +559,7 @@ def _build_wr90_two_port_sim(
     sim_kwargs: dict[str, Any] = {
         "freq_max": max(float(freqs[-1]), f0),
         "domain": DOMAIN,
-        "boundary": "cpml",
+        "boundary": {"x": "cpml", "y": "pec", "z": "pec"},
         "cpml_layers": int(cpml_layers),
     }
     if dx is not None:

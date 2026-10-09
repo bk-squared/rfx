@@ -407,3 +407,199 @@ two-device and a declared PEC face agree). Same cause as this PR — a reader no
 record — and in a file the PR already touches, so it is fixed here: the multi-device walls come from the
 record (PEC faces and zero-depth absorber backings), judged by that probe equal to one device within the
 cross-trace bar, with the old wall rule as the mutation. This is the PR's one computed-result change.
+
+Addendum 5, 2026-10-07 (leader, before PR3 starts; scope approved by the lead, [L:245043]). PR3 is the class
+Addendum 3 named: a feature that silently rewrites declared faces. Two features do it today.
+(a) A waveguide port: `_waveguide_cpml_axes` (`api/_compile.py`) makes the grid absorb only on the port
+axes, so a model declared `cpml` on every face (the default) is solved with electric walls on the
+transverse faces. `boundaries/depths.py` reads that method — a reader of the feature, not of the declaration.
+(b) A TF/SF plane-wave source: `add_tfsf_source` requires `boundary='cpml'` and the run then wraps the
+transverse axes periodically, pads included. On the default box a finite scatterer is solved as an array
+of period N·dx with the pads (37 mm on the 2026-10-05 record, rfx-archive `20261005-tfsf-transverse-period`,
+f8b3b79a: backscatter off by several dB at 7 GHz and 20–30 dB toward c/period).
+B5 as written also moves computed results (an aperture port in a larger absorbing domain, the graded
+lane's waveguide runs, a pad-free periodic grid, Floquet k_t, RCS, the 2-D invariant axis, port
+resolution moving from registration to dispatch). Stage S1's judge is "expected to move: nothing".
+Decision: two PRs.
+PR3a — no computed result changes; what was silently rewritten is refused or must be declared.
+ 1. Waveguide. This departs from decision 4, which refused every full-aperture guide whose transverse
+    faces are absorbing, the default included. Reason (lead, 2026-10-07): `Simulation`'s `boundary`
+    defaults to `cpml`, so that rule breaks every waveguide script over an absorber the user never
+    declared. Rule now, for a guide whose REALIZED aperture equals the realized cross-section:
+    - `boundary` not passed (the default applied): the transverse faces default to PEC, the guide's
+      walls. The face record holds PEC there, and the run says so once (a warning naming the faces until
+      stage S2's diagnostics exist). This is the realized model of today; nothing computed moves.
+    - an absorbing transverse face passed explicitly (`boundary='cpml'`, or a `Boundary`/`BoundarySpec`
+      naming an absorber on that face): refused at dispatch, also with preflight bypassed; the message
+      gives the declaration to write (PEC on the transverse faces, absorber on the port axis).
+    - PEC transverse faces declared: kept, bit-identical to today.
+    Telling "not passed" from "passed 'cpml'" needs a sentinel default on `Simulation(boundary=...)`;
+    that change is part of this PR, and `sim._boundary` keeps reading 'cpml' for the default so no other
+    reader changes. Committed scripts that pass `boundary='cpml'` explicitly with a full-aperture guide
+    are converted to the PEC declaration; their realized record and results must be bit-identical before
+    and after. An aperture port smaller than the cross-section keeps today's behaviour in PR3a, labelled
+    in code as the legacy rewrite with a pointer here (it moves in PR3b).
+ 2. TF/SF: a declared transverse absorber pair is kept as today's periodic wrap (pads included, so the
+    realized grid does not move) only when decision 4's two conditions hold — the periodic pair is in
+    every active feature's admissible set, and materials, conductors, loads, localized field updates and
+    the source profile are invariant along that axis; a preflight finding names the face. Otherwise
+    refused, naming the face and the feature, with the two ways out (declare the axis periodic for an
+    array; `closed_box=True` for a finite scatterer). The add-time guard that demands `boundary='cpml'`
+    is lifted so the admissible declarations (periodic, or PMC/PEC per polarization) can be written.
+ 3. The face record takes the realized faces from the resolved declaration; no module outside
+    `rfx/boundaries/` asks a feature which axes absorb (`_waveguide_cpml_axes` loses its readers).
+PR3b — everything in B5 that moves a number: the realized-aperture port inside an absorbing domain, the
+pad-free periodic grid, Floquet with k_t, RCS, the invariant 2-D axis, dispatch-time port resolution.
+Judges (PR3a). Non-regression: the S0 path-equivalence matrix and every committed lock, oracle and frozen
+record unchanged; converted scripts bit-identical on the realized record. Refusals, each with preflight
+enabled and bypassed, on every path (uniform, graded, both multi-device, subgridded): explicit-`cpml` full-aperture guide refused; the
+default (no `boundary` passed) accepted with PEC transverse faces in the record and one warning; the same guide with PEC transverse faces declared runs and equals today's
+run bit-for-bit; a laterally invariant slab under a TF/SF plane wave accepted with the finding; a finite
+scatterer under the same source refused (the 37 mm array of the record is the reproduction); `closed_box`
+unaffected. Mutations, helpers kept: invariance predicate made unconditional; a replacement outside the
+admissible set allowed; the silent waveguide rewrite restored — each turns its judge red.
+Memory: ledger grep for "waveguide transverse", "TF/SF period", "37 mm" — none; #1221 entries concern PMC
+planes. Design note §2 decision 4 and §3 B5; Addendum 3. First-pass count of files calling
+`add_waveguide_port` without an explicit boundary declaration: 31 of 158 by text heuristic (the note's
+earlier heuristic said 17); the build-only census in the PR is authoritative.
+
+Addendum 5a, 2026-10-07 (leader, after the PR3a implementer stopped on a mismatch). Addendum 5 asked for
+the realized face record of a converted waveguide script to be bit-identical before and after. It cannot
+be: on main the transverse faces of a full-aperture guide are recorded as kind ABSORBER with realized
+depth 0 (the absorber's electric backing wall at the domain face, Addendum 4), and declaring them PEC —
+or defaulting them to PEC — changes the recorded kind to PEC (reproduced by the implementer on
+`tests/unit/sparams/test_waveguide_twoport_contract_v1.py`: four transverse kinds ABSORBER → PEC, shape
+and pads equal). That change of label is the purpose of the PR: the record now says what is solved.
+Corrected requirement: before and after, the realized depth of every face, the pad counts, the grid
+shape and every face's terminal plane are equal, and every computed result the test reads is
+bit-identical; the kind of a transverse face of a full-aperture guide changes from ABSORBER (depth 0) to
+PEC and nothing else in the record changes. Readers that branch on the kind (multi-device walls,
+preflight, exporters) are in the reach table, each shown to give the same realized walls for
+"ABSORBER, depth 0" and "PEC".
+
+Addendum 5b, 2026-10-07 (leader, second implementer stop). Three points the stop raised.
+(1) `FaceDepth.declared` on a wall face. On the committed two-port guide the transverse faces read
+(ABSORBER, declared 1, realized 0) and after the PEC declaration (PEC, declared 16, realized 0): a PEC
+face cannot carry a thickness (`Boundary` refuses it), so the field falls back to the scalar budget. On a
+wall that field is the legacy scalar view and means nothing physical. Identity for a converted script is
+therefore judged on: realized depth of every face, pad counts, grid shape, the physical position of
+every face's terminal plane computed from the REALIZED pads, and every computed result the test reads.
+The kind and the `declared` field of a full-aperture guide's transverse faces may change; nothing else.
+(2) `model.realize` places `terminal_m` from the DECLARED layers (`rfx/boundaries/model.py:~202`), so for
+a face declared absorbing but realized with depth 0 it reports a plane the grid does not have. That is a
+reader not on the realized record — the class this stage removes. In PR3a: list every reader of
+`terminal_m` in the reach table; if none feeds a computed result, make `realize` take the plane from the
+realized depth and show no result moves; if one does, stop on that item and report which.
+(3) The S0 path-equivalence TF/SF cell (`tests/contracts/path_equivalence/builders.py`, plane wave over a
+finite eps_r 2.5 box, default absorbing transverse faces) is the arrangement PR3a refuses: its realized
+permittivity is not invariant along y or z, and declaring y, z periodic is a different grid (no pads; the
+periods do not share the cell). The cell stays in the matrix on every path by redrawing its dielectric as
+a laterally invariant slab (same x extent and permittivity, spanning the whole transverse extent
+including the pads), which keeps the legacy wrap and the realized grid. Its numbers are those of a
+different structure and are re-recorded; this is the one fixture whose values change in PR3a, listed in
+the PR with the old finite-box arrangement kept as a refusal judge. No other committed value may move.
+The same rule applies to any other committed TF/SF case the census finds non-invariant: report each
+with its structure before converting; a case that pins a physical number (a lock, an oracle, a
+cross-validation record) is NOT converted by the implementer — stop on it and report.
+
+Addendum 5c, 2026-10-08 (leader, after two independent implementations were reviewed; decisions by the
+lead, [L:2de396]). Addendum 5 rested on assumptions about the paths that were not checked against the
+code; four were wrong. What is assumed now is written per path, and each line is to be confirmed by
+reading the code and by a build before it is relied on.
+(1) Where the waveguide rule applies. Checked (both reviews, reproduced): on the uniform single-device
+path a full-aperture guide declared `cpml` is built with realized transverse depth 0 (electric walls);
+on the non-uniform path the same declaration builds real transverse absorbers (8-cell pads on the
+reviewers' case), so nothing is rewritten there. Rule: the default-to-PEC and the refusal of an explicit
+absorbing transverse face apply on a path if and only if, on main, that path realizes depth 0 on a
+declared absorbing transverse face of a full-aperture guide. Every other path keeps today's behaviour in
+PR3a, unchanged and unrefused. To be confirmed per path by the implementer (code read + build):
+distributed_v2, distributed_nu, subgridded, ADI. That uniform and graded meshes solve different models
+for one declaration is a PR3b item; PR3a measures it once (S11 and S21 over the band, one WR-90
+full-aperture case, default declaration, uniform against graded) and reports the curves.
+(2) A declared PMC or PEC transverse wall under a TF/SF plane wave. On main the wrap overwrites it
+silently. PR3a: refused unless the model is invariant along that axis (then wall and wrap give the same
+field and today's run is kept bit-identically, with the finding); honouring walls on a non-invariant
+model is PR3b. `boundary='upml'` with a TF/SF plane wave stays refused, as on main.
+(3) Invariance of conductor masks. The legacy wrap leaves the last transverse edge row of a tangential
+conductor mask empty, so a conductor sheet spanning the whole transverse extent is not invariant on the
+realized arrays, and main leaks −57.7 dB through such a plate (reviewer, reproduced). The invariance
+check ignores that duplicated end edge, so the sheet runs as today, bit-identically. The seam is recorded
+in the ledger with its number as a PR3b item.
+(4) The RCS tutorial (`examples/tutorials/rcs_scattering.py`: PEC sphere, default absorbing faces, plane
+wave) solves an array, the arrangement PR3a refuses. It is converted to `closed_box=True` in this PR and
+its snapshot regenerated; it is the second fixture whose values change (after the S0 TF/SF cell), with
+before/after in the PR.
+(5) Not a feature rewrite, so not refused: a low-level `rfx.run(..., periodic=..., tfsf=...)` call in
+which the caller passes the periodic flags; a wall on the PROPAGATION axis of a TF/SF source (as on
+main). A traced material override that cannot be judged at trace time keeps today's behaviour, with a
+finding that the invariance was not judged.
+(6) The frozen design format gains no field. Export of a default full-aperture guide writes the resolved
+declaration (PEC transverse faces, absorber on the port axis); any other default-boundary model exports
+exactly as on main; a document written by main imports and runs as it did on main.
+
+## Addendum 5d (2026-10-08, lead decision L:0f6340 after measurement) — the default full-aperture guide on the graded mesh is refused
+
+Addendum 5c (1) kept today's behaviour on the paths where main keeps real absorbers on the transverse faces of a
+full-aperture guide (non-uniform, distributed_nu) and asked for one measurement. The measurement is in: with the
+boundary not passed, the graded path solves a structure without side walls. Against the uniform path on the
+two-port contract fixture, |S11| is 14.5-19.4 dB lower on 16 of 20 bins and |S21| is above 0 dB on 13 of 20 bins
+(max +0.93 dB). That is a non-physical result handed over silently, so 5c (1) is replaced for these paths:
+
+1. Non-uniform and distributed_nu: a full-aperture waveguide port with the boundary NOT passed is refused at
+   dispatch (run, forward, the waveguide S-matrix calculator, with and without preflight). The message names the
+   transverse faces and the way through: declare them, e.g. `boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'}` for a
+   guide along x. This is a stopgap against a silently wrong result; the structural fix (one boundary model realized
+   the same way on every path) stays the first item of PR3b, cause issue tracker 1221.
+2. An explicitly declared transverse absorber on these paths keeps today's behaviour (the user asked for an open
+   cross-section and gets it). An explicitly declared wall keeps today's behaviour.
+3. Measured basis for the way through (rfx-archive `rfx/records/20261008-s1-pr3a-guide-default-uniform-vs-graded/`):
+   with the side walls declared, the graded path equals the uniform path where both realize the same cross-section
+   (0.937 mm cell, 44 nodes on both: |S21| within 0.001 dB, |S11| within 0.03 dB, phase within 0.01 deg, 20 bins).
+   At cells where a 40 mm width is not a whole number of cells the uniform builder realizes one more node than the
+   graded builder (41.22 vs 39.35 mm at 1.874 mm), and the two differ by that width: |S21| within 0.18 dB, |S11|
+   within 0.8 dB off the null bin, phase up to 5.8 deg near cutoff. That one-node difference is a PR3b item, not
+   part of this refusal.
+4. Judge: one contract test pins both sides on a guide whose cross-section is a whole number of cells on both
+   paths: default on the graded path is refused before any field step; explicit walls on the graded path agree with
+   the uniform default guide on |S11|, |S21| (dB) and S21 phase at every bin, with a bar derived from the measured
+   0.03 dB / 0.01 deg (bar: 0.1 dB and 0.1 deg; a deep-null bin below -40 dB is excluded from the |S11| comparison
+   by name). Mutation: the refusal removed on the graded path turns the first half red.
+5. What this assumes about each path, checked: uniform, distributed_v2, subgridded realize depth 0 and are governed
+   by Addendum 5 (default -> walls with one warning; explicit absorber refused) — build outputs in the PR3a report
+   (`BASE_PATHS`): pads (4,4,0,0,0,0). Non-uniform and distributed_nu realize real pads (4 on all faces) — same
+   report. ADI: not reachable (constructor refuses the absorber). Not checked by the leader: whether distributed_nu
+   reaches the same dispatch point as the single-device graded path for the default-provenance test; the implementer
+   confirms by reading and by a build, and reports.
+
+## Addendum 5e (2026-10-09, leader, after the verification review of PR3a) — the plane-wave rule applies only where the wrap is installed; the finding names every wrapped face
+
+Addendum 5 asked for the plane-wave (TF/SF) refusal "on every path". The premise was not checked per path, the same
+error Addendum 5c (1) corrected for the guide. Checked now by reading main: the graded-mesh stepper installs no
+periodic boundary at all (`rfx/runners/nonuniform.py:1300-1303`: the assembler passes `periodic=(False, False,
+False)` unconditionally; `rfx/sources/tfsf.py::tfsf_boundary_flags` says "not used by the non-uniform runner"), and
+the reviewer reproduced it (transverse faces ABSORBER, realized depth 4, no periodic stencil). So on the non-uniform
+and distributed_nu paths nothing is rewritten, a finite scatterer is not turned into an array, and the remedy the
+refusal names ("declare y='periodic'") does not exist there.
+
+1. Non-uniform and distributed_nu: the plane-wave boundary rule of Addendum 5 does not apply. A plane wave with a
+   finite or an invariant model keeps main's behaviour: no refusal from this rule, no `tfsf_transverse_periodic`
+   finding. Existing refusals of that path (oblique incidence, incidence along z, forward "uniform only") are
+   untouched. What a two-plane plane-wave slab between transverse absorbers solves on the graded mesh is not
+   characterized here (support matrix: experimental); it is a PR3b item under cause issue 1221, not a PR3a change.
+2. Uniform path, oblique incidence (Bloch method): the wrapped transverse axis along which the wavevector is tilted
+   keeps main's operator in PR3a (the field is not invariant there by construction; judging a structure along it
+   needs the Bloch-period statement and belongs to PR3b). It is no longer silent: the `tfsf_transverse_periodic`
+   finding names every face that is solved periodic, including the tilt axis's, and says for the tilt axis that the
+   structure was not judged for invariance there. The other transverse axis is judged and refused as at normal
+   incidence.
+3. Judges added with this addendum: (a) graded mesh, plane wave, finite box and invariant slab: admitted, same realized
+   grid and pads as main, no finding of this rule (mutation: the uniform rule applied on the graded path → red);
+   (b) uniform, oblique incidence: a box finite along the non-tilt axis is refused; a box finite only along the tilt
+   axis is admitted and the finding names the tilt-axis faces with the not-judged wording (mutation: oblique treated
+   as "no axis to judge" → red; mutation: tilt-axis faces dropped from the finding → red); (c) graded guide
+   (Addendum 5d): a port whose ranges are given explicitly and cover the whole aperture is refused like the
+   ranges-omitted port; a port covering part of the aperture is admitted on the graded mesh with the boundary not
+   passed (mutations: explicit-range port not refused → red; partial-aperture port refused → red).
+4. Per-path statement, corrected: a waveguide port on the subgridded path ends in main's existing NotImplementedError
+   on both trees, so "default → walls" is not reachable there; distributed_v2 reaches the uniform rule through the
+   single-device fallback.

@@ -100,10 +100,10 @@ def simulation_face_depths(sim):
     diagnostics must describe those actual pads. The NU builder does not make
     that transverse rewrite and keeps its declared absorbing axes.
     """
-    axes = (sim._waveguide_cpml_axes()
-            if sim._waveguide_ports and not sim._uses_nonuniform_mesh else "xyz")
+    if sim._waveguide_ports and not sim._uses_nonuniform_mesh:
+        return sim._build_grid().boundary_depths
     return resolve_face_depths(
-        sim._boundary_spec, budget=sim._cpml_layers, absorbing_axes=axes,
+        sim._boundary_spec, budget=sim._cpml_layers,
         periodic_axes="".join(a for a, yes in zip("xyz", sim._periodic_flags()) if yes), mode=sim._mode,
     )
 

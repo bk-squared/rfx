@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from rfx._grid_metric import field_index
 import warnings
 from dataclasses import replace
 
@@ -804,7 +805,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         return min(rel, key=rel.get)
 
     for _port_index, pe in enumerate(sim._ports):
-        idx = pos_to_nu_index(grid, pe.position)
+        idx = (pos_to_nu_index(grid, pe.position) if getattr(pe, "extent", None) is not None
+               else field_index(grid, pe.position, pe.component))
         if pe.impedance == 0.0:
             # Current source with dV normalization; amplitude_kind (issue
             # #571) threaded — None/'current' are bit-identical no-ops here.
@@ -1036,7 +1038,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     wire_port_specs.extend(lumped_port_specs)
 
     for pe in sim._probes:
-        idx = pos_to_nu_index(grid, pe.position)
+        idx = (pos_to_nu_index(grid, pe.position) if getattr(pe, "extent", None) is not None
+               else field_index(grid, pe.position, pe.component))
         probes.append((*idx, pe.component))
 
     # DFT plane probes — mirror the uniform-path setup in
@@ -1384,7 +1387,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         ntff_data=ntff_data_init,
         current_moments=current_moments,
         waveguide_ports=waveguide_port_cfgs if waveguide_port_cfgs else None,
-        tfsf=tfsf_pair,
+        tfsf=tfsf_pair, _feature_tfsf=True,
         emit_time_series=emit_time_series,
     )
     if stop_fn is not None:

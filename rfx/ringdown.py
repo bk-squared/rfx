@@ -89,6 +89,7 @@ report in ``Result.ringdown.stop``.
 
 from __future__ import annotations
 
+from rfx._grid_metric import field_index
 import inspect
 import math
 import warnings
@@ -1449,9 +1450,10 @@ class RingdownRun:
         keys = []
         seen = set()
 
-        def add(comp, idx):
+        def add(comp, idx, *, wire=True):
             key = (comp, tuple(int(v) for v in idx))
-            if key not in seen:
+            # Drop only a wire node that is an outside component entry; any other mis-resolution stays for the round-trip check.
+            if key not in seen and (not wire or tuple(map(int, resolve(p := _node_position(self.grid, key[1])))) != key[1] or field_index(self.grid, p, comp) == key[1]):
                 seen.add(key)
                 keys.append(key)
 
@@ -1490,13 +1492,13 @@ class RingdownRun:
                 hi = self.grid.shape[ax] - int(getattr(self.grid, f"pad_{'xyz'[ax]}_hi", 0))
                 if not (self.grid.node_of(ax, lo) <= coord <= self.grid.node_of(ax, hi - 1)):
                     raise ValueError("identification probe position is outside the probeable interior (absorber pad or domain)")
-            idx = tuple(int(v) for v in resolve(position))
+            idx = tuple(int(v) for v in field_index(self.grid, position, component))
             identification_keys.append((component, idx))
-            add(component, idx)
+            add(component, idx, wire=False)
         self.identification_keys = tuple(identification_keys)
         for comp, idx in keys:
             pos = _node_position(self.grid, idx)
-            got = tuple(int(v) for v in resolve(pos))
+            got = tuple(int(v) for v in field_index(self.grid, pos, comp))
             if got != idx:
                 raise RuntimeError(
                     f"port-channel probe {comp}{idx}: its node position {pos} "
@@ -1654,9 +1656,8 @@ class RingdownRun:
         """The port metadata the run realized and the probe samples it covers."""
         self._check_solver_step(result)
         run_grid = result.grid
-        resolve = _lane_resolver(self.lane, run_grid)
         for comp, idx in self.probe_keys:
-            got = tuple(int(v) for v in resolve(_node_position(self.grid, idx)))
+            got = tuple(int(v) for v in field_index(run_grid, _node_position(self.grid, idx), comp))
             if got != idx:
                 raise _NotCompleted(
                     "W0", math.nan, W0_REL_BAR,

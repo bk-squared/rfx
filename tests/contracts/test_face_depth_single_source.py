@@ -232,3 +232,40 @@ depth = depths.get(face)
 def test_boundary_consumers_have_no_blanket_exemption(path):
     assert path not in DECLARATION_MODULES
     assert declaration_reads("depth = grid.face_layers.get(face)")
+
+
+def feature_axis_reads(source):
+    """Feature-derived absorbing axes may only be read inside boundaries."""
+    tree = ast.parse(source)
+    names = {"_waveguide_cpml_axes", "_guide_axes"}
+    return [(node.lineno, ast.unparse(node)) for node in ast.walk(tree)
+            if (isinstance(node, ast.Attribute) and node.attr in names)
+            or (isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and node.id in names)
+            or (isinstance(node, ast.ImportFrom) and any(alias.name in names for alias in node.names))
+            or (isinstance(node, ast.ImportFrom) and node.module == "rfx.sources.tfsf"
+                and any(alias.name == "tfsf_boundary_flags" for alias in node.names))
+            or (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id == "getattr" and len(node.args) > 1
+                and isinstance(node.args[1], ast.Constant) and node.args[1].value in names)]
+
+
+def test_feature_axis_readers_belong_to_boundaries():
+    violations = []
+    for path in (ROOT / "rfx").rglob("*.py"):
+        relative = path.relative_to(ROOT)
+        if relative.parts[:2] == ("rfx", "boundaries"):
+            continue
+        violations.extend(f"{relative}:{line}: {expression}"
+                          for line, expression in feature_axis_reads(path.read_text()))
+    assert not violations, "Feature axis reads outside boundaries:\n" + "\n".join(violations)
+
+
+@pytest.mark.parametrize("source", [
+    "axes = sim._waveguide_cpml_axes()",
+    "axes = getattr(sim, '_waveguide_cpml_axes')()",
+    "from rfx.boundaries.features import _guide_axes as axes; axes(sim)",
+    "axes = _guide_axes(sim)",
+    "from rfx.sources.tfsf import tfsf_boundary_flags; axes = tfsf_boundary_flags(cfg)",
+])
+def test_seeded_feature_axis_read_is_detected(source):
+    assert feature_axis_reads(source), "disabled scan accepted a feature axis reader"

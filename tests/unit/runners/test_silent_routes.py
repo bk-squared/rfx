@@ -19,7 +19,8 @@ N_STEPS = 96
 
 
 def _sim(
-    conformal=False, *, ports=None, solver="yee", tfsf=False, absorber=None, kappa=1
+    conformal=False, *, ports=None, solver="yee", tfsf=False, absorber=None, kappa=1,
+    periodic_tfsf=False,
 ):
     walls = BoundarySpec(
         x=Boundary(lo="pec", hi="pec", conformal=conformal), y="pec", z="pec"
@@ -28,17 +29,20 @@ def _sim(
         walls = BoundarySpec(
             x="cpml", y=Boundary(lo="pec", hi="pec", conformal=conformal), z="cpml"
         )
+    if periodic_tfsf:
+        walls = BoundarySpec(x="cpml", y="periodic", z="periodic")
     sim = Simulation(
         freq_max=10e9,
-        domain=(0.0123, 0.0131, 0.0127),
+        domain=(0.0123, 0.015, 0.022) if periodic_tfsf else (0.0123, 0.0131, 0.0127),
         dx=0.001,
         boundary=absorber or walls,
         solver=solver,
         cpml_layers=4,
         cpml_kappa_max=kappa,
     )
+    z_shift = 0.004 if periodic_tfsf else 0.0
     if solver != "adi":
-        sim.add(Sphere(center=(0.0061, 0.0062, 0.0064), radius=0.0012), material="pec")
+        sim.add(Sphere(center=(0.0061, 0.0062, 0.0064 + z_shift), radius=0.0012), material="pec")
     sim.add_material("design", eps_r=2.0)
     if not tfsf:
         sim.add(Box((0.002, 0.002, 0.002), (0.003, 0.004, 0.004)), material="design")
@@ -58,7 +62,7 @@ def _sim(
         sim.add_source(
             (0.004, 0.006, 0.006), "ez", waveform=pulse, amplitude_kind="field"
         )
-    sim.add_probe((0.008, 0.006, 0.006), "ez")
+    sim.add_probe((0.008, 0.006, 0.006 + z_shift), "ez")
     return sim
 
 
@@ -251,7 +255,8 @@ def test_explicit_staircase_s_matrix_is_allowed(ports):
 
 @pytest.mark.parametrize("conformal", [False, True])
 def test_device_fallback_preserves_explicit_conformal(conformal, two_devices):
-    sim = _sim(True, tfsf=True)
+    # Both routes solve the same explicitly declared periodic cell.
+    sim = _sim(True, tfsf=True, periodic_tfsf=True)
     expected = sim.run(n_steps=N_STEPS, skip_preflight=True, conformal_pec=conformal)
     got = sim.run(
         n_steps=N_STEPS,

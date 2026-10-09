@@ -14,7 +14,7 @@ import jax
 
 from rfx.boundaries import cpml, upml
 from rfx.boundaries.spec import normalize_boundary
-from rfx.boundaries.depths import FACES, Kind, resolve_face_depths
+from rfx.boundaries.depths import FACES, Kind, resolve_face_depths, grid_face_depths
 
 
 class _DefaultBoundary(str):
@@ -187,19 +187,24 @@ def realize(model: BoundaryModel, grid) -> Realization:
     domain = model.declaration.domain
     if domain is None:
         domain = grid.domain
+    records = {face.name: face for face in grid_face_depths(grid)}
     planes, periods = [], []
     for ax, axis in enumerate(model.axes):
         length = domain[ax]
         if axis.pairing:
             periods.append((axis.name, length))
         for side in ("lo", "hi"):
-            face = model.face(f"{axis.name}_{side}")
+            name = f"{axis.name}_{side}"
+            # PR3a relabels only the full-guide default faces. Other feature
+            # departures (including Floquet) retain their declared kinds.
+            guide_faces = getattr(grid, "_waveguide_admission", ((),))[0]
+            face = records[name] if name in guide_faces else model.face(name)
             plane = 0.0 if side == "lo" else length
             if axis.invariant:
                 planes.append(FacePlane(face.name, face.kind, None))
             elif face.kind == Kind.ABSORBER:
                 cells = grid.cells(ax)
-                pad = face.layers
+                pad = records[name].realized
                 # Last stored width supplies a bounding node, not a pad cell.
                 widths = cells[:pad] if side == "lo" else cells[len(cells) - 1 - pad:len(cells) - 1]
                 terminal = plane + (-1 if side == "lo" else 1) * sum(widths)

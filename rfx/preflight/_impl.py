@@ -22,6 +22,7 @@ def _preflight_impl(
     n_steps_for_memory: int | None = None,
     available_memory_gb: float | None = None,
     _conductors=None,
+    _tfsf_material_overrides=(),
 ) -> "PreflightReport":
     """Shared checks; execution lends its solve products only to this call."""
     import warnings
@@ -59,6 +60,8 @@ def _preflight_impl(
             if check_resolution:
                 self._validate_mesh_quality()
             self._validate_simulation_config()
+            from rfx.boundaries.tfsf import report
+            report(self, issues, root=_conductors, material_overrides=_tfsf_material_overrides)
             from rfx.model.pad_fill import report_pad_fill
             report_pad_fill(self, issues)
             if check_ntff:

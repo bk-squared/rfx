@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import jax.numpy as jnp
 
+from rfx._grid_metric import field_index
 from rfx.core.drives import StepDrives, drive_layout
 from .sequence import HookPoint
 
@@ -23,7 +24,7 @@ def make_probe_step(grid, materials, ports, driven, *, use_cpml,
         cells = [cell for cell, enabled in zip(cells, live) if enabled]
         counts = [_wire_port_live_cells(grid, p, pec_edge_masks)[2] for p in ports]
     else:
-        cells = [grid.position_to_index(port.position)]
+        cells = [field_index(grid, port.position, port.component)]
     layout = drive_layout([(*cell, port.component) for cell in cells], jnp.float32)
 
     def source_values(t):

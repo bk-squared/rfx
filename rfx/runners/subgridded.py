@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from rfx._grid_metric import field_index
 from rfx._grid_metric import nearest_uniform_index
 
 from dataclasses import replace
@@ -252,8 +253,15 @@ def _run_subgridded_once(
     )
     has_pec_f = bool(jnp.any(pec_mask_f)) if pec_mask_f is not None else False
 
+    # An interior fine-grid end is a coarse/fine interface, not a wall.
+    high_wall = tuple(
+        end == grid_coarse.shape[a]
+        and getattr(grid_coarse, f"pad_{'xyz'[a]}_hi", 0) == 0
+        and 'xyz'[a] not in grid_coarse.periodic_axes
+        for a, end in enumerate((fi_hi, fj_hi, fk_hi)))
+
     # Helper: convert physical position to fine-grid index
-    def _pos_to_fine_idx(pos):
+    def _pos_to_fine_idx(pos, component=None):
         idx = (
             nearest_uniform_index((pos[0] - x_off) / dx_f),
             nearest_uniform_index((pos[1] - y_off) / dx_f),
@@ -268,7 +276,11 @@ def _run_subgridded_once(
                 f"the fine grid shape ({nx_f}, {ny_f}, {nz_f}). "
                 f"Widen z_range in add_refinement() to cover all sources and probes.",
             )
-        return idx
+        if component is None or not any(high_wall):
+            return idx
+        resolved = field_index(
+            fine_grid, (pos[0] - x_off, pos[1] - y_off, pos[2] - z_off), component)
+        return tuple(resolved[a] if high_wall[a] else idx[a] for a in range(3))
 
     # Build sources on fine grid
     source_requests = []
@@ -332,7 +344,7 @@ def _run_subgridded_once(
 
     def _coarse_shadow_source_entries(pos, fine_idx, component, waveform):
         if coarse_shadow_source_projection == "physical_nearest":
-            ci, cj, ck = grid_coarse.position_to_index(pos)
+            ci, cj, ck = field_index(grid_coarse, pos, component)
             return [
                 (
                     ci,
@@ -343,7 +355,7 @@ def _run_subgridded_once(
                 )
             ]
         if coarse_shadow_source_projection == "fine_node_nearest":
-            ci, cj, ck = grid_coarse.position_to_index(_fine_idx_to_position(fine_idx))
+            ci, cj, ck = field_index(grid_coarse, _fine_idx_to_position(fine_idx), component)
             return [
                 (
                     ci,
@@ -396,13 +408,13 @@ def _run_subgridded_once(
 
     def _sparam_probe_idx_f(pe):
         if pe.extent is None:
-            return _pos_to_fine_idx(pe.position)
+            return _pos_to_fine_idx(pe.position, pe.component)
         cells = _wire_port_cells_f(pe)
         return cells[len(cells) // 2]
 
     for pe in sim._ports:
         if pe.impedance == 0.0:
-            source_requests.append((pe, _pos_to_fine_idx(pe.position), None))
+            source_requests.append((pe, _pos_to_fine_idx(pe.position, pe.component), None))
             continue
 
         # Port conductance -> sigma. The general axis-aware form is
@@ -431,7 +443,7 @@ def _run_subgridded_once(
                     for cell in cells)
         else:
             # Lumped port
-            idx = _pos_to_fine_idx(pe.position)
+            idx = _pos_to_fine_idx(pe.position, pe.component)
             i, j, k = idx
             sigma_port = 1.0 / (pe.impedance * dx_f)
             mats_f = _stamp_lumped_sigma(mats_f, (i, j, k), sigma_port,  # #1210
@@ -454,7 +466,7 @@ def _run_subgridded_once(
     probe_indices_f = []
     probe_components = []
     for pe in sim._probes:
-        idx = _pos_to_fine_idx(pe.position)
+        idx = _pos_to_fine_idx(pe.position, pe.component)
         probe_indices_f.append(idx)
         probe_components.append(pe.component)
 

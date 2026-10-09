@@ -1,4 +1,5 @@
 """Run-specific source coefficient selection and absorber admission."""
+from rfx._grid_metric import field_index
 from dataclasses import replace
 
 
@@ -134,7 +135,7 @@ def resolve_run_sources(queue, materials, sim, grid, *, tensor=False):
         for n, port in enumerate(sim._ports):
             cells = (_wire_port_cells(grid, wire_port_from_entry(port))
                      if port.extent is not None else
-                     [grid.position_to_index(port.position)])
+                     [field_index(grid, port.position, port.component)])
             prescribed = (port.impedance == 0.0
                           and port.amplitude_kind == "field")
             if prescribed or not getattr(port, "excite", True):

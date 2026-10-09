@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any, Callable, NamedTuple
 
-from rfx import _realized
+from rfx import _realized, _grid_metric
 
 import jax
 import jax.numpy as jnp
@@ -385,7 +385,7 @@ def make_source(grid: Grid, position, component, waveform_fn, n_steps,
     that legacy/native case.
     """
     from rfx.model.source_coefficients import uniform_source_table
-    idx = grid.position_to_index(position)
+    idx = _grid_metric.field_index(grid, position, component)
     if amplitude_kind == "current" and materials is None:
         raise ValueError(
             "make_source(amplitude_kind='current') needs materials "
@@ -430,7 +430,7 @@ def make_j_source(grid: Grid, position, component, waveform_fn, n_steps, materia
     amplitude_kind : 'field' | 'current' | None (issue #571, above)
     """
     from rfx.model.source_coefficients import uniform_source_table
-    idx = grid.position_to_index(position)
+    idx = _grid_metric.field_index(grid, position, component)
     i, j, k = idx
     waveform = uniform_source_table(
         grid, idx, component, waveform_fn, n_steps, materials, amplitude_kind,
@@ -446,7 +446,7 @@ def make_port_source(grid: Grid, port, materials: MaterialArrays, n_steps):
     ``setup_lumped_port()``.
     """
     from rfx.sources.port_drive import stamped_drive, port_drive_waveform
-    idx = grid.position_to_index(port.position)
+    idx = _grid_metric.field_index(grid, port.position, port.component)
     i, j, k = idx
 
     waveform = port_drive_waveform(
@@ -490,7 +490,7 @@ def make_wire_port_sources(grid, port, materials, n_steps, pec_edge_masks=None):
 
 def make_probe(grid: Grid, position, component):
     """Create a ProbeSpec from a physical position."""
-    idx = grid.position_to_index(position)
+    idx = _grid_metric.field_index(grid, position, component)
     return ProbeSpec(i=idx[0], j=idx[1], k=idx[2], component=component)
 
 
@@ -1184,6 +1184,7 @@ def _build_step_setup(
     debye: "tuple | None",
     lorentz: "tuple | None",
     tfsf: "tuple | None",
+    _feature_tfsf: bool = False,
     sources: list,
     probes: list,
     dft_planes: list,
@@ -1322,48 +1323,24 @@ def _build_step_setup(
     use_lumped_rlc = len(lumped_rlc) > 0
     use_kerr = kerr_chi3 is not None
 
-    # ---- #404 oblique-periodic complex Bloch path activation ----
-    # An oblique (2D-aux) TFSF injects a tilted plane wave that a plain-periodic
-    # REAL grid cannot sustain (the pre-#404 under-tilt). Drive the shared solver
-    # on a complex Bloch-envelope path instead: fields carry the envelope P and a
-    # per-axis phase rides the periodic roll; the physical field is
-    # Re(P·exp(-j k_t·y)). Gated strictly on the 2D-aux discriminator, so normal
-    # incidence and every non-TFSF run stay real float32 and byte-identical.
-    # NOTE: gated strictly on the 2D-aux (Bloch) discriminator. Open-domain
-    # oblique Method B (MethodBConfig, NOT TFSF2DConfig) intentionally bypasses
-    # this lane: it stays real float32 and its NTFF/DFT/flux monitors read
-    # physical fields, so the fail-loud below must NOT be widened to angle != 0.
-    _oblique_bloch = False
-    if use_tfsf:
-        from rfx.sources.tfsf import is_tfsf_2d as _is_tfsf_2d_early
-        _oblique_bloch = _is_tfsf_2d_early(tfsf[0])
-    if _oblique_bloch:
-        # Frequency-domain monitors accumulate the complex envelope P, not the
-        # physical spectrum — fail loud rather than return truncated garbage.
-        _unsupported_ob = []
-        if use_ntff:
-            _unsupported_ob.append("NTFF box")
-        if use_dft_planes:
-            _unsupported_ob.append("DFT plane probe")
-        if use_flux_monitors:
-            _unsupported_ob.append("flux monitor")
-        if _unsupported_ob:
-            raise NotImplementedError(
-                "Oblique (angle_deg != 0) TFSF uses the #404 complex Bloch path; "
-                "frequency-domain monitors are not yet transform-aware on it. "
-                "Unsupported: " + ", ".join(_unsupported_ob) + ". Use field "
-                "snapshots / final state (returned as physical fields), or "
-                "compute_rcs for open-domain oblique scattering."
-            )
+    from rfx.boundaries.setup import oblique_bloch
+    _oblique_bloch = oblique_bloch(tfsf, use_ntff=use_ntff,
+                                 use_dft_planes=use_dft_planes, use_flux_monitors=use_flux_monitors)
 
     # The far-field integral is over the SCATTERED field, which it only is
     # when the Huygens box encloses the whole injected region. Plain ints,
     # evaluated here at trace time.
-    if use_tfsf and use_ntff:
-        from rfx.farfield import require_box_encloses_injected_region
-        from rfx.sources.tfsf import tfsf_injection_planes
-        require_box_encloses_injected_region(
-            ntff, tfsf_injection_planes(tfsf[0]), shape=grid.shape)
+    from rfx.boundaries.tfsf import admit_setup
+    admit_setup(grid=grid, tfsf=tfsf, materials=materials, waveguide_ports=waveguide_ports,
+                ntff=ntff if use_ntff else None, periodic=periodic, feature_owned=_feature_tfsf,
+                updates=dict(debye=debye, lorentz=lorentz, aniso_eps=aniso_eps,
+                             aniso_inv_eps=aniso_inv_eps, pec_mask=pec_mask, pec_edge_masks=pec_edge_masks,
+                             pec_occupancy=pec_occupancy, conformal_weights=conformal_weights,
+                             sheet_impedance=sheet_impedance, kerr_chi3=kerr_chi3,
+                             design_box=design_box, design_occupancy=design_occupancy),
+                localized=(("sources", sources), ("mag_sources", mag_sources),
+                           ("waveguide_ports", waveguide_ports), ("wire_port_sparams", wire_port_sparams),
+                           ("lumped_port_sparams", lumped_port_sparams), ("lumped_rlc", lumped_rlc)))
 
     # ---- (2,4) fourth-order-in-space stencil (PR-1b) ----
     # order=2 is the default and BYTE-IDENTICAL: dt and every kernel call are
@@ -2000,6 +1977,7 @@ def run(
     debye: tuple | None = None,
     lorentz: tuple | None = None,
     tfsf: tuple | None = None,
+    _feature_tfsf: bool = False,
     sources: list[SourceSpec] | None = None,
     probes: list[ProbeSpec] | None = None,
     dft_planes: list | None = None,
@@ -2210,7 +2188,7 @@ def run(
         periodic=periodic,
         debye=debye,
         lorentz=lorentz,
-        tfsf=tfsf,
+        tfsf=tfsf, _feature_tfsf=_feature_tfsf,
         sources=sources,
         probes=probes,
         dft_planes=dft_planes,
@@ -2817,6 +2795,7 @@ def run_until_decay(
     debye: tuple | None = None,
     lorentz: tuple | None = None,
     tfsf: tuple | None = None,
+    _feature_tfsf: bool = False,
     sources: list[SourceSpec] | None = None,
     probes: list[ProbeSpec] | None = None,
     dft_planes: list | None = None,
@@ -2996,7 +2975,7 @@ def run_until_decay(
         periodic=periodic,
         debye=debye,
         lorentz=lorentz,
-        tfsf=tfsf,
+        tfsf=tfsf, _feature_tfsf=_feature_tfsf,
         sources=sources,
         probes=probes,
         dft_planes=dft_planes,
@@ -3049,7 +3028,7 @@ def run_until_decay(
         cy = (grid.ny - 1) * dx / 2.0
         cz = 0.0 if grid.is_2d else (grid.nz - 1) * dx / 2.0
         monitor_position = (cx, cy, cz)
-    mon_idx = grid.position_to_index(monitor_position)
+    mon_idx = _grid_metric.field_index(grid, monitor_position, monitor_component)
 
     # ---- precompute source waveforms up to max_steps ----
     if sources:

@@ -2469,6 +2469,7 @@ def _build_nu_scan(
     current_moments=None,
     waveguide_ports: list | None = None,
     tfsf: tuple | None = None,
+    _feature_tfsf: bool = False,
     flux_monitors: list | None = None,
     emit_time_series: bool = True,
     aniso_eps: tuple | None = None,
@@ -2514,50 +2515,13 @@ def _build_nu_scan(
     # The far-field integral is over the SCATTERED field, which it only is
     # when the Huygens box encloses the whole injected region. Same check the
     # uniform lane runs (rfx/simulation.py), same helper.
-    if use_tfsf and use_ntff:
-        from rfx.farfield import require_box_encloses_injected_region
-        from rfx.sources.tfsf import tfsf_injection_planes
-        require_box_encloses_injected_region(
-            ntff_box, tfsf_injection_planes(tfsf[0]), shape=grid.shape)
+    from rfx.boundaries.tfsf import admit_setup
 
-    # CPML: only initialize when cpml_layers > 0 (skip for PEC boundary)
-    use_cpml = grid.cpml_layers > 0
-
-    cpml_params = None
-    cpml_state_init = None
-    cpml_grid = None
-    cpml_axes_eff = cpml_axes
-
-    if use_cpml:
-        from rfx.boundaries.cpml import init_cpml, apply_cpml_h, apply_cpml_e
-
-        # Pass NonUniformGrid directly — init_cpml duck-types dx/dy/dz.
-        # NonUniformGrid does not carry pmc_faces / pec_faces attrs
-        # (frozen dataclass, pytree-registered), so the sets must be
-        # threaded through from the caller.
-        cpml_params, cpml_state_init = init_cpml(
-            grid, pec_faces=pec_faces, pmc_faces=pmc_faces,
-        )
-        cpml_grid = grid
-        cpml_axes_eff = padded_axes(grid, cpml_axes)
-
-    # PMC enforcement (2026-04). The NU scan body previously never
-    # zeroed H_tan on PMC faces, so a half-symmetric configuration
-    # that relied on the mirror plane was running with an effectively
-    # free boundary. Frozen set gives JIT cache a stable hash; empty
-    # set short-circuits the apply to a no-op.
-    # The electric walls, per face, by the one rule the uniform scan uses
-    # (#1164): the NU grid carries no face attributes, so the declared sets
-    # threaded in from the caller stand in for them. With no magnetic face
-    # this is the six faces ``apply_pec`` zeroed before, plane for plane.
-    from rfx.boundaries.pec import resolve_wall_faces as _resolve_walls
-    _pec_faces_frozen, _pmc_faces_frozen = _resolve_walls(
-        SimpleNamespace(pec_faces=set(pec_faces or ()), pmc_faces=set(pmc_faces or ()),
-                        shape=(grid.nx, grid.ny, grid.nz)),
-        (False, False, False), None)
-    from rfx.core.yee import CurlBoundary
-    curl_boundary = CurlBoundary(_pec_faces_frozen, _pmc_faces_frozen)
-    use_pmc_faces = bool(_pmc_faces_frozen)
+    from rfx.boundaries.setup import nonuniform_boundaries
+    from rfx.boundaries.cpml import apply_cpml_h, apply_cpml_e
+    (use_cpml, cpml_params, cpml_state_init, cpml_grid, cpml_axes_eff,
+     curl_boundary, _pec_faces_frozen, _pmc_faces_frozen, use_pmc_faces) = nonuniform_boundaries(
+         grid, cpml_axes, pec_faces, pmc_faces)
 
     # #931 §1.7: realize the PEC edges ONCE here.  The NU stepper installs
     # no periodic BC at all and NU grids are 3-D, so the non-periodic #689
@@ -2582,6 +2546,15 @@ def _build_nu_scan(
         if pec_edge_masks is not None:
             pec_static_edge_masks = tuple(
                 s & m for s, m in zip(pec_static_edge_masks, pec_edge_masks))
+
+    admit_setup(grid=grid, tfsf=tfsf, materials=materials, waveguide_ports=waveguide_ports,
+                ntff=ntff_box if use_ntff else None, periodic=(False, False, False),
+                pec_faces=pec_faces, pmc_faces=pmc_faces, feature_owned=_feature_tfsf, nonuniform=True,
+                updates=dict(debye=debye, lorentz=lorentz, aniso_eps=aniso_eps, pec_mask=pec_mask,
+                             pec_edge_masks=pec_edge_masks, pec_occupancy=pec_occupancy,
+                             sheet_impedance=sheet_impedance, design_box=design_box),
+                localized=(("sources", sources), ("waveguide_ports", waveguide_ports),
+                           ("wire_ports", wire_ports), ("rlc_metas", rlc_metas)))
 
     # #677 surface-impedance sheet: exponential-stepping A/B built once
     # from the FINAL scan materials; applied per step at tangential edges
@@ -3167,6 +3140,7 @@ def run_nonuniform(
     current_moments=None,
     waveguide_ports: list | None = None,
     tfsf: tuple | None = None,
+    _feature_tfsf: bool = False,
     flux_monitors: list | None = None,
     checkpoint: bool = False,
     emit_time_series: bool = True,
@@ -3217,7 +3191,7 @@ def run_nonuniform(
         ntff_data=ntff_data,
         current_moments=current_moments,
         waveguide_ports=waveguide_ports,
-        tfsf=tfsf,
+        tfsf=tfsf, _feature_tfsf=_feature_tfsf,
         flux_monitors=flux_monitors,
         emit_time_series=emit_time_series,
         aniso_eps=aniso_eps,
@@ -3694,6 +3668,7 @@ def run_nonuniform_until_decay(
     current_moments=None,
     waveguide_ports: list | None = None,
     tfsf: tuple | None = None,
+    _feature_tfsf: bool = False,
     flux_monitors: list | None = None,
     emit_time_series: bool = True,
     aniso_eps: tuple | None = None,
@@ -3805,7 +3780,7 @@ def run_nonuniform_until_decay(
         ntff_data=ntff_data,
         current_moments=current_moments,
         waveguide_ports=waveguide_ports,
-        tfsf=tfsf,
+        tfsf=tfsf, _feature_tfsf=_feature_tfsf,
         flux_monitors=flux_monitors,
         emit_time_series=emit_time_series,
         aniso_eps=aniso_eps,

@@ -87,7 +87,8 @@ def _measure_phase(direction: str, port_x: float):
     f0 = float(freqs.mean())
     bandwidth = max(0.2, min(0.8, (freqs[-1] - freqs[0]) / max(f0, 1.0)))
     sim = Simulation(
-        freq_max=float(freqs[-1]), domain=DOMAIN, boundary="cpml", cpml_layers=10,
+        freq_max=float(freqs[-1]), domain=DOMAIN,
+        boundary={"x": "cpml", "y": "pec", "z": "pec"}, cpml_layers=10,
     )
     sim.add_waveguide_port(
         port_x, direction=direction, mode=(1, 0), mode_type="TE",
@@ -228,7 +229,8 @@ def test_deembed_step_sign_rotation_correct(direction, port_x):
     f0 = float(freqs.mean())
     bandwidth = max(0.2, min(0.8, (freqs[-1] - freqs[0]) / max(f0, 1.0)))
     sim = Simulation(
-        freq_max=float(freqs[-1]), domain=DOMAIN, boundary="cpml", cpml_layers=10,
+        freq_max=float(freqs[-1]), domain=DOMAIN,
+        boundary={"x": "cpml", "y": "pec", "z": "pec"}, cpml_layers=10,
     )
     sim.add_waveguide_port(
         port_x, direction=direction, mode=(1, 0), mode_type="TE",

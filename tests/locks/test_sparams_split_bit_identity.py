@@ -192,7 +192,8 @@ def _waveguide_result(normalize):
     """``tests/_pec_short_advisory_fixture`` at dx = 2 mm, cpml 8."""
     from tests._pec_short_advisory_fixture import build
 
-    sim = build(_WG_FREQS, dx=2e-3, cpml=8)
+    sim = build(_WG_FREQS, dx=2e-3, cpml=8,
+                boundary={"x": "cpml", "y": "pec", "z": "pec"})
     return sim.compute_waveguide_s_matrix(normalize=normalize, num_periods=1)
 
 

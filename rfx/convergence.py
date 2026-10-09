@@ -445,6 +445,7 @@ def quick_convergence(
     # Build a sim_factory that clones the configuration with a new dx
     def sim_factory(dx):
         from rfx.api import Simulation
+        from rfx.boundaries.serialization import constructor_boundary
         new_sim = Simulation(
             freq_max=sim._freq_max,
             snap=sim._snap,
@@ -461,7 +462,7 @@ def quick_convergence(
             # B3b centers the magnetic image on the realized E-node face.
             # No half-cell compensation of the declared extent is needed;
             # ordinary mesh quantization still applies at each resolution.
-            boundary=sim._boundary_spec,
+            boundary=constructor_boundary(sim),
             cpml_layers=sim._cpml_layers,
             dx=dx,
             mode=sim._mode,

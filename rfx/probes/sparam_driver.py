@@ -20,6 +20,7 @@ eager loops are untouched (their removal is Stage 3).
 
 from __future__ import annotations
 
+from rfx._grid_metric import field_index
 import numpy as np
 
 import jax.numpy as jnp
@@ -456,7 +457,7 @@ def _lumped_recording_probes(grid, ports, live_cells=None):
     probes, zero_columns = [], []
     for p, pe in enumerate(ports):
         cells = (live_cells[p] if live_cells is not None else
-                 (tuple(int(i) for i in grid.position_to_index(pe.position)),))
+                 (tuple(int(i) for i in field_index(grid, pe.position, pe.component)),))
         idx = cells[len(cells) // 2]
         probes.extend(ProbeSpec(*cell, pe.component) for cell in cells)
         a, axis_a, b, axis_b = _ampere_loop_components(pe.component)
@@ -491,7 +492,7 @@ def _distributed_port_cells(grid, ports, pec_edge_masks=None):
     live_cells = []
     for pe in ports:
         if pe.extent is None:
-            cells = (tuple(int(i) for i in grid.position_to_index(pe.position)),)
+            cells = (tuple(int(i) for i in field_index(grid, pe.position, pe.component)),)
         else:
             from rfx.sources.sources import wire_port_from_entry, _wire_port_live_cells
             all_cells, flags, _ = _wire_port_live_cells(
@@ -517,7 +518,8 @@ def _distributed_lumped_accumulators(sim, grid, ports, freqs, n_steps, devices, 
     axis_of = {"ex": 0, "ey": 1, "ez": 2}
     dx_ports = np.array([
         float(grid.cells(axis_of[pe.component])[
-            int(grid.position_to_index(pe.position)[axis_of[pe.component]])])
+            int((grid.position_to_index(pe.position) if pe.extent is not None else
+                 field_index(grid, pe.position, pe.component))[axis_of[pe.component]])])
         for pe in ports])
     if any(pe.extent is not None for pe in ports):
         raw = {"lumped": [], "wire": []}

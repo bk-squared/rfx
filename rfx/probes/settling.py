@@ -1,6 +1,7 @@
 """Host diagnostics for already-recorded user probes, shared by run/forward."""
 from __future__ import annotations
 
+from rfx._grid_metric import field_index
 
 import jax
 import numpy as np
@@ -194,14 +195,11 @@ def sampled_source_end_step(sources, probes, grid, n_steps):
         n_steps, grid.dt)
 
 
-def _cell_of(grid, position):
+def _cell_of(grid, position, component=None):
     """Yee cell of a physical position, or None when it is not resolvable.
 
-    Uses the SAME mapping that PLACES sources and probes --
-    ``grid.position_to_index`` (uniform ``Grid``) / ``rfx.nonuniform.
-    position_to_index`` (``NonUniformGrid``), duck-typed through
-    ``rfx.lumped._resolve_position_to_index``, which is what
-    ``rfx.simulation.make_source`` and ``make_probe`` both call. The
+    Point components use ``field_index``, as their source/probe constructors
+    do. Extents and geometry retain the component-free node lookup. The
     co-location test is therefore "the grid puts them in the same cell",
     exactly; it is never a ``dx``-relative distance, which would be wrong
     on a graded mesh and arbitrary on a uniform one.
@@ -210,8 +208,9 @@ def _cell_of(grid, position):
         return None
     from rfx.lumped import _resolve_position_to_index
     try:
-        idx = _resolve_position_to_index(
-            grid, tuple(float(c) for c in position))
+        position = tuple(float(c) for c in position)
+        idx = (field_index(grid, position, component) if component is not None
+               else _resolve_position_to_index(grid, position))
     except Exception:
         # A drive or probe declared outside the built grid cannot be
         # co-located with anything; position_to_index raises there.
@@ -239,7 +238,8 @@ def drive_cells(grid, *entry_groups):
     cells: set[tuple[int, int, int]] = set()
     for entries in entry_groups:
         for entry in entries or ():
-            start = _cell_of(grid, getattr(entry, "position", None))
+            start = _cell_of(grid, getattr(entry, "position", None),
+                             getattr(entry, "component", None) if getattr(entry, "extent", None) is None else None)
             if start is None:
                 continue
             cells.add(start)
@@ -272,7 +272,8 @@ def source_dominated_columns(grid, entries, cells):
         return frozenset()
     dominated = set()
     for col, entry in enumerate(entries or ()):
-        cell = _cell_of(grid, getattr(entry, "position", None))
+        cell = _cell_of(grid, getattr(entry, "position", None),
+                        getattr(entry, "component", None))
         if cell is not None and cell in cells:
             dominated.add(col)
     return frozenset(dominated)

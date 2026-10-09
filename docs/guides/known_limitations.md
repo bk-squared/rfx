@@ -292,24 +292,54 @@ ground past the domain face by the absorber thickness, which fills every absorbe
 cell except the outermost row on the +x and +y faces.
 → [#1230](https://github.com/bk-squared/rfx/issues/1230)
 
-### A plane wave on absorbing side faces solves a periodic array, not an isolated object.
+### A plane wave requires compatible transverse faces and an invariant absorber replacement.
 
 Tracker: #1221
 
-With `add_tfsf_source` at normal incidence and absorbing y/z faces (the default
-`boundary='cpml'`), the grid adds absorber pads on y and z, but the run then wraps y and
-z periodically over the padded box. A finite scatterer is therefore solved as an array
-whose period is the interior plus both pads plus one cell (37 mm for a 20 mm interior
-with 8 mm pads at 1 mm cells), not as one object and not as the array the domain
-suggests. For a 12 mm dielectric cube the backscatter differs from the isolated
-object's by several dB at 7 GHz and by up to about 20–30 dB as the period approaches one
-free-space wavelength, and the run does not settle (the settling witness reports
-undetermined). An empty box or a laterally infinite slab is unaffected. For an array,
-declare the period you mean: `BoundarySpec(x='cpml', y='periodic', z='periodic')`; for
-an isolated scatterer use `rfx.rcs.compute_rcs`, whose sides absorb.
+On the uniform mesh at normal incidence, dispatch refuses absorbing transverse faces for a TF/SF plane wave when
+realized materials, conductors or localized field updates vary along that axis,
+including in the pads. The refusal also applies with `skip_preflight=True`.
+For an array, declare its axes periodic; for a finite scatterer use
+`closed_box=True` or `rfx.rcs.compute_rcs`. For propagation along x with E along z, the admitted wall
+pairs are PMC on y and PEC on z; either pair may instead be periodic. A wall
+pair keeps the legacy wrap only for an invariant model; finite transverse
+structure with those walls is refused. UPML remains unsupported for TF/SF.
+The uniform plane-wave lane retains its existing padded periodic wrap for an
+invariant absorber pair and reports the affected faces in preflight. Its grid
+and period do not change. Traced material overrides retain the legacy operator
+with a warning when invariance cannot be judged. At oblique incidence the tilt
+axis keeps its operator and is reported as not judged for invariance.
+The graded mesh keeps its transverse absorbers under a plane wave: no wrap and
+no refusal from this rule (the experimental operator remains a PR3b item).
 → [#1221](https://github.com/bk-squared/rfx/issues/1221)
 
+### Full-aperture guides on a graded mesh require explicit transverse boundaries.
+
+Tracker: #1221
+
+The non-uniform and distributed non-uniform paths refuse a full-aperture waveguide
+when `boundary` was omitted, including with preflight skipped. Their default keeps
+transverse absorbers, so the port would not be in a guide. For an x-directed guide,
+write `boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'}`; substitute the port axis for
+other directions. Explicit absorbers retain the open cross-section. Uniform and
+graded builders can still differ by one transverse node when the width is not a
+whole number of cells; matching their boundary declarations does not remove that
+difference. → [#1221](https://github.com/bk-squared/rfx/issues/1221)
+
 ## Gradients and optimization
+
+### A gradient with respect to conductivity does not settle with record length on lossless or nearly lossless design cells
+
+Tracker: #1424
+
+`jax.grad` through `forward()` admits a conductivity design. Where T·σ/ε on
+those design cells is not large, the gradient depends on the record length's
+phase at each frequency bin: a static sensitivity remains although the field
+decays. Measured at σ = 0, the oscillation is 8–11 times the settled value;
+at T·σ/ε = 0.34 / 3.4 / 68 it is 0.70 / 0.12 / 9e-8 of that oscillation.
+A longer record does not help. `gradient_record_length_witness` detects it;
+`gradient="adjoint"` refuses such a design and returns settled-spectrum
+gradients only.
 
 ### Port-only ring-down completion can miss the gradient of a weakly coupled high-Q resonance.
 

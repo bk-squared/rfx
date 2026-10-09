@@ -482,7 +482,8 @@ class Simulation(
         # boundary=<str>. A BoundarySpec provided here is authoritative;
         # removed keywords are rejected above.
         _explicit_spec = isinstance(boundary, (BoundarySpec, dict))
-        _boundary_origin = "default" if boundary is DEFAULT_BOUNDARY else "declared"
+        self._boundary_explicit = boundary is not DEFAULT_BOUNDARY
+        _boundary_origin = "declared" if self._boundary_explicit else "default"
         if boundary is DEFAULT_BOUNDARY:
             boundary = "cpml"
         if _explicit_spec:
@@ -2215,8 +2216,8 @@ class Simulation(
             read physical fields. ``"methodB"`` currently requires
             ``polarization='ez'`` and a single-device uniform grid.
         """
-        if self._boundary != "cpml":
-            raise ValueError("TFSF plane-wave source requires boundary='cpml'")
+        from rfx.boundaries.tfsf import validate_source_boundary
+        validate_source_boundary(self, closed_box=closed_box)
         if self._cpml_layers <= 0:
             raise ValueError("TFSF plane-wave source requires cpml_layers > 0")
         if self._mode not in ("3d", "2d_tmz", "2d_tez"):
@@ -2590,25 +2591,7 @@ class Simulation(
         ))
         return self
 
-    def _build_spec_from_legacy(self):
-        """T7-B: compose a canonical BoundarySpec from the legacy triad.
-
-        Called once at ``__init__`` time for scalar boundaries. The
-        spec is the single source of truth for T7-D preflight and
-        T7-C / T7-E runner integration; the legacy fields remain as
-        derived views for code that has not yet migrated.
-        """
-        from rfx.boundaries.spec import BoundarySpec, Boundary
-        default = self._boundary  # 'cpml' | 'upml' | 'pec'
-        axes = {}
-        for axis_name in "xyz":
-            if axis_name in self._periodic_axes:
-                axes[axis_name] = Boundary(lo="periodic", hi="periodic")
-            else:
-                lo_tok = "pec" if f"{axis_name}_lo" in self._pec_faces else default
-                hi_tok = "pec" if f"{axis_name}_hi" in self._pec_faces else default
-                axes[axis_name] = Boundary(lo=lo_tok, hi=hi_tok)
-        return BoundarySpec(x=axes["x"], y=axes["y"], z=axes["z"])
+    from rfx.boundaries.serialization import legacy_spec as _build_spec_from_legacy
 
     def __getattr__(self, name):
         if name == "set_periodic_axes":

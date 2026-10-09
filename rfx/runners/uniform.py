@@ -696,8 +696,8 @@ def run_uniform(
         )
         if not sim._tfsf.closed_box:
             sim._validate_tfsf_vacuum_boundary(materials, tfsf[0])
-        from rfx.sources.tfsf import tfsf_boundary_flags
-        periodic, cpml_axes = tfsf_boundary_flags(tfsf[0])
+        from rfx.boundaries.tfsf import boundary_flags as tfsf_boundary_flags
+        periodic, cpml_axes = tfsf_boundary_flags(tfsf[0], grid)
         # #404: an oblique (2D-aux) TFSF drives the shared solver on the complex
         # Bloch-envelope path; final `state` and point-probe time series are
         # reconstructed to physical fields after the run, but the streaming/
@@ -927,7 +927,7 @@ def run_uniform(
             periodic=periodic,
             debye=debye,
             lorentz=lorentz,
-            tfsf=tfsf,
+            tfsf=tfsf, _feature_tfsf=True,
             sources=sources,
             probes=probes,
             dft_planes=dft_planes,
@@ -964,7 +964,7 @@ def run_uniform(
             periodic=periodic,
             debye=debye,
             lorentz=lorentz,
-            tfsf=tfsf,
+            tfsf=tfsf, _feature_tfsf=True,
             sources=sources,
             probes=probes,
             dft_planes=dft_planes,

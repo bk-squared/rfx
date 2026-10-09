@@ -68,7 +68,7 @@ def build_simulation() -> Simulation:
         freq_max=12e9,
         domain=(_WR90_LX, _WR90_A, _WR90_B),
         dx=_WR90_DX,
-        boundary="cpml",
+        boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=8,
     )
     sim.add_waveguide_port(

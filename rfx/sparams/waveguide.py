@@ -1179,9 +1179,10 @@ def _empty_waveguide_reference(self):
     # Its empty geometry rasterizes vacuum exactly as init_materials does on
     # the uniform calculator. Only the mesh, boundary walls and modal ports
     # are shared; material poles, sheets and lumped elements cannot leak in.
+    from rfx.boundaries.serialization import constructor_boundary
     return type(self)(
         freq_max=self._freq_max, domain=self._domain,
-        boundary=self._boundary_spec, cpml_layers=self._cpml_layers,
+        boundary=constructor_boundary(self), cpml_layers=self._cpml_layers,
         cpml_kappa_max=self._cpml_kappa_max, dx=self._dx,
         dx_profile=self._dx_profile, dy_profile=self._dy_profile,
         dz_profile=self._dz_profile, dt=self._dt_pin,

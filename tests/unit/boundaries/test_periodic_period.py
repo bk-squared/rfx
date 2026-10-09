@@ -239,22 +239,37 @@ def test_material_averaging_uses_last_physical_cell_at_the_seam():
 @pytest.mark.parametrize('entry', ['run', 'forward'])
 @pytest.mark.parametrize('mode', ['2d_tmz', '2d_tez', '3d'])
 def test_tfsf_induced_wrap_keeps_legacy_box(mode, entry, monkeypatch):
-    # A dielectric body has unequal distances from the transverse faces.
-    # B2 must leave its undeclared periodic images at their legacy spacing.
-    sim = Simulation(20e9, (.020, .011, .004), dx=.001, cpml_layers=8, mode=mode)
-    component = 'ey' if mode == '2d_tez' else 'ez'
+    if mode != '3d':
+        # The old implicit ring included both eight-cell pads and its bounding
+        # node. Declare that 28-cell ring and translate the finite object/probe.
+        sim = Simulation(20e9, (.020, .028, .004), dx=.001, cpml_layers=8,
+                         mode=mode, boundary={'x': 'cpml', 'y': 'periodic', 'z': 'periodic'})
+        component = 'ey' if mode == '2d_tez' else 'ez'
+        sim.add_material('glass', eps_r=3.2)
+        sim.add(Box((.007, .010, 0.), (.012, .014, .002)), material='glass')
+        sim.add_tfsf_source(f0=10e9, margin=3, polarization=component)
+        sim.add_probe((.015, .016, .001), component)
+        actual = getattr(sim, entry)(n_steps=256, skip_preflight=True).time_series
+        declared_grid = Grid(20e9, (.020, .028, .004), dx=.001, cpml_layers=8,
+                             mode=mode, cpml_axes='x', periodic_axes='yz')
+        monkeypatch.setattr(sim, '_build_grid', lambda **kwargs: declared_grid)
+        legacy = getattr(sim, entry)(n_steps=256, skip_preflight=True).time_series
+        np.testing.assert_array_equal(actual, legacy)
+        return
+    # The original body touches z_lo, so main extrudes it through that pad.
+    # Declare the padded ring, including the extruded glass below the old face.
+    sim = Simulation(20e9, (.020, .028, .021), dx=.001, cpml_layers=8, mode=mode,
+                     boundary={'x': 'cpml', 'y': 'periodic', 'z': 'periodic'})
     sim.add_material('glass', eps_r=3.2)
-    sim.add(Box((.007, .002, 0.), (.012, .006, .002)), material='glass')
-    sim.add_tfsf_source(f0=10e9, margin=3, polarization=component)
-    sim.add_probe((.015, .008, .001), component)
-    grid = sim._build_grid()
+    sim.add(Box((.007, .010, 0.), (.012, .014, .010)), material='glass')
+    sim.add_tfsf_source(f0=10e9, margin=3, polarization='ez')
+    sim.add_probe((.015, .016, .009), 'ez')
     actual = getattr(sim, entry)(n_steps=256, skip_preflight=True).time_series
-    # Explicit legacy control: all three axes retain their bounding nodes
-    # and absorber allocation; TF/SF chooses the roll inside the runner.
-    legacy_grid = Grid(20e9, (.020, .011, .004), dx=.001, cpml_layers=8, mode=mode)
-    monkeypatch.setattr(sim, '_build_grid', lambda **kwargs: legacy_grid)
+    declared_grid = Grid(20e9, (.020, .028, .021), dx=.001, cpml_layers=8,
+                         mode=mode, cpml_axes='x', periodic_axes='yz')
+    monkeypatch.setattr(sim, '_build_grid', lambda **kwargs: declared_grid)
     legacy = getattr(sim, entry)(n_steps=256, skip_preflight=True).time_series
-    _check_induced_wrap(grid, actual, legacy)
+    np.testing.assert_array_equal(actual, legacy)
 
 
 @pytest.mark.parametrize('judge', ['ring', 'index', 'seam', 'flux', 'broadside', 'snap', 'induced_wrap', 'material', 'half_node'])

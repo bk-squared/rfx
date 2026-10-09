@@ -418,6 +418,9 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
     "_msl_auto_offset_min": {"": every_path(ignorable("MSL port data, read with the port; the _msl_ports row decides it"))},
     "_msl_auto_probe_spacing": {"": every_path(ignorable("MSL port data, read with the port; the _msl_ports row decides it"))},
     "_msl_auto_probe_lengths": {"": every_path(ignorable("MSL port data, read with the port; the _msl_ports row decides it"))},
+    "_boundary_explicit": {"": every_path(ignorable(
+        "boundary declaration provenance; admission is covered by _waveguide_ports "
+        "and _boundary_spec, and no field update reads this flag"))},
     "_boundary_model": {"": every_path(ignorable(
         "derived from the boundary declaration; the _boundary, _boundary_spec, _pec_faces "
         "and _periodic_axes rows decide it"))},
@@ -981,7 +984,7 @@ ROW_CLASS: dict[str, str] = {
         "_solver", "_adi_cfl_factor", "_stencil_order", "_mode")},
     **{attr: BOOKKEEPING for attr in (
         "_internal_probe_indices", "_msl_auto_offset_min",
-        "_msl_auto_probe_spacing", "_msl_auto_probe_lengths", "_boundary_model", "_snap")},
+        "_msl_auto_probe_spacing", "_msl_auto_probe_lengths", "_boundary_model", "_boundary_explicit", "_snap")},
     **{attr: OBSERVER for attr in (
         "_probes", "_dft_planes", "_flux_monitors", "_ntff", "_current_moments")},
     **{attr: PHYSICS for attr in (

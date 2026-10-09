@@ -40,7 +40,8 @@ def test_pec_short_isolates_two_observable_ports(monkeypatch, band, dx, cpml, pe
 
     monkeypatch.setattr(solver, "run", capture)
     frequencies = np.linspace(*band, 6)
-    result = build(frequencies, dx, cpml).compute_waveguide_s_matrix(
+    result = build(frequencies, dx, cpml,
+                   boundary={"x": "cpml", "y": "pec", "z": "pec"}).compute_waveguide_s_matrix(
         normalize=False, num_periods=periods)
     s = np.asarray(result.s_params)
     report = dict(frequencies_hz=frequencies.tolist(), dx=dx, cpml=cpml,

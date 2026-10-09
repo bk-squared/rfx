@@ -67,7 +67,7 @@ def _make_base_sim(freqs_hz: np.ndarray) -> Simulation:
     sim = Simulation(
         freq_max=float(freqs_hz[-1]),
         domain=DOMAIN,
-        boundary="cpml",
+        boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=10,
     )
     f0 = float(freqs_hz.mean())

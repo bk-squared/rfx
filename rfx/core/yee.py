@@ -81,6 +81,8 @@ class MaterialArrays(NamedTuple):
     mu_r_wire: object = None
     # Set only after final cell/stamp assembly on migrated single-device paths.
     components: object = None
+    # Realized relaxed-conductor factors; lane steps remain independently pinned.
+    edge_keep: object = None
 
 
 def component_h_materials(materials, periodic=(False, False, False), *, cell_sizes=None):

@@ -430,7 +430,7 @@ def test_waveguide_reference_plane_silent_on_wr90_ports_in_valid_domain():
     domain = (90.678e-3, 22.86e-3, 10.16e-3)
     dx = 254e-6
     sim = Simulation(freq_max=10e9, domain=domain, dx=dx, cpml_layers=110,
-                     boundary="cpml")
+                     boundary={"x": "cpml", "y": "pec", "z": "pec"})
     sim.add_waveguide_port(0.020, direction="+x", name="p1")
     sim.add_waveguide_port(0.070678, direction="-x", name="p2")
     issues = sim.preflight(strict=False)
@@ -519,7 +519,7 @@ def _waveguide_refplane_sim(slab_x):
     """
     sim = Simulation(freq_max=11.6e9,
                      domain=(_WG_RP_DOMAIN_X, _WG_RP_A, _WG_RP_B),
-                     dx=_WG_RP_DX, boundary="cpml", cpml_layers=10)
+                     dx=_WG_RP_DX, boundary={"x": "cpml", "y": "pec", "z": "pec"}, cpml_layers=10)
     sim.add_material("diel", eps_r=4.0, sigma=0.0)
     sim.add(Box((slab_x[0], 0.0, 0.0), (slab_x[1], _WG_RP_A, _WG_RP_B)),
             material="diel")

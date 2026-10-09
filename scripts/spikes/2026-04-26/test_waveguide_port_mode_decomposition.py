@@ -241,7 +241,7 @@ def test_zero_weight_aperture_cells_are_dropped_and_backfilled_as_zero_profiles(
 
 def test_multimode_normalize_true_api_dispatch_smoke():
     """The public API no longer rejects normalize=True for multi-mode ports."""
-    sim = Simulation(freq_max=10e9, domain=(0.06, 0.04, 0.02), dx=0.002, boundary="cpml")
+    sim = Simulation(freq_max=10e9, domain=(0.06, 0.04, 0.02), dx=0.002, boundary={"x": "cpml", "y": "pec", "z": "pec"})
     common = dict(
         y_range=(0.0, 0.04),
         z_range=(0.0, 0.02),

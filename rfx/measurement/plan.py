@@ -20,6 +20,7 @@ an availability explanation, never invented run() channels.
 """
 from __future__ import annotations
 
+from rfx._grid_metric import field_index
 from dataclasses import dataclass, replace
 from itertools import product
 
@@ -235,7 +236,7 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
     for i, entry in enumerate(sim._probes):
         owners.append(Owner(f'probe:{i}', 'probe',
                             (field_channel(entry.component,
-                                     (Node(entry.component, *_index(grid, entry.position), 1.0),),
+                                     (Node(entry.component, *field_index(grid, entry.position, entry.component), 1.0),),
                                      e_time_offset=0., h_time_offset=0.),)))
     for i, entry in enumerate(sim._dft_planes):
         axis = 'xyz'.index(entry.axis)
@@ -292,7 +293,7 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
     for i, entry in enumerate(sim._ports):
         if not entry.impedance:
             continue  # a soft source has no measurement owner
-        live = (_index(grid, entry.position),)
+        live = (field_index(grid, entry.position, entry.component),)
         if entry.extent is not None:
             end = list(entry.position)
             end['xyz'.index(entry.component[1])] += entry.extent

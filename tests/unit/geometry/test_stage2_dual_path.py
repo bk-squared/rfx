@@ -165,14 +165,14 @@ def test_default_simulation_run_unchanged():
         freq_max=10e9,
         domain=(0.04, 0.04, 0.04),
         dx=0.002,
-        boundary="cpml",
+        boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=4,
     )
     sim_b = Simulation(
         freq_max=10e9,
         domain=(0.04, 0.04, 0.04),
         dx=0.002,
-        boundary="cpml",
+        boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=4,
     )
     sim_a.add_waveguide_port(
@@ -220,7 +220,7 @@ def test_dual_path_dielectric_only_equivalent_to_ulp():
             freq_max=10e9,
             domain=(0.04, 0.04, 0.04),
             dx=0.002,
-            boundary="cpml",
+            boundary={"x": "cpml", "y": "pec", "z": "pec"},
             cpml_layers=4,
         )
         sim.add_material("substrate", eps_r=4.0, sigma=0.0)

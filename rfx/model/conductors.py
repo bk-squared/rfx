@@ -5,6 +5,7 @@ This module owns their products, not another rasterization convention.
 """
 from __future__ import annotations
 
+from rfx._grid_metric import field_index
 from dataclasses import dataclass, field, replace
 
 import numpy as np
@@ -310,11 +311,7 @@ def lumped_port_stage(conductors, port, entity_id, *, clear_cells=False):
     if port.impedance <= 0 or port.extent is not None:
         return conductors
     grid = conductors.grid
-    if conductors.lane == 'nonuniform':
-        from rfx.nonuniform import position_to_index
-        cell = position_to_index(grid, port.position)
-    else:
-        cell = grid.position_to_index(port.position)
+    cell = field_index(grid, port.position, port.component)
     return clear_conductor_edges(conductors, [cell], component=port.component,
                                  entity_id=entity_id, port_kind="lumped", clear_cells=clear_cells)
 
@@ -570,7 +567,7 @@ def _traced_product(conductors):
         (conductors.materials, conductors.pec_edges, conductors.assembly)))
 
 def auto_preflight(sim, *, skip=False, context="forward", check_ntff=True,
-                   conductors=None, prepare=False, distributed=False):
+                   conductors=None, prepare=False, distributed=False, tfsf_material_overrides=()):
     """Emit a UserWarning if preflight finds issues (issue #66).
 
     Called automatically at the start of ``forward()``, ``optimize()``,
@@ -600,8 +597,12 @@ def auto_preflight(sim, *, skip=False, context="forward", check_ntff=True,
     if assembly is not None:
         conductors = assembly.realized()
     # A validator bug must propagate, rather than become an advisory.
-    issues = sim._preflight_impl(strict=False, check_ntff=check_ntff,
-                                 _conductors=conductors)
+    if getattr(sim, "_tfsf", None) is not None and any(v is not None for v in tfsf_material_overrides):
+        issues = sim._preflight_impl(strict=False, check_ntff=check_ntff,
+            _conductors=conductors, _tfsf_material_overrides=tfsf_material_overrides)
+    else:
+        issues = sim._preflight_impl(strict=False, check_ntff=check_ntff,
+                                     _conductors=conductors)
     # gate -> this helper -> facade -> public entry -> user
     sim._run_preflight_gate(issues, context=context, stacklevel=5)
     if assembly is not None:
