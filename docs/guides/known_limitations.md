@@ -311,6 +311,19 @@ an isolated scatterer use `rfx.rcs.compute_rcs`, whose sides absorb.
 
 ## Gradients and optimization
 
+### A gradient with respect to conductivity does not settle with record length on lossless or nearly lossless design cells
+
+Tracker: #1424
+
+`jax.grad` through `forward()` admits a conductivity design. Where T·σ/ε on
+those design cells is not large, the gradient depends on the record length's
+phase at each frequency bin: a static sensitivity remains although the field
+decays. Measured at σ = 0, the oscillation is 8–11 times the settled value;
+at T·σ/ε = 0.34 / 3.4 / 68 it is 0.70 / 0.12 / 9e-8 of that oscillation.
+A longer record does not help. `gradient_record_length_witness` detects it;
+`gradient="adjoint"` refuses such a design and returns settled-spectrum
+gradients only.
+
 ### Port-only ring-down completion can miss the gradient of a weakly coupled high-Q resonance.
 
 Tracker: #1514

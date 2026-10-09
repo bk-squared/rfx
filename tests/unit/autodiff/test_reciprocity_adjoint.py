@@ -1,4 +1,4 @@
-"""#1424 F2 gates: CPU fixtures; measurements are printed, never stored here."""
+"""#1424 F2 gates: CPU fixtures; measurements use record_property, never stdout."""
 from contextlib import contextmanager, nullcontext
 from dataclasses import replace
 from unittest.mock import patch
@@ -8,11 +8,11 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx import Box, GaussianPulse
+from rfx import Box, GaussianPulse, gradient_record_length_witness
 from tests._x64_compat import enable_x64
 from tests.contracts.path_equivalence.comparison import compare
 from tests.unit.autodiff.test_design_box_tape import (
-    _sim, _box_cells, _eps_design, BOX_LO, BOX_HI, F0,
+    _sim, _box_cells, _eps_design, BOX_LO, BOX_HI, F0, DOMAIN,
 )
 
 STEPS = 2400
@@ -90,7 +90,7 @@ def sigma_diagnostic_admission():
 @pytest.mark.parametrize("precision", ["float64", "float32"])
 @pytest.mark.parametrize("lossy", [False, True])
 @pytest.mark.parametrize("point", [True, False])
-def test_g1_eps(precision, lossy, point):
+def test_g1_eps(precision, lossy, point, record_property):
     with enable_x64() if precision == "float64" else nullcontext():
         sim, eps = fixture(precision, point)
         if lossy:
@@ -101,7 +101,7 @@ def test_g1_eps(precision, lossy, point):
         results = [jax.jit(jax.value_and_grad(objective(sim, mode=mode)))(eps, None)
                    for mode in ("autodiff", "adjoint")]
         err = errors(results[1][1], results[0][1])[0]
-        print(f"G1 eps {precision=} {lossy=} {point=} {settling=} error={err}", flush=True)
+        record_property("measurement", f"G1 eps {precision=} {lossy=} {point=} {settling=} error={err}")
         assert settling["decay_db"] >= 100
         # Two traces of one objective summed over the record: float64 keeps 1e-6;
         # float32 takes the cross-trace bar for a summed quantity.
@@ -118,10 +118,10 @@ def test_design_sigma_refused_at_admission(sigma):
     sim, eps = fixture("float32")
     for value in (sigma, jnp.full_like(eps, sigma), (eps * 0 + sigma,) * 3):
         with patch.object(sim, "_build_grid", side_effect=AssertionError("past admission")):
-            with pytest.raises(NotImplementedError, match="#1424.*conductivity derivative is not validated"):
+            with pytest.raises(NotImplementedError, match="#1424.*on lossless design cells the gradient with respect to conductivity has no settled value in a finite record"):
                 sim.forward(gradient="adjoint", design_box=(BOX_LO, BOX_HI),
                             design_eps_override=eps, design_sigma_override=value)
-    with pytest.raises(NotImplementedError, match="#1424.*conductivity derivative is not validated"):
+    with pytest.raises(NotImplementedError, match="#1424.*on lossless design cells the gradient with respect to conductivity has no settled value in a finite record"):
         jax.grad(objective(sim, mode="adjoint"), argnums=1)(eps, jnp.full_like(eps, sigma))
 
 
@@ -129,20 +129,20 @@ def test_design_sigma_refused_at_admission(sigma):
 @pytest.mark.parametrize("lossy", [
     True,
     pytest.param(False, marks=pytest.mark.xfail(
-        strict=True, reason="#1424 at sigma=0 the autodiff reference is not record-stable (gCa moves 94 % of its peak from 2400 to 4800 steps; F2 4.5e-8)")),
+        strict=True, reason="#1424: on lossless cells dJ/dCa has no settled value in a finite record (static sensitivity)")),
 ])
 @pytest.mark.parametrize("point", [True, False])
-def test_g1_sigma(precision, lossy, point):
+def test_g1_sigma(precision, lossy, point, record_property):
     with sigma_diagnostic_admission(), (enable_x64() if precision == "float64" else nullcontext()):
         sim, eps = fixture(precision, point)
         sigma = jnp.full_like(eps, 0.2 if lossy else 0.)
         settling = decay(sim, eps, sigma)
-        print(f"G1 {precision=} {lossy=} {point=} {settling=}", flush=True)
+        record_property("measurement", f"G1 {precision=} {lossy=} {point=} {settling=}")
         assert settling["decay_db"] >= 100
         results = [jax.jit(jax.value_and_grad(objective(sim, mode=mode), argnums=(0, 1)))(eps, sigma)
                    for mode in ("autodiff", "adjoint")]
         err = errors(results[1][1], results[0][1])
-        print(f"G1 {precision=} {lossy=} {point=} values={[float(r[0]) for r in results]} errors={err}", flush=True)
+        record_property("measurement", f"G1 {precision=} {lossy=} {point=} values={[float(r[0]) for r in results]} errors={err}")
         # Two traces of one objective summed over the record: float64 keeps 1e-6;
         # float32 takes the cross-trace bar for a summed quantity.
         if precision == "float64":
@@ -154,26 +154,26 @@ def test_g1_sigma(precision, lossy, point):
 
 
 @pytest.mark.parametrize("precision", ["float64", "float32"])
-def test_g2(precision):
+def test_g2(precision, record_property):
     with enable_x64() if precision == "float64" else nullcontext():
         sim, eps = fixture(precision)
         sigma = None
         short = 128
         settling = decay(sim, eps, sigma, short)
-        print(f"G2 {precision=} short_decay={settling}", flush=True)
+        record_property("measurement", f"G2 {precision=} short_decay={settling}")
         assert settling["decay_db"] < 100
         grads = [jax.jit(jax.grad(objective(sim, steps, mode)))(eps, sigma)
                  for steps, mode in ((short, "autodiff"), (short, "adjoint"),
                                      (2*short, "autodiff"))]
-        print(f"G2 {precision=} short={short} long={2*short} "
+        record_property("measurement", f"G2 {precision=} short={short} long={2*short} "
               f"adjoint_vs_short={errors(grads[1], grads[0])} "
               f"adjoint_vs_long={errors(grads[1], grads[2])} "
-              f"short_vs_long={errors(grads[0], grads[2])}", flush=True)
+              f"short_vs_long={errors(grads[0], grads[2])}")
         assert all(np.all(np.isfinite(a)) for g in grads for a in jax.tree.leaves(g))
 
 
 @pytest.mark.parametrize("precision", ["float64", "float32"])
-def test_g5_default(precision):
+def test_g5_default(precision, record_property):
     with enable_x64() if precision == "float64" else nullcontext():
         sim, eps = fixture(precision)
         sigma = jnp.full_like(eps, 0.2)
@@ -187,11 +187,11 @@ def test_g5_default(precision):
         assert str(jax.make_jaxpr(functions[0])(eps)) == str(jax.make_jaxpr(functions[1])(eps))
         for a, b in zip(jax.jit(functions[0])(eps), jax.jit(functions[1])(eps)):
             np.testing.assert_array_equal(a, b)
-        print(f"G5 default {precision=} bit_equal=True jaxpr_equal=True", flush=True)
+        record_property("measurement", f"G5 default {precision=} bit_equal=True jaxpr_equal=True")
 
 
 @pytest.mark.parametrize("precision", ["float64", "float32"])
-def test_g5_mutation(precision):
+def test_g5_mutation(precision, record_property):
     import rfx.adjoint as adjoint
     with enable_x64() if precision == "float64" else nullcontext():
         sim, eps = fixture(precision)
@@ -208,7 +208,7 @@ def test_g5_mutation(precision):
         with patch.object(adjoint, "_wavelet_coefficients", drop_solve):
             mutated = jax.jit(jax.grad(objective(sim, mode="adjoint")))(eps, sigma)
         err = errors(mutated, reference)
-        print(f"G5 mutation {precision=} {err=}", flush=True)
+        record_property("measurement", f"G5 mutation {precision=} {err=}")
         assert max(err) > (1e-5 if precision == "float64" else 1e-4)
 
 
@@ -292,7 +292,7 @@ def test_g5_refusals(path):
 
 
 @pytest.mark.parametrize("precision", ["float64", "float32"])
-def test_wavelet_targets(precision):
+def test_wavelet_targets(precision, record_property):
     from rfx.adjoint import _wavelet_basis, _wavelet_coefficients
     with enable_x64() if precision == "float64" else nullcontext():
         freqs = jnp.array([0.063, 0.078], dtype=precision)
@@ -303,7 +303,7 @@ def test_wavelet_targets(precision):
         actual = jnp.exp(-2j*jnp.pi*freqs[:, None]*(n+1)) @ wave
         error = float(jnp.max(jnp.abs(actual-target)))
         dc = float(jnp.abs(jnp.sum(wave)))
-        print(f"wavelet {precision=} bin_error={error} dc={dc}", flush=True)
+        record_property("measurement", f"wavelet {precision=} bin_error={error} dc={dc}")
         assert error < (1e-12 if precision == "float64" else 2e-5)
         assert dc < (1e-12 if precision == "float64" else 2e-5)
 
@@ -353,8 +353,7 @@ def test_g5_kernel_admission(case):
         design_adjoint_scan(ctx, initial, ())
 
 
-@pytest.mark.xfail(strict=True, reason="#1424 at sigma=0 the autodiff reference is not record-stable (gCa moves 94 % of its peak from 2400 to 4800 steps; F2 4.5e-8)")
-def test_g1_raw_coefficients_lossless_point():
+def _raw_coefficient_results(n_steps):
     """#1424 follow-up: differentiate the identical resolved edge arrays."""
     import rfx.adjoint as adjoint
     from rfx.simulation import make_core_step, core_step_invariants
@@ -371,7 +370,7 @@ def test_g1_raw_coefficients_lossless_point():
         sim, eps = fixture("float64", True)
         with patch.object(adjoint, "design_adjoint_scan", capture):
             with pytest.raises(Captured):
-                objective(sim, mode="adjoint")(eps, None)
+                objective(sim, steps=n_steps, mode="adjoint")(eps, None)
         ctx, initial, xs = (captured[k] for k in ("ctx", "initial", "xs"))
         coefficients = (ctx.design_box.ca, ctx.design_box.cb)
 
@@ -387,7 +386,7 @@ def test_g1_raw_coefficients_lossless_point():
                     return carry, None
                 def segment(carry, rows):
                     return jax.lax.scan(step, carry, rows)
-                rows = jax.tree.map(lambda a: a.reshape((8, STEPS // 8) + a.shape[1:]), xs)
+                rows = jax.tree.map(lambda a: a.reshape((8, n_steps // 8) + a.shape[1:]), xs)
                 last, _ = jax.lax.scan(jax.checkpoint(segment), initial, rows)
             spectrum = last["dft_planes"][0] / ctx.dt
             weights = jnp.arange(spectrum.size).reshape(spectrum.shape) + 1
@@ -395,24 +394,44 @@ def test_g1_raw_coefficients_lossless_point():
 
         results = [jax.jit(jax.value_and_grad(lambda ab: loss(ab, mode)))(coefficients)
                    for mode in ("autodiff", "adjoint")]
-        relative = []
-        for name, actual, reference in zip(("gCa", "gCb"), results[1][1], results[0][1]):
-            component_errors = errors(actual, reference)
-            peak = max(float(jnp.max(jnp.abs(a))) for a in reference)
-            difference = max(float(jnp.max(jnp.abs(a-b))) for a, b in zip(actual, reference))
-            relative.append(difference / peak)
-            print(f"RAW {name} max_abs_difference={difference:.17g} "
-                  f"reference_peak={peak:.17g} max_relative={relative[-1]:.17g} "
-                  f"component_relative={component_errors}", flush=True)
-        print(f"RAW values={[float(r[0]) for r in results]} "
-              f"edge_shapes={[a.shape for a in coefficients[0]]}", flush=True)
-        np.testing.assert_allclose(results[0][0], results[1][0], rtol=1e-12)
-        assert max(relative) <= 1e-5
+        return results, coefficients
+
+
+def _peak(arrays):
+    return max(float(np.max(np.abs(a))) for a in arrays)
+
+
+def _difference(actual, reference):
+    return max(float(np.max(np.abs(a-b))) for a, b in zip(actual, reference))
+
+
+def test_g1_raw_coefficients_lossless_point(record_property):
+    """Finite-record Ca sensitivity moves while the settled overlap stays fixed."""
+    with enable_x64():
+        short, coefficients = _raw_coefficient_results(2400)
+        long, longer_coefficients = _raw_coefficient_results(2408)
+        for a, b in zip(jax.tree.leaves(coefficients), jax.tree.leaves(longer_coefficients)):
+            np.testing.assert_array_equal(a, b)
+        peak_ca = _peak(short[1][1][0])
+        adjoint_ca_change = _difference(short[1][1][0], long[1][1][0]) / peak_ca
+        autodiff_ca_change = _difference(short[0][1][0], long[0][1][0]) / peak_ca
+        cb_errors = [_difference(r[0][1][1], r[1][1][1]) / _peak(r[0][1][1])
+                     for r in (short, long)]
+        value_errors = [float(abs(r[0][0]-r[1][0]) / abs(r[0][0])) for r in (short, long)]
+        record_property("adjoint_ca_change", adjoint_ca_change)
+        record_property("autodiff_ca_change", autodiff_ca_change)
+        for n, cb, value in zip((2400, 2408), cb_errors, value_errors):
+            record_property(f"cb_error_{n}", cb)
+            record_property(f"value_error_{n}", value)
+        assert adjoint_ca_change <= 1e-6
+        assert autodiff_ca_change > 1e-2
+        assert max(cb_errors) <= 1e-5
+        assert max(value_errors) <= 1e-12
 
 
 @pytest.mark.parametrize("precision", ["float64", "float32"])
 @pytest.mark.parametrize("steps", [STEPS, 64])
-def test_adjoint_settling(precision, steps):
+def test_adjoint_settling(precision, steps, record_property):
     with enable_x64() if precision == "float64" else nullcontext():
         sim, eps = fixture(precision)
         def measure(e):
@@ -421,7 +440,7 @@ def test_adjoint_settling(precision, steps):
                 skip_preflight=True)
             return jnp.sum(jnp.abs(result.dft_planes["out"].accumulator)**2), result.adjoint_settling
         (_, witness), grad = jax.jit(jax.value_and_grad(measure, has_aux=True))(eps)
-        print(f"SETTLING {precision=} {steps=} ratio={float(witness):.17g}", flush=True)
+        record_property("measurement", f"SETTLING {precision=} {steps=} ratio={float(witness):.17g}")
         np.testing.assert_array_equal(jax.jit(measure)(eps)[1], witness)
         assert witness.shape == ()
         assert np.all(np.isfinite(grad))
@@ -474,3 +493,51 @@ def test_adjoint_zero_cotangent_has_no_primal_drive(monkeypatch):
     np.testing.assert_array_equal(gradient, jnp.zeros_like(gradient))
     assert adjoint_contexts
     assert all(ctx.drives is None for ctx in adjoint_contexts)
+
+
+def cavity_fixture():
+    """Reviewer's scene C, including its one bin and one monitor cell."""
+    sim = _sim(boundary="pec", precision="float64")
+    sim._ports.clear()
+    sim.add_material("fill", eps_r=1.0, sigma=0.023)
+    sim.add(Box((0, 0, 0), DOMAIN), material="fill")
+    sim.add_source((4e-3, 10e-3, 8e-3), "ez", amplitude_kind="field",
+                   waveform=GaussianPulse(f0=F0, bandwidth=0.8, cutoff=6))
+    g = sim._build_grid()
+    ix = g.position_to_index((18e-3, 10e-3, 8e-3))
+    sim.add_dft_plane_probe(axis="x", coordinate=18e-3, component="ez",
+        freqs=jnp.asarray([1.05*F0]), name="out",
+        region=(ix[1], ix[1]+1, ix[2], ix[2]+1))
+    return sim, jnp.asarray(_eps_design(_box_cells(sim)[1]))
+
+
+@pytest.mark.parametrize("steps", [621, 623, 625, 627, 629])
+def test_cavity_adjoint_settling(steps, record_property):
+    with enable_x64():
+        sim, eps = cavity_fixture()
+        result = sim.forward(design_box=(BOX_LO, BOX_HI),
+            design_eps_override=eps, n_steps=steps, gradient="adjoint",
+            skip_preflight=True)
+        indicator = float(result.adjoint_settling)
+        record_property("indicator", indicator)
+        assert indicator > 1e-2
+
+
+@pytest.mark.parametrize("scene,steps", [("cavity", 625), ("open", 2400)])
+def test_adjoint_gradient_record_length_witness(scene, steps, record_property):
+    with enable_x64():
+        sim, eps = cavity_fixture() if scene == "cavity" else fixture()
+        def loss(e, n):
+            result = sim.forward(design_box=(BOX_LO, BOX_HI),
+                design_eps_override=e, n_steps=n, gradient="adjoint",
+                skip_preflight=True)
+            return jnp.sum(jnp.abs(result.dft_planes["out"].accumulator / result.dt)**2)
+        witness = gradient_record_length_witness(loss, eps, steps, tol=1e-2, factor=2.0)
+        record_property("worst", witness.worst)
+        record_property("passed", witness.passed)
+        if scene == "cavity":
+            assert witness.passed is False
+            assert witness.worst >= 1e-1
+        else:
+            assert witness.passed is True
+            assert witness.worst <= 1e-4

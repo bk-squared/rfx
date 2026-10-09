@@ -3675,12 +3675,12 @@ class _ExecuteMixin:
         ----------
         gradient : {"autodiff", "adjoint"}
             Opt-in settled-spectrum reciprocity design eps adjoint.
-            Design sigma overrides are refused (#1424): the conductivity
-            derivative is not validated. Fixed lossy materials are allowed.
+            Design sigma overrides are refused (#1424): on lossless design cells the conductivity gradient has no settled value in a finite record
+            (a static sensitivity remains although the field decays); this adjoint returns settled-spectrum gradients only. Fixed lossy materials are allowed.
             Stores design-edge DFTs and runs a second ordinary forward.
-            The adjoint gradient is the settled-spectrum gradient, and
-            ``ForwardResult.adjoint_settling`` above about 1e-2 (-40 dB)
-            means the record has not settled.
+            ``ForwardResult.adjoint_settling`` reads the primal design-edge max|E| over the last period of the lowest bin, capped at the record length, divided by the record maximum.
+            Above about 1e-2 means unsettled; small proves nothing: it follows the strongest field and says nothing about the adjoint record.
+            Use ``gradient_record_length_witness`` to witness an adjoint gradient.
             Uniform Yee design_box only; unsupported paths raise. Checkpoint
             options are unused by the adjoint (its storage does not depend on them).
         eps_override : jnp.ndarray or None

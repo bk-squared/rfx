@@ -1136,11 +1136,11 @@ class ForwardResult(NamedTuple):
     (``forward(design_box_holds_ports=True)``; axis 0, 1, 2 for Ex, Ey, Ez):
     ``()`` for a box that held none, ``None`` when no such box was given.
 
-    ``adjoint_settling`` is the last-step max|E| divided by its record maximum
-    over the design-box Yee E edges (``None`` for autodiff, NaN for zero signal).
-    The adjoint gradient is the settled-spectrum gradient, and a ratio above
-    about 1e-2 (-40 dB) means the record has not settled.
-    This stop-gradient diagnostic stores no per-step values and emits no warning.
+    ``adjoint_settling`` is the primal design-edge max|E| over the last period of
+    the lowest monitor bin (capped at the record length), divided by the record maximum.
+    Above about 1e-2 means unsettled; small proves nothing: it follows the strongest field
+    and says nothing about the adjoint record. None for autodiff, NaN for zero signal.
+    Use :func:`rfx.gradient_record_length_witness` to witness an adjoint gradient.
     """
     time_series: jnp.ndarray
     ntff_data: object = None
