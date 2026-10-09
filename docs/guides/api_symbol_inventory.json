@@ -94,6 +94,9 @@
     "DesignRegion": {
       "kind": "class"
     },
+    "Diagnostic": {
+      "kind": "class"
+    },
     "FarFieldResult": {
       "kind": "class"
     },
@@ -1861,6 +1864,7 @@
         "debye",
         "lorentz",
         "tfsf",
+        "_feature_tfsf",
         "sources",
         "probes",
         "dft_planes",
@@ -1992,6 +1996,7 @@
         "current_moments",
         "waveguide_ports",
         "tfsf",
+        "_feature_tfsf",
         "flux_monitors",
         "checkpoint",
         "emit_time_series",
@@ -2024,6 +2029,7 @@
         "debye",
         "lorentz",
         "tfsf",
+        "_feature_tfsf",
         "sources",
         "probes",
         "dft_planes",
