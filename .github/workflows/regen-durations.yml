@@ -79,6 +79,9 @@ jobs:
       - name: Slow selection, shard ${{ matrix.group }} of 5, store durations
         env:
           RFX_WEEKLY_RSS: "1"
+          # As in validation.yml: without it the 457 weekly-only cells of the
+          # path-equivalence matrix are never measured and stay unpriced.
+          RFX_S0_FULL: "1"
         run: >
           mkdir -p durations &&
           pytest -v -ra -p no:cacheprovider

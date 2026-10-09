@@ -1,11 +1,16 @@
 """The weekly lane's shards must keep room under their job limit.
 
 On 2026-10-09 the weekly lane lost a shard to its 3 h limit with no test
-failing: one new 51-minute test file had no recorded duration, and nothing said
-the lane was close. This check makes the distance to the limit a number that
-fails before a run does.
+failing, and nothing said how close the lane was. This check makes the lane's
+recorded load against its limit a number that fails before a run does.
 
-It does not predict a shard. It bounds the MEAN: the recorded seconds of every
+What it does NOT see is that day's own cause: a new 51-minute test file with no
+recorded duration adds nothing to the total, so this check was green then. A
+test without an entry is priced at the mean by pytest-split; only a durations
+regeneration closes that, and scripts/ci/DURATIONS.md states how many collected
+tests have none.
+
+It does not predict a shard either. It bounds the MEAN: the recorded seconds of every
 test, divided by the number of weekly shards, scaled by the runner spread the
 fast lane was sized with (x1.22, `.github/workflows/pr-tests.yml`, fast-suite
 timeout comment) plus ten minutes of install and import, must fit the weekly

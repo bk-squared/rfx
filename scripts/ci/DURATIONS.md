@@ -79,7 +79,7 @@ and adding 0.3 s to 10625 entries adds 53 minutes of fiction spread evenly acros
 Evenly is the problem: a constant per test does not model a real cost, it just pulls every shard
 toward equal test COUNTS and away from equal time.
 
-So the floor is gone, and step 4 of Regenerating below says not to re-add it. Two consequences to
+So the floor is gone, and step 4 of Regenerating below says not to re-add it. One consequence to
 keep in mind:
 
 - The 14 carried entries retain their previous measurements. No floor is added to them or to
