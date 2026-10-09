@@ -24,6 +24,7 @@ from typing import NamedTuple
 from rfx import _realized
 from rfx.model import conductors as _conductors
 from rfx.model.overrides import apply_material_overrides
+from rfx.model import occupancy as _occupancy
 
 import jax
 import jax.numpy as jnp
@@ -2203,57 +2204,8 @@ class _ExecuteMixin:
         # same ``update_e_aniso_inv`` path hard ``Box(material="pec")``
         # uses. Bypasses the ``apply_pec_occupancy`` E-scaling path on
         # this branch — the two would double-correct at sigmoid edges.
-        aniso_inv_eps_run = None
-        pec_occupancy_for_run = pec_occupancy_local
-        if (pec_occupancy_local is not None and
-                os.environ.get("RFX_PEC_OCC_KOTTKE", "0") not in ("0", "", "false", "False")):
-            from rfx.current_moments import refuse_h_side_conductor
-            refuse_h_side_conductor(
-                self, "the Kottke occupancy lane (RFX_PEC_OCC_KOTTKE=1)")
-            from rfx.geometry.smoothing import kottke_inv_eps_from_occupancy
-            from rfx.core.yee import add_lumped_eps
-            # The plain path's four-cell edge mean (#1213), not the per-cell
-            # value: occupancy only scales it where a conductor sits (#1373).
-            inv_baseline = tuple(
-                (1.0 / eps_c).astype(jnp.float32)
-                for eps_c in materials.components.eps)
-            aniso_inv_eps_run = kottke_inv_eps_from_occupancy(
-                grid,
-                pec_occupancy_local,
-                aniso_inv_eps_baseline=inv_baseline,
-                periodic=periodic_bool,
-            )
-            # Occupancy acts on the volume; the capacitor stays on its
-            # declared edge, added once after that correction (#1263).
-            aniso_inv_eps_run = add_lumped_eps(
-                aniso_inv_eps_run, materials.eps_r_lumped, inverse=True)
-            pec_occupancy_for_run = None
-            if design_occupancy is not None:
-                raise NotImplementedError(
-                    "a design occupancy box (#1183) does not combine with "
-                    "the Kottke occupancy lane (RFX_PEC_OCC_KOTTKE=1). That "
-                    "lane turns the occupancy into an inverse-eps tensor "
-                    "inside the E update and sets pec_occupancy_for_run to "
-                    "None, so the design values never reach the update and "
-                    "the box's own 1 - M window then double-corrects the "
-                    "field the tensor already handled — the anti-pattern "
-                    "the comment above names. Measured: value 19x and "
-                    "gradient 2.8x off pec_occupancy_override, silently. "
-                    "Use pec_occupancy_override on that lane, or unset "
-                    "RFX_PEC_OCC_KOTTKE.")
-            if os.environ.get("RFX_PEC_OCC_KOTTKE_DEBUG", "0") not in ("0", "", "false", "False"):
-                import sys as _sys
-                _ix, _iy, _iz = aniso_inv_eps_run
-                print(f"[kottke debug] occ shape={pec_occupancy_local.shape} "
-                      f"min={float(jnp.min(pec_occupancy_local)):.3e} "
-                      f"max={float(jnp.max(pec_occupancy_local)):.3e}", file=_sys.stderr, flush=True)
-                print(f"[kottke debug] inv_xx min={float(jnp.min(_ix)):.3e} "
-                      f"max={float(jnp.max(_ix)):.3e} "
-                      f"any_nan={bool(jnp.any(jnp.isnan(_ix)))}", file=_sys.stderr, flush=True)
-                print(f"[kottke debug] eps_r min={float(jnp.min(materials.eps_r)):.3e} "
-                      f"max={float(jnp.max(materials.eps_r)):.3e}", file=_sys.stderr, flush=True)
-                print(f"[kottke debug] sigma min={float(jnp.min(materials.sigma)):.3e} "
-                      f"max={float(jnp.max(materials.sigma)):.3e}", file=_sys.stderr, flush=True)
+        pec_occupancy_for_run, aniso_inv_eps_run = _occupancy.select_occupancy_operator(
+            self, grid, materials, pec_occupancy_local, periodic_bool, design_occupancy)
 
         # Build the TRACED RLC metas now that all material folding (RLC + ports)
         # is complete — build_rlc_meta_traced reads the final eps/sigma at each
