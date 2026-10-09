@@ -188,8 +188,8 @@ def cut(array, layout, kind, *, mesh=None, dt=None, host=False):
     ``Fill`` remains accepted by compatibility adapters. ``host=True`` keeps
     concrete no-mesh output in NumPy, preserving the input dtype.
     Tuples (including optional per-component records) map over their leaves.
-    A field-to-kind mapping cuts a named record and leaves omitted fields at
-    their record defaults (for legacy material bundles).
+    A field-to-kind mapping cuts a named record; omitted fields must be absent.
+    An all-None component tuple also denotes an absent record.
     Concrete placement constructs only addressable shards. Local tracers keep
     slice/pad/stack on the tape; x-sharded designs exchange their owned halos.
     """
@@ -197,6 +197,12 @@ def cut(array, layout, kind, *, mesh=None, dt=None, host=False):
     if array is None:
         return None
     if isinstance(kind, dict):
+        for name in array._fields:
+            value = getattr(array, name)
+            absent = value is None or (isinstance(value, (tuple, list))
+                                       and all(v is None for v in value))
+            if name not in kind and not absent:
+                raise ValueError(f"field {name} of the record is not cut: name its kind")
         return type(array)(**{name: cut(getattr(array, name), layout, tag, mesh=mesh, dt=dt, host=host)
                               for name, tag in kind.items()})
     if isinstance(array, (tuple, list, dict)):

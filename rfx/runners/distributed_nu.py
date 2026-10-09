@@ -1348,7 +1348,7 @@ def _apply_cpml_h_local_nu(state: FDTDState, cpml_params, cpml_state,
     return new_state, new_cpml
 
 
-from rfx.model.electric_metrics import material_drive_scales, SlabElectricMetrics, stage_forward_dispersion_x_slab
+from rfx.model.electric_metrics import material_record_drive_scales, SlabElectricMetrics, stage_forward_dispersion_x_slab
 
 
 def run_nonuniform_distributed_pec(
@@ -2423,8 +2423,8 @@ def run_nonuniform_distributed_pec(
             # #1279: the drive sees the materials the E update sees -- the
             # override, on the tape when traced -- read in the program.
             materials = invariants[0]
-            scales = material_drive_scales(
-                materials.eps_r, materials.sigma, mesh, drives, dt, ranks=ranks, grid=electric_grid)
+            scales = material_record_drive_scales(
+                materials, mesh, drives, dt, ranks=ranks, grid=electric_grid)
             if _realized.ACTIVE is not None:
                 scales = _realized.runtime_drive(scales, tuple(drive_columns))
             if warmup_xs is not None:

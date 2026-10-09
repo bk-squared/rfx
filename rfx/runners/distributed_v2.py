@@ -153,6 +153,7 @@ def _shard_materials(materials: MaterialArrays, mesh: Mesh) -> MaterialArrays:
     return MaterialArrays(
         eps_r=jax.device_put(materials.eps_r, shd),
         sigma=jax.device_put(materials.sigma, shd),
+        sigma_film=jax.tree.map(lambda a: jax.device_put(a, shd), materials.sigma_film),
         mu_r=jax.device_put(materials.mu_r, shd),
     )
 
@@ -895,6 +896,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         mu_r=cut(materials.mu_r, layout, "mu_r", mesh=mesh),
         # #1236: a lumped element loads its own E edge only; the slab update
         # needs the per-component record for that (None when no stamp).
+        sigma_film=cut(materials.sigma_film, layout, "lumped", mesh=mesh),
         sigma_lumped=cut(materials.sigma_lumped, layout, "lumped", mesh=mesh),
         eps_r_lumped=cut(materials.eps_r_lumped, layout, "lumped", mesh=mesh),
     )
@@ -1089,7 +1091,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
                 P(),                     # step
                 P("x"), P("x"), P("x"),  # eps_r, sigma, mu_r
                 # #1236 lumped records: None or (x, y, z) of arrays / None
-                P("x"), P("x"),
+                P("x"), P("x"), P("x"),
                 P("x"),  # shared component means
                 # debye coeffs
                 P("x"), P("x"), P("x"), P("x"), P("x"),
@@ -1109,13 +1111,14 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
             check_rep=False,
         )
         def _e(ex, ey, ez, hx, hy, hz, step,
-               eps_r, sigma, mu_r, sigma_lumped, eps_r_lumped, means,
+               eps_r, sigma, mu_r, sigma_lumped, eps_r_lumped, sigma_film, means,
                d_ca, d_cb, d_cc, d_alpha, d_beta,
                d_px, d_py, d_pz,
                l_ca, l_cb, l_cc, l_a, l_b, l_c,
                l_px, l_py, l_pz, l_px_prev, l_py_prev, l_pz_prev, *, rank):
             _st = FDTDState(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz, step=step)
             _mat = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r,
+                                  sigma_film=sigma_film,
                                   sigma_lumped=sigma_lumped,
                                   eps_r_lumped=eps_r_lumped)
             _db = (DebyeCoeffs(ca=d_ca, cb=d_cb, cc=d_cc, alpha=d_alpha, beta=d_beta),
@@ -1149,7 +1152,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
          nl_px, nl_py, nl_pz,
          nl_pxp, nl_pyp, nl_pzp) = _e(
             ranks, st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, st.step,
-            mat.eps_r, mat.sigma, mat.mu_r, mat.sigma_lumped, mat.eps_r_lumped, e_materials,
+            mat.eps_r, mat.sigma, mat.mu_r, mat.sigma_lumped, mat.eps_r_lumped, mat.sigma_film, e_materials,
             db_coeffs.ca, db_coeffs.cb, db_coeffs.cc, db_coeffs.alpha, db_coeffs.beta,
             db_st.px, db_st.py, db_st.pz,
             lr_coeffs.ca, lr_coeffs.cb, lr_coeffs.cc, lr_coeffs.a, lr_coeffs.b, lr_coeffs.c,

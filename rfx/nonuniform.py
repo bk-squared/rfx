@@ -1989,9 +1989,8 @@ def make_current_source(grid: NonUniformGrid, position_ijk, component,
         raise ValueError(
             f"unknown component {component!r}: a current source injects an "
             f"electric field component, one of 'ex', 'ey', 'ez'.")
-    materials_traced = (
-        is_tracer(materials.eps_r) or is_tracer(materials.sigma)
-    )
+    from rfx.model.materials import electric_materials_traced
+    materials_traced = electric_materials_traced(materials)
     from rfx.model.source_coefficients import source_table
     dV, grid_traced = current_source_volume(grid, (i, j, k), component)
     any_traced = materials_traced or grid_traced

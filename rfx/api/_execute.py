@@ -2751,13 +2751,10 @@ class _ExecuteMixin:
         # during the scan.
         if _realized.ACTIVE is not None:
             _realized.sources(grid, materials, sources, "distributed_nu.sources")
+        from rfx.model.electric_metrics import stage_forward_materials
         from rfx.stepping.slab import cut
-        staged = []
-        for name in ("eps_r", "sigma", "mu_r"):
-            staged.append(cut(getattr(materials, name), sharded_grid.layout, name, mesh=mesh))
-            materials = materials._replace(**{name: None})
-        sharded_materials = MaterialArrays(*staged)
-        del materials, staged
+        sharded_materials = stage_forward_materials(materials, sharded_grid.layout, mesh)
+        del materials
 
         sharded_pec_mask = _conductors.stage_distributed_edges(pec_edges, sharded_grid, mesh, multiprocess)
         del pec_mask, pec_edges

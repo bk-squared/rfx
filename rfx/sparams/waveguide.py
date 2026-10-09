@@ -27,6 +27,8 @@ composition point and the import graph stays acyclic.
 
 from __future__ import annotations
 
+from rfx.model.thin_conductors import conductivity_envelope
+
 import jax.numpy as jnp
 import numpy as np
 
@@ -994,8 +996,8 @@ def compute_waveguide_s_matrix(
     # Pure-numpy heuristics emitted BEFORE the FDTD runs; no simulation.
     if port_reference_sims is not None:
         _warn_junction_probe_clearance(
-            grid, cfgs, materials.sigma,
-            [m.sigma for m in ref_materials_per_port], freqs,
+            grid, cfgs, conductivity_envelope(materials),
+            [conductivity_envelope(m) for m in ref_materials_per_port], freqs,
             device_pec_edges=_wg_geometry_pec_edges,
             ref_pec_edges=ref_pec_edge_masks_per_port,
         )

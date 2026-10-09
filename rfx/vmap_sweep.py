@@ -211,7 +211,7 @@ def _extend_batched_cpml_pad(
     ply, phy = grid.pad_y_lo, grid.pad_y_hi
     plz, phz = grid.pad_z_lo, grid.pad_z_hi
     if max(plx, phx, ply, phy, plz, phz) <= 0:
-        return eps_r, sigma, mu_r
+        return eps_r, sigma, mu_r, None
 
     def _one(e, s, m):
         # ``dispersion_pole_mask`` is batch-invariant (pole masks are
@@ -264,10 +264,10 @@ def _apply_batched_thin_conductors(
     conductors = tuple(replace(tc, shape=continued_conductor_shape(sim, grid, tc.shape, entry=tc))
                        for tc in sim._thin_conductors)
     if not conductors:
-        return eps_r, sigma, mu_r
+        return eps_r, sigma, mu_r, None
 
     def _one(e, s, m):
-        mats = MaterialArrays(eps_r=e, sigma=s, mu_r=m)
+        mats = MaterialArrays(eps_r=e, sigma=s, mu_r=m, sigma_film=None)
         for tc in conductors:
             # #677: an f0 (surface-impedance) conductor is a no-op on the
             # material arrays by design — the sheet is a per-step operator
@@ -280,7 +280,7 @@ def _apply_batched_thin_conductors(
             # discarded (it would be a per-batch-element duplicate).
             mats, _ = apply_thin_conductor(grid, tc, mats, pec_mask=None,
                                            sheets=[], snap=sim._snap)
-        return mats.eps_r, mats.sigma, mats.mu_r
+        return mats.eps_r, mats.sigma, mats.mu_r, mats.sigma_film
 
     return jax.vmap(_one)(eps_r, sigma, mu_r)
 
@@ -415,10 +415,13 @@ def _build_batched_materials(
 
         # #642: and only NOW the conductors, which is where
         # _assemble_materials applies them relative to the extension above.
-        batch_eps, batch_sigma, batch_mu = _apply_batched_thin_conductors(
+        batch_eps, batch_sigma, batch_mu, batch_film = _apply_batched_thin_conductors(
             sim, grid, batch_eps, batch_sigma, batch_mu,
         )
     else:
+        from rfx.core.yee import map_lumped
+        batch_film = map_lumped(base_materials.sigma_film,
+            lambda a: jnp.broadcast_to(a[None], (n_batch,) + a.shape))
         # Global sweep: apply to all non-background cells
         if field == "eps_r":
             # Identify cells that have non-vacuum eps_r
@@ -453,6 +456,7 @@ def _build_batched_materials(
         eps_r=batch_eps,
         sigma=batch_sigma,
         mu_r=batch_mu,
+        sigma_film=batch_film,
     )
 
 
@@ -1022,6 +1026,7 @@ def vmap_material_sweep(
                 eps_r=batched_materials.eps_r[batch_idx],
                 sigma=batched_materials.sigma[batch_idx],
                 mu_r=batched_materials.mu_r[batch_idx],
+                sigma_film=jax.tree.map(lambda a: a[batch_idx], batched_materials.sigma_film),
             )
             waveforms = [uniform_source_table(
                 grid, field_index(grid, pe.position, pe.component), pe.component,
@@ -1033,8 +1038,8 @@ def vmap_material_sweep(
                 jnp.zeros((n_steps, 0), dtype=jnp.float32))
 
         # vmap run_one over the batch dimension of materials and source samples
-        def run_one_from_materials(eps_r, sigma, mu_r, drives):
-            mats = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
+        def run_one_from_materials(eps_r, sigma, mu_r, film, drives):
+            mats = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r, sigma_film=film)
             return run_one_fn(mats, drives)
 
         batched_run = jax.vmap(run_one_from_materials)
@@ -1042,6 +1047,7 @@ def vmap_material_sweep(
             batched_materials.eps_r,
             batched_materials.sigma,
             batched_materials.mu_r,
+            batched_materials.sigma_film,
             jnp.stack(prepared_drives),
         )
         time_series_np = np.asarray(time_series)

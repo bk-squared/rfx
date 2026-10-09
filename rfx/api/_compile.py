@@ -242,7 +242,7 @@ class _CompileMixin:
         wire_nodes = wire_node_footprint(pec_wires)
         return conductor_footprint(
             pec_mask=pec_mask,
-            sigma=materials.sigma,
+            sigma=materials.sigma, sigma_film=materials.sigma_film,
             sheet_masks=[sp.mask for sp in sheet_specs]
                         + [sp.footprint for sp in pec_sheets]
                         + ([] if wire_nodes is None else [wire_nodes]),

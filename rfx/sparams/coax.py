@@ -1658,12 +1658,8 @@ def compute_coax_msl_transition(
     # The declared stub ends below the junction node. The caller owns the
     # junction, post and laminate: preserve the registered arrays at and above
     # that node, so no DUT conductor/dielectric is cut.
-    materials = materials._replace(
-        eps_r=materials.eps_r.at[:, :, z_junction_idx:].set(
-            junction_materials.eps_r[:, :, z_junction_idx:]),
-        sigma=materials.sigma.at[:, :, z_junction_idx:].set(
-            junction_materials.sigma[:, :, z_junction_idx:]),
-    )
+    from rfx.model.thin_conductors import splice_junction_materials
+    materials = splice_junction_materials(materials, junction_materials, z_junction_idx)
 
     src_port = _CoaxPort(
         position=(center_xy[0], center_xy[1], (z_src - grid.pad_z_lo) * dz),

@@ -42,6 +42,8 @@ physics source):
 
 from __future__ import annotations
 
+from rfx.model.thin_conductors import conductivity_envelope
+
 from typing import NamedTuple
 
 import jax.numpy as jnp
@@ -462,7 +464,7 @@ def validate_vacuum_boundary(materials, cfg: MethodBConfig) -> None:
     )
     for plane_name, (xs, ys) in planes:
         eps = np.asarray(materials.eps_r[xs, ys, :])
-        sigma = np.asarray(materials.sigma[xs, ys, :])
+        sigma = np.asarray(conductivity_envelope(materials)[xs, ys, :])
         mu = np.asarray(materials.mu_r[xs, ys, :])
         if not (
             np.allclose(eps, 1.0)

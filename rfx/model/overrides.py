@@ -49,6 +49,7 @@ def apply_material_overrides(materials, *, eps_override=None,
                 sig_box, getattr(materials, "sigma_lumped", None)))
         return MaterialArrays(
             eps_r=eps, sigma=sig, mu_r=None,
+            sigma_film=map_lumped(materials.sigma_film, lambda a: jnp.asarray(a)[window]),
             eps_r_lumped=map_lumped(
                 getattr(materials, "eps_r_lumped", None),
                 lambda a: jnp.asarray(a)[window].astype(eps.dtype)),

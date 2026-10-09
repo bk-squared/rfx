@@ -48,7 +48,7 @@ def slab_metric_kwargs(grid, rank):
     return {} if widths is None or all(w is None for w in widths) else dict(cell_sizes=widths)
 
 
-def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks, grid=None):
+def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks, grid=None, sigma_film=None):
     """``Cb/dV`` of each material-driven current source, read from the slabs
     the E update receives (#1279). Called inside the runner's jitted program.
 
@@ -89,19 +89,20 @@ def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks, grid=None):
     from functools import partial
     from jax import lax
     from jax.sharding import PartitionSpec as P
-    from rfx.core.yee import MaterialArrays
+    from rfx.core.yee import MaterialArrays, map_lumped
     from rfx.model.materials import e_update_material_at
     from rfx.runners._distributed_common import rank_shard_map
     from rfx.nonuniform import current_source_cb
 
-    @partial(rank_shard_map, mesh=mesh, in_specs=(P("x"), P("x")),
+    @partial(rank_shard_map, mesh=mesh, in_specs=(P("x"), P("x"), P("x")),
              out_specs=P(), check_rep=False)
-    def _scales(eps_local, sigma_local, *, rank):
+    def _scales(eps_local, sigma_local, film_local, *, rank):
         device = rank
         out = []
         for dev_id, row0, cell, component, dV, pole in drives:
             view = MaterialArrays(eps_r=eps_local[row0:],
-                                  sigma=sigma_local[row0:], mu_r=None)
+                                  sigma=sigma_local[row0:], mu_r=None,
+                                  sigma_film=map_lumped(film_local, lambda a: a[row0:]))
             widths = slab_cell_sizes(grid, rank)
             if widths is not None:
                 widths = (None if widths[0] is None else widths[0][row0:], *widths[1:])
@@ -116,7 +117,7 @@ def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks, grid=None):
             out.append(jnp.where(owner, cb / dV, 0.0))
         return lax.psum(jnp.stack(out), "x")
 
-    return _scales(ranks, eps_r, sigma)
+    return _scales(ranks, eps_r, sigma, sigma_film)
 
 
 def stage_forward_dispersion_x_slab(materials, dt, spec, sharded_grid, mesh, kind):
@@ -139,3 +140,33 @@ def stage_forward_dispersion_x_slab(materials, dt, spec, sharded_grid, mesh, kin
     return stage_slab_pole_coeffs(
         poles, masks, dt, kind, mesh, sharded_grid.nx_per_rank,
         sharded_grid.nx, materials.eps_r.shape, grid=sharded_grid)
+
+
+def stage_forward_materials(materials, layout, mesh):
+    """Release each whole-grid field after its graded forward slab staging."""
+    from rfx.core.yee import MaterialArrays, map_lumped
+    from rfx.stepping.slab import cut
+    staged = {}
+    for name, kind in (("eps_r", "eps_r"), ("sigma", "sigma"),
+                       ("mu_r", "mu_r"), ("sigma_film", "lumped")):
+        staged[name] = cut(getattr(materials, name), layout, kind, mesh=mesh)
+        materials = materials._replace(**{name: None})
+    return MaterialArrays(**staged)
+
+
+def _slab_x_lo_view(arr, rank):
+    return arr.at[0].set(jnp.where(rank == 0, arr[1], arr[0]))
+
+
+def _slab_model_rows(nx_local, nx_per, nx, rank):
+    local = jnp.arange(nx_local)
+    rows = rank * nx_per - 1 + local
+    return ((local >= 1) & (local < nx_local - 1) & (rows < nx))[:, None, None]
+
+
+
+
+def material_record_drive_scales(materials, mesh, drives, dt, *, ranks, grid):
+    """Bind source coefficients to all conductivity carriers of the slab."""
+    return material_drive_scales(materials.eps_r, materials.sigma, mesh, drives,
+        dt, ranks=ranks, grid=grid, sigma_film=materials.sigma_film)

@@ -485,6 +485,8 @@ def topology_optimize(
     _topo_pec_wires: list = []
     base_materials, debye_spec, lorentz_spec, base_pec_mask, *_ = sim._assemble_materials(
         grid, pec_sheets=_topo_pec_sheets, pec_wires=_topo_pec_wires)
+    from rfx.model.thin_conductors import refuse_design_films
+    refuse_design_films(sim, grid, tuple(v for a, b in zip(lo_idx, hi_idx) for v in (a, b + 1)))
     base_mu_r = base_materials.mu_r
 
     # Initialize density
@@ -528,7 +530,8 @@ def topology_optimize(
         from rfx.model.occupancy import occupancy_from_design
         window = (slice(si, ei + 1), slice(sj, ej + 1), slice(sk, ek + 1))
         # Retain the existing fresh-container boundary (including absent records).
-        cells = MaterialArrays(base_materials.eps_r, base_materials.sigma, base_mu_r)
+        cells = MaterialArrays(eps_r=base_materials.eps_r, sigma=base_materials.sigma,
+                               mu_r=base_mu_r, sigma_film=base_materials.sigma_film)
         materials = apply_material_overrides(
             cells, eps_override=fields.eps.astype(base_materials.eps_r.dtype),
             sigma_override=fields.sigma.astype(base_materials.sigma.dtype),
