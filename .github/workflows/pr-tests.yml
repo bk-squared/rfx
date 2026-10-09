@@ -198,13 +198,7 @@ jobs:
             echo "FAIL: tests/contracts collected only $collected tests (<500) — silent deselection?"
             exit 1
           fi
-          # Three workers, one file per worker: run serially the suite no longer
-          # fits this job (2026-10-09: 6052 tests, 57 % done when the 30 min limit
-          # cancelled it, on two PRs that changed one JSON file). The shards on
-          # the code branch already split the same files across twelve jobs.
-          python -m pytest tests/contracts -q -ra -p no:cacheprovider \
-            -n 3 --dist loadfile \
-            -o addopts="" -m "not gpu and not docs_consistency" --strict-markers
+          echo 'The contract tests themselves run in the twelve fast-suite shards.'
 
       # `!= 'false'`, not `== 'true'`: an empty or unexpected output — a
       # classify step that died after its checkout, a future refactor that
@@ -272,7 +266,6 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Raise the memory-mapping limit for the test process
-        if: needs.changes.outputs.code_changed != 'false'
         # JAX keeps every compiled program mapped until its test module ends. On
         # 2026-10-07 one compile-heavy module took a pytest process to 65,521 of
         # the default 65,530 mappings and it died inside the compiler (measured
@@ -282,30 +275,35 @@ jobs:
           sysctl vm.max_map_count
           sudo sysctl -w vm.max_map_count=262144
 
-      - name: Nothing to run — say so and finish green
-        if: needs.changes.outputs.code_changed == 'false'
-        run: |
-          echo 'The diff touches no file under rfx/, tests/, validation/ or'
-          echo 'examples/, and no build or lane configuration, so this shard'
-          echo 'would collect the same tests as the last run on main. The'
-          echo 'contract tests still ran, in guards-and-preflight. The changes'
-          echo 'job above lists the paths; the classifier is'
-          echo 'scripts/ci/changed_paths.py.'
-
       - name: Set up Python ${{ matrix.python-version }}
-        if: needs.changes.outputs.code_changed != 'false'
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
 
       - name: Install package with dev dependencies
-        if: needs.changes.outputs.code_changed != 'false'
         # cad = trimesh/rtree/cascadio for the MeshShape import tests (#358).
         run: pip install -e ".[dev,cad]" "jax==0.10.2" "jaxlib==0.10.2"
 
       - name: Record the resolved JAX/numpy versions (the pin this lane really has)
-        if: needs.changes.outputs.code_changed != 'false'
         run: python -c "import jax, jaxlib, numpy; print('jax', jax.__version__, 'jaxlib', jaxlib.__version__, 'numpy', numpy.__version__)"
+
+      - name: Contract tests — shard ${{ matrix.group }} of 12 (the diff is not code)
+        if: needs.changes.outputs.code_changed == 'false'
+        # The diff touches no file under rfx/, tests/, validation/ or examples/
+        # and no build or lane configuration, so the physics tests would observe
+        # the same tree as the last run on main. The contract tests still run:
+        # they pin docs/, scripts/ and these workflows, which IS what such a diff
+        # changes. They ran in one job until 2026-10-09, when the suite (6052
+        # tests) no longer fitted it: cancelled at 30 min serially, and again on
+        # three workers with 74 % done. Split over the twelve shards instead.
+        # Same flags as the guard suite: `-o addopts=""` so a slow mark inside
+        # tests/contracts cannot deselect from a required gate, the explicit -m
+        # for a CPU-safe run without the docs_consistency tests, --strict-markers
+        # for marker typos. The collect-count floor is in guards-and-preflight.
+        run: >
+          pytest tests/contracts -q -ra -p no:cacheprovider
+          -o addopts="" -m "not gpu and not docs_consistency" --strict-markers
+          --splits 12 --group ${{ matrix.group }}
 
       - name: Fast suite — Python ${{ matrix.python-version }}, shard ${{ matrix.group }} of 12
         if: needs.changes.outputs.code_changed != 'false'
