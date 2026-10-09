@@ -5,7 +5,7 @@ This module owns their products, not another rasterization convention.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 
 import numpy as np
 
@@ -109,6 +109,9 @@ class RealizedConductors(_RealizedPEC):
     sheet_operator: object = None
     mode: str = "solve"
     assembly_from_sim: bool = True
+    released_port_edges: tuple = ()
+    released_cells: np.ndarray = field(default_factory=lambda: np.empty((0, 3), dtype=np.int32))
+    _released_port_details: tuple = ()
     stamped_entities: tuple = ()
     stamp_check_findings: tuple = ()
 
@@ -211,12 +214,81 @@ def realized_conductors(sim, grid, *, nonuniform=False, assembly=None,
     return _with_sheet_spans(sim, result)
 
 
-def clear_conductor_edges(conductors, cells, *, component, entity_id, clear_cells=False, release_edges=True):
+def publish_port_release(conductors, cells, *, component, entity_id, kind):
+    """Publish the incident cells once, in realized indices, for each port edge."""
+    edges = list(conductors.released_port_edges)
+    details = list(conductors._released_port_details)
+    released = set(map(tuple, conductors.released_cells.tolist()))
+    transverse = [a for a in range(3) if a != "xyz".index(component[1])]
+    shape = conductors.grid.shape
+    for cell in cells:
+        edge = (entity_id, component, tuple(map(int, cell)))
+        if edge in edges:
+            continue
+        incident = set()
+        for da, db in ((0, 0), (-1, 0), (0, -1), (-1, -1)):
+            index = list(edge[2])
+            index[transverse[0]] += da
+            index[transverse[1]] += db
+            for axis in range(3):
+                if conductors.periodic[axis] or shape[axis] == 1:
+                    index[axis] %= shape[axis]
+            if all(0 <= index[a] < shape[a] for a in range(3)):
+                incident.add(tuple(index))
+        edges.append(edge)
+        details.append((entity_id, kind, component, edge[2], tuple(sorted(incident))))
+        released.update(incident)
+    return replace(conductors, released_port_edges=tuple(edges),
+                   released_cells=np.asarray(sorted(released), dtype=np.int32).reshape(-1, 3),
+                   _released_port_details=tuple(details))
+
+
+def release_port_occupancy(occupancy, conductors):
+    """Keep port edges free of design metal; warn once for this application."""
+    if occupancy is None or not len(conductors.released_cells):
+        return occupancy
+    import warnings
+    from rfx.core.jax_utils import is_tracer
+    indices = tuple(conductors.released_cells.T)
+    if is_tracer(occupancy) or np.any(np.asarray(occupancy)[indices] != 0):
+        ports = "; ".join(
+            f"{entity} ({kind}, {component}, edge {edge}): cells {cells}"
+            for entity, kind, component, edge, cells in conductors._released_port_details)
+        warnings.warn("Port occupancy release: " + ports
+                      + ". Each driven edge is kept free of design metal.",
+                      UserWarning, stacklevel=2)
+    import jax.numpy as jnp
+    return jnp.asarray(occupancy).at[indices].set(0.0)
+
+
+def refuse_port_design_box(design, conductors):
+    """The occupancy box writes after release and must not overwrite it (#1183)."""
+    if design is None or not len(conductors.released_cells):
+        return
+    bounds = design.bounds
+    window = tuple((bounds[2*a], min(bounds[2*a+1]+1, conductors.grid.shape[a]))
+                   for a in range(3))
+    hits = [tuple(c) for c in conductors.released_cells.tolist()
+            if all(window[a][0] <= c[a] < window[a][1] for a in range(3))]
+    if hits:
+        ports = sorted({entity for entity, _, _, _, cells in conductors._released_port_details
+                        if any(c in hits for c in cells)})
+        raise ValueError(f"the design occupancy box (cells {bounds}) covers port-cleared "
+                         f"cell(s) {hits} for {', '.join(ports)}. A port forces the "
+                         "occupancy to zero around its driven edges before the run. "
+                         "Move the box off the port, or use pec_occupancy_override.")
+
+
+def clear_conductor_edges(conductors, cells, *, component, entity_id, clear_cells=False, release_edges=True, released_edges=None, port_kind=None):
     """One persistent port-clearing stage; the incoming object stays unchanged."""
     from rfx.boundaries.pec import clear_edges
+    cells = tuple(tuple(int(i) for i in cell) for cell in cells)
+    conductors = publish_port_release(conductors,
+        cells if released_edges is None else released_edges, component=component,
+        entity_id=entity_id, kind=port_kind or ("microstrip" if entity_id.startswith("msl_port")
+                                               else "lumped" if release_edges else "wire"))
     if conductors.pec_edges is None:
         return conductors
-    cells = tuple(tuple(int(i) for i in cell) for cell in cells)
     edges = (clear_edges(conductors.pec_edges, cells, component=component)
              if release_edges else conductors.pec_edges)
     pec_cells = conductors.pec_cells
@@ -229,7 +301,7 @@ def clear_conductor_edges(conductors, cells, *, component, entity_id, clear_cell
 
 def lumped_port_stage(conductors, port, entity_id, *, clear_cells=False):
     """Release the single driven PEC edge after loading a lumped port."""
-    if port.impedance <= 0 or port.extent is not None or conductors.pec_edges is None:
+    if port.impedance <= 0 or port.extent is not None:
         return conductors
     grid = conductors.grid
     if conductors.lane == 'nonuniform':
@@ -453,7 +525,13 @@ def preview_port_stages(sim, conductors):
     for i, port in enumerate(sim._ports):
         label = f'port[{i}]'
         if label not in done:
-            conductors = lumped_port_stage(conductors, port, label)
+            if port.impedance > 0 and port.extent is not None:
+                from rfx.sources.sources import wire_port_from_entry, _wire_port_live_cells
+                cells, live, _ = _wire_port_live_cells(grid, wire_port_from_entry(port), conductors.pec_edges)
+                conductors = publish_port_release(conductors, [c for c, on in zip(cells, live) if on],
+                    component=port.component, entity_id=label, kind="wire")
+            else:
+                conductors = lumped_port_stage(conductors, port, label)
     if sim._msl_ports:
         from rfx.sources.msl_port import (
             msl_port_from_entry, _msl_yz_cells, msl_normal_component)
@@ -461,8 +539,16 @@ def preview_port_stages(sim, conductors):
             label = f'msl_port[{i}]'
             if label not in done:
                 port = msl_port_from_entry(entry)
+                support = list(_msl_yz_cells(grid, port))
+                if conductors.lane == 'nonuniform' or getattr(entry, "mode", "laplace") != "uniform":
+                    from rfx.sources.msl_port import compute_msl_mode_profile, msl_cross_section_span, msl_cell
+                    span = msl_cross_section_span(grid, port)
+                    centre = msl_cell(entry.direction, span["i_feed"], span["w_centre"],
+                                      (span["n_lo"] + span["n_hi"]) // 2)
+                    eps = entry.eps_r_sub if entry.eps_r_sub is not None else float(conductors.materials.eps_r[centre])
+                    support = compute_msl_mode_profile(grid, port, eps)["cell_indices"]
                 conductors = clear_conductor_edges(conductors, _msl_yz_cells(grid, port),
-                    component=msl_normal_component(port), entity_id=label)
+                    component=msl_normal_component(port), entity_id=label, released_edges=support)
     return conductors
 
 
@@ -554,11 +640,12 @@ def forward_lumped_port_stage(root, port, entity_id):
 
 
 def forward_port_stage(root, cells, component, entity_id, *,
-                       release_edges=True, skip_empty=False):
+                       release_edges=True, skip_empty=False, released_edges=None):
     """Release only the driven component; preserve the wire's edge support."""
     if not skip_empty or cells:
         root = clear_conductor_edges(root, cells, component=component,
-            entity_id=entity_id, clear_cells=True, release_edges=release_edges)
+            entity_id=entity_id, clear_cells=True, release_edges=release_edges,
+            released_edges=released_edges)
     return root, root.pec_cells, root.pec_edges
 
 

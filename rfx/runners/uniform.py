@@ -410,7 +410,7 @@ def run_uniform(
     # will use, and keep working on THOSE from here on — port clearing,
     # wire-port liveness, the sheet ctx and the run all read the same
     # object.  A sheet owns no cell, so it exists only here.
-    from rfx.model.conductors import kernel_conductors, clear_conductor_edges, lumped_port_stage, at_kernel
+    from rfx.model.conductors import kernel_conductors, clear_conductor_edges, lumped_port_stage, publish_port_release, at_kernel
     _pec_periodic = _simulation.resolve_periodic(grid, periodic)
     pec_sheets = tuple(pec_sheets or ())
     pec_wires = tuple(pec_wires or ())
@@ -480,6 +480,8 @@ def run_uniform(
             wire_port_live_cells.append(tuple(
                 (int(c[0]), int(c[1]), int(c[2]))
                 for c, live in zip(_wp_cells_764, _wp_live_764) if live))
+            conductors = publish_port_release(conductors, wire_port_live_cells[-1],
+                component=pe.component, entity_id=f"port[{_port_index}]", kind="wire")
             # Live-cell-aware fold + injection (issue #318): dead extent
             # cells inside PEC carry no port sigma and no source. The mask
             # here is the assembled-geometry state BEFORE this port's own
@@ -615,18 +617,18 @@ def run_uniform(
                         grid, mp, n_steps=n_steps,
                         mode_profile=mode_profile,
                     )
-            if pec_edge_masks is not None:
-                # Only the SUBSTRATE-NORMAL component over the
-                # cross-section: that is the edge the modal source drives
-                # (V = sum(E_n * d_n)).  Releasing the two in-plane
-                # components as well would punch a width-long slot through
-                # the ground plane and the trace at the feed column
-                # (#931 §1.9, corrected).
-                conductors = clear_conductor_edges(
-                    conductors, list(_msl_yz_cells(grid, mp)),
-                    component=_msl_normal_component(mp),
-                    entity_id=f"msl_port[{_msl_port_index}]")
-                pec_edge_masks = conductors.pec_edges
+            # Only the SUBSTRATE-NORMAL component over the
+            # cross-section: that is the edge the modal source drives
+            # (V = sum(E_n * d_n)).  Releasing the two in-plane
+            # components as well would punch a width-long slot through
+            # the ground plane and the trace at the feed column
+            # (#931 §1.9, corrected).
+            conductors = clear_conductor_edges(
+                conductors, list(_msl_yz_cells(grid, mp)),
+                component=_msl_normal_component(mp),
+                entity_id=f"msl_port[{_msl_port_index}]",
+                released_edges=(mode_profile["cell_indices"] if mode_profile is not None else list(_msl_yz_cells(grid, mp))))
+            pec_edge_masks = conductors.pec_edges
 
     for pe in sim._probes:
         probes.append(_simulation.make_probe(grid, pe.position, pe.component))
