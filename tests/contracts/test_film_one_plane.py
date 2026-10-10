@@ -348,7 +348,7 @@ SIGMA_READS = {
     ('rfx/materials/thin_conductor.py', 'sheet_update_coeffs', 'materials'): (2, 'arithmetic: cell sigma + sheet sigma into exponential A/B'),
     ('rfx/boundaries/cpml.py', 'apply_cpml_e', 'materials'): (3, 'fallback when a caller passes no step loss: the subgridded lanes, which refuse thin conductors; the uniform and graded steps pass the component loss'),
     ('rfx/model/pole_stability.py', 'refuse_unstable_cells', 'materials'): (3, 'refusal only: pole-medium time-step judgement at the cell conductivity extremes; a film on a pole-medium face is not included (not measured; reported to the materials lane)'),
-    ('rfx/runners/distributed_nu.py', 'run_nonuniform_distributed_pec.run_fn', 'materials'): (1, 'carrier staged or passed alongside volume sigma to the shared edge reader'),
+    ('rfx/runners/distributed_nu.py', 'run_nonuniform_distributed_pec.run_fn', 'invariants[0]'): (1, 'carrier staged or passed alongside volume sigma to the shared edge reader'),
     ('rfx/model/materials.py', '_design_box_edge_coeffs', 'materials'): (1, 'slicing/passing on to window MaterialArrays'),
     ('rfx/model/materials.py', 'assemble_cells', 'mat'): (4, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/model/materials.py', 'assemble_cells', 'sim._resolve_material(entry.material_name)'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
