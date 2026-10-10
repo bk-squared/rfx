@@ -56,16 +56,6 @@ def coarse_cpml_loss(materials, dt):
     return material_loss(materials, dt)
 
 
-def coarse_e_boundary(st, materials, dt, dx, cpml, params, psi, grid, axes, enabled):
-    """Coarse electric step, retaining the caller's CPML observation point."""
-    from rfx.core.yee import update_e
-    st = update_e(st, materials, dt, dx)
-    if enabled:
-        st, psi = cpml(st, params, psi, grid, axes, materials=materials,
-                       e_loss=coarse_cpml_loss(materials, dt))
-    return st, psi
-
-
 def graded_cpml_operands(materials, aniso_eps, *, use_cpml, use_debye, use_lorentz):
     """Select the graded update's pad permittivity and loss operands together."""
     # #1043: ``apply_cpml_e``'s psi coefficient must take its permittivity from
