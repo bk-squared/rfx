@@ -30,19 +30,16 @@ from rfx.boundaries.depths import resolve_face_depths
 import jax
 import jax.numpy as jnp
 
-from rfx.core.drives import drive_layout, inject_drives
+from rfx.core.drives import drive_layout
 from rfx.model.source_coefficients import drive_table
 from rfx.model.occupancy import with_edge_keep
 import numpy as np
 
 from rfx.core.yee import (
     FDTDState, MaterialArrays, init_state,
-    update_h_nu, update_e_nu, EPS_0, MU_0,
+    EPS_0, MU_0,
 )
 from rfx.boundaries.pec import (
-    apply_pec_faces,
-    apply_pec_edges,
-    apply_edge_keep,
     realized_pec_edge_masks,
 )
 from rfx.core.jax_utils import is_tracer, recorded_scan
@@ -2760,321 +2757,61 @@ def _build_nu_scan(
         "design_box_coeffs": design_box_coeffs,
     }
 
-    def step_fn(carry, xs, invariants):
-        materials = invariants["materials"]
-        pec_edge_masks = invariants["pec_edge_masks"]
-        _cpml_inv_eps_r = invariants["cpml_inv_eps_r"]
-        debye_coeffs = invariants["debye_coeffs"]
-        lorentz_coeffs = invariants["lorentz_coeffs"]
-        aniso_eps = invariants["aniso_eps"]
-        sheet_impedance = invariants["sheet_impedance"]
-        sheet_coeffs = invariants["sheet_coeffs"]
-        design_box_coeffs = invariants["design_box_coeffs"]
-        step_idx, src_vals = xs
-        st = carry["fdtd"]
-        # #1163: E^n at each lumped RLC edge, read before the E update (the
-        # series element is solved together with its edge field).
-        rlc_e_prev = (
-            tuple(getattr(st, m.component)[m.i, m.j, m.k] for m in rlc_metas)
-            if use_lumped_rlc else ())
-
-        # E^n on the slab, before anything in this step writes E (the H
-        # update below does not touch it). Slab-sized so the reverse-mode
-        # tape carries the slab and not the domain.
-        if use_current_moments:
-            e_prev_slab = _slab_e_snapshot(st, current_moments)
-
-        # H update (non-uniform)
-        st = update_h_nu(st, materials, dt, inv_dx_h, inv_dy_h, inv_dz_h,
-                         cell_sizes=(grid.dx_arr, grid.dy_arr, grid.dz))
-        tfsf_h_state = None
-        if use_tfsf:
-            from rfx.sources.tfsf import apply_tfsf_h
-            st = apply_tfsf_h(st, tfsf_cfg, carry["tfsf"], grid.dx, dt)
-        if use_waveguide_ports:
-            from rfx.sources.waveguide_port import apply_waveguide_port_h as _apply_wg_h_nu
-            for cfg_meta, _m in zip(waveguide_meta,
-                                    waveguide_port_metrics):
-                st = _apply_wg_h_nu(st, cfg_meta, step_idx, dt, _m[0])
-        if use_cpml:
-            st, cpml_new = apply_cpml_h(st, cpml_params, carry["cpml"],
-                                         cpml_grid, cpml_axes_eff,
-                                         materials=materials)
-        else:
-            cpml_new = None
-        if use_pmc_faces:
-            from rfx.boundaries.pmc import apply_pmc_faces
-            st = apply_pmc_faces(st, _pmc_faces_frozen, image=True)
-        if use_tfsf:
-            from rfx.sources.tfsf import update_tfsf_1d_h
-            tfsf_h_state = update_tfsf_1d_h(tfsf_cfg, carry["tfsf"], grid.dx, dt)
-
-        # Snapshot E^n for the #677 sheet operator (it REPLACES the
-        # standard update at masked tangential edges with A*E^n + B*curlH).
-        e_prev_sheet = (st.ex, st.ey, st.ez) if use_sheet_impedance else None
-        # #1183: the design box REDOES the E update at its own cells from
-        # the pre-update state (E^n and the same H^{n+1/2}).
-        st_prev_design = st if use_design_box else None
-
-        # E update: use ADE-aware path when dispersive materials are present
-        debye_new = None
-        lorentz_new = None
-        if use_debye or use_lorentz:
-            st, debye_new, lorentz_new = _update_e_nu_dispersive(
-                st, materials, dt, inv_dx, inv_dy, inv_dz,
-                debye=(debye_coeffs, carry["debye"]) if use_debye else None,
-                lorentz=(lorentz_coeffs, carry["lorentz"]) if use_lorentz else None,
-                boundary=curl_boundary,
-            )
-        elif aniso_eps is not None:
-            from rfx.core.yee import update_e_nu_aniso
-            _eex, _eey, _eez = aniso_eps
-            st = update_e_nu_aniso(
-                st, materials, _eex, _eey, _eez, dt,
-                inv_dx, inv_dy, inv_dz, boundary=curl_boundary,
-            )
-        else:
-            st = update_e_nu(st, materials, dt, inv_dx, inv_dy, inv_dz,
-                             boundary=curl_boundary)
-
-        # #1183 design box: redo the E update at the design cells from the
-        # traced permittivity, on the graded-mesh curl. Same slot as the
-        # uniform lane — immediately after the E update, on the same H,
-        # before anything that reads or writes E.
-        if use_design_box:
-            from rfx.core.yee import update_e_box
-            st = update_e_box(
-                st, st_prev_design, design_box_coeffs.bounds,
-                design_box_coeffs.ca, design_box_coeffs.cb, grid.dx,
-                inv_d=(inv_dx, inv_dy, inv_dz), boundary=curl_boundary,
-            )
-
-        if use_tfsf:
-            from rfx.sources.tfsf import apply_tfsf_e
-            st = apply_tfsf_e(st, tfsf_cfg, tfsf_h_state, grid.dx, dt)
-        if use_waveguide_ports:
-            from rfx.sources.waveguide_port import apply_waveguide_port_e as _apply_wg_e_nu
-            for cfg_meta, _m in zip(waveguide_meta,
-                                    waveguide_port_metrics):
-                st = _apply_wg_e_nu(st, cfg_meta, step_idx, dt, _m[1])
-        if use_cpml:
-            st, cpml_new = apply_cpml_e(st, cpml_params, cpml_new,
-                                         cpml_grid, cpml_axes_eff,
-                                         materials=materials, e_loss=invariants["e_loss"],
-                                         inv_eps_r_update=_cpml_inv_eps_r,
-                                         boundary=curl_boundary, debye=debye_coeffs, lorentz=lorentz_coeffs)
-
-        # PEC, per face (#1164)
-        st = apply_pec_faces(st, _pec_faces_frozen)
-        if use_pec_edges:
-            st = apply_pec_edges(st, pec_edge_masks)
-        if use_pec_occupancy:
-            st = apply_edge_keep(st, materials.edge_keep)
-
-        # #677 node-thin surface-impedance sheet operator. Contract slot:
-        # AFTER apply_pec_mask/apply_pec_occupancy (PEC wins on overlap),
-        # BEFORE sources and the port DFT sampling below. curlH comes from
-        # the SAME shared stencil helper update_e_nu uses, on the same
-        # H^{n+1/2} the E update consumed.
-        if use_sheet_impedance:
-            from rfx.core.yee import curl_h_nu as _curl_h_nu
-            from rfx.materials.thin_conductor import (
-                apply_sheet_impedance_e as _apply_sheet_e)
-            _scd = jnp.promote_types(st.ex.dtype, jnp.float32)
-            _curls = _curl_h_nu(
-                st.hx.astype(_scd), st.hy.astype(_scd), st.hz.astype(_scd),
-                inv_dx, inv_dy, inv_dz, boundary=curl_boundary)
-            st = _apply_sheet_e(st, e_prev_sheet, _curls,
-                                sheet_impedance, sheet_coeffs)
-
-        # Lumped RLC ADE update (after E update + boundaries, before sources)
-        new_rlc_states = None
-        if use_lumped_rlc:
-            from rfx.lumped import update_rlc_element
-            new_rlc_states = []
-            for rlc_st, meta, e_prev in zip(
-                    carry["rlc_states"], rlc_metas, rlc_e_prev):
-                st, rlc_st_new = update_rlc_element(st, rlc_st, meta, e_prev)
-                new_rlc_states.append(rlc_st_new)
-
-        # Sources (point sources + wire port excitation)
-        st = inject_drives(st, drives, src_vals)
-
-        # Waveguide-port injection + DFT probe accumulation. The dx
-        # arg is unused by the per-cell-weighted integrals (cfg already
-        # stores u_widths/v_widths), but kept in the function signature
-        # for back-compat. It is handed the port's own primal cell rather
-        # than the grid's boundary scalar so that nothing here reads a
-        # scalar the port does not sit on; because the callee ignores it,
-        # no recorded number moves either way.
-        new_waveguide_port_accs = None
-        if use_waveguide_ports:
-            from rfx.sources.waveguide_port import (
-                update_waveguide_port_probe,
-            )
-            new_waveguide_port_accs = []
-            for accs, cfg_meta, _m in zip(
-                carry["waveguide_port_accs"], waveguide_meta,
-                waveguide_port_metrics,
-            ):
-                cfg = cfg_meta._replace(
-                    v_probe_t=accs[0],
-                    v_ref_t=accs[1],
-                    i_probe_t=accs[2],
-                    i_ref_t=accs[3],
-                    v_inc_t=accs[4],
-                    n_steps_recorded=accs[5],
-                )
-                # TFSF-style corrections applied earlier at canonical slots.
-                cfg_updated = update_waveguide_port_probe(cfg, st, dt, _m[0])
-                new_waveguide_port_accs.append((
-                    cfg_updated.v_probe_t,
-                    cfg_updated.v_ref_t,
-                    cfg_updated.i_probe_t,
-                    cfg_updated.i_ref_t,
-                    cfg_updated.v_inc_t,
-                    cfg_updated.n_steps_recorded,
-                ))
-
-        # Wire port V/I DFT accumulation.
-        #
-        # Ordering: AFTER source injection.  Issue #683 is DECIDED (by
-        # measurement, 2026-08-29 — docs/design_notes/
-        # issue683_sampling_order_decision_protocol.md section 9): this
-        # slot is the terminal-consistent, physically correct one.  The
-        # known-load circuit law holds only for the post-injection pair
-        # (n*a = +0.9987/+0.9950, n*|b| = 0.08/0.32 Ohm over a six-point
-        # R_L sweep at both decision bins), and the post-injection E is
-        # the true field level E^{n+1} of the discrete update
-        # (Ampere-identity residual 2.3e-7 vs 3.25 pre-injection).  The
-        # once-CONTESTED known-load sweep was settled by that protocol run
-        # (gates G0-G2 all passed; the earlier independent repro's fixture
-        # had failed to load the port), and the once-UNEXAMINED Ampere
-        # identity was examined in the same run (section 7).
-        #
-        # The uniform lane (rfx/simulation.py wire block) flipped to this
-        # same POST slot for its physical V/I/V_port channels, with the
-        # pre-injection drive sample kept as a separate calibration
-        # reference channel for its #308/#313 off-diagonal decomposition
-        # (issue #683 x #764,
-        # docs/design_notes/issue683_decomposer_flip_predeclaration.md).
-        # This lane's decomposition was calibrated in the POST frame
-        # directly, so it needs NO reference channel and NO change.
-        #
-        # PASSIVE ports are unaffected either way: I reads H only, and the
-        # source loop writes E only, at the SOURCE cell.
-        new_wire_sp = None
-        if use_wire_ports:
-            from rfx.core.dft_utils import port_dft_phase
-            new_wire_sp = []
-            port_samples = []
-            for (v_dft, i_dft, vinc_dft, v_port_dft), \
-                (mi, mj, mk, comp, z0, dxi, dyj,
-                 _excite, _dir, dual_xi, dual_yj,
-                 dz_local, dual_zk, live_cells, d_par_cells) in \
-                    zip(carry.get("wire_sparams", ()), wp_meta):
-                # V = -E_comp * (PRIMAL width on the component's own axis):
-                # the E edge's own length. I = the Ampere loop on the DUAL
-                # face (issue #672); both metric families are precomputed in
-                # wp_meta above.
-                field_c = getattr(st, comp)
-                v = -field_c[mi, mj, mk] * (
-                    dz_local if comp == "ez" else
-                    dxi if comp == "ex" else dyj)
-                # Whole-port gap voltage (issue #764): the discrete line
-                # integral of E across the LIVE run,
-                # V_port = sum_live(-E_c * d_par,c), same PRIMAL metric
-                # family per cell. Static unroll — live_cells is a static
-                # tuple, so this resolves at trace time.
-                v_port = -sum(
-                    field_c[ci, cj, ck] * dp
-                    for (ci, cj, ck), dp in zip(live_cells, d_par_cells))
-                i_val = wire_port_current(
-                    st.hx, st.hy, st.hz, comp, mi, mj, mk,
-                    dual_xi, dual_yj, dual_zk, boundary=curl_boundary)
-                phase = port_dft_phase(step_idx, sp_freqs, dt, dtype=v_dft.dtype)
-                i_phase = port_dft_phase(step_idx, sp_freqs, dt, 'H', dtype=i_dft.dtype)
-                port_samples.append(jnp.stack((v, i_val, v_port)))
-                new_wire_sp.append((
-                    v_dft + v * phase,
-                    i_dft + i_val * i_phase,
-                    vinc_dft,
-                    v_port_dft + v_port * phase,
-                ))
-
-        from rfx.measurement.accumulators import planes, flux
-        new_dft_planes = new_flux_monitors = None
-        if use_dft_planes:
-            new_dft_planes, plane_samples = planes(
-                st, carry["dft_planes"], dft_meta, dt, step_idx)
-        if use_flux_monitors:
-            new_flux_monitors = flux(st, carry["flux_monitors"], flux_meta, dt, step_idx)
-
-        # NTFF: accumulate tangential E/H DFT on 6 box faces
-        new_ntff = None
-        if use_ntff:
-            from rfx.farfield import accumulate_ntff
-            new_ntff = accumulate_ntff(carry["ntff"], st, ntff_box, dt, step_idx)
-
-        # Block current moments — same slot as the NTFF box: E at (n+1)*dt,
-        # H at (n+1/2)*dt, with the feed current already injected.
-        new_cm = None
-        if use_current_moments:
-            new_cm = _accumulate_cm(
-                carry["current_moments"], st, e_prev_slab, current_moments,
-                dt, step_idx)
-
-        # TFSF 1D auxiliary E-field update (mirrors uniform scan body:
-        # called AFTER sources, closes the leapfrog step).
-        tfsf_new = None
-        if use_tfsf:
-            from rfx.sources.tfsf import update_tfsf_1d_e
-            t_tfsf = step_idx.astype(jnp.float32) * dt
-            tfsf_new = update_tfsf_1d_e(tfsf_cfg, tfsf_h_state, grid.dx, dt, t_tfsf)
-
-        # Probes
-        if emit_time_series and prb_meta:
-            samples = [getattr(st, pc)[pi, pj, pk] for pi, pj, pk, pc in prb_meta]
-            probe_out = jnp.stack(samples)
-        else:
-            probe_out = jnp.zeros(0)
-
-        new_carry = {"fdtd": st}
-        if "dft_time_records" in carry:
-            new_carry["dft_time_records"] = tuple(
-                jax.lax.stop_gradient(record.at[step_idx].set(sample))
-                for record, sample in zip(carry["dft_time_records"], plane_samples))
-        if "sparam_time_records" in carry:
-            new_carry["sparam_time_records"] = tuple(
-                jax.lax.stop_gradient(record.at[step_idx].set(sample))
-                for record, sample in zip(carry["sparam_time_records"], port_samples))
-        if use_cpml:
-            new_carry["cpml"] = cpml_new
-        if use_debye and debye_new is not None:
-            new_carry["debye"] = debye_new
-        if use_lorentz and lorentz_new is not None:
-            new_carry["lorentz"] = lorentz_new
-        if use_wire_ports and new_wire_sp is not None:
-            new_carry["wire_sparams"] = tuple(new_wire_sp)
-        if use_dft_planes and new_dft_planes is not None:
-            new_carry["dft_planes"] = tuple(new_dft_planes)
-        if use_flux_monitors and new_flux_monitors is not None:
-            new_carry["flux_monitors"] = tuple(new_flux_monitors)
-        if use_lumped_rlc and new_rlc_states is not None:
-            new_carry["rlc_states"] = tuple(new_rlc_states)
-        if use_ntff and new_ntff is not None:
-            new_carry["ntff"] = new_ntff
-        if use_current_moments and new_cm is not None:
-            new_carry["current_moments"] = new_cm
-        if use_waveguide_ports and new_waveguide_port_accs is not None:
-            new_carry["waveguide_port_accs"] = tuple(new_waveguide_port_accs)
-        if use_tfsf and tfsf_new is not None:
-            new_carry["tfsf"] = tfsf_new
-        return new_carry, probe_out
+    from rfx.stepping.graded import GradedStepContext, make_graded_step
+    ctx = GradedStepContext(
+        use_lumped_rlc=use_lumped_rlc,
+        rlc_metas=rlc_metas,
+        use_current_moments=use_current_moments,
+        _slab_e_snapshot=_slab_e_snapshot if use_current_moments else None,
+        current_moments=current_moments,
+        dt=dt,
+        inv_dx_h=inv_dx_h,
+        inv_dy_h=inv_dy_h,
+        inv_dz_h=inv_dz_h,
+        grid=grid,
+        use_tfsf=use_tfsf,
+        tfsf_cfg=tfsf_cfg if use_tfsf else None,
+        use_waveguide_ports=use_waveguide_ports,
+        waveguide_meta=waveguide_meta,
+        waveguide_port_metrics=waveguide_port_metrics,
+        use_cpml=use_cpml,
+        apply_cpml_h=apply_cpml_h,
+        cpml_params=cpml_params,
+        cpml_grid=cpml_grid,
+        cpml_axes_eff=cpml_axes_eff,
+        use_pmc_faces=use_pmc_faces,
+        _pmc_faces_frozen=_pmc_faces_frozen,
+        use_sheet_impedance=use_sheet_impedance,
+        use_design_box=use_design_box,
+        use_debye=use_debye,
+        use_lorentz=use_lorentz,
+        inv_dx=inv_dx,
+        inv_dy=inv_dy,
+        inv_dz=inv_dz,
+        curl_boundary=curl_boundary,
+        apply_cpml_e=apply_cpml_e,
+        _pec_faces_frozen=_pec_faces_frozen,
+        use_pec_edges=use_pec_edges,
+        use_pec_occupancy=use_pec_occupancy,
+        drives=drives,
+        use_wire_ports=use_wire_ports,
+        wp_meta=wp_meta,
+        sp_freqs=sp_freqs,
+        use_dft_planes=use_dft_planes,
+        dft_meta=dft_meta,
+        use_flux_monitors=use_flux_monitors,
+        flux_meta=flux_meta,
+        use_ntff=use_ntff,
+        ntff_box=ntff_box,
+        _accumulate_cm=_accumulate_cm if use_current_moments else None,
+        emit_time_series=emit_time_series,
+        prb_meta=prb_meta,
+    )
+    step = make_graded_step(ctx)
 
     return _NUScanSetup(
-        step_fn=partial(step_fn, invariants=invariants),
-        step_fn_inv=step_fn,
+        step_fn=partial(step, invariants=invariants),
+        step_fn_inv=step,
         invariants=invariants,
         carry_init=carry_init,
         src_waveforms=src_waveforms,

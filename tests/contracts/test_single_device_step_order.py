@@ -110,3 +110,112 @@ def test_conductors_and_sources_match_independent_single_device_step(kind):
         rlc = tuple(new['rlc_states'][0]) if ctx.use_lumped_rlc else ()
         return (st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, extras['before'], *rlc)
     _check(jax.jit(actual)(carry), jax.jit(lambda c: _reference(ctx, c, source, coeffs))(carry))
+
+
+def _graded_scene(kind):
+    from rfx.nonuniform import make_nonuniform_grid
+    from rfx.stepping.graded import GradedStepContext
+
+    grid = make_nonuniform_grid(
+        (.005, .005), np.full(5, .001), .001, cpml_layers=0,
+        dy_profile=np.array([.001, .0009, .0008, .0009, .001]))
+    shape = (grid.nx, grid.ny, grid.nz)
+    materials = with_components(init_materials(shape), grid,
+                                periodic=(False, False, False))
+    cell = (0, 2, 2) if kind != 'occupancy' else (2, 2, 2)
+    initial = init_state(shape)
+    initial = initial._replace(ez=initial.ez.at[cell].set(.7))
+    carry = {'fdtd': initial}
+    from rfx.core.yee import CurlBoundary
+    values = {f.name: False if f.name.startswith('use_') else None
+              for f in fields(GradedStepContext)}
+    values.update(
+        grid=grid, dt=grid.dt, inv_dx=grid.inv_dx, inv_dy=grid.inv_dy,
+        inv_dz=grid.inv_dz, inv_dx_h=grid.inv_dx_h, inv_dy_h=grid.inv_dy_h,
+        inv_dz_h=grid.inv_dz_h, _pec_faces_frozen=frozenset({'x_lo'}),
+        _pmc_faces_frozen=frozenset(),
+        curl_boundary=CurlBoundary(frozenset({'x_lo'}), frozenset()),
+        drives=drive_layout([(*cell, 'ez')], jnp.float32), rlc_metas=(),
+        emit_time_series=True, prb_meta=[], waveguide_meta=(),
+        waveguide_port_metrics=(), wp_meta=[], dft_meta=(), flux_meta=())
+    sheet = coeffs = None
+    if kind == 'occupancy':
+        values['use_pec_occupancy'] = True
+        materials = with_edge_keep(materials, _occupancy(shape), dtype=jnp.float32)
+    elif kind == 'sheet':
+        values['use_sheet_impedance'] = True
+        mask = jnp.zeros(shape, dtype=bool).at[0:4, 2, 1:4].set(True)
+        sheet = SheetImpedanceCtx(mask, jnp.zeros_like(mask), mask, mask * 2.)
+        coeffs = sheet_update_coeffs(sheet.sigma_sheet, materials, grid.dt)
+    else:
+        values['use_lumped_rlc'] = True
+        spec = LumpedRLCSpec(R=500., L=1e-9, C=.2e-12,
+                             position=(0., .002, .002), component='ez')
+        values['rlc_metas'] = (build_rlc_meta(grid, spec, materials),)
+        carry['rlc_states'] = (init_rlc_state(),)
+    invariants = dict(materials=materials, pec_edge_masks=None, cpml_inv_eps_r=None,
+                      debye_coeffs=None, lorentz_coeffs=None, aniso_eps=None,
+                      sheet_impedance=sheet, sheet_coeffs=coeffs, design_box_coeffs=None)
+    return GradedStepContext(**values), carry, invariants
+
+
+def _graded_reference(ctx, carry, source, invariants):
+    from rfx.core.yee import curl_h_nu, update_e_nu, update_h_nu
+
+    old = carry['fdtd']
+    materials = invariants['materials']
+    grid = ctx.grid
+    st = update_h_nu(old, materials, ctx.dt, grid.inv_dx_h, grid.inv_dy_h,
+                     grid.inv_dz_h, cell_sizes=(grid.dx_arr, grid.dy_arr, grid.dz))
+    st = update_e_nu(st, materials, ctx.dt, grid.inv_dx, grid.inv_dy,
+                     grid.inv_dz, boundary=ctx.curl_boundary)
+    st = apply_pec_faces(st, ctx._pec_faces_frozen)
+    if ctx.use_pec_occupancy:
+        st = apply_pec_occupancy(st, _occupancy(st.ex.shape), (False, False, False))
+    if ctx.use_sheet_impedance:
+        curls = curl_h_nu(st.hx, st.hy, st.hz, grid.inv_dx, grid.inv_dy,
+                          grid.inv_dz, boundary=ctx.curl_boundary)
+        st = apply_sheet_impedance_e(st, (old.ex, old.ey, old.ez), curls,
+                                    invariants['sheet_impedance'], invariants['sheet_coeffs'])
+    rlc = ()
+    if ctx.use_lumped_rlc:
+        meta = ctx.rlc_metas[0]
+        st, next_rlc = update_rlc_element(st, carry['rlc_states'][0], meta,
+                                         old.ez[meta.i, meta.j, meta.k])
+        rlc = tuple(next_rlc)
+    before = st.ez
+    st = inject_drives(st, ctx.drives, source)
+    return (st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, before, *rlc)
+
+
+def _graded_check(actual, expected):
+    for got, want in zip(actual, expected, strict=True):
+        np.testing.assert_array_equal(got, want)
+
+
+def test_graded_order_checks_are_live():
+    with pytest.raises(AssertionError):
+        _graded_check((np.array([1.]),), (np.array([0.]),))
+
+
+@pytest.mark.parametrize('kind', ['occupancy', 'sheet', 'rlc'])
+def test_graded_conductors_and_sources_match_independent_step(kind):
+    from rfx.stepping import HookPoint, make_graded_step
+
+    ctx, carry, invariants = _graded_scene(kind)
+    captured = {}
+
+    def before(frame):
+        captured['before'] = frame.st.ez
+
+    step = make_graded_step(ctx, hooks={HookPoint.BEFORE_SOURCES: (before,)})
+    source = jnp.array([2.], dtype=jnp.float32)
+
+    def actual(carry):
+        new, _ = step(carry, (jnp.int32(0), source), invariants)
+        st = new['fdtd']
+        rlc = tuple(new['rlc_states'][0]) if ctx.use_lumped_rlc else ()
+        return (st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, captured['before'], *rlc)
+
+    _graded_check(jax.jit(actual)(carry),
+                  jax.jit(lambda c: _graded_reference(ctx, c, source, invariants))(carry))
