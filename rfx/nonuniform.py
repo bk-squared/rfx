@@ -2519,9 +2519,7 @@ def _build_nu_scan(
     from rfx.boundaries.tfsf import admit_setup
 
     from rfx.boundaries.setup import nonuniform_boundaries
-    from rfx.stepping.absorber import (
-        apply_cpml_h, apply_cpml_e_step as apply_cpml_e, graded_cpml_operands,
-    )
+    from rfx.stepping.absorber import apply_cpml_h, apply_cpml_e_step as apply_cpml_e, graded_cpml_operands
     (use_cpml, cpml_params, cpml_state_init, cpml_grid, cpml_axes_eff,
      curl_boundary, _pec_faces_frozen, _pmc_faces_frozen, use_pmc_faces) = nonuniform_boundaries(
          grid, cpml_axes, pec_faces, pmc_faces)

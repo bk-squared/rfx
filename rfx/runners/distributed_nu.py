@@ -811,9 +811,8 @@ def _update_e_dispersive_local_nu(
 
 
 def _apply_cpml_e_local_nu(state: FDTDState, cpml_params, cpml_state,
-                           n_cpml: int, dt: float, ghost: int,
-                           n_devices: int, eps_r=None, pad_x: int = 0, *,
-                           rank=None, e_loss=None, e_curl_coeff=None):
+                           n_cpml: int, dt: float, ghost: int, n_devices: int, eps_r=None,
+                           pad_x: int = 0, *, rank=None, e_loss=None, e_curl_coeff=None):
     """Per-rank slab-aware CPML E-field correction with NU per-axis dx.
 
     Mirrors :func:`rfx.boundaries.cpml.apply_cpml_e` but operates on a
