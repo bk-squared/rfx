@@ -149,11 +149,13 @@ def _shard_field_state(state: FDTDState, mesh: Mesh) -> FDTDState:
 def _shard_materials(materials: MaterialArrays, mesh: Mesh) -> MaterialArrays:
     from rfx.sources.wire_radius import require_radius_update
     require_radius_update(materials, lane="distributed_v2 material shard", unsupported=True)
+    if materials.sigma_film is not None:
+        raise ValueError("distributed_v2 material shard does not place a lossy film; "
+                         "run_distributed cuts sigma_film through rfx.stepping.slab.cut")
     shd = _x_sharding(mesh)
     return MaterialArrays(
         eps_r=jax.device_put(materials.eps_r, shd),
         sigma=jax.device_put(materials.sigma, shd),
-        sigma_film=jax.tree.map(lambda a: jax.device_put(a, shd), materials.sigma_film),
         mu_r=jax.device_put(materials.mu_r, shd),
     )
 

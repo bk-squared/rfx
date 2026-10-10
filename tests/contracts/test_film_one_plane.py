@@ -301,6 +301,7 @@ CONSTRUCTOR_EXCEPTIONS = {
     ('rfx/runners/distributed_nu.py', '_apply_cpml_h_local_nu'): (1, 'H-only operand: no electric conductivity consumed'),
     ('rfx/runners/distributed_nu.py', 'run_nonuniform_distributed_pec._update_e_dispersive_shmap._e_disp'): (1, 'only called with dispersion; shared means already enter Debye/Lorentz coefficients'),
     ('rfx/runners/distributed_v2.py', 'run_distributed._update_h_shmap._h'): (1, 'H-only operand: no electric conductivity consumed'),
+    ('rfx/runners/distributed_v2.py', '_shard_materials'): (1, 'refuses a non-None film before constructing'),
     ('rfx/sources/coaxial_port.py', 'build_coaxial_tem_plane_source_specs'): (1, 'H-only operand: no electric conductivity consumed'),
     ('rfx/sources/msl_port.py', 'make_msl_port_sources_jm'): (1, 'H-only operand: no electric conductivity consumed'),
     ('rfx/sources/tfsf.py', '_apply_closed_box_h'): (1, 'H-only operand: no electric conductivity consumed'),
@@ -749,3 +750,12 @@ def test_c4_msl_port_f0_and_film_refused_in_sheet_context(graded, monkeypatch):
     with pytest.raises(ValueError, match='an f0 sheet and a lossy film share edges'):
         sim.run(n_steps=2, compute_s_params=False)
     assert reached == [True]
+
+
+def test_v2_material_shard_refuses_a_film():
+    from rfx.core.yee import MaterialArrays
+    from rfx.runners.distributed_v2 import _shard_materials
+    cells = jnp.ones((2, 2, 2), jnp.float32)
+    film = (jnp.zeros((2, 2, 2), jnp.float32),) * 3
+    with pytest.raises(ValueError, match='lossy film'):
+        _shard_materials(MaterialArrays(eps_r=cells, sigma=cells * 0, mu_r=cells, sigma_film=film), None)
