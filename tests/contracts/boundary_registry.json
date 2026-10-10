@@ -483,11 +483,6 @@
     },
     {
       "file": "rfx/nonuniform.py",
-      "function": "_build_nu_scan.step_fn",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/nonuniform.py",
       "function": "_bwd_neighbor",
       "kind": "neighbour"
     },
@@ -835,6 +830,21 @@
     {
       "file": "rfx/stepping/absorber.py",
       "function": "apply_cpml_e_step",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/graded.py",
+      "function": "make_graded_step.e_boundary",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/graded.py",
+      "function": "make_graded_step.h_boundary",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/graded.py",
+      "function": "make_graded_step.pec",
       "kind": "boundary"
     },
     {
