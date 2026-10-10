@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # slow-tests (5-shard since 2026-09-21, was 4) + weekly-a6000-lane (formerly slow-tests-highmem) (serial) split (issue #545 step 3).
+  # slow-tests (6-shard since 2026-10-10, was 5) + weekly-a6000-lane (formerly slow-tests-highmem) (serial) split (issue #545 step 3).
   #
   # Weekly run 31103127491 (2026-08-06, first run with both the #566 rebalance
   # AND the RSS reporter live) proved the recurring shard-1/2/3 kills (exit 143,
@@ -63,6 +63,10 @@ jobs:
   # entry simply won't see the deselected highmem tests, and the file's
   # existing per-test duration entries for them (if present) are just unused
   # by this selection, not stale/wrong.
+  # 2026-10-10: six shards, was five. On 2026-10-09 (run 37961778854), shard 3
+  # was cancelled at 180 min with no test failure; the others took 74–119 min.
+  # With regenerated durations (PR #1592), five groups hold 6731–7482 s of
+  # recorded tests each, about 36,300 s total for the lane.
   slow-tests:
     runs-on: ubuntu-latest
     # 90 not 60: the slowest shard reached ~52 min on 2026-07-27 and the slow
@@ -94,11 +98,14 @@ jobs:
       # report all of its failures.
       fail-fast: false
       matrix:
-        group: [1, 2, 3, 4, 5]
+        group: [1, 2, 3, 4, 5, 6]
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Record shard start time
+        run: echo "SHARD_T0=$(date +%s)" >> "$GITHUB_ENV"
 
       - name: Raise the memory-mapping limit for the test process
         # JAX keeps every compiled program mapped until its test module ends. On
@@ -154,14 +161,24 @@ jobs:
       # "not docs_consistency": for the same reason this -m would re-include the
       # tests that compare documentation prose. Those run in docs-consistency.yml;
       # a documentation mismatch must not turn this physics lane red.
-      - name: Run slow suite — shard ${{ matrix.group }} of 5
+      - name: Run slow suite — shard ${{ matrix.group }} of 6
         env:
           RFX_WEEKLY_RSS: "1"
           RFX_S0_FULL: "1"
         run: >
+          mkdir -p durations &&
           pytest -v -ra -s
           -m "not gpu and not highmem and not docs_consistency"
-          --splits 5 --group ${{ matrix.group }}
+          --splits 6 --group ${{ matrix.group }}
+          --store-durations --durations-path durations/weekly_${{ matrix.group }}.json
+
+      - name: Upload weekly shard durations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-durations-${{ matrix.group }}
+          path: durations/weekly_${{ matrix.group }}.json
+          if-no-files-found: warn
 
       - name: Run three-device x-wall alignment cases
         if: matrix.group == 1
@@ -172,6 +189,15 @@ jobs:
           pytest -v -ra -p no:cacheprovider -o addopts=""
           tests/unit/runners/test_distributed_cpml_face_matrix.py
           -k pad_3
+
+      - name: Shard time against the job limit
+        if: always()
+        # Tests are added daily: requiring zero unpriced tests would turn the lane
+        # red every week. Time is the quantity that cancels a shard.
+        run: >
+          python scripts/ci/weekly_shard_budget.py --start "$SHARD_T0"
+          --limit-minutes 180 --fraction 0.85
+          --measured durations/weekly_${{ matrix.group }}.json --recorded .test_durations
 
   # The 7 `highmem`-marked tests, run SERIALLY in one job (no shard split, no
   # xdist) so only one multi-GB peak exists on the runner at a time -- see the
