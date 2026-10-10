@@ -26,7 +26,7 @@ MONITOR_EXCLUSIONS = ('prb_meta', 'dft_meta', 'flux_meta', 'waveguide_meta',
                       'wire_sparam_meta', 'wire_refplane_meta', 'lumped_sparam_meta')
 BOUNDARY_INPUTS = ('periodic', 'pec_axes', 'pec_faces_frozen', 'pmc_faces_frozen',
                   'curl_boundary', 'cpml_axes', 'cpml_params', 'upml_coeffs',
-                  'pec_edge_masks', 'pec_static_edge_masks', 'pec_occupancy',
+                  'pec_edge_masks', 'pec_static_edge_masks',
                   'conformal_weights', 'sheet_impedance', 'bloch', 'tfsf_cfg',
                   'use_cpml', 'use_upml', 'use_pec_faces', 'use_pmc_faces',
                   'use_pec_edges', 'use_pec_occupancy', 'use_sheet_impedance')

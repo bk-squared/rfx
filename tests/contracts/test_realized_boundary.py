@@ -19,6 +19,27 @@ GUIDE_REFUSAL_ENTRIES = {"run", "forward", "distributed", "sweep", "gpu-query", 
 CELLS = [dict(c, status="REFUSED_AT_DISPATCH", departures=[])
          if c["case"] == "waveguide-cpml" and c["entry"] in GUIDE_REFUSAL_ENTRIES else c
          for c in BASELINE["cells"]]
+
+
+def backed(cell):
+    """Tracker 1549 supersedes B1's "electric backing required" rows (code f, "fixed in B3") without rewriting
+    B1's record: forward() and the multi-device uniform run now apply the conducting plane behind every absorbing
+    face from the boundary record, as run() does, and so do the waveguide entries. Where B1 recorded the backing as
+    missing, the expected record becomes "present at the plane B1 said it was required at"."""
+    if cell["status"] != "MEASURED" or not (cell["entry"] in ("forward", "distributed")
+                                             or cell["case"] == "waveguide-pec"):
+        return cell
+    # A face a feature wraps (TF/SF, Floquet: code "feature") is not an absorbing face in the run; it gets no
+    # conducting plane and its "f" row stays listed.
+    wrapped = {d["face"] for d in cell["departures"] if d["code"] == "feature"}
+    missing = {d["face"] for d in cell["departures"] if d["code"] == "f"} - wrapped
+    faces = {name: dict(face, e_zero=True, e_zero_planes_m=[face["e_plane_m"]]) if name in missing else face
+             for name, face in cell["faces"].items()}
+    return dict(cell, faces=faces,
+                departures=[d for d in cell["departures"] if d["code"] != "f" or d["face"] in wrapped])
+
+
+CELLS = [backed(c) for c in CELLS]
 BY_CELL = {(c["case"], c["entry"]): c for c in CELLS}
 
 

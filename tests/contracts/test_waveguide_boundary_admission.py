@@ -120,7 +120,10 @@ def test_kind_readers_keep_zero_pad_electric_backings():
     grids = (old._build_grid(), new._build_grid(), guide()._build_grid())
     coefficients = []
     for grid in grids:
-        assert distributed_electric_walls(grid) == frozenset(("y_lo", "y_hi", "z_lo", "z_hi"))
+        # Tracker 1549: the multi-device run backs every electric face, the absorbing x faces included
+        # (the conducting plane behind an absorber), as the single-device run does.
+        assert distributed_electric_walls(grid) == frozenset(
+            ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi"))
         assert tuple(hi_face_is_wall(grid, axis) for axis in "xyz") == (False, True, True)
         assert grid.cpml_axes == "x"
         params = init_cpml(grid)[0]
