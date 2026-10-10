@@ -32,9 +32,10 @@ def reference(owner, face):
 ])
 def test_pad_slab_decays(owner, face, lane, record_property):
     trace = reference(owner, face) if lane == 'uniform_run' else solve(owner, face, lane)
-    e2 = float(np.max(np.abs(trace[750:1500])))
-    e8 = float(np.max(np.abs(trace[5250:6000])))
-    values = dict(owner=owner, face=face, lane=lane, e_2=e2, e_8=e8)
+    eighths = [float(np.max(np.abs(part))) for part in np.array_split(trace, 8)]
+    e2, e8 = eighths[1], eighths[7]
+    values = dict(owner=owner, face=face, lane=lane, e_2=e2, e_8=e8,
+                  eighths=eighths, identically_zero=bool(np.all(trace == 0)))
     record_property('judge1', json.dumps(values))
     print(json.dumps(values))
     assert np.isfinite(trace).all(), f'{owner}/{face}/{lane}: nonfinite record'
