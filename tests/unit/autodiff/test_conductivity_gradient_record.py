@@ -198,3 +198,10 @@ def test_amendment_no_permittivity_string():
     d = record(conductivity_gradient_record(np.array([0.1]), None, None, 10, 1e-12))
     assert d.values["x_min"] == "not evaluated (no permittivity)"
     assert d.values["permittivity_used"] == "not available"
+
+
+def test_a_result_without_a_grid_does_not_fail_the_solve():
+    """The multi-device lane reads the time step from the result's grid."""
+    d = record(conductivity_gradient_record(np.array([0.1]), None, np.array([2.]), 10, None))
+    assert d.values["record_time_s"] == d.values["x_min"] == "not available (no time step)"
+    assert conductivity_gradient_record(None, None, None, 10, None) == ()

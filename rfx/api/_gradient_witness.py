@@ -76,8 +76,11 @@ def conductivity_gradient_record(design_sigma, sigma_override, design_eps, n_ste
         return ()
     sigma = design_sigma if design_sigma is not None else sigma_override
     components = sigma if isinstance(sigma, tuple) else (sigma,)
-    record_time, definition = n_steps * dt, X_PER_CELL
-    if any(is_tracer(component) for component in components) or is_tracer(design_eps):
+    record_time, definition = (None if dt is None else n_steps * dt), X_PER_CELL
+    if record_time is None:
+        # A result that carries no grid (no time step to read): say so, never fail the solve.
+        record_time = x_min = "not available (no time step)"
+    elif any(is_tracer(component) for component in components) or is_tracer(design_eps):
         x_min = "not evaluated (traced)"
     elif design_eps is None:
         x_min = "not evaluated (no permittivity)"

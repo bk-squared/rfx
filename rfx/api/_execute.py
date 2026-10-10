@@ -3745,7 +3745,7 @@ class _ExecuteMixin:
             )
             return with_conductivity_record(self._attach_run_settling_witness(
                 result, n_steps=plan.n_steps, num_periods=num_periods, context="forward"),
-                design_sigma=design_sigma_override, sigma_override=sigma_override, design_eps=design_eps_override, n_steps=plan.n_steps, dt=result.grid.dt)
+                design_sigma=design_sigma_override, sigma_override=sigma_override, design_eps=design_eps_override, n_steps=plan.n_steps, dt=getattr(result.grid, "dt", None))
 
         if plan.lane == "fwd_nonuniform":
             _nu_design_spec = None
