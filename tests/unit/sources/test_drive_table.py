@@ -134,6 +134,20 @@ def test_design_window_weight_replaces_the_background():
     assert abs(float(without[0, 0]) - float(np.float32(.5) ** 4)) <= np.spacing(np.float32(1))
 
 
+def test_design_window_ignores_supplied_keep():
+    from types import SimpleNamespace
+    background = jnp.full((6, 6, 6), .5, jnp.float32)
+    window = SimpleNamespace(bounds=(2, 4, 2, 4, 2, 4),
+                             occupancy=jnp.full((2, 2, 2), .3, jnp.float32))
+    kwargs = dict(occupancy=background, design=window, shape=background.shape)
+    series = [jnp.asarray([1., -3., .125], jnp.float32)]
+    meta = [(3, 3, 3, 'ez')]
+    expected = drive_table(series, meta, 3, **kwargs)
+    supplied = tuple(jnp.zeros_like(background) for _ in range(3))
+    actual = drive_table(series, meta, 3, keep=supplied, **kwargs)
+    assert np.array_equal(actual, expected)
+
+
 def test_periodic_axis_wraps_the_incident_cell():
     """On a periodic x axis the last cell is incident on an Ez edge at i = 0.
 

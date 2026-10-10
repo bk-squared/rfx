@@ -11,11 +11,16 @@ from rfx.core.drives import StepDrives, drive_layout, inject_drives
 from rfx.core.yee import curl_h, init_materials, init_state, update_e, update_h
 from rfx.grid import Grid
 from rfx.model.materials import with_components
+from rfx.model.occupancy import with_edge_keep
 from rfx.lumped import LumpedRLCSpec, build_rlc_meta, init_rlc_state, update_rlc_element
 from rfx.materials.thin_conductor import (
     SheetImpedanceCtx, apply_sheet_impedance_e, sheet_update_coeffs,
 )
 from rfx.simulation import _StepContext, make_core_step
+
+
+def _occupancy(shape):
+    return jnp.zeros(shape).at[1:3, 1:3, 1:3].set(.5)
 
 
 def _scene(kind):
@@ -33,8 +38,9 @@ def _scene(kind):
     initial = initial._replace(ez=initial.ez.at[cell].set(.7))
     carry = {'fdtd': initial}
     if kind == 'occupancy':
-        occupancy = jnp.zeros(grid.shape).at[1:3, 1:3, 1:3].set(.5)
-        ctx = replace(ctx, use_pec_occupancy=True, pec_occupancy=occupancy)
+        # The step multiplies by the factor the model publishes before the loop.
+        ctx = replace(ctx, use_pec_occupancy=True, materials=with_edge_keep(
+            ctx.materials, _occupancy(grid.shape), dtype=jnp.float32))
     elif kind == 'sheet':
         mask = jnp.zeros(grid.shape, dtype=bool).at[0:4, 2, 1:4].set(True)
         sheet = SheetImpedanceCtx(mask, jnp.zeros_like(mask), mask, mask * 2.)
@@ -57,7 +63,9 @@ def _reference(ctx, carry, source, sheet_coeffs):
     st = update_e(st, ctx.materials, ctx.dt, ctx.dx, periodic=ctx.periodic)
     st = apply_pec_faces(st, ctx.pec_faces_frozen)
     if ctx.use_pec_occupancy:
-        st = apply_pec_occupancy(st, ctx.pec_occupancy, ctx.periodic)
+        # Independent of the published array: the cell occupancy through the
+        # in-place 1 - M operator (0.5 is dyadic, so the two forms agree bit for bit).
+        st = apply_pec_occupancy(st, _occupancy(st.ex.shape), ctx.periodic)
     if ctx.use_sheet_impedance:
         curls = curl_h(st.hx, st.hy, st.hz, ctx.dx, ctx.periodic, 2, None)
         st = apply_sheet_impedance_e(st, (old.ex, old.ey, old.ez), curls,

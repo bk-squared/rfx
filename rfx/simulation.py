@@ -19,6 +19,7 @@ import jax.numpy as jnp
 
 from rfx.core.drives import StepDrives, drive_layout, inject_drives
 from rfx.model.source_coefficients import drive_table
+from rfx.model.occupancy import with_edge_keep
 import numpy as np
 
 from rfx.boundaries.axes import drop_periodic_axes, resolve_cpml_axes
@@ -37,8 +38,6 @@ from rfx.boundaries.pec import (
     resolve_wall_faces,
     apply_pec_edges,
     apply_pec_faces,
-    apply_pec_occupancy,
-    apply_pec_occupancy_box,
     kottke_fenced_edge_masks,
     realized_pec_edge_masks,
 )
@@ -1404,6 +1403,8 @@ def _build_step_setup(
         # Complex envelope P; overrides mixed-precision (float16) for this path.
         _field_dtype = jnp.complex64
     fdtd = init_state(grid.shape, field_dtype=_field_dtype)
+    materials = with_edge_keep(materials, pec_occupancy, dtype=fdtd.ex.dtype,
+        periodic=periodic, sheet_edge_masks=pec_static_edge_masks)
     carry_init: dict = {"fdtd": fdtd}
 
     if use_cpml:
@@ -1684,7 +1685,6 @@ def _build_step_setup(
         aniso_inv_eps=aniso_inv_eps,
         pec_edge_masks=pec_edge_masks,
         pec_static_edge_masks=pec_static_edge_masks,
-        pec_occupancy=pec_occupancy,
         conformal_weights=conformal_weights,
         kerr_chi3=kerr_chi3,
         ntff=ntff,
@@ -1827,7 +1827,6 @@ class _StepContext:
     aniso_inv_eps: Any = None
     pec_edge_masks: Any = None
     pec_static_edge_masks: Any = None
-    pec_occupancy: Any = None
     conformal_weights: Any = None
     kerr_chi3: Any = None
     ntff: Any = None
@@ -2335,7 +2334,8 @@ def run(
     src_waveforms = drive_table([s.waveform for s in sources], _setup.src_meta, n_steps,
         occupancy=pec_occupancy, periodic=periodic,
         sheet_edge_masks=_ctx["pec_static_edge_masks"],
-        design=design_occupancy, shape=grid.shape)
+        design=design_occupancy, shape=grid.shape,
+        keep=_ctx["materials"].edge_keep)
 
     # ---- magnetic source (H-field) waveform matrix ----
     if mag_sources:
@@ -3040,7 +3040,7 @@ def run_until_decay(
     # ---- precompute source waveforms up to max_steps ----
     src_waveforms = drive_table([s.waveform for s in sources], _setup.src_meta, max_steps,
         occupancy=pec_occupancy, periodic=_setup.periodic, pad=True,
-        sheet_edge_masks=_setup.ctx_kwargs["pec_static_edge_masks"])
+        sheet_edge_masks=_setup.ctx_kwargs["pec_static_edge_masks"], keep=_setup.ctx_kwargs["materials"].edge_keep)
 
     if mag_sources:
         mag_src_waveforms = jnp.stack(

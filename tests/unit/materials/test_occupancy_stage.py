@@ -162,15 +162,21 @@ def test_one_value_in_every_compile_context_on_this_backend():
         _assert_one_value_in_every_context(value, (False, False, False), False)
 
 
-@pytest.mark.parametrize('lane', ['uniform', 'graded'])
+@pytest.mark.parametrize('lane', ['uniform', 'graded', 'uniform-periodic-y'])
 @pytest.mark.parametrize('sheet', [False, True])
 def test_published_matches_lane_operator(lane, sheet, monkeypatch):
     from rfx import Simulation, Box
+    from rfx.boundaries.spec import BoundarySpec
+    boundary, wrap = 'pec', (False, False, False)
+    if lane == 'uniform-periodic-y':
+        wrap = (False, True, False)
+        # The factor wraps across the periodic seam; the setup must pass the flags.
+        lane, boundary = 'uniform', BoundarySpec(x='pec', y='periodic', z='pec')
     import rfx.simulation as sm
     import rfx.nonuniform as nu
     module, setup = (sm, '_build_step_setup') if lane == 'uniform' else (nu, '_build_nu_scan')
     kw = {} if lane == 'uniform' else dict(dy_profile=np.array([.001, .0009, .0011, .001, .001, .001]))
-    sim = Simulation(freq_max=15e9, domain=(.008, .006, .004), dx=.001, boundary='pec', **kw)
+    sim = Simulation(freq_max=15e9, domain=(.008, .006, .004), dx=.001, boundary=boundary, **kw)
     if sheet:
         sim.add(Box((.004, .001, .001), (.004, .005, .003)), material='pec')
     sim.add_source((.002, .003, .002), 'ez')
@@ -181,8 +187,8 @@ def test_published_matches_lane_operator(lane, sheet, monkeypatch):
     old_setup = getattr(module, setup)
     def record_setup(*a, **k):
         b = inspect.signature(old_setup).bind_partial(*a, **k).arguments
-        # No run publishes the weight yet (its consumers are unswitched); build
-        # it here from the arguments this lane's setup really receives.
+        # The model's own publisher, from the arguments this lane's setup
+        # really receives (sheets and wires rasterized by the model layer).
         built = publish_occupancy(
             b['materials'], b['pec_occupancy'], periodic=b.get('periodic') or (False,) * 3,
             sheets=b.get('pec_sheets') or (), wires=b.get('pec_wires') or (),
@@ -192,27 +198,29 @@ def test_published_matches_lane_operator(lane, sheet, monkeypatch):
     # The uniform step body lives in rfx.stepping since S3-2 stage A.
     import rfx.stepping.uniform as step_uniform
     step_module = step_uniform if lane == 'uniform' else module
-    old_apply = step_module.apply_pec_occupancy
-    def record_apply(st, *a, **k):
+    old_apply = step_module.apply_edge_keep
+    def record_apply(st, keep):
+        # What the step multiplies E by, read where the step runs it.
         one = st._replace(ex=jnp.ones_like(st.ex), ey=jnp.ones_like(st.ey), ez=jnp.ones_like(st.ez))
-        result = old_apply(one, *a, **k)
+        result = old_apply(one, keep)
         jax.debug.callback(lambda *v: applied.append(tuple(np.asarray(x) for x in v)), result.ex, result.ey, result.ez)
-        return old_apply(st, *a, **k)
+        return old_apply(st, keep)
     monkeypatch.setattr(module, setup, record_setup)
-    monkeypatch.setattr(step_module, 'apply_pec_occupancy', record_apply)
+    monkeypatch.setattr(step_module, 'apply_edge_keep', record_apply)
     sim.forward(n_steps=3, pec_occupancy_override=cells, skip_preflight=True, checkpoint=False).time_series.block_until_ready()
     jax.effects_barrier()
     assert published and applied
-    # The step's in-loop former is 1 - M; its last bit depends on the compile
-    # context, so the published product is held to one ULP of 1.0 against it.
+    # The single-device steps multiply by the published array itself (built
+    # from the step's static masks): bit for bit the model publisher's array,
+    # so the sheet fold is one rasterization, not two.
     for row in applied:
         for expected, actual in zip(row, published[0]):
-            np.testing.assert_allclose(actual, expected, rtol=0, atol=ULP1)
+            np.testing.assert_array_equal(actual, expected)
     # Exactness is a statement about the OCCUPANCY: an edge whose four cells
     # are all 0, or one of which is 1, has factor exactly 1 or 0. (Where the
     # operator rounds a tiny product to 0 the published factor keeps it.)
-    exact = reference32(np.asarray(cells))
-    full = reference(np.asarray(cells))
+    exact = reference32(np.asarray(cells), wrap)
+    full = reference(np.asarray(cells), wrap)
     for actual, e32, e64 in zip(published[0], exact, full):
         if not sheet:
             binary = (e64 == 0) | (e64 == 1)
@@ -360,3 +368,32 @@ def test_one_publication_builder_definition():
                    if isinstance(n, ast.FunctionDef) and n.name == 'build_edge_keep']
     assert len(definitions) == 1
     assert definitions[0][0] == 'model/occupancy.py'
+
+
+def test_complex_fields_with_an_occupancy_are_refused():
+    """The envelope path never ran with an occupancy (it failed inside clip); it stays refused, by name."""
+    from rfx.core.yee import init_materials
+    from rfx.model.occupancy import with_edge_keep
+    with pytest.raises(NotImplementedError, match="complex fields"):
+        with_edge_keep(init_materials((4, 4, 4)), jnp.zeros((4, 4, 4)), dtype=jnp.complex64)
+
+
+@pytest.mark.parametrize('field, built', [(jnp.float16, jnp.float32), (jnp.float32, jnp.float32)])
+def test_step_factor_is_never_formed_below_float32(field, built):
+    """A half-precision run multiplies by the float32 product rounded once."""
+    from rfx.boundaries.pec import apply_edge_keep
+    from rfx.core.yee import init_materials, init_state
+    from rfx.model.occupancy import with_edge_keep
+    shape = (6, 5, 4)
+    cells = np.random.default_rng(5).uniform(0, .85, shape).astype(np.float32)
+    keep = with_edge_keep(init_materials(shape), jnp.asarray(cells), dtype=field).edge_keep
+    for actual, expected in zip(keep, reference32(cells)):
+        assert actual.dtype == built
+        np.testing.assert_allclose(np.asarray(actual), expected, rtol=0, atol=8 * ULP1)
+    state = init_state(shape, field_dtype=field)
+    state = state._replace(ex=jnp.ones_like(state.ex), ey=jnp.ones_like(state.ey), ez=jnp.ones_like(state.ez))
+    out = apply_edge_keep(state, keep)
+    for got, k in zip((out.ex, out.ey, out.ez), keep):
+        assert got.dtype == field
+        np.testing.assert_array_equal(np.asarray(got), np.asarray(k).astype(field))
+

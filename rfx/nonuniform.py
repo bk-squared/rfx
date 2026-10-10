@@ -32,6 +32,7 @@ import jax.numpy as jnp
 
 from rfx.core.drives import drive_layout, inject_drives
 from rfx.model.source_coefficients import drive_table
+from rfx.model.occupancy import with_edge_keep
 import numpy as np
 
 from rfx.core.yee import (
@@ -41,7 +42,7 @@ from rfx.core.yee import (
 from rfx.boundaries.pec import (
     apply_pec_faces,
     apply_pec_edges,
-    apply_pec_occupancy,
+    apply_edge_keep,
     realized_pec_edge_masks,
 )
 from rfx.core.jax_utils import is_tracer, recorded_scan
@@ -2566,13 +2567,14 @@ def _build_nu_scan(
         sheet_coeffs = sheet_update_coeffs(
             sheet_impedance.sigma_sheet, materials, dt)
 
+    state = init_state((grid.nx, grid.ny, grid.nz))
     src_meta = [(s[0], s[1], s[2], s[3]) for s in sources]
+    materials = with_edge_keep(materials, pec_occupancy, dtype=state.ex.dtype, sheet_edge_masks=pec_static_edge_masks)
     src_waveforms = drive_table([jnp.array(s[4]) for s in sources], src_meta, n_steps,
-        occupancy=pec_occupancy, sheet_edge_masks=pec_static_edge_masks)
+        occupancy=pec_occupancy, sheet_edge_masks=pec_static_edge_masks, keep=materials.edge_keep)
     drives = drive_layout(src_meta, src_waveforms.dtype)
     prb_meta = [(p[0], p[1], p[2], p[3]) for p in probes]
 
-    state = init_state((grid.nx, grid.ny, grid.nz))
 
     inv_dx_h = grid.inv_dx_h
     inv_dy_h = grid.inv_dy_h
@@ -2774,8 +2776,6 @@ def _build_nu_scan(
     def step_fn(carry, xs, invariants):
         materials = invariants["materials"]
         pec_edge_masks = invariants["pec_edge_masks"]
-        pec_occupancy = invariants["pec_occupancy"]
-        pec_static_edge_masks = invariants["pec_static_edge_masks"]
         _cpml_inv_eps_r = invariants["cpml_inv_eps_r"]
         debye_coeffs = invariants["debye_coeffs"]
         lorentz_coeffs = invariants["lorentz_coeffs"]
@@ -2882,8 +2882,7 @@ def _build_nu_scan(
         if use_pec_edges:
             st = apply_pec_edges(st, pec_edge_masks)
         if use_pec_occupancy:
-            st = apply_pec_occupancy(
-                st, pec_occupancy, sheet_edge_masks=pec_static_edge_masks)
+            st = apply_edge_keep(st, materials.edge_keep)
 
         # #677 node-thin surface-impedance sheet operator. Contract slot:
         # AFTER apply_pec_mask/apply_pec_occupancy (PEC wins on overlap),

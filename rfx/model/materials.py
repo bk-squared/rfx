@@ -816,6 +816,7 @@ def kernel_materials(materials, *, keep_eps=False, electric=True, magnetic=True,
     return MaterialArrays(
         materials.eps_r if keep_eps else jnp.zeros((), materials.eps_r.dtype), None, None,
         mu_r_wire=True if materials.mu_r_wire is not None else None,
+        edge_keep=materials.edge_keep,
         components=KernelComponents(c.eps_update if electric and epsilon else (),
                                     c.sigma_update if electric else (),
                                     c.mu_update if magnetic else ()))
