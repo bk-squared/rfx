@@ -858,6 +858,19 @@ def apply_pec_h_mask(state, pec_mask=None, *,
     )
 
 
+def apply_edge_keep(state, keep):
+    """Multiply E by the model's published conductor edge weight.
+
+    The weight is cast to the field's type first (a no-op at float32), so a
+    half-precision field stays half precision.
+    """
+    return state._replace(
+        ex=state.ex * keep[0].astype(state.ex.dtype),
+        ey=state.ey * keep[1].astype(state.ey.dtype),
+        ez=state.ez * keep[2].astype(state.ez.dtype),
+    )
+
+
 def apply_pec_occupancy(state, pec_occupancy, periodic=(False, False, False),
                         sheet_edge_masks=None) -> object:
     """Differentiable PEC: relaxed occupancy on the §1.2 incident rule (§1.6).

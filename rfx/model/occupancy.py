@@ -1,9 +1,7 @@
 """Realized electric-edge keep factors for the relaxed PEC cell input.
 
-No run builds these arrays yet: the step bodies still form the factor from the
-cell occupancy themselves, and building it a second time cost 6-10 % host
-memory for nothing. A lane's owner calls the builder when it switches that
-step to read the array; until then the tests pin it against each step.
+The single-device uniform and graded steps multiply by these arrays,
+built once before the time loop.
 """
 from functools import partial
 
@@ -104,6 +102,27 @@ def build_edge_keep(occupancy, *, dtype=jnp.float32,
             design.bounds, design.occupancy, occ, dtype=dtype, periodic=periodic)
         keep = tuple(k.at[write].set(w) for k, w in zip(keep, window_keep))
     return keep
+
+
+def with_edge_keep(materials, occupancy, *, dtype, periodic=(False,) * 3,
+                   sheet_edge_masks=None):
+    """Publish the static stage's factor using its already-resolved masks.
+
+    ``dtype`` is the E field's. The factor is formed in that real type but
+    never below float32: a half-precision run multiplies by the float32
+    product rounded once, and a drive keeps its float32 weight.
+    """
+    if occupancy is None:
+        return materials
+    if jnp.issubdtype(dtype, jnp.complexfloating):
+        raise NotImplementedError(
+            "a partial-conductor occupancy is not supported with complex fields "
+            "(the Bloch/oblique-incidence envelope): the combination has no "
+            "validation. Use a real-field run, or a hard PEC geometry.")
+    real = jnp.promote_types(jnp.finfo(dtype).dtype, jnp.float32)
+    return materials._replace(edge_keep=build_edge_keep(
+        occupancy, dtype=real, periodic=periodic,
+        sheet_edge_masks=sheet_edge_masks))
 
 
 def publish_occupancy(materials, occupancy, *, dtype=jnp.float32,

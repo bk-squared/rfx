@@ -4,7 +4,7 @@ The step is one pass over STEP_SEQUENCE. A kernel is the lane's own arithmetic
 for one physical stage and may be absent. A hook point is a fixed time in the
 step at which measurements or an adjoint attach, and where no lane arithmetic
 runs. The frame carries the arrays of this step only. Conductors, the occupancy
-weight included, act on the updated E before sheets, lumped elements and sources;
+weight (the model's published array) included, act on the updated E before sheets, lumped elements and sources;
 a source's own occupancy weight is already in its stored drive table, so the
 loop only adds it.
 """
@@ -19,7 +19,8 @@ import jax.numpy as jnp
 
 from rfx.core.yee import FDTDState
 from rfx.boundaries.pec import (
-    apply_pec_occupancy, apply_pec_occupancy_box,
+    apply_edge_keep,
+    apply_pec_occupancy_box,
 )
 from rfx.probes import probes as observers
 from rfx.probes.probes import _port_voltage_value
@@ -344,9 +345,7 @@ def make_uniform_step(
             st_prev_occ = frame.st if ctx.use_design_occupancy else None
 
             if ctx.use_pec_occupancy:
-                frame.st = apply_pec_occupancy(
-                    frame.st, ctx.pec_occupancy, ctx.periodic,
-                    sheet_edge_masks=ctx.pec_static_edge_masks)
+                frame.st = apply_edge_keep(frame.st, materials.edge_keep)
 
             # #1183 design occupancy: the traced 1 - M on its window, over
             # a field the static occupancy has not scaled. Outside the
