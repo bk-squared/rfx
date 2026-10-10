@@ -502,6 +502,24 @@ def test_c6_two_device_graded_source():
     assert float(source['drive_scale'][0]) == pytest.approx(cb / (dual * H * H), rel=1e-6)
 
 
+def test_c6_two_device_graded_override_drive_reads_the_film():
+    """With an override the drive coefficient is formed in the program."""
+    if len(jax.devices()) < 2:
+        pytest.skip('requires 2 devices')
+    eps0 = 8.8541878128e-12
+    sim, widths = model('up')
+    grid = sim._build_realized_grid()
+    volume = sim._assemble_materials(grid)[0].sigma
+    with _realized.capture() as capture:
+        sim.forward(n_steps=3, distributed=True, sigma_override=volume)
+    drive = next(r for r in capture.records if r['site'] == 'distributed_nu.drive')
+    dual = (widths[8] + widths[9]) / 2
+    loss = (1000. * 1e-5 / dual) * grid.dt / (2 * eps0)
+    expected = (grid.dt / eps0) / (1 + loss) / (dual * H * H)
+    assert loss > 0.1  # the film moves the coefficient by more than the bar
+    assert float(np.asarray(drive['runtime_scale']).ravel()[0]) == pytest.approx(expected, rel=1e-5)
+
+
 @pytest.mark.parametrize('forward', [False, True])
 def test_c6_two_device_graded_port_existing_refusal(forward):
     from dataclasses import replace
