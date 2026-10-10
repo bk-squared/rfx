@@ -978,8 +978,13 @@ def si_value_eps_r_grad(si_fn, eps_r_fn, *args):
     if not dyn:
         return si_fn(*args)
 
+    # The closures below outlive this call (JAX caches a custom_jvp function
+    # with what it closes over), so they must not hold the argument arrays:
+    # the array slots are filled from the call's own operands each time.
+    fixed = [None if isinstance(leaf, jax.Array) else leaf for leaf in leaves]
+
     def _args(values):
-        full = list(leaves)
+        full = list(fixed)
         for i, v in zip(dyn, values):
             full[i] = v
         return jax.tree.unflatten(treedef, full)
