@@ -371,7 +371,7 @@ def test_two_card_job_follows_the_single_card_lane_even_when_it_fails() -> None:
     run = next(s["run"] for s in job["steps"] if "vessl run create" in s.get("run", ""))
     assert "scripts/vessl_validation_multigpu_a6000x2.yaml" in run
     assert 'RFX_SHA: \\"origin/main\\"' in run, "the step pins the SHA by rewriting this exact line"
-    assert '[ "$ST" = completed ] || { echo "two-card job ended with status $ST"; exit 1; }' in run.splitlines()[-1]
+    assert run.strip().splitlines()[-1].strip() == '[ "$ST" = completed ] || { echo "two-card job ended with status $ST"; exit 1; }'
 
 
 def test_two_card_file_needs_two_cards_before_its_tests_run() -> None:
@@ -392,6 +392,7 @@ def test_two_card_file_needs_two_cards_before_its_tests_run() -> None:
     tests = lines.index(
         'timeout 3600 "$PY" -m pytest -v -ra -s -p no:cacheprovider -m multi_gpu tests > "$OUT/multi_gpu.log" 2>&1'
     )
+    assert lines[0] == "set -eu", "a failed guard must stop the job"
     assert guard < tests
     assert lines[tests + 1] == "RC=$?"
     assert lines[-1] == '[ "$RC" -eq 0 ]'
