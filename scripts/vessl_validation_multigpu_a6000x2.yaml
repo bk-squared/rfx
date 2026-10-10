@@ -46,8 +46,11 @@ run: |-
   echo "=== multi_gpu selection ==="
   # Each case runs in a fresh worker process with its own 1500 s limit; 3600 s covers
   # the whole selection with room for compilation on a loaded node.
+  # Collect tests/gpu only. Thirteen modules elsewhere set JAX_PLATFORMS, JAX_PLATFORM_NAME or
+  # XLA_FLAGS in os.environ at import, and every worker process inherits them: collecting all
+  # of tests/ made each worker see only the CPU (VESSL 369367270005, 10 failed in 39 s).
   set +e
-  timeout 3600 "$PY" -m pytest -v -ra -s -p no:cacheprovider -m multi_gpu tests > "$OUT/multi_gpu.log" 2>&1
+  timeout 3600 "$PY" -m pytest -v -ra -s -p no:cacheprovider -m multi_gpu tests/gpu > "$OUT/multi_gpu.log" 2>&1
   RC=$?
   set -e
   echo "multi_gpu rc=$RC"; tail -15 "$OUT/multi_gpu.log"

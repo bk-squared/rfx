@@ -390,7 +390,7 @@ def test_two_card_file_needs_two_cards_before_its_tests_run() -> None:
         'assert len(gpus) >= 2, jax.devices()"'
     )
     tests = lines.index(
-        'timeout 3600 "$PY" -m pytest -v -ra -s -p no:cacheprovider -m multi_gpu tests > "$OUT/multi_gpu.log" 2>&1'
+        'timeout 3600 "$PY" -m pytest -v -ra -s -p no:cacheprovider -m multi_gpu tests/gpu > "$OUT/multi_gpu.log" 2>&1'
     )
     assert lines[0] == "set -eu", "a failed guard must stop the job"
     assert guard < tests
