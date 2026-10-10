@@ -143,6 +143,7 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
     ("rfx/ris.py", "RISUnitCell._build_sim"): _HOST,
     ("rfx/runners/_distributed_common.py", "cpml_coeff_e_vacuum"): _VACUUM,
     ("rfx/runners/subgridded.py", "_run_subgridded_once"): _C0,
+    ("rfx/api/_gradient_witness.py", "conductivity_gradient_record"): _HOST,
     ("rfx/simulation.py", "_warn_static_remnant_cap_hit"): _ENERGY,
     ("rfx/sources/coaxial_port.py", "build_coaxial_tem_plane_source_specs"):
         _HOST + " (float(eps_r))",
@@ -179,7 +180,7 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
 
 # The allow-list's length when it was written. Lower it when a row goes; a PR
 # that raises it is adding an EPS_0 reader it says is not a coefficient.
-ALLOWLIST_CEILING = 48  # 47 -> 48: rfx/measurement/monitors.py current_moment_owner (S2 M1, vacuum constant)
+ALLOWLIST_CEILING = 49  # 47 -> 48: rfx/measurement/monitors.py current_moment_owner (S2 M1, vacuum constant); 48 -> 49: rfx/api/_gradient_witness.py conductivity_gradient_record (advisory record: record time over eps/sigma on concrete values only)
 
 HELPER = "si_value_eps_r_grad"
 SHARED_ROUTES = {
