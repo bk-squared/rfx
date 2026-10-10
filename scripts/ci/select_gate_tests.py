@@ -20,6 +20,7 @@ CENTRAL_PATHS = (
     "rfx/core/",
     "rfx/runners/",
     "rfx/nonuniform.py",
+    "rfx/stepping/",
     "rfx/measurement/",
     "rfx/model/",
 )

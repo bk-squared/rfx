@@ -126,7 +126,7 @@ ALLOWED_SCALAR_READS: dict[str, int] = {
     "rfx/geometry/smoothing.py": 6,
     "rfx/geometry/thin_wire.py": 1,
     "rfx/io.py": 1,
-    "rfx/nonuniform.py": 8,
+    "rfx/nonuniform.py": 3,  # 8 until the graded step body moved to rfx/stepping/graded.py with its 5 reads
     "rfx/preflight/realization.py": 1,
     "rfx/rcs.py": 1,
     "rfx/runners/distributed_v2.py": 1,
@@ -143,6 +143,7 @@ ALLOWED_SCALAR_READS: dict[str, int] = {
     "rfx/sparams/mixed.py": 3,
     "rfx/sparams/msl.py": 1,
     "rfx/sparams/waveguide.py": 4,
+    "rfx/stepping/graded.py": 5,  # moved, not new: the graded step's plane-wave and design-box reads (total unchanged)
     "rfx/subgridding/validation.py": 3,
     "rfx/topology.py": 1,
     "rfx/visualize.py": 2,

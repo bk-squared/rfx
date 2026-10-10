@@ -69,7 +69,6 @@ KERNEL_CALLERS = {
 FIELD_STEPPERS = {
     "rfx/adi.py:run_adi_2d": "internal to run_adi",
     "rfx/adi.py:run_adi_3d": "internal to run_adi",
-    "rfx/nonuniform.py:_build_nu_scan": "internal to run_nonuniform, fwd_nonuniform",
     "rfx/runners/_distributed_common.py:update_h_nu_shmap": "internal to run_distributed_nu, fwd_distributed_nu",
     "rfx/runners/_distributed_common.py:update_e_nu_shmap": "internal to run_distributed_nu, fwd_distributed_nu",
     "rfx/runners/_distributed_common.py:_update_e_local_with_dispersion":
@@ -83,6 +82,8 @@ FIELD_STEPPERS = {
     "rfx/stepping/uniform.py:make_uniform_step":
         "internal to run_uniform, fwd_uniform, s_matrix_scan, mixed_s_matrix, topology_optimize, "
         "waveguide_s_matrix, coaxial_line_reflection, coaxial_two_port, coax_msl_transition, material_fit, vmap_sweep_batched",
+    # The one graded-mesh step (S3-2 stage B).
+    "rfx/stepping/graded.py:make_graded_step": "internal to run_nonuniform, fwd_nonuniform",
     "rfx/subgridding/disjoint_3d.py:_yee_step": "internal to run_subgridded",
     "rfx/subgridding/disjoint_3d.py:_yee_h_step": "internal to run_subgridded",
     "rfx/subgridding/disjoint_3d.py:_yee_e_step": "internal to run_subgridded",

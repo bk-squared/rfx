@@ -187,6 +187,7 @@ def test_deleted_test_and_contract_are_not_selected(sources):
 @pytest.mark.parametrize("path", [
     "rfx/simulation.py", "rfx/core/example.py", "rfx/runners/example.py",
     "rfx/nonuniform.py", "rfx/measurement/example.py", "rfx/model/example.py",
+    "rfx/stepping/example.py",
 ])
 def test_other_central_paths(path, sources, durations):
     assert "tests/unit/runners/test_light.py" in selector.select_tests([path], sources, durations, central_paths=True).files
