@@ -2001,7 +2001,7 @@ def make_current_source(grid: NonUniformGrid, position_ijk, component,
         coefficient=lambda: e_update_coefficient_at(
             materials, (i, j, k), component, grid.dt, host=True, grid=grid))
 
-    waveform_out = waveform if any_traced else np.array(waveform)
+    waveform_out = waveform if any_traced or is_tracer(waveform) else np.array(waveform)
     return (i, j, k, component, waveform_out)
 
 

@@ -27,9 +27,21 @@ def drive_table(series, meta, n_steps, *, occupancy=None, periodic=(False,) * 3,
     keep = build_edge_keep(occupancy, dtype=table.dtype, periodic=periodic,
                            sheet_edge_masks=sheet_edge_masks,
                            design=design, shape=shape)
+    weights = [keep[('ex', 'ey', 'ez').index(component)][i, j, k]
+               if component in ('ex', 'ey', 'ez') else None
+               for i, j, k, component in meta]
+    return weight_drive_columns(table, weights, meta)
+
+
+def weight_drive_columns(table, weights, meta):
+    """Store per-column electric products; magnetic columns stay untouched.
+
+    Weights are already resolved by the caller, in the table's dtype.
+    This helper has no ownership, occupancy or material reads.
+    """
     for column, (i, j, k, component) in enumerate(meta):
         if component in ('ex', 'ey', 'ez'):
-            weight = keep[('ex', 'ey', 'ez').index(component)][i, j, k]
+            weight = weights[column]
             table = table.at[:, column].set(table[:, column] * weight)
     return table
 
@@ -93,6 +105,37 @@ def scale_source_columns(xs, scales, columns):
         table = table.at[:, col].set(source_table(
             table[:, col], native="cb", coefficient=scales[n]))
     return steps, table
+
+
+def slab_drive_table(xs, mesh, device_ids, meta, *, ranks, scales=None,
+                     columns=(), weights=None):
+    """Store (step, slab, source) increments before any time scan.
+
+    Material products precede per-column weights. The local owner mask
+    supplies unit weights until a caller supplies published edge weights.
+    Each product is stored in the series, never formed next to an E add.
+    """
+    from functools import partial
+    import jax.numpy as jnp
+    from jax.sharding import PartitionSpec as P
+    from rfx.stepping.rank import rank_shard_map
+    from rfx.stepping.slab import source_owner_mask
+
+    steps, table = xs
+    if scales is None:
+        scales = jnp.zeros((mesh.size, 0), dtype=table.dtype)
+    if weights is None:
+        weights = jnp.ones((mesh.size, table.shape[1]), dtype=table.dtype)
+
+    @partial(rank_shard_map, mesh=mesh, in_specs=(P(), P('x'), P('x')),
+             out_specs=P(None, 'x'), check_rep=False)
+    def build(samples, material, weight, *, rank):
+        _, samples = scale_source_columns((steps, samples), material[0], columns)
+        weight = jnp.where(source_owner_mask(rank, device_ids), weight[0], 0)
+        samples = weight_drive_columns(samples, weight, meta)
+        return samples[:, None, :]
+
+    return steps, build(ranks, table, scales, weights)
 
 
 def subgrid_source_tables(requests, grid, materials, n_steps, *, native,
@@ -211,13 +254,15 @@ def debye_pole_term(drive_model, cell, component, dt):
     sigma*dt/2)``, so ``sum(beta)`` equals a conductivity ``2*sum(beta)/dt``.
     It does not depend on eps_inf or sigma, so it stays a host constant
     under a traced override."""
+    import jax
     from rfx.model.materials import EdgePoles
     c = getattr(drive_model, "components", None)
-    debye = c.at(cell, dt)[0] if isinstance(c, EdgePoles) else None
-    if debye is None:
-        return 0.0
-    axis = {"ex": 0, "ey": 1, "ez": 2}[str(component).lower()]
-    return 2.0 * float(debye[1][axis].sum()) / float(dt)
+    with jax.ensure_compile_time_eval():
+        debye = c.at(cell, dt)[0] if isinstance(c, EdgePoles) else None
+        if debye is None:
+            return 0.0
+        axis = {"ex": 0, "ey": 1, "ez": 2}[str(component).lower()]
+        return 2.0 * float(debye[1][axis].sum()) / float(dt)
 
 
 def tensor_replaced_edges(materials, *, aniso_eps=None, aniso_inv_eps=None, upml=False):
