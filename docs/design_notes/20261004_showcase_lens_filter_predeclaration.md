@@ -438,3 +438,64 @@ sector is 8.3 dBi at ±45° and 6.0 dBi at ±60°, against 7.5 dBi at the source
 centre below the source's own boresight level to lift the edges by 8–9 dB. (iv) The literature read gives no
 achieved flat-top wider than ±30° from an aperture under 5 λ0 in full text (wider ones are templates for 18 λ0
 or targets without numbers). None of these geometries is declared; a change of geometry is a new amendment.
+
+## Amendment 7 (2026-10-11, leader; declared before any run) — objective N: a fan beam, wide in one plane and narrow in the other
+
+**1. Why.** Objective W (Amendment 6) ended with 4.5–5.3 dB of ripple over the ±30° cone on the 0.75 mm mesh and
+is not shown as a flat-top beam (item 6 there). The PI then stated what "wide field of view" means for this
+example (2026-10-11): a wide beamwidth, as in automotive radar, where the antenna covers a detection region
+shaped on purpose — wide in azimuth, narrow in elevation — and the radome has to support that pattern. Objective
+N is that pattern on the same block and source: flat over ±30° in one principal plane, narrow in the other.
+
+**2. What was wrong with Amendment 6, kept here so it is not repeated.** (a) The objective raised a soft minimum
+only while the judged quantity was the ripple; nothing pushed the maximum down, and the design kept a boresight
+peak. (b) The level bar (7.5 dBi) came from the source's boresight directivity, not from the power the sector
+can hold. (c) The sector was a cone, not the shaped region the PI meant. For objective N the objective contains
+the judged ripple, and the levels below come from a power and aperture estimate made before the run.
+
+**3. Estimate made before the run (no FDTD run; scripts and numbers in the private record).** A thin-screen model
+of the block's top face (90 × 90 mm, amplitude from the stored source-alone pattern, a delay of 0–19.3 mm per
+3 mm pixel, the same delay at the three frequencies, scalar far field) was calibrated against two stored FDTD
+designs (model minus FDTD: 1.4–2.1 dB; 1.5 dB used). Driven with Amendment 6's objective and recipe the model
+reproduces that run's boresight peak and ripple (3.5–4.8 dB against 4.6–5.5 dB), which is the evidence for 2(a).
+Driven with objective N (item 4, τ = 0.2 dB, 300 steps from the uniform start) it gives, at 9.5 / 10 / 10.5 GHz:
+strip ripple 1.2 / 0.7 / 0.8 dB; strip minimum 13.2 / 13.6 / 13.9 dBi in model terms, 11.7 / 12.1 / 12.4 dBi after
+calibration; half-power beamwidth in the narrow plane 20.3° / 18.1° / 16.3° (a uniformly lit 90 mm aperture
+gives about 17° at 10 GHz). The model ignores the block's thickness and side faces; it is an estimate.
+
+**4. Objective N.** Wide plane: φ = 90° / 270° (the plane across the source current, where the source alone is
+widest: 106°–114° at −3 dB against 68°–70° in the φ = 0° plane). Strip S_N: the 13 θ rows with nominal θ ≤ 30°
+and the six φ columns 85°, 90°, 95°, 265°, 270°, 275° (indices 17, 18, 19, 53, 54, 55); 78 directions. With
+D_f in dBi over S_N (linear floor 10⁻³⁰), τ = 0.2 dB,
+smin_f = −τ·ln(mean exp(−D_f/τ)), smax_f = τ·ln(mean exp(D_f/τ)),
+**J_N = mean over the three frequencies of (smax_f − smin_f) − smin_f.**
+The first term is the smooth ripple on the strip; the second raises the strip's level, which by power
+conservation narrows the other plane. τ and the weights are not adjusted after a run. Start, bounds, mirror
+symmetry, optimiser and step schedule as the first design; **300 iterations**.
+
+**5. Judged, on the 0.75 mm mesh, at each of the three frequencies:**
+- **ripple:** max − min of D over S_N ≤ 2.0 dB;
+- **level:** min of D over S_N ≥ 11.0 dBi (estimate 11.7–12.4 dBi; 0.7 dB allowed for the model);
+- **narrow plane:** half-power beamwidth in the φ = 0° / 180° cut ≤ 23.0° (estimate 16°–20°), measured from the
+  boresight value: the sum of the first −3 dB crossings on the two sides, linear in θ on the nominal grid.
+**Reported, not judged:** the −3 dB width in the wide plane; the largest D with θ ≥ 60°; boresight D.
+
+**6. Trial, witnesses, mesh trend.** As Amendment 6 item 5 with these replacements. Trial continuation: J_N at
+iteration 30 ≤ J_N at the start − 3.0 dB, no NaN (model: −9 to −11 dB; the stored start gives J_N = 8.087).
+Progress fraction p_k = (J_0 − J_k) / (J_0 − J_best). Mesh trend (1.5, 1.0, 0.75 mm): strip minimum and maximum
+change by at most 0.3 dB between 1.0 and 0.75 mm and by no more than between 1.5 and 1.0 mm; the narrow-plane
+beamwidth by at most 1.0°; the reported outside level by at most 1.0 dB.
+
+**7. Outcome rule, fixed now.** The words "a fan beam, flat within 2 dB over ±30°" are used only if the three
+judged conditions hold at all three frequencies on the 0.75 mm mesh and the witnesses pass. If the ripple
+condition fails, the thick block does not behave as the thin screen of item 3 and no further objective is run on
+this block without a new argument put to the PI (this is the third objective on it: Amendments 5, 6 and 7).
+If only the level or the beamwidth is slightly outside, the pattern is shown with its numbers and without those
+words.
+
+**8. What is shown.** The two principal-plane cuts with the 2 dB band, for the source alone, the first design
+and this design, and the pattern over the upper half space; the three-mesh values; the frames of Amendment 3.
+
+**9. Memory read (R1).** Session memory `objective-feasibility-before-predeclare` (check aperture physics and the
+literature before declaring) — items 2–3 are that check, and this time the objective itself was tried in a model
+before declaring it. Ledger: lens entries as in Amendment 6 item 8 — consistent.
