@@ -513,3 +513,13 @@ def test_slab_weighted_tables_reach_checkpoint_and_warmup(n_warmup):
     if n_warmup:
         warm_grad = jax.grad(lambda occ: run(occ, n_warmup=n_warmup)['time_series'][0, 0])(.5)
         assert warm_grad == 0
+
+
+@pytest.mark.parametrize('material_drive', [False, True], ids=['field', 'current'])
+def test_slab_warmup_table_carries_the_same_weight(material_drive):
+    """The warm-up scan adds the weighted series too: its samples are the plain run's bits."""
+    run, _ = slab_drive_scene(6, samples=(.7, .4, -.1, .2, .3), material_drive=material_drive)
+    plain = np.asarray(run(jnp.float32(.5))['time_series'])
+    warm = np.asarray(run(jnp.float32(.5), n_warmup=2)['time_series'])
+    assert np.any(plain != 0)
+    np.testing.assert_array_equal(warm, plain)

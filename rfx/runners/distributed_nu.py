@@ -1453,9 +1453,9 @@ def run_nonuniform_distributed_pec(
     sharded_pec_occupancy : jnp.ndarray float or None, optional
         x-slab sharded soft-PEC occupancy field (Phase 2E).  Same layout
         as ``sharded_pec_mask`` but float-valued in ``[0, 1]``.  Use
-        :func:`rfx.stepping.slab.cut` with kind ``pec_occupancy`` to build it.  Applied after
-        the hard ``sharded_pec_mask`` and before probe accumulation,
-        mirroring the single-device ordering in
+        :func:`rfx.stepping.slab.cut` with kind ``pec_occupancy`` to build it.  Its published
+        edge factor multiplies E after the E update and CPML, before source
+        injection; each source series carries its own edge's factor, as in
         :func:`rfx.nonuniform.run_nonuniform`.
     checkpoint_every : int or None, optional
         Phase 2F segmented remat.  When set to a positive integer ``K``
