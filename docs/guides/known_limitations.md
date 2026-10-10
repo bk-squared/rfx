@@ -102,14 +102,19 @@ In a lossless 48x16x16 mm PEC box (dx = 1 mm, float32, 2000 steps) the probe amp
 This is a scheme instability, not an O(dt*K) boundary error; a K-cell overlap would be required to skip exchanges.
 Use `exchange_interval=1`.
 
-### Distributed runs on GPUs: do not wrap the call in `jax.jit`
+### Distributed runs on GPUs: a call wrapped in `jax.jit` is refused
 
 Tracker: #1598
-On two or more real GPUs, `jax.jit(...)` around `forward(distributed=True)` or `run(devices=...)`, or around `jax.grad`
-of it, fails at the first call with `CUDA error: Failed to add memset node to a CUDA graph`. No wrong number is produced.
-Call the run, and `jax.grad` / `jax.value_and_grad` of it, without `jax.jit` (the runner compiles its own time loop), or
-start the process with `XLA_FLAGS=--xla_gpu_enable_command_buffer=`. Both were measured on two RTX A6000 (JAX 0.10.2) and
-return identical values and gradients. CPU multi-device runs are not affected.
+On two or more GPUs, `jax.jit(...)` around `forward(distributed=True)` or `run(devices=...)`, or around `jax.grad` of
+it (also a `lax.scan` body or `jax.checkpoint` around the call), raises `NotImplementedError` with these instructions
+before compiling; it used to fail with `CUDA error: Failed to add memset node to a CUDA graph`. No wrong number is produced.
+Either call the run, and `jax.grad` / `jax.value_and_grad` / `jax.vmap` of it, without `jax.jit` (the runner compiles its
+own time loop), or start the process with `XLA_FLAGS=--xla_gpu_enable_command_buffer=` (set before importing jax); both
+return identical values and gradients (two RTX A6000, JAX 0.10.2).
+Measured cost on that hardware, graded 1 M and 4 M cell boxes: with command buffers off the forward step takes 0.93 to
+1.04 times the default; an un-jitted call adds a fixed 0.5 s (forward) or 4 s (gradient) per call. The gradient's
+per-step cost with command buffers off was not resolved (a 240-step gradient call differed by at most 3 %).
+CPU multi-device runs are not affected and are not refused. Three or more GPUs: not yet run.
 
 ## Ports and extraction
 
