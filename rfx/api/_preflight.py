@@ -2064,7 +2064,7 @@ class _PreflightMixin:
     from rfx.preflight.pec_geometry import (
         _validate_cfg_campaign_statics,
         _validate_cfg_pec_realization,
-        _validate_cfg_sheet_slot_vacuum,
+        _validate_cfg_sheet_slot_vacuum, _validate_cfg_sheet_gap_bridged,
         _validate_cfg_pec_face_short_of_domain_wall,
         _congruence_origin_shift,
         _validate_cfg_congruent_rasterization_parity,

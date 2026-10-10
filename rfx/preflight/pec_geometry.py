@@ -306,6 +306,7 @@ def _validate_cfg_campaign_statics(self, _w) -> None:
         ))
         return
     self._validate_cfg_sheet_slot_vacuum(_w, ctx)
+    self._validate_cfg_sheet_gap_bridged(_w, ctx)
     self._validate_cfg_sheet_cavity_thickness(_w, ctx)
 
 # ------------------------------------------------------------------
@@ -511,6 +512,79 @@ def _validate_cfg_pec_realization(self, _w, ctx) -> None:
             code="sheet_plane_realized", severity="warning",
             source="_validate_cfg_pec_realization",
         ))
+
+def _validate_cfg_sheet_gap_bridged(self, _w, ctx) -> None:
+    """Report drawn gaps shorted by the union of realized sheet nodes."""
+    from itertools import combinations
+
+    from rfx.boundaries.pec import _sheet_edge_masks
+    from rfx.geometry.csg import declared_bounds
+
+    # entry_realizations retains the assembly product keyed by id(tc), and
+    # labels it with the index from enumerate(sim._thin_conductors).
+    entries = sorted(
+        ((int(e.label[len("thin_conductor["):-1]), e)
+         for e in ctx.entry_realizations()
+         if e.kind == "sheet" and e.label.startswith("thin_conductor[")),
+        key=lambda row: row[0],
+    )
+    shape = tuple(ctx.grid.shape)
+    for (i, first), (j, second) in combinations(entries, 2):
+        a, b = first.sheet, second.sheet
+        if a.normal_axis != b.normal_axis or a.plane != b.plane:
+            continue
+        bounds_a, bounds_b = declared_bounds(first.shape), declared_bounds(second.shape)
+        if bounds_a is None or bounds_b is None:
+            continue
+        together = _sheet_edge_masks([a, b], shape, ctx.periodic)
+        alone_a = _sheet_edge_masks([a], shape, ctx.periodic)
+        alone_b = _sheet_edge_masks([b], shape, ctx.periodic)
+        qualifying = []
+        for t in range(3):
+            if t == a.normal_axis:
+                continue
+            bridging = (np.asarray(together[t], dtype=bool)
+                        & ~(np.asarray(alone_a[t], dtype=bool)
+                            | np.asarray(alone_b[t], dtype=bool)))
+            n = int(np.count_nonzero(bridging))
+            if not n:
+                continue
+            lo_a, hi_a = float(bounds_a[0][t]), float(bounds_a[1][t])
+            lo_b, hi_b = float(bounds_b[0][t]), float(bounds_b[1][t])
+            tol = 1e-6 * float(np.min(ctx.spacings[t]))
+            shifts = (0.0, self._domain[t], -self._domain[t]) if ctx.periodic[t] else (0.0,)
+            gaps = [max(lo_b + shift - hi_a, lo_a - hi_b - shift) for shift in shifts]
+            candidates = [gap for gap in gaps if gap > -tol]
+            gap = min(candidates) if candidates else max(gaps)
+            if gap <= tol:
+                continue
+            # Each True edge is stored at its lower node; its spacing is
+            # the actual local cell across this gap, including graded grids.
+            cell = float(np.min(ctx.spacings[t][np.nonzero(bridging)[t]]))
+            qualifying.append((n, t, gap, cell))
+        if not qualifying:
+            continue
+        qualifying.sort(key=lambda row: -row[0])
+        n, t, gap, cell = qualifying[0]
+        other = "".join(f" Also {count} E{'xyz'[axis]} edge(s) across the gap are metal."
+                        for count, axis, _gap, _cell in qualifying[1:])
+        _w.warn(PreflightWarning(
+            f"thin conductors #{i} and #{j} ({first.label} and {second.label}) "
+            f"lie on one plane ({'xyz'[a.normal_axis]} = "
+            f"{_fmt_len(float(ctx.nodes[a.normal_axis][a.plane]))}) and are drawn "
+            f"{_fmt_len(gap)} apart along {'xyz'[t]}, but they are solved as ONE "
+            f"conductor: {n} E{'xyz'[t]} edge(s) across the gap are metal."
+            + other + " A sheet is realized as the nodes inside its drawn extent "
+            "and an edge is metal when both of its end nodes belong to sheets on "
+            "that plane, so a gap narrower than two cells "
+            f"(local cell {_fmt_len(cell)}) has no free node line. "
+            "Draw the gap at least two cells wide, or refine the mesh there. "
+            "If the two are meant to be one conductor, draw them touching or "
+            "overlapping. (tracker 1373)",
+            code="sheet_gap_bridged", severity="error",
+            source="_validate_cfg_sheet_gap_bridged",
+        ))
+
 
 def _validate_cfg_sheet_slot_vacuum(self, _w, ctx) -> None:
     """Design note §3 ``sheet_slot_vacuum``: a sheet plane left in a slot.
@@ -1375,4 +1449,8 @@ _validate_cfg_sheet_cavity_thickness.__qualname__ = (
 )
 _validate_cfg_off_lattice_design_edges.__qualname__ = (
     "_PreflightMixin._validate_cfg_off_lattice_design_edges"
+)
+
+_validate_cfg_sheet_gap_bridged.__qualname__ = (
+    "_PreflightMixin._validate_cfg_sheet_gap_bridged"
 )
