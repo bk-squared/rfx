@@ -87,7 +87,13 @@ SHIPPED_2D = {"aux_n_cpml": 30, "aux_cpml_order": 4, "aux_cpml_kappa_max": 7.0,
 FAST_MEASURED = {
     # 6.4413e-06 -> 3.7855e-07;
     # #1234: the auxiliary H profile at the Yee half cell.
-    0.0:  {"max": 3.7855e-07, "quantum": 1e7},
+    # At normal incidence the returned amplitude is the instrument's own floor, not the
+    # absorber: |B/A| equals the fit residual (3.36e-07 against 2.98e-07 on Apple silicon,
+    # CPU), and the number follows the machine's rounding -- 3.7855e-07 where it was pinned
+    # and on the CI runners, 3.3575e-07 on Apple silicon, at the pinning commit dce96837e AND at main
+    # 63a8f79b4 alike (measured 2026-10-11), so the code did not drift. A value at the
+    # floor is held to its bar only; reproducing it to 5 % would pin rounding ("floor").
+    0.0:  {"max": 3.7855e-07, "quantum": 1e7, "floor": True},
     # 7.8540e-05 -> 7.5787e-05;
     # #1234: the auxiliary H profile at the Yee half cell.
     30.0: {"max": 7.5787e-05, "quantum": 1e6},
@@ -231,7 +237,8 @@ def test_the_declared_absorber_meets_its_bar(theta_deg):
     assert r["fit_resid_max"] < FIT_RESID_LIMIT, (
         f"the rig did not resolve {theta_deg} deg (residual "
         f"{r['fit_resid_max']:.2e}); its |B/A| is not a measurement")
-    assert r["max"] == pytest.approx(m["max"], rel=0.05)
+    if not m.get("floor"):
+        assert r["max"] == pytest.approx(m["max"], rel=0.05)
     assert r["max"] <= bar(m["max"], m["quantum"])
 
 
