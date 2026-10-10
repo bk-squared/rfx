@@ -51,11 +51,6 @@ def local_e_with_absorber(state, materials, dt, dx, *, debye, lorentz,
     return (*result, curl)
 
 
-def coarse_cpml_loss(materials, dt):
-    """Match coarse update_e's edge loss while retaining its CPML epsilon route."""
-    return material_loss(materials, dt)
-
-
 def graded_cpml_operands(materials, aniso_eps, *, use_cpml, use_debye, use_lorentz):
     """Select the graded update's pad permittivity and loss operands together."""
     # #1043: ``apply_cpml_e``'s psi coefficient must take its permittivity from
