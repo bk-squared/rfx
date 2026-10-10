@@ -1264,7 +1264,8 @@ def _load_mutated(path: Path, name: str, replacements):
 
 UNIFORM_RUNNER_SRC = REPO_ROOT / "rfx" / "simulation.py"
 UNIFORM_SRC = REPO_ROOT / "rfx" / "stepping" / "uniform.py"
-GRADED_SRC = REPO_ROOT / "rfx" / "nonuniform.py"
+GRADED_RUNNER_SRC = REPO_ROOT / "rfx" / "nonuniform.py"
+GRADED_SRC = REPO_ROOT / "rfx" / "stepping" / "graded.py"
 
 _SNAP_UNI = ("        if ctx.use_current_moments:\n"
              "            frame.e_prev_slab = _slab_e_snapshot(frame.st, ctx.current_moments)\n")
@@ -1275,14 +1276,13 @@ _ACC_UNI = ("        if ctx.use_current_moments:\n"
 _RLC_UNI = ("        if ctx.use_lumped_rlc:\n"
             "            frame.new_rlc_states = []")
 
-_SNAP_NU = ("        if use_current_moments:\n"
-            "            e_prev_slab = _slab_e_snapshot(st, current_moments)\n")
-_ACC_NU = ("        new_cm = None\n"
-           "        if use_current_moments:\n"
-           "            new_cm = _accumulate_cm(\n"
-           "                carry[\"current_moments\"], st, e_prev_slab, current_moments,\n"
-           "                dt, step_idx)\n")
-_SRCLOOP_NU = "        # Sources (point sources + wire port excitation)"
+_SNAP_NU = ("        if ctx.use_current_moments:\n"
+            "            frame.e_prev_slab = ctx._slab_e_snapshot(frame.st, ctx.current_moments)\n")
+_ACC_NU = ("        frame.new_cm = None\n"
+           "        if ctx.use_current_moments:\n"
+           "            frame.new_cm = ctx._accumulate_cm(\n"
+           "                frame.carry[\"current_moments\"], frame.st, frame.e_prev_slab, ctx.current_moments,\n"
+           "                ctx.dt, frame.step_idx)\n")
 _RLC_NU = "        # Lumped RLC ADE update (after E update + boundaries, before sources)"
 
 
@@ -1310,8 +1310,15 @@ def _runner_mutations(kind):
              " + (moved_current_moments,),"),
         ]
     else:
-        snap, acc, srcloop, rlc = _SNAP_NU, _ACC_NU, _SRCLOOP_NU, _RLC_NU
-        before_sources = [(acc, ""), (srcloop, acc + srcloop)]
+        snap, acc, rlc = _SNAP_NU, _ACC_NU, _RLC_NU
+        before_sources = [
+            (acc, ""),
+            ("    attachments = {", "    def moved_current_moments(frame):\n"
+             + acc + "\n    attachments = {"),
+            ("    attachments[HookPoint.AFTER_SOURCES] = (after_sources,)",
+             "    attachments[HookPoint.AFTER_SOURCES] = (after_sources,)\n"
+             "    attachments[HookPoint.BEFORE_SOURCES] = (moved_current_moments,)"),
+        ]
     return {
         "snapshot taken after the E update": [(snap, ""), (rlc, snap + rlc)],
         "snapshot taken after the source loop": [(snap, ""), (acc, snap + acc)],
@@ -1322,15 +1329,15 @@ def _runner_mutations(kind):
 def _slot_case(kind, edits):
     """Load private source copies, and route the case through their real step.
 
-    The uniform snapshot lives in prepare(); the accumulation lives in the
+    Each lane's snapshot lives in prepare(); the accumulation lives in the
     AFTER_SOURCES observer. Move just their guarded blocks: snapshot to the
     constitutive kernel before RLC, snapshot to just before accumulation, or
     accumulation to its own BEFORE_SOURCES attachment. All other observers
     and the declared sequence remain in place.
 
     Relative imports need a private name inside rfx.stepping. A separately
-    compiled simulation.py copy imports that exact private step module in
-    make_core_step. Neither production module is replaced in sys.modules.
+    compiled runner copy imports that exact private step module in its
+    setup. Neither production module is replaced in sys.modules.
     The unmutated-copy canary uses this identical loading/binding path.
     """
     names = []
@@ -1360,10 +1367,30 @@ def _slot_case(kind, edits):
             case = CASE_BUILDERS[kind](with_planes=False, runner=mod.run)
             assert executed, "the copied runner never executed the copied step"
             return case
+        step_name = "rfx.stepping._current_moment_graded_slot_copy"
+        step = _load_mutated(GRADED_SRC, step_name, edits)
+        names.append(step_name)
+        make_step = step.make_graded_step
+        executed = []
+
+        def observed_step(*args, **kwargs):
+            core = make_step(*args, **kwargs)
+            assert core.__module__ == step_name
+
+            def observed_core(*values, **options):
+                executed.append(core)
+                return core(*values, **options)
+            return observed_core
+
+        step.make_graded_step = observed_step
         name = "rfx._current_moment_nonuniform_copy"
-        mod = _load_mutated(GRADED_SRC, name, edits)
+        mod = _load_mutated(GRADED_RUNNER_SRC, name, [(
+            "    from rfx.stepping.graded import GradedStepContext, make_graded_step",
+            f"    from {step_name} import GradedStepContext, make_graded_step")])
         names.append(name)
-        return CASE_BUILDERS[kind](with_planes=False, runner=mod.run_nonuniform)
+        case = CASE_BUILDERS[kind](with_planes=False, runner=mod.run_nonuniform)
+        assert executed, "the copied runner never executed the copied step"
+        return case
     finally:
         for name in reversed(names):
             sys.modules.pop(name, None)
