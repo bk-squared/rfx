@@ -138,3 +138,34 @@ stated, 6-16 layers.
   to the whole curl coefficient; both conventions are kept.
 - Ledger cross-trace entry, "a coefficient moved out of the compiled loop": the reason the absorber takes the in-loop
   value where the update forms it in the loop.
+
+## Decision record, 2026-10-10 (leader) — judges after the first two measured rounds; the text above is not edited
+Measured on the base tree (00a7328dc) and on the fix, records in rfx-archive
+`rfx/records/20261010-1589-lossy-medium-through-cpml/`:
+1. Judge 1's scene. A one-face layout in a 12x10x8-cell box does not grow on main (h5_scene.log); in a 24x24x12 box it
+   grows for the plain arm on five of six faces and for the eps_inf 1 Drude+sigma arm on two, and the eps_r 4, Debye
+   and mixed arms decay on main on every face. So the one-face scene witnesses the defect for plain conductors only.
+   The Debye and eps_r 4 growth was measured in a different scene (all six faces absorbing, slab crossing four of
+   them: h1/h2). Judge 1 therefore has two scenes: (a) one face in turn, plain arm — the per-face witness; (b) all
+   faces absorbing, slab crossing four faces, every owner — the per-owner witness. Each case's outcome on the base
+   tree is measured and stated in the PR; a case that decays on main stays as a regression check and is not called a
+   witness. The scenes are not adjusted further to make a case fail on main.
+2. The Lorentz-family arm moves to eps_inf 2. The materials lane measured the Drude update's own bulk limit
+   (omega_p*dt <= 2*sqrt(eps_inf - s^2): 0.28 at eps_inf 1, about 2.0 at eps_inf 2; rfx-archive
+   `rfx/records/20261010-pole-stability-limit/`); fp 50 GHz at dx 1 mm is omega_p*dt = 0.6, above the bulk limit at
+   eps_inf 1 and bounded there only because the slab is one cell thick. The earlier Drude+sigma measurement (h4,
+   eps_inf 1) stands as measured, with that caveat.
+3. The cross-path comparison is removed from judge 1 ("equals the uniform run's record within the cross-path bar").
+   In these scenes the probe sits behind a conducting slab, so its peak is far below the largest field in the box, and
+   the committed bar (1e-4 of the probe peak) is not a scale for rounding there: run against forward on the SAME code
+   differ by 1.9e-4 of the probe peak on the base tree and 1.6e-4 on the fix (plain arm, z_lo; the difference peaks at
+   the pulse and falls with the record — leader_parity measurement). Path equivalence stays with the path-equivalence
+   matrix (judge 3) and the per-path coefficient comparison (judge 2, now on uniform, graded and both multi-device
+   steps).
+4. ADI 2-D has its own coefficient and psi term but receives no absorber parameters from run()/forward()
+   (`rfx/api/_execute.py`, the `run_adi_2d` call): not reachable; the low-level function is unchanged. The raw
+   subgridded coarse grid gets the loss factor; its cell-versus-edge permittivity difference predates this fix and
+   the public material + CPML combination is refused there.
+5. Always-on versus weekly: scene (b) on uniform run/forward, graded run and the two multi-device runs, and scene (a)
+   on the uniform run, are always-on; the remaining path x face combinations carry the `slow` marker (the full matrix
+   takes 17 minutes serially).
