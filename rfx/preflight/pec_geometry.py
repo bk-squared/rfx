@@ -577,10 +577,10 @@ def _validate_cfg_sheet_gap_bridged(self, _w, ctx) -> None:
                 + other + " A sheet is realized as the nodes inside its drawn extent "
                 "and an edge is metal when both of its end nodes belong to sheets on "
                 f"that plane (local cell {_fmt_len(cell)}). "
-                "The two are joined when no free node line lies between them — "
-                "always for a drawn gap of one cell or less, and for a gap up to "
-                "two cells depending on where it falls on the mesh. "
-                "Draw the gap at least two cells wide, or refine the mesh there. "
+                "The two are joined when no node line lies inside the drawn gap, "
+                "which can happen only for a gap of one cell or less. "
+                "Draw the gap wider than one cell (two cells resolve it), or "
+                "refine the mesh there. "
                 "If the two are meant to be one conductor, draw them touching or "
                 "overlapping. (tracker 1373)",
                 code="sheet_gap_bridged", severity="error",

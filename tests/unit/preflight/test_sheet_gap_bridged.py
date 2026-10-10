@@ -192,3 +192,9 @@ def test_n5_swapped_box_corners():
     refusal, = report.by_code("pec_zero_cells")
     assert "thin_conductor[1]" in str(refusal)
     assert "footprint rasterizes to ZERO nodes" in str(refusal)
+
+
+def test_a_gap_that_contains_a_node_line_is_open():
+    """[5, 9.9] + [10.1, 15] mm: node 10 lies inside the 0.2-cell gap."""
+    sim = model(((.005, .0099), (.0101, .015)))
+    assert not sim.preflight().by_code(CODE)
