@@ -1748,22 +1748,10 @@ def _apply_cpml_e_distributed(
         models (#1260). ``None`` falls back to
         the vacuum scalar ``dt / eps_0`` (bit-identical to the pre-#205
         behaviour).
-    e_sigma : tuple of three arrays or None
-        Component conductivity means, sliced before forming face-sized loss.
-        Plain and Lorentz uniform runs use these existing CPML operands.
-    e_loss : tuple of three arrays or None
-        Loss from the E update's component epsilon and conductivity.
-        Each array has the field slab's layout, including ghost rows.
-        Face slices divide the historical coefficient by ``1 + loss``.
-        The caller forms loss inside the time loop when E does so.
-        A zero loss retains the historical lossless coefficient bits.
-    e_curl_coeff : tuple of three arrays or None
-        The Debye or mixed update's actual in-loop curl coefficient.
-        Overrides epsilon and loss on every component and face.
-        The mixed model supplies its combined coefficient, not Lorentz.cb.
-        The arrays use the same slab and ghost layout as ``e_loss``.
-        Lorentz-only models use conductivity loss because poles do not enter Cb.
-        Both inputs default to None for callers representing lossless media.
+    e_sigma, e_loss, e_curl_coeff : tuples of three arrays or None
+        Conductivity means, preformed loss, or the dispersive owner's Cb.
+        See ``electric_coefficient.slab_face_coefficients`` for precedence
+        and the face-slicing contract; all arrays include the slab ghosts.
     pad_x : int
         Number of alignment-pad cells appended to the high-x end of the
         last rank's slab so that ``(nx + pad_x) % n_devices == 0``
