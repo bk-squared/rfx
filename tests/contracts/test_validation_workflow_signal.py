@@ -230,6 +230,7 @@ def test_weekly_stores_and_always_uploads_durations() -> None:
     assert "--durations-path durations/weekly_${{ matrix.group }}.json" in step["run"]
     # pytest-split reads prices from the path it stores to: an unseeded path
     # would price every test the same and undo the shard balance.
+    assert "|| true" not in step["run"], "a failing test must turn the weekly shard red"
     seed = "cp .test_durations durations/weekly_${{ matrix.group }}.json &&"
     assert seed in step["run"]
     assert step["run"].index(seed) < step["run"].index("pytest ")
@@ -266,6 +267,7 @@ def test_weekly_budget_is_always_after_the_tests_and_matches_job_limit() -> None
     step = checks[0]
     assert job["steps"].index(step) == len(job["steps"]) - 2
     assert step["if"] == "always()"
+    assert "continue-on-error" not in step and "continue-on-error" not in job
     # Resolve only the matrix expression so shell argument parsing sees one path.
     args = shlex.split(step["run"].replace("${{ matrix.group }}", "1"))
     assert args == [
@@ -298,7 +300,10 @@ def _run_weekly_budget(
 def test_weekly_budget_under_limit(tmp_path: Path) -> None:
     result = _run_weekly_budget(tmp_path, 7000)
     assert result.returncode == 0, result.stdout + result.stderr
-    assert "shard wall time: 116.7 min of a 180 min limit (64.8 %)" in result.stdout
+    # The clock keeps running while the subprocess starts: compare with a tolerance.
+    m = re.search(r"shard wall time: ([\d.]+) min of a 180 min limit \(([\d.]+) %\)", result.stdout)
+    assert m, result.stdout
+    assert abs(float(m.group(1)) - 7000 / 60) < 0.5 and abs(float(m.group(2)) - 7000 / 108) < 0.5
     assert "FAIL:" not in result.stdout
 
 
@@ -332,3 +337,23 @@ def test_weekly_budget_prunes_the_upload_to_what_the_shard_measured(tmp_path: Pa
     untouched = _run_weekly_budget(tmp_path, 7000)
     assert untouched.returncode == 0
     assert json.loads((tmp_path / "measured.json").read_text(encoding="utf-8")) == {"known": 12, "not-run": 20, "new": 7}
+
+
+def test_weekly_budget_prunes_also_when_the_shard_is_over_budget(tmp_path: Path) -> None:
+    # An over-budget shard still uploads; an unpruned file would carry the old
+    # prices of every other shard's tests into the next merge.
+    result = _run_weekly_budget(tmp_path, 9300, prune=True)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert json.loads((tmp_path / "measured.json").read_text(encoding="utf-8")) == {"known": 12, "new": 7}
+
+
+def test_weekly_budget_survives_a_truncated_measured_file(tmp_path: Path) -> None:
+    (tmp_path / "recorded.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "measured.json").write_text('{"known": 1', encoding="utf-8")
+    args = [sys.executable, str(REPO_ROOT / "scripts/ci/weekly_shard_budget.py"),
+            "--limit-minutes", "180", "--fraction", "0.85", "--prune",
+            "--measured", str(tmp_path / "measured.json"), "--recorded", str(tmp_path / "recorded.json")]
+    under = subprocess.run([*args, "--start", str(time.time() - 7000)], capture_output=True, text=True, timeout=10, check=False)
+    over = subprocess.run([*args, "--start", str(time.time() - 9300)], capture_output=True, text=True, timeout=10, check=False)
+    assert (under.returncode, over.returncode) == (0, 1), under.stdout + under.stderr + over.stdout + over.stderr
+    assert "measured durations file unreadable" in under.stdout.splitlines()

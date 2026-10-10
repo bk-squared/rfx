@@ -33,6 +33,10 @@ def main() -> int:
     except FileNotFoundError:
         print("measured durations file missing")
         unpriced = "unknown"
+    except json.JSONDecodeError:
+        # pytest was stopped while writing it; the time verdict below still holds.
+        print("measured durations file unreadable")
+        unpriced = "unknown"
     else:
         recorded = json.loads(args.recorded.read_text(encoding="utf-8"))
         unpriced = len(measured.keys() - recorded.keys())
