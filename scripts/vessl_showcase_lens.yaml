@@ -13,7 +13,7 @@ env:
   RFX_SHOWlens_REF: "FILL_BEFORE_SUBMIT"
   RFX_SHOWCASE_PRESET: "FILL_BEFORE_SUBMIT"
   RFX_DESIGN_MODE: "timing"  # timing, fd, rlw, trial, main, resolve, baselines, describe, frame, field
-  RFX_DESIGN_OBJECTIVE: ""  # empty = boresight; mask, flattop or wide
+  RFX_DESIGN_OBJECTIVE: ""  # empty = boresight; mask, flattop, wide or fan
   RFX_DESIGN_SECTOR_DEG: "30"  # objective wide only: sector half-angle; Amendment 6 declares 30
   RFX_DESIGN_RECORD: ""
   RFX_DESIGN_START: ""

@@ -187,6 +187,91 @@ def test_wide_resolve_eligibility(tmp_path, monkeypatch, failure):
         assert np.shape(trend[key]['values_dbi']) == (3, 3)
 
 
+@pytest.mark.parametrize('last,passed', [(-5.8, True), (-5.8001, True), (-5.7999, False), (np.nan, False)])
+def test_fan_trial_gate(last, passed):
+    from types import SimpleNamespace
+    store = SimpleNamespace(rows={'objective': [-2.8, last]})
+    assert common.trial_pass(lens.with_objective('fan'), store)['passed'] is passed
+
+
+def test_fan_progress_and_nan_history():
+    from types import SimpleNamespace
+    values = [-2., -5., -8.]
+    np.testing.assert_array_equal(common.frame_progress(values, 'fan'), [0., .5, 1.])
+    assert common.frame_iterate(values, 'fan') == 1
+    store = SimpleNamespace(rows={'objective': [-2.8, np.nan, -6.]})
+    assert not common.trial_pass(lens.with_objective('fan'), store)['passed']
+
+
+def test_fan_describe_metadata(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    captured, meshes = [], []
+    def setup(case, out, dx, precision, smoke):
+        meshes.append(dx)
+        return SimpleNamespace(precision=precision, smoke=smoke, default_steps=10,
+                               describe=lambda: {'dx_m': dx})
+    monkeypatch.setattr(common, 'setup', setup)
+    monkeypatch.setattr(common._record, 'source_block', lambda *a: {})
+    monkeypatch.setattr(common._record, 'write_result', lambda out, rec, files: captured.append(rec))
+    assert common.main(lens, ['--stage', 'describe', '--objective', 'fan', '--out', str(tmp_path)]) == 0
+    assert meshes == [1.5e-3, 1e-3, .75e-3]
+    assert captured[0]['question'] == 'Fan beam (flat over ±30° in one plane, narrow in the other)'
+    assert captured[0]['objective'] == 'fan'
+    stage = common.dc.load_json(tmp_path / 'stage.json')
+    assert stage['regions']['S_N']['directions'] == 78
+    assert stage['build_only'] is True
+
+
+@pytest.mark.parametrize('stage', ['trial', 'main', 'resolve', 'frame', 'fd', 'rlw', 'describe'])
+def test_fan_cli_mismatch(tmp_path, stage):
+    source = tmp_path / 'source'
+    source.mkdir()
+    common.dc.save_json(source / 'result.json', {'objective': 'mask'})
+    with pytest.raises(SystemExit, match='2'):
+        common.main(lens, ['--stage', stage, '--objective', 'fan', '--record', str(source),
+                           '--out', str(tmp_path / 'out')])
+
+
+@pytest.mark.parametrize('failure', [None, 'fd', 'start', 'reported', 'mesh', 'ripple', 'level', 'narrow', 'rlw'])
+def test_fan_resolve_eligibility(tmp_path, monkeypatch, failure):
+    from types import SimpleNamespace
+    case = lens.with_objective('fan')
+    source, out = tmp_path / 'source', tmp_path / 'out'
+    source.mkdir()
+    out.mkdir()
+    common.dc.save_npz(source / 'iterations.npz', objective=[-2., -8.], eps=np.zeros((2, *lens.SHAPE)))
+    common.dc.save_json(source / 'record_length.json', {'n_steps': 10, 'dt_s': 1., 'passed': failure != 'start'})
+    common.dc.save_json(source / 'reported.json', {'reported': {'settled': failure != 'reported'}})
+    common.dc.save_json(source / 'fd_float32.json', {'judgement': {'all_judged_passed': failure != 'fd'}})
+    for label in ('start', 'reported'):
+        common.dc.save_json(source / f'rlw_{label}.json', {'all_passed': failure != 'rlw'})
+    monkeypatch.setattr(common, 'setup', lambda *a: SimpleNamespace(grid=SimpleNamespace(dt=1.)))
+    monkeypatch.setattr(common, 'record', lambda *a: None)
+    calls = []
+    def evaluate(case, model, designs, n, directory, label):
+        assert list(designs) == ['reported']
+        i = len(calls)
+        calls.append(i)
+        row = dict(strip_min_dbi=np.full(3, 8. + [0., .2, .6 if failure == 'mesh' else .3][i]),
+                   strip_max_dbi=np.full(3, 9.), outside_max_dbi=np.full(3, 4.), narrow_hpbw_deg=np.full(3, 20.),
+                   meets_narrow=[not (failure == 'narrow' and i == 2), True, True],
+                   meets_ripple=[True, not (failure == 'ripple' and i == 2), True],
+                   meets_level=[True, True, not (failure == 'level' and i == 2)], settled=True)
+        return {'reported': row}
+    monkeypatch.setattr(common, 'evaluate', evaluate)
+    common.resolved(case, SimpleNamespace(out=out, precision='float32'), source)
+    result = common.dc.load_json(out / 'eligibility.json')
+    assert result['meets_fan'] is (failure is None)
+    assert 'meets_mask' not in result
+    for condition in ('ripple', 'level', 'narrow'):
+        assert np.shape(result[f'meets_{condition}_each_mesh']) == (3, 3)
+    trend = common.dc.load_json(out / 'mesh_trend.json')
+    assert set(trend) == {'strip_min_dbi', 'strip_max_dbi', 'narrow_hpbw_deg', 'outside_max_dbi'}
+    for key, limit in [('strip_min_dbi', .3), ('strip_max_dbi', .3), ('outside_max_dbi', 1.), ('narrow_hpbw_deg', 1.)]:
+        assert trend[key]['limit_db'] == limit
+        assert np.shape(trend[key]['values_dbi']) == (3, 3)
+
+
 @pytest.mark.parametrize("case,pitch", [(lens, .003), (filt, .00254)], ids=["lens", "filter"])
 def test_pixel_cell_physical_map(case, pitch):
     free = np.arange(np.prod(case.SHAPE)).reshape(case.SHAPE)
@@ -907,3 +992,88 @@ def test_lens_boresight_smoke_original(tmp_path):
                 'aperture_bound_dbi': bound, 'above_aperture_bound': bore > bound}
     for key, value in expected.items():
         assert np.asarray(lens.summary(response)[key]).tobytes() == np.asarray(value).tobytes()
+
+
+@pytest.mark.parametrize('index,objective,lo,hi,narrow,wide', [
+    (0, 8.087480770, [3.7335, 1.6399, -1.3261], [12.6209, 12.1809, 12.3512],
+     [22.750, 40.684, 39.463], [47.679, 47.056, 45.445]),
+    (150, 27.239873978, [-1.7962, -5.2562, -7.9461], [18.5735, 19.0357, 18.8805],
+     [17.703, 16.588, 15.517], [16.433, 15.273, 14.494]),
+])
+def test_fan_stored_record(index, objective, lo, hi, narrow, wide):
+    import jax.numpy as jnp
+    path = Path('/Users/byungkwankim/mnt/remilab-fs/personal-workspaces/byungkwan-workspace/rfx-showcase-runs/20261004-showcase-lens/20261004T182324Z-b184fc8e-main/iterations.npz')
+    if not path.is_file():
+        pytest.skip(f'stored record absent: {path}')
+    with np.load(path, allow_pickle=False) as stored:
+        response = stored['response'][index]
+    result = lens.summary(response, 'fan')
+    for key, expected in [('strip_min_dbi', lo), ('strip_max_dbi', hi)]:
+        np.testing.assert_allclose(result[key], expected, atol=2e-3, rtol=0)
+    for key, expected in [('narrow_hpbw_deg', narrow), ('wide_width_deg', wide)]:
+        np.testing.assert_allclose(result[key], expected, atol=5e-3, rtol=0)
+    assert result['objective'] == pytest.approx(objective, abs=1e-4)
+    assert float(lens.loss(jnp.asarray(response), 'fan')) == pytest.approx(objective, abs=1e-4)
+
+
+def test_fan_region_and_constant(monkeypatch):
+    import jax.numpy as jnp
+    monkeypatch.setattr(lens, 'WIDE_HALF_DEG', 60)
+    spec = lens.objective_spec('fan')
+    region = spec['regions']['S_N']
+    assert spec['tau_db'] == .2
+    assert spec['linear_floor'] == 1e-30
+    assert spec['judged'] == {'ripple_max_db': 2., 'level_min_dbi': 11., 'narrow_hpbw_max_deg': 23.}
+    assert region['directions'] == 78
+    np.testing.assert_array_equal(lens.FAN_ROWS, np.arange(13))
+    np.testing.assert_array_equal(lens.FAN_COLS, [17, 18, 19, 53, 54, 55])
+    np.testing.assert_array_equal(region['theta_indices'], np.arange(13))
+    np.testing.assert_array_equal(region['phi_indices'], [17, 18, 19, 53, 54, 55])
+    np.testing.assert_array_equal(region['theta_rad'], lens.THETA[:13])
+    pattern = np.full((3, 73, 73), 10 ** (12. / 10), np.float32)
+    result = lens.summary(pattern, 'fan')
+    np.testing.assert_array_equal(result['ripple_db'], np.zeros(3))
+    for key in ('strip_min_dbi', 'strip_max_dbi', 'smooth_min_dbi', 'smooth_max_dbi'):
+        np.testing.assert_allclose(result[key], 12., atol=1e-6, rtol=0)
+        assert result[key].dtype == np.float64
+    assert np.isnan(result['narrow_hpbw_deg']).all()
+    assert np.isnan(result['wide_width_deg']).all()
+    assert result['meets_ripple'].all() and result['meets_level'].all()
+    assert not result['meets_narrow'].any()
+    assert result['objective'] == pytest.approx(-12., abs=1e-5)
+    assert float(lens.loss(jnp.asarray(pattern), 'fan')) == pytest.approx(-12., abs=1e-5)
+    # Independently paint the declared strip; no FAN_COLS helper in the fixture.
+    pattern[:] = 1e-20
+    pattern[:, :13, [17, 18, 19, 53, 54, 55]] = 10.
+    pattern[:, :, 72] = 1e20
+    assert float(lens.loss(jnp.asarray(pattern), 'fan')) == pytest.approx(-10., abs=1e-5)
+    np.testing.assert_allclose(lens.summary(pattern, 'fan')['strip_min_dbi'], 10.)
+
+
+def test_fan_floor_gradient():
+    import jax
+    import jax.numpy as jnp
+    pattern = jnp.ones((3, 73, 73), dtype=jnp.float32).at[:, 12, 55].set(0.)
+    value, gradient = jax.value_and_grad(lambda x: lens.loss(x, 'fan'))(pattern)
+    expected = .2 * np.log(77 / 78) + 600 - .4 * np.log(78)
+    assert float(value) == pytest.approx(expected, abs=1e-4)
+    assert np.isfinite(gradient).all() and np.any(np.asarray(gradient) != 0)
+    np.testing.assert_array_equal(gradient[:, 12, 55], 0.)
+
+
+def test_fan_summary_cuts_and_outside():
+    db = np.full((3, 73, 73), 12.)
+    for phi, slope in [(0, .5), (36, .25), (18, .1), (54, .2)]:
+        db[:, :, phi] = 12. - slope * lens.NOMINAL_DEG
+    db[:, 0, 1] = 100.  # Boresight uses column 0, not the row mean.
+    db[:, 23, 1] = 90.  # Outside begins at row 24 (60 degrees).
+    db[:, 24, 71] = 14.
+    db[:, :, 72] = 200.
+    db[1, :, 54] = 12.  # A missing crossing propagates NaN.
+    result = lens.summary(10 ** (db / 10), 'fan')
+    np.testing.assert_allclose(result['boresight_dbi'], 12., atol=1e-12)
+    np.testing.assert_allclose(result['narrow_hpbw_deg'], 18., atol=1e-12)
+    np.testing.assert_allclose(result['wide_width_deg'][[0, 2]], 45., atol=1e-12)
+    assert np.isnan(result['wide_width_deg'][1])
+    np.testing.assert_allclose(result['outside_max_dbi'], 14., atol=1e-12)
+    assert result['meets_narrow'].all()

@@ -58,6 +58,8 @@ def baselines():
 
 
 def loss(response, objective="boresight"):
+    if objective == "fan":
+        return fan_loss(response)
     if objective == "wide":
         return wide_loss(response)
     if objective != "boresight":
@@ -68,6 +70,8 @@ def loss(response, objective="boresight"):
 
 
 def summary(response, objective="boresight"):
+    if objective == "fan":
+        return fan_summary(response)
     if objective == "wide":
         return wide_summary(response)
     if objective != "boresight":
@@ -95,11 +99,23 @@ if WIDE_HALF_DEG % 2.5 or not 10 <= WIDE_HALF_DEG <= 60:
     raise ValueError("RFX_DESIGN_SECTOR_DEG must be a multiple of 2.5 between 10 and 60")
 WIDE_REGION = NOMINAL_DEG <= WIDE_HALF_DEG
 WIDE_OUTSIDE = NOMINAL_DEG >= WIDE_HALF_DEG + 30
+FAN_ROWS = np.flatnonzero(NOMINAL_DEG <= 30)
+FAN_COLS = np.array([17, 18, 19, 53, 54, 55])
 
 
 def objective_spec(objective):
     if objective == "boresight":
         return {"objective": objective}
+    if objective == "fan":
+        return {"objective": objective,
+                "objective_words": "Fan beam (flat over ±30° in one plane, narrow in the other)",
+                "tau_db": .2, "judged": {"ripple_max_db": 2., "level_min_dbi": 11.,
+                                         "narrow_hpbw_max_deg": 23.},
+                "linear_floor": 1e-30,
+                "regions": {"S_N": {"predicate": "nominal theta <= 30 degrees; phi in 85, 90, 95, 265, 270, 275 degrees",
+                                      "theta_indices": FAN_ROWS, "theta_rad": THETA[FAN_ROWS],
+                                      "phi_indices": FAN_COLS, "directions": 78}},
+                "phi_endpoint": "exclude column 72 (2pi); retain column 0; solver quadrature unchanged"}
     if objective == "wide":
         region = WIDE_REGION
         return {"objective": objective, "objective_words": f"Wide flat-top beam (±{WIDE_HALF_DEG:g}°)",
@@ -178,6 +194,46 @@ def wide_summary(response):
             "meets_ripple": hi - lo <= spec["judged"]["ripple_max_db"],
             "meets_level": lo >= spec["judged"]["level_min_dbi"],
             "objective": float(-m.mean())}
+
+
+def fan_loss(response):
+    import jax.numpy as jnp
+    from jax.scipy.special import logsumexp
+    d = 10 * jnp.log10(jnp.maximum(response[:, FAN_ROWS][:, :, FAN_COLS], 1e-30))
+    tau = jnp.asarray(.2, dtype=d.dtype)
+    log_count = jnp.log(jnp.asarray(78, dtype=d.dtype))
+    smin = -tau * (logsumexp(-d / tau, axis=(1, 2)) - log_count)
+    smax = tau * (logsumexp(d / tau, axis=(1, 2)) - log_count)
+    return jnp.mean(smax - 2 * smin)
+
+
+def fan_summary(response):
+    spec = objective_spec("fan")
+    d = 10 * np.log10(np.maximum(np.asarray(response, dtype=np.float64), spec["linear_floor"]))
+    strip = d[:, FAN_ROWS][:, :, FAN_COLS]
+    lo, hi = strip.min(axis=(1, 2)), strip.max(axis=(1, 2))
+    tau = spec["tau_db"]
+    smin = lo - tau * np.log(np.exp(-(strip - lo[:, None, None]) / tau).mean(axis=(1, 2)))
+    smax = hi + tau * np.log(np.exp((strip - hi[:, None, None]) / tau).mean(axis=(1, 2)))
+    bore = d[:, 0, 0]
+    crossings = np.full((len(d), 4), np.nan)
+    for f in range(len(d)):
+        for side, phi in enumerate((0, 36, 18, 54)):
+            cut = d[f, :, phi]
+            threshold = bore[f] - 3.
+            below = np.flatnonzero(cut < threshold)
+            if len(below):
+                i = int(below[0])
+                crossings[f, side] = NOMINAL_DEG[i - 1] + 2.5 * (cut[i - 1] - threshold) / (cut[i - 1] - cut[i])
+    narrow = crossings[:, 0] + crossings[:, 1]
+    return {"strip_min_dbi": lo, "strip_max_dbi": hi, "ripple_db": hi - lo,
+            "smooth_min_dbi": smin, "smooth_max_dbi": smax, "boresight_dbi": bore,
+            "narrow_hpbw_deg": narrow, "wide_width_deg": crossings[:, 2] + crossings[:, 3],
+            "outside_max_dbi": d[:, NOMINAL_DEG >= 60, :72].max(axis=(1, 2)),
+            "meets_ripple": hi - lo <= spec["judged"]["ripple_max_db"],
+            "meets_level": lo >= spec["judged"]["level_min_dbi"],
+            "meets_narrow": narrow <= spec["judged"]["narrow_hpbw_max_deg"],
+            "objective": float(np.mean(smax - 2 * smin))}
 
 
 def mask_loss(response, objective):

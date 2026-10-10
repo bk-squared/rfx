@@ -67,7 +67,7 @@ def frame_progress(objectives, kind):
     values = np.asarray(objectives, dtype=float)
     if values.ndim != 1 or values.size < 2 or not np.isfinite(values).all():
         raise ValueError("expected a finite, one-dimensional objective history")
-    if kind not in ("lens", "filter", "mask", "flattop", "wide"):
+    if kind not in ("lens", "filter", "mask", "flattop", "wide", "fan"):
         raise ValueError(f"unknown frame kind {kind}")
     if kind == "filter" and np.any(values <= 0):
         raise ValueError("filter log progress requires strictly positive objectives")
@@ -453,8 +453,9 @@ def optimize(case, model, e, n, count, out, stage, *, y_uniform=False):
 
 def trial_pass(case, store):
     objective = np.asarray(store.rows["objective"])
-    if case.CASE == "lens" and getattr(case, "OBJECTIVE", "boresight") == "wide":
-        return {"passed": bool(np.isfinite(objective).all() and objective[-1] <= objective[0] - 2.),
+    if case.CASE == "lens" and getattr(case, "OBJECTIVE", "boresight") in ("wide", "fan"):
+        drop = 3. if case.OBJECTIVE == "fan" else 2.
+        return {"passed": bool(np.isfinite(objective).all() and objective[-1] <= objective[0] - drop),
                 "initial_objective": float(objective[0]), "iteration30_objective": float(objective[-1])}
     # Amendment 5 clarification: the boresight gate belongs to the boresight objective;
     # the mask objectives use the J gate (J at iteration 30 <= half its start value).
@@ -552,6 +553,8 @@ def resolved(case, args, source):
         limits = {"boresight_dbi": .3, "outer_max_dbi": 1.}
         if case.OBJECTIVE == "wide":
             limits = {"sector_min_dbi": .3, "sector_max_dbi": .3, "outside_max_dbi": 1.}
+        if case.OBJECTIVE == "fan":
+            limits = {"strip_min_dbi": .3, "strip_max_dbi": .3, "narrow_hpbw_deg": 1., "outside_max_dbi": 1.}
         if case.OBJECTIVE == "flattop":
             limits.update(window_min_dbi=.3, window_max_dbi=.3)
         for key, limit in limits.items():
@@ -629,6 +632,14 @@ def resolved(case, args, source):
                 meets_ripple_each_mesh=[r["reported"]["meets_ripple"] for r in all_rows],
                 meets_level_each_mesh=[r["reported"]["meets_level"] for r in all_rows],
                 meets_wide=bool(witnesses and np.all(fine["meets_ripple"]) and np.all(fine["meets_level"])))
+        elif case.OBJECTIVE == "fan":
+            fine = all_rows[-1]["reported"]
+            eligibility.update(
+                meets_ripple_each_mesh=[r["reported"]["meets_ripple"] for r in all_rows],
+                meets_level_each_mesh=[r["reported"]["meets_level"] for r in all_rows],
+                meets_narrow_each_mesh=[r["reported"]["meets_narrow"] for r in all_rows],
+                meets_fan=bool(witnesses and np.all(fine["meets_ripple"]) and
+                               np.all(fine["meets_level"]) and np.all(fine["meets_narrow"])))
         else:
             eligibility.update(mask_met_each_mesh=[r["reported"]["mask_met_per_frequency"] for r in all_rows],
                                meets_mask=bool(witnesses and all_rows[-1]["reported"]["mask_met"]))
@@ -653,7 +664,7 @@ def main(case, argv=None):
     parser.add_argument("--drive", choices=("feed", "reciprocal"), default="feed")
     parser.add_argument("--empty", action="store_true", help="reciprocal field: remove lens, feed and reflector")
     if case.CASE == "lens":
-        parser.add_argument("--objective", choices=("boresight", "mask", "flattop", "wide"), default="boresight")
+        parser.add_argument("--objective", choices=("boresight", "mask", "flattop", "wide", "fan"), default="boresight")
     args = parser.parse_args(argv)
     if case.CASE == "lens":
         case = case.with_objective(args.objective)
