@@ -141,26 +141,51 @@ def test_equal_eager_jnp_field_debye_poles_apply_once():
 def test_id_keying_regression_is_detected_by_the_overlap_lock(monkeypatch):
     """Committed falsifier: the overlap lock genuinely discriminates.
 
-    Monkeypatch ``_pole_key`` back to plain id-keying (the PR
-    #272-branch do-not-repeat) and assert the measured signature is the
-    recorded regression — 2 entries, overlap-cell beta ratio 2.0 —
-    i.e. the value the double-count locks above would fail on. Both
-    ``_assemble_materials`` and ``rasterize_geometry`` call
-    ``_accumulate_pole_mask``, which resolves ``_pole_key`` from
-    ``rfx.geometry._pole_keying``'s globals — one patch covers both.
+    Two guards keep a pole from being applied twice where two entries
+    overlap. (1) Value keying (#274): equal-valued poles of different
+    materials merge into one entry. (2) Since the overlap rule was made one
+    rule for every cell quantity (a later shape replaces an earlier one on
+    its cells, dispersion included -- a block drawn into a dispersive body
+    used to keep the body's poles under its own permittivity, 0.98 of the
+    probe peak wrong), a later entry also clears the earlier entries' poles
+    on its cells. With EITHER guard in place the overlap cell carries the
+    pole once; with both removed the recorded regression returns -- 2
+    entries, overlap-cell beta ratio 2.0 (the PR #272-branch signature).
     """
     import rfx.geometry._pole_keying as pole_keying
+    import rfx.model.materials as model_materials
+    make = lambda: DebyePole(delta_eps=1.5, tau=8e-12)
+
     monkeypatch.setattr(pole_keying, "_pole_key", lambda pole: id(pole))
+    n_entries, ratio = _debye_overlap_entries_and_ratio(make)
+    assert n_entries == 2 and ratio == pytest.approx(1.0, rel=1e-6), (
+        "id-keying alone: two entries, but the later one replaced the earlier on the overlap", n_entries, ratio)
 
-    n_entries, ratio = _debye_overlap_entries_and_ratio(
-        lambda: DebyePole(delta_eps=1.5, tau=8e-12))
-
+    monkeypatch.setattr(model_materials, "_clear_pole_masks", lambda masks, mask: None)
+    n_entries, ratio = _debye_overlap_entries_and_ratio(make)
     assert n_entries == 2, (
         f"id-keying must produce 2 entries (got {n_entries}) — if this "
         f"fails the falsifier no longer reproduces the #272 regression")
     assert ratio == pytest.approx(2.0, rel=1e-6), (
-        f"id-keying overlap beta ratio {ratio} != 2.0 — the lock's "
+        f"both guards removed: overlap beta ratio {ratio} != 2.0 — the lock's "
         f"discrimination target has drifted")
+
+
+def test_two_poles_listed_in_one_material_apply_once_each():
+    """The way to put two poles on the same cells: one material, both poles.
+    Each is its own entry over the material's cells, applied once."""
+    tau = 8e-12
+    first, second = DebyePole(delta_eps=1.5, tau=tau), DebyePole(delta_eps=1.5, tau=tau * (1.0 + 1e-6))
+    sim = Simulation(freq_max=_FREQ_MAX, domain=_DOMAIN, boundary="pec")
+    sim.add_material("mat", eps_r=2.0, debye_poles=[first, second])
+    sim.add(Box(*_BOX_A), material="mat")
+    sim.add(Box(*_BOX_B), material="mat")            # the same material drawn twice adds nothing
+    grid = sim._build_grid()
+    _, debye_spec, _, *_ = sim._assemble_materials(grid)
+    poles, masks = debye_spec
+    union = np.array(Box(*_BOX_A).mask(grid)) | np.array(Box(*_BOX_B).mask(grid))
+    assert len(poles) == 2
+    assert np.array_equal(np.array(masks[0]), union) and np.array_equal(np.array(masks[1]), union)
 
 
 def test_non_coercible_pole_fields_warn_and_stay_distinct():
@@ -245,9 +270,10 @@ def test_value_perturbed_poles_stay_distinct():
     """Value-dedupe caveat: a relative-1e-6 tau perturbation keeps two
     entries.
 
-    Over-parameterization demos that need genuinely redundant poles must
-    perturb a field like this — deliberately duplicated identical poles
-    merge under value keying.
+    Value-distinct poles are never merged. To put two of them on the SAME
+    cells, list both in one material (see
+    ``test_two_poles_listed_in_one_material_apply_once_each``); drawn as two
+    overlapping materials, the later one owns the overlap.
     """
     tau = 8e-12
     sim = Simulation(freq_max=_FREQ_MAX, domain=_DOMAIN, boundary="pec")
@@ -266,10 +292,15 @@ def test_value_perturbed_poles_stay_distinct():
     assert len(poles) == 2, (
         f"value-distinct poles must stay separate entries, got "
         f"{len(poles)}")
-    # Each pole's mask stays scoped to its own box.
+    # The later material replaces the earlier one on the cells it covers --
+    # one overlap rule for every cell quantity, dispersion included (until
+    # 2026-10 each pole kept its whole box, so the overlap carried both poles
+    # under the later material's permittivity; a block drawn into a
+    # dispersive body kept the body's poles). mat_b is drawn second.
     mask_a = np.array(Box(*_BOX_A).mask(grid))
     mask_b = np.array(Box(*_BOX_B).mask(grid))
-    assert np.array_equal(np.array(masks[0]), mask_a)
+    assert (mask_a & mask_b).any()
+    assert np.array_equal(np.array(masks[0]), mask_a & ~mask_b)
     assert np.array_equal(np.array(masks[1]), mask_b)
 
 

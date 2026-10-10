@@ -21,7 +21,7 @@ from rfx.core.yee import (
     lumped_components, lumped_total, permittivity_without_lumped,
 )
 from rfx.geometry.csg import Box, _grid_coords
-from rfx.geometry._pole_keying import _accumulate_pole_mask, _spec_from_pole_masks
+from rfx.geometry._pole_keying import _accumulate_pole_mask, _clear_pole_masks, _spec_from_pole_masks
 from rfx.geometry.rasterize_grid import (
     GridCoords, _material_cell_mask, assert_declared_span_is_filled,
     cell_sizes_from_nonuniform_grid, cell_sizes_from_uniform_grid,
@@ -258,6 +258,14 @@ def assemble_cells(
             eps_r = jnp.where(mask, mat.eps_r, eps_r)
             sigma = jnp.where(mask, mat.sigma, sigma)
             mu_r = jnp.where(mask, mat.mu_r, mu_r)
+            # The entry replaces the cells it writes, the earlier entries' poles included.
+            # A PEC entry writes no cell material, so it leaves the poles as well.
+            # The Kerr coefficient follows the same rule: the entry's own value is written
+            # below when it has one; otherwise the earlier value is removed here.
+            if has_kerr:
+                chi3_arr = jnp.where(mask, 0.0, chi3_arr)
+            _clear_pole_masks(debye_masks_by_pole, mask)
+            _clear_pole_masks(lorentz_masks_by_pole, mask)
 
         if geometry_masks is not None and mat.sigma < sim._PEC_SIGMA_THRESHOLD:
             geometry_masks.append((id(declared_entry), mask))
