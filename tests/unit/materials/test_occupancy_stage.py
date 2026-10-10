@@ -197,7 +197,8 @@ def test_published_matches_lane_operator(lane, sheet, monkeypatch):
         return old_setup(*a, **k)
     # The uniform step body lives in rfx.stepping since S3-2 stage A.
     import rfx.stepping.uniform as step_uniform
-    step_module = step_uniform if lane == 'uniform' else module
+    import rfx.stepping.graded as step_graded
+    step_module = step_uniform if lane == 'uniform' else step_graded
     old_apply = step_module.apply_edge_keep
     def record_apply(st, keep):
         # What the step multiplies E by, read where the step runs it.

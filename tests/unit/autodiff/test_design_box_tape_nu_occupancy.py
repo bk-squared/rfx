@@ -383,7 +383,7 @@ def test_nu_design_box_leaves_the_grid_wide_permittivity_concrete():
         traced.append(isinstance(materials.eps_r, jax.core.Tracer))
         return real_update_e_nu(state, materials, *args, **kwargs)
 
-    with mock.patch("rfx.nonuniform.update_e_nu", spy):
+    with mock.patch("rfx.stepping.graded.update_e_nu", spy):
         grad = jax.grad(lambda e: _nu_loss_box(sim, e, n_steps=12))(eps)
     assert traced, "the grid-wide E update never ran"
     assert float(jnp.max(jnp.abs(grad))) > 0.0, "the design box reached nothing"
