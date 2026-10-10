@@ -161,21 +161,34 @@ def test_small_undamped_lorentz_pole_has_unit_or_lower_growth(w0_dt):
 
 
 @pytest.mark.parametrize("partial", [False, True])
-def test_overlapping_drude_media_are_judged_together(partial):
+def test_a_later_drude_medium_is_judged_alone_on_its_cells(partial):
+    # A later shape replaces the earlier one on its cells, poles included, so two media that are
+    # each stable are not judged as their sum. Before that rule the two pole sets added up on the
+    # shared cells and this model was refused. Stacked poles belong in ONE material
+    # (test_two_drude_poles_in_one_medium).
     limit = 2 * np.sqrt(4 - S2)
     sim = _box(0.90 * limit, eps_inf=4)
     sim.add_material("second", eps_r=4, lorentz_poles=[drude_pole(0.85 * limit / _default_step(), 0)])
     sim.add(Box((.003,) * 3, (.009,) * 3) if partial else Box((0,) * 3, (.012,) * 3), material="second")
+    assert np.all(np.isfinite(_run(sim, n_steps=2000)))
+
+
+def test_a_later_unstable_medium_is_refused_on_its_cells():
+    limit = 2 * np.sqrt(4 - S2)
+    sim = _box(0.90 * limit, eps_inf=4)
+    sim.add_material("second", eps_r=4, lorentz_poles=[drude_pole(1.05 * limit / _default_step(), 0)])
+    sim.add(Box((.003,) * 3, (.009,) * 3), material="second")
     with pytest.raises(ValueError, match="unstable at this model's time step"):
         _run(sim, n_steps=5)
 
 
-def test_plain_block_over_drude_uses_realized_epsilon():
+def test_a_plain_block_drawn_into_drude_is_a_hole_and_is_not_refused():
+    # The Drude pole is stable in eps_inf = 4 and would not be in eps = 1. The block replaces the
+    # medium on its cells, pole included, so no cell holds that pole over eps = 1.
     sim = _box(3.0, eps_inf=4)
     sim.add_material("plain", eps_r=1)
     sim.add(Box((.003,) * 3, (.009,) * 3), material="plain")
-    with pytest.raises(ValueError, match="eps_low=1"):
-        _run(sim, n_steps=5)
+    assert np.all(np.isfinite(_run(sim, n_steps=2000)))
 
 
 def test_forward_override_uses_realized_epsilon():

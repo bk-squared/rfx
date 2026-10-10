@@ -19,6 +19,7 @@ from rfx.core.yee import MaterialArrays
 from rfx.geometry.csg import Cylinder, OrientedBox, Sphere, declared_bounds
 from rfx.geometry._pole_keying import (
     _accumulate_pole_mask,
+    _clear_pole_masks,
     _spec_from_pole_masks,
 )
 
@@ -1119,6 +1120,14 @@ def rasterize_geometry(
             eps_r = jnp.where(mask, mat.eps_r, eps_r)
             sigma = jnp.where(mask, mat.sigma, sigma)
             mu_r = jnp.where(mask, mat.mu_r, mu_r)
+            # The entry replaces the cells it writes, the earlier entries' poles included.
+            # A PEC entry writes no cell material, so it leaves the poles as well.
+            # The Kerr coefficient follows the same rule: the entry's own value is written
+            # below when it has one; otherwise the earlier value is removed here.
+            if has_kerr:
+                chi3_arr = jnp.where(mask, 0.0, chi3_arr)
+            _clear_pole_masks(debye_masks_by_pole, mask)
+            _clear_pole_masks(lorentz_masks_by_pole, mask)
 
         if geometry_masks is not None and mat.sigma < pec_sigma_threshold:
             declared_entry = (entry if pole_geometry_entries is None
