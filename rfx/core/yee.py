@@ -999,9 +999,7 @@ def si_value_eps_r_grad(si_fn, eps_r_fn, *args):
         _, t_out = jax.jvp(lambda *v: eps_r_fn(*_args(v)), primals, tangents)
         return out, jax.tree.map(lambda t, o: t.astype(o.dtype), t_out, out)
 
-    operands = [leaves[i] for i in dyn]
-    del leaves
-    return _coeffs(*operands)
+    return _coeffs(*(leaves[i] for i in dyn))
 
 
 def e_coeffs_eps_r_units(eps_r, sigma, dt, *, inverse=False):

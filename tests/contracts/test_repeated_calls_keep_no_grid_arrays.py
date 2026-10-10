@@ -92,6 +92,20 @@ def test_repeated_run_keeps_no_grid_arrays(lane, boundary):
     assert counts[1] == counts[0] and counts[2] == counts[0], counts
 
 
+@pytest.mark.xfail(strict=True, reason="#1606: run(until_decay=) keeps the constants of its per-call jitted step "
+                                       "(24 lattice arrays per call on a uniform CPML box); a second holder, not yet fixed")
+def test_repeated_run_until_decay_keeps_no_grid_arrays():
+    shape = _grid_shape('uniform', 'cpml')
+
+    def call():
+        result = _sim('uniform', 'cpml').run(until_decay=1e-3, decay_min_steps=4, decay_check_interval=4,
+                                             decay_max_steps=12, skip_preflight=True)
+        jax.block_until_ready(result.time_series)
+
+    counts = _counts(call, shape)
+    assert counts[1] == counts[0] and counts[2] == counts[0], counts
+
+
 def test_repeated_two_device_forward_keeps_no_grid_arrays():
     if len(jax.devices()) < 2:
         pytest.skip('requires two devices (XLA_FLAGS=--xla_force_host_platform_device_count=2)')
