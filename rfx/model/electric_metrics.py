@@ -162,9 +162,3 @@ def _slab_model_rows(nx_local, nx_per, nx, rank):
     local = jnp.arange(nx_local)
     rows = rank * nx_per - 1 + local
     return ((local >= 1) & (local < nx_local - 1) & (rows < nx))[:, None, None]
-
-
-def material_record_drive_scales(materials, mesh, drives, dt, *, ranks, grid):
-    """Bind source coefficients to all conductivity carriers of the slab."""
-    return material_drive_scales(materials.eps_r, materials.sigma, mesh, drives,
-        dt, ranks=ranks, grid=grid, sigma_film=materials.sigma_film)

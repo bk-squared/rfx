@@ -346,7 +346,7 @@ SIGMA_READS = {
     ('rfx/io.py', 'export_geometry_json', 'm'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/materials/__init__.py', 'set_material', 'materials'): (1, 'passing on: where(mask,new_sigma,old_sigma)'),
     ('rfx/materials/thin_conductor.py', 'sheet_update_coeffs', 'materials'): (2, 'arithmetic: cell sigma + sheet sigma into exponential A/B'),
-    ('rfx/model/electric_metrics.py', 'material_record_drive_scales', 'materials'): (1, 'carrier staged or passed alongside volume sigma to the shared edge reader'),
+    ('rfx/runners/distributed_nu.py', 'run_nonuniform_distributed_pec.run_fn', 'materials'): (1, 'carrier staged or passed alongside volume sigma to the shared edge reader'),
     ('rfx/model/materials.py', '_design_box_edge_coeffs', 'materials'): (1, 'slicing/passing on to window MaterialArrays'),
     ('rfx/model/materials.py', 'assemble_cells', 'mat'): (4, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/model/materials.py', 'assemble_cells', 'sim._resolve_material(entry.material_name)'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
