@@ -377,6 +377,9 @@ A longer record does not help. `gradient_record_length_witness` detects it;
 `gradient="adjoint"` refuses such a design and returns settled-spectrum
 gradients only.
 
+For orientation, not a criterion, the ratio of the record-length swing to its lossless value on one fixture (3×3×3-cell box, mean ε_r 3.04) was 0.12, 0.079, 0.034, 0.0098, 1.6e-3, 8.1e-5 at x = 5, 7, 10, 14, 20, 30 (2400 steps); 0.071, 0.0080 at x = 7, 14 (4800 steps).
+`forward()` now attaches an advisory record `conductivity_gradient_record_length` to `result.diagnostics` when a conductivity design is supplied.
+
 ### Port-only ring-down completion can miss the gradient of a weakly coupled high-Q resonance.
 
 Tracker: #1514

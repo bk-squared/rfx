@@ -1,7 +1,7 @@
 """Record-length witness for a gradient taken through a finite time record.
 
 Import contract: this module is a leaf of ``rfx.api``. It imports only
-stdlib / jax / numpy, never ``rfx.api`` or ``. import`` the package, so
+stdlib / jax / numpy and external ``rfx.*``, never ``rfx.api`` or ``. import`` the package, so
 ``rfx/api/__init__.py`` stays the sole composition point.
 
 Why this exists
@@ -59,6 +59,49 @@ from typing import Any
 import jax
 import jax.numpy as jnp
 import numpy as np
+
+from rfx._diagnostic_transport import result_with_diagnostics
+from rfx.core.jax_utils import is_tracer
+from rfx.core.yee import EPS_0
+from rfx.diagnostic_records import Diagnostic
+
+
+def conductivity_gradient_record(design_sigma, sigma_override, design_eps, n_steps, dt) -> tuple[Diagnostic, ...]:
+    """Describe the supplied conductivity's record time, without a verdict."""
+    if design_sigma is None and not is_tracer(sigma_override):
+        return ()
+    sigma = design_sigma if design_sigma is not None else sigma_override
+    components = sigma if isinstance(sigma, tuple) else (sigma,)
+    record_time = n_steps * dt
+    if any(is_tracer(component) for component in components) or is_tracer(design_eps):
+        x_min = "not evaluated (traced)"
+    elif design_eps is None:
+        x_min = "not evaluated (no permittivity)"
+    else:
+        x_min = float(record_time * min(float(np.min(np.asarray(component))) for component in components)
+                      / (EPS_0 * float(np.max(np.asarray(design_eps)))))
+    return (Diagnostic(
+        code="conductivity_gradient_record_length", severity="advisory",
+        subject="design conductivity",
+        message="A gradient with respect to conductivity keeps a static part on cells where the "
+                "charge relaxation time eps/sigma is not short against the record, so it can depend on "
+                "the record length's phase; check it with gradient_record_length_witness. "
+                "x_min reports record time over relaxation time; no threshold is applied.",
+        values={
+            "record_time_s": record_time,
+            "n_steps": n_steps,
+            "x_min": x_min,
+            "x_definition": "record time * sigma / (eps0 * eps_r), minimum over the design cells",
+            "permittivity_used": "design_eps_override" if design_eps is not None else "not available",
+        },
+    ),)
+
+
+def with_conductivity_record(result, **kwargs):
+    """Attach the advisory only to result types that carry diagnostics."""
+    if not hasattr(result, "diagnostics"):
+        return result
+    return result_with_diagnostics(result, conductivity_gradient_record(**kwargs))
 
 
 __all__ = [

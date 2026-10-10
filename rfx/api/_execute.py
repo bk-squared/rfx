@@ -16,6 +16,7 @@ from __future__ import annotations
 from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
 from rfx.api._removed_kwargs import _reject_removed_forward_kwargs
 from rfx.api._forward_result import pack_nu_forward_result
+from rfx.api._gradient_witness import with_conductivity_record
 from rfx.preflight._impl import run_preflight_gate
 from rfx._diagnostic_transport import diagnostic_refusal, result_with_diagnostics, merge_diagnostics
 
@@ -3742,9 +3743,9 @@ class _ExecuteMixin:
                 exchange_interval=exchange_interval,
                 skip_preflight=skip_preflight,
             )
-            return self._attach_run_settling_witness(
-                result, n_steps=plan.n_steps, num_periods=num_periods,
-                context="forward")
+            return with_conductivity_record(self._attach_run_settling_witness(
+                result, n_steps=plan.n_steps, num_periods=num_periods, context="forward"),
+                design_sigma=design_sigma_override, sigma_override=sigma_override, design_eps=design_eps_override, n_steps=plan.n_steps, dt=result.grid.dt)
 
         if plan.lane == "fwd_nonuniform":
             _nu_design_spec = None
@@ -3794,9 +3795,9 @@ class _ExecuteMixin:
             if _nu_design_spec is not None:
                 result = result._replace(
                     design_box_held_edges=_nu_design_spec.held_edges)
-            return self._attach_run_settling_witness(
-                result, n_steps=plan.n_steps, num_periods=num_periods,
-                context="forward")
+            return with_conductivity_record(self._attach_run_settling_witness(
+                result, n_steps=plan.n_steps, num_periods=num_periods, context="forward"),
+                design_sigma=design_sigma_override, sigma_override=sigma_override, design_eps=design_eps_override, n_steps=plan.n_steps, dt=_nu_grid.dt)
 
         # ---- Uniform forward lane (plan.lane == "fwd_uniform") ----
         n_steps = plan.n_steps
@@ -3931,9 +3932,8 @@ class _ExecuteMixin:
         _warn_if_nonfinite_result(_res, context="forward")
         from rfx.current_moments import require_accumulated_current_moments
         require_accumulated_current_moments(self, _res, "forward")
-        return self._attach_run_settling_witness(
-            _res, n_steps=n_steps, num_periods=num_periods,
-            context="forward")
+        return with_conductivity_record(self._attach_run_settling_witness(_res, n_steps=n_steps, num_periods=num_periods, context="forward"),
+            design_sigma=design_sigma_override, sigma_override=sigma_override, design_eps=design_eps_override, n_steps=n_steps, dt=getattr(_res, "dt", grid.dt))
 
     # ---- run ----
 
