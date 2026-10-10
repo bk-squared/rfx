@@ -21,17 +21,17 @@ COMPONENTS = ('ex', 'ey', 'ez', 'hx', 'hy', 'hz')
 def tree(nu):
     path = nu if isinstance(nu, str) else ('rfx/nonuniform.py' if nu else 'rfx/simulation.py')
     result = ast.parse((ROOT / path).read_text())
-    if nu is False:
-        # Keep the original runner in scope and recognize its extracted phases.
-        for step in sorted((ROOT / 'rfx/stepping').glob('*.py')):
-            result.body.extend(ast.parse(step.read_text()).body)
+    if not isinstance(nu, str):
+        # Keep the original runner in scope and recognize its extracted step.
+        for name in ('sequence.py', 'graded.py' if nu else 'uniform.py'):
+            result.body.extend(ast.parse((ROOT / 'rfx/stepping' / name).read_text()).body)
     return result
 
 
 def assignment(nu, name, dependency=None):
     candidates = [n for n in ast.walk(tree(nu)) if isinstance(n, ast.Assign)
                   and any(isinstance(t, ast.Name) and t.id == name for t in n.targets)
-                  and (dependency is None or dependency in {v.id for v in ast.walk(n.value) if isinstance(v, ast.Name)})]
+                  and (dependency is None or dependency in {getattr(v, 'id', getattr(v, 'attr', None)) for v in ast.walk(n.value)})]
     # Identical assignments can occur in multiple runner entry points.
     expressions = {ast.dump(n.value): n.value for n in candidates}
     assert len(expressions) == 1, (name, expressions)
@@ -55,7 +55,7 @@ def stamp(nu, family, kind):
     env = dict(planes=planes, flux=flux, st=state, dt=1., step_idx=jnp.int32(3),
                carry={'dft_planes': (acc,), 'flux_monitors': ((acc, acc, acc, acc),)},
                dft_meta=dft_meta, flux_meta=flux_meta,
-               ctx=SimpleNamespace(dft_meta=dft_meta, flux_meta=flux_meta))
+               ctx=SimpleNamespace(dft_meta=dft_meta, flux_meta=flux_meta, dt=1.))
     env['frame'] = SimpleNamespace(st=state, carry=env['carry'], step_idx=env['step_idx'])
     value = eval(compile(ast.Expression(calls[0]), '<production accumulator>', 'eval'), env)
     spectrum = value[0][0] if name == 'planes' else value[0][0 if kind == 'E' else 2]
@@ -110,6 +110,7 @@ def judge_metadata(plan, actual):
                            **{name: SimpleNamespace(dtype=jnp.complex64) for name in (
                                'v_dft', 'i_dft', 'v_ref_dft', 'v_ref_dft_l', 'i_dft_l')})
                 env['frame'] = SimpleNamespace(step_idx=env['step_idx'])
+                env['ctx'] = SimpleNamespace(dt=1., sp_freqs=bins)
                 lumped_uniform = owner.kind == 'lumped' and not nu
                 phase = eval(assignment(nu, 'phase_l' if lumped_uniform else 'phase',
                                         'lp_meta' if lumped_uniform else 'sp_freqs' if nu else 'wp_meta'), env)

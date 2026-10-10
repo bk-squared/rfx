@@ -38,6 +38,9 @@ def use_per_cell_reference(monkeypatch):
         monkeypatch.setattr(module, 'drive_layout', layout)
         if hasattr(module, 'inject_drives'):
             monkeypatch.setattr(module, 'inject_drives', per_cell)
+    # The single-device steps: a missing name must fail, not skip the reference.
+    for name in ('rfx.simulation', 'rfx.stepping.graded'):
+        monkeypatch.setattr(importlib.import_module(name), 'inject_drives', per_cell)
 
 
 def run_case(lane, n=4, amplitude=1., component="ez"):
@@ -92,7 +95,7 @@ def test_checker_is_live():
 def test_production_step_scatter_count(lane, monkeypatch):
     import importlib
     module = importlib.import_module({
-        'uniform': 'rfx.simulation', 'graded': 'rfx.nonuniform',
+        'uniform': 'rfx.simulation', 'graded': 'rfx.stepping.graded',
         'distributed': 'rfx.runners._distributed_common',
         'distributed_graded': 'rfx.runners._distributed_common',
         'vmap': 'rfx.vmap_sweep', 'subgridded': 'rfx.subgridding.jit_runner',
