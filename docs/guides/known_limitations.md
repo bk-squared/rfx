@@ -102,6 +102,15 @@ In a lossless 48x16x16 mm PEC box (dx = 1 mm, float32, 2000 steps) the probe amp
 This is a scheme instability, not an O(dt*K) boundary error; a K-cell overlap would be required to skip exchanges.
 Use `exchange_interval=1`.
 
+### Distributed runs on GPUs: do not wrap the call in `jax.jit`
+
+Tracker: #1598
+On two or more real GPUs, `jax.jit(...)` around `forward(distributed=True)` or `run(devices=...)`, or around `jax.grad`
+of it, fails at the first call with `CUDA error: Failed to add memset node to a CUDA graph`. No wrong number is produced.
+Call the run, and `jax.grad` / `jax.value_and_grad` of it, without `jax.jit` (the runner compiles its own time loop), or
+start the process with `XLA_FLAGS=--xla_gpu_enable_command_buffer=`. Both were measured on two RTX A6000 (JAX 0.10.2) and
+return identical values and gradients. CPU multi-device runs are not affected.
+
 ## Ports and extraction
 
 ### A microstrip strip drawn past an MSL port to the domain edge is an open stub that can short the port.
