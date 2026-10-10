@@ -764,13 +764,6 @@ def apply_cpml_e(
             else:
                 e_loss = tuple(e_coeffs_eps_r_units(inv, materials.sigma, dt, inverse=True)[0]
                                for inv in inv_eps_r_update)
-    if e_loss is not None or e_curl_coeff is not None:
-        _ce_ex, _ce_ey, _ce_ez = tuple(
-            corrected_coefficient(
-                dt / EPS_0 if ce is None else ce,
-                None if e_loss is None else e_loss[c],
-                None if e_curl_coeff is None else e_curl_coeff[c])
-            for c, ce in enumerate((_ce_ex, _ce_ey, _ce_ez)))
 
     def _face(arr, axis: int, lo: bool):
         """Slice a per-component coefficient to one PML face region."""
@@ -781,6 +774,14 @@ def apply_cpml_e(
         if axis == 1:
             return arr[:, :n_y, :] if lo else arr[:, -n_y:, :]
         return arr[:, :, :n_z] if lo else arr[:, :, -n_z:]
+
+    if e_loss is not None or e_curl_coeff is not None:
+        _ce_ex, _ce_ey, _ce_ez = tuple(
+            corrected_coefficient(
+                _face(None, 0, True) if ce is None else ce,
+                None if e_loss is None else e_loss[c],
+                None if e_curl_coeff is None else e_curl_coeff[c])
+            for c, ce in enumerate((_ce_ex, _ce_ey, _ce_ez)))
 
     # Only the 12 (component, face) pairs the corrections below actually
     # write: x faces drive Ey/Ez, y faces drive Ex/Ez, z faces drive Ex/Ey.

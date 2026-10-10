@@ -60,8 +60,8 @@ def face_coefficient(eps, dt, component, index, e_loss=None, e_curl_coeff=None, 
     """Distributed face-sized coefficient, retaining its historical SI bits."""
     from rfx.boundaries.cpml import _ce_si, _ce_eps_r
     from rfx.core.yee import si_value_eps_r_grad
-    from rfx.core.yee import EPS_0
-    today = (dt / EPS_0 if eps is None else
+    from rfx.runners._distributed_common import cpml_coeff_e_vacuum
+    today = (cpml_coeff_e_vacuum(dt) if eps is None else
              si_value_eps_r_grad(_ce_si, _ce_eps_r, eps[index], dt))
     loss = None if e_loss is None else e_loss[component][index]
     if e_loss is None and e_curl_coeff is None and e_sigma is not None:
