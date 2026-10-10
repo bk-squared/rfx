@@ -357,3 +357,42 @@ def test_weekly_budget_survives_a_truncated_measured_file(tmp_path: Path) -> Non
     over = subprocess.run([*args, "--start", str(time.time() - 9300)], capture_output=True, text=True, timeout=10, check=False)
     assert (under.returncode, over.returncode) == (0, 1), under.stdout + under.stderr + over.stdout + over.stderr
     assert "measured durations file unreadable" in under.stdout.splitlines()
+
+
+TWO_CARD_JOB = "weekly-a6000x2-multigpu"
+TWO_CARD_FILE = REPO_ROOT / "scripts" / "vessl_validation_multigpu_a6000x2.yaml"
+
+
+def test_two_card_job_follows_the_single_card_lane_even_when_it_fails() -> None:
+    # One GPU job at a time, and a red single-card lane must not hide the two-card result.
+    job = _workflow("validation.yml")["jobs"][TWO_CARD_JOB]
+    assert job["needs"] == ["weekly-a6000-lane"]
+    assert job["if"].replace(" ", "") == "${{!cancelled()}}"
+    run = next(s["run"] for s in job["steps"] if "vessl run create" in s.get("run", ""))
+    assert "scripts/vessl_validation_multigpu_a6000x2.yaml" in run
+    assert 'RFX_SHA: \\"origin/main\\"' in run, "the step pins the SHA by rewriting this exact line"
+    assert run.strip().splitlines()[-1].strip() == '[ "$ST" = completed ] || { echo "two-card job ended with status $ST"; exit 1; }'
+
+
+def test_two_card_file_needs_two_cards_before_its_tests_run() -> None:
+    spec = yaml.safe_load(TWO_CARD_FILE.read_text(encoding="utf-8"))
+    assert spec["resources"]["preset"] == "gpu-a6000-2"
+    assert spec["env"]["RFX_SHA"] == "origin/main"
+    assert spec["mount"] == {"/results": "volume://remilab-fs/rfx-vessl-tests"}
+    lines = [line.strip() for line in spec["run"].splitlines()]
+    # Whole lines, so a commented-out guard, an appended `|| true` or a collect-only
+    # pytest call does not pass. Without the guard a node with one visible card skips
+    # every test and ends green.
+    guard = lines.index(
+        '"$PY" -c "import jax, sys; assert sys.version_info[:2] == (3, 11), sys.version; '
+        "assert jax.__version__ == '0.10.2', jax.__version__; "
+        "gpus = [d for d in jax.devices() if d.platform == 'gpu']; "
+        'assert len(gpus) >= 2, jax.devices()"'
+    )
+    tests = lines.index(
+        'timeout 3600 "$PY" -m pytest -v -ra -s -p no:cacheprovider -m multi_gpu tests/gpu > "$OUT/multi_gpu.log" 2>&1'
+    )
+    assert lines[0] == "set -eu", "a failed guard must stop the job"
+    assert guard < tests
+    assert lines[tests + 1] == "RC=$?"
+    assert lines[-1] == '[ "$RC" -eq 0 ]'
