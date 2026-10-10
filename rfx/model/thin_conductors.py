@@ -221,14 +221,13 @@ def admit_dc_plane(conductor, grid, *, pmc_faces=None, mode=None):
 
 def _fold_dc_plane(grid, conductor, materials, mask, normal):
     """In-plane cell coverage, carried only by tangential edges on one node."""
-    from rfx.core.yee import edge_averaged_materials, lumped_components
-    from rfx.model.materials import electric_cell_sizes
+    from rfx.core.yee import lumped_components
+    from rfx.model.materials import edge_coverage_weights
     normal, plane = dc_film_plane(conductor.shape, grid)
     footprint = mask.any(axis=normal)
     field = jnp.broadcast_to(jnp.expand_dims(footprint, normal), materials.sigma.shape)
     periodic = tuple(a in getattr(grid, 'periodic_axes', '') for a in 'xyz')
-    _, weights = edge_averaged_materials(jnp.ones_like(materials.eps_r),
-        field.astype(materials.sigma.dtype), periodic, cell_sizes=electric_cell_sizes(grid))
+    weights = edge_coverage_weights(grid, field.astype(materials.sigma.dtype), periodic)
     dual = (e_node_dual_spacings((grid.dx_arr, grid.dy_arr, grid.dz)[normal])[plane]
             if hasattr(grid, 'dx_arr') else float(grid.duals(normal)[0]))
     density = conductor.sigma_bulk * conductor.thickness / dual

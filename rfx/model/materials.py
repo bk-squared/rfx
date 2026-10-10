@@ -663,6 +663,13 @@ def e_update_coefficient_at(materials, cell, component, dt,
     return e_update_coeffs(eps, sigma, dt)[1]
 
 
+def edge_coverage_weights(grid, covered, periodic):
+    """Share of each E edge's four cells that ``covered`` marks, by the edge mean."""
+    from rfx.core.yee import edge_averaged_materials
+    return edge_averaged_materials(jnp.ones_like(covered), covered, periodic,
+                                   cell_sizes=electric_cell_sizes(grid))[1]
+
+
 def electric_cell_sizes(grid):
     """One-dimensional primal metrics; None axes retain the equal-cell path."""
     if grid is None:
