@@ -40,6 +40,24 @@ longer records were run; a graded-mesh case read 0. Results on the GPU, and in a
 CPU-only process, are not affected. Use the GPU device or a CPU-only process to
 avoid this spread.
 
+### Two sheets on one plane drawn less than two cells apart are solved as one conductor
+
+Tracker: #1373
+
+A feed gap, coupling gap or slot one cell wide between two separately declared PEC
+sheets is a short. Sheets on one plane contribute to one set of nodes, and an E
+edge is metal when both of its end nodes are in that set. On 1 mm cells, sheets
+drawn over [5, 10] and [11, 15] mm occupy node rows 5–10 and 11–15: the edge
+between rows 10 and 11 is metal. A half-cell gap, [5, 10] and [10.5, 15] mm,
+occupies the same rows and is also joined. A 1.5-cell gap, [5, 10] and
+[11.5, 15] mm, occupies rows 5–10 and 12–15 and remains open. Off-mesh
+abutting sheets, [5, 9.5] and [9.5, 15] mm, occupy rows 5–9 and 10–15;
+their join is intended.
+
+Preflight flags a bridged drawn gap with the error `sheet_gap_bridged`. Draw the
+gap at least two cells wide, or use a finer mesh at the gap. A fix is planned:
+join sheets only where their drawn extents touch or overlap.
+
 ### Lossy sheets and sheet_effective_size
 
 Tracker: #1138
