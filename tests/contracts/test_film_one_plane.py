@@ -346,6 +346,7 @@ SIGMA_READS = {
     ('rfx/io.py', 'export_geometry_json', 'm'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/materials/__init__.py', 'set_material', 'materials'): (1, 'passing on: where(mask,new_sigma,old_sigma)'),
     ('rfx/materials/thin_conductor.py', 'sheet_update_coeffs', 'materials'): (2, 'arithmetic: cell sigma + sheet sigma into exponential A/B'),
+    ('rfx/boundaries/cpml.py', 'apply_cpml_e', 'materials'): (3, 'fallback when a caller passes no step loss: the subgridded lanes, which refuse thin conductors; the uniform and graded steps pass the component loss'),
     ('rfx/runners/distributed_nu.py', 'run_nonuniform_distributed_pec.run_fn', 'materials'): (1, 'carrier staged or passed alongside volume sigma to the shared edge reader'),
     ('rfx/model/materials.py', '_design_box_edge_coeffs', 'materials'): (1, 'slicing/passing on to window MaterialArrays'),
     ('rfx/model/materials.py', 'assemble_cells', 'mat'): (4, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
@@ -776,3 +777,31 @@ def test_v2_material_shard_refuses_a_film():
     film = (jnp.zeros((2, 2, 2), jnp.float32),) * 3
     with pytest.raises(ValueError, match='lossy film'):
         _shard_materials(MaterialArrays(eps_r=cells, sigma=cells * 0, mu_r=cells, sigma_film=film), None)
+
+
+@pytest.mark.parametrize('graded', [False, True])
+@pytest.mark.parametrize('rs', [30., 100.])
+@pytest.mark.parametrize('n_devices', [1, 2])
+def test_film_through_a_cpml_face_decays(graded, rs, n_devices):
+    """A film that runs into the absorber on four faces does not grow (tracker 1589).
+
+    Without the absorber reading the film's loss, 30 ohm/sq overflows and
+    100 ohm/sq ends the record at 0.4 to 1.0 of its peak; with it both end
+    below 1e-7. Film, source and probe sit off every symmetry plane.
+    """
+    from rfx import GaussianPulse
+    if len(jax.devices()) < n_devices:
+        pytest.skip(f'requires {n_devices} devices')
+    devices = {} if n_devices == 1 else {'devices': jax.devices()[:n_devices]}
+    options = {'dy_profile': np.array([H] + [.0009, .0011] * 11 + [H])} if graded else {}
+    sim = Simulation(freq_max=10e9, domain=(.024, .024, .012), dx=H,
+                     boundary='cpml', cpml_layers=6, **options)
+    sim.add_thin_conductor(Box((.010, -1, -1), (.010, 1, 1)),
+                           sigma_bulk=1 / (rs * 1e-5), thickness=1e-5)
+    sim.add_source((.005, .011, .005), component='ez', amplitude_kind='field',
+                   waveform=GaussianPulse(f0=10e9, bandwidth=.8, cutoff=5.0))
+    sim.add_probe((.016, .014, .007), component='ez')
+    record = np.abs(np.asarray(sim.run(n_steps=6000, compute_s_params=False,
+                                       skip_preflight=True, **devices).time_series)[:, 0])
+    assert np.all(np.isfinite(record))
+    assert record[-750:].max() < 1e-3 * record.max()
