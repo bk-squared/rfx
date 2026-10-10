@@ -33,7 +33,9 @@ def record(records):
     assert d.subject in (None, "design conductivity")
     assert d.message == MESSAGE
     assert set(d.values) == {"record_time_s", "n_steps", "x_min", "x_definition", "permittivity_used"}
-    assert d.values["x_definition"] == "record time * sigma / (eps0 * eps_r), minimum over the design cells"
+    assert d.values["x_definition"] in (
+        "minimum over the design cells of record time * sigma / (eps0 * eps_r)",
+        "lower bound of that minimum: record time * min(sigma) / (eps0 * max(eps_r))")
     assert not jax.tree.leaves(d)
     assert all(type(value) in (int, float, str) for value in d.values.values())
     return d
@@ -71,12 +73,15 @@ def test_lossless_design(lane):
 def test_concrete_design_ratio():
     forward, eps, dt = design_fixture()
     sigma = jnp.linspace(0.02, 0.2, eps.size).reshape(eps.shape)
-    expected = STEPS * dt * float(np.min(np.asarray(sigma))) / (EPS_0 * float(np.max(np.asarray(eps))))
+    # The per-cell ratio's own minimum, formed here cell by cell in float64.
+    ratios = [float(s) / float(e) for s, e in zip(np.asarray(sigma).ravel(), np.asarray(eps).ravel())]
+    expected = STEPS * dt * min(ratios) / EPS_0
     d = record(forward(sigma).diagnostics)
-    assert d.values["x_min"] == expected
+    assert d.values["x_min"] == pytest.approx(expected, rel=1e-6)
+    assert d.values["x_definition"].startswith("minimum over the design cells")
     # Closed-over concrete JAX arrays stay host metadata under an outer jit.
     closed = jax.jit(lambda: conductivity_gradient_record(sigma, None, eps, STEPS, dt))()
-    assert record(closed).values["x_min"] == expected
+    assert record(closed).values["x_min"] == pytest.approx(expected, rel=1e-6)
 
 
 def identity(result, **kwargs):
@@ -160,6 +165,11 @@ def test_per_edge_and_override_trigger():
     d = record(conductivity_gradient_record(sigma, None, eps, 10, 1e-12))
     expected = 10 * 1e-12 * min(np.min(s) for s in sigma) / (EPS_0 * np.max(eps))
     assert d.values["x_min"] == expected
+    assert d.values["x_definition"].startswith("lower bound")
+    # Cell arrays of one shape: the minimum of the ratio, not min(sigma) / max(eps).
+    cell = record(conductivity_gradient_record(np.array([0.01, 1.]), None, np.array([1., 10.]), 10, 1e-12))
+    assert cell.values["x_min"] == pytest.approx(10 * 1e-12 * 0.01 / EPS_0, rel=1e-12)
+    assert cell.values["x_min"] > 5 * (10 * 1e-12 * 0.01 / (EPS_0 * 10.))
     assert conductivity_gradient_record(None, np.array([0.1]), eps, 10, 1e-12) == ()
 
     def traced(s):

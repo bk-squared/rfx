@@ -66,18 +66,27 @@ from rfx.core.yee import EPS_0
 from rfx.diagnostic_records import Diagnostic
 
 
+X_PER_CELL = "minimum over the design cells of record time * sigma / (eps0 * eps_r)"
+X_LOWER_BOUND = "lower bound of that minimum: record time * min(sigma) / (eps0 * max(eps_r))"
+
+
 def conductivity_gradient_record(design_sigma, sigma_override, design_eps, n_steps, dt) -> tuple[Diagnostic, ...]:
     """Describe the supplied conductivity's record time, without a verdict."""
     if design_sigma is None and not is_tracer(sigma_override):
         return ()
     sigma = design_sigma if design_sigma is not None else sigma_override
     components = sigma if isinstance(sigma, tuple) else (sigma,)
-    record_time = n_steps * dt
+    record_time, definition = n_steps * dt, X_PER_CELL
     if any(is_tracer(component) for component in components) or is_tracer(design_eps):
         x_min = "not evaluated (traced)"
     elif design_eps is None:
         x_min = "not evaluated (no permittivity)"
+    elif len(components) == 1 and np.shape(components[0]) == np.shape(design_eps):
+        # Cell conductivity on the permittivity's own cells: the ratio's minimum itself.
+        x_min = float(record_time * np.min(np.asarray(components[0]) / np.asarray(design_eps)) / EPS_0)
     else:
+        # Per-edge conductivity has no cell-for-cell permittivity: a lower bound of the ratio.
+        definition = X_LOWER_BOUND
         x_min = float(record_time * min(float(np.min(np.asarray(component))) for component in components)
                       / (EPS_0 * float(np.max(np.asarray(design_eps)))))
     return (Diagnostic(
@@ -91,7 +100,7 @@ def conductivity_gradient_record(design_sigma, sigma_override, design_eps, n_ste
             "record_time_s": record_time,
             "n_steps": n_steps,
             "x_min": x_min,
-            "x_definition": "record time * sigma / (eps0 * eps_r), minimum over the design cells",
+            "x_definition": definition,
             "permittivity_used": "design_eps_override" if design_eps is not None else "not available",
         },
     ),)
