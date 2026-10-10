@@ -338,6 +338,11 @@
     },
     {
       "file": "rfx/core/yee.py",
+      "function": "_edge_mean_component",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/core/yee.py",
       "function": "_material_bwd_neighbour",
       "kind": "roll/diff"
     },
@@ -351,12 +356,6 @@
       "function": "curl_h.component",
       "kind": "neighbour",
       "count": 2
-    },
-    {
-      "file": "rfx/core/yee.py",
-      "function": "_edge_mean_component",
-      "kind": "neighbour",
-      "count": 5
     },
     {
       "file": "rfx/core/yee.py",
@@ -832,6 +831,11 @@
       "file": "rfx/sources/tfsf_2d.py",
       "function": "_update_h_tmz",
       "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/stepping/absorber.py",
+      "function": "apply_cpml_e_step",
+      "kind": "boundary"
     },
     {
       "file": "rfx/stepping/uniform.py",

@@ -2519,7 +2519,7 @@ def _build_nu_scan(
     from rfx.boundaries.tfsf import admit_setup
 
     from rfx.boundaries.setup import nonuniform_boundaries
-    from rfx.boundaries.cpml import apply_cpml_h, apply_cpml_e
+    from rfx.stepping.absorber import apply_cpml_h, apply_cpml_e_step as apply_cpml_e, graded_cpml_operands
     (use_cpml, cpml_params, cpml_state_init, cpml_grid, cpml_axes_eff,
      curl_boundary, _pec_faces_frozen, _pmc_faces_frozen, use_pmc_faces) = nonuniform_boundaries(
          grid, cpml_axes, pec_faces, pmc_faces)
@@ -2735,23 +2735,9 @@ def _build_nu_scan(
             )
         carry_init["tfsf"] = tfsf_state
 
-    # #1043: ``apply_cpml_e``'s psi coefficient must take its permittivity from
-    # the array the E half-step uses, or the two halves of one timestep
-    # integrate different media and the combined update can amplify (see
-    # ``rfx/boundaries/cpml.py``'s ``inv_eps_r_update`` docstring). The guard
-    # is the same condition that selects ``update_e_nu_aniso`` below, so a
-    # dispersive run — which ignores ``aniso_eps`` — never takes it.
-    # #1210: the plain graded-mesh update ``update_e_nu`` is per-component too
-    # now (the mean of eps_r over each edge's four incident cells), so it gets
-    # the same threading. Homogeneous pads keep their bytes — the mean of four
-    # equal floats is that float exactly.
-    # #1260: the dispersive update takes its ε_∞ per component from the same
-    # mean, so a dispersive run threads it too (it used to keep the cell's
-    # ``materials.eps_r``).
-    if not (use_debye or use_lorentz) and aniso_eps is not None:
-        _cpml_inv_eps_r = tuple(1.0 / e for e in aniso_eps)
-    else:
-        _cpml_inv_eps_r = tuple(1.0 / e for e in materials.components.eps_update)
+    _cpml_inv_eps_r, _cpml_loss = graded_cpml_operands(
+        materials, aniso_eps, use_cpml=use_cpml,
+        use_debye=use_debye, use_lorentz=use_lorentz)
 
     # The per-cell arrays the step reads reach it through ``invariants`` so
     # that a jitted loop can pass them as an argument (_NUScanSetup). The
@@ -2762,7 +2748,8 @@ def _build_nu_scan(
         "pec_edge_masks": pec_edge_masks,
         "pec_occupancy": pec_occupancy,
         "pec_static_edge_masks": pec_static_edge_masks,
-        "cpml_inv_eps_r": _cpml_inv_eps_r if use_cpml else None,
+        "cpml_inv_eps_r": _cpml_inv_eps_r,
+        "e_loss": _cpml_loss,
         "debye_coeffs": debye_coeffs if use_debye else None,
         "lorentz_coeffs": lorentz_coeffs if use_lorentz else None,
         "aniso_eps": aniso_eps,
@@ -2873,9 +2860,9 @@ def _build_nu_scan(
         if use_cpml:
             st, cpml_new = apply_cpml_e(st, cpml_params, cpml_new,
                                          cpml_grid, cpml_axes_eff,
-                                         materials=materials,
+                                         materials=materials, e_loss=invariants["e_loss"],
                                          inv_eps_r_update=_cpml_inv_eps_r,
-                                         boundary=curl_boundary)
+                                         boundary=curl_boundary, debye=debye_coeffs, lorentz=lorentz_coeffs)
 
         # PEC, per face (#1164)
         st = apply_pec_faces(st, _pec_faces_frozen)

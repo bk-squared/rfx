@@ -652,7 +652,7 @@ def apply_cpml_e(
     state, cpml_params, cpml_state: CPMLState, grid,
     axes: str = "xyz", materials=None,  # per-cell eps_r for material-aware CPML (None = free-space)
     inv_eps_r_update=None,  # per-component 1/eps_r the E update itself used (#1043)
-    boundary=None, *, faces=ALL_FACES,
+    boundary=None, *, faces=ALL_FACES, e_loss=None, e_curl_coeff=None,
 ) -> tuple:
     """Apply slab-local CPML correction to the selected E-field faces.
 
@@ -673,8 +673,8 @@ def apply_cpml_e(
         subpixel-smoothing paths: ``1/aniso_eps`` for Stage 1
         (``update_e_aniso``) and ``aniso_inv_eps`` as-is for Stage 2
         (``update_e_aniso_inv``, where ``inv = 0`` is a frozen PEC cell and
-        correctly receives no psi correction). ``None`` keeps the
-        ``materials.eps_r`` coefficient and every byte with it.
+        correctly receives no psi correction). ``None`` uses
+        ``materials.eps_r`` for this permittivity factor.
 
         **Why this exists (#1043).** The E update in a CPML cell is assembled
         from two halves, and until this parameter they could take their
@@ -701,12 +701,14 @@ def apply_cpml_e(
         Kottke interface value while the staircase ``materials.eps_r`` at the
         same cell reads whichever side the sample point fell on.
 
-        NOT addressed here, and deliberately: ``update_e_aniso`` divides its
-        curl coefficient by ``(1 + sigma*dt/(2*eps))`` and the psi coefficient
-        below does not. That is a second inconsistency of the same family, it
-        is identically zero wherever the absorber pad is lossless (every
-        configuration measured for #1043), and no witness for it exists — so
-        it is recorded rather than silently changed.
+    The psi and kappa corrections use the E update's curl coefficient:
+    its per-component loss divides the historical coefficient, or the
+    Debye/mixed owner's ``e_curl_coeff`` overrides it.
+
+    e_loss : tuple of three arrays or None
+        The E update's per-component loss. Defaults to cell material loss.
+    e_curl_coeff : tuple of three arrays or None
+        The E update's dispersive curl coefficient; overrides all other inputs.
     """
     faces = selected_faces(axes, faces)
     n = grid.cpml_layers
@@ -752,6 +754,17 @@ def apply_cpml_e(
     else:
         _ce_ex = _ce_ey = _ce_ez = None
 
+    from rfx.boundaries.electric_coefficient import corrected_coefficient
+    from rfx.core.yee import e_coeffs_eps_r_units
+    if e_loss is None and e_curl_coeff is None and materials is not None:
+        if materials.sigma is not None:
+            if inv_eps_r_update is None:
+                loss, _ = e_coeffs_eps_r_units(materials.eps_r, materials.sigma, dt)
+                e_loss = (loss,) * 3
+            else:
+                e_loss = tuple(e_coeffs_eps_r_units(inv, materials.sigma, dt, inverse=True)[0]
+                               for inv in inv_eps_r_update)
+
     def _face(arr, axis: int, lo: bool):
         """Slice a per-component coefficient to one PML face region."""
         if arr is None:
@@ -761,6 +774,14 @@ def apply_cpml_e(
         if axis == 1:
             return arr[:, :n_y, :] if lo else arr[:, -n_y:, :]
         return arr[:, :, :n_z] if lo else arr[:, :, -n_z:]
+
+    if e_loss is not None or e_curl_coeff is not None:
+        _ce_ex, _ce_ey, _ce_ez = tuple(
+            corrected_coefficient(
+                _face(None, 0, True) if ce is None else ce,
+                None if e_loss is None else e_loss[c],
+                None if e_curl_coeff is None else e_curl_coeff[c])
+            for c, ce in enumerate((_ce_ex, _ce_ey, _ce_ez)))
 
     # Only the 12 (component, face) pairs the corrections below actually
     # write: x faces drive Ey/Ez, y faces drive Ex/Ez, z faces drive Ex/Ey.
