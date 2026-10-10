@@ -753,7 +753,6 @@ def test_c4_msl_port_f0_and_film_refused_in_sheet_context(graded, monkeypatch):
 
 
 def test_v2_material_shard_refuses_a_film():
-    from rfx.core.yee import MaterialArrays
     from rfx.runners.distributed_v2 import _shard_materials
     cells = jnp.ones((2, 2, 2), jnp.float32)
     film = (jnp.zeros((2, 2, 2), jnp.float32),) * 3
