@@ -1969,10 +1969,8 @@ def _make_step_fn(ctx):
         # === Coarse E update + boundary ===
         st_c = update_e(st_c, mats_c, dt, dx_c)
         if use_cpml:
-            from rfx.stepping.absorber import coarse_cpml_loss
             st_c, cpml_new = apply_cpml_e(st_c, cpml_params, cpml_new,
-                                           grid_c, cpml_axes, materials=mats_c,
-                                           e_loss=coarse_cpml_loss(mats_c, dt))
+                                           grid_c, cpml_axes, materials=mats_c)
         st_c = apply_pec(st_c)
         if use_pec_mask_c:
             # #931: ``apply_pec_mask`` IS the shared realization

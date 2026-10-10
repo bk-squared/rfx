@@ -124,10 +124,9 @@ def run_subgridded(
         st_f = update_h(st_f, mats_f, dt, dx_f)
 
         # === Coarse grid: E update + CPML + PEC ===
-        from rfx.stepping.absorber import coarse_cpml_loss
         st_c = update_e(st_c, mats_c, dt, dx_c)
         st_c, cpml_state = apply_cpml_e(st_c, cpml_params, cpml_state, grid_c, cpml_axes,
-                                        materials=mats_c, e_loss=coarse_cpml_loss(mats_c, dt))
+                                        materials=mats_c)
         st_c = apply_pec(st_c)
         if pec_mask_c is not None:
             # #931: ``apply_pec_mask`` IS the shared realization
