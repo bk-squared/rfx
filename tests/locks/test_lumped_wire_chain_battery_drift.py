@@ -35,10 +35,12 @@ LOCK_PROVENANCE = {
 }
 FAMILY = "lumped / wire internal TEM coax"
 DRIVER = "scripts/diagnostics/lumped_wire_chain_battery_measure.py"
-# The wire rows still run (weekly lane, ~100 s each while they diverge) so that the fix of
-# tracker 1549 shows up as an unexpected pass; they are not run before merge.
+# Tracker 1549 (conductors through the absorber grew) is fixed: the short, open and Zc/2 wire rows pass. The
+# 2*Zc and matched rows no longer diverge and miss their bars by a little at 25 um (2.31 dB against 2 dB at
+# 8.8 GHz; |Gamma_L| 0.102 against 0.1 at 10 GHz), cause undetermined: tracker 1614. They run in the weekly lane.
 WIRE_XFAIL = pytest.mark.xfail(
-    strict=True, raises=AssertionError, reason="conductors through the absorber grow at the cross-section's transverse resonance; #1549")
+    strict=True, raises=AssertionError,
+    reason="#1614 wire load-plane reflection misses the bar on the 2*Zc and matched loads at 25 um; cause undetermined")
 # The 2 dB magnitude bar is a statement about a converged mesh. For the 2*Zc row the one-cell
 # element inductance leaves 2.03 / 1.06 / 0.55 dB at 100 / 50 / 25 um (first order in dx), so
 # the always-on run of that row uses the 50 um mesh; the 100 um value is part of the slow
