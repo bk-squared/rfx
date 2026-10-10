@@ -167,18 +167,11 @@ jobs:
           RFX_S0_FULL: "1"
         run: >
           mkdir -p durations &&
+          cp .test_durations durations/weekly_${{ matrix.group }}.json &&
           pytest -v -ra -s
           -m "not gpu and not highmem and not docs_consistency"
           --splits 6 --group ${{ matrix.group }}
           --store-durations --durations-path durations/weekly_${{ matrix.group }}.json
-
-      - name: Upload weekly shard durations
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: weekly-durations-${{ matrix.group }}
-          path: durations/weekly_${{ matrix.group }}.json
-          if-no-files-found: warn
 
       - name: Run three-device x-wall alignment cases
         if: matrix.group == 1
@@ -194,10 +187,22 @@ jobs:
         if: always()
         # Tests are added daily: requiring zero unpriced tests would turn the lane
         # red every week. Time is the quantity that cancels a shard.
+        # pytest-split reads prices from and stores measurements to ONE file
+        # (--durations-path), so the test step seeds that file with .test_durations
+        # and --prune here keeps only what this shard measured, for the upload.
         run: >
           python scripts/ci/weekly_shard_budget.py --start "$SHARD_T0"
           --limit-minutes 180 --fraction 0.85
           --measured durations/weekly_${{ matrix.group }}.json --recorded .test_durations
+          --prune
+
+      - name: Upload weekly shard durations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-durations-${{ matrix.group }}
+          path: durations/weekly_${{ matrix.group }}.json
+          if-no-files-found: warn
 
   # The 7 `highmem`-marked tests, run SERIALLY in one job (no shard split, no
   # xdist) so only one multi-GB peak exists on the runner at a time -- see the

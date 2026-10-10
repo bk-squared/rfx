@@ -15,6 +15,11 @@ def main() -> int:
     parser.add_argument("--fraction", type=float, required=True)
     parser.add_argument("--measured", type=Path, required=True)
     parser.add_argument("--recorded", type=Path, required=True)
+    parser.add_argument(
+        "--prune",
+        action="store_true",
+        help="rewrite --measured keeping only entries that differ from --recorded",
+    )
     args = parser.parse_args()
 
     elapsed = time.time() - args.start
@@ -31,6 +36,14 @@ def main() -> int:
     else:
         recorded = json.loads(args.recorded.read_text(encoding="utf-8"))
         unpriced = len(measured.keys() - recorded.keys())
+        # The measured file starts as a copy of the recorded one (pytest-split
+        # reads and writes one path); what this shard ran is what changed.
+        ran = {k: v for k, v in measured.items() if recorded.get(k) != v}
+        print(f"tests this shard measured: {len(ran)}")
+        if args.prune:
+            args.measured.write_text(
+                json.dumps(ran, sort_keys=True, indent=4), encoding="utf-8"
+            )
     print(f"tests this shard ran with no recorded duration: {unpriced}")
 
     if elapsed > args.fraction * limit:

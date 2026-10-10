@@ -228,6 +228,11 @@ def test_weekly_stores_and_always_uploads_durations() -> None:
     step = _weekly_test_step(job)
     assert "--store-durations" in shlex.split(step["run"])
     assert "--durations-path durations/weekly_${{ matrix.group }}.json" in step["run"]
+    # pytest-split reads prices from the path it stores to: an unseeded path
+    # would price every test the same and undo the shard balance.
+    seed = "cp .test_durations durations/weekly_${{ matrix.group }}.json &&"
+    assert seed in step["run"]
+    assert step["run"].index(seed) < step["run"].index("pytest ")
     assert step["env"]["RFX_WEEKLY_RSS"] == "1"
     assert step["env"]["RFX_S0_FULL"] == "1"
     uploads = [s for s in job["steps"] if s.get("uses", "").startswith("actions/upload-artifact@")]
@@ -240,7 +245,9 @@ def test_weekly_stores_and_always_uploads_durations() -> None:
         "path": "durations/weekly_${{ matrix.group }}.json",
         "if-no-files-found": "warn",
     }
-    assert job["steps"].index(upload) > job["steps"].index(step)
+    budget = next(s for s in job["steps"] if s.get("name") == "Shard time against the job limit")
+    assert job["steps"][-1] is upload
+    assert job["steps"].index(upload) == job["steps"].index(budget) + 1
     regen_steps = _workflow("regen-durations.yml")["jobs"]["slow"]["steps"]
     assert any(s.get("uses") == upload["uses"] for s in regen_steps)
 
@@ -252,12 +259,12 @@ def test_weekly_records_start_immediately_after_checkout() -> None:
     assert "if" not in steps[1]
 
 
-def test_weekly_budget_is_last_always_and_matches_job_limit() -> None:
+def test_weekly_budget_is_always_after_the_tests_and_matches_job_limit() -> None:
     job = _workflow("validation.yml")["jobs"]["slow-tests"]
     checks = [s for s in job["steps"] if s.get("name") == "Shard time against the job limit"]
     assert len(checks) == 1
     step = checks[0]
-    assert job["steps"][-1] is step
+    assert job["steps"].index(step) == len(job["steps"]) - 2
     assert step["if"] == "always()"
     # Resolve only the matrix expression so shell argument parsing sees one path.
     args = shlex.split(step["run"].replace("${{ matrix.group }}", "1"))
@@ -265,21 +272,25 @@ def test_weekly_budget_is_last_always_and_matches_job_limit() -> None:
         "python", "scripts/ci/weekly_shard_budget.py", "--start", "$SHARD_T0",
         "--limit-minutes", "180", "--fraction", "0.85",
         "--measured", "durations/weekly_1.json", "--recorded", ".test_durations",
+        "--prune",
     ]
     assert int(args[args.index("--limit-minutes") + 1]) == job["timeout-minutes"]
 
 
-def _run_weekly_budget(tmp_path: Path, elapsed: int, *, measured: bool = True) -> subprocess.CompletedProcess[str]:
+def _run_weekly_budget(
+    tmp_path: Path, elapsed: int, *, measured: bool = True, prune: bool = False
+) -> subprocess.CompletedProcess[str]:
     recorded_path = tmp_path / "recorded.json"
     measured_path = tmp_path / "measured.json"
     recorded_path.write_text(json.dumps({"known": 10, "not-run": 20}), encoding="utf-8")
     if measured:
-        measured_path.write_text(json.dumps({"known": 12, "new": 7}), encoding="utf-8")
+        # As the weekly step leaves it: the recorded file, with what ran overwritten.
+        measured_path.write_text(json.dumps({"known": 12, "not-run": 20, "new": 7}), encoding="utf-8")
     return subprocess.run(
         [sys.executable, str(REPO_ROOT / "scripts/ci/weekly_shard_budget.py"),
          "--start", str(time.time() - elapsed), "--limit-minutes", "180",
          "--fraction", "0.85", "--measured", str(measured_path),
-         "--recorded", str(recorded_path)],
+         "--recorded", str(recorded_path), *(["--prune"] if prune else [])],
         capture_output=True, text=True, timeout=10, check=False,
     )
 
@@ -311,3 +322,13 @@ def test_weekly_budget_reports_unpriced_count_without_failing(tmp_path: Path) ->
     result = _run_weekly_budget(tmp_path, 7000)
     assert result.returncode == 0, result.stdout + result.stderr
     assert "tests this shard ran with no recorded duration: 1" in result.stdout.splitlines()
+
+
+def test_weekly_budget_prunes_the_upload_to_what_the_shard_measured(tmp_path: Path) -> None:
+    result = _run_weekly_budget(tmp_path, 7000, prune=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "tests this shard measured: 2" in result.stdout.splitlines()
+    assert json.loads((tmp_path / "measured.json").read_text(encoding="utf-8")) == {"known": 12, "new": 7}
+    untouched = _run_weekly_budget(tmp_path, 7000)
+    assert untouched.returncode == 0
+    assert json.loads((tmp_path / "measured.json").read_text(encoding="utf-8")) == {"known": 12, "not-run": 20, "new": 7}
