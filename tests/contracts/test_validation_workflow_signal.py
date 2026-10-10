@@ -31,6 +31,8 @@ reddening anything:
    lane loses their results.
 7. ``regen-durations.yml``'s ``slow`` job installs and selects what ``slow-tests``
    does, so the prices it measures are for the tests those shards actually run.
+8. Six weekly shards store and upload their durations, record their start after
+   checkout, and finish with an always-run check against 85 % of the job limit.
 
 The tests parse the workflow instead of grepping it, so reformatting the file
 cannot fool them. They run on every scheduled lane that carries this notifier:
@@ -40,7 +42,12 @@ the monthly ``crossval-ladder.yml``.
 
 from __future__ import annotations
 
+import json
 import re
+import shlex
+import subprocess
+import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -195,3 +202,158 @@ def test_the_durations_regeneration_prices_what_the_slow_shards_run() -> None:
     for name, lane in (("validation slow-tests", weekly), ("regen-durations slow", regen)):
         assert lane["splits"] == len(lane["groups"]), f"{name}: --splits {lane['splits']} but groups {lane['groups']}"
     assert regen == weekly, f"regen-durations slow {regen} != validation slow-tests {weekly}"
+
+
+def _weekly_test_step(job: dict[str, Any]) -> dict[str, Any]:
+    steps = [step for step in job["steps"] if "--splits" in step.get("run", "")]
+    assert len(steps) == 1
+    return steps[0]
+
+
+def test_weekly_uses_six_shards() -> None:
+    job = _workflow("validation.yml")["jobs"]["slow-tests"]
+    assert job["strategy"]["matrix"]["group"] == [1, 2, 3, 4, 5, 6]
+    assert _slow_shards(job)["splits"] == 6
+    step = _weekly_test_step(job)
+    assert step["name"] == "Run slow suite — shard ${{ matrix.group }} of 6"
+    assert "--group ${{ matrix.group }}" in step["run"]
+    three_device = next(s for s in job["steps"] if s.get("name") == "Run three-device x-wall alignment cases")
+    assert three_device["if"] == "matrix.group == 1"
+    assert job["timeout-minutes"] == 180
+    assert _workflow("regen-durations.yml")["jobs"]["slow"]["timeout-minutes"] == 360
+
+
+def test_weekly_stores_and_always_uploads_durations() -> None:
+    job = _workflow("validation.yml")["jobs"]["slow-tests"]
+    step = _weekly_test_step(job)
+    assert "--store-durations" in shlex.split(step["run"])
+    assert "--durations-path durations/weekly_${{ matrix.group }}.json" in step["run"]
+    # pytest-split reads prices from the path it stores to: an unseeded path
+    # would price every test the same and undo the shard balance.
+    assert "|| true" not in step["run"], "a failing test must turn the weekly shard red"
+    seed = "cp .test_durations durations/weekly_${{ matrix.group }}.json &&"
+    assert seed in step["run"]
+    assert step["run"].index(seed) < step["run"].index("pytest ")
+    assert step["env"]["RFX_WEEKLY_RSS"] == "1"
+    assert step["env"]["RFX_S0_FULL"] == "1"
+    uploads = [s for s in job["steps"] if s.get("uses", "").startswith("actions/upload-artifact@")]
+    assert len(uploads) == 1
+    upload = uploads[0]
+    assert upload["if"] == "always()"
+    assert upload["uses"] == "actions/upload-artifact@v4"
+    assert upload["with"] == {
+        "name": "weekly-durations-${{ matrix.group }}",
+        "path": "durations/weekly_${{ matrix.group }}.json",
+        "if-no-files-found": "warn",
+    }
+    budget = next(s for s in job["steps"] if s.get("name") == "Shard time against the job limit")
+    assert job["steps"][-1] is upload
+    assert job["steps"].index(upload) == job["steps"].index(budget) + 1
+    regen_steps = _workflow("regen-durations.yml")["jobs"]["slow"]["steps"]
+    assert any(s.get("uses") == upload["uses"] for s in regen_steps)
+
+
+def test_weekly_records_start_immediately_after_checkout() -> None:
+    steps = _workflow("validation.yml")["jobs"]["slow-tests"]["steps"]
+    assert steps[0]["uses"] == "actions/checkout@v4"
+    assert steps[1]["run"] == 'echo "SHARD_T0=$(date +%s)" >> "$GITHUB_ENV"'
+    assert "if" not in steps[1]
+
+
+def test_weekly_budget_is_always_after_the_tests_and_matches_job_limit() -> None:
+    job = _workflow("validation.yml")["jobs"]["slow-tests"]
+    checks = [s for s in job["steps"] if s.get("name") == "Shard time against the job limit"]
+    assert len(checks) == 1
+    step = checks[0]
+    assert job["steps"].index(step) == len(job["steps"]) - 2
+    assert step["if"] == "always()"
+    assert "continue-on-error" not in step and "continue-on-error" not in job
+    # Resolve only the matrix expression so shell argument parsing sees one path.
+    args = shlex.split(step["run"].replace("${{ matrix.group }}", "1"))
+    assert args == [
+        "python", "scripts/ci/weekly_shard_budget.py", "--start", "$SHARD_T0",
+        "--limit-minutes", "180", "--fraction", "0.85",
+        "--measured", "durations/weekly_1.json", "--recorded", ".test_durations",
+        "--prune",
+    ]
+    assert int(args[args.index("--limit-minutes") + 1]) == job["timeout-minutes"]
+
+
+def _run_weekly_budget(
+    tmp_path: Path, elapsed: int, *, measured: bool = True, prune: bool = False
+) -> subprocess.CompletedProcess[str]:
+    recorded_path = tmp_path / "recorded.json"
+    measured_path = tmp_path / "measured.json"
+    recorded_path.write_text(json.dumps({"known": 10, "not-run": 20}), encoding="utf-8")
+    if measured:
+        # As the weekly step leaves it: the recorded file, with what ran overwritten.
+        measured_path.write_text(json.dumps({"known": 12, "not-run": 20, "new": 7}), encoding="utf-8")
+    return subprocess.run(
+        [sys.executable, str(REPO_ROOT / "scripts/ci/weekly_shard_budget.py"),
+         "--start", str(time.time() - elapsed), "--limit-minutes", "180",
+         "--fraction", "0.85", "--measured", str(measured_path),
+         "--recorded", str(recorded_path), *(["--prune"] if prune else [])],
+        capture_output=True, text=True, timeout=10, check=False,
+    )
+
+
+def test_weekly_budget_under_limit(tmp_path: Path) -> None:
+    result = _run_weekly_budget(tmp_path, 7000)
+    assert result.returncode == 0, result.stdout + result.stderr
+    # The clock keeps running while the subprocess starts: compare with a tolerance.
+    m = re.search(r"shard wall time: ([\d.]+) min of a 180 min limit \(([\d.]+) %\)", result.stdout)
+    assert m, result.stdout
+    assert abs(float(m.group(1)) - 7000 / 60) < 0.5 and abs(float(m.group(2)) - 7000 / 108) < 0.5
+    assert "FAIL:" not in result.stdout
+
+
+def test_weekly_budget_over_85_percent(tmp_path: Path) -> None:
+    result = _run_weekly_budget(tmp_path, 9300)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert (
+        "FAIL: shard used more than 85 % of its job limit — add a weekly shard or "
+        "regenerate .test_durations (scripts/ci/DURATIONS.md)"
+    ) in result.stdout.splitlines()
+
+
+def test_weekly_budget_missing_measured_file(tmp_path: Path) -> None:
+    result = _run_weekly_budget(tmp_path, 7000, measured=False)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "measured durations file missing" in result.stdout.splitlines()
+    assert "tests this shard ran with no recorded duration: unknown" in result.stdout.splitlines()
+
+
+def test_weekly_budget_reports_unpriced_count_without_failing(tmp_path: Path) -> None:
+    result = _run_weekly_budget(tmp_path, 7000)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "tests this shard ran with no recorded duration: 1" in result.stdout.splitlines()
+
+
+def test_weekly_budget_prunes_the_upload_to_what_the_shard_measured(tmp_path: Path) -> None:
+    result = _run_weekly_budget(tmp_path, 7000, prune=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "tests this shard measured: 2" in result.stdout.splitlines()
+    assert json.loads((tmp_path / "measured.json").read_text(encoding="utf-8")) == {"known": 12, "new": 7}
+    untouched = _run_weekly_budget(tmp_path, 7000)
+    assert untouched.returncode == 0
+    assert json.loads((tmp_path / "measured.json").read_text(encoding="utf-8")) == {"known": 12, "not-run": 20, "new": 7}
+
+
+def test_weekly_budget_prunes_also_when_the_shard_is_over_budget(tmp_path: Path) -> None:
+    # An over-budget shard still uploads; an unpruned file would carry the old
+    # prices of every other shard's tests into the next merge.
+    result = _run_weekly_budget(tmp_path, 9300, prune=True)
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert json.loads((tmp_path / "measured.json").read_text(encoding="utf-8")) == {"known": 12, "new": 7}
+
+
+def test_weekly_budget_survives_a_truncated_measured_file(tmp_path: Path) -> None:
+    (tmp_path / "recorded.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "measured.json").write_text('{"known": 1', encoding="utf-8")
+    args = [sys.executable, str(REPO_ROOT / "scripts/ci/weekly_shard_budget.py"),
+            "--limit-minutes", "180", "--fraction", "0.85", "--prune",
+            "--measured", str(tmp_path / "measured.json"), "--recorded", str(tmp_path / "recorded.json")]
+    under = subprocess.run([*args, "--start", str(time.time() - 7000)], capture_output=True, text=True, timeout=10, check=False)
+    over = subprocess.run([*args, "--start", str(time.time() - 9300)], capture_output=True, text=True, timeout=10, check=False)
+    assert (under.returncode, over.returncode) == (0, 1), under.stdout + under.stderr + over.stdout + over.stderr
+    assert "measured durations file unreadable" in under.stdout.splitlines()

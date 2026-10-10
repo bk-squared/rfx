@@ -170,6 +170,15 @@ carried. When regenerating, do not overwrite this one from the a6000 map.
 
 ## Regenerating
 
+Each weekly run uploads `weekly-durations-N` artifacts measured on the weekly
+selection; merge them as slow inputs using the existing procedure below. A shard
+using more than 85 % of its 180-minute job limit fails its final budget check:
+add a weekly shard or regenerate `.test_durations`. Unpriced test counts are
+reported without failing the check.
+pytest-split reads prices from and stores measurements to one file, so the
+weekly step seeds that file with `.test_durations` and the budget check prunes
+it to the entries the shard measured before the upload.
+
 1. Dispatch `.github/workflows/regen-durations.yml` and download the artifacts.
 2. `python scripts/ci/merge_test_durations.py .test_durations <slow shards...> <fast shards...>`.
    Later inputs win: slow first, fast last — the required lane must be priced by its own runs.
