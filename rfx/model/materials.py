@@ -459,6 +459,9 @@ def assemble_cells(
     if not nonuniform:
         refuse_vaporized_sheets(_pec_sheets, lane=lane, periodic=sim._periodic_flags())
     warn_unextendable_shapes(conductor_findings)
+    from rfx.model.pole_stability import courant_budget, refuse_unstable_cells
+    refuse_unstable_cells(materials, lorentz_spec, grid.dt, courant_budget(grid),
+                          grid_kind=type(grid).__name__)
     return materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, boundary_pec_shapes, kerr_chi3
 
 
@@ -716,7 +719,7 @@ def _realize_poles(spec, periodic, kind, grid, shape, *, cell_sizes=None):
     return ComponentDispersion(tuple(poles), build(poles, grid.dt, shape, weights), None, grid.dt)
 
 
-def realize_components(cells, grid, *, periodic):
+def realize_components(cells, grid, *, periodic, dt=None, budget=None, grid_kind="Grid"):
     """Realize final cells once, using the existing E/pole and H rules.
 
     ``cells`` is a MaterialArrays or ComponentCells with dispersion specs.
@@ -728,6 +731,11 @@ def realize_components(cells, grid, *, periodic):
         materials, debye_spec, lorentz_spec = cells
     else:
         materials, debye_spec, lorentz_spec = cells, None, None
+    from rfx.model.pole_stability import courant_budget, refuse_unstable_cells
+    if lorentz_spec is not None and (grid is not None or budget is not None):
+        refuse_unstable_cells(materials, lorentz_spec, grid.dt if grid is not None else dt,
+                              courant_budget(grid) if grid is not None else budget,
+                              grid_kind=type(grid).__name__ if grid is not None else grid_kind)
     # A cells view never contains another realization.
     materials = materials._replace(components=None)
     eps_lumped = lumped_components(materials.eps_r_lumped)
@@ -758,7 +766,8 @@ def realize_components(cells, grid, *, periodic):
         materials, tuple(periodic), _grid_key(grid))
 
 
-def with_components(materials, grid, *, periodic, debye_spec=None, lorentz_spec=None):
+def with_components(materials, grid, *, periodic, debye_spec=None, lorentz_spec=None,
+                    dt=None, budget=None, grid_kind="Grid"):
     """Attach one realization after the last cell/stamp write, or reuse it.
 
     Callers must not modify the cells after this boundary. Raw low-level
@@ -768,7 +777,8 @@ def with_components(materials, grid, *, periodic, debye_spec=None, lorentz_spec=
         validate_components(materials, periodic=periodic, grid=grid)
         return materials
     components = realize_components(
-        ComponentCells(materials, debye_spec, lorentz_spec), grid, periodic=periodic)
+        ComponentCells(materials, debye_spec, lorentz_spec), grid, periodic=periodic,
+        **({} if budget is None else dict(dt=dt, budget=budget, grid_kind=grid_kind)))
     return materials._replace(components=components)
 
 

@@ -215,6 +215,9 @@ def init_lorentz(
     mask: jnp.ndarray | list[jnp.ndarray] | tuple[jnp.ndarray, ...] | None = None,
     *,
     field_dtype=None,
+    budget=None,
+    grid_kind="Grid",
+    grid=None,
     periodic=(False, False, False),
 ) -> tuple[LorentzCoeffs, LorentzState]:
     """Initialize Lorentz/Drude ADE coefficients and state.
@@ -248,8 +251,11 @@ def init_lorentz(
     n_poles = len(poles)
 
     from rfx.model.materials import validate_dispersion, with_components
+    if grid is not None:
+        from rfx.model.pole_stability import courant_budget
+        budget, grid_kind = courant_budget(grid), type(grid).__name__
     components = with_components(materials, None, periodic=periodic,
-        lorentz_spec=(poles, mask)).components
+        lorentz_spec=(poles, mask), dt=dt, budget=budget, grid_kind=grid_kind).components
     eps_c, sig_c = components.eps_update, components.sigma_update
     realized = components.lorentz
     if realized is None or len(realized.poles) != n_poles:

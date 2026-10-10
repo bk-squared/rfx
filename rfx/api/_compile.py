@@ -132,6 +132,8 @@ class _CompileMixin:
         lorentz_spec: _LorentzSpec | None,
         *,
         field_dtype=None,
+        budget=None,
+        grid_kind="Grid",
         periodic=(False, False, False),
     ) -> tuple[MaterialArrays, tuple | None, tuple | None]:
         """Initialize Debye/Lorentz coefficients for the given materials.
@@ -155,7 +157,8 @@ class _CompileMixin:
         if lorentz_spec is not None:
             lorentz_poles, lorentz_masks = lorentz_spec
             lorentz = init_lorentz(lorentz_poles, materials, dt, mask=lorentz_masks,
-                                   field_dtype=field_dtype, periodic=periodic)
+                                   field_dtype=field_dtype, periodic=periodic,
+                                   budget=budget, grid_kind=grid_kind)
 
         return materials, debye, lorentz
 

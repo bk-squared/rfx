@@ -643,8 +643,9 @@ def compute_waveguide_s_matrix(
 
     if n_steps is None:
         n_steps = grid.num_timesteps(num_periods=num_periods)
+    from rfx.model.pole_stability import courant_budget
     _, debye, lorentz = self._init_dispersion(
-        materials, grid.dt, debye_spec, lorentz_spec,
+        materials, grid.dt, debye_spec, lorentz_spec, budget=courant_budget(grid),
         periodic=self._periodic_flags())
 
     # Build configs — may be a single config or a list of configs per port
