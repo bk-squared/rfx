@@ -1709,7 +1709,7 @@ def _apply_cpml_e_distributed(
     state, cpml_params, cpml_state, n_cpml, dt, dx,
     n_devices, ghost=1, axis_name="devices", eps_r=None, pad_x: int = 0,
     separate_x_terms: bool = False,
-    *, rank=None, e_loss=None, e_curl_coeff=None,
+    *, rank=None, e_loss=None, e_curl_coeff=None, e_sigma=None,
 ):
     """Apply CPML E-field correction on a distributed slab.
 
@@ -1748,6 +1748,9 @@ def _apply_cpml_e_distributed(
         models (#1260). ``None`` falls back to
         the vacuum scalar ``dt / eps_0`` (bit-identical to the pre-#205
         behaviour).
+    e_sigma : tuple of three arrays or None
+        Component conductivity means, sliced before forming face-sized loss.
+        Plain and Lorentz uniform runs use these existing CPML operands.
     e_loss : tuple of three arrays or None
         Loss from the E update's component epsilon and conductivity.
         Each array has the field slab's layout, including ghost rows.
@@ -1759,7 +1762,7 @@ def _apply_cpml_e_distributed(
         Overrides epsilon and loss on every component and face.
         The mixed model supplies its combined coefficient, not Lorentz.cb.
         The arrays use the same slab and ghost layout as ``e_loss``.
-        Lorentz-only models use ``e_loss`` because poles do not enter Cb.
+        Lorentz-only models use conductivity loss because poles do not enter Cb.
         Both inputs default to None for callers representing lossless media.
     pad_x : int
         Number of alignment-pad cells appended to the high-x end of the
@@ -1793,7 +1796,8 @@ def _apply_cpml_e_distributed(
     (ce_ey_xlo, ce_ey_xhi, ce_ez_xlo, ce_ez_xhi,
      ce_ex_ylo, ce_ex_yhi, ce_ez_ylo, ce_ez_yhi,
      ce_ex_zlo, ce_ex_zhi, ce_ey_zlo, ce_ey_zhi) = slab_face_coefficients(
-        eps_r, dt, cpml_state, ghost, pad_x, e_loss=e_loss, e_curl_coeff=e_curl_coeff)
+        eps_r, dt, cpml_state, ghost, pad_x,
+        e_loss=e_loss, e_curl_coeff=e_curl_coeff, e_sigma=e_sigma)
 
     px_lo, px_hi = cpml_params.x_lo, cpml_params.x_hi
     py_lo, py_hi = cpml_params.y_lo, cpml_params.y_hi

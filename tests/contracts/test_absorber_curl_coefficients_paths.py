@@ -8,7 +8,7 @@ import pytest
 
 from rfx.core.yee import EPS_0
 from tests.contracts.test_absorber_curl_coefficients import (
-    LOSSLESS_BITS, coefficient_scene, edge_mean, ulps,
+    LOSSLESS_BITS, coefficient_scene, coefficient_ulp_bar, edge_mean, ulps,
 )
 
 
@@ -110,5 +110,5 @@ def test_distributed_face_uses_owner_coefficient(monkeypatch, owner, lane, face,
     record_property('judge2', json.dumps(dict(owner=owner, lane=lane, face=face, components=values)))
     print(lane, face, owner, json.dumps(values))
     for value in values:
-        assert value['formula_ulps'] <= 2, f'{lane}/{face}/{owner} component {value["component"]}: written Cb formula {value["formula_ulps"]} float32 ULP'
+        assert value['formula_ulps'] <= coefficient_ulp_bar(owner), f'{lane}/{face}/{owner} component {value["component"]}: written Cb formula {value["formula_ulps"]} float32 ULP'
         assert value['lossless_bits'] == LOSSLESS_BITS[value['component']]

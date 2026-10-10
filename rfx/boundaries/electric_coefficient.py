@@ -56,7 +56,7 @@ def corrected_coefficient(today, loss=None, curl=None):
     return (today / (1.0 + loss)).astype(jnp.asarray(today).dtype)
 
 
-def face_coefficient(eps, dt, component, index, e_loss=None, e_curl_coeff=None):
+def face_coefficient(eps, dt, component, index, e_loss=None, e_curl_coeff=None, e_sigma=None):
     """Distributed face-sized coefficient, retaining its historical SI bits."""
     from rfx.boundaries.cpml import _ce_si, _ce_eps_r
     from rfx.core.yee import si_value_eps_r_grad
@@ -64,13 +64,18 @@ def face_coefficient(eps, dt, component, index, e_loss=None, e_curl_coeff=None):
     today = (dt / EPS_0 if eps is None else
              si_value_eps_r_grad(_ce_si, _ce_eps_r, eps[index], dt))
     loss = None if e_loss is None else e_loss[component][index]
+    if e_loss is None and e_curl_coeff is None and e_sigma is not None:
+        # Slice first: the uniform CPML shard holds face-sized loss terms,
+        # formed by the same Yee function from its existing component means.
+        loss = loss_terms(((eps[index],), (e_sigma[component][index],)), dt)[0]
     curl = None if e_curl_coeff is None else e_curl_coeff[component][index]
     return corrected_coefficient(today, loss, curl)
 
 
-def slab_face_coefficients(eps_r, dt, psi, ghost, pad_x, *, e_loss=None, e_curl_coeff=None):
+def slab_face_coefficients(eps_r, dt, psi, ghost, pad_x, *,
+                           e_loss=None, e_curl_coeff=None, e_sigma=None):
     """The twelve face/component coefficients of either distributed copy."""
-    if eps_r is None and e_loss is None and e_curl_coeff is None:
+    if eps_r is None and e_loss is None and e_curl_coeff is None and e_sigma is None:
         from rfx.runners._distributed_common import cpml_coeff_e_vacuum
         return (cpml_coeff_e_vacuum(dt),) * 12
     eps = tuple(eps_r) if isinstance(eps_r, (tuple, list)) else (eps_r,) * 3
@@ -86,5 +91,5 @@ def slab_face_coefficients(eps_r, dt, psi, ghost, pad_x, *, e_loss=None, e_curl_
              (2, (all_, slice(None, nylo))), (2, (all_, slice(-nyhi, None))),
              (0, (all_, all_, slice(None, nzlo))), (0, (all_, all_, slice(-nzhi, None))),
              (1, (all_, all_, slice(None, nzlo))), (1, (all_, all_, slice(-nzhi, None))))
-    return tuple(face_coefficient(eps[c], dt, c, index, e_loss, e_curl_coeff)
+    return tuple(face_coefficient(eps[c], dt, c, index, e_loss, e_curl_coeff, e_sigma)
                  for c, index in pairs)

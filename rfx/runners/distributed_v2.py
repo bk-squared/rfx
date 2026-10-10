@@ -194,7 +194,8 @@ _apply_pmc_shmap = apply_pmc_face_shmap
 
 def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
                          mesh, n_devices, ghost=1, materials=None, pad_x=0,
-                         e_slab=None, e_materials=None, separate_x_terms=False, *, ranks, e_loss=None, e_curl_coeff=None):
+                         e_slab=None, e_materials=None, separate_x_terms=False,
+                         *, ranks, e_curl_coeff=None):
     """Apply CPML E-field correction using shard_map.
 
     ``materials`` (the x-sharded :class:`MaterialArrays`) is a READ-ONLY
@@ -232,7 +233,7 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
             P("x"), P("x"), P("x"), P("x"),  # ex_zlo/zhi, ey_zlo/zhi
             P("x"),  # materials (read-only, material-aware coefficient)
             P("x"),  # precomputed component means, if supplied
-            P("x"), P("x"),  # in-loop loss and curl coefficient
+            P("x"),  # in-loop dispersive curl coefficient; no slab-sized loss
         ),
         out_specs=(
             P("x"), P("x"), P("x"),           # ex, ey, ez
@@ -246,16 +247,14 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
                 psi_ey_xlo, psi_ey_xhi, psi_ez_xlo, psi_ez_xhi,
                 psi_ex_ylo, psi_ex_yhi, psi_ez_ylo, psi_ez_yhi,
                 psi_ex_zlo, psi_ex_zhi, psi_ey_zlo, psi_ey_zhi,
-                mat_slab, means, loss, curl, *, rank):
+                mat_slab, means, curl, *, rank):
         # Reconstruct minimal state and cpml_state objects
         from rfx.core.yee import FDTDState as _FS
         _st = _FS(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz, step=jnp.int32(0))
-        if mat_slab is None:
-            eps_r_slab = None
-        elif means is not None:
-            eps_r_slab = means[0]
-        else:
-            eps_r_slab = slab_e_component_materials(mat_slab, *e_slab, rank=rank)[0]
+        if mat_slab is not None and means is None:
+            means = slab_e_component_materials(mat_slab, *e_slab, rank=rank)
+        eps_r_slab = None if means is None else means[0]
+        sigma_slab = None if means is None else means[1]
         _cs = cpml_state._replace(
             psi_ey_xlo=psi_ey_xlo, psi_ey_xhi=psi_ey_xhi,
             psi_ez_xlo=psi_ez_xlo, psi_ez_xhi=psi_ez_xhi,
@@ -268,7 +267,7 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
             _st, cpml_params, _cs, n_cpml, dt, dx,
             n_devices, ghost=ghost, axis_name="x", eps_r=eps_r_slab,
             pad_x=pad_x, separate_x_terms=separate_x_terms, rank=rank,
-            e_loss=loss, e_curl_coeff=curl)
+            e_sigma=sigma_slab, e_curl_coeff=curl)
         return (
             new_st.ex, new_st.ey, new_st.ez,
             new_cs.psi_ey_xlo, new_cs.psi_ey_xhi,
@@ -291,7 +290,7 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
         cpml_state.psi_ez_ylo, cpml_state.psi_ez_yhi,
         cpml_state.psi_ex_zlo, cpml_state.psi_ex_zhi,
         cpml_state.psi_ey_zlo, cpml_state.psi_ey_zhi,
-        materials, e_materials, e_loss, e_curl_coeff,
+        materials, e_materials, e_curl_coeff,
     )
     new_state = state._replace(ex=ex, ey=ey, ez=ez)
     new_cpml = cpml_state._replace(
@@ -1107,7 +1106,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
                 P("x"), P("x"), P("x"),        # new debye px, py, pz
                 P("x"), P("x"), P("x"),        # new lorentz px, py, pz
                 P("x"), P("x"), P("x"),        # new lorentz px_prev, py_prev, pz_prev
-                P("x"),                         # in-loop absorber operands
+                P("x"),                         # in-loop dispersive curl coefficient
             ),
             check_rep=False,
         )
@@ -1240,7 +1239,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
             pad_x=pad_x,
             e_slab=(nx_per, nx), e_materials=e_materials,
             separate_x_terms=has_debye or has_lorentz, ranks=ranks,
-            e_loss=absorber[0], e_curl_coeff=absorber[1])
+            e_curl_coeff=absorber)
 
         st = _inject_sources_shmap(st, src_vals, ranks=ranks)
 
