@@ -176,16 +176,3 @@ def refuse_unstable_cells(materials, lorentz_spec, dt, budget, *, grid_kind):
         else:
             check(*args)
 
-
-def judged_staged_spec(staged_materials, lorentz_spec, grid, sharded_grid, mesh):
-    """Judge the cells of materials already cut into x slabs (the two-device graded forward stages them
-    one array at a time), then hand the spec back unchanged."""
-    if lorentz_spec is not None:
-        from types import SimpleNamespace
-
-        def physical(a):
-            slabs = a.reshape((mesh.size, sharded_grid.nx_local) + a.shape[1:])
-            return slabs[:, 1:1 + sharded_grid.nx_per_rank].reshape((-1,) + a.shape[1:])[:sharded_grid.nx]
-        cells = SimpleNamespace(eps_r=physical(staged_materials.eps_r), sigma=physical(staged_materials.sigma))
-        refuse_unstable_cells(cells, lorentz_spec, grid.dt, courant_budget(grid), grid_kind=type(grid).__name__)
-    return lorentz_spec

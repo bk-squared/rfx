@@ -130,7 +130,8 @@ returned non-finite fields: 0.5 % above the limit a filled box was non-finite at
 the excitation after 1000 steps, so only a run of a few hundred steps could return a finite, contaminated field.
 The limit is that of a medium several cells wide; a body one cell thick is stable somewhat above it and is
 refused all the same. Debye poles in the same medium are not part of the check, and the low-level `run()`
-functions that are handed prebuilt Lorentz coefficients are not checked.
+functions that are handed prebuilt Lorentz coefficients are not checked. On the two-device graded path a
+permittivity or conductivity override is not judged either (the declared model is).
 
 ## Ports and extraction
 

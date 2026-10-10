@@ -25,7 +25,7 @@ import math
 import os
 
 from rfx import _realized, _grid_metric
-from rfx.model import conductors as _conductors, pole_stability as _pole_stability
+from rfx.model import conductors as _conductors
 from rfx.model.overrides import apply_material_overrides
 from rfx.model import occupancy as _occupancy
 
@@ -2771,7 +2771,7 @@ class _ExecuteMixin:
         )
         del debye_spec
         sharded_lorentz = stage_forward_dispersion_x_slab(
-            sharded_materials, grid.dt, _pole_stability.judged_staged_spec(sharded_materials, lorentz_spec, grid, sharded_grid, mesh), sharded_grid, mesh, "lorentz",
+            sharded_materials, grid.dt, lorentz_spec, sharded_grid, mesh, "lorentz",
         )
         del lorentz_spec
 

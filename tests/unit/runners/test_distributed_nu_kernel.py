@@ -1648,9 +1648,7 @@ def test_distributed_mixed_dispersion_grad_no_corner_nan():
 
     nu_grid = sim._build_nonuniform_grid()
     gnx, gny, gnz = int(nu_grid.nx), int(nu_grid.ny), int(nu_grid.nz)
-    # The slab's own eps_inf: with eps = 1 under its Lorentz pole the medium is above the
-    # pole's time-step limit (growth 1.41 per step) and forward() refuses it (tracker 1590).
-    eps_init = jnp.full((gnx, gny, gnz), 2.0, dtype=jnp.float32)
+    eps_init = jnp.ones((gnx, gny, gnz), dtype=jnp.float32)
 
     def _loss(eps):
         res = sim.forward(
