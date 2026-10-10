@@ -82,12 +82,20 @@ SHIPPED_2D = {"aux_n_cpml": 30, "aux_cpml_order": 4, "aux_cpml_kappa_max": 7.0,
 
 # MEASURED maxima of the DECLARED absorber (n = 200, R_asym = 1e-28, re-derived at
 # 82 deg -- see the module comment) at the FAST rig. Reproduced by the gate below to
-# 5 %; the bar is derived from the measurement through gate_from_envelope, so widening
+# 5 % (except a row marked "floor"); the bar is derived from the measurement through gate_from_envelope, so widening
 # it means editing a shared, reviewer-visible object rather than a local literal (#528).
 FAST_MEASURED = {
     # 6.4413e-06 -> 3.7855e-07;
     # #1234: the auxiliary H profile at the Yee half cell.
-    0.0:  {"max": 3.7855e-07, "quantum": 1e7},
+    # The 0-degree reading is the instrument's floor, not the absorber (measured 2026-10-11,
+    # Apple silicon, CPU, main 63a8f79b4): it is of the order of the fit residual (3.36e-07
+    # against 2.98e-07), it does not follow the absorber depth from 200 down to 50 cells
+    # (3.3e-07 .. 3.9e-07), and it moves with the rounding path -- 3.7855e-07 as pinned,
+    # 3.3575e-07 on Apple silicon at the pinning commit dce96837e and at main alike (the
+    # code did not drift), 3.71e-07 with x64 enabled, 4.12e-07 with a longer record. A real
+    # reflection shows: 30 cells read 1.5e-06, R_asymptotic 1e-6 reads 6.6e-07. So this
+    # row ("floor") is held to its bar only and is not reproduced to 5 %.
+    0.0:  {"max": 3.7855e-07, "quantum": 1e7, "floor": True},
     # 7.8540e-05 -> 7.5787e-05;
     # #1234: the auxiliary H profile at the Yee half cell.
     30.0: {"max": 7.5787e-05, "quantum": 1e6},
@@ -231,7 +239,8 @@ def test_the_declared_absorber_meets_its_bar(theta_deg):
     assert r["fit_resid_max"] < FIT_RESID_LIMIT, (
         f"the rig did not resolve {theta_deg} deg (residual "
         f"{r['fit_resid_max']:.2e}); its |B/A| is not a measurement")
-    assert r["max"] == pytest.approx(m["max"], rel=0.05)
+    if not m.get("floor"):
+        assert r["max"] == pytest.approx(m["max"], rel=0.05)
     assert r["max"] <= bar(m["max"], m["quantum"])
 
 
