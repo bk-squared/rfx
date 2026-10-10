@@ -78,6 +78,14 @@ def test_T2_unjitted_runs(devices, pretend_gpu, case):
         result = transform(objective)(eps)
     finite(result)
 
+@pytest.mark.parametrize("staging", ["debye", "sharded"])
+@pytest.mark.parametrize("gradient", [False, True], ids=["forward", "grad"])
+def test_T2_staging_sites_run_unjitted(devices, pretend_gpu, staging, gradient):
+    """Pole staging and the sharded-design halo make device positions of their own."""
+    eps, forward, objective, _ = scene(devices, **{staging: True})
+    finite((jax.grad(objective) if gradient else forward)(eps))
+
+
 
 @pytest.mark.parametrize("flags", ["--xla_gpu_enable_command_buffer=",
     "--xla_force_host_platform_device_count=2 --xla_gpu_enable_command_buffer= --xla_cpu_enable_fast_math=false",
@@ -128,7 +136,9 @@ def test_T5_compiled_partition_id_premise(devices, monkeypatch):
 @pytest.mark.parametrize("flags,on", [("", True), ("--xla_gpu_enable_command_buffer=", False),
     ("--xla_gpu_enable_command_buffer= --other=1", False),
     ("--xla_gpu_enable_command_buffer=FUSION", True),
-    ("prefix--xla_gpu_enable_command_buffer=", True)])
+    ("prefix--xla_gpu_enable_command_buffer=", True),
+    ("--xla_gpu_enable_command_buffer= --xla_gpu_enable_command_buffer=FUSION", True),
+    ("--xla_gpu_enable_command_buffer=FUSION --xla_gpu_enable_command_buffer=", True)])
 def test_T6_flag_parser(monkeypatch, flags, on):
     monkeypatch.setenv("XLA_FLAGS", flags)
     assert rank._command_buffers_on() is on

@@ -6,7 +6,7 @@ import numpy as np
 from rfx import Simulation
 
 
-def scene(devices, *, n=16, steps=6, uniform=False, **options):
+def scene(devices, *, n=16, steps=6, uniform=False, debye=False, sharded=False, **options):
     dy = np.where(np.arange(n) % 2 == 0, .9e-3, 1.1e-3)
     dy[[0, -1]] = 1e-3
     sim = Simulation(freq_max=15e9, domain=(n * 1e-3,) * 3, dx=1e-3,
@@ -15,10 +15,15 @@ def scene(devices, *, n=16, steps=6, uniform=False, **options):
                    amplitude_kind="current")
     for pos in ((.6, .5, .5), (.75, .55, .45)):
         sim.add_probe(tuple(n * 1e-3 * p for p in pos), "ez")
+    if debye:  # pole staging makes its own device-position array
+        from rfx import Box, DebyePole
+        sim.add_material("pole", eps_r=2.5, debye_poles=[DebyePole(.5, 1e-11)])
+        sim.add(Box((2e-3,) * 3, (5e-3,) * 3), material="pole")
     shape = (n + 1,) * 3 if uniform else sim._build_nonuniform_grid().shape
     host = np.ones(shape, np.float32)
     host[tuple(slice(s // 3, 2 * s // 3) for s in shape)] = 1.1
-    eps = jnp.asarray(host)
+    # An already-sharded design reaches the halo program's device positions.
+    eps = sim.shard_distributed_override(host, devices) if sharded else jnp.asarray(host)
 
     def forward(e):
         return sim.forward(eps_override=e, distributed=True, devices=devices,

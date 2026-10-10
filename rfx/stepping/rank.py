@@ -45,8 +45,10 @@ def _staged_by_enclosing_program():
 
 
 def _command_buffers_on():
-    return re.search(r"(?:^|\s)--xla_gpu_enable_command_buffer=(?=\s|$)",
-                     os.environ.get("XLA_FLAGS", "")) is None
+    """Off only if the option is present and every occurrence has an empty value."""
+    values = re.findall(r"(?:^|\s)--xla_gpu_enable_command_buffer=(\S*)",
+                        os.environ.get("XLA_FLAGS", ""))
+    return not values or any(values)
 
 
 def mesh_ranks(mesh):
