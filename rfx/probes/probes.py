@@ -1645,7 +1645,7 @@ def extract_s_matrix(
     lorentz = None
     if lorentz_spec is not None:
         lorentz_poles, lorentz_masks = lorentz_spec
-        lorentz = init_lorentz(lorentz_poles, mats, dt, mask=lorentz_masks)
+        lorentz = init_lorentz(lorentz_poles, mats, dt, mask=lorentz_masks, grid=grid)
 
     # FDTD-sign V/I phasors per (drive j, receive i) for the shared decomposer.
     v_all = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
@@ -1951,7 +1951,7 @@ def extract_s_matrix_wire(
     lorentz = None
     if lorentz_spec is not None:
         lorentz_poles, lorentz_masks = lorentz_spec
-        lorentz = init_lorentz(lorentz_poles, mats, dt, mask=lorentz_masks)
+        lorentz = init_lorentz(lorentz_poles, mats, dt, mask=lorentz_masks, grid=grid)
 
     # FDTD-sign midpoint V/I phasors per (drive j, receive i) for the
     # shared wire decomposer (``decompose_wire_s_matrix``), plus the

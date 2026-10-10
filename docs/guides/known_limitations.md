@@ -116,6 +116,22 @@ Measured cost on that hardware, graded 1 M and 4 M cell boxes: with command buff
 per-step cost with command buffers off was not resolved (a 240-step gradient call differed by at most 3 %).
 CPU multi-device runs are not affected and are not refused. Three or more GPUs: not yet run.
 
+### A Drude or Lorentz medium has its own time-step limit, and a medium above it is refused.
+
+Tracker: #1590
+
+The pole update is explicit, so a dispersive medium is stable only below a step of its own. For a Drude pole it
+is `omega_p * dt <= 2 * sqrt(eps_inf - s^2)` with `s` the Courant fraction (0.99 by default): with `eps_inf = 1`
+that is `omega_p * dt <= 0.28`, a plasma frequency of about 23.5 GHz on 1 mm cells. Collision damping does not
+lift it. A medium above the limit is refused when the model is assembled, on every solver path, and the message
+states the largest stable step and its cost. A graded mesh accepts that step through `dt=`; a uniform mesh needs
+finer cells, a larger `eps_inf`, or an axis profile so that `dt=` is accepted. Before the refusal such a model
+returned non-finite fields: 0.5 % above the limit a filled box was non-finite at step 1885 and already 1e10 times
+the excitation after 1000 steps, so only a run of a few hundred steps could return a finite, contaminated field.
+The limit is that of a medium several cells wide; a body one cell thick is stable somewhat above it and is
+refused all the same. Debye poles in the same medium are not part of the check, and the low-level `run()`
+functions that are handed prebuilt Lorentz coefficients are not checked.
+
 ## Ports and extraction
 
 ### A microstrip strip drawn past an MSL port to the domain edge is an open stub that can short the port.
