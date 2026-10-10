@@ -22,7 +22,9 @@ def apply_cpml_e_step(*args, debye=None, lorentz=None, **kwargs):
     grid = args[3]
     kwargs["e_loss"] = in_loop_loss(kwargs.get("e_loss"), grid.dt)
     kwargs["e_curl_coeff"] = dispersive_curl(debye, lorentz, grid.dt)
-    return apply_cpml_e(*args, **kwargs)
+    # Looked up at call time: the routing contract observes cpml.apply_cpml_e.
+    from rfx.boundaries import cpml
+    return cpml.apply_cpml_e(*args, **kwargs)
 
 
 def local_e_with_absorber(state, materials, dt, dx, *, debye, lorentz,
