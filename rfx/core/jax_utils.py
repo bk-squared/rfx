@@ -274,10 +274,20 @@ def split_loop_invariants(tree, grid_shape):
         # Returns a rebuild function, or None when nothing below is lifted
         # (the object is then kept as it is, never reconstructed). A rebuild
         # function holds the objects it keeps, never a lifted array.
-        if _is_cell_array(value, grid_shape) and not _all_equal(value):
-            k = len(arrays)
-            arrays.append(value)
-            return lambda a: a[k]
+        if _is_cell_array(value, grid_shape):
+            if not _all_equal(value):
+                k = len(arrays)
+                arrays.append(value)
+                return lambda a: a[k]
+            # All elements equal: the program gets the same constant as a
+            # broadcast of its one value, formed where the step is traced, so
+            # no array of the grid's size is closed over. A jitted step that
+            # closes over one and is called inside a scan stays in JAX's
+            # caches with it after the run (rfx tracker 1606).
+            import numpy as np
+            import jax.numpy as jnp
+            one, shape = np.asarray(value).reshape(-1)[0], tuple(value.shape)
+            return lambda a: jnp.full(shape, one)
         if isinstance(value, dict):
             parts = {key: split(v) for key, v in value.items()}
             if not any(parts.values()):

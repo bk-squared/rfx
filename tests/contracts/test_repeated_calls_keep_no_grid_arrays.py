@@ -92,14 +92,20 @@ def test_repeated_run_keeps_no_grid_arrays(lane, boundary):
     assert counts[1] == counts[0] and counts[2] == counts[0], counts
 
 
-@pytest.mark.xfail(strict=True, reason="#1606: run(until_decay=) keeps the constants of its per-call jitted step "
-                                       "(24 lattice arrays per call on a uniform CPML box); a second holder, not yet fixed")
-def test_repeated_run_until_decay_keeps_no_grid_arrays():
-    shape = _grid_shape('uniform', 'cpml')
+@pytest.mark.parametrize('lane, block', [('uniform', False), ('uniform', True), ('graded', False)])
+def test_repeated_run_until_decay_keeps_no_grid_arrays(lane, block):
+    """The decay runner jits its step per call; a per-cell array whose elements are all equal (a vacuum
+    permittivity) used to be closed over by it and stayed in JAX's caches: 24 arrays per call here."""
+    from rfx import Box
+    shape = _grid_shape(lane, 'cpml')
 
     def call():
-        result = _sim('uniform', 'cpml').run(until_decay=1e-3, decay_min_steps=4, decay_check_interval=4,
-                                             decay_max_steps=12, skip_preflight=True)
+        sim = _sim(lane, 'cpml')
+        if block:
+            sim.add_material('diel', eps_r=3.0, sigma=0.01)
+            sim.add(Box((.004, .004, .003), (.007, .008, .006)), material='diel')
+        result = sim.run(until_decay=1e-3, decay_min_steps=4, decay_check_interval=4,
+                         decay_max_steps=12, skip_preflight=True)
         jax.block_until_ready(result.time_series)
 
     counts = _counts(call, shape)
