@@ -220,12 +220,49 @@ def test_published_matches_lane_operator(lane, sheet, monkeypatch):
             assert np.array_equal(actual, e32)
 
 
+def step_occupancy_on_ones(cells, n_devices):
+    """Run the production step, setting E=1 after its E-update shmap.
+
+    Observe at source injection, directly after the occupancy multiply.
+    No occupancy arithmetic is implemented by this fixture.
+    """
+    import rfx.runners.distributed_nu as nu
+    from rfx.nonuniform import make_nonuniform_grid
+    from rfx.stepping.slab import Slab, cut
+    from rfx.core.yee import FDTDState
+    shape = cells.shape
+    grid = make_nonuniform_grid(
+        ((shape[0] - 1) * .001, (shape[1] - 1) * .001),
+        np.full(shape[2] - 1, .001), .001, cpml_layers=0)
+    sg = nu.build_sharded_nu_grid(grid, n_devices)
+    layout = Slab.from_grid(sg)
+    mesh = Mesh(np.asarray(jax.devices()[:n_devices]), ('x',))
+    slabs = cut(jnp.asarray(cells), layout, 'pec_occupancy', mesh=mesh)
+    mat = MaterialArrays(*(cut(v, layout, kind, mesh=mesh)
+                           for v, kind in zip(material(shape)[:3], ('eps_r', 'sigma', 'mu_r'))))
+    observed = []
+    update = nu.update_e_nu_shmap
+    inject = nu.inject_sources_shmap
+    def ones(st, *args, **kwargs):
+        st = update(st, *args, **kwargs)
+        return st._replace(ex=jnp.ones_like(st.ex), ey=jnp.ones_like(st.ey), ez=jnp.ones_like(st.ez))
+    def record(st, *args, **kwargs):
+        jax.debug.callback(lambda *v: observed.append(FDTDState(*map(np.asarray, v))), *st)
+        return inject(st, *args, **kwargs)
+    with patch.object(nu, 'update_e_nu_shmap', ones), patch.object(nu, 'inject_sources_shmap', record):
+        result = nu.run_nonuniform_distributed_pec(
+            sg, mat, None, 1, n_devices=n_devices,
+            devices=jax.devices()[:n_devices], sharded_pec_occupancy=slabs)
+        jax.block_until_ready(result)
+        jax.effects_barrier()
+    assert len(observed) == 1
+    return observed[0]
+
+
 @pytest.mark.parametrize('n_devices', [2, 3])
 def test_slab_owned_rows_match_operator_and_reference(n_devices):
     if len(jax.devices()) < n_devices:
         pytest.skip('requires three virtual CPU devices configured before import')
-    from rfx.runners.distributed_nu import _apply_pec_occupancy_nu_shmap
-    from rfx.runners._rank import mesh_ranks
     from rfx.stepping.slab import Slab, cut
     shape = (11, 7, 5)
     cells = np.random.default_rng(202).uniform(0, .85, shape).astype(np.float32)
@@ -235,10 +272,7 @@ def test_slab_owned_rows_match_operator_and_reference(n_devices):
     mesh = Mesh(np.asarray(jax.devices()[:n_devices]), ('x',))
     slabs = cut(jnp.asarray(cells), layout, 'pec_occupancy', mesh=mesh)
     result = publish_slab_occupancy(material(slabs.shape), slabs, mesh)
-    st = init_state(slabs.shape)
-    ones = jnp.ones(slabs.shape)
-    st = st._replace(ex=ones, ey=ones, ez=ones)
-    effective = _apply_pec_occupancy_nu_shmap(st, slabs, mesh, n_devices, layout.nx_local, ranks=mesh_ranks(mesh))
+    effective = step_occupancy_on_ones(cells, n_devices)
     refs = reference(cells)
     whole = [np.asarray(k) for k in build_edge_keep(jnp.asarray(cells))]
     exact = reference32(cells)
@@ -249,8 +283,9 @@ def test_slab_owned_rows_match_operator_and_reference(n_devices):
             # per slab == whole domain == NumPy float32, bit for bit
             assert np.array_equal(got, whole[c][lo:hi])
             assert np.array_equal(got, exact[c][lo:hi])
-            np.testing.assert_allclose(got, np.asarray(component)[owned], rtol=0, atol=ULP1)
-            np.testing.assert_allclose(got, ref[lo:hi], rtol=0, atol=2.4e-7)
+            # Consumption check, not a value pin: the slab step multiplies the published array.
+            np.testing.assert_array_equal(got, np.asarray(component)[owned])
+            np.testing.assert_allclose(np.asarray(component)[owned], ref[lo:hi], rtol=0, atol=2.4e-7)
 
     # Gradient through the cut and the per-slab builder against the whole domain
     # (a derivative of a product is a sum of products: equal to rounding, not bitwise).
@@ -284,6 +319,34 @@ def test_a_slab_with_its_low_ghost_row_gives_the_whole_domain_bits(n_ranks):
         local = [np.asarray(k) for k in build_edge_keep(jnp.asarray(np.concatenate((ghost, cells[lo:hi]))))]
         for c in range(3):
             assert np.array_equal(local[c][1:], whole[c][lo:hi])
+
+
+@pytest.mark.parametrize('n_devices', [2, 3])
+@pytest.mark.parametrize('seams', [False, True], ids=['last-row', 'last-row-and-seams'])
+def test_slab_published_ghosts_are_one_and_alignment_bounded(n_devices, seams):
+    if len(jax.devices()) < n_devices:
+        pytest.skip('requires three virtual CPU devices configured before import')
+    from rfx.stepping.slab import Slab, cut
+    cells = np.zeros((11, 7, 5), dtype=np.float32)
+    cells[-1] = .5
+    layout = Slab(11, n_devices)
+    assert layout.pad_x == 1
+    if seams:
+        for seam in range(layout.nx_per_rank, layout.nx, layout.nx_per_rank):
+            cells[seam-1:seam+1] = .5
+    mesh = Mesh(np.asarray(jax.devices()[:n_devices]), ('x',))
+    slabs = cut(jnp.asarray(cells), layout, 'pec_occupancy', mesh=mesh)
+    published = publish_slab_occupancy(material(slabs.shape), slabs, mesh)
+    for component, keep in zip(('ex', 'ey', 'ez'), published.edge_keep):
+        rows = np.asarray(keep).reshape(n_devices, layout.nx_local, 7, 5)
+        for rank in range(n_devices):
+            np.testing.assert_array_equal(rows[rank, 0], 1.0,
+                                          err_msg=f'{component} rank {rank} low ghost')
+            np.testing.assert_array_equal(rows[rank, -1], 1.0,
+                                          err_msg=f'{component} rank {rank} high ghost')
+        alignment = rows[-1, -2]
+        assert np.isfinite(alignment).all(), f'{component} alignment row'
+        assert ((0 <= alignment) & (alignment <= 1)).all(), f'{component} alignment row'
 
 
 def test_released_cells_and_empty_are_exact():
@@ -360,3 +423,103 @@ def test_one_publication_builder_definition():
                    if isinstance(n, ast.FunctionDef) and n.name == 'build_edge_keep']
     assert len(definitions) == 1
     assert definitions[0][0] == 'model/occupancy.py'
+
+
+def slab_drive_scene(source_i, samples=(.137,), *, material_drive=False):
+    """Closed PEC graded box, with the source inside an eight-cell block."""
+    import rfx.runners.distributed_nu as nu
+    from rfx.nonuniform import make_nonuniform_grid
+    from rfx.simulation import SourceSpec, ProbeSpec
+    from rfx.stepping.slab import Slab, cut
+    grid = make_nonuniform_grid(
+        (.010, .006), np.full(4, .001), .001, cpml_layers=0,
+        dy_profile=np.array([.001, .0009, .0011, .001, .001, .001]))
+    sg = nu.build_sharded_nu_grid(grid, 2)
+    layout = Slab.from_grid(sg)
+    mesh = Mesh(np.asarray(jax.devices()[:2]), ('x',))
+    mat = MaterialArrays(*(cut(v, layout, kind, mesh=mesh)
+                           for v, kind in zip(material(grid.shape)[:3], ('eps_r', 'sigma', 'mu_r'))))
+    node = (source_i, 3, 2)
+    source = SourceSpec(*node, 'ez', jnp.asarray(samples, jnp.float32))
+    block = jnp.zeros(grid.shape, jnp.float32).at[source_i-1:source_i+1, 2:4, 1:3].set(1.)
+
+    def run(occupancy, *, checkpoint_every=None, n_warmup=0):
+        slabs = None if occupancy is None else cut(occupancy * block, layout, 'pec_occupancy', mesh=mesh)
+        return nu.run_nonuniform_distributed_pec(
+            sg, mat, None, len(samples), sources=[source], probes=[ProbeSpec(*node, 'ez')],
+            n_devices=2, devices=jax.devices()[:2], sharded_pec_occupancy=slabs,
+            material_drive=[1.] if material_drive else None,
+            checkpoint_every=checkpoint_every, n_warmup=n_warmup)
+
+    return run, (mat, block, layout, mesh, node)
+
+
+@pytest.mark.parametrize('source_i', [3, 6], ids=['mid', 'seam'])
+@pytest.mark.parametrize('material_drive', [False, True], ids=['field', 'current'])
+def test_slab_drive_weight_is_last_float32_product(source_i, material_drive):
+    from rfx.stepping.slab import cut
+    run, (mat, block, layout, mesh, node) = slab_drive_scene(source_i, material_drive=material_drive)
+    v = np.asarray(run(None)['final_state'].ez)[node]
+    assert v.dtype == np.float32 and v != 0
+    for occupancy in (.2, .5):
+        slabs = cut(occupancy * block, layout, 'pec_occupancy', mesh=mesh)
+        keep = publish_slab_occupancy(mat, slabs, mesh).edge_keep[2]
+        # T1 pins the factor's value; this check pins its use on the drive.
+        row = layout.owner(source_i) * layout.nx_local + layout.local_index(source_i)
+        w = np.asarray(keep)[row, node[1], node[2]]
+        actual = np.asarray(run(occupancy)['final_state'].ez)[node]
+        expected = np.float32(w) * np.float32(v)
+        assert actual.dtype == np.float32
+        assert actual.tobytes() == expected.tobytes()
+        if occupancy == .5:
+            assert actual.tobytes() == (np.float32(.0625) * v).tobytes()
+
+
+def test_slab_occupancy_gradient_has_field_and_drive_paths(monkeypatch):
+    import rfx.runners.distributed_nu as nu
+    run, _ = slab_drive_scene(6, samples=(.7, .4, -.1))
+    def loss(occupancy):
+        return jnp.sum(run(occupancy)['time_series'] ** 2)
+    value = jnp.float32(.2)
+    full = jax.grad(loss)(value)
+    gather = nu.owned_values
+    # Keep the same forward drive values, removing only their gradient path.
+    monkeypatch.setattr(nu, 'owned_values', lambda *a, **k: jax.lax.stop_gradient(gather(*a, **k)))
+    field_only = jax.grad(loss)(value)
+    # Requested comparison with drive scaling disabled altogether.
+    monkeypatch.setattr(nu, 'owned_values', lambda *a, **k: jnp.ones_like(gather(*a, **k)))
+    unscaled = jax.grad(loss)(value)
+    assert np.isfinite([full, field_only, unscaled]).all()
+    assert field_only != 0  # Field multiply reaches occupancy.
+    assert full != field_only  # Drive-weight path contributes too.
+    assert full != unscaled
+    print(f'occupancy gradients: full={full}, field_only={field_only}, unscaled_drive={unscaled}')
+
+
+@pytest.mark.parametrize('n_warmup', [0, 1])
+def test_slab_weighted_tables_reach_checkpoint_and_warmup(n_warmup):
+    run, _ = slab_drive_scene(6, samples=(.7, .4, -.1, .2, .3))
+    def evaluate(checkpoint):
+        def loss(occupancy):
+            ts = run(occupancy, checkpoint_every=checkpoint, n_warmup=n_warmup)['time_series']
+            return jnp.sum(ts ** 2), ts
+        return jax.value_and_grad(loss, has_aux=True)(jnp.float32(.5))
+    (plain_value, plain_ts), plain_grad = evaluate(None)
+    (seg_value, seg_ts), seg_grad = evaluate(2)
+    np.testing.assert_array_equal(seg_ts, plain_ts)
+    np.testing.assert_array_equal(seg_value, plain_value)
+    assert np.isfinite([plain_grad, seg_grad]).all()
+    np.testing.assert_allclose(seg_grad, plain_grad, rtol=1e-6, atol=0)
+    if n_warmup:
+        warm_grad = jax.grad(lambda occ: run(occ, n_warmup=n_warmup)['time_series'][0, 0])(.5)
+        assert warm_grad == 0
+
+
+@pytest.mark.parametrize('material_drive', [False, True], ids=['field', 'current'])
+def test_slab_warmup_table_carries_the_same_weight(material_drive):
+    """The warm-up scan adds the weighted series too: its samples are the plain run's bits."""
+    run, _ = slab_drive_scene(6, samples=(.7, .4, -.1, .2, .3), material_drive=material_drive)
+    plain = np.asarray(run(jnp.float32(.5))['time_series'])
+    warm = np.asarray(run(jnp.float32(.5), n_warmup=2)['time_series'])
+    assert np.any(plain != 0)
+    np.testing.assert_array_equal(warm, plain)

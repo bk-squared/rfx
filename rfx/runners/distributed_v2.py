@@ -850,16 +850,16 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     src_device_ids = []
     src_local_specs = []
     for s in sources:
-        dev_id = s.i // nx_per
-        local_i = (s.i % nx_per) + ghost
+        dev_id = layout.owner(s.i)
+        local_i = layout.local_index(s.i)
         src_device_ids.append(dev_id)
         src_local_specs.append((local_i, s.j, s.k, s.component))
 
     prb_device_ids = []
     prb_local_specs = []
     for p in probes:
-        dev_id = p.i // nx_per
-        local_i = (p.i % nx_per) + ghost
+        dev_id = layout.owner(p.i)
+        local_i = layout.local_index(p.i)
         prb_device_ids.append(dev_id)
         prb_local_specs.append((local_i, p.j, p.k, p.component))
 

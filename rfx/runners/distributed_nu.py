@@ -11,7 +11,7 @@ v2 has (v2 raises on NU dispersion). Retiring it would require porting those,
 not the two stages #1053 moved. New distributed features go to v2; kernels
 both lanes need go to ``_distributed_common.py`` with an ``is``-identity guard
 in ``tests/locks/test_runner_split_bit_identity.py``. Soft occupancy
-(``_apply_pec_occupancy_nu_shmap``) is deliberately NOT ported to v2: ``run()``
+is deliberately NOT ported to v2: ``run()``
 has no ``pec_occupancy_override`` caller; revisit when v2 serves ``forward()``.
 
 This module supplies the NU analogues of the uniform kernels used by
@@ -42,7 +42,7 @@ from functools import partial
 
 from rfx import _realized
 from rfx.stepping.slab import (
-    Slab, Fill, cut, cut_poles, cut_pole_coeffs, forward_sharding as _forward_sharding,
+    Slab, Fill, cut, cut_poles, cut_pole_coeffs, owned_values, forward_sharding as _forward_sharding,
 )
 
 import jax
@@ -65,10 +65,7 @@ from rfx.core.yee import (
     map_lumped,
 )
 from rfx.core.jax_utils import is_tracer  # noqa: F401  (Phase 2C reuse target)
-# ``realized_pec_edge_masks`` moved out with the hard-mask kernel in #1053
-# leg 2; the soft-occupancy kernel below is the remaining owner-rule caller in
-# this module.
-from rfx.boundaries.pec import _volume_occupancy_masks
+from rfx.model.occupancy import publish_slab_occupancy
 from rfx.runners._distributed_common import (
     _update_e_local_nu,
     _update_h_local_nu,
@@ -403,10 +400,6 @@ def build_sharded_nu_grid(
 # Phase 2B: hard-PEC + ghost-exchange sharded NU scan body
 # ---------------------------------------------------------------------------
 
-def shard_pec_occupancy_x_slab(global_occupancy, sharded_grid: ShardedNUGrid):
-    return None if global_occupancy is None else cut(global_occupancy, Slab.from_grid(sharded_grid), "pec_occupancy", mesh=None).reshape(-1, *global_occupancy.shape[1:])
-
-
 def shard_pec_mask_x_slab(global_mask, sharded_grid: ShardedNUGrid):
     return None if global_mask is None else cut(global_mask, Slab.from_grid(sharded_grid), "pec_cell", mesh=None).reshape(-1, *global_mask.shape[1:])
 
@@ -462,68 +455,6 @@ _apply_pmc_face_nu_shmap = apply_pmc_face_shmap
 # ``run_nonuniform_distributed_pec.step_fn``) and the #1038 lock fixture
 # ``distributed_nu_pec_mask_seam`` both import it under this name.
 _apply_pec_mask_nu_shmap = apply_pec_mask_shmap
-
-
-def _apply_pec_occupancy_nu_shmap(state: FDTDState, sharded_pec_occupancy,
-                                  mesh, n_devices: int,
-                                  nx_local: int, *, ranks) -> FDTDState:
-    """Apply soft PEC occupancy to x-sharded fields.
-
-    This is the differentiable analogue of :func:`_apply_pec_mask_nu_shmap`
-    and mirrors :func:`rfx.boundaries.pec.apply_pec_occupancy` on a slab
-    decomposition.  Each rank owns the occupancy contribution inside its
-    real-cell range ``[ghost, ghost + nx_per_rank)``; ghost rows are
-    forced to ``0.0`` before the soft-zero is applied so a single seam
-    cell is never folded into both neighbouring ranks.
-
-    The occupancy at the first / last real cell sees the seam-neighbour's
-    occupancy via the ghost row populated by
-    :func:`shard_pec_occupancy_x_slab`, which keeps the shared §1.6
-    noisy-OR rule consistent with the single-device path.  As for the
-    hard mask, the ghost E rows are not touched here; the E ghost
-    exchange that follows this step (scan body stage 9) copies the
-    owner's soft-zeroed real row into them.
-    """
-    if sharded_pec_occupancy is None:
-        return state
-
-    @partial(
-        rank_shard_map,
-        mesh=mesh,
-        in_specs=(P("x"), P("x"), P("x"), P("x")),
-        out_specs=(P("x"), P("x"), P("x")),
-        check_rep=False,
-    )
-    def _pec_occ(ex, ey, ez, occ, *, rank):
-        occ = jnp.clip(occ.astype(ex.dtype), 0.0, 1.0)
-
-        # ONE soft rule for both lanes (#931 §1.6): the noisy-OR of the
-        # four incident cells, from the shared helper.  The inlined
-        # ``occ * max(roll(+1), roll(-1))`` copy that stood here was a
-        # different rule altogether — a per-axis two-neighbour product,
-        # not the incident four — so this lane's soft PEC did not match
-        # its own hard PEC, let alone the single-device soft lane.
-        occ_ex, occ_ey, occ_ez = _volume_occupancy_masks(
-            occ, (True, False, False))
-
-        # Force ghost rows to 0.0 so seam cells in another rank's slab are
-        # not double-applied; real cells span [ghost, nx_local - ghost).
-        ghost = 1
-        zero_row = jnp.zeros_like(occ_ex[0:ghost, :, :])
-        occ_ex = occ_ex.at[0:ghost, :, :].set(zero_row)
-        occ_ex = occ_ex.at[nx_local - ghost:nx_local, :, :].set(zero_row)
-        occ_ey = occ_ey.at[0:ghost, :, :].set(zero_row)
-        occ_ey = occ_ey.at[nx_local - ghost:nx_local, :, :].set(zero_row)
-        occ_ez = occ_ez.at[0:ghost, :, :].set(zero_row)
-        occ_ez = occ_ez.at[nx_local - ghost:nx_local, :, :].set(zero_row)
-
-        ex = ex * (1.0 - occ_ex)
-        ey = ey * (1.0 - occ_ey)
-        ez = ez * (1.0 - occ_ez)
-        return ex, ey, ez
-
-    ex, ey, ez = _pec_occ(ranks, state.ex, state.ey, state.ez, sharded_pec_occupancy)
-    return state._replace(ex=ex, ey=ey, ez=ez)
 
 
 # ---------------------------------------------------------------------------
@@ -1407,10 +1338,10 @@ def run_nonuniform_distributed_pec(
         4b. E update + ADE polarisation update       via shard_map  [if Debye/Lorentz]
             (uses snapshotted ex_old/ey_old/ez_old, not post-exchange E)
         5. apply_cpml_e (Phase 2C, NU + slab-aware)  via shard_map  [if CPML]
+        5b. Multiply published soft-PEC factors                    [if occupancy]
         6. Source injection (rank-conditional)       via shard_map
         7. apply_pec on physical domain faces        via shard_map
         8. apply_pec_mask (geometry + override)      via shard_map
-        8b. apply_pec_occupancy (soft PEC)           via shard_map  [if occupancy]
         9. Ghost exchange of E                       via lax.ppermute
        10. Probe accumulation (rank-conditional sum) via lax.psum
 
@@ -1522,9 +1453,9 @@ def run_nonuniform_distributed_pec(
     sharded_pec_occupancy : jnp.ndarray float or None, optional
         x-slab sharded soft-PEC occupancy field (Phase 2E).  Same layout
         as ``sharded_pec_mask`` but float-valued in ``[0, 1]``.  Use
-        :func:`shard_pec_occupancy_x_slab` to build it.  Applied after
-        the hard ``sharded_pec_mask`` and before probe accumulation,
-        mirroring the single-device ordering in
+        :func:`rfx.stepping.slab.cut` with kind ``pec_occupancy`` to build it.  Its published
+        edge factor multiplies E after the E update and CPML, before source
+        injection; each source series carries its own edge's factor, as in
         :func:`rfx.nonuniform.run_nonuniform`.
     checkpoint_every : int or None, optional
         Phase 2F segmented remat.  When set to a positive integer ``K``
@@ -1726,19 +1657,21 @@ def run_nonuniform_distributed_pec(
     src_device_ids = []
     src_local_specs = []
     for s in sources:
-        dev_id = s.i // nx_per
-        local_i = (s.i % nx_per) + ghost
+        dev_id = layout.owner(s.i)
+        local_i = layout.local_index(s.i)
         src_device_ids.append(int(dev_id))
         src_local_specs.append((int(local_i), int(s.j), int(s.k), s.component))
 
     prb_device_ids = []
     prb_local_specs = []
     for p in probes:
-        dev_id = p.i // nx_per
-        local_i = (p.i % nx_per) + ghost
+        dev_id = layout.owner(p.i)
+        local_i = layout.local_index(p.i)
         prb_device_ids.append(int(dev_id))
         prb_local_specs.append((int(local_i), int(p.j), int(p.k), p.component))
 
+    source_nodes = tuple((owner, *spec) for owner, spec in
+                         zip(src_device_ids, src_local_specs))
     n_src = len(sources)
     n_prb = len(probes)
 
@@ -2241,7 +2174,7 @@ def run_nonuniform_distributed_pec(
     # Per-step scan body (Phase 2B/2C/2D ordering — see docstring)
     # ------------------------------------------------------------------
     def step_fn(carry, xs, invariants, e_materials=None, *, ranks):
-        (sharded_materials, sharded_pec_mask, sharded_pec_occupancy,
+        (sharded_materials, sharded_pec_mask, edge_keep,
          debye_coeffs, lorentz_coeffs, cpml_params, spacings) = invariants
         if cpml_spacings:
             cpml_params = cpml_params._replace(**cpml_spacings)
@@ -2304,6 +2237,12 @@ def run_nonuniform_distributed_pec(
                 st, cs, cpml_params, sharded_materials,
                 e_materials[0], ranks=ranks)
 
+        # 5b. Published soft-PEC factors; both ghost rows carry one.
+        if edge_keep is not None:
+            keep_x, keep_y, keep_z = edge_keep
+            st = st._replace(ex=st.ex * keep_x, ey=st.ey * keep_y,
+                             ez=st.ez * keep_z)
+
         # 6. Source injection (rank-conditional via shard_map)
         st = _inject_sources_shmap(st, src_vals, ranks=ranks)
 
@@ -2316,21 +2255,11 @@ def run_nonuniform_distributed_pec(
             st = _apply_pec_mask_nu_shmap(
                 st, sharded_pec_mask, mesh, n_devices, nx_local, ranks=ranks)
 
-        # 8b. Phase 2E: soft-PEC occupancy (differentiable analogue of the
-        #     hard mask).  Mirrors single-device ordering in
-        #     ``rfx.nonuniform.run_nonuniform``: applied after the hard
-        #     mask and before probe accumulation.  Seam ghost rows are
-        #     left alone inside the helper so a seam cell is applied
-        #     exactly once, by its owner.
-        if sharded_pec_occupancy is not None:
-            st = _apply_pec_occupancy_nu_shmap(
-                st, sharded_pec_occupancy, mesh, n_devices, nx_local, ranks=ranks)
-
         # 9. Ghost exchange of E so the next step's H update sees the
         #    neighbour rank's E at the seam.  LAST in the E half-step, after
         #    the PEC stages: the H update at a rank's last real cell reads
         #    Ey/Ez on its right ghost plane, and that plane's PEC edges are
-        #    zeroed by the OWNER rank (stages 8/8b act on real cells only).
+        #    zeroed by the OWNER rank (stages 7/8 impose the hard conductors).
         #    Exchanging before the PEC stages handed the ghost the
         #    un-zeroed value — the #931 seam-cell divergence (2.107e-01
         #    final-step error on a one-cell body at rank 1's first real
@@ -2416,6 +2345,11 @@ def run_nonuniform_distributed_pec(
         from rfx.model.source_coefficients import scale_source_columns
         return scale_source_columns(xs, scales, drive_columns)
 
+    edge_keep = None
+    if sharded_pec_occupancy is not None:
+        edge_keep = publish_slab_occupancy(
+            sharded_materials, sharded_pec_occupancy, mesh).edge_keep
+
     @jax.jit
     def run_fn(c0, invariants, warmup_xs, opt_xs, *, ranks, e_cell_sizes):
         electric_grid = SlabElectricMetrics(e_cell_sizes, nx_real, nx_per, nx_local)
@@ -2430,6 +2364,15 @@ def run_nonuniform_distributed_pec(
             if warmup_xs is not None:
                 warmup_xs = _drive_xs(warmup_xs, scales)
             opt_xs = _drive_xs(opt_xs, scales)
+        # Occupancy is the last float32 drive factor; scans only add the stored samples.
+        edge_keep = invariants[2]
+        if edge_keep is not None and n_src:
+            from rfx.model.source_coefficients import scale_source_columns
+            w = owned_values(edge_keep, mesh, source_nodes, ranks=ranks)
+            columns = tuple(range(n_src))
+            if warmup_xs is not None:
+                warmup_xs = scale_source_columns(warmup_xs, w, columns)
+            opt_xs = scale_source_columns(opt_xs, w, columns)
         # #1303: each component's four-cell mean, built once for the
         # warm-up and the optimize scans (and every remat segment) -- see
         # slab_e_materials_shmap for why not inside the loop. Dispersive E
@@ -2506,7 +2449,7 @@ def run_nonuniform_distributed_pec(
 
     final_carry, probe_ts = run_fn(
         carry_init,
-        (sharded_materials, sharded_pec_mask, sharded_pec_occupancy,
+        (sharded_materials, sharded_pec_mask, edge_keep,
          debye_coeffs, lorentz_coeffs, cpml_params,
          (inv_dx_sharded, inv_dy_rep, inv_dz_rep,
           inv_dx_h_sharded, inv_dy_h_rep, inv_dz_h_rep, *cell_sizes)),

@@ -28,6 +28,8 @@ import os
 os.environ.setdefault(
     "XLA_FLAGS", "--xla_force_host_platform_device_count=2")
 
+from rfx.stepping.slab import Slab, cut
+
 import numpy as np
 import jax.numpy as jnp
 import pytest
@@ -508,7 +510,6 @@ import jax  # noqa: E402
 from rfx.runners.distributed_nu import (  # noqa: E402
     run_nonuniform_distributed_pec,
     shard_pec_mask_x_slab,
-    shard_pec_occupancy_x_slab,
 )
 from rfx.nonuniform import (  # noqa: E402
     run_nonuniform,
@@ -1892,7 +1893,7 @@ def test_distributed_pec_occupancy_2device_matches_single_device():
     sharded_grid = build_sharded_nu_grid(grid, n_devices=n_devices,
                                          exchange_interval=1)
     sharded_mat = _phase2b_shard_mat(materials, sharded_grid)
-    sharded_occ = shard_pec_occupancy_x_slab(occ, sharded_grid)
+    sharded_occ = cut(occ, Slab.from_grid(sharded_grid), "pec_occupancy", mesh=None).reshape(-1, *occ.shape[1:])
     out = run_nonuniform_distributed_pec(
         sharded_grid=sharded_grid,
         sharded_materials=sharded_mat,
@@ -1978,7 +1979,7 @@ def test_distributed_pec_occupancy_seam_no_double_application():
     ts_single = jnp.asarray(single_out["time_series"])[:, 0]
 
     sharded_mat = _phase2b_shard_mat(materials, sharded_grid)
-    sharded_occ = shard_pec_occupancy_x_slab(occ, sharded_grid)
+    sharded_occ = cut(occ, Slab.from_grid(sharded_grid), "pec_occupancy", mesh=None).reshape(-1, *occ.shape[1:])
     out = run_nonuniform_distributed_pec(
         sharded_grid=sharded_grid,
         sharded_materials=sharded_mat,

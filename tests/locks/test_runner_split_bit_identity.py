@@ -492,7 +492,6 @@ def _f_distributed_nu_pec_mask_seam():
     from rfx.core.yee import init_state
     from rfx.runners.distributed_nu import (
         _apply_pec_mask_nu_shmap,
-        _apply_pec_occupancy_nu_shmap,
     )
 
     n_devices = 2
@@ -500,19 +499,18 @@ def _f_distributed_nu_pec_mask_seam():
     xbar[:, 2:4, 2:4] = True                 # spans x ACROSS the seam
     gmask = _seam_plates(2, [0, _SEAM_NZ - 1]) | xbar
     hard_slabs, nx_local = _seam_slabs(gmask, n_devices, bool, False)
-    soft_slabs, _ = _seam_slabs(gmask.astype(np.float32), n_devices,
-                                np.float32, 0.0)
+    from tests.unit.materials.test_occupancy_stage import step_occupancy_on_ones
     mesh = Mesh(np.asarray(jax.devices()[:n_devices]).reshape(n_devices),
                 ("x",))
     shape = (n_devices * nx_local, _SEAM_NY, _SEAM_NZ)
     state = init_state(shape)
     one = jnp.ones(shape, jnp.float32)
     live = state._replace(ex=one, ey=one, ez=one)
+    effective = step_occupancy_on_ones(gmask.astype(np.float32), n_devices)
     return {
         "hard": _apply_pec_mask_nu_shmap(live, jnp.asarray(hard_slabs), mesh,
                                          n_devices, nx_local, ranks=mesh_ranks(mesh)),
-        "soft": _apply_pec_occupancy_nu_shmap(live, jnp.asarray(soft_slabs),
-                                              mesh, n_devices, nx_local, ranks=mesh_ranks(mesh)),
+        "soft": live._replace(ex=effective.ex, ey=effective.ey, ez=effective.ez),
     }
 
 
