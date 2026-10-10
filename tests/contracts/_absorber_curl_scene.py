@@ -8,13 +8,24 @@ from rfx.core.yee import EPS_0
 from rfx.materials.debye import DebyePole
 from rfx.materials.lorentz import drude_pole
 
+
+def geometry(face):
+    """Permute x's reference scene; z uses a 12 x 24 x 24 box, always Ez."""
+    permutation = {'x': (0, 1, 2), 'y': (1, 0, 2), 'z': (2, 1, 0)}[face[0]]
+    def permute(values):
+        return tuple(values[i] for i in permutation)
+    return (permute((24, 24, 12)), permute((6, 5, 4)),
+            permute((16, 15, 7)), permutation.index(1))
+
+
 def build(owner='plain', face='x_lo', nu=False):
     dx=1e-3
+    dimensions, source, probe, transverse = geometry(face)
     axis,side=face.split('_')
     faces={a:'pec' for a in 'xyz'}
     faces[axis]=Boundary(lo='cpml' if side=='lo' else 'pec', hi='cpml' if side=='hi' else 'pec', lo_thickness=6 if side=="lo" else None,hi_thickness=10 if side=="hi" else None)
-    opts={f'd{a}_profile':np.full(n,dx) for a,n in zip('xyz',(12,10,8))} if nu else {}
-    sim=Simulation(freq_max=20e9,domain=(12*dx,10*dx,8*dx),dx=dx,boundary=BoundarySpec(**faces),cpml_layers=10,**opts)
+    opts={f'd{a}_profile':np.full(n,dx) for a,n in zip('xyz',dimensions)} if nu else {}
+    sim=Simulation(freq_max=20e9,domain=tuple(n*dx for n in dimensions),dx=dx,boundary=BoundarySpec(**faces),cpml_layers=10,**opts)
     dt=sim._build_realized_grid().dt
     props=dict(eps_r=4. if owner=='dielectric' else 2. if owner in ('debye','mixed') else 1.)
     if owner in ('plain','lorentz'): props['sigma']=4*EPS_0/dt
@@ -22,9 +33,8 @@ def build(owner='plain', face='x_lo', nu=False):
     if owner in ('debye','mixed'): props['debye_poles']=[DebyePole(delta_eps=50.,tau=5e-12)]
     if owner in ('lorentz','mixed'): props['lorentz_poles']=[drude_pole(2*np.pi*50e9,1e10)]
     sim.add_material('slab',**props)
-    lo=[0.,0.,0.];hi=[12*dx,10*dx,8*dx]
-    a=1 if axis=='x' else 0
-    lo[a]=3*dx;hi[a]=4*dx
+    lo=[0.,0.,0.];hi=[n*dx for n in dimensions]
+    lo[transverse]=11*dx;hi[transverse]=12*dx
     # Pole masks keep declared occupancy; crossing the physical face alone
     # does not populate the pad. Extend the slab through the complete pad.
     normal = 'xyz'.index(axis)
@@ -33,8 +43,8 @@ def build(owner='plain', face='x_lo', nu=False):
     else:
         hi[normal] += 12 * dx
     sim.add(Box(tuple(lo),tuple(hi)),material='slab')
-    sim.add_source(position=(4*dx,3*dx,2*dx),component='ez',waveform=GaussianPulse(f0=10e9,bandwidth=0.5),amplitude_kind='field')
-    sim.add_probe(position=(7*dx,4*dx,5*dx),component='ez')
+    sim.add_source(position=tuple(p*dx for p in source),component='ez',waveform=GaussianPulse(f0=10e9,bandwidth=0.5),amplitude_kind='field')
+    sim.add_probe(position=tuple(p*dx for p in probe),component='ez')
     grid = sim._build_realized_grid()
     assembled = sim._assemble_materials_nu(grid) if nu else sim._assemble_materials(grid)
     materials, debye_spec, lorentz_spec = assembled[:3]
@@ -53,7 +63,7 @@ def build(owner='plain', face='x_lo', nu=False):
     return sim
 
 
-def probe_loop(sim, n_steps):
+def probe_loop(sim, n_steps, face):
     """Exercise the eager extractor's step with the same point field drive."""
     import jax.numpy as jnp
     from rfx.core.yee import init_state
@@ -74,7 +84,8 @@ def probe_loop(sim, n_steps):
     lr = init_lorentz(*ls[:1], mats, grid.dt, mask=ls[1]) if ls else None
     params, psi = init_cpml(grid)
     pulse = GaussianPulse(f0=10e9, bandwidth=0.5)
-    port = LumpedPort((4e-3, 3e-3, 2e-3), 'ez', 50., pulse)
+    _, source, probe, _ = geometry(face)
+    port = LumpedPort(tuple(p*1e-3 for p in source), 'ez', 50., pulse)
     core, _ = make_probe_step(
         grid, mats, [port], 0, use_cpml=True, cpml_params=params,
         cpml_axes='xyz', debye=db, lorentz=lr, pec_edge_masks=None,
@@ -86,7 +97,7 @@ def probe_loop(sim, n_steps):
         carry['debye'] = db[1]
     if lr:
         carry['lorentz'] = lr[1]
-    cell = field_index(grid, (7e-3, 4e-3, 5e-3), 'ez')
+    cell = field_index(grid, tuple(p*1e-3 for p in probe), 'ez')
 
     # Eager SParamProbe carries a static component name; close it over the
     # scan while retaining every numerical leaf and the actual probe hooks.
@@ -113,12 +124,12 @@ def solve(owner, face, lane, n_steps=6000):
     sim = build(owner, face, nu='graded' in lane or lane == 'distributed_forward')
     kwargs = dict(n_steps=n_steps, skip_preflight=True)
     if lane == 'vmap':
-        from rfx.vmap_sweep import vmap_sweep
+        from rfx.vmap_sweep import vmap_material_sweep
         eps = 4. if owner == 'dielectric' else 1.
-        return np.asarray(vmap_sweep(sim, 'slab.eps_r', np.array([eps]),
+        return np.asarray(vmap_material_sweep(sim, 'slab.eps_r', np.array([eps]),
                                     n_steps=n_steps).time_series)[0]
     if lane == 'probe_loop':
-        return np.asarray(probe_loop(sim, n_steps))
+        return np.asarray(probe_loop(sim, n_steps, face))
     if 'distributed' in lane:
         assert len(jax.devices('cpu')) >= 2, 'requires two CPU devices'
         kwargs['devices'] = jax.devices('cpu')[:2]

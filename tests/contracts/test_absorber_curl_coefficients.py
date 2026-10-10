@@ -21,10 +21,12 @@ def edge_mean(cells, component):
     return (cells + prev_a + prev_b + prev_ab) / 4
 
 
-def coefficient_scene(owner):
-    sim = build(owner, 'x_lo')
+def coefficient_scene(owner, lane='uniform', face='x_lo'):
+    sim = build(owner, face, nu='graded' in lane)
     sim.add_material('lossless', eps_r=3.25)
-    sim.add(Box((0., 6e-3, 0.), (12e-3, 8e-3, 8e-3)), material='lossless')
+    bounds = ((0., 6e-3, 0.), (24e-3, 8e-3, 12e-3)) if face == 'x_lo' else (
+        (6e-3, 0., 0.), (8e-3, 24e-3, 12e-3))
+    sim.add(Box(*bounds), material='lossless')
     return sim
 
 
@@ -102,10 +104,12 @@ def ulps(a, b):
 
 
 @pytest.mark.parametrize('owner', ['plain', 'dielectric', 'debye', 'lorentz', 'mixed'])
-def test_step_uses_owner_curl_coefficient(monkeypatch, owner, record_property):
-    sim = coefficient_scene(owner)
-    grid = sim._build_grid()
-    mats, ds, _, *_ = sim._assemble_materials(grid)
+@pytest.mark.parametrize('lane', ['uniform', 'graded'])
+def test_step_uses_owner_curl_coefficient(monkeypatch, owner, lane, record_property):
+    sim = coefficient_scene(owner, lane)
+    grid = sim._build_realized_grid()
+    assemble = sim._assemble_materials_nu if lane == 'graded' else sim._assemble_materials
+    mats, ds, _, *_ = assemble(grid)
     observed = observe(monkeypatch, sim)
     assert set(observed['update']) == set(observed['absorber']) == {0, 1, 2}
     values = []
@@ -123,14 +127,17 @@ def test_step_uses_owner_curl_coefficient(monkeypatch, owner, record_property):
         update = observed['update'][c][:6]
         difference = int(ulps(actual, update).max())
         formula_difference = int(ulps(actual, expected[:6]).max())
-        values.append(dict(component=c, update_ulps=difference, formula_ulps=formula_difference))
-        assert difference <= 2, f'{owner} component {c}: absorber/update {difference} float32 ULP'
-        assert formula_difference <= 2, f'{owner} component {c}: written Cb formula {formula_difference} float32 ULP'
+        values.append(dict(component=c, update_ulps=difference, formula_ulps=formula_difference,
+                           lossless_bits=int(actual[2, 7, 3].view(np.uint32))))
         # Literal SI coefficient bits captured from origin/main 00a7328dc,
         # at x=2 in the pad, lossless epsilon=3.25 region y=7, z=3.
-        assert int(actual[2, 7, 3].view(np.uint32)) == LOSSLESS_BITS[c]
-    record_property('judge2', json.dumps(values))
-    print(owner, json.dumps(values))
+    record_property('judge2', json.dumps(dict(owner=owner, lane=lane, components=values)))
+    print(lane, owner, json.dumps(values))
+    for value in values:
+        c = value['component']
+        assert value['update_ulps'] <= 2, f'{owner} component {c}: absorber/update {value["update_ulps"]} float32 ULP'
+        assert value['formula_ulps'] <= 2, f'{owner} component {c}: written Cb formula {value["formula_ulps"]} float32 ULP'
+        assert value['lossless_bits'] == LOSSLESS_BITS[c]
 
 
 LOSSLESS_BITS = (1032302835, 1032302835, 1032302835)
