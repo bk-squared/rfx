@@ -97,6 +97,14 @@ def observe(monkeypatch, sim):
     return observed
 
 
+def coefficient_ulp_bar(owner):
+    # ce_today/(1+loss) and the update's one-expression Cb differ by rounding
+    # of two extra operations; measured stand-alone on 200,000 random cells
+    # (eps 1-12, sigma 1e-3-1e3): max 6 ULP, 0.9 % above 2
+    # (independent review, 2026-10-10). A restored defect is 1e6 ULP.
+    return 2 if owner in ('debye', 'mixed') else 8
+
+
 def ulps(a, b):
     a = np.asarray(a, np.float32).view(np.uint32).astype(np.int64)
     b = np.asarray(b, np.float32).view(np.uint32).astype(np.int64)
@@ -135,8 +143,8 @@ def test_step_uses_owner_curl_coefficient(monkeypatch, owner, lane, record_prope
     print(lane, owner, json.dumps(values))
     for value in values:
         c = value['component']
-        assert value['update_ulps'] <= 2, f'{owner} component {c}: absorber/update {value["update_ulps"]} float32 ULP'
-        assert value['formula_ulps'] <= 2, f'{owner} component {c}: written Cb formula {value["formula_ulps"]} float32 ULP'
+        assert value['update_ulps'] <= coefficient_ulp_bar(owner), f'{owner} component {c}: absorber/update {value["update_ulps"]} float32 ULP'
+        assert value['formula_ulps'] <= coefficient_ulp_bar(owner), f'{owner} component {c}: written Cb formula {value["formula_ulps"]} float32 ULP'
         assert value['lossless_bits'] == LOSSLESS_BITS[c]
 
 
