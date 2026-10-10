@@ -62,7 +62,20 @@ def _reference_pair(lo, hi, fraction):
     return result
 
 
-def reference_mean(arr, sizes, periodic):
+def _host_divide(num, den):
+    return (num / den).astype(num.dtype)
+
+
+def _device_divide(num, den):
+    """The quotient as THIS backend rounds it. A GPU's float32 division is not
+    correctly rounded (RTX 4070 SUPER, merge-train GPU gate: 3 of 9 distinct
+    width quotients one bit off the host's, every other operation of the mean
+    bitwise the host's), so on a GPU the fraction is an input of the reference,
+    taken from the device."""
+    return np.asarray(jnp.asarray(num) / jnp.asarray(den))
+
+
+def reference_mean(arr, sizes, periodic, divide=_host_divide):
     out = []
     for c in range(3):
         result = arr
@@ -70,7 +83,8 @@ def reference_mean(arr, sizes, periodic):
             shape = [1, 1, 1]
             shape[t] = arr.shape[t]
             d = sizes[t].reshape(shape)
-            fraction = np.broadcast_to((d / (_back(d, t, periodic) + d)).astype(arr.dtype), arr.shape)
+            total = (_back(d, t, periodic) + d).astype(arr.dtype)
+            fraction = np.broadcast_to(divide(d, total), arr.shape)
             result = _reference_pair(_back(result, t, periodic), result, fraction)
         out.append(result)
     return out
@@ -272,56 +286,14 @@ def test_uniform_mesh_mean_is_untouched():
 @pytest.mark.gpu_gate
 def test_graded_mean_has_one_value_on_this_backend():
     """The same comparison on whatever backend the suite runs on; the
-    merge train's GPU gate runs it on a GPU."""
+    merge train's GPU gate runs it on a GPU. One value per backend: the width
+    quotient is the backend's own (see ``_device_divide``)."""
     periodic = (False, True, False)
     arr, sizes = _fields(np.float32)
-    ref = reference_mean(arr, sizes, periodic)
+    ref = reference_mean(arr, sizes, periodic, divide=_device_divide)
     jsizes = tuple(jnp.asarray(s) for s in sizes)
     for label, got in _contexts(
             lambda v: edge_mean_components(v, periodic, cell_sizes=jsizes), jnp.asarray(arr)).items():
         for c in range(3):
             _assert_equal_bits(got[c], ref[c], f"{jax.default_backend()} {label} component {c}")
 
-
-@pytest.mark.gpu_gate
-def test_diagnose_backend_stages():
-    """TEMPORARY diagnostic (removed before merge): which operation differs from the host on this backend."""
-    periodic = (False, True, False)
-    arr, sizes = _fields(np.float32)
-    shape = [1, 1, 1]
-    shape[1] = SHAPE[1]
-    d = np.broadcast_to(sizes[1].reshape(shape), SHAPE).copy()
-    back_d = _back(d, 1, periodic)
-    lo = _back(arr, 1, periodic)
-    total = (back_d + d).astype(np.float32)
-    frac = (d / total).astype(np.float32)
-    diff = (arr - lo).astype(np.float32)
-    (dh, dl), (fh, fl) = _parts(diff, (12,)), _parts(frac, (12,))
-    J = jnp.asarray
-
-    def count(got, want):
-        got, want = np.asarray(got), np.asarray(want, dtype=np.float32)
-        return int((got.view(np.uint32) != want.view(np.uint32)).sum())
-
-    from rfx.core.yee import _edge_mean_pair, _exact_parts
-    pair_ref = _reference_pair(lo, arr, frac)
-    jparts_d = _exact_parts(J(diff), (12,), "uint32", 32, 24, jnp)
-    jparts_f = _exact_parts(J(frac), (12,), "uint32", 32, 24, jnp)
-    rows = {
-        "add back+d": count(J(back_d) + J(d), total),
-        "div d/total": count(J(d) / J(total), frac),
-        "div jit d/(back+d)": count(jax.jit(lambda a, b: a / (b + a))(J(d), J(back_d)), frac),
-        "sub hi-lo": count(J(arr) - J(lo), diff),
-        "head diff": count(jparts_d[0], dh), "rest diff": count(jparts_d[1], dl),
-        "head frac": count(jparts_f[0], fh), "rest frac": count(jparts_f[1], fl),
-        "mul dh*fh": count(J(dh) * J(fh), dh * fh), "mul dl*fl": count(J(dl) * J(fl), dl * fl),
-        "mul plain diff*frac": count(J(diff) * J(frac), diff * frac),
-        "pair eager, host fraction": count(_edge_mean_pair(J(lo), J(arr), J(frac)), pair_ref),
-        "pair jit, host fraction": count(jax.jit(_edge_mean_pair)(J(lo), J(arr), J(frac)), pair_ref),
-        "pair jit vs pair eager (device fraction)": count(
-            jax.jit(lambda l, h, a, b: _edge_mean_pair(l, h, a / (b + a)))(J(lo), J(arr), J(d), J(back_d)),
-            _edge_mean_pair(J(lo), J(arr), J(d) / (J(back_d) + J(d)))),
-        "plain pair jit vs eager": count(
-            jax.jit(lambda l, h, f: l + (h - l) * f)(J(lo), J(arr), J(frac)), J(lo) + (J(arr) - J(lo)) * J(frac)),
-    }
-    assert jax.default_backend() == "cpu", f"{jax.default_backend()} stage counts of {arr.size}: {rows}"

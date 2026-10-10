@@ -707,6 +707,10 @@ def _edge_mean_pair(lo, hi, fraction):
     product rounds the same sum the same way, so this value has one bit
     pattern in every compile context, also when a stamp is added after it.
 
+    One value per backend: the fraction is a quotient of cell widths, and a
+    GPU's float division is not correctly rounded (it can be one bit off the
+    host's), so a GPU-formed mean need not equal a host-formed one.
+
     That holds for operands that arrive as rounded arrays. A caller that
     forms the cells as a product in the same compiled program (a traced
     ``background + rho * contrast``) can still have THAT multiply fused into
