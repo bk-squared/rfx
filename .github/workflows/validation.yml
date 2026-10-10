@@ -278,6 +278,64 @@ jobs:
           case "$ST" in completed|failed|terminated|stopped) DONE=1;; *) echo "a6000 lane still $ST after the poll budget; terminating"; exit 1;; esac
           [ "$ST" = completed ] || { echo "a6000 lane ended with status $ST"; exit 1; }
 
+  # Multi-device runs on two CUDA GPUs in one node (tracker 1598): no other lane has
+  # two cards, so the multi_gpu-marked tests skip everywhere else. This job submits
+  # scripts/vessl_validation_multigpu_a6000x2.yaml at this workflow's SHA and waits.
+  # It starts after the single-card lane so the workflow holds one GPU job at a time,
+  # and it still runs when that lane fails (only a cancelled run stops it).
+  weekly-a6000x2-multigpu:
+    needs: [weekly-a6000-lane]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    # The poll (150 x ~63 s = ~158 min) outlasts the job file's 3600 s pytest limit plus
+    # setup and a wait for the two-card node.
+    timeout-minutes: 170
+    concurrency:
+      group: weekly-a6000x2-multigpu
+      cancel-in-progress: false
+    environment: vessl
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install the VESSL CLI
+        run: pip install -q vessl
+      - name: Submit the two-card job at this SHA and wait for it
+        env:
+          VESSL_ACCESS_TOKEN: ${{ secrets.VESSL_ACCESS_TOKEN }}
+          VESSL_ORGANIZATION: ${{ vars.VESSL_ORGANIZATION }}
+          VESSL_PROJECT: ${{ vars.VESSL_PROJECT }}
+        run: |
+          set -uo pipefail
+          vessl configure -t "$VESSL_ACCESS_TOKEN" -o "$VESSL_ORGANIZATION" -p "$VESSL_PROJECT" >/dev/null || { echo "vessl configure failed"; exit 1; }
+          sed "s|RFX_SHA: \"origin/main\"|RFX_SHA: \"${GITHUB_SHA}\"|" scripts/vessl_validation_multigpu_a6000x2.yaml > /tmp/multigpu.yaml
+          grep -q "RFX_SHA: \"${GITHUB_SHA}\"" /tmp/multigpu.yaml || { echo "could not pin the SHA into the job file"; exit 1; }
+          OUT=$(vessl run create -f /tmp/multigpu.yaml 2>&1 || true)
+          printf '%s\n' "$OUT" | grep -vi token || true
+          RID=$(printf '%s\n' "$OUT" | grep -oE 'runs/[^/]+/[0-9]+' | grep -oE '[0-9]+$' | head -1 || true)
+          [ -n "$RID" ] || { echo "could not parse a run id from the create output (a YAML verification failure prints nothing at exit 0)"; exit 1; }
+          echo "VESSL run $RID"
+          # Whatever ends this step must not leave two A6000 cards held.
+          trap 'if [ "${DONE:-0}" != 1 ]; then echo "terminating VESSL run $RID"; vessl run terminate "$RID" </dev/null >/dev/null 2>&1 || true; fi' EXIT
+          ST=""; MISSES=0
+          for i in $(seq 1 150); do
+            ST=$(vessl run read "$RID" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | grep -E '^\s*Status\s' | head -1 | awk '{print $2}' || true)
+            if [ -z "$ST" ]; then
+              MISSES=$((MISSES+1)); echo "$(date -u +%H:%M) status unreadable ($MISSES in a row)"
+              [ "$MISSES" -ge 15 ] && { echo "status unreadable 15 times in a row; giving up"; exit 1; }
+            else
+              MISSES=0; echo "$(date -u +%H:%M) status=$ST"
+              case "$ST" in completed|failed|terminated|stopped) break;; esac
+            fi
+            sleep 60
+          done
+          vessl run logs "$RID" --tail 400 2>/dev/null | grep -vi token | tail -60 || true
+          case "$ST" in completed|failed|terminated|stopped) DONE=1;; *) echo "two-card job still $ST after the poll budget; terminating"; exit 1;; esac
+          [ "$ST" = completed ] || { echo "two-card job ended with status $ST"; exit 1; }
+
   # The weekly external-solver job (crossval-external: Meep legs of the scheduled
   # cross-validation cases) was removed on 2026-09-21 with the last scheduled case.
   # CI does not run external solvers: a cross-validation case compares rfx with
@@ -329,7 +387,7 @@ jobs:
   # that must at least show up as an annotation on the run. `core.error` cannot
   # red the job on its own, so the "never red the run" rule still holds.
   notify:
-    needs: [slow-tests, weekly-a6000-lane]
+    needs: [slow-tests, weekly-a6000-lane, weekly-a6000x2-multigpu]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 10

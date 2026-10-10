@@ -1,0 +1,58 @@
+name: rfx-weekly-a6000x2
+description: "Weekly two-card check: the multi_gpu-marked tests (multi-device runs on two CUDA GPUs in one node), at a pinned SHA cloned from the public repository"
+tags: [rfx, weekly, validation, a6000, multi-gpu]
+resources:
+  cluster: remilab-c0
+  # The only two-card preset on the cluster (2026-10-11 resource list); the other
+  # multi-GPU presets give three A6000s. Measured on two A6000 for #1600: 11 passed,
+  # 2 skipped in 75 s, under 5 GB per card.
+  preset: gpu-a6000-2
+image: nvcr.io/nvidia/jax:24.10-py3
+env:
+  PYTHONUNBUFFERED: "1"
+  XLA_PYTHON_CLIENT_PREALLOCATE: "false"
+  HDF5_USE_FILE_LOCKING: "FALSE"
+  LANG: "C.UTF-8"
+  MPLBACKEND: "Agg"
+  RFX_SHA: "origin/main"
+mount:
+  /results: volume://remilab-fs/rfx-vessl-tests
+run: |-
+  set -eu
+  command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
+  # Same source and environment as scripts/vessl_validation_lane_a6000.yaml: only its own
+  # results folder is mounted, and the source comes from the public repository.
+  WORK=/tmp/rfx-weekly-src
+  rm -rf "$WORK"
+  git clone -q --no-checkout --filter=blob:none https://github.com/bk-squared/rfx.git "$WORK"
+  cd "$WORK"
+  case "$RFX_SHA" in origin/*) ;; *) git cat-file -e "$RFX_SHA^{commit}" 2>/dev/null || git fetch -q origin "$RFX_SHA";; esac
+  SHA=$(git rev-parse --short=8 "$RFX_SHA^{commit}")
+  OUT=/results/weekly_a6000x2_${SHA}_$(date -u +%Y%m%dT%H%M%SZ)
+  mkdir -p "$OUT"
+  git checkout -q --detach "$SHA"
+  echo "checked out $(git rev-parse HEAD): $(git ls-files | wc -l) tracked files"
+  python -m pip install -q "uv==0.12.19"
+  uv venv -q --python 3.11.16 /tmp/venv-py311
+  PY=/tmp/venv-py311/bin/python
+  uv pip install -q --python "$PY" --exclude-newer 2026-09-27T13:37:21Z "jax[cuda12]==0.10.2" "numpy==2.4.6" "scipy==1.17.1" "h5py==3.16.0" "matplotlib==3.11.2" "ml_dtypes==0.6.0" "pyyaml==6.0.3" "optax==0.2.8" "pillow==12.3.0" "pytest==9.1.1" "pytest-split==0.11.0"
+  # Two cards must be visible before pytest starts. With fewer the tests skip
+  # themselves and the job would end green having run nothing.
+  "$PY" -c "import jax, sys; assert sys.version_info[:2] == (3, 11), sys.version; assert jax.__version__ == '0.10.2', jax.__version__; gpus = [d for d in jax.devices() if d.platform == 'gpu']; assert len(gpus) >= 2, jax.devices()"
+  uv pip freeze --python "$PY" > "$OUT/pip_freeze.txt"
+  export PYTHONPATH="$WORK"
+  "$PY" -c "import jax, rfx; print('jax', jax.__version__, jax.devices(), 'rfx', rfx.__version__)"
+  nvidia-smi --query-gpu=index,name,memory.total --format=csv > "$OUT/gpus.csv" 2>&1 || true
+  echo "=== multi_gpu selection ==="
+  # Each case runs in a fresh worker process with its own 1500 s limit; 3600 s covers
+  # the whole selection with room for compilation on a loaded node.
+  set +e
+  timeout 3600 "$PY" -m pytest -v -ra -s -p no:cacheprovider -m multi_gpu tests > "$OUT/multi_gpu.log" 2>&1
+  RC=$?
+  set -e
+  echo "multi_gpu rc=$RC"; tail -15 "$OUT/multi_gpu.log"
+  grep -E '^(FAILED|ERROR)' "$OUT/multi_gpu.log" | head -40 || true
+  printf 'sha=%s multi_gpu_rc=%s\nlast=%s\n' "$SHA" "$RC" "$(tail -1 "$OUT/multi_gpu.log")" > "$OUT/summary.txt"
+  cat "$OUT/summary.txt"
+  echo "=== done: $OUT ==="
+  [ "$RC" -eq 0 ]
