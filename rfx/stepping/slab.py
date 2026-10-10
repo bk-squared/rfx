@@ -1,7 +1,7 @@
 """Whole-domain x arrays to owned slabs and neighbour ghosts.
 
-This module owns placement, not field updates, CPML state,
-source ownership, or gathering. A mesh result merges rank and local x;
+This module owns placement and source ownership, not field updates,
+CPML state or gathering. A mesh result merges rank and local x;
 without a mesh the leading axes are (rank, local x), for legacy callers.
 """
 from dataclasses import dataclass
@@ -108,6 +108,11 @@ def forward_sharding(arr):
             return sharding
     sharding = getattr(arr, 'sharding', None)
     return sharding if isinstance(sharding, NamedSharding) else None
+
+
+def source_owner_mask(rank, device_ids):
+    """One entry per source, true only on the slab that owns its edge."""
+    return rank == np.asarray(device_ids, dtype=np.int32)
 
 
 def is_sharded(arr, layout, mesh):

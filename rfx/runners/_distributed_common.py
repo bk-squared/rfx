@@ -831,8 +831,8 @@ def inject_sources_shmap(st, src_vals_step, mesh, n_src,
     device runs the same grouped add and only the owner's lands.
 
     ``in_specs`` are ``ex``, ``ey``, ``ez`` sharded on ``P("x")`` and
-    ``src_vals_step`` replicated (``P()``) -- it is a per-step scalar vector
-    indexed by source, not a field.
+    ``src_vals_step`` slab-local (``P("x")``), shape (n_devices, n_sources).
+    Each device receives its stored row, with all non-owned entries zero.
 
     ``src_local_specs[i]`` is ``(li, lj, lk, lc)``: the LOCAL index triple
     on the owning device plus the component name; ``src_device_ids[i]`` is
@@ -853,14 +853,14 @@ def inject_sources_shmap(st, src_vals_step, mesh, n_src,
     @partial(
         rank_shard_map,
         mesh=mesh,
-        in_specs=(P("x"), P("x"), P("x"), P()),
+        in_specs=(P("x"), P("x"), P("x"), P("x")),
         out_specs=(P("x"), P("x"), P("x")),
         check_rep=False,
     )
     def _inject(ex, ey, ez, sv, *, rank):
         from rfx.core.yee import FDTDState
         local = FDTDState(ex, ey, ez, None, None, None, None)
-        local = inject_drives(local, drives, jnp.where(rank == device_ids, sv, 0.0))
+        local = inject_drives(local, drives, jnp.where(rank == device_ids, sv[0], 0.0))
         return local.ex, local.ey, local.ez
 
     ex, ey, ez = _inject(ranks, st.ex, st.ey, st.ez, src_vals_step)
