@@ -371,6 +371,7 @@ def test_two_card_job_follows_the_single_card_lane_even_when_it_fails() -> None:
     run = next(s["run"] for s in job["steps"] if "vessl run create" in s.get("run", ""))
     assert "scripts/vessl_validation_multigpu_a6000x2.yaml" in run
     assert 'RFX_SHA: \\"origin/main\\"' in run, "the step pins the SHA by rewriting this exact line"
+    assert '[ "$ST" = completed ] || { echo "two-card job ended with status $ST"; exit 1; }' in run.splitlines()[-1]
 
 
 def test_two_card_file_needs_two_cards_before_its_tests_run() -> None:
@@ -378,10 +379,19 @@ def test_two_card_file_needs_two_cards_before_its_tests_run() -> None:
     assert spec["resources"]["preset"] == "gpu-a6000-2"
     assert spec["env"]["RFX_SHA"] == "origin/main"
     assert spec["mount"] == {"/results": "volume://remilab-fs/rfx-vessl-tests"}
-    lines = spec["run"].splitlines()
-    guard = next(i for i, line in enumerate(lines) if "assert len(gpus) >= 2" in line)
-    tests = next(i for i, line in enumerate(lines) if "-m pytest" in line)
-    # Without the guard a node with one visible card skips every test and ends green.
+    lines = [line.strip() for line in spec["run"].splitlines()]
+    # Whole lines, so a commented-out guard, an appended `|| true` or a collect-only
+    # pytest call does not pass. Without the guard a node with one visible card skips
+    # every test and ends green.
+    guard = lines.index(
+        '"$PY" -c "import jax, sys; assert sys.version_info[:2] == (3, 11), sys.version; '
+        "assert jax.__version__ == '0.10.2', jax.__version__; "
+        "gpus = [d for d in jax.devices() if d.platform == 'gpu']; "
+        'assert len(gpus) >= 2, jax.devices()"'
+    )
+    tests = lines.index(
+        'timeout 3600 "$PY" -m pytest -v -ra -s -p no:cacheprovider -m multi_gpu tests > "$OUT/multi_gpu.log" 2>&1'
+    )
     assert guard < tests
-    assert "-m multi_gpu" in lines[tests]
-    assert lines[-1].strip() == '[ "$RC" -eq 0 ]'
+    assert lines[tests + 1] == "RC=$?"
+    assert lines[-1] == '[ "$RC" -eq 0 ]'
