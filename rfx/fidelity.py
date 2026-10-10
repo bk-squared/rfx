@@ -13,6 +13,8 @@ uses, without time stepping.
 """
 from __future__ import annotations
 
+from rfx.model.thin_conductors import conductivity_envelope
+
 import jax.numpy as jnp
 import numpy as np
 
@@ -189,7 +191,7 @@ def fidelity_report(sim, print_report: bool = True):
     rows = {row.label: row for row in record.entities}
     mats = record.materials
     eps = np.asarray(mats.eps_r, dtype=float)
-    sigma_arr = np.asarray(mats.sigma, dtype=float)
+    sigma_arr = np.asarray(conductivity_envelope(mats), dtype=float)
     pec_mask = (record.pec_mask if record.pec_mask is not None else np.zeros(eps.shape, bool))
     sizes, nodes = record.cell_sizes, record.nodes
     # The realized edge set depends on the run's #689 flags, so the report

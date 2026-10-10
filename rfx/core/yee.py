@@ -58,6 +58,10 @@ class MaterialArrays(NamedTuple):
     field on the two loaded sides against 0.37 on the free one).
     ``None`` is bit-identical to averaging ``eps_r`` and ``sigma`` outright.
 
+    ``sigma_film`` is the edge-owned conductivity of declared films. It is
+    not contained in ``sigma``: it is added after the edge mean and never
+    subtracted. Its optional per-component tuple has the lumped record's form.
+
     Every RLC element's ``D0`` (series and parallel) reads its own edge
     through ``rfx.lumped.edge_update_denominator`` -> ``cell_component_e_materials``.
     The lanes whose volume is still CELL-owned (the distributed slab update,
@@ -84,6 +88,9 @@ class MaterialArrays(NamedTuple):
     components: object = None
     # Realized relaxed-conductor factors; lane steps remain independently pinned.
     edge_keep: object = None
+    # Edge-owned conductivity of declared films: never contained in sigma,
+    # added after the edge mean, never subtracted. None or (x, y, z).
+    sigma_film: object = None
 
 
 def component_h_materials(materials, periodic=(False, False, False), *, cell_sizes=None):
@@ -219,6 +226,12 @@ def map_lumped(record, fn):
                  for part in lumped_components(record))
 
 
+def add_film(sigma_components, materials):
+    """Add each declared film to its own E component after the volume mean."""
+    return tuple(s if f is None else s + f for s, f in zip(
+        sigma_components, lumped_components(materials.sigma_film)))
+
+
 def cell_owned_component_materials(materials):
     """Per-component ``(eps_r, sigma)`` for a CELL-OWNED lane (#1236).
 
@@ -244,7 +257,7 @@ def cell_owned_component_materials(materials):
         return tuple(out)
 
     return (per_component(materials.eps_r, eps_parts),
-            per_component(materials.sigma, sig_parts))
+            add_film(per_component(materials.sigma, sig_parts), materials))
 
 
 def init_state(shape: tuple[int, int, int], *, field_dtype=jnp.float32) -> FDTDState:
@@ -818,7 +831,7 @@ def component_e_materials(materials, periodic=(False, False, False), *, cell_siz
     eps_c = add_lumped_eps(eps_c, getattr(materials, "eps_r_lumped", None))
     sig_c = tuple(s if part is None else s + part
                   for s, part in zip(sig_c, sig_parts))
-    return eps_c, sig_c
+    return eps_c, add_film(sig_c, materials)
 
 
 _E_COMPONENT_AXIS = {"ex": 0, "ey": 1, "ez": 2}
@@ -904,8 +917,11 @@ def cell_component_e_materials(materials, cell, component,
         own = parts[axis]
         return m if own is None else m + own[cell]
 
+    film_at = materials._replace(sigma_film=map_lumped(
+        materials.sigma_film, lambda part: part[cell]))
+    sigma = mean4(materials.sigma, sig_parts)
     return (mean4(materials.eps_r, eps_parts),
-            mean4(materials.sigma, sig_parts))
+            add_film((sigma,) * 3, film_at)[axis])
 
 
 def cell_component_e_coeffs(materials, cell, component, dt,

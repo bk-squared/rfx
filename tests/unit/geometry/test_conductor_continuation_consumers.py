@@ -34,7 +34,7 @@ def test_nonuniform_thin_conductor_fills_pad_nodes(kind):
     elif kind == "impedance":
         mask = np.asarray(impedances[0].mask)
     else:
-        mask = np.asarray(materials.sigma) > 0
+        mask = np.asarray(materials.sigma_film[0]) > 0
     assert mask[:, :, 6].all()
     assert mask.sum() == 169
 

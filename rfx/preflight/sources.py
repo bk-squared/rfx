@@ -50,6 +50,8 @@ acyclic. This module moves no module-level name, so
 
 from __future__ import annotations
 
+from rfx.model.thin_conductors import conductivity_envelope
+
 import math
 
 import numpy as np
@@ -97,7 +99,7 @@ def _validate_tfsf_vacuum_boundary(materials: MaterialArrays, tfsf_cfg,
                 slices.append(tuple(sl))
                 names.append(f"{'xyz'[axis]}={index}")
         arrays = tuple(value[sl] for sl in slices
-                       for value in (materials.eps_r, materials.sigma, materials.mu_r,
+                       for value in (materials.eps_r, conductivity_envelope(materials), materials.mu_r,
                                      *nonvacuum_masks))
         width = 3 + len(nonvacuum_masks)
 
@@ -129,7 +131,7 @@ def _validate_tfsf_vacuum_boundary(materials: MaterialArrays, tfsf_cfg,
 
     for plane_name, xs in boundary_slices:
         eps = np.asarray(materials.eps_r[xs, :, :])
-        sigma = np.asarray(materials.sigma[xs, :, :])
+        sigma = np.asarray(conductivity_envelope(materials)[xs, :, :])
         mu = np.asarray(materials.mu_r[xs, :, :])
         if not (
             np.allclose(eps, 1.0)

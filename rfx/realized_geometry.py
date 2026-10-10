@@ -265,6 +265,12 @@ def _build_record(sim, ctx, *, compact=False):
         plane = (None if sheet is None else
                  (int(sheet.normal_axis), int(sheet.plane),
                   float(nodes[int(sheet.normal_axis)][int(sheet.plane)])))
+        if e is not None and e.kind == "lossy":
+            tc = sim._thin_conductors[index - len(sim._geometry)]
+            if tc.surface_impedance_f0 is None and index - len(sim._geometry) not in refused_tc:
+                from rfx.model.thin_conductors import dc_film_plane
+                normal, node = dc_film_plane(tc.shape, ctx.grid)
+                plane = (normal, int(node), float(nodes[normal][node]))
         continued = ()
         if e is not None:
             solved_bounds = _shape_bounds(e.solved_shape)

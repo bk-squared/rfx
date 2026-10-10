@@ -2423,8 +2423,8 @@ def run_nonuniform_distributed_pec(
             # #1279: the drive sees the materials the E update sees -- the
             # override, on the tape when traced -- read in the program.
             materials = invariants[0]
-            scales = material_drive_scales(
-                materials.eps_r, materials.sigma, mesh, drives, dt, ranks=ranks, grid=electric_grid)
+            scales = material_drive_scales(materials.eps_r, materials.sigma, mesh, drives, dt,
+                ranks=ranks, grid=electric_grid, sigma_film=materials.sigma_film)
             if _realized.ACTIVE is not None:
                 scales = _realized.runtime_drive(scales, tuple(drive_columns))
             if warmup_xs is not None:

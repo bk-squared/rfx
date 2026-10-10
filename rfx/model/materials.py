@@ -16,7 +16,7 @@ import jax.numpy as jnp
 
 from rfx.core.jax_utils import is_tracer
 from rfx.core.yee import (
-    MaterialArrays, add_lumped_eps, cell_owned_component_materials,
+    MaterialArrays, add_film, add_lumped_eps, cell_owned_component_materials,
     component_h_materials, edge_averaged_materials, edge_mean_components,
     lumped_components, lumped_total, permittivity_without_lumped,
 )
@@ -479,6 +479,8 @@ def _fold_thin_conductors(sim, grid, materials, pec_mask, pec_shapes, pec_sheets
                           sheet_specs, geometry_masks, assembly_entries, findings):
     """Continue declarations and apply the one model fold in declared order."""
     for declared in sim._thin_conductors:
+        from rfx.model.thin_conductors import admit_dc_plane
+        admit_dc_plane(declared, grid, pmc_faces=sim._boundary_spec.pmc_faces(), mode=sim._mode)
         key = id(declared)
         tc = replace(declared, shape=continued_conductor_shape(
             sim, grid, declared.shape, entry=declared, unextendable=findings))
@@ -661,6 +663,13 @@ def e_update_coefficient_at(materials, cell, component, dt,
     return e_update_coeffs(eps, sigma, dt)[1]
 
 
+def edge_coverage_weights(grid, covered, periodic):
+    """Share of each E edge's four cells that ``covered`` marks, by the edge mean."""
+    from rfx.core.yee import edge_averaged_materials
+    return edge_averaged_materials(jnp.ones_like(covered), covered, periodic,
+                                   cell_sizes=electric_cell_sizes(grid))[1]
+
+
 def electric_cell_sizes(grid):
     """One-dimensional primal metrics; None axes retain the equal-cell path."""
     if grid is None:
@@ -728,6 +737,9 @@ def realize_components(cells, grid, *, periodic):
         materials, debye_spec, lorentz_spec = cells
     else:
         materials, debye_spec, lorentz_spec = cells, None, None
+    for part in lumped_components(materials.sigma_film):
+        if part is not None and part.shape != materials.eps_r.shape:
+            raise ValueError("sigma_film arrays must have the cells' shape")
     # A cells view never contains another realization.
     materials = materials._replace(components=None)
     eps_lumped = lumped_components(materials.eps_r_lumped)
@@ -746,6 +758,7 @@ def realize_components(cells, grid, *, periodic):
     mu_wire = lumped_components(materials.mu_r_wire)
     eps_update = add_lumped_eps(eps, materials.eps_r_lumped)
     sigma_update = tuple(s if p is None else s + p for s, p in zip(sigma, sigma_lumped))
+    sigma_update = add_film(sigma_update, materials)
     mu_update = tuple(m if p is None else m + p for m, p in zip(mu, mu_wire))
     upml_eps, upml_sigma = cell_owned_component_materials(materials)
     return ComponentMaterials(
@@ -786,7 +799,7 @@ def validate_components(materials, *, periodic, grid=None):
         raise ValueError("realized material periodic flags differ from the kernel")
     # The lumped/wire records are inputs of the realization too (review of
     # M2a, round 3): replacing one alone must not reuse the old components.
-    for name in ("eps_r", "sigma", "mu_r", "sigma_lumped", "eps_r_lumped", "mu_r_wire"):
+    for name in ("eps_r", "sigma", "mu_r", "sigma_lumped", "eps_r_lumped", "mu_r_wire", "sigma_film"):
         if getattr(components.cells_view, name, None) is not getattr(materials, name, None):
             raise ValueError(f"stale realized material: {name} cell array changed")
     if grid is not None and components.grid_key and components.grid_key != _grid_key(grid):
@@ -924,6 +937,7 @@ def _design_box_edge_coeffs(bounds, eps_r_box, sigma_box, materials, dt, shape,
         bg_mats = MaterialArrays(
             eps_r=jnp.asarray(materials.eps_r)[win],
             sigma=jnp.asarray(materials.sigma)[win], mu_r=None,
+            sigma_film=map_lumped(materials.sigma_film, lambda a: jnp.asarray(a)[win]),
             eps_r_lumped=map_lumped(
                 getattr(materials, "eps_r_lumped", None),
                 lambda a: jnp.asarray(a)[win]),
@@ -969,3 +983,9 @@ def geometric_interface_components(eps, live, fallback, widths):
         np.divide(num, den, out=value, where=den > 0)
         out.append(value)
     return tuple(out)
+
+
+def electric_materials_traced(materials):
+    """Whether a source coefficient depends on a traced volume or film."""
+    return any(is_tracer(part) for part in jax.tree_util.tree_leaves(
+        (materials.eps_r, materials.sigma, materials.sigma_film)))

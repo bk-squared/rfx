@@ -137,7 +137,7 @@ def plot_geometry_2d_slice(
     from rfx.materials.thin_conductor import conductor_footprint as _cond_fp
     _wn = _wire_nodes(_geo_wires)
     cond = np.asarray(_cond_fp(
-        pec_mask=_geo_pec, sigma=_geo_mats.sigma,
+        pec_mask=_geo_pec, sigma=_geo_mats.sigma, sigma_film=_geo_mats.sigma_film,
         sheet_masks=[sp.footprint for sp in _geo_sheets]
                     + ([] if _wn is None else [_wn]),
         shape=grid.shape), dtype=bool)

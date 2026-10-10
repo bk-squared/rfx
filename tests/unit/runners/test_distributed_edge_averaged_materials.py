@@ -525,6 +525,11 @@ def test_mutation_the_cell_owned_coefficient_sends_every_material_case_red(monke
     _install(monkeypatch, "cell")
     for boundary, cases in (("pec", CASES), ("cpml", CPML_CASES)):
         for case in cases:
+            # The film enters after the mean through the same helper in both
+            # forms. C1 two-device rows in tests/contracts/test_film_one_plane.py
+            # guard it: "the film helper returns its input" sends them red.
+            if case == "sheet":
+                continue
             for lane in ("run", "fwd"):
                 got, floor = _parity(boundary, lane, case, 2)
                 gate = _gate(floor, case)

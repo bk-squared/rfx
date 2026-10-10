@@ -478,6 +478,11 @@
       "kind": "roll/diff"
     },
     {
+      "file": "rfx/model/electric_metrics.py",
+      "function": "_slab_x_lo_view",
+      "kind": "boundary"
+    },
+    {
       "file": "rfx/nonuniform.py",
       "function": "_band_realize_free",
       "kind": "difference"
@@ -587,11 +592,6 @@
     {
       "file": "rfx/runners/_distributed_common.py",
       "function": "_init_cpml_distributed",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/runners/_distributed_common.py",
-      "function": "_slab_x_lo_view",
       "kind": "boundary"
     },
     {

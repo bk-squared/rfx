@@ -7,6 +7,8 @@ step to read the array; until then the tests pin it against each step.
 """
 from functools import partial
 
+from rfx.model.thin_conductors import conductivity_envelope
+
 import jax.numpy as jnp
 
 from rfx.boundaries.pec import _shift, realized_pec_edge_masks
@@ -204,6 +206,6 @@ def select_occupancy_operator(self, grid, materials, pec_occupancy_local,
                   f"any_nan={bool(jnp.any(jnp.isnan(_ix)))}", file=_sys.stderr, flush=True)
             print(f"[kottke debug] eps_r min={float(jnp.min(materials.eps_r)):.3e} "
                   f"max={float(jnp.max(materials.eps_r)):.3e}", file=_sys.stderr, flush=True)
-            print(f"[kottke debug] sigma min={float(jnp.min(materials.sigma)):.3e} "
-                  f"max={float(jnp.max(materials.sigma)):.3e}", file=_sys.stderr, flush=True)
+            print(f"[kottke debug] sigma min={float(jnp.min(conductivity_envelope(materials))):.3e} "
+                  f"max={float(jnp.max(conductivity_envelope(materials))):.3e}", file=_sys.stderr, flush=True)
     return pec_occupancy_for_run, aniso_inv_eps_run
