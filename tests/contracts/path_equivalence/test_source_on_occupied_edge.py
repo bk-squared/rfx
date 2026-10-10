@@ -120,3 +120,28 @@ def test_h4_reference_peak(lane, w, graded_records, record_property):
     record_property('expected_peak', expected)
     record_property('peak_over_main', peak / MAIN_PEAKS.get(lane, MAIN_PEAKS['graded'])[index])
     assert abs(peak / expected - 1.) <= 1e-3
+
+
+def test_occupancy_gradient_one_device_equals_two_at_zero_occupancy():
+    """At w = 1 the values agree on any form; the derivative with respect to w does not.
+
+    One device used to add the source unweighted (w*E + s) while two devices
+    formed w*(E + s): equal values at zero occupancy, different occupancy
+    gradients in the cells round the source edge (5 % of the largest entry
+    on this scene before the drive carried its weight). Accumulated bar.
+    """
+    if len(jax.devices()) < 2:
+        pytest.skip(f'needs two devices on one backend, found {len(jax.devices())}')
+    gradients = []
+    for kwargs in ({}, dict(distributed=True, devices=jax.devices()[:2])):
+        sim, occupancy = scene('graded', 1.)
+
+        def loss(cells):
+            result = sim.forward(n_steps=120, pec_occupancy_override=cells,
+                                 checkpoint=False, skip_preflight=True, **kwargs)
+            return jnp.sum(result.time_series[:, :2] ** 2)
+        gradients.append(np.asarray(jax.grad(loss)(occupancy)))
+    one, two = gradients
+    peak = np.max(np.abs(one))
+    assert peak > 0 and np.max(np.abs(one[5:7, 6:8, 4:6])) > .1 * peak
+    assert np.max(np.abs(one - two)) <= 1e-4 * peak
