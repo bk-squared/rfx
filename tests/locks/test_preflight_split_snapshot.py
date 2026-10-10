@@ -705,7 +705,6 @@ _REBOUND_ON_MIXIN = {
         "_validate_cfg_pec_face_short_of_domain_wall",
         "_validate_cfg_pec_realization", "_validate_cfg_sheet_cavity_thickness",
         "_validate_cfg_sheet_slot_vacuum",
-        "_validate_cfg_sheet_gap_bridged",
         "_validate_cfg_thin_conductor_surface_impedance",
     ),
     # Leg 3. None of these twelve was a @staticmethod, so the frozenset

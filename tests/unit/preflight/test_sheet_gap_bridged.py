@@ -28,8 +28,8 @@ def test_t1_one_cell_gap():
     assert finding.severity == "error"
     assert finding.source == "_validate_cfg_sheet_gap_bridged"
     message = str(finding)
-    for expected in ("#0", "#1", "thin_conductor[0]", "thin_conductor[1]",
-                     "1mm", "11 Ey edge(s)", "ONE conductor", "tracker 1373"):
+    for expected in ("thin_conductor[0] and thin_conductor[1] lie on one plane",
+                     "drawn 1mm apart", "11 Ey edge(s)", "ONE conductor", "tracker 1373"):
         assert expected in message
 
 
@@ -66,9 +66,9 @@ def test_t6_different_planes_or_normals(normal):
 def test_t7_three_sheets():
     findings = model(((.003, .006), (.007, .010), (.011, .014))).preflight().by_code(CODE)
     assert len(findings) == 2
-    assert "#0 and #1" in str(findings[0])
-    assert "#1 and #2" in str(findings[1])
-    assert all("#0 and #2" not in str(row) for row in findings)
+    assert "thin_conductor[0] and thin_conductor[1]" in str(findings[0])
+    assert "thin_conductor[1] and thin_conductor[2]" in str(findings[1])
+    assert all("thin_conductor[0] and thin_conductor[2]" not in str(row) for row in findings)
 
 
 def test_t8_graded_local_cell_gap():
@@ -116,3 +116,79 @@ def test_t11_lossy_and_f0_excluded(kwargs):
     sheet(sim, .005, .010, **kwargs)
     sheet(sim, .011, .015, **kwargs)
     assert not sim.preflight().by_code(CODE)
+
+
+@pytest.mark.parametrize("first_route,labels", [
+    ("thin", "geometry[0] and thin_conductor[0]"),
+    ("add", "geometry[0] and geometry[1]"),
+])
+def test_n1_both_declaration_routes(first_route, labels):
+    sim = model(())
+    if first_route == "thin":
+        sheet(sim, .005, .010)
+    else:
+        sim.add(Box((.01, .005, .005), (.01, .010, .015)), material="pec")
+    sim.add(Box((.01, .011, .005), (.01, .015, .015)), material="pec")
+    finding, = sim.preflight().by_code(CODE)
+    # The classifier lists geometry declarations before thin conductors.
+    assert str(finding).startswith(labels + " lie on one plane")
+    assert "11 Ey edge(s)" in str(finding)
+
+
+@pytest.mark.parametrize("cover", [(.009, .012), (.010, .011), (.004, .016)])
+def test_n2_gap_covered_by_one_sheet(cover):
+    sim = model()
+    sheet(sim, *cover)
+    assert not sim.preflight().by_code(CODE)
+
+
+def test_n2_partial_cover_counts_only_unowned_edges():
+    sim = model()
+    sim.add_thin_conductor(Box((.01, .009, .005), (.01, .012, .010)),
+                           sigma_bulk=5.8e7, thickness=35e-6)
+    # A-B has 11 Ey edges at z nodes 5..15. C owns nodes 5..10 inclusive,
+    # hence 6 of these edges: 11 - 6 = 5 remain at z nodes 11..15.
+    ctx = sim._campaign_ctx()
+    sheets = [entry.sheet for entry in ctx.entry_realizations() if entry.kind == "sheet"]
+    pair = realized_pec_edge_masks(None, sheets[:2], periodic=ctx.periodic)
+    own = np.zeros(ctx.grid.shape, dtype=bool)
+    for sp in sheets:
+        own |= np.asarray(realized_pec_edge_masks(None, [sp], periodic=ctx.periodic)[1])
+    assert np.count_nonzero(np.asarray(pair[1]) & ~own) == 5
+    finding, = sim.preflight().by_code(CODE)
+    assert str(finding).startswith("thin_conductor[0] and thin_conductor[1] lie on one plane")
+    assert "5 Ey edge(s)" in str(finding)
+
+
+@pytest.mark.parametrize("boxes,component,normal", [
+    ((((.005, .01, .005), (.015, .01, .010)),
+      ((.005, .01, .011), (.015, .01, .015))), "Ez", "y"),
+    ((((.005, .005, .01), (.010, .015, .01)),
+      ((.011, .005, .01), (.015, .015, .01))), "Ex", "z"),
+])
+def test_n3_other_normal_and_gap_axes(boxes, component, normal):
+    sim = model(())
+    for corners in boxes:
+        sim.add_thin_conductor(Box(*corners), sigma_bulk=5.8e7, thickness=35e-6)
+    finding, = sim.preflight().by_code(CODE)
+    assert f"one plane ({normal} = 10mm)" in str(finding)
+    assert "drawn 1mm apart" in str(finding)
+    assert f"11 {component} edge(s)" in str(finding)
+
+
+@pytest.mark.parametrize("intervals", [((.005, .010), (.011, .015)),
+                                       ((.011, .015), (.005, .010))])
+def test_n4_gap_format_in_both_declaration_orders(intervals):
+    finding, = model(intervals).preflight().by_code(CODE)
+    assert "drawn 1mm apart" in str(finding)
+
+
+def test_n5_swapped_box_corners():
+    sim = model(((.005, .010),))
+    sim.add_thin_conductor(Box((.01, .015, .015), (.01, .011, .005)),
+                           sigma_bulk=5.8e7, thickness=35e-6)
+    report = sim.preflight()
+    assert not report.by_code(CODE)
+    refusal, = report.by_code("pec_zero_cells")
+    assert "thin_conductor[1]" in str(refusal)
+    assert "footprint rasterizes to ZERO nodes" in str(refusal)

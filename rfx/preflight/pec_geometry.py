@@ -306,7 +306,7 @@ def _validate_cfg_campaign_statics(self, _w) -> None:
         ))
         return
     self._validate_cfg_sheet_slot_vacuum(_w, ctx)
-    self._validate_cfg_sheet_gap_bridged(_w, ctx)
+    _validate_cfg_sheet_gap_bridged(self, _w, ctx)
     self._validate_cfg_sheet_cavity_thickness(_w, ctx)
 
 # ------------------------------------------------------------------
@@ -520,70 +520,72 @@ def _validate_cfg_sheet_gap_bridged(self, _w, ctx) -> None:
     from rfx.boundaries.pec import _sheet_edge_masks
     from rfx.geometry.csg import declared_bounds
 
-    # entry_realizations retains the assembly product keyed by id(tc), and
-    # labels it with the index from enumerate(sim._thin_conductors).
-    entries = sorted(
-        ((int(e.label[len("thin_conductor["):-1]), e)
-         for e in ctx.entry_realizations()
-         if e.kind == "sheet" and e.label.startswith("thin_conductor[")),
-        key=lambda row: row[0],
-    )
+    # The classifier marks f0 and lossy thin conductors as kind="lossy".
+    # Preserve its declaration order and labels for both declaration routes.
+    planes = {}
+    for entry in ctx.entry_realizations():
+        if entry.kind == "sheet":
+            key = (entry.sheet.normal_axis, entry.sheet.plane)
+            planes.setdefault(key, []).append(entry)
     shape = tuple(ctx.grid.shape)
-    for (i, first), (j, second) in combinations(entries, 2):
-        a, b = first.sheet, second.sheet
-        if a.normal_axis != b.normal_axis or a.plane != b.plane:
+    for entries in planes.values():
+        if len(entries) < 2:
             continue
-        bounds_a, bounds_b = declared_bounds(first.shape), declared_bounds(second.shape)
-        if bounds_a is None or bounds_b is None:
-            continue
-        together = _sheet_edge_masks([a, b], shape, ctx.periodic)
-        alone_a = _sheet_edge_masks([a], shape, ctx.periodic)
-        alone_b = _sheet_edge_masks([b], shape, ctx.periodic)
-        qualifying = []
-        for t in range(3):
-            if t == a.normal_axis:
+        own = [np.zeros(shape, dtype=bool) for _ in range(3)]
+        for entry in entries:
+            edges = _sheet_edge_masks([entry.sheet], shape, ctx.periodic)
+            for t, mask in enumerate(edges):
+                if mask is not None:
+                    own[t] |= np.asarray(mask, dtype=bool)
+        for first, second in combinations(entries, 2):
+            a, b = first.sheet, second.sheet
+            bounds_a, bounds_b = declared_bounds(first.shape), declared_bounds(second.shape)
+            if bounds_a is None or bounds_b is None:
                 continue
-            bridging = (np.asarray(together[t], dtype=bool)
-                        & ~(np.asarray(alone_a[t], dtype=bool)
-                            | np.asarray(alone_b[t], dtype=bool)))
-            n = int(np.count_nonzero(bridging))
-            if not n:
+            together = _sheet_edge_masks([a, b], shape, ctx.periodic)
+            qualifying = []
+            for t in range(3):
+                if t == a.normal_axis:
+                    continue
+                bridging = np.asarray(together[t], dtype=bool) & ~own[t]
+                n = int(np.count_nonzero(bridging))
+                if not n:
+                    continue
+                lo_a, hi_a = sorted((float(bounds_a[0][t]), float(bounds_a[1][t])))
+                lo_b, hi_b = sorted((float(bounds_b[0][t]), float(bounds_b[1][t])))
+                tol = 1e-6 * float(np.min(ctx.spacings[t]))
+                # Sheets facing through a periodic seam are not joined today (ledger, seam entry), so no bridging edge reaches this formula.
+                gap = max(lo_b - hi_a, lo_a - hi_b)
+                if gap <= tol:
+                    continue
+                # Each True edge is stored at its lower node; its spacing is
+                # the actual local cell across this gap, including graded grids.
+                cell = float(np.min(ctx.spacings[t][np.nonzero(bridging)[t]]))
+                qualifying.append((n, t, gap, cell))
+            if not qualifying:
                 continue
-            lo_a, hi_a = float(bounds_a[0][t]), float(bounds_a[1][t])
-            lo_b, hi_b = float(bounds_b[0][t]), float(bounds_b[1][t])
-            tol = 1e-6 * float(np.min(ctx.spacings[t]))
-            shifts = (0.0, self._domain[t], -self._domain[t]) if ctx.periodic[t] else (0.0,)
-            gaps = [max(lo_b + shift - hi_a, lo_a - hi_b - shift) for shift in shifts]
-            candidates = [gap for gap in gaps if gap > -tol]
-            gap = min(candidates) if candidates else max(gaps)
-            if gap <= tol:
-                continue
-            # Each True edge is stored at its lower node; its spacing is
-            # the actual local cell across this gap, including graded grids.
-            cell = float(np.min(ctx.spacings[t][np.nonzero(bridging)[t]]))
-            qualifying.append((n, t, gap, cell))
-        if not qualifying:
-            continue
-        qualifying.sort(key=lambda row: -row[0])
-        n, t, gap, cell = qualifying[0]
-        other = "".join(f" Also {count} E{'xyz'[axis]} edge(s) across the gap are metal."
-                        for count, axis, _gap, _cell in qualifying[1:])
-        _w.warn(PreflightWarning(
-            f"thin conductors #{i} and #{j} ({first.label} and {second.label}) "
-            f"lie on one plane ({'xyz'[a.normal_axis]} = "
-            f"{_fmt_len(float(ctx.nodes[a.normal_axis][a.plane]))}) and are drawn "
-            f"{_fmt_len(gap)} apart along {'xyz'[t]}, but they are solved as ONE "
-            f"conductor: {n} E{'xyz'[t]} edge(s) across the gap are metal."
-            + other + " A sheet is realized as the nodes inside its drawn extent "
-            "and an edge is metal when both of its end nodes belong to sheets on "
-            "that plane, so a gap narrower than two cells "
-            f"(local cell {_fmt_len(cell)}) has no free node line. "
-            "Draw the gap at least two cells wide, or refine the mesh there. "
-            "If the two are meant to be one conductor, draw them touching or "
-            "overlapping. (tracker 1373)",
-            code="sheet_gap_bridged", severity="error",
-            source="_validate_cfg_sheet_gap_bridged",
-        ))
+            qualifying.sort(key=lambda row: -row[0])
+            n, t, gap, cell = qualifying[0]
+            other = "".join(f" Also {count} E{'xyz'[axis]} edge(s) across the gap are metal."
+                            for count, axis, _gap, _cell in qualifying[1:])
+            _w.warn(PreflightWarning(
+                f"{first.label} and {second.label} lie on one plane "
+                f"({'xyz'[a.normal_axis]} = "
+                f"{_fmt_len(float(ctx.nodes[a.normal_axis][a.plane]))}) and are drawn "
+                f"{_fmt_len(round(gap, 12))} apart along {'xyz'[t]}, but they are solved as ONE "
+                f"conductor: {n} E{'xyz'[t]} edge(s) across the gap are metal."
+                + other + " A sheet is realized as the nodes inside its drawn extent "
+                "and an edge is metal when both of its end nodes belong to sheets on "
+                f"that plane (local cell {_fmt_len(cell)}). "
+                "The two are joined when no free node line lies between them — "
+                "always for a drawn gap of one cell or less, and for a gap up to "
+                "two cells depending on where it falls on the mesh. "
+                "Draw the gap at least two cells wide, or refine the mesh there. "
+                "If the two are meant to be one conductor, draw them touching or "
+                "overlapping. (tracker 1373)",
+                code="sheet_gap_bridged", severity="error",
+                source="_validate_cfg_sheet_gap_bridged",
+            ))
 
 
 def _validate_cfg_sheet_slot_vacuum(self, _w, ctx) -> None:
@@ -1449,8 +1451,4 @@ _validate_cfg_sheet_cavity_thickness.__qualname__ = (
 )
 _validate_cfg_off_lattice_design_edges.__qualname__ = (
     "_PreflightMixin._validate_cfg_off_lattice_design_edges"
-)
-
-_validate_cfg_sheet_gap_bridged.__qualname__ = (
-    "_PreflightMixin._validate_cfg_sheet_gap_bridged"
 )

@@ -40,13 +40,15 @@ longer records were run; a graded-mesh case read 0. Results on the GPU, and in a
 CPU-only process, are not affected. Use the GPU device or a CPU-only process to
 avoid this spread.
 
-### Two sheets on one plane drawn less than two cells apart are solved as one conductor
+### Two sheets on one plane are joined when no free node line lies between them
 
 Tracker: #1373
 
 A feed gap, coupling gap or slot one cell wide between two separately declared PEC
-sheets is a short. Sheets on one plane contribute to one set of nodes, and an E
-edge is metal when both of its end nodes are in that set. On 1 mm cells, sheets
+sheets is a short. The two are joined when no free node line lies between them —
+always for a drawn gap of one cell or less, and for a gap up to two cells depending
+on where it falls on the mesh. Sheets on one plane contribute to one set of nodes,
+and an E edge is metal when both of its end nodes are in that set. On 1 mm cells, sheets
 drawn over [5, 10] and [11, 15] mm occupy node rows 5–10 and 11–15: the edge
 between rows 10 and 11 is metal. A half-cell gap, [5, 10] and [10.5, 15] mm,
 occupies the same rows and is also joined. A 1.5-cell gap, [5, 10] and
@@ -54,8 +56,11 @@ occupies the same rows and is also joined. A 1.5-cell gap, [5, 10] and
 abutting sheets, [5, 9.5] and [9.5, 15] mm, occupy rows 5–9 and 10–15;
 their join is intended.
 
-Preflight flags a bridged drawn gap with the error `sheet_gap_bridged`. Draw the
-gap at least two cells wide, or use a finer mesh at the gap. A fix is planned:
+Preflight flags a bridged drawn gap with the error `sheet_gap_bridged`. This covers
+PEC sheets declared by `add_thin_conductor` and zero-thickness PEC boxes passed to
+`add()`. Non-box shapes are judged by their bounding boxes; a gap inside overlapping
+bounding boxes is not reported. An edge already made metal by any one sheet is not
+counted as a bridge. Draw the gap at least two cells wide, or use a finer mesh at the gap. A fix is planned:
 join sheets only where their drawn extents touch or overlap.
 
 ### Lossy sheets and sheet_effective_size
