@@ -169,3 +169,13 @@ Measured on the base tree (00a7328dc) and on the fix, records in rfx-archive
 5. Always-on versus weekly: scene (b) on uniform run/forward, graded run and the two multi-device runs, and scene (a)
    on the uniform run, are always-on; the remaining path x face combinations carry the `slow` marker (the full matrix
    takes 17 minutes serially).
+6. After the two independent reviews (same day): judge 2's bar is 8 float32 ULP for the plain and Lorentz owners (the
+   rule `ce_today/(1+loss)` and the update's one-expression coefficient differ by the rounding of two extra operations;
+   an independent reviewer measured at most 6 ULP on 200,000 random cells, 0.9 % above 2) and stays 2 ULP for Debye
+   and mixed, which are the owner's own array; a restored defect is 1e6 ULP. Judge 2 also pins the high-x face slice on
+   the last rank of both multi-device paths with a Debye box that ends inside the pad (a plain medium is extruded
+   along the pad normal and cannot see a one-row shift). On the multi-device uniform path the plain/Lorentz loss is
+   formed on face slices inside the absorber's shard-map from the component means it already holds. Known limits of
+   the judges, stated: the decay criterion separates the restored defects (at least 7.5x per 750 steps) but not a slow
+   growth below about 3.5x per 750 steps from the rounding floor; a lumped port inside a pad moves by 1e-4 of the
+   probe peak because its conductance is part of the update's coefficient on that edge.
