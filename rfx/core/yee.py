@@ -707,10 +707,6 @@ def _edge_mean_pair(lo, hi, fraction):
     product rounds the same sum the same way, so this value has one bit
     pattern in every compile context, also when a stamp is added after it.
 
-    One value per backend: the fraction is a quotient of cell widths, and a
-    GPU's float division is not correctly rounded (it can be one bit off the
-    host's), so a GPU-formed mean need not equal a host-formed one.
-
     That holds for operands that arrive as rounded arrays. A caller that
     forms the cells as a product in the same compiled program (a traced
     ``background + rho * contrast``) can still have THAT multiply fused into
@@ -738,6 +734,24 @@ def _edge_mean_pair(lo, hi, fraction):
     return result
 
 
+def _width_fraction(lo, d, array_module=jnp):
+    """``d / (lo + d)`` for the pair mean, divided on the HOST when the widths
+    are concrete.
+
+    A GPU's float division is not correctly rounded, and a compiled program
+    folds a division of captured constants on the host: the same widths gave
+    one quotient in an eager call on a GPU and another under ``jax.jit``
+    (RTX 4070 SUPER: 3 of 9 distinct quotients one bit apart). Concrete widths
+    are therefore divided once, in NumPy, wherever the mean is formed. Traced
+    widths are divided where they live; a lane that wants the same bits as the
+    others keeps its widths concrete.
+    """
+    if array_module is np or isinstance(lo, jax.core.Tracer) or isinstance(d, jax.core.Tracer):
+        return d / (lo + d)
+    lo, d = np.asarray(lo), np.asarray(d)
+    return jnp.asarray(d / (lo + d))
+
+
 def _edge_mean_component(arr, t1, t2, periodic, cell_sizes, array_module=jnp):
     if cell_sizes is not None and any(cell_sizes[t] is not None for t in (t1, t2)):
         result = arr
@@ -750,7 +764,7 @@ def _edge_mean_component(arr, t1, t2, periodic, cell_sizes, array_module=jnp):
                 shape[t] = arr.shape[t]
                 d = array_module.asarray(d, dtype=arr.dtype).reshape(shape)
                 lo = _material_bwd_neighbour(d, t, periodic, array_module=array_module)
-                fraction = d / (lo + d)
+                fraction = _width_fraction(lo, d, array_module)
             lo = _material_bwd_neighbour(result, t, periodic, array_module=array_module)
             result = _edge_mean_pair(lo, result, fraction)
         return result
@@ -880,7 +894,7 @@ def cell_component_e_materials(materials, cell, component,
                     fractions.append(0.5)
                 else:
                     d = jnp.asarray(cell_sizes[t], dtype=arr.dtype)
-                    fractions.append(d[cell[t]] / (d[back(cell[t], t)] + d[cell[t]]))
+                    fractions.append(_width_fraction(d[back(cell[t], t)], d[cell[t]]))
             hi = _edge_mean_pair(v[2], v[0], fractions[0])
             lo = _edge_mean_pair(v[3], v[1], fractions[0])
             m = _edge_mean_pair(lo, hi, fractions[1])

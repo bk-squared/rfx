@@ -62,20 +62,7 @@ def _reference_pair(lo, hi, fraction):
     return result
 
 
-def _host_divide(num, den):
-    return (num / den).astype(num.dtype)
-
-
-def _device_divide(num, den):
-    """The quotient as THIS backend rounds it. A GPU's float32 division is not
-    correctly rounded (RTX 4070 SUPER, merge-train GPU gate: 3 of 9 distinct
-    width quotients one bit off the host's, every other operation of the mean
-    bitwise the host's), so on a GPU the fraction is an input of the reference,
-    taken from the device."""
-    return np.asarray(jnp.asarray(num) / jnp.asarray(den))
-
-
-def reference_mean(arr, sizes, periodic, divide=_host_divide):
+def reference_mean(arr, sizes, periodic):
     out = []
     for c in range(3):
         result = arr
@@ -84,7 +71,7 @@ def reference_mean(arr, sizes, periodic, divide=_host_divide):
             shape[t] = arr.shape[t]
             d = sizes[t].reshape(shape)
             total = (_back(d, t, periodic) + d).astype(arr.dtype)
-            fraction = np.broadcast_to(divide(d, total), arr.shape)
+            fraction = np.broadcast_to((d / total).astype(arr.dtype), arr.shape)
             result = _reference_pair(_back(result, t, periodic), result, fraction)
         out.append(result)
     return out
@@ -286,11 +273,13 @@ def test_uniform_mesh_mean_is_untouched():
 @pytest.mark.gpu_gate
 def test_graded_mean_has_one_value_on_this_backend():
     """The same comparison on whatever backend the suite runs on; the
-    merge train's GPU gate runs it on a GPU. One value per backend: the width
-    quotient is the backend's own (see ``_device_divide``)."""
+    merge train's GPU gate runs it on a GPU. The width quotient is formed on
+    the host for concrete widths (a GPU divides one bit differently, and a
+    compiled program folds the division of captured widths on the host), so
+    the host reference holds on a GPU in eager and compiled calls alike."""
     periodic = (False, True, False)
     arr, sizes = _fields(np.float32)
-    ref = reference_mean(arr, sizes, periodic, divide=_device_divide)
+    ref = reference_mean(arr, sizes, periodic)
     jsizes = tuple(jnp.asarray(s) for s in sizes)
     for label, got in _contexts(
             lambda v: edge_mean_components(v, periodic, cell_sizes=jsizes), jnp.asarray(arr)).items():
