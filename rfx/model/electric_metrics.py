@@ -48,7 +48,8 @@ def slab_metric_kwargs(grid, rank):
     return {} if widths is None or all(w is None for w in widths) else dict(cell_sizes=widths)
 
 
-def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks, grid=None):
+def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks, grid=None,
+                          reduce_devices=True):
     """``Cb/dV`` of each material-driven current source, read from the slabs
     the E update receives (#1279). Called inside the runner's jitted program.
 
@@ -78,7 +79,9 @@ def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks, grid=None):
         the single-device rule. ``dV`` is the E node's control volume
         (:func:`rfx.nonuniform.current_source_volume`).
 
-    Returns a replicated ``(len(drives),)`` float32 vector: every device
+    With ``reduce_devices=False``, returns ``(n_devices, len(drives))``
+    on the slab axis without a collective; non-owner entries are zero.
+    The default returns a replicated ``(len(drives),)`` float32 vector: every device
     computes its own four-cell mean, the owner's is kept by the mask and
     ``psum`` hands it to all. The arithmetic is
     :func:`rfx.nonuniform.current_source_cb`'s traced branch, the one the
@@ -95,7 +98,7 @@ def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks, grid=None):
     from rfx.nonuniform import current_source_cb
 
     @partial(rank_shard_map, mesh=mesh, in_specs=(P("x"), P("x")),
-             out_specs=P(), check_rep=False)
+             out_specs=P() if reduce_devices else P("x"), check_rep=False)
     def _scales(eps_local, sigma_local, *, rank):
         device = rank
         out = []
@@ -114,7 +117,8 @@ def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks, grid=None):
                                    jnp.where(owner, sigma_c + pole, 0.0), dt,
                                    traced=True)
             out.append(jnp.where(owner, cb / dV, 0.0))
-        return lax.psum(jnp.stack(out), "x")
+        values = jnp.stack(out)
+        return lax.psum(values, "x") if reduce_devices else values[None, :]
 
     return _scales(ranks, eps_r, sigma)
 

@@ -1348,7 +1348,8 @@ def _apply_cpml_h_local_nu(state: FDTDState, cpml_params, cpml_state,
     return new_state, new_cpml
 
 
-from rfx.model.electric_metrics import material_drive_scales, SlabElectricMetrics, stage_forward_dispersion_x_slab
+from rfx.model.electric_metrics import material_drive_scales as _material_drive_scales, SlabElectricMetrics, stage_forward_dispersion_x_slab
+material_drive_scales = partial(_material_drive_scales, reduce_devices=False)
 
 
 def run_nonuniform_distributed_pec(
@@ -2412,24 +2413,25 @@ def run_nonuniform_distributed_pec(
     # Per-cell arrays must enter the jit as arguments: captured concrete
     # arrays become whole-domain compiled constants on every device. Keep
     # their tracer-valued counterparts shared by all scans, including remat.
-    def _drive_xs(xs, scales):
-        from rfx.model.source_coefficients import scale_source_columns
-        return scale_source_columns(xs, scales, drive_columns)
+    def _drive_xs(xs, scales, ranks):
+        from rfx.model.source_coefficients import slab_drive_table
+        return slab_drive_table(xs, mesh, src_device_ids, src_local_specs,
+                                ranks=ranks, scales=scales, columns=drive_columns)
 
     @jax.jit
     def run_fn(c0, invariants, warmup_xs, opt_xs, *, ranks, e_cell_sizes):
         electric_grid = SlabElectricMetrics(e_cell_sizes, nx_real, nx_per, nx_local)
+        scales = None
         if drives:
             # #1279: the drive sees the materials the E update sees -- the
             # override, on the tape when traced -- read in the program.
-            materials = invariants[0]
             scales = material_drive_scales(
-                materials.eps_r, materials.sigma, mesh, drives, dt, ranks=ranks, grid=electric_grid)
+                invariants[0].eps_r, invariants[0].sigma, mesh, drives, dt, ranks=ranks, grid=electric_grid)
             if _realized.ACTIVE is not None:
-                scales = _realized.runtime_drive(scales, tuple(drive_columns))
-            if warmup_xs is not None:
-                warmup_xs = _drive_xs(warmup_xs, scales)
-            opt_xs = _drive_xs(opt_xs, scales)
+                scales = jnp.broadcast_to(_realized.runtime_drive(jnp.sum(scales, axis=0), tuple(drive_columns)), scales.shape)
+        if warmup_xs is not None:
+            warmup_xs = _drive_xs(warmup_xs, scales, ranks)
+        opt_xs = _drive_xs(opt_xs, scales, ranks)
         # #1303: each component's four-cell mean, built once for the
         # warm-up and the optimize scans (and every remat segment) -- see
         # slab_e_materials_shmap for why not inside the loop. Dispersive E
@@ -2467,16 +2469,14 @@ def run_nonuniform_distributed_pec(
                     start_step, start_step + n_seg * chunk,
                     dtype=jnp.int32,
                 )
-                n_sources_local = opt_src.shape[1]
-                src_pad = jnp.zeros(
-                    (pad, n_sources_local), dtype=opt_src.dtype)
+                src_pad = jnp.zeros((pad, *opt_src.shape[1:]), dtype=opt_src.dtype)
                 src_padded = jnp.concatenate([opt_src, src_pad], axis=0)
             else:
                 steps_padded = opt_steps
                 src_padded = opt_src
 
             seg_steps = steps_padded.reshape(n_seg, chunk)
-            seg_src = src_padded.reshape(n_seg, chunk, src_padded.shape[1])
+            seg_src = src_padded.reshape(n_seg, chunk, *src_padded.shape[1:])
 
             def segment_body(carry, segment_xs):
                 # Inner scan over a single segment of ``chunk`` steps.

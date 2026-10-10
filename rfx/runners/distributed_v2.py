@@ -1396,8 +1396,8 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     # ------------------------------------------------------------------
     step_indices = jnp.arange(n_steps, dtype=jnp.int32)
     # src_waveforms shape: (n_steps, n_sources) — replicated, not sharded
-    src_waveforms_rep = jax.device_put(src_waveforms, rep)
-    xs = (step_indices, src_waveforms_rep)
+    xs = (step_indices, jax.device_put(src_waveforms, rep))
+    from rfx.model.source_coefficients import slab_drive_table
 
     # ------------------------------------------------------------------
     # Run with jit + lax.scan
@@ -1429,7 +1429,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
                     ranks=ranks,
                 ),
                 carry,
-                scan_xs,
+                slab_drive_table(scan_xs, mesh, src_device_ids, src_local_specs, ranks=ranks),
             )
 
             # Each probe has exactly one owner; all other contributions are
@@ -1469,7 +1469,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
                     ranks=ranks,
                 ),
                 carry,
-                scan_xs,
+                slab_drive_table(scan_xs, mesh, src_device_ids, src_local_specs, ranks=ranks),
             )
 
             # Each probe has exactly one owner; all other contributions are

@@ -98,7 +98,7 @@ def _reference(patch, *, exchange=True, probes=True):
         yield
 
 
-def _build_model(boundary, n_devices, model="composed"):
+def _build_model(boundary, n_devices, model="composed", source_kind="field"):
     layers = 1 if boundary == "cpml" else 0
     # PEC retains a reflecting face and all seam/material/halo checks;
     # these tests measure exchange, not the deferred distributed PMC image.
@@ -119,7 +119,7 @@ def _build_model(boundary, n_devices, model="composed"):
     for pos, i in zip(positions, indices):
         assert grid.position_to_index(pos)[0] == i
         for component in ("ey", "ez"):
-            sim.add_source(pos, component, amplitude_kind="field",
+            sim.add_source(pos, component, amplitude_kind=source_kind,
                            waveform=lambda t: jnp.cos(t * 2e10))
         for component in _FIELDS:
             sim.add_probe(pos, component)
@@ -139,10 +139,10 @@ def _build_model(boundary, n_devices, model="composed"):
     return sim
 
 
-def _run(boundary, n_devices, model="composed"):
+def _run(boundary, n_devices, model="composed", source_kind="field"):
     devices = jax.devices("cpu")[:n_devices]
     assert len(devices) == n_devices
-    sim = _build_model(boundary, n_devices, model)
+    sim = _build_model(boundary, n_devices, model, source_kind)
     result = sim.run(n_steps=_STEPS, devices=devices, compute_s_params=False)
     assert result.time_series.shape == (_STEPS, len(sim._probes))
     assert result.time_series.dtype == jnp.float32
@@ -288,7 +288,7 @@ def _loop_collectives(hlo):
     lines = [line for body in bodies for line in walk(body)]
     assert any("ROOT " in line for line in lines), "incomplete while computation"
     result = {}
-    for op in ("collective-permute", "all-reduce"):
+    for op in ("collective-permute", "all-reduce", "all-gather", "all-to-all"):
         matches = [line.strip() for line in lines
                    if re.search(rf"\s{op}(?:-start|-done)?\(", line)]
         # Async start/done is one logical collective; require balanced pairs.
@@ -299,35 +299,49 @@ def _loop_collectives(hlo):
     return result
 
 
-def _compiled_hlo(patch):
+def _compiled_hlo(patch, source_kind="field", grad=False):
     captured = []
 
     def traced_jit(f, *args, **kwargs):
         entry = jax.jit(f, *args, **kwargs)
 
         def run(*a, **k):
-            compiled = entry.lower(*a, **k).compile()
+            if grad:
+                def loss(eps, ranks):
+                    args = (*a[:2], a[2]._replace(eps_r=eps), *a[3:])
+                    return jnp.sum(entry(*args, **{**k, "ranks": ranks})[1] ** 2)
+                compiled = jax.jit(jax.grad(loss)).lower(a[2].eps_r, k["ranks"]).compile()
+                result = entry(*a, **k)
+            else:
+                compiled = entry.lower(*a, **k).compile()
+                result = compiled(*a, **k)
             captured.append(compiled.as_text())
-            result = compiled(*a, **k)
             assert result[1].sharding.is_fully_replicated
             return result
         return run
 
     with patch.context() as p:
         p.setattr(runner, "jax", SimpleNamespace(**{**vars(jax), "jit": traced_jit}))
-        _run("cpml", 2, "plain")
+        _run("cpml", 2, "plain", source_kind)
     assert len(captured) == 1
     return captured[0]
 
 
-def test_time_loop_collectives(monkeypatch):
-    counts = _loop_collectives(_compiled_hlo(monkeypatch))
-    _assert_loop_counts(counts)
+@pytest.mark.parametrize("source_kind", ["field", "current"])
+@pytest.mark.parametrize("grad", [False, True])
+def test_time_loop_collectives(monkeypatch, source_kind, grad):
+    from tests.unit.runners.test_distributed_nu_minimal_exchange import _loop_counts, _assert_counts
+    hlo = _compiled_hlo(monkeypatch, source_kind, grad)
+    _assert_counts(_loop_counts(hlo), grad)
+    if not grad:
+        _assert_loop_counts(_loop_collectives(hlo))
 
 
 def _assert_loop_counts(counts):
     assert counts["collective-permute"][0] == 2, counts
     assert counts["all-reduce"][0] == 0, counts
+    assert counts["all-gather"][0] == 0, counts
+    assert counts["all-to-all"][0] == 0, counts
 
 
 @pytest.mark.parametrize("mutation", ["full_exchange", "per_step_psum"])
