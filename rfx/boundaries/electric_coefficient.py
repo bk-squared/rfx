@@ -1,7 +1,7 @@
 """The electric absorber uses the curl owner's loss or dispersive coefficient."""
 import jax.numpy as jnp
 
-from rfx.core.yee import component_e_materials, e_coeffs_eps_r_units
+from rfx.core.yee import e_coeffs_eps_r_units
 from rfx.materials.debye import per_component
 from rfx.materials.lorentz import mixed_e_component_coeffs
 
@@ -14,9 +14,8 @@ def loss_terms(e_materials, dt, *, inverse=False):
 
 def material_loss_operands(materials, *, eps=None, inv=None):
     """Keep the E operands until the step forms its loss coefficient."""
-    components = materials.components
-    e, sigma = ((components.eps_update, components.sigma_update)
-                if components is not None else component_e_materials(materials))
+    # The step's realized per-component operands (the model layer formed them).
+    e, sigma = materials.components.eps_update, materials.components.sigma_update
     if inv is not None:
         return inv, sigma, True
     return e if eps is None else eps, sigma, False
@@ -28,11 +27,6 @@ def in_loop_loss(operands, dt):
         return None
     eps, sigma, inverse = operands
     return loss_terms((eps, sigma), dt, inverse=inverse)
-
-
-def material_loss(materials, dt, *, eps=None, inv=None):
-    """Loss of the exact component operands selected for this E update."""
-    return in_loop_loss(material_loss_operands(materials, eps=eps, inv=inv), dt)
 
 
 def dispersive_curl(debye, lorentz, dt):

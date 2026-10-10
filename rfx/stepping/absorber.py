@@ -1,7 +1,7 @@
 """Thread the E update's coefficient operands into its absorber correction."""
 from rfx.boundaries.cpml import apply_cpml_e, apply_cpml_h
 from rfx.boundaries.electric_coefficient import (
-    material_loss, material_loss_operands, in_loop_loss, dispersive_curl,
+    material_loss_operands, in_loop_loss, dispersive_curl,
 )
 
 
