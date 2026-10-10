@@ -137,7 +137,8 @@ def test_step_uses_owner_curl_coefficient(monkeypatch, owner, lane, record_prope
         formula_difference = int(ulps(actual, expected[:6]).max())
         values.append(dict(component=c, update_ulps=difference, formula_ulps=formula_difference,
                            lossless_bits=int(actual[2, 7, 3].view(np.uint32))))
-        # Literal SI coefficient bits captured from origin/main 00a7328dc,
+        # Literal SI coefficient bits captured from the
+        # base tree (00a7328dc; unchanged on a8a23248d),
         # at x=2 in the pad, lossless epsilon=3.25 region y=7, z=3.
     record_property('judge2', json.dumps(dict(owner=owner, lane=lane, components=values)))
     print(lane, owner, json.dumps(values))
