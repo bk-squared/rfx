@@ -118,7 +118,7 @@ def test_lossy_path_still_depends_on_thickness():
                            mu_r=ones.copy()),
             None,
         )
-        got.append(float(np.asarray(mats.sigma).max()))
+        got.append(float(np.asarray(mats.sigma_film[0]).max()))
     assert got[0] > 0.0
     assert got[1] == pytest.approx(2.0 * got[0], rel=1e-9)
 

@@ -856,6 +856,7 @@ def conductor_footprint(
     sigma=None,
     sheet_masks=(),
     *,
+    sigma_film=None,
     sigma_threshold: float = CONDUCTOR_SIGMA_THRESHOLD,
     shape=None,
 ):
@@ -883,6 +884,11 @@ def conductor_footprint(
     out = None
     if sigma is not None:
         out = jnp.asarray(sigma) > float(sigma_threshold)
+    from rfx.core.yee import lumped_components
+    for part in lumped_components(sigma_film):
+        if part is not None:
+            film = jnp.asarray(part) > float(sigma_threshold)
+            out = film if out is None else out | film
     if pec_mask is not None:
         pm = jnp.asarray(pec_mask).astype(bool)
         out = pm if out is None else (out | pm)

@@ -139,7 +139,7 @@ def test_thin_sheet_at_period_has_zero_plane_edges(kind, snap):
         elif kind == 'surface_impedance':
             footprints.append((impedance[0].mask,))
         else:
-            footprints.append((materials.sigma,))
+            footprints.append(tuple(p for p in materials.sigma_film if p is not None))
     assert sum(np.asarray(m).sum() for m in footprints[0]) > 0
     for a, b in zip(*footprints):
         np.testing.assert_array_equal(a, b)

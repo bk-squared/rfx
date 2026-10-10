@@ -143,6 +143,8 @@ def _digests(sim):
     return {
         "eps_r": _sha(mats.eps_r),
         "sigma": _sha(mats.sigma),
+        "sigma_film": None if mats.sigma_film is None else tuple(
+            None if part is None else _sha(part) for part in mats.sigma_film),
         "mu_r": _sha(mats.mu_r),
         "pec_mask": _sha(pec_mask),
         "pec_sheets": tuple((int(sp.normal_axis), int(sp.plane),
@@ -1760,7 +1762,7 @@ def _uniform_sigma(shape, **kw):
         assert float(np.asarray(mats.sigma).max()) == 0.0
         assert len(specs) == 1
         return np.asarray(specs[0].sigma_sheet), pec_mask, grid, sim
-    return np.asarray(mats.sigma), pec_mask, grid, sim
+    return np.asarray(mats.sigma_film[0]), pec_mask, grid, sim
 
 
 def _nu_grid(sim):
@@ -1790,7 +1792,7 @@ def _nu_sigma(shape, **kw):
         assert float(np.asarray(mats.sigma).max()) == 0.0
         assert len(specs) == 1
         return np.asarray(specs[0].sigma_sheet), pec_mask, grid, sim
-    return np.asarray(mats.sigma), pec_mask, grid, sim
+    return np.asarray(mats.sigma_film[0]), pec_mask, grid, sim
 
 
 def _box_sheet(z, foot):
@@ -1878,7 +1880,7 @@ def test_dc_fold_also_accepts_a_mask_shape_on_the_uniform_lane():
             assemble(grid)
         sim._snap = 'declared'
         with pytest.warns(UserWarning, match="cannot judge"):
-            sigma = np.asarray(assemble(grid)[0].sigma)
+            sigma = np.asarray(assemble(grid)[0].sigma_film[0])
         assert np.any(sigma > 0)
         if not nonuniform:
             assert _sha(sig_box) == _sha(sigma)

@@ -983,14 +983,7 @@ def _update_h_local_nu(state, materials, dt,
     return state._replace(hx=hx, hy=hy, hz=hz)
 
 
-def _slab_x_lo_view(arr, rank):
-    return arr.at[0].set(jnp.where(rank == 0, arr[1], arr[0]))
-
-
-def _slab_model_rows(nx_local, nx_per, nx, rank):
-    local = jnp.arange(nx_local)
-    rows = rank * nx_per - 1 + local
-    return ((local >= 1) & (local < nx_local - 1) & (rows < nx))[:, None, None]
+from rfx.model.electric_metrics import _slab_x_lo_view, _slab_model_rows
 
 
 from rfx.model.materials import slab_pole_fractions
@@ -1043,6 +1036,7 @@ def slab_e_component_materials(materials, nx_per, nx, rank=None, *, cell_sizes=N
         eps_r=x_lo_replicated(materials.eps_r),
         sigma=x_lo_replicated(materials.sigma),
         mu_r=materials.mu_r,
+        sigma_film=map_lumped(materials.sigma_film, x_lo_replicated),
         sigma_lumped=map_lumped(getattr(materials, "sigma_lumped", None),
                                 x_lo_replicated),
         eps_r_lumped=map_lumped(getattr(materials, "eps_r_lumped", None),
@@ -1110,6 +1104,7 @@ def slab_e_materials_shmap(mat, mesh, nx_per, nx, *, ranks, grid=None):
 
     return jax.checkpoint(_mean)(ranks, MaterialArrays(
         eps_r=mat.eps_r, sigma=mat.sigma, mu_r=mat.mu_r,
+        sigma_film=mat.sigma_film,
         sigma_lumped=getattr(mat, "sigma_lumped", None),
         eps_r_lumped=getattr(mat, "eps_r_lumped", None)))
 
@@ -1271,7 +1266,7 @@ def update_e_nu_shmap(st, mat, mesh, dt,
             P("x"), P("x"), P("x"),
             P(),
             P("x"), P("x"), P("x"),
-            P("x"), P("x"),          # lumped records: None or (x, y, z)
+            P("x"), P("x"), P("x"),  # lumped and film component records
             P("x"), P(None), P(None),
             P("x"),                  # e_materials: None or ((eps...), (sig...))
         ),
@@ -1279,10 +1274,11 @@ def update_e_nu_shmap(st, mat, mesh, dt,
         check_rep=False,
     )
     def _e(ex, ey, ez, hx, hy, hz, step, eps_r, sigma, mu_r,
-           sigma_lumped, eps_r_lumped, invdx, invdy, invdz, means, *, rank):
+           sigma_lumped, eps_r_lumped, sigma_film, invdx, invdy, invdz, means, *, rank):
         _st = FDTDState(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz, step=step)
         if means is None:
             _mat = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r,
+                                  sigma_film=sigma_film,
                                   sigma_lumped=sigma_lumped,
                                   eps_r_lumped=eps_r_lumped)
             coeffs = slab_e_coeffs(_mat, nx_per, nx, dt, rank=rank)
@@ -1295,7 +1291,7 @@ def update_e_nu_shmap(st, mat, mesh, dt,
         ranks, st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, st.step,
         mat.eps_r, mat.sigma, mat.mu_r,
         getattr(mat, "sigma_lumped", None), getattr(mat, "eps_r_lumped", None),
-        inv_dx_sharded, inv_dy_rep, inv_dz_rep, e_materials,
+        mat.sigma_film, inv_dx_sharded, inv_dy_rep, inv_dz_rep, e_materials,
     )
     return st._replace(ex=ex, ey=ey, ez=ez, step=step)
 
@@ -1339,7 +1335,7 @@ def _split_materials(materials, n_devices, ghost=1):
     require_radius_update(materials, lane="distributed material split", unsupported=True)
     return cut(materials, Slab(materials.eps_r.shape[0], n_devices, ghost),
                dict(eps_r="eps_r", sigma="sigma", mu_r="mu_r",
-                    sigma_lumped="lumped", eps_r_lumped="lumped"), mesh=None)
+                    sigma_lumped="lumped", eps_r_lumped="lumped", sigma_film="lumped"), mesh=None)
 
 
 

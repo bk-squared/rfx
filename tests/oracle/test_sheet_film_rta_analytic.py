@@ -1,41 +1,11 @@
-"""Resistive-sheet R/T/A vs the exact conductive-slab analytic solution (#711).
+"""Penetrable resistive-sheet R/T/A against the ideal shunt sheet (#711).
 
-WHAT THIS PINS
---------------
-``add_thin_conductor``'s lossy path folds a film into one cell of volumetric
-conductivity (sigma_eff = sigma_bulk * t / d_norm).  That is the model of a
-PENETRABLE resistive film — it transmits.  The Leontovich surface resistance
-the ``surface_impedance_f0`` path computes is the boundary impedance of an
-OPAQUE thick conductor — it does not.  Issue #711 asks which contract the
-implementation carries; this test measures it:
-
-* a film with sheet resistance Rs = eta0/2 has (thin-film limit)
-  R = 0.25, T = 0.25, A = 0.50 — the maximally discriminating point;
-* the gate compares against the EXACT transfer-matrix R/T of a slab of
-  thickness dx and complex permittivity eps = 1 + i*sigma_eff/(w*eps0), so
-  the one-cell realization is judged against its own physics with no
-  thin-film approximation error;
-* the PEC endpoint (sigma_bulk >= 1e6 -> PEC sheet) must be OPAQUE in this
-  orientation: the sheet is an x-normal plane whose footprint spans the
-  whole cross-section, so both components tangential to it (Ez and Ey) are
-  PEC on that plane and T must collapse. On this 2-D TMz lane the z axis
-  is length 1, so the Ez edge's backward neighbour along z is itself
-  (#689 wrap) and every footprint node is a zeroed Ez.
-
-REALIZATION UNDER THE LATTICE OWNERSHIP CONTRACT (#931). This module hands
-``add_thin_conductor`` a Box ONE CELL thick, where two sibling oracle
-fixtures hand it a zero-extent Box, and nothing said which spelling was
-normative. §1.3 settles it without a new rule: a sheet lands on the node
-plane nearest its mid-plane, a tie resolving to the LOWER plane, and a
-Box from node k to node k+1 has its mid-plane exactly on that tie. Both
-spellings therefore land on node k. Measured on this grid (no solve): the
-sheet realizes at x-node 110 (x = 45 mm + the 20-layer CPML pad) with 61
-Ez edges and 60 Ey edges, which is what the pre-#931 rule realized for
-the same declaration — so nothing here was re-measured, and the R/T
-numbers below are the same measurement they always were.
-
-Measurement follows the committed R/T recipe verbatim (TFSF plane wave +
-flux monitors + two-run reference subtraction; never FFT-of-probe).
+A film with Rs = eta0/2 has R=0.25, T=0.25, A=0.50. The one-plane
+Yee realization has second-order residuals: y'=y*cos(w*dt/2)/cos(k*dx/2).
+The 1e-3 per-bin bars are four times the measured worst R/T residual.
+The one-cell Box lands on its lower node plane under lattice ownership
+contract #931. PEC opacity and film penetrability remain separate checks.
+Measurement uses TFSF, flux monitors and two-run reference subtraction.
 """
 from __future__ import annotations
 
@@ -46,15 +16,13 @@ from rfx import Box, Simulation
 from rfx.probes.probes import flux_spectrum
 
 ETA0 = 376.730
-EPS0 = 8.8541878128e-12
-C0 = 299792458.0
 
 F0 = 10e9
 BW = 0.5
 DX = 0.5e-3                 # lambda/60 at 10 GHz
 DOM_X = 90e-3
 DOM_Y = 10e-3
-SHEET_X = 45e-3             # one-cell slab [SHEET_X, SHEET_X+DX)
+SHEET_X = 45e-3             # one-cell Box, film on its lower node plane
 REFL_X = 25e-3
 TRANS_X = 65e-3
 FREQS = np.linspace(8e9, 12e9, 9)
@@ -62,21 +30,6 @@ FREQS = np.linspace(8e9, 12e9, 9)
 # film target: Rs = eta0/2 -> sigma_bulk * t = 2/eta0
 T_FILM = 35e-6
 SIGMA_FILM = (2.0 / ETA0) / T_FILM          # ~151.7 S/m << 1e6 -> lossy path
-SIGMA_EFF = SIGMA_FILM * T_FILM / DX        # what one cell carries
-
-
-def slab_rt_exact(f, sigma_eff, d):
-    """Exact normal-incidence R,T of a slab: eps = 1 + i*sigma/(w*eps0)."""
-    w = 2 * np.pi * f
-    n = np.sqrt(1 + 1j * sigma_eff / (w * EPS0))
-    k1 = n * w / C0
-    r01 = (1 - n) / (1 + n)
-    t01, t10 = 2 / (1 + n), 2 * n / (1 + n)
-    ph = np.exp(1j * k1 * d)
-    # standard Airy summation, r10 = -r01:
-    r = r01 + (t01 * t10 * (-r01) * ph**2) / (1 - (-r01)**2 * ph**2)
-    t = (t01 * t10 * ph) / (1 - (-r01)**2 * ph**2)
-    return np.abs(r)**2, np.abs(t)**2
 
 
 def _build(kind: str) -> Simulation:
@@ -142,25 +95,14 @@ def rta():
     return out
 
 
-def test_film_matches_exact_slab(rta):
+def test_film_matches_the_ideal_sheet(rta):
     R, T = rta["film"]
-    R_an, T_an = slab_rt_exact(FREQS, SIGMA_EFF, DX)
-    print(f"\n[SHEET-RTA] film measured  R={R.round(4).tolist()}")
-    print(f"[SHEET-RTA] film analytic  R={R_an.round(4).tolist()}")
-    print(f"[SHEET-RTA] film measured  T={T.round(4).tolist()}")
-    print(f"[SHEET-RTA] film analytic  T={T_an.round(4).tolist()}")
-    # Tolerances = the measurement chain's own committed floor, not this
-    # fixture's wish: the slab Fresnel cross-validation case (removed
-    # 2026-09-21) gated this same TFSF+flux chain at mean error < 0.05 and
-    # per-bin |R+T-1| <= 0.06. Band means here land within 0.01 of analytic; the
-    # per-bin ripple is the chain's standing-artifact floor (settling-
-    # invariant: identical to 4 decimals at 8k and 40k steps).
-    assert abs(R.mean() - R_an.mean()) < 0.02, "film band-mean R off the exact slab solution"
-    assert abs(T.mean() - T_an.mean()) < 0.02, "film band-mean T off the exact slab solution"
-    assert np.max(np.abs(R - R_an)) < 0.06, "film per-bin R outside the chain floor"
-    assert np.max(np.abs(T - T_an)) < 0.06, "film per-bin T outside the chain floor"
     A = 1 - R - T
-    assert np.all(A > 0.3), f"film should absorb ~half the power, got A={A.round(3)}"
+    for name, measured, ideal in (("R", R, 0.25), ("T", T, 0.25), ("A", A, 0.50)):
+        print(f"[SHEET-RTA] {name}={measured.tolist()}, ideal={ideal}, "
+              f"max_error={np.max(np.abs(measured - ideal)):.12g}")
+        assert np.all(np.abs(measured - ideal) < 1e-3), (
+            f"film per-bin {name} off the ideal sheet: {measured}")
 
 
 def test_film_is_penetrable_not_opaque(rta):

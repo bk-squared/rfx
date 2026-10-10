@@ -137,12 +137,6 @@ def _enumerate_emission_sites():
 
     for src in _PREFLIGHT_SRCS:
         _V().visit(ast.parse(src.read_text()))
-    # The DC estimator lives beside its realization, outside the check families.
-    # Scan its emitter too; legacy admission adapters retain their existing scope.
-    film = ast.parse((_REPO_ROOT / "rfx/model/thin_conductors.py").read_text())
-    for node in film.body:
-        if isinstance(node, ast.FunctionDef) and node.name == "_warn_half_sheet_film":
-            _V().visit(node)
     return sites
 
 
@@ -461,7 +455,8 @@ def _enumerate_emission_sites():
 # path and preflight reports the same finding as an error (was the #1075 advisory text).
 # 131 -> 132 (#PENDING): DC film two-plane error, one model-owned emitter.
 # 132 -> 133 (#1373): sheet_gap_bridged reports shorted drawn sheet gaps.
-_FROZEN_TOTAL_SITES = 133
+# 133 -> 132 (#1603): the one-plane film retires the DC film two-plane error.
+_FROZEN_TOTAL_SITES = 132
 # 74 -> 73, 2026-09-15 (#1043 / PR #1047): ``conformal_nan`` was the only
 # site emitting that code, and the check was deleted when its own tripwire
 # XPASSed -- see the note on _FROZEN_TOTAL_SITES above.
@@ -491,7 +486,8 @@ _FROZEN_TOTAL_SITES = 133
 # 85 -> 86 (#1512): line_stub_inspection_unavailable names unsupported geometry.
 # 86 -> 87 (#PENDING): dc_film_half_sheet_error.
 # 87 -> 88 (#1373): sheet_gap_bridged.
-_FROZEN_LITERAL_CODE_COUNT = 88
+# 88 -> 87 (#1603): dc_film_half_sheet_error retired.
+_FROZEN_LITERAL_CODE_COUNT = 87
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site

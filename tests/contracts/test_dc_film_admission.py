@@ -85,7 +85,9 @@ def test_b2_equal_grids_share_box_layer_and_fold(normal, offset, radius):
         np.testing.assert_array_equal(mask.any(axis=tangents), box.any(axis=tangents))
         results.append((cells, mask))
     np.testing.assert_array_equal(results[0][1], results[1][1])
-    np.testing.assert_array_max_ulp(results[0][0].sigma, results[1][0].sigma, maxulp=2)
+    for a, b in zip(results[0][0].sigma_film, results[1][0].sigma_film):
+        if a is not None:
+            np.testing.assert_array_max_ulp(a, b, maxulp=2)
 
 
 @pytest.mark.parametrize('lane', ['uniform', 'equal', 'normal', 'inplane'])
@@ -201,13 +203,20 @@ def test_b5_radius_trend(lane, centre):
 @pytest.mark.parametrize('lane', ['uniform', 'normal'])
 @pytest.mark.parametrize('parameter,value', [('thickness', T), ('sigma_bulk', SIGMA)])
 def test_parameter_tracers_keep_geometry_checks(lane, parameter, value):
-    sim, grid, _ = model(lane)
+    sim, grid, shape = model(lane)
     conductor = sim._thin_conductors[0]
-    baseline = float(jnp.sum(products(sim, grid)[0].sigma))
+    # Old reference was sum(cell sigma) from the fold. The independent
+    # circular footprint has N cells; Ex end weights sum to N on this
+    # uniform in-plane grid. One node carries G/d_dual per full weight.
+    mask, _, _ = reference(grid, shape)
+    k = int(np.flatnonzero(mask.any(axis=(0, 1)))[0])
+    widths = np.asarray(grid.cells(2), dtype=float)
+    dual = (widths[k - 1] + widths[k]) / 2
+    baseline = mask.sum() * SIGMA * T / dual
 
     def total(v):
         sim._thin_conductors[0] = replace(conductor, **{parameter: v})
-        return jnp.sum(assemble_cells(sim, grid)[0].sigma)
+        return jnp.sum(assemble_cells(sim, grid)[0].sigma_film[0])
 
     try:
         got = float(jax.grad(total)(value))
@@ -338,7 +347,7 @@ def test_traced_radius_refuses_without_raw_tracer_error(lane, snap):
 
     def total(radius):
         sim._thin_conductors[0] = replace(conductor, shape=replace(shape, radius=radius))
-        return jnp.sum(assemble_cells(sim, grid)[0].sigma)
+        return jnp.sum(assemble_cells(sim, grid)[0].sigma_film[0])
 
     try:
         with pytest.raises(ValueError, match='Cylinder.*traced shape bounds.*radius.*concrete'):
@@ -372,9 +381,11 @@ def test_vmap_uses_shared_fold_and_declared_policy():
     eps = jnp.ones((2,) + grid.shape)
     sigma = jnp.zeros_like(eps)
     with pytest.warns(UserWarning, match='cannot judge'):
-        _, actual, _ = _apply_batched_thin_conductors(sim, grid, eps, sigma, eps)
-    for row in actual:
-        np.testing.assert_array_equal(row, expected.sigma)
+        _, _, _, actual = _apply_batched_thin_conductors(sim, grid, eps, sigma, eps)
+    for component, part in enumerate(actual):
+        if part is not None:
+            for row in part:
+                np.testing.assert_array_equal(row, expected.sigma_film[component])
 
 
 def test_falsifier_a_independent_graded_mask_is_detected(monkeypatch):

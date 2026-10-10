@@ -88,9 +88,31 @@ class SheetConductors:
     def sheet_context(self, pec_edges):
         """Build the operator for the explicitly selected conductor stage."""
         from rfx.materials.thin_conductor import build_sheet_impedance_ctx
-        return build_sheet_impedance_ctx(self.sheet_impedance,
+        ctx = build_sheet_impedance_ctx(self.sheet_impedance,
                                          pec_edge_masks=pec_edges,
                                          periodic=self.periodic)
+        materials = getattr(self, 'materials', None)
+        if ctx is not None and materials is not None:
+            from rfx.core.yee import lumped_components
+            import jax
+            import jax.numpy as jnp
+            for axis, (mask, film) in enumerate(zip(
+                    (ctx.mask_ex, ctx.mask_ey, ctx.mask_ez),
+                    lumped_components(materials.sigma_film))):
+                if mask is None or film is None:
+                    continue
+                def check(overlap, axis=axis):
+                    edges = np.argwhere(np.asarray(overlap))
+                    if edges.size:
+                        raise ValueError(
+                            "an f0 sheet and a lossy film share edges "
+                            f"on {'xyz'[axis]} at {edges.tolist()}")
+                overlap = jnp.asarray(mask) & (film != 0)
+                if isinstance(overlap, jax.core.Tracer):
+                    jax.debug.callback(check, overlap, ordered=True)
+                else:
+                    check(overlap)
+        return ctx
 
 
 @dataclass(frozen=True)

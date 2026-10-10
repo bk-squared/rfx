@@ -26,6 +26,9 @@ def test_face_reaching_thin_conductor_matches_individual_assemblies():
         for name in ("eps_r", "sigma", "mu_r"):
             np.testing.assert_array_equal(np.asarray(getattr(batch, name)[i]),
                                           np.asarray(getattr(expected, name)))
+        for a, b in zip(batch.sigma_film, expected.sigma_film):
+            if a is not None:
+                np.testing.assert_array_equal(a[i], b)
         # Both paths being empty in the pad must fail too.
-        assert np.any(np.asarray(expected.sigma)[0] > 0)
-        assert np.any(np.asarray(batch.sigma)[i, -2] > 0)
+        assert np.any(np.asarray(expected.sigma_film[0])[0] > 0)
+        assert np.any(np.asarray(batch.sigma_film[0])[i, -2] > 0)

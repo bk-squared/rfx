@@ -159,117 +159,142 @@ def admit_dc_film(shape, grid, *, snap='strict', emit=True):
     return DCFilmGeometry(jnp.asarray(mask), normal, realized, declared)
 
 
+def dc_film_plane(shape, grid):
+    """The declared midpoint's nearest E node, with the shared lower tie rule."""
+    from rfx._grid_metric import nearest_node_index
+    from rfx._periodic import plane_coordinate
+    from rfx.geometry.rasterize_grid import _local_cell
+    lo, hi = sheet_bounds(shape)
+    normal = sheet_normal_axis(lo, hi)
+    nodes = _grid_coords(grid)[normal]
+    mid = .5 * (lo[normal] + hi[normal])
+    periodic = 'xyz'[normal] in getattr(grid, 'periodic_axes', '')
+    if periodic:
+        mid = plane_coordinate(grid, normal, mid)
+        # Periodic stores omit the duplicate high node. Include that candidate
+        # for nearest-node selection, then identify it with node zero.
+        xp = jnp if is_tracer(nodes) else np
+        nodes = xp.concatenate((nodes, nodes[-1:] + grid.cells(normal)[-1]))
+    if is_tracer(nodes):
+        widths = grid.cells(normal)
+        local = widths[jnp.clip(jnp.searchsorted(nodes, mid) - 1, 0, len(widths) - 1)]
+        plane = nearest_node_index(nodes, mid, local, xp=jnp)
+    else:
+        local = _local_cell(nodes, np.asarray(grid.cells(normal)), mid)
+        plane = nearest_node_index(nodes, mid, local)
+    if periodic:
+        plane = jnp.where(plane == len(nodes) - 1, 0, plane) if is_tracer(plane) else (
+            0 if plane == len(nodes) - 1 else plane)
+    return normal, plane
+
+
+def admit_dc_plane(conductor, grid, *, pmc_faces=None, mode=None):
+    """Admission shared by Box/non-Box folds and the diagnostic audit."""
+    if conductor.is_pec or conductor.surface_impedance_f0 is not None:
+        return
+    if is_tracer(conductor.eps_r) or conductor.eps_r != 1:
+        raise DCFilmAdmissionError(
+            "a film on one node plane has no volume; its eps_r is not modelled",
+            code='dc_film_permittivity')
+    lo, hi = sheet_bounds(conductor.shape)
+    if not isinstance(conductor.shape, Box) and (
+            lo is None or hi is None or
+            any(is_tracer(v) for v in jax.tree_util.tree_leaves((lo, hi)))):
+        # Preserve the non-Box admission's descriptive bounds refusal before
+        # the node selector attempts any concrete geometry arithmetic.
+        admit_dc_film(conductor.shape, grid, emit=False)
+    normal, plane = dc_film_plane(conductor.shape, grid)
+    if mode is None:
+        mode = getattr(grid, 'mode', '3d')
+    if mode != '3d' and normal == 2:
+        raise DCFilmAdmissionError(
+            "a film normal to a 2-D model's invariant axis is not supported",
+            code='dc_film_invariant')
+    faces = getattr(grid, 'pmc_faces', ()) if pmc_faces is None else pmc_faces
+    if not is_tracer(plane):
+        face = ('xyz'[normal] + '_lo' if plane == 0 else
+                'xyz'[normal] + '_hi' if plane == grid.shape[normal] - 1 else None)
+        if face in faces:
+            raise DCFilmAdmissionError("a film on a PMC domain face is not supported",
+                                       code='dc_film_pmc')
+
+
+def _fold_dc_plane(grid, conductor, materials, mask, normal):
+    """In-plane cell coverage, carried only by tangential edges on one node."""
+    from rfx.core.yee import lumped_components
+    from rfx.model.materials import edge_coverage_weights
+    normal, plane = dc_film_plane(conductor.shape, grid)
+    footprint = mask.any(axis=normal)
+    field = jnp.broadcast_to(jnp.expand_dims(footprint, normal), materials.sigma.shape)
+    periodic = tuple(a in getattr(grid, 'periodic_axes', '') for a in 'xyz')
+    weights = edge_coverage_weights(grid, field.astype(materials.sigma.dtype), periodic)
+    dual = (e_node_dual_spacings((grid.dx_arr, grid.dy_arr, grid.dz)[normal])[plane]
+            if hasattr(grid, 'dx_arr') else float(grid.duals(normal)[0]))
+    density = conductor.sigma_bulk * conductor.thickness / dual
+    view = [1, 1, 1]
+    view[normal] = grid.shape[normal]
+    on_plane = (jnp.arange(grid.shape[normal]) == plane).reshape(view)
+    merged = []
+    for component, previous in enumerate(lumped_components(materials.sigma_film)):
+        if component == normal:
+            merged.append(previous)
+            continue
+        weight = jnp.where(on_plane, weights[component], 0)
+        merged.append(density * weight + (0 if previous is None else previous))
+    n_cells = grid.shape[normal] - (not periodic[normal])
+    layer = jnp.minimum(plane, n_cells - 1)
+    cell_mask = jnp.broadcast_to(jnp.expand_dims(footprint, normal), mask.shape)
+    cell_mask = cell_mask & (jnp.arange(grid.shape[normal]) == layer).reshape(view)
+    return materials._replace(sigma_film=tuple(merged)), cell_mask
+
+
 def dc_film_refusals(sim, grid):
     """Audit the same admission without dropping a refused declaration's identity."""
     refused = {}
     for i, tc in enumerate(sim._thin_conductors):
-        if tc.is_pec or tc.surface_impedance_f0 is not None or isinstance(tc.shape, Box):
+        if tc.is_pec or tc.surface_impedance_f0 is not None:
             continue
         try:
-            admit_dc_film(tc.shape, grid, snap=sim._snap, emit=False)
+            admit_dc_plane(tc, grid, pmc_faces=sim._boundary_spec.pmc_faces(), mode=sim._mode)
+            if not isinstance(tc.shape, Box):
+                admit_dc_film(tc.shape, grid, snap=sim._snap, emit=False)
         except DCFilmAdmissionError as exc:
             refused[i] = str(exc)
     return refused
 
 
-def half_sheet_film_error(rs_ohm, dx_normal_m, freq_hz):
-    """Normal-incidence two-half-sheet error against the declared ideal sheet.
-
-    Return float64 (electrical loading x, transmitted dB, absorbed dB).
-    This numpy-only estimate does not change the DC realization.
-    """
-    rs, dx, freq = (np.asarray(v, dtype=np.float64)
-                    for v in (rs_ohm, dx_normal_m, freq_hz))
-    theta = 2 * np.pi * freq * dx / 299792458.0
-    y = 376.730313668 / rs
-    g = y / 2
-    c, s = np.cos(theta), np.sin(theta)
-    den = 2*c + 2*g*c + 1j*s*(2 + 2*g + g*g)
-    t2 = 2 / den
-    r2 = (-2*g*c - 1j*s*g*g) / den
-    t1, r1 = 2 / (2 + y), -y / (2 + y)
-    transmitted_db = 20 * np.log10(np.abs(t2) / np.abs(t1))
-    absorbed_db = 10 * np.log10(
-        (1 - np.abs(r2)**2 - np.abs(t2)**2)
-        / (1 - np.abs(r1)**2 - np.abs(t1)**2))
-    return theta * y, transmitted_db, absorbed_db
-
-
-def _warn_half_sheet_film(sim, grid, tc, i, warn):
-    """Read the fold's occupied cell width; traced inputs are not judgeable."""
-    from rfx.preflight._common import PreflightWarning
-
-    lo, hi = sheet_bounds(tc.shape)
-    if lo is None or hi is None:
-        return
-    coords = _grid_coords(grid)
-    widths = tuple(grid.cells(a) for a in range(3))
-    if any(is_tracer(v) for v in jax.tree_util.tree_leaves(
-            (tc.sigma_bulk, tc.thickness, coords, widths, lo, hi, sim._freq_max))):
-        return
-    normal = sheet_normal_axis(lo, hi)
-    with jax.ensure_compile_time_eval():
-        if isinstance(tc.shape, Box):
-            # Exactly the Box branches in fold_thin_conductor below.
-            mask = (tc.shape.mask_on_coords(*coords) if hasattr(grid, 'dx_arr')
-                    else dc_cell_mask(tc.shape, grid))
-        else:
-            try:
-                mask = admit_dc_film(tc.shape, grid, snap=sim._snap, emit=False).mask
-            except DCFilmAdmissionError:
-                return  # The existing admission finding owns this refusal.
-        occupied = np.flatnonzero(np.asarray(mask).any(
-            axis=tuple(a for a in range(3) if a != normal)))
-    if len(occupied) != 1:
-        return  # No single occupied film layer to estimate.
-    dx = float(np.asarray(widths[normal])[occupied[0]])
-    try:
-        conductance = float(tc.sigma_bulk) * float(tc.thickness)
-    except (TypeError, ValueError):
-        return  # Not a scalar declaration; the assembly reports it.
-    f = float(sim._freq_max)
-    # Judge the loading before any dB arithmetic: a near-insulating film has 0/0 there.
-    if not conductance > 0 or 2*np.pi*f*dx/299792458.0 * 376.730313668 * conductance <= 3.0:
-        return
-    rs = 1 / conductance
-    x, t, a = half_sheet_film_error(rs, dx, f)
-    dxmax = 3 * rs * 299792458.0 / (2 * np.pi * f * 376.730313668)
-    warn.warn(PreflightWarning(
-        f"lossy film of {rs:.3g} ohm/sq is realized as two half-sheets one cell "
-        f"({dx:.3g} m) apart: at freq_max = {f/1e9:.3g} GHz, "
-        f"(k0 dx)(eta0/Rs) = {x:.2g}, transmitted power is about {t:.1f} dB "
-        f"and absorbed power about {a:+.1f} dB off the declared sheet at normal "
-        "incidence; reflected power stays within 1 dB. Use cells of at most "
-        f"{dxmax:.3g} m across the film or check on two meshes (tracker 1572).",
-        code='dc_film_half_sheet_error', severity='warning',
-        source='warn_dc_films', loc=f'thin_conductors[{i}]'))
-
-
 def warn_dc_films(sim, warn):
-    """Expose DC admission and two-plane errors through the finding carrier."""
+    """Expose assembly refusals through the existing structured finding carrier."""
     from rfx.preflight._common import PreflightWarning
-    if not any(tc.surface_impedance_f0 is None
-               and (is_tracer(tc.sigma_bulk) or not tc.is_pec)
+    if not any(not tc.is_pec and tc.surface_impedance_f0 is None
                for tc in sim._thin_conductors):
         return
     grid = sim._build_realized_grid()
     for i, tc in enumerate(sim._thin_conductors):
-        if (tc.surface_impedance_f0 is None and not is_tracer(tc.sigma_bulk)
-                and not tc.is_pec):
-            _warn_half_sheet_film(sim, grid, tc, i, warn)
-    for i, tc in enumerate(sim._thin_conductors):
-        if tc.is_pec or tc.surface_impedance_f0 is not None or isinstance(tc.shape, Box):
+        if tc.is_pec or tc.surface_impedance_f0 is not None:
             continue
         try:
             # Emit declared findings directly, including when the diagnostic
             # assembly cache contains a previous strict refusal.
             with warnings.catch_warnings(record=True) as findings:
                 warnings.simplefilter('always')
-                admit_dc_film(tc.shape, grid, snap=sim._snap)
+                admit_dc_plane(tc, grid, pmc_faces=sim._boundary_spec.pmc_faces(), mode=sim._mode)
+                if not isinstance(tc.shape, Box):
+                    admit_dc_film(tc.shape, grid, snap=sim._snap)
         except DCFilmAdmissionError as exc:
             warn.warn(PreflightWarning(str(exc), code=exc.code, severity='error',
                                        source=exc.source, loc=f'thin_conductors[{i}]'))
         else:
+            normal, plane = dc_film_plane(tc.shape, grid)
+            face = None
+            if not is_tracer(plane):
+                face = ('xyz'[normal] + '_lo' if plane == 0 else
+                        'xyz'[normal] + '_hi' if plane == grid.shape[normal] - 1 else None)
+            if face in sim._boundary_spec.pec_faces():
+                warn.warn(PreflightWarning(
+                    f"lossy thin conductor {i} on PEC domain face {face} has no effect",
+                    code='dc_film_pec_face', severity='info', source='admit_dc_film',
+                    loc=f'thin_conductors[{i}]'))
             for finding in findings:
                 message = finding.message
                 warn.warn(PreflightWarning(str(message), code=message.code,
@@ -299,7 +324,7 @@ def dc_cell_mask(shape, grid):
 def fold_thin_conductor(grid, conductor, materials, pec_mask=None, *,
                         sheet_specs=None, sheets=None, geometry_masks=None,
                         geometry_key=None, snap='strict'):
-    """Emit PEC/f0 products or fold DC sigma*t/cell width; never overwrite PEC cells."""
+    """Emit PEC/f0 products or place a DC film on tangential edges of one node."""
     nonuniform = hasattr(grid, 'dx_arr')
     lane = 'non-uniform' if nonuniform else 'uniform'
     coords = GridCoords(*_grid_coords(grid), shape=tuple(grid.shape))
@@ -340,6 +365,7 @@ def fold_thin_conductor(grid, conductor, materials, pec_mask=None, *,
             unwrapped, end_rows = spec.unwrapped_footprint, spec.end_rows
         check_sheet_occupancy(mask, normal, lane=lane)
     else:
+        admit_dc_plane(conductor, grid)
         if not isinstance(conductor.shape, Box):
             film = admit_dc_film(conductor.shape, grid, snap=snap)
             mask, normal = film.mask, film.normal
@@ -347,7 +373,12 @@ def fold_thin_conductor(grid, conductor, materials, pec_mask=None, *,
             normal = sheet_normal_axis(conductor.shape.corner_lo, conductor.shape.corner_hi)
             mask = conductor.shape.mask_on_coords(*coords[:3])
         else:
+            normal = sheet_normal_axis(conductor.shape.corner_lo, conductor.shape.corner_hi)
             mask = dc_cell_mask(conductor.shape, grid)
+        materials, mask = _fold_dc_plane(grid, conductor, materials, mask, normal)
+        if geometry_masks is not None:
+            geometry_masks.append((geometry_key, mask))
+        return materials, pec_mask
     if geometry_masks is not None:
         geometry_masks.append((geometry_key, mask))
     # Keep the path's existing metric and precision: a Python scalar on
@@ -374,9 +405,58 @@ def fold_thin_conductor(grid, conductor, materials, pec_mask=None, *,
                 sigma_sheet=sigma_sheet, plane=plane,
                 unwrapped_footprint=unwrapped, end_rows=end_rows))
         return materials, pec_mask
-    # The weighted E-edge mean integrates cell-owned DC sigma over its primal width.
-    divisor = ((grid.dx_arr, grid.dy_arr, grid.dz)[normal].reshape(view)
-               if nonuniform else dual)
-    sigma_eff = conductor.sigma_bulk * (conductor.thickness / divisor)
-    return materials._replace(eps_r=jnp.where(mask, conductor.eps_r, materials.eps_r),
-                              sigma=jnp.where(mask, sigma_eff, materials.sigma)), pec_mask
+
+
+def conductivity_envelope(materials):
+    """Report/refusal view: a cell or any film component marks its index."""
+    from rfx.core.yee import lumped_components
+    out = materials.sigma
+    for part in lumped_components(materials.sigma_film):
+        if part is not None:
+            out = jnp.maximum(out, part)
+    return out
+
+
+def splice_film(materials, junction, window):
+    """Preserve each junction film component through the coax row splice."""
+    from rfx.core.yee import lumped_components
+    result = []
+    for old, new in zip(lumped_components(materials.sigma_film),
+                        lumped_components(junction.sigma_film)):
+        if old is None and new is None:
+            result.append(None)
+            continue
+        old = jnp.zeros_like(materials.sigma) if old is None else old
+        result.append(old.at[window].set(0 if new is None else new[window]))
+    return None if all(p is None for p in result) else tuple(result)
+
+
+def refuse_design_films(sim, grid, bounds):
+    """Name the declaration whose film edges intersect the design write window."""
+    from dataclasses import replace
+    from rfx.core.yee import init_materials, lumped_components
+    from rfx.geometry.smoothing import continued_conductor_shape
+    from rfx.simulation import _design_box_window
+    write, _, _, _ = _design_box_window(bounds, grid.shape)
+    sl = tuple(slice(write[a], write[a + 1]) for a in (0, 2, 4))
+    for index, tc in enumerate(sim._thin_conductors):
+        if tc.is_pec or tc.surface_impedance_f0 is not None:
+            continue
+        # Geometry decides admission even when conductance is differentiated.
+        geometric = replace(tc, sigma_bulk=1.0, thickness=1.0,
+            shape=continued_conductor_shape(sim, grid, tc.shape, entry=tc))
+        mats, _ = fold_thin_conductor(grid, geometric, init_materials(grid.shape), snap=sim._snap)
+        if any(part is not None and bool(jnp.any(part[sl] != 0))
+               for part in lumped_components(mats.sigma_film)):
+            raise ValueError(
+                f"the design box (cells {bounds}) contains edges of thin conductor {index}; "
+                "a design region over a declared film is not supported. Move the box or the film.")
+
+
+def splice_junction_materials(materials, junction, z_index):
+    """Retain the declared coax junction above its final stub row."""
+    window = (slice(None), slice(None), slice(z_index, None))
+    return materials._replace(
+        eps_r=materials.eps_r.at[window].set(junction.eps_r[window]),
+        sigma=materials.sigma.at[window].set(junction.sigma[window]),
+        sigma_film=splice_film(materials, junction, window))

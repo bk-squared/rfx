@@ -2353,8 +2353,8 @@ def run_nonuniform_distributed_pec(
         if drives:
             # #1279: the drive sees the materials the E update sees -- the
             # override, on the tape when traced -- read in the program.
-            scales = material_drive_scales(
-                invariants[0].eps_r, invariants[0].sigma, mesh, drives, dt, ranks=ranks, grid=electric_grid)
+            scales = material_drive_scales(invariants[0].eps_r, invariants[0].sigma, mesh, drives, dt,
+                ranks=ranks, grid=electric_grid, sigma_film=invariants[0].sigma_film)
             if _realized.ACTIVE is not None:
                 scales = jnp.broadcast_to(_realized.runtime_drive(jnp.sum(scales, axis=0), tuple(drive_columns)), scales.shape)
         # Occupancy is the last float32 drive factor, read slab-locally on the

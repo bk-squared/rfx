@@ -94,9 +94,11 @@ def test_dc_fold_thickness_gradient_uses_occupied_primal_width():
 
     def cell_sum(thickness):
         sim._thin_conductors[0] = replace(conductor, thickness=thickness)
-        return jnp.sum(assemble_cells(sim, grid)[0].sigma)
+        return jnp.sum(assemble_cells(sim, grid)[0].sigma_film[0])
 
     got = float(jax.grad(cell_sum)(THICKNESS))
-    # Half-open footprint [3,9) x [3,9) occupies 6*6 cells, width 1.1h.
-    expected = 36 * SIGMA / (1.1 * H)
+    # Old cell expectation: 36 * SIGMA / (1.1 * H).
+    # Ex coverage sums to 6*(.5+5+.5)=36 on one plane;
+    # d_dual=(.9H+1.1H)/2=H, so d(sum sigma_film_x)/dt=36*SIGMA/H.
+    expected = 36 * SIGMA / ((.9 * H + 1.1 * H) / 2)
     np.testing.assert_allclose(got, expected, rtol=2e-7)
