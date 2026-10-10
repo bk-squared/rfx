@@ -1241,7 +1241,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
 
         st = _inject_sources_shmap(st, src_vals, ranks=ranks)
 
-        # A mixed wall/absorber box still enforces its declared electric walls.
+        # Every electric face: the declared walls and the conducting plane behind each absorbing face.
         st = _apply_pec_shmap(
             st, mesh, n_devices, nx_local, pad_x=pad_x,
             pec_faces=e_wall_faces, ranks=ranks)

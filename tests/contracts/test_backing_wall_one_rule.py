@@ -282,10 +282,14 @@ def test_issue_probe_records_equal():
                                                checkpoint=False).time_series)
                for entry in ('run', 'forward')]
     assert records[0].dtype == records[1].dtype
-    assert np.array_equal(*records), f'1549 probes differ: max delta {np.max(np.abs(records[0]-records[1]))}'
+    # run() against forward() is the same physics under another trace: a per-step record may differ by the
+    # cross-trace bar (9 float32 ULP at the record's peak), not more. This is not the witness of the defect: over
+    # 600 steps the unbacked forward() differed by 8.3e-07 against a peak of 261, inside that bar. The witnesses
+    # are the wall-face rows above and the 7000-step pulse test below (post-pulse peak 9.8e5 on the base tree).
+    from tests.contracts.path_equivalence.comparison import compare
+    compare(records[0], records[1], record='1549 probes, run vs forward', kind='step', measurements=[])
 
 
-@pytest.mark.slow
 def test_issue_pulse_never_grows():
     res = tube().forward(n_steps=7000, skip_preflight=True, checkpoint=False)
     a = np.asarray(res.time_series)
@@ -294,7 +298,6 @@ def test_issue_pulse_never_grows():
     after = np.max(np.abs(a[peak_end:]))
     assert np.isfinite(a).all()
     assert after <= peak, f'1549 post-pulse peak {after} exceeds pulse peak {peak}; window ends {peak_end}'
-    print(f'1549 pulse_end={peak_end} peak={peak} post_peak={after} dt={res.dt}')
 
 
 @pytest.mark.parametrize('normalize,n_modes', [(False, 1), (True, 1), ('flux', 1),
