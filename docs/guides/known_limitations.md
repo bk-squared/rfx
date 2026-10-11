@@ -103,6 +103,16 @@ open structures and for any structure with a material interface; ADI runs only a
 closed (`boundary="pec"`), homogeneously filled cavity. Both refusals are rows in
 the support matrix's **Refused inputs** table.
 
+### A finite flux box closes only when it is centred on its source
+
+Tracker: #1628
+
+A finite flux monitor integrates its node-centred field products over cells lo to hi-1 with full weight, half a cell off the box it reports, instead of with half weights at both ends.
+The two end errors cancel on a box symmetric about the source and add otherwise: on the uniform mesh at 1 mm cells, a box reaching 4 mm from the source on one side and 6 mm on the other read the net radiated flux 0.8 % off, and a 4 mm box closed by a magnetic (PMC) symmetry face 2.9 % off; it is expected to fall as the cell shrinks relative to the box (not measured over meshes).
+A flux plane lying on a magnetic face reports non-zero normal flux, where the exact value is zero.
+The graded mesh slices its node-centred dual widths the same way at a finite window's ends; its size there is not measured.
+Until this is fixed, centre a flux box on its source and keep it off magnetic faces.
+
 ### Subpixel smoothing makes a curved high-contrast dielectric's resonance converge slowly, and can be worse than no smoothing.
 
 Every `subpixel_smoothing` setting (`True` and `"kottke_pec"`, on uniform and graded meshes) keeps only the diagonal of the
