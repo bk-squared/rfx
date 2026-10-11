@@ -648,6 +648,11 @@ def port_fed_nodes(sim, conductors):
     MSL clearing edges already cover only the trace's width nodes. Temporary
     lumped stages never replace the solver's conductor products.
     """
+    # A failed audit assembly can still report individually realized sheets.
+    # There is no port-stage product to read; retain their unfed spans while
+    # the existing assembly/scan diagnostics report what could not be built.
+    if conductors is None:
+        return None
     if not (getattr(sim, '_ports', ()) or getattr(sim, '_msl_ports', ())):
         return None
     grid = conductors.grid
