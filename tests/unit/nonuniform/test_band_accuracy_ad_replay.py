@@ -365,7 +365,7 @@ def test_replay_ad3(w7_json):
     row = w7_json["ad3"]
     assert "error" not in row, row.get("error")
     assert row["fired"] is True
-    with pytest.raises(AssertionError):
+    with pytest.raises(AssertionError, match="worst dominant AD-vs-FD"):
         _replay_ad3_attempt1_as_declared(row)
 
 

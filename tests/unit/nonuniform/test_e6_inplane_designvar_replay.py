@@ -236,8 +236,9 @@ def test_predeclared_xc_share_expectation():
     its failure is the record (a second pass restored it after the first had rewritten it
     to the measured value at 064d6035). A record, not an isolated defect: the test asserts
     that the declared line still fails on it."""
+    record = _load("revert_l1_nodt")
     with pytest.raises(AssertionError):
-        _predeclared_xc_share_expectation(_load("revert_l1_nodt"))
+        _predeclared_xc_share_expectation(record)
 
 
 def test_recorded_outcomes_are_pinned():
