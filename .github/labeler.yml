@@ -70,6 +70,8 @@
           - "rfx/boundaries/**"
           - "rfx/preflight/absorber.py"
           - "rfx/geometry/smoothing.py"
+          - "rfx/farfield.py"
+          - "rfx/rcs.py"
           - "tests/unit/boundaries/**"
           - "tests/**/*pml*"
           - "tests/**/*smoothing*"
