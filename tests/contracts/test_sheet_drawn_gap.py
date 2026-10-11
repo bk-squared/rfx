@@ -199,7 +199,14 @@ def test_k3_unchanged(graded, kind):
         [replace(sp, drawn=None) for sp in root.sheets], root.wires, root.periodic)
     old = replace(root, pec_edges=legacy)
     if kind == 'lumped':
+        # A one-cell drawn feed gap: the old rule shorted it at every edge but the port's own.
         root, old = C.preview_port_stages(sim, root), C.preview_port_stages(sim, old)
+        new_ey, old_ey = np.asarray(root.pec_edges[1]), np.array(old.pec_edges[1])
+        assert not new_ey[2:7, 10, 4].any()
+        assert old_ey[2:7, 10, 4].tolist() == [True, True, False, True, True]
+        old_ey[2:7, 10, 4] = False
+        same(root.pec_edges, (old.pec_edges[0], old_ey, old.pec_edges[2]))
+        return
     same(root.pec_edges, old.pec_edges)
 
 

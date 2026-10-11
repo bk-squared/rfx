@@ -224,7 +224,7 @@
     },
     {
       "file": "rfx/boundaries/pec.py",
-      "function": "_sheet_edge_masks",
+      "function": "_sheet_plane_edges",
       "kind": "neighbour"
     },
     {
@@ -236,11 +236,6 @@
       "file": "rfx/boundaries/pec.py",
       "function": "_shift",
       "kind": "roll/diff"
-    },
-    {
-      "file": "rfx/boundaries/pec.py",
-      "function": "_unwrapped_sheet_edge_masks",
-      "kind": "neighbour"
     },
     {
       "file": "rfx/boundaries/pec.py",
@@ -460,6 +455,11 @@
       "file": "rfx/geometry/rasterize_grid.py",
       "function": "extend_cpml_pad_materials",
       "kind": "difference"
+    },
+    {
+      "file": "rfx/geometry/rasterize_grid.py",
+      "function": "sheet_footprint_traced",
+      "kind": "roll/diff"
     },
     {
       "file": "rfx/measurement/ports.py",
