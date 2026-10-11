@@ -189,8 +189,7 @@ def export_geometry_sdf(
     field as zero thickness. The convention here, stated rather than
     inferred: **a sheet occupies exactly ONE sample layer** — the sample
     plane nearest its declared mid-plane, with the drawn footprint sampled
-    closed in-plane — so the distance transform reads ``-resolution`` on
-    the sheet and the sheet's apparent thickness in the SDF is one sample,
+    closed in-plane — so the sheet's apparent thickness in the SDF is one sample,
     not zero. That is the same realization rule the solve uses (a sheet is
     one node plane); only the lattice differs. A sheet whose plane or
     footprint cannot be placed on this lattice raises rather than
@@ -208,8 +207,6 @@ def export_geometry_sdf(
     sdf : ndarray, shape (Nx, Ny, Nz)
         Signed distance field in metres.
     """
-    from rfx.geometry.csg import Box, Cylinder, Sphere
-
     if getattr(sim, "_pinned_sheets", ()):
         raise ValueError(
             "export_geometry_sdf cannot place add_pinned_sheet sheets; "
@@ -252,54 +249,26 @@ def export_geometry_sdf(
                 occupied |= _sheet_footprint_on_samples(
                     shape, x, y, z, name=f"geometry[{gi}] 'pec'")
                 continue
-        # Keep analytic tests for Box, Sphere and Cylinder; other shapes
-        # evaluate their own occupancy on the SDF coordinate arrays.
-        if isinstance(shape, Box):
-            # Box — fast analytic test
-            lo = shape.corner_lo
-            hi = shape.corner_hi
-            mx = (x >= lo[0]) & (x <= hi[0])
-            my = (y >= lo[1]) & (y <= hi[1])
-            mz = (z >= lo[2]) & (z <= hi[2])
-            occupied |= mx[:, None, None] & my[None, :, None] & mz[None, None, :]
-        elif isinstance(shape, (Sphere, Cylinder)):
-            # Sphere or Cylinder — analytic
-            cx, cy, cz = shape.center
-            r = shape.radius
-            dx_ = x[:, None, None] - cx
-            dy_ = y[None, :, None] - cy
-            dz_ = z[None, None, :] - cz
-            if isinstance(shape, Cylinder):
-                # Cylinder
-                axis = getattr(shape, "axis", "z")
-                if axis == "z":
-                    r2 = dx_ ** 2 + dy_ ** 2
-                    h_mask = np.abs(dz_) <= shape.height / 2
-                elif axis == "y":
-                    r2 = dx_ ** 2 + dz_ ** 2
-                    h_mask = np.abs(dy_) <= shape.height / 2
-                else:
-                    r2 = dy_ ** 2 + dz_ ** 2
-                    h_mask = np.abs(dx_) <= shape.height / 2
-                occupied |= (r2 <= r ** 2) & h_mask
-            else:
-                # Sphere
-                r2 = dx_ ** 2 + dy_ ** 2 + dz_ ** 2
-                occupied |= r2 <= r ** 2
-        else:
-            # A declared shape must be evaluated or explicitly refused.
-            try:
-                mask = np.asarray(shape.mask_on_coords(x, y, z), dtype=bool)
-                if mask.shape != occupied.shape:
-                    raise ValueError(
-                        f"mask shape {mask.shape} does not match {occupied.shape}")
-                occupied |= mask
-            except Exception as exc:
+        # Use each shape's own node sampling, including half-open faces
+        # and thin-volume snapping, rather than a separate analytic rule.
+        try:
+            mask = np.asarray(shape.mask_on_coords(x, y, z), dtype=bool)
+            if mask.shape != occupied.shape:
                 raise ValueError(
-                    f"geometry[{gi}] ({type(shape).__name__}) cannot be "
-                    "evaluated on the SDF samples; it would be missing "
-                    "from the exported geometry"
-                ) from exc
+                    f"mask shape {mask.shape} does not match {occupied.shape}")
+        except Exception as exc:
+            raise ValueError(
+                f"geometry[{gi}] ({type(shape).__name__}) cannot be "
+                "evaluated on the SDF samples; it would be missing "
+                "from the exported geometry"
+            ) from exc
+        if not np.any(mask):
+            raise ValueError(
+                f"geometry[{gi}] ({type(shape).__name__}) realizes no SDF "
+                f"sample at resolution={resolution} m; it would be missing "
+                "— refine resolution"
+            )
+        occupied |= mask
 
     # Sheets declared through add_thin_conductor are NOT in sim._geometry,
     # so the loop above never saw them: a sheet ground plane, patch or
@@ -309,15 +278,21 @@ def export_geometry_sdf(
         occupied |= _sheet_footprint_on_samples(
             tc.shape, x, y, z, name=f"thin_conductor[{ti}]")
 
+    # linspace includes both domain endpoints, so its pitch differs from
+    # the requested resolution. Singleton axes retain the requested pitch.
+    sampling = tuple(length / (n - 1) if n > 1 else resolution
+                     for length, n in zip(domain, (nx, ny, nz)))
+
     # Convert binary mask to approximate SDF via distance transform.
     try:
         from scipy.ndimage import distance_transform_edt
-        dist_outside = distance_transform_edt(~occupied) * resolution
-        dist_inside = distance_transform_edt(occupied) * resolution
+        dist_outside = distance_transform_edt(~occupied, sampling=sampling)
+        dist_inside = distance_transform_edt(occupied, sampling=sampling)
         sdf = dist_outside - dist_inside
     except ImportError:
         # Fallback without scipy: return +1/-1 indicator scaled by
-        # resolution (no true distance).
-        sdf = np.where(occupied, -resolution, resolution).astype(np.float64)
+        # the smallest sample spacing (no true distance).
+        spacing = min(sampling)
+        sdf = np.where(occupied, -spacing, spacing).astype(np.float64)
 
     return sdf.astype(np.float64)

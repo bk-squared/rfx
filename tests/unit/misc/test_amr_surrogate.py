@@ -172,6 +172,58 @@ class TestExportTrainingData:
 class TestExportGeometrySDF:
     """Tests for export_geometry_sdf."""
 
+    @pytest.mark.parametrize("material", ["pec", "glass"])
+    def test_sdf_snaps_nonzero_thin_box(self, material):
+        sim = Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03), boundary="pec")
+        sim.add_material("glass", eps_r=4.0)
+        sim.add(Box((0.010, 0.010, 0.015), (0.020, 0.020, 0.015035)),
+                material=material)
+        # The 35 um slab lies between z samples 14 and 15. Its midpoint
+        # 15.0175 mm is closer to sample 15 (15*30/29 mm), so Box snaps.
+        sdf = export_geometry_sdf(sim)
+        assert sdf[15, 15, 15] < 0
+        np.testing.assert_array_equal(np.flatnonzero((sdf < 0).any(axis=(0, 1))), [15])
+
+    @pytest.mark.parametrize("material", ["pec", "glass"])
+    def test_sdf_refuses_unsampled_thin_oriented_box(self, material):
+        sim = Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03), boundary="pec")
+        sim.add_material("glass", eps_r=4.0)
+        # An already occupied region must not conceal the next entry's loss.
+        sim.add(Box((0.002, 0.002, 0.002), (0.006, 0.006, 0.006)), material=material)
+        sim.add(OrientedBox(center=(0.015, 0.015, 0.0150175),
+                            size=(0.010, 0.010, 35e-6)), material=material)
+        # Identity rotation, z in [15,15.035) mm: neither adjacent sample
+        # 14*30/29 nor 15*30/29 mm is inside. OrientedBox does not snap.
+        with pytest.raises(ValueError, match=(
+            r"geometry\[1\] \(OrientedBox\) realizes no SDF sample at "
+            "resolution=0.001 m; it would be missing — refine resolution"
+        )):
+            export_geometry_sdf(sim)
+
+    def test_sdf_box_and_identity_oriented_box_occupancy_agree(self):
+        # Binary-exact sample spacing 1/512 m; faces at samples 4 and 12.
+        domain = (0.03125,) * 3
+        shapes = [Box((0.0078125,) * 3, (0.0234375,) * 3),
+                  OrientedBox(center=(0.015625,) * 3, size=(0.015625,) * 3)]
+        masks = []
+        for shape in shapes:
+            sim = Simulation(freq_max=5e9, domain=domain, boundary="pec")
+            sim.add(shape, material="pec")
+            masks.append(export_geometry_sdf(sim, resolution=0.03125 / 17) < 0)
+        np.testing.assert_array_equal(masks[0], masks[1])
+        assert masks[0][4, 4, 4]
+        assert not masks[0][12, 8, 8]
+
+    def test_sdf_distance_uses_actual_sample_spacing(self):
+        sim = Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03), boundary="pec")
+        x_plane = 10 * 0.03 / 29
+        sim.add(Box((x_plane - 17.5e-6, 0.010, 0.010),
+                    (x_plane + 17.5e-6, 0.020, 0.020)), material="pec")
+        sdf = export_geometry_sdf(sim, resolution=1e-3)
+        # Only x sample 10 is occupied; (13,15,15) is three x samples away.
+        # x[13]-x[10] = 3*0.03/29 = 0.003103448275862069 m.
+        assert sdf[13, 15, 15] == pytest.approx(3 * 0.03 / 29, rel=0, abs=1e-12)
+
     def test_sdf_sees_curved_patch_occupancy(self):
         sim = Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03), boundary="pec")
         sim.add(CurvedPatch(
