@@ -14,7 +14,8 @@ from rfx import simulation as _simulation
 # resolved at CALL time and always reflects the current attribute. These are
 # setup-time calls (once per port/source registration), not per-timestep.
 from rfx.sources.sources import LumpedPort, setup_lumped_port, WirePort, setup_wire_port
-from rfx.probes.probes import init_dft_plane_probe, init_flux_monitor
+from rfx.probes.probes import init_dft_plane_probe
+from rfx.measurement.flux_weights import grid_flux_monitor
 from rfx.sources.waveguide_port import (
     extract_waveguide_sparams,
     waveguide_plane_positions,
@@ -108,16 +109,10 @@ def build_flux_monitor_cfgs(sim, grid, n_steps, entries=None):
             lo1, hi1 = 0, grid_ns[0]
             lo2, hi2 = 0, grid_ns[1]
         flux_monitors.append(
-            init_flux_monitor(
-                axis=axis_idx,
+            grid_flux_monitor(
+                grid, axis=axis_idx,
                 index=grid_index,
                 freqs=freqs_arr,
-                grid_shape=grid.shape,
-                # Grid is cubic (single dx) — both tangential cell sizes
-                # equal grid.dx. If Grid ever becomes non-cubic, select
-                # the two tangential sizes by axis_idx here.
-                d1=grid.dx,
-                d2=grid.dx,
                 dft_total_steps=n_steps,
                 dft_window=getattr(pe, 'dft_window', 'rect'),
                 dft_window_alpha=getattr(pe, 'dft_window_alpha', 0.25),

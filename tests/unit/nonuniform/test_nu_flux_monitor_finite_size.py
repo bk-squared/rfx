@@ -9,8 +9,8 @@ edits it concurrently). These tests pin, from strongest to most physical:
 
   T1  the guard is gone and a graded-mesh finite monitor returns a finite,
       non-zero spectrum (guards against silent re-introduction of the raise).
-  T2  RELATIVE oracle: the finite monitor equals the full-plane NU integrand
-      summed over the SAME lo:hi window to machine precision (x64-scoped).
+  T2  RELATIVE oracle: the finite monitor equals the full-plane NU DFTs
+      integrated with clipped nodal endpoints over the SAME box (x64-scoped).
   T3  WINDOW oracle (reviewer defect P1): the selected window and its
       cumulative dA are compared against a span recomputed from the realized
       edge array — the pad offset and the node->cell (#868) decision that T2 is
@@ -144,18 +144,24 @@ def test_nu_finite_flux_guard_removed_returns_spectrum():
 
 
 # --------------------------------------------------------------------------
-# T2 — RELATIVE oracle: finite == full-plane restricted to the same window,
-#      to machine precision. Proves B1 adds only a window, not new field math.
+# T2 — Reintegrate full-plane DFTs with independent clipped endpoint weights.
 # --------------------------------------------------------------------------
-def _restrict_full_to_window(mon_full, mon_sub):
-    e1 = np.asarray(mon_full.e1_dft); e2 = np.asarray(mon_full.e2_dft)
-    h1 = np.asarray(mon_full.h1_dft); h2 = np.asarray(mon_full.h2_dft)
-    # The two products occupy different transverse Yee locations: each
-    # carries its own primal/dual area, including in a restricted window.
-    weighted = (e1 * np.conj(h2) * np.asarray(mon_full.dA)
-                - e2 * np.conj(h1) * np.asarray(mon_full.dA2))
-    return np.real(np.sum(weighted[:, mon_sub.lo1:mon_sub.hi1,
-                                  mon_sub.lo2:mon_sub.hi2], axis=(-2, -1)))
+def _restrict_full_to_window(mon_full, mon_sub, grid):
+    from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
+    coords = coords_from_nonuniform_grid(grid)
+    lo, hi, low, high = mon_sub.lo1, mon_sub.hi1, mon_sub.lo2, mon_sub.hi2
+    dy, dz = np.diff(coords.y[lo:hi+1]), np.diff(coords.z[low:high+1])
+    wy, wz = np.zeros(len(dy)+1), np.zeros(len(dz)+1)
+    wy[:-1] += dy/2
+    wy[1:] += dy/2
+    wz[:-1] += dz/2
+    wz[1:] += dz/2
+    first = np.asarray(mon_full.e1_dft)[:, lo:hi, low:high+1] * np.conj(
+        np.asarray(mon_full.h2_dft)[:, lo:hi, low:high+1])
+    second = np.asarray(mon_full.e2_dft)[:, lo:hi+1, low:high] * np.conj(
+        np.asarray(mon_full.h1_dft)[:, lo:hi+1, low:high])
+    return np.real(np.sum(first * np.asarray(np.outer(dy, wz), dtype=np.float32), axis=(-2, -1))
+                   - np.sum(second * np.asarray(np.outer(wy, dz), dtype=np.float32), axis=(-2, -1)))
 
 
 def test_nu_finite_flux_bitexact_restriction():
@@ -177,7 +183,7 @@ def test_nu_finite_flux_bitexact_restriction():
         assert acc > 1e-25, f"flux DFT at noise floor ({acc:.3e}); setup degenerate"
 
         fin = np.asarray(flux_spectrum(mon_fin))
-        ref = _restrict_full_to_window(mon_full, mon_fin)
+        ref = _restrict_full_to_window(mon_full, mon_fin, grid)
         scale = max(np.max(np.abs(fin)), np.max(np.abs(ref)), 1e-300)
         reldev = float(np.max(np.abs(fin - ref) / scale))
         print(f"\n[T2 bit-exact] window=({mon_fin.lo1}:{mon_fin.hi1},"
@@ -231,13 +237,17 @@ def test_nu_finite_flux_absolute_aperture_and_dA():
 
     # (c) cumulative dA == sum of the INTENDED cells' local face areas, computed
     #     independently from the realized grid (NOT from the monitor's own dA).
-    # Ey*Hz is edge-centered in y and node-centered in z. Its control
-    # area spans the adjacent cell centers in z, not the primal z edges.
-    dz_dual = np.r_[dz_full[0], .5*(dz_full[:-1]+dz_full[1:])]
-    dy_dual = np.r_[dy_full[0], .5*(dy_full[:-1]+dy_full[1:])]
-    exp_dA = float(np.sum(np.outer(dy_full[yl:yh], dz_dual[zl:zh])))
-    np.testing.assert_allclose(mon.dA2, np.outer(dy_dual[yl:yh], dz_full[zl:zh]),
-                               rtol=1e-4, atol=0.)
+    # Integrate each nodal linear interpolant over the reported node bounds.
+    dy_cells = np.diff(coords.y[yl:yh+1])
+    dz_cells = np.diff(coords.z[zl:zh+1])
+    dy_nodes = np.zeros(len(dy_cells)+1)
+    dz_nodes = np.zeros(len(dz_cells)+1)
+    dy_nodes[:-1] += dy_cells/2
+    dy_nodes[1:] += dy_cells/2
+    dz_nodes[:-1] += dz_cells/2
+    dz_nodes[1:] += dz_cells/2
+    exp_dA = float(np.sum(np.outer(dy_cells, dz_nodes)))
+    np.testing.assert_allclose(mon.dA2, np.outer(dy_nodes, dz_cells), rtol=1e-4, atol=0.)
     got_dA = float(np.sum(np.asarray(mon.dA)))
     reldA = abs(got_dA - exp_dA) / max(exp_dA, 1e-300)
     print(f"\n[T3 absolute] y {mon.lo1}:{mon.hi1} z {mon.lo2}:{mon.hi2} "
@@ -341,8 +351,8 @@ def _react_ratio(mon):
     the near-field cross-mesh bound; large in the near field)."""
     e1 = np.asarray(mon.e1_dft); e2 = np.asarray(mon.e2_dft)
     h1 = np.asarray(mon.h1_dft); h2 = np.asarray(mon.h2_dft)
-    g = e1 * np.conj(h2) - e2 * np.conj(h1)
-    S = np.sum(g * np.asarray(mon.dA)[None], axis=(-2, -1))
+    S = (np.sum(e1 * np.conj(h2) * np.asarray(mon.dA), axis=(-2, -1))
+         - np.sum(e2 * np.conj(h1) * np.asarray(mon.dA2), axis=(-2, -1)))
     return np.abs(np.imag(S)) / (np.abs(np.real(S)) + 1e-300)
 
 
@@ -388,13 +398,12 @@ def test_nu_finite_flux_generality_two_gradings():
         settle.append(_settling_db(res.time_series))
         # independent physical aperture area from the realized graded edges:
         # (sum of selected dy)(sum of selected dz), NOT the monitor's own dA.
-        dy_full, ply, phy, _ = _grid_axis(grid, 1)
-        dz_full, plz, phz, _ = _grid_axis(grid, 2)
-        y_ext = float(np.sum(dy_full[mon.lo1:mon.hi1]))
-        # Ey*Hz's nodal z samples integrate dual widths. The primal
-        # aperture selection remains separately pinned by T3 above.
-        dz_dual = np.r_[dz_full[0], .5*(dz_full[:-1]+dz_full[1:])]
-        z_ext = float(np.sum(dz_dual[mon.lo2:mon.hi2]))
+        # Clipping the nodal dual widths covers exactly the two real nodes
+        # reported as window ends, independent of the interior grading.
+        from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
+        nodes = coords_from_nonuniform_grid(grid)
+        y_ext = float(nodes.y[mon.hi1] - nodes.y[mon.lo1])
+        z_ext = float(nodes.z[mon.hi2] - nodes.z[mon.lo2])
         ap_area.append((y_ext, z_ext, y_ext * z_ext))
 
     dA_sums = [float(np.sum(a)) for a in dA_arrs]

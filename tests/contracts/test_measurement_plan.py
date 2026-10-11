@@ -89,8 +89,8 @@ def judge(plan, actual, row, nu):
         key = f'flux_plane:{i}'
         expected.add(key)
         owner = owners[key]
-        shape = cfg.e1_dft.shape[1:]
         for c, channel in enumerate(owner.channels):
+            shape = (cfg.e1_dft, cfg.e2_dft, cfg.h1_dft, cfg.h2_dft)[c].shape[1:]
             area = cfg.dA if c in (0, 3) or cfg.dA2 is None else cfg.dA2
             np.testing.assert_array_equal([n.area for n in channel.nodes],
                                           np.tile(np.broadcast_to(area, shape).ravel(), 1 if c < 2 else 2))

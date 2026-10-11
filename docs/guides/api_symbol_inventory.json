@@ -1212,7 +1212,9 @@
         "lo2",
         "hi2",
         "pmc_faces",
-        "staggered_area"
+        "staggered_area",
+        "node_coords",
+        "periodic_axes"
       ]
     },
     "init_multimode_waveguide_port": {
