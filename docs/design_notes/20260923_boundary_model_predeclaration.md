@@ -713,3 +713,26 @@ Addendum 4 put the backing plane of a ZERO-depth absorber at the domain face on 
 multi-device uniform path still leaves a positive-depth absorber unbacked unless the model is dispersive
 (`rfx/runners/distributed_v2.py:905-912`). This addendum makes it every electric face of the record, on every path.
 Addendum 5c (5) stands: low-level callers' explicit flags are their declaration.
+
+## Addendum 5f (2026-10-11, lead decision L:bad416) — on the graded mesh a full-aperture guide refuses what the uniform mesh refuses
+
+Addendum 5d (2) kept an explicitly declared transverse absorber on the graded mesh ("the user asked for an open
+cross-section and gets it"). Read again with the 5d measurement: the waveguide port's modal decomposition assumes the
+guide's walls, so a full-aperture port in a cross-section with absorbing or magnetic side walls is not the structure the
+port measures. The admitted `boundary='cpml'` case realizes the same structure as the graded default measured for 5d
+(shape 149 × 106 × 96 on the two-port contract fixture, 42-layer absorbers on all six faces; |S21| above 0 dB on 13 of
+20 bins, up to +0.93 dB). And one declaration got two admission answers: the uniform mesh refuses it
+(reproduction on tracker 1221, 2026-10-11). 5d (2) is replaced, until S1 boundaries PR3b-2b realizes the guide's walls
+on the graded mesh:
+1. Graded mesh (and every path that reaches the graded admission), full-aperture waveguide port: a transverse face
+   declared with any kind other than PEC is refused with the uniform mesh's message ("full-aperture waveguide requires
+   PEC on …; declare boundary=… (absorber on the port axis)"). A periodic flag on such a face is refused with the uniform
+   mesh's periodic message. PEC transverse faces are admitted, as on the uniform mesh.
+2. Boundary not passed: still refused with the 5d message — the one remaining difference from the uniform mesh, which
+   solves this declaration with walls. A legacy document of unknown provenance (`restore_legacy_boundary`) is refused
+   the same way on the graded mesh: it would solve the same wall-less cross-section.
+3. Judge: one contract runs every declaration of a fixed list (not passed; `cpml`; absorber on one transverse axis; PMC
+   on one transverse axis; periodic on one transverse axis; PEC walls) on both meshes through `run()` (with and without
+   preflight) and `forward()`, and asserts the same answer and the same message on both, except the two differences of
+   point 2, which it asserts by name. Mutations: the graded explicit-kind refusal removed → red; the graded message
+   altered → red.
