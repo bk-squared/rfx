@@ -336,61 +336,31 @@ def test_the_subgrid_runner_binds_the_shared_loop_not_a_local_copy():
     assert _jit._ampere_loop is _probes._ampere_loop
 
 
-def test_the_jit_scan_lane_calls_the_shared_loop_with_the_runs_periodic_flags():
-    """LANE-DISCRIMINATING: it is `rfx/simulation.py`'s scan body, not the
-    Python-loop extractor, that must be routed through the shared helper.
-
-    The spy records the CALLER's file and function, so a call arriving from
-    `probes.port_current` / `probes.wire_port_current` (the other lane, which
-    also goes through `_ampere_loop`) cannot satisfy this assertion.  It also
-    pins the arguments: the port's static index, and the run's own `periodic`
-    flags rather than a hard-coded tuple.
-    """
-    import inspect
-
-    import rfx.probes.probes as _probes
+def test_the_jit_scan_lane_compiles_the_shared_table_with_the_runs_periodic_flags(monkeypatch):
+    """The actual scan compiles its realized cells and curl boundary once."""
+    import rfx.measurement.projector as projector
     from rfx import Simulation
     from rfx.core.yee import CurlBoundary
     from rfx.sources.sources import GaussianPulse
 
-    real = _probes._ampere_loop
+    real = projector.port_table
     calls = []
 
-    def spy(state, idx, component, dx, periodic, *, boundary=None):
-        frame = inspect.currentframe().f_back
-        calls.append({
-            "file": pathlib.Path(frame.f_code.co_filename).as_posix(),
-            "func": frame.f_code.co_name,
-            "idx": tuple(int(v) for v in idx),
-            "component": component,
-            "periodic": tuple(bool(b) for b in periodic),
-            "boundary": boundary,
-        })
-        return real(state, idx, component, dx, periodic, boundary=boundary)
+    def spy(grid, specs, **kwargs):
+        specs = tuple(specs)
+        calls.append((specs, kwargs['boundary']))
+        return real(grid, specs, **kwargs)
 
-    _probes._ampere_loop = spy
-    try:
-        sim = Simulation(freq_max=5e9, domain=(0.06, 0.03, 0.02), dx=3e-3,
-                         boundary="cpml", cpml_layers=6)
-        sim.add_port(position=(0.03, 0.015, 0.01), component="ez",
-                     impedance=50.0,
-                     waveform=GaussianPulse(f0=3e9, bandwidth=0.8),
-                     extent=0.006)
-        sim.run(n_steps=12, compute_s_params=True, skip_preflight=True)
-    finally:
-        _probes._ampere_loop = real
-
-    from_scan = [c for c in calls
-                 if (c["file"].endswith("rfx/simulation.py")
-                     or c["file"].endswith("rfx/stepping/uniform.py"))]
-    assert from_scan, (
-        "rfx/simulation.py's scan body never called the shared Ampere loop — "
-        "it is spelling the six branches inline again. Callers seen: "
-        + repr(sorted({(c["file"], c["func"]) for c in calls}))
-    )
-    for call in from_scan:
-        assert call["component"] in ("ex", "ey", "ez")
-        assert len(call["idx"]) == 3
-        assert len(call["periodic"]) == 3
-        assert isinstance(call["boundary"], CurlBoundary)
-        assert call["boundary"].periodic == call["periodic"]
+    monkeypatch.setattr(projector, 'port_table', spy)
+    sim = Simulation(freq_max=5e9, domain=(0.06, 0.03, 0.02), dx=3e-3,
+                     boundary="cpml", cpml_layers=6)
+    sim.add_port(position=(0.03, 0.015, 0.01), component="ez",
+                 impedance=50.0, waveform=GaussianPulse(f0=3e9, bandwidth=0.8),
+                 extent=0.006)
+    sim.run(n_steps=12, compute_s_params=True, skip_preflight=True)
+    assert len(calls) == 1
+    specs, boundary = calls[0]
+    assert isinstance(boundary, CurlBoundary)
+    assert boundary.periodic == sim._periodic_flags()
+    assert specs[0][0] == 'ez'
+    assert all(len(cell) == 3 for cell in specs[0][1])

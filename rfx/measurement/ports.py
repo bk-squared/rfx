@@ -1,4 +1,4 @@
-"""Host adapters for existing modal and calculator measurement setups."""
+"""Realized port geometry and metric weights for measurement owners."""
 from __future__ import annotations
 
 from collections import defaultdict
@@ -8,6 +8,84 @@ import numpy as np
 import jax.numpy as jnp
 
 from .plan import Channel, Node, Owner, ReferencePlane, _frequencies
+
+
+def _metric_scalar(value):
+    import jax
+    return value if isinstance(value, jax.core.Tracer) else float(value)
+
+
+def _port_cells(grid, axis, nu):
+    # Match _build_wp_meta: concrete x/y solver stores widened to f64;
+    # z arithmetic stays in its solver dtype, including the dual addition.
+    if not nu:
+        return np.asarray(grid.cells(axis))
+    import jax
+    values = (grid.dx_arr, grid.dy_arr, grid.dz)[axis]
+    if isinstance(values, jax.core.Tracer):
+        return values
+    return np.asarray(values, dtype=np.float64 if axis != 2 else None)
+
+
+def lumped_wire_owner(grid, component, live_cells, *, nu, pmc_faces, periodic,
+                      port_id, frequencies=(), reference_planes=(),
+                      known_differences=(), availability='sampled', kind=None):
+    """Compile realized edges and the runner's metric arithmetic into an owner.
+
+    ``kind`` disambiguates a one-cell wire from a lumped port. Concrete weights
+    are host scalars. Mesh-as-design-variable weights retain their tracers,
+    since converting them to host values would discard the mesh derivative.
+    """
+    from rfx.boundaries.pmc import magnetic_image_faces
+    from dataclasses import replace
+    from jax.core import Tracer
+    live = tuple(tuple(int(v) for v in cell) for cell in live_cells)
+    if not live:
+        raise ValueError(f'port:{port_id} has no live measurement edges')
+    kind = kind or ('wire' if len(live) > 1 else 'lumped')
+    faces = magnetic_image_faces(pmc_faces, grid.shape, periodic)
+    mid = live[len(live)//2]
+    axis = 'xyz'.index(component[1])
+    widths = _port_cells(grid, axis, nu)
+    voltage = tuple(Node(component, *p, -_metric_scalar(widths[p[axis]])) for p in live)
+    v = (Node(component, *mid, -_metric_scalar(widths[mid[axis]])),)
+    # Ampere circulation: each H term is weighted by its own dual edge.
+    pairs = {'ez': (('hy', 0, 1), ('hx', 1, -1)),
+             'ex': (('hz', 1, 1), ('hy', 2, -1)),
+             'ey': (('hx', 2, 1), ('hz', 0, -1))}
+    current = []
+    for h_component, back_axis, sign in pairs[component]:
+        length_axis = 'xyz'.index(h_component[1])
+        c = _port_cells(grid, length_axis, nu)
+        p = mid[length_axis]
+        width = _metric_scalar(c[p] if not nu or p == 0 else (c[p-1]+c[p])*0.5)
+        wraps = periodic[back_axis] or grid.shape[back_axis] == 1
+        factor = 1
+        if not wraps and mid[back_axis] == 0 and f'{"xyz"[back_axis]}_lo' in faces:
+            factor = 2
+        if not wraps and mid[back_axis] == grid.shape[back_axis]-1 and f'{"xyz"[back_axis]}_hi' in faces:
+            factor = 0
+        if factor:
+            current.append(Node(h_component, *mid, sign*width*factor))
+        back = list(mid)
+        back[back_axis] -= 1
+        if back[back_axis] < 0:
+            if periodic[back_axis] or grid.shape[back_axis] == 1:
+                back[back_axis] %= grid.shape[back_axis]
+            else:
+                # h_neighbor's zero exterior contributes no sampled node.
+                continue
+        current.append(Node(h_component, *back, -sign*width*(2 if factor == 0 else 1)))
+    channels = [Channel('V', 'E', v), Channel('I', 'H', tuple(current))]
+    if kind == 'wire' or nu:
+        channels.append(Channel('V_port', 'E', voltage))
+    if not nu:
+        channels.append(Channel('V_ref', 'E', v, sample_stage='pre-injection'))
+    channels = [replace(c, nodes=tuple(n for n in c.nodes
+                if isinstance(n.weight, Tracer) or n.weight != 0)) for c in channels]
+    return Owner(f'port:{port_id}:mode:0', kind, tuple(channels),
+                 tuple(frequencies), tuple(reference_planes),
+                 known_differences=tuple(known_differences), availability=availability)
 
 
 def waveguide_owners(sim, grid, n_steps, nu):

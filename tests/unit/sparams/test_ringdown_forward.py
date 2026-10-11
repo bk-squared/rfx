@@ -353,8 +353,14 @@ def _loss_and_grad(sim, n, *, jit, bins=FREQS):
 
 
 @pytest.mark.parametrize("jit", [False, True])
+def test_missing_h_column_refuses_before_traced_identification(jit, monkeypatch):
+    _wrong_h_loop(monkeypatch)
+    with pytest.raises(ValueError, match=r'wire port 0.*port:0:mode:0.*hy.*1, 2, 0'):
+        _loss_and_grad(_box('uniform'), 1500, jit=jit)
+
+
+@pytest.mark.parametrize("jit", [False, True])
 @pytest.mark.parametrize("defect, lane, cells", [
-    (_wrong_h_loop, "uniform", 1),
     (_midpoint_voltage, "uniform", 3),
     (_half_step_dropped, "uniform", 1),
     (_half_step_dropped, "graded", 1),

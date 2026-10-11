@@ -264,20 +264,16 @@ def test_w0_and_byte_identity_hold_under_scoped_x64(lane):
                               np.asarray(getattr(completed, f))), (lane, f)
 
 
-def test_w0_catches_a_rebuild_that_reads_the_wrong_h_samples(monkeypatch):
-    """Swap the axes the Ez port's Ampere-loop legs are differenced along: the
-    rebuilt current is then a different loop. The run is returned as it is,
-    uncompleted, with W0's number in the report and a warning."""
-    plain = _run(_box("uniform"), 600)
+def test_missing_h_samples_refused_before_identification(monkeypatch):
+    """A changed probe layout must name the missing node before identifying."""
     monkeypatch.setitem(rd._LOOP_LEGS, "ez", (("hy", 1), ("hx", 0)))
-    with pytest.warns(UserWarning, match="W0 failed"):
-        r = _run(_box("uniform"), 600, ringdown=RingdownSpec())
-    rep = r.ringdown.report
-    assert r.ringdown.s_params is None and not rep.completed and not rep.ok
-    print(f"\n[wrong H samples] W0 = {rep.witness('W0').value:.3g} of the peak")
-    assert rep.failure.startswith("W0") and rep.witness("W0").value > rd.W0_REL_BAR
-    for f in ("time_series", "s_params", "freqs"):
-        assert np.array_equal(np.asarray(getattr(plain, f)), np.asarray(getattr(r, f)))
+
+    def forbidden(*args, **kwargs):
+        pytest.fail('identification started with a missing table term')
+
+    monkeypatch.setattr(rd, 'identify', forbidden)
+    with pytest.raises(ValueError, match=r'wire port 0.*port:0:mode:0.*hy.*1, 2, 0'):
+        _run(_box("uniform"), 600, ringdown=RingdownSpec())
 
 
 def _replay_without_half_step(monkeypatch):
@@ -818,3 +814,21 @@ def test_what_the_completion_does_not_cover_is_refused(case, match):
     kw.setdefault("compute_s_params", True)
     with pytest.raises((NotImplementedError, ValueError, TypeError), match=match):
         sim.run(n_steps=400, ringdown=spec, skip_preflight=True, **kw)
+
+
+@pytest.mark.parametrize('face', ['low', 'high'])
+def test_wire_port_on_a_magnetic_face_completes(face):
+    from rfx.boundaries.spec import BoundarySpec
+    sim = Simulation(freq_max=20e9, domain=(12*MM, 11*MM, 5*MM), dx=MM,
+                     boundary=BoundarySpec(x='pmc', y='pec', z='pec'))
+    sim.add_material('fill', eps_r=2.2,
+                     sigma=2*np.pi*12.5e9*8.854187817e-12*2.2/300.)
+    sim.add(Box((0, 0, 0), (12*MM, 11*MM, 5*MM)), material='fill')
+    sim.add_port(position=(0. if face == 'low' else 12*MM, 2*MM, 0.),
+                 component='ez', impedance=50., extent=MM,
+                 waveform=GaussianPulse(f0=10e9, bandwidth=.9))
+    sim.add_probe(position=(8*MM, 7*MM, 2*MM), component='ez')
+    result = sim.run(n_steps=1500, skip_preflight=True, ringdown=RingdownSpec())
+    rep = result.ringdown.report
+    assert rep.completed and result.ringdown.s_params is not None, rep.summary()
+    assert rep.witness('W0').value <= rd.W0_REL_BAR, rep.summary()

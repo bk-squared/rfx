@@ -245,7 +245,7 @@ def test_j1_mutations_reject_weight_and_dropped_owner():
     with pytest.raises((AssertionError, KeyError)):
         judge(replace(plan, owners=plan.owners[1:]), actual, row, True)
     assert v.kind == 'E'
-    from rfx.measurement import plan as module
+    from rfx.measurement import ports as module
     original = module._port_cells
 
     def boundary_cells(grid, axis, nu):

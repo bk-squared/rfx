@@ -156,59 +156,6 @@ def _pec_edges(sim, grid):
                                    periodic=sim._periodic_flags())
 
 
-def _port_cells(grid, axis, nu):
-    # Today's NU setup reads solver stores: f32 widened on x/y, f32 on z.
-    # Derive from cells, retaining that rounding instead of moving a weight.
-    cells = np.asarray(grid.cells(axis))
-    if nu:
-        cells = cells.astype(np.float32)
-        if axis != 2:
-            cells = cells.astype(np.float64)
-    return cells
-
-
-def _port_channels(sim, grid, entry, live, nu):
-    mid = live[len(live)//2]
-    axis = 'xyz'.index(entry.component[1])
-    widths = _port_cells(grid, axis, nu)
-    voltage = tuple(Node(entry.component, *p, -float(widths[p[axis]])) for p in live)
-    v = (Node(entry.component, *mid, -float(widths[mid[axis]])),)
-    # Ampere circulation: each H term is weighted by its own dual edge.
-    pairs = {'ez': (('hy', 0, 1), ('hx', 1, -1)),
-             'ex': (('hz', 1, 1), ('hy', 2, -1)),
-             'ey': (('hx', 2, 1), ('hz', 0, -1))}
-    current = []
-    for component, back_axis, sign in pairs[entry.component]:
-        length_axis = 'xyz'.index(component[1])
-        c = _port_cells(grid, length_axis, nu)
-        p = mid[length_axis]
-        width = float(c[p] if not nu or p == 0 else (c[p-1]+c[p])*0.5)
-        from rfx.boundaries.pmc import magnetic_image_faces
-        faces = magnetic_image_faces(sim._boundary_spec.pmc_faces(), grid.shape, sim._periodic_flags())
-        wraps = sim._periodic_flags()[back_axis] or len(grid.cells(back_axis)) == 1
-        factor = 1
-        if not wraps and mid[back_axis] == 0 and f'{"xyz"[back_axis]}_lo' in faces:
-            factor = 2
-        if not wraps and mid[back_axis] == grid.shape[back_axis]-1 and f'{"xyz"[back_axis]}_hi' in faces:
-            factor = 0
-        current.append(Node(component, *mid, sign*width*factor))
-        back = list(mid)
-        back[back_axis] -= 1
-        if back[back_axis] < 0:
-            if sim._periodic_flags()[back_axis] or len(grid.cells(back_axis)) == 1:
-                back[back_axis] %= len(grid.cells(back_axis))
-            else:
-                # h_neighbor's zero exterior contributes no sampled node.
-                continue
-        current.append(Node(component, *back, -sign*width*(2 if factor == 0 else 1)))
-    channels = [Channel('V', 'E', v), Channel('I', 'H', tuple(current))]
-    if entry.extent is not None or nu:
-        channels.append(Channel('V_port', 'E', voltage))
-    if not nu:
-        channels.append(Channel('V_ref', 'E', v, sample_stage='pre-injection'))
-    return tuple(channels)
-
-
 def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
                            calculator_owners=()):
     """Build a frozen snapshot from a Simulation and the run's realized grid.
@@ -290,6 +237,7 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
                             availability='result missing' if path.startswith('fwd') else 'sampled'))
     edges = _pec_edges(sim, grid) if any(p.impedance and p.extent is not None for p in sim._ports) else None
     from rfx.sources.sources import WirePort, _wire_port_live_cells
+    from .ports import lumped_wire_owner
     for i, entry in enumerate(sim._ports):
         if not entry.impedance:
             continue  # a soft source has no measurement owner
@@ -313,9 +261,11 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
             references = tuple(ReferencePlane(name, line_axis, int(p),
                                               float(grid.node_of(line_axis, int(p))))
                                for name, p in zip(('port', 'reference', 'impedance'), indices))
-        owners.append(Owner(f'port:{i}:mode:0', 'wire' if entry.extent is not None else 'lumped',
-                            _port_channels(sim, grid, entry, live, nu),
-                            _frequencies(sim, freqs=(np.asarray(frequencies, dtype=np.float32)
+        owners.append(lumped_wire_owner(
+                            grid, entry.component, live, nu=nu,
+                            pmc_faces=sim._boundary_spec.pmc_faces(), periodic=sim._periodic_flags(),
+                            port_id=i, kind='wire' if entry.extent is not None else 'lumped',
+                            frequencies=_frequencies(sim, freqs=(np.asarray(frequencies, dtype=np.float32)
                                                     if frequencies is not None else None)),
                             reference_planes=references,
                             known_differences=(('NU missing pre-injection V_ref',

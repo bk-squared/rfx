@@ -105,6 +105,24 @@ def update_dft_probe(
 # Port voltage / current extraction
 # ---------------------------------------------------------------------------
 
+def _project_port(state, grid, port, *, wire, periodic=(False, False, False),
+                  pec_edge_masks=None):
+    from rfx.measurement.projector import port_table, project
+    from rfx.nonuniform import NonUniformGrid
+    if wire:
+        cells, flags, _ = _wire_port_live_cells(grid, port, pec_edge_masks)
+        live = tuple(tuple(c) for c, flag in zip(cells, flags) if flag)
+    else:
+        live = (tuple(field_index(grid, port.position, port.component)),)
+    nu = isinstance(grid, NonUniformGrid)
+    # Graded lumped probes use the runner's one-cell wire channel layout.
+    mid = live[len(live)//2] if live else ()
+    table = port_table(grid, ((port.component, live, 'wire' if wire or nu else 'lumped', mid),),
+                       nu=nu,
+                       boundary=_port_curl_boundary(grid, periodic), dtype=state.ex.dtype)
+    return project(state, table)
+
+
 def port_voltage(state, grid: Grid, port: LumpedPort) -> jnp.ndarray:
     """Voltage across the lumped port cell.
 
@@ -123,10 +141,7 @@ def port_voltage(state, grid: Grid, port: LumpedPort) -> jnp.ndarray:
     -------
     float scalar
     """
-    idx = field_index(grid, port.position, port.component)
-    i, j, k = idx
-    field = getattr(state, port.component)
-    return _port_voltage_value(field[i, j, k], grid.cells(port.component[1])[idx['xyz'.index(port.component[1])]])
+    return _project_port(state, grid, port, wire=False)[0]
 
 
 def _port_curl_boundary(grid, periodic):
@@ -212,9 +227,7 @@ def port_current(state, grid: Grid, port: LumpedPort,
     -------
     float scalar
     """
-    idx = tuple(field_index(grid, port.position, port.component))
-    return _metric_ampere_loop(state, idx, port.component, grid, periodic,
-                        boundary=_port_curl_boundary(grid, periodic))
+    return _project_port(state, grid, port, wire=False, periodic=periodic)[1]
 
 
 def _metric_ampere_loop(state, idx, component, grid, periodic, boundary=None):
@@ -231,9 +244,9 @@ def _metric_ampere_loop(state, idx, component, grid, periodic, boundary=None):
 def _ampere_loop(state, idx, component, dx, periodic, boundary=None):
     """4-term discrete Ampere loop at ``idx`` on a uniform (cubic) grid.
 
-    Single spelling shared by :func:`port_current` and
-    :func:`wire_port_current` — they were two verbatim copies of the same
-    six branches, and #692 had to fix the same wrap twice because of it.
+    Retained for multi-device, reference-plane and subgridded consumers.
+    Completed single-device port samples use measurement.projector; this
+    arithmetic also remains an independent comparison oracle.
     """
     h_a, axis_a, h_b, axis_b = _ampere_loop_components(component)
     a, b = getattr(state, h_a), getattr(state, h_b)
@@ -452,8 +465,7 @@ def update_sparam_probe(
     """
     t = state.step * dt  # keep traceable: float(state.step) leaked the tracer
 
-    v = port_voltage(state, grid, port)
-    i = port_current(state, grid, port)
+    v, i = _project_port(state, grid, port, wire=False)[:2]
     v_inc = port.excitation(t)
 
     phase = (_dft_phase(state.step-1, probe.freqs, dt, 'E') / dt)
@@ -1122,14 +1134,7 @@ def wire_port_gap_voltage(state, grid, port, pec_edge_masks=None) -> jnp.ndarray
     that #318 physically realizes as the series termination.
     """
 
-    cells, live_flags, _ = _wire_port_live_cells(grid, port, pec_edge_masks)
-    field = getattr(state, port.component)
-    v_port = 0.0
-    for cell, live in zip(cells, live_flags):
-        if not live:
-            continue
-        v_port = v_port - field[cell[0], cell[1], cell[2]] * grid.cells(port.component[1])[cell['xyz'.index(port.component[1])]]
-    return v_port
+    return _project_port(state, grid, port, wire=True, pec_edge_masks=pec_edge_masks)[2]
 
 
 def wire_port_current(state, grid, port,
@@ -1156,9 +1161,8 @@ def wire_port_current(state, grid, port,
     -------
     float scalar
     """
-    mid = _wire_port_live_mid(grid, port, pec_edge_masks)
-    return _metric_ampere_loop(state, tuple(mid), port.component, grid, periodic,
-                        boundary=_port_curl_boundary(grid, periodic))
+    return _project_port(state, grid, port, wire=True, periodic=periodic,
+                         pec_edge_masks=pec_edge_masks)[1]
 
 
 # ---------------------------------------------------------------------------
@@ -1236,9 +1240,7 @@ def update_wire_sparam_probe(
     if n_live is None:
         n_live = max(len(_wire_port_cells(grid, port)), 1)
 
-    v = wire_port_voltage(state, grid, port, pec_edge_masks=pec_edge_masks)
-    i_val = wire_port_current(state, grid, port, pec_edge_masks=pec_edge_masks)
-    v_port = wire_port_gap_voltage(state, grid, port, pec_edge_masks=pec_edge_masks)
+    v, i_val, v_port = _project_port(state, grid, port, wire=True, pec_edge_masks=pec_edge_masks)
     v_inc = port.excitation(t) / n_live
 
     phase = (_dft_phase(state.step-1, probe.freqs, dt, 'E') / dt)

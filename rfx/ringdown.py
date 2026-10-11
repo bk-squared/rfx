@@ -841,7 +841,6 @@ _LOOP_LEGS = {
     "ey": (("hx", 2), ("hz", 0)),
 }
 _AXIS_OF = {"ex": 0, "ey": 1, "ez": 2}
-_LOCAL = (1, 1, 1)
 
 
 def refuse_run_request(sim, spec, *, devices, until_decay, compute_s_params,
@@ -1021,9 +1020,10 @@ class _PortMeta(NamedTuple):
     accs: tuple          # rfx's (v, i, v_port) accumulators
     freqs: object        # jnp float32 bins the accumulators used
     meta: object         # the run's own metadata entry
+    owner: object        # shared realized sampling owner
 
 
-def _read_port_metas(lane: str, result, grid) -> list:
+def _read_port_metas(lane: str, result, grid, boundary=None) -> list:
     """Realized cells, metrics and accumulators of every wire port, from the run."""
     import jax.numpy as jnp
 
@@ -1033,7 +1033,7 @@ def _read_port_metas(lane: str, result, grid) -> list:
             "run(ringdown=...) found no wire-port accumulators on the run's "
             "result; the port metadata it needs is missing.")
     out = []
-    for meta, accs in wps:
+    for port_id, (meta, accs) in enumerate(wps):
         if lane == "uniform":
             mid = (int(meta.mid_i), int(meta.mid_j), int(meta.mid_k))
             comp = str(meta.component)
@@ -1060,43 +1060,22 @@ def _read_port_metas(lane: str, result, grid) -> list:
         if mid not in live:
             raise RuntimeError(
                 f"wire port metadata: midpoint {mid} is not among its live cells {live}")
+        from rfx.measurement.ports import lumped_wire_owner
+        from rfx.probes.probes import _port_curl_boundary
+        boundary = boundary or _port_curl_boundary(grid, (False, False, False))
+        owner = lumped_wire_owner(grid, comp, live, nu=lane != 'uniform',
+                                  pmc_faces=boundary.pmc_faces, periodic=boundary.periodic,
+                                  port_id=port_id, kind='wire')
         out.append(_PortMeta(mid=mid, component=comp, z0=z0, excite=excite,
                              live_cells=live, k_mid=live.index(mid), raw=raw,
-                             f64=f64, accs=acc3, freqs=freqs, meta=meta))
+                             f64=f64, accs=acc3, freqs=freqs, meta=meta, owner=owner))
     return out
 
 
-class _HLocal(NamedTuple):
-    hx: object
-    hy: object
-    hz: object
-
-
 def _port_vi(lane: str, pm: _PortMeta, metrics: dict, e, hx, hy, hz):
-    """``(v_mid, v_port, i)`` from the port's E edges and local Ampere-loop H.
-
-    ``e`` indexes the live edges on its FIRST axis (``e[c]``); ``hx, hy, hz``
-    are 2x2x2 neighbourhoods (optionally with a trailing time axis) holding
-    the loop's H samples around local index (1, 1, 1). The current goes
-    through the lane's OWN loop function; the voltage is the lane's inline
-    sum, spelled as the scan spells it (W0 checks the two against the run).
-    """
-    n_live = len(pm.live_cells)
-    if lane == "uniform":
-        from rfx.probes.probes import _ampere_loop
-        dx = metrics["dx"]
-        v = -e[pm.k_mid] * dx
-        v_port = -sum(e[c] for c in range(n_live)) * dx
-        i_val = _ampere_loop(_HLocal(hx, hy, hz), _LOCAL, pm.component, dx,
-                             (False, False, False))
-    else:
-        from rfx.nonuniform import wire_port_current
-        v = -e[pm.k_mid] * metrics["v_metric"]
-        v_port = -sum(e[c] * dp for c, dp in zip(range(n_live), metrics["d_par"]))
-        i_val = wire_port_current(hx, hy, hz, pm.component, *_LOCAL,
-                                  metrics["dual_x"], metrics["dual_y"],
-                                  metrics["dual_z"])
-    return v, v_port, i_val
+    """Evaluate recorded probe samples with the same table as the live scan."""
+    from rfx.measurement.port_records import recorded_port_vi
+    return recorded_port_vi(pm, e, hx, hy, hz)
 
 
 def _port_layout(pm: _PortMeta, col: dict) -> tuple:
@@ -1109,16 +1088,21 @@ def _port_layout(pm: _PortMeta, col: dict) -> tuple:
     absent at index 0, where the runner reads zero). Raises ``KeyError`` when
     a live edge or loop sample was not probed.
     """
-    e_cols = [col[(pm.component, c)] for c in pm.live_cells]
     h_cells = []
-    for hname, back_axis in _LOOP_LEGS[pm.component]:
-        h_cells.append((hname, (1, 1, 1), col[(hname, pm.mid)]))
-        if pm.mid[back_axis] > 0:
-            back = list(pm.mid)
-            back[back_axis] -= 1
-            lb = [1, 1, 1]
-            lb[back_axis] = 0
-            h_cells.append((hname, tuple(lb), col[(hname, tuple(back))]))
+    for channel in pm.owner.channels:
+        if channel.sample_stage != 'post-injection':
+            continue
+        for node in channel.nodes:
+            key = (node.component, (node.i, node.j, node.k))
+            if key not in col:
+                raise KeyError(f'{pm.owner.id}: missing probe column for node {key}')
+            if channel.kind == 'H':
+                local = tuple(a-b+1 for a, b in zip(key[1], pm.mid))
+                if not all(v in (0, 1) for v in local):
+                    raise ValueError(
+                        f'{pm.owner.id}: node {key} outside the local 2x2x2 neighbourhood')
+                h_cells.append((node.component, local, col[key]))
+    e_cols = [col[(pm.component, c)] for c in pm.live_cells]
     return e_cols, h_cells
 
 
@@ -1137,7 +1121,7 @@ def _rebuild_channels(lane: str, pms, e_cols, h_cols) -> np.ndarray:
     """The float64 port channels ``(n, 2P)``: ``V_port, I`` per port.
 
     The float64 rebuild of the port voltage and current from the probe
-    samples, with the lane's own formulas (:func:`_port_vi`) and the port's
+    samples, with the shared table (:func:`_port_vi`) and the port's
     metrics as Python floats. ``run(ringdown=...)`` identifies and completes
     these; ``forward(ringdown=...)``'s host identification sees the same.
     """
@@ -1382,6 +1366,9 @@ class RingdownRun:
         if lane not in ("uniform", "graded"):
             raise ValueError(f"lane must be 'uniform' or 'graded', got {lane!r}")
         self.sim, self.spec, self.lane = sim, spec, lane
+        from rfx.core.yee import CurlBoundary
+        self.port_boundary = CurlBoundary(pmc_faces=sim._boundary_spec.pmc_faces(),
+                                          periodic=sim._periodic_flags())
         self.n_steps = int(n_steps)
         self.grid = grid
         self.dt = grid.dt
@@ -1571,7 +1558,8 @@ class RingdownRun:
         series, the port-channel probes from column ``n_user`` on. Returns
         ``(S, report, None)``, or ``(None, report, failure)`` when a check
         that decides whether the completion can be trusted at all failed.
-        Raises nothing for a failed check.
+        Raises nothing for a failed check; a probe layout missing a table node
+        raises ``ValueError`` before identification.
         """
         dt = float(result.grid.dt)
         ref_hz = max(self.freq_max, float(np.max(np.asarray(result.freqs,
@@ -1629,7 +1617,7 @@ class RingdownRun:
     def _read_metas_checked(self, result, run_grid) -> list:
         """The wire ports as the run realized them, or ``_NotCompleted`` (W0)."""
         try:
-            pms = _read_port_metas(self.lane, result, run_grid)
+            pms = _read_port_metas(self.lane, result, run_grid, self.port_boundary)
         except RuntimeError as exc:
             raise _NotCompleted("W0", math.nan, W0_REL_BAR, str(exc)) from None
         if len(pms) != len(self.wire_entries):
@@ -1640,16 +1628,13 @@ class RingdownRun:
         return pms
 
     def _layouts_checked(self, pms, col) -> list:
-        """:func:`_port_layout` of every port, or ``_NotCompleted`` (W0)."""
+        """:func:`_port_layout` of every port, refusing missing nodes before identification."""
         out = []
         for p, pm in enumerate(pms):
             try:
                 out.append(_port_layout(pm, col))
-            except KeyError:
-                raise _NotCompleted(
-                    "W0", math.nan, W0_REL_BAR,
-                    f"wire port {p}: realized live edges {pm.live_cells} / "
-                    f"midpoint {pm.mid} not all inside the probed span.") from None
+            except KeyError as exc:
+                raise ValueError(f"wire port {p}: {exc}") from None
         return out
 
     def _rebuild_inputs(self, result, ts_all, n_user):

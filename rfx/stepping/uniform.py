@@ -457,48 +457,30 @@ def make_uniform_step(
             inject = ctx.electric_injector or simulation.inject_drives
             frame.st = inject(frame.st, drives, frame.src_vals)
 
+    from rfx.measurement.projector import port_table, project
+    port_specs = tuple((m.component, m.live_cells or ((m.mid_i, m.mid_j, m.mid_k),), 'wire',
+                       (m.mid_i, m.mid_j, m.mid_k))
+                       for m in ctx.wire_sparam_meta) + tuple(
+                           (m.component, ((m.i, m.j, m.k),), 'lumped', (m.i, m.j, m.k)) for m in ctx.lumped_sparam_meta)
+    port_tables = {}
+
     def after_sources(frame: UniformFrame):
         """Read the completed physical fields for ports and observers."""
         frame.port_samples = []
+        if port_specs:
+            dtype = frame.st.ex.dtype
+            if dtype not in port_tables:
+                port_tables[dtype] = port_table(grid, port_specs, nu=False,
+                                               boundary=ctx.curl_boundary, dtype=dtype)
+            port_values = project(frame.st, port_tables[dtype])
         if ctx.use_wire_sparams:
             frame.new_wire_accs = []
             for accs, wp_meta, (v_ref_new, phase) in zip(
                     frame.carry["wire_sparam_accs"], ctx.wire_sparam_meta,
                     frame.new_wire_refs):
                 v_dft, i_dft, vinc_dft, v_port_dft = accs[0], accs[1], accs[2], accs[3]
-                mi, mj, mk = wp_meta.mid_i, wp_meta.mid_j, wp_meta.mid_k
-                field_c = getattr(frame.st, wp_meta.component)
-                v = -field_c[mi, mj, mk] * dx
-                # Whole-port gap voltage (issue #764): the discrete line
-                # integral of E across the LIVE run,
-                # V_port = sum_live(-E_c*dx).  Only this SUM is
-                # KVL/Faraday-constrained on the staggered grid; a single
-                # cell is not (a PEC short forces sum V_c = 0 while V_mid
-                # stays finite).  ``live_cells`` is a static tuple, so the
-                # unroll resolves at trace time; an empty tuple (pre-#764
-                # spec constructor) degenerates to the single midpoint cell.
-                _lc = wp_meta.live_cells or ((mi, mj, mk),)
-                v_port = -sum(
-                    field_c[ci, cj, ck] for (ci, cj, ck) in _lc) * dx
-                # #692: the SHARED loop, not a fourth inline copy. This block
-                # used to spell the six branches verbatim with a raw
-                # `h[i-1]`, so a port at index 0 read H from the OPPOSITE
-                # face of the domain — and this lane is the one described at
-                # the top of this file as "an AD-compatible alternative to
-                # the Python-loop extract_s_matrix path", i.e. it must agree
-                # with `probes.port_current` cell for cell. Measured against
-                # the helper on random H: the two spellings disagreed at 9 of
-                # 21 sampled (index, component) cells, every one of them at
-                # an index with a zero coordinate on a back-read axis.
-                # `_ampere_loop` is jit-safe here: `component` is a static
-                # str and `mi/mj/mk` are static Python ints (see
-                # WireSParamSpec), so every branch resolves at trace time.
-                # (I reads H only, so it is identical on both sides of the
-                # source loop; the flip moves V by the same-step injection
-                # increment at driven cells, which #683's gate G2 measured
-                # as EXACTLY the pre/post lane difference.)
-                i_val = observers._ampere_loop(
-                    frame.st, (mi, mj, mk), wp_meta.component, dx, periodic, boundary=ctx.curl_boundary)
+                offset = 3 * len(frame.new_wire_accs)
+                v, i_val, v_port = port_values[offset:offset + 3]
                 i_phase = port_dft_phase(frame.step_idx, wp_meta.freqs, dt, 'H', dtype=i_dft.dtype)
                 frame.port_samples.append(jnp.stack((v, i_val, v_port,
                                                 frame.wire_ref_samples[len(frame.new_wire_accs)])))
@@ -530,11 +512,8 @@ def make_uniform_step(
                     frame.carry["lumped_sparam_accs"], ctx.lumped_sparam_meta,
                     frame.new_lumped_refs):
                 v_dft_l, i_dft_l = accs[0], accs[1]
-                li, lj, lk = lp_meta.i, lp_meta.j, lp_meta.k
-                v_l = _port_voltage_value(getattr(frame.st, lp_meta.component)[li, lj, lk], dx)
-                # #692: shared loop — see the wire-port block above.
-                i_val_l = observers._ampere_loop(
-                    frame.st, (li, lj, lk), lp_meta.component, dx, periodic, boundary=ctx.curl_boundary)
+                offset = 3 * len(ctx.wire_sparam_meta) + 2 * len(frame.new_lumped_accs)
+                v_l, i_val_l = port_values[offset:offset + 2]
                 i_phase_l = port_dft_phase(frame.step_idx, lp_meta.freqs, dt, 'H', dtype=i_dft_l.dtype)
                 frame.port_samples.append(jnp.stack((v_l, i_val_l,
                                                 frame.lumped_ref_samples[len(frame.new_lumped_accs)])))

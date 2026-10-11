@@ -108,17 +108,48 @@ def test_special_run_branches(feature, mesh):
 
 @pytest.mark.parametrize("mesh,feature", [("uniform", "lumped"), ("uniform", "wire"),
                                          ("graded", "wire")])
-def test_scan_port_current_uses_boundary_neighbour(mesh, feature):
+def test_scan_port_table_uses_the_steps_realized_boundary(mesh, feature):
+    """The scan compiles its port table with the boundary its curl receives.
+
+    The table writes the indexed h_neighbor reads as node weights; the
+    random-field cases of test_port_projector pin those weights against
+    _ampere_loop / wire_port_current, which read h_neighbor (checked below
+    by test_each_port_sample_reads_two_neighbors). What is left to route is
+    the boundary the step hands the table compiler.
+    """
+    import rfx.measurement.projector as projector
     sim = model(feature, mesh)
-    if mesh == "graded":
-        def call():
-            return sim.run(n_steps=2, skip_preflight=True, compute_s_params=True,
-                           s_param_freqs=jnp.array([12e9]))
-    else:
-        def call():
-            return sim.forward(n_steps=2, skip_preflight=True,
-                               port_s11_freqs=jnp.array([12e9]))
-    require_shared(call, helper="h_neighbor", indexed=True, expected_calls=2)
+    tables, curls = [], []
+    real_table = projector.port_table
+    helper = "curl_h_nu" if mesh == "graded" else "curl_h"
+    real_curl = getattr(yee, helper)
+
+    def table_spy(grid, specs, **kwargs):
+        tables.append(kwargs["boundary"])
+        return real_table(grid, specs, **kwargs)
+
+    def curl_spy(*args, **kwargs):
+        curls.append(kwargs.get("boundary"))
+        return real_curl(*args, **kwargs)
+
+    jax.clear_caches()
+    with ExitStack() as stack:
+        stack.enter_context(patch.object(projector, "port_table", table_spy))
+        for module in (yee, uniform, debye, lorentz, upml):
+            if hasattr(module, helper):
+                stack.enter_context(patch.object(module, helper, curl_spy))
+        if mesh == "graded":
+            sim.run(n_steps=2, skip_preflight=True, compute_s_params=True,
+                    s_param_freqs=jnp.array([12e9]))
+        else:
+            sim.forward(n_steps=2, skip_preflight=True,
+                        port_s11_freqs=jnp.array([12e9]))
+    assert tables, "the scan never compiled a port table"
+    assert curls and all(isinstance(b, yee.CurlBoundary) for b in curls)
+    assert set(tables) == set(curls) and len(set(curls)) == 1, (tables, curls)
+    # The model's x_lo face is magnetic: a table built on a default boundary
+    # would weight that face's current legs differently.
+    assert "x_lo" in tables[0].pmc_faces
 
 
 def kernel_inputs():

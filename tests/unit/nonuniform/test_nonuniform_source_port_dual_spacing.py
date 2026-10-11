@@ -495,33 +495,10 @@ def _nodes(prof):
 
 
 def test_wire_port_metrics_reach_the_ampere_loop_on_the_right_axes(monkeypatch):
-    """The dual spacings must arrive at ``wire_port_current`` on the axes
-    they were computed for.
+    """The runner compiles I weights on the correct transverse dual axes.
 
-    ``wp_meta`` is a flat 14-tuple built at one place in
-    ``rfx/nonuniform.py`` and unpacked at another. Nothing about a positional
-    tuple makes the two agree: swapping the ``dual_x`` and ``dual_y`` slots
-    at the build site leaves the code importable, every other test green, and
-    every uniform-mesh number bit-identical — while silently weighting each
-    Ampere leg of every graded-mesh wire port by the wrong axis's spacing.
-    This test is the guard for that class.
-
-    It observes the PRODUCTION call rather than re-deriving the metrics. One
-    spy records the padded grid the runner actually built (CPML padding
-    shifts every index, so the unpadded input profiles are NOT the right
-    oracle); a second records what the scan body passes to
-    ``wire_port_current``. The expected duals then come from the longhand
-    float64 ``_dual_np`` oracle applied to the padded profiles at the very
-    indices production reported.
-
-    Falsified by mutation (2026-08-20): swapping the ``dual_x`` / ``dual_y``
-    build slots reds this test with ``dual_x: production passed 0.0008825,
-    expected 0.001175 at cell (13, 13, 14)`` while the other 26 tests in this
-    module all still pass. Restoring the slots turns it green again.
-
-    A ``dz_local`` / ``dual_zk`` swap is caught from the other side too — the
-    primal z width would arrive where the dual is expected, and the fixture
-    keeps those two apart at every node.
+    Read the actual owner compiled by the graded scan. Independent padded
+    profile means below keep the original axis/metric discrimination.
     """
     import rfx.nonuniform as _nu
     import rfx.runners.nonuniform as _run
@@ -537,15 +514,22 @@ def test_wire_port_metrics_reach_the_ampere_loop_on_the_right_axes(monkeypatch):
     monkeypatch.setattr(_run, "make_nonuniform_grid", grid_spy)
 
     seen = []
-    orig = _nu.wire_port_current
+    from rfx.measurement import ports
+    orig = ports.lumped_wire_owner
 
-    def spy(hx, hy, hz, comp, mi, mj, mk, dual_x, dual_y, dual_z, **kw):
-        # **kw forwards the realized-boundary metadata (#1221 B3a).
-        seen.append((comp, int(mi), int(mj), int(mk),
-                     float(dual_x), float(dual_y), float(dual_z)))
-        return orig(hx, hy, hz, comp, mi, mj, mk, dual_x, dual_y, dual_z, **kw)
+    def spy(grid, comp, live, **kw):
+        o = orig(grid, comp, live, **kw)
+        mi, mj, mk = live[len(live)//2]
+        current = next(c for c in o.channels if c.name == 'I')
+        weights = {n.component: abs(n.weight) for n in current.nodes}
+        # The Ez loop has x/y legs; pin the z metric through the same setup
+        # metadata independently below rather than inventing a third H leg.
+        z = _nu._build_wp_meta([dict(mid_i=mi, mid_j=mj, mid_k=mk,
+                                    component=comp, impedance=50., live_cells=live)], grid)[0][12]
+        seen.append((comp, mi, mj, mk, weights['hx'], weights['hy'], float(z)))
+        return o
 
-    monkeypatch.setattr(_nu, "wire_port_current", spy)
+    monkeypatch.setattr(ports, 'lumped_wire_owner', spy)
 
     nx, ny, nz = _nodes(G_X), _nodes(G_Y), _nodes(G_Z)
     sim = Simulation(freq_max=10e9,
@@ -561,7 +545,7 @@ def test_wire_port_metrics_reach_the_ampere_loop_on_the_right_axes(monkeypatch):
             s_param_freqs=jnp.array([2e9]), skip_preflight=True)
 
     assert grids, "make_nonuniform_grid was never called"
-    assert seen, ("wire_port_current was never called — the fixture stopped "
+    assert seen, ("lumped_wire_owner was never called — the fixture stopped "
                   "exercising the NU wire-port path")
     grid = grids[0]
     comp, mi, mj, mk, got_x, got_y, got_z = seen[0]

@@ -129,7 +129,10 @@ def make_graded_step(
     hooks: Mapping[HookPoint, tuple[Callable[[GradedFrame], None], ...]] | None = None,
 ) -> Callable:
     """Bind graded kernels and measurements, then user hooks at each point."""
-    from rfx.nonuniform import _update_e_nu_dispersive, wire_port_current
+    from rfx.nonuniform import _update_e_nu_dispersive
+    from rfx.measurement.projector import port_table, project
+    port_specs = tuple((m[3], m[13], 'wire', m[:3]) for m in ctx.wp_meta) if ctx.use_wire_ports else ()
+    port_tables = {}
 
     def prepare(frame: GradedFrame):
         frame.materials = frame.invariants["materials"]
@@ -348,30 +351,17 @@ def make_graded_step(
             from rfx.core.dft_utils import port_dft_phase
             frame.new_wire_sp = []
             frame.port_samples = []
-            for (v_dft, i_dft, vinc_dft, v_port_dft), \
-                (mi, mj, mk, comp, z0, dxi, dyj,
-                 _excite, _dir, dual_xi, dual_yj,
-                 dz_local, dual_zk, live_cells, d_par_cells) in \
-                    zip(frame.carry.get("wire_sparams", ()), ctx.wp_meta):
-                # V = -E_comp * (PRIMAL width on the component's own axis):
-                # the E edge's own length. I = the Ampere loop on the DUAL
-                # face (issue #672); both metric families are precomputed in
-                # wp_meta above.
-                field_c = getattr(frame.st, comp)
-                v = -field_c[mi, mj, mk] * (
-                    dz_local if comp == "ez" else
-                    dxi if comp == "ex" else dyj)
-                # Whole-port gap voltage (issue #764): the discrete line
-                # integral of E across the LIVE run,
-                # V_port = sum_live(-E_c * d_par,c), same PRIMAL metric
-                # family per cell. Static unroll — live_cells is a static
-                # tuple, so this resolves at trace time.
-                v_port = -sum(
-                    field_c[ci, cj, ck] * dp
-                    for (ci, cj, ck), dp in zip(live_cells, d_par_cells))
-                i_val = wire_port_current(
-                    frame.st.hx, frame.st.hy, frame.st.hz, comp, mi, mj, mk,
-                    dual_xi, dual_yj, dual_zk, boundary=ctx.curl_boundary)
+            dtype = frame.st.ex.dtype
+            if dtype not in port_tables:
+                # Graded widths are JAX arrays: evaluate the weights once, outside
+                # the traced step, as they were before the table (a coefficient
+                # formed inside the loop is rounded by its context).
+                with jax.ensure_compile_time_eval():
+                    port_tables[dtype] = port_table(ctx.grid, port_specs, nu=True,
+                                                    boundary=ctx.curl_boundary, dtype=dtype)
+            port_values = project(frame.st, port_tables[dtype])
+            for p, (v_dft, i_dft, vinc_dft, v_port_dft) in enumerate(frame.carry.get("wire_sparams", ())):
+                v, i_val, v_port = port_values[3*p:3*p+3]
                 phase = port_dft_phase(frame.step_idx, ctx.sp_freqs, ctx.dt, dtype=v_dft.dtype)
                 i_phase = port_dft_phase(frame.step_idx, ctx.sp_freqs, ctx.dt, 'H', dtype=i_dft.dtype)
                 frame.port_samples.append(jnp.stack((v, i_val, v_port)))
