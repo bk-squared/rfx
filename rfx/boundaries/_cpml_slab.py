@@ -44,6 +44,13 @@ def slab_neighbor(arr, axis, depth, lo, forward, boundary=None, *,
             part = jnp.pad(part, pads)
         return part
 
+    if framed:
+        # Only this face's physical end cuts the backward operand. In
+        # particular, a one-row high frame still reads its low ghost.
+        view = take(frame_lo, size) if lo else take(0, frame_hi)
+        return slab_neighbor(view, axis, depth, lo, False, boundary,
+                             h_neighbor=h_neighbor)
+
     view = arr if (frame_lo, frame_hi) == (0, size) else take(frame_lo, frame_hi)
     frame_size = frame_hi - frame_lo
     if frame_size == 1 and depth == 1:

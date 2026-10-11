@@ -42,6 +42,7 @@ FIELDS = ('ex', 'ey', 'ez', 'hx', 'hy', 'hz')
 CASES = [(d, case, medium) for d in (1, 2, 3)
          for case in ('asymmetric', 'pec', 'zero') for medium in ('lossy', 'debye')]
 CASES += [(3, case, medium) for case in ('short_last', 'lo_touches_hi') for medium in ('lossy', 'debye')]
+CASES += [(3, case, 'lossy') for case in ('one_row_uniform', 'one_row_graded')]
 
 
 def _bytes(got, want, context):
@@ -109,8 +110,17 @@ def _scene(case, medium):
     shape = (nx, ny, nz)
     domain = tuple((size - 1 - depths[a+'_lo'] - depths[a+'_hi']) * .001
                    for size, a in zip(shape, 'xyz'))
-    grid = Grid(freq_max=15e9, domain=domain, dx=.001, cpml_layers=budget,
-                face_layers=depths, pec_faces=walls)
+    if case.startswith('one_row_'):
+        from rfx import Simulation
+        widths = dict(dz_profile=np.array([1., .9, 1.1, 1.]) * .001) if case.endswith('graded') else {}
+        sim = Simulation(freq_max=15e9, domain=(.004,) * 3, dx=.001,
+                         boundary='cpml', cpml_layers=1, **widths)
+        grid = sim._build_nonuniform_grid() if widths else sim._build_grid()
+        nx, ny, nz = shape = (7, 7, 7)
+        depths = dict.fromkeys(cpml.ALL_FACES, 1)
+    else:
+        grid = Grid(freq_max=15e9, domain=domain, dx=.001, cpml_layers=budget,
+                    face_layers=depths, pec_faces=walls)
     assert grid.shape == shape
     params, psi = cpml.init_cpml(grid, kappa_max=3.0)
     rng = np.random.default_rng(952)
@@ -139,6 +149,14 @@ def test_frame_owned_matches_global(devices, case, medium, monkeypatch, record_p
     per = (grid.nx + devices-1)//devices
     pad = devices*per-grid.nx
     frame = ((1, 1+per-pad), (0, grid.ny), (0, grid.nz))
+    if case.startswith('one_row_'):
+        # R12: the last frame owns one row; its backward operand must retain
+        # the exchanged predecessor outside that frame. Global is the oracle.
+        with jax.disable_jit():
+            expected = cpml.slab_neighbor(base.hz, 0, 1, False, False, frame=None)
+            actual = cpml.slab_neighbor(_cut(base.hz, devices-1, per), 0, 1,
+                                        False, False, frame=frame[0])
+        _bytes(actual, expected, (case, 'R12 last-rank x_hi operand'))
     max_ulp = {}
     finite_counts = {}
     # Instrument raw psi and every pre-selection corrected slab. The oracle
