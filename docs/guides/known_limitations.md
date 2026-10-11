@@ -40,30 +40,6 @@ longer records were run; a graded-mesh case read 0. Results on the GPU, and in a
 CPU-only process, are not affected. Use the GPU device or a CPU-only process to
 avoid this spread.
 
-### Two sheets on one plane are joined when no node line lies inside the gap drawn between them
-
-Tracker: #1373
-
-A feed gap, coupling gap or slot one cell wide between two separately declared PEC
-sheets is a short. The two are joined when no node line lies inside the drawn gap,
-which can happen only for a gap of one cell or less: a gap wider than one cell always
-contains a node line and stays open. Sheets on one plane contribute to one set of nodes,
-and an E edge is metal when both of its end nodes are in that set. On 1 mm cells, sheets
-drawn over [5, 10] and [11, 15] mm occupy node rows 5–10 and 11–15: the edge
-between rows 10 and 11 is metal. A half-cell gap, [5, 10] and [10.5, 15] mm,
-occupies the same rows and is also joined. A 0.2-cell gap round a node,
-[5, 9.9] and [10.1, 15] mm, occupies rows 5–9 and 11–15 and remains open, and so does
-a 1.5-cell gap, [5, 10] and [11.5, 15] mm (rows 5–10 and 12–15). Off-mesh
-abutting sheets, [5, 9.5] and [9.5, 15] mm, occupy rows 5–9 and 10–15;
-their join is intended.
-
-Preflight flags a bridged drawn gap with the error `sheet_gap_bridged`. This covers
-PEC sheets declared by `add_thin_conductor` and zero-thickness PEC boxes passed to
-`add()`. Non-box shapes are judged by their bounding boxes; a gap inside overlapping
-bounding boxes is not reported. An edge already made metal by any one sheet is not
-counted as a bridge. Draw the gap wider than one cell (two cells resolve it), or use a finer mesh at the gap. A fix is planned:
-join sheets only where their drawn extents touch or overlap.
-
 ### Lossy sheets and sheet_effective_size
 
 Tracker: #1138

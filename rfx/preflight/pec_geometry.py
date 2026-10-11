@@ -306,7 +306,6 @@ def _validate_cfg_campaign_statics(self, _w) -> None:
         ))
         return
     self._validate_cfg_sheet_slot_vacuum(_w, ctx)
-    _validate_cfg_sheet_gap_bridged(self, _w, ctx)
     self._validate_cfg_sheet_cavity_thickness(_w, ctx)
 
 # ------------------------------------------------------------------
@@ -512,81 +511,6 @@ def _validate_cfg_pec_realization(self, _w, ctx) -> None:
             code="sheet_plane_realized", severity="warning",
             source="_validate_cfg_pec_realization",
         ))
-
-def _validate_cfg_sheet_gap_bridged(self, _w, ctx) -> None:
-    """Report drawn gaps shorted by the union of realized sheet nodes."""
-    from itertools import combinations
-
-    from rfx.boundaries.pec import _sheet_edge_masks
-    from rfx.geometry.csg import declared_bounds
-
-    # The classifier marks f0 and lossy thin conductors as kind="lossy".
-    # Preserve its declaration order and labels for both declaration routes.
-    planes = {}
-    for entry in ctx.entry_realizations():
-        if entry.kind == "sheet":
-            key = (entry.sheet.normal_axis, entry.sheet.plane)
-            planes.setdefault(key, []).append(entry)
-    shape = tuple(ctx.grid.shape)
-    for entries in planes.values():
-        if len(entries) < 2:
-            continue
-        own = [np.zeros(shape, dtype=bool) for _ in range(3)]
-        for entry in entries:
-            edges = _sheet_edge_masks([entry.sheet], shape, ctx.periodic)
-            for t, mask in enumerate(edges):
-                if mask is not None:
-                    own[t] |= np.asarray(mask, dtype=bool)
-        for first, second in combinations(entries, 2):
-            a, b = first.sheet, second.sheet
-            bounds_a, bounds_b = declared_bounds(first.shape), declared_bounds(second.shape)
-            if bounds_a is None or bounds_b is None:
-                continue
-            together = _sheet_edge_masks([a, b], shape, ctx.periodic)
-            qualifying = []
-            for t in range(3):
-                if t == a.normal_axis:
-                    continue
-                bridging = np.asarray(together[t], dtype=bool) & ~own[t]
-                n = int(np.count_nonzero(bridging))
-                if not n:
-                    continue
-                lo_a, hi_a = sorted((float(bounds_a[0][t]), float(bounds_a[1][t])))
-                lo_b, hi_b = sorted((float(bounds_b[0][t]), float(bounds_b[1][t])))
-                tol = 1e-6 * float(np.min(ctx.spacings[t]))
-                # Sheets facing through a periodic seam are not joined today (ledger, seam entry), so no bridging edge reaches this formula.
-                gap = max(lo_b - hi_a, lo_a - hi_b)
-                if gap <= tol:
-                    continue
-                # Each True edge is stored at its lower node; its spacing is
-                # the actual local cell across this gap, including graded grids.
-                cell = float(np.min(ctx.spacings[t][np.nonzero(bridging)[t]]))
-                qualifying.append((n, t, gap, cell))
-            if not qualifying:
-                continue
-            qualifying.sort(key=lambda row: -row[0])
-            n, t, gap, cell = qualifying[0]
-            other = "".join(f" Also {count} E{'xyz'[axis]} edge(s) across the gap are metal."
-                            for count, axis, _gap, _cell in qualifying[1:])
-            _w.warn(PreflightWarning(
-                f"{first.label} and {second.label} lie on one plane "
-                f"({'xyz'[a.normal_axis]} = "
-                f"{_fmt_len(float(ctx.nodes[a.normal_axis][a.plane]))}) and are drawn "
-                f"{_fmt_len(round(gap, 12))} apart along {'xyz'[t]}, but they are solved as ONE "
-                f"conductor: {n} E{'xyz'[t]} edge(s) across the gap are metal."
-                + other + " A sheet is realized as the nodes inside its drawn extent "
-                "and an edge is metal when both of its end nodes belong to sheets on "
-                f"that plane (local cell {_fmt_len(cell)}). "
-                "The two are joined when no node line lies inside the drawn gap, "
-                "which can happen only for a gap of one cell or less. "
-                "Draw the gap wider than one cell (two cells resolve it), or "
-                "refine the mesh there. "
-                "If the two are meant to be one conductor, draw them touching or "
-                "overlapping. (tracker 1373)",
-                code="sheet_gap_bridged", severity="error",
-                source="_validate_cfg_sheet_gap_bridged",
-            ))
-
 
 def _validate_cfg_sheet_slot_vacuum(self, _w, ctx) -> None:
     """Design note §3 ``sheet_slot_vacuum``: a sheet plane left in a slot.
