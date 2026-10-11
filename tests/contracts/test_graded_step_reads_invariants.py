@@ -177,3 +177,19 @@ def test_host_probe_table_adds_no_gather(monkeypatch):
     # Live: the projector route reads with a gather, and the count sees it.
     monkeypatch.setattr(graded, '_host_probe_nodes', lambda table: None)
     assert gathers(*with_probes) > gathers(*without)
+
+
+def test_probe_record_follows_declaration_order(monkeypatch):
+    """Each record column is its declared probe, read from the state the step returns."""
+    _live_check()
+    probes = ((3, 2, 2, 'hy'), (2, 2, 2, 'ez'), (1, 3, 2, 'ex'), (2, 2, 2, 'ez'), (2, 1, 3, 'hx'))
+    ctx, setup = _setup(monkeypatch, [.001, .0008, .0012, .001, .001], probes=probes)
+    step = graded.make_graded_step(ctx)
+    carry = setup.carry_init
+    for n in range(6):   # a few steps, so every probed component is nonzero
+        carry, record = jax.jit(lambda c, n=n: step(c, (jnp.int32(n), setup.src_waveforms[n]),
+                                                    setup.invariants))(carry)
+    state = carry['fdtd']
+    expected = jnp.stack([getattr(state, c)[i, j, k] for i, j, k, c in probes])
+    assert np.count_nonzero(np.asarray(expected)) == len(probes)
+    _check_bits(record, expected)
