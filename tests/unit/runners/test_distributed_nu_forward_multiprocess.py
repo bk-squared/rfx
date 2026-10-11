@@ -23,7 +23,7 @@ if __name__ == "__main__" and sys.argv[1] == "worker" and sys.argv[2] != "refere
     jax.distributed.initialize(sys.argv[2], 2, int(sys.argv[3]), initialization_timeout=30)
 
 import jax.numpy as jnp
-from jax.experimental.shard_map import shard_map
+from jax import shard_map
 import numpy as np
 import pytest
 
@@ -174,7 +174,7 @@ def _mutate(kind):
             result = original(arr, sg, mesh, pad_value)
             return shard_map(lambda slab: slab.at[0].set(0).at[-1].set(0),
                                 mesh=mesh, in_specs=nu.P("x"), out_specs=nu.P("x"),
-                                check_rep=False)(result)
+                                check_vma=False)(result)
 
         slab_placement._halo = no_halo
     elif kind == "whole":

@@ -1,15 +1,16 @@
-"""No rfx module imports the deprecated ``jax.experimental.shard_map``.
+"""No rfx module or test imports the deprecated ``jax.experimental.shard_map``.
 
 On the pinned JAX it warns ("deprecated in v0.8.0") the first time it is
 imported, so a test that asserts no warnings failed or passed by which test
 first imported the module that carried it (rfx/stepping/rank.py; found in the
 absorber lane's census, 2026-10-12). ``jax.shard_map(check_vma=)`` is the call
-the deprecated wrapper made, argument for argument.
+the deprecated wrapper made, argument for argument. The scan reads import
+statements and dotted attribute chains; it does not follow importlib or getattr.
 """
 import ast
 from pathlib import Path
 
-RFX = Path(__file__).resolve().parents[2] / "rfx"
+ROOT = Path(__file__).resolve().parents[2]
 DEPRECATED = "jax.experimental.shard_map"
 
 
@@ -37,7 +38,8 @@ def test_the_scan_sees_each_spelling():
     assert deprecated_uses(ast.parse("from jax import shard_map")) == []
 
 
-def test_no_rfx_module_imports_the_deprecated_shard_map():
-    hits = {str(p.relative_to(RFX.parent)): lines for p in sorted(RFX.rglob("*.py"))
+def test_no_rfx_module_or_test_imports_the_deprecated_shard_map():
+    files = sorted([*(ROOT / "rfx").rglob("*.py"), *(ROOT / "tests").rglob("*.py")])
+    hits = {str(p.relative_to(ROOT)): lines for p in files
             if (lines := deprecated_uses(ast.parse(p.read_text())))}
     assert hits == {}, hits

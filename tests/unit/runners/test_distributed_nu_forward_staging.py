@@ -15,7 +15,7 @@ from types import MethodType
 import jax
 import jax.numpy as jnp
 from functools import partial
-from jax.experimental.shard_map import shard_map
+from jax import shard_map
 from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
 from rfx.stepping.slab import Slab, cut
 
@@ -236,7 +236,7 @@ def _completed_slabs(staged, materials, sg, dt, mesh):
     coeffs, state = staged
     assert coeffs.ca is coeffs.cb is coeffs.cc is None, "E coefficients must wait for the scan"
 
-    @partial(shard_map, mesh=mesh, in_specs=(P("x"), P("x")), out_specs=P("x"), check_rep=False)
+    @partial(shard_map, mesh=mesh, in_specs=(P("x"), P("x")), out_specs=P("x"), check_vma=False)
     def complete(c, m):
         rank = jax.lax.axis_index("x")
         means = common.slab_e_component_materials(m, sg.nx_per_rank, sg.nx, rank,
