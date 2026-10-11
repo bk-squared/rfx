@@ -149,10 +149,7 @@ def admit_waveguide(sim, *, lane="dispatch"):
         return
     grid = sim._build_realized_grid()
     faces = guide_faces(sim, grid)
-    periodic = sorted(face for face in faces if sim._periodic_flags()["xyz".index(face[0])])
-    if periodic:
-        raise ValueError("Full-aperture waveguide requires PEC on " + ", ".join(periodic)
-                         + "; the active periodic feature requires PERIODIC on those faces.")
+    _refuse_periodic_guide(sim, faces)
     declared = resolve_face_depths(sim._boundary_spec, budget=sim._cpml_layers)
     incompatible = sorted(face.name for face in declared
                           if face.name in faces and face.kind != Kind.PEC)
@@ -171,20 +168,32 @@ def admit_waveguide(sim, *, lane="dispatch"):
 
 
 def _admit_graded_guide(sim, lane):
-    # Addendum 5d: real transverse pads are retained only by an explicit
-    # declaration. Unknown imported provenance keeps main's behavior (5c(6)).
-    if boundary_was_explicit(sim) is not False:
-        return
+    # Addendum 5f: full guides require explicitly declared transverse PEC.
     grid = sim._build_realized_grid()
     faces = sorted({f"{axis}_{side}"
                     for entry in sim._waveguide_ports if full_aperture(sim, entry, grid)
                     for axis in "xyz" if axis != entry.direction[1]
                     for side in ("lo", "hi")})
-    if faces:
+    _refuse_periodic_guide(sim, faces)
+    explicit = boundary_was_explicit(sim)
+    if explicit is True:
+        declared = resolve_face_depths(sim._boundary_spec, budget=sim._cpml_layers)
+        incompatible = sorted(face.name for face in declared
+                              if face.name in faces and face.kind != Kind.PEC)
+        if incompatible:
+            _refuse_guide(incompatible, _guide_declaration(sim, faces), lane)
+    if faces and explicit is not True:
         raise ValueError(
             f"{lane}: full-aperture waveguide boundary was not declared on {', '.join(faces)}; "
             "the graded mesh keeps absorbers there, so the port would not be in a guide; "
             f"declare boundary={_guide_declaration(sim, faces)!r} (absorber on the port axis).")
+
+
+def _refuse_periodic_guide(sim, faces):
+    periodic = sorted(face for face in faces if sim._periodic_flags()["xyz".index(face[0])])
+    if periodic:
+        raise ValueError("Full-aperture waveguide requires PEC on " + ", ".join(periodic)
+                         + "; the active periodic feature requires PERIODIC on those faces.")
 
 
 def _refuse_guide(faces, declaration, lane):
