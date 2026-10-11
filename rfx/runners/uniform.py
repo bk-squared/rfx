@@ -360,6 +360,9 @@ def run_uniform(
                 "this lane reads S11 from the main run's port record, "
                 "whose length is n_steps"})
 
+    from rfx.measurement.port_registration import uniform_run_specs
+    record_specs = uniform_run_specs(grid, wire_ports, wire_port_live_cells, lumped_ports)
+
     # Build wire port S-param specs for JIT-integrated DFT
     wire_sparam_specs = []
     if wire_ports and (compute_s_params is None or compute_s_params):
@@ -727,6 +730,7 @@ def run_uniform(
             pec_wires=pec_wires,
             conformal_weights=conformal_weights,
             wire_port_sparams=wire_sparam_specs or None,
+            port_record_specs=record_specs,
             lumped_rlc=rlc_metas,
             kerr_chi3=kerr_chi3,
             field_dtype=field_dtype,
@@ -764,6 +768,7 @@ def run_uniform(
             pec_wires=pec_wires,
             conformal_weights=conformal_weights,
             wire_port_sparams=wire_sparam_specs or None,
+            port_record_specs=record_specs,
             lumped_rlc=rlc_metas,
             kerr_chi3=kerr_chi3,
             field_dtype=field_dtype,

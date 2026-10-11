@@ -18,7 +18,8 @@ per-axis inverse spacing arrays. Fully JIT-compiled via jax.lax.scan.
 
 from __future__ import annotations
 
-from rfx.measurement.time_records import graded_records, init_graded_records
+from rfx.measurement.time_records import with_graded_records, init_graded_records
+from rfx.measurement.port_registration import graded_specs, graded_s_ports, graded_accumulators, graded_acc_indices
 
 from functools import partial
 from types import SimpleNamespace
@@ -858,24 +859,7 @@ def _build_nu_scan(
         lorentz_coeffs, lorentz_state = lorentz
         carry_init["lorentz"] = lorentz_state
 
-    # Wire port S-param DFT accumulators
-    # (defaults bound unconditionally so _NUScanSetup can carry them;
-    # both stay unused unless the branch below runs — no behavior change)
-    sp_freqs = None
-    wp_meta: list = []
-    if use_wire_ports and s_param_freqs is not None:
-        sp_freqs = jnp.asarray(s_param_freqs, dtype=jnp.float32)
-        nf = len(sp_freqs)
-        carry_init["wire_sparams"] = tuple(
-            (jnp.zeros(nf, dtype=jnp.complex64),  # v_dft
-             jnp.zeros(nf, dtype=jnp.complex64),  # i_dft
-             jnp.zeros(nf, dtype=jnp.complex64),  # v_inc_dft
-             jnp.zeros(nf, dtype=jnp.complex64))  # v_port_dft (issue #764)
-            for _ in wire_ports
-        )
-        wp_meta = _build_wp_meta(wire_ports, grid)
-    else:
-        use_wire_ports = False
+    sp_freqs, wp_meta, use_wire_ports = graded_accumulators(wire_ports, grid, s_param_freqs, carry_init)
 
     # DFT plane probe carry + static metadata
     if use_dft_planes:
@@ -1025,6 +1009,8 @@ def _build_nu_scan(
         use_pec_occupancy=use_pec_occupancy,
         use_wire_ports=use_wire_ports,
         wp_meta=wp_meta,
+        port_record_specs=graded_specs(wire_ports),
+        port_acc_indices=graded_acc_indices(wire_ports),
         sp_freqs=sp_freqs,
         use_dft_planes=use_dft_planes,
         dft_meta=dft_meta,
@@ -1046,7 +1032,7 @@ def _build_nu_scan(
         dt=dt,
         sources=sources,
         probes=probes,
-        wire_ports=wire_ports,
+        wire_ports=graded_s_ports(wire_ports),
         dft_planes=dft_planes,
         flux_monitors=flux_monitors,
         waveguide_meta=waveguide_meta,
@@ -1154,7 +1140,7 @@ def run_nonuniform(
         carry_init["dft_time_records"] = tuple(
             jnp.zeros((n_steps,) + p.accumulator.shape[1:], dtype=carry_init["fdtd"].ex.dtype)
             for p in dft_planes)
-    init_graded_records(carry_init, n_steps)
+    init_graded_records(carry_init, n_steps, setup)
     src_waveforms = setup.src_waveforms
 
     xs = (jnp.arange(n_steps, dtype=jnp.int32), src_waveforms)
@@ -1534,7 +1520,6 @@ def _assemble_nu_result(setup: _NUScanSetup, final: dict, time_series, n_record=
         # v_port_dft), surfaced for diagnostics/validation harnesses
         # (issue #764; mirrors the uniform lane's raw-acc access via
         # forward()'s wire_port_sparams).
-        result["sparam_time_records"] = graded_records(setup, final, n_record)
         result["wire_sparams_raw"] = final["wire_sparams"]
         # The static per-port metadata those accumulators were recorded
         # with, in the same order (:func:`_build_wp_meta` slots). The
@@ -1546,7 +1531,7 @@ def _assemble_nu_result(setup: _NUScanSetup, final: dict, time_series, n_record=
         # index it per port.
         result["wire_sparams_meta"] = tuple(wp_meta)
 
-    return result
+    return with_graded_records(result, setup, final, n_record)
 
 
 def run_nonuniform_until_decay(
@@ -1708,7 +1693,7 @@ def run_nonuniform_until_decay(
         carry["dft_time_records"] = tuple(
             jnp.zeros((max_steps,) + p.accumulator.shape[1:], dtype=carry["fdtd"].ex.dtype)
             for p in dft_planes)
-    init_graded_records(carry, max_steps)
+    init_graded_records(carry, max_steps, setup)
 
     # Source table: pad/truncate to max_steps so every chunk slice is
     # full-length (mirrors the uniform run_until_decay pad/truncate).

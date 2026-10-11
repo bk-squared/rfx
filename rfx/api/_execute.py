@@ -1430,8 +1430,6 @@ class _ExecuteMixin:
             make_probe,
             make_port_source,
             make_wire_port_sources,
-            LumpedPortSParamSpec,
-            WirePortSParamSpec,
         )
         from rfx.sources.sources import (
             LumpedPort,
@@ -1512,6 +1510,8 @@ class _ExecuteMixin:
         pec_occupancy_local = pec_occupancy
         conductors, _drawn_materials, pec_edge_masks_local = _conductors.forward_products(self, grid, materials, pec_mask, pec_sheets, pec_wires, periodic_bool, conductors, sheet_impedance)
         _msl_geometry_edges = pec_edge_masks_local  # before ANY port clearing
+        from rfx.measurement.port_registration import register_wire, register_lumped, ordered_specs
+        port_record_specs = []
         lumped_port_sparam_specs: list = []
         wire_port_sparam_specs: list = []
         wire_refplane_specs: list = []
@@ -1606,21 +1606,8 @@ class _ExecuteMixin:
                 # wire_sparam_meta in the JIT scan body of
                 # rfx/simulation.py) and carries the static live run for
                 # the whole-port gap-voltage accumulator.
-                if _s11_freqs_arr is not None and wp_cells:
-                    _live_764 = tuple(
-                        (int(c[0]), int(c[1]), int(c[2]))
-                        for c, live in zip(wp_cells, wp_live_flags) if live)
-                    mid_cell = _live_764[len(_live_764) // 2]
-                    wire_port_sparam_specs.append(WirePortSParamSpec(
-                        mid_i=int(mid_cell[0]),
-                        mid_j=int(mid_cell[1]),
-                        mid_k=int(mid_cell[2]),
-                        component=pe.component,
-                        freqs=_s11_freqs_arr,
-                        impedance=float(pe.impedance),
-                        live_cells=_live_764,
-                        excite=bool(_drive_this_port),
-                    ))
+                register_wire(port_record_specs, wire_port_sparam_specs, pe.component,
+                              wp_cells, wp_live_flags, _s11_freqs_arr, pe.impedance, _drive_this_port)
                 # Opt-in reference-plane V/I accumulators (issue #313).
                 # Registered ONLY on the production-scan S-matrix driver
                 # path (_sparam_drive_idx is not None): the plane waves
@@ -1723,14 +1710,8 @@ class _ExecuteMixin:
             # lumped port when the user requested forward(port_s11_freqs=...)
             # (issue #72). Skipping passive ports keeps S11 indexing
             # aligned with the active-port list.
-            if _s11_freqs_arr is not None:
-                lumped_port_sparam_specs.append(LumpedPortSParamSpec(
-                    i=int(idx[0]), j=int(idx[1]), k=int(idx[2]),
-                    component=pe.component,
-                    freqs=_s11_freqs_arr,
-                    impedance=float(pe.impedance),
-                    excite=bool(_drive_this_port),
-                ))
+            register_lumped(port_record_specs, lumped_port_sparam_specs, pe.component,
+                            idx, _s11_freqs_arr, pe.impedance, _drive_this_port)
 
         # MSL ports — full cross-section distributed feed; built like the
         # wire-port branch above but with N_y × N_z cells.  S-parameters are
@@ -2022,6 +2003,7 @@ class _ExecuteMixin:
             pec_occupancy=pec_occupancy_for_run,
             aniso_inv_eps=aniso_inv_eps_run,
             aniso_inv_eps_smooth=(aniso_inv_eps_run is not None),
+            port_record_specs=ordered_specs(port_record_specs),
             lumped_port_sparams=lumped_port_sparam_specs or None,
             wire_port_sparams=wire_port_sparam_specs or None,
             wire_refplane_sparams=wire_refplane_specs or None,

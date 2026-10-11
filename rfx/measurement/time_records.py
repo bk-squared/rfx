@@ -4,6 +4,8 @@ from .projector import port_owners
 
 
 def uniform_specs(ctx):
+    if ctx.port_record_specs is not None:
+        return ctx.port_record_specs
     return tuple((m.component, m.live_cells or ((m.mid_i, m.mid_j, m.mid_k),), 'wire',
                        (m.mid_i, m.mid_j, m.mid_k))
                        for m in ctx.wire_sparam_meta) + tuple(
@@ -39,16 +41,38 @@ def graded_records(setup, carry, n_steps=None):
                        setup.step_fn_inv.port_owners, n_steps)
 
 
-def init_uniform_records(carry, n_steps, wires, lumped, planes, dtype):
+def init_uniform_records(carry, n_steps, wires, lumped, planes, dtype, specs=None):
     import jax.numpy as jnp
-    if wires or lumped:
+    counts = ([4 if p[2] == 'wire' else 3 for p in specs] if specs is not None else
+              [4] * len(wires) + [3] * len(lumped))
+    if counts:
         carry['sparam_time_records'] = tuple(
-            jnp.zeros((n_steps, count), dtype=dtype)
-            for count in ([4] * len(wires) + [3] * len(lumped) + [3] * len(planes)))
+            jnp.zeros((n_steps, count), dtype=dtype) for count in counts + [3] * len(planes))
 
 
-def init_graded_records(carry, n_steps):
+def init_graded_records(carry, n_steps, setup):
     import jax.numpy as jnp
-    if 'wire_sparams' in carry:
+    owners = setup.step_fn_inv.port_owners
+    if owners:
         carry['sparam_time_records'] = tuple(
-            jnp.zeros((n_steps, 3), dtype=carry['fdtd'].ex.dtype) for _ in carry['wire_sparams'])
+            jnp.zeros((n_steps, len(o.channels)), dtype=carry['fdtd'].ex.dtype) for o in owners)
+
+
+def with_graded_records(result, setup, carry, n_steps=None):
+    from rfx.sparams._record_selection import SReadPorts
+    result['sparam_time_records'] = graded_records(setup, carry, n_steps)
+    result['sparam_read_ids'] = SReadPorts(tuple(
+        setup.step_fn_inv.port_owners[i].id for i in setup.step_fn_inv.port_acc_indices)
+        if result.get('s_params') is not None else ())
+    return result
+
+
+def uniform_samples(values, specs, wire_refs, lumped_refs):
+    import jax.numpy as jnp
+    refs = iter((*wire_refs, *lumped_refs))
+    samples, offset = [], 0
+    for _, _, kind, _ in specs:
+        width = 3 if kind == 'wire' else 2
+        samples.append(jnp.stack((*values[offset:offset+width], next(refs))))
+        offset += width
+    return samples
