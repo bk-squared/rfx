@@ -4187,7 +4187,7 @@ class _ExecuteMixin:
                 "coaxial port's S-parameters come from "
                 "compute_coaxial_line_reflection(...) (one-port reflection) "
                 "or compute_coaxial_two_port(...) (through line); for a "
-                "single add_coaxial_port(), compute_s_matrix(lane=...) "
+                "single add_coaxial_port(), compute_s_matrix(method=...) "
                 "dispatches to either. Use add_port(..., extent=...) for "
                 "probe-feed S-parameters."
             )

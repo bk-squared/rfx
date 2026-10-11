@@ -1076,7 +1076,7 @@ def test_fence_waveguide_s_matrix_subpixel():
             _wr90().compute_waveguide_s_matrix(n_steps=4,
                                                subpixel_smoothing=True)
     _fence(go, where=("waveguide.py", "compute_waveguide_s_matrix"),
-           match=r"on the waveguide S-matrix lane")
+           match=r"on the waveguide S-matrix method")
 
 
 def test_fence_waveguide_s_matrix_multimode():
@@ -1186,7 +1186,7 @@ FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
     ("rfx/api/_execute.py", "forward", "dispersive (Debye/Lorentz)"):
         (__name__, "test_fence_forward_dispersive_overlap"),
     ("rfx/sparams/waveguide.py", "compute_waveguide_s_matrix",
-     "waveguide S-matrix lane"):
+     "waveguide S-matrix method"):
         (__name__, "test_fence_waveguide_s_matrix_subpixel"),
     ("rfx/sparams/waveguide.py", "compute_waveguide_s_matrix",
      "multimode waveguide S-matrix path"):

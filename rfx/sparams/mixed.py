@@ -231,7 +231,7 @@ def compute_mixed_s_matrix(
         raise diagnostic_refusal(NotImplementedError(
             "compute_mixed_s_matrix() v1 covers lumped/wire + MSL only; "
             "waveguide/Floquet ports are not part of the validated "
-            "mixed lane (issue #488)."
+            "mixed method (issue #488)."
         ), _diagnostics)
     _mixed_non_x = [
         pe.name for pe in self._msl_ports
@@ -241,8 +241,8 @@ def compute_mixed_s_matrix(
         raise diagnostic_refusal(NotImplementedError(
             "compute_mixed_s_matrix() v1 covers '+x'/'-x' MSL ports "
             f"only; {_mixed_non_x} are not x-directed. The y-directed "
-            "MSL lane landed in issue #661 for compute_msl_s_matrix(); "
-            "this mixed lane is itself EXPERIMENTAL (issue #488) with "
+            "MSL support landed in issue #661 for compute_msl_s_matrix(); "
+            "this mixed method is itself EXPERIMENTAL (issue #488) with "
             "both diagonals unverified, so it is fenced rather than "
             "extended untested. Use compute_msl_s_matrix() for a pure "
             "MSL multiport."
@@ -283,13 +283,13 @@ def compute_mixed_s_matrix(
         import warnings as _w
         from rfx.probes.probes import PreDecisionLumpedDiagonalWarning as _W
         _w.warn(
-            "compute_mixed_s_matrix: the LUMPED driven diagonal in this lane "
+            "compute_mixed_s_matrix: the LUMPED driven diagonal in this method "
             "is on the pre-decision convention (the passive port-branch "
             "algebra applied to a driven port), which on a known load reads "
             "the reciprocal of the physical reflection — see "
             "scripts/diagnostics/lumped_port_known_load_line.py. The uniform "
-            "single-family lumped lane was corrected on 2026-09-21; this "
-            "cross-family lane is fenced experimental and was deliberately "
+            "single-family lumped run() calculator was corrected on 2026-09-21; this "
+            "cross-family method is fenced experimental and was deliberately "
             "not. Its numbers also shifted by the Yee half-step current "
             "phase (max |dS| = 1.8e-05 measured on a lumped-feed fixture). "
             "Use compute_lumped_wire_s_matrix_via_scan for a lumped-only "
@@ -300,7 +300,7 @@ def compute_mixed_s_matrix(
     if any(getattr(pe, "reference_plane_cells", None) for pe in lw_entries):
         raise diagnostic_refusal(NotImplementedError(
             "compute_mixed_s_matrix() v1 does not support "
-            "add_port(reference_plane_cells=...); the mixed lane uses "
+            "add_port(reference_plane_cells=...); the mixed method uses "
             "the delivered-power witness for magnitude honesty instead."
         ), _diagnostics)
     if (

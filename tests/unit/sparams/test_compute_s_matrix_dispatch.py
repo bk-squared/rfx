@@ -240,7 +240,7 @@ def test_single_coaxial_port_is_ambiguous_and_is_not_guessed():
     msg = str(exc.value)
     assert "compute_coaxial_line_reflection" in msg
     assert "compute_coaxial_two_port" in msg
-    assert "lane=" in msg
+    assert "method=" in msg
 
 
 @pytest.mark.parametrize("lane", [
@@ -248,7 +248,7 @@ def test_single_coaxial_port_is_ambiguous_and_is_not_guessed():
     "compute_coaxial_two_port",
 ])
 def test_lane_override_resolves_the_coaxial_ambiguity(lane):
-    assert _coax_sim().s_matrix_lane(lane=lane) == lane
+    assert _coax_sim().s_matrix_lane(method=lane) == lane
 
 
 def test_lane_override_must_agree_with_an_unambiguous_registration():
@@ -259,18 +259,18 @@ def test_lane_override_must_agree_with_an_unambiguous_registration():
     is a caller error, not an override of the port-family fence.
     """
     with pytest.raises(ValueError, match="contradicts the registrations"):
-        _waveguide_sim().s_matrix_lane(lane="compute_coaxial_two_port")
+        _waveguide_sim().s_matrix_lane(method="compute_coaxial_two_port")
 
 
 def test_lane_override_agreeing_with_the_registration_is_accepted():
     sim = _waveguide_sim()
-    assert sim.s_matrix_lane(lane="compute_waveguide_s_matrix") == (
+    assert sim.s_matrix_lane(method="compute_waveguide_s_matrix") == (
         "compute_waveguide_s_matrix")
 
 
 def test_unknown_lane_name_is_rejected_with_the_valid_set():
     with pytest.raises(ValueError) as exc:
-        _coax_sim().s_matrix_lane(lane="compute_s_params")
+        _coax_sim().s_matrix_lane(method="compute_s_params")
     assert "compute_waveguide_s_matrix" in str(exc.value)
 
 
@@ -282,7 +282,7 @@ def test_removed_coaxial_lane_is_not_selectable():
     """
     assert not hasattr(Simulation, "compute_coaxial_s_matrix")
     with pytest.raises(ValueError) as exc:
-        _coax_sim().s_matrix_lane(lane="compute_coaxial_s_matrix")
+        _coax_sim().s_matrix_lane(method="compute_coaxial_s_matrix")
     assert "#1212" in str(exc.value)
     assert "compute_coaxial_line_reflection" in str(exc.value)
 
@@ -414,7 +414,7 @@ def test_lane_is_consumed_and_never_forwarded_to_the_delegate(monkeypatch):
 
     monkeypatch.setattr(Simulation, "compute_waveguide_s_matrix", spy)
     result = _waveguide_sim().compute_s_matrix(
-        lane="compute_waveguide_s_matrix", num_periods=1)
+        method="compute_waveguide_s_matrix", num_periods=1)
     assert result == "ok"
     assert seen == {"num_periods": 1}
 
@@ -517,7 +517,7 @@ def test_coaxial_two_port_lane_matches_the_direct_call():
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         via = _coax_sim().compute_s_matrix(
-            lane="compute_coaxial_two_port", **kw)
+            method="compute_coaxial_two_port", **kw)
         direct = _coax_sim().compute_coaxial_two_port(**kw)
     _assert_same_result(via, direct, "s_params", "coaxial_two_port")
 

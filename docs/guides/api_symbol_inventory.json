@@ -2744,6 +2744,7 @@
       "report_every"
     ],
     "compute_s_matrix": [
+      "method",
       "lane",
       "kwargs"
     ],
@@ -2887,6 +2888,7 @@
       "until_identified"
     ],
     "s_matrix_lane": [
+      "method",
       "lane"
     ],
     "shard_distributed_override": [

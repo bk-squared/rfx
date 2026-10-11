@@ -294,7 +294,7 @@ def test_compute_s_matrix_dz_only_is_exactly_the_delegates_answer(monkeypatch):
     coax.add_coaxial_port((0.004, 0.004, 0.020), face="top", pin_length=5e-3,
                           waveform=GaussianPulse(f0=8e9, bandwidth=1.2))
     with pytest.raises(ValueError, match="dz_profile"):
-        coax.compute_s_matrix(lane="compute_coaxial_two_port", n_steps=1,
+        coax.compute_s_matrix(method="compute_coaxial_two_port", n_steps=1,
                               n_freqs=1)
 
 

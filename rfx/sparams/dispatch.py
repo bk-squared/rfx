@@ -1,4 +1,4 @@
-"""One entry point that picks the right S-matrix lane (issue #980 Phase 1).
+"""One entry point that picks the right S-matrix method (issue #980 Phase 1).
 
 ``Simulation`` ships seven S-parameter calculators plus a run-lane, and each
 one is fenced to a single port family by its own precondition block. Issue
@@ -21,14 +21,14 @@ One consequence is user-visible and deliberate: a misspelled keyword is
 swallowed by ``**kwargs`` here and reported by the delegate, so the
 ``TypeError`` reads ``Simulation.compute_waveguide_s_matrix() got an
 unexpected keyword argument 'foo'`` rather than naming this dispatcher. That
-is the more useful message -- it says which lane was chosen as well as which
+is the more useful message -- it says which method was chosen as well as which
 argument was wrong -- and it is pinned by
 ``tests/unit/sparams/test_compute_s_matrix_dispatch.py``.
 
-*No silent lane guess.* Where the registration genuinely does not determine a
-lane, this module raises and names the candidates rather than picking one.
+*No silent method guess.* Where the registration genuinely does not determine a
+method, this module raises and names the candidates rather than picking one.
 That is the whole point of the dispatcher: the failure mode #980 describes is
-a wrong lane running quietly, not a missing convenience.
+a wrong method running quietly, not a missing convenience.
 
 The one ambiguous registration: a single coaxial port
 -----------------------------------------------------
@@ -41,12 +41,12 @@ geometry from that single registration -- the two-port method mirrors the
 one-port end into a through-line internally, it does not consume a second
 registered port. Nothing in the registrations distinguishes "one-port
 reflection against a calibration termination" from "two-port through line",
-so this module will not choose between them. Pass ``lane=`` to say which:
+so this module will not choose between them. Pass ``method=`` to say which:
 
-    sim.compute_s_matrix(lane="compute_coaxial_two_port", n_steps=3000)
+    sim.compute_s_matrix(method="compute_coaxial_two_port", n_steps=3000)
 
-``lane`` is consumed here and never forwarded. It is accepted on any row
-(where it must agree with the registration-determined lane, or ``ValueError``
+``method`` is consumed here and never forwarded. It is accepted on any row
+(where it must agree with the registration-determined method, or ``ValueError``
 is raised), so calling code can be explicit everywhere rather than only on
 the coaxial row.
 
@@ -61,6 +61,7 @@ from __future__ import annotations
 from rfx._precision import resolve_field_dtype
 
 from typing import TYPE_CHECKING
+import warnings
 
 if TYPE_CHECKING:  # pragma: no cover
     from rfx.api import Simulation  # noqa: F401
@@ -73,15 +74,15 @@ if TYPE_CHECKING:  # pragma: no cover
 # caller (different return type, and ``n_steps`` has no default there).
 RUN_LANE = "run(compute_s_params=True)"
 
-# The two lanes a single ``add_coaxial_port()`` registration can mean. See the
+# The two methods a single ``add_coaxial_port()`` registration can mean. See the
 # module docstring: their registration footprints are identical.
 COAXIAL_ONE_PORT_LANES = (
     "compute_coaxial_line_reflection",
     "compute_coaxial_two_port",
 )
 
-# Every lane name ``s_matrix_lane()`` can return, for validating ``lane=``.
-# The single-plane coaxial lane was never selectable here, and it was removed
+# Every method name ``s_matrix_lane()`` can return, for validating ``method=``.
+# The single-plane coaxial method was never selectable here, and it was removed
 # from rfx in #1212.
 _SELECTABLE_LANES = (
     "compute_waveguide_s_matrix",
@@ -95,7 +96,7 @@ _SELECTABLE_LANES = (
 
 
 def _port_census(self) -> dict:
-    """Count every registration that decides an S-matrix lane.
+    """Count every registration that decides an S-matrix method.
 
     ``add_port(impedance=0)`` / ``add_source()`` share ``self._ports`` with
     real lumped/wire ports (``rfx/api/__init__.py`` stores a soft source as a
@@ -149,14 +150,14 @@ def _no_ports_message() -> str:
         "  sim.add_port(...)            -> res = sim.run(n_steps=..., "
         "compute_s_params=True); res.s_params\n"
         "add_source(), add_tfsf_source() and add_floquet_port() are not "
-        "S-matrix port families and have no lane."
+        "S-matrix port families and have no method."
     )
 
 
 def _resolve_lane(self) -> str:
-    """The lane the registrations determine, or raise saying why they don't.
+    """The method the registrations determine, or raise saying why they don't.
 
-    Split out of :func:`s_matrix_lane` so the ``lane=`` override is applied
+    Split out of :func:`s_matrix_lane` so the ``method=`` override is applied
     in exactly one place.
     """
     c = _port_census(self)
@@ -193,7 +194,7 @@ def _resolve_lane(self) -> str:
     if c["coaxial"] == 1 and _only("coaxial"):
         raise NotImplementedError(
             "one add_coaxial_port() registration is shared by TWO validated "
-            "lanes and the registrations do not distinguish them:\n"
+            "methods and the registrations do not distinguish them:\n"
             "  compute_coaxial_line_reflection(...) -- one-port reflection "
             "against a calibration termination (short / open / matched), "
             "returns CoaxialLineReflectionResult\n"
@@ -202,7 +203,7 @@ def _resolve_lane(self) -> str:
             "Both build their own fixture geometry from that single port "
             "(each raises if len(sim._coaxial_ports) != 1), so "
             "compute_s_matrix() will not guess. Say which:\n"
-            "  sim.compute_s_matrix(lane='compute_coaxial_two_port', ...)\n"
+            "  sim.compute_s_matrix(method='compute_coaxial_two_port', ...)\n"
             "or call the method directly."
         )
 
@@ -213,14 +214,14 @@ def _resolve_lane(self) -> str:
 def _no_lane_message(c: dict) -> str:
     """Name the registrations, then the nearest single-family method."""
     lines = [
-        "no S-matrix lane covers this combination of registrations: "
+        "no S-matrix method covers this combination of registrations: "
         f"{_census_summary(c)}."
     ]
 
     if c["tfsf"]:
         lines.append(
             "add_tfsf_source() is a plane-wave source, not a port, and every "
-            "S-matrix calculator rejects it; there is no TFSF S-matrix lane."
+            "S-matrix calculator rejects it; there is no TFSF S-matrix method."
         )
     if c["floquet"]:
         lines.append(
@@ -239,9 +240,9 @@ def _no_lane_message(c: dict) -> str:
     if c["coaxial"] > 1:
         lines.append(
             f"{c['coaxial']} coaxial ports are registered. Every validated "
-            "coaxial lane is built from EXACTLY ONE add_coaxial_port() "
+            "coaxial method is built from EXACTLY ONE add_coaxial_port() "
             "(compute_coaxial_line_reflection, compute_coaxial_two_port and "
-            "compute_coax_msl_transition each raise otherwise). No lane "
+            "compute_coax_msl_transition each raise otherwise). No method "
             "accepts several; compute_coaxial_s_matrix() did (removed, #1212)."
         )
 
@@ -279,8 +280,22 @@ def _no_lane_message(c: dict) -> str:
     return "\n".join(lines)
 
 
-def s_matrix_lane(self, *, lane: str | None = None) -> str:
-    """Which S-matrix lane this simulation's registrations select.
+def _resolve_method_argument(method, lane, caller):
+    if method is not None and lane is not None:
+        raise TypeError(f"{caller}() accepts either method= or lane=, not both.")
+    if lane is not None:
+        warnings.warn(
+            f"{caller}(lane=...) is deprecated; pass method=... (the same value). "
+            "lane= is removed after 2.x.",
+            DeprecationWarning,
+            stacklevel=3,
+        )
+        return lane
+    return method
+
+
+def s_matrix_lane(self, *, method: str | None = None, lane: str | None = None) -> str:
+    """Which S-matrix method this simulation's registrations select.
 
     Runs no FDTD and touches no grid: it reads the port registries only, so
     it is cheap to call on a half-built ``Simulation`` and it is what the
@@ -288,13 +303,17 @@ def s_matrix_lane(self, *, lane: str | None = None) -> str:
 
     Parameters
     ----------
-    lane : str or None
-        Optional explicit lane name, one of the ``compute_*`` names below or
+    method : str or None
+        Optional explicit method name, one of the ``compute_*`` names below or
         ``"run(compute_s_params=True)"``. Required on the single-coaxial-port
-        row, where two lanes share one registration footprint (see the module
-        docstring). On every other row it is checked against the lane the
+        row, where two methods share one registration footprint (see the module
+        docstring). On every other row it is checked against the method the
         registrations determine and raises ``ValueError`` if it disagrees --
-        it can select a lane, never override the physics fence.
+        it can select a method, never override the physics fence.
+
+    lane : str or None
+        Deprecated alias for ``method``; accepted through 2.x. Passing both
+        raises ``TypeError``.
 
     Returns
     -------
@@ -307,9 +326,9 @@ def s_matrix_lane(self, *, lane: str | None = None) -> str:
     ------
     ValueError
         No ports registered at all (the message lists the ``add_*_port``
-        builders), or a ``lane=`` that contradicts the registrations.
+        builders), or a ``method=`` that contradicts the registrations.
     NotImplementedError
-        A single coaxial port (ambiguous -- pass ``lane=``), or any
+        A single coaxial port (ambiguous -- pass ``method=``), or any
         combination of families no calculator covers. The message names the
         registered families with their counts.
 
@@ -319,14 +338,15 @@ def s_matrix_lane(self, *, lane: str | None = None) -> str:
     >>> sim.s_matrix_lane()
     'compute_waveguide_s_matrix'
     """
-    if lane is not None and lane not in _SELECTABLE_LANES:
+    method = _resolve_method_argument(method, lane, "s_matrix_lane")
+    if method is not None and method not in _SELECTABLE_LANES:
         raise ValueError(
-            f"lane={lane!r} is not a lane compute_s_matrix() can select. "
+            f"method={method!r} is not a method compute_s_matrix() can select. "
             f"Valid: {', '.join(repr(n) for n in _SELECTABLE_LANES)}. "
             "(compute_coaxial_s_matrix was removed in #1212.)"
         )
 
-    if lane in COAXIAL_ONE_PORT_LANES:
+    if method in COAXIAL_ONE_PORT_LANES:
         # The ambiguous row: _resolve_lane() raises rather than choose, so
         # the override has to be applied before it, not after. Still fenced
         # -- the registration must actually BE the ambiguous one.
@@ -334,21 +354,21 @@ def s_matrix_lane(self, *, lane: str | None = None) -> str:
         if c["coaxial"] == 1 and not any(
             v for k, v in c.items() if k != "coaxial"
         ):
-            return lane
+            return method
 
     resolved = _resolve_lane(self)
-    if lane is not None and lane != resolved:
+    if method is not None and method != resolved:
         raise ValueError(
-            f"lane={lane!r} contradicts the registrations, which select "
+            f"method={method!r} contradicts the registrations, which select "
             f"{resolved!r} ({_census_summary(_port_census(self))}). "
-            "lane= disambiguates where two lanes share one registration "
+            "method= disambiguates where two methods share one registration "
             "footprint; it does not override a port-family fence."
         )
     return resolved
 
 
-def compute_s_matrix(self, *, lane: str | None = None, **kwargs):
-    """Compute S-parameters on whichever lane this simulation's ports select.
+def compute_s_matrix(self, *, method: str | None = None, lane: str | None = None, **kwargs):
+    """Compute S-parameters on whichever method this simulation's ports select.
 
     A single entry point over the per-family calculators. It inspects the
     registrations, chooses exactly one delegate, and forwards ``**kwargs``
@@ -366,7 +386,7 @@ def compute_s_matrix(self, *, lane: str | None = None, **kwargs):
     MSL ports only                       ``compute_msl_s_matrix``                    ``MSLSMatrixResult``
     1 coaxial port only                  ``compute_coaxial_line_reflection`` **or**   ``CoaxialLineReflectionResult``
                                          ``compute_coaxial_two_port`` -- ambiguous,  or ``CoaxialTwoPortResult``
-                                         pass ``lane=``
+                                         pass ``method=``
     1 coaxial + 1 MSL                    ``compute_coax_msl_transition``             ``CoaxMSLTransitionResult``
     lumped/wire (``add_port``) + MSL     ``compute_mixed_s_matrix``                  ``MixedSMatrixResult``
     lumped/wire only                     ``NotImplementedError`` -- the run lane     (``Result.s_params``)
@@ -385,12 +405,15 @@ def compute_s_matrix(self, *, lane: str | None = None, **kwargs):
 
     Parameters
     ----------
-    lane : str or None
-        Explicit lane name (see :meth:`s_matrix_lane`). Consumed here, never
+    method : str or None
+        Explicit method name (see :meth:`s_matrix_lane`). Consumed here, never
         forwarded. Required for a single coaxial port, where
         ``compute_coaxial_line_reflection`` and ``compute_coaxial_two_port``
         share one registration footprint; optional elsewhere, where it is
         checked against the registrations rather than overriding them.
+    lane : str or None
+        Deprecated alias for ``method``; accepted through 2.x. Passing both
+        raises ``TypeError``.
     **kwargs
         Forwarded verbatim to the chosen delegate.
 
@@ -401,26 +424,26 @@ def compute_s_matrix(self, *, lane: str | None = None, **kwargs):
     Raises
     ------
     ValueError
-        No ports registered, or ``lane=`` contradicts the registrations.
-        Also raised by the chosen lane itself: ``compute_coax_msl_transition``
+        No ports registered, or ``method=`` contradicts the registrations.
+        Also raised by the chosen method itself: ``compute_coax_msl_transition``
         (1 coaxial + 1 MSL) refuses a non-passive extracted S by default and
-        is the only lane in the table that does — forward
+        is the only method in the table that does — forward
         ``strict_passivity=False`` through ``**kwargs`` to get the diagnostic
         matrix with a warning instead (issue #838).
     NotImplementedError
         Lumped/wire-only (use the run lane), a single coaxial port with no
-        ``lane=``, or a combination of port families no calculator covers.
+        ``method=``, or a combination of port families no calculator covers.
     TypeError
         An unrecognised keyword argument. ``**kwargs`` swallows it here, so
         the message names the DELEGATE that rejected it --
         ``Simulation.compute_waveguide_s_matrix() got an unexpected keyword
-        argument 'foo'`` -- which also tells you which lane was chosen.
+        argument 'foo'`` -- which also tells you which method was chosen.
 
     Notes
     -----
-    Preflight behaviour is inherited from the chosen lane and is not uniform
+    Preflight behaviour is inherited from the chosen method and is not uniform
     across the table: ``compute_msl_s_matrix`` and ``compute_mixed_s_matrix``
-    run preflight automatically, the waveguide and coaxial lanes do not. See
+    run preflight automatically, the waveguide and coaxial methods do not. See
     each delegate's row in
     ``tests/unit/preflight/test_preflight_advisory_emission_contract.py``.
 
@@ -428,13 +451,14 @@ def compute_s_matrix(self, *, lane: str | None = None, **kwargs):
     --------
     s_matrix_lane : the same choice, without running anything.
     """
+    method = _resolve_method_argument(method, lane, "compute_s_matrix")
     resolve_field_dtype(self._precision)
-    chosen = self.s_matrix_lane(lane=lane)
+    chosen = self.s_matrix_lane(method=method)
 
     if chosen == RUN_LANE:
         raise NotImplementedError(
             "lumped/wire ports (add_port) have no compute_* S-matrix "
-            "method: their S-parameters come back from the run lane.\n"
+            "method: their S-parameters come back from run().\n"
             "  res = sim.run(n_steps=..., compute_s_params=True)\n"
             "  res.s_params\n"
             "compute_s_matrix() does not call run() for you -- it returns a "

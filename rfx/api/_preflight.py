@@ -416,7 +416,7 @@ class _PreflightMixin:
                 "use Simulation.compute_coaxial_line_reflection(...) for a "
                 "one-port reflection or Simulation.compute_coaxial_two_port(...) "
                 "for a through line (for a single add_coaxial_port(), "
-                "compute_s_matrix(lane=...) dispatches to either), or "
+                "compute_s_matrix(method=...) dispatches to either), or "
                 "add_port(extent=...) for the probe-feed S-parameter path"
             )
 
@@ -1010,7 +1010,7 @@ class _PreflightMixin:
         if calculator.lower() == "compute_coaxial_s_matrix":  # removed, #1212
             raise ValueError(
                 "calculator='compute_coaxial_s_matrix' names a method removed in #1212. "
-                "Use calculator='coaxial' to check the coaxial lanes, "
+                "Use calculator='coaxial' to check the coaxial methods, "
                 "compute_coaxial_line_reflection() (one-port reflection) and "
                 "compute_coaxial_two_port() (through line)."
             )
@@ -1289,7 +1289,7 @@ class _PreflightMixin:
         if self._stencil_order != 2:
             failed.append(f"stencil_order=2 (got {self._stencil_order})")
         if self._tfsf is not None:
-            failed.append("no TFSF source (each lane builds its own)")
+            failed.append("no TFSF source (each method builds its own)")
         declared_mesh = self._declared_mesh
         if any(declared_mesh[name] is not None
                for name in ("_dx_profile", "_dy_profile", "_dz_profile")):
@@ -1298,7 +1298,7 @@ class _PreflightMixin:
             failed.append("no SBP-SAT refinement")
         if self._geometry or self._thin_conductors:
             failed.append(
-                "no registered geometry or thin conductors (each lane "
+                "no registered geometry or thin conductors (each method "
                 "builds the complete line)")
         if self._lumped_rlc:
             failed.append("no lumped RLC elements")

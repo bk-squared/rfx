@@ -585,7 +585,7 @@ def compute_waveguide_s_matrix(
         raise ValueError(
             "surface-impedance (surface_impedance_f0) sheets are not "
             "supported with subpixel_smoothing / conformal on the "
-            "waveguide S-matrix lane (#677 v1): the sheet operator "
+            "waveguide S-matrix method (#677 v1): the sheet operator "
             "assumes the plain isotropic E update at its edges.")
     # #931 §1.7: the interior PEC of this lane is the realized edge
     # set, applied per step by the shared ``apply_pec_edges``.  The
