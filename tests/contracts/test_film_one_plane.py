@@ -377,6 +377,7 @@ SIGMA_READS = {
     ('rfx/rcs.py', 'compute_rcs', 'materials'): (1, 'passing on: zeros_like for vacuum reference shape'),
     ('rfx/runners/_admission.py', '', 'm'): (1, 'explicit sigma operand; see classified constructor and shared realization reach'),
     ('rfx/runners/_admission.py', '_adi_homogeneous', 'materials'): (1, 'arithmetic/interface refusal: homogeneous cell eps/sigma'),
+    ('rfx/geometry/smoothing.py', 'warn_curved_high_contrast', 'sim._resolve_material(e.material_name)'): (1, 'declared material returned by _resolve_material: PEC-threshold test that skips conductors in the advisory; not assembled cells'),
     ('rfx/runners/_admission.py', '_pec_shapes', 'sim._resolve_material(entry.material_name)'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/runners/_admission.py', '_placed', 'material'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/runners/_distributed_common.py', 'slab_e_component_materials', 'materials'): (1, 'slicing/passing on: replicated x-low view into edge mean'),
