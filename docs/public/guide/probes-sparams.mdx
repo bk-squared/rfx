@@ -303,14 +303,21 @@ S_msl = np.asarray(msl.S)                    # (2, 2, 21)
 `num_periods=40` is the default and sets the record length; don't shorten it
 without checking `msl.settling_db`.
 
+The edge-aware mesh makes this a microstrip S-matrix on a graded mesh, which
+the [support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md)
+lists as **experimental**; the microstrip S-matrix on a uniform mesh is the
+supported path.
+
 This board has only 3 cells through the substrate and 6 across the trace, so
 it runs quickly but prints several warnings. They are the ones you should
 expect on your own coarse runs:
 
 - preflight reports that 3 cells through the substrate is below its
   recommendation of 4, that the graded in-plane mesh reaches the absorber
-  runway, and that the automatic probe-offset check is skipped on this graded
-  board. (On a plain uniform grid the trace would be solved wider than drawn,
+  runway, and that the automatic probe-offset solve is skipped on this graded
+  board, so the clearance from the deepest probe to the next reflector is not
+  enforced (set `n_probe_offset` on the ports, or keep the propagation axis
+  uniform, if that clearance matters). (On a plain uniform grid the trace would be solved wider than drawn,
   because a sheet's free edge acts a fraction of a cell beyond its last grid
   node; preflight reports that as an error and the run stops. The
   `edge_aware_profiles` mesh above avoids it.)
