@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Ratchet layer implementations in the five callers, using only source ASTs.
+"""Ratchet layer implementations in five callers and outside layers using ASTs.
 
 BASE_SHA/HEAD_SHA (or --base/--head) select Git snapshots. Without HEAD_SHA,
 read the working tree. Initial adoption requires a readable base with neither
@@ -388,8 +388,7 @@ def count(sources: Sources) -> dict:
                     allowed.append((path, node.lineno, " ".join(source.splitlines())))
         elif rules["S"] or rules["M"]:
             outside[path] = {r: sorted(rules[r]) for r in ("S", "M")}
-    totals = {r: sum(len(v[r]) for v in outside.values()) for r in ("S", "M")}
-    return {"baseline": {"files": files, "outside": totals}, "outside_files": outside,
+    return {"baseline": {"files": files, "outside": outside},
             "surface_sizes": {p: len(names) for p, names in public.items()},
             "unit_counts": unit_counts, "allowed": sorted(allowed)}
 
@@ -400,44 +399,47 @@ def baseline(raw: bytes) -> dict:
         raise ValueError("baseline must contain files and outside")
     if not isinstance(data["files"], dict) or set(data["files"]) != set(FIVE_FILES):
         raise ValueError("baseline must list exactly the five files")
-    for path, rules in data["files"].items():
-        if not isinstance(rules, dict) or set(rules) != set(RULES):
-            raise ValueError(f"{path}: baseline must list every rule")
-        for rule, names in rules.items():
-            if (not isinstance(names, list) or not all(isinstance(n, str) and n for n in names)
-                    or names != sorted(set(names))):
-                raise ValueError(f"{path} {rule}: names must be sorted and unique")
-    if (not isinstance(data["outside"], dict) or set(data["outside"]) != {"S", "M"}
-            or any(type(n) is not int or n < 0 for n in data["outside"].values())):
-        raise ValueError("outside must contain nonnegative integer S and M totals")
+    if not isinstance(data["outside"], dict):
+        raise ValueError("outside must map file paths to S and M unit names")
+    for path in data["outside"]:
+        if (not path.startswith("rfx/") or not path.endswith(".py")
+                or any(part in {"", ".", ".."} for part in path.split("/"))
+                or path in FIVE_FILES
+                or any(path.startswith(p.replace(".", "/") + "/") for p in LAYERS)):
+            raise ValueError(f"{path}: outside must list Python files outside the five files and layers")
+    for group, expected in (("files", RULES), ("outside", ("S", "M"))):
+        for path, rules in data[group].items():
+            if not isinstance(rules, dict) or set(rules) != set(expected):
+                raise ValueError(f"{path}: baseline must list every rule ({', '.join(expected)})")
+            for rule, names in rules.items():
+                if (not isinstance(names, list) or not all(isinstance(n, str) and n for n in names)
+                        or names != sorted(set(names))):
+                    raise ValueError(f"{path} {rule}: names must be sorted and unique")
     return data
 
 
 def violations(actual: dict, current: dict, previous: dict | None = None) -> list[str]:
     errors = []
-    for path in FIVE_FILES:
-        for rule in RULES:
-            found, stored = set(actual["files"][path][rule]), set(current["files"][path][rule])
-            for name in sorted(found - stored):
-                errors.append(f"{path} {rule}: unlisted violation {name}")
-            for name in sorted(stored - found):
-                errors.append(f"{path} {rule}: stale baseline entry {name}")
-            if previous is not None:
-                old = set(previous["files"][path][rule])
-                for name in sorted(found - old):
-                    errors.append(f"{path} {rule}: new violation against BASE {name}")
-                for name in sorted(stored - old):
-                    errors.append(f"{path} {rule}: baseline grew against BASE {name}")
-    for rule in ("S", "M"):
-        found, stored = actual["outside"][rule], current["outside"][rule]
-        if found != stored:
-            errors.append(f"outside {rule}: stored {stored} differs from computed {found}")
-        if previous is not None and found > previous["outside"][rule]:
-            errors.append(f"outside {rule}: computed {found} exceeds BASE {previous['outside'][rule]}")
+    for group, rules in (("files", RULES), ("outside", ("S", "M"))):
+        for path in sorted(actual[group].keys() | current[group].keys()):
+            for rule in rules:
+                found = set(actual[group].get(path, {}).get(rule, []))
+                stored = set(current[group].get(path, {}).get(rule, []))
+                for name in sorted(found - stored):
+                    errors.append(f"{path} {rule}: unlisted violation {name}")
+                for name in sorted(stored - found):
+                    errors.append(f"{path} {rule}: stale baseline entry {name}")
+                if previous is not None:
+                    old = set(previous[group].get(path, {}).get(rule, []))
+                    for name in sorted(found - old):
+                        errors.append(f"{path} {rule}: new violation against BASE {name}")
+                    for name in sorted(stored - old):
+                        errors.append(f"{path} {rule}: baseline grew against BASE {name}")
     return errors
 
 
 def report(result: dict):
+    print("2.0 condition — five files")
     for path in FIVE_FILES:
         rules = result["baseline"]["files"][path]
         all_units = set().union(*(rules[r] for r in "SMAG"))
@@ -445,10 +447,16 @@ def report(result: dict):
         if path == "rfx/api/__init__.py":
             summary += f" declarations={len(rules['D1']) + len(rules['D2'])}"
         print(summary + " " + " ".join(f"{r}={len(rules[r])}" for r in RULES))
-    for path, rules in sorted(result["outside_files"].items()):
-        print(f"outside {path}: S={len(rules['S'])} M={len(rules['M'])}")
-    print("outside totals: " + " ".join(f"{r}={n}" for r, n in result["baseline"]["outside"].items()))
     print("surface sizes: " + " ".join(f"{p}={n}" for p, n in result["surface_sizes"].items()))
+    print("\noutside the layer packages — may only fall, not a 2.0 condition "
+          "(PI to decide how far 2.0 reaches)")
+    outside = result["baseline"]["outside"]
+    for path, rules in sorted(outside.items(), key=lambda item: (
+            -sum(len(names) for names in item[1].values()), item[0])):
+        print(f"outside {path}: S={len(rules['S'])} M={len(rules['M'])}")
+    totals = {r: sum(len(v[r]) for v in outside.values()) for r in ("S", "M")}
+    print("outside totals: " + " ".join(f"{r}={n}" for r, n in totals.items()))
+
 
 
 def check(repo: Path, base: str = "", head: str = "", *, write_baseline=False, list_allowed=False) -> int:

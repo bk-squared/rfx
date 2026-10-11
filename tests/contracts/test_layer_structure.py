@@ -193,19 +193,80 @@ def test_operator_only_known_miss(tmp_path, generated):
     assert observed == generated["files"][SIM]
 
 
-def test_outside_real_runner_mutation(tmp_path, generated):
-    path = "rfx/runners/uniform.py"
-    target = "layer_check_outside_step"
-    assert target not in {name for name, _, _ in gate.units(real_tree(path))}
+@pytest.mark.parametrize("remove_elsewhere", [False, True])
+def test_outside_new_unit_in_existing_file_cannot_net_removal(tmp_path, generated, remove_elsewhere):
+    path, name = "rfx/runners/_distributed_common.py", "layer_check_outside_step"
+    assert generated["outside"][path]["S"]
+    assert name not in {unit for unit, _, _ in gate.units(real_tree(path))}
     write(tmp_path, path, (REPO / path).read_text()
           + "\ndef layer_check_outside_step():\n    return jax.lax.scan(body, carry, xs)\n")
-    result = gate.count(CopiedSources(tmp_path))
-    assert target in result["outside_files"][path]["S"]
-    assert result["baseline"]["outside"] == {
-        "S": generated["outside"]["S"] + 1, "M": generated["outside"]["M"],
-    }
-    assert any("outside S:" in error and "exceeds BASE" in error
-               for error in gate.violations(result["baseline"], generated, generated))
+    expected = deepcopy(generated)
+    expected["outside"][path]["S"] = sorted([*expected["outside"][path]["S"], name])
+    if remove_elsewhere:
+        other, old = "rfx/vmap_sweep.py", "_build_vmap_scan_fn"
+        assert generated["outside"][other] == {"S": [old], "M": []}
+        tree = real_tree(other)
+        tree.body.remove(target_unit(tree, old))
+        write(tmp_path, other, ast.unparse(tree) + "\n")
+        del expected["outside"][other]
+    actual = gate.count(CopiedSources(tmp_path))["baseline"]
+    assert actual == expected
+    # Even updating the baseline to match the mutated code cannot admit the copy.
+    errors = gate.violations(actual, expected, generated)
+    assert errors == [f"{path} S: new violation against BASE {name}",
+                      f"{path} S: baseline grew against BASE {name}"]
+
+
+def test_outside_rename_reports_new_and_stale_names(tmp_path, generated):
+    path, old, new = "rfx/vmap_sweep.py", "_build_vmap_scan_fn", "renamed_scan"
+    tree = real_tree(path)
+    target_unit(tree, old).name = new
+    write(tmp_path, path, ast.unparse(tree) + "\n")
+    expected = deepcopy(generated)
+    expected["outside"][path] = {"S": [new], "M": []}
+    actual = gate.count(CopiedSources(tmp_path))["baseline"]
+    assert actual == expected
+    assert gate.violations(actual, generated, generated) == [
+        f"{path} S: unlisted violation {new}",
+        f"{path} S: stale baseline entry {old}",
+        f"{path} S: new violation against BASE {new}",
+    ]
+
+
+@pytest.mark.parametrize("destination,green", [
+    ("rfx/stepping/moved_scan.py", True), ("rfx/runners/moved_scan.py", False),
+])
+def test_outside_move_requires_layer_destination(tmp_path, generated, destination, green):
+    path, name = "rfx/vmap_sweep.py", "_build_vmap_scan_fn"
+    tree = real_tree(path)
+    node = target_unit(tree, name)
+    tree.body.remove(node)
+    write(tmp_path, path, ast.unparse(tree) + "\n")
+    write(tmp_path, destination, ast.unparse(node) + "\n")
+    expected = deepcopy(generated)
+    del expected["outside"][path]
+    if not green:
+        expected["outside"][destination] = {"S": [name], "M": []}
+    actual = gate.count(CopiedSources(tmp_path))["baseline"]
+    assert actual == expected
+    errors = gate.violations(actual, expected, generated)
+    assert errors == ([] if green else [
+        f"{destination} S: new violation against BASE {name}",
+        f"{destination} S: baseline grew against BASE {name}",
+    ])
+
+
+def test_outside_new_file_with_measurement_hit(tmp_path, generated):
+    path = "rfx/outside_measurement.py"
+    write(tmp_path, path, "def spectrum(x):\n    return np.fft.fft(x)\n")
+    expected = deepcopy(generated)
+    expected["outside"][path] = {"S": [], "M": ["spectrum"]}
+    actual = gate.count(CopiedSources(tmp_path))["baseline"]
+    assert actual == expected
+    assert gate.violations(actual, generated, generated) == [
+        f"{path} M: unlisted violation spectrum",
+        f"{path} M: new violation against BASE spectrum",
+    ]
 
 
 def test_calibration_from_declaration_and_leader_correction(generated):
@@ -234,7 +295,7 @@ def test_calibration_from_declaration_and_leader_correction(generated):
 
 def empty_baseline():
     return {"files": {p: {r: [] for r in gate.RULES} for p in gate.FIVE_FILES},
-            "outside": {"S": 0, "M": 0}}
+            "outside": {}}
 
 
 @pytest.fixture
@@ -263,9 +324,6 @@ def mock_base(monkeypatch, previous):
     ("shrink", 0, ""),
     ("grow", 1, "baseline grew against BASE new"),
     ("stale", 1, "stale baseline entry old"),
-    ("outside-up", 1, "outside S: computed 1 exceeds BASE 0"),
-    ("outside-down-stale", 1, "outside S: stored 1 differs from computed 0"),
-    ("outside-down", 0, ""),
 ])
 def test_ratchet_synthetic_baselines(synthetic, monkeypatch, capsys, case, expected, message):
     previous, current = empty_baseline(), empty_baseline()
@@ -275,12 +333,6 @@ def test_ratchet_synthetic_baselines(synthetic, monkeypatch, capsys, case, expec
         current["files"][SIM]["G"] = ["new"] if case == "grow" else []
     elif case == "stale":
         current["files"][SIM]["G"] = ["old"]
-    elif case == "outside-up":
-        write(synthetic, "rfx/runners/example.py", "def outside():\n    jax.lax.scan(f, c, xs)\n")
-        current["outside"]["S"] = 1
-    elif case.startswith("outside-down"):
-        previous["outside"]["S"] = 1
-        current["outside"]["S"] = int(case.endswith("stale"))
     write(synthetic, gate.BASELINE, json.dumps(current))
     mock_base(monkeypatch, previous)
     assert gate.main(["--repo", str(synthetic), "--base", "base"]) == expected
@@ -570,3 +622,106 @@ def test_missing_base_baseline_is_not_adoption_after_checker_exists(synthetic, m
     monkeypatch.setenv("HEAD_SHA", head)
     assert gate.main(["--repo", str(synthetic)]) == 1
     assert f"BASE contains {gate.CHECKER} but is missing {gate.BASELINE}" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("case,expected,message", [
+    ("new", 1, "new violation against BASE new"),
+    ("grow", 1, "baseline grew against BASE new"),
+    ("grow-stale", 1, "baseline grew against BASE new"),
+    ("stale", 1, "stale baseline entry old"),
+    ("shrink", 0, ""),
+])
+def test_outside_named_baseline_ratchet(synthetic, monkeypatch, capsys, case, expected, message):
+    path = "rfx/runners/example.py"
+    previous, current = empty_baseline(), empty_baseline()
+    previous["outside"][path] = {"S": ["old"], "M": []}
+    if case in {"new", "grow"}:
+        write(synthetic, path, "def new():\n    jax.lax.scan(f, c, xs)\n")
+    if case in {"grow", "grow-stale", "stale"}:
+        current["outside"][path] = {"S": ["old" if case == "stale" else "new"], "M": []}
+    write(synthetic, gate.BASELINE, json.dumps(current))
+    mock_base(monkeypatch, previous)
+    assert gate.main(["--repo", str(synthetic), "--base", "base"]) == expected
+    assert message in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("outside", [
+    {"S": 77, "M": 44}, [],
+    {"rfx/model/x.py": {"S": ["a"], "M": []}},
+    {SIM: {"S": ["a"], "M": []}},
+    {"rfx/../x.py": {"S": ["a"], "M": []}},
+    {"rfx/x.py": {"S": 1, "M": []}},
+    {"rfx/x.py": {"S": ["b", "a"], "M": []}},
+    {"rfx/x.py": {"S": ["a", "a"], "M": []}},
+    {"rfx/x.py": {"S": [""], "M": []}},
+    {"rfx/x.py": {"S": ["a"]}},
+    {"rfx/x.py": {"S": [], "M": [], "G": []}},
+])
+def test_outside_malformed_baseline_fails_closed(synthetic, monkeypatch, capsys, outside):
+    invalid = empty_baseline()
+    invalid["outside"] = outside
+    write(synthetic, gate.BASELINE, json.dumps(invalid))
+    assert gate.main(["--repo", str(synthetic)]) == 1
+    assert "layer-structure ratchet failed:" in capsys.readouterr().err
+    write(synthetic, gate.BASELINE, json.dumps(empty_baseline()))
+    mock_base(monkeypatch, invalid)
+    assert gate.main(["--repo", str(synthetic), "--base", "base"]) == 1
+    assert "layer-structure ratchet failed:" in capsys.readouterr().err
+
+
+def test_outside_pseudo_units_and_only_s_m_rules(synthetic):
+    write(synthetic, "rfx/outside.py", """
+from rfx.model import _private
+scan(f, c, xs)
+class Phase:
+    value = np.exp(1j * angle)
+    def arithmetic(self):
+        return np.zeros(2).at[0].set(1)
+""")
+    actual = gate.count(gate.Sources(synthetic))["baseline"]
+    assert actual["outside"] == {
+        "rfx/outside.py": {"S": ["<module>"], "M": ["Phase.<body>"]},
+    }
+
+
+def test_outside_report_blocks_and_count_order(synthetic, capsys):
+    write(synthetic, "rfx/a.py", "def a():\n    np.fft.fft(x)\n")
+    write(synthetic, "rfx/z.py", "def z():\n    scan(f, c, xs)\n    np.fft.fft(x)\n")
+    write(synthetic, "rfx/b.py", "def b():\n    scan(f, c, xs)\n")
+    gate.report(gate.count(gate.Sources(synthetic)))
+    output = capsys.readouterr().out
+    five, outside = output.split("\noutside the layer packages — may only fall, not a 2.0 condition "
+                                 "(PI to decide how far 2.0 reaches)\n")
+    assert five.startswith("2.0 condition — five files\n")
+    assert outside.splitlines() == [
+        "outside rfx/z.py: S=1 M=1", "outside rfx/a.py: S=0 M=1",
+        "outside rfx/b.py: S=1 M=0", "outside totals: S=2 M=2",
+    ]
+
+
+def test_outside_head_and_base_use_named_git_snapshots(synthetic, monkeypatch, capsys):
+    path = "rfx/runners/example.py"
+    write(synthetic, path, "def old():\n    scan(f, c, xs)\n")
+    previous = empty_baseline()
+    previous["outside"][path] = {"S": ["old"], "M": []}
+    write(synthetic, gate.BASELINE, json.dumps(previous))
+    git_snapshot(synthetic, "init", "-q")
+    git_snapshot(synthetic, "add", ".")
+    git_snapshot(synthetic, "commit", "-qm", "named base")
+    base = git_snapshot(synthetic, "rev-parse", "HEAD")
+    write(synthetic, path, "def new():\n    scan(f, c, xs)\n")
+    current = empty_baseline()
+    current["outside"][path] = {"S": ["new"], "M": []}
+    write(synthetic, gate.BASELINE, json.dumps(current))
+    git_snapshot(synthetic, "add", ".")
+    git_snapshot(synthetic, "commit", "-qm", "rename outside")
+    head = git_snapshot(synthetic, "rev-parse", "HEAD")
+    write(synthetic, path, "")
+    write(synthetic, gate.BASELINE, json.dumps(empty_baseline()))
+    monkeypatch.setenv("BASE_SHA", base)
+    monkeypatch.setenv("HEAD_SHA", head)
+    assert gate.main(["--repo", str(synthetic)]) == 1
+    assert capsys.readouterr().err.splitlines() == [
+        f"{path} S: new violation against BASE new",
+        f"{path} S: baseline grew against BASE new",
+    ]
