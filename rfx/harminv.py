@@ -456,7 +456,7 @@ def harminv_record_duration(n_samples: int, dt: float, f_max: float, *,
                            max_modes: int = 50) -> float:
     """Deprecated alias for matrix_pencil_record_duration."""
     warnings.warn(
-        "rfx.harminv_record_duration is deprecated; use rfx.matrix_pencil_record_duration "
+        "rfx.harminv.harminv_record_duration is deprecated; use rfx.harminv.matrix_pencil_record_duration "
         "(same arguments, same result). It implements the matrix pencil method, not Harminv.",
         DeprecationWarning, stacklevel=2,
     )

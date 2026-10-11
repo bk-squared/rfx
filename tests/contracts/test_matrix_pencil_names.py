@@ -25,14 +25,14 @@ def _two_mode_signal():
     )
 
 
-def _legacy_call(old, new_name, *args, **kwargs):
+def _legacy_call(old, new_name, *args, prefix="rfx.", **kwargs):
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         result = old(*args, **kwargs)
     assert len(caught) == 1
     assert caught[0].category is DeprecationWarning
     assert str(caught[0].message) == (
-        f"rfx.{old.__name__} is deprecated; use rfx.{new_name} "
+        f"{prefix}{old.__name__} is deprecated; use {prefix}{new_name} "
         "(same arguments, same result). It implements the matrix pencil method, not Harminv."
     )
     assert caught[0].filename == __file__  # stacklevel=2 identifies the caller.
@@ -69,7 +69,7 @@ def test_matrix_pencil_record_duration_legacy_is_identical(settings):
         warnings.simplefilter("error")
         new = matrix_pencil_record_duration(512, _DT, _BAND[1], **settings)
     old = _legacy_call(harminv_record_duration, "matrix_pencil_record_duration",
-                       512, _DT, _BAND[1], **settings)
+                       512, _DT, _BAND[1], prefix="rfx.harminv.", **settings)
     assert old == new
     assert np.float64(old).tobytes() == np.float64(new).tobytes()
 
