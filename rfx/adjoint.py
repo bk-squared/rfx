@@ -156,7 +156,8 @@ def design_adjoint_scan(ctx, initial, xs):
             raise NotImplementedError(f"gradient='adjoint' does not support {name}")
     if not ctx.use_design_box:
         raise NotImplementedError("gradient='adjoint' requires a design box")
-    if ctx.bloch is not None or any(ctx.periodic) or ctx.aniso_eps is not None:
+    tensor = ctx.materials.components.tensor
+    if ctx.bloch is not None or any(ctx.periodic) or (tensor is not None and tensor.eps is not None):
         raise NotImplementedError("gradient='adjoint' does not support Bloch/periodic/anisotropy")
     dtype = initial["fdtd"].ex.dtype
     if dtype not in (jnp.float32, jnp.float64) or ctx.stencil_order != 2:
