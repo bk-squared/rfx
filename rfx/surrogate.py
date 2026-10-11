@@ -208,13 +208,19 @@ def export_geometry_sdf(
     sdf : ndarray, shape (Nx, Ny, Nz)
         Signed distance field in metres.
     """
-    from rfx.geometry.csg import Box
+    from rfx.geometry.csg import Box, Cylinder, Sphere
 
     if getattr(sim, "_pinned_sheets", ()):
         raise ValueError(
             "export_geometry_sdf cannot place add_pinned_sheet sheets; "
             "they would be missing: pinned sheets are declared by mesh node "
             "index, so their position is undefined on the exporter's own lattice"
+        )
+
+    if getattr(sim, "_coaxial_ports", ()):
+        raise ValueError(
+            "export_geometry_sdf does not export coaxial port conductors; "
+            "they would be missing"
         )
 
     domain = sim._domain
@@ -256,14 +262,14 @@ def export_geometry_sdf(
             my = (y >= lo[1]) & (y <= hi[1])
             mz = (z >= lo[2]) & (z <= hi[2])
             occupied |= mx[:, None, None] & my[None, :, None] & mz[None, None, :]
-        elif hasattr(shape, "center") and hasattr(shape, "radius"):
+        elif isinstance(shape, (Sphere, Cylinder)):
             # Sphere or Cylinder — analytic
             cx, cy, cz = shape.center
             r = shape.radius
             dx_ = x[:, None, None] - cx
             dy_ = y[None, :, None] - cy
             dz_ = z[None, None, :] - cz
-            if hasattr(shape, "height"):
+            if isinstance(shape, Cylinder):
                 # Cylinder
                 axis = getattr(shape, "axis", "z")
                 if axis == "z":

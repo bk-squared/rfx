@@ -8,6 +8,7 @@ from pathlib import Path
 
 from rfx.api import Simulation, Result
 from rfx.geometry.csg import Box, OrientedBox, PolylineWire
+from rfx.geometry.curved import CurvedPatch
 from rfx.amr import compute_error_indicator, suggest_refinement_regions, auto_refine
 from rfx.surrogate import export_training_data, export_geometry_sdf
 from rfx.sweep import parametric_sweep, SweepResult
@@ -170,6 +171,25 @@ class TestExportTrainingData:
 
 class TestExportGeometrySDF:
     """Tests for export_geometry_sdf."""
+
+    def test_sdf_sees_curved_patch_occupancy(self):
+        sim = Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03), boundary="pec")
+        sim.add(CurvedPatch(
+            center=(0.015, 0.015, 0.015), length=0.008, width=0.004,
+            radius=0.010, axis="x",
+        ), material="pec")
+        # 31 samples span 0..30 mm: (15,20,15) mm is 5 mm from the
+        # center, inside the radius-10 mm sphere, but outside the patch's
+        # y interval [13,17] mm given its 4 mm width.
+        sdf = export_geometry_sdf(sim, resolution=0.03 / 31)
+        assert sdf[15, 20, 15] > 0
+        assert np.any(sdf < 0), "the curved patch must also appear in the SDF"
+
+    def test_sdf_refuses_coaxial_port(self):
+        sim = Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03), boundary="pec")
+        sim.add_coaxial_port((0.015, 0.015, 0.03))
+        with pytest.raises(ValueError, match="coaxial"):
+            export_geometry_sdf(sim)
 
     @pytest.mark.parametrize("with_corners", [False, True])
     def test_sdf_sees_oriented_box(self, with_corners):
