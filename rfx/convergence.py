@@ -17,6 +17,8 @@ Usage
 
 from __future__ import annotations
 
+from rfx._precision import resolve_field_dtype
+
 from dataclasses import dataclass
 from typing import Callable, Any
 
@@ -399,6 +401,7 @@ def quick_convergence(
     # PMC note inside sim_factory records — this factory clones what `sim`
     # declared, and a declaration whose metres depend on dx cannot be cloned
     # across a dx sweep without the caller re-declaring it.
+    resolve_field_dtype(sim._precision)
     if getattr(sim, "_pinned_sheets", None):
         raise ValueError(
             f"quick_convergence: this simulation carries "

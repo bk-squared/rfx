@@ -18,6 +18,8 @@ step; the move itself is gated on bit identity of the extracted S arrays
 
 from __future__ import annotations
 
+from rfx._precision import resolve_field_dtype
+
 from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
 from rfx._diagnostic_transport import merge_diagnostics, report_diagnostics, diagnostic_refusal
 
@@ -246,6 +248,7 @@ def compute_msl_s_matrix(
     -------
     MSLSMatrixResult
     """
+    resolve_field_dtype(self._precision)
     _diagnostics = ()
     from rfx.probes.msl_wave_decomp import extract_msl_nprobe
     from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff

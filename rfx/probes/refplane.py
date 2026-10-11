@@ -543,7 +543,6 @@ def decompose_wire_s_matrix_with_reference_planes(
     S = np.array(
         decompose_wire_s_matrix(v_all, i_all, z0, port_cell_counts,
                                 v_ref=v_ref),
-        dtype=np.complex64,
     )
     n_ports = S.shape[0]
     opted = [p for p in range(n_ports) if bool(plane_enabled[p])]
@@ -628,7 +627,7 @@ def decompose_wire_s_matrix_with_reference_planes(
                 diagnostics["plane_waves"][(j, i, 0)] = (out_i, in_i)
                 b_port = (in_i * np.exp(-1j * beta[i] * d_i)
                           / np.sqrt(zc[i].real))
-                S[i, j, :] = (b_port / safe_a).astype(np.complex64)
+                S[i, j, :] = (b_port / safe_a).astype(S.dtype)
     if return_line_diagnostics:
         return S, diagnostics
     return S

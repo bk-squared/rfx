@@ -31,6 +31,8 @@ Limitations
 
 from __future__ import annotations
 
+from rfx._precision import resolve_field_dtype
+
 from rfx._grid_metric import field_index
 from dataclasses import dataclass, replace
 
@@ -943,6 +945,7 @@ def vmap_material_sweep(
     — are already fully batched via ``add_probe`` + ``.time_series`` on
     both paths.
     """
+    resolve_field_dtype(sim._precision)
     from rfx.current_moments import refuse_current_moment_monitor
     refuse_current_moment_monitor(sim, "vmap material sweep")
     if return_fields:

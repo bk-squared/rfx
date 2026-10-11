@@ -29,6 +29,9 @@ below.
 
 from __future__ import annotations
 
+from contextlib import nullcontext
+from tests._x64_compat import enable_x64
+
 import numpy as np
 import pytest
 
@@ -63,14 +66,14 @@ def _uniform_sim(*, precision: str) -> Simulation:
 @pytest.mark.parametrize("precision", ["mixed", "float64"])
 def test_nonuniform_run_rejects_nonfloat32_precision(precision):
     sim = _nu_sim(precision=precision)
-    with pytest.raises(NotImplementedError, match="run_nonuniform"):
+    with enable_x64() if precision == "float64" else nullcontext(), pytest.raises(NotImplementedError, match="run_nonuniform"):
         sim.run(n_steps=5, skip_preflight=True)
 
 
 @pytest.mark.parametrize("precision", ["mixed", "float64"])
 def test_nonuniform_forward_rejects_nonfloat32_precision(precision):
     sim = _nu_sim(precision=precision)
-    with pytest.raises(NotImplementedError, match="fwd_nonuniform"):
+    with enable_x64() if precision == "float64" else nullcontext(), pytest.raises(NotImplementedError, match="fwd_nonuniform"):
         sim.forward(n_steps=5, skip_preflight=True)
 
 
@@ -92,7 +95,7 @@ def test_distributed_forward_rejects_nonfloat32_precision():
     place this can be caught, so this is a distinct code path from the
     non-uniform-mesh test above, not a duplicate."""
     sim = _nu_sim(precision="float64")  # DP3: distributed forward is NU-only
-    with pytest.raises(NotImplementedError, match="run_distributed|fwd_distributed_nu"):
+    with enable_x64(), pytest.raises(NotImplementedError, match="run_distributed|fwd_distributed_nu"):
         sim.forward(distributed=True, n_steps=5, skip_preflight=True)
 
 
@@ -117,7 +120,8 @@ def test_uniform_lane_unaffected_by_the_new_guard(precision):
     guard (a separate, already-covered concern), so only dtype-reachable
     aspects are checked, not the float64 numeric path itself."""
     sim = _uniform_sim(precision=precision)
-    result = sim.run(n_steps=3, skip_preflight=True)
+    with enable_x64() if precision == "float64" else nullcontext():
+        result = sim.run(n_steps=3, skip_preflight=True)
     assert result is not None
 
 

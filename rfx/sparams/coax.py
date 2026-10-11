@@ -26,6 +26,8 @@ they do not run at import time.
 
 from __future__ import annotations
 
+from rfx._precision import resolve_field_dtype
+
 from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
 from rfx.sparams._grid_metrics import _calculator_source_plane
 from rfx.model.conductors import coax_declared_conductors, coax_kernel_conductors
@@ -200,6 +202,7 @@ def compute_coaxial_line_reflection(
     path. The AD↔FD gate is ``tests/unit/autodiff/test_coax_end_to_end_ad.py``.
     """
 
+    resolve_field_dtype(self._precision)
     if self._boundary != "cpml" or self._cpml_layers <= 0:
         raise ValueError(
             "compute_coaxial_line_reflection() requires boundary='cpml' "
@@ -227,9 +230,7 @@ def compute_coaxial_line_reflection(
             "solver='adi' is not supported."
         )
     if self._precision != "float32":
-        raise ValueError(
-            "compute_coaxial_line_reflection() requires precision='float32'."
-        )
+        raise ValueError("compute_coaxial_line_reflection() requires precision='float32'.")
     if self._stencil_order != 2:
         raise ValueError(
             "compute_coaxial_line_reflection() requires stencil_order=2."
@@ -675,6 +676,7 @@ def compute_coaxial_two_port(
     this sim still raise, because this method builds its own probes.
     """
 
+    resolve_field_dtype(self._precision)
     if self._boundary != "cpml" or self._cpml_layers <= 0:
         raise ValueError(
             "compute_coaxial_two_port() requires boundary='cpml' "
@@ -702,9 +704,7 @@ def compute_coaxial_two_port(
             "solver='adi' is not supported."
         )
     if self._precision != "float32":
-        raise ValueError(
-            "compute_coaxial_two_port() requires precision='float32'."
-        )
+        raise ValueError("compute_coaxial_two_port() requires precision='float32'.")
     if self._stencil_order != 2:
         raise ValueError(
             "compute_coaxial_two_port() requires stencil_order=2."
@@ -1375,6 +1375,7 @@ def compute_coax_msl_transition(
     -------
     CoaxMSLTransitionResult
     """
+    resolve_field_dtype(self._precision)
     from rfx.sources.coaxial_port import (
         CoaxialPort as _CoaxPort,
         build_coaxial_tem_plane_source_specs,
@@ -1431,9 +1432,7 @@ def compute_coax_msl_transition(
             "compute_coax_msl_transition() supports solver='yee' only."
         )
     if self._precision != "float32":
-        raise ValueError(
-            "compute_coax_msl_transition() requires precision='float32'."
-        )
+        raise ValueError("compute_coax_msl_transition() requires precision='float32'.")
     if self._stencil_order != 2:
         raise ValueError(
             "compute_coax_msl_transition() requires stencil_order=2."

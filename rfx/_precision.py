@@ -1,4 +1,4 @@
-"""Matrix-product precision for every JAX contraction rfx issues.
+"""Precision admission and matrix-product precision for rfx.
 
 On Ampere-class and newer NVIDIA GPUs, JAX's default precision for a float32
 (and complex64) matrix product is TF32: the operands are rounded to a 10-bit
@@ -22,3 +22,21 @@ from __future__ import annotations
 import jax
 
 HIGHEST = jax.lax.Precision.HIGHEST
+
+
+FLOAT64_MODE_ERROR = (
+    "precision='float64' needs JAX 64-bit mode, which is off in this process: "
+    "rfx would compute in float32. Build and run the Simulation inside a scoped "
+    "`with jax.enable_x64():` block (do not switch it on at module level)."
+)
+
+
+def resolve_field_dtype(precision):
+    """Resolve storage without allocating or changing the caller's JAX mode."""
+    import jax.numpy as jnp
+
+    if precision == "float64":
+        if not jax.config.x64_enabled:
+            raise ValueError(FLOAT64_MODE_ERROR)
+        return jnp.float64
+    return jnp.float16 if precision == "mixed" else None

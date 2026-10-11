@@ -454,7 +454,6 @@ def differentiable_material_fit(
 
     freqs = np.asarray(freqs, dtype=np.float64)
     s_measured = np.asarray(s_measured)
-    s_meas_jnp = jnp.array(s_measured)
 
     # ------------------------------------------------------------------
     # Build initial guess
@@ -487,9 +486,6 @@ def differentiable_material_fit(
             LorentzPole(omega_0=omega0, delta=omega0 * 0.05, kappa=omega0 ** 2)
         )
 
-    params = _poles_to_params(eps_inf_init, debye_init[:n_debye_poles],
-                               lorentz_init[:n_lorentz_poles])
-
     # ------------------------------------------------------------------
     # Static setup: build grid and non-DUT materials ONCE
     # ------------------------------------------------------------------
@@ -499,6 +495,12 @@ def differentiable_material_fit(
         debye_init[:n_debye_poles],
         lorentz_init[:n_lorentz_poles],
     )
+    from rfx._precision import resolve_field_dtype
+    resolve_field_dtype(dummy_sim._precision)
+    s_meas_jnp = jnp.array(s_measured)
+    params = _poles_to_params(eps_inf_init, debye_init[:n_debye_poles],
+                             lorentz_init[:n_lorentz_poles])
+
     def forward(p, *, _fixture=None, _validate_only=False):
         """log-space params -> FDTD -> S-params -> loss scalar."""
         # Unpack traced pole parameters
@@ -510,6 +512,8 @@ def differentiable_material_fit(
         # but the pole VALUES inside DebyePole/LorentzPole are JAX tracers)
         sim = (_fixture if _fixture is not None
                else sim_factory(eps_inf, debye_poles, lorentz_poles))
+
+        resolve_field_dtype(sim._precision)
 
         # Assemble materials (geometry masks are static, but eps_inf flows through)
         from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0

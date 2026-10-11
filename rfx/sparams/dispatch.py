@@ -58,6 +58,8 @@ composition point and the import graph stays acyclic.
 
 from __future__ import annotations
 
+from rfx._precision import resolve_field_dtype
+
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -426,6 +428,7 @@ def compute_s_matrix(self, *, lane: str | None = None, **kwargs):
     --------
     s_matrix_lane : the same choice, without running anything.
     """
+    resolve_field_dtype(self._precision)
     chosen = self.s_matrix_lane(lane=lane)
 
     if chosen == RUN_LANE:

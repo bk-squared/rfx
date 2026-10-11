@@ -358,6 +358,8 @@ class _CompileMixin:
         freqs: jnp.ndarray,
         n_steps: int,
     ):
+        if self._precision == "float64":
+            freqs = jnp.asarray(freqs, dtype=jnp.float64)
         normal_axis = entry.direction[1]
         axis_idx = {"x": 0, "y": 1, "z": 2}[normal_axis]
         pos_vec = [0.0, 0.0, 0.0]
@@ -423,6 +425,7 @@ class _CompileMixin:
                 waveform=entry.waveform,
                 mode_profile=entry.mode_profile,
                 grid=grid,
+                field_dtype=jnp.float64 if self._precision == "float64" else jnp.float32,
             )
             return cfgs
         cfg = init_waveguide_port(
@@ -439,6 +442,7 @@ class _CompileMixin:
             waveform=entry.waveform,
             mode_profile=entry.mode_profile,
             grid=grid,
+            field_dtype=jnp.float64 if self._precision == "float64" else jnp.float32,
         )
         return cfg
     def _build_nonuniform_grid(self) -> NonUniformGrid:

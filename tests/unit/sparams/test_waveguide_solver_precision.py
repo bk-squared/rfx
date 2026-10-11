@@ -62,12 +62,15 @@ def test_adi_refused_before_fields(monkeypatch, nonuniform):
 
 
 @pytest.mark.parametrize("precision", ["float64", "mixed"])
-def test_nonuniform_precision_still_refused_before_fields(monkeypatch, precision):
+@pytest.mark.parametrize("x64", [False, True])
+def test_nonuniform_precision_still_refused_before_fields(monkeypatch, precision, x64):
     monkeypatch.setattr(nonuniform_core, "init_state", _forbid_field_initialization)
-    with enable_x64(True), warnings.catch_warnings():
+    with enable_x64(x64), warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
         sim = _guide(nonuniform=True, precision=precision)
-        with pytest.raises(NotImplementedError, match="precision other than 'float32'"):
+        error = ValueError if precision == "float64" and not x64 else NotImplementedError
+        message = "Build and run the Simulation" if error is ValueError else "precision other than 'float32'"
+        with pytest.raises(error, match=message):
             sim.compute_waveguide_s_matrix(n_steps=4, normalize=True)
 
 
@@ -113,6 +116,10 @@ def test_core_field_dtype(monkeypatch, normalize, n_modes, expected_runs,
 
     def observe_run(*args, **kwargs):
         for cfg in kwargs["waveguide_ports"]:
+            for name in ("ey_profile", "ez_profile", "hy_profile", "hz_profile",
+                         "e_inc_table", "h_inc_table", "u_widths", "v_widths", "aperture_dA"):
+                assert getattr(cfg, name).dtype == np.dtype(
+                    np.float64 if precision == "float64" else np.float32), name
             for name in ("v_probe_t", "v_ref_t", "i_probe_t", "i_ref_t", "v_inc_t"):
                 assert getattr(cfg, name).dtype == expected_record, name
         for monitor in kwargs.get("flux_monitors", ()):

@@ -1515,7 +1515,7 @@ def decompose_wire_s_matrix(v, i, z0, port_cell_counts, v_port=None,
     v_ref = v if v_ref is None else jnp.asarray(v_ref)
     n_ports = v.shape[0]
     n_freqs = v.shape[-1]
-    S = jnp.zeros((n_ports, n_ports, n_freqs), dtype=jnp.complex64)
+    S = jnp.zeros((n_ports, n_ports, n_freqs), dtype=jnp.result_type(v, i, jnp.complex64))
     for j in range(n_ports):
         z0_j = z0[j]
         safe_i = jnp.where(
@@ -1533,7 +1533,7 @@ def decompose_wire_s_matrix(v, i, z0, port_cell_counts, v_port=None,
             z0_i = z0[ri]
             if ri == j:
                 S = S.at[ri, j, :].set(
-                    ((z_in_j - z0_i) / (z_in_j + z0_i)).astype(jnp.complex64))
+                    ((z_in_j - z0_i) / (z_in_j + z0_i)).astype(S.dtype))
             elif v_port is not None:
                 # Whole-port off-diagonal frame (issue #770, adjudicated
                 # 2026-08-29 — see OFF-DIAGONAL FRAME above): outgoing
@@ -1546,7 +1546,7 @@ def decompose_wire_s_matrix(v, i, z0, port_cell_counts, v_port=None,
                 a_j = (v_port[j, j] + z0_j * i[j, j]) / (
                     2.0 * jnp.sqrt(z0_j))
                 safe_a = jnp.where(jnp.abs(a_j) > 0, a_j, jnp.ones_like(a_j))
-                S = S.at[ri, j, :].set((b_i / safe_a).astype(jnp.complex64))
+                S = S.at[ri, j, :].set((b_i / safe_a).astype(S.dtype))
             else:
                 # LEGACY per-cell off-diagonal (byte-frozen; #313 refplane
                 # decomposer + pre-#770 dump replay only).
@@ -1567,7 +1567,7 @@ def decompose_wire_s_matrix(v, i, z0, port_cell_counts, v_port=None,
                 a_j = (-v_ref[j, j] + z0_cell_j * i[j, j]) / (
                     2.0 * jnp.sqrt(z0_cell_j))
                 safe_a = jnp.where(jnp.abs(a_j) > 0, a_j, jnp.ones_like(a_j))
-                S = S.at[ri, j, :].set((b_i / safe_a).astype(jnp.complex64))
+                S = S.at[ri, j, :].set((b_i / safe_a).astype(S.dtype))
     return S
 
 

@@ -189,8 +189,8 @@ class WaveguidePortConfig(NamedTuple):
 
     # Per-step time-series (OpenEMS-style raw record).
     # Modal V and I are real-valued per step (real Yee fields × real mode
-    # profiles × real cell areas). Stored as float32 to halve memory
-    # vs complex; OpenEMS writes the same on disk as two floats per row.
+    # profiles × cell areas). Record precision follows fields/frequencies.
+    # OpenEMS writes the same on disk as two floats per row.
     # Allocated to length ``dft_total_steps``; ``n_steps_recorded`` tracks
     # how many slots were filled by ``update_waveguide_port_probe``.
     # The S-parameter spectra are computed POST-SCAN by
@@ -614,7 +614,7 @@ def init_waveguide_port(
     waveform: str = "modulated_gaussian",
     mode_profile: str = "discrete",
     grid=None,
-    h_offset: tuple[float, float] = (0.5, 0.5),
+    h_offset: tuple[float, float] = (0.5, 0.5), field_dtype=jnp.float32,
 ) -> WaveguidePortConfig:
     """Initialize a waveguide port with precomputed mode profiles.
 
@@ -635,10 +635,7 @@ def init_waveguide_port(
         marked PEC). Without this, uniform-Grid callers integrate over
         the ghost row, producing an ~8% PEC-short |S11| deficit.
     """
-    # Duck-type: if `dx` looks like a NU grid (has dx_arr / dz arrays),
-    # use per-axis widths slicing the aperture; else assume scalar dx.
-    # When the explicit ``grid=`` kwarg is supplied (uniform Grid path),
-    # use it for boundary detection even though dx is still a scalar.
+    # Explicit grid supplies uniform boundary detection.
     grid_obj = None
     if hasattr(dx, "dx_arr") and hasattr(dx, "dz"):
         grid_obj = dx
@@ -1022,13 +1019,13 @@ def init_waveguide_port(
             0.0,
         )
         h_inc_time = np.fft.irfft(h_spec, n_steps_aux)
-        e_inc_table = jnp.asarray(e_inc_time, dtype=jnp.float32)
-        h_inc_table = jnp.asarray(h_inc_time, dtype=jnp.float32)
+        e_inc_table = jnp.asarray(e_inc_time, dtype=field_dtype)
+        h_inc_table = jnp.asarray(h_inc_time, dtype=field_dtype)
     else:
         # Tables unavailable (dt=0 at init). Size-1 sentinel triggers the
         # legacy soft-E source fallback inside apply_waveguide_port_e.
-        e_inc_table = jnp.zeros((1,), dtype=jnp.float32)
-        h_inc_table = jnp.zeros((1,), dtype=jnp.float32)
+        e_inc_table = jnp.zeros((1,), dtype=field_dtype)
+        h_inc_table = jnp.zeros((1,), dtype=field_dtype)
 
     return WaveguidePortConfig(
         x_index=port.x_index,
@@ -1045,18 +1042,18 @@ def init_waveguide_port(
         e_v_component=e_v_component,
         h_u_component=h_u_component,
         h_v_component=h_v_component,
-        ey_profile=jnp.array(ey, dtype=jnp.float32),
-        ez_profile=jnp.array(ez, dtype=jnp.float32),
-        hy_profile=jnp.array(hy, dtype=jnp.float32),
-        hz_profile=jnp.array(hz, dtype=jnp.float32),
+        ey_profile=jnp.array(ey, dtype=field_dtype),
+        ez_profile=jnp.array(ez, dtype=field_dtype),
+        hy_profile=jnp.array(hy, dtype=field_dtype),
+        hz_profile=jnp.array(hz, dtype=field_dtype),
         mode_type=port.mode_type,
         direction=port.direction,
         f_cutoff=float(f_c),
         a=port.a, b=port.b,
         dx=float(dx),
         dt=float(dt),
-        u_widths=jnp.asarray(u_widths_np, dtype=jnp.float32),
-        v_widths=jnp.asarray(v_widths_np, dtype=jnp.float32),
+        u_widths=jnp.asarray(u_widths_np, dtype=field_dtype),
+        v_widths=jnp.asarray(v_widths_np, dtype=field_dtype),
         source_x_m=float(source_x_m),
         reference_x_m=float(reference_x_m),
         probe_x_m=float(probe_x_m),
@@ -1075,7 +1072,7 @@ def init_waveguide_port(
         n_steps_recorded=jnp.zeros((), dtype=jnp.int32),
         e_inc_table=e_inc_table,
         h_inc_table=h_inc_table,
-        aperture_dA=jnp.asarray(aperture_dA_np, dtype=jnp.float32),
+        aperture_dA=jnp.asarray(aperture_dA_np, dtype=field_dtype),
         h_offset=(float(h_offset[0]), float(h_offset[1])),
         mode_indices=(int(m), int(n)),
     )
@@ -1259,7 +1256,7 @@ def apply_waveguide_port_e(state, cfg: WaveguidePortConfig,
     table = cfg.h_inc_table
     table_size = table.shape[0]
     if table_size <= 1:
-        t = jnp.asarray(step, dtype=jnp.float32) * dt
+        t = jnp.asarray(step, dtype=cfg.ey_profile.dtype) * dt
         arg = (t - cfg.src_t0) / cfg.src_tau
         if cfg.waveform == "modulated_gaussian":
             tt = t - cfg.src_t0
@@ -2731,7 +2728,7 @@ def init_multimode_waveguide_port(
     waveform: str = "modulated_gaussian",
     mode_profile: str = "discrete",
     grid=None,
-    h_offset: tuple[float, float] = (0.5, 0.5),
+    h_offset: tuple[float, float] = (0.5, 0.5), field_dtype=jnp.float32,
 ) -> list[WaveguidePortConfig]:
     """Initialize a multi-mode waveguide port.
 
@@ -2774,7 +2771,7 @@ def init_multimode_waveguide_port(
             amplitude=amplitude, probe_offset=probe_offset,
             ref_offset=ref_offset, dft_total_steps=dft_total_steps,
             dt=dt, waveform=waveform, mode_profile=mode_profile,
-            grid=grid, h_offset=h_offset,
+            grid=grid, h_offset=h_offset, field_dtype=field_dtype,
         )
         return [cfg]
 
@@ -2806,7 +2803,7 @@ def init_multimode_waveguide_port(
             amplitude=mode_amplitude, probe_offset=probe_offset,
             ref_offset=ref_offset, dft_total_steps=dft_total_steps,
             dt=dt, waveform=waveform, mode_profile=mode_profile,
-            grid=grid, h_offset=h_offset,
+            grid=grid, h_offset=h_offset, field_dtype=field_dtype,
         )
         cfgs.append(cfg)
 

@@ -36,6 +36,8 @@ Key concepts
 
 from __future__ import annotations
 
+from rfx._precision import resolve_field_dtype
+
 from dataclasses import dataclass
 from typing import Callable
 
@@ -389,6 +391,7 @@ def topology_optimize(
     TopologyResult
         Contains final density, permittivity, loss history, and beta history.
     """
+    resolve_field_dtype(sim._precision)
     sim._require_uniform_mesh("topology_optimize")
     sim._auto_preflight(skip=skip_preflight, context="topology_optimize")
     # #677 lane fence, deliberately ABOVE the optional-dependency import:

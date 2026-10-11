@@ -955,7 +955,9 @@ def run_uniform(
                 break
         freqs_out = np.array(s_param_freqs)
         n_freqs = len(freqs_out)
-        S = np.zeros((n_wp, n_wp, n_freqs), dtype=np.complex64)
+        S = np.zeros((n_wp, n_wp, n_freqs), dtype=np.result_type(
+            sim_result.wire_port_sparams[0][1][0].dtype
+            if sim._precision == "float64" else np.complex64, np.complex64))
         for j, (wp_meta, accs) in enumerate(sim_result.wire_port_sparams):
             v_dft, i_dft = accs[0], accs[1]
             v_port_dft = accs[3]

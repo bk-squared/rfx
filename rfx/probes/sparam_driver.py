@@ -20,6 +20,8 @@ eager loops are untouched (their removal is Stage 3).
 
 from __future__ import annotations
 
+from rfx._precision import resolve_field_dtype
+
 from rfx._grid_metric import field_index
 import numpy as np
 
@@ -116,6 +118,7 @@ def compute_lumped_wire_s_matrix_via_scan(
     Mixed lumped + wire port sets are not supported.
     """
     # A plain source fires in every port drive, so it is refused here (#1420).
+    resolve_field_dtype(sim._precision)
     from rfx.runners._admission import refuse_plain_sources_s_matrix
     refuse_plain_sources_s_matrix(sim)
     if devices is not None:
@@ -305,6 +308,9 @@ def compute_lumped_wire_s_matrix_via_scan(
                 "out of sync with the eligible-port list."
             )
 
+        result_dtype = np.result_type(
+            accs[0][1][0].dtype if sim._precision == "float64" else np.complex64,
+            np.complex64)
         for i in range(n_ports):
             spec, vi = accs[i]
             # Lumped accs are (v_dft, i_dft, v_ref_dft); wire accs are
@@ -373,13 +379,13 @@ def compute_lumped_wire_s_matrix_via_scan(
         )
         if return_refplane_diagnostics:
             S, diag = out
-            return np.asarray(S, dtype=np.complex64), freqs, diag
+            return np.asarray(S, dtype=result_dtype), freqs, diag
         if return_settling:
             missing = [item for item in settling_runs if not np.isfinite(item[0])]
             worst = missing[0] if missing else max(settling_runs, key=lambda item: item[0])
-            return np.asarray(out, dtype=np.complex64), freqs, {
+            return np.asarray(out, dtype=result_dtype), freqs, {
                 **worst[1], "db": worst[0], "per_drive": [d for _, d in settling_runs]}
-        return np.asarray(out, dtype=np.complex64), freqs
+        return np.asarray(out, dtype=result_dtype), freqs
 
     if wire_mode:
         # Issue #764 diagonal + issue #770 off-diagonal: the whole-port
@@ -391,12 +397,12 @@ def compute_lumped_wire_s_matrix_via_scan(
             from rfx.probes.probes import driven_port_reflection
             S = np.asarray(driven_port_reflection(
                 jnp.asarray(vp_all[0, 0]), jnp.asarray(i_all[0, 0]), z0[0]),
-                dtype=np.complex64)[None, None, :]
+                dtype=result_dtype)[None, None, :]
         else:
             S = np.asarray(
                 decompose_wire_s_matrix(v_all, i_all, z0, port_cell_counts,
                                         v_port=vp_all, v_ref=vref_all),
-                dtype=np.complex64,
+                dtype=result_dtype,
             )
         if return_vi_dump:
             # Mirror ``extract_s_matrix_wire``'s WirePortVIReplayBundle
@@ -418,7 +424,7 @@ def compute_lumped_wire_s_matrix_via_scan(
     else:
         S = np.asarray(
             decompose_lumped_s_matrix(v_all, i_all, z0, v_ref=vref_all),
-            dtype=np.complex64,
+            dtype=result_dtype,
         )
         if return_vi_dump:
             # Mirror ``extract_s_matrix``'s PortVIReplayBundle field-for-field.

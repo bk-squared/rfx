@@ -27,6 +27,7 @@ composition point and the import graph stays acyclic.
 
 from __future__ import annotations
 
+from rfx._precision import resolve_field_dtype
 from rfx.model.thin_conductors import conductivity_envelope
 
 import jax.numpy as jnp
@@ -243,6 +244,7 @@ def compute_waveguide_s_matrix(
         valid. Consult ``docs/guides/sparameter_support_matrix.md`` for
         the current waveguide evidence and scope.
     """
+    resolve_field_dtype(self._precision)
     if not normalize:
         import warnings
         warnings.warn(

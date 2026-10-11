@@ -15,6 +15,8 @@ a 1-frequency NTFF box.
 
 from __future__ import annotations
 
+from rfx._precision import resolve_field_dtype
+
 import numpy as np
 
 from rfx.farfield import NTFFData
@@ -67,6 +69,7 @@ def ntff_sweep(sim, freqs, *, batch_size: int | None = None,
     - Side effect: the sim's NTFF box's freqs field is restored on
       success or exception (try/finally).
     """
+    resolve_field_dtype(sim._precision)
     if getattr(sim, "_ntff", None) is None:
         raise ValueError(
             "ntff_sweep requires sim.add_ntff_box(...) first — it "

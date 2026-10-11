@@ -1397,56 +1397,13 @@ class _PreflightMixin:
         ))
 
     def _validate_cfg_precision_x64(self, _w) -> None:
-        """Warn when ``precision`` cannot actually take effect.
+        """Report missing x64 as an error; retain the nonuniform advisory."""
+        from rfx._precision import FLOAT64_MODE_ERROR
 
-        Two independent ways ``precision != "float32"`` silently degrades
-        back to float32 with no error:
-
-        1. ``precision="float64"`` requires JAX x64 mode already enabled by
-           the caller (``jax.config.update("jax_enable_x64", True)`` or
-           ``jax.experimental.enable_x64()``) — process-global JAX
-           behavior, not something ``Simulation`` can flip on its own: this
-           package never flips ``jax_enable_x64`` at import/module scope,
-           since that would be permanent for the rest of the process and
-           is the caller's decision to make, not a library's to make for
-           them. Without this check, ``precision="float64"`` would look
-           accepted (no error) while silently running float32 fields
-           (issue #630: the Yee update arithmetic used to re-quantize
-           float64 fields to float32 every timestep even when storage WAS
-           float64 -- that half is fixed, but storage never becoming
-           float64 in the first place is a distinct, still-live footgun).
-        2. The non-uniform mesh runner (``rfx/runners/nonuniform.py``) does
-           not thread ``field_dtype`` at all (issue #630 review) -- a
-           non-uniform-mesh sim with ``precision="mixed"`` or
-           ``"float64"`` silently runs float32 fields regardless. This is
-           an ADVISORY heads-up only: ``_dispatch_plan`` (the single
-           lane-decision point) hard-rejects the same combination with
-           ``NotImplementedError`` before any compute runs, so this warning
-           cannot actually be missed in practice -- it exists to explain
-           the coming error before the run gets that far, and to cover the
-           ``skip_preflight=True`` escape hatch, which does NOT bypass
-           ``_dispatch_plan``'s own guard. The distributed lanes
-           (``distributed.py``/``distributed_nu.py``/``distributed_v2.py``)
-           have the same gap but ``distributed=True`` is a call-time
-           ``run()``/``forward()`` kwarg, not visible here at
-           ``Simulation``-construction-time preflight (matches the
-           established "P3 (Distributed path)" precedent in
-           ``_validate_cfg_subgrid_limitations`` below) -- ``_dispatch_plan``
-           is therefore the ONLY enforcement point for the distributed
-           case, not merely a backstop.
-
-        Both are exactly the SILENT_WRONG class this preflight system
-        exists to catch.
-        """
-        if self._precision == "float64" and not jax.config.jax_enable_x64:
+        if self._precision == "float64" and not jax.config.x64_enabled:
             _w.warn(PreflightWarning(
-                "precision='float64' was requested, but JAX x64 mode is not "
-                "enabled (jax.config.jax_enable_x64 is False). JAX silently "
-                "downcasts float64 arrays to float32, so fields will run at "
-                "float32 despite this setting. Enable x64 before constructing "
-                "this Simulation: jax.config.update('jax_enable_x64', True) "
-                "(process-global) or wrap the call in "
-                "jax.experimental.enable_x64() (scoped).",
+                FLOAT64_MODE_ERROR,
+                severity="error",
                 code="precision_float64_without_x64",
                 source="_validate_cfg_precision_x64",
             ))

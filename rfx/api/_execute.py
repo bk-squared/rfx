@@ -157,6 +157,7 @@ def _declaration_setup_at_trace_time(entry):
     """
     @functools.wraps(entry)
     def staged_entry(self, *args, **kwargs):
+        self._resolve_field_dtype()
         if _setup_evaluated_at_trace_time(
                 distributed=bool(kwargs.get("distributed", False))):
             from rfx.core.jax_utils import declaration_setup
@@ -238,20 +239,9 @@ class _ExecuteMixin:
     _dft_plane_regions: dict[str, tuple[int, int, int, int]]
 
     def _resolve_field_dtype(self):
-        """Map ``self._precision`` to the ``field_dtype`` the Yee core takes.
-
-        Shared by the uniform ``run()`` and ``forward()`` lanes (issue #630)
-        so both honour ``precision=`` identically — before this fix only
-        ``run()`` read ``self._precision`` here; ``forward()`` (the lane
-        FD-vs-AD gates use) always passed ``field_dtype=None`` regardless of
-        ``self._precision``, so ``precision="float64"`` was unreachable from
-        the differentiable path.
-        """
-        if self._precision == "mixed":
-            return jnp.float16
-        if self._precision == "float64":
-            return jnp.float64
-        return None
+        """Resolve the requested field dtype before any allocation."""
+        from rfx._precision import resolve_field_dtype
+        return resolve_field_dtype(self._precision)
 
     # ---- (2,4) stencil comprehensive API fence (PR-1b) ----
 
@@ -4150,6 +4140,7 @@ class _ExecuteMixin:
         """
         # The caller's arguments as given, before anything below resolves them:
         # a devices= model that runs on one device is re-run with all of them.
+        self._resolve_field_dtype()
         _call_args = dict(locals())
         del _call_args["self"]
         _refuse_transformed_extended_tfsf(self._tfsf)

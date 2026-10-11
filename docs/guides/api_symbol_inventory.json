@@ -1232,7 +1232,8 @@
         "waveform",
         "mode_profile",
         "grid",
-        "h_offset"
+        "h_offset",
+        "field_dtype"
       ]
     },
     "init_waveguide_port": {
@@ -1251,7 +1252,8 @@
         "waveform",
         "mode_profile",
         "grid",
-        "h_offset"
+        "h_offset",
+        "field_dtype"
       ]
     },
     "init_wire_sparam_probe": {
