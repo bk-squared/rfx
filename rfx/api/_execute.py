@@ -3642,15 +3642,12 @@ class _ExecuteMixin:
                 "for differentiable nonlinear (Kerr) design."
             )
 
-        # Differentiable TFSF/plane-wave forward is wired on the uniform
-        # single-device lane only (the shared scan + complex Bloch path, #404).
-        # The non-uniform and distributed forward lanes have no TFSF handling and
-        # would silently drop the source (zero gradients) — fail loud instead.
-        if self._tfsf is not None and plan.lane != "fwd_uniform":
+        # Both single-device lanes build TFSF; distributed/ADI lanes do not.
+        if self._tfsf is not None and plan.lane not in ("fwd_uniform", "fwd_nonuniform"):
             raise NotImplementedError(
-                "Differentiable TFSF plane-wave forward is supported only on the "
-                f"uniform single-device forward lane, not {plan.lane!r}. Use a "
-                "uniform mesh + single device for TFSF/plane-wave inverse design."
+                "Differentiable TFSF plane-wave forward refuses distributed and "
+                f"ADI lanes, including {plan.lane!r}. Use a uniform or graded "
+                "single-device forward lane for TFSF/plane-wave inverse design."
             )
 
         # mu_r_override is wired only on the uniform lane; the NU/distributed
