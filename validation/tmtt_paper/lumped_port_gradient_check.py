@@ -30,11 +30,17 @@ entries of 24 cells on one wall row of the line (cells [12:36, 0, 0], 5.5 to
 17.5 mm from the port node), all 2.2 at the start.  Each E edge takes the mean
 of its four incident cells, so the line's edges see 2.2 on the y_lo wall and
 1.6 on the y_hi wall, with one-cell ramps at the section ends.  The objective is the mean of |S11|^2 over 4, 4.5, 5, 5.5 and
-6 GHz through the differentiable ``forward(port_s11_freqs=...)``.  The
-line's own reflection on main is under investigation (rfx tracker 1614: a
-matched load on this line reflects up to about -7 dB since the PMC-face
-change of 2026-10-03), so this file states no closed-form S11; the check
-compares rfx's gradient with rfx's own finite difference.
+6 GHz through the differentiable ``forward(port_s11_freqs=...)``.  The port
+and the load sit on the y_lo magnetic face, and rfx solves an element on a
+magnetic face as the element of the full symmetric object (rfx issue 1221,
+decision A, the convention preflight states): against the declared Zc and
+2 Zc the line looks like Zc/2.  On that reading the air line follows the
+closed form of a Zc/2 line (length fitted once, 30.84 mm) within 0.0012 in
+|S11|^2, and this scene, with the section taken as permittivity 1.9 (the
+mean over the two Ez rows), within 0.009 (rfx-archive
+records/20261011-examples-recheck/lumped_gradient_main/MIRROR-CLOSED-FORM.md).
+That is context only: the check compares rfx's gradient with rfx's own
+finite difference.
 
 What is checked, with the bars declared before the run: G1 the port couples
 (mean |S11|^2 between 0.02 and 0.5); G2 the float64 finite difference resolves
