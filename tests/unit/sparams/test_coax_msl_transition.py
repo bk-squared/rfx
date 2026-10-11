@@ -864,7 +864,7 @@ def test_pinned_measured_gate_provenance():
 @pytest.mark.xfail(
     strict=True,
     reason=(
-        "STALE BY MEASUREMENT after the #822 wave-role fix (372a5fad): this test pins "
+        '#1479 (this fixture no longer builds or no longer matches the current code; it is redrawn with the v2.1 coax-MSL transition work): ' + ("STALE BY MEASUREMENT after the #822 wave-role fix (372a5fad): this test pins "
         "numbers extracted with the inverted a/b labels, so the assembler now returns "
         "the corrected S and the pinned values no longer describe it. Measured on this "
         "branch: `pytest -m slow_physics tests/unit/sparams/test_coax_msl_transition.py` -> 2 failed, "
@@ -872,7 +872,7 @@ def test_pinned_measured_gate_provenance():
         "(a relative bit-identity witness, label-independent) passing. NOT disabled and NOT "
         "loosened: strict=True means re-baselining these numbers in the record-half PR, "
         "after a corrected settled run exists, turns this into an XPASS error that forces "
-        "the marker off. Do not re-baseline from a truncated run."
+        "the marker off. Do not re-baseline from a truncated run.")
     ),
 )
 @pytest.mark.slow_physics
@@ -1803,7 +1803,7 @@ _WIDE_TRACE_COMPENSATION_BLOCKER = (
 )
 
 
-@pytest.mark.xfail(reason=_WIDE_TRACE_COMPENSATION_BLOCKER, strict=True)
+@pytest.mark.xfail(reason='#1479 (this fixture no longer builds or no longer matches the current code; it is redrawn with the v2.1 coax-MSL transition work): ' + (_WIDE_TRACE_COMPENSATION_BLOCKER), strict=True)
 def test_attempt2_wide_junction_cells_are_byte_identical_to_attempt2():
     """Structural (build-only, no FDTD, ~seconds): the Step-B wide fixture
     assembles, and every material array (eps_r, sigma, mu_r) AND the PEC
@@ -2245,7 +2245,7 @@ def test_589_a0_indexes_dense_band_baseline_by_freqs_hz_all(tmp_path):
 @pytest.mark.xfail(
     strict=True,
     reason=(
-        "STALE BY MEASUREMENT after the #822 wave-role fix (372a5fad): this test pins "
+        '#1479 (this fixture no longer builds or no longer matches the current code; it is redrawn with the v2.1 coax-MSL transition work): ' + ("STALE BY MEASUREMENT after the #822 wave-role fix (372a5fad): this test pins "
         "numbers extracted with the inverted a/b labels, so the assembler now returns "
         "the corrected S and the pinned values no longer describe it. Measured on this "
         "branch: `pytest -m slow_physics tests/unit/sparams/test_coax_msl_transition.py` -> 2 failed, "
@@ -2253,7 +2253,7 @@ def test_589_a0_indexes_dense_band_baseline_by_freqs_hz_all(tmp_path):
         "(a relative bit-identity witness, label-independent) passing. NOT disabled and NOT "
         "loosened: strict=True means re-baselining these numbers in the record-half PR, "
         "after a corrected settled run exists, turns this into an XPASS error that forces "
-        "the marker off. Do not re-baseline from a truncated run."
+        "the marker off. Do not re-baseline from a truncated run.")
     ),
 )
 @pytest.mark.slow_physics
@@ -2545,7 +2545,7 @@ def test_extra_flux_monitors_entry_validation():
     strict=True,
     raises=ValueError,
     reason=(
-        "The attempt-2 board cannot be BUILT since PR #981 added validate_msl_port_geometry: "
+        '#1479 (this fixture no longer builds or no longer matches the current code; it is redrawn with the v2.1 coax-MSL transition work): ' + ("The attempt-2 board cannot be BUILT since PR #981 added validate_msl_port_geometry: "
         "its MSL port declares the ground at z = 2.6 mm, and on that column the realized "
         "conductor planes are at 2.4, 2.5, 2.8 and 2.9 mm, so the port's reference has no metal "
         "under it and the builder refuses (rfx/sources/msl_port.py, reached from "
@@ -2557,7 +2557,7 @@ def test_extra_flux_monitors_entry_validation():
         "2026-09-20). raises=ValueError alone is broad -- this function also raises ValueError for "
         "bad monitor entries -- so the body below checks the MESSAGE and turns any other "
         "ValueError into an AssertionError, which this marker does not absorb. strict=True turns "
-        "the day the board builds again into an XPASS error that forces this marker off."
+        "the day the board builds again into an XPASS error that forces this marker off.")
     ),
 )
 @pytest.mark.slow_physics
@@ -3273,7 +3273,7 @@ _ATTEMPT3_CARVE_BLOCKER = (
 )
 
 
-@pytest.mark.xfail(reason=_ATTEMPT3_CARVE_BLOCKER, strict=True)
+@pytest.mark.xfail(reason='#1479 (this fixture no longer builds or no longer matches the current code; it is redrawn with the v2.1 coax-MSL transition work): ' + (_ATTEMPT3_CARVE_BLOCKER), strict=True)
 def test_attempt3_ground_clearance_annulus_is_open():
     """At the junction node every cell with PIN_R < r <= CLEAR_R (36 cells,
     all azimuths) has pec_mask False. Attempt 2 measured 36/36 PEC (FAILS
@@ -3282,7 +3282,7 @@ def test_attempt3_ground_clearance_annulus_is_open():
     _assert_clearance_annulus_open(_build_coax_msl_transition_sim_attempt3())
 
 
-@pytest.mark.xfail(reason=_ATTEMPT3_CARVE_BLOCKER, strict=True)
+@pytest.mark.xfail(reason='#1479 (this fixture no longer builds or no longer matches the current code; it is redrawn with the v2.1 coax-MSL transition work): ' + (_ATTEMPT3_CARVE_BLOCKER), strict=True)
 def test_attempt3_method_stamp_leaves_junction_open():
     """After the method's own stamp_coaxial_line (+ annular resistor) at its
     own z_stub_lo/z_stub_hi = z_junction_idx - 1: the node BELOW the
@@ -3293,7 +3293,7 @@ def test_attempt3_method_stamp_leaves_junction_open():
     _assert_method_stamp_leaves_junction_open(_build_coax_msl_transition_sim_attempt3())
 
 
-@pytest.mark.xfail(reason=_ATTEMPT3_CARVE_BLOCKER, strict=True)
+@pytest.mark.xfail(reason='#1479 (this fixture no longer builds or no longer matches the current code; it is redrawn with the v2.1 coax-MSL transition work): ' + (_ATTEMPT3_CARVE_BLOCKER), strict=True)
 def test_attempt3_junction_is_attempt2_plus_hole_only():
     """Byte-level: sigma and mu_r np.array_equal to attempt 2; pec_mask ^
     pec_mask_attempt2 is EXACTLY the 38 cells at the junction node equal
@@ -3365,7 +3365,7 @@ def test_attempt3_junction_is_attempt2_plus_hole_only():
     assert mats3 == ["pec"] * N_GROUND_BOXES_3 + ["ptfe", "sub", "pec", "pec"]
 
 
-@pytest.mark.xfail(reason=_ATTEMPT3_CARVE_BLOCKER, strict=True)
+@pytest.mark.xfail(reason='#1479 (this fixture no longer builds or no longer matches the current code; it is redrawn with the v2.1 coax-MSL transition work): ' + (_ATTEMPT3_CARVE_BLOCKER), strict=True)
 def test_attempt3_hole_matches_integer_disk_and_contains_ptfe_disk():
     """~pec_mask at the junction node in the 9x9 window == {di^2+dj^2 <= 16}
     minus the pin's realized footprint (49 - 11 = 38 cells), and the PTFE

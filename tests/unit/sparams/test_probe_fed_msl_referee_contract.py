@@ -478,7 +478,7 @@ def test_reported_only_dx80_leg_is_labelled_and_not_the_comparator(ref):
 # (#931). Both checks below are build-time, no openEMS and no solve.
 # ---------------------------------------------------------------------------
 @pytest.mark.xfail(
-    reason="the referee's RFX_REALIZED_RECORD and rfx_node_index were "
+    reason='#1479 (this fixture no longer builds or no longer matches the current code; it is redrawn with the v2.1 coax-MSL transition work): ' + ("the referee's RFX_REALIZED_RECORD and rfx_node_index were "
            "measured on the pre-#931 fixture (dx = 80 um, h_sub realized "
            "320 um, trace 480-560 um); the fixture is now on-lattice at "
            "dx = h_sub/3 = 84.667 um with the foil declared as a sheet. "
@@ -493,7 +493,7 @@ def test_reported_only_dx80_leg_is_labelled_and_not_the_comparator(ref):
            "which is available on this pod. Replacement text and the "
            "measured tables: docs/design_notes/931_migration/"
            "T2-probe_fed_msl_openems_referee.md. Pre-declared falsifier for "
-           "that work: this goes green and the xfail comes off.",
+           "that work: this goes green and the xfail comes off."),
     strict=True,
 )
 def test_referee_record_still_describes_the_fixture_it_names(ref):

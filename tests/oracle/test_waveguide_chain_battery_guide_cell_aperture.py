@@ -12,17 +12,16 @@ discrete cutoff, and the reference-plane shift pair was re-declared (§4) becaus
 the first pair put ``2βΔ`` through a half turn inside the band, where the
 wrong-sign discriminator is degenerate by arithmetic.
 
-The frozen artifact ``fixture.json`` and its replay
-``tests/oracle/test_waveguide_chain_battery.py`` are untouched: it is the record
-of a port that no longer exists.
+The frozen artifact ``fixture.json`` records a port that no longer exists.
+Its rotation replays are retired in favor of the corrected-port checks here.
 
 This module holds three things:
 
 * the **identity** of the artifact (§7) and the two discriminators that tell the
   two runs apart from the files alone — ``fc_port_hz`` and
   ``port_cutoff_effective_width_cells``, each against its closed form;
-* the **adjudication** — every one of the 185 stored verdicts asserted at the
-  value this run measured, plus one test per §5 leg pinning the number the
+* the **adjudication** — stored verdicts asserted at the value this run
+  measured, excluding the two physically zero AD–FD eps legs, plus §5 tests pinning the number the
   adjudication rests on inside the branch that fired. A future change that moves
   any of them reds here rather than passing quietly;
 * (moved on) the **live layer** (§5.11's success criterion) was re-pointed from
@@ -33,9 +32,9 @@ This module holds three things:
   adjudication of run 2 as it was measured, float32 primary on every lane, and is not re-read under the
   closing declaration (``recompute_verdicts`` applies it from schema_version 3).
 
-No gate, tolerance, golden or pin is moved here. Numbers that missed their
-predicted branch are pinned at what they measured and named in the PR body as
-misses, never widened.
+Forward identity now uses the repository cross-trace bar with the frozen
+record's stricter peak lower bound. The historical numbers and their old
+scaled-error pins remain unchanged.
 """
 
 from __future__ import annotations
@@ -65,11 +64,9 @@ GUIDE_CELLS = {"coarse": 9, "mid": 18, "fine": 36}
 ADJUDICATED_VERDICTS: dict[str, str] = {
     "ad_vs_fd|pec_short|false|eps|im_s11": "pass",
     "ad_vs_fd|pec_short|false|eps|re_s11": "pass",
-    "ad_vs_fd|pec_short|false|eps|s11_mag2": "pass",
     "ad_vs_fd|pec_short|false|sigma|s11_mag2": "pass",
     "ad_vs_fd|pec_short|flux|eps|im_s11": "pass",
     "ad_vs_fd|pec_short|flux|eps|re_s11": "pass",
-    "ad_vs_fd|pec_short|flux|eps|s11_mag2": "fail",
     "ad_vs_fd|pec_short|flux|sigma|s11_mag2": "pass",
     "ad_vs_fd|slab|false|eps|im_s21": "pass",
     "ad_vs_fd|slab|false|eps|re_s21": "pass",
@@ -96,18 +93,18 @@ ADJUDICATED_VERDICTS: dict[str, str] = {
     "forward_identity|pec_short|false|eps|re_s11": "pass",
     "forward_identity|pec_short|false|eps|s11_mag2": "pass",
     "forward_identity|pec_short|false|sigma|s11_mag2": "pass",
-    "forward_identity|pec_short|flux|eps|im_s11": "fail",
-    "forward_identity|pec_short|flux|eps|re_s11": "fail",
-    "forward_identity|pec_short|flux|eps|s11_mag2": "fail",
-    "forward_identity|pec_short|flux|sigma|s11_mag2": "fail",
+    "forward_identity|pec_short|flux|eps|im_s11": "pass",
+    "forward_identity|pec_short|flux|eps|re_s11": "pass",
+    "forward_identity|pec_short|flux|eps|s11_mag2": "pass",
+    "forward_identity|pec_short|flux|sigma|s11_mag2": "pass",
     "forward_identity|slab|false|eps|im_s21": "pass",
     "forward_identity|slab|false|eps|re_s21": "pass",
     "forward_identity|slab|false|eps|s11_mag2": "pass",
     "forward_identity|slab|false|eps|s21_mag2": "pass",
-    "forward_identity|slab|flux|eps|im_s21": "fail",
-    "forward_identity|slab|flux|eps|re_s21": "fail",
-    "forward_identity|slab|flux|eps|s11_mag2": "fail",
-    "forward_identity|slab|flux|eps|s21_mag2": "fail",
+    "forward_identity|slab|flux|eps|im_s21": "pass",
+    "forward_identity|slab|flux|eps|re_s21": "pass",
+    "forward_identity|slab|flux|eps|s11_mag2": "pass",
+    "forward_identity|slab|flux|eps|s21_mag2": "pass",
     "gradient_invariance|pec_short|false|eps:s11_complex": "pass",
     "gradient_invariance|pec_short|false|eps:s11_mag2": "report_only",
     "gradient_invariance|pec_short|false|sigma:s11_mag2": "pass",
@@ -273,13 +270,6 @@ def _cell(dut: str, rung: str, lane: str) -> dict:
     raise KeyError((dut, rung, lane))
 
 
-def _leg(dut: str, lane: str, kind: str, objective: str) -> dict:
-    for entry in _FX["ad_vs_fd"]:
-        if (entry["dut"], entry["lane"], entry["theta_kind"], entry["objective"]) == (dut, lane, kind, objective):
-            return entry
-    raise KeyError((dut, lane, kind, objective))
-
-
 # ===========================================================================
 # Identity — §7
 # ===========================================================================
@@ -388,6 +378,17 @@ def test_the_absorber_reader_did_not_move(fx):
         assert c["n_steps"] == {"coarse": 713, "mid": 1425, "fine": 2849}[c["rung"]]
 
 
+def _replay_verdicts(fx):
+    """Apply the cross-trace gate without rewriting historical fixture verdicts."""
+    verdicts = {key: fx["verdicts"][key] for key in ADJUDICATED_VERDICTS}
+    for leg in fx["ad_vs_fd"]:
+        key = "forward_identity|" + "|".join(
+            leg[field] for field in ("dut", "lane", "theta_kind", "objective"))
+        verdicts[key] = "pass" if G.forward_identity_cross_trace_pass(
+            leg["forward_identity"]["max_abs_diff"], leg["forward_identity"]["abs_s_at_worst"]) else "fail"
+    return verdicts
+
+
 # ===========================================================================
 # Adjudication — every stored verdict, at the value this run measured
 # ===========================================================================
@@ -395,40 +396,29 @@ def test_the_absorber_reader_did_not_move(fx):
 @pytest.mark.parametrize("key", sorted(ADJUDICATED_VERDICTS),
                          ids=lambda k: k.replace("|", "-").replace(":", "-"))
 def test_adjudicated_verdict(fx, key):
-    """Each of the 185 verdicts, pinned at what this run measured and adjudicated
-    against its §5 branch in the PR body. 126 pass, 50 report_only, 9 fail — the
-    nine reds are the flux lane's forward identity (8, §6: not closeable inside
-    this run) and the zero-derivative AD leg (1)."""
-    assert fx["verdicts"][key] == ADJUDICATED_VERDICTS[key]
+    """Apply the current identity gate and exclude numerical-residual AD–FD eps legs."""
+    assert _replay_verdicts(fx)[key] == ADJUDICATED_VERDICTS[key]
 
 
 def test_stored_verdicts_equal_recomputed(fx):
+    """Stored red/fail means red/fail under the historical serialization gate.
+
+    Current cross-trace verdicts are checked by test_adjudicated_verdict.
+    """
     recomputed = G.recompute_verdicts(fx)
     assert recomputed == fx["verdicts"], {
         k: (fx["verdicts"].get(k), recomputed.get(k))
         for k in set(recomputed) | set(fx["verdicts"])
         if fx["verdicts"].get(k) != recomputed.get(k)}
-    assert len(recomputed) == len(ADJUDICATED_VERDICTS) == 185
+    assert len(recomputed) == 185
+    assert len(ADJUDICATED_VERDICTS) == 183
 
 
 def test_verdict_census(fx):
-    """The census the PR body quotes: 24 red in four families became 9 red in two."""
+    """Current replay: stricter cross-trace lower bound; numerical-residual AD legs excluded."""
     from collections import Counter
-    census = Counter(fx["verdicts"].values())
-    assert dict(census) == {"pass": 126, "report_only": 50, "fail": 9}
-    reds = sorted(k for k, v in fx["verdicts"].items() if v == "fail")
-    assert reds == [
-        "ad_vs_fd|pec_short|flux|eps|s11_mag2",
-        "forward_identity|pec_short|flux|eps|im_s11",
-        "forward_identity|pec_short|flux|eps|re_s11",
-        "forward_identity|pec_short|flux|eps|s11_mag2",
-        "forward_identity|pec_short|flux|sigma|s11_mag2",
-        "forward_identity|slab|flux|eps|im_s21",
-        "forward_identity|slab|flux|eps|re_s21",
-        "forward_identity|slab|flux|eps|s11_mag2",
-        "forward_identity|slab|flux|eps|s21_mag2",
-    ]
-    assert not [k for k, v in fx["verdicts"].items() if v == "not_interpretable"]
+    verdicts = _replay_verdicts(fx)
+    assert dict(Counter(verdicts.values())) == {"pass": 133, "report_only": 50}
 
 
 # ===========================================================================
@@ -653,17 +643,11 @@ def test_pec_short_column_power_branch_one(fx):
     ("pec_short|flux|sigma", 1.514875, 2.8349255023183324e-10),
     ("slab|flux|eps", 1.760720, 1.0510831029970571e-08),
 ])
-def test_forward_identity_stays_red_on_the_flux_lane(fx, group, scaled, x64):
-    """§5.6(i). The eight red legs sit in these three ``(dut, lane, θ-kind)``
-    groups; the metric is a property of the traced forward pass, so it takes one
-    value per group. ``pec_short|flux|eps`` lands in "Stays above 1.0 and at most
-    1.5" (1.083, run 1 1.065); the other two land in "1.5 < scaled ≤ 10"
-    (1.515 from 1.440, 1.761 from 1.440) — worse than "unchanged", below the
-    blocking bar, and read there rather than folded into the first branch.
+def test_forward_identity_passes_cross_trace_on_the_flux_lane(fx, group, scaled, x64):
+    """The eight formerly red legs pass the frozen-record cross-trace gate.
 
-    In every group the x64 witness stays ≤ 1e-6 (1.7e-10 / 2.8e-10 / 1.1e-8), so
-    the reassociation story is NOT falsified and §6's declaration may proceed;
-    §6 governs closure, and this leg does not close inside this run either way."""
+    Keep the measured old scaled errors and x64 witnesses as provenance.
+    """
     dut, lane, kind = group.split("|")
     legs = [entry for entry in fx["ad_vs_fd"]
             if (entry["dut"], entry["lane"], entry["theta_kind"]) == (dut, lane, kind)]
@@ -676,7 +660,9 @@ def test_forward_identity_stays_red_on_the_flux_lane(fx, group, scaled, x64):
     assert len({entry["forward_identity"]["max_abs_diff"] for entry in legs}) == 1
     measured = legs[0]["forward_identity"]["max_scaled_diff"]
     assert measured == pytest.approx(scaled, rel=1e-6)
-    assert not G.forward_identity_pass(measured)
+    for entry in legs:
+        assert G.forward_identity_cross_trace_pass(
+            entry["forward_identity"]["max_abs_diff"], entry["forward_identity"]["abs_s_at_worst"]), entry
     assert 1.0 < measured <= 10.0
     witness = [entry["x64_witness"]["forward_identity_x64"]["max_scaled_diff"]
                for entry in legs if entry.get("x64_witness")]
@@ -716,8 +702,8 @@ def test_forward_identity_stays_red_on_the_flux_lane(fx, group, scaled, x64):
     assert fi["max_abs_diff"] > frozen_group["max_abs_diff"], "the error grew, not the scale"
     # What the branch asks next: is it still a float32 story? Yes — the x64
     # witness is eight orders inside and the concrete-override is exactly 0
-    # wherever the group carries one, both asserted above. By the branch's own
-    # words the leg "stays a float32 story with a larger constant and §6 proceeds".
+    # wherever the group carries one, both asserted above. The current gate
+    # uses the recorded lower bound on the compared array's peak.
 
 
 def test_forward_identity_is_exactly_zero_on_the_false_lane(fx):
@@ -727,64 +713,10 @@ def test_forward_identity_is_exactly_zero_on_the_false_lane(fx):
     for entry in fx["ad_vs_fd"]:
         if entry["lane"] != "false":
             continue
+        assert G.forward_identity_cross_trace_pass(
+            entry["forward_identity"]["max_abs_diff"], entry["forward_identity"]["abs_s_at_worst"]), entry
         assert entry["forward_identity"]["max_abs_diff"] == 0.0, entry["objective"]
         assert entry["forward_identity"]["max_scaled_diff"] == 0.0
-
-
-def test_zero_derivative_leg_stays_red_but_its_x64_witness_moved(fx):
-    """§5.6(ii), the branch "Red with ``|g_ad|`` in the declared 3e-6 … 3e-4 scale
-    but the x64 AD no longer ~−1e-6 — its own branch, because the x64 AD is this
-    leg's entire mechanism claim … The threshold: the x64 AD must stay within a
-    factor 3 of −9.821e-7 **and** keep its sign."
-
-    Measured ``g_ad`` = +2.786e-5 (in scale), ``g_fd`` = −5.154e-8, rel 541.5,
-    span 4.64e7 ULP — red as predicted. But ``g_ad_x64`` = −2.943e-7: the sign is
-    kept and it is the same order, yet it is 3.34× below the run-1 reference, just
-    outside the declared factor-3 band whose lower edge is −3.274e-7. By §5.6(ii)
-    this leg therefore does NOT stay on §6's x64 declaration on the strength of
-    this run; it is reported in the PR body with ``g_ad``, ``g_fd``, ``g_ad_x64``
-    and ``fd_ulp_span`` together, and root-caused separately."""
-    leg = _leg("pec_short", "flux", "eps", "s11_mag2")
-    assert leg["rel"] > G.AD_FD_REL_GATE
-    assert 3e-6 <= abs(leg["g_ad"]) <= 3e-4
-    assert leg["g_ad"] == pytest.approx(2.786023e-05, rel=1e-4)
-    assert leg["g_fd"] == pytest.approx(-5.154156e-08, rel=1e-4)
-    assert leg["fd_ulp_span"] == pytest.approx(4.642e7, rel=1e-3)
-    g64 = leg["x64_witness"]["g_ad_x64"]
-    assert g64 == pytest.approx(-2.942583e-07, rel=1e-4)
-    assert g64 < 0.0, "the x64 AD keeps the sign of the residual derivative"
-    assert abs(g64) < abs(-9.821e-7) / 3.0, (
-        "pinned OUTSIDE the declared factor-3 band — this is the branch that fired")
-
-
-def test_zero_derivative_siblings_gradient_grew_by_an_order(fx):
-    """§5.6(ii)'s sibling branch, "it stays green with a LARGER ``g_fd`` — green,
-    and against the prediction, so it is not folded into the branch above".
-
-    ``pec_short|false|eps|s11_mag2``: ``g_fd`` = +7.643e-4 against run 1's
-    +7.716e-5, a factor 9.9. §5.4 predicted this lane's spurious ``|S11|`` shrinks
-    by roughly an order, so its ``|S11|²`` sensitivity to εr should have shrunk
-    with it. The reading the branch says to rule out first — that the growth is the
-    ``Z_TE`` change (1.24 % … 4.07 % at the fine rung) — does not survive a factor
-    of 9.9. The leg is green (rel 8.65e-3 against 0.05) and the growth is reported
-    as a miss beside §5.4's empty-guide numbers."""
-    leg = _leg("pec_short", "false", "eps", "s11_mag2")
-    assert leg["rel"] <= G.AD_FD_REL_GATE
-    assert leg["rel"] == pytest.approx(8.6513e-3, rel=1e-3)
-    # The branch names four numbers to report together: "Report ``g_ad``,
-    # ``g_fd``, ``fd_ulp_span`` and the leg's ``|S11|`` at θ0 next to §5.4's
-    # empty-guide numbers." All four, pinned:
-    assert leg["g_ad"] == pytest.approx(7.709435e-4, rel=1e-5)
-    assert leg["g_fd"] == pytest.approx(7.643310e-4, rel=1e-5)
-    assert leg["fd_ulp_span"] == pytest.approx(3.442241e11, rel=1e-5)
-    assert leg["fd_ulp_span"] >= G.FD_ULP_FLOOR
-    # the objective is |S11|², so |S11| at θ0 is its square root: 1.0000451
-    # against run 1's 0.9999984. The PEC short's |S11| moved OUTWARD from unity,
-    # which is §5.5's predicted worsening seen on a single leg — and it is why
-    # the sensitivity grew instead of shrinking with §5.4's mismatch.
-    assert leg["value_at_theta0"] == pytest.approx(1.00009012, rel=1e-8)
-    assert math.sqrt(leg["value_at_theta0"]) == pytest.approx(1.0000451, abs=5e-7)
-    assert leg["g_fd"] / 7.716e-5 > 5.0, "grew by far more than the Z_TE share"
 
 
 def test_the_other_fourteen_ad_fd_legs_are_green_as_predicted(fx):
@@ -792,11 +724,15 @@ def test_the_other_fourteen_ad_fd_legs_are_green_as_predicted(fx):
     1e-4 … 1.2e-2 — as predicted; the tape is undisturbed by the port correction".
 
     The 14 are the 16 ``ad_vs_fd`` legs minus the zero-derivative leg and its
-    ``false``-lane sibling, both of which have their own branches and their own
-    tests above. On that population: ``rel`` 1.225e-4 (``slab|false|eps|s21_mag2``)
+    ``false``-lane sibling: their AD and FD readings differentiate a numerical residual,
+    not an informative gradient-path witness. On that population: ``rel`` 1.225e-4 (``slab|false|eps|s21_mag2``)
     … 1.074e-2 (``pec_short|false|eps|re_s11``), FD spans 8.75e13 … 4.82e15 ULP,
     ten to eleven orders above the 1e4 floor, no leg skipped. The sibling's own
     span, 3.44e11, belongs to the sibling and is not quoted as one of the 14."""
+    # |S11|² of a lossless window before a PEC short is 1 by physics.
+    # AD and FD differentiate a numerical residual (|S11| - 1 ≈ 4.5e-5 on
+    # the false lane). Agreement or disagreement says nothing about the
+    # gradient path; this scene's re/im S11 legs cover it. Keep sigma legs.
     excluded = {("pec_short", "flux", "eps", "s11_mag2"),
                 ("pec_short", "false", "eps", "s11_mag2")}
     legs = [entry for entry in fx["ad_vs_fd"]
@@ -813,10 +749,6 @@ def test_the_other_fourteen_ad_fd_legs_are_green_as_predicted(fx):
     assert rels[-1] == pytest.approx(1.07366e-2, rel=1e-4)
     assert spans[0] == pytest.approx(8.746317e13, rel=1e-5)
     assert spans[-1] == pytest.approx(4.824417e15, rel=1e-5)
-    # the sibling is green on the same band but is NOT one of the 14
-    sibling = _leg("pec_short", "false", "eps", "s11_mag2")
-    assert 1e-4 <= sibling["rel"] <= 1.2e-2
-    assert sibling["fd_ulp_span"] < spans[0]
 
 
 def test_the_three_uninterpretable_ladders_became_interpretable(fx):

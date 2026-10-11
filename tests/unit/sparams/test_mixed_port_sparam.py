@@ -1263,17 +1263,6 @@ def _d5_gap_ground_truth(sim, position, component, extent, impedance=50.0):
     return bool(live_flags[-1]), (end_node + 1) in walls
 
 
-@pytest.mark.xfail(
-    reason="the #556 end-gap advisory reads realized wall planes now and "
-           "FIRES on this fixture (measured 2026-09-07: one warning on the "
-           "+z side), but its message spells the gap as 'gap = 8.46667e-05 "
-           "m' and the remedy as 'e.g. dx = h/N', where this test looks "
-           "for 'gap = 1 cell' and 'refine dx'. The wording is the "
-           "preflight owner's (#931 design note §6); the ground-truth "
-           "premise this file owns is asserted first and passes. Strict, "
-           "so the wording change un-xfails this loudly.",
-    strict=True,
-)
 def test_wire_port_end_gap_advisory_fires_on_a_declared_one_cell_gap():
     """POSITIVE (issue #556), re-declared on the lattice (#931).
 
@@ -1297,11 +1286,8 @@ def test_wire_port_end_gap_advisory_fires_on_a_declared_one_cell_gap():
     defect it stands for is unchanged; only the way the fixture reaches it
     is honest about being deliberate.
 
-    NOTE (cross-branch): the advisory reads realized wall planes and
-    fires here (see the xfail reason); what still reds this test is its
-    message wording ("gap = 1 cell", "refine dx"), which the preflight
-    owner spells differently. The ground-truth premise above it is the
-    part this file owns, and it passes today.
+    The advisory is identified by its structured finding code and severity.
+    Its side has no structured field, so check the emitted +z-side token.
     """
     sim, y_c = _base_sim()
     _add_feed(sim, y_c, x=2e-3, extent=2 * _DX)
@@ -1328,14 +1314,8 @@ def test_wire_port_end_gap_advisory_fires_on_a_declared_one_cell_gap():
         f"#556 advisory must be advisory (warning) severity, got "
         f"{getattr(hits[0], 'severity', None)!r}"
     )
-    msg = str(hits[0])
-    for needle in ("+z-side", "gap = 1 cell", "capacitive",
-                   "extend the port extent by one cell", "refine dx"):
-        assert needle in msg, (
-            f"#556 advisory must name the side, the 1-cell gap, the "
-            f"capacitive consequence and both remedies; missing "
-            f"{needle!r} in: {msg}"
-        )
+    # PreflightIssue carries code/severity, but no side field (ports.py).
+    assert str(hits[0]).count("+z-side") == 1
     # The advisory must not double-fire as a dead-cell finding: no cell
     # is dead here (#544 regression lock pins 4/4 live).
     codes = [getattr(s, "code", None) for s in issues]

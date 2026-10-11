@@ -38,7 +38,7 @@ def parameters():
             if finding:
                 marks.append(pytest.mark.xfail(
                     strict=True, raises=KnownFinding,
-                    reason='S0 finding: ' + expectations(finding)[2]))
+                    reason='#1628 S0 finding: ' + expectations(finding)[2]))
             yield pytest.param(cell, record, marks=marks, id=f'{cell.id}/{record}')
 
 

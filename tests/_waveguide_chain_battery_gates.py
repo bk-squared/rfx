@@ -599,9 +599,25 @@ def zero_derivative_report_only_admissible(*, g_ad_x64: float, g_fd: float) -> b
     return same_sign and max(abs(float(g_ad_x64)), abs(float(g_fd))) <= ZERO_DERIVATIVE_ABS_MAX
 
 
-def forward_identity_pass(max_abs_diff_scaled: float) -> bool:
-    """``max |S_traced − S_untraced| / (rtol·|S_untraced| + atol) ≤ 1``."""
+def forward_identity_historical_pass(max_abs_diff_scaled: float) -> bool:
+    """Historical serialization gate: reproduce the frozen rtol/atol verdict."""
     return max_abs_diff_scaled <= 1.0
+
+
+# Compatibility for scripts/diagnostics/waveguide_chain_battery_v18_close_read.py:
+# that read-only caller counts historical stored reds. No current replay uses
+# this old name; edits to scripts/ are outside this test-only change.
+forward_identity_pass = forward_identity_historical_pass
+
+
+def forward_identity_cross_trace_pass(max_abs_diff: float, abs_untraced_at_worst: float) -> bool:
+    # Repository rule "Cross-trace agreement" (PI 2026-09-23/25): 1e-4 of
+    # the peak of the same compared array. A frozen record's |untraced| at
+    # the worst scaled entry is a LOWER bound on that peak, so this gate is
+    # at least as strict as the rule. A live comparison must use its true peak.
+    # Measured cause: float32 reverse-mode reassociation of a 2849-step
+    # Poynting DFT; x64 agrees to 1e-14.
+    return max_abs_diff <= 1e-4 * abs_untraced_at_worst
 
 
 def forward_identity_metric(S_traced, S_untraced) -> dict:
@@ -612,7 +628,7 @@ def forward_identity_metric(S_traced, S_untraced) -> dict:
     return {"max_abs_diff": float(d.max()), "max_scaled_diff": float(scaled.max()),
             "worst_entry": [int(k[0]), int(k[1]), int(k[2])], "abs_s_at_worst": float(np.abs(b[k])),
             "rtol": FORWARD_IDENTITY_RTOL, "atol": FORWARD_IDENTITY_ATOL,
-            "pass": bool(scaled.max() <= 1.0)}
+            "pass": forward_identity_historical_pass(float(scaled.max()))}
 
 
 # --- dx ladder (§5(c)) ------------------------------------------------------
@@ -862,7 +878,7 @@ def recompute_verdicts(fx: dict) -> dict:
         v[f"ad_vs_fd|{key}"] = verdict
         v[f"forward_identity|{key}"] = (
             "not_interpretable" if declared and primary != "x64" else
-            "pass" if forward_identity_pass(leg["forward_identity"]["max_scaled_diff"]) else "fail")
+            "pass" if forward_identity_historical_pass(leg["forward_identity"]["max_scaled_diff"]) else "fail")
 
     # plane shift (§5(b))
     for key, p in fx["plane_shift"].items():

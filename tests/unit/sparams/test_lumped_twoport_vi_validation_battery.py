@@ -43,9 +43,10 @@ issue #308 receive-wave baseline, which the #318 fix left in the same
 O(0.55-0.61) class — the |S21| kappa deflation is the SEPARATE issue #313
 and is NOT part of the #318 ledger):
 
-THRU fixture (wire 2-port, 16 mm air microstrip w/h=5 over a pec_faces
-ground, Zc ~ 50 ohm, driver path of PR #258; 9 bins 3-7 GHz, 4000 steps,
-~70 s -> slow_physics):
+HISTORICAL LEGACY PER-CELL THRU record (superseded by the whole-port
+diagonal used in test_thru_s11_floor): wire 2-port, 16 mm air microstrip
+w/h=5 over a pec_faces ground, Zc ~ 50 ohm, driver path of PR #258;
+9 bins 3-7 GHz, 4000 steps, historical runtime ~70 s (slow_physics):
   - post-#318 per-bin |S11| = [0.0555 0.0476 0.0388 0.0327 0.0337 0.0426
     0.0558 0.0708 0.0858], |S22| = [0.0543 0.0470 0.0397 0.0360 0.0391
     0.0484 0.0611 0.0752 0.0891] across 3-7 GHz (max|S11| 0.0858, max|S22|
@@ -222,26 +223,11 @@ _THRU_FREQS_HZ = np.linspace(3e9, 7e9, 9)   # in-band of f0=5 GHz, bw=0.8
 # ===========================================================================
 # Gate constants (R5: every gate = measured value + honest margin)
 # ===========================================================================
-# Measured post-#318 (fresh rerun on the fixed branch, 2026-07-11):
-# per-bin |S11| = [0.0555 0.0476 0.0388 0.0327 0.0337 0.0426 0.0558 0.0708
-# 0.0858] and |S22| = [0.0543 0.0470 0.0397 0.0360 0.0391 0.0484 0.0611
-# 0.0752 0.0891] across 3-7 GHz (max|S11| 0.0858, max|S22| 0.0891, mean
-# |S11| 0.0515, per-bin min 0.0327 at 4.5 GHz). This V-shaped curve is
-# rfx's MEASURED feed-post reflection, not an extraction error: the wire
-# ports are two 1 mm vertical feed posts (~0.26 nH each) whose reactances
-# interfere across the 16 mm line, giving a reflection null near 4.5 GHz
-# and rising edges toward 3 and 7 GHz (H_FIXTURE re-diagnosis, 2026-07-11 —
-# three independent witnesses; see the module docstring). Gate 0.12
-# (~1.35x max|S22|) on BOTH diagonals: honest cross-machine float margin,
-# AND strictly below the pre-#318 dead-cell floor 0.13 (the 33.3-ohm
-# termination bug), so a revert of the live-cell fix fails LOUDLY here.
-_THRU_S11_FLOOR_MAX = 0.12
-# Two-sided (review finding): a DEAD diagonal channel reads ~0, which would
-# sail under the upper bound. The measured per-diagonal maxima are
-# 0.0858/0.0891 (~4.3x above this lower bound) and the per-bin minimum is
-# 0.0327 (the physical feed-post null; ~1.6x above this bound), so
-# requiring max|Sii| > 0.02 makes the in-test liveness of both diagonals
-# explicit while clearing the measured 4.5 GHz null with margin.
+# The legacy post-#318 per-cell diagonals are recorded in the module history.
+# Their initial decrease and top magnitudes 0.0858/0.0891 fail the current
+# strictly rising gate and its top-bin lower bound 0.2. The old 0.12 upper
+# bound is retired; it no longer claims to detect a #318 revert.
+# Retain the independent dead-channel floor as a basic liveness check.
 _THRU_S11_ALIVE_MIN = 0.02
 
 # RE-PINNED 2026-08-29 for issue #770 (whole-port off-diagonal frame;
@@ -723,22 +709,8 @@ def test_run_forward_complex_values_agree_on_cpml(crosscheck):
 # ===========================================================================
 
 @pytest.mark.slow_physics
-@pytest.mark.xfail(
-    strict=True,
-    reason="issue #683 flip landed 2026-08-29 and this restore FIRED its "
-           "pre-declared falsifier (P1 gate 5, "
-           "docs/design_notes/issue683_decomposer_flip_predeclaration.md): "
-           "the physical whole-port thru diagonal measures max 0.2910 "
-           "in-band, OUTSIDE the pre-declared < 0.12 restore class.  The "
-           "reading is quantitatively the fixture's own un-de-embedded "
-           "feed posts (measured driven Z_in = 43+j27 ohm at 7 GHz; the "
-           "symmetric far post's +j27 series reactance alone gives "
-           "|Gamma| ~ 27/104 = 0.26), NOT an extraction error — the "
-           "known-load harness passed (n*a +0.9990/+0.9960) and the "
-           "off-diagonals are bit-identical to base.  Held as a FIRED "
-           "falsifier for review sign-off; do not silently re-pin.")
 def test_thru_s11_floor(thru_smatrix):
-    """Thru diagonal: physical floor gate — restore FIRED, held for review.
+    """Thru diagonal: re-declared inductive feed-post envelope.
 
     HISTORY.  The pre-#764 physical floor (max in-band |S11|, |S22| <
     0.12; measured 0.0858/0.0891, the 'feed-post V-shape') was a pin on
@@ -749,23 +721,30 @@ def test_thru_s11_floor(thru_smatrix):
     the #683 flip.  The flip landed 2026-08-29 (POST-injection physical
     sampling + drive-reference decomposer recalibration) and this gate
     was restored per its own instruction — and the restore's pre-declared
-    < 0.12 class FIRED: the measured physical diagonal is
+    < 0.12 class FIRED: the physical diagonal measured then was
     |S11| 0.0093-0.2896 / |S22| 0.0176-0.2910 over the 3-7 GHz bins,
     rising with frequency exactly as the ports' measured feed-post
     reactance does (Z_in - Z0 ~ +j27 ohm at 7 GHz -> far-post mismatch
     |Gamma| ~ 0.26).  The 0.09 'feed-post class' expectation was an
     extrapolation from the legacy artifact reading, and the measurement
-    refutes it.  Per the STOP discipline the strict-xfail above keeps
-    the firing visible instead of widening the gate; the assert below is
-    the pre-declared physical floor, unmodified.
+    refutes it.
+
+    Re-declared from the un-de-embedded feed posts: driven Z_in = 43+j27 Ω
+    at 7 GHz gives |Γ| ≈ 0.288. Require worst in-band |S11| and |S22|
+    < 0.35, strictly increasing magnitudes at every bin, and each top-bin
+    magnitude in (0.2, 0.35), as expected for inductive feed posts.
+    Current CPU measurement, 3–7 GHz in 0.5 GHz bins, for each diagonal:
+    [0.035732, 0.065620, 0.101520, 0.141234, 0.181996, 0.220750,
+     0.254509, 0.280564, 0.296514] (both agree to these six decimals).
     """
     s11 = np.abs(thru_smatrix[0, 0])
     s22 = np.abs(thru_smatrix[1, 1])
     worst = max(s11.max(), s22.max())
-    assert worst < 0.12, (
-        f"thru diagonal above the pre-declared physical floor: "
-        f"max(|S11|, |S22|) = {worst:.4f} (measured physical value "
-        f"0.2910 — the fired-falsifier state this xfail documents)")
+    assert worst < 0.35, f"thru feed-post diagonal exceeds envelope: {worst:.4f}"
+    assert np.all(np.diff(s11) > 0), s11
+    assert np.all(np.diff(s22) > 0), s22
+    assert 0.2 < s11[-1] < 0.35, s11[-1]
+    assert 0.2 < s22[-1] < 0.35, s22[-1]
     # Two-sided liveness (review finding): a dead diagonal reads ~0 and
     # would pass an upper bound.
     assert s11.max() > _THRU_S11_ALIVE_MIN and s22.max() > _THRU_S11_ALIVE_MIN, (

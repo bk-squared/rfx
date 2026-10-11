@@ -85,7 +85,8 @@ RUN2_ID = "369367258205"
 # report_only on the declared lane, closing note §2.
 ZERO_DERIVATIVE_LEG = ("pec_short", "flux", "eps", "s11_mag2")
 
-# Run 2's red set: the section-4 falsifier must reproduce it from the float32 readings.
+# Run 2's red/fail set under the historical serialization gate, not the
+# current cross-trace gate. The stored section-4 falsifier must reproduce it.
 RUN2_RED = {
     "ad_vs_fd|pec_short|flux|eps|s11_mag2",
     "forward_identity|pec_short|flux|eps|im_s11",
@@ -537,7 +538,7 @@ def test_flux_forward_identity_under_x64(fx, group, scaled_x64, abs_x64, scaled_
     """Predicted ≤ 1e-7 scaled on every flux leg (three measured on run 2 as
     witnesses: 1.7e-10 / 2.8e-10 / 1.05e-8); the fail branch was > 1e-3. Landed
     exactly on the three witnesses, now on all 8 legs. The float32 reading beside
-    it is run 2's red to the last printed digit."""
+    it reproduces run 2's red under the historical serialization gate."""
     dut, lane, kind = group.split("|")
     legs = [entry for entry in fx["ad_vs_fd"] if (entry["dut"], entry["lane"], entry["theta_kind"]) == (dut, lane, kind)]
     assert legs
@@ -546,10 +547,15 @@ def test_flux_forward_identity_under_x64(fx, group, scaled_x64, abs_x64, scaled_
     assert fi["max_scaled_diff"] == pytest.approx(scaled_x64, rel=1e-9)
     assert fi["max_abs_diff"] == pytest.approx(abs_x64, rel=1e-9)
     assert fi["max_scaled_diff"] <= 1e-7
-    assert G.forward_identity_pass(fi["max_scaled_diff"])
+    assert G.forward_identity_cross_trace_pass(fi["max_abs_diff"], fi["abs_s_at_worst"])
+    # Validate the stored historical serialization verdict separately.
+    assert fi["pass"] == G.forward_identity_historical_pass(fi["max_scaled_diff"])
     for entry in legs:
         assert entry["forward_identity_float32"]["max_scaled_diff"] == pytest.approx(scaled_f32, rel=1e-6)
-        assert not G.forward_identity_pass(entry["forward_identity_float32"]["max_scaled_diff"])
+        f32 = entry["forward_identity_float32"]
+        assert G.forward_identity_cross_trace_pass(f32["max_abs_diff"], f32["abs_s_at_worst"])
+        # "fail" here is only the frozen historical serialization verdict.
+        assert f32["pass"] == G.forward_identity_historical_pass(f32["max_scaled_diff"])
         conc = entry.get("forward_identity_concrete_override_vs_plain")
         if conc is not None:
             assert conc["max_abs_diff"] == 0.0
@@ -665,8 +671,8 @@ def test_no_non_finite_float32_gradient_at_the_claims_rung(fx):
 # §4 — the declaration's own falsifier, replayed from the file at zero cost
 # ---------------------------------------------------------------------------
 
-def test_section_4_falsifier_float32_primary_reproduces_run_2s_nine_red(fx):
-    """Push the stored float32 readings through the run-2 gate (float32
+def test_section_4_falsifier_float32_primary_reproduces_historical_nine_red(fx):
+    """Reproduce red/fail under the historical serialization gate (float32
     primary on every lane): exactly run 2's 9 red, no more, no fewer. The pod
     ran the same stage with RFX_CHAIN_PRIMARY=float32 and counted 9 too."""
     red = set()
@@ -677,7 +683,7 @@ def test_section_4_falsifier_float32_primary_reproduces_run_2s_nine_red(fx):
                           h=entry["h"], loss_dtype=np.dtype(entry["loss_dtype"]))
         if e["verdict"] == "fail":
             red.add(f"ad_vs_fd|{key}")
-        if not G.forward_identity_pass(entry["forward_identity_float32"]["max_scaled_diff"]):
+        if not G.forward_identity_historical_pass(entry["forward_identity_float32"]["max_scaled_diff"]):
             red.add(f"forward_identity|{key}")
     assert red == RUN2_RED
     assert len(red) == 9
@@ -703,7 +709,7 @@ def test_section_4_falsifier_as_run_in_the_pod_matches_the_replay(fx):
         assert pod["rel"] == f32["rel"], key
         assert pod["verdict"] == f32["verdict"], key
         assert pod["forward_identity_max_scaled_diff"] == entry["forward_identity_float32"]["max_scaled_diff"], key
-        assert pod["forward_identity_pass"] == G.forward_identity_pass(pod["forward_identity_max_scaled_diff"])
+        assert pod["forward_identity_pass"] == G.forward_identity_historical_pass(pod["forward_identity_max_scaled_diff"])
 
 
 # ---------------------------------------------------------------------------
@@ -765,17 +771,14 @@ def test_the_mixed_x64_base_reading_is_kept_as_a_report(fx, key, obj, mixed):
 
 
 # ---------------------------------------------------------------------------
-# post-run finding 3 — run 1's strict marks stay where they are
+# Run 1 replay policy after the weekly ports decisions
 # ---------------------------------------------------------------------------
 
-def test_run_1s_strict_marks_stay_on_the_frozen_artifact():
-    """§2 item 3 of the closing note named "the 8 + 1 xfail(strict=True)
-    marks" for removal; they live in run 1's replay against the frozen run-1
-    artifact, whose numbers cannot change, so they stay — as run 2 left run 1's
-    rotation marks. What closes is this module: zero red, zero xfail."""
+def test_run_1s_resolved_strict_marks_are_removed():
+    """The frozen artifact stays; cross-trace passes and numerical-residual AD legs retire."""
     assert RUN1.FIXTURE.name == "fixture.json"
-    assert len(RUN1.KNOWN_RED["forward_identity"]) == 8
-    assert len(RUN1.KNOWN_RED["ad_vs_fd"]) == 1
+    assert RUN1.KNOWN_RED["forward_identity"] == {}
+    assert RUN1.KNOWN_RED["ad_vs_fd"] == {}
     assert all(m.name != "xfail" for m in getattr(test_adjudicated_verdict, "pytestmark", []))
 
 

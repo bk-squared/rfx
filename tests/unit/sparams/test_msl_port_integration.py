@@ -300,31 +300,8 @@ def test_msl_thru_line_passive_gate():
     )
 
 
-@pytest.mark.slow
-@pytest.mark.xfail(
-    raises=NotImplementedError,
-    strict=True,
-    reason=(
-        "MSL mode='eigenmode' is deferred/out-of-scope — the FDFD eigenmode "
-        "source is a falsified dead-end (5 attempts; Option B accepted the "
-        "Laplace floor). mode='laplace' is the supported lane. Strict "
-        "tripwire: XPASSes if an eigenmode solver ever lands."
-    ),
-)
-def test_msl_thru_line_eigenmode_gate():
-    """50 Ω microstrip thru with FDFD-derived J+M Schelkunoff source (mode='eigenmode').
-
-    The eigenmode source uses the full vectorial 2D Maxwell mode profile
-    from the from-scratch FDFD solver (``rfx.sources.msl_fdfd_eigenmode``,
-    Path B) and injects via the Schelkunoff J+M pair. Compared to the
-    static-Laplace baseline (|S11|=0.118 at this mesh), the eigenmode
-    source is expected to do at least as well; substantial improvement
-    requires finer mesh (mesh-conv test).
-
-    Gates: same as laplace baseline at dx=80µm with 3 substrate cells
-    (the underlying physical floor is mesh-limited at this resolution).
-    """
-
+def test_msl_thru_line_eigenmode_request_is_refused():
+    """The S-matrix entry point refuses the removed eigenmode source."""
     # #1138: trace y solved +8.656% off; this tests the eigenmode source gate.
     sim = Simulation(snap="declared",
         freq_max=F_MAX,
@@ -366,42 +343,10 @@ def test_msl_thru_line_eigenmode_gate():
         eps_r_sub=EPS_R,
     )
 
-    result = sim.compute_msl_s_matrix(n_freqs=30, num_periods=12)
-
-    S = result.S
-    Z0 = result.Z0
-    freqs = result.freqs
-
-    gate_mask = (freqs >= GATE_F_LO) & (freqs <= GATE_F_HI)
-    if not np.any(gate_mask):
-        n_f = freqs.shape[0]
-        gate_mask = np.zeros(n_f, dtype=bool)
-        gate_mask[max(0, n_f // 2 - 5):min(n_f, n_f // 2 + 5)] = True
-
-    s11_gate = np.abs(S[0, 0, gate_mask])
-    s21_gate = np.abs(S[1, 0, gate_mask])
-    z0_gate  = Z0[0, gate_mask].real
-
-    mean_s11 = float(np.mean(s11_gate))
-    mean_s21 = float(np.mean(s21_gate))
-    mean_z0  = float(np.mean(z0_gate))
-
-    print(f"\n[MSL eigenmode] gate {freqs[gate_mask][0]*1e-9:.2f}–{freqs[gate_mask][-1]*1e-9:.2f} GHz")
-    print(f"[MSL eigenmode] mean |S11| = {mean_s11:.4f}")
-    print(f"[MSL eigenmode] mean |S21| = {mean_s21:.4f}")
-    print(f"[MSL eigenmode] mean Re(Z0) = {mean_z0:.2f} Ω")
-
-    # Same gates as laplace baseline. Tighten only if eigenmode source
-    # demonstrates meaningful improvement at finer mesh (mesh-conv test).
-    assert mean_s11 < 0.20, (
-        f"|S11| = {mean_s11:.4f} ≥ 0.20 — eigenmode source worse than baseline"
-    )
-    assert mean_s21 > 0.85, (
-        f"|S21| = {mean_s21:.4f} ≤ 0.85 — insufficient forward transmission"
-    )
-    assert 35.0 < mean_z0 < 70.0, (
-        f"Re(Z0) = {mean_z0:.2f} Ω outside (35, 70) Ω"
-    )
+    # The uniform S-matrix entry propagates the profile refusal through
+    # rfx/sparams/msl.py:705; it has no separate eigenmode refusal message.
+    with pytest.raises(NotImplementedError, match="Path B from-scratch FDFD eigenmode solver"):
+        sim.compute_msl_s_matrix(n_freqs=30, num_periods=12)
 
 
 def _run_msl_thru(l_line: float):
