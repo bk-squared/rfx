@@ -1580,13 +1580,9 @@ class _ExecuteMixin:
                 cpml_layers=grid.cpml_layers,
                 tfsf_margin=self._tfsf.margin,
                 f0=self._tfsf.f0 if self._tfsf.f0 is not None else self._freq_max / 2,
-                bandwidth=self._tfsf.bandwidth,
-                amplitude=self._tfsf.amplitude,
-                polarization=self._tfsf.polarization,
-                direction=self._tfsf.direction,
-                angle_deg=self._tfsf.angle_deg,
-                ny=grid.ny,
-                nz=grid.nz,
+                bandwidth=self._tfsf.bandwidth, amplitude=self._tfsf.amplitude,
+                polarization=self._tfsf.polarization, direction=self._tfsf.direction,
+                angle_deg=self._tfsf.angle_deg, ny=grid.ny, nz=grid.nz,
                 waveform=getattr(self._tfsf, "waveform", "differentiated_gaussian"),
                 method=getattr(self._tfsf, "method", "bloch"),
                 closed_box=self._tfsf.closed_box,
@@ -2135,6 +2131,12 @@ class _ExecuteMixin:
             design_occupancy=design_occupancy,
             field_dtype=self._resolve_field_dtype(),
         )
+
+        # Return the physical point-probe field, as run_uniform does.
+        from rfx.measurement.oblique import reconstruct_oblique_physical
+        from rfx.sources.tfsf import is_tfsf_2d
+        if tfsf_run is not None and is_tfsf_2d(tfsf_run[0]):
+            result = reconstruct_oblique_physical(result, tfsf_run[0], grid, probes)
 
         # Multi-drive S-matrix hook (item-5 Stage 1): return the raw all-port
         # (v_dft, i_dft) accumulators for off-line wave decomposition by the
