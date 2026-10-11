@@ -637,12 +637,8 @@ DRIVER_OPTIONS = {
 
 
 def normalize_inputs(value, path, location=()):
-    """Only C2(a,b,c) and the path-specific addendum normalizations."""
+    """Only C2(b,c) and the path-specific addendum normalizations."""
     if isinstance(value, dict):
-        # Conductor geometry_masks is keyed by declaration object ids.
-        if location and location[-1] == 'geometry_masks':
-            return [normalize_inputs(item, path, location + ('values',))
-                    for item in value.values()]
         return {key: normalize_inputs(item, path, location + (key,))
                 for key, item in value.items()
                 # grid_key caches ids of grid arrays, not physical inputs.
