@@ -699,175 +699,27 @@ def compute_waveguide_s_matrix(
         grid=grid, cfgs=raw_cfgs, n_steps=int(n_steps),
     )
 
-    # Compute Kottke per-component smoothed permittivity if requested.
-    # Shared by both single-mode and multi-mode paths. The reference run is
-    # vacuum and has no eps interfaces, so it always passes aniso_eps=None
-    # inside the extractor.
-    #
-    # #1066: both sites below build their pairs through
-    # ``rfx.geometry.smoothing.smoothed_shape_pairs``, the same one
-    # implementation the three runner sites use since #1043 stage B. It
-    # continues a dielectric that reaches a CPML/UPML face out through that
-    # pad; without it such a structure is solved with eps_r = 1 in its own
-    # absorber and ends in a facet (#831). This lane used to rebuild the raw
-    # list here, under a comment saying it mirrored the runner while it no
-    # longer did.
-    #
-    # Folding it moved no committed verdict, which is why it could be folded
-    # at all: ``subpixel_smoothing`` defaults to False (see this function's
-    # signature), both blocks below sit behind that flag, and an AST census of
-    # the whole tree finds four in-tree callers passing a truthy value --
-    # three fences that raise before the solve, and one real solve whose only
-    # interior geometry is a PEC box reaching no pad (PEC is continued by
-    # neither lane). The census this PR adds brings that to seven, its own
-    # three being build-only.
-    # ``scripts/diagnostics/waveguide_lane_pad_continuation_census.py``
-    # re-runs both that census and the pad comparison.
-    #
-    # WHAT THE CENSUS DOES NOT ESTABLISH (review of PR #1131, F3). It matches
-    # on the callee name, so of 177 calls into this lane's entry points it can
-    # classify 7 explicit and leaves 17 UNKNOWN -- they forward ``**kwargs``
-    # and could be passing the flag. ``compute_s_matrix``
-    # (``rfx/sparams/dispatch.py:452``) reaches this function that way. That
-    # the other 153 pass neither IS a census result; that the 17 do not pass
-    # it is not, and "everything else takes the default" was a grep result
-    # reported as a census result. The script now prints the three buckets
-    # separately.
-    # Stage 2 unified path: subpixel_smoothing="kottke_pec" routes
-    # through compute_inv_eps_tensor_diag and skips the Stage 1
-    # eps_correction + apply_conformal_pec chain entirely. Both
-    # device and reference (vacuum) runs see the same boundary-
-    # face PEC walls, so the inverse-permittivity tensor is
-    # computed twice (once per material context).
     if subpixel_smoothing:
         from rfx.geometry.smoothing import refuse_pmc_smoothing
         refuse_pmc_smoothing(self, grid)
-    use_kottke_pec = (subpixel_smoothing == "kottke_pec")
-    aniso_eps = None
-    aniso_inv_eps = None
-    ref_aniso_inv_eps = None
-    if use_kottke_pec:
-        from rfx.geometry.smoothing import (
-            compute_inv_eps_tensor_diag, smoothed_shape_pairs,
-            warn_unextendable_shapes,
-        )
-        # ``warn_unextendable_shapes`` defaults to stacklevel 3, chosen for
-        # the runners. This lane sits one wrapper deeper, so an unextendable
-        # shape reported here can be attributed to a different frame than the
-        # same shape reported from ``rfx/runners/uniform.py``. The text and
-        # the condition are identical; only the file:line Python prints in
-        # front of it can differ. Left as is -- no fixture in the tree
-        # exercises it, and a per-caller stacklevel is a change to the
-        # helper's contract, not to this fold.
-        shape_eps_pairs, _unextendable = smoothed_shape_pairs(self, grid)
+    from rfx.model.tensor_operands import (
+        form_tensor_operands, finish_tensor_operands, form_reference_operands,
+    )
+    aniso_eps, aniso_inv_eps, conformal_weights, _unextendable = form_tensor_operands(
+        self, grid, materials, subpixel_smoothing=subpixel_smoothing,
+        conformal=self._boundary_spec.conformal_faces(), conformal_min_weight=0.1,
+        pec_shapes=pec_shapes, zero_inverse_on=pec_mask_wg)
+    if subpixel_smoothing:
+        from rfx.geometry.smoothing import warn_unextendable_shapes
         warn_unextendable_shapes(_unextendable)
-        aniso_inv_eps = compute_inv_eps_tensor_diag(
-            grid,
-            dielectric_shapes=shape_eps_pairs,
-            pec_shapes=pec_shapes or [],
-            background_eps=1.0,
-        )
-        # Reference run is empty guide with same boundary walls only.
-        # Must NOT include interior PEC geometry (e.g. PEC short box):
-        # if device and reference share the same obstacle, both DFTs
-        # are identical and (device - reference) / incident = 0.
-        ref_aniso_inv_eps = compute_inv_eps_tensor_diag(
-            grid,
-            dielectric_shapes=[],
-            pec_shapes=boundary_pec_shapes,
-            background_eps=1.0,
-        )
-        # Yee-stagger correction: the Kottke union reaches inv=0
-        # on Yee-staggered components only when the cell-center
-        # AND the offset position are both inside the PEC shape.
-        # For thin PEC obstacles (e.g. a 1-cell-wide PEC short),
-        # cell-center is inside but Ey/Ez Yee positions are at
-        # cell-corner offsets that fall *outside* the box → inv
-        # remains 1 (vacuum). That leaves the H field free to
-        # propagate inside the PEC region and seeds late-time
-        # exponential growth.
-        #
-        # Fix: where ``pec_mask`` (cell-center binary) is True,
-        # force all three inv components to zero. This is the
-        # cell-center analogue of Stage 1's sigma=1e10 fold,
-        # without the Ca→-1 instability that the sigma fold has
-        # at Yee-staggered cells where inv > 0.
-        if pec_mask_wg is not None:
-            inv_xx, inv_yy, inv_zz = aniso_inv_eps
-            inv_xx = jnp.where(pec_mask_wg, 0.0, inv_xx)
-            inv_yy = jnp.where(pec_mask_wg, 0.0, inv_yy)
-            inv_zz = jnp.where(pec_mask_wg, 0.0, inv_zz)
-            aniso_inv_eps = (inv_xx, inv_yy, inv_zz)
-            # pec_mask_wg marks interior PEC geometry (e.g. the PEC
-            # short). The reference run has no interior PEC — do NOT
-            # apply pec_mask_wg to ref_aniso_inv_eps, or the reference
-            # becomes identical to the device and S11 = 0.
-    elif subpixel_smoothing:
-        from rfx.geometry.smoothing import (
-            compute_smoothed_eps, smoothed_shape_pairs,
-            warn_unextendable_shapes,
-        )
-        shape_eps_pairs, _unextendable = smoothed_shape_pairs(self, grid)
-        warn_unextendable_shapes(_unextendable)
-        if shape_eps_pairs:
-            aniso_eps = compute_smoothed_eps(
-                grid, shape_eps_pairs, background_eps=1.0,
-            )
-
-    # Stage 1 conformal PEC: when BoundarySpec declares conformal
-    # faces and pec_shapes was populated (boundary half-space +
-    # any user PEC), compute Dey-Mittra weights and apply
-    # eps_correction. Mirrors runners/uniform.py:96-124.
-    # ``conformal_weights`` flows through extract_waveguide_*
-    # into rfx.simulation.run, which already calls
-    # ``apply_conformal_pec`` per step in its scan body.
-    # Suppressed when use_kottke_pec — Stage 2 owns the PEC
-    # tensor encoding and the eps_correction would double-correct.
-    conformal_weights = None
-    ref_aniso_eps = None
-    if (self._boundary_spec.conformal_faces() and pec_shapes
-            and not use_kottke_pec):
-        from rfx.geometry.conformal import (
-            compute_conformal_weights_sdf,
-            clamp_conformal_weights,
-            conformal_eps_correction,
-        )
-        w_ex, w_ey, w_ez = compute_conformal_weights_sdf(grid, pec_shapes)
-        w_ex, w_ey, w_ez = clamp_conformal_weights(w_ex, w_ey, w_ez, 0.1)
-        conformal_weights = (w_ex, w_ey, w_ez)
-        # Per-component conformal-corrected eps. Merge with the
-        # smoothed eps (if any): conformal overrides at boundary
-        # cells, smoothed survives in the interior.
-        # #1373: the plain E update's four-cell edge mean of the volume
-        # permittivity, then 1/w -- never the per-cell array.
-        from rfx.core.yee import (
-            edge_mean_components, permittivity_without_lumped,
-        )
+    if conformal_weights is not None:
+        from rfx.model.materials import with_components
         from rfx.simulation import resolve_periodic
-        eps_base = edge_mean_components(
-            permittivity_without_lumped(materials),
-            resolve_periodic(grid, None))
-        eps_ex_c, eps_ey_c, eps_ez_c = conformal_eps_correction(
-            eps_base, w_ex, w_ey, w_ez,
-        )
-        if aniso_eps is not None:
-            s_ex, s_ey, s_ez = aniso_eps
-            boundary_ex = w_ex < 1.0
-            boundary_ey = w_ey < 1.0
-            boundary_ez = w_ez < 1.0
-            eps_ex_c = jnp.where(boundary_ex, eps_ex_c, s_ex)
-            eps_ey_c = jnp.where(boundary_ey, eps_ey_c, s_ey)
-            eps_ez_c = jnp.where(boundary_ez, eps_ez_c, s_ez)
-        aniso_eps = (eps_ex_c, eps_ey_c, eps_ez_c)
-        # The reference run (vacuum) shares the same boundary
-        # walls, so the conformal eps correction applies equally.
-        # Build it from the ref vacuum eps so the only difference
-        # ref-vs-device is the obstacle in ``materials.eps_r``.
-        ref_eps_base = jnp.ones_like(materials.eps_r)
-        ref_ex, ref_ey, ref_ez = conformal_eps_correction(
-            ref_eps_base, w_ex, w_ey, w_ez,
-        )
-        ref_aniso_eps = (ref_ex, ref_ey, ref_ez)
+        materials = with_components(materials, grid, periodic=resolve_periodic(grid, None))
+    aniso_eps = finish_tensor_operands(materials, aniso_eps, conformal_weights)
+    ref_aniso_eps, ref_aniso_inv_eps = form_reference_operands(
+        grid, materials, subpixel_smoothing=subpixel_smoothing,
+        conformal_weights=conformal_weights, boundary_pec_shapes=boundary_pec_shapes)
 
     if has_multimode and _wg_sheet_ctx is not None:
         raise ValueError(

@@ -22,9 +22,6 @@ from rfx.sources.waveguide_port import (
 from rfx.current_moments import monitor_for_simulation as _cm_for_sim
 from rfx.farfield import make_ntff_box
 from rfx.lumped import setup_rlc_materials, build_rlc_meta
-from rfx.core.yee import (
-    add_lumped_eps,
-)
 
 
 def _reconstruct_oblique_physical(sim_result, tfsf_cfg, grid, probes):
@@ -299,86 +296,22 @@ def run_uniform(
     for spec in sim._lumped_rlc:
         materials = setup_rlc_materials(grid, spec, materials)
 
-    # Stage 2 unified path: subpixel_smoothing="kottke_pec" replaces
-    # the Stage 1 (Kottke dielectric + Dey-Mittra weights + per-step
-    # apply_conformal_pec) chain with a single inverse-permittivity
-    # tensor that encodes both dielectric subpixel smoothing and PEC
-    # behaviour (inv = 0 freezes the field).
-    aniso_eps = None
-    aniso_inv_eps = None
     use_kottke_pec = (subpixel_smoothing == "kottke_pec")
     if use_kottke_pec:
         from rfx.current_moments import refuse_h_side_conductor
         refuse_h_side_conductor(sim, 'subpixel_smoothing="kottke_pec"')
-        from rfx.geometry.smoothing import (
-            compute_inv_eps_tensor_diag, smoothed_shape_pairs,
-            warn_unextendable_shapes,
-        )
-        # #1043 stage B: the pairs carry the CPML/UPML pad continuation, so a
-        # dielectric that touches the domain edge is solved with the material
-        # in its own pad instead of a vacuum facet at the seam. PEC shapes
-        # arrive continued from assembly, with the MSL entry exception.
-        shape_eps_pairs, _unextendable = smoothed_shape_pairs(sim, grid)
+    from rfx.model.tensor_operands import form_tensor_operands, finish_tensor_operands
+    aniso_eps, aniso_inv_eps, conformal_weights, _unextendable = form_tensor_operands(
+        sim, grid, materials, subpixel_smoothing=subpixel_smoothing,
+        conformal=conformal_pec, conformal_min_weight=conformal_min_weight,
+        pec_shapes=pec_shapes)
+    if subpixel_smoothing:
+        from rfx.geometry.smoothing import warn_unextendable_shapes
         # Assembly already emitted the conductor findings for this run.
         warn_unextendable_shapes([u for u in _unextendable if not u.conductor])
-        aniso_inv_eps = compute_inv_eps_tensor_diag(
-            grid,
-            dielectric_shapes=shape_eps_pairs,
-            pec_shapes=pec_shapes or [],
-            background_eps=1.0,
-        )
-        # Stage 2 *keeps* pec_mask alive (was previously null'd here).
-        # Reasons:
-        # 1. ``apply_pec_edges`` on top of inv=0 provides defense-in-
-        #    depth: numerical noise that creeps into PEC cells (e.g.
-        #    via float-arithmetic-ordering at boundary cells with
-        #    fractional inv) is zeroed each step rather than
-        #    accumulating.
-        # 2. ``apply_pec_h_mask`` (NEW, Step 5 fix) zeros H inside
-        #    PEC cells — Stage 1 lacked this but its ``sigma=1e10``
-        #    fold provided implicit damping that Stage 2 doesn't.
-        #    Without H zeroing, late-time NaN at the cells deep
-        #    inside PEC half-spaces (k=z_max in the 50·τ stability
-        #    test).
-        # ``conformal_weights`` is intentionally left unset (None) so
-        # the legacy ``apply_conformal_pec`` per-step E zero is
-        # skipped — that path's eps_correction would conflict with
-        # the inv tensor.
-    elif subpixel_smoothing:
-        from rfx.geometry.smoothing import (
-            compute_smoothed_eps, smoothed_shape_pairs,
-            warn_unextendable_shapes,
-        )
-        # #1043 stage B: same pad continuation as the Stage-2 site above.
-        shape_eps_pairs, _unextendable = smoothed_shape_pairs(sim, grid)
-        warn_unextendable_shapes([u for u in _unextendable if not u.conductor])
-        if shape_eps_pairs:
-            aniso_eps = compute_smoothed_eps(grid, shape_eps_pairs, background_eps=1.0)
-
-    # Conformal PEC (Stage 1): compute weights and produce anisotropic
-    # eps. Skipped when Stage 2 unified path is active (use_kottke_pec)
-    # — the inv-eps tensor already encodes the conformal behaviour.
-    conformal_weights = None
-    if conformal_pec and pec_shapes and not use_kottke_pec:
-        from rfx.geometry.conformal import (
-            compute_conformal_weights_sdf,
-            clamp_conformal_weights,
-            conformal_eps_correction,
-        )
-        w_ex, w_ey, w_ez = compute_conformal_weights_sdf(grid, pec_shapes)
-        w_ex, w_ey, w_ez = clamp_conformal_weights(w_ex, w_ey, w_ez, conformal_min_weight)
-        conformal_weights = (w_ex, w_ey, w_ez)
-
-        # The 1/w permittivity is formed below, once the run's final
-        # periodic flags are known (#1373).
-        # Conformal replaces binary pec_mask
+    if conformal_weights is not None:
+        # Conformal replaces binary pec_mask; Stage 2 keeps it alive.
         pec_mask = None
-
-    # Edge-owned capacitors go onto the Stage-2 inverse tensor here; the
-    # Stage-1 / smoothed tensor gets them below, after the conformal
-    # correction, so a conformal weight never divides a lumped C.
-    aniso_inv_eps = add_lumped_eps(
-        aniso_inv_eps, materials.eps_r_lumped, inverse=True)
 
     # Build sources and probes for the compiled runner
     from rfx.sources.port_drive import PortSourceQueue
@@ -781,27 +714,7 @@ def run_uniform(
     sources = resolve_run_sources(sources, materials, sim, grid,
         tensor=aniso_eps is not None or conformal_weights is not None)
 
-    # Conformal PEC (Stage 1) permittivity, #1373: the same four-cell
-    # edge mean of the volume permittivity the plain E update uses, on the
-    # run's final periodic flags (after the TFSF / 2-D overrides), divided
-    # by the edge's open fraction w. On an edge no PEC touches (w == 1) it
-    # is the plain path's value exactly.
-    if conformal_weights is not None:
-        w_ex, w_ey, w_ez = conformal_weights
-        eps_mean = materials.components.eps
-        eps_ex_c, eps_ey_c, eps_ez_c = conformal_eps_correction(
-            eps_mean, w_ex, w_ey, w_ez)
-        if aniso_eps is not None:
-            # Merge: conformal PEC overrides smoothed eps at PEC boundary cells
-            s_ex, s_ey, s_ez = aniso_eps
-            eps_ex_c = jnp.where(w_ex < 1.0, eps_ex_c, s_ex)
-            eps_ey_c = jnp.where(w_ey < 1.0, eps_ey_c, s_ey)
-            eps_ez_c = jnp.where(w_ez < 1.0, eps_ez_c, s_ez)
-        aniso_eps = (eps_ex_c, eps_ey_c, eps_ez_c)
-
-    # Complete the volume tensor before adding edge-owned capacitors:
-    # conformal weights must act on the volume, never on a lumped C.
-    aniso_eps = add_lumped_eps(aniso_eps, materials.eps_r_lumped)
+    aniso_eps = finish_tensor_operands(materials, aniso_eps, conformal_weights)
 
     # Thread the field storage dtype into the ADE carry (issue #656), the
     # same way ``rfx.simulation.run`` threads it into the CPML psi / NTFF /
