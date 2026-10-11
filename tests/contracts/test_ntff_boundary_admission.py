@@ -13,7 +13,7 @@ EXTERIOR = (
     "an NTFF box radiates its surface currents into free space, but {faces}: "
     "the far field would miss their images (a symmetry or ground plane is not "
     "reconstructed). Every face of the realized model must be absorbing: draw a "
-    "finite ground plane as geometry, and note that a full-aperture waveguide port "
+    "finite ground plane as geometry, and note that a waveguide port on the uniform mesh "
     "solves its transverse faces as PEC walls; a symmetry plane is not supported "
     "with NTFF yet."
 )
