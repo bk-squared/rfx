@@ -208,6 +208,15 @@ def export_geometry_sdf(
     sdf : ndarray, shape (Nx, Ny, Nz)
         Signed distance field in metres.
     """
+    from rfx.geometry.csg import Box
+
+    if getattr(sim, "_pinned_sheets", ()):
+        raise ValueError(
+            "export_geometry_sdf cannot place add_pinned_sheet sheets; "
+            "they would be missing: pinned sheets are declared by mesh node "
+            "index, so their position is undefined on the exporter's own lattice"
+        )
+
     domain = sim._domain
     nx = max(int(np.ceil(domain[0] / resolution)), 1)
     ny = max(int(np.ceil(domain[1] / resolution)), 1)
@@ -237,10 +246,9 @@ def export_geometry_sdf(
                 occupied |= _sheet_footprint_on_samples(
                     shape, x, y, z, name=f"geometry[{gi}] 'pec'")
                 continue
-        # Use the shape's corner-based geometry directly for Box, Sphere,
-        # Cylinder. For arbitrary shapes fall back to mask() with a
-        # temporary grid.
-        if hasattr(shape, "corner_lo") and hasattr(shape, "corner_hi"):
+        # Keep analytic tests for Box, Sphere and Cylinder; other shapes
+        # evaluate their own occupancy on the SDF coordinate arrays.
+        if isinstance(shape, Box):
             # Box — fast analytic test
             lo = shape.corner_lo
             hi = shape.corner_hi
@@ -272,8 +280,20 @@ def export_geometry_sdf(
                 # Sphere
                 r2 = dx_ ** 2 + dy_ ** 2 + dz_ ** 2
                 occupied |= r2 <= r ** 2
-        # else: skip shapes we cannot evaluate analytically — they will
-        # not appear in the SDF.  A future version could accept a Grid.
+        else:
+            # A declared shape must be evaluated or explicitly refused.
+            try:
+                mask = np.asarray(shape.mask_on_coords(x, y, z), dtype=bool)
+                if mask.shape != occupied.shape:
+                    raise ValueError(
+                        f"mask shape {mask.shape} does not match {occupied.shape}")
+                occupied |= mask
+            except Exception as exc:
+                raise ValueError(
+                    f"geometry[{gi}] ({type(shape).__name__}) cannot be "
+                    "evaluated on the SDF samples; it would be missing "
+                    "from the exported geometry"
+                ) from exc
 
     # Sheets declared through add_thin_conductor are NOT in sim._geometry,
     # so the loop above never saw them: a sheet ground plane, patch or

@@ -7,7 +7,7 @@ import warnings
 from pathlib import Path
 
 from rfx.api import Simulation, Result
-from rfx.geometry.csg import Box
+from rfx.geometry.csg import Box, OrientedBox, PolylineWire
 from rfx.amr import compute_error_indicator, suggest_refinement_regions, auto_refine
 from rfx.surrogate import export_training_data, export_geometry_sdf
 from rfx.sweep import parametric_sweep, SweepResult
@@ -170,6 +170,71 @@ class TestExportTrainingData:
 
 class TestExportGeometrySDF:
     """Tests for export_geometry_sdf."""
+
+    @pytest.mark.parametrize("with_corners", [False, True])
+    def test_sdf_sees_oriented_box(self, with_corners):
+        class OrientedBoxWithCorners(OrientedBox):
+            @property
+            def corner_lo(self):
+                return self.bounding_box()[0]
+
+            @property
+            def corner_hi(self):
+                return self.bounding_box()[1]
+
+        sim = Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03), boundary="pec")
+        c = np.sqrt(0.5)
+        shape_type = OrientedBoxWithCorners if with_corners else OrientedBox
+        sim.add(shape_type(
+            center=(0.015, 0.015, 0.015), size=(0.016, 0.004, 0.008),
+            rotation=((c, -c, 0), (c, c, 0), (0, 0, 1)),
+        ), material="pec")
+
+        # 31 samples span 0..30 mm, so these indices are coordinates in mm.
+        # (19,19,15): body coordinates (4*sqrt(2),0,0) mm, inside
+        # half-sizes (8,2,4) mm. (19,11,15): (0,-4*sqrt(2),0) mm,
+        # outside the rotated box but inside its axis-aligned bounding box.
+        sdf = export_geometry_sdf(sim, resolution=0.03 / 31)
+        assert sdf[19, 19, 15] < 0
+        assert sdf[19, 11, 15] > 0
+
+    def test_sdf_sees_polyline_wire(self):
+        sim = Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03), boundary="pec")
+        sim.add(PolylineWire(
+            points=((0.005, 0.015, 0.015), (0.025, 0.015, 0.015)),
+            radius=0.002,
+        ), material="pec")
+        # At 1 mm sample spacing, (15,16,15) mm is 1 mm from the
+        # segment; (15,19,15) mm is 4 mm away, beyond its 2 mm radius.
+        sdf = export_geometry_sdf(sim, resolution=0.03 / 31)
+        assert sdf[15, 16, 15] < 0
+        assert sdf[15, 19, 15] > 0
+
+    @pytest.mark.parametrize("failure", ["missing", "raises", "wrong_shape"])
+    def test_sdf_refuses_unevaluable_shape(self, failure):
+        class UnevaluableShape:
+            pass
+
+        shape = UnevaluableShape()
+        if failure == "raises":
+            def mask_on_coords(x, y, z):
+                raise RuntimeError("cannot sample this shape")
+            shape.mask_on_coords = mask_on_coords
+        elif failure == "wrong_shape":
+            shape.mask_on_coords = lambda x, y, z: np.ones((1,), dtype=bool)
+        sim = Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03), boundary="pec")
+        sim.add(shape, material="pec")
+        with pytest.raises(ValueError, match=(
+            r"geometry\[0\] \(UnevaluableShape\) cannot be evaluated on the SDF "
+            "samples; it would be missing from the exported geometry"
+        )):
+            export_geometry_sdf(sim)
+
+    def test_sdf_refuses_pinned_sheet(self):
+        sim = Simulation(freq_max=5e9, domain=(0.03, 0.03, 0.03), boundary="pec")
+        sim.add_pinned_sheet(plane_index=5, i_range=(2, 8), j_range=(2, 8))
+        with pytest.raises(ValueError, match="pinned"):
+            export_geometry_sdf(sim)
 
     def test_export_geometry_sdf(self):
         """SDF should be negative inside geometry, positive outside."""
