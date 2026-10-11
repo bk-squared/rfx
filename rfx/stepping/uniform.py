@@ -399,9 +399,9 @@ def make_uniform_step(
         # legacy diagonal in decompose_wire_s_matrix. The physical
         # channels (v, i, v_port) are accumulated POST-injection below.
         frame.wire_ref_samples = [-getattr(frame.st, component)[mid] * dx
-                                  for component, _, kind, mid in port_specs if kind == 'wire']
+                                  for component, _, kind, mid, _ in port_specs if kind == 'wire']
         frame.lumped_ref_samples = [_port_voltage_value(getattr(frame.st, component)[mid], dx)
-                                    for component, _, kind, mid in port_specs if kind == 'lumped']
+                                    for component, _, kind, mid, _ in port_specs if kind == 'lumped']
         if ctx.use_wire_sparams:
             frame.new_wire_refs = []
             for accs, wp_meta, v_ref in zip(frame.carry["wire_sparam_accs"], ctx.wire_sparam_meta, frame.wire_ref_samples):

@@ -224,7 +224,7 @@ def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
                 # voltage V_port = sum_live(-E_c * d_par,c) and its count.
                 'live_cells': _live_cells,
                 'n_live': int(n_live),
-                'kind': 'wire',
+                'kind': 'wire', 'port_id': _port_index,
             })
         else:
             # Single-cell lumped port
@@ -285,7 +285,7 @@ def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
                 'direction': pe.direction or _auto_direction(pe.position),
                 'live_cells': ((i, j, k),),
                 'n_live': 1,
-                'kind': 'lumped',
+                'kind': 'lumped', 'port_id': _port_index,
                 'record_only': not (lane == 'fwd_nonuniform' and s_param_freqs is not None),
             })
 

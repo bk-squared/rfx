@@ -1607,7 +1607,7 @@ class _ExecuteMixin:
                 # rfx/simulation.py) and carries the static live run for
                 # the whole-port gap-voltage accumulator.
                 register_wire(port_record_specs, wire_port_sparam_specs, pe.component,
-                              wp_cells, wp_live_flags, _s11_freqs_arr, pe.impedance, _drive_this_port)
+                              wp_cells, wp_live_flags, _s11_freqs_arr, pe.impedance, _drive_this_port, _port_index)
                 # Opt-in reference-plane V/I accumulators (issue #313).
                 # Registered ONLY on the production-scan S-matrix driver
                 # path (_sparam_drive_idx is not None): the plane waves
@@ -1711,7 +1711,7 @@ class _ExecuteMixin:
             # (issue #72). Skipping passive ports keeps S11 indexing
             # aligned with the active-port list.
             register_lumped(port_record_specs, lumped_port_sparam_specs, pe.component,
-                            idx, _s11_freqs_arr, pe.impedance, _drive_this_port)
+                            idx, _s11_freqs_arr, pe.impedance, _drive_this_port, _port_index)
 
         # MSL ports — full cross-section distributed feed; built like the
         # wire-port branch above but with N_y × N_z cells.  S-parameters are

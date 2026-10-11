@@ -89,13 +89,13 @@ def project(state, table):
 
 
 def port_owners(grid, specs, *, nu, boundary):
-    """Compile (component, live cells, kind, midpoint) specs; pin record order."""
+    """Compile (component, live cells, kind, midpoint, port index) specs; pin record order."""
     from .ports import lumped_wire_owner
     sampled = []
-    for i, (component, live, kind, mid) in enumerate(specs):
+    for i, (component, live, kind, mid, port_id) in enumerate(specs):
         owner = lumped_wire_owner(grid, component, live, nu=nu,
                     pmc_faces=boundary.pmc_faces, periodic=boundary.periodic,
-                    port_id=i, kind=kind)
+                    port_id=port_id, kind=kind)
         channels = tuple(c for c in owner.channels if c.sample_stage == 'post-injection')
         names = tuple(c.name for c in channels)
         expected = ('V', 'I', 'V_port') if kind == 'wire' else ('V', 'I')

@@ -69,3 +69,38 @@ def test_owner_channel_set_depends_only_on_kind(graded, kind):
     names = tuple(c.name for c in owner.channels)
     expected = ('V', 'I', 'V_port') if kind == 'wire' else ('V', 'I')
     assert names == expected + (() if graded else ('V_ref',))
+
+
+def test_records_hash_and_compare_by_identity():
+    samples = jnp.array([[1., 2.]])
+    record = PortTimeRecord('port:1:mode:0', 'lumped', ('V', 'I'), samples)
+    other = PortTimeRecord('port:1:mode:0', 'lumped', ('V', 'I'), samples)
+    assert record == record
+    assert record != other
+    assert {record: 'first', other: 'second'}[record] == 'first'
+    assert hash(record) == object.__hash__(record)
+
+
+@pytest.mark.parametrize('graded', [False, True], ids=['uniform', 'graded'])
+@pytest.mark.parametrize('entry, reads_s', [('run', False), ('forward', False), ('forward', True)],
+                         ids=['run-S-off', 'forward-S-off', 'forward-S-on'])
+def test_record_ids_follow_simulation_port_numbers(graded, entry, reads_s):
+    import warnings
+    from rfx import Simulation
+    from rfx.measurement.plan import measurement_plan
+    sim = Simulation(freq_max=10e9, domain=(.008, .006, .002), dx=.001, boundary='pec',
+                     **({'dz_profile': np.array([.0008, .0012])} if graded else {}))
+    sim.add_source((.001, .001, .001), 'ez', waveform=lambda t: jnp.cos(t * 2e10),
+                   amplitude_kind='field')
+    sim.add_port((.002, .003, 0.), 'ez', impedance=50., excite=False)
+    sim.add_port((.006, .003, 0.), 'ez', impedance=50., extent=.002, excite=False)
+    kwargs = {'compute_s_params': False} if entry == 'run' else (
+        {'port_s11_freqs': np.array([2e9])} if reads_s else {})
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        result = getattr(sim, entry)(n_steps=16, skip_preflight=True, **kwargs)
+    expected = {'lumped': 'port:1:mode:0', 'wire': 'port:2:mode:0'}
+    assert {r.kind: r.id for r in result.sparam_time_records} == expected
+    plan = measurement_plan(sim, n_steps=16, path=('fwd_' if entry == 'forward' else 'run_') +
+                            ('nonuniform' if graded else 'uniform'))
+    assert {o.kind: o.id for o in plan.owners if o.kind in expected} == expected

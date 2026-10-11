@@ -6,38 +6,40 @@ def ordered_specs(specs):
     return tuple(s for kind in ('wire', 'lumped') for s in specs if s[2] == kind)
 
 
-def register_wire(records, spectra, component, cells, live, freqs, impedance, excite):
+def register_wire(records, spectra, component, cells, live, freqs, impedance, excite, port_id):
     from rfx.simulation import WirePortSParamSpec
     if not cells:
         return
     live_cells = tuple(tuple(int(x) for x in c) for c, yes in zip(cells, live) if yes)
     mid = live_cells[len(live_cells) // 2]
-    records.append((component, live_cells, 'wire', mid))
+    records.append((component, live_cells, 'wire', mid, port_id))
     if freqs is not None:
         spectra.append(WirePortSParamSpec(*mid, component, freqs,
                                           float(impedance), live_cells, bool(excite)))
 
 
-def register_lumped(records, spectra, component, idx, freqs, impedance, excite):
+def register_lumped(records, spectra, component, idx, freqs, impedance, excite, port_id):
     from rfx.simulation import LumpedPortSParamSpec
     mid = tuple(int(x) for x in idx)
-    records.append((component, (mid,), 'lumped', mid))
+    records.append((component, (mid,), 'lumped', mid, port_id))
     if freqs is not None:
         spectra.append(LumpedPortSParamSpec(*mid, component, freqs, float(impedance), bool(excite)))
 
 
-def uniform_run_specs(grid, wires, live_cells, lumped):
+def uniform_run_specs(grid, wires, live_cells, lumped, ports):
     specs = [(p.component, live, 'wire', live[len(live)//2])
              for p, live in zip(wires, live_cells)]
     for p in lumped:
         mid = tuple(_grid_metric.field_index(grid, p.position, p.component))
         specs.append((p.component, (mid,), 'lumped', mid))
-    return tuple(specs)
+    ids = [i for wire in (True, False) for i, p in enumerate(ports)
+           if p.impedance != 0.0 and (p.extent is not None) == wire]
+    return tuple((*spec, port_id) for spec, port_id in zip(specs, ids, strict=True))
 
 
 def graded_specs(ports):
     return tuple((p['component'], p.get('live_cells', ((p['mid_i'], p['mid_j'], p['mid_k']),)), p.get('kind', 'wire'),
-                  (p['mid_i'], p['mid_j'], p['mid_k'])) for p in ports)
+                  (p['mid_i'], p['mid_j'], p['mid_k']), p.get('port_id', i)) for i, p in enumerate(ports))
 
 
 def graded_s_ports(ports):

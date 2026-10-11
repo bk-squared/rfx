@@ -7,9 +7,9 @@ def uniform_specs(ctx):
     if ctx.port_record_specs is not None:
         return ctx.port_record_specs
     return tuple((m.component, m.live_cells or ((m.mid_i, m.mid_j, m.mid_k),), 'wire',
-                       (m.mid_i, m.mid_j, m.mid_k))
-                       for m in ctx.wire_sparam_meta) + tuple(
-                           (m.component, ((m.i, m.j, m.k),), 'lumped', (m.i, m.j, m.k)) for m in ctx.lumped_sparam_meta)
+                       (m.mid_i, m.mid_j, m.mid_k), i)
+                       for i, m in enumerate(ctx.wire_sparam_meta)) + tuple(
+                           (m.component, ((m.i, m.j, m.k),), 'lumped', (m.i, m.j, m.k), i + len(ctx.wire_sparam_meta)) for i, m in enumerate(ctx.lumped_sparam_meta))
 
 
 def from_owners(records, owners, n_steps=None):
@@ -71,7 +71,7 @@ def uniform_samples(values, specs, wire_refs, lumped_refs):
     import jax.numpy as jnp
     refs = iter((*wire_refs, *lumped_refs))
     samples, offset = [], 0
-    for _, _, kind, _ in specs:
+    for _, _, kind, _, _ in specs:
         width = 3 if kind == 'wire' else 2
         samples.append(jnp.stack((*values[offset:offset+width], next(refs))))
         offset += width

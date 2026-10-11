@@ -132,7 +132,7 @@ def make_graded_step(
     from rfx.nonuniform import _update_e_nu_dispersive
     from rfx.measurement.projector import port_table, project, port_owners
     port_specs = ctx.port_record_specs if ctx.port_record_specs is not None else tuple(
-        (m[3], m[13], 'wire', m[:3]) for m in ctx.wp_meta)
+        (m[3], m[13], 'wire', m[:3], i) for i, m in enumerate(ctx.wp_meta))
     acc_indices = ctx.port_acc_indices if ctx.port_record_specs is not None else tuple(range(len(ctx.wp_meta)))
     widths = tuple(3 if p[2] == 'wire' else 2 for p in port_specs)
     offsets = tuple(sum(widths[:i]) for i in range(len(widths)))

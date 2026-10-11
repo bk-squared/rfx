@@ -5,7 +5,7 @@ import jax
 
 
 @jax.tree_util.register_pytree_node_class
-@dataclass(frozen=True)
+@dataclass(frozen=True, eq=False)
 class PortTimeRecord:
     """One port's scalar channels; only samples is a JAX leaf."""
 

@@ -361,7 +361,7 @@ def run_uniform(
                 "whose length is n_steps"})
 
     from rfx.measurement.port_registration import uniform_run_specs
-    record_specs = uniform_run_specs(grid, wire_ports, wire_port_live_cells, lumped_ports)
+    record_specs = uniform_run_specs(grid, wire_ports, wire_port_live_cells, lumped_ports, sim._ports)
 
     # Build wire port S-param specs for JIT-integrated DFT
     wire_sparam_specs = []
