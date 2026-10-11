@@ -1488,6 +1488,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
 
     # Waveguide-port output: dict[name -> cfg], optional sparams dict.
     waveguide_ports_result = None
+    from rfx.sparams._waveguide_planes import resolve_reported_planes
+
     waveguide_sparams_result = None
     if sim._waveguide_ports and "waveguide_ports" in r:
         from rfx.sources.waveguide_port import (
@@ -1506,26 +1508,9 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
             source_plane = plane_positions["source"]
             measured_reference_plane = plane_positions["reference"]
             measured_probe_plane = plane_positions["probe"]
-            if entry.calibration_preset == "source_to_probe":
-                reference_plane = source_plane
-                probe_plane = measured_probe_plane
-                calibration_preset = "source_to_probe"
-            elif entry.reference_plane is not None or entry.probe_plane is not None:
-                reference_plane = (
-                    entry.reference_plane
-                    if entry.reference_plane is not None
-                    else measured_reference_plane
-                )
-                probe_plane = (
-                    entry.probe_plane
-                    if entry.probe_plane is not None
-                    else measured_probe_plane
-                )
-                calibration_preset = "explicit"
-            else:
-                reference_plane = measured_reference_plane
-                probe_plane = measured_probe_plane
-                calibration_preset = "measured"
+            reference_plane, probe_plane, calibration_preset = resolve_reported_planes(
+                entry, cfg, grid=grid,
+            )
             s11, s21 = extract_waveguide_sparams(
                 cfg,
                 ref_shift=reference_plane - measured_reference_plane,

@@ -2243,11 +2243,11 @@ class Simulation(
         apertures, with `boundary='cpml'` and `mode='3d'`.
 
         Calibration options:
-        - `reference_plane` / `probe_plane`: explicit reported planes in
-          physical coordinates along the port normal axis
-        - `calibration_preset='source_to_probe'`: auto-report `S11` at the
-          snapped source plane and `S21` from source to the snapped probe plane
-        - `calibration_preset=None` or `'measured'`: use the snapped stored
+        - `reference_plane` / `probe_plane`: explicit reported coordinates;
+          an unset reference uses the source plane, an unset probe the measured probe
+        - `calibration_preset=None` or `'source_to_probe'`: report `S11` at the
+          snapped source plane and `S21` from source to the measured probe plane
+        - `calibration_preset='measured'`: use the snapped stored
           reference/probe planes directly
 
         Sampling still occurs on the nearest snapped grid planes, and the

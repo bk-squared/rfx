@@ -30,6 +30,8 @@ from __future__ import annotations
 from rfx._precision import resolve_field_dtype
 from rfx.model.thin_conductors import conductivity_envelope
 
+from rfx.sparams._waveguide_planes import resolve_reported_planes
+
 import jax.numpy as jnp
 import numpy as np
 
@@ -49,7 +51,6 @@ from rfx.api._spec import (
 )
 
 from rfx.sparams._common import (
-    _assert_nu_shift_span_in_one_grading_zone,
     _finalize_sparam_result,
     _warn_if_ringdown_truncated,
     _warn_junction_probe_clearance,
@@ -747,11 +748,7 @@ def compute_waveguide_s_matrix(
         for entry, mode_cfgs in zip(entries, port_mode_cfgs):
             first_cfg = mode_cfgs[0]
             planes = waveguide_plane_positions(first_cfg)
-            desired_ref = (
-                entry.reference_plane
-                if entry.reference_plane is not None
-                else planes["source"]
-            )
+            desired_ref = resolve_reported_planes(entry, first_cfg).reference
             ref_shifts_mm.append(desired_ref - planes["reference"])
             desired_refs_mm.append(desired_ref)
 
@@ -889,20 +886,8 @@ def compute_waveguide_s_matrix(
 
     ref_shifts = []
     for entry, cfg in zip(entries, cfgs):
-        # Default reference plane = the user-facing port plane
-        # (snapped x_position). Previously defaulted to the internal
-        # ``reference_x_m`` (= source + ref_offset·dx) which left the
-        # returned S-matrix phase-shifted by `exp(-jβ·ref_offset·dx)`
-        # relative to the physical port — a silent convention mismatch
-        # vs. Meep, OpenEMS, and any analytic formula the user would
-        # compare against. Keep the ``entry.reference_plane`` override
-        # for explicit user control.
         planes = waveguide_plane_positions(cfg)
-        desired_ref = (
-            entry.reference_plane
-            if entry.reference_plane is not None
-            else planes["source"]
-        )
+        desired_ref = resolve_reported_planes(entry, cfg).reference
         ref_shifts.append(desired_ref - planes["reference"])
 
     _pec_axes = None
@@ -1005,13 +990,7 @@ def compute_waveguide_s_matrix(
         )
     reference_planes = np.array(
         [
-            entry.reference_plane
-            if entry.reference_plane is not None
-            # Report the de-embed TARGET (the physical port/source plane, line 1042), not the
-            # internal raw-extraction plane. Previously reported ["reference"] = source +
-            # ref_offset·dx, so the metadata claimed a plane ref_offset cells off from where the
-            # S-params are actually referenced (RF-audit 2026-07-23; matches the NU sibling).
-            else waveguide_plane_positions(cfg)["source"]
+            resolve_reported_planes(entry, cfg).reference
             for entry, cfg in zip(entries, cfgs)
         ],
         dtype=float,
@@ -1216,7 +1195,6 @@ def _compute_waveguide_s_matrix_nu(
     settling_runs: list[float] = []
     settling_details = []
     ref_shifts: tuple[float, ...] | None = None
-    reference_planes_out: np.ndarray | None = None
     final_cfgs: list | None = None
 
     original_entries = list(entries)
@@ -1298,27 +1276,12 @@ def _compute_waveguide_s_matrix_nu(
             # measured planes for every drive / run).
             if ref_shifts is None:
                 shifts = []
-                planes_out = []
                 for entry in original_entries:
                     cfg = dev_wg[entry.name]
                     planes = waveguide_plane_positions(cfg)
-                    desired = (
-                        entry.reference_plane
-                        if entry.reference_plane is not None
-                        else planes["source"]
-                    )
-                    # Grading-zone assertion: beta for this shift is the
-                    # boundary-cell value (cfg.dx), so the span the
-                    # shift covers must lie inside one uniform zone of
-                    # the profile -- otherwise fail loudly here rather
-                    # than apply one beta across cells of two sizes.
-                    _assert_nu_shift_span_in_one_grading_zone(
-                        grid, cfg, desired, entry.name,
-                    )
+                    desired = resolve_reported_planes(entry, cfg, grid=grid).reference
                     shifts.append(desired - planes["reference"])
-                    planes_out.append(desired)
                 ref_shifts = tuple(shifts)
-                reference_planes_out = np.asarray(planes_out, dtype=float)
                 # The same final configs, kept for the post-solve S21
                 # phase residual below (its beta ingredients are the
                 # extractor's own f_cutoff / dt / dx, not re-derived).
@@ -1443,18 +1406,10 @@ def _compute_waveguide_s_matrix_nu(
     )
     _s_params_nu = jnp.stack(
         [jnp.stack(col) for col in s_columns], axis=1)
-    _reference_planes_nu = (
-        reference_planes_out
-        if reference_planes_out is not None
-        else np.array(
-            [
-                e.reference_plane if e.reference_plane is not None
-                else 0.0
-                for e in original_entries
-            ],
-            dtype=float,
-        )
-    )
+    _reference_planes_nu = np.asarray([
+        resolve_reported_planes(entry, cfg, grid=grid).reference
+        for entry, cfg in zip(original_entries, final_cfgs)
+    ], dtype=float)
     # Post-solve discretization witness (post-v1.8 plan item 5), same
     # banner and same field as the uniform lane. Report-only.
     _ph_rms_nu, _ph_meta_nu = _waveguide_s21_phase_residual(

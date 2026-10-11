@@ -658,14 +658,14 @@ def test_waveguide_sparams_default_output():
     assert result.waveguide_sparams is not None
     raw_cfg = result.waveguide_ports["wg0"]
     calibrated = result.waveguide_sparams["wg0"]
-    raw_s11, raw_s21 = extract_waveguide_sparams(raw_cfg)
+    raw_s11, raw_s21 = extract_waveguide_sparams(raw_cfg, ref_shift=0.01 - 0.016)
     np.testing.assert_allclose(calibrated.s11, np.array(raw_s11))
     np.testing.assert_allclose(calibrated.s21, np.array(raw_s21))
-    assert calibrated.calibration_preset == "measured"
+    assert calibrated.calibration_preset == "source_to_probe"
     assert calibrated.source_plane == pytest.approx(0.01)
     assert calibrated.measured_reference_plane == pytest.approx(0.016)
     assert calibrated.measured_probe_plane == pytest.approx(0.040)
-    assert calibrated.reference_plane == pytest.approx(0.016)
+    assert calibrated.reference_plane == pytest.approx(0.01)
     assert calibrated.probe_plane == pytest.approx(0.040)
 
 
