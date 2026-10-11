@@ -42,8 +42,11 @@ What this tutorial teaches, in order:
 
 Error budget at this deliberately coarse resolution (dx = 2 mm):
 
-- The resonance reads HIGH against openEMS-with-thirds: +1.0 % at dx = 2 mm,
-  2.4460 GHz here against 2.4221 GHz (VESSL 369367265975).  Both numbers are
+- The resonance reads HIGH against openEMS-with-thirds: +1.1 % at dx = 2 mm,
+  2.4479 GHz here against 2.4221 GHz (re-run 2026-10-11, VESSL 369367270265).
+  It read +1.0 % (2.4460 GHz, VESSL 369367265975) until #1546 gave an E edge
+  between unequal graded cells the cell-area weighted permittivity; the
+  substrate faces lie on this graded z mesh.  Both numbers are
   the 32 mm feed-axis design mode.  The feed sits on the patch's y centre
   line, as in openEMS, and the 40 mm cross mode is absent from the printed
   mode list.  (Mode pairing repinned 2026-08-27, #693.)
@@ -77,9 +80,9 @@ Error budget at this deliberately coarse resolution (dx = 2 mm):
   the realized cavity is the declared one and the run asserts it at build
   time.
 - The far field is the observable that agrees.  This configuration prints
-  D = 6.60 dBi at its radiating bin (2.4 GHz) against openEMS 6.79 dBi,
-  -0.19 dB (VESSL 369367265975), inside the 1.0 dB the lock's
-  ``D_ABS_TOL_DB`` carries — though the lock solves its own board, so this
+  D = 6.59 dBi at its radiating bin (2.4 GHz) against openEMS 6.79 dBi,
+  -0.20 dB (VESSL 369367270265; 6.60 dBi before #1546), inside the 1.0 dB
+  the lock's ``D_ABS_TOL_DB`` carries — though the lock solves its own board, so this
   too is a measurement rather than a pass.  The pre-#1375 board printed
   6.72 dBi (-0.07 dB), the pre-contract board 7.39 dBi (+0.60 dB).  The demo trims the air above
   the patch to 84 mm with ``num_periods = 125``; the research frame behind the
@@ -89,7 +92,7 @@ Error budget at this deliberately coarse resolution (dx = 2 mm):
   peak sat on 2.8 GHz — the LAST monitored bin, with the spectrum still rising
   into it, so the selector was pinned at the edge of its own frequency list.
   On this board the spectrum peaks at the 2.4 GHz bin with 2.5 GHz at
-  -1.0 dB, 2.3 GHz at -8.8 dB and 2.8 GHz at -15.6 dB (369367265975): an
+  -0.5 dB, 2.3 GHz at -8.7 dB and 2.8 GHz at -15.3 dB (369367270265): an
   interior maximum, which is what the mode-identification rule assumes it is
   looking at.
 
@@ -108,8 +111,8 @@ measuring.  This board on an 8-CPU VESSL CPU pod: 968 s of FDTD in 989 s
 settling bar near 115 on the average slope, and the multi-mode tail beats
 rather than decaying smoothly.  The corrected board's cavity is thinner and
 its modes are higher-Q, so that ladder is not transferable; what is measured
-on it is the endpoint, -48.2 dB at 125 periods (369367265975), SETTLED with
-8.2 dB of margin (-45.4 dB on the pre-#1375 board, 369367259175; -50.9 dB on
+on it is the endpoint, -48.4 dB at 125 periods (369367270265), SETTLED with
+8.4 dB of margin (-45.4 dB on the pre-#1375 board, 369367259175; -50.9 dB on
 the pre-contract one).  The witness below re-measures the end-of-run envelope
 every run — trust it over this paragraph.
 """
@@ -170,8 +173,8 @@ AIR_BELOW = 30.0e-3
 # openEMS reference numbers used 95 mm of air and num_periods = 250.
 AIR_ABOVE = 84.0e-3
 
-# 125 periods settles this fixture past the -40 dB bar: measured -48.2 dB,
-# SETTLED (VESSL 369367265975).  On the pre-contract board, endpoints
+# 125 periods settles this fixture past the -40 dB bar: measured -48.4 dB,
+# SETTLED (VESSL 369367270265; -48.2 dB before #1546, 369367265975).  On the pre-contract board, endpoints
 # -36.5 dB at 90 periods and -52.6 dB at 204 put the bar near 115 on the
 # average slope, but the multi-mode tail beats
 # rather than decaying smoothly, so trust the printed witness over slope

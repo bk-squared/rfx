@@ -28,9 +28,13 @@ current in amperes and the injected field carries a ``1/dV`` cell-volume
 factor.  Raw ``mean|E_probe|^2`` is therefore ~1e10 here, not ~1.  ``main()``
 runs one extra forward at the coarse dx and divides the loss by that mean probe
 power, which puts the reported loss and its gradient at O(1).  The loss starts
-at -1.81 rather than -1 because the reference uses a 10-period run and the
-optimizer a longer one.  Adam is scale-invariant, so normalizing does not move
-the design: the per-stage percentages below are identical with and without it.
+near -1.8 rather than -1 because the reference uses a 10-period run and the
+optimizer a longer one: -1.81 in the 2026-09-05 CPU run the table below
+records, -1.79 on a re-run (2026-10-11, RTX 4090, VESSL 369367270300), where
+the loss falls by 3.96 % in stage 1 and 1.33 % in stage 2 (printed as -3.96 %
+and -1.33 %: a more negative loss is better).  Adam is scale-invariant, so
+normalizing does not move the design: the per-stage percentages below are
+identical with and without it.
 
 The scale does decide whether this demo optimizes at all.  Adam's update is
 ``lr * m / (sqrt(v) + 1e-8)`` (``eps_adam``, ``rfx/optimize.py``).  Passing
