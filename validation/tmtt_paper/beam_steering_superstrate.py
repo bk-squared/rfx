@@ -74,6 +74,7 @@ import jax.numpy as jnp
 import optax
 
 from rfx.api import Simulation
+from rfx.mesh_edges import EDGE_OFFSET
 from rfx.geometry.csg import Box
 from rfx.optimize import DesignRegion
 from rfx.farfield import compute_far_field
@@ -164,7 +165,9 @@ def build_problem():
     # smaller than the number this script prints, on the demo whose whole
     # subject is a finite reflector. Rounding the half-width to whole cells
     # and forcing an EVEN lateral cell count (below) puts cx on a node and
-    # both plate faces on node lines, so declared == realized exactly.
+    # the plate's outermost covered nodes at cx +- half; the plate itself is
+    # drawn EDGE_OFFSET of a cell beyond them so drawn == solved (see the
+    # sim.add call below).
     # The paper lane is unchanged by both: HALF_FRAC*DX_FRAC = 0.75*20 = 15
     # cells is already an integer and its lateral count is already even.
     half = float(round(HALF_FRAC * lam / dx)) * dx
@@ -190,8 +193,7 @@ def build_problem():
     Ly = Lx
     cx, cy = Lx / 2.0, Ly / 2.0
 
-    # #1138: geometry[0] x/y solved +7 % off the domain-clipped drawing (smoke); retain projected-target geometry.
-    sim = Simulation(snap="declared",freq_max=freq_max, domain=(Lx, Ly, Lz),
+    sim = Simulation(freq_max=freq_max, domain=(Lx, Ly, Lz),
                      cpml_layers=cpml_layers, dx=dx)
     sim.add_source((cx, cy, float(src_z)), "ex")     # x-oriented dipole
 
@@ -244,8 +246,18 @@ def build_problem():
     # A sheet has no top face, so the spacing is preserved exactly. The
     # plate never participates in the gradient either way: a sheet's plane
     # is a static integer, not a traced quantity (§1.6).
-    sim.add(Box((cx - half, cy - half, float(plate_z)),
-                (cx + half, cy + half, float(plate_z))), material="pec")
+    #
+    # Drawn at its SOLVED size. A PEC sheet is solved EDGE_OFFSET (0.35) of a
+    # cell beyond the last node it covers at each free edge, so the plate that
+    # covers the nodes cx +- half is solved 2*half + 0.7*dx wide. Drawing it
+    # half + EDGE_OFFSET*dx from the centre keeps the same covered nodes (the
+    # same solved plate) and makes drawn == solved, which preflight requires
+    # (#1138). Until 2026-10-12 it was drawn 2*half and run with
+    # snap="declared" and skip_preflight=True, i.e. the printed plate was
+    # 0.7 cell smaller than the solved one (+7 % on the SMOKE mesh).
+    plate_half = half + EDGE_OFFSET * dx
+    sim.add(Box((cx - plate_half, cy - plate_half, float(plate_z)),
+                (cx + plate_half, cy + plate_half, float(plate_z))), material="pec")
 
     grid = sim._build_grid()
     plate = dict(z=float(plate_z), half=float(half), cx=cx, cy=cy)
@@ -315,7 +327,6 @@ def make_pattern_fn(sim, grid, plate, lo, hi, n_steps):
             eps_override=eps_override,
             n_steps=n_steps,
             checkpoint=True,
-            skip_preflight=True,
         )
         witness["settling"] = res.settling_witness
         ff = compute_far_field(res.ntff_data, res.ntff_box, res.grid, THETA, PHI)

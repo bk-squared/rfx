@@ -331,26 +331,18 @@
    "variant": "validation/research/thru_feedpost_twoseg_extraction.py::build_singlepost::refplane-n10"
   },
   {
+   "code": "ntff_near_field",
+   "disposition": "intended",
+   "reason": "The NTFF box keeps lambda/2 from the superstrate edge (cx_min = cpml + margin + half + lambda/2); the reflector's solved edge lies EDGE_OFFSET (0.35) of a cell beyond the superstrate width, so each lateral box face is 47.05 mm (0.47 lambda) from the plate on the SMOKE mesh. That has been the solved geometry since the plate was snapped to whole cells; the advisory became visible when the plate was drawn at its solved size instead of being run with snap='declared' and skip_preflight=True. The far-field numbers are unchanged by the redraw (bare +4.92, optimized +7.20 dBi on SMOKE).",
+   "ref": "validation/tmtt_paper/beam_steering_superstrate.py:180-195,232-260",
+   "rows": 4,
+   "variant": "validation/tmtt_paper/beam_steering_superstrate.py::build_problem::default"
+  },
+  {
    "code": "ntff_small_ground_plane",
    "disposition": "intended",
-   "reason": "The finite reflector is the structure: 'An x-oriented electric dipole (Ex point source) sits a quarter wavelength above a finite PEC reflector plate'. The advisory says the pattern will carry ground-plane edge diffraction, which is exactly what a 0.83-lambda plate does and what the steering objective optimizes against. (It reads 0.83 lambda since the lattice snap in this PR; it read 0.90 lambda from the DECLARED bbox before, while the plate this lane actually realized was 0.75 lambda.)",
-   "ref": "validation/tmtt_paper/beam_steering_superstrate.py:1-23,156-176,229-232",
-   "rows": 1,
-   "variant": "validation/tmtt_paper/beam_steering_superstrate.py::build_problem::default"
-  },
-  {
-   "code": "off_lattice_design_edges",
-   "disposition": "intended",
-   "reason": "#1138: the builder explicitly uses snap=\"declared\" to retain the existing geometry for projected targets. The off-lattice row reports the displacement of each solved sheet face from the drawing. 2 conductor-Box design edge(s) sit off-lattice by more than 0.5% of their extent (worst 2 listed): geometry[0] 'pec' (sheet) x: extent 83.28mm, worst face residual 2.915mm (3.50% of the extent); geometry[0] 'pec' (sheet) y: extent 83.28mm, worst face residual 2.915mm (3.50% of the extent).  The mesh and numerical targets are retained, with this residual visible to the user.",
-   "ref": "validation/tmtt_paper/beam_steering_superstrate.py:139 | https://github.com/bk-squared/rfx/issues/1138",
-   "rows": 1,
-   "variant": "validation/tmtt_paper/beam_steering_superstrate.py::build_problem::default"
-  },
-  {
-   "code": "sheet_effective_size",
-   "disposition": "intended",
-   "reason": "#1138: the builder explicitly uses snap=\"declared\" to retain the existing geometry for projected targets. The sheet-size row reports the solved in-plane extent, including the free-edge offset. 2 conductor sheet dimension(s) are solved more than 1% off their drawn size (worst 2 listed): geometry[0] 'pec' x: drawn 83.28mm, nodes cover 83.28mm, solved as 89.1mm (+7.00%); geometry[0] 'pec' y: drawn 83.28mm, nodes cover 83.28mm, solved as 89.1mm (+7.00%).  The mesh and numerical targets are retained, with this residual visible to the user.",
-   "ref": "validation/tmtt_paper/beam_steering_superstrate.py:139 | https://github.com/bk-squared/rfx/issues/1138",
+   "reason": "The finite reflector is the structure: 'An x-oriented electric dipole (Ex point source) sits a quarter wavelength above a finite PEC reflector plate'. The advisory says the pattern will carry ground-plane edge diffraction, which is exactly what a sub-wavelength plate does and what the steering objective optimizes against. It reads 0.89 lambda since the plate is drawn at its solved size (2*half + 0.7 cell); the solved plate is the same as before.",
+   "ref": "validation/tmtt_paper/beam_steering_superstrate.py:1-23,156-176,232-260",
    "rows": 1,
    "variant": "validation/tmtt_paper/beam_steering_superstrate.py::build_problem::default"
   },
