@@ -183,6 +183,15 @@ jobs:
           tests/unit/runners/test_distributed_cpml_face_matrix.py
           -k pad_3
 
+      - name: Run three-device one-vs-several occupancy cases
+        if: matrix.group == 1
+        env:
+          JAX_PLATFORMS: cpu
+          XLA_FLAGS: "--xla_force_host_platform_device_count=3"
+        run: >
+          pytest -v -ra -p no:cacheprovider -o addopts=""
+          tests/contracts/path_equivalence/test_one_vs_several_devices_occupancy.py
+
       - name: Shard time against the job limit
         if: always()
         # Tests are added daily: requiring zero unpriced tests would turn the lane
