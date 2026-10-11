@@ -7,7 +7,7 @@ import time
 import numpy as np
 import pytest
 
-from rfx.harminv import HarminvMode, harminv, harminv_record_duration
+from rfx.harminv import MatrixPencilMode, matrix_pencil, matrix_pencil_record_duration
 
 _DT = 1.2e-12
 _F_MIN = 2.0e9
@@ -27,15 +27,15 @@ def _ringdown(n: int, dt: float = _DT) -> np.ndarray:
     return signal
 
 
-def _nearest(modes: list[HarminvMode], frequency: float) -> HarminvMode:
+def _nearest(modes: list[MatrixPencilMode], frequency: float) -> MatrixPencilMode:
     return min(modes, key=lambda mode: abs(mode.freq - frequency))
 
 
 def test_auto_decimation_preserves_modes_and_is_fast():
-    undecimated = harminv(_ringdown(5000), _DT, _F_MIN, _F_MAX, decimate=False)
+    undecimated = matrix_pencil(_ringdown(5000), _DT, _F_MIN, _F_MAX, decimate=False)
 
     start = time.perf_counter()
-    automatic = harminv(_ringdown(20000), _DT, _F_MIN, _F_MAX, decimate="auto")
+    automatic = matrix_pencil(_ringdown(20000), _DT, _F_MIN, _F_MAX, decimate="auto")
     elapsed = time.perf_counter() - start
 
     assert elapsed < 5.0, f"auto-decimated Harminv took {elapsed:.2f} s"
@@ -56,8 +56,8 @@ def test_auto_decimation_is_bit_comparable_when_sampling_is_near_band():
     dt = 1.0 / (7.0 * _F_MAX)
     signal = _ringdown(1000, dt)
 
-    automatic = harminv(signal, dt, _F_MIN, _F_MAX, decimate="auto")
-    undecimated = harminv(signal, dt, _F_MIN, _F_MAX, decimate=False)
+    automatic = matrix_pencil(signal, dt, _F_MIN, _F_MAX, decimate="auto")
+    undecimated = matrix_pencil(signal, dt, _F_MIN, _F_MAX, decimate=False)
 
     assert automatic == undecimated
 
@@ -79,7 +79,7 @@ def test_fir_interior_preserves_a_known_damped_pole(n, samples_per_period, real_
         signal = signal.real
     # Four poles allow room for a conjugate pair and exercise FIR stages even
     # on these short exact records (the production default reserves 50).
-    modes = harminv(signal, dt, 0.8e9, 1.2e9, max_modes=4)
+    modes = matrix_pencil(signal, dt, 0.8e9, 1.2e9, max_modes=4)
     assert len(modes) == 1
     assert modes[0].freq == pytest.approx(f, rel=1e-7)
     assert modes[0].Q == pytest.approx(q, rel=1e-7)
@@ -99,7 +99,7 @@ def test_weak_pole_survives_the_same_relative_rank_threshold(scale):
     truth = [(0.8e9, 80.0, 1.0), (1.2e9, 100.0, 0.003)]
     signal = scale * sum(a * np.exp((-np.pi * f / q + 2j * np.pi * f) * t)
                          for f, q, a in truth)
-    modes = sorted(harminv(signal, dt, 0.6e9, 1.4e9), key=lambda m: m.freq)
+    modes = sorted(matrix_pencil(signal, dt, 0.6e9, 1.4e9), key=lambda m: m.freq)
     assert len(modes) == len(truth)
     for mode, (f, q, amplitude) in zip(modes, truth):
         assert mode.freq == pytest.approx(f, rel=1e-7)
@@ -116,7 +116,7 @@ def test_weak_pole_with_small_noise_does_not_add_fictitious_modes(seed):
                  for f, q, a in truth)
     rng = np.random.default_rng(seed)
     signal += 3e-5 * (rng.standard_normal(len(t)) + 1j * rng.standard_normal(len(t)))
-    modes = sorted(harminv(signal, dt, 0.6e9, 1.4e9), key=lambda m: m.freq)
+    modes = sorted(matrix_pencil(signal, dt, 0.6e9, 1.4e9), key=lambda m: m.freq)
     assert len(modes) == len(truth)
     for mode, (f, q, _) in zip(modes, truth):
         assert mode.freq == pytest.approx(f, rel=2e-4)
@@ -127,9 +127,9 @@ def test_short_record_keeps_raw_samples_instead_of_disappearing():
     dt = 1 / (128 * 1e9)
     t = np.arange(80) * dt
     signal = np.exp((-np.pi * 1e9 / 100 + 2j * np.pi * 1e9) * t)
-    assert harminv(signal, dt, 0.8e9, 1.2e9) == harminv(
+    assert matrix_pencil(signal, dt, 0.8e9, 1.2e9) == matrix_pencil(
         signal, dt, 0.8e9, 1.2e9, decimate=False)
-    assert harminv_record_duration(len(signal), dt, 1.2e9) == 79 * dt
+    assert matrix_pencil_record_duration(len(signal), dt, 1.2e9) == 79 * dt
 
 
 @pytest.mark.parametrize("n", [80, 512, 2048, 2053])
@@ -154,17 +154,17 @@ def test_reported_duration_matches_samples_actually_passed_to_svd(
     dt = 1 / (128 * 1e9)
     t = np.arange(n) * dt
     settings = dict(pencil_parameter=pencil_parameter, max_modes=max_modes)
-    harminv(np.exp((-np.pi * 1e9 / 100 + 2j * np.pi * 1e9) * t),
+    matrix_pencil(np.exp((-np.pi * 1e9 / 100 + 2j * np.pi * 1e9) * t),
             dt, 0.8e9, 1.2e9, **settings)
     (shape,) = observed_shapes
     used_samples = sum(shape)  # Hankel M=N-L rows and L columns
     effective_dt = dt * np.prod(observed_factors, dtype=int)
-    assert harminv_record_duration(n, dt, 1.2e9, **settings) == pytest.approx(
+    assert matrix_pencil_record_duration(n, dt, 1.2e9, **settings) == pytest.approx(
         (used_samples - 1) * effective_dt)
     original_columns = max(4, min(int(n * pencil_parameter), n - 2))
     assert min(shape) >= min(max_modes + 1, original_columns, n - original_columns)
     if observed_factors:
-        assert harminv_record_duration(n, dt, 1.2e9, **settings) < (n - 1) * dt
+        assert matrix_pencil_record_duration(n, dt, 1.2e9, **settings) < (n - 1) * dt
 
 
 @pytest.mark.parametrize("pencil_parameter", [-0.1, 0.0, 1.0, 1.1])
@@ -193,7 +193,7 @@ def test_short_multimode_record_keeps_enough_dimensions_to_resolve_its_poles():
     signal = sum(np.exp((-np.pi * f / 100 + 2j * np.pi * f) * t)
                  for f in freqs)
     # Most poles lie outside the report band yet still affect the fit.
-    modes = harminv(signal, dt, 1e9, 6.9e9, max_modes=12, sv_threshold=1e-6)
+    modes = matrix_pencil(signal, dt, 1e9, 6.9e9, max_modes=12, sv_threshold=1e-6)
     expected = freqs[freqs <= 6.9e9 * 1.1]
     assert len(modes) == len(expected)
     for mode, f in zip(sorted(modes, key=lambda m: m.freq), expected):

@@ -108,11 +108,11 @@ def test_pec_cavity_resonance(cavity_params):
     # Resolve the resonant frequency with the validated Matrix-Pencil estimator
     # (rfx.harminv), NOT rfft-argmax. Skip the Gaussian excitation region so the
     # fit sees a clean ring-down (t0 = cutoff*tau is the pulse peak).
-    from rfx.harminv import harminv
+    from rfx.harminv import matrix_pencil
 
     start = int(np.ceil(2.0 * pulse.t0 / dt))
     ringdown = time_series[start:] - np.mean(time_series[start:])
-    modes = harminv(ringdown, dt, f_analytical * 0.7, f_analytical * 1.3)
+    modes = matrix_pencil(ringdown, dt, f_analytical * 0.7, f_analytical * 1.3)
     assert modes, "harminv found no resonance in the TM110 band"
     # The search band is wide (±30%) and harminv resolves <0.05%, so nearest-to-
     # analytic is an unambiguous mode ID, not a bin-snap toward the expected value.

@@ -2386,7 +2386,7 @@ def test_distributed_emit_time_series_false_skips_probe():
 # against analytic / first-principles references (Class F tolerance, see
 # ``tests/_distributed_nu_tolerances.py``).
 
-from rfx.harminv import harminv_from_probe  # noqa: E402
+from rfx.harminv import matrix_pencil_from_probe  # noqa: E402
 from rfx.core.yee import EPS_0 as _EPS_0_F, MU_0 as _MU_0_F  # noqa: E402
 from tests._distributed_nu_tolerances import (  # noqa: E402
     RTOL_ANALYTIC_F,
@@ -2558,7 +2558,7 @@ def test_distributed_pec_cavity_analytic_resonance():
     f_min = 0.85 * f_analytic
     f_max = 1.15 * f_analytic
 
-    modes = harminv_from_probe(
+    modes = matrix_pencil_from_probe(
         ts, dt=float(grid.dt),
         freq_range=(f_min, f_max),
         source_decay_time=source_decay_time,

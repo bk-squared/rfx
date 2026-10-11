@@ -80,7 +80,7 @@ os.environ.setdefault("JAX_PLATFORMS", "cpu")
 import numpy as np
 import pytest
 
-from rfx import Box, GaussianPulse, Simulation, harminv
+from rfx import Box, GaussianPulse, Simulation, matrix_pencil
 from tests._realized_geometry import assert_sheet_planes, assert_wall_planes, realized
 
 C0 = 299792458.0
@@ -137,7 +137,7 @@ def _pred_ghz(sim, plate_cells: int) -> float:
 def _dominant_ghz(sim) -> float:
     res = sim.run(n_steps=8000)
     ts = np.asarray(res.time_series)[:, 0].ravel()
-    modes = harminv(ts[2000:], float(res.dt), f_min=35e9, f_max=60e9)
+    modes = matrix_pencil(ts[2000:], float(res.dt), f_min=35e9, f_max=60e9)
     cand = sorted([m for m in modes if m.Q > 100],
                   key=lambda m: -abs(m.amplitude))
     assert cand, "harminv found no mode above Q=100 in [35, 60] GHz"
