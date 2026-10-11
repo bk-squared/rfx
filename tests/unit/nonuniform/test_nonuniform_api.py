@@ -305,6 +305,8 @@ class TestSimulationNonUniform:
         geometry). The aperture spans x (uniform) and z (nonuniform),
         which exercises the per-axis cell-width path.
 
+        Addendum 5f: transverse PEC keeps both graded-profile guides admissible.
+
         Sanity bands:
           (a) no exception
           (b) |S11| finite and within [0, 1.05]
@@ -334,7 +336,7 @@ class TestSimulationNonUniform:
             sim = Simulation(
                 freq_max=float(freqs[-1]) * 1.2,
                 domain=(a_wg, length, b_wg),
-                boundary="cpml",
+                boundary={"x": "pec", "y": "cpml", "z": "pec"},
                 cpml_layers=8,
                 dx=dx,
                 dz_profile=dz_profile,

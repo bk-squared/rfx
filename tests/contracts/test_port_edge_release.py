@@ -444,15 +444,23 @@ WG_LAYERS = (12, 13, 14, 15, 16, 22, 23)
 WG_CELLS = np.array([(i, j, k) for i in WG_LAYERS
                      for j in range(11) for k in range(5)], dtype=np.int32)
 WG_GRADED_CELLS = np.array([(i, j, k) for i in WG_LAYERS
-                            for j in range(7, 19) for k in range(7, 13)
-                            if (j, k) != (7, 7)], dtype=np.int32)
+                            for j in range(11) for k in range(5)], dtype=np.int32)
+# Addendum 5f: PEC removes the eight transverse pad cells. The independent
+# uniform rule applies: seven x layers times 11 y cells times 5 z cells;
+# incident-cell offsets below zero clip at the guide wall, giving 385 cells.
 
 
 def waveguide_model(lane='uniform'):
+    """Addendum 5f: graded transverse PEC keeps the port-weight subject reachable."""
     from tests.unit.autodiff.test_waveguide_forward import _wr90_sim
     sim = _wr90_sim()
     if lane == 'graded':
-        sim._dx_profile = np.array([.002]*8 + [.0019, .0021]*4 + [.002]*9)
+        sim = Simulation(freq_max=12e9, domain=(.05, .02286, .01016), dx=.002,
+                         boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'}, cpml_layers=8,
+                         dx_profile=np.array([.002]*8 + [.0019, .0021]*4 + [.002]*9))
+        sim.add_waveguide_port(direction='+x', x_position=.01,
+                               y_range=(0., .02286), z_range=(0., .01016), n_modes=1)
+        sim.add_probe(position=(.03, .01143, .00508), component='ey')
     grid = sim._build_nonuniform_grid() if lane == 'graded' else sim._build_grid()
     return sim, grid
 
@@ -504,7 +512,7 @@ def test_w1_literal_waveguide_cells(axis, direction):
 def test_w2_waveguide_kernel_weights(monkeypatch, lane, region, p):
     sim, grid = waveguide_model(lane)
     expected = WG_GRADED_CELLS if lane == 'graded' else WG_CELLS
-    us, vs = (range(8, 19), range(8, 13)) if lane == 'graded' else (range(11), range(5))
+    us, vs = range(11), range(5)  # PEC apertures start at zero on both meshes.
     occupancy = np.zeros(grid.shape, np.float32)
     if region == 'whole':
         occupancy[:] = p
@@ -529,7 +537,7 @@ def test_w2_waveguide_kernel_weights(monkeypatch, lane, region, p):
     assert actual[outside].tobytes() == occupancy[outside].tobytes()
     assert len(seen['warnings']) == 1
     message = str(seen['warnings'][0].message)
-    count = '497 cells' if lane == 'graded' else '385 cells'
+    count = '385 cells'  # Seven layers of the 11-by-5 PEC guide aperture.
     for part in ('waveguide_port[0]', 'source 13 (also 14)', 'reference 16', 'measurement 23', count):
         assert part in message
     assert len(message) < 300
@@ -552,7 +560,7 @@ def test_w3_waveguide_source_record():
 def test_w4_waveguide_warning_and_gradient(lane):
     sim, grid = waveguide_model(lane)
     expected = WG_GRADED_CELLS if lane == 'graded' else WG_CELLS
-    beside = (24, 13, 10) if lane == 'graded' else (24, 5, 2)
+    beside = (24, 5, 2)  # Remove the graded lane's old +8 y/z pad offsets.
     def loss(o):
         result = sim.forward(pec_occupancy_override=o, n_steps=40, checkpoint=False, skip_preflight=True)
         return jnp.sum(result.time_series**2)

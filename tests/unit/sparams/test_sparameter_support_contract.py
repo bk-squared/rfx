@@ -265,11 +265,12 @@ _NU_WG_PROFILES = {
 
 
 def _nu_waveguide_sim(n_modes: int = 1, profile_axis: str = "dy") -> "Simulation":
+    """Addendum 5f: transverse PEC leaves the NU calculator fences reachable."""
     sim = Simulation(
         freq_max=12e9,
         domain=(0.10, 0.023, 0.010),
         dx=1e-3,
-        boundary="cpml",
+        boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=4,
         **_NU_WG_PROFILES[profile_axis],
     )

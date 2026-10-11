@@ -400,8 +400,12 @@ def _nu_forward_with_box(sim, **kwargs):
 
 
 def test_nu_fence_waveguide_port():
-    """A modal port writes its own field over a whole plane."""
-    sim = Simulation(freq_max=2 * F0, domain=DOMAIN, dx=DX, boundary="cpml",
+    """A modal port writes its own field over a whole plane.
+
+    Addendum 5f: transverse PEC lets the design-box fence remain the subject.
+    """
+    sim = Simulation(freq_max=2 * F0, domain=DOMAIN, dx=DX,
+                     boundary={"x": "cpml", "y": "pec", "z": "pec"},
                      cpml_layers=CPML, dz_profile=DZ_PROFILE)
     # No point source: a waveguide port refuses to share a run with one.
     sim.add_waveguide_port(6e-3, mode=(1, 0), f0=F0,
