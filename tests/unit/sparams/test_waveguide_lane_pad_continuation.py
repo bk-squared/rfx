@@ -172,15 +172,23 @@ def test_the_lane_calls_the_runners_one_implementation() -> None:
     """
     import inspect
 
+    from rfx.model import tensor_operands
+    from rfx.runners import uniform
     from rfx.sparams import waveguide as lane
 
     src = inspect.getsource(lane.compute_waveguide_s_matrix)
-    assert src.count("smoothed_shape_pairs(self, grid)") == 2, (
+    # The lane and the uniform run form their operands in one module since
+    # M4b PR 1; both smoothing sites live there now.
+    assert "form_tensor_operands(" in src
+    assert "form_tensor_operands(" in inspect.getsource(uniform.run_uniform)
+    builder = inspect.getsource(tensor_operands.form_tensor_operands)
+    assert builder.count("smoothed_shape_pairs(sim, grid)") == 2, (
         "both smoothing sites must go through the shared helper")
-    assert "for entry in self._geometry" not in src, (
-        "a local shape_eps_pairs construction is back in the lane; it is the "
-        "duplicate that drifted from the runners and became #1066"
-    )
+    for text in (src, builder):
+        assert "for entry in self._geometry" not in text, (
+            "a local shape_eps_pairs construction is back in the lane; it is the "
+            "duplicate that drifted from the runners and became #1066")
+        assert "for entry in sim._geometry" not in text
 
 
 def test_the_pad_the_lane_hands_the_solver_carries_the_dielectric(
