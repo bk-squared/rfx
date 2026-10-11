@@ -815,9 +815,7 @@ class Result(NamedTuple):
         if source_decay_time is None:
             source_decay_time = _auto_source_decay_time(fr, waveform)
 
-        start = int(np.ceil(source_decay_time / self.dt))
-        start = min(start, max(len(ts) - 20, 0))
-        return _ring_down_modes(ts, self.dt, fr[0], fr[1], start)
+        return _ring_down_modes(ts, self.dt, fr[0], fr[1], source_decay_time)
 
     def assert_finite(self, *, raise_on_nonfinite: bool = False) -> bool:
         """Check that the result's observables contain no NaN/Inf.

@@ -344,9 +344,11 @@ def _decimation_factors(target: int) -> list[int]:
     return []
 
 
-def _ring_down_modes(series, dt, f_min, f_max, start, **matrix_pencil_kwargs):
+def _ring_down_modes(series, dt, f_min, f_max, source_decay_time, **matrix_pencil_kwargs):
     """Fit a mean-free ring-down, capping pencil size by truncating time."""
-    windowed = np.asarray(series).ravel()[start:]
+    series = np.asarray(series).ravel()
+    start = min(int(np.ceil(source_decay_time / dt)), max(len(series) - 20, 0))
+    windowed = series[start:]
     if not len(windowed):
         return []
     windowed = windowed - np.mean(windowed)
@@ -422,9 +424,7 @@ def matrix_pencil_from_probe(
             "to prevent aliased modes absent from the record.",
             DeprecationWarning, stacklevel=2,
         )
-    return _ring_down_modes(
-        time_series, dt, *freq_range, int(source_decay_time / dt), **kwargs,
-    )
+    return _ring_down_modes(time_series, dt, *freq_range, source_decay_time, **kwargs)
 
 
 HarminvMode = MatrixPencilMode
