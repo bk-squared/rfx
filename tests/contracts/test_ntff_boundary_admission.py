@@ -13,13 +13,8 @@ EXTERIOR = (
     "an NTFF box radiates its surface currents into free space, but {faces}: "
     "the far field would miss their images (a symmetry or ground plane, or a "
     "periodic wrap, is not reconstructed). Declare an absorbing boundary on "
-    "every face (draw a finite ground plane as geometry), or use "
-    "closed_box=True for a plane wave on a finite scatterer."
-)
-PLANE = (
-    "an NTFF box needs a scattered-field region around it, but this plane "
-    "wave's total-field region spans the whole cross-section; use "
-    "add_tfsf_source(..., closed_box=True) for a finite scatterer."
+    "every face (draw a finite ground plane as geometry); "
+    "a symmetry plane is not supported with NTFF yet."
 )
 UPML = (
     "boundary='upml' does not support the non-uniform {entry}() lane: the "
@@ -34,26 +29,33 @@ CLOSED_GRADED = (
     "CustomWaveform and closed_box TFSF require a uniform, single-device, "
     "3D second-order Yee run/forward with no subgrids"
 )
+PERIODIC_GRADED = (
+    "The graded {entry}() lane would solve this Simulation as if this input was "
+    "not declared, so it is refused before the first time step:\n"
+    "  - a periodic axis is not carried by the graded {entry}() lane.\n"
+    "Lanes that carry every input of this model apart from the ones that choose "
+    "the lane (solver, mesh profiles, refinement): uniform run(), uniform forward().\n"
+    "Remove the input, or declare the model so that a lane that carries it runs."
+)
 
 # Literal expected table: no expected outcomes are derived from production.
 # Existing UPML refusal: rfx/api/_execute.py:1154 (_reject_upml_on_nonuniform).
 # Existing graded closed-box refusal: rfx/api/_dispatch.py:115.
+# Existing graded periodic refusal: rfx/runners/_admission.py:477,1018.
 EXPECTED_TABLE = (
     ("uniform", "cpml", "admitted", None),
     ("uniform", "upml", "admitted", None),
     ("uniform", "pmc", "refused", EXTERIOR.format(faces="y_lo is pmc")),
     ("uniform", "pec", "refused", EXTERIOR.format(faces="y_lo is pec")),
-    ("uniform", "periodic", "refused", EXTERIOR.format(faces="x_hi is periodic; x_lo is periodic")),
+    ("uniform", "periodic", "admitted", None),  # not decided by this rule
     ("uniform", "zero", "refused", EXTERIOR.format(faces="y_lo is zero-depth absorber")),
-    ("uniform", "plane", "refused", PLANE),
     ("uniform", "closed", "admitted", None),
     ("graded", "cpml", "admitted", None),
     ("graded", "upml", "refused", UPML),
     ("graded", "pmc", "refused", EXTERIOR.format(faces="y_lo is pmc")),
     ("graded", "pec", "refused", EXTERIOR.format(faces="y_lo is pec")),
-    ("graded", "periodic", "refused", EXTERIOR.format(faces="x_hi is periodic; x_lo is periodic")),
+    ("graded", "periodic", "refused", PERIODIC_GRADED),
     ("graded", "zero", "refused", EXTERIOR.format(faces="y_lo is zero-depth absorber")),
-    ("graded", "plane", "refused", PLANE),
     ("graded", "closed", "refused", CLOSED_GRADED),
 )
 
@@ -69,8 +71,8 @@ def scene(mesh, case):
     profiles = {"dz_profile": np.array([.0015, .0025] * 5)} if mesh == "graded" else {}
     sim = Simulation(freq_max=10e9, domain=(.02, .02, .02), dx=.002,
                      cpml_layers=2, boundary=boundary, **profiles)
-    if case in ("plane", "closed"):
-        sim.add_tfsf_source(f0=5e9, margin=3, closed_box=case == "closed")
+    if case == "closed":
+        sim.add_tfsf_source(f0=5e9, margin=3, closed_box=True)
     else:
         sim.add_source((.01, .01, .01), "ez", waveform=GaussianPulse(f0=5e9),
                        amplitude_kind="current")
@@ -107,19 +109,19 @@ def test_ntff_boundary_table(mesh, case, outcome, message, entry, monkeypatch):
         assert result.ntff_data is not None
         return
     forbid_field_loops(monkeypatch)
-    if case == "upml":
+    if case in ("upml", "periodic"):
         expected = message.format(entry=method)
     elif case == "closed":
         expected = message
     else:
         expected = f"{method} dispatch: {message}"
-    with pytest.raises(NotImplementedError if case == "closed" else ValueError) as caught:
+    with pytest.raises(NotImplementedError if case in ("closed", "periodic") else ValueError) as caught:
         getattr(sim, method)(**kwargs)
     assert str(caught.value) == expected
 
 
 @pytest.mark.parametrize("case,detail", (("pmc", EXTERIOR.format(faces="y_lo is pmc")),
-                                        ("plane", PLANE)))
+                                        ("zero", EXTERIOR.format(faces="y_lo is zero-depth absorber"))))
 def test_direct_runner_admission(case, detail, monkeypatch):
     from rfx.runners._admission import admit
 
@@ -127,3 +129,34 @@ def test_direct_runner_admission(case, detail, monkeypatch):
     with pytest.raises(ValueError) as caught:
         admit(scene("uniform", case), "run_uniform")
     assert str(caught.value) == f"run_uniform: {detail}"
+
+
+RCS_TABLE = (
+    (None, "admitted", None),
+    ("pec", "refused", EXTERIOR.format(
+        faces="x_hi is pec; x_lo is pec; y_hi is pec; y_lo is pec; z_hi is pec; z_lo is pec")),
+)
+
+
+@pytest.mark.parametrize("boundary,outcome,message", RCS_TABLE, ids=("default", "pec"))
+def test_rcs_boundary_table(boundary, outcome, message, monkeypatch):
+    from rfx.core.yee import init_materials
+    from rfx.grid import Grid
+    from rfx.rcs import compute_rcs
+
+    grid = Grid(freq_max=15e9, domain=(.054, .054, .054), dx=.003, cpml_layers=6)
+    kwargs = {} if boundary is None else {"boundary": boundary}
+    if outcome == "refused":
+        forbid_field_loops(monkeypatch)
+
+    def run_calculator():
+        return compute_rcs(grid, init_materials(grid.shape), 4, f0=10e9,
+                           cpml_layers=6, tfsf_margin=3, freqs=np.array([1e10]),
+                           theta_obs=np.array([np.pi / 2]), phi_obs=np.array([0.]), **kwargs)
+
+    if outcome == "admitted":
+        assert np.all(np.isfinite(np.asarray(run_calculator().monostatic_rcs)))
+    else:
+        with pytest.raises(ValueError) as caught:
+            run_calculator()
+        assert str(caught.value) == f"compute_rcs: {message}"

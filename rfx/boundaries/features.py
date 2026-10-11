@@ -141,22 +141,14 @@ def _warn_caller(message):
 
 
 def admit_ntff(sim, *, lane):
-    """Require an absorbing exterior and a scattered-field NTFF surface."""
+    """Refuse NTFF on reflecting domain faces; periodic axes are undecided."""
     if sim._ntff is None:
         return
-    if sim._tfsf is not None and not getattr(sim._tfsf, "closed_box", False):
-        raise ValueError(
-            f"{lane}: an NTFF box needs a scattered-field region around it, but this "
-            "plane wave's total-field region spans the whole cross-section; use "
-            "add_tfsf_source(..., closed_box=True) for a finite scatterer.")
-    periodic = sim._periodic_flags()
     incompatible = {}
     for face in resolve_face_depths(sim._boundary_spec, budget=sim._cpml_layers):
-        if periodic["xyz".index(face.name[0])] or face.kind == Kind.PERIODIC:
-            incompatible[face.name] = "periodic"
-        elif face.kind != Kind.ABSORBER:
+        if face.kind in (Kind.PEC, Kind.PMC):
             incompatible[face.name] = face.kind.value.lower()
-        elif face.realized == 0:
+        elif face.kind == Kind.ABSORBER and face.realized == 0:
             incompatible[face.name] = "zero-depth absorber"
     if incompatible:
         descriptions = [f"{face} is {kind}" for face, kind in sorted(incompatible.items())]
@@ -165,8 +157,8 @@ def admit_ntff(sim, *, lane):
             + "; ".join(descriptions)
             + ": the far field would miss their images (a symmetry or ground plane, "
             "or a periodic wrap, is not reconstructed). Declare an absorbing boundary "
-            "on every face (draw a finite ground plane as geometry), or use "
-            "closed_box=True for a plane wave on a finite scatterer.")
+            "on every face (draw a finite ground plane as geometry); "
+            "a symmetry plane is not supported with NTFF yet.")
 
 
 def admit_waveguide(sim, *, lane="dispatch"):
