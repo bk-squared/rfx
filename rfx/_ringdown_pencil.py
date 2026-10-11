@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from importlib import import_module
+import math
+from numbers import Number
 
 import numpy as np
 
@@ -18,6 +20,8 @@ _STAGE2_FACTOR = 1.71
 class IdentificationMemoryRefused(ValueError):
     """An identification stage would exceed the configured memory bound."""
 
+    __module__ = "rfx.ringdown"
+
     def __init__(self, stage, needed_bytes, bound_bytes, *, n_win, Nd, C, L, M, k, r):
         self.stage = stage
         self.needed_bytes = needed_bytes
@@ -27,15 +31,36 @@ class IdentificationMemoryRefused(ValueError):
         name = "pencil" if stage == 1 else "residue fit"
         order = f"k={k}" if stage == 1 else f"rank={r}"
         super().__init__(
-            f"settling identification would need {needed_bytes / 2**30:.2f} GiB "
+            f"identification would need {needed_bytes / 2**30:.2f} GiB "
             f"at stage {stage} ({name}; n_win={n_win}, Nd={Nd}, C={C}, L={L}, "
             f"{order}), above the {bound_bytes / 2**30:.2f} GiB bound; "
             "shorten the identification window, identify on fewer channels, "
             "or raise rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES")
 
+    def __reduce__(self):
+        dimensions = {name: getattr(self, name) for name in ("n_win", "Nd", "C", "L", "M", "k", "r")}
+        return (_restore_memory_refusal, (self.stage, self.needed_bytes, self.bound_bytes, dimensions))
+
+
+def _restore_memory_refusal(stage, needed_bytes, bound_bytes, dimensions):
+    return IdentificationMemoryRefused(stage, needed_bytes, bound_bytes, **dimensions)
+
+
+def _validate_memory_bound(bound):
+    """Keep invalid public settings on the ValueError verdict path."""
+    try:
+        valid = (isinstance(bound, Number)
+                 and not isinstance(bound, (bool, np.bool_, complex, np.complexfloating))
+                 and 0 < bound <= math.inf)
+    except (TypeError, ArithmeticError):
+        valid = False
+    if not valid:
+        raise ValueError("rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES must be a positive finite number or math.inf")
+
 
 def _check_identification_memory(n_win, shape, *, r=None, bound, pencil_parameter):
     """Refuse before the pencil or original-rate residue fits allocate."""
+    _validate_memory_bound(bound)
     Nd, C = shape
     L = int(_harminv._pencil_columns(Nd, pencil_parameter))
     M = Nd - L
@@ -47,6 +72,32 @@ def _check_identification_memory(n_win, shape, *, r=None, bound, pencil_paramete
         raise IdentificationMemoryRefused(
             stage, needed, bound,
             n_win=n_win, Nd=Nd, C=C, L=L, M=M, k=k, r=r)
+
+
+def _check_run_identification_memory(plan):
+    """The fixed run's main pencil, before the lane takes any step."""
+    from rfx import ringdown as rd
+
+    bound = rd.IDENTIFY_MEMORY_BOUND_BYTES
+    _validate_memory_bound(bound)
+    bins = plan.bins
+    # Default and graded-lane result bins are the accumulator's float32 bins.
+    peak = (float(np.float32(plan.sim._freq_max)) if bins is None else
+            float(np.max(np.asarray(bins, dtype=np.float32 if plan.lane == "graded" else np.float64))))
+    n_win = plan.n_steps - plan.n_start
+    _, Nd = rd.decimation_plan(n_win, float(plan.dt), max(plan.freq_max, peak))
+    C = 2 * len(plan.wire_entries) + len(plan.identification_keys)
+    rd._check_identification_memory(n_win, (Nd, C), bound=bound, pencil_parameter=rd.PENCIL_PARAMETER)
+
+
+def _witness_identification(identify_window):
+    """A long-window refusal is a failed witness, preserving the main result."""
+    def identify_long_window(window):
+        try:
+            return identify_window(window)
+        except IdentificationMemoryRefused as exc:
+            raise ValueError(str(exc)) from exc
+    return identify_long_window
 
 
 def decimation_plan(n_samples: int, dt: float, freq_max: float) -> tuple:

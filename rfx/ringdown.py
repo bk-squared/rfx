@@ -71,7 +71,7 @@ S-matrix with the lane's own assembly (the graded lane's
 ``rfx.probes.probes.driven_port_reflection``). When W0, W1 or the pole
 identification fails, the run is returned as it is, uncompleted, with the
 failed check in ``Result.ringdown.report`` and a warning.
-Memory-bound refusals instead raise :class:`IdentificationMemoryRefused`.
+Main-completion memory refusals raise :class:`IdentificationMemoryRefused`.
 
 With ``until_identified=True`` (:class:`RingdownStop`)
 -------------------------------------------------------
@@ -93,8 +93,8 @@ from __future__ import annotations
 from rfx._grid_metric import field_index
 from rfx._ringdown_pencil import (
     IdentificationMemoryRefused,
-    _STAGE1_FACTOR,
-    _STAGE2_FACTOR,
+    _check_run_identification_memory,
+    _witness_identification,
     _check_identification_memory,
     _decimate,
     _fit_residues,
@@ -1290,10 +1290,11 @@ class RingdownRun:
     #: The entry point named in refusal messages.
     caller = "run"
 
-    def __init__(self, sim, spec: RingdownSpec, *, lane: str, n_steps: int, grid):
+    def __init__(self, sim, spec: RingdownSpec, *, lane: str, n_steps: int, grid, bins=None):
         if lane not in ("uniform", "graded"):
             raise ValueError(f"lane must be 'uniform' or 'graded', got {lane!r}")
         self.sim, self.spec, self.lane = sim, spec, lane
+        self.bins = None if bins is None else np.asarray(bins, dtype=np.float64)
         from rfx.core.yee import CurlBoundary
         self.port_boundary = CurlBoundary(pmc_faces=sim._boundary_spec.pmc_faces(),
                                           periodic=sim._periodic_flags())
@@ -1433,6 +1434,7 @@ class RingdownRun:
         """Attach the probes, call the lane's runner, detach, complete."""
         from rfx.api._spec import _ProbeEntry
 
+        _check_run_identification_memory(self)
         probes = self.sim._probes
         n_user = len(probes)
         probes.extend(_ProbeEntry(position=_node_position(self.grid, idx),
@@ -1621,8 +1623,6 @@ class RingdownRun:
             we_value, we_note = we.value, ""
             state["long_rank"] = we.model_long.rank
             state["long_n_kept"] = int(we.model_long.s.size)
-        except IdentificationMemoryRefused:
-            raise
         except Exception as exc:  # the completed S already exists: never lose it here
             we_value = math.nan
             we_note = (f"the identification on [{0.5 * ws:g} T, T] failed: {exc}; "
@@ -2029,8 +2029,6 @@ def _judge_record(Y, dt: float, f_bins, n_record: int, n_start: int,
         we = early_start_witness(Y, dt, f_bins, n_record, spec.window_start,
                                  observable=observable, plain=plain,
                                  spectra=spectra, **kw).value
-    except IdentificationMemoryRefused:
-        raise
     except Exception as exc:  # a WE that cannot be read fails, as in the report
         we, note = math.nan, (f"the identification on "
                               f"[{0.5 * spec.window_start:g} T, T] failed: {exc}")
@@ -2775,25 +2773,19 @@ class RingdownForward(RingdownRun):
     """One ``forward(..., ringdown=spec)``: probes in, forward, probes out, traced completion.
 
     Request preconditions are checked before the call, as in :class:`RingdownRun`.
-    Memory-bound refusals raise with the identification's needed and allowed
-    memory in the callback error. Other host identification failures produce
+    Main-window memory refusals raise with the needed and allowed memory.
+    Long-window refusals and other host identification failures produce
     NaN completed S-parameters in the traced JAX arrays; their checks run lazily
     on the concrete result (:attr:`RingdownForwardResult.report`).
     """
 
     caller = "forward"
 
-    def __init__(self, sim, spec: RingdownSpec, *, lane: str, n_steps: int, grid,
-                 bins=None):
-        super().__init__(sim, spec, lane=lane, n_steps=n_steps, grid=grid)
-        #: float64 bins of the completion when the lane's own ``freqs`` are
-        #: its float32 accumulator bins (the uniform lane's port_s11_freqs)
-        self.bins = None if bins is None else np.asarray(bins, dtype=np.float64)
-
     def run(self, call):
         """Attach the probes, call the lane, detach, complete (traced)."""
         from rfx.api._spec import _ProbeEntry
 
+        _check_run_identification_memory(self)
         probes = self.sim._probes
         n_declared = len(probes)
         if self.lane == "uniform" and n_declared == 0:
@@ -2929,7 +2921,8 @@ class RingdownForward(RingdownRun):
             k_max = min(static_pole_bound(n - n0, Y.shape[1], dt, ref_hz),
                         TRACED_POLE_BUDGET)
             s0, mask, st, tail_arg, count = rj.host_poles(
-                identify_window, raw[n0:], k_max, dt, f_bins)
+                identify_window if n0 == self.n_start else _witness_identification(identify_window),
+                raw[n0:], k_max, dt, f_bins)
             spectra = rj.completion(Y, dt, f_bins, n0, s0, mask, tail_arg, plain=plain)
             S = to_s(spectra)
             st = jnp.where(consistent, st, rj.STATUS_INCONSISTENT)

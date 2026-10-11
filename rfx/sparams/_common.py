@@ -27,6 +27,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from rfx.sparams._settling_warning import _warn_if_ringdown_truncated
+
 try:  # Public API on current JAX; the 0.4.x GPU image uses the old location.
     from jax import enable_x64 as _enable_x64
 except ImportError:
@@ -366,58 +368,6 @@ def _validate_extra_flux_monitor_entries(entries, domain, fn_name):
                 f"{pe.name!r} — result spectra are name-keyed."
             )
         seen.add(pe.name)
-
-
-def _warn_if_ringdown_truncated(
-    settling_db: np.ndarray,
-    port_names: tuple,
-    *,
-    num_periods: float | None = None,
-    n_steps: int | None = None,
-    drive_labels: tuple | None = None,
-    consequence: str | None = None,
-    quoted_thing: str = "any S value",
-    witnesses: list | tuple | None = None,
-) -> None:
-    """Warn for excessive pole tails or concrete undetermined witnesses."""
-    values = np.atleast_1d(np.asarray(settling_db, dtype=float))
-    hot = np.array([settling_verdict(v) == "fail" for v in values], dtype=bool)
-    unknown = np.zeros(len(values), dtype=bool)
-    if witnesses is not None:
-        for i, row in enumerate(witnesses):
-            if i < len(values) and 'share_per_bin' in row and 'traced' not in row['reason']:
-                unknown[i] = row['status'] in {'undetermined', 'absent'}
-    hot |= unknown
-    if not bool(np.any(hot)):
-        return
-
-    import warnings
-
-    if num_periods is not None:
-        knob, record = "num_periods", f"num_periods={num_periods:g}"
-    elif n_steps is not None:
-        knob, record = "n_steps", f"n_steps={int(n_steps):d}"
-    else:  # pragma: no cover - guarded by the call sites
-        knob, record = "the record length", "fixed-length"
-    def _label(i: int) -> str:
-        if drive_labels is not None:
-            return drive_labels[i] if i < len(drive_labels) else str(i)
-        return f"port {port_names[i] if i < len(port_names) else i} driven"
-
-    per_run = ", ".join(
-        (f"{_label(i)}: {witnesses[i]['status']} ({witnesses[i]['reason']})"
-         if unknown[i] else f"{_label(i)}: {values[i]:+.1f} dB")
-        for i in np.flatnonzero(hot)
-    )
-    consequence_text = f" {consequence}." if consequence else ""
-    warnings.warn(
-        "ring-down settling witness NOT PASSED (pole-tail amplitude threshold "
-        f"{_SETTLING_WITNESS_DB:.0f} dB): {per_run}. The {record} "
-        f"record has no passing value witness.{consequence_text} Increase "
-        f"{knob} and check identification before quoting "
-        f"{quoted_thing} (see the result's settling_db and settling_witness fields).",
-        stacklevel=2,
-    )
 
 
 def _nu_shift_span_cells(grid, cfg, desired_plane_m: float):
