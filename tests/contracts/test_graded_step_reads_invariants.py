@@ -27,7 +27,7 @@ def _live_check():
         _check_bits(jnp.array([1.]), jnp.array([0.]))
 
 
-def _setup(monkeypatch, widths, branch='ordinary'):
+def _setup(monkeypatch, widths, branch='ordinary', probes=((2, 2, 2, 'ez'), (3, 2, 2, 'hy'))):
     grid = make_nonuniform_grid(
         (.005, .005), np.full(5, .001), .001, cpml_layers=0,
         dx_profile=np.array(widths), dy_profile=np.full(5, .001))
@@ -54,7 +54,7 @@ def _setup(monkeypatch, widths, branch='ordinary'):
         setup = _build_nu_scan(
             grid, materials, 40, **options,
             sources=[(2, 2, 2, 'ez', jnp.sin(jnp.arange(40) * .3))],
-            probes=[(2, 2, 2, 'ez'), (3, 2, 2, 'hy')],
+            probes=list(probes),
             pec_faces={f'{a}_{s}' for a in 'xyz' for s in ('lo', 'hi')})
     return contexts[0], setup
 
@@ -143,3 +143,37 @@ def test_t3_after_h_write_is_read_by_e_update(monkeypatch):
         carry, (jnp.int32(0), jnp.zeros(1)), setup.invariants))(setup.carry_init)
     assert np.count_nonzero(np.asarray(expected.ez)) > 0
     _check_bits(actual['fdtd'], expected)
+
+
+def _count(jaxpr, primitive):
+    total = 0
+    for eqn in jaxpr.eqns:
+        total += eqn.primitive.name == primitive
+        for value in eqn.params.values():
+            for sub in value if isinstance(value, (tuple, list)) else (value,):
+                inner = getattr(sub, 'jaxpr', sub)
+                if hasattr(inner, 'eqns'):
+                    total += _count(inner, primitive)
+    return total
+
+
+def test_host_probe_table_adds_no_gather(monkeypatch):
+    """One device keeps the pre-W0 probe read: static node indexing, not the projector's gather.
+
+    The gather read changed the reverse-mode program, so gradients through the probe record moved
+    in their last bits (W0 declaration, record of 2026-10-12, option A).
+    """
+    widths = [.001, .0008, .0012, .001, .001]
+    with_probes = _setup(monkeypatch, widths)
+    without = _setup(monkeypatch, widths, probes=())
+
+    def gathers(ctx, setup):
+        step = graded.make_graded_step(ctx)
+        xs = (jnp.int32(0), setup.src_waveforms[0])
+        return _count(jax.make_jaxpr(lambda carry: step(carry, xs, setup.invariants))(
+            setup.carry_init).jaxpr, 'gather')
+
+    assert gathers(*with_probes) == gathers(*without)
+    # Live: the projector route reads with a gather, and the count sees it.
+    monkeypatch.setattr(graded, '_host_probe_nodes', lambda table: None)
+    assert gathers(*with_probes) > gathers(*without)
