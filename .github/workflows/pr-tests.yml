@@ -160,6 +160,11 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
         run: python scripts/ci/check_file_size_ratchet.py
 
+      - name: Layer-structure ratchet
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        run: python scripts/ci/check_layer_structure.py
+
       - name: Install package with dev dependencies
         run: pip install -e ".[dev]" "jax==0.10.2" "jaxlib==0.10.2"
 

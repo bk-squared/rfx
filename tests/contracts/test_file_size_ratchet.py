@@ -166,7 +166,8 @@ def test_required_job_and_local_runner_bind_ratchet():
     index = calls[0]
     step = steps[index]
     assert "check_data_budget.py" in steps[index - 1]["run"]
-    assert "pip install" in steps[index + 1]["run"]
+    assert steps[index + 1]["run"] == "python scripts/ci/check_layer_structure.py"
+    assert "pip install" in steps[index + 2]["run"]
     assert not step.get("if") and not step.get("continue-on-error")
     assert step["run"] == "python scripts/ci/check_file_size_ratchet.py"
     # No HEAD_SHA: the checked-out merge with the base is what gets counted.

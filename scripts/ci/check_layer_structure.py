@@ -1,0 +1,420 @@
+#!/usr/bin/env python3
+"""Ratchet layer implementations in the five callers, using only source ASTs.
+
+BASE_SHA/HEAD_SHA (or --base/--head) select Git snapshots. Without HEAD_SHA,
+read the working tree. Initial adoption is allowed only when a readable base
+has no baseline. --write-baseline records exact current violations; --base
+still rejects increases. Surface sizes and allowed calls are informational.
+"""
+
+from __future__ import annotations
+
+import argparse
+import ast
+import json
+import os
+from pathlib import Path
+import re
+import subprocess
+import sys
+
+REPO = Path(__file__).resolve().parents[2]
+BASELINE = "scripts/ci/layer_baseline.json"
+FIVE_FILES = (
+    "rfx/api/_execute.py", "rfx/api/__init__.py", "rfx/simulation.py",
+    "rfx/nonuniform.py", "rfx/sources/waveguide_port.py",
+)
+LAYERS = ("rfx.model", "rfx.stepping", "rfx.measurement", "rfx.boundaries")
+KERNEL_MODULES = {"rfx.core.yee", "rfx.core.dft_utils"}
+RULES = ("I", "S", "M", "A", "G", "D1", "D2")
+LOOPS = {"scan", "recorded_scan", "fori_loop", "while_loop", "shard_map",
+         "rank_shard_map", "checkpointed_scan"}
+KERNEL_NAMES = {"core_step", "_core_step", "step_fn", "_single_step",
+                "step_with_previous", "apply_ordered", "slab_neighbor"}
+NOT_STEP = {"update_waveguide_port_probe", "update_overlap_dft"}
+KERNEL_RE = re.compile(
+    r"^(update_e|update_h|update_he|apply_cpml|apply_upml|apply_pec|apply_pmc|"
+    r"apply_tfsf|update_tfsf|update_rlc|apply_waveguide_port|inject_|exchange_)"
+    r"|^(lorentz|debye)_[a-z]_component$|^make_.*_step$"
+)
+FIELDS = {"ex", "ey", "ez", "hx", "hy", "hz"}
+ALLOW = {
+    "asarray", "array", "float32", "float64", "float16", "complex64", "complex128",
+    "int32", "int64", "bool_", "dtype", "isfinite", "isnan", "isscalar", "ndim",
+    "shape", "result_type", "issubdtype", "can_cast", "all", "any", "size",
+    "floating", "integer", "complexfloating", "number", "generic", "ndarray",
+    "finfo", "iinfo", "isclose", "allclose", "errstate",
+}
+ARITHMETIC = (ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod,
+              ast.MatMult, ast.Pow)
+GRIDP = {"_build_grid", "_build_nonuniform_grid", "_assemble_materials",
+         "_assemble_materials_nu", "position_to_index", "make_nonuniform_grid",
+         "realized_geometry", "_assemble"}
+FUNCTIONS = (ast.FunctionDef, ast.AsyncFunctionDef)
+
+
+def git(repo: Path, *args: str) -> bytes:
+    return subprocess.run(
+        ["git", *args], cwd=repo, check=True, capture_output=True,
+    ).stdout
+
+
+class Sources:
+    """One consistent source tree, including all import targets at HEAD."""
+
+    def __init__(self, repo: Path, head: str = ""):
+        self.repo, self.head = repo, head
+        if head:
+            self.paths = {p.decode() for p in git(
+                repo, "ls-tree", "-r", "--name-only", "-z", head, "--", "rfx/",
+            ).split(b"\0") if p.endswith(b".py")}
+        else:
+            self.paths = {p.relative_to(repo).as_posix()
+                          for p in (repo / "rfx").rglob("*.py")}
+        self.trees = {}
+        self.texts = {}
+
+    def read(self, path: str) -> bytes:
+        if self.head:
+            return git(self.repo, "show", f"{self.head}:{path}")
+        return (self.repo / path).read_bytes()
+
+    def tree(self, path: str) -> ast.Module:
+        if path not in self.trees:
+            self.texts[path] = self.read(path).decode("utf-8")
+            self.trees[path] = ast.parse(self.texts[path], filename=path)
+        return self.trees[path]
+
+    def module_path(self, module: str) -> str | None:
+        stem = module.replace(".", "/")
+        return next((p for p in (stem + ".py", stem + "/__init__.py")
+                     if p in self.paths), None)
+
+    def is_function(self, module: str, name: str) -> bool:
+        path = self.module_path(module)
+        return bool(path and any(isinstance(n, FUNCTIONS) and n.name == name
+                                 for n in self.tree(path).body))
+
+
+def dotted(node: ast.AST) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        prefix = dotted(node.value)
+        return f"{prefix}.{node.attr}" if prefix else node.attr
+    return ""
+
+
+def import_module(path: str, node: ast.ImportFrom) -> str:
+    if not node.level:
+        return node.module or ""
+    package = path.split("/")[:-1]
+    if node.level > len(package):
+        raise ValueError(f"{path}: relative import escapes the package")
+    return ".".join(package[:len(package) - node.level + 1]
+                    + ([node.module] if node.module else []))
+
+
+def layer_of(module: str) -> str | None:
+    return next((p for p in LAYERS if module == p or module.startswith(p + ".")), None)
+
+
+def public_names(sources: Sources, package: str) -> list[str]:
+    tree = sources.tree(package.replace(".", "/") + "/__init__.py")
+    for node in tree.body:
+        targets = node.targets if isinstance(node, ast.Assign) else (
+            [node.target] if isinstance(node, ast.AnnAssign) else [])
+        if any(isinstance(t, ast.Name) and t.id == "__all__" for t in targets):
+            names = ast.literal_eval(node.value)
+            if not isinstance(names, (list, tuple)) or not all(isinstance(n, str) for n in names):
+                raise ValueError(f"{package}: __all__ must be a literal list of names")
+            return names
+    return []
+
+
+def units(tree: ast.Module):
+    for node in tree.body:
+        if isinstance(node, FUNCTIONS):
+            yield node.name, node, None
+        elif isinstance(node, ast.ClassDef):
+            for method in node.body:
+                if isinstance(method, FUNCTIONS):
+                    yield f"{node.name}.{method.name}", method, node.name
+
+
+def body_without_docstring(node):
+    body = node.body
+    if (body and isinstance(body[0], ast.Expr)
+            and isinstance(body[0].value, ast.Constant)
+            and isinstance(body[0].value.value, str)):
+        return body[1:]
+    return body
+
+
+def array_call(call: ast.Call) -> bool:
+    name = dotted(call.func)
+    return name.split(".")[0] in {"jnp", "np", "numpy"} or name.startswith("jax.numpy.")
+
+
+def unit_hits(node: ast.AST) -> set[str]:
+    hits = set()
+    for item in ast.walk(node):
+        if ((isinstance(item, ast.Name) and item.id in GRIDP)
+                or (isinstance(item, ast.Attribute) and item.attr in GRIDP)):
+            hits.add("grid")
+        if not isinstance(item, ast.Call):
+            continue
+        name = dotted(item.func)
+        last = name.rsplit(".", 1)[-1]
+        if (last in LOOPS or ((last in KERNEL_NAMES or KERNEL_RE.search(last))
+                             and last not in NOT_STEP)
+                or (last == "_replace" and any(k.arg in FIELDS for k in item.keywords))):
+            hits.add("S")
+        arguments = [*item.args, *(k.value for k in item.keywords)]
+        if (".fft." in name or (last == "exp" and any(
+                isinstance(n, ast.Constant) and isinstance(n.value, complex)
+                for arg in arguments for n in ast.walk(arg)))):
+            hits.add("M")
+        if array_call(item) and (last not in ALLOW or any(
+                isinstance(n, ast.BinOp) and isinstance(n.op, ARITHMETIC)
+                for arg in arguments for n in ast.walk(arg))):
+            hits.add("G")
+        if (last in {"set", "add", "multiply", "min", "max"}
+                and isinstance(item.func, ast.Attribute)
+                and isinstance(item.func.value, ast.Subscript)
+                and isinstance(item.func.value.value, ast.Attribute)
+                and item.func.value.value.attr == "at"):
+            hits.add("A")
+    return hits
+
+
+def import_hits(sources: Sources, path: str, public: dict) -> list[str]:
+    """Direct function imports and reads through lexically visible module imports.
+
+    Module bindings are scoped so a local alias in one method does not apply
+    to an unrelated method. As with the other rules, dynamic aliases are not
+    followed. Private module attributes count even when they name a record.
+    """
+    hits = set()
+
+    class Reads(ast.NodeVisitor):
+        def __init__(self):
+            self.bindings = {}
+
+        def scope(self, node):
+            # Defaults, decorators, bases and annotations also contain reads,
+            # evaluated in the enclosing scope (including postponed annotations).
+            for field, value in ast.iter_fields(node):
+                if field != "body":
+                    for item in value if isinstance(value, list) else [value]:
+                        if isinstance(item, ast.AST):
+                            self.visit(item)
+            previous = self.bindings
+            self.bindings = previous.copy()
+
+            def bind(item):
+                if isinstance(item, ast.Import):
+                    for alias in item.names:
+                        self.bindings[alias.asname or alias.name.split(".")[0]] = (
+                            alias.name if alias.asname else alias.name.split(".")[0])
+                elif isinstance(item, ast.ImportFrom):
+                    module = import_module(path, item)
+                    layer = layer_of(module)
+                    for alias in item.names:
+                        key = alias.asname or alias.name
+                        self.bindings[key] = None
+                        target = f"{module}.{alias.name}"
+                        if sources.module_path(target):
+                            self.bindings[key] = target
+                        if sources.is_function(module, alias.name) and (
+                                module in KERNEL_MODULES or (layer and (
+                                    module != layer or alias.name not in public[layer]))):
+                            hits.add(f"{module}:{alias.name}")
+                elif isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                    self.bindings[item.name] = None
+                    return
+                elif isinstance(item, ast.Name) and isinstance(item.ctx, ast.Store):
+                    self.bindings[item.id] = None
+                for child in ast.iter_child_nodes(item):
+                    bind(child)
+
+            if isinstance(node, FUNCTIONS):
+                for arg in ast.walk(node.args):
+                    if isinstance(arg, ast.arg):
+                        self.bindings[arg.arg] = None
+            for statement in node.body:
+                bind(statement)
+            for statement in node.body:
+                self.visit(statement)
+            self.bindings = previous
+
+        visit_Module = scope
+        visit_FunctionDef = scope
+        visit_AsyncFunctionDef = scope
+        visit_ClassDef = scope
+
+        def visit_Attribute(self, node):
+            if isinstance(node.ctx, ast.Load):
+                spelling = dotted(node)
+                root, *tail = spelling.split(".")
+                bound = self.bindings.get(root)
+                if bound and tail:
+                    module = ".".join([bound, *tail[:-1]])
+                    layer = layer_of(module)
+                    if layer and (node.attr.startswith("_") or (
+                            sources.is_function(module, node.attr)
+                            and node.attr not in public[layer])):
+                        hits.add(f"{module}:{node.attr}")
+            self.generic_visit(node)
+
+    Reads().visit(sources.tree(path))
+    return sorted(hits)
+
+
+def count_file(sources: Sources, path: str, public: dict | None = None) -> dict:
+    """The same per-file counter used by the CLI and real-source mutations."""
+    rules = {rule: set() for rule in RULES}
+    for name, node, cls in units(sources.tree(path)):
+        hits = unit_hits(node)
+        for rule in "SMAG":
+            if rule in hits:
+                rules[rule].add(name)
+        if path == "rfx/api/__init__.py" and cls == "Simulation":
+            short = node.name
+            declaration = short.startswith("add_") or short in {"add", "__init__"}
+            if declaration and "grid" in hits:
+                rules["D1"].add(name)
+            elif (not declaration and not (short.startswith("__") and short.endswith("__"))
+                  and len(body_without_docstring(node)) > 1
+                  and not (short.startswith("_") and "grid" not in hits)):
+                rules["D2"].add(name)
+    if path in FIVE_FILES:
+        if public is None:
+            public = {p: public_names(sources, p) for p in LAYERS}
+        rules["I"] = set(import_hits(sources, path, public))
+    return {r: sorted(rules[r]) for r in RULES}
+
+
+def count(sources: Sources) -> dict:
+    """Count named units and imports without importing any inspected module."""
+    public = {package: public_names(sources, package) for package in LAYERS}
+    files, outside, unit_counts, allowed = {}, {}, {}, []
+    for path in sorted(sources.paths | set(FIVE_FILES)):
+        selected = path in FIVE_FILES
+        if not selected and any(path.startswith(p.replace(".", "/") + "/") for p in LAYERS):
+            continue
+        tree = sources.tree(path)
+        rules = count_file(sources, path, public)
+        if selected:
+            files[path] = rules
+            unit_counts[path] = sum(1 for _ in units(tree))
+            for node in ast.walk(tree):
+                if (isinstance(node, ast.Call) and array_call(node)
+                        and dotted(node.func).rsplit(".", 1)[-1] in ALLOW):
+                    source = ast.get_source_segment(sources.texts[path], node)
+                    allowed.append((path, node.lineno, " ".join(source.splitlines())))
+        elif rules["S"] or rules["M"]:
+            outside[path] = {r: sorted(rules[r]) for r in ("S", "M")}
+    totals = {r: sum(len(v[r]) for v in outside.values()) for r in ("S", "M")}
+    return {"baseline": {"files": files, "outside": totals}, "outside_files": outside,
+            "surface_sizes": {p: len(names) for p, names in public.items()},
+            "unit_counts": unit_counts, "allowed": sorted(allowed)}
+
+
+def baseline(raw: bytes) -> dict:
+    data = json.loads(raw)
+    if not isinstance(data, dict) or set(data) != {"files", "outside"}:
+        raise ValueError("baseline must contain files and outside")
+    if not isinstance(data["files"], dict) or set(data["files"]) != set(FIVE_FILES):
+        raise ValueError("baseline must list exactly the five files")
+    for path, rules in data["files"].items():
+        if not isinstance(rules, dict) or set(rules) != set(RULES):
+            raise ValueError(f"{path}: baseline must list every rule")
+        for rule, names in rules.items():
+            if (not isinstance(names, list) or not all(isinstance(n, str) and n for n in names)
+                    or names != sorted(set(names))):
+                raise ValueError(f"{path} {rule}: names must be sorted and unique")
+    if (not isinstance(data["outside"], dict) or set(data["outside"]) != {"S", "M"}
+            or any(type(n) is not int or n < 0 for n in data["outside"].values())):
+        raise ValueError("outside must contain nonnegative integer S and M totals")
+    return data
+
+
+def violations(actual: dict, current: dict, previous: dict | None = None) -> list[str]:
+    errors = []
+    for path in FIVE_FILES:
+        for rule in RULES:
+            found, stored = set(actual["files"][path][rule]), set(current["files"][path][rule])
+            for name in sorted(found - stored):
+                errors.append(f"{path} {rule}: unlisted violation {name}")
+            for name in sorted(stored - found):
+                errors.append(f"{path} {rule}: stale baseline entry {name}")
+            if previous is not None:
+                old = set(previous["files"][path][rule])
+                for name in sorted(found - old):
+                    errors.append(f"{path} {rule}: new violation against BASE {name}")
+                for name in sorted(stored - old):
+                    errors.append(f"{path} {rule}: baseline grew against BASE {name}")
+    for rule in ("S", "M"):
+        found, stored = actual["outside"][rule], current["outside"][rule]
+        if found != stored:
+            errors.append(f"outside {rule}: stored {stored} differs from computed {found}")
+        if previous is not None and found > previous["outside"][rule]:
+            errors.append(f"outside {rule}: computed {found} exceeds BASE {previous['outside'][rule]}")
+    return errors
+
+
+def report(result: dict):
+    for path in FIVE_FILES:
+        rules = result["baseline"]["files"][path]
+        all_units = set().union(*(rules[r] for r in "SMAG"))
+        summary = f"{path}: units={len(all_units)}/{result['unit_counts'][path]} imports={len(rules['I'])}"
+        if path == "rfx/api/__init__.py":
+            summary += f" declarations={len(rules['D1']) + len(rules['D2'])}"
+        print(summary + " " + " ".join(f"{r}={len(rules[r])}" for r in RULES))
+    for path, rules in sorted(result["outside_files"].items()):
+        print(f"outside {path}: S={len(rules['S'])} M={len(rules['M'])}")
+    print("outside totals: " + " ".join(f"{r}={n}" for r, n in result["baseline"]["outside"].items()))
+    print("surface sizes: " + " ".join(f"{p}={n}" for p, n in result["surface_sizes"].items()))
+
+
+def check(repo: Path, base: str = "", head: str = "", *, write_baseline=False, list_allowed=False) -> int:
+    sources = Sources(repo, head)
+    result = count(sources)
+    report(result)
+    if list_allowed:
+        for path, line, source in result["allowed"]:
+            print(f"{path}:{line}: {source}")
+    previous = None
+    if base and git(repo, "ls-tree", base, "--", BASELINE):
+        previous = baseline(git(repo, "show", f"{base}:{BASELINE}"))
+    actual = result["baseline"]
+    if write_baseline:
+        (repo / BASELINE).write_text(json.dumps(actual, indent=2) + "\n")
+        current = actual
+    else:
+        current = baseline(sources.read(BASELINE))
+    errors = violations(actual, current, previous)
+    for error in errors:
+        print(error, file=sys.stderr)
+    return int(bool(errors))
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--repo", type=Path, default=REPO)
+    parser.add_argument("--base", default=os.environ.get("BASE_SHA", ""))
+    parser.add_argument("--head", default=os.environ.get("HEAD_SHA", ""))
+    parser.add_argument("--write-baseline", action="store_true")
+    parser.add_argument("--list-allowed", action="store_true")
+    args = parser.parse_args(argv)
+    try:
+        return check(args.repo, args.base, args.head,
+                     write_baseline=args.write_baseline, list_allowed=args.list_allowed)
+    except (OSError, ValueError, SyntaxError, subprocess.CalledProcessError) as exc:
+        print(f"layer-structure ratchet failed: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
