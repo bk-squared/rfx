@@ -642,32 +642,39 @@ def preview_port_stages(sim, conductors):
 
 
 def port_fed_nodes(sim, conductors):
-    """Both nodes of released lumped/wire/MSL edges, for solved sheet ends.
+    """Both nodes of lumped/wire/MSL feed edges, for solved sheet ends.
 
-    Preview products are temporary: this annotation never changes the solver's
-    conductor arrays. MSL Laplace fringe support outside trace width is excluded.
+    Use the port stages' edge rules without computing a Laplace profile.
+    MSL clearing edges already cover only the trace's width nodes. Temporary
+    lumped stages never replace the solver's conductor products.
     """
     if not (getattr(sim, '_ports', ()) or getattr(sim, '_msl_ports', ())):
         return None
-    preview = preview_port_stages(sim, conductors)
     grid = conductors.grid
     fed = np.zeros(grid.shape, dtype=bool)
-    widths = {}
-    if getattr(sim, '_msl_ports', ()):
-        from rfx.sources.msl_port import msl_cross_section_span, msl_port_from_entry
-        for i, entry in enumerate(sim._msl_ports):
-            span = msl_cross_section_span(grid, msl_port_from_entry(entry))
-            widths[f'msl_port[{i}]'] = (span['width_idx'], set(span['width_nodes']))
-    kinds = {(entity, component, edge): kind
-             for entity, kind, component, edge, _ in preview._released_port_details}
-    for entity, component, edge in preview.released_port_edges:
-        kind = kinds[(entity, component, edge)]
-        if kind not in ('lumped', 'wire', 'microstrip'):
-            continue
-        if kind == 'microstrip':
-            width_axis, width_nodes = widths[entity]
-            if edge[width_axis] not in width_nodes:
+    edges = []
+    staged = conductors
+    for i, port in enumerate(getattr(sim, '_ports', ())):
+        label = f'port[{i}]'
+        if port.impedance > 0 and port.extent is not None:
+            from rfx.sources.sources import wire_port_from_entry, _wire_port_live_cells
+            try:
+                cells, live, _ = _wire_port_live_cells(
+                    grid, wire_port_from_entry(port), staged.pec_edges)
+            except ValueError:
+                # Match preview: a wire that cannot drive contributes no nodes.
                 continue
+            edges.extend((port.component, cell) for cell, on in zip(cells, live) if on)
+        else:
+            staged = lumped_port_stage(staged, port, label)
+            edges.extend((component, edge) for entity, kind, component, edge, _
+                         in staged._released_port_details if entity == label and kind == 'lumped')
+    if getattr(sim, '_msl_ports', ()):
+        from rfx.sources.msl_port import msl_port_from_entry, _msl_yz_cells, msl_normal_component
+        for entry in sim._msl_ports:
+            port = msl_port_from_entry(entry)
+            edges.extend((msl_normal_component(port), cell) for cell in _msl_yz_cells(grid, port))
+    for component, edge in edges:
         axis = 'xyz'.index(component[1])
         for offset in (0, 1):
             node = list(edge)

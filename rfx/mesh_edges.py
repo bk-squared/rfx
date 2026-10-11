@@ -485,7 +485,7 @@ def solved_sheet_span(footprint, axis: int, nodes, declared_lo: float,
     or past the domain boundary (a wall, or a continuation into the absorber
     pad), and an end whose whole row continues into other sheet metal in
     ``union`` (the realized sheet edge tuple, a seam inside one conductor), or into realized PEC volume
-    edges in ``volume_edges``. An end row containing any node in the optional
+    edges in ``volume_edges``. An end row whose every node is in the optional
     grid-shaped boolean ``fed`` mask is also not free: a port drives that end.
 
     ``footprint`` is the sheet's node mask restricted to the domain interior
@@ -534,8 +534,8 @@ def solved_sheet_span(footprint, axis: int, nodes, declared_lo: float,
             return False
         if periodic:
             i_end %= fp.shape[axis]
-        return bool((np.take(fp, i_end, axis=axis)
-                     & np.take(fed, i_end, axis=axis)).any())
+        end = np.take(fp, i_end, axis=axis)
+        return bool(end.any()) and bool(np.take(fed, i_end, axis=axis)[end].all())
 
     free_lo = bool(i0 > 0 and float(declared_lo) > tol
                    and not _continues(i0, i0 - 1) and not _fed(i0))

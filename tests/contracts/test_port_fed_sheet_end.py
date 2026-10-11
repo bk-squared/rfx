@@ -62,15 +62,37 @@ def test_c3_end_behind_feed_is_free():
     assert span.hi == pytest.approx(.0095)
 
 
-@pytest.mark.parametrize('x,expected', [(.004, (False, True)), (.006, (True, True))])
-def test_c4_one_lumped_node_on_six_node_end_row(x, expected):
+@pytest.mark.parametrize('x', [.004, .006])
+def test_c4_one_lumped_node_on_six_node_end_row(x):
     sim = Simulation(freq_max=5e9, domain=(.014, .014, .008), dx=.001, boundary='pec')
     sim.add_thin_conductor(Box((.004, .004, .004), (.010, .009, .004)))
     sim.add_port((x, .006, .003), 'ez', impedance=50.)
     span = realize(sim).sheets[0].solved_spans[0]
-    assert (span.free_lo, span.free_hi) == expected
-    assert span.lo == pytest.approx(.004 if x == .004 else .00365)
+    assert (span.free_lo, span.free_hi) == (True, True)
+    assert span.lo == pytest.approx(.00365)
     assert span.hi == pytest.approx(.01035)
+
+
+def test_c4_one_node_wide_end_is_fed():
+    # A sheet sampled at one y node (drawn width smaller than one cell).
+    sim = Simulation(freq_max=5e9, domain=(.014, .014, .008), dx=.001, boundary='pec')
+    sim.add_thin_conductor(Box((.004, .0059, .004), (.010, .0061, .004)))
+    sim.add_port((.004, .006, .003), 'ez', impedance=50.)
+    root = realize(sim)
+    assert np.flatnonzero(np.asarray(root.sheets[0].footprint).any(axis=(0, 2))).size == 1
+    span = root.sheets[0].solved_spans[0]
+    assert (span.free_lo, span.free_hi) == (False, True)
+    assert span.lo == pytest.approx(.004)
+    assert span.hi == pytest.approx(.01035)
+
+
+def test_p1_does_not_preview_or_solve_laplace(monkeypatch):
+    def forbidden(*args, **kwargs):
+        pytest.fail('fed nodes must not preview ports or solve a Laplace profile')
+    monkeypatch.setattr(C, 'preview_port_stages', forbidden)
+    monkeypatch.setattr('rfx.sources.msl_port.compute_msl_mode_profile', forbidden)
+    root = realize(guide_board(graded=True))
+    assert root.sheets[0].solved_spans[0].free_lo is False
 
 
 def test_c5_graded_fringe_is_not_fed():
