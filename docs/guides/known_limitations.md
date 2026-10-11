@@ -85,8 +85,9 @@ CPU multi-device runs are not affected and are not refused. Three or more GPUs: 
 Every `subpixel_smoothing` setting (`True` and `"kottke_pec"`, on uniform and graded meshes) keeps only the diagonal of the
 smoothed inverse-permittivity tensor, so a field component oblique to an interface that is not grid-aligned sees the wrong
 permittivity in the boundary cells. On a curved high-contrast body (an eps_r 38 rod or cylinder, a dielectric resonator)
-the resonant frequency is off by about 1 % on practical meshes and closes slowly with refinement; at some meshes it is
-further off than the same model without smoothing (measured on the uniform `True` setting; the others share the code).
+the resonant frequency is off by 1-2 % on practical meshes and closes only first order with refinement; on the measured
+case it was further off than the same model without smoothing at every mesh, by up to 8x (uniform `True` setting, against
+an independent solver; the other settings share the code).
 Grid-aligned faces are not affected. Until the fix lands, judge such a resonance by a mesh series of at least three
 refinements and compare it with `subpixel_smoothing=False`; if the two series disagree, neither has converged — refine
 further, and do not take the unsmoothed series as the reference.
