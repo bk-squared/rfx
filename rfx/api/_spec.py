@@ -1154,34 +1154,14 @@ class ForwardResult(NamedTuple):
         existing JIT restrictions (for example the host Grid object).
         Use ``settling_verdict`` to judge the diagnostic.
         """
-        from rfx.probes.settling import probe_record_settling_witness
-        from rfx.sparams._tail_witness import result_read_bins
-        bins = result_read_bins(self)
-        if self.sparam_time_records:
-            from rfx.sparams._tail_witness import port_record_witness
-            return port_record_witness(
-                self.sparam_time_records, self.dt, self.settling_source_end_index,
-                bins, freq_max=self.settling_freq_max or getattr(self.grid, "freq_max", None) or (max(bins) if len(bins) else None))[0]
-        return probe_record_settling_witness(
-            self.time_series, self.settling_probe_info, warn=False,
-            source_end_index=self.settling_source_end_index, dt=self.dt,
-            freqs=bins, freq_max=self.settling_freq_max or getattr(self.grid, "freq_max", None) or (max(bins) if len(bins) else None))[0]
+        from rfx.sparams._record_selection import forward_settling_witness
+        return forward_settling_witness(self)[0]
 
     @property
     def settling_witness(self) -> dict:
         """Provenance for ``settling_db``, without string leaves in JAX trees."""
-        from rfx.probes.settling import probe_record_settling_witness
-        from rfx.sparams._tail_witness import result_read_bins
-        bins = result_read_bins(self)
-        if self.sparam_time_records:
-            from rfx.sparams._tail_witness import port_record_witness
-            return port_record_witness(
-                self.sparam_time_records, self.dt, self.settling_source_end_index,
-                bins, freq_max=self.settling_freq_max or getattr(self.grid, "freq_max", None) or (max(bins) if len(bins) else None))[1]
-        return probe_record_settling_witness(
-            self.time_series, self.settling_probe_info, warn=False,
-            source_end_index=self.settling_source_end_index, dt=self.dt,
-            freqs=bins, freq_max=self.settling_freq_max or getattr(self.grid, "freq_max", None) or (max(bins) if len(bins) else None))[1]
+        from rfx.sparams._record_selection import forward_settling_witness
+        return forward_settling_witness(self)[1]
 
 
 # ---------------------------------------------------------------------------
