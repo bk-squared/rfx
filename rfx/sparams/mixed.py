@@ -32,6 +32,7 @@ body, exactly as they were, and so do not run at import time.
 from __future__ import annotations
 
 from rfx._precision import resolve_field_dtype
+from rfx.boundaries.pmc import refuse_port_on_magnetic_face
 
 from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
 from rfx._diagnostic_transport import merge_diagnostics, report_diagnostics, diagnostic_refusal
@@ -518,6 +519,8 @@ def compute_mixed_s_matrix(
             f"(default) or 'wave', got {magnitude_channel!r}."
         ), _diagnostics)
     if magnitude_channel == "flux":
+        refuse_port_on_magnetic_face(self, "compute_mixed_s_matrix",
+                                     reason="Flux magnitudes cannot compare these powers.")
         # The per-port flux box is CLOSED by the z-lo PEC ground: it
         # has five faces and omits the bottom because flux through a
         # PEC face is identically zero. It also treats pe.extent as a
