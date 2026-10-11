@@ -77,6 +77,7 @@ class GradedStepContext:
     ntff_box: NTFFBox | None
     _accumulate_cm: Callable | None
     emit_time_series: bool
+    x_face_frame: Mapping[str, tuple[int, int]] | None = None  # Axis -> static (lo, hi) physical rows.
 
 
 @dataclass
@@ -177,7 +178,8 @@ def make_graded_step(
             frame.cpml_new = None
         if ctx.use_pmc_faces:
             from rfx.boundaries.pmc import apply_pmc_faces
-            frame.st = apply_pmc_faces(frame.st, ctx._pmc_faces_frozen, image=True)
+            frame.st = apply_pmc_faces(frame.st, ctx._pmc_faces_frozen, image=True,
+                                       frame=ctx.x_face_frame, owned=frame.invariants.get("owns_x"))
         if ctx.use_tfsf:
             from rfx.sources.tfsf import update_tfsf_1d_h
             frame.tfsf_h_state = update_tfsf_1d_h(ctx.tfsf_cfg, frame.carry["tfsf"], ctx.grid.dx, ctx.dt)
@@ -241,7 +243,8 @@ def make_graded_step(
 
     def pec(frame: GradedFrame):
         # PEC, per face (#1164)
-        frame.st = apply_pec_faces(frame.st, ctx._pec_faces_frozen)
+        frame.st = apply_pec_faces(frame.st, ctx._pec_faces_frozen,
+                                   frame=ctx.x_face_frame, owned=frame.invariants.get("owns_x"))
         if ctx.use_pec_edges:
             frame.st = apply_pec_edges(frame.st, frame.pec_edge_masks)
         if ctx.use_pec_occupancy:
