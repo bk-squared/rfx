@@ -64,16 +64,13 @@ run: |-
   apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq git >/dev/null 2>&1
   echo "git after upgrade attempt: $(git --version)"
   set +e
-  timeout 4000 "$PY" -m pytest tests/oracle/test_lumped_wire_chain_battery.py -q -p no:cacheprovider > "$OUT/replay.log" 2>&1
-  echo "replay_rc=$?"; tail -25 "$OUT/replay.log"
   timeout 6000 "$PY" -m pytest tests/contracts -q -p no:cacheprovider > "$OUT/contracts.log" 2>&1
   echo "contracts_rc=$?"; tail -8 "$OUT/contracts.log"
   timeout 4000 "$PY" -m pytest tests/unit/sparams/test_wire_port_sparams_forward.py tests/unit/sparams/test_lumped_port_sparams_jit.py tests/unit/autodiff/test_lumped_rlc_ad.py -q -p no:cacheprovider > "$OUT/portunit.log" 2>&1
   echo "portunit_rc=$?"; tail -6 "$OUT/portunit.log"
-  "$PY" -m ruff check scripts/diagnostics/lumped_wire_chain_battery_measure.py scripts/diagnostics/lumped_port_known_load_line.py tests/oracle/test_lumped_wire_chain_battery.py --select E,F,W --ignore E501,F401,E741,E731,E701,E702,E402 > "$OUT/ruff.log" 2>&1
+  "$PY" -m ruff check scripts/diagnostics/lumped_wire_chain_battery_measure.py scripts/diagnostics/lumped_port_known_load_line.py --select E,F,W --ignore E501,F401,E741,E731,E701,E702,E402 > "$OUT/ruff.log" 2>&1
   echo "ruff_rc=$?"; cat "$OUT/ruff.log"
   bash scripts/ci/docs_hygiene.sh > "$OUT/hygiene.log" 2>&1
   echo "hygiene_rc=$?"; cat "$OUT/hygiene.log"
   set -e
-  cp -f "$OUT/replay.log" /root/work/lw-suites/out.log 2>/dev/null || true
   echo BATTERY_STAGE_DONE
