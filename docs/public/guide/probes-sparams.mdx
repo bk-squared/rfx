@@ -273,18 +273,24 @@ downstream of each feed:
 
 ```python
 from rfx.boundaries.spec import Boundary, BoundarySpec
+from rfx.mesh_edges import edge_aware_profiles
 
 h_sub, w_trace, L = 0.75e-3, 1.5e-3, 0.013
+substrate = Box((0, 0, 0), (L, 0.008, h_sub))
+# The trace runs from port to port, so the ports terminate it.
+trace = Box((0.0035, 0.004 - w_trace / 2, h_sub), (L - 0.0035, 0.004 + w_trace / 2, h_sub))
+# x and y mesh lines placed so the trace is solved at its drawn size.
+profiles = edge_aware_profiles((L, 0.008, 0.003), 0.25e-3,
+                               sheets=[trace], solids=[substrate])
 board = Simulation(
     freq_max=10e9, domain=(L, 0.008, 0.003), dx=0.25e-3, cpml_layers=6,
     # The z = 0 PEC wall is the ground plane.
     boundary=BoundarySpec(x="cpml", y="cpml", z=Boundary(lo="pec", hi="cpml")),
+    **profiles,
 )
 board.add_material("sub", eps_r=3.66)
-board.add(Box((0, 0, 0), (L, 0.008, h_sub)), material="sub")
-# The trace runs from port to port, so the ports terminate it.
-board.add_thin_conductor(Box((0.0035, 0.004 - w_trace / 2, h_sub),
-                             (L - 0.0035, 0.004 + w_trace / 2, h_sub)))
+board.add(substrate, material="sub")
+board.add_thin_conductor(trace)
 for x_feed, direction, name in ((0.0035, "+x", "p1"), (L - 0.0035, "-x", "p2")):
     board.add_msl_port((x_feed, 0.004, 0.0), width=w_trace, height=h_sub,
                        direction=direction, eps_r_sub=3.66, name=name)
@@ -301,9 +307,13 @@ This board has only 3 cells through the substrate and 6 across the trace, so
 it runs quickly but prints several warnings. They are the ones you should
 expect on your own coarse runs:
 
-- preflight reports that the trace is solved about 12 % wider than drawn
-  (a sheet's free edge acts a fraction of a cell beyond its last grid node),
-  and that 3 cells through the substrate is below its recommendation of 4;
+- preflight reports that 3 cells through the substrate is below its
+  recommendation of 4, that the graded in-plane mesh reaches the absorber
+  runway, and that the automatic probe-offset check is skipped on this graded
+  board. (On a plain uniform grid the trace would be solved wider than drawn,
+  because a sheet's free edge acts a fraction of a cell beyond its last grid
+  node; preflight reports that as an error and the run stops. The
+  `edge_aware_profiles` mesh above avoids it.)
 - a **low-signal** warning names three bins at the top of the band, and
   `msl.reliable` is False there;
 - a **passivity** warning reports that the largest singular value of S is
@@ -401,7 +411,7 @@ no single check catches every case.
   spectral results read, of the value still ringing past the record's end,
   estimated from poles fitted after the source ends. At or below −40 dB the
   record is long enough. `result.settling_witness["status"]` is `pass`,
-  `fail`, `undetermined` or `absent` (no spectral result to judge); only `pass`
+  `fail`, `undetermined` or `absent` (nothing recorded to judge); only `pass`
   is a pass.
 - `compute_msl_s_matrix`, `compute_waveguide_s_matrix` and the coax two-port
   calculators check each drive run against the same −40 dB bar and warn when

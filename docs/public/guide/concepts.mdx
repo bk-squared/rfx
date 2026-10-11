@@ -123,10 +123,10 @@ sim.fidelity_report()   # declared vs realized planes for every entity
 The first `add_thin_conductor` call warns that the sheet is lossless PEC. That
 warning is expected: see the materials note above.
 
-A sheet is solved as if it reached about a third of a cell past its last mesh
+A sheet is solved as if it reached about 0.35 of a cell past its last mesh
 node, so on a plain uniform grid this 10 mm foil is solved wider than drawn.
-Preflight reports a sheet solved more than 1 % off its drawing as an error, and
-`run()` and `forward()` refuse it. Build the in-plane mesh with
+Preflight reports a sheet solved more than 1 % off its drawing as an error, so
+`run()` and `forward()` stop before the first step. Build the in-plane mesh with
 `rfx.mesh_edges.edge_aware_profiles`, as above, so the solved edges fall on the
 drawn ones; or pass `Simulation(..., snap="declared")` to accept the difference
 as a warning, recorded in `sim.realized_geometry()`. With the graded in-plane
@@ -181,7 +181,7 @@ catch.
   result reads, rfx estimates from the poles still ringing after the source
   ends how much of the value lies past the record's end; `settling_db` is the
   worst share in dB, and at or below −40 dB the status is `pass`. `fail`,
-  `undetermined` and `absent` (no spectral result requested) are not passes.
+  `undetermined` and `absent` (nothing recorded to judge) are not passes.
 - The S-parameter calculators warn when a drive's record ends too early.
 - High-Q structures need long records. A resonator with quality factor Q
   decays over roughly Q / (π f) seconds.

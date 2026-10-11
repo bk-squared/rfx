@@ -10,10 +10,10 @@ This page shows how to get a rectangular-guide S-matrix, which normalization
 to pick, and how to handle junctions.
 
 The port aperture defines the guide. A port that spans the whole domain
-cross-section (no `y_range=` / `z_range=`) uses the transverse domain faces as
+cross-section (no `y_range=` / `z_range=`, or ranges equal to it) uses the transverse domain faces as
 the guide walls, so those faces must be PEC: declare the absorber on the port
 axis only, for an x-directed guide `boundary={"x": "cpml", "y": "pec", "z": "pec"}`.
-`boundary="cpml"` on all faces is refused before the first step. If you leave
+On a uniform mesh `boundary="cpml"` on all faces is refused before the first step. If you leave
 `boundary` out, a uniform mesh solves those faces as PEC and warns once; a graded
 mesh refuses until you declare them. Ports need `mode="3d"`, and cannot share a
 model with lumped ports or a TFSF source.

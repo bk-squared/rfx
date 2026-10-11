@@ -304,7 +304,7 @@ Getting an accurate microstrip result:
 decomposes the fields into that mode. Its aperture defines the guide. A port
 that spans the whole cross-section uses the transverse domain faces as the
 guide walls, so declare them PEC and put the absorber on the port axis only;
-`boundary="cpml"` on every face is refused.
+on a uniform mesh `boundary="cpml"` on every face is refused.
 
 ```python
 guide = Simulation(freq_max=11e9, domain=(0.10, 0.023, 0.010), dx=1e-3,

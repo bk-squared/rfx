@@ -541,7 +541,7 @@ covered only as far as its build.
 
 Tracker: #1471
 
-The patch-antenna accuracy figure of 0.097 % is not claimed for 2.0 because
+The patch-antenna accuracy figure is not claimed for 2.0 because
 its record length predates the current settling witness. It is being
 re-measured in [#1471](https://github.com/bk-squared/rfx/issues/1471).
 

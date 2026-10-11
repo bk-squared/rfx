@@ -207,7 +207,7 @@ add_waveguide_port(x_position, *, x_range=None, y_range=None, z_range=None,
 arguments across that axis give the guide aperture. An aperture that spans
 the whole cross-section needs PEC on the transverse faces and an absorber on
 the port axis only (`boundary={"x": "cpml", "y": "pec", "z": "pec"}` for an
-x-directed port); `boundary="cpml"` on every face is refused. Waveguide ports
+x-directed port); on a uniform mesh `boundary="cpml"` on every face is refused. Waveguide ports
 need `mode="3d"`, and cannot share a simulation with lumped ports.
 
 ```python
