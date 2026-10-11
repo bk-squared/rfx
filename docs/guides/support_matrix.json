@@ -73,8 +73,8 @@
           "limits": "limited to the field update; no nonuniform S-parameter or component-value AD result"
         },
         "lumped_port_sparameters": {
-          "status": "unsupported",
-          "limits": "hard_fail"
+          "status": "limited",
+          "limits": "single-device forward(port_s11_freqs=...) returns the requested bins for lumped and wire ports; not a general full-matrix result; distributed forward refuses explicit port frequencies"
         },
         "msl_s_matrix": {
           "status": "experimental",
@@ -93,13 +93,14 @@
     "sbp_sat_subgridding": {
       "status": "not_documented",
       "public_docs_policy": "no_current_public_workflow",
-      "use": "local_refinement_code_path"
+      "use": "local_refinement_code_path",
+      "default": "refused (validation='production'); validation='research' runs it with ExperimentalSubgridWarning"
     },
     "adi": {
       "status": "experimental",
       "public_docs_policy": "bounded_public_workflow",
       "solver": "Zheng-Chen-Zhang ADI",
-      "limits": "lossless 3D PEC-cavity eigenfrequency within 2% at adi_cfl_factor=2; factor 5 is stable but outside that accuracy envelope; explicit Yee remains required for claims-bearing 3D physics",
+      "limits": "outside the 2.0 supported scope; warns ExperimentalADIWarning; runs a closed boundary='pec', homogeneously filled cavity; refuses absorbing boundaries, dielectric or conductivity interfaces, graded meshes, interior PEC and ports; no accuracy claimed; explicit Yee remains required for claims-bearing physics",
       "validated_speedup": false
     },
     "distributed": {
