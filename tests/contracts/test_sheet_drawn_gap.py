@@ -221,8 +221,10 @@ def test_k7_dc_film(graded, case):
     root = C.realized_conductors(sim, grid, nonuniform=graded)
     values = [float(e_update_material_at(root.materials, (4, j, 4), 'ey', root.periodic,
               **electric_grid_kwargs(grid))[1]) for j in (9, 10)]
-    # Survey's five rows: the first three have a gap at row 10; last two touch.
-    assert values[1] == (0. if case < 3 else pytest.approx(5.))
+    # Survey's five rows: the first three have a gap at row 10; last two touch. A touching
+    # pair is one continuous film: its joint edge carries the film's interior edge value.
+    assert values[0] > 0.
+    assert values[1] == (0. if case < 3 else values[0])
 
 
 @pytest.mark.parametrize('graded', [False, True])
