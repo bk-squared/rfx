@@ -105,7 +105,9 @@ def test_power_wave_normalization_unequal_z0():
     S = np.asarray(S)
     pseudo_ratio = np.sqrt(z0_msl / z0_lump)  # 0.7746 — the #460 error
     assert abs(pseudo_ratio - 1.0) > 0.2
-    np.testing.assert_allclose(np.abs(S[1, 0, :]), 1.0, atol=1e-5)
+    # The invalid per-cell drive frame refuses the whole driven column.
+    assert np.isnan(S[1, 0, :]).all()
+    np.testing.assert_allclose(np.abs(S[0, 1, :]), 1.0, atol=1e-5)
     # The mixed driven lumped diagonal is refused, even on matched phasors.
     assert np.isnan(S[0, 0, :]).all()
 
@@ -119,9 +121,9 @@ def test_reciprocity_on_synthetic_transfer():
         wire_mode=False, drive_plan=[("lw", 0), ("msl", 0)],
     )
     S = np.asarray(S)
-    np.testing.assert_allclose(
-        np.abs(S[0, 1, :]), np.abs(S[1, 0, :]), atol=1e-5
-    )
+    # Reciprocity cannot compare a refused drive; retain the independent receive oracle.
+    assert np.isnan(S[:, 0]).all()
+    np.testing.assert_allclose(np.abs(S[0, 1, :]), 1.0, atol=1e-5)
 
 
 def test_power_witness_matches_synthetic():
@@ -165,7 +167,8 @@ def test_wire_mode_uses_per_cell_impedance():
         np.asarray([z0_lump]), np.asarray([n_live]), np.asarray([z0_msl]),
         wire_mode=True, drive_plan=[("lw", 0)],
     )
-    np.testing.assert_allclose(np.abs(np.asarray(S)[1, 0, :]), 1.0, atol=1e-5)
+    # Wire drives share the refused per-cell frame, including their off-diagonals.
+    assert np.isnan(np.asarray(S)[:, 0, :]).all()
 
 
 # ---------------------------------------------------------------------------
@@ -243,7 +246,7 @@ def test_a_lumped_feed_reaches_the_lumped_branch_and_its_numbers_are_pinned():
     _add_msl(sim, y_c, n_probe_offset=10, n_probe_spacing=4)
 
     # The old warning plus a finite diagonal is replaced by refusal.
-    with pytest.warns(UserWarning, match="refused driven lumped entries"):
+    with pytest.warns(UserWarning, match="refused lumped/wire-driven columns"):
         res = sim.compute_mixed_s_matrix(
             freqs=np.linspace(1e9, 2e9, 3), num_periods=2.0,
             skip_preflight=True, magnitude_channel="wave",
@@ -255,7 +258,8 @@ def test_a_lumped_feed_reaches_the_lumped_branch_and_its_numbers_are_pinned():
     S = np.asarray(res.S)
     assert S.shape == (2, 2, 3)
     assert np.isnan(S[0, 0]).all()
-    assert np.isfinite(S[1, 0]).all()
+    # The driven lumped transmission uses the same refused incident wave.
+    assert np.isnan(S[1, 0]).all()
     assert np.isfinite(S[:, 1]).all()
 
 
@@ -601,14 +605,17 @@ def test_mixed_probe_fed_msl_plumbing_smoke():
         )
     S = np.asarray(res.S)
     assert S.shape == (2, 2, 5)
-    assert np.all(np.isfinite(S))
+    # Only the MSL-driven flux column survives the per-cell drive refusal.
+    assert np.isnan(S[:, 0]).all()
+    assert np.all(np.isfinite(S[:, 1]))
     assert res.port_families == ("wire", "msl")
     assert res.port_names[1] != "lw0" and res.port_names[0] == "lw0"
     assert res.z0_ref.shape == (2,)
     assert res.z0_ref[0] == pytest.approx(50.0)
     assert 20.0 < res.z0_ref[1] < 120.0          # HJ analytic, sane band
     assert res.s21_power_witness.shape == (1, 1, 5)
-    assert np.all(np.isfinite(res.s21_power_witness))
+    # The power witness of a refused wire-driven column is refused too.
+    assert np.isnan(res.s21_power_witness).all()
     assert res.magnitude_channel == "flux"
     assert res.S_wave is not None and res.S_wave.shape == S.shape
     _assert_drive_settling_witnesses(sim, res, 4., (0.0780274, 0.322321))
@@ -662,8 +669,11 @@ def test_mixed_probe_fed_msl_smoke_slow_lane_exists():
     )
     S = np.asarray(res.S)
     assert S.shape == (2, 2, 5)
-    assert np.all(np.isfinite(S))
-    assert np.all(np.abs(S) < 1.5), f"gross blow-up: max|S|={np.max(np.abs(S)):.3f}"
+    # Only the MSL-driven flux column survives the per-cell drive refusal.
+    assert np.isnan(S[:, 0]).all()
+    assert np.all(np.isfinite(S[:, 1]))
+    # Apply the unchanged bound to the retained, unprojected MSL column.
+    assert np.all(np.abs(S[:, 1]) < 1.5), f"gross blow-up: max|S|={np.max(np.abs(S[:, 1])):.3f}"
     _assert_drive_settling_witnesses(sim, res, 8., (4.13651e-21, 1.59952e-4))
 
 

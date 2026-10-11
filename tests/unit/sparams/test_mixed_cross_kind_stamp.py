@@ -73,14 +73,13 @@ def test_cross_kind_s_is_the_float64_dft_of_both_records_at_the_physical_stamps(
                                seen["spectra"], host):
         peak = np.max(np.abs(want))
         worst = float(np.max(np.abs(got - want)) / peak)
-        print(f"\n[{name}] |kernel - float64 host DFT| / peak = {worst:.3g}")
         assert worst <= 1e-4, (name, worst)
     args, kw = seen["rest"]
     reference, _ = assemble(*host, *args, **{**kw, "v_ref_lw": v_ref})
     reference = np.asarray(reference)
-    peak = np.max(np.abs(reference))
-    for i, j in ((0, 1), (1, 0)):
+    # The wire-driven column is refused; retain the same DFT bar on MSL-driven waves.
+    assert np.isnan(S[:, 0]).all()
+    peak = np.max(np.abs(reference[:, 1]))
+    for i, j in ((0, 1),):
         worst = float(np.max(np.abs(S[i, j] - reference[i, j])) / peak)
-        turn = float(np.max(np.abs(np.angle(S[i, j] / reference[i, j]))))
-        print(f"\n[S{i + 1}{j + 1}] |S - S_host| / peak = {worst:.3g}; phase {turn:.3g} rad")
         assert worst <= 1e-4, ((i, j), worst)

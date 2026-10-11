@@ -45,7 +45,7 @@ from rfx.sources.sources import GaussianPulse
 
 from rfx.api._spec import MixedSMatrixResult
 
-from rfx.sparams._mixed_checks import _warn_refused_lumped_entries
+from rfx.sparams._mixed_checks import _mixed_refusal_masks, _warn_refused_mixed_entries
 
 from rfx.sparams._common import (
     _msl_cell_profile,
@@ -953,17 +953,21 @@ def compute_mixed_s_matrix(
             beta_railed_msl, freqs_arr,
             tuple(pe.name for pe in entries),
         )
+        refused_flux, refused_wave = _mixed_refusal_masks(
+            n_lw + n_msl, n_lw, n_live_lw, wire_mode, drive_plan)
+        refused_positions = refused_flux if magnitude_channel == "flux" else refused_wave
         s_wave_full = None
 
         if magnitude_channel == "flux":
             import warnings as _wf
-            s_wave_full = np.asarray(jax.lax.stop_gradient(S))
+            s_wave_full = np.asarray(jax.lax.stop_gradient(S)).copy()
+            s_wave_full[refused_wave] = np.nan
             msl_away = [
                 (+1.0 if pe.direction == "+x" else -1.0) for pe in entries
             ]
             S, _ill_cond, _neg_power = _mixed_flux_magnitude_override(
                 S, box_lw, plane_msl, drive_plan, msl_away, n_lw,
-                refused_columns=range(n_lw) if not wire_mode else (),
+                refused_columns=np.flatnonzero(np.all(refused_flux, axis=0)),
             )
             S = jnp.asarray(S, dtype=_complex_dtype)
             for col in range(n_lw + n_msl):
@@ -1025,11 +1029,11 @@ def compute_mixed_s_matrix(
             + z0_hj_per_port
         )
 
+        S = jnp.where(refused_positions[..., None], jnp.nan, S)
         s_raw = None
         passivity_correction = None
-        if not wire_mode:
-            _warn_refused_lumped_entries(port_names, n_lw, magnitude_channel)
-        if enforce_passivity and wire_mode and not is_tracer(S):
+        _warn_refused_mixed_entries(port_names, refused_flux, refused_wave, magnitude_channel)
+        if enforce_passivity and not np.any(refused_positions) and not is_tracer(S):
             s_projected, correction = _project_passive(S)
             if bool(np.any(np.asarray(correction) > 0.0)):
                 s_raw = S
@@ -1068,7 +1072,7 @@ def compute_mixed_s_matrix(
             extractor="compute_mixed_s_matrix",
             strict=strict_extractor,
             passivity_tol=0.10,
-            skip_nan=not wire_mode,
+            refused_positions=refused_positions,
         )
         # RECIPROCITY WITNESS — the only independent runtime check on
         # the flux channel (review finding: the shared passivity audit

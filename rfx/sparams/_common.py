@@ -1154,7 +1154,7 @@ def _warn_if_nonpassive_smatrix(
     passivity_tol: float = 0.10,
     amplitude_eps: float = 0.05,
     check_reciprocity: bool = False,
-    skip_nan: bool = False,
+    refused_positions=None,
     reciprocity_tol: float = WAVEGUIDE_RECIPROCITY_ADVISORY_TOL,
 ) -> None:
     """Auto-run the passivity/finiteness self-check on a freshly-extracted
@@ -1197,8 +1197,9 @@ def _warn_if_nonpassive_smatrix(
         # numeric return path.
         return
 
-    if skip_nan and np.any(np.isnan(s_np)):
-        _warn_partial_nonpassive(s_np, extractor, strict, passivity_tol, amplitude_eps)
+    if refused_positions is not None and np.any(refused_positions):
+        _warn_partial_nonpassive(
+            s_np, refused_positions, extractor, strict, passivity_tol, amplitude_eps)
         return
 
     # WARN-ONLY reciprocity advisory, enabled per port family by the caller
@@ -1735,8 +1736,9 @@ def _assemble_mixed_power_wave_s(
 ):
     """Assemble the mixed-family power-wave S-matrix (issue #488).
 
-    Pure function of the recorded phasors so the cross-impedance
-    normalization is unit-testable without an FDTD run.
+    Lumped/wire-driven columns and their power witnesses are refused.
+    MSL-driven waves retain the recorded-phasor algebra below. The caller
+    refuses multi-cell wire receive waves after preserving their flux phase.
 
     .. warning::
 
@@ -1826,13 +1828,6 @@ def _assemble_mixed_power_wave_s(
     s21_power : (n_msl, n_lw, n_freqs) real — |S21| power witness.
     """
     v_lw = jnp.asarray(v_lw)
-    # Issue #683 x #764 (wire mode): drive-sample reference — the
-    # pre-injection drive sample every wave formula below was calibrated
-    # against; v_lw now carries the physical POST samples.  None (lumped
-    # mode / legacy callers) falls back to v_lw, which then IS the
-    # reference.  Only the DRIVE port's own sample differs between the
-    # two; passive receives are slot-invariant.
-    v_ref_lw = v_lw if v_ref_lw is None else jnp.asarray(v_ref_lw)
     i_lw = jnp.asarray(i_lw)
     v0_msl = jnp.asarray(v0_msl)
     i_msl = jnp.asarray(i_msl)
@@ -1863,46 +1858,9 @@ def _assemble_mixed_power_wave_s(
 
     for run, (fam, loc) in enumerate(drive_plan):
         if fam == "lw":
-            col = loc
-            v_d, i_d = v_ref_lw[run, loc], i_lw[run, loc]
-            # Drive wave — probes.py:913/:1018 (z0_cell for wire).
-            a = (-v_d + z0c_lw[loc] * i_d) / (2.0 * sq_lw[loc])
-            safe_a = jnp.where(jnp.abs(a) > 0, a, jnp.ones_like(a))
-            # Diagonal first (byte-frozen legacy algebra, full Z0).
-            if wire_mode:
-                safe_i = jnp.where(
-                    jnp.abs(i_d) > 0, i_d, jnp.ones_like(i_d) * 1e-30
-                )
-                z_in = -v_d / safe_i
-                s_jj = (z_in - z0_lw[loc]) / (z_in + z0_lw[loc])
-            else:
-                # The driven lumped reflection is refused on the mixed lane.
-                s_jj = jnp.full_like(a, jnp.nan)
-            S = S.at[col, col, :].set(s_jj.astype(cdt))
-            for ri in range(n_lw):
-                if ri == loc:
-                    continue
-                S = S.at[ri, col, :].set(
-                    (_b_lw_passive(run, ri) / safe_a).astype(cdt)
-                )
-            # Power witness: |a| from delivered power, not the port-cell
-            # wave magnitude (#313 near-field pollution triangulation).
-            safe_i = jnp.where(
-                jnp.abs(i_d) > 0, i_d, jnp.ones_like(i_d) * 1e-30
-            )
-            z_in = -v_d / safe_i
-            p_del = 0.5 * jnp.real(z_in) * jnp.abs(i_d) ** 2
-            one_minus = jnp.clip(1.0 - jnp.abs(s_jj) ** 2, 1e-9, None)
-            a_recon = jnp.sqrt(jnp.clip(2.0 * p_del, 0.0, None) / one_minus)
-            safe_ar = (jnp.where(a_recon > 0, a_recon, jnp.ones_like(a_recon))
-                       if wire_mode else jnp.full_like(a_recon, jnp.nan))
-            for p in range(n_msl):
-                b_p = _b_msl(run, p)
-                S = S.at[n_lw + p, col, :].set((b_p / safe_a).astype(cdt))
-                s21_power[p, loc, :] = np.asarray(
-                    jax.lax.stop_gradient(jnp.abs(b_p) / safe_ar),
-                    dtype=np.float64,
-                )
+            # The per-cell drive frame invalidates the entire driven column.
+            S = S.at[:, loc, :].set(jnp.nan)
+            s21_power[:, loc, :] = np.nan
         else:
             col = n_lw + loc
             # MSL drive wave (stage-S1 V*I split), power-wave normalized.

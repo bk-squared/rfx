@@ -329,10 +329,9 @@ def test_realized_field_storage(monkeypatch, entry, precision):
 
             def check_finite_entries(a):
                 if entry == 'compute_mixed_s_matrix':
-                    # This wave-mode fixture refuses only the driven lumped
-                    # diagonal; precision still applies to every retained entry.
-                    assert np.isnan(a[0, 0]).all(), entry
-                    assert np.isfinite(a[1, 0]).all(), entry
+                    # The per-cell drive frame refuses the whole lumped column;
+                    # precision still applies to every retained entry.
+                    assert np.isnan(a[:, 0]).all(), entry
                     assert np.isfinite(a[:, 1]).all(), entry
                 else:
                     assert np.isfinite(a).all(), entry

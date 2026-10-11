@@ -126,7 +126,9 @@ def test_mixed_affine_h_matches_constant_reference_and_refutes_single_plane(
     for key in ("v0_msl", "v_lw", "i_lw"):
         np.testing.assert_array_equal(got[key], ref[key])
     assert np.all(np.abs(ref["i_msl"]) > 0)
-    assert np.all(np.abs(reference.S[[0, 1], [1, 0]]) > 1e-2)
+    # The lumped-driven transmission is refused; the MSL-driven receive is retained.
+    assert np.isnan(reference.S[:, 0]).all()
+    assert np.all(np.abs(reference.S[0, 1]) > 1e-2)
     np.testing.assert_allclose(affine.S, reference.S, rtol=2e-6, atol=2e-7)
 
     # Explicit falsifier: restore only the old right-H sampling, keeping
