@@ -38,6 +38,7 @@ def apply_pmc_faces(state, faces: set[str], *, image: bool = False, frame=None, 
 
     Image paths accept axis-name ``frame`` bounds and per-face ``owned``:
     only x bounds may differ from (0, n); x-hi writes hi - 1, x-lo nothing.
+    ``owned=None`` means the caller owns every named face (one device).
     The legacy path refuses either new argument when it is not None.
 
     Parameters

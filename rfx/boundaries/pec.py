@@ -119,7 +119,8 @@ def apply_pec_faces(state, faces: set[str], *, frame=None, owned=None) -> object
     Its tangential zero set is ``wall_edge_masks(state.ex.shape, faces)``;
     the extra Ez high-z ghost cleanup below is excluded from that set.
     ``frame`` maps axes to static (lo, hi) rows; only x may differ from
-    (0, n). ``owned`` selects each named face's write on its row only.
+    (0, n). ``owned`` selects each named face's write on its row only;
+    ``owned=None`` means the caller owns every named face (one device).
 
     Parameters
     ----------

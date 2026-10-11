@@ -75,6 +75,8 @@ def test_t2_face_ownership_and_static_frame(kind):
             state = state._replace(
                 hx=state.hx.at[:, -1, :].set(0.).at[:, :, -1].set(0.),
                 hy=state.hy.at[:, :, -1].set(0.), hz=state.hz.at[:, -1, :].set(0.))
+        # A -0.0 on the target row: a non-owner must keep it (select), not add a zero (+0.0).
+        state = state._replace(**{c: getattr(state, c).at[row, 1, 1].set(-0.) for c in components})
         call = jax.jit(lambda st, own: op(st, FACES, frame=frame, owned={target: own}))
         _check_bits(call(state, jnp.bool_(False)), state)
         expected = state._replace(**{c: getattr(state, c).at[row].set(0.) for c in components})
