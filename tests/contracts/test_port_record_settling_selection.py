@@ -65,3 +65,34 @@ def test_run_does_not_score_record_without_s(monkeypatch):
     assert db is None
     assert detail['skipped_port_records'] == [
         {'id': 'port:0:mode:0', 'reason': 'S not read'}]
+
+
+def _lumped_then_wire(graded):
+    import jax.numpy as jnp
+    from rfx import Simulation
+    sim = Simulation(freq_max=10e9, domain=(.008, .006, .002), dx=.001, boundary='pec',
+                     **({'dz_profile': np.array([.0008, .0012])} if graded else {}))
+    sim.add_port((.002, .003, 0.), 'ez', impedance=50., waveform=lambda t: jnp.cos(t * 2e10))
+    sim.add_port((.006, .003, 0.), 'ez', impedance=50., extent=.002, excite=False)
+    return sim
+
+
+@pytest.mark.parametrize('graded, freqs, read_kinds', [
+    (False, np.array([2e9, 4e9]), {'lumped'}),   # uniform forward forms S from the lumped accumulators only
+    (True, None, {'wire'}),                      # graded forward without bins: wire S, the lumped port only records
+], ids=['uniform-lumped-S', 'graded-wire-S-lumped-record-only'])
+def test_real_forward_scores_exactly_the_records_behind_its_s(monkeypatch, graded, freqs, read_kinds):
+    import warnings
+    import rfx.sparams._tail_witness as witness
+    seen, score = [], witness.port_record_witness
+    monkeypatch.setattr(witness, 'port_record_witness',
+                        lambda records, *a, **k: (seen.extend(records), score(records, *a, **k))[1])
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        result = _lumped_then_wire(graded).forward(n_steps=60, skip_preflight=True, port_s11_freqs=freqs)
+        result.settling_witness
+    records = result.sparam_time_records
+    assert result.s_params is not None and {r.kind for r in records} == {'lumped', 'wire'}
+    expected = {r.id for r in records if r.kind in read_kinds}
+    assert {r.id for r in seen} == expected
+    assert {s['id'] for s in result.settling_witness['skipped_port_records']} == {r.id for r in records} - expected
