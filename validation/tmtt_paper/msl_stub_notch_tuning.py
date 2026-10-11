@@ -1,5 +1,19 @@
 """MSL open-stub notch tuning — differentiable inverse design.
 
+Paper version and main
+----------------------
+The numbers in the T-MTT paper were produced at the tagged release
+``paper-tmtt-2026`` (2026-08-10).  To reproduce them, check that tag out and
+run this script there::
+
+    git checkout paper-tmtt-2026
+    python validation/tmtt_paper/msl_stub_notch_tuning.py
+
+This file is the CURRENT code on main.  Since the tag the solver's port,
+material and conductor models were corrected, so some numbers differ.
+What main shows is the cost landscape below (re-run 2026-10-11): one basin,
+best L = 7.310 mm at -50.3 dB, gates G1-G4 pass.
+
 Microwave-engineering inverse-design demo on a 2-port microstrip filter:
 tune the open-stub length so the transmission notch lands at a chosen
 design frequency.  Stub length is reformulated as a continuous sigmoid PEC
@@ -7,24 +21,25 @@ density mask via :meth:`Simulation.forward(pec_occupancy_override=…)` and
 optimised with Adam through ``jax.grad``.  Cost is ``|S21(f_target)|²`` from
 the plane-integrated JAX N-probe extractor.
 
-Multimodal cost surface
------------------------
-The ``|S21(f_target=6 GHz)|²`` cost over L_stub ∈ [4, 12] mm is physically
-**MULTIMODAL**, not convex:
+Cost landscape on main
+----------------------
+Measured on main (re-run 2026-10-11, VESSL 369367270250, RTX 4090; the
+scan figure is in the project's run record).  The ``|S21(f_target=6 GHz)|²``
+cost over L_stub ∈ [4, 12] mm has ONE basin, around the in-band λ/4
+open-stub notch (analytic 7.374 mm):
 
-  * GLOBAL minimum at L ≈ 7.0 mm, cost ≈ -45.9 dB — the in-band λ/4
-    open-stub notch (analytic target 7.374 mm, ~5 % from the FDTD optimum).
-  * SECONDARY valley near ~9.53 mm, ~290× shallower than the global min.
-    This is the longer-stub branch notching BELOW band (e.g. a -28.6 dB
-    notch near 3.98 GHz at L = 10.8 mm), so its in-band |S21| stays higher.
+  * The 0.5 mm brute scan falls from -14.4 dB at 4 mm to -31.1 dB at
+    7.0 mm and -33.1 dB at 7.5 mm, then rises monotonically to -11.0 dB
+    at 12 mm.  There is no second valley in the band.
+  * The null is narrow: Adam started at 6.5 mm reaches L = 7.310 mm at
+    -50.3 dB, 17 dB deeper than either neighbouring grid point.
 
-Because the surface is multimodal, a single-start Adam seeded above the
-notch (e.g. at 9.5 mm) settles on the secondary valley and never reaches
-the 7.0 mm global basin.  The demo therefore uses a best-of MULTI-START
-Adam (see ``_multistart_adam``) with seeds spanning the band so one init
-sits in the global basin near 7.0 mm.  The gradient itself is sign-correct
-and device-independent (CPU==GPU); the multimodality — not any extractor or
-AD issue — is what a single start fails to cross.
+The demo uses a best-of MULTI-START Adam (see ``_multistart_adam``) because
+the per-step length clamp (0.2 mm) and 8 iterations let a start move at most
+about 1.6 mm: on main the start at 5.5 mm ends at 6.64 mm (-24.7 dB) and the
+start at 9.5 mm at 8.40 mm (-18.8 dB), both still descending toward the
+basin, while the 6.5 mm start reaches the null.  The best of the starts is
+the result.
 
 Differentiable PEC parameterisation
 -----------------------------------
@@ -60,8 +75,8 @@ gradient on the Kottke path:
      == hard realized edge set) at build time rather than asserting it in
      prose.
 
-The combination gives a global-min notch depth ≈ -45.9 dB at L ≈ 7.0 mm and
-lets ``jax.grad`` flow cleanly through sigmoid → density → Yee → DFT
+The combination gives a notch of -50.3 dB at L = 7.310 mm on main and lets
+``jax.grad`` flow cleanly through sigmoid → density → Yee → DFT
 extractor.
 
 Two-branch physics
@@ -69,17 +84,18 @@ Two-branch physics
 An open stub of length L behind a feedline notches at the frequency where
 the stub is an odd multiple of λ_g/4 (open end → short at the junction).  In
 this band that gives two distinct branches inside [4, 12] mm:
-  * L ≈ 7.0 mm → the IN-BAND λ/4 notch at the 6 GHz target (global cost
+  * L ≈ 7.3 mm → the IN-BAND λ/4 notch at the 6 GHz target (the cost
     minimum).
-  * L ≳ 9.5 mm → the longer-stub branch whose λ/4 falls BELOW band (e.g.
-    ~3.98 GHz at L = 10.8 mm), a shallow secondary valley in-band.
+  * Longer stubs put their λ/4 notch BELOW the 6 GHz target, so the
+    in-band cost rises steadily above the notch length (the scan on main
+    shows no second in-band valley).
 
 Validation chain (the point of this example):
   1. Best-of MULTI-START Adam minimises ``|S21_jax(f_target)|²`` w.r.t.
-     ``L_stub`` (inits span the band so one is in the global basin near
-     7.0 mm; see ``_multistart_adam``).
-  2. Brute-force scan (same JAX extractor, N_SCAN ≥ 17) finds the global-min
-     reference ``L_ref`` ≈ 7.0 mm.
+     ``L_stub`` (inits span the band so one starts inside the basin; see
+     ``_multistart_adam``).
+  2. Brute-force scan (same JAX extractor, N_SCAN ≥ 17) finds the grid
+     point nearest the minimum, ``L_ref`` (7.5 mm on main, 0.5 mm grid).
   3. **Cross-solver gate**: at the best-basin ``L_opt``, run the imperative
      :meth:`Simulation.compute_msl_s_matrix` and check that the imperative
      notch is real (deep ≤ -15 dB) and near the design target.
@@ -171,19 +187,13 @@ L_STUB_MAX = 14.0e-3
 L_MIN, L_MAX = 4.0e-3, 12.0e-3
 L_INIT = 9.5e-3                        # legacy single-start init —
                                         # NO LONGER the descent start.
-                                        # 9.5 mm sits ON the SECONDARY
-                                        # valley (~9.53 mm, the
-                                        # below-band longer-stub
-                                        # branch), NOT a clean descent
-                                        # above the notch.  main() uses
-                                        # best-of MULTI-START Adam
-                                        # (`_multistart_adam`) with
-                                        # inits spanning the band; this
-                                        # constant is kept only as one
-                                        # of those seeds (the
-                                        # secondary-valley probe).  The
-                                        # global λ/4 notch is at
-                                        # L ≈ 7.0 mm (analytic 7.37 mm).
+                                        # main() uses best-of
+                                        # MULTI-START Adam
+                                        # (`_multistart_adam`); this
+                                        # constant is kept as the seed
+                                        # above the notch.  The λ/4
+                                        # notch is at L ≈ 7.3 mm on main
+                                        # (analytic 7.37 mm).
 SIGMOID_BETA = max(DX * 0.25, 0.05 * H_SUB)
 # Sigmoid PEC mask sharpness for the differentiable stub-length
 # parameterisation.  The σ-loading path folds occ × σ_PEC into
@@ -483,15 +493,14 @@ def _multistart_adam(
 
     PURE in ``cost_fn``: takes the scalar-latent → scalar-cost
     callable as an argument, so it is testable against a synthetic
-    bimodal cost WITHOUT any FDTD forward.  The ``[4, 12] mm`` MSL
-    cost surface is multimodal (in-band λ/4 notch ~7.0 mm vs the
-    below-band longer-stub valley ~9.5 mm), so single-start Adam can
-    settle in the wrong basin — this best-of-N start sweep is the fix.
+    bimodal cost WITHOUT any FDTD forward.  On the ``[4, 12] mm`` MSL
+    cost the per-step clamp and the iteration cap let a start far from
+    the narrow λ/4 null (~7.3 mm on main) stop short of it; this best-of-N
+    start sweep keeps the start that reached it.
 
     Per step the update is clamped so the physical length moves by at
-    most ``max_dL_per_step`` (default ~0.2 mm < the ~0.6 mm
-    secondary-valley width), preventing the lr=0.4 latent step from
-    overshooting a valley wall.
+    most ``max_dL_per_step`` (default ~0.2 mm), preventing the lr=0.4
+    latent step from overshooting the narrow null.
 
     Parameters
     ----------
@@ -571,9 +580,9 @@ def _multistart_adam(
         hist["cost_final"] = final_loss
         hist["latent_final"] = float(latent)
         # BEST-ITERATE selection: Adam can OVERSHOOT a sharp resonant null.
-        # A trajectory can hit the −46 dB null at L ≈ 7.0-7.1 mm but
-        # momentum then carries it out to ~7.4 mm / −34 dB, so keeping the
-        # FINAL iterate would discard the −46 dB point Adam actually
+        # On main a trajectory hits the -50 dB null at L = 7.31 mm and
+        # momentum then carries it out to ~7.58 mm / -30 dB, so keeping the
+        # FINAL iterate would discard the deepest point Adam actually
         # visited.  Keep the BEST-seen iterate along the trajectory instead
         # (standard best-checkpoint, not last-checkpoint).  Only finite
         # costs are eligible (NaN can never win — preserves the NaN guard).
@@ -616,16 +625,14 @@ def _multistart_adam(
 # ---------------------------------------------------------------------------
 def main() -> int:
     # Defaults sized for ~12-15 min wall on this dev box.  The cost
-    # landscape over L_stub ∈ [4, 12] mm is MULTIMODAL (in-band λ/4
-    # notch ~7.0 mm = global min vs the below-band longer-stub valley
-    # ~9.5 mm), so a single-start Adam can settle in the wrong basin.
-    # We therefore run best-of N_START Adam (RFX_Y2B_NSTART) with inits
-    # spanning the band, each capped to N_ITERS steps.  LR is 0.15 (a
-    # larger 0.4 overshoots the ~0.3 mm valley wall); the per-step
-    # physical-length clamp RFX_Y2B_MAXDL (default 0.2 mm < the ~0.6 mm
-    # secondary-valley width) is the hard guard.  N_ITERS is 8: a seed
-    # offset onto the basin wall (6.5 mm) must DESCEND ~0.5 mm into the
-    # 7.0 mm notch under the 0.2 mm/step clamp, which needs several steps
+    # landscape over L_stub ∈ [4, 12] mm has one narrow null near
+    # 7.3 mm on main; a start far from it does not reach it within the
+    # step clamp and iteration cap.  We therefore run best-of N_START Adam
+    # (RFX_Y2B_NSTART) with inits spanning the band, each capped to N_ITERS
+    # steps.  LR is 0.15 (a larger 0.4 overshoots the narrow null); the
+    # per-step physical-length clamp RFX_Y2B_MAXDL (default 0.2 mm) is the
+    # hard guard.  N_ITERS is 8: a seed on the basin wall (6.5 mm) must
+    # DESCEND ~0.8 mm into the null under the 0.2 mm/step clamp, which needs several steps
     # to reach the global null floor (best-iterate keeps the deepest point
     # even if Adam then overshoots the sharp null).
     NUM_PERIODS = float(os.environ.get("RFX_Y2B_PERIODS", 10.0))
@@ -721,20 +728,16 @@ def main() -> int:
         return L_MIN + (L_MAX - L_MIN) * jax.nn.sigmoid(latent)
 
     # ---- Best-of multi-start Adam optimisation ----
-    # MULTI-START IS REQUIRED: the [4, 12] mm cost surface is multimodal,
-    # so a single-start Adam can settle in the below-band longer-stub
-    # valley (~9.5 mm) instead of the in-band global λ/4 notch (~7.0 mm).
-    # Seeds span the band so one lands in each physical branch — the
-    # global basin's catchment and the 9.5 mm secondary trap.
+    # MULTI-START: the null is narrow and each start moves at most about
+    # 1.6 mm (0.2 mm/step clamp x 8 steps), so seeds on both sides of it
+    # are run and the best one kept.
     print("\n" + "=" * 70)
     print(f"Best-of multi-start Adam optimisation (N_START={N_START})")
     print("=" * 70)
     # Band-spanning seeds.  NO seed is pinned exactly at the global minimum
-    # (7.0 mm) — that would make G2 self-fulfilling ("seeded at the
-    # answer").  5.5 and 6.5 mm both sit on the monotone descending wall of
-    # the global basin (brute scan: 5.5→7.31e-3, 6.5→1.17e-3, 7.0→2.58e-5)
-    # so Adam must actually DESCEND into 7.0 mm, while 9.5 mm probes the
-    # secondary trap.  Extra starts (N_START>3) fill the band uniformly.
+    # — that would make G2 self-fulfilling ("seeded at the answer").
+    # 5.5 and 6.5 mm sit on the descending wall below the null and 9.5 mm
+    # on the rising wall above it, so Adam must actually DESCEND.  Extra starts (N_START>3) fill the band uniformly.
     L_seeds_mm = [5.5, 6.5, 9.5]
     if N_START > len(L_seeds_mm):
         extra = np.linspace(L_MIN * 1e3 + 0.5, L_MAX * 1e3 - 0.5,
@@ -871,19 +874,12 @@ def main() -> int:
     #     not a fixed dB number).  Reported on the winning start.
     #   * G2  best-basin multi-start ``L_opt`` lands in the brute-scan
     #     GLOBAL-min grid cell (|ΔL| ≤ brute grid spacing) — i.e. Adam
-    #     escaped the trap and reached the global λ/4 notch (~7.0 mm), not
-    #     the below-band longer-stub valley (~9.5 mm, ~290× shallower).
-    #     MULTI-START IS REQUIRED: the [4, 12] mm cost surface is
-    #     physically MULTIMODAL, so single-start Adam from 9.5 mm settles
-    #     in the secondary valley (NOT an extractor or AD bug; AD is
-    #     sign-correct + device-independent).
+    #     reached the λ/4 null (~7.3 mm on main).
     #     The stricter "L_opt within 1 % of L_ref" is only an
-    #     informational diagnostic, not a gate.  The 7.0 mm notch is a
-    #     FLAT-bottomed resonant null (brute 7.004→2.54e-5, 7.122→2.33e-5,
-    #     both −46 dB), so sub-1 % (≤0.07 mm) L-precision is below the
-    #     flat-null width (~0.12 mm) AND the brute grid spacing (0.5 mm) —
-    #     it measures grid-quantization noise, not convergence quality.
-    #     Best-iterate Adam reaches the −46 dB floor; the basin gate above
+    #     informational diagnostic, not a gate: the brute grid spacing
+    #     (0.5 mm) is far coarser than 1 % of L, so that number measures
+    #     grid quantization, not convergence quality.
+    #     Best-iterate Adam reaches the null; the basin gate above
     #     + the G3 depth check are the physically meaningful success
     #     criteria.  The ≤1 % number is still printed below for the record.
     #   * G3  imperative-cross-solver notch depth ≤ -15 dB — verifies
@@ -918,8 +914,8 @@ def main() -> int:
     # properties, not AD-pipeline quality; see the G2 note above).
     print(f"  [info] L_opt={L_opt*1e3:.3f}mm  L_ref={L_ref*1e3:.3f}mm  "
           f"strict L-match={L_err_ref:.2f}%  "
-          f"(flat −46 dB null: sub-1% L is below grid/null resolution, "
-          f"not a convergence defect)")
+          f"(the brute grid is 0.5 mm: a sub-1% L match is below its "
+          f"resolution, not a convergence test)")
     print(f"  [info] L_target(an)={L_TARGET_AN*1e3:.3f}mm  "
           f"(ε_eff staircase Δ ≈ {L_err_an:.1f}% on this mesh)")
     print(f"  [info] imperative notch f={f_notch_imp/1e9:.3f} GHz "
@@ -951,7 +947,7 @@ def main() -> int:
                label=f"L_opt (global)={L_opt*1e3:.2f}mm")
     ax.set_xlabel("L_stub (mm)")
     ax.set_ylabel(f"|S21(f={F_TARGET/1e9:.1f} GHz)|² (JAX extractor)")
-    ax.set_title("Multimodal cost vs L_stub — multi-start basins")
+    ax.set_title("Cost vs L_stub — multi-start trajectories")
     ax.legend(fontsize=8)
     ax.grid(True, alpha=0.3)
 

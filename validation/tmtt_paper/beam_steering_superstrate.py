@@ -1,5 +1,21 @@
 """Beam-steering dielectric superstrate over a reflector-backed dipole.
 
+Paper version and main
+----------------------
+The numbers in the T-MTT paper were produced at the tagged release
+``paper-tmtt-2026`` (2026-08-10).  To reproduce them, check that tag out and
+run this script there::
+
+    git checkout paper-tmtt-2026
+    python validation/tmtt_paper/beam_steering_superstrate.py
+
+This file is the CURRENT code on main.  Since the tag the solver's port,
+material and conductor models were corrected, so some numbers differ.
+What main shows (re-run 2026-10-11, VESSL 369367270263, RTX 4090): with
+SMOKE=1 (the default) bare D(30 deg) = +4.92 dBi, optimized +7.20 dBi, peak
++10.46 dBi at 7.5 deg (still near broadside; steering needs SMOKE=0).  SMOKE=0
+was not re-run on main.
+
 Physics
 -------
 An x-oriented electric dipole (Ex point source) sits a quarter wavelength

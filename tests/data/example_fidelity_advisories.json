@@ -553,6 +553,14 @@
    "ref": "rfx/boundaries/tfsf.py:201-208",
    "rows": 1,
    "variant": "examples/tutorials/slab_rt_flux_monitor.py::build_sim::with_slab=True"
+  },
+  {
+   "code": "source_decoupled",
+   "disposition": "intended",
+   "reason": "The scene is the one-cell parallel-plate TEM channel of the lumped/wire port battery: PEC plates on z, PMC side walls on y one cell apart, so the lumped port's Ez edge necessarily lies on the y_lo magnetic-wall plane. The advisory itself states that the Yee magnetic image keeps tangential E on that face coupled to the interior and that a lumped port there describes the full symmetric object; the check's G1 gate confirms the port couples (mean |S11|^2 = 0.25).",
+   "ref": "validation/tmtt_paper/lumped_port_gradient_check.py:1-60 | scripts/diagnostics/lumped_wire_chain_battery_measure.py:559-592",
+   "rows": 1,
+   "variant": "validation/tmtt_paper/lumped_port_gradient_check.py::build::default"
   }
  ]
 }
