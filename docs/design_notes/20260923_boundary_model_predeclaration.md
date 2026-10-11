@@ -681,6 +681,27 @@ Remove the `xfail(strict)` marks that name 1549 (ports' four-cell wire rows) whe
 Why the unterminated plane is unstable only with a closed tube and 20+ layers (not needed for the fix; ledger line).
 The Mac-only exact-equality failure of `test_grid_absorbing_axes[decay-graded]` (separate small PR).
 
+### Decision record (2026-10-11, leader) — classes W and R, and two statements above corrected
+1. The revert clause of "Classes W and R" names pinned values. The forward, multi-device and waveguide-pec cells of
+   the frozen realized-boundary record (`tests/contracts/test_realized_boundary.py`) record the backing plane as
+   missing (departure code `f`): they are this defect written down, not a pinned value. The file's convention is to
+   keep the frozen record and supersede a row when a fix changes what an entry realizes; `backed()` supersedes exactly
+   the code-`f` rows on faces no feature wraps, and wrapped faces keep their strict-xfail rows, so a plane appearing on
+   a TF/SF- or Floquet-wrapped face still turns the test red. With the new test file on the base tree 38 rows fail; on
+   the fix all pass. That is the fix observed, so it does not trigger the revert.
+2. The five low-level helpers in `rfx/sources/waveguide_port.py` keep their `pec_axes="yz"` defaults: by Addendum 5c
+   (5) a low-level caller's flags are its declaration. Their table row reads "unchanged (caller flags)", not class W.
+   Class W is the high-level waveguide entries (run with waveguide ports, the uniform S calculator).
+3. Locks and oracles that read classes W and R are decided by the census (base b7d5b8f68, fix 0649aa418).
+   Independent reviewer, reproduced: rectangular guide, two ports, 9–14 GHz, 8 and 4 layers, empty and with a PEC
+   obstacle — largest change in |S11| and |S21| 2.0e-6 (0.003 dB); oblique RCS of the slow test's plate at 20°,
+   specular σ 8.480686e-4 m² on both trees.
+4. "Where the absorber is deep enough the two models are the same to rounding" and the census expectation "forward-lane
+   pins move at rounding level only" do not hold in a small box: in a 41×33×31-cell open box with 8 layers and the
+   source nine cells from the absorber, forward() before and after the fix differs by 1.2e-5 of the record peak
+   (−99 dB), 2e-6 in later windows (reviewer, reproduced). That difference is the backing plane itself acting on the
+   field that reaches the absorber, not rounding.
+
 ### Relation to earlier addenda
 Addendum 4 put the backing plane of a ZERO-depth absorber at the domain face on the multi-device path; the
 multi-device uniform path still leaves a positive-depth absorber unbacked unless the model is dispersive
