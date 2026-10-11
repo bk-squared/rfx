@@ -74,6 +74,27 @@ def _exchange(states, components, per, *, receive_left):
         states[rank] = state._replace(**changes)
 
 
+@pytest.mark.parametrize('rank,lo,forward', [(0, True, True), (2, False, False)])
+def test_frame_neighbor_operand_matches_global(rank, lo, forward):
+    """R10: far window ends use physical neighbors, even at static frame ends.
+
+    Nx=22, D=3 gives nx_per=8, pad_x=2 and frame=(1,7). A depth-six
+    x-lo window ends at frame hi on rank 0; a depth-six x-hi window starts
+    at frame lo on rank 2. E's forward and H's backward operands are read
+    from global arrays by the single-device helper to form the oracle.
+    _cut includes the current right E / left H ghost from that same field.
+    """
+    rng = np.random.default_rng(95210)
+    global_field = jnp.asarray(rng.uniform(.25, 1.25, (22, 3, 4)), jnp.float32)
+    local_field = _cut(global_field, rank, 8)
+    with jax.disable_jit():
+        expected = cpml.slab_neighbor(global_field, 0, 6, lo, forward=forward,
+                                      frame=None)
+        actual = cpml.slab_neighbor(local_field, 0, 6, lo, forward=forward,
+                                    frame=(1, 7))
+    _bytes(actual, expected, ('R10 operand', rank, 'x_lo' if lo else 'x_hi'))
+
+
 def _scene(case, medium):
     nx, ny, nz = (22 if case in ('short_last', 'lo_touches_hi') else 23), 16, 20
     depths = dict(zip(cpml.ALL_FACES, (2, 3, 4, 5, 6, 7)))
