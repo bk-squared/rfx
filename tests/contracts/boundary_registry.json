@@ -482,19 +482,19 @@
       "kind": "boundary"
     },
     {
-      "file": "rfx/nonuniform.py",
+      "file": "rfx/model/graded_profile.py",
       "function": "_band_realize_free",
       "kind": "difference"
+    },
+    {
+      "file": "rfx/model/graded_profile.py",
+      "function": "make_band_profile",
+      "kind": "roll/diff"
     },
     {
       "file": "rfx/nonuniform.py",
       "function": "_bwd_neighbor",
       "kind": "neighbour"
-    },
-    {
-      "file": "rfx/nonuniform.py",
-      "function": "make_band_profile",
-      "kind": "roll/diff"
     },
     {
       "file": "rfx/nonuniform.py",
