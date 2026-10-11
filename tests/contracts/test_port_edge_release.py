@@ -448,20 +448,29 @@ WG_GRADED_CELLS = np.array([(i, j, k) for i in WG_LAYERS
 # Addendum 5f: PEC removes the eight transverse pad cells. The independent
 # uniform rule applies: seven x layers times 11 y cells times 5 z cells;
 # incident-cell offsets below zero clip at the guide wall, giving 385 cells.
+WG_PARTIAL_GRADED_CELLS = np.array([(i, j, k) for i in WG_LAYERS
+                                    for j in range(9, 21) for k in range(9, 15)
+                                    if (j, k) != (9, 9)], dtype=np.int32)
+# Partial aperture: y=4..26 mm and z=4..14 mm at 2 mm/cell give local
+# edges y=2..12, z=2..6. Add eight CPML cells: y=10..20, z=10..14.
+# Ey adds the lower z neighbour, Ez the lower y neighbour, never both;
+# hence y=9..20, z=9..14 except (9,9), on seven x layers: 497 cells.
 
 
 def waveguide_model(lane='uniform'):
     """Addendum 5f: graded transverse PEC keeps the port-weight subject reachable."""
     from tests.unit.autodiff.test_waveguide_forward import _wr90_sim
     sim = _wr90_sim()
-    if lane == 'graded':
-        sim = Simulation(freq_max=12e9, domain=(.05, .02286, .01016), dx=.002,
-                         boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'}, cpml_layers=8,
+    if lane in ('graded', 'graded-partial'):
+        partial = lane == 'graded-partial'
+        sim = Simulation(freq_max=12e9, domain=(.05, .032, .020) if partial else (.05, .02286, .01016), dx=.002,
+                         boundary='cpml' if partial else {'x': 'cpml', 'y': 'pec', 'z': 'pec'}, cpml_layers=8,
                          dx_profile=np.array([.002]*8 + [.0019, .0021]*4 + [.002]*9))
         sim.add_waveguide_port(direction='+x', x_position=.01,
-                               y_range=(0., .02286), z_range=(0., .01016), n_modes=1)
+                               y_range=(.004, .026) if partial else (0., .02286),
+                               z_range=(.004, .014) if partial else (0., .01016), n_modes=1)
         sim.add_probe(position=(.03, .01143, .00508), component='ey')
-    grid = sim._build_nonuniform_grid() if lane == 'graded' else sim._build_grid()
+    grid = sim._build_nonuniform_grid() if lane.startswith('graded') else sim._build_grid()
     return sim, grid
 
 
@@ -506,13 +515,14 @@ def test_w1_literal_waveguide_cells(axis, direction):
     assert {e[2]['xyz'.index(axis)] for e in root.released_port_edges} == edge_planes
 
 
-@pytest.mark.parametrize('lane', ['uniform', 'graded'])
+@pytest.mark.parametrize('lane', ['uniform', 'graded', 'graded-partial'])
 @pytest.mark.parametrize('region', ['whole', 'source', 'measurement'])
 @pytest.mark.parametrize('p', [.5, 1.])
 def test_w2_waveguide_kernel_weights(monkeypatch, lane, region, p):
     sim, grid = waveguide_model(lane)
-    expected = WG_GRADED_CELLS if lane == 'graded' else WG_CELLS
-    us, vs = range(11), range(5)  # PEC apertures start at zero on both meshes.
+    expected = (WG_PARTIAL_GRADED_CELLS if lane == 'graded-partial' else
+                WG_GRADED_CELLS if lane == 'graded' else WG_CELLS)
+    us, vs = (range(10, 21), range(10, 15)) if lane == 'graded-partial' else (range(11), range(5))
     occupancy = np.zeros(grid.shape, np.float32)
     if region == 'whole':
         occupancy[:] = p
@@ -520,7 +530,7 @@ def test_w2_waveguide_kernel_weights(monkeypatch, lane, region, p):
         layers = (12, 13) if region == 'source' else (22, 23)
         selected = expected[np.isin(expected[:, 0], layers)]
         occupancy[tuple(selected.T)] = p
-    seen = capture(monkeypatch, sim, grid, lane, jnp.asarray(occupancy))
+    seen = capture(monkeypatch, sim, grid, 'graded' if lane.startswith('graded') else lane, jnp.asarray(occupancy))
     actual = np.asarray(seen['occupancy'])
     def factor(i, j, k):
         return 1. if min(i, j, k) < 0 else 1. - np.float64(actual[i, j, k])
@@ -537,7 +547,7 @@ def test_w2_waveguide_kernel_weights(monkeypatch, lane, region, p):
     assert actual[outside].tobytes() == occupancy[outside].tobytes()
     assert len(seen['warnings']) == 1
     message = str(seen['warnings'][0].message)
-    count = '385 cells'  # Seven layers of the 11-by-5 PEC guide aperture.
+    count = '497 cells' if lane == 'graded-partial' else '385 cells'
     for part in ('waveguide_port[0]', 'source 13 (also 14)', 'reference 16', 'measurement 23', count):
         assert part in message
     assert len(message) < 300

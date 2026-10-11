@@ -74,15 +74,16 @@ def main():
         judge = "test_main_document_without_provenance"
     elif mode == "graded-guide-refused":
         from rfx.boundaries import features
-        original = features.admit_waveguide
+        original = features._admit_graded_guide
 
-        def refuse(sim, **kwargs):
-            if sim._uses_nonuniform_mesh and sim._waveguide_ports:
-                raise ValueError("mutant refuses the graded guide")
-            return original(sim, **kwargs)
+        def admit_explicit(sim, lane):
+            # Restore main's early return; retain provenance and admission helpers.
+            if features.boundary_was_explicit(sim) is not False:
+                return
+            return original(sim, lane)
 
-        features.admit_waveguide = refuse
-        judge = "test_nonuniform_explicit_absorbers_keep_real_pads_without_default_warning"
+        features._admit_graded_guide = admit_explicit
+        judge = "test_nonuniform_explicit_absorbers_refused_without_default_warning"
     elif mode == "propagation-wall-refused":
         original = tfsf.replacement_axes
 

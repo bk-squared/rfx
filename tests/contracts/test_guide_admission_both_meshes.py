@@ -4,6 +4,13 @@ Domain 24 x 20 x 8 mm, dx=4 mm, two full-aperture TE10 ports at x=4 mm
 (+x) and x=20 mm (-x), ref/probe offsets one cell, two absorber cells.
 Port setup follows test_waveguide_twoport_contract_v1._build_twoport_sim.
 The graded mesh has a uniform-spaced dz_profile (two 4 mm cells).
+Review rows also use the specified one-port WR-90 (50 x 22.86 x 10.16 mm,
+dx=2 mm, eight absorber cells, source x=10 mm, graded dx_profile), and a
+16 x 16 x 8 mm guide, dx=4 mm, two absorber cells, +x/+y ports at 4 mm
+with ref/probe offsets one cell. Four broad-wall cells keep TE10 below
+10 GHz; two narrow-wall cells keep both transverse field components.
+All public entries use one step. Perpendicular uniform run refuses two
+ports at runners/uniform.py:337; forward and direct admission admit.
 
 The imported-graded-cpml row compares a real graded import with the explicit
 uniform cpml declaration: a uniform import instead restores unknown provenance.
@@ -27,6 +34,21 @@ from rfx.interop import design_to_dict, simulation_from_design
 # These are literal policy answers, never obtained from the admission function.
 # The final column names the reason for an exception to public guide admission.
 EXPECTED = {
+    "wr90-nonwhole-cells": (
+        ("admitted", None, ""),
+        ("refused", ValueError, "full-aperture waveguide requires PEC on y_hi, y_lo, z_hi, z_lo; declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
+        "until S1 boundaries PR3b-1 (one cell-count rule): the uniform mesh rounds the transverse domain up, so the port is not full-aperture there",
+    ),
+    "perpendicular-pec-z": (
+        ("admitted", None, ""),
+        ("refused", ValueError, "full-aperture waveguide requires PEC on x_hi, x_lo, y_hi, y_lo; declare boundary={'x': 'pec', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
+        "uniform guide faces keep only faces with zero absorber depth; pre-existing uniform defect, until S1 boundaries PR3b-2b",
+    ),
+    "perpendicular-cpml": (
+        ("refused", ValueError, "full-aperture waveguide requires PEC on z_hi, z_lo; declare boundary={'x': 'cpml', 'y': 'cpml', 'z': 'pec'} (absorber on the port axis)."),
+        ("refused", ValueError, "full-aperture waveguide requires PEC on x_hi, x_lo, y_hi, y_lo, z_hi, z_lo; declare boundary={'x': 'pec', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
+        "uniform guide faces keep only faces with zero absorber depth; pre-existing uniform defect, until S1 boundaries PR3b-2b",
+    ),
     "not-passed": (
         ("admitted", None, ""),
         ("refused", ValueError, "full-aperture waveguide boundary was not declared on y_hi, y_lo, z_hi, z_lo; the graded mesh keeps absorbers there, so the port would not be in a guide; declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
@@ -81,6 +103,16 @@ EXPECTED = {
 
 # Public uniform run refuses two ports after guide admission, before stepping.
 PUBLIC_OVERRIDES = {
+    ("perpendicular-pec-z", "run"): (
+        ("refused", ValueError, "Simulation.run() supports only a single waveguide port; use compute_waveguide_s_matrix() for the multiport waveguide scattering workflow"),
+        ("refused", ValueError, "full-aperture waveguide requires PEC on x_hi, x_lo, y_hi, y_lo; declare boundary={'x': 'pec', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
+        "uniform run two-port refusal (rfx/runners/uniform.py:337); guide answer pinned by admission row",
+    ),
+    ("perpendicular-pec-z", "run-skip-preflight"): (
+        ("refused", ValueError, "Simulation.run() supports only a single waveguide port; use compute_waveguide_s_matrix() for the multiport waveguide scattering workflow"),
+        ("refused", ValueError, "full-aperture waveguide requires PEC on x_hi, x_lo, y_hi, y_lo; declare boundary={'x': 'pec', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
+        "uniform run two-port refusal (rfx/runners/uniform.py:337); guide answer pinned by admission row",
+    ),
     ("not-passed", "run"): (
         ("refused", ValueError, "Simulation.run() supports only a single waveguide port; use compute_waveguide_s_matrix() for the multiport waveguide scattering workflow"),
         ("refused", ValueError, "full-aperture waveguide boundary was not declared on y_hi, y_lo, z_hi, z_lo; the graded mesh keeps absorbers there, so the port would not be in a guide; declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis)."),
@@ -134,6 +166,22 @@ def release_models():
 
 
 def guide(declaration, *, graded):
+    if declaration == "wr90-nonwhole-cells":
+        kwargs = {"dx_profile": np.array([.002]*8 + [.0019, .0021]*4 + [.002]*9)} if graded else {}
+        sim = Simulation(12e9, (.05, .02286, .01016), dx=.002,
+                         cpml_layers=8, boundary="cpml", **kwargs)
+        sim.add_waveguide_port(direction="+x", x_position=.01,
+                               y_range=(0., .02286), z_range=(0., .01016), n_modes=1)
+        return sim
+    if declaration.startswith("perpendicular-"):
+        kwargs = {"dz_profile": np.full(2, .004)} if graded else {}
+        boundary = {"x": "cpml", "y": "cpml", "z": "pec"} if declaration == "perpendicular-pec-z" else "cpml"
+        sim = Simulation(12e9, (.016, .016, .008), dx=.004,
+                         cpml_layers=2, boundary=boundary, **kwargs)
+        for direction in ("+x", "+y"):
+            sim.add_waveguide_port(.004, direction=direction, freqs=np.array([10e9, 11e9]),
+                                   f0=10e9, ref_offset=1, probe_offset=1)
+        return sim
     kwargs = {} if declaration == "not-passed" else {"boundary": DECLARATIONS[declaration]}
     if graded:
         kwargs["dz_profile"] = np.full(2, .004)
@@ -168,7 +216,7 @@ def invoke(sim, entry):
 @pytest.mark.parametrize("declaration,entry", [
     (name, entry) for name in EXPECTED if name not in ("pmc-admission", "periodic-admission")
     for entry in ("run", "run-skip-preflight", "forward")
-] + [(name, "admission") for name in ("pmc-admission", "periodic-admission", "not-passed", "unknown-provenance", "pec-walls")])
+] + [(name, "admission") for name in ("pmc-admission", "periodic-admission", "not-passed", "unknown-provenance", "pec-walls", "perpendicular-pec-z", "perpendicular-cpml")])
 def test_guide_admission_both_meshes(declaration, entry, monkeypatch):
     answers = []
     row = PUBLIC_OVERRIDES.get((declaration, entry), EXPECTED[declaration])
@@ -201,6 +249,9 @@ def test_guide_admission_both_meshes(declaration, entry, monkeypatch):
                 assert caught.traceback[-1].name == "refuse_waveguide_pmc"
             if declaration == "transverse-periodic":
                 assert caught.traceback[-1].name == "add_waveguide_port"
+            if declaration == "perpendicular-pec-z" and not graded and entry.startswith("run"):
+                assert caught.traceback[-1].path.name == "uniform.py"
+                assert caught.traceback[-1].lineno + 1 == 337
             answer = ("refused", type(caught.value), message)
         assert answer == expected, (declaration, entry, "graded" if graded else "uniform")
         answers.append(answer)
@@ -209,6 +260,12 @@ def test_guide_admission_both_meshes(declaration, entry, monkeypatch):
         assert answers[0] != answers[1]
     elif (declaration, entry) in PUBLIC_OVERRIDES:
         assert "uniform run two-port refusal" in row[2]
+        assert answers[0] != answers[1]
+    elif declaration == "wr90-nonwhole-cells":
+        assert row[2] == "until S1 boundaries PR3b-1 (one cell-count rule): the uniform mesh rounds the transverse domain up, so the port is not full-aperture there"
+        assert answers[0] != answers[1]
+    elif declaration.startswith("perpendicular-"):
+        assert row[2] == "uniform guide faces keep only faces with zero absorber depth; pre-existing uniform defect, until S1 boundaries PR3b-2b"
         assert answers[0] != answers[1]
     else:
         assert answers[0] == answers[1]
