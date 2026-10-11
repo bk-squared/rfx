@@ -103,7 +103,9 @@ def test_w2_one_shared_assembly(lane, preflight_first, monkeypatch):
 @pytest.mark.parametrize("lane", ["uniform", "nonuniform"])
 @pytest.mark.parametrize("pad", [0, 2])
 def test_w3_every_node_round_trips(lane, pad):
-    """Literal W3 includes pads, which the existing graded lookup clamps."""
+    """Every node round-trips through the lane's own lookup. The graded lookup clamps
+    absorber-pad positions to the interior by design, so on that lane W3 covers the interior
+    nodes (decision record 1 of the declaration)."""
     sim = _sim(lane, pad=pad)
     view = realized_view(sim)
     grid = sim._campaign_ctx().grid
@@ -111,7 +113,10 @@ def test_w3_every_node_round_trips(lane, pad):
               else lambda pos: sim._pos_to_nu_index(grid, pos))
     misses = []
     for a, line in enumerate(view.nodes):
+        lo, hi = view.interior[a] if lane == "nonuniform" else (0, len(line))
         for i, x in enumerate(line):
+            if not lo <= i <= hi:
+                continue
             pos = [0., 0., 0.]
             pos[a] = float(x)
             actual = lookup(tuple(pos))[a]

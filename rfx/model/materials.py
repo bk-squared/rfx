@@ -736,6 +736,18 @@ def _realize_poles(spec, periodic, kind, grid, shape, *, cell_sizes=None):
     return ComponentDispersion(tuple(poles), build(poles, grid.dt, shape, weights), None, grid.dt)
 
 
+def volume_cells(materials):
+    """Per-cell volume ``(eps_r, sigma)``: the lumped stamps removed, as the realization does.
+
+    The one-plane film and wires are not volume properties and are not included.
+    """
+    sigma = materials.sigma
+    stamp = lumped_total(materials.sigma_lumped)
+    if stamp is not None:
+        sigma = sigma - stamp
+    return permittivity_without_lumped(materials), sigma
+
+
 def realize_components(cells, grid, *, periodic, dt=None, budget=None, grid_kind="Grid"):
     """Realize final cells once, using the existing E/pole and H rules.
 

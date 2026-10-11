@@ -6,7 +6,7 @@ from typing import Literal
 import numpy as np
 
 from rfx.grid import C0
-from rfx.core.yee import lumped_total, permittivity_without_lumped
+from rfx.model.materials import volume_cells
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -66,11 +66,8 @@ def realized_view(sim) -> RealizedView:
         for a, (axis, n) in enumerate(zip("xyz", shape))
     )
     region = tuple(slice(lo, hi) for lo, hi in interior)
-    eps_r = _snapshot(permittivity_without_lumped(materials))
-    sigma = materials.sigma
-    stamp = lumped_total(materials.sigma_lumped)
-    if stamp is not None:
-        sigma = sigma - stamp
+    eps_volume, sigma = volume_cells(materials)
+    eps_r = _snapshot(eps_volume)
     edges = np.meshgrid(*(np.asarray(d, dtype=np.float64)[s]
                           for d, s in zip(ctx.cell_sizes, region)), indexing="ij")
     h_max = np.maximum(np.maximum(edges[0], edges[1]), edges[2])

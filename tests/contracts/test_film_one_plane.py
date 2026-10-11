@@ -350,6 +350,7 @@ SIGMA_READS = {
     ('rfx/model/pole_stability.py', 'refuse_unstable_cells', 'materials'): (3, 'refusal only: pole-medium time-step judgement at the cell conductivity extremes; a film on a pole-medium face is not included (not measured; reported to the materials lane)'),
     ('rfx/runners/distributed_nu.py', 'run_nonuniform_distributed_pec.run_fn', 'invariants[0]'): (1, 'carrier staged or passed alongside volume sigma to the shared edge reader'),
     ('rfx/model/materials.py', '_design_box_edge_coeffs', 'materials'): (1, 'slicing/passing on to window MaterialArrays'),
+    ('rfx/model/materials.py', 'volume_cells', 'materials'): (1, 'public read-only view of the volume conductivity (rfx.model.realized_view); the one-plane film is not a volume property and is not in that view'),
     ('rfx/model/materials.py', 'assemble_cells', 'mat'): (4, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/model/materials.py', 'assemble_cells', 'sim._resolve_material(entry.material_name)'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/model/materials.py', 'electric_materials_traced', 'materials'): (1, 'source trace detection includes the film record'),
