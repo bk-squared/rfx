@@ -15,7 +15,10 @@ from tests.contracts.boundary_fields import measure, measured_fields
 ROOT = Path(__file__).resolve().parents[2]
 BASELINE = json.loads((ROOT / "scripts/diagnostics/boundary_model/B1/MATRIX.json").read_text())
 # PR3a supersedes the explicit-guide departure rows without rewriting B1's record.
-GUIDE_REFUSAL_ENTRIES = {"run", "forward", "distributed", "sweep", "gpu-query", "subgridded"}
+WALLED_DEFAULT_ENTRIES = {"run", "forward", "distributed", "sweep", "gpu-query", "subgridded"}
+# Addendum 5f (2026-10-11) supersedes the graded explicit-guide rows; B1's record stays immutable.
+# The graded default stays refused (5d), so it has no walled-default twin below.
+GUIDE_REFUSAL_ENTRIES = WALLED_DEFAULT_ENTRIES | {"nonuniform"}
 CELLS = [dict(c, status="REFUSED_AT_DISPATCH", departures=[])
          if c["case"] == "waveguide-cpml" and c["entry"] in GUIDE_REFUSAL_ENTRIES else c
          for c in BASELINE["cells"]]
@@ -186,7 +189,7 @@ def test_cpu_gpu_query_dispatch(case, expected):
     jax.clear_caches()
 
 
-@pytest.mark.parametrize("entry", sorted(GUIDE_REFUSAL_ENTRIES))
+@pytest.mark.parametrize("entry", sorted(WALLED_DEFAULT_ENTRIES))
 def test_default_waveguide_twin_records_its_walls(entry, monkeypatch):
     import warnings
     from rfx.boundaries.depths import Kind
