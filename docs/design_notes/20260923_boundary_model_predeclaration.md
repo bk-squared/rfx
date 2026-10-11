@@ -736,3 +736,11 @@ on the graded mesh:
    preflight) and `forward()`, and asserts the same answer and the same message on both, except the two differences of
    point 2, which it asserts by name. Mutations: the graded explicit-kind refusal removed → red; the graded message
    altered → red.
+
+Correction (2026-10-12, leader). Point 2's sentence on legacy documents is wrong for the graded mesh. On the graded mesh
+`restore_legacy_boundary` never records unknown provenance: `resolved_guide_spec` returns the declaration unchanged when
+the mesh is graded (`rfx/boundaries/serialization.py:15–16`), so the condition at :38 is false and an imported graded
+document stays explicit. An imported graded `boundary='cpml'` document is therefore refused by point 1, with the uniform
+mesh's explicit-kind message, not by point 2. No public path produces unknown provenance on the graded mesh; the
+contract states that row by setting the internal flag, and states the imported graded document as its own row,
+compared with the uniform mesh's explicit `cpml`. The importer is unchanged.
