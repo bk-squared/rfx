@@ -1,13 +1,58 @@
 """Waveguide reporting planes are shared by the two public entries."""
 
+from dataclasses import replace
+
 import numpy as np
 import pytest
 
 from rfx import Simulation
 from rfx.sources.waveguide_port import extract_waveguide_sparams
+from tests._waveguide_chain_battery_fixture import DX_COARSE, NUM_PERIODS, build_simulation
 
 
 DX = 1 / 512
+
+
+@pytest.mark.parametrize("preset", [None, "measured"], ids=["C1-default", "C2-measured"])
+def test_slab_entries_share_reference_plane(preset, record_property):
+    one_port = build_simulation("slab", DX_COARSE)
+    two_port = build_simulation("slab", DX_COARSE)
+    for sim in (one_port, two_port):
+        sim._waveguide_ports = [
+            replace(entry, reference_plane=None, calibration_preset=preset)
+            for entry in sim._waveguide_ports
+        ]
+    one_port._waveguide_ports = one_port._waveguide_ports[:1]
+    entry = one_port._waveguide_ports[0]
+    source = round(entry.x_position / DX_COARSE) * DX_COARSE
+    measured = source + entry.ref_offset * DX_COARSE
+    expected_plane = measured if preset == "measured" else source
+    n_steps = int(one_port._build_grid().num_timesteps(NUM_PERIODS))
+    run_result = one_port.run(n_steps=n_steps, compute_s_params=False)
+    run_s = run_result.waveguide_sparams["left"]
+    matrix = two_port.compute_waveguide_s_matrix(n_steps=n_steps, normalize=False)
+    expected_s11, _ = extract_waveguide_sparams(
+        run_result.waveguide_ports["left"], ref_shift=expected_plane - measured,
+    )
+    np.testing.assert_array_equal(run_s.s11, expected_s11)
+    difference = float(np.max(np.abs(run_s.s11 - matrix.s_params[0, 0])))
+    peak = float(np.max(np.abs(expected_s11)))
+    record_property("n_steps", n_steps)
+    record_property("max_s11", peak)
+    record_property("s11_max_difference", difference)
+    record_property("s11_relative_difference", difference / peak)
+    record_property("run_reference_plane", run_s.reference_plane)
+    record_property("matrix_reference_planes", list(matrix.reference_planes))
+    assert difference <= 1e-4 * peak
+    assert run_s.reference_plane == expected_plane
+    assert matrix.reference_planes[0] == expected_plane
+    expected_planes = [
+        round(port.x_position / DX_COARSE) * DX_COARSE
+        + ((1 if port.direction == "+x" else -1) * port.ref_offset * DX_COARSE
+           if preset == "measured" else 0)
+        for port in two_port._waveguide_ports
+    ]
+    np.testing.assert_array_equal(matrix.reference_planes, expected_planes)
 
 
 def _port_sim(*, graded=False, crossing=False, preset=None, reference=None, probe=None):
