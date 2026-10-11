@@ -830,6 +830,38 @@ def continued_conductor_shape(sim, grid, shape, *, entry=None, unextendable=None
     return solved
 
 
+class CurvedSmoothingWarning(UserWarning):
+    """Subpixel smoothing of a curved high-contrast dielectric (rfx #1632)."""
+
+
+def warn_curved_high_contrast(pairs, background_eps=1.0, *, contrast=10.0):
+    """Warn once when a smoothed Sphere/Cylinder differs from its background by >= ``contrast``.
+
+    The smoother keeps only the diagonal of the inverse-permittivity tensor; on a curved
+    high-contrast interface the resonance then converges first order and was measured
+    further off than the unsmoothed model (#1632, docs/guides/known_limitations.md).
+    """
+    from rfx.geometry.csg import Cylinder, Sphere
+    curved = []
+    for shape, eps_r in pairs:
+        declared = getattr(shape, "declared", shape)
+        if not isinstance(declared, (Sphere, Cylinder)):
+            continue
+        try:
+            ratio = float(eps_r) / float(background_eps)
+        except (TypeError, ValueError):
+            continue
+        if max(ratio, 1.0 / ratio) >= contrast:
+            curved.append(f"{type(declared).__name__} eps_r={float(eps_r):g}")
+    if curved:
+        import warnings as _w
+        _w.warn("subpixel_smoothing on a curved high-contrast dielectric (" + ", ".join(curved)
+                + "): the smoothed permittivity keeps only its diagonal, so a resonance converges "
+                "first order and can be further off than with subpixel_smoothing=False. Check a "
+                "mesh series against the unsmoothed run; see docs/guides/known_limitations.md "
+                "(rfx #1632).", CurvedSmoothingWarning, stacklevel=2)
+
+
 def smoothed_shape_pairs(sim, grid):
     """Build the (shape, eps_r) pairs the smoothed lane solves, pad included.
 
@@ -858,6 +890,7 @@ def smoothed_shape_pairs(sim, grid):
     """
     pairs = [(entry.shape, sim._resolve_material(entry.material_name).eps_r)
              for entry in sim._geometry]
+    warn_curved_high_contrast(pairs)
     if (getattr(sim, "_boundary", None) not in ("cpml", "upml")
             or int(getattr(sim, "_cpml_layers", 0)) <= 0):
         return pairs, []
