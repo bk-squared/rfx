@@ -835,31 +835,41 @@ class CurvedSmoothingWarning(UserWarning):
 
 
 def warn_curved_high_contrast(pairs, background_eps=1.0, *, contrast=10.0):
-    """Warn once when a smoothed Sphere/Cylinder differs from its background by >= ``contrast``.
+    """Warn once when a smoothed Sphere/Cylinder differs by >= ``contrast`` from vacuum or another dielectric.
 
-    The smoother keeps only the diagonal of the inverse-permittivity tensor; on a curved
-    high-contrast interface the resonance then converges first order and was measured
-    further off than the unsmoothed model (#1632, docs/guides/known_limitations.md).
+    Called only where smoothing is applied. The smoother keeps only the diagonal of the
+    inverse-permittivity tensor; on a curved high-contrast interface the resonance then
+    converges first order and was measured further off than the unsmoothed model
+    (#1632, docs/guides/known_limitations.md). The comparison set is the background and
+    every other declared dielectric, so a low-permittivity hole in a high-permittivity
+    host is included; a shape that touches only a near-equal host can be flagged too.
     """
     from rfx.geometry.csg import Cylinder, Sphere
+
+    def value(eps_r):
+        try:
+            v = float(eps_r)
+        except (TypeError, ValueError):
+            return None
+        return v if v > 0 else None
+
+    others = [v for v in (value(e) for _, e in pairs) if v is not None] + [float(background_eps)]
     curved = []
     for shape, eps_r in pairs:
         declared = getattr(shape, "declared", shape)
-        if not isinstance(declared, (Sphere, Cylinder)):
+        v = value(eps_r)
+        if v is None or not isinstance(declared, (Sphere, Cylinder)):
             continue
-        try:
-            ratio = float(eps_r) / float(background_eps)
-        except (TypeError, ValueError):
-            continue
-        if max(ratio, 1.0 / ratio) >= contrast:
-            curved.append(f"{type(declared).__name__} eps_r={float(eps_r):g}")
+        if any(max(v / o, o / v) >= contrast for o in others):
+            curved.append(f"{type(declared).__name__} eps_r={v:g}")
     if curved:
         import warnings as _w
         _w.warn("subpixel_smoothing on a curved high-contrast dielectric (" + ", ".join(curved)
-                + "): the smoothed permittivity keeps only its diagonal, so a resonance converges "
-                "first order and can be further off than with subpixel_smoothing=False. Check a "
-                "mesh series against the unsmoothed run; see docs/guides/known_limitations.md "
-                "(rfx #1632).", CurvedSmoothingWarning, stacklevel=2)
+                + "; 10x or more from vacuum or another declared dielectric): the smoothed "
+                "permittivity keeps only its diagonal, so a resonance converges first order and "
+                "can be further off than with subpixel_smoothing=False. Check a mesh series "
+                "against the unsmoothed run; see docs/guides/known_limitations.md (rfx #1632).",
+                CurvedSmoothingWarning, stacklevel=3)
 
 
 def smoothed_shape_pairs(sim, grid):
@@ -890,7 +900,6 @@ def smoothed_shape_pairs(sim, grid):
     """
     pairs = [(entry.shape, sim._resolve_material(entry.material_name).eps_r)
              for entry in sim._geometry]
-    warn_curved_high_contrast(pairs)
     if (getattr(sim, "_boundary", None) not in ("cpml", "upml")
             or int(getattr(sim, "_cpml_layers", 0)) <= 0):
         return pairs, []
