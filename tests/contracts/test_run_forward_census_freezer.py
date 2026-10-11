@@ -69,9 +69,8 @@ def test_partials_by_value():
         {'path': '/3/value', 'run': '1', 'forward': '2'}]
 
 
-def test_cpu_devices_by_value():
-    devices = jax.devices('cpu')
-    assert len(devices) == 2
+def test_cpu_devices_by_value(two_devices):
+    devices = two_devices
     assert freeze(devices[0]) == ('device', 'cpu', 0)
     assert freeze(devices[1]) == ('device', 'cpu', 1)
     assert compare(freeze(devices[0]), freeze(devices[1])) == [
@@ -118,3 +117,43 @@ def test_ad_primal_is_frozen_by_value():
     assert captured[0].dtype == '<f4'
     assert captured[0].shape == ()
     assert captured[0].data == b'\x00\x00\x00\x40'
+
+
+def test_record_classes_are_preserved():
+    from dataclasses import make_dataclass
+    from collections import namedtuple
+    First = make_dataclass('First', [('value', int)])
+    Second = make_dataclass('Second', [('value', int)])
+    assert compare(freeze(First(1)), freeze(Second(1)))[0]['path'] == '/__class__'
+    assert freeze(First(1))['__class__'].endswith('.First')
+    A = namedtuple('A', 'value')
+    B = namedtuple('B', 'value')
+    assert compare(freeze(A(1)), freeze(B(1)))[0]['path'] == '/__class__'
+    assert freeze(A(1))['__class__'].endswith('.A')
+
+
+def test_numpy_scalar_dtype_is_preserved():
+    assert freeze(np.int32(1)).dtype == '<i4'
+    assert freeze(np.int64(1)).dtype == '<i8'
+    assert compare(freeze(np.int32(1)), freeze(np.int64(1)))
+    assert compare(freeze(np.float32(1)), freeze(np.float64(1)))
+
+
+def test_callable_identity_and_bound_owner():
+    def first():
+        return 1
+    def second():
+        return 1
+    assert freeze(first)['module'] == __name__
+    assert freeze(first)['qualified_name'] == 'test_callable_identity_and_bound_owner.<locals>.first'
+    assert compare(freeze(first), freeze(second))
+    second.__qualname__ = first.__qualname__
+    second.__module__ = 'different_module'
+    assert compare(freeze(first), freeze(second))[0]['path'] == '/module'
+    class Parent:
+        def method(self):
+            return 1
+    class Child(Parent):
+        pass
+    assert freeze(Parent().method)['owner_class'].endswith('.Parent')
+    assert compare(freeze(Parent().method), freeze(Child().method))[0]['path'] == '/owner_class'

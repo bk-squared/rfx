@@ -14,6 +14,7 @@ from unittest.mock import patch
 
 import jax
 import numpy as np
+import pytest
 
 from rfx import Simulation, Box, PolylineWire, DebyePole, LorentzPole, drude_pole
 from rfx.boundaries.spec import Boundary, BoundarySpec
@@ -295,10 +296,11 @@ def freeze(value, _active=None):
         return (type(value).__name__, value.name)
     if isinstance(value, jax.Device):
         return ('device', value.platform, value.id)
+    if isinstance(value, np.generic):
+        array = np.asarray(value)
+        return FrozenArray(array.dtype.str, array.shape, array.tobytes())
     if value is None or isinstance(value, (str, bytes, bool, int, float, complex)):
         return value
-    if isinstance(value, np.generic):
-        return value.item()
     if isinstance(value, (np.ndarray, jax.Array)):
         array = np.asarray(value)
         if array.dtype.hasobject:
@@ -318,9 +320,11 @@ def freeze(value, _active=None):
             return ('partial', freeze(value.func, active), freeze(value.args, active),
                     freeze(value.keywords, active))
         if is_dataclass(value) and not isinstance(value, type):
-            return {f.name: freeze(getattr(value, f.name), active) for f in fields(value)}
+            return {'__class__': type(value).__module__ + '.' + type(value).__qualname__,
+                    **{f.name: freeze(getattr(value, f.name), active) for f in fields(value)}}
         if isinstance(value, tuple) and hasattr(value, '_fields'):
-            return {name: freeze(getattr(value, name), active) for name in value._fields}
+            return {'__class__': type(value).__module__ + '.' + type(value).__qualname__,
+                    **{name: freeze(getattr(value, name), active) for name in value._fields}}
         if isinstance(value, dict):
             return {key: freeze(item, active) for key, item in value.items()}
         if isinstance(value, (tuple, list)):
@@ -335,6 +339,8 @@ def freeze(value, _active=None):
                 except ValueError:
                     cells.append('UNFROZEN:cell')
             return {'module': value.__module__, 'qualified_name': value.__qualname__,
+                    'owner_class': (type(value.__self__).__module__ + '.' + type(value.__self__).__qualname__
+                                    if inspect.ismethod(value) else None),
                     'closure': tuple(cells),
                     'defaults': freeze(getattr(value, '__defaults__', None), active),
                     'keyword_defaults': freeze(getattr(value, '__kwdefaults__', None), active)}
@@ -432,8 +438,8 @@ def invoke(sim, entry, path, n_steps, entry_options=None):
         kwargs['checkpoint'] = False
     if path.startswith('multi-device'):
         devices = jax.devices('cpu')
-        if len(devices) != 2:
-            raise CaptureFailure(f'exactly two CPU devices required; observed {len(devices)}')
+        if len(devices) < 2:
+            pytest.skip('Need >=2 JAX devices. Set XLA_FLAGS=--xla_force_host_platform_device_count=2 before importing jax.')
         kwargs['devices'] = devices[:2]
         if entry == 'forward':
             kwargs['distributed'] = True
@@ -485,7 +491,9 @@ def capture(builder, entry, path, level, n_steps=150, *, entry_options=None, sea
     def forbid_step(*args, **kwargs):
         if path == 'uniform' and level == 'b' and 'ctx' in captured:
             # Addendum 12: the drive table lives in xs, outside the ctx.
-            captured['xs'] = freeze(bound_arguments(scan, args, kwargs)['xs'])
+            scan_inputs = bound_arguments(scan, args, kwargs)
+            captured['xs'] = freeze(scan_inputs['xs'])
+            captured['init'] = freeze(scan_inputs['init'])
             remember_site('xs')
             raise Captured
         raise CaptureFailure('L1 reached jax.lax.scan before its capture seam')
@@ -510,7 +518,8 @@ def capture(builder, entry, path, level, n_steps=150, *, entry_options=None, sea
                 def core(ctx, *args, **kwargs):
                     remember_site('ctx')
                     captured['ctx'] = freeze(ctx)
-                    captured['invariants'] = freeze(invariants(ctx))
+                    passed = bound_arguments(build_core, (ctx, *args), kwargs).get('invariants')
+                    captured['invariants'] = freeze(invariants(ctx) if passed is None else passed)
                     return build_core(ctx, *args, **kwargs)
                 install(stack, 'setup', setup)
                 install(stack, 'core', core)
@@ -645,10 +654,6 @@ def normalize_inputs(value, path, location=()):
                 if key != 'grid_key' and not (
                     path == 'multi-device-graded' and location == ('arguments',)
                     and key in DRIVER_OPTIONS)}
-    if path == 'multi-device-graded' and len(location) == 2 and location[0] == 'arguments':
-        if location[1] in ('dft_planes', 'flux_monitors', 'waveguide_ports'):
-            if value is None or (isinstance(value, list) and not value):
-                return None
     if isinstance(value, (tuple, list)):
         return type(value)(normalize_inputs(item, path, location + (i,))
                            for i, item in enumerate(value))
