@@ -755,7 +755,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                 smoothed_shape_pairs, warn_unextendable_shapes, warn_curved_high_contrast,
             )
             shape_eps_pairs, _unextendable = smoothed_shape_pairs(sim, grid)
-            warn_curved_high_contrast(shape_eps_pairs)
+            warn_curved_high_contrast(shape_eps_pairs, sim=sim)
             warn_unextendable_shapes([u for u in _unextendable if not u.conductor])
             if shape_eps_pairs:
                 aniso_eps = compute_smoothed_eps_nonuniform(

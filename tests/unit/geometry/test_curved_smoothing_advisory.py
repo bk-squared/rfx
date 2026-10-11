@@ -64,3 +64,10 @@ def test_no_announcement_without_smoothing_even_through_preflight():
     """The always-on preflight seam check builds the smoothed pairs too; it must stay silent."""
     sim = _sim([(Cylinder(**ROD), 38.0)], boundary="cpml")
     assert _count(sim, subpixel_smoothing=False) == 0
+
+
+def test_a_metal_post_in_a_high_permittivity_board_is_not_announced():
+    """A PEC via or post is a conductor, not a dielectric: no advisory."""
+    sim = _sim([(Box((0.002, 0.002, 0.002), (0.018, 0.018, 0.018)), 10.2)])
+    sim.add(Cylinder(**ROD), material="pec")
+    assert _count(sim, skip_preflight=True, subpixel_smoothing=True) == 0

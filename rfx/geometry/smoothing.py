@@ -834,7 +834,7 @@ class CurvedSmoothingWarning(UserWarning):
     """Subpixel smoothing of a curved high-contrast dielectric (rfx #1632)."""
 
 
-def warn_curved_high_contrast(pairs, background_eps=1.0, *, contrast=10.0):
+def warn_curved_high_contrast(pairs, background_eps=1.0, *, contrast=10.0, sim=None):
     """Warn once when a smoothed Sphere/Cylinder differs by >= ``contrast`` from vacuum or another dielectric.
 
     Called only where smoothing is applied. The smoother keeps only the diagonal of the
@@ -842,7 +842,9 @@ def warn_curved_high_contrast(pairs, background_eps=1.0, *, contrast=10.0):
     converges first order and was measured further off than the unsmoothed model
     (#1632, docs/guides/known_limitations.md). The comparison set is the background and
     every other declared dielectric, so a low-permittivity hole in a high-permittivity
-    host is included; a shape that touches only a near-equal host can be flagged too.
+    host is included; the set is every declared dielectric anywhere in the run, so a shape
+    that touches only a near-equal host can be flagged too. Conductors (``sim``'s PEC
+    conductivity threshold) are neither a subject nor part of the set.
     """
     from rfx.geometry.csg import Cylinder, Sphere
 
@@ -853,6 +855,10 @@ def warn_curved_high_contrast(pairs, background_eps=1.0, *, contrast=10.0):
             return None
         return v if v > 0 else None
 
+    conductors = set() if sim is None else {
+        id(e.shape) for e in sim._geometry
+        if sim._resolve_material(e.material_name).sigma >= sim._PEC_SIGMA_THRESHOLD}
+    pairs = [(s_, e) for s_, e in pairs if id(getattr(s_, "declared", s_)) not in conductors]
     others = [v for v in (value(e) for _, e in pairs) if v is not None] + [float(background_eps)]
     curved = []
     for shape, eps_r in pairs:
