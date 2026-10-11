@@ -94,3 +94,27 @@ def test_observable_errors_remain_one_sided():
     assert result['run_only'] == ['x']
     assert result['forward_only'] == []
     assert result['one_sided'] == {'x': {'run': 'array', 'forward': 'raises: ValueError: unavailable'}}
+
+
+def test_one_value_batch_primal_is_frozen_by_value():
+    captured = []
+    def observe(value):
+        captured.append(freeze(value))
+        return value
+    jax.vmap(observe)(np.array([[1., 3.]], np.float32))
+    assert len(captured) == 1
+    assert captured[0].dtype == '<f4'
+    assert captured[0].shape == (2,)
+    assert captured[0].data == b'\x00\x00\x80\x3f\x00\x00\x40\x40'
+
+
+def test_ad_primal_is_frozen_by_value():
+    captured = []
+    def observe(value):
+        captured.append(freeze(value))
+        return value * value
+    jax.grad(observe)(jax.numpy.float32(2.))
+    assert len(captured) == 1
+    assert captured[0].dtype == '<f4'
+    assert captured[0].shape == ()
+    assert captured[0].data == b'\x00\x00\x00\x40'
