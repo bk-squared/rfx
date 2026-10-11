@@ -204,7 +204,8 @@ def test_g2_loss_is_real():
 @pytest.mark.slow_physics
 @pytest.mark.xfail(
     strict=True,
-    reason="#677 G2 band (2026-08-19): Q_f0/Q_pred measured 1.905 here and "
+    reason="#1626 (cause undetermined; #677 fixed the sheet geometry, not this band). "
+           "G2 band (2026-08-19): Q_f0/Q_pred measured 1.905 here and "
            "1.885 on the stacked-pair variant — a stable ~1.9x outside the "
            "contract band [0.7, 1.3], reproduced by two fixtures and two Q "
            "extractors (spectral FWHM 34.4 vs filtered ring-down 33.5 on "
