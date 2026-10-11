@@ -693,13 +693,21 @@ def refuse_vaporized_sheets(sheets, *, lane: str = "",
 
 
 def _sheet_drawn_bounds(lo, hi, normal, cell_sizes, *, grid=None, xp=np):
-    """Retain metric bounds and the axis tolerance with the node footprint."""
+    """Retain bounds, tolerance, and concrete index-wrap length on every axis.
+
+    Summing the stored cells spans one complete index cycle, including pad
+    and any closing wall node. Uniform axes therefore wrap at shape[t]*dx;
+    on declared periodic grids this is exactly the physical domain length.
+    Traced graded footprints deliberately retain only three entries.
+    """
+    import math
     if xp is np:
         lo, hi = tuple(min(a, b) for a, b in zip(lo, hi)), tuple(max(a, b) for a, b in zip(lo, hi))
     return tuple(
         None if t == normal else
         (lo[t], hi[t], 1e-6 * (float(np.min(cell_sizes[t])) if xp is np else jnp.min(jnp.asarray(cell_sizes[t]))))
-        + ((float(grid.domain[t]),) if 'xyz'[t] in getattr(grid, 'periodic_axes', '') else ())
+        + (((float(grid.domain[t]) if 'xyz'[t] in getattr(grid, 'periodic_axes', '')
+             else math.fsum(cell_sizes[t])),) if xp is np else ())
         for t in range(3))
 
 

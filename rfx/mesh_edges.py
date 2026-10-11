@@ -450,22 +450,23 @@ class SolvedSheetSpan(NamedTuple):
 
 
 def sheet_continuation_masks(entries, periodic, shape):
-    """Sheet nodes and volume edges from the reports' realized PEC entries.
+    """Sheet edges and volume edges from the reports' realized PEC entries.
 
     Volume continuation occupies the segment leaving the sheet end, not
     merely the next node: a one-cell vacuum gap must remain a free end.
     """
-    union = None
+    from rfx.boundaries.pec import _sheet_edge_masks
+    sheets = []
     volume_edges = None
     for entry in entries:
         if entry.sheet is not None:
-            fp = np.asarray(entry.sheet.footprint, dtype=bool)
-            union = fp.copy() if union is None else union | fp
+            sheets.append(entry.sheet)
         elif entry.kind == "volume":
             edges = entry.edges(periodic, shape)
             volume_edges = (tuple(m.copy() for m in edges) if volume_edges is None
                             else tuple(a | b for a, b in zip(volume_edges, edges)))
-    return union, volume_edges
+    sheet_edges = (_sheet_edge_masks(sheets, shape, periodic) if sheets else None)
+    return sheet_edges, volume_edges
 
 
 def solved_sheet_span(footprint, axis: int, nodes, declared_lo: float,
@@ -482,7 +483,7 @@ def solved_sheet_span(footprint, axis: int, nodes, declared_lo: float,
     module docstring). An end that is not a free edge adds nothing: an end drawn at
     or past the domain boundary (a wall, or a continuation into the absorber
     pad), and an end whose whole row continues into other sheet metal in
-    ``union`` (a seam inside one conductor), or into realized PEC volume
+    ``union`` (the realized sheet edge tuple, a seam inside one conductor), or into realized PEC volume
     edges in ``volume_edges``.
 
     ``footprint`` is the sheet's node mask restricted to the domain interior
@@ -490,6 +491,8 @@ def solved_sheet_span(footprint, axis: int, nodes, declared_lo: float,
     metres, indexed like the mask (extra trailing entries are ignored).
     On a periodic axis, an interval ending at L keeps the endpoint at index
     N even though the closed footprint stores that node at index 0.
+    Legacy callers may still supply a node mask as ``union``; it retains
+    index-declared continuation semantics. Report callers supply edge tuples.
     Returns ``None`` when the footprint is empty.
     """
     fp = np.asarray(footprint, dtype=bool)
@@ -515,7 +518,11 @@ def solved_sheet_span(footprint, axis: int, nodes, declared_lo: float,
         end = np.take(fp, i_end, axis=axis)
         continuation = np.zeros_like(end)
         if union is not None:
-            continuation |= np.take(np.asarray(union, dtype=bool), i_next, axis=axis)
+            if isinstance(union, (tuple, list)):
+                if union[axis] is not None:
+                    continuation |= np.take(np.asarray(union[axis], dtype=bool), edge_index, axis=axis)
+            else:
+                continuation |= np.take(np.asarray(union, dtype=bool), i_next, axis=axis)
         if volume_edges is not None:
             continuation |= np.take(volume_edges[axis], edge_index, axis=axis)
         return bool(end.any()) and bool(continuation[end].all())

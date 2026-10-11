@@ -389,3 +389,99 @@ def test_drawn_carrier_and_copies(graded):
     assert replace(sp, footprint=sp.footprint).drawn == sp.drawn
     interior = sim._campaign_ctx().interior_pec_entries()
     assert interior[0].sheet.drawn == sp.drawn
+
+
+@pytest.mark.parametrize('kind', ['pec', 'f0'])
+@pytest.mark.parametrize('case', ['gap', 'touch', 'different_planes'])
+def test_f1_2d_run(kind, case):
+    sim = Simulation(freq_max=30e9, domain=(.020, .020, .001), dx=.001,
+                     boundary='pec', mode='2d_tmz')
+    for i, (lo, hi) in enumerate(((.003, .008), (.008 if case == 'touch' else .009, .015))):
+        x = .015 if case == 'different_planes' and i else .010
+        shape = Box((x, lo, 0), (x, hi, .001))
+        if kind == 'pec':
+            sim.add(shape, material='pec')
+        else:
+            sim.add_thin_conductor(shape, sigma_bulk=5.8e7, surface_impedance_f0=15e9)
+    sim.add_source((.006, .010, 0), 'ez', amplitude_kind='field')
+    sim.add_probe((.007, .012, 0), 'ez')
+    grid = sim._build_realized_grid()
+    root = C.realized_conductors(sim, grid)
+    if kind == 'pec':
+        edges = realized_pec_edge_masks(None, root.sheets, periodic=(False, False, True))
+    else:
+        ctx = build_sheet_impedance_ctx(root.sheet_specs, periodic=(False, False, True))
+        edges = (ctx.mask_ex, ctx.mask_ey, ctx.mask_ez)
+    assert bool(edges[1][10, 8, 0]) == (case == 'touch')
+    sim.run(n_steps=3, skip_preflight=True)
+
+
+def test_f1_tfsf_forward():
+    sim = Simulation(freq_max=10e9, domain=(.030, .006, .006), dx=.001,
+                     boundary='cpml', cpml_layers=8, mode='3d')
+    for x in (.012, .018):
+        sim.add(Box((x, -1, -1), (x, 1, 1)), material='pec')
+    sim.add_tfsf_source(f0=5e9, bandwidth=.3, amplitude=1., polarization='ez', direction='+x')
+    sim.add_probe((.008, .003, .003), component='ez')
+    sim.forward(n_steps=3, skip_preflight=True)
+
+
+@pytest.mark.parametrize('touch', [False, True])
+def test_f1_tfsf_wrap_masks(touch):
+    from rfx.boundaries.tfsf import boundary_flags
+    sim = Simulation(freq_max=10e9, domain=(.030, .006, .006), dx=.001,
+                     boundary='cpml', cpml_layers=8)
+    sim.add_tfsf_source(f0=5e9, bandwidth=.3, polarization='ez', direction='+x')
+    grid = sim._build_realized_grid()
+    coords, sizes = coords_from_uniform_grid(grid), cell_sizes_from_uniform_grid(grid)
+    # TFSF wraps the stored padded index line, not just the physical domain.
+    period = grid.shape[1] * grid.dx
+    y = np.asarray(coords.y)
+    split = .5 * grid.dx if touch else 0.
+    intervals = ((y[-4], y[-1] + split), (y[0] - split, y[3]))
+    rows = [sheet_spec_from_shape(Box((.012, lo, .002), (.012, hi, .004)),
+            coords, sizes, grid=grid) for lo, hi in intervals]
+    from rfx.sources.tfsf import init_tfsf
+    cfg, _ = init_tfsf(grid.nx, grid.dx, grid.dt, ny=grid.ny, nz=grid.nz,
+                       cpml_layers=8, f0=5e9, bandwidth=.3, polarization='ez', direction='+x')
+    flags, _ = boundary_flags(cfg, grid)
+    assert flags == (False, True, True)
+    assert 'y' not in grid.periodic_axes
+    assert rows[0].drawn[1][3] == pytest.approx(period, rel=1e-14)
+    assert y[-1] + grid.dx == pytest.approx(y[0] + period, rel=1e-14)
+    edges = realized_pec_edge_masks(None, rows, periodic=flags)
+    ix, iz = int(np.flatnonzero(np.isclose(coords.x, .012))[0]), int(np.flatnonzero(np.isclose(coords.z, .003))[0])
+    assert bool(edges[1][ix, -1, iz]) == touch
+
+
+def test_f1_declared_periodic_carrier():
+    grid, _, _, _ = lattice(False, True)
+    row, = specs(((.005, .010),), periodic=True)
+    for axis in grid.periodic_axes:
+        t = 'xyz'.index(axis)
+        assert row.drawn[t][3] == pytest.approx(grid.domain[t], rel=1e-14)
+
+
+@pytest.mark.parametrize('graded', [False, True])
+@pytest.mark.parametrize('case,ends', [('gap', (True, True)), ('touch', (False, False)),
+                                      ('off_mesh_touch', (False, False)), ('indices', (False, False))])
+def test_f1_solved_spans(graded, case, ends):
+    from rfx.mesh_edges import solved_sheet_span
+    sim = model(graded)
+    grid = sim._build_realized_grid()
+    y = np.asarray(lattice(graded, False)[1].y)
+    split = .0095 if case == 'off_mesh_touch' else .010
+    intervals = ((.005, split), (.011 if case == 'gap' else split, .015))
+    if case == 'indices':
+        rows = [SheetSpec.from_node_ranges(grid.shape, normal_axis=0, plane=4,
+                in_plane_ranges=(interval, (2, 6))) for interval in ((5, 10), (11, 15))]
+        from rfx.boundaries.pec import _sheet_edge_masks
+        edges = _sheet_edge_masks(rows, grid.shape, (False, False, False))
+        spans = [solved_sheet_span(row.footprint, 1, y, lo, hi, .020, union=edges)
+                 for row, (lo, hi) in zip(rows, ((y[5], y[10]), (y[11], y[15])))]
+    else:
+        for lo, hi in intervals:
+            sim.add(Box((.004, lo, .002), (.004, hi, .006)), material='pec')
+        root = C.realized_conductors(sim, grid, nonuniform=graded)
+        spans = [sheet.solved_spans[1] for sheet in root.sheets]
+    assert (spans[0].free_hi, spans[1].free_lo) == ends

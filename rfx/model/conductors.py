@@ -572,9 +572,11 @@ def _with_sheet_spans(sim, conductors):
         from rfx.geometry.rasterize_grid import interior_lattice_mask
         pin_specs = conductors.sheets[-len(pinned):]
         pin_masks = [interior_lattice_mask(sheet.footprint, grid) for sheet in pin_specs]
-        pin_union = union
-        for footprint in pin_masks:
-            pin_union = footprint if pin_union is None else pin_union | footprint
+        from rfx.boundaries.pec import _sheet_edge_masks
+        report_sheets = [entry.sheet for entry in interior if entry.sheet is not None]
+        report_sheets += [replace(sheet, footprint=mask)
+                          for sheet, mask in zip(pin_specs, pin_masks, strict=True)]
+        pin_union = _sheet_edge_masks(report_sheets, grid.shape, ctx.periodic)
         for i, (sheet, footprint) in enumerate(zip(pin_specs, pin_masks, strict=True)):
             label = f'pinned_sheet[{i}]'
             owners[id(sheet)] = label

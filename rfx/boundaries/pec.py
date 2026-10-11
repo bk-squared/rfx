@@ -176,7 +176,7 @@ def apply_pec_faces(state, faces: set[str]) -> object:
 # ---------------------------------------------------------------------------
 
 
-def _shift(arr, ax, periodic, direction):
+def _shift(arr, ax, periodic, direction, *, xp=jnp):
     """THE single spelling of the #689 boundary convention.
 
     ``direction=+1`` returns ``arr[i-1]`` (backward neighbour), ``-1``
@@ -187,6 +187,13 @@ def _shift(arr, ax, periodic, direction):
     second neighbour rule is this repo's recurring defect (#689/#690
     class); volume, sheet and wire realization all come through here.
     """
+    if xp is np:
+        shifted = np.roll(arr, direction, axis=ax)
+        if arr.shape[ax] > 1 and not periodic[ax]:
+            rim = [slice(None)] * arr.ndim
+            rim[ax] = 0 if direction > 0 else -1
+            shifted[tuple(rim)] = False
+        return shifted
     if arr.shape[ax] == 1 or periodic[ax]:
         return jnp.roll(arr, direction, axis=ax)
     return _shift_bwd(arr, ax) if direction > 0 else _shift_fwd(arr, ax)
@@ -218,7 +225,7 @@ class SheetSpec:
     # finite-R_s sheet operator only -- a PEC sheet has no weight to adjust.
     end_rows: tuple = (None, None, None)
     # Per axis: None on the normal, (lo, hi, tol) in metres otherwise.
-    # Periodic axes append the domain length as a fourth entry.
+    # Concrete axes append the index-wrap length as a fourth entry.
     drawn: tuple | None = None
 
     @classmethod
@@ -464,7 +471,7 @@ def _sheet_pair_touches(left, right, axis, periodic):
     a, b = left.drawn[axis], right.drawn[axis]
     xp = jnp if any(is_tracer(v) for v in (*a, *b)) else np
     shifts = (0.0,)
-    if periodic[axis]:
+    if periodic[axis] and left.footprint.shape[axis] > 1:
         if len(a) < 4 and len(b) < 4:
             raise ValueError("periodic drawn-sheet joins require the grid domain length")
         length = a[3] if len(a) == 4 else b[3]
@@ -475,27 +482,81 @@ def _sheet_pair_touches(left, right, axis, periodic):
     return gap <= xp.maximum(a[2], b[2])
 
 
-def _sheet_plane_edges(entries, normal, axis, periodic, *, unwrapped=False):
-    """One edge rule for physical and folded footprints.
+def _sheet_entry(sp, footprint):
+    """Cache a concrete plane view and occupied ranges once per realization."""
+    from rfx.core.jax_utils import is_tracer
+    ranges = None
+    if not is_tracer(footprint):
+        footprint = np.asarray(footprint)
+        view = footprint
+        if isinstance(sp.plane, (int, np.integer)):
+            plane = [slice(None)] * 3
+            plane[sp.normal_axis] = slice(sp.plane, sp.plane + 1)
+            view = footprint[tuple(plane)]
+        ranges = []
+        for t in range(3):
+            indices = np.flatnonzero(view.any(axis=tuple(a for a in range(3) if a != t)))
+            ranges.append((int(indices[0]), int(indices[-1])) if indices.size else (1, -1))
+        ranges = tuple(ranges)
+    return sp, footprint, ranges
 
-    Full node masks keep planes separate, including traced f0 planes whose
-    static plane metadata is unavailable. Only in-plane neighbours interact.
+
+def _sheet_ranges_can_join(left, right, normal, axis, shape, periodic):
+    """Conservative occupied-index rejection, before array cross products."""
+    if left is None or right is None:
+        return True
+    transverse = 3 - normal - axis
+    if max(left[transverse][0], right[transverse][0]) > min(left[transverse][1], right[transverse][1]):
+        return False
+    shifts = (0, shape[axis], -shape[axis]) if periodic[axis] else (0,)
+    return any(max(right[axis][0] + shift - left[axis][1],
+                   left[axis][0] - right[axis][1] - shift) <= 1 for shift in shifts)
+
+
+def _sheet_plane_edges(entries, normal, axis, periodic, *, unwrapped=False):
+    """One edge rule; concrete planes and occupied ranges prune candidates.
+
+    Concrete plane views avoid full-grid temporaries. A traced/unknown plane
+    retains the full mask and pairs with every plane of this normal axis.
     """
     neighbour_periodic = (False, False, False) if unwrapped else periodic
-    edge = None
-    for i, (sp, footprint) in enumerate(entries):
-        own = (footprint if axis == normal else
-               footprint & _shift(footprint, axis, neighbour_periodic, -1))
-        edge = own if edge is None else edge | own
-        if axis == normal:
-            continue
-        for other, other_fp in entries[:i]:
-            touch = _sheet_pair_touches(sp, other, axis, periodic)
-            if isinstance(touch, (bool, np.bool_)) and not touch:
-                continue
-            cross = ((footprint & _shift(other_fp, axis, neighbour_periodic, -1))
-                     | (other_fp & _shift(footprint, axis, neighbour_periodic, -1)))
-            edge = edge | (cross & touch)
+    from rfx.core.jax_utils import is_tracer
+    concrete = all(ranges is not None and isinstance(sp.plane, (int, np.integer))
+                   and not any(is_tracer(v) for row in (sp.drawn or ()) if row is not None for v in row)
+                   for sp, _, ranges in entries)
+    xp = np if concrete else jnp
+    edge = xp.zeros(entries[0][1].shape, dtype=bool)
+    by_plane, unknown, previous = {}, [], []
+    for sp, footprint, ranges in entries:
+        plane = sp.plane if isinstance(sp.plane, (int, np.integer)) else None
+        index = [slice(None)] * 3
+        if concrete:
+            index[normal] = slice(plane, plane + 1)
+        index = tuple(index)
+        view = footprint[index]
+        shifted = None if axis == normal else _shift(view, axis, neighbour_periodic, -1, xp=xp)
+        own = view if axis == normal else view & shifted
+        if concrete:
+            edge[index] |= own
+        else:
+            edge = edge | own
+        candidates = previous if plane is None else by_plane.get(plane, []) + unknown
+        if axis != normal:
+            for other, other_view, other_shifted, other_ranges in candidates:
+                if not _sheet_ranges_can_join(ranges, other_ranges, normal, axis,
+                                              footprint.shape, neighbour_periodic):
+                    continue
+                touch = _sheet_pair_touches(sp, other, axis, periodic)
+                if isinstance(touch, (bool, np.bool_)) and not touch:
+                    continue
+                cross = (view & other_shifted) | (other_view & shifted)
+                if concrete:
+                    edge[index] |= cross & touch
+                else:
+                    edge = edge | (cross & touch)
+        item = (sp, view, shifted, ranges)
+        previous.append(item)
+        (unknown if plane is None else by_plane.setdefault(plane, [])).append(item)
     return edge
 
 
@@ -524,7 +585,7 @@ def _unwrapped_sheet_edge_masks(sheets, shape, periodic):
             if tuple(raw.shape) != tuple(full.shape):
                 raise ValueError("SheetSpec unwrapped footprint does not match the periodic grid")
             full = raw & full
-        per_axis.setdefault(a, []).append((sp, full))
+        per_axis.setdefault(a, []).append(_sheet_entry(sp, full))
     edge = [None, None, None]
     for a, entries in per_axis.items():
         for t in range(3):
@@ -566,7 +627,7 @@ def _sheet_edge_masks(sheets, shape, periodic):
                 f"SheetSpec footprint shape {tuple(fp.shape)} does not match the "
                 f"grid shape {tuple(shape)}")
         a = sp.normal_axis
-        per_axis.setdefault(a, []).append((sp, fp))
+        per_axis.setdefault(a, []).append(_sheet_entry(sp, fp))
     for a, entries in per_axis.items():
         for t in range(3):
             if t == a:
