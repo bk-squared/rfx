@@ -160,3 +160,16 @@ def test_rcs_boundary_table(boundary, outcome, message, monkeypatch):
         with pytest.raises(ValueError) as caught:
             run_calculator()
         assert str(caught.value) == f"compute_rcs: {message}"
+
+
+def test_waveguide_calculator_warns_and_drops_ntff(monkeypatch):
+    """The #704 calculator forms no far field from its PEC-walled guide."""
+    from tests.unit.farfield.test_ntff_smatrix_drop_warning import (
+        _GridBuildIntercept, _add_box, _intercept_grid_build, _wr90,
+    )
+
+    sim = _add_box(_wr90())
+    _intercept_grid_build(monkeypatch)
+    with pytest.warns(UserWarning, match=r"add_ntff_box.*far-field"):
+        with pytest.raises(_GridBuildIntercept):
+            sim.compute_waveguide_s_matrix(normalize=True)

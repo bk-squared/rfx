@@ -527,6 +527,9 @@ for _row in _DISTRIBUTED_NU_ROWS:
 
 # Calculator memberships are independent of every shared lane set. A new
 # lane capability therefore never silently expands a calculator's contract.
+# The #704 warning reports that these calculators drop the NTFF box.
+NTFF_DROPPING_LANES = frozenset({"waveguide_s_matrix"})
+
 # The waveguide extractor assembles these materials and PEC operators and
 # passes them to its device scans; its graded branch uses run_nonuniform_path.
 for _row in (
@@ -1018,7 +1021,8 @@ def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None
         raise NotImplementedError(message(lane, rows, sim, run_args))
     from rfx.boundaries.features import admit_ntff, admit_waveguide
     from rfx.boundaries.tfsf import admit_simulation
-    admit_ntff(sim, lane=lane)
+    if lane not in NTFF_DROPPING_LANES:
+        admit_ntff(sim, lane=lane)
     admit_waveguide(sim, lane=lane)
     admit_simulation(sim, materials=(run_args or {}).get("tfsf_materials"))
 
