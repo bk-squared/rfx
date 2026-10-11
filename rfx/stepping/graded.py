@@ -16,6 +16,7 @@ from typing import Any, TYPE_CHECKING
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 
 from rfx.boundaries.pec import apply_edge_keep, apply_pec_edges, apply_pec_faces
 from rfx.core.drives import inject_drives
@@ -403,7 +404,13 @@ def make_graded_step(
 
         # Probes
         if ctx.emit_time_series and frame.invariants["probe_table"].n_channels:
-            frame.probe_out = project(frame.st, frame.invariants["probe_table"])
+            table = frame.invariants["probe_table"]
+            nodes = _host_probe_nodes(table)
+            if nodes is None:
+                frame.probe_out = project(frame.st, table)
+            else:
+                samples = [getattr(frame.st, pc)[pi, pj, pk] for pc, pi, pj, pk in nodes]
+                frame.probe_out = jnp.stack(samples)
         else:
             frame.probe_out = jnp.zeros(0)
 
@@ -462,6 +469,23 @@ def make_graded_step(
         return finish(frame)
 
     return step_fn
+
+
+def _host_probe_nodes(table):
+    """Keep the pre-table one-device program and gradient; leave slab tables to project."""
+    if any(not isinstance(index, np.ndarray) for terms in table.components for index in terms.indices):
+        return None
+    nodes = [None] * table.n_channels
+    for terms in table.components:
+        if isinstance(terms.channel_ids, jax.core.Tracer) or isinstance(terms.weights, jax.core.Tracer):
+            return None
+        for channel, i, j, k, weight in zip(np.asarray(terms.channel_ids), *terms.indices,
+                                          np.asarray(terms.weights), strict=True):
+            channel = int(channel)
+            if weight != 1.0 or not 0 <= channel < table.n_channels or nodes[channel] is not None:
+                return None
+            nodes[channel] = (terms.component, int(i), int(j), int(k))
+    return tuple(nodes) if all(node is not None for node in nodes) else None
 
 
 def graded_probe_table(prb_meta, grid_shape, *, dtype):
