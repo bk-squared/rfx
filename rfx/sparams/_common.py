@@ -36,6 +36,7 @@ except ImportError:
 
 from rfx._grid_metric import cells_crossed, distinct_cell_sizes
 from rfx.core.jax_utils import is_tracer
+from rfx.sparams._mixed_checks import _mixed_reciprocity_deviation, _warn_partial_nonpassive
 from rfx.sparams._grid_metrics import absorber_depth, junction_absorber_depth, node_distance
 
 from rfx.nonuniform import NonUniformGrid, interior_cells
@@ -1153,6 +1154,7 @@ def _warn_if_nonpassive_smatrix(
     passivity_tol: float = 0.10,
     amplitude_eps: float = 0.05,
     check_reciprocity: bool = False,
+    skip_nan: bool = False,
     reciprocity_tol: float = WAVEGUIDE_RECIPROCITY_ADVISORY_TOL,
 ) -> None:
     """Auto-run the passivity/finiteness self-check on a freshly-extracted
@@ -1193,6 +1195,10 @@ def _warn_if_nonpassive_smatrix(
     except Exception:
         # Traced / non-materializable — never let a diagnostic break the
         # numeric return path.
+        return
+
+    if skip_nan and np.any(np.isnan(s_np)):
+        _warn_partial_nonpassive(s_np, extractor, strict, passivity_tol, amplitude_eps)
         return
 
     # WARN-ONLY reciprocity advisory, enabled per port family by the caller
@@ -1870,10 +1876,8 @@ def _assemble_mixed_power_wave_s(
                 z_in = -v_d / safe_i
                 s_jj = (z_in - z0_lw[loc]) / (z_in + z0_lw[loc])
             else:
-                b_diag = (-v_d - z0_lw[loc] * i_d) / (
-                    2.0 * jnp.sqrt(jnp.asarray(z0_lw[loc]))
-                )
-                s_jj = b_diag / safe_a
+                # The driven lumped reflection is refused on the mixed lane.
+                s_jj = jnp.full_like(a, jnp.nan)
             S = S.at[col, col, :].set(s_jj.astype(cdt))
             for ri in range(n_lw):
                 if ri == loc:
@@ -1890,7 +1894,8 @@ def _assemble_mixed_power_wave_s(
             p_del = 0.5 * jnp.real(z_in) * jnp.abs(i_d) ** 2
             one_minus = jnp.clip(1.0 - jnp.abs(s_jj) ** 2, 1e-9, None)
             a_recon = jnp.sqrt(jnp.clip(2.0 * p_del, 0.0, None) / one_minus)
-            safe_ar = jnp.where(a_recon > 0, a_recon, jnp.ones_like(a_recon))
+            safe_ar = (jnp.where(a_recon > 0, a_recon, jnp.ones_like(a_recon))
+                       if wire_mode else jnp.full_like(a_recon, jnp.nan))
             for p in range(n_msl):
                 b_p = _b_msl(run, p)
                 S = S.at[n_lw + p, col, :].set((b_p / safe_a).astype(cdt))
@@ -1916,32 +1921,9 @@ def _assemble_mixed_power_wave_s(
     return S, s21_power
 
 
-def _mixed_reciprocity_deviation(S):
-    """Worst relative |S_ij| vs |S_ji| disagreement (issue #488).
-
-    Magnitude-only by design: cross-family phase mixes two reference-plane
-    conventions on this lane, so a complex comparison would misfire.
-    Returns ``((i, j), max_relative_deviation)`` over all off-diagonal
-    pairs and frequencies, or ``None`` for a 1-port / tracer input.
-    """
-    s = np.abs(np.asarray(jax.lax.stop_gradient(S)))
-    n = int(s.shape[0])
-    if n < 2 or not np.all(np.isfinite(s)):
-        return None
-    worst_pair, worst = None, 0.0
-    for i in range(n):
-        for j in range(i + 1, n):
-            a, b = s[i, j, :], s[j, i, :]
-            denom = np.maximum(np.maximum(a, b), 1e-12)
-            dev = float(np.max(np.abs(a - b) / denom))
-            if dev >= worst:
-                worst, worst_pair = dev, (i, j)
-    return worst_pair, worst
-
-
 def _mixed_flux_magnitude_override(
     S_wave, box_lw, plane_msl, drive_plan, msl_away_signs, n_lw,
-    ill_cond_floor=0.05,
+    ill_cond_floor=0.05, refused_columns=(),
 ):
     """Replace off-diagonal MAGNITUDES with Poynting-flux ratios (issue #488).
 
@@ -1987,7 +1969,8 @@ def _mixed_flux_magnitude_override(
             p_net = msl_away_signs[loc] * plane_msl[run_idx, loc, :]
         neg_power[col, :] |= p_net < 0.0
         p_inc = np.clip(p_net, 0.0, None) / np.clip(one_minus, ill_cond_floor, None)
-        safe_pinc = np.where(p_inc > 0.0, p_inc, np.inf)
+        safe_pinc = (np.full_like(p_inc, np.nan) if col in refused_columns
+                     else np.where(p_inc > 0.0, p_inc, np.inf))
         for i in range(n_tot):
             if i == col:
                 continue

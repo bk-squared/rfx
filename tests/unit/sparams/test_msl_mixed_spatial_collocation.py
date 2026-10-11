@@ -152,7 +152,9 @@ def test_mixed_affine_h_matches_constant_reference_and_refutes_single_plane(
     assert abs(expected_wrong - expected_s11) > 0.05
     np.testing.assert_allclose(reference.S[1, 1], expected_s11, rtol=2e-6, atol=2e-7)
     np.testing.assert_allclose(bypassed.S[1, 1], expected_wrong, rtol=2e-6, atol=2e-7)
-    assert np.max(np.abs(bypassed.S - reference.S)) > 0.05
+    # The refused lumped diagonal cannot contribute a numeric difference;
+    # this falsifier measures the MSL diagonal derived immediately above.
+    assert np.max(np.abs(bypassed.S[1, 1] - reference.S[1, 1])) > 0.05
 
 
 @pytest.mark.parametrize("entry", ["compute_mixed_s_matrix", "compute_s_matrix"])

@@ -45,6 +45,8 @@ from rfx.sources.sources import GaussianPulse
 
 from rfx.api._spec import MixedSMatrixResult
 
+from rfx.sparams._mixed_checks import _warn_refused_lumped_entries
+
 from rfx.sparams._common import (
     _msl_cell_profile,
     msl_modal_voltage,
@@ -266,37 +268,6 @@ def compute_mixed_s_matrix(
             "compute_lumped_wire_s_matrix_via_scan)."
         ), _diagnostics)
     wire_mode = all(is_wire)
-    if not wire_mode:
-        # This lane keeps the PRE-decision lumped driven diagonal — the
-        # passive port-branch algebra, which on a known load is the
-        # reciprocal of the physical reflection
-        # (scripts/diagnostics/lumped_port_known_load_line.py).  Correcting
-        # it is cross-family work the PI deferred on 2026-09-15, so the
-        # algebra stays; saying nothing about it does not.
-        #
-        # Its drive reference reads the pre-injection channel explicitly, so
-        # the sample the #488 algebra was calibrated against did not move.
-        # What did move is the current, which now carries the Yee half-step
-        # phase: measured on a lumped-feed variant of the committed fixture,
-        # max |dS| = 1.8e-05 and max |d|S|| = 1.7e-07.  The committed
-        # fixtures drive a WIRE feed and are bit-identical (max |dS| = 0.0).
-        import warnings as _w
-        from rfx.probes.probes import PreDecisionLumpedDiagonalWarning as _W
-        _w.warn(
-            "compute_mixed_s_matrix: the LUMPED driven diagonal in this method "
-            "is on the pre-decision convention (the passive port-branch "
-            "algebra applied to a driven port), which on a known load reads "
-            "the reciprocal of the physical reflection — see "
-            "scripts/diagnostics/lumped_port_known_load_line.py. The uniform "
-            "single-family lumped run() calculator was corrected on 2026-09-21; this "
-            "cross-family method is fenced experimental and was deliberately "
-            "not. Its numbers also shifted by the Yee half-step current "
-            "phase (max |dS| = 1.8e-05 measured on a lumped-feed fixture). "
-            "Use compute_lumped_wire_s_matrix_via_scan for a lumped-only "
-            "set; do not report this diagonal as physics.",
-            _W,
-            stacklevel=2,
-        )
     if any(getattr(pe, "reference_plane_cells", None) for pe in lw_entries):
         raise diagnostic_refusal(NotImplementedError(
             "compute_mixed_s_matrix() v1 does not support "
@@ -992,6 +963,7 @@ def compute_mixed_s_matrix(
             ]
             S, _ill_cond, _neg_power = _mixed_flux_magnitude_override(
                 S, box_lw, plane_msl, drive_plan, msl_away, n_lw,
+                refused_columns=range(n_lw) if not wire_mode else (),
             )
             S = jnp.asarray(S, dtype=_complex_dtype)
             for col in range(n_lw + n_msl):
@@ -1055,7 +1027,9 @@ def compute_mixed_s_matrix(
 
         s_raw = None
         passivity_correction = None
-        if enforce_passivity and not is_tracer(S):
+        if not wire_mode:
+            _warn_refused_lumped_entries(port_names, n_lw, magnitude_channel)
+        if enforce_passivity and wire_mode and not is_tracer(S):
             s_projected, correction = _project_passive(S)
             if bool(np.any(np.asarray(correction) > 0.0)):
                 s_raw = S
@@ -1094,6 +1068,7 @@ def compute_mixed_s_matrix(
             extractor="compute_mixed_s_matrix",
             strict=strict_extractor,
             passivity_tol=0.10,
+            skip_nan=not wire_mode,
         )
         # RECIPROCITY WITNESS — the only independent runtime check on
         # the flux channel (review finding: the shared passivity audit

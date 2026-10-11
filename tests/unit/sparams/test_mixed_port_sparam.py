@@ -106,7 +106,8 @@ def test_power_wave_normalization_unequal_z0():
     pseudo_ratio = np.sqrt(z0_msl / z0_lump)  # 0.7746 — the #460 error
     assert abs(pseudo_ratio - 1.0) > 0.2
     np.testing.assert_allclose(np.abs(S[1, 0, :]), 1.0, atol=1e-5)
-    np.testing.assert_allclose(np.abs(S[0, 0, :]), 0.0, atol=1e-6)
+    # The mixed driven lumped diagonal is refused, even on matched phasors.
+    assert np.isnan(S[0, 0, :]).all()
 
 
 def test_reciprocity_on_synthetic_transfer():
@@ -136,7 +137,8 @@ def test_power_witness_matches_synthetic():
         np.asarray([50.0]), np.asarray([1]), np.asarray([30.0]),
         wire_mode=False, drive_plan=[("lw", 0), ("msl", 0)],
     )
-    np.testing.assert_allclose(s21_power[0, 0, :], 1.0, atol=1e-5)
+    # This witness divides by 1 - |S00|² and inherits the diagonal refusal.
+    assert np.isnan(s21_power[0, 0, :]).all()
 
 
 def test_wire_mode_uses_per_cell_impedance():
@@ -234,34 +236,14 @@ def _add_feed(sim, y_c, x=2e-3, extent=None):
 
 
 def test_a_lumped_feed_reaches_the_lumped_branch_and_its_numbers_are_pinned():
-    """The mixed lane's LUMPED branch, which nothing else in this file reaches.
-
-    Every other feed here carries ``extent=``, so the lane runs in wire mode
-    and `rfx/sparams/mixed.py`'s lumped branch — the one that reads the
-    pre-injection drive reference out of the three-channel accumulator — is
-    never entered. This is the only test that enters it.
-
-    The lane keeps the pre-decision lumped driven diagonal on purpose:
-    correcting it is cross-family work the PI deferred on 2026-09-15. So this
-    does not gate the VALUE against physics, which would freeze that decision
-    as if it were one. It gates two things that must not drift silently:
-
-    * the branch runs at all (``port_families == ("lumped", "msl")``), and
-    * the lane announces the convention it is on.
-
-    Measured before/after the 2026-09-21 driven-diagonal change, on this
-    fixture: ``max |dS| = 1.8e-05``, ``max |d|S|| = 1.7e-07``. The committed
-    wire-feed fixtures are bit-identical (``max |dS| = 0.0``) because the
-    lumped branch never fires on them.
-    """
-    from rfx.probes.probes import PreDecisionLumpedDiagonalWarning
-
+    """The one-cell lumped feed refuses its unverified driven reflection."""
     sim, y_c = _base_sim()
     # No ``extent`` — a one-cell lumped port, which is what selects the branch.
     sim.add_port(position=(2e-3, y_c, 0.0), component="ez", impedance=50.0)
     _add_msl(sim, y_c, n_probe_offset=10, n_probe_spacing=4)
 
-    with pytest.warns(PreDecisionLumpedDiagonalWarning):
+    # The old warning plus a finite diagonal is replaced by refusal.
+    with pytest.warns(UserWarning, match="refused driven lumped entries"):
         res = sim.compute_mixed_s_matrix(
             freqs=np.linspace(1e9, 2e9, 3), num_periods=2.0,
             skip_preflight=True, magnitude_channel="wave",
@@ -272,7 +254,9 @@ def test_a_lumped_feed_reaches_the_lumped_branch_and_its_numbers_are_pinned():
         "covers what it was written for")
     S = np.asarray(res.S)
     assert S.shape == (2, 2, 3)
-    assert np.all(np.isfinite(S))
+    assert np.isnan(S[0, 0]).all()
+    assert np.isfinite(S[1, 0]).all()
+    assert np.isfinite(S[:, 1]).all()
 
 
 def test_guard_requires_msl_port():
