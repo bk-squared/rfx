@@ -18,7 +18,7 @@ import jax
 import jax.numpy as jnp
 
 from rfx.boundaries.pec import apply_edge_keep, apply_pec_edges, apply_pec_faces
-from rfx.core.drives import Drives, inject_drives
+from rfx.core.drives import inject_drives
 from rfx.core.yee import CurlBoundary, update_e_nu, update_h_nu
 from .sequence import HookPoint, Kernel, compose
 
@@ -40,7 +40,6 @@ class GradedStepContext:
     _slab_e_snapshot: Callable | None
     current_moments: CurrentMomentMonitor | None
     dt: float | jax.Array
-    inv_dx_h: jax.Array
     inv_dy_h: jax.Array
     inv_dz_h: jax.Array
     grid: NonUniformGrid
@@ -60,7 +59,6 @@ class GradedStepContext:
     use_design_box: bool
     use_debye: bool
     use_lorentz: bool
-    inv_dx: jax.Array
     inv_dy: jax.Array
     inv_dz: jax.Array
     curl_boundary: CurlBoundary
@@ -68,7 +66,6 @@ class GradedStepContext:
     _pec_faces_frozen: frozenset[str]
     use_pec_edges: bool
     use_pec_occupancy: bool
-    drives: Drives
     use_wire_ports: bool
     wp_meta: list
     sp_freqs: jax.Array | None
@@ -80,7 +77,6 @@ class GradedStepContext:
     ntff_box: NTFFBox | None
     _accumulate_cm: Callable | None
     emit_time_series: bool
-    prb_meta: list
 
 
 @dataclass
@@ -160,8 +156,8 @@ def make_graded_step(
 
     def h_update(frame: GradedFrame):
         # H update (non-uniform)
-        frame.st = update_h_nu(frame.st, frame.materials, ctx.dt, ctx.inv_dx_h, ctx.inv_dy_h, ctx.inv_dz_h,
-                         cell_sizes=(ctx.grid.dx_arr, ctx.grid.dy_arr, ctx.grid.dz))
+        frame.st = update_h_nu(frame.st, frame.materials, ctx.dt, frame.invariants["inv_dx_h"], ctx.inv_dy_h, ctx.inv_dz_h,
+                         cell_sizes=(frame.invariants["dx_arr"], ctx.grid.dy_arr, ctx.grid.dz))
 
     def h_boundary(frame: GradedFrame):
         frame.tfsf_h_state = None
@@ -199,7 +195,7 @@ def make_graded_step(
         frame.lorentz_new = None
         if ctx.use_debye or ctx.use_lorentz:
             frame.st, frame.debye_new, frame.lorentz_new = _update_e_nu_dispersive(
-                frame.st, frame.materials, ctx.dt, ctx.inv_dx, ctx.inv_dy, ctx.inv_dz,
+                frame.st, frame.materials, ctx.dt, frame.invariants["inv_dx"], ctx.inv_dy, ctx.inv_dz,
                 debye=(frame.debye_coeffs, frame.carry["debye"]) if ctx.use_debye else None,
                 lorentz=(frame.lorentz_coeffs, frame.carry["lorentz"]) if ctx.use_lorentz else None,
                 boundary=ctx.curl_boundary,
@@ -209,10 +205,10 @@ def make_graded_step(
             _eex, _eey, _eez = frame.aniso_eps
             frame.st = update_e_nu_aniso(
                 frame.st, frame.materials, _eex, _eey, _eez, ctx.dt,
-                ctx.inv_dx, ctx.inv_dy, ctx.inv_dz, boundary=ctx.curl_boundary,
+                frame.invariants["inv_dx"], ctx.inv_dy, ctx.inv_dz, boundary=ctx.curl_boundary,
             )
         else:
-            frame.st = update_e_nu(frame.st, frame.materials, ctx.dt, ctx.inv_dx, ctx.inv_dy, ctx.inv_dz,
+            frame.st = update_e_nu(frame.st, frame.materials, ctx.dt, frame.invariants["inv_dx"], ctx.inv_dy, ctx.inv_dz,
                              boundary=ctx.curl_boundary)
 
         # #1183 design box: redo the E update at the design cells from the
@@ -224,7 +220,7 @@ def make_graded_step(
             frame.st = update_e_box(
                 frame.st, frame.st_prev_design, frame.design_box_coeffs.bounds,
                 frame.design_box_coeffs.ca, frame.design_box_coeffs.cb, ctx.grid.dx,
-                inv_d=(ctx.inv_dx, ctx.inv_dy, ctx.inv_dz), boundary=ctx.curl_boundary,
+                inv_d=(frame.invariants["inv_dx"], ctx.inv_dy, ctx.inv_dz), boundary=ctx.curl_boundary,
             )
 
     def e_boundary(frame: GradedFrame):
@@ -264,7 +260,7 @@ def make_graded_step(
             _scd = jnp.promote_types(frame.st.ex.dtype, jnp.float32)
             _curls = _curl_h_nu(
                 frame.st.hx.astype(_scd), frame.st.hy.astype(_scd), frame.st.hz.astype(_scd),
-                ctx.inv_dx, ctx.inv_dy, ctx.inv_dz, boundary=ctx.curl_boundary)
+                frame.invariants["inv_dx"], ctx.inv_dy, ctx.inv_dz, boundary=ctx.curl_boundary)
             frame.st = _apply_sheet_e(frame.st, frame.e_prev_sheet, _curls,
                                 frame.sheet_impedance, frame.sheet_coeffs)
 
@@ -280,7 +276,7 @@ def make_graded_step(
 
     def sources(frame: GradedFrame):
         # Sources (point sources + wire port excitation)
-        frame.st = inject_drives(frame.st, ctx.drives, frame.src_vals)
+        frame.st = inject_drives(frame.st, frame.invariants["drives"], frame.src_vals)
 
     def after_sources(frame: GradedFrame):
         # Waveguide-port injection + DFT probe accumulation. The dx
@@ -403,9 +399,8 @@ def make_graded_step(
             frame.tfsf_new = update_tfsf_1d_e(ctx.tfsf_cfg, frame.tfsf_h_state, ctx.grid.dx, ctx.dt, t_tfsf)
 
         # Probes
-        if ctx.emit_time_series and ctx.prb_meta:
-            samples = [getattr(frame.st, pc)[pi, pj, pk] for pi, pj, pk, pc in ctx.prb_meta]
-            frame.probe_out = jnp.stack(samples)
+        if ctx.emit_time_series and frame.invariants["probe_table"].n_channels:
+            frame.probe_out = project(frame.st, frame.invariants["probe_table"])
         else:
             frame.probe_out = jnp.zeros(0)
 
@@ -464,3 +459,13 @@ def make_graded_step(
         return finish(frame)
 
     return step_fn
+
+
+def graded_probe_table(prb_meta, *, dtype):
+    """Compile the graded point probes in their original record order."""
+    from rfx.measurement.plan import Node, Owner, field_channel
+    from rfx.measurement.projector import sample_table
+
+    channels = tuple(field_channel(c, (Node(c, i, j, k, 1.0),))
+                     for i, j, k, c in prb_meta)
+    return sample_table((Owner('probes', 'probe', channels),), dtype=dtype)

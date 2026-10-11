@@ -1385,8 +1385,8 @@ def _slot_case(kind, edits):
         step.make_graded_step = observed_step
         name = "rfx._current_moment_nonuniform_copy"
         mod = _load_mutated(GRADED_RUNNER_SRC, name, [(
-            "    from rfx.stepping.graded import GradedStepContext, make_graded_step",
-            f"    from {step_name} import GradedStepContext, make_graded_step")])
+            "    from rfx.stepping.graded import GradedStepContext, make_graded_step, graded_probe_table",
+            f"    from {step_name} import GradedStepContext, make_graded_step, graded_probe_table")])
         names.append(name)
         case = CASE_BUILDERS[kind](with_planes=False, runner=mod.run_nonuniform)
         assert executed, "the copied runner never executed the copied step"
