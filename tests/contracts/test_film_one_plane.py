@@ -285,6 +285,8 @@ def test_c6_graded_sigma_gradient():
 # Constructors that intentionally omit an explicit carrier keyword. Counts also
 # catch a new unclassified construction added inside an already reviewed function.
 CONSTRUCTOR_EXCEPTIONS = {
+    ('rfx/runners/_distributed_common.py', 'cpml_h_materials'): (2, 'H-only local/vacuum means passed to the shared CPML kernel; no conductivity consumed'),
+    ('rfx/runners/distributed_nu.py', 'run_nonuniform_distributed_pec._apply_cpml_h_shmap._h'): (1, 'H-only local means passed to the shared CPML kernel; no conductivity consumed'),
     ('rfx/adi.py', 'adi_step_2d'): (1, 'ADI refuses thin-conductor declarations before stepping'),
     ('rfx/adi.py', 'adi_step_3d'): (2, 'ADI refuses thin-conductor declarations before stepping'),
     ('rfx/adi.py', 'apply_adi_cpml_2d'): (1, 'ADI refuses thin-conductor declarations before stepping'),
@@ -295,10 +297,7 @@ CONSTRUCTOR_EXCEPTIONS = {
     ('rfx/model/materials.py', 'assemble_cells'): (1, 'initial cell construction precedes the shared film fold'),
     ('rfx/model/materials.py', 'kernel_materials'): (1, 'KernelComponents already contains the film in sigma_update'),
     ('rfx/rcs.py', 'compute_rcs'): (2, 'vacuum reference, with sigma explicitly zero'),
-    ('rfx/runners/_distributed_common.py', '_apply_cpml_h_distributed'): (1, 'H-only operand: no electric conductivity consumed'),
-    ('rfx/runners/_distributed_common.py', 'cpml_coeff_h_vacuum'): (1, 'H-only operand: no electric conductivity consumed'),
     ('rfx/runners/_distributed_common.py', 'update_h_nu_shmap._h'): (1, 'H-only operand: no electric conductivity consumed'),
-    ('rfx/runners/distributed_nu.py', '_apply_cpml_h_local_nu'): (1, 'H-only operand: no electric conductivity consumed'),
     ('rfx/runners/distributed_nu.py', 'run_nonuniform_distributed_pec._update_e_dispersive_shmap._e_disp'): (1, 'only called with dispersion; shared means already enter Debye/Lorentz coefficients'),
     ('rfx/runners/distributed_v2.py', 'run_distributed._update_h_shmap._h'): (1, 'H-only operand: no electric conductivity consumed'),
     ('rfx/runners/distributed_v2.py', '_shard_materials'): (1, 'refuses a non-None film before constructing'),

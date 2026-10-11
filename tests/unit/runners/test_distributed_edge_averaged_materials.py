@@ -577,15 +577,16 @@ def test_mutation_the_psi_coefficient_on_the_cell_permittivity_sends_the_faces_c
     grid = sim._build_nonuniform_grid()
     slabs, _ = _staged(sim._assemble_materials_nu(grid)[0], 2)
     eps_cells = jnp.stack([m.eps_r for m in slabs])
-    real_cpml = distributed_nu._apply_cpml_e_local_nu
+    real_cpml = distributed_nu.apply_cpml_e
 
     def cell_cpml(*args, **kwargs):
         # Keep every material helper call and replace only CPML's eps read.
-        kwargs["eps_r"] = lax.dynamic_index_in_dim(
+        cells = lax.dynamic_index_in_dim(
             eps_cells, lax.axis_index("x"), axis=0, keepdims=False)
+        kwargs["inv_eps_r_update"] = (1 / cells,) * 3
         return real_cpml(*args, **kwargs)
 
-    monkeypatch.setattr(distributed_nu, "_apply_cpml_e_local_nu", cell_cpml)
+    monkeypatch.setattr(distributed_nu, "apply_cpml_e", cell_cpml)
     for lane in ("run", "fwd"):
         got, _ = _parity("cpml", lane, "faces", 2)
         gate = _gate(floors[lane])

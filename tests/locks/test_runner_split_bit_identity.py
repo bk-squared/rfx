@@ -852,10 +852,6 @@ def test_runner_is_bit_identical_to_the_pre_split_baseline(
 #
 # (name in _distributed_common, importing module, attribute it is bound to)
 _SHARED_HELPER_BINDINGS = (
-    ("cpml_coeff_e_vacuum", "rfx.runners.distributed", "cpml_coeff_e_vacuum"),
-    ("cpml_coeff_h_vacuum", "rfx.runners.distributed", "cpml_coeff_h_vacuum"),
-    ("cpml_coeff_e_vacuum", "rfx.runners.distributed_nu", "cpml_coeff_e_vacuum"),
-    ("cpml_coeff_h_vacuum", "rfx.runners.distributed_nu", "cpml_coeff_h_vacuum"),
     ("exchange_component_shmap", "rfx.runners.distributed_v2",
      "_exchange_component_shmap"),
     ("exchange_component_shmap", "rfx.runners.distributed_nu",
@@ -868,8 +864,6 @@ _SHARED_HELPER_BINDINGS = (
     ("shard_stacked", "rfx.runners.distributed_v2", "shard_stacked"),
     ("shard_stacked_poles", "rfx.runners.distributed_nu",
      "shard_stacked_poles"),
-    ("shard_stacked_psi", "rfx.runners.distributed_nu", "shard_stacked_psi"),
-    ("shard_stacked_psi", "rfx.runners.distributed_v2", "shard_stacked_psi"),
     # #1038 leg 1 -- the two shard_map helpers called from inside the jitted
     # step body. These are the leg's real jaxpr-shape change: four locals
     # (mesh, n_{src,prb}, *_local_specs, *_device_ids) became parameters, and
@@ -888,9 +882,7 @@ _SHARED_HELPER_BINDINGS = (
     # closures over (n_devices, n) that differed only in how they spelled the
     # two face-parallel extents (inventory §2.3(b)). Both callers are
     # setup-time, so this row guards a de-duplication with no jaxpr exposure.
-    ("zeros_psi_stacked", "rfx.runners.distributed", "zeros_psi_stacked"),
     # #1350/#1351: NU now imports the complete per-face sizing routine.
-    ("_distributed_cpml_state", "rfx.runners.distributed_nu", "_distributed_cpml_state"),
     ("_distributed_boundary_layers", "rfx.runners.distributed_v2", "_distributed_boundary_layers"),
     ("_distributed_boundary_layers", "rfx.runners.distributed_nu", "_distributed_boundary_layers"),
     # #1038 leg 2 -- the x-slab primitives. Not a de-duplication: these were
@@ -1032,18 +1024,6 @@ _SHARED_HELPER_BINDINGS = (
      "_update_e_local_with_dispersion"),
     ("_update_e_local_with_dispersion", "rfx.runners.distributed",
      "_update_e_local_with_dispersion"),
-    ("_init_cpml_distributed", "rfx.runners.distributed_v2",
-     "_init_cpml_distributed"),
-    ("_init_cpml_distributed", "rfx.runners.distributed",
-     "_init_cpml_distributed"),
-    ("_apply_cpml_e_distributed", "rfx.runners.distributed_v2",
-     "_apply_cpml_e_distributed"),
-    ("_apply_cpml_e_distributed", "rfx.runners.distributed",
-     "_apply_cpml_e_distributed"),
-    ("_apply_cpml_h_distributed", "rfx.runners.distributed_v2",
-     "_apply_cpml_h_distributed"),
-    ("_apply_cpml_h_distributed", "rfx.runners.distributed",
-     "_apply_cpml_h_distributed"),
 )
 
 
