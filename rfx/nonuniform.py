@@ -18,6 +18,8 @@ per-axis inverse spacing arrays. Fully JIT-compiled via jax.lax.scan.
 
 from __future__ import annotations
 
+from rfx.measurement.time_records import graded_records, init_graded_records
+
 from functools import partial
 from types import SimpleNamespace
 
@@ -1152,9 +1154,7 @@ def run_nonuniform(
         carry_init["dft_time_records"] = tuple(
             jnp.zeros((n_steps,) + p.accumulator.shape[1:], dtype=carry_init["fdtd"].ex.dtype)
             for p in dft_planes)
-    if "wire_sparams" in carry_init:
-        carry_init["sparam_time_records"] = tuple(
-            jnp.zeros((n_steps, 3), dtype=carry_init["fdtd"].ex.dtype) for _ in carry_init["wire_sparams"])
+    init_graded_records(carry_init, n_steps)
     src_waveforms = setup.src_waveforms
 
     xs = (jnp.arange(n_steps, dtype=jnp.int32), src_waveforms)
@@ -1534,8 +1534,7 @@ def _assemble_nu_result(setup: _NUScanSetup, final: dict, time_series, n_record=
         # v_port_dft), surfaced for diagnostics/validation harnesses
         # (issue #764; mirrors the uniform lane's raw-acc access via
         # forward()'s wire_port_sparams).
-        result["sparam_time_records"] = tuple(
-            record[:n_record] for record in final.get("sparam_time_records", ()))
+        result["sparam_time_records"] = graded_records(setup, final, n_record)
         result["wire_sparams_raw"] = final["wire_sparams"]
         # The static per-port metadata those accumulators were recorded
         # with, in the same order (:func:`_build_wp_meta` slots). The
@@ -1709,9 +1708,7 @@ def run_nonuniform_until_decay(
         carry["dft_time_records"] = tuple(
             jnp.zeros((max_steps,) + p.accumulator.shape[1:], dtype=carry["fdtd"].ex.dtype)
             for p in dft_planes)
-    if "wire_sparams" in carry:
-        carry["sparam_time_records"] = tuple(
-            jnp.zeros((max_steps, 3), dtype=carry["fdtd"].ex.dtype) for _ in carry["wire_sparams"])
+    init_graded_records(carry, max_steps)
 
     # Source table: pad/truncate to max_steps so every chunk slice is
     # full-length (mirrors the uniform run_until_decay pad/truncate).

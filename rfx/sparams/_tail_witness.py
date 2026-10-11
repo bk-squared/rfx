@@ -243,12 +243,14 @@ class SettlingChannels(NamedTuple):
 def port_record_witness(records, dt, source_end, freqs, *, freq_max):
     """Judge recorded S-channel matrices, one matrix per port."""
     channels = SettlingChannels(
-        tuple((f'port{p}', record) for p, record in enumerate(records)),
+        tuple((record.id, record.samples) for record in records),
         dt, source_end, freqs, freq_max)
     result = channels.witness()
     return result.db, {**result._asdict(), 'route': 's_channels',
                        'worst_record': None, 'per_record_db': {},
                        'skipped_records': [], 'source_dominated': False,
+                       'scored_port_record_ids': [r.id for r in records],
+                       'skipped_port_records': [],
                        'source_dominated_records': [], 'qualifier': ''}
 
 

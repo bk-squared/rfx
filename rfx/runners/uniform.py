@@ -906,6 +906,7 @@ def run_uniform(
         if _is_tfsf_2d_out(tfsf[0]):
             sim_result = reconstruct_oblique_physical(sim_result, tfsf[0], grid, probes)
 
+    from rfx.sparams._record_selection import read_ids, SReadPorts
     return Result(
         diagnostics=diagnostics,
         realized_geometry=geometry_record,
@@ -931,6 +932,7 @@ def run_uniform(
         # (find_resonances, an FFT of time_series) needs the real one.
         dt=sim_result.dt,
         sparam_time_records=sim_result.sparam_time_records,
+        sparam_read_ids=read_ids(sim_result.sparam_time_records) if _single_wire_fastpath else SReadPorts(),
         dft_time_records={
             entry.name: rec for entry, rec in zip(sim._dft_planes, sim_result.dft_time_records or ())
         },

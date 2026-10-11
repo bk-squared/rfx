@@ -55,6 +55,7 @@ def test_far_field_or_plane_read_without_a_probe_is_not_witnessed_by_port_record
     from types import SimpleNamespace
     from rfx import Simulation
     from rfx.api._spec import Result
+    from rfx.measurement import PortTimeRecord
 
     dt = 0.4
     t = np.arange(1000) * dt
@@ -64,7 +65,7 @@ def test_far_field_or_plane_read_without_a_probe_is_not_witnessed_by_port_record
     sim = Simulation(freq_max=1.0, domain=(1.0,) * 3, dx=0.1)
     sim._settling_source_end = lambda *a, **k: 0
     result = Result(state=None, s_params=None, dt=dt, time_series=np.zeros((1000, 0)),
-                    sparam_time_records=(port,), freqs=None, **fields)
+                    sparam_time_records=(PortTimeRecord('port:0:mode:0', 'wire', ('V',), port[:, None]),), freqs=None, **fields)
     _, detail = sim._run_settling_witness(result)
     assert detail["status"] != "pass"
-    assert "no probe records" in detail["reason"]
+    assert detail["skipped_port_records"] == [{"id": "port:0:mode:0", "reason": "S not read"}]

@@ -1,31 +1,51 @@
 """Settling uses a port record only when the returned S reads that port."""
 
 
+from dataclasses import dataclass
+
+import jax
+
+
+@jax.tree_util.register_pytree_node_class
+@dataclass(frozen=True)
+class SReadPorts:
+    """Static ids of ports whose same-run accumulators formed returned S."""
+    ids: tuple[str, ...] = ()
+
+    def tree_flatten(self):
+        return (), self.ids
+
+    @classmethod
+    def tree_unflatten(cls, ids, leaves):
+        return cls(ids)
+
+
+def read_ids(records, kind=None):
+    return SReadPorts(tuple(r.id for r in records or ()
+                           if kind is None or r.kind == kind))
+
+
+def finish_forward(result):
+    """Publish the ids selected by uniform forward's accumulator branch."""
+    kind = 'lumped' if result.lumped_port_sparams else 'wire'
+    selected = read_ids(result.sparam_time_records, kind) if result.s_params is not None else SReadPorts()
+    return result._replace(sparam_read_ids=selected)
+
+
 def s_read_records(result):
-    """Follow the result's S extraction, independently of record presence."""
-    records = tuple(getattr(result, 'sparam_time_records', None) or ())
-    if getattr(result, 's_params', None) is None:
+    """Read only explicitly identified, same-run S records, in record order."""
+    ids = getattr(result, 'sparam_read_ids', None)
+    if getattr(result, 's_params', None) is None or ids is None:
         return ()
-    # Uniform forward chooses lumped S before wire S. Graded forward uses
-    # its single wire accumulator collection for both kinds.
-    lumped = getattr(result, 'lumped_port_sparams', None)
-    if lumped:
-        wires = getattr(result, 'wire_port_sparams', None) or ()
-        return records[len(wires):len(wires) + len(lumped)]
-    return records
+    return tuple(r for r in getattr(result, 'sparam_time_records', None) or () if r.id in ids.ids)
 
 
 def record_selection_detail(result):
-    """Add record identities without changing the numeric verdict fields."""
     records = tuple(getattr(result, 'sparam_time_records', None) or ())
-    selected = s_read_records(result)
-    ids = [getattr(record, 'id', f'port:{i}:mode:0')
-           for i, record in enumerate(records)]
-    scored = [name for name, record in zip(ids, records)
-              if any(record is chosen for chosen in selected)]
+    scored = [r.id for r in s_read_records(result)]
     return {'scored_port_record_ids': scored,
-            'skipped_port_records': [{'id': name, 'reason': 'S not read'}
-                                     for name in ids if name not in scored]}
+            'skipped_port_records': [{'id': r.id, 'reason': 'S not read'}
+                                     for r in records if r.id not in scored]}
 
 
 def forward_settling_witness(result):

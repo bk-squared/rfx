@@ -458,10 +458,8 @@ def make_uniform_step(
             frame.st = inject(frame.st, drives, frame.src_vals)
 
     from rfx.measurement.projector import port_table, project
-    port_specs = tuple((m.component, m.live_cells or ((m.mid_i, m.mid_j, m.mid_k),), 'wire',
-                       (m.mid_i, m.mid_j, m.mid_k))
-                       for m in ctx.wire_sparam_meta) + tuple(
-                           (m.component, ((m.i, m.j, m.k),), 'lumped', (m.i, m.j, m.k)) for m in ctx.lumped_sparam_meta)
+    from rfx.measurement.time_records import uniform_specs
+    port_specs = uniform_specs(ctx)
     port_tables = {}
 
     def after_sources(frame: UniformFrame):
@@ -610,6 +608,7 @@ def make_uniform_step(
         if ctx.use_wire_refplanes:
             frame.port_samples.extend(frame.refplane_samples)
         if "sparam_time_records" in frame.carry:
+            assert len(frame.carry["sparam_time_records"]) == len(frame.port_samples)
             new_carry["sparam_time_records"] = tuple(
                 jax.lax.stop_gradient(record.at[frame.step_idx].set(sample))
                 for record, sample in zip(frame.carry["sparam_time_records"], frame.port_samples))

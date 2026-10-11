@@ -5,6 +5,8 @@ import numpy as np
 import pytest
 
 from rfx.api._spec import ForwardResult
+from rfx.measurement import PortTimeRecord
+from rfx.sparams._record_selection import SReadPorts
 from rfx.sparams._record_selection import forward_settling_witness
 
 
@@ -18,10 +20,10 @@ def test_forward_scores_only_s_read_ports(monkeypatch, reads_s):
         return -42., {'status': 'pass'}
 
     monkeypatch.setattr(witness, 'port_record_witness', score)
-    record = np.ones((20, 3))
+    record = PortTimeRecord('port:0:mode:0', 'lumped', ('V', 'I', 'V_ref'), np.ones((20, 3)))
     result = ForwardResult(time_series=None, dt=1., freqs=np.array([.1]),
                            s_params=np.ones(1) if reads_s else None,
-                           sparam_time_records=(record,))
+                           sparam_time_records=(record,), sparam_read_ids=SReadPorts(('port:0:mode:0',)))
     db, detail = forward_settling_witness(result)
     assert len(seen) == int(reads_s)
     assert detail['scored_port_record_ids'] == (['port:0:mode:0'] if reads_s else [])
@@ -37,9 +39,11 @@ def test_uniform_forward_skips_wire_when_result_reads_lumped_s(monkeypatch):
     seen = []
     monkeypatch.setattr(witness, 'port_record_witness',
                         lambda records, *a, **k: (seen.extend(records) or -42., {}))
-    wire, lumped = np.ones((20, 4)), np.ones((20, 3))
+    wire = PortTimeRecord('port:0:mode:0', 'wire', ('V', 'I', 'V_port', 'V_ref'), np.ones((20, 4)))
+    lumped = PortTimeRecord('port:1:mode:0', 'lumped', ('V', 'I', 'V_ref'), np.ones((20, 3)))
     result = ForwardResult(time_series=None, dt=1., freqs=np.array([.1]),
-                           s_params=np.ones(1), sparam_time_records=(wire, lumped),
+                           s_params=np.ones(1), sparam_time_records=(lumped, wire),
+                           sparam_read_ids=SReadPorts(('port:1:mode:0',)),
                            wire_port_sparams=((None, None),),
                            lumped_port_sparams=((None, None),))
     _, detail = forward_settling_witness(result)
@@ -56,7 +60,7 @@ def test_run_does_not_score_record_without_s(monkeypatch):
     monkeypatch.setattr(witness, 'port_record_witness',
                         lambda *a, **k: pytest.fail('S not read'))
     result = SimpleNamespace(s_params=None, time_series=None, dt=1.,
-                             sparam_time_records=(np.ones((20, 3)),))
+                             sparam_time_records=(PortTimeRecord('port:0:mode:0', 'lumped', ('V', 'I', 'V_ref'), np.ones((20, 3))),))
     db, detail = sim._run_settling_witness(result)
     assert db is None
     assert detail['skipped_port_records'] == [

@@ -128,7 +128,7 @@ def make_graded_step(
 ) -> Callable:
     """Bind graded kernels and measurements, then user hooks at each point."""
     from rfx.nonuniform import _update_e_nu_dispersive
-    from rfx.measurement.projector import port_table, project
+    from rfx.measurement.projector import port_table, project, port_owners
     port_specs = tuple((m[3], m[13], 'wire', m[:3]) for m in ctx.wp_meta) if ctx.use_wire_ports else ()
     port_tables = {}
 
@@ -421,6 +421,7 @@ def make_graded_step(
                 jax.lax.stop_gradient(record.at[frame.step_idx].set(sample))
                 for record, sample in zip(frame.carry["dft_time_records"], frame.plane_samples))
         if "sparam_time_records" in frame.carry:
+            assert len(frame.carry["sparam_time_records"]) == len(frame.port_samples)
             new_carry["sparam_time_records"] = tuple(
                 jax.lax.stop_gradient(record.at[frame.step_idx].set(sample))
                 for record, sample in zip(frame.carry["sparam_time_records"], frame.port_samples))
@@ -468,6 +469,7 @@ def make_graded_step(
         advance(frame)
         return finish(frame)
 
+    step_fn.port_owners = port_owners(ctx.grid, port_specs, nu=True, boundary=ctx.curl_boundary)
     return step_fn
 
 

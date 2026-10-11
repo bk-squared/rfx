@@ -410,6 +410,7 @@ def run_until_decay_reference(
                 )
             }
         snap_axes = snapshot_axes(grid, snapshot, actual_steps, dt=_setup.dt)
+    from rfx.measurement import PortTimeRecord
     return SimResult(
         state=carry["fdtd"] if return_state else None,
         time_series=time_series,
@@ -427,5 +428,8 @@ def run_until_decay_reference(
         current_moment_data=carry.get("current_moments"),
         current_moment_monitor=current_moments,
         dft_time_records=tuple(r[:actual_steps] for r in carry.get("dft_time_records", ())),
-        sparam_time_records=tuple(r[:actual_steps] for r in carry.get("sparam_time_records", ())),
+        sparam_time_records=tuple(PortTimeRecord(f'port:{i}:mode:0', kind, names, r[:actual_steps])
+            for i, (r, kind, names) in enumerate(zip(carry.get("sparam_time_records", ()),
+                ['wire'] * len(wire_sparam_meta) + ['lumped'] * len(lumped_sparam_meta),
+                [('V', 'I', 'V_port', 'V_ref')] * len(wire_sparam_meta) + [('V', 'I', 'V_ref')] * len(lumped_sparam_meta)))),
     )

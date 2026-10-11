@@ -801,8 +801,9 @@ def compute_mixed_s_matrix(
                         [{**meta, "dy_arr": dy_arr} for meta in port_idx_meta],
                         trace_k_per_port, dz_arr, [port.direction for port in msl_ports],
                     ) if _plane_records else []
-                    _channels.extend((f"wire{p}/V_I", record) for p, record in
-                                     enumerate(raw.get("sparam_time_records") or ()))
+                    _channels.extend((f"{record.id}/{channel}", record[channel])
+                                     for record in raw.get("sparam_time_records") or ()
+                                     for channel in record.channels)
                     _channels.extend((f"probe{i}", _ts_np[:, i])
                                      for i in range(_ts_np.shape[1]))
                     settling_db_runs[run_idx], settling_details[run_idx] = settling_db_from_named_records(

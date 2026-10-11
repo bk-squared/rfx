@@ -9,6 +9,8 @@ the needed code paths.
 
 from __future__ import annotations
 
+from rfx.measurement.time_records import uniform_records, init_uniform_records
+
 from dataclasses import dataclass, replace
 from typing import Any, Callable, NamedTuple
 
@@ -1837,11 +1839,7 @@ def run(
         carry_init["dft_time_records"] = tuple(
             jnp.zeros((n_steps,) + plane.accumulator.shape[1:], dtype=carry_init["fdtd"].ex.dtype)
             for plane in dft_planes)
-    if wire_port_sparams or lumped_port_sparams:
-        carry_init["sparam_time_records"] = tuple(
-            jnp.zeros((n_steps, count), dtype=field_dtype)
-            for count in ([4] * len(wire_port_sparams) + [3] * len(lumped_port_sparams)
-                          + [3] * len(wire_refplane_sparams)))
+    init_uniform_records(carry_init, n_steps, wire_port_sparams, lumped_port_sparams, wire_refplane_sparams, field_dtype)
     dt = _setup.dt
     dx = _setup.dx
     periodic = _setup.periodic
@@ -2313,8 +2311,7 @@ def run(
         waveguide_ports=final_waveguide_ports,
         wire_port_sparams=final_wire_sparams,
         lumped_port_sparams=final_lumped_sparams,
-        sparam_time_records=tuple(r[:int(final_carry["fdtd"].step)] if stop_fn is not None else r
-                                   for r in final_carry.get("sparam_time_records", ())),
+        sparam_time_records=uniform_records(final_carry, _step_ctx, int(final_carry["fdtd"].step) if stop_fn is not None else None),
         dft_time_records=tuple(r[:int(final_carry["fdtd"].step)] if stop_fn is not None else r
                                 for r in final_carry.get("dft_time_records", ())),
         snapshots=snapshots,
@@ -2627,10 +2624,7 @@ def run_until_decay(
         carry["dft_time_records"] = tuple(
             jnp.zeros((max_steps,) + plane.accumulator.shape[1:], dtype=carry["fdtd"].ex.dtype)
             for plane in dft_planes)
-    if wire_port_sparams or lumped_port_sparams:
-        carry["sparam_time_records"] = tuple(
-            jnp.zeros((max_steps, count), dtype=field_dtype)
-            for count in ([4] * len(wire_port_sparams) + [3] * len(lumped_port_sparams)))
+    init_uniform_records(carry, max_steps, wire_port_sparams, lumped_port_sparams, (), field_dtype)
     dx = _setup.dx
     waveguide_meta = _setup.waveguide_meta
     wire_sparam_meta = _setup.wire_sparam_meta
@@ -3064,7 +3058,7 @@ def run_until_decay(
         waveguide_ports=final_waveguide_ports,
         wire_port_sparams=final_wire_sparams,
         lumped_port_sparams=final_lumped_sparams,
-        sparam_time_records=tuple(r[:actual_steps] for r in carry.get("sparam_time_records", ())),
+        sparam_time_records=uniform_records(carry, _step_ctx, actual_steps),
         dft_time_records=tuple(r[:actual_steps] for r in carry.get("dft_time_records", ())),
         snapshots=snapshots,
         ntff_box=ntff,

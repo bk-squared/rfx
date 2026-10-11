@@ -88,9 +88,8 @@ def project(state, table):
     return combine(gather(state, table), table)
 
 
-def port_table(grid, specs, *, nu, boundary, dtype):
+def port_owners(grid, specs, *, nu, boundary):
     """Compile (component, live cells, kind, midpoint) specs; pin record order."""
-    from dataclasses import replace
     from .ports import lumped_wire_owner
     sampled = []
     for i, (component, live, kind, mid) in enumerate(specs):
@@ -106,5 +105,14 @@ def port_table(grid, specs, *, nu, boundary, dtype):
         actual = tuple((n.i, n.j, n.k) for n in nodes)
         if actual != (tuple(mid),):
             raise ValueError(f'{owner.id}: owner midpoint {actual}, runner midpoint {tuple(mid)}')
-        sampled.append(replace(owner, channels=channels))
-    return sample_table(sampled, dtype=dtype)
+        sampled.append(owner)
+    return tuple(sampled)
+
+
+def port_table(grid, specs, *, nu, boundary, dtype):
+    """Evaluate owners in order, retaining only completed-field channels."""
+    from dataclasses import replace
+    owners = port_owners(grid, specs, nu=nu, boundary=boundary)
+    return sample_table(tuple(replace(o, channels=tuple(
+        c for c in o.channels if c.sample_stage == 'post-injection')) for o in owners),
+        dtype=dtype)

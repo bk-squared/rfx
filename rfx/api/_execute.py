@@ -2173,10 +2173,11 @@ class _ExecuteMixin:
                 extractor="forward(port_s11_freqs=...)",
             )
 
-        return result_with_diagnostics(pack_uniform_forward_result(
+        from rfx.sparams._record_selection import finish_forward
+        return result_with_diagnostics(finish_forward(pack_uniform_forward_result(
             self, grid, result, diagnostics=diagnostics, s_params=s_params_out,
             freqs=freqs_out, current_moment_monitor=current_moments_fwd,
-        ), conductors.design_findings)
+        )), conductors.design_findings)
 
     _pack_nu_forward_result = staticmethod(pack_nu_forward_result)
 
@@ -2276,6 +2277,7 @@ class _ExecuteMixin:
             waveguide_sparams=result.waveguide_sparams,
             wire_port_sparams=getattr(result, "wire_port_sparams", None),
             sparam_time_records=getattr(result, "sparam_time_records", None),
+            sparam_read_ids=getattr(result, "sparam_read_ids", None),
             dft_time_records=getattr(result, "dft_time_records", None),
             dt=getattr(result, "dt", None),
             current_moment_data=getattr(result, "current_moment_data", None),

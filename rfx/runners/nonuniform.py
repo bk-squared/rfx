@@ -1297,6 +1297,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         )
 
     from rfx.model.design_admission import with_design_diagnostics
+    from rfx.sparams._record_selection import read_ids, SReadPorts
     return with_design_diagnostics(Result(
         diagnostics=diagnostics,
         realized_geometry=geometry_record,
@@ -1311,6 +1312,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         dft_planes=dft_planes_dict,
         wire_port_sparams=wire_port_sparams_result,
         sparam_time_records=r.get("sparam_time_records"),
+        sparam_read_ids=read_ids(r.get("sparam_time_records")) if s_params is not None else SReadPorts(),
         dft_time_records={
             entry.name: record for entry, record in zip(sim._dft_planes, r.get("dft_time_records", ()))
         },

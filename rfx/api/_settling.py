@@ -80,7 +80,7 @@ def settling_source_end(self, result, records=None):
     shape = getattr(series, "shape", ())
     port_records = s_read_records(result)
     if port_records and (records is not None or not shape):
-        series = port_records[0]
+        series = port_records[0].samples
         shape = series.shape
     if not shape:
         return None

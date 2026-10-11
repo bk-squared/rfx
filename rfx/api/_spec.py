@@ -753,6 +753,7 @@ class Result(NamedTuple):
     #: Also None for traced mesh coordinates; other record errors propagate.
     realized_geometry: object = None
     sparam_time_records: tuple | None = None
+    sparam_read_ids: object = None
     dft_time_records: object = None
     diagnostics: tuple[Diagnostic, ...] = ()
 
@@ -1137,6 +1138,7 @@ class ForwardResult(NamedTuple):
     settling_source_end_index: object = None
     settling_freq_max: object = None
     sparam_time_records: tuple | None = None
+    sparam_read_ids: object = None
     dft_time_records: object = None
     flux_monitors: object = None
     waveguide_ports: object = None

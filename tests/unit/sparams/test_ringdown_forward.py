@@ -470,13 +470,13 @@ def test_an_x64_run_weights_the_port_dft_in_complex128():
             n_steps=600, skip_preflight=True, port_s11_freqs=FREQS)
         meta, accs = f.wire_port_sparams[0]
         assert all(np.asarray(accs[k]).dtype == np.complex128 for k in (1, 3))
-        record = np.asarray(f.sparam_time_records[0], dtype=np.float64)
+        record = f.sparam_time_records[0]
         bins = np.asarray(meta.freqs, dtype=np.float64)
         S = np.asarray(f.s_params).ravel()
-    n = np.arange(record.shape[0], dtype=np.float64)
+    n = np.arange(record.samples.shape[0], dtype=np.float64)
     dt = float(f.dt)
-    vp = np.exp(-2j * np.pi * bins[:, None] * (n + 1.0) * dt) @ record[:, 2]
-    ii = np.exp(-2j * np.pi * bins[:, None] * (n + 0.5) * dt) @ record[:, 1]
+    vp = np.exp(-2j * np.pi * bins[:, None] * (n + 1.0) * dt) @ np.asarray(record['V_port'], dtype=np.float64)
+    ii = np.exp(-2j * np.pi * bins[:, None] * (n + 0.5) * dt) @ np.asarray(record['I'], dtype=np.float64)
     ref = (vp - 50.0 * ii) / (vp + 50.0 * ii)
     err = float(np.max(np.abs(S - ref)) / np.max(np.abs(ref)))
     print(f"\n[x64, 600 steps] |S - float64 sum of the record| {err:.3g} of peak")
