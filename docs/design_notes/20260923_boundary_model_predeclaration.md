@@ -701,6 +701,12 @@ The Mac-only exact-equality failure of `test_grid_absorbing_axes[decay-graded]` 
    source nine cells from the absorber, forward() before and after the fix differs by 1.2e-5 of the record peak
    (−99 dB), 2e-6 in later windows (reviewer, reproduced). That difference is the backing plane itself acting on the
    field that reaches the absorber, not rounding.
+5. Judge 3 as built differs from the text above: run() and forward() probe records of the issue's model are held to
+   the cross-trace bar (9 float32 ULP at the record's peak per step), not byte equality, because the repository's bar
+   for one physics under two traces is that; and the 7000-step pulse test is always-on (2.5 s), not `slow`. The bar
+   alone passes on the base tree (8.3e-7 against 1.07e-6), so the test also asserts that Ez on the x_hi conducting
+   plane is exactly zero on both entries — nonzero on the base tree's forward(). Under the "forward passes axes not
+   absorbing" mutation the wall-matrix row, this probe test and the pulse test all turn red.
 
 ### Relation to earlier addenda
 Addendum 4 put the backing plane of a ZERO-depth absorber at the domain face on the multi-device path; the

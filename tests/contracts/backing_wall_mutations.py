@@ -18,7 +18,8 @@ def main(mode):
         if mode == 'forward-unbacked':
             source = source.replace(needle, 'pec_axes_run = "".join(a for a in "xyz" if a not in cpml_axes_run)', 1)
             nodes = [f'{PATH}::test_wall_matrix[uniform-forward-absorbing]',
-                     f'{PATH}::test_issue_probe_records_equal']
+                     f'{PATH}::test_issue_probe_records_equal',
+                     f'{PATH}::test_issue_pulse_never_grows']
         else:
             first = source.index(needle)
             second = source.index(needle, first+len(needle))

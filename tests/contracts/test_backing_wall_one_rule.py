@@ -283,11 +283,15 @@ def test_issue_probe_records_equal():
                for entry in ('run', 'forward')]
     assert records[0].dtype == records[1].dtype
     # run() against forward() is the same physics under another trace: a per-step record may differ by the
-    # cross-trace bar (9 float32 ULP at the record's peak), not more. This is not the witness of the defect: over
-    # 600 steps the unbacked forward() differed by 8.3e-07 against a peak of 261, inside that bar. The witnesses
-    # are the wall-face rows above and the 7000-step pulse test below (post-pulse peak 9.8e5 on the base tree).
+    # cross-trace bar (9 float32 ULP at the record's peak), not more. That bar alone does not see the defect: over
+    # 600 steps the unbacked forward() differed by 8.3e-07 against a record peak of 1.40 (bar 1.07e-06), all of it
+    # on the second probe, which sits on the x_hi conducting plane.
     from tests.contracts.path_equivalence.comparison import compare
     compare(records[0], records[1], record='1549 probes, run vs forward', kind='step', measurements=[])
+    # The witness: tangential E on the conducting plane is exactly zero on every entry (nonzero on the base tree's
+    # forward()). The 7000-step pulse test below is the other witness (post-pulse peak 9.8e5 on the base tree).
+    for entry, record in zip(('run', 'forward'), records):
+        assert np.count_nonzero(record[:, 1]) == 0, f'{entry}: Ez on the x_hi conducting plane is not zero'
 
 
 def test_issue_pulse_never_grows():

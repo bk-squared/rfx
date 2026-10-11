@@ -438,7 +438,7 @@ def test_default_chain_mesh_uses_one_cache_entry():
 
 
 def test_healthy_wire_curves_are_not_hidden_by_the_one_cell_model(monkeypatch):
-    """Synthetic healthy wire rows must pass the body, so #1549 can XPASS."""
+    """Synthetic healthy wire rows must pass the body, so a fixed wire row (#1614) can XPASS."""
     _, line = chain("wire", "matched")
     loads = dict(short=0., open=np.inf, res_half=line.zc/2,
                  res_double=2*line.zc, matched=line.zc)
