@@ -44,17 +44,28 @@ def _operator(kind):
 @pytest.mark.parametrize("kind", ("pec", "pmc"))
 def test_t2_face_ownership_and_static_frame(kind):
     _live_check()
-    op, state = _operator(kind), _state()
+    op = _operator(kind)
     target = "x_lo" if kind == "pec" else "x_hi"
     components = ("ey", "ez") if kind == "pec" else ("hy", "hz")
     for frame, row in ((None, 0 if kind == "pec" else 10),
                        ({"x": (1, 9)}, 1 if kind == "pec" else 8)):
-        owners = {face: False for face in FACES}
-        call = jax.jit(lambda st, own: op(st, FACES, frame=frame, owned={**owners, target: own}))
+        state = _state()
+        # Other faces start satisfied; their ordinary writes stay enabled.
+        if kind == "pec":
+            hi = 10 if frame is None else 8
+            state = state._replace(
+                ex=state.ex.at[:, (0, -1), :].set(0.).at[:, :, (0, -1)].set(0.),
+                ey=state.ey.at[hi].set(0.).at[:, :, (0, -1)].set(0.),
+                ez=state.ez.at[hi].set(0.).at[:, (0, -1), :].set(0.).at[:, :, -1].set(0.))
+        else:
+            state = state._replace(
+                hx=state.hx.at[:, -1, :].set(0.).at[:, :, -1].set(0.),
+                hy=state.hy.at[:, :, -1].set(0.), hz=state.hz.at[:, -1, :].set(0.))
+        call = jax.jit(lambda st, own: op(st, FACES, frame=frame, owned={target: own}))
         _check_bits(call(state, jnp.bool_(False)), state)
         expected = state._replace(**{c: getattr(state, c).at[row].set(0.) for c in components})
         _check_bits(call(state, jnp.bool_(True)), expected)
-        _check_bits(op(state, FACES, frame=frame, owned=owners), state)
+        _check_bits(op(state, FACES, frame=frame, owned={target: False}), state)
     plain = str(jax.make_jaxpr(lambda st: op(st, FACES))(state))
     explicit = str(jax.make_jaxpr(lambda st: op(st, FACES, owned={f: True for f in FACES}))(state))
     assert plain == explicit
