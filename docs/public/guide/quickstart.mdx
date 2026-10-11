@@ -113,15 +113,22 @@ spectrum = np.abs(np.fft.rfft(ts, axis=0))
 freqs = np.fft.rfftfreq(ts.shape[0], d=result.dt)
 in_band = (freqs > 1e9) & (freqs < 5e9)
 ratio = spectrum[in_band, 1] / spectrum[in_band, 0]
-print(f"settling: {result.settling_db:.1f} dB")
+print("settling:", result.settling_witness["status"])   # "absent" here: no spectral result was requested
 ```
 
 - `result.time_series` has one column per probe, in registration order.
-- `result.settling_db` compares the probe energy at the end of the record
-  with its peak. A value below about −40 dB means the pulse had rung down
-  when the run stopped. If it is higher, anything computed from a Fourier
-  transform of the record (spectra, S-parameters, far fields, resonances)
-  still contains a cut-off transient. Run longer.
+- `result.settling_db` judges whether the record was long enough for the
+  spectral results the run computed (S-parameters, DFT planes, flux monitors,
+  far fields). After the source ends, rfx fits the poles still ringing in the
+  record and estimates, at every frequency those results read, how much of the
+  value comes from what rings on past the record's end. `settling_db` is the
+  worst of those shares in dB; at or below −40 dB the record is long enough.
+  `result.settling_witness["status"]` says `pass`, `fail`, `undetermined`
+  (the source was still on, or the fit could not be judged) or `absent` (the
+  run computed no spectral result, as here). Only `pass` is a pass.
+- This run reads only probe time series, so the check is `absent` and the FFT
+  above is yours to judge: if the probe signals have not decayed to a small
+  fraction of their peak by the last step, run longer.
 
 The ratio above only compares the spectra at two points. It is **not** a
 transmission coefficient, because probe 0 sees the incident and reflected

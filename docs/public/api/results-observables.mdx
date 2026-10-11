@@ -84,8 +84,8 @@ is a separately normalized visualization, not the stored probe value.
 |---|---|
 | `time_series` | probe records, shape `(n_steps, n_columns)` |
 | `dt` | time step in seconds |
-| `settling_db` | energy at the end of the record relative to its peak, in dB. Below about −40 dB means the record had rung down. |
-| `settling_witness` | details behind `settling_db` |
+| `settling_db` | worst share, over the frequencies the run's spectral results read, of the value that still rings past the record's end, in dB, from poles fitted after the source ends. At or below −40 dB passes. `nan` when there is nothing to judge. |
+| `settling_witness` | `status` (`pass`, `fail`, `undetermined`, `absent`; only `pass` is a pass), `reason`, and the per-frequency shares behind `settling_db` |
 | `s_params`, `freqs` | lumped/wire port S-matrix `[receiver, driven, freq]` and its frequencies (Hz) |
 | `wire_port_sparams` | wire-port details |
 | `ringdown` | ring-down completion, when `run(ringdown=...)` was used |

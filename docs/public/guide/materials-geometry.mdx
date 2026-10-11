@@ -101,13 +101,20 @@ from rfx import drude_pole, lorentz_pole
 sim.add_material("resonant", eps_r=1.0, lorentz_poles=[
     lorentz_pole(delta_eps=2.0, omega_0=2 * np.pi * 10e9, delta=1e8)])
 
-# Drude metal: plasma frequency and collision rate, both in rad/s.
-sim.add_material("gold", eps_r=1.0,
-                 lorentz_poles=[drude_pole(omega_p=1.37e16, gamma=4.05e13)])
+# Drude plasma: plasma frequency and collision rate, both in rad/s.
+sim.add_material("plasma", eps_r=1.0,
+                 lorentz_poles=[drude_pole(omega_p=2 * np.pi * 10e9, gamma=2 * np.pi * 1e9)])
 ```
 
 Both helpers return a `LorentzPole(omega_0, delta, kappa)`. Use the helpers
 rather than building that tuple yourself.
+
+A Drude or Lorentz medium has its own time-step limit, and a medium above it
+is refused when the model is assembled, with the largest stable step in the
+message. A metal at its optical plasma frequency (gold: ω_p ≈ 1.37×10¹⁶ rad/s)
+is far above that limit on any RF cell, and no stable step exists. Model RF
+metal as a conductor (`material="pec"`, a thin conductor, or a finite `sigma`)
+instead.
 
 ## Shapes
 

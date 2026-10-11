@@ -51,7 +51,7 @@ sim = Simulation(
     freq_max=f_c * 1.9,   # required first argument: top of the measurement band
     domain=(length, a_wg, b_wg),
     dx=dx,
-    boundary="cpml",
+    boundary={"x": "cpml", "y": "pec", "z": "pec"},  # guide walls PEC; absorber on the port axis
     cpml_layers=10,
 )
 

@@ -97,11 +97,12 @@ s11 = port{1}.uf.ref ./ port{1}.uf.inc;
 import jax.numpy as jnp
 from rfx import Simulation
 
-# WR-90: the transverse domain is the guide cross-section, and the waveguide
-# calculator bounds it with PEC walls, so no metal box is needed.
+# WR-90: the transverse domain is the guide cross-section. Its faces are the
+# guide walls, declared PEC; the absorber sits on the port axis only.
 freqs = jnp.linspace(8e9, 11.5e9, 8)   # above the 6.56 GHz TE10 cutoff
 sim = Simulation(freq_max=12e9, domain=(0.10, 0.02286, 0.01016),
-                 dx=2e-3, boundary="cpml", cpml_layers=16)
+                 dx=2e-3, boundary={"x": "cpml", "y": "pec", "z": "pec"},
+                 cpml_layers=16)
 sim.add_waveguide_port(0.024, direction="+x", freqs=freqs, f0=9.75e9, name="in")
 sim.add_waveguide_port(0.076, direction="-x", freqs=freqs, f0=9.75e9, name="out")
 

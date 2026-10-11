@@ -35,8 +35,8 @@ sim.add_material("water_body", eps_r=4.9,
                  debye_poles=[DebyePole(delta_eps=74.1, tau=8.3e-12)])
 sim.add_material("resonant", lorentz_poles=[
     lorentz_pole(delta_eps=2.0, omega_0=2 * np.pi * 10e9, delta=1e8)])
-sim.add_material("drude_metal",
-                 lorentz_poles=[drude_pole(omega_p=1.37e16, gamma=4.05e13)])
+sim.add_material("plasma",                              # 10 GHz plasma frequency
+                 lorentz_poles=[drude_pole(omega_p=2 * np.pi * 10e9, gamma=2 * np.pi * 1e9)])
 ```
 
 | Argument | Meaning |
@@ -45,7 +45,7 @@ sim.add_material("drude_metal",
 | `sigma` | conductivity in S/m. At or above `1e6` the material is a perfect conductor (see below). |
 | `mu_r` | relative permeability |
 | `debye_poles` | list of `DebyePole(delta_eps, tau)`: Δε = εs − ε∞, τ in seconds |
-| `lorentz_poles` | list of `LorentzPole`. Build them with `lorentz_pole(delta_eps, omega_0, delta)` or `drude_pole(omega_p, gamma)` (all rates in rad/s) rather than by hand. |
+| `lorentz_poles` | list of `LorentzPole`. Build them with `lorentz_pole(delta_eps, omega_0, delta)` or `drude_pole(omega_p, gamma)` (all rates in rad/s) rather than by hand. A pole set above its own time-step limit on the model's cells is refused when the model is assembled (an optical-frequency metal such as gold always is on RF cells). |
 | `chi3` | Kerr (third-order) nonlinearity |
 
 **Library materials** need no `add_material` call: `"vacuum"`, `"air"`,

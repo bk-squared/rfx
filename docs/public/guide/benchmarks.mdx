@@ -35,7 +35,7 @@ solver, version and mesh produced them.
 | rfx meshes | a uniform ladder at h/4, h/8 and h/12 (4, 8 and 12 cells through the substrate). The board is drawn so all three rungs realize the same patch, and the test refuses a rung that does not. |
 | Judged | the TM010 resonance (where Re(Z_in) peaks) within 1 %, and the input resistance there within 2 %, on the finest rung; the last two rungs must agree within 1 % (mesh statement), and the record must ring down to −40 dB. |
 | Reported, not judged | the `\|S11\|` dip frequency and depth, the reactance at resonance and the −10 dB band edges. Neither solver declares a probe radius, so each feed cell sets the probe's series reactance, and that moves the dip. |
-| Result | resonance −0.097 % and input resistance −0.42 % from openEMS, on converged ladders (current run, `b46a8220`; the case was added in [bk-squared/rfx#1315](https://github.com/bk-squared/rfx/pull/1315)). |
+| Result | pending for 2.0 (tracker 1471): the case is being re-measured under the current settling check, which judges each frequency bin a result reads; no agreement figure is quoted until that run is in the repository. The case was added in [bk-squared/rfx#1315](https://github.com/bk-squared/rfx/pull/1315). |
 | Test | `tests/crossval/rt5880_patch/test_rt5880_patch.py` |
 
 The case judges the resonance and the input resistance, not the `|S11|`
@@ -57,9 +57,10 @@ or `slow`.
 |---|---|---|
 | Microstrip open-stub notch filter, `\|S21\|` | openEMS tutorial result and Palace FEM | `tests/crossval/msl_notch_filter/` |
 
-On the notch filter, the notch frequency on a uniform mesh converges to within
-0.090 % of the openEMS tutorial result, and to within 0.03 % on a band-graded
-mesh with 6 cells across the substrate.
+The notch filter is pending for 2.0 (tracker 1471): it is being re-measured
+under the current settling check, and its uniform-mesh ladder is not yet shown
+to converge on the drawn 600 µm line. No agreement figure is quoted until that
+run is in the repository.
 
 <figure data-rfx="media">
   <img src="https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-notch/forward_curves_msl_notch_filter_site.png" loading="lazy" alt="|S21| and |S11| of the microstrip open-stub notch filter from rfx and from openEMS on its finest mesh, 2 to 7 GHz" />

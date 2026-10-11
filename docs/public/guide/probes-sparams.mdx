@@ -223,8 +223,7 @@ rfx runs one simulation per driven port to fill the matrix. Use
 For one-port S11, aim for about **60 cells per wavelength** at the highest
 frequency you care about. At 30 cells per wavelength, magnitudes can be off
 by about 1 dB and resonant frequencies move by 1–3 %. A one-cell port reads its
-voltage at its node and its current half a cell toward the line, so a
-two-port S21 phase is referenced to the port separation minus half a cell.
+voltage at its node and its current half a cell toward the line.
 
 ### Completing a record that was cut short
 
@@ -398,9 +397,12 @@ Every spectrum on this page is the Fourier transform of a finite record. If
 the record stops while the structure still rings, the spectrum is wrong, and
 no single check catches every case.
 
-- `result.settling_db` compares the energy at the end of your probe records
-  with the peak. At or below −40 dB the record had rung down. It is `None`
-  when there are no user probes to judge, and that is not a pass.
+- `result.settling_db` is the worst share, over the frequencies the run's
+  spectral results read, of the value still ringing past the record's end,
+  estimated from poles fitted after the source ends. At or below −40 dB the
+  record is long enough. `result.settling_witness["status"]` is `pass`,
+  `fail`, `undetermined` or `absent` (no spectral result to judge); only `pass`
+  is a pass.
 - `compute_msl_s_matrix`, `compute_waveguide_s_matrix` and the coax two-port
   calculators check each drive run against the same −40 dB bar and warn when
   a record ends too early. Their results carry `settling_db` per drive.

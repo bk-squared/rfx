@@ -96,23 +96,41 @@ declaration decides which**, not the shape's size on the mesh:
 
 ```python
 from rfx import Box
+from rfx.mesh_edges import edge_aware_profiles
+
+substrate = Box((0.005, 0.005, 0.004), (0.015, 0.015, 0.005))
+foil = Box((0.005, 0.005, 0.004), (0.015, 0.015, 0.004))   # zero thickness in z
+block = Box((0.007, 0.007, 0.006), (0.009, 0.009, 0.007))
+
+# x and y mesh lines placed so the foil's solved edges fall on its drawn edges.
+profiles = edge_aware_profiles((0.02, 0.02, 0.01), 0.5e-3,
+                               sheets=[foil], solids=[substrate, block])
 
 sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.01), dx=0.5e-3,
-                 boundary="cpml", cpml_layers=8)
+                 boundary="cpml", cpml_layers=8, **profiles)
 sim.add_material("substrate", eps_r=3.66)
-sim.add(Box((0.005, 0.005, 0.004), (0.015, 0.015, 0.005)), material="substrate")
+sim.add(substrate, material="substrate")
 
-# 35 um copper foil on the substrate floor: a sheet, zero thickness in z.
-sim.add_thin_conductor(Box((0.005, 0.005, 0.004), (0.015, 0.015, 0.004)))
+# 35 um copper foil on the substrate floor: a sheet.
+sim.add_thin_conductor(foil)
 
 # A 2 x 2 x 1 mm metal block: a volume.
-sim.add(Box((0.007, 0.007, 0.006), (0.009, 0.009, 0.007)), material="pec")
+sim.add(block, material="pec")
 
 sim.fidelity_report()   # declared vs realized planes for every entity
 ```
 
 The first `add_thin_conductor` call warns that the sheet is lossless PEC. That
 warning is expected: see the materials note above.
+
+A sheet is solved as if it reached about a third of a cell past its last mesh
+node, so on a plain uniform grid this 10 mm foil is solved wider than drawn.
+Preflight reports a sheet solved more than 1 % off its drawing as an error, and
+`run()` and `forward()` refuse it. Build the in-plane mesh with
+`rfx.mesh_edges.edge_aware_profiles`, as above, so the solved edges fall on the
+drawn ones; or pass `Simulation(..., snap="declared")` to accept the difference
+as a warning, recorded in `sim.realized_geometry()`. With the graded in-plane
+mesh, preflight also notes that the grading reaches the absorber runway.
 
 A PEC shape that is thinner than one cell but not zero is neither a sheet nor a
 resolved volume. Preflight reports it as an error and `run()` refuses it, so
@@ -159,8 +177,11 @@ far fields, DFT planes and resonances. If the record stops while energy is
 still bouncing around, the result is wrong in a way that no warning can fully
 catch.
 
-- Check `result.settling_db`. It gives the end-of-record energy relative to
-  the peak, and a value below about −40 dB means the record had rung down.
+- Check `result.settling_witness["status"]`. For every frequency a spectral
+  result reads, rfx estimates from the poles still ringing after the source
+  ends how much of the value lies past the record's end; `settling_db` is the
+  worst share in dB, and at or below −40 dB the status is `pass`. `fail`,
+  `undetermined` and `absent` (no spectral result requested) are not passes.
 - The S-parameter calculators warn when a drive's record ends too early.
 - High-Q structures need long records. A resonator with quality factor Q
   decays over roughly Q / (π f) seconds.

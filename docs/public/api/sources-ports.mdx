@@ -78,11 +78,6 @@ a preflight warning. Far-field and RCS use is covered in
 
 ### Lumped and wire ports
 
-For the matched air-line fixture in
-`tests/unit/ports/test_lumped_two_port_matched_line.py`, the S21 phase of a
-lumped/wire pair is referenced a combined half cell inside the realized port
-separation; it is not the phase across the full realized separation.
-
 ```text
 add_port(position, component="ez", *, impedance=50.0, waveform=None,
          extent=None, radius=None, excite=True, direction=None,
@@ -209,13 +204,15 @@ add_waveguide_port(x_position, *, x_range=None, y_range=None, z_range=None,
 
 `x_position` is the port plane's coordinate along the axis named by
 `direction` (for `direction="-y"` it is a y coordinate). The two `*_range`
-arguments across that axis give the guide aperture. Waveguide ports need
-`boundary="cpml"` and `mode="3d"`, and cannot share a simulation with lumped
-ports.
+arguments across that axis give the guide aperture. An aperture that spans
+the whole cross-section needs PEC on the transverse faces and an absorber on
+the port axis only (`boundary={"x": "cpml", "y": "pec", "z": "pec"}` for an
+x-directed port); `boundary="cpml"` on every face is refused. Waveguide ports
+need `mode="3d"`, and cannot share a simulation with lumped ports.
 
 ```python
 wg = Simulation(freq_max=12e9, domain=(0.10, 0.023, 0.010), dx=1e-3,
-                boundary="cpml", cpml_layers=8)
+                boundary={"x": "cpml", "y": "pec", "z": "pec"}, cpml_layers=8)
 band = np.linspace(8.2e9, 12.4e9, 11)
 wg.add_waveguide_port(0.01, y_range=(0.0, 0.023), z_range=(0.0, 0.010),
                       direction="+x", freqs=band, name="p1")
@@ -358,9 +355,8 @@ print(np.abs(refl.s11))
   Coax: at least 4 cells across the annulus. Microstrip: at least 4 cells
   through the substrate (preflight warns below that).
 - **Port reference plane.** A one-cell lumped or wire port reads V at its node
-  and I half a cell toward the line. A two-port S21 phase is therefore
-  referenced to the port separation less half a cell. Lumped and wire ports
-  return identical S11.
+  and I half a cell toward the line. Lumped and wire ports return identical
+  S11.
 - **End lines at their ports, not in the CPML.** CPML terminates a guided
   line much less well than a plane wave. Let the ports terminate the line.
 - **Coax results from before the three-axis absorber** (`cpml_axes="z"`, now

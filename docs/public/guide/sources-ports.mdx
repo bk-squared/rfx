@@ -173,8 +173,7 @@ Touchstone export.
   form. These figures come from the lumped/wire chain battery, which measures
   `forward(port_s11_freqs=...)` on a one-cell parallel-plate line.
 - **Know the reference plane.** A one-cell port reads its voltage at the port
-  node and its current half a cell toward the line. So a two-port S21 phase
-  refers to the port separation minus half a cell.
+  node and its current half a cell toward the line.
 - Lumped and wire ports give identical S11 on the same cells.
 
 ### Completing a short record
@@ -289,11 +288,7 @@ Getting an accurate microstrip result:
 - **The substrate sets the cell size.** On a thin substrate the substrate
   thickness binds long before the wavelength does. Preflight warns below 4
   cells through the substrate. Start there, then refine and check that your
-  answer stops moving. For scale: with 6 cells through the substrate, the
-  open-stub notch filter (600 µm trace, 254 µm substrate, ε_r 3.66, 12 mm
-  stub) converges to within 0.036 % of the openEMS notch frequency on a
-  uniform mesh, and a band-graded mesh with 6 substrate cells is within
-  0.03 %. Coarser meshes are further off.
+  answer stops moving.
 - **End the line at its ports, not in the absorber.** CPML is a much poorer
   termination for a two-conductor line than for a plane wave. Put a port at
   each end of the line.
@@ -306,12 +301,14 @@ Getting an accurate microstrip result:
 ## Waveguide ports
 
 `add_waveguide_port` launches a TE or TM mode of a rectangular aperture and
-decomposes the fields into that mode. Its aperture defines the guide, so you
-do not draw side walls for a straight guide.
+decomposes the fields into that mode. Its aperture defines the guide. A port
+that spans the whole cross-section uses the transverse domain faces as the
+guide walls, so declare them PEC and put the absorber on the port axis only;
+`boundary="cpml"` on every face is refused.
 
 ```python
 guide = Simulation(freq_max=11e9, domain=(0.10, 0.023, 0.010), dx=1e-3,
-                   boundary="cpml", cpml_layers=8)
+                   boundary={"x": "cpml", "y": "pec", "z": "pec"}, cpml_layers=8)
 guide.add_waveguide_port(0.01, mode=(1, 0), mode_type="TE", direction="+x",
                          f0=10e9, bandwidth=0.5, name="port1")
 guide.add_waveguide_port(0.09, mode=(1, 0), mode_type="TE", direction="-x",

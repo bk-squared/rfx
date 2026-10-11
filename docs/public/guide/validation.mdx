@@ -46,9 +46,12 @@ through this list.
    condition that can make the result wrong without an error: a mesh too
    coarse for the material, a probe inside the absorber, geometry that lands
    off the grid, a lossless resonator.
-2. **Run length.** Check `result.settling_db`. At −40 dB or below, the field
-   had rung down when the run stopped. Above that, spectra, S-parameters and
-   far fields still contain a cut-off transient. For gradients, the record
+2. **Run length.** Check `result.settling_witness["status"]`. It is `pass`
+   when, at every frequency the run's spectral results read, the part of the
+   value still ringing past the record's end is at or below −40 dB
+   (`settling_db` is the worst of these). `fail`, `undetermined` and `absent`
+   are not passes; above the bar, spectra, S-parameters and far fields still
+   carry a cut-off transient. For gradients, the record
    must be longer still: `rfx.gradient_record_length_witness` checks that a
    gradient does not change when the record is doubled.
 3. **Mesh convergence.** Refine the mesh and report how far your number moves,
@@ -119,11 +122,10 @@ starting points for a convergence study. They are not a substitute for one.
 | Microstrip line, `compute_msl_s_matrix` | at least 4 cells through the substrate (preflight warns below that) | the substrate thickness sets the cell size, not the wavelength |
 | Coaxial line | at least 4 cells across the annulus | refining shortens the probe span the phase fit uses, so give the probe array enough physical length |
 
-The microstrip evidence behind that row: on an open-stub notch filter
-(600 µm trace, 254 µm substrate with εr 3.66, 12 mm stub) the notch frequency
-converges to within 0.036 % of the openEMS tutorial result on a uniform mesh
-with 6 cells through the substrate, and to within 0.03 % on a band-graded mesh
-with 6 substrate cells. Coarser meshes are further off.
+The microstrip row's cross-check, an open-stub notch filter against the
+openEMS tutorial (`tests/crossval/msl_notch_filter/`), is pending for 2.0
+(tracker 1471): it is being re-measured under the current settling check, and
+no agreement figure is quoted until that run is in the repository.
 
 ## Where the evidence lives
 

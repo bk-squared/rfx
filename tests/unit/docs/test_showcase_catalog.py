@@ -165,7 +165,7 @@ def test_every_headline_number_on_a_page_is_a_catalog_number_for_that_page():
             counted += 1
             if not any(h["printed"] == text and rounds_to(h["value"], text) for h in known):
                 missing.setdefault(route, []).append(text)
-    assert counted >= 40, f"only {counted} headline numbers found on the pages"
+    assert counted >= 35, f"only {counted} headline numbers found on the pages"
     assert not missing, f"page numbers with no catalog number that rounds to them: {missing}"
 
 

@@ -75,9 +75,6 @@ line termination and changes to its alpha profile. Lines should end at their
 ports (`terminates=`), not in the absorber. Increasing alpha can degrade the
 low band; the measured Option B was not adopted.
 
-For lumped/wire pairs, S21 phase is referenced a combined half cell inside the
-port separation (`tests/unit/ports/test_lumped_two_port_matched_line.py`).
-
 Current-moment far fields have a tested envelope on thin planar boards with
 wire or lumped ports. Radiating geometry must lie strictly inside the monitor
 slab; its extent and material/boundary refusals still apply. See

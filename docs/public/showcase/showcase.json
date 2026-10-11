@@ -180,10 +180,7 @@
           ]
         }
       ],
-      "headlines": [
-        {"quantity": "|f0 rfx - f0 openEMS| / f0 openEMS, patch Re(Z_in) peak", "printed": "0.097", "value": 0.0971627001005615, "unit": "%", "routes": ["/rfx/", "/rfx/showcase/"], "from": "forward-patch rfx_curves.npz and reference_curves.npz (openEMS stage_b_fine), refined_remax over the test's RESONANCE_BAND_HZ (tests/crossval/rt5880_patch)"},
-        {"quantity": "|f rfx - f openEMS| / f openEMS, notch", "printed": "0.090", "value": 0.08967473617409291, "unit": "%", "routes": ["/rfx/", "/rfx/showcase/"], "from": "forward-notch rfx_curves.npz and reference_curves.npz (openEMS stage_b_fine), the test's _compare (tests/crossval/msl_notch_filter)"}
-      ]
+      "headlines": []
     }
   ]
 }
