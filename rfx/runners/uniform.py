@@ -340,6 +340,32 @@ def run_uniform(
     if sim._periodic_axes:
         periodic = tuple(axis in sim._periodic_axes for axis in "xyz")
 
+    if sim._tfsf is not None:
+        from rfx.sources.tfsf import init_tfsf, validate_custom_tfsf_waveform
+
+        validate_custom_tfsf_waveform(sim._tfsf.waveform, grid.dt, n_steps)
+
+        tfsf = init_tfsf(
+            grid.nx,
+            grid.dx,
+            grid.dt,
+            cpml_layers=grid.cpml_layers,
+            tfsf_margin=sim._tfsf.margin,
+            f0=sim._tfsf.f0 if sim._tfsf.f0 is not None else sim._freq_max / 2,
+            bandwidth=sim._tfsf.bandwidth,
+            amplitude=sim._tfsf.amplitude,
+            polarization=sim._tfsf.polarization,
+            direction=sim._tfsf.direction,
+            angle_deg=sim._tfsf.angle_deg,
+            ny=grid.ny,
+            nz=grid.nz,
+            waveform=getattr(sim._tfsf, 'waveform', 'differentiated_gaussian'),
+            method=getattr(sim._tfsf, 'method', 'bloch'),
+            closed_box=sim._tfsf.closed_box,
+        )
+        from rfx.boundaries.tfsf import boundary_flags as tfsf_boundary_flags
+        periodic, cpml_axes = tfsf_boundary_flags(tfsf[0], grid)
+
     # #931 §1.7: realize (Mx, My, Mz) ONCE, under the flags the stepper
     # will use, and keep working on THOSE from here on — port clearing,
     # wire-port liveness, the sheet ctx and the run all read the same
@@ -603,32 +629,8 @@ def run_uniform(
             waveguide_ports.append(sim._build_waveguide_port_config(pe, grid, freqs_arr, n_steps))
 
     if sim._tfsf is not None:
-        from rfx.sources.tfsf import init_tfsf, validate_custom_tfsf_waveform
-
-        validate_custom_tfsf_waveform(sim._tfsf.waveform, grid.dt, n_steps)
-
-        tfsf = init_tfsf(
-            grid.nx,
-            grid.dx,
-            grid.dt,
-            cpml_layers=grid.cpml_layers,
-            tfsf_margin=sim._tfsf.margin,
-            f0=sim._tfsf.f0 if sim._tfsf.f0 is not None else sim._freq_max / 2,
-            bandwidth=sim._tfsf.bandwidth,
-            amplitude=sim._tfsf.amplitude,
-            polarization=sim._tfsf.polarization,
-            direction=sim._tfsf.direction,
-            angle_deg=sim._tfsf.angle_deg,
-            ny=grid.ny,
-            nz=grid.nz,
-            waveform=getattr(sim._tfsf, 'waveform', 'differentiated_gaussian'),
-            method=getattr(sim._tfsf, 'method', 'bloch'),
-            closed_box=sim._tfsf.closed_box,
-        )
         if not sim._tfsf.closed_box:
             sim._validate_tfsf_vacuum_boundary(materials, tfsf[0])
-        from rfx.boundaries.tfsf import boundary_flags as tfsf_boundary_flags
-        periodic, cpml_axes = tfsf_boundary_flags(tfsf[0], grid)
         # #404: an oblique (2D-aux) TFSF drives the shared solver on the complex
         # Bloch-envelope path; final `state` and point-probe time series are
         # reconstructed to physical fields after the run, but the streaming/
