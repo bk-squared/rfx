@@ -471,7 +471,8 @@ def sheet_continuation_masks(entries, periodic, shape):
 
 def solved_sheet_span(footprint, axis: int, nodes, declared_lo: float,
                       declared_hi: float, domain_hi: float, *, union=None, volume_edges=None,
-                      edge_offset: float = EDGE_OFFSET, periodic: bool = False):
+                      edge_offset: float = EDGE_OFFSET, periodic: bool = False,
+                      fed=None):
     """The solved extent of a PEC sheet along one of its in-plane axes.
 
     The one place the solved-edge model is written. Three reports read it:
@@ -484,7 +485,8 @@ def solved_sheet_span(footprint, axis: int, nodes, declared_lo: float,
     or past the domain boundary (a wall, or a continuation into the absorber
     pad), and an end whose whole row continues into other sheet metal in
     ``union`` (the realized sheet edge tuple, a seam inside one conductor), or into realized PEC volume
-    edges in ``volume_edges``.
+    edges in ``volume_edges``. An end row containing any node in the optional
+    grid-shaped boolean ``fed`` mask is also not free: a port drives that end.
 
     ``footprint`` is the sheet's node mask restricted to the domain interior
     (``interior_lattice_mask``), ``nodes`` the axis node coordinates in domain
@@ -527,11 +529,19 @@ def solved_sheet_span(footprint, axis: int, nodes, declared_lo: float,
             continuation |= np.take(volume_edges[axis], edge_index, axis=axis)
         return bool(end.any()) and bool(continuation[end].all())
 
+    def _fed(i_end):
+        if fed is None:
+            return False
+        if periodic:
+            i_end %= fp.shape[axis]
+        return bool((np.take(fp, i_end, axis=axis)
+                     & np.take(fed, i_end, axis=axis)).any())
+
     free_lo = bool(i0 > 0 and float(declared_lo) > tol
-                   and not _continues(i0, i0 - 1))
+                   and not _continues(i0, i0 - 1) and not _fed(i0))
     free_hi = bool(i1 + 1 < nodes.size
                    and float(declared_hi) < float(domain_hi) - tol
-                   and not _continues(i1, i1 + 1))
+                   and not _continues(i1, i1 + 1) and not _fed(i1))
     lo = float(nodes[i0])
     hi = float(nodes[i1])
     if free_lo:

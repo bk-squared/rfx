@@ -1144,6 +1144,9 @@ def _sheet_solved_spans(ctx, boxes):
     fps = [interior_lattice_mask(e.sheet.footprint, ctx.grid) for e in sheets]
     union, volume_edges = sheet_continuation_masks(
         ctx.interior_pec_entries(), ctx.periodic, ctx.grid.shape)
+    from rfx.model.conductors import port_fed_nodes
+    fed = (port_fed_nodes(ctx.sim, ctx.realized())
+           if any(not hasattr(e.sheet, 'solved_spans') for e in sheets) else None)
     out = []
     for e, fp in zip(sheets, fps):
         for a in range(3):
@@ -1156,7 +1159,7 @@ def _sheet_solved_spans(ctx, boxes):
             else:
                 span = solved_sheet_span(fp, a, ctx.nodes[a], float(e.lo[a]),
                                          float(e.hi[a]), float(domain[a]),
-                                         union=union, volume_edges=volume_edges,
+                                         union=union, volume_edges=volume_edges, fed=fed,
                                          periodic='xyz'[a] in getattr(ctx.grid, 'periodic_axes', ''))
             if span is not None:
                 out.append((e, a, span))

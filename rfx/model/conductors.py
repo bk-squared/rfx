@@ -48,6 +48,8 @@ def conductor_width_axes(root, sim, mask, *, kind, sheet, node_based,
     """One record product: PEC solved spans, DC cells, or weighted f0 nodes."""
     from rfx.mesh_edges import solved_sheet_span, sheet_continuation_masks
     union, volume_edges = sheet_continuation_masks(interior, root.periodic, root.grid.shape)
+    fed = (port_fed_nodes(sim, root)
+           if sheet is not None and not hasattr(sheet, 'solved_spans') else None)
     occupied = np.where(mask)
     result = []
     for a in range(3):
@@ -66,7 +68,7 @@ def conductor_width_axes(root, sim, mask, *, kind, sheet, node_based,
             span = (sheet.solved_spans[a] if hasattr(sheet, 'solved_spans') else
                     solved_sheet_span(mask, a, nodes[a], float(bounds[0][a]),
                         float(bounds[1][a]), float(sim._domain[a]), union=union,
-                        volume_edges=volume_edges, periodic=periodic))
+                        volume_edges=volume_edges, periodic=periodic, fed=fed))
             if span is not None:
                 lo, hi = span.lo, span.hi
                 comparison = span.comparison_bounds(bounds[0][a], bounds[1][a], sim._domain[a])
@@ -558,6 +560,7 @@ def _with_sheet_spans(sim, conductors):
                 owners[id(sheet)] = label
     interior = ctx.interior_pec_entries()
     union, volume_edges = sheet_continuation_masks(interior, ctx.periodic, grid.shape)
+    fed = port_fed_nodes(sim, conductors)
     spans = {}
     for entry in interior:
         bounds = _shape_bounds(entry.shape)
@@ -565,7 +568,7 @@ def _with_sheet_spans(sim, conductors):
             continue
         spans[entry.label] = tuple(None if a == entry.sheet.normal_axis else solved_sheet_span(
             entry.sheet.footprint, a, nodes[a], float(bounds[0][a]), float(bounds[1][a]),
-            float(sim._domain[a]), union=union, volume_edges=volume_edges,
+            float(sim._domain[a]), union=union, volume_edges=volume_edges, fed=fed,
             periodic='xyz'[a] in getattr(grid, 'periodic_axes', '')) for a in range(3))
     pinned = getattr(sim, '_pinned_sheets', ())
     if pinned:
@@ -586,7 +589,7 @@ def _with_sheet_spans(sim, conductors):
                 spans[label] = tuple(None if a == sheet.normal_axis else solved_sheet_span(
                     footprint, a, nodes[a], float(nodes[a][occupied[a].min()]),
                     float(nodes[a][occupied[a].max()]), float(sim._domain[a]),
-                    union=pin_union, volume_edges=volume_edges,
+                    union=pin_union, volume_edges=volume_edges, fed=fed,
                     periodic='xyz'[a] in getattr(grid, 'periodic_axes', '')) for a in range(3))
     replacements = {}
     for sheet in conductors.sheets:
@@ -636,6 +639,44 @@ def preview_port_stages(sim, conductors):
                 conductors = clear_conductor_edges(conductors, _msl_yz_cells(grid, port),
                     component=msl_normal_component(port), entity_id=label, port_kind="microstrip", released_edges=support)
     return conductors
+
+
+def port_fed_nodes(sim, conductors):
+    """Both nodes of released lumped/wire/MSL edges, for solved sheet ends.
+
+    Preview products are temporary: this annotation never changes the solver's
+    conductor arrays. MSL Laplace fringe support outside trace width is excluded.
+    """
+    if not (getattr(sim, '_ports', ()) or getattr(sim, '_msl_ports', ())):
+        return None
+    preview = preview_port_stages(sim, conductors)
+    grid = conductors.grid
+    fed = np.zeros(grid.shape, dtype=bool)
+    widths = {}
+    if getattr(sim, '_msl_ports', ()):
+        from rfx.sources.msl_port import msl_cross_section_span, msl_port_from_entry
+        for i, entry in enumerate(sim._msl_ports):
+            span = msl_cross_section_span(grid, msl_port_from_entry(entry))
+            widths[f'msl_port[{i}]'] = (span['width_idx'], set(span['width_nodes']))
+    kinds = {(entity, component, edge): kind
+             for entity, kind, component, edge, _ in preview._released_port_details}
+    for entity, component, edge in preview.released_port_edges:
+        kind = kinds[(entity, component, edge)]
+        if kind not in ('lumped', 'wire', 'microstrip'):
+            continue
+        if kind == 'microstrip':
+            width_axis, width_nodes = widths[entity]
+            if edge[width_axis] not in width_nodes:
+                continue
+        axis = 'xyz'.index(component[1])
+        for offset in (0, 1):
+            node = list(edge)
+            node[axis] += offset
+            if conductors.periodic[axis] or grid.shape[axis] == 1:
+                node[axis] %= grid.shape[axis]
+            if all(0 <= node[a] < grid.shape[a] for a in range(3)):
+                fed[tuple(node)] = True
+    return fed
 
 
 def _traced_product(conductors):
