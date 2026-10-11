@@ -134,6 +134,8 @@ def make_graded_step(
     port_specs = ctx.port_record_specs if ctx.port_record_specs is not None else tuple(
         (m[3], m[13], 'wire', m[:3]) for m in ctx.wp_meta)
     acc_indices = ctx.port_acc_indices if ctx.port_record_specs is not None else tuple(range(len(ctx.wp_meta)))
+    widths = tuple(3 if p[2] == 'wire' else 2 for p in port_specs)
+    offsets = tuple(sum(widths[:i]) for i in range(len(widths)))
     port_tables = {}
 
     def prepare(frame: GradedFrame):
@@ -364,9 +366,12 @@ def make_graded_step(
                     port_tables[dtype] = port_table(ctx.grid, port_specs, nu=True,
                                                     boundary=ctx.curl_boundary, dtype=dtype)
             port_values = project(frame.st, port_tables[dtype])
-            frame.port_samples = [jnp.stack(tuple(port_values[3*p:3*p+3])) for p in range(len(port_specs))]
+            frame.port_samples = [jnp.stack(tuple(port_values[offset:offset+width]))
+                                  for offset, width in zip(offsets, widths)]
             for p, (v_dft, i_dft, vinc_dft, v_port_dft) in enumerate(frame.carry.get("wire_sparams", ())):
-                v, i_val, v_port = port_values[3*acc_indices[p]:3*acc_indices[p]+3]
+                sample = frame.port_samples[acc_indices[p]]
+                v, i_val = sample[:2]
+                v_port = sample[2] if widths[acc_indices[p]] == 3 else v
                 phase = port_dft_phase(frame.step_idx, ctx.sp_freqs, ctx.dt, dtype=v_dft.dtype)
                 i_phase = port_dft_phase(frame.step_idx, ctx.sp_freqs, ctx.dt, 'H', dtype=i_dft.dtype)
                 frame.new_wire_sp.append((

@@ -1377,6 +1377,7 @@ def _slot_case(kind, edits):
             core = make_step(*args, **kwargs)
             assert core.__module__ == step_name
 
+            @functools.wraps(core)
             def observed_core(*values, **options):
                 executed.append(core)
                 return core(*values, **options)

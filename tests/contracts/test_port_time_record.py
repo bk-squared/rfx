@@ -53,3 +53,19 @@ def test_equivalence_labels_and_pairing_come_from_record():
     missing = PortTimeRecord('a', 'wire', ('I',), np.array([[7.]]))
     left, right = _paired_samples((a,), (missing,))
     assert set(left[0]) - set(right[0]) == {'V'}
+
+
+@pytest.mark.parametrize('graded', [False, True])
+@pytest.mark.parametrize('kind', ['lumped', 'wire'])
+def test_owner_channel_set_depends_only_on_kind(graded, kind):
+    from rfx import Simulation
+    from rfx.measurement.ports import lumped_wire_owner
+    sim = Simulation(freq_max=10e9, domain=(.004, .004, .002), dx=.001,
+                     **({'dz_profile': np.array([.0008, .0012])} if graded else {}))
+    grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
+    owner = lumped_wire_owner(grid, 'ez', ((2, 2, 1),), nu=graded,
+                              pmc_faces=(), periodic=(False,)*3, port_id=7, kind=kind)
+    assert owner.id == 'port:7:mode:0'
+    names = tuple(c.name for c in owner.channels)
+    expected = ('V', 'I', 'V_port') if kind == 'wire' else ('V', 'I')
+    assert names == expected + (() if graded else ('V_ref',))

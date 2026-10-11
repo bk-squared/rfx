@@ -36,7 +36,7 @@ def uniform_run_specs(grid, wires, live_cells, lumped):
 
 
 def graded_specs(ports):
-    return tuple((p['component'], p['live_cells'], 'wire',
+    return tuple((p['component'], p.get('live_cells', ((p['mid_i'], p['mid_j'], p['mid_k']),)), p.get('kind', 'wire'),
                   (p['mid_i'], p['mid_j'], p['mid_k'])) for p in ports)
 
 
@@ -58,3 +58,8 @@ def graded_accumulators(ports, grid, freqs, carry):
 
 def graded_acc_indices(ports):
     return tuple(i for i, p in enumerate(ports) if not p.get("record_only", False))
+
+
+def graded_s_voltage(accumulators, ports, index):
+    slot = 0 if ports[index].get('kind', 'wire') == 'lumped' else 3
+    return accumulators[index][slot]

@@ -19,7 +19,7 @@ per-axis inverse spacing arrays. Fully JIT-compiled via jax.lax.scan.
 from __future__ import annotations
 
 from rfx.measurement.time_records import with_graded_records, init_graded_records
-from rfx.measurement.port_registration import graded_specs, graded_s_ports, graded_accumulators, graded_acc_indices
+from rfx.measurement.port_registration import graded_specs, graded_s_ports, graded_accumulators, graded_acc_indices, graded_s_voltage
 
 from functools import partial
 from types import SimpleNamespace
@@ -1500,14 +1500,14 @@ def _assemble_nu_result(setup: _NUScanSetup, final: dict, time_series, n_record=
         # Global receive sign: +1, DC-witness pinned (S21(DC) -> +1,
         # dev -0.058/-0.115 rad at 0.5/1 GHz; flipped channel at ~pi).
         for k in genuinely_excited:
-            v_port_k = final["wire_sparams"][k][3]
+            v_port_k = graded_s_voltage(final["wire_sparams"], wire_ports, k)
             i_k = final["wire_sparams"][k][1]
             z0_k = wp_meta[k][4]
             a_k = v_port_k + z0_k * i_k
             safe_a_k = jnp.where(jnp.abs(a_k) > 0, a_k, jnp.ones_like(a_k))
             sqrt_z0_k = jnp.sqrt(z0_k)
             for j in range(n_wp):
-                v_port_j = final["wire_sparams"][j][3]
+                v_port_j = graded_s_voltage(final["wire_sparams"], wire_ports, j)
                 i_j = final["wire_sparams"][j][1]
                 z0_j = wp_meta[j][4]
                 b_j = (v_port_j - z0_j * i_j) * (

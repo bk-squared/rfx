@@ -9,9 +9,10 @@ import pytest
 from rfx import Simulation
 
 
-def model(graded=False, wire=False):
+def model(graded=False, wire=False, boundary='pec'):
     sim = Simulation(freq_max=10e9, domain=(.006, .006, .002), dx=.001,
-                     boundary='pec', **({'dz_profile': np.array([.0008, .0012])} if graded else {}))
+                     boundary=boundary, cpml_layers=2,
+                     **({'dz_profile': np.array([.0008, .0012])} if graded else {}))
     sim.add_port((.002, .003, 0.), 'ez', impedance=50., extent=.002 if wire else None,
                  waveform=lambda t: jnp.cos(t * 2e10))
     sim.add_probe((.003, .002, .001), 'ez')
@@ -31,7 +32,9 @@ def test_every_port_records_without_s_request(graded, wire, entry):
     record = result.sparam_time_records[0]
     assert record.id == 'port:0:mode:0'
     assert record.samples.shape[0] == 16
-    assert 'V' in record.channels and 'I' in record.channels
+    assert record.kind == ('wire' if wire else 'lumped')
+    expected = ('V', 'I', 'V_port') if wire else ('V', 'I')
+    assert record.channels == expected + (() if graded else ('V_ref',))
     assert ('V_ref' in record.channels) == (not graded)
     # Graded wire forward historically computes default-bin S without an explicit request.
     if not (graded and wire and entry == 'forward'):
@@ -56,6 +59,24 @@ def test_graded_run_lumped_s_refuses():
     with pytest.raises(NotImplementedError, match='Single-cell lumped-port S-parameters'):
         model(True).run(n_steps=16, skip_preflight=True, compute_s_params=True,
                         s_param_freqs=np.array([2e9]))
+
+
+@pytest.mark.parametrize('graded', [False, True])
+@pytest.mark.parametrize('wire', [False, True])
+def test_until_decay_keeps_unread_records(graded, wire):
+    with warnings.catch_warnings():
+        warnings.simplefilter('ignore')
+        result = model(graded, wire, boundary='cpml').run(
+            until_decay=0., decay_min_steps=16, decay_max_steps=16,
+            decay_check_interval=4, compute_s_params=False, skip_preflight=True)
+    assert len(result.sparam_time_records) == 1
+    record = result.sparam_time_records[0]
+    expected = ('V', 'I', 'V_port') if wire else ('V', 'I')
+    assert record.channels == expected + (() if graded else ('V_ref',))
+    assert record.samples.shape == (16, len(record.channels))
+    assert result.settling_witness['scored_port_record_ids'] == []
+    assert result.settling_witness['skipped_port_records'] == [
+        {'id': 'port:0:mode:0', 'reason': 'S not read'}]
 
 
 @pytest.mark.parametrize('graded', [False, True])

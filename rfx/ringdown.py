@@ -1171,7 +1171,10 @@ def _assemble_core(lane: str, pms, vp, ii, freqs32, dt, v_mid=None):
         for p in range(len(pms)))
     metas = [pm.meta for pm in pms]
     setup = SimpleNamespace(
-        dt=float(dt), dft_planes=None, flux_monitors=None, wire_ports=metas,
+        dt=float(dt), dft_planes=None, flux_monitors=None,
+        wire_ports=[{'kind': pm.owner.kind} for pm in pms],
+        # Spectral completion reuses S assembly without a time-step scan.
+        step_fn_inv=SimpleNamespace(port_owners=(), port_acc_indices=()),
         waveguide_meta=None, wp_meta=metas,
         sp_freqs=jnp.asarray(np.asarray(freqs32), dtype=jnp.float32),
         use_wire_ports=True, use_dft_planes=False, use_flux_monitors=False,
