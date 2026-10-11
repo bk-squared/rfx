@@ -112,6 +112,22 @@ def closure_values(fun):
     return values
 
 
+def stage(fun, name):
+    """The nested function ``name`` reached through ``fun``'s closures: the stage the step itself runs."""
+    seen, todo = set(), [fun]
+    while todo:
+        f = todo.pop()
+        if id(f) in seen or not hasattr(f, '__code__'):
+            continue
+        seen.add(id(f))
+        if f.__name__ == name:
+            return f
+        for value in closure_values(f).values():
+            items = value.values() if isinstance(value, dict) else value if isinstance(value, (tuple, list)) else (value,)
+            todo.extend(item for item in items if callable(item))
+    raise AssertionError(f'no stage {name!r} under {fun.__name__}')
+
+
 def capture(sim, entry, path, invoke=None):
     import rfx.simulation as kernel
     import rfx.nonuniform as nu
@@ -145,8 +161,9 @@ def capture(sim, entry, path, invoke=None):
 
     def nu_factory(*args, **kwargs):
         result = nu_original(*args, **kwargs)
-        closure = closure_values(result.step_fn_inv)
-        captured.update(grid=args[0], faces=closure['_pec_faces_frozen'], backend='graded')
+        # The graded step is composed from stages (S3-2 stage B); read the set its wall stage applies.
+        wall_stage = closure_values(stage(result.step_fn_inv, 'pec'))
+        captured.update(grid=args[0], faces=wall_stage['ctx']._pec_faces_frozen, backend='graded')
         raise Captured
 
     def distributed_factory(fun=None, *args, **kwargs):
