@@ -4,7 +4,7 @@ Issue #726. Two honesty messages about the same condition contradicted each
 other, and the measurement retired BOTH of their headline claims: the guard's
 "The V·I-split S11/S21 are unaffected" and preflight's "may read as -5 to -10 dB
 instead of 0 dB". The code was fixed first and the PUBLIC GUIDE was not --
-``docs/public/model/ports.mdx`` and ``probes-sparams.mdx`` were still
+``docs/public/model/ports.mdx`` and ``docs/public/measure/s-parameters.mdx`` were still
 narrating the old guard output, one of them across a line break where a naive
 grep for the sentence missed it.
 

@@ -1,7 +1,7 @@
 ---
 title: "Contributing to rfx"
 sidebar:
-  order: 91
+  order: 2
 ---
 
 This page is for people who want to change rfx itself: fix a bug, add a

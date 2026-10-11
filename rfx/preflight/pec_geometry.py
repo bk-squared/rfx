@@ -467,7 +467,7 @@ def _validate_cfg_pec_realization(self, _w, ctx) -> None:
     # info-severity (the historical contract at :2999), so an
     # unconditional "N sheets realized, 0 of them off" line failed every
     # strict run on a correct board — measured on
-    # docs/public/guide/first-patch.mdx. The realized planes stay
+    # docs/public/examples/first-patch.mdx. The realized planes stay
     # available from fidelity_report(); this finding reports a CONDITION.
     if n_off == 0 and not ties:
         rows = []

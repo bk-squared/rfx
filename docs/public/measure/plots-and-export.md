@@ -1,7 +1,7 @@
 ---
 title: "Visualization & Result Analysis"
 sidebar:
-  order: 15
+  order: 5
 ---
 
 This page shows how to plot rfx results, record field snapshots with correct

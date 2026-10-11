@@ -1,7 +1,7 @@
 ---
 title: "Waveguide Ports"
 sidebar:
-  order: 10
+  order: 3
 ---
 
 A waveguide port launches one TE or TM mode of a rectangular aperture and

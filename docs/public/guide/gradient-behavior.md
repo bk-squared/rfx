@@ -2,7 +2,7 @@
 title: "Gradient Behavior in rfx"
 description: "Where rfx gradients are reliable, where they are noisy or meaningless, and three checks to run before you optimize: finite differences, loss magnitude, and record length."
 sidebar:
-  order: 14
+  order: 5
 ---
 
 An rfx gradient is the exact derivative of the discrete simulation you set up.

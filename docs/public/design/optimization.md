@@ -2,7 +2,7 @@
 title: "Inverse Design"
 description: "Gradient-based design through the FDTD solver: the optimize() design-region driver, which objectives run inside the gradient loop, the manual jax.grad loop, and lumped-component value design."
 sidebar:
-  order: 16
+  order: 3
 ---
 
 rfx is differentiable end to end: `jax.grad` returns the gradient of a scalar

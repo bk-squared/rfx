@@ -1,7 +1,7 @@
 ---
 title: "Far-Field & Radar Cross Section"
 sidebar:
-  order: 11
+  order: 3
 ---
 
 This page shows how to get radiation patterns and directivity from a

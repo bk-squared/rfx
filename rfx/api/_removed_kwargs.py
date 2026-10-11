@@ -27,7 +27,7 @@ _REMOVED_FORWARD_KWARGS: dict = {
         "checkpoint_segments; to restrict which cells carry a derivative, "
         "wrap eps_override yourself: eps = jnp.where(region, eps, "
         "jax.lax.stop_gradient(eps)) -- see CHANGELOG.md 'Removed — "
-        "design_mask' and docs/public/guide/memory-reduction.mdx."
+        "design_mask' and docs/public/run/memory-and-speed.mdx."
     ),
 }
 

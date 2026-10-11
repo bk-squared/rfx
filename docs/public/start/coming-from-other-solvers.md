@@ -1,7 +1,7 @@
 ---
 title: "Migration Guide"
 sidebar:
-  order: 90
+  order: 6
 ---
 
 This page helps you move a model from **Meep** or **openEMS** to rfx. All
