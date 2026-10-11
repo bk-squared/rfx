@@ -160,7 +160,7 @@ def _star_errors(star, cells, text):
     if star != bool(issues):
         errors.append(f"star must be {'present' if issues else 'absent'} for wrong={sorted(issues)!r}")
     for issue in sorted(issues):
-        if issue not in text:
+        if not re.search(re.escape(issue) + r"(?!\d)", text):
             errors.append(f"missing wrong= reference {issue}")
     return errors
 
