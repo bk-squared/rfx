@@ -84,27 +84,33 @@ def assert_new_hit(generated, path, rules, name, observed):
     assert any("new violation against BASE" in error for error in errors), errors
 
 
-def test_uniform_step_body_and_restored_control(tmp_path, generated):
+def test_uniform_step_body_and_restored_original_baseline_unchanged(tmp_path, generated):
     target = CLEAN
     assert target not in generated["files"][SIM]["S"]
     body = body_from("rfx/stepping/uniform.py", "make_uniform_step")
     observed = mutate(tmp_path, SIM, target, body)
     assert_new_hit(generated, SIM, ["S"], target, observed)
-    # Leader decision: make_*_step calls intentionally match S. The control
-    # restores the original unit instead of exempting a step-builder call.
+    # Restored original: baseline unchanged. This is an identity check, not
+    # evidence that a call to a make_*_step builder would pass rule S.
     write(tmp_path, SIM, (REPO / SIM).read_text())
     assert gate.count_file(CopiedSources(tmp_path), SIM) == generated["files"][SIM]
 
 
-def test_phase_body_and_public_call_control(tmp_path, generated):
+def test_phase_body_and_bound_call_control(tmp_path, generated):
     target = CLEAN
     for rule in ("M", "G"):
         assert target not in generated["files"][SIM][rule]
     observed = mutate(tmp_path, SIM, target, body_from("rfx/measurement/dft.py", "_traced_unit"))
     assert_new_hit(generated, SIM, ["M", "G"], target, observed)
-    # This call matches no rule, so the declared measurement control remains.
-    observed = mutate(tmp_path, SIM, target, "rfx.measurement.phase(step, freqs, dt)")
-    assert observed == generated["files"][SIM]
+    # phase lives in dft.py; it is neither re-exported nor in measurement's
+    # __all__. Bind the real submodule: the call has no M/G hit but DOES hit I.
+    name = "rfx.measurement.dft:phase"
+    assert name not in generated["files"][SIM]["I"]
+    observed = mutate(tmp_path, SIM, target,
+                      "from rfx.measurement import dft\ndft.phase(step, freqs, dt)")
+    assert_new_hit(generated, SIM, ["I"], name, observed)
+    assert observed["M"] == generated["files"][SIM]["M"]
+    assert observed["G"] == generated["files"][SIM]["G"]
 
 
 def test_model_mask_body(tmp_path, generated):
@@ -433,3 +439,134 @@ def test_wiring_matches_file_size_gate():
     gates = next(ast.literal_eval(n.value) for n in tree.body if isinstance(n, ast.Assign)
                  and any(isinstance(t, ast.Name) and t.id == "BOTH_BRANCH_GATES" for t in n.targets))
     assert "scripts/ci/check_layer_structure.py" in gates["guards-and-preflight"]
+
+
+
+@pytest.mark.parametrize("target,statement,name", [
+    (CLEAN, "from rfx.boundaries import apply_cpml_e", "rfx.boundaries:apply_cpml_e"),
+    (CLEAN, "from rfx.model.conductors import _PreparedSolve", "rfx.model.conductors:_PreparedSolve"),
+    ("<module>", "from rfx.model.conductors import *", "rfx.model.conductors:*"),
+])
+def test_review_import_mutations_on_real_source(tmp_path, generated, target, statement, name):
+    assert name not in generated["files"][SIM]["I"]
+    if target == "<module>":
+        # Star imports are only legal at module level.
+        write(tmp_path, SIM, (REPO / SIM).read_text() + "\n" + statement + "\n")
+        observed = gate.count_file(CopiedSources(tmp_path), SIM)
+    else:
+        observed = mutate(tmp_path, SIM, target, statement)
+    assert_new_hit(generated, SIM, ["I"], name, observed)
+
+
+@pytest.mark.parametrize("target,rules,code", [
+    ("LayerReviewOuter.Inner.advance", ["S"],
+     "class LayerReviewOuter:\n    class Inner:\n        def advance(self):\n            jax.lax.scan(f, c, xs)\n"),
+    ("layer_review_conditional", ["S"],
+     "if True:\n    def layer_review_conditional():\n        jax.lax.scan(f, c, xs)\n"),
+    ("<module>", ["S"], "_X = jax.lax.scan(f, c, xs)\n"),
+    ("LayerReviewLambda.<body>", ["M", "G"],
+     "class LayerReviewLambda:\n    phase = lambda x: jnp.exp(1j * x)\n"),
+])
+def test_review_code_positions_on_real_source(tmp_path, generated, target, rules, code):
+    for rule in rules:
+        assert target not in generated["files"][SIM][rule]
+    write(tmp_path, SIM, (REPO / SIM).read_text() + "\n" + code)
+    observed = gate.count_file(CopiedSources(tmp_path), SIM)
+    assert_new_hit(generated, SIM, rules, target, observed)
+
+
+def test_additional_array_updates_on_real_source(tmp_path, generated):
+    target = CLEAN
+    assert target not in generated["files"][SIM]["A"]
+    observed = mutate(tmp_path, SIM, target,
+                      "a.at[i].divide(b)\na.at[i].power(b)\na.at[i].apply(f)")
+    assert_new_hit(generated, SIM, ["A"], target, observed)
+    # Each new spelling must independently trip A, not only their combination.
+    for method in ("divide", "power", "apply"):
+        assert "A" in gate.unit_hits(ast.parse(f"a.at[i].{method}(b)"))
+
+
+@pytest.mark.parametrize("name", ["_Private", "_CONSTANT", "_function", "*"])
+def test_private_names_and_stars_ignore_kind_and_exports(synthetic, name):
+    write(synthetic, "rfx/model/__init__.py",
+          "__all__ = ['_Private', '_CONSTANT', '_function']\n"
+          "class _Private: pass\n_CONSTANT = 1\ndef _function(): pass\n")
+    write(synthetic, SIM, f"from rfx.model import {name}\n")
+    assert gate.count_file(gate.Sources(synthetic), SIM)["I"] == [f"rfx.model:{name}"]
+
+
+def test_reexport_kinds_aliases_hops_and_cycles(synthetic):
+    write(synthetic, "rfx/model/definitions.py",
+          "def f(): pass\nclass Record: pass\nCONSTANT = 1\n")
+    write(synthetic, "rfx/model/one.py",
+          "from .definitions import f as alias, Record, CONSTANT\n"
+          "import rfx.model.definitions as module\n")
+    write(synthetic, "rfx/model/two.py", "from .one import alias as f\n")
+    write(synthetic, "rfx/model/three.py", "from .two import f\n")
+    write(synthetic, "rfx/model/four.py", "from .three import f\n")
+    write(synthetic, "rfx/model/cycle_a.py", "from .cycle_b import f\n")
+    write(synthetic, "rfx/model/cycle_b.py", "from .cycle_a import f\n")
+    sources = gate.Sources(synthetic)
+    assert sources.is_function("rfx.model.one", "alias")
+    assert sources.is_function("rfx.model.one.module", "f")
+    assert sources.is_function("rfx.model.three", "f")
+    assert not sources.is_function("rfx.model.four", "f")
+    assert not sources.is_function("rfx.model.one", "Record")
+    assert not sources.is_function("rfx.model.one", "CONSTANT")
+    assert not sources.is_function("rfx.model.one", "module")
+    assert not sources.is_function("rfx.model.cycle_a", "f")
+
+
+def test_units_in_control_blocks_and_pseudo_units_are_disjoint(synthetic):
+    write(synthetic, SIM, """
+if condition():
+    async def conditional():
+        jax.lax.scan(f, c, xs)
+try:
+    class Outer:
+        with context():
+            class Inner:
+                try:
+                    async def method(self):
+                        def nested():
+                            jax.lax.scan(f, c, xs)
+                except Exception:
+                    pass
+        value = lambda x: jnp.exp(1j * x)
+except Exception:
+    pass
+with context():
+    def under_with():
+        jax.lax.scan(f, c, xs)
+_MODULE_PHASE = jnp.exp(1j * angle)
+""")
+    rules = gate.count_file(gate.Sources(synthetic), SIM)
+    assert rules["S"] == ["Outer.Inner.method", "conditional", "under_with"]
+    assert rules["M"] == ["<module>", "Outer.<body>"]
+    assert rules["G"] == ["<module>", "Outer.<body>"]
+    # The nested function belongs to its method, and no method body leaks into
+    # a parent class or the module pseudo-unit.
+
+
+def test_review_pseudo_unit_calibration(generated):
+    assert "<module>" in generated["files"]["rfx/nonuniform.py"]["G"]
+    waveguide = generated["files"]["rfx/sources/waveguide_port.py"]
+    assert "<module>" in waveguide["G"]
+    assert "WaveguidePortConfig.<body>" in waveguide["G"]
+
+
+def test_missing_base_baseline_is_not_adoption_after_checker_exists(synthetic, monkeypatch, capsys):
+    git_snapshot(synthetic, "init", "-q")
+    (synthetic / gate.BASELINE).unlink()
+    write(synthetic, gate.CHECKER, "# checker already adopted\n")
+    git_snapshot(synthetic, "add", ".")
+    git_snapshot(synthetic, "commit", "-qm", "checker without baseline")
+    base = git_snapshot(synthetic, "rev-parse", "HEAD")
+    write(synthetic, gate.BASELINE, json.dumps(empty_baseline()))
+    git_snapshot(synthetic, "add", ".")
+    git_snapshot(synthetic, "commit", "-qm", "head baseline")
+    head = git_snapshot(synthetic, "rev-parse", "HEAD")
+    monkeypatch.setenv("BASE_SHA", base)
+    monkeypatch.setenv("HEAD_SHA", head)
+    assert gate.main(["--repo", str(synthetic)]) == 1
+    assert f"BASE contains {gate.CHECKER} but is missing {gate.BASELINE}" in capsys.readouterr().err

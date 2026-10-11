@@ -107,6 +107,7 @@
         "rfx.model.source_coefficients:drive_table",
         "rfx.model.source_coefficients:source_table",
         "rfx.stepping.absorber:apply_cpml_e_step",
+        "rfx.stepping.absorber:apply_cpml_h",
         "rfx.stepping.absorber:graded_cpml_operands",
         "rfx.stepping.graded:make_graded_step"
       ],
@@ -121,6 +122,7 @@
         "_assemble_nu_result"
       ],
       "G": [
+        "<module>",
         "NonUniformGrid.node_of",
         "_append_bounding_node",
         "_assemble_nu_result",
@@ -240,6 +242,8 @@
         "inject_waveguide_port"
       ],
       "G": [
+        "<module>",
+        "WaveguidePortConfig.<body>",
         "_compute_beta",
         "_compute_mode_impedance",
         "_discrete_te_mode_profiles",

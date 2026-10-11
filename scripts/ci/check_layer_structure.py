@@ -2,8 +2,8 @@
 """Ratchet layer implementations in the five callers, using only source ASTs.
 
 BASE_SHA/HEAD_SHA (or --base/--head) select Git snapshots. Without HEAD_SHA,
-read the working tree. Initial adoption is allowed only when a readable base
-has no baseline. --write-baseline records exact current violations; --base
+read the working tree. Initial adoption requires a readable base with neither
+checker nor baseline. --write-baseline records exact current violations; --base
 still rejects increases. Surface sizes and allowed calls are informational.
 """
 
@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+from copy import copy
 import json
 import os
 from pathlib import Path
@@ -20,6 +21,7 @@ import sys
 
 REPO = Path(__file__).resolve().parents[2]
 BASELINE = "scripts/ci/layer_baseline.json"
+CHECKER = "scripts/ci/check_layer_structure.py"
 FIVE_FILES = (
     "rfx/api/_execute.py", "rfx/api/__init__.py", "rfx/simulation.py",
     "rfx/nonuniform.py", "rfx/sources/waveguide_port.py",
@@ -91,9 +93,47 @@ class Sources:
                      if p in self.paths), None)
 
     def is_function(self, module: str, name: str) -> bool:
-        path = self.module_path(module)
-        return bool(path and any(isinstance(n, FUNCTIONS) and n.name == name
-                                 for n in self.tree(path).body))
+        return self._is_function(f"{module}.{name}", 3, set())
+
+    def _is_function(self, qualified: str, hops: int, seen: set[str]) -> bool:
+        """Resolve at most three import edges, without executing a re-export."""
+        if qualified in seen:
+            return False
+        seen = seen | {qualified}
+        parts = qualified.split(".")
+        # The longest real module prefix also handles a module re-export:
+        # facade.alias.f -> defining_module.f, where facade imports alias.
+        for split in range(len(parts) - 1, 0, -1):
+            module = ".".join(parts[:split])
+            path = self.module_path(module)
+            if path:
+                break
+        else:
+            return False
+        name, *tail = parts[split:]
+
+        def bindings(node):
+            yield node
+            if not isinstance(node, (*FUNCTIONS, ast.ClassDef)):
+                for child in ast.iter_child_nodes(node):
+                    yield from bindings(child)
+
+        for node in bindings(self.tree(path)):
+            if isinstance(node, (*FUNCTIONS, ast.ClassDef)) and node.name == name:
+                return isinstance(node, FUNCTIONS) and not tail
+            if hops == 0:
+                continue
+            if isinstance(node, ast.ImportFrom):
+                for alias in node.names:
+                    if (alias.asname or alias.name) == name:
+                        target = import_module(path, node) + "." + alias.name
+                        return self._is_function(".".join([target, *tail]), hops - 1, seen)
+            elif isinstance(node, ast.Import):
+                for alias in node.names:
+                    if (alias.asname or alias.name.split(".")[0]) == name:
+                        target = alias.name if alias.asname else alias.name.split(".")[0]
+                        return self._is_function(".".join([target, *tail]), hops - 1, seen)
+        return False
 
 
 def dotted(node: ast.AST) -> str:
@@ -133,13 +173,45 @@ def public_names(sources: Sources, package: str) -> list[str]:
 
 
 def units(tree: ast.Module):
-    for node in tree.body:
-        if isinstance(node, FUNCTIONS):
-            yield node.name, node, None
-        elif isinstance(node, ast.ClassDef):
-            for method in node.body:
-                if isinstance(method, FUNCTIONS):
-                    yield f"{node.name}.{method.name}", method, node.name
+    """Partition all code outside function bodies, without double counting.
+
+    Control-flow blocks do not introduce a qualifier. Classes do. A function
+    owns its entire subtree, including any nested functions/classes. Remaining
+    statements belong to one pseudo-unit per module or class scope.
+    """
+    found = []
+
+    def scope(body, prefix="", headers=()):
+        def partition(node):
+            if isinstance(node, FUNCTIONS):
+                found.append((prefix + node.name, node, prefix[:-1] or None))
+                return None
+            if isinstance(node, ast.ClassDef):
+                # Class decorators, bases and keywords may also execute code.
+                scope(node.body, prefix + node.name + ".",
+                      [*node.decorator_list, *node.bases, *node.keywords])
+                return None
+            if (isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant)
+                    and isinstance(node.value.value, str)):
+                return None
+            if not prefix and isinstance(node, (ast.Import, ast.ImportFrom)):
+                return None
+            result = copy(node)
+            for field, value in ast.iter_fields(node):
+                if isinstance(value, list):
+                    setattr(result, field, [part for child in value
+                            if (part := partition(child) if isinstance(child, ast.AST) else child) is not None])
+                elif isinstance(value, ast.AST):
+                    setattr(result, field, partition(value))
+            return result
+
+        remaining = [part for node in body if (part := partition(node)) is not None]
+        if remaining or headers:
+            name = prefix + "<body>" if prefix else "<module>"
+            found.append((name, ast.Module(body=[*headers, *remaining], type_ignores=[]), None))
+
+    scope(tree.body)
+    yield from found
 
 
 def body_without_docstring(node):
@@ -179,7 +251,7 @@ def unit_hits(node: ast.AST) -> set[str]:
                 isinstance(n, ast.BinOp) and isinstance(n.op, ARITHMETIC)
                 for arg in arguments for n in ast.walk(arg))):
             hits.add("G")
-        if (last in {"set", "add", "multiply", "min", "max"}
+        if (last in {"set", "add", "multiply", "min", "max", "divide", "power", "apply"}
                 and isinstance(item.func, ast.Attribute)
                 and isinstance(item.func.value, ast.Subscript)
                 and isinstance(item.func.value.value, ast.Attribute)
@@ -226,9 +298,10 @@ def import_hits(sources: Sources, path: str, public: dict) -> list[str]:
                         target = f"{module}.{alias.name}"
                         if sources.module_path(target):
                             self.bindings[key] = target
-                        if sources.is_function(module, alias.name) and (
+                        private_or_star = layer and (alias.name.startswith("_") or alias.name == "*")
+                        if private_or_star or (sources.is_function(module, alias.name) and (
                                 module in KERNEL_MODULES or (layer and (
-                                    module != layer or alias.name not in public[layer]))):
+                                    module != layer or alias.name not in public[layer])))):
                             hits.add(f"{module}:{alias.name}")
                 elif isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
                     self.bindings[item.name] = None
@@ -386,8 +459,11 @@ def check(repo: Path, base: str = "", head: str = "", *, write_baseline=False, l
         for path, line, source in result["allowed"]:
             print(f"{path}:{line}: {source}")
     previous = None
-    if base and git(repo, "ls-tree", base, "--", BASELINE):
-        previous = baseline(git(repo, "show", f"{base}:{BASELINE}"))
+    if base:
+        if git(repo, "ls-tree", base, "--", BASELINE):
+            previous = baseline(git(repo, "show", f"{base}:{BASELINE}"))
+        elif git(repo, "ls-tree", base, "--", CHECKER):
+            raise ValueError(f"BASE contains {CHECKER} but is missing {BASELINE}")
     actual = result["baseline"]
     if write_baseline:
         (repo / BASELINE).write_text(json.dumps(actual, indent=2) + "\n")
