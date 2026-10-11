@@ -58,6 +58,7 @@ def _capture_policy(monkeypatch, entry, kind, expected):
     with pytest.raises(Captured):
         getattr(sim, entry)(n_steps=2, skip_preflight=True)
     assert (captured["periodic"], captured["cpml_axes"]) == expected
-    # Preserve forward's existing wall policy as well as the shared flags.
+    # #1549: forward passes no wall selection of its own on any kind; the walls come from the realized
+    # boundary record (resolve_wall_faces), which never walls a face the plane wave wraps.
     if entry == "forward":
-        assert captured["pec_axes"] == (None if kind == "closed" else "")
+        assert captured["pec_axes"] is None
