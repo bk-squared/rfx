@@ -18,9 +18,10 @@ DX = 0.381e-3
 DZ = np.full(8, DX)
 
 
-def _profile(end):
+def _profile(lo, hi=None):
     inner = np.linspace(DX, 0.2e-3, 6)
-    return np.concatenate([[end], np.full(4, DX), inner, np.full(4, DX), [end]])
+    hi = lo if hi is None else hi
+    return np.concatenate([[lo], np.full(4, DX), inner, np.full(4, DX), [hi]])
 
 
 def _build(profile, length=None):
@@ -36,16 +37,22 @@ def test_float32_profile_admitted_on_both_paths_with_one_boundary_cell():
     assert abs(float(prof[0]) - DX) == pytest.approx(9.26e-12, rel=1e-2)
     concrete = _build(prof)
     length = float(np.sum(prof.astype(np.float64)))
-    traced = jax.jit(lambda p: _build(p, length).boundary_cell("x", "lo"))(jnp.asarray(prof))
-    for side in ("lo", "hi"):
-        assert np.float32(concrete.boundary_cell("x", side)) == np.float32(traced)
+    traced = jax.jit(lambda p: tuple(_build(p, length).boundary_cell("x", side)
+                                     for side in ("lo", "hi")))(jnp.asarray(prof))
+    for side, t in zip(("lo", "hi"), traced):
+        assert np.float32(concrete.boundary_cell("x", side)) == np.float32(t)
 
 
-@pytest.mark.parametrize("end", [DX * 1.01, DX + 3 * float(np.spacing(np.float32(DX)))],
-                         ids=["one_percent", "three_ulp"])
-def test_end_cell_off_by_more_than_one_float32_ulp_is_refused(end):
+ULP = float(np.spacing(np.float32(DX)))
+
+
+@pytest.mark.parametrize("side", ["lo", "hi"])
+@pytest.mark.parametrize("end", [DX * 1.01, DX + 3 * ULP, DX + 1.5 * ULP],
+                         ids=["one_percent", "three_ulp", "one_and_half_ulp"])
+def test_end_cell_off_by_more_than_one_float32_ulp_is_refused(end, side):
+    prof = _profile(end, DX) if side == "lo" else _profile(DX, end)
     with pytest.raises(ValueError, match="must equal boundary"):
-        _build(_profile(end))
+        _build(prof)
 
 
 def test_y_end_cells_compared_within_one_float32_ulp():

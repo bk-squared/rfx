@@ -853,8 +853,9 @@ def make_nonuniform_grid(
     elif is_tracer(dy_profile):
         # Tracer path: stay in jnp. The scalar `dy` is the concrete `dx`
         # (the CPML reads the traced end cells through `boundary_cell`), so
-        # the caller's declared contract is each end cell within one float32
-        # ULP of `dx` (``_boundary_cell_tol``); a trace cannot check it.
+        # the traced grid names `dx` as its y boundary cell; the concrete path
+        # names `dy_profile[0]` and checks only lo against hi. A trace cannot
+        # check its end cells, so keeping them at `dx` is the caller's contract.
         dy_prof_phys = jnp.asarray(dy_profile, dtype=jnp.float32)
         dy_boundary = float(dx)
     else:
