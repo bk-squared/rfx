@@ -485,7 +485,7 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_dft_planes", "dft_plane"): _NO_SHEETS,
     ("_flux_monitors", "flux"): frozenset({"run_uniform", "run_nonuniform", "fwd_uniform",
                                           "fwd_nonuniform", "fwd_adi"}),
-    ("_ntff", "ntff_box"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},  # Always PEC exterior.
+    ("_ntff", "ntff_box"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},  # Its x and y faces are always PEC (only a z lid may absorb).
     ("_current_moments", "block_moments"): _NO_SHEETS,
 }
 

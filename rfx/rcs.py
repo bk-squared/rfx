@@ -476,11 +476,13 @@ def compute_rcs(
     from rfx.boundaries.depths import FACES, grid_face_depths
     from rfx.boundaries.features import refuse_ntff_reflecting_faces
     # Non-absorbing strings install array walls, not a periodic exterior.
-    # The oblique path alone wraps z; retain those faces from the grid record.
+    # The oblique path wraps z, regardless of the grid's face declarations.
     walls = (tuple(face for face in FACES if not (_oblique and face.startswith("z_")))
              if boundary not in ("cpml", "upml") else None)
-    refuse_ntff_reflecting_faces(
-        grid_face_depths(grid, pec_faces=walls), lane="compute_rcs")
+    faces = grid_face_depths(grid, pec_faces=walls)
+    if _oblique:
+        faces = tuple(face for face in faces if not face.name.startswith("z_"))
+    refuse_ntff_reflecting_faces(faces, lane="compute_rcs")
     if reference_index is not None and not tfsf_cfg.x_lo <= reference_index <= tfsf_cfg.x_hi:
         raise ValueError("phase_reference.x must lie inside the total-field slab")
 

@@ -850,7 +850,7 @@ def test_nonuniform_runner_hands_back_a_face_centre_box():
 
 
 def test_subgridded_ntff_request_is_refused_by_its_reflecting_exterior(monkeypatch):
-    """Subgridding refuses every absorber, leaving a reflecting NTFF exterior.
+    """Subgridding: its x and y faces are always PEC (only a z lid may absorb).
 
     Such a box cannot supply the missing boundary images, so this request
     must be refused before the experimental subgridded lane steps fields.
@@ -874,9 +874,10 @@ def test_subgridded_ntff_request_is_refused_by_its_reflecting_exterior(monkeypat
     assert str(caught.value) == (
         "run dispatch: an NTFF box radiates its surface currents into free space, but "
         "x_hi is pec; x_lo is pec; y_hi is pec; y_lo is pec; z_hi is pec; z_lo is pec: "
-        "the far field would miss their images (a symmetry or ground plane, or a periodic "
-        "wrap, is not reconstructed). Declare an absorbing boundary on every face "
-        "(draw a finite ground plane as geometry); a symmetry plane is not supported "
+        "the far field would miss their images (a symmetry or ground plane is not "
+        "reconstructed). Every face of the realized model must be absorbing: draw a "
+        "finite ground plane as geometry, and note that a full-aperture waveguide port "
+        "solves its transverse faces as PEC walls; a symmetry plane is not supported "
         "with NTFF yet."
     )
 

@@ -11,11 +11,13 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 
 EXTERIOR = (
     "an NTFF box radiates its surface currents into free space, but {faces}: "
-    "the far field would miss their images (a symmetry or ground plane, or a "
-    "periodic wrap, is not reconstructed). Declare an absorbing boundary on "
-    "every face (draw a finite ground plane as geometry); "
-    "a symmetry plane is not supported with NTFF yet."
+    "the far field would miss their images (a symmetry or ground plane is not "
+    "reconstructed). Every face of the realized model must be absorbing: draw a "
+    "finite ground plane as geometry, and note that a full-aperture waveguide port "
+    "solves its transverse faces as PEC walls; a symmetry plane is not supported "
+    "with NTFF yet."
 )
+
 UPML = (
     "boundary='upml' does not support the non-uniform {entry}() lane: the "
     "non-uniform runner implements CPML only (rfx/nonuniform.py dispatches on "
@@ -222,3 +224,55 @@ def test_adi_ntff_refusal_precedes_exterior(entry, monkeypatch):
     with pytest.raises(ValueError) as caught:
         getattr(sim, entry)(n_steps=1)
     assert str(caught.value) == "solver='adi' does not support NTFF accumulation yet"
+
+
+WAVEGUIDE_TABLE = (
+    ("small", "default", "y_hi is zero-depth absorber; y_lo is zero-depth absorber; "
+     "z_hi is zero-depth absorber; z_lo is zero-depth absorber"),
+    ("small", "cpml", "y_hi is zero-depth absorber; y_lo is zero-depth absorber; "
+     "z_hi is zero-depth absorber; z_lo is zero-depth absorber"),
+    ("full", "default", "y_hi is pec; y_lo is pec; z_hi is pec; z_lo is pec"),
+    ("full", "cpml", None),
+)
+
+
+@pytest.mark.parametrize("entry", ("run", "forward"))
+@pytest.mark.parametrize("aperture,boundary,faces", WAVEGUIDE_TABLE,
+                         ids=[f"{r[0]}-{r[1]}" for r in WAVEGUIDE_TABLE])
+def test_waveguide_realized_exterior(aperture, boundary, faces, entry, monkeypatch):
+    kwargs = {} if boundary == "default" else {"boundary": "cpml"}
+    sim = Simulation(freq_max=15e9, domain=(.024, .012, .012), dx=.001, **kwargs)
+    port = {} if aperture == "full" else {"y_range": (.002, .010), "z_range": (.002, .010)}
+    sim.add_waveguide_port(.006, direction="+x", f0=7.5e9, **port)
+    sim.add_ntff_box((.004, .004, .004), (.020, .008, .008), n_freqs=3)
+    forbid_field_loops(monkeypatch)
+    expected = (f"{entry} dispatch: " + EXTERIOR.format(faces=faces) if faces else
+                f"{entry} dispatch: full-aperture waveguide requires PEC on y_hi, y_lo, z_hi, z_lo; "
+                "declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis).")
+    with pytest.raises(ValueError) as caught:
+        getattr(sim, entry)(n_steps=1)
+    assert str(caught.value) == expected
+
+
+@pytest.mark.parametrize("case", ("xy_pads", "pec_z"))
+def test_oblique_rcs_wrapped_z_is_not_refused(case, monkeypatch):
+    from rfx.core.yee import init_materials
+    from rfx.grid import Grid
+    from rfx.rcs import compute_rcs
+
+    kwargs = {"cpml_axes": "xy"} if case == "xy_pads" else {"pec_faces": {"z_lo", "z_hi"}}
+    grid = Grid(freq_max=15e9, domain=(.054, .054, .054), dx=.003, cpml_layers=6, **kwargs)
+
+    class FieldLoopReached(Exception):
+        pass
+
+    def reached(*args, **kwargs):
+        assert kwargs["periodic"] == (False, False, True)
+        assert kwargs["cpml_axes"] == "xy"
+        raise FieldLoopReached
+
+    monkeypatch.setattr("rfx.rcs.run", reached)
+    with pytest.raises(FieldLoopReached):
+        compute_rcs(grid, init_materials(grid.shape), 4, f0=10e9, theta_inc=20.,
+                    cpml_layers=6, tfsf_margin=3, freqs=np.array([1e10]),
+                    theta_obs=np.array([np.pi / 2]), phi_obs=np.array([0.]))
