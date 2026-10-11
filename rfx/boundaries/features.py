@@ -144,8 +144,14 @@ def admit_ntff(sim, *, lane):
     """Refuse NTFF on reflecting domain faces; periodic axes are undecided."""
     if sim._ntff is None:
         return
+    refuse_ntff_reflecting_faces(
+        resolve_face_depths(sim._boundary_spec, budget=sim._cpml_layers), lane=lane)
+
+
+def refuse_ntff_reflecting_faces(faces, *, lane):
+    """Refuse reflecting faces from the declaration or realized run record."""
     incompatible = {}
-    for face in resolve_face_depths(sim._boundary_spec, budget=sim._cpml_layers):
+    for face in faces:
         if face.kind in (Kind.PEC, Kind.PMC):
             incompatible[face.name] = face.kind.value.lower()
         elif face.kind == Kind.ABSORBER and face.realized == 0:

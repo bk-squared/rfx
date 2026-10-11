@@ -135,10 +135,12 @@ RCS_TABLE = (
     (None, "admitted", None),
     ("pec", "refused", EXTERIOR.format(
         faces="x_hi is pec; x_lo is pec; y_hi is pec; y_lo is pec; z_hi is pec; z_lo is pec")),
+    ("periodic", "refused", EXTERIOR.format(
+        faces="x_hi is pec; x_lo is pec; y_hi is pec; y_lo is pec; z_hi is pec; z_lo is pec")),
 )
 
 
-@pytest.mark.parametrize("boundary,outcome,message", RCS_TABLE, ids=("default", "pec"))
+@pytest.mark.parametrize("boundary,outcome,message", RCS_TABLE, ids=("default", "pec", "periodic"))
 def test_rcs_boundary_table(boundary, outcome, message, monkeypatch):
     from rfx.core.yee import init_materials
     from rfx.grid import Grid
