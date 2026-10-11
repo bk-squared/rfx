@@ -71,6 +71,7 @@ S-matrix with the lane's own assembly (the graded lane's
 ``rfx.probes.probes.driven_port_reflection``). When W0, W1 or the pole
 identification fails, the run is returned as it is, uncompleted, with the
 failed check in ``Result.ringdown.report`` and a warning.
+Memory-bound refusals instead raise :class:`IdentificationMemoryRefused`.
 
 With ``until_identified=True`` (:class:`RingdownStop`)
 -------------------------------------------------------
@@ -112,6 +113,13 @@ _HARMINV_DEFAULTS = {
 PENCIL_PARAMETER = float(_HARMINV_DEFAULTS["pencil_parameter"])
 HARMINV_MAX_MODES = int(_HARMINV_DEFAULTS["max_modes"])
 
+# Default from decision g (2026-10-12); users can raise it by assignment.
+IDENTIFY_MEMORY_BOUND_BYTES = 4 * 2**30
+# Mac per-stage peaks / formula, maxima 1.780 and 1.626, plus 5 %:
+# records 20261012-pencil-stage-peaks, decision g.
+_STAGE1_FACTOR = 1.87
+_STAGE2_FACTOR = 1.71
+
 # The largest kept count across the ringdown fixtures is 431, from a seeded-noise
 # record's 900-sample window. Measured cavities keep 38-44 poles on 10,000-70,000
 # step windows. A budget of 512 preserves all these completions without new NaNs
@@ -127,6 +135,8 @@ __all__ = [
     "RingdownReport",
     "RingdownResult",
     "identify",
+    "IdentificationMemoryRefused",
+    "IDENTIFY_MEMORY_BOUND_BYTES",
     "plain_dft",
     "tail_dft",
     "complete_spectra",
@@ -541,6 +551,40 @@ def complete_spectra(series, dt, freqs, model: RingdownModel, n_record: int) -> 
 # Identification
 # ---------------------------------------------------------------------------
 
+class IdentificationMemoryRefused(ValueError):
+    """An identification stage would exceed the configured memory bound."""
+
+    def __init__(self, stage, needed_bytes, bound_bytes, *, n_win, Nd, C, L, M, k, r):
+        self.stage = stage
+        self.needed_bytes = needed_bytes
+        self.bound_bytes = bound_bytes
+        self.n_win, self.Nd, self.C = n_win, Nd, C
+        self.L, self.M, self.k, self.r = L, M, k, r
+        name = "pencil" if stage == 1 else "residue fit"
+        order = f"k={k}" if stage == 1 else f"rank={r}"
+        super().__init__(
+            f"settling identification would need {needed_bytes / 2**30:.2f} GiB "
+            f"at stage {stage} ({name}; n_win={n_win}, Nd={Nd}, C={C}, L={L}, "
+            f"{order}), above the {bound_bytes / 2**30:.2f} GiB bound; "
+            "shorten the identification window, identify on fewer channels, "
+            "or raise rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES")
+
+
+def _check_identification_memory(n_win, shape, *, r=None):
+    """Refuse before the pencil or original-rate residue fits allocate."""
+    Nd, C = shape
+    L = int(_harminv._pencil_columns(Nd, PENCIL_PARAMETER))
+    M = Nd - L
+    k = min(M, L * C)
+    stage = 1 if r is None else 2
+    needed = (_STAGE1_FACTOR * 16 * (3*M*L*C + M*k + 2*k*L*C + 4*k*k)
+              if r is None else _STAGE2_FACTOR * 16 * 5 * n_win * r)
+    if needed > IDENTIFY_MEMORY_BOUND_BYTES:
+        raise IdentificationMemoryRefused(
+            stage, needed, IDENTIFY_MEMORY_BOUND_BYTES,
+            n_win=n_win, Nd=Nd, C=C, L=L, M=M, k=k, r=r)
+
+
 def decimation_plan(n_samples: int, dt: float, freq_max: float) -> tuple:
     """harminv's plan for a window of ``n_samples``: ``(factors, kept samples)``."""
     factors, kept = _harminv._decimation_plan(
@@ -658,7 +702,9 @@ def identify(series, dt, n_start, n_stop, *, freq_max, guard=0.9,
     factors, _kept = decimation_plan(win.shape[0], dt, freq_max)
     Yd = _decimate(win, factors) if factors else win
     D = int(np.prod(factors)) if factors else 1
+    _check_identification_memory(win.shape[0], Yd.shape)
     lam_dec, rank, lam_grow, n_invalid, sv = _pencil(Yd, float(sv_rel), float(unit_tol))
+    _check_identification_memory(win.shape[0], Yd.shape, r=rank)
     s, n_guard = _to_original_rate(lam_dec, D, dt, guard)
     c = _fit_residues(win, s, dt)
     rms = np.sqrt(np.mean(np.abs(win) ** 2, axis=0))
@@ -1558,8 +1604,8 @@ class RingdownRun:
         series, the port-channel probes from column ``n_user`` on. Returns
         ``(S, report, None)``, or ``(None, report, failure)`` when a check
         that decides whether the completion can be trusted at all failed.
-        Raises nothing for a failed check; a probe layout missing a table node
-        raises ``ValueError`` before identification.
+        Memory refusals raise; other failed checks are reported. A probe layout
+        missing a table node raises ``ValueError`` before identification.
         """
         dt = float(result.grid.dt)
         ref_hz = max(self.freq_max, float(np.max(np.asarray(result.freqs,
@@ -1693,6 +1739,8 @@ class RingdownRun:
             we_value, we_note = we.value, ""
             state["long_rank"] = we.model_long.rank
             state["long_n_kept"] = int(we.model_long.s.size)
+        except IdentificationMemoryRefused:
+            raise
         except Exception as exc:  # the completed S already exists: never lose it here
             we_value = math.nan
             we_note = (f"the identification on [{0.5 * ws:g} T, T] failed: {exc}; "
@@ -1783,6 +1831,8 @@ class RingdownRun:
                 Y, dt, f_bins, self.n_steps, self.n_start, freq_max=ref_hz,
                 split=spec.split, guard=spec.guard, sv_rel=spec.sv_rel,
                 unit_tol=spec.unit_tol, observable=to_s, plain=plain)
+        except IdentificationMemoryRefused:
+            raise
         except (ValueError, np.linalg.LinAlgError) as exc:
             raise _NotCompleted("identification", math.nan, math.nan,
                                 f"{exc}.") from None
@@ -2087,6 +2137,8 @@ def _judge_record(Y, dt: float, f_bins, n_record: int, n_start: int,
         plain = plain_dft(Y, dt, f_bins)
         model = identify(Y, dt, n_start, n_record, **kw)
         spectra = plain + tail_dft(model, n_record - 1, f_bins)
+    except IdentificationMemoryRefused:
+        raise
     except (ValueError, np.linalg.LinAlgError) as exc:
         return dict(note=f"the identification on [{spec.window_start:g} T, T] "
                          f"failed: {exc}")
@@ -2095,6 +2147,8 @@ def _judge_record(Y, dt: float, f_bins, n_record: int, n_start: int,
         we = early_start_witness(Y, dt, f_bins, n_record, spec.window_start,
                                  observable=observable, plain=plain,
                                  spectra=spectra, **kw).value
+    except IdentificationMemoryRefused:
+        raise
     except Exception as exc:  # a WE that cannot be read fails, as in the report
         we, note = math.nan, (f"the identification on "
                               f"[{0.5 * spec.window_start:g} T, T] failed: {exc}")
@@ -2838,11 +2892,11 @@ def _rdt_nan(result):
 class RingdownForward(RingdownRun):
     """One ``forward(..., ringdown=spec)``: probes in, forward, probes out, traced completion.
 
-    Everything that can refuse the request does so before the call, as in
-    :class:`RingdownRun`. After the call nothing raises and nothing warns: the
-    completed S-parameters are traced JAX arrays (NaN where the host
-    identification failed), and the checks run lazily on the concrete result
-    (:attr:`RingdownForwardResult.report`).
+    Request preconditions are checked before the call, as in :class:`RingdownRun`.
+    Memory-bound refusals raise with the identification's needed and allowed
+    memory in the callback error. Other host identification failures produce
+    NaN completed S-parameters in the traced JAX arrays; their checks run lazily
+    on the concrete result (:attr:`RingdownForwardResult.report`).
     """
 
     caller = "forward"
