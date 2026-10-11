@@ -504,6 +504,7 @@ class SheetImpedanceSpec:
     # ``SheetSpec.end_rows`` of the footprint: per axis, a boolean vector of
     # the node rows on a drawn face (``rasterize_grid.sheet_end_rows``).
     end_rows: tuple = (None, None, None)
+    drawn: tuple | None = None
 
 
 @dataclass(frozen=True)
@@ -589,7 +590,8 @@ def build_sheet_impedance_ctx(sheet_specs, pec_edge_masks=None,
                 layers = np.flatnonzero(np.asarray(jnp.any(sp.mask, axis=other)))
                 plane = int(layers[0]) if layers.size else 0
         sheets.append(SheetSpec(normal_axis=a, plane=int(plane), footprint=sp.mask,
-                                unwrapped_footprint=sp.unwrapped_footprint))
+                                unwrapped_footprint=sp.unwrapped_footprint,
+                                end_rows=sp.end_rows, drawn=sp.drawn))
         if k:
             # Coincident same-normal sheets are PARALLEL sheet admittances
             # (1/Rs_tot = 1/Rs_1 + 1/Rs_2); ``sigma_sheet = G/d_dual`` is

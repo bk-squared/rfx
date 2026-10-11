@@ -217,6 +217,9 @@ class SheetSpec:
     # with the footprint (``rasterize_grid.sheet_end_rows``); read by the
     # finite-R_s sheet operator only -- a PEC sheet has no weight to adjust.
     end_rows: tuple = (None, None, None)
+    # Per axis: None on the normal, (lo, hi, tol) in metres otherwise.
+    # Periodic axes append the domain length as a fourth entry.
+    drawn: tuple | None = None
 
     @classmethod
     def from_node_ranges(cls, grid_shape, *, normal_axis: int, plane: int,
@@ -453,6 +456,49 @@ def _fold_sheet_nodes(mask, shape, *, edge_axis=None, xp=jnp):
     return mask
 
 
+def _sheet_pair_touches(left, right, axis, periodic):
+    """Drawn intervals authorize cross-sheet edges; indices retain legacy joins."""
+    if left.drawn is None or right.drawn is None:
+        return True
+    from rfx.core.jax_utils import is_tracer
+    a, b = left.drawn[axis], right.drawn[axis]
+    xp = jnp if any(is_tracer(v) for v in (*a, *b)) else np
+    shifts = (0.0,)
+    if periodic[axis]:
+        if len(a) < 4 and len(b) < 4:
+            raise ValueError("periodic drawn-sheet joins require the grid domain length")
+        length = a[3] if len(a) == 4 else b[3]
+        shifts = (0.0, length, -length)
+    gap = xp.minimum.reduce(xp.asarray([
+        xp.maximum(b[0] + shift - a[1], a[0] - b[1] - shift)
+        for shift in shifts]))
+    return gap <= xp.maximum(a[2], b[2])
+
+
+def _sheet_plane_edges(entries, normal, axis, periodic, *, unwrapped=False):
+    """One edge rule for physical and folded footprints.
+
+    Full node masks keep planes separate, including traced f0 planes whose
+    static plane metadata is unavailable. Only in-plane neighbours interact.
+    """
+    neighbour_periodic = (False, False, False) if unwrapped else periodic
+    edge = None
+    for i, (sp, footprint) in enumerate(entries):
+        own = (footprint if axis == normal else
+               footprint & _shift(footprint, axis, neighbour_periodic, -1))
+        edge = own if edge is None else edge | own
+        if axis == normal:
+            continue
+        for other, other_fp in entries[:i]:
+            touch = _sheet_pair_touches(sp, other, axis, periodic)
+            if isinstance(touch, (bool, np.bool_)) and not touch:
+                continue
+            cross = ((footprint & _shift(other_fp, axis, neighbour_periodic, -1))
+                     | (other_fp & _shift(footprint, axis, neighbour_periodic, -1)))
+            edge = edge | (cross & touch)
+    return edge
+
+
 def _unwrapped_sheet_edge_masks(sheets, shape, periodic):
     """Union physical footprints before folding their endpoint nodes."""
     per_axis = {}
@@ -478,16 +524,17 @@ def _unwrapped_sheet_edge_masks(sheets, shape, periodic):
             if tuple(raw.shape) != tuple(full.shape):
                 raise ValueError("SheetSpec unwrapped footprint does not match the periodic grid")
             full = raw & full
-        per_axis[a] = full if a not in per_axis else (per_axis[a] | full)
+        per_axis.setdefault(a, []).append((sp, full))
     edge = [None, None, None]
-    for a, full in per_axis.items():
+    for a, entries in per_axis.items():
         for t in range(3):
             if t == a:
                 if shape[a] != 1:
                     continue
-                mask = _fold_sheet_nodes(full, shape)
+                mask = _fold_sheet_nodes(
+                    _sheet_plane_edges(entries, a, t, periodic, unwrapped=True), shape)
             else:
-                mask = full & _shift(full, t, (False, False, False), -1)
+                mask = _sheet_plane_edges(entries, a, t, periodic, unwrapped=True)
                 mask = _fold_sheet_nodes(mask, shape, edge_axis=t)
             edge[t] = mask if edge[t] is None else (edge[t] | mask)
     return edge
@@ -496,13 +543,9 @@ def _unwrapped_sheet_edge_masks(sheets, shape, periodic):
 def _sheet_edge_masks(sheets, shape, periodic):
     """§1.3: E_t (t != normal) on the sheet plane, both end nodes in F.
 
-    Footprints are UNIONED per normal axis BEFORE the edge rule (two
-    abutting sheets realize seamlessly; a per-sheet application would leave
-    the shared edge live — a slit).  Because a footprint is a full-shape
-    mask that is non-zero only on its own plane and the end-node shift runs
-    along an IN-PLANE axis, the per-axis union is exactly the per-(axis,
-    plane) union the design note asks for, and sheets on adjacent planes
-    stay two films with the normal edge between them live (#690).
+    Each sheet owns its internal edges. Cross-sheet edges require touching
+    drawn extents along that edge's axis; index declarations retain the
+    legacy union. Full footprints isolate different normal planes (#690).
 
     On a length-1 normal axis (the 2-D lane) the region has no thickness
     direction, so the "normal" component is not a through-sheet edge: it
@@ -523,14 +566,15 @@ def _sheet_edge_masks(sheets, shape, periodic):
                 f"SheetSpec footprint shape {tuple(fp.shape)} does not match the "
                 f"grid shape {tuple(shape)}")
         a = sp.normal_axis
-        per_axis[a] = fp if a not in per_axis else (per_axis[a] | fp)
-    for a, F in per_axis.items():
+        per_axis.setdefault(a, []).append((sp, fp))
+    for a, entries in per_axis.items():
         for t in range(3):
             if t == a:
                 if shape[a] == 1:
-                    edge[t] = F if edge[t] is None else (edge[t] | F)
+                    m = _sheet_plane_edges(entries, a, t, periodic)
+                    edge[t] = m if edge[t] is None else (edge[t] | m)
                 continue
-            m = F & _shift(F, t, periodic, -1)
+            m = _sheet_plane_edges(entries, a, t, periodic)
             edge[t] = m if edge[t] is None else (edge[t] | m)
     return edge
 

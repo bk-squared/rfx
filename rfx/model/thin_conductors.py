@@ -345,7 +345,8 @@ def fold_thin_conductor(grid, conductor, materials, pec_mask=None, *,
             normal = sheet_normal_axis(lo, hi)
         traced = any(is_tracer(c) for c in coords[:3])
         if f0 is not None and traced:
-            mask = sheet_footprint_traced(conductor.shape, coords, normal)
+            mask, drawn = sheet_footprint_traced(
+                conductor.shape, coords, normal, sizes, with_drawn=True)
             plane, unwrapped = None, None
             end_rows = sheet_end_rows(conductor.shape, coords, normal)
         else:
@@ -363,6 +364,7 @@ def fold_thin_conductor(grid, conductor, materials, pec_mask=None, *,
                 return materials, pec_mask
             mask, plane = spec.footprint, spec.plane
             unwrapped, end_rows = spec.unwrapped_footprint, spec.end_rows
+            drawn = spec.drawn
         check_sheet_occupancy(mask, normal, lane=lane)
     else:
         admit_dc_plane(conductor, grid)
@@ -403,7 +405,7 @@ def fold_thin_conductor(grid, conductor, materials, pec_mask=None, *,
             sheet_specs.append(SheetImpedanceSpec(
                 mask=mask, normal_axis=normal, g_sheet=conductance,
                 sigma_sheet=sigma_sheet, plane=plane,
-                unwrapped_footprint=unwrapped, end_rows=end_rows))
+                unwrapped_footprint=unwrapped, end_rows=end_rows, drawn=drawn))
         return materials, pec_mask
 
 

@@ -591,7 +591,8 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
         unwrapped = jnp.asarray(fp)
         fp = _fold_sheet_nodes(fp, coords.shape, xp=np)
     return SheetSpec(normal_axis=a, plane=plane, footprint=jnp.asarray(fp),
-                     name=name, unwrapped_footprint=unwrapped, end_rows=end_rows)
+                     name=name, unwrapped_footprint=unwrapped, end_rows=end_rows,
+                     drawn=_sheet_drawn_bounds(lo, hi, a, cell_sizes, grid=grid))
 
 
 def sheet_end_rows(shape, coords: GridCoords, normal_axis: int, *, grid=None):
@@ -691,7 +692,18 @@ def refuse_vaporized_sheets(sheets, *, lane: str = "",
             "at least one cell in an in-plane direction, or refine the mesh.")
 
 
-def sheet_footprint_traced(shape, coords: GridCoords, normal_axis: int):
+def _sheet_drawn_bounds(lo, hi, normal, cell_sizes, *, grid=None, xp=np):
+    """Retain metric bounds and the axis tolerance with the node footprint."""
+    if xp is np:
+        lo, hi = tuple(min(a, b) for a, b in zip(lo, hi)), tuple(max(a, b) for a, b in zip(lo, hi))
+    return tuple(
+        None if t == normal else
+        (lo[t], hi[t], 1e-6 * (float(np.min(cell_sizes[t])) if xp is np else jnp.min(jnp.asarray(cell_sizes[t]))))
+        + ((float(grid.domain[t]),) if 'xyz'[t] in getattr(grid, 'periodic_axes', '') else ())
+        for t in range(3))
+
+
+def sheet_footprint_traced(shape, coords: GridCoords, normal_axis: int, cell_sizes=None, *, with_drawn=False):
     """Sheet footprint on a TRACED mesh (mesh-as-design-variable), no plane.
 
     The plane of a sheet is a static integer under the contract, which a
@@ -701,18 +713,24 @@ def sheet_footprint_traced(shape, coords: GridCoords, normal_axis: int):
     CLOSED on the in-plane axes and one-hot at the nearest node along the
     normal (``argmin`` first occurrence = the lower plane on an exact tie),
     any other shape is its own ``mask_on_coords`` — so eager and traced
-    builds agree on the footprint.
+    builds agree on the footprint. ``with_drawn`` also returns the bounds
+    carrier for the f0 constructor; the default preserves mask-only callers.
     """
     from rfx.materials.thin_conductor import sheet_bounds
     lo, hi = sheet_bounds(shape)
+    sizes = cell_sizes if cell_sizes is not None else tuple(
+        jnp.diff(c) if len(c) > 1 else jnp.ones(1) for c in coords[:3])
+    drawn = None if lo is None else _sheet_drawn_bounds(
+        lo, hi, normal_axis, sizes, xp=jnp)
     if getattr(shape, "corner_lo", None) is None or lo is None:
-        return shape.mask_on_coords(coords.x, coords.y, coords.z)
+        mask = shape.mask_on_coords(coords.x, coords.y, coords.z)
+        return (mask, drawn) if with_drawn else mask
     a = int(normal_axis)
     axes = []
     for t, nodes in enumerate((coords.x, coords.y, coords.z)):
         c = jnp.asarray(nodes)
         if t == a:
-            mid = 0.5 * (float(lo[a]) + float(hi[a]))
+            mid = 0.5 * (lo[a] + hi[a])
             from rfx._grid_metric import nearest_node_index
             k = jnp.clip(jnp.searchsorted(c, mid, side="right") - 1,
                          0, max(c.size - 2, 0))
@@ -724,9 +742,10 @@ def sheet_footprint_traced(shape, coords: GridCoords, normal_axis: int):
             # the node line's own precision: a traced line is float32, and a
             # face drawn on a node otherwise loses that row to rounding.
             band = _node_tie_band(c, jnp)
-            axes.append((c >= float(lo[t]) - band(float(lo[t])))
-                        & (c <= float(hi[t]) + band(float(hi[t]))))
-    return axes[0][:, None, None] & axes[1][None, :, None] & axes[2][None, None, :]
+            axes.append((c >= lo[t] - band(lo[t]))
+                        & (c <= hi[t] + band(hi[t])))
+    mask = axes[0][:, None, None] & axes[1][None, :, None] & axes[2][None, None, :]
+    return (mask, drawn) if with_drawn else mask
 
 
 def _node_tie_band(c, xp):
