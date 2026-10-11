@@ -1016,8 +1016,9 @@ def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None
             from rfx._diagnostic_transport import diagnostic_refusal
             raise diagnostic_refusal(NotImplementedError(message(lane, rows, sim, run_args)), diagnostics)
         raise NotImplementedError(message(lane, rows, sim, run_args))
-    from rfx.boundaries.features import admit_waveguide
+    from rfx.boundaries.features import admit_ntff, admit_waveguide
     from rfx.boundaries.tfsf import admit_simulation
+    admit_ntff(sim, lane=lane)
     admit_waveguide(sim, lane=lane)
     admit_simulation(sim, materials=(run_args or {}).get("tfsf_materials"))
 

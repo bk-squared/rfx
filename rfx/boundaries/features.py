@@ -140,6 +140,35 @@ def _warn_caller(message):
         del frame
 
 
+def admit_ntff(sim, *, lane):
+    """Require an absorbing exterior and a scattered-field NTFF surface."""
+    if sim._ntff is None:
+        return
+    if sim._tfsf is not None and not getattr(sim._tfsf, "closed_box", False):
+        raise ValueError(
+            f"{lane}: an NTFF box needs a scattered-field region around it, but this "
+            "plane wave's total-field region spans the whole cross-section; use "
+            "add_tfsf_source(..., closed_box=True) for a finite scatterer.")
+    periodic = sim._periodic_flags()
+    incompatible = {}
+    for face in resolve_face_depths(sim._boundary_spec, budget=sim._cpml_layers):
+        if periodic["xyz".index(face.name[0])] or face.kind == Kind.PERIODIC:
+            incompatible[face.name] = "periodic"
+        elif face.kind != Kind.ABSORBER:
+            incompatible[face.name] = face.kind.value.lower()
+        elif face.realized == 0:
+            incompatible[face.name] = "zero-depth absorber"
+    if incompatible:
+        descriptions = [f"{face} is {kind}" for face, kind in sorted(incompatible.items())]
+        raise ValueError(
+            f"{lane}: an NTFF box radiates its surface currents into free space, but "
+            + "; ".join(descriptions)
+            + ": the far field would miss their images (a symmetry or ground plane, "
+            "or a periodic wrap, is not reconstructed). Declare an absorbing boundary "
+            "on every face (draw a finite ground plane as geometry), or use "
+            "closed_box=True for a plane wave on a finite scatterer.")
+
+
 def admit_waveguide(sim, *, lane="dispatch"):
     """Refuse undeclared guide models without changing a realized grid."""
     if not sim._waveguide_ports:

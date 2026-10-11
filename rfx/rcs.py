@@ -472,6 +472,25 @@ def compute_rcs(
         nz=grid.nz,
         method="methodB" if _oblique else "bloch",
     )
+    # This calculator owns its NTFF request and bypasses Simulation dispatch.
+    from types import SimpleNamespace
+    from rfx.boundaries.depths import Kind, grid_face_depths
+    from rfx.boundaries.features import admit_ntff
+    from rfx.boundaries.spec import BoundarySpec
+    faces = grid_face_depths(grid)
+    declaration = {
+        axis: {side: (boundary if face.kind == Kind.ABSORBER else face.kind.value.lower())
+               for side in ("lo", "hi") for face in faces if face.name == f"{axis}_{side}"}
+        for axis in "xyz"
+    }
+    for face in faces:
+        if face.kind == Kind.ABSORBER and boundary in ("cpml", "upml"):
+            declaration[face.name[0]][face.name[2:] + "_thickness"] = face.realized
+    admit_ntff(SimpleNamespace(
+        _ntff=True, _tfsf=tfsf_cfg,
+        _boundary_spec=BoundarySpec.from_dict(declaration), _cpml_layers=grid.cpml_layers,
+        _periodic_flags=lambda: tuple(axis in grid.periodic_axes or (_oblique and axis == "z")
+                                      for axis in "xyz")), lane="compute_rcs")
     if reference_index is not None and not tfsf_cfg.x_lo <= reference_index <= tfsf_cfg.x_hi:
         raise ValueError("phase_reference.x must lie inside the total-field slab")
 
