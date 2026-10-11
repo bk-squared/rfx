@@ -82,12 +82,14 @@ CPU multi-device runs are not affected and are not refused. Three or more GPUs: 
 
 ### Subpixel smoothing makes a curved high-contrast dielectric's resonance converge slowly, and can be worse than no smoothing.
 
-`subpixel_smoothing=True` keeps only the diagonal of the smoothed inverse-permittivity tensor, so a field tangential to an
-interface that is not aligned with the grid sees the wrong permittivity in the boundary cells. On a curved high-contrast
-body (an eps_r 38 rod or cylinder, a dielectric resonator) the resonant frequency is off by about 1 % on practical meshes,
-and closes slowly with refinement; at some meshes it is further off than the same model without smoothing. Grid-aligned
-faces are not affected. Until the fix lands, judge such a resonance by a mesh series of at least three refinements, and
-compare it with `subpixel_smoothing=False`.
+Every `subpixel_smoothing` setting (`True` and `"kottke_pec"`, on uniform and graded meshes) keeps only the diagonal of the
+smoothed inverse-permittivity tensor, so a field component oblique to an interface that is not grid-aligned sees the wrong
+permittivity in the boundary cells. On a curved high-contrast body (an eps_r 38 rod or cylinder, a dielectric resonator)
+the resonant frequency is off by about 1 % on practical meshes and closes slowly with refinement; at some meshes it is
+further off than the same model without smoothing (measured on the uniform `True` setting; the others share the code).
+Grid-aligned faces are not affected. Until the fix lands, judge such a resonance by a mesh series of at least three
+refinements and compare it with `subpixel_smoothing=False`; if the two series disagree, neither has converged — refine
+further, and do not take the unsmoothed series as the reference.
 Tracker: #1632
 
 ### A Drude or Lorentz medium has its own time-step limit, and a medium above it is refused.
