@@ -173,3 +173,50 @@ def test_waveguide_calculator_warns_and_drops_ntff(monkeypatch):
     with pytest.warns(UserWarning, match=r"add_ntff_box.*far-field"):
         with pytest.raises(_GridBuildIntercept):
             sim.compute_waveguide_s_matrix(normalize=True)
+
+
+def test_material_fit_forms_no_far_field(monkeypatch):
+    from tests.unit.autodiff.test_differentiable_material_fit_inputs import (
+        _acceptance_fixture, _FDTDReached, _fit_to_scan,
+    )
+
+    def factory(eps_inf, debye_poles, lorentz_poles):
+        sim = _acceptance_fixture(eps_inf, debye_poles, lorentz_poles, boundary="pec")
+        sim.add_ntff_box((.002, .002, .002), (.010, .008, .006), freqs=[3e9])
+        return sim
+
+    assert isinstance(_fit_to_scan(monkeypatch, factory), _FDTDReached)
+
+
+def test_graded_waveguide_drops_ntff_before_runner(monkeypatch):
+    from tests.unit.autodiff.test_waveguide_nu_flux_ad import _wr90_nu_sim
+
+    sim, domain_x = _wr90_nu_sim()
+    sim.add_ntff_box((.002, .002, .002), (domain_x - .002, .02, .008), freqs=[10e9])
+    registered = sim._ntff
+
+    class RunnerReached(Exception):
+        pass
+
+    def reached(device, **kwargs):
+        assert device is not sim
+        assert device._ntff is None
+        assert sim._ntff is registered
+        raise RunnerReached
+
+    monkeypatch.setattr("rfx.runners.nonuniform.run_nonuniform_path", reached)
+    with pytest.warns(UserWarning, match=r"add_ntff_box.*far-field"):
+        with pytest.raises(RunnerReached):
+            sim.compute_waveguide_s_matrix(normalize=True, n_steps=2)
+    assert sim._ntff is registered
+
+
+@pytest.mark.parametrize("entry", ("run", "forward"))
+def test_adi_ntff_refusal_precedes_exterior(entry, monkeypatch):
+    sim = Simulation(freq_max=10e9, domain=(.02, .02, .02), dx=.002,
+                     boundary="pec", solver="adi")
+    sim.add_ntff_box((.002, .002, .002), (.018, .018, .018), freqs=[5e9])
+    forbid_field_loops(monkeypatch)
+    with pytest.raises(ValueError) as caught:
+        getattr(sim, entry)(n_steps=1)
+    assert str(caught.value) == "solver='adi' does not support NTFF accumulation yet"
