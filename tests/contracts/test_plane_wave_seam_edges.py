@@ -60,6 +60,30 @@ def test_plane_wave_step_edges_match(monkeypatch, kind, polarization, method, an
               f"shape={actual.shape}, run={actual.sum()}, forward={expected.sum()}")
         assert actual.dtype == expected.dtype == np.bool_
         np.testing.assert_array_equal(actual, expected, err_msg=component)
+    if kind == "sheet" and angle == 0:
+        # Independent of the shared realization: a sheet wrapped on y and z owns
+        # every tangential edge of its plane, pads included (ny * nz of the grid).
+        ny, nz = run[0].shape[1:]
+        assert [int(m.sum()) for m in run] == [0, ny * nz, ny * nz]
+
+
+def test_plane_wave_decay_step_edges(monkeypatch):
+    """run(until_decay=) steps through its own host loop; its step input carries the same edges."""
+    import rfx.simulation as kernel
+    captured = []
+    original = kernel.core_step_invariants
+
+    def capture(ctx):
+        captured.append(tuple(np.asarray(mask).copy() for mask in ctx.pec_edge_masks))
+        return original(ctx)
+
+    monkeypatch.setattr(kernel, "core_step_invariants", capture)
+    _scene().run(n_steps=40, until_decay=1e-3, decay_monitor_component="ez",
+                 decay_monitor_position=(0.030, 0.005, 0.005))
+    assert captured
+    ny, nz = captured[0][0].shape[1:]
+    for edges in captured:
+        assert [int(m.sum()) for m in edges] == [0, ny * nz, ny * nz]
 
 
 def test_full_span_sheet_transmission_below_minus_40_db():
@@ -68,7 +92,10 @@ def test_full_span_sheet_transmission_below_minus_40_db():
     incident = np.asarray(reference.run(n_steps=700).time_series).reshape(-1)
     transmitted = np.asarray(_scene().run(n_steps=700).time_series).reshape(-1)
     # 5--15 GHz source band, excluding its upper sixth: 5--13 GHz.
-    # Literal independent opacity bar; no forward() result sets it.
+    # Literal independent opacity bar; no forward() result sets it. With the
+    # seam open this reads -13 to -21 dB; closed, the level (-51 to -59 dB) is
+    # set by the 8-layer x absorber returning the shadow wave to the probe
+    # (16 layers: -87 to -98 dB), so an absorber regression can also trip it.
     frequencies = np.linspace(5e9, 13e9, 17)
     phase = np.exp(-2j * np.pi * frequencies[:, None] * np.arange(700) * dt)
     incident_dft = phase @ incident
