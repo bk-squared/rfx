@@ -62,8 +62,11 @@ Evidence: docs/research_notes/2026-09-13_issue947_oracle_repair.md.
 Current record (2026-09-25): alpha_fit at 10 GHz is 0.74950 Np/m,
 the closed-form distance is 0.28945, and the guide sqrt-sigma ratio is
 0.5970. The free-standing transmission ratio is 0.5026. The guide leg
-retains xfail(strict=False) pending the fixture fix; its measured value
-has a separate regression lock. The dated records below retain the
+no longer has a band check (retired 2026-10-12, tracker 1501): #700
+showed the guide-fit ratio is a two-mode transient of this fixture, so
+a band on it says nothing about the sqrt law either way. Its value stays
+pinned by test_o4a_guide_ratio_regression_lock; the sqrt law is judged
+by the free-standing leg. The dated records below retain the
 values and marker states they measured, not the current pins.
 
 Envelope provenance and R2-STOP record (measured 2026-08-19, this file's
@@ -236,7 +239,6 @@ issue #700 verdict comment, 2026-08-24.
 import warnings
 
 import numpy as np
-import pytest
 import jax.numpy as jnp
 
 from rfx import Box, GaussianPulse, Simulation
@@ -310,10 +312,11 @@ O3_FIELD_FIT_RMS_GATE = 0.01
 # O4a band: Leontovich predicts alpha ~ sqrt(1/sigma), so a x4 in
 # sigma_bulk halves the loss -> 0.50. A DC (thickness-fold) sheet would
 # predict 0.25. The [0.40, 0.60] window separates the two models and is
-# the HISTORICAL band — it is not widened here. See the two O4a tests: the
-# clean transmission oracle passes it (0.5026); the current guide fit (0.5970)
-# also lies inside, 0.0030 from its upper edge. Its unresolved fixture
-# marker remains xfail(strict=False), with a separate measured-value lock.
+# the HISTORICAL band — it is not widened here. The clean transmission
+# oracle passes it (0.5026). The guide fit (0.5970) also lies inside, 0.0030
+# from its upper edge, but its band check was retired on 2026-10-12: #700's
+# two-mode transient explains that ratio qualitatively (not quantified for
+# it), so the band judges the fixture, not the sqrt law (tracker 1501).
 O4A_BAND = (0.40, 0.60)
 # The closed-form pairing (|alpha/alpha_analytic - 1| vs a 0.15 cap,
 # xfail(strict=True) since the 2026-08-19 R2-STOP) is RETIRED as the
@@ -825,8 +828,8 @@ def test_sqrt_sigma_discriminator_o4a():
     #677 retarget: the discriminant reads the clean free-standing-sheet
     transmission oracle, where the current x4 ratio is 0.5026. The guide-fit
     ratio was 0.6089 under the node-thin operator and now reads 0.5970.
-    It is asserted against the same unwidened band in the
-    xfail(strict=False) sibling below, separately from this test's pass.
+    Its band check was retired on 2026-10-12 (two-mode fixture transient,
+    #700); its value is pinned by test_o4a_guide_ratio_regression_lock.
     Moving the tooth to the uncontaminated observable is a
     retarget with a named root cause (the guide profile is
     non-exponential — see the #677 RE-MEASURE record and the O3 xfail
@@ -839,42 +842,6 @@ def test_sqrt_sigma_discriminator_o4a():
     assert lo <= ratio_t <= hi, ratio_t
 
 
-@pytest.mark.xfail(
-    strict=False, raises=AssertionError,
-    reason="#1231 (2026-09-25): with the plates continued into the absorber "
-           "the guide-fit ratio reads 0.597, 0.003 inside the band's upper "
-           "edge; the free-standing sheet oracle gives 0.5026, so the "
-           "guide fixture's span-average contamination this marker describes "
-           "is unchanged and a pass at the band edge is not the fix it waits for. "
-           "#677 re-measure (2026-08-19): the GUIDE-fit sqrt-law ratio is "
-           "0.6089, outside the unwidened historical O4A_BAND "
-           "[0.40, 0.60] — historically RED without widening the band. "
-           "The independent "
-           "free-standing-sheet transmission oracle reproduces the x4 "
-           "ratio at 0.5026 (test_sqrt_sigma_discriminator_o4a) and the "
-           "closed form to 4.4% frequency-flat, so the excursion is the "
-           "guide fixture's span-average contamination, not the sheet's "
-           "sigma scaling. Fix the guide comparator/fixture before "
-           "touching the operator. Do NOT widen O4A_BAND; a future pass "
-           "must remove this marker explicitly. The measured value itself "
-           "is regression-locked GREEN in "
-           "test_o4a_guide_ratio_regression_lock, so drift away from "
-           "0.5970 surfaces there rather than hiding under this xfail.",
-)
-def test_sqrt_sigma_discriminator_o4a_guide_leg():
-    """O4a guide leg (inside the contract band; unresolved fixture marker).
-
-    #700 scope note: the stub-supermode mechanism that the O3 re-pair
-    quantified (see O3 MODEL RE-PAIR in the module docstring)
-    qualitatively explains this excursion too — the guide-fit ratio reads
-    a two-mode transient whose launch split moves with sigma — but it is
-    NOT quantified for this observable; #700 deliberately leaves this
-    gate untouched."""
-    ratio = _guide_sqrt_ratio()
-    lo, hi = O4A_BAND
-    assert lo <= ratio <= hi, ratio
-
-
 def test_o4a_guide_ratio_regression_lock():
     """DIAGNOSTIC pin (not a physics pass): the guide-fit sqrt-law ratio
     stays within +-5% of ``MEASURED_GUIDE_SQRT_RATIO``.
@@ -882,9 +849,8 @@ def test_o4a_guide_ratio_regression_lock():
     Same +-5% relative convention as ``test_alpha_envelope_regression_lock``
     on this fixture's other measured quantities — a lock on what WAS
     measured, deliberately not a two-sided physics window centred anywhere
-    convenient. It is GREEN on purpose: an assertion buried inside the
-    xfail(strict=False) sibling would be swallowed by the expected failure,
-    so drift in either direction has to be checked from outside it."""
+    convenient. Since 2026-10-12 it is the only check on the guide-fit
+    ratio (the band check was retired: two-mode fixture transient, #700)."""
     ratio = _guide_sqrt_ratio()
     assert abs(ratio / MEASURED_GUIDE_SQRT_RATIO - 1.0) <= 0.05, (
         f"guide sqrt-law ratio moved: {ratio:.5f} vs recorded "
