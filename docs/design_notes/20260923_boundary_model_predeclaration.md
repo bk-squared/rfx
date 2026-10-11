@@ -744,3 +744,17 @@ document stays explicit. An imported graded `boundary='cpml'` document is theref
 mesh's explicit-kind message, not by point 2. No public path produces unknown provenance on the graded mesh; the
 contract states that row by setting the internal flag, and states the imported graded document as its own row,
 compared with the uniform mesh's explicit `cpml`. The importer is unchanged.
+
+Correction (2026-10-12, leader, after the independent review). Point 2 names two differences; the review found two more
+that the contract's fixture (a whole number of cells) cannot see. Both are named in the contract with their current
+answers, and both are the graded refusal being the physically right answer while the uniform mesh admits a port without
+guide walls:
+- A cross-section that is not a whole number of cells (WR-90, 22.86 × 10.16 mm, at dx = 1, 1.5 or 2 mm) with
+  `boundary='cpml'`: the uniform mesh rounds the transverse domain up (24 mm at 2 mm), so the port is not full-aperture
+  and is admitted with absorbing side walls; the graded mesh rounds to the nearest cell (22 mm), the port is
+  full-aperture and is refused by point 1. Cause: the two cell-count rules (S1 boundaries PR3b-1 makes them one and adds
+  the 1 % verdict on a guide's realized cross-section on every path). Until then the contract states this row per mesh.
+- Two full-aperture ports on perpendicular axes (+x and +y) with absorbers on x and y: the uniform mesh admits it,
+  because its guide faces (`guide_faces`) keep only faces with zero absorber depth and each port's axis faces carry the
+  other port's absorber; the graded mesh refuses. With absorbers on every face both refuse, naming different faces.
+  Neither declaration is a guide; the uniform admission is a pre-existing uniform defect, listed for PR3b-2b.
