@@ -32,7 +32,7 @@ result = sim.run(n_steps=...)                                 # solve -> Result
 | `add_source(position, component, *, waveform, amplitude_kind="current")` | point source, no impedance | [Sources & Ports](/rfx/api/sources-ports/#sources) |
 | `add_tfsf_source(...)` | plane wave | [Sources & Ports](/rfx/api/sources-ports/#sources) |
 | `add_port`, `add_msl_port`, `add_waveguide_port`, `add_coaxial_port` | ports for S-parameters | [Sources & Ports](/rfx/api/sources-ports/#ports) |
-| `add_probe`, `add_dft_plane_probe`, `add_flux_monitor`, `add_ntff_box` | observables | [Results & Observables](/rfx/api/results-observables/#observables) |
+| `add_probe`, `add_dft_plane_probe`, `add_flux_monitor`, `add_ntff_box` | observables | [Results & Observables](/rfx/api/results/#observables) |
 
 ## Checking and running
 
@@ -42,7 +42,7 @@ result = sim.run(n_steps=...)                                 # solve -> Result
 | `fidelity_report()` | where each shape landed on the grid | [Simulation](/rfx/api/simulation/#checking-before-you-run) |
 | `run(n_steps= / num_periods= / until_decay=, ...)` | `Result` | [Simulation](/rfx/api/simulation/#run) |
 | `forward(eps_override=..., ...)` | `ForwardResult`, differentiable with JAX | [Simulation](/rfx/api/simulation/#forward-the-differentiable-path) |
-| `plan_mesh(...)`, `Simulation.auto(...)` | a proposed mesh and domain | [Automation](/rfx/api/automation/) |
+| `plan_mesh(...)`, `Simulation.auto(...)` | a proposed mesh and domain | [Automation](/rfx/api/functions/) |
 
 ## S-parameters
 
@@ -64,10 +64,10 @@ ports are not computed by `run(compute_s_params=True)`. Details:
 
 | Object | Main contents | Reference |
 |---|---|---|
-| `Result` | `time_series`, `dt`, `settling_db`, `s_params`, `freqs`, `flux_monitors`, `dft_planes`, `ntff_data`, `snapshots`; `find_resonances()`, `s11()`, `s_db()` | [Results & Observables](/rfx/api/results-observables/#result) |
-| `ForwardResult` | `time_series`, `s_params`, `dft_planes`, `ntff_data` | [Results & Observables](/rfx/api/results-observables/#forwardresult) |
-| S-parameter results | `S` or `s_params` indexed `[receiver, driven, freq]` | [Results & Observables](/rfx/api/results-observables/#s-parameter-results) |
+| `Result` | `time_series`, `dt`, `settling_db`, `s_params`, `freqs`, `flux_monitors`, `dft_planes`, `ntff_data`, `snapshots`; `find_resonances()`, `s11()`, `s_db()` | [Results & Observables](/rfx/api/results/#result) |
+| `ForwardResult` | `time_series`, `s_params`, `dft_planes`, `ntff_data` | [Results & Observables](/rfx/api/results/#forwardresult) |
+| S-parameter results | `S` or `s_params` indexed `[receiver, driven, freq]` | [Results & Observables](/rfx/api/results/#s-parameter-results) |
 
 Before you trust a spectrum, check `result.settling_db` (below about −40 dB).
 For what is supported, limited or refused, see
-[Support Boundaries](/rfx/api/support-boundaries/).
+[Support Boundaries](/rfx/support/).

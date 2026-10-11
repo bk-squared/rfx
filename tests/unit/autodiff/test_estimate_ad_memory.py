@@ -1176,7 +1176,7 @@ def test_ad_memory_preflight_unfit_branch_is_diagnostic_only():
 
 @pytest.mark.docs_consistency
 def test_memory_reduction_docs_separate_planning_from_certificate_evidence():
-    doc = Path("docs/public/guide/memory-reduction.mdx").read_text()
+    doc = Path("docs/public/run/memory-and-speed.mdx").read_text()
     assert "`static_estimate`" in doc
     assert "`calibrated_conservative_plan`" in doc
     assert "`static_ad_explainability`" in doc

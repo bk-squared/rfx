@@ -9,8 +9,8 @@ This page lists the excitation calls, the port families and the S-parameter
 calculator for each family. A **source** injects a field and has no
 impedance. A **port** also terminates the line in a known impedance, so rfx can
 compute S-parameters. Worked examples are in the
-[Sources and Ports guide](/rfx/guide/sources-ports/) and
-[Probes and S-Parameters](/rfx/guide/probes-sparams/).
+[Sources and Ports guide](/rfx/model/ports/) and
+[Probes and S-Parameters](/rfx/measure/s-parameters/).
 
 ## Waveforms
 
@@ -65,7 +65,7 @@ report axial ratio or sense.
 For the plane wave on a graded mesh, only normal incidence along `+x` or `-x`
 is valid, and only when x itself is uniform. A graded x axis still runs, with
 a preflight warning. Far-field and RCS use is covered in
-[Far-Field and RCS](/rfx/guide/farfield-rcs/).
+[Far-Field and RCS](/rfx/measure/far-field-and-rcs/).
 
 ## Ports
 
@@ -247,7 +247,7 @@ the waveform. See the complete example below.
 | coax, one-port | `compute_coaxial_line_reflection(*, termination="short", n_steps=6000, freqs=None, n_freqs=11, cpml_axes="xyz", probe_count=12, probe_start_cells=8, probe_spacing_cells=4, feed_impedance=None, dut_impedance=None, eps_scale=None, ...)` | `CoaxialLineReflectionResult` |
 | coax, two-port | `compute_coaxial_two_port(*, n_steps=6000, freqs=None, n_freqs=11, cpml_axes="xyz", probe_count=12, feed_impedance=None, eps_scale=None, ...)` | `CoaxialTwoPortResult` |
 
-Result fields are listed on [Results & Observables](/rfx/api/results-observables/#s-parameter-results).
+Result fields are listed on [Results & Observables](/rfx/api/results/#s-parameter-results).
 `run(compute_s_params=True)` handles lumped and wire ports only. It does not
 dispatch to the other families.
 
@@ -363,7 +363,7 @@ print(np.abs(refl.s11))
   refused) came from a line in a closed metal can and do not reproduce.
 - **Graded meshes.** Lumped-port S-parameters and coaxial ports raise on a
   graded mesh. Microstrip and waveguide calculators run there but are
-  experimental. See [Support Boundaries](/rfx/api/support-boundaries/).
+  experimental. See [Support Boundaries](/rfx/support/).
 - **Microstrip bins.** Exclude every frequency bin where any entry of
   `MSLSMatrixResult.reliable` is `False`: S is solved jointly across drives, so
   the whole slice `S[:, :, k]` is affected. A `True` entry does not guarantee

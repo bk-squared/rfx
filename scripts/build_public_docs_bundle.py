@@ -283,7 +283,7 @@ def symbol_entry(obj: object, name: str, root: Path, sha: str, base_url: str) ->
         entry["reference_url"] = f"{base_url}/api/generated/rfx.html#{anchor}"
     else:
         entry["reference_url"] = f"{base_url}/api/generated/rfx.html#{name.removeprefix('rfx.')}"
-    entry["support_url"] = f"{base_url}/api/support-boundaries/"
+    entry["support_url"] = f"{base_url}/support/"
     return entry
 
 
@@ -474,7 +474,7 @@ def build(root: Path, output: Path, base_url: str, channel: str, source_sha: str
                 "and a historical visualization do not establish accuracy or a supported gradient.", "", "## API and support", "",
                 f"- [Typed API inventory]({base_url}/api/inventory.json): signatures, defaults, annotations, docstrings and pinned sources.",
                 f"- [Deep API reference]({base_url}/api/generated/rfx.html)",
-                f"- [Support boundaries]({base_url}/markdown/api/support-boundaries.md)",
+                f"- [Support boundaries]({base_url}/markdown/support.md)",
                 *[f"- [{s['source_path']}]({s['url']})" for s in support],
                 f"- [Build manifest]({base_url}/docs-manifest.json): source SHA and file hashes.",
                 f"- [Combined manual]({base_url}/llms-full.txt)", "", *agent_index(pages), *showcase, "## Manual and examples", ""]

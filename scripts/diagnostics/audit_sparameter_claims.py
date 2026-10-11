@@ -36,7 +36,7 @@ CURRENT_DOC_REQUIRED_SNIPPETS = {
         "uniform Cartesian Yee",
         "compute_coaxial_line_reflection(...)"
     ],
-    "docs/public/api/support-boundaries.mdx": [
+    "docs/public/support/index.mdx": [
         "compute_msl_s_matrix()",
         "compute_waveguide_s_matrix()",
         "compute_coaxial_line_reflection(...)"

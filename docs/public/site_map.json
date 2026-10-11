@@ -12,75 +12,95 @@
       ]
     },
     {
-      "label": "Learn",
+      "label": "Start",
       "items": [
-        "rfx/guide",
-        "rfx/guide/visual-manual",
-        "rfx/guide/installation",
-        "rfx/guide/first-run",
-        "rfx/guide/quickstart",
-        "rfx/guide/concepts",
-        "rfx/examples",
-        "rfx/guide/first-patch",
-        "rfx/gallery/boundary-reflection",
-        "rfx/gallery/dielectric-interface",
-        "rfx/gallery/cavity-standing-wave"
+        "rfx/start/install",
+        "rfx/start/first-simulation",
+        "rfx/start/concepts",
+        "rfx/start/terms",
+        "rfx/start/upgrading",
+        "rfx/start/coming-from-other-solvers"
       ]
     },
     {
-      "label": "Model & measure",
+      "label": "Declare the model",
       "items": [
-        "rfx/guide/materials-geometry",
-        "rfx/guide/sources-ports",
-        "rfx/guide/probes-sparams",
-        "rfx/guide/waveguide-ports",
-        "rfx/guide/nonuniform-mesh",
-        "rfx/guide/visualization-and-analysis",
-        "rfx/guide/farfield-rcs",
-        "rfx/guide/memory-reduction",
-        "rfx/guide/adi-solver"
+        "rfx/model/domain-mesh",
+        "rfx/model/boundaries",
+        "rfx/model/materials",
+        "rfx/model/conductors",
+        "rfx/model/sources",
+        "rfx/model/ports"
+      ]
+    },
+    {
+      "label": "Check the model on the grid",
+      "items": [
+        "rfx/check/model-on-grid",
+        "rfx/check/refusals"
+      ]
+    },
+    {
+      "label": "Run",
+      "items": [
+        "rfx/run/run-and-forward",
+        "rfx/run/memory-and-speed",
+        "rfx/run/multi-device"
+      ]
+    },
+    {
+      "label": "Measure",
+      "items": [
+        "rfx/measure/probes-and-fields",
+        "rfx/measure/s-parameters",
+        "rfx/measure/far-field-and-rcs",
+        "rfx/measure/resonances",
+        "rfx/measure/plots-and-export"
+      ]
+    },
+    {
+      "label": "Check the evidence",
+      "items": [
+        "rfx/evidence/simulation-time",
+        "rfx/evidence/mesh-convergence",
+        "rfx/evidence/gradients",
+        "rfx/evidence/accuracy-bar"
       ]
     },
     {
       "label": "Design",
       "items": [
-        "rfx/guide/autodiff-adjoint",
-        "rfx/guide/inverse-design",
-        "rfx/guide/gradient-behavior",
-        "rfx/guide/parametric-sweeps",
-        "rfx/guide/tutorial-patch-antenna"
+        "rfx/design/gradients",
+        "rfx/design/design-regions",
+        "rfx/design/optimization",
+        "rfx/design/sweeps"
       ]
     },
     {
-      "label": "API",
+      "label": "Support and limits",
       "items": [
-        "rfx/api",
-        "rfx/api/simulation",
-        "rfx/api/geometry-materials",
-        "rfx/api/sources-ports",
-        "rfx/api/results-observables",
-        "rfx/api/automation",
-        "rfx/guide/api-reference",
-        "rfx/api/generated",
-        "rfx/api/machine-readable"
+        "rfx/support",
+        "rfx/support/known-limitations"
       ]
     },
     {
-      "label": "Evidence",
+      "label": "Validation",
       "items": [
         "rfx/validation",
-        "rfx/api/support-boundaries",
-        "rfx/validation/cross-solver",
-        "rfx/validation/recommended-configuration",
-        "rfx/guide/validation",
-        "rfx/guide/tutorial-convergence",
-        "rfx/guide/benchmarks"
+        "rfx/validation/cross-solver"
       ]
     },
     {
-      "label": "Archive",
+      "label": "Examples and gallery",
       "items": [
+        "rfx/examples",
+        "rfx/examples/first-patch",
+        "rfx/examples/patch-antenna",
         "rfx/gallery",
+        "rfx/gallery/visual-manual",
+        "rfx/gallery/boundary-reflection",
+        "rfx/gallery/dielectric-interface",
+        "rfx/gallery/cavity-standing-wave",
         "rfx/gallery/waveguide-taper",
         "rfx/gallery/microstrip-notch",
         "rfx/gallery/beam-steering",
@@ -90,11 +110,38 @@
       ]
     },
     {
+      "label": "API",
+      "items": [
+        "rfx/api",
+        "rfx/api/simulation",
+        "rfx/api/results",
+        "rfx/api/functions",
+        "rfx/api/generated",
+        "rfx/api/machine-readable"
+      ]
+    },
+    {
       "label": "Project",
       "items": [
-        "rfx/guide/migration",
-        "rfx/guide/changelog",
-        "rfx/guide/contributing"
+        "rfx/project/changelog",
+        "rfx/project/contributing",
+        "rfx/project/citation"
+      ]
+    },
+    {
+      "label": "Being merged for 2.0",
+      "items": [
+        "rfx/guide",
+        "rfx/guide/first-run",
+        "rfx/guide/waveguide-ports",
+        "rfx/guide/adi-solver",
+        "rfx/guide/gradient-behavior",
+        "rfx/api/geometry-materials",
+        "rfx/api/sources-ports",
+        "rfx/guide/api-reference",
+        "rfx/validation/recommended-configuration",
+        "rfx/guide/validation",
+        "rfx/guide/benchmarks"
       ]
     }
   ]

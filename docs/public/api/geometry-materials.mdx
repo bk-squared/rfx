@@ -7,7 +7,7 @@ sidebar:
 
 This page lists the calls that define what is in the domain: materials,
 shapes, metal sheets and dispersive media. The guide
-[Materials and Geometry](/rfx/guide/materials-geometry/) explains how shapes
+[Materials and Geometry](/rfx/model/materials/) explains how shapes
 land on the grid and which kind of conductor to use. All lengths are in metres
 and conductivity is in S/m.
 
@@ -151,5 +151,5 @@ a PEC volume already gets both faces.
   check with `fidelity_report()`.
 - A sheet declared through `add_thin_conductor` must be one grid plane thick.
   A PEC shape that is thinner than a cell but not zero is ambiguous; see
-  [How conductors land on the lattice](/rfx/guide/materials-geometry/#how-conductors-land-on-the-lattice).
+  [How conductors land on the lattice](/rfx/model/materials/#how-conductors-land-on-the-lattice).
 - `MeshShape` geometry is not differentiable.

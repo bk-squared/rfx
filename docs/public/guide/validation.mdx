@@ -31,7 +31,7 @@ Two limits apply to all of this evidence:
 - **A passing case covers its own setup.** The geometry, mesh, band, port
   family and observable of that case. It does not cover your structure.
 - **Some features have little or no evidence.** The support tables in
-  [Support Boundaries](/rfx/api/support-boundaries/) say which are
+  [Support Boundaries](/rfx/support/) say which are
   *recommended*, which are *limited* to stated conditions, and which are
   outside the documented scope. The maintainer
   [support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md)
@@ -55,7 +55,7 @@ through this list.
    must be longer still: `rfx.gradient_record_length_witness` checks that a
    gradient does not change when the record is doubled.
 3. **Mesh convergence.** Refine the mesh and report how far your number moves,
-   not only the finest answer. [Convergence Study](/rfx/guide/tutorial-convergence/)
+   not only the finest answer. [Convergence Study](/rfx/evidence/mesh-convergence/)
    walks through one.
 4. **Physical sanity.** A passive structure has `|S| ≤ 1`. A reciprocal one
    has `S21 = S12`. A lossless one conserves power, `|S11|² + |S21|² = 1` or
@@ -65,7 +65,7 @@ through this list.
    otherwise with another solver or a measurement of your structure.
 6. **Stay inside the support boundaries.** Use the calculator that matches
    your port family, within its stated limits. See
-   [Support Boundaries](/rfx/api/support-boundaries/).
+   [Support Boundaries](/rfx/support/).
 
 ## Example: a cavity against its closed form
 
@@ -132,7 +132,7 @@ no agreement figure is quoted until that run is in the repository.
 | Question | Page |
 |---|---|
 | Which cases compare rfx with another solver, and what do they show? | [Benchmarks](/rfx/guide/benchmarks/) |
-| Is this feature or combination supported? | [Support Boundaries](/rfx/api/support-boundaries/) |
+| Is this feature or combination supported? | [Support Boundaries](/rfx/support/) |
 | Where do I start, and which calculators have narrower limits? | [Recommended Configuration](/rfx/validation/recommended-configuration/) |
 | How do I run a comparison script, and what do its exit codes mean? | [Cross-Solver Validation](/rfx/validation/cross-solver/) |
 | What is currently known to be wrong? | [known limitations](https://github.com/bk-squared/rfx/blob/main/docs/guides/known_limitations.md) on GitHub |
