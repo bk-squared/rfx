@@ -200,9 +200,10 @@ from rfx.lumped import LumpedRLCSpec, RLCState, RLCCellMeta
 from rfx.nonuniform import NonUniformGrid, make_nonuniform_grid, run_nonuniform, make_current_source, make_band_profile
 from rfx.auto_config import auto_configure, SimConfig, analyze_features, smooth_grading, apply_thirds_rule
 from rfx.mesh_planner import MeshPlan, plan_mesh, plan_simulation_mesh
+# The harminv names are deprecated 2.x aliases: still attributes, no longer on the star surface.
 from rfx.harminv import (
-    matrix_pencil, matrix_pencil_from_probe, matrix_pencil_record_duration, MatrixPencilMode,
-    harminv, harminv_from_probe, harminv_record_duration, HarminvMode,
+    matrix_pencil, matrix_pencil_from_probe, MatrixPencilMode,
+    harminv, harminv_from_probe, HarminvMode,
 )
 from rfx.probes.probes import (
     wire_port_voltage, wire_port_current,
@@ -345,8 +346,7 @@ __all__ = [
     # probes / measurements / spectral
     "wire_port_voltage", "wire_port_current",
     "FluxMonitor", "flux_spectrum", "subtract_flux_monitors",
-    "matrix_pencil", "matrix_pencil_from_probe", "matrix_pencil_record_duration", "MatrixPencilMode",
-    "harminv", "harminv_from_probe", "harminv_record_duration", "HarminvMode",
+    "matrix_pencil", "matrix_pencil_from_probe", "MatrixPencilMode",
     # eigenmode (optional scipy)
     "WaveguideMode", "solve_waveguide_modes",
     # lumped

@@ -1,11 +1,15 @@
 """Matrix pencil names and the deprecated 2.x aliases have identical results."""
 
+import inspect
 import warnings
 
 import numpy as np
 import pytest
 
 import rfx
+from rfx.harminv import harminv_record_duration, matrix_pencil_record_duration
+
+_module = __import__("sys").modules["rfx.harminv"]  # ``rfx.harminv`` is the function
 
 
 _DT = 1e-11  # 10 ps; 5.12 ns of float64 samples.
@@ -63,8 +67,8 @@ def test_matrix_pencil_legacy_modes_are_bitwise_identical(settings):
 def test_matrix_pencil_record_duration_legacy_is_identical(settings):
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        new = rfx.matrix_pencil_record_duration(512, _DT, _BAND[1], **settings)
-    old = _legacy_call(rfx.harminv_record_duration, "matrix_pencil_record_duration",
+        new = matrix_pencil_record_duration(512, _DT, _BAND[1], **settings)
+    old = _legacy_call(harminv_record_duration, "matrix_pencil_record_duration",
                        512, _DT, _BAND[1], **settings)
     assert old == new
     assert np.float64(old).tobytes() == np.float64(new).tobytes()
@@ -85,9 +89,35 @@ def test_matrix_pencil_from_probe_legacy_modes_are_bitwise_identical(settings):
     _assert_identical_modes(old, new)
 
 
+_PAIRS = (("harminv", "matrix_pencil"), ("harminv_from_probe", "matrix_pencil_from_probe"),
+          ("harminv_record_duration", "matrix_pencil_record_duration"))
+
+
+@pytest.mark.parametrize("old_name, new_name", _PAIRS)
+def test_legacy_signature_equals_new_and_forwards_every_argument(monkeypatch, old_name, new_name):
+    old, new = getattr(_module, old_name), getattr(_module, new_name)
+    assert inspect.signature(old) == inspect.signature(new)
+    # Call the old name with a distinct marker per parameter; the new function, replaced by a
+    # recorder, must receive every one unchanged (a dropped keyword would arrive as its default).
+    markers = {name: object() for name in inspect.signature(new).parameters if name != "kwargs"}
+    received = {}
+
+    def recorder(*args, **kwargs):
+        received.update(inspect.signature(new).bind(*args, **kwargs).arguments)
+        return []
+
+    monkeypatch.setattr(_module, new_name, recorder)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        old(**markers)
+    for name, marker in markers.items():
+        assert received.get(name) is marker, name
+
+
 def test_matrix_pencil_mode_alias_and_public_exports():
     assert rfx.HarminvMode is rfx.MatrixPencilMode
-    for name in ("matrix_pencil", "matrix_pencil_from_probe", "matrix_pencil_record_duration",
-                 "MatrixPencilMode", "harminv", "harminv_from_probe",
-                 "harminv_record_duration", "HarminvMode"):
+    for name in ("matrix_pencil", "matrix_pencil_from_probe", "MatrixPencilMode"):
         assert name in rfx.__all__
+    for name in ("harminv", "harminv_from_probe", "HarminvMode"):
+        assert name not in rfx.__all__  # deprecated: an attribute, not on the star surface
+        assert hasattr(rfx, name)
