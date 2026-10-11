@@ -1,4 +1,8 @@
 """Hand-written freezer/comparison falsifiers; no solver measurements."""
+from enum import Enum, IntEnum
+from functools import partial
+
+import jax
 import numpy as np
 from tests.contracts.run_forward_census import freeze, compare, compare_l2
 
@@ -42,3 +46,51 @@ def test_float32_peak_ulp():
     result = compare_l2(left, right)
     assert result['observables']['x']['float32_peak_ulps'] == 1.
     assert result['run_only'] == result['forward_only'] == []
+
+
+def test_frozensets_by_value():
+    assert freeze(frozenset([3, 1, 2])) == ('set', (1, 2, 3))
+    assert compare(freeze(frozenset([3, 1, 2])), freeze(frozenset([2, 1, 3]))) == []
+    assert compare(freeze(frozenset([1, 2])), freeze(frozenset([1, 3]))) == [
+        {'path': '/1/1', 'run': '2', 'forward': '3'}]
+    assert freeze({2, 1}) == ('set', (1, 2))
+
+
+def test_slices_by_value():
+    assert freeze(slice(1, 5)) == ('slice', 1, 5, None)
+    assert compare(freeze(slice(1, 5)), freeze(slice(1, 6))) == [
+        {'path': '/2', 'run': '5', 'forward': '6'}]
+
+
+def test_partials_by_value():
+    def identity(value=0):
+        return value
+    assert compare(freeze(partial(identity, value=1)), freeze(partial(identity, value=2))) == [
+        {'path': '/3/value', 'run': '1', 'forward': '2'}]
+
+
+def test_cpu_devices_by_value():
+    devices = jax.devices('cpu')
+    assert len(devices) == 2
+    assert freeze(devices[0]) == ('device', 'cpu', 0)
+    assert freeze(devices[1]) == ('device', 'cpu', 1)
+    assert compare(freeze(devices[0]), freeze(devices[1])) == [
+        {'path': '/2', 'run': '0', 'forward': '1'}]
+
+
+def test_enums_by_value():
+    class Label(Enum):
+        ONE = 'one'
+    class Number(IntEnum):
+        ONE = 1
+    assert freeze(Label.ONE) == ('Label', 'ONE')
+    assert freeze(Number.ONE) == ('Number', 'ONE')
+
+
+def test_observable_errors_remain_one_sided():
+    result = compare_l2({'x': freeze(np.array([1.], np.float32))}, {},
+                        right_raises={'x': 'raises: ValueError: unavailable'})
+    assert result['observables'] == {}
+    assert result['run_only'] == ['x']
+    assert result['forward_only'] == []
+    assert result['one_sided'] == {'x': {'run': 'array', 'forward': 'raises: ValueError: unavailable'}}

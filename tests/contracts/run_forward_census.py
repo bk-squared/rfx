@@ -5,6 +5,8 @@ Run the separate driver for records; importing this module runs no simulations.
 """
 from contextlib import ExitStack
 from dataclasses import dataclass, fields, is_dataclass
+from enum import Enum
+from functools import partial
 import gc
 import importlib
 import inspect
@@ -258,6 +260,10 @@ class FrozenArray:
 
 def freeze(value, _active=None):
     """Freeze recursively; unsupported or cyclic values remain explicit markers."""
+    if isinstance(value, Enum):
+        return (type(value).__name__, value.name)
+    if isinstance(value, jax.Device):
+        return ('device', value.platform, value.id)
     if value is None or isinstance(value, (str, bytes, bool, int, float, complex)):
         return value
     if isinstance(value, np.generic):
@@ -272,6 +278,14 @@ def freeze(value, _active=None):
         return 'UNFROZEN:' + type(value).__name__
     active.add(id(value))
     try:
+        if isinstance(value, (set, frozenset)):
+            return ('set', tuple(sorted((freeze(item, active) for item in value), key=repr)))
+        if isinstance(value, slice):
+            return ('slice', freeze(value.start, active), freeze(value.stop, active),
+                    freeze(value.step, active))
+        if isinstance(value, partial):
+            return ('partial', freeze(value.func, active), freeze(value.args, active),
+                    freeze(value.keywords, active))
         if is_dataclass(value) and not isinstance(value, type):
             return {f.name: freeze(getattr(value, f.name), active) for f in fields(value)}
         if isinstance(value, tuple) and hasattr(value, '_fields'):
@@ -473,9 +487,18 @@ def capture(builder, entry, path, level, n_steps=150):
 
 
 def observables(result):
-    """Collect array-valued attributes, recursively naming nested result data."""
+    """Collect arrays and per-attribute read errors without changing admission."""
     found = {}
+    raises = {}
     active = set()
+    def read_attribute(owner, name, path):
+        try:
+            value = getattr(owner, name)
+        except Exception as exc:
+            raises[path] = f'raises: {type(exc).__name__}: {exc}'
+        else:
+            walk(value, path)
+
     def walk(value, path):
         if isinstance(value, (np.ndarray, jax.Array)):
             found[path] = freeze(value)
@@ -487,39 +510,53 @@ def observables(result):
         active.add(id(value))
         try:
             if isinstance(value, tuple) and hasattr(value, '_fields'):
-                items = ((key, getattr(value, key)) for key in value._fields)
+                names = value._fields
             elif is_dataclass(value):
-                items = ((f.name, getattr(value, f.name)) for f in fields(value))
-            elif isinstance(value, dict):
-                items = value.items()
-            elif isinstance(value, (tuple, list)):
-                items = enumerate(value)
-            elif hasattr(value, '__dict__'):
-                items = vars(value).items()
+                names = tuple(f.name for f in fields(value))
             else:
-                return
+                names = ()
+            if names:
+                for name in names:
+                    read_attribute(value, name, f'{path}/{name}' if path else str(name))
+            if isinstance(value, dict):
+                items = value.items()
+            elif isinstance(value, (tuple, list)) and not names:
+                items = enumerate(value)
+            elif hasattr(value, '__dict__') and not names:
+                for name in vars(value):
+                    read_attribute(value, name, f'{path}/{name}' if path else str(name))
+                items = ()
+            else:
+                items = ()
             for name, item in items:
                 walk(item, f'{path}/{name}' if path else str(name))
+            for name in dir(type(value)):
+                if isinstance(inspect.getattr_static(type(value), name), property) and name not in names:
+                    read_attribute(value, name, f'{path}/{name}' if path else str(name))
         finally:
             active.remove(id(value))
-    walk(result, '')
-    # NamedTuple result APIs may also expose computed array properties.
-    for name in dir(type(result)):
-        if isinstance(getattr(type(result), name), property):
-            walk(getattr(result, name), name)
-    return found
+    # Enumerate the result's full public attribute surface, including class
+    # attributes and computed properties. Reading each attribute is isolated.
+    for name in dir(result):
+        if not name.startswith('_'):
+            read_attribute(result, name, name)
+    return {'arrays': found, 'raises': raises}
 
 
 def run_l2(builder, entry, path, n_steps=150):
+    """Admission covers only the entry call; collection happens after both calls."""
     try:
-        result = invoke(builder(path), entry, path, n_steps)
-        values = observables(result)  # np.asarray synchronizes every captured array.
-        return {'outcome': 'admitted', 'observables': values}
+        sim = builder(path)
+    except Exception as exc:
+        return {'outcome': 'not_called', 'construction': exception_record(exc)}
+    try:
+        result = invoke(sim, entry, path, n_steps)
     except Exception as exc:
         return exception_record(exc)
+    return {'outcome': 'admitted', 'result': result}
 
 
-def compare_l2(left, right):
+def compare_l2(left, right, *, left_raises=None, right_raises=None):
     common = sorted(left.keys() & right.keys())
     compared = {}
     for name in common:
@@ -531,8 +568,15 @@ def compare_l2(left, right):
             with np.errstate(all='ignore'):
                 ulps = float(delta / float(np.spacing(np.float32(peak))))
         compared[name] = dict(diff, float32_peak_ulps=ulps)
-    return {'observables': compared, 'run_only': sorted(left.keys() - right.keys()),
-            'forward_only': sorted(right.keys() - left.keys())}
+    left_raises, right_raises = left_raises or {}, right_raises or {}
+    run_only = sorted(left.keys() - right.keys())
+    forward_only = sorted(right.keys() - left.keys())
+    one_sided = {name: {'run': 'array' if name in left else left_raises.get(name, 'absent'),
+                        'forward': 'array' if name in right else right_raises.get(name, 'absent')}
+                 for name in run_only + forward_only}
+    return {'observables': compared, 'run_only': run_only, 'forward_only': forward_only,
+            'observable_errors': {'run': left_raises, 'forward': right_raises},
+            'one_sided': one_sided}
 
 
 def census_row(declaration, path):
@@ -552,10 +596,13 @@ def census_row(declaration, path):
                     record['l1' + level]['diffs'] = None
                 del captures
         results = {entry: run_l2(builder, entry, path) for entry in ('run', 'forward')}
-        record['admission'] = {entry: {key: value for key, value in result.items() if key != 'observables'}
+        record['admission'] = {entry: {key: value for key, value in result.items() if key != 'result'}
                                for entry, result in results.items()}
         if path != 'multi-device-uniform' and all(result['outcome'] == 'admitted' for result in results.values()):
-            record['l2'] = compare_l2(results['run']['observables'], results['forward']['observables'])
+            values = {entry: observables(result['result']) for entry, result in results.items()}
+            record['l2'] = compare_l2(values['run']['arrays'], values['forward']['arrays'],
+                                      left_raises=values['run']['raises'],
+                                      right_raises=values['forward']['raises'])
         else:
             record['l2'] = None
         return record
