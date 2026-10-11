@@ -26,8 +26,10 @@ side walls; the line of the lumped/wire port battery,
 ``scripts/diagnostics/lumped_wire_chain_battery_measure.py``), 30 mm long at
 dx = 0.5 mm, ended in a parallel resistor R = 2 Zc, with the port referenced
 to the line's Zc (= eta0).  The design variables are the permittivity
-override of 24 cells along the line (6 to 18 mm from the port), all 2.2 at
-the start.  The objective is the mean of |S11|^2 over 4, 4.5, 5, 5.5 and
+entries of 24 cells on one wall row of the line (cells [12:36, 0, 0], 5.5 to
+17.5 mm from the port node), all 2.2 at the start.  Each E edge takes the mean
+of its four incident cells, so the line's edges see 2.2 on the y_lo wall and
+1.6 on the y_hi wall, with one-cell ramps at the section ends.  The objective is the mean of |S11|^2 over 4, 4.5, 5, 5.5 and
 6 GHz through the differentiable ``forward(port_s11_freqs=...)``.  The
 line's own reflection on main is under investigation (rfx tracker 1614: a
 matched load on this line reflects up to about -7 dB since the PMC-face

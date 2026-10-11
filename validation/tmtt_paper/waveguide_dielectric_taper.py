@@ -11,7 +11,7 @@ run this script there::
 
 This file is the CURRENT code on main.  Since the tag the solver's port,
 material and conductor models were corrected, so some numbers differ.
-What main shows (re-run 2026-10-11, VESSL 369367270246, RTX 3080): with
+What main shows (re-run 2026-10-11, VESSL 369367270246, RTX 4070 SUPER): with
 SMOKE=1 (the default) the band-average |S11| goes from -6.88 dB to -12.09 dB
 (5.21 dB) on the 22.86 x 10.16 mm guide.  SMOKE=0 was not re-run on main.
 
