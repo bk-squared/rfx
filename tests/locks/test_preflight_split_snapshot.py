@@ -818,6 +818,8 @@ _REBOUND_ON_MIXIN = {
     "rfx.preflight.realization": (
         "_assemble_realized", "_campaign_ctx", "_port_pec_mask",
         "_port_realized_edges",
+        # 2026-10-11 (#1620): the assembly-refusal check, bound on the mixin.
+        "_validate_cfg_assembly",
     ),
     "rfx.preflight.ports": (
         "_check_coaxial_port_junction_aperture",

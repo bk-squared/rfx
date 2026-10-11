@@ -209,6 +209,10 @@ class ConfigCheck(NamedTuple):
 # NOT here: it produces context, emits nothing, and stays in the hub.
 # ---------------------------------------------------------------------------
 CORE_CONFIG_CHECKS: tuple[ConfigCheck, ...] = (
+    # Admission precedes diagnostics that may be unavailable after a refusal.
+    ConfigCheck("_validate_cfg_assembly",
+                lambda sim, c: sim._validate_cfg_assembly(c.warn),
+                "realization"),
     ConfigCheck("_validate_cfg_precision_x64",
                 lambda sim, c: sim._validate_cfg_precision_x64(c.warn),
                 "execution"),

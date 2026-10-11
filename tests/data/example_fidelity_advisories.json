@@ -106,6 +106,15 @@
    "variant": "validation/research/issue683_sampling_order_decision.py::build::nu-matched"
   },
   {
+   "code": "assembly_refusal",
+   "disposition": "defect-open",
+   "issue": 737,
+   "reason": "run() refuses this variant: the four one-cell PEC columns of the 'short' load short the wire port's only extent cell (ez edge at (0.005, 0.005, 0.0035)-(0.004) m), so the port has no live cell to terminate or drive (#318). The fixture predates that admission rule; preflight used to print a clean pass for a model run() raises on, and now reports the same refusal as an error. The variant has to be redrawn (port moved off the shorting columns) or removed by whoever owns the falsifier script.",
+   "ref": "validation/research/issue764_wireport_norm_falsifiers.py:71-129",
+   "rows": 1,
+   "variant": "validation/research/issue764_wireport_norm_falsifiers.py::build_fix_a::short"
+  },
+  {
    "code": "mesh_resolution",
    "disposition": "intended",
    "reason": "Every row is a deliberate feature of the FIX-A falsifier fixture. The 'short' load is four 1-cell PEC columns bridging the 1 mm gap between two electrode plates ('pec' x/y-extent 500 um = 1.0 cells), and the gap rows (1000 um = 2 cells along z, 500 um = 1 cell along x/y, and the 0-cell gaps where the columns touch the plates) are the terminals the experiment measures rho(f) across. The pre-declaration binds this geometry; the build asserts the realized wall planes rather than trusting a thickness convention.",

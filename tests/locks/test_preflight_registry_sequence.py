@@ -109,6 +109,9 @@ _REPO = _HERE.parents[2]
 #: derived and for why the argument lists are pinned here rather than left to
 #: the report snapshots.
 _CALL_SEQUENCE_AT_LEG7_TIP = (
+    # 2026-10-11: production assembly admission now precedes diagnostics;
+    # the report post-pass preserves existing located refusal findings.
+    ("_validate_cfg_assembly", ("warn",)),
     ("_validate_cfg_precision_x64", ("warn",)),
     ("_validate_cfg_pec_faces_with_finite_pec", ("warn",)),
     ("_validate_cfg_upml_refinement", ()),

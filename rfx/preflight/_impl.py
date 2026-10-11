@@ -38,6 +38,7 @@ def _preflight_impl(
             ctx = _CampaignStaticsContext(self)
         ctx.sim = weakref.proxy(self)
         ctx._realized = _conductors
+        ctx._assembly_lent = True
         self._campaign_ctx = lambda: ctx
         self._assemble_realized = lambda *a, **k: _conductors
     # Selection information belongs outside the captured legality findings.
@@ -78,7 +79,17 @@ def _preflight_impl(
                 and any(getattr(w.message, 'source', None) == 'admit_dc_film'
                         and getattr(w.message, 'loc', None) is not None
                         and str(w.message) == str(e) for w in caught))
-            if not duplicate_dc:
+            # Coordinate admission can be reached again by a later validator.
+            # Keep the assembly finding; omit only the uncoded fallback for
+            # the identical exception type/message at the same raise site.
+            from rfx.preflight.realization import _same_assembly_failure
+            duplicate_assembly = (
+                not getattr(e, 'code', None)
+                and any(getattr(w.message, 'code', None) in
+                        ('assembly_refusal', 'assembly_fault') for w in caught)
+                and _same_assembly_failure(self, e)
+            )
+            if not duplicate_dc and not duplicate_assembly:
                 issues.append(PreflightIssue(
                     f"ERROR: {e}",
                     severity="error",
@@ -140,6 +151,25 @@ def _preflight_impl(
             issues.append(PreflightIssue(
                 est.warning, severity="warning", code="ad_memory"
             ))
+
+    # A located validator may already explain the same assembly failure.
+    # Wait until all findings exist so that its entry information wins over
+    # the generic assembly finding, regardless of validator order.
+    assembly_codes = {"assembly_refusal", "assembly_fault"}
+    # Only these emitters repeat an admission refusal on a specific entry.
+    # Other errors (notably ADI compatibility) may merely quote that refusal.
+    located_refusal_codes = {
+        "pec_box_subcell", "pec_zero_cells", "pec_realization_refused",
+        "dc_film_area", "dc_film_layers", "dc_film_unchecked",
+        "source_decoupled", "declared-span-short-of-padded-face",
+    }
+    if any(issue.code in assembly_codes for issue in issues):
+        exc = self._campaign_ctx()._assembly_exception
+        if exc is not None and any(
+            issue.code in located_refusal_codes and issue.severity == "error"
+            and str(exc) in str(issue) for issue in issues
+        ):
+            issues[:] = [issue for issue in issues if issue.code not in assembly_codes]
 
     if strict and len(issues):   # PreflightReport refuses bool() (#980)
         # Aggregate-then-raise: escalate ALL findings at once. Preserves the

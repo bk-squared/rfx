@@ -784,6 +784,8 @@ def _validate_cfg_thin_conductor_graded_node(self, _w) -> None:
         lo, hi = sheet_bounds(tc.shape)
         if lo is None or hi is None:
             continue
+        if any(is_tracer(v) for bounds in (lo, hi) for v in bounds):
+            continue  # Assembly reports shapes whose bounds cannot be judged.
         extents = [float(hi[a]) - float(lo[a]) for a in range(3)]
         n_axis = min(range(3), key=lambda a: extents[a])
         prof = profiles[n_axis]

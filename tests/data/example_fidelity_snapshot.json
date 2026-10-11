@@ -5826,6 +5826,22 @@
       },
       "preflight": [
         {
+          "code": "assembly_refusal",
+          "loc": null,
+          "numbers": [
+            0.005,
+            0.005,
+            0.0035,
+            0.005,
+            0.005,
+            0.004,
+            1.0,
+            318.0
+          ],
+          "severity": "error",
+          "source": "_validate_cfg_assembly"
+        },
+        {
           "code": "mesh_resolution",
           "loc": null,
           "numbers": [

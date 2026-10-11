@@ -456,7 +456,11 @@ def _enumerate_emission_sites():
 # 131 -> 132 (#PENDING): DC film two-plane error, one model-owned emitter.
 # 132 -> 133 (#1373): sheet_gap_bridged reports shorted drawn sheet gaps.
 # 133 -> 132 (#1603): the one-plane film retires the DC film two-plane error.
-_FROZEN_TOTAL_SITES = 132
+# 132 -> 134 (#1620): ``_validate_cfg_assembly`` reports a refusal the model
+# assembly raises as an error, one literal-code site each for assembly_refusal
+# and assembly_fault, so a model run() refuses can no longer print a clean
+# preflight.
+_FROZEN_TOTAL_SITES = 134
 # 74 -> 73, 2026-09-15 (#1043 / PR #1047): ``conformal_nan`` was the only
 # site emitting that code, and the check was deleted when its own tripwire
 # XPASSed -- see the note on _FROZEN_TOTAL_SITES above.
@@ -487,7 +491,8 @@ _FROZEN_TOTAL_SITES = 132
 # 86 -> 87 (#PENDING): dc_film_half_sheet_error.
 # 87 -> 88 (#1373): sheet_gap_bridged.
 # 88 -> 87 (#1603): dc_film_half_sheet_error retired.
-_FROZEN_LITERAL_CODE_COUNT = 87
+# 87 -> 89 (#1620): assembly_refusal, assembly_fault.
+_FROZEN_LITERAL_CODE_COUNT = 89
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site

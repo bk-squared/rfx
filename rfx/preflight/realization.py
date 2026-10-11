@@ -69,6 +69,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from contextvars import ContextVar
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 
@@ -76,6 +77,7 @@ from rfx.core.jax_utils import is_tracer
 from rfx.geometry.csg import Box
 
 from rfx.preflight._common import (
+    PreflightWarning,
     _component_is_dead,
     _sorted_box_corners,
 )
@@ -410,6 +412,7 @@ class _CampaignStaticsContext:
                                  getattr(sim, "_periodic_axes", "")))
         except self._NARROW_EXCS as exc:  # malformed config; preflight
             self.error = f"{type(exc).__name__}: {exc}"  # must not crash
+            self._assembly_exception = exc
 
     # ------------------------------------------------------------------
     # The realized conductor set (whole model) and per-entry realization
@@ -498,6 +501,8 @@ class _CampaignStaticsContext:
                 return None, None
             if blo is None or bhi is None:
                 return None, None
+            if any(is_tracer(v) for v in jax.tree_util.tree_leaves((blo, bhi))):
+                return None, None  # Assembly owns the traced-shape refusal.
             blo = np.asarray(blo, dtype=np.float64)
             bhi = np.asarray(bhi, dtype=np.float64)
             return np.minimum(blo, bhi), np.maximum(blo, bhi)
@@ -855,3 +860,60 @@ _assemble_realized.__qualname__ = "_PreflightMixin._assemble_realized"
 _port_realized_edges.__qualname__ = "_PreflightMixin._port_realized_edges"
 _port_pec_mask.__qualname__ = "_PreflightMixin._port_pec_mask"
 _campaign_ctx.__qualname__ = "_PreflightMixin._campaign_ctx"
+
+
+# Standalone preflight: report what the production assembly refuses (an error, never a pass).
+def _same_assembly_failure(sim, exc):
+    """Recognize a later validator re-raising the same admission failure."""
+    original = sim._campaign_ctx()._assembly_exception
+    if type(original) is not type(exc) or str(original) != str(exc):
+        return False
+
+    def origin(error):
+        tb = error.__traceback__
+        if tb is None:
+            return None
+        while tb.tb_next is not None:
+            tb = tb.tb_next
+        return tb.tb_frame.f_code, tb.tb_lineno
+
+    return origin(original) is not None and origin(original) == origin(exc)
+
+
+def _validate_cfg_assembly(self, _w) -> None:
+    ctx = self._campaign_ctx()
+    if getattr(ctx, "_assembly_lent", False):
+        # Execution has already admitted the product lent by run()/forward().
+        return
+    if ctx.error == "traced-mesh":
+        return  # The concrete-geometry checks retain their own advisory.
+    if ctx.error is None:
+        ctx.realized(defer_warnings=True)
+    if ctx._realized is not None and ctx._assembly_exception is None:
+        from rfx.model.pad_fill import check_pad_fill
+        from rfx.model.source_admission import refuse_dead_soft_sources
+        try:
+            # These solve-mode gates read the audit product without assembling
+            # again. Preserve solve order: pad fill precedes source admission.
+            root = ctx._realized
+            check_pad_fill(self, root.grid, root.geometry_masks)
+            refuse_dead_soft_sources(self, root)
+        except ctx._NARROW_EXCS as exc:
+            ctx._assembly_exception = exc
+    exc = ctx._assembly_exception
+    if exc is None:
+        return
+    if isinstance(exc, (ValueError, NotImplementedError)):
+        _w.warn(PreflightWarning(
+            f"The model cannot be assembled: {exc}",
+            severity="error", code="assembly_refusal", source="_validate_cfg_assembly",
+        ))
+    else:
+        _w.warn(PreflightWarning(
+            f"The model assembly raised {type(exc).__name__}: {exc}; "
+            "this is a defect, please report it.",
+            severity="error", code="assembly_fault", source="_validate_cfg_assembly",
+        ))
+
+
+_validate_cfg_assembly.__qualname__ = "_PreflightMixin._validate_cfg_assembly"
