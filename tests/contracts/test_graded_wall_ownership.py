@@ -41,6 +41,20 @@ def _operator(kind):
     return lambda state, faces, **kwargs: apply_pmc_faces(state, faces, image=True, **kwargs)
 
 
+@pytest.mark.parametrize('kind', ('pec', 'pmc'))
+@pytest.mark.parametrize('subset', range(64))
+def test_framed_all_face_subsets_equal_default_on_random_state(kind, subset):
+    _live_check()
+    rng = np.random.default_rng(20261012)
+    state = init_state((11, 4, 5))
+    state = state._replace(**{c: jnp.asarray(rng.standard_normal(state.ex.shape), dtype=state.ex.dtype)
+                             for c in FIELDS})
+    faces = frozenset(face for index, face in enumerate(sorted(FACES)) if subset & (1 << index))
+    op = _operator(kind)
+    call = jax.jit(lambda st, owners: op(st, faces, frame={'x': (0, st.ex.shape[0])}, owned=owners))
+    _check_bits(call(state, {face: jnp.bool_(True) for face in faces}), op(state, faces))
+
+
 @pytest.mark.parametrize("kind", ("pec", "pmc"))
 def test_t2_face_ownership_and_static_frame(kind):
     _live_check()
@@ -86,18 +100,15 @@ def test_t2_slab_rows_equal_global_operator(kind, devices):
         assert layout.pad_x > 0
     assert FILL["state"].alignment == FILL["state"].physical == 0.
     slabs = {c: cut(getattr(state, c), layout, "state") for c in FIELDS}
-    global_result = op(state, {"x_lo", "x_hi"})
+    global_result = op(state, FACES)
+    expected_slabs = {c: cut(getattr(global_result, c), layout, 'state') for c in FIELDS}
     lo, hi = 1, 1 + layout.owned[-1][1] - layout.owned[-1][0]
     call = jax.jit(lambda st, low, high: op(
-        st, {"x_lo", "x_hi"}, frame={"x": (lo, hi)}, owned={"x_lo": low, "x_hi": high}))
+        st, FACES, frame={"x": (lo, hi)},
+        owned={"x_lo": low, "x_hi": high, 'y_lo': True, 'y_hi': True, 'z_lo': True, 'z_hi': True}))
     for rank in range(devices):
         local = state._replace(**{c: slabs[c][rank] for c in FIELDS})
-        expected = {c: np.asarray(getattr(local, c)).copy() for c in FIELDS}
-        for local_row, global_row, owns in ((lo, 0, rank == 0 and kind == "pec"),
-                                             (hi - 1, -1, rank == devices - 1)):
-            if owns:
-                for c in FIELDS:
-                    expected[c][local_row] = np.asarray(getattr(global_result, c))[global_row]
+        expected = {c: expected_slabs[c][rank] for c in FIELDS}
         result = call(local, jnp.bool_(rank == 0), jnp.bool_(rank == devices - 1))
         _check_bits(result, local._replace(**expected))
 

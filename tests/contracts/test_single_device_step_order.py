@@ -155,7 +155,7 @@ def _graded_scene(kind):
         carry['rlc_states'] = (init_rlc_state(),)
     invariants = dict(inv_dx=grid.inv_dx, inv_dx_h=grid.inv_dx_h, dx_arr=grid.dx_arr,
                       drives=drive_layout([(*cell, 'ez')], jnp.float32),
-                      probe_table=graded_probe_table([], dtype=initial.ex.dtype),
+                      probe_table=graded_probe_table([], shape, dtype=initial.ex.dtype),
                       materials=materials, pec_edge_masks=None, cpml_inv_eps_r=None,
                       debye_coeffs=None, lorentz_coeffs=None, aniso_eps=None,
                       sheet_impedance=sheet, sheet_coeffs=coeffs, design_box_coeffs=None)

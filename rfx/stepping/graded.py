@@ -464,11 +464,18 @@ def make_graded_step(
     return step_fn
 
 
-def graded_probe_table(prb_meta, *, dtype):
+def graded_probe_table(prb_meta, grid_shape, *, dtype):
     """Compile the graded point probes in their original record order."""
     from rfx.measurement.plan import Node, Owner, field_channel
     from rfx.measurement.projector import sample_table
 
-    channels = tuple(field_channel(c, (Node(c, i, j, k, 1.0),))
-                     for i, j, k, c in prb_meta)
-    return sample_table((Owner('probes', 'probe', channels),), dtype=dtype)
+    channels = []
+    for number, (i, j, k, component) in enumerate(prb_meta):
+        indices = []
+        for axis, index, size in zip('xyz', (i, j, k), grid_shape, strict=True):
+            if not -size <= index < size:
+                raise IndexError(f'Probe {number} ({component}, {(i, j, k)}): '
+                                 f'{axis} index {index} outside [-{size}, {size})')
+            indices.append(index + size if index < 0 else index)
+        channels.append(field_channel(component, (Node(component, *indices, 1.0),)))
+    return sample_table((Owner('probes', 'probe', tuple(channels)),), dtype=dtype)

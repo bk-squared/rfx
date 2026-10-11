@@ -27,12 +27,23 @@ def _live_check():
         _check_bits(jnp.array([1.]), jnp.array([0.]))
 
 
-def _setup(monkeypatch, widths):
+def _setup(monkeypatch, widths, branch='ordinary'):
     grid = make_nonuniform_grid(
         (.005, .005), np.full(5, .001), .001, cpml_layers=0,
         dx_profile=np.array(widths), dy_profile=np.full(5, .001))
     contexts = []
     make_step = graded.make_graded_step
+    materials = init_materials(grid.shape)
+    options = {}
+    if branch == 'debye':
+        from rfx.materials.debye import DebyePole, init_debye
+        options['debye'] = init_debye([DebyePole(delta_eps=2., tau=5e-12)], materials, grid.dt)
+    elif branch == 'lorentz':
+        from rfx.materials.lorentz import init_lorentz, lorentz_pole
+        options['lorentz'] = init_lorentz(
+            [lorentz_pole(delta_eps=1.5, omega_0=2 * np.pi * 30e9, delta=1e10)], materials, grid.dt)
+    elif branch == 'anisotropic':
+        options['aniso_eps'] = tuple(jnp.full(grid.shape, value) for value in (1.5, 2., 2.5))
 
     def capture(ctx):
         contexts.append(ctx)
@@ -41,7 +52,7 @@ def _setup(monkeypatch, widths):
     with monkeypatch.context() as patch:
         patch.setattr(graded, 'make_graded_step', capture)
         setup = _build_nu_scan(
-            grid, init_materials(grid.shape), 40,
+            grid, materials, 40, **options,
             sources=[(2, 2, 2, 'ez', jnp.sin(jnp.arange(40) * .3))],
             probes=[(2, 2, 2, 'ez'), (3, 2, 2, 'hy')],
             pec_faces={f'{a}_{s}' for a in 'xyz' for s in ('lo', 'hi')})
@@ -57,10 +68,11 @@ def _record(step, setup, invariants):
         observed, carry, (jnp.arange(40), setup.src_waveforms)))(setup.carry_init)
 
 
-def test_t1_context_a_with_b_invariants_equals_b_bitwise(monkeypatch):
+@pytest.mark.parametrize('branch', ('ordinary', 'debye', 'lorentz', 'anisotropic'))
+def test_t1_context_a_with_b_invariants_equals_b_bitwise(monkeypatch, branch):
     _live_check()
-    ctx_a, a = _setup(monkeypatch, [.001, .0008, .0012, .001, .001])
-    ctx_b, b = _setup(monkeypatch, [.001, .0012, .0008, .001, .001])
+    ctx_a, a = _setup(monkeypatch, [.001, .0008, .0012, .001, .001], branch)
+    ctx_b, b = _setup(monkeypatch, [.001, .0012, .0008, .001, .001], branch)
     assert ctx_a.dt == ctx_b.dt
     assert ctx_a.grid.shape == ctx_b.grid.shape
     for name in ('inv_dy', 'inv_dz', 'inv_dy_h', 'inv_dz_h'):
@@ -70,6 +82,30 @@ def test_t1_context_a_with_b_invariants_equals_b_bitwise(monkeypatch):
     invariants = {**a.invariants, **{name: b.invariants[name] for name in moved}}
     _check_bits(_record(graded.make_graded_step(ctx_a), b, invariants),
                 _record(graded.make_graded_step(ctx_b), b, b.invariants))
+
+
+@pytest.mark.parametrize('component', ('ex', 'ey', 'ez', 'hx', 'hy', 'hz'))
+def test_probe_table_negative_indices_match_python_indexing(component):
+    from rfx.core.yee import init_state
+    from rfx.measurement.projector import project
+
+    shape = (5, 6, 7)
+    values = jnp.arange(np.prod(shape), dtype=jnp.float32).reshape(shape) + 1
+    state = init_state(shape)._replace(**{component: values})
+    nodes = [(-1, -2, -3), (-5, -6, -7), (0, 1, 2), (-1, -2, -3)]
+    table = graded.graded_probe_table([(*node, component) for node in nodes], shape, dtype=state.ex.dtype)
+    expected = jnp.stack([values[node] for node in nodes])
+    _check_bits(jax.jit(lambda st: project(st, table))(state), expected)
+
+
+@pytest.mark.parametrize('axis', (0, 1, 2))
+@pytest.mark.parametrize('side', ('low', 'high'))
+def test_probe_table_outside_python_bounds_names_probe(axis, side):
+    shape = (5, 6, 7)
+    node = [0, 0, 0]
+    node[axis] = -shape[axis] - 1 if side == 'low' else shape[axis]
+    with pytest.raises(IndexError, match=r'Probe 1 \(hy,'):
+        graded.graded_probe_table([(0, 0, 0, 'ez'), (*node, 'hy')], shape, dtype=jnp.float32)
 
 
 def test_t3_step_end_field_write_is_carried(monkeypatch):

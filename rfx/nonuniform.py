@@ -981,17 +981,17 @@ def _build_nu_scan(
         materials, aniso_eps, use_cpml=use_cpml,
         use_debye=use_debye, use_lorentz=use_lorentz)
 
-    # The per-cell arrays the step reads reach it through ``invariants`` so
-    # that a jitted loop can pass them as an argument (_NUScanSetup). The
-    # CPML profiles and spacing vectors stay in the closure: they are not
-    # grid-sized.
+    # The per-cell arrays and x spacing vectors reach the step through
+    # ``invariants`` so a jitted loop can pass arrays as an argument.
+    # Spacing vectors are not grid-sized and stay compile-time constants
+    # on one device; CPML profiles stay in the closure (_NUScanSetup).
     from rfx.stepping.graded import GradedStepContext, make_graded_step, graded_probe_table
     invariants = {
         "inv_dx": inv_dx,
         "inv_dx_h": inv_dx_h,
         "dx_arr": grid.dx_arr,
         "drives": drive_layout(src_meta, src_waveforms.dtype),
-        "probe_table": graded_probe_table(prb_meta, dtype=state.ex.dtype),
+        "probe_table": graded_probe_table(prb_meta, grid.shape, dtype=state.ex.dtype),
         "materials": kernel_materials(materials, electric=not (use_debye or use_lorentz), epsilon=aniso_eps is None),
         "pec_edge_masks": pec_edge_masks,
         "pec_occupancy": pec_occupancy,
