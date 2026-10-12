@@ -110,14 +110,16 @@ LOCK_PROVENANCE = {
     # locks name the main commit that produced the pinned number, see ed2d09d3;
     # for a squash-merged PR that is not knowable before the merge). f019c89, the
     # first commit of the series, carried the shared-E floor this revision retired.
-    "commit": "47eb917",
-    "date": "2026-09-05",
-    "run_id": ("local (CPU derivation) + VESSL 369367258329 / 369367258350 (GPU evidence "
-               "that the retired flat 1e-10 floor reds on RTX4090, measured against the old "
-               "test and the first revision) + VESSL 369367258656 (GPU, 4 passed on this "
-               "revision's per-component floors)"),
-    "host": "linux x86_64 jax 0.11.1 cpu; GPU evidence remilab RTX4090",
-    "pinned_until": "2027-03-05",
+    # 2026-10-12 (issue 1668): the scene was re-chosen (tau = 8 dt, bandwidth 0.8;
+    # the old one was driven only by a 7.4e-4 jump at t = 0) and the GPU difference
+    # re-measured on it at 9230fde1a. Before: commit 47eb917, 2026-09-05, VESSL
+    # 369367258329 / 369367258350 / 369367258656 on RTX4090.
+    "commit": "9230fde",
+    "date": "2026-10-12",
+    "run_id": ("local (Mac CPU derivation) + VESSL 369367270791 (GPU: scan-vs-jitloop "
+               "probe difference 1.583e-8 on the tau = 8 dt scene)"),
+    "host": "macOS arm64 jax 0.10.2 cpu; GPU evidence remilab RTX 2070 SUPER jax 0.10.2",
+    "pinned_until": "2027-04-12",
 }
 
 # Pre-existing scan-vs-loop XLA agreement envelope (see module docstring).
@@ -128,11 +130,13 @@ LOCK_PROVENANCE = {
 # reproduced neither quantity.
 _RTOL = 1e-6
 
-# GPU-observed scan-vs-jitloop probe diff (VESSL 369367258329 / RTX4090).
-# Quoted as EVIDENCE that the old flat 1e-10 floor is too tight on GPU, and
-# used below as the magnitude of a realistic reassociation perturbation. It is
-# never used as a threshold.
-_GPU_OBSERVED_TS_DIFF = 1.037e-10
+# GPU-observed scan-vs-jitloop probe diff, used below as the magnitude of a
+# realistic reassociation perturbation. It is never used as a threshold.
+# Re-measured 2026-10-12 on the tau = 8 dt scene (VESSL 369367270791, RTX 2070
+# SUPER, jax 0.10.2): 1.583e-8 at a probe peak of 6.59e-3. The earlier
+# 1.037e-10 (VESSL 369367258329, RTX4090) was measured on the old scene, which
+# was driven only by a one-sample 7.4e-4 jump.
+_GPU_OBSERVED_TS_DIFF = 1.583e-8
 
 # --- Derived scan-vs-jitloop reassociation floors ----------------------------
 #
