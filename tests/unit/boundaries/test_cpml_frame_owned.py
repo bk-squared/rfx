@@ -88,11 +88,12 @@ def test_frame_neighbor_operand_matches_global(rank, lo, forward):
     rng = np.random.default_rng(95210)
     global_field = jnp.asarray(rng.uniform(.25, 1.25, (22, 3, 4)), jnp.float32)
     local_field = _cut(global_field, rank, 8)
+    frame = {"x": (1, 7)}
     with jax.disable_jit():
         expected = cpml.slab_neighbor(global_field, 0, 6, lo, forward=forward,
                                       frame=None)
         actual = cpml.slab_neighbor(local_field, 0, 6, lo, forward=forward,
-                                    frame=(1, 7))
+                                    frame=frame["x"])
     _bytes(actual, expected, ('R10 operand', rank, 'x_lo' if lo else 'x_hi'))
 
 
@@ -148,14 +149,14 @@ def test_frame_owned_matches_global(devices, case, medium, monkeypatch, record_p
     grid, params, initial_psi, base, inc, mats, ek = _scene(case, medium)
     per = (grid.nx + devices-1)//devices
     pad = devices*per-grid.nx
-    frame = ((1, 1+per-pad), (0, grid.ny), (0, grid.nz))
+    frame = {"x": (1, 1+per-pad)}
     if case.startswith('one_row_'):
         # R12: the last frame owns one row; its backward operand must retain
         # the exchanged predecessor outside that frame. Global is the oracle.
         with jax.disable_jit():
             expected = cpml.slab_neighbor(base.hz, 0, 1, False, False, frame=None)
             actual = cpml.slab_neighbor(_cut(base.hz, devices-1, per), 0, 1,
-                                        False, False, frame=frame[0])
+                                        False, False, frame=frame["x"])
         _bytes(actual, expected, (case, 'R12 last-rank x_hi operand'))
     max_ulp = {}
     finite_counts = {}

@@ -1600,7 +1600,7 @@ def cpml_h_materials(mu_r, rank, ghost):
 
 def cpml_slab_frame(shape, ghost, pad_x):
     """The last rank's physical x end is static on every rank."""
-    return ((ghost, shape[0] - ghost - pad_x), (0, shape[1]), (0, shape[2]))
+    return {"x": (ghost, shape[0] - ghost - pad_x)}
 
 
 def cpml_absorbing_faces(grid):

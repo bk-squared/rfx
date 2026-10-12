@@ -662,8 +662,8 @@ def apply_cpml_e(
     faces leave both the field and their psi state untouched. Psi uses field
     (x, y, z) axis order. Selection is never inferred from array endpoints.
 
-    ``frame`` optionally supplies three static ``(lo, hi)`` bounds. A
-    framed axis uses each face's realized depth and preserves its psi's
+    ``frame`` maps axis letters to static ``(lo, hi)`` bounds; omitted axes
+    use the full array extent. A framed axis uses each face's realized depth and preserves its psi's
     identity padding. ``owned`` maps face names to boolean scalars, which
     select the updated psi and field slabs; absent names are unconditional.
 

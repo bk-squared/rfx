@@ -84,7 +84,7 @@ def face_windows(shape, depths, frame, periodic, grid):
     Psi retains the single-device axis depth. Its identity padding is outside
     the framed face's window and must not be read or written.
     """
-    frame = tuple((0, size) for size in shape) if frame is None else frame
+    frame = tuple((frame or {}).get(axis, (0, size)) for axis, size in zip("xyz", shape))
     windows, psi_windows, face_depths = {}, {}, {}
     from rfx.boundaries.depths import grid_face_depths
     realized = ({f.name: f.realized for f in grid_face_depths(grid)}

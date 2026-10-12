@@ -38,7 +38,7 @@ def test_distributed_cpml_uses_native_staggered_h_profiles(axis: int, nu: bool, 
     mapped = jax.pmap(
         lambda state, aux: apply_cpml_h(
             state, params, aux, grid,
-            frame=((1, grid.nx + 1), (0, grid.ny), (0, grid.nz)),
+            frame={"x": (1, grid.nx + 1)},
             owned={"x_lo": jnp.asarray(True), "x_hi": jnp.asarray(True)}),
         axis_name="x", devices=jax.devices()[:1])
     actual, _ = mapped(jax.tree_util.tree_map(lambda value: value[None], slab), auxiliary)
