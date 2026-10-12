@@ -329,3 +329,38 @@ def test_k4_k7b_whole_occupancy_with_a_disjoint_box(monkeypatch):
     np.testing.assert_array_equal(seen['root'].released_cells, SHEET_CELLS)
     assert [d.code for d in seen['root'].design_findings] == ['source_under_design_occupancy']
     assert len(seen['warnings']) == 1
+
+
+@pytest.mark.parametrize('lane,form', [('uniform', 'box'), ('uniform', 'whole'), ('graded', 'whole')])
+@pytest.mark.parametrize('p', [0., .5])
+def test_k7_k7b_findings_change_no_time_series(monkeypatch, lane, form, p):
+    """The recorded main comparison also covers these numerical paths."""
+    import rfx.model.design_admission as admission
+    sim, grid = model(lane, 'none')
+    sim.add_source((.008,.008,.004), 'ez', amplitude_kind='current',
+                   waveform=GaussianPulse(f0=5e9, bandwidth=.8))
+    options = ({'pec_occupancy_override': jnp.full(grid.shape, p)} if form == 'whole' else
+               {'design_box': ((.008,.007,.003),(.010,.009,.005)),
+                'design_occupancy_override': jnp.full((3,3,3), p)})
+    def run():
+        return sim.forward(n_steps=80, checkpoint=False, skip_preflight=True, **options)
+    told = run()
+    monkeypatch.setattr(admission, 'source_findings', lambda *a, **kw: ())
+    quiet = run()
+    assert not quiet.diagnostics
+    assert len(told.diagnostics) == (2 if form == 'box' else 1)
+    a, b = np.asarray(told.time_series), np.asarray(quiet.time_series)
+    assert a.dtype == b.dtype and a.shape == b.shape and a.tobytes() == b.tobytes()
+
+
+def test_d6_source_clear_of_box_has_no_finding(monkeypatch):
+    import rfx.model.design_admission as admission
+    sim, _ = model(kind='none')
+    options = dict(n_steps=8, checkpoint=False, skip_preflight=True,
+                   design_box=((.003,.003,.002),(.004,.004,.003)),
+                   design_occupancy_override=jnp.full((2,2,2), .5))
+    actual = sim.forward(**options)
+    assert not actual.diagnostics
+    monkeypatch.setattr(admission, 'source_findings', lambda *a, **kw: ())
+    baseline = sim.forward(**options)
+    assert np.asarray(actual.time_series).tobytes() == np.asarray(baseline.time_series).tobytes()
