@@ -513,7 +513,7 @@ def run_on_one_device(sim, run_kwargs, *, reason, requested_devices, diagnostics
         f"Distributed runner does not yet support {reason}. "
         "Falling back to single-device execution with the same arguments."
     )
-    warnings.warn(message, stacklevel=2)
+    warnings.warn(message, stacklevel=3)
     diagnostic = Diagnostic(
         "distributed.one_device_fallback", "warning", reason, message,
         {"requested_devices": requested_devices, "devices_used": 1},

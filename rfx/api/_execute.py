@@ -4226,14 +4226,14 @@ class _ExecuteMixin:
         # ---- Distributed multi-device lane ----
         if plan.lane in ("run_distributed", "run_distributed_nu") and self._interface_eps == "dual_average":
             raise ValueError("interface_eps='dual_average' is not supported on the distributed lane")
-        from rfx.runners.distributed_v2 import one_device_reason, run_on_one_device
-        if plan.lane in ("run_distributed", "run_distributed_nu") and (
-                reason := one_device_reason(self)):
-            del _solve_assembly  # the fallback performs its own solve assembly
-            return run_on_one_device(self, {**_call_args, "devices": None,
-                                     "exchange_interval": 1, "skip_preflight": True},
-                                     reason=reason, requested_devices=len(devices),
-                                     diagnostics=_diagnostics)
+        if plan.lane in ("run_distributed", "run_distributed_nu"):
+            from rfx.runners.distributed_v2 import one_device_reason, run_on_one_device
+            if reason := one_device_reason(self):
+                del _solve_assembly  # the fallback performs its own solve assembly
+                return run_on_one_device(self, {**_call_args, "devices": None,
+                                         "exchange_interval": 1, "skip_preflight": True},
+                                         reason=reason, requested_devices=len(devices),
+                                         diagnostics=_diagnostics)
         if plan.lane in ("run_distributed", "run_distributed_nu"):
             if self._dft_planes:
                 raise NotImplementedError(
