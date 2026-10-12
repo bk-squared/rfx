@@ -110,10 +110,9 @@ def kirschning_jansen_eps_eff(eps_eff0: float, width: float, height: float,
 def msl_closed_form_beta(width: float, height: float, eps_r: float,
                          freqs) -> np.ndarray:
     """``beta(f) = (2 pi f / c) sqrt(eps_eff_KJ(f))`` in rad/m (float64)."""
-    from rfx.core.yee import EPS_0, MU_0
+    from rfx.grid import C0 as c0
     from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff
     _, eps_eff0 = hammerstad_jensen_z0_eps_eff(width, height, eps_r)
-    c0 = 1.0 / float(np.sqrt(MU_0 * EPS_0))
     f = np.asarray(freqs, dtype=np.float64)
     eps_f = kirschning_jansen_eps_eff(eps_eff0, width, height, eps_r, f)
     return 2.0 * np.pi * f * np.sqrt(eps_f) / c0
