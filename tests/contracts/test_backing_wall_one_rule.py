@@ -246,7 +246,7 @@ def refusal(case, entry, path):
         return 'PMC|pmc'
     if case in ('plane', 'closed_box') and path == 'distributed-graded':
         return 'TFSF'
-    if case in ('plane', 'closed_box') and path == 'graded' and entry == 'forward':
+    if case == 'closed_box' and path == 'graded' and entry == 'forward':
         return 'TFSF|uniform'
     if case == 'W-guide' and path == 'distributed-graded' and entry == 'forward':
         return 'Waveguide|waveguide'
