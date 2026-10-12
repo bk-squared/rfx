@@ -293,7 +293,7 @@ string and runs no simulation, so you can check it on a half-built model.
 | one coaxial port only | **ambiguous**: pass `method="compute_coaxial_line_reflection"` or `method="compute_coaxial_two_port"` |
 | one coaxial + one microstrip port | `compute_coax_msl_transition(...)` |
 | lumped/wire `add_port(...)` + microstrip | `compute_mixed_s_matrix(...)` |
-| lumped/wire only | raises, naming `run(compute_s_params=True)`, which returns a `Result`, not an S-matrix result |
+| lumped/wire only | `s_matrix_lane()` returns `"run(compute_s_params=True)"`; `compute_s_matrix()` raises and names it, because `run()` returns a `Result`, not an S-matrix result |
 | anything else | raises, naming the registered families and the calculator each one has |
 
 `compute_s_matrix` never chooses between the two coaxial calculators (their
@@ -321,10 +321,10 @@ therefore means different things for different port families.
 
 | Primitive | Calculation API | Result | Current status |
 |---|---|---|---|
-| Lumped `add_port(..., extent=None)` | `run(compute_s_params=True, s_param_freqs=...)` | `Result.s_params`, `Result.freqs` | **limited**: a one-cell feed with a scalar reference impedance, not a transmission-line mode |
-| Lumped `add_port(..., extent=None)` | `forward(port_s11_freqs=...)` | `ForwardResult.s_params`, `.freqs` (S11 vectors) | **limited**: one device; same limits as `run()` |
+| Lumped `add_port(..., extent=None)` | `run(compute_s_params=True, s_param_freqs=...)` | `Result.s_params`, `Result.freqs` | **limited**: a one-cell feed with a scalar reference impedance, not a transmission-line mode; uniform mesh only |
+| Lumped `add_port(..., extent=None)` | `forward(port_s11_freqs=...)` | `ForwardResult.s_params`, `.freqs` (S11 vectors; on a graded mesh the driven column) | **limited**: one device, uniform or graded mesh |
 | Wire `add_port(..., extent=...)` | `run(compute_s_params=True, s_param_freqs=...)` | `Result.s_params`, `Result.freqs` | **limited**: a feed spread over `extent`; on a graded mesh experimental |
-| Wire `add_port(..., extent=...)` | `forward(port_s11_freqs=...)` | `ForwardResult.s_params`, `.freqs` (S11 vectors) | **limited**: one device |
+| Wire `add_port(..., extent=...)` | `forward(port_s11_freqs=...)` | `ForwardResult.s_params`, `.freqs` (S11 vectors; on a graded mesh the driven column) | **limited**: one device, uniform or graded mesh |
 | `add_msl_port(...)` | `compute_msl_s_matrix(...)` | `MSLSMatrixResult.S`, `.freqs`, `.Z0`, `.beta`, `.port_names`, `.reliable`, `.probe_clearance`, `.beta_railed`, `.reference_impedances` | **limited**: quasi-TEM (`mode="laplace"`) on a uniform mesh; on a graded mesh experimental; `mode="eigenmode"` refused |
 | `add_waveguide_port(...)` | `compute_waveguide_s_matrix(...)` | `WaveguideSMatrixResult.s_params`, `.freqs`, `.port_names`, `.port_directions`, `.reference_planes` | **limited**: magnitude of single-mode rectangular guides on a uniform mesh; phase and junctions narrower; on a graded mesh experimental outside the cases listed below |
 | `add_waveguide_port(...)` | `run(...)` | `Result.waveguide_sparams[name]` | **limited**: per-port output, not the full matrix |
@@ -357,8 +357,9 @@ define an S-parameter port.
 
 Analytic extractor and V/I replay checks validate the extraction algebra and its
 reproducibility; they do not establish a generally calibrated lumped-port
-result. `forward(port_s11_freqs=...)` runs on one device, uniform or graded
-mesh. A plane wave, waveguide ports or another port family cannot share this
+result. `run(compute_s_params=True)` with a lumped port needs a uniform mesh;
+on a graded mesh it raises (use a wire port there).
+`forward(port_s11_freqs=...)` runs on one device, uniform or graded mesh. A plane wave, waveguide ports or another port family cannot share this
 calculation.
 
 ### Wire port
@@ -388,7 +389,8 @@ probes downstream of each feed.
   and a warning names the worst one. A passive structure cannot scatter more
   power than it receives, so such points are a measurement artifact; read
   `settling_db` and `reliable` to see which. `enforce_passivity=True` returns
-  the projected matrix and keeps the measured one in `S_raw`.
+  the projected matrix and keeps the measured one in `S_raw`; it is not
+  applied under `jax.grad` or on the `eps_override` channel, where S stays raw.
 - **The fitted `Z0` and `beta` are diagnostics and do not enter S**
   (`tests/unit/sparams/test_msl_fitted_beta_does_not_enter_s.py`).
 - **`reliable`** is a per-point fit-quality mask, `None` under JAX tracing.
@@ -424,7 +426,7 @@ matched reference run per port (`2 * n_ports` simulations).
   (WR-340, WR-62, WR-28, WR-15, WR-10) against the closed form, and the WR-90
   empty guide, PEC short and slab against frozen data from another solver
   (`tests/fixtures/waveguide_broad_e5/`). The port validation battery and the
-  two-port contract are the authoritative gates
+  two-port contract are the authoritative checks
   (`tests/oracle/test_waveguide_port_validation_battery.py`,
   `tests/unit/sparams/test_waveguide_twoport_contract_v1.py`).
 - **Phase and group delay** are checked on the same slab cases and on an empty
@@ -438,10 +440,11 @@ matched reference run per port (`2 * n_ports` simulations).
   that falls with each mesh halving; it is a stated accuracy of that path, not
   a defect.
 
-The calculation remains experimental on a graded mesh outside the WR-90
-empty / PEC-short / slab cases with `normalize="flux"` and a graded `dy`
-(ratio 2) over 8.2–12.4 GHz
-(`tests/fixtures/waveguide_nu_broad_e4/`, `tests/fixtures/waveguide_nu_broad_e5/`).
+The calculation remains experimental on a graded mesh. What is checked there
+is a dielectric slab in WR-90 with `normalize="flux"` and a graded transverse
+mesh, against the closed form over 8.2–12.4 GHz
+(`tests/fixtures/waveguide_nu_broad_e5/`); there is no comparison with another
+solver on a graded mesh in this repository.
 Gradients there (`eps_override`, `sigma_override`) need `normalize="flux"`.
 
 Setup:
@@ -467,7 +470,8 @@ three-dimensional, second-order Yee uniform mesh with CPML of positive
 thickness on every face (`cpml_axes="xyz"`) and no periodic axis. The
 calculator builds the line, source, DFT planes and termination; do not
 register separate geometry, RLC elements, monitors or termination helpers.
-Use `feed_impedance=` for the feed and `dut_impedance=` only with
+The registered port's z position, `pin_length` and `impedance` do not set the
+line the calculator builds. Use `feed_impedance=` for the feed and `dut_impedance=` only with
 `termination="matched"`. `probe_count` must be at least three and every plane
 must fit between the load and the source.
 
@@ -500,8 +504,8 @@ stays small; the four-cell rule above applies to transmission too.
 diagnostic checks against the closed form for empty space and a homogeneous
 slab (`tests/unit/ports/test_floquet_s_params_contract.py`). These are not a
 comparison with RCWA or another full-wave solver, and there is no documented
-high-level Floquet S-parameter API. Treat the result as experimental. Graded
-meshes and a plane wave are refused with it.
+high-level Floquet S-parameter API. Treat the result as experimental. A graded `dz`
+and a plane wave are refused with it.
 
 Sources, polarized sources, the plane wave, point probes, DFT planes and flux
 monitors define no port impedance or reference plane. Check their field,
@@ -551,7 +555,8 @@ default) the returned diagonal is a joint projection, not the measured value:
 read `S_raw` and `passivity_correction` for what was measured
 (`tests/unit/sparams/test_mixed_port_sparam.py`). Waveguide, Floquet, coaxial
 and plane-wave registrations, bare sources, 0 Ω ports, mixed lumped+wire sets,
-`reference_plane_cells`, graded meshes, subgridding and ADI are refused. The
+`reference_plane_cells`, lossy (`surface_impedance_f0=`) sheets, graded meshes,
+subgridding and ADI are refused. The
 flux channel also needs a PEC ground at `z_lo` and vertical (`component="ez"`)
 lumped or wire ports.
 
