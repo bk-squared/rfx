@@ -146,6 +146,9 @@
           - "rfx/_precision.py"
           - "rfx/ringdown.py"
           - "rfx/_ringdown_jax.py"
+          # Built-in waveforms and soft sources; the default pulse is acceleration's
+          # (lead 2026-10-12). The TF/SF plane wave stays under lane:absorber.
+          - "rfx/sources/sources.py"
           - "tests/unit/runners/test_profiling.py"
           - "tests/contracts/test_matmul_precision.py"
           - "tests/unit/sparams/test_ringdown_*.py"
