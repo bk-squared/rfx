@@ -1042,7 +1042,7 @@ def _empty_waveguide_reference(self):
         dx_profile=self._dx_profile, dy_profile=self._dy_profile,
         dz_profile=self._dz_profile, dt=self._dt_pin,
         dt_min_cell=self._dt_min_cell, precision=self._precision,
-        snap=self._snap,
+        snap=self._snap, nominal_profiles=self._nominal_profiles,
     )
 
 
@@ -1165,6 +1165,7 @@ def _compute_waveguide_s_matrix_nu(
         dt=getattr(self, "_dt_pin", None),
         dt_min_cell=getattr(self, "_dt_min_cell", None),
         dt_caller="Simulation",
+        nominal_profiles=getattr(self, "_nominal_profiles", None),
     )
     if n_steps is None:
         # ``NonUniformGrid`` does not expose ``num_timesteps`` (known

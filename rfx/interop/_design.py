@@ -867,7 +867,9 @@ EXPORTED_SIMULATION_ATTRS: tuple[str, ...] = (
     "_snap",
     "_stencil_order",
     "_dt_pin",
-    "_dt_min_cell",
+    # nominal_profiles= is accepted only beside a TRACED profile, and the dump
+    # refuses a traced profile, so a dumped design never carries one: None.
+    "_dt_min_cell", "_nominal_profiles",
     "_tfsf",
     "_pinned_sheets",
     "_thin_conductors",

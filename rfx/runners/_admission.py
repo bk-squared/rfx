@@ -274,6 +274,7 @@ DETECTORS: dict[Row, Callable] = {
     ("_dx", ""): _setting("_dx", "dx"),
     ("_dt_pin", ""): _setting("_dt_pin", "dt"),
     ("_dt_min_cell", ""): _setting("_dt_min_cell", "dt_min_cell"),
+    ("_nominal_profiles", ""): _setting("_nominal_profiles", "nominal_profiles"),
     ("_precision", ""): _setting("_precision", "precision"),
     ("_solver", ""): _setting("_solver", "solver"),
     ("_adi_cfl_factor", ""): _setting("_adi_cfl_factor", "adi_cfl_factor"),
@@ -353,6 +354,7 @@ ROW_WORDS: dict[Row, str] = {
     ("_dx", ""): "an explicit dx",
     ("_dt_pin", ""): "a pinned time step (dt=)",
     ("_dt_min_cell", ""): "dt_min_cell=",
+    ("_nominal_profiles", ""): "nominal_profiles=",
     ("_precision", ""): "a precision other than 'float32'",
     ("_solver", ""): "solver='adi'",
     ("_adi_cfl_factor", ""): "adi_cfl_factor",
@@ -432,6 +434,7 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_dx", ""): _OTHER_RUNNERS,
     ("_dt_pin", ""): _MESH_PINNED - _DISTRIBUTED_NU,
     ("_dt_min_cell", ""): _MESH_PINNED - _DISTRIBUTED_NU,
+    ("_nominal_profiles", ""): _MESH_PINNED - _DISTRIBUTED_NU,
     ("_precision", ""): _UNIFORM_YEE,
     ("_solver", ""): _ADI,
     ("_adi_cfl_factor", ""): _OTHER_RUNNERS,
@@ -881,7 +884,7 @@ LANE_GATES: dict[str, dict[Row, Callable]] = {
     "run_adi": {row: _adi_homogeneous for row in _ADI_MATERIAL_ROWS},
     "fwd_adi": {row: _adi_homogeneous for row in _ADI_MATERIAL_ROWS},
     "waveguide_s_matrix": {row: _waveguide_profiled for row in (
-        ("_dt_pin", ""), ("_dt_min_cell", ""))},
+        ("_dt_pin", ""), ("_dt_min_cell", ""), ("_nominal_profiles", ""))},
 }
 
 

@@ -347,6 +347,20 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         fwd_distributed_nu=carries("with dt=, read by _build_nonuniform_grid"),
         fwd_adi=not_reachable("the constructor refuses it without dt=, and dt= needs a profile"),
     )},
+    "_nominal_profiles": {"": lanes(
+        run_uniform=not_reachable("the constructor refuses it without a traced profile"),
+        run_nonuniform=carries("read by the graded grid build; resolves positions on a traced axis"),
+        run_subgridded=not_reachable("it needs a traced profile, and a refinement on a profiled "
+                                     "mesh is refused (#1282)"),
+        run_adi=not_reachable("it needs a traced profile, and ADI requires a uniform mesh"),
+        run_distributed=refuses("nominal_profiles belongs to the graded runner",
+                                raises="nominal_profiles="),
+        fwd_uniform=not_reachable("the constructor refuses it without a traced profile"),
+        fwd_nonuniform=carries("read by the graded grid build; resolves positions on a traced axis"),
+        fwd_distributed_nu=refuses("build_sharded_nu_grid host-coerces every cell profile, so a "
+                                   "traced profile cannot run there", raises="nominal_profiles="),
+        fwd_adi=not_reachable("it needs a traced profile, and ADI requires a uniform mesh"),
+    )},
     # Run with precision='mixed', which moves the record 8.5e-2 from float32
     # on the Yee lanes; float64 needs jax x64.
     "_precision": {"": lanes(
@@ -980,7 +994,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
 
 ROW_CLASS: dict[str, str] = {
     **{attr: SETTING for attr in (
-        "_freq_max", "_domain", "_dx", "_dt_pin", "_dt_min_cell", "_precision",
+        "_freq_max", "_domain", "_dx", "_dt_pin", "_dt_min_cell", "_nominal_profiles", "_precision",
         "_solver", "_adi_cfl_factor", "_stencil_order", "_mode")},
     **{attr: BOOKKEEPING for attr in (
         "_internal_probe_indices", "_msl_auto_offset_min",
@@ -1063,6 +1077,17 @@ CALCULATOR_CELLS = {
         'coax_msl_transition': refuses('admission before the scan; rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs', raises='dt_min_cell='),
         'vmap_sweep_batched': refuses('admission before the scan; rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn', raises='dt_min_cell='),
         'material_fit': refuses('admission before the scan; rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss', raises='dt_min_cell='),
+    },
+    ('_nominal_profiles', ''): {
+        's_matrix_scan': refuses('admission before the scan; rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans', raises='nominal_profiles='),
+        'mixed_s_matrix': refuses('admission before the scan; rfx/sparams/mixed.py: assembly and per-drive _forward_from_materials', raises='nominal_profiles='),
+        'topology_optimize': refuses('admission before the scan; rfx/topology.py: base assembly and the objective forward solve', raises='nominal_profiles='),
+        'waveguide_s_matrix': refuses('carried only by the graded waveguide builder, through LANE_GATES', raises='nominal_profiles='),
+        'coaxial_line_reflection': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_line_reflection stamped grid and TEM run', raises='nominal_profiles='),
+        'coaxial_two_port': refuses('admission before the scan; rfx/sparams/coax.py: compute_coaxial_two_port stamped grid and TEM runs', raises='nominal_profiles='),
+        'coax_msl_transition': refuses('admission before the scan; rfx/sparams/coax.py: compute_coax_msl_transition registered geometry assembly and TEM/MSL runs', raises='nominal_profiles='),
+        'vmap_sweep_batched': refuses('admission before the scan; rfx/vmap_sweep.py: _build_full_scan_fn and _build_vmap_scan_fn', raises='nominal_profiles='),
+        'material_fit': refuses('admission before the scan; rfx/differentiable_material_fit.py: factory assembly, sim_run and probe-spectrum loss', raises='nominal_profiles='),
     },
     ('_precision', ''): {
         's_matrix_scan': carries('rfx/probes/sparam_driver.py: assembly and _forward_from_materials device scans'),
@@ -1654,6 +1679,7 @@ for (_attr, _feature), _cells in CALCULATOR_CELLS.items():
 LANE_GATES.update({
     ("waveguide_s_matrix", ("_dt_pin", "")): "graded builder reads dt",
     ("waveguide_s_matrix", ("_dt_min_cell", "")): "graded builder reads dt_min_cell",
+    ("waveguide_s_matrix", ("_nominal_profiles", "")): "graded builder reads nominal_profiles",
 })
 
 

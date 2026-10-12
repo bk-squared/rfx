@@ -123,6 +123,7 @@ def build_nonuniform_grid(
     dt: float | None = None,
     dt_min_cell: float | None = None,
     dt_caller: str | None = None,
+    nominal_profiles: dict | None = None,
 ) -> NonUniformGrid:
     """Build a NonUniformGrid from per-axis profiles.
 
@@ -132,6 +133,7 @@ def build_nonuniform_grid(
     the listed faces (PMC+CPML composition fix on the NU path, 2026-04).
     ``dt`` / ``dt_min_cell`` pin a concrete time step across a mesh
     deformation family — see :func:`rfx.nonuniform.make_nonuniform_grid`.
+    ``nominal_profiles`` is handed to it unchanged.
     """
     if dx is None:
         dx = C0 / freq_max / 20.0
@@ -157,6 +159,7 @@ def build_nonuniform_grid(
             pec_faces=pec_faces, pmc_faces=pmc_faces, cpml_axes=cpml_axes,
             face_layers=face_layers,
             dt=dt, dt_min_cell=dt_min_cell, dt_caller=dt_caller,
+            nominal_profiles=nominal_profiles,
         )
 
 

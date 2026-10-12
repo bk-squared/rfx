@@ -230,6 +230,10 @@ class Simulation(
         measured from their realized profile; a traced axis is measured
         against this declared floor when the run builds its mesh, and the
         run is refused if the realized cells fall below it.
+    nominal_profiles : dict or None
+        ``{"x" | "y" | "z": concrete cell widths}`` of a TRACED profile at the
+        primal point. Ports, probes and sources given in metres on that axis
+        resolve to nodes of this profile; the run refuses a node it moves.
     precision : str
         ``"float32"`` (default), ``"mixed"``, or ``"float64"``.  When
         ``"mixed"``, field arrays (E, H) use float16 for ~2x memory
@@ -326,6 +330,7 @@ class Simulation(
         dy_profile: np.ndarray | None = None,
         dt: float | None = None,
         dt_min_cell: float | None = None,
+        nominal_profiles: dict | None = None,
         precision: str = "float32",
         solver: str = "yee",
         adi_cfl_factor: float = 2.0,
@@ -384,49 +389,10 @@ class Simulation(
             raise ValueError(f"adi_cfl_factor must be positive, got {adi_cfl_factor}")
         if stencil_order not in (2, 4):
             raise ValueError(f"stencil_order must be 2 or 4, got {stencil_order}")
-        # Synthesize domain extents from axis profiles before validation.
-        # dx_profile / dy_profile set x / y; dz_profile sets z.
-        # Tracer-valued profiles require the caller to supply a concrete
-        # domain extent for that axis since the profile sum cannot be
-        # host-coerced during tracing.
-        if dx_profile is not None:
-            if is_tracer(dx_profile):
-                if len(domain) < 1 or domain[0] <= 0:
-                    raise ValueError(
-                        "dx_profile is a JAX tracer; provide a concrete "
-                        "domain[0] (profile sum cannot be host-coerced)."
-                    )
-            else:
-                domain = (float(np.sum(dx_profile)),
-                          domain[1] if len(domain) >= 2 else 0.0,
-                          domain[2] if len(domain) >= 3 else 0.0)
-        if dy_profile is not None:
-            if is_tracer(dy_profile):
-                if len(domain) < 2 or domain[1] <= 0:
-                    raise ValueError(
-                        "dy_profile is a JAX tracer; provide a concrete "
-                        "domain[1] (profile sum cannot be host-coerced)."
-                    )
-            else:
-                domain = (domain[0],
-                          float(np.sum(dy_profile)),
-                          domain[2] if len(domain) >= 3 else 0.0)
-        if dz_profile is not None:
-            if any(d <= 0 for d in domain[:2]):
-                raise ValueError(f"domain x/y must be positive, got {domain}")
-            if is_tracer(dz_profile):
-                if len(domain) < 3 or domain[2] <= 0:
-                    raise ValueError(
-                        "dz_profile is a JAX tracer; provide a concrete "
-                        "domain=(..., ..., dz_total) extent (the profile "
-                        "sum cannot be host-coerced during tracing)."
-                    )
-            else:
-                dz_total = float(np.sum(dz_profile))
-                if len(domain) < 3 or domain[2] <= 0:
-                    domain = (domain[0], domain[1], dz_total)
-        elif any(d <= 0 for d in domain):
-            raise ValueError(f"domain dimensions must be positive, got {domain}")
+        from rfx.model.graded_admission import admit_graded_profiles
+        domain, self._nominal_profiles = admit_graded_profiles(
+            domain, dx_profile, dy_profile, dz_profile, dt=dt,
+            dt_min_cell=dt_min_cell, nominal_profiles=nominal_profiles)
 
         # P2: Warn on abrupt grading in a user-supplied profile. This ran
         # for dz only, so an in-plane profile with a 2:1 or 4:1 jump was
@@ -514,21 +480,7 @@ class Simulation(
         self._dz_profile = dz_profile
         self._dx_profile = dx_profile
         self._dy_profile = dy_profile
-        # Pinned time step (non-uniform lane only). The Courant step is a
-        # function of the smallest cell, so a mesh that is a design variable
-        # moves the step with the deformation and every observable then
-        # carries the step change as well as the geometry change. Pinning one
-        # concrete step makes a deformation sweep one antenna at one step.
-        # None keeps the derived step, byte-identical.
-        if dt is not None and dz_profile is None and dx_profile is None \
-                and dy_profile is None:
-            raise ValueError(
-                "dt= pins the non-uniform lane's time step and needs at least "
-                "one of dz_profile / dx_profile / dy_profile; the uniform "
-                "lane derives its step in Grid.courant_dt."
-            )
-        if dt is None and dt_min_cell is not None:
-            raise ValueError("dt_min_cell= has no effect without dt=")
+        # Pinned time step (non-uniform lane only); admitted above.
         self._dt_pin = dt
         self._dt_min_cell = dt_min_cell
         self._precision = precision

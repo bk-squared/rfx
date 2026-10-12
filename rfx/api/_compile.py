@@ -470,6 +470,7 @@ class _CompileMixin:
             dt=getattr(self, "_dt_pin", None),
             dt_min_cell=getattr(self, "_dt_min_cell", None),
             dt_caller="Simulation",
+            nominal_profiles=getattr(self, "_nominal_profiles", None),
         )
 
     def _assemble_materials_nu(
