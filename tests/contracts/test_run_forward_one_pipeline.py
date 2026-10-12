@@ -438,7 +438,9 @@ def classify(declaration, path, level, differences, ids):
             if level == 'L2' and ident == 'D5':
                 shapes = difference.get('shape')
                 shape_change = common and shapes is not None and shapes[0] != shapes[1]
-                run_record = run_only and difference['path'].startswith('settling_witness/runs/')
+                # Item 21: both spellings represent per-drive witness channels.
+                run_record = run_only and difference['path'].startswith(
+                    ('settling_witness/runs/', 'settling_witness/per_drive/'))
                 pattern_match = pattern_match and (shape_change or run_record)
             if consequence or pattern_match:
                 explained.add(ident)

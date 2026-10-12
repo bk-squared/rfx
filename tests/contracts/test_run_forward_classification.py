@@ -43,6 +43,8 @@ def test_same_shape_witness_value_is_unexplained():
     ('P-waveguide', 'D7', 'waveguide_ports/0/voltage'),
     ('P-lumped', 'D8', 's_params'),
     ('P-waveguide', 'D5', 'settling_witness/runs/0/residual'),
+    ('P-lumped', 'D5', 'settling_witness/per_drive/0/error_per_bin'),
+    ('P-lumped2', 'D5', 'settling_witness/per_drive/1/share_per_bin'),
 ])
 def test_only_run_side_missing_records_are_explained(declaration, ident, leaf):
     with pytest.raises(pytest.xfail.Exception):
@@ -88,3 +90,11 @@ def test_a4_fixed_wording_and_wrong_exception():
     pair['run']['type'] = 'RuntimeError'
     with pytest.raises(pytest.fail.Exception, match='unexplained'):
         contract.outcomes('P-lumped', 'multi-device-graded', 'admission', pair)
+
+
+def test_per_drive_same_shape_value_is_unexplained():
+    with pytest.raises(pytest.fail.Exception, match='unexplained.*settling_witness/per_drive'):
+        contract.classify('P-lumped', 'uniform', 'L2', [
+            {'path': 'settling_witness/per_drive/0/error_per_bin',
+             'bytes_equal': False, 'shape': [[2], [2]]},
+        ], {'D5': 'witness channels'})
