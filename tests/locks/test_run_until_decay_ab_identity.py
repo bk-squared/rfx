@@ -93,6 +93,8 @@ that on the fields themselves (perturbing hx, not only the probe series), and
 red-lines the previous shared-E-floor behaviour so it cannot come back.
 """
 
+import math
+
 import pytest
 import numpy as np
 
@@ -311,10 +313,13 @@ def _build():
     materials = init_materials(grid.shape)
     n_steps = 80
 
-    # Fractional bandwidth. Until 2026-10-12 this read bandwidth=5e9 (Hz):
-    # tau was 1.3e-20 s and the scene was driven only by the pulse's 7.4e-4
-    # jump at t=0 (issue 1668).
-    pulse = GaussianPulse(f0=5e9, bandwidth=0.8)
+    # Fractional bandwidth 0.8 with tau = 8*dt (f0 ~ 17.4 GHz), so the pulse is
+    # complete by about step 60 of the 80. Until 2026-10-12 this read
+    # GaussianPulse(f0=5e9, bandwidth=5e9): bandwidth in Hz, tau 1.3e-20 s, and
+    # the scene was driven only by the old pulse's 7.4e-4 jump at t=0 (issue
+    # 1668).
+    pulse = GaussianPulse(f0=1.0 / (math.pi * 0.8 * 8.0 * float(grid.dt)),
+                          bandwidth=0.8)
     src = make_source(grid, (0.018, 0.024, 0.024), "ez", pulse, n_steps)
     prb = make_probe(grid, (0.030, 0.024, 0.024), "ez")
     return grid, materials, n_steps, [src], [prb]
@@ -459,9 +464,12 @@ def test_field_reassoc_floors_still_red_physical_perturbations():
           is recorded separately; do not cite 90.2x as GPU H headroom;
       (b) a 1% whole-array scale error in hx FAILS;
       (c) a 10% single-element error in hx FAILS;
-      (d) the RETIRED shared-E-scale floor would have ACCEPTED both (b) and
-          (c) -- the regression witness, so the shared floor cannot return
-          unnoticed; and
+      (d) a single-element hx error of half the RETIRED shared-E-scale
+          floor (computed on this scene) is ACCEPTED by that shared floor and
+          CAUGHT by hx's own floor -- the regression witness, so the shared
+          floor cannot return unnoticed. Scene-relative since 2026-10-12: the
+          earlier form (the shared floor accepts (b) and (c)) assumed the old
+          scene's H/E ratio; and
       (e) every component that carries signal above its own floor still reds a
           0.1%-of-own-peak single-element change.  A component whose peak sits
           at or below its floor is numerically null (hz for this Ez source):
@@ -535,21 +543,23 @@ def test_field_reassoc_floors_still_red_physical_perturbations():
     )
 
     # (d) Regression witness: the RETIRED shared floor (one E-scale floor for
-    #     all six components) accepted both of those. Recomputed here at
-    #     runtime, not quoted, so the witness cannot go stale.
+    #     all six components), recomputed here at runtime. An hx error of half
+    #     that floor passes it and must be caught by hx's own floor.
     shared_floor = _reassoc_atol([arrays_by_comp[c][0] for c in comps], n_steps)
-    assert shared_floor > atol_hx, (
-        f"shared E-scale floor {shared_floor:.3e} is not looser than the "
-        f"per-component hx floor {atol_hx:.3e}; the regression witness below "
+    assert atol_hx < 0.5 * shared_floor, (
+        f"per-component hx floor {atol_hx:.3e} is not below half the shared "
+        f"E-scale floor {shared_floor:.3e}; the regression witness below "
         "would be vacuous"
     )
-    assert np.allclose(hx, scaled, rtol=_RTOL, atol=shared_floor), (
-        "the retired shared floor is expected to ACCEPT a 1% hx scale error; "
-        "if it now reds, this witness needs rewriting"
+    half = hx.copy()
+    half[np.unravel_index(ihx, hx.shape)] += np.asarray(0.5 * shared_floor, dtype=hx.dtype)
+    assert np.allclose(hx, half, rtol=_RTOL, atol=shared_floor), (
+        "the retired shared floor is expected to ACCEPT an hx error of half "
+        "itself; if it now reds, this witness needs rewriting"
     )
-    assert np.allclose(hx, spike, rtol=_RTOL, atol=shared_floor), (
-        "the retired shared floor is expected to ACCEPT a 10% single-element "
-        "hx error; if it now reds, this witness needs rewriting"
+    assert not np.allclose(hx, half, rtol=_RTOL, atol=atol_hx), (
+        f"hx's own floor {atol_hx:.3e} swallowed an hx error of "
+        f"{0.5 * shared_floor:.3e} (half the retired shared floor)"
     )
 
     # (e) Every signal-carrying component still reds a 0.1% own-peak change;
