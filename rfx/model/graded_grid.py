@@ -393,6 +393,15 @@ class NonUniformGrid(NamedTuple):
 
 
 
+def _boundary_cell_tol(cell: float) -> float:
+    """One float32 ULP at ``cell``: the end-cell admission tolerance.
+
+    The time step stores cell widths as float32, so a float32 copy of a
+    float64 boundary cell (off by at most half this) is the same cell.
+    """
+    return float(np.spacing(np.float32(abs(cell))))
+
+
 def _pad_profile(profile, pad_lo: int, pad_hi: int | None = None):
     """Pad a 1-D cell-size profile with CPML cells on each end.
 
@@ -805,22 +814,26 @@ def make_nonuniform_grid(
         nx_interior = int(round(domain_xy[0] / dx))
         dx_prof_phys = np.full(nx_interior, float(dx))
     elif is_tracer(dx_profile):
-        # Tracer path (mesh-as-design-variable): stay in jnp and skip the
-        # concrete boundary validation. Caller is responsible for keeping
-        # `dx_profile[0] == dx_profile[-1] == dx` (the scalar `dx` still
-        # names the boundary cell; the CPML reads the traced end cells
-        # through `boundary_cell`). Mirrors the 2026-04-17 dz tracer refactor.
+        # Tracer path (mesh-as-design-variable): stay in jnp. The end-cell
+        # rule below cannot be checked on values a trace does not have, so
+        # it is the caller's declared contract here, as ``dt_min_cell`` is
+        # for the time step: each end cell within one float32 ULP of `dx`.
+        # Mirrors the 2026-04-17 dz tracer refactor.
         dx_prof_phys = jnp.asarray(dx_profile, dtype=jnp.float32)
     else:
         dx_prof_phys = np.asarray(dx_profile, dtype=np.float64)
-        # Guard: CPML cells must have the same size as the boundary interior
-        # cells, otherwise the CPML σ/κ profile is miscalibrated.
-        if abs(float(dx_prof_phys[0]) - float(dx)) > 1e-12:
+        # The scalar `dx` names the boundary cell (``grid.dx`` readers take it
+        # as such); the CPML itself calibrates from the realized end cells
+        # through ``boundary_cell``, so a mismatch misnames the cell rather
+        # than miscalibrating the absorber. The step consumes cells as
+        # float32, so one float32 ULP of `dx` is the same realized cell.
+        tol = _boundary_cell_tol(dx)
+        if abs(float(dx_prof_phys[0]) - float(dx)) > tol:
             raise ValueError(
                 f"dx_profile[0]={float(dx_prof_phys[0])} must equal boundary "
                 f"dx={float(dx)} (CPML cells use the boundary spacing)."
             )
-        if abs(float(dx_prof_phys[-1]) - float(dx)) > 1e-12:
+        if abs(float(dx_prof_phys[-1]) - float(dx)) > tol:
             raise ValueError(
                 f"dx_profile[-1]={float(dx_prof_phys[-1])} must equal boundary "
                 f"dx={float(dx)}."
@@ -839,14 +852,16 @@ def make_nonuniform_grid(
         dy_boundary = float(dx)
     elif is_tracer(dy_profile):
         # Tracer path: stay in jnp. The scalar `dy` is the concrete `dx`
-        # (the CPML reads the traced end cells through `boundary_cell`) — the caller must align `dy_profile[0]` and
-        # `dy_profile[-1]` with `dx` (same contract as the concrete path).
+        # (the CPML reads the traced end cells through `boundary_cell`), so
+        # the traced grid names `dx` as its y boundary cell; the concrete path
+        # names `dy_profile[0]` and checks only lo against hi. A trace cannot
+        # check its end cells, so keeping them at `dx` is the caller's contract.
         dy_prof_phys = jnp.asarray(dy_profile, dtype=jnp.float32)
         dy_boundary = float(dx)
     else:
         dy_prof_phys = np.asarray(dy_profile, dtype=np.float64)
         dy_boundary = float(dy_prof_phys[0])
-        if abs(float(dy_prof_phys[-1]) - dy_boundary) > 1e-12:
+        if abs(float(dy_prof_phys[-1]) - dy_boundary) > _boundary_cell_tol(dy_boundary):
             raise ValueError(
                 f"dy_profile boundary cells must match each other "
                 f"(got lo={dy_boundary}, hi={float(dy_prof_phys[-1])})."
