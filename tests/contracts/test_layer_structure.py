@@ -289,7 +289,11 @@ def test_calibration_from_declaration_and_leader_correction(generated):
         assert f"_AdMemoryMixin.{name}" in definitions
     nonuniform = generated["files"]["rfx/nonuniform.py"]
     all_units = set().union(*(nonuniform[r] for r in "SMAG"))
-    assert {"NonUniformGrid.node_of", "run_nonuniform"} <= all_units
+    assert "run_nonuniform" in all_units
+    # Graded-grid construction (NonUniformGrid, its module-level tables) moved to
+    # rfx/model/ in #1643; nonuniform.py now only imports it, counted under I.
+    assert "NonUniformGrid.node_of" not in all_units
+    assert "rfx.model.graded_grid:make_nonuniform_grid" in nonuniform["I"]
     assert "rfx.model.materials:_design_box_edge_coeffs" in generated["files"][SIM]["I"]
 
 
@@ -601,7 +605,8 @@ _MODULE_PHASE = jnp.exp(1j * angle)
 
 
 def test_review_pseudo_unit_calibration(generated):
-    assert "<module>" in generated["files"]["rfx/nonuniform.py"]["G"]
+    # nonuniform.py lost its module-level hit when #1643 moved the grid tables out.
+    assert "<module>" not in generated["files"]["rfx/nonuniform.py"]["G"]
     waveguide = generated["files"]["rfx/sources/waveguide_port.py"]
     assert "<module>" in waveguide["G"]
     assert "WaveguidePortConfig.<body>" in waveguide["G"]
