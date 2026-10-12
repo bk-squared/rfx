@@ -348,8 +348,8 @@ define an S-parameter port.
   reference impedance and is not characterized. The fixture cannot be refined
   (the port must bridge a one-cell gap), so its convergence is not shown.
 - A two-port line matched at both ends is checked against `S11 = 0` and
-  `|S21| = 1`, and the lumped and wire calculators give the same complex
-  matrix on the same cells (`tests/unit/ports/test_lumped_two_port_matched_line.py`).
+  `|S21| = 1` (within 0.05), and the lumped and wire calculators give the same
+  complex matrix on the same cells (to 1e-6) (`tests/unit/ports/test_lumped_two_port_matched_line.py`).
 - The extractor's algebra and its replay from stored voltages and currents are
   checked (`tests/unit/sparams/test_sparam.py`,
   `tests/unit/sparams/test_port_dump_replay.py`). Algebra and replay checks do
@@ -367,8 +367,8 @@ calculation.
 A feed spread along `extent`. Use `add_msl_port(...)` when the model is a
 distributed microstrip line.
 
-- The same matched-line closed form as the lumped port, and the same replay
-  checks (`tests/unit/sparams/test_twoport_wire_port.py`,
+- The same matched-line closed form as the lumped port, the same matrix as
+  the lumped port on one cell (to 1e-6), and the same replay checks (`tests/unit/sparams/test_twoport_wire_port.py`,
   `tests/unit/sparams/test_wire_port_sparams_forward.py`).
 - Absolute calibration is limited by the feed model; a replay check is not a
   modal-port calibration.
@@ -404,6 +404,9 @@ probes downstream of each feed.
   move the reference plane; raising `n_probe_offset` alone moves the probes
   toward the reflector. `preflight()` and
   `preflight_sparameters(calculator="msl")` report the condition before a run.
+- **Thru line.** A uniform thru line is held to a mean `|S21|` in
+  (0.90, 1.05) and a mean `Re(Z0)` in (40, 65) Ω
+  (`tests/unit/sparams/test_msl_port_integration.py`).
 - **Cross-validation.** The open-stub notch filter is compared with frozen data
   from another solver in `tests/crossval/msl_notch_filter/`.
 
@@ -426,7 +429,8 @@ matched reference run per port (`2 * n_ports` simulations).
   (WR-340, WR-62, WR-28, WR-15, WR-10) against the closed form, and the WR-90
   empty guide, PEC short and slab against frozen data from another solver
   (`tests/fixtures/waveguide_broad_e5/`). The port validation battery and the
-  two-port contract are the authoritative checks
+  two-port contract are the authoritative checks: column power with a
+  reflecting obstacle below 1.02, a PEC short's `|S11|` at least 0.99
   (`tests/oracle/test_waveguide_port_validation_battery.py`,
   `tests/unit/sparams/test_waveguide_twoport_contract_v1.py`).
 - **Phase and group delay** are checked on the same slab cases and on an empty
@@ -476,7 +480,8 @@ line the calculator builds. Use `feed_impedance=` for the feed and `dut_impedanc
 must fit between the load and the source.
 
 - Checked against the closed form over 4–12 GHz for short, open, matched and
-  resistive loads at two line impedances, and against frozen data from another
+  resistive loads at two line impedances (short and open held to `|Γ|` within
+  0.05 of 1), and against frozen data from another
   solver for short and open (`tests/fixtures/coax_broad_e5/`,
   `tests/fixtures/coax_broad_e4/`). This evidence was taken before 2.0 changed
   the absorber to all three axes and was not taken again.
@@ -545,7 +550,7 @@ Poynting flux.
 
 | Aspect | Status |
 |---|---|
-| off-diagonal magnitude | experimental; its only independent internal check is reciprocity, which warns above `reciprocity_tol` |
+| off-diagonal magnitude | experimental; its only independent internal check is reciprocity, which warns above `reciprocity_tol` (default 0.06) |
 | absolute magnitude | not compared with another solver |
 | off-diagonal phase | provisional: it mixes two reference-plane conventions |
 | column power | an identity of the flux normalization, not a passivity check |
