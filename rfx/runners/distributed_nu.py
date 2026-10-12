@@ -2389,7 +2389,7 @@ def run_nonuniform_distributed_pec(
         # Checkpoint full segments and the real, unpadded tail.
         if use_segmented:
             final_, opt_ys = segmented_scan(
-                scan_step, c0_opt, opt_xs, int(checkpoint_every)
+                scan_step, c0_opt, opt_xs, int(checkpoint_every), scan=lax.scan
             )
         else:
             final_, opt_ys = lax.scan(scan_step, c0_opt, opt_xs)
