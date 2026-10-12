@@ -23,7 +23,7 @@ Measured on branch ports/msl-plane (Mac CPU, 2026-10-13): beta_KJ/beta_2L - 1
 = -1.226 % ... -0.220 % (outside 1 % at 2.0, 3.5 and 4.9 GHz); doubling the
 absorber moved beta_2L by at most 0.033 %. Record: bk-squared/rfx-archive
 ``rfx/plans/20261005-s2-measurement-plan/MSL-PLANE.md``, decision records 11
-and 12 (the bar 1.35e-2 is the measured 1.226 % plus margin, set by the lead).
+and 12 (the bar 1.35e-2 is the measured 1.226 % plus about 10 % margin, set by the ports editor: decision record 16).
 The shift's phase error on this board is at most 1.9e-2 rad over 2-18 GHz
 (decision record 15). Moving
 probe 0 on ONE line is not this measurement: within 5 substrate heights of
