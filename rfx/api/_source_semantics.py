@@ -32,8 +32,9 @@ uniform + cpml/upml   ``Cb`` (NEITHER —     ``amplitude_kind='current'`` with 
 ====================  ====================  =====================================
 
 Product tables are built by ``rfx.model.source_coefficients.source_table``.
-It returns field samples directly, without coefficient cancellation, and
-preserves the historical current product order for each low-level native.
+It returns field samples directly, without coefficient cancellation; a named
+kind forms one product for every native ('current': ``(Cb/dV)*w``), and only
+``None`` keeps each low-level native's historical contract.
 ``source_amplitude_scale`` remains the scalar conversion API for external
 callers; it is not used to construct product field tables.
 

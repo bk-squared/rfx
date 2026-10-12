@@ -1632,10 +1632,9 @@ class _ExecuteMixin:
 
         for _port_index, pe in enumerate(self._ports):
             if pe.impedance == 0.0:
-                from rfx.sources.port_drive import soft_source
-                sources.defer(soft_source, grid, pe.position, pe.component,
-                              pe.waveform, n_steps, amplitude_kind=pe.amplitude_kind,
-                              field_dtype=self._resolve_field_dtype())
+                from rfx.sources.port_drive import defer_soft_source
+                defer_soft_source(sources, grid, pe, n_steps,
+                                  field_dtype=self._resolve_field_dtype())
                 continue
 
             # Sparam-eligible lumped/wire port — advance the multi-drive index.
