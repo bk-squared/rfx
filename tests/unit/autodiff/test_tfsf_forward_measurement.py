@@ -108,7 +108,7 @@ def test_oblique_reconstruction_hand_computation():
     result = namedtuple("ToyResult", "state time_series")(state=None, time_series=jnp.array(
         [[1+2j, 3+4j], [-2+5j, 6-7j]], dtype=jnp.complex64))
     cfg = SimpleNamespace(k_transverse=np.pi / 2, transverse_axis="y")
-    grid = SimpleNamespace(dx=1., dy=1., shape=(1, 2, 1))
+    grid = SimpleNamespace(shape=(1, 2, 1), cells=lambda axis: np.ones(2))
     probes = [SimpleNamespace(j=0), SimpleNamespace(j=1)]
     actual = reconstruct_oblique_physical(result, cfg, grid, probes)
     np.testing.assert_allclose(actual.time_series, [[1., 4.], [-2., -7.]],
