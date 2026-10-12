@@ -239,11 +239,12 @@ def plain_gradients(observable):
                      for p in (P0, 1.01 * P0)])
 
 
-# The added reverse-mode solves exceeded the serial CPU budget; the value
-# rows, shell refusals, and CustomWaveform jit values remain always-on.
-@pytest.mark.slow
+# jit(grad) stays always-on: it catches a gradient lost only under an outer
+# trace. The other four reverse-mode rows exceed the serial CPU budget.
 @pytest.mark.parametrize("transform", [
-    "jit-grad", "value_and_grad", "jvp", "grad-checkpoint", "vmap-grad"])
+    "jit-grad",
+    *(pytest.param(t, marks=pytest.mark.slow)
+      for t in ("value_and_grad", "jvp", "grad-checkpoint", "vmap-grad"))])
 def test_returned_gradients(observable, plain_gradients, transform, record_property):
     _, objective = observable
     scalar = lambda p: objective(p)[0]
