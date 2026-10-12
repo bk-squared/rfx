@@ -2151,7 +2151,7 @@ def extract_waveguide_s_matrix_flux(
 
     from rfx.simulation import run as run_simulation
     from rfx.probes.probes import flux_spectrum
-    from rfx.measurement.flux_weights import grid_flux_monitor
+    from rfx.measurement import grid_flux_monitor
 
     _AXIS_IDX = {"x": 0, "y": 1, "z": 2}
 
