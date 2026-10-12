@@ -790,19 +790,26 @@ def realize_components(cells, grid, *, periodic, dt=None, budget=None, grid_kind
 
 
 def with_components(materials, grid, *, periodic, debye_spec=None, lorentz_spec=None,
-                    dt=None, budget=None, grid_kind="Grid"):
+                    dt=None, budget=None, grid_kind="Grid", tensor=None):
     """Attach one realization after the last cell/stamp write, or reuse it.
 
     Callers must not modify the cells after this boundary. Raw low-level
     runner inputs enter here too; no global or identity cache is involved.
+    ``tensor`` (a :class:`rfx.model.tensor_operands.TensorOperands` or None)
+    is attached to the realization by
+    :func:`rfx.model.tensor_operands.attach_tensor`.
     """
     if materials.components is not None:
         validate_components(materials, periodic=periodic, grid=grid)
+    else:
+        components = realize_components(
+            ComponentCells(materials, debye_spec, lorentz_spec), grid, periodic=periodic,
+            **({} if budget is None else dict(dt=dt, budget=budget, grid_kind=grid_kind)))
+        materials = materials._replace(components=components)
+    if tensor is None:
         return materials
-    components = realize_components(
-        ComponentCells(materials, debye_spec, lorentz_spec), grid, periodic=periodic,
-        **({} if budget is None else dict(dt=dt, budget=budget, grid_kind=grid_kind)))
-    return materials._replace(components=components)
+    from rfx.model.tensor_operands import attach_tensor
+    return attach_tensor(materials, tensor)
 
 
 def _grid_key(grid):

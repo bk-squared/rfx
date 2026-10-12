@@ -1225,8 +1225,8 @@ def _build_step_setup(
     # ---- boundary configuration ----
     periodic = resolve_periodic(grid, periodic)
     from rfx.model.materials import with_components
-    from rfx.model.tensor_operands import TensorOperands, attach_tensor
-    materials = attach_tensor(with_components(materials, grid, periodic=periodic),
+    from rfx.model.tensor_operands import TensorOperands
+    materials = with_components(materials, grid, periodic=periodic, tensor=
         TensorOperands.of(aniso_eps, aniso_inv_eps, conformal_weights, aniso_inv_eps_smooth))
     tensor = materials.components.tensor
     aniso_eps, aniso_inv_eps = (tensor.eps, tensor.inv_eps) if tensor else (None, None)
