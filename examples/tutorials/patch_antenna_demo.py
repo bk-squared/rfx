@@ -55,11 +55,16 @@ Error budget at this deliberately coarse resolution (dx = 2 mm):
   rfx meshes (dx = 2 / 1 / 0.5 mm: 2.4479 / 2.4516 / 2.4491 GHz) against the
   converged openEMS ladder (finest 2.4436 GHz, extrapolated about 2.4448 GHz);
   this script at dx = 2 mm prints +0.18 %.  The narrow-band condition (a
-  frequency within 10 % of the resonance's 2.4 % bandwidth, 0.235 %) is NOT
+  frequency within 10 % of the resonance's 2.35 % bandwidth (1/Q, Q 42.6),
+  0.235 %) is NOT
   judged: the scatter of rfx's own three meshes (0.15 %, not monotone) is as
   large as that margin, so do not read it as passed.  The +1.1 % this
-  docstring printed before came from a single-mesh openEMS reference,
-  2.4221 GHz, which is 0.88 % below the converged openEMS value.  The
+  docstring printed before came from a single openEMS run on one mesh,
+  2.4221 GHz, which is 0.88 % below the converged openEMS value.  That run
+  also read a different quantity in a different box (harminv on the 50 ohm
+  port voltage, port-loaded Q 20, in openEMS's own tutorial domain; VESSL
+  369367246713, ``scripts/diagnostics/patch_tutorial_openems.py``), so the
+  0.88 % is not a mesh error alone.  The
   percentages in the history below are against that former reference.
   This script read 2.4460 GHz (VESSL 369367265975) until #1546 gave an E edge
   between unequal graded cells the cell-area weighted permittivity; the
@@ -98,9 +103,11 @@ Error budget at this deliberately coarse resolution (dx = 2 mm):
   1.905 mm thick against the declared 1.524 mm.  The foils are sheets now, so
   the realized cavity is the declared one and the run asserts it at build
   time.
-- The far field is the observable that agrees.  This configuration prints
+- The far field agrees as well.  This configuration prints
   D = 6.59 dBi at its radiating bin (2.4 GHz) against openEMS 6.83 dBi,
-  -0.24 dB (VESSL 369367270265; 6.60 dBi before #1546), inside the 1.0 dB
+  -0.24 dB (VESSL 369367270265; 6.60 dBi before #1546; openEMS's value is
+  taken at its 50 ohm |S11| dip, 2.455 GHz, and rfx prints 6.74 dBi at its
+  2.5 GHz bin, so part of the difference is the frequency), inside the 1.0 dB
   the lock's ``D_ABS_TOL_DB`` carries — though the lock solves its own board, so this
   too is a measurement rather than a pass.  The pre-#1375 board printed
   6.72 dBi, the pre-contract board 7.39 dBi (against the former openEMS

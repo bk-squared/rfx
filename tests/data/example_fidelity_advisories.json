@@ -45,7 +45,7 @@
    "code": "ntff_near_field",
    "disposition": "intended",
    "reason": "Teaching point 3 of the tutorial: 'Every face should sit at least half a wavelength from the radiator where the domain allows. The face below the ground plane cannot: it sits 6 mm below the ground. Preflight flags it, the run quotes the warning verbatim, and a solver-to-solver cross-check backs the placement. Preflight output is part of the result; do not suppress it.' The placement is cross-checked against openEMS at the design-mode bin: D 6.59 dBi against openEMS 6.83 dBi, -0.24 dB (module docstring).",
-   "ref": "examples/tutorials/patch_antenna_demo.py:33-37,379-385,513-517",
+   "ref": "examples/tutorials/patch_antenna_demo.py:33-37,106-111,386-392,520-524",
    "rows": 1,
    "variant": "examples/tutorials/patch_antenna_demo.py::build_simulation::default"
   },
@@ -53,7 +53,7 @@
    "code": "ntff_small_ground_plane",
    "disposition": "intended",
    "reason": "The geometry is the openEMS 'Simple Patch Antenna' tutorial verbatim -- a 60 x 60 mm finite ground plane -- and the finite plane is the structure under test, not an oversight. main()'s comment lists this row among the advisories expected on this fixture: 'ntff_small_ground_plane for finite-ground diffraction'; the openEMS reference solves the same finite ground plane.",
-   "ref": "examples/tutorials/patch_antenna_demo.py:3-16,513-517",
+   "ref": "examples/tutorials/patch_antenna_demo.py:3-16,520-524",
    "rows": 1,
    "variant": "examples/tutorials/patch_antenna_demo.py::build_simulation::default"
   },
