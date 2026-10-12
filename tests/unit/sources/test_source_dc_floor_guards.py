@@ -10,7 +10,7 @@ Locks, in order:
 1-2. ``GaussianPulse`` (issue 1668) starts at zero, leaves no DC on the
    float32 table at cutoff 3, 4.5 and 6, differs from the pulse before
    issue 1668 by at most 1.7e-3 of its amplitude, and its float32 table
-   matches a float64 evaluation of the closed form within 2e-6 relative
+   matches a float64 evaluation of the closed form within 4 c^2 eps32 relative
    over the first half tau. (Until issue 1668: byte identity with the
    pre-cutoff formula, and the e^-(c^2) law of its DC.)
 3. The run()-path ``until_decay`` DC-floor warning fires exactly per the
@@ -111,17 +111,19 @@ def test_gaussian_pulse_changes_the_old_pulse_by_at_most_1p7e_3(cutoff):
 
 @pytest.mark.parametrize("cutoff", _CUTOFFS)
 def test_gaussian_pulse_float32_table_matches_float64_near_the_start(cutoff):
-    """Over u < 1/2 the float32 table is within 2e-6 of the float64 closed
-    form at the same times, relative to it, sample by sample (t = 0 is the
-    zero of the previous test)."""
+    """Over u < 1/2 the float32 table is within 4 c^2 eps32 of the float64
+    closed form at the same times, relative to it, sample by sample (t = 0 is
+    the zero of the previous test)."""
     pulse = GaussianPulse(f0=_F0, bandwidth=_BW, cutoff=cutoff)
     n = int(math.ceil(0.5 * _TAU / DEMO_DT))
     values, times = _table(pulse, n)
     want = _pulse64(times, cutoff)
     rel = np.abs(values[1:] - want[1:]) / np.abs(want[1:])
     worst = int(np.argmax(rel)) + 1
-    assert rel.max() <= 2e-6, (
-        f"cutoff {cutoff}: relative error {rel.max():.3e} at u = "
+    # exp(-x^2) multiplies the argument's rounding by x^2 (the old formula reads 4.35e-6 at c = 4.5).
+    bar = 4 * cutoff ** 2 * float(np.finfo(np.float32).eps)
+    assert rel.max() <= bar, (
+        f"cutoff {cutoff}: relative error {rel.max():.3e} (bar {bar:.2e}) at u = "
         f"{times[worst] / _TAU:.3f} (float32 {values[worst]:.6e}, "
         f"float64 {want[worst]:.6e})")
 
