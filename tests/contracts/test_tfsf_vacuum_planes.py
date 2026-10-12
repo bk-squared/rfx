@@ -77,6 +77,26 @@ def test_interior_dielectric_with_vacuum_planes_admitted(graded, entry):
     assert np.max(np.abs(values)) > 0
 
 
+@pytest.mark.parametrize("crossing", [True, False], ids=["crossing", "interior"])
+def test_graded_design_box_vacuum_planes(crossing):
+    sim = _scene(graded=True)
+    x_lo, x_hi = (.001, .029) if crossing else (.013, .017)
+    box = ((x_lo, .008, .005), (x_hi, .012, .007))
+    grid = sim._build_nonuniform_grid()
+    bounds = sim._design_box_bounds_from_corners(grid, box)
+    shape = tuple(bounds[2 * d + 1] - bounds[2 * d] for d in range(3))
+    eps = jnp.full(shape, 4.)
+    if crossing:
+        with pytest.raises(ValueError) as caught:
+            sim.forward(n_steps=120, design_box=box, design_eps_override=eps)
+        assert str(caught.value) == VACUUM_MESSAGE
+    else:
+        result = sim.forward(n_steps=120, design_box=box, design_eps_override=eps)
+        values = np.asarray(result.time_series)
+        assert np.isfinite(values).all()
+        assert np.max(np.abs(values)) > 0
+
+
 def test_traced_x_cell_sizes_refused():
     def energy(profile):
         sim = Simulation(freq_max=20e9, domain=(.030, .020, .012), dx=.001,

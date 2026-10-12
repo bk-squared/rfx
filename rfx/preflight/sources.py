@@ -132,15 +132,18 @@ def _validate_tfsf_vacuum_boundary(materials: MaterialArrays, tfsf_cfg,
     import jax
     arrays = tuple(value[xs, :, :] for _, xs in boundary_slices
                    for value in (materials.eps_r, conductivity_envelope(materials),
-                                 materials.mu_r))
+                                 materials.mu_r, *nonvacuum_masks))
+    width = 3 + len(nonvacuum_masks)
 
     def check(*values):
         for index, (plane_name, _) in enumerate(boundary_slices):
-            eps, sigma, mu = (np.asarray(v) for v in values[3 * index:3 * (index + 1)])
+            group = values[width * index:width * (index + 1)]
+            eps, sigma, mu = (np.asarray(v) for v in group[:3])
             if not (
                 np.allclose(eps, 1.0)
                 and np.allclose(sigma, 0.0)
                 and np.allclose(mu, 1.0)
+                and all(not np.any(np.asarray(v)) for v in group[3:])
             ):
                 raise ValueError(
                     "TFSF plane-wave source requires vacuum on and adjacent to "

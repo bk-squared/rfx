@@ -2067,7 +2067,15 @@ class _ExecuteMixin:
             self._validate_tfsf_vacuum_boundary(
                 materials, tfsf_run[0], nonvacuum_masks=tuple(nonvacuum))
         elif self._tfsf is not None:
-            self._validate_tfsf_vacuum_boundary(materials, tfsf_run[0])
+            nonvacuum = []
+            for spec in (design_box, design_occupancy):
+                if spec is not None:
+                    b = spec.bounds
+                    window = tuple(slice(b[2 * d], min(b[2 * d + 1] + 1, grid.shape[d]))
+                                   for d in range(3))
+                    nonvacuum.append(jnp.zeros(grid.shape, dtype=bool).at[window].set(True))
+            self._validate_tfsf_vacuum_boundary(
+                materials, tfsf_run[0], nonvacuum_masks=tuple(nonvacuum))
 
         # Every declared input this lane does not carry is refused here,
         # after the specific refusals above and before the first step.
