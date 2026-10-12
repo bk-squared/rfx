@@ -73,6 +73,20 @@ def _table(pulse, n):
     return values.astype(np.float64), np.asarray(times, dtype=np.float64)
 
 
+def test_gaussian_pulse_refuses_a_cutoff_below_2p5():
+    """Below c = 2.5 the charge-free start changes the pulse by more than 2 %
+    (largest added term 1.84e-2 at c = 2.5, 2.8e-2 at 2.4; closed form below)."""
+    u = np.linspace(0.0, 8.0, 400_001)
+    def added(c):
+        return np.max(np.abs(np.exp(-c * c - u * u) * (
+            2 * c + (4 * c * c - 2) * u - 4 * c * u * u - 4 * c * c * u ** 3)))
+    assert added(2.5) < 2e-2 < added(2.4)
+    GaussianPulse(f0=_F0, bandwidth=_BW, cutoff=2.5)
+    for bad in (2.49, 1.0, 0.0, -3.0, float("nan")):
+        with pytest.raises(ValueError, match="cutoff"):
+            GaussianPulse(f0=_F0, bandwidth=_BW, cutoff=bad)
+
+
 @pytest.mark.parametrize("cutoff", _CUTOFFS)
 def test_gaussian_pulse_starts_at_zero(cutoff):
     """s(0) = 0 exactly, evaluated as a scalar and as a table."""

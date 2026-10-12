@@ -233,8 +233,10 @@ class GaussianPulse:
     charge whose field never decays (issue #388). The second term is
     tau * d/dt[exp(-c^2) * phi(t)] with phi = exp(-u^2)(1 + 2c u + 2c^2 u^2),
     phi(0) = 1, phi(inf) = 0: it makes the integral exactly zero and the
-    start continuous in value and slope, and changes the pulse by at most
-    about 13*exp(-c^2) (1.6e-3 of the amplitude at c=3) within the first tau.
+    start continuous in value and slope. The added term's largest magnitude,
+    near t = 0.36 tau, is 1.627e-3 of the amplitude at c = 3 and 1.837e-2 at
+    c = 2.5. Below c = 2.5 it exceeds 2 % (the uncorrected start would jump by
+    2c*exp(-c^2), 9.7e-3 at c = 2.5), so a smaller cutoff is refused.
 
     Parameters
     ----------
@@ -246,13 +248,25 @@ class GaussianPulse:
         Peak amplitude (V/m). Default 1.0.
     cutoff : float
         Number of tau between t=0 and the pulse peak: t0 = cutoff * tau.
-        Default 3.0.
+        Default 3.0; at least 2.5.
     """
 
     f0: float
     bandwidth: float = 0.5
     amplitude: float = 1.0
     cutoff: float = 3.0
+
+    def __post_init__(self):
+        try:
+            cutoff = float(self.cutoff)
+        except TypeError:  # traced: checked where it was concrete
+            return
+        if not cutoff >= 2.5:
+            raise ValueError(
+                f"GaussianPulse cutoff={cutoff!r} is below 2.5: the start would "
+                "jump by 2c*exp(-c^2) of the amplitude and making it charge-free "
+                "changes the pulse by more than 2 % (1.84e-2 at c = 2.5). Use "
+                "cutoff >= 2.5 (default 3).")
 
     @property
     def tau(self) -> float:

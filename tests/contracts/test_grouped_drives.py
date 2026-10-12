@@ -196,7 +196,7 @@ def port_scene(kind, lane):
     options = dict(dx_profile=profile, dy_profile=profile, dz_profile=profile) if lane == 'graded' else {}
     sim = Simulation(freq_max=3e9, domain=(float(profile.sum()),)*3,
                      dx=.001, boundary='pec', cpml_layers=0, snap='declared', **options)
-    wave = GaussianPulse(f0=2e9, bandwidth=1.2, cutoff=1.)
+    wave = GaussianPulse(f0=2e9, bandwidth=1.2, cutoff=2.5)  # >= 2.5 (issue 1668)
     if kind == 'wire':
         sim.add_port(position=(.012, .012, .012), component='ez', extent=.003,
                      impedance=50., waveform=wave)
