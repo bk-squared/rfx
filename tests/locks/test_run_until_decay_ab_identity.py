@@ -332,10 +332,9 @@ def _build():
 
 @pytest.mark.xfail(
     jax.default_backend() == "gpu", strict=True,
-    reason=("scan vs chunked decay loop differ beyond the derived floor on GPU "
-            "(ez 1.24x, VESSL 369367270791); main's decay loop runs a 1-step first "
-            "chunk; the decay-stop PR (acceleration/decay-stop) makes the chunks "
-            "uniform"))
+    reason=("issue 1680: scan vs decay loop differ beyond the derived floor on GPU "
+            "(ez 1.24x, VESSL 369367270791); cause undetermined (the decay-stop "
+            "branch differs by the same amount)"))
 def test_run_until_decay_ab_identity():
     grid, materials, n_steps, sources, probes = _build()
 
