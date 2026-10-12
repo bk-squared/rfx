@@ -45,11 +45,15 @@ the old names kept as deprecated aliases (PR 1661).</p>
 | the legacy multi-device runner `rfx.runners.distributed.run_distributed` (now raises `RuntimeError`) and the `rfx.runners.run_distributed` shortcut | `sim.run(devices=[...])`, or `rfx.runners.distributed_v2.run_distributed` with the same arguments. |
 | rfx Studio, the experiment service, the agent control plane and their command-line tools | Not shipped in 2.0. Stay on the last 1.x release that ships them, or take the code from the repository history. |
 
+**Low-level API.** The fields of `DebyeCoeffs` and `LorentzCoeffs` are now a
+tuple of three arrays, one per E component, instead of one grid array. Index
+the component first: `coeffs.ca[0]` is the Ex coefficient, where 1.x read
+`coeffs.ca[i, j, k]`.
+
 ## Defaults that changed
 
 | What | 1.x | 2.0 | To keep the 1.x behaviour |
 |---|---|---|---|
-| `DebyeCoeffs` / `LorentzCoeffs` fields (low-level) | one grid array, `coeffs.ca[i, j, k]` | a tuple of three arrays, one per E component | Index the component first: `coeffs.ca[0]` is the Ex coefficient. |
 | `add_source(amplitude_kind=None)` | meant different things on different solver paths | a current moment in A·m on every path | Uniform `run()` with PEC walls: `amplitude_kind="field"`. Uniform `run()` with an absorber, and uniform `forward()`: `amplitude_kind="current"` with the waveform amplitude multiplied by the cell volume. Graded meshes: unchanged. Field values change; S-parameters and ratios of probes do not. |
 | a port's `waveform` (lumped, wire, microstrip) | scaled with the mesh and the load | the port's open-circuit source voltage, on every mesh | S-parameters do not change. Absolute fields, flux power and far fields of port-driven models do: divide the waveform by the ratio the [changelog](/rfx/project/changelog/) gives for your port. |
 | `compute_msl_s_matrix(enforce_passivity=...)` | `True` | `False`: S is the extracted matrix | `enforce_passivity=True`. |
