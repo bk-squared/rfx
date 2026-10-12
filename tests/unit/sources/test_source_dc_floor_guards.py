@@ -512,12 +512,70 @@ def _tfsf_sim(bandwidth):
     return sim
 
 
-def test_unresolved_pulse_fires_on_tfsf_absolute_hz_bandwidth():
-    """add_tfsf_source(bandwidth=<absolute Hz>) is the same #386 footgun;
-    the string-named waveform must not shield it from the check."""
-    codes = {getattr(i, "code", None)
-             for i in _tfsf_sim(2.64e9).preflight()}
-    assert "unresolved_pulse" in codes
+def _hz_drive_sim(kind):
+    """One drive of ``kind`` whose bandwidth is given in Hz (issue 1668)."""
+    from rfx import Box
+    hz = GaussianPulse(f0=5e9, bandwidth=4e9)
+    if kind in ("source", "lumped", "wire", "passive"):
+        sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=1e-3,
+                         boundary="cpml", cpml_layers=4)
+        if kind == "source":
+            sim.add_source((0.01, 0.01, 0.01), "ez", waveform=hz)
+        elif kind == "lumped":
+            sim.add_port((0.01, 0.01, 0.01), "ez", impedance=50., waveform=hz)
+        elif kind == "wire":
+            sim.add_port((0.01, 0.01, 0.009), "ez", impedance=50., extent=0.002,
+                         waveform=hz)
+        else:  # a terminated, not excited, port is not a drive
+            sim.add_port((0.01, 0.01, 0.01), "ez", impedance=50., waveform=hz,
+                         excite=False)
+            sim.add_source((0.006, 0.01, 0.01), "ez",
+                           waveform=GaussianPulse(f0=5e9, bandwidth=0.8))
+    elif kind == "msl":
+        sim = Simulation(freq_max=3e9, domain=(.024, .024, .024), dx=.001,
+                         boundary="pec", cpml_layers=0)
+        sim.add_material("sub", eps_r=2.2)
+        sim.add(Box((0., 0., 0.), (.024, .024, .003)), material="sub")
+        sim.add(Box((0., .010, .003), (.024, .014, .003)), material="pec")
+        sim.add_msl_port(position=(.006, .012, 0.), width=.004, height=.003,
+                         direction="+x", impedance=50., waveform=hz,
+                         eps_r_sub=2.2, n_probe_offset=3, n_probe_spacing=2,
+                         n_probes=3)
+    elif kind == "coax":
+        sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.02), dx=0.5e-3,
+                         boundary="pec")
+        sim.add_coaxial_port((0.01, 0.01, 0.02), face="top", waveform=hz)
+    elif kind.startswith("waveguide"):
+        sim = Simulation(freq_max=12e9, domain=(0.06, 0.02286, 0.01016),
+                         dx=1e-3, boundary="cpml", cpml_layers=8)
+        sim.add_waveguide_port(0.012, f0=10e9, bandwidth=5e9, direction="+x",
+                               waveform=kind.split(":")[1])
+    elif kind == "floquet":
+        sim = Simulation(freq_max=10e9, domain=(0.01, 0.01, 0.004),
+                         boundary="cpml", cpml_layers=6)
+        sim.add_floquet_port(0.003, axis="z", scan_theta=0.0, f0=5e9,
+                             bandwidth=4e9)
+    elif kind == "tfsf":
+        sim = _tfsf_sim(2.64e9)
+    return sim
+
+
+@pytest.mark.parametrize("kind", [
+    "source", "lumped", "wire", "msl", "coax",
+    "waveguide:differentiated_gaussian", "waveguide:modulated_gaussian",
+    "floquet", "tfsf"])
+def test_undriven_pulse_is_refused_for_every_drive_kind(kind):
+    """A drive whose bandwidth is given in Hz is refused whatever carries it
+    (issue 1668). A TF/SF source or waveguide port is judged by the waveform
+    class of its waveform name, at its own f0 and bandwidth."""
+    codes = [getattr(i, "code", None) for i in _hz_drive_sim(kind).preflight()
+             if getattr(i, "severity", None) == "error"]
+    assert "undriven_pulse" in codes, codes
+
+
+def test_a_terminated_port_is_not_judged_as_a_drive():
+    codes = [getattr(i, "code", None) for i in _hz_drive_sim("passive").preflight()]
+    assert "undriven_pulse" not in codes and "unresolved_pulse" not in codes
 
 
 def test_unresolved_pulse_silent_on_tfsf_fractional_bandwidth():
