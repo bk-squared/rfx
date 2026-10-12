@@ -44,16 +44,16 @@
   {
    "code": "ntff_near_field",
    "disposition": "intended",
-   "reason": "Teaching point 3 of the tutorial: 'Every face should sit at least half a wavelength from the radiator where the domain allows. The face below the ground plane cannot: it sits 6 mm below the ground. Preflight flags it, the run quotes the warning verbatim, and a solver-to-solver cross-check backs the placement. Preflight output is part of the result; do not suppress it.' The placement is cross-checked against openEMS at the design-mode bin (|D_rfx - D_openEMS| = 0.0659 dB).",
-   "ref": "examples/tutorials/patch_antenna_demo.py:23-29,389-396,524-527",
+   "reason": "Teaching point 3 of the tutorial: 'Every face should sit at least half a wavelength from the radiator where the domain allows. The face below the ground plane cannot: it sits 6 mm below the ground. Preflight flags it, the run quotes the warning verbatim, and a solver-to-solver cross-check backs the placement. Preflight output is part of the result; do not suppress it.' The placement is cross-checked against openEMS at the design-mode bin: D 6.59 dBi against openEMS 6.83 dBi, -0.24 dB (module docstring).",
+   "ref": "examples/tutorials/patch_antenna_demo.py:33-37,379-385,513-517",
    "rows": 1,
    "variant": "examples/tutorials/patch_antenna_demo.py::build_simulation::default"
   },
   {
    "code": "ntff_small_ground_plane",
    "disposition": "intended",
-   "reason": "The geometry is the openEMS 'Simple Patch Antenna' tutorial verbatim -- a 60 x 60 mm finite ground plane -- and the finite plane is the structure under test, not an oversight. main()'s comment lists this row among the advisories expected on this fixture: 'the small-ground-plane pattern advisory (60 mm = 0.56 lambda at f_max, so edge diffraction shapes the pattern) -- expected physics, shared with the openEMS reference, not a solver defect'.",
-   "ref": "examples/tutorials/patch_antenna_demo.py:3-7,524-538",
+   "reason": "The geometry is the openEMS 'Simple Patch Antenna' tutorial verbatim -- a 60 x 60 mm finite ground plane -- and the finite plane is the structure under test, not an oversight. main()'s comment lists this row among the advisories expected on this fixture: 'ntff_small_ground_plane for finite-ground diffraction'; the openEMS reference solves the same finite ground plane.",
+   "ref": "examples/tutorials/patch_antenna_demo.py:3-16,513-517",
    "rows": 1,
    "variant": "examples/tutorials/patch_antenna_demo.py::build_simulation::default"
   },
