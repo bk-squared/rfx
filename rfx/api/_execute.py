@@ -2018,7 +2018,7 @@ class _ExecuteMixin:
                     comp = {"z": "ey", "x": "ez", "y": "ez"}[fpe.axis]
                 from rfx.simulation import make_source as _make_src
                 sources.append(_make_src(grid, tuple(center), comp, wf, n_steps))
-        conductors, pec_occupancy_local = _conductors.prepare_port_occupancy(conductors, waveguide_ports, pec_occupancy_local, design_occupancy)
+        conductors, pec_occupancy_local = _conductors.prepare_port_occupancy(conductors, waveguide_ports, pec_occupancy_local, design_occupancy, sim=self, sheet_operator=sheet_impedance)
 
         # Tensor lane (opt-in via ``RFX_PEC_OCC_KOTTKE=1``): when
         # ``pec_occupancy_local`` is supplied, build an ``aniso_inv_eps``
@@ -2275,7 +2275,7 @@ class _ExecuteMixin:
                 for entry, probe in zip(self._dft_planes, sim_dft_planes)
             }
 
-        return ForwardResult(
+        return _conductors.with_design_diagnostics(ForwardResult(
             diagnostics=diagnostics,
             time_series=result.time_series,
             ntff_data=result.ntff_data,
@@ -2295,7 +2295,7 @@ class _ExecuteMixin:
             current_moment_data=result.current_moment_data,
             current_moment_monitor=current_moments_fwd,
             adjoint_settling=result.adjoint_settling,
-        )
+        ), conductors)
 
     _pack_nu_forward_result = staticmethod(pack_nu_forward_result)
 

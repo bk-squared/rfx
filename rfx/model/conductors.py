@@ -13,6 +13,7 @@ import numpy as np
 from rfx.preflight._common import PreflightReport
 from rfx.preflight.realization import _RealizedPEC
 from rfx.boundaries.pec import SheetSpec
+from rfx.model.design_admission import with_design_diagnostics
 
 
 
@@ -142,6 +143,7 @@ class RealizedConductors(_RealizedPEC):
     _waveguide_port_planes: tuple = ()
     stamped_entities: tuple = ()
     stamp_check_findings: tuple = ()
+    design_findings: tuple = ()
 
     sheet_context = SheetConductors.sheet_context
     width_axes = conductor_width_axes
@@ -314,11 +316,16 @@ def _port_release_description(conductors):
     return "; ".join(descriptions)
 
 
-def prepare_port_occupancy(conductors, waveguide_configs, occupancy, design):
+def prepare_port_occupancy(conductors, waveguide_configs, occupancy, design, *, sim=None, sheet_operator=None):
     """Publish only for an occupancy input, then release and guard its box."""
     if occupancy is not None or design is not None:
         for i, config in enumerate(waveguide_configs):
             conductors = waveguide_port_stage(conductors, config, f'waveguide_port[{i}]')
+    if sim is not None:
+        from rfx.model.design_admission import publish_declarations, source_findings
+        if occupancy is not None or design is not None:
+            conductors = publish_declarations(conductors, sim, design, sheet_operator, occupancy=occupancy)
+        conductors = replace(conductors, design_findings=source_findings(sim, conductors, occupancy, design))
     occupancy = release_port_occupancy(occupancy, conductors)
     refuse_port_design_box(design, conductors)
     return conductors, occupancy

@@ -441,7 +441,22 @@ def refuse_design_films(sim, grid, bounds):
     from rfx.simulation import _design_box_window
     write, _, _, _ = _design_box_window(bounds, grid.shape)
     sl = tuple(slice(write[a], write[a + 1]) for a in (0, 2, 4))
+    f0_hits = set()
+    if any(tc.surface_impedance_f0 is not None and not tc.is_pec for tc in sim._thin_conductors):
+        from rfx.model.conductors import realized_conductors, publish_port_release
+        from rfx.model.design_admission import sheet_edges
+        root = realized_conductors(sim, grid, nonuniform=hasattr(grid, 'dx_arr'))
+        for index, component, edges in sheet_edges(root, sim):
+            released = publish_port_release(root, edges, component=component,
+                entity_id=f'thin_conductor[{index}]', kind='f0_sheet').released_cells
+            if any(all(write[2*a] <= cell[a] < write[2*a+1] for a in range(3))
+                   for cell in released):
+                f0_hits.add(index)
     for index, tc in enumerate(sim._thin_conductors):
+        if index in f0_hits:
+            raise ValueError(
+                f'thin_conductor[{index}] (f0 sheet): the design box (cells {bounds}) '
+                'contains cells incident to its tangential edges. Move the box or the sheet.')
         if tc.is_pec or tc.surface_impedance_f0 is not None:
             continue
         # Geometry decides admission even when conductance is differentiated.

@@ -1356,7 +1356,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     )
 
     conductors, pec_occupancy_override = prepare_port_occupancy(
-        conductors, waveguide_port_cfgs, pec_occupancy_override, None)
+        conductors, waveguide_port_cfgs, pec_occupancy_override, None, sim=sim, sheet_operator=sheet_ctx)
     conductors, geometry_record = at_kernel(sim, conductors, lane=lane, pec_edges=pec_edge_masks, sheet_operator=sheet_ctx)
     pec_edge_masks = conductors.pec_edges
     sheet_ctx = conductors.sheet_operator
@@ -1590,7 +1590,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
             zip(r.get("wire_sparams_meta", ()), _wire_raw)
         )
 
-    return Result(
+    from rfx.model.design_admission import with_design_diagnostics
+    return with_design_diagnostics(Result(
         diagnostics=diagnostics,
         realized_geometry=geometry_record,
         state=r["state"],
@@ -1614,4 +1615,4 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         grid=grid,
         dt=grid.dt,
         freq_range=(sim._freq_max / 10, sim._freq_max, sim._boundary),
-    )
+    ), conductors)
