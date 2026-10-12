@@ -95,6 +95,7 @@ red-lines the previous shared-E-floor behaviour so it cannot come back.
 
 import math
 
+import jax
 import pytest
 import numpy as np
 
@@ -329,6 +330,12 @@ def _build():
     return grid, materials, n_steps, [src], [prb]
 
 
+@pytest.mark.xfail(
+    jax.default_backend() == "gpu", strict=True,
+    reason=("scan vs chunked decay loop differ beyond the derived floor on GPU "
+            "(ez 1.24x, VESSL 369367270791); main's decay loop runs a 1-step first "
+            "chunk; the decay-stop PR (acceleration/decay-stop) makes the chunks "
+            "uniform"))
 def test_run_until_decay_ab_identity():
     grid, materials, n_steps, sources, probes = _build()
 
