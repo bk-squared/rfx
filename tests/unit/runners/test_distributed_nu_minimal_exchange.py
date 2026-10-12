@@ -24,7 +24,7 @@ if __name__ == "__main__" and sys.argv[1] == "worker" and sys.argv[2] != "refere
 
 import jax.numpy as jnp
 from jax import lax
-from jax.experimental.shard_map import shard_map
+from jax import shard_map
 from jax.sharding import PartitionSpec as P
 import numpy as np
 import pytest
@@ -404,7 +404,7 @@ def test_long_run_finite_gradients_and_dead_ghosts(devices):
 @pytest.mark.slow
 def test_mutations_trip_gates(monkeypatch):
     def missing_ez(st, mesh, n_devices, *, ranks=None):
-        @partial(shard_map, mesh=mesh, in_specs=P("x"), out_specs=P("x"), check_rep=False)
+        @partial(shard_map, mesh=mesh, in_specs=P("x"), out_specs=P("x"), check_vma=False)
         def only_ey(ey):
             received = lax.ppermute(ey[1], "x", [(i, i - 1) for i in range(1, n_devices)])
             return ey.at[-1].set(jnp.where(lax.axis_index("x") < n_devices - 1, received, ey[-1]))

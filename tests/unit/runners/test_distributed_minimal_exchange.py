@@ -12,7 +12,7 @@ from types import SimpleNamespace
 import jax
 import jax.numpy as jnp
 from jax import lax
-from jax.experimental.shard_map import shard_map
+from jax import shard_map
 from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
 import numpy as np
 import pytest
@@ -33,7 +33,7 @@ _STEPS = 8
 def _full_exchange_component(field, mesh, n_devices):
     """Frozen origin/main 56bbb077 exchange; do not call production helpers."""
     @partial(shard_map, mesh=mesh, in_specs=P("x"), out_specs=P("x"),
-             check_rep=False)
+             check_vma=False)
     def exchange(f):
         right_boundary = f[-2:-1, :, :]
         left_boundary = f[1:2, :, :]
@@ -65,7 +65,7 @@ def _full_sample(st, mesh, n_prb, specs, owners, **_kwargs):
         return jnp.zeros(0, dtype=jnp.float32)
 
     @partial(shard_map, mesh=mesh, in_specs=(P("x"),) * 6,
-             out_specs=P(), check_rep=False)
+             out_specs=P(), check_vma=False)
     def sample(ex, ey, ez, hx, hy, hz):
         device_idx = lax.axis_index("x")
         samples = []
@@ -175,7 +175,7 @@ def _assert_same_fields(actual, expected):
 
 def _poison(st, mesh, n_devices, *, live=False):
     @partial(shard_map, mesh=mesh, in_specs=(P("x"),) * 6,
-             out_specs=(P("x"),) * 6, check_rep=False)
+             out_specs=(P("x"),) * 6, check_vma=False)
     def poison(*fields):
         rank = lax.axis_index("x")
         result = []

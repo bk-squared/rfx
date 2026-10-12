@@ -326,17 +326,27 @@ def test_realized_field_storage(monkeypatch, entry, precision):
                 else:
                     result = invoke(model(precision, entry), entry)
             output = list(numeric_arrays(result))
+
+            def check_finite_entries(a):
+                if entry == 'compute_mixed_s_matrix':
+                    # The per-cell drive frame refuses the whole lumped column;
+                    # precision still applies to every retained entry.
+                    assert np.isnan(a[:, 0]).all(), entry
+                    assert np.isfinite(a[:, 1]).all(), entry
+                else:
+                    assert np.isfinite(a).all(), entry
+
             assert fields and all(d == expected_real for d in fields), fields
             assert records and all(d == expected_real for d in records), records
             for a in output:
                 if np.iscomplexobj(a):
-                    assert np.isfinite(a).all(), entry
+                    check_finite_entries(a)
             if entry in FINAL_S:
                 spectra = [a for a in output if np.iscomplexobj(a)]
                 assert spectra
                 for a in spectra:
                     assert a.dtype == expected_complex, (entry, a.dtype, expected_complex)
-                    assert np.isfinite(a).all(), entry
+                    check_finite_entries(a)
             print(entry, precision, 'fields', sorted(set(map(str,fields))),
                   'records', sorted(set(map(str,records))),
                   'DFT', sorted(set(map(str,accumulators))),

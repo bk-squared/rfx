@@ -113,11 +113,14 @@ def wall_edge_masks(shape, faces):
     return masks
 
 
-def apply_pec_faces(state, faces: set[str]) -> object:
+def apply_pec_faces(state, faces: set[str], *, frame=None, owned=None) -> object:
     """Apply PEC (E_tan = 0) on specific boundary faces.
 
     Its tangential zero set is ``wall_edge_masks(state.ex.shape, faces)``;
     the extra Ez high-z ghost cleanup below is excluded from that set.
+    ``frame`` maps axes to static (lo, hi) rows; only x may differ from
+    (0, n). ``owned`` selects each named face's write on its row only;
+    ``owned=None`` means the caller owns every named face (one device).
 
     Parameters
     ----------
@@ -127,6 +130,10 @@ def apply_pec_faces(state, faces: set[str]) -> object:
         ``"x_lo"``, ``"x_hi"``, ``"y_lo"``, ``"y_hi"``,
         ``"z_lo"``, ``"z_hi"``.
     """
+    from ._face_frame import apply_framed_faces, needs_face_frame
+
+    if needs_face_frame(state.ex.shape, faces, frame, owned):
+        return apply_framed_faces(state, faces, frame, owned)
     if not faces:
         return state
     ex, ey, ez = state.ex, state.ey, state.ez

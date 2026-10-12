@@ -103,6 +103,14 @@ def test_explicit_graded_dispatch_reaches_distributed_nu(method, boundary, monke
     monkeypatch.setattr(sim, "_dispatch_plan", stop)
     kwargs = {"devices": jax.devices()} if method == "run" else {"distributed": True}
     assert len(jax.devices()) >= 2, "run this judge with two CPU devices"
+    if boundary == "cpml":
+        with pytest.raises(ValueError) as caught:
+            getattr(sim, method)(n_steps=1, skip_preflight=True, **kwargs)
+        assert str(caught.value) == (
+            f"{method} dispatch: full-aperture waveguide requires PEC on y_hi, y_lo, z_hi, z_lo; "
+            "declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis).")
+        assert reached == []
+        return
     if method == "forward":
         with pytest.raises(NotImplementedError, match="Waveguide ports are not supported on the distributed forward path"):
             sim.forward(n_steps=1, skip_preflight=True, **kwargs)
@@ -114,29 +122,41 @@ def test_explicit_graded_dispatch_reaches_distributed_nu(method, boundary, monke
 
 
 @pytest.mark.parametrize("provenance", [None, "document"])
-def test_legacy_graded_document_keeps_main_admission(provenance, monkeypatch):
+def test_legacy_graded_document_is_refused(provenance, monkeypatch):
+    """5f: unknown provenance and explicit imported cpml both refuse.
+
+    The real importer calls restore_legacy_boundary at interop/_design.py:2010.
+    boundaries/serialization.py:15-16,38-39 leaves graded imports explicit;
+    only the synthetic None case has unknown provenance. Keep that behavior.
+    """
     from rfx.interop import design_to_dict, simulation_from_design
     sim = guide(boundary="cpml")
     if provenance == "document":
         document = design_to_dict(sim)
         sim = simulation_from_design(document)
         assert design_to_dict(sim) == document
+        assert sim._boundary_explicit is True
+        expected = (
+            "run dispatch: full-aperture waveguide requires PEC on y_hi, y_lo, z_hi, z_lo; "
+            "declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis).")
     else:
         sim._boundary_explicit = None
-    original = sim._dispatch_plan
+        expected = (
+            "run dispatch: full-aperture waveguide boundary was not declared on y_hi, y_lo, z_hi, z_lo; "
+            "the graded mesh keeps absorbers there, so the port would not be in a guide; "
+            "declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis).")
 
-    class Admitted(Exception):
-        pass
+    steps = []
 
-    def stop(**kwargs):
-        plan = original(**kwargs)
-        assert plan.lane == "run_nonuniform"
-        assert sim._build_realized_grid().shape == (47, 27, 22)
-        raise Admitted
+    def field_step(*args, **kwargs):
+        steps.append(True)
+        pytest.fail("refused legacy graded guide reached a field scan")
 
-    monkeypatch.setattr(sim, "_dispatch_plan", stop)
-    with pytest.raises(Admitted):
+    monkeypatch.setattr(jax.lax, "scan", field_step)
+    with pytest.raises(ValueError) as caught:
         sim.run(n_steps=1, skip_preflight=True)
+    assert str(caught.value) == expected
+    assert steps == []
 
 
 @pytest.mark.parametrize("axis", ["y", "z"])

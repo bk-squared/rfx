@@ -2077,10 +2077,10 @@ class Simulation(
             added to the auxiliary E node at ``t=n*dt``; it is not the
             launched E amplitude. Normal incidence only; use a fixed
             record length (``until_decay`` has no source-off contract).
-            These new source inputs support ordinary ``forward`` and its
-            internal checkpoints. External JAX transformations, including
-            grad/value_and_grad/JVP/vmap/jit/checkpoint/scan, are refused:
-            transformed scattered-field traces do not meet the cross-trace bar.
+            These source inputs support ``forward`` and its internal
+            checkpoints, including external JAX transformations through
+            grad/value_and_grad/JVP/vmap/jit/checkpoint/scan. ``run`` refuses
+            external transforms; differentiate ``forward`` instead.
         method : {"bloch", "methodB"}
             Oblique-incidence engine (ignored for ``angle_deg=0``, which always
             uses the normal 1D-aux path). ``"bloch"`` (default) is the narrowband

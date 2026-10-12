@@ -11,7 +11,6 @@ import re
 
 import jax
 import numpy as np
-from jax.experimental.shard_map import shard_map
 from jax.sharding import NamedSharding, PartitionSpec as P
 
 
@@ -70,5 +69,7 @@ def rank_shard_map(fun, *, mesh, in_specs, out_specs, check_rep=False):
 
     # PartitionSpec is a tuple subclass, but denotes a single tree prefix.
     specs = in_specs if isinstance(in_specs, tuple) and not isinstance(in_specs, P) else (in_specs,)
-    return shard_map(local, mesh=mesh, in_specs=(P("x"), *specs),
-                     out_specs=out_specs, check_rep=check_rep)
+    # jax.shard_map with check_vma is what the deprecated jax.experimental
+    # shard_map(check_rep=) calls, argument for argument (JAX 0.10.2).
+    return jax.shard_map(local, mesh=mesh, in_specs=(P("x"), *specs),
+                         out_specs=out_specs, check_vma=check_rep)

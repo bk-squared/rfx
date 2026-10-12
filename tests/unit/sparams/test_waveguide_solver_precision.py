@@ -20,11 +20,12 @@ from tests._x64_compat import enable_x64
 
 
 def _guide(*, precision="float32", solver="yee", nonuniform=False, n_modes=1):
+    """Addendum 5f: graded transverse PEC leaves solver/precision guards reachable."""
     sim = Simulation(
         freq_max=12e9,
         domain=(0.09, 0.04, 0.02),
         dx=0.005,
-        boundary="cpml" if nonuniform else {"x": "cpml", "y": "pec", "z": "pec"},
+        boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=4,
         precision=precision,
         solver="yee",

@@ -845,6 +845,8 @@ def test_the_poles_derivative_is_what_carries_the_shift(monkeypatch):
 
 def test_forward_caps_the_pole_count_for_both_long_windows(monkeypatch):
     """A 140,000-step one-port record never traces more than the pole budget."""
+    # Shape-only tracing allocates no pencil; test the pole cap independently.
+    monkeypatch.setattr(rd, "IDENTIFY_MEMORY_BOUND_BYTES", math.inf)
     sim = _box("graded")
     eps = jnp.full(tuple(sim._build_nonuniform_grid().shape), 2.2, jnp.float32)
     seen = []

@@ -253,16 +253,21 @@ def test_warning_names_the_user_helper_frame(monkeypatch):
 
 
 @pytest.mark.parametrize("skip", [False, True])
-def test_nonuniform_explicit_absorbers_keep_real_pads_without_default_warning(skip, monkeypatch):
+def test_nonuniform_explicit_absorbers_refused_without_default_warning(skip, monkeypatch):
+    """Addendum 5f refuses explicit transverse absorbers before any field scan."""
     import rfx.runners.nonuniform as kernel
     sim = guide("cpml", dz_profile=np.full(10, .001))
-    def stop(grid, *args, **kwargs):
-        assert grid.shape == (49, 29, 19)
-        assert tuple(getattr(grid, f"pad_{a}_{side}") for a in "xyz" for side in ("lo", "hi")) == (4,) * 6
-        raise Admitted
+    reached = []
+    def stop(*args, **kwargs):
+        reached.append(True)
+        raise AssertionError("guide refusal must precede the nonuniform runner")
     monkeypatch.setattr(kernel, "run_nonuniform", stop)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        with pytest.raises(Admitted):
+        with pytest.raises(ValueError) as error:
             sim.run(n_steps=1, skip_preflight=skip)
+    assert str(error.value) == (
+        "run dispatch: full-aperture waveguide requires PEC on y_hi, y_lo, z_hi, z_lo; "
+        "declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis).")
+    assert reached == []
     assert not any(issubclass(w.category, WaveguideBoundaryWarning) for w in caught)

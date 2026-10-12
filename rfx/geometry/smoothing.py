@@ -830,6 +830,54 @@ def continued_conductor_shape(sim, grid, shape, *, entry=None, unextendable=None
     return solved
 
 
+class CurvedSmoothingWarning(UserWarning):
+    """Subpixel smoothing of a curved high-contrast dielectric (rfx #1632)."""
+
+
+def warn_curved_high_contrast(pairs, background_eps=1.0, *, contrast=10.0, sim=None):
+    """Warn once when a smoothed Sphere/Cylinder differs by >= ``contrast`` from vacuum or another dielectric.
+
+    Called only where smoothing is applied. The smoother keeps only the diagonal of the
+    inverse-permittivity tensor; on a curved high-contrast interface the resonance then
+    converges first order and was measured further off than the unsmoothed model
+    (#1632, docs/guides/known_limitations.md). The comparison set is the background and
+    every other declared dielectric, so a low-permittivity hole in a high-permittivity
+    host is included; the set is every declared dielectric anywhere in the run, so a shape
+    that touches only a near-equal host can be flagged too. Conductors (``sim``'s PEC
+    conductivity threshold) are neither a subject nor part of the set.
+    """
+    from rfx.geometry.csg import Cylinder, Sphere
+
+    def value(eps_r):
+        try:
+            v = float(eps_r)
+        except (TypeError, ValueError):
+            return None
+        return v if v > 0 else None
+
+    conductors = set() if sim is None else {
+        id(e.shape) for e in sim._geometry
+        if sim._resolve_material(e.material_name).sigma >= sim._PEC_SIGMA_THRESHOLD}
+    pairs = [(s_, e) for s_, e in pairs if id(getattr(s_, "declared", s_)) not in conductors]
+    others = [v for v in (value(e) for _, e in pairs) if v is not None] + [float(background_eps)]
+    curved = []
+    for shape, eps_r in pairs:
+        declared = getattr(shape, "declared", shape)
+        v = value(eps_r)
+        if v is None or not isinstance(declared, (Sphere, Cylinder)):
+            continue
+        if any(max(v / o, o / v) >= contrast for o in others):
+            curved.append(f"{type(declared).__name__} eps_r={v:g}")
+    if curved:
+        import warnings as _w
+        _w.warn("subpixel_smoothing on a curved high-contrast dielectric (" + ", ".join(curved)
+                + "; 10x or more from vacuum or another declared dielectric): the smoothed "
+                "permittivity keeps only its diagonal, so a resonance converges first order and "
+                "can be further off than with subpixel_smoothing=False. Check a mesh series "
+                "against the unsmoothed run; see docs/guides/known_limitations.md (rfx #1632).",
+                CurvedSmoothingWarning, stacklevel=3)
+
+
 def smoothed_shape_pairs(sim, grid):
     """Build the (shape, eps_r) pairs the smoothed lane solves, pad included.
 

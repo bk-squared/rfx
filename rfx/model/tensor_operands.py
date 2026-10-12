@@ -25,13 +25,14 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
     use_kottke_pec = (subpixel_smoothing == "kottke_pec")
     if use_kottke_pec:
         from rfx.geometry.smoothing import (
-            compute_inv_eps_tensor_diag, smoothed_shape_pairs,
+            compute_inv_eps_tensor_diag, smoothed_shape_pairs, warn_curved_high_contrast,
         )
         # #1043 stage B: the pairs carry the CPML/UPML pad continuation, so a
         # dielectric that touches the domain edge is solved with the material
         # in its own pad instead of a vacuum facet at the seam. PEC shapes
         # arrive continued from assembly, with the MSL entry exception.
         shape_eps_pairs, _unextendable = smoothed_shape_pairs(sim, grid)
+        warn_curved_high_contrast(shape_eps_pairs, sim=sim)
         aniso_inv_eps = compute_inv_eps_tensor_diag(
             grid,
             dielectric_shapes=shape_eps_pairs,
@@ -65,10 +66,11 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
             # becomes identical to the device and S11 = 0.
     elif subpixel_smoothing:
         from rfx.geometry.smoothing import (
-            compute_smoothed_eps, smoothed_shape_pairs,
+            compute_smoothed_eps, smoothed_shape_pairs, warn_curved_high_contrast,
         )
         # #1043 stage B: same pad continuation as the Stage-2 site above.
         shape_eps_pairs, _unextendable = smoothed_shape_pairs(sim, grid)
+        warn_curved_high_contrast(shape_eps_pairs, sim=sim)
         if shape_eps_pairs:
             aniso_eps = compute_smoothed_eps(grid, shape_eps_pairs, background_eps=1.0)
 

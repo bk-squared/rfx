@@ -5,6 +5,7 @@ built once before the time loop.
 """
 from functools import partial
 
+import jax
 import jax.numpy as jnp
 
 from rfx.boundaries.pec import _shift, realized_pec_edge_masks
@@ -150,11 +151,10 @@ def publish_slab_occupancy(materials, cut_occupancy, mesh):
     """
     if cut_occupancy is None:
         return materials._replace(edge_keep=None)
-    from jax.experimental.shard_map import shard_map
     from jax.sharding import PartitionSpec as P
 
-    @partial(shard_map, mesh=mesh, in_specs=P('x'),
-             out_specs=(P('x'), P('x'), P('x')), check_rep=False)
+    @partial(jax.shard_map, mesh=mesh, in_specs=P('x'),
+             out_specs=(P('x'), P('x'), P('x')), check_vma=False)
     def local(cells):
         keep = build_edge_keep(cells[:-1], dtype=jnp.float32)
         return tuple(jnp.concatenate((jnp.ones_like(k[:1]), k[1:],

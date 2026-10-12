@@ -813,7 +813,6 @@ def _build_nu_scan(
     materials = with_edge_keep(materials, pec_occupancy, dtype=state.ex.dtype, sheet_edge_masks=pec_static_edge_masks)
     src_waveforms = drive_table([jnp.array(s[4]) for s in sources], src_meta, n_steps,
         occupancy=pec_occupancy, sheet_edge_masks=pec_static_edge_masks, keep=materials.edge_keep)
-    drives = drive_layout(src_meta, src_waveforms.dtype)
     prb_meta = [(p[0], p[1], p[2], p[3]) for p in probes]
 
 
@@ -982,11 +981,17 @@ def _build_nu_scan(
         materials, aniso_eps, use_cpml=use_cpml,
         use_debye=use_debye, use_lorentz=use_lorentz)
 
-    # The per-cell arrays the step reads reach it through ``invariants`` so
-    # that a jitted loop can pass them as an argument (_NUScanSetup). The
-    # CPML profiles and spacing vectors stay in the closure: they are not
-    # grid-sized.
+    # The per-cell arrays and x spacing vectors reach the step through
+    # ``invariants`` so a jitted loop can pass arrays as an argument.
+    # Spacing vectors are not grid-sized and stay compile-time constants
+    # on one device; CPML profiles stay in the closure (_NUScanSetup).
+    from rfx.stepping.graded import GradedStepContext, make_graded_step, graded_probe_table
     invariants = {
+        "inv_dx": inv_dx,
+        "inv_dx_h": inv_dx_h,
+        "dx_arr": grid.dx_arr,
+        "drives": drive_layout(src_meta, src_waveforms.dtype),
+        "probe_table": graded_probe_table(prb_meta, grid.shape, dtype=state.ex.dtype),
         "materials": kernel_materials(materials, electric=not (use_debye or use_lorentz), epsilon=aniso_eps is None),
         "pec_edge_masks": pec_edge_masks,
         "pec_occupancy": pec_occupancy,
@@ -1001,7 +1006,6 @@ def _build_nu_scan(
         "design_box_coeffs": design_box_coeffs,
     }
 
-    from rfx.stepping.graded import GradedStepContext, make_graded_step
     ctx = GradedStepContext(
         use_lumped_rlc=use_lumped_rlc,
         rlc_metas=rlc_metas,
@@ -1009,7 +1013,6 @@ def _build_nu_scan(
         _slab_e_snapshot=_slab_e_snapshot if use_current_moments else None,
         current_moments=current_moments,
         dt=dt,
-        inv_dx_h=inv_dx_h,
         inv_dy_h=inv_dy_h,
         inv_dz_h=inv_dz_h,
         grid=grid,
@@ -1029,7 +1032,6 @@ def _build_nu_scan(
         use_design_box=use_design_box,
         use_debye=use_debye,
         use_lorentz=use_lorentz,
-        inv_dx=inv_dx,
         inv_dy=inv_dy,
         inv_dz=inv_dz,
         curl_boundary=curl_boundary,
@@ -1037,7 +1039,6 @@ def _build_nu_scan(
         _pec_faces_frozen=_pec_faces_frozen,
         use_pec_edges=use_pec_edges,
         use_pec_occupancy=use_pec_occupancy,
-        drives=drives,
         use_wire_ports=use_wire_ports,
         wp_meta=wp_meta,
         sp_freqs=sp_freqs,
@@ -1049,7 +1050,6 @@ def _build_nu_scan(
         ntff_box=ntff_box,
         _accumulate_cm=_accumulate_cm if use_current_moments else None,
         emit_time_series=emit_time_series,
-        prb_meta=prb_meta,
     )
     step = make_graded_step(ctx)
 

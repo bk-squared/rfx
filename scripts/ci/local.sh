@@ -87,6 +87,8 @@ begin 4
 # The working tree, so uncommitted growth counts too.
 BASE_SHA="$CHANGELOG_BASE" \
   "$PYTHON" scripts/ci/check_file_size_ratchet.py || fail
+BASE_SHA="$CHANGELOG_BASE" \
+  "$PYTHON" scripts/ci/check_layer_structure.py || fail
 
 begin 5
 if [ -n "$BODY_PATH" ]; then

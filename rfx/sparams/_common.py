@@ -27,6 +27,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from rfx.sparams._settling_warning import _warn_if_ringdown_truncated
+
 try:  # Public API on current JAX; the 0.4.x GPU image uses the old location.
     from jax import enable_x64 as _enable_x64
 except ImportError:
@@ -34,6 +36,7 @@ except ImportError:
 
 from rfx._grid_metric import cells_crossed, distinct_cell_sizes
 from rfx.core.jax_utils import is_tracer
+from rfx.sparams._mixed_checks import _mixed_reciprocity_deviation, _warn_partial_nonpassive
 from rfx.sparams._grid_metrics import absorber_depth, junction_absorber_depth, node_distance
 
 from rfx.nonuniform import NonUniformGrid, interior_cells
@@ -366,58 +369,6 @@ def _validate_extra_flux_monitor_entries(entries, domain, fn_name):
                 f"{pe.name!r} — result spectra are name-keyed."
             )
         seen.add(pe.name)
-
-
-def _warn_if_ringdown_truncated(
-    settling_db: np.ndarray,
-    port_names: tuple,
-    *,
-    num_periods: float | None = None,
-    n_steps: int | None = None,
-    drive_labels: tuple | None = None,
-    consequence: str | None = None,
-    quoted_thing: str = "any S value",
-    witnesses: list | tuple | None = None,
-) -> None:
-    """Warn for excessive pole tails or concrete undetermined witnesses."""
-    values = np.atleast_1d(np.asarray(settling_db, dtype=float))
-    hot = np.array([settling_verdict(v) == "fail" for v in values], dtype=bool)
-    unknown = np.zeros(len(values), dtype=bool)
-    if witnesses is not None:
-        for i, row in enumerate(witnesses):
-            if i < len(values) and 'share_per_bin' in row and 'traced' not in row['reason']:
-                unknown[i] = row['status'] in {'undetermined', 'absent'}
-    hot |= unknown
-    if not bool(np.any(hot)):
-        return
-
-    import warnings
-
-    if num_periods is not None:
-        knob, record = "num_periods", f"num_periods={num_periods:g}"
-    elif n_steps is not None:
-        knob, record = "n_steps", f"n_steps={int(n_steps):d}"
-    else:  # pragma: no cover - guarded by the call sites
-        knob, record = "the record length", "fixed-length"
-    def _label(i: int) -> str:
-        if drive_labels is not None:
-            return drive_labels[i] if i < len(drive_labels) else str(i)
-        return f"port {port_names[i] if i < len(port_names) else i} driven"
-
-    per_run = ", ".join(
-        (f"{_label(i)}: {witnesses[i]['status']} ({witnesses[i]['reason']})"
-         if unknown[i] else f"{_label(i)}: {values[i]:+.1f} dB")
-        for i in np.flatnonzero(hot)
-    )
-    consequence_text = f" {consequence}." if consequence else ""
-    warnings.warn(
-        "ring-down settling witness NOT PASSED (pole-tail amplitude threshold "
-        f"{_SETTLING_WITNESS_DB:.0f} dB): {per_run}. The {record} "
-        f"record has no passing value witness.{consequence_text} Increase "
-        f"{knob} and check identification before quoting "
-        f"{quoted_thing} (see the result's settling_db and settling_witness fields).",
-        stacklevel=2,
-    )
 
 
 def _nu_shift_span_cells(grid, cfg, desired_plane_m: float):
@@ -1203,6 +1154,7 @@ def _warn_if_nonpassive_smatrix(
     passivity_tol: float = 0.10,
     amplitude_eps: float = 0.05,
     check_reciprocity: bool = False,
+    refused_positions=None,
     reciprocity_tol: float = WAVEGUIDE_RECIPROCITY_ADVISORY_TOL,
 ) -> None:
     """Auto-run the passivity/finiteness self-check on a freshly-extracted
@@ -1243,6 +1195,11 @@ def _warn_if_nonpassive_smatrix(
     except Exception:
         # Traced / non-materializable — never let a diagnostic break the
         # numeric return path.
+        return
+
+    if refused_positions is not None and np.any(refused_positions):
+        _warn_partial_nonpassive(
+            s_np, refused_positions, extractor, strict, passivity_tol, amplitude_eps)
         return
 
     # WARN-ONLY reciprocity advisory, enabled per port family by the caller
@@ -1779,8 +1736,9 @@ def _assemble_mixed_power_wave_s(
 ):
     """Assemble the mixed-family power-wave S-matrix (issue #488).
 
-    Pure function of the recorded phasors so the cross-impedance
-    normalization is unit-testable without an FDTD run.
+    Lumped/wire-driven columns and their power witnesses are refused.
+    MSL-driven waves retain the recorded-phasor algebra below. The caller
+    refuses multi-cell wire receive waves after preserving their flux phase.
 
     .. warning::
 
@@ -1870,13 +1828,6 @@ def _assemble_mixed_power_wave_s(
     s21_power : (n_msl, n_lw, n_freqs) real — |S21| power witness.
     """
     v_lw = jnp.asarray(v_lw)
-    # Issue #683 x #764 (wire mode): drive-sample reference — the
-    # pre-injection drive sample every wave formula below was calibrated
-    # against; v_lw now carries the physical POST samples.  None (lumped
-    # mode / legacy callers) falls back to v_lw, which then IS the
-    # reference.  Only the DRIVE port's own sample differs between the
-    # two; passive receives are slot-invariant.
-    v_ref_lw = v_lw if v_ref_lw is None else jnp.asarray(v_ref_lw)
     i_lw = jnp.asarray(i_lw)
     v0_msl = jnp.asarray(v0_msl)
     i_msl = jnp.asarray(i_msl)
@@ -1907,47 +1858,9 @@ def _assemble_mixed_power_wave_s(
 
     for run, (fam, loc) in enumerate(drive_plan):
         if fam == "lw":
-            col = loc
-            v_d, i_d = v_ref_lw[run, loc], i_lw[run, loc]
-            # Drive wave — probes.py:913/:1018 (z0_cell for wire).
-            a = (-v_d + z0c_lw[loc] * i_d) / (2.0 * sq_lw[loc])
-            safe_a = jnp.where(jnp.abs(a) > 0, a, jnp.ones_like(a))
-            # Diagonal first (byte-frozen legacy algebra, full Z0).
-            if wire_mode:
-                safe_i = jnp.where(
-                    jnp.abs(i_d) > 0, i_d, jnp.ones_like(i_d) * 1e-30
-                )
-                z_in = -v_d / safe_i
-                s_jj = (z_in - z0_lw[loc]) / (z_in + z0_lw[loc])
-            else:
-                b_diag = (-v_d - z0_lw[loc] * i_d) / (
-                    2.0 * jnp.sqrt(jnp.asarray(z0_lw[loc]))
-                )
-                s_jj = b_diag / safe_a
-            S = S.at[col, col, :].set(s_jj.astype(cdt))
-            for ri in range(n_lw):
-                if ri == loc:
-                    continue
-                S = S.at[ri, col, :].set(
-                    (_b_lw_passive(run, ri) / safe_a).astype(cdt)
-                )
-            # Power witness: |a| from delivered power, not the port-cell
-            # wave magnitude (#313 near-field pollution triangulation).
-            safe_i = jnp.where(
-                jnp.abs(i_d) > 0, i_d, jnp.ones_like(i_d) * 1e-30
-            )
-            z_in = -v_d / safe_i
-            p_del = 0.5 * jnp.real(z_in) * jnp.abs(i_d) ** 2
-            one_minus = jnp.clip(1.0 - jnp.abs(s_jj) ** 2, 1e-9, None)
-            a_recon = jnp.sqrt(jnp.clip(2.0 * p_del, 0.0, None) / one_minus)
-            safe_ar = jnp.where(a_recon > 0, a_recon, jnp.ones_like(a_recon))
-            for p in range(n_msl):
-                b_p = _b_msl(run, p)
-                S = S.at[n_lw + p, col, :].set((b_p / safe_a).astype(cdt))
-                s21_power[p, loc, :] = np.asarray(
-                    jax.lax.stop_gradient(jnp.abs(b_p) / safe_ar),
-                    dtype=np.float64,
-                )
+            # The per-cell drive frame invalidates the entire driven column.
+            S = S.at[:, loc, :].set(jnp.nan)
+            s21_power[:, loc, :] = np.nan
         else:
             col = n_lw + loc
             # MSL drive wave (stage-S1 V*I split), power-wave normalized.
@@ -1966,32 +1879,9 @@ def _assemble_mixed_power_wave_s(
     return S, s21_power
 
 
-def _mixed_reciprocity_deviation(S):
-    """Worst relative |S_ij| vs |S_ji| disagreement (issue #488).
-
-    Magnitude-only by design: cross-family phase mixes two reference-plane
-    conventions on this lane, so a complex comparison would misfire.
-    Returns ``((i, j), max_relative_deviation)`` over all off-diagonal
-    pairs and frequencies, or ``None`` for a 1-port / tracer input.
-    """
-    s = np.abs(np.asarray(jax.lax.stop_gradient(S)))
-    n = int(s.shape[0])
-    if n < 2 or not np.all(np.isfinite(s)):
-        return None
-    worst_pair, worst = None, 0.0
-    for i in range(n):
-        for j in range(i + 1, n):
-            a, b = s[i, j, :], s[j, i, :]
-            denom = np.maximum(np.maximum(a, b), 1e-12)
-            dev = float(np.max(np.abs(a - b) / denom))
-            if dev >= worst:
-                worst, worst_pair = dev, (i, j)
-    return worst_pair, worst
-
-
 def _mixed_flux_magnitude_override(
     S_wave, box_lw, plane_msl, drive_plan, msl_away_signs, n_lw,
-    ill_cond_floor=0.05,
+    ill_cond_floor=0.05, refused_columns=(),
 ):
     """Replace off-diagonal MAGNITUDES with Poynting-flux ratios (issue #488).
 
@@ -2037,7 +1927,8 @@ def _mixed_flux_magnitude_override(
             p_net = msl_away_signs[loc] * plane_msl[run_idx, loc, :]
         neg_power[col, :] |= p_net < 0.0
         p_inc = np.clip(p_net, 0.0, None) / np.clip(one_minus, ill_cond_floor, None)
-        safe_pinc = np.where(p_inc > 0.0, p_inc, np.inf)
+        safe_pinc = (np.full_like(p_inc, np.nan) if col in refused_columns
+                     else np.where(p_inc > 0.0, p_inc, np.inf))
         for i in range(n_tot):
             if i == col:
                 continue

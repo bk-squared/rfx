@@ -1,0 +1,639 @@
+{
+  "files": {
+    "rfx/api/__init__.py": {
+      "I": [
+        "rfx.boundaries.depths:adi_uniform_faces",
+        "rfx.boundaries.model:collect_requirements",
+        "rfx.boundaries.model:resolve_kinds",
+        "rfx.boundaries.model:with_requirements",
+        "rfx.boundaries.serialization:legacy_spec",
+        "rfx.boundaries.spec:normalize_boundary",
+        "rfx.boundaries.tfsf:validate_source_boundary",
+        "rfx.measurement.setup:register_plane"
+      ],
+      "S": [],
+      "M": [],
+      "A": [],
+      "G": [
+        "Simulation.__init__",
+        "Simulation.add_ntff_box",
+        "Simulation.add_waveguide_port",
+        "Simulation.mesh_intelligence_report"
+      ],
+      "D1": [
+        "Simulation.add_waveguide_port"
+      ],
+      "D2": [
+        "Simulation.auto",
+        "Simulation.boundary_model",
+        "Simulation.fidelity_report",
+        "Simulation.mesh_intelligence_report",
+        "Simulation.realized_geometry",
+        "Simulation.tfsf_box_indices",
+        "Simulation.validate_subgrid"
+      ]
+    },
+    "rfx/api/_execute.py": {
+      "I": [
+        "rfx.boundaries.pec:realized_pec_edge_masks",
+        "rfx.boundaries.pmc:refuse_waveguide_pmc",
+        "rfx.boundaries.tfsf:boundary_flags",
+        "rfx.measurement.setup:build_planes",
+        "rfx.model.conductors:_PreparedSolve",
+        "rfx.model.conductors:admit_adi_sources",
+        "rfx.model.conductors:auto_preflight",
+        "rfx.model.conductors:bind_solve_call",
+        "rfx.model.conductors:distributed_kernel_inputs",
+        "rfx.model.conductors:distributed_solve_inputs",
+        "rfx.model.conductors:drawn_launch_eps",
+        "rfx.model.conductors:early_run_record",
+        "rfx.model.conductors:forward_kernel_inputs",
+        "rfx.model.conductors:forward_lumped_port_stage",
+        "rfx.model.conductors:forward_port_stage",
+        "rfx.model.conductors:forward_products",
+        "rfx.model.conductors:forward_sheet_context",
+        "rfx.model.conductors:prepare_port_occupancy",
+        "rfx.model.conductors:stage_distributed_edges",
+        "rfx.model.conductors:uniform_solve_inputs",
+        "rfx.model.electric_metrics:stage_forward_materials",
+        "rfx.model.materials:with_components",
+        "rfx.model.occupancy:select_occupancy_operator",
+        "rfx.model.overrides:apply_material_overrides",
+        "rfx.model.source_coefficients:debye_pole_term",
+        "rfx.model.source_coefficients:dispersive_drive_model",
+        "rfx.model.source_coefficients:field_source_samples",
+        "rfx.model.source_coefficients:resolve_run_sources",
+        "rfx.model.thin_conductors:refuse_design_films",
+        "rfx.stepping.slab:cut"
+      ],
+      "S": [],
+      "M": [],
+      "A": [
+        "_ExecuteMixin._forward_from_materials"
+      ],
+      "G": [
+        "_ExecuteMixin._attach_run_settling_witness",
+        "_ExecuteMixin._forward_from_materials",
+        "_ExecuteMixin._nu_n_steps",
+        "_ExecuteMixin._run_adi_from_materials",
+        "_ExecuteMixin._run_settling_witness",
+        "_ExecuteMixin._warn_postrun_energy_witness",
+        "_ExecuteMixin._warn_until_decay_dc_floor",
+        "_ExecuteMixin.forward",
+        "_ExecuteMixin.run",
+        "_staged_by_an_outer_trace"
+      ],
+      "D1": [],
+      "D2": []
+    },
+    "rfx/nonuniform.py": {
+      "I": [
+        "rfx.boundaries.axes:padded_axes",
+        "rfx.boundaries.axes:resolve_cpml_axes",
+        "rfx.boundaries.depths:resolve_face_depths",
+        "rfx.boundaries.pec:realized_pec_edge_masks",
+        "rfx.boundaries.setup:nonuniform_boundaries",
+        "rfx.boundaries.tfsf:admit_setup",
+        "rfx.core.yee:curl_h_nu",
+        "rfx.core.yee:h_neighbor",
+        "rfx.core.yee:init_state",
+        "rfx.measurement.accumulators:flux_metadata",
+        "rfx.measurement.accumulators:plane_metadata",
+        "rfx.model.graded_grid:_append_bounding_node",
+        "rfx.model.graded_grid:_assert_declared_floor_at_runtime",
+        "rfx.model.graded_grid:_assert_traced_index_matches_realized",
+        "rfx.model.graded_grid:_axis_position_to_index",
+        "rfx.model.graded_grid:_nearest_on_line",
+        "rfx.model.graded_grid:_pad_profile",
+        "rfx.model.graded_grid:_pinned_dt",
+        "rfx.model.graded_grid:_profile_to_inv_arrays",
+        "rfx.model.graded_grid:assert_cells_span_declared_profile",
+        "rfx.model.graded_grid:e_node_dual_spacing_at",
+        "rfx.model.graded_grid:e_node_dual_spacings",
+        "rfx.model.graded_grid:interior_cells",
+        "rfx.model.graded_grid:make_nonuniform_grid",
+        "rfx.model.graded_grid:node_positions_from_profile",
+        "rfx.model.graded_grid:position_to_index",
+        "rfx.model.graded_grid:z_position_to_index",
+        "rfx.model.graded_profile:_Anchor",
+        "rfx.model.graded_profile:_BandSeg",
+        "rfx.model.graded_profile:_EDGE_TOL",
+        "rfx.model.graded_profile:_MAX_PROFILE_CELLS",
+        "rfx.model.graded_profile:_RATIO_FLOOR",
+        "rfx.model.graded_profile:_STEP_TOL",
+        "rfx.model.graded_profile:_band_realize_free",
+        "rfx.model.graded_profile:_band_realize_protected",
+        "rfx.model.graded_profile:_build_band_profile",
+        "rfx.model.graded_profile:_ramp_cells",
+        "rfx.model.graded_profile:_ramp_spec",
+        "rfx.model.graded_profile:_ramp_steps",
+        "rfx.model.graded_profile:_ramp_sum",
+        "rfx.model.graded_profile:make_band_profile",
+        "rfx.model.graded_profile:make_z_profile",
+        "rfx.model.materials:e_update_coefficient_at",
+        "rfx.model.materials:electric_materials_traced",
+        "rfx.model.materials:kernel_materials",
+        "rfx.model.materials:with_components",
+        "rfx.model.occupancy:with_edge_keep",
+        "rfx.model.source_coefficients:drive_table",
+        "rfx.model.source_coefficients:source_table",
+        "rfx.stepping.absorber:apply_cpml_e_step",
+        "rfx.stepping.absorber:apply_cpml_h",
+        "rfx.stepping.absorber:graded_cpml_operands",
+        "rfx.stepping.graded:graded_probe_table",
+        "rfx.stepping.graded:make_graded_step"
+      ],
+      "S": [
+        "_build_nu_scan",
+        "_update_e_nu_dispersive",
+        "run_nonuniform",
+        "run_nonuniform_until_decay"
+      ],
+      "M": [],
+      "A": [
+        "_assemble_nu_result"
+      ],
+      "G": [
+        "_assemble_nu_result",
+        "_build_nu_scan",
+        "_update_e_nu_dispersive",
+        "current_source_samples",
+        "run_nonuniform",
+        "run_nonuniform_until_decay"
+      ],
+      "D1": [],
+      "D2": []
+    },
+    "rfx/simulation.py": {
+      "I": [
+        "rfx.boundaries.axes:drop_periodic_axes",
+        "rfx.boundaries.axes:resolve_cpml_axes",
+        "rfx.boundaries.cpml:_axis_buffer_depths",
+        "rfx.boundaries.cpml:apply_cpml_e",
+        "rfx.boundaries.cpml:apply_cpml_h",
+        "rfx.boundaries.cpml:init_cpml",
+        "rfx.boundaries.pec:apply_pec",
+        "rfx.boundaries.pec:apply_pec_edges",
+        "rfx.boundaries.pec:apply_pec_faces",
+        "rfx.boundaries.pec:kottke_fenced_edge_masks",
+        "rfx.boundaries.pec:pec_occupancy_box_keep",
+        "rfx.boundaries.pec:realized_pec_edge_masks",
+        "rfx.boundaries.pec:resolve_wall_faces",
+        "rfx.boundaries.setup:oblique_bloch",
+        "rfx.boundaries.tfsf:admit_setup",
+        "rfx.boundaries.upml:apply_upml_e",
+        "rfx.boundaries.upml:apply_upml_h",
+        "rfx.boundaries.upml:init_upml",
+        "rfx.core.yee:component_e_materials",
+        "rfx.core.yee:component_h_materials",
+        "rfx.core.yee:curl_h",
+        "rfx.core.yee:e_update_coeffs",
+        "rfx.core.yee:init_state",
+        "rfx.core.yee:lumped_components",
+        "rfx.core.yee:lumped_total",
+        "rfx.core.yee:map_lumped",
+        "rfx.core.yee:precompute_coeffs",
+        "rfx.core.yee:update_e",
+        "rfx.core.yee:update_e_aniso",
+        "rfx.core.yee:update_e_aniso_inv",
+        "rfx.core.yee:update_e_box",
+        "rfx.core.yee:update_h",
+        "rfx.core.yee:update_he_fast",
+        "rfx.measurement.accumulators:flux_metadata",
+        "rfx.measurement.accumulators:plane_metadata",
+        "rfx.model.materials:_design_box_edge_coeffs",
+        "rfx.model.materials:e_update_coefficient_at",
+        "rfx.model.materials:electric_grid_kwargs",
+        "rfx.model.materials:with_components",
+        "rfx.model.occupancy:with_edge_keep",
+        "rfx.model.source_coefficients:drive_table",
+        "rfx.model.source_coefficients:uniform_source_table",
+        "rfx.stepping.absorber:cpml_context",
+        "rfx.stepping.uniform:make_uniform_step"
+      ],
+      "S": [
+        "_update_e_with_optional_dispersion",
+        "make_core_step",
+        "run",
+        "run_until_decay"
+      ],
+      "M": [],
+      "A": [
+        "run_until_decay"
+      ],
+      "G": [
+        "_build_step_setup",
+        "_held_edge_masks",
+        "_resolve_design_box",
+        "_update_e_with_optional_dispersion",
+        "_warn_static_remnant_cap_hit",
+        "run",
+        "run_until_decay"
+      ],
+      "D1": [],
+      "D2": []
+    },
+    "rfx/sources/waveguide_port.py": {
+      "I": [
+        "rfx.boundaries.axes:hi_face_is_wall",
+        "rfx.boundaries.axes:resolve_cpml_axes",
+        "rfx.boundaries.pec:resolve_wall_faces",
+        "rfx.core.yee:component_h_materials",
+        "rfx.measurement.dft:phase",
+        "rfx.measurement.modal:legacy_current_spectrum",
+        "rfx.measurement.modal:record_waveguide",
+        "rfx.measurement.modal:recorded",
+        "rfx.measurement.modal:rect_dft"
+      ],
+      "S": [],
+      "M": [
+        "_shift_modal_waves",
+        "extract_multimode_s_matrix_flux",
+        "extract_waveguide_s_matrix_flux",
+        "init_waveguide_port"
+      ],
+      "A": [
+        "apply_waveguide_port_e",
+        "apply_waveguide_port_h",
+        "inject_waveguide_port"
+      ],
+      "G": [
+        "<module>",
+        "WaveguidePortConfig.<body>",
+        "_compute_beta",
+        "_compute_mode_impedance",
+        "_discrete_te_mode_profiles",
+        "_discrete_tm_mode_profiles",
+        "_gram_schmidt_modes",
+        "_modal_net_power",
+        "_overlap_cross_products",
+        "_plane_h_field_at_dual",
+        "_settling_db_for_record",
+        "_shift_modal_waves",
+        "_te_mode_profiles",
+        "_tm_mode_profiles",
+        "apply_waveguide_port_e",
+        "apply_waveguide_port_h",
+        "cutoff_frequency",
+        "extract_multimode_s_matrix",
+        "extract_multimode_s_matrix_flux",
+        "extract_waveguide_s_matrix",
+        "extract_waveguide_s_matrix_flux",
+        "extract_waveguide_s_params_normalized",
+        "extract_waveguide_sparams",
+        "extract_waveguide_sparams_overlap",
+        "init_multimode_waveguide_port",
+        "init_overlap_dft",
+        "init_waveguide_port",
+        "inject_waveguide_port",
+        "modal_current",
+        "modal_voltage",
+        "mode_self_overlap",
+        "overlap_modal_amplitude",
+        "settling_db_from_port_records"
+      ],
+      "D1": [],
+      "D2": []
+    }
+  },
+  "outside": {
+    "rfx/_ringdown_jax.py": {
+      "S": [],
+      "M": [
+        "plain_dft",
+        "tail_dft"
+      ]
+    },
+    "rfx/adi.py": {
+      "S": [
+        "run_adi_2d",
+        "run_adi_3d",
+        "thomas_solve"
+      ],
+      "M": []
+    },
+    "rfx/adjoint.py": {
+      "S": [
+        "design_adjoint_scan"
+      ],
+      "M": [
+        "_wavelet_basis",
+        "_wavelet_coefficients",
+        "design_adjoint_scan"
+      ]
+    },
+    "rfx/core/dft_utils.py": {
+      "S": [],
+      "M": [
+        "half_step_current_phase"
+      ]
+    },
+    "rfx/core/jax_utils.py": {
+      "S": [
+        "_scan_with_opaque_operands",
+        "recorded_scan"
+      ],
+      "M": []
+    },
+    "rfx/core/yee.py": {
+      "S": [
+        "update_e",
+        "update_e_aniso",
+        "update_e_aniso_inv",
+        "update_e_box",
+        "update_e_fast",
+        "update_e_nu",
+        "update_e_nu_aniso",
+        "update_h",
+        "update_h_fast",
+        "update_h_nu"
+      ],
+      "M": []
+    },
+    "rfx/current_moments.py": {
+      "S": [],
+      "M": [
+        "block_far_field_jax",
+        "block_far_field_np",
+        "end_of_record_moments",
+        "to_post_processing_convention"
+      ]
+    },
+    "rfx/deembed.py": {
+      "S": [],
+      "M": [
+        "deembed_port_extension"
+      ]
+    },
+    "rfx/differentiable_material_fit.py": {
+      "S": [],
+      "M": [
+        "differentiable_material_fit"
+      ]
+    },
+    "rfx/farfield.py": {
+      "S": [],
+      "M": [
+        "compute_far_field",
+        "compute_far_field_jax"
+      ]
+    },
+    "rfx/floquet.py": {
+      "S": [
+        "apply_bloch_periodic_x",
+        "inject_floquet_source"
+      ],
+      "M": [
+        "floquet_phase_shift",
+        "update_floquet_dft"
+      ]
+    },
+    "rfx/geometry/conformal.py": {
+      "S": [
+        "apply_conformal_pec"
+      ],
+      "M": []
+    },
+    "rfx/geometry/csg.py": {
+      "S": [
+        "PolylineWire.mask_on_coords"
+      ],
+      "M": []
+    },
+    "rfx/harminv.py": {
+      "S": [],
+      "M": [
+        "harminv_from_probe"
+      ]
+    },
+    "rfx/io.py": {
+      "S": [],
+      "M": [
+        "_parse_pair"
+      ]
+    },
+    "rfx/materials/debye.py": {
+      "S": [
+        "update_e_debye"
+      ],
+      "M": []
+    },
+    "rfx/materials/lorentz.py": {
+      "S": [
+        "update_e_lorentz"
+      ],
+      "M": []
+    },
+    "rfx/materials/nonlinear.py": {
+      "S": [
+        "apply_kerr_ade"
+      ],
+      "M": []
+    },
+    "rfx/materials/thin_conductor.py": {
+      "S": [
+        "apply_sheet_impedance_e"
+      ],
+      "M": []
+    },
+    "rfx/probes/fresnel.py": {
+      "S": [],
+      "M": [
+        "extract_fresnel_coefficient",
+        "fresnel_reflection_coefficient",
+        "oblique_reflection_coefficient",
+        "oblique_reflection_magnitude"
+      ]
+    },
+    "rfx/probes/msl_wave_decomp.py": {
+      "S": [],
+      "M": [
+        "_lstsq_alpha_gamma",
+        "extract_msl_nprobe"
+      ]
+    },
+    "rfx/probes/probes.py": {
+      "S": [
+        "extract_s_matrix",
+        "extract_s_matrix_wire"
+      ],
+      "M": []
+    },
+    "rfx/probes/refplane.py": {
+      "S": [],
+      "M": [
+        "decompose_wire_s_matrix_with_reference_planes"
+      ]
+    },
+    "rfx/probes/settling.py": {
+      "S": [],
+      "M": [
+        "tfsf_source_drive"
+      ]
+    },
+    "rfx/progress.py": {
+      "S": [
+        "scan_with_progress"
+      ],
+      "M": []
+    },
+    "rfx/rcs.py": {
+      "S": [],
+      "M": [
+        "_incident_spectrum_amplitude",
+        "compute_rcs"
+      ]
+    },
+    "rfx/ringdown.py": {
+      "S": [
+        "_emulate_accumulators"
+      ],
+      "M": [
+        "_pole_tails",
+        "plain_dft",
+        "tail_dft"
+      ]
+    },
+    "rfx/ris.py": {
+      "S": [],
+      "M": [
+        "_extract_reflection"
+      ]
+    },
+    "rfx/runners/_distributed_common.py": {
+      "S": [
+        "_apply_cpml_e_distributed",
+        "_apply_cpml_h_distributed",
+        "_update_e_debye_local",
+        "_update_e_local",
+        "_update_e_local_nu",
+        "_update_e_local_with_dispersion",
+        "_update_e_lorentz_local",
+        "_update_h_local",
+        "_update_h_local_nu",
+        "apply_pec_face_shmap",
+        "apply_pec_mask_shmap",
+        "apply_pmc_face_shmap",
+        "exchange_e_yee_shmap",
+        "exchange_h_yee_shmap",
+        "inject_sources_shmap",
+        "update_e_nu_shmap",
+        "update_h_nu_shmap"
+      ],
+      "M": []
+    },
+    "rfx/runners/distributed_nu.py": {
+      "S": [
+        "_apply_cpml_e_local_nu",
+        "_apply_cpml_h_local_nu",
+        "_exchange_e_ghosts_nu",
+        "_exchange_h_ghosts_nu",
+        "run_nonuniform_distributed_pec"
+      ],
+      "M": []
+    },
+    "rfx/runners/distributed_v2.py": {
+      "S": [
+        "_apply_cpml_e_shmap",
+        "_apply_cpml_h_shmap",
+        "run_distributed"
+      ],
+      "M": []
+    },
+    "rfx/runners/uniform.py": {
+      "S": [],
+      "M": [
+        "_reconstruct_oblique_physical"
+      ]
+    },
+    "rfx/sources/tfsf.py": {
+      "S": [
+        "_apply_closed_box_e",
+        "_apply_closed_box_h",
+        "apply_tfsf_e",
+        "apply_tfsf_h",
+        "measure_normal_incident_spectrum",
+        "update_tfsf_1d"
+      ],
+      "M": [
+        "measure_normal_incident_spectrum"
+      ]
+    },
+    "rfx/sources/tfsf_2d.py": {
+      "S": [
+        "update_tfsf_2d"
+      ],
+      "M": [
+        "_transverse_phase",
+        "_update_e_tez",
+        "_update_e_tmz",
+        "_update_h_tez",
+        "_update_h_tmz",
+        "bloch_phase_tuple"
+      ]
+    },
+    "rfx/sources/tfsf_oblique_open.py": {
+      "S": [
+        "advance_methodB_e",
+        "advance_methodB_h",
+        "apply_methodB_e",
+        "apply_methodB_h",
+        "measure_incident_spectrum",
+        "update_open_oblique_e",
+        "update_open_oblique_h"
+      ],
+      "M": [
+        "measure_incident_spectrum"
+      ]
+    },
+    "rfx/sparams/_common.py": {
+      "S": [],
+      "M": [
+        "_mixed_flux_magnitude_override"
+      ]
+    },
+    "rfx/sparams/waveguide.py": {
+      "S": [],
+      "M": [
+        "_compute_waveguide_s_matrix_nu"
+      ]
+    },
+    "rfx/subgridding/disjoint_3d.py": {
+      "S": [
+        "_apply_fine_pec_axes",
+        "_yee_e_step",
+        "_yee_h_step",
+        "_yee_step"
+      ],
+      "M": []
+    },
+    "rfx/subgridding/jit_runner.py": {
+      "S": [
+        "_make_step_fn",
+        "run_subgridded_jit"
+      ],
+      "M": [
+        "_make_step_fn"
+      ]
+    },
+    "rfx/subgridding/runner.py": {
+      "S": [
+        "run_subgridded"
+      ],
+      "M": []
+    },
+    "rfx/subgridding/sbp_sat_3d.py": {
+      "S": [
+        "_update_e_only",
+        "_update_h_only"
+      ],
+      "M": []
+    },
+    "rfx/vmap_sweep.py": {
+      "S": [
+        "_build_vmap_scan_fn"
+      ],
+      "M": []
+    }
+  }
+}

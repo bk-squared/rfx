@@ -202,7 +202,8 @@ def test_terminal_planes_use_realized_pads():
 @pytest.mark.parametrize("skip", [False, True])
 @pytest.mark.parametrize("path", ["uniform", "nonuniform", "distributed_v2",
                                   "distributed_nu", "subgridded", "adi"])
-def test_explicit_guide_rule_on_every_dispatch_path(skip, path, monkeypatch):
+def test_explicit_absorbing_guide_refused_on_every_dispatch_path(skip, path, monkeypatch):
+    """Addendum 5f extends the explicit-guide refusal to graded dispatch paths."""
     import jax
     import numpy as np
     mesh = {"dz_profile": np.full(10, .001)} if path in ("nonuniform", "distributed_nu") else {}
@@ -217,11 +218,17 @@ def test_explicit_guide_rule_on_every_dispatch_path(skip, path, monkeypatch):
     kwargs = {"devices": jax.devices()} if path.startswith("distributed") else {}
     if path in ("nonuniform", "distributed_nu"):
         import rfx.runners.nonuniform as kernel
+        reached = []
         def stop(*args, **kwargs):
-            raise Admitted
+            reached.append(True)
+            raise AssertionError("guide refusal must precede the nonuniform runner")
         monkeypatch.setattr(kernel, "run_nonuniform", stop)
-        with pytest.raises(Admitted):
+        with pytest.raises(ValueError) as error:
             sim.run(n_steps=1, skip_preflight=skip, **kwargs)
+        assert str(error.value) == (
+            "run dispatch: full-aperture waveguide requires PEC on y_hi, y_lo, z_hi, z_lo; "
+            "declare boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'} (absorber on the port axis).")
+        assert reached == []
     else:
         with pytest.raises(ValueError, match=r"full-aperture waveguide requires PEC"):
             sim.run(n_steps=1, skip_preflight=skip, **kwargs)

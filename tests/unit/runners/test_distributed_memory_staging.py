@@ -17,7 +17,7 @@ from types import FunctionType, SimpleNamespace
 
 import jax
 import jax.numpy as jnp
-from jax.experimental.shard_map import shard_map
+from jax import shard_map
 from jax.sharding import Mesh, NamedSharding, PartitionSpec as P, SingleDeviceSharding
 import numpy as np
 import pytest
@@ -152,7 +152,7 @@ def _measure(case, multi_process):
                 assert partial_coeffs.ca is partial_coeffs.cb is partial_coeffs.cc is None
 
                 @partial(shard_map, mesh=Mesh(np.array(devices), ("x",)),
-                         in_specs=(P("x"), P("x")), out_specs=P("x"), check_rep=False)
+                         in_specs=(P("x"), P("x")), out_specs=P("x"), check_vma=False)
                 def finish(c, m):
                     rank = jax.lax.axis_index("x")
                     means = common.slab_e_component_materials(m, nx_local - 2, grid.shape[0], rank)

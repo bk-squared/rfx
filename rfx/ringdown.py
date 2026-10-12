@@ -71,6 +71,7 @@ S-matrix with the lane's own assembly (the graded lane's
 ``rfx.probes.probes.driven_port_reflection``). When W0, W1 or the pole
 identification fails, the run is returned as it is, uncompleted, with the
 failed check in ``Result.ringdown.report`` and a warning.
+Main-completion memory refusals raise :class:`IdentificationMemoryRefused`.
 
 With ``until_identified=True`` (:class:`RingdownStop`)
 -------------------------------------------------------
@@ -90,6 +91,17 @@ report in ``Result.ringdown.stop``.
 from __future__ import annotations
 
 from rfx._grid_metric import field_index
+from rfx._ringdown_pencil import (
+    IdentificationMemoryRefused,
+    _check_run_identification_memory,
+    _witness_identification,
+    _check_identification_memory,
+    _decimate,
+    _fit_residues,
+    _pencil,
+    _to_original_rate,
+    decimation_plan,
+)
 import inspect
 import math
 import warnings
@@ -112,6 +124,8 @@ _HARMINV_DEFAULTS = {
 PENCIL_PARAMETER = float(_HARMINV_DEFAULTS["pencil_parameter"])
 HARMINV_MAX_MODES = int(_HARMINV_DEFAULTS["max_modes"])
 
+# Default from decision g (2026-10-12); users can raise it by assignment.
+IDENTIFY_MEMORY_BOUND_BYTES = 4 * 2**30
 # The largest kept count across the ringdown fixtures is 431, from a seeded-noise
 # record's 900-sample window. Measured cavities keep 38-44 poles on 10,000-70,000
 # step windows. A budget of 512 preserves all these completions without new NaNs
@@ -127,6 +141,9 @@ __all__ = [
     "RingdownReport",
     "RingdownResult",
     "identify",
+    "decimation_plan",
+    "IdentificationMemoryRefused",
+    "IDENTIFY_MEMORY_BOUND_BYTES",
     "plain_dft",
     "tail_dft",
     "complete_spectra",
@@ -541,101 +558,6 @@ def complete_spectra(series, dt, freqs, model: RingdownModel, n_record: int) -> 
 # Identification
 # ---------------------------------------------------------------------------
 
-def decimation_plan(n_samples: int, dt: float, freq_max: float) -> tuple:
-    """harminv's plan for a window of ``n_samples``: ``(factors, kept samples)``."""
-    factors, kept = _harminv._decimation_plan(
-        int(n_samples), float(dt), float(freq_max), "auto",
-        pencil_parameter=PENCIL_PARAMETER, max_modes=HARMINV_MAX_MODES)
-    return tuple(int(q) for q in factors), int(kept)
-
-
-def _decimate(Y: np.ndarray, factors) -> np.ndarray:
-    """harminv's FIR stage, per channel and per factor. ``Y (n, C)`` -> ``(Nd, C)``."""
-    half = int(_harminv._FIR_HALF_OUTPUT_SAMPLES)
-    cols = []
-    for ch in range(Y.shape[1]):
-        y = Y[:, ch]
-        for q in factors:
-            y = _harminv.scipy_decimate(y, q, n=2 * half * q, ftype="fir",
-                                        zero_phase=True)[half:-half]
-        cols.append(y)
-    return np.stack(cols, axis=1)
-
-
-def _pencil(Yd: np.ndarray, sv_rel: float, unit_tol: float):
-    """Side-by-side stacked matrix pencil on ``Yd (Nd, C)``."""
-    from numpy.lib.stride_tricks import sliding_window_view
-
-    Nd, C = Yd.shape
-    L = int(_harminv._pencil_columns(Nd, PENCIL_PARAMETER))
-    M = Nd - L
-    if M < 1 or L < 1:
-        raise ValueError(
-            f"a window of {Nd} decimated samples is too short for a matrix "
-            "pencil; use a longer record or an earlier window_start")
-    rms = np.sqrt(np.mean(np.abs(Yd) ** 2, axis=0))
-    if np.any(rms <= 0) or not np.all(np.isfinite(rms)):
-        raise ValueError(
-            f"a channel has zero or non-finite RMS over the window ({rms}); "
-            "the identification channel saw no ringing to identify")
-    b0, b1 = [], []
-    for ch in range(C):
-        y = Yd[:, ch].astype(np.complex128) / rms[ch]
-        b0.append(sliding_window_view(y, L)[:M])        # [i, j] = y[i + j]
-        b1.append(sliding_window_view(y[1:], L)[:M])    # [i, j] = y[i + j + 1]
-    Y0 = np.concatenate(b0, axis=1)
-    Y1 = np.concatenate(b1, axis=1)
-    U, sv, Vh = np.linalg.svd(Y0, full_matrices=False)
-    if not sv[0] > 0:
-        raise ValueError("the stacked Hankel matrix of the window is zero")
-    rank = max(int(np.sum(sv > sv_rel * sv[0])), 1)
-    Ur, sr, Vr = U[:, :rank], sv[:rank], Vh[:rank].conj().T
-    Z = (Ur.conj().T @ Y1 @ Vr) / sr[:, None]
-    lam = np.linalg.eigvals(Z)
-    valid = np.isfinite(lam) & (np.abs(lam) > 0)
-    n_invalid = int(np.sum(~valid))
-    lam = lam[valid]
-    growing = np.abs(lam) > 1.0 + unit_tol
-    return lam[~growing], rank, lam[growing], n_invalid, sv
-
-
-def _to_original_rate(lam_dec: np.ndarray, D: int, dt: float, guard):
-    """Method step 4 and the map ``s = log(lambda_dec) / (D dt)``.
-
-    Returns ``(s, n_dropped_by_guard)``. With ``D > 1`` the principal log's
-    cut (``arg lambda_dec = +-pi``, the decimated Nyquist frequency) is where a
-    pole's original-rate frequency jumps by ``1 / (D dt)``; the guard drops
-    every pole within ``(1 - guard) pi`` of it. With ``D == 1`` the tail uses
-    ``exp(s dt) = lambda`` itself, so the branch does not matter.
-    """
-    lam_dec = np.asarray(lam_dec, dtype=np.complex128)
-    n_guard = 0
-    if guard is not None and D > 1:
-        keep = np.abs(np.angle(lam_dec)) <= float(guard) * np.pi
-        n_guard = int(np.sum(~keep))
-        lam_dec = lam_dec[keep]
-    return np.log(lam_dec) / (int(D) * float(dt)), n_guard
-
-
-def _fit_residues(Y_win: np.ndarray, s: np.ndarray, dt: float, *,
-                  column_reference: bool = False) -> np.ndarray:
-    """Fit bounded exponential columns and return start- or column-referenced residues."""
-    if s.size == 0:
-        return np.zeros((0, Y_win.shape[1]), dtype=np.complex128)
-    m = np.arange(Y_win.shape[0], dtype=np.float64) * float(dt)
-    growing = s.real > 0
-    exponents = np.outer(m, s)
-    exponents[:, growing] = np.outer(m - m[-1], s[growing])
-    basis = np.exp(exponents)
-    norms = np.linalg.norm(basis, axis=0)
-    norms = np.where(norms > 0, norms, 1.0)
-    coef = np.linalg.lstsq(basis / norms, Y_win.astype(np.complex128), rcond=None)[0]
-    residues = coef / norms[:, None]
-    if not column_reference:
-        residues[growing] *= np.exp(-m[-1] * s[growing])[:, None]
-    return residues
-
-
 def identify(series, dt, n_start, n_stop, *, freq_max, guard=0.9,
              sv_rel=1.0e-6, unit_tol=1.0e-6) -> RingdownModel:
     """Poles and residues of samples ``[n_start, n_stop)`` of ``series (n, C)``.
@@ -658,7 +580,13 @@ def identify(series, dt, n_start, n_stop, *, freq_max, guard=0.9,
     factors, _kept = decimation_plan(win.shape[0], dt, freq_max)
     Yd = _decimate(win, factors) if factors else win
     D = int(np.prod(factors)) if factors else 1
+    _check_identification_memory(
+        win.shape[0], Yd.shape, bound=IDENTIFY_MEMORY_BOUND_BYTES,
+        pencil_parameter=PENCIL_PARAMETER)
     lam_dec, rank, lam_grow, n_invalid, sv = _pencil(Yd, float(sv_rel), float(unit_tol))
+    _check_identification_memory(
+        win.shape[0], Yd.shape, r=rank, bound=IDENTIFY_MEMORY_BOUND_BYTES,
+        pencil_parameter=PENCIL_PARAMETER)
     s, n_guard = _to_original_rate(lam_dec, D, dt, guard)
     c = _fit_residues(win, s, dt)
     rms = np.sqrt(np.mean(np.abs(win) ** 2, axis=0))
@@ -1362,10 +1290,11 @@ class RingdownRun:
     #: The entry point named in refusal messages.
     caller = "run"
 
-    def __init__(self, sim, spec: RingdownSpec, *, lane: str, n_steps: int, grid):
+    def __init__(self, sim, spec: RingdownSpec, *, lane: str, n_steps: int, grid, bins=None):
         if lane not in ("uniform", "graded"):
             raise ValueError(f"lane must be 'uniform' or 'graded', got {lane!r}")
         self.sim, self.spec, self.lane = sim, spec, lane
+        self.bins = None if bins is None else np.asarray(bins, dtype=np.float64)
         from rfx.core.yee import CurlBoundary
         self.port_boundary = CurlBoundary(pmc_faces=sim._boundary_spec.pmc_faces(),
                                           periodic=sim._periodic_flags())
@@ -1505,6 +1434,7 @@ class RingdownRun:
         """Attach the probes, call the lane's runner, detach, complete."""
         from rfx.api._spec import _ProbeEntry
 
+        _check_run_identification_memory(self)
         probes = self.sim._probes
         n_user = len(probes)
         probes.extend(_ProbeEntry(position=_node_position(self.grid, idx),
@@ -1558,8 +1488,8 @@ class RingdownRun:
         series, the port-channel probes from column ``n_user`` on. Returns
         ``(S, report, None)``, or ``(None, report, failure)`` when a check
         that decides whether the completion can be trusted at all failed.
-        Raises nothing for a failed check; a probe layout missing a table node
-        raises ``ValueError`` before identification.
+        Memory refusals raise; other failed checks are reported. A probe layout
+        missing a table node raises ``ValueError`` before identification.
         """
         dt = float(result.grid.dt)
         ref_hz = max(self.freq_max, float(np.max(np.asarray(result.freqs,
@@ -1783,6 +1713,8 @@ class RingdownRun:
                 Y, dt, f_bins, self.n_steps, self.n_start, freq_max=ref_hz,
                 split=spec.split, guard=spec.guard, sv_rel=spec.sv_rel,
                 unit_tol=spec.unit_tol, observable=to_s, plain=plain)
+        except IdentificationMemoryRefused:
+            raise
         except (ValueError, np.linalg.LinAlgError) as exc:
             raise _NotCompleted("identification", math.nan, math.nan,
                                 f"{exc}.") from None
@@ -2087,6 +2019,8 @@ def _judge_record(Y, dt: float, f_bins, n_record: int, n_start: int,
         plain = plain_dft(Y, dt, f_bins)
         model = identify(Y, dt, n_start, n_record, **kw)
         spectra = plain + tail_dft(model, n_record - 1, f_bins)
+    except IdentificationMemoryRefused:
+        raise
     except (ValueError, np.linalg.LinAlgError) as exc:
         return dict(note=f"the identification on [{spec.window_start:g} T, T] "
                          f"failed: {exc}")
@@ -2838,26 +2772,20 @@ def _rdt_nan(result):
 class RingdownForward(RingdownRun):
     """One ``forward(..., ringdown=spec)``: probes in, forward, probes out, traced completion.
 
-    Everything that can refuse the request does so before the call, as in
-    :class:`RingdownRun`. After the call nothing raises and nothing warns: the
-    completed S-parameters are traced JAX arrays (NaN where the host
-    identification failed), and the checks run lazily on the concrete result
-    (:attr:`RingdownForwardResult.report`).
+    Request preconditions are checked before the call, as in :class:`RingdownRun`.
+    Main-window memory refusals raise with the needed and allowed memory.
+    Long-window refusals and other host identification failures produce
+    NaN completed S-parameters in the traced JAX arrays; their checks run lazily
+    on the concrete result (:attr:`RingdownForwardResult.report`).
     """
 
     caller = "forward"
-
-    def __init__(self, sim, spec: RingdownSpec, *, lane: str, n_steps: int, grid,
-                 bins=None):
-        super().__init__(sim, spec, lane=lane, n_steps=n_steps, grid=grid)
-        #: float64 bins of the completion when the lane's own ``freqs`` are
-        #: its float32 accumulator bins (the uniform lane's port_s11_freqs)
-        self.bins = None if bins is None else np.asarray(bins, dtype=np.float64)
 
     def run(self, call):
         """Attach the probes, call the lane, detach, complete (traced)."""
         from rfx.api._spec import _ProbeEntry
 
+        _check_run_identification_memory(self)
         probes = self.sim._probes
         n_declared = len(probes)
         if self.lane == "uniform" and n_declared == 0:
@@ -2993,7 +2921,8 @@ class RingdownForward(RingdownRun):
             k_max = min(static_pole_bound(n - n0, Y.shape[1], dt, ref_hz),
                         TRACED_POLE_BUDGET)
             s0, mask, st, tail_arg, count = rj.host_poles(
-                identify_window, raw[n0:], k_max, dt, f_bins)
+                identify_window if n0 == self.n_start else _witness_identification(identify_window),
+                raw[n0:], k_max, dt, f_bins)
             spectra = rj.completion(Y, dt, f_bins, n0, s0, mask, tail_arg, plain=plain)
             S = to_s(spectra)
             st = jnp.where(consistent, st, rj.STATUS_INCONSISTENT)

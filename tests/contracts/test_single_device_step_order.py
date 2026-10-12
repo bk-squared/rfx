@@ -114,7 +114,7 @@ def test_conductors_and_sources_match_independent_single_device_step(kind):
 
 def _graded_scene(kind):
     from rfx.nonuniform import make_nonuniform_grid
-    from rfx.stepping.graded import GradedStepContext
+    from rfx.stepping.graded import GradedStepContext, graded_probe_table
 
     grid = make_nonuniform_grid(
         (.005, .005), np.full(5, .001), .001, cpml_layers=0,
@@ -130,13 +130,13 @@ def _graded_scene(kind):
     values = {f.name: False if f.name.startswith('use_') else None
               for f in fields(GradedStepContext)}
     values.update(
-        grid=grid, dt=grid.dt, inv_dx=grid.inv_dx, inv_dy=grid.inv_dy,
-        inv_dz=grid.inv_dz, inv_dx_h=grid.inv_dx_h, inv_dy_h=grid.inv_dy_h,
+        grid=grid, dt=grid.dt, inv_dy=grid.inv_dy,
+        inv_dz=grid.inv_dz, inv_dy_h=grid.inv_dy_h,
         inv_dz_h=grid.inv_dz_h, _pec_faces_frozen=frozenset({'x_lo'}),
         _pmc_faces_frozen=frozenset(),
         curl_boundary=CurlBoundary(frozenset({'x_lo'}), frozenset()),
-        drives=drive_layout([(*cell, 'ez')], jnp.float32), rlc_metas=(),
-        emit_time_series=True, prb_meta=[], waveguide_meta=(),
+        rlc_metas=(),
+        emit_time_series=True, waveguide_meta=(),
         waveguide_port_metrics=(), wp_meta=[], dft_meta=(), flux_meta=())
     sheet = coeffs = None
     if kind == 'occupancy':
@@ -153,7 +153,10 @@ def _graded_scene(kind):
                              position=(0., .002, .002), component='ez')
         values['rlc_metas'] = (build_rlc_meta(grid, spec, materials),)
         carry['rlc_states'] = (init_rlc_state(),)
-    invariants = dict(materials=materials, pec_edge_masks=None, cpml_inv_eps_r=None,
+    invariants = dict(inv_dx=grid.inv_dx, inv_dx_h=grid.inv_dx_h, dx_arr=grid.dx_arr,
+                      drives=drive_layout([(*cell, 'ez')], jnp.float32),
+                      probe_table=graded_probe_table([], shape, dtype=initial.ex.dtype),
+                      materials=materials, pec_edge_masks=None, cpml_inv_eps_r=None,
                       debye_coeffs=None, lorentz_coeffs=None, aniso_eps=None,
                       sheet_impedance=sheet, sheet_coeffs=coeffs, design_box_coeffs=None)
     return GradedStepContext(**values), carry, invariants
@@ -165,15 +168,15 @@ def _graded_reference(ctx, carry, source, invariants):
     old = carry['fdtd']
     materials = invariants['materials']
     grid = ctx.grid
-    st = update_h_nu(old, materials, ctx.dt, grid.inv_dx_h, grid.inv_dy_h,
-                     grid.inv_dz_h, cell_sizes=(grid.dx_arr, grid.dy_arr, grid.dz))
-    st = update_e_nu(st, materials, ctx.dt, grid.inv_dx, grid.inv_dy,
+    st = update_h_nu(old, materials, ctx.dt, invariants['inv_dx_h'], grid.inv_dy_h,
+                     grid.inv_dz_h, cell_sizes=(invariants['dx_arr'], grid.dy_arr, grid.dz))
+    st = update_e_nu(st, materials, ctx.dt, invariants['inv_dx'], grid.inv_dy,
                      grid.inv_dz, boundary=ctx.curl_boundary)
     st = apply_pec_faces(st, ctx._pec_faces_frozen)
     if ctx.use_pec_occupancy:
         st = apply_pec_occupancy(st, _occupancy(st.ex.shape), (False, False, False))
     if ctx.use_sheet_impedance:
-        curls = curl_h_nu(st.hx, st.hy, st.hz, grid.inv_dx, grid.inv_dy,
+        curls = curl_h_nu(st.hx, st.hy, st.hz, invariants['inv_dx'], grid.inv_dy,
                           grid.inv_dz, boundary=ctx.curl_boundary)
         st = apply_sheet_impedance_e(st, (old.ex, old.ey, old.ez), curls,
                                     invariants['sheet_impedance'], invariants['sheet_coeffs'])
@@ -184,7 +187,7 @@ def _graded_reference(ctx, carry, source, invariants):
                                          old.ez[meta.i, meta.j, meta.k])
         rlc = tuple(next_rlc)
     before = st.ez
-    st = inject_drives(st, ctx.drives, source)
+    st = inject_drives(st, invariants['drives'], source)
     return (st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, before, *rlc)
 
 

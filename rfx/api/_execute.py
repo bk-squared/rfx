@@ -97,7 +97,7 @@ def _under_external_jax_transform() -> bool:
 
 
 def _refuse_transformed_extended_tfsf(entry) -> None:
-    """Fence the new source inputs before any setup can hide caller tracing."""
+    """Keep run()'s source fence before setup can hide caller tracing."""
     if entry is None:
         return
     from rfx.sources.sources import CustomWaveform
@@ -105,11 +105,8 @@ def _refuse_transformed_extended_tfsf(entry) -> None:
         return
     if _under_external_jax_transform():
         raise NotImplementedError(
-            "CustomWaveform and closed_box TFSF cannot be called under external "
-            "JAX transformations (grad/value_and_grad/JVP/vmap/jit/checkpoint/scan): "
-            "transformed scattered-field traces exceed the 9-ULP cross-trace "
-            "contract. Use ordinary fixed-step run/forward; forward's internal "
-            "checkpoint and segmentation options remain available.")
+            "CustomWaveform and closed_box TFSF cannot be passed through run() "
+            "under external JAX transformations; differentiate forward() instead.")
 
 
 def _setup_evaluated_at_trace_time(*, distributed: bool) -> bool:
@@ -656,7 +653,7 @@ class _ExecuteMixin:
                          else "worst bin undetermined")
             shares = np.asarray(witness["share_per_bin"])
             peak = float(np.max(shares)) if shares.size else float("nan")
-            warning_witness = {**witness, "reason": f"share {peak:.9g}"}
+            warning_witness = {**witness, "reason": witness["reason"] if "rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES" in witness["reason"] else f"share {peak:.9g}"}
             _warn_if_ringdown_truncated(
                 [settling_db], (), witnesses=[warning_witness],
                 n_steps=n_steps, num_periods=None if n_steps is not None else num_periods,
@@ -3537,7 +3534,6 @@ class _ExecuteMixin:
                                  pec_mask_override, pec_occupancy_override,
                                  design_occupancy_override, rlc_values_override),
                 port_s11_freqs=port_s11_freqs)
-        _refuse_transformed_extended_tfsf(self._tfsf)
         if _removed_kwargs:
             _reject_removed_forward_kwargs(_removed_kwargs)
         validate_exchange_interval(exchange_interval)
@@ -3772,7 +3768,7 @@ class _ExecuteMixin:
                 from rfx.ringdown import RingdownForward
                 result = RingdownForward(
                     self, ringdown, lane="graded", n_steps=plan.n_steps,
-                    grid=_nu_grid).run(_nu_fwd_call)
+                    grid=_nu_grid, bins=None if port_s11_freqs is None else np.asarray(port_s11_freqs, dtype=np.float32)).run(_nu_fwd_call)
             if _nu_design_spec is not None:
                 result = result._replace(
                     design_box_held_edges=_nu_design_spec.held_edges)
@@ -4470,7 +4466,7 @@ class _ExecuteMixin:
                 from rfx.ringdown import RingdownRun
                 _res = RingdownRun(
                     self, ringdown, lane="graded", n_steps=n_steps,
-                    grid=_nu_grid).run(_nu_call)
+                    grid=_nu_grid, bins=s_param_freqs).run(_nu_call)
             self._warn_run_sparams_if_nonpassive(_res)
             self._warn_postrun_energy_witness(
                 _res,
@@ -4636,7 +4632,7 @@ class _ExecuteMixin:
         else:
             from rfx.ringdown import RingdownRun
             _res = RingdownRun(self, ringdown, lane="uniform", n_steps=n_steps,
-                               grid=grid).run(_uniform_call)
+                               grid=grid, bins=s_param_freqs).run(_uniform_call)
         self._warn_run_sparams_if_nonpassive(_res)
         self._warn_postrun_energy_witness(
             _res,

@@ -16,9 +16,10 @@ from typing import Any, TYPE_CHECKING
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 
 from rfx.boundaries.pec import apply_edge_keep, apply_pec_edges, apply_pec_faces
-from rfx.core.drives import Drives, inject_drives
+from rfx.core.drives import inject_drives
 from rfx.core.yee import CurlBoundary, update_e_nu, update_h_nu
 from .sequence import HookPoint, Kernel, compose
 
@@ -40,7 +41,6 @@ class GradedStepContext:
     _slab_e_snapshot: Callable | None
     current_moments: CurrentMomentMonitor | None
     dt: float | jax.Array
-    inv_dx_h: jax.Array
     inv_dy_h: jax.Array
     inv_dz_h: jax.Array
     grid: NonUniformGrid
@@ -60,7 +60,6 @@ class GradedStepContext:
     use_design_box: bool
     use_debye: bool
     use_lorentz: bool
-    inv_dx: jax.Array
     inv_dy: jax.Array
     inv_dz: jax.Array
     curl_boundary: CurlBoundary
@@ -68,7 +67,6 @@ class GradedStepContext:
     _pec_faces_frozen: frozenset[str]
     use_pec_edges: bool
     use_pec_occupancy: bool
-    drives: Drives
     use_wire_ports: bool
     wp_meta: list
     sp_freqs: jax.Array | None
@@ -80,7 +78,7 @@ class GradedStepContext:
     ntff_box: NTFFBox | None
     _accumulate_cm: Callable | None
     emit_time_series: bool
-    prb_meta: list
+    x_face_frame: Mapping[str, tuple[int, int]] | None = None  # Axis -> static (lo, hi) physical rows.
 
 
 @dataclass
@@ -160,8 +158,8 @@ def make_graded_step(
 
     def h_update(frame: GradedFrame):
         # H update (non-uniform)
-        frame.st = update_h_nu(frame.st, frame.materials, ctx.dt, ctx.inv_dx_h, ctx.inv_dy_h, ctx.inv_dz_h,
-                         cell_sizes=(ctx.grid.dx_arr, ctx.grid.dy_arr, ctx.grid.dz))
+        frame.st = update_h_nu(frame.st, frame.materials, ctx.dt, frame.invariants["inv_dx_h"], ctx.inv_dy_h, ctx.inv_dz_h,
+                         cell_sizes=(frame.invariants["dx_arr"], ctx.grid.dy_arr, ctx.grid.dz))
 
     def h_boundary(frame: GradedFrame):
         frame.tfsf_h_state = None
@@ -181,7 +179,8 @@ def make_graded_step(
             frame.cpml_new = None
         if ctx.use_pmc_faces:
             from rfx.boundaries.pmc import apply_pmc_faces
-            frame.st = apply_pmc_faces(frame.st, ctx._pmc_faces_frozen, image=True)
+            frame.st = apply_pmc_faces(frame.st, ctx._pmc_faces_frozen, image=True,
+                                       frame=ctx.x_face_frame, owned=frame.invariants.get("owns_x"))
         if ctx.use_tfsf:
             from rfx.sources.tfsf import update_tfsf_1d_h
             frame.tfsf_h_state = update_tfsf_1d_h(ctx.tfsf_cfg, frame.carry["tfsf"], ctx.grid.dx, ctx.dt)
@@ -199,7 +198,7 @@ def make_graded_step(
         frame.lorentz_new = None
         if ctx.use_debye or ctx.use_lorentz:
             frame.st, frame.debye_new, frame.lorentz_new = _update_e_nu_dispersive(
-                frame.st, frame.materials, ctx.dt, ctx.inv_dx, ctx.inv_dy, ctx.inv_dz,
+                frame.st, frame.materials, ctx.dt, frame.invariants["inv_dx"], ctx.inv_dy, ctx.inv_dz,
                 debye=(frame.debye_coeffs, frame.carry["debye"]) if ctx.use_debye else None,
                 lorentz=(frame.lorentz_coeffs, frame.carry["lorentz"]) if ctx.use_lorentz else None,
                 boundary=ctx.curl_boundary,
@@ -209,10 +208,10 @@ def make_graded_step(
             _eex, _eey, _eez = frame.aniso_eps
             frame.st = update_e_nu_aniso(
                 frame.st, frame.materials, _eex, _eey, _eez, ctx.dt,
-                ctx.inv_dx, ctx.inv_dy, ctx.inv_dz, boundary=ctx.curl_boundary,
+                frame.invariants["inv_dx"], ctx.inv_dy, ctx.inv_dz, boundary=ctx.curl_boundary,
             )
         else:
-            frame.st = update_e_nu(frame.st, frame.materials, ctx.dt, ctx.inv_dx, ctx.inv_dy, ctx.inv_dz,
+            frame.st = update_e_nu(frame.st, frame.materials, ctx.dt, frame.invariants["inv_dx"], ctx.inv_dy, ctx.inv_dz,
                              boundary=ctx.curl_boundary)
 
         # #1183 design box: redo the E update at the design cells from the
@@ -224,7 +223,7 @@ def make_graded_step(
             frame.st = update_e_box(
                 frame.st, frame.st_prev_design, frame.design_box_coeffs.bounds,
                 frame.design_box_coeffs.ca, frame.design_box_coeffs.cb, ctx.grid.dx,
-                inv_d=(ctx.inv_dx, ctx.inv_dy, ctx.inv_dz), boundary=ctx.curl_boundary,
+                inv_d=(frame.invariants["inv_dx"], ctx.inv_dy, ctx.inv_dz), boundary=ctx.curl_boundary,
             )
 
     def e_boundary(frame: GradedFrame):
@@ -245,7 +244,8 @@ def make_graded_step(
 
     def pec(frame: GradedFrame):
         # PEC, per face (#1164)
-        frame.st = apply_pec_faces(frame.st, ctx._pec_faces_frozen)
+        frame.st = apply_pec_faces(frame.st, ctx._pec_faces_frozen,
+                                   frame=ctx.x_face_frame, owned=frame.invariants.get("owns_x"))
         if ctx.use_pec_edges:
             frame.st = apply_pec_edges(frame.st, frame.pec_edge_masks)
         if ctx.use_pec_occupancy:
@@ -264,7 +264,7 @@ def make_graded_step(
             _scd = jnp.promote_types(frame.st.ex.dtype, jnp.float32)
             _curls = _curl_h_nu(
                 frame.st.hx.astype(_scd), frame.st.hy.astype(_scd), frame.st.hz.astype(_scd),
-                ctx.inv_dx, ctx.inv_dy, ctx.inv_dz, boundary=ctx.curl_boundary)
+                frame.invariants["inv_dx"], ctx.inv_dy, ctx.inv_dz, boundary=ctx.curl_boundary)
             frame.st = _apply_sheet_e(frame.st, frame.e_prev_sheet, _curls,
                                 frame.sheet_impedance, frame.sheet_coeffs)
 
@@ -280,7 +280,7 @@ def make_graded_step(
 
     def sources(frame: GradedFrame):
         # Sources (point sources + wire port excitation)
-        frame.st = inject_drives(frame.st, ctx.drives, frame.src_vals)
+        frame.st = inject_drives(frame.st, frame.invariants["drives"], frame.src_vals)
 
     def after_sources(frame: GradedFrame):
         # Waveguide-port injection + DFT probe accumulation. The dx
@@ -403,9 +403,14 @@ def make_graded_step(
             frame.tfsf_new = update_tfsf_1d_e(ctx.tfsf_cfg, frame.tfsf_h_state, ctx.grid.dx, ctx.dt, t_tfsf)
 
         # Probes
-        if ctx.emit_time_series and ctx.prb_meta:
-            samples = [getattr(frame.st, pc)[pi, pj, pk] for pi, pj, pk, pc in ctx.prb_meta]
-            frame.probe_out = jnp.stack(samples)
+        if ctx.emit_time_series and frame.invariants["probe_table"].n_channels:
+            table = frame.invariants["probe_table"]
+            nodes = _host_probe_nodes(table)
+            if nodes is None:
+                frame.probe_out = project(frame.st, table)
+            else:
+                samples = [getattr(frame.st, pc)[pi, pj, pk] for pc, pi, pj, pk in nodes]
+                frame.probe_out = jnp.stack(samples)
         else:
             frame.probe_out = jnp.zeros(0)
 
@@ -464,3 +469,37 @@ def make_graded_step(
         return finish(frame)
 
     return step_fn
+
+
+def _host_probe_nodes(table):
+    """Keep the pre-table one-device program and gradient; leave slab tables to project."""
+    if any(not isinstance(index, np.ndarray) for terms in table.components for index in terms.indices):
+        return None
+    nodes = [None] * table.n_channels
+    for terms in table.components:
+        if isinstance(terms.channel_ids, jax.core.Tracer) or isinstance(terms.weights, jax.core.Tracer):
+            return None
+        for channel, i, j, k, weight in zip(np.asarray(terms.channel_ids), *terms.indices,
+                                          np.asarray(terms.weights), strict=True):
+            channel = int(channel)
+            if weight != 1.0 or not 0 <= channel < table.n_channels or nodes[channel] is not None:
+                return None
+            nodes[channel] = (terms.component, int(i), int(j), int(k))
+    return tuple(nodes) if all(node is not None for node in nodes) else None
+
+
+def graded_probe_table(prb_meta, grid_shape, *, dtype):
+    """Compile the graded point probes in their original record order."""
+    from rfx.measurement.plan import Node, Owner, field_channel
+    from rfx.measurement.projector import sample_table
+
+    channels = []
+    for number, (i, j, k, component) in enumerate(prb_meta):
+        indices = []
+        for axis, index, size in zip('xyz', (i, j, k), grid_shape, strict=True):
+            if not -size <= index < size:
+                raise IndexError(f'Probe {number} ({component}, {(i, j, k)}): '
+                                 f'{axis} index {index} outside [-{size}, {size})')
+            indices.append(index + size if index < 0 else index)
+        channels.append(field_channel(component, (Node(component, *indices, 1.0),)))
+    return sample_table((Owner('probes', 'probe', tuple(channels)),), dtype=dtype)
