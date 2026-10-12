@@ -24,12 +24,11 @@ def cells_in_box(cells, bounds, shape):
 
 def sheet_edges(conductors, sim, sheet_operator=None):
     """Attribute the realized operator edges to their declared f0 sheets."""
-    from rfx.materials.thin_conductor import build_sheet_impedance_ctx
+    from rfx.model.conductors import SheetConductors
     indices = [i for i, tc in enumerate(sim._thin_conductors)
                if not tc.is_pec and tc.surface_impedance_f0 is not None]
     for index, spec in zip(indices, conductors.sheet_impedance, strict=True):
-        ctx = build_sheet_impedance_ctx((spec,), pec_edge_masks=conductors.pec_edges,
-                                       periodic=conductors.periodic)
+        ctx = SheetConductors((spec,), conductors.periodic).sheet_context(conductors.pec_edges)
         for component in ('ex', 'ey', 'ez'):
             mask = np.asarray(getattr(ctx, 'mask_' + component), dtype=bool)
             if sheet_operator is not None:
