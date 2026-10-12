@@ -8,7 +8,7 @@ This policy keeps repository docs and the public `remilab.ai/rfx` surface in syn
 |---|---|---|
 | `docs/public/**` | public `/rfx` pages | `python scripts/check_public_docs_manifest.py` |
 | `docs/guides/support_matrix.md` | support-status contract | reviewed whenever public claims change |
-| `docs/guides/sparameter_support_matrix.md` | S-parameter claim contract | reviewed whenever ports/S-parameters change |
+| `docs/guides/support_matrix.md` (S-parameters section) | S-parameter claim contract | reviewed whenever ports/S-parameters change |
 | `docs/guides/public_surface_scope_inventory_*.md` | maintainer inventory for repository surfaces outside public support scope | reviewed before public-doc refreshes |
 | gitops `seed-pages/rfx` | deployed `remilab.ai/rfx` snapshot | `python scripts/check_public_docs_sync.py --bundle-dir <bundle> --format text` (the bundle built from the same commit) |
 
@@ -62,7 +62,7 @@ Allowed places for those terms are support contracts, maintainer inventories, or
 ## Support-matrix review cadence
 
 - Review `docs/guides/support_matrix.md` for any feature-status wording change.
-- Review `docs/guides/sparameter_support_matrix.md` for any source, port, S-parameter, Touchstone, or RF-network wording change.
+- Review `docs/guides/support_matrix.md` (S-parameters section) for any source, port, S-parameter, Touchstone, or RF-network wording change.
 - Review `docs/guides/physics_validation_evidence_rule.md` before calling a result validated, cross-validated, or production-ready.
 - Keep public docs phrasing aligned with the strongest documented evidence, not with local intuition or a passing unit test alone.
 

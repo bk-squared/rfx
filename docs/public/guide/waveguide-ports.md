@@ -227,4 +227,4 @@ graded mesh it is a target segment count.
 - **`port_reference_sims`** needs `normalize="flux"`, single-mode ports, a
   uniform mesh and no material override.
 - Full scope, with the comparisons behind it, is in the
-  [S-parameter support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/sparameter_support_matrix.md).
+  [S-parameter section of the support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md#s-parameters).

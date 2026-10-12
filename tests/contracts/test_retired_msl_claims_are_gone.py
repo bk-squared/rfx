@@ -90,7 +90,7 @@ def test_the_scan_covers_the_pages_it_claims_to() -> None:
     assert SCANNED, "the scan found no pages -- the glob is wrong"
     names = {p.relative_to(REPO).as_posix() for p in SCANNED}
     for expected in ("docs/public/model/ports.mdx", "docs/public/measure/s-parameters.mdx",
-                     "docs/guides/known_limitations.md", "docs/guides/sparameter_support_matrix.md"):
+                     "docs/guides/known_limitations.md", "docs/guides/support_matrix.md"):
         assert expected in names, f"{expected} is not being scanned"
 
 

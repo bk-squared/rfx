@@ -10,7 +10,7 @@ This document defines the current **claims-bearing reference lane** for rfx:
   waveguide ports
 - probes, flux monitors, Harminv resonance, benchmarked NTFF/far-field, and
   S-parameters only through the port-family envelopes in
-  `docs/guides/sparameter_support_matrix.md`
+  `docs/guides/support_matrix.md` (S-parameters section)
 
 Everything outside this scope must be treated by the support matrix, not by implication.
 
@@ -55,7 +55,7 @@ Claims-bearing observable families:
 - time-series probes
 - flux monitors
 - S-parameters with the E-level, artifact, metric, and envelope stated in
-  `docs/guides/sparameter_support_matrix.md`
+  `docs/guides/support_matrix.md` (S-parameters section)
 - Harminv resonance extraction
 - benchmarked NTFF/far-field workflows
 
@@ -68,7 +68,7 @@ Each promoted observable must have:
 ### S-parameter calculators
 
 The detailed port-family contract is versioned in
-`docs/guides/sparameter_support_matrix.md`. The reference-lane rule is:
+`docs/guides/support_matrix.md` (S-parameters section). The reference-lane rule is:
 
 - `run(compute_s_params=True)` means `add_port(...)` lumped/wire ports only.
 - `forward(port_s11_freqs=...)` means lumped/wire S11 vectors on the uniform
