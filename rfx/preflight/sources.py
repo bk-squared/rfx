@@ -309,8 +309,9 @@ def _validate_cfg_unresolved_pulse(self, _w, dx: float) -> None:
     misses by ~9 orders of magnitude), so this fires regardless of
     ``until_decay`` — a sub-dt spike is always broken.
 
-    ``dt`` is the realized grid's (uniform or graded) when the grid builds,
-    else the uniform-lane Courant estimate from the preflight ``dx``. ADI's
+    ``dt`` is that of the realized grid the campaign context holds (uniform
+    or graded), else the uniform-lane Courant estimate from the preflight
+    ``dx``. ADI's
     ``adi_cfl_factor`` is not in it, so on ADI the actual dt is larger.
 
     Issue 1668: every excited drive is judged -- sources and lumped, wire
@@ -322,16 +323,15 @@ def _validate_cfg_unresolved_pulse(self, _w, dx: float) -> None:
     ``undriven_pulse``); one that still has samples gets the warning.
     """
     dt = dx / (C0 * math.sqrt(3.0)) * 0.99  # Grid.courant_dt(dx, ndim=3)
-    # Issue 1668: judge against the realized dt when the grid builds.
-    from rfx.core.jax_utils import is_tracer
-    profiles = (self._dx_profile, self._dy_profile, self._dz_profile)
-    if not (is_tracer(self._dx) or any(p is not None and is_tracer(p) for p in profiles)):
-        try:
-            grid = (self._build_nonuniform_grid()
-                    if any(p is not None for p in profiles) else self._build_grid())
+    # Issue 1668: judge against the realized dt, read from the grid the
+    # campaign context already built (never built again here, so a failed
+    # assembly is not attempted twice); keep the estimate when it failed.
+    try:
+        grid = getattr(self._campaign_ctx(), "grid", None)
+        if grid is not None:
             dt = float(grid.dt)
-        except Exception:
-            pass  # an unbuildable grid has its own check; keep the estimate
+    except Exception:
+        pass
     from rfx.sources.sources import GaussianPulse, ModulatedGaussian
 
     def _class_pulse(entry, waveform):
