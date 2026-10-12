@@ -53,21 +53,24 @@ def source_table(samples, kind=None, *, native="raw", coefficient=None, volume=1
 
     A field increment has no material operand, including under AD. A callable
     coefficient is read only for a material-dependent drive, after all stamps.
-    A named kind decides the table alone: 'current' is ``(1/dV)*(Cb*w)``
-    whichever helper builds it, so every entry, boundary and path forms the
-    same float32 product (run()/forward() census row D2). Cb only multiplies:
-    under jit/vmap XLA rewrites a traced Cb divided by a constant dV as a
-    multiply by the reciprocal, so ``Cb/dV`` rounds differently per trace.
-    ``native`` keeps only the low-level helpers' historical None contracts. Distributed slabs may supply
-    their already resolved Cb/dV as a native ``cb`` factor; the same
-    multiplication then builds their table inside the program.
+    On the uniform lanes a named kind decides the table alone: 'current' is
+    ``(1/dV)*(Cb*w)`` whichever uniform helper builds it, so run() and
+    forward() form the same float32 product on every boundary (run()/forward()
+    census row D2). Cb only multiplies: under jit/vmap XLA rewrites a traced
+    Cb divided by a constant dV as a multiply by the reciprocal, so ``Cb/dV``
+    rounds differently per trace. The graded lanes (native ``cb_over_dv``,
+    single and multi-device alike) keep ``(Cb/dV)*w``: their multi-device
+    slabs supply Cb/dV already resolved as a native ``cb`` factor, and the
+    graded single-device table must stay the same product as the slabs'.
     """
     from rfx.api._source_semantics import needs_scale
     needs_scale(kind, native)  # validate Python-level dispatch, never a tracer
     if kind == "field" or (kind is None and native == "raw"):
         return samples
     cb = coefficient() if callable(coefficient) else coefficient
-    if kind == "current" or native == "cb_over_dv":
+    if native == "cb_over_dv":
+        return (cb / volume) * samples
+    if kind == "current":
         return (1.0 / volume) * (cb * samples)
     return cb * samples
 
