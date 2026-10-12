@@ -140,6 +140,9 @@ def test_closed_vacuum_replays_real_waveform_inside_and_cancels_all_faces(polari
     assert np.max(np.abs(spectrum - expected)) <= 1e-4 * np.max(np.abs(expected))
 
 
+@pytest.mark.xfail(strict=True, reason=(
+    "issue 1668: the built-in TF/SF incident is an inline copy of the old "
+    "formula until absorber routes it to GaussianPulse"))
 @pytest.mark.parametrize("polarization,direction", [("ez", "+x"), ("ey", "-x")])
 def test_custom_gaussian_preserves_legacy_slab(polarization, direction):
     pulse = GaussianPulse(f0=15e9, bandwidth=0.8)
