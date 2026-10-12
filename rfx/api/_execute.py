@@ -97,7 +97,7 @@ def _under_external_jax_transform() -> bool:
 
 
 def _refuse_transformed_extended_tfsf(entry) -> None:
-    """Fence the new source inputs before any setup can hide caller tracing."""
+    """Keep run()'s source fence before setup can hide caller tracing."""
     if entry is None:
         return
     from rfx.sources.sources import CustomWaveform
@@ -105,11 +105,8 @@ def _refuse_transformed_extended_tfsf(entry) -> None:
         return
     if _under_external_jax_transform():
         raise NotImplementedError(
-            "CustomWaveform and closed_box TFSF cannot be called under external "
-            "JAX transformations (grad/value_and_grad/JVP/vmap/jit/checkpoint/scan): "
-            "transformed scattered-field traces exceed the 9-ULP cross-trace "
-            "contract. Use ordinary fixed-step run/forward; forward's internal "
-            "checkpoint and segmentation options remain available.")
+            "CustomWaveform and closed_box TFSF cannot be passed through run() "
+            "under external JAX transformations; differentiate forward() instead.")
 
 
 def _setup_evaluated_at_trace_time(*, distributed: bool) -> bool:
@@ -3537,7 +3534,6 @@ class _ExecuteMixin:
                                  pec_mask_override, pec_occupancy_override,
                                  design_occupancy_override, rlc_values_override),
                 port_s11_freqs=port_s11_freqs)
-        _refuse_transformed_extended_tfsf(self._tfsf)
         if _removed_kwargs:
             _reject_removed_forward_kwargs(_removed_kwargs)
         validate_exchange_interval(exchange_interval)

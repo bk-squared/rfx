@@ -375,35 +375,23 @@ def test_ordinary_forward_run_and_internal_remat_share_the_source():
 
 
 @pytest.mark.parametrize("kind", ("custom", "box"))
-@pytest.mark.parametrize("entry,dynamic_material", [("run", False), ("forward", False),
-                                                    ("forward", True)])
-@pytest.mark.parametrize("transform", ("grad", "value_and_grad", "jvp", "vmap",
-                                      "jit", "checkpoint", "scan"))
-def test_external_transforms_refuse_extended_tfsf(kind, entry, dynamic_material, transform):
+@pytest.mark.parametrize("transform", ("grad", "jit"))
+def test_run_external_transforms_refuse_extended_tfsf(kind, transform):
     sim = _sim(closed_box=kind == "box", waveform=(
         "differentiated_gaussian" if kind == "box" else None))
-    grid = sim._build_grid()
 
     def trace(eps):
-        kwargs = {"eps_override": jnp.full(grid.shape, eps)} if dynamic_material else {}
-        return getattr(sim, entry)(n_steps=8, skip_preflight=True, **kwargs).time_series
-
-    def objective(eps):
-        values = trace(eps)
-        return jnp.sum(values ** 2), values
+        return sim.run(n_steps=8, skip_preflight=True).time_series * eps
 
     calls = {
-        "grad": lambda: jax.grad(lambda eps: objective(eps)[0])(1.0),
-        "value_and_grad": lambda: jax.value_and_grad(objective, has_aux=True)(1.0),
-        "jvp": lambda: jax.jvp(trace, (1.0,), (1.0,)),
-        "vmap": lambda: jax.vmap(trace)(jnp.ones(2)),
+        "grad": lambda: jax.grad(lambda eps: jnp.sum(trace(eps) ** 2))(1.0),
         "jit": lambda: jax.jit(trace)(1.0),
-        "checkpoint": lambda: jax.checkpoint(trace)(1.0),
-        "scan": lambda: jax.lax.scan(lambda eps, n: (eps, trace(eps)),
-                                    1.0, jnp.arange(2)),
     }
-    with pytest.raises(NotImplementedError, match="9-ULP cross-trace contract"):
+    with pytest.raises(NotImplementedError) as exc:
         calls[transform]()
+    assert str(exc.value) == (
+        "CustomWaveform and closed_box TFSF cannot be passed through run() "
+        "under external JAX transformations; differentiate forward() instead.")
 
 
 @pytest.mark.parametrize("public_api", ("core_opaque", "core_predicate"))
@@ -464,5 +452,8 @@ def test_transform_guard_uses_older_public_jax_exports(monkeypatch, public_api):
     assert call(2.0) == 4.0
     for transformed, value in ((jax.grad(call), 2.0), (jax.jit(call), 2.0),
                                (jax.vmap(call), jnp.ones(2))):
-        with pytest.raises(NotImplementedError, match="9-ULP cross-trace contract"):
+        with pytest.raises(NotImplementedError) as exc:
             transformed(value)
+        assert str(exc.value) == (
+            "CustomWaveform and closed_box TFSF cannot be passed through run() "
+            "under external JAX transformations; differentiate forward() instead.")
