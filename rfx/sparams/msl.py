@@ -168,10 +168,17 @@ def compute_msl_s_matrix(
     Ampere-loop current. Production S is formed from this first-plane
     V/I and the analytic Hammerstad-Jensen reference impedance. The
     N-probe least-squares fit of
-    ``V_n = α e^{-jβx_n} + γ e^{+jβx_n}`` supplies only the reported
-    beta/Z0 diagnostics. Those fitted values do not enter S. S is
-    referenced to each first probe plane, without translation back to
-    the physical feed planes. The two bracketing H planes are linearly
+    ``V_n = α e^{-jβx_n} + γ e^{+jβx_n}`` supplies the reported Z0
+    diagnostic (which does not enter S) and the fitted beta, which
+    enters S only through the reference-plane shift: S is formed at
+    each port's first probe plane and then referred back to the
+    DECLARED FEED PLANE, ``S_feed[i, j] = D_i S[i, j] D_j`` with
+    ``D_p = exp(-j β_p L_p)``, ``L_p`` the realized feed-to-probe-0
+    distance (``reference_plane_offsets_m``) and ``β_p`` the port's
+    own-drive fitted β, or the Hammerstad-Jensen β on bins where the fit
+    railed at its scan window (``shift_beta``,
+    ``shift_beta_closed_form``). β is real, so the shift moves phase
+    only. The two bracketing H planes are linearly
     interpolated to the E-node using their physical coordinates, then
     the leapfrog temporal offset is corrected. Comparing different
     observation offsets still requires accounting for reference planes
@@ -542,6 +549,9 @@ def compute_msl_s_matrix(
         S = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
         Z0_per_run = jnp.zeros((n_ports, n_freqs_used), dtype=_complex_dtype)
         beta_first = jnp.zeros(n_freqs_used, dtype=_complex_dtype)
+        # Own-drive fitted beta of EVERY port: it sets the plane shift
+        # from probe 0 to the declared feed plane (rfx.sparams._msl_planes).
+        beta_fit_per_port: list = [None] * n_ports
         # N-probe extractor (issue #80 Fix C): store all N voltage
         # probe phasors. n_probes may differ per port — store the
         # max width and zero-pad shorter ports.
@@ -934,6 +944,7 @@ def compute_msl_s_matrix(
                     S = S.at[driven, driven, :].set(jnp.asarray(b_ref_d / (a_fwd_d + 1e-30), dtype=_complex_dtype))
                     Z0_per_run = Z0_per_run.at[driven, :].set(z0_fit)
                     alpha_d = a_fwd_d * power_scales[driven]
+                    beta_fit_per_port[driven] = res_p["beta"]
                     if driven == 0:
                         beta_first = jnp.asarray(res_p["beta"], dtype=_complex_dtype)
 
@@ -1043,6 +1054,37 @@ def compute_msl_s_matrix(
             )
             msl_cond_a = cond_a
 
+        # ---- Reference plane: probe 0 -> declared feed plane ----------
+        # S above is referred to each port's probe-0 plane. One resolver
+        # (rfx.sparams._msl_planes, shared with the mixed calculator)
+        # gives the realized feed-to-probe-0 distance L_p and the shift
+        # beta per bin (own-drive fitted beta; Hammerstad-Jensen where the
+        # fit railed), and S_feed[i, j] = D_i S[i, j] D_j with
+        # D = exp(-j beta L). beta is real, so |S|, singular values and
+        # cond(A) are unchanged. Applied before the dump and before the
+        # opt-in passivity projection, so S_raw carries it too.
+        from rfx.sparams._msl_planes import (
+            resolve_msl_planes as _resolve_msl_planes,
+            apply_feed_plane_shift as _apply_feed_plane_shift,
+        )
+        msl_planes = _resolve_msl_planes(
+            grid, msl_ports,
+            [int(pe.n_probe_offset) for pe in entries],
+            [xs[0] for xs in probe_xs],
+            beta_fit_per_port,
+            beta0_per_port,
+            [raw_beta_railed[p, p, :] for p in range(n_ports)],
+        )
+        S = _apply_feed_plane_shift(
+            S, msl_planes.offsets_m, msl_planes.shift_beta,
+        ).astype(_complex_dtype)
+        shift_beta_closed_form = None
+        try:
+            shift_beta_closed_form = np.asarray(
+                jax.lax.stop_gradient(msl_planes.closed_form)).astype(bool)
+        except (jax.errors.ConcretizationTypeError, TypeError):
+            shift_beta_closed_form = None
+
         # Preserve the existing relative low-signal screen and S exactly.
         # Small passive-port wave pairs may be a true transmission zero;
         # this flag alone establishes neither matrix corruption nor an
@@ -1085,9 +1127,9 @@ def compute_msl_s_matrix(
         # carries. A railed bin's Z0/beta are the ±35% scan-window
         # limit, not a measurement — used to be returned silently
         # pinned (repro: eps_eff 6.30 line reported as 4.60 at
-        # 0.974·rail with zero warnings). S11/S21 never ride on the
-        # fitted beta. That dataflow separation does not rule out
-        # contamination of the V/I shared with the fit.
+        # 0.974·rail with zero warnings). On such a bin the feed-plane
+        # shift uses the Hammerstad-Jensen beta instead of the fit
+        # (rfx.sparams._msl_planes); the warner says so.
         beta_railed = None
         try:
             beta_railed = np.stack([
@@ -1119,7 +1161,8 @@ def compute_msl_s_matrix(
         # still ride on the retained N-probe fit, which can be noisy
         # per-frequency on coarse meshes, so a Z0 deviation from
         # analytic Hammerstad-Jensen is reported as a SEPARATE, softer
-        # caveat. The fitted numbers do not enter S, but the V/I
+        # caveat. The fitted Z0 does not enter S (the fitted beta only
+        # sets the feed-plane phase shift), but the V/I
         # records and analytic reference still need their own checks.
         import warnings as _w
 
@@ -1209,9 +1252,11 @@ def compute_msl_s_matrix(
                     "board (h_sub/W snapped to the lattice; see "
                     "sim.fidelity_report()) differs from the "
                     "declared one — not necessarily an extraction "
-                    "fault (issue #752). Fitted Z0/beta are not used in "
+                    "fault (issue #752). The fitted Z0 is not used in "
                     "S11/S21, which use measured V/I and the analytic "
-                    "Z0 anchor; this does not certify those inputs."
+                    "Z0 anchor; the fitted beta enters S only as the "
+                    "phase shift from probe 0 to the feed plane. This "
+                    "does not certify those inputs."
                     + _clearance_clause +
                     " Check settling_db, probe_clearance, beta_railed and "
                     "observation-plane sensitivity before interpreting S.",
@@ -1226,7 +1271,7 @@ def compute_msl_s_matrix(
             path.parent.mkdir(parents=True, exist_ok=True)
             metadata = {
                 "schema": "rfx.msl_nprobe_dump",
-                "schema_version": 4,
+                "schema_version": 5,
                 "s_wave_convention": "power",
                 "wave_definition": "a=(V+R*I)/(2*sqrt(R)); b=(V-R*I)/(2*sqrt(R))",
                 "solver_wave_common_scale": "sqrt(reference_impedances[0]); cancels from S and cond(A)",
@@ -1235,10 +1280,13 @@ def compute_msl_s_matrix(
                 "s_reference_impedances_ohm": z0_hj_per_port,
                 "production_smatrix_schema": "S[receiver_port, driven_port, frequency_index]",
                 "production_smatrix_stage": (
-                    "PRE-passivity-projection raw extraction; the same "
-                    "matrix MSLSMatrixResult.S carries by default, and "
+                    "PRE-passivity-projection raw extraction referred to "
+                    "the declared feed planes; the same matrix "
+                    "MSLSMatrixResult.S carries by default, and "
                     "MSLSMatrixResult.S_raw when enforce_passivity=True "
-                    "clipped something"
+                    "clipped something. raw_v/raw_i1 stay at the probe "
+                    "planes; undo the shift with "
+                    "feed_plane_shift before comparing to a probe-0 replay"
                 ),
                 # v3 (issue #523): production_smatrix is no longer always
                 # the N-probe-fit-derived S. Record WHICH assembly made
@@ -1265,15 +1313,32 @@ def compute_msl_s_matrix(
                     "least-squares wave-decomposition extractor (issue #80 "
                     "Fix C), which fits V_n = alpha*exp(-j beta x_n) + "
                     "gamma*exp(+j beta x_n) by SVD lstsq. The production "
-                    "S-matrix does NOT come from that fit: it is solved "
-                    "from the probe-0 wave amplitudes over all drives, "
-                    "S = B @ inv(A) (issue #507), at the first probe "
-                    "planes without translation to the feed planes, "
+                    "S-matrix is solved from the probe-0 wave amplitudes "
+                    "over all drives, S = B @ inv(A) (issue #507), then "
+                    "referred to the declared feed planes: "
+                    "S_feed[i, j] = D_i S[i, j] D_j with "
+                    "D_p = exp(-j beta_p L_p), L_p the realized "
+                    "feed-to-probe-0 distance and beta_p the own-drive "
+                    "fitted beta (Hammerstad-Jensen where the fit railed; "
+                    "see feed_plane_shift), "
                     "with the modal voltage "
                     "spanning ground to the rasterized trace node (#511) "
                     "-- see production_smatrix_assembly for which rule "
                     "actually produced this dump's S"
                 ),
+                "feed_plane_shift": {
+                    "formula": (
+                        "S_feed[i, j, f] = D_i(f) S_probe0[i, j, f] D_j(f), "
+                        "D_p(f) = exp(-1j * shift_beta[p, f] * "
+                        "reference_plane_offsets_m[p])"),
+                    "reference_plane_offsets_m": [
+                        float(x) for x in msl_planes.offsets_m],
+                    "shift_beta_rad_per_m": np.asarray(
+                        msl_planes.shift_beta, dtype=np.float64).tolist(),
+                    "shift_beta_closed_form": (
+                        None if shift_beta_closed_form is None
+                        else shift_beta_closed_form.tolist()),
+                },
                 "grid": {
                     "dx_m": float(grid.dx),
                     "dt_s": float(grid.dt),
@@ -1364,6 +1429,9 @@ def compute_msl_s_matrix(
             beta_railed=beta_railed,
             probe_clearance=probe_clearance,
             reference_impedances=np.asarray(z0_hj_per_port, dtype=np.float64),
+            reference_plane_offsets_m=np.asarray(msl_planes.offsets_m),
+            shift_beta=msl_planes.shift_beta,
+            shift_beta_closed_form=shift_beta_closed_form,
         )
         _warn_if_ringdown_truncated(
             settling_db_runs,
