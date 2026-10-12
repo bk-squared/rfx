@@ -1400,7 +1400,8 @@
         "face_layers",
         "dt",
         "dt_min_cell",
-        "dt_caller"
+        "dt_caller",
+        "nominal_profiles"
       ]
     },
     "make_ntff_box": {
