@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import builtins
 from copy import copy
 import json
 import os
@@ -421,10 +422,13 @@ def baseline(raw: bytes) -> dict:
 
 
 def bound_names(node):
-    """Names introduced in a subtree, excluding imported names."""
+    """Names introduced in a subtree, excluding imports and scope declarations."""
     names = set()
+    declared = set()
     for item in ast.walk(node):
-        if isinstance(item, ast.Name) and isinstance(item.ctx, ast.Store):
+        if isinstance(item, (ast.Global, ast.Nonlocal)):
+            declared.update(item.names)
+        elif isinstance(item, ast.Name) and isinstance(item.ctx, ast.Store):
             names.add(item.id)
         elif isinstance(item, ast.arg):
             names.add(item.arg)
@@ -434,7 +438,7 @@ def bound_names(node):
             names.add(item.name)
         elif isinstance(item, ast.MatchMapping) and item.rest:
             names.add(item.rest)
-    return names
+    return names - declared
 
 
 def module_bindings(tree, path):
@@ -507,10 +511,19 @@ class RenameMatcher:
             return False
         before = {name: node for name, node, _ in units(self.base.tree(path))}
         after = {name: node for name, node, _ in units(self.head.tree(path))}
-        if old not in before or new not in after:
+        if old not in before or new not in after or new in before:
             return False
+        old_prefix, _, old_name = old.rpartition(".")
+        new_prefix, _, new_name = new.rpartition(".")
+        if old_prefix != new_prefix:
+            base_names, head_names = self.names(self.base, path), self.names(self.head, path)
+            if (not isinstance(base_names.get(old_prefix), ast.ClassDef)
+                    or not isinstance(head_names.get(new_prefix), ast.ClassDef)
+                    or new_prefix in base_names):
+                return False
         return self.compare(before[old], after[new], path, path,
-                            (old.rsplit(".", 1)[-1], new.rsplit(".", 1)[-1]), set(), 0)
+                            (old_name, new_name), set(), 0,
+                            own_references=not old_prefix and not new_prefix)
 
     def definition_pair(self, base_path, head_path, old, new, assumed, depth):
         key = (base_path, head_path, old, new)
@@ -525,7 +538,8 @@ class RenameMatcher:
         a, b = before[old], after[new]
         assumed = assumed | {key}
         if isinstance(a, ast.AST) and isinstance(b, ast.AST):
-            return self.compare(a, b, base_path, head_path, (old, new), assumed, depth)
+            return self.compare(a, b, base_path, head_path, (old, new), assumed, depth,
+                                own_references=isinstance(a, FUNCTIONS))
         if isinstance(a, tuple) and isinstance(b, tuple):
             if not all(module == "rfx" or module.startswith("rfx.") for module, _ in (a, b)):
                 return False
@@ -534,19 +548,21 @@ class RenameMatcher:
                 return self.definition_pair(old_path, new_path, a[1], b[1], assumed, depth + 1)
         return False
 
-    def compare(self, before, after, base_path, head_path, own, assumed, depth):
-        local_before, local_after = bound_names(before), bound_names(after)
+    def compare(self, before, after, base_path, head_path, own, assumed, depth,
+                *, own_references=False):
+        local_before = bound_names(before) - self.names(self.base, base_path).keys() - set(dir(builtins))
+        local_after = bound_names(after) - self.names(self.head, head_path).keys() - set(dir(builtins))
         forward, reverse = {}, {}
 
-        def identifier(a, b):
+        def identifier(a, b, allow_own=False):
             if a in forward and forward[a] != b or b in reverse and reverse[b] != a:
                 return False
             forward[a], reverse[b] = b, a
-            return (a == b or (a, b) == own
+            return (a == b or (allow_own and (a, b) == own)
                     or (a in local_before and b in local_after)
                     or self.definition_pair(base_path, head_path, a, b, assumed, depth + 1))
 
-        def walk(a, b, identifiers=False):
+        def walk(a, b, identifiers=False, allow_own=False):
             if type(a) is not type(b):
                 return False
             if isinstance(a, ast.AST):
@@ -578,13 +594,16 @@ class RenameMatcher:
                         continue
                     is_identifier = field in {"id", "name", "arg", "asname", "rest"} and not isinstance(a, ast.Constant)
                     is_identifier |= isinstance(a, (ast.Global, ast.Nonlocal)) and field == "names"
-                    if not walk(left, right, is_identifier):
+                    own_field = (a is before and isinstance(a, (*FUNCTIONS, ast.ClassDef))
+                                 and field == "name") or (
+                                     own_references and isinstance(a, ast.Name) and field == "id")
+                    if not walk(left, right, is_identifier, own_field):
                         return False
                 return True
             if isinstance(a, list):
                 return len(a) == len(b) and all(walk(x, y, identifiers) for x, y in zip(a, b))
             if identifiers and isinstance(a, str):
-                return identifier(a, b)
+                return identifier(a, b, allow_own)
             return a == b
 
         return walk(before, after)
