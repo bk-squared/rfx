@@ -41,8 +41,8 @@ def test_slab_entries_share_reference_plane(preset, record_property):
     record_property("max_s11", peak)
     record_property("s11_max_difference", difference)
     record_property("s11_relative_difference", difference / peak)
-    record_property("run_reference_plane", run_s.reference_plane)
-    record_property("matrix_reference_planes", list(matrix.reference_planes))
+    record_property("run_reference_plane", float(run_s.reference_plane))
+    record_property("matrix_reference_planes", [float(p) for p in matrix.reference_planes])
     assert difference <= 1e-4 * peak
     assert run_s.reference_plane == expected_plane
     assert matrix.reference_planes[0] == expected_plane
@@ -165,7 +165,7 @@ def test_calculator_measured_planes(graded, n_modes, normalize, record_property)
     result = sim.compute_waveguide_s_matrix(n_steps=160, normalize=normalize)
     record_property("source_planes", sources)
     record_property("expected_measured_planes", expected)
-    record_property("reported_reference_planes", list(result.reference_planes))
+    record_property("reported_reference_planes", [float(p) for p in result.reference_planes])
     np.testing.assert_array_equal(result.reference_planes, expected)
     assert np.all(np.asarray(expected) != np.asarray(sources))
     if graded:
