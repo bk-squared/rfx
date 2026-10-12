@@ -298,4 +298,7 @@ def test_class_module_is_not_flagged():
     assert not [key for key in scan_tree() if key[0] == CLASS_MODULE]
     own = flag_source((REPO_ROOT / CLASS_MODULE).read_text(encoding="utf-8"),
                       CLASS_MODULE)
-    assert (CLASS_MODULE, "GaussianPulse.__call__") in own
+    # GaussianPulse clamps its argument (jnp.clip), which this detector's
+    # one-level rule does not read through; ModulatedGaussian is the class
+    # whose formula still has the plain inline form.
+    assert (CLASS_MODULE, "ModulatedGaussian.__call__") in own
