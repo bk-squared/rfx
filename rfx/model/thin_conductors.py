@@ -444,13 +444,12 @@ def refuse_design_films(sim, grid, bounds):
     f0_hits = set()
     if any(tc.surface_impedance_f0 is not None and not tc.is_pec for tc in sim._thin_conductors):
         from rfx.model.conductors import realized_conductors, publish_port_release
-        from rfx.model.design_admission import sheet_edges
+        from rfx.model.design_admission import cells_in_box, sheet_edges
         root = realized_conductors(sim, grid, nonuniform=hasattr(grid, 'dx_arr'))
         for index, component, edges in sheet_edges(root, sim):
             released = publish_port_release(root, edges, component=component,
                 entity_id=f'thin_conductor[{index}]', kind='f0_sheet').released_cells
-            if any(all(write[2*a] <= cell[a] < write[2*a+1] for a in range(3))
-                   for cell in released):
+            if cells_in_box(released, bounds, grid.shape):
                 f0_hits.add(index)
     for index, tc in enumerate(sim._thin_conductors):
         if index in f0_hits:

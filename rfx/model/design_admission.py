@@ -7,6 +7,21 @@ from rfx._grid_metric import field_index
 from rfx.diagnostic_records import Diagnostic
 
 
+def box_cells(bounds, shape):
+    """Cells a design box writes: [lo, hi) per axis (``pec_occupancy_box_keep``).
+
+    An E edge is reached by the box iff one of its four incident cells is in
+    this set (keep is the product over those cells; permittivity averages them).
+    """
+    return tuple((int(bounds[2*a]), min(int(bounds[2*a+1]), shape[a])) for a in range(3))
+
+
+def cells_in_box(cells, bounds, shape):
+    window = box_cells(bounds, shape)
+    return {tuple(map(int, c)) for c in cells
+            if all(window[a][0] <= c[a] < window[a][1] for a in range(3))}
+
+
 def sheet_edges(conductors, sim, sheet_operator=None):
     """Attribute the realized operator edges to their declared f0 sheets."""
     from rfx.materials.thin_conductor import build_sheet_impedance_ctx
@@ -61,8 +76,7 @@ def source_findings(sim, conductors, occupancy, design):
                         released_cells=np.empty((0, 3), dtype=np.int32))
         incident = publish_port_release(empty, (edge,), component=source.component,
                                        entity_id=f'source[{index}]', kind='source')
-        if any(all(bounds[2*a] <= cell[a] < min(bounds[2*a+1]+1, conductors.grid.shape[a])
-                   for a in range(3)) for cell in incident.released_cells):
+        if cells_in_box(incident.released_cells, bounds, conductors.grid.shape):
             findings.append(Diagnostic(code='source_in_design_region', severity='advisory',
                 subject=f'source[{index}]', message=f'source[{index}] lies inside design '
                 f'region {bounds}; {explanation}', values={'component': source.component,

@@ -364,3 +364,48 @@ def test_d6_source_clear_of_box_has_no_finding(monkeypatch):
     monkeypatch.setattr(admission, 'source_findings', lambda *a, **kw: ())
     baseline = sim.forward(**options)
     assert np.asarray(actual.time_series).tobytes() == np.asarray(baseline.time_series).tobytes()
+
+
+# The box writes occupancy (and permittivity) into its own cells only; an edge
+# is reached iff one of its four incident cells is a box cell. A box whose last
+# cell sits one plane before a declaration's incident cells cannot reach it.
+@pytest.mark.parametrize('kind', ['r', 'rc'])
+def test_box_one_plane_short_of_element_runs(kind):
+    sim, _ = model(kind=kind)      # Ez edge (8,8,4): incident cells x, y in {7, 8}
+    result = sim.forward(n_steps=2, design_box=((.005,.007,.004),(.006,.008,.004)),
+        design_occupancy_override=jnp.full((2,2,1), .5), skip_preflight=True, checkpoint=False)
+    assert np.isfinite(np.asarray(result.time_series)).all()
+
+
+def test_box_one_plane_short_of_element_reaches_when_extended():
+    sim, _ = model(kind='r')
+    with pytest.raises(ValueError, match=r'lumped_rlc\[0\]'):
+        sim.forward(n_steps=2, design_box=((.005,.007,.004),(.007,.008,.004)),
+            design_occupancy_override=jnp.full((3,2,1), .5), skip_preflight=True)
+
+
+@pytest.mark.parametrize('form', ['occupancy', 'eps'])
+def test_box_one_plane_below_f0_sheet_runs(form):
+    sim, _ = model(kind='sheet')   # sheet edges at k=4: incident cells k in {3, 4}
+    options = ({'design_occupancy_override': jnp.full((2,2,2), .5)} if form == 'occupancy'
+               else {'design_eps_override': jnp.full((2,2,2), 2.)})
+    result = sim.forward(n_steps=2, design_box=((.006,.006,.001),(.007,.007,.002)),
+        skip_preflight=True, checkpoint=False, **options)
+    assert np.isfinite(np.asarray(result.time_series)).all()
+
+
+def test_box_reaching_f0_sheet_cell_is_refused():
+    sim, _ = model(kind='sheet')
+    with pytest.raises(ValueError, match=r'thin_conductor\[0\]'):
+        sim.forward(n_steps=2, design_box=((.006,.006,.001),(.007,.007,.003)),
+            design_occupancy_override=jnp.full((2,2,3), .5), skip_preflight=True)
+
+
+def test_source_one_plane_past_box_has_no_finding():
+    sim, _ = model(kind='none')    # source Ez edge (9,8,4): incident cells x in {8, 9}
+    result = sim.forward(n_steps=2, design_box=((.005,.007,.003),(.007,.009,.005)),
+        design_occupancy_override=jnp.full((3,3,3), .5), skip_preflight=True, checkpoint=False)
+    assert not [d for d in result.diagnostics if d.code == 'source_in_design_region']
+    result = sim.forward(n_steps=2, design_box=((.005,.007,.003),(.008,.009,.005)),
+        design_occupancy_override=jnp.full((4,3,3), .5), skip_preflight=True, checkpoint=False)
+    assert [d.subject for d in result.diagnostics if d.code == 'source_in_design_region'] == ['source[0]']

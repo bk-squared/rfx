@@ -356,11 +356,9 @@ def refuse_port_design_box(design, conductors):
     """The occupancy box writes after release and must not overwrite it (#1183)."""
     if design is None or not len(conductors.released_cells):
         return
+    from rfx.model.design_admission import cells_in_box
     bounds = design.bounds
-    window = tuple((bounds[2*a], min(bounds[2*a+1]+1, conductors.grid.shape[a]))
-                   for a in range(3))
-    hits = {tuple(c) for c in conductors.released_cells.tolist()
-            if all(window[a][0] <= c[a] < window[a][1] for a in range(3))}
+    hits = cells_in_box(conductors.released_cells.tolist(), bounds, conductors.grid.shape)
     if hits:
         ports = sorted({entity for entity, _, _, _, cells in conductors._released_port_details
                         if any(c in hits for c in cells)})
