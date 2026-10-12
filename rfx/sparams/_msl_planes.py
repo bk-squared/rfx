@@ -31,11 +31,21 @@ Python floats, so no gradient flows through it.
 
 Accuracy of the closed-form beta against the simulated line (two-line beta,
 two lines differing only in length, probes at the auto offset; MSL-PLANE.md
-decision records 10-12 in bk-squared/rfx-archive): within 1 % on every bin
-of the resolved boards measured (the 100 um and z-graded microstrip chain
-battery thru, and an eps_r 10.2 / h 0.6 mm board); within 1.23 % on a
-4-cell substrate (0.8 mm of eps_r 2.2, dx 0.2 mm, 2-18 GHz), where the
-shift's phase error 2 L |beta - beta_2L| is at most 1.3e-2 rad (L = 4 mm).
+decision records 10-15 in bk-squared/rfx-archive): within 0.76 % on every
+bin of the resolved boards measured (the microstrip chain battery thru at
+100 um, 50 um and on a z-graded substrate, and an eps_r 10.2 / h 0.6 mm
+board), where the shift's phase error 2 L |beta - beta_2L| is at most
+5.5e-3 rad; within 1.23 % on a 4-cell substrate (0.8 mm of eps_r 2.2,
+dx 0.2 mm, 2-18 GHz, L = 4 mm), where the phase error is at most 1.9e-2 rad
+(at most 1.33e-2 rad up to 15 GHz).
+
+Scope. The shift is a pure phase factor, which is exact for a line whose
+characteristic impedance equals the power-wave reference R of the port (the
+closed-form Hammerstad-Jensen Z0); where the simulated line's Zc differs from
+R, moving the plane along it also mixes the a and b waves, which a phase
+factor does not represent. On the differentiable ``eps_override`` channel the
+shift uses the declared substrate eps_r (the calculator's resolved value), so
+no gradient flows through beta with respect to the design.
 """
 
 from __future__ import annotations

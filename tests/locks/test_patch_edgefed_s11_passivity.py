@@ -19,6 +19,19 @@ WRONG PHYSICS for a *directly edge-fed* patch and is NOT achievable by refining 
     most optimistic fit needs ~7e8 cells to reach the then-target band. Mesh
     refinement is a diminishing-returns R2 loop here, not a fix.
 
+THE PLANE THESE PINS ARE AT (rfx-archive MSL-PLANE.md, decision record 14)
+------------------------------------------------------------------------
+Every pin below (the Im(Zin)=0 crossing band, the in-band Re(Zin) floor, the
+|S11| readings) was measured on S at the port's probe-0 plane, 3.94 mm (20
+cells) inside the declared feed. ``compute_msl_s_matrix`` now reports S at the
+feed plane; Zin is a port-plane observable, and 3.94 mm of line (2*beta*L =
+1.6-3.9 rad over 6-14 GHz) turns this board's high-impedance antiresonance into
+a low-impedance resonance (crossing 7.46 -> 8.24 GHz, in-band max Re(Zin)
+1223 -> 15 ohm; VESSL 369367270919). So this gate reads S at the probe-0 plane:
+``tests/_msl_probe0.probe0_s`` undoes the shift with the result's own
+``shift_beta`` and ``reference_plane_offsets_m``. |S11| is the same at either
+plane.
+
 THE BOARD THIS GATE MEASURES ("Board S", issue #782 one-mesh anchor rule)
 -------------------------------------------------------------------------
 ``DX = 0.197 mm`` exactly — NOT ``H_SUB/4 = 196.75 um`` — so this fixture rasterizes to
@@ -180,6 +193,7 @@ import warnings
 
 import jax.numpy as jnp
 import numpy as np
+from tests._msl_probe0 import probe0_s
 import pytest
 
 from rfx import Box, Simulation
@@ -443,7 +457,8 @@ def test_patch_edgefed_s11_passive_and_match():
     )
 
     fr = np.asarray(res.freqs, dtype=float) / 1e9
-    s = np.asarray(res.S)[0, 0, :]
+    # Pins are probe-0-plane quantities (module docstring): undo the shift.
+    s = np.asarray(probe0_s(res))[0, 0, :]
     z0 = np.asarray(res.Z0)[0, :]
     g = _gate_readings(fr, s, z0)
 

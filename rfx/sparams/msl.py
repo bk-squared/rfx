@@ -177,11 +177,14 @@ def compute_msl_s_matrix(
     β (Hammerstad-Jensen ε_eff(0) with Kirschning-Jansen dispersion, from
     the port's width, height and substrate εr; ``shift_beta``). β is
     real, so the shift moves phase only. Measured against the simulated
-    line's two-line β: within 1 % on the resolved boards measured (100 µm
-    and z-graded chain-battery thru, εr 10.2 / h 0.6 mm board), within
-    1.23 % on a 4-cell substrate (0.8 mm εr 2.2, dx 0.2 mm), where the
-    shift's phase error is at most 1.3e-2 rad (rfx-archive MSL-PLANE.md,
-    decision records 10-12). The two bracketing H planes are linearly
+    line's two-line β: within 0.76 % on the resolved boards measured
+    (chain-battery thru at 100 µm, 50 µm and z-graded; εr 10.2 / h 0.6 mm
+    board), phase error at most 5.5e-3 rad; within 1.23 % on a 4-cell
+    substrate (0.8 mm εr 2.2, dx 0.2 mm), phase error at most 1.9e-2 rad
+    over 2-18 GHz (1.33e-2 up to 15 GHz) (rfx-archive MSL-PLANE.md,
+    decision records 10-15). The phase-only shift is exact for a line whose
+    Zc equals the reference R (the closed-form Z0). Under ``eps_override``
+    the shift uses the declared εr: no gradient flows through β. The two bracketing H planes are linearly
     interpolated to the E-node using their physical coordinates, then
     the leapfrog temporal offset is corrected. Comparing different
     observation offsets still requires accounting for reference planes

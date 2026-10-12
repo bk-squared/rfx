@@ -14,13 +14,18 @@ ports at the strip ends 8.0 mm apart, plus a twin 36 cells (7.2 mm) longer
 length meets it over 2-18 GHz); ``n_probe_offset`` 20 (the auto value),
 spacing 3, 5 probes; 2-18 GHz, 12 bins, 40 periods (settled to about
 -123 dB). beta_2L = -unwrap(arg S21_long / S21_short) / dL with S21 at probe 0
-(the stored shift undone with the result's own fields).
+(the stored shift undone with the result's own fields). Undoing the shift is
+not circular: both lines use the same offsets, so the same D_1 D_2 multiplies
+S21 on both and cancels exactly in S21_long / S21_short -- the closed-form
+beta under test never enters beta_2L.
 
 Measured on branch ports/msl-plane (Mac CPU, 2026-10-13): beta_KJ/beta_2L - 1
 = -1.226 % ... -0.220 % (outside 1 % at 2.0, 3.5 and 4.9 GHz); doubling the
 absorber moved beta_2L by at most 0.033 %. Record: bk-squared/rfx-archive
 ``rfx/plans/20261005-s2-measurement-plan/MSL-PLANE.md``, decision records 11
-and 12 (the bar 1.35e-2 is the lead's, above the measured 1.226 %). Moving
+and 12 (the bar 1.35e-2 is the measured 1.226 % plus margin, set by the lead).
+The shift's phase error on this board is at most 1.9e-2 rad over 2-18 GHz
+(decision record 15). Moving
 probe 0 on ONE line is not this measurement: within 5 substrate heights of
 the feed the field is not one propagating mode (decision record 11, C1).
 """

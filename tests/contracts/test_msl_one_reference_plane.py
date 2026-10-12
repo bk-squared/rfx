@@ -164,8 +164,9 @@ def test_msl_and_mixed_calculators_share_l_and_shift():
     freqs = np.linspace(1e9, 4e9, 3)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        mixed = _mixed_board(True).compute_mixed_s_matrix(
-            freqs=freqs, num_periods=2.0, skip_preflight=True)
+        mixed, diag = _mixed_board(True).compute_mixed_s_matrix(
+            freqs=freqs, num_periods=2.0, skip_preflight=True,
+            return_diagnostics=True)
         msl = _mixed_board(False).compute_msl_s_matrix(
             freqs=freqs, num_periods=2.0)
     assert mixed.port_families == ("wire", "msl")
@@ -183,6 +184,25 @@ def test_msl_and_mixed_calculators_share_l_and_shift():
     s = np.asarray(mixed.S if mixed.S_raw is None else mixed.S_raw)
     sw = np.asarray(mixed.S_wave)
     np.testing.assert_allclose(np.angle(s / sw), 0.0, atol=1e-5)
+    # The MSL entry itself, against a probe-0 value formed here: the lane's
+    # MSL driven diagonal is the V*I split b/a = (V - Z I)/(V + Z I) of its
+    # own probe-0 record (run 1 drives the MSL port), times D^2 with D from
+    # this file's Hammerstad-Jensen + Kirschning-Jansen and the realized
+    # offset (10 cells of the 84.7 um lattice). A mixed lane that forgets the
+    # shift fails here even if S_wave is shifted.
+    from tests.unit.sparams.test_mixed_port_sparam import _EPS_R as er_m
+    from tests.unit.sparams.test_mixed_port_sparam import _H_SUB, _W_TRACE, _DX as dx_m
+    v0 = np.asarray(diag["v0_msl"])[1, 0]
+    i0 = np.asarray(diag["i_msl"])[1, 0]
+    z = float(np.asarray(diag["z0_hj_msl"])[0])
+    gamma0 = (v0 - z * i0) / (v0 + z * i0)
+    beta = _closed_form_beta(freqs, _W_TRACE, _H_SUB, er_m)
+    length = 10 * dx_m
+    np.testing.assert_allclose(np.asarray(mixed.reference_plane_offsets_m)[1],
+                               length, rtol=1e-6)
+    expected = np.exp(-2j * beta * length) * gamma0
+    np.testing.assert_allclose(s[1, 1], expected, rtol=0,
+                               atol=2e-5 * float(np.max(np.abs(gamma0))))
 
 
 def test_graded_feed_offset_is_the_realized_cell_sum():
