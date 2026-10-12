@@ -304,10 +304,9 @@ class _AdMemoryMixin:
             total_segments = math.ceil(n_steps_i / checkpoint_every_i)
             inactive_segments = n_warmup_i // checkpoint_every_i
             segmented_active_segments = total_segments - inactive_segments
-            # The non-uniform runner pads the trailing chunk with zero
-            # source up to a full ``checkpoint_every`` steps, so the live
-            # rematerialized chunk is a full chunk (capped at the active
-            # reverse-mode step count).
+            # A real partial tail keeps ceil(n/chunk) boundary carries;
+            # the live rematerialized tape is still at most one full
+            # chunk (capped at the active reverse-mode step count).
             segmented_live_tape_steps = min(checkpoint_every_i, active_steps)
             ad_seg_bytes = (
                 (2 * segmented_active_segments + segmented_live_tape_steps)
