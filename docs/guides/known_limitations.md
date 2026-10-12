@@ -97,11 +97,9 @@ Tracker: #1632
 
 `conformal_pec=True` (and `Boundary(conformal=True)`) gives each E edge cut by a metal surface the permittivity eps/w,
 with w the edge's open fraction (down to 0.1); only edges with w = 0 are metal. The cut cells become a high-permittivity
-skin about one cell thick, which makes the body electrically larger. On a PEC sphere (radius 9 mm, 8-12 GHz, against Mie)
-the extinction excess was +0.83 / +0.53 / +0.38 dB at dx 0.75 / 0.5 / 0.375 mm, against +0.50 / +0.36 / +0.26 dB for the
-staircase, and the backscatter error up to 4.5 dB against 2.4 dB; both fall only first order. A run with conformal PEC
-warns. Until the Dey-Mittra update (cut H-face areas) lands, use the staircase and judge a curved body by a mesh series of
-at least three refinements.
+skin about one cell thick, which makes the body electrically larger. On a PEC sphere against Mie, its extinction and
+backscatter errors were larger than the staircase's at each of three meshes, and fell only first order (tracker #1651). A run with conformal PEC warns. Until the Dey-Mittra update (cut H-face areas)
+lands, use the staircase and judge a curved body by a mesh series of at least three refinements.
 Tracker: #1651
 
 ### A Drude or Lorentz medium has its own time-step limit, and a medium above it is refused.
