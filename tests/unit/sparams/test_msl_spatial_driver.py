@@ -15,6 +15,7 @@ import json
 import jax
 import jax.numpy as jnp
 import numpy as np
+from tests._msl_probe0 import probe0_s
 import pytest
 
 from rfx import Box, Simulation
@@ -205,7 +206,7 @@ def test_public_msl_driver_centres_current_at_voltage_plane(
     zref = float(hammerstad_jensen_z0_eps_eff(4 * U, 2 * U, EPS_R)[0])
     expected_s = (voltage - zref * current) / (voltage + zref * current)
     assert result.assembly == "multi_drive_solve"
-    np.testing.assert_allclose(result.S, expected_s, rtol=2e-6, atol=1e-7)
+    np.testing.assert_allclose(probe0_s(result), expected_s, rtol=2e-6, atol=1e-7)
 
 
 @pytest.mark.parametrize("direction", DIRECTIONS)
@@ -219,7 +220,7 @@ def test_public_forward_keeps_manufactured_material_sensitivity(monkeypatch, dir
         result = sim.compute_msl_s_matrix(
             freqs=FREQS, n_steps=1, num_periods=1, enforce_passivity=False,
             eps_override=jnp.full(grid.shape, scale))
-        return jnp.mean(jnp.real(result.S[0, 0]))
+        return jnp.mean(jnp.real(probe0_s(result)[0, 0]))
 
     scale = 1.25
     value, derivative = jax.value_and_grad(objective)(jnp.asarray(scale, dtype=jnp.float32))

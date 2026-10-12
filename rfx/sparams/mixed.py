@@ -1010,8 +1010,9 @@ def compute_mixed_s_matrix(
         # shift beta (Hammerstad-Jensen + Kirschning-Jansen dispersion),
         # S[i, j] <- D_i S[i, j] D_j with D = exp(-j beta L) on the MSL
         # rows and columns and D = 1 on the lumped/wire ones. After the
-        # flux magnitude override, which it cannot disturb (|D| = 1);
-        # S_wave above stays at probe 0.
+        # flux magnitude override, which it cannot disturb (|D| = 1).
+        # S_wave (the pre-override wave-channel matrix) gets the same D, so
+        # every S this result reports is referred to one plane per port.
         from rfx.sparams._msl_planes import (
             resolve_msl_planes as _resolve_msl_planes,
             apply_feed_plane_shift as _apply_feed_plane_shift,
@@ -1031,6 +1032,10 @@ def compute_mixed_s_matrix(
         S = _apply_feed_plane_shift(
             S, plane_offsets_all, shift_beta_all,
         ).astype(_complex_dtype)
+        if s_wave_full is not None:
+            s_wave_full = np.asarray(_apply_feed_plane_shift(
+                s_wave_full, plane_offsets_all, shift_beta_all,
+            ))
 
         # MSL standing-wave-null reliability from each MSL port's own
         # driven run (mirrors compute_msl_s_matrix issue #337).

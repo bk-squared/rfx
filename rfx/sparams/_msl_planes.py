@@ -28,6 +28,14 @@ falls with line length), so moving the plane outward by ``L`` multiplies by
 ``exp(-j*beta*L)`` per port. beta is real, so ``|D_p| = 1``: magnitudes,
 singular values (passivity) and cond(A) do not change. beta depends only on
 Python floats, so no gradient flows through it.
+
+Accuracy of the closed-form beta against the simulated line (two-line beta,
+two lines differing only in length, probes at the auto offset; MSL-PLANE.md
+decision records 10-12 in bk-squared/rfx-archive): within 1 % on every bin
+of the resolved boards measured (the 100 um and z-graded microstrip chain
+battery thru, and an eps_r 10.2 / h 0.6 mm board); within 1.23 % on a
+4-cell substrate (0.8 mm of eps_r 2.2, dx 0.2 mm, 2-18 GHz), where the
+shift's phase error 2 L |beta - beta_2L| is at most 1.3e-2 rad (L = 4 mm).
 """
 
 from __future__ import annotations
@@ -58,7 +66,7 @@ class MSLFeedPlaneFields:
     ``S`` is the probe-0 S times ``D_i D_j`` with
     ``D_p = exp(-1j * shift_beta[p] * reference_plane_offsets_m[p])``, so
     the probe-0 matrix is ``S / (D_i D_j)``. Phase only: ``|D_p| = 1``. In
-    the mixed result ``S_wave`` stays at probe 0.
+    the mixed result ``S_wave`` gets the same shift.
     """
     reference_plane_offsets_m: np.ndarray | None = None
     shift_beta: np.ndarray | None = None

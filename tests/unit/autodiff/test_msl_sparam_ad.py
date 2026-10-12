@@ -10,6 +10,7 @@ from types import MethodType, SimpleNamespace
 import jax
 import jax.numpy as jnp
 import numpy as np
+from tests._msl_probe0 import probe0_s
 import pytest
 
 from rfx.api import Simulation
@@ -301,7 +302,7 @@ def _run_manufactured_assembly(*, use_x64: bool):
         assert result.S.dtype == (jnp.complex128 if use_x64 else jnp.complex64)
         assert result.assembly == "multi_drive_solve"
         assert np.max(result.cond_a) < 2
-        actual = np.asarray(result.S)
+        actual = np.asarray(probe0_s(result))
     for driven in range(2):
         for port, target in enumerate((12 * u, 28 * u)):
             for component in ("hy", "hz"):
