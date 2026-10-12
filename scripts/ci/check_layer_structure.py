@@ -5,6 +5,8 @@ BASE_SHA/HEAD_SHA (or --base/--head) select Git snapshots. Without HEAD_SHA,
 read the working tree. Initial adoption requires a readable base with neither
 checker nor baseline. --write-baseline records exact current violations; --base
 still rejects increases. Surface sizes and allowed calls are informational.
+Pure same-file unit renames may match BASE; moves and file renames do not.
+Attribute names must remain equal, including attributes of rfx modules.
 """
 
 from __future__ import annotations
@@ -418,7 +420,184 @@ def baseline(raw: bytes) -> dict:
     return data
 
 
-def violations(actual: dict, current: dict, previous: dict | None = None) -> list[str]:
+def bound_names(node):
+    """Names introduced in a subtree, excluding imported names."""
+    names = set()
+    for item in ast.walk(node):
+        if isinstance(item, ast.Name) and isinstance(item.ctx, ast.Store):
+            names.add(item.id)
+        elif isinstance(item, ast.arg):
+            names.add(item.arg)
+        elif isinstance(item, (*FUNCTIONS, ast.ClassDef)) and item is not node:
+            names.add(item.name)
+        elif isinstance(item, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)) and item.name:
+            names.add(item.name)
+        elif isinstance(item, ast.MatchMapping) and item.rest:
+            names.add(item.rest)
+    return names
+
+
+def module_bindings(tree, path):
+    """Keep only unambiguous top-level definitions and import bindings."""
+    bindings = {}
+
+    def record(name, definition):
+        bindings[name] = None if name in bindings else definition
+
+    def visit(node, top=False):
+        if isinstance(node, (*FUNCTIONS, ast.ClassDef)):
+            record(node.name, node if top else None)
+            return
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            for alias in node.names:
+                name = alias.asname or (alias.name if isinstance(node, ast.ImportFrom)
+                                        else alias.name.split(".")[0])
+                target = (import_module(path, node), alias.name) if isinstance(node, ast.ImportFrom) else None
+                record(name, target if top else None)
+            return
+        if isinstance(node, ast.Assign) and top:
+            if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+                record(node.targets[0].id, node)
+                # The RHS may also bind a name through a walrus.
+                visit(node.value)
+                return
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            record(node.id, None)
+        elif isinstance(node, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)) and node.name:
+            record(node.name, None)
+        elif isinstance(node, ast.MatchMapping) and node.rest:
+            record(node.rest, None)
+        # Comprehension and lambda locals are not module bindings.
+        if isinstance(node, (ast.Lambda, ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
+            return
+        for child in ast.iter_child_nodes(node):
+            visit(child)
+
+    for node in tree.body:
+        visit(node, top=True)
+    return bindings
+
+
+class RenameMatcher:
+    """Compare ASTs with bijective, definition-checked identifier changes."""
+
+    def __init__(self, head: Sources, base: str):
+        self.head, self.base_revision = head, base
+        self.base = None
+        self.bindings = {}
+
+    def names(self, sources, path):
+        key = (sources.head, path)
+        if key not in self.bindings:
+            self.bindings[key] = module_bindings(sources.tree(path), path)
+        return self.bindings[key]
+
+    def same_unit(self, path, old, new):
+        if self.base is None:
+            # A baseline entry need not have a source file at BASE. Missing
+            # source units cannot match, including synthetic baseline-only refs.
+            exists = subprocess.run(
+                ["git", "cat-file", "-e", f"{self.base_revision}:{path}"],
+                cwd=self.head.repo, capture_output=True,
+            )
+            if exists.returncode:
+                return False
+            self.base = Sources(self.head.repo, self.base_revision)
+        if path not in self.base.paths or path not in self.head.paths:
+            return False
+        before = {name: node for name, node, _ in units(self.base.tree(path))}
+        after = {name: node for name, node, _ in units(self.head.tree(path))}
+        if old not in before or new not in after:
+            return False
+        return self.compare(before[old], after[new], path, path,
+                            (old.rsplit(".", 1)[-1], new.rsplit(".", 1)[-1]), set(), 0)
+
+    def definition_pair(self, base_path, head_path, old, new, assumed, depth):
+        key = (base_path, head_path, old, new)
+        if key in assumed:
+            return True
+        if depth > 5 or base_path not in self.base.paths or head_path not in self.head.paths:
+            return False
+        before, after = self.names(self.base, base_path), self.names(self.head, head_path)
+        head_at_base = self.names(self.base, head_path) if head_path in self.base.paths else {}
+        if old not in before or new not in after or new in head_at_base:
+            return False
+        a, b = before[old], after[new]
+        assumed = assumed | {key}
+        if isinstance(a, ast.AST) and isinstance(b, ast.AST):
+            return self.compare(a, b, base_path, head_path, (old, new), assumed, depth)
+        if isinstance(a, tuple) and isinstance(b, tuple):
+            if not all(module == "rfx" or module.startswith("rfx.") for module, _ in (a, b)):
+                return False
+            old_path, new_path = self.base.module_path(a[0]), self.head.module_path(b[0])
+            if old_path and new_path:
+                return self.definition_pair(old_path, new_path, a[1], b[1], assumed, depth + 1)
+        return False
+
+    def compare(self, before, after, base_path, head_path, own, assumed, depth):
+        local_before, local_after = bound_names(before), bound_names(after)
+        forward, reverse = {}, {}
+
+        def identifier(a, b):
+            if a in forward and forward[a] != b or b in reverse and reverse[b] != a:
+                return False
+            forward[a], reverse[b] = b, a
+            return (a == b or (a, b) == own
+                    or (a in local_before and b in local_after)
+                    or self.definition_pair(base_path, head_path, a, b, assumed, depth + 1))
+
+        def walk(a, b, identifiers=False):
+            if type(a) is not type(b):
+                return False
+            if isinstance(a, ast.AST):
+                if a._fields != b._fields:
+                    return False
+                # An import's module is not an identifier that can be freely
+                # renamed. Third-party imports must match exactly.
+                if isinstance(a, (ast.Import, ast.ImportFrom)):
+                    if ast.dump(a) == ast.dump(b):
+                        return True
+                    if not isinstance(a, ast.ImportFrom):
+                        return False
+                    modules = import_module(base_path, a), import_module(head_path, b)
+                    if not all(m == "rfx" or m.startswith("rfx.") for m in modules):
+                        return False
+                    paths = self.base.module_path(modules[0]), self.head.module_path(modules[1])
+                    if not all(paths) or len(a.names) != len(b.names):
+                        return False
+                    return all(self.definition_pair(*paths, x.name, y.name, assumed, depth + 1)
+                               and identifier(x.asname or x.name, y.asname or y.name)
+                               for x, y in zip(a.names, b.names))
+                for field in a._fields:
+                    left, right = getattr(a, field), getattr(b, field)
+                    if field == "body" and isinstance(a, (ast.Module, ast.ClassDef, *FUNCTIONS)):
+                        left, right = body_without_docstring(a), body_without_docstring(b)
+                    if isinstance(a, ast.Attribute) and field == "attr":
+                        if left != right:
+                            return False
+                        continue
+                    is_identifier = field in {"id", "name", "arg", "asname", "rest"} and not isinstance(a, ast.Constant)
+                    is_identifier |= isinstance(a, (ast.Global, ast.Nonlocal)) and field == "names"
+                    if not walk(left, right, is_identifier):
+                        return False
+                return True
+            if isinstance(a, list):
+                return len(a) == len(b) and all(walk(x, y, identifiers) for x, y in zip(a, b))
+            if identifiers and isinstance(a, str):
+                return identifier(a, b)
+            return a == b
+
+        return walk(before, after)
+
+    def pairs(self, path, gone, new):
+        matches = {(old, name) for old in gone for name in new if self.same_unit(path, old, name)}
+        return {(old, name) for old, name in matches
+                if sum(o == old for o, _ in matches) == 1
+                and sum(n == name for _, n in matches) == 1}
+
+
+def violations(actual: dict, current: dict, previous: dict | None = None,
+               *, renames: RenameMatcher | None = None) -> list[str]:
     errors = []
     for group, rules in (("files", RULES), ("outside", ("S", "M"))):
         for path in sorted(actual[group].keys() | current[group].keys()):
@@ -431,9 +610,13 @@ def violations(actual: dict, current: dict, previous: dict | None = None) -> lis
                     errors.append(f"{path} {rule}: stale baseline entry {name}")
                 if previous is not None:
                     old = set(previous[group].get(path, {}).get(rule, []))
-                    for name in sorted(found - old):
+                    pairs = renames.pairs(path, old - found, found - old) if renames else set()
+                    accepted = {name for _, name in pairs}
+                    for before, after in sorted(pairs):
+                        print(f"renamed: {path} {rule} {before} -> {after}")
+                    for name in sorted(found - old - accepted):
                         errors.append(f"{path} {rule}: new violation against BASE {name}")
-                    for name in sorted(stored - old):
+                    for name in sorted(stored - old - accepted):
                         errors.append(f"{path} {rule}: baseline grew against BASE {name}")
     return errors
 
@@ -478,7 +661,8 @@ def check(repo: Path, base: str = "", head: str = "", *, write_baseline=False, l
         current = actual
     else:
         current = baseline(sources.read(BASELINE))
-    errors = violations(actual, current, previous)
+    errors = violations(actual, current, previous,
+                        renames=RenameMatcher(sources, base) if previous is not None else None)
     for error in errors:
         print(error, file=sys.stderr)
     return int(bool(errors))

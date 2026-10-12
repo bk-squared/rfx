@@ -714,7 +714,7 @@ def test_outside_head_and_base_use_named_git_snapshots(synthetic, monkeypatch, c
     git_snapshot(synthetic, "add", ".")
     git_snapshot(synthetic, "commit", "-qm", "named base")
     base = git_snapshot(synthetic, "rev-parse", "HEAD")
-    write(synthetic, path, "def new():\n    scan(f, c, xs)\n")
+    write(synthetic, path, "def new():\n    scan(f, c, xs, 2)\n")
     current = empty_baseline()
     current["outside"][path] = {"S": ["new"], "M": []}
     write(synthetic, gate.BASELINE, json.dumps(current))
@@ -730,3 +730,150 @@ def test_outside_head_and_base_use_named_git_snapshots(synthetic, monkeypatch, c
         f"{path} S: new violation against BASE new",
         f"{path} S: baseline grew against BASE new",
     ]
+
+
+def rename_base(repo, files):
+    for path, source in files.items():
+        write(repo, path, source)
+    assert gate.check(repo, write_baseline=True) == 0
+    git_snapshot(repo, "init", "-q")
+    git_snapshot(repo, "add", ".")
+    git_snapshot(repo, "commit", "-qm", "rename base")
+    return git_snapshot(repo, "rev-parse", "HEAD")
+
+
+def test_outside_pure_rename_with_helper_and_docstrings(synthetic, capsys):
+    path = "rfx/example.py"
+    base = rename_base(synthetic, {path:
+        'def helper(x):\n    "old helper"\n    return x + 1\n'
+        'def old(x):\n    "old doc"\n    return np.exp(1j * helper(x))\n'})
+    write(synthetic, path,
+          'def renamed_helper(y):\n    "new helper"\n    return y + 1\n'
+          'def new(y):\n    "new doc"\n    return np.exp(1j * renamed_helper(y))\n')
+    capsys.readouterr()
+    # A rename still needs baseline regeneration.
+    assert gate.check(synthetic, base) == 1
+    output = capsys.readouterr()
+    assert output.err.splitlines() == [f"{path} M: unlisted violation new",
+                                       f"{path} M: stale baseline entry old"]
+    assert gate.check(synthetic, base, write_baseline=True) == 0
+    output = capsys.readouterr()
+    assert output.err == ""
+    assert f"renamed: {path} M old -> new" in output.out
+    assert gate.check(synthetic) == 0
+    assert "renamed:" not in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("change", ["attribute", "constant", "statement", "copy", "third-party"])
+def test_rename_with_real_change_is_rejected(synthetic, capsys, change):
+    path = "rfx/example.py"
+    old = "from numpy.fft import fft\ndef old(x):\n    return np.exp(1j * fft(jnp.fft(x)))\n"
+    base = rename_base(synthetic, {path: old})
+    new = old.replace("def old", "def new")
+    if change == "attribute":
+        new = new.replace("jnp.fft", "jnp.ifft")
+    elif change == "constant":
+        new = new.replace("1j", "2j")
+    elif change == "statement":
+        new = new.replace("    return", "    extra = 1\n    return")
+    elif change == "copy":
+        new += old.split("\n", 1)[1]
+    else:
+        new = new.replace("import fft", "import ifft").replace("* fft(", "* ifft(")
+    write(synthetic, path, new)
+    capsys.readouterr()
+    assert gate.check(synthetic, base, write_baseline=True) == 1
+    output = capsys.readouterr()
+    assert output.err.splitlines() == [f"{path} M: new violation against BASE new",
+                                       f"{path} M: baseline grew against BASE new"]
+    assert "renamed:" not in output.out
+
+
+def test_two_identical_units_have_ambiguous_renames(synthetic, capsys):
+    path = "rfx/example.py"
+    source = "def {}(x):\n    return np.exp(1j * x)\n"
+    base = rename_base(synthetic, {path: source.format("old_a") + source.format("old_b")})
+    write(synthetic, path, source.format("new_a") + source.format("new_b"))
+    capsys.readouterr()
+    assert gate.check(synthetic, base, write_baseline=True) == 1
+    output = capsys.readouterr()
+    assert output.err.splitlines() == [
+        f"{path} M: new violation against BASE new_a",
+        f"{path} M: new violation against BASE new_b",
+        f"{path} M: baseline grew against BASE new_a",
+        f"{path} M: baseline grew against BASE new_b",
+    ]
+    assert "renamed:" not in output.out
+
+
+@pytest.mark.parametrize("expression", ["y + z", "z + y"])
+def test_local_identifier_swap_requires_bijection(synthetic, capsys, expression):
+    path = "rfx/example.py"
+    base = rename_base(synthetic, {path: "def old(x, w):\n    return np.exp(1j * (x + x))\n"})
+    write(synthetic, path, f"def new(y, z):\n    return np.exp(1j * ({expression}))\n")
+    capsys.readouterr()
+    assert gate.check(synthetic, base, write_baseline=True) == 1
+    assert f"{path} M: new violation against BASE new" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("keep", ["alias", "wrapper"])
+@pytest.mark.parametrize("changed_helper", [False, True])
+def test_rename_keeps_old_helper_binding(synthetic, capsys, keep, changed_helper):
+    path = "rfx/example.py"
+    base = rename_base(synthetic, {path:
+        "def helper(x):\n    return x + 1\n"
+        "def old(x):\n    return np.exp(1j * helper(x))\n"})
+    retained = "helper = renamed_helper\n" if keep == "alias" else (
+        "def helper(x):\n    return renamed_helper(x)\n")
+    write(synthetic, path,
+          f"def renamed_helper(x):\n    return x + {2 if changed_helper else 1}\n"
+          + retained + "def new(x):\n    return np.exp(1j * renamed_helper(x))\n")
+    capsys.readouterr()
+    assert gate.check(synthetic, base, write_baseline=True) == int(changed_helper)
+    output = capsys.readouterr()
+    if changed_helper:
+        assert f"{path} M: new violation against BASE new" in output.err
+    else:
+        assert output.err == ""
+        assert f"renamed: {path} M old -> new" in output.out
+
+
+@pytest.mark.parametrize("relative", [False, True])
+@pytest.mark.parametrize("changed_helper", [False, True])
+def test_rfx_import_rename_checks_target_definitions(synthetic, capsys, relative, changed_helper):
+    path, target = "rfx/example.py", "rfx/helpers.py"
+    module = ".helpers" if relative else "rfx.helpers"
+    base = rename_base(synthetic, {
+        path: f"from {module} import helper\ndef old(x):\n    return np.exp(1j * helper(x))\n",
+        target: "def helper(x):\n    return x + 1\n",
+    })
+    write(synthetic, path,
+          f"from {module} import renamed_helper\ndef new(x):\n    return np.exp(1j * renamed_helper(x))\n")
+    write(synthetic, target,
+          f"def renamed_helper(x):\n    return x + {2 if changed_helper else 1}\nhelper = renamed_helper\n")
+    capsys.readouterr()
+    assert gate.check(synthetic, base, write_baseline=True) == int(changed_helper)
+    output = capsys.readouterr()
+    assert (f"renamed: {path} M old -> new" in output.out) is not changed_helper
+
+
+def test_move_to_another_file_is_not_a_rename(synthetic, capsys):
+    source = "def same(x):\n    return np.exp(1j * x)\n"
+    base = rename_base(synthetic, {"rfx/old_file.py": source})
+    (synthetic / "rfx/old_file.py").unlink()
+    write(synthetic, "rfx/new_file.py", source)
+    capsys.readouterr()
+    assert gate.check(synthetic, base, write_baseline=True) == 1
+    output = capsys.readouterr()
+    assert "rfx/new_file.py M: new violation against BASE same" in output.err
+    assert "renamed:" not in output.out
+
+
+def test_five_file_g_rename_passes(synthetic, capsys):
+    base = rename_base(synthetic, {SIM: "def old(x):\n    return np.zeros(x)\n"})
+    write(synthetic, SIM, "def new(y):\n    return np.zeros(y)\n")
+    capsys.readouterr()
+    assert gate.check(synthetic, base, write_baseline=True) == 0
+    output = capsys.readouterr()
+    assert output.err == ""
+    assert f"renamed: {SIM} G old -> new" in output.out
