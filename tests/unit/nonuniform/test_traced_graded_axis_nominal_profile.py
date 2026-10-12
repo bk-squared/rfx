@@ -129,12 +129,14 @@ def test_a_ports_and_probes_past_the_fine_cells_resolve_to_the_concrete_nodes(de
 # --------------------------------------------------------------------------
 
 @pytest.mark.xfail(strict=True, raises=AssertionError, reason=(
-    "DESIGN row (b) bar: 1 float32 ULP of the record peak. Measured on this "
-    "scene (forward(), 100/200/400 steps): probe record 3.0/9.0/9.6 ULP, S "
-    "1.1/2.0/3.2 ULP of max|S|; the same board on a uniform traced x with no "
-    "nominal_profiles (the pre-existing traced path) 2.0/5.0/5.0 and "
-    "0.7/0.5/2.1. inv_dx/inv_dx_h are bit-identical; the cause is not "
-    "measured. Leader decides the bar."))
+    "#1373: the traced and the concrete graded paths form some coefficients "
+    "by different expressions (host float64 against traced float32; candidate "
+    "sites: port metric widths, the drive coefficient Cb), so the jvp primal "
+    "is not the concrete forward(). Declared bar 1 float32 ULP of the record "
+    "peak; measured here (100/200/400 steps) probe record 3.0/9.0/9.6 ULP, S "
+    "1.1/2.0/3.2 ULP of max|S|; the same board on a uniform traced x without "
+    "nominal_profiles 2.0/5.0/5.0 and 0.7/0.5/2.1 (pre-existing). The fix of "
+    "#1373's graded coefficient forms removes this mark."))
 def test_b_the_traced_record_at_the_primal_is_the_concrete_forward():
     ts_c, s_c = _forward(0.0)
     (ts_t, s_t), _ = jax.jvp(lambda d: _forward(d), (jnp.float32(0.0),),
