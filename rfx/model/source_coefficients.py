@@ -53,10 +53,12 @@ def source_table(samples, kind=None, *, native="raw", coefficient=None, volume=1
 
     A field increment has no material operand, including under AD. A callable
     coefficient is read only for a material-dependent drive, after all stamps.
-    A named kind decides the table alone: 'current' is ``(Cb/dV)*w`` whichever
-    helper builds it, so every entry, boundary and path forms the same float32
-    product (run()/forward() census row D2). ``native`` keeps only the
-    low-level helpers' historical None contracts. Distributed slabs may supply
+    A named kind decides the table alone: 'current' is ``(1/dV)*(Cb*w)``
+    whichever helper builds it, so every entry, boundary and path forms the
+    same float32 product (run()/forward() census row D2). Cb only multiplies:
+    under jit/vmap XLA rewrites a traced Cb divided by a constant dV as a
+    multiply by the reciprocal, so ``Cb/dV`` rounds differently per trace.
+    ``native`` keeps only the low-level helpers' historical None contracts. Distributed slabs may supply
     their already resolved Cb/dV as a native ``cb`` factor; the same
     multiplication then builds their table inside the program.
     """
@@ -66,7 +68,7 @@ def source_table(samples, kind=None, *, native="raw", coefficient=None, volume=1
         return samples
     cb = coefficient() if callable(coefficient) else coefficient
     if kind == "current" or native == "cb_over_dv":
-        return (cb / volume) * samples
+        return (1.0 / volume) * (cb * samples)
     return cb * samples
 
 

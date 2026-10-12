@@ -4,5 +4,6 @@
   On a PEC or other non-absorbing boundary `run()` formed it as (Cb/dV)·w and `forward()` as (1/dV)·(Cb·w): the
   same number rounded differently, one float32 unit in the last place on about a third of the samples. In a lossless
   cavity that difference accumulates: probe fields of the two entries drifted 20–50 float32 units apart in 200 steps.
-- Both entries now build the drive with one rule that depends only on `amplitude_kind`, on every boundary and path.
-  `run()` on a closed boundary is unchanged; `forward()`, and `run()` on CPML/UPML, move by float32 rounding only.
+- Both entries now build it as (1/dV)·(Cb·w) on every boundary and path; on the uniform mesh this also rounds the same
+  under `jax.jit` and `jax.vmap` with a traced permittivity. `forward()`, and `run()` on CPML/UPML, are unchanged;
+  `run()` on a closed boundary and graded meshes move by float32 rounding only (≤ 1 unit per drive sample).

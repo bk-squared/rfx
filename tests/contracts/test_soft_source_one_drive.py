@@ -2,9 +2,13 @@
 
 run() on a closed boundary built the 'current' drive as (Cb/dV)*w and forward() as
 (1/dV)*(Cb*w): the same increment, rounded differently, and in a lossless PEC box the
-1-ULP drive difference grew to hundreds of ULP of the field. The expected tables here
-are formed with numpy, not with the helper.
+1-ULP drive difference grew to tens of ULP of the field. The one product keeps Cb a
+factor of multiplies only: XLA compiles a traced Cb divided by a constant dV as a
+multiply by the reciprocal under jit/vmap, so Cb/dV rounds differently per trace.
+The expected tables here are formed with numpy, not with the helper.
 """
+import jax
+import jax.numpy as jnp
 import numpy as np
 import pytest
 
@@ -13,6 +17,11 @@ from rfx.model.source_coefficients import source_table
 from rfx.sources.port_drive import soft_source
 
 NATIVES = ('raw', 'cb', 'cb_over_dv')
+DV = 1e-12
+# Cb = dt/eps for 100 permittivities, dt of a 1 mm cell; Cb/dV under jit differs
+# from eager Cb/dV for about a third of them.
+CBS = (np.float32(1.9e-12) / (np.float32(8.854e-12) *
+                              np.linspace(1.0, 5.95, 100, dtype=np.float32)))
 
 
 def _samples():
@@ -21,11 +30,11 @@ def _samples():
 
 
 @pytest.mark.parametrize('native', NATIVES)
-def test_current_drive_is_cb_over_dv_times_w_for_every_helper(native):
+def test_current_drive_is_one_product_for_every_helper(native):
     w = _samples()
-    cb, dv = np.float32(0.0216839), 1e-12
-    got = np.asarray(source_table(w, 'current', native=native, coefficient=cb, volume=dv))
-    np.testing.assert_array_equal(got, (cb / np.float32(dv)) * w)
+    cb = np.float32(0.0216839)
+    got = np.asarray(source_table(w, 'current', native=native, coefficient=cb, volume=DV))
+    np.testing.assert_array_equal(got, np.float32(1.0 / DV) * (cb * w))
 
 
 @pytest.mark.parametrize('native', NATIVES)
@@ -33,6 +42,32 @@ def test_field_drive_is_the_waveform_for_every_helper(native):
     w = _samples()
     got = np.asarray(source_table(w, 'field', native=native, coefficient=np.float32(3.0)))
     np.testing.assert_array_equal(got, w)
+
+
+@pytest.mark.parametrize('native', NATIVES)
+def test_current_drive_is_the_same_under_jit_and_vmap(native):
+    w = jnp.asarray(_samples())
+
+    def table(cb):
+        return source_table(w, 'current', native=native, coefficient=cb, volume=DV)
+
+    eager = np.stack([np.asarray(table(jnp.float32(cb))) for cb in CBS])
+    np.testing.assert_array_equal(np.asarray(jax.jit(jax.vmap(table))(jnp.asarray(CBS))), eager)
+    np.testing.assert_array_equal(
+        np.stack([np.asarray(jax.jit(table)(jnp.float32(cb))) for cb in CBS[:10]]), eager[:10])
+
+
+def test_forward_with_traced_permittivity_is_the_same_under_jit():
+    sim = Simulation(freq_max=10e9, domain=(.016, .016, .012), dx=.001, boundary='pec')
+    sim.add_source((.008, .008, .004), 'ez', waveform=GaussianPulse(f0=5e9), amplitude_kind='current')
+    sim.add_probe((.005, .006, .004), 'ez')
+    eps = jnp.full(sim._build_grid().shape, 1.05, jnp.float32)
+
+    def probe(eps):
+        return sim.forward(n_steps=60, eps_override=eps, skip_preflight=True,
+                           checkpoint=False).time_series
+
+    np.testing.assert_array_equal(np.asarray(jax.jit(probe)(eps)), np.asarray(probe(eps)))
 
 
 def test_soft_source_refuses_an_unresolved_kind():

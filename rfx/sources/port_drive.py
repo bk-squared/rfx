@@ -79,7 +79,7 @@ def soft_source(grid, position, component, waveform, n_steps, *, materials,
     """Build a declared soft source after the final material and load realization.
 
     The declared kind alone decides the drive, on every entry and boundary:
-    'field' adds ``w``, 'current' adds ``(Cb/dV)*w`` (run()/forward() census
+    'field' adds ``w``, 'current' adds ``(1/dV)*(Cb*w)`` (run()/forward() census
     row D2: the entries used to pick different helpers on a closed boundary).
     """
     from rfx._grid_metric import field_index
