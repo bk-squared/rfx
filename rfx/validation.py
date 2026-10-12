@@ -943,7 +943,8 @@ def _replay_msl_port_vi_dump(dump):
         beta = np.asarray(shift["shift_beta_rad_per_m"], dtype=np.float64)
         if offsets.shape != (n_ports,) or beta.shape != (n_ports, n_freqs):
             raise ValueError("v5 MSL dump feed_plane_shift does not match its V/I records")
-        d = np.exp(-1j * beta * offsets[:, None])
+        from rfx.measurement.msl_planes import feed_plane_factors
+        d = feed_plane_factors(offsets, beta)
         s = d[:, None, :] * s * d[None, :, :]
     return PortSMatrixObservable(s_params=s, freqs=np.asarray(dump.freqs),
                                 port_names=tuple(dump.port_names), source="msl_vi_dump_" + expected)

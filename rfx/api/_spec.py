@@ -37,7 +37,7 @@ from rfx.materials.lorentz import LorentzPole
 
 from rfx.materials.library import MATERIAL_LIBRARY
 from rfx.diagnostic_records import Diagnostic
-from rfx.sparams._msl_planes import MSLFeedPlaneFields
+from rfx.measurement.msl_planes import MSLFeedPlaneFields
 
 
 def _artifact_to_dict(value: object) -> object:

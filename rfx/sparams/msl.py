@@ -1060,7 +1060,7 @@ def compute_msl_s_matrix(
 
         # ---- Reference plane: probe 0 -> declared feed plane ----------
         # S above is referred to each port's probe-0 plane. One resolver
-        # (rfx.sparams._msl_planes, shared with the mixed calculator)
+        # (rfx.measurement.msl_planes, shared with the mixed calculator)
         # gives the realized feed-to-probe-0 distance L_p and the closed-
         # form shift beta per bin (Hammerstad-Jensen eps_eff(0) with
         # Kirschning-Jansen dispersion, from width, height and the eps_r
@@ -1069,7 +1069,7 @@ def compute_msl_s_matrix(
         # real, so |S|, singular values and cond(A) are unchanged. Applied
         # before the dump and before the opt-in passivity projection, so
         # S_raw carries it too.
-        from rfx.sparams._msl_planes import (
+        from rfx.measurement.msl_planes import (
             resolve_msl_planes as _resolve_msl_planes,
             apply_feed_plane_shift as _apply_feed_plane_shift,
         )

@@ -1,6 +1,6 @@
 """The closed-form microstrip beta that refers MSL S to the feed plane.
 
-``rfx.sparams._msl_planes.kirschning_jansen_eps_eff`` is the
+``rfx.measurement.msl_planes.kirschning_jansen_eps_eff`` is the
 Kirschning-Jansen dispersion (Electron. Lett. 18(6):272-274, 1982) on top of
 a quasi-static eps_eff(0). Three properties pin it: it starts at eps_eff(0)
 as f -> 0, it rises monotonically toward eps_r, and it reproduces an
@@ -11,7 +11,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from rfx.sparams._msl_planes import kirschning_jansen_eps_eff, msl_closed_form_beta
+from rfx.measurement.msl_planes import kirschning_jansen_eps_eff, msl_closed_form_beta
 from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff
 
 # scikit-rf 2.1.0, computed once in a scratch venv (not a dependency):

@@ -5,7 +5,7 @@ probe 0, ``n_probe_offset`` cells further in. The calculator solves S at
 probe 0 from the recorded V/I and shifts it back to the feed plane:
 ``S_feed[i, j] = D_i S_probe0[i, j] D_j``, ``D_p = exp(-j beta_p L_p)``,
 beta_p the closed form (Hammerstad-Jensen eps_eff(0) with Kirschning-Jansen
-dispersion) on every bin (one resolver, ``rfx.sparams._msl_planes``, for both
+dispersion) on every bin (one resolver, ``rfx.measurement.msl_planes``, for both
 the MSL and the mixed calculator; rfx-archive MSL-PLANE.md, decision records
 5, 7 and 12).
 
@@ -203,7 +203,11 @@ def test_msl_and_mixed_calculators_share_l_and_shift():
     # beta*L = 0.03-0.12 rad here.
     s = np.asarray(mixed.S if mixed.S_raw is None else mixed.S_raw)
     sw = np.asarray(mixed.S_wave)
-    np.testing.assert_allclose(np.angle(s / sw), 0.0, atol=1e-5)
+    # #1659 refuses (NaN) the entries formed from the per-cell lumped/wire
+    # wave; the phase comparison reads the entries both results still carry.
+    read = np.isfinite(s) & np.isfinite(sw) & (np.abs(sw) > 0)
+    assert read[1, 1].all(), "the MSL diagonal must be carried by both S and S_wave"
+    np.testing.assert_allclose(np.angle(s[read] / sw[read]), 0.0, atol=1e-5)
 
 
 def test_graded_feed_offset_is_the_realized_cell_sum():

@@ -2,7 +2,7 @@
 
 A microstrip port's S is shifted from probe 0 to the declared feed plane by
 ``exp(-j beta L)`` with the closed-form beta (Hammerstad-Jensen eps_eff(0)
-with Kirschning-Jansen dispersion, ``rfx.sparams._msl_planes``). The shift is
+with Kirschning-Jansen dispersion, ``rfx.measurement.msl_planes``). The shift is
 only as right as that beta is for the line the solver actually builds. This
 lock measures the simulated line's beta by the two-line method -- two thrus
 identical except for length, probes at the auto offset on both -- and pins
@@ -80,7 +80,7 @@ def _probe0_s21(res):
 
 @pytest.mark.slow
 def test_closed_form_beta_matches_the_two_line_beta_on_the_coarse_board():
-    from rfx.sparams._msl_planes import msl_closed_form_beta
+    from rfx.measurement.msl_planes import msl_closed_form_beta
 
     short, long_ = _board(0), _board(_DELTA_CELLS)
     fs, fl = _feed_nodes(short), _feed_nodes(long_)

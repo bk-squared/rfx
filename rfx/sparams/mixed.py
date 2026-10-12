@@ -1013,7 +1013,7 @@ def compute_mixed_s_matrix(
         # flux magnitude override, which it cannot disturb (|D| = 1).
         # S_wave (the pre-override wave-channel matrix) gets the same D, so
         # every S this result reports is referred to one plane per port.
-        from rfx.sparams._msl_planes import (
+        from rfx.measurement.msl_planes import (
             resolve_msl_planes as _resolve_msl_planes,
             apply_feed_plane_shift as _apply_feed_plane_shift,
             full_port_shift as _full_port_shift,

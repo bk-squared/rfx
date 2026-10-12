@@ -202,6 +202,17 @@ def resolve_msl_planes(grid, ports, n_probe_offsets, probe0_coordinates,
     return MSLPlaneShift(offsets_m=offsets, shift_beta=beta)
 
 
+def feed_plane_factors(offsets_m, shift_beta):
+    """``D_p(f) = exp(-j beta_p(f) L_p)`` as a complex128 (n_ports, n_freqs) array.
+
+    The one place the feed-plane phase factor is formed: the calculators (through
+    :func:`apply_feed_plane_shift`) and the dump replay both read it.
+    """
+    phase = (np.asarray(shift_beta, dtype=np.float64)
+             * np.asarray(offsets_m, dtype=np.float64)[:, None])
+    return np.exp(-1j * phase)
+
+
 def apply_feed_plane_shift(S, offsets_m, shift_beta):
     """``S_feed[i, j, f] = D_i(f) * S[i, j, f] * D_j(f)``, ``D = exp(-j beta L)``.
 
@@ -211,9 +222,7 @@ def apply_feed_plane_shift(S, offsets_m, shift_beta):
     to S's dtype.
     """
     S = jnp.asarray(S)
-    phase = (np.asarray(shift_beta, dtype=np.float64)
-             * np.asarray(offsets_m, dtype=np.float64)[:, None])
-    d = jnp.asarray(np.exp(-1j * phase)).astype(S.dtype)
+    d = jnp.asarray(feed_plane_factors(offsets_m, shift_beta)).astype(S.dtype)
     return d[:, None, :] * S * d[None, :, :]
 
 
