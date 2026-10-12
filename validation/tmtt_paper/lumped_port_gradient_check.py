@@ -42,6 +42,12 @@ records/20261011-examples-recheck/lumped_gradient_main/MIRROR-CLOSED-FORM.md).
 That is context only: the check compares rfx's gradient with rfx's own
 finite difference.
 
+PMC-plane convention: the four side faces (x and y) are PMC. On this
+single-device uniform run the magnetic wall is the declared face itself (H
+taken as its odd image there, ``rfx/boundaries/pmc.py``), and the port and
+load on the y_lo face are solved as the elements of the mirrored object, as
+stated above.
+
 What is checked, with the bars declared before the run: G1 the port couples
 (mean |S11|^2 between 0.02 and 0.5); G2 the float64 finite difference resolves
 at least 1e4 ULPs; G3 the directional derivative agrees within 1e-2 and is flat
