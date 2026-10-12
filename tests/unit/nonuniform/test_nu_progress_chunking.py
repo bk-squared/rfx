@@ -33,7 +33,7 @@ def _build() -> Simulation:
             material="pec")
     sim.add_source(position=(2e-3, 2e-3, 2.4e-3), component="ez",
                    amplitude_kind="current",
-                   waveform=GaussianPulse(f0=20e9, bandwidth=10e9))
+                   waveform=GaussianPulse(f0=20e9, bandwidth=0.8))
     sim.add_probe(position=(2.6e-3, 2.6e-3, 2.0e-3), component="ez")
     return sim
 

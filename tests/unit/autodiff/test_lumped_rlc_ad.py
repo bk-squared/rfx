@@ -198,12 +198,16 @@ def test_run_series_rlc_byte_identity():
     and by more than 1e-3 from step 108.
     """
     # #1373: measured factor 2.3958724e7 equals predicted Cb/dV (2.3958726e7).
+    # Regenerated 2026-10-12 (issue 1668): the pulse took bandwidth=f0*0.5 in
+    # Hz, so its only drive was the old pulse's 7.4e-4 jump at t=0 (golden
+    # sha256 d363c4df..., peak 1.774e4 at n=0). Now fractional 0.8 (sha256
+    # f91d06f6..., peak 3.097e7 at n=105); tolerances unchanged.
     golden = np.load(os.path.join(_FIXTURE_DIR, "golden_lumped_rlc_run_series.npy"))
     R, L, C = 50.0, 10e-9, 1e-12
     f0 = 1 / (2 * np.pi * np.sqrt(L * C))
     sim = Simulation(freq_max=5e9, domain=(0.01, 0.01, 0.01), boundary="pec")
     sim.add_source(position=(0.005, 0.005, 0.005), component="ez",
-                   waveform=GaussianPulse(f0=f0, bandwidth=f0 * 0.5))
+                   waveform=GaussianPulse(f0=f0, bandwidth=0.8))
     sim.add_lumped_rlc(position=(0.005, 0.005, 0.005), component="ez",
                        R=R, L=L, C=C, topology="series")
     sim.add_probe(position=(0.005, 0.005, 0.005), component="ez")

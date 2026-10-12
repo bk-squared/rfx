@@ -443,12 +443,19 @@ def _demo_class_sim(bandwidth):
     return sim
 
 
-def test_unresolved_pulse_fires_on_absolute_hz_bandwidth():
+def test_undriven_pulse_is_refused_on_absolute_hz_bandwidth():
     """bandwidth=2.64e9 (absolute Hz for a 1.2 fractional intent) makes
-    tau ~ 5e-20 s — a sub-dt spike; the #386 advisory must fire."""
-    codes = {getattr(i, "code", None)
-             for i in _demo_class_sim(2.64e9).preflight()}
-    assert "unresolved_pulse" in codes
+    tau ~ 5e-20 s: every sample of the drive table is zero, so nothing would
+    be driven. Preflight records a refusal and run() raises (issue 1668;
+    before it this was the #386 advisory, driven only by the old pulse's
+    jump at t=0)."""
+    sim = _demo_class_sim(2.64e9)
+    errors = [i for i in sim.preflight()
+              if getattr(i, "severity", None) == "error"]
+    assert [getattr(i, "code", None) for i in errors] == ["undriven_pulse"]
+    assert "FRACTIONAL" in str(errors[0])
+    with pytest.raises(ValueError, match="not resolved by dt"):
+        sim.run(n_steps=20)
 
 
 def test_unresolved_pulse_silent_on_demo_class_config():

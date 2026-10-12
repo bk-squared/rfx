@@ -60,7 +60,7 @@ from rfx.preflight._common import profile_boundary_cell
 from rfx.core.yee import MaterialArrays
 from rfx.grid import C0
 
-from rfx.preflight._common import PreflightWarning, _fmt_len
+from rfx.preflight._common import PreflightConfigError, PreflightWarning, _fmt_len
 
 
 def _validate_tfsf_vacuum_boundary(materials: MaterialArrays, tfsf_cfg,
@@ -347,6 +347,35 @@ def _validate_cfg_unresolved_pulse(self, _w, dx: float) -> None:
                     tau = None
         if tau is None or not math.isfinite(tau) or tau <= 0.0:
             continue
+        # Issue 1668: a pulse far below dt (bandwidth given in Hz) samples to
+        # zero at every step, so nothing would be driven. Sample it as the
+        # drive table does (float32 n*dt) over the pulse, t = 0 .. t0 + 3*tau,
+        # and refuse when no sample exceeds 1e-6 of the amplitude. A pulse
+        # with tau >= 3*dt always has samples near its peak.
+        amp = getattr(wf, "amplitude", None)
+        t0 = getattr(wf, "t0", None)
+        if (tau < 3.0 * dt and amp is not None and t0 is not None
+                and not isinstance(wf, str) and float(amp) != 0.0):
+            import jax
+            import jax.numpy as jnp
+            n_pulse = int(math.ceil((float(t0) + 3.0 * tau) / dt)) + 1
+            times = jnp.arange(n_pulse, dtype=jnp.float32) * dt
+            table = np.abs(np.asarray(jax.vmap(wf)(times), dtype=np.float64))
+            if not np.any(table > 1e-6 * abs(float(amp))):
+                raise PreflightConfigError(
+                    f"drive {type(wf).__name__} at "
+                    f"{getattr(entry, 'position', None)} "
+                    f"({getattr(entry, 'component', 'msl port')}): its table "
+                    f"sampled at dt~{dt:.3g}s over the pulse (n = 0.."
+                    f"{n_pulse - 1}, to t0 + 3*tau) has no sample above "
+                    "1e-6 of the amplitude, so nothing would be driven. The "
+                    f"pulse (tau={tau:.3g}s) is not resolved by dt: "
+                    "GaussianPulse / ModulatedGaussian bandwidth is "
+                    "FRACTIONAL (e.g. 0.8), not in Hz (issue 1668).",
+                    code="undriven_pulse",
+                    loc=f"waveform {type(wf).__name__} at "
+                        f"{getattr(entry, 'position', None)}",
+                    source="_validate_cfg_unresolved_pulse")
         if tau < 3.0 * dt:
             _wf_name = wf if isinstance(wf, str) else type(wf).__name__
             _w.warn(

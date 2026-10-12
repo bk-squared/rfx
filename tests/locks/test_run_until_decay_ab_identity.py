@@ -311,7 +311,10 @@ def _build():
     materials = init_materials(grid.shape)
     n_steps = 80
 
-    pulse = GaussianPulse(f0=5e9, bandwidth=5e9)
+    # Fractional bandwidth. Until 2026-10-12 this read bandwidth=5e9 (Hz):
+    # tau was 1.3e-20 s and the scene was driven only by the pulse's 7.4e-4
+    # jump at t=0 (issue 1668).
+    pulse = GaussianPulse(f0=5e9, bandwidth=0.8)
     src = make_source(grid, (0.018, 0.024, 0.024), "ez", pulse, n_steps)
     prb = make_probe(grid, (0.030, 0.024, 0.024), "ez")
     return grid, materials, n_steps, [src], [prb]

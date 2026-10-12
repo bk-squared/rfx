@@ -29,7 +29,7 @@ def _run():
             material="pec")
     sim.add_source(position=(3e-3, 3e-3, 2.4e-3), component="ez",
                    amplitude_kind="current",
-                   waveform=GaussianPulse(f0=12e9, bandwidth=8e9))
+                   waveform=GaussianPulse(f0=12e9, bandwidth=0.8))
     sim.add_ntff_box((1.5e-3, 1.5e-3, 1.5e-3), (4.5e-3, 4.5e-3, 4.5e-3),
                      freqs=[10e9, 12e9, 14e9])
     return sim.run(n_steps=300)
