@@ -403,7 +403,7 @@
     "rfx/harminv.py": {
       "S": [],
       "M": [
-        "harminv_from_probe"
+        "matrix_pencil_from_probe"
       ]
     },
     "rfx/io.py": {
