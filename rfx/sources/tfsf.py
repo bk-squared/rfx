@@ -189,6 +189,10 @@ def validate_custom_tfsf_waveform(waveform, dt: float, n_steps: int) -> None:
     with jax.ensure_compile_time_eval():
         times = jnp.arange(n_steps, dtype=jnp.result_type(float)) * dt
         values = jax.vmap(waveform)(times)
+        if isinstance(values, jax.core.Tracer):
+            raise ValueError(
+                "TFSF CustomWaveform is a fixed input: it cannot depend on a traced "
+                "parameter (differentiate the materials, not the source waveform)")
         if values.shape != (n_steps,) or not jnp.issubdtype(values.dtype, jnp.floating):
             raise ValueError("TFSF CustomWaveform must return real scalar floating-point samples")
         if not np.all(np.isfinite(np.asarray(values))):
