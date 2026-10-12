@@ -226,3 +226,34 @@ def test_finite_periodic_window_includes_its_closing_node():
     # of y=0, not the final stored y=5 mm sample. Integrate over 3 mm in z.
     expected = -(.5*4+5+6+7+.5*2)*.001*.003
     np.testing.assert_allclose(actual, expected, rtol=1e-6, atol=0.)
+
+
+def test_tfsf_full_plane_covers_the_runtime_period():
+    from rfx.measurement.plan import build_measurement_plan
+    from rfx.measurement.flux_weights import monitor_periodic_flags
+    sim = Simulation(20e9, (.032, .010, .001), dx=.001, cpml_layers=4,
+                     boundary='cpml', mode='2d_tmz')
+    sim.add_tfsf_source(f0=10e9, bandwidth=.8, margin=3, polarization='ez')
+    for name, size in [('full', None), ('finite', (.006, .001))]:
+        sim.add_flux_monitor(axis='x', coordinate=.020, freqs=FREQS,
+                             name=name, size=size, center=(.005, .0005))
+    grid = sim._build_realized_grid()
+    assert grid.periodic_axes == ''
+    result = sim.run(n_steps=512, skip_preflight=True, compute_s_params=False)
+    full, finite = (result.flux_monitors[n] for n in ('full', 'finite'))
+    period, window = grid.shape[1]*.001, .006
+    full_flux, finite_flux = (np.asarray(flux_spectrum(m)) for m in (full, finite))
+    assert np.max(np.abs(full_flux)) > 0
+    np.testing.assert_allclose(full_flux/period, finite_flux/window, rtol=2e-6, atol=0.)
+    for area in (full.dA, full.dA2):
+        np.testing.assert_allclose(np.sum(area), period*.001, rtol=2e-7)
+    plan = build_measurement_plan(sim, grid, n_steps=512)
+    owner = next(o for o in plan.owners if o.id == 'flux_plane:0')
+    for channel in owner.channels[:2]:
+        np.testing.assert_allclose(sum(n.area for n in channel.nodes), period*.001, rtol=2e-7)
+    graded = Simulation(20e9, (.032, .010, .001), dx=.001, cpml_layers=4,
+                        boundary='cpml', mode='2d_tmz', dy_profile=np.full(10, .001))
+    graded.add_tfsf_source(f0=10e9, margin=3)
+    assert monitor_periodic_flags(graded, graded._build_realized_grid()) == (False, False, False)
+    _record('tfsf-period', dict(full=full_flux.tolist(), finite=finite_flux.tolist(),
+                              period=period, window=window))

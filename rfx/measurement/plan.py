@@ -200,9 +200,10 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
                             _frequencies(sim, entry)))
     from rfx.probes.flux_region import resolve_flux_region
     from rfx.probes.probes import _FLUX_COMPONENTS
-    from .flux_weights import grid_flux_monitor, flux_regions
+    from .flux_weights import grid_flux_monitor, flux_regions, monitor_periodic_flags, normal_h_neighbor
     from rfx.boundaries.pec import resolve_wall_faces
     from rfx.boundaries.pmc import magnetic_image_faces
+    flux_periodic = monitor_periodic_flags(sim, grid) if sim._flux_monitors else (False, False, False)
     for i, entry in enumerate(sim._flux_monitors):
         axis = 'xyz'.index(entry.axis)
         point = [0.0, 0.0, 0.0]
@@ -214,11 +215,11 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
         if region is not None:
             index = region['normal_index']
             bounds = tuple(v for span in region['cell_slices'] for v in span)
-        cfg = grid_flux_monitor(grid, axis=axis, index=index,
+        cfg = grid_flux_monitor(grid, axis=axis, index=index, periodic=flux_periodic,
                                 freqs=jnp.asarray(_frequencies(sim, entry)),
                                 lo1=bounds[0], hi1=bounds[1], lo2=bounds[2], hi2=bounds[3],
                                 pmc_faces=(magnetic_image_faces(sim._boundary_spec.pmc_faces(), grid.shape)
-                                           if nu else resolve_wall_faces(grid, sim._periodic_flags())[1]))
+                                           if nu else resolve_wall_faces(grid, flux_periodic)[1]))
         areas = (np.asarray(cfg.dA), np.asarray(cfg.dA2))
         regions = flux_regions(cfg)
         channels = []
@@ -227,7 +228,7 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
             area = areas[(0, 1, 1, 0)[c]]
             planes = (((index, 1.0),) if c < 2 else
                       ((index, 0.0),) if cfg.normal_h_zero else
-                      ((max(index-1, 0), cfg.normal_h_weights[0]), (index, cfg.normal_h_weights[1])))
+                      ((normal_h_neighbor(index, grid.shape[axis], cfg.normal_periodic), cfg.normal_h_weights[0]), (index, cfg.normal_h_weights[1])))
             nodes = tuple(Node(n.component, n.i, n.j, n.k, weight, float(a))
                           for plane, weight in planes
                           for n, a in zip(_plane_nodes(grid, axis, plane, component, regions[c]), area.flat))

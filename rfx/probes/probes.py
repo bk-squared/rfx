@@ -717,6 +717,7 @@ class FluxMonitor(NamedTuple):
     dA2: jnp.ndarray | None = None  # second staggered E/H product
     normal_h_zero: bool = False  # odd tangential-H image on a magnetic plane
     normal_h_weights: tuple[float, float] = (.5, .5)  # left/right half-cell planes
+    normal_periodic: bool = False
 
 
 # Tangential field component names for each normal axis
@@ -787,7 +788,7 @@ def init_flux_monitor(
     dA, dA2 = (jnp.asarray(a, dtype=jnp.float32) for a in flux_weights(
         node_coords, ((lo1, hi1), (lo2, hi2)), tangential,
         tuple('xyz'.index(c[1]) for c in _FLUX_COMPONENTS[axis][:2]),
-        pmc_faces, periodic_axes, extrusions))
+        periodic_axes, extrusions))
     dtype = jnp.complex128 if jax.config.x64_enabled else jnp.complex64
     zeros1 = jnp.zeros((len(freqs),) + dA.shape, dtype=dtype)
     zeros2 = jnp.zeros((len(freqs),) + dA2.shape, dtype=dtype)
@@ -799,7 +800,7 @@ def init_flux_monitor(
         h1_dft=zeros2, h2_dft=zeros1,
         freqs=freqs, axis=axis, index=index,
         dA=dA, dA2=dA2, normal_h_zero=normal_h_zero,
-        normal_h_weights=normal_h_weights,
+        normal_h_weights=normal_h_weights, normal_periodic="xyz"[axis] in periodic_axes,
         total_steps=int(dft_total_steps),
         window=dft_window,
         window_alpha=float(dft_window_alpha),
@@ -814,7 +815,7 @@ def update_flux_monitor(
     from rfx.measurement.accumulators import flux_samples
     from rfx.measurement.flux_weights import flux_regions
     values = flux_samples(state, mon.axis, mon.index, _FLUX_COMPONENTS[mon.axis],
-                          flux_regions(mon), mon.normal_h_zero, mon.normal_h_weights)
+                          flux_regions(mon), mon.normal_h_zero, mon.normal_h_weights, mon.normal_periodic)
     names = ('e1_dft', 'e2_dft', 'h1_dft', 'h2_dft')
     return mon._replace(**{
         name: _accumulate(getattr(mon, name), value, state.step-1, mon.freqs, dt,

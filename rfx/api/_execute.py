@@ -1978,7 +1978,7 @@ class _ExecuteMixin:
         flux_monitor_cfgs = []
         if _return_raw_port_sparams and self._flux_monitors:
             from rfx.runners.uniform import build_flux_monitor_cfgs
-            flux_monitor_cfgs = build_flux_monitor_cfgs(self, grid, n_steps)
+            flux_monitor_cfgs = build_flux_monitor_cfgs(self, grid, n_steps, periodic=periodic_bool)
 
         # DFT plane probes — mirror runners/uniform.py:340-359 so the
         # JIT scan body actually accumulates plane-resolved DFT, then
