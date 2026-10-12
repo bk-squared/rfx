@@ -549,7 +549,7 @@ def tfsf_from_declaration(entry, grid, freq_max, *, n_steps=None):
     if n_steps is not None:
         validate_custom_tfsf_waveform(entry.waveform, grid.dt, n_steps)
     return init_tfsf(
-        grid.nx, grid.dx, grid.dt, cpml_layers=grid.cpml_layers,
+        grid.nx, float(grid.cells("x")[0]), grid.dt, cpml_layers=grid.cpml_layers,
         tfsf_margin=entry.margin,
         f0=entry.f0 if entry.f0 is not None else freq_max / 2,
         bandwidth=entry.bandwidth, amplitude=entry.amplitude,
