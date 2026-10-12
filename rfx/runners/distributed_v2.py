@@ -1136,6 +1136,18 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     # ------------------------------------------------------------------
 
     cpml_grid = cpml_grid_metadata(grid)
+    cpml_spacings = {}
+    magnetic_cpml_spacings = {}
+    if use_cpml:
+        # Face widths are static grid data; only array leaves enter the jit.
+        cpml_spacings = {name: float(getattr(cpml_params, name)) for name in (
+            "dx_x_lo", "dx_x_hi", "dx_y_lo", "dx_y_hi", "dz_lo", "dz_hi")}
+        cpml_params = cpml_params._replace(**dict.fromkeys(cpml_spacings))
+        if cpml_params.magnetic is not None:
+            magnetic_cpml_spacings = {
+                name: float(getattr(cpml_params.magnetic, name)) for name in cpml_spacings}
+            cpml_params = cpml_params._replace(magnetic=cpml_params.magnetic._replace(
+                **dict.fromkeys(magnetic_cpml_spacings)))
 
     def step_fn_cpml(
         carry, xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
@@ -1160,6 +1172,10 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         source by one step in the neighbour's copy -- see the comment on
         stage 7 for the measurement that moved it.
         """
+        cpml_params_arg = cpml_params_arg._replace(**cpml_spacings)
+        if magnetic_cpml_spacings:
+            cpml_params_arg = cpml_params_arg._replace(
+                magnetic=cpml_params_arg.magnetic._replace(**magnetic_cpml_spacings))
         _step_idx, src_vals = xs
         st = carry["fdtd"]
         cpml_st = carry["cpml"]
