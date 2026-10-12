@@ -16,8 +16,6 @@ from tests.contracts.run_forward_census import (
 KNOWN_ROWS = (
     ('B-asym', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
     ('B-closed', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
-    ('B-closed', 'uniform', 'L1', 'D2', '#1373 D2 (ports): closed-box point-source drive table differs'),
-    ('B-closed', 'uniform', 'L2', 'D2', '#1373 D2 (ports): closed-box point-source drive table differs'),
     ('B-cpml', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
     ('B-pecsides', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
     ('C-film', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
@@ -328,11 +326,10 @@ BOTH_REFUSE_ROWS = (
 # are consequences. Other measurements, outcomes, and L1 remain exact;
 # O-flux has equal fields and is not a consequence pair.
 CONSEQUENCE_PAIRS = (
-    ('B-closed', 'uniform', 'D2'), ('R-rlc', 'uniform', 'D6'),
+    ('R-rlc', 'uniform', 'D6'),
     ('PW-oblique', 'uniform', 'D3'),
 )
 ID_PATTERNS = {
-    'D2': {'L1': ('/xs/1',), 'L2': ()},
     'D3': {'L1': (), 'L2': ()},
     'D4': {'L1': ('/carry_init/flux_monitors/*', '/init/flux_monitors/*',
                   '/ctx/flux_meta/*', '/invariants/ctx/flux_meta/*',
@@ -481,7 +478,8 @@ def check_fields(declaration, path):
 
 
 ALWAYS_ON_FIELDS = tuple(row for row in FIELD_ROWS if row[0] == 'B-cpml' or row in (
-    ('O-dft', 'uniform'), ('O-ntff', 'uniform'), ('O-cm', 'uniform'), ('P-msl', 'uniform')) or any(
+    ('O-dft', 'uniform'), ('O-ntff', 'uniform'), ('O-cm', 'uniform'), ('P-msl', 'uniform'),
+    ('B-closed', 'uniform')) or any(
     (d, p, level) == (*row, 'L2') for d, p, level, ident, reason in KNOWN_ROWS))
 
 
