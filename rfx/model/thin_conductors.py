@@ -455,7 +455,7 @@ def refuse_design_films(sim, grid, bounds):
     for index, tc in enumerate(sim._thin_conductors):
         if index in f0_hits:
             raise ValueError(
-                f'thin_conductor[{index}] (f0 sheet): the design box (cells {bounds}) '
+                f'thin_conductor[{index}] (surface_impedance_f0 sheet): the design box (cells {bounds}) '
                 'contains cells incident to its tangential edges. Move the box or the sheet.')
         if tc.is_pec or tc.surface_impedance_f0 is not None:
             continue
