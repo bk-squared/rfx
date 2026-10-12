@@ -1259,6 +1259,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         tfsf_pair = tfsf_from_declaration(
             entry, grid, sim._freq_max, n_steps=n_steps,
         )
+        sim._validate_tfsf_vacuum_boundary(materials, tfsf_pair[0])
 
     # NTFF box: build once (indices are Python-static) + zero-init
     # DFT accumulators that will be threaded through the scan carry.

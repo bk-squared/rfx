@@ -1,0 +1,77 @@
+"""The slab TF/SF vacuum rule applies to concrete and traced public entries."""
+import jax
+import jax.numpy as jnp
+import numpy as np
+import pytest
+
+from rfx import Box, Simulation
+
+
+VACUUM_MESSAGE = (
+    "TFSF plane-wave source requires vacuum on and adjacent to the TFSF x "
+    "boundaries; non-vacuum material found at x_lo-1"
+)
+TRACED_MESSAGE = (
+    "TFSF plane-wave source requires vacuum on and adjacent to the TFSF x "
+    "boundaries; non-vacuum material found at x_lo"
+)
+
+
+def _scene(graded):
+    profile = 1e-3 * np.array([1.2, 1.1, 1., .9, .8, .7, .6,
+                              .6, .7, .8, .9, 1., 1.1, .6])
+    mesh = {"dz_profile": profile} if graded else {}
+    sim = Simulation(freq_max=20e9, domain=(.030, .020, .012), dx=.001,
+                     cpml_layers=4, **mesh)
+    sim.add_tfsf_source(margin=3)
+    sim.add_probe((.023, .012, .007), "ez")
+    return sim
+
+
+@pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
+@pytest.mark.parametrize("entry", ["run", "forward"])
+def test_box_on_vacuum_planes_refused(graded, entry):
+    sim = _scene(graded)
+    sim.add_material("fill", eps_r=4.)
+    sim.add(Box((0., 0., 0.), (.030, .020, .012)), material="fill")
+    with pytest.raises(ValueError) as caught:
+        getattr(sim, entry)(n_steps=8)
+    assert str(caught.value) == VACUUM_MESSAGE
+
+
+@pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
+def test_forward_override_on_vacuum_planes_refused(graded):
+    sim = _scene(graded)
+    grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
+    with pytest.raises(ValueError) as caught:
+        sim.forward(n_steps=8, eps_override=jnp.full(grid.shape, 4.))
+    assert str(caught.value) == VACUUM_MESSAGE
+
+
+@pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
+def test_traced_forward_override_on_x_lo_refused(graded):
+    sim = _scene(graded)
+    grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
+
+    def energy(eps):
+        # Four pad cells plus margin three: x_lo is node seven.
+        # Keep its neighbours vacuum so the literal must name x_lo.
+        material = jnp.ones(grid.shape).at[7, :, :].set(eps)
+        return jnp.sum(sim.forward(n_steps=8, eps_override=material).time_series ** 2)
+
+    with pytest.raises(Exception) as caught:
+        jax.grad(energy)(4.)
+    assert TRACED_MESSAGE in str(caught.value)
+    print(f"traced graded={graded}: {type(caught.value).__name__}: {caught.value}")
+
+
+@pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
+@pytest.mark.parametrize("entry", ["run", "forward"])
+def test_interior_dielectric_with_vacuum_planes_admitted(graded, entry):
+    sim = _scene(graded)
+    sim.add_material("slab", eps_r=4.)
+    sim.add(Box((.013, 0., 0.), (.017, .020, .012)), material="slab")
+    result = getattr(sim, entry)(n_steps=120)
+    values = np.asarray(result.time_series)
+    assert np.isfinite(values).all()
+    assert np.max(np.abs(values)) > 0

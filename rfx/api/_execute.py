@@ -1576,7 +1576,7 @@ class _ExecuteMixin:
             tfsf_run = tfsf_from_declaration(
                 self._tfsf, grid, self._freq_max, n_steps=n_steps,
             )
-            # The legacy slab's concrete vacuum check runs via preflight.
+            # The slab's vacuum check uses the final materials below.
             # The closed box also checks the final realized operators below,
             # after material overrides and port setup (including AD values).
             from rfx.boundaries.tfsf import boundary_flags as tfsf_boundary_flags
@@ -2066,6 +2066,8 @@ class _ExecuteMixin:
                     nonvacuum.append(jnp.zeros(grid.shape, dtype=bool).at[window].set(True))
             self._validate_tfsf_vacuum_boundary(
                 materials, tfsf_run[0], nonvacuum_masks=tuple(nonvacuum))
+        elif self._tfsf is not None:
+            self._validate_tfsf_vacuum_boundary(materials, tfsf_run[0])
 
         # Every declared input this lane does not carry is refused here,
         # after the specific refusals above and before the first step.
