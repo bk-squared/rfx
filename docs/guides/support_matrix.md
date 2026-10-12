@@ -43,8 +43,8 @@ The general baseline is a uniform Cartesian Yee grid with `pec`, `cpml`, or
 but no plane-wave reflection of it is measured in this repository; its parallel-E
 component is attenuated only indirectly through curl coupling (`rfx/boundaries/upml.py`).
 Documented sources
-include point/current sources and the port families listed in the
-[S-parameter support matrix](sparameter_support_matrix.md).
+include point/current sources and the port families listed under
+[S-parameters](#s-parameters).
 Documented observables include time-series probes, flux monitors, resonances from the matrix pencil fit, benchmarked NTFF cases, and the explicitly listed port results.
 
 | Feature | Status | Current limits |
@@ -259,39 +259,315 @@ error message tells you to do; the last names the test that pins the refusal.
 | A microstrip or coax signal strip drawn behind its line port whose open-stub resonance lies within a factor of 1.5 of the band read | `admission:line-stub` | line ports, also with `skip_preflight=True` | Start the signal strip at the port's grid-node coordinate the message prints, so it covers the port node and nothing behind it. | `tests/contracts/test_line_stub_refusal_1512.py::test_in_band_and_inclusive_near_edges_refuse` |
 | A non-passive coax→microstrip transition matrix (default `strict_passivity=True`) | `admission:transition-passivity` | `compute_coax_msl_transition` | Pass `strict_passivity=False` to get the diagnostic matrix back with a warning. | `tests/unit/sparams/test_coax_msl_transition.py::test_transition_default_raises_on_a_nonpassive_s_and_false_returns_it` |
 
-## S-parameter API routing
+## S-parameters
 
-- Lumped and wire `add_port(...)` simulations use
-  `run(compute_s_params=True, s_param_freqs=...)` for full matrices.
-  A plain source or zero-ohm port in the model makes a full S-matrix request
-  refuse; `run(compute_s_params=False)` returns raw port responses instead.
-- The same port family uses `forward(port_s11_freqs=...)` for uniform or graded
-  single-device S11 vectors at the requested bins. Distributed forward still
-  refuses explicit port frequencies.
-- `add_msl_port(...)` uses `compute_msl_s_matrix(...)`.
-- `add_waveguide_port(...)` uses `compute_waveguide_s_matrix(...)` for a full
-  multi-port matrix. `run()` exposes only per-port `waveguide_sparams`.
-- A float32, three-dimensional, second-order uniform Yee simulation with
-  CPML tokens with positive thickness on every boundary face, positive lateral
-  absorber clearance, `cpml_axes="xyz"` (the only accepted value), no periodic
-  axes, and exactly one
-  `add_coaxial_port(..., face="top")` uses
-  `compute_coaxial_line_reflection(...)` for the documented result.
-  The method builds its own line, source, DFT planes, and termination; do not
-  register separate geometry, RLC elements, monitors, or termination helpers.
-  It derives the axial layout internally. Use `feed_impedance=` for the feed and
-  `dut_impedance=` only with `termination="matched"`.
-  `probe_count` must be an integer of at least three, and every requested plane
-  must fit between the DUT and source.
-  `compute_coaxial_s_matrix(...)` is removed. Use
-  `compute_coaxial_line_reflection(...)` for reflection or
-  `compute_coaxial_two_port(...)` for a through line.
-- Sources, TFSF, probes, and flux monitors do not define a port impedance or
-  reference plane and therefore do not produce S-parameters.
+This part answers three questions for each public primitive: does it define a
+port impedance and a reference plane, which calculator computes its
+S-parameters, and what evidence and restrictions apply to that calculation now.
+It replaces the former `sparameter_support_matrix.md`. The machine-readable
+companion is [`sparameter_support_matrix.json`](sparameter_support_matrix.json),
+published as `/rfx/api/support/sparameter_support_matrix.json`; it still
+carries each family's evidence record in full. Raw voltage/current replay is
+described in [`sparameter_dump_replay.md`](sparameter_dump_replay.md).
 
-The exact schemas, metrics, and RF evidence are in
-`docs/guides/sparameter_support_matrix.md`. Evidence levels are defined in
-`docs/guides/physics_validation_evidence_rule.md`.
+### Which calculator
+
+If you are not sure which calculator your model needs, ask the simulation
+instead of guessing from the table:
+
+```python
+sim.s_matrix_lane()          # -> 'compute_waveguide_s_matrix'
+res = sim.compute_s_matrix() # calls that calculator with your keyword arguments
+```
+
+`Simulation.compute_s_matrix(**kwargs)` reads the registered ports, picks one
+calculator and forwards every keyword argument to it unchanged: you get that
+calculator's defaults, checks, warnings and result type, exactly as if you had
+called it directly. `Simulation.s_matrix_lane()` returns the same choice as a
+string and runs no simulation, so you can check it on a half-built model.
+
+| Registered ports | Calculator |
+|---|---|
+| waveguide ports only | `compute_waveguide_s_matrix(...)` |
+| microstrip ports only | `compute_msl_s_matrix(...)` |
+| one coaxial port only | **ambiguous**: pass `method="compute_coaxial_line_reflection"` or `method="compute_coaxial_two_port"` |
+| one coaxial + one microstrip port | `compute_coax_msl_transition(...)` |
+| lumped/wire `add_port(...)` + microstrip | `compute_mixed_s_matrix(...)` |
+| lumped/wire only | raises, naming `run(compute_s_params=True)`, which returns a `Result`, not an S-matrix result |
+| anything else | raises, naming the registered families and the calculator each one has |
+
+`compute_s_matrix` never chooses between the two coaxial calculators (their
+registrations are identical; only you know which measurement you meant), and it
+never calls `run()` for you, because `run()` has no default simulation time to
+supply. `method=` replaced `lane=` in 2.0; `lane=` still works through 2.x with
+a `DeprecationWarning`.
+
+### Result convention
+
+Full matrices are indexed `S[receiver_port, driven_port, frequency_index]` with
+shape `(n_ports, n_ports, n_freqs)`; frequencies are in Hz with shape
+`(n_freqs,)`. A `*_mag_abs_diff` metric is an absolute difference in linear
+magnitude unless it says dB.
+
+Passivity, reciprocity, replay and warning checks are necessary, but none of
+them alone shows that a result is accurate. The automatic checks also differ by
+calculator: the microstrip and waveguide calculators check the power in every
+driven column; lumped and wire results are checked only for non-finite or too
+large individual `|S|` values; `compute_coaxial_line_reflection(...)` has no
+shared passivity check (`compute_coaxial_two_port(...)` has). An absent warning
+therefore means different things for different port families.
+
+### API summary
+
+| Primitive | Calculation API | Result | Current status |
+|---|---|---|---|
+| Lumped `add_port(..., extent=None)` | `run(compute_s_params=True, s_param_freqs=...)` | `Result.s_params`, `Result.freqs` | **limited**: a one-cell feed with a scalar reference impedance, not a transmission-line mode |
+| Lumped `add_port(..., extent=None)` | `forward(port_s11_freqs=...)` | `ForwardResult.s_params`, `.freqs` (S11 vectors) | **limited**: one device; same limits as `run()` |
+| Wire `add_port(..., extent=...)` | `run(compute_s_params=True, s_param_freqs=...)` | `Result.s_params`, `Result.freqs` | **limited**: a feed spread over `extent`; on a graded mesh experimental |
+| Wire `add_port(..., extent=...)` | `forward(port_s11_freqs=...)` | `ForwardResult.s_params`, `.freqs` (S11 vectors) | **limited**: one device |
+| `add_msl_port(...)` | `compute_msl_s_matrix(...)` | `MSLSMatrixResult.S`, `.freqs`, `.Z0`, `.beta`, `.port_names`, `.reliable`, `.probe_clearance`, `.beta_railed`, `.reference_impedances` | **limited**: quasi-TEM (`mode="laplace"`) on a uniform mesh; on a graded mesh experimental; `mode="eigenmode"` refused |
+| `add_waveguide_port(...)` | `compute_waveguide_s_matrix(...)` | `WaveguideSMatrixResult.s_params`, `.freqs`, `.port_names`, `.port_directions`, `.reference_planes` | **limited**: magnitude of single-mode rectangular guides on a uniform mesh; phase and junctions narrower; on a graded mesh experimental outside the cases listed below |
+| `add_waveguide_port(...)` | `run(...)` | `Result.waveguide_sparams[name]` | **limited**: per-port output, not the full matrix |
+| `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | `CoaxialLineReflectionResult` | **limited**: one `face="top"` port on a line the calculator builds itself |
+| `add_coaxial_port(...)` | `compute_coaxial_two_port(...)` | `CoaxialTwoPortResult` | **limited**, validated with scope: one through-line family, symmetric (TM0n) discontinuities only |
+| `add_coaxial_port(...)` + `add_msl_port(...)` | `compute_coax_msl_transition(...)` | `CoaxMSLTransitionResult` | **experimental**, diagnostic only: the matrix is not passive (mechanism unresolved) and is refused by default |
+| `add_port(...)` + `add_msl_port(...)` | `compute_mixed_s_matrix(...)` | `MixedSMatrixResult` | **experimental**, diagnostic: magnitudes not checked against another solver; the default passivity projection changes the diagonal |
+| `add_floquet_port(...)` | no documented high-level S-parameter API | none | **experimental**: diagnostic helpers at normal incidence only |
+| Sources, plane wave, probes, DFT planes, flux monitors | none | field, resonance or flux results | **not a port**: no impedance and no reference plane |
+
+### Lumped port
+
+A one-cell feed or load with a positive scalar reference impedance. It is not a
+transmission-line mode. Circuit elements use `add_lumped_rlc(...)` and do not
+define an S-parameter port.
+
+- Checked against a closed form: a one-cell port terminating a parallel-plate
+  line in a known resistance, at three loads
+  (`tests/unit/ports/test_lumped_port_known_load_line.py`). It agrees at the
+  low end of the band; the residual near the top of the band fits one effective
+  reference impedance and is not characterized. The fixture cannot be refined
+  (the port must bridge a one-cell gap), so its convergence is not shown.
+- A two-port line matched at both ends is checked against `S11 = 0` and
+  `|S21| = 1`, and the lumped and wire calculators give the same complex
+  matrix on the same cells (`tests/unit/ports/test_lumped_two_port_matched_line.py`).
+- The extractor's algebra and its replay from stored voltages and currents are
+  checked (`tests/unit/sparams/test_sparam.py`,
+  `tests/unit/sparams/test_port_dump_replay.py`). Algebra and replay checks do
+  not show that the port is calibrated.
+
+Analytic extractor and V/I replay checks validate the extraction algebra and its
+reproducibility; they do not establish a generally calibrated lumped-port
+result. `forward(port_s11_freqs=...)` runs on one device, uniform or graded
+mesh. A plane wave, waveguide ports or another port family cannot share this
+calculation.
+
+### Wire port
+
+A feed spread along `extent`. Use `add_msl_port(...)` when the model is a
+distributed microstrip line.
+
+- The same matched-line closed form as the lumped port, and the same replay
+  checks (`tests/unit/sparams/test_twoport_wire_port.py`,
+  `tests/unit/sparams/test_wire_port_sparams_forward.py`).
+- Absolute calibration is limited by the feed model; a replay check is not a
+  modal-port calibration.
+
+The nonuniform wire calculation is experimental: regression and gradient
+coverage on a graded mesh are not RF validation.
+
+### Microstrip-line port
+
+`compute_msl_s_matrix(...)` with the quasi-TEM (`mode="laplace"`) model. It
+runs one simulation per driven port and extracts S from voltage and current
+probes downstream of each feed.
+
+- **What `S` is.** S is the raw extracted power-wave matrix, referenced to the
+  analytic (Hammerstad–Jensen) impedance in `result.reference_impedances`. The
+  same S is returned on every channel, including under `jax.grad`. A raw S may
+  exceed `‖S‖₂ ≤ 1`: `sigma_max_excess` records the excess per frequency point
+  and a warning names the worst one. A passive structure cannot scatter more
+  power than it receives, so such points are a measurement artifact; read
+  `settling_db` and `reliable` to see which. `enforce_passivity=True` returns
+  the projected matrix and keeps the measured one in `S_raw`.
+- **The fitted `Z0` and `beta` are diagnostics and do not enter S**
+  (`tests/unit/sparams/test_msl_fitted_beta_does_not_enter_s.py`).
+- **`reliable`** is a per-point fit-quality mask, `None` under JAX tracing.
+  Because S is solved jointly over the drives, a `False` entry at any port
+  spoils the whole slice `S[:, :, k]`: filter with `np.all(reliable, axis=0)`.
+  A `True` entry is not an accuracy guarantee.
+- **Probes near a reflector.** `probe_clearance` reports whether the probes are
+  clear of the next discontinuity. When it reports `insufficient`, the fitted
+  `Z0` and `beta` cannot be read (`beta_railed` flags the symptom; `reliable`
+  does not), and nothing bounds the error of S. Lengthen the uniform feed or
+  move the reference plane; raising `n_probe_offset` alone moves the probes
+  toward the reflector. `preflight()` and
+  `preflight_sparameters(calculator="msl")` report the condition before a run.
+- **Cross-validation.** The open-stub notch filter is compared with frozen data
+  from another solver in `tests/crossval/msl_notch_filter/`.
+
+Nonuniform `mode="laplace"` and `mode="uniform"` have internal regression
+coverage only and no comparison with another solver on a graded mesh; treat
+them as experimental. `mode="eigenmode"` is refused. Subgridding, ADI, a plane
+wave and other port families are refused for this calculation. The trace must
+be hard PEC (a `Box`, a zero-thickness `Box` or a PEC `add_thin_conductor`
+sheet); a lossy (`surface_impedance_f0=`) sheet may be used for other metal on
+the board. Draw the trace at the width it is solved at: preflight refuses a
+mismatch, and a trace end fed by a port is solved where it is drawn.
+
+### Rectangular-waveguide port
+
+`compute_waveguide_s_matrix(...)` for a full matrix of at least two ports;
+`run()` gives only a per-port diagnostic. Prefer `normalize="flux"`: it uses a
+matched reference run per port (`2 * n_ports` simulations).
+
+- **Magnitude, uniform single-mode guides.** Dielectric slabs in five bands
+  (WR-340, WR-62, WR-28, WR-15, WR-10) against the closed form, and the WR-90
+  empty guide, PEC short and slab against frozen data from another solver
+  (`tests/fixtures/waveguide_broad_e5/`). The port validation battery and the
+  two-port contract are the authoritative gates
+  (`tests/oracle/test_waveguide_port_validation_battery.py`,
+  `tests/unit/sparams/test_waveguide_twoport_contract_v1.py`).
+- **Phase and group delay** are checked on the same slab cases and on an empty
+  WR-340 guide near cutoff
+  (`tests/oracle/test_waveguide_group_delay_near_cutoff.py`). PEC shorts,
+  junctions, graded meshes and multimode extraction have no phase evidence.
+- **The WR-90 chain**: single-mode S on a uniform mesh on the `normalize=False`
+  and `normalize="flux"` paths, three meshes, thru / PEC short / slab, with
+  gradients (`tests/oracle/test_waveguide_chain_battery_v18_close.py`). On an
+  empty guide the `normalize=False` path reads a column power slightly above 1
+  that falls with each mesh halving; it is a stated accuracy of that path, not
+  a defect.
+
+The calculation remains experimental on a graded mesh outside the WR-90
+empty / PEC-short / slab cases with `normalize="flux"` and a graded `dy`
+(ratio 2) over 8.2–12.4 GHz
+(`tests/fixtures/waveguide_nu_broad_e4/`, `tests/fixtures/waveguide_nu_broad_e5/`).
+Gradients there (`eps_override`, `sigma_override`) need `normalize="flux"`.
+
+Setup:
+
+- Size the absorber from the guide wavelength at the lowest frequency, where
+  it is longest; the calculator warns below half a guide wavelength, and that
+  is a minimum, not a target.
+- Draw interior metal (irises, septa, posts) at the size you mean and check the
+  realized planes with `realized_wall_planes()` or `fidelity_report()`; a
+  symmetric opening must be representable on the grid
+  (`tests/oracle/test_wr90_inductive_iris_mode_matching.py`).
+- Keep slab lengths an integer number of cells and frequency points away from
+  Airy reflection nulls.
+- Multimode `normalize=True` is refused. Branches, T-junctions and septa need a
+  matched straight-guide reference per port and far-port placement; compact
+  arbitrary junctions are not covered.
+
+### Coaxial port
+
+Use `compute_coaxial_line_reflection(...)` for the documented TEM-line result.
+The model must contain exactly one `face="top"` coaxial port and no other port family, on a float32,
+three-dimensional, second-order Yee uniform mesh with CPML of positive
+thickness on every face (`cpml_axes="xyz"`) and no periodic axis. The
+calculator builds the line, source, DFT planes and termination; do not
+register separate geometry, RLC elements, monitors or termination helpers.
+Use `feed_impedance=` for the feed and `dut_impedance=` only with
+`termination="matched"`. `probe_count` must be at least three and every plane
+must fit between the load and the source.
+
+- Checked against the closed form over 4–12 GHz for short, open, matched and
+  resistive loads at two line impedances, and against frozen data from another
+  solver for short and open (`tests/fixtures/coax_broad_e5/`,
+  `tests/fixtures/coax_broad_e4/`). This evidence was taken before 2.0 changed
+  the absorber to all three axes and was not taken again.
+- Use about four or more cells across the annulus; below 3.5 the result is
+  reported as under-resolved.
+- Gradients through `eps_scale` are checked against finite differences
+  (`tests/unit/autodiff/test_coax_end_to_end_ad.py`).
+
+`compute_coaxial_two_port(...)` drives each end of one through line in turn and
+solves for the full matrix. It is validated with scope: every DUT it can
+currently gate against (no load, a matched feed, a coaxial dielectric plug) is
+symmetric about the axis and excites only TM0n modes, and the evidence covers
+one line geometry family
+(`tests/unit/sparams/test_coax_two_port_smatrix.py`,
+`tests/unit/autodiff/test_coax_two_port_ad.py`). On a coarse annulus the line
+attenuates in the simulation, so `|S21|` falls with frequency even while `|S11|`
+stays small; the four-cell rule above applies to transmission too.
+
+`run()` and `forward()` refuse coaxial S-parameter requests. The former
+`compute_coaxial_s_matrix(...)` is removed.
+
+### Floquet/Bloch and non-port observables
+
+`add_floquet_port(...)` has broadside modal bookkeeping, field-dump replay and
+diagnostic checks against the closed form for empty space and a homogeneous
+slab (`tests/unit/ports/test_floquet_s_params_contract.py`). These are not a
+comparison with RCWA or another full-wave solver, and there is no documented
+high-level Floquet S-parameter API. Treat the result as experimental. Graded
+meshes and a plane wave are refused with it.
+
+Sources, polarized sources, the plane wave, point probes, DFT planes and flux
+monitors define no port impedance or reference plane. Check their field,
+resonance, far-field or flux result directly; do not use them as ports.
+
+### Refusals and preflight
+
+An S-parameter request outside its calculator raises; it never returns `None`
+or drops a feature:
+
+- `run(compute_s_params=True)` accepts only lumped and wire `add_port(...)`.
+- `compute_msl_s_matrix(...)` accepts only microstrip ports.
+- `compute_waveguide_s_matrix(...)` accepts only waveguide ports.
+- `compute_coaxial_line_reflection(...)` accepts exactly one `face="top"`
+  coaxial port within its line setup.
+- `forward(port_s11_freqs=...)` accepts only lumped and wire ports on one
+  device.
+
+Check the routing before a long run:
+
+```python
+sim.preflight_sparameters(calculator="run")
+sim.preflight_sparameters(calculator="forward")
+sim.preflight_sparameters(calculator="msl")
+sim.preflight_sparameters(calculator="waveguide")
+```
+
+These calls check that the API fits the model, not mesh or time convergence or
+accuracy. Pass `strict=True` to raise on any reported issue.
+
+### Mixed port families — experimental
+
+`compute_mixed_s_matrix(freqs=...)` combines lumped or wire ports with
+microstrip ports on a uniform mesh. It drives each port in turn, takes the
+diagonal from each family's own extractor and the off-diagonal magnitudes from
+Poynting flux.
+
+| Aspect | Status |
+|---|---|
+| off-diagonal magnitude | experimental; its only independent internal check is reciprocity, which warns above `reciprocity_tol` |
+| absolute magnitude | not compared with another solver |
+| off-diagonal phase | provisional: it mixes two reference-plane conventions |
+| column power | an identity of the flux normalization, not a passivity check |
+
+Neither diagonal is verified on this path. With `enforce_passivity=True` (the
+default) the returned diagonal is a joint projection, not the measured value:
+read `S_raw` and `passivity_correction` for what was measured
+(`tests/unit/sparams/test_mixed_port_sparam.py`). Waveguide, Floquet, coaxial
+and plane-wave registrations, bare sources, 0 Ω ports, mixed lumped+wire sets,
+`reference_plane_cells`, graded meshes, subgridding and ADI are refused. The
+flux channel also needs a PEC ground at `z_lo` and vertical (`component="ez"`)
+lumped or wire ports.
+
+### Coax-to-microstrip transition — experimental, diagnostic only
+
+`compute_coax_msl_transition(...)` drives a coaxial port and a microstrip port
+in turn. The returned matrix is not passive: the microstrip side's power-wave
+normalization reads about three times the power that a Poynting flux box
+measures on the same run, and the mechanism is unresolved
+(`tests/unit/sparams/test_coax_msl_transition.py`). The calculator therefore
+refuses the matrix by default (`strict_passivity=True` raises `ValueError`);
+`strict_passivity=False` returns it with a warning. Cross-family transitions
+are not pursued before 2.0. For a result you can report, use the single-family
+calculators: `compute_msl_s_matrix(...)` for the microstrip line and
+`compute_coaxial_two_port(...)` or `compute_coaxial_line_reflection(...)` for
+the coax. Gradients are not available on this path.
 
 ## Nonuniform-mesh classification
 
