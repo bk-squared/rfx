@@ -180,7 +180,11 @@ def test_host_sheet_forward_under_outer_jit_equals_box(kind):
             sim = Simulation(freq_max=6e9, domain=(.04, .02, .02), boundary="cpml", cpml_layers=4)
             kw = {"surface_impedance_f0": 5e9} if kind == "leontovich" else {}
             sim.add_thin_conductor(shape, sigma_bulk=1e4 if kw else 5.8e7, **kw)
-            sim.add_source((.030, .01, .012), "ez", waveform=GaussianPulse(f0=3e9, bandwidth=3e9))
+            # Fractional bandwidth 0.8, tau = 20/15 steps so the 20-step record holds
+            # the pulse (bandwidth=3e9 in Hz drove nothing, issue 1668).
+            tau = (20 / 15) * float(sim._build_grid().dt)
+            sim.add_source((.030, .01, .012), "ez",
+                           waveform=GaussianPulse(f0=1.0 / (np.pi * 0.8 * tau), bandwidth=0.8))
             sim.add_probe((.025, .008, .012), "ez")
 
             def loss(eps):

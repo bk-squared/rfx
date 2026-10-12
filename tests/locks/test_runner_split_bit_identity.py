@@ -340,7 +340,7 @@ def _padx_sim():
     lx = 0.125
     sim = Simulation(freq_max=3e9, domain=(lx, 0.04, 0.04), boundary="cpml")
     sim.add_source(position=(lx / 2, 0.02, 0.02), component="ez",
-                   waveform=GaussianPulse(f0=1.5e9, bandwidth=1.5e9))
+                   waveform=GaussianPulse(f0=1.5e9, bandwidth=0.8))
     sim.add_probe(position=(lx - 0.006, 0.02, 0.02), component="ez")
     return sim
 

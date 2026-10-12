@@ -468,7 +468,7 @@ class TestDistributedCPML:
         sim.add_source(
             position=(Lx / 2, 0.02, 0.02),
             component="ez",
-            waveform=GaussianPulse(f0=1.5e9, bandwidth=1.5e9),
+            waveform=GaussianPulse(f0=1.5e9, bandwidth=0.8),
         )
         # Probe near the x-hi physical face (inside the CPML zone) so
         # it is sensitive to the absorber window's exact placement.

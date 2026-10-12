@@ -50,7 +50,7 @@ def test_eager_extractor_dielectric_through_pad(monkeypatch):
     with pytest.raises(AssertionError):
         _assert_passive(np.full(7, 1.01))
 
-    waveform = GaussianPulse(f0=5.5e9, bandwidth=4e9)
+    waveform = GaussianPulse(f0=5.5e9, bandwidth=0.8)
     freqs = np.linspace(2e9, 9e9, 7)
     grid = Grid(freq_max=10e9, domain=(.024, .012, .012), dx=1e-3, cpml_layers=8)
     eps_r = np.ones(grid.shape, np.float32)
