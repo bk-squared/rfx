@@ -49,7 +49,7 @@
         "scripts/diagnostics/build_lumped_openems_sweep_comparison.py"
       ],
       "numeric_metrics": [
-        "matched two-port line: |S11| and |S21| within 0.05 of the closed form; lumped and wire calculators give the same complex matrix on the same cells to 1e-6 (tests/unit/ports/test_lumped_two_port_matched_line.py)",
+        "two-port line with a shunt port at each end, checked against its closed form: |S11| within 0.05 and |S21| within 0.01; lumped and wire calculators give the same complex matrix on the same cells to 1e-6 (tests/unit/ports/test_lumped_two_port_matched_line.py)",
         "one-cell port on a known-load parallel-plate line, three loads, checked against the closed form; the residual near the top of the band is not characterized and the fixture cannot be refined (tests/unit/ports/test_lumped_port_known_load_line.py)",
         "extractor algebra and V/I replay are checked (tests/unit/sparams/test_sparam.py, tests/unit/sparams/test_port_dump_replay.py); they do not show calibration"
       ],
@@ -101,7 +101,7 @@
         "scripts/diagnostics/report_wire_replay_sweep.py"
       ],
       "numeric_metrics": [
-        "same matched-line closed form as the lumped port, and the same complex matrix as a one-cell lumped port to 1e-6 (tests/unit/ports/test_lumped_two_port_matched_line.py)",
+        "same shunt-port line closed form as the lumped port, and the same complex matrix as a one-cell lumped port to 1e-6 (tests/unit/ports/test_lumped_two_port_matched_line.py)",
         "two-port V/I replay and replay/passivity/reciprocity checks (tests/unit/sparams/test_twoport_wire_port.py, tests/unit/sparams/test_wire_port_sparams_forward.py)"
       ],
       "validated_scope": "Uniform-grid one-cell probe/wire feed in the cited resonance and two-port cases. Nonuniform use is experimental.",
@@ -135,7 +135,7 @@
         "Result.s_params is not used; call compute_msl_s_matrix(...)",
         "outside JAX tracing, reliable[p,k]=false invalidates the whole slice S[:,:,k] (S is solved jointly across drives, #507); the mask covers every driven/port record the solve consumes (#522); true is not an accuracy guarantee",
         "mode=eigenmode, SBP-SAT subgridding, ADI, TFSF, and mixed port families are unsupported",
-        "a strong-reflector staircase-Z0 floor survives, tracking |Gamma_implied|=|(Z0-Z0_HJ)/(Z0+Z0_HJ)| on resolvable #487 re-sweep points; the sweep cannot resolve whether the mechanism still holds below its resolution limit (band-mean-Z0 vs band-mean-|S11| comparison, no per-bin trace, fitted-Z0 estimator only) -- a resolution limit, not a confirmed second mechanism; no single envelope number is published either way, since the floors are fixture-specific; see scripts/diagnostics/msl_z0_bias_floor_sweep.py",
+        "the larger strong-reflector staircase-Z0 floor this matrix used to quote is RETIRED (#487: extractor defects fixed in PR #516); a smaller floor survives, tracking |Gamma_implied|=|(Z0-Z0_HJ)/(Z0+Z0_HJ)| on resolvable #487 re-sweep points; the sweep cannot resolve whether the mechanism still holds below its resolution limit (band-mean-Z0 vs band-mean-|S11| comparison, no per-bin trace, and a fitted-Z0 estimator) -- a resolution limit, not a confirmed second mechanism; no single envelope number is published either way, since the floors are fixture-specific; see scripts/diagnostics/msl_z0_bias_floor_sweep.py",
         "the automatic guard includes full driven-column power; passing it is not an accuracy guarantee",
         "the auto n_probe_offset solves the upstream/downstream clearance interval at driver time and warns loudly when a short feed cannot satisfy both (#469); library witness probes are excluded from preflight advisories and the #332 tail advisory (#470)",
         "surface-impedance (surface_impedance_f0) sheets are applied on this lane's device runs (#679; realized on its node plane by the #677 per-step operator inside run()/forward()); the trace itself must remain hard PEC (a Box volume, a zero-thickness Box, or a PEC add_thin_conductor sheet) because the Ampere-loop current and V span anchor on realized PEC wall planes and an f0 sheet realizes no PEC edge; the lane finds the trace through realized_wall_planes, so a sheet-declared trace works (#931); combination refusals (dispersive, subpixel/conformal, UPML, ADI/subgridded/distributed) fire at the run-lane entry; a sheet inside a probed span biases the lossless-line N-probe Z0/q fit while the V-I S extraction stays valid; the mixed (wire+MSL junction) lane still refuses f0 sheets"
@@ -185,11 +185,11 @@
         "nonuniform_transverse_dx_dy_restricted",
         "nonuniform_dz_dispatch_wired_accuracy_pending"
       ],
-      "validation_status": "Broad magnitude evidence covers documented uniform single-mode rectangular guides: analytic fixtures across WR bands and Palace WR-90 empty, PEC-short, and slab comparisons. Issue #490 adds a reference-plane-corrected Airy PHASE envelope over the same WR bands and mesh/geometry cases, re-analyzing the npz/manifest pair that produced the committed magnitude envelope (.omx is gitignored and not present in the tree). Issue #490 also adds a near-cutoff group-delay gate on a purpose-built empty WR-340 fixture: -d(angle(S21))/d(omega) is compared against the analytic L_eff/v_g(f) oracle through the same finite-difference stencil. Junction and other-configuration phase/group-delay evidence remain narrower -- see caveats. Nonuniform single-mode normalize=True and normalize=flux run. The Palace magnitude comparison covers normalize=flux, graded-dy WR-90 empty/PEC-short/dielectric-slab cases; other nonuniform configurations remain experimental. CHAIN-CLOSURE STATUS (v1.8): chain-closed (v1.8) for the uniform single-mode guide on the normalize=False and normalize=flux lanes under docs/design_notes/chain_closure_contract.md; forward identity and AD-vs-FD are read under x64 on the normalize=flux lane with the forward default still float32 and the float32 reading stored beside every leg; the pre-declared zero-derivative AD leg is report-only, not pass. Junctions, multimode extraction and nonuniform meshes are outside the declaration, the phase referee is analytic Airy only, and chain-closed is not supported -- the row stays limited.",
+      "validation_status": "Broad magnitude evidence covers documented uniform single-mode rectangular guides: analytic fixtures across WR bands and Palace WR-90 empty, PEC-short, and slab comparisons. Issue #490 adds a reference-plane-corrected Airy PHASE envelope over the same WR bands and mesh/geometry cases, re-analyzing the npz/manifest pair that produced the committed magnitude envelope (.omx is gitignored and not present in the tree). Issue #490 also adds a near-cutoff group-delay gate on a purpose-built empty WR-340 fixture: -d(angle(S21))/d(omega) is compared against the analytic L_eff/v_g(f) oracle through the same finite-difference stencil. Junction and other-configuration phase/group-delay evidence remain narrower -- see caveats. Nonuniform single-mode normalize=True and normalize=flux run. On a graded mesh, a WR-90 dielectric slab with normalize=flux and a graded transverse mesh is checked against the closed form; there is no comparison with another solver on a graded mesh in the repository, and other nonuniform configurations remain experimental. CHAIN-CLOSURE STATUS (v1.8): chain-closed (v1.8) for the uniform single-mode guide on the normalize=False and normalize=flux lanes under docs/design_notes/chain_closure_contract.md; forward identity and AD-vs-FD are read under x64 on the normalize=flux lane with the forward default still float32 and the float32 reading stored beside every leg; the pre-declared zero-derivative AD leg is report-only, not pass. Junctions, multimode extraction and nonuniform meshes are outside the declaration, the phase referee is analytic Airy only, and chain-closed is not supported -- the row stays limited.",
       "known_limits": [
         "compute_waveguide_s_matrix(...) requires at least two waveguide ports",
         "multimode normalize=True is unsupported",
-        "nonuniform external magnitude evidence is limited to normalize=flux, graded-dy WR-90 empty/PEC-short/dielectric-slab cases",
+        "graded-mesh evidence is limited to a WR-90 dielectric slab with normalize=flux against the closed form; no comparison with another solver on a graded mesh is in the repository",
         "dz_profile now dispatches to the nonuniform lane under the same normalize=True/flux single-mode restrictions (#811), and no dz-graded accuracy evidence exists yet (#810) -- the nonuniform Palace evidence above is graded-dy only; the nonuniform lane carries the same settling_db ring-down witness and aggregate warning as the uniform single-mode lane (#827 waveguide instance)",
         "nonuniform eps_override and sigma_override AD are implemented only for normalize=flux; only eps_override has a nonuniform AD-vs-FD regression test, and that test is not RF validation",
         "lumped ports, TFSF, and manual periodic-axis overrides are incompatible",
@@ -262,7 +262,7 @@
         "WR-90 chain: single-mode S on a uniform mesh, three meshes, thru / PEC short / slab, with gradients (tests/oracle/test_waveguide_chain_battery_v18_close.py)",
         "graded mesh: WR-90 dielectric slab with normalize=flux and a graded transverse mesh against the closed form over 8.2-12.4 GHz (tests/fixtures/waveguide_nu_broad_e5/); no comparison with another solver on a graded mesh"
       ],
-      "validated_scope": "Uniform single-mode rectangular-guide magnitude for the documented WR-band setups. Phase is validated for the single-dielectric-slab configuration across the same WR bands (issue #490). Group delay is validated only for the WR-340 empty-guide near-cutoff oracle (issue #490). Nonuniform external magnitude evidence is limited to normalize=flux, graded-dy WR-90 empty/PEC-short/dielectric-slab cases. Other nonuniform profiles, bands, multimode, and arbitrary junctions require separate evidence. Nonuniform eps_override and sigma_override AD are available only with normalize=flux.",
+      "validated_scope": "Uniform single-mode rectangular-guide magnitude for the documented WR-band setups. Phase is validated for the single-dielectric-slab configuration across the same WR bands (issue #490). Group delay is validated only for the WR-340 empty-guide near-cutoff oracle (issue #490). On a graded mesh only a WR-90 dielectric slab with normalize=flux is checked, against the closed form. Other nonuniform profiles, bands, multimode, and arbitrary junctions require separate evidence. Nonuniform eps_override and sigma_override AD are available only with normalize=flux.",
       "caveats": [
         "phase evidence matches the magnitude envelope's breadth for the single-dielectric-slab configuration across the same WR bands; PEC-short, T-junction, nonuniform, and multimode phase remain uncharacterized -- do not infer phase accuracy for those configurations",
         "d_left equals d_right in all slab fixtures (the slab sits centered between symmetric reference planes), so the phase evidence cannot distinguish the S21 formula's d_left and d_right terms separately -- only their sum is exercised",
@@ -302,8 +302,8 @@
         "compute_coaxial_line_reflection(...) constructs its line, TEM source, DFT planes, and termination; separately registered geometry, thin conductors, lumped RLC elements, probes, field monitors, NTFF boxes, and add_coaxial_* termination helpers are unsupported",
         "the registered coaxial port contributes x/y position, face, radii, and waveform; its z position, pin_length, and impedance do not set the internally derived line layout or loads; use feed_impedance= and use dut_impedance= only with termination='matched'",
         "probe_count must be an integer of at least three and all requested probe planes must fit between the DUT and source; the method raises instead of silently using fewer planes",
-        "use enough annulus cells to meet the committed method gate, with refinement recommended",
-        "The removed compute_coaxial_s_matrix(...) could report non-physical |S11| for a lossless short",
+        "use four or more annulus cells; the method requires at least 3.5 and reports coarser cases as under-resolved",
+        "The removed compute_coaxial_s_matrix(...) could report non-physical |S11| > 1 for a lossless short",
         "compute_coaxial_s_matrix(...) has been removed; do not use it as evidence for either the 1-port compute_coaxial_line_reflection(...) or the 2-port compute_coaxial_two_port(...) result",
         "nonuniform, Floquet, TFSF, SBP-SAT, arbitrary launches, and mixed-port combinations are unsupported",
         "Simulation.run() and Simulation.forward() reject high-level coaxial S-parameter requests",
@@ -376,7 +376,7 @@
         "scripts/diagnostics/build_floquet_slab_analytic_comparison.py"
       ],
       "numeric_metrics": [
-        "broadside modal bookkeeping, field-dump replay and diagnostic checks against the closed form for empty space and a homogeneous slab (tests/unit/ports/test_floquet_s_params_contract.py); not RCWA or full-wave validation"
+        "broadside modal bookkeeping, field-dump replay, and recovery of a planted reflection and transmission from synthetic waves plus an empty cell's reflection (tests/unit/ports/test_floquet_s_params_contract.py); empty-space and homogeneous-slab comparisons with the closed form are diagnostic scripts (scripts/diagnostics/build_floquet_empty_space_analytic_comparison.py, scripts/diagnostics/build_floquet_slab_analytic_comparison.py); not RCWA or full-wave validation"
       ],
       "validated_scope": "Experimental broadside excitation and diagnostic decomposition only. No calibrated public Floquet-port S-parameter result is documented.",
       "caveats": [
@@ -497,10 +497,10 @@
         "PEC z_lo ground required for magnitude_channel='flux' (the default)",
         "imperative forward path only (no eps_override AD channel)"
       ],
-      "validation_status": "EXPERIMENTAL. Diagonals come from the per-family extractors but are NOT verified on this lane (both the wire port-cell V*I accounting and the MSL analytic-Z0 anchor are open), and the shipped values are additionally rewritten by the passivity projection when the raw matrix is non-passive. off-diagonal MAGNITUDES come from Poynting flux with the incident power normalized as P_net/(1-|S_jj|^2). Internal reciprocity witnesses exist on the probe-fed MSL fixture for the flux and wave channels. NO external-solver referee has been run, so ABSOLUTE magnitude is NOT validated. Off-diagonal PHASE mixes two reference-plane conventions and is provisional. Do not cite this family as validation.",
+      "validation_status": "EXPERIMENTAL. Diagonals come from the per-family extractors but are NOT verified on this lane (both the wire port-cell V*I accounting and the MSL analytic-Z0 anchor are open), and the shipped values are additionally rewritten by the passivity projection when the raw matrix is non-passive. off-diagonal MAGNITUDES come from Poynting flux with the incident power normalized as P_net/(1-|S_jj|^2). Reciprocity is the only independent internal check; the committed probe-fed MSL reference fixture exceeds the default warning tolerance, so it warns (tests/unit/sparams/test_mixed_port_sparam.py). NO external-solver referee has been run, so ABSOLUTE magnitude is NOT validated. Off-diagonal PHASE mixes two reference-plane conventions and is provisional. Do not cite this family as validation.",
       "known_limits": [
-        "absolute |S| unvalidated \u2014 openEMS referee pending",
-        "with enforce_passivity=True (default) the returned diagonal is a JOINT SVD-projected value, not the raw per-family measurement \u2014 changed from its unprojected value on the committed test fixture; read S_raw/passivity_correction for what was measured",
+        "absolute |S| unvalidated — openEMS referee pending",
+        "with enforce_passivity=True (default) the returned diagonal is a JOINT SVD-projected value, not the raw per-family measurement — on the committed test fixture it differs markedly from the unprojected value; read S_raw/passivity_correction for what was measured",
         "off-diagonal phase provisional (cross-family reference-plane mismatch)",
         "per-column power is an ALGEBRAIC IDENTITY on the flux channel and is not a passivity check; reciprocity is the only independent internal witness",
         "residual reciprocity disagreement traced to a driven-port diagonal; which diagonal is open (issue #313 wire port-cell vs the MSL analytic Z0 anchor)",
@@ -519,7 +519,7 @@
         "reciprocity is the only independent internal check; the method warns above reciprocity_tol (default 0.06) (rfx/sparams/mixed.py, tests/unit/sparams/test_mixed_port_sparam.py)",
         "absolute magnitude not compared with another solver; column power is an identity of the flux normalization, not a passivity check"
       ],
-      "validated_scope": "NONE \u2014 this is a diagnostic CALCULATION over the already-registered lumped/wire and microstrip_line port families, not a new port primitive and not a validated result. It is listed so the matrix does not read as 'mixed families are impossible in rfx', which the per-extractor limits elsewhere in this document would otherwise imply. Those per-extractor statements remain accurate: compute_msl_s_matrix, the lumped/wire scan driver, and the coaxial calculators each still reject foreign port families.",
+      "validated_scope": "NONE — this is a diagnostic CALCULATION over the already-registered lumped/wire and microstrip_line port families, not a new port primitive and not a validated result. It is listed so the matrix does not read as 'mixed families are impossible in rfx', which the per-extractor limits elsewhere in this document would otherwise imply. Those per-extractor statements remain accurate: compute_msl_s_matrix, the lumped/wire scan driver, and the coaxial calculators each still reject foreign port families.",
       "caveats": [
         "quote the preflight output and settling_db with any number from this lane",
         "a green passivity/column-power result here is structurally uninformative"
@@ -574,14 +574,15 @@
         "scripts/diagnostics/_coax_msl_transition_settled_run_logs/corrected_369367257614_attempt3b_x64-0_witnesses.json"
       ],
       "numeric_metrics": [
-        "the returned matrix is not passive: the microstrip side's power-wave normalization reads about three times the power a Poynting flux box measures on the same run; mechanism unresolved; refused by default (strict_passivity=True) (tests/unit/sparams/test_coax_msl_transition.py; run record scripts/diagnostics/_coax_msl_transition_settled_run_logs/)"
+        "the returned matrix is not passive: on the same run, a Poynting flux box measures about three times the microstrip-side net power the power-wave extraction reports; mechanism unresolved; refused by default (strict_passivity=True) (run record scripts/diagnostics/_coax_msl_transition_settled_run_logs/corrected_369367257614_attempt3b_x64-0_witnesses.json)"
       ],
       "validated_scope": "NONE -- a diagnostic CALCULATION over the already-registered coaxial_port and microstrip_line port families, not a new port primitive and not a validated result. Listed so the matrix does not read as 'a coax<->MSL transition is impossible in rfx'. Nothing from this lane is citable as a magnitude; the single-family extractors (compute_msl_s_matrix, the coax two-port and line-reflection lanes) carry their own, separate status.",
       "caveats": [
         "quote the preflight output and settling_db with any number from this lane",
         "the returned S is not passive on the corrected settled run -- read any magnitude from it as an extraction artifact, not as physics",
         "do not read the in-band gamma-vs-beta ratio as an all-clear for the extractor: it is a phase-constant witness, and the same record's A5 (FLOOR on the MSL side) and A2 (EXTRACTOR) verdicts stand against the amplitude split and the power normalization",
-        "do not read cond_a alone as a degeneracy witness on this lane -- use cond_a_equilibrated (per-drive amplitude scale dominates raw cond_a on a mixed-family lane)"
+        "do not read cond_a alone as a degeneracy witness on this lane -- use cond_a_equilibrated (per-drive amplitude scale dominates raw cond_a on a mixed-family lane)",
+        "readings from earlier attempts (the settled_run_369367252283_* and remeasure_* records in scripts/diagnostics/_coax_msl_transition_settled_run_logs/) were taken through instrument defects since fixed (a fixture that was a short, inverted wave-role labels, a microstrip fit window in the port's near field) and are withdrawn; do not cite them"
       ],
       "ad_traceable": "no",
       "ad_evidence": "not wired to the differentiable forward path (imperative only); no eps_scale-style channel exists for this leg"

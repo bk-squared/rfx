@@ -188,10 +188,9 @@ UNMAPPED_LANES_TODO: dict[str, str] = {
 # careless edit, which is exactly the silent-vacuous-pass class L4 closes).
 NUMBER_FREE_LANES: frozenset[str] = frozenset({
     # #1171 (2026-10-12): the JSON was trimmed to numbers with an in-repo
-    # witness. Floquet's diagnostic checks have no threshold committed in a
-    # test, and the coax-to-microstrip transition's readings live only in a
-    # run record the support matrix does not quote; both families state their
-    # status in words.
+    # witness. The thresholds in Floquet's tests bound synthetic inputs, and
+    # those in the transition's tests bound a different fixture, not the
+    # result the matrix describes; both families state their status in words.
     "add_floquet_port(...)",
     "add_coaxial_port(...) + add_msl_port(...) driven by compute_coax_msl_transition(...)",
 })

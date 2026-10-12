@@ -347,9 +347,9 @@ define an S-parameter port.
   low end of the band; the residual near the top of the band fits one effective
   reference impedance and is not characterized. The fixture cannot be refined
   (the port must bridge a one-cell gap), so its convergence is not shown.
-- A two-port line matched at both ends is checked against `S11 = 0` and
-  `|S21| = 1` (within 0.05), and the lumped and wire calculators give the same
-  complex matrix on the same cells (to 1e-6) (`tests/unit/ports/test_lumped_two_port_matched_line.py`).
+- A two-port line with a shunt port at each end is checked against its
+  closed form (`|S11|` within 0.05, `|S21|` within 0.01), and the lumped and
+  wire calculators give the same complex matrix on the same cells (to 1e-6) (`tests/unit/ports/test_lumped_two_port_matched_line.py`).
 - The extractor's algebra and its replay from stored voltages and currents are
   checked (`tests/unit/sparams/test_sparam.py`,
   `tests/unit/sparams/test_port_dump_replay.py`). Algebra and replay checks do
@@ -367,7 +367,7 @@ calculation.
 A feed spread along `extent`. Use `add_msl_port(...)` when the model is a
 distributed microstrip line.
 
-- The same matched-line closed form as the lumped port, the same matrix as
+- The same shunt-port line closed form as the lumped port, the same matrix as
   the lumped port on one cell (to 1e-6), and the same replay checks (`tests/unit/sparams/test_twoport_wire_port.py`,
   `tests/unit/sparams/test_wire_port_sparams_forward.py`).
 - Absolute calibration is limited by the feed model; a replay check is not a
@@ -479,12 +479,13 @@ line the calculator builds. Use `feed_impedance=` for the feed and `dut_impedanc
 `termination="matched"`. `probe_count` must be at least three and every plane
 must fit between the load and the source.
 
-- Checked against the closed form over 4–12 GHz for short, open, matched and
-  resistive loads at two line impedances (short and open held to `|Γ|` within
-  0.05 of 1), and against frozen data from another
-  solver for short and open (`tests/fixtures/coax_broad_e5/`,
-  `tests/fixtures/coax_broad_e4/`). This evidence was taken before 2.0 changed
-  the absorber to all three axes and was not taken again.
+- A short and an open are held to `|Γ|` within 0.05 of 1 on the current code
+  (`tests/unit/sparams/test_coaxial_line_reflection.py`).
+- Recorded fixtures compare it with the closed form over 4–12 GHz for short,
+  open, matched and resistive loads at two line impedances, and with frozen
+  data from another solver for short and open (`tests/fixtures/coax_broad_e5/`,
+  `tests/fixtures/coax_broad_e4/`). These were taken before 2.0 changed the
+  absorber to all three axes and were not taken again.
 - Use about four or more cells across the annulus; below 3.5 the result is
   reported as under-resolved.
 - Gradients through `eps_scale` are checked against finite differences
@@ -505,9 +506,11 @@ stays small; the four-cell rule above applies to transmission too.
 
 ### Floquet/Bloch and non-port observables
 
-`add_floquet_port(...)` has broadside modal bookkeeping, field-dump replay and
-diagnostic checks against the closed form for empty space and a homogeneous
-slab (`tests/unit/ports/test_floquet_s_params_contract.py`). These are not a
+`add_floquet_port(...)` has broadside modal bookkeeping, field-dump replay, and
+a test that recovers a planted reflection and transmission from synthetic waves
+(`tests/unit/ports/test_floquet_s_params_contract.py`); the comparisons with the
+closed form for empty space and a homogeneous slab are diagnostic scripts
+(`scripts/diagnostics/build_floquet_*_analytic_comparison.py`). These are not a
 comparison with RCWA or another full-wave solver, and there is no documented
 high-level Floquet S-parameter API. Treat the result as experimental. A graded `dz`
 and a plane wave are refused with it.
@@ -568,10 +571,12 @@ lumped or wire ports.
 ### Coax-to-microstrip transition — experimental, diagnostic only
 
 `compute_coax_msl_transition(...)` drives a coaxial port and a microstrip port
-in turn. The returned matrix is not passive: the microstrip side's power-wave
-normalization reads about three times the power that a Poynting flux box
-measures on the same run, and the mechanism is unresolved
-(`tests/unit/sparams/test_coax_msl_transition.py`). The calculator therefore
+in turn. The returned matrix is not passive: on the same run, a Poynting flux
+box measures about three times the microstrip-side power that the power-wave
+extraction reports, and the mechanism is unresolved (run record in
+`scripts/diagnostics/_coax_msl_transition_settled_run_logs/`; readings from
+earlier attempts in that directory were taken through instrument defects since
+fixed and must not be cited). The calculator therefore
 refuses the matrix by default (`strict_passivity=True` raises `ValueError`);
 `strict_passivity=False` returns it with a warning. Cross-family transitions
 are not pursued before 2.0. For a result you can report, use the single-family
