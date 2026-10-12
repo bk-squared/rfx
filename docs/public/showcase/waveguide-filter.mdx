@@ -47,15 +47,17 @@ stays inside the mask on all three. On the finest mesh the worst passband |S11| 
 
 ## How it was checked
 
-The witnesses below and their thresholds were fixed before any run, in §2.5 of the
+The checks below and their thresholds were fixed before any run, in §2.5 of the
 [pre-declaration](https://github.com/bk-squared/rfx/blob/main/docs/design_notes/20261004_showcase_lens_filter_predeclaration.md).
 
 - **Gradient against central differences** at the start: 4.8×10⁻³, 2.3×10⁻³ and
   9×10⁻⁵ on the three judged pixels.
-- **Gradient against a 1.5× longer record**: 1.6×10⁻⁶ at the start, 9.3×10⁻⁴ at the
-  final design, and below 2×10⁻³ at every iterate the loop shows.
-- **Settling**: the tail beyond the record adds less than 10⁻² to every frequency
-  read, for both drives, on every mesh.
+- **Gradient against a 1.5× longer simulation time**: 1.6×10⁻⁶ at the start,
+  9.3×10⁻⁴ at the final design, and below 2×10⁻³ at every iterate the loop shows.
+- **End of the simulation**: the response still arriving after the simulation ends
+  would change every frequency value read by less than 1 % in amplitude (−40 dB),
+  for both drives, on every mesh. rfx calls this check settling; CST's time-domain
+  solver instead stops on the decay of the total field energy.
 - **Power**: the insert is lossless; |S11|² + |S21|² stays within 0.98–1.01 on every
   mesh.
 - **Three meshes**: from a/36 to a/54 to a/72 the worst passband |S11| moves 0.15 then

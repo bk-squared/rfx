@@ -30,8 +30,8 @@ gradient descent through a time-domain solve lands there.
 
 ## What happened
 
-From the geometric-ladder start (1.861 / 3.464 / 6.447) the layer permittivities
-settle at 1.922 / 4.670 / 4.707 against the optimum 1.943 / 4.652 / 4.720,
+From a geometric-progression start (1.861 / 3.464 / 6.447) the layer permittivities
+end at 1.922 / 4.670 / 4.707 against the optimum 1.943 / 4.652 / 4.720,
 although the closed-form optimizer started from a different point. Evaluated
 with the transfer matrix, the design's band-mean |R|² is 0.03434 against the
 optimum's 0.03430, −14.6 dB, 3.0 dB below the start. FDTD and
@@ -41,7 +41,7 @@ frequencies the cost uses (8.20–11.78 GHz).
 ## How the gradient was checked
 
 Against central differences at the start to 5.5×10⁻⁴, and against a 1.5× longer
-record to 4.8×10⁻⁴.
+simulation time to 4.8×10⁻⁴.
 
 <p data-rfx="note">A one-dimensional stack at normal incidence; it shows the optimizer and the gradient work together, not the accuracy of a 3-D radome.</p>
 

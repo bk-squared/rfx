@@ -59,10 +59,12 @@ before any run.
 
 - **Gradient against central differences** at the start: 6.5×10⁻⁴ and 4.9×10⁻³ on
   the two judged pixels.
-- **Gradient against a 1.5× longer record**: 3.3×10⁻⁵ at the start and 1.5×10⁻⁴
-  at the final design.
-- **Settling**: the tail beyond the record adds less than 10⁻² to every frequency
-  read, on every mesh.
+- **Gradient against a 1.5× longer simulation time**: 3.3×10⁻⁵ at the start and
+  1.5×10⁻⁴ at the final design.
+- **End of the simulation**: the response still arriving after the simulation ends
+  would change every frequency value read by less than 1 % in amplitude (−40 dB),
+  on every mesh. rfx calls this check settling; CST's time-domain solver instead
+  stops on the decay of the total field energy.
 - **Three meshes**: the designed lens moves 0.07–0.13 dB from 1.5 to 1.0 mm and
   0.03–0.05 dB from 1.0 to 0.75 mm, falling monotonically. Part of that trend is the
   ground plate's solved size converging to its drawn 30 mm.

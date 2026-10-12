@@ -7,8 +7,9 @@ sidebar:
 
 A gradient is only as useful as the simulation it differentiates. These two
 boards are solved by rfx and by openEMS; each comparison is a test in the
-repository that judges it on a converged mesh ladder, and the curves here were
-computed at the same commit and on the same mesh as the tests' judged rung.
+repository that first shows the result converging as the mesh is refined (a grid
+convergence study) and then judges it on one of those meshes. The curves here
+were computed at the same commit and on the mesh the test judges.
 
 ## Probe-fed patch on RT/Duroid 5880
 
@@ -47,4 +48,4 @@ agrees within 0.23 dB once the notches are aligned (bar 2 dB).
   <li><a href="https://remilab.cnu.ac.kr/share/f3a80981ec4b/forward-notch/result.json">result.json</a></li>
 </ul>
 
-<p data-rfx="note">Each comparison holds for its board, mesh, band and observable. The stepped-impedance low-pass filter in the repository is not shown: its uniform-mesh ladder has not converged yet.</p>
+<p data-rfx="note">Each comparison holds for its board, mesh, band and observable. The stepped-impedance low-pass filter in the repository is not shown: its result has not yet converged over the uniform meshes tried.</p>
