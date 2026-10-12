@@ -194,8 +194,14 @@ def test_run_series_rlc_byte_identity():
     peak, so the golden still has something to hold. Not tighter: the same run
     in float64 fields differs from this float32 golden by 1.1e-7 (#1163
     review), so a cross-platform float32 reorder can reach that scale; the
-    replaced update departs from this golden by more than 1e-5 from step 1
-    and by more than 1e-3 from step 108.
+    replaced update departed from the golden of that time by more than 1e-5
+    from step 1 and by more than 1e-3 from step 108.
+
+    Re-run 2026-10-13 against the driven golden and the current tolerance
+    (issue 1668): the pre-#1163 explicit series update, reinstated, is red.
+    It leaves the tolerance at step 6 (|d| > 1e-5 of the golden's peak),
+    passes 1e-3 of the peak at step 25, has 1494 of 1500 samples outside
+    and grows to 7.5e3x the golden's peak; the current update reads 0.
     """
     # #1373: measured factor 2.3958724e7 equals predicted Cb/dV (2.3958726e7).
     # Regenerated 2026-10-12 (issue 1668): the pulse took bandwidth=f0*0.5 in
