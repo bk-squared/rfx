@@ -19,6 +19,8 @@ This is equivalent to scaling Cb by 1/w, as described by Dey-Mittra.
 
 from __future__ import annotations
 
+import warnings
+
 import numpy as np
 import jax.numpy as jnp
 
@@ -50,6 +52,19 @@ def _signed_distance_cylinder(x, y, z, center, radius, height, axis="z"):
         d_axial = np.maximum(abs(x - center[0]) - height / 2, 0)
     return np.where(d_radial > 0, np.sqrt(d_radial**2 + d_axial**2),
                     np.maximum(d_radial, d_axial))
+
+
+CONFORMAL_MODEL_ADVISORY = (
+    "conformal PEC realizes each cut E edge as permittivity eps/w (w = the edge's open "
+    "fraction, down to 0.1), a high-permittivity skin about one cell thick that makes a "
+    "metal body electrically larger; on a PEC sphere it is further from the converged "
+    "answer than the staircase at every mesh measured. Do not use it for accuracy until "
+    "the Dey-Mittra update lands (docs/guides/known_limitations.md, tracker #1651).")
+
+
+def warn_conformal_model():
+    """Say once per run that the conformal-PEC model enlarges a body (#1651)."""
+    warnings.warn(CONFORMAL_MODEL_ADVISORY, UserWarning, stacklevel=3)
 
 
 # ---------------------------------------------------------------------------

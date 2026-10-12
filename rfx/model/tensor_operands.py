@@ -82,7 +82,9 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
         from rfx.geometry.conformal import (
             compute_conformal_weights_sdf,
             clamp_conformal_weights,
+            warn_conformal_model,
         )
+        warn_conformal_model()
         w_ex, w_ey, w_ez = compute_conformal_weights_sdf(grid, pec_shapes)
         w_ex, w_ey, w_ez = clamp_conformal_weights(w_ex, w_ey, w_ez, conformal_min_weight)
         conformal_weights = (w_ex, w_ey, w_ez)
