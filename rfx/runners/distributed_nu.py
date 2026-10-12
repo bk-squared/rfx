@@ -41,7 +41,7 @@ from __future__ import annotations
 from functools import partial
 from types import SimpleNamespace
 
-from rfx.boundaries.cpml import apply_cpml_e, apply_cpml_h
+from rfx.boundaries.cpml import apply_cpml_e, apply_cpml_h, cpml_grid_metadata
 from rfx.runners._distributed_common import (
     init_cpml_slabs, cpml_slab_frame, cpml_absorbing_faces, cpml_h_materials,
 )
@@ -1328,7 +1328,7 @@ def run_nonuniform_distributed_pec(
     # ------------------------------------------------------------------
     # Phase 2C: shmap-wrapped CPML helpers (no-op when CPML disabled)
     # ------------------------------------------------------------------
-    global_grid = sharded_grid.global_grid
+    global_grid = cpml_grid_metadata(sharded_grid.global_grid)
 
     # The face profiles are dynamic jit inputs; only the Python cell sizes
     # remain static, as required by the local kernels' float conversions.

@@ -1,11 +1,49 @@
 """Slab operands and ordered write-back for the single-device CPML update."""
 
+from typing import NamedTuple
+
 import jax
 import jax.numpy as jnp
 
 from rfx.core.yee import h_neighbor
 
 ALL_FACES = tuple(f"{axis}_{side}" for axis in "xyz" for side in ("lo", "hi"))
+
+
+class CPMLGridMetadata(NamedTuple):
+    """Global static geometry; array operands belong to the shard inputs."""
+    cpml_layers: int
+    dt: float
+    shape: tuple
+    cpml_axes: str
+    periodic_axes: str
+    boundary_depths: tuple
+    pad_x_lo: int
+    pad_x_hi: int
+    pad_y_lo: int
+    pad_y_hi: int
+    pad_z_lo: int
+    pad_z_hi: int
+    face_widths: tuple
+
+    def boundary_cell(self, axis, side):
+        return self.face_widths[2 * "xyz".index(axis) + (side == "hi")]
+
+
+def cpml_grid_metadata(grid):
+    """Keep global extents/depths without closing over unused mesh arrays.
+
+    Distributed H supplies cached local component means, so h_components
+    never reads grid widths. CPMLAxisParams supplies profile/face operands
+    through the loop arguments. The legacy profile uses static face widths.
+    """
+    from rfx.boundaries.depths import grid_face_depths
+    return CPMLGridMetadata(
+        grid.cpml_layers, float(grid.dt), tuple(grid.shape),
+        getattr(grid, "cpml_axes", "xyz"), getattr(grid, "periodic_axes", ""),
+        grid_face_depths(grid),
+        *(getattr(grid, f"pad_{axis}_{side}", None) for axis in "xyz" for side in ("lo", "hi")),
+        tuple(grid.boundary_cell(axis, side) for axis in "xyz" for side in ("lo", "hi")))
 
 
 def selected_faces(axes, faces):

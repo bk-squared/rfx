@@ -34,7 +34,7 @@ from __future__ import annotations
 from functools import partial
 from types import SimpleNamespace
 
-from rfx.boundaries.cpml import apply_cpml_e, apply_cpml_h
+from rfx.boundaries.cpml import apply_cpml_e, apply_cpml_h, cpml_grid_metadata
 from rfx.runners._distributed_common import (
     init_cpml_slabs, cpml_slab_frame, cpml_absorbing_faces, cpml_h_materials,
 )
@@ -1135,6 +1135,8 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     # Step function (operates on sharded arrays)
     # ------------------------------------------------------------------
 
+    cpml_grid = cpml_grid_metadata(grid)
+
     def step_fn_cpml(
         carry, xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
         cpml_params_arg, pec_mask_arg, e_materials,
@@ -1171,7 +1173,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         st, cpml_st = _apply_cpml_h_shmap(
             st, cpml_params_arg, cpml_st, n_cpml, dt, dx,
             mesh, n_devices, ghost=ghost, mu_r=materials_arg.mu_r,
-            pad_x=pad_x, ranks=ranks, grid=grid)
+            pad_x=pad_x, ranks=ranks, grid=cpml_grid)
 
         # 3. Exchange the live H ghosts (entry validates interval == 1)
         st = _exchange(_exchange_h_ghosts_shmap, ("hx", "hy", "hz"), st, _step_idx, ranks=ranks)
@@ -1195,7 +1197,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
             mesh, n_devices, ghost=ghost, materials=materials_arg,
             pad_x=pad_x,
             e_slab=(nx_per, nx), e_materials=e_materials,
-            ranks=ranks, grid=grid,
+            ranks=ranks, grid=cpml_grid,
             e_curl_coeff=absorber)
 
         st = _inject_sources_shmap(st, src_vals, ranks=ranks)

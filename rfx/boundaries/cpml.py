@@ -18,7 +18,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.core.yee import EPS_0, MU_0, si_value_eps_r_grad, h_neighbor
-from rfx.boundaries._cpml_slab import ALL_FACES, selected_faces, slab_neighbor, apply_ordered, face_windows, store_psi
+from rfx.boundaries._cpml_slab import ALL_FACES, selected_faces, slab_neighbor, apply_ordered, face_windows, store_psi, cpml_grid_metadata
 from rfx.core.jax_utils import is_tracer
 
 
