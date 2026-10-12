@@ -177,13 +177,6 @@ def test_msl_and_mixed_calculators_share_l_and_shift():
     assert np.asarray(msl.reference_plane_offsets_m)[0] > 0.0
     np.testing.assert_array_equal(np.asarray(mixed.shift_beta)[1],
                                   np.asarray(msl.shift_beta)[0])
-    # Before the (default) passivity projection, S and S_wave differ only in
-    # the flux-overridden off-diagonal magnitudes, so their phases agree:
-    # both are referred to the same plane. Unshifted S_wave would differ by
-    # beta*L = 0.03-0.12 rad here.
-    s = np.asarray(mixed.S if mixed.S_raw is None else mixed.S_raw)
-    sw = np.asarray(mixed.S_wave)
-    np.testing.assert_allclose(np.angle(s / sw), 0.0, atol=1e-5)
     # The MSL entry itself, against a probe-0 value formed here: the lane's
     # MSL driven diagonal is the V*I split b/a = (V - Z I)/(V + Z I) of its
     # own probe-0 record (run 1 drives the MSL port), times D^2 with D from
@@ -192,6 +185,7 @@ def test_msl_and_mixed_calculators_share_l_and_shift():
     # shift fails here even if S_wave is shifted.
     from tests.unit.sparams.test_mixed_port_sparam import _EPS_R as er_m
     from tests.unit.sparams.test_mixed_port_sparam import _H_SUB, _W_TRACE, _DX as dx_m
+    s = np.asarray(mixed.S if mixed.S_raw is None else mixed.S_raw)
     v0 = np.asarray(diag["v0_msl"])[1, 0]
     i0 = np.asarray(diag["i_msl"])[1, 0]
     z = float(np.asarray(diag["z0_hj_msl"])[0])
@@ -203,6 +197,13 @@ def test_msl_and_mixed_calculators_share_l_and_shift():
     expected = np.exp(-2j * beta * length) * gamma0
     np.testing.assert_allclose(s[1, 1], expected, rtol=0,
                                atol=2e-5 * float(np.max(np.abs(gamma0))))
+    # Before the (default) passivity projection, S and S_wave differ only in
+    # the flux-overridden off-diagonal magnitudes, so their phases agree:
+    # both are referred to the same plane. Unshifted S_wave would differ by
+    # beta*L = 0.03-0.12 rad here.
+    s = np.asarray(mixed.S if mixed.S_raw is None else mixed.S_raw)
+    sw = np.asarray(mixed.S_wave)
+    np.testing.assert_allclose(np.angle(s / sw), 0.0, atol=1e-5)
 
 
 def test_graded_feed_offset_is_the_realized_cell_sum():
