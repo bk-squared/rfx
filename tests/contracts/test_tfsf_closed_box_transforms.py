@@ -47,12 +47,13 @@ def make_observable(scene):
     grid = sim._build_grid()
     waveform = "differentiated_gaussian"
     if scene != "default":
-        # Independent definition of the default pulse, sampled on this grid's
-        # dt by both forward and the incident replay. It is fixed in p.
+        # A pulse that differs from the built-in one (delay 3.5 tau, width
+        # 1.1 tau), so a transform that silently ran the built-in pulse instead
+        # would change every custom row. Fixed in p.
         tau = 1 / (np.pi * 10e9 * .5)
         waveform = CustomWaveform(
-            lambda t: -2 * ((t - 3 * tau) / tau)
-            * jnp.exp(-((t - 3 * tau) / tau) ** 2))
+            lambda t: -2 * ((t - 3.5 * tau) / (1.1 * tau))
+            * jnp.exp(-((t - 3.5 * tau) / (1.1 * tau)) ** 2))
     sim.add_tfsf_source(f0=10e9, bandwidth=.5, polarization="ez",
                         direction="+x", margin=4, closed_box=closed_box,
                         waveform=waveform)
@@ -145,7 +146,7 @@ def assert_summed(actual, expected):
     ("default", transform) for transform in
     ("value_and_grad", "jvp", "jit", "checkpoint", "vmap", "scan")
 ] + [("closed-custom", "jit"),
-     pytest.param("closed-custom", "value_and_grad", marks=pytest.mark.slow)],
+     ("closed-custom", "value_and_grad")],
     indirect=["observable"], scope="module")
 def test_summed_observables(observable, plain, transform, record_property):
     _, objective = observable
@@ -173,8 +174,7 @@ def test_summed_observables(observable, plain, transform, record_property):
 
 
 @pytest.mark.parametrize("observable", [
-    "default", pytest.param("closed-custom", marks=pytest.mark.slow),
-    pytest.param("slab-custom", marks=pytest.mark.slow)],
+    "default", "closed-custom", "slab-custom"],
                          indirect=True, scope="module")
 def test_gradient_matches_resolved_finite_difference(observable, record_property):
     p0 = P0
@@ -239,12 +239,8 @@ def plain_gradients(observable):
                      for p in (P0, 1.01 * P0)])
 
 
-# jit(grad) stays always-on: it catches a gradient lost only under an outer
-# trace. The other four reverse-mode rows exceed the serial CPU budget.
 @pytest.mark.parametrize("transform", [
-    "jit-grad",
-    *(pytest.param(t, marks=pytest.mark.slow)
-      for t in ("value_and_grad", "jvp", "grad-checkpoint", "vmap-grad"))])
+    "jit-grad", "value_and_grad", "jvp", "grad-checkpoint", "vmap-grad"])
 def test_returned_gradients(observable, plain_gradients, transform, record_property):
     _, objective = observable
     scalar = lambda p: objective(p)[0]
