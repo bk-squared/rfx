@@ -4,6 +4,20 @@ import jax
 import jax.numpy as jnp
 
 
+def effective_chunk(n, chunk):
+    """The segment length a remat over ``n`` steps uses, or None (no remat).
+
+    A chunk above n/2 leaves one full segment and a tail; XLA then keeps the
+    whole per-step tape (measured: chunk 61 of 120 steps used the memory of
+    no remat). Such a chunk is clamped to n // 2, so there are always at
+    least two full segments. Only memory and compute depend on it, never a
+    result.
+    """
+    if chunk is None or not (0 < chunk < n):
+        return None
+    return min(int(chunk), max(1, n // 2))
+
+
 def segmented_scan(step_fn, carry, xs, chunk, scan=jax.lax.scan):
     """Scan a pytree record in checkpointed chunks and a real partial tail.
 
@@ -12,7 +26,8 @@ def segmented_scan(step_fn, carry, xs, chunk, scan=jax.lax.scan):
     delegates directly to ``scan`` without adding a checkpoint wrapper.
     """
     n = jax.tree_util.tree_leaves(xs)[0].shape[0]
-    if chunk is None or not (0 < chunk < n):
+    chunk = effective_chunk(n, chunk)
+    if chunk is None:
         return scan(step_fn, carry, xs)
 
     m, r = divmod(n, chunk)

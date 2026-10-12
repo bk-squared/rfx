@@ -301,13 +301,16 @@ class _AdMemoryMixin:
                 + forward_bytes + ntff_bytes
             )
         elif checkpoint_every_i is not None:
-            total_segments = math.ceil(n_steps_i / checkpoint_every_i)
-            inactive_segments = n_warmup_i // checkpoint_every_i
-            segmented_active_segments = total_segments - inactive_segments
+            # The graded runners segment only the optimized steps after the
+            # warm-up, with the chunk rfx.stepping.remat.effective_chunk uses.
+            from rfx.stepping.remat import effective_chunk
+            n_opt_i = n_steps_i - n_warmup_i
+            chunk_i = effective_chunk(n_opt_i, checkpoint_every_i) or checkpoint_every_i
+            segmented_active_segments = math.ceil(n_opt_i / chunk_i)
             # A real partial tail keeps ceil(n/chunk) boundary carries;
             # the live rematerialized tape is still at most one full
             # chunk (capped at the active reverse-mode step count).
-            segmented_live_tape_steps = min(checkpoint_every_i, active_steps)
+            segmented_live_tape_steps = min(chunk_i, active_steps)
             ad_seg_bytes = (
                 (2 * segmented_active_segments + segmented_live_tape_steps)
                 * active_tape_field_bytes

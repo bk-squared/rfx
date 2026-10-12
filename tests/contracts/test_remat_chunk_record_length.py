@@ -104,7 +104,8 @@ def test_forward_record_length(records, chunk, quantity, record_property):
                        peak=peak, difference=delta, peak_ulps=delta/ulp)
     record_property('measurement', json.dumps(measurement))
     print(json.dumps(measurement))
-    bar = 9 * STEPS * ulp if quantity in ('probe', 'E', 'H') else 1e-4 * peak
+    # Declared before the run: the same steps in the same order, so bitwise.
+    bar = 0.0
     assert delta <= bar, measurement
 
 
@@ -133,3 +134,14 @@ def test_s11_gradient_record_length(record_property):
 
 def test_distributed_s11_gradient_not_reached():
     pytest.skip('distributed NU forward refuses wire ports; S11 gradient is not reached')
+
+
+def test_a_chunk_above_half_the_record_still_leaves_two_full_segments():
+    """One full segment plus a tail keeps the whole per-step tape (no memory
+    saved), so the effective chunk always leaves at least two."""
+    from rfx.stepping.remat import effective_chunk
+    for n in range(2, 300):
+        for chunk in range(1, n):
+            used = effective_chunk(n, chunk)
+            assert 1 <= used <= chunk and n // used >= 2, (n, chunk, used)
+    assert effective_chunk(60, None) is None and effective_chunk(60, 60) is None
