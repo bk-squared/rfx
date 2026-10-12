@@ -1623,7 +1623,8 @@ class MSLSMatrixResult:
         analytic Hammerstad-Jensen reference R of each port, then shifted
         to the feed plane: ``S[i, j] = D_i S_probe0[i, j] D_j`` with
         ``D_p = exp(-1j * shift_beta[p] * reference_plane_offsets_m[p])``
-        (phase only). Bracketing H
+        (phase only; ``shift_beta`` is the closed-form Hammerstad-Jensen +
+        Kirschning-Jansen β, never the fitted ``beta``). Bracketing H
         samples are interpolated to this E-node plane using physical
         coordinates, with the temporal leapfrog offset corrected separately.
         The fitted ``Z0`` below is a diagnostic, not the reference used to form S.
@@ -1762,10 +1763,9 @@ class MSLSMatrixResult:
         Hammerstad-Jensen guess, or the refined β landed within half a
         grid step of a window limit.  ``Z0[p, k]`` (and ``beta[k]`` for
         ``p = 0``) at such a bin is the scan-window limit, NOT a
-        measurement — do not quote it. On such a bin the feed-plane shift of
-        S uses the Hammerstad-Jensen beta instead (``shift_beta_closed_form``).
-        The fitted Z0 does not enter S11/S21, which use the analytic Z0
-        anchor and measured V/I. This separation
+        measurement — do not quote it. Fitted Z0/beta do not enter S11/S21,
+        which use the analytic Z0 anchor and measured V/I (the feed-plane
+        shift uses the closed-form ``shift_beta``). This separation
         does not certify the V/I or reference impedance: shared record
         contamination can affect both the fit and S. The
         own-drive diagonal is exactly the provenance of every fitted
@@ -1790,14 +1790,12 @@ class MSLSMatrixResult:
     sigma_max_excess: np.ndarray | None = None
     settling_witness: tuple | None = None
     diagnostics: tuple[Diagnostic, ...] = ()
-    # Feed-plane shift (MSL-PLANE.md decision record 5): see ``S``.
+    # Feed-plane shift (MSL-PLANE.md decision records 5 and 7): see ``S``.
     # reference_plane_offsets_m (n_ports,) m: realized feed-to-probe-0
-    # distance L. shift_beta (n_ports, n_freqs) rad/m, real: own-drive
-    # fitted beta, or Hammerstad-Jensen where shift_beta_closed_form.
-    # ``shift_beta_closed_form`` is None while tracing.
+    # distance L. shift_beta (n_ports, n_freqs) rad/m, real: the closed
+    # form (Hammerstad-Jensen eps_eff(0) + Kirschning-Jansen dispersion).
     reference_plane_offsets_m: np.ndarray | None = None
     shift_beta: np.ndarray | None = None
-    shift_beta_closed_form: np.ndarray | None = None
 
 
 @dataclass
@@ -1856,9 +1854,8 @@ class MixedSMatrixResult:
         :attr:`MSLSMatrixResult.beta_railed` (issue #681).  In this lane
         the N-probe fit is DIAGNOSTIC ONLY (the |Zc| deviation warning);
         a True bin means that diagnostic's β/|Zc| are the scan-window
-        limit, not a measurement, and the feed-plane shift of the MSL
-        rows/columns used the Hammerstad-Jensen beta there. The fitted Z0
-        does not enter S, but this does not certify the shared measured V/I.
+        limit, not a measurement. Fitted beta/Z0 do not enter S, but
+        this does not certify their shared measured V/I.
     S_raw / passivity_correction :
         As in :class:`MSLSMatrixResult` — set only when the passivity
         projection touched at least one bin.
@@ -1884,12 +1881,11 @@ class MixedSMatrixResult:
     settling_witness: tuple | None = None
     diagnostics: tuple[Diagnostic, ...] = ()
     # Feed-plane shift of the MSL rows/columns (MSL-PLANE.md decision
-    # record 5), all ports in ``port_names`` order: 0 offset, 0 beta and
-    # False for lumped/wire ports (D = 1). Applied after the flux
+    # records 5 and 7), all ports in ``port_names`` order: 0 offset and
+    # 0 beta for lumped/wire ports (D = 1). Applied after the flux
     # magnitude override (phase only); ``S_wave`` is NOT shifted.
     reference_plane_offsets_m: np.ndarray | None = None
     shift_beta: np.ndarray | None = None
-    shift_beta_closed_form: np.ndarray | None = None
 
 
 @dataclass

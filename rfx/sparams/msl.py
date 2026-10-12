@@ -168,17 +168,15 @@ def compute_msl_s_matrix(
     Ampere-loop current. Production S is formed from this first-plane
     V/I and the analytic Hammerstad-Jensen reference impedance. The
     N-probe least-squares fit of
-    ``V_n = α e^{-jβx_n} + γ e^{+jβx_n}`` supplies the reported Z0
-    diagnostic (which does not enter S) and the fitted beta, which
-    enters S only through the reference-plane shift: S is formed at
-    each port's first probe plane and then referred back to the
+    ``V_n = α e^{-jβx_n} + γ e^{+jβx_n}`` supplies only the reported
+    beta/Z0 diagnostics. Those fitted values do not enter S. S is formed
+    at each port's first probe plane and then referred back to the
     DECLARED FEED PLANE, ``S_feed[i, j] = D_i S[i, j] D_j`` with
     ``D_p = exp(-j β_p L_p)``, ``L_p`` the realized feed-to-probe-0
-    distance (``reference_plane_offsets_m``) and ``β_p`` the port's
-    own-drive fitted β, or the Hammerstad-Jensen β on bins where the fit
-    railed at its scan window (``shift_beta``,
-    ``shift_beta_closed_form``). β is real, so the shift moves phase
-    only. The two bracketing H planes are linearly
+    distance (``reference_plane_offsets_m``) and ``β_p`` the closed-form
+    β (Hammerstad-Jensen ε_eff(0) with Kirschning-Jansen dispersion, from
+    the port's width, height and substrate εr; ``shift_beta``). β is
+    real, so the shift moves phase only. The two bracketing H planes are linearly
     interpolated to the E-node using their physical coordinates, then
     the leapfrog temporal offset is corrected. Comparing different
     observation offsets still requires accounting for reference planes
@@ -484,6 +482,7 @@ def compute_msl_s_matrix(
             periodic=self._periodic_flags())
     beta0_per_port: list[np.ndarray] = []
     z0_hj_per_port: list[float] = []
+    eps_r_ref_per_port: list[float] = []
     for p_idx, pe in enumerate(entries):
         meta = port_idx_meta[p_idx]
         if pe.eps_r_sub is not None:
@@ -494,6 +493,7 @@ def compute_msl_s_matrix(
                 pe.direction, meta["i_feed"], meta["j_centre"], k_mid
             )
             eps_r_ref = float(np.asarray(_msl_materials.eps_r[eps_cell]))
+        eps_r_ref_per_port.append(eps_r_ref)
         z0_hj, eps_eff_hj = hammerstad_jensen_z0_eps_eff(
             pe.width, pe.height, eps_r_ref
         )
@@ -549,9 +549,6 @@ def compute_msl_s_matrix(
         S = jnp.zeros((n_ports, n_ports, n_freqs_used), dtype=_complex_dtype)
         Z0_per_run = jnp.zeros((n_ports, n_freqs_used), dtype=_complex_dtype)
         beta_first = jnp.zeros(n_freqs_used, dtype=_complex_dtype)
-        # Own-drive fitted beta of EVERY port: it sets the plane shift
-        # from probe 0 to the declared feed plane (rfx.sparams._msl_planes).
-        beta_fit_per_port: list = [None] * n_ports
         # N-probe extractor (issue #80 Fix C): store all N voltage
         # probe phasors. n_probes may differ per port — store the
         # max width and zero-pad shorter ports.
@@ -944,7 +941,6 @@ def compute_msl_s_matrix(
                     S = S.at[driven, driven, :].set(jnp.asarray(b_ref_d / (a_fwd_d + 1e-30), dtype=_complex_dtype))
                     Z0_per_run = Z0_per_run.at[driven, :].set(z0_fit)
                     alpha_d = a_fwd_d * power_scales[driven]
-                    beta_fit_per_port[driven] = res_p["beta"]
                     if driven == 0:
                         beta_first = jnp.asarray(res_p["beta"], dtype=_complex_dtype)
 
@@ -1057,12 +1053,14 @@ def compute_msl_s_matrix(
         # ---- Reference plane: probe 0 -> declared feed plane ----------
         # S above is referred to each port's probe-0 plane. One resolver
         # (rfx.sparams._msl_planes, shared with the mixed calculator)
-        # gives the realized feed-to-probe-0 distance L_p and the shift
-        # beta per bin (own-drive fitted beta; Hammerstad-Jensen where the
-        # fit railed), and S_feed[i, j] = D_i S[i, j] D_j with
-        # D = exp(-j beta L). beta is real, so |S|, singular values and
-        # cond(A) are unchanged. Applied before the dump and before the
-        # opt-in passivity projection, so S_raw carries it too.
+        # gives the realized feed-to-probe-0 distance L_p and the closed-
+        # form shift beta per bin (Hammerstad-Jensen eps_eff(0) with
+        # Kirschning-Jansen dispersion, from width, height and the eps_r
+        # resolved above; never the fitted beta), and
+        # S_feed[i, j] = D_i S[i, j] D_j with D = exp(-j beta L). beta is
+        # real, so |S|, singular values and cond(A) are unchanged. Applied
+        # before the dump and before the opt-in passivity projection, so
+        # S_raw carries it too.
         from rfx.sparams._msl_planes import (
             resolve_msl_planes as _resolve_msl_planes,
             apply_feed_plane_shift as _apply_feed_plane_shift,
@@ -1071,19 +1069,14 @@ def compute_msl_s_matrix(
             grid, msl_ports,
             [int(pe.n_probe_offset) for pe in entries],
             [xs[0] for xs in probe_xs],
-            beta_fit_per_port,
-            beta0_per_port,
-            [raw_beta_railed[p, p, :] for p in range(n_ports)],
+            [float(pe.width) for pe in entries],
+            [float(pe.height) for pe in entries],
+            eps_r_ref_per_port,
+            freqs_arr,
         )
         S = _apply_feed_plane_shift(
             S, msl_planes.offsets_m, msl_planes.shift_beta,
         ).astype(_complex_dtype)
-        shift_beta_closed_form = None
-        try:
-            shift_beta_closed_form = np.asarray(
-                jax.lax.stop_gradient(msl_planes.closed_form)).astype(bool)
-        except (jax.errors.ConcretizationTypeError, TypeError):
-            shift_beta_closed_form = None
 
         # Preserve the existing relative low-signal screen and S exactly.
         # Small passive-port wave pairs may be a true transmission zero;
@@ -1127,9 +1120,9 @@ def compute_msl_s_matrix(
         # carries. A railed bin's Z0/beta are the ±35% scan-window
         # limit, not a measurement — used to be returned silently
         # pinned (repro: eps_eff 6.30 line reported as 4.60 at
-        # 0.974·rail with zero warnings). On such a bin the feed-plane
-        # shift uses the Hammerstad-Jensen beta instead of the fit
-        # (rfx.sparams._msl_planes); the warner says so.
+        # 0.974·rail with zero warnings). S11/S21 never ride on the
+        # fitted beta. That dataflow separation does not rule out
+        # contamination of the V/I shared with the fit.
         beta_railed = None
         try:
             beta_railed = np.stack([
@@ -1161,8 +1154,7 @@ def compute_msl_s_matrix(
         # still ride on the retained N-probe fit, which can be noisy
         # per-frequency on coarse meshes, so a Z0 deviation from
         # analytic Hammerstad-Jensen is reported as a SEPARATE, softer
-        # caveat. The fitted Z0 does not enter S (the fitted beta only
-        # sets the feed-plane phase shift), but the V/I
+        # caveat. The fitted numbers do not enter S, but the V/I
         # records and analytic reference still need their own checks.
         import warnings as _w
 
@@ -1252,11 +1244,9 @@ def compute_msl_s_matrix(
                     "board (h_sub/W snapped to the lattice; see "
                     "sim.fidelity_report()) differs from the "
                     "declared one — not necessarily an extraction "
-                    "fault (issue #752). The fitted Z0 is not used in "
+                    "fault (issue #752). Fitted Z0/beta are not used in "
                     "S11/S21, which use measured V/I and the analytic "
-                    "Z0 anchor; the fitted beta enters S only as the "
-                    "phase shift from probe 0 to the feed plane. This "
-                    "does not certify those inputs."
+                    "Z0 anchor; this does not certify those inputs."
                     + _clearance_clause +
                     " Check settling_db, probe_clearance, beta_railed and "
                     "observation-plane sensitivity before interpreting S.",
@@ -1318,9 +1308,9 @@ def compute_msl_s_matrix(
                     "referred to the declared feed planes: "
                     "S_feed[i, j] = D_i S[i, j] D_j with "
                     "D_p = exp(-j beta_p L_p), L_p the realized "
-                    "feed-to-probe-0 distance and beta_p the own-drive "
-                    "fitted beta (Hammerstad-Jensen where the fit railed; "
-                    "see feed_plane_shift), "
+                    "feed-to-probe-0 distance and beta_p the closed-form "
+                    "Hammerstad-Jensen + Kirschning-Jansen beta (see "
+                    "feed_plane_shift; the fitted beta does not enter S), "
                     "with the modal voltage "
                     "spanning ground to the rasterized trace node (#511) "
                     "-- see production_smatrix_assembly for which rule "
@@ -1335,9 +1325,10 @@ def compute_msl_s_matrix(
                         float(x) for x in msl_planes.offsets_m],
                     "shift_beta_rad_per_m": np.asarray(
                         msl_planes.shift_beta, dtype=np.float64).tolist(),
-                    "shift_beta_closed_form": (
-                        None if shift_beta_closed_form is None
-                        else shift_beta_closed_form.tolist()),
+                    "shift_beta_source": (
+                        "closed form: (2 pi f / c) sqrt(eps_eff(f)), "
+                        "Hammerstad-Jensen eps_eff(0) with Kirschning-"
+                        "Jansen dispersion"),
                 },
                 "grid": {
                     "dx_m": float(grid.dx),
@@ -1430,8 +1421,7 @@ def compute_msl_s_matrix(
             probe_clearance=probe_clearance,
             reference_impedances=np.asarray(z0_hj_per_port, dtype=np.float64),
             reference_plane_offsets_m=np.asarray(msl_planes.offsets_m),
-            shift_beta=msl_planes.shift_beta,
-            shift_beta_closed_form=shift_beta_closed_form,
+            shift_beta=np.asarray(msl_planes.shift_beta),
         )
         _warn_if_ringdown_truncated(
             settling_db_runs,

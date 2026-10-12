@@ -6,7 +6,7 @@ in. The S calculators form S at probe 0; this module moves it back to the
 declared feed plane, so that S11 is the reflection seen at the port the user
 placed. Both ``compute_msl_s_matrix`` and the MSL rows/columns of
 ``compute_mixed_s_matrix`` call it; neither keeps its own expression
-(measurement plan MSL-PLANE.md, decision record 5, D1-D3).
+(measurement plan MSL-PLANE.md, decision records 5 and 7).
 
 Per MSL port ``p``:
 
@@ -15,14 +15,19 @@ Per MSL port ``p``:
   ``i_p`` the feed index exactly as the probe ladder resolves it, ``s`` the
   direction sign). On a graded mesh this is the sum of the realized cells,
   not ``offset * dx``.
-* the shift beta per bin: the real part of the port's own-drive fitted beta,
-  or the Hammerstad-Jensen beta where that fit railed at its scan window.
+* the shift beta per bin, always the closed form:
+  ``beta_p(f) = (2 pi f / c) * sqrt(eps_eff_KJ(f))`` -- the
+  Kirschning-Jansen dispersion (:func:`kirschning_jansen_eps_eff`) on top of
+  rfx's Hammerstad-Jensen ``eps_eff(0)``, from the port's width, height and
+  the substrate eps_r the calculator resolved. The fitted beta never enters
+  S; it stays a reported diagnostic.
 * ``D_p = exp(-j * beta_p * L_p)`` and ``S_feed[i, j] = D_i * S[i, j] * D_j``.
 
 The sign follows the code's DFT convention as measured (the phase of S21
 falls with line length), so moving the plane outward by ``L`` multiplies by
 ``exp(-j*beta*L)`` per port. beta is real, so ``|D_p| = 1``: magnitudes,
-singular values (passivity) and cond(A) do not change.
+singular values (passivity) and cond(A) do not change. beta depends only on
+Python floats, so no gradient flows through it.
 """
 
 from __future__ import annotations
@@ -33,17 +38,58 @@ import jax.numpy as jnp
 import numpy as np
 
 
+def kirschning_jansen_eps_eff(eps_eff0: float, width: float, height: float,
+                              eps_r: float, freqs) -> np.ndarray:
+    """Dispersive microstrip effective permittivity eps_eff(f).
+
+    M. Kirschning and R. H. Jansen, "Accurate model for effective dielectric
+    constant of microstrip with validity up to millimetre-wave frequencies",
+    Electron. Lett. 18(6):272-274, 1982; as given in B. C. Wadell,
+    Transmission Line Design Handbook, Artech House 1991, section 3.5.1:
+
+        fn = f[GHz] * h[mm],  u = w / h
+        P1 = 0.27488 + (0.6315 + 0.525 / (1 + 0.0157 fn)^20) u
+             - 0.065683 exp(-8.7513 u)
+        P2 = 0.33622 (1 - exp(-0.03442 eps_r))
+        P3 = 0.0363 exp(-4.6 u) (1 - exp(-(fn / 38.7)^4.97))
+        P4 = 1 + 2.751 (1 - exp(-(eps_r / 15.916)^8))
+        P  = P1 P2 ((0.1844 + P3 P4) fn)^1.5763
+        eps_eff(f) = eps_r - (eps_r - eps_eff0) / (1 + P)
+
+    ``eps_eff0`` is the quasi-static value (rfx uses its Hammerstad-Jensen
+    form, :func:`rfx.sources.msl_eigenmode.hammerstad_jensen_z0_eps_eff`).
+    Lengths in metres, ``freqs`` in Hz.
+    """
+    f = np.asarray(freqs, dtype=np.float64)
+    fn = (f * 1e-9) * (float(height) * 1e3)
+    u = float(width) / float(height)
+    er = float(eps_r)
+    p1 = (0.27488 + (0.6315 + 0.525 / (1.0 + 0.0157 * fn) ** 20) * u
+          - 0.065683 * np.exp(-8.7513 * u))
+    p2 = 0.33622 * (1.0 - np.exp(-0.03442 * er))
+    p3 = 0.0363 * np.exp(-4.6 * u) * (1.0 - np.exp(-(fn / 38.7) ** 4.97))
+    p4 = 1.0 + 2.751 * (1.0 - np.exp(-(er / 15.916) ** 8))
+    p = p1 * p2 * ((0.1844 + p3 * p4) * fn) ** 1.5763
+    return er - (er - float(eps_eff0)) / (1.0 + p)
+
+
+def msl_closed_form_beta(width: float, height: float, eps_r: float,
+                         freqs) -> np.ndarray:
+    """``beta(f) = (2 pi f / c) sqrt(eps_eff_KJ(f))`` in rad/m (float64)."""
+    from rfx.core.yee import EPS_0, MU_0
+    from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff
+    _, eps_eff0 = hammerstad_jensen_z0_eps_eff(width, height, eps_r)
+    c0 = 1.0 / float(np.sqrt(MU_0 * EPS_0))
+    f = np.asarray(freqs, dtype=np.float64)
+    eps_f = kirschning_jansen_eps_eff(eps_eff0, width, height, eps_r, f)
+    return 2.0 * np.pi * f * np.sqrt(eps_f) / c0
+
+
 @dataclass(frozen=True)
 class MSLPlaneShift:
-    """Resolved feed-plane shift for the MSL ports of one calculator call.
-
-    ``offsets_m`` is a NumPy float64 array (geometry, never traced);
-    ``shift_beta`` (rad/m, real) and ``closed_form`` follow the fit's
-    dataflow and may be JAX tracers on a differentiable channel.
-    """
-    offsets_m: np.ndarray        # (n_msl,)
-    shift_beta: jnp.ndarray      # (n_msl, n_freqs) real
-    closed_form: jnp.ndarray     # (n_msl, n_freqs) bool
+    """Resolved feed-plane shift for the MSL ports of one calculator call."""
+    offsets_m: np.ndarray        # (n_msl,) realized feed-to-probe-0 distance
+    shift_beta: np.ndarray       # (n_msl, n_freqs) rad/m, closed form
 
 
 def msl_feed_to_probe0_distance(grid, port, n_probe_offset: int,
@@ -88,8 +134,8 @@ def msl_feed_to_probe0_distance(grid, port, n_probe_offset: int,
 
 
 def resolve_msl_planes(grid, ports, n_probe_offsets, probe0_coordinates,
-                       beta_fit, beta_closed_form, railed) -> MSLPlaneShift:
-    """Resolve L, the shift beta and the closed-form mask per MSL port.
+                       widths, heights, eps_r, freqs) -> MSLPlaneShift:
+    """Resolve L and the closed-form shift beta per MSL port.
 
     Parameters
     ----------
@@ -97,27 +143,20 @@ def resolve_msl_planes(grid, ports, n_probe_offsets, probe0_coordinates,
     ports : sequence of :class:`~rfx.sources.msl_port.MSLPort`.
     n_probe_offsets : resolved ``n_probe_offset`` per port (cells).
     probe0_coordinates : the calculator's ``probe_xs[p][0]`` per port.
-    beta_fit : per port, the own-drive fitted beta (n_freqs,), any dtype.
-    beta_closed_form : per port, the Hammerstad-Jensen beta (n_freqs,) the
-        calculator already formed (``beta0_per_port``).
-    railed : per port, the own-drive ``beta_railed`` (n_freqs,) bool.
+    widths, heights : the port's declared trace width and substrate height.
+    eps_r : the substrate eps_r the calculator resolved per port
+        (``eps_r_sub`` or the rasterized cell under the trace).
+    freqs : (n_freqs,) Hz.
     """
     offsets = np.asarray([
         msl_feed_to_probe0_distance(grid, port, off, x0)
         for port, off, x0 in zip(ports, n_probe_offsets, probe0_coordinates)
     ], dtype=np.float64)
-    rows = []
-    masks = []
-    for b_fit, b_hj, r in zip(beta_fit, beta_closed_form, railed):
-        mask = jnp.asarray(r, dtype=bool)
-        fitted = jnp.real(jnp.asarray(b_fit))
-        closed = jnp.asarray(np.asarray(b_hj, dtype=np.float64),
-                             dtype=fitted.dtype)
-        rows.append(jnp.where(mask, closed, fitted))
-        masks.append(mask)
-    return MSLPlaneShift(offsets_m=offsets,
-                         shift_beta=jnp.stack(rows),
-                         closed_form=jnp.stack(masks))
+    beta = np.stack([
+        msl_closed_form_beta(w, h, er, freqs)
+        for w, h, er in zip(widths, heights, eps_r)
+    ])
+    return MSLPlaneShift(offsets_m=offsets, shift_beta=beta)
 
 
 def apply_feed_plane_shift(S, offsets_m, shift_beta):
@@ -125,25 +164,21 @@ def apply_feed_plane_shift(S, offsets_m, shift_beta):
 
     ``offsets_m`` (n_ports,) and ``shift_beta`` (n_ports, n_freqs) cover
     every port of ``S``; a port with ``L = 0`` (a lumped/wire port in the
-    mixed calculator) has ``D = 1`` exactly.
+    mixed calculator) has ``D = 1`` exactly. D is formed in float64 and cast
+    to S's dtype.
     """
     S = jnp.asarray(S)
-    real_dtype = jnp.real(S).dtype
-    L = jnp.asarray(np.asarray(offsets_m, dtype=np.float64),
-                    dtype=real_dtype)
-    beta = jnp.asarray(shift_beta).astype(real_dtype)
-    d = jnp.exp(-1j * (beta * L[:, None])).astype(S.dtype)
+    phase = (np.asarray(shift_beta, dtype=np.float64)
+             * np.asarray(offsets_m, dtype=np.float64)[:, None])
+    d = jnp.asarray(np.exp(-1j * phase)).astype(S.dtype)
     return d[:, None, :] * S * d[None, :, :]
 
 
-def full_port_shift(n_ports, msl_port_indices, plane: MSLPlaneShift,
-                    n_freqs):
+def full_port_shift(n_ports, msl_port_indices, plane: MSLPlaneShift):
     """Embed the MSL rows of ``plane`` into all-port arrays (others L = 0)."""
+    idx = list(msl_port_indices)
     offsets = np.zeros(n_ports, dtype=np.float64)
-    offsets[list(msl_port_indices)] = plane.offsets_m
-    beta = jnp.zeros((n_ports, n_freqs), dtype=plane.shift_beta.dtype)
-    mask = jnp.zeros((n_ports, n_freqs), dtype=bool)
-    idx = jnp.asarray(list(msl_port_indices), dtype=jnp.int32)
-    beta = beta.at[idx].set(plane.shift_beta)
-    mask = mask.at[idx].set(plane.closed_form)
-    return offsets, beta, mask
+    offsets[idx] = plane.offsets_m
+    beta = np.zeros((n_ports, plane.shift_beta.shape[1]), dtype=np.float64)
+    beta[idx] = plane.shift_beta
+    return offsets, beta

@@ -2,17 +2,19 @@
 
 The port launches at the feed plane the user declares and measures V/I at
 probe 0, ``n_probe_offset`` cells further in. S is formed at probe 0 and
-shifted back by ``D_p = exp(-j beta_p L_p)`` per port (one resolver,
-``rfx.sparams._msl_planes``, for both the MSL and the mixed calculator;
-measurement plan MSL-PLANE.md, decision record 5).
+shifted back by ``D_p = exp(-j beta_p L_p)`` per port, beta_p the closed
+form (Hammerstad-Jensen eps_eff(0) with Kirschning-Jansen dispersion) on
+every bin (one resolver, ``rfx.sparams._msl_planes``, for both the MSL and
+the mixed calculator; measurement plan MSL-PLANE.md, decision records 5
+and 7).
 
 (a) Moving probe 0 must not move S at the feed plane: the same settled thru
     solved with two ``n_probe_offset`` values agrees there within the
-    declared bar |d arg| <= 2 * 0.01 * beta * |dL| (the shift's own 1 %
-    beta error), while S at probe 0 differs by about 2 * beta * dL.
-(b) On a bin where the beta fit rails, the shift uses the Hammerstad-Jensen
-    beta, formed here from the closed form and the realized node
-    coordinates, not from the resolver; the fitted beta then cannot move S.
+    declared bar |d arg| <= 2 * 0.01 * beta * |dL| (a 1 % beta error),
+    while S at probe 0 differs by about 2 * beta * dL.
+(b) The applied shift equals exp(-j beta_KJ L) per port, beta_KJ formed in
+    this file from the formula written out below (not imported) and L from
+    the grid's realized node coordinates.
 (c) The MSL and mixed calculators give the same L and the same shift for
     the same port.
 
@@ -95,9 +97,8 @@ def _table(ra, rb):
     return dl, rows
 
 
-def _non_railed(ra, rb):
-    return ~(np.asarray(ra.shift_beta_closed_form).any(axis=0)
-             | np.asarray(rb.shift_beta_closed_form).any(axis=0))
+def _all_bins(ra, rb):
+    return np.ones(np.asarray(ra.freqs).shape, dtype=bool)
 
 
 def _write_table(res, rows):
@@ -117,7 +118,6 @@ def test_a_records_are_settled_and_realized(two_offsets):
     ra, rb = two_offsets
     for r in (ra, rb):
         assert np.all(np.asarray(r.settling_db) < -60.0), r.settling_db
-    assert _non_railed(ra, rb).sum() >= 6, "too few non-railed bins to judge"
     dl, _ = _table(ra, rb)
     np.testing.assert_allclose(dl, (_OFFSETS[0] - _OFFSETS[1]) * 2e-4,
                                rtol=1e-6)
@@ -129,7 +129,7 @@ def test_a_feed_plane_s21_does_not_move_with_probe_0(two_offsets):
     S11 of this thru is ~1e-9 at both offsets, so its phase is not read.
     """
     ra, rb = two_offsets
-    ok = _non_railed(ra, rb)
+    ok = _all_bins(ra, rb)
     _, rows = _table(ra, rb)
     _write_table(ra, rows)
     for key in ((1, 0), (0, 1)):
@@ -149,7 +149,7 @@ def test_a_probe_0_s21_moves_by_about_two_beta_dl(two_offsets):
     ~4 beta dL instead of ~0.
     """
     ra, rb = two_offsets
-    ok = _non_railed(ra, rb)
+    ok = _all_bins(ra, rb)
     _, rows = _table(ra, rb)
     for key in ((1, 0), (0, 1)):
         r = rows[key]
@@ -159,12 +159,27 @@ def test_a_probe_0_s21_moves_by_about_two_beta_dl(two_offsets):
             f"rad, expected about +{r['shift'][ok]} rad")
 
 
-def _hj_beta(freqs, width, height, eps_r):
-    from rfx.core.yee import EPS_0, MU_0
-    from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff
-    _, eps_eff = hammerstad_jensen_z0_eps_eff(width, height, eps_r)
-    c0 = 1.0 / float(np.sqrt(MU_0 * EPS_0))
-    return 2.0 * np.pi * np.asarray(freqs, dtype=np.float64) * np.sqrt(eps_eff) / c0
+def _kj_beta(freqs, w, h, er):
+    """beta = (2 pi f / c) sqrt(eps_eff(f)), written out here on purpose.
+
+    eps_eff(0): rfx's simplified Hammerstad-Jensen form
+    (eps_r + 1)/2 + (eps_r - 1)/2 (1 + 12 h/w)^-0.5.
+    Dispersion: Kirschning & Jansen, Electron. Lett. 18(6):272-274, 1982
+    (Wadell, Transmission Line Design Handbook, sec. 3.5.1), fn in GHz*mm.
+    """
+    f = np.asarray(freqs, dtype=np.float64)
+    u = w / h
+    e0 = (er + 1) / 2 + (er - 1) / 2 * (1 + 12 / u) ** -0.5
+    fn = f / 1e9 * h * 1e3
+    p1 = 0.27488 + (0.6315 + 0.525 / (1 + 0.0157 * fn) ** 20) * u \
+        - 0.065683 * np.exp(-8.7513 * u)
+    p2 = 0.33622 * (1 - np.exp(-0.03442 * er))
+    p3 = 0.0363 * np.exp(-4.6 * u) * (1 - np.exp(-(fn / 38.7) ** 4.97))
+    p4 = 1 + 2.751 * (1 - np.exp(-(er / 15.916) ** 8))
+    pf = p1 * p2 * ((0.1844 + p3 * p4) * fn) ** 1.5763
+    eps_f = er - (er - e0) / (1 + pf)
+    c0 = 299792458.0
+    return 2 * np.pi * f * np.sqrt(eps_f) / c0
 
 
 def _realized_offset(sim, x_feed, sign, n_cells):
@@ -214,51 +229,26 @@ def test_shift_is_applied_with_the_returned_fields(monkeypatch):
                                atol=2e-6 * np.max(np.abs(s_in)))
 
 
-def test_b_railed_bins_use_the_closed_form_beta(monkeypatch):
-    """Every bin forced railed: shift beta = Hammerstad-Jensen, L realized.
-
-    The expected D is formed here from the closed form and the grid's own
-    node coordinates; then a fitted beta 20 % off must not move S at all.
-    """
-    from rfx.probes import msl_wave_decomp as wd
-    real = wd._estimate_beta
-
-    def railed(*args, **kwargs):
-        beta, _ = real(*args, **kwargs)
-        return beta, jnp.asarray(True)
-
-    def railed_and_wrong(*args, **kwargs):
-        beta, _ = real(*args, **kwargs)
-        return 1.2 * beta, jnp.asarray(True)
-
-    def solve(estimator):
-        monkeypatch.setattr(wd, "_estimate_beta", estimator)
-        seen = _recording_shift(monkeypatch)
-        sim = _thru(20)
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            res = sim.compute_msl_s_matrix(freqs=_FREQS, num_periods=_SHORT)
-        return sim, res, seen[-1]
-
-    sim, res, s_in = solve(railed)
-    assert np.all(np.asarray(res.shift_beta_closed_form))
-    assert np.all(np.asarray(res.beta_railed))
-    beta_hj = _hj_beta(np.asarray(res.freqs), _W, _H, _EPS_R)
+def test_b_shift_is_the_closed_form_kj_beta_over_the_realized_offset(
+        monkeypatch):
+    """D_p = exp(-j beta_KJ L_p), both formed in this file."""
+    seen = _recording_shift(monkeypatch)
+    sim = _thru(20)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        res = sim.compute_msl_s_matrix(freqs=_FREQS, num_periods=_SHORT)
+    s_in = seen[-1]
+    beta = _kj_beta(np.asarray(res.freqs), _W, _H, _EPS_R)
     np.testing.assert_allclose(np.asarray(res.shift_beta, dtype=np.float64),
-                               np.stack([beta_hj, beta_hj]), rtol=1e-6)
+                               np.stack([beta, beta]), rtol=1e-6)
     lengths = np.asarray([_realized_offset(sim, 0.002, +1, 20),
                           _realized_offset(sim, 0.010, -1, 20)])
     np.testing.assert_allclose(np.asarray(res.reference_plane_offsets_m),
                                lengths, rtol=0, atol=1e-12)
-    d = np.exp(-1j * beta_hj[None, :] * lengths[:, None])
+    d = np.exp(-1j * beta[None, :] * lengths[:, None])
     np.testing.assert_allclose(np.asarray(res.S),
                                d[:, None, :] * s_in * d[None, :, :],
                                rtol=2e-5, atol=2e-6 * np.max(np.abs(s_in)))
-
-    _, res_wrong, _ = solve(railed_and_wrong)
-    assert not np.allclose(np.asarray(res_wrong.beta), np.asarray(res.beta),
-                           rtol=1e-3), "the patched estimator did not reach beta"
-    np.testing.assert_array_equal(np.asarray(res_wrong.S), np.asarray(res.S))
 
 
 def _mixed_board(with_feed):
@@ -274,23 +264,13 @@ def _mixed_board(with_feed):
     return sim
 
 
-def test_c_msl_and_mixed_calculators_share_l_and_shift(monkeypatch):
-    """Same MSL port, same board: the two calculators give the same L and,
-    on bins where both use the closed form, the same shift beta.
+def test_c_msl_and_mixed_calculators_share_l_and_shift():
+    """Same MSL port, same board: the two calculators give the same L and
+    the same shift beta.
 
     ``compute_msl_s_matrix`` refuses a model carrying ``add_port``, so the
-    MSL-only twin is the same board without the wire feed. On fitted bins
-    the two shift betas come from different field solutions (the feed
-    changes the field at the probes) and are not compared here.
+    MSL-only twin is the same board without the wire feed.
     """
-    from rfx.probes import msl_wave_decomp as wd
-    real = wd._estimate_beta
-
-    def railed(*args, **kwargs):
-        beta, _ = real(*args, **kwargs)
-        return beta, jnp.asarray(True)
-
-    monkeypatch.setattr(wd, "_estimate_beta", railed)
     freqs = np.linspace(1e9, 4e9, 5)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -306,7 +286,6 @@ def test_c_msl_and_mixed_calculators_share_l_and_shift(monkeypatch):
     assert np.asarray(msl.reference_plane_offsets_m)[0] > 0.0
     np.testing.assert_array_equal(np.asarray(mixed.shift_beta)[1],
                                   np.asarray(msl.shift_beta)[0])
-    assert np.all(np.asarray(mixed.shift_beta_closed_form)[1])
 
 
 def test_graded_feed_offset_is_the_realized_cell_sum():

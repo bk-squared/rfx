@@ -262,9 +262,8 @@ def _warn_msl_beta_scan_railed(
     ``beta_railed`` is (n_ports, n_freqs) bool, True where a port's
     own-drive N-probe β scan failed to bracket its optimum — the fitted
     ``beta``/``Z0`` at that bin are the ±35% scan-window limit, not a
-    measurement, and the feed-plane shift used the closed-form β there.
-    Mirrors ``_warn_msl_wave_split_unreliable``: silent while tracing
-    (caller concretizes), one warning per extraction.
+    measurement.  Mirrors ``_warn_msl_wave_split_unreliable``: silent
+    while tracing (caller concretizes), one warning per extraction.
     """
     railed = np.asarray(beta_railed, dtype=bool)
     affected_freqs = np.flatnonzero(np.any(railed, axis=0))
@@ -290,17 +289,19 @@ def _warn_msl_beta_scan_railed(
         f"{affected_freqs.size} bins in [{f1:.4f}, {f2:.4f}] GHz at "
         f"port(s) {ports} minimized the fit residual at the edge of the "
         "±35% scan around the analytic Hammerstad-Jensen guess — the "
-        "fitted Z0/beta at those bins are the scan limit, NOT a "
+        "reported Z0/beta at those bins are the scan limit, NOT a "
         f"measurement (issue #681). Railed bins per port: {per_port}. "
-        "On those bins the closed-form Hammerstad-Jensen beta was used "
-        "for the phase shift that refers S from probe 0 to the declared "
-        "feed plane (shift_beta_closed_form marks them). A railed fit "
-        "usually means the line is too short or the probe ladder too "
-        "coarse for the fit (check settling_db and the reliable mask "
-        "too). If the substrate eps_r is wrong (wrong eps_r_sub, or the "
-        "substrate not detected under the port), the closed-form beta "
-        "and the Z0 anchor of S are wrong as well. Check the result's "
-        "beta_railed mask before quoting Z0 or beta.",
+        "Fitted Z0/beta are not used in S11/S21, "
+        "which use measured V/I and the analytic Z0 anchor; this does not "
+        "certify those inputs. S is shifted from probe 0 to the declared "
+        "feed plane with the closed-form beta (Hammerstad-Jensen with "
+        "Kirschning-Jansen dispersion), not the fitted one. Common causes: "
+        "a record too short or a probe ladder too coarse for the fit "
+        "(check settling_db and the reliable mask), or the real eps_eff "
+        "is far from the HJ estimate (wrong eps_r_sub / substrate not "
+        "detected under the port) -- then the closed-form beta and the Z0 "
+        "anchor of S are wrong as well. Check the result's beta_railed mask "
+        "before quoting Z0 or beta.",
         stacklevel=2,
     )
 
