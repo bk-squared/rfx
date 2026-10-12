@@ -7,18 +7,19 @@ The remnant's discrete-Poisson self-energy neither decays nor is absorbed
 by CPML, so it floors the ``until_decay`` interior-energy criterion.
 
 Locks, in order:
-1. ``GaussianPulse``'s new ``cutoff`` parameter is byte-identical to the
-   historical waveform at the default ``cutoff=3.0`` (formula replica
-   pinned from main @ 19a8063).
-2. ``cutoff=4.5`` reduces ``|sum s*dt|`` by the predicted factor
-   ``e^-(4.5^2 - 3^2)`` within 10% (scoped x64 — the target sum is ~1e-19
-   and float32 accumulation noise would swamp it; NO module-level x64).
+1-2. ``GaussianPulse`` (issue 1668) starts at zero, leaves no DC on the
+   float32 table at cutoff 3, 4.5 and 6, differs from the pulse before
+   issue 1668 by at most 1.7e-3 of its amplitude, and its float32 table
+   matches a float64 evaluation of the closed form within 2e-6 relative
+   over the first half tau. (Until issue 1668: byte identity with the
+   pre-cutoff formula, and the e^-(c^2) law of its DC.)
 3. The run()-path ``until_decay`` DC-floor warning fires exactly per the
    predeclared four-case matrix (issue #388 measured rel_DC values at the
    demo dt = 1.2 ps: 6.0e-5 / ~e-10 / 0.68 / 4.0e-4 vs threshold 1e-3).
-4. The ``unresolved_pulse`` preflight advisory (issue #386) fires on the
-   absolute-Hz-bandwidth footgun and stays silent on the demo-class
-   fractional-bandwidth config.
+4. A pulse given its bandwidth in Hz samples to zero at every step and is
+   refused (issue 1668); the ``unresolved_pulse`` advisory (issue #386)
+   fires on the TF/SF absolute-Hz footgun and stays silent on the
+   demo-class fractional-bandwidth configs.
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ import math
 import warnings
 
 import numpy as np
+import jax
 import jax.numpy as jnp
 import pytest
 
@@ -36,72 +38,92 @@ DEMO_DT = 1.2e-12  # the issue-#388 measurement dt (patch_antenna_demo scale)
 
 
 # ---------------------------------------------------------------------------
-# 1. cutoff default byte-identity
+# 1-2. GaussianPulse properties (issue 1668)
+#
+# The expectations come from the closed form evaluated here in float64 NumPy,
+# never from GaussianPulse itself:
+#   s(t) = A [-2x e^(-x^2) - e^(-c^2) e^(-u^2) (2c + (4c^2-2)u - 4cu^2 - 4c^2u^3)]
+#   for t >= 0 and 0 before, x = (t - c tau)/tau, u = t/tau, tau = 1/(pi f0 B).
+# The pulse before issue 1668 was the first term alone, A (-2x) e^(-x^2).
 # ---------------------------------------------------------------------------
 
-def _main_gaussian_pulse(t, f0, bandwidth, amplitude=1.0):
-    """Replica of main@19a8063 GaussianPulse.__call__, op-for-op.
+_F0, _BW = 2.2e9, 1.2
+_TAU = 1.0 / (math.pi * _F0 * _BW)
+_CUTOFFS = (3.0, 4.5, 6.0)
 
-    tau = 1/(f0*bandwidth*pi); t0 = 3.0*tau (the pre-cutoff hardcoded
-    value, rfx/sources/sources.py:76-88 on main); then
-    amplitude * (-2*arg) * exp(-arg^2) with the identical jnp ops.
+
+def _pulse64(t, cutoff, amplitude=1.0):
+    t = np.asarray(t, dtype=np.float64)
+    x, u, c = t / _TAU - cutoff, t / _TAU, cutoff
+    onset = np.exp(-c * c - u * u) * (
+        2 * c + (4 * c * c - 2) * u - 4 * c * u * u - 4 * c * c * u ** 3)
+    return np.where(t >= 0, amplitude * (-2 * x * np.exp(-x * x) - onset), 0.0)
+
+
+def _old_pulse64(t, cutoff, amplitude=1.0):
+    x = np.asarray(t, dtype=np.float64) / _TAU - cutoff
+    return amplitude * (-2 * x * np.exp(-x * x))
+
+
+def _table(pulse, n):
+    """The float32 table a drive samples: ``pulse(float32(n) * dt)``."""
+    times = jnp.arange(n, dtype=jnp.float32) * DEMO_DT
+    values = np.asarray(jax.vmap(pulse)(times))
+    assert values.dtype == np.float32
+    return values.astype(np.float64), np.asarray(times, dtype=np.float64)
+
+
+@pytest.mark.parametrize("cutoff", _CUTOFFS)
+def test_gaussian_pulse_starts_at_zero(cutoff):
+    """s(0) = 0 exactly, evaluated as a scalar and as a table."""
+    pulse = GaussianPulse(f0=_F0, bandwidth=_BW, cutoff=cutoff)
+    assert float(pulse(0.0)) == 0.0
+    for n in (1, 4):
+        assert _table(pulse, n)[0][0] == 0.0
+
+
+@pytest.mark.parametrize("cutoff", _CUTOFFS)
+def test_gaussian_pulse_float32_table_has_no_dc(cutoff):
+    """|sum s(t_n) dt| / tau <= 1e-7 on the float32 table over the whole pulse.
+
+    The old pulse left e^(-c^2) tau there (1.2e-4 at c = 3), which a soft
+    source deposits as a static charge.
     """
-    tau = 1.0 / (f0 * bandwidth * math.pi)
-    t0 = 3.0 * tau
-    arg = (t - t0) / tau
-    return amplitude * (-2.0 * arg) * jnp.exp(-(arg**2))
+    pulse = GaussianPulse(f0=_F0, bandwidth=_BW, cutoff=cutoff)
+    n = int(math.ceil((cutoff + 6.0) * _TAU / DEMO_DT)) + 1
+    values, _ = _table(pulse, n)
+    dc = abs(float(np.sum(values))) * DEMO_DT / _TAU
+    assert dc <= 1e-7, f"cutoff {cutoff}: |sum s dt|/tau = {dc:.3e}"
 
 
-def test_cutoff_default_byte_identity():
-    """Default cutoff=3.0 reproduces main's waveform bit-for-bit."""
-    t = jnp.asarray(np.arange(10_000) * DEMO_DT)
-    pulse = GaussianPulse(f0=2.2e9, bandwidth=1.2)
-
-    assert pulse.cutoff == 3.0
-    # t0 must be the exact same float product main computed (3.0 * tau).
-    assert pulse.t0 == 3.0 * pulse.tau
-
-    got = np.asarray(pulse(t))
-    want = np.asarray(_main_gaussian_pulse(t, 2.2e9, 1.2))
-    assert np.array_equal(got, want), (
-        "GaussianPulse default-cutoff waveform drifted from main's values"
-    )
-
-    # Explicit cutoff=3.0 is the same object semantics as the default.
-    explicit = np.asarray(GaussianPulse(f0=2.2e9, bandwidth=1.2, cutoff=3.0)(t))
-    assert np.array_equal(got, explicit)
+@pytest.mark.parametrize("cutoff", _CUTOFFS)
+def test_gaussian_pulse_changes_the_old_pulse_by_at_most_1p7e_3(cutoff):
+    """max |s - s_old| <= 1.7e-3 A over the whole pulse (A = 2.5 here)."""
+    amplitude = 2.5
+    pulse = GaussianPulse(f0=_F0, bandwidth=_BW, cutoff=cutoff,
+                          amplitude=amplitude)
+    n = int(math.ceil((cutoff + 6.0) * _TAU / DEMO_DT)) + 1
+    values, times = _table(pulse, n)
+    change = np.max(np.abs(values - _old_pulse64(times, cutoff, amplitude)))
+    assert change <= 1.7e-3 * amplitude, (
+        f"cutoff {cutoff}: max |s - s_old| = {change / amplitude:.3e} A")
 
 
-# ---------------------------------------------------------------------------
-# 2. cutoff=4.5 cuts the deposited-DC integral by e^-(4.5^2 - 3^2)
-# ---------------------------------------------------------------------------
-
-def test_cutoff_45_reduces_deposited_dc_by_predicted_factor():
-    """|sum s*dt| ratio (cutoff 4.5 vs 3) matches e^-11.25 within 10%.
-
-    x64 is scoped to this test (jax.experimental.enable_x64 context):
-    the cutoff=4.5 sum is ~1e-19 while individual samples are O(1), so a
-    float32 accumulation would be pure rounding noise. Never enable x64
-    at module level — it is process-global at pytest collection.
-    """
-    from tests._x64_compat import enable_x64
-
-    with enable_x64():
-        t = jnp.arange(50_000, dtype=jnp.float64) * DEMO_DT
-        s3 = np.asarray(GaussianPulse(f0=2.2e9, bandwidth=1.2)(t))
-        s45 = np.asarray(
-            GaussianPulse(f0=2.2e9, bandwidth=1.2, cutoff=4.5)(t)
-        )
-
-    s_int_3 = abs(float(np.sum(s3))) * DEMO_DT
-    s_int_45 = abs(float(np.sum(s45))) * DEMO_DT
-    assert s_int_3 > 0.0
-
-    measured_ratio = s_int_45 / s_int_3
-    predicted_ratio = math.exp(-(4.5**2 - 3.0**2))  # ~1.3e-5, ~5 decades
-    assert abs(measured_ratio / predicted_ratio - 1.0) < 0.10, (
-        f"measured {measured_ratio:.4e} vs predicted {predicted_ratio:.4e}"
-    )
+@pytest.mark.parametrize("cutoff", _CUTOFFS)
+def test_gaussian_pulse_float32_table_matches_float64_near_the_start(cutoff):
+    """Over u < 1/2 the float32 table is within 2e-6 of the float64 closed
+    form at the same times, relative to it, sample by sample (t = 0 is the
+    zero of the previous test)."""
+    pulse = GaussianPulse(f0=_F0, bandwidth=_BW, cutoff=cutoff)
+    n = int(math.ceil(0.5 * _TAU / DEMO_DT))
+    values, times = _table(pulse, n)
+    want = _pulse64(times, cutoff)
+    rel = np.abs(values[1:] - want[1:]) / np.abs(want[1:])
+    worst = int(np.argmax(rel)) + 1
+    assert rel.max() <= 2e-6, (
+        f"cutoff {cutoff}: relative error {rel.max():.3e} at u = "
+        f"{times[worst] / _TAU:.3f} (float32 {values[worst]:.6e}, "
+        f"float64 {want[worst]:.6e})")
 
 
 # ---------------------------------------------------------------------------
