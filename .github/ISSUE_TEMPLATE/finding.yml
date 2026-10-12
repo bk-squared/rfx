@@ -77,6 +77,7 @@ body:
         - "lane:plan"
         - "lane:research"
         - "lane:performance"
+        - "lane:conductors"
     validations:
       required: true
 
