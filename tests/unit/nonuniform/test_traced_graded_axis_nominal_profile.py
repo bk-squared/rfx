@@ -241,3 +241,31 @@ def test_e_non_finite_non_positive_traced_or_unknown_values_are_refused():
 
     with pytest.raises(ValueError, match=r"nominal_profiles\['x'\] is a JAX tracer"):
         jax.jvp(_go, (jnp.float32(0.0),), (jnp.float32(1.0),))
+
+
+def test_f_the_padded_nominal_widths_index_like_the_grids_own_widths():
+    """``nominal_cells(grid, axis, padded=True)`` is read by callers that
+    index cells by full-grid index (the wire-port radius stamp). It must have
+    the length and indexing of the grid's own width array: compare it with the
+    float64 widths the CONCRETE build of the same profile carries."""
+    from rfx.model.graded_admission import nominal_cells
+    concrete = make_nonuniform_grid((LX, N_Y * DX), np.full(N_Z, DX), DX, CPML,
+                                    dx_profile=PROF)
+    seen = {}
+
+    def traced(delta):
+        grid = make_nonuniform_grid((LX, N_Y * DX), np.full(N_Z, DX), DX, CPML,
+                                    dx_profile=_prof(delta),
+                                    nominal_profiles={"x": PROF})
+        seen["x"] = nominal_cells(grid, "x", padded=True)
+        seen["interior"] = nominal_cells(grid, "x")
+        seen["y"] = nominal_cells(grid, "y", padded=True)
+        seen["n"] = grid.shape[0]
+        return jnp.sum(grid.dx_arr)
+
+    jax.jvp(traced, (jnp.float32(0.0),), (jnp.float32(1.0),))
+    assert seen["x"].shape == (seen["n"],) == (concrete.shape[0],)
+    np.testing.assert_array_equal(seen["x"], np.asarray(concrete.dx_arr_f64))
+    np.testing.assert_array_equal(seen["interior"], PROF)
+    assert seen["y"] is None                      # y is not traced
+    assert nominal_cells(concrete, "x", padded=True) is None

@@ -144,3 +144,29 @@ def admit_nominal_profiles(nominal_profiles, profiles, domain=None):
                     "the nominal profile must describe that same domain.")
         out[key] = widths
     return out or None
+
+
+def nominal_cells(grid, axis, padded: bool = False):
+    """The caller's declared nominal widths of a traced ``axis``, or None.
+
+    The one reader of ``NonUniformGrid.nominal_cells``: None when the axis is
+    not traced or no ``nominal_profiles=`` entry was declared for it (read the
+    grid's own widths there). ``padded=False`` gives the interior widths as
+    declared; ``padded=True`` gives float64 widths with the SAME indexing and
+    length as the grid's own width array on that axis (``grid.dx_arr`` /
+    ``dy_arr`` / ``dz``: CPML pad cells of the boundary width and the trailing
+    bounding cell), built by the grid builder's own padding.
+    """
+    from rfx.model.graded_grid import (
+        _append_bounding_node, _axis_name, _pad_profile)
+    ax, _n, pad_lo, pad_hi = grid._axis_layout(axis)
+    if not is_tracer(grid._axis_store(ax)):
+        return None
+    widths = (getattr(grid, "nominal_cells", None) or {}).get(_axis_name(ax))
+    if widths is None:
+        return None
+    widths = np.asarray(widths, dtype=np.float64)
+    if not padded:
+        return widths
+    return np.asarray(_append_bounding_node(_pad_profile(widths, pad_lo, pad_hi)),
+                      dtype=np.float64)

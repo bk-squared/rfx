@@ -1044,9 +1044,9 @@ def _axis_position_to_index(
     """
     ax, n, pad_lo, pad_hi = grid._axis_layout(axis)
     store = grid._axis_store(ax)
-    declared = (getattr(grid, "nominal_cells", None) or {}).get(_axis_name(ax))
-    if is_tracer(store) and declared is not None:
-        widths = np.asarray(declared, dtype=np.float64)
+    from rfx.model.graded_admission import nominal_cells
+    widths = nominal_cells(grid, ax)
+    if widths is not None:
         idx = _nearest_on_line(np.concatenate([[0.0], np.cumsum(widths)]),
                                widths, pos)
         _assert_traced_index_matches_realized(
