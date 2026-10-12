@@ -1572,20 +1572,9 @@ class _ExecuteMixin:
         # w.r.t. the scatterer materials through the same validated kernel as run().
         tfsf_run = None
         if self._tfsf is not None:
-            from rfx.sources.tfsf import init_tfsf as _init_tfsf_fwd
-            from rfx.sources.tfsf import validate_custom_tfsf_waveform
-            validate_custom_tfsf_waveform(self._tfsf.waveform, grid.dt, n_steps)
-            tfsf_run = _init_tfsf_fwd(
-                grid.nx, grid.dx, grid.dt,
-                cpml_layers=grid.cpml_layers,
-                tfsf_margin=self._tfsf.margin,
-                f0=self._tfsf.f0 if self._tfsf.f0 is not None else self._freq_max / 2,
-                bandwidth=self._tfsf.bandwidth, amplitude=self._tfsf.amplitude,
-                polarization=self._tfsf.polarization, direction=self._tfsf.direction,
-                angle_deg=self._tfsf.angle_deg, ny=grid.ny, nz=grid.nz,
-                waveform=getattr(self._tfsf, "waveform", "differentiated_gaussian"),
-                method=getattr(self._tfsf, "method", "bloch"),
-                closed_box=self._tfsf.closed_box,
+            from rfx.sources.tfsf import tfsf_from_declaration
+            tfsf_run = tfsf_from_declaration(
+                self._tfsf, grid, self._freq_max, n_steps=n_steps,
             )
             # The legacy slab's concrete vacuum check runs via preflight.
             # The closed box also checks the final realized operators below,

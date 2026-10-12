@@ -1255,22 +1255,9 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                 "TFSF on nonuniform mesh supports only direction='+x' or "
                 f"'-x'; got {entry.direction!r}."
             )
-        from rfx.sources.tfsf import init_tfsf
-        tfsf_pair = init_tfsf(
-            grid.nx,
-            grid.dx,
-            grid.dt,
-            cpml_layers=grid.cpml_layers,
-            tfsf_margin=entry.margin,
-            f0=entry.f0 if entry.f0 is not None else sim._freq_max / 2,
-            bandwidth=entry.bandwidth,
-            amplitude=entry.amplitude,
-            polarization=entry.polarization,
-            direction=entry.direction,
-            angle_deg=entry.angle_deg,
-            ny=grid.ny,
-            nz=grid.nz,
-            waveform=getattr(entry, 'waveform', 'differentiated_gaussian'),
+        from rfx.sources.tfsf import tfsf_from_declaration
+        tfsf_pair = tfsf_from_declaration(
+            entry, grid, sim._freq_max, n_steps=n_steps,
         )
 
     # NTFF box: build once (indices are Python-static) + zero-init
