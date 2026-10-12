@@ -324,12 +324,12 @@ BOTH_REFUSE_ROWS = (
     ('R-rlc', 'multi-device-uniform'),
 )
 
-# Item 17: common-array differences on these four L2 pairs are consequences
-# of the known field cause. A second field-only cause is invisible until it
-# closes. One-sided measurements, outcomes, and all L1 leaves remain exact.
+# Item 20: only common time_series differences on these three L2 pairs
+# are consequences. Other measurements, outcomes, and L1 remain exact;
+# O-flux has equal fields and is not a consequence pair.
 CONSEQUENCE_PAIRS = (
     ('B-closed', 'uniform', 'D2'), ('R-rlc', 'uniform', 'D6'),
-    ('O-flux', 'uniform', 'D4'), ('PW-oblique', 'uniform', 'D3'),
+    ('PW-oblique', 'uniform', 'D3'),
 )
 ID_PATTERNS = {
     'D2': {'L1': ('/xs/1',), 'L2': ()},
@@ -340,7 +340,7 @@ ID_PATTERNS = {
            'L2': ('flux_monitors/*',)},
     'D5': {'L1': (), 'L2': ('settling_witness/*',)},
     'D6': {'L1': ('/ctx/rlc_meta/0/D0', '/invariants/ctx/rlc_meta/0/D0'), 'L2': ()},
-    'D7': {'L1': (), 'L2': ('waveguide_ports/*', 'waveguide_sparams/*', 'waveguide_port_flux/*')},
+    'D7': {'L1': (), 'L2': ('waveguide_ports/*', 'waveguide_sparams/*')},
     'D8': {'L1': (), 'L2': ('s_params', 'freqs', 'freqs_hz')},
     'A1': {'run': ('admitted',), 'forward': ('raised', 'NotImplementedError',
             'distributed=True on forward() is currently implemented only for non-uniform meshes')},
@@ -403,7 +403,11 @@ def outcomes(declaration, path, level, pair):
                 if not ok:
                     matches = False
                     # The original cause disappearing is reported separately.
-                    if record['outcome'] != success:
+                    wording_fixed = (ident == 'A4' and entry == 'run'
+                                     and record['outcome'] == 'raised'
+                                     and record.get('type') == pattern[1]
+                                     and pattern[2] not in record.get('message', ''))
+                    if record['outcome'] != success and not wording_fixed:
                         unexplained.append({entry: {k: v for k, v in record.items() if k != 'value'}})
             if matches:
                 matched.add(ident)
@@ -422,10 +426,21 @@ def classify(declaration, path, level, differences, ids):
         for ident in ids:
             if ident.startswith('A'):
                 continue
-            consequence = (level == 'L2' and 'bytes_equal' in difference
+            common = 'bytes_equal' in difference
+            run_only = (difference.get('run') == 'array'
+                        and difference.get('forward') != 'array' and not common)
+            consequence = (level == 'L2' and common and difference['path'] == 'time_series'
                            and (declaration, path, ident) in CONSEQUENCE_PAIRS)
-            if consequence or any(fnmatchcase(difference['path'], pattern)
-                                  for pattern in ID_PATTERNS[ident][level]):
+            pattern_match = any(fnmatchcase(difference['path'], pattern)
+                                for pattern in ID_PATTERNS[ident][level])
+            if level == 'L2' and ident in ('D4', 'D7', 'D8'):
+                pattern_match = pattern_match and run_only
+            if level == 'L2' and ident == 'D5':
+                shapes = difference.get('shape')
+                shape_change = common and shapes is not None and shapes[0] != shapes[1]
+                run_record = run_only and difference['path'].startswith('settling_witness/runs/')
+                pattern_match = pattern_match and (shape_change or run_record)
+            if consequence or pattern_match:
                 explained.add(ident)
         matched.update(explained)
         if not explained:
