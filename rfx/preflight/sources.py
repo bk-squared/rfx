@@ -309,9 +309,10 @@ def _validate_cfg_unresolved_pulse(self, _w, dx: float) -> None:
     misses by ~9 orders of magnitude), so this fires regardless of
     ``until_decay`` — a sub-dt spike is always broken.
 
-    ``dt`` is that of the realized grid the campaign context holds (uniform
-    or graded), else the uniform-lane Courant estimate from the preflight
-    ``dx``. ADI's
+    ``dt`` is that of the realized grid an existing campaign context holds
+    (uniform or graded; preflight builds it before this check), else the
+    uniform-lane Courant estimate from the preflight ``dx``; the check never
+    builds either. ADI's
     ``adi_cfl_factor`` is not in it, so on ADI the actual dt is larger.
 
     Issue 1668: every excited drive is judged -- sources and lumped, wire
@@ -323,15 +324,15 @@ def _validate_cfg_unresolved_pulse(self, _w, dx: float) -> None:
     ``undriven_pulse``); one that still has samples gets the warning.
     """
     dt = dx / (C0 * math.sqrt(3.0)) * 0.99  # Grid.courant_dt(dx, ndim=3)
-    # Issue 1668: judge against the realized dt, read from the grid the
-    # campaign context already built (never built again here, so a failed
-    # assembly is not attempted twice); keep the estimate when it failed.
-    try:
-        grid = getattr(self._campaign_ctx(), "grid", None)
-        if grid is not None:
-            dt = float(grid.dt)
-    except Exception:
-        pass
+    # Issue 1668: judge against the realized dt of a grid that already
+    # exists -- the one the campaign context holds when preflight built it.
+    # Never create a context, grid or assembly state here (admit() calls
+    # this outside preflight, and a failed assembly must not be retried);
+    # without one, keep the dx-based estimate.
+    cached = getattr(self, "_pf_campaign_ctx", None)
+    grid = getattr(cached[1], "grid", None) if cached is not None else None
+    if grid is not None:
+        dt = float(grid.dt)
     from rfx.sources.sources import GaussianPulse, ModulatedGaussian
 
     def _class_pulse(entry, waveform):

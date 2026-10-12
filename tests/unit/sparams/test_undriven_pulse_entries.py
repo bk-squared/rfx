@@ -32,21 +32,27 @@ def _coax(depth):
     return sim
 
 
-def _refused(call):
+def _refused(call, sim):
+    """The entry refuses, and the check left no campaign context or other
+    assembly state behind (it reads an existing grid or the dx estimate)."""
+    before = getattr(sim, "_pf_campaign_ctx", None)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         with pytest.raises(ValueError, match=REFUSAL):
             call()
+    assert getattr(sim, "_pf_campaign_ctx", None) is before
 
 
 def test_coaxial_line_reflection():
-    _refused(lambda: _coax(0.040).compute_coaxial_line_reflection(
-        termination="short", n_steps=40, freqs=jnp.asarray([8e9])))
+    sim = _coax(0.040)
+    _refused(lambda: sim.compute_coaxial_line_reflection(
+        termination="short", n_steps=40, freqs=jnp.asarray([8e9])), sim)
 
 
 def test_coaxial_two_port():
-    _refused(lambda: _coax(0.060).compute_coaxial_two_port(
-        n_steps=40, freqs=jnp.asarray([8e9])))
+    sim = _coax(0.060)
+    _refused(lambda: sim.compute_coaxial_two_port(
+        n_steps=40, freqs=jnp.asarray([8e9])), sim)
 
 
 def test_coax_msl_transition():
@@ -55,7 +61,7 @@ def test_coax_msl_transition():
     )
     sim = build_instrument_junction()
     sim._coaxial_ports[0] = sim._coaxial_ports[0]._replace(excitation=HZ)
-    _refused(lambda: sim.compute_coax_msl_transition(**instrument_kwargs(20)))
+    _refused(lambda: sim.compute_coax_msl_transition(**instrument_kwargs(20)), sim)
 
 
 def test_msl_s_matrix():
@@ -71,8 +77,10 @@ def test_msl_s_matrix():
     sim.add_msl_port(position=(0.010, 0.004, 0.0), width=0.0012, height=0.0008,
                      direction="-x", impedance=50.0, eps_r_sub=2.2, name="p2")
     sim._msl_ports[0] = dataclasses.replace(sim._msl_ports[0], waveform=HZ)
-    _refused(lambda: sim.compute_msl_s_matrix(freqs=jnp.linspace(2e9, 18e9, 4),
-                                              num_periods=1.0))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with pytest.raises(ValueError, match=REFUSAL):  # run()'s preflight refuses
+            sim.compute_msl_s_matrix(freqs=jnp.linspace(2e9, 18e9, 4), num_periods=1.0)
 
 
 def test_waveguide_s_matrix():
@@ -80,7 +88,7 @@ def test_waveguide_s_matrix():
                      boundary="cpml", cpml_layers=8)
     sim.add_waveguide_port(0.012, f0=10e9, bandwidth=5e9, direction="+x")
     sim.add_waveguide_port(0.048, f0=10e9, bandwidth=5e9, direction="-x")
-    _refused(lambda: sim.compute_waveguide_s_matrix(n_steps=40))
+    _refused(lambda: sim.compute_waveguide_s_matrix(n_steps=40), sim)
 
 
 def test_lumped_wire_scan_driver():
@@ -92,4 +100,4 @@ def test_lumped_wire_scan_driver():
     sim.add_port(position=(0.016, 0.006, 0.006), component="ez", impedance=50.0,
                  waveform=GaussianPulse(f0=5.5e9, bandwidth=4e9))
     _refused(lambda: compute_lumped_wire_s_matrix_via_scan(
-        sim, np.linspace(2e9, 9e9, 3), n_steps=40))
+        sim, np.linspace(2e9, 9e9, 3), n_steps=40), sim)
