@@ -55,7 +55,7 @@ def _field_integral(mon, coords):
     return np.real(terms[0]-terms[1])
 
 
-def measure_scene(graded, model):
+def measure_scene(graded, model, steps=STEPS):
     half, mirror = model == 'half', model != 'asymmetric'
     profiles = [np.r_[1., np.linspace(.8, 1.2, 22), 1.]*.001,
                 np.full(12 if half else 24, .001),
@@ -99,7 +99,7 @@ def measure_scene(graded, model):
                 order.append((box, axis, side, sign, name))
     if graded:
         from rfx.runners.nonuniform import run_nonuniform_path
-        result = run_nonuniform_path(sim, n_steps=STEPS, s_param_freqs=FREQS,
+        result = run_nonuniform_path(sim, n_steps=steps, s_param_freqs=FREQS,
                                      compute_s_params=True, lane='fwd_nonuniform')
         monitors = [result.flux_monitors[name] for *_, name in order]
     else:
@@ -109,9 +109,9 @@ def measure_scene(graded, model):
         port = LumpedPort(position, 'ez', 50., pulse)
         materials = setup_lumped_port(grid, port, sim._assemble_materials(grid)[0])
         spec = LumpedPortSParamSpec(*grid.position_to_index(position), 'ez', FREQS, 50.)
-        result = run(grid, materials, STEPS, boundary='cpml', pec_axes='',
-                     sources=[make_port_source(grid, port, materials, STEPS)],
-                     lumped_port_sparams=[spec], flux_monitors=build_flux_monitor_cfgs(sim, grid, STEPS))
+        result = run(grid, materials, steps, boundary='cpml', pec_axes='',
+                     sources=[make_port_source(grid, port, materials, steps)],
+                     lumped_port_sparams=[spec], flux_monitors=build_flux_monitor_cfgs(sim, grid, steps))
         monitors = result.flux_monitors
     power_channels = np.asarray(result.sparam_time_records[0])
     time = np.arange(len(power_channels))
@@ -133,16 +133,18 @@ def measure_scene(graded, model):
                   flux=net.tolist(), expected=expected.tolist(), port_power=power.tolist(),
                   spread_over_peak=(np.ptp(net, axis=0)/np.max(np.abs(net))).tolist(),
                   face=face, interior=interior, quadrature_residual=residual,
-                  steps=STEPS, dt_s=float(grid.dt),
-                  port_tail_over_peak=(np.max(np.abs(power_channels[-STEPS//10:, :2]), axis=0)
+                  steps=steps, dt_s=float(grid.dt),
+                  port_tail_over_peak=(np.max(np.abs(power_channels[-steps//10:, :2]), axis=0)
                                        / np.max(np.abs(power_channels[:, :2]), axis=0)).tolist())
-    _record(f'{values["mesh"]}-{model}', values)
+    _record(f'{values["mesh"]}-{model}-{steps}', values)
     return values
 
 
-@pytest.fixture(scope='module', params=[False, True], ids=['uniform', 'graded'])
+@pytest.fixture(scope='module', params=[(False, 768), (True, 768), (False, 1536), (True, 1536)],
+                ids=['uniform-768', 'graded-768', 'uniform-1536', 'graded-1536'])
 def scenes(request):
-    return {model: measure_scene(request.param, model) for model in ('asymmetric', 'full', 'half')}
+    graded, steps = request.param
+    return {model: measure_scene(graded, model, steps) for model in ('asymmetric', 'full', 'half')}
 
 
 def _independent_integral(scene):
@@ -156,6 +158,8 @@ def _independent_integral(scene):
 def test_c1_asymmetric_boxes(scenes):
     flux = _independent_integral(scenes['asymmetric'])
     assert np.all(np.ptp(flux, axis=0) <= 1e-4*np.max(flux)), flux
+    if scenes['asymmetric']['mesh'] == 'graded':
+        assert np.all(np.ptp(flux, axis=0) <= 1e-5*np.max(flux)), flux  # F2b declaration
 
 
 def test_c2_magnetic_face_closed_boxes(scenes):

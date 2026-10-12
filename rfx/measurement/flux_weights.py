@@ -40,6 +40,18 @@ def flux_weights(nodes, bounds, tangential, components, magnetic_faces=(),
     return tuple(areas)
 
 
+def normal_weights(nodes, index, *, uniform=False):
+    """Distance weights of the H half-cell planes bracketing an E node.
+
+    The uniform arithmetic is retained exactly. At the low outer node the
+    existing sampler reads the same H sample twice, so its weights stay equal.
+    """
+    if uniform or index == 0 or len(nodes) <= 2:
+        return (.5, .5)
+    left, right = np.diff(np.asarray(nodes, dtype=float)[index-1:index+2])
+    return (float(right/(left+right)), float(left/(left+right)))
+
+
 def grid_flux_monitor(grid, *, axis, index, freqs, pmc_faces=(), periodic=None, **kwargs):
     """Adapt either grid's realized coordinates to the sole monitor constructor."""
     from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid, coords_from_uniform_grid
@@ -57,11 +69,17 @@ def grid_flux_monitor(grid, *, axis, index, freqs, pmc_faces=(), periodic=None, 
         if 'xyz'[a] in periodic_axes and len(x) > 1:
             x = np.r_[x, x[-1] + np.asarray(grid.cells(a))[-1]]
         nodes.append(x)
+    normal = np.asarray(getattr(coords, 'xyz'[axis]), dtype=float)
+    normal_cells = np.asarray(grid.cells(axis))
+    # Include the grid's existing high fence-post/ghost provider, as for the
+    # tangential periodic closing coordinate. It has no physical box extent.
+    normal = np.r_[normal, normal[-1] + normal_cells[-1]]
+    h_weights = normal_weights(normal, index, uniform=np.all(normal_cells == normal_cells[0]))
     return init_flux_monitor(axis, index, freqs, grid.shape,
                              np.asarray(grid.cells(tangential[0])),
                              np.asarray(grid.cells(tangential[1])),
                              node_coords=tuple(nodes), periodic_axes=periodic_axes,
-                             pmc_faces=pmc_faces, **kwargs)
+                             pmc_faces=pmc_faces, normal_h_weights=h_weights, **kwargs)
 
 
 def flux_regions(mon):

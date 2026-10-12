@@ -227,7 +227,7 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
             area = areas[(0, 1, 1, 0)[c]]
             planes = (((index, 1.0),) if c < 2 else
                       ((index, 0.0),) if cfg.normal_h_zero else
-                      ((max(index-1, 0), .5), (index, .5)))
+                      ((max(index-1, 0), cfg.normal_h_weights[0]), (index, cfg.normal_h_weights[1])))
             nodes = tuple(Node(n.component, n.i, n.j, n.k, weight, float(a))
                           for plane, weight in planes
                           for n, a in zip(_plane_nodes(grid, axis, plane, component, regions[c]), area.flat))

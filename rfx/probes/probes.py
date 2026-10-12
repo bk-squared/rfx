@@ -716,6 +716,7 @@ class FluxMonitor(NamedTuple):
     hi2: int = -1         # cell end / included nodal endpoint; -1 = full extent
     dA2: jnp.ndarray | None = None  # second staggered E/H product
     normal_h_zero: bool = False  # odd tangential-H image on a magnetic plane
+    normal_h_weights: tuple[float, float] = (.5, .5)  # left/right half-cell planes
 
 
 # Tangential field component names for each normal axis
@@ -744,6 +745,7 @@ def init_flux_monitor(
     staggered_area: bool = False,
     node_coords=None,
     periodic_axes: str = "",
+    normal_h_weights: tuple[float, float] = (.5, .5),
 ) -> FluxMonitor:
     """Create a Poynting flux monitor on a (possibly finite-size) plane region.
 
@@ -797,6 +799,7 @@ def init_flux_monitor(
         h1_dft=zeros2, h2_dft=zeros1,
         freqs=freqs, axis=axis, index=index,
         dA=dA, dA2=dA2, normal_h_zero=normal_h_zero,
+        normal_h_weights=normal_h_weights,
         total_steps=int(dft_total_steps),
         window=dft_window,
         window_alpha=float(dft_window_alpha),
@@ -811,7 +814,7 @@ def update_flux_monitor(
     from rfx.measurement.accumulators import flux_samples
     from rfx.measurement.flux_weights import flux_regions
     values = flux_samples(state, mon.axis, mon.index, _FLUX_COMPONENTS[mon.axis],
-                          flux_regions(mon), mon.normal_h_zero)
+                          flux_regions(mon), mon.normal_h_zero, mon.normal_h_weights)
     names = ('e1_dft', 'e2_dft', 'h1_dft', 'h2_dft')
     return mon._replace(**{
         name: _accumulate(getattr(mon, name), value, state.step-1, mon.freqs, dt,
