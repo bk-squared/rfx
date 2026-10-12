@@ -127,8 +127,9 @@ def _build_thru(reference_plane_cells: int | None = None, *, snap="declared") ->
         kw["reference_plane_cells"] = reference_plane_cells
     sim.add_port(position=(_X1, _Y_MID, 0.0), component="ez", impedance=50.0,
                  extent=_H, waveform=pulse, direction="-x", **kw)
+    # one driven port: S from one record needs isolated drives
     sim.add_port(position=(_X2, _Y_MID, 0.0), component="ez", impedance=50.0,
-                 extent=_H, waveform=pulse, direction="+x", **kw)
+                 extent=_H, waveform=pulse, direction="+x", excite=False, **kw)
     return sim
 
 
@@ -758,9 +759,10 @@ def test_nonuniform_lane_end_to_end_raises():
     sim.add_port(position=(_X1, _Y_MID, 0.0), component="ez", impedance=50.0,
                  extent=_H, waveform=pulse, direction="-x",
                  reference_plane_cells=3)
+    # one driven port: S from one record needs isolated drives
     sim.add_port(position=(_X2, _Y_MID, 0.0), component="ez", impedance=50.0,
                  extent=_H, waveform=pulse, direction="+x",
-                 reference_plane_cells=3)
+                 reference_plane_cells=3, excite=False)
     with pytest.raises(NotImplementedError, match="uniform single-device"):
         sim.run(n_steps=8, compute_s_params=True, s_param_freqs=_FREQS,
                 skip_preflight=True)

@@ -114,7 +114,10 @@ def test_main_paths_build_drives_and_rlc_after_realization(monkeypatch, graded, 
         sim.add_port((.005, .005, .005), "ez", waveform=jnp.ones_like,
                      extent=.002 if kind == "wire" else None)
         if kind == "lumped":
-            sim.add_port((.005, .005, .005), "ez", impedance=75., waveform=jnp.ones_like)
+            # forward() S from one record needs isolated drives: the second port is
+            # passive there; run() keeps both driven (its S driver isolates them)
+            sim.add_port((.005, .005, .005), "ez", impedance=75., waveform=jnp.ones_like,
+                         excite=not forward)
     for j, topology in enumerate(("series", "parallel")):
         sim.add_lumped_rlc((.005, .006 + .001*j, .005), "ez",
                            R=70., L=2e-9, C=.3e-12, topology=topology)

@@ -22,6 +22,28 @@ not an accuracy guarantee, and a preflight pass is not a convergence study.
 
 ## General constraints
 
+### S-parameters from a run with several excited ports
+
+Tracker: none — accepted limitation (refused at default: tests/contracts/test_lumped_wire_s_isolated_drives.py::test_several_excited_ports_refused_before_step)
+
+Before this change, graded run()/forward() and uniform forward() could return
+mixed S-parameters from one record with several excited lumped or wire ports.
+Each reported entry b_j/a_k was the sum, over every driven port m, of S_jm
+times its incident amplitude a_m divided by the incident amplitude a_k.
+Measured on a 50 Ω two-port through line driven at both ports by the same pulse:
+every reported entry had magnitude 1.00 ± 0.01 across the band, because the
+reported S11 was S11 + S12. At the line's match frequency, where S11 is -48 dB,
+the reported S11 was 0 dB: an error of 100 % of max |S|.
+
+Changed in 2.0.0rc1: explicit S requests, including ringdown, on these paths raise
+before stepping when two or more impedance ports have excite=True. Graded
+forward() with neither port_s11_freqs nor ringdown warns once and returns
+s_params=None while the run proceeds.
+Set excite=False on every port but the driven one and run once per driven port,
+or use the uniform run(compute_s_params=True), which drives one port per run.
+Uniform run(), including its multi-device S driver, is unchanged. One excited
+port with passive receiver ports is unchanged.
+
 ### A partly metal cell edge (metal density between 0 and 1) is an artificial loss; a source on such an edge is scaled by the same weight
 
 At metal density strictly between 0 and 1, the field on an edge is scaled every step by a weight; this is physical only at 0 and 1.

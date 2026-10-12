@@ -550,6 +550,14 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         from rfx.runners._admission import refuse_plain_sources_s_matrix
         refuse_plain_sources_s_matrix(sim, main_record=True)
 
+    if (compute_s_params is not False
+            and any(p.impedance > 0 and p.extent is not None for p in sim._ports)):
+        from rfx.runners._admission import require_isolated_s_drive
+        if not require_isolated_s_drive(
+                sim, implicit=lane == "fwd_nonuniform" and s_param_freqs is None,
+                fields_only=lane == "run_nonuniform"):
+            compute_s_params = False
+
     # every single-device non-uniform solve (run AND forward) enters here
     from rfx.sources.tfsf import _refuse_extended_tfsf
     _refuse_extended_tfsf(sim._tfsf, "the non-uniform runner")

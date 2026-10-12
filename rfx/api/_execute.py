@@ -3578,7 +3578,7 @@ class _ExecuteMixin:
                 "differentiable probe-feed S11 objectives."
             )
 
-        if port_s11_freqs is not None:
+        if port_s11_freqs is not None or ringdown is not None:
             self._validate_forward_sparameter_request()
         _line_stub_scope = _line_stub_admit(self, port_s11_freqs)
 
