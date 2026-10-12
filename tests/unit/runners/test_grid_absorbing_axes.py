@@ -44,15 +44,32 @@ def test_omitted_axes_do_not_absorb_inside_unpadded_faces(graded, decay):
 
     Six Yee steps reach both unpadded faces, inside the old eight-layer
     x/y profiles, but cannot reach either z profile from the midplane.
-    Thus exact field equality detects unwanted transverse absorption without
-    depending on profile metadata or allowing an all-zero-field false pass.
+    Thus agreement with the control within the cross-trace bar detects unwanted
+    transverse absorption (down to ~1e-7 of the standard profile's sigma)
+    without depending on profile metadata or allowing an all-zero-field
+    false pass.
     """
     grid = _grid(graded)
     reference = _pulse_run(grid, graded, decay, reference=True)
     implicit = _pulse_run(grid, graded, decay)
     assert np.max(np.abs(np.asarray(reference.ez)[1:4, 1:4, grid.nz // 2])) > 0
-    for actual, expected in zip(implicit, reference):
-        np.testing.assert_array_equal(actual, expected)
+    # The control and the z-only run are two compiled programs (z CPML absent
+    # vs present). On the graded decay path an arm64 CPU rounds them 1-3 float32
+    # ULP of each family's peak apart near the source (Linux: equal); absorption
+    # inside an x/y profile moves the field by ~0.7 of the peak
+    # (test_explicit_subset_still_runs). Judge by the cross-trace per-step bar:
+    # 9 ULP of the family peak (rfx CLAUDE.md, cross-trace agreement).
+    families = {"e": ("ex", "ey", "ez"), "h": ("hx", "hy", "hz")}
+    for names in families.values():
+        peak = max(float(np.max(np.abs(np.asarray(getattr(reference, n))))) for n in names)
+        bar = 9 * float(np.spacing(np.float32(peak)))
+        for n in names:
+            actual = np.asarray(getattr(implicit, n))
+            expected = np.asarray(getattr(reference, n))
+            assert actual.shape == expected.shape and actual.dtype == expected.dtype, n
+            assert float(np.max(np.abs(actual - expected))) <= bar, n
+    for n in set(reference._fields) - set(families["e"]) - set(families["h"]):
+        np.testing.assert_array_equal(getattr(implicit, n), getattr(reference, n))
     explicit = _pulse_run(grid, graded, decay, cpml_axes="z")
     for actual, expected in zip(explicit, implicit):
         assert np.asarray(actual).dtype == np.asarray(expected).dtype
