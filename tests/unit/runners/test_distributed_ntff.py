@@ -87,8 +87,13 @@ def _compare(actual, reference, case):
 def _parity(case, n_devices=2):
     sim = _model(case, n_devices)
     kwargs = dict(n_steps=160, skip_preflight=True)
-    reference = sim.run(**kwargs)
-    actual = sim.run(devices=jax.devices("cpu")[:n_devices], **kwargs)
+    with pytest.MonkeyPatch.context() as patch:
+        # The PEC accumulators are compared as a bit-exact parity witness.
+        # Users' PEC far fields are refused, as pinned by tests/contracts/test_ntff_boundary_admission.py.
+        if case != "cpml":
+            patch.setattr("rfx.boundaries.features.refuse_ntff_reflecting_faces", lambda *args, **kwargs: None)
+        reference = sim.run(**kwargs)
+        actual = sim.run(devices=jax.devices("cpu")[:n_devices], **kwargs)
     if case == "x_hi_padded":
         assert actual.ntff_box.i_hi == (actual.grid.shape[0] + n_devices - 1) // n_devices
     print(f"devices={n_devices} case={case}")
@@ -221,7 +226,7 @@ def test_more_devices(n_devices):
 
 @pytest.mark.parametrize("kind", ["forward", "graded_forward", "graded_run", "graded_direct"])
 def test_out_of_scope_refused(kind):
-    sim = _model("spanning")
+    sim = _model("cpml")
     if kind == "forward":
         with pytest.raises(NotImplementedError, match="only for non-uniform meshes"):
             sim.forward(n_steps=8, distributed=True, devices=jax.devices("cpu")[:2],

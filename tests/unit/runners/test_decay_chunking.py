@@ -83,8 +83,9 @@ def _run(
 ):
     sim = _loaded_sim("pec" if branch in ("point", "min-cap", "zero-cap") else "cpml")
     freqs = np.array([2e9, 4e9])
-    sim.add_ntff_box((0.002, 0.002, 0.002), (0.010, 0.010, 0.010), freqs=freqs)
     if branch in ("energy", "flux"):
+        # NTFF needs absorbing faces; the PEC branches preserve the ringing stop-step witness.
+        sim.add_ntff_box((0.002, 0.002, 0.002), (0.010, 0.010, 0.010), freqs=freqs)
         sim.add_current_moment_monitor(
             (0.001, 0.001, 0.001), (0.011, 0.011, 0.011), block_size=0.005, freqs=freqs
         )
