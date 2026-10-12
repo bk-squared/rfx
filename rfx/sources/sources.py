@@ -222,18 +222,19 @@ def port_d_parallel(grid, position_ijk: tuple[int, int, int],
 
 @dataclass(frozen=True)
 class GaussianPulse:
-    """Differentiated Gaussian pulse with center frequency f0.
+    """Differentiated Gaussian pulse with center frequency f0, starting at t=0.
 
-    s(t) = -2 * ((t - t0) / tau) * exp(-((t - t0) / tau)^2)
+    s(t) = -2 * x * exp(-x^2) - exp(-c^2) * exp(-u^2) * (2c + (4c^2 - 2) u - 4c u^2 - 4c^2 u^3)
+    for t >= 0 and 0 before, with x = (t - t0)/tau, u = t/tau, c = cutoff.
 
-    The onset truncation at t=0 leaves a nonzero time integral: over the
-    sampled table, S = sum s(t_n)*dt ~ -amplitude * tau * exp(-cutoff^2).
-    A soft current source deposits exactly that integral as a net static
-    end-charge q = S/((1+loss)*dz_src) (issue #388), so the deposited DC
-    scales as e^(-cutoff^2): raising ``cutoff`` from 3.0 to 4.5 cuts the
-    deposited charge by e^(4.5^2 - 3^2) ~ 7.7e4 — about 5 decades.
-    Use a higher cutoff when a static source remnant matters (e.g. the
-    ``until_decay`` interior-energy stop on absorbing boundaries).
+    The first term is the differentiated Gaussian. Cut at t=0 alone it would
+    start with a jump of 2c*exp(-c^2) (7.4e-4 at c=3) and have the time
+    integral -tau*exp(-c^2), which a soft current source deposits as a static
+    charge whose field never decays (issue #388). The second term is
+    tau * d/dt[exp(-c^2) * phi(t)] with phi = exp(-u^2)(1 + 2c u + 2c^2 u^2),
+    phi(0) = 1, phi(inf) = 0: it makes the integral exactly zero and the
+    start continuous in value and slope, and changes the pulse by at most
+    about 13*exp(-c^2) (1.6e-3 of the amplitude at c=3) within the first tau.
 
     Parameters
     ----------
@@ -245,9 +246,7 @@ class GaussianPulse:
         Peak amplitude (V/m). Default 1.0.
     cutoff : float
         Number of tau between t=0 and the pulse peak: t0 = cutoff * tau.
-        Default 3.0 (historical value; waveform values are unchanged at
-        the default). Higher values buy an e^(-cutoff^2) reduction of the
-        deposited-DC integral at the cost of a longer onset (issue #388).
+        Default 3.0.
     """
 
     f0: float
@@ -262,13 +261,17 @@ class GaussianPulse:
 
     @property
     def t0(self) -> float:
-        """Pulse delay (cutoff*tau ensures smooth onset)."""
+        """Pulse delay: the peak lies cutoff*tau after the start at t=0."""
         return self.cutoff * self.tau
 
     def __call__(self, t: float) -> float:
-        """Evaluate pulse at time t."""
+        """Evaluate pulse at time t (zero before t=0)."""
         arg = (t - self.t0) / self.tau
-        return self.amplitude * (-2.0 * arg) * jnp.exp(-(arg**2))
+        u = t / self.tau
+        c = self.cutoff
+        onset = jnp.exp(-c**2 - u**2) * (2*c + (4*c**2 - 2)*u - 4*c*u**2 - 4*c**2*u**3)
+        value = -2.0 * arg * jnp.exp(-(arg**2)) - onset
+        return self.amplitude * jnp.where(t >= 0, value, 0.0)
 
 
 @dataclass(frozen=True)
