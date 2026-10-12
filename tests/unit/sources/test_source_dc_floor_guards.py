@@ -73,6 +73,18 @@ def _table(pulse, n):
     return values.astype(np.float64), np.asarray(times, dtype=np.float64)
 
 
+def test_gaussian_pulse_has_no_nan_far_from_its_pulse():
+    """A tau of 5e-20 s evaluated up to 1e-6 s (u ~ 2e13; preflight would
+    refuse such a drive, the class itself must not return NaN): every table
+    value is finite, and the gradient is finite far before and after."""
+    tiny = GaussianPulse(f0=5e9, bandwidth=1.0 / (math.pi * 5e9 * 5e-20))
+    times = jnp.linspace(0.0, 1e-6, 10_001, dtype=jnp.float32)
+    assert np.all(np.isfinite(np.asarray(jax.vmap(tiny)(times))))
+    for pulse in (tiny, GaussianPulse(f0=5e9, bandwidth=0.8)):
+        for t in (1e-6, -1e-6, 1e-3, -1e-3):
+            assert np.isfinite(float(jax.grad(pulse)(jnp.float32(t)))), (pulse, t)
+
+
 def test_gaussian_pulse_refuses_a_cutoff_below_2p5():
     """Below c = 2.5 the charge-free start changes the pulse by more than 2 %
     (largest added term 1.84e-2 at c = 2.5, 2.8e-2 at 2.4; closed form below)."""

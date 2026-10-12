@@ -280,10 +280,15 @@ class GaussianPulse:
 
     def __call__(self, t: float) -> float:
         """Evaluate pulse at time t (zero before t=0)."""
-        arg = (t - self.t0) / self.tau
         u = t / self.tau
         c = self.cutoff
-        onset = jnp.exp(-c**2 - u**2) * (2*c + (4*c**2 - 2)*u - 4*c*u**2 - 4*c**2*u**3)
+        # Both terms are exactly 0 in float32 beyond 50 tau (exp(-2500)); the
+        # clamps keep u**3 and arg**2 from overflowing there (inf * 0 = NaN in
+        # the value and its gradient, e.g. for a tau of 1e-20 s), and change
+        # nothing, value or gradient, for u < 50.
+        uc = jnp.clip(u, -50.0, 50.0)
+        arg = jnp.clip((t - self.t0) / self.tau, -50.0, 50.0)
+        onset = jnp.exp(-c**2 - uc**2) * (2*c + (4*c**2 - 2)*uc - 4*c*uc**2 - 4*c**2*uc**3)
         value = -2.0 * arg * jnp.exp(-(arg**2)) - onset
         # For z = 2cu < 3 the two terms above nearly cancel (each about 2c*exp(-c^2)).
         # There the same pulse is exp(-c^2 - u^2) * (2c*R1(z) - 2u*R2(z)), z = 2cu,
@@ -295,7 +300,7 @@ class GaussianPulse:
             r1 = r1 + term
             r2 = r2 + (term if k >= 3 else 0.0)
             term = term * z / (k + 1)
-        near = jnp.exp(-c**2 - u**2) * (2*c*r1 - 2*u*r2)
+        near = jnp.exp(-c**2 - uc**2) * (2*c*r1 - 2*uc*r2)
         value = jnp.where(2*c*u < 3.0, near, value)
         return self.amplitude * jnp.where(t >= 0, value, 0.0)
 
