@@ -49,7 +49,7 @@ def test_graded_plane_wave_refusals_match_run(angle, direction, body):
         "\n  - ERROR: " + body)
     for entry in ("run", "forward"):
         sim = _scene(angle=angle)
-        # Public registration already refuses z; exercise the execution guard
+        # Public registration already refuses z; exercise the preflight guard
         # on a stored z-directed declaration without changing that API fence.
         sim._tfsf = replace(sim._tfsf, direction=direction)
         with pytest.raises(ValueError) as caught:

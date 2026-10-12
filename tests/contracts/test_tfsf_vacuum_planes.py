@@ -75,3 +75,18 @@ def test_interior_dielectric_with_vacuum_planes_admitted(graded, entry):
     values = np.asarray(result.time_series)
     assert np.isfinite(values).all()
     assert np.max(np.abs(values)) > 0
+
+
+def test_traced_x_cell_sizes_refused():
+    def energy(profile):
+        sim = Simulation(freq_max=20e9, domain=(.030, .020, .012), dx=.001,
+                         dx_profile=profile, cpml_layers=4)
+        sim.add_tfsf_source()
+        sim.add_probe((.023, .012, .007), "ez")
+        return jnp.sum(sim.forward(n_steps=8, skip_preflight=True).time_series ** 2)
+
+    with pytest.raises(ValueError) as caught:
+        jax.grad(energy)(jnp.full(30, .001))
+    assert str(caught.value) == (
+        "a plane wave on a graded mesh needs a fixed, uniform x axis; "
+        "the x cell sizes are traced")
