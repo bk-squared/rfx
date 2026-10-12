@@ -213,8 +213,11 @@ def test_run_series_rlc_byte_identity():
     sim.add_probe(position=(0.005, 0.005, 0.005), component="ez")
     got = np.asarray(sim.run(n_steps=1500).time_series)
     assert got.shape == golden.shape
-    # Scale the absolute envelope by the same predicted Cb/dV factor (#1373).
-    np.testing.assert_allclose(got, golden, rtol=1e-5, atol=1e-6 * 23958726.427593697)
+    # atol relative to the golden's peak (issue 1668): with the driven pulse the
+    # former 1e-6 * Cb/dV was 7.7e-7 of the peak, below the 1.06e-6-of-peak move
+    # that float64 drive samples alone make; 1e-5 * peak is ten times that move.
+    np.testing.assert_allclose(got, golden, rtol=1e-5,
+                               atol=1e-5 * float(np.max(np.abs(golden))))
 
 
 def test_forward_no_rlc_byte_identity():
