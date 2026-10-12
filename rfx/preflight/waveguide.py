@@ -95,9 +95,7 @@ WAVEGUIDE_DEFAULT_NUM_PERIODS = 20.0
 def resolve_waveguide_port_freqs(sim, entry):
     """The measured frequency grid of one waveguide port entry.
 
-    ONE definition, two users: ``compute_waveguide_s_matrix`` resolves the
-    band with it and so does ``preflight_sparameters(calculator="waveguide")``,
-    so the setup audits can never be reading a different band than the run.
+    Shared by the uniform runner, calculator and their preflight audits.
     """
     if entry.freqs is not None:
         return entry.freqs
@@ -762,13 +760,15 @@ def _emit_waveguide_port_cutoff_findings(
     # velocity: the extracted S is junk that GROWS with n_steps (the
     # in-band incident reference sits in the source spectral tail),
     # and below-cutoff DFT bins additionally NaN the gradient.
-    if entry.freqs is not None:
-        f_arr = np.asarray(entry.freqs, dtype=float)
-        f_min = float(f_arr.min())
-        band_center = float((f_arr.min() + f_arr.max()) / 2.0)
+    if entry.freqs is None and any(getattr(self, a, None) is not None
+                                  for a in ("_dx_profile", "_dy_profile", "_dz_profile")):
+        from rfx.runners.nonuniform import _resolve_waveguide_run_freqs_nu
+        f_arr = np.asarray(_resolve_waveguide_run_freqs_nu(self), dtype=float)
     else:
-        f_min = None
-        band_center = self._freq_max / 2.0
+        f_arr = np.asarray(resolve_waveguide_port_freqs(self, entry), dtype=float)
+    f_min = float(f_arr.min())
+    band_center = (float((f_arr.min() + f_arr.max()) / 2.0)
+                   if entry.freqs is not None else self._freq_max / 2.0)
     f0_resolved = entry.f0 if entry.f0 is not None else band_center
     if f0_resolved <= fc_excited:
         _w.warn(

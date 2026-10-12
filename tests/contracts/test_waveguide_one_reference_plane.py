@@ -118,44 +118,70 @@ def test_c4_graded_matches_low_level(record_property):
     assert actual.calibration_preset == "source_to_probe"
 
 
-def test_d1a_graded_forward_matches_run(monkeypatch, record_property):
-    from rfx.runners import nonuniform
+def test_d1b_graded_forward_crossing_returns_probe_records(monkeypatch, record_property):
+    from rfx.sparams import _waveguide_planes
 
-    run_sim = _port_sim(graded=True)
-    entry = run_sim._waveguide_ports[0]
-    source = round(entry.x_position / DX) * DX
-    run_s = run_sim.run(n_steps=160, compute_s_params=False).waveguide_sparams["left"]
-    forward_reports = []
-    run_path = nonuniform.run_nonuniform_path
+    sim = _port_sim(graded=True, crossing=True)
+    sim.add_probe((16 * DX, 6 * DX, 3 * DX), "ez")
 
-    def capture_forward(*args, **kwargs):
-        result = run_path(*args, **kwargs)
-        forward_reports.append(result)
-        return result
+    def unexpected_resolver(*args, **kwargs):
+        pytest.fail("graded forward must not resolve discarded waveguide S")
 
-    monkeypatch.setattr(nonuniform, "run_nonuniform_path", capture_forward)
-    forward = _port_sim(graded=True).forward(n_steps=160)
-    public_s = getattr(forward, "waveguide_sparams", None)
-    record_property("public_forward_waveguide_sparams", public_s is not None)
-    if public_s is None:
-        # _execute.py packs ForwardResult without the runner's waveguide fields.
-        record_property("public_result_limitation",
-                        "_execute.py:2396-2411 and ForwardResult omit waveguide_sparams")
-        assert len(forward_reports) == 1
-        public_s = forward_reports[0].waveguide_sparams
-    forward_s = public_s["left"]
-    _record_comparison(record_property, forward_s, (run_s.s11, run_s.s21))
-    record_property("run_reference_plane", run_s.reference_plane)
-    record_property("s11_bytes_equal", forward_s.s11.tobytes() == run_s.s11.tobytes())
-    assert forward_s.s11.tobytes() == run_s.s11.tobytes()
-    assert forward_s.reference_plane == run_s.reference_plane == source
-    assert forward_s.calibration_preset == run_s.calibration_preset == "source_to_probe"
+    monkeypatch.setattr(_waveguide_planes, "resolve_reported_planes", unexpected_resolver)
+    result = sim.forward(n_steps=160)
+    records = np.asarray(result.time_series)
+    record_property("probe_record_shape", list(records.shape))
+    record_property("probe_record_max", float(np.max(np.abs(records))))
+    assert records.shape == (160, 1)
+    assert np.all(np.isfinite(records))
+    assert np.max(np.abs(records)) > 0
+
+
+@pytest.mark.parametrize("graded,n_modes,normalize", [
+    (False, 2, False), (True, 1, True),
+], ids=["multimode", "graded"])
+def test_calculator_measured_planes(graded, n_modes, normalize, record_property):
+    sim = _port_sim(graded=graded, preset="measured")
+    sim._waveguide_ports = [replace(sim._waveguide_ports[0], x_position=5.2 * DX,
+                                   n_modes=n_modes)]
+    sim.add_waveguide_port(
+        sim._domain[0] - 5.25 * DX, direction="-x", name="right",
+        freqs=np.linspace(8.4e9, 11.6e9, 5), f0=10e9,
+        ref_offset=3, probe_offset=10, n_modes=n_modes, calibration_preset="measured",
+    )
+    grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
+    nodes = np.asarray([grid.node_of("x", i) for i in range(grid.nx)])
+    expected = []
+    sources = []
+    for entry in sim._waveguide_ports:
+        index = int(np.argmin(np.abs(nodes - entry.x_position)))
+        sign = 1 if entry.direction == "+x" else -1
+        sources.append(float(nodes[index]))
+        expected.append(float(nodes[index + sign * entry.ref_offset]))
+    result = sim.compute_waveguide_s_matrix(n_steps=160, normalize=normalize)
+    record_property("source_planes", sources)
+    record_property("expected_measured_planes", expected)
+    record_property("reported_reference_planes", list(result.reference_planes))
+    np.testing.assert_array_equal(result.reference_planes, expected)
+    assert np.all(np.asarray(expected) != np.asarray(sources))
 
 
 def test_c4_graded_crossing_refuses():
     sim = _port_sim(graded=True, crossing=True)
-    with pytest.raises(ValueError, match="waveguide port 'left'.*ref_offset.*measured"):
+    with pytest.raises(ValueError, match="waveguide port 'left'.*ref_offset.*measured") as exc:
         sim.run(n_steps=16, compute_s_params=False)
+    assert str(exc.value).count("waveguide port 'left':") == 1
+
+
+@pytest.mark.parametrize("planes", [{"reference": 20 * DX}, {"probe": 25 * DX}])
+def test_explicit_crossing_remedy(planes):
+    sim = _port_sim(graded=True, crossing=True, **planes)
+    with pytest.raises(ValueError) as exc:
+        sim.run(n_steps=16, compute_s_params=False)
+    message = str(exc.value)
+    assert message.count("waveguide port 'left':") == 1
+    assert "set reference_plane inside one uniform zone" in message
+    assert "calibration_preset" not in message
 
 
 def test_c4_measured_crossing_needs_no_shift(record_property):

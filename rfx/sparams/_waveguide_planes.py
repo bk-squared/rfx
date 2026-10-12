@@ -28,9 +28,14 @@ def resolve_reported_planes(entry, cfg, *, grid=None) -> ReportedPlanes:
         try:
             _assert_nu_shift_span_in_one_grading_zone(grid, cfg, reference, entry.name)
         except ValueError as exc:
+            remedy = (
+                "set reference_plane inside one uniform zone with the port and its ref_offset cells "
+                "(move the port if needed)"
+                if entry.reference_plane is not None or entry.probe_plane is not None
+                else "place the port and its ref_offset cells inside one uniform zone, "
+                     "or pass calibration_preset='measured'"
+            )
             raise ValueError(
-                f"waveguide port {entry.name!r}: place the port and its ref_offset cells "
-                "inside one uniform zone, or pass calibration_preset='measured'. "
-                f"{exc}"
+                f"{exc} Remedy: {remedy}."
             ) from exc
     return ReportedPlanes(reference, probe, label)

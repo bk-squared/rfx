@@ -594,14 +594,12 @@ def run_uniform(
     flux_monitors = build_flux_monitor_cfgs(sim, grid, n_steps)
 
     if sim._waveguide_ports:
+        from rfx.preflight.waveguide import resolve_waveguide_port_freqs
+
         cpml_axes = grid.cpml_axes
         pec_axes = None
         for pe in sim._waveguide_ports:
-            freqs_arr = (
-                pe.freqs
-                if pe.freqs is not None
-                else jnp.linspace(sim._freq_max / 10, sim._freq_max, pe.n_freqs)
-            )
+            freqs_arr = resolve_waveguide_port_freqs(sim, pe)
             waveguide_ports.append(sim._build_waveguide_port_config(pe, grid, freqs_arr, n_steps))
 
     if sim._tfsf is not None:
