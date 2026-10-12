@@ -63,8 +63,8 @@ The message of that error reads, in part:
 
 ```text
 2 conductor sheet dimension(s) are solved more than 1% off their drawn size:
-x: drawn 10mm, nodes cover 10mm, solved as 10.35mm (+3.50%);
-y: drawn 10.2mm, nodes cover 10mm, solved as 10.35mm (+1.47%).
+... x: drawn 10mm, nodes cover 10mm, solved as 10.35mm (+3.50%);
+... y: drawn 10.2mm, nodes cover 10mm, solved as 10.35mm (+1.47%).
 ```
 
 A metal sheet's free edge is solved about 0.35 of a cell beyond its last mesh
@@ -79,7 +79,10 @@ print("ok:", sim.preflight().ok)
 sim.fidelity_report()
 ```
 
-The patch's lines in the report now read (abridged):
+Preflight now reports no error. It still gives warnings: the substrate runs into
+the absorber, and the graded in-plane mesh reaches the absorber faces. Both are
+in the table below; here the substrate is meant to run to the edge. The
+patch's lines in the report now read (abridged):
 
 ```text
 thin_conductor[0] ... PEC sheet on node plane z = 5000.00 um
@@ -117,7 +120,7 @@ Preflight's findings that compare the drawing with the grid:
 | a PEC shape thinner than one cell but not zero (error) | It is neither a sheet nor a resolved volume. | Declare a sheet, or resolve the thickness. See [Conductors](/rfx/model/conductors/). |
 | a PEC shape that covers no cell (error) | Metal would vanish. | Make it larger than a cell, or use a wire. |
 | a sheet off a dielectric face | The face is not on a node plane, so the sheet snaps up to half a cell away. | Put the face on a node plane. |
-| geometry in the absorber, grading that reaches the absorber (warnings) | The absorber no longer sees a uniform medium. | Keep clear space and at least 8 uniform cells next to each absorbing face. |
+| geometry in the absorber, grading that reaches the absorber (`geometry_in_absorber`, `nu_grading_reaches_absorber`, warnings) | The absorber no longer sees a uniform medium in the direction normal to its face. | Keep the structure clear of the absorber, and keep the cells next to each absorbing face uniform over as many cells as the face has absorber layers. A substrate that runs to the domain edge on purpose is reported too. |
 
 Other findings are about the setup rather than the grid: cell size against
 wavelength, a lossless resonator in an open domain (its Q is infinite), a model

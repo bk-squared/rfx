@@ -24,9 +24,14 @@ another solver) passes the bar when all of these hold:
 2. **The trend over frequency agrees.** The curve's shape against the
    reference — where its features are and how they move — agrees across the
    band. A single frequency, a band maximum or a band mean is not a verdict.
-3. **Power and magnitude within 2 dB** of the reference. Bins where either
+3. **Power and magnitude within 2 dB** of the reference, compared after the
+   frequency axis is scaled so the judged feature lines up with the
+   reference's (the frequency error is judged by item 4). Bins where either
    curve is below −20 dB (a deep null) are judged by position only.
-4. **Frequencies within 1 %**: resonances, cutoffs, notches and band edges.
+4. **Frequencies within 1 %**: resonances, cutoffs, notches and nulls. A
+   band edge defined by where a curve crosses a level (a −3 dB corner) is
+   judged by the 2 dB magnitude bar instead: its frequency may move as far as
+   2 dB along the reference curve's own slope there.
 5. **Group delay within 1 %**: the least-squares slope of the unwrapped
    transmission phase against frequency, over the bins where |S21| is above
    −20 dB (for a one-port, the reflection phase). On a dispersionless line this
@@ -53,12 +58,15 @@ good to only a few percent. State that, and the criterion you used instead.
 
 ## What is checked
 
-The project's checks apply the bar in code, so a check cannot move the bar it
-is judged by:
+Items 1, 3, 4 and 5 are written in code, so a check cannot move the bar it is
+judged by. Items 2, 6 and 7 are applied by the person reading the comparison;
+no check implements them yet.
 
 - `tests/crossval/_v2_judging.py` holds the frequency bar (1 %), the magnitude
-  bar (2 dB), the deep-null level (−20 dB) and the mesh statement (the last two
-  meshes agree within 1 %, and the steps move in one direction).
+  bar (2 dB), the deep-null level (−20 dB), the level-crossing rule, and the
+  mesh statement: the last two meshes agree within 1 %, and every step larger
+  than 0.1 % moves the same way. It judges a ladder of two or more meshes; the
+  bar asks you to state the trend over three.
 - `tests/_electrical_length.py` holds the group-delay bar (1 %) and its −20 dB
   level.
 - The cross-solver cases under `tests/crossval/` compare rfx with frozen

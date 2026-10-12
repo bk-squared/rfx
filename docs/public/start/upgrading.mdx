@@ -42,19 +42,20 @@ the old names kept as deprecated aliases (PR 1661).</p>
 | time-gated `minimize_s11_at_freq` | `minimize_s11_at_freq_wave_decomp` with `forward(port_s11_freqs=...)`. |
 | `sim.add(..., two_plane=True)` | Nothing: every metal volume now has both faces. A copper foil drawn as a one-cell PEC box should be declared as a sheet, `add_thin_conductor`, with the same corners. |
 | `compute_coaxial_s_matrix` and `CoaxialSMatrixResult` | `compute_coaxial_line_reflection(termination=..., dut_impedance=...)` for a one-port reflection, `compute_coaxial_two_port(...)` for a through line. |
-| the legacy multi-device runner and the `rfx.runners.run_distributed` shortcut | `sim.run(devices=[...])`. |
+| the legacy multi-device runner `rfx.runners.distributed.run_distributed` (now raises `RuntimeError`) and the `rfx.runners.run_distributed` shortcut | `sim.run(devices=[...])`, or `rfx.runners.distributed_v2.run_distributed` with the same arguments. |
 | rfx Studio, the experiment service, the agent control plane and their command-line tools | Not shipped in 2.0. Stay on the last 1.x release that ships them, or take the code from the repository history. |
 
 ## Defaults that changed
 
 | What | 1.x | 2.0 | To keep the 1.x behaviour |
 |---|---|---|---|
+| `DebyeCoeffs` / `LorentzCoeffs` fields (low-level) | one grid array, `coeffs.ca[i, j, k]` | a tuple of three arrays, one per E component | Index the component first: `coeffs.ca[0]` is the Ex coefficient. |
 | `add_source(amplitude_kind=None)` | meant different things on different solver paths | a current moment in A·m on every path | Uniform `run()` with PEC walls: `amplitude_kind="field"`. Uniform `run()` with an absorber, and uniform `forward()`: `amplitude_kind="current"` with the waveform amplitude multiplied by the cell volume. Graded meshes: unchanged. Field values change; S-parameters and ratios of probes do not. |
 | a port's `waveform` (lumped, wire, microstrip) | scaled with the mesh and the load | the port's open-circuit source voltage, on every mesh | S-parameters do not change. Absolute fields, flux power and far fields of port-driven models do: divide the waveform by the ratio the [changelog](/rfx/project/changelog/) gives for your port. |
 | `compute_msl_s_matrix(enforce_passivity=...)` | `True` | `False`: S is the extracted matrix | `enforce_passivity=True`. |
 | `compute_coax_msl_transition(strict_passivity=...)` | a non-passive S came back with a warning | `True`: a non-passive S raises | `strict_passivity=False`. |
 | coaxial `cpml_axes` | `"z"` accepted | `"xyz"`, the only accepted value | Drop `cpml_axes="z"`. |
-| subgridding (`add_refinement` on a uniform mesh) | ran by default | refused by default | Use a graded mesh for local resolution, or `validation="research"` to run it with a warning. |
+| subgridding (`add_refinement` on a uniform mesh) | ran by default | refused by default | Use a graded mesh for local resolution, or `add_refinement(..., validation="research")` to run it with a warning. |
 | Touchstone files written by rfx | rfx's own port order | the standard order, with a layout marker | Nothing: old rfx files are detected and read correctly. |
 | `maximize_directivity(log_ratio=False)` | ran | raises, because its gradient can have the wrong sign | Use the default `log_ratio=True`. |
 | ADI (`solver="adi"`) | CFL factor 5 | CFL factor 2, and the default run honours `num_periods` | With an explicit `n_steps`, multiply it by 2.5 for the same simulation time. ADI is experimental in 2.0. |
@@ -79,7 +80,8 @@ through. [Refusals](/rfx/check/refusals/) explains how they read, and the
 | A metal sheet solved more than 1 % off its drawn size | Build the in-plane mesh with `rfx.mesh_edges.edge_aware_profiles`, or pass `Simulation(snap="declared")` to accept the difference. See [Check the model on the grid](/rfx/check/model-on-grid/). |
 | A PEC shape thinner than one cell but not zero, or one that covers no cell | Declare a sheet, resolve the thickness, or make it larger than a cell. |
 | A sub-cell wire radius (`PolylineWire(radius=...)` below the cell) | `radius=0` gives the 1.x result exactly; or refine the mesh so the wire is a volume. A probe pin may declare a radius up to 0.2 of a cell. |
-| A lossy film that is not a flat box, or one whose area the grid misses by more than 1 % | `snap="declared"` runs it and reports drawn and solved area. |
+| A lossy film (`add_thin_conductor` below the metal threshold) that is not a box and spans more than one cell layer, or whose area the grid misses by more than 1 % | `snap="declared"` runs an off-area film and reports drawn and solved area. |
+| A lossy film with `eps_r` other than 1, on a PMC face, sharing edges with a surface-impedance sheet, or with an edge inside a design box | The message says which; a film is a resistive sheet on one node plane and carries no permittivity. |
 | A soft source on a metal edge, or a source or port inside a PEC wall | Move it off the conductor, at least one cell inside the domain, or use a port. |
 | A microstrip or coaxial strip that continues behind its port and resonates in the band read | Start the strip at the port's grid node, which the message prints. |
 
@@ -87,7 +89,8 @@ through. [Refusals](/rfx/check/refusals/) explains how they read, and the
 
 | Input | Way through |
 |---|---|
-| A waveguide port or plane wave whose side faces are declared absorbing | Declare PEC side walls, e.g. `boundary={"x": "cpml", "y": "pec", "z": "pec"}` for an x-directed port. On a graded mesh the boundary must be declared. |
+| A waveguide port filling a guide whose side faces are declared absorbing, or left undeclared on a graded mesh | Declare PEC side walls, e.g. `boundary={"x": "cpml", "y": "pec", "z": "pec"}` for an x-directed port. Left undeclared on a uniform mesh, the side faces are walls, with a warning. |
+| A plane wave (`add_tfsf_source`) with a structure that is not uniform across its side faces (a finite scatterer, a lumped element). Those faces are solved as periodic. | Declare `periodic` side faces for an array, or use `add_tfsf_source(..., closed_box=True)` for one object. |
 | A far-field (NTFF) box whose faces are not at least one cell inside the grid, or that touches the plane-wave injection region | Move each face at least one cell inside the domain and outside the injection region. |
 | A 2-D far-field box | Use a 3-D model. |
 | `eps_override` together with subpixel smoothing in a waveguide calculator | Use declared materials with smoothing, or `eps_override` without it. |
