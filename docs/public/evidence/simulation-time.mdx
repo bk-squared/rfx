@@ -87,19 +87,22 @@ simulation times and say how it moves, as the
 
 `run(until_decay=1e-3)` steps in chunks and stops when the field energy summed
 over every cell outside the absorbers falls below that fraction of its peak, or
-at `decay_max_steps`. On absorbing boundaries the sum covers the whole
-interior, so a field null at one cell cannot stop the run early. In a closed
-PEC box the energy does not decay; there the uniform-mesh path watches a
-single field sample instead, which is sound only for a lossy or radiating
-structure. Use a fixed `n_steps` in closed structures and in convergence
-studies. The decay stop does not replace the check above: read the status
-after the run.
+at `decay_max_steps`. In a closed PEC box the energy does not decay; there the
+uniform-mesh path watches a single field sample instead, which is sound only
+for a lossy or radiating structure. Use a fixed `n_steps` in closed structures
+and in convergence studies.
 
-<p data-rfx="note">Pending for 2.0: with a current source and the default
-pulse, the pulse's nonzero time integral leaves a static charge whose field
-never decays, which can keep the decay stop from reaching its threshold
-(tracker 1668). Changes to the default pulse and to the decay stop are in
-progress for 2.0; this section is updated when they land.</p>
+Read the decay check after a run stopped this way, as after any other. The stop
+compares with the peak of the energy, and while a point current source drives,
+most of that peak is the source's own near field. The run can therefore stop
+before the radiated pulse has reached a probe.
+
+<p data-rfx="note">Pending for 2.0: a change to the decay stop for this.
+Separately, with a current source and
+the default pulse, the pulse's nonzero time integral leaves a static charge
+whose field never decays and can keep the stop from reaching its threshold
+(tracker 1668). Both changes are in progress; this section is updated when
+they land.</p>
 
 ### Tail extrapolation by matrix pencil
 
