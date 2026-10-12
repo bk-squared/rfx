@@ -455,7 +455,9 @@ class _AdMemoryMixin:
                     n_steps_i // int(estimate.checkpoint_segments), active_steps
                 )
             else:
-                live_tape_steps = min(int(estimate.checkpoint_every), active_steps)
+                from rfx.stepping.remat import effective_chunk
+                chunk = int(estimate.checkpoint_every)
+                live_tape_steps = min(effective_chunk(n_steps_i - int(n_warmup), chunk) or chunk, active_steps)
         else:
             live_tape_steps = None
             selected_field = "ad_full_gb"
