@@ -271,7 +271,7 @@ class GaussianPulse:
         c = self.cutoff
         onset = jnp.exp(-c**2 - u**2) * (2*c + (4*c**2 - 2)*u - 4*c*u**2 - 4*c**2*u**3)
         value = -2.0 * arg * jnp.exp(-(arg**2)) - onset
-        # For u < 1/2 the two terms above nearly cancel (each about 2c*exp(-c^2)).
+        # For z = 2cu < 3 the two terms above nearly cancel (each about 2c*exp(-c^2)).
         # There the same pulse is exp(-c^2 - u^2) * (2c*R1(z) - 2u*R2(z)), z = 2cu,
         # with R1, R2 = exp(z) less its Taylor terms through z^1, z^2, summed as series
         # so every evaluation path keeps float32's relative accuracy.
@@ -282,7 +282,7 @@ class GaussianPulse:
             r2 = r2 + (term if k >= 3 else 0.0)
             term = term * z / (k + 1)
         near = jnp.exp(-c**2 - u**2) * (2*c*r1 - 2*u*r2)
-        value = jnp.where(u < 0.5, near, value)
+        value = jnp.where(2*c*u < 3.0, near, value)
         return self.amplitude * jnp.where(t >= 0, value, 0.0)
 
 
