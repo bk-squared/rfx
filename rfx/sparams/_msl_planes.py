@@ -38,6 +38,32 @@ import jax.numpy as jnp
 import numpy as np
 
 
+@dataclass(kw_only=True)
+class MSLFeedPlaneFields:
+    """Where a microstrip port's S is referred (MSL-PLANE.md records 5, 7).
+
+    Attributes
+    ----------
+    reference_plane_offsets_m : (n_ports,) float, optional
+        Realized distance in metres from each port's declared feed node to
+        its probe-0 node, read from the grid's node coordinates (on a graded
+        mesh the sum of the realized cells). 0 for lumped/wire ports of the
+        mixed calculator.
+    shift_beta : (n_ports, n_freqs) float, optional
+        rad/m. The closed-form beta, ``(2 pi f / c) sqrt(eps_eff(f))``:
+        Hammerstad-Jensen ``eps_eff(0)`` with Kirschning-Jansen dispersion,
+        from the port's width, height and resolved substrate eps_r. Never
+        the fitted ``beta``. 0 for lumped/wire ports.
+
+    ``S`` is the probe-0 S times ``D_i D_j`` with
+    ``D_p = exp(-1j * shift_beta[p] * reference_plane_offsets_m[p])``, so
+    the probe-0 matrix is ``S / (D_i D_j)``. Phase only: ``|D_p| = 1``. In
+    the mixed result ``S_wave`` stays at probe 0.
+    """
+    reference_plane_offsets_m: np.ndarray | None = None
+    shift_beta: np.ndarray | None = None
+
+
 def kirschning_jansen_eps_eff(eps_eff0: float, width: float, height: float,
                               eps_r: float, freqs) -> np.ndarray:
     """Dispersive microstrip effective permittivity eps_eff(f).

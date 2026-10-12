@@ -37,6 +37,7 @@ from rfx.materials.lorentz import LorentzPole
 
 from rfx.materials.library import MATERIAL_LIBRARY
 from rfx.diagnostic_records import Diagnostic
+from rfx.sparams._msl_planes import MSLFeedPlaneFields
 
 
 def _artifact_to_dict(value: object) -> object:
@@ -1611,20 +1612,15 @@ class MSLProbeClearance:
 
 
 @dataclass
-class MSLSMatrixResult:
+class MSLSMatrixResult(MSLFeedPlaneFields):
     """MSL S-matrix result.
 
     Attributes
     ----------
     S : (n_ports, n_ports, n_freqs) complex
-        Power-wave S-matrix referred to each port's DECLARED FEED PLANE.
-        It is formed at the first probe plane from
-        a=(V+R*I)/(2*sqrt(R)), b=(V-R*I)/(2*sqrt(R)) with the positive real
-        analytic Hammerstad-Jensen reference R of each port, then shifted
-        to the feed plane: ``S[i, j] = D_i S_probe0[i, j] D_j`` with
-        ``D_p = exp(-1j * shift_beta[p] * reference_plane_offsets_m[p])``
-        (phase only; ``shift_beta`` is the closed-form Hammerstad-Jensen +
-        Kirschning-Jansen β, never the fitted ``beta``). Bracketing H
+        Power-wave S (a=(V+R*I)/(2*sqrt(R)), b=(V-R*I)/(2*sqrt(R)), R the
+        positive real analytic Hammerstad-Jensen reference of each port) formed
+        at the first probe plane, shifted to the DECLARED FEED PLANE. Bracketing H
         samples are interpolated to this E-node plane using physical
         coordinates, with the temporal leapfrog offset corrected separately.
         The fitted ``Z0`` below is a diagnostic, not the reference used to form S.
@@ -1764,8 +1760,7 @@ class MSLSMatrixResult:
         grid step of a window limit.  ``Z0[p, k]`` (and ``beta[k]`` for
         ``p = 0``) at such a bin is the scan-window limit, NOT a
         measurement — do not quote it. Fitted Z0/beta do not enter S11/S21,
-        which use the analytic Z0 anchor and measured V/I (the feed-plane
-        shift uses the closed-form ``shift_beta``). This separation
+        which use the analytic Z0 anchor and measured V/I. This separation
         does not certify the V/I or reference impedance: shared record
         contamination can affect both the fit and S. The
         own-drive diagonal is exactly the provenance of every fitted
@@ -1790,16 +1785,10 @@ class MSLSMatrixResult:
     sigma_max_excess: np.ndarray | None = None
     settling_witness: tuple | None = None
     diagnostics: tuple[Diagnostic, ...] = ()
-    # Feed-plane shift (MSL-PLANE.md decision records 5 and 7): see ``S``.
-    # reference_plane_offsets_m (n_ports,) m: realized feed-to-probe-0
-    # distance L. shift_beta (n_ports, n_freqs) rad/m, real: the closed
-    # form (Hammerstad-Jensen eps_eff(0) + Kirschning-Jansen dispersion).
-    reference_plane_offsets_m: np.ndarray | None = None
-    shift_beta: np.ndarray | None = None
 
 
 @dataclass
-class MixedSMatrixResult:
+class MixedSMatrixResult(MSLFeedPlaneFields):
     """Mixed-family S-matrix result (issue #488, lumped/wire + MSL v1).
 
     ``S`` here is in the **Kurokawa
@@ -1880,12 +1869,6 @@ class MixedSMatrixResult:
     probe_clearance: tuple[MSLProbeClearance, ...] | None = None
     settling_witness: tuple | None = None
     diagnostics: tuple[Diagnostic, ...] = ()
-    # Feed-plane shift of the MSL rows/columns (MSL-PLANE.md decision
-    # records 5 and 7), all ports in ``port_names`` order: 0 offset and
-    # 0 beta for lumped/wire ports (D = 1). Applied after the flux
-    # magnitude override (phase only); ``S_wave`` is NOT shifted.
-    reference_plane_offsets_m: np.ndarray | None = None
-    shift_beta: np.ndarray | None = None
 
 
 @dataclass
