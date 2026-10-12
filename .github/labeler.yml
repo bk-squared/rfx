@@ -70,11 +70,23 @@
           - "rfx/boundaries/**"
           - "rfx/preflight/absorber.py"
           - "rfx/geometry/smoothing.py"
+          # Plane-wave source, far field and RCS (absorber's list, lead 2026-10-12).
+          # Shared on purpose: tests/contracts/ files also earn lane:ci-infra,
+          # the distributed NTFF runner and its tests lane:distributed, the
+          # non-uniform far-field tests lane:nu-mesh.
+          - "rfx/sources/tfsf*.py"
           - "rfx/farfield.py"
+          - "rfx/ntff_*.py"
+          - "rfx/preflight/ntff.py"
           - "rfx/rcs.py"
+          - "rfx/runners/_distributed_ntff.py"
           - "tests/unit/boundaries/**"
           - "tests/**/*pml*"
           - "tests/**/*smoothing*"
+          - "tests/**/*tfsf*"
+          - "tests/**/*ntff*"
+          - "tests/**/*farfield*"
+          - "tests/**/*rcs*"
 
 "lane:nu-mesh":
   - changed-files:
