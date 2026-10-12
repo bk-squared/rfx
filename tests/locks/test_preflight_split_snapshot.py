@@ -70,16 +70,22 @@ Measured with the command below on the tree before and after: 67 -> 66
 snapshot files, 77 -> 76 literal codes, 66 -> 65 witnessed, and the same 11
 unwitnessed codes -- the removed code was witnessed and left both sides.
 
-The 11 unwitnessed codes left are the honest hole, and every one of them
+The 10 unwitnessed codes left are the honest hole, and every one of them
 belongs to a family this lock has already discharged or to a body no builder
 reaches: the two remaining ``precision_*`` guards,
 ``port_aperture_unrasterizable`` /
 ``port_index_mirror_asymmetry`` / ``record_far_boundary_band_below_cutoff`` /
-``waveguide_setup_audit_skipped`` / ``port_freqs_below_cutoff`` /
+``waveguide_setup_audit_skipped`` /
 ``port_source_below_cutoff`` (the waveguide leg),
 ``campaign_statics_unavailable`` (leg 2), ``mesh_import_underresolved``
 (leg 5, which needs the optional ``cad`` extra -- see below) and
 ``dielectric_at_absorber_seam`` (#1043 stage B).
+
+SNAPSHOT CHANGE, 2026-10-12 (#1662). The below-cutoff advisory now evaluates
+the default bins a waveguide port declared without freqs is run with.
+``conformal_fine_dx`` uses default bins starting at 1 GHz, below its WR-90
+cutoff of 6.517 GHz, so it now correctly emits ``port_freqs_below_cutoff``.
+Only that fixture's snapshot is regenerated; the code is now witnessed.
 
 SNAPSHOT CHANGE, 2026-09-15 (#801). One committed report moved, and the reason
 is written here BEFORE the regeneration because this lock's own hint says a diff

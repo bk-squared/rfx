@@ -5,7 +5,7 @@ from dataclasses import replace
 import numpy as np
 import pytest
 
-from rfx import Simulation
+from rfx import Box, Simulation
 from rfx.sources.waveguide_port import extract_waveguide_sparams
 from tests._waveguide_chain_battery_fixture import DX_COARSE, NUM_PERIODS, build_simulation
 
@@ -149,6 +149,10 @@ def test_calculator_measured_planes(graded, n_modes, normalize, record_property)
         freqs=np.linspace(8.4e9, 11.6e9, 5), f0=10e9,
         ref_offset=3, probe_offset=10, n_modes=n_modes, calibration_preset="measured",
     )
+    if graded:
+        # A reflected wave makes a wrong extraction shift observable after normalization.
+        sim.add_material("slab", eps_r=4.0)
+        sim.add(Box((18 * DX, 0, 0), (22 * DX, 12 * DX, 6 * DX)), material="slab")
     grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
     nodes = np.asarray([grid.node_of("x", i) for i in range(grid.nx)])
     expected = []
@@ -164,6 +168,21 @@ def test_calculator_measured_planes(graded, n_modes, normalize, record_property)
     record_property("reported_reference_planes", list(result.reference_planes))
     np.testing.assert_array_equal(result.reference_planes, expected)
     assert np.all(np.asarray(expected) != np.asarray(sources))
+    if graded:
+        sim._waveguide_ports = [
+            replace(entry, calibration_preset=None, reference_plane=plane)
+            for entry, plane in zip(sim._waveguide_ports, expected)
+        ]
+        explicit = sim.compute_waveguide_s_matrix(n_steps=160, normalize=normalize)
+        difference = float(np.max(np.abs(result.s_params - explicit.s_params)))
+        peak = float(np.max(np.abs(explicit.s_params)))
+        record_property("measured_vs_explicit_max_difference", difference)
+        record_property("explicit_max_s", peak)
+        record_property("measured_vs_explicit_relative_difference", difference / peak)
+        record_property("explicit_max_s11", float(np.max(np.abs(explicit.s_params[0, 0]))))
+        assert np.max(np.abs(explicit.s_params[0, 0])) > 0
+        np.testing.assert_array_equal(explicit.reference_planes, expected)
+        np.testing.assert_array_equal(result.s_params, explicit.s_params)
 
 
 def test_c4_graded_crossing_refuses():

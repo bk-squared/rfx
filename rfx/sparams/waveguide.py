@@ -1195,6 +1195,7 @@ def _compute_waveguide_s_matrix_nu(
     settling_runs: list[float] = []
     settling_details = []
     ref_shifts: tuple[float, ...] | None = None
+    reference_planes: list[float] = []
     final_cfgs: list | None = None
 
     original_entries = list(entries)
@@ -1280,6 +1281,7 @@ def _compute_waveguide_s_matrix_nu(
                     cfg = dev_wg[entry.name]
                     planes = waveguide_plane_positions(cfg)
                     desired = resolve_reported_planes(entry, cfg, grid=grid).reference
+                    reference_planes.append(desired)
                     shifts.append(desired - planes["reference"])
                 ref_shifts = tuple(shifts)
                 # The same final configs, kept for the post-solve S21
@@ -1406,10 +1408,7 @@ def _compute_waveguide_s_matrix_nu(
     )
     _s_params_nu = jnp.stack(
         [jnp.stack(col) for col in s_columns], axis=1)
-    _reference_planes_nu = np.asarray([
-        resolve_reported_planes(entry, cfg, grid=grid).reference
-        for entry, cfg in zip(original_entries, final_cfgs)
-    ], dtype=float)
+    _reference_planes_nu = np.asarray(reference_planes, dtype=float)
     # Post-solve discretization witness (post-v1.8 plan item 5), same
     # banner and same field as the uniform lane. Report-only.
     _ph_rms_nu, _ph_meta_nu = _waveguide_s21_phase_residual(
