@@ -652,7 +652,7 @@ def apply_cpml_e(
     state, cpml_params, cpml_state: CPMLState, grid,
     axes: str = "xyz", materials=None,  # per-cell eps_r for material-aware CPML (None = free-space)
     inv_eps_r_update=None,  # per-component 1/eps_r the E update itself used (#1043)
-    boundary=None, *, faces=ALL_FACES, e_loss=None, e_curl_coeff=None,
+    boundary=None, *, faces=ALL_FACES, e_loss=None, e_curl_coeff=None, frame=None, owned=None, x_depths=None,
 ) -> tuple:
     """Apply slab-local CPML correction to the selected E-field faces.
 
@@ -660,6 +660,11 @@ def apply_cpml_e(
     ``z_lo``, ``z_hi`` (default: all six), intersected with ``axes``. Excluded
     faces leave both the field and their psi state untouched. Psi uses field
     (x, y, z) axis order. Selection is never inferred from array endpoints.
+
+    ``frame`` supplies the local physical x span; ``owned`` selects each
+    x-face write and psi update. ``x_depths`` gives separate low/high depths
+    for slabs whose opposite face has fewer physical rows. Omitted options
+    retain the one-device endpoint program.
 
     Accepts either legacy ``CPMLParams`` (single profile, backward
     compatible) or ``CPMLAxisParams`` (per-axis profiles for
@@ -713,6 +718,9 @@ def apply_cpml_e(
     faces = selected_faces(axes, faces)
     n = grid.cpml_layers
     n_x, n_y, n_z = _axis_buffer_depths(grid, n)
+    n_xlo, n_xhi = (n_x, n_x) if x_depths is None else x_depths
+    xlo = slice(None, n_xlo) if frame is None else slice(frame['x'][0], frame['x'][0] + n_xlo)
+    xhi = slice(-n_xhi, None) if frame is None else slice(frame['x'][1] - n_xhi, frame['x'][1])
     # np.float64 grid.dt is STRONG-typed in JAX promotion: with a jnp
     # float32 mu_r it silently promoted the ch coefficients to f64 and
     # the field scatter demoted them back per step (measured, #665's
@@ -770,7 +778,7 @@ def apply_cpml_e(
         if arr is None:
             return dt / EPS_0
         if axis == 0:
-            return arr[:n_x, :, :] if lo else arr[-n_x:, :, :]
+            return arr[xlo, :, :] if lo else arr[xhi, :, :]
         if axis == 1:
             return arr[:, :n_y, :] if lo else arr[:, -n_y:, :]
         return arr[:, :, :n_z] if lo else arr[:, :, -n_z:]
@@ -814,12 +822,12 @@ def apply_cpml_e(
         (dx_x_lo, dx_x_hi, dx_y_lo, dx_y_hi, dz_lo, dz_hi) = _get_axis_cell_sizes(grid)
 
     # X-axis profiles (hi-face pre-flipped at init time — no jnp.flip here).
-    b_x_lo = _clip_lo(px_lo.b, n_x, n)[:, None, None]
-    c_x_lo = _clip_lo(px_lo.c, n_x, n)[:, None, None]
-    k_x_lo = _clip_lo(px_lo.kappa, n_x, n)[:, None, None]
-    b_x_hi = _clip_hi(px_hi.b, n_x, n)[:, None, None]
-    c_x_hi = _clip_hi(px_hi.c, n_x, n)[:, None, None]
-    k_x_hi = _clip_hi(px_hi.kappa, n_x, n)[:, None, None]
+    b_x_lo = _clip_lo(px_lo.b, n_xlo, n)[:, None, None]
+    c_x_lo = _clip_lo(px_lo.c, n_xlo, n)[:, None, None]
+    k_x_lo = _clip_lo(px_lo.kappa, n_xlo, n)[:, None, None]
+    b_x_hi = _clip_hi(px_hi.b, n_xhi, n)[:, None, None]
+    c_x_hi = _clip_hi(px_hi.c, n_xhi, n)[:, None, None]
+    k_x_hi = _clip_hi(px_hi.kappa, n_xhi, n)[:, None, None]
     # Y-axis profiles
     b_y_lo = _clip_lo(py_lo.b, n_y, n)[None, :, None]
     c_y_lo = _clip_lo(py_lo.c, n_y, n)[None, :, None]
@@ -861,49 +869,57 @@ def apply_cpml_e(
 
     if "x_lo" in faces:
         # --- X-lo: Ey correction from dHz/dx ---
-        hz_xlo = state.hz[:n_x, :, :]
-        hz_shifted_xlo = slab_neighbor(state.hz, 0, n_x, True, False, boundary=boundary, h_neighbor=h_neighbor)
+        hz_xlo = state.hz[xlo, :, :]
+        hz_shifted_xlo = slab_neighbor(state.hz, 0, n_xlo, True, False, boundary=boundary, h_neighbor=h_neighbor, frame=frame)
         curl_hz_dx_xlo = (hz_xlo - hz_shifted_xlo) / dx_x_lo
 
         new_psi_ey_xlo = b_x_lo * cpml_state.psi_ey_xlo + c_x_lo * curl_hz_dx_xlo
-        terms_ey.append(((slice(None, n_x), slice(None, None), slice(None, None)), -ce_ey_xlo * new_psi_ey_xlo))
-        terms_ey.append(((slice(None, n_x), slice(None, None), slice(None, None)), -ce_ey_xlo * (1.0 / k_x_lo - 1.0) * curl_hz_dx_xlo))
+        if owned is not None:
+            new_psi_ey_xlo = jnp.where(owned['x_lo'], new_psi_ey_xlo, cpml_state.psi_ey_xlo)
+        terms_ey.append(((slice(None, n_xlo), slice(None, None), slice(None, None)), -ce_ey_xlo * new_psi_ey_xlo))
+        terms_ey.append(((slice(None, n_xlo), slice(None, None), slice(None, None)), -ce_ey_xlo * (1.0 / k_x_lo - 1.0) * curl_hz_dx_xlo))
     else:
         new_psi_ey_xlo = cpml_state.psi_ey_xlo
 
     if "x_hi" in faces:
         # --- X-hi: Ey correction from dHz/dx ---
-        hz_xhi = state.hz[-n_x:, :, :]
-        hz_shifted_xhi = slab_neighbor(state.hz, 0, n_x, False, False, boundary=boundary, h_neighbor=h_neighbor)
+        hz_xhi = state.hz[xhi, :, :]
+        hz_shifted_xhi = slab_neighbor(state.hz, 0, n_xhi, False, False, boundary=boundary, h_neighbor=h_neighbor, frame=frame)
         curl_hz_dx_xhi = (hz_xhi - hz_shifted_xhi) / dx_x_hi
 
         new_psi_ey_xhi = b_x_hi * cpml_state.psi_ey_xhi + c_x_hi * curl_hz_dx_xhi
-        terms_ey.append(((slice(-n_x, None), slice(None, None), slice(None, None)), -ce_ey_xhi * new_psi_ey_xhi))
-        terms_ey.append(((slice(-n_x, None), slice(None, None), slice(None, None)), -ce_ey_xhi * (1.0 / k_x_hi - 1.0) * curl_hz_dx_xhi))
+        if owned is not None:
+            new_psi_ey_xhi = jnp.where(owned['x_hi'], new_psi_ey_xhi, cpml_state.psi_ey_xhi)
+        terms_ey.append(((slice(-n_xhi, None), slice(None, None), slice(None, None)), -ce_ey_xhi * new_psi_ey_xhi))
+        terms_ey.append(((slice(-n_xhi, None), slice(None, None), slice(None, None)), -ce_ey_xhi * (1.0 / k_x_hi - 1.0) * curl_hz_dx_xhi))
     else:
         new_psi_ey_xhi = cpml_state.psi_ey_xhi
 
     if "x_lo" in faces:
         # --- X-lo: Ez correction from dHy/dx ---
-        hy_xlo = state.hy[:n_x, :, :]
-        hy_shifted_xlo = slab_neighbor(state.hy, 0, n_x, True, False, boundary=boundary, h_neighbor=h_neighbor)
+        hy_xlo = state.hy[xlo, :, :]
+        hy_shifted_xlo = slab_neighbor(state.hy, 0, n_xlo, True, False, boundary=boundary, h_neighbor=h_neighbor, frame=frame)
         curl_hy_dx_xlo = (hy_xlo - hy_shifted_xlo) / dx_x_lo
 
         new_psi_ez_xlo = b_x_lo * cpml_state.psi_ez_xlo + c_x_lo * curl_hy_dx_xlo
-        terms_ez.append(((slice(None, n_x), slice(None, None), slice(None, None)), ce_ez_xlo * new_psi_ez_xlo))
-        terms_ez.append(((slice(None, n_x), slice(None, None), slice(None, None)), ce_ez_xlo * (1.0 / k_x_lo - 1.0) * curl_hy_dx_xlo))
+        if owned is not None:
+            new_psi_ez_xlo = jnp.where(owned['x_lo'], new_psi_ez_xlo, cpml_state.psi_ez_xlo)
+        terms_ez.append(((slice(None, n_xlo), slice(None, None), slice(None, None)), ce_ez_xlo * new_psi_ez_xlo))
+        terms_ez.append(((slice(None, n_xlo), slice(None, None), slice(None, None)), ce_ez_xlo * (1.0 / k_x_lo - 1.0) * curl_hy_dx_xlo))
     else:
         new_psi_ez_xlo = cpml_state.psi_ez_xlo
 
     if "x_hi" in faces:
         # --- X-hi: Ez correction from dHy/dx ---
-        hy_xhi = state.hy[-n_x:, :, :]
-        hy_shifted_xhi = slab_neighbor(state.hy, 0, n_x, False, False, boundary=boundary, h_neighbor=h_neighbor)
+        hy_xhi = state.hy[xhi, :, :]
+        hy_shifted_xhi = slab_neighbor(state.hy, 0, n_xhi, False, False, boundary=boundary, h_neighbor=h_neighbor, frame=frame)
         curl_hy_dx_xhi = (hy_xhi - hy_shifted_xhi) / dx_x_hi
 
         new_psi_ez_xhi = b_x_hi * cpml_state.psi_ez_xhi + c_x_hi * curl_hy_dx_xhi
-        terms_ez.append(((slice(-n_x, None), slice(None, None), slice(None, None)), ce_ez_xhi * new_psi_ez_xhi))
-        terms_ez.append(((slice(-n_x, None), slice(None, None), slice(None, None)), ce_ez_xhi * (1.0 / k_x_hi - 1.0) * curl_hy_dx_xhi))
+        if owned is not None:
+            new_psi_ez_xhi = jnp.where(owned['x_hi'], new_psi_ez_xhi, cpml_state.psi_ez_xhi)
+        terms_ez.append(((slice(-n_xhi, None), slice(None, None), slice(None, None)), ce_ez_xhi * new_psi_ez_xhi))
+        terms_ez.append(((slice(-n_xhi, None), slice(None, None), slice(None, None)), ce_ez_xhi * (1.0 / k_x_hi - 1.0) * curl_hy_dx_xhi))
     else:
         new_psi_ez_xhi = cpml_state.psi_ez_xhi
 
@@ -1031,8 +1047,8 @@ def apply_cpml_e(
 
     # Round the accumulated corrections back to field storage dtype once
     # (no-op unless precision="mixed" — see the _work note above).
-    state = state._replace(ex=apply_ordered(ex, terms_ex).astype(_fdtype), ey=apply_ordered(ey, terms_ey).astype(_fdtype),
-                           ez=apply_ordered(ez, terms_ez).astype(_fdtype))
+    state = state._replace(ex=apply_ordered(ex, terms_ex, frame=frame, owned=owned).astype(_fdtype), ey=apply_ordered(ey, terms_ey, frame=frame, owned=owned).astype(_fdtype),
+                           ez=apply_ordered(ez, terms_ez, frame=frame, owned=owned).astype(_fdtype))
     cpml_state = cpml_state._replace(
         # x-axis
         psi_ey_xlo=new_psi_ey_xlo,
@@ -1056,7 +1072,7 @@ def apply_cpml_e(
 
 def apply_cpml_h(
     state, cpml_params, cpml_state: CPMLState, grid,
-    axes: str = "xyz", materials=None, *, periodic=None, faces=ALL_FACES,
+    axes: str = "xyz", materials=None, *, periodic=None, faces=ALL_FACES, frame=None, owned=None, x_depths=None,
 ) -> tuple:
     """Apply slab-local CPML correction to the selected H-field faces.
 
@@ -1065,6 +1081,7 @@ def apply_cpml_h(
     Psi uses field (x, y, z) order; selection is explicit, not inferred
     from array endpoints.
 
+    ``frame``, ``owned`` and ``x_depths`` follow :func:`apply_cpml_e`.
     Accepts either legacy ``CPMLParams`` or ``CPMLAxisParams``.
     When *materials* is provided, uses local mu_r for impedance-matched
     guided-mode absorption (equivalent to UPML).
@@ -1072,6 +1089,9 @@ def apply_cpml_h(
     faces = selected_faces(axes, faces)
     n = grid.cpml_layers
     n_x, n_y, n_z = _axis_buffer_depths(grid, n)
+    n_xlo, n_xhi = (n_x, n_x) if x_depths is None else x_depths
+    xlo = slice(None, n_xlo) if frame is None else slice(frame['x'][0], frame['x'][0] + n_xlo)
+    xhi = slice(-n_xhi, None) if frame is None else slice(frame['x'][1] - n_xhi, frame['x'][1])
     # np.float64 grid.dt is STRONG-typed in JAX promotion: with a jnp
     # float32 mu_r it silently promoted the ch coefficients to f64 and
     # the field scatter demoted them back per step (measured, #665's
@@ -1095,7 +1115,7 @@ def apply_cpml_h(
             return arr
         n_face = (n_x, n_y, n_z)[axis]
         sl = [slice(None)] * 3
-        sl[axis] = slice(None, n_face) if lo else slice(-n_face, None)
+        sl[axis] = (xlo if lo else xhi) if axis == 0 else (slice(None, n_face) if lo else slice(-n_face, None))
         return arr[tuple(sl)]
 
     # H derivatives live at the half-cell coordinates, not E nodes.
@@ -1115,12 +1135,12 @@ def apply_cpml_h(
         (dx_x_lo, dx_x_hi, dx_y_lo, dx_y_hi, dz_lo, dz_hi) = _get_axis_cell_sizes(grid)
 
     # X-axis profiles (hi-face pre-flipped at init time).
-    b_x_lo = _clip_lo(px_lo.b, n_x, n)[:, None, None]
-    c_x_lo = _clip_lo(px_lo.c, n_x, n)[:, None, None]
-    k_x_lo = _clip_lo(px_lo.kappa, n_x, n)[:, None, None]
-    b_x_hi = _clip_hi(px_hi.b, n_x, n)[:, None, None]
-    c_x_hi = _clip_hi(px_hi.c, n_x, n)[:, None, None]
-    k_x_hi = _clip_hi(px_hi.kappa, n_x, n)[:, None, None]
+    b_x_lo = _clip_lo(px_lo.b, n_xlo, n)[:, None, None]
+    c_x_lo = _clip_lo(px_lo.c, n_xlo, n)[:, None, None]
+    k_x_lo = _clip_lo(px_lo.kappa, n_xlo, n)[:, None, None]
+    b_x_hi = _clip_hi(px_hi.b, n_xhi, n)[:, None, None]
+    c_x_hi = _clip_hi(px_hi.c, n_xhi, n)[:, None, None]
+    k_x_hi = _clip_hi(px_hi.kappa, n_xhi, n)[:, None, None]
     # Y-axis profiles
     b_y_lo = _clip_lo(py_lo.b, n_y, n)[None, :, None]
     c_y_lo = _clip_lo(py_lo.c, n_y, n)[None, :, None]
@@ -1153,49 +1173,57 @@ def apply_cpml_h(
 
     if "x_lo" in faces:
         # --- X-lo: Hy correction from dEz/dx ---
-        ez_xlo = state.ez[:n_x, :, :]
-        ez_shifted_xlo = slab_neighbor(state.ez, 0, n_x, True, True)
+        ez_xlo = state.ez[xlo, :, :]
+        ez_shifted_xlo = slab_neighbor(state.ez, 0, n_xlo, True, True, frame=frame)
         curl_ez_dx_xlo = (ez_shifted_xlo - ez_xlo) / dx_x_lo
 
         new_psi_hy_xlo = b_x_lo * cpml_state.psi_hy_xlo + c_x_lo * curl_ez_dx_xlo
-        terms_hy.append(((slice(None, n_x), slice(None, None), slice(None, None)), _h_face(1, 0, True) * new_psi_hy_xlo))
-        terms_hy.append(((slice(None, n_x), slice(None, None), slice(None, None)), _h_face(1, 0, True) * (1.0 / k_x_lo - 1.0) * curl_ez_dx_xlo))
+        if owned is not None:
+            new_psi_hy_xlo = jnp.where(owned['x_lo'], new_psi_hy_xlo, cpml_state.psi_hy_xlo)
+        terms_hy.append(((slice(None, n_xlo), slice(None, None), slice(None, None)), _h_face(1, 0, True) * new_psi_hy_xlo))
+        terms_hy.append(((slice(None, n_xlo), slice(None, None), slice(None, None)), _h_face(1, 0, True) * (1.0 / k_x_lo - 1.0) * curl_ez_dx_xlo))
     else:
         new_psi_hy_xlo = cpml_state.psi_hy_xlo
 
     if "x_hi" in faces:
         # --- X-hi: Hy correction from dEz/dx ---
-        ez_xhi = state.ez[-n_x:, :, :]
-        ez_shifted_xhi = slab_neighbor(state.ez, 0, n_x, False, True)
+        ez_xhi = state.ez[xhi, :, :]
+        ez_shifted_xhi = slab_neighbor(state.ez, 0, n_xhi, False, True, frame=frame)
         curl_ez_dx_xhi = (ez_shifted_xhi - ez_xhi) / dx_x_hi
 
         new_psi_hy_xhi = b_x_hi * cpml_state.psi_hy_xhi + c_x_hi * curl_ez_dx_xhi
-        terms_hy.append(((slice(-n_x, None), slice(None, None), slice(None, None)), _h_face(1, 0, False) * new_psi_hy_xhi))
-        terms_hy.append(((slice(-n_x, None), slice(None, None), slice(None, None)), _h_face(1, 0, False) * (1.0 / k_x_hi - 1.0) * curl_ez_dx_xhi))
+        if owned is not None:
+            new_psi_hy_xhi = jnp.where(owned['x_hi'], new_psi_hy_xhi, cpml_state.psi_hy_xhi)
+        terms_hy.append(((slice(-n_xhi, None), slice(None, None), slice(None, None)), _h_face(1, 0, False) * new_psi_hy_xhi))
+        terms_hy.append(((slice(-n_xhi, None), slice(None, None), slice(None, None)), _h_face(1, 0, False) * (1.0 / k_x_hi - 1.0) * curl_ez_dx_xhi))
     else:
         new_psi_hy_xhi = cpml_state.psi_hy_xhi
 
     if "x_lo" in faces:
         # --- X-lo: Hz correction from dEy/dx ---
-        ey_xlo = state.ey[:n_x, :, :]
-        ey_shifted_xlo = slab_neighbor(state.ey, 0, n_x, True, True)
+        ey_xlo = state.ey[xlo, :, :]
+        ey_shifted_xlo = slab_neighbor(state.ey, 0, n_xlo, True, True, frame=frame)
         curl_ey_dx_xlo = (ey_shifted_xlo - ey_xlo) / dx_x_lo
 
         new_psi_hz_xlo = b_x_lo * cpml_state.psi_hz_xlo + c_x_lo * curl_ey_dx_xlo
-        terms_hz.append(((slice(None, n_x), slice(None, None), slice(None, None)), -_h_face(2, 0, True) * new_psi_hz_xlo))
-        terms_hz.append(((slice(None, n_x), slice(None, None), slice(None, None)), -_h_face(2, 0, True) * (1.0 / k_x_lo - 1.0) * curl_ey_dx_xlo))
+        if owned is not None:
+            new_psi_hz_xlo = jnp.where(owned['x_lo'], new_psi_hz_xlo, cpml_state.psi_hz_xlo)
+        terms_hz.append(((slice(None, n_xlo), slice(None, None), slice(None, None)), -_h_face(2, 0, True) * new_psi_hz_xlo))
+        terms_hz.append(((slice(None, n_xlo), slice(None, None), slice(None, None)), -_h_face(2, 0, True) * (1.0 / k_x_lo - 1.0) * curl_ey_dx_xlo))
     else:
         new_psi_hz_xlo = cpml_state.psi_hz_xlo
 
     if "x_hi" in faces:
         # --- X-hi: Hz correction from dEy/dx ---
-        ey_xhi = state.ey[-n_x:, :, :]
-        ey_shifted_xhi = slab_neighbor(state.ey, 0, n_x, False, True)
+        ey_xhi = state.ey[xhi, :, :]
+        ey_shifted_xhi = slab_neighbor(state.ey, 0, n_xhi, False, True, frame=frame)
         curl_ey_dx_xhi = (ey_shifted_xhi - ey_xhi) / dx_x_hi
 
         new_psi_hz_xhi = b_x_hi * cpml_state.psi_hz_xhi + c_x_hi * curl_ey_dx_xhi
-        terms_hz.append(((slice(-n_x, None), slice(None, None), slice(None, None)), -_h_face(2, 0, False) * new_psi_hz_xhi))
-        terms_hz.append(((slice(-n_x, None), slice(None, None), slice(None, None)), -_h_face(2, 0, False) * (1.0 / k_x_hi - 1.0) * curl_ey_dx_xhi))
+        if owned is not None:
+            new_psi_hz_xhi = jnp.where(owned['x_hi'], new_psi_hz_xhi, cpml_state.psi_hz_xhi)
+        terms_hz.append(((slice(-n_xhi, None), slice(None, None), slice(None, None)), -_h_face(2, 0, False) * new_psi_hz_xhi))
+        terms_hz.append(((slice(-n_xhi, None), slice(None, None), slice(None, None)), -_h_face(2, 0, False) * (1.0 / k_x_hi - 1.0) * curl_ey_dx_xhi))
     else:
         new_psi_hz_xhi = cpml_state.psi_hz_xhi
 
@@ -1320,8 +1348,8 @@ def apply_cpml_h(
         new_psi_hy_zhi = cpml_state.psi_hy_zhi
 
 
-    state = state._replace(hx=apply_ordered(hx, terms_hx).astype(_fdtype), hy=apply_ordered(hy, terms_hy).astype(_fdtype),
-                           hz=apply_ordered(hz, terms_hz).astype(_fdtype))
+    state = state._replace(hx=apply_ordered(hx, terms_hx, frame=frame, owned=owned).astype(_fdtype), hy=apply_ordered(hy, terms_hy, frame=frame, owned=owned).astype(_fdtype),
+                           hz=apply_ordered(hz, terms_hz, frame=frame, owned=owned).astype(_fdtype))
     cpml_state = cpml_state._replace(
         # x-axis
         psi_hy_xlo=new_psi_hy_xlo,

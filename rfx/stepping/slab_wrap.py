@@ -18,9 +18,9 @@ from rfx.stepping.slab import cut, cut_pole_coeffs, cut_poles
 def select_step(*, cpml=False, debye=False, lorentz=False, ports=False,
                 dft=False, flux=False, ntff=False, pmc=False, periodic_x=False,
                 point_sources=True, point_probes=True, pec=True):
-    """The W1 PEC and pole admission decision (upstream refusals still apply)."""
+    """The W1 PEC, pole and CPML admission decision (upstream refusals still apply)."""
     return "wrapped" if (pec and point_sources and point_probes and not any((
-        cpml, ports, dft, flux, ntff, pmc, periodic_x))) else "legacy"
+        ports, dft, flux, ntff, pmc, periodic_x))) else "legacy"
 
 
 def _place(value, mesh):
@@ -107,6 +107,17 @@ def split(invariants, carry, layout, mesh, *, waveforms, dt=None):
     for key, value in invariants.items():
         if key in tags:
             result[key] = cut(value, layout, tags[key], mesh=mesh)
+        elif key == 'cpml_x':
+            result[key] = {name: cut(a, layout, 'width' if 'dx_x_' in name else
+                ('cpml_one' if name.rsplit('.', 1)[-1] in ('b', 'kappa') else 'cpml_zero'), mesh=mesh)
+                for name, a in value.items()}
+        elif key == 'e_loss' and value is not None:
+            eps, sigma, inverse = value
+            result[key] = (cut(eps, layout, 'eps_r', mesh=mesh),
+                           cut(sigma, layout, 'sigma', mesh=mesh))
+            assert inverse is False, 'graded CPML loss uses relative epsilon'
+        elif key == 'cpml_inv_eps_r':
+            result[key] = cut(value, layout, 'eps_r', mesh=mesh)
         elif key == 'materials':
             fields = {}
             for name, field in zip(value._fields, value):
@@ -139,6 +150,8 @@ def split(invariants, carry, layout, mesh, *, waveforms, dt=None):
     local = {name: cut(getattr(state, name), layout, 'state', mesh=mesh)
              for name in ('ex', 'ey', 'ez', 'hx', 'hy', 'hz')}
     local_carry = {'fdtd': FDTDState(**local, step=state.step)}
+    if 'cpml' in carry:
+        local_carry['cpml'] = cut(carry['cpml'], layout, 'cpml_psi', mesh=mesh)
     for family in ('debye', 'lorentz'):
         if family in carry:
             local_carry[family] = cut_poles(carry[family], layout, family + '_state', mesh=mesh)
@@ -148,6 +161,8 @@ def split(invariants, carry, layout, mesh, *, waveforms, dt=None):
 def wrap(step, layout, mesh, *, table):
     """Execute the supplied graded step on each slab, attaching two copies."""
     from rfx.runners.distributed_nu import _exchange_h_ghosts_nu, _exchange_e_ghosts_nu
+    components = tuple(term.component for term in table.components)
+    n_channels, channel_names = table.n_channels, table.channel_names
     context = replace(step.context, x_face_frame={'x': (
         layout.ghost_width, layout.ghost_width + layout.nx_per_rank - layout.pad_x)})
 
@@ -160,11 +175,13 @@ def wrap(step, layout, mesh, *, table):
 
         xs = (xs[0], xs[1][0])
         inputs = dict(invariants)
+        if inputs.get('e_loss') is not None:
+            inputs['e_loss'] = (*inputs['e_loss'], False)
         inputs['drives'] = jax.tree.map(lambda a: a[0], inputs['drives'])
         terms, order, ids = jax.tree.map(lambda a: a[0], inputs['probe_table'])
         inputs['probe_table'] = SampleTable(tuple(
-            ComponentTerms(host.component, *part) for host, part in zip(table.components, terms)),
-            table.n_channels, table.channel_names, order, ids)
+            ComponentTerms(component, *part) for component, part in zip(components, terms)),
+            n_channels, channel_names, order, ids)
         inputs['owns_x'] = jax.tree.map(lambda a: a[0], inputs['owns_x'])
         advance = make_graded_step(context, hooks={HookPoint.AFTER_H: (h,), HookPoint.STEP_END: (e,)})
         carry, record = advance(carry, xs, inputs)

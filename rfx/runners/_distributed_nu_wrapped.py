@@ -16,7 +16,7 @@ from rfx.runners._distributed_common import unstack_and_gather
 def run_wrapped(sg, materials, pec_mask, n_steps, sources, probes, *,
                 devices, occupancy, checkpoint_every, n_warmup,
                 emit_time_series, gather_final_state, material_drive,
-                debye=None, lorentz=None):
+                debye=None, lorentz=None, cpml=False, cpml_state=None):
     """Reuse canonical setup, then scan the same step on each rank."""
     devices = jax.devices()[:sg.n_devices] if devices is None else devices
     if len(devices) != sg.n_devices:
@@ -92,13 +92,22 @@ def run_wrapped(sg, materials, pec_mask, n_steps, sources, probes, *,
                 coefficient=coefficient)
         source_rows.append((source.i, source.j, source.k, source.component, samples))
     edge_masks = pec_mask if isinstance(pec_mask, tuple) else None
-    setup = _build_nu_scan(grid, materials, n_steps, cpml_axes='',
+    setup = _build_nu_scan(grid, materials, n_steps, cpml_axes=None if cpml else '',
         debye=debye, lorentz=lorentz,
         pec_mask=None if edge_masks is not None else pec_mask, pec_edge_masks=edge_masks,
         pec_occupancy=occupancy, sources=source_rows,
         probes=[(p.i, p.j, p.k, p.component) for p in probes],
-        pec_faces={f'{a}_{s}' for a in 'xyz' for s in ('lo', 'hi')},
+        pec_faces=None if cpml else {f'{a}_{s}' for a in 'xyz' for s in ('lo', 'hi')},
         emit_time_series=emit_time_series)
+    if cpml:
+        from rfx.stepping.slab_cpml import publish, import_state
+        from rfx.stepping.graded import make_graded_step
+        if cpml_state is not None:
+            initial = {**setup.carry_init, 'cpml': import_state(
+                cpml_state, setup.carry_init['cpml'], incoming)}
+            setup = setup._replace(carry_init=initial)
+        context, operands, initial = publish(setup)
+        setup = setup._replace(step_fn_inv=make_graded_step(context), invariants=operands, carry_init=initial)
     layout = incoming
     invariants, carry = split(setup.invariants, setup.carry_init, layout, mesh,
                                waveforms=setup.src_waveforms, dt=grid.dt)
@@ -108,7 +117,7 @@ def run_wrapped(sg, materials, pec_mask, n_steps, sources, probes, *,
 
     from rfx.runners import distributed_nu as nu
 
-    @jax.jit
+    @nu.jax.jit
     def run_fn(carry, invariants, waves, ranks):
         step = partial(advance, invariants=invariants, ranks=ranks)
         xs = (jnp.arange(n_steps, dtype=jnp.int32), waves)
@@ -137,6 +146,10 @@ def run_wrapped(sg, materials, pec_mask, n_steps, sources, probes, *,
 
     final, records = run_fn(carry, invariants, waves, mesh_ranks(mesh))
     ts, state = reduce(records, final['fdtd'], layout, gather=gather_final_state)
+    cpml_state = None
+    if cpml:
+        from rfx.stepping.slab_cpml import export_state
+        cpml_state = export_state(final['cpml'], setup.step_fn_inv.context.cpml_grid, layout)
     return dict(time_series=ts if emit_time_series else None, final_state=state,
-                final_state_sharded=final['fdtd'], cpml_state_sharded=None,
+                final_state_sharded=final['fdtd'], cpml_state_sharded=cpml_state,
                 debye_state_sharded=final.get('debye'), lorentz_state_sharded=final.get('lorentz'))

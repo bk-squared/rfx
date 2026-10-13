@@ -1,4 +1,4 @@
-"""W1 slices 1–2: model identity and cross-trace bars for the graded slab step."""
+"""W1 slices 1–3: model identity and cross-trace bars for the graded slab step."""
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -221,7 +221,7 @@ def test_two_vs_three_bitwise(row, on):
                               np.asarray(getattr(three[1], field))), field
 
 
-@pytest.mark.parametrize('feature', ['cpml', 'ports', 'dft', 'flux', 'ntff', 'pmc', 'periodic_x'])
+@pytest.mark.parametrize('feature', ['ports', 'dft', 'flux', 'ntff', 'pmc', 'periodic_x'])
 def test_selector(feature):
     assert select_step() == 'wrapped'
     assert select_step(**{feature: True}) == 'legacy'
@@ -393,7 +393,7 @@ def test_localized_operands(row, on, monkeypatch):
 @pytest.mark.parametrize('debye,lorentz', [(True, False), (False, True), (True, True)])
 def test_pole_selector(debye, lorentz):
     assert select_step(debye=debye, lorentz=lorentz) == 'wrapped'
-    for feature in ('cpml', 'ports', 'pmc'):
+    for feature in ('ports', 'pmc'):
         assert select_step(debye=debye, lorentz=lorentz, **{feature: True}) == 'legacy'
 
 
@@ -547,3 +547,194 @@ def test_pole_forward_gradient_reaches_wrap(name, warmup, checkpoint, monkeypatc
     gradient = jax.grad(loss)(materials.eps_r)
     assert np.isfinite(gradient).all()
     assert calls and all(calls)
+
+
+def cpml_scene(name):
+    """Declared scene 2 (copied builder) and the existing #1302 builder."""
+    from rfx import Box, GaussianPulse
+    if name == 'debye':
+        from tests.unit.runners.test_distributed_edge_averaged_materials import _cpml_1302_box
+        sim = _cpml_1302_box('debye', 'fwd_graded')
+        sim.add_probe((.019, .006, .006), 'hy')
+    else:
+        sim = Simulation(freq_max=10e9, domain=(.016, .012, .010), dx=.001,
+            boundary='cpml', cpml_layers=4,
+            dx_profile=np.array([.001] + [.9*.001, 1.1*.001]*7 + [.001]), precision='float32')
+        sim.add_material('block', eps_r=4.)
+        sim.add(Box((-1., .003, .002), (1., .008, .006)), material='block')
+        sim.add_source((.005, .004, .003), 'ez',
+                       waveform=GaussianPulse(f0=5e9, bandwidth=.8), amplitude_kind='current')
+        for component, position in [('ez', (.007, .005, .004)), ('ez', (.015, .007, .006)),
+                                    ('ez', (.016, .005, .004)), ('hy', (.007, .005, .004)),
+                                    ('hy', (.016, .007, .006))]:
+            sim.add_probe(position, component)
+    source = sim._ports[0]
+    sim.add_probe(source.position, source.component)
+    return sim
+
+
+def cpml_metrics(one, several, dt, name):
+    ecols, hcols = ((0, 2), (1,)) if name == 'debye' else ((0, 1, 2, 5), (3, 4))
+    one, several = np.asarray(one), np.asarray(several)
+    assert np.isfinite(one).all() and np.isfinite(several).all()
+    epeak = np.float32(np.max(np.abs(one[:, ecols])))
+    hscale = np.float32(max(float(np.max(np.abs(one[:, hcols]))), float(epeak)/np.sqrt(MU_0/EPS_0)))
+    delta = np.abs(one.astype(np.float64)-several)
+    e = np.max(delta[:, ecols], axis=1)/float(np.spacing(epeak))
+    h = np.max(delta[:, hcols], axis=1)/float(np.spacing(hscale))
+    columns = [0] if name == 'debye' else list(range(5))
+    kernel = np.exp(-2j*np.pi*np.outer(np.linspace(2e9, 10e9, 20), np.arange(len(one))*dt))
+    expected, actual = (kernel @ a[:, columns].astype(np.float64) for a in (one, several))
+    return e, h, float(np.max(np.abs(actual-expected))/np.max(np.abs(expected)))
+
+
+@pytest.mark.parametrize('name', ['scene2', 'debye'])
+def test_cpml_one_slab_invariants(name, monkeypatch):
+    from rfx import nonuniform
+    from rfx.runners import _distributed_nu_wrapped as runner
+    from rfx.stepping.slab_cpml import publish, operands
+    from dataclasses import replace
+    captures = []
+    build = nonuniform._build_nu_scan
+    def capture(*args, **kwargs):
+        setup = build(*args, **kwargs)
+        captures.append(setup)
+        return setup
+    with monkeypatch.context() as patch:
+        patch.setattr(nonuniform, '_build_nu_scan', capture)
+        cpml_scene(name).forward(n_steps=2, checkpoint=False, skip_preflight=True)
+    expected = captures[0]
+    ctx, inv, initial = publish(expected)
+    original = runner.split
+    def observe(*args, **kwargs):
+        actual, carry = original(*args, **kwargs)
+        layout = args[2]
+        owned = slice(layout.ghost_width, layout.ghost_width + layout.nx)
+        for key in inv:
+            if key in ('drives', 'probe_table', 'debye_coeffs', 'lorentz_coeffs', 'e_loss'):
+                continue
+            assert_same_tree(inv[key], actual[key], key, owned=owned)
+        if inv['e_loss'] is not None:
+            assert_same_tree(inv['e_loss'][:2], actual['e_loss'], 'e_loss', owned=owned)
+        for family in ('debye', 'lorentz'):
+            coeffs = inv[family + '_coeffs']
+            if coeffs is None:
+                continue
+            spatial = ('ca', 'cb') if family == 'debye' else ('ca', 'cb', 'cc')
+            for field in coeffs._fields:
+                value = getattr(actual[family + '_coeffs'], field)
+                if field not in spatial:
+                    value = jax.tree.map(lambda a: a[:, owned], value)
+                assert_same_tree(getattr(coeffs, field), value, family + '.' + field,
+                                 owned=owned if field in spatial else None)
+            assert_same_tree(initial[family], jax.tree.map(lambda a: a[:, owned], carry[family]), family)
+        # Tables are checked with the existing slice-1 identity helper.
+        tables = {key: inv[key] for key in ('drives', 'probe_table')}
+        check_one_slab_cut(expected._replace(invariants=tables), actual, layout)
+        assert_same_tree(initial['fdtd'], carry['fdtd'], 'fdtd', owned=owned)
+        assert_same_tree(initial['cpml'], carry['cpml'], 'cpml.psi', owned=owned)
+        from rfx.stepping.slab import Slab
+        for devices in (2, 3):
+            padded = Slab(layout.nx, devices)
+            state = cut(initial['cpml'], padded, 'cpml_psi')
+            rows = np.arange(padded.nx_local)[None, :] + np.arange(devices)[:, None]*padded.nx_per_rank - 1
+            outside = (rows < 0) | (rows >= padded.nx)
+            for a in jax.tree.leaves(state):
+                assert np.all(np.asarray(a)[outside] == 0), 'CPML FILL'
+
+        local = replace(ctx, x_face_frame={'x': (1, layout.nx+1)})
+        profiles, _, psi, _ = operands(local, actual, carry['cpml'])
+        canonical = expected.step_fn_inv.context.cpml_params
+        for family in ('', 'magnetic'):
+            a, b = (canonical, profiles) if not family else (canonical.magnetic, profiles.magnetic)
+            for face in ('x_lo', 'x_hi'):
+                assert_same_tree(getattr(a, face), getattr(b, face), family + face)
+        for field in psi._fields:
+            value = getattr(psi, field)
+            if field.split('_')[-1][0] != 'x':
+                value = value[owned]
+            assert_same_tree(getattr(expected.carry_init['cpml'], field), value, 'compact.' + field)
+        raise BeforeStepping
+    with monkeypatch.context() as patch:
+        patch.setattr(runner, 'split', observe)
+        with pytest.raises(BeforeStepping):
+            cpml_scene(name)._forward_distributed_nonuniform_from_materials(
+                n_steps=2, devices=jax.devices('cpu')[:1], skip_preflight=True)
+
+
+@pytest.mark.parametrize('name', ['scene2', 'debye'])
+def test_cpml_two_vs_three_bitwise_and_bars(name):
+    sim = cpml_scene(name)
+    outputs = [sim.forward(n_steps=60, checkpoint=False, skip_preflight=True,
+        **({} if n == 1 else dict(distributed=True, devices=jax.devices('cpu')[:n])))
+        for n in (1, 2, 3)]
+    # Forward omits gathered fields, so use the run entry for final-field identity.
+    from rfx.runners import _distributed_nu_wrapped as runner
+    from unittest.mock import patch
+    states = []
+    original = runner.reduce
+    def gather(records, state, layout, **kwargs):
+        result = original(records, state, layout, gather=True)
+        states.append(result[1])
+        return result
+    with patch.object(runner, 'reduce', gather):
+        for n in (2, 3):
+            sim.forward(n_steps=60, checkpoint=False, skip_preflight=True,
+                        distributed=True, devices=jax.devices('cpu')[:n])
+    assert_bits((outputs[1].time_series, states[0]), (outputs[2].time_series, states[1]))
+    for result in outputs[1:]:
+        e, h, dft = cpml_metrics(outputs[0].time_series, result.time_series, float(result.dt), name)
+        assert np.max(e) <= 9, e
+        assert np.max(h) <= 9, h
+        assert dft <= 1e-4, dft
+
+
+@pytest.mark.parametrize('debye,lorentz', [(False, False), (True, False), (False, True), (True, True)])
+def test_cpml_selector(debye, lorentz):
+    assert select_step(cpml=True, debye=debye, lorentz=lorentz) == 'wrapped'
+
+
+@pytest.mark.parametrize('name,mode', [('scene2', 'run'), ('scene2', 'grad'), ('debye', 'grad')])
+def test_cpml_entries_reach_wrap(name, mode, monkeypatch):
+    from rfx.runners import _distributed_nu_wrapped as runner
+    calls = []
+    original = runner.split
+    def observe(*args, **kwargs):
+        calls.append('cpml_x' in args[0] and 'cpml' in args[1])
+        return original(*args, **kwargs)
+    monkeypatch.setattr(runner, 'split', observe)
+    sim = cpml_scene(name)
+    if mode == 'run':
+        sim.run(n_steps=12, devices=jax.devices('cpu')[:2], skip_preflight=True)
+    else:
+        materials, _, _, _ = sim._assemble_materials_nu(sim._build_nonuniform_grid())
+        def loss(eps):
+            result = sim.forward(n_steps=12, checkpoint=False, skip_preflight=True,
+                eps_override=eps, distributed=True, devices=jax.devices('cpu')[:2],
+                n_warmup=3, checkpoint_every=3)
+            return jnp.sum(result.time_series**2)
+        assert np.isfinite(jax.grad(loss)(materials.eps_r)).all()
+    assert calls and all(calls)
+
+
+@pytest.mark.parametrize('devices', [2, 3])
+def test_cpml_native_psi_roundtrip(devices):
+    """Nonzero, nonconstant psi pins axes, physical owners and padding."""
+    from rfx.boundaries.cpml import init_cpml
+    from rfx.stepping.slab import Slab
+    from rfx.stepping.slab_cpml import import_state, export_state
+    grid = cpml_scene('scene2')._build_nonuniform_grid()
+    _, psi = init_cpml(grid)
+    psi = jax.tree.map(lambda a: jnp.arange(a.size, dtype=a.dtype).reshape(a.shape), psi)
+    fields = {}
+    for name, value in zip(psi._fields, psi):
+        if name.split('_')[-1][0] == 'x':
+            extra = grid.nx - value.shape[0]
+            value = jnp.pad(value, ((0, extra) if name.endswith('lo') else (extra, 0), (0, 0), (0, 0)))
+        fields[name] = value
+    layout = Slab(grid.nx, devices)
+    mesh = Mesh(np.asarray(jax.devices('cpu')[:devices]), ('x',))
+    local = cut(type(psi)(**fields), layout, 'cpml_psi', mesh=mesh)
+    native = export_state(local, grid, layout)
+    restored = import_state(native, psi, layout)
+    assert_same_tree(psi, restored, 'native psi roundtrip')

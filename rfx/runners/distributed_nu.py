@@ -1586,7 +1586,7 @@ def run_nonuniform_distributed_pec(
             n_steps, sources, probes, devices=devices, occupancy=sharded_pec_occupancy,
             checkpoint_every=checkpoint_every, n_warmup=n_warmup,
             emit_time_series=emit_time_series, gather_final_state=gather_final_state,
-            material_drive=material_drive, debye=debye, lorentz=lorentz)
+            material_drive=material_drive, debye=debye, lorentz=lorentz, cpml=use_cpml, cpml_state=cpml_state)
 
     # Defer the `Mesh` import to runtime so module import remains
     # lightweight (matches distributed_v2.py's pattern).

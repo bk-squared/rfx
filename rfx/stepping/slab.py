@@ -23,6 +23,9 @@ class Fill(NamedTuple):
 
 
 FILL = {
+    'cpml_psi': Fill(0., 0.),  # No auxiliary field outside physical rows.
+    'cpml_zero': Fill(0., 0.),  # Exterior sigma, alpha and c are zero.
+    'cpml_one': Fill(1., 1.),  # Exterior b and kappa retain the identity profile.
     'debye_ca': Fill(1., 1.),  # Vacuum E decay, from init_debye (#1302).
     'debye_cb': Fill('dt/eps0', 'dt/eps0'),  # Vacuum curl coupling at the caller's dt (#1302).
     'debye_cc': Fill('1/eps0', '1/eps0'),  # Vacuum polarization coupling, with initializer rounding.
@@ -351,9 +354,14 @@ def shard_stacked_poles(arr, shd):
 
     """
     n_dev, n_poles, nx_loc, ny_a, nz_a = arr.shape
-    return jax.device_put(
-        arr.reshape(n_dev * n_poles, nx_loc, ny_a, nz_a), shd,
-    )
+    merged = arr.reshape(n_dev * n_poles, nx_loc, ny_a, nz_a)
+    tracer = merged
+    while isinstance(tracer, jax.core.Tracer):
+        if getattr(tracer, 'batch_dim', None) is not None:
+            # As in cut(), batching must insert an unpartitioned batch axis.
+            return jax.jit(lambda a: a, out_shardings=shd)(merged)
+        tracer = getattr(tracer, 'primal', None)
+    return jax.device_put(merged, shd)
 
 
 def pole_fill(kind, dt=None, n_poles=1):

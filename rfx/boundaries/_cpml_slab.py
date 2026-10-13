@@ -17,7 +17,7 @@ def selected_faces(axes, faces):
 
 
 def slab_neighbor(arr, axis, depth, lo, forward, boundary=None, *,
-                  h_neighbor=h_neighbor):
+                  h_neighbor=h_neighbor, frame=None):
     """Neighbor operand restricted to one face, including its terminal image.
 
     Match the whole-array forward zero extension or backward H neighbor,
@@ -25,7 +25,12 @@ def slab_neighbor(arr, axis, depth, lo, forward, boundary=None, *,
     on the explicit curl boundary; they do not select the active CPML faces.
     """
     size = arr.shape[axis]
-    start, stop = (0, depth) if lo else (size - depth, size)
+    begin, end = 0, size
+    if frame is not None and axis == 0:
+        # The opposite endpoint belongs to another rank. Retain its exchanged
+        # neighbor even when this face exactly fills the owning slab (R12).
+        begin, end = (frame['x'][0], size) if lo else (0, frame['x'][1])
+    start, stop = (begin, begin + depth) if lo else (end - depth, end)
 
     def take(begin, end):
         sl = [slice(None)] * 3
@@ -33,8 +38,8 @@ def slab_neighbor(arr, axis, depth, lo, forward, boundary=None, *,
         return arr[tuple(sl)]
 
     if forward:
-        part = take(start + 1, min(stop + 1, size))
-        if stop == size:
+        part = take(start + 1, min(stop + 1, end))
+        if stop == end:
             pads = [(0, 0)] * 3
             pads[axis] = (0, 1)
             part = jnp.pad(part, pads)
@@ -43,22 +48,27 @@ def slab_neighbor(arr, axis, depth, lo, forward, boundary=None, *,
     if size == 1:
         return h_neighbor(arr, axis, boundary=boundary)
 
-    part = take(max(0, start - 1), stop - 1)
+    part = take(max(begin, start - 1), stop - 1)
 
     def terminal(index):
         # Read only the terminal plane through the shared boundary convention.
         # Interior operands above are slices of the original field.
         at = [slice(None)] * 3
         at[axis] = index
-        edge = h_neighbor(arr, axis, boundary=boundary, index=tuple(at))
+        view = arr
+        if frame is not None and axis == 0:
+            # Each image retains the opposite exchanged neighbor (W0/R12).
+            view = arr[begin:] if index == begin else arr[:end]
+            at[axis] = 0 if index == begin else end - 1
+        edge = h_neighbor(view, axis, boundary=boundary, index=tuple(at))
         return jnp.expand_dims(edge, axis)
 
-    if start == 0:
-        part = jnp.concatenate((terminal(0), part), axis=axis)
-    if stop == size:
+    if start == begin:
+        part = jnp.concatenate((terminal(begin), part), axis=axis)
+    if stop == end:
         sl = [slice(None)] * 3
         sl[axis] = slice(None, -1)
-        part = jnp.concatenate((part[tuple(sl)], terminal(size - 1)), axis=axis)
+        part = jnp.concatenate((part[tuple(sl)], terminal(end - 1)), axis=axis)
     return part
 
 
@@ -67,8 +77,21 @@ def writeback_form():
     return "padded" if jax.default_backend() == "gpu" else "slab"
 
 
-def apply_ordered(field, terms):
+def apply_ordered(field, terms, *, frame=None, owned=None):
     """Add slab corrections in production order, including overlap rounding."""
+    if frame is not None:
+        for sl, value in terms:
+            active = True
+            if sl[0].start is not None or sl[0].stop is not None:
+                side = 'lo' if sl[0].start is None else 'hi'
+                active = owned['x_' + side]
+                lo, hi = frame['x']
+                x = slice(lo, lo + sl[0].stop) if side == 'lo' else slice(hi + sl[0].start, hi)
+                sl = (x, *sl[1:])
+            starts = tuple(w.indices(n)[0] for w, n in zip(sl, field.shape))
+            updated = jnp.where(active, (field[sl] + value).astype(field.dtype), field[sl])
+            field = jax.lax.dynamic_update_slice(field, updated, starts)
+        return field
     if writeback_form() == "padded":
         for sl, value in terms:
             pads = []
