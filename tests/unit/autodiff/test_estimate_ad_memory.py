@@ -1545,14 +1545,17 @@ def test_checkpoint_every_active_count_honors_unaligned_warmup():
     accounting = sim._ad_memory_static_accounting()
     field_bytes = accounting["field_bytes"]
     overhead = accounting["forward_bytes"] + accounting["ntff_bytes"]
+    # #1683: a 50-step chunk is above half of the 71 (70) optimized steps,
+    # so the runner uses n_opt // 2 = 35 and replays 35 steps (at least two
+    # full segments; one segment plus a tail kept the whole tape).
     assert unaligned.ad_segmented_gb * 1e9 == pytest.approx(
-        (2 * 3 + 50) * field_bytes + overhead
+        (2 * 3 + 35) * field_bytes + overhead
     )
     assert three_active_segments.ad_segmented_gb * 1e9 == pytest.approx(
         (2 * 3 + 40) * field_bytes + overhead
     )
     assert boundary.ad_segmented_gb * 1e9 == pytest.approx(
-        (2 * 2 + 50) * field_bytes + overhead
+        (2 * 2 + 35) * field_bytes + overhead
     )
     assert two_active_segments.ad_segmented_gb * 1e9 == pytest.approx(
         (2 * 2 + 60) * field_bytes + overhead

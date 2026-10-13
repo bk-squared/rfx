@@ -43,6 +43,7 @@ from rfx.boundaries.pec import (
     realized_pec_edge_masks,
 )
 from rfx.core.jax_utils import is_tracer, recorded_scan
+from rfx.stepping import segmented_scan
 from rfx._grid_metric import (
     DECLARED_SPAN_TOL_M,
     axis_name as _axis_name,
@@ -1272,40 +1273,9 @@ def run_nonuniform(
         and 0 < int(checkpoint_every) < n_steps_opt
     )
     if use_segmented:
-        # Scan-of-scan: outer scan over segments wrapped in jax.checkpoint
-        # forces XLA to remat the inner scan during backward, so the AD
-        # tape only stores carry at segment boundaries (≈ sqrt(n_steps)
-        # × carry_size when checkpoint_every ≈ sqrt(n_steps)).
-        chunk = int(checkpoint_every)
-        n_segments = (n_steps_opt + chunk - 1) // chunk
-        pad = n_segments * chunk - n_steps_opt
-        opt_steps = xs[0]
-        opt_src = xs[1]
-        if pad > 0:
-            steps_padded = jnp.arange(
-                int(opt_steps[0]),
-                int(opt_steps[0]) + n_segments * chunk,
-                dtype=jnp.int32,
-            )
-            n_sources = opt_src.shape[1]
-            src_pad = jnp.zeros((pad, n_sources), dtype=opt_src.dtype)
-            src_padded = jnp.concatenate([opt_src, src_pad], axis=0)
-        else:
-            steps_padded = opt_steps
-            src_padded = opt_src
-
-        seg_steps = steps_padded.reshape(n_segments, chunk)
-        seg_src = src_padded.reshape(n_segments, chunk, src_padded.shape[1])
-
-        def segment_body(carry, segment_xs):
-            return jax.lax.scan(step_fn, carry, segment_xs)
-
-        seg_body = jax.checkpoint(segment_body)
-        final, segment_ys = recorded_scan(
-            seg_body, carry_init, (seg_steps, seg_src)
+        final, opt_ys = segmented_scan(
+            step_fn, carry_init, xs, int(checkpoint_every), scan=recorded_scan
         )
-        flat = segment_ys.reshape((n_segments * chunk,) + segment_ys.shape[2:])
-        opt_ys = flat[:n_steps_opt]
     else:
         body = jax.checkpoint(step_fn) if checkpoint else step_fn
         final, opt_ys = recorded_scan(body, carry_init, xs)

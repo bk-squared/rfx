@@ -41,6 +41,7 @@ from __future__ import annotations
 from functools import partial
 
 from rfx import _realized
+from rfx.stepping import segmented_scan
 from rfx.stepping.slab import (
     Slab, Fill, cut, cut_poles, cut_pole_coeffs, owned_values, forward_sharding as _forward_sharding,
 )
@@ -2385,46 +2386,11 @@ def run_nonuniform_distributed_pec(
             c0_opt = c0
             warmup_ys = None
 
-        # Optimize scan: either single scan (Phase 2A-2E path) or
-        # scan-of-scan with checkpoint(segment_body) (Phase 2F segmented
-        # remat).  The pad-+-tail-discard semantics mirror single-device
-        # ``run_nonuniform``.
+        # Checkpoint full segments and the real, unpadded tail.
         if use_segmented:
-            chunk = int(checkpoint_every)
-            n_seg = (n_opt + chunk - 1) // chunk
-            pad = n_seg * chunk - n_opt
-            opt_steps = opt_xs[0]
-            opt_src = opt_xs[1]
-            if pad > 0:
-                # Step indices now enter as dynamic jit arguments; their
-                # starting value is the static warmup length by construction.
-                start_step = n_warmup
-                steps_padded = jnp.arange(
-                    start_step, start_step + n_seg * chunk,
-                    dtype=jnp.int32,
-                )
-                src_pad = jnp.zeros((pad, *opt_src.shape[1:]), dtype=opt_src.dtype)
-                src_padded = jnp.concatenate([opt_src, src_pad], axis=0)
-            else:
-                steps_padded = opt_steps
-                src_padded = opt_src
-
-            seg_steps = steps_padded.reshape(n_seg, chunk)
-            seg_src = src_padded.reshape(n_seg, chunk, *src_padded.shape[1:])
-
-            def segment_body(carry, segment_xs):
-                # Inner scan over a single segment of ``chunk`` steps.
-                return lax.scan(scan_step, carry, segment_xs)
-
-            seg_body = jax.checkpoint(segment_body)
-            final_, seg_ys = lax.scan(
-                seg_body, c0_opt, (seg_steps, seg_src)
+            final_, opt_ys = segmented_scan(
+                scan_step, c0_opt, opt_xs, int(checkpoint_every), scan=lax.scan
             )
-            # seg_ys shape: (n_seg, chunk, ...).  Flatten + tail-discard.
-            opt_ys_flat = seg_ys.reshape(
-                (n_seg * chunk,) + seg_ys.shape[2:]
-            )
-            opt_ys = opt_ys_flat[:n_opt]
         else:
             final_, opt_ys = lax.scan(scan_step, c0_opt, opt_xs)
 
@@ -2434,7 +2400,7 @@ def run_nonuniform_distributed_pec(
             full_ys = opt_ys
         if emit_time_series:
             # (time, device, probe) -> replicated (time, probe), including
-            # empty probes. Keep warmup stop_gradient and tail discard above.
+            # empty probes. Keep warmup stop_gradient above.
             full_ys = jnp.sum(full_ys, axis=1)
         return final_, full_ys
 
