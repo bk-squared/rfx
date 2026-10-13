@@ -128,10 +128,11 @@ when it lands.</p>
 ## What is checked
 
 When you declare a source: the component, `amplitude_kind`, and for a plane
-wave every argument in the table above against its allowed values. Before the
-run, preflight checks that the plane wave's injection planes are in vacuum and
-that the faces across the beam keep the incident wave unchanged, and the solver
-path checks that it implements the source (below).
+wave every argument in the table above against its allowed values and the
+faces across the beam. Before the first step on a uniform mesh, the run refuses
+a plane wave whose injection planes are not in vacuum; this check does not
+depend on preflight. The solver path then checks that it implements the source
+(below).
 
 ## What is refused, and the way through
 
