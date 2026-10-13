@@ -113,7 +113,6 @@ SCALAR_ATTRS = frozenset({"dx", "dy"})
 #: fallback in 0b.
 ALLOWED_SCALAR_READS: dict[str, int] = {
     "rfx/amr.py": 2,
-    "rfx/api/__init__.py": 3,
     "rfx/api/_compile.py": 11,
     "rfx/api/_execute.py": 5,
     "rfx/api/_mesh.py": 1,

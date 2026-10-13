@@ -32,9 +32,11 @@ def admit_waveguide_planes(sim, *, axis_idx, x_position, direction,
         grid = sim._build_grid(extra_waveguide_axes=axis_name)
         x_index = grid.position_to_index(tuple(pos_vec))[axis_idx]
         axis_pad = grid.axis_pads[axis_idx]
-        snapped_source_plane = (x_index - axis_pad) * grid.dx
-        measured_reference_plane = snapped_source_plane + step_sign * ref_offset * grid.dx
-        measured_probe_plane = snapped_source_plane + step_sign * probe_offset * grid.dx
+        # A uniform grid's cells are np.full(n, dx): the same float as grid.dx.
+        d = float(grid.cells(axis_idx)[x_index])
+        snapped_source_plane = (x_index - axis_pad) * d
+        measured_reference_plane = snapped_source_plane + step_sign * ref_offset * d
+        measured_probe_plane = snapped_source_plane + step_sign * probe_offset * d
     axis_domain = sim._domain[axis_idx]
     if (
         measured_reference_plane < 0.0
