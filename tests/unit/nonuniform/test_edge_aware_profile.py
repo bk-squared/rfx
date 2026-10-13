@@ -106,14 +106,20 @@ def test_a_chain_of_strips_and_gaps_never_meshes_below_a_fifth_of_its_narrowest_
     own let a shared edge keep the last pair's r: two lines that should
     coincide ended 6.7 um apart and the ratio cap dragged the axis to 8.6 um.
 
-    Bound, from the drawing alone. A pair's inner stretch S = D - k r splits
-    into equal cells in [r/1.3, 1.3 r] whenever S/r >= 2/1.3, so every pair
-    is closed once r <= D/(k + 1.54), k <= 1.3: r <= f_min/2.84 always works.
-    Consecutive exact fits of the narrowest pair differ by at most
-    (2.84 + 1)/2.84, and the start cap is at least 0.75 dx, so the chain r is
-    at least min(0.55 dx, f_min/3.84), and its neighbours grade by at most
-    1.3: no cell below min(dx, f_min)/5. Measured worst over 1,500 random
-    chains with ends one to six cells away: 0.258 min(dx, f_min)."""
+    Bound, from the drawing alone, derived for outer edges at least 2 dx
+    from the domain ends. A pair's inner stretch S = D - k r splits into
+    equal cells in [r/1.3, min(cap, 1.3 r)] whenever S/r >= 2/1.3 and
+    r <= cap/1.3, so every pair is closed once r <= min(cap/1.3,
+    D/(k + 1.54)), k <= 1.3. Consecutive exact fits of the narrowest pair
+    differ by at most (2.84 + 1)/2.84 and the start cap is at least 0.75 dx,
+    so the chain r is at least min(0.43 dx, f_min/3.84), and its neighbours
+    grade by at most 1.3: no cell below min(dx, f_min)/5. With an end closer
+    than about 1.65 dx the end stretch is shorter than the boundary cell, the
+    band profile splits the edge cells and the feedback halves the cap, so
+    there the bound is measured, not derived: worst 0.191 min(dx, f_min) over
+    4,500 random chains with ends 1-2.5 dx away (base 0.163 on that drawing),
+    0.222-0.344 on 5,200 others (review, 2026-10-13). The "ends-near" row
+    below is one such drawing."""
     max_ratio = 1.3
     widths = [w * 1e-3 for w in widths_mm]
     dx, lo_margin = dx_mm * 1e-3, lo_mm * 1e-3
