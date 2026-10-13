@@ -69,6 +69,7 @@
       - any-glob-to-any-file:
           - "rfx/boundaries/**"
           - "rfx/preflight/absorber.py"
+          - "rfx/model/pad_fill.py"
           - "rfx/geometry/smoothing.py"
           # Plane-wave source, far field and RCS (absorber's list, lead 2026-10-12).
           # Shared on purpose: tests/contracts/ files also earn lane:ci-infra,
@@ -98,6 +99,14 @@
           - "rfx/mesh_edges.py"
           - "rfx/preflight/mesh.py"
           - "rfx/amr.py"
+          # rfx/model/ (realized-model layer): the graded grid and the material modules
+          - "rfx/model/graded_grid.py"
+          - "rfx/model/graded_profile.py"
+          - "rfx/model/materials.py"
+          - "rfx/model/overrides.py"
+          - "rfx/model/electric_metrics.py"
+          - "rfx/model/pole_stability.py"
+          - "rfx/model/tensor_operands.py"
           - "tests/unit/nonuniform/**"
           - "tests/**/*nonuniform*"
           - "tests/**/*_nu_*"
