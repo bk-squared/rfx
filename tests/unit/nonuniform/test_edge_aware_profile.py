@@ -79,51 +79,56 @@ def test_a_strip_narrower_than_two_edge_cells_is_meshed_not_refused():
 
 # --- chains: strips and gaps side by side, no face between them ------------
 
-def _chain_drawing(strip, gap, n_strips, start=10e-3, margin=10e-3):
-    """``n_strips`` coplanar strips of width ``strip`` separated by ``gap``,
-    starting at ``start``; the domain ends ``margin`` beyond the last edge."""
-    edges = []
-    for j in range(n_strips):
-        a = start + j * (strip + gap)
-        edges += [SheetEdge(a, +1), SheetEdge(a + strip, -1)]
-    return edges, edges[-1].position + margin
-
-
 _CHAIN_CASES = [
-    pytest.param(s, g, d, n, id=f"strip{s}-gap{g}-dx{d}-x{n}")
+    pytest.param((s,) + (g, s) * (n - 1), d, 10.0, 10.0, id=f"strip{s}-gap{g}-dx{d}-x{n}")
     for s in (0.5, 2.0, 16.35) for g in (0.3, 1.15, 5.0)
     for d in (1.0, 2.0, 3.0) for n in (2, 3)
 ] + [
     # The two-strip coupler that once meshed at 8.6 um and 3,985 cells.
-    pytest.param(16.35, 1.15, d, 2, id=f"coupler-dx{d}") for d in (1.0, 2.0, 3.0)
+    pytest.param((16.35, 1.15, 16.35), d, 10.0, 10.0, id=f"coupler-dx{d}")
+    for d in (1.0, 2.0, 3.0)
+] + [
+    # Review rows (2026-10-13): the chain r goes below the first exact fit
+    # when another pair's inner stretch cannot be split inside the window.
+    pytest.param((0.3717, 0.3924, 0.3717), 3.0, 20.0, 20.0, id="equal-strips-second-fit"),
+    pytest.param((0.441, 0.2745, 9.6755), 2.0, 20.0, 20.0, id="unequal-second-fit"),
+    # Domain ends one to two cells from the outer edges.
+    pytest.param((2.4806, 3.5003, 0.5475), 0.5, 2.3309, 0.8091, id="ends-near"),
 ]
 
 
-@pytest.mark.parametrize("strip_mm, gap_mm, dx_mm, n_strips", _CHAIN_CASES)
-def test_a_chain_of_strips_and_gaps_never_meshes_below_half_its_narrowest_feature(
-        strip_mm, gap_mm, dx_mm, n_strips):
+@pytest.mark.parametrize("widths_mm, dx_mm, lo_mm, hi_mm", _CHAIN_CASES)
+def test_a_chain_of_strips_and_gaps_never_meshes_below_a_fifth_of_its_narrowest_feature(
+        widths_mm, dx_mm, lo_mm, hi_mm):
     """Strips and gaps side by side share every inner edge. One edge cell r
     for the whole run, an exact fit D = (n + k) r of one strip or gap, keeps
     every stretch a whole number of cells. Pairing each strip and gap on its
     own let a shared edge keep the last pair's r: two lines that should
     coincide ended 6.7 um apart and the ratio cap dragged the axis to 8.6 um.
 
-    Bound, from the drawing alone: an exact fit with n = ceil(D/dx - k) has
-    r > D dx / (D + dx) >= min(D, dx) / 2, and the cells next to it grade by at
-    most max_ratio, so no cell is below min(dx, f_min) / (2 max_ratio), f_min
-    the narrowest strip or gap."""
+    Bound, from the drawing alone. A pair's inner stretch S = D - k r splits
+    into equal cells in [r/1.3, 1.3 r] whenever S/r >= 2/1.3, so every pair
+    is closed once r <= D/(k + 1.54), k <= 1.3: r <= f_min/2.84 always works.
+    Consecutive exact fits of the narrowest pair differ by at most
+    (2.84 + 1)/2.84, and the start cap is at least 0.75 dx, so the chain r is
+    at least min(0.55 dx, f_min/3.84), and its neighbours grade by at most
+    1.3: no cell below min(dx, f_min)/5. Measured worst over 1,500 random
+    chains with ends one to six cells away: 0.258 min(dx, f_min)."""
     max_ratio = 1.3
-    strip, gap, dx = strip_mm * 1e-3, gap_mm * 1e-3, dx_mm * 1e-3
-    edges, hi = _chain_drawing(strip, gap, n_strips)
-    f_min = min(strip, gap)                       # drawn, not from the code
-    r_floor = min(dx, f_min) / (2.0 * max_ratio)
+    widths = [w * 1e-3 for w in widths_mm]
+    dx, lo_margin = dx_mm * 1e-3, lo_mm * 1e-3
+    pos = lo_margin + np.concatenate([[0.0], np.cumsum(widths)])
+    edges = [SheetEdge(p, +1 if i % 2 == 0 else -1) for i, p in enumerate(pos)]
+    hi = pos[-1] + hi_mm * 1e-3
+    f_min = min(widths)                           # drawn, not from the code
+    r_floor = min(dx, f_min) / 5.0
     prof = edge_aware_profile(0.0, hi, dx, sheet_edges=edges,
                               max_ratio=max_ratio)
     cells, nodes = prof.cells, prof.nodes
     assert cells.min() >= r_floor * (1.0 - 1e-12), (
         f"smallest cell {cells.min() * 1e6:.2f} um below "
         f"{r_floor * 1e6:.2f} um ({cells.size} cells)")
-    if strip_mm == 16.35 and gap_mm == 1.15 and n_strips == 2:
+    if tuple(widths_mm) == (16.35, 1.15, 16.35):
         assert cells.size < 200
     # The node placement still holds on every edge, read on the realized cell.
     for e, end in zip(edges, prof.metal_end_nodes):
