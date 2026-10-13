@@ -90,17 +90,18 @@ On a graded mesh a whole-grid array has one entry per node of the padded grid
 
 ### Ports inside a design box
 
-A lumped or wire port inside the box is refused by default: its load and drive
+A lumped or wire port inside a permittivity box is refused by default: its load and drive
 were built from the background permittivity, and changing the cells around it
 would change them silently. `design_box_holds_ports=True` keeps those port
 edges at their declared values and gives them zero gradient; the edges it
-held come back in the result. Soft sources and lumped RLC elements inside the
-box are still refused.
+held come back in the result (`design_box_held_edges`). Soft and magnetic
+sources and lumped RLC elements inside the box are still refused.
 
 ### Conductor occupancy
 
-An occupancy of 0 is no metal and 1 is a PEC cell; the edges between cells
-are shorted by the product of (1 − occupancy) of the four cells around them.
+An occupancy of 0 is no metal and 1 is a PEC cell; each edge field is
+multiplied by the product of (1 − occupancy) of the four cells around it. An
+occupancy box combines with `eps_override` and `pec_occupancy_override`.
 Values in between are a smooth path for the optimizer, not a physical
 material: an edge of partial occupancy behaves as an artificial loss. Drive
 the design to 0 and 1 before you read its performance; `rfx.topology` has a
@@ -128,12 +129,13 @@ run is long enough for it is a separate check
 
 | Input | Solver path | Instead |
 |---|---|---|
-| any override with `forward(distributed=True)` on a uniform mesh | multi-device | a graded mesh, or one device |
+| `forward(distributed=True)` on a uniform mesh (with or without overrides) | multi-device | a graded mesh, or one device |
 | `mu_r_override`, `rlc_values_override`, `design_occupancy_override` | graded mesh, multi-device | a uniform mesh on one device |
 | `design_box` | multi-device, ADI | one device |
-| a design box together with a dispersive or Kerr material, anisotropy or subpixel smoothing, UPML, `stencil_order=4`, a periodic axis, a whole-grid override or `pec_occupancy_override` | all | the box alone, or the whole-grid overrides alone |
-| a design box overlapping the absorber | all | move the box inside the domain |
-| a port in the box without `design_box_holds_ports=True`; a soft source or RLC element in the box | all | hold the ports, or move the source out |
+| a permittivity box (`design_eps_override`) with a dispersive or Kerr material, anisotropy or subpixel smoothing, UPML, `stencil_order=4`, oblique periodic incidence, a whole-grid override or `pec_occupancy_override` | all | the box alone, or the whole-grid overrides alone |
+| a permittivity box touching a periodic face, or reaching the absorber (counting one cell past its upper corner) | all | move the box inside the domain |
+| a port in a permittivity box without `design_box_holds_ports=True`; a soft or magnetic source, or an RLC element, in the box | all | hold the ports, or move the source out |
+| an occupancy box (`design_occupancy_override`) with any periodic axis, with `design_eps_override` in the same call, over a port cell or its neighbours, or with Kottke smoothing | all | one kind of box per call, clear of ports |
 
 [Refused inputs](/rfx/check/refusals/) explains how refusals read.
 
@@ -148,7 +150,8 @@ the same derivative:
   (`tests/unit/autodiff/test_design_box_tape.py`), and the box occupancy
   against the whole-grid occupancy the same way
   (`tests/unit/autodiff/test_design_box_tape_nu_occupancy.py`);
-- permeability of a lossy magnetic absorber slab, within 5 %
+- permeability of a lossy magnetic absorber slab, against finite differences
+  of the reflection within 5 %
   (`tests/oracle/test_ram_magnetic_mu_r_design.py`);
 - R and C of a series RC element against finite differences of S11 within 5 %
   (`tests/unit/autodiff/test_lumped_rlc_ad.py`);
