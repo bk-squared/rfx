@@ -127,6 +127,9 @@ FALLBACK_LANE_LABELS = (
     # Created for speed and memory work (profiling, benchmarks, TF32); owner: the
     # acceleration session (2026-10-01).
     "lane:performance",
+    # Created 2026-10-13 for the conductor modules of the model layer (PEC occupancy,
+    # thin conductors, conformal metal); owner: the idm session.
+    "lane:conductors",
 )
 
 # Em dash, en dash or a plain hyphen. Codex-written bodies use the hyphen and a
