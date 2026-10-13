@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check merge-train batch member bodies, faithful commits, and fragments.
 
-The workflows select this checker for head refs starting with merge-train/batch-.
+The workflows select this checker for same-repository merge-train/batch- refs.
 Member rules remain in check_pr_body and check_changelog_fragment.
 """
 
@@ -21,13 +21,28 @@ import check_pr_body
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MEMBER_LINE = re.compile(r"Merge-train-member: #([1-9][0-9]*) ([0-9a-fA-F]{40})")
-PR_FIELDS = "state,baseRefName,headRefOid,labels,body,closingIssuesReferences"
+PR_FIELDS = "state,baseRefName,headRefOid,headRepository,isCrossRepository,labels,body,closingIssuesReferences"
+
+
+def subprocess_error(exc: subprocess.CalledProcessError) -> str:
+    tail = "\n".join((exc.stderr or "").splitlines()[-20:])
+    return f"{exc}\nstderr (last 20 lines):\n{tail or '(empty)'}"
 
 
 def run(repo: Path, *args: str, input: str | None = None) -> str:
-    return subprocess.run(
-        args, cwd=repo, input=input, text=True, capture_output=True, check=True,
-    ).stdout
+    try:
+        return subprocess.run(
+            args, cwd=repo, input=input, text=True, capture_output=True, check=True,
+        ).stdout
+    except subprocess.CalledProcessError as exc:
+        raise ValueError(subprocess_error(exc)) from exc
+
+
+def require_git(repo: Path) -> None:
+    version = run(repo, "git", "version").strip()
+    match = re.match(r"git version (\d+)\.(\d+)", version)
+    if match is None or tuple(map(int, match.groups())) < (2, 40):
+        raise ValueError(f"git 2.40 or later is required for batch checks; found {version}")
 
 
 def members(body: str) -> list[tuple[int, str]]:
@@ -66,7 +81,7 @@ def commits(repo: Path, base: str, head: str) -> list[str]:
 
 
 def trailers(repo: Path, commit: str) -> tuple[int, str]:
-    message = run(repo, "git", "show", "-s", "--format=%B", commit)
+    message = run(repo, "git", "cat-file", "commit", commit).partition("\n\n")[2]
     parsed = run(repo, "git", "interpret-trailers", "--parse", input=message)
     numbers, heads = [], []
     for line in parsed.splitlines():
@@ -108,14 +123,24 @@ def member_env(repo: Path, pr: dict, env: dict[str, str]) -> dict[str, str]:
     }
 
 
-def paths(repo: Path, base: str, head: str) -> set[str]:
-    output = run(repo, "git", "diff", "--no-renames", "--name-only", "-z", base, head)
-    return set(output.split("\0")) - {""}
-
-
-def patch_id(repo: Path, patch: str) -> str:
-    output = run(repo, "git", "patch-id", "--stable", input=patch).split()
-    return output[0] if output else ""
+def faithfulness(repo: Path, base: str, sha: str, commit: str) -> list[str]:
+    # BASE_SHA pins main as it was when the batch was built, even after a fetch.
+    merge_base = run(repo, "git", "merge-base", base, sha).strip()
+    result = subprocess.run(
+        ["git", "merge-tree", "--write-tree", f"--merge-base={merge_base}", f"{commit}^", sha],
+        cwd=repo, text=True, capture_output=True,
+    )
+    if result.returncode:
+        exc = subprocess.CalledProcessError(result.returncode, result.args, result.stdout, result.stderr)
+        if result.returncode == 1:
+            return [f"does not apply cleanly onto the batch\n{subprocess_error(exc)}"]
+        raise ValueError(subprocess_error(exc))
+    recomputed = result.stdout.splitlines()[0]
+    actual = run(repo, "git", "rev-parse", f"{commit}^{{tree}}").strip()
+    if recomputed != actual:
+        paths = run(repo, "git", "diff-tree", "-r", "--name-only", recomputed, actual).splitlines()
+        return ["batch commit differs from the PR's own change in: " + ", ".join(paths)]
+    return []
 
 
 def check_body(repo: Path, base: str, head: str, env: dict[str, str]) -> list[str]:
@@ -134,6 +159,9 @@ def check_body(repo: Path, base: str, head: str, env: dict[str, str]) -> list[st
                 problems.append("member base must be main")
             if pr["headRefOid"] != sha:
                 problems.append("member head moved since the batch was built")
+            if (pr["isCrossRepository"]
+                    or (pr["headRepository"] or {}).get("nameWithOwner") != env["GITHUB_REPOSITORY"]):
+                problems.append("member is not from this repository")
             member_labels = labels(pr)
             if "merge-train" not in member_labels:
                 problems.append("member is missing merge-train")
@@ -143,19 +171,50 @@ def check_body(repo: Path, base: str, head: str, env: dict[str, str]) -> list[st
             if trailers(repo, commit) != (number, sha):
                 problems.append("batch commit trailers do not match the listed member and head")
             run(repo, "git", "fetch", "--no-tags", "origin", "main", f"refs/pull/{number}/head")
-            merge_base = run(repo, "git", "merge-base", "origin/main", sha).strip()
-            member_patch = run(repo, "git", "diff", "--no-renames", merge_base, sha)
-            batch_patch = run(repo, "git", "show", "--no-renames", commit)
-            if (paths(repo, f"{commit}^", commit) != paths(repo, merge_base, sha)
-                    or patch_id(repo, batch_patch) != patch_id(repo, member_patch)):
-                problems.append("batch commit differs from the PR's own change")
+            problems.extend(faithfulness(repo, base, sha, commit))
             failures.extend(f"#{number}: {problem}" for problem in problems)
-        except (ValueError, KeyError, OSError, subprocess.CalledProcessError) as exc:
+        except (ValueError, KeyError, OSError) as exc:
             failures.append(f"#{number}: {exc}")
     return failures
 
 
+def fragment_paths(base: str, head: str, repo: Path) -> list[check_changelog_fragment.Entry]:
+    ancestor = run(repo, "git", "merge-base", base, head).strip()
+    fields = iter(run(
+        repo, "git", "diff-tree", "--no-commit-id", "-r", "-M", "--name-status", "-z", ancestor, head,
+    ).rstrip("\0").split("\0"))
+    entries = []
+    for field in fields:
+        if not field:
+            continue
+        status, path = field[0], next(fields)
+        if status in ("R", "C"):
+            entries.append((status, path, status == "C"))
+            entries.append((status, next(fields), True))
+        else:
+            entries.append((status, path, status != "D"))
+    return entries
+
+
+def fragment_at(rev: str, path: str, repo: Path) -> str:
+    return run(repo, "git", "cat-file", "blob", f"{rev}:{path}")
+
+
 def check_fragments(repo: Path, base: str, head: str) -> list[str]:
+    # Reuse the validator's rules with plumbing reads that preserve stderr.
+    # Its ordinary-PR readers use porcelain and swallow subprocess failures.
+    original_paths = check_changelog_fragment.changed_paths
+    original_file = check_changelog_fragment._file_at
+    check_changelog_fragment.changed_paths = fragment_paths
+    check_changelog_fragment._file_at = fragment_at
+    try:
+        return member_fragments(repo, base, head)
+    finally:
+        check_changelog_fragment.changed_paths = original_paths
+        check_changelog_fragment._file_at = original_file
+
+
+def member_fragments(repo: Path, base: str, head: str) -> list[str]:
     failures = []
     for commit in commits(repo, base, head):
         number, _ = trailers(repo, commit)
@@ -167,7 +226,9 @@ def check_fragments(repo: Path, base: str, head: str) -> list[str]:
                     f"{commit}^", commit, member_labels, repo, pr_number=str(number),
                 )
             )
-        except (ValueError, KeyError, OSError, subprocess.CalledProcessError) as exc:
+        except subprocess.CalledProcessError as exc:
+            failures.append(f"#{number}: {subprocess_error(exc)}")
+        except (ValueError, KeyError, OSError) as exc:
             failures.append(f"#{number}: {exc}")
     return failures
 
@@ -182,12 +243,13 @@ def main() -> int:
     if not args.base or not args.head:
         parser.error("--base/BASE_SHA and --head/HEAD_SHA are required")
     try:
+        require_git(args.repo)
         failures = (
             check_body(args.repo, args.base, args.head, dict(os.environ))
             if args.command == "body"
             else check_fragments(args.repo, args.base, args.head)
         )
-    except (ValueError, KeyError, OSError, subprocess.CalledProcessError) as exc:
+    except (ValueError, KeyError, OSError) as exc:
         failures = [str(exc)]
     for failure in failures:
         print(failure, file=sys.stderr)

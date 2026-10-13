@@ -124,12 +124,15 @@ jobs:
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
           PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          case "$PR_HEAD_REF" in
-            merge-train/batch-*) python scripts/ci/check_batch.py body ;;
+          case "$PR_HEAD_REPO:$PR_HEAD_REF" in
+            "$GITHUB_REPOSITORY":merge-train/batch-*)
+              git checkout --no-overlay "$BASE_SHA" -- scripts/ci scripts/changelog
+              python scripts/ci/check_batch.py body ;;
             *) python scripts/ci/check_pr_body.py ;;
           esac

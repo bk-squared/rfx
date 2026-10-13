@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 
@@ -15,10 +16,14 @@ import yaml
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts/ci/check_batch.py"
 GOOD_BODY = "Lane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n"
+# Homebrew git on the development Mac is 2.39; Apple git supports merge-tree's
+# explicit merge base. Child checkers resolve the same binary through PATH.
+GIT = "/usr/bin/git" if sys.platform == "darwin" else shutil.which("git")
 
 
 class Batch:
-    def __init__(self, root: Path, member_changes=None, batch_changes=None, order=(11, 22)):
+    def __init__(self, root: Path, member_changes=None, batch_changes=None, order=(11, 22),
+                 initial_files=None, main_changes=None):
         self.origin = root / "origin"
         self.repo = root / "checkout"
         self.origin.mkdir()
@@ -39,6 +44,7 @@ class Batch:
         }
         self.git(self.origin, "init", "-b", "main")
         self.write(self.origin, {"rfx/first.py": "value = 0\n", "rfx/second.py": "value = 0\n"})
+        self.write(self.origin, initial_files or {})
         self.base = self.commit(self.origin, "Base")
         changes = {
             11: {"rfx/first.py": "value = 11\n", "changelog.d/11.fixed.md": self.fragment(11)},
@@ -57,10 +63,14 @@ class Batch:
             self.shas[number] = sha
             self.prs[str(number)] = {
                 "state": "OPEN", "baseRefName": "main", "headRefOid": sha,
+                "headRepository": {"nameWithOwner": "bk-squared/rfx"}, "isCrossRepository": False,
                 "labels": [{"name": "merge-train"}, {"name": "lane:ci-infra"}],
                 "body": GOOD_BODY, "closingIssuesReferences": [],
             }
         self.git(self.origin, "checkout", "main")
+        if main_changes:
+            self.write(self.origin, main_changes)
+            self.base = self.commit(self.origin, "Main advanced after the members branched")
         self.git(root, "clone", "--no-local", str(self.origin), str(self.repo))
         self.git(self.repo, "checkout", "-b", "merge-train/batch-test")
         self.built = []
@@ -85,6 +95,9 @@ args = sys.argv[1:]
 with open(os.environ["FAKE_GH_CALLS"], "a") as log:
     log.write(json.dumps(args) + "\\n")
 data = json.loads(Path(os.environ["FAKE_GH_DATA"]).read_text())
+if os.environ.get("FAKE_GH_ERROR"):
+    print(os.environ["FAKE_GH_ERROR"], file=sys.stderr)
+    sys.exit(7)
 assert len(args) == 5 and args[1] == "view" and args[3] == "--json", args
 assert args[0] in ("pr", "issue"), args
 payload = data[args[0]][args[2]]
@@ -92,6 +105,8 @@ fields = args[4].split(",")
 print(json.dumps({key: payload[key] for key in fields}))
 ''')
         fake.chmod(0o755)
+        (bindir / "git").symlink_to(GIT)
+        self.bindir = bindir
         self.env.update({
             "PATH": str(bindir) + os.pathsep + os.environ["PATH"],
             "FAKE_GH_DATA": str(self.data), "FAKE_GH_CALLS": str(self.calls),
@@ -110,8 +125,17 @@ print(json.dumps({key: payload[key] for key in fields}))
 
     def git(self, repo, *args):
         return subprocess.run(
-            ["git", *args], cwd=repo, env=self.env, capture_output=True, text=True, check=True,
+            [GIT, *args], cwd=repo, env=self.env, capture_output=True, text=True, check=True,
         ).stdout.strip()
+
+    def fake_git(self, source):
+        fake = self.bindir / "git"
+        fake.unlink()
+        fake.write_text(
+            "#!" + sys.executable + "\nimport os, sys\n" + source
+            + f"\nos.execv({GIT!r}, [{GIT!r}, *sys.argv[1:]])\n"
+        )
+        fake.chmod(0o755)
 
     def commit(self, repo, message):
         self.git(repo, "add", ".")
@@ -202,6 +226,126 @@ def test_added_file_is_rejected(tmp_path):
     assert_rejected(batch.run(), "#11: batch commit differs from the PR's own change")
 
 
+def test_dedented_added_line_is_rejected(tmp_path):
+    batch = Batch(tmp_path,
+                  initial_files={"rfx/first.py": "if True:\n    value = 0\n"},
+                  member_changes={11: {"rfx/first.py": "if True:\n    value = 0\n    added = 11\n"}},
+                  batch_changes={11: {"rfx/first.py": "if True:\n    value = 0\nadded = 11\n"}})
+    assert_rejected(batch.run(), "#11: batch commit differs from the PR's own change in: rfx/first.py")
+
+
+def test_hunk_relocated_into_identical_context_is_rejected(tmp_path):
+    block = "a\nb\nc\nvalue = 0\nd\ne\nf\n"
+    changed = block.replace("value = 0", "value = 11")
+    batch = Batch(tmp_path,
+                  initial_files={"rfx/first.py": block + "separator\n" + block},
+                  member_changes={11: {"rfx/first.py": changed + "separator\n" + block}},
+                  batch_changes={11: {"rfx/first.py": block + "separator\n" + changed}})
+    assert_rejected(batch.run(), "#11: batch commit differs from the PR's own change in: rfx/first.py")
+
+
+def test_two_members_editing_lines_five_and_seven_pass(tmp_path):
+    original = "".join(f"value_{line} = 0\n" for line in range(1, 12))
+    batch = Batch(tmp_path,
+                  initial_files={"rfx/first.py": original},
+                  member_changes={
+                      11: {"rfx/first.py": original.replace("value_5 = 0", "value_5 = 11")},
+                      22: {"rfx/first.py": original.replace("value_7 = 0", "value_7 = 22")},
+                  })
+    result = batch.run()
+    assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+
+
+def test_member_behind_main_with_nearby_edit_passes(tmp_path):
+    original = "".join(f"value_{line} = 0\n" for line in range(1, 12))
+    batch = Batch(tmp_path,
+                  initial_files={"rfx/first.py": original},
+                  main_changes={"rfx/first.py": original.replace("value_5 = 0", "value_5 = 99")},
+                  member_changes={11: {"rfx/first.py": original.replace("value_7 = 0", "value_7 = 11")}})
+    result = batch.run()
+    assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+
+
+def test_fetching_new_main_does_not_change_pinned_base(batch):
+    batch.git(batch.origin, "cherry-pick", batch.shas[11])
+    result = batch.run()
+    assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+
+
+def test_conflicting_member_is_rejected(tmp_path):
+    batch = Batch(tmp_path, order=(11,), member_changes={22: {"rfx/first.py": "value = 22\n"}})
+    batch.write(batch.repo, {"rfx/first.py": "value = 22\n"})
+    batch.head = batch.commit(batch.repo,
+                              f"Resolve conflict\n\nMerge-train-member: #22\nMerge-train-head: {batch.shas[22]}\n")
+    assert_rejected(batch.run(), "#22: does not apply cleanly onto the batch")
+
+
+@pytest.mark.parametrize("command", ["body", "fragments"])
+def test_merge_commit_is_rejected(batch, command):
+    batch.git(batch.repo, "checkout", "-b", "side", batch.base)
+    batch.write(batch.repo, {"side.txt": "side branch\n"})
+    side = batch.commit(batch.repo, "Side commit")
+    batch.git(batch.repo, "checkout", "merge-train/batch-test")
+    batch.git(batch.repo, "merge", "--no-ff", "-m", "Merge side", side)
+    batch.head = batch.git(batch.repo, "rev-parse", "HEAD")
+    assert_rejected(batch.run(command), "batch commits must be linear, with no merge commits")
+
+
+@pytest.mark.parametrize("repository,cross_repository", [
+    ({"nameWithOwner": "fork-owner/rfx"}, True),
+    ({"nameWithOwner": "fork-owner/rfx"}, False),
+    ({"nameWithOwner": "bk-squared/rfx"}, True),
+    (None, False),
+])
+def test_fork_member_is_rejected(batch, repository, cross_repository):
+    batch.prs["11"].update(headRepository=repository, isCrossRepository=cross_repository)
+    assert_rejected(batch.run(), "#11: member is not from this repository")
+
+
+@pytest.mark.parametrize("command", ["body", "fragments"])
+def test_old_git_is_rejected_at_start(batch, command):
+    batch.fake_git('if sys.argv[1:] == ["version"]:\n    print("git version 2.39.2")\n    sys.exit(0)\n')
+    assert_rejected(batch.run(command), "git 2.40 or later is required for batch checks; found git version 2.39.2")
+    assert not batch.calls.exists()
+
+
+@pytest.mark.parametrize("command", ["body", "fragments"])
+def test_gh_failure_includes_last_twenty_stderr_lines(batch, command):
+    batch.env["FAKE_GH_ERROR"] = "\n".join(f"gh diagnostic {line}" for line in range(25))
+    result = batch.run(command)
+    assert_rejected(result, "#11: Command")
+    assert "stderr (last 20 lines):\n" + "\n".join(f"gh diagnostic {line}" for line in range(5, 25)) in result.stderr
+    assert "gh diagnostic 4\n" not in result.stderr
+
+
+@pytest.mark.parametrize("git_command", ["version", "rev-list", "fetch", "cat-file", "merge-tree"])
+def test_git_failure_includes_stderr(batch, git_command):
+    batch.fake_git(f'''if sys.argv[1] == {git_command!r}:
+    print("git failure detail", file=sys.stderr)
+    sys.exit(128)
+''')
+    assert_rejected(batch.run(), "stderr (last 20 lines):\ngit failure detail")
+
+
+@pytest.mark.parametrize("git_args", [["diff-tree"], ["cat-file", "blob"]])
+def test_fragment_git_failure_includes_stderr(batch, git_args):
+    batch.fake_git(f'''if sys.argv[1:{len(git_args) + 1}] == {git_args!r}:
+    print("fragment git failure detail", file=sys.stderr)
+    sys.exit(128)
+''')
+    assert_rejected(batch.run("fragments"), "stderr (last 20 lines):\nfragment git failure detail")
+
+
+@pytest.mark.parametrize("command", ["body", "fragments"])
+def test_checker_uses_plumbing_for_git_reads(batch, command):
+    batch.fake_git('''if sys.argv[1] in ("show", "diff", "patch-id"):
+    print("porcelain or patch-id used", file=sys.stderr)
+    sys.exit(128)
+''')
+    result = batch.run(command)
+    assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+
+
 def test_member_touching_rfx_without_fragment_is_rejected(tmp_path):
     batch = Batch(tmp_path, member_changes={11: {"rfx/first.py": "value = 11\n"}})
     assert_rejected(batch.run("fragments"), "#11: this PR changes rfx/ but adds no changelog fragment")
@@ -256,28 +400,45 @@ def test_fragments_use_member_release_label(tmp_path, release, expected):
         assert "#11: CHANGELOG.md was modified without the 'release' label" in result.stderr
 
 
-def test_workflow_shell_dispatches_by_head_ref(tmp_path):
-    fake = tmp_path / "python"
-    fake.write_text("#!" + sys.executable + "\nimport json, sys\nprint(json.dumps(sys.argv[1:]))\n")
-    fake.chmod(0o755)
-    for filename, job, step_name, command, ordinary in (
-        ("pr-body.yml", "pr-body-contract", "Check the PR body", "body", "check_pr_body.py"),
-        ("changelog-fragment.yml", "fragment", "Require a changelog fragment", "fragments", "check_changelog_fragment.py"),
+@pytest.mark.parametrize("filename,job,step_name,command,ordinary", [
+    ("pr-body.yml", "pr-body-contract", "Check the PR body", "body", "check_pr_body.py"),
+    ("changelog-fragment.yml", "fragment", "Require a changelog fragment", "fragments", "check_changelog_fragment.py"),
+])
+def test_workflow_shell_dispatches_by_head_ref(tmp_path, filename, job, step_name, command, ordinary):
+    for executable in ("python", "git"):
+        fake = tmp_path / executable
+        fake.write_text(
+            "#!" + sys.executable + "\nimport json, os, sys\n"
+            f"print(json.dumps([{executable!r}, *sys.argv[1:]]))\n"
+            + ("sys.exit(int(os.environ.get('CHECKOUT_EXIT', '0')))\n" if executable == "git" else "")
+        )
+        fake.chmod(0o755)
+    workflow = yaml.safe_load((ROOT / ".github/workflows" / filename).read_text())
+    step = next(step for step in workflow["jobs"][job]["steps"] if step["name"] == step_name)
+    assert step["env"]["PR_HEAD_REF"] == "${{ github.event.pull_request.head.ref }}"
+    assert step["env"]["PR_HEAD_REPO"] == "${{ github.event.pull_request.head.repo.full_name }}"
+    assert step["env"]["GH_TOKEN"] == "${{ github.token }}"
+    for ref, head_repo, is_batch in (
+        ("merge-train/batch-x", "bk-squared/rfx", True),
+        ("feature/x", "bk-squared/rfx", False),
+        ("xmerge-train/batch-x", "bk-squared/rfx", False),
+        ("merge-train/batch", "bk-squared/rfx", False),
+        ("merge-train/batch-x", "fork-owner/rfx", False),
+        ("merge-train/batch-x", "bk-squared/other", False),
     ):
-        workflow = yaml.safe_load((ROOT / ".github/workflows" / filename).read_text())
-        step = next(step for step in workflow["jobs"][job]["steps"] if step["name"] == step_name)
-        assert step["env"]["PR_HEAD_REF"] == "${{ github.event.pull_request.head.ref }}"
-        assert step["env"]["GH_TOKEN"] == "${{ github.token }}"
-        for ref, is_batch in (("merge-train/batch-x", True), ("feature/x", False),
-                              ("xmerge-train/batch-x", False), ("merge-train/batch", False)):
+        for checkout_exit in (0, 1):
             result = subprocess.run(
                 ["bash", "--noprofile", "--norc", "-e", "-o", "pipefail", "-c", step["run"]],
                 env={**os.environ, "PATH": str(tmp_path) + os.pathsep + os.environ["PATH"],
-                     "PR_HEAD_REF": ref, "BASE_SHA": "base value", "HEAD_SHA": "head value"},
+                     "PR_HEAD_REF": ref, "PR_HEAD_REPO": head_repo, "GITHUB_REPOSITORY": "bk-squared/rfx",
+                     "BASE_SHA": "base value", "HEAD_SHA": "head value", "CHECKOUT_EXIT": str(checkout_exit)},
                 capture_output=True, text=True,
             )
-            assert result.returncode == 0, result.stderr
+            assert result.returncode == (checkout_exit if is_batch else 0), result.stderr
             expected = (["scripts/ci/check_batch.py", command] if is_batch else ["scripts/ci/" + ordinary])
             if command == "fragments":
                 expected += ["--base", "base value", "--head", "head value"]
-            assert json.loads(result.stdout) == expected
+            calls = [["python", *expected]] if not is_batch or checkout_exit == 0 else []
+            if is_batch:
+                calls.insert(0, ["git", "checkout", "--no-overlay", "base value", "--", "scripts/ci", "scripts/changelog"])
+            assert [json.loads(line) for line in result.stdout.splitlines()] == calls
