@@ -926,7 +926,11 @@
             "angle_deg",
             "waveform",
             "method",
-            "closed_box"
+            "closed_box",
+            "theta_deg",
+            "phi_deg",
+            "direction_tol_deg",
+            "max_component"
           ],
           "properties": {
             "f0": {
@@ -966,7 +970,19 @@
             },
             "closed_box": {
               "type": "boolean",
-              "description": "Normal-incidence finite six-face total-field box with CPML on all axes. False preserves the historical slab. Required, like method, so a missing boundary-value-problem selector is never silently inferred. Callable CustomWaveform sources cannot be serialized."
+              "description": "Finite six-face total-field box with CPML on all axes and rational plane-wave incidence. False preserves the historical slab. Required, like method, so a missing boundary-value-problem selector is never silently inferred. Callable CustomWaveform sources cannot be serialized."
+            },
+            "theta_deg": {
+              "type": "number"
+            },
+            "phi_deg": {
+              "type": "number"
+            },
+            "direction_tol_deg": {
+              "type": "number"
+            },
+            "max_component": {
+              "type": "integer"
             }
           }
         },
