@@ -55,9 +55,10 @@ def _tfsf_row(sim, ctx):
     entry, grid = sim._tfsf, ctx.grid
     try:
         if ctx.lane == "nonuniform":
-            # The non-uniform runner's own call (no method / closed_box).
+            # The non-uniform runner's own call (no method / closed_box). Its
+            # scalar ``grid.dx`` is the x boundary cell on this grid.
             cfg, _ = init_tfsf(
-                grid.nx, grid.dx, grid.dt, cpml_layers=grid.cpml_layers,
+                grid.nx, grid.boundary_cell("x", "lo"), grid.dt, cpml_layers=grid.cpml_layers,
                 tfsf_margin=entry.margin,
                 f0=entry.f0 if entry.f0 is not None else sim._freq_max / 2,
                 bandwidth=entry.bandwidth, amplitude=entry.amplitude,
