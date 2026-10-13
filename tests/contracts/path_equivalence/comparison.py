@@ -21,7 +21,7 @@ NTFF_KAHAN_RESIDUALS = frozenset((
 # Configuration and geometric weights are exact prerequisites, not amplitudes.
 OBSERVER_METADATA = frozenset((
     'freqs', 'component', 'axis', 'index', 'total_steps', 'window',
-    'window_alpha', 'region', 'lo1', 'hi1', 'lo2', 'hi2', 'dA', 'dA2',
+    'window_alpha', 'region', 'lo1', 'hi1', 'lo2', 'hi2', 'dA', 'dA2', 'normal_h_zero', 'normal_h_weights',
 ))
 NAMED_RECORD_COLLECTIONS = frozenset(('dft_planes', 'flux_monitors'))
 

@@ -14,7 +14,8 @@ from rfx import simulation as _simulation
 # resolved at CALL time and always reflects the current attribute. These are
 # setup-time calls (once per port/source registration), not per-timestep.
 from rfx.sources.sources import LumpedPort, setup_lumped_port, WirePort, setup_wire_port
-from rfx.probes.probes import init_dft_plane_probe, init_flux_monitor
+from rfx.probes.probes import init_dft_plane_probe
+from rfx.measurement.flux_weights import build_flux_monitor_cfgs
 from rfx.sources.waveguide_port import (
     extract_waveguide_sparams,
     waveguide_plane_positions,
@@ -63,69 +64,6 @@ def _reconstruct_oblique_physical(sim_result, tfsf_cfg, grid, probes):
 
     return sim_result._replace(state=new_state, time_series=new_ts)
 
-
-def build_flux_monitor_cfgs(sim, grid, n_steps, entries=None):
-    """Materialize ``sim._flux_monitors`` entries into scan monitor configs.
-
-    Shared extraction of the ``run_uniform`` inline block so
-    the low-level forward lane (``_forward_from_materials``, issue-#488
-    mixed-family flux magnitude channel) can register the SAME monitors
-    the run() lane does. Pure function of (sim registrations, grid,
-    n_steps). Finite regions resolve to interior cells via the same geometry
-    resolver used by preflight; ``size=None`` keeps the legacy full plane.
-
-    ``entries`` overrides the entry list (same ``_FluxMonitorEntry``
-    objects ``add_flux_monitor`` registers) without touching the sim's
-    own registrations — the ``extra_flux_monitors=`` opt-in on the coax
-    extractors (#589 flux-adjudication instrument) passes caller-built
-    entries here while the registered-monitor guard stays intact. ``sim``
-    is still consulted for ``_freq_max``/``_domain``.
-    """
-    axis_to_index = {"x": 0, "y": 1, "z": 2}
-    from rfx.probes.flux_region import resolve_flux_region
-    from rfx.boundaries.pec import resolve_wall_faces
-    flux_monitors = []
-    if entries is None:
-        entries = getattr(sim, '_flux_monitors', [])
-    for pe in entries:
-        axis_idx = axis_to_index[pe.axis]
-        plane_pos = [0.0, 0.0, 0.0]
-        plane_pos[axis_idx] = pe.coordinate
-        grid_index = grid.position_to_index(tuple(plane_pos))[axis_idx]
-        freqs_arr = (
-            pe.freqs
-            if pe.freqs is not None
-            else jnp.linspace(sim._freq_max / 10, sim._freq_max, pe.n_freqs)
-        )
-        # Compute tangential index bounds from size (finite flux region)
-        tangential_axes = [a for a in range(3) if a != axis_idx]
-        grid_ns = [grid.shape[a] for a in tangential_axes]
-        region = resolve_flux_region(grid, pe, sim._domain)
-        if region is not None:
-            (lo1, hi1), (lo2, hi2) = region["cell_slices"]
-            grid_index = region["normal_index"]
-        else:
-            lo1, hi1 = 0, grid_ns[0]
-            lo2, hi2 = 0, grid_ns[1]
-        flux_monitors.append(
-            init_flux_monitor(
-                axis=axis_idx,
-                index=grid_index,
-                freqs=freqs_arr,
-                grid_shape=grid.shape,
-                # Grid is cubic (single dx) — both tangential cell sizes
-                # equal grid.dx. If Grid ever becomes non-cubic, select
-                # the two tangential sizes by axis_idx here.
-                d1=grid.dx,
-                d2=grid.dx,
-                dft_total_steps=n_steps,
-                dft_window=getattr(pe, 'dft_window', 'rect'),
-                dft_window_alpha=getattr(pe, 'dft_window_alpha', 0.25),
-                lo1=lo1, hi1=hi1, lo2=lo2, hi2=hi2,
-                pmc_faces=resolve_wall_faces(grid, sim._periodic_flags())[1],
-            )
-        )
-    return flux_monitors
 
 
 def run_uniform(
@@ -616,9 +554,6 @@ def run_uniform(
             )
         )
 
-    # Flux monitors (Poynting flux through plane)
-    flux_monitors = build_flux_monitor_cfgs(sim, grid, n_steps)
-
     if sim._waveguide_ports:
         from rfx.preflight.waveguide import resolve_waveguide_port_freqs
 
@@ -739,6 +674,7 @@ def run_uniform(
     # In-loop block current moments (rfx.current_moments). Built here rather
     # than at declaration time so the slab window and the block map come from
     # the grid the solve actually builds, not from the declared corners.
+    flux_monitors = build_flux_monitor_cfgs(sim, grid, n_steps, periodic=_simulation.resolve_periodic(grid, periodic))
     current_moments = _cm_for_sim(sim, grid, periodic, conductors=conductors)
 
     # Lumped RLC elements

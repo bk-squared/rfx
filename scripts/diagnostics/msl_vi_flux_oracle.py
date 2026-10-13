@@ -603,11 +603,12 @@ def run_one(label: str, dx: float) -> dict:
         e1 = np.asarray(mon.e1_dft); e2 = np.asarray(mon.e2_dft)
         h1 = np.asarray(mon.h1_dft); h2 = np.asarray(mon.h2_dft)
         dA = np.asarray(mon.dA)
-        integrand = e1 * np.conj(h2) - e2 * np.conj(h1)
-        flux_real_hand = np.real(np.sum(integrand * dA, axis=(-2, -1)))
+        dA2 = dA if mon.dA2 is None else np.asarray(mon.dA2)
+        weighted = e1 * np.conj(h2) * dA - e2 * np.conj(h1) * dA2
+        flux_real_hand = np.real(np.sum(weighted, axis=(-2, -1)))
         # Normalisation witness: the hand recompute from the monitor's own
-        # accumulator fields must match the library call bit-for-bit (same
-        # formula) -- this pins that reading mon.e1_dft/e2_dft/h1_dft/h2_dft
+        # accumulator fields must match the library call within sum roundoff
+        # -- this pins that reading mon.e1_dft/e2_dft/h1_dft/h2_dft
         # directly (for the admissibility witness) is not a second, silently
         # different convention from flux_spectrum() itself.
         assert np.allclose(flux_real_hand, flux_lib, rtol=1e-6, atol=1e-30), (
@@ -615,7 +616,7 @@ def run_one(label: str, dx: float) -> dict:
             f"disagrees with flux_spectrum() -- convention mismatch, not a "
             f"physics finding. hand={flux_real_hand} lib={flux_lib}"
         )
-        flux_mag = np.sum(np.abs(integrand) * dA, axis=(-2, -1))
+        flux_mag = np.sum(np.abs(weighted), axis=(-2, -1))
         reactive_fraction = 1.0 - np.abs(flux_real_hand) / np.where(
             flux_mag > 0, flux_mag, np.nan)
 

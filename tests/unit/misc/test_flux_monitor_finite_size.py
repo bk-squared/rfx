@@ -1,42 +1,14 @@
-"""Finite-size FluxMonitor vs full-plane in a standing-wave-heavy environment.
+"""Finite flux windows in a standing-wave-heavy scene.
 
-Settles the long-standing (and now refuted) caveat in
-``docs/agent-memory/rfx-known-issues.md``:
+The finite and full-plane monitors share field clocks and normal H averaging.
+Their nodal endpoint weights differ: a finite window clips the dual widths to
+its reported bounds and includes its high node. Reintegrating the full-plane
+DFTs over those same real nodes must reproduce the finite monitor. The
+independent reference below uses the fixture's explicit 1 mm cell width.
 
-    "FluxMonitor finite-size regions ... standing-wave-heavy environments
-     remain more stable on the full-plane path."
-
-What this test actually measures
---------------------------------
-The finite-size flux path differs from the full-plane path by *exactly one
-thing*: the ``lo1:hi1 / lo2:hi2`` index slice applied to the per-cell Poynting
-integrand (``rfx/simulation.py`` flux-accumulation block, ~L1082-1126). The DFT
-kernel, the Yee H-colocation half-step, and the area weight ``dA`` are byte-for-
-byte identical between the two paths. Therefore a finite-size monitor over a
-sub-window MUST equal the full-plane monitor's integrand summed over that SAME
-window to ~machine precision. Any larger deviation would be a real bookkeeping
-bug, i.e. genuine "instability" of the finite-size machinery.
-
-We build a genuinely standing-wave-heavy field (an internal full-transverse PEC
-short inside a uniform-CPML guide; SWR ~6 in the cavity region) and check the
-finite-vs-restricted agreement PER FREQUENCY.
-
-Result (CPU, measured): max relative deviation ~2e-16 (machine epsilon) across
-all 16 frequencies — the finite-size path is bit-exact, NOT "less stable". The
-old caveat conflated *coverage* (a finite region legitimately excludes the CPML
-padding cells that the legacy ``size=None`` full plane integrates) with
-*instability*. They are different things; the finite-size arithmetic is exact.
-
-Notes for future maintainers
------------------------------
-* Any PEC *boundary* (``BoundarySpec.uniform("pec")`` or a per-axis
-  ``y="pec"``) currently yields a DEAD field — the source never injects. That
-  is a SEPARATE issue and is deliberately avoided here by using a uniform-CPML
-  domain with an INTERNAL PEC short to build the standing wave.
-* x64 is scoped via ``jax.experimental.enable_x64`` (NOT a module-level
-  ``jax.config.update``, which leaks across the pytest process). The flux
-  accumulator already promotes to float64 internally, but we scope x64 to match
-  the diagnostic and keep the reference arithmetic in float64.
+An internal PEC short provides a non-vacuous standing-wave witness. The tests
+retain their original numerical bars and compare each frequency. x64 is scoped
+so field-accumulation and integration roundoff can be separated from geometry.
 """
 from __future__ import annotations
 
@@ -111,19 +83,20 @@ def _build_and_run():
 
 
 def _restrict_full_to_window(mon_full, mon_sub):
-    """Full-plane per-cell integrand summed over mon_sub's index window."""
-    e1 = np.asarray(mon_full.e1_dft)
-    e2 = np.asarray(mon_full.e2_dft)
-    h1 = np.asarray(mon_full.h1_dft)
-    h2 = np.asarray(mon_full.h2_dft)
-    integrand = e1 * np.conj(h2) - e2 * np.conj(h1)
-    dA = np.asarray(mon_full.dA)  # scalar (1,1) on a uniform grid
-    win = integrand[:, mon_sub.lo1:mon_sub.hi1, mon_sub.lo2:mon_sub.hi2]
-    return np.real(np.sum(win * dA, axis=(-2, -1)))
+    """Integrate the full-plane DFTs over the finite box's real nodes."""
+    lo, hi = mon_sub.lo1, mon_sub.hi1
+    # This fixture is x-normal TMz, with one extruded z sample and dx=1 mm.
+    cell = np.ones(hi-lo)
+    node = np.ones(hi-lo+1)
+    node[[0, -1]] = .5
+    first = np.asarray(mon_full.e1_dft)[:, lo:hi, :] * np.conj(np.asarray(mon_full.h2_dft)[:, lo:hi, :])
+    second = np.asarray(mon_full.e2_dft)[:, lo:hi+1, :] * np.conj(np.asarray(mon_full.h1_dft)[:, lo:hi+1, :])
+    return np.real(np.sum(first * np.asarray(cell[:, None]*1e-6, dtype=np.float32), axis=(-2, -1))
+                   - np.sum(second * np.asarray(node[:, None]*1e-6, dtype=np.float32), axis=(-2, -1)))
 
 
 def test_finite_size_flux_matches_full_plane_in_standing_wave():
-    """Finite-size flux == full-plane integrand over the SAME window (exact).
+    """Finite flux equals the full-plane DFTs integrated over the same box.
 
     Decisive refutation of the "finite-size is less stable in standing-wave
     environments" caveat. Per-frequency, machine-precision agreement.
