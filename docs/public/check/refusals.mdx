@@ -50,8 +50,9 @@ The subgridded lane is unstable and unverified: an empty lossless PEC cavity's f
 ```
 
 Every refusal message has the same three parts: what is refused on which path,
-the reason, and the way through. Another example: ADI with an absorbing
-boundary, which reads (abridged):
+the reason, and the way through. Some inputs are refused as soon as you
+declare them. Asking for ADI with an absorbing boundary raises when the
+`Simulation` is created, with this message (abridged):
 
 ```text
 ValueError
@@ -62,8 +63,8 @@ What to expect:
 
 - The error is a `NotImplementedError` or a `ValueError`. Catch both if your
   script handles refusals.
-- It is raised before any time step, so a refusal costs nothing to find. Some inputs are refused already when you
-  declare them (the `add_*` call raises).
+- It is raised before any time step. Some inputs are refused already when
+  you declare them: the `Simulation(...)` or `add_*` call raises.
 - `forward()` is checked the same way as `run()`. The two do not always agree
   on a path, so look up the one you call.
 - A few inputs are not refused but handed to another path, with a warning
@@ -81,11 +82,11 @@ its result is yours to check.
 
 The refusals come from one table that records, for every attribute of a
 `Simulation` and every solver path, whether that path solves it, refuses it,
-hands it to another path, or never sees it. Tests build a model for each
+hands it to another path, does not need it, or never sees it. Tests build a model for each
 refused cell and check that the path raises a message naming the input
 before any time step starts, and for each solved cell that the input changes
-the result. This covers the physics inputs and observers; the other settings
-are recorded in the table only. Arguments to `run()` and `forward()` that a path does not
+the result. This covers the physics inputs, the observers and two settings
+(`mode` and `precision`); the other settings are recorded in the table only. Arguments to `run()` and `forward()` that a path does not
 implement (`until_decay`, `conformal_pec`, `subpixel_smoothing`, `snapshot`,
 `checkpoint`, `s_param_n_steps`) are pinned the same way, per path.
 
