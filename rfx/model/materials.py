@@ -749,6 +749,9 @@ def realize_components(cells, grid, *, periodic, view=None, dt=None, budget=None
     else:
         materials, debye_spec, lorentz_spec = cells, None, None
     from rfx.model.pole_stability import courant_budget, refuse_unstable_cells
+    if view is not None and periodic[0]:
+        raise ValueError("slab realization of an x-periodic grid: the first slab's "
+                         "edge mean would wrap onto its own last row, not global row nx-1")
     if view is not None and lorentz_spec is not None:
         if view.globals.get("pole_sets_judged") is not True:
             raise ValueError("slab Lorentz materials require pole_set_extremes / "

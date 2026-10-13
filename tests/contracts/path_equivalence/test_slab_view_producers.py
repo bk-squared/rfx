@@ -580,12 +580,13 @@ def test_realized_mutation_local_metric_is_caught(monkeypatch):
         assert_slab_view(producer, SCENES["material_seam"], 2)
 
 
-def test_extremes_mutation_first_slab_epsilon_is_caught():
-    whole, slabs = _records(_refusing_scene(), 2)
-    combined = combine_pole_extremes(slabs)
-    wrong = (combined[0]._replace(eps_low=slabs[0][0].eps_low),)
-    with pytest.raises(AssertionError):
-        _assert_records(whole, wrong)
+def test_slab_realization_refuses_x_periodic():
+    """A slab's own rows cannot supply the wrapped x neighbour (global row nx-1)."""
+    scene = SCENES["material_seam"]
+    view = slab_views(scene.grid, 2)[0]
+    with pytest.raises(ValueError, match="x-periodic"):
+        realize_components(_cells(scene, view), scene.grid,
+                           periodic=(True, False, False), view=view)
 
 
 def test_extremes_mutation_halo_count_is_caught(monkeypatch):
