@@ -145,6 +145,35 @@ def launch_windows(m, fractions, source_p, sigma, dx, dt):
     return tuple(windows)
 
 
+def require_step_bound(n_steps):
+    """Refuse an unbounded auxiliary line before any step-count arithmetic."""
+    if isinstance(n_steps, (bool, np.bool_)) or not isinstance(n_steps, (int, np.integer)) or n_steps < 1:
+        raise ValueError("closed_box requires a finite positive integer bound on its step count (n_steps)")
+
+
+def source_scalar(name, value):
+    """Incident-source scalars are fixed inputs, including under forward AD."""
+    from rfx.core.jax_utils import is_tracer
+    if is_tracer(value):
+        raise ValueError(f"{name}: differentiating with respect to the incident source is not supported")
+    return float(value)
+
+
+def validate_run(entry, until_decay, decay_max_steps, under_transform):
+    """Run admission precedes setup and decay-parameter arithmetic."""
+    from rfx.sources.sources import CustomWaveform
+    if entry is None:
+        return
+    if entry.closed_box and until_decay is not None:
+        require_step_bound(decay_max_steps)
+    if not (entry.closed_box or isinstance(entry.waveform, CustomWaveform)):
+        return
+    if under_transform():
+        raise NotImplementedError(
+            "CustomWaveform and closed_box TFSF cannot be passed through run() "
+            "under external JAX transformations; differentiate forward() instead.")
+
+
 def init_plane_wave(nx, dx, dt, *, ny, nz, cpml_layers=0, tfsf_margin=3,
                     f0=5e9, bandwidth=.5, amplitude=1., polarization="ez", direction="+x",
                     theta_deg=0., phi_deg=0., direction_tol_deg=.1, max_component=100,
@@ -152,10 +181,15 @@ def init_plane_wave(nx, dx, dt, *, ny, nz, cpml_layers=0, tfsf_margin=3,
     """Build the line with N*max(abs(m))+2 untouched nodes beyond every read."""
     from rfx.sources.sources import CustomWaveform
     from rfx.sources.tfsf import AUX_N_MARGIN_1D, AUX_SRC_OFFSET_1D
-    if isinstance(n_steps, (bool, np.bool_)) or not isinstance(n_steps, (int, np.integer)) or n_steps < 1:
-        raise ValueError("closed_box requires a finite positive integer bound on its step count (n_steps)")
+    require_step_bound(n_steps)
+    amplitude = source_scalar("amplitude", amplitude)
+    f0 = source_scalar("f0", f0)
+    bandwidth = source_scalar("bandwidth", bandwidth)
     info = incidence(theta_deg, phi_deg, direction, polarization, direction_tol_deg, max_component)
     m = np.asarray(info["m"], dtype=np.int64)
+    norm = float(np.linalg.norm(m))
+    if norm != 1.:
+        amplitude *= norm
     shape = (nx, ny, nz)
     bounds = box_bounds(shape, cpml_layers, tfsf_margin)
     projections = YEE_OFFSETS @ m
@@ -199,6 +233,8 @@ def init_plane_wave(nx, dx, dt, *, ny, nz, cpml_layers=0, tfsf_margin=3,
     t0 = (5. if waveform == "modulated_gaussian" else 3.) * tau
     if waveform == "continuous_wave":
         tau = t0 = 8. / f0
+    tau = source_scalar("tau", tau)
+    t0 = source_scalar("t0", t0)
     dtype = jnp.result_type(float)
     # CPU Yee SI coefficient factorization: yee.py:1052-1057, 1221-1228;
     # H: yee.py:496-500. Keep the array operations, not Python-folded ratios.
@@ -348,6 +384,8 @@ def rational_direction(theta_deg, phi_deg, direction, direction_tol_deg, max_com
         raise ValueError("max_component must be a positive integer")
     if not np.all(np.isfinite([theta_deg, phi_deg, direction_tol_deg])) or direction_tol_deg < 0:
         raise ValueError("angles and direction_tol_deg must be finite; tolerance must be nonnegative")
+    if not 0 <= theta_deg < 90:
+        raise ValueError("theta_deg must be in [0, 90); choose the half-space with direction")
     theta, phi = np.deg2rad([theta_deg, phi_deg])
     requested = np.array([(1 if direction == "+x" else -1) * np.cos(theta),
                           np.sin(theta) * np.cos(phi), np.sin(theta) * np.sin(phi)])
@@ -382,6 +420,8 @@ def incidence(theta_deg=0.0, phi_deg=0.0, direction="+x", polarization="ez",
     """Float64 declaration vectors, always formed against the realized k."""
     if polarization not in ("ey", "ez", "s", "p"):
         raise ValueError("polarization must be 'ey', 'ez', 's', or 'p'")
+    if theta_deg == 0 and polarization in ("ey", "ez") and phi_deg != 0:
+        raise ValueError("nonzero phi_deg at theta_deg=0 requires polarization='s' or 'p'")
     if theta_deg != 0 and polarization not in ("s", "p"):
         raise ValueError("nonzero theta_deg requires polarization='s' or 'p'")
     m, k, requested, error = rational_direction(

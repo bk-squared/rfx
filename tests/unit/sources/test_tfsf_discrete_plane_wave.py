@@ -624,3 +624,67 @@ def test_record10_scale_mutations(record_property):
     record_property('scale_mutations', dict(control=control, corner=corner_result, face=face_result))
     assert corner_result['rise_SF_ULP'] > 9, corner_result
     assert face_result['rSF'] > 1, face_result
+
+
+@pytest.mark.parametrize('parameter,value', (('amplitude', 1.), ('f0', 10e9), ('bandwidth', .8)))
+def test_appendix_i_forward_refuses_traced_source(parameter, value):
+    """Source scalars must raise, rather than silently return a zero gradient."""
+    sim = scene()
+    sim.add_probe((.012,) * 3, component='ez')
+    entry = sim._tfsf
+    def objective(traced):
+        sim._tfsf = replace(entry, **{parameter: traced})
+        return jnp.sum(sim.forward(n_steps=2, skip_preflight=True).time_series)
+    with pytest.raises(ValueError, match=(
+            parameter + ': differentiating with respect to the incident source is not supported')):
+        jax.grad(objective)(jnp.float32(value))
+
+
+@pytest.mark.parametrize('pol', ('ey', 'ez'))
+def test_appendix_i_normal_cartesian_phi_refused(pol):
+    with pytest.raises(ValueError, match='nonzero phi_deg at theta_deg=0'):
+        scene(0, 30, pol)
+
+
+@pytest.mark.parametrize('theta', (-1, 90, 100))
+def test_appendix_i_theta_half_space_refused(theta):
+    with pytest.raises(ValueError, match='theta_deg must be in'):
+        scene(theta, 0, 's')
+
+
+def test_appendix_i_decay_requires_step_bound():
+    with pytest.raises(ValueError, match='closed_box requires a finite positive integer bound on its step count'):
+        scene().run(until_decay=1e-5, decay_max_steps=None, skip_preflight=True)
+
+
+@pytest.mark.parametrize('angles', DIRECTIONS)
+@pytest.mark.parametrize('pol', ('s', 'p'))
+def test_v14_absolute_incident_amplitude(angles, pol, record_property):
+    """Appendix I: absolute co spectrum, and omitted |m| normalization red."""
+    normal, zero = line(pol=pol)
+    reference, _ = co_spectrum(normal, zero)
+    cfg, state = line(*angles, pol)
+    actual, _ = co_spectrum(cfg, state)
+    ratio = np.abs(actual) / np.abs(reference)
+    record_property('ratio', ratio.tolist())
+    assert np.all(np.abs(ratio - 1) <= .01), ratio
+    norm = np.linalg.norm(cfg.m)
+    if norm != 1:
+        defective, _ = co_spectrum(replace(cfg, src_amp=cfg.src_amp / norm), state)
+        defect_ratio = np.abs(defective) / np.abs(reference)
+        record_property('omitted_factor_ratio', defect_ratio.tolist())
+        assert np.all(np.abs(defect_ratio - 1) > .01), defect_ratio
+
+
+@pytest.mark.parametrize('pol', ('s', 'p'))
+def test_v14_max_component_pair(pol, record_property):
+    """The same 30-degree request must agree for integer-search caps 40/100."""
+    spectra = []
+    for cap in (40, 100):
+        cfg, state = plane.init_plane_wave(41, DX, DT, ny=41, nz=41, cpml_layers=8,
+            tfsf_margin=4, f0=10e9, bandwidth=.8, theta_deg=30, phi_deg=0,
+            polarization=pol, max_component=cap, n_steps=300)
+        spectra.append(co_spectrum(cfg, state)[0])
+    ratio = np.abs(spectra[1]) / np.abs(spectra[0])
+    record_property('ratio_100_over_40', ratio.tolist())
+    assert np.all(np.abs(ratio - 1) <= .01), ratio
