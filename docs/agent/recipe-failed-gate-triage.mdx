@@ -8,7 +8,9 @@ sidebar:
 Use this recipe when a result fails a check: a non-passive `|S11| > 1`, a
 resonance in the wrong place, a reflection or transmission that does not match
 its reference, or a mesh series that does not converge. Go through the five
-steps in order before you change the model. The **STOP** entries are fixes that
+steps of the [overview](./overview) (declare, check on the grid, run, measure,
+show the evidence) in reverse: check the result, the run and the model before
+you change the model. The **STOP** entries are fixes that
 were built and measured, and did not work; do not try one again without new
 evidence. In this project, results of this kind have most often turned out to
 be a mistake in the comparison or the extraction, not in the solver.
@@ -25,20 +27,21 @@ where the patch happens to match the feed. Read the resonance from a probe
 after the source has stopped (`Result.find_resonances()`, see the
 [resonance extraction recipe](./recipe-resonance-extraction)).
 
-## Step 2: was the intended model solved?
+## Was the intended model solved? (step 2)
 
 Read `sim.preflight()` and `sim.fidelity_report()` and quote every warning
 before you report a number. A sheet solved wider than drawn, a port off its
 metal or a structure in the absorber gives a wrong answer that looks like
 physics ([Check the model on the grid](/rfx/check/model-on-grid/)).
 
-## Step 3 and 5: was the run long enough?
+## Was the run long enough? (steps 3 and 5)
 
-Read `result.settling_witness["status"]` for every result that reads
-frequencies. Anything other than `pass` means the run is not known to be long
+Read the settling status of every result that reads frequencies:
+`result.settling_witness["status"]` for a `run()` result, and each entry's
+`["status"]` for an S-matrix result, which holds one per port. Anything other than `pass` means the run is not known to be long
 enough ([Is the run long enough?](/rfx/evidence/simulation-time/)).
 
-## Step 4: is the measurement right?
+## Is the measurement right? (step 4)
 
 1. `rfx.validate_port_smatrix(result)` checks passivity, reciprocity and the
    shape of any port result.
@@ -59,7 +62,8 @@ default probe offset keeps clear of the field close to the source.
 **STOP: a voltage-only fit of the wave amplitudes along the line.** At a
 strongly mismatched resonant load the forward wave nearly vanishes at
 resonance, the fit becomes ill-conditioned, and the extracted `|S11|` goes
-above 1 and gets worse as the mesh is refined.
+above 1 and gets worse as the mesh is refined. A matched line is a separate
+question that this does not answer.
 
 ### B. A resonance or dip in the wrong place
 
@@ -80,21 +84,27 @@ handling built into the S-parameter calculators.
 seen on a PEC short came from a missing half-step time correction in a
 diagnostic script, not in `compute_waveguide_s_matrix`. A phase disagreement
 with another solver at a single frequency is usually a difference in
-conventions; compare the trend over frequency.
+conventions; compare the trend over frequency. The magnitude error that remains is the grid's
+own dispersion, which no change to the extraction removes.
 
-## Step 5: does it converge with the mesh?
+## Does it converge with the mesh? (step 5)
 
 ### D. A curved metal body that does not converge
 
-**STOP: writing a new conformal-PEC scheme.** `conformal_pec=True` exists, but
-it currently makes a curved metal body electrically larger and less accurate
-than the staircase (a known limitation, tracker 1651). Use the staircase and a
-mesh series of at least three meshes; refine locally with a graded mesh.
+`conformal_pec=True` exists, but it currently makes a curved metal body
+electrically larger and less accurate than the staircase: it gives cut edges a
+raised permittivity instead of cut H-face areas. The update with cut H-face
+areas (Dey–Mittra) is planned under tracker 1651. Until it lands, use the
+staircase and a mesh series of at least three meshes, refined locally with a
+graded mesh.
 
 ### E. "We need subgridding"
 
 Subgridding is refused by default because it is not yet stable and verified.
-Use a graded mesh for local resolution
+
+**STOP: an SBP-SAT subgrid boundary.** Its boundary stencil does not close
+under the leapfrog time step and does not work with CPML. Use a graded mesh for
+local resolution
 ([Domain and mesh](/rfx/model/domain-mesh/)).
 
 ## None of the branches match
