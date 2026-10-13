@@ -342,18 +342,9 @@ def run_uniform(
     wire_port_excites = []
     for _port_index, pe in enumerate(sim._ports):
         if pe.impedance == 0.0:
-            # Auto-select source type based on boundary conditions:
-            # - CPML (open): Cb/dx normalized (prevents DC on PEC surface)
-            # - PEC (closed): raw field add (broadband, exact cavity modes)
-            # amplitude_kind (issue #571) rides on top: the helper stays
-            # boundary-selected (its native numerics are deliberate); the
-            # KIND only rescales the waveform inside the helper. kind=None
-            # threads through as a no-op (legacy, bit-identical).
-            from rfx.sources.port_drive import soft_source
-            sources.defer(soft_source, grid, pe.position, pe.component,
-                          pe.waveform, n_steps, amplitude_kind=pe.amplitude_kind,
-                          raw=sim._boundary not in ("cpml", "upml"),
-                          field_dtype=field_dtype)
+            # The declared kind alone decides the drive (forward() calls the same).
+            from rfx.sources.port_drive import defer_soft_source
+            defer_soft_source(sources, grid, pe, n_steps, field_dtype=field_dtype)
             continue
         if pe.extent is not None:
             # Multi-cell wire port
