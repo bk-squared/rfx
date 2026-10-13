@@ -87,8 +87,10 @@ def model(precision, entry):
         sim = _build_thru(reference_plane_cells=3)
         sim._precision = precision
         return sim
+    exterior = ({'boundary': 'cpml', 'cpml_layers': 2}
+                if entry.endswith('_ntff') or entry == 'ntff_sweep' else {'boundary': 'pec'})
     sim = Simulation(freq_max=5e9, domain=(.018, .012, .012), dx=.003,
-                     boundary='pec', precision=precision)
+                     precision=precision, **exterior)
     for x in (.006, .012)[:1 if 'single' in entry else 2]:
         sim.add_port((x, .006, .006), 'ez', impedance=50.,
                      waveform=GaussianPulse(f0=3e9, bandwidth=.8),

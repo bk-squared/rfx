@@ -3,7 +3,7 @@
 A non-uniform grid carries no `face_layers`, so both the direct box
 construction and `NTFFBox.from_grid` fall back to the scalar
 `cpml_layers` on every face. That is wrong whenever the pads are
-asymmetric — which they are for any non-absorbing face — and the error is
+asymmetric — including absorbing faces of unequal depth — and the error is
 a rigid displacement of every NTFF face coordinate, i.e. a wrong phase
 reference, returned with no warning.
 """
@@ -12,14 +12,14 @@ from __future__ import annotations
 import numpy as np
 
 from rfx import Box, Simulation
-from rfx.boundaries.spec import BoundarySpec
+from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.sources import GaussianPulse
 
 
-def _sim(z_lo: str):
+def _sim(z_lo: str, *, lo_thickness=None):
     sim = Simulation(freq_max=40e9, domain=(6e-3, 6e-3, 6e-3), dx=300e-6,
                      boundary=BoundarySpec(x="cpml", y="cpml",
-                                           z={"lo": z_lo, "hi": "cpml"}),
+                                           z=Boundary(lo=z_lo, hi="cpml", lo_thickness=lo_thickness)),
                      cpml_layers=6, dz_profile=np.full(20, 300e-6))
     # a solid scatterer: a VOLUME, drawn node to node (2 cells per axis at
     # dx = 300 um) and left one. Under the ownership contract (#931 §1.2) it
@@ -38,11 +38,11 @@ def _sim(z_lo: str):
 
 
 def test_box_cpml_offsets_match_the_grids_pads():
-    """A PEC z_lo face has pad_z_lo = 0; the box must say 0, not the scalar 6."""
-    sim = _sim("pec")
+    """The z_lo absorber has three layers; the box must say 3, not the scalar 6."""
+    sim = _sim("cpml", lo_thickness=3)
     grid = sim._build_nonuniform_grid()
-    assert int(grid.pad_z_lo) == 0 and int(grid.pad_z_hi) == 6, (
-        "fixture assumption: a non-absorbing z_lo face carries no pad")
+    assert int(grid.pad_z_lo) == 3 and int(grid.pad_z_hi) == 6, (
+        "fixture assumption: the z absorbers retain their declared unequal depths")
     res = sim.run(n_steps=120)
     box = res.ntff_box
     assert int(box.cpml_lo_z) == int(grid.pad_z_lo), (

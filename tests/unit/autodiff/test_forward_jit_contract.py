@@ -133,7 +133,7 @@ def _lumped(graded, boundary="pec"):
 
 
 def _ntff(graded):
-    sim = _board(graded, domain_xy=(16, 16), height=12)
+    sim = _board(graded, domain_xy=(16, 16), height=12, boundary="cpml")
     sim.add_source((8 * MM, 8 * MM, 2 * MM), "ez", waveform=_pulse(),
                    amplitude_kind="field")
     sim.add_probe((10 * MM, 6 * MM, 2 * MM), "ez")
