@@ -229,6 +229,8 @@ def init_tfsf(
     aux_cpml_kappa_max: float | None = None,
     aux_cpml_r_asymptotic: float | None = None,
     closed_box: bool = False,
+    *, n_steps: int | None = None, theta_deg: float = 0.0, phi_deg: float = 0.0,
+    direction_tol_deg: float = 0.1, max_component: int = 100,
 ) -> tuple:
     """Initialize TFSF source.
 
@@ -307,6 +309,15 @@ def init_tfsf(
         value = jax.eval_shape(waveform, jnp.asarray(0.0))
         if value.shape != () or not jnp.issubdtype(value.dtype, jnp.floating):
             raise ValueError("TFSF CustomWaveform must return a real scalar floating-point value")
+    if closed_box:
+        from rfx.sources.tfsf_discrete_plane_wave import init_plane_wave
+        if ny is None or nz is None:
+            raise ValueError("closed_box=True requires ny and nz")
+        return init_plane_wave(nx, dx, dt, ny=ny, nz=nz, cpml_layers=cpml_layers,
+            tfsf_margin=tfsf_margin, f0=f0, bandwidth=bandwidth, amplitude=amplitude,
+            polarization=polarization, direction=direction, theta_deg=theta_deg,
+            phi_deg=phi_deg, direction_tol_deg=direction_tol_deg,
+            max_component=max_component, waveform=waveform, n_steps=n_steps)
     # continuous_wave lives only in the 1D-auxiliary (normal-incidence) injector; the 2D
     # oblique grid (init_tfsf_2d) has no waveform parameter, so reject it here rather than
     # silently drop it (fail-loud, not right-guard-mis-gated).
@@ -411,17 +422,6 @@ def init_tfsf(
             "TFSF margin/cpml_layers are too large for the grid: "
             f"nx={nx}, cpml_layers={cpml_layers}, tfsf_margin={tfsf_margin}"
         )
-    y_lo = y_hi = z_lo = z_hi = 0
-    if closed_box:
-        if ny is None or nz is None:
-            raise ValueError("closed_box=True requires ny and nz")
-        y_lo = z_lo = offset
-        y_hi, z_hi = ny - offset - 1, nz - offset - 1
-        if y_lo >= y_hi or z_lo >= z_hi:
-            raise ValueError(
-                "TFSF margin/cpml_layers are too large for the closed box: "
-                f"shape={(nx, ny, nz)}, cpml_layers={cpml_layers}, tfsf_margin={tfsf_margin}")
-
     # 1D auxiliary grid: spans x_lo..x_hi + margins for source + CPML
     n_cpml_1d = AUX_N_CPML_1D if aux_n_cpml is None else int(aux_n_cpml)
     n_tfsf = x_hi - x_lo + 2   # +2 for the correction at x_hi+1
@@ -522,8 +522,6 @@ def init_tfsf(
         magnetic_lo=magnetic_lo,
         magnetic_hi=magnetic_hi,
         custom_waveform=waveform if custom else None,
-        closed_box=closed_box,
-        y_lo=y_lo, y_hi=y_hi, z_lo=z_lo, z_hi=z_hi,
     )
 
     state = TFSFState(
@@ -571,6 +569,9 @@ def update_tfsf_1d_h(cfg: TFSFConfig, st: TFSFState, dx: float,
     so that numerical dispersion matches the 3D grid along the oblique
     propagation direction.
     """
+    if getattr(cfg, "closed_box", False):
+        from rfx.sources.tfsf_discrete_plane_wave import update_line_h
+        return update_line_h(cfg, st, dx, dt)
     mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
     n = cfg.n_cpml
     e1d, h1d = st.e1d, st.h1d
@@ -604,6 +605,9 @@ def update_tfsf_1d_e(cfg: TFSFConfig, st: TFSFState, dx: float,
 
     The 1D grid uses cfg.dx_1d (= dx/cos(theta) for oblique, dx for normal).
     """
+    if getattr(cfg, "closed_box", False):
+        from rfx.sources.tfsf_discrete_plane_wave import update_line_e
+        return update_line_e(cfg, st, dx, dt, t)
     n = cfg.n_cpml
     e1d, h1d = st.e1d, st.h1d
     dx_1d = cfg.dx_1d
@@ -700,6 +704,9 @@ def measure_normal_incident_spectrum(
     """
     from jax import lax
 
+    if getattr(cfg, "closed_box", False):
+        from rfx.sources.tfsf_discrete_plane_wave import normal_incident_spectrum
+        return normal_incident_spectrum(cfg, state, n_steps, freqs, dt, reference_index)
     if not isinstance(cfg, TFSFConfig):
         raise TypeError(
             "measure_normal_incident_spectrum takes the normal-incidence "
@@ -757,7 +764,8 @@ def apply_tfsf_e(state, cfg, tfsf_st, dx: float, dt: float):
         from rfx.sources.tfsf_2d import apply_tfsf_2d_e
         return apply_tfsf_2d_e(state, cfg, tfsf_st, dx, dt)
     if getattr(cfg, "closed_box", False):
-        return _apply_closed_box_e(state, cfg, tfsf_st, dx, dt)
+        from rfx.sources.tfsf_discrete_plane_wave import apply_tables
+        return apply_tables(state, cfg, tfsf_st, magnetic=False)
     coeff = dt / (EPS_0 * dx)
     i0 = cfg.i0
 
@@ -796,7 +804,8 @@ def apply_tfsf_h(state, cfg, tfsf_st, dx: float, dt: float):
         from rfx.sources.tfsf_2d import apply_tfsf_2d_h
         return apply_tfsf_2d_h(state, cfg, tfsf_st, dx, dt)
     if getattr(cfg, "closed_box", False):
-        return _apply_closed_box_h(state, cfg, tfsf_st, dx, dt)
+        from rfx.sources.tfsf_discrete_plane_wave import apply_tables
+        return apply_tables(state, cfg, tfsf_st, magnetic=True)
     coeff = dt / (mu_abs * dx)
     i0 = cfg.i0
 
@@ -813,60 +822,3 @@ def apply_tfsf_h(state, cfg, tfsf_st, dx: float, dt: float):
     h_field = h_field.at[cfg.x_hi, :, :].add(cfg.curl_sign * coeff * e_inc_hi)
 
     return state._replace(**{cfg.magnetic_component: h_field})
-
-
-def _apply_closed_box_e(state, cfg, incident, dx, dt):
-    """Sparse form of M_E curl(Hinc) - curl(M_H Hinc).
-
-    The incident components use the inclusive index box for both E and H.
-    Yee's backward H differences put E corrections at lo and hi+1.
-    H is at n+1/2 here; the 1-D E source is advanced only after this call.
-    """
-    xs = slice(cfg.x_lo, cfg.x_hi + 1)
-    ys = slice(cfg.y_lo, cfg.y_hi + 1)
-    zs = slice(cfg.z_lo, cfg.z_hi + 1)
-    coeff = cfg.curl_sign * dt / (EPS_0 * dx)
-    h = incident.h1d
-    n = cfg.x_hi - cfg.x_lo + 1
-    e = getattr(state, cfg.electric_component)
-    e = e.at[cfg.x_lo, ys, zs].add(-coeff * h[cfg.i0 - 1])
-    e = e.at[cfg.x_hi + 1, ys, zs].add(coeff * h[cfg.i0 + n - 1])
-    # Hy varies across the z faces (Ez); Hz across the y faces (Ey).
-    # Their spurious curl points along x and must be cancelled too.
-    hx = coeff * h[cfg.i0:cfg.i0 + n, None]
-    ex = state.ex
-    if cfg.electric_component == "ez":
-        ex = ex.at[xs, ys, cfg.z_lo].add(hx)
-        ex = ex.at[xs, ys, cfg.z_hi + 1].add(-hx)
-    else:
-        ex = ex.at[xs, cfg.y_lo, zs].add(hx)
-        ex = ex.at[xs, cfg.y_hi + 1, zs].add(-hx)
-    return state._replace(ex=ex, **{cfg.electric_component: e})
-
-
-def _apply_closed_box_h(state, cfg, incident, dx, dt):
-    """Sparse form of -M_H curl(Einc) + curl(M_E Einc).
-
-    Yee's forward E differences put H corrections at lo-1 and hi.
-    The transverse face extents include the edge/corner samples exactly
-    once, as in the full mask-curl commutator.
-    """
-    mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
-    xs = slice(cfg.x_lo, cfg.x_hi + 1)
-    ys = slice(cfg.y_lo, cfg.y_hi + 1)
-    zs = slice(cfg.z_lo, cfg.z_hi + 1)
-    coeff = cfg.curl_sign * dt / (mu_abs * dx)
-    e = incident.e1d
-    n = cfg.x_hi - cfg.x_lo + 1
-    h = getattr(state, cfg.magnetic_component)
-    h = h.at[cfg.x_lo - 1, ys, zs].add(-coeff * e[cfg.i0])
-    h = h.at[cfg.x_hi, ys, zs].add(coeff * e[cfg.i0 + n])
-    ex = coeff * e[cfg.i0:cfg.i0 + n, None]
-    hx = state.hx
-    if cfg.electric_component == "ez":
-        hx = hx.at[xs, cfg.y_lo - 1, zs].add(ex)
-        hx = hx.at[xs, cfg.y_hi, zs].add(-ex)
-    else:
-        hx = hx.at[xs, ys, cfg.z_lo - 1].add(ex)
-        hx = hx.at[xs, ys, cfg.z_hi].add(-ex)
-    return state._replace(hx=hx, **{cfg.magnetic_component: h})

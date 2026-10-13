@@ -135,15 +135,8 @@ def simulation_source_end_step(sim, n_steps, dt, records, grid=None,
     if tf is not None:
         if grid is None:
             return None
-        from rfx.sources.tfsf import init_tfsf
-        cfg, _ = init_tfsf(
-            grid.nx, grid.boundary_cell("x", "lo"), dt, cpml_layers=grid.cpml_layers,
-            ny=grid.ny, nz=grid.nz, tfsf_margin=tf.margin,
-            f0=tf.f0 if tf.f0 is not None else sim._freq_max / 2,
-            bandwidth=tf.bandwidth, amplitude=tf.amplitude,
-            polarization=tf.polarization, direction=tf.direction,
-            angle_deg=tf.angle_deg, waveform=tf.waveform,
-            method=tf.method, closed_box=tf.closed_box)
+        from rfx.sources.tfsf_discrete_plane_wave import init_from_sim
+        cfg, _ = init_from_sim(sim, grid, n_steps)
         drives.append(tfsf_source_drive(cfg, grid))
     return source_end_step(drives, n_steps, dt) if drives else None
 

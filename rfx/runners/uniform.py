@@ -341,28 +341,12 @@ def run_uniform(
         periodic = tuple(axis in sim._periodic_axes for axis in "xyz")
 
     if sim._tfsf is not None:
-        from rfx.sources.tfsf import init_tfsf, validate_custom_tfsf_waveform
+        from rfx.sources.tfsf import validate_custom_tfsf_waveform
+        from rfx.sources.tfsf_discrete_plane_wave import init_from_sim
 
         validate_custom_tfsf_waveform(sim._tfsf.waveform, grid.dt, n_steps)
 
-        tfsf = init_tfsf(
-            grid.nx,
-            grid.dx,
-            grid.dt,
-            cpml_layers=grid.cpml_layers,
-            tfsf_margin=sim._tfsf.margin,
-            f0=sim._tfsf.f0 if sim._tfsf.f0 is not None else sim._freq_max / 2,
-            bandwidth=sim._tfsf.bandwidth,
-            amplitude=sim._tfsf.amplitude,
-            polarization=sim._tfsf.polarization,
-            direction=sim._tfsf.direction,
-            angle_deg=sim._tfsf.angle_deg,
-            ny=grid.ny,
-            nz=grid.nz,
-            waveform=getattr(sim._tfsf, 'waveform', 'differentiated_gaussian'),
-            method=getattr(sim._tfsf, 'method', 'bloch'),
-            closed_box=sim._tfsf.closed_box,
-        )
+        tfsf = init_from_sim(sim, grid, decay_max_steps if until_decay is not None else n_steps)
         from rfx.boundaries.tfsf import boundary_flags as tfsf_boundary_flags
         periodic, cpml_axes = tfsf_boundary_flags(tfsf[0], grid)
 

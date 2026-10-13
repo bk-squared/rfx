@@ -2034,18 +2034,10 @@ class Simulation(
         """
         if self._tfsf is None:
             raise ValueError("No TFSF source registered")
-        from rfx.sources.tfsf import init_tfsf, tfsf_injection_planes
+        from rfx.sources.tfsf import tfsf_injection_planes
+        from rfx.sources.tfsf_discrete_plane_wave import init_from_sim
         grid = self._build_grid()
-        entry = self._tfsf
-        cfg, _ = init_tfsf(
-            grid.nx, float(grid.cells("x")[0]), grid.dt, ny=grid.ny, nz=grid.nz,
-            cpml_layers=grid.cpml_layers, tfsf_margin=entry.margin,
-            f0=entry.f0 if entry.f0 is not None else self._freq_max / 2,
-            bandwidth=entry.bandwidth, amplitude=entry.amplitude,
-            polarization=entry.polarization, direction=entry.direction,
-            angle_deg=entry.angle_deg, waveform=entry.waveform,
-            method=entry.method, closed_box=entry.closed_box,
-        )
+        cfg, _ = init_from_sim(self, grid, bounds_only=True)
         return tfsf_injection_planes(cfg)
 
     def add_waveguide_port(

@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, NamedTuple
 
 import numpy as np
 import jax.numpy as jnp
+from jax import lax, tree_util
 
 from rfx.core.yee import EPS_0, MU_0, FDTDState, e_update_coeffs
 
@@ -179,7 +180,7 @@ def update_line_h(cfg, state, dx, dt):
                 - line_difference(cfg, state, target, second, b) / dx)
         name = COMPONENTS[target]
         changes[name] = getattr(state, name) - cfg.ch * curl
-    return state._replace(**changes)
+    return tree_util.tree_map(lax.stop_gradient, state._replace(**changes))
 
 
 def update_line_e(cfg, state, dx, dt, t=None):
@@ -208,7 +209,7 @@ def update_line_e(cfg, state, dx, dt, t=None):
                 value = amplitude * (-2. * arg) * env
             field = field.at[cfg.source_nodes[target]].add(value)
         changes[name] = field
-    return state._replace(**changes, step=state.step + 1)
+    return tree_util.tree_map(lax.stop_gradient, state._replace(**changes, step=state.step + 1))
 
 
 def apply_tables(state, cfg, incident, *, magnetic):
@@ -221,6 +222,50 @@ def apply_tables(state, cfg, incident, *, magnetic):
         field = field.at[table.target_index].add(jnp.asarray(table.coefficient) * values)
         state = state._replace(**{name: field.reshape(cfg.shape)})
     return state
+
+
+def init_from_sim(sim, grid, n_steps=None, *, bounds_only=False):
+    """Shared run/forward setup; metadata queries need no time-record allocation."""
+    from rfx.sources.tfsf import init_tfsf
+    entry = sim._tfsf
+    if bounds_only and entry.closed_box:
+        return box_bounds(grid.shape, grid.cpml_layers, entry.margin), None
+    return init_tfsf(
+        grid.nx, float(grid.cells("x")[0]), grid.dt, ny=grid.ny, nz=grid.nz,
+        cpml_layers=grid.cpml_layers, tfsf_margin=entry.margin,
+        f0=entry.f0 if entry.f0 is not None else sim._freq_max / 2,
+        bandwidth=entry.bandwidth, amplitude=entry.amplitude,
+        polarization=entry.polarization, direction=entry.direction,
+        angle_deg=entry.angle_deg, waveform=entry.waveform, method=entry.method,
+        closed_box=entry.closed_box, n_steps=n_steps, theta_deg=entry.theta_deg,
+        phi_deg=entry.phi_deg, direction_tol_deg=entry.direction_tol_deg,
+        max_component=entry.max_component)
+
+
+def normal_incident_spectrum(cfg, state, n_steps, freqs, dt, reference_index):
+    """Normal-only compatibility replay; oblique phase references belong to O1b."""
+    if cfg.m not in ((1, 0, 0), (-1, 0, 0)):
+        raise NotImplementedError("oblique incident spectrum requires O1b")
+    if n_steps > cfg.n_steps:
+        raise ValueError("incident replay exceeds the closed-box line's step-count bound")
+    x = cfg.x_lo if reference_index is None else reference_index
+    if (isinstance(x, (bool, np.bool_)) or not isinstance(x, (int, np.integer))
+            or not cfg.x_lo <= x <= cfg.x_hi):
+        raise ValueError("reference_index must be an integer E-node index inside the TFSF slab")
+    zero = FDTDState(*(jnp.zeros_like(getattr(state, c)) for c in COMPONENTS),
+                     jnp.asarray(0, jnp.int32))
+    indices = tuple(int(np.floor(cfg.m[0] * x + cfg.projections[c])) - cfg.origin
+                    for c in range(3))
+    def step(st, n):
+        st = update_line_h(cfg, st, cfg.dx_1d, dt)
+        st = update_line_e(cfg, st, cfg.dx_1d, dt)
+        value = sum(cfg.incidence["e_hat"][c] * getattr(st, COMPONENTS[c])[indices[c]]
+                    for c in range(3))
+        return st, value
+    _, record = lax.scan(step, zero, jnp.arange(n_steps, dtype=jnp.int32))
+    times = (np.arange(n_steps) + (reference_index is not None)) * float(dt)
+    bins = np.atleast_1d(np.asarray(freqs, dtype=np.float64))
+    return np.exp(-2j * np.pi * bins[:, None] * times) @ np.asarray(record, np.float64) * dt
 
 @lru_cache(maxsize=256)
 def rational_direction(theta_deg, phi_deg, direction, direction_tol_deg, max_component):
