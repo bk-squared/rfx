@@ -26,9 +26,7 @@
       "D2": [
         "Simulation.auto",
         "Simulation.boundary_model",
-        "Simulation.fidelity_report",
         "Simulation.mesh_intelligence_report",
-        "Simulation.realized_geometry",
         "Simulation.tfsf_box_indices",
         "Simulation.validate_subgrid"
       ]

@@ -35,6 +35,8 @@ from rfx.core.jax_utils import is_tracer
 from rfx.geometry.csg import Box, Shape  # noqa: F401
 from rfx.nonuniform import NonUniformGrid  # noqa: F401
 from rfx.sources.sources import GaussianPulse
+from rfx.realized_geometry import realized_geometry as _realized_geometry_fn
+from rfx.fidelity import fidelity_report as _fidelity_report
 from rfx.sources.coaxial_port import CoaxialPort
 from rfx.materials.debye import DebyePole
 from rfx.materials.lorentz import LorentzPole
@@ -863,16 +865,14 @@ class Simulation(
         are built on request here. ``run()`` attaches a compact record built
         independently from its own assembly as ``Result.realized_geometry``.
         """
-        from rfx.realized_geometry import realized_geometry
-        return realized_geometry(self)
+        return _realized_geometry_fn(self)
 
     def fidelity_report(self, print_report: bool = True):
         """Input-fidelity audit: declared vs solved, per entity, in input
         units — run BEFORE any solve. See :func:`rfx.fidelity.fidelity_report`
         (design rule: never predicts result-side impact; rasterization,
         realization class and materialization only)."""
-        from rfx.fidelity import fidelity_report as _fr
-        return _fr(self, print_report=print_report)
+        return _fidelity_report(self, print_report=print_report)
 
     # ---- sources (non-port) ----
 
