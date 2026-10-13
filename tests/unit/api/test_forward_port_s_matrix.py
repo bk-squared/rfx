@@ -1,11 +1,14 @@
 """One record's driven column agrees with run's independent drive solves."""
+from dataclasses import replace
 from types import SimpleNamespace
+import warnings
 
 import jax.numpy as jnp
 import numpy as np
 import pytest
 
 from rfx.api import ForwardResult
+from rfx.measurement import port_s_from_record
 from rfx.optimize_objectives import minimize_s11_at_freq_wave_decomp
 from rfx.validation import normalize_port_smatrix
 from tests.contracts.run_forward_census import BUILDERS
@@ -63,3 +66,24 @@ def test_all_passive_two_port_lane_parity():
         assert np.isfinite(result.s_params).all()
     np.testing.assert_allclose(results[0].s_params, results[1].s_params,
                                rtol=0, atol=LANE_PARITY_ATOL)
+
+
+def test_graded_wire_thru_run_checks_only_the_driven_column():
+    from tests._interior_tem_line import build
+
+    sim, _ = build('wire', two=True, profile=np.array(
+        [1, .8, 1.2, .9, 1.1, .8, 1.2, 1, 1]) * .25e-3)
+    sim._ports[1] = replace(sim._ports[1], excite=False)
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter('always')
+        result = sim.run(n_steps=1000, skip_preflight=True,
+                         compute_s_params=True, s_param_freqs=[3e9, 5e9, 7e9])
+    driven = np.asarray(result.s_params)[:, 0]
+    assert np.isfinite(driven).all() and np.all(np.abs(driven) <= 1)
+    assert np.isnan(np.asarray(result.s_params)[:, 1]).all()
+    assert not [w for w in caught if 'non-passive' in str(w.message)
+                or 'non-finite' in str(w.message)]
+
+
+def test_graded_lumped_requires_a_reference_channel():
+    with pytest.raises(ValueError, match='pre-injection reference'): port_s_from_record([(jnp.ones(3),) * 3], [(None,) * 4 + (50, None, None, True)], wire_mode=False)

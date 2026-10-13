@@ -132,8 +132,10 @@ def _run_captured(sim, n, **kw):
         S_hand = np.asarray(k["observable"](
             k["plain"] + rd.tail_dft(main, n_record - 1, freqs)))
         assert S_hand.dtype == r.ringdown.s_params.dtype
-        assert np.array_equal(S_hand, r.ringdown.s_params), (
+        assert np.array_equal(S_hand[:, 0], r.ringdown.s_params[:, 0]), (
             "the completed S is not the completion from the main window")
+        assert np.isnan(S_hand[:, 1:]).all()
+        assert np.isnan(r.ringdown.s_params[:, 1:]).all()
     return r, cap
 
 

@@ -426,8 +426,8 @@ def test_a_weakly_driven_bin_is_completed_as_run_completes_it():
     f = _box("uniform", pulse=pulse).forward(n_steps=3000, skip_preflight=True,
                                              port_s11_freqs=FREQS, ringdown=RingdownSpec())
     c = float(f.ringdown._consistency)
-    S = np.asarray(f.ringdown.s_params).astype(np.complex128)
-    err = np.abs(S - r.ringdown.s_params.astype(np.complex128))
+    S = np.asarray(f.ringdown.s_params)[0, 0].astype(np.complex128)
+    err = np.abs(S - r.ringdown.s_params[0, 0].astype(np.complex128))
     vp, ii = (np.asarray(f.wire_port_sparams[0][1][k]).astype(np.complex128) for k in (3, 1))
     a_rel = np.abs(vp + 50.0 * ii) / np.max(np.abs(vp + 50.0 * ii))
     weighted = float(np.max(err * a_rel))

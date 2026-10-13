@@ -10,7 +10,9 @@ def port_s_from_record(channels, metas, *, wire_mode):
     slots. Graded wire records have no pre-injection reference channel; the
     whole-port wire decomposition does not consume that reference.
     """
-    from rfx.probes.probes import decompose_lumped_s_matrix, decompose_wire_s_matrix
+    from rfx.probes.probes import (
+        decompose_lumped_s_matrix, decompose_wire_s_matrix, driven_port_reflection,
+    )
 
     channels = tuple(channels)
     specs = tuple(metas)
@@ -24,6 +26,10 @@ def port_s_from_record(channels, metas, *, wire_mode):
     if len(genuinely_excited) > 1:
         raise NotImplementedError(
             "Port S extraction requires at most one driven port per record (#1660).")
+    if wire_mode and not graded and n_wp == 1 and genuinely_excited:
+        # run()'s one-wire main-record path uses this unnormalized wave pair.
+        return driven_port_reflection(
+            channels[0][3], channels[0][1], specs[0].impedance)[None, None, :]
     if not genuinely_excited:
         S = jnp.zeros((n_wp, n_wp, nf), dtype=jnp.complex64)
         excited_idx = list(range(n_wp))
@@ -83,6 +89,8 @@ def port_s_from_record(channels, metas, *, wire_mode):
             len(spec.live_cells or ()) or 1 for spec in specs]
         S = decompose_wire_s_matrix(v, i, z0, counts, v_port=vp, v_ref=vr)
     else:
+        if vr is None:
+            raise ValueError("Graded lumped-port S requires a pre-injection reference channel.")
         S = decompose_lumped_s_matrix(v, i, z0, v_ref=vr)
     driven = jnp.asarray([meta[7] for meta in metas])
     missing = jnp.asarray(complex(float("nan"), float("nan")), dtype=S.dtype)

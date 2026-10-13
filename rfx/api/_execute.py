@@ -410,11 +410,11 @@ class _ExecuteMixin:
         if s_params is None or freqs is None:
             return
         from rfx.probes.probes import warn_if_nonpassive_lumped_s11
+        from rfx.measurement import observed_port_s
+        pairs = getattr(result, "wire_port_sparams", None)
         warn_if_nonpassive_lumped_s11(
-            s_params,
-            freqs,
-            extractor="run(compute_s_params=True)",
-        )
+            observed_port_s(s_params, pairs) if pairs else s_params, freqs,
+            extractor="run(compute_s_params=True)")
 
     def _warn_postrun_energy_witness(
         self,
