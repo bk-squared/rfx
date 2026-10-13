@@ -54,12 +54,9 @@ KNOWN_ROWS = (
     ('P-waveguide', 'uniform', 'L2', 'D7', '#1373 D7 (ports): forward() result carries no waveguide port records and S'),
     ('P-wire', 'graded', 'admission', 'A2', '#1373 A2 (ports): run refuses the wire port that forward admits'),
     ('P-wire', 'uniform', 'admission', 'A2', '#1373 A2 (ports): run refuses the wire port that forward admits'),
-    ('PW-A', 'graded', 'L1', 'A3', '#1373 A3 (absorber): forward refuses the graded normal plane wave'),
-    ('PW-A', 'graded', 'admission', 'A3', '#1373 A3 (absorber): forward refuses the graded normal plane wave'),
     ('PW-A', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
     ('PW-B', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
     ('PW-oblique', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
-    ('PW-oblique', 'uniform', 'L2', 'D3', '#1373 D3 (absorber): oblique plane-wave fields differ'),
     ('R-rlc', 'uniform', 'L1', 'D6', '#1373 D6 (ports): lumped RLC step inputs and fields differ'),
     ('R-rlc', 'uniform', 'L2', 'D6', '#1373 D6 (ports): lumped RLC step inputs and fields differ'),
     ('S-field', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
@@ -320,15 +317,13 @@ BOTH_REFUSE_ROWS = (
     ('R-rlc', 'multi-device-uniform'),
 )
 
-# Item 20: only common time_series differences on these three L2 pairs
+# Item 20: only common time_series differences on this L2 pair
 # are consequences. Other measurements, outcomes, and L1 remain exact;
 # O-flux has equal fields and is not a consequence pair.
 CONSEQUENCE_PAIRS = (
     ('R-rlc', 'uniform', 'D6'),
-    ('PW-oblique', 'uniform', 'D3'),
 )
 ID_PATTERNS = {
-    'D3': {'L1': (), 'L2': ()},
     'D4': {'L1': ('/carry_init/flux_monitors/*', '/init/flux_monitors/*',
                   '/ctx/flux_meta/*', '/invariants/ctx/flux_meta/*',
                   '/ctx/use_flux_monitors', '/invariants/ctx/use_flux_monitors'),
@@ -342,8 +337,6 @@ ID_PATTERNS = {
     'A2': {'run': ('raised', 'NotImplementedError',
             'Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports'),
            'forward': ('admitted',)},
-    'A3': {'run': ('admitted',), 'forward': ('raised', 'NotImplementedError',
-            "Differentiable TFSF plane-wave forward is supported only on the uniform single-device forward lane, not 'fwd_nonuniform'")},
     'A5': {'run': ('admitted',), 'forward': ('raised', 'NotImplementedError',
             'Waveguide ports are not supported on the distributed forward path')},
     'A6': {'run': ('admitted',), 'forward': ('raised', 'TypeError',
