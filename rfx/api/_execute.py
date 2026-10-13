@@ -2275,7 +2275,7 @@ class _ExecuteMixin:
                 for entry, probe in zip(self._dft_planes, sim_dft_planes)
             }
 
-        return _conductors.with_design_diagnostics(ForwardResult(
+        return result_with_diagnostics(ForwardResult(
             diagnostics=diagnostics,
             time_series=result.time_series,
             ntff_data=result.ntff_data,
@@ -2295,7 +2295,7 @@ class _ExecuteMixin:
             current_moment_data=result.current_moment_data,
             current_moment_monitor=current_moments_fwd,
             adjoint_settling=result.adjoint_settling,
-        ), conductors)
+        ), conductors.design_findings)
 
     _pack_nu_forward_result = staticmethod(pack_nu_forward_result)
 
