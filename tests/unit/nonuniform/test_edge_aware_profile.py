@@ -201,7 +201,7 @@ FIN_M = 4.75e-3
 def _fin_resonance(dy_profile, *, snap="strict"):
     from rfx import Box
     from rfx.api import Simulation
-    from rfx.harminv import harminv
+    from rfx.harminv import matrix_pencil
     a, b, dx = 0.020, 0.010, 1e-3
     kw = {} if dy_profile is None else {"dy_profile": dy_profile}
     # The graded lane refuses mode="2d_tmz" and names the one-cell 3-D box
@@ -219,7 +219,7 @@ def _fin_resonance(dy_profile, *, snap="strict"):
         warnings.simplefilter("ignore")
         res = sim.run(num_periods=60, compute_s_params=False)
     ts = np.asarray(res.time_series)[:, 0]
-    modes = [m for m in harminv(ts[int(0.15 * len(ts)):], float(res.dt),
+    modes = [m for m in matrix_pencil(ts[int(0.15 * len(ts)):], float(res.dt),
                                 12e9, 30e9) if m.amplitude > 0]
     top = max(m.amplitude for m in modes)
     return min(m.freq for m in modes if m.amplitude > 1e-3 * top)

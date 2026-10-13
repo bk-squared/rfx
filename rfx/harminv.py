@@ -10,7 +10,7 @@ IEEE AP Magazine, Feb 1995.
 
 Usage
 -----
->>> modes = harminv(signal, dt, f_min, f_max)
+>>> modes = matrix_pencil(signal, dt, f_min, f_max)
 >>> for m in modes:
 ...     print(f"f={m.freq/1e9:.4f} GHz, Q={m.Q:.0f}")
 """
@@ -18,6 +18,7 @@ Usage
 from __future__ import annotations
 
 from typing import NamedTuple
+import warnings
 
 import numpy as np
 from scipy.signal import decimate as scipy_decimate
@@ -68,11 +69,14 @@ def _decimation_plan(n_samples: int, dt: float, f_max: float,
     return tuple(factors), n_samples
 
 
-def harminv_record_duration(n_samples: int, dt: float, f_max: float, *,
+def matrix_pencil_record_duration(n_samples: int, dt: float, f_max: float, *,
                            decimate: str | bool = "auto",
                            pencil_parameter: float = 0.33,
                            max_modes: int = 50) -> float:
-    """Time between the first and last samples used to estimate the poles.
+    """Time between the first and last samples used by the matrix pencil method.
+
+    Reference: Sarkar & Pereira (1995), "Using the Matrix Pencil Method to
+    Estimate the Parameters of a Sum of Complex Exponentials", IEEE AP Magazine.
 
     Use this duration, rather than the unfiltered input length, for record-
     length admission or uncertainty calculations. Each zero-phase FIR stage
@@ -90,8 +94,8 @@ def harminv_record_duration(n_samples: int, dt: float, f_max: float, *,
     return max(0, kept - 1) * dt
 
 
-class HarminvMode(NamedTuple):
-    """A single resonant mode extracted by Harminv."""
+class MatrixPencilMode(NamedTuple):
+    """A single resonant mode extracted by the matrix pencil method."""
     freq: float       # frequency in Hz
     decay: float      # decay rate (1/s), positive = decaying
     Q: float          # quality factor
@@ -123,7 +127,7 @@ def _fit_mode_amplitudes(signal: np.ndarray, poles: np.ndarray,
     return coefficients * np.exp(-reference * poles)
 
 
-def harminv(
+def matrix_pencil(
     signal: np.ndarray,
     dt: float,
     f_min: float,
@@ -134,8 +138,11 @@ def harminv(
     max_modes: int = 50,
     sv_threshold: float = 1e-3,
     decimate: str | bool = "auto",
-) -> list[HarminvMode]:
-    """Extract resonant modes via the Matrix Pencil Method.
+) -> list[MatrixPencilMode]:
+    """Extract resonant modes via the matrix pencil method.
+
+    Reference: Sarkar & Pereira (1995), "Using the Matrix Pencil Method to
+    Estimate the Parameters of a Sum of Complex Exponentials", IEEE AP Magazine.
 
     .. warning::
 
@@ -177,7 +184,7 @@ def harminv(
         algorithm. At each stage, outputs touching the filter's zero-padded
         boundary are excluded: filtering an interior exponential preserves
         its pole, while zero padding introduces transients. This SHORTENS
-        the usable record; ``harminv_record_duration`` reports its duration.
+        the usable record; ``matrix_pencil_record_duration`` reports its duration.
         A stage is omitted if fewer than 10 interior samples would remain or
         its pencil could not hold ``max_modes`` poles plus one singular
         direction for rank selection. If the original pencil is smaller,
@@ -189,7 +196,7 @@ def harminv(
 
     Returns
     -------
-    list of HarminvMode, sorted by amplitude (strongest first).
+    list of MatrixPencilMode, sorted by amplitude (strongest first).
         Amplitude and phase describe jointly fitted complex coefficients at
         the original input's first sample. For a real cosine of peak A the
         positive-frequency coefficient has magnitude A/2; its conjugate is
@@ -296,7 +303,7 @@ def harminv(
         # Error estimate: how well does this mode fit?
         err = 1.0 - min(abs(lam), 1.0 / abs(lam)) if abs(lam) != 0 else 1.0
 
-        modes.append(HarminvMode(
+        modes.append(MatrixPencilMode(
             freq=float(freq),
             decay=float(decay),
             Q=float(Q),
@@ -337,15 +344,18 @@ def _decimation_factors(target: int) -> list[int]:
     return []
 
 
-def harminv_from_probe(
+def matrix_pencil_from_probe(
     time_series: np.ndarray,
     dt: float,
     freq_range: tuple[float, float],
     *,
     source_decay_time: float = 0.0,
     **kwargs,
-) -> list[HarminvMode]:
-    """Extract resonances from a simulation probe time series.
+) -> list[MatrixPencilMode]:
+    """Extract resonances from a simulation probe via the matrix pencil method.
+
+    Reference: Sarkar & Pereira (1995), "Using the Matrix Pencil Method to
+    Estimate the Parameters of a Sum of Complex Exponentials", IEEE AP Magazine.
 
     Automatically windows the signal to use only the ring-down
     portion (after source has decayed).
@@ -355,7 +365,7 @@ def harminv_from_probe(
        A **lossless closed (PEC) cavity** has infinite physical Q, so the Q
        returned here is a window-length artefact, not physics — add a
        realistic loss or use an open (CPML) boundary before trusting a Q.
-       See :func:`harminv` for the full note. (The frequency is fine.)
+       See :func:`matrix_pencil` for the full note. (The frequency is fine.)
 
     Parameters
     ----------
@@ -384,11 +394,73 @@ def harminv_from_probe(
     bp_mask = (fft_freqs >= f_min * 0.8) & (fft_freqs <= f_max * 1.2)
     windowed = np.fft.irfft(fft_data * bp_mask, n=len(windowed))
 
-    # Subsample for Harminv speed (SVD scales as N³)
+    # Subsample for matrix pencil speed (SVD scales as N³)
     max_samples = kwargs.pop("max_samples", 3000)
     if len(windowed) > max_samples:
         step = len(windowed) // max_samples
         windowed = windowed[::step][:max_samples]
         dt = dt * step
 
-    return harminv(windowed, dt, f_min, f_max, **kwargs)
+    return matrix_pencil(windowed, dt, f_min, f_max, **kwargs)
+
+
+HarminvMode = MatrixPencilMode
+
+
+def harminv(
+    signal: np.ndarray,
+    dt: float,
+    f_min: float,
+    f_max: float,
+    *,
+    pencil_parameter: float = 0.33,
+    min_Q: float = 1.0,
+    max_modes: int = 50,
+    sv_threshold: float = 1e-3,
+    decimate: str | bool = "auto",
+) -> list[MatrixPencilMode]:
+    """Deprecated alias for matrix_pencil."""
+    warnings.warn(
+        "rfx.harminv is deprecated; use rfx.matrix_pencil (same arguments, same result). "
+        "It implements the matrix pencil method, not Harminv.",
+        DeprecationWarning, stacklevel=2,
+    )
+    return matrix_pencil(
+        signal, dt, f_min, f_max, pencil_parameter=pencil_parameter,
+        min_Q=min_Q, max_modes=max_modes, sv_threshold=sv_threshold, decimate=decimate,
+    )
+
+
+def harminv_from_probe(
+    time_series: np.ndarray,
+    dt: float,
+    freq_range: tuple[float, float],
+    *,
+    source_decay_time: float = 0.0,
+    **kwargs,
+) -> list[MatrixPencilMode]:
+    """Deprecated alias for matrix_pencil_from_probe."""
+    warnings.warn(
+        "rfx.harminv_from_probe is deprecated; use rfx.matrix_pencil_from_probe "
+        "(same arguments, same result). It implements the matrix pencil method, not Harminv.",
+        DeprecationWarning, stacklevel=2,
+    )
+    return matrix_pencil_from_probe(
+        time_series, dt, freq_range, source_decay_time=source_decay_time, **kwargs,
+    )
+
+
+def harminv_record_duration(n_samples: int, dt: float, f_max: float, *,
+                           decimate: str | bool = "auto",
+                           pencil_parameter: float = 0.33,
+                           max_modes: int = 50) -> float:
+    """Deprecated alias for matrix_pencil_record_duration."""
+    warnings.warn(
+        "rfx.harminv.harminv_record_duration is deprecated; use rfx.harminv.matrix_pencil_record_duration "
+        "(same arguments, same result). It implements the matrix pencil method, not Harminv.",
+        DeprecationWarning, stacklevel=2,
+    )
+    return matrix_pencil_record_duration(
+        n_samples, dt, f_max, decimate=decimate,
+        pencil_parameter=pencil_parameter, max_modes=max_modes,
+    )

@@ -758,7 +758,7 @@ class Result(NamedTuple):
     def find_resonances(self, freq_range=None, probe_idx=0,
                          source_decay_time=None, bandpass=None,
                          waveform=None):
-        """Extract resonant modes from probe time series via Harminv.
+        """Extract resonant modes from probe time series via the matrix pencil method.
 
         Parameters
         ----------
@@ -769,7 +769,7 @@ class Result(NamedTuple):
             computed as 2×(3/π/f_center/bandwidth) — skips the Gaussian
             excitation region for clean ring-down analysis.
         bandpass : bool or None
-            Apply FFT bandpass before Harminv. Default: auto (True for
+            Apply FFT bandpass before matrix pencil analysis. Default: auto (True for
             CPML results where DC/surface-wave artifacts exist, False
             for PEC cavities where signal is clean).
         waveform : source waveform or None
@@ -783,9 +783,9 @@ class Result(NamedTuple):
 
         Returns
         -------
-        list of HarminvMode
+        list of MatrixPencilMode
         """
-        from rfx.harminv import harminv, harminv_from_probe
+        from rfx.harminv import matrix_pencil, matrix_pencil_from_probe
         ts = np.asarray(self.time_series)
         if ts.ndim == 2:
             ts = ts[:, probe_idx]
@@ -826,10 +826,10 @@ class Result(NamedTuple):
             w_sub = w
             dt_h = self.dt
 
-        modes = harminv(w_sub, dt_h, fr[0], fr[1])
+        modes = matrix_pencil(w_sub, dt_h, fr[0], fr[1])
 
         if not modes and bandpass:
-            modes = harminv_from_probe(ts, self.dt, fr,
+            modes = matrix_pencil_from_probe(ts, self.dt, fr,
                                         source_decay_time=source_decay_time)
 
         return modes

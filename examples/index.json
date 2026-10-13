@@ -2,6 +2,9 @@
   "schema": "rfx-example-index/1",
   "about": "Machine-readable index of the official examples under examples/: for each, the public function that builds its Simulation without solving it, whether running it solves, and the files it leaves behind. Paths are relative to the repository root. tests/contracts/test_example_index.py holds this file to the scripts and to tests/_example_fidelity_lib.py::CLASSIFICATION.",
   "fields": {
+    "lane": "CI lane that runs this file: 'pr' (every code-changing pull request), 'weekly' (the weekly validation lane), or 'manual' (not run by CI; lane_reason says why)",
+    "lane_reason": "required when lane is 'manual': why CI does not run it",
+    "extra": "optional install extra the file needs (pip install rfx[<extra>]); a lane runner skips it where the extra is absent",
     "path": "the example file, relative to the repository root",
     "kind": "'script' (run with python <path>) or 'config' (a YAML file for the rfx command-line interface)",
     "builders": "public functions that return the model without solving it: name, the arguments that have no default, and what the call returns. Empty when there is none, and then no_builder_reason says why",
@@ -12,6 +15,7 @@
   "examples": [
     {
       "path": "examples/config/microstrip_thru.yaml",
+      "lane": "pr",
       "kind": "config",
       "builders": [
         {"name": "rfx.config.simulation_from_yaml", "required_args": ["path"], "returns": "Simulation"}
@@ -31,6 +35,7 @@
     },
     {
       "path": "examples/inverse_design/differentiable_s11_design.py",
+      "lane": "weekly",
       "kind": "script",
       "builders": [
         {"name": "build_simulation", "required_args": [], "returns": "Simulation"}
@@ -40,6 +45,7 @@
     },
     {
       "path": "examples/inverse_design/field_observable_shielding.py",
+      "lane": "weekly",
       "kind": "script",
       "builders": [],
       "no_builder_reason": "only a private builder, _build_sim(), exists; it is not a public entry point",
@@ -56,6 +62,7 @@
     },
     {
       "path": "examples/inverse_design/multilayer_ar_coating.py",
+      "lane": "weekly",
       "kind": "script",
       "builders": [],
       "no_builder_reason": "only a private builder, _build_simulation(), exists; it is not a public entry point",
@@ -72,6 +79,7 @@
     },
     {
       "path": "examples/inverse_design/progressive_demo.py",
+      "lane": "weekly",
       "kind": "script",
       "builders": [
         {"name": "sim_factory", "required_args": ["dx"], "returns": "Simulation"}
@@ -89,6 +97,7 @@
     },
     {
       "path": "examples/quickstart/hello_world.py",
+      "lane": "pr",
       "kind": "script",
       "builders": [
         {"name": "build_simulation", "required_args": [], "returns": "Simulation"}
@@ -98,6 +107,7 @@
     },
     {
       "path": "examples/tutorials/adi_solver_demo.py",
+      "lane": "pr",
       "kind": "script",
       "builders": [
         {"name": "build_cavity", "required_args": ["solver", "adi_cfl_factor"], "returns": "Simulation"}
@@ -107,6 +117,7 @@
     },
     {
       "path": "examples/tutorials/antenna_farfield_pattern.py",
+      "lane": "pr",
       "kind": "script",
       "builders": [
         {"name": "build_simulation", "required_args": [], "returns": "Simulation"}
@@ -136,6 +147,7 @@
     },
     {
       "path": "examples/tutorials/artifact_report_demo.py",
+      "lane": "pr",
       "kind": "script",
       "builders": [
         {"name": "build_demo_simulation", "required_args": [], "returns": "Simulation"}
@@ -186,6 +198,7 @@
     },
     {
       "path": "examples/tutorials/boundary_spec_demo.py",
+      "lane": "pr",
       "kind": "script",
       "builders": [
         {"name": "build_simulation", "required_args": ["spec"], "returns": "Simulation"}
@@ -195,6 +208,8 @@
     },
     {
       "path": "examples/tutorials/cad_mesh_import_demo.py",
+      "lane": "pr",
+      "extra": "cad",
       "kind": "script",
       "builders": [
         {"name": "build_simulation", "required_args": [], "returns": "Simulation"}
@@ -204,6 +219,7 @@
     },
     {
       "path": "examples/tutorials/materials_and_dispersion.py",
+      "lane": "pr",
       "kind": "script",
       "builders": [
         {"name": "make_sim", "required_args": [], "returns": "Simulation"}
@@ -213,6 +229,7 @@
     },
     {
       "path": "examples/tutorials/nonuniform_patch_demo.py",
+      "lane": "weekly",
       "kind": "script",
       "builders": [
         {"name": "build_simulation", "required_args": [], "returns": "Simulation"}
@@ -237,6 +254,7 @@
     },
     {
       "path": "examples/tutorials/patch_antenna_demo.py",
+      "lane": "weekly",
       "kind": "script",
       "builders": [
         {"name": "build_simulation", "required_args": [], "returns": "Simulation"}
@@ -254,6 +272,7 @@
     },
     {
       "path": "examples/tutorials/ports_and_sparams_101.py",
+      "lane": "pr",
       "kind": "script",
       "builders": [
         {"name": "build_generic_port_demo", "required_args": ["add_component"], "returns": "Simulation"},
@@ -266,6 +285,7 @@
     },
     {
       "path": "examples/tutorials/rcs_scattering.py",
+      "lane": "pr",
       "kind": "script",
       "builders": [
         {"name": "build_preflight_model", "required_args": [], "returns": "Simulation"}
@@ -276,6 +296,7 @@
     },
     {
       "path": "examples/tutorials/resonance_harminv.py",
+      "lane": "pr",
       "kind": "script",
       "builders": [
         {"name": "build_cavity", "required_args": [], "returns": "Simulation"}
@@ -285,6 +306,7 @@
     },
     {
       "path": "examples/tutorials/run_control_and_fields.py",
+      "lane": "pr",
       "kind": "script",
       "builders": [
         {"name": "build_simulation", "required_args": [], "returns": "Simulation"}
@@ -302,6 +324,7 @@
     },
     {
       "path": "examples/tutorials/slab_rt_flux_monitor.py",
+      "lane": "pr",
       "kind": "script",
       "builders": [
         {"name": "build_sim", "required_args": ["with_slab"], "returns": "Simulation"}
@@ -311,6 +334,7 @@
     },
     {
       "path": "examples/visualization/field_movies.py",
+      "lane": "weekly",
       "kind": "script",
       "builders": [
         {"name": "build_simulation", "required_args": ["variant"], "returns": "Simulation"}
@@ -353,6 +377,36 @@
           "units": {"colour": "Ez divided by the case's normalization_V_per_m"}
         }
       ]
+    }
+  ],
+  "validation_lanes": [
+    {
+      "path": "validation/research/subgrid/12_subgrid_disjoint_prototype.py",
+      "lane": "pr"
+    },
+    {
+      "path": "validation/research/subgrid/13_subgrid_material_validation.py",
+      "lane": "pr"
+    },
+    {
+      "path": "validation/tmtt_paper/beam_steering_superstrate.py",
+      "lane": "manual",
+      "lane_reason": "paper reproduction: the full run (SMOKE=0) needs GPU-hours on the paper's GPU class; see examples recheck 2026-10-11"
+    },
+    {
+      "path": "validation/tmtt_paper/lumped_port_gradient_check.py",
+      "lane": "manual",
+      "lane_reason": "paper reproduction: the full run (SMOKE=0) needs GPU-hours on the paper's GPU class; see examples recheck 2026-10-11"
+    },
+    {
+      "path": "validation/tmtt_paper/msl_stub_notch_tuning.py",
+      "lane": "manual",
+      "lane_reason": "paper reproduction: the full run (SMOKE=0) needs GPU-hours on the paper's GPU class; see examples recheck 2026-10-11"
+    },
+    {
+      "path": "validation/tmtt_paper/waveguide_dielectric_taper.py",
+      "lane": "manual",
+      "lane_reason": "paper reproduction: the full run (SMOKE=0) needs GPU-hours on the paper's GPU class; see examples recheck 2026-10-11"
     }
   ]
 }

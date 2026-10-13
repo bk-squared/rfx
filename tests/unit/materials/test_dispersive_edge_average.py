@@ -333,7 +333,7 @@ FILLINGS = {
 @pytest.mark.parametrize("kind", sorted(FILLINGS))
 def test_the_half_filled_cube_with_a_dispersive_filling_reads_its_analytic_mode(kind):
     from rfx import Box, GaussianPulse, Simulation
-    from rfx.harminv import harminv
+    from rfx.harminv import matrix_pencil
 
     # the reference, validated against its own limit first
     assert _complex_root(lambda w: 4.0 + 0 * w).real == pytest.approx(
@@ -354,7 +354,7 @@ def test_the_half_filled_cube_with_a_dispersive_filling_reads_its_analytic_mode(
     steps = 6000
     r = sim.run(n_steps=steps, skip_preflight=True)
     ts = np.asarray(r.time_series)
-    modes = [m for m in harminv((ts[:, 0] + ts[:, 1])[steps // 4:],
+    modes = [m for m in matrix_pencil((ts[:, 0] + ts[:, 1])[steps // 4:],
                                 float(r.grid.dt), *window) if m.Q > 30]
     f = max(modes, key=lambda m: m.amplitude).freq
     err = abs(f - f_an) / f_an

@@ -32,7 +32,7 @@ import pytest
 os.environ.setdefault("JAX_PLATFORM_NAME", "cpu")
 from rfx import Simulation, Box  # noqa: E402
 from rfx.sources.sources import GaussianPulse  # noqa: E402
-from rfx.harminv import harminv  # noqa: E402
+from rfx.harminv import matrix_pencil  # noqa: E402
 
 C0 = 299792458.0
 A, B, D = 24e-3, 24e-3, 12e-3   # cavity dims (m)
@@ -56,7 +56,7 @@ def _fundamental(dx, kottke, h_diel, eps_r=4.0, fmax=12e9):
     dt = float(res.dt)
     sig = ts[len(ts) // 4:]
     sig = sig - sig.mean()
-    modes = [m for m in harminv(sig, dt, 2e9, fmax)
+    modes = [m for m in matrix_pencil(sig, dt, 2e9, fmax)
              if m.Q > 8 and m.amplitude > 1e-6]
     if not modes:
         return None
