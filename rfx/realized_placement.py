@@ -185,9 +185,8 @@ def cells_per_wavelength(sim, sizes, domain, materials, pec_mask):
         if not any(is_tracer(v) for v in (materials.eps_r, materials.mu_r, pec_mask)):
             region = tuple(slices)
             # Volume permittivity: a lumped capacitor stamp is not a medium.
-            from rfx.core.yee import permittivity_without_lumped
-            product = (np.asarray(permittivity_without_lumped(materials), np.float64)
-                       * np.asarray(materials.mu_r, np.float64))
+            from rfx.model.materials import volume_eps_mu
+            product = np.asarray(volume_eps_mu(materials), np.float64)
             product = np.broadcast_to(product, np.shape(materials.eps_r))[region]
             keep = (np.ones(product.shape, bool) if pec_mask is None
                     else ~np.asarray(pec_mask, bool)[region])
