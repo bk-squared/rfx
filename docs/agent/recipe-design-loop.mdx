@@ -56,7 +56,8 @@ physical S11 design objective through `forward()` on every PR.
 `jax.grad` flows end-to-end through `sim.compute_waveguide_s_matrix(...,
 eps_override=eps(theta))` and `compute_msl_s_matrix`.
 `tests/unit/autodiff/test_sparam_ad_end_to_end.py` checks that the gradient
-reaches both calculators. For the microstrip calculator,
+reaches both calculators, and for the waveguide compares it with a central
+finite difference (within 5 %, same sign). For the microstrip calculator,
 `tests/unit/autodiff/test_msl_ad_fd_converged.py` compares it with finite
 differences on a converged record (a slow GPU test, not run on every change).
 The waveguide example `examples/inverse_design/differentiable_s11_design.py`
