@@ -168,3 +168,18 @@ def test_cache_sees_a_probe_added_after_the_first_record():
         sim.add_probe((0.003, 0.003, 0.003), "ex")
         after = sim.realized_geometry()
     assert len(after.probes) == len(before.probes) + 1
+
+
+@pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
+def test_tfsf_box_is_the_one_the_run_injects(graded, monkeypatch):
+    # TFSF refuses soft sources and lumped ports, so it gets its own scene.
+    from rfx.sources.tfsf import tfsf_injection_planes
+    kw = dict(dz_profile=DZ) if graded else {}
+    sim = Simulation(freq_max=10e9, domain=(0.016, 0.012, 0.0 if graded else 0.012),
+                     dx=1e-3, boundary="cpml", cpml_layers=4, **kw)
+    sim.add_tfsf_source(f0=5e9, polarization="ez", direction="+x")
+    row = next(r for r in sim.realized_geometry().sources if r.kind == "tfsf")
+    assert row.error is None, row.error
+    cfg = _kernel_inputs(sim, graded, monkeypatch)["tfsf"][0]
+    planes = tfsf_injection_planes(cfg)
+    assert row.index_box == tuple(planes.get(a) for a in "xyz")
