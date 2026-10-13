@@ -850,7 +850,7 @@ def stage_distributed_edges(edges, grid, mesh, multiprocess, *, inputs=None):
     if multiprocess and any(isinstance(edge, jax.core.Tracer) for edge in edges):
         raise ValueError("a traced pec_mask_override is supported in one process only")
     from rfx import _realized
-    if inputs is not None and _realized.ACTIVE is None:
+    if inputs is not None and _realized.ACTIVE is None and grid.step_kind != 'legacy':
         from rfx.stepping.slab_setup import stage_pec
         cells, sheets, wires = inputs
         return stage_pec(cells, sheets, wires, grid.original_grid, Slab.from_grid(grid), mesh)

@@ -15,7 +15,9 @@ from rfx.stepping.slab_view import (UniformSlabView, uniform_slab_rows, uniform_
 
 
 def stage_x_widths(grid, rows, mesh):
-    widths = np.asarray(grid.dx_arr)
+    widths = (np.asarray(grid.dx_f64, dtype=grid.dx_arr.dtype)
+              if isinstance(grid.dx_arr, jax.core.Tracer) and grid.dx_f64 is not None
+              else np.asarray(grid.dx_arr))
     if widths.shape[0] == grid.shape[0] - 1:
         widths = np.concatenate((widths, widths[-1:]))
     return stack_and_place(widths, rows, mesh)
@@ -28,6 +30,20 @@ def source_coefficient(materials, debye, lorentz, source, dt, layout, mesh):
     cell = (layout.local_index(source.i), source.j, source.k)
     axis = ('ex', 'ey', 'ez').index(source.component)
     if debye is None and lorentz is None:
+        if not any(isinstance(a, jax.core.Tracer) for a in
+                   jax.tree.leaves((materials.components.eps_update, materials.components.sigma_update))):
+            # Plain graded sources historically evaluate their scalar Cb in
+            # host precision. Read just the owning edge, then keep that same
+            # arithmetic and the pre-loop (Cb / dV) * samples product.
+            from rfx.nonuniform import current_source_cb
+            def read_means(eps, sigma, *, rank):
+                return tuple(jax.lax.psum(jnp.where(rank == owner, a[axis][cell], 0), 'x')
+                             for a in (eps, sigma))
+            stage = rank_shard_map(read_means, mesh=mesh, in_specs=(P('x'),) * 2,
+                                   out_specs=P(), check_rep=False)
+            eps, sigma = jax.checkpoint(stage)(mesh_ranks(mesh), materials.components.eps_update,
+                                             materials.components.sigma_update)
+            return current_source_cb(eps, sigma, dt, traced=False)
         from rfx.runners import distributed_nu
         def read_material(eps, sigma, ranks):
             return distributed_nu.material_drive_scales(eps, sigma, mesh,
@@ -73,7 +89,7 @@ def realize_materials(materials, grid, layout, mesh, occupancy=None, *, cpml=Fal
                                             use_debye=debye, use_lorentz=lorentz)
         return cells, inverse, loss
     staged, inverse, loss = uniform_apply(local, inputs, indices, occ, widths,
-                                          row_count=layout.nx_local + 1)
+                                          mesh=mesh, row_count=layout.nx_local + 1)
     def finish(path, a):
         if not hasattr(a, 'ndim') or a.ndim < 4:
             return a
@@ -146,7 +162,7 @@ def stage_dispersion(materials, dt, spec, grid, layout, mesh, family):
         return type(coeffs)(*(value if name in spatial else
             jax.tree.map(lambda a: jnp.moveaxis(a, 1, 0), value)
             for name, value in zip(coeffs._fields, coeffs)))
-    coeffs = uniform_apply(local, inputs, indices, staged_masks, widths, row_count=layout.nx_local + 1)
+    coeffs = uniform_apply(local, inputs, indices, staged_masks, widths, mesh=mesh, row_count=layout.nx_local + 1)
     coeffs = type(coeffs)(*(jax.tree.map(
         lambda a: product_rows(a, layout, mesh, family + '_' + name,
             dt=dt, pole_rows=name not in spatial), value)
@@ -242,7 +258,7 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
     if pec_mask is not None and not isinstance(pec_mask, tuple):
         from rfx.boundaries.pec import realized_pec_edge_masks
         cells = uniform_from_cut(pec_mask, layout, mesh, outside=False)
-        masks = uniform_apply(lambda a: realized_pec_edge_masks(a), cells, row_count=layout.nx_local + 1)
+        masks = uniform_apply(lambda a: realized_pec_edge_masks(a), cells, mesh=mesh, row_count=layout.nx_local + 1)
         pec_mask = jax.tree.map(lambda a: product_rows(a, layout, mesh, 'pec_edge'), masks)
     inv = dict(inv_dx=cut(grid.inv_dx, layout, 'inv_dx', mesh=mesh),
         inv_dx_h=cut(grid.inv_dx_h, layout, 'inv_dx_h', mesh=mesh), dx_arr=cut(grid.dx_arr, layout, 'width', mesh=mesh),
@@ -306,5 +322,5 @@ def stage_pec(cells, sheets, wires, grid, layout, mesh):
         def local(cells, index, fixed):
             view = UniformSlabView(index, grid, {} if fixed is None else {'pec_static_edge_masks': fixed})
             return realized_pec_edge_masks(cells, view=view)
-        masks = uniform_apply(local, cell_rows, indices, static, row_count=layout.nx_local + 1)
+        masks = uniform_apply(local, cell_rows, indices, static, mesh=mesh, row_count=layout.nx_local + 1)
     return jax.tree.map(lambda a: product_rows(a, layout, mesh, 'pec_edge'), masks)

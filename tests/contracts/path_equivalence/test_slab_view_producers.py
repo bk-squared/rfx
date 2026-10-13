@@ -675,7 +675,7 @@ def _uniform_producer(producer, scene, n, *, missing_extra=False, zero_material=
         return producer.slab(scene, view)
     apply = (lambda f, *args, **kw: jax.vmap(f)(*args)) if metadata_through else uniform_apply
     return rows.indices, apply(local, indices, arrays, static, released,
-                              row_count=rows.indices.shape[1], row_axis=producer.x_axis)
+                              mesh=mesh, row_count=rows.indices.shape[1], row_axis=producer.x_axis)
 
 
 def _assert_uniform(producer, scene, n, **kwargs):

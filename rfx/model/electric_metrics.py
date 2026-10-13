@@ -134,7 +134,10 @@ def stage_forward_dispersion_x_slab(materials, dt, spec, sharded_grid, mesh, kin
     from rfx.stepping.slab_wrap import select_step
     if spec is None:
         return None
-    if select_step(cpml=bool(sharded_grid.cpml_layers)) == 'legacy':
+    step_kind = sharded_grid.step_kind
+    if step_kind is None:
+        step_kind = select_step(cpml=bool(sharded_grid.cpml_layers))
+    if step_kind == 'legacy':
         import jax
         from rfx.stepping.slab import cut
         from rfx.runners._distributed_common import stage_slab_pole_coeffs

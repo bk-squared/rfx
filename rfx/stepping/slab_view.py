@@ -45,6 +45,9 @@ import numpy as np
 from jax.sharding import NamedSharding, PartitionSpec as P
 
 from rfx.stepping.slab import Slab, place, forward_sharding
+from rfx.stepping.staging_cache import retain_eager_callables
+
+retain_eager_callables()
 
 HALO_LO = 1
 HALO_HI = 0
@@ -218,7 +221,7 @@ def slab_views(grid, n_devices, *, globals=None, halo_lo=HALO_LO, halo_hi=HALO_H
     return tuple(views)
 
 
-def uniform_apply(producer, *inputs, row_count, row_axis=0):
+def uniform_apply(producer, *inputs, mesh, row_count, row_axis=0):
     """Vmap array operands only; preserve the producer's static Python objects.
 
     The partition is made during the first trace, before vmap can convert a
@@ -245,9 +248,7 @@ def uniform_apply(producer, *inputs, row_count, row_axis=0):
 
     # Keep the owners' local stencils inside the device boundary, including
     # their reverse-mode residuals. Static metadata still bypasses vmap.
-    sharding = next(forward_sharding(a) for a in jax.tree.leaves(inputs)
-                    if isinstance(forward_sharding(a), NamedSharding))
-    stage = jax.shard_map(lambda *a: jax.vmap(traced)(*a), mesh=sharding.mesh,
+    stage = jax.shard_map(lambda *a: jax.vmap(traced)(*a), mesh=mesh,
                          in_specs=(P('x'),) * len(inputs), out_specs=P('x'),
                          check_vma=False)
     mapped = jax.checkpoint(stage)(*inputs)

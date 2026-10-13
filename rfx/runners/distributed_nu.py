@@ -283,6 +283,7 @@ class ShardedNUGrid(_NamedTuple):
     e_cell_sizes: object = None
     layout: Slab | None = None
     original_grid: object = None
+    step_kind: str | None = None
 
 
 def split_1d_with_ghost(arr: "np.ndarray", n_devices: int, nx_per: int,
@@ -1580,7 +1581,10 @@ def run_nonuniform_distributed_pec(
     probes = list(probes) if probes is not None else []
 
     from rfx.stepping.slab_wrap import select_step
-    if select_step(cpml=use_cpml, debye=use_debye, lorentz=use_lorentz, pmc=bool(pmc_faces)) == "wrapped":
+    step_kind = sharded_grid.step_kind
+    if step_kind is None:
+        step_kind = select_step(cpml=use_cpml, debye=use_debye, lorentz=use_lorentz, pmc=bool(pmc_faces))
+    if step_kind == "wrapped":
         from rfx.runners._distributed_nu_wrapped import run_wrapped
         return run_wrapped(sharded_grid, sharded_materials, sharded_pec_mask,
             n_steps, sources, probes, devices=devices, occupancy=sharded_pec_occupancy,
