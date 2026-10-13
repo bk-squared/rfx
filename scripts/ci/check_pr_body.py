@@ -401,12 +401,23 @@ def _check_lane(
             f"Allowed ({source}): {', '.join(sorted(lanes))}."
         ]
     if labelled and label not in labelled and label not in issue_lanes:
+        # Labels follow paths on every push; the line is written once by hand, so a
+        # PR whose paths changed keeps naming a lane it no longer earns (2026-10-13:
+        # 1650, 1653, 1684). Name the line to write when the labels decide it.
+        owners = [lane for lane in labelled if lane != "lane:ci-infra"]
+        if len(owners) == 1:
+            hint = (f" Use `Lane: {owners[0]}`: it is the only earned lane other than "
+                    "lane:ci-infra (the merge train makes this change itself).")
+        elif len(labelled) == 1:
+            hint = f" Use `Lane: {labelled[0]}`."
+        else:
+            hint = " Pick the owner lane among the earned ones."
         return [
             f"`Lane: {label}` is not among the lane labels the paths earned this "
             f"PR ({', '.join(labelled)}) or the lane labels of issues this PR "
             f"closes ({', '.join(issue_lanes) or 'none'}). Name a lane from either "
             "set, or fix `.github/labeler.yml` if a path mapping is missing -- "
-            "PR labels are recomputed on every push."
+            "PR labels are recomputed on every push." + hint
         ]
     return []
 

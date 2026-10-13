@@ -789,6 +789,18 @@ def test_a_line_that_contradicts_the_labels_fails() -> None:
     assert "labeler.yml" in problems[0]
 
 
+def test_an_unearned_line_names_the_line_to_write() -> None:
+    """Labels follow paths, the line does not: say which line fixes it."""
+    problems = cpb.check(body("Lane: lane:msl-port", ACCEPT), env=ONE_LABEL)
+    assert problems[0].endswith("Use `Lane: lane:ci-infra`.")
+    problems = cpb.check(body("Lane: lane:msl-port", ACCEPT), env=TWO_LABELS)
+    assert "Use `Lane: lane:crossval`: it is the only earned lane other than lane:ci-infra" in problems[0]
+    three = {"LANE_LABELS": ENV["LANE_LABELS"] + "lane:absorber\n",
+             "PR_LABELS_JSON": '["lane:ci-infra", "lane:crossval", "lane:absorber"]'}
+    problems = cpb.check(body("Lane: lane:msl-port", ACCEPT), env=three)
+    assert problems[0].endswith("Pick the owner lane among the earned ones.")
+
+
 def test_a_line_naming_a_closing_issue_lane_passes() -> None:
     env = dict(ONE_LABEL, ISSUE_LANES_JSON='["lane:crossval"]')
     assert cpb.check(body("Lane: lane:crossval", ACCEPT), env=env) == []
