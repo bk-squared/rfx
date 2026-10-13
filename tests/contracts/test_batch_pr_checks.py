@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import os
 from pathlib import Path
 import shutil
@@ -19,6 +20,21 @@ GOOD_BODY = "Lane: lane:ci-infra\nReview: reader (separate instance) - ACCEPT\n"
 # Homebrew git on the development Mac is 2.39; Apple git supports merge-tree's
 # explicit merge base. Child checkers resolve the same binary through PATH.
 GIT = "/usr/bin/git" if sys.platform == "darwin" else shutil.which("git")
+
+
+def _git_version(git):
+    out = subprocess.run([git, "version"], capture_output=True, text=True).stdout
+    match = re.search(r"(\d+)\.(\d+)", out)
+    return (int(match[1]), int(match[2])) if match else (0, 0)
+
+
+# merge-tree --merge-base needs git 2.40. The VESSL gate image has 2.34, so the
+# module skips there; on GitHub Actions (ubuntu-latest ships a newer git) an old
+# git is a failure, never a skip, so the required lane always runs these tests.
+if GIT is None or _git_version(GIT) < (2, 40):
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        raise RuntimeError(f"batch checks need git >= 2.40 on CI; found {GIT and _git_version(GIT)}")
+    pytest.skip("git >= 2.40 not available (merge-tree --merge-base)", allow_module_level=True)
 
 
 class Batch:
