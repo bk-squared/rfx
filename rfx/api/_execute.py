@@ -1947,20 +1947,10 @@ class _ExecuteMixin:
             overrides={**(monitor_overrides or {}), "design_box": design_box,
                        "design_occupancy": design_occupancy})
 
-        # Flux monitors — same configs the run() lane builds, so the
-        # issue-#488 mixed-family magnitude channel can read Poynting
-        # flux through this low-level lane too.
-        #
-        # GATED to the raw-hook path on purpose. This lane's
-        # ``ForwardResult`` has never carried flux monitors, so an
-        # existing ``forward()``/``optimize()`` caller with
-        # ``add_flux_monitor()`` registered would pay for flux DFT
-        # accumulation inside the differentiable scan (memory on the AD
-        # tape included) and never see the result — a silent cost
-        # regression, not a feature. Only ``_return_raw_port_sparams``
-        # consumers read these back.
+        # Declared flux monitors are accumulated and returned on forward as on run (#1373 D4).
+        # The DFT accumulators add to the AD tape only when the user declares a monitor.
         flux_monitor_cfgs = []
-        if _return_raw_port_sparams and self._flux_monitors:
+        if self._flux_monitors:
             from rfx.runners.uniform import build_flux_monitor_cfgs
             flux_monitor_cfgs = build_flux_monitor_cfgs(self, grid, n_steps, periodic=periodic_bool)
 
@@ -2275,6 +2265,13 @@ class _ExecuteMixin:
                 for entry, probe in zip(self._dft_planes, sim_dft_planes)
             }
 
+        from rfx.measurement import package_declared_measurements
+        declared_measurements = package_declared_measurements(
+            self, grid,
+            flux_monitors=result.flux_monitors or (),
+            waveguide_cfgs=result.waveguide_ports or (),
+        )
+
         return result_with_diagnostics(ForwardResult(
             diagnostics=diagnostics,
             time_series=result.time_series,
@@ -2290,6 +2287,7 @@ class _ExecuteMixin:
             },
             wire_port_sparams=result.wire_port_sparams,
             dft_planes=dft_planes_out,
+            **declared_measurements,
             # The scan's own step: stencil_order=4 derates it below grid.dt.
             dt=result.dt,
             current_moment_data=result.current_moment_data,
@@ -2390,6 +2388,9 @@ class _ExecuteMixin:
             s_params=getattr(result, "s_params", None),
             freqs=getattr(result, "freqs", None),
             dft_planes=getattr(result, "dft_planes", None),
+            flux_monitors=result.flux_monitors,
+            waveguide_ports=result.waveguide_ports,
+            waveguide_sparams=result.waveguide_sparams,
             wire_port_sparams=getattr(result, "wire_port_sparams", None),
             sparam_time_records=getattr(result, "sparam_time_records", None),
             dft_time_records=getattr(result, "dft_time_records", None),

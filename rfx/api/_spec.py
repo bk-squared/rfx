@@ -1082,6 +1082,10 @@ class ForwardResult(NamedTuple):
     ``(meta, accs)`` pairs on both lanes; the lane-specific type of ``meta``
     and the accumulator channels are documented on :class:`Result`.
 
+    ``flux_monitors``: same as Result.flux_monitors.
+    ``waveguide_ports``: same as Result.waveguide_ports.
+    ``waveguide_sparams``: same as Result.waveguide_sparams.
+
     ``lumped_port_sparams`` exposes the raw per-port
     ``(V_dft, I_dft, V_ref_dft)`` tuples accumulated inside the JIT scan body
     when ``forward(port_s11_freqs=...)`` is used.  V and I are the
@@ -1144,7 +1148,11 @@ class ForwardResult(NamedTuple):
     settling_freq_max: object = None
     sparam_time_records: tuple | None = None
     dft_time_records: object = None
+    flux_monitors: object = None
+    waveguide_ports: object = None
+    waveguide_sparams: object = None
     diagnostics: tuple[Diagnostic, ...] = ()
+
 
     @property
     def settling_db(self) -> float | None:

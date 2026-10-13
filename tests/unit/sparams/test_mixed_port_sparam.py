@@ -512,32 +512,20 @@ def test_negative_arriving_power_is_tracked_not_only_driven():
     assert float(np.abs(np.asarray(S_out)[1, 0, 0])) == 0.0
 
 
-def test_forward_does_not_pay_for_flux_monitors(monkeypatch):
-    """Registering flux monitors must not change the plain forward() lane.
-
-    `ForwardResult` has never carried flux monitors, so accumulating them
-    inside the differentiable scan would be pure cost (including AD-tape
-    memory) with no visible result — a silent regression for existing
-    AD callers. The build is therefore gated to the raw-hook consumer.
-    """
+def test_forward_returns_the_flux_monitors_it_builds():
+    """A declared flux monitor is accumulated AND returned by plain forward()
+    (#1373 D4); before, forward() skipped it because it could not return it."""
     import jax.numpy as jnp
-    import rfx.runners.uniform as _uni
 
-    calls = []
-    real = _uni.build_flux_monitor_cfgs
-    monkeypatch.setattr(
-        _uni, "build_flux_monitor_cfgs",
-        lambda *a, **k: (calls.append(1), real(*a, **k))[1],
-    )
     sim = Simulation(freq_max=10e9, domain=(4e-3, 2e-3, 1e-3),
                      dx=100e-6, cpml_layers=4)
     sim.add_port(position=(1e-3, 1e-3, 0.5e-3), component="ez",
                  impedance=50.0)
     sim.add_flux_monitor(axis="x", coordinate=2e-3,
-                         freqs=jnp.asarray(np.array([5e9])))
-    sim.forward(n_steps=40, port_s11_freqs=np.array([5e9]),
-                skip_preflight=True)
-    assert calls == [], "forward() built flux monitors it cannot return"
+                         freqs=jnp.asarray(np.array([5e9])), name="mid")
+    result = sim.forward(n_steps=40, port_s11_freqs=np.array([5e9]),
+                         skip_preflight=True)
+    assert list(result.flux_monitors) == ["mid"]
 
 
 def test_guard_rejects_cpml_adjacent_probe_ladder():

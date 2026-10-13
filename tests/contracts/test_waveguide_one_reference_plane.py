@@ -118,23 +118,18 @@ def test_c4_graded_matches_low_level(record_property):
     assert actual.calibration_preset == "source_to_probe"
 
 
-def test_d1b_graded_forward_crossing_returns_probe_records(monkeypatch, record_property):
-    from rfx.sparams import _waveguide_planes
-
-    sim = _port_sim(graded=True, crossing=True)
-    sim.add_probe((16 * DX, 6 * DX, 3 * DX), "ez")
-
-    def unexpected_resolver(*args, **kwargs):
-        pytest.fail("graded forward must not resolve discarded waveguide S")
-
-    monkeypatch.setattr(_waveguide_planes, "resolve_reported_planes", unexpected_resolver)
-    result = sim.forward(n_steps=160)
-    records = np.asarray(result.time_series)
-    record_property("probe_record_shape", list(records.shape))
-    record_property("probe_record_max", float(np.max(np.abs(records))))
-    assert records.shape == (160, 1)
-    assert np.all(np.isfinite(records))
-    assert np.max(np.abs(records)) > 0
+def test_d1b_graded_forward_crossing_refuses_like_run():
+    # forward() returns the declared waveguide records and S since #1373 D7, so
+    # it resolves the same planes as run() and refuses the same crossing port
+    # with the same message (equal requests give equal results).
+    messages = {}
+    for entry, call in (("run", lambda s: s.run(n_steps=16, compute_s_params=False)),
+                        ("forward", lambda s: s.forward(n_steps=16))):
+        sim = _port_sim(graded=True, crossing=True)
+        with pytest.raises(ValueError, match="waveguide port 'left'.*ref_offset.*measured") as exc:
+            call(sim)
+        messages[entry] = str(exc.value)
+    assert messages["run"] == messages["forward"]
 
 
 @pytest.mark.parametrize("graded,n_modes,normalize", [

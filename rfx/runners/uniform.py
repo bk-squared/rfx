@@ -16,10 +16,7 @@ from rfx import simulation as _simulation
 from rfx.sources.sources import LumpedPort, setup_lumped_port, WirePort, setup_wire_port
 from rfx.probes.probes import init_dft_plane_probe
 from rfx.measurement.flux_weights import build_flux_monitor_cfgs
-from rfx.sources.waveguide_port import (
-    extract_waveguide_sparams,
-    waveguide_plane_positions,
-)
+from rfx.measurement import package_declared_measurements
 from rfx.current_moments import monitor_for_simulation as _cm_for_sim
 from rfx.farfield import make_ntff_box
 from rfx.lumped import setup_rlc_materials, build_rlc_meta
@@ -112,7 +109,7 @@ def run_uniform(
     -------
     Result
     """
-    from rfx.api import Result, WaveguideSParamResult
+    from rfx.api import Result
 
     if conformal_pec is None:
         conformal_pec = bool(sim._boundary_spec.conformal_faces())
@@ -895,43 +892,11 @@ def run_uniform(
             return_settling=True,
         )
 
-    waveguide_ports_result = (
-        {
-            entry.name: cfg
-            for entry, cfg in zip(sim._waveguide_ports, sim_result.waveguide_ports or ())
-        }
-        if sim._waveguide_ports
-        else None
+    declared_measurements = package_declared_measurements(
+        sim, grid,
+        flux_monitors=sim_result.flux_monitors or (),
+        waveguide_cfgs=sim_result.waveguide_ports or (),
     )
-    from rfx.sparams._waveguide_planes import resolve_reported_planes
-
-    waveguide_sparams_result = None
-    if sim._waveguide_ports:
-        waveguide_sparams_result = {}
-        for entry, cfg in zip(sim._waveguide_ports, sim_result.waveguide_ports or ()):
-            plane_positions = waveguide_plane_positions(cfg)
-            source_plane = plane_positions["source"]
-            measured_reference_plane = plane_positions["reference"]
-            measured_probe_plane = plane_positions["probe"]
-            reference_plane, probe_plane, calibration_preset = resolve_reported_planes(
-                entry, cfg,
-            )
-            s11, s21 = extract_waveguide_sparams(
-                cfg,
-                ref_shift=reference_plane - measured_reference_plane,
-                probe_shift=probe_plane - measured_probe_plane,
-            )
-            waveguide_sparams_result[entry.name] = WaveguideSParamResult(
-                freqs=np.array(cfg.freqs),
-                s11=np.array(s11),
-                s21=np.array(s21),
-                calibration_preset=calibration_preset,
-                source_plane=float(source_plane),
-                measured_reference_plane=measured_reference_plane,
-                measured_probe_plane=measured_probe_plane,
-                reference_plane=reference_plane,
-                probe_plane=probe_plane,
-            )
 
     # #404: oblique 2D-aux TFSF evolved the complex Bloch envelope P; convert the
     # returned state + point probes back to physical real fields (real path and
@@ -957,19 +922,7 @@ def run_uniform(
             if sim._dft_planes
             else None
         ),
-        flux_monitors=(
-            {
-                entry.name: fm
-                for entry, fm in zip(
-                    getattr(sim, "_flux_monitors", []),
-                    sim_result.flux_monitors or (),
-                )
-            }
-            if getattr(sim, "_flux_monitors", [])
-            else None
-        ),
-        waveguide_ports=waveguide_ports_result,
-        waveguide_sparams=waveguide_sparams_result,
+        **declared_measurements,
         snapshots=sim_result.snapshots,
         snapshot_axes=sim_result.snapshot_axes,
         grid=grid,

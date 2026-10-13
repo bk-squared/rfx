@@ -1,11 +1,5 @@
 {
   "causes": {
-    "forward-flux-record-missing": {
-      "fingerprints": {
-        "f1": {"value": "flux_monitors: record missing on A and B"}
-      },
-      "witnesses": {}
-    },
     "nu-lumped-dft-record-missing": {
       "fingerprints": {
         "f1": {"value": "lumped_port_sparams: record missing on B"}
@@ -41,12 +35,6 @@
     }
   },
   "cells": {
-    "_flux_monitors:flux:fwd_uniform:fwd_nonuniform:constant:12": {
-      "observers": ["forward-flux-record-missing"]
-    },
-    "_flux_monitors:flux:fwd_uniform:fwd_nonuniform:constant:36": {
-      "observers": ["forward-flux-record-missing"]
-    },
     "_ports:lumped_port:fwd_uniform:fwd_nonuniform:constant:12": {
       "port_dft": ["nu-lumped-dft-record-missing", "uniform-wire-dft-record-missing", "s-parameter-shape"],
       "port_samples": ["port-time-record-missing", "nu-missing-vref"]

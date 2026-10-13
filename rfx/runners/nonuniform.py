@@ -1245,55 +1245,12 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     s_params = r.get("s_params")
     freqs_out = r.get("s_param_freqs")
 
-    # Waveguide-port output: dict[name -> cfg], optional sparams dict.
-    waveguide_ports_result = None
-    from rfx.sparams._waveguide_planes import resolve_reported_planes
-
-    waveguide_sparams_result = None
-    if sim._waveguide_ports and "waveguide_ports" in r and lane != "fwd_nonuniform":
-        from rfx.sources.waveguide_port import (
-            extract_waveguide_sparams,
-            waveguide_plane_positions,
-        )
-        from rfx.api import WaveguideSParamResult
-        final_cfgs = r["waveguide_ports"]
-        waveguide_ports_result = {
-            entry.name: cfg
-            for entry, cfg in zip(sim._waveguide_ports, final_cfgs)
-        }
-        waveguide_sparams_result = {}
-        for entry, cfg in zip(sim._waveguide_ports, final_cfgs):
-            plane_positions = waveguide_plane_positions(cfg)
-            source_plane = plane_positions["source"]
-            measured_reference_plane = plane_positions["reference"]
-            measured_probe_plane = plane_positions["probe"]
-            reference_plane, probe_plane, calibration_preset = resolve_reported_planes(
-                entry, cfg, grid=grid,
-            )
-            s11, s21 = extract_waveguide_sparams(
-                cfg,
-                ref_shift=reference_plane - measured_reference_plane,
-                probe_shift=probe_plane - measured_probe_plane,
-            )
-            # jnp-native (NU flux-AD): this per-port diagnostic is a SIDE
-            # output the normalize='flux' S-matrix path does not consume, but
-            # run_nonuniform_path always assembles it. np.array(tracer) here
-            # detaches / crashes the eps_override-traced device run (the same
-            # concretization class as issue #70 / #148). Keeping these as
-            # jnp arrays is forward bit-identical for concrete consumers
-            # (np.asarray accepts jnp transparently — test_nonuniform_api /
-            # test_api read .s11 via np.abs / np.isfinite).
-            waveguide_sparams_result[entry.name] = WaveguideSParamResult(
-                freqs=cfg.freqs,
-                s11=s11,
-                s21=s21,
-                calibration_preset=calibration_preset,
-                source_plane=float(source_plane),
-                measured_reference_plane=measured_reference_plane,
-                measured_probe_plane=measured_probe_plane,
-                reference_plane=reference_plane,
-                probe_plane=probe_plane,
-            )
+    from rfx.measurement import package_declared_measurements
+    declared_measurements = package_declared_measurements(
+        sim, grid,
+        flux_monitors=r.get("flux_monitors", ()),
+        waveguide_cfgs=r.get("waveguide_ports", ()),
+    )
 
     # Repack DFT planes into {name: DFTPlaneProbe} dict to match
     # the uniform path's Result schema.
@@ -1302,16 +1259,6 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         dft_planes_dict = {
             entry.name: probe
             for entry, probe in zip(sim._dft_planes, r["dft_planes"])
-        }
-
-    # Repack flux monitors into {name: FluxMonitor} dict (uniform schema).
-    # The accumulated list is sim._flux_monitors (front) + per-waveguide-port
-    # flux monitors (back, only when attach_waveguide_flux=True).
-    flux_monitors_dict = None
-    if getattr(sim, "_flux_monitors", None) and "flux_monitors" in r:
-        flux_monitors_dict = {
-            entry.name: mon
-            for entry, mon in zip(sim._flux_monitors, r["flux_monitors"])
         }
 
     # Extract per-waveguide-port Poynting flux spectra (issue #88 flux path).
@@ -1367,9 +1314,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         dft_time_records={
             entry.name: record for entry, record in zip(sim._dft_planes, r.get("dft_time_records", ()))
         },
-        flux_monitors=flux_monitors_dict,
-        waveguide_ports=waveguide_ports_result,
-        waveguide_sparams=waveguide_sparams_result,
+        **declared_measurements,
         waveguide_port_flux=waveguide_port_flux_result,
         grid=grid,
         dt=grid.dt,
