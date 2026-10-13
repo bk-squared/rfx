@@ -79,7 +79,7 @@ realized wall planes, in your units. Read it whenever placement matters.
 given vertices. With `radius=0` it is a filament: the grid edges joining the
 nearest nodes of each segment are PEC, and it owns no cell. With a radius of at
 least half the smallest local cell it is a volume, rasterized like any other
-shape. A positive radius below half a cell is refused, because the grid cannot
+shape; a thin one may still cover no cell and be refused (`pec_zero_cells`). A positive radius below half a cell is refused, because the grid cannot
 represent it; a [wire port](/rfx/model/ports/) is the way to give a thin wire
 its radius in a feed.
 
@@ -131,25 +131,28 @@ layer. Extend the dielectric to the sheet plane; preflight flags the slot.
 ### Pinned sheets
 
 `sim.add_pinned_sheet(plane_index=..., i_range=..., j_range=..., normal_axis=2)`
-places a PEC sheet by node indices instead of coordinates. It stays on the
+places a PEC sheet by interior node indices (not counting the absorber) instead of coordinates. It stays on the
 same nodes when the mesh itself is a design variable and its spacings move,
 which is what it is for. It is PEC only.
 
 ### Gaps between conductors
 
 Two sheets whose drawn edges touch are joined. Two sheets with any drawn gap
-between them, even one narrower than a cell, keep the grid edge between them
-live, so the gap is solved as one cell wide. Draw a gap at its real width on a
-mesh that resolves it: preflight warns when a gap between PEC shapes is under
-three cells (`mesh_resolution`), because the coupling across it is then
-under-resolved.
+between them, even one narrower than a cell, keep at least one grid edge
+between them live, so the gap is solved at least one cell wide; how wide
+depends on which nodes each sheet reaches (a narrow gap across a node is
+solved two cells wide). Draw a gap at its real width on a mesh that resolves
+it. Preflight warns when a gap between PEC volumes declared with
+`material="pec"` is under three cells (`mesh_resolution`); it does not check
+sheets, so read `fidelity_report()` for those.
 
 ### Curved metal
 
 Metal on a curved or slanted surface lands as a staircase of cell faces. On a
 uniform mesh with `run()`, `run(conformal_pec=True)` weights the update at the
 cut cells instead (`conformal_pec_min_weight` sets the floor); other solver
-paths refuse it. `subpixel_smoothing="kottke_pec"` treats the metal edge of a
+paths refuse it. Left at its default, `conformal_pec` follows the PEC boundary
+faces declared with `Boundary(..., conformal=True)`. `subpixel_smoothing="kottke_pec"` treats the metal edge of a
 dielectric the same way. The known-limitations list says what the conformal
 correction does not yet cover.
 
@@ -234,7 +237,7 @@ Preflight checks every conductor against the grid before the first step:
 | `pec_box_subcell` | error | a PEC shape thicker than zero but thinner than one cell on some axis |
 | `pec_zero_cells` | error | a PEC shape or sheet that reaches no cell or node |
 | `sheet_effective_size` | error, or warning with `snap="declared"` | a sheet solved more than 1 % off its drawn size; see [Check the model on the grid](/rfx/check/model-on-grid/) |
-| `mesh_resolution` | warning | a gap between PEC shapes under three cells |
+| `mesh_resolution` | warning | a gap between `material="pec"` volumes under three cells |
 | `thin_conductor_leontovich_thin_film` | warning | a surface-impedance sheet thinner than about three skin depths |
 
 `sim.fidelity_report()` prints every conductor's drawn and realized extent;
@@ -269,6 +272,7 @@ The solver paths refuse what they do not implement:
 | a sheet, a wire, or a lossy film | subgridded | a graded mesh |
 | a surface-impedance sheet (`surface_impedance_f0`) | multi-device, subgridded, ADI, UPML, most S-parameter calculators | one device, uniform or graded mesh; the support page lists the calculators |
 | a surface-impedance sheet with `subpixel_smoothing` or `conformal_pec` | all | one or the other |
+| a surface-impedance sheet with a Debye or Lorentz material | uniform mesh, `run()` | a non-dispersive material, or a lossy film |
 | `conformal_pec=True` | every path except `run()` on a uniform mesh | a finer mesh near the curved metal |
 | a lossy film (`sigma_bulk < 1e6`) with `eps_r` other than 1, normal to a 2-D model's invariant axis, on a PMC face, or under a design region | all | the message names which |
 
