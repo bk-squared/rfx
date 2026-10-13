@@ -13,6 +13,7 @@ from types import SimpleNamespace
 import jax
 import jax.numpy as jnp
 import numpy as np
+from tests._msl_probe0 import probe0_s
 import pytest
 
 from jax import enable_x64
@@ -170,12 +171,12 @@ def test_passive_reciprocal_power_s_survives_raw_and_default_projection(
     for result in (raw, default):
         assert result.assembly == "multi_drive_solve" and np.max(result.cond_a) < 3
         np.testing.assert_allclose(result.reference_impedances, references, rtol=1e-12)
-        np.testing.assert_allclose(result.S, expected, rtol=5e-6, atol=1e-6)
+        np.testing.assert_allclose(probe0_s(result), expected, rtol=5e-6, atol=1e-6)
         np.testing.assert_allclose(result.S[0, 1], result.S[1, 0], rtol=5e-6, atol=1e-6)
         assert result.S_raw is None and result.passivity_correction is None
     np.testing.assert_array_equal(default.S, raw.S)
     replay = replay_smatrix_from_port_vi_dump(load_port_vi_dump_npz(dump))
-    np.testing.assert_allclose(replay.s_params, expected, rtol=5e-6, atol=1e-6)
+    np.testing.assert_allclose(probe0_s(raw, replay.s_params), expected, rtol=5e-6, atol=1e-6)
     if equal:
         # Equal references retain the existing voltage-wave scale exactly;
         # an unnecessary absolute rescaling could move conditioning/roundoff.
@@ -207,10 +208,10 @@ def test_reference_metadata_is_neither_fitted_z0_nor_the_50_ohm_load(monkeypatch
     assert np.shape(result.reference_impedances) == (2,)
     assert np.all(np.abs(references - 50) > 1)
     assert np.all(np.abs(result.Z0) > 700)
-    np.testing.assert_allclose(result.S, _oracle(THETA), rtol=5e-6, atol=1e-6)
+    np.testing.assert_allclose(probe0_s(result), _oracle(THETA), rtol=5e-6, atol=1e-6)
     with np.load(dump) as saved:
         meta = json.loads(str(saved["metadata_json"]))
-        assert meta["schema_version"] == 4 and meta["s_wave_convention"] == "power"
+        assert meta["schema_version"] == 5 and meta["s_wave_convention"] == "power"
         assert meta["current_convention"] == "native_msl_loop_current"
         np.testing.assert_allclose(meta["s_reference_impedances_ohm"], references, rtol=1e-12)
         assert [p["impedance_ohm"] for p in meta["port_definitions"]] == [50, 50]
@@ -262,6 +263,28 @@ def test_fallback_keeps_power_units_after_a_solver_failure(monkeypatch, tmp_path
     np.testing.assert_allclose(solved[0], _oracle(THETA), rtol=5e-6, atol=1e-6)
     b = np.stack([_oracle(THETA)[:, :, k] @ INCIDENT for k in range(3)], axis=2)
     expected_ratio = b / np.diag(INCIDENT)[None, :, None]
-    np.testing.assert_allclose(result.S, expected_ratio, rtol=5e-6, atol=1e-6)
+    np.testing.assert_allclose(probe0_s(result), expected_ratio, rtol=5e-6, atol=1e-6)
     replay = replay_smatrix_from_port_vi_dump(load_port_vi_dump_npz(dump))
     np.testing.assert_allclose(replay.s_params, result.S, rtol=5e-6, atol=1e-6)
+
+
+def test_v5_dump_replays_to_the_feed_plane_s(monkeypatch, tmp_path):
+    """A schema-v5 dump replays to the production S it records (feed plane).
+
+    The replay re-solves the probe-0 V/I and applies the dump's recorded
+    feed_plane_shift; dropping that shift record makes the replay refuse
+    rather than return a probe-0 S under a feed-plane label.
+    """
+    sim, _, _, _ = _case(monkeypatch)
+    dump = tmp_path / "v5.npz"
+    result = _compute(sim, enforce_passivity=False, raw_3probe_dump_path=str(dump))
+    loaded = load_port_vi_dump_npz(dump)
+    assert loaded.metadata["schema_version"] == 5
+    replay = replay_smatrix_from_port_vi_dump(loaded)
+    np.testing.assert_allclose(replay.s_params, np.asarray(result.S), rtol=5e-6, atol=1e-6)
+    # It is not the probe-0 matrix: the recorded shift was applied.
+    assert np.max(np.abs(replay.s_params - probe0_s(result))) > 1e-3
+    stripped = dict(loaded.metadata)
+    stripped.pop("feed_plane_shift")
+    with pytest.raises(ValueError, match="feed_plane_shift"):
+        replay_smatrix_from_port_vi_dump(type(loaded)(**{**loaded.__dict__, "metadata": stripped}))

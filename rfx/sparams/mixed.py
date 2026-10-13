@@ -163,7 +163,8 @@ def compute_mixed_s_matrix(
       direction against a delivered-power normalization; quote it
       alongside ``|S|``.
     * Cross-family off-diagonal PHASE mixes two reference-plane
-      conventions (port cell vs de-embedded MSL probe plane) and a
+      conventions (port cell vs the MSL port's declared feed plane, to
+      which the MSL rows/columns are shifted from probe 0) and a
       component-mixing ±1 (probes.py sign-convention fence);
       magnitude is the validated observable.
     * ``settling_db`` is the ring-down witness (above −40 dB =
@@ -445,6 +446,7 @@ def compute_mixed_s_matrix(
     # eps_r at the trace-centre substrate cell).
     z0_hj_per_port: list[float] = []
     beta0_per_port: list[np.ndarray] = []
+    eps_r_ref_per_port: list[float] = []
     from rfx.core.yee import EPS_0 as _EPS_0, MU_0 as _MU_0
     _c0_mixed = 1.0 / float(np.sqrt(_MU_0 * _EPS_0))
     for p_idx, pe in enumerate(entries):
@@ -457,6 +459,7 @@ def compute_mixed_s_matrix(
             eps_r_ref = float(np.asarray(
                 materials.eps_r[i_feed_p, meta["j_centre"], k_mid]
             ))
+        eps_r_ref_per_port.append(eps_r_ref)
         z0_hj, eps_eff_hj = hammerstad_jensen_z0_eps_eff(
             pe.width, pe.height, eps_r_ref
         )
@@ -927,6 +930,7 @@ def compute_mixed_s_matrix(
             beta_railed_msl[d, :] = np.asarray(
                 jax.lax.stop_gradient(res_fit["beta_railed"])
             ).astype(bool)
+
             _dev = float(np.max(
                 np.abs(z0_msl_fit[d, :] - z0_hj_per_port[d])
                 / z0_hj_per_port[d]
@@ -948,7 +952,8 @@ def compute_mixed_s_matrix(
         # β-scan rail flags for the diagnostic N-probe fit (issue
         # #681): a railed bin's |Zc|/β above are the ±35% scan-window
         # limit, not a measurement. S is unaffected (the MSL diagonal
-        # uses the analytic HJ anchor).
+        # uses the analytic HJ anchor; the feed-plane shift below uses
+        # the closed-form beta, never the fit).
         _warn_msl_beta_scan_railed(
             beta_railed_msl, freqs_arr,
             tuple(pe.name for pe in entries),
@@ -998,6 +1003,39 @@ def compute_mixed_s_matrix(
                         "not as an absence of coupling.",
                         stacklevel=2,
                     )
+
+        # ---- Reference plane: MSL probe 0 -> declared feed plane -------
+        # The same resolver as compute_msl_s_matrix (one expression for
+        # both calculators): L_p from the realized nodes, the closed-form
+        # shift beta (Hammerstad-Jensen + Kirschning-Jansen dispersion),
+        # S[i, j] <- D_i S[i, j] D_j with D = exp(-j beta L) on the MSL
+        # rows and columns and D = 1 on the lumped/wire ones. After the
+        # flux magnitude override, which it cannot disturb (|D| = 1).
+        # S_wave (the pre-override wave-channel matrix) gets the same D, so
+        # every S this result reports is referred to one plane per port.
+        from rfx.measurement.msl_planes import (
+            resolve_msl_planes as _resolve_msl_planes,
+            apply_feed_plane_shift as _apply_feed_plane_shift,
+            full_port_shift as _full_port_shift,
+        )
+        _msl_plane = _resolve_msl_planes(
+            grid, msl_ports,
+            [int(pe.n_probe_offset) for pe in entries],
+            [xs[0] for xs in probe_xs],
+            [float(pe.width) for pe in entries],
+            [float(pe.height) for pe in entries],
+            eps_r_ref_per_port, freqs_arr,
+        )
+        plane_offsets_all, shift_beta_all = _full_port_shift(
+            n_lw + n_msl, range(n_lw, n_lw + n_msl), _msl_plane,
+        )
+        S = _apply_feed_plane_shift(
+            S, plane_offsets_all, shift_beta_all,
+        ).astype(_complex_dtype)
+        if s_wave_full is not None:
+            s_wave_full = np.asarray(_apply_feed_plane_shift(
+                s_wave_full, plane_offsets_all, shift_beta_all,
+            ))
 
         # MSL standing-wave-null reliability from each MSL port's own
         # driven run (mirrors compute_msl_s_matrix issue #337).
@@ -1057,6 +1095,8 @@ def compute_mixed_s_matrix(
             magnitude_channel=magnitude_channel,
             beta_railed=beta_railed_msl,
             probe_clearance=probe_clearance,
+            reference_plane_offsets_m=plane_offsets_all,
+            shift_beta=shift_beta_all,
         )
         _warn_if_ringdown_truncated(
             settling_db_runs, port_names, num_periods=num_periods, witnesses=settling_details,

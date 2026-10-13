@@ -12,6 +12,7 @@ from types import MethodType
 
 import jax.numpy as jnp
 import numpy as np
+from tests._msl_probe0 import probe0_s
 import pytest
 
 from rfx import Box, Simulation
@@ -152,8 +153,8 @@ def test_mixed_affine_h_matches_constant_reference_and_refutes_single_plane(
     expected_s11 = (voltage - zi) / (voltage + zi)
     expected_wrong = (voltage - zi * (1 + SLOPE / 2)) / (voltage + zi * (1 + SLOPE / 2))
     assert abs(expected_wrong - expected_s11) > 0.05
-    np.testing.assert_allclose(reference.S[1, 1], expected_s11, rtol=2e-6, atol=2e-7)
-    np.testing.assert_allclose(bypassed.S[1, 1], expected_wrong, rtol=2e-6, atol=2e-7)
+    np.testing.assert_allclose(probe0_s(reference)[1, 1], expected_s11, rtol=2e-6, atol=2e-7)
+    np.testing.assert_allclose(probe0_s(bypassed)[1, 1], expected_wrong, rtol=2e-6, atol=2e-7)
     # The refused lumped diagonal cannot contribute a numeric difference;
     # this falsifier measures the MSL diagonal derived immediately above.
     assert np.max(np.abs(bypassed.S[1, 1] - reference.S[1, 1])) > 0.05

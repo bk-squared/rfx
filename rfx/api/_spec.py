@@ -37,6 +37,7 @@ from rfx.materials.lorentz import LorentzPole
 
 from rfx.materials.library import MATERIAL_LIBRARY
 from rfx.diagnostic_records import Diagnostic
+from rfx.measurement.msl_planes import MSLFeedPlaneFields
 
 
 def _artifact_to_dict(value: object) -> object:
@@ -1611,16 +1612,15 @@ class MSLProbeClearance:
 
 
 @dataclass
-class MSLSMatrixResult:
+class MSLSMatrixResult(MSLFeedPlaneFields):
     """MSL S-matrix result.
 
     Attributes
     ----------
     S : (n_ports, n_ports, n_freqs) complex
-        Power-wave S-matrix at each port's FIRST probe plane, formed from
-        a=(V+R*I)/(2*sqrt(R)), b=(V-R*I)/(2*sqrt(R)) with the positive real
-        analytic Hammerstad-Jensen reference R of each port. There
-        is no translation back to the physical feed planes. Bracketing H
+        Power-wave S (a=(V+R*I)/(2*sqrt(R)), b=(V-R*I)/(2*sqrt(R)), R the
+        positive real analytic Hammerstad-Jensen reference of each port) formed
+        at the first probe plane, shifted to the DECLARED FEED PLANE. Bracketing H
         samples are interpolated to this E-node plane using physical
         coordinates, with the temporal leapfrog offset corrected separately.
         The fitted ``Z0`` below is a diagnostic, not the reference used to form S.
@@ -1788,7 +1788,7 @@ class MSLSMatrixResult:
 
 
 @dataclass
-class MixedSMatrixResult:
+class MixedSMatrixResult(MSLFeedPlaneFields):
     """Mixed-family S-matrix result (issue #488, lumped/wire + MSL v1).
 
     ``S`` here is in the **Kurokawa
