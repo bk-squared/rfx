@@ -186,6 +186,8 @@ def _forward(sim, box=None, *, eps=None, sigma=None, holds=False,
         # the wire board. They are only ever compared between two
         # formulations of one board.
         kw["port_s11_freqs"] = jnp.asarray(FREQS)
+    elif any(p.extent is not None for p in sim._ports):
+        kw["port_s11_freqs"] = np.linspace(sim._freq_max / 10, sim._freq_max, 50)
     if box is not None:
         kw.update(design_box=box, design_eps_override=eps,
                   design_sigma_override=sigma,

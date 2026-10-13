@@ -150,7 +150,7 @@ def _lumped_open(graded):
 # One model per host-read class, on the lanes that carry it, and a lumped
 # port on an open board per lane:
 # name -> (builder, graded, summed observable, design input, steps).
-# "s": the port's S (uniform: port_s11_freqs); "far field": compute_far_field
+# "s": the port's S (port_s11_freqs); "far field": compute_far_field
 # of the NTFF box; None: the probe record only. The design input is a
 # design-box permittivity, or a whole-grid eps_override where the lane
 # refuses a design box (an MSL port on the graded lane).
@@ -192,9 +192,10 @@ def _run(sim, graded, observable, design, n_steps, eps):
         kw["eps_override"] = eps
     elif eps is not None:
         kw = {"design_box": DESIGN_BOX, "design_eps_override": eps}
-    if observable == "s" and not graded:
+    if observable == "s":
         # numpy, so a function with no traced input really has none
-        kw["port_s11_freqs"] = np.array([6e9, 8e9], np.float32)
+        kw["port_s11_freqs"] = (np.linspace(sim._freq_max / 10, sim._freq_max, 50)
+                                if graded else np.array([6e9, 8e9], np.float32))
     r = sim.forward(n_steps=n_steps, skip_preflight=True, checkpoint=False, **kw)
     summed = None
     if observable == "far field":
