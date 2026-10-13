@@ -39,6 +39,7 @@ where the lines go; the cells between them come from
 """
 from __future__ import annotations
 
+import heapq
 import warnings
 from typing import NamedTuple, Sequence
 
@@ -83,17 +84,11 @@ def _edge_lines(edge: SheetEdge, res: float, offset: float):
     return (inside, outside) if inside < outside else (outside, inside), inside
 
 
-def _build(lo, hi, dx, fixed, edges, res, edge_offset, max_ratio,
-           boundary_cell):
-    """Lines for the given edge-cell sizes, then the cells between them."""
-    res = list(res)
-    # A strip (metal between two edges) or a gap (air between two metals) with
-    # no face in between: pick ONE edge-cell size r for both edges so that the
-    # stretch between their two nodes is a whole number of cells of that same
-    # size -- D = (n + k) r, k = 2a inside a strip, 2(1 - a) across a gap.
-    # Without this a stretch of 1.1 cells becomes two cells of 0.55 and the
-    # ratio cap drags every neighbour down with it.
-    paired = {}
+def _chain_pairs(edges, fixed, edge_offset):
+    """Strips (+1, -1) and gaps (-1, +1) between consecutive edges with no
+    face strictly between them, as ``(i, k)``: k = 2a inside a strip,
+    2(1 - a) across a gap."""
+    pairs = []
     for i in range(len(edges) - 1):
         e1, e2 = edges[i], edges[i + 1]
         if any(e1.position < f < e2.position for f in fixed):
@@ -104,17 +99,95 @@ def _build(lo, hi, dx, fixed, edges, res, edge_offset, max_ratio,
             k = 2.0 * (1.0 - edge_offset)
         else:
             continue
-        span = e2.position - e1.position
-        if span <= 0.0:
+        if e2.position - e1.position <= 0.0:
             raise ValueError(
                 f"two sheet edges at the same position {e1.position:.6g} m: "
                 "a seam between abutting sheets is interior metal, not an "
                 "edge -- leave it out")
-        n = max(0, int(np.ceil(span / min(res[i], res[i + 1]) - k - 1e-9)))
-        r = span / (n + k) if (n + k) > 0 else None
-        if r is not None and r <= min(res[i], res[i + 1]) * (1.0 + 1e-12):
-            res[i] = res[i + 1] = r
-            paired[i] = r
+        pairs.append((i, k))
+    return pairs
+
+
+def _chains(pairs):
+    """Consecutive pairs that share an edge, grouped into chains."""
+    chains = []
+    for i, k in pairs:
+        if chains and chains[-1][-1][0] == i - 1:
+            chains[-1].append((i, k))
+        else:
+            chains.append([(i, k)])
+    return chains
+
+
+def _inner_cell(span, k, r, cap, max_ratio):
+    """The equal inner cell of one pair at edge cell ``r``: ``0.0`` when the
+    two outer lines coincide (S = span - k r = 0), the cell S / n of the n
+    nearest S / r with ``r / max_ratio <= S / n <= min(cap, r max_ratio)``
+    otherwise (no inner cell above the cap, and none the ratio cap would have
+    to split next to the edge cell), or None when no whole number fits."""
+    S = span - k * r
+    if abs(S) <= 1e-12 * span:
+        return 0.0
+    if S < 0.0:
+        return None
+    n_lo = max(1, int(np.ceil(S / min(cap, r * max_ratio) - 1e-9)))
+    n_hi = int(np.floor(S * max_ratio / r + 1e-9))
+    if n_lo > n_hi:
+        return None
+    n = min(max(int(round(S / r)), n_lo), n_hi)
+    return S / n
+
+
+def _chain_r(chain, edges, cap, max_ratio):
+    """ONE edge cell for a whole chain: the largest exact fit
+    ``r = D_j / (n + k_j) <= cap`` of any pair j for which every pair of the
+    chain closes (``_inner_cell`` is not None). Returns ``(r, inner cells)``
+    or ``(None, None)`` when no fit down to ``1e-3 cap`` closes the chain."""
+    spans = [(edges[i + 1].position - edges[i].position, k) for i, k in chain]
+    heap = []
+    for j, (span, k) in enumerate(spans):
+        n = max(0, int(np.ceil(span / cap - k - 1e-9)))
+        if n + k > 0:
+            heapq.heappush(heap, (-span / (n + k), j, n))
+    while heap:
+        neg_r, j, n = heapq.heappop(heap)
+        r = -neg_r
+        if r < 1e-3 * cap:
+            break
+        span, k = spans[j]
+        heapq.heappush(heap, (-span / (n + 1 + k), j, n + 1))
+        if r > cap * (1.0 + 1e-12):
+            continue
+        inner = [_inner_cell(d, kk, r, cap, max_ratio) for d, kk in spans]
+        if all(c is not None for c in inner):
+            return r, inner
+    return None, None
+
+
+def _build(lo, hi, dx, fixed, edges, res, edge_offset, max_ratio,
+           boundary_cell):
+    """Lines for the given edge-cell sizes, then the cells between them."""
+    res = list(res)
+    # Strips (metal between two edges) and gaps (air between two metals) with
+    # no face in between form CHAINS of consecutive edges. Every edge of a
+    # chain gets ONE edge-cell size r, an exact fit D = (n + k) r of one of
+    # its pairs, and every other pair's stretch S = D - k r between its two
+    # outer lines is a whole number of equal cells no larger than the cap.
+    # Without this a stretch of 1.1 cells becomes two cells of 0.55 and the
+    # ratio cap drags every neighbour down with it; pairing each strip and
+    # gap on its own let a shared edge keep the LAST pair's r and left a
+    # micrometre sliver between two lines that should coincide.
+    paired = {}
+    for chain in _chains(_chain_pairs(edges, fixed, edge_offset)):
+        ids = [chain[0][0]] + [i + 1 for i, _ in chain]
+        r, inner = _chain_r(chain, edges, min(res[i] for i in ids), max_ratio)
+        if r is None:
+            continue
+        for i in ids:
+            res[i] = r
+        for (i, _), c in zip(chain, inner):
+            if c > 0.0:
+                paired[i] = c
     # Shrink an edge cell until it clears its neighbours: other edge cells
     # and faces. Twelve steps of 0.8 take it to ~0.07 of its start; below
     # that the drawing, not the mesh, is the problem.
@@ -161,7 +234,7 @@ def _build(lo, hi, dx, fixed, edges, res, edge_offset, max_ratio,
             sizes.append(b - a)
             prot.append(True)
         elif inner:
-            sizes.append(inner[0])        # whole cells of the pair's size
+            sizes.append(inner[0])        # the pair's whole inner cells
             prot.append(True)
         else:
             sizes.append(dx)

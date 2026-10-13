@@ -77,6 +77,81 @@ def test_a_strip_narrower_than_two_edge_cells_is_meshed_not_refused():
         assert frac == pytest.approx(EDGE_OFFSET, abs=1e-6)
 
 
+# --- chains: strips and gaps side by side, no face between them ------------
+
+_CHAIN_CASES = [
+    pytest.param((s,) + (g, s) * (n - 1), d, 10.0, 10.0, id=f"strip{s}-gap{g}-dx{d}-x{n}")
+    for s in (0.5, 2.0, 16.35) for g in (0.3, 1.15, 5.0)
+    for d in (1.0, 2.0, 3.0) for n in (2, 3)
+] + [
+    # The two-strip coupler that once meshed at 8.6 um and 3,985 cells.
+    pytest.param((16.35, 1.15, 16.35), d, 10.0, 10.0, id=f"coupler-dx{d}")
+    for d in (1.0, 2.0, 3.0)
+] + [
+    # Review rows (2026-10-13): the chain r goes below the first exact fit
+    # when another pair's inner stretch cannot be split inside the window.
+    pytest.param((0.3717, 0.3924, 0.3717), 3.0, 20.0, 20.0, id="equal-strips-second-fit"),
+    pytest.param((0.441, 0.2745, 9.6755), 2.0, 20.0, 20.0, id="unequal-second-fit"),
+    # Domain ends one to two cells from the outer edges.
+    pytest.param((2.4806, 3.5003, 0.5475), 0.5, 2.3309, 0.8091, id="ends-near"),
+]
+
+
+@pytest.mark.parametrize("widths_mm, dx_mm, lo_mm, hi_mm", _CHAIN_CASES)
+def test_a_chain_of_strips_and_gaps_never_meshes_below_a_fifth_of_its_narrowest_feature(
+        widths_mm, dx_mm, lo_mm, hi_mm):
+    """Strips and gaps side by side share every inner edge. One edge cell r
+    for the whole run, an exact fit D = (n + k) r of one strip or gap, keeps
+    every stretch a whole number of cells. Pairing each strip and gap on its
+    own let a shared edge keep the last pair's r: two lines that should
+    coincide ended 6.7 um apart and the ratio cap dragged the axis to 8.6 um.
+
+    Bound, from the drawing alone, derived for outer edges at least 2 dx
+    from the domain ends. A pair's inner stretch S = D - k r splits into
+    equal cells in [r/1.3, min(cap, 1.3 r)] whenever S/r >= 2/1.3 and
+    r <= cap/1.3, so every pair is closed once r <= min(cap/1.3,
+    D/(k + 1.54)), k <= 1.3. Consecutive exact fits of the narrowest pair
+    differ by at most (2.84 + 1)/2.84 and the start cap is at least 0.75 dx,
+    so the chain r is at least min(0.43 dx, f_min/3.84), and its neighbours
+    grade by at most 1.3: no cell below min(dx, f_min)/5. With an end closer
+    than about 1.65 dx the end stretch is shorter than the boundary cell, the
+    band profile splits the edge cells and the feedback halves the cap, so
+    there the bound is measured, not derived: worst 0.191 min(dx, f_min) over
+    4,500 random chains with ends 1-2.5 dx away (base 0.163 on that drawing),
+    0.222-0.344 on 5,200 others (review, 2026-10-13). The "ends-near" row
+    below is one such drawing."""
+    max_ratio = 1.3
+    widths = [w * 1e-3 for w in widths_mm]
+    dx, lo_margin = dx_mm * 1e-3, lo_mm * 1e-3
+    pos = lo_margin + np.concatenate([[0.0], np.cumsum(widths)])
+    edges = [SheetEdge(p, +1 if i % 2 == 0 else -1) for i, p in enumerate(pos)]
+    hi = pos[-1] + hi_mm * 1e-3
+    f_min = min(widths)                           # drawn, not from the code
+    r_floor = min(dx, f_min) / 5.0
+    prof = edge_aware_profile(0.0, hi, dx, sheet_edges=edges,
+                              max_ratio=max_ratio)
+    cells, nodes = prof.cells, prof.nodes
+    assert cells.min() >= r_floor * (1.0 - 1e-12), (
+        f"smallest cell {cells.min() * 1e6:.2f} um below "
+        f"{r_floor * 1e6:.2f} um ({cells.size} cells)")
+    if tuple(widths_mm) == (16.35, 1.15, 16.35):
+        assert cells.size < 200
+    # The node placement still holds on every edge, read on the realized cell.
+    for e, end in zip(edges, prof.metal_end_nodes):
+        lo, hi_c = _straddling_cell(nodes, e.position)
+        frac = ((e.position - lo) if e.metal_side < 0
+                else (hi_c - e.position)) / (hi_c - lo)
+        assert frac == pytest.approx(EDGE_OFFSET, abs=1e-6)
+        assert np.min(np.abs(nodes - end)) < 1e-12
+    assert not np.any(np.isclose(nodes[:, None],
+                                 [e.position for e in edges], rtol=0,
+                                 atol=1e-9)), "no mesh line ON a sheet edge"
+    assert abs(nodes[-1] - hi) < 1e-12 and nodes[0] == 0.0
+    ratios = cells[1:] / cells[:-1]
+    assert np.max(np.maximum(ratios, 1.0 / ratios)) <= max_ratio + 1e-9
+    assert cells.max() <= dx * (1.0 + 1e-12), "no cell above the target"
+
+
 def test_a_face_inside_an_edge_cell_shrinks_the_cell_instead_of_moving_the_face():
     prof = edge_aware_profile(
         0.0, 10e-3, 1e-3, faces=[5.2e-3], boundary_cell=1e-3,
