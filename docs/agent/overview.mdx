@@ -20,7 +20,7 @@ report a number until step 5 is done.
    Pages: [Domain and mesh](/rfx/model/domain-mesh/),
    [Boundaries](/rfx/model/boundaries/), [Materials](/rfx/model/materials/),
    [Conductors](/rfx/model/conductors/), [Sources](/rfx/model/sources/),
-   [Ports](/rfx/model/ports/).
+   [Ports](/rfx/model/ports/), and [which port or source to use](./port-selection).
 2. **Check the model on the grid.** Read what the grid built against what you
    drew (`sim.preflight()`, `sim.fidelity_report()`), and expect a refusal for
    any input the solver path does not implement.
@@ -37,7 +37,7 @@ report a number until step 5 is done.
    [Far field and RCS](/rfx/measure/far-field-and-rcs/),
    [Resonances](/rfx/measure/resonances/).
 5. **Show the evidence.** Was the run long enough for every frequency you read,
-   is the mesh converged over at least three refinements, and does the result
+   is the mesh converged over at least three meshes, and does the result
    meet the accuracy bar. A gradient needs its own check from a longer run.
    Pages: [Is the run long enough?](/rfx/evidence/simulation-time/),
    [Mesh convergence](/rfx/evidence/mesh-convergence/),
@@ -69,7 +69,8 @@ For design work, [Design regions](/rfx/design/design-regions/) says what
 ```text
 Use rfx. Declare the model, read preflight and the fidelity report, and run the
 smallest case first. Report each feature's status from the support page, the
-settling check of every result, and how the result moves over three meshes.
+check of whether each run was long enough for every frequency it reads, and
+how the result moves over three meshes.
 Do not report a number whose run or mesh has not been checked.
 ```
 
