@@ -40,7 +40,6 @@ KNOWN_ROWS = (
     ('O-flux', 'uniform', 'L2', 'D5', '#1373 D5 (ports): settling witness arrays differ between entries'),
     ('O-ntff', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
     ('O-vector', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
-    ('P-lumped', 'multi-device-graded', 'admission', 'A4', '#1373 A4 (ports): run refusal names the distributed=True forward path'),
     ('P-lumped', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
     ('P-lumped', 'uniform', 'L2', 'D5', '#1373 D5 (ports): settling witness arrays differ between entries'),
     ('P-lumped', 'uniform', 'L2', 'D8', '#1373 D8 (ports): run computes the port S-matrix by default; forward returns no S without port_s11_freqs'),
@@ -346,8 +345,6 @@ ID_PATTERNS = {
            'forward': ('admitted',)},
     'A3': {'run': ('admitted',), 'forward': ('raised', 'NotImplementedError',
             "Differentiable TFSF plane-wave forward is supported only on the uniform single-device forward lane, not 'fwd_nonuniform'")},
-    'A4': {'run': ('raised', 'NotImplementedError', 'distributed=True forward path'),
-           'forward': ('raised', 'NotImplementedError', 'Lumped / wire ports (impedance > 0) are not yet supported')},
     'A5': {'run': ('admitted',), 'forward': ('raised', 'NotImplementedError',
             'Waveguide ports are not supported on the distributed forward path')},
     'A6': {'run': ('admitted',), 'forward': ('raised', 'TypeError',
@@ -400,11 +397,7 @@ def outcomes(declaration, path, level, pair):
                 if not ok:
                     matches = False
                     # The original cause disappearing is reported separately.
-                    wording_fixed = (ident == 'A4' and entry == 'run'
-                                     and record['outcome'] == 'raised'
-                                     and record.get('type') == pattern[1]
-                                     and pattern[2] not in record.get('message', ''))
-                    if record['outcome'] != success and not wording_fixed:
+                    if record['outcome'] != success:
                         unexplained.append({entry: {k: v for k, v in record.items() if k != 'value'}})
             if matches:
                 matched.add(ident)
