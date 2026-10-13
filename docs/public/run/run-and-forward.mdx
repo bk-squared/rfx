@@ -67,8 +67,8 @@ against a longer run ([Checking a gradient](/rfx/evidence/gradients/)).
 
 | | `run()` | `forward()` |
 |---|---|---|
-| returns | `Result`: `time_series`, `s_params` and `freqs`, `dft_planes`, `flux_monitors`, far-field data, `snapshots`, `settling_witness`, `state`, `ringdown` | `ForwardResult`: `time_series`, `s_params` and `freqs`, `dft_planes`, far-field data, `ringdown`; no `state`, no snapshots, no packaged settling check |
-| differentiable | no | yes, with respect to `eps_override`, `sigma_override`, the design-box overrides, `pec_occupancy_override` and `rlc_values_override`; `mu_r_override` on a uniform mesh on one device |
+| returns | `Result`: `time_series`, `s_params` and `freqs`, `dft_planes`, `flux_monitors`, far-field data, `snapshots`, `settling_witness`, `state`, `ringdown` | `ForwardResult`: `time_series`, `s_params` and `freqs`, `dft_planes`, far-field data, `ringdown`, and `settling_db` / `settling_witness` computed once the arrays are concrete; no `state`, no snapshots, no flux monitors |
+| differentiable | no | yes, with respect to `eps_override`, `sigma_override`, the design-box overrides (including `design_occupancy_override`), `pec_occupancy_override` and `rlc_values_override`; `mu_r_override` on a uniform mesh on one device |
 | S-parameters | full S-matrix of every port when ports exist (`s_param_freqs`, default 50 points from `freq_max/10` to `freq_max`) | per-port S11 with `port_s11_freqs` |
 | stops on decay | `until_decay=` | no: a fixed number of steps |
 | progress, snapshots | `report_every=`, `snapshot=` | no |
@@ -79,10 +79,13 @@ input their solver path does not implement whether or not preflight runs
 ([Refused inputs](/rfx/check/refusals/)).
 
 <p data-rfx="note">Pending for 2.0: <code>run()</code> and <code>forward()</code>
-are being made one pipeline on every solver path. Known differences today:
-<code>forward()</code> refuses the multi-device uniform path, and
-<code>subpixel_smoothing</code> is a <code>run()</code> argument only
-(tracker 1373).</p>
+are being made one pipeline on every solver path. Among the known differences
+today: <code>forward()</code> refuses the multi-device uniform path;
+<code>subpixel_smoothing</code> is a <code>run()</code> argument only;
+<code>forward()</code> leaves out a declared flux monitor; on a graded mesh it
+returns no waveguide-port records or S; with <code>distributed=True</code> it
+refuses a waveguide port. The full list is in
+<code>tests/contracts/test_run_forward_one_pipeline.py</code> (tracker 1373).</p>
 
 ### How long it runs
 
@@ -99,7 +102,8 @@ stored in float16) or `"float64"`. For float64, build and run the simulation
 inside `with jax.enable_x64():`; without it rfx raises instead of computing in
 float32. Do not switch 64-bit mode on for the whole process: it changes every
 JAX array in it. Float64 runs on a uniform mesh on one device only; the other
-solver paths refuse it.
+solver paths refuse it, and so do some calculators on a uniform mesh
+(material sweeps, the coaxial calculators, material fitting).
 
 ### Snapshots
 
@@ -107,7 +111,8 @@ solver paths refuse it.
 SnapshotSpec`) keeps the field
 every `interval` steps, optionally on one slice (`slice_axis`, `slice_index`),
 in `result.snapshots` with coordinates in `result.snapshot_axes`. A full 3-D
-snapshot of every step is large; take a slice.
+snapshot of every step is large; take a slice. Snapshots are taken on a uniform
+mesh on one device; the other solver paths refuse `snapshot=`.
 
 ### JAX transforms
 
@@ -129,17 +134,16 @@ Two solver paths are outside what 2.0 validates:
   source with `amplitude_kind="field"`, and refuses ports, dispersive
   materials, lumped elements and refinement.
 - **Subgridding** (`add_refinement` on a uniform mesh) is refused by default
-  because it is not yet stable and verified. `validation="research"` runs it
-  with a warning, and its result is yours to check. Use a graded mesh for local
+  because it is not yet stable and verified. `validation="research"` (or
+  `"off"`) runs it with a warning, and its result is yours to check. Use a graded mesh for local
   resolution instead.
 
 The [support page](/rfx/support/) gives both one row each.
 
 ## What is checked
 
-Before the first step, both calls run preflight (unless skipped) and the
-admission check of their solver path, which refuses what that path does not
-implement. After a `run()`, `result.settling_witness` says whether the run was
+Before the first step, both calls run preflight (unless skipped) and check
+that their solver path implements every input, refusing what it does not. After a `run()`, `result.settling_witness` says whether the run was
 long enough for the frequencies it read. A test compares the fields of
 `run()` and `forward()` over a matrix of declarations and solver paths and
 lists every known difference (`tests/contracts/test_run_forward_one_pipeline.py`).
@@ -151,8 +155,9 @@ lists every known difference (`tests/contracts/test_run_forward_one_pipeline.py`
 | `precision="float64"` outside `jax.enable_x64()` | all | build and run inside the block |
 | `precision="float64"` | graded mesh, multi-device, ADI, subgridded | a uniform mesh on one device |
 | `until_decay` | multi-device, ADI, subgridded, a graded mesh with closed boundaries | `n_steps` |
-| `forward()` | multi-device on a uniform mesh | one device, or a graded mesh with `distributed=True` |
-| `add_refinement` without `validation="research"` | all | a graded mesh |
+| `forward()` | multi-device on a uniform mesh | one device, or a graded mesh with `distributed=True` (no waveguide ports there) |
+| `run(snapshot=...)` | graded mesh, multi-device, ADI, subgridded | a uniform mesh on one device |
+| `add_refinement` without `validation="research"` or `"off"` | all | a graded mesh |
 | an outer `jax.jit` over several GPUs with command buffers on | multi-device | call unjitted, or turn command buffers off |
 
 [Refused inputs](/rfx/check/refusals/) explains how refusals read; the
