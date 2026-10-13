@@ -475,7 +475,7 @@ def test_ringdown_preflight_sees_only_declared_probes(monkeypatch, lane, entry):
     monkeypatch.setattr(sim, '_preflight_impl', declared_preflight)
     monkeypatch.setattr(products, 'at_kernel', at_kernel)
     kwargs = {'compute_s_params': True} if entry == 'run' else {}
-    if entry == 'forward' and lane == 'uniform':
+    if entry == 'forward':  # forward computes port S only on request (#1728)
         kwargs['port_s11_freqs'] = np.linspace(8e9, 18e9, 11)
     result = getattr(sim, entry)(n_steps=600, ringdown=RingdownSpec(), **kwargs)
     assert [event for event, _ in events] == ['assembly', 'preflight', 'kernel']
