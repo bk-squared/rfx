@@ -4226,26 +4226,14 @@ class _ExecuteMixin:
         # ---- Distributed multi-device lane ----
         if plan.lane in ("run_distributed", "run_distributed_nu") and self._interface_eps == "dual_average":
             raise ValueError("interface_eps='dual_average' is not supported on the distributed lane")
-        if plan.lane in ("run_distributed", "run_distributed_nu") and (
-                self._tfsf is not None or self._waveguide_ports):
-            # TFSF sources and waveguide ports need the whole domain on one
-            # device. Re-run with every argument the caller gave, minus devices=;
-            # the runner's own fallback re-ran with n_steps alone and dropped
-            # the rest (#1305: an explicit conformal_pec=False came back as the
-            # declared conformal walls).
-            import warnings
-            warnings.warn(
-                "Distributed runner does not yet support "
-                + ("TFSF plane-wave sources" if self._tfsf is not None
-                   else "waveguide ports")
-                + ". Falling back to single-device execution with the same "
-                "arguments.",
-                stacklevel=2,
-            )
-            del _solve_assembly  # the fallback performs its own solve assembly
-            return result_with_diagnostics(self.run(**{**_call_args, "devices": None,
-                               "exchange_interval": 1,
-                               "skip_preflight": True}), _diagnostics)
+        if plan.lane in ("run_distributed", "run_distributed_nu"):
+            from rfx.runners.distributed_v2 import one_device_reason, run_on_one_device
+            if reason := one_device_reason(self):
+                del _solve_assembly  # the fallback performs its own solve assembly
+                return run_on_one_device(self, {**_call_args, "devices": None,
+                                         "exchange_interval": 1, "skip_preflight": True},
+                                         reason=reason, requested_devices=len(devices),
+                                         diagnostics=_diagnostics)
         if plan.lane in ("run_distributed", "run_distributed_nu"):
             if self._dft_planes:
                 raise NotImplementedError(

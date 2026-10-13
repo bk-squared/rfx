@@ -15,7 +15,7 @@ import jax
 import numpy as np
 import pytest
 
-from rfx import Box, DebyePole, GaussianPulse, Simulation
+from rfx import Box, DebyePole, GaussianPulse, Result, Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.runners import distributed_v2
 
@@ -278,11 +278,11 @@ def test_tfsf_and_waveguide_models_reach_single_device_fallback(monkeypatch):
                 )
             public_run = sim.run
             calls = []
-            sentinel = object()
+            payload = object()
 
             def native_run(**kwargs):
                 calls.append(kwargs)
-                return sentinel
+                return Result(None, payload, None, None, None, diagnostics=())
 
             monkeypatch.setattr(sim, "run", native_run)
             explicit = {"conformal_pec": False, "conformal_min_weight": 0.3,
@@ -291,7 +291,15 @@ def test_tfsf_and_waveguide_models_reach_single_device_fallback(monkeypatch):
                 result = (public_run(n_steps=N_STEPS, devices=_devices(),
                                      skip_preflight=True, **explicit)
                           if entry == "api" else _run(sim, entry))
-            assert result is sentinel
+            assert result.time_series is payload
+            assert len(result.diagnostics) == 1
+            diagnostic = result.diagnostics[0]
+            assert diagnostic.code == "distributed.one_device_fallback"
+            assert diagnostic.severity == "warning"
+            assert diagnostic.subject == (
+                "TFSF plane-wave sources" if kind == "tfsf" else "waveguide ports"
+            )
+            assert diagnostic.values == {"requested_devices": len(_devices()), "devices_used": 1}
             assert len(calls) == 1
             if entry == "api":
                 # Every run() parameter arrives: the caller's values, the
@@ -305,3 +313,23 @@ def test_tfsf_and_waveguide_models_reach_single_device_fallback(monkeypatch):
                 assert calls[0] == expected
             else:
                 assert calls == [{"n_steps": N_STEPS}]
+
+
+def test_waveguide_fallback_refuses_private_record_probes():
+    sim = Simulation(freq_max=15e9, domain=(24e-3, 12e-3, 12e-3),
+                     dx=1e-3, boundary="cpml")
+    sim.add_waveguide_port(
+        x_position=6e-3, y_range=(2e-3, 10e-3),
+        z_range=(2e-3, 10e-3), mode=(1, 0), mode_type="TE",
+        direction="+x", f0=7.5e9, bandwidth=0.5,
+    )
+    with pytest.raises(NotImplementedError, match="waveguide ports.*one-device run cannot honour"):
+        _run(sim, "v2", _record_probes=())
+
+
+def test_tfsf_fallback_refuses_conformal_pec_override():
+    sim = Simulation(freq_max=15e9, domain=(24e-3, 12e-3, 12e-3),
+                     dx=1e-3, boundary="cpml")
+    sim.add_tfsf_source(f0=7.5e9, bandwidth=0.5)
+    with pytest.raises(NotImplementedError, match="TFSF plane-wave sources.*one-device run cannot honour"):
+        _run(sim, "v2", conformal_pec=False)

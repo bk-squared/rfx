@@ -493,6 +493,35 @@ def refuse_distributed_periodic(sim, *, lane, bloch=None):
         )
 
 
+def one_device_reason(sim):
+    """Name the feature that needs the full domain on one device."""
+    if sim._tfsf is not None:
+        return "TFSF plane-wave sources"
+    if sim._waveguide_ports:
+        return "waveguide ports"
+    return None
+
+
+def run_on_one_device(sim, run_kwargs, *, reason, requested_devices, diagnostics):
+    """Run the full-domain fallback and record the requested and used devices."""
+    import warnings
+
+    from rfx._diagnostic_transport import result_with_diagnostics
+    from rfx.diagnostic_records import Diagnostic
+
+    message = (
+        f"Distributed runner does not yet support {reason}. "
+        "Falling back to single-device execution with the same arguments."
+    )
+    warnings.warn(message, stacklevel=3)
+    diagnostic = Diagnostic(
+        "distributed.one_device_fallback", "warning", reason, message,
+        {"requested_devices": requested_devices, "devices_used": 1},
+        path="run_distributed",
+    )
+    return result_with_diagnostics(sim.run(**run_kwargs), diagnostics + (diagnostic,))
+
+
 def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostics=()):
     """Refuse what the multi-device lanes would silently drop or get wrong.
 
@@ -640,8 +669,6 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     _refuse_extended_tfsf(sim._tfsf, "the distributed runner")
     from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
     _refuse_f0(sim._thin_conductors, "distributed (v2) runner")
-    import warnings
-
     if sim._boundary == "upml":
         raise ValueError("boundary='upml' does not support distributed execution")
 
@@ -649,29 +676,22 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     # Graceful fallback for features that require the full domain on a
     # single device.
     # ------------------------------------------------------------------
-    if sim._tfsf is not None:
-        warnings.warn(
-            "Distributed runner does not yet support TFSF plane-wave "
-            "sources. Falling back to single-device execution.",
-            stacklevel=2,
-        )
+    reason = one_device_reason(sim)
+    if reason is not None:
+        if _source_port_indices is not None or _record_probes is not None or kwargs:
+            raise NotImplementedError(
+                f"Distributed runner does not yet support {reason}; "
+                "the one-device run cannot honour those arguments "
+                "(_source_port_indices, _record_probes, or keyword arguments)."
+            )
         # The nested run builds its own solve product; release the one
         # built for this call's preflight first.
         assembly = None
-        result = sim.run(n_steps=n_steps)
-        return result_with_diagnostics(result, diagnostics)
-
-    if sim._waveguide_ports:
-        warnings.warn(
-            "Distributed runner does not yet support waveguide ports. "
-            "Falling back to single-device execution.",
-            stacklevel=2,
+        return run_on_one_device(
+            sim, {"n_steps": n_steps}, reason=reason,
+            requested_devices=len(jax.devices() if devices is None else devices),
+            diagnostics=diagnostics,
         )
-        # The nested run builds its own solve product; release the one
-        # built for this call's preflight first.
-        assembly = None
-        result = sim.run(n_steps=n_steps)
-        return result_with_diagnostics(result, diagnostics)
 
     refuse_unsupported_distributed_features(
         sim,
