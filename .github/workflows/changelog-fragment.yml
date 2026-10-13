@@ -28,6 +28,7 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   fragment:
@@ -67,7 +68,14 @@ jobs:
           # expression inside any `run:` block rather than judging case by case.
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          python scripts/ci/check_changelog_fragment.py \
-            --base "$BASE_SHA" \
-            --head "$HEAD_SHA"
+          case "$PR_HEAD_REF" in
+            merge-train/batch-*)
+              python scripts/ci/check_batch.py fragments --base "$BASE_SHA" --head "$HEAD_SHA" ;;
+            *)
+              python scripts/ci/check_changelog_fragment.py \
+                --base "$BASE_SHA" \
+                --head "$HEAD_SHA" ;;
+          esac
