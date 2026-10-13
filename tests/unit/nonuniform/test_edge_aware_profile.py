@@ -77,6 +77,70 @@ def test_a_strip_narrower_than_two_edge_cells_is_meshed_not_refused():
         assert frac == pytest.approx(EDGE_OFFSET, abs=1e-6)
 
 
+# --- chains: strips and gaps side by side, no face between them ------------
+
+def _chain_drawing(strip, gap, n_strips, start=10e-3, margin=10e-3):
+    """``n_strips`` coplanar strips of width ``strip`` separated by ``gap``,
+    starting at ``start``; the domain ends ``margin`` beyond the last edge."""
+    edges = []
+    for j in range(n_strips):
+        a = start + j * (strip + gap)
+        edges += [SheetEdge(a, +1), SheetEdge(a + strip, -1)]
+    return edges, edges[-1].position + margin
+
+
+_CHAIN_CASES = [
+    pytest.param(s, g, d, n, id=f"strip{s}-gap{g}-dx{d}-x{n}")
+    for s in (0.5, 2.0, 16.35) for g in (0.3, 1.15, 5.0)
+    for d in (1.0, 2.0, 3.0) for n in (2, 3)
+] + [
+    # The two-strip coupler that once meshed at 8.6 um and 3,985 cells.
+    pytest.param(16.35, 1.15, d, 2, id=f"coupler-dx{d}") for d in (1.0, 2.0, 3.0)
+]
+
+
+@pytest.mark.parametrize("strip_mm, gap_mm, dx_mm, n_strips", _CHAIN_CASES)
+def test_a_chain_of_strips_and_gaps_never_meshes_below_half_its_narrowest_feature(
+        strip_mm, gap_mm, dx_mm, n_strips):
+    """Strips and gaps side by side share every inner edge. One edge cell r
+    for the whole run, an exact fit D = (n + k) r of one strip or gap, keeps
+    every stretch a whole number of cells. Pairing each strip and gap on its
+    own let a shared edge keep the last pair's r: two lines that should
+    coincide ended 6.7 um apart and the ratio cap dragged the axis to 8.6 um.
+
+    Bound, from the drawing alone: an exact fit with n = ceil(D/dx - k) has
+    r > D dx / (D + dx) >= min(D, dx) / 2, and the cells next to it grade by at
+    most max_ratio, so no cell is below min(dx, f_min) / (2 max_ratio), f_min
+    the narrowest strip or gap."""
+    max_ratio = 1.3
+    strip, gap, dx = strip_mm * 1e-3, gap_mm * 1e-3, dx_mm * 1e-3
+    edges, hi = _chain_drawing(strip, gap, n_strips)
+    f_min = min(strip, gap)                       # drawn, not from the code
+    r_floor = min(dx, f_min) / (2.0 * max_ratio)
+    prof = edge_aware_profile(0.0, hi, dx, sheet_edges=edges,
+                              max_ratio=max_ratio)
+    cells, nodes = prof.cells, prof.nodes
+    assert cells.min() >= r_floor * (1.0 - 1e-12), (
+        f"smallest cell {cells.min() * 1e6:.2f} um below "
+        f"{r_floor * 1e6:.2f} um ({cells.size} cells)")
+    if strip_mm == 16.35 and gap_mm == 1.15 and n_strips == 2:
+        assert cells.size < 200
+    # The node placement still holds on every edge, read on the realized cell.
+    for e, end in zip(edges, prof.metal_end_nodes):
+        lo, hi_c = _straddling_cell(nodes, e.position)
+        frac = ((e.position - lo) if e.metal_side < 0
+                else (hi_c - e.position)) / (hi_c - lo)
+        assert frac == pytest.approx(EDGE_OFFSET, abs=1e-6)
+        assert np.min(np.abs(nodes - end)) < 1e-12
+    assert not np.any(np.isclose(nodes[:, None],
+                                 [e.position for e in edges], rtol=0,
+                                 atol=1e-9)), "no mesh line ON a sheet edge"
+    assert abs(nodes[-1] - hi) < 1e-12 and nodes[0] == 0.0
+    ratios = cells[1:] / cells[:-1]
+    assert np.max(np.maximum(ratios, 1.0 / ratios)) <= max_ratio + 1e-9
+    assert cells.max() <= dx * (1.0 + 1e-12), "no cell above the target"
+
+
 def test_a_face_inside_an_edge_cell_shrinks_the_cell_instead_of_moving_the_face():
     prof = edge_aware_profile(
         0.0, 10e-3, 1e-3, faces=[5.2e-3], boundary_cell=1e-3,
