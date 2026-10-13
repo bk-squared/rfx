@@ -285,6 +285,14 @@ class ShardedNUGrid(_NamedTuple):
     original_grid: object = None
     step_kind: str | None = None
 
+    def select_step(self, *, debye=False, lorentz=False, pmc=False):
+        """Record the runner's choice before any slab operands are staged."""
+        from rfx.stepping.slab_wrap import select_step
+        if self.step_kind is not None:
+            return self
+        return self._replace(step_kind=select_step(
+            cpml=bool(self.cpml_layers), debye=debye, lorentz=lorentz, pmc=pmc))
+
 
 def split_1d_with_ghost(arr: "np.ndarray", n_devices: int, nx_per: int,
                         nx_local: int, ghost: int,

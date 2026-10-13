@@ -2731,10 +2731,9 @@ class _ExecuteMixin:
             _realized.sources(grid, materials, sources, "distributed_nu.sources")
         from rfx.model.electric_metrics import stage_forward_materials
         from rfx.stepping.slab import cut
-        from rfx.stepping.slab_wrap import select_step
-        sharded_grid = sharded_grid._replace(step_kind=select_step(
-            cpml=bool(sharded_grid.cpml_layers), debye=debye_spec is not None,
-            lorentz=lorentz_spec is not None, pmc=bool(self._boundary_spec.pmc_faces())))
+        sharded_grid = sharded_grid.select_step(
+            debye=debye_spec is not None, lorentz=lorentz_spec is not None,
+            pmc=bool(self._boundary_spec.pmc_faces()))
         uniform = sharded_grid.step_kind == 'wrapped'
         sharded_materials = stage_forward_materials(materials, sharded_grid.layout, mesh, uniform=uniform)
         del materials
