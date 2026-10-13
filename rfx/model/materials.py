@@ -1008,3 +1008,8 @@ def electric_materials_traced(materials):
     """Whether a source coefficient depends on a traced volume or film."""
     return any(is_tracer(part) for part in jax.tree_util.tree_leaves(
         (materials.eps_r, materials.sigma, materials.sigma_film)))
+
+
+def volume_eps_mu(materials):
+    """Cell eps_r * mu_r of the volume medium (a lumped capacitor stamp is not a medium)."""
+    return permittivity_without_lumped(materials) * materials.mu_r
