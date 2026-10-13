@@ -132,7 +132,7 @@ ALLOWED_SCALAR_READS: dict[str, int] = {
     "rfx/runners/distributed_v2.py": 1,
     "rfx/runners/nonuniform.py": 1,
     "rfx/runners/subgridded.py": 1,
-    "rfx/runners/uniform.py": 6,
+    "rfx/runners/uniform.py": 4,
     "rfx/simulation.py": 6,
     "rfx/sources/coaxial_port.py": 14,  # #1356 replaces two radial-grid reads with one Laplace spacing
     "rfx/sources/msl_eigenmode.py": 2,

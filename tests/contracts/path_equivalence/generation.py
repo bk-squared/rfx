@@ -77,6 +77,7 @@ PR_CHOICES = {
     "_dx_profile": "_dx_profile:graded:run_nonuniform:run_distributed_nu:graded:12",
     "_dy_profile": "_dy_profile:graded:run_nonuniform:run_distributed_nu:graded:12",
     "_dz_profile": "_dz_profile:graded:run_nonuniform:run_distributed_nu:graded:12",
+    "_flux_monitors": "_flux_monitors:flux:run_uniform:run_nonuniform:constant:12",
     "_freq_max": "_freq_max::run_uniform:run_nonuniform:constant:12",
     "_geometry": "_geometry:pec_wire:run_uniform:run_nonuniform:constant:12",
     "_lumped_rlc": "_lumped_rlc:series_RL:run_uniform:run_nonuniform:constant:12",
@@ -102,8 +103,6 @@ PR_REFUSAL_LANES = frozenset((
 
 # Cheapest measured 12-step witness per cause (cold solve cost, including failures).
 PR_FINDING_CHOICES = {
-    "flux-dA-shape": "_flux_monitors:flux:run_uniform:run_nonuniform:constant:12",
-    "flux-dA2-missing": "_flux_monitors:flux:run_uniform:run_nonuniform:constant:12",
     "forward-flux-record-missing": "_flux_monitors:flux:fwd_uniform:fwd_nonuniform:constant:12",
     "nu-lumped-dft-record-missing": "_ports:lumped_port:fwd_uniform:fwd_nonuniform:constant:12",
     "nu-missing-vref": "_ports:wire_port:run_uniform:run_nonuniform:constant:12",

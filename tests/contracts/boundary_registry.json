@@ -462,6 +462,16 @@
       "kind": "roll/diff"
     },
     {
+      "file": "rfx/measurement/flux_weights.py",
+      "function": "axis_weights",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/measurement/flux_weights.py",
+      "function": "normal_weights",
+      "kind": "roll/diff"
+    },
+    {
       "file": "rfx/measurement/ports.py",
       "function": "coax_owner",
       "kind": "roll/diff"
@@ -566,11 +576,6 @@
     {
       "file": "rfx/probes/probes.py",
       "function": "extract_s_matrix_wire",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/probes/probes.py",
-      "function": "init_flux_monitor.face_weights",
       "kind": "boundary"
     },
     {

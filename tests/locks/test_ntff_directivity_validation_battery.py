@@ -291,8 +291,8 @@ def _build_sim(dx: float, *, component: str = "ez",
 def _flux_f64(mon) -> float:
     """Float64 NumPy recompute of ``flux_spectrum`` from the accumulators.
 
-    Identical sum to probes.py::flux_spectrum (integrand = e1*conj(h2) -
-    e2*conj(h1), times dA), evaluated in float64 so it cannot flush to zero
+    Each Yee product is reduced on its own nodes with its corresponding
+    area, evaluated in float64 so it cannot flush to zero
     when per-cell integrand*dA drops below the float32 minimum normal
     (1.18e-38) — which the dx=0.75 mm rung measurably does (module
     docstring, caveat 1). Validated against the jnp path on the base rung
@@ -303,7 +303,8 @@ def _flux_f64(mon) -> float:
     h1 = np.asarray(mon.h1_dft, dtype=np.complex128)
     h2 = np.asarray(mon.h2_dft, dtype=np.complex128)
     dA = np.asarray(mon.dA, dtype=np.float64)
-    return float(np.real(np.sum((e1 * np.conj(h2) - e2 * np.conj(h1)) * dA)))
+    dA2 = dA if mon.dA2 is None else np.asarray(mon.dA2, dtype=np.float64)
+    return float(np.real(np.sum(e1 * np.conj(h2) * dA) - np.sum(e2 * np.conj(h1) * dA2)))
 
 
 def _net_outward_power(face_flux: dict) -> float:
