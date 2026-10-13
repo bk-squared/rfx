@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
 from rfx.api._removed_kwargs import _reject_removed_forward_kwargs
-from rfx.api._forward_result import pack_nu_forward_result
+from rfx.api._forward_result import pack_nu_forward_result, pack_uniform_forward_result
 from rfx.api._gradient_witness import with_conductivity_record
 from rfx.preflight._impl import run_preflight_gate
 from rfx._diagnostic_transport import diagnostic_refusal, result_with_diagnostics, merge_diagnostics
@@ -2255,44 +2255,9 @@ class _ExecuteMixin:
                 extractor="forward(port_s11_freqs=...)",
             )
 
-        # Convert tuple → name-keyed dict, mirroring runners/uniform.py:704
-        # so consumers can index by the same name they registered with.
-        dft_planes_out = None
-        sim_dft_planes = getattr(result, "dft_planes", None)
-        if self._dft_planes and sim_dft_planes:
-            dft_planes_out = {
-                entry.name: probe
-                for entry, probe in zip(self._dft_planes, sim_dft_planes)
-            }
-
-        from rfx.measurement import package_declared_measurements
-        declared_measurements = package_declared_measurements(
-            self, grid,
-            flux_monitors=result.flux_monitors or (),
-            waveguide_cfgs=result.waveguide_ports or (),
-        )
-
-        return result_with_diagnostics(ForwardResult(
-            diagnostics=diagnostics,
-            time_series=result.time_series,
-            ntff_data=result.ntff_data,
-            ntff_box=result.ntff_box,
-            grid=result.grid,
-            s_params=s_params_out,
-            freqs=freqs_out,
-            lumped_port_sparams=result.lumped_port_sparams,
-            sparam_time_records=result.sparam_time_records,
-            dft_time_records={
-                entry.name: rec for entry, rec in zip(self._dft_planes, result.dft_time_records or ())
-            },
-            wire_port_sparams=result.wire_port_sparams,
-            dft_planes=dft_planes_out,
-            **declared_measurements,
-            # The scan's own step: stencil_order=4 derates it below grid.dt.
-            dt=result.dt,
-            current_moment_data=result.current_moment_data,
-            current_moment_monitor=current_moments_fwd,
-            adjoint_settling=result.adjoint_settling,
+        return result_with_diagnostics(pack_uniform_forward_result(
+            self, grid, result, diagnostics=diagnostics, s_params=s_params_out,
+            freqs=freqs_out, current_moment_monitor=current_moments_fwd,
         ), conductors.design_findings)
 
     _pack_nu_forward_result = staticmethod(pack_nu_forward_result)

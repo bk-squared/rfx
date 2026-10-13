@@ -1077,27 +1077,17 @@ class ForwardResult(NamedTuple):
     inserting strings into a JAX result tree. ``settling_source_end_index``
     carries the first post-source sample, including free-space transit;
     missing timing or insufficient post-source samples yields no witness.
-    These lazy properties are
-    not stored fields in ``_asdict()``. ``wire_port_sparams`` is a tuple of
-    ``(meta, accs)`` pairs on both lanes; the lane-specific type of ``meta``
-    and the accumulator channels are documented on :class:`Result`.
+    These lazy properties are not stored fields in ``_asdict()``.
+    ``wire_port_sparams`` is a tuple of ``(meta, accs)`` pairs on both lanes;
+    the lane-specific type of ``meta`` and the accumulator channels are
+    documented on :class:`Result`, as are ``flux_monitors``,
+    ``waveguide_ports`` and ``waveguide_sparams``, returned here as by run().
 
-    ``flux_monitors``: same as Result.flux_monitors.
-    ``waveguide_ports``: same as Result.waveguide_ports.
-    ``waveguide_sparams``: same as Result.waveguide_sparams.
-
-    ``lumped_port_sparams`` exposes the raw per-port
-    ``(V_dft, I_dft, V_ref_dft)`` tuples accumulated inside the JIT scan body
-    when ``forward(port_s11_freqs=...)`` is used.  V and I are the
-    POST-injection physical channels (I carrying the Yee half-step phase);
-    ``V_ref`` is the PRE-injection drive sample, which only the N-port
-    off-diagonal incident wave consumes.  Single-port objectives can keep
-    using ``s_params`` (per-port S11: the driven terminal reflection
-    :func:`rfx.probes.probes.driven_port_reflection` at an excited port, the
-    port-branch :func:`extract_lumped_s11` at a passive one).  Multi-port AD
-    objectives (e.g. 2-port |S21| topology optimisation) read the raw
-    channels from this field and compose their own wave decomposition, since
-    a diagonal collapses each port to its self-reflection only.
+    ``lumped_port_sparams`` exposes the raw per-port ``(V_dft, I_dft,
+    V_ref_dft)`` tuples accumulated in the scan when
+    ``forward(port_s11_freqs=...)`` is used: V and I are the post-injection
+    channels (I with the Yee half-step phase), ``V_ref`` the pre-injection
+    drive sample that the N-port off-diagonal incident wave reads.
 
     ``dft_planes`` exposes the JIT-scan-accumulated complex DFT plane
     probes registered via :meth:`Simulation.add_dft_plane_probe`.  Each
