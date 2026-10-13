@@ -134,7 +134,10 @@ array) is not set on the boundary itself but by the source that needs it:
   an infinite array of your structure. A structure that is not uniform along
   such an axis is refused; declare the axis `"periodic"` to solve an array on
   purpose, or use `closed_box=True` for a finite scatterer. A mixed pair is
-  refused.
+  refused. This uniformity check applies at normal incidence. At an angle, the
+  axis the wave tilts along is not checked: the default `method="bloch"` solves
+  it as periodic (the preflight warning says the structure was not judged
+  along it), and `method="methodB"` absorbs on it.
 - **Plane wave in a closed box** (`closed_box=True`, a total-field box with
   the scattered field around it) needs `boundary="cpml"`, not a PEC cavity.
 
@@ -158,7 +161,7 @@ the solver path checks that it implements every face (refusals, below).
 | UPML with `cpml_kappa_max` other than 1 | all | refused: UPML does not read it | use `"cpml"` |
 | a waveguide port with no CPML face | all | refused when the port is added | use CPML |
 | a Floquet port scanned off normal | all | refused | normal incidence only |
-| a slab plane wave with a mixed pair of side faces, or a structure not uniform along a side axis that is not periodic | all | refused | declare that axis `"periodic"`, or use `closed_box=True` |
+| a slab plane wave with a mixed pair of side faces, or (at normal incidence) a structure not uniform along a side axis that is not periodic | all | refused | declare that axis `"periodic"`, or use `closed_box=True` |
 | `closed_box=True` plane wave in a PEC domain | all | refused | `boundary="cpml"` |
 
 [Refused inputs](/rfx/check/refusals/) explains how refusals read; the
