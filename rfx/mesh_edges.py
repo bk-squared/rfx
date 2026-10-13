@@ -371,6 +371,13 @@ def edge_aware_profile(
             except ValueError as exc:
                 last_error = exc
                 continue
+            except RuntimeError as exc:
+                # A partner candidate whose band fit does not converge is infeasible;
+                # without partners the error propagates as it did before.
+                if not partner_edges:
+                    raise
+                last_error = ValueError(str(exc))
+                continue
             key = (float(cells.min()), -int(cells.size))
             if best is None or key > best[0]:
                 best = (key, cells, nodes, ends, realized)

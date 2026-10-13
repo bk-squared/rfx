@@ -534,6 +534,22 @@ def test_rounding_level_partner_win_keeps_the_old_profile_bitwise(monkeypatch):
         assert np.asarray(actual).tobytes() == np.asarray(expected).tobytes()
 
 
+def test_a_partner_candidate_that_does_not_converge_keeps_the_old_profile(monkeypatch):
+    # Faces 0.65 mm and 1.3 mm past an edge: the all-partners band fit does
+    # not converge (RuntimeError); the parent mesh (183 cells) must come back.
+    edges = [SheetEdge(p, s) for p, s in [
+        (0.0036768344883638324, 1), (0.014861837802453046, -1),
+        (0.02110442040643769, 1), (0.027286130767069382, -1),
+        (0.03301433818587427, 1), (0.03732399437630228, -1)]]
+    kwargs = dict(sheet_edges=edges, faces=[0.027936130767069384, 0.02858613076719938])
+    result = edge_aware_profile(0.0, 0.049432886634875856, 0.002, **kwargs)
+    old = _without_face_partners(monkeypatch, 0.0, 0.049432886634875856, 0.002, **kwargs)
+    assert old.cells.min() == 0.0001587886065051022
+    assert old.cells.size == 183
+    for actual, expected in zip(result, old):
+        assert np.asarray(actual).tobytes() == np.asarray(expected).tobytes()
+
+
 def test_review_worst_face_has_at_least_76_339_um_cells():
     result = edge_aware_profile(
         0.0, 0.02674, 0.003, faces=[0.0179977], sheet_edges=[
