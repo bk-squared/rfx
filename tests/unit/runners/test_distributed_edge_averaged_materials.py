@@ -673,28 +673,18 @@ def _debye_box(boundary, lane, kind="debye", waveform=WAVEFORM):
 
 @pytest.mark.parametrize("boundary,lane", [
     ("pec", "run"), pytest.param("pec", "fwd", marks=pytest.mark.slow),
-    pytest.param("cpml", "fwd", marks=pytest.mark.slow),
-    pytest.param("cpml", "run", marks=pytest.mark.slow)])
+    ("cpml", "run")])
 @pytest.mark.parametrize("kind", ["debye", "lorentz", "mixed"])
-def test_a_dispersive_model_matches_one_device(boundary, lane, kind, request):
-    """CPML uses the per-step 9-ULP cross-trace bar (rfx CLAUDE.md), since
-    R15g replaces the vacuum-relative gate that collapsed with an exact reference.
+def test_a_dispersive_model_matches_one_device(boundary, lane, kind):
+    """CPML run rows were bit-identical (0 ULP) on all 230 saved prefixes on
+    both trees when moved (R15e), so a later non-zero snapshot reading is a
+    change, not noise (R15o). The cross-trace bar remains 9 ULP.
     """
     devices = _devices(2)
-    if (boundary, lane, kind) == ("cpml", "fwd", "mixed") and sys.platform.startswith("linux"):
-        # R15n: thinned prefixes read 10.0 against 9 at 800 on Linux, a thin
-        # margin; XPASS means the rounding path moved (platform or JAX version).
-        # Re-read the full prefix set before removing this weekly-only mark.
-        request.applymarker(pytest.mark.xfail(strict=True, reason=(
-            "#1535: two-pole (Debye+Lorentz) block, one vs two devices on Linux x86: "
-            "peak 3.75/8.44/11.5 ULP at 200/400/800 steps (main 3.5/6.1/8.4). The first "
-            "departure (Mac, every step) is the Debye polarisation state at step 5 in the same 18 interior "
-            "cells with the same bytes on main and here, away from the absorber and the "
-            "slab cut; the rest is the rounding path after that common origin.")))
     if boundary == "cpml":
-        from tests._distributed_cpml_cross_trace import WEEKLY_PREFIXES, cross_trace
+        from tests._distributed_cpml_cross_trace import PR_PREFIXES, cross_trace
         cross_trace(lambda: _debye_box(boundary, lane, kind), lane, devices,
-                    f"{kind}/{boundary}/{lane}", prefixes=WEEKLY_PREFIXES)
+                    f"{kind}/{boundary}/{lane}", prefixes=PR_PREFIXES)
         return
     n = STEPS[boundary]
 
@@ -797,28 +787,18 @@ def _cpml_1302_record(kind, lane, devices=None):
     return np.asarray(out.time_series, np.float64)
 
 
-@pytest.mark.parametrize("lane,kind", [
-    pytest.param("run", None, id="run"),
-    *[pytest.param(lane, kind, id=f"{kind}-{lane}", marks=pytest.mark.slow)
-      for lane in ("fwd", "fwd_graded") for kind in ("debye", "lorentz")],
-])
-def test_a_dispersive_cpml_box_stays_finite_and_matches_one_device(lane, kind):
+@pytest.mark.parametrize("lane", ["run"])
+def test_a_dispersive_cpml_box_stays_finite_and_matches_one_device(lane):
     """#1302: two devices, a Debye or Lorentz block in a CPML box. On main
     4725b748 the two-device run() grew without bound (probe non-finite from
     step 418; the one-device run is finite). Rows outside the domain now take
     the vacuum-cell ADE coefficients and dispersive runs keep the one-device
-    PEC backing of the absorber's outer node planes. Forward uses the per-step
-    9-ULP cross-trace bar (rfx CLAUDE.md), since R15g replaces the vacuum-relative
-    gate that collapsed when one CPML made its reference exact.
+    PEC backing of the absorber's outer node planes. Forward rows live in
+    test_distributed_cpml_dispersive_weekly.py.
     The run row keeps FLOOR_FACTOR x the vacuum agreement, measured here.
     (Graded run(devices=) refuses CPML with poles; the graded lane is
     forward(distributed=True).)"""
     devices = _devices(2)
-    if lane != "run":
-        from tests._distributed_cpml_cross_trace import WEEKLY_PREFIXES, cross_trace
-        cross_trace(lambda: _cpml_1302_box(kind, lane), lane, devices,
-                    f"cpml1302/{kind}/{lane}", prefixes=WEEKLY_PREFIXES)
-        return
     floor = _rel(_cpml_1302_record("vacuum", lane, devices),
                  _cpml_1302_record("vacuum", lane))
     for kind in ("debye", "lorentz"):
