@@ -83,16 +83,18 @@ What an absorber needs from the model:
 
 - **Depth.** `cpml_layers` defaults to 16. The CPML reflects less with more
   layers (see Accuracy). Preflight warns below 8 layers (`thin_absorber`).
-- **Room.** Keep the structure and the fields you measure at least two cells
-  away from the absorber (`absorber_proximity`), and keep shapes inside the
-  domain: a shape that reaches past the domain edge enters the absorber
-  (`geometry_in_absorber`).
+- **Room.** Keep shapes inside the domain: a shape that reaches past the
+  domain edge enters the absorber (`geometry_in_absorber`). Preflight also
+  warns when a probe, source or port is within two cells of the absorber
+  (`absorber_proximity`), where the fields carry the absorber's own error;
+  more room is better.
 - **A uniform medium next to each face.** On a graded mesh, keep the cells next
   to each absorbing face uniform over as many cells as the face has layers
   (`nu_grading_reaches_absorber`). A substrate that runs into the absorber on
   purpose (a line meant to look infinitely long) is reported too; read the
   warning and decide.
-- **CPML for most uses.** UPML is accepted on a uniform mesh only, and does
+- **CPML for most uses.** UPML is accepted on a uniform mesh on one device
+  only, is refused with a plane wave, and does
   not read `cpml_kappa_max`. Use CPML unless you have a reason not to.
 
 ### Metal and magnetic walls
@@ -113,21 +115,26 @@ array) is not set on the boundary itself but by the source that needs it:
 
 - `add_floquet_port(..., scan_theta=..., scan_phi=...)` turns on periodic
   transverse axes for you. A port scanned off normal is refused on every solver
-  path today; at normal incidence it runs on a uniform mesh.
+  path today; at normal incidence it runs on a uniform mesh on one device.
 - A plane wave (`add_tfsf_source(..., angle_deg=..., method="bloch")`) applies
   the phase across a periodic transverse axis.
 
 ### Rules that ports and plane waves put on the boundary
 
-- **Waveguide port.** It needs `boundary="cpml"` with at least one layer. A full-aperture port
+- **Waveguide port.** It needs at least one CPML face (`boundary="cpml"`, or
+  CPML on some faces of a `BoundarySpec`) and at least one layer. A full-aperture port
   (the guide fills the domain cross-section) needs PEC on the transverse
   faces; on a uniform mesh the default transverse absorbers are solved as PEC
   with a warning, and on a graded mesh you declare them explicitly.
-- **Plane wave from a slab source.** The faces across the beam must let the
-  wave pass unchanged: periodic pairs, or the equivalent wall where the
-  incident field allows it (PMC on the faces normal to H, PEC on the faces
-  normal to E), with a warning that names the replacement. Faces that would
-  change the incident wave are refused.
+- **Plane wave from a slab source.** On each axis across the beam, the two
+  faces must be periodic, or both the matching wall (PEC on the faces normal to
+  E, PMC on the faces normal to H), or both absorbing, which is the default.
+  Walls and absorbers there are solved as periodic, absorber layers included,
+  and preflight warns (`tfsf_transverse_periodic`): along that axis you model
+  an infinite array of your structure. A structure that is not uniform along
+  such an axis is refused; declare the axis `"periodic"` to solve an array on
+  purpose, or use `closed_box=True` for a finite scatterer. A mixed pair is
+  refused.
 - **Plane wave in a closed box** (`closed_box=True`, a total-field box with
   the scattered field around it) needs `boundary="cpml"`, not a PEC cavity.
 
@@ -146,11 +153,12 @@ the solver path checks that it implements every face (refusals, below).
 | `"pmc"` face | multi-device, ADI, subgridded | refused | run on one device on a uniform or graded mesh |
 | `"periodic"` axis | graded mesh, multi-device, ADI, subgridded | refused | use a uniform mesh |
 | an absorbing face (`"cpml"` or `"upml"`) | ADI | refused when the `Simulation` is created | `boundary="pec"` for a closed cavity, or the default solver for an open structure |
-| `"upml"` | graded mesh, ADI, subgridded | refused | use `"cpml"` |
+| `"upml"` | graded mesh, multi-device, ADI, subgridded | refused | use `"cpml"` |
+| `"upml"` with a plane wave (`add_tfsf_source`) | all | refused | use `"cpml"` |
 | UPML with `cpml_kappa_max` other than 1 | all | refused: UPML does not read it | use `"cpml"` |
-| a waveguide port without `boundary="cpml"` | all | refused when the port is added | use CPML |
+| a waveguide port with no CPML face | all | refused when the port is added | use CPML |
 | a Floquet port scanned off normal | all | refused | normal incidence only |
-| a slab plane wave whose side faces would change the incident wave | all | refused when the source is added | periodic sides, or the wall the message names |
+| a slab plane wave with a mixed pair of side faces, or a structure not uniform along a side axis that is not periodic | all | refused | declare that axis `"periodic"`, or use `closed_box=True` |
 | `closed_box=True` plane wave in a PEC domain | all | refused | `boundary="cpml"` |
 
 [Refused inputs](/rfx/check/refusals/) explains how refusals read; the
