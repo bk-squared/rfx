@@ -1,9 +1,40 @@
 """Form uniform-run and waveguide permittivity operands in array order."""
 
+from dataclasses import dataclass, field, replace
+
+import jax
 import jax.numpy as jnp
 
 from rfx.core.yee import add_lumped_eps
 from rfx.geometry import conformal as conformal_module
+
+
+@jax.tree_util.register_dataclass
+@dataclass(frozen=True)
+class TensorOperands:
+    """Finished tensor operands carried by one realized material model."""
+
+    eps: tuple | None = None
+    inv_eps: tuple | None = None
+    conformal_weights: tuple | None = None
+    inv_eps_smooth: bool = field(default=False, metadata={"static": True})
+
+    @classmethod
+    def of(cls, eps=None, inv_eps=None, conformal_weights=None, inv_eps_smooth=False):
+        """Represent an absent tensor by None, never an empty operand set."""
+        if eps is None and inv_eps is None and conformal_weights is None:
+            return None
+        return cls(eps, inv_eps, conformal_weights, inv_eps_smooth)
+
+
+def attach_tensor(materials, operands):
+    """Attach a single operand set without changing the realization's identity."""
+    components = materials.components
+    if components is None:
+        raise ValueError("tensor operands require realized material components")
+    if components.tensor is not None and components.tensor is not operands:
+        raise ValueError("two tensor operand sets for one model")
+    return materials._replace(components=replace(components, tensor=operands))
 
 
 def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,

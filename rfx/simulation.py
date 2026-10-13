@@ -1219,6 +1219,19 @@ def _build_step_setup(
     with its own driver-specific ``_StepContext`` fields before constructing
     the context.
     """
+    dt = grid.dt
+    dx = grid.dx
+
+    # ---- boundary configuration ----
+    periodic = resolve_periodic(grid, periodic)
+    from rfx.model.materials import with_components
+    from rfx.model.tensor_operands import TensorOperands
+    materials = with_components(materials, grid, periodic=periodic, tensor=
+        TensorOperands.of(aniso_eps, aniso_inv_eps, conformal_weights, aniso_inv_eps_smooth))
+    tensor = materials.components.tensor
+    aniso_eps, aniso_inv_eps = (tensor.eps, tensor.inv_eps) if tensor else (None, None)
+    conformal_weights = tensor.conformal_weights if tensor else None
+    aniso_inv_eps_smooth = tensor.inv_eps_smooth if tensor else False
     from rfx.sources.wire_radius import require_radius_update
     require_radius_update(
         materials, lane="uniform Yee with dispersion/UPML/tensor or design-box updates",
@@ -1226,13 +1239,6 @@ def _build_step_setup(
                      or aniso_eps is not None or aniso_inv_eps is not None
                      or stencil_order != 2 or design_box is not None
                      or design_occupancy is not None or kerr_chi3 is not None))
-    dt = grid.dt
-    dx = grid.dx
-
-    # ---- boundary configuration ----
-    periodic = resolve_periodic(grid, periodic)
-    from rfx.model.materials import with_components
-    materials = with_components(materials, grid, periodic=periodic)
     cpml_axes = drop_periodic_axes(cpml_axes, periodic)  # no CPML/PEC on periodic axes
     # ---- the walls, per face, from the grid's declaration (#1164) ----
     # ``resolve_wall_faces`` is the one rule every entry point shares:
@@ -1681,11 +1687,8 @@ def _build_step_setup(
         bloch=_bloch,
         debye_coeffs=debye_coeffs,
         lorentz_coeffs=lorentz_coeffs,
-        aniso_eps=aniso_eps,
-        aniso_inv_eps=aniso_inv_eps,
         pec_edge_masks=pec_edge_masks,
         pec_static_edge_masks=pec_static_edge_masks,
-        conformal_weights=conformal_weights,
         kerr_chi3=kerr_chi3,
         ntff=ntff,
         pec_faces_frozen=_pec_faces_frozen,
@@ -1823,11 +1826,8 @@ class _StepContext:
     bloch: Any = None  # per-axis Bloch phase for oblique-periodic TFSF (#404); None = real path
     debye_coeffs: Any = None
     lorentz_coeffs: Any = None
-    aniso_eps: Any = None
-    aniso_inv_eps: Any = None
     pec_edge_masks: Any = None
     pec_static_edge_masks: Any = None
-    conformal_weights: Any = None
     kerr_chi3: Any = None
     ntff: Any = None
     # In-loop block current moments (rfx.current_moments). Default OFF so
@@ -1911,8 +1911,8 @@ def core_step_invariants(ctx: _StepContext) -> dict:
     from rfx.model.materials import with_components
     ctx = replace(ctx, materials=with_components(ctx.materials, ctx.grid, periodic=ctx.periodic))
     materials = ctx.materials
-    aniso_eps = ctx.aniso_eps
-    aniso_inv_eps = ctx.aniso_inv_eps
+    tensor = materials.components.tensor
+    aniso_eps, aniso_inv_eps = (tensor.eps, tensor.inv_eps) if tensor else (None, None)
 
     # #1043. ``apply_cpml_e`` builds its psi coefficient from a permittivity,
     # and it has to be the SAME one the Yee half of this timestep used, or the
@@ -2294,7 +2294,8 @@ def run(
         # the baked coefficients come from the scalar realized permittivity,
         # so a tensor would be dropped (kottke_pec returned the unsmoothed
         # field bit for bit on this path).
-        and aniso_eps is None and aniso_inv_eps is None
+        and not _ctx["use_aniso_inv"]
+        and (_ctx["materials"].components.tensor is None or _ctx["materials"].components.tensor.eps is None)
         and periodic == (False, False, False)
     )
     # On GPU the baked-PEC path eliminates expensive scatter-update
@@ -2502,9 +2503,8 @@ def run(
                 n_steps=n_steps,
                 report_every=report_every,
                 label=report_label,
-                trace_probes=(materials, aniso_eps, aniso_inv_eps,
-                              pec_mask, pec_edge_masks,
-                              pec_occupancy, conformal_weights,
+                trace_probes=(_step_ctx.materials,
+                              pec_mask, pec_edge_masks, pec_occupancy,
                               kerr_chi3, debye, lorentz, tfsf),
                 stop_fn=_after_chunk,
                 chunk=int(stop_interval),
@@ -2530,9 +2530,8 @@ def run(
                 # in its closure — carry_init and xs stay concrete under bare
                 # grad/vmap, so checking only those would let the request
                 # through and print trace-time lines.
-                trace_probes=(materials, aniso_eps, aniso_inv_eps,
-                              pec_mask, pec_edge_masks,
-                              pec_occupancy, conformal_weights,
+                trace_probes=(_step_ctx.materials,
+                              pec_mask, pec_edge_masks, pec_occupancy,
                               kerr_chi3, debye, lorentz, tfsf),
                 # #1258: a chunk that does not start on a multiple of the
                 # snapshot interval still records at the global multiples.
@@ -3240,9 +3239,8 @@ def run_until_decay(
         # Probe the material/geometry arrays too, not just the carry: under
         # a bare grad/vmap the carry stays concrete and the tracer rides in
         # through the closure instead.
-        check_not_traced(carry, materials, aniso_eps, aniso_inv_eps,
-                         pec_mask, pec_edge_masks,
-                         pec_occupancy, conformal_weights,
+        check_not_traced(carry, _step_ctx.materials,
+                         pec_mask, pec_edge_masks, pec_occupancy,
                          kerr_chi3, debye, lorentz, tfsf)
         _reporter = ProgressReporter(
             max_steps, label=report_label, total_is_cap=True)

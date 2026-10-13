@@ -14,6 +14,7 @@ import jax
 
 import jax.numpy as jnp
 
+from rfx.model.tensor_operands import TensorOperands
 from rfx.core.jax_utils import is_tracer
 from rfx.core.yee import (
     MaterialArrays, add_film, add_lumped_eps, cell_owned_component_materials,
@@ -529,6 +530,7 @@ class KernelComponents(NamedTuple):
     eps_update: tuple
     sigma_update: tuple
     mu_update: tuple
+    tensor: TensorOperands | None = None
 
 
 @jax.tree_util.register_dataclass
@@ -539,8 +541,7 @@ class ComponentMaterials:
     ``eps``/``sigma``/``mu`` hold volume values. ``*_update`` include only
     the corresponding component's lumped/wire stamp, already added once.
     UPML retains its historical cell-owned E convention explicitly. Tensor
-    corrections and design windows remain separate until their assembly stage
-    migrates; this step does not change their constitutive rule.
+    operands are carried in ``tensor``; design windows remain separate.
     """
 
     eps: tuple
@@ -560,6 +561,7 @@ class ComponentMaterials:
     periodic: tuple = field(metadata={"static": True})
     grid_key: tuple = field(metadata={"static": True})
     source_upml: bool = field(default=False, metadata={"static": True})
+    tensor: TensorOperands | None = None
 
 
 from types import SimpleNamespace  # noqa: E402
@@ -788,19 +790,26 @@ def realize_components(cells, grid, *, periodic, dt=None, budget=None, grid_kind
 
 
 def with_components(materials, grid, *, periodic, debye_spec=None, lorentz_spec=None,
-                    dt=None, budget=None, grid_kind="Grid"):
+                    dt=None, budget=None, grid_kind="Grid", tensor=None):
     """Attach one realization after the last cell/stamp write, or reuse it.
 
     Callers must not modify the cells after this boundary. Raw low-level
     runner inputs enter here too; no global or identity cache is involved.
+    ``tensor`` (a :class:`rfx.model.tensor_operands.TensorOperands` or None)
+    is attached to the realization by
+    :func:`rfx.model.tensor_operands.attach_tensor`.
     """
     if materials.components is not None:
         validate_components(materials, periodic=periodic, grid=grid)
+    else:
+        components = realize_components(
+            ComponentCells(materials, debye_spec, lorentz_spec), grid, periodic=periodic,
+            **({} if budget is None else dict(dt=dt, budget=budget, grid_kind=grid_kind)))
+        materials = materials._replace(components=components)
+    if tensor is None:
         return materials
-    components = realize_components(
-        ComponentCells(materials, debye_spec, lorentz_spec), grid, periodic=periodic,
-        **({} if budget is None else dict(dt=dt, budget=budget, grid_kind=grid_kind)))
-    return materials._replace(components=components)
+    from rfx.model.tensor_operands import attach_tensor
+    return attach_tensor(materials, tensor)
 
 
 def _grid_key(grid):
@@ -840,16 +849,17 @@ def kernel_materials(materials, *, keep_eps=False, electric=True, magnetic=True,
         edge_keep=materials.edge_keep,
         components=KernelComponents(c.eps_update if electric and epsilon else (),
                                     c.sigma_update if electric else (),
-                                    c.mu_update if magnetic else ()))
+                                    c.mu_update if magnetic else (), c.tensor))
 
 
 def kernel_context(ctx):
     """Select only the operands of the enabled uniform update branches."""
+    tensor = ctx.materials.components.tensor
     return replace(ctx, materials=kernel_materials(
         ctx.materials, keep_eps=ctx.use_kerr,
         electric=not (ctx.use_debye or ctx.use_lorentz or ctx.use_upml or ctx.use_fast_he),
         magnetic=not (ctx.use_upml or ctx.use_fast_he),
-        epsilon=ctx.aniso_eps is None and ctx.aniso_inv_eps is None))
+        epsilon=tensor is None or (tensor.eps is None and tensor.inv_eps is None)))
 
 
 def h_components(materials, grid, *, periodic):

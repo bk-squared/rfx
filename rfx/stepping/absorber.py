@@ -10,10 +10,11 @@ def cpml_context(ctx):
     from rfx.model.materials import kernel_context
     loss = None
     if ctx.use_cpml and not ctx.use_debye:
-        plain = not ctx.use_lorentz
+        tensor = ctx.materials.components.tensor
+        plain = not ctx.use_lorentz and tensor is not None
         loss = material_loss_operands(ctx.materials,
-                             eps=ctx.aniso_eps if plain else None,
-                             inv=ctx.aniso_inv_eps if plain else None)
+                             eps=tensor.eps if plain else None,
+                             inv=tensor.inv_eps if plain else None)
     return kernel_context(ctx), loss
 
 
