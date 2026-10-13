@@ -28,7 +28,7 @@ def _make_cavity(freq_max=5e9, domain=(0.05, 0.05, 0.025)):
 
 def _make_sources_and_probes(grid, n_steps):
     """Create a Gaussian pulse source and center probe for *n_steps*."""
-    pulse = GaussianPulse(f0=2.5e9, bandwidth=2.5e9)
+    pulse = GaussianPulse(f0=2.5e9, bandwidth=0.8)
     src_pos = (0.01, 0.01, 0.01)
     source = make_source(grid, src_pos, "ez", pulse, n_steps)
     probe_pos = (0.025, 0.025, 0.0125)

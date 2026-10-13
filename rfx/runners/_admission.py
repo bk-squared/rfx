@@ -1006,11 +1006,35 @@ def message(lane: str, rows, sim, run_args=None) -> str:
             "carries it runs.")
 
 
+class _NoWarnings:
+    """Drops the unresolved-pulse advisory; admission keeps only its refusal."""
+
+    @staticmethod
+    def warn(*_args, **_kwargs):
+        return None
+
+
+def refuse_undriven_drives(sim) -> None:
+    """Issue 1668: refuse a drive whose pulse is not resolved by dt (its
+    table, sampled at dt over the pulse, holds no value above 1e-6 of its
+    amplitude), on entries that run no preflight. The same check preflight
+    runs, ``_validate_cfg_unresolved_pulse``; raises ``PreflightConfigError``
+    (a ``ValueError``)."""
+    from rfx.core.jax_utils import is_tracer
+    from rfx.grid import C0
+    check = getattr(sim, "_validate_cfg_unresolved_pulse", None)
+    if check is None or is_tracer(getattr(sim, "_dx", None)):
+        return
+    check(_NoWarnings, sim._dx or C0 / sim._freq_max / 20.0)
+
+
 def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None:
     """Raise ``NotImplementedError``, as the lanes' own refusals do, if
     ``lane`` does not carry every input ``sim`` declares. ``run_args`` are
     the call's static arguments that ``CALL_GATES`` read; ``grid`` is the
-    grid the lane built, for its ``LANE_GATES``."""
+    grid the lane built, for its ``LANE_GATES``. A drive whose pulse is not
+    resolved by dt is refused first (``refuse_undriven_drives``)."""
+    refuse_undriven_drives(sim)
     from rfx.sources.wire_radius import require_radius_support
     require_radius_support(sim, lane)
     rows = refused(sim, lane, run_args, grid)
