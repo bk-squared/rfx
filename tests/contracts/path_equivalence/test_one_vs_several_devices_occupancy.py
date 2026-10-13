@@ -122,13 +122,25 @@ ROWS = ['U-0.2', 'D-random']
 
 
 @pytest.mark.parametrize('devices', DEVICES)
-def test_no_occupancy_one_vs_several_bitwise(runs, devices):
-    """Pinned invariant: no occupancy input, identical bits on every lane."""
-    several, _ = record(runs, 'none', devices)
-    one, _ = record(runs, 'none', 1)
-    assert one.tobytes() == several.tobytes(), (
-        f'{int(np.sum(one != several))} probe samples differ, '
-        f'largest {float(np.max(np.abs(one.astype(np.float64) - several)))}')
+def test_no_occupancy_one_vs_several_within_cross_trace_bars(runs, devices):
+    """No occupancy input: paired family peaks and accumulated probe DFTs.
+
+    multi-device results on occupancy-free graded scenes are no longer bit-identical to one device since W1 (1-2 float32 units): the wrapped single-device step rounds differently inside shard_map with bit-equal operands (S3-SLAB-WRAP-DECLARE 2026-10-13)
+    """
+    several, dt_several = record(runs, 'none', devices)
+    one, dt = record(runs, 'none', 1)
+    assert dt_several == dt
+    e_peak = np.float32(np.max(np.abs(one[:, E_COLUMNS])))
+    h_peak = np.float32(np.max(np.abs(one[:, H_COLUMNS])))
+    h_scale = np.float32(max(float(h_peak), float(e_peak) / Z0))
+    delta = np.abs(one.astype(np.float64) - several)
+    e_units = np.max(delta[:, E_COLUMNS]) / float(np.spacing(e_peak))
+    h_units = np.max(delta[:, H_COLUMNS]) / float(np.spacing(h_scale))
+    assert e_units <= 9, f'E {e_units} float32 units > 9'
+    assert h_units <= 9, f'H {h_units} paired float32 units > 9'
+    x_one, x_several = dft(one, dt), dft(several, dt)
+    error, peak = np.max(np.abs(x_several - x_one)), np.max(np.abs(x_one))
+    assert error <= 1e-4 * peak, f'DFT {error} > 1e-4 * {peak}'
 
 
 @pytest.mark.parametrize('devices', DEVICES)

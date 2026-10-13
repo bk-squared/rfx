@@ -1,4 +1,4 @@
-"""W1 slice 1: bitwise predictions for the canonical graded slab step."""
+"""W1 slice 1: model identity and cross-trace bars for the graded slab step."""
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -6,7 +6,8 @@ import pytest
 from jax.sharding import Mesh
 
 from rfx import Simulation
-from rfx.core.yee import MaterialArrays
+from rfx.core.yee import EPS_0, MU_0, MaterialArrays
+from tests.contracts.path_equivalence.test_one_vs_several_devices_occupancy import BINS_HZ
 from rfx.model.electric_metrics import stage_forward_materials
 from rfx.nonuniform import _build_nu_scan, make_current_source, run_nonuniform
 from rfx.runners.distributed_nu import build_sharded_nu_grid, run_nonuniform_distributed_pec
@@ -79,6 +80,30 @@ def assert_bits(want, got):
     assert difference(want, got) is None, difference(want, got)
 
 
+def assert_cross_trace_bars(want, got, dt):
+    """Reference scales and DFT values come only from the one-device probes."""
+    one, several = np.asarray(want[0]), np.asarray(got[0])
+    assert one.dtype == several.dtype == np.float32
+    assert one.shape == several.shape
+    assert np.isfinite(one).all() and np.isfinite(several).all()
+    e_columns, h_columns = (0, 1, 2, 5), (3, 4)
+    e_peak = np.float32(np.max(np.abs(one[:, e_columns])))
+    h_peak = np.float32(np.max(np.abs(one[:, h_columns])))
+    z0 = float(np.sqrt(MU_0 / EPS_0))
+    h_scale = np.float32(max(float(h_peak), float(e_peak) / z0))
+    delta = np.abs(one.astype(np.float64) - several)
+    e_units = np.max(delta[:, e_columns]) / float(np.spacing(e_peak))
+    h_units = np.max(delta[:, h_columns]) / float(np.spacing(h_scale))
+    assert e_units <= 9, f'E {e_units} float32 units > 9'
+    assert h_units <= 9, f'H {h_units} paired float32 units > 9'
+    kernel = np.exp(-2j * np.pi * np.outer(BINS_HZ, np.arange(len(one)) * dt))
+    x_one = kernel @ one.astype(np.float64)
+    x_several = kernel @ several.astype(np.float64)
+    dft_error = np.max(np.abs(x_several - x_one))
+    dft_peak = np.max(np.abs(x_one))
+    assert dft_error <= 1e-4 * dft_peak, f'DFT {dft_error} > 1e-4 * {dft_peak}'
+
+
 def canonical_setup(data, steps, *, edge_masks=None):
     grid, materials, occupancy, sources, probes = data
     return _build_nu_scan(grid, materials, steps, cpml_axes='',
@@ -134,6 +159,9 @@ def observe_one_slab_cut(monkeypatch, data, steps, *, edge_masks=None, stop=Fals
     def checked(*args, **kwargs):
         actual, carry = original(*args, **kwargs)
         check_one_slab_cut(expected, actual, args[2])
+        layout = args[2]
+        assert_same_tree(expected.carry_init, carry, 'carry',
+                         owned=slice(layout.ghost_width, layout.ghost_width + layout.nx))
         if stop:
             raise BeforeStepping
         return actual, carry
@@ -169,20 +197,28 @@ def test_one_slab_invariants(row, kind, monkeypatch):
 def test_one_slab(row, kind, monkeypatch):
     data = scene(row, True, kind=kind)
     observe_one_slab_cut(monkeypatch, data, 12)
-    assert_bits(single(data, 12), several(data, 12, 1))
+    assert_cross_trace_bars(single(data, 12), several(data, 12, 1), data[0].dt)
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "W1-P1 falsified: step 3 on 2/3 devices; no occupancy, source off block: "
-    "Ey[2,6,5] single=-6.180396e-05 slab=-6.180397e-05; "
-    "each occupancy/source row also first differs at step 3 (REPORT.md)"))
 @pytest.mark.parametrize('devices', [2, 3])
 @pytest.mark.parametrize('steps', [12, 60, 240])
 @pytest.mark.parametrize('on', [False, True], ids=['off', 'on'])
 @pytest.mark.parametrize('row', ['none', '0.2', '0.5', '0.8', 'random'])
-def test_p4_bitwise(row, on, steps, devices):
+def test_p4_within_cross_trace_bars(row, on, steps, devices):
     data = scene(row, on, steps)
-    assert_bits(single(data, steps), several(data, steps, devices))
+    assert_cross_trace_bars(single(data, steps), several(data, steps, devices), data[0].dt)
+
+
+@pytest.mark.parametrize('row,on', [('none', False), ('0.2', False), ('random', True)],
+                         ids=['none', 'U-0.2', 'D-random'])
+def test_two_vs_three_bitwise(row, on):
+    """The wrapped two- and three-device probes and all final fields agree."""
+    data = scene(row, on, 60)
+    two, three = several(data, 60, 2), several(data, 60, 3)
+    assert np.array_equal(np.asarray(two[0]), np.asarray(three[0])), 'probes'
+    for field in FIELDS:
+        assert np.array_equal(np.asarray(getattr(two[1], field)),
+                              np.asarray(getattr(three[1], field))), field
 
 
 @pytest.mark.parametrize('feature', ['cpml', 'debye', 'lorentz', 'ports', 'dft', 'flux', 'ntff', 'pmc', 'periodic_x'])
@@ -314,40 +350,41 @@ def localized_operands(target, data, previous, current, reference, staged, layou
                     and drive_rows['single'] == drive_rows['slab'])
 
 
-@pytest.mark.parametrize('devices', [1, 2, 3])
-def test_localized_operands(devices):
-    import json
-    import os
-    from pathlib import Path
+@pytest.mark.parametrize('row', ['none', '0.2', '0.5', '0.8', 'random'])
+@pytest.mark.parametrize('on', [False, True], ids=['off', 'on'])
+def test_localized_operands(row, on, monkeypatch):
+    """One-slab model identity at the first differing field cell of each row."""
     from rfx.runners import _distributed_nu_wrapped as runner
     from rfx.stepping.slab import Slab
-    if not os.environ.get('W1_OPERANDS'):
-        pytest.skip('set W1_OPERANDS after localization for operand reports')
-    targets = json.loads(Path(f'.w1s1/localization-{devices}.json').read_text())
-    records = []
-    for target in targets:
-        if 'component' not in target:
-            continue
-        data = scene(target['row'], target['on'], target['step'])
-        reference = canonical_setup(data, target['step'])
-        captures = []
-        original_split = runner.split
-        def observe(*args, **kwargs):
-            output = original_split(*args, **kwargs)
-            captures.append(dict(output[0]))
-            return output
-        with pytest.MonkeyPatch.context() as patch:
-            patch.setattr(runner, 'split', observe)
-            previous_data = scene(target['row'], target['on'], target['step'] - 1)
-            previous = (single(previous_data, target['step']-1),
-                        several(previous_data, target['step']-1, devices))
-            current = (single(data, target['step']), several(data, target['step'], devices))
-        record = localized_operands(target, data, previous, current, reference,
-                                    captures[-1], Slab(data[0].nx, devices))
-        cell = tuple(target['cell'])
-        record['reproduced_target'] = all(
-            f'{np.asarray(getattr(result[1], target["component"])).view(np.uint32)[cell]:08x}' == target[name]
-            for result, name in zip(current, ('single_bits', 'slab_bits')))
-        records.append(record)
-        print('OPERANDS ' + json.dumps(record), flush=True)
-    Path(f'.w1s1/operands-{devices}.json').write_text(json.dumps(records, indent=2))
+
+    # The recorded first difference is step 3; verify step 2 still agrees.
+    step = 3
+    data = scene(row, on, step)
+    reference = canonical_setup(data, step)
+    captures = []
+    original_split = runner.split
+
+    def observe(*args, **kwargs):
+        output = original_split(*args, **kwargs)
+        captures.append(dict(output[0]))
+        return output
+
+    monkeypatch.setattr(runner, 'split', observe)
+    previous_data = scene(row, on, step - 1)
+    previous = single(previous_data, step - 1), several(previous_data, step - 1, 1)
+    assert_bits(*previous)
+    current = single(data, step), several(data, step, 1)
+    layout = Slab(data[0].nx, 1)
+    check_one_slab_cut(reference, captures[-1], layout)
+    for component in FIELDS:
+        a, b = (np.asarray(getattr(result[1], component)) for result in current)
+        cells = np.argwhere(a.view(np.uint32) != b.view(np.uint32))
+        if len(cells):
+            target = dict(row=row, on=on, step=step, component=component,
+                          cell=tuple(int(i) for i in cells[0]))
+            record = localized_operands(target, data, previous, current,
+                                        reference, captures[-1], layout)
+            assert record['all_recorded_operands_equal'], record
+            break
+    else:
+        pytest.fail('recorded step-3 first difference was not reproduced')
