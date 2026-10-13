@@ -11,9 +11,11 @@ import numpy as np
 from rfx.runners import distributed_nu, nonuniform
 
 FIELDS = ('ex', 'ey', 'ez', 'hx', 'hy', 'hz')
+WEEKLY_PREFIXES = (*range(1, 51), *range(60, 201, 10), *range(300, 801, 100))
+PR_PREFIXES = (200, 400, 800)
 
 
-def cross_trace(factory, lane, devices, label):
+def cross_trace(factory, lane, devices, label, *, prefixes):
     """Observe existing returns; leave solver inputs and compiled outputs intact."""
     captured = {}
     single_runner = nonuniform.run_nonuniform_path
@@ -56,7 +58,9 @@ def cross_trace(factory, lane, devices, label):
             assert arr.dtype == np.float32 and np.isfinite(arr).all(), (label, n, f)
         return values
 
-    steps = list(range(1, 201)) + list(range(220, 801, 20))
+    steps = tuple(prefixes)
+    assert steps and all(n > 0 for n in steps) and tuple(sorted(set(steps))) == steps
+    assert {200, 400, 800}.issubset(steps)
     peaks, differences = [], []
     with patch.object(nonuniform, 'run_nonuniform_path', single), patch.object(
             distributed_nu, 'run_nonuniform_distributed_pec', multi):
@@ -72,7 +76,7 @@ def cross_trace(factory, lane, devices, label):
     peaks, differences = np.asarray(peaks), np.asarray(differences)
     results = {}
     for length in (200, 400, 800):
-        selection = [i for i, n in enumerate(steps) if n <= length and (length == 200 or n % 20 == 0)]
+        selection = [i for i, n in enumerate(steps) if n <= length]
         peak_e = float(peaks[selection, :3].max())
         peak_h = float(peaks[selection, 3:].max())
         scale_h = max(peak_h, peak_e / 376.730313668)

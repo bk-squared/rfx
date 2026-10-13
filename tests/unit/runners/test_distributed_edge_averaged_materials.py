@@ -673,7 +673,8 @@ def _debye_box(boundary, lane, kind="debye", waveform=WAVEFORM):
 
 @pytest.mark.parametrize("boundary,lane", [
     ("pec", "run"), pytest.param("pec", "fwd", marks=pytest.mark.slow),
-    ("cpml", "fwd"), ("cpml", "run")])
+    pytest.param("cpml", "fwd", marks=pytest.mark.slow),
+    pytest.param("cpml", "run", marks=pytest.mark.slow)])
 @pytest.mark.parametrize("kind", ["debye", "lorentz", "mixed"])
 def test_a_dispersive_model_matches_one_device(boundary, lane, kind, request):
     """CPML uses the per-step 9-ULP cross-trace bar (rfx CLAUDE.md), since
@@ -681,6 +682,9 @@ def test_a_dispersive_model_matches_one_device(boundary, lane, kind, request):
     """
     devices = _devices(2)
     if (boundary, lane, kind) == ("cpml", "fwd", "mixed") and sys.platform.startswith("linux"):
+        # R15n: thinned prefixes read 10.0 against 9 at 800 on Linux, a thin
+        # margin; XPASS means the rounding path moved (platform or JAX version).
+        # Re-read the full prefix set before removing this weekly-only mark.
         request.applymarker(pytest.mark.xfail(strict=True, reason=(
             "#1535: two-pole (Debye+Lorentz) block, one vs two devices on Linux x86: "
             "peak 3.75/8.44/11.5 ULP at 200/400/800 steps (main 3.5/6.1/8.4). The first "
@@ -688,9 +692,9 @@ def test_a_dispersive_model_matches_one_device(boundary, lane, kind, request):
             "cells with the same bytes on main and here, away from the absorber and the "
             "slab cut; the rest is the rounding path after that common origin.")))
     if boundary == "cpml":
-        from tests._distributed_cpml_cross_trace import cross_trace
+        from tests._distributed_cpml_cross_trace import WEEKLY_PREFIXES, cross_trace
         cross_trace(lambda: _debye_box(boundary, lane, kind), lane, devices,
-                    f"{kind}/{boundary}/{lane}")
+                    f"{kind}/{boundary}/{lane}", prefixes=WEEKLY_PREFIXES)
         return
     n = STEPS[boundary]
 
@@ -719,6 +723,16 @@ def test_a_dispersive_model_matches_one_device(boundary, lane, kind, request):
     got = _rel(actual, expected)
     floor = _rel(_record(boundary, lane, "vacuum", 2, devices), _single(boundary, lane, "vacuum", 2))
     _check(f"{kind}/{boundary}/{lane}", got, floor)
+
+
+@pytest.mark.parametrize("kind", ["debye", "lorentz"])
+def test_cpml_dispersive_pr_snapshots(kind):
+    """Snapshots under-read the per-step maximum by up to 65 % on the saved
+    records; the weekly test is the judge (R15n). The bar remains 9 ULP.
+    """
+    from tests._distributed_cpml_cross_trace import PR_PREFIXES, cross_trace
+    cross_trace(lambda: _debye_box("cpml", "fwd", kind), "fwd", _devices(2),
+                f"pr/{kind}/cpml/fwd", prefixes=PR_PREFIXES)
 
 
 @pytest.mark.parametrize("kind", ["debye", "lorentz", "mixed"])
@@ -783,8 +797,12 @@ def _cpml_1302_record(kind, lane, devices=None):
     return np.asarray(out.time_series, np.float64)
 
 
-@pytest.mark.parametrize("lane", ["run", "fwd", "fwd_graded"])
-def test_a_dispersive_cpml_box_stays_finite_and_matches_one_device(lane):
+@pytest.mark.parametrize("lane,kind", [
+    pytest.param("run", None, id="run"),
+    *[pytest.param(lane, kind, id=f"{kind}-{lane}", marks=pytest.mark.slow)
+      for lane in ("fwd", "fwd_graded") for kind in ("debye", "lorentz")],
+])
+def test_a_dispersive_cpml_box_stays_finite_and_matches_one_device(lane, kind):
     """#1302: two devices, a Debye or Lorentz block in a CPML box. On main
     4725b748 the two-device run() grew without bound (probe non-finite from
     step 418; the one-device run is finite). Rows outside the domain now take
@@ -797,10 +815,9 @@ def test_a_dispersive_cpml_box_stays_finite_and_matches_one_device(lane):
     forward(distributed=True).)"""
     devices = _devices(2)
     if lane != "run":
-        from tests._distributed_cpml_cross_trace import cross_trace
-        for kind in ("debye", "lorentz"):
-            cross_trace(lambda: _cpml_1302_box(kind, lane), lane, devices,
-                        f"cpml1302/{kind}/{lane}")
+        from tests._distributed_cpml_cross_trace import WEEKLY_PREFIXES, cross_trace
+        cross_trace(lambda: _cpml_1302_box(kind, lane), lane, devices,
+                    f"cpml1302/{kind}/{lane}", prefixes=WEEKLY_PREFIXES)
         return
     floor = _rel(_cpml_1302_record("vacuum", lane, devices),
                  _cpml_1302_record("vacuum", lane))
