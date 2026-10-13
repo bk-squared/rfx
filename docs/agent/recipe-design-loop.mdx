@@ -54,10 +54,13 @@ physical S11 design objective through `forward()` on every PR.
 ## Direct `jax.grad` through a waveguide S-matrix calculation
 
 `jax.grad` flows end-to-end through `sim.compute_waveguide_s_matrix(...,
-eps_override=eps(theta))` and `compute_msl_s_matrix` — the gradient itself
-is checked against finite differences
-in `tests/unit/autodiff/test_msl_ad_fd_converged.py`; the example
-`examples/inverse_design/differentiable_s11_design.py` uses the same path. The objective callables from
+eps_override=eps(theta))` and `compute_msl_s_matrix`.
+`tests/unit/autodiff/test_sparam_ad_end_to_end.py` checks that the gradient
+reaches both calculators. For the microstrip calculator,
+`tests/unit/autodiff/test_msl_ad_fd_converged.py` compares it with finite
+differences on a converged record (a slow GPU test, not run on every change).
+The waveguide example `examples/inverse_design/differentiable_s11_design.py`
+computes its own central finite-difference cross-check. The objective callables from
 `rfx.optimize_objectives` compose here too — they accept any result
 exposing `.s_params` / `.freqs`.
 
@@ -100,9 +103,9 @@ them off the result with `rfx.observables`:
 Composition is `lambda p: field_softmax(names)(sim.forward(eps_override=p))`
 — same factory-returns-`callable(Result)` style as `rfx.optimize_objectives`,
 plugging directly into a hand-rolled `jax.grad` descent loop (or `optimize()`
-with a `DesignRegion`). Works on any solver path's `run()`/`forward()` results
-from both the uniform and non-uniform meshes; fenced fail-loud on the two
-distributed lanes (neither sharded runner accumulates DFT planes today).
+with a `DesignRegion`). Works on single-device `run()`/`forward()` results on both
+uniform and non-uniform meshes; refused on the two multi-device paths (neither
+accumulates DFT planes today).
 
 ## `jacobian_fwd` — a many-output Jacobian in one batched forward pass
 
