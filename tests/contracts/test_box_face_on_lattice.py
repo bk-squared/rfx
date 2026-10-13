@@ -276,11 +276,13 @@ def test_domain_and_box_share_the_band_at_a_cpml_face(dx, delta):
 
 
 @pytest.mark.parametrize("traced", [False, True], ids=["numpy", "traced"])
-@pytest.mark.parametrize("below,above,split", [(10., 1., 3), (1., 10., 3)])
+@pytest.mark.parametrize("below,above,split", [(10., 1., 4), (1., 10., 3)])
 def test_stacked_graded_boxes_partition_every_node(below, above, split, traced):
-    """The shared face sits on node 3 within float32 resolution.
+    """A shared face 5 nm beyond node 3's float32 resolution uses its forward cell.
 
-    Both boxes still agree on ownership: every interior node belongs to one.
+    The band is 1e-9 of the node's forward cell plus 4 float32 eps of |z|. The
+    face sits 5 nm past the |z| part, between the 1 m-cell and 10 m-cell bands,
+    so the two gradings split differently. Both boxes still agree on ownership.
     """
     widths = np.r_[np.full(3, below), np.full(6, above)]
     domain = float(np.sum(widths))
@@ -289,7 +291,8 @@ def test_stacked_graded_boxes_partition_every_node(below, above, split, traced):
         boundary="pec", cpml_layers=0)
     grid = sim._build_nonuniform_grid()
     coords = coords_from_nonuniform_grid(grid)
-    face = float(coords.z[3]) + 5e-9
+    node = float(coords.z[3])
+    face = node + 4 * float(np.finfo(np.float32).eps) * abs(node) + 5e-9
     boxes = (Box((0., 0., 0.), (4., 4., face)),
              Box((0., 0., face), (4., 4., domain)))
     masks = []
