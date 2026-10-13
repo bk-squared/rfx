@@ -38,10 +38,83 @@ producer that needs more is a stencil statement to make before changing it.
 """
 from typing import Any, Mapping, NamedTuple
 
+import jax
+import jax.numpy as jnp
+import numpy as np
+from jax.sharding import NamedSharding, PartitionSpec as P
+
 from rfx.stepping.slab import Slab
 
 HALO_LO = 1
 HALO_HI = 0
+
+
+class UniformSlabRows(NamedTuple):
+    """Global indices of [extra low | low ghost | owned | high ghost]."""
+    indices: Any
+    outside: Any
+    alignment: Any
+
+
+def uniform_slab_rows(layout):
+    indices = (np.arange(layout.n_devices)[:, None] * layout.nx_per_rank
+               + np.arange(layout.nx_local + 1)[None, :] - layout.ghost_width - 1)
+    return UniformSlabRows(indices, (indices < 0) | (indices >= layout.nx),
+                           (indices >= layout.nx) & (indices < layout.nx_padded))
+
+
+def stack_and_place(array, rows, mesh, *, outside="replicate"):
+    """Gather uniform input rows, then place once on the leading device axis.
+
+    Material and metric inputs replicate global endpoints; occupancy and
+    masks use zero. Product padding is a separate application of slab.FILL.
+    """
+    xp = np if isinstance(array, np.ndarray) else jnp
+    stacked = xp.take(array, np.clip(rows.indices, 0, array.shape[0] - 1), axis=0)
+    if outside != "replicate":
+        mask = rows.outside.reshape(rows.outside.shape + (1,) * (array.ndim - 1))
+        stacked = xp.where(mask, xp.asarray(outside, dtype=array.dtype), stacked)
+    return jax.device_put(jnp.asarray(stacked), NamedSharding(mesh, P('x')))
+
+
+class UniformSlabView(NamedTuple):
+    """Rank as row-index data; component identity remains static under vmap.
+
+    Static geometry is realized with concrete SlabViews before this array
+    producer. Metrics are selected only after whole-axis decisions.
+    """
+    indices: Any
+    grid: Any
+    globals: Mapping
+
+    rank = None
+    x0 = 0
+    halo_lo = 2
+    halo_hi = 1
+
+    @property
+    def nx(self):
+        return int(self.grid.nx)
+
+    @property
+    def x1(self):
+        return self.indices.shape[0] - self.halo_lo - self.halo_hi
+
+    @property
+    def lo(self):
+        return -self.halo_lo
+
+    @property
+    def hi(self):
+        return self.x1 + self.halo_hi
+
+    def rows(self, a, axis=0):
+        return jnp.take(jnp.asarray(a), jnp.clip(self.indices, 0, a.shape[axis] - 1), axis=axis)
+
+    def own(self, a, axis=0):
+        index = [slice(None)] * a.ndim
+        index[axis] = slice(self.halo_lo, self.halo_lo + self.x1)
+        return a[tuple(index)]
 
 
 class SlabView(NamedTuple):

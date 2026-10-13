@@ -603,3 +603,117 @@ def test_extremes_mutation_halo_count_is_caught(monkeypatch):
         slabs.append(pole_set_extremes(cells.materials, cells.lorentz_spec, view=wrong))
     with pytest.raises(AssertionError, match="cell count"):
         _assert_records(whole, combine_pole_extremes(slabs))
+
+
+class _UniformHarnessView:
+    """Bind pre-stacked scene inputs; metric gathers use the runtime view."""
+    def __init__(self, view, inputs):
+        self.view, self.inputs = view, inputs
+
+    def __getattr__(self, key):
+        return getattr(self.view, key)
+
+    def _replace(self, **kwargs):
+        return type(self)(self.view._replace(**kwargs), self.inputs)
+
+    def rows(self, value, axis=0):
+        for original, local in self.inputs:
+            if value is original:
+                return local
+        return self.view.rows(value, axis=axis)
+
+
+def _uniform_producer(producer, scene, n, *, missing_extra=False, zero_material=False,
+                      local_metric=False):
+    from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
+    from rfx.stepping.slab import Slab
+    from rfx.stepping.slab_view import (SlabView, UniformSlabView,
+                                      uniform_slab_rows, stack_and_place)
+    layout = Slab(int(scene.grid.nx), n)
+    rows = uniform_slab_rows(layout)
+    if missing_extra:
+        rows = type(rows)(*(a[:, 1:] for a in rows))
+    mesh = Mesh(np.asarray(jax.devices()[:n]), ('x',))
+    originals = [scene.eps_r, scene.sigma, scene.mu_r, scene.occupancy, scene.pec_mask]
+    for spec in (scene.debye, scene.lorentz):
+        if spec is not None:
+            originals.extend(spec[1])
+    arrays = [stack_and_place(a, rows, mesh,
+              outside=0 if index in (3, 4) or zero_material else 'replicate')
+              for index, a in enumerate(originals)]
+    static, released = [], []
+    sheets, wires = _conductors(scene)
+    for rank, indices in enumerate(rows.indices):
+        lo, hi = max(0, int(indices[0])), min(layout.nx, int(indices[-1]) + 1)
+        view = SlabView(rank, n, lo, hi, 0, 0, scene.grid, {})
+        masks = realized_pec_edge_masks(None, sheets, wires, PERIODIC, view=view)
+        static.append(tuple(np.pad(np.asarray(a),
+            ((lo - int(indices[0]), int(indices[-1]) + 1 - hi), (0, 0), (0, 0))) for a in masks))
+        cells = np.asarray(R).copy()
+        cells[:, 0] -= indices[0]
+        cells[(cells[:, 0] < 0) | (cells[:, 0] >= len(indices)), 0] = len(indices)
+        released.append(cells)
+    static = tuple(jax.device_put(jnp.asarray(np.stack([a[c] for a in static])),
+                                 NamedSharding(mesh, P('x'))) for c in range(3))
+    released = jax.device_put(jnp.asarray(np.stack(released)), NamedSharding(mesh, P('x')))
+    indices = jax.device_put(jnp.asarray(rows.indices), NamedSharding(mesh, P('x')))
+
+    def local(index, inputs, masks, release):
+        globals = dict(scene.globals, pole_sets_judged=True,
+                       pec_static_edge_masks=masks, released_cells=release)
+        view = UniformSlabView(index, scene.grid, globals)
+        view = _UniformHarnessView(view, list(zip(originals, inputs)))
+        if local_metric:
+            # Deliberate mutation: the first slab has constant x metrics.
+            widths = view.rows(np.asarray(_x_widths(scene)[0]))
+            uniform = jnp.all(widths == widths[0])
+            graded = edge_averaged_materials(inputs[0], inputs[1], PERIODIC,
+                    cell_sizes=(widths,) + tuple(_x_widths(scene)[1:]))
+            equal = edge_averaged_materials(inputs[0], inputs[1], PERIODIC,
+                    cell_sizes=(None,) + tuple(_x_widths(scene)[1:]))
+            return jax.tree.map(lambda a, b: jnp.where(uniform, a, b), equal, graded)
+        return producer.slab(scene, view)
+    return rows.indices, jax.vmap(local)(indices, arrays, static, released)
+
+
+def _assert_uniform(producer, scene, n, **kwargs):
+    rows, actual = _uniform_producer(producer, scene, n, **kwargs)
+    expected = jax.tree.leaves(producer.whole(scene))
+    leaves = jax.tree.leaves(actual)
+    assert len(expected) == len(leaves)
+    for leaf, (want, got) in enumerate(zip(expected, leaves)):
+        want, got = np.asarray(want), np.asarray(got)
+        for rank in range(n):
+            if want.ndim > producer.x_axis and want.shape[producer.x_axis] == int(scene.grid.nx):
+                valid = (rows[rank] >= 0) & (rows[rank] < int(scene.grid.nx))
+                if not kwargs.get('missing_extra'):
+                    valid[0] = False
+                w = np.take(want, rows[rank, valid], axis=producer.x_axis)
+                s = np.take(got[rank], np.flatnonzero(valid), axis=producer.x_axis)
+            else:
+                w, s = want, got[rank]
+            label = (producer.name, scene.name, n, rank, leaf)
+            assert w.shape == s.shape and w.dtype == s.dtype, label
+            assert w.tobytes() == s.tobytes(), f'{label}: uniform rows differ'
+
+
+@pytest.mark.parametrize('producer,scene,n_devices', _CASES)
+def test_uniform_producer_equals_whole_on_all_real_rows(producer, scene, n_devices):
+    _assert_uniform(producer, scene, n_devices)
+
+
+@pytest.mark.parametrize('mutation', ('missing_extra', 'zero_material', 'local_metric'))
+def test_uniform_mutations_are_caught(mutation):
+    producer = next(p for p in PRODUCERS if p.name == 'edge_averaged_materials')
+    with pytest.raises(AssertionError, match='uniform rows differ'):
+        _assert_uniform(producer, SCENES['material_seam'], 2, **{mutation: True})
+
+
+@pytest.mark.parametrize('scene', list(SCENES.values()), ids=list(SCENES))
+def test_cell_and_static_pec_masks_combine_by_or(scene):
+    sheets, wires = _conductors(scene)
+    both = realized_pec_edge_masks(scene.pec_mask, sheets, wires, PERIODIC)
+    cells = realized_pec_edge_masks(scene.pec_mask, periodic=PERIODIC)
+    static = realized_pec_edge_masks(None, sheets, wires, PERIODIC)
+    for want, cell, fixed in zip(both, cells, static):
+        _assert_bits(want, cell | fixed)

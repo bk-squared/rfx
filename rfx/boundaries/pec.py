@@ -713,7 +713,11 @@ def realized_pec_edge_masks(cell_mask, sheets=(), wires=(),
         shape = tuple(src.shape)
     else:
         shape = tuple(cell_mask.shape)
-    if view is None:
+    if view is not None and "pec_static_edge_masks" in view.globals:
+        sheet_edges = view.globals["pec_static_edge_masks"]
+        shape = tuple(sheet_edges[0].shape)
+        wires = []
+    elif view is None:
         sheet_edges = _sheet_edge_masks(sheets, shape, periodic)
     else:
         shape = (view.hi - view.lo,) + shape[1:]

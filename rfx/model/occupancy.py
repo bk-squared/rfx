@@ -76,6 +76,8 @@ def _window_factors(box, design_occupancy, occ, *, dtype, periodic):
 
 def _local_released(cells, view):
     """Select global release indices in the input rows and rebase x."""
+    if "released_cells" in view.globals:
+        return view.globals["released_cells"]
     cells = cells[(cells[:, 0] >= view.lo) & (cells[:, 0] < view.hi)]
     return cells.at[:, 0].add(-view.lo)
 
