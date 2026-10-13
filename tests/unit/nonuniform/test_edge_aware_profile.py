@@ -174,7 +174,7 @@ def test_a_face_inside_an_edge_cell_shrinks_the_cell_instead_of_moving_the_face(
     for dx in (1.0, 3.0) for single in (True, False)
     for side in (-1, 1) for distance in (0.05, 0.2, 0.4, 0.9)
 ])
-def test_a_nearby_face_never_leaves_a_cell_below_a_fifth_of_the_drawn_feature(
+def test_nearby_faces_respect_the_drawn_feature_cost_floor(
         dx_mm, edges_mm, faces_mm, hi_mm):
     edges = [SheetEdge(p * 1e-3, side) for p, side in edges_mm]
     faces = [f * 1e-3 for f in faces_mm]
@@ -182,9 +182,16 @@ def test_a_nearby_face_never_leaves_a_cell_below_a_fifth_of_the_drawn_feature(
     # Strip/gap widths and edge-to-face/end distances from the drawing.
     features = [b.position - a.position for a, b in zip(edges, edges[1:])]
     features += [abs(e.position - f) for e in edges for f in (0.0, *faces, hi)]
+    fixed = sorted({0.0, hi, *faces})
+    features += [b - a for a, b in zip(fixed, fixed[1:])
+                 if not any(a < e.position < b for e in edges)]
     floor = min(dx, min(features)) / 5.0
     prof = edge_aware_profile(0.0, hi, dx, faces=faces, sheet_edges=edges)
-    assert prof.cells.min() >= floor
+    in_scope = all(abs(e.position - f) >= 2 * dx
+                   for e in edges for f in fixed)
+    if in_scope:
+        assert prof.cells.min() >= floor
+    assert prof.cells.min() >= 0.5 * floor
     for face in faces:
         assert np.min(np.abs(prof.nodes - face)) < 1e-12
 

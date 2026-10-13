@@ -158,7 +158,7 @@ def _chain_r(chain, edges, cap, max_ratio, face_pairs=()):
             break
         span, k = spans[j]
         heapq.heappush(heap, (-span / (n + 1 + k), j, n + 1))
-        if r > cap * (1.0 + 1e-12):
+        if r > cap * (1.0 + 1e-9):
             continue
         inner = [_inner_cell(d, kk, r, cap, max_ratio) for d, kk in spans]
         if all(c is not None for c in inner):
@@ -183,7 +183,7 @@ def _build(lo, hi, dx, fixed, edges, res, edge_offset, max_ratio,
                 continue
             face = min(nearest, key=lambda f: abs(f - edge.position))
             k = edge_offset if side == edge.metal_side else 1.0 - edge_offset
-            if abs(face - edge.position) < k * res[i]:
+            if abs(face - edge.position) <= k * res[i] * (1.0 + 1e-9):
                 face_pairs.setdefault(i, []).append((i, face, k))
     # Strips (metal between two edges) and gaps (air between two metals) with
     # no face in between form CHAINS of consecutive edges. Every edge of a
