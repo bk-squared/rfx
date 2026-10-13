@@ -103,6 +103,7 @@ class NonUniformGrid(NamedTuple):
     # or None. Read only by ``_axis_position_to_index`` to resolve a metre
     # coordinate on a traced axis; never part of the node spine above.
     nominal_cells: dict[str, np.ndarray] | None = None
+    traced_cells: dict[str, tuple[int, int]] | None = None
 
     @property
     def shape(self):
@@ -914,10 +915,14 @@ def make_nonuniform_grid(
     dy_arr_f64 = _exact_f64(dy_full)
     dz_f64 = _exact_f64(dz_full)
 
-    from rfx.model.graded_admission import admit_nominal_profiles
+    from rfx.model.graded_admission import admit_nominal_profiles, admit_traced_windows
     nominal_cells = admit_nominal_profiles(
         nominal_profiles, (dx_profile, dy_profile, dz_profile),
         (domain_xy[0], domain_xy[1], None))
+    traced_cells = admit_traced_windows(nominal_profiles)
+    for axis, window in (traced_cells or {}).items():
+        profile = (dx_profile, dy_profile, dz_profile)["xyz".index(axis)]
+        _assert_traced_cells_match_nominal(profile, nominal_cells[axis], window, axis)
 
     inv_dx, inv_dx_h = _profile_to_inv_arrays(dx_full)
     inv_dy, inv_dy_h = _profile_to_inv_arrays(dy_full)
@@ -938,7 +943,33 @@ def make_nonuniform_grid(
                          y_lo=pad_y_lo, y_hi=pad_y_hi,
                          z_lo=pad_z_lo, z_hi=pad_z_hi),
         nominal_cells=nominal_cells,
+        traced_cells=traced_cells,
     )
+
+
+def _assert_traced_cells_match_nominal(profile, nominal, window, axis):
+    """Check fixed widths within four float32 eps times the nominal width.
+
+    This reads values, not tangents: at the primal point a tangent outside
+    the window is unseen. It is caught once values move, for example on a
+    later optimisation step reusing the declaration.
+    """
+    realized = jnp.asarray(profile, dtype=jnp.float32)
+    nominal32 = jnp.asarray(nominal, dtype=jnp.float32)
+    indices = jnp.arange(realized.shape[0])
+    outside = (indices < window[0]) | (indices >= window[1])
+    tolerance = 4 * jnp.finfo(jnp.float32).eps * nominal32
+    bad = outside & ~(jnp.abs(realized - nominal32) <= tolerance)
+    first = jnp.argmax(bad)
+
+    def _check(failed, cell, width, expected):
+        if bool(failed):
+            raise ValueError(
+                f"traced {axis} axis interior cell {int(cell)} has realized "
+                f"width {float(width)!r}, nominal width {float(expected)!r}; "
+                f"outside declared traced_cells window {window!r}.")
+
+    jax.debug.callback(_check, jnp.any(bad), first, realized[first], nominal32[first])
 
 
 def _assert_traced_index_matches_realized(

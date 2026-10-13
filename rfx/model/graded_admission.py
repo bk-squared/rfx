@@ -9,6 +9,7 @@ keeps what it returns; the messages are the ones the constructor raised.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import NamedTuple
 
 import numpy as np
 
@@ -19,6 +20,17 @@ _AXES = ("x", "y", "z")
 NOMINAL_SUM_RTOL = 1e-9
 
 
+class NominalProfile(NamedTuple):
+    """Concrete interior widths and an optional half-open deformation window.
+
+    Only cells in ``traced_cells=(i0, i1)`` may move from ``cells``. Indices
+    are Python ints, with ``0 <= i0 < i1 <= len(cells)``.
+    """
+
+    cells: object
+    traced_cells: tuple[int, int] | None = None
+
+
 def admit_graded_profiles(domain, dx_profile, dy_profile, dz_profile, *,
                           dt=None, dt_min_cell=None, nominal_profiles=None):
     """Return ``(domain, nominal_cells)`` for the declared graded mesh.
@@ -26,7 +38,8 @@ def admit_graded_profiles(domain, dx_profile, dy_profile, dz_profile, *,
     ``domain`` is the declared extent with every CONCRETE profile's sum put in
     its axis; a traced profile needs the caller's concrete extent. The dt pin
     is refused without a profile and ``dt_min_cell`` without a pin.
-    ``nominal_cells`` is :func:`admit_nominal_profiles` of ``nominal_profiles``.
+    Nominal widths are float64 arrays; windowed axes retain their
+    :class:`NominalProfile` declaration so admission is idempotent.
     """
     # Synthesize domain extents from axis profiles before validation.
     # dx_profile / dy_profile set x / y; dz_profile sets z.
@@ -85,6 +98,8 @@ def admit_graded_profiles(domain, dx_profile, dy_profile, dz_profile, *,
 
     nominal = admit_nominal_profiles(
         nominal_profiles, (dx_profile, dy_profile, dz_profile), domain)
+    for axis, window in (admit_traced_windows(nominal_profiles) or {}).items():
+        nominal[axis] = NominalProfile(nominal[axis], window)
     return domain, nominal
 
 
@@ -120,6 +135,8 @@ def admit_nominal_profiles(nominal_profiles, profiles, domain=None):
                 f"nominal_profiles[{key!r}] is declared but the {key} "
                 "profile is not traced: its node line is already concrete, "
                 "so the declaration would have no effect.")
+        if isinstance(value, NominalProfile):
+            value = value.cells
         if is_tracer(value):
             raise ValueError(
                 f"nominal_profiles[{key!r}] is a JAX tracer; declare the "
@@ -143,6 +160,32 @@ def admit_nominal_profiles(nominal_profiles, profiles, domain=None):
                     f"declared domain {key} extent is {float(extent)!r} m; "
                     "the nominal profile must describe that same domain.")
         out[key] = widths
+    return out or None
+
+
+def admit_traced_windows(nominal_profiles):
+    """Return declared windows, or None, after nominal widths are admitted.
+
+    Widths are not re-checked here; their admitted length is the traced
+    profile length. Each malformed window raises ValueError naming its axis.
+    """
+    out = {}
+    for axis, value in (nominal_profiles or {}).items():
+        if not isinstance(value, NominalProfile) or value.traced_cells is None:
+            continue
+        window = value.traced_cells
+        if (not isinstance(window, tuple) or len(window) != 2
+                or any(type(i) is not int for i in window)):
+            raise ValueError(
+                f"nominal_profiles[{axis!r}].traced_cells must be a 2-tuple "
+                "of Python ints (not bool).")
+        i0, i1 = window
+        n = len(value.cells)
+        if not 0 <= i0 < i1 <= n:
+            raise ValueError(
+                f"nominal_profiles[{axis!r}].traced_cells={window!r} must "
+                f"satisfy 0 <= i0 < i1 <= {n}.")
+        out[axis] = window
     return out or None
 
 
@@ -170,3 +213,24 @@ def nominal_cells(grid, axis, padded: bool = False):
         return widths
     return np.asarray(_append_bounding_node(_pad_profile(widths, pad_lo, pad_hi)),
                       dtype=np.float64)
+
+
+def traced_cell_mask(grid, axis, padded: bool = True):
+    """Boolean deformation flags for a traced axis, or None without a window.
+
+    Interior indices are half-open. Padding copies the corresponding edge
+    flag; the trailing bounding cell copies the last interior flag too.
+    """
+    from rfx.model.graded_grid import _axis_name
+
+    ax, n, pad_lo, pad_hi = grid._axis_layout(axis)
+    if not is_tracer(grid._axis_store(ax)):
+        return None
+    window = (getattr(grid, "traced_cells", None) or {}).get(_axis_name(ax))
+    if window is None:
+        return None
+    interior = np.zeros(n - pad_lo - pad_hi - 1, dtype=bool)
+    interior[window[0]:window[1]] = True
+    if not padded:
+        return interior
+    return np.pad(interior, (pad_lo, pad_hi + 1), mode="edge")
