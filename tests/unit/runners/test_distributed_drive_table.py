@@ -81,10 +81,10 @@ def test_t2_single_device_series(kind, seam, devices):
     for steps in (1, 12):
         single = _forward(sim, eps, 1, steps)
         slabs = _forward(sim, eps, devices, steps)
-        if kind == 'field':
-            _bits(slabs, single)
-        else:
-            assert _ulp(slabs, single) <= 9
+        # Since W1 (lead decision D:f05aa5) the wrapped single-device step rounds differently inside
+        # shard_map with bit-equal operands, so a field source is judged by the cross-trace bar too;
+        # the drive table itself is pinned bit for bit by the one-slab model-identity test.
+        assert _ulp(slabs, single) <= 9
 
 
 def test_t2_nonowner_series_are_zero(monkeypatch):

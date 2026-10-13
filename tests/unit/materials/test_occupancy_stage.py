@@ -249,23 +249,33 @@ def step_occupancy_on_ones(cells, n_devices):
     slabs = cut(jnp.asarray(cells), layout, 'pec_occupancy', mesh=mesh)
     mat = MaterialArrays(*(cut(v, layout, kind, mesh=mesh)
                            for v, kind in zip(material(shape)[:3], ('eps_r', 'sigma', 'mu_r'))))
-    observed = []
-    update = nu.update_e_nu_shmap
-    inject = nu.inject_sources_shmap
+    # Since W1 the multi-device PEC graded run steps the single-device graded step per slab
+    # (rfx.stepping.graded inside rank_shard_map): observe THAT step's E update and source
+    # injection. Each slab reports its own rows with its mesh position; they are stacked in
+    # rank order into the legacy (n_devices * nx_local) layout the assertions index.
+    import rfx.stepping.graded as graded
+    observed = {}
+    update = graded.update_e_nu
+    inject = graded.inject_drives
     def ones(st, *args, **kwargs):
         st = update(st, *args, **kwargs)
         return st._replace(ex=jnp.ones_like(st.ex), ey=jnp.ones_like(st.ey), ez=jnp.ones_like(st.ez))
     def record(st, *args, **kwargs):
-        jax.debug.callback(lambda *v: observed.append(FDTDState(*map(np.asarray, v))), *st)
+        jax.debug.callback(lambda r, *v: observed.setdefault(int(r), FDTDState(*map(np.asarray, v))),
+                           jax.lax.axis_index('x'), *st)
         return inject(st, *args, **kwargs)
-    with patch.object(nu, 'update_e_nu_shmap', ones), patch.object(nu, 'inject_sources_shmap', record):
+    # The graded step applies the PEC wall faces before the occupancy multiply; leave them out
+    # here so the observation sees only E = 1 times the published keep factors.
+    with patch.object(graded, 'update_e_nu', ones), patch.object(graded, 'inject_drives', record), \
+            patch.object(graded, 'apply_pec_faces', lambda st, *a, **k: st):
         result = nu.run_nonuniform_distributed_pec(
             sg, mat, None, 1, n_devices=n_devices,
             devices=jax.devices()[:n_devices], sharded_pec_occupancy=slabs)
         jax.block_until_ready(result)
         jax.effects_barrier()
-    assert len(observed) == 1
-    return observed[0]
+    assert sorted(observed) == list(range(n_devices))
+    return FDTDState(*(np.concatenate([getattr(observed[r], f) for r in range(n_devices)])
+                       if f != 'step' else observed[0].step for f in FDTDState._fields))
 
 
 @pytest.mark.parametrize('n_devices', [2, 3])
@@ -519,13 +529,17 @@ def test_slab_occupancy_gradient_has_field_and_drive_paths(monkeypatch):
         return jnp.sum(run(occupancy)['time_series'] ** 2)
     value = jnp.float32(.2)
     full = jax.grad(loss)(value)
-    read_local = nu.owned_values  # (slab, source) weights, zero off each source's owner
+    # Since W1 the multi-device PEC graded run cuts the SINGLE-DEVICE drive table, whose
+    # occupancy weights are applied by rfx.model.source_coefficients.weight_drive_columns.
+    import rfx.model.source_coefficients as sc
+    weigh = sc.weight_drive_columns
     # Keep the same forward drive values, removing only their gradient path.
-    monkeypatch.setattr(nu, 'owned_values', lambda *a, **k: jax.lax.stop_gradient(read_local(*a, **k)))
+    monkeypatch.setattr(sc, 'weight_drive_columns',
+                        lambda table, weights, meta: weigh(table, jax.lax.stop_gradient(weights), meta))
     field_only = jax.grad(loss)(value)
-    # Requested comparison with drive scaling disabled altogether: unit weight on
-    # every slab row; the drive table's owner mask still zeroes the other slabs.
-    monkeypatch.setattr(nu, 'owned_values', lambda *a, **k: jnp.ones_like(read_local(*a, **k)))
+    # Requested comparison with drive scaling disabled altogether: unit weight on every column.
+    monkeypatch.setattr(sc, 'weight_drive_columns',
+                        lambda table, weights, meta: weigh(table, jax.tree.map(jnp.ones_like, weights), meta))
     unscaled = jax.grad(loss)(value)
     assert np.isfinite([full, field_only, unscaled]).all()
     assert field_only != 0  # Field multiply reaches occupancy.
