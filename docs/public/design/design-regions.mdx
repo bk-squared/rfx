@@ -132,10 +132,10 @@ run is long enough for it is a separate check
 | `forward(distributed=True)` on a uniform mesh (with or without overrides) | multi-device | a graded mesh, or one device |
 | `mu_r_override`, `rlc_values_override`, `design_occupancy_override` | graded mesh, multi-device | a uniform mesh on one device |
 | `design_box` | multi-device, ADI | one device |
-| a permittivity box (`design_eps_override`) with a dispersive or Kerr material, anisotropy or subpixel smoothing, UPML, `stencil_order=4`, oblique periodic incidence, a whole-grid override or `pec_occupancy_override` | all | the box alone, or the whole-grid overrides alone |
+| a permittivity box (`design_eps_override`) with a dispersive or Kerr material, anisotropy or subpixel smoothing, UPML, `stencil_order=4`, oblique periodic incidence, `eps_override`, `sigma_override`, `mu_r_override` or `pec_occupancy_override` | all | the box alone, or the whole-grid overrides alone |
 | a permittivity box touching a periodic face, or reaching the absorber (counting one cell past its upper corner) | all | move the box inside the domain |
 | a port in a permittivity box without `design_box_holds_ports=True`; a soft or magnetic source, or an RLC element, in the box | all | hold the ports, or move the source out |
-| an occupancy box (`design_occupancy_override`) with any periodic axis, with `design_eps_override` in the same call, over a port cell or its neighbours, or with Kottke smoothing | all | one kind of box per call, clear of ports |
+| an occupancy box (`design_occupancy_override`) with any periodic axis, with `design_eps_override` in the same call, over a port cell or its neighbours, or with the opt-in Kottke occupancy tensor (`RFX_PEC_OCC_KOTTKE=1`) | all | one kind of box per call, clear of ports |
 
 [Refused inputs](/rfx/check/refusals/) explains how refusals read.
 
