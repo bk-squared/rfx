@@ -291,6 +291,16 @@ def apply_tables(state, cfg, incident, *, magnetic):
     return state
 
 
+def tfsf_box_indices(sim) -> dict[str, tuple[int, int]]:
+    """Realized inclusive bounds for the declared closed box or open slab."""
+    if sim._tfsf is None:
+        raise ValueError("No TFSF source registered")
+    from rfx.sources.tfsf import tfsf_injection_planes
+    grid = sim._build_grid()
+    cfg, _ = init_from_sim(sim, grid, bounds_only=True)
+    return tfsf_injection_planes(cfg)
+
+
 def init_from_sim(sim, grid, n_steps=None, *, bounds_only=False):
     """Shared run/forward setup; metadata queries need no time-record allocation."""
     from rfx.sources.tfsf import init_tfsf

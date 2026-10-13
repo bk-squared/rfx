@@ -35,6 +35,7 @@ from rfx.core.jax_utils import is_tracer
 from rfx.geometry.csg import Box, Shape  # noqa: F401
 from rfx.nonuniform import NonUniformGrid  # noqa: F401
 from rfx.sources.sources import GaussianPulse
+from rfx.sources import tfsf_discrete_plane_wave as _discrete_plane_wave
 from rfx.sources.coaxial_port import CoaxialPort
 from rfx.materials.debye import DebyePole
 from rfx.materials.lorentz import LorentzPole
@@ -2032,13 +2033,7 @@ class Simulation(
         NTFF cell-centre interpolation must clear these bounds, including
         the adjacent Yee samples (the NTFF placement check enforces this).
         """
-        if self._tfsf is None:
-            raise ValueError("No TFSF source registered")
-        from rfx.sources.tfsf import tfsf_injection_planes
-        from rfx.sources.tfsf_discrete_plane_wave import init_from_sim
-        grid = self._build_grid()
-        cfg, _ = init_from_sim(self, grid, bounds_only=True)
-        return tfsf_injection_planes(cfg)
+        return _discrete_plane_wave.tfsf_box_indices(self)
 
     def add_waveguide_port(
         self,
