@@ -71,8 +71,9 @@ def require_shared(call, *, helper="curl_h", indexed=False, expected_calls=1):
                                       "debye", "lorentz", "mixed"])
 def test_simulation_uses_realized_curl(lane, mesh, feature):
     sim = model(feature, mesh)
-    if (feature, mesh, lane) == ("waveguide", "graded", "run"):
-        # This run() curl-routing fixture crosses grading zones; retain its zero shift.
+    if (feature, mesh) == ("waveguide", "graded"):
+        # This curl-routing fixture crosses grading zones; retain its zero shift
+        # (forward resolves the same planes as run since #1726).
         sim._waveguide_ports = [
             replace(entry, calibration_preset="measured") for entry in sim._waveguide_ports
         ]
