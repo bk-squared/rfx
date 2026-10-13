@@ -215,6 +215,10 @@ NODE_TIE_REL = 1e-9
 SOLVER_WIDTH_EPS = 4 * float(np.finfo(np.float32).eps)
 
 
+class Float32WidthResolutionWarning(UserWarning):
+    """Float32-valued widths can place a declared face beyond the node band."""
+
+
 def node_tie_tol(x, d_local, dtype=np.float64):
     """Metre band for a declared coordinate on a solver node line.
 
