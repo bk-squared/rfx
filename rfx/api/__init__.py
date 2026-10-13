@@ -58,7 +58,8 @@ from rfx.sources.waveguide_port import (
     waveguide_plane_positions,  # noqa: F401
 )
 from rfx.boundaries.spec import BoundarySpec
-from rfx.boundaries.model import DEFAULT_BOUNDARY, refresh_boundary_model
+from rfx.boundaries import refresh_boundary_model
+from rfx.boundaries.model import DEFAULT_BOUNDARY
 
 # ---------------------------------------------------------------------------
 # Leaf data structures — moved to rfx/api/_spec.py (Part B Stage 0).
