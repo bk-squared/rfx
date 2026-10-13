@@ -31,6 +31,16 @@ the feed the field is not one propagating mode (decision record 11, C1).
 """
 from __future__ import annotations
 
+LOCK_PROVENANCE = {
+    "fixture": "none",
+    "generator": "this module's two-line measurement (rfx-archive rfx/records/20261012-msl-plane-measure/m4; bar from MSL-PLANE.md decision record 16)",
+    "commit": "a1cad87",
+    "date": "2026-10-13",
+    "run_id": "local",
+    "host": "macOS jax cpu",
+    "pinned_until": "2027-04-13",
+}
+
 import warnings
 
 import jax.numpy as jnp
