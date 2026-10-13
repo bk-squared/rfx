@@ -262,7 +262,6 @@ ADMISSION_ROWS = (
     ('M-mu', 'multi-device-uniform'),
     ('O-ntff', 'multi-device-uniform'),
     ('O-vector', 'multi-device-uniform'),
-    ('P-lumped', 'multi-device-graded'),
     ('P-lumped', 'multi-device-uniform'),
     ('P-waveguide', 'multi-device-graded'),
     ('P-waveguide', 'multi-device-uniform'),
