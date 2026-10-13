@@ -29,10 +29,12 @@ def source_coefficient(materials, debye, lorentz, source, dt, layout, mesh):
     axis = ('ex', 'ey', 'ez').index(source.component)
     if debye is None and lorentz is None:
         from rfx.runners import distributed_nu
-        return distributed_nu.material_drive_scales(
-            materials.components.eps_update, materials.components.sigma_update, mesh,
-            ((owner, 0, cell, source.component, 1., 0.),), dt,
-            ranks=mesh_ranks(mesh), realized=True)[0]
+        def read_material(eps, sigma, ranks):
+            return distributed_nu.material_drive_scales(eps, sigma, mesh,
+                ((owner, 0, cell, source.component, 1., 0.),), dt,
+                ranks=ranks, realized=True, reduce_devices=True)
+        return jax.checkpoint(read_material)(materials.components.eps_update,
+            materials.components.sigma_update, mesh_ranks(mesh))[0]
     def read(d, l, *, rank):
         if d is not None and l is not None:
             from rfx.materials.lorentz import mixed_e_component_coeffs
@@ -40,8 +42,9 @@ def source_coefficient(materials, debye, lorentz, source, dt, layout, mesh):
         else:
             cb = (d if d is not None else l).cb[axis][cell]
         return jax.lax.psum(jnp.where(rank == owner, cb, 0), 'x')
-    return rank_shard_map(read, mesh=mesh, in_specs=(P('x'),) * 2,
-        out_specs=P(), check_rep=False)(mesh_ranks(mesh),
+    stage = rank_shard_map(read, mesh=mesh, in_specs=(P('x'),) * 2,
+        out_specs=P(), check_rep=False)
+    return jax.checkpoint(stage)(mesh_ranks(mesh),
             None if debye is None else debye[0], None if lorentz is None else lorentz[0])
 
 
@@ -122,8 +125,9 @@ def stage_dispersion(materials, dt, spec, grid, layout, mesh, family):
                     metadata.extend(found)
                 return tuple(tuple(jax.lax.psum(jnp.where(rank == view.rank, a, 0), 'x')
                                    for a in (r.eps_low, r.sigma_low, r.sigma_high)) for r in found)
-            values = rank_shard_map(extrema, mesh=mesh, in_specs=P('x'),
-                out_specs=P(), check_rep=False)(mesh_ranks(mesh), inputs)
+            stage = rank_shard_map(extrema, mesh=mesh, in_specs=P('x'),
+                out_specs=P(), check_rep=False)
+            values = jax.checkpoint(stage)(mesh_ranks(mesh), inputs)
             records.append(tuple(r._replace(eps_low=v[0], sigma_low=v[1], sigma_high=v[2])
                                  for r, v in zip(metadata, values)))
         judge_pole_sets(combine_pole_extremes(records), dt, courant_budget(grid),
@@ -192,7 +196,7 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
             from rfx.stepping.rank import rank_shard_map, mesh_ranks
             f = rank_shard_map(lambda *a, rank: local(*a), mesh=mesh,
                 in_specs=(P('x'),) * (2 + len(terms)), out_specs=P('x'), check_rep=False)
-            coeffs = jax.jit(f)(mesh_ranks(mesh), staged.components.eps_update,
+            coeffs = jax.checkpoint(jax.jit(f))(mesh_ranks(mesh), staged.components.eps_update,
                                   staged.components.sigma_update, *terms)
             bundles[i] = (coeffs, state)
     debye, lorentz = bundles
@@ -221,8 +225,9 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
                 keep[('ex', 'ey', 'ez').index(s.component)][layout.local_index(s.i), s.j, s.k], 0)
                 for s in sources]
             return jax.lax.psum(jnp.stack(weights), 'x')
-        weights = rank_shard_map(read_keep, mesh=mesh, in_specs=P('x'), out_specs=P(),
-            check_rep=False)(mesh_ranks(mesh), staged.edge_keep)
+        stage = rank_shard_map(read_keep, mesh=mesh, in_specs=P('x'), out_specs=P(),
+            check_rep=False)
+        weights = jax.checkpoint(stage)(mesh_ranks(mesh), staged.edge_keep)
         waves = weight_drive_columns(waves, weights, source_meta)
     faces = None if cpml else {f'{a}_{s}' for a in 'xyz' for s in ('lo', 'hi')}
     (use_cpml, params, psi, cpml_grid, axes, curl_boundary, pec_faces, pmc_faces, use_pmc) = nonuniform_boundaries(

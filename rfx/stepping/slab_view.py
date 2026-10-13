@@ -247,9 +247,10 @@ def uniform_apply(producer, *inputs, row_count, row_axis=0):
     # their reverse-mode residuals. Static metadata still bypasses vmap.
     sharding = next(forward_sharding(a) for a in jax.tree.leaves(inputs)
                     if isinstance(forward_sharding(a), NamedSharding))
-    mapped = jax.shard_map(lambda *a: jax.vmap(traced)(*a), mesh=sharding.mesh,
-                          in_specs=(P('x'),) * len(inputs), out_specs=P('x'),
-                          check_vma=False)(*inputs)
+    stage = jax.shard_map(lambda *a: jax.vmap(traced)(*a), mesh=sharding.mesh,
+                         in_specs=(P('x'),) * len(inputs), out_specs=P('x'),
+                         check_vma=False)
+    mapped = jax.checkpoint(stage)(*inputs)
     return jax.tree.unflatten(saved['tree'], [
         a if keep else original for a, original, keep in
         zip(mapped, saved['leaves'], saved['dynamic'])])
@@ -296,7 +297,8 @@ def product_rows(array, layout, mesh, kind, *, row_axis=1, dt=None, pole_rows=Fa
     shape[0], shape[row_axis] = layout.n_devices, layout.nx_local
     outside = place(jnp.asarray(rows.outside[:, 1:].reshape(shape)), NamedSharding(mesh, P('x')))
     alignment = place(jnp.asarray(rows.alignment[:, 1:].reshape(shape)), NamedSharding(mesh, P('x')))
-    return _product_map(mesh, row_axis, pole_rows, fill.alignment, fill.physical)(array, outside, alignment)
+    stage = _product_map(mesh, row_axis, pole_rows, fill.alignment, fill.physical)
+    return jax.checkpoint(stage)(array, outside, alignment)
 
 
 @lru_cache(maxsize=128)
