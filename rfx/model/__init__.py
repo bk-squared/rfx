@@ -3,3 +3,6 @@
 ``conductors`` holds the PEC edges, sheets, lossy-sheet operators and wires; materials and the
 realized-model object follow (plan: rfx-archive rfx/plans/20261004-s1-realized-model/).
 """
+from rfx.model.graded_admission import admit_graded_profiles
+
+__all__ = ["admit_graded_profiles"]

@@ -389,7 +389,7 @@ class Simulation(
             raise ValueError(f"adi_cfl_factor must be positive, got {adi_cfl_factor}")
         if stencil_order not in (2, 4):
             raise ValueError(f"stencil_order must be 2 or 4, got {stencil_order}")
-        from rfx.model.graded_admission import admit_graded_profiles
+        from rfx.model import admit_graded_profiles
         domain, self._nominal_profiles = admit_graded_profiles(
             domain, dx_profile, dy_profile, dz_profile, dt=dt,
             dt_min_cell=dt_min_cell, nominal_profiles=nominal_profiles)
