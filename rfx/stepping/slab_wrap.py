@@ -48,15 +48,38 @@ def _nodes(indices, layout):
     return np.asarray(nodes), np.asarray(selections), np.asarray(valid)
 
 
-def cut_drives(drives, layout, mesh):
+def cut_drives(drives, layout, mesh, *, waveforms):
+    """Select canonical drive rows and their stored samples; never rescale them."""
+    routed = {component: _nodes(indices, layout)
+              for component, indices in drives.nodes.items()}
+    # Preserve the canonical waveform order on each owner. Several rows may
+    # reference the same waveform; the local table retains one such column.
+    wave_rows = []
+    for rank in range(layout.n_devices):
+        ids = [np.asarray(drives.wave_id[c])[selected[rank, valid[rank]]]
+               for c, (_, selected, valid) in routed.items()]
+        wave_rows.append(np.unique(np.concatenate(ids)).astype(np.int32)
+                         if ids else np.empty(0, np.int32))
+    width = max(map(len, wave_rows), default=0)
+    selected_waves = np.zeros((layout.n_devices, width), np.int32)
+    wave_valid = np.zeros_like(selected_waves, dtype=bool)
     nodes, coef, wave_id, owner = {}, {}, {}, {}
-    for component, indices in drives.nodes.items():
-        local, ids, valid = _nodes(indices, layout)
+    for rank, rows in enumerate(wave_rows):
+        selected_waves[rank, :len(rows)] = rows
+        wave_valid[rank, :len(rows)] = True
+    for component, (local, ids, valid) in routed.items():
         nodes[component] = tuple(_place(local[:, axis], mesh) for axis in range(3))
         coef[component] = _place(jnp.where(valid, drives.coef[component][ids], 0), mesh)
-        wave_id[component] = _place(drives.wave_id[component][ids], mesh)
+        local_waves = np.zeros_like(ids)
+        for rank, rows in enumerate(wave_rows):
+            local_waves[rank, valid[rank]] = np.searchsorted(
+                rows, np.asarray(drives.wave_id[component])[ids[rank, valid[rank]]])
+        wave_id[component] = _place(local_waves, mesh)
         owner[component] = _place(drives.owner[component][ids], mesh)
-    return drives._replace(nodes=nodes, coef=coef, wave_id=wave_id, owner=owner)
+    samples = jnp.where(wave_valid[None, :, :], waveforms[:, selected_waves],
+                        jnp.zeros((), waveforms.dtype))
+    samples = jax.device_put(samples, NamedSharding(mesh, P(None, 'x')))
+    return drives._replace(nodes=nodes, coef=coef, wave_id=wave_id, owner=owner, waves=samples)
 
 
 def cut_probe_table(table, layout, mesh):
@@ -75,7 +98,7 @@ def cut_probe_table(table, layout, mesh):
     return jax.tree.map(lambda a: _place(a, mesh), (tuple(terms), order, sorted_ids))
 
 
-def split(invariants, carry, layout, mesh):
+def split(invariants, carry, layout, mesh, *, waveforms):
     """Cut every spatial operand with the shared FILL policy, and route nodes."""
     tags = dict(inv_dx='inv_dx', inv_dx_h='inv_dx_h', dx_arr='width',
                 pec_edge_masks='pec_edge', pec_static_edge_masks='pec_edge',
@@ -100,7 +123,7 @@ def split(invariants, carry, layout, mesh):
                     fields[name] = cut(field, layout, name if name in ('eps_r', 'sigma', 'mu_r') else 'lumped', mesh=mesh)
             result[key] = type(value)(**fields)
         elif key == 'drives':
-            result[key] = cut_drives(value, layout, mesh)
+            result[key] = cut_drives(value, layout, mesh, waveforms=waveforms)
         elif key == 'probe_table':
             result[key] = cut_probe_table(value, layout, mesh)
         elif value is None:
