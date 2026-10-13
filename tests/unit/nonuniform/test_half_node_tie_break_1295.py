@@ -77,12 +77,14 @@ def _sweep(n_cells, extent):
 
 def _tie_lower(line, x, cell):
     """The tie rule spelled here: the nearest node on ``line``, and the lower
-    of two whose distances agree to 1e-9 of the cell. Returns (node, tie)."""
+    of two whose distances agree within the solver-width band. Returns (node, tie)."""
     dist = np.abs(np.asarray(line, dtype=np.float64) - float(x))
     k = int(np.argmin(dist))
-    if k >= 1 and abs(dist[k - 1] - dist[k]) <= 1e-9 * cell:
+    band = 1e-9 * cell + min(
+        4 * float(np.finfo(np.float32).eps) * abs(float(x)), .5e-3 * cell)
+    if k >= 1 and abs(dist[k - 1] - dist[k]) <= band:
         return k - 1, True
-    return k, bool(k + 1 < dist.size and abs(dist[k + 1] - dist[k]) <= 1e-9 * cell)
+    return k, bool(k + 1 < dist.size and abs(dist[k + 1] - dist[k]) <= band)
 
 
 def _nu_nodes(nu, ax, axis, x):
