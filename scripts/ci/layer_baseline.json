@@ -15,12 +15,9 @@
       "G": [
         "Simulation.__init__",
         "Simulation.add_ntff_box",
-        "Simulation.add_waveguide_port",
         "Simulation.mesh_intelligence_report"
       ],
-      "D1": [
-        "Simulation.add_waveguide_port"
-      ],
+      "D1": [],
       "D2": [
         "Simulation.auto",
         "Simulation.mesh_intelligence_report",

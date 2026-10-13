@@ -37,6 +37,7 @@ from rfx.nonuniform import NonUniformGrid  # noqa: F401
 from rfx.sources.sources import GaussianPulse
 from rfx.realized_geometry import realized_geometry as _realized_geometry_fn
 from rfx.fidelity import fidelity_report as _fidelity_report
+from rfx.measurement import admit_waveguide_planes as _admit_waveguide_planes
 from rfx.sources.coaxial_port import CoaxialPort
 from rfx.materials.debye import DebyePole
 from rfx.materials.lorentz import LorentzPole
@@ -2316,44 +2317,10 @@ class Simulation(
             raise ValueError(
                 "calibration_preset cannot be combined with explicit reference_plane/probe_plane"
             )
-        pos_vec = [0.0, 0.0, 0.0]
-        pos_vec[axis_idx] = x_position
-        step_sign = 1 if direction.startswith("+") else -1
-        if self._uses_nonuniform_mesh:
-            from rfx.nonuniform import position_to_index
-            from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
-            grid = self._build_nonuniform_grid()
-            x_index = position_to_index(grid, tuple(pos_vec))[axis_idx]
-            coords = coords_from_nonuniform_grid(grid)
-            nodes = np.asarray((coords.x, coords.y, coords.z)[axis_idx])
-            snapped_source_plane = float(nodes[x_index])
-            measured_reference_plane = float(nodes[np.clip(
-                x_index + step_sign * ref_offset, 0, len(nodes) - 1)])
-            measured_probe_plane = float(nodes[np.clip(
-                x_index + step_sign * probe_offset, 0, len(nodes) - 1)])
-        else:
-            grid = self._build_grid(extra_waveguide_axes=axis_name)
-            x_index = grid.position_to_index(tuple(pos_vec))[axis_idx]
-            axis_pad = grid.axis_pads[axis_idx]
-            snapped_source_plane = (x_index - axis_pad) * grid.dx
-            measured_reference_plane = snapped_source_plane + step_sign * ref_offset * grid.dx
-            measured_probe_plane = snapped_source_plane + step_sign * probe_offset * grid.dx
+        _admit_waveguide_planes(self, axis_idx=axis_idx, x_position=x_position,
+                                direction=direction, ref_offset=ref_offset,
+                                probe_offset=probe_offset)
         axis_domain = self._domain[axis_idx]
-        if (
-            measured_reference_plane < 0.0
-            or measured_reference_plane > axis_domain
-            or measured_probe_plane < 0.0
-            or measured_probe_plane > axis_domain
-            or x_index + step_sign * ref_offset < 0
-            or x_index + step_sign * ref_offset >= grid.shape[axis_idx]
-            or x_index + step_sign * probe_offset < 0
-            or x_index + step_sign * probe_offset >= grid.shape[axis_idx]
-        ):
-            raise ValueError(
-                "Waveguide port measurement planes exceed the physical "
-                f"{axis_name}-domain after grid snapping; reduce ref_offset/probe_offset, "
-                "flip direction, or move x_position inward"
-            )
         if reference_plane is not None and not (0.0 <= reference_plane <= axis_domain):
             raise ValueError(
                 f"reference_plane {reference_plane} m is outside the {axis_name}-domain [0, {axis_domain}]"

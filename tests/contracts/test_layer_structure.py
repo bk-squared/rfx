@@ -272,7 +272,9 @@ def test_outside_new_file_with_measurement_hit(tmp_path, generated):
 def test_calibration_from_declaration_and_leader_correction(generated):
     api = generated["files"][API]
     assert "Simulation.add_thin_conductor" not in api["D1"] + api["D2"]
-    assert "Simulation.add_waveguide_port" in api["D1"]
+    # The waveguide port's plane check moved to rfx.measurement.waveguide_planes;
+    # D1 detection itself stays pinned by test_declaration_grid_mutation.
+    assert "Simulation.add_waveguide_port" not in api["D1"]
     # This method still computes/checks values before a final return at this commit.
     assert "Simulation.mesh_intelligence_report" in api["D2"]
     node = target_unit(real_tree(API), "Simulation.mesh_intelligence_report")
