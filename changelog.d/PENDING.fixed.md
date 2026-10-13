@@ -1,4 +1,6 @@
-### Fixed — Fit sheet-edge cells to nearby faces and domain ends before pairing. (#PENDING)
+### Fixed — Avoid smaller time steps when fitting faces near sheet edges. (#PENDING)
 
-Cap each edge cell at its nearest face on either side and use the smallest
-cap throughout a chain. Remaining face or domain-end clashes raise.
+Edge-aware meshes now compare face-partner choices with the previous mesh
+and use a new placement only when its smallest cell is larger. Nearby faces
+can avoid sliver cells without reducing the previous smallest cell; equal
+minima retain the previous profile.
