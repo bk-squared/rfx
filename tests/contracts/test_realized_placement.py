@@ -170,6 +170,35 @@ def test_cache_sees_a_probe_added_after_the_first_record():
     assert len(after.probes) == len(before.probes) + 1
 
 
+def test_library_probes_are_not_listed_as_the_users():
+    """A probe an extractor attaches (MSL / mixed witness, ring-down channel) is no user probe."""
+    from types import SimpleNamespace
+    from rfx.ringdown import _user_geometry
+
+    sim = _scene(False)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        before = sim.realized_geometry()
+        n_user = len(sim._probes)
+        sim.add_probe((0.003, 0.003, 0.003), "ex")
+        sim.add_probe((0.004, 0.003, 0.003), "ey")
+        both = sim.realized_geometry()
+        sim._internal_probe_indices = {n_user}
+        marked = sim.realized_geometry()
+    points = lambda rec: [p.label for p in rec.probes if p.kind == "point"]  # noqa: E731
+    assert points(both) == points(before) + [f"probe[{n_user}]", f"probe[{n_user + 1}]"]
+    assert points(marked) == points(before) + [f"probe[{n_user + 1}]"]
+
+    class _Result(SimpleNamespace):
+        def _replace(self, **kw):
+            return _Result(**{**vars(self), **kw})
+
+    cut = _user_geometry(_Result(realized_geometry=both), n_user, 2)
+    assert points(cut.realized_geometry) == points(before)
+    others = lambda rec: [p for p in rec.probes if p.kind != "point"]  # noqa: E731
+    assert others(cut.realized_geometry) == others(both)
+
+
 @pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
 def test_tfsf_box_is_the_one_the_run_injects(graded, monkeypatch):
     # TFSF refuses soft sources and lumped ports, so it gets its own scene.

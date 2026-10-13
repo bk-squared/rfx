@@ -77,7 +77,10 @@ def _tfsf_row(sim, ctx):
 def _probes(sim, ctx):
     from rfx.realized_geometry import ProbeGeometry
     grid, locate, rows = ctx.grid, _locate(ctx), []
+    internal = getattr(sim, "_internal_probe_indices", None) or ()
     for i, pe in enumerate(sim._probes):
+        if i in internal:
+            continue  # a library witness probe (MSL / mixed extraction), not the user's
         try:
             index = tuple(int(k) for k in field_index(grid, pe.position, pe.component))
             rows.append(ProbeGeometry(f"probe[{i}]", "point", (pe.component,), index=index))

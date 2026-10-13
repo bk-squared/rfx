@@ -930,6 +930,22 @@ def _lane_resolver(lane: str, grid):
     return lambda pos: pos_to_nu_index(grid, pos)
 
 
+def _user_geometry(result, n_user: int, n_int: int):
+    """Drop the realized-geometry rows of the channel probes this run attached.
+
+    A point-probe row is labelled by its index in ``sim._probes``; the attached
+    ones are indices ``[n_user, n_user + n_int)``, the columns the time series drops.
+    """
+    import dataclasses
+    record = getattr(result, "realized_geometry", None)
+    probes = getattr(record, "probes", None)
+    if not probes or not n_int:
+        return result
+    attached = {f"probe[{i}]" for i in range(n_user, n_user + n_int)}
+    kept = tuple(p for p in probes if not (p.kind == "point" and p.label in attached))
+    return result._replace(realized_geometry=dataclasses.replace(record, probes=kept))
+
+
 def _node_position(grid, idx) -> tuple:
     return tuple(float(grid.node_of(ax, int(idx[ax]))) for ax in range(3))
 
@@ -1458,9 +1474,10 @@ class RingdownRun:
                 f"run(ringdown=...): the run returned a time series of shape "
                 f"{ts_all.shape}, expected ({self.n_steps}, {n_user} user + "
                 f"{n_int} port-channel probes)")
-        stripped = result._replace(
+        stripped = _user_geometry(result._replace(
             time_series=full[:, :n_user],
-            **({"wire_port_sparams": None} if self.lane == "uniform" else {}))
+            **({"wire_port_sparams": None} if self.lane == "uniform" else {})),
+            n_user, n_int)
         S, report, nc = self._host_report(result, ts_all, n_user)
         if nc is not None:
             warnings.warn(
@@ -2813,7 +2830,7 @@ class RingdownForward(RingdownRun):
                 f"{tuple(full.shape)}, expected ({self.n_steps}, {n_user} user + "
                 f"{n_int} port-channel probes)")
         channels = full[:, n_user:]
-        stripped = result._replace(time_series=full[:, :n_user])
+        stripped = _user_geometry(result._replace(time_series=full[:, :n_user]), n_user, n_int)
         return stripped._replace(ringdown=self._traced(result, channels))
 
     def _traced(self, result, channels) -> RingdownForwardResult:

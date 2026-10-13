@@ -480,7 +480,8 @@ def realized_geometry(sim):
                      ("_ports", "_waveguide_ports", "_msl_ports", "_coaxial_ports", "_floquet_ports",
                       "_probes", "_dft_planes", "_flux_monitors")),
            *(id(getattr(sim, attr, None)) for attr in ("_tfsf", "_ntff", "_current_moments")),
-           repr(sorted(getattr(sim, "_dft_plane_regions", {}).items())), sim._freq_max)
+           repr(sorted(getattr(sim, "_dft_plane_regions", {}).items())), sim._freq_max,
+           tuple(sorted(getattr(sim, "_internal_probe_indices", ()) or ())))
     cached = getattr(sim, '_realized_geometry_record', None)
     if cached is not None and cached[0] == key:
         return cached[1]
