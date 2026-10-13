@@ -9,9 +9,40 @@ from jax.sharding import NamedSharding, PartitionSpec as P
 
 from rfx.core.yee import FDTDState
 from rfx.model.materials import (ComponentCells, realize_components, kernel_materials)
-from rfx.stepping.slab import cut, zero_pole_state
+from rfx.stepping.slab import cut, zero_pole_state, place
 from rfx.stepping.slab_view import (UniformSlabView, uniform_slab_rows, uniform_apply,
                                    uniform_from_cut, stack_and_place, product_rows, slab_views)
+
+
+def stage_x_widths(grid, rows, mesh):
+    widths = np.asarray(grid.dx_arr)
+    if widths.shape[0] == grid.shape[0] - 1:
+        widths = np.concatenate((widths, widths[-1:]))
+    return stack_and_place(widths, rows, mesh)
+
+
+def source_coefficient(materials, debye, lorentz, source, dt, layout, mesh):
+    """Read only the owner's scalar source coefficient inside the slab map."""
+    from rfx.stepping.rank import rank_shard_map, mesh_ranks
+    owner = layout.owner(source.i)
+    cell = (layout.local_index(source.i), source.j, source.k)
+    axis = ('ex', 'ey', 'ez').index(source.component)
+    if debye is None and lorentz is None:
+        from rfx.runners import distributed_nu
+        return distributed_nu.material_drive_scales(
+            materials.components.eps_update, materials.components.sigma_update, mesh,
+            ((owner, 0, cell, source.component, 1., 0.),), dt,
+            ranks=mesh_ranks(mesh), realized=True)[0]
+    def read(d, l, *, rank):
+        if d is not None and l is not None:
+            from rfx.materials.lorentz import mixed_e_component_coeffs
+            cb = mixed_e_component_coeffs(d, l, axis, dt)[1][cell]
+        else:
+            cb = (d if d is not None else l).cb[axis][cell]
+        return jax.lax.psum(jnp.where(rank == owner, cb, 0), 'x')
+    return rank_shard_map(read, mesh=mesh, in_specs=(P('x'),) * 2,
+        out_specs=P(), check_rep=False)(mesh_ranks(mesh),
+            None if debye is None else debye[0], None if lorentz is None else lorentz[0])
 
 
 def input_materials(materials, layout, mesh):
@@ -26,18 +57,19 @@ def realize_materials(materials, grid, layout, mesh, occupancy=None, *, cpml=Fal
     from rfx.stepping.absorber import graded_cpml_operands
     inputs = input_materials(materials, layout, mesh)
     rows = uniform_slab_rows(layout)
-    indices = jax.device_put(jnp.asarray(rows.indices), NamedSharding(mesh, P('x')))
+    indices = place(jnp.asarray(rows.indices), NamedSharding(mesh, P('x')))
     occ = uniform_from_cut(occupancy, layout, mesh, outside=0)
+    widths = stage_x_widths(grid, rows, mesh)
 
-    def local(cells, index, occupancy):
-        view = UniformSlabView(index, grid, {})
+    def local(cells, index, occupancy, widths):
+        view = UniformSlabView(index, grid, {'x_widths': widths})
         components = realize_components(cells, grid, periodic=(False,) * 3, view=view)
         cells = cells._replace(components=components)
         cells = with_edge_keep(cells, occupancy, dtype=jnp.float32, view=view)
         inverse, loss = graded_cpml_operands(cells, None, use_cpml=cpml,
                                             use_debye=debye, use_lorentz=lorentz)
         return cells, inverse, loss
-    staged, inverse, loss = uniform_apply(local, inputs, indices, occ,
+    staged, inverse, loss = uniform_apply(local, inputs, indices, occ, widths,
                                           row_count=layout.nx_local + 1)
     def finish(path, a):
         if not hasattr(a, 'ndim') or a.ndim < 4:
@@ -67,32 +99,39 @@ def stage_dispersion(materials, dt, spec, grid, layout, mesh, family):
         return None
     poles, masks = spec
     masks = masks if isinstance(masks, (tuple, list)) else [masks] * len(poles)
-    if family == 'lorentz':
-        records = []
-        for view in slab_views(grid, layout.n_devices):
-            # Reductions consume only owned cells; no whole-domain realization.
-            start = view.rank * layout.nx_local
-            uniform = materials.eps_r.ndim == 4
-            local = jax.tree.map(lambda a: (a[view.rank] if uniform else a[start:start + layout.nx_local])
-                if a is not None and np.ndim(a) else a, materials)
-            halo = 2 if uniform else layout.ghost_width
-            owned_view = view._replace(halo_lo=halo,
-                halo_hi=local.eps_r.shape[0] - halo - (view.x1 - view.x0))
-            indices = uniform_slab_rows(layout).indices[view.rank]
-            local_masks = [None if m is None else
-                (m[np.clip(indices, 0, layout.nx - 1)] if uniform else
-                 cut(m, layout, 'pole_mask', host=not isinstance(m, jax.core.Tracer))[view.rank])
-                for m in masks]
-            records.append(pole_set_extremes(local, (poles, local_masks), view=owned_view))
-        judge_pole_sets(combine_pole_extremes(records), dt, courant_budget(grid),
-                        grid_kind=type(grid).__name__)
     inputs = input_materials(materials, layout, mesh)
     rows = uniform_slab_rows(layout)
-    indices = jax.device_put(jnp.asarray(rows.indices), NamedSharding(mesh, P('x')))
+    indices = place(jnp.asarray(rows.indices), NamedSharding(mesh, P('x')))
     staged_masks = [None if m is None else stack_and_place(m, rows, mesh) for m in masks]
+    if family == 'lorentz':
+        # Static masks define each slab's pole patterns. Only their small
+        # reduced records leave the shard_map; no staged slab is indexed here.
+        from rfx.stepping.rank import rank_shard_map, mesh_ranks
+        records = []
+        for view in slab_views(grid, layout.n_devices):
+            owned_view = view._replace(halo_lo=2,
+                halo_hi=layout.nx_local + 1 - 2 - (view.x1 - view.x0))
+            local_masks = [None if m is None else
+                np.asarray(m)[np.clip(rows.indices[view.rank], 0, layout.nx - 1)]
+                if not isinstance(m, jax.core.Tracer) else m for m in masks]
+            metadata = []
+            def extrema(cells, *, rank):
+                local = jax.tree.map(lambda a: a[0], cells)
+                found = pole_set_extremes(local, (poles, local_masks), view=owned_view)
+                if not metadata:
+                    metadata.extend(found)
+                return tuple(tuple(jax.lax.psum(jnp.where(rank == view.rank, a, 0), 'x')
+                                   for a in (r.eps_low, r.sigma_low, r.sigma_high)) for r in found)
+            values = rank_shard_map(extrema, mesh=mesh, in_specs=P('x'),
+                out_specs=P(), check_rep=False)(mesh_ranks(mesh), inputs)
+            records.append(tuple(r._replace(eps_low=v[0], sigma_low=v[1], sigma_high=v[2])
+                                 for r, v in zip(metadata, values)))
+        judge_pole_sets(combine_pole_extremes(records), dt, courant_budget(grid),
+                        grid_kind=type(grid).__name__)
     spatial = ('ca', 'cb') if family == 'debye' else ('ca', 'cb', 'cc')
-    def local(cells, index, masks):
-        view = UniformSlabView(index, grid, {'pole_sets_judged': True})
+    widths = stage_x_widths(grid, rows, mesh)
+    def local(cells, index, masks, widths):
+        view = UniformSlabView(index, grid, {'pole_sets_judged': True, 'x_widths': widths})
         specs = dict(debye_spec=None, lorentz_spec=None)
         specs[family + '_spec'] = (poles, masks)
         c = realize_components(ComponentCells(cells, **specs), grid,
@@ -103,10 +142,10 @@ def stage_dispersion(materials, dt, spec, grid, layout, mesh, family):
         return type(coeffs)(*(value if name in spatial else
             jax.tree.map(lambda a: jnp.moveaxis(a, 1, 0), value)
             for name, value in zip(coeffs._fields, coeffs)))
-    coeffs = uniform_apply(local, inputs, indices, staged_masks, row_count=layout.nx_local + 1)
+    coeffs = uniform_apply(local, inputs, indices, staged_masks, widths, row_count=layout.nx_local + 1)
     coeffs = type(coeffs)(*(jax.tree.map(
-        lambda a: product_rows(a if name in spatial else jnp.moveaxis(a, 2, 1),
-            layout, mesh, family + '_' + name, row_axis=1 if name in spatial else 2, dt=dt), value)
+        lambda a: product_rows(a, layout, mesh, family + '_' + name,
+            dt=dt, pole_rows=name not in spatial), value)
         for name, value in zip(coeffs._fields, coeffs)))
     state = zero_pole_state(DebyeState if family == 'debye' else LorentzState,
         len(poles), layout, tuple(grid.shape[1:]), mesh=mesh, dtype=ade_state_dtype(), kind=family + '_state')
@@ -119,7 +158,7 @@ def finish(invariants, carry, layout, mesh, *, waveforms, dt=None):
     result = dict(invariants)
     result['drives'] = cut_drives(invariants['drives'], layout, mesh, waveforms=waveforms)
     result['probe_table'] = cut_probe_table(invariants['probe_table'], layout, mesh)
-    result['owns_x'] = {face: jax.device_put(jnp.asarray([p[side] for p in layout.faces]),
+    result['owns_x'] = {face: place(jnp.asarray([p[side] for p in layout.faces]),
         NamedSharding(mesh, P('x'))) for side, face in enumerate(('x_lo', 'x_hi'))}
     return result, carry
 
@@ -164,40 +203,27 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
     for source, volume in zip(sources, material_drive):
         samples = source.waveform
         # rfx #1402 item 4 (nu): drive_table slab view plugs in here
-        owner, local = layout.owner(source.i), layout.local_index(source.i)
-        cell = (owner * layout.nx_local + local, source.j, source.k)
-        axis = ('ex', 'ey', 'ez').index(source.component)
         if volume is not None:
             volume = volume[0] if isinstance(volume, tuple) else volume
-            if debye is not None and lorentz is not None:
-                from rfx.materials.lorentz import mixed_e_component_coeffs
-                # Reduce pole terms within each slab, never over packed ranks.
-                def coeff_at(bundle):
-                    c = bundle[0]
-                    return c._replace(**{name: jax.tree.map(lambda a: a.reshape(
-                        (layout.n_devices, -1, layout.nx_local) + a.shape[2:])[owner], value)
-                        for name, value in zip(c._fields, c) if name not in ('ca', 'cb', 'cc')})
-                d, l = coeff_at(debye), coeff_at(lorentz)
-                # Spatial fields use the same owning slab as the pole terms.
-                d = d._replace(ca=tuple(a[owner*layout.nx_local:(owner+1)*layout.nx_local] for a in d.ca),
-                               cb=tuple(a[owner*layout.nx_local:(owner+1)*layout.nx_local] for a in d.cb),
-                               cc=tuple(a.reshape((layout.n_devices, -1, layout.nx_local)+a.shape[2:])[owner] for a in d.cc))
-                l = l._replace(**{name: tuple(a[owner*layout.nx_local:(owner+1)*layout.nx_local] for a in getattr(l,name)) for name in ('ca','cb','cc')})
-                cb = mixed_e_component_coeffs(d, l, axis, grid.dt)[1][local, source.j, source.k]
-            elif debye is not None or lorentz is not None:
-                cb = (debye or lorentz)[0].cb[axis][cell]
-            else:
-                cb = e_update_coefficient_at(staged, cell, source.component, grid.dt, host=True)
+            cb = source_coefficient(staged, debye, lorentz, source, grid.dt, layout, mesh)
             if _realized.ACTIVE is None:
                 samples = source_table(samples, native='cb_over_dv', volume=volume, coefficient=lambda: cb)
             else:
                 samples = _realized.runtime_drive(jnp.reshape(cb / volume, (1,)), (len(source_rows),))[0] * samples
         source_rows.append((source.i, source.j, source.k, source.component, samples))
-    # drive_table reads only source nodes. Present the already staged owner
-    # indices so occupancy weighting is unchanged without a whole keep array.
-    source_meta = [(layout.owner(s.i)*layout.nx_local + layout.local_index(s.i), s.j, s.k, s.component) for s in sources]
-    waves = drive_table([jnp.array(s[4]) for s in source_rows], source_meta, n_steps,
-                        keep=staged.edge_keep)
+    source_meta = [(s.i, s.j, s.k, s.component) for s in sources]
+    waves = drive_table([jnp.array(s[4]) for s in source_rows], source_meta, n_steps)
+    if staged.edge_keep is not None and sources:
+        from rfx.model.source_coefficients import weight_drive_columns
+        from rfx.stepping.rank import rank_shard_map, mesh_ranks
+        def read_keep(keep, *, rank):
+            weights = [jnp.where(rank == layout.owner(s.i),
+                keep[('ex', 'ey', 'ez').index(s.component)][layout.local_index(s.i), s.j, s.k], 0)
+                for s in sources]
+            return jax.lax.psum(jnp.stack(weights), 'x')
+        weights = rank_shard_map(read_keep, mesh=mesh, in_specs=P('x'), out_specs=P(),
+            check_rep=False)(mesh_ranks(mesh), staged.edge_keep)
+        waves = weight_drive_columns(waves, weights, source_meta)
     faces = None if cpml else {f'{a}_{s}' for a in 'xyz' for s in ('lo', 'hi')}
     (use_cpml, params, psi, cpml_grid, axes, curl_boundary, pec_faces, pmc_faces, use_pmc) = nonuniform_boundaries(
         grid, resolve_cpml_axes(grid, None if cpml else ''), faces, None)
@@ -265,13 +291,13 @@ def stage_pec(cells, sheets, wires, grid, layout, mesh):
             masks = realized_pec_edge_masks(None, sheets, wires, view=view)
             per_rank.append(tuple(jnp.pad(a, ((lo - int(indices[0]), int(indices[-1]) + 1 - hi),
                                                (0, 0), (0, 0))) for a in masks))
-        static = tuple(jax.device_put(jnp.stack([rank[c] for rank in per_rank]),
+        static = tuple(place(jnp.stack([rank[c] for rank in per_rank]),
                        NamedSharding(mesh, P('x'))) for c in range(3))
     if cells is None:
         masks = static
     else:
         cell_rows = stack_and_place(cells, rows, mesh, outside=False)
-        indices = jax.device_put(jnp.asarray(rows.indices), NamedSharding(mesh, P('x')))
+        indices = place(jnp.asarray(rows.indices), NamedSharding(mesh, P('x')))
         def local(cells, index, fixed):
             view = UniformSlabView(index, grid, {} if fixed is None else {'pec_static_edge_masks': fixed})
             return realized_pec_edge_masks(cells, view=view)

@@ -148,6 +148,16 @@ def forward_sharding(arr):
     return sharding if isinstance(sharding, NamedSharding) else None
 
 
+def place(array, sharding):
+    """Place a logical array, allowing batching to insert unpartitioned axes."""
+    tracer = array
+    while isinstance(tracer, jax.core.Tracer):
+        if getattr(tracer, 'batch_dim', None) is not None:
+            return jax.jit(lambda a: a, out_shardings=sharding)(array)
+        tracer = getattr(tracer, 'primal', None)
+    return jax.device_put(array, sharding)
+
+
 def source_owner_mask(rank, device_ids):
     """One entry per source, true only on the slab that owns its edge."""
     return rank == np.asarray(device_ids, dtype=np.int32)
@@ -285,16 +295,7 @@ def cut(array, layout, kind, *, mesh=None, dt=None, host=False, uniform=False):
     if mesh is None:
         return slabs
     merged = slabs.reshape((layout.n_devices * layout.nx_local, *array.shape[1:]))
-    tracer = merged
-    while isinstance(tracer, jax.core.Tracer):
-        if getattr(tracer, 'batch_dim', None) is not None:
-            # JIT's batching rule inserts an unpartitioned dimension at each
-            # batch axis. device_put's batching rule keeps P('x') on axis 0.
-            # The logical x axis therefore stays partitioned under vmap;
-            # unbatched calls retain their original device_put program.
-            return jax.jit(lambda a: a, out_shardings=NamedSharding(mesh, P('x')))(merged)
-        tracer = getattr(tracer, 'primal', None)
-    return jax.device_put(merged, NamedSharding(mesh, P('x')))
+    return place(merged, NamedSharding(mesh, P('x')))
 
 
 @lru_cache(maxsize=None)
@@ -349,7 +350,7 @@ def shard_stacked(arr, shd):
     """
     n_dev = arr.shape[0]
     rest = arr.shape[1:]
-    return jax.device_put(arr.reshape(n_dev * rest[0], *rest[1:]), shd)
+    return place(arr.reshape(n_dev * rest[0], *rest[1:]), shd)
 
 
 def shard_stacked_poles(arr, shd):
@@ -362,13 +363,7 @@ def shard_stacked_poles(arr, shd):
     """
     n_dev, n_poles, nx_loc, ny_a, nz_a = arr.shape
     merged = arr.reshape(n_dev * n_poles, nx_loc, ny_a, nz_a)
-    tracer = merged
-    while isinstance(tracer, jax.core.Tracer):
-        if getattr(tracer, 'batch_dim', None) is not None:
-            # As in cut(), batching must insert an unpartitioned batch axis.
-            return jax.jit(lambda a: a, out_shardings=shd)(merged)
-        tracer = getattr(tracer, 'primal', None)
-    return jax.device_put(merged, shd)
+    return place(merged, shd)
 
 
 def pole_fill(kind, dt=None, n_poles=1):

@@ -37,13 +37,14 @@ This is read from the code; the contract test is what verifies it, and a
 producer that needs more is a stencil statement to make before changing it.
 """
 from typing import Any, Mapping, NamedTuple
+from functools import lru_cache
 
 import jax
 import jax.numpy as jnp
 import numpy as np
 from jax.sharding import NamedSharding, PartitionSpec as P
 
-from rfx.stepping.slab import Slab
+from rfx.stepping.slab import Slab, place, forward_sharding
 
 HALO_LO = 1
 HALO_HI = 0
@@ -69,12 +70,39 @@ def stack_and_place(array, rows, mesh, *, outside="replicate"):
     Material and metric inputs replicate global endpoints; occupancy and
     masks use zero. Product padding is a separate application of slab.FILL.
     """
+    nx = int(np.max(np.where(rows.outside, -1, rows.indices))) + 1
+    layout = Slab(nx, mesh.size)
+    sharding = forward_sharding(array)
+    if sharding is not None and tuple(sharding.spec)[:1] == ('x',):
+        return uniform_from_owned(array, layout, mesh, outside=outside)
     xp = np if isinstance(array, np.ndarray) else jnp
-    stacked = xp.take(array, np.clip(rows.indices, 0, array.shape[0] - 1), axis=0)
+    stacked = xp.take(array, np.clip(rows.indices, 0, nx - 1), axis=0)
     if outside != "replicate":
         mask = rows.outside.reshape(rows.outside.shape + (1,) * (array.ndim - 1))
         stacked = xp.where(mask, xp.asarray(outside, dtype=array.dtype), stacked)
-    return jax.device_put(jnp.asarray(stacked), NamedSharding(mesh, P('x')))
+    return place(jnp.asarray(stacked), NamedSharding(mesh, P('x')))
+
+
+def uniform_from_owned(array, layout, mesh, *, outside='replicate'):
+    """Exchange owned x slabs into two low rows and one high row, locally."""
+    from rfx.stepping.rank import rank_shard_map, mesh_ranks
+    right = [(r, r + 1) for r in range(layout.n_devices - 1)]
+    left = [(r + 1, r) for r in range(layout.n_devices - 1)]
+    def extend(local, *, rank):
+        low = jax.lax.ppermute(local[-2:], 'x', right)
+        high = jax.lax.ppermute(local[:1], 'x', left)
+        values = jnp.concatenate((low, local, high))
+        indices = rank * layout.nx_per_rank + jnp.arange(layout.nx_local + 1) - 2
+        shape = (-1,) + (1,) * (local.ndim - 1)
+        if outside == 'replicate':
+            endpoint = local[jnp.clip(layout.nx - rank * layout.nx_per_rank - 1, 0, local.shape[0] - 1)]
+            fill = jnp.where((indices < 0).reshape(shape), local[0], endpoint)
+        else:
+            fill = jnp.asarray(outside, local.dtype)
+        values = jnp.where(((indices >= 0) & (indices < layout.nx)).reshape(shape), values, fill)
+        return values[None]
+    return rank_shard_map(extend, mesh=mesh, in_specs=P('x'), out_specs=P('x'),
+                         check_rep=False)(mesh_ranks(mesh), array)
 
 
 class UniformSlabView(NamedTuple):
@@ -109,6 +137,8 @@ class UniformSlabView(NamedTuple):
         return self.x1 + self.halo_hi
 
     def rows(self, a, axis=0):
+        if axis == 0 and 'x_widths' in self.globals:
+            return self.globals['x_widths']
         return jnp.take(jnp.asarray(a), jnp.clip(self.indices, 0, a.shape[axis] - 1), axis=axis)
 
     def own(self, a, axis=0):
@@ -213,7 +243,13 @@ def uniform_apply(producer, *inputs, row_count, row_axis=0):
             saved.update(tree=tree, leaves=leaves, dynamic=dynamic)
         return tuple(a if keep else None for a, keep in zip(leaves, dynamic))
 
-    mapped = jax.vmap(traced)(*inputs)
+    # Keep the owners' local stencils inside the device boundary, including
+    # their reverse-mode residuals. Static metadata still bypasses vmap.
+    sharding = next(forward_sharding(a) for a in jax.tree.leaves(inputs)
+                    if isinstance(forward_sharding(a), NamedSharding))
+    mapped = jax.shard_map(lambda *a: jax.vmap(traced)(*a), mesh=sharding.mesh,
+                          in_specs=(P('x'),) * len(inputs), out_specs=P('x'),
+                          check_vma=False)(*inputs)
     return jax.tree.unflatten(saved['tree'], [
         a if keep else original for a, original, keep in
         zip(mapped, saved['leaves'], saved['dynamic'])])
@@ -247,21 +283,34 @@ def uniform_from_cut(array, layout, mesh, *, outside='replicate'):
         out_specs=P('x'), check_rep=False))(mesh_ranks(mesh), array)
 
 
-def product_rows(array, layout, mesh, kind, *, row_axis=1, dt=None):
+def product_rows(array, layout, mesh, kind, *, row_axis=1, dt=None, pole_rows=False):
     """Drop the extra input row and apply the step's exact named fill policy."""
     from rfx.stepping.slab import pole_fill
     if array is None:
         return None
     fill = pole_fill(kind, dt)
     rows = uniform_slab_rows(layout)
-    index = [slice(None)] * array.ndim
-    index[row_axis] = slice(1, None)
-    value = array[tuple(index)]
-    shape = [1] * value.ndim
+    shape = [1] * array.ndim
+    if pole_rows:
+        row_axis = 2
     shape[0], shape[row_axis] = layout.n_devices, layout.nx_local
-    outside = jax.device_put(jnp.asarray(rows.outside[:, 1:].reshape(shape)), NamedSharding(mesh, P('x')))
-    alignment = jax.device_put(jnp.asarray(rows.alignment[:, 1:].reshape(shape)), NamedSharding(mesh, P('x')))
-    pad = jnp.where(alignment, jnp.asarray(fill.alignment, value.dtype),
-                    jnp.asarray(fill.physical, value.dtype))
-    value = jnp.where(outside, pad, value)
-    return value.reshape((value.shape[0] * value.shape[1],) + value.shape[2:])
+    outside = place(jnp.asarray(rows.outside[:, 1:].reshape(shape)), NamedSharding(mesh, P('x')))
+    alignment = place(jnp.asarray(rows.alignment[:, 1:].reshape(shape)), NamedSharding(mesh, P('x')))
+    return _product_map(mesh, row_axis, pole_rows, fill.alignment, fill.physical)(array, outside, alignment)
+
+
+@lru_cache(maxsize=128)
+def _product_map(mesh, row_axis, pole_rows, alignment_fill, physical_fill):
+    """Compile only row copies/fills; the owners' arithmetic stays eager."""
+    def local(value, outside, alignment):
+        if pole_rows:
+            value = jnp.moveaxis(value, 2, 1)
+        index = [slice(None)] * value.ndim
+        index[row_axis] = slice(1, None)
+        value = value[tuple(index)]
+        pad = jnp.where(alignment, jnp.asarray(alignment_fill, value.dtype),
+                        jnp.asarray(physical_fill, value.dtype))
+        value = jnp.where(outside, pad, value)
+        return value.reshape((value.shape[0] * value.shape[1],) + value.shape[2:])
+    return jax.jit(jax.shard_map(local, mesh=mesh, in_specs=(P('x'),) * 3,
+                                out_specs=P('x'), check_vma=False))

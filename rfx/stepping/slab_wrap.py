@@ -12,7 +12,7 @@ from rfx.measurement.projector import ComponentTerms, SampleTable
 from rfx.stepping.graded import make_graded_step
 from rfx.stepping.rank import rank_shard_map
 from rfx.stepping.sequence import HookPoint
-from rfx.stepping.slab import cut, cut_pole_coeffs, cut_poles
+from rfx.stepping.slab import cut, cut_pole_coeffs, cut_poles, place
 
 
 def select_step(*, cpml=False, debye=False, lorentz=False, ports=False,
@@ -24,7 +24,7 @@ def select_step(*, cpml=False, debye=False, lorentz=False, ports=False,
 
 
 def _place(value, mesh):
-    return jax.device_put(value, NamedSharding(mesh, P('x')))
+    return place(value, NamedSharding(mesh, P('x')))
 
 
 def _nodes(indices, layout):
@@ -78,7 +78,7 @@ def cut_drives(drives, layout, mesh, *, waveforms):
         owner[component] = _place(drives.owner[component][ids], mesh)
     samples = jnp.where(wave_valid[None, :, :], waveforms[:, selected_waves],
                         jnp.zeros((), waveforms.dtype))
-    samples = jax.device_put(samples, NamedSharding(mesh, P(None, 'x')))
+    samples = place(samples, NamedSharding(mesh, P(None, 'x')))
     return drives._replace(nodes=nodes, coef=coef, wave_id=wave_id, owner=owner, waves=samples)
 
 
