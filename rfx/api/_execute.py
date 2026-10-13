@@ -2650,9 +2650,9 @@ class _ExecuteMixin:
         # ---- Sources / probes (lumped/wire/coax ports unsupported here). ----
         if self._lumped_rlc:
             raise NotImplementedError(
-                "Lumped RLC elements are not yet supported on the multi-device graded path "
-                "(run(devices=...) with more than one device, or forward(distributed=True)); "
-                "remove the lumped RLC element or run on one device."
+                "Lumped RLC ports are not yet supported on the "
+                "distributed=True forward path; remove the lumped_rlc "
+                "spec or omit distributed=True."
             )
         # A current source enters the field through the Cb of its edge, so
         # its drive has to read the permittivity arrays the E update reads
@@ -2675,7 +2675,7 @@ class _ExecuteMixin:
                 raise NotImplementedError(
                     "Lumped / wire ports (impedance > 0) are not yet supported on the multi-device graded path "
                     "(run(devices=...) with more than one device, or forward(distributed=True)); "
-                    "run on one device or replace the port with a current source (impedance=0).")
+                    "run on one device (forward: distributed=False) or replace the port with a current source (impedance=0).")
             idx = _grid_metric.field_index(grid, pe.position, pe.component)
             if (_drive_from_override
                     and not _needs_scale(pe.amplitude_kind, "cb_over_dv")):
