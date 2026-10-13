@@ -309,8 +309,10 @@ def _resolve_position_to_index(grid, position):
 
 
 def _rlc_inputs_traced(materials, *overrides):
+    # Any traced material array (or override) selects array arithmetic.
+    import jax
     return any(is_tracer(value) for value in
-               (*overrides, materials.eps_r, materials.sigma)
+               (*overrides, *jax.tree_util.tree_leaves(materials))
                if value is not None)
 
 
