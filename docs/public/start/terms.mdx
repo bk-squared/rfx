@@ -5,16 +5,50 @@ sidebar:
   order: 4
 ---
 
-<p data-rfx="note">Being written for 2.0 (tracker 1171).</p>
+Most of what rfx does has a name in the FDTD and microwave literature, and the
+pages use that name: Yee lattice, Courant limit, CPML, TF/SF, NTFF, graded
+mesh, lumped port, waveguide port, Floquet port, reference plane, Touchstone,
+Debye and Lorentz poles, surface impedance, matrix pencil, normalization run.
+They are not repeated here.
 
-## What it is for
+The names below are rfx's own. Each one is listed with what it means in rfx and
+the nearest term you may know from a textbook or another solver. Where an rfx
+name appears in the API, the API name is given too.
 
-## How to use it
+## Setting up the model
 
-## What is checked
+| rfx name | What it means in rfx | Nearest field term |
+|---|---|---|
+| **solver path** | Which time-stepping implementation runs the model: uniform mesh or graded mesh, on one device or on several (`run(devices=...)`, `forward(distributed=True)`). ADI (`solver="adi"`) and subgridding (`add_refinement`) are separate, experimental paths. A feature can be solved on one path and refused on another; the [support table](/rfx/support/) says which. | the solver or algorithm (Taflove and Hagness name FDTD variants by their algorithm) |
+| **realized**, **on the grid** (`realized_geometry()`) | What the grid actually built from what you drew: shapes snapped to cells or node planes, ports and apertures as meshed. rfx compares the two and reports the difference. Not the antenna "realized gain". | staircased or meshed geometry; the discretised model shown in a solver's mesh view |
+| **preflight** (`sim.preflight()`) | Checks of the setup that run before the first time step, without solving. An **error** stops the run; an **advisory** is reported and the run continues. `run()` runs it for you. | a model or mesh check before solving |
+| **fidelity report** (`sim.fidelity_report()`) | A printed table of each shape's drawn extent next to where it landed on the grid. | a mesh view of the discretised model |
+| **sheet**, **volume**, **wire** | The three kinds of conductor: a zero-thickness sheet on one grid plane (`add_thin_conductor`, `add_pinned_sheet`), a solid metal volume, and a thin wire (a `PolylineWire` with `radius=0`), built as a path of zeroed E edges. A radius above zero but below half a cell is refused. See [Conductors](/rfx/model/conductors/). | zero-thickness PEC, thick PEC, thin-wire model |
+| **wire port** (`add_port(..., extent=...)`) | A lumped port spread along several cells instead of one cell edge. | a distributed lumped (discrete) port |
+| **port family** | The kind of port: lumped or wire, microstrip, coaxial, rectangular waveguide, Floquet. Each family has one S-parameter calculator. | port type |
+| **occupancy** (`pec_occupancy_override`) | The fraction of a cell edge treated as metal, from 0 to 1, used as a continuous design variable. | material density in topology optimisation |
 
-## What is refused, and the way through
+## Running and stopping
 
-## Accuracy
+| rfx name | What it means in rfx | Nearest field term |
+|---|---|---|
+| **simulation time** (`n_steps`, `num_periods`, `until_decay`) | How long the run is: the number of time steps times the time step. Older pages and some API names call it the record length (`gradient_record_length_witness`). | simulation time, number of time steps (Meep `run(until=...)`, openEMS `NrTS`) |
+| **refused** | rfx raises before the first time step instead of running a different model than the one you declared. The message names the input, the solver path and what to do instead. See [Refusals](/rfx/check/refusals/). | none; plain English |
+| **status words** (supported, limited, experimental, not documented, unsupported, refused) | How far a feature is supported. Defined on the [support page](/rfx/support/). | none; plain English |
 
-## See also
+## Is the run long enough
+
+| rfx name | What it means in rfx | Nearest field term |
+|---|---|---|
+| **settling check** (`result.settling_witness`, `settling_db`) | For each frequency a spectral result reads, rfx fits the poles still ringing after the source ends and estimates how much of that frequency's value lies beyond the end of the run. `settling_db` is the largest share, in dB; at or below −40 dB the status is `pass`. `fail`, `undetermined` and `absent` are not passes. See [Simulation time](/rfx/evidence/simulation-time/). | a field-decay or energy-decay stop criterion (Meep `stop_when_fields_decayed`, openEMS end criteria, the CST transient solver's steady-state energy criterion). rfx's check is per frequency rather than one energy number |
+| **ring-down completion** (`RingdownSpec`, `run(ringdown=...)`, `forward(ringdown=...)`) | Tail extrapolation by matrix pencil: the decaying poles are fitted to the late part of the time signal, and their spectrum beyond the end of the run is added in closed form. An early-window and a late-window fit are compared to check it. | Prony or matrix-pencil extrapolation of the time signal (Hua and Sarkar, *IEEE Trans. ASSP* 38(5), 1990); the CST transient solver's AR filter |
+| **matrix pencil fit** (`find_resonances`, and the exported `harminv` names) | Resonant frequencies and Q from a probe signal, by the matrix pencil method. The `harminv` names are historical: rfx does not use Harminv's filter-diagonalization method. See [Resonances](/rfx/measure/resonances/). | matrix pencil method (Hua and Sarkar 1990; Sarkar and Pereira, *IEEE AP Magazine* 37(1), 1995). Meep uses Harminv (filter diagonalization, Mandelshtam and Taylor 1997) for the same job |
+
+## Measuring and checking results
+
+| rfx name | What it means in rfx | Nearest field term |
+|---|---|---|
+| **S-parameter calculator** (`compute_s_matrix(method=...)`) | The one function that extracts S for a port family; `method=` chooses it (it was `lane=` before 2.0). | S-parameter extraction |
+| **`reliable` mask** (microstrip S-parameter results) | Per port and frequency, False where both the port voltage and current fall below 10 % of their own band median in a driven run. A low-signal flag, not an accuracy statement. | none |
+| **gradient check from a longer run** (`gradient_record_length_witness`) | The same gradient computed again from a longer run (twice as long by default, `factor=`), and the relative change of the gradient over all parameters reported per frequency. Agreement between automatic differentiation and finite differences does not replace it, because both differentiate the same run. See [Gradients](/rfx/evidence/gradients/). | a convergence check of the gradient in simulation time |
+| **accuracy bar** | The terms on which rfx calls a result accurate enough: a converged mesh, the trend over frequency, magnitude within 2 dB, frequencies within 1 %, group delay within 1 %, and narrow resonances or passbands also judged against their bandwidth. See [Accuracy bar](/rfx/evidence/accuracy-bar/). | acceptance criteria |

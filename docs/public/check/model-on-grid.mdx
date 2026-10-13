@@ -5,16 +5,159 @@ sidebar:
   order: 1
 ---
 
-<p data-rfx="note">Being written for 2.0 (tracker 1171).</p>
-
 ## What it is for
+
+FDTD solves the structure the grid can hold, not the one you drew. A dielectric
+face lands on a cell boundary, a metal sheet on a node plane, a port on cell
+edges. When a drawn dimension does not fall on the grid, the solved structure is
+a slightly different one: a patch a few percent wider resonates a few percent
+lower, and nothing in the result says so.
+
+rfx checks this before the first time step. It compares what you declared with
+what the grid built, stops the run when the difference changes the model you
+asked for, and shows you every placement so you can read it yourself. This page
+is that step: run it after you declare the model and before you spend time on a
+run.
 
 ## How to use it
 
+Three calls, none of which runs a time step:
+
+| Call | What it gives you |
+|---|---|
+| `sim.preflight()` | A list of findings. Each has a `severity` (`"error"`, `"warning"` or `"info"`), a `code` and a message that says what was found and what to do. `report.ok` is False when there is any error. |
+| `sim.fidelity_report()` | A printed table: every shape's drawn extent next to the extent the grid built, per axis, in micrometres. |
+| `sim.realized_geometry()` | The same facts as a record you can read in code: solved sheet spans, wall planes, port edges, cell sizes, the snap mode. |
+
+A 10 × 10.2 mm patch on a 0.5 mm uniform grid shows the most common finding:
+
+```python
+from rfx import Simulation, Box
+from rfx.mesh_edges import edge_aware_profiles
+
+domain = (0.02, 0.02, 0.01)
+substrate = Box((0.0, 0.0, 0.004), (0.02, 0.02, 0.005))
+patch = Box((0.005, 0.005, 0.005), (0.015, 0.0152, 0.005))   # a sheet
+
+def build(**mesh):
+    sim = Simulation(freq_max=10e9, domain=domain, dx=0.5e-3,
+                     boundary="cpml", cpml_layers=8, **mesh)
+    sim.add_material("substrate", eps_r=3.66)
+    sim.add(substrate, material="substrate")
+    sim.add_thin_conductor(patch)
+    return sim
+
+sim = build()
+report = sim.preflight()
+print("ok:", report.ok)
+for issue in report.errors:
+    print(issue.code)
+```
+
+```text
+ok: False
+sheet_effective_size
+```
+
+The message of that error reads, in part:
+
+```text
+2 conductor sheet dimension(s) are solved more than 1% off their drawn size:
+... x: drawn 10mm, nodes cover 10mm, solved as 10.35mm (+3.50%);
+... y: drawn 10.2mm, nodes cover 10mm, solved as 10.35mm (+1.47%).
+```
+
+A metal sheet's free edge is solved about 0.35 of a cell beyond its last mesh
+node, so on this grid the patch is solved 3.5 % wider than drawn. `run()` and
+`forward()` would stop here with the same message. The way through is a mesh
+whose nodes put the solved edges on the drawn ones:
+
+```python
+profiles = edge_aware_profiles(domain, 0.5e-3, sheets=[patch], solids=[substrate])
+sim = build(**profiles)
+print("ok:", sim.preflight().ok)
+sim.fidelity_report()
+```
+
+Preflight now reports no error. It still gives warnings: the substrate runs into
+the absorber, and the graded in-plane mesh reaches the absorber faces. Both are
+in the table below; here the substrate is meant to run to the edge. The
+patch's lines in the report now read (abridged):
+
+```text
+thin_conductor[0] ... PEC sheet on node plane z = 5000.00 um
+  x: declared [5000.0, 15000.0] um -> realized [5000.0, 15000.0] um | ... extent 10000.0 -> 10000.0 um
+  y: declared [5000.0, 15200.0] um -> realized [5000.0, 15200.0] um | ... extent 10200.0 -> 10200.0 um
+```
+
+The same spans in code:
+
+```python
+for span in sim.realized_geometry().sheets[0].solved_spans[:2]:
+    print(span.lo, span.hi)
+```
+
+Two options change what the check does:
+
+- `Simulation(..., snap="declared")` accepts a sheet solved off its drawn size
+  as a warning instead of an error, and records that choice in
+  `realized_geometry().snap`. It changes neither the mesh nor the result; you
+  are telling rfx you know the solved size differs.
+- `preflight(strict=True)` raises on the first finding instead of collecting
+  them.
+
+`run(skip_preflight=True)` skips the automatic check. Use it only after you
+have read the report once for the same model.
+
 ## What is checked
+
+Preflight's findings that compare the drawing with the grid:
+
+| Finding | What it means | What to do |
+|---|---|---|
+| a sheet solved more than 1 % off its drawn size (`sheet_effective_size`, error) | The sheet's free edges are solved about 0.35 of a cell past its last node. An edge fed over its whole width by a port is solved where it is drawn. | Build the in-plane mesh with `edge_aware_profiles`, or pass `snap="declared"`. |
+| a conductor face off the grid (`off_lattice_design_edges`, warning) | A metal face sits more than 0.5 % of its extent away from the nearest node. | Choose `dx` commensurate with the shape, or place a node on the face with a graded profile. |
+| a PEC shape thinner than one cell but not zero (error) | It is neither a sheet nor a resolved volume. | Declare a sheet, or resolve the thickness. See [Conductors](/rfx/model/conductors/). |
+| a PEC shape that covers no cell (error) | Metal would vanish. | Make it larger than a cell, or use a wire. |
+| a sheet off a dielectric face | The face is not on a node plane, so the sheet snaps up to half a cell away. | Put the face on a node plane. |
+| geometry in the absorber, grading that reaches the absorber (`geometry_in_absorber`, `nu_grading_reaches_absorber`, warnings) | The absorber no longer sees a uniform medium in the direction normal to its face. | Keep the structure clear of the absorber, and keep the cells next to each absorbing face uniform over as many cells as the face has absorber layers. A substrate that runs to the domain edge on purpose is reported too. |
+
+Other findings are about the setup rather than the grid: cell size against
+wavelength, a lossless resonator in an open domain (its Q is infinite), a model
+with no source, a far-field box too close to the radiator. The
+[materials page](/rfx/model/materials/) and the
+[conductors page](/rfx/model/conductors/) give the full placement rules.
+
+A clean preflight is not an accuracy statement. It means rfx found none of the
+mistakes it knows about. Whether a number is accurate is decided by the checks
+on [Simulation time](/rfx/evidence/simulation-time/),
+[Mesh convergence](/rfx/evidence/mesh-convergence/) and the
+[Accuracy bar](/rfx/evidence/accuracy-bar/).
 
 ## What is refused, and the way through
 
+An error-severity finding stops `run()` and `forward()` with a `ValueError`
+before the first time step. The error carries the findings as `rfx.Diagnostic`
+records (`error.diagnostics`), each with a `code`, a `severity`, a `message` and
+the numbers behind it in `values`.
+
+Inputs a solver path does not implement are refused by a separate check that
+does not depend on the grid; [Refusals](/rfx/check/refusals/) explains how they
+read, and the [support page](/rfx/support/) lists them.
+
 ## Accuracy
 
+This page makes no accuracy statement of its own. The 0.35-cell edge offset
+that preflight uses to predict a sheet's solved size was measured on a thin PEC
+fin against a fine-mesh reference, for both polarizations and two cell sizes
+(`scripts/diagnostics/pec_sheet_edge_offset.py`); the size check built on it is
+pinned in `tests/contracts/test_sheet_solved_edge_reports.py`.
+
+<p data-rfx="note">Pending for 2.0: a read-only view of the whole model as the
+grid holds it (materials, conductors and ports in one record), tracker 1622.</p>
+
 ## See also
+
+- [Domain and mesh](/rfx/model/domain-mesh/#solving-sheets-at-their-drawn-size): building `edge_aware_profiles`.
+- [Conductors](/rfx/model/conductors/) and [Materials](/rfx/model/materials/): the placement rules.
+- [Simulation API](/rfx/api/simulation/): `preflight`, `fidelity_report`, `realized_geometry`.

@@ -5,16 +5,192 @@ sidebar:
   order: 5
 ---
 
-<p data-rfx="note">Being written for 2.0 (tracker 1171).</p>
+rfx 2.0 changes three things a 1.x user will notice. Some inputs that 1.x ran
+as a different model than the one you declared are now refused before the
+first time step. A few APIs were renamed or removed. And many results move,
+because 1.x solved some structures differently from how they were drawn. This
+page lists them by what you see. The full list of changes is the
+[changelog](/rfx/project/changelog/).
 
-## What it is for
+## Before you start
 
-## How to use it
+- **Python 3.11 or newer**, with JAX and jaxlib 0.10.2 or newer. Python 3.10
+  users stay on rfx 1.8.x.
+- Run your script once and read the preflight output before you compare any
+  number with a 1.x result. Most of what follows shows up there first, with
+  the input, the reason and what to do instead.
 
-## What is checked
+## Renamed
 
-## What is refused, and the way through
+A renamed API keeps its old name through 2.x as a deprecated alias that warns
+once and names the new one.
 
-## Accuracy
+| 1.x | 2.0 |
+|---|---|
+| `compute_s_matrix(lane=...)`, `s_matrix_lane(lane=...)` | `method=...`, with the same values. Passing both raises `TypeError`. |
+
+<p data-rfx="note">Pending for 2.0: the resonance functions exported as
+`harminv` are being renamed for the matrix pencil method they implement, with
+the old names kept as deprecated aliases (PR 1661).</p>
+
+## Removed
+
+| 1.x | What to use instead |
+|---|---|
+| `Simulation.set_periodic_axes(...)` | Declare periodic faces in the boundary: `boundary=BoundarySpec(x="periodic", y="periodic", z="cpml")` (`from rfx.boundaries.spec import Boundary, BoundarySpec`). |
+| `Simulation(pec_faces=...)` | Declare PEC faces in the boundary: `boundary=BoundarySpec(x="cpml", y="cpml", z=Boundary(lo="pec", hi="cpml"))`. |
+| time-gated `minimize_s11_at_freq` | `minimize_s11_at_freq_wave_decomp` with `forward(port_s11_freqs=...)`. |
+| `sim.add(..., two_plane=True)` | Nothing: every metal volume now has both faces. A copper foil drawn as a one-cell PEC box should be declared as a sheet, `add_thin_conductor`, with the same corners. |
+| `compute_coaxial_s_matrix` and `CoaxialSMatrixResult` | `compute_coaxial_line_reflection(termination=..., dut_impedance=...)` for a one-port reflection, `compute_coaxial_two_port(...)` for a through line. |
+| the legacy multi-device runner `rfx.runners.distributed.run_distributed` (now raises `RuntimeError`) and the `rfx.runners.run_distributed` shortcut | `sim.run(devices=[...])`, or `rfx.runners.distributed_v2.run_distributed` with the same arguments. |
+| rfx Studio, the experiment service, the agent control plane and their command-line tools | Not shipped in 2.0. Stay on the last 1.x release that ships them, or take the code from the repository history. |
+
+**Low-level API.** The fields of `DebyeCoeffs` and `LorentzCoeffs` are now a
+tuple of three arrays, one per E component, instead of one grid array. Index
+the component first: `coeffs.ca[0]` is the Ex coefficient, where 1.x read
+`coeffs.ca[i, j, k]`.
+
+## Defaults that changed
+
+| What | 1.x | 2.0 | To keep the 1.x behaviour |
+|---|---|---|---|
+| `add_source(amplitude_kind=None)` | meant different things on different solver paths | a current moment in A·m on every path | Uniform `run()` with PEC walls: `amplitude_kind="field"`. Uniform `run()` with an absorber, and uniform `forward()`: `amplitude_kind="current"` with the waveform amplitude multiplied by the cell volume. Graded meshes: unchanged. Field values change; S-parameters and ratios of probes do not. |
+| a port's `waveform` (lumped, wire, microstrip) | scaled with the mesh and the load | the port's open-circuit source voltage, on every mesh | S-parameters do not change. Absolute fields, flux power and far fields of port-driven models do: divide the waveform by the ratio the [changelog](/rfx/project/changelog/) gives for your port. |
+| `compute_msl_s_matrix(enforce_passivity=...)` | `True` | `False`: S is the extracted matrix | `enforce_passivity=True`. |
+| `compute_coax_msl_transition(strict_passivity=...)` | a non-passive S came back with a warning | `True`: a non-passive S raises | `strict_passivity=False`. |
+| coaxial `cpml_axes` | `"z"` accepted | `"xyz"`, the only accepted value | Drop `cpml_axes="z"`. |
+| subgridding (`add_refinement` on a uniform mesh) | ran by default | refused by default | Use a graded mesh for local resolution, or `add_refinement(..., validation="research")` to run it with a warning. |
+| Touchstone files written by rfx | rfx's own port order | the standard order, with a layout marker | Nothing: old rfx files are detected and read correctly. |
+| `maximize_directivity(log_ratio=False)` | ran | raises, because its gradient can have the wrong sign | Use the default `log_ratio=True`. |
+| ADI (`solver="adi"`) | CFL factor 5 | CFL factor 2, and the default run honours `num_periods` | With an explicit `n_steps`, multiply it by 2.5 for the same simulation time. ADI is experimental in 2.0. |
+
+<p data-rfx="note">Pending for 2.0: the default source pulse and the rule that
+stops a run when the fields have decayed (`until_decay`) are being made one
+implementation for every solver path. Their lines are added here when those
+changes land.</p>
+
+## Inputs now refused
+
+1.x ran each of these, but solved something other than what was declared: an
+input left out, a boundary changed, metal moved. 2.0 raises before the first
+time step, and the message names the input, the solver path and the way
+through. [Refusals](/rfx/check/refusals/) explains how they read, and the
+[support page](/rfx/support/) lists every refused input per solver path.
+
+**Geometry and conductors**
+
+| Input | Way through |
+|---|---|
+| A metal sheet solved more than 1 % off its drawn size | Build the in-plane mesh with `rfx.mesh_edges.edge_aware_profiles`, or pass `Simulation(snap="declared")` to accept the difference. See [Check the model on the grid](/rfx/check/model-on-grid/). |
+| A PEC shape thinner than one cell but not zero, or one that covers no cell | Declare a sheet, resolve the thickness, or make it larger than a cell. |
+| A sub-cell wire radius (`PolylineWire(radius=...)` below the cell) | `radius=0` gives the 1.x result exactly; or refine the mesh so the wire is a volume. A probe pin may declare a radius up to 0.2 of a cell. |
+| A lossy film (`add_thin_conductor` below the metal threshold) that is not a box and spans more than one cell layer, or whose area the grid misses by more than 1 % | `snap="declared"` runs an off-area film and reports drawn and solved area. |
+| A lossy film with `eps_r` other than 1, on a PMC face, sharing edges with a surface-impedance sheet, or with an edge inside a design box | The message says which; a film is a resistive sheet on one node plane and carries no permittivity. |
+| A soft source on a metal edge, or a source or port inside a PEC wall | Move it off the conductor, at least one cell inside the domain, or use a port. |
+| A microstrip or coaxial strip that continues behind its port and resonates in the band read | Start the strip at the port's grid node, which the message prints. |
+
+**Boundaries and sources**
+
+| Input | Way through |
+|---|---|
+| A waveguide port filling a guide whose side faces are declared absorbing, or left undeclared on a graded mesh | Declare PEC side walls, e.g. `boundary={"x": "cpml", "y": "pec", "z": "pec"}` for an x-directed port. Left undeclared on a uniform mesh, the side faces are walls, with a warning. |
+| A plane wave (`add_tfsf_source`) with a structure that is not uniform across its side faces (a finite scatterer, a lumped element). Those faces are solved as periodic. | Declare `periodic` side faces for an array, or use `add_tfsf_source(..., closed_box=True)` for one object. |
+| A far-field (NTFF) box whose faces are not at least one cell inside the grid, or that touches the plane-wave injection region | Move each face at least one cell inside the domain and outside the injection region. |
+| A 2-D far-field box | Use a 3-D model. |
+| `eps_override` together with subpixel smoothing in a waveguide calculator | Use declared materials with smoothing, or `eps_override` without it. |
+| A Drude or Lorentz material above its own time-step limit | The message gives the stable time step and its cost. |
+| A plain source in a lumped or wire S-parameter run, or a zero-ohm port | Remove the source, or `run(compute_s_params=False)` for the raw port waves. |
+
+**Solver paths and precision**
+
+| Input | Way through |
+|---|---|
+| An input a solver path does not implement (a lumped element, refinement, port, material or control on a path that cannot solve it) | The message names the path that can. Most often: run on one device, or on a uniform mesh. |
+| `precision="float64"` without JAX 64-bit mode | Build and run the model inside `with jax.enable_x64():`. |
+| `jax.jit` around a run on two or more GPUs | Call it without `jax.jit`, or start the process with `XLA_FLAGS=--xla_gpu_enable_command_buffer=`. |
+| ADI with an absorbing boundary, a material interface, or a source without `amplitude_kind` | Use `solver="yee"` for open structures and material interfaces; ADI runs only closed (`boundary="pec"`), homogeneously filled cavities, with `amplitude_kind="field"`. |
+| `mode="2d_tez"` on a graded mesh, or `mode="2d_tmz"` on more than one z cell between PEC walls | `mode="3d"`, an explicit uniform `dx=`, or the z cell count between walls the message gives. |
+
+**Preflight reports**
+
+| 1.x | 2.0 |
+|---|---|
+| `if not sim.preflight():` or `assert sim.preflight()` | Raises `TypeError`, because an empty report was falsy and one with only advisories truthy. Use `report.ok` or `report.raise_for_failure()` for "is this safe to run", and `len(report)` for "did it find anything". |
+| `preflight()` could pass a model that `run()` then refused while building it | `preflight()` builds the model too, and reports such a refusal. |
+
+## Results that move
+
+These change a number you received from 1.x. In each case 1.x solved
+something other than what was declared or what the method defines; 2.0 is
+checked against a closed form or against the same model on another solver
+path. Rerun what you report. The [changelog](/rfx/project/changelog/) gives the
+size of each change and the test that pins it.
+
+- **Lumped-port S-parameters.** A driven lumped port now reads S11 from the
+  voltage and current after the source is applied, with the half-step phase
+  of the current, as the wire port always did. Every lumped `|S11|` moves, and
+  the lumped multi-port matrix moves to the wire port's decomposition: a
+  one-cell lumped port and a one-cell wire port now give the same S.
+- **Microstrip S-parameters** use standard power waves when the two port
+  references differ, and S is no longer projected onto the passive set by
+  default.
+- **Absorbing boundaries.** The CPML magnetic loss is evaluated at its own
+  half cell; every absorbing face is backed by a conducting plane on every
+  entry (`run()`, `forward()`, multi-device runs, waveguide calculators,
+  oblique RCS); lossy and dispersive media in the absorber get the correction
+  that includes their loss and poles; and conductors and dielectrics that
+  reach a face continue into the absorber. Results of open structures move,
+  most where a conductor or a lossy material crosses the absorber.
+- **Material interfaces.** Each E component takes the average of the cells
+  around its edge, weighted by cell size on a graded mesh, and H uses the
+  harmonic mean of the permeabilities on each side. Interfaces now converge at
+  second order. Results with dielectric or magnetic interfaces move slightly,
+  and converge faster with the mesh.
+- **Overlapping materials.** A shape drawn later replaces an earlier one on
+  its cells, dispersion poles and Kerr coefficient included. A hole drawn into
+  a dispersive body no longer disperses. To stack poles, list them in one
+  material.
+- **Conductors.** A metal volume, a sheet and a wire each own their own grid
+  edges; sheets that meet on one plane join only where their drawings touch,
+  so a narrow gap stays open; a surface-impedance sheet's free edges carry half
+  the conductance, which gives its drawn width; a lossy film acts on the one
+  node plane it is declared on.
+- **Coaxial lines.** The pin and shell are metal edges at their declared
+  radii, the line is driven with the potential of the conductors as meshed,
+  and it fills its declared length. Through loss in a matched line goes away;
+  discontinuities, resistive loads and open ends move.
+- **Lumped elements.** Series RLC elements and inductors are solved together
+  with the field and return energy without loss; each lumped element loads
+  only its own edge.
+- **Far field and RCS.** The NTFF transform samples E and H at their own
+  positions and times; normal-incidence RCS is normalised by the incident
+  spectrum measured at the target; the plane-wave source's auxiliary line uses
+  the same absorber as the grid. Far-field patterns and RCS move.
+  `export_radiation_pattern` writes absolute gain in dBi (pass `input_power=`
+  for realized gain), and gain and directivity refuse a pattern that does not
+  cover the sphere.
+- **Far-field phase** is referenced to the domain origin when the absorbers
+  differ from face to face. Magnitude, gain and pattern shape do not move.
+- **Periodic domains** of length L repeat every L, not every L plus one cell.
+- **Snapshots** follow their `interval`, and `Result.dt` of a fourth-order run
+  is the solver's time step, so resonance frequencies read from it move.
+- **A point exactly between two nodes** goes to the lower node for every
+  feature, so a feed no longer lands on the other side of its gap.
+- **`forward()` gives what `run()` gives** for closed PEC cavities, absorber
+  backing planes and port drives on every mesh. Gradients from `forward()`
+  move with it.
+- **The settling check** (`result.settling_witness`, `settling_db`) judges
+  each frequency a result reads from the poles still ringing after the source
+  ends, and ignores a static field the source leaves behind. A run that passed
+  in 1.x can fail now, and the reverse. See
+  [Simulation time](/rfx/evidence/simulation-time/).
+
+<p data-rfx="note">Pending for 2.0: a rectangular waveguide port reports S at
+the port's own position in both `run()` and `compute_waveguide_s_matrix()`,
+with `calibration_preset="measured"` for the earlier plane (PR 1669).</p>
 
 ## See also
+
+- [Changelog](/rfx/project/changelog/): every change, with its size and the test that pins it.
+- [Support](/rfx/support/) and [Known limitations](/rfx/support/known-limitations/).
+- [rfx terms](/rfx/start/terms/): the names used on these pages.
