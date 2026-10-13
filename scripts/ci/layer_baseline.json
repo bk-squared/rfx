@@ -519,10 +519,6 @@
       ],
       "M": []
     },
-    "rfx/runners/uniform.py": {
-      "S": [],
-      "M": []
-    },
     "rfx/sources/tfsf.py": {
       "S": [
         "_apply_closed_box_e",
