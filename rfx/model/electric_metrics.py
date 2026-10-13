@@ -125,46 +125,26 @@ def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks, grid=None,
 
 
 def stage_forward_dispersion_x_slab(materials, dt, spec, sharded_grid, mesh, kind):
-    """Stage canonical coefficients for wrapping; fixed terms for legacy CPML.
-
-    The wrapped PEC lane cuts single-device coefficients and zero ADE state.
-    CPML retains slab-local fixed terms and defers E coefficients to its loop.
-    """
-    import jax
-    from rfx.runners._distributed_common import stage_slab_pole_coeffs
-    from rfx.stepping.slab import Slab, cut
-
-    if spec is None:
-        return None
-    poles, masks = spec
-    from rfx.stepping.slab_wrap import select_step
-    if select_step(cpml=bool(sharded_grid.cpml_layers)) == 'wrapped':
-        from rfx.runners._distributed_common import unstack_and_gather
-        from rfx.model.materials import with_components
-        from rfx.materials.debye import init_debye
-        from rfx.materials.lorentz import init_lorentz
-        from rfx.stepping.slab import cut_pole_coeffs, cut_poles
-        layout = Slab.from_grid(sharded_grid)
-        whole = jax.tree.map(lambda a: unstack_and_gather(a, layout.n_devices,
-            layout.nx_local, layout.ghost_width, layout.pad_x, layout.nx), materials)
-        whole = with_components(whole, sharded_grid.original_grid, periodic=(False,) * 3,
-                                **{kind + '_spec': spec})
-        coeffs, state = (init_debye if kind == 'debye' else init_lorentz)(
-            poles, whole, dt, mask=masks)
-        return (cut_pole_coeffs(coeffs, layout, kind, dt=dt, mesh=mesh),
-                cut_poles(state, layout, kind + '_state', mesh=mesh))
-    masks = jax.tree.map(
-        lambda mask: cut(mask, Slab.from_grid(sharded_grid), "pole_mask", mesh=mesh),
-        masks)
-    return stage_slab_pole_coeffs(
-        poles, masks, dt, kind, mesh, sharded_grid.nx_per_rank,
-        sharded_grid.nx, materials.eps_r.shape, grid=sharded_grid)
+    """Stage canonical ADE operands from local material and pole-mask rows."""
+    from rfx.stepping.slab import Slab
+    from rfx.stepping.slab_setup import stage_dispersion
+    return stage_dispersion(materials, dt, spec, sharded_grid.original_grid,
+                            Slab.from_grid(sharded_grid), mesh, kind)
 
 
-def stage_forward_materials(materials, layout, mesh):
+def stage_forward_materials(materials, layout, mesh, *, uniform=False):
     """Release each whole-grid field after its graded forward slab staging."""
     from rfx.core.yee import MaterialArrays, map_lumped
     from rfx.stepping.slab import cut
+    if uniform:
+        import jax
+        from rfx.stepping.slab_view import uniform_slab_rows, stack_and_place
+        rows = uniform_slab_rows(layout)
+        # A sharded override may include zero alignment padding. Replicate the
+        # physical endpoint, never that padding, in the staging halo.
+        return jax.tree.map(lambda a: stack_and_place(a[:layout.nx], rows, mesh)
+            if a is not None and getattr(a, 'ndim', 0) else a,
+            materials._replace(components=None, edge_keep=None))
     staged = {}
     for name, kind in (("eps_r", "eps_r"), ("sigma", "sigma"),
                        ("mu_r", "mu_r"), ("sigma_film", "lumped")):

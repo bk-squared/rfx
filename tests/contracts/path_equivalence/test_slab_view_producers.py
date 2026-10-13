@@ -624,11 +624,11 @@ class _UniformHarnessView:
 
 
 def _uniform_producer(producer, scene, n, *, missing_extra=False, zero_material=False,
-                      local_metric=False):
+                      local_metric=False, metadata_through=False, negative_release=False, releases=R):
     from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
     from rfx.stepping.slab import Slab
     from rfx.stepping.slab_view import (SlabView, UniformSlabView,
-                                      uniform_slab_rows, stack_and_place)
+                                      uniform_slab_rows, stack_and_place, uniform_apply)
     layout = Slab(int(scene.grid.nx), n)
     rows = uniform_slab_rows(layout)
     if missing_extra:
@@ -649,9 +649,9 @@ def _uniform_producer(producer, scene, n, *, missing_extra=False, zero_material=
         masks = realized_pec_edge_masks(None, sheets, wires, PERIODIC, view=view)
         static.append(tuple(np.pad(np.asarray(a),
             ((lo - int(indices[0]), int(indices[-1]) + 1 - hi), (0, 0), (0, 0))) for a in masks))
-        cells = np.asarray(R).copy()
+        cells = np.asarray(releases).copy()
         cells[:, 0] -= indices[0]
-        cells[(cells[:, 0] < 0) | (cells[:, 0] >= len(indices)), 0] = len(indices)
+        cells[(cells[:, 0] < 0) | (cells[:, 0] >= len(indices)), 0] = -1 if negative_release else len(indices)
         released.append(cells)
     static = tuple(jax.device_put(jnp.asarray(np.stack([a[c] for a in static])),
                                  NamedSharding(mesh, P('x'))) for c in range(3))
@@ -673,7 +673,9 @@ def _uniform_producer(producer, scene, n, *, missing_extra=False, zero_material=
                     cell_sizes=(None,) + tuple(_x_widths(scene)[1:]))
             return jax.tree.map(lambda a, b: jnp.where(uniform, a, b), equal, graded)
         return producer.slab(scene, view)
-    return rows.indices, jax.vmap(local)(indices, arrays, static, released)
+    apply = (lambda f, *args, **kw: jax.vmap(f)(*args)) if metadata_through else uniform_apply
+    return rows.indices, apply(local, indices, arrays, static, released,
+                              row_count=rows.indices.shape[1], row_axis=producer.x_axis)
 
 
 def _assert_uniform(producer, scene, n, **kwargs):
@@ -682,6 +684,9 @@ def _assert_uniform(producer, scene, n, **kwargs):
     leaves = jax.tree.leaves(actual)
     assert len(expected) == len(leaves)
     for leaf, (want, got) in enumerate(zip(expected, leaves)):
+        if not isinstance(want, (jax.Array, np.ndarray)) or np.ndim(want) == 0:
+            assert type(want) is type(got) and want == got, 'uniform metadata differs'
+            continue
         want, got = np.asarray(want), np.asarray(got)
         for rank in range(n):
             if want.ndim > producer.x_axis and want.shape[producer.x_axis] == int(scene.grid.nx):
@@ -717,3 +722,27 @@ def test_cell_and_static_pec_masks_combine_by_or(scene):
     static = realized_pec_edge_masks(None, sheets, wires, PERIODIC)
     for want, cell, fixed in zip(both, cells, static):
         _assert_bits(want, cell | fixed)
+
+
+def test_uniform_metadata_mutation_is_caught():
+    producer = next(p for p in PRODUCERS if p.name == 'realize_components')
+    with pytest.raises(AssertionError, match='uniform metadata differs'):
+        _assert_uniform(producer, SCENES['poles'], 2, metadata_through=True)
+
+
+@pytest.mark.parametrize('negative', (False, True))
+def test_uniform_absent_release_uses_out_of_bounds_sentinel(negative):
+    # The release exists only in slab 0. A -1 sentinel would clear the last
+    # input row of slab 1, which is its real high ghost, rather than dropping.
+    scene = SCENES['material_seam']
+    release = jnp.asarray([[1, 2, 2]], dtype=jnp.int32)
+    occupancy = np.full(scene.grid.shape, .5, dtype=np.float32)
+    scene = scene._replace(occupancy=occupancy)
+    producer = Producer('released_keep',
+        lambda s: build_edge_keep(s.occupancy, released_cells=release),
+        lambda s, v: build_edge_keep(v.rows(s.occupancy), released_cells=release, view=v))
+    if negative:
+        with pytest.raises(AssertionError, match='uniform rows differ'):
+            _assert_uniform(producer, scene, 3, releases=release, negative_release=True)
+    else:
+        _assert_uniform(producer, scene, 3, releases=release)

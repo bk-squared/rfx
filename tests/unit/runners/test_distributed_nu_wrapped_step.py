@@ -738,3 +738,181 @@ def test_cpml_native_psi_roundtrip(devices):
     native = export_state(local, grid, layout)
     restored = import_state(native, psi, layout)
     assert_same_tree(psi, restored, 'native psi roundtrip')
+
+
+def _item6_identity(case, devices, mode='plain', mutate=None):
+    """Independent whole setup is the reference; production setup stays local."""
+    from tests.contracts.path_equivalence.test_slab_view_producers import SCENES, _cells, _conductors
+    from rfx.model.materials import with_components
+    from rfx.materials.debye import init_debye
+    from rfx.materials.lorentz import init_lorentz
+    from rfx.boundaries.pec import realized_pec_edge_masks
+    from rfx.stepping.slab import Slab
+    from rfx.stepping.slab_wrap import split
+    from rfx.stepping.slab_setup import build_setup, finish, stage_dispersion, stage_pec
+    from rfx.stepping.slab_view import uniform_slab_rows
+    s = SCENES['poles' if case in ('debye', 'lorentz', 'mixed') else 'material_seam']
+    cells = _cells(s)
+    db = cells.debye_spec if case in ('debye', 'mixed') else None
+    lr = cells.lorentz_spec if case in ('lorentz', 'mixed') else None
+    grid = s.grid
+    layout = Slab(grid.nx, devices)
+    mesh = Mesh(np.asarray(jax.devices()[:devices]), ('x',))
+    occ = jnp.asarray(s.occupancy) if case == 'occupancy' else None
+    sheets, wires = _conductors(s) if case == 'sheet_wire' else ((), ())
+    mask = s.pec_mask if case in ('pec', 'sheet_wire') else None
+    edges = None if mask is None and not sheets else realized_pec_edge_masks(mask, sheets, wires)
+    mats = with_components(cells.materials, grid, periodic=(False,) * 3, debye_spec=db, lorentz_spec=lr)
+    debye = None if db is None else init_debye(db[0], mats, grid.dt, mask=db[1])
+    lorentz = None if lr is None else init_lorentz(lr[0], mats, grid.dt, mask=lr[1])
+    sources = [SourceSpec(3, 2, 2, 'ez', jnp.arange(3, dtype=jnp.float32))]
+    probes = [ProbeSpec(4, 2, 2, 'ez')]
+    # This is the sole whole-grid build in this test. It does not use any
+    # uniform helper or production setup helper to make expected values.
+    whole = _build_nu_scan(grid, mats, 3, cpml_axes='', debye=debye, lorentz=lorentz,
+        pec_edge_masks=edges, pec_occupancy=occ, sources=[tuple(a) for a in sources],
+        probes=[tuple(a) for a in probes], pec_faces={f'{a}_{b}' for a in 'xyz' for b in ('lo', 'hi')})
+    expected = split(whole.invariants, whole.carry_init, layout, mesh,
+                     waveforms=whole.src_waveforms, dt=grid.dt)
+    capture = {}
+    def actual(eps):
+        material = stage_forward_materials(cells.materials._replace(eps_r=eps), layout, mesh, uniform=True)
+        d = stage_dispersion(material, grid.dt, db, grid, layout, mesh, 'debye')
+        l = stage_dispersion(material, grid.dt, lr, grid, layout, mesh, 'lorentz')
+        setup = build_setup(grid, material, layout, mesh, 3, sources, probes,
+            debye=d, lorentz=l, occupancy=cut(occ, layout, 'pec_occupancy', mesh=mesh),
+            pec_mask=stage_pec(mask, sheets, wires, grid, layout, mesh))
+        result = finish(setup.invariants, setup.carry_init, layout, mesh,
+                        waveforms=setup.src_waveforms, dt=grid.dt)
+        if mutate == 'ulp':
+            m = result[0]['materials']
+            e = m.components.eps_update
+            e = (e[0].at[1, 2, 2].set(jnp.nextafter(e[0][1, 2, 2], jnp.float32(jnp.inf))), *e[1:])
+            result[0]['materials'] = m._replace(components=m.components._replace(eps_update=e))
+        capture['result'] = result
+        return jnp.sum(result[0]['cpml_inv_eps_r'][0]) if result[0]['cpml_inv_eps_r'] else jnp.sum(eps)
+    if mode == 'grad':
+        jax.grad(actual)(cells.materials.eps_r)
+        result = jax.tree.map(lambda a: getattr(a, 'primal', a), capture['result'])
+    else:
+        actual(cells.materials.eps_r)
+        result = capture['result']
+    assert_same_tree(expected, result, f'item6.{case}.{devices}.{mode}')
+    return uniform_slab_rows(layout).indices
+
+
+@pytest.mark.parametrize('case', ('pec', 'debye', 'lorentz', 'mixed', 'occupancy', 'material_seam', 'sheet_wire'))
+@pytest.mark.parametrize('devices', (2, 3))
+@pytest.mark.parametrize('mode', ('plain', 'grad'))
+def test_item6_all_staged_invariants_and_initial_carry(case, devices, mode):
+    _item6_identity(case, devices, mode)
+
+
+def test_item6_owned_ulp_mutation_is_caught():
+    with pytest.raises(AssertionError, match='eps_update'):
+        _item6_identity('material_seam', 2, mutate='ulp')
+
+
+def test_item6_missing_extra_runtime_row_is_caught(monkeypatch):
+    from rfx.stepping import slab_setup
+    original = slab_setup.uniform_from_cut
+    def missing(*args, **kwargs):
+        a = original(*args, **kwargs)
+        return a if a is None or a.ndim == 0 else a.at[:, 0].set(a[:, 1])
+    monkeypatch.setattr(slab_setup, 'uniform_from_cut', missing)
+    with pytest.raises(AssertionError, match='materials'):
+        _item6_identity('material_seam', 2)
+
+
+def _item6_memory_worker(boundary, devices, mode, mutation=False):
+    """Called only in a fresh subprocess, before any other scene is built."""
+    from tests.unit.runners import test_distributed_nu_forward_staging as staging
+    from unittest.mock import patch
+    sim_type = staging.Simulation
+    with patch.object(staging, 'Simulation', lambda **kw: sim_type(**{**kw, 'boundary': boundary})):
+        sim = staging._model(large=True)
+    grid = sim._build_nonuniform_grid()
+    size = int(np.prod(grid.shape))
+    eps = jnp.full(grid.shape, 1.5, dtype=jnp.float32)
+    scan = jax.lax.scan
+    record = []
+    held = []
+    if mutation:
+        from rfx.runners import _distributed_nu_wrapped as runner
+        from jax.sharding import NamedSharding, PartitionSpec as P
+        build = runner.build_setup
+        def whole_gather(grid, materials, layout, mesh, *args, **kwargs):
+            a = materials.eps_r
+            whole = a[:, 2:-1].reshape((layout.nx_padded,) + a.shape[2:])[:layout.nx]
+            held.append(jax.device_put(whole, NamedSharding(mesh, P())))
+            return build(grid, materials, layout, mesh, *args, **kwargs)
+        runner.build_setup = whole_gather
+    def observe(*args, **kwargs):
+        if not record:
+            per, whole = {}, []
+            for a in jax.live_arrays():
+                for shard in a.addressable_shards:
+                    name = str(shard.device)
+                    per[name] = per.get(name, 0) + shard.data.nbytes
+                    if shard.data.size >= size and a is not eps:
+                        whole.append(dict(device=name, shape=list(a.shape), dtype=str(a.dtype),
+                                          shard_shape=list(shard.data.shape), bytes=shard.data.nbytes))
+            record.append(dict(bytes=per, whole=whole, grid=list(grid.shape)))
+        return scan(*args, **kwargs)
+    jax.lax.scan = observe
+    def forward(e):
+        return sim.forward(eps_override=e, distributed=True, devices=jax.devices()[:devices],
+                           n_steps=8, skip_preflight=True).time_series
+    result = forward(eps) if mode == 'plain' else jax.grad(lambda e: jnp.sum(forward(e) ** 2))(eps)
+    jax.block_until_ready(result)
+    assert len(record) == 1
+    return dict(boundary=boundary, devices=devices, mode=mode, mutation=mutation, **record[0])
+
+
+def _item6_memory_subprocess(boundary, devices, mode, mutation=False):
+    import json
+    import os
+    from pathlib import Path
+    import subprocess
+    import sys
+    root = Path(__file__).resolve().parents[3]
+    code = ('import json; from tests.unit.runners.test_distributed_nu_wrapped_step import _item6_memory_worker; '
+            f'print("ITEM6_JSON " + json.dumps(_item6_memory_worker({boundary!r}, {devices}, {mode!r}, {mutation})))')
+    env = dict(os.environ, JAX_PLATFORMS='cpu', PYTHONPATH=str(root),
+               XLA_FLAGS='--xla_force_host_platform_device_count=3', PYTHONDONTWRITEBYTECODE='1')
+    p = subprocess.run([sys.executable, '-c', code], cwd=root, env=env, text=True, capture_output=True)
+    assert p.returncode == 0, p.stdout + p.stderr
+    return json.loads(next(s[11:] for s in p.stdout.splitlines() if s.startswith('ITEM6_JSON ')))
+
+
+# Archive slice3/memw.py and memw_pec.py, commit 7cc7deeb6, CPU,
+# remeasured 2026-10-14 with three visible devices and explicit selection.
+_ITEM6_LEGACY_MAX = {
+    ('pec', 2, 'plain'): 1298821, ('pec', 2, 'grad'): 1298833,
+    ('pec', 3, 'plain'): 935612, ('pec', 3, 'grad'): 935624,
+    ('cpml', 2, 'plain'): 2047643, ('cpml', 2, 'grad'): 2047655,
+    ('cpml', 3, 'plain'): 1459427, ('cpml', 3, 'grad'): 1459435,
+}
+
+
+def _assert_item6_memory(record):
+    assert not record['whole'], f"whole-domain arrays: {record['whole']}"
+    legacy = _ITEM6_LEGACY_MAX[record['boundary'], record['devices'], record['mode']]
+    assert max(record['bytes'].values()) <= 2.0 * legacy, record
+
+
+@pytest.mark.parametrize('boundary', [
+    'pec', pytest.param('cpml', marks=pytest.mark.xfail(strict=True,
+                        reason='rfx #1402 item 5: CPML psi per slab'))])
+@pytest.mark.parametrize('devices', (2, 3))
+@pytest.mark.parametrize('mode', ('plain', 'grad'))
+def test_item6_first_scan_memory(boundary, devices, mode):
+    _assert_item6_memory(_item6_memory_subprocess(boundary, devices, mode))
+
+
+@pytest.mark.parametrize('devices', (2, 3))
+@pytest.mark.parametrize('mode', ('plain', 'grad'))
+def test_item6_whole_gather_memory_mutation_is_caught(devices, mode):
+    record = _item6_memory_subprocess('pec', devices, mode, mutation=True)
+    with pytest.raises(AssertionError, match='whole-domain arrays'):
+        _assert_item6_memory(record)

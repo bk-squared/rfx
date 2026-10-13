@@ -186,3 +186,82 @@ def slab_views(grid, n_devices, *, globals=None, halo_lo=HALO_LO, halo_hi=HALO_H
                 "a one-row slab takes the 2-D self-adjacency rule. Use fewer devices.")
         views.append(view)
     return tuple(views)
+
+
+def uniform_apply(producer, *inputs, row_count, row_axis=0):
+    """Vmap array operands only; preserve the producer's static Python objects.
+
+    The partition is made during the first trace, before vmap can convert a
+    declaration scalar into a weakly typed device array. Pole-axis producers
+    may name row_axis=1; mixed records are flattened at their array leaves.
+    """
+    saved = {}
+
+    def spatial(value):
+        return (isinstance(value, (jax.Array, jax.core.Tracer, np.ndarray))
+                and value.ndim >= 1 and row_axis < value.ndim
+                and value.shape[row_axis] == row_count)
+
+    def metadata(value):
+        return not any(spatial(a) for a in jax.tree.leaves(value))
+
+    def traced(*args):
+        result = producer(*args)
+        leaves, tree = jax.tree.flatten(result, is_leaf=metadata)
+        dynamic = tuple(spatial(a) for a in leaves)
+        if not saved:
+            saved.update(tree=tree, leaves=leaves, dynamic=dynamic)
+        return tuple(a if keep else None for a, keep in zip(leaves, dynamic))
+
+    mapped = jax.vmap(traced)(*inputs)
+    return jax.tree.unflatten(saved['tree'], [
+        a if keep else original for a, original, keep in
+        zip(mapped, saved['leaves'], saved['dynamic'])])
+
+
+def uniform_from_cut(array, layout, mesh, *, outside='replicate'):
+    """Extend an existing sharded slab by its predecessor's extra low row.
+
+    This compatibility adapter never assembles the global grid. Public input
+    staging can use stack_and_place directly; low-level callers already hand
+    the runner cut slabs, whose one-cell halo needs one additional row.
+    """
+    from rfx.stepping.rank import rank_shard_map, mesh_ranks
+    if array is None or np.ndim(array) == 0:
+        return array
+    if array.ndim == 4:
+        return array
+    def extend(local, *, rank):
+        extra = jax.lax.ppermute(local[-3:-2], 'x',
+                                [(r, r + 1) for r in range(layout.n_devices - 1)])
+        values = jnp.concatenate((extra, local))
+        indices = rank * layout.nx_per_rank + jnp.arange(layout.nx_local + 1) - 2
+        if outside == 'replicate':
+            high = local[jnp.clip(layout.nx - rank * layout.nx_per_rank, 1, layout.nx_local - 1)]
+            fill = jnp.where((indices < 0)[:, None, None], local[1], high)
+        else:
+            fill = jnp.asarray(outside, local.dtype)
+        values = jnp.where(((indices >= 0) & (indices < layout.nx))[:, None, None], values, fill)
+        return values[None]
+    return jax.jit(rank_shard_map(extend, mesh=mesh, in_specs=P('x'),
+        out_specs=P('x'), check_rep=False))(mesh_ranks(mesh), array)
+
+
+def product_rows(array, layout, mesh, kind, *, row_axis=1, dt=None):
+    """Drop the extra input row and apply the step's exact named fill policy."""
+    from rfx.stepping.slab import pole_fill
+    if array is None:
+        return None
+    fill = pole_fill(kind, dt)
+    rows = uniform_slab_rows(layout)
+    index = [slice(None)] * array.ndim
+    index[row_axis] = slice(1, None)
+    value = array[tuple(index)]
+    shape = [1] * value.ndim
+    shape[0], shape[row_axis] = layout.n_devices, layout.nx_local
+    outside = jax.device_put(jnp.asarray(rows.outside[:, 1:].reshape(shape)), NamedSharding(mesh, P('x')))
+    alignment = jax.device_put(jnp.asarray(rows.alignment[:, 1:].reshape(shape)), NamedSharding(mesh, P('x')))
+    pad = jnp.where(alignment, jnp.asarray(fill.alignment, value.dtype),
+                    jnp.asarray(fill.physical, value.dtype))
+    value = jnp.where(outside, pad, value)
+    return value.reshape((value.shape[0] * value.shape[1],) + value.shape[2:])

@@ -1,157 +1,43 @@
-"""Adapter from the established graded distributed entry to the slab wrapper."""
-from functools import partial
-
+"""Adapt the graded distributed entry to per-slab setup and stepping."""
 import jax
-import jax.numpy as jnp
 import numpy as np
 from jax.sharding import Mesh
 
-from rfx.nonuniform import NonUniformGrid, _build_nu_scan
+from rfx.nonuniform import NonUniformGrid
 from rfx.stepping.rank import mesh_ranks
 from rfx.stepping.slab import Slab
-from rfx.stepping.slab_wrap import split, wrap, reduce
-from rfx.runners._distributed_common import unstack_and_gather
+from rfx.stepping.slab_setup import build_setup, finish as split
+from rfx.stepping.slab_wrap import wrap, reduce, run_steps
 
 
 def run_wrapped(sg, materials, pec_mask, n_steps, sources, probes, *,
                 devices, occupancy, checkpoint_every, n_warmup,
                 emit_time_series, gather_final_state, material_drive,
                 debye=None, lorentz=None, cpml=False, cpml_state=None):
-    """Reuse canonical setup, then scan the same step on each rank."""
+    """Prepare local invariants and call the stepping-owned scan driver."""
     devices = jax.devices()[:sg.n_devices] if devices is None else devices
     if len(devices) != sg.n_devices:
         raise ValueError(f'need {sg.n_devices} devices, got {len(devices)}')
     mesh = Mesh(np.asarray(devices), ('x',))
-    incoming = Slab.from_grid(sg)
-
-    def gather_input(a):
-        if np.ndim(a) == 0:
-            return a
-        return unstack_and_gather(a, incoming.n_devices, incoming.nx_local,
-                                 incoming.ghost_width, incoming.pad_x, incoming.nx)
-
-    materials = jax.tree.map(gather_input, materials)
-    pec_mask = jax.tree.map(gather_input, pec_mask)
-    occupancy = jax.tree.map(gather_input, occupancy)
+    layout = Slab.from_grid(sg)
     grid = sg.original_grid or NonUniformGrid(
         sg.nx, sg.ny, sg.nz, float(sg.dx_padded[0]), float(sg.dy_cells[0]),
         np.asarray(sg.dx_padded[:sg.nx]), np.asarray(sg.dy_cells), np.asarray(sg.dz_cells),
         sg.dt, 0, np.asarray(sg.inv_dx_global[:sg.nx]), sg.inv_dy, sg.inv_dz,
         np.asarray(sg.inv_dx_h_global[:sg.nx]), sg.inv_dy_h, sg.inv_dz_h)
-    def gather_poles(a):
-        poles = a.shape[0] // incoming.n_devices
-        rows = a.reshape((incoming.n_devices, poles, incoming.nx_local) + a.shape[2:])
-        rows = rows[:, :, incoming.ghost_width:incoming.ghost_width + incoming.nx_per_rank]
-        return rows.transpose(1, 0, 2, 3, 4).reshape((poles, incoming.nx_padded) + a.shape[2:])[:, :incoming.nx]
-
-    def gather_dispersion(bundle, family):
-        if bundle is None:
-            return None
-        coeffs, state = bundle
-        spatial = ('ca', 'cb') if family == 'debye' else ('ca', 'cb', 'cc')
-        coeffs = type(coeffs)(*(jax.tree.map(gather_input if name in spatial else gather_poles, value)
-                               for name, value in zip(coeffs._fields, coeffs)))
-        if coeffs.ca is None:
-            # Compatibility with callers supplying fixed, staged pole terms.
-            from rfx.model.materials import with_components
-            from rfx.materials.debye import debye_e_coeffs
-            from rfx.materials.lorentz import lorentz_e_coeffs
-            components = with_components(materials, grid, periodic=(False,) * 3).components
-            means = components.eps_update, components.sigma_update
-            coeffs = (debye_e_coeffs(means, grid.dt, coeffs.alpha, coeffs.beta)
-                      if family == 'debye' else
-                      lorentz_e_coeffs(means, grid.dt, coeffs.a, coeffs.b, coeffs.c))
-        return coeffs, jax.tree.map(gather_poles, state)
-
-    debye = gather_dispersion(debye, 'debye')
-    lorentz = gather_dispersion(lorentz, 'lorentz')
-    material_drive = (None,) * len(sources) if material_drive is None else material_drive
-    if len(material_drive) != len(sources):
-        raise ValueError('material_drive must contain one entry per source')
-    source_rows = []
-    for source, volume in zip(sources, material_drive):
-        samples = source.waveform
-        if volume is not None:
-            # The public distributed entry supplies raw current samples for
-            # overrides. Resolve them with the single-device graded producer
-            # before _build_nu_scan publishes its occupancy-weighted table.
-            from rfx.model.materials import e_update_coefficient_at
-            from rfx.model.source_coefficients import source_table
-            volume = volume[0] if isinstance(volume, tuple) else volume
-            def coefficient():
-                cell = (source.i, source.j, source.k)
-                axis = ('ex', 'ey', 'ez').index(source.component)
-                if debye is not None and lorentz is not None:
-                    from rfx.materials.lorentz import mixed_e_component_coeffs
-                    return mixed_e_component_coeffs(debye[0], lorentz[0], axis, grid.dt)[1][cell]
-                if debye is not None or lorentz is not None:
-                    return (debye or lorentz)[0].cb[axis][cell]
-                return e_update_coefficient_at(materials, cell, source.component,
-                                               grid.dt, host=True, grid=grid)
-            from rfx import _realized
-            if _realized.ACTIVE is None:
-                samples = source_table(samples, native='cb_over_dv', volume=volume,
-                    coefficient=coefficient)
-            else:
-                # Same product as source_table's cb_over_dv: (cb / dV) * samples.
-                scale = _realized.runtime_drive(
-                    jnp.reshape(coefficient() / volume, (1,)), (len(source_rows),))[0]
-                samples = scale * samples
-        source_rows.append((source.i, source.j, source.k, source.component, samples))
-    edge_masks = pec_mask if isinstance(pec_mask, tuple) else None
-    setup = _build_nu_scan(grid, materials, n_steps, cpml_axes=None if cpml else '',
-        debye=debye, lorentz=lorentz,
-        pec_mask=None if edge_masks is not None else pec_mask, pec_edge_masks=edge_masks,
-        pec_occupancy=occupancy, sources=source_rows,
-        probes=[(p.i, p.j, p.k, p.component) for p in probes],
-        pec_faces=None if cpml else {f'{a}_{s}' for a in 'xyz' for s in ('lo', 'hi')},
-        emit_time_series=emit_time_series)
-    if cpml:
-        from rfx.stepping.slab_cpml import publish, import_state
-        from rfx.stepping.graded import make_graded_step
-        if cpml_state is not None:
-            initial = {**setup.carry_init, 'cpml': import_state(
-                cpml_state, setup.carry_init['cpml'], incoming)}
-            setup = setup._replace(carry_init=initial)
-        context, operands, initial = publish(setup)
-        setup = setup._replace(step_fn_inv=make_graded_step(context), invariants=operands, carry_init=initial)
-    layout = incoming
+    setup = build_setup(grid, materials, layout, mesh, n_steps, sources, probes,
+        pec_mask=pec_mask, occupancy=occupancy, debye=debye, lorentz=lorentz,
+        cpml=cpml, cpml_state=cpml_state, emit_time_series=emit_time_series,
+        material_drive=material_drive)
     invariants, carry = split(setup.invariants, setup.carry_init, layout, mesh,
                                waveforms=setup.src_waveforms, dt=grid.dt)
     waves = invariants['drives'].waves
     invariants['drives'] = invariants['drives']._replace(waves=None)
     advance = wrap(setup.step_fn_inv, layout, mesh, table=setup.invariants['probe_table'])
-
     from rfx.runners import distributed_nu as nu
-
-    @nu.jax.jit
-    def run_fn(carry, invariants, waves, ranks):
-        step = partial(advance, invariants=invariants, ranks=ranks)
-        xs = (jnp.arange(n_steps, dtype=jnp.int32), waves)
-        warm = None
-        if n_warmup:
-            carry, warm = nu.lax.scan(step, carry, jax.tree.map(lambda a: a[:n_warmup], xs))
-            carry, warm = jax.tree.map(jax.lax.stop_gradient, (carry, warm))
-        xs = jax.tree.map(lambda a: a[n_warmup:], xs)
-        count = n_steps - n_warmup
-        if checkpoint_every is not None and checkpoint_every < count:
-            chunk = int(checkpoint_every)
-            segments = (count + chunk - 1) // chunk
-            padding = segments * chunk - count
-            padded = (jnp.arange(n_warmup, n_warmup + segments * chunk, dtype=jnp.int32),
-                      jnp.pad(xs[1], ((0, padding), (0, 0), (0, 0))))
-            segmented = jax.tree.map(lambda a: a.reshape((segments, chunk) + a.shape[1:]), padded)
-            def segment(c, x):
-                return nu.lax.scan(step, c, x)
-            carry, records = nu.lax.scan(jax.checkpoint(segment), carry, segmented)
-            records = records.reshape((-1,) + records.shape[2:])[:count]
-        else:
-            carry, records = nu.lax.scan(step, carry, xs)
-        if warm is not None:
-            records = jnp.concatenate((warm, records))
-        return carry, records
-
-    final, records = run_fn(carry, invariants, waves, mesh_ranks(mesh))
+    final, records = run_steps(carry, invariants, waves, mesh_ranks(mesh), advance,
+        n_steps=n_steps, n_warmup=n_warmup, checkpoint_every=checkpoint_every,
+        compile_loop=nu.jax.jit, scan_loop=nu.lax.scan)
     ts, state = reduce(records, final['fdtd'], layout, gather=gather_final_state)
     cpml_state = None
     if cpml:

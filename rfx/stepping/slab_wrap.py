@@ -222,3 +222,36 @@ def reduce(records, state, layout, *, gather=True):
             layout.n_devices, layout.nx_local, layout.ghost_width, layout.pad_x, layout.nx)
             for name in ('ex', 'ey', 'ez', 'hx', 'hy', 'hz')})
     return jnp.sum(records, axis=1), fields
+
+
+def run_steps(carry, invariants, waves, ranks, advance, *, n_steps, n_warmup, checkpoint_every,
+              compile_loop=jax.jit, scan_loop=jax.lax.scan):
+    """Drive canonical slab steps, including warmup and checkpoint segments."""
+    @compile_loop
+    def run_fn(carry, invariants, waves, ranks):
+        step = partial(advance, invariants=invariants, ranks=ranks)
+        xs = (jnp.arange(n_steps, dtype=jnp.int32), waves)
+        warm = None
+        if n_warmup:
+            carry, warm = scan_loop(step, carry, jax.tree.map(lambda a: a[:n_warmup], xs))
+            carry, warm = jax.tree.map(jax.lax.stop_gradient, (carry, warm))
+        xs = jax.tree.map(lambda a: a[n_warmup:], xs)
+        count = n_steps - n_warmup
+        if checkpoint_every is not None and checkpoint_every < count:
+            chunk = int(checkpoint_every)
+            segments = (count + chunk - 1) // chunk
+            padding = segments * chunk - count
+            padded = (jnp.arange(n_warmup, n_warmup + segments * chunk, dtype=jnp.int32),
+                      jnp.pad(xs[1], ((0, padding), (0, 0), (0, 0))))
+            segmented = jax.tree.map(lambda a: a.reshape((segments, chunk) + a.shape[1:]), padded)
+            def segment(c, x):
+                return scan_loop(step, c, x)
+            carry, records = scan_loop(jax.checkpoint(segment), carry, segmented)
+            records = records.reshape((-1,) + records.shape[2:])[:count]
+        else:
+            carry, records = scan_loop(step, carry, xs)
+        if warm is not None:
+            records = jnp.concatenate((warm, records))
+        return carry, records
+
+    return run_fn(carry, invariants, waves, ranks)

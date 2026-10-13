@@ -224,7 +224,7 @@ def _slice(arr, layout, rank, fill, xp):
     return _pad(data, max(0, -want_lo), max(0, want_hi - layout.nx_padded), fill.physical, xp)
 
 
-def cut(array, layout, kind, *, mesh=None, dt=None, host=False):
+def cut(array, layout, kind, *, mesh=None, dt=None, host=False, uniform=False):
     """Place array leaves with the declared alignment and ghost policy.
 
     ``kind`` is a FILL key; pole curl coupling also requires ``dt``.
@@ -236,6 +236,13 @@ def cut(array, layout, kind, *, mesh=None, dt=None, host=False):
     Concrete placement constructs only addressable shards. Local tracers keep
     slice/pad/stack on the tape; x-sharded designs exchange their owned halos.
     """
+    if uniform:
+        from rfx.stepping.slab_view import uniform_slab_rows, stack_and_place
+        if mesh is None or host:
+            raise ValueError('uniform producer inputs require a device mesh')
+        outside = 'replicate' if kind in ('eps_r', 'sigma', 'mu_r', 'width') else 0
+        return jax.tree.map(lambda a: stack_and_place(a, uniform_slab_rows(layout), mesh,
+                                                    outside=outside), array)
     fill = pole_fill(kind, dt) if isinstance(kind, str) else kind
     if array is None:
         return None
