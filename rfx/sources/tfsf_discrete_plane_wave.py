@@ -5,12 +5,222 @@ from dataclasses import dataclass
 from functools import lru_cache
 import math
 from types import SimpleNamespace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 import numpy as np
+import jax.numpy as jnp
+
+from rfx.core.yee import EPS_0, MU_0, FDTDState, e_update_coeffs
 
 if TYPE_CHECKING:
     from rfx.api import Simulation
+
+
+COMPONENTS = ("ex", "ey", "ez", "hx", "hy", "hz")
+# rfx/snapshots.py:65-70; these also make yee.py's forward-H/backward-E
+# differences exactly symmetric about each target component's location.
+YEE_OFFSETS = np.array(((.5, 0, 0), (0, .5, 0), (0, 0, .5),
+                        (0, .5, .5), (.5, 0, .5), (.5, .5, 0)))
+# Target x/y/z curl: (positive source, derivative axis, negative source, axis).
+CURL_TERMS = ((2, 1, 1, 2), (0, 2, 2, 0), (1, 0, 0, 1))
+
+
+class CorrectionTable(NamedTuple):
+    target_component: int
+    target_index: np.ndarray
+    source_component: int
+    source_index: np.ndarray
+    coefficient: np.ndarray
+
+
+@dataclass(frozen=True)
+class PlaneWaveConfig:
+    """Static lattice geometry and gathers for one bounded record."""
+    m: tuple
+    incidence: dict
+    shape: tuple
+    bounds: object
+    origin: int
+    n_nodes: int
+    n_steps: int
+    fractions: tuple
+    projections: tuple
+    tables_e: tuple
+    tables_h: tuple
+    source_nodes: tuple
+    delays: tuple
+    source_p: float
+    dx_1d: float
+    dt: float
+    ca: object
+    cb: object
+    ch: object
+    src_amp: float
+    src_tau: float
+    src_t0: float
+    src_fcen: float
+    src_waveform: str
+    custom_waveform: object
+    closed_box: bool = True
+
+    def __getattr__(self, name):
+        if name in {a + side for a in "xyz" for side in ("_lo", "_hi")}:
+            return getattr(self.bounds, name)
+        raise AttributeError(name)
+
+
+def _tables(shape, bounds, m, projections, dt, dx, magnetic):
+    """M curl - curl M; the self-read cancels, leaving one neighbour per term."""
+    result = []
+    base = dt / ((MU_0 if magnetic else EPS_0) * dx)
+    for target, (first, axis_a, second, axis_b) in enumerate(CURL_TERMS):
+        for source, axis, curl_sign in ((first, axis_a, 1), (second, axis_b, -1)):
+            for high in (False, True):
+                axes = [np.arange(getattr(bounds, a + "_lo"), getattr(bounds, a + "_hi") + 1)
+                        for a in "xyz"]
+                plane = getattr(bounds, "xyz"[axis] + ("_hi" if high else "_lo"))
+                plane += (0 if high else -1) if magnetic else (1 if high else 0)
+                axes[axis] = np.array([plane])
+                target_nodes = np.stack(np.meshgrid(*axes, indexing="ij"), axis=-1).reshape(-1, 3)
+                source_nodes = target_nodes.copy()
+                source_nodes[:, axis] += 1 if magnetic else -1
+                component = source if magnetic else source + 3
+                line_n = np.floor(source_nodes @ m + projections[component]).astype(np.int32)
+                difference = (1 if high else -1) if magnetic else (-1 if high else 1)
+                result.append(CorrectionTable(
+                    target + (3 if magnetic else 0),
+                    np.ravel_multi_index(target_nodes.T, shape).astype(np.int32),
+                    component, line_n,
+                    np.full(len(line_n), -curl_sign * difference * base, dtype=np.float32)))
+    return tuple(result)
+
+
+def init_plane_wave(nx, dx, dt, *, ny, nz, cpml_layers=0, tfsf_margin=3,
+                    f0=5e9, bandwidth=.5, amplitude=1., polarization="ez", direction="+x",
+                    theta_deg=0., phi_deg=0., direction_tol_deg=.1, max_component=100,
+                    waveform="differentiated_gaussian", n_steps=None):
+    """Build the line with N*max(abs(m))+2 untouched nodes beyond every read."""
+    from rfx.sources.sources import CustomWaveform
+    from rfx.sources.tfsf import AUX_N_MARGIN_1D, AUX_SRC_OFFSET_1D
+    if isinstance(n_steps, (bool, np.bool_)) or not isinstance(n_steps, (int, np.integer)) or n_steps < 1:
+        raise ValueError("closed_box requires a finite positive integer bound on its step count (n_steps)")
+    info = incidence(theta_deg, phi_deg, direction, polarization, direction_tol_deg, max_component)
+    m = np.asarray(info["m"], dtype=np.int64)
+    shape = (nx, ny, nz)
+    bounds = box_bounds(shape, cpml_layers, tfsf_margin)
+    projections = YEE_OFFSETS @ m
+    fractions = projections % 1
+    tables_e = _tables(shape, bounds, m, projections, dt, dx, False)
+    tables_h = _tables(shape, bounds, m, projections, dt, dx, True)
+    min_p = min(float(np.min(t.source_index) + fractions[t.source_component])
+                for t in tables_e + tables_h)
+    radius = int(np.max(np.abs(m)))
+    source_p = min_p - (3 * radius + 3)
+    if info["m"] == (1, 0, 0):
+        # Old i0=n_cpml+10, src=n_cpml+3: seven E nodes before x_lo.
+        source_p = bounds.x_lo - (AUX_N_MARGIN_1D - AUX_SRC_OFFSET_1D)
+    elif info["m"] == (-1, 0, 0):
+        # Old n_tfsf includes x_hi+1: the right source is eight nodes past x_hi.
+        source_p = -(bounds.x_hi + AUX_N_MARGIN_1D - AUX_SRC_OFFSET_1D + 1)
+    source_n = np.rint(source_p - fractions[:3]).astype(np.int64)
+    delays = (source_n + fractions[:3] - source_p) * (dx / np.linalg.norm(m)) / (299792458.0 * dt)
+    lo = min(int(source_n.min()), *(int(t.source_index.min()) for t in tables_e + tables_h))
+    hi = max(int(source_n.max()), *(int(t.source_index.max()) for t in tables_e + tables_h))
+    padding = int(n_steps) * radius + 2
+    origin, n_nodes = lo - padding, hi - lo + 1 + 2 * padding
+    def translate(tables):
+        return tuple(t._replace(source_index=(t.source_index - origin).astype(np.int32)) for t in tables)
+    custom = waveform if isinstance(waveform, CustomWaveform) else None
+    if custom is not None and theta_deg != 0:
+        raise NotImplementedError("closed_box CustomWaveform requires theta_deg=0")
+    if custom is None and waveform not in ("differentiated_gaussian", "modulated_gaussian", "continuous_wave"):
+        raise ValueError("unsupported closed_box waveform")
+    tau = 1. / (f0 * bandwidth * np.pi)
+    t0 = (5. if waveform == "modulated_gaussian" else 3.) * tau
+    if waveform == "continuous_wave":
+        tau = t0 = 8. / f0
+    dtype = jnp.result_type(float)
+    # CPU Yee SI coefficient factorization: yee.py:1052-1057, 1221-1228;
+    # H: yee.py:496-500. Keep the array operations, not Python-folded ratios.
+    one, zero = jnp.asarray(1., dtype), jnp.asarray(0., dtype)
+    ca, cb = e_update_coeffs(one, zero, dt)
+    ch = dt / (one * MU_0)
+    cfg = PlaneWaveConfig(tuple(map(int, m)), info, shape, bounds, origin, n_nodes,
+                          int(n_steps), tuple(fractions), tuple(projections),
+                          translate(tables_e), translate(tables_h),
+                          tuple(map(int, source_n - origin)), tuple(map(float, delays)),
+                          float(source_p), dx, dt, ca, cb, ch, amplitude, tau, t0, f0,
+                          "custom" if custom is not None else waveform, custom)
+    fields = [jnp.zeros(n_nodes, dtype) for _ in range(6)]
+    return cfg, FDTDState(*fields, jnp.asarray(0, jnp.int32))
+
+
+def _shift(array, shift):
+    """Read n+shift; zero extension outside the record's domain of dependence."""
+    if shift > 0:
+        return jnp.concatenate((array[shift:], jnp.zeros(shift, array.dtype)))
+    if shift < 0:
+        return jnp.concatenate((jnp.zeros(-shift, array.dtype), array[:shift]))
+    return array
+
+
+def line_difference(cfg, state, target, source, axis):
+    half = cfg.m[axis] / 2
+    offset = cfg.fractions[target] - cfg.fractions[source]
+    field = getattr(state, COMPONENTS[source])
+    return _shift(field, int(offset + half)) - _shift(field, int(offset - half))
+
+
+def update_line_h(cfg, state, dx, dt):
+    """yee.py:503-521: (Da/dx - Db/dx), then H - ch*curl, component by component."""
+    changes = {}
+    for target, (first, a, second, b) in enumerate(CURL_TERMS, 3):
+        curl = (line_difference(cfg, state, target, first, a) / dx
+                - line_difference(cfg, state, target, second, b) / dx)
+        name = COMPONENTS[target]
+        changes[name] = getattr(state, name) - cfg.ch * curl
+    return state._replace(**changes)
+
+
+def update_line_e(cfg, state, dx, dt, t=None):
+    """yee.py:594-608,1224-1228; launch uses uniform.py:587's float32 step argument."""
+    changes = {}
+    for target, (first, a, second, b) in enumerate(CURL_TERMS):
+        curl = (line_difference(cfg, state, target, first + 3, a) / dx
+                - line_difference(cfg, state, target, second + 3, b) / dx)
+        name = COMPONENTS[target]
+        field = cfg.ca * getattr(state, name) + cfg.cb * curl
+        weight = cfg.incidence["e_hat"][target]
+        if weight != 0:
+            time = (state.step.astype(jnp.float32) - jnp.float32(cfg.delays[target])) * dt
+            arg = (time - cfg.src_t0) / cfg.src_tau
+            env = jnp.exp(-(arg ** 2))
+            amplitude = cfg.src_amp * float(weight)
+            if cfg.custom_waveform is not None:
+                value = amplitude * cfg.custom_waveform(time)
+            elif cfg.src_waveform == "modulated_gaussian":
+                carrier = jnp.cos(2. * jnp.pi * cfg.src_fcen * (time - cfg.src_t0))
+                value = amplitude * env * carrier
+            elif cfg.src_waveform == "continuous_wave":
+                ramp = .5 * (1. - jnp.cos(jnp.pi * jnp.clip(time / cfg.src_t0, 0., 1.)))
+                value = amplitude * ramp * jnp.sin(2. * jnp.pi * cfg.src_fcen * time)
+            else:
+                value = amplitude * (-2. * arg) * env
+            field = field.at[cfg.source_nodes[target]].add(value)
+        changes[name] = field
+    return state._replace(**changes, step=state.step + 1)
+
+
+def apply_tables(state, cfg, incident, *, magnetic):
+    """Gather each commutator term and scatter-add after its grid update."""
+    tables = cfg.tables_h if magnetic else cfg.tables_e
+    for table in tables:
+        name = COMPONENTS[table.target_component]
+        values = getattr(incident, COMPONENTS[table.source_component])[table.source_index]
+        field = getattr(state, name).reshape(-1)
+        field = field.at[table.target_index].add(jnp.asarray(table.coefficient) * values)
+        state = state._replace(**{name: field.reshape(cfg.shape)})
+    return state
 
 @lru_cache(maxsize=256)
 def rational_direction(theta_deg, phi_deg, direction, direction_tol_deg, max_component):
