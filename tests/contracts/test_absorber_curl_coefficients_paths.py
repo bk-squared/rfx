@@ -32,11 +32,11 @@ def observe_faces(monkeypatch, sim, lane, face, *, expected_layout=None):
     def step(*args, **kwargs):
         frame = kwargs['frame']
         if expected_layout is not None:
-            assert (frame[0][0], args[0].ex.shape[0] - frame[0][0] - frame[0][1]) == expected_layout, 'actual step ghost/pad_x layout differs'
+            assert (frame['x'][0], args[0].ex.shape[0] - frame['x'][0] - frame['x'][1]) == expected_layout, 'actual step ghost/pad_x layout differs'
         grid = args[3]
         depth = next(f.realized for f in grid_face_depths(grid) if f.name == face)
         axis = 'xyz'.index(face[0])
-        lo, hi = frame[axis]
+        lo, hi = frame.get(face[0], (0, args[0].ex.shape[axis]))
         window = [slice(None)] * 3
         window[axis] = slice(lo, lo + depth) if face.endswith('lo') else slice(hi - depth, hi)
         context.update(rank=jax.numpy.where(kwargs['owned']['x_lo'], 0, 1),
