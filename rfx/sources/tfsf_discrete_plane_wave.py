@@ -34,6 +34,12 @@ class CorrectionTable(NamedTuple):
     coefficient: np.ndarray
 
 
+class LaunchWindow(NamedTuple):
+    nodes: np.ndarray
+    weights: np.ndarray
+    delays: np.ndarray
+
+
 @dataclass(frozen=True)
 class PlaneWaveConfig:
     """Static lattice geometry and gathers for one bounded record."""
@@ -62,6 +68,9 @@ class PlaneWaveConfig:
     src_fcen: float
     src_waveform: str
     custom_waveform: object
+    source_windows: tuple = ()
+    window_sigma: int = 0
+    window_q1: float = 0.0
     closed_box: bool = True
 
     def __getattr__(self, name):
@@ -96,6 +105,46 @@ def _tables(shape, bounds, m, projections, dt, dx, magnetic):
     return tuple(result)
 
 
+@lru_cache(maxsize=256)
+def launch_window_width(m):
+    """First dispersion maximum and ceil(5/q1), computed in float64 NumPy."""
+    m = np.abs(np.asarray(m, dtype=np.float64))
+    grid = np.linspace(np.pi / max(m), 2 * np.pi / max(m), 32769)
+    derivative = .5 * np.sum(m * np.sin(grid[:, None] * m), axis=1)
+    negative = np.flatnonzero(derivative < 0)
+    if not len(negative) or negative[0] == 0:
+        raise ValueError("cannot bracket the first plane-wave dispersion maximum")
+    index = int(negative[0])
+    lo, hi = float(grid[index - 1]), float(grid[index])
+    for _ in range(100):
+        mid = (lo + hi) / 2
+        if mid == lo or mid == hi:
+            break
+        if .5 * np.sum(m * np.sin(mid * m)) > 0:
+            lo = mid
+        else:
+            hi = mid
+    q1 = (lo + hi) / 2
+    if .5 * np.sum(m * m * np.cos(q1 * m)) >= 0:
+        raise ValueError("plane-wave dispersion stationary point is not a maximum")
+    return q1, int(np.ceil(5 / q1))
+
+
+def launch_windows(m, fractions, source_p, sigma, dx, dt):
+    """Per-sublattice Gaussian support, weights and forward-travelling delays."""
+    speed = np.linalg.norm(m) * 299792458.0 * dt / dx
+    windows = []
+    for fraction in fractions[:3]:
+        low = int(np.ceil(source_p - 4 * sigma - fraction))
+        high = int(np.floor(source_p + 4 * sigma - fraction))
+        nodes = np.arange(low, high + 1, dtype=np.int32)
+        offset = nodes + fraction - source_p
+        weights = np.exp(-.5 * (offset / sigma) ** 2)
+        weights /= np.sum(weights)
+        windows.append(LaunchWindow(nodes, weights, offset / speed))
+    return tuple(windows)
+
+
 def init_plane_wave(nx, dx, dt, *, ny, nz, cpml_layers=0, tfsf_margin=3,
                     f0=5e9, bandwidth=.5, amplitude=1., polarization="ez", direction="+x",
                     theta_deg=0., phi_deg=0., direction_tol_deg=.1, max_component=100,
@@ -125,8 +174,15 @@ def init_plane_wave(nx, dx, dt, *, ny, nz, cpml_layers=0, tfsf_margin=3,
         source_p = -(bounds.x_hi + AUX_N_MARGIN_1D - AUX_SRC_OFFSET_1D + 1)
     source_n = np.rint(source_p - fractions[:3]).astype(np.int64)
     delays = (source_n + fractions[:3] - source_p) * (dx / np.linalg.norm(m)) / (299792458.0 * dt)
+    windows, q1, sigma = (), 0.0, 0
+    if info["m"] not in ((1, 0, 0), (-1, 0, 0)):
+        q1, sigma = launch_window_width(info["m"])
+        windows = launch_windows(m, fractions, source_p, sigma, dx, dt)
     lo = min(int(source_n.min()), *(int(t.source_index.min()) for t in tables_e + tables_h))
     hi = max(int(source_n.max()), *(int(t.source_index.max()) for t in tables_e + tables_h))
+    if windows:
+        lo = min(lo, *(int(w.nodes.min()) for w in windows))
+        hi = max(hi, *(int(w.nodes.max()) for w in windows))
     padding = int(n_steps) * radius + 2
     origin, n_nodes = lo - padding, hi - lo + 1 + 2 * padding
     def translate(tables):
@@ -151,7 +207,9 @@ def init_plane_wave(nx, dx, dt, *, ny, nz, cpml_layers=0, tfsf_margin=3,
                           translate(tables_e), translate(tables_h),
                           tuple(map(int, source_n - origin)), tuple(map(float, delays)),
                           float(source_p), dx, dt, ca, cb, ch, amplitude, tau, t0, f0,
-                          "custom" if custom is not None else waveform, custom)
+                          "custom" if custom is not None else waveform, custom,
+                          tuple(w._replace(nodes=(w.nodes - origin).astype(np.int32))
+                                for w in windows), sigma, q1)
     fields = [jnp.zeros(n_nodes, dtype) for _ in range(6)]
     return cfg, FDTDState(*fields, jnp.asarray(0, jnp.int32))
 
@@ -193,7 +251,9 @@ def update_line_e(cfg, state, dx, dt, t=None):
         field = cfg.ca * getattr(state, name) + cfg.cb * curl
         weight = cfg.incidence["e_hat"][target]
         if weight != 0:
-            time = (state.step.astype(jnp.float32) - jnp.float32(cfg.delays[target])) * dt
+            window = cfg.source_windows[target] if cfg.source_windows else None
+            delay = window.delays if window is not None else cfg.delays[target]
+            time = (state.step.astype(jnp.float32) - jnp.float32(delay)) * dt
             arg = (time - cfg.src_t0) / cfg.src_tau
             env = jnp.exp(-(arg ** 2))
             amplitude = cfg.src_amp * float(weight)
@@ -207,7 +267,11 @@ def update_line_e(cfg, state, dx, dt, t=None):
                 value = amplitude * ramp * jnp.sin(2. * jnp.pi * cfg.src_fcen * time)
             else:
                 value = amplitude * (-2. * arg) * env
-            field = field.at[cfg.source_nodes[target]].add(value)
+            if window is not None:
+                value = value * jnp.asarray(window.weights, jnp.float32)
+                field = field.at[jnp.asarray(window.nodes, jnp.int32)].add(value)
+            else:
+                field = field.at[cfg.source_nodes[target]].add(value)
         changes[name] = field
     return tree_util.tree_map(lax.stop_gradient, state._replace(**changes, step=state.step + 1))
 
