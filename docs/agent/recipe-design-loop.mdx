@@ -55,9 +55,9 @@ physical S11 design objective through `forward()` on every PR.
 
 `jax.grad` flows end-to-end through `sim.compute_waveguide_s_matrix(...,
 eps_override=eps(theta))` and `compute_msl_s_matrix` — the gradient itself
-is accurate (AD↔FD relative error 9.21e-5 on the last run of
-`examples/inverse_design/differentiable_s11_design.py`, whose gate is
-`tests/unit/autodiff/test_sparam_ad_end_to_end.py`). The objective callables from
+is checked against finite differences
+in `tests/unit/autodiff/test_msl_ad_fd_converged.py`; the example
+`examples/inverse_design/differentiable_s11_design.py` uses the same path. The objective callables from
 `rfx.optimize_objectives` compose here too — they accept any result
 exposing `.s_params` / `.freqs`.
 
@@ -100,7 +100,7 @@ them off the result with `rfx.observables`:
 Composition is `lambda p: field_softmax(names)(sim.forward(eps_override=p))`
 — same factory-returns-`callable(Result)` style as `rfx.optimize_objectives`,
 plugging directly into a hand-rolled `jax.grad` descent loop (or `optimize()`
-with a `DesignRegion`). Lane-agnostic: works on `run()`/`forward()` results
+with a `DesignRegion`). Works on any solver path's `run()`/`forward()` results
 from both the uniform and non-uniform meshes; fenced fail-loud on the two
 distributed lanes (neither sharded runner accumulates DFT planes today).
 
@@ -144,10 +144,10 @@ before reaching for it:
   fixture and cannot produce a many-output Jacobian at all.
 - The returned Jacobian is `dy/dx` UNCONJUGATED for a complex `value` —
   differs by a conjugate from anything built through `jax.vjp`/`jax.grad`.
-- Uniform single-device lane only. `n_warmup` and non-uniform +
+- Uniform mesh on one device only. `n_warmup` and non-uniform +
   `distributed=True` (with a registered DFT-plane probe) both raise
   `NotImplementedError` via `forward()`'s own pre-existing checks
-  (`n_warmup` used to be a measured silent no-op on this lane — issue
+  (`n_warmup` used to be a measured silent no-op on this path — issue
   #626 turned that into a fail-loud fence instead). `checkpoint`/
   `checkpoint_segments` are measured exactly neutral under forward mode —
   no raise to catch, so it stays a documented trap in `jacobian_fwd`'s
@@ -224,16 +224,15 @@ Full contract, fence reasoning, and gates:
 - [Design workflows](./design-workflows) — broader optimization context.
 - [Parameter sweeps](./recipe-parameter-sweeps) — scanning instead of
   optimizing.
-- [When a result looks wrong](./recipe-failed-gate-triage) — when the validation
-  verdict fails.
+- [When a result looks wrong](./recipe-failed-gate-triage) — when a result fails a check.
 
 ## JIT and the adjoint path
 
 `forward()` works inside an outer `jax.jit` for every single-device model
-(witness: `tests/unit/autodiff/test_forward_jit_contract.py`).
+(test: `tests/unit/autodiff/test_forward_jit_contract.py`).
 For design permittivity on the uniform path with E-DFT objectives,
 `forward(gradient="adjoint")` is available
-(witness: `tests/unit/autodiff/test_reciprocity_adjoint.py`); NTFF objectives
+(test: `tests/unit/autodiff/test_reciprocity_adjoint.py`); NTFF objectives
 are outside this adjoint contract.
 `maximize_directivity` requires its default `log_ratio=True`; passing
 `log_ratio=False` raises (source: `rfx/optimize_objectives.py::maximize_directivity`).
