@@ -3,7 +3,7 @@
 import jax.numpy as jnp
 
 from rfx.core.yee import add_lumped_eps
-from rfx.geometry.conformal import conformal_eps_correction
+from rfx.geometry import conformal as conformal_module
 
 
 def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
@@ -111,7 +111,7 @@ def finish_tensor_operands(materials, aniso_eps, conformal_weights):
     if conformal_weights is not None:
         w_ex, w_ey, w_ez = conformal_weights
         eps_mean = materials.components.eps
-        eps_ex_c, eps_ey_c, eps_ez_c = conformal_eps_correction(
+        eps_ex_c, eps_ey_c, eps_ez_c = conformal_module.conformal_eps_correction(
             eps_mean, w_ex, w_ey, w_ez)
         if aniso_eps is not None:
             # Merge: conformal PEC overrides smoothed eps at PEC boundary cells
@@ -152,7 +152,7 @@ def form_reference_operands(grid, materials, *, subpixel_smoothing,
         # Build it from the ref vacuum eps so the only difference
         # ref-vs-device is the obstacle in ``materials.eps_r``.
         ref_eps_base = jnp.ones_like(materials.eps_r)
-        ref_ex, ref_ey, ref_ez = conformal_eps_correction(
+        ref_ex, ref_ey, ref_ez = conformal_module.conformal_eps_correction(
             ref_eps_base, w_ex, w_ey, w_ez,
         )
         ref_aniso_eps = (ref_ex, ref_ey, ref_ez)
