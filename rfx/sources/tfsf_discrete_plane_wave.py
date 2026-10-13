@@ -254,7 +254,7 @@ def init_plane_wave(nx, dx, dt, *, ny, nz, cpml_layers=0, tfsf_margin=3,
     return cfg, FDTDState(*fields, jnp.asarray(0, jnp.int32))
 
 
-def _shift(array, shift):
+def _line_shift(array, shift):
     """Read n+shift; zero extension outside the record's domain of dependence."""
     if shift > 0:
         return jnp.concatenate((array[shift:], jnp.zeros(shift, array.dtype)))
@@ -267,7 +267,7 @@ def line_difference(cfg, state, target, source, axis):
     half = cfg.m[axis] / 2
     offset = cfg.fractions[target] - cfg.fractions[source]
     field = getattr(state, COMPONENTS[source])
-    return _shift(field, int(offset + half)) - _shift(field, int(offset - half))
+    return _line_shift(field, int(offset + half)) - _line_shift(field, int(offset - half))
 
 
 def update_line_h(cfg, state, dx, dt):
@@ -479,7 +479,8 @@ def validate_declaration(sim, theta, phi, tol, cap, pol, direction, angle, wavef
         raise NotImplementedError("closed_box CustomWaveform requires theta_deg=0")
     incidence(theta, phi, direction, pol, tol, cap)
     grid = sim._build_grid()
-    if any(not np.all(np.asarray(grid.cells(a)) == grid.dx) for a in "xyz"):
+    cell = float(np.asarray(grid.cells("x"))[0])
+    if any(not np.all(np.asarray(grid.cells(a)) == cell) for a in "xyz"):
         raise NotImplementedError("closed_box requires a cubic uniform grid (dx=dy=dz)")
     cfg = box_bounds(grid.shape, grid.cpml_layers, margin)
     materials, debye, lorentz, pec, _, _, kerr = sim._assemble_materials(grid)
