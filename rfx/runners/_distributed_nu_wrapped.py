@@ -88,8 +88,15 @@ def run_wrapped(sg, materials, pec_mask, n_steps, sources, probes, *,
                     return (debye or lorentz)[0].cb[axis][cell]
                 return e_update_coefficient_at(materials, cell, source.component,
                                                grid.dt, host=True, grid=grid)
-            samples = source_table(samples, native='cb_over_dv', volume=volume,
-                coefficient=coefficient)
+            from rfx import _realized
+            if _realized.ACTIVE is None:
+                samples = source_table(samples, native='cb_over_dv', volume=volume,
+                    coefficient=coefficient)
+            else:
+                # Same product as source_table's cb_over_dv: (cb / dV) * samples.
+                scale = _realized.runtime_drive(
+                    jnp.reshape(coefficient() / volume, (1,)), (len(source_rows),))[0]
+                samples = scale * samples
         source_rows.append((source.i, source.j, source.k, source.component, samples))
     edge_masks = pec_mask if isinstance(pec_mask, tuple) else None
     setup = _build_nu_scan(grid, materials, n_steps, cpml_axes=None if cpml else '',

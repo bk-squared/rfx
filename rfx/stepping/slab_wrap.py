@@ -122,16 +122,27 @@ def split(invariants, carry, layout, mesh, *, waveforms, dt=None):
             fields = {}
             for name, field in zip(value._fields, value):
                 if name == 'components':
-                    fields[name] = field._replace(**{
-                        part: cut(getattr(field, part), layout, kind, mesh=mesh)
-                        for part, kind in (('eps_update', 'eps_r'), ('sigma_update', 'sigma'),
-                                           ('mu_update', 'mu_r'))})
+                    # Kernel operands (KernelComponents) or, under a realized-model
+                    # capture, the whole realization: cut every grid-shaped leaf,
+                    # padded by the field family its top-level name belongs to.
+                    def cut_component(path, a):
+                        top = str(getattr(path[0], 'name', getattr(path[0], 'key', path[0])))
+                        if np.ndim(a) != 3 or np.shape(a)[0] != layout.nx:
+                            return a
+                        kind = ('eps_r' if 'eps' in top else 'sigma' if 'sigma' in top
+                                else 'mu_r' if top.startswith('mu') else 'lumped')
+                        return cut(a, layout, kind, mesh=mesh)
+                    fields[name] = None if field is None else jax.tree_util.tree_map_with_path(
+                        cut_component, field)
                 elif name == 'edge_keep':
                     fields[name] = cut(field, layout, 'edge_keep', mesh=mesh)
-                elif field is None or np.ndim(field) == 0:
-                    fields[name] = field
                 else:
-                    fields[name] = cut(field, layout, name if name in ('eps_r', 'sigma', 'mu_r') else 'lumped', mesh=mesh)
+                    # Lumped records (sigma_film, eps_r_lumped, ...) are per-component
+                    # tuples; a realized-model capture keeps them in the materials.
+                    kind = name if name in ('eps_r', 'sigma', 'mu_r') else 'lumped'
+                    fields[name] = jax.tree.map(
+                        lambda a, kind=kind: a if np.ndim(a) == 0 else cut(a, layout, kind, mesh=mesh),
+                        field)
             result[key] = type(value)(**fields)
         elif key in ('debye_coeffs', 'lorentz_coeffs'):
             result[key] = cut_pole_coeffs(value, layout, key.removesuffix('_coeffs'),
@@ -184,7 +195,13 @@ def wrap(step, layout, mesh, *, table):
             n_channels, channel_names, order, ids)
         inputs['owns_x'] = jax.tree.map(lambda a: a[0], inputs['owns_x'])
         advance = make_graded_step(context, hooks={HookPoint.AFTER_H: (h,), HookPoint.STEP_END: (e,)})
-        carry, record = advance(carry, xs, inputs)
+        from rfx import _realized
+        if _realized.ACTIVE is None:
+            carry, record = advance(carry, xs, inputs)
+        else:
+            start = rank * layout.nx_per_rank
+            with _realized.owned(start, jnp.minimum(layout.nx_per_rank, layout.nx - start)):
+                carry, record = advance(carry, xs, inputs)
         return carry, record[None, :]
 
     def mapped(carry, xs, invariants, *, ranks):
