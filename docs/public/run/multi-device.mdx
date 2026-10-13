@@ -19,7 +19,8 @@ refuses.
 `run(devices=[...])` takes a list of JAX devices. With two or more it splits
 the model; with `None` or one device it runs normally. On a machine without
 several GPUs you can try it on CPU by asking XLA for several host devices
-before JAX is imported:
+before JAX is imported (if your environment already sets `XLA_FLAGS`, add
+the flag there instead):
 
 ```python
 import os
@@ -87,10 +88,12 @@ set before JAX is imported. On CPU the rule does not apply.
 
 Tests compare multi-device runs with one-device runs of the same model:
 
-- the drive of field and current sources at slab seams and inside slabs, over
-  two and three devices: field sources bit-identical, current sources within
-  9 float32 rounding steps (`tests/unit/runners/test_distributed_drive_table.py`);
-- lumped-port S over every entry and frequency within 9×10⁻⁶
+- the drive of field and current sources at slab seams and inside slabs, on
+  two devices with `forward(distributed=True)` on a graded mesh: field sources
+  bit-identical, current sources within 9 float32 rounding steps
+  (`tests/unit/runners/test_distributed_drive_table.py`);
+- lumped-port S over every entry and frequency within 9×10⁻⁶, and the port's
+  time signal within 9×10⁻⁶ of its peak
   (`tests/unit/runners/test_distributed_lumped_port_s.py`);
 - the far field with seams, padding, a dielectric and absorbers within 5×10⁻⁵
   (`tests/unit/runners/test_distributed_ntff.py`).
@@ -106,7 +109,8 @@ run by hand before the release, not in every test run (tracker 1384).</p>
 A few inputs make the run fall back to one device, with the warning "Falling
 back to single-device execution with the same arguments": a plane wave or a
 waveguide port on a uniform mesh, and a waveguide port on a graded mesh. The
-result is the one you asked for, on one device.
+result is the one you asked for, on one device. This applies to `run()`;
+`forward(distributed=True)` refuses plane waves and waveguide ports instead.
 
 These are refused:
 
@@ -123,7 +127,9 @@ These are refused:
 | a far-field box | graded mesh | a uniform mesh |
 | `until_decay`, `snapshot`, `checkpoint`, `subpixel_smoothing`, `conformal_pec`, `ringdown` | `run()` | a fixed `n_steps`, one device for the rest |
 | `exchange_interval` other than 1 | all multi-device | 1 |
-| a graded mesh with neighbouring cells more than 5:1 apart | graded mesh | a gentler grading |
+| a graded mesh whose largest cell is more than 5 times its smallest (above 3 times it runs with a warning) | graded mesh | a gentler grading |
+| `solver="adi"`, `interface_eps="dual_average"` | all multi-device | the default solver and interface rule |
+| devices spread over several JAX processes | graded mesh, `run()` | one process |
 | an outer `jax.jit` on GPUs with command buffers on | all multi-device | see the outer-jit rule |
 
 <p data-rfx="note">Pending for 2.0: DFT planes, flux monitors and the
