@@ -4,8 +4,8 @@ The scan physics is differentiable w.r.t. a component value (the spike note
 ``docs/design_notes/wp4e_lumped_component_value_ad_spike.md`` established the
 pure-L positive witness, AD-vs-FD 8.3e-6).  What was missing was the plumbing:
 
-  * the traced meta builder in ``rfx/lumped.py`` (``build_rlc_meta_traced`` /
-    ``setup_rlc_materials_traced``) that drops the ``float()`` coercions and
+  * the unified meta builder in ``rfx/lumped.py`` (``build_rlc_meta`` /
+    ``setup_rlc_materials``) that avoids ``float()`` for traced inputs and
     keeps topology decisions static, and
   * ``Simulation.forward()`` iterating ``self._lumped_rlc`` and threading the
     metas into the differentiable ``_run(...)`` driver, plus a
@@ -177,7 +177,7 @@ def test_dS11_dR_dC_ad_matches_fd():
 def test_run_series_rlc_byte_identity():
     """Concrete run() series-RLC path is byte-identical to main (golden).
 
-    The traced lane is a SEPARATE code path; the concrete build_rlc_meta /
+    The unified builders retain concrete arithmetic; build_rlc_meta /
     setup_rlc_materials / run(lumped_rlc=...) numerics must be untouched.
     (On-platform this is exact array_equal; a tight tolerance guards against
     real numeric regressions while tolerating cross-machine float32 noise.)

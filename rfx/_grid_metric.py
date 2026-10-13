@@ -96,8 +96,7 @@ current-source ``dV``      ``nonuniform.make_current_source`` (#672)  PRIMAL on 
 lumped port sigma          ``sources.sources.port_sigma`` (#691)      same mixed rule
                                                                       (``port_d_parallel`` primal,
                                                                       ``port_dual_transverse`` dual)
-lumped R / C fold          ``lumped.setup_rlc_materials`` and         same mixed rule
-                           ``setup_rlc_materials_traced``
+lumped R / C fold          ``lumped.setup_rlc_materials``             same mixed rule
 surface-impedance sheet    ``materials.thin_conductor``               DUAL along the sheet NORMAL
                            ``.SheetImpedanceSpec`` (#677)             (``sigma_sheet = G / d_dual``)
 node positions             ``geometry.rasterize_grid``                PRIMAL cumulative sum; a

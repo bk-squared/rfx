@@ -57,8 +57,6 @@ KNOWN_ROWS = (
     ('PW-A', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
     ('PW-B', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
     ('PW-oblique', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
-    ('R-rlc', 'uniform', 'L1', 'D6', '#1373 D6 (ports): lumped RLC step inputs and fields differ'),
-    ('R-rlc', 'uniform', 'L2', 'D6', '#1373 D6 (ports): lumped RLC step inputs and fields differ'),
     ('S-field', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
     ('S-polarized', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
 )
@@ -321,7 +319,6 @@ BOTH_REFUSE_ROWS = (
 # are consequences. Other measurements, outcomes, and L1 remain exact;
 # O-flux has equal fields and is not a consequence pair.
 CONSEQUENCE_PAIRS = (
-    ('R-rlc', 'uniform', 'D6'),
 )
 ID_PATTERNS = {
     'D4': {'L1': ('/carry_init/flux_monitors/*', '/init/flux_monitors/*',
@@ -329,7 +326,6 @@ ID_PATTERNS = {
                   '/ctx/use_flux_monitors', '/invariants/ctx/use_flux_monitors'),
            'L2': ('flux_monitors/*',)},
     'D5': {'L1': (), 'L2': ('settling_witness/*',)},
-    'D6': {'L1': ('/ctx/rlc_meta/0/D0', '/invariants/ctx/rlc_meta/0/D0'), 'L2': ()},
     'D7': {'L1': (), 'L2': ('waveguide_ports/*', 'waveguide_sparams/*')},
     'D8': {'L1': (), 'L2': ('s_params', 'freqs', 'freqs_hz')},
     'A1': {'run': ('admitted',), 'forward': ('raised', 'NotImplementedError',
