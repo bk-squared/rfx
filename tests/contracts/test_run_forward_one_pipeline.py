@@ -502,3 +502,15 @@ def test_both_refuse(declaration, path):
             for entry in ('run', 'forward')}
     assert all(record['outcome'] == 'raised' for record in pair.values()), {
         entry: record['outcome'] for entry, record in pair.items()}
+
+
+@pytest.mark.parametrize('declaration', ('P-lumped',))
+def test_multi_device_graded_refusal_names_both_entries(declaration):
+    # One executor refuses for both entries; its text must not send a run()
+    # user to a forward() argument (#1373 A4).
+    pair = {entry: run_l2(BUILDERS[declaration], entry, 'multi-device-graded', n_steps=1,
+                          entry_options=entry_options(declaration))
+            for entry in ('run', 'forward')}
+    messages = {entry: record.get('message', '') for entry, record in pair.items()}
+    assert messages['run'] == messages['forward'], messages
+    assert 'run(devices=...)' in messages['run'] and 'forward(distributed=True)' in messages['run'], messages
