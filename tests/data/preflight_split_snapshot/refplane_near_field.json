@@ -85,10 +85,45 @@
         ],
         "severity": "warning",
         "source": "_validate_cfg_off_lattice_design_edges"
+      },
+      {
+        "code": "wire_port_no_radius",
+        "loc": "_ports[0], _ports[1]",
+        "numbers": [
+          0.2,
+          2.0,
+          0.0,
+          2.0,
+          2.0,
+          1.4,
+          0.0,
+          1.0,
+          500.0,
+          500.0,
+          0.1985,
+          99.25,
+          5.0,
+          0.0,
+          4.36,
+          1.0,
+          1.0,
+          500.0,
+          500.0,
+          0.1985,
+          99.25,
+          5.0,
+          2.0,
+          4.36,
+          0.2,
+          0.2,
+          100.0
+        ],
+        "severity": "warning",
+        "source": "preflight_wire_port_radius"
       }
     ],
     "n_errors": 0,
-    "n_issues": 3,
+    "n_issues": 4,
     "ok": true
   }
 }

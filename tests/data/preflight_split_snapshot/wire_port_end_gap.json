@@ -56,10 +56,36 @@
         ],
         "severity": "warning",
         "source": "_validate_cfg_pec_realization"
+      },
+      {
+        "code": "wire_port_no_radius",
+        "loc": "_ports[0]",
+        "numbers": [
+          0.2,
+          2.0,
+          0.0,
+          2.0,
+          2.0,
+          1.4,
+          0.0,
+          4.0,
+          1.0,
+          1.0,
+          0.1985,
+          198.5,
+          2.5,
+          0.0,
+          8.71,
+          0.2,
+          0.2,
+          200.0
+        ],
+        "severity": "warning",
+        "source": "preflight_wire_port_radius"
       }
     ],
     "n_errors": 0,
-    "n_issues": 3,
+    "n_issues": 4,
     "ok": true
   }
 }

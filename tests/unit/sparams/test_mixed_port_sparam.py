@@ -1385,7 +1385,10 @@ def test_wire_port_end_gap_advisory_silent_in_open_vacuum():
     sim.add_port(position=(0.0093, 0.0093, 0.0093), component="ez",
                  impedance=50.0,
                  waveform=GaussianPulse(f0=5e9, bandwidth=0.9),
-                 extent=0.004)
+                 extent=0.004,
+                 # Mirrors _clean_sim: without radius= the port draws
+                 # wire_port_no_radius and the report is not clean.
+                 radius=0.1e-3)
 
     issues = sim.preflight()
     codes = [getattr(s, "code", None) for s in issues]
