@@ -83,7 +83,8 @@ per file, the functions that do a layer's work outside its package: stepping
 fields (a time loop or a kernel call), measuring (a Fourier transform),
 building grid arrays with arithmetic or indexed writes, or, in
 `Simulation`, a declaration that reads the grid and other methods with logic.
-It also counts imports, in those five files, of names a layer does not export.
+It also counts imports, in those five files, of kernel functions or of layer
+functions other than the ones a layer package exports from its root.
 Outside the five files it counts every module outside the layer packages that
 steps fields or takes a Fourier transform, so a new module that does either
 belongs in `rfx/stepping/` or `rfx/measurement/`. The counts are recorded in
