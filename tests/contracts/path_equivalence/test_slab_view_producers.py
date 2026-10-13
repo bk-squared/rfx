@@ -19,7 +19,7 @@ view, taking its inputs with ``view.rows`` and its global values from
 ``view.globals``. Results are pytrees; every array leaf whose ``x_axis`` has
 the grid's x length is cut, every other leaf must be equal as a whole.
 """
-from dataclasses import replace
+from dataclasses import fields, replace
 from types import SimpleNamespace
 from typing import Callable, NamedTuple
 
@@ -30,9 +30,12 @@ import pytest
 
 from rfx import Simulation, Box, DebyePole
 from rfx.boundaries.pec import SheetSpec, WireSpec, realized_pec_edge_masks, wire_path_edge_masks
-from rfx.core.yee import component_h_materials, edge_averaged_materials
+from rfx.core.yee import MaterialArrays, cell_owned_component_materials, component_h_materials, edge_averaged_materials
 from rfx.materials.lorentz import lorentz_pole
-from rfx.model.materials import electric_cell_sizes, pole_component_weights
+from rfx.model.materials import (ComponentCells, electric_cell_sizes, pole_component_weights,
+                                 realize_components, with_components, validate_components)
+from rfx.model.pole_stability import (CourantBudget, pole_set_extremes, combine_pole_extremes,
+                                     judge_pole_sets, refuse_unstable_cells, courant_budget)
 from rfx.model.occupancy import build_edge_keep, publish_occupancy, with_edge_keep
 from rfx.stepping.slab_view import slab_views
 
@@ -185,10 +188,54 @@ R = jnp.asarray([(1, 0, 2), (5, 0, 2), (6, 0, 2), (7, 0, 2),
                  (17, 0, 2), (18, 0, 2)], dtype=jnp.int32)
 
 
+def _cells(scene, view=None):
+    take = (lambda x: x) if view is None else view.rows
+    materials = MaterialArrays(*(jax.numpy.asarray(take(x)) for x in
+                                (scene.eps_r, scene.sigma, scene.mu_r)))
+    def cut(spec):
+        if spec is None:
+            return None
+        poles, masks = spec
+        return poles, [None if m is None else take(m) for m in masks]
+    return ComponentCells(materials, cut(scene.debye), cut(scene.lorentz))
+
+
+def _component_numbers(components):
+    # Identity fields cells_view/grid_key are excluded. All other fields are
+    # compared, including static periodic/source_upml and pole tuples/dt.
+    # ADE coefficients store (pole, x, y, z): expose x first to the harness.
+    out = {}
+    for field in fields(components):
+        if field.name in ("cells_view", "grid_key"):
+            continue
+        value = getattr(components, field.name)
+        if field.name in ("debye", "lorentz") and value is not None:
+            value = value._replace(coefficients=jax.tree.map(
+                lambda a: jax.numpy.moveaxis(a, 1, 0), value.coefficients))
+        out[field.name] = value
+    return out
+
+
+def _realized_whole(scene):
+    return _component_numbers(realize_components(_cells(scene), scene.grid, periodic=PERIODIC))
+
+
+def _realized_slab(scene, view):
+    # Model the staging owner: judge whole-model reductions before granting
+    # the token; the producer itself may only realize the input slab rows.
+    whole = _cells(scene)
+    refuse_unstable_cells(whole.materials, whole.lorentz_spec, scene.grid.dt,
+                          courant_budget(scene.grid), grid_kind=type(scene.grid).__name__)
+    view = view._replace(globals={**view.globals, "pole_sets_judged": True})
+    return _component_numbers(realize_components(_cells(scene, view), scene.grid,
+                                                 periodic=PERIODIC, view=view))
+
+
 # Reference entries: the stencil functions under the realized-materials and
 # occupancy producers. Owners add the producers themselves (realize_components,
 # build_edge_keep with sheets, realized_pec_edge_masks, drive_table, CPML state).
 PRODUCERS = [
+    Producer("realize_components", _realized_whole, _realized_slab),
     Producer(
         "edge_averaged_materials",
         lambda s: edge_averaged_materials(s.eps_r, s.sigma, PERIODIC, cell_sizes=_x_widths(s)),
@@ -280,7 +327,7 @@ def test_mutation_slab_local_metric_decision_is_caught():
         x = v.rows(np.asarray(_x_widths(s)[0]))
         local = (None if np.all(x == x[0]) else x,) + tuple(_x_widths(s)[1:])
         return edge_averaged_materials(v.rows(s.eps_r), v.rows(s.sigma), PERIODIC, cell_sizes=local)
-    producer = PRODUCERS[0]._replace(slab=slab)
+    producer = next(p for p in PRODUCERS if p.name == "edge_averaged_materials")._replace(slab=slab)
     with pytest.raises(AssertionError, match="differs at global x rows"):
         assert_slab_view(producer, SCENES["material_seam"], 2)
 
@@ -398,3 +445,160 @@ def test_view_refuses_a_one_row_slab_and_gives_an_empty_slab_no_rows():
     views = slab_views(SimpleNamespace(nx=9), 4)   # ceil layout: owned rows 3, 3, 3, 0
     assert views[-1].x0 == views[-1].x1 and views[-1].hi == views[-1].lo
     assert [v.hi - v.lo for v in views] == [3, 4, 4, 0]
+
+
+def _refusing_scene():
+    # Fine cells/high epsilon in the first slab; low epsilon on coarse cells
+    # in the last. The whole pattern combines their extrema and occupied axes.
+    shape = (18, 6, 5)
+    widths = (np.r_[np.full(9, .25e-3), np.full(9, 1e-3)],
+              np.full(6, 1e-3), np.full(5, 1e-3))
+    budget = CourantBudget(widths)
+    dt = .9 / np.sqrt(float(budget))
+    grid = SimpleNamespace(nx=18, shape=shape, dt=dt, cells=lambda a: widths[a])
+    eps = np.full(shape, 4., np.float32)
+    eps[15:] = 1.
+    sigma = np.full(shape, .1, np.float32)
+    sigma[15:] = 0.
+    mask = np.zeros(shape, bool)
+    mask[:3] = True
+    mask[15:] = True
+    return Scene("refusing", grid, eps, sigma, np.ones(shape, np.float32),
+                 np.zeros(shape), np.zeros(shape, bool), None,
+                 ([(0., 0., 1. / dt**2)], [mask]), {"courant_budget": budget})
+
+
+def _assert_bits(a, b):
+    a, b = np.asarray(a), np.asarray(b)
+    assert a.shape == b.shape
+    assert a.dtype == b.dtype
+    assert a.tobytes() == b.tobytes()
+
+
+def _assert_records(whole, combined):
+    assert len(whole) == len(combined)
+    for a, b in zip(whole, combined):
+        assert a.code == b.code
+        assert a.count == b.count, "cell count"
+        for name in ("poles", "eps_low", "sigma_low", "sigma_high", "occupied"):
+            aa, bb = jax.tree.leaves(getattr(a, name)), jax.tree.leaves(getattr(b, name))
+            assert len(aa) == len(bb)
+            for x, y in zip(aa, bb):
+                _assert_bits(x, y)
+
+
+def _records(scene, n):
+    whole = _cells(scene)
+    slabs = []
+    for view in slab_views(scene.grid, n):
+        cells = _cells(scene, view)
+        slabs.append(pole_set_extremes(cells.materials, cells.lorentz_spec, view=view))
+    return pole_set_extremes(whole.materials, whole.lorentz_spec), slabs
+
+
+def _verdict(call):
+    try:
+        call()
+    except ValueError as error:
+        return str(error)
+    return None
+
+
+@pytest.mark.parametrize("n", DEVICES)
+@pytest.mark.parametrize("name", ("poles", "refusing"))
+def test_pole_extremes_and_refusal_equal_whole(name, n):
+    scene = SCENES[name] if name == "poles" else _refusing_scene()
+    whole, slabs = _records(scene, n)
+    combined = combine_pole_extremes(slabs)
+    _assert_records(whole, combined)
+    cells = _cells(scene)
+    budget = courant_budget(scene.grid)
+    kwargs = dict(grid_kind=type(scene.grid).__name__)
+    expected = _verdict(lambda: refuse_unstable_cells(cells.materials, cells.lorentz_spec,
+                                                     scene.grid.dt, budget, **kwargs))
+    assert _verdict(lambda: judge_pole_sets(combined, scene.grid.dt, budget, **kwargs)) == expected
+    if name == "refusing":
+        assert expected is not None
+        mask = cells.lorentz_spec[1][0]
+        eps, sigma = np.asarray(cells.materials.eps_r), np.asarray(cells.materials.sigma)
+        eps_rows = np.where(np.any(mask & (eps == eps[mask].min()), axis=(1, 2)))[0]
+        sigma_rows = np.where(np.any(mask & (sigma == sigma[mask].max()), axis=(1, 2)))[0]
+        views = slab_views(scene.grid, n)
+        eps_slabs = {v.rank for v in views if np.any((eps_rows >= v.x0) & (eps_rows < v.x1))}
+        sigma_slabs = {v.rank for v in views if np.any((sigma_rows >= v.x0) & (sigma_rows < v.x1))}
+        assert eps_slabs.isdisjoint(sigma_slabs)
+        for records in slabs:
+            assert _verdict(lambda: judge_pole_sets(records, scene.grid.dt, budget, **kwargs)) is None
+    else:
+        assert expected is None
+
+
+def test_slab_lorentz_requires_global_judgement_and_view_identity():
+    scene = SCENES["poles"]
+    view, other = slab_views(scene.grid, 2)
+    cells = _cells(scene, view)
+    with pytest.raises(ValueError, match="pole_set_extremes / combine_pole_extremes / judge_pole_sets"):
+        realize_components(cells, scene.grid, periodic=PERIODIC, view=view)
+    view = view._replace(globals={"pole_sets_judged": True})
+    ready = with_components(cells.materials, scene.grid, periodic=PERIODIC, view=view,
+                            debye_spec=cells.debye_spec, lorentz_spec=cells.lorentz_spec)
+    assert with_components(ready, scene.grid, periodic=PERIODIC, view=view) is ready
+    for wrong in (None, other, view._replace(halo_hi=1)):
+        with pytest.raises(ValueError, match="grid differs"):
+            validate_components(ready, periodic=PERIODIC, grid=scene.grid, view=wrong)
+
+
+def test_upml_is_pointwise_with_stamps_without_halo():
+    scene = SCENES["material_seam"]
+    materials = _cells(scene).materials
+    stamp = tuple(materials.sigma * f for f in (.1, .2, .3))
+    materials = materials._replace(eps_r_lumped=stamp, sigma_lumped=stamp, sigma_film=stamp)
+    whole = cell_owned_component_materials(materials)
+    for view in slab_views(scene.grid, 3, halo_lo=0):
+        local = jax.tree.map(view.rows, materials)
+        for a, b in zip(jax.tree.leaves(whole), jax.tree.leaves(cell_owned_component_materials(local))):
+            _assert_bits(view.rows(a), b)
+
+
+def test_realized_mutation_missing_halo_is_caught():
+    producer = next(p for p in PRODUCERS if p.name == "realize_components")
+    with pytest.raises(AssertionError, match="differs at global x rows"):
+        assert_slab_view(producer, SCENES["material_seam"], 2, halo_lo=0)
+
+
+def test_realized_mutation_local_metric_is_caught(monkeypatch):
+    import rfx.model.materials as model
+    original = model.edge_averaged_materials
+    def wrong(*args, cell_sizes, **kwargs):
+        x = cell_sizes[0]
+        if x is not None and np.all(np.asarray(x) == x[0]):
+            cell_sizes = (None,) + cell_sizes[1:]
+        return original(*args, cell_sizes=cell_sizes, **kwargs)
+    monkeypatch.setattr(model, "edge_averaged_materials", wrong)
+    producer = next(p for p in PRODUCERS if p.name == "realize_components")
+    with pytest.raises(AssertionError, match="differs at global x rows"):
+        assert_slab_view(producer, SCENES["material_seam"], 2)
+
+
+def test_extremes_mutation_first_slab_epsilon_is_caught():
+    whole, slabs = _records(_refusing_scene(), 2)
+    combined = combine_pole_extremes(slabs)
+    wrong = (combined[0]._replace(eps_low=slabs[0][0].eps_low),)
+    with pytest.raises(AssertionError):
+        _assert_records(whole, wrong)
+
+
+def test_extremes_mutation_halo_count_is_caught(monkeypatch):
+    from rfx.stepping.slab_view import SlabView
+    # Return all input rows and expand the matching ownership range: the
+    # numerical reduction succeeds but duplicate halo cells must be caught.
+    monkeypatch.setattr(SlabView, "own", lambda self, a, axis=0: a)
+    scene = SCENES["poles"]
+    whole = pole_set_extremes(_cells(scene).materials, scene.lorentz)
+    slabs = []
+    for view in slab_views(scene.grid, 2):
+        cells = _cells(scene, view)
+        wrong = view._replace(x0=view.lo, halo_lo=0)
+        slabs.append(pole_set_extremes(cells.materials, cells.lorentz_spec, view=wrong))
+    with pytest.raises(AssertionError, match="cell count"):
+        _assert_records(whole, combine_pole_extremes(slabs))
