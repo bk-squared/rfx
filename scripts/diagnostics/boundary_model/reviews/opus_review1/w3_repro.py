@@ -31,7 +31,7 @@ def s11(kind, r, patch):
         sim = W3._build(kind, r)
         res = sim.forward(port_s11_freqs=jnp.asarray(W3.FREQS_HZ),
                           num_periods=20.0, skip_preflight=True)
-        return np.abs(np.asarray(res.s_params).reshape(-1))
+        return np.abs(np.asarray(res.s_params[0, 0]).reshape(-1))
     finally:
         S.apply_pec = _orig_apply_pec
 

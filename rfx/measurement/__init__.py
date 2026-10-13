@@ -9,6 +9,7 @@ from rfx.measurement.plan import build_measurement_plan, measurement_plan
 from rfx.measurement.port_registration import (
     graded_acc_indices, graded_accumulators, graded_s_ports, graded_s_voltage, graded_specs, ordered_specs, register_lumped, register_wire,
 )
+from rfx.measurement.port_s import observed_port_s, port_s_from_record
 from rfx.measurement.port_time import PortTimeRecord
 from rfx.measurement.settling import settling_db_from_named_records, settling_db_from_port_records
 from rfx.measurement.time_records import (
@@ -50,10 +51,12 @@ __all__ = [
     "modal_current",
     "modal_voltage",
     "mode_self_overlap",
+    "observed_port_s",
     "ordered_specs",
     "overlap_modal_amplitude",
     "OverlapDFTAccumulators",
     "package_declared_measurements",
+    "port_s_from_record",
     "PortTimeRecord",
     "reconstruct_oblique_physical",
     "register_lumped",

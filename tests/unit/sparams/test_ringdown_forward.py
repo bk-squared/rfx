@@ -90,7 +90,7 @@ def _run_kw(lane):
 
 def _as_run_layout(lane, s):
     s = np.asarray(s)
-    return s.reshape(1, 1, -1) if lane == "uniform" else s
+    return s
 
 
 # ---------------------------------------------------------------------------
@@ -427,7 +427,7 @@ def test_a_weakly_driven_bin_is_completed_as_run_completes_it():
                                              port_s11_freqs=FREQS, ringdown=RingdownSpec())
     c = float(f.ringdown._consistency)
     S = np.asarray(f.ringdown.s_params).astype(np.complex128)
-    err = np.abs(S - r.ringdown.s_params[0, 0].astype(np.complex128))
+    err = np.abs(S - r.ringdown.s_params.astype(np.complex128))
     vp, ii = (np.asarray(f.wire_port_sparams[0][1][k]).astype(np.complex128) for k in (3, 1))
     a_rel = np.abs(vp + 50.0 * ii) / np.max(np.abs(vp + 50.0 * ii))
     weighted = float(np.max(err * a_rel))
@@ -522,7 +522,7 @@ def test_the_report_of_a_batched_result_says_to_take_one_element():
                            eps_override=eps * p, ringdown=RingdownSpec()).ringdown
 
     out = jax.vmap(f)(jnp.asarray([1.0, 1.001], jnp.float32))
-    assert np.shape(out.s_params) == (2, FREQS.size)
+    assert np.shape(out.s_params) == (2, 1, 1, FREQS.size)
     with pytest.raises(ValueError, match="batched.*tree_map"):
         out.report
     one = jax.tree_util.tree_map(lambda a: a[1], out)

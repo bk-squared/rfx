@@ -504,8 +504,8 @@ def minimize_s11_at_freq_wave_decomp(
     JIT-integrated lumped port DFT path) and returns ``|S11(f)|²`` at the
     nearest stored frequency.  The wave decomposition
 
-        a = (-V + Z0·I) / (2·√Z0)        # incident
-        b = (-V - Z0·I) / (2·√Z0)        # reflected
+        a = (V_port + Z0·I) / (2·√Z0)    # incident at the driven port
+        b = (V_port - Z0·I) / (2·√Z0)    # outgoing at the receive port
         S11 = b / a
 
     is exact: there is no source-pulse-vs-reflection separability
@@ -534,10 +534,9 @@ def minimize_s11_at_freq_wave_decomp(
                 "result.s_params / result.freqs are populated. See "
                 "issue #72."
             )
-        if s_params.ndim == 1:
-            s11 = s_params
-        else:
-            s11 = s_params[port_idx]
+        if s_params.ndim != 3 or s_params.shape[0] != s_params.shape[1]:
+            raise ValueError("expected (n_ports, n_ports, n_freqs) S-parameter shape")
+        s11 = s_params[port_idx, port_idx]
         idx = jnp.argmin(jnp.abs(freqs - float(target_freq)))
         s_at = s11[idx]
         return jnp.real(s_at) ** 2 + jnp.imag(s_at) ** 2

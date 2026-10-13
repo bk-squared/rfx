@@ -579,34 +579,7 @@ class ADCompiledMemoryCertificate(NamedTuple):
         return json.dumps(self.to_dict(), **options)
 
 
-def _nonfinite_fields(result) -> list[tuple[str, int]]:
-    """Return ``[(field_name, nonfinite_count), ...]`` for the numeric array
-    observables on a ``Result`` / ``ForwardResult``.
-
-    Tracer-safe: a value under ``jax.grad`` / ``jax.jit`` tracing is an
-    abstract tracer with no concrete data, so it is skipped (returns ``[]``
-    rather than raising). Never raises — a divergence diagnostic must not
-    itself break the return path.
-    """
-    import jax
-
-    bad: list[tuple[str, int]] = []
-    for name in ("time_series", "s_params"):
-        arr = getattr(result, name, None)
-        if arr is None:
-            continue
-        try:
-            if isinstance(arr, jax.core.Tracer):
-                continue
-            a = np.asarray(arr)
-        except Exception:
-            continue
-        if a.size == 0 or not np.issubdtype(a.dtype, np.number):
-            continue
-        n_bad = int(a.size - np.count_nonzero(np.isfinite(a)))
-        if n_bad:
-            bad.append((name, n_bad))
-    return bad
+from rfx.api._result_health import _nonfinite_fields
 
 
 _NONFINITE_CAUSE_HINT = (
@@ -1065,11 +1038,15 @@ class ForwardResult(NamedTuple):
     documented on :class:`Result`, as are ``flux_monitors``,
     ``waveguide_ports`` and ``waveguide_sparams``, returned here as by run().
 
-    ``lumped_port_sparams`` exposes the raw per-port ``(V_dft, I_dft,
-    V_ref_dft)`` tuples accumulated in the scan when
-    ``forward(port_s11_freqs=...)`` is used: V and I are the post-injection
-    channels (I with the Yee half-step phase), ``V_ref`` the pre-injection
-    drive sample that the N-port off-diagonal incident wave reads.
+    ``lumped_port_sparams`` exposes the raw per-port
+    ``(V_dft, I_dft, V_ref_dft)`` tuples accumulated inside the JIT scan body
+    when ``forward(port_s11_freqs=...)`` is used.  V and I are the
+    POST-injection physical channels (I carrying the Yee half-step phase);
+    ``V_ref`` is the PRE-injection drive sample. ``s_params`` has shape
+    ``(n_ports, n_ports, n_freqs)`` on both meshes: receive port, drive port,
+    frequency. A record with a driven port fills its driven column and
+    returns complex NaN in non-driven columns. With all ports passive,
+    it returns the frozen per-cell diagnostic matrix.
 
     ``dft_planes`` exposes the JIT-scan-accumulated complex DFT plane
     probes registered via :meth:`Simulation.add_dft_plane_probe`.  Each

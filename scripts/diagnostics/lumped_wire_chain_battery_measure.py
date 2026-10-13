@@ -817,9 +817,7 @@ def _witness_line(tag: str, s11: np.ndarray, extra: str = "") -> None:
 
 
 def _s11_of(result) -> np.ndarray:
-    s = np.asarray(result.s_params)
-    if s.ndim != 1:
-        s = s.reshape(-1)
+    s = np.asarray(result.s_params[0, 0])
     if s.size != N_FREQS:
         raise RuntimeError(f"S11 came back with {s.size} bins, declared {N_FREQS}")
     return s
@@ -1268,7 +1266,7 @@ def stage_adfd_r(args, out: Path) -> None:
                 r = simx.forward(port_s11_freqs=jnp.asarray(FREQS),
                                  num_periods=float(args.num_periods),
                                  skip_preflight=True, rlc_values_override=ov)
-            return _objective(r.s_params.reshape(-1), which)
+            return _objective(r.s_params[0, 0].reshape(-1), which)
         return loss
 
     for which in ("band_mean_s11_sq", "re_s11_at_mid_band"):
@@ -1397,7 +1395,7 @@ def stage_adfd_eps(args, out: Path, dut: str = "short") -> None:
                 r = simx.forward(port_s11_freqs=jnp.asarray(FREQS),
                                  num_periods=float(args.num_periods),
                                  skip_preflight=True, eps_override=epsx * theta)
-            return _objective(r.s_params.reshape(-1), which)
+            return _objective(r.s_params[0, 0].reshape(-1), which)
         return loss
 
     objectives = (("band_mean_s11_sq", "re_s11_at_mid_band") if dut == "short"

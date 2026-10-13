@@ -942,7 +942,7 @@ class _PreflightMixin:
         - ``calculator="run"`` checks ``run(compute_s_params=True)`` for
           lumped/wire ``add_port(...)`` families.
         - ``calculator="forward"`` checks ``forward(port_s11_freqs=...)`` for
-          uniform single-device S11 vectors.
+          uniform single-device port S-matrices.
         - ``calculator="msl"`` checks ``compute_msl_s_matrix(...)``.
         - ``calculator="waveguide"`` checks ``compute_waveguide_s_matrix(...)``.
 

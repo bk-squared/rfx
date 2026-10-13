@@ -377,7 +377,7 @@ def test_the_driven_column_of_a_two_port_graded_box():
               f"{deg_p:.2f} deg")
         assert db_c < 0.05 and deg_c < 0.5, (j, db_c, deg_c)
         assert db_p > 0.2 and deg_p > 2.0, (j, db_p, deg_p)
-    assert np.all(S[:, 1] == 0)                  # the undriven column stays empty
+    assert np.isnan(S[:, 1]).all()              # the undriven column is unmeasured
 
 
 @pytest.mark.parametrize("lane", ["uniform", "graded"])

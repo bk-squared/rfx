@@ -231,8 +231,7 @@ def make_objective(board: Board, box: str, f_t: float, *, n_steps: int,
             design_box_holds_ports=True, n_steps=n_steps, checkpoint=False,
             checkpoint_segments=checkpoint_segments,
             port_s11_freqs=freqs, skip_preflight=True)
-        s = res.s_params
-        s = s if s.ndim == 1 else s[0]
+        s = res.s_params[0, 0]
         return jnp.real(s[0]) ** 2 + jnp.imag(s[0]) ** 2
 
     return J
@@ -337,7 +336,7 @@ def stage_main(out: Path) -> None:
     t0 = time.perf_counter()
     fres = board.sim.forward(num_periods=num_periods, port_s11_freqs=jnp.asarray(freqs),
                              skip_preflight=True, checkpoint=False)
-    s11_fwd = np.asarray(fres.s_params, dtype=complex).reshape(-1)
+    s11_fwd = np.asarray(fres.s_params[0, 0], dtype=complex).reshape(-1)
     wall["forward_all_bins_s"] = time.perf_counter() - t0
     np.savez(out / "forward_s11.npz", freqs_hz=freqs, s11=s11_fwd)
     fwd = {"max_abs_diff_vs_run": float(np.max(np.abs(s11_fwd - s11))),
@@ -485,8 +484,8 @@ def stage_main(out: Path) -> None:
                       "planes at the Ez edges 1.5 and 2.5 cells above the ground; "
                       "|Ez|^2 is their mean; Ez index (i, j) is compared with design "
                       "cell (i, j) of the z-summed gradient over the design box footprint",
-            "s11_at_f_t_from_this_forward": complex(np.asarray(res_e.s_params).reshape(-1)[1])}
-    s_fl = np.asarray(res_e.s_params, dtype=complex).reshape(-1)
+            "s11_at_f_t_from_this_forward": complex(np.asarray(res_e.s_params[0, 0]).reshape(-1)[1])}
+    s_fl = np.asarray(res_e.s_params[0, 0], dtype=complex).reshape(-1)
     j_fl = np.abs(s_fl) ** 2
     j_run = np.abs(s11) ** 2
     dj_run = np.gradient(j_run, freqs)

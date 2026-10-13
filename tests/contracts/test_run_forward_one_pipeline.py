@@ -10,7 +10,7 @@ import pytest
 
 from tests.contracts.run_forward_census import (
     BUILDERS, SEAMS, capture, compare, compare_l2, l2_differences,
-    normalize_inputs, observables, run_l2,
+    normalize_inputs, observables, run_l2, port_s_pair, FORWARD_ONLY_PORT_RECORDS,
 )
 
 KNOWN_ROWS = (
@@ -21,17 +21,15 @@ KNOWN_ROWS = (
     ('P-lumped', 'multi-device-uniform', 'L2', 'D5', '#1373 D5 (ports): settling witness arrays differ between entries'),
     ('P-lumped', 'multi-device-uniform', 'L2', 'D8', '#1373 D8 (ports): run computes the port S-matrix by default; forward returns no S without port_s11_freqs'),
     ('P-lumped', 'uniform', 'L2', 'D5', '#1373 D5 (ports): settling witness arrays differ between entries'),
-    ('P-lumped', 'uniform', 'L2', 'D8', '#1373 D8 (ports): run computes the port S-matrix by default; forward returns no S without port_s11_freqs'),
     ('P-lumped2', 'uniform', 'L2', 'D5', '#1373 D5 (ports): settling witness arrays differ between entries'),
-    ('P-lumped2', 'uniform', 'L2', 'D8', '#1373 D8 (ports): run computes the port S-matrix by default; forward returns no S without port_s11_freqs'),
     ('P-waveguide', 'graded', 'L2', 'D5', '#1373 D5 (ports): settling witness arrays differ between entries'),
     ('P-waveguide', 'multi-device-graded', 'L1', 'A5', '#1373 A5 (acceleration): run falls back for a waveguide port while distributed forward refuses'),
     ('P-waveguide', 'multi-device-graded', 'admission', 'A5', '#1373 A5 (acceleration): run falls back for a waveguide port while distributed forward refuses'),
     ('P-waveguide', 'multi-device-uniform', 'L2', 'D5', '#1373 D5 (ports): settling witness arrays differ between entries'),
     ('P-waveguide', 'uniform', 'L2', 'D5', '#1373 D5 (ports): settling witness arrays differ between entries'),
-    ('P-wire', 'graded', 'admission', 'A2', '#1373 A2 (ports): run refuses the wire port that forward admits'),
+    ('P-wire', 'graded', 'admission', 'A2', 'A2 expected: equal S requests give equal refusals; forward without an S request admits'),
     ('P-wire', 'multi-device-uniform', 'admission', 'A2', '#1373 A2 (ports): run refuses the wire port that forward admits'),
-    ('P-wire', 'uniform', 'admission', 'A2', '#1373 A2 (ports): run refuses the wire port that forward admits'),
+    ('P-wire', 'uniform', 'admission', 'A2', 'A2 expected: equal S requests give equal refusals; forward without an S request admits'),
 )
 
 ASSEMBLY_ROWS = (
@@ -448,13 +446,30 @@ def test_assembly(declaration, path):
 
 
 def check_fields(declaration, path):
-    pair = {entry: run_l2(BUILDERS[declaration], entry, path,
-                          entry_options=entry_options(declaration)) for entry in ('run', 'forward')}
+    pair = port_s_pair(declaration, path) if declaration in ('P-lumped', 'P-lumped2') and path == 'uniform' else None
+    if pair is None:
+        pair = {entry: run_l2(BUILDERS[declaration], entry, path,
+                              entry_options=entry_options(declaration)) for entry in ('run', 'forward')}
     ids = outcomes(declaration, path, 'L2', pair)
     values = {entry: observables(value['result']) for entry, value in pair.items()}
+    if declaration in ('P-lumped', 'P-lumped2') and path == 'uniform':
+        # S was checked above on its measured column, with the cross-trace bar.
+        for value in values.values():
+            value['arrays'].pop('s_params', None)
+            value['arrays'].pop('freqs_hz', None)  # run alias of the bins checked above
     comparison = compare_l2(values['run']['arrays'], values['forward']['arrays'],
                             left_raises=values['run']['raises'], right_raises=values['forward']['raises'])
-    classify(declaration, path, 'L2', l2_differences(comparison), ids)
+    differences = l2_differences(comparison)
+    if declaration in ('P-lumped', 'P-lumped2') and path == 'uniform':
+        retained = []
+        for difference in differences:
+            if difference['path'].split('/')[0] in FORWARD_ONLY_PORT_RECORDS:
+                assert difference.get('run') == 'absent'
+                assert difference.get('forward') == 'array'
+            else:
+                retained.append(difference)
+        differences = retained
+    classify(declaration, path, 'L2', differences, ids)
 
 
 ALWAYS_ON_FIELDS = tuple(row for row in FIELD_ROWS if row[0] == 'B-cpml' or row in (
@@ -477,6 +492,11 @@ def test_fields_slow(declaration, path):
 def test_admission(declaration, path):
     pair = {entry: run_l2(BUILDERS[declaration], entry, path,
                           entry_options=entry_options(declaration)) for entry in ('run', 'forward')}
+    if declaration == 'P-wire' and path in ('uniform', 'graded'):
+        with pytest.raises(NotImplementedError) as exc:
+            BUILDERS[declaration](path).forward(n_steps=1, skip_preflight=True,
+                                               port_s11_freqs=[2e9])
+        assert str(exc.value) == pair['run']['message']
     ids = outcomes(declaration, path, 'admission', pair)
     finish(declaration, path, 'admission', ids, set(), [])
 
@@ -501,3 +521,13 @@ def test_multi_device_graded_refusal_names_both_entries(declaration):
     messages = {entry: record.get('message', '') for entry, record in pair.items()}
     assert messages['run'] == messages['forward'], messages
     assert 'run(devices=...)' in messages['run'] and 'forward(distributed=True)' in messages['run'], messages
+
+
+@pytest.mark.parametrize('declaration', ['P-lumped', 'P-lumped2'])
+@pytest.mark.parametrize('path', ['uniform', 'graded'])
+def test_port_s_equal_requests(declaration, path):
+    pair = port_s_pair(declaration, path)
+    if path == 'graded':
+        assert pair is None  # public explicit lumped run S request is refused
+    else:
+        assert pair is not None

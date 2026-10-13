@@ -2070,68 +2070,13 @@ class _ExecuteMixin:
 
         s_params_out = getattr(result, "s_params", None)
         freqs_out = getattr(result, "freqs", None)
-        if result.lumped_port_sparams:
-            # A GENUINELY driven one-cell lumped port uses the driven
-            # terminal reflection S_kk = (V - Z0*I)/(V + Z0*I) on the
-            # POST-injection V/I pair.  The historical
-            # extract_lumped_s11 here was the PASSIVE port-branch
-            # convention applied to a driven port (the reciprocal class)
-            # on a pre-injection sample: on the known-load line
-            # (scripts/diagnostics/lumped_port_known_load_line.py) it read
-            # |S11| 0.714 / 1.248 / 4.757 where the closed form is
-            # 0.333 / 0 / 0.333.  Same correction the wire family made in
-            # #764/#683; the one-cell gap IS the whole gap, so the
-            # single-cell V is the KVL-constrained V_port here.  A passive
-            # port keeps the load-independent port-branch reading.
-            from rfx.probes.probes import (
-                driven_port_reflection,
-                extract_lumped_s11,
-            )
-            s_list = []
-            for spec, accs in result.lumped_port_sparams:
-                v_dft, i_dft = accs[0], accs[1]
-                if getattr(spec, "excite", True):
-                    s_list.append(
-                        driven_port_reflection(v_dft, i_dft, spec.impedance))
-                else:
-                    s_list.append(
-                        extract_lumped_s11(v_dft, i_dft, z0=spec.impedance))
-            s_params_out = s_list[0] if len(s_list) == 1 else jnp.stack(s_list, axis=0)
-            freqs_out = result.lumped_port_sparams[0][0].freqs
-        elif result.wire_port_sparams:
-            # Wire-port diagonal extraction (issue #764): a GENUINELY
-            # driven port uses the whole-port driven reflection
-            #   S_kk = (V_port - Z0*I)/(V_port + Z0*I)
-            # with V_port = sum over LIVE cells of -E_c*dx (the whole-gap
-            # line integral — the only KVL-constrained V on the staggered
-            # grid) and Z0 the whole-port impedance #318 physically
-            # realizes as the series termination.  The historical
-            # extract_lumped_s11 on the single-cell V measured the
-            # per-cell Z0/n_live against the whole-port Z0 (matched load
-            # +0.35426, PEC short +0.26780 — ledger 2026-06-21).  A
-            # passive port keeps the legacy per-cell diagnostic diagonal
-            # byte-for-byte (no physical falsifier can gate that
-            # load-independent reading).  This lane samples the physical
-            # V/I/V_port POST-injection (issue #683, decided by
-            # measurement 2026-08-29 and landed with the decomposer
-            # recalibration), so the driven diagonal here is the
-            # validated terminal reading (Gamma_L-exact class).
-            from rfx.probes.probes import (
-                driven_port_reflection,
-                extract_lumped_s11,
-            )
-            w_list = []
-            for spec, accs in result.wire_port_sparams:
-                v_dft, i_dft = accs[0], accs[1]
-                v_port_dft = accs[3]
-                if spec.excite:
-                    w_list.append(driven_port_reflection(
-                        v_port_dft, i_dft, spec.impedance))
-                else:
-                    w_list.append(
-                        extract_lumped_s11(v_dft, i_dft, z0=spec.impedance))
-            s_params_out = w_list[0] if len(w_list) == 1 else jnp.stack(w_list, axis=0)
-            freqs_out = result.wire_port_sparams[0][0].freqs
+        pairs = result.lumped_port_sparams or result.wire_port_sparams
+        if pairs:
+            from rfx.measurement import port_s_from_record
+            metas, channels = zip(*pairs)
+            s_params_out = port_s_from_record(
+                channels, metas, wire_mode=not bool(result.lumped_port_sparams))
+            freqs_out = metas[0].freqs
 
         # Passivity self-check (tracer-safe; skipped under jax.grad/jit) — the
         # eager single-cell lumped/wire extractor can return non-physical
@@ -2141,8 +2086,12 @@ class _ExecuteMixin:
             result.lumped_port_sparams or result.wire_port_sparams
         ):
             from rfx.probes.probes import warn_if_nonpassive_lumped_s11
+            from rfx.measurement import observed_port_s
+            measured = observed_port_s(s_params_out, pairs)
+            if measured is s_params_out:
+                measured = jnp.stack([s_params_out[k, k] for k in range(len(pairs))])
             warn_if_nonpassive_lumped_s11(
-                s_params_out, freqs_out,
+                measured, freqs_out,
                 extractor="forward(port_s11_freqs=...)",
             )
 

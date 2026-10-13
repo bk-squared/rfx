@@ -318,7 +318,13 @@ def normalize_port_smatrix(
     if freqs_arr.ndim != 1:
         raise ValueError(f"freqs must be 1D; got shape {freqs_arr.shape}")
     raw_s = _extract_s_params(obj, s_params)
-    s_arr = _canonical_s_params(raw_s, int(freqs_arr.shape[0]))
+    from rfx.api._spec import ForwardResult
+    if isinstance(obj, ForwardResult):
+        s_arr = np.asarray(raw_s, dtype=np.complex128)
+        if s_arr.ndim != 3:
+            raise ValueError("ForwardResult requires (n_ports, n_ports, n_freqs) shape")
+    else:
+        s_arr = _canonical_s_params(raw_s, int(freqs_arr.shape[0]))
     if s_arr.ndim != 3 or s_arr.shape[0] != s_arr.shape[1]:
         raise ValueError(
             "canonical S-parameter data must have shape "

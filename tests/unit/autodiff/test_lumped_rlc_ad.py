@@ -247,7 +247,7 @@ def test_forward_no_rlc_byte_identity():
                  impedance=50.0, waveform=GaussianPulse(f0=5e9, bandwidth=0.9))
     got = np.asarray(sim.forward(
         port_s11_freqs=np.array([3., 4., 5., 6., 7.]) * 1e9, n_steps=1200,
-    ).s_params)
+    ).s_params[0, 0])
     assert got.shape == golden.shape
     np.testing.assert_allclose(got, golden, rtol=1e-5, atol=1e-6)
 

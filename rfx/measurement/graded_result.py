@@ -4,9 +4,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import jax.numpy as jnp
-
-from rfx.measurement.port_registration import graded_s_voltage
 from rfx.measurement.time_records import with_graded_records
 
 if TYPE_CHECKING:
@@ -22,7 +19,6 @@ def assemble_graded_result(setup: _NUScanSetup, final: dict, time_series, n_reco
     dt = setup.dt
     dft_planes = setup.dft_planes
     flux_monitors = setup.flux_monitors
-    wire_ports = setup.wire_ports
     waveguide_meta = setup.waveguide_meta
     wp_meta = setup.wp_meta
     sp_freqs = setup.sp_freqs
@@ -175,7 +171,7 @@ def assemble_graded_result(setup: _NUScanSetup, final: dict, time_series, n_reco
     #       S[j, k] = b_j / a_k          (j = every port)
     # which reduces to the familiar S11 = b_k/a_k for j==k (reflection)
     # and to S21 = b_2/a_1 for j != k (transmission). Other columns of
-    # the S matrix stay zero — callers need to run additional sims
+    # the S matrix stay NaN — callers need to run additional sims
     # with different excited ports to fill them (reciprocity lets us
     # infer S12 from S21 for passive networks).
     #
@@ -185,91 +181,8 @@ def assemble_graded_result(setup: _NUScanSetup, final: dict, time_series, n_reco
     # diagnostic fallback.
     if use_wire_ports and "wire_sparams" in final:
         import numpy as _np
-        n_wp = len(wire_ports)
-        nf = len(sp_freqs)
-        # Tracer-safe accumulation (issue #70): build S with jnp + .at[].set
-        # so jax.grad on an objective that pulls through the wire_sparams
-        # extractor does not hit TracerArrayConversionError. Concrete-path
-        # callers still get a jnp.ndarray that numpy consumers accept via
-        # np.asarray(...) (jnp arrays implement __array__).
-        S = jnp.zeros((n_wp, n_wp, nf), dtype=jnp.complex64)
-
-        # Pick the excited ports as the filled columns. If no port is
-        # excited (all passive), fall back to the legacy diagnostic
-        # extraction (no meaningful S-matrix in that case).
-        # ``genuinely_excited`` (issues #764 + #770) keys the whole-port
-        # wave pair to meta[7] ONLY — the all-passive fallback stays on
-        # the frozen per-cell convention (see the scope note above).
-        genuinely_excited = [
-            idx for idx, meta in enumerate(wp_meta) if meta[7]]
-        excited_idx = genuinely_excited
-        if not excited_idx:
-            excited_idx = list(range(n_wp))   # legacy: treat all as self-excited
-
-        def _ab(v_dft, i_dft, z0):
-            """Return (a_incoming, b_outgoing) at one port.
-
-            Direction-free, written in the uniform lane's sign so it reads
-            line-for-line against rfx/runners/uniform.py (the overall -1
-            cancels in the ratio b/a). See the derivation above (#673).
-            """
-            zi = z0 * i_dft
-            return (-v_dft + zi) / 2.0, (-v_dft - zi) / 2.0
-
-        ab_per_port = []
-        for (v_dft, i_dft, _, _vp), meta in zip(final["wire_sparams"],
-                                                wp_meta):
-            z0 = meta[4]
-            a, b = _ab(v_dft, i_dft, z0)
-            ab_per_port.append((a, b))
-
-        # All-passive fallback ONLY: the frozen per-cell diagnostic
-        # convention (see the scope note above — no physical falsifier
-        # can gate a load-independent reading; do not "unify").
-        if not genuinely_excited:
-            for k in excited_idx:
-                a_k = ab_per_port[k][0]
-                safe_a_k = jnp.where(jnp.abs(a_k) > 0, a_k,
-                                     jnp.ones_like(a_k))
-                for j in range(n_wp):
-                    b_j = ab_per_port[j][1]
-                    S = S.at[j, k, :].set(b_j / safe_a_k)
-
-        # Issue #764 + #770: every GENUINELY excited column is the
-        # whole-port wave pair, frame-consistent across diagonal and
-        # off-diagonal (adjudicated against external physics 2026-08-29,
-        # docs/design_notes/issue770_offdiag_adjudication_predeclaration.md
-        # + results note):
-        #
-        #   a_k = (V_port,k + Z0*I_k) / (2*sqrt(Z0))   # measured drive-only
-        #                                              # constant Z0*I0 (#683)
-        #   b_j = (V_port,j - Z0*I_j) / (2*sqrt(Z0))   # outgoing at port j
-        #   S[j, k] = b_j / a_k    (diagonal reduces to the #764
-        #                           (V_port - Z0*I)/(V_port + Z0*I))
-        #
-        # The old mixed split (per-cell midpoint v against the whole-port
-        # Z0, the open defect #764 section 6 named) measured neither
-        # frame on the canonical thru (|S21| 0.65-0.97, drifting); the
-        # whole-port pair measured |S21| = 0.934-0.995 vs the external
-        # flux referee 0.971-0.997, power closure deficit 0.9-4.4% vs
-        # the 0.2-4.0% flux gap, reciprocity 2.67e-4, and lane parity
-        # 3.97e-6 against the uniform decomposer (#770 harness).
-        # Global receive sign: +1, DC-witness pinned (S21(DC) -> +1,
-        # dev -0.058/-0.115 rad at 0.5/1 GHz; flipped channel at ~pi).
-        for k in genuinely_excited:
-            v_port_k = graded_s_voltage(final["wire_sparams"], wire_ports, k)
-            i_k = final["wire_sparams"][k][1]
-            z0_k = wp_meta[k][4]
-            a_k = v_port_k + z0_k * i_k
-            safe_a_k = jnp.where(jnp.abs(a_k) > 0, a_k, jnp.ones_like(a_k))
-            sqrt_z0_k = jnp.sqrt(z0_k)
-            for j in range(n_wp):
-                v_port_j = graded_s_voltage(final["wire_sparams"], wire_ports, j)
-                i_j = final["wire_sparams"][j][1]
-                z0_j = wp_meta[j][4]
-                b_j = (v_port_j - z0_j * i_j) * (
-                    sqrt_z0_k / jnp.sqrt(z0_j))
-                S = S.at[j, k, :].set(b_j / safe_a_k)
+        from rfx.measurement.port_s import port_s_from_record
+        S = port_s_from_record(final["wire_sparams"], wp_meta, wire_mode=True)
 
         result["s_params"] = S
         result["s_param_freqs"] = _np.array(sp_freqs)

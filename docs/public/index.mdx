@@ -80,8 +80,7 @@ def J(eps_box):
         design_box_holds_ports=True, n_steps=n_steps, checkpoint=False,
         checkpoint_segments=checkpoint_segments,
         port_s11_freqs=freqs, skip_preflight=True)
-    s = res.s_params
-    s = s if s.ndim == 1 else s[0]
+    s = res.s_params[0, 0]
     return jnp.real(s[0]) ** 2 + jnp.imag(s[0]) ** 2
 
 v, g = jax.jit(jax.value_and_grad(J))(eps_bg)
