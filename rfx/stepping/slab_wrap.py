@@ -12,15 +12,15 @@ from rfx.measurement.projector import ComponentTerms, SampleTable
 from rfx.stepping.graded import make_graded_step
 from rfx.stepping.rank import rank_shard_map
 from rfx.stepping.sequence import HookPoint
-from rfx.stepping.slab import cut
+from rfx.stepping.slab import cut, cut_pole_coeffs, cut_poles
 
 
 def select_step(*, cpml=False, debye=False, lorentz=False, ports=False,
                 dft=False, flux=False, ntff=False, pmc=False, periodic_x=False,
                 point_sources=True, point_probes=True, pec=True):
-    """The W1 first-slice admission decision (upstream refusals still apply)."""
+    """The W1 PEC and pole admission decision (upstream refusals still apply)."""
     return "wrapped" if (pec and point_sources and point_probes and not any((
-        cpml, debye, lorentz, ports, dft, flux, ntff, pmc, periodic_x))) else "legacy"
+        cpml, ports, dft, flux, ntff, pmc, periodic_x))) else "legacy"
 
 
 def _place(value, mesh):
@@ -98,7 +98,7 @@ def cut_probe_table(table, layout, mesh):
     return jax.tree.map(lambda a: _place(a, mesh), (tuple(terms), order, sorted_ids))
 
 
-def split(invariants, carry, layout, mesh, *, waveforms):
+def split(invariants, carry, layout, mesh, *, waveforms, dt=None):
     """Cut every spatial operand with the shared FILL policy, and route nodes."""
     tags = dict(inv_dx='inv_dx', inv_dx_h='inv_dx_h', dx_arr='width',
                 pec_edge_masks='pec_edge', pec_static_edge_masks='pec_edge',
@@ -122,6 +122,9 @@ def split(invariants, carry, layout, mesh, *, waveforms):
                 else:
                     fields[name] = cut(field, layout, name if name in ('eps_r', 'sigma', 'mu_r') else 'lumped', mesh=mesh)
             result[key] = type(value)(**fields)
+        elif key in ('debye_coeffs', 'lorentz_coeffs'):
+            result[key] = cut_pole_coeffs(value, layout, key.removesuffix('_coeffs'),
+                                          dt=dt, mesh=mesh)
         elif key == 'drives':
             result[key] = cut_drives(value, layout, mesh, waveforms=waveforms)
         elif key == 'probe_table':
@@ -135,7 +138,11 @@ def split(invariants, carry, layout, mesh, *, waveforms):
     state = carry['fdtd']
     local = {name: cut(getattr(state, name), layout, 'state', mesh=mesh)
              for name in ('ex', 'ey', 'ez', 'hx', 'hy', 'hz')}
-    return result, {'fdtd': FDTDState(**local, step=state.step)}
+    local_carry = {'fdtd': FDTDState(**local, step=state.step)}
+    for family in ('debye', 'lorentz'):
+        if family in carry:
+            local_carry[family] = cut_poles(carry[family], layout, family + '_state', mesh=mesh)
+    return result, local_carry
 
 
 def wrap(step, layout, mesh, *, table):
@@ -165,10 +172,10 @@ def wrap(step, layout, mesh, *, table):
 
     def mapped(carry, xs, invariants, *, ranks):
         specs = jax.tree.map(lambda a: P() if np.ndim(a) == 0 else P('x'), invariants)
-        state_spec = FDTDState(*(P('x'),)*6, step=P())
+        carry_spec = jax.tree.map(lambda a: P() if np.ndim(a) == 0 else P('x'), carry)
         return rank_shard_map(local, mesh=mesh,
-            in_specs=({'fdtd': state_spec}, (P(), P('x')), specs),
-            out_specs=({'fdtd': state_spec}, P('x')), check_rep=False)(ranks, carry, xs, invariants)
+            in_specs=(carry_spec, (P(), P('x')), specs),
+            out_specs=(carry_spec, P('x')), check_rep=False)(ranks, carry, xs, invariants)
     return mapped
 
 

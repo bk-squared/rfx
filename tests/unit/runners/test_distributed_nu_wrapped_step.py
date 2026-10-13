@@ -1,4 +1,4 @@
-"""W1 slice 1: model identity and cross-trace bars for the graded slab step."""
+"""W1 slices 1–2: model identity and cross-trace bars for the graded slab step."""
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -221,7 +221,7 @@ def test_two_vs_three_bitwise(row, on):
                               np.asarray(getattr(three[1], field))), field
 
 
-@pytest.mark.parametrize('feature', ['cpml', 'debye', 'lorentz', 'ports', 'dft', 'flux', 'ntff', 'pmc', 'periodic_x'])
+@pytest.mark.parametrize('feature', ['cpml', 'ports', 'dft', 'flux', 'ntff', 'pmc', 'periodic_x'])
 def test_selector(feature):
     assert select_step() == 'wrapped'
     assert select_step(**{feature: True}) == 'legacy'
@@ -388,3 +388,162 @@ def test_localized_operands(row, on, monkeypatch):
             break
     else:
         pytest.fail('recorded step-3 first difference was not reproduced')
+
+
+@pytest.mark.parametrize('debye,lorentz', [(True, False), (False, True), (True, True)])
+def test_pole_selector(debye, lorentz):
+    assert select_step(debye=debye, lorentz=lorentz) == 'wrapped'
+    for feature in ('cpml', 'ports', 'pmc'):
+        assert select_step(debye=debye, lorentz=lorentz, **{feature: True}) == 'legacy'
+
+
+def pole_scene(name):
+    """Import the declared S1/S2 builder without editing the archived scene."""
+    import importlib.util
+    from pathlib import Path
+    from rfx.materials.lorentz import LorentzPole
+    path = Path('/Users/byungkwankim/Documents/rfx-archive/rfx/records/'
+                '20261011-debye-one-vs-two/deb_scene.py')
+    spec = importlib.util.spec_from_file_location('w1_declared_deb_scene', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    sim, _ = module.build('S1' if name in ('lorentz', 'mixed') else name)
+    if name in ('lorentz', 'mixed'):
+        from rfx.materials.debye import DebyePole
+        extra = dict(debye_poles=[DebyePole(3., 2e-11)]) if name == 'mixed' else {}
+        sim.add_material('body', eps_r=4., **extra, lorentz_poles=[LorentzPole(
+            omega_0=2*np.pi*8e9, delta=2*np.pi*1e9, kappa=(2*np.pi*8e9)**2)])
+    # Keep the scene's two E probes and add H at those positions for the
+    # paired H bar; the declared builder has no magnetic probes.
+    sim.add_probe((.0085, .006, .006), 'hy')
+    sim.add_probe((.021, .005, .006), 'hy')
+    return sim
+
+
+def pole_metrics(one, several, dt):
+    """BRIEF2 T3 scales, with E/H columns of the declared pole scenes."""
+    one, several = np.asarray(one), np.asarray(several)
+    assert one.dtype == several.dtype == np.float32
+    assert one.shape == several.shape
+    assert np.isfinite(one).all() and np.isfinite(several).all()
+    e_peak = np.float32(np.max(np.abs(one[:, :2])))
+    h_peak = np.float32(np.max(np.abs(one[:, 2:])))
+    h_scale = np.float32(max(float(h_peak), float(e_peak)/np.sqrt(MU_0/EPS_0)))
+    delta = np.abs(one.astype(np.float64) - several)
+    e = np.max(delta[:, :2], axis=1) / float(np.spacing(e_peak))
+    h = np.max(delta[:, 2:], axis=1) / float(np.spacing(h_scale))
+    kernel = np.exp(-2j*np.pi*np.outer(np.linspace(2e9, 10e9, 20), np.arange(len(one))*dt))
+    expected, actual = kernel @ one.astype(np.float64), kernel @ several.astype(np.float64)
+    return e, h, float(np.max(np.abs(actual-expected))/np.max(np.abs(expected)))
+
+
+@pytest.mark.parametrize('name', ['S1', 'lorentz'])
+def test_pole_one_slab_invariants(name, monkeypatch):
+    from rfx import nonuniform
+    from rfx.runners import _distributed_nu_wrapped as runner
+    from rfx.stepping.slab import Slab, cut_pole_coeffs, cut_poles
+    captures = []
+    build = nonuniform._build_nu_scan
+
+    def capture(*args, **kwargs):
+        setup = build(*args, **kwargs)
+        captures.append(setup)
+        return setup
+
+    with monkeypatch.context() as patch:
+        patch.setattr(nonuniform, '_build_nu_scan', capture)
+        pole_scene(name).run(n_steps=2)
+    expected = captures[0]
+    layout = Slab(expected.carry_init['fdtd'].ex.shape[0], 1)
+    mesh = Mesh(np.asarray(jax.devices('cpu')[:1]), ('x',))
+    captured_cut = []
+    original_split = runner.split
+
+    def observe(*args, **kwargs):
+        output = original_split(*args, **kwargs)
+        captured_cut.append(output)
+        raise BeforeStepping
+
+    with monkeypatch.context() as patch:
+        patch.setattr(runner, 'split', observe)
+        with pytest.raises(BeforeStepping):
+            pole_scene(name)._forward_distributed_nonuniform_from_materials(
+                n_steps=2, devices=list(mesh.devices), skip_preflight=True)
+    actual, carry = captured_cut[0]
+    # Spatial leaves and (pole, x, ...) leaves have distinct owned axes.
+    spatial = dict(expected.invariants)
+    for family in ('debye', 'lorentz'):
+        spatial[family + '_coeffs'] = None
+    check_one_slab_cut(expected._replace(invariants=spatial),
+        {**actual, 'debye_coeffs': None, 'lorentz_coeffs': None}, layout)
+    owned = slice(layout.ghost_width, layout.ghost_width + layout.nx)
+    for family in ('debye', 'lorentz'):
+        coeffs = expected.invariants[family + '_coeffs']
+        if coeffs is None:
+            continue
+        spatial_fields = ('ca', 'cb') if family == 'debye' else ('ca', 'cb', 'cc')
+        for field in coeffs._fields:
+            value = getattr(actual[family + '_coeffs'], field)
+            if field not in spatial_fields:
+                value = jax.tree.map(lambda a: a[:, owned], value)
+            assert_same_tree(getattr(coeffs, field), value, family + '.' + field,
+                             owned=owned if field in spatial_fields else None)
+        assert_same_tree(expected.carry_init[family],
+                         jax.tree.map(lambda a: a[:, owned], carry[family]), family + '.state')
+        # FILL covers both physical ghosts and alignment rows (2/3 slabs).
+        from rfx.stepping.slab import vacuum_dispersion_values
+        vacuum = vacuum_dispersion_values(coeffs, expected.step_fn_inv.context.dt)
+        for devices in (2, 3):
+            padded = Slab(layout.nx, devices)
+            cut_coeffs = cut_pole_coeffs(coeffs, padded, family,
+                                       dt=expected.step_fn_inv.context.dt)
+            cut_state = cut_poles(expected.carry_init[family], padded, family + '_state')
+            indices = np.arange(padded.nx_local)[None, :] + np.arange(devices)[:, None]*padded.nx_per_rank - 1
+            outside = (indices < 0) | (indices >= layout.nx)
+            for field in coeffs._fields:
+                for a in jax.tree.leaves(getattr(cut_coeffs, field)):
+                    a = np.asarray(a)
+                    if field not in spatial_fields:
+                        a = a.transpose(0, 2, 1, 3, 4)
+                    assert np.all(a[outside] == np.asarray(vacuum[field], a.dtype)), field
+            for a in jax.tree.leaves(cut_state):
+                assert np.all(np.asarray(a).transpose(0, 2, 1, 3, 4)[outside] == 0)
+    assert_same_tree(expected.carry_init['fdtd'], carry['fdtd'], 'fdtd', owned=owned)
+
+
+@pytest.mark.parametrize('name', ['S1', 'S2', 'lorentz'])
+def test_pole_two_vs_three_bitwise_and_bars(name):
+    one = pole_scene(name).run(n_steps=60)
+    two = pole_scene(name).run(n_steps=60, devices=jax.devices('cpu')[:2])
+    three = pole_scene(name).run(n_steps=60, devices=jax.devices('cpu')[:3])
+    assert_bits((two.time_series, two.state), (three.time_series, three.state))
+    for result in (two, three):
+        e, h, dft = pole_metrics(one.time_series, result.time_series, float(one.dt))
+        assert np.max(e) <= 9, e
+        assert np.max(h) <= 9, h
+        assert dft <= 1e-4, dft
+
+
+@pytest.mark.parametrize('name', ['S1', 'lorentz', 'mixed'])
+@pytest.mark.parametrize('warmup,checkpoint', [(0, None), (3, 3)])
+def test_pole_forward_gradient_reaches_wrap(name, warmup, checkpoint, monkeypatch):
+    from rfx.runners import _distributed_nu_wrapped as runner
+    calls = []
+    original = runner.split
+
+    def observe(*args, **kwargs):
+        calls.append(args[0]['debye_coeffs'] is not None or args[0]['lorentz_coeffs'] is not None)
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(runner, 'split', observe)
+    sim = pole_scene(name)
+    grid = sim._build_nonuniform_grid()
+    materials, _, _, _ = sim._assemble_materials_nu(grid)
+    def loss(eps):
+        result = sim.forward(n_steps=12, checkpoint=False, skip_preflight=True,
+            eps_override=eps, distributed=True, devices=jax.devices('cpu')[:2],
+            n_warmup=warmup, checkpoint_every=checkpoint)
+        return jnp.sum(result.time_series**2)
+    gradient = jax.grad(loss)(materials.eps_r)
+    assert np.isfinite(gradient).all()
+    assert calls and all(calls)

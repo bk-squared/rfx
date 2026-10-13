@@ -125,11 +125,10 @@ def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks, grid=None,
 
 
 def stage_forward_dispersion_x_slab(materials, dt, spec, sharded_grid, mesh, kind):
-    """Stage fixed pole terms; epsilon/sigma E coefficients wait for the loop.
+    """Stage canonical coefficients for wrapping; fixed terms for legacy CPML.
 
-    Pole masks take the same slab halo and boundary replication as the shared
-    material means. No differentiable coefficients pass through eager
-    shard_map setup, and no whole-domain ADE arrays are allocated.
+    The wrapped PEC lane cuts single-device coefficients and zero ADE state.
+    CPML retains slab-local fixed terms and defers E coefficients to its loop.
     """
     import jax
     from rfx.runners._distributed_common import stage_slab_pole_coeffs
@@ -138,6 +137,22 @@ def stage_forward_dispersion_x_slab(materials, dt, spec, sharded_grid, mesh, kin
     if spec is None:
         return None
     poles, masks = spec
+    from rfx.stepping.slab_wrap import select_step
+    if select_step(cpml=bool(sharded_grid.cpml_layers)) == 'wrapped':
+        from rfx.runners._distributed_common import unstack_and_gather
+        from rfx.model.materials import with_components
+        from rfx.materials.debye import init_debye
+        from rfx.materials.lorentz import init_lorentz
+        from rfx.stepping.slab import cut_pole_coeffs, cut_poles
+        layout = Slab.from_grid(sharded_grid)
+        whole = jax.tree.map(lambda a: unstack_and_gather(a, layout.n_devices,
+            layout.nx_local, layout.ghost_width, layout.pad_x, layout.nx), materials)
+        whole = with_components(whole, sharded_grid.original_grid, periodic=(False,) * 3,
+                                **{kind + '_spec': spec})
+        coeffs, state = (init_debye if kind == 'debye' else init_lorentz)(
+            poles, whole, dt, mask=masks)
+        return (cut_pole_coeffs(coeffs, layout, kind, dt=dt, mesh=mesh),
+                cut_poles(state, layout, kind + '_state', mesh=mesh))
     masks = jax.tree.map(
         lambda mask: cut(mask, Slab.from_grid(sharded_grid), "pole_mask", mesh=mesh),
         masks)
