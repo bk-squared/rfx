@@ -19,18 +19,21 @@ view, taking its inputs with ``view.rows`` and its global values from
 ``view.globals``. Results are pytrees; every array leaf whose ``x_axis`` has
 the grid's x length is cut, every other leaf must be equal as a whole.
 """
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import Callable, NamedTuple
 
 import jax
+import jax.numpy as jnp
 import numpy as np
 import pytest
 
 from rfx import Simulation, Box, DebyePole
+from rfx.boundaries.pec import SheetSpec, WireSpec, realized_pec_edge_masks, wire_path_edge_masks
 from rfx.core.yee import component_h_materials, edge_averaged_materials
 from rfx.materials.lorentz import lorentz_pole
 from rfx.model.materials import electric_cell_sizes, pole_component_weights
-from rfx.model.occupancy import build_edge_keep
+from rfx.model.occupancy import build_edge_keep, publish_occupancy, with_edge_keep
 from rfx.stepping.slab_view import slab_views
 
 PERIODIC = (False, False, False)
@@ -132,6 +135,56 @@ def _mu(view_or_none, scene):
     return SimpleNamespace(mu_r=jax.numpy.asarray(mu), mu_r_wire=None)
 
 
+_CONDUCTORS = {}
+
+
+def _conductors(scene):
+    if scene.name in _CONDUCTORS:
+        return _CONDUCTORS[scene.name]
+    shape = scene.grid.shape
+    nx, ny, nz = shape
+    seams = {n: [v.x0 for v in slab_views(scene.grid, n)[1:]] for n in DEVICES}
+    release_rows = set(np.asarray(R)[:, 0])
+    assert all({s - 1, s} <= release_rows for rows in seams.values() for s in rows)
+    sheets = [SheetSpec.from_node_ranges(
+        shape, normal_axis=2, plane=1, in_plane_ranges=((1, nx - 2), (1, 2)))]
+    for plane, seam in enumerate(seams[3], start=3):
+        pair = [SheetSpec.from_node_ranges(
+            shape, normal_axis=2, plane=plane, in_plane_ranges=ranges)
+            for ranges in (((1, seam - 1), (1, 3)), ((seam, nx - 2), (2, 4)))]
+        # At this row neither individual sheet owns Ex; their union joins.
+        joined = realized_pec_edge_masks(None, pair, periodic=PERIODIC)[0]
+        assert bool(joined[seam - 1, 2, plane])
+        assert all(not bool(realized_pec_edge_masks(None, [sp], periodic=PERIODIC)[0][seam - 1, 2, plane])
+                   for sp in pair)
+        sheets.extend(pair)
+    for n in DEVICES:
+        for plane in (seams[n][0], seams[n][0] - 1):
+            sheets.append(SheetSpec.from_node_ranges(
+                shape, normal_axis=0, plane=plane,
+                in_plane_ranges=((1, ny - 2), (1, nz - 2))))
+    wires = tuple(WireSpec(edges=wire_path_edge_masks(nodes, shape)) for nodes in (
+        ((1, 0, 0), (nx - 2, 0, 0)),
+        ((seams[3][0], 0, 1), (seams[3][0], 0, nz - 2))))
+    sheet_masks = realized_pec_edge_masks(None, sheets, periodic=PERIODIC)
+    for seam in set(seams[2] + seams[3]):
+        assert np.asarray(sheet_masks[0][seam - 1]).any(), (scene.name, seam)
+    _CONDUCTORS[scene.name] = tuple(sheets), wires
+    return _CONDUCTORS[scene.name]
+
+
+class _Mats(NamedTuple):
+    eps_r: object
+    edge_keep: object = None
+
+
+# Global cells on both sides of the layouts' seams, plus exterior rows.
+R = jnp.asarray([(1, 0, 2), (5, 0, 2), (6, 0, 2), (7, 0, 2),
+                 (8, 0, 2), (9, 0, 2), (10, 0, 2), (11, 0, 2),
+                 (12, 0, 2), (13, 0, 2), (14, 0, 2), (16, 0, 2),
+                 (17, 0, 2), (18, 0, 2)], dtype=jnp.int32)
+
+
 # Reference entries: the stencil functions under the realized-materials and
 # occupancy producers. Owners add the producers themselves (realize_components,
 # build_edge_keep with sheets, realized_pec_edge_masks, drive_table, CPML state).
@@ -156,6 +209,27 @@ PRODUCERS = [
         "build_edge_keep",
         lambda s: build_edge_keep(s.occupancy, periodic=PERIODIC),
         lambda s, v: build_edge_keep(v.rows(s.occupancy), periodic=PERIODIC)),
+    Producer(
+        "realized_pec_edge_masks",
+        lambda s: realized_pec_edge_masks(s.pec_mask, *_conductors(s), PERIODIC),
+        lambda s, v: realized_pec_edge_masks(v.rows(s.pec_mask), *_conductors(s), PERIODIC, view=v)),
+    Producer(
+        "realized_pec_edge_masks_sheets_only",
+        lambda s: realized_pec_edge_masks(None, *_conductors(s), PERIODIC),
+        lambda s, v: realized_pec_edge_masks(None, *_conductors(s), PERIODIC, view=v)),
+    Producer(
+        "publish_occupancy",
+        lambda s: publish_occupancy(_Mats(s.eps_r), s.occupancy, dtype=jnp.float32,
+            periodic=PERIODIC, sheets=_conductors(s)[0], wires=_conductors(s)[1], released_cells=R).edge_keep,
+        lambda s, v: publish_occupancy(_Mats(v.rows(s.eps_r)), v.rows(s.occupancy), dtype=jnp.float32,
+            periodic=PERIODIC, sheets=_conductors(s)[0], wires=_conductors(s)[1], released_cells=R, view=v).edge_keep),
+    Producer(
+        "with_edge_keep_static",
+        lambda s: with_edge_keep(_Mats(s.eps_r), s.occupancy, dtype=jnp.float16, periodic=PERIODIC,
+            sheet_edge_masks=realized_pec_edge_masks(None, *_conductors(s), PERIODIC)).edge_keep,
+        lambda s, v: with_edge_keep(_Mats(v.rows(s.eps_r)), v.rows(s.occupancy), dtype=jnp.float16,
+            periodic=PERIODIC, view=v,
+            sheet_edge_masks=realized_pec_edge_masks(None, *_conductors(s), PERIODIC, view=v)).edge_keep),
 ]
 
 
@@ -191,7 +265,8 @@ def test_slab_view_equals_cut_of_whole(producer, scene, n_devices):
     assert_slab_view(producer, scene, n_devices)
 
 
-@pytest.mark.parametrize("name", ["edge_averaged_materials", "component_h_materials", "build_edge_keep"])
+@pytest.mark.parametrize("name", ["edge_averaged_materials", "component_h_materials", "build_edge_keep",
+                                 "realized_pec_edge_masks", "publish_occupancy"])
 def test_mutation_missing_halo_is_caught(name):
     """Without the low-x halo the first owned row takes the outside rule."""
     producer = next(p for p in PRODUCERS if p.name == name)
@@ -208,3 +283,108 @@ def test_mutation_slab_local_metric_decision_is_caught():
     producer = PRODUCERS[0]._replace(slab=slab)
     with pytest.raises(AssertionError, match="differs at global x rows"):
         assert_slab_view(producer, SCENES["material_seam"], 2)
+
+
+@pytest.mark.parametrize("n_devices", DEVICES)
+def test_mutation_sheet_forward_row_is_caught(monkeypatch, n_devices):
+    import rfx.boundaries.pec as pec
+    monkeypatch.setattr(pec, "_SHEET_X_READ_AHEAD", 0)
+    producer = next(p for p in PRODUCERS if p.name == "realized_pec_edge_masks_sheets_only")
+    with pytest.raises(AssertionError, match="differs at global x rows"):
+        assert_slab_view(producer, SCENES["material_seam"], n_devices)
+
+
+@pytest.mark.parametrize("n_devices", DEVICES)
+def test_mutation_released_cells_not_shifted_is_caught(monkeypatch, n_devices):
+    import rfx.model.occupancy as occupancy
+    monkeypatch.setattr(occupancy, "_local_released",
+                        lambda cells, view: cells[(cells[:, 0] >= view.lo) & (cells[:, 0] < view.hi)])
+    producer = next(p for p in PRODUCERS if p.name == "publish_occupancy")
+    with pytest.raises(AssertionError, match="differs at global x rows"):
+        assert_slab_view(producer, SCENES["material_seam"], n_devices)
+
+
+def test_view_refuses_periodic_x():
+    scene = SCENES["material_seam"]
+    view = slab_views(scene.grid, 2)[0]
+    with pytest.raises(ValueError, match="periodic x"):
+        realized_pec_edge_masks(view.rows(scene.pec_mask), periodic=(True, False, False), view=view)
+    with pytest.raises(NotImplementedError, match="periodic x"):
+        build_edge_keep(view.rows(scene.occupancy), periodic=(True, False, False), view=view)
+
+
+def test_view_refuses_design():
+    scene = SCENES["material_seam"]
+    view = slab_views(scene.grid, 2)[0]
+    with pytest.raises(NotImplementedError, match="design"):
+        build_edge_keep(view.rows(scene.occupancy), design=object(), view=view)
+
+
+def test_view_refuses_traced_x_sheet_plane():
+    scene = SCENES["material_seam"]
+    view = slab_views(scene.grid, 2)[0]
+    sheet = next(s for s in _conductors(scene)[0] if s.normal_axis == 0)
+
+    def traced(plane):
+        copy = replace(sheet)
+        object.__setattr__(copy, "plane", plane)
+        return realized_pec_edge_masks(None, [copy], view=view)
+
+    with pytest.raises(ValueError, match="traced sheet plane"):
+        jax.jit(traced)(jnp.asarray(sheet.plane))
+
+
+def test_view_without_local_conductors_keeps_shape_dtype_and_container():
+    scene = SCENES["material_seam"]
+    view = slab_views(scene.grid, 3)[0]
+    sheet = SheetSpec.from_node_ranges(scene.grid.shape, normal_axis=0, plane=view.nx - 2,
+                                       in_plane_ranges=((1, 3), (1, 3)))
+    whole = realized_pec_edge_masks(None, [sheet])
+    local = realized_pec_edge_masks(None, [sheet], view=view)
+    assert type(local) is type(whole)
+    for w, m in zip(whole, local):
+        assert type(w) is type(m) and w.dtype == m.dtype == jnp.bool_
+        assert m.shape == (view.hi - view.lo,) + tuple(scene.grid.shape[1:])
+        assert not np.asarray(m).any()
+    with pytest.raises(ValueError, match="no cell mask, sheets or wires"):
+        realized_pec_edge_masks(None, view=view)
+
+
+def test_view_cuts_sheet_metadata():
+    import rfx.boundaries.pec as pec
+    scene = SCENES["material_seam"]
+    view = slab_views(scene.grid, 3)[1]
+    sheet = _conductors(scene)[0][0]
+    sheet = replace(sheet, unwrapped_footprint=sheet.footprint,
+                    end_rows=(np.arange(view.nx) % 2 == 0, None, None),
+                    drawn=((.001, .017, 1e-9), (.001, .002, 1e-9), None))
+    end = min(view.hi + 1, view.nx)
+    cut, = pec._slab_sheets([sheet], view, end)
+    assert cut.drawn is sheet.drawn
+    for name in ("footprint", "unwrapped_footprint"):
+        np.testing.assert_array_equal(getattr(cut, name), getattr(sheet, name)[view.lo:end])
+    np.testing.assert_array_equal(cut.end_rows[0], sheet.end_rows[0][view.lo:end])
+    whole = realized_pec_edge_masks(None, [sheet])
+    local = realized_pec_edge_masks(None, [sheet], view=view)
+    for w, m in zip(whole, local):
+        assert np.asarray(w[view.x0:view.x1]).tobytes() == np.asarray(view.own(m)).tobytes()
+
+
+@pytest.mark.parametrize("released", [jnp.empty((0, 3), dtype=jnp.int32),
+                                    jnp.asarray([[0, 0, 0]], dtype=jnp.int32)])
+def test_view_without_local_releases(released):
+    scene = SCENES["material_seam"]
+    view = slab_views(scene.grid, 3)[-1]
+    cells = view.rows(scene.occupancy)
+    actual = build_edge_keep(cells, released_cells=released, view=view)
+    expected = build_edge_keep(cells)
+    for a, e in zip(actual, expected):
+        assert np.asarray(a).tobytes() == np.asarray(e).tobytes()
+
+
+@pytest.mark.parametrize("released", [jnp.zeros((1, 3)), jnp.zeros((0, 2), dtype=jnp.int32)])
+def test_view_validates_global_releases(released):
+    scene = SCENES["material_seam"]
+    view = slab_views(scene.grid, 3)[-1]
+    with pytest.raises(ValueError, match="integer array of shape"):
+        build_edge_keep(view.rows(scene.occupancy), released_cells=released, view=view)
