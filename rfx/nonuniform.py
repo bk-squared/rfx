@@ -32,7 +32,7 @@ import jax.numpy as jnp
 
 from rfx.core.drives import drive_layout
 from rfx.model.source_coefficients import drive_table
-from rfx.model.occupancy import with_edge_keep
+from rfx.model import with_edge_keep
 import numpy as np
 
 from rfx.core.yee import (

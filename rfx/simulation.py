@@ -19,7 +19,7 @@ import jax.numpy as jnp
 
 from rfx.core.drives import StepDrives, drive_layout, inject_drives
 from rfx.model.source_coefficients import drive_table
-from rfx.model.occupancy import with_edge_keep
+from rfx.model import with_edge_keep
 import numpy as np
 
 from rfx.boundaries.axes import drop_periodic_axes, resolve_cpml_axes

@@ -2926,7 +2926,7 @@ class _ExecuteMixin:
 
         bounds = self._design_box_bounds_from_corners(grid, design_box)
 
-        from rfx.model.thin_conductors import refuse_design_films
+        from rfx.model import refuse_design_films
         refuse_design_films(self, grid, bounds)
 
         if not _want_eps:
