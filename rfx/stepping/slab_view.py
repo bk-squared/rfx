@@ -99,8 +99,17 @@ def slab_views(grid, n_devices, *, globals=None, halo_lo=HALO_LO, halo_hi=HALO_H
     layout = Slab(int(grid.nx), int(n_devices))
     views = []
     for rank, (x0, x1) in enumerate(layout.owned):
-        views.append(SlabView(rank, layout.n_devices, x0, x1,
-                              halo_lo if x0 > 0 else 0,
-                              halo_hi if x1 < layout.nx else 0,
-                              grid, dict(globals or {})))
+        # A slab that owns no row (ceil-divided layouts) reads none either.
+        owns = x1 > x0
+        view = SlabView(rank, layout.n_devices, x0, x1,
+                        halo_lo if owns and x0 > 0 else 0,
+                        halo_hi if owns and x1 < layout.nx else 0,
+                        grid, dict(globals or {}))
+        if layout.nx > 1 and view.hi - view.lo == 1:
+            # The neighbour rules treat a length-1 axis as the 2-D lane's
+            # self-adjacency and wrap it (rfx #1402, found by idm's review).
+            raise ValueError(
+                f"slab {rank} of {layout.n_devices} would read a single x row of {layout.nx}; "
+                "a one-row slab takes the 2-D self-adjacency rule. Use fewer devices.")
+        views.append(view)
     return tuple(views)

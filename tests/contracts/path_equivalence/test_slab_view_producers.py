@@ -388,3 +388,13 @@ def test_view_validates_global_releases(released):
     view = slab_views(scene.grid, 3)[-1]
     with pytest.raises(ValueError, match="integer array of shape"):
         build_edge_keep(view.rows(scene.occupancy), released_cells=released, view=view)
+
+
+def test_view_refuses_a_one_row_slab_and_gives_an_empty_slab_no_rows():
+    """A one-row slab would wrap in the neighbour rules (length-1 axis = 2-D lane)."""
+    grid = SimpleNamespace(nx=3)
+    with pytest.raises(ValueError, match="single x row"):
+        slab_views(grid, 3)
+    views = slab_views(SimpleNamespace(nx=9), 4)   # ceil layout: owned rows 3, 3, 3, 0
+    assert views[-1].x0 == views[-1].x1 and views[-1].hi == views[-1].lo
+    assert [v.hi - v.lo for v in views] == [3, 4, 4, 0]
