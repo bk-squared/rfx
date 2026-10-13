@@ -702,6 +702,3 @@ def port_s_pair(declaration, path, *, n_steps=150):
             'forward': {'outcome': 'admitted', 'result': forward}}
 
 
-# Explicit forward bins retain one-record raw channels; run's default scan
-# returns the independently decomposed matrix without these main-record arrays.
-FORWARD_ONLY_PORT_RECORDS = {'lumped_port_sparams', 'sparam_time_records'}

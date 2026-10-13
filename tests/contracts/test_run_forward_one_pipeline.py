@@ -10,10 +10,12 @@ import pytest
 
 from tests.contracts.run_forward_census import (
     BUILDERS, SEAMS, capture, compare, compare_l2, l2_differences,
-    normalize_inputs, observables, run_l2, port_s_pair, FORWARD_ONLY_PORT_RECORDS,
+    normalize_inputs, observables, run_l2, port_s_pair,
 )
 
 KNOWN_ROWS = (
+    ('P-lumped', 'uniform', 'L2', 'D9', "#1373 D9 (ports): run()'s driver discards each drive run's port records (raw V/I/V_ref accumulators, per-step port records) after forming S; forward(port_s11_freqs) returns them"),
+    ('P-lumped2', 'uniform', 'L2', 'D9', "#1373 D9 (ports): run()'s driver discards each drive run's port records (raw V/I/V_ref accumulators, per-step port records) after forming S; forward(port_s11_freqs) returns them"),
     ('C-smooth', 'graded', 'L1', 'A6', '#1373 A6 (nu): subpixel smoothing is a run() keyword; forward() cannot request it'),
     ('C-smooth', 'graded', 'admission', 'A6', '#1373 A6 (nu): subpixel smoothing is a run() keyword; forward() cannot request it'),
     ('C-smooth', 'uniform', 'L1', 'A6', '#1373 A6 (nu): subpixel smoothing is a run() keyword; forward() cannot request it'),
@@ -327,6 +329,7 @@ ID_PATTERNS = {
     'D5': {'L1': (), 'L2': ('settling_witness/*',)},
     'D7': {'L1': (), 'L2': ('waveguide_ports/*', 'waveguide_sparams/*')},
     'D8': {'L1': (), 'L2': ('s_params', 'freqs', 'freqs_hz')},
+    'D9': {'L1': (), 'L2': ('lumped_port_sparams*', 'sparam_time_records*')},
     'A2': {'run': ('raised', 'NotImplementedError',
             'Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports'),
            'forward': ('admitted',)},
@@ -460,15 +463,6 @@ def check_fields(declaration, path):
     comparison = compare_l2(values['run']['arrays'], values['forward']['arrays'],
                             left_raises=values['run']['raises'], right_raises=values['forward']['raises'])
     differences = l2_differences(comparison)
-    if declaration in ('P-lumped', 'P-lumped2') and path == 'uniform':
-        retained = []
-        for difference in differences:
-            if difference['path'].split('/')[0] in FORWARD_ONLY_PORT_RECORDS:
-                assert difference.get('run') == 'absent'
-                assert difference.get('forward') == 'array'
-            else:
-                retained.append(difference)
-        differences = retained
     classify(declaration, path, 'L2', differences, ids)
 
 
