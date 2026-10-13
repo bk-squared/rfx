@@ -321,6 +321,9 @@ def init_from_sim(sim, grid, n_steps=None, *, bounds_only=False):
 
 def normal_incident_spectrum(cfg, state, n_steps, freqs, dt, reference_index):
     """Normal-only compatibility replay; oblique phase references belong to O1b."""
+    from rfx.measurement.dft import transform
+    from rfx.stepping.incident_line import record_incident_line
+
     if cfg.m not in ((1, 0, 0), (-1, 0, 0)):
         raise NotImplementedError("oblique incident spectrum requires O1b")
     if n_steps > cfg.n_steps:
@@ -329,20 +332,11 @@ def normal_incident_spectrum(cfg, state, n_steps, freqs, dt, reference_index):
     if (isinstance(x, (bool, np.bool_)) or not isinstance(x, (int, np.integer))
             or not cfg.x_lo <= x <= cfg.x_hi):
         raise ValueError("reference_index must be an integer E-node index inside the TFSF slab")
-    zero = FDTDState(*(jnp.zeros_like(getattr(state, c)) for c in COMPONENTS),
-                     jnp.asarray(0, jnp.int32))
     indices = tuple(int(np.floor(cfg.m[0] * x + cfg.projections[c])) - cfg.origin
                     for c in range(3))
-    def step(st, n):
-        st = update_line_h(cfg, st, cfg.dx_1d, dt)
-        st = update_line_e(cfg, st, cfg.dx_1d, dt)
-        value = sum(cfg.incidence["e_hat"][c] * getattr(st, COMPONENTS[c])[indices[c]]
-                    for c in range(3))
-        return st, value
-    _, record = lax.scan(step, zero, jnp.arange(n_steps, dtype=jnp.int32))
-    times = (np.arange(n_steps) + (reference_index is not None)) * float(dt)
-    bins = np.atleast_1d(np.asarray(freqs, dtype=np.float64))
-    return np.exp(-2j * np.pi * bins[:, None] * times) @ np.asarray(record, np.float64) * dt
+    record = record_incident_line(cfg, n_steps, dt, indices, cfg.incidence["e_hat"])
+    return np.asarray(transform(record, freqs, dt, kind="E",
+                                time_shift=-1 if reference_index is None else 0))
 
 @lru_cache(maxsize=256)
 def rational_direction(theta_deg, phi_deg, direction, direction_tol_deg, max_component):

@@ -40,6 +40,39 @@ def line(theta=0, phi=0, pol='s', n_steps=300, **kwargs):
         polarization=pol, max_component=40, n_steps=n_steps, **kwargs)
 
 
+@pytest.mark.parametrize('pol', ('ey', 'ez'))
+@pytest.mark.parametrize('direction', ('+x', '-x'))
+@pytest.mark.parametrize('reference_index', (None, 20))
+def test_appendix_h_incident_record_and_shared_dft(pol, direction, reference_index):
+    """Appendix H: the prior scan is bit-identical; both DFT clocks meet 1e-4."""
+    from rfx.stepping.incident_line import record_incident_line
+
+    cfg, state = line(pol=pol, direction=direction)
+    x = cfg.x_lo if reference_index is None else reference_index
+    indices = tuple(int(np.floor(cfg.m[0] * x + cfg.projections[c])) - cfg.origin
+                    for c in range(3))
+    # Frozen pre-Appendix-H replay body, including its zero-state construction.
+    zero = FDTDState(*(jnp.zeros_like(getattr(state, c)) for c in COMP),
+                     jnp.asarray(0, jnp.int32))
+    def prior_step(st, n):
+        st = plane.update_line_h(cfg, st, cfg.dx_1d, DT)
+        st = plane.update_line_e(cfg, st, cfg.dx_1d, DT)
+        value = sum(cfg.incidence['e_hat'][c] * getattr(st, COMP[c])[indices[c]]
+                    for c in range(3))
+        return st, value
+    _, prior = jax.lax.scan(prior_step, zero, jnp.arange(300, dtype=jnp.int32))
+    record = np.asarray(record_incident_line(cfg, 300, DT, indices, cfg.incidence['e_hat']))
+    assert record.dtype == np.float32
+    np.testing.assert_array_equal(record.view(np.uint32), np.asarray(prior).view(np.uint32))
+    frequencies = np.linspace(8e9, 12e9, 9)
+    times = (np.arange(300) + (reference_index is not None)) * DT
+    expected = np.exp(-2j * np.pi * frequencies[:, None] * times) @ record.astype(np.float64) * DT
+    actual = measure_normal_incident_spectrum(
+        cfg, state, 300, frequencies, DT, reference_index=reference_index)
+    relative = np.abs(actual - expected) / np.max(np.abs(expected))
+    assert np.all(relative <= 1e-4), relative
+
+
 @pytest.mark.parametrize('angles,m', tuple(zip(DIRECTIONS, TRIPLES)))
 @pytest.mark.parametrize('pol', ('s', 'p'))
 def test_d1_d2_direction_and_basis(angles, m, pol):
