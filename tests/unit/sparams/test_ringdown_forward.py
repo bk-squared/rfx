@@ -642,6 +642,12 @@ def _case_uniform_without_bins():
     return _box("uniform"), {"port_s11_freqs": None}, "needs port_s11_freqs"
 
 
+def _case_graded_without_bins():
+    # forward() computes port S only on request on both meshes (#1373), so the
+    # graded completion has no bins of its own either.
+    return _box("graded"), {"port_s11_freqs": None}, "needs port_s11_freqs"
+
+
 def _case_uniform_two_ports():
     return _box("uniform", second_port=True), {}, "supports one wire port"
 
@@ -669,7 +675,8 @@ def _case_not_a_spec():
 
 
 @pytest.mark.parametrize("case", [_case_distributed, _case_no_time_series,
-                                  _case_uniform_without_bins, _case_uniform_two_ports,
+                                  _case_uniform_without_bins, _case_graded_without_bins,
+                                  _case_uniform_two_ports,
                                   _case_lumped, _case_source_on, _case_stencil_order_4,
                                   _case_not_a_spec])
 def test_what_the_completion_does_not_cover_is_refused(case):
