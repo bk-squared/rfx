@@ -1,20 +1,19 @@
 ---
-title: "Support Boundaries"
-description: "Current public support boundaries for rfx."
+title: "Support"
+description: "What rfx solves today, on which solver path, and what it refuses."
 sidebar:
   order: 1
 ---
 
 This page says what rfx supports today, feature by feature and port family by
-port family, and which combinations are refused. The maintained contracts, with
-their full evidence, are the
+port family. Its source is the
 [support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md)
-and the
-[S-parameter support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/sparameter_support_matrix.md)
-on GitHub. Defects you can hit inside these limits are listed in
-[known limitations](https://github.com/bk-squared/rfx/blob/main/docs/guides/known_limitations.md).
+in the repository. That file also carries the full list of refused inputs, per
+solver path, written from the code's own per-path table. Defects you
+can hit inside these limits are on
+[Known limitations](/rfx/support/known-limitations/).
 
-## Status terms
+## Status words
 
 | Status | Meaning |
 |---|---|
@@ -23,116 +22,105 @@ on GitHub. Defects you can hit inside these limits are listed in
 | **experimental** | Runs and has regression tests, but there is not enough RF evidence to rely on the numbers. |
 | **not documented** | Code exists, but there is no public workflow. |
 | **unsupported** | Refused with an error. |
+| **refused** | The code raises before the first time step, with a message that says what to do instead. |
 
 A clean preflight or a completed run does not move a feature up this scale.
+
+## Solver paths
+
+A model runs on one of these solver paths: `run()` or `forward()` on a uniform
+mesh or on a graded mesh (`dx_profile` / `dy_profile` / `dz_profile`), on one
+device or on several (`run(devices=...)`, `forward(distributed=True)`). Some
+calculators, such as `compute_waveguide_s_matrix(...)`, build and run a model
+themselves. A feature can be solved on one path and refused on another; the
+[refused inputs](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md#refused-inputs)
+tables in the support matrix give the answer for each input and each path, with
+what to do instead.
+
+Two paths are outside the 2.0 supported scope:
+
+- **Subgridding** (`add_refinement` on a uniform mesh) is refused by default.
+  `validation="research"` runs it with an `ExperimentalSubgridWarning`. Use a
+  graded mesh for local resolution. Tracker 1465.
+- **ADI** (`solver="adi"`) is experimental and warns on every run. It runs a
+  closed (`boundary="pec"`), homogeneously filled cavity. Absorbing boundaries,
+  material interfaces, graded meshes, interior metal and ports are refused. Use
+  the explicit Yee solver for results you report.
 
 ## Features
 
 | Feature | Status | Limit |
 |---|---|---|
 | Uniform Cartesian Yee grid | **supported** | The baseline. Each source and observable still has its own limits. |
-| `boundary="cpml"` / `"pec"` | **supported** | |
-| `boundary="upml"` | **supported** | Reflects about 25 dB more than CPML at the same layer count. Prefer CPML where the reflection floor matters. |
+| `boundary="cpml"` / `"pec"` | **supported** | Use CPML for open domains. Its plane-wave reflection is measured per face, depth and frequency (`tests/unit/boundaries/test_cpml_reflection_coefficient.py`). |
+| `boundary="upml"` | **limited** | It absorbs, but its plane-wave reflection is not measured in this repository. Refused on a graded mesh and on several devices. Prefer CPML. |
 | `precision="float32"` | **supported** | The default. |
-| `precision="float64"` / `"mixed"` | **limited** | Uniform single-device solver only. `"mixed"` raises the CPML reflection floor; not for S-parameters. |
-| Isotropic, conductive and Debye/Lorentz materials | **supported** | Dispersive models within the validated subsets. `sigma >= 1e6` S/m is lossless PEC. |
-| Metal sheets, `add_thin_conductor` | **supported** | Lossless PEC sheet on one grid plane. |
-| Lossy sheets, `surface_impedance_f0=` | **limited** | Band-centre surface resistance on its documented uniform and graded lanes. Not a general dispersive conductor model. |
-| Probes and flux monitors | **supported** | On a uniform grid. See the graded-mesh table below. |
-| Harminv resonances (`find_resonances`) | **supported** | Needs a rung-down record and some loss. |
-| Far field / RCS (NTFF) | **limited** | Benchmarked cases in [Far-Field and RCS](/rfx/measure/far-field-and-rcs/). |
-| Plane wave (`add_tfsf_source`) | **limited** | x-directed, 3-D or 2-D (TMz/TEz), CPML. |
-| Graded meshes (`dx/dy/dz_profile`) | **limited by feature** | See [Graded meshes](#graded-meshes). |
-| ADI solver (`solver="adi"`) | **experimental** | 3-D PEC-cavity frequency within 2 % at `adi_cfl_factor=2`. Use Yee for results you report. |
-| Subgridding (`add_refinement`) | **not documented** | `run()` on a uniform mesh only. |
-| Multi-device runs (`devices=`) | **not documented** | Speed, not a separate accuracy claim. |
-| Floquet / Bloch ports | **experimental** | No high-level S-parameter API. |
+| `precision="float64"` / `"mixed"` | **limited** | Uniform mesh, one device. `"float64"` is refused unless JAX 64-bit mode is on. `"mixed"` stores fields in float16 and raises the CPML reflection floor; do not use it for S-parameters. |
+| Isotropic, conductive and Debye/Lorentz materials | **supported** | Dispersive models within their tested subsets. A Kerr (χ³) material is solved on a single-device uniform mesh only. |
+| Metal sheets (`add_thin_conductor`) | **supported** | A lossless sheet on one grid plane. |
+| Lossy sheets and films (`surface_impedance_f0=`, `sigma_bulk` below the metal threshold) | **limited** | A sheet on one node plane, no thicker than one cell, on uniform and graded meshes. A lossy film is also solved on several devices. Not a general dispersive conductor model. |
+| Probes and flux monitors | **supported** | On a uniform grid. See [graded meshes](#graded-meshes). |
+| Resonances (`find_resonances`) | **supported** | A matrix pencil fit of a probe signal. The signal must have decayed after the source ends, and the structure needs some loss. |
+| Far field / RCS (NTFF) | **limited** | The cases in [Far field and RCS](/rfx/measure/far-field-and-rcs/). |
+| Plane wave (`add_tfsf_source`) | **limited** | Propagation along x, in 3-D or 2-D (TMz/TEz), with CPML. Oblique incidence only in the plane set by the polarization. |
+| Graded meshes | **limited by feature** | See [graded meshes](#graded-meshes). |
+| Multi-device runs (`devices=`) | **not documented** | Being restructured for 2.0, tracker 1402. Splitting a model over devices is for memory and speed, not a separate accuracy claim. Several inputs are refused; see the refused-input tables. |
+| Subgridding (`add_refinement`) | **not documented** | Refused by default; see [solver paths](#solver-paths). |
+| ADI (`solver="adi"`) | **experimental** | See [solver paths](#solver-paths). |
+| Floquet / Bloch ports | **experimental** | Normal incidence on a single-device uniform mesh. No high-level S-parameter API. |
 
 ## Port families and S-parameters
 
+Each port family has one calculator. `run(compute_s_params=True)` handles
+lumped and wire ports only. `sim.compute_s_matrix()` picks the calculator for
+you, except for a model with only lumped or wire ports, which it refuses (call
+`run(compute_s_params=True)`); see
+[Sources & Ports](/rfx/api/sources-ports/#s-parameter-calculators).
+
 | Port | Calculator | Status | Limit |
 |---|---|---|---|
-| lumped `add_port(...)` | `run(compute_s_params=True)` | **limited** | One-cell feed model. About 60 cells per wavelength for one-port S11. |
-| wire `add_port(..., extent=...)` | `run(compute_s_params=True)` | **limited** | Magnitude evidence is stronger than absolute calibration. Graded-mesh use is experimental. |
-| lumped / wire | `forward(port_s11_freqs=...)` | **limited** | S11 vectors on the uniform single-device path. |
-| `add_msl_port(...)` | `compute_msl_s_matrix()` | **limited** | Quasi-TEM (`mode="laplace"`), directions ±x and ±y. At least 4 cells through the substrate (preflight warns below that). Graded mesh experimental; `mode="eigenmode"` outside scope. |
-| `add_waveguide_port(...)` | `compute_waveguide_s_matrix()` | **limited** | Uniform single-mode magnitude has broad evidence; phase, junctions and multimode less. S is a power-wave S only when all ports share one cross-section. Gradients on `normalize=False` and `"flux"`. Graded mesh experimental. |
+| lumped `add_port(...)` | `run(compute_s_params=True)` | **limited** | A one-cell feed model, not a calibrated transmission-line mode. Refused together with a plain source or a 0 Ω port. |
+| wire `add_port(..., extent=...)` | `run(compute_s_params=True)` | **limited** | A pin radius (`radius=`) is accepted up to 0.2 of the transverse cell; a larger one is refused (`tests/unit/ports/test_wire_port_radius.py`). |
+| lumped / wire | `forward(port_s11_freqs=...)` | **limited** | S11 at the requested frequencies, on one device, uniform or graded mesh. |
+| `add_msl_port(...)` | `compute_msl_s_matrix()` | **limited** | Quasi-TEM (`mode="laplace"`), directions ±x and ±y. The strip is a zero-thickness sheet. A strip drawn behind a port is an open stub; it is refused when its quarter-wave resonance falls near the band. Graded mesh experimental; `mode="eigenmode"` outside scope. |
+| `add_waveguide_port(...)` | `compute_waveguide_s_matrix()` | **limited** | Single-mode magnitude on a uniform mesh is tested on the WR-90 chain (`tests/oracle/test_waveguide_chain_battery_v18_close.py`); phase, junctions and multimode have less evidence. A full-aperture port needs PEC transverse walls. S is a power-wave S only when all ports share one cross-section. Graded mesh experimental. |
 | `add_waveguide_port(...)` | `run(...)` → `waveguide_sparams` | **limited** | Per-port diagnostic, not the full matrix. |
-| `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | **limited** | One `face="top"` port, self-contained line, float32 uniform grid. At least 4 cells across the annulus. The line absorbs on all three axes. |
-| `add_coaxial_port(...)` | `compute_coaxial_two_port(...)` | **limited** | One SMA-class through-line family, symmetric discontinuities only. |
-| lumped/wire + microstrip | `compute_mixed_s_matrix()` | **experimental** | Magnitude not validated; the default passivity projection alters the diagonal. |
-| coax + microstrip | `compute_coax_msl_transition()` | **experimental** | Diagnostic only; the matrix is not passive and is refused by default. |
+| `add_coaxial_port(...)` | `compute_coaxial_line_reflection(...)` | **limited** | One `face="top"` port, a line the calculator builds itself, float32, uniform mesh, CPML on every face. |
+| `add_coaxial_port(...)` | `compute_coaxial_two_port(...)` | **limited** | One through-line family. |
+| lumped/wire + microstrip | `compute_mixed_s_matrix()` | **experimental** | Magnitude not validated; the default passivity projection changes the diagonal (the measured values are in `S_raw`). |
+| coax + microstrip | `compute_coax_msl_transition()` | **experimental** | Diagnostic only. The matrix is not passive and is refused by default (`strict_passivity=True`). |
 | `add_floquet_port(...)` | none | **experimental** | Diagnostic helpers only. |
-| sources, TFSF, probes, DFT planes, flux monitors | none | **not a port** | No reference impedance, so no S-parameters. |
-
-Each family has one calculator. `run(compute_s_params=True)` handles lumped and
-wire ports only. `sim.compute_s_matrix()` picks the right calculator for you, except for a
-lumped/wire-only model, which it refuses (call `run(compute_s_params=True)`);
-see [Sources & Ports](/rfx/api/sources-ports/#s-parameter-calculators).
+| sources, plane wave, probes, DFT planes, flux monitors | none | **not a port** | No reference impedance or reference plane, so no S-parameters. |
 
 ## Graded meshes
 
-Support on a graded mesh is decided per combination. A graded run completing
-says nothing about whether its S-parameters, flux or far field are accurate.
+Support on a graded mesh is decided per combination. A graded run that
+completes says nothing about whether its S-parameters, flux or far field are
+accurate.
 
 | Combination | Status | Limit |
 |---|---|---|
-| Multi-band graded profile, ratio ≤ 1.4 on z (1.3 in-plane) | **limited** | Solver-level evidence (energy, transition reflection, order, gradients). Keep grading out of the absorber. |
-| NTFF + graded z | **limited** | Short-dipole directivity within about 0.05 dB of theory; other cases need their own validation. |
-| Lumped R/L/C + graded mesh | **limited** | Elements take part in the update; S-parameters and component-value gradients not documented. |
-| DFT plane or flux monitor + graded z | **experimental** | Runs; no general accuracy statement. |
-| Plane wave + graded mesh | **experimental** | Normal incidence along ±x only, with x uniform. Preflight warns when the propagation axis is graded. |
-| Waveguide S-matrix + graded mesh | **experimental** | Single mode, `normalize=True` or `"flux"`. One passed magnitude comparison (graded y, WR-90). No dz-graded accuracy evidence. |
-| Microstrip S-matrix + graded mesh | **experimental** | `mode="laplace"`/`"uniform"`; internal checks only. |
-| Wire-port S-parameters + graded mesh | **experimental** | |
-| Lumped-port (one-cell) S-parameters + graded mesh | **unsupported** | |
-| Coaxial port + graded mesh | **unsupported** | |
-| UPML + graded mesh | **unsupported** | |
-| Periodic / Floquet port + graded mesh | **unsupported** | |
+| Multi-band graded profile (`rfx.make_band_profile`), adjacent cell ratio ≤ 1.4 on z, ≤ 1.3 on x and y | **limited** | Solver-level checks only (energy, transition reflection, order, gradients). Keep grading out of the absorber. Not a port, flux or far-field validation. |
+| Far field (NTFF) + graded z | **limited** | One short-dipole directivity case on one mesh (`tests/unit/farfield/test_farfield_nonuniform.py`). Other cases need their own validation. |
+| Lumped R/L/C + graded mesh | **limited** | The elements take part in the update. Component-value gradients are not documented. |
+| Lumped and wire-port S11 + graded mesh | **limited** | `forward(port_s11_freqs=...)` on one device. |
+| DFT plane or flux monitor + graded mesh | **experimental** | Runs; no general accuracy statement. |
+| Plane wave + graded mesh | **experimental** | Normal incidence along ±x with x uniform, through `run()`. Oblique incidence, incidence along ±z, and `forward()` are refused. |
+| Waveguide S-matrix + graded mesh | **experimental** | Single mode, `normalize=True` or `"flux"`. With `boundary` omitted a full-aperture guide is refused; declare the walls. A reference-plane shift across cells of more than one size is refused. |
+| Microstrip S-matrix + graded mesh | **experimental** | `mode="laplace"` / `"uniform"`; regression checks only. `mode="eigenmode"` is refused. |
+| Coaxial port + graded mesh | **unsupported** | Refused. |
+| `boundary="upml"` + graded mesh | **unsupported** | Refused. Use CPML. |
+| Periodic axis or Floquet port + graded mesh | **unsupported** | Refused. |
 
-## Combinations that raise
+## Refused inputs
 
-rfx refuses these before the first time step instead of returning a number:
-
-- one-cell lumped-port S-parameters, coaxial ports, `boundary="upml"`, or a
-  Floquet port on a graded mesh;
-- `mode="eigenmode"` microstrip ports on a graded mesh;
-- a plane wave on a graded mesh at oblique incidence or along ±z;
-- a calculator called with the wrong port family, for example
-  `compute_msl_s_matrix()` without microstrip ports;
-  `run(compute_s_params=True)` computes lumped and wire ports only, and a
-  coaxial port is not handled by `run()` at all;
-- `compute_coaxial_line_reflection(...)` with anything else registered, a
-  graded mesh, non-float32 precision, or a boundary other than CPML on all six
-  faces;
-- `compute_coax_msl_transition()` with a non-passive result, unless you pass
-  `strict_passivity=False`;
-- `compute_waveguide_s_matrix(normalize=True)` with a traced
-  `eps_override`/`sigma_override`;
-- a waveguide reference-plane shift that crosses cells of more than one size
-  on a graded mesh;
-- `precision="float64"` or `"mixed"` on a graded mesh, with `devices=`, or with
-  subgridding;
-- `stencil_order=4` with CPML/UPML, a graded mesh, ADI, dispersion or the other
-  features it does not support;
-- the ADI solver with interior metal (sheets, wires or volumes);
-- any `run()` argument the selected solver path does not implement, for example
-  snapshots on a graded mesh or `until_decay` with ADI;
-- `add_refinement` combined with `forward()`, `optimize()` or
-  `topology_optimize()`;
-- `devices=` with `exchange_interval` other than 1;
-- `run(ringdown=...)` with anything but wire ports, or with `until_decay` or
-  `devices=`.
-
-Some combinations off the main path still ignore a setting without raising,
-for example a Kerr material on a non-uniform `run()`, or `mu_r` and Kerr on the
-ADI solver. These are tracked as open issues on
-[GitHub](https://github.com/bk-squared/rfx/issues). If you need a feature on a
-path other than the uniform Yee solver, check there first.
-
-Using a probe, DFT plane or flux monitor as if it were an impedance-defined
-port is unsupported for the same reason: it has no reference impedance or
-reference plane.
+rfx refuses an input it would not solve, before the first time step, so a model
+it cannot solve does not come back as a wrong number. The
+[refused inputs](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md#refused-inputs)
+section of the support matrix lists each one: a table per topic (materials,
+conductors, sources and ports, boundaries, mesh, observers, run settings) with
+the answer on each solver path, and a table of refused combinations with the
+test that pins each refusal. Every refusal message names what to do instead.
 
 ## Reporting a result
 

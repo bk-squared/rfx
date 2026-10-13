@@ -12,19 +12,23 @@ Each entry gives the symptom you would see, the mechanism in one line, what to d
 about it now, and the tracking issue. **The issue is the evidence**: measured
 numbers, the fixture they came from, and the commit they were measured on live
 there, not here. An entry disappears from this page when its defect is fixed and
-a committed test pins the fix, not when someone believes it is better.
+a committed test pins the fix, not when someone believes it is better. An entry
+whose wrong result is now refused, with a committed test pinning the refusal,
+moves to the **Refused inputs** table of the [support matrix](support_matrix.md)
+and leaves this page.
 
 Nothing here is a substitute for the repo's standing rule: a warning's absence is
 not an accuracy guarantee, and a preflight pass is not a convergence study.
 
 ## General constraints
 
-### Intermediate conductor occupancy is an artificial loss; a source on a partly occupied edge is scaled by the same weight
+### A partly metal cell edge (metal density between 0 and 1) is an artificial loss; a source on such an edge is scaled by the same weight
 
-At occupancy strictly between 0 and 1, the field on an edge is scaled every step by a weight; this is physical only at 0 and 1.
+At metal density strictly between 0 and 1, the field on an edge is scaled every step by a weight; this is physical only at 0 and 1.
 Since this change, a source on such an edge is scaled by the same weight on single-device forward runs, as multi-device runs already did.
 A resistive sheet or lumped RLC element on such an edge is NOT scaled: its update replaces the field after the weight.
 Tracker: #1373
+→ [#1373](https://github.com/bk-squared/rfx/issues/1373)
 
 ### Placing a solve on CPU in a process whose default backend is GPU
 
@@ -33,18 +37,32 @@ Tracker: #952
 The absorber write-back is selected from the process's default backend at trace
 time. A process whose default backend is GPU but which places a solve on its CPU
 device therefore uses the GPU form there. A plain call and a `jax.jit` call of
-the same solve can then differ by up to 63 float32 ULP at the probe record peak
-(5e-6 of the peak): 31–63 ULP measured on a uniform mesh for records of 120 to
-480 steps on nine machines, unchanged from 480 to 3840 steps on the one where
-longer records were run; a graded-mesh case read 0. Results on the GPU, and in a
-CPU-only process, are not affected. Use the GPU device or a CPU-only process to
-avoid this spread.
+the same solve can then differ in their last float32 digits. Results on the GPU,
+and in a CPU-only process, are not affected. Use the GPU device or a CPU-only
+process to avoid this spread.
 
-### Lossy sheets and sheet_effective_size
+### A lossy Box film and a surface-impedance sheet are not checked against their drawn size
 
-Tracker: #1138
+Tracker: none — accepted limitation (refused at default: tests/contracts/test_dc_film_admission.py::test_b4_small_disc_refusal_and_declared_finding)
 
-Lossy sheets (`surface_impedance_f0`, or sigma below the PEC threshold) are not judged by `sheet_effective_size` (`rfx/materials/thin_conductor.py::ThinConductor.is_pec`, `rfx/preflight/realization.py::_CampaignStaticsContext.pec_entries`).
+The check that refuses a PEC sheet solved more than 1 % off its drawing, `sheet_effective_size`, reads PEC sheets only
+(`rfx/preflight/realization.py::_CampaignStaticsContext.pec_entries`). A lossy film (`add_thin_conductor` below the
+PEC threshold) with a non-Box shape has its own check: it must occupy one cell layer and realize its drawn area within
+1 % in equivalent length, or it is refused unless `snap="declared"` is passed (`rfx/model/thin_conductors.py::admit_dc_film`).
+A lossy film drawn as a Box, and a `surface_impedance_f0` sheet, are checked by neither, so a footprint that the mesh
+rounds away from the drawing runs without a finding. Mesh such a sheet so its edges fall on grid nodes, as for a PEC
+sheet (`rfx.mesh_edges.edge_aware_profiles`).
+
+### Conductor thickness is not solved: a metal sheet has zero thickness
+
+Tracker: #1523
+
+`add_thin_conductor` with a metal (`sigma_bulk` at or above 1e6 S/m) builds a PEC
+sheet on one node plane; its `thickness` argument is not read
+(`rfx/api/__init__.py`, `Simulation.add_thin_conductor` docstring). A declared copper
+thickness is therefore not part of the model, and a microstrip line built from such a
+sheet reads slightly electrically long against the same line with its real thickness.
+Widening the sheet does not correct it.
 
 ---
 
@@ -52,33 +70,16 @@ Lossy sheets (`surface_impedance_f0`, or sigma below the PEC threshold) are not 
 
 Tracker: #1487
 
-`solver="adi"` is outside the 2.0 supported scope.
-  `boundary="cpml"` is refused: it is an unmatched conductivity sponge
-  (−10.4 dB reflection at 10 GHz). Use Yee with CPML for open structures,
-  or ADI with `boundary="pec"` for closed cavities.
-
-### Distributed runs: reduced-frequency ghost exchange (exchange_interval > 1) is refused
-
-Tracker: none — accepted limitation (refused at default: tests/unit/runners/test_distributed.py::TestExchangeInterval::test_interval_refused)
-
-exchange_interval > 1 is refused. With a one-cell ghost layer and the exchange skipped for K-1 steps, each slab updates its seam cells from the neighbour's stale values and injects energy every skipped step.
-In a lossless 48x16x16 mm PEC box (dx = 1 mm, float32, 2000 steps) the probe amplitude, relative to the single-device peak, reaches 2.0e2 for K=2 and 2.7e5 for K=4 on two devices, 4.6e7 (K=2) and 5.3e19 (K=4) on four devices, growing exponentially from the first skipped exchange, while K=1 stays within 1.0 of the peak.
-This is a scheme instability, not an O(dt*K) boundary error; a K-cell overlap would be required to skip exchanges.
-Use `exchange_interval=1`.
-
-### Distributed runs on GPUs: a call wrapped in `jax.jit` is refused
-
-Tracker: #1598
-On two or more GPUs, `jax.jit(...)` around `forward(distributed=True)` or `run(devices=...)`, or around `jax.grad` of
-it (also a `lax.scan` body or `jax.checkpoint` around the call), raises `NotImplementedError` with these instructions
-before compiling; it used to fail with `CUDA error: Failed to add memset node to a CUDA graph`. No wrong number is produced.
-Either call the run, and `jax.grad` / `jax.value_and_grad` / `jax.vmap` of it, without `jax.jit` (the runner compiles its
-own time loop), or start the process with `XLA_FLAGS=--xla_gpu_enable_command_buffer=` (set before importing jax); both
-return identical values and gradients (two RTX A6000, JAX 0.10.2).
-Measured cost on that hardware, graded 1 M and 4 M cell boxes: with command buffers off the forward step takes 0.93 to
-1.04 times the default; an un-jitted call adds a fixed 0.5 s (forward) or 4 s (gradient) per call. The gradient's
-per-step cost with command buffers off was not resolved (a 240-step gradient call differed by at most 3 %).
-CPU multi-device runs are not affected and are not refused. Three or more GPUs: not yet run.
+`solver="adi"` is outside the 2.0 supported scope and warns
+(`ExperimentalADIWarning`) on every run. It refuses an absorbing boundary of any
+kind (`boundary="cpml"`, `boundary="upml"`, or a `BoundarySpec` with an absorbing
+face): its absorber is an unmatched conductivity sponge, not a CPML. It refuses a
+dielectric or conductivity interface: it gives each E component its own cell's
+material where the Yee paths take the four-cell edge mean, so a material face sits
+half a cell from where Yee puts it; a homogeneous fill runs. Use Yee with CPML for
+open structures and for any structure with a material interface; ADI runs only a
+closed (`boundary="pec"`), homogeneously filled cavity. Both refusals are rows in
+the support matrix's **Refused inputs** table.
 
 ### Subpixel smoothing makes a curved high-contrast dielectric's resonance converge slowly, and can be worse than no smoothing.
 
@@ -102,22 +103,19 @@ backscatter errors were larger than the staircase's at each of three meshes, and
 lands, use the staircase and judge a curved body by a mesh series of at least three refinements.
 Tracker: #1651
 
-### A Drude or Lorentz medium has its own time-step limit, and a medium above it is refused.
+### Four cases the Drude/Lorentz time-step check does not judge
 
 Tracker: #1590
 
-The pole update is explicit, so a dispersive medium is stable only below a step of its own. For a Drude pole it
-is `omega_p * dt <= 2 * sqrt(eps_inf - s^2)` with `s` the Courant fraction (0.99 by default): with `eps_inf = 1`
-that is `omega_p * dt <= 0.28`, a plasma frequency of about 23.5 GHz on 1 mm cells. Collision damping does not
-lift it. A medium above the limit is refused when the model is assembled, on every solver path, and the message
-states the largest stable step and its cost. A graded mesh accepts that step through `dt=`; a uniform mesh needs
-finer cells, a larger `eps_inf`, or an axis profile so that `dt=` is accepted. Before the refusal such a model
-returned non-finite fields: 0.5 % above the limit a filled box was non-finite at step 1885 and already 1e10 times
-the excitation after 1000 steps, so only a run of a few hundred steps could return a finite, contaminated field.
-The limit is that of a medium several cells wide; a body one cell thick is stable somewhat above it and is
-refused all the same. Debye poles in the same medium are not part of the check, and the low-level `run()`
-functions that are handed prebuilt Lorentz coefficients are not checked. On the two-device graded path a
-permittivity or conductivity override is not judged either (the declared model is).
+A Drude or Lorentz medium above its own time-step limit is refused when the model is
+assembled (a row in the support matrix's **Refused inputs** table). The check does not
+see four cases, which run as before and can diverge: a permittivity or conductivity
+override on the two-device graded `forward()` (the declared model is judged), a traced
+mesh or traced pole masks (`rfx/model/pole_stability.py::courant_budget`,
+`refuse_unstable_cells`), Debye poles in the same medium, and the low-level `run()`
+functions handed prebuilt Lorentz coefficients. The same medium declared through
+`add_material` on a concrete mesh is judged, so build it that way once to read the
+stable step before tracing or overriding it.
 
 ## Ports and extraction
 
@@ -128,14 +126,15 @@ Tracker: #1512
 rfx ends a two-conductor line at its port: the piece of strip between the port plane and an
 absorbing face ends at the absorber's entrance, so it is an open-ended stub. Near the frequency
 where that stub is a quarter guided wavelength long, its input shorts the port, the line between
-the ports becomes a low-loss resonator and S is wrong. On a 24 mm, 50 Ω line (εr 3.66, h 254 µm,
-20–40 GHz) a 2 mm overhang behind each port gave |S11| −2.8 dB and |S21| −4.6 dB near 20 GHz; with
-the strip starting at the port planes the same line reads |S11| below −36 dB and |S21| within
-±0.25 dB. The bad band moves with the overhang length, not with the mesh, the absorber or the
-record length. The refusal judges the stub's effective length: the realized node-to-node
-overhang plus the open-end extension (Hammerstad's closed form for a microstrip; none is added
-for a coax pin). It reports the realized and declared lengths, the extension and the effective
-length, and prints the port's realized grid-node coordinate along its axis.
+the ports becomes a low-loss resonator and S is wrong. The bad band moves with the overhang length,
+not with the mesh, the absorber or the simulation time.
+The port refuses the stub, also with `skip_preflight=True`, when an odd quarter-wave resonance of
+its effective length lies within a factor of 1.5 of the band the call reads
+(`rfx/preflight/line_stub.py`); a stub resonating outside that band is only reported by
+preflight, and S is not checked for it. The effective length is the node-to-node
+overhang on the grid plus the open-end extension (Hammerstad's closed form for a microstrip; none is added
+for a coax pin). The message reports the lengths on the grid and the declared lengths, the extension and the
+effective length, and prints the port's grid-node coordinate along its axis.
 Start the signal strip at that coordinate (the port's grid node), so it covers the port node
 and nothing behind it. The absorber pads lie outside
 the declared domain, so drawing the strip "into the absorber" is not possible today.
@@ -156,56 +155,18 @@ nondispersive 3-D second-order Yee `run()` and `forward()`; other solvers,
 Debye/Lorentz, tensor/design-box updates and traced mesh metrics refuse it.
 Resolve larger wire ports geometrically with a coax feed or a volume wire.
 
-### Positive subcell PEC filament radii are unsupported.
-
-Tracker: none — accepted limitation (refused at default: tests/unit/ports/test_pec_filament_radius.py::test_every_positive_subcell_radius_refuses_before_scan)
-
-A PEC `PolylineWire`
-with `0 < a < 0.50 * d_min` refuses before stepping. Resolve the wire as a
-volume: refine the mesh until `a >= 0.50 * d_min`, using the smallest local
-cell at its vertices. The existing volume-wire rule and legacy `radius=0`
-filament ownership remain; zero does not declare a physical wire radius.
-A positive-radius PEC `PolylineWire` also refuses when the mesh cell sizes
-are traced; its geometric radius check requires concrete cell metrics.
-The attempted filament correction failed its independent uncorrected-main
-reference at `a/d=0.200`: for a=0.0375 mm and branch d=0.75 mm, the maximum
-8–14 GHz impedance error was 4.93%, and the 0.75→0.375 mm X change at
-11.3 GHz was 2.58 Ω (limits 2% and 1 Ω). The correction is removed.
-That one-edge feed has nonuniform longitudinal current, so the full-height
-wire-port Hankel oracle does not establish its accuracy. The port radius
-model and its full-height oracle remain separate.
-
-### Automatic preflight for compute_coax_msl_transition
-
-Tracker: #1138
-
-`compute_coax_msl_transition` checks sheet size through the shared preflight
-verdict by default, unless `skip_preflight=True`. The other preflight families
-do not run on this path.
-
-### The coax→microstrip transition over-reads power by about a factor of three.
+### The coax→microstrip transition reads more power out than in.
 
 Tracker: #1479
 
-Measured twice independently on the MSL port's power-wave normalization: the
-returned matrix's own MSL-driven column power runs about 3x the incident power
-(the coax-driven column reads 0.379 / 0.379 / 0.367 on the same run), and a
-six-face Poynting flux box on the same run reads the same factor. The matrix is
-therefore not passive — `compute_coax_msl_transition(...)` refuses it by default
-(`strict_passivity=True`, raising `ValueError`); pass `strict_passivity=False` to
-get the diagnostic matrix back with a `UserWarning` — and transition
-S-parameters from that path are not usable as an absolute power reference.
-Scope: cross-family transition lanes are not pursued further before
-2.0, so this over-read will not be attributed or corrected; use the
-single-family extractors separately (`compute_msl_s_matrix(...)`, the coaxial
-two-port and line-reflection lanes) for a result you can cite.
-
-The single-family microstrip lane does not carry this ~3x: the V·I-over-Poynting-flux
-oracle (`scripts/diagnostics/msl_vi_flux_oracle/msl_vi_flux_oracle.json`) bounds its power
-scale against the true flux to about 1 % on both committed meshes, and a 3x over-read cannot
-hide inside 1 %. That lane has its own limits — see the
-[S-parameter support matrix](sparameter_support_matrix.md) — including a raw passivity excess
-above 17 GHz recorded by the Sheen low-pass filter case.
+`compute_coax_msl_transition(...)` returns a matrix whose columns carry more power
+out than the incident wave brings in, so it is not passive. The call refuses it by
+default (`strict_passivity=True`, raising `ValueError`); pass `strict_passivity=False`
+to get the diagnostic matrix back with a `UserWarning`. Transition S-parameters from
+this path are not usable as an absolute power reference. Cross-family transition
+calculators are not pursued further before 2.0, so the excess will not be attributed or
+corrected; use the single-family extractors separately (`compute_msl_s_matrix(...)`,
+the coaxial two-port and line-reflection calculators) for a result you can cite.
 #838 was closed as not planned before 2.0 (PI decision, 2026-09-20); this is a standing limitation.
 
 ### The microstrip S-matrix can come back non-passive, and says so.
@@ -226,39 +187,35 @@ or below 1.02 on the open-stub notch at its 25 µm claims rung, in
 measured notch and thru values. Coarser meshes are
 reported, not gated.
 
-### The fitted microstrip propagation constant sits 1.0 to 1.3 % above the Hammerstad–Jensen closed form on every in-band bin.
+### The fitted microstrip propagation constant differs from the Hammerstad–Jensen closed form, and the difference is not attributed.
 
 Tracker: none — accepted limitation (diagnostic, does not enter the result: tests/unit/sparams/test_msl_fitted_beta_does_not_enter_s.py::test_s_is_bit_identical_when_the_fitted_beta_is_wrong)
 
-On a 600 µm trace over
-250 µm of RO4350B a float64 refit of the probe phasors reads 1.32 … 1.33 % with
-five cells under the strip and 0.97 … 1.04 % with ten, over 3.0–4.5 GHz; the
-offset is not attributed and no trend is claimed, because the strip is one cell
-thick in each run. It is the FITTED `beta`, a diagnostic that does not enter S
-(pinned by a test), so it is not a bias on the phase of an S-parameter. Stated
-in the Microstrip-line row of the [support matrix](support_matrix.md); #830 is
-closed as characterized.
+The fitted `beta` sits off the
+closed form on every in-band bin, by an amount that changes with the cell size;
+no trend is claimed, because the strip was one cell thick in each measured run.
+It is a diagnostic that does not enter S (pinned by a test), so it is not a bias
+on the phase of an S-parameter. #830 is closed as characterized.
 
 ### Microstrip `Z0` and `beta` are unreadable when the probes sit near a reflector.
 
 Tracker: none — accepted limitation (diagnostic, does not enter the result: tests/unit/sparams/test_msl_power_normalization.py::test_reference_metadata_is_neither_fitted_z0_nor_the_50_ohm_load)
 
 The N-probe fit rides the standing wave instead of measuring the
-line: across the three board runs tabulated in #726 the fitted `Z0` reached
-2.4x the analytic value and its ripple tracked `|S11|` in dB at r = 0.71-0.77,
-while `reliable` was True on 100 % of in-band bins. Those three runs carry no
-VESSL id in the record. `S` itself is normalized with the analytic
-Hammerstad-Jensen `Z0` and moved far less, by 0.009 dB in one controlled
-comparison — one fixture, one bin, an arm-to-arm difference, not a bound on `S`.
-Gate on `probe_clearance` and `beta_railed`, not on `reliable`; the
+line: the fitted `Z0` follows the reflection's ripple, while `reliable` can stay
+True on every in-band bin. `S` itself is normalized with the analytic
+Hammerstad-Jensen `Z0` (`rfx/sparams/msl.py`, `reference_impedances`), not with
+the fitted one. Gate on `probe_clearance` and `beta_railed`, not on `reliable`; the
 fix is a longer uniform feed or a moved reference plane. Every warning about
-this condition now carries that measurement, and `docs/guides/sparameter_support_matrix.md`
-has the full reading guidance. Settled in #726 (closed): the guard and preflight
-used to contradict each other about this, and the measurement decided it.
+this condition carries one shared text (`rfx.preflight.msl.MSL_PROBE_CLEARANCE_EFFECT`).
+Settled in #726 (closed): the guard and preflight used to contradict each other
+about this, and a measurement decided it.
 
 ### A source on a smoothed or conformal edge is injected with a coefficient that differs from the field update's.
 
 Tracker: #1524
+
+Pending for 2.0 — tracker 1524.
 
 The field increment a source adds on its edge is the update's coefficient times the drive. One place still computes that coefficient apart from the update: a rectangular-waveguide port or plane-wave source whose edges touch `subpixel_smoothing` or conformal-PEC cells. The drive on those edges is scaled by the ratio of the two coefficients; S-parameters normalised to the incident wave are not known to move, absolute field and probe amplitudes are. Until it is fixed, read absolute amplitudes from such a run as uncalibrated, or declare the source on a plain edge.
 
@@ -266,7 +223,9 @@ The field increment a source adds on its edge is the update's coefficient times 
 
 ## Ring-down completion and the early stop
 
-### A pair of modes that no window of the record separates is completed as one mode, and every witness agrees.
+Ring-down completion (extrapolating the time signal past the end of the run from fitted decaying poles; cf. the CST AR filter).
+
+### A pair of modes that no window of the record separates is completed as one mode, and every early-window vs late-window comparison agrees.
 
 Tracker: #1514
 
@@ -274,7 +233,7 @@ Tracker: #1514
 `forward(ringdown=...)` identify the ringing's poles on the record's second
 half. Two resonances closer than the record can resolve come back as one
 blended pole, and the completion from any window of that record makes the same
-blend. The error witness WE then agrees while the completed S can be several
+blend. The early-window vs late-window comparison WE then agrees while the completed S can be several
 percent off near the pair. What to do: record longer. In the measured case, a
 pair 0.03 % apart was resolved at about a fifth of its decay time.
 #1381 was closed as a stated limit (PI decision, 2026-09-30); this is a standing limitation.
@@ -295,30 +254,20 @@ features matter, use a fixed record (`run(n_steps=..., ringdown=...)`) long
 enough to resolve them. Pinned as a strict xfail in
 `tests/unit/sparams/test_ringdown_early_stop.py`.
 
-### A plain record shorter than a weakly coupled resonance's decay misreads S near it on any port, and the end-of-run witness can miss it.
+### A plain record shorter than a weakly coupled resonance's decay misreads S near it on any port, and the end-of-run decay check can miss it.
 
 Tracker: #1514
 
-A lossless 50 × 50 × 25 mm PEC box with a one-cell 50 Ω
-port rings on TM110 at 4.148 GHz with Q ≈ 2000 (amplitude e-fold 153 ns); the port is its only loss.
-On a plain 12 ns record, |S11| reads 0.975–1.009 around the mode (largest deviation 0.025);
-24 / 60 / 120 ns records: deviation 0.042 / 0.032 / 0.026. The end-of-run witness read −64 dB
-and passed: its reference peak was the direct response, and the weakly coupled mode rings below it.
-On the same 12 ns record, one-cell wire-port completion restores |S11| to 1 within 1e-3 (measured about 1e-6) with passing witnesses
+A lossless PEC box with a one-cell port rings on its first
+mode for far longer than a plain record; the port is its only loss. On a plain record,
+|S11| near the mode departs from 1, and the per-frequency decay check (`settling_db`) at the end of the run can pass: its reference
+peak is the direct response, and the weakly coupled mode rings below it.
+On the same record, one-cell wire-port completion restores |S11| to 1 within 1e-3 with its early-window vs late-window comparisons passing
 (`tests/unit/sparams/test_sparam.py::test_wire_port_pec_cavity_s11_around_the_first_mode`).
 `run(ringdown=...)` currently refuses one-cell lumped ports.
 What to do: record well past the slowest mode's decay, or use a one-cell wire port
 (`add_port(..., extent=dx)`) with `run(ringdown=...)`.
 #1255 was closed as a stated limit (PI decision, 2026-10-01); this is a standing limitation.
-
-## Solver lanes
-
-### ADI (`solver='adi'`) refuses a dielectric or conductivity interface until 2.1.
-
-Tracker: #1373
-
-Its update reads each cell's own eps_r and sigma where the Yee lanes take the four-cell edge mean, so a material face sits half a cell off (+2.2 % on a slab-loaded PEC cavity's first resonance at 12 cells per loaded wavelength). A homogeneous fill runs (as a declared fill or a scalar override); a traced array override is refused because it cannot be inspected. Use `solver='yee'` otherwise.
-→ [#1373](https://github.com/bk-squared/rfx/issues/1373)
 
 ## Absorbing boundaries
 
@@ -327,7 +276,7 @@ Its update reads each cell's own eps_r and sigma where the Yee lanes take the fo
 Tracker: #1221
 
 Uniform and graded run/forward place the wall on the declared E-node face.
-Distributed kernels, subgridded and ADI lanes refuse magnetic faces.
+Distributed kernels, subgridded and ADI paths refuse magnetic faces.
 Waveguide-port execution also refuses magnetic faces: its aperture mode solver
 implements PEC walls only. The fourth-order stencil refuses them because
 its far neighbors have no magnetic image. Subpixel smoothing refuses a material surface within half
@@ -344,10 +293,7 @@ Tracker: #1230
 A conductor drawn to an absorbing boundary is continued through the absorber, so
 a grounded board stays grounded inside it. When any mesh axis is traced
 (`dz_profile` and its siblings under `jax.grad`), nothing is continued and a
-`UserWarning` says so: the run then has the older behaviour, in which a lossless
-patch on a grounded substrate gained energy with six absorber layers or fewer
-(0 dB settling, +5.8e-4 per step on the six-layer rig, against −44.8 dB with the
-ground continued). Use eight or more absorber layers for such a run, or draw the
+`UserWarning` says so: the conductor then stops at the absorber entrance. Draw the
 ground past the domain face by the absorber thickness, which fills every absorber
 cell except the outermost row on the +x and +y faces.
 → [#1230](https://github.com/bk-squared/rfx/issues/1230)
@@ -357,14 +303,18 @@ cell except the outermost row on the +x and +y faces.
 Tracker: #1221
 
 On the uniform mesh at normal incidence, dispatch refuses absorbing transverse faces for a TF/SF plane wave when
-realized materials, conductors or localized field updates vary along that axis,
+materials on the grid, conductors or localized field updates vary along that axis,
 including in the pads. The refusal also applies with `skip_preflight=True`.
 For an array, declare its axes periodic; for a finite scatterer use
 `closed_box=True` or `rfx.rcs.compute_rcs`. For propagation along x with E along z, the admitted wall
-pairs are PMC on y and PEC on z; either pair may instead be periodic. A wall
+pairs are PMC on y and PEC on z; either pair may instead be periodic. Each
+transverse axis takes only a matched pair: both faces absorbing, both the wall
+that suits the polarization, or both periodic (`rfx/boundaries/tfsf.py::replacement_axes`).
+A wall that does not suit the polarization is refused (for E along z, PEC on y or
+PMC on z), and so is a pair that mixes a PMC face with an absorbing one. A wall
 pair keeps the legacy wrap only for an invariant model; finite transverse
 structure with those walls is refused. UPML remains unsupported for TF/SF.
-The uniform plane-wave lane retains its existing padded periodic wrap for an
+The uniform plane-wave path retains its existing padded periodic wrap for an
 invariant absorber pair and reports the affected faces in preflight. Its grid
 and period do not change. Traced material overrides retain the legacy operator
 with a warning when invariance cannot be judged. At oblique incidence the tilt
@@ -372,6 +322,19 @@ axis keeps its operator and is reported as not judged for invariance.
 The graded mesh keeps its transverse absorbers under a plane wave: no wrap and
 no refusal from this rule (the experimental operator remains a PR3b item).
 → [#1221](https://github.com/bk-squared/rfx/issues/1221)
+
+### An oblique Bloch plane wave rings at its cutoff along the source plane, so a value read at f0 depends on the simulation time.
+
+Tracker: none — accepted limitation (warns at default: tests/unit/sources/test_tfsf_bloch_cutoff_warning.py::test_bloch_cutoff_warning)
+
+With `add_tfsf_source(angle_deg=θ, method="bloch")` (the default method), the part
+of the pulse at the cutoff f_c = f0·sinθ does not
+leave the source plane: it rings there for the whole record, and a rectangular-window
+DFT of a probe's time series picks it up, so a value at f0 changes with the simulation
+time. rfx warns when the pulse level at f_c is above −60 dB of its level at f0
+(`rfx/api/__init__.py`, `Simulation.add_tfsf_source`); the warning names the angle,
+bandwidth, f_c and level. Narrow the bandwidth, or taper the tail of the time series
+before the DFT.
 
 ### Full-aperture guides on a graded mesh require explicit transverse boundaries.
 
@@ -388,20 +351,16 @@ difference. → [#1221](https://github.com/bk-squared/rfx/issues/1221)
 
 ## Gradients and optimization
 
-### A gradient with respect to conductivity does not settle with record length on lossless or nearly lossless design cells
+### A gradient with respect to conductivity does not settle with simulation time on lossless or nearly lossless design cells
 
 Tracker: #1424
 
 `jax.grad` through `forward()` admits a conductivity design. Where T·σ/ε on
-those design cells is not large, the gradient depends on the record length's
-phase at each frequency bin: a static sensitivity remains although the field
-decays. Measured at σ = 0, the oscillation is 8–11 times the settled value;
-at T·σ/ε = 0.34 / 3.4 / 68 it is 0.70 / 0.12 / 9e-8 of that oscillation.
-A longer record does not help. `gradient_record_length_witness` detects it;
-`gradient="adjoint"` refuses such a design and returns settled-spectrum
-gradients only.
-
-For orientation, not a criterion, the ratio of the record-length swing to its lossless value on one fixture (3×3×3-cell box, mean ε_r 3.04) was 0.12, 0.079, 0.034, 0.0098, 1.6e-3, 8.1e-5 at x = 5, 7, 10, 14, 20, 30 (2400 steps); 0.071, 0.0080 at x = 7, 14 (4800 steps).
+those design cells is not large, the gradient depends on the phase at each frequency bin set by the simulation time: a static sensitivity remains although the field
+decays. A longer record does not help.
+`gradient_record_length_witness` detects it. `gradient="adjoint"` refuses every
+conductivity design (`design_sigma_override`), lossy or not, and returns
+settled-spectrum gradients only.
 `forward()` now attaches an advisory record `conductivity_gradient_record_length` to `result.diagnostics` when a conductivity design is supplied.
 
 ### Port-only ring-down completion can miss the gradient of a weakly coupled high-Q resonance.
@@ -415,15 +374,15 @@ interior field channels with
 `forward()`. They inform pole identification; S still uses the port V/I
 residues. The report lists snapped identification channels and per-pole
 residue/RMS shares as information, without an observability threshold or a
-W0-style accumulator witness for these channels.
+check of their own for these channels.
 
 Judge completed gradients with `gradient_witness(g, g_early, ringdown=result.ringdown,
 bin_axis=k)` when axis `k` carries frequency: it normalizes each bin of each
 parameter leaf independently and returns the worst bin, so pass only the bins
 your objective reads (a near-zero gradient at an unused band edge reads large). Exactly zero reference
 bins are skipped and counted. Without `bin_axis`, normalization is per leaf;
-a scalar objective's gradient is already per objective. A passing value witness
-does not establish a passing gradient witness. Where the early-start witness
+a scalar objective's gradient is already per objective. A passing early-window vs late-window value comparison
+does not establish a passing early-window vs late-window gradient comparison. Where the early-window vs late-window gradient comparison
 cannot be formed, compare against a record 1.5–2 times longer.
 The weak-port cavity contract is in
 `tests/unit/sparams/test_ringdown_identification.py` (#1419, fixed by the
@@ -436,29 +395,21 @@ Tracker: #1514
 Every frequency-domain quantity rfx differentiates is a DFT of a
 finite time record. A structure still ringing when the record ends leaves a term
 in every bin whose phase is `(ω − ω_r)·T`; a parameter that moves the resonance
-spins that phase, and because the phase grows with the record length the spin
+spins that phase, and because the phase grows with the simulation time the spin
 lands in the derivative magnified while staying nearly invisible in the value.
-Measured on a grounded-slab patch (graded z, float32) fed by a 50 Ω wire port: a
-2200-step record settling to −39.7 dB — a pass on the −40 dB rule — gave |S11|²
-within 0.99 % of a converged record, while `d ln|S11|² / d ln εr` was out by
-9.7 % at 5.75 GHz and 23 % at 6.5 GHz, and a local-permittivity parameter by
-8.7 % and 38 %. At 4400 steps (−75 dB) the worst was 2.1 %. The same board
-driven by a soft source instead of a port settles far more slowly (−40.9 dB in
-6000 steps against −101 dB for the port); there `d ln U(0) / d ln εr` read
-5.79 against a converged 6.80 and a pattern-ratio gradient 0.331 against 0.070.
-In every measured case the sign of the slope was right and its size was not — an
+In the measured cases the sign of the slope was right and its size was not — an
 optimizer reading them takes steps of the wrong length, and a gate on a gradient
-value passes or fails on the record length rather than on the physics.
+value passes or fails on the simulation time rather than on the physics.
 
-The committed reproduction is a 30×20×20 mm lossy-filled PEC cavity
-(`tests/unit/autodiff/test_gradient_record_length_witness.py`): at 1600 steps it
-has decayed 46.7 dB, the DFT power a user reads is converged to 0.399 %, and the
-gradient with respect to the fill permittivity is 11.0 % from its converged
-value.
+The committed reproduction is a lossy-filled PEC cavity
+(`tests/unit/autodiff/test_gradient_record_length_witness.py::test_cavity_gradient_needs_a_longer_record_than_its_value`):
+its short record passes the −40 dB decay rule and the DFT power a user reads is
+converged to 0.4 %, while the gradient with respect to the fill permittivity is more
+than 10 % from the gradient of a record twice as long.
 
 Neither existing check sees it. `settling_verdict` scores the end of the record
 against its peak, which is a statement about the value. AD against a finite
-difference agrees to the precision floor at every record length, because both
+difference agrees to the precision floor at every simulation time, because both
 sides differentiate the same truncated record. Score a gradient you intend to
 report or optimize with `gradient_record_length_witness(objective, params,
 n_steps, tol=...)`: it takes the same gradient from a record `factor` times
@@ -470,17 +421,17 @@ phasor) are compared as complex sensitivities, since a parameter that rotates a
 phasor at constant magnitude moves only its imaginary part. A per-element table
 comes with the result to locate where a failure sits; it is not the verdict,
 because an element carrying a millionth of the dominant sensitivity moves by
-100 % on its own rounding. The witness does not replace the −40 dB rule — a
-record too short by more than `factor` can still pass it, because both arms then
+100 % on its own rounding. The comparison with a longer run does not replace the −40 dB rule — a
+record too short by more than `factor` can still pass it, because both runs then
 carry a similar leftover — and it has no default tolerance, because the right bar
 depends on the structure's Q and on what the gradient is for.
-Measured in #1181; the witness above landed with #1186.
+Measured in #1181; the comparison with a longer run above landed with #1186.
 
 ### An optimization on a fixed record can walk into a design that the record does not settle.
 
 Tracker: #1514
 
-The record length is usually chosen so that the starting design
+The simulation time is usually chosen so that the starting design
 settles. During the descent the optimizer can build a weakly coupled, high-Q mode:
 for example a mode that the structure's symmetry keeps orthogonal to the port mode,
 coupled only through a small asymmetry the descent itself introduces. Its ringing
@@ -492,7 +443,7 @@ across the broad wall orthogonal to the dominant drive; once the permittivity ma
 also vary across the wall, a higher mode held inside a high-permittivity region
 can couple to the drive very weakly and ring far longer than the record.
 
-What to do: judge the per-bin settling witness (`settling_witness` on the
+What to do: judge the per-frequency decay check (`settling_witness` on the
 S-parameter result) on the final design, and periodically during the descent, on
 a concrete solve rather than inside the traced objective. When it fails, lengthen
 the record if the decay is within reach; when the decay time is far longer than any
@@ -501,26 +452,26 @@ that the mode cannot be excited (for instance tying parameters so the design kee
 the symmetry that makes the mode orthogonal to the drive) removes the cause. This
 is a property of optimizing on a truncated record, not a solver defect. At default
 settings nothing flags it during the descent, so it is tracked with the same cause
-as the witness blind spot near weakly coupled resonances.
+as the decay check blind spot near weakly coupled resonances.
 
 ## Examples and validation coverage
 
 ### A shipped paper example's headline numbers are not WR-90 numbers.
 
-Tracker: #1138
+Tracker: #1122
 
 `validation/tmtt_paper/waveguide_dielectric_taper.py` declares 22.86 × 10.16 mm.
-Its default SMOKE lane meshes at a commensurate dx = 1.27 mm and realizes WR-90
-exactly. Its paper lane does not: dx = 0.5 mm realizes 23.00 × 10.50 mm
+Its default SMOKE test run meshes at a commensurate dx = 1.27 mm and realizes WR-90
+exactly. Its paper run does not: dx = 0.5 mm realizes 23.00 × 10.50 mm
 (46 × 21 cells, +0.61 % / +3.35 %) and the dx = 0.25 mm production mesh realizes
 23.00 × 10.25 mm (92 × 41 cells, +0.61 % / +0.89 %). Both have a TE10 cutoff of
 6.517 GHz against the declared 6.557 GHz. The −26.7 dB and −38.0 dB figures the
 docstring quotes were measured on those guides.
 
 Decided 2026-09-19 (#1122, closed): disclosed, not corrected — no erratum and no
-re-mesh. The file states the realized guide in its docstring, in its README entry
+re-mesh. The file states the guide on the grid in its docstring, in its README entry
 and in the result block the run prints, and derives every analytic reference from
-the realized walls, so a reader meets the right structure beside every number.
+the walls on the grid, so a reader meets the right structure beside every number.
 The SMOKE half was #1100.
 
 ### Committed examples are verified at build time, not by their results.
@@ -540,17 +491,8 @@ covered only as far as its build.
 Tracker: #1471
 
 The patch-antenna accuracy figure is not claimed for 2.0 because
-its record length predates the current settling witness. It is being
+its simulation time predates the current decay check. It is being
 re-measured in [#1471](https://github.com/bk-squared/rfx/issues/1471).
-
-### The weekly scientific-validation lane is red.
-
-Tracker: #1501
-
-The latest weekly run, [37322809911](https://github.com/bk-squared/rfx/actions/runs/37322809911)
-on 2026-10-05, failed `slow-tests (3)`, `slow-tests (4)` and `weekly-a6000-lane`.
-That run does not support a claim that the weekly suite passes.
-→ [#1501](https://github.com/bk-squared/rfx/issues/1501)
 
 ---
 
