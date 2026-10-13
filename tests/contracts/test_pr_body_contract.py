@@ -170,25 +170,75 @@ def test_unknown_lane_fails_and_lists_the_allowed_set() -> None:
     assert "lane:crossval" in problems[0]
 
 
-def test_two_lane_lines_fail() -> None:
-    problems = cpb.check(
-        body("Lane: lane:ci-infra", "Lane: lane:crossval", ACCEPT), ENV
-    )
-    assert len(problems) == 1
-    assert "2 `Lane:` lines" in problems[0]
+@pytest.mark.parametrize(
+    "lane_lines",
+    [
+        ("Lane: lane:ci-infra", "Lane: lane:crossval"),
+        ("Lane: lane:ci-infra", "Lane: nonsense"),
+        ("Lane: nonsense", "Lane: lane:ci-infra"),
+        ("Lane: lane:ci-infra", "**Lane:** nonsense"),
+        ("Lane: lane:ci-infra", "- Lane: nonsense"),
+        ("Lane: nonsense", "Lane: invalid"),
+        ("Lane: lane:ci-infra", "Lane: nonsense", "Lane: invalid"),
+    ],
+    ids=["two-valid", "valid-malformed", "malformed-valid", "bold", "bullet",
+         "two-malformed", "three-lines"],
+)
+def test_multiple_lane_lines_fail_and_name_every_line(lane_lines: tuple[str, ...]) -> None:
+    problems = cpb.check(body(*lane_lines, ACCEPT), ENV)
+    found = ", ".join(repr(line) for line in lane_lines)
+    assert problems == [
+        f"{len(lane_lines)} `Lane:` lines ({found}). A PR names exactly one "
+        "PRIMARY owner lane; keep one line and delete the rest."
+    ]
 
 
-def test_two_review_lines_fail() -> None:
-    problems = cpb.check(
-        body(
-            "Lane: lane:ci-infra",
-            ACCEPT,
-            "Review: opus (separate instance) - ACCEPT WITH CHANGES",
-        ),
-        ENV,
+@pytest.mark.parametrize(
+    "review_lines",
+    [
+        (ACCEPT, "Review: codex (separate instance) — REJECT"),
+        ("Review: codex (separate instance) — REJECT", ACCEPT),
+        (ACCEPT, "Review: malformed"),
+        (ACCEPT, "Review: opus (separate instance) - ACCEPT WITH CHANGES"),
+        (ACCEPT, "Review: skipped - (a) one comment typo"),
+        (ACCEPT, "Review: skipped - x"),
+        (ACCEPT, "Review: <who read it> (separate instance) - ACCEPT"),
+        (ACCEPT, "**Review:** malformed"),
+        (ACCEPT, "- Review: malformed"),
+        ("Review: malformed", "Review: skipped - x"),
+        (ACCEPT, "Review: malformed", "Review: codex (separate instance) — REJECT"),
+    ],
+    ids=["valid-reject", "reject-valid", "valid-malformed", "two-valid",
+         "valid-skipped", "valid-bad-skip", "valid-placeholder", "bold", "bullet",
+         "two-malformed", "three-lines"],
+)
+def test_multiple_review_lines_fail_and_name_every_line(review_lines: tuple[str, ...]) -> None:
+    problems = cpb.check(body("Lane: lane:ci-infra", *review_lines), ENV)
+    found = ", ".join(repr(line) for line in review_lines)
+    assert problems == [
+        f"{len(review_lines)} `Review:` lines — a PR body carries exactly one: "
+        f"{found}. Keep the one the PR merges on and delete the others."
+    ]
+
+
+@pytest.mark.parametrize(
+    ("opening", "closing"),
+    [("```text", "```"), ("~~~", "~~~"), ("<!--", "-->"), ("<pre>", "</pre>")],
+    ids=["backtick-fence", "tilde-fence", "comment", "pre"],
+)
+def test_invisible_extra_keyword_lines_do_not_count(opening: str, closing: str) -> None:
+    text = body(
+        "Lane: lane:ci-infra",
+        ACCEPT,
+        opening,
+        "Lane: nonsense",
+        "Lane: lane:crossval",
+        "Review: codex (separate instance) — REJECT",
+        "Review: malformed",
+        ACCEPT,
+        closing,
     )
-    assert len(problems) == 1
-    assert "2 `Review:` lines" in problems[0]
+    assert cpb.check(text, ENV) == []
 
 
 def test_an_empty_body_fails() -> None:
@@ -287,11 +337,10 @@ def test_the_remediation_text_is_not_itself_a_passing_body() -> None:
     report = cpb.failure_report(cpb.check("", ENV), ENV)
     problems = cpb.check(report, ENV)
     assert len(problems) == 2, f"the remediation text passes its own gate: {problems}"
-    # It must fail ON THE PLACEHOLDERS, not because some earlier line happened
-    # to swallow the rest of the report. The first cut wrote a literal "<pre>"
-    # in its own prose, which strip_invisible then ate to end-of-body -- the
-    # test was green for a reason that had nothing to do with the placeholders.
-    assert "placeholder" in problems[1], problems[1]
+    # The examples must be counted, not swallowed by earlier prose. The first
+    # cut wrote a literal "<pre>" in the report, hiding the rest of the body.
+    # The plain example and four indented alternatives now fail the count rule.
+    assert "5 `Review:` lines" in problems[1], problems[1]
     assert "Review: <who read it> (separate instance) - ACCEPT" in cpb.body_lines(report)
 
 

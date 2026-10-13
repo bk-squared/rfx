@@ -270,9 +270,9 @@ def body_lines(body: str) -> list[str]:
 def deadorn(line: str) -> str:
     """The line with list bullets, quote markers and bold runs removed.
 
-    Only used to explain a failure. A body whose claim sits inside a bullet is
-    still a failing body -- the two lines have to start their own line so a
-    later audit can grep for them.
+    Used to count keyword lines and explain a failure. A body whose claim sits
+    inside a bullet is still a failing body -- the two lines have to start their
+    own line so a later audit can grep for them.
     """
     stripped = _ADORNMENT_RE.sub("", line)
     return _TRAILING_BOLD_RE.sub("", stripped)
@@ -368,6 +368,7 @@ def _check_lane(
     *issue_labels* allows the owner lane of an issue this PR closes instead.
     """
     matches = [m for m in (LANE_RE.match(line) for line in lines) if m]
+    lane_lines = [line for line in lines if deadorn(line).startswith("Lane:")]
     # Only labels the repository still HAS can cross-check anything. A retired
     # one would otherwise fail a correct line, one branch after the warning
     # promised it would not -- and the remediation text would then suggest that
@@ -376,10 +377,10 @@ def _check_lane(
     labelled = sorted(set(pr_labels) & set(lanes))
     issue_lanes = sorted(set(issue_labels) & set(lanes))
 
-    if len(matches) > 1:
-        found = ", ".join(m.group(1) for m in matches)
+    if len(lane_lines) > 1:
+        found = ", ".join(repr(line) for line in lane_lines)
         return [
-            f"{len(matches)} `Lane:` lines ({found}). A PR names exactly one "
+            f"{len(lane_lines)} `Lane:` lines ({found}). A PR names exactly one "
             "PRIMARY owner lane; keep one line and delete the rest."
         ]
 
@@ -449,6 +450,7 @@ def lane_label_warnings(env: dict[str, str] | None = None) -> list[str]:
 
 
 def _check_review(lines: list[str]) -> list[str]:
+    review_lines = [line for line in lines if deadorn(line).startswith("Review:")]
     valid: list[str] = []
     placeholder: list[str] = []
     bad_skip: list[str] = []
@@ -470,10 +472,11 @@ def _check_review(lines: list[str]) -> list[str]:
         elif REVIEW_SHAPE_RE.match(line):
             malformed.append(line)
 
-    if len(valid) > 1:
+    if len(review_lines) > 1:
+        found = ", ".join(repr(line) for line in review_lines)
         return [
-            f"{len(valid)} `Review:` lines. Keep the one that reflects the verdict "
-            "the PR is merging on."
+            f"{len(review_lines)} `Review:` lines — a PR body carries exactly one: "
+            f"{found}. Keep the one the PR merges on and delete the others."
         ]
     if valid:
         return []
