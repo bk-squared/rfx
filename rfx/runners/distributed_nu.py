@@ -282,6 +282,7 @@ class ShardedNUGrid(_NamedTuple):
     dz_cells: object = None
     e_cell_sizes: object = None
     layout: Slab | None = None
+    original_grid: object = None
 
 
 def split_1d_with_ghost(arr: "np.ndarray", n_devices: int, nx_per: int,
@@ -393,6 +394,7 @@ def build_sharded_nu_grid(
         dz_cells=np.asarray(grid.dz),
         e_cell_sizes=electric_cell_sizes(grid),
         layout=layout,
+        original_grid=grid,
     )
 
 
@@ -413,12 +415,12 @@ def shard_pec_mask_x_slab(global_mask, sharded_grid: ShardedNUGrid):
 _exchange_component_nu_shmap = exchange_component_shmap
 
 
-def _exchange_h_ghosts_nu(state: FDTDState, mesh, n_devices: int, *, ranks) -> FDTDState:
+def _exchange_h_ghosts_nu(state: FDTDState, mesh, n_devices: int, *, ranks, local=False) -> FDTDState:
     """Refill only the Hy/Hz left ghosts consumed by the E curl."""
-    return exchange_h_yee_shmap(state, mesh, n_devices, ranks=ranks)
+    return exchange_h_yee_shmap(state, mesh, n_devices, ranks=ranks, local=local)
 
 
-def _exchange_e_ghosts_nu(state: FDTDState, mesh, n_devices: int, *, ranks) -> FDTDState:
+def _exchange_e_ghosts_nu(state: FDTDState, mesh, n_devices: int, *, ranks, local=False) -> FDTDState:
     """Refill only Ey/Ez right ghosts from the neighbour ranks' real rows.
 
     Placement contract: this is the LAST stage of the E half-step in
@@ -428,7 +430,7 @@ def _exchange_e_ghosts_nu(state: FDTDState, mesh, n_devices: int, *, ranks) -> F
     right ghost plane; a copy taken before the owner zeroed its PEC edges
     there is stale (#931 seam-cell divergence).
     """
-    return exchange_e_yee_shmap(state, mesh, n_devices, ranks=ranks)
+    return exchange_e_yee_shmap(state, mesh, n_devices, ranks=ranks, local=local)
 
 
 # #1038 leg 3. ``_apply_pec_face_nu_shmap``'s body now lives as
@@ -1576,6 +1578,15 @@ def run_nonuniform_distributed_pec(
         if source.component not in ("ex", "ey", "ez"):
             raise ValueError(f"distributed_nu: unsupported source component {source.component}")
     probes = list(probes) if probes is not None else []
+
+    from rfx.stepping.slab_wrap import select_step
+    if select_step(cpml=use_cpml, debye=use_debye, lorentz=use_lorentz, pmc=bool(pmc_faces)) == "wrapped":
+        from rfx.runners._distributed_nu_wrapped import run_wrapped
+        return run_wrapped(sharded_grid, sharded_materials, sharded_pec_mask,
+            n_steps, sources, probes, devices=devices, occupancy=sharded_pec_occupancy,
+            checkpoint_every=checkpoint_every, n_warmup=n_warmup,
+            emit_time_series=emit_time_series, gather_final_state=gather_final_state,
+            material_drive=material_drive)
 
     # Defer the `Mesh` import to runtime so module import remains
     # lightweight (matches distributed_v2.py's pattern).

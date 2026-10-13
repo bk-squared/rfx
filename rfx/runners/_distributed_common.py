@@ -401,7 +401,7 @@ def exchange_component_shmap(field, mesh, n_devices, *, ranks):
     return _exchange(ranks, field)
 
 
-def exchange_h_yee_shmap(state, mesh, n_devices, *, ranks):
+def exchange_h_yee_shmap(state, mesh, n_devices, *, ranks, local=False):
     """Send packed Hy/Hz last-real rows right into the live LEFT ghosts.
 
     The second-order Yee E curl reads only these two x-neighbours. Keep
@@ -410,8 +410,6 @@ def exchange_h_yee_shmap(state, mesh, n_devices, *, ranks):
     if n_devices == 1:
         return state
 
-    @partial(rank_shard_map, mesh=mesh, in_specs=(P("x"), P("x")),
-             out_specs=(P("x"), P("x")), check_rep=False)
     def _exchange(hy, hz, *, rank):
         packed = jnp.stack((hy[-2], hz[-2]))
         received = lax.ppermute(
@@ -421,11 +419,16 @@ def exchange_h_yee_shmap(state, mesh, n_devices, *, ranks):
         hz = hz.at[0].set(jnp.where(interior, received[1], hz[0]))
         return hy, hz
 
-    hy, hz = _exchange(ranks, state.hy, state.hz)
+    if local:
+        hy, hz = _exchange(state.hy, state.hz, rank=ranks)
+    else:
+        mapped = rank_shard_map(_exchange, mesh=mesh, in_specs=(P("x"), P("x")),
+                                out_specs=(P("x"), P("x")), check_rep=False)
+        hy, hz = mapped(ranks, state.hy, state.hz)
     return state._replace(hy=hy, hz=hz)
 
 
-def exchange_e_yee_shmap(state, mesh, n_devices, *, ranks):
+def exchange_e_yee_shmap(state, mesh, n_devices, *, ranks, local=False):
     """Send packed Ey/Ez first-real rows left into the live RIGHT ghosts.
 
     The second-order Yee H curl reads only these two x-neighbours. Ex/Hx
@@ -435,8 +438,6 @@ def exchange_e_yee_shmap(state, mesh, n_devices, *, ranks):
     if n_devices == 1:
         return state
 
-    @partial(rank_shard_map, mesh=mesh, in_specs=(P("x"), P("x")),
-             out_specs=(P("x"), P("x")), check_rep=False)
     def _exchange(ey, ez, *, rank):
         packed = jnp.stack((ey[1], ez[1]))
         received = lax.ppermute(
@@ -446,7 +447,12 @@ def exchange_e_yee_shmap(state, mesh, n_devices, *, ranks):
         ez = ez.at[-1].set(jnp.where(interior, received[1], ez[-1]))
         return ey, ez
 
-    ey, ez = _exchange(ranks, state.ey, state.ez)
+    if local:
+        ey, ez = _exchange(state.ey, state.ez, rank=ranks)
+    else:
+        mapped = rank_shard_map(_exchange, mesh=mesh, in_specs=(P("x"), P("x")),
+                                out_specs=(P("x"), P("x")), check_rep=False)
+        ey, ez = mapped(ranks, state.ey, state.ez)
     return state._replace(ey=ey, ez=ez)
 
 

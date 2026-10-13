@@ -468,6 +468,7 @@ def make_graded_step(
         advance(frame)
         return finish(frame)
 
+    step_fn.context = ctx
     return step_fn
 
 

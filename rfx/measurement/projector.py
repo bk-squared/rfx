@@ -54,7 +54,8 @@ def gather(state, table):
     """One indexed read per present field component; return samples[n_terms]."""
     dims = jax.lax.GatherDimensionNumbers(offset_dims=(), collapsed_slice_dims=(0, 1, 2),
                                          start_index_map=(0, 1, 2))
-    parts = [jax.lax.gather(getattr(state, t.component), np.stack(t.indices, axis=1),
+    parts = [jax.lax.gather(getattr(state, t.component),
+                            (jnp if any(isinstance(i, jax.core.Tracer) for i in t.indices) else np).stack(t.indices, axis=1),
                             dims, (1, 1, 1), mode='promise_in_bounds')
              for t in table.components]
     return jnp.concatenate(parts) if parts else jnp.empty((0,), dtype=state.ex.dtype)
@@ -68,7 +69,9 @@ def combine(samples, table):
     NumPy samples with concrete weights stay in the samples' dtype on the
     host: np.add.at accumulates reordered terms sequentially by segment id.
     """
-    traced = any(isinstance(t.weights, jax.core.Tracer) for t in table.components)
+    traced = (any(isinstance(t.weights, jax.core.Tracer) for t in table.components)
+              or isinstance(table.order, jax.core.Tracer)
+              or isinstance(table.segment_ids, jax.core.Tracer))
     xp = jnp if traced else np
     weights = xp.concatenate([t.weights for t in table.components]) if table.components else np.empty(0)
     if isinstance(samples, np.ndarray) and not traced:

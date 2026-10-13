@@ -41,6 +41,7 @@ FILL = {
     'mu_r': Fill(1., 1.),  # Vacuum permeability; magnetic face means keep their own low-face view.
     'sigma': Fill(0., 0.),  # No conductive material outside the real cells.
     'lumped': Fill(0., 0.),  # No component-owned lumped stamp outside the model (#1236).
+    'edge_keep': Fill(1., 1.),  # Published occupancy is neutral outside owned rows.
     'state': Fill(0., 0.),  # Initial field/state split has zero exterior fields.
     'pec_edge': Fill(True, False),  # Alignment is metal; True physical ghosts short x faces (#689/#931).
     'pec_cell': Fill(True, False),  # Legacy incident-cell PEC rule uses the same ghost-False convention.
