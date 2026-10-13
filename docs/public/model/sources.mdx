@@ -46,7 +46,7 @@ def peak(dx, kind):
                      boundary="cpml", cpml_layers=8)
     sim.add_source((0.03, 0.03, 0.03), "ez", amplitude_kind=kind,
                    waveform=ModulatedGaussian(f0=3e9, bandwidth=0.5))
-    sim.add_probe((0.045, 0.03, 0.03), "ez")
+    sim.add_probe((0.048, 0.03, 0.03), "ez")
     n = int(round(400 * 2e-3 / dx))          # the same simulation time
     result = sim.run(n_steps=n, skip_preflight=True)
     return float(np.max(np.abs(np.asarray(result.time_series))))
@@ -57,19 +57,23 @@ for kind in ("current", "field"):
 ```
 
 ```text
-current 1.919e+05 1.573e+05 1.552e+05
-field 0.003564 0.001644 0.0007207
+current 1.055e+05 1.043e+05 1.035e+05
+field 0.00196 0.00109 0.0004805
 ```
 
-With `"current"`, the peak field at the probe 15 mm away settles as the mesh is
-refined: 18 % from 2 mm to 1.5 mm, then 1.3 % to 1 mm. With `"field"`, the same
-waveform injects less energy on every finer mesh and the peak falls by about
-half each time, so the result depends on the cell size you happened to choose.
+With `"current"`, the peak field at the probe 18 mm away moves by 1.1 % from
+2 mm to 1.5 mm cells and by 0.8 % from 1.5 mm to 1 mm: it converges, as a
+physical source should. With `"field"`, adding a fixed E increment to one cell
+every step is a current moment proportional to the cell volume over the time
+step, so it scales as dx². The peaks follow that: ratios of 0.556 and 0.441
+against 0.5625 and 0.444 predicted. The result then depends on the cell size
+you happened to choose.
 
 ### Polarized source
 
 `sim.add_polarized_source(position, polarization=..., waveform=...,
-amplitude_kind=...)` drives Ex and Ey at one point with fixed weights.
+amplitude_kind=...)` drives Ex and Ey at one point with fixed weights; a single
+component (`"ez"`) is the same as `add_source` with that component.
 `polarization` is a component (`"ez"`), a name (`"slant45"`, `"rhcp"`,
 `"lhcp"`, `"circular"`), or a Jones vector `(Ex, Ey)`, normalized for you. A
 complex weight sets the phase of Ey relative to Ex. Circular polarization is
@@ -90,7 +94,7 @@ outside is the structure's response alone.
 | `method` | `"bloch"` | for oblique incidence: `"bloch"` makes the side axis periodic with the matching phase; `"methodB"` absorbs on it |
 | `closed_box` | `False` | `True`: a finite box with six faces around the structure, for a single scatterer; `False`: two planes across the domain |
 | `f0`, `bandwidth`, `amplitude` | `freq_max/2`, 0.5, 1 | the pulse |
-| `waveform` | `"differentiated_gaussian"` | also `"modulated_gaussian"`, `"cw"`, or a `CustomWaveform` |
+| `waveform` | `"differentiated_gaussian"` | also `"modulated_gaussian"`, `"continuous_wave"`, or a `CustomWaveform` |
 | `margin` | 3 | cells between the injection planes and the absorber |
 
 The injection planes must lie in vacuum. With `closed_box=False` the planes
@@ -104,7 +108,7 @@ for the rule and its warning. For a single scatterer use `closed_box=True`.
 |---|---|---|
 | `GaussianPulse` | derivative of a Gaussian, no carrier | `f0`, `bandwidth=0.5`, `amplitude=1.0`, `cutoff=3.0` |
 | `ModulatedGaussian` | a carrier at `f0` under a Gaussian envelope | `f0`, `bandwidth=0.5`, `amplitude=1.0`, `cutoff=5.0` |
-| `CWSource` | a sine at `f0`, switched on over `ramp_steps` cycles | `f0`, `amplitude=1.0`, `ramp_steps=50` |
+| `CWSource` | a sine at `f0`, switched on over `ramp_steps` cycles of `f0` (not time steps) | `f0`, `amplitude=1.0`, `ramp_steps=50` |
 | `CustomWaveform` | your function of time, `func(t)` with t in seconds | `func` |
 
 `bandwidth` is a fraction of `f0`; the pulse peaks `cutoff` envelope widths
@@ -134,12 +138,13 @@ path checks that it implements the source (below).
 | Input | Solver path | What happens | Instead |
 |---|---|---|---|
 | `amplitude_kind="current"` | ADI | refused | pass `amplitude_kind="field"` |
-| a plane wave together with a lumped port | all | refused when the source is added | drive the port alone, or use a probe for the response |
+| a plane wave together with a lumped port | all | refused | drive the port alone, or use a probe for the response |
 | a plane wave with `boundary="upml"`, or in a closed (all-metal) domain | all | refused | `boundary="cpml"` |
-| `waveform="cw"` at an angle | all | refused | a pulse waveform |
+| `waveform="continuous_wave"` at an angle | all | refused | a pulse waveform |
 | a `CustomWaveform` plane wave, or `closed_box=True`, at an angle or in 2-D | all | refused | normal incidence in 3-D |
 | `method="methodB"` at normal incidence, with `"ey"`, or along `"-x"` | all | refused | `method="bloch"` |
-| an injection plane inside a material | all | refused by preflight | move the structure clear of the planes |
+| an injection plane inside a material | uniform mesh, `run()` and `forward()` | refused before the first step | move the structure clear of the planes |
+| a plane wave at an angle, with `closed_box=True`, or with a `CustomWaveform` | graded mesh | refused | use a uniform mesh |
 | a plane wave | graded mesh with `forward()`, graded mesh on several devices | refused | use a uniform mesh, or `run()` |
 | a plane wave | uniform mesh on several devices | runs on one device, with a warning | — |
 
