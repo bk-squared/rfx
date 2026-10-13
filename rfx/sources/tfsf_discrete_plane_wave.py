@@ -148,7 +148,8 @@ def launch_windows(m, fractions, source_p, sigma, dx, dt):
 def require_step_bound(n_steps):
     """Refuse an unbounded auxiliary line before any step-count arithmetic."""
     if isinstance(n_steps, (bool, np.bool_)) or not isinstance(n_steps, (int, np.integer)) or n_steps < 1:
-        raise ValueError("closed_box requires a finite positive integer bound on its step count (n_steps)")
+        raise ValueError("closed_box requires a finite positive integer bound on its step count "
+                         "(n_steps, or decay_max_steps with until_decay)")
 
 
 def source_scalar(name, value):

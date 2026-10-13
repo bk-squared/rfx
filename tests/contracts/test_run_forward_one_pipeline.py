@@ -525,6 +525,7 @@ def both_refused(declaration, path, pair):
     raising_path = Path(construction['raising_site'].rsplit(':', 1)[0]).resolve()
     return (construction['outcome'] == 'raised'
             and construction['type'] in ('NotImplementedError', 'ValueError')
+            and 'closed_box TFSF require a uniform' in construction['message']
             and raising_path.is_relative_to(source_root))
 
 
