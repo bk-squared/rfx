@@ -61,13 +61,14 @@ at one point every step. `sim.add_vector_probe(position)` adds all six.
 `result.time_series` has one row per step and one column per probe, in the
 order you declared them.
 
-- A probe reads the field at the nearest grid node; it does not interpolate.
-  Put probes on a node when the position matters.
+- A probe reads the component stored at the index of the nearest grid node;
+  it does not interpolate. That component sits half a cell from the node along
+  its own axis (E) or across it (H), as on any Yee grid.
 - Each row is taken after the step completes: E at (n + 1)·dt and H at
   (n + ½)·dt for row n.
-- A probe at a source or port cell measures the source, not the structure. The
-  [settling check](/rfx/evidence/simulation-time/) ignores it when other probes
-  exist.
+- A probe at a point source or a lumped or wire port measures the source, not
+  the structure. The [settling check](/rfx/evidence/simulation-time/) ignores it
+  when other probes exist.
 
 ### DFT planes
 
@@ -86,8 +87,10 @@ is `{component}_{axis}_{index}`.
 the tangential E and H over a plane; `flux_spectrum(monitor)` turns them into
 one real number per frequency, Σ Re(E × H*)·dA over the plane. It is positive
 along the plus direction of `axis`. A box is six planes; add the outward
-signs yourself. `size` and `center` restrict the plane, snapped to cell edges
-and kept out of the absorber.
+signs yourself. Without `size`, the plane covers the whole cross-section of
+the grid, absorber included, as the DFT plane does. `size` and `center`
+restrict it, snapped to cell edges and kept out of the absorber; pass them
+before you take a ratio of two fluxes.
 
 The number is a product of two raw spectra, so it is not a power in watts by
 itself. Use it as a ratio: transmitted over incident flux from two runs or two
@@ -107,14 +110,16 @@ fields at the end of the run.
 |---|---|---|---|
 | point probes | yes | yes | — |
 | DFT planes | yes | yes | multi-device, ADI, subgridded |
-| flux monitors | yes | no | multi-device, ADI, subgridded |
+| flux monitors | yes | not built (no error) | multi-device, ADI, subgridded |
 | snapshots | yes | no | graded mesh, multi-device, ADI, subgridded |
 | final fields (`state`) | yes | no | — |
 
 ## What is checked
 
-When you declare an output: the component name and the axis. On a solver path that does not implement an output, the
-run is refused before the first step (table above).
+When you declare an output: the component name and the axis. On a solver path
+that does not implement an output, the run is refused before the first step;
+the one exception is `forward()`, which builds no flux monitors and returns
+none, without an error. Use `run()` for flux.
 
 ## What is refused, and the way through
 
@@ -129,14 +134,16 @@ run is refused before the first step (table above).
 
 ## Accuracy
 
-- A DFT plane agrees with a point probe's spectrum at the same node within 1 %
-  in magnitude, in a 30 mm PEC cavity over ten frequencies
-  (`tests/unit/misc/test_dft_probes.py`).
+- A DFT plane and a point probe at the same node give the same spectrum
+  within 1 % in magnitude, in a 30 mm PEC cavity over ten frequencies at
+  2–5 GHz (`tests/unit/misc/test_dft_probes.py`). This checks the plane's
+  indexing, not the physics.
 - A flux monitor across a graded-mesh rectangular waveguide agrees with the
   integral of the fitted TE10 mode profile within 1 % at 9–12 GHz
   (`tests/unit/nonuniform/test_flux_te10_integral.py`).
-- The attenuation of a lossy dielectric slab read from DFT planes agrees with
-  the closed form within 5 % on average at 6–14 GHz
+- The attenuation of a plane wave in a lossy dielectric, read from DFT planes
+  deep inside it, agrees with the closed form within 5 % on average at
+  6–14 GHz
   (`tests/oracle/test_lossy_material_validation.py`).
 
 Every spectral output is a transform of a record of finite length; read the
