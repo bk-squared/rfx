@@ -99,14 +99,17 @@ def test_lane_records_are_well_formed() -> None:
 
 def test_every_tracked_file_has_exactly_one_lane_record() -> None:
     tracked = subprocess.run(
-        ["git", "ls-files", "-z", "--", "examples/**/*.py",
-         "examples/**/*.yaml", "validation/tmtt_paper/*.py",
+        ["git", "ls-files", "-z", "--", ":(glob)examples/**/*.py",
+         ":(glob)examples/**/*.yaml", ":(glob)examples/**/*.yml", "validation/tmtt_paper/*.py",
          "validation/research/subgrid/12_subgrid_disjoint_prototype.py",
          "validation/research/subgrid/13_subgrid_material_validation.py"],
         cwd=lib.REPO_ROOT, check=True, capture_output=True, text=True,
     ).stdout
     listed = [entry["path"] for entry in _lane_entries()]
-    problems = [
+    tracked_paths = set(tracked.split("\0")) - {""}
+    # The other direction too: a lane record for a file that was deleted or renamed is stale.
+    problems = [f"{path}: lane record for a file that is not tracked" for path in sorted(set(listed) - tracked_paths)]
+    problems += [
         f"{path}: expected exactly one lane record, found {listed.count(path)}"
         for path in sorted(set(tracked.split("\0")) - {""})
         if listed.count(path) != 1
