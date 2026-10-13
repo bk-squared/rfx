@@ -85,7 +85,7 @@ ALLOWED = {
         "the v2.0 row names #931 and the removed keyword",
     "docs/public/project/changelog.mdx":
         "public release history; states two_plane is removed, not deprecated",
-    "docs/public/model/materials.mdx":
+    "docs/public/model/conductors.mdx":
         "the canonical contract page; names the keyword to say it is gone",
     "docs/public/api/geometry-materials.mdx":
         "API page; names the keyword to say passing it raises TypeError",
