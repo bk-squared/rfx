@@ -166,17 +166,20 @@ def init_plane_wave(nx, dx, dt, *, ny, nz, cpml_layers=0, tfsf_margin=3,
                 for t in tables_e + tables_h)
     radius = int(np.max(np.abs(m)))
     source_p = min_p - (3 * radius + 3)
+    windows, q1, sigma = (), 0.0, 0
     if info["m"] == (1, 0, 0):
         # Old i0=n_cpml+10, src=n_cpml+3: seven E nodes before x_lo.
         source_p = bounds.x_lo - (AUX_N_MARGIN_1D - AUX_SRC_OFFSET_1D)
     elif info["m"] == (-1, 0, 0):
         # Old n_tfsf includes x_hi+1: the right source is eight nodes past x_hi.
         source_p = -(bounds.x_hi + AUX_N_MARGIN_1D - AUX_SRC_OFFSET_1D + 1)
+    else:
+        q1, sigma = launch_window_width(info["m"])
+        # The entire launch support must be upstream of the source-free box.
+        source_p -= 4 * sigma
     source_n = np.rint(source_p - fractions[:3]).astype(np.int64)
     delays = (source_n + fractions[:3] - source_p) * (dx / np.linalg.norm(m)) / (299792458.0 * dt)
-    windows, q1, sigma = (), 0.0, 0
-    if info["m"] not in ((1, 0, 0), (-1, 0, 0)):
-        q1, sigma = launch_window_width(info["m"])
+    if sigma:
         windows = launch_windows(m, fractions, source_p, sigma, dx, dt)
     lo = min(int(source_n.min()), *(int(t.source_index.min()) for t in tables_e + tables_h))
     hi = max(int(source_n.max()), *(int(t.source_index.max()) for t in tables_e + tables_h))
