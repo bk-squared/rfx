@@ -9,27 +9,32 @@ The [Architecture](./architecture) page explains the layers. This
 page is the lookup: find the row for what you are adding, put the code where it
 says, and land the listed companions in the same pull request. Before writing
 anything new, grep the public API for an existing primitive and imitate a
-working example in `tests/` or `examples/`.
+working example in `tests/` or `examples/`. The map of the existing API by
+topic is `docs/agent/repo-map.mdx` in the repository; this page is about where
+new code belongs.
 
 ## By task
 
 | You are adding | Code goes in | It also needs |
 |---|---|---|
-| a material model (a dispersion, a nonlinearity, a loss law) | `rfx/materials/` for the model, `rfx/model/` for how it becomes per-edge coefficients | a row in the path table for every solver path; a closed-form check in `tests/oracle/` |
+| a material model (a dispersion, a nonlinearity, a loss law) | `rfx/materials/` for the model, `rfx/model/` for how it becomes per-edge coefficients | a row in the [path table](./architecture#declarations-refusals-and-the-path-table) for every solver path; a closed-form check in `tests/oracle/` |
 | a conductor kind or a change to how metal lands on the grid | `rfx/model/conductors.py`, `rfx/model/thin_conductors.py`, `rfx/boundaries/pec.py` | a realized-geometry check (compare what the grid built with what was drawn); the path table |
 | a boundary (an absorber, a wall, a periodic seam) | `rfx/boundaries/` | a direct measurement of the boundary itself (for an absorber, its reflection coefficient), not only a system result |
-| a source or a waveform | `rfx/sources/` | the path table; the settling check must still find when the source ends |
-| a port family or a change to how a port drives and reads | `rfx/sources/` for the drive, `rfx/measurement/` for its voltages and currents | the path table; an S-parameter check against a closed form where one exists |
-| a measurement (a probe kind, a DFT output, a flux or far-field quantity) | `rfx/measurement/` | the physical time each sample is taken at; the path table's observer rows |
-| an operation inside the time step | `rfx/stepping/`, at its place in `sequence.py` | the same physics under `run()` and `forward()` (the run/forward comparison) |
-| a refusal for an input a path does not implement | the admission check (`rfx/runners/_admission.py`) | the refused cell in `tests/contracts/path_disposition.py`; a message that names the input, the reason and the way through |
-| a preflight finding | `rfx/preflight/` | a code and a severity; a test that the finding fires and that the run still refuses an error |
+| a source or a waveform | `rfx/sources/` | the path table; the [settling check](/rfx/evidence/simulation-time/) must still find when the source ends |
+| a port family or a change to how a port drives and reads | `rfx/sources/` for the drive (`port_drive.py`), `rfx/measurement/` for its voltages and currents (`ports.py`, `projector.py`) | the path table; an S-parameter check against a closed form where one exists |
+| S-parameter extraction (wave definitions, a calculator for a port family) | `rfx/sparams/` | an S-parameter check against a closed form where one exists |
+| a measurement (a probe kind, a DFT output, a flux quantity) | `rfx/measurement/`; older probe code is still in `rfx/probes/` and moves to `rfx/measurement/` when touched | the physical time each sample is taken at; the path table's observer rows |
+| a far-field quantity | `rfx/farfield.py`, `rfx/ntff_surface.py`, `rfx/ntff_sweep.py` | a check against a closed form (a dipole, a sphere) |
+| an operation inside the time step | `rfx/stepping/`, at its place in `sequence.py` | the same physics under `run()` and `forward()` (`tests/contracts/test_run_forward_one_pipeline.py`) |
+| a refusal for an input a path does not implement | the admission check (`rfx/runners/_admission.py`, which also takes run arguments; the older `_refuse_unsupported_run_kwargs` in `rfx/api/_execute.py` is not the place for new ones) | the refused cell in `tests/contracts/path_disposition.py`; a message that names the input, the reason and the way through |
+| a preflight finding | `rfx/preflight/` | a code and a severity; a test that the finding fires, and, for an error, that `run()` stops on it |
 | a declaration method on `Simulation` | `rfx/api/__init__.py`, recording the declaration only | anything that needs the grid goes to `rfx/model/` (the layer check counts it otherwise) |
 
 Do not add implementation code to the five large files
 (`rfx/api/_execute.py`, `rfx/api/__init__.py`, `rfx/simulation.py`,
 `rfx/nonuniform.py`, `rfx/sources/waveguide_port.py`); the layer check fails a
-change that raises their count.
+change that raises their count (`scripts/ci/check_layer_structure.py`, run by
+`tests/contracts/test_layer_structure.py`).
 
 ## Which test
 
@@ -54,8 +59,8 @@ the defect is put back.
   leaves or finds a defect that gives a user a wrong result.
 - For a change to physics, one row per solver path in the body: fixed,
   refused, or not reachable.
-- No measurement records in the repository: sweeps, logs and studies go to
-  the records archive, and the pull request body names where.
+- No measurement records in the repository: sweeps, logs and studies are kept
+  outside it, and the pull request body says where.
 - Documentation beyond these is collected in one pass before the release;
   a pull request does not rewrite guides.
 
