@@ -488,7 +488,7 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_dft_planes", "dft_plane"): _NO_SHEETS,
     ("_flux_monitors", "flux"): frozenset({"run_uniform", "run_nonuniform", "fwd_uniform",
                                           "fwd_nonuniform", "fwd_adi"}),
-    ("_ntff", "ntff_box"): _OTHER_RUNNERS - _ADI,
+    ("_ntff", "ntff_box"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},  # Its x and y faces are always PEC (only a z lid may absorb).
     ("_current_moments", "block_moments"): _NO_SHEETS,
 }
 
@@ -530,6 +530,10 @@ for _row in _DISTRIBUTED_NU_ROWS:
 
 # Calculator memberships are independent of every shared lane set. A new
 # lane capability therefore never silently expands a calculator's contract.
+# waveguide_s_matrix drops NTFF with the #704 warning; material_fit drops it
+# without a warning (pre-existing behaviour, reported for its owner).
+NTFF_UNFORMED_LANES = frozenset({"waveguide_s_matrix", "material_fit"})
+
 # The waveguide extractor assembles these materials and PEC operators and
 # passes them to its device scans; its graded branch uses run_nonuniform_path.
 for _row in (
@@ -1043,8 +1047,10 @@ def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None
             from rfx._diagnostic_transport import diagnostic_refusal
             raise diagnostic_refusal(NotImplementedError(message(lane, rows, sim, run_args)), diagnostics)
         raise NotImplementedError(message(lane, rows, sim, run_args))
-    from rfx.boundaries.features import admit_waveguide
+    from rfx.boundaries.features import admit_ntff, admit_waveguide
     from rfx.boundaries.tfsf import admit_simulation
+    if lane not in NTFF_UNFORMED_LANES:
+        admit_ntff(sim, lane=lane)
     admit_waveguide(sim, lane=lane)
     admit_simulation(sim, materials=(run_args or {}).get("tfsf_materials"))
 

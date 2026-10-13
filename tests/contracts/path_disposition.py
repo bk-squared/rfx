@@ -964,7 +964,8 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
     "_ntff": {"ntff_box": lanes(
         run_uniform=carries(),
         run_nonuniform=carries(),
-        run_subgridded=carries("inside the refined slab, clear of its artificial interface"),
+        run_subgridded=refuses("its x and y faces are always PEC (only a z lid may absorb)",
+                               raises="an NTFF box radiates its surface currents into free space"),
         run_adi=_adi("NTFF", "does not support NTFF accumulation"),
         run_distributed=carries("uniform mesh; owner-partitioned surface record; graded run refuses NTFF (#1461)"),
         fwd_uniform=carries(),

@@ -267,8 +267,8 @@ def test_tfsf_and_waveguide_models_reach_single_device_fallback(monkeypatch):
             sim = Simulation(freq_max=15e9, domain=(24e-3, 12e-3, 12e-3),
                              dx=1e-3, boundary="cpml")
             sim.add_flux_monitor(axis="x", coordinate=12e-3, n_freqs=3)
-            sim.add_ntff_box((4e-3, 4e-3, 4e-3), (20e-3, 8e-3, 8e-3), n_freqs=3)
             if kind == "tfsf":
+                sim.add_ntff_box((4e-3, 4e-3, 4e-3), (20e-3, 8e-3, 8e-3), n_freqs=3)
                 sim.add_tfsf_source(f0=7.5e9, bandwidth=0.5)
             else:
                 sim.add_waveguide_port(

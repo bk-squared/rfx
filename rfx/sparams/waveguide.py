@@ -31,6 +31,7 @@ from rfx._precision import resolve_field_dtype
 from rfx.model.thin_conductors import conductivity_envelope
 
 from rfx.sparams._waveguide_planes import resolve_reported_planes
+import copy
 
 import jax.numpy as jnp
 import numpy as np
@@ -1237,8 +1238,11 @@ def _compute_waveguide_s_matrix_nu(
                 _ck = _nearest_divisor(n_steps, max(1, n_steps // int(checkpoint_segments)))
                 if 0 < _ck < n_steps:
                     _ckpt_every = _ck
+            # The #704 warning promises no NTFF accumulation in this calculator.
+            device = copy.copy(self)
+            device._ntff = None
             dev_result = run_nonuniform_path(
-                self, n_steps=n_steps,
+                device, n_steps=n_steps,
                 eps_override=eps_override,
                 sigma_override=sigma_override,
                 attach_waveguide_flux=_flux_mode,

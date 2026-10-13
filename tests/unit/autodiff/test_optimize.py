@@ -101,7 +101,7 @@ def test_optimize_runs_single_iteration():
 
 def test_forward_returns_minimal_result_contract():
     """Simulation.forward should return only differentiable observables."""
-    sim = Simulation(freq_max=5e9, domain=(0.015, 0.015, 0.015), boundary="pec")
+    sim = Simulation(freq_max=5e9, domain=(0.015, 0.015, 0.015), boundary="cpml")
     sim.add_source((0.005, 0.0075, 0.0075), "ez")
     sim.add_probe((0.01, 0.0075, 0.0075), "ez")
     sim.add_ntff_box((0.003, 0.003, 0.003), (0.012, 0.012, 0.012), freqs=jnp.array([3e9]))
