@@ -88,7 +88,7 @@ def make_observable(scene):
     cfg, state = init_tfsf(
         29, .002, grid.dt, ny=29, nz=29, cpml_layers=6, tfsf_margin=4,
         f0=10e9, bandwidth=.5, polarization="ez", direction="+x",
-        closed_box=closed_box, waveform=waveform)
+        closed_box=closed_box, waveform=waveform, n_steps=N_STEPS)
     incident = jnp.asarray(measure_normal_incident_spectrum(
         cfg, state, N_STEPS, freqs, grid.dt))
     occupancy = jnp.ones((4, 4, 4), dtype=jnp.float32)
@@ -213,19 +213,19 @@ def test_unsupported_forward_lane_still_refuses_under_grad(lane, source):
     if lane == "graded":
         options["dz_profile"] = [.002] * 16
     sim = Simulation(**options)
-    sim.add_tfsf_source(f0=10e9, closed_box=source == "closed_box",
-                        waveform=(CustomWaveform(lambda t: jnp.sin(t * 1e11))
-                                  if source == "custom" else "differentiated_gaussian"))
-    if lane == "subgridded":
-        sim.add_refinement(z_range=(.008, .016), ratio=2)
-
-    def objective(p):
-        return jnp.sum(sim.forward(
-            n_steps=2, skip_preflight=True, distributed=lane == "distributed",
-            design_box=((.012,) * 3, (.018,) * 3),
-            design_eps_override=p * jnp.ones((4, 4, 4))).time_series)
-
     with pytest.raises(NotImplementedError) as exc:
+        sim.add_tfsf_source(f0=10e9, closed_box=source == "closed_box",
+                            waveform=(CustomWaveform(lambda t: jnp.sin(t * 1e11))
+                                      if source == "custom" else "differentiated_gaussian"))
+        if lane == "subgridded":
+            sim.add_refinement(z_range=(.008, .016), ratio=2)
+
+        def objective(p):
+            return jnp.sum(sim.forward(
+                n_steps=2, skip_preflight=True, distributed=lane == "distributed",
+                design_box=((.012,) * 3, (.018,) * 3),
+                design_eps_override=p * jnp.ones((4, 4, 4))).time_series)
+
         jax.grad(objective)(jnp.float32(P0))
     assert str(exc.value) == (
         "CustomWaveform and closed_box TFSF require a uniform, single-device, "

@@ -48,19 +48,22 @@ def test_six_face_corrections_equal_mask_curl_commutator(polarization, direction
     dx, dt = 0.001, 1e-12
     cfg, aux = init_tfsf(shape[0], dx, dt, ny=shape[1], nz=shape[2],
                          cpml_layers=2, tfsf_margin=3, closed_box=True,
-                         polarization=polarization, direction=direction)
+                         polarization=polarization, direction=direction, n_steps=32)
     rng = np.random.default_rng(891)
-    e1d = rng.normal(size=aux.e1d.shape).astype(np.float32)
-    h1d = rng.normal(size=aux.h1d.shape).astype(np.float32)
-    aux = aux._replace(e1d=jnp.asarray(e1d), h1d=jnp.asarray(h1d))
+    ec, hc = polarization, "hy" if polarization == "ez" else "hz"
+    e1d = rng.normal(size=getattr(aux, ec).shape).astype(np.float32)
+    h1d = rng.normal(size=getattr(aux, hc).shape).astype(np.float32)
+    aux = aux._replace(**{ec: jnp.asarray(e1d), hc: jnp.asarray(h1d)})
     mask = np.zeros(shape)
     mask[cfg.x_lo:cfg.x_hi + 1, cfg.y_lo:cfg.y_hi + 1,
          cfg.z_lo:cfg.z_hi + 1] = 1
-    ix = np.arange(shape[0]) + cfg.i0 - cfg.x_lo
+    # Physical E(x), H(x+1/2) map to signed projected sublattices.
+    ix = cfg.m[0] * np.arange(shape[0]) - cfg.origin
+    ih = np.floor(cfg.m[0] * (np.arange(shape[0]) + .5)).astype(int) - cfg.origin
     e = np.zeros((3,) + shape)
     h = np.zeros_like(e)
-    e["xyz".index(polarization[-1])] = e1d[ix, None, None]
-    h["xyz".index(cfg.magnetic_component[-1])] = h1d[ix, None, None]
+    e["xyz".index(ec[-1])] = e1d[ix, None, None]
+    h["xyz".index(hc[-1])] = h1d[ih, None, None]
     want_h = -(dt / (MU_0 * dx)) * (mask * _curl(e, True) - _curl(mask * e, True))
     want_e = (dt / (EPS_0 * dx)) * (mask * _curl(h, False) - _curl(mask * h, False))
     state = init_state(shape)
@@ -98,7 +101,7 @@ def _aux(sim):
                      cpml_layers=grid.cpml_layers, tfsf_margin=entry.margin,
                      polarization=entry.polarization, direction=entry.direction,
                      f0=entry.f0, bandwidth=entry.bandwidth,
-                     waveform=entry.waveform, closed_box=entry.closed_box)
+                     waveform=entry.waveform, closed_box=entry.closed_box, n_steps=160)
 
 
 @pytest.mark.parametrize("polarization,direction", list(itertools.product(("ez", "ey"), ("+x", "-x"))))
@@ -123,10 +126,10 @@ def test_closed_vacuum_replays_real_waveform_inside_and_cancels_all_faces(polari
         sim.add_probe(pos, component=polarization)
     result = sim.run(n_steps=128)
     trace = np.asarray(result.time_series)
-    indices = np.array([cfg.i0 + p[0] - cfg.x_lo for p in points[:2]])
+    indices = np.array([cfg.m[0] * p[0] - cfg.origin for p in points[:2]])
     def step(st, n):
         st = update_tfsf_1d(cfg, st, grid.dx, grid.dt, n * grid.dt)
-        return st, st.e1d[indices]
+        return st, getattr(st, polarization)[indices]
     _, reference = jax.lax.scan(step, aux, jnp.arange(128))
     _peak_ulp(trace[:, :2], reference)
     peak = np.float32(np.max(np.abs(reference)))
@@ -193,18 +196,18 @@ def test_new_input_is_never_dropped_on_unsupported_lanes(entry, kind, lane):
     if lane in ("nonuniform", "distributed_nu"):
         params["dz_profile"] = [0.001] * 14
     sim = Simulation(**params)
-    sim.add_tfsf_source(closed_box=kind == "box", waveform=(
-        CustomWaveform(lambda t: jnp.sin(t * 1e11)) if kind == "custom"
-        else "differentiated_gaussian"))
-    if lane == "subgridded":
-        sim.add_refinement(z_range=(0.005, 0.009), ratio=2)
-    kwargs = dict(n_steps=2, skip_preflight=True)
-    if lane in ("distributed", "distributed_nu"):
-        if entry == "run":
-            kwargs["devices"] = [jax.devices()[0]] * 2
-        else:
-            kwargs["distributed"] = True
     with pytest.raises(NotImplementedError, match="CustomWaveform and closed_box"):
+        sim.add_tfsf_source(closed_box=kind == "box", waveform=(
+            CustomWaveform(lambda t: jnp.sin(t * 1e11)) if kind == "custom"
+            else "differentiated_gaussian"))
+        if lane == "subgridded":
+            sim.add_refinement(z_range=(0.005, 0.009), ratio=2)
+        kwargs = dict(n_steps=2, skip_preflight=True)
+        if lane in ("distributed", "distributed_nu"):
+            if entry == "run":
+                kwargs["devices"] = [jax.devices()[0]] * 2
+            else:
+                kwargs["distributed"] = True
         getattr(sim, entry)(**kwargs)
 
 

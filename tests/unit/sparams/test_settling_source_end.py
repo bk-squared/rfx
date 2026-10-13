@@ -104,7 +104,7 @@ def test_tfsf_uses_its_waveform_and_box_diagonal():
 
     grid = Grid(freq_max=10e9, domain=(.03, .03, .03), dx=.003, cpml_layers=4)
     cfg, _ = init_tfsf(grid.nx, grid.dx, grid.dt, cpml_layers=4,
-                      ny=grid.ny, nz=grid.nz, closed_box=True)
+                      ny=grid.ny, nz=grid.nz, closed_box=True, n_steps=300)
     waveform, distance = tfsf_source_drive(cfg, grid)
     expected_distance = np.linalg.norm([
         (getattr(cfg, a+'_hi')-getattr(cfg, a+'_lo'))*grid.dx for a in 'xyz'])
