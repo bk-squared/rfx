@@ -255,3 +255,10 @@ def with_requirements(model: BoundaryModel, requirements: tuple[Requirement, ...
     if model.requirements == requirements:
         return model
     return replace(model, requirements=requirements)
+
+
+def refresh_boundary_model(sim, *, rcs: bool = False) -> BoundaryModel:
+    """Store and return ``sim``'s face declaration with its current feature requirements."""
+    sim._boundary_model = with_requirements(
+        sim._boundary_model, collect_requirements(sim, rcs=rcs))
+    return sim._boundary_model
