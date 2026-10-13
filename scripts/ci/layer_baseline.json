@@ -521,9 +521,7 @@
     },
     "rfx/runners/uniform.py": {
       "S": [],
-      "M": [
-        "_reconstruct_oblique_physical"
-      ]
+      "M": []
     },
     "rfx/sources/tfsf.py": {
       "S": [

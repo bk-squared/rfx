@@ -2132,7 +2132,7 @@ class _ExecuteMixin:
         )
 
         # Return the physical point-probe field, as run_uniform does.
-        from rfx.measurement.oblique import reconstruct_oblique_physical
+        from rfx.measurement import reconstruct_oblique_physical
         from rfx.sources.tfsf import is_tfsf_2d
         if tfsf_run is not None and is_tfsf_2d(tfsf_run[0]):
             result = reconstruct_oblique_physical(result, tfsf_run[0], grid, probes)
