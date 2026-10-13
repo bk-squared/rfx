@@ -118,7 +118,7 @@ _harminv = import_module("rfx.harminv")
 # harminv's own defaults, read from its signature rather than re-typed, so the
 # decimation plan and pencil shape here follow the estimator they came from.
 _HARMINV_DEFAULTS = {
-    k: v.default for k, v in inspect.signature(_harminv.harminv).parameters.items()
+    k: v.default for k, v in inspect.signature(_harminv.matrix_pencil).parameters.items()
     if v.default is not inspect.Parameter.empty
 }
 PENCIL_PARAMETER = float(_HARMINV_DEFAULTS["pencil_parameter"])

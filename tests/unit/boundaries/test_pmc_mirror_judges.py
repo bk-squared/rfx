@@ -9,7 +9,7 @@ import pytest
 from rfx import Simulation, Box, DebyePole, GaussianPulse
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.probes.probes import flux_spectrum
-from rfx.harminv import harminv
+from rfx.harminv import matrix_pencil
 
 
 def record(name, data):
@@ -41,7 +41,7 @@ def test_asymmetric_low_high_mirror(graded, entry):
             kw['compute_s_params'] = False
         traces.append(np.asarray(getattr(sim, entry)(**kw).time_series)[:, 0])
         grid = sim._build_realized_grid()
-        modes = harminv(traces[-1][128:], grid.dt, 9e9, 14e9,
+        modes = matrix_pencil(traces[-1][128:], grid.dt, 9e9, 14e9,
                         min_Q=1, max_modes=16, sv_threshold=1e-3, decimate="auto")
         # Mixed PMC/PEC x walls have a quarter-wave fundamental; y is PEC.
         fundamental = min(modes, key=lambda m: m.freq).freq

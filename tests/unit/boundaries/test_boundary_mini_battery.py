@@ -24,7 +24,7 @@ from rfx import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.core.yee import EPS_0, MU_0
 from rfx.geometry.csg import Box
-from rfx.harminv import harminv
+from rfx.harminv import matrix_pencil
 from rfx.materials.debye import DebyePole
 from rfx.sources.sources import GaussianPulse
 from tests.contracts.boundary_compare import BoundaryDeparture
@@ -107,7 +107,7 @@ def resonance(structure, entry, dx):
     result = execute(sim, entry, steps)
     trace = np.asarray(result.time_series)[:, 0]
     dt = sim._build_grid().dt
-    modes = harminv(trace[steps // 4:], dt, *band, min_Q=1, max_modes=24,
+    modes = matrix_pencil(trace[steps // 4:], dt, *band, min_Q=1, max_modes=24,
                     sv_threshold=1e-3, decimate="auto")
     data = dict(structure=structure, entry=entry, dx_m=dx, steps=steps,
                 frequencies_Hz=[float(m.freq) for m in modes],

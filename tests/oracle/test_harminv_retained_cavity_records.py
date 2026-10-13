@@ -14,7 +14,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from rfx.harminv import harminv
+from rfx.harminv import matrix_pencil
 from tests import _nu_cavity_gates as G
 
 ROOT = Path(__file__).resolve().parents[1] / "fixtures" / "harminv_decimation"
@@ -29,7 +29,7 @@ def test_short_stage1_record_meets_its_existing_continuum_gate():
     path = directory / "input.npz"
     assert hashlib.sha256(path.read_bytes()).hexdigest() == receipt["input_sha256"]
     with np.load(path) as data:
-        modes = harminv(data["signal"], float(data["dt"]),
+        modes = matrix_pencil(data["signal"], float(data["dt"]),
                         float(data["fmin"]), float(data["fmax"]))
     continuum = C0 / 2 * np.sqrt(2) / 0.04  # TM110, a=b=40 mm, air
     mode = min(modes, key=lambda m: abs(m.freq - continuum))
@@ -59,7 +59,7 @@ def test_automatic_harminv_meets_cavity_lattice_and_stationarity_gates(case, cor
             assert hashlib.sha256(path.read_bytes()).hexdigest() == record["sha256"]
             with np.load(path) as data:
                 signal = data["signal"]
-            for m in harminv(signal, record["dt"], *band):
+            for m in matrix_pencil(signal, record["dt"], *band):
                 lines.append(dict(f_hz=m.freq, amp=m.amplitude, error=m.error, channel=channel))
         found = G.identify_modes(lines, modes, band)
         assert found["n_clusters_in_band"] == len(modes) == 7

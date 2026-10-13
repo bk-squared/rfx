@@ -148,6 +148,9 @@
     "MaterialFitResult": {
       "kind": "class"
     },
+    "MatrixPencilMode": {
+      "kind": "class"
+    },
     "MeshIntelligenceReport": {
       "kind": "class"
     },
@@ -1441,6 +1444,30 @@
         "n_steps",
         "materials",
         "amplitude_kind"
+      ]
+    },
+    "matrix_pencil": {
+      "kind": "function",
+      "params": [
+        "signal",
+        "dt",
+        "f_min",
+        "f_max",
+        "pencil_parameter",
+        "min_Q",
+        "max_modes",
+        "sv_threshold",
+        "decimate"
+      ]
+    },
+    "matrix_pencil_from_probe": {
+      "kind": "function",
+      "params": [
+        "time_series",
+        "dt",
+        "freq_range",
+        "source_decay_time",
+        "kwargs"
       ]
     },
     "maximize_bandwidth": {

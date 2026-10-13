@@ -29,7 +29,7 @@ import numpy as np
 import pytest
 
 from rfx import Box, GaussianPulse, Simulation
-from rfx.harminv import harminv
+from rfx.harminv import matrix_pencil
 
 C0 = 299_792_458.0
 EPS0 = 8.8541878128e-12
@@ -134,7 +134,7 @@ def test_lossy_cavity_Q_vs_tandelta():
 
     dt = float(res.grid.dt)
     ez = np.asarray(res.time_series[:, 0])
-    modes = harminv(ez, dt, 0.5 * f11, 2.5 * f11, min_Q=2.0)
+    modes = matrix_pencil(ez, dt, 0.5 * f11, 2.5 * f11, min_Q=2.0)
     assert modes, "Harminv found no cavity mode"
 
     m0 = max(modes, key=lambda m: m.amplitude)     # dominant TM11
