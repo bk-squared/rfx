@@ -138,12 +138,14 @@ def _inner_cell(span, k, r, cap, max_ratio):
     return S / n
 
 
-def _chain_r(chain, edges, cap, max_ratio):
+def _chain_r(chain, edges, cap, max_ratio, face_pairs=()):
     """ONE edge cell for a whole chain: the largest exact fit
     ``r = D_j / (n + k_j) <= cap`` of any pair j for which every pair of the
     chain closes (``_inner_cell`` is not None). Returns ``(r, inner cells)``
     or ``(None, None)`` when no fit down to ``1e-3 cap`` closes the chain."""
     spans = [(edges[i + 1].position - edges[i].position, k) for i, k in chain]
+    spans.extend((abs(face - edges[i].position), k)
+                 for i, face, k in face_pairs)
     heap = []
     for j, (span, k) in enumerate(spans):
         n = max(0, int(np.ceil(span / cap - k - 1e-9)))
@@ -168,6 +170,21 @@ def _build(lo, hi, dx, fixed, edges, res, edge_offset, max_ratio,
            boundary_cell):
     """Lines for the given edge-cell sizes, then the cells between them."""
     res = list(res)
+    # Only the nearest face on either side can partner an edge. A face
+    # inside the protected cell at the cap joins the exact-fit constraints;
+    # merely capping r would leave a sliver when a chain chooses a smaller r.
+    face_pairs = {}
+    for i, edge in enumerate(edges):
+        if edge.position in fixed:
+            raise ValueError("a face coincides with a sheet edge")
+        for side in (-1, 1):
+            nearest = [f for f in fixed if (f - edge.position) * side > 0.0]
+            if not nearest:
+                continue
+            face = min(nearest, key=lambda f: abs(f - edge.position))
+            k = edge_offset if side == edge.metal_side else 1.0 - edge_offset
+            if abs(face - edge.position) < k * res[i]:
+                face_pairs.setdefault(i, []).append((i, face, k))
     # Strips (metal between two edges) and gaps (air between two metals) with
     # no face in between form CHAINS of consecutive edges. Every edge of a
     # chain gets ONE edge-cell size r, an exact fit D = (n + k) r of one of
@@ -178,9 +195,16 @@ def _build(lo, hi, dx, fixed, edges, res, edge_offset, max_ratio,
     # gap on its own let a shared edge keep the LAST pair's r and left a
     # micrometre sliver between two lines that should coincide.
     paired = {}
-    for chain in _chains(_chain_pairs(edges, fixed, edge_offset)):
-        ids = [chain[0][0]] + [i + 1 for i, _ in chain]
-        r, inner = _chain_r(chain, edges, min(res[i] for i in ids), max_ratio)
+    face_inner = []
+    chains = _chains(_chain_pairs(edges, fixed, edge_offset))
+    groups = [([chain[0][0]] + [i + 1 for i, _ in chain], chain)
+              for chain in chains]
+    chained = {i for ids, _ in groups for i in ids}
+    groups.extend(([i], []) for i in face_pairs if i not in chained)
+    for ids, chain in groups:
+        partners = [pair for i in ids for pair in face_pairs.get(i, ())]
+        r, inner = _chain_r(chain, edges, min(res[i] for i in ids),
+                            max_ratio, partners)
         if r is None:
             continue
         for i in ids:
@@ -188,18 +212,23 @@ def _build(lo, hi, dx, fixed, edges, res, edge_offset, max_ratio,
         for (i, _), c in zip(chain, inner):
             if c > 0.0:
                 paired[i] = c
-    # Shrink an edge cell until it clears its neighbours: other edge cells
-    # and faces. Twelve steps of 0.8 take it to ~0.07 of its start; below
+        for (i, face, k), c in zip(partners, inner[len(chain):]):
+            if c > 0.0:
+                line = edges[i].position + np.sign(face - edges[i].position) * k * r
+                face_inner.append((min(line, face), max(line, face), c))
+    # Shrink an edge cell until it clears neighbouring edge cells.
+    # Faces and domain ends are already handled by the exact-fit pairs above.
+    # Twelve steps of 0.8 take it to ~0.07 of its start; below
     # that the drawing, not the mesh, is the problem.
     for _ in range(12):
         spans = [_edge_lines(e, r, edge_offset)[0] for e, r in zip(edges, res)]
         clash = [False] * len(edges)
         for i, (a, b) in enumerate(spans):
-            if a < lo or b > hi:
-                clash[i] = True
+            if a < lo - 1e-15 or b > hi + 1e-15:
+                raise ValueError("paired edge cell crosses a domain end")
             for f in fixed:
                 if a + 1e-15 < f < b - 1e-15:
-                    clash[i] = True
+                    raise ValueError("paired edge cell crosses a face")
             if i + 1 < len(spans) and spans[i + 1][0] < b - 1e-15:
                 clash[i] = clash[i + 1] = True
         if not any(clash):
@@ -230,6 +259,8 @@ def _build(lo, hi, dx, fixed, edges, res, edge_offset, max_ratio,
         inner = [r for i, r in paired.items()
                  if min(ends[i], ends[i + 1]) - 1e-12 <= a
                  and b <= max(ends[i], ends[i + 1]) + 1e-12]
+        inner.extend(c for left, right, c in face_inner
+                     if left - 1e-12 <= a and b <= right + 1e-12)
         if is_edge_cell:
             sizes.append(b - a)
             prot.append(True)

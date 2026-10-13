@@ -162,6 +162,33 @@ def test_a_face_inside_an_edge_cell_shrinks_the_cell_instead_of_moving_the_face(
     assert (5.0e-3 - lo) / (hi - lo) == pytest.approx(EDGE_OFFSET, abs=1e-6)
 
 
+@pytest.mark.parametrize("dx_mm, edges_mm, faces_mm, hi_mm", [
+    pytest.param(3.0, ((6.762, 1), (15.228, -1), (17.815, 1),
+                       (18.412, -1)), (17.9977,), 26.74, id="review-worst"),
+    pytest.param(2.0, ((4.22025048256538, 1), (5.265273516271296, -1), (12.934507880442927, 1), (17.255767034353962, -1), (18.752719482315815, 1), (25.281089049271475, -1), (31.538168602355498, 1), (32.48988483737529, -1)), (4.438897939065866, 17.441681738187118), 38.12990606308621, id="stop-measurement"),
+] + [
+    pytest.param(dx, ((5 * dx, 1),) if single else
+                 ((5 * dx, 1), (10 * dx, -1)),
+                 ((5 + side * distance) * dx,), 15 * dx,
+                 id=f"{'edge' if single else 'strip'}-dx{dx}-side{side}-d{distance}")
+    for dx in (1.0, 3.0) for single in (True, False)
+    for side in (-1, 1) for distance in (0.05, 0.2, 0.4, 0.9)
+])
+def test_a_nearby_face_never_leaves_a_cell_below_a_fifth_of_the_drawn_feature(
+        dx_mm, edges_mm, faces_mm, hi_mm):
+    edges = [SheetEdge(p * 1e-3, side) for p, side in edges_mm]
+    faces = [f * 1e-3 for f in faces_mm]
+    hi, dx = hi_mm * 1e-3, dx_mm * 1e-3
+    # Strip/gap widths and edge-to-face/end distances from the drawing.
+    features = [b.position - a.position for a, b in zip(edges, edges[1:])]
+    features += [abs(e.position - f) for e in edges for f in (0.0, *faces, hi)]
+    floor = min(dx, min(features)) / 5.0
+    prof = edge_aware_profile(0.0, hi, dx, faces=faces, sheet_edges=edges)
+    assert prof.cells.min() >= floor
+    for face in faces:
+        assert np.min(np.abs(prof.nodes - face)) < 1e-12
+
+
 def test_an_edge_outside_the_axis_is_refused():
     with pytest.raises(ValueError, match="outside"):
         edge_aware_profile(0.0, 10e-3, 1e-3,
