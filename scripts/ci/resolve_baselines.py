@@ -16,7 +16,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import check_file_size_ratchet as size
 import check_layer_structure as layer
 
-REPO = Path(__file__).resolve().parents[2]
 BASELINES = (size.BASELINE, layer.BASELINE)
 
 
@@ -53,8 +52,12 @@ def encode(data: dict) -> bytes:
     return (json.dumps(data, indent=2) + "\n").encode("utf-8")
 
 
-def regenerate_size(repo: Path, ours: dict, theirs: dict) -> tuple[dict, list[str], list[str]]:
-    """Merge ratchet ceilings; count sources to verify, without spending slack."""
+def regenerate_size(repo: Path, ours: dict, theirs: dict,
+                    base_listed: set[str] | None = None) -> tuple[dict, list[str], list[str]]:
+    """Merge ratchet ceilings; count sources to verify, without spending slack.
+
+    An entry the --base side does not list is dropped (the checker refuses an entry its base
+    does not list); its file is then governed by the merged cap."""
     cap = min(ours["cap"], theirs["cap"])
     listed = ours["files"].keys() | theirs["files"].keys()
     files, errors, notes = {}, [], []
@@ -68,9 +71,9 @@ def regenerate_size(repo: Path, ours: dict, theirs: dict) -> tuple[dict, list[st
         left = ours["files"].get(path, ours["cap"])
         right = theirs["files"].get(path, theirs["cap"])
         limit = min(left, right)
-        keep = (path in ours["files"] and path in theirs["files"]) or (
+        keep = ((path in ours["files"] and path in theirs["files"]) or (
             path in listed and limit < cap
-        )
+        )) and (base_listed is None or path in base_listed)
         if keep:
             files[path] = limit
             for side, data in (("ours", ours), ("theirs", theirs)):
@@ -117,12 +120,26 @@ def resolve(repo: Path, ours: str = "HEAD", theirs: str | None = None,
         return 2
     theirs = "MERGE_HEAD" if theirs is None else theirs
     base = theirs if base is None else base
+    # The final check must use the merged tree's own checkers: refuse a copy of this script
+    # whose bundled checkers differ from the tree's (run the tree's own resolve_baselines.py).
+    here = Path(__file__).resolve().parent
+    for module in (size, layer):
+        name = Path(module.__file__).name
+        try:
+            same = (here / name).read_bytes() == (repo / "scripts/ci" / name).read_bytes()
+        except OSError:
+            same = False
+        if not same:
+            print(f"scripts/ci/{name} in {repo} differs from the copy beside this script: "
+                  "run the tree's own scripts/ci/resolve_baselines.py", file=sys.stderr)
+            return 2
     try:
         size_sides = [size.baseline(git(repo, "show", f"{rev}:{size.BASELINE}"))
                       for rev in (ours, theirs)]
         layer_sides = [layer.baseline(git(repo, "show", f"{rev}:{layer.BASELINE}"))
                        for rev in (ours, theirs)]
-        sized, errors, notes = regenerate_size(repo, *size_sides)
+        base_listed = set(size.baseline(git(repo, "show", f"{base}:{size.BASELINE}"))["files"])
+        sized, errors, notes = regenerate_size(repo, *size_sides, base_listed=base_listed)
         layered, layer_errors = regenerate_layer(repo, *layer_sides)
         errors.extend(layer_errors)
         if errors:

@@ -89,7 +89,7 @@ def tree():
         yield repo
 
 
-def merge(tree, ours=None, theirs=None, extra=False, layer_conflict=True, omit_ours=(),
+def merge(tree, ours=None, theirs=None, extra=False, layer_conflict=True, omit_ours=(), omit_theirs=(),
           ours_limits=None, theirs_limits=None, ours_cap=20, theirs_cap=20):
     git(tree, "checkout", "-qb", "side-a")
     write(tree, LEFT, "def step():\n    pass\n")
@@ -118,6 +118,11 @@ def merge(tree, ours=None, theirs=None, extra=False, layer_conflict=True, omit_o
     if extra:
         write(tree, "other.txt", "theirs\n")
     baselines(tree, compact=True, limits=theirs_limits, cap=theirs_cap)
+    if omit_theirs:
+        data = json.loads((tree / SIZE).read_bytes())
+        for path in omit_theirs:
+            del data["files"][path]
+        write(tree, SIZE, json.dumps(data) + "\n")
     commit(tree, "Update second baseline")
     git(tree, "checkout", "-q", "side-a")
     git(tree, "merge", "--no-ff", "--no-commit", "side-b", expected=1)
@@ -468,3 +473,29 @@ def test_default_repo_is_the_current_directory_not_the_script_location(tree):
     )
     assert result.returncode == 0, result.stderr
     assert git(tree, "diff", "--name-only", "--diff-filter=U") == b""
+
+
+def test_checkers_differing_from_the_tree_refused(tree):
+    # The final check must run the merged tree's own checkers, not this script's neighbours.
+    merge(tree)
+    checker = tree / "scripts/ci/check_file_size_ratchet.py"
+    checker.write_bytes(checker.read_bytes() + b"\n# local edit\n")
+    before, index = snapshot(tree), git(tree, "ls-files", "--stage", "-z")
+    result = subprocess.run(
+        [sys.executable, str(REPO / SCRIPT), "--theirs", "side-b"],
+        cwd=tree, capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 2
+    assert "differs from the copy beside this script" in result.stderr
+    unchanged(tree, before, index)
+
+
+def test_entry_the_base_side_removed_is_dropped(tree):
+    # Main (theirs, the --base) removed a below-cap entry the PR still lists: keeping it would fail
+    # the checker against main ("unlisted"), so it is dropped and the cap governs the file.
+    merge(tree, omit_theirs=(X,))
+    result = run(tree, "--theirs", "side-b")
+    assert result.returncode == 0, result.stderr
+    assert X not in json.loads((tree / SIZE).read_bytes())["files"]
+    with redirect_stderr(io.StringIO()):
+        assert resolver.size.check(tree, "side-b") == 0
