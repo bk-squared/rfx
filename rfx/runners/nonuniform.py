@@ -1255,23 +1255,22 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                 "TFSF on nonuniform mesh supports only direction='+x' or "
                 f"'-x'; got {entry.direction!r}."
             )
-        from rfx.sources.tfsf import init_tfsf
-        tfsf_pair = init_tfsf(
-            grid.nx,
-            grid.dx,
-            grid.dt,
-            cpml_layers=grid.cpml_layers,
-            tfsf_margin=entry.margin,
-            f0=entry.f0 if entry.f0 is not None else sim._freq_max / 2,
-            bandwidth=entry.bandwidth,
-            amplitude=entry.amplitude,
-            polarization=entry.polarization,
-            direction=entry.direction,
-            angle_deg=entry.angle_deg,
-            ny=grid.ny,
-            nz=grid.nz,
-            waveform=getattr(entry, 'waveform', 'differentiated_gaussian'),
+        if is_tracer(grid.cells("x")):
+            raise ValueError(
+                "a plane wave on a graded mesh needs a fixed, uniform x axis; "
+                "the x cell sizes are traced")
+        from rfx.sources.tfsf import tfsf_from_declaration
+        tfsf_pair = tfsf_from_declaration(
+            entry, grid, sim._freq_max, n_steps=n_steps,
         )
+        nonvacuum = []
+        if design_box is not None:
+            b = design_box.bounds
+            window = tuple(slice(b[2 * d], min(b[2 * d + 1] + 1, grid.shape[d]))
+                           for d in range(3))
+            nonvacuum.append(jnp.zeros(grid.shape, dtype=bool).at[window].set(True))
+        sim._validate_tfsf_vacuum_boundary(
+            materials, tfsf_pair[0], nonvacuum_masks=tuple(nonvacuum))
 
     # NTFF box: build once (indices are Python-static) + zero-init
     # DFT accumulators that will be threaded through the scan carry.

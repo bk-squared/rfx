@@ -519,12 +519,6 @@
       ],
       "M": []
     },
-    "rfx/runners/uniform.py": {
-      "S": [],
-      "M": [
-        "_reconstruct_oblique_physical"
-      ]
-    },
     "rfx/sources/tfsf.py": {
       "S": [
         "_apply_closed_box_e",

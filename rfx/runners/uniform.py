@@ -23,46 +23,7 @@ from rfx.sources.waveguide_port import (
 from rfx.current_moments import monitor_for_simulation as _cm_for_sim
 from rfx.farfield import make_ntff_box
 from rfx.lumped import setup_rlc_materials, build_rlc_meta
-
-
-def _reconstruct_oblique_physical(sim_result, tfsf_cfg, grid, probes):
-    """#404: convert the complex Bloch envelope P back to the physical real field
-    ``Re(P·exp(-j k_t·x_t))`` for the oblique-periodic path.
-
-    Reconstructs the final ``state`` (per-cell transverse phase ramp along the
-    periodic axis) and point-probe ``time_series`` (fixed phase at each probe's
-    transverse cell). Other outputs are fenced upstream. The sign convention is
-    ``cfg.k_transverse`` — the same one the 2D-aux injection and the hand-rolled
-    acceptance tests use (``exp(-1j·k_transverse·y)``).
-    """
-    import jax.numpy as _jnp
-    k_t = float(tfsf_cfg.k_transverse)
-    taxis = 1 if tfsf_cfg.transverse_axis == "y" else 2
-    d_t = float(getattr(grid, "dy", grid.dx)) if taxis == 1 \
-        else float(getattr(grid, "dz", grid.dx))
-    n_t = grid.shape[taxis]
-    ramp = _jnp.exp(-1j * k_t * _jnp.arange(n_t) * d_t)
-
-    new_state = sim_result.state
-    if new_state is not None and _jnp.iscomplexobj(new_state.ex):
-        shp = [1, 1, 1]
-        shp[taxis] = n_t
-        ramp3 = ramp.reshape(shp)
-        new_state = new_state._replace(**{
-            f: _jnp.real(getattr(new_state, f) * ramp3)
-            for f in ("ex", "ey", "ez", "hx", "hy", "hz")
-        })
-
-    new_ts = sim_result.time_series
-    if new_ts is not None and _jnp.iscomplexobj(new_ts):
-        if probes:  # time_series is (n_steps, n_probes) in probe order
-            idxs = _jnp.array([(p.j if taxis == 1 else p.k) for p in probes])
-            ph = _jnp.exp(-1j * k_t * idxs * d_t)
-            new_ts = _jnp.real(new_ts * ph[None, :])
-        else:
-            new_ts = _jnp.real(new_ts)
-
-    return sim_result._replace(state=new_state, time_series=new_ts)
+from rfx.measurement.oblique import reconstruct_oblique_physical
 
 
 
@@ -279,27 +240,10 @@ def run_uniform(
         periodic = tuple(axis in sim._periodic_axes for axis in "xyz")
 
     if sim._tfsf is not None:
-        from rfx.sources.tfsf import init_tfsf, validate_custom_tfsf_waveform
+        from rfx.sources.tfsf import tfsf_from_declaration
 
-        validate_custom_tfsf_waveform(sim._tfsf.waveform, grid.dt, n_steps)
-
-        tfsf = init_tfsf(
-            grid.nx,
-            grid.dx,
-            grid.dt,
-            cpml_layers=grid.cpml_layers,
-            tfsf_margin=sim._tfsf.margin,
-            f0=sim._tfsf.f0 if sim._tfsf.f0 is not None else sim._freq_max / 2,
-            bandwidth=sim._tfsf.bandwidth,
-            amplitude=sim._tfsf.amplitude,
-            polarization=sim._tfsf.polarization,
-            direction=sim._tfsf.direction,
-            angle_deg=sim._tfsf.angle_deg,
-            ny=grid.ny,
-            nz=grid.nz,
-            waveform=getattr(sim._tfsf, 'waveform', 'differentiated_gaussian'),
-            method=getattr(sim._tfsf, 'method', 'bloch'),
-            closed_box=sim._tfsf.closed_box,
+        tfsf = tfsf_from_declaration(
+            sim._tfsf, grid, sim._freq_max, n_steps=n_steps,
         )
         from rfx.boundaries.tfsf import boundary_flags as tfsf_boundary_flags
         periodic, cpml_axes = tfsf_boundary_flags(tfsf[0], grid)
@@ -995,7 +939,7 @@ def run_uniform(
     if sim._tfsf is not None:
         from rfx.sources.tfsf import is_tfsf_2d as _is_tfsf_2d_out
         if _is_tfsf_2d_out(tfsf[0]):
-            sim_result = _reconstruct_oblique_physical(sim_result, tfsf[0], grid, probes)
+            sim_result = reconstruct_oblique_physical(sim_result, tfsf[0], grid, probes)
 
     return Result(
         diagnostics=diagnostics,

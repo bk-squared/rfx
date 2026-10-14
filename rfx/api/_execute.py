@@ -1572,26 +1572,11 @@ class _ExecuteMixin:
         # w.r.t. the scatterer materials through the same validated kernel as run().
         tfsf_run = None
         if self._tfsf is not None:
-            from rfx.sources.tfsf import init_tfsf as _init_tfsf_fwd
-            from rfx.sources.tfsf import validate_custom_tfsf_waveform
-            validate_custom_tfsf_waveform(self._tfsf.waveform, grid.dt, n_steps)
-            tfsf_run = _init_tfsf_fwd(
-                grid.nx, grid.dx, grid.dt,
-                cpml_layers=grid.cpml_layers,
-                tfsf_margin=self._tfsf.margin,
-                f0=self._tfsf.f0 if self._tfsf.f0 is not None else self._freq_max / 2,
-                bandwidth=self._tfsf.bandwidth,
-                amplitude=self._tfsf.amplitude,
-                polarization=self._tfsf.polarization,
-                direction=self._tfsf.direction,
-                angle_deg=self._tfsf.angle_deg,
-                ny=grid.ny,
-                nz=grid.nz,
-                waveform=getattr(self._tfsf, "waveform", "differentiated_gaussian"),
-                method=getattr(self._tfsf, "method", "bloch"),
-                closed_box=self._tfsf.closed_box,
+            from rfx.sources.tfsf import tfsf_from_declaration
+            tfsf_run = tfsf_from_declaration(
+                self._tfsf, grid, self._freq_max, n_steps=n_steps,
             )
-            # The legacy slab's concrete vacuum check runs via preflight.
+            # The slab's vacuum check uses the final materials below.
             # The closed box also checks the final realized operators below,
             # after material overrides and port setup (including AD values).
             from rfx.boundaries.tfsf import boundary_flags as tfsf_boundary_flags
@@ -2081,6 +2066,16 @@ class _ExecuteMixin:
                     nonvacuum.append(jnp.zeros(grid.shape, dtype=bool).at[window].set(True))
             self._validate_tfsf_vacuum_boundary(
                 materials, tfsf_run[0], nonvacuum_masks=tuple(nonvacuum))
+        elif self._tfsf is not None:
+            nonvacuum = []
+            for spec in (design_box, design_occupancy):
+                if spec is not None:
+                    b = spec.bounds
+                    window = tuple(slice(b[2 * d], min(b[2 * d + 1] + 1, grid.shape[d]))
+                                   for d in range(3))
+                    nonvacuum.append(jnp.zeros(grid.shape, dtype=bool).at[window].set(True))
+            self._validate_tfsf_vacuum_boundary(
+                materials, tfsf_run[0], nonvacuum_masks=tuple(nonvacuum))
 
         # Every declared input this lane does not carry is refused here,
         # after the specific refusals above and before the first step.
@@ -2135,6 +2130,12 @@ class _ExecuteMixin:
             design_occupancy=design_occupancy,
             field_dtype=self._resolve_field_dtype(),
         )
+
+        # Return the physical point-probe field, as run_uniform does.
+        from rfx.measurement import reconstruct_oblique_physical
+        from rfx.sources.tfsf import is_tfsf_2d
+        if tfsf_run is not None and is_tfsf_2d(tfsf_run[0]):
+            result = reconstruct_oblique_physical(result, tfsf_run[0], grid, probes)
 
         # Multi-drive S-matrix hook (item-5 Stage 1): return the raw all-port
         # (v_dft, i_dft) accumulators for off-line wave decomposition by the
@@ -3642,15 +3643,12 @@ class _ExecuteMixin:
                 "for differentiable nonlinear (Kerr) design."
             )
 
-        # Differentiable TFSF/plane-wave forward is wired on the uniform
-        # single-device lane only (the shared scan + complex Bloch path, #404).
-        # The non-uniform and distributed forward lanes have no TFSF handling and
-        # would silently drop the source (zero gradients) — fail loud instead.
-        if self._tfsf is not None and plan.lane != "fwd_uniform":
+        # Both single-device lanes build TFSF; distributed/ADI lanes do not.
+        if self._tfsf is not None and plan.lane not in ("fwd_uniform", "fwd_nonuniform"):
             raise NotImplementedError(
-                "Differentiable TFSF plane-wave forward is supported only on the "
-                f"uniform single-device forward lane, not {plan.lane!r}. Use a "
-                "uniform mesh + single device for TFSF/plane-wave inverse design."
+                "Differentiable TFSF plane-wave forward refuses distributed and "
+                f"ADI lanes, including {plan.lane!r}. Use a uniform or graded "
+                "single-device forward lane for TFSF/plane-wave inverse design."
             )
 
         # mu_r_override is wired only on the uniform lane; the NU/distributed
