@@ -7,9 +7,15 @@ realized monitor's volume/displacement weights derived from grid.cells.
 """
 from itertools import product
 
+import jax.numpy as jnp
 import numpy as np
 
 from .plan import Channel, Node, Owner
+
+
+def default_frequency_grid(freq_max, n_freqs):
+    """The default DFT frequency grid: ``n_freqs`` points from ``freq_max/10`` to ``freq_max``."""
+    return jnp.linspace(freq_max / 10, freq_max, n_freqs)
 
 
 def monitor_owners(sim, grid):

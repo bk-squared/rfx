@@ -14,7 +14,6 @@
       "A": [],
       "G": [
         "Simulation.__init__",
-        "Simulation.add_ntff_box",
         "Simulation.mesh_intelligence_report"
       ],
       "D1": [],
