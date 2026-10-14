@@ -33,14 +33,14 @@ def source_coefficient(materials, debye, lorentz, source, dt, layout, mesh):
     if debye is None and lorentz is None:
         if not any(isinstance(a, jax.core.Tracer) for a in
                    jax.tree.leaves((materials.components.eps_update, materials.components.sigma_update))):
-            # Plain graded sources historically evaluate their scalar Cb in
-            # host precision. Read just the owning edge, then keep that same
-            # arithmetic and the pre-loop (Cb / dV) * samples product.
+            # Plain graded sources: read just the owning edge, form Cb with the
+            # one-device formula (one jnp expression since #1741), and keep the
+            # pre-loop (Cb / dV) * samples product.
             from rfx.nonuniform import current_source_cb
             stage = _source_means_map(mesh, owner, axis, cell)
             eps, sigma = jax.checkpoint(stage)(mesh_ranks(mesh), materials.components.eps_update,
                                              materials.components.sigma_update)
-            return current_source_cb(eps, sigma, dt, traced=False)
+            return current_source_cb(eps, sigma, dt)
         from rfx.runners import distributed_nu
         def read_material(eps, sigma, ranks):
             return distributed_nu.material_drive_scales(eps, sigma, mesh,
@@ -113,7 +113,7 @@ def eager_drive_scales(eps, sigma, mesh, drives, dt, ranks, reduce_devices):
         values = []
         for i, (owner, _, _, _, volume, pole) in enumerate(drives):
             cb = current_source_cb(jnp.where(rank == owner, eps[i], 1.),
-                jnp.where(rank == owner, sigma[i] + pole, 0.), dt, traced=True)
+                jnp.where(rank == owner, sigma[i] + pole, 0.), dt)
             values.append(jnp.where(rank == owner, cb / volume, 0.))
         return jnp.stack(values)
     values = jax.vmap(local)(*means, ranks)
