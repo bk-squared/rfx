@@ -54,6 +54,7 @@ def encode(data: dict) -> bytes:
 
 
 def regenerate_size(repo: Path, ours: dict, theirs: dict) -> tuple[dict, list[str], list[str]]:
+    """Merge ratchet ceilings; count sources to verify, without spending slack."""
     cap = min(ours["cap"], theirs["cap"])
     listed = ours["files"].keys() | theirs["files"].keys()
     files, errors, notes = {}, [], []
@@ -66,18 +67,24 @@ def regenerate_size(repo: Path, ours: dict, theirs: dict) -> tuple[dict, list[st
         count = size.code_lines(source.read_bytes())
         left = ours["files"].get(path, ours["cap"])
         right = theirs["files"].get(path, theirs["cap"])
-        if count > min(left, right):
-            errors.append(f"file_size_baseline.json {path}: merged count {count} exceeds "
-                          f"min(ours {left}, theirs {right}) — real conflict")
-        if path in listed:
-            files[path] = count
+        limit = min(left, right)
+        keep = (path in ours["files"] and path in theirs["files"]) or (
+            path in listed and limit < cap
+        )
+        if keep:
+            files[path] = limit
             for side, data in (("ours", ours), ("theirs", theirs)):
                 if path not in data["files"]:
                     notes.append(f"file_size_baseline.json {path}: kept entry omitted by {side} "
-                                 f"at merged count {count}")
-            if count < left or count < right:
-                notes.append(f"file_size_baseline.json {path}: lowered to {count} "
-                             f"from ours {left}, theirs {right}")
+                                 f"at merged limit {limit}")
+        else:
+            # A removed entry at/above cap becomes unlisted, so the merged cap
+            # governs it even when the other side had a larger explicit limit.
+            limit = cap
+            left, right = ours["cap"], theirs["cap"]
+        if count > limit:
+            errors.append(f"file_size_baseline.json {path}: merged count {count} exceeds "
+                          f"min(ours {left}, theirs {right}) — real conflict")
     return {"counts": "code-lines", "cap": cap, "files": files}, errors, notes
 
 

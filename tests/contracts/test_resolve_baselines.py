@@ -41,12 +41,14 @@ def write(repo, path, text):
     target.write_text(text, encoding="utf-8")
 
 
-def baselines(repo, compact=False):
+def baselines(repo, compact=False, limits=None, cap=20):
     """The size gate has no writer: use its counter, validator, and check."""
-    data = {"counts": "code-lines", "cap": 20, "files": {
+    data = {"counts": "code-lines", "cap": cap, "files": {
         path: resolver.size.code_lines((repo / path).read_bytes())
         for path in (X, Y) if (repo / path).exists()
     }}
+    if limits is not None:
+        data["files"].update(limits)
     (repo / SIZE).write_bytes(resolver.encode(data))
     resolver.size.baseline((repo / SIZE).read_bytes())
     with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
@@ -87,7 +89,8 @@ def tree():
         yield repo
 
 
-def merge(tree, ours=None, theirs=None, extra=False, layer_conflict=True, omit_ours=()):
+def merge(tree, ours=None, theirs=None, extra=False, layer_conflict=True, omit_ours=(),
+          ours_limits=None, theirs_limits=None, ours_cap=20, theirs_cap=20):
     git(tree, "checkout", "-qb", "side-a")
     write(tree, LEFT, "def step():\n    pass\n")
     if ours is None:
@@ -96,7 +99,7 @@ def merge(tree, ours=None, theirs=None, extra=False, layer_conflict=True, omit_o
         ours(tree)
     if extra:
         write(tree, "other.txt", "ours\n")
-    baselines(tree, compact=True)
+    baselines(tree, compact=True, limits=ours_limits, cap=ours_cap)
     if omit_ours:
         data = json.loads((tree / SIZE).read_bytes())
         for path in omit_ours:
@@ -114,7 +117,7 @@ def merge(tree, ours=None, theirs=None, extra=False, layer_conflict=True, omit_o
         theirs(tree)
     if extra:
         write(tree, "other.txt", "theirs\n")
-    baselines(tree, compact=True)
+    baselines(tree, compact=True, limits=theirs_limits, cap=theirs_cap)
     commit(tree, "Update second baseline")
     git(tree, "checkout", "-q", "side-a")
     git(tree, "merge", "--no-ff", "--no-commit", "side-b", expected=1)
@@ -147,7 +150,7 @@ def test_independent_lowerings_resolve(tree):
     assert result.returncode == 0, result.stderr
     assert "file_size_baseline.json: regenerated and staged" in result.stdout
     assert "layer_baseline.json: regenerated and staged" in result.stdout
-    assert f"{X}: lowered to 8 from ours 8, theirs 12" in result.stdout
+    assert "lowered to" not in result.stdout
     assert git(tree, "diff", "--name-only", "--diff-filter=U") == b""
     assert git(tree, "rev-parse", "HEAD") == head  # The resolver never commits.
     resolved = snapshot(tree)
@@ -159,6 +162,28 @@ def test_independent_lowerings_resolve(tree):
     assert json.loads(resolved[SIZE])["files"] == {X: 8, Y: 9}
     assert json.loads(resolved[LAYER])["files"][LEFT]["S"] == []
     assert json.loads(resolved[LAYER])["files"][RIGHT]["S"] == []
+
+
+def test_both_lowered_limits_keep_other_entries_untouched(tree):
+    # Slack in both changed and untouched entries must survive the merge.
+    low, high = "rfx/low.py", "rfx/high.py"
+    write(tree, low, "value = 0\n")
+    write(tree, high, "value = 0\n" * 2)
+    original = {X: 18, Y: 19, low: 16, high: 25}
+    baselines(tree, limits=original)
+    commit(tree, "Keep existing ratchet slack")
+    merge(tree, ours_limits={**original, X: 15}, theirs_limits={**original, Y: 17})
+    # An older base permits both original ceilings, so this asserts the merge
+    # rule itself rather than relying on the checker's base-ratchet rejection.
+    result = run(tree, "--base", "main")
+    assert result.returncode == 0, result.stderr
+    data = json.loads((tree / SIZE).read_bytes())
+    assert data == {"counts": "code-lines", "cap": 20,
+                    "files": {**original, X: 15, Y: 17}}
+    assert "lowered to" not in result.stdout
+    for checker in (resolver.size, resolver.layer):
+        with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+            assert checker.check(tree, "side-b") == 0
 
 
 @pytest.mark.parametrize("failure", ["merged-count", "base-ratchet"])
@@ -299,8 +324,49 @@ def test_retained_entry_is_reported(tree):
     merge(tree, omit_ours=(X,))
     result = run(tree)
     assert result.returncode == 0, result.stderr
-    assert f"{X}: kept entry omitted by ours at merged count 8" in result.stdout
-    assert json.loads((tree / SIZE).read_bytes())["files"][X] == 8
+    assert f"{X}: kept entry omitted by ours at merged limit 12" in result.stdout
+    assert json.loads((tree / SIZE).read_bytes())["files"][X] == 12
+    assert resolver.size.code_lines((tree / X).read_bytes()) == 8
+
+
+@pytest.mark.parametrize("limit", [20, 25])
+def test_removed_entry_at_or_above_cap_dropped(tree, limit):
+    baselines(tree, limits={X: limit})
+    commit(tree, "Set entry at or above cap")
+    merge(tree, omit_ours=(X,), theirs_limits={X: limit})
+    result = run(tree)
+    assert result.returncode == 0, result.stderr
+    assert X not in json.loads((tree / SIZE).read_bytes())["files"]
+    assert "kept entry" not in result.stdout
+    with redirect_stderr(io.StringIO()):
+        assert resolver.size.check(tree, "side-b") == 0
+
+
+@pytest.mark.parametrize("limit,kept", [(9, True), (10, False), (12, False)])
+def test_removed_entry_compared_with_merged_cap(tree, limit, kept):
+    merge(tree, ours_cap=10, theirs_cap=20, omit_ours=(X,), theirs_limits={X: limit},
+          theirs=lambda repo: write(repo, X, "value = 1\n" * 8))
+    result = run(tree)
+    assert result.returncode == 0, result.stderr
+    data = json.loads((tree / SIZE).read_bytes())
+    assert data["cap"] == 10
+    assert (X in data["files"]) == kept
+    if kept:
+        assert data["files"][X] == limit
+
+
+def test_dropped_entry_count_checked_against_merged_cap(tree):
+    # The surviving side's explicit limit is 25, but removal makes cap=10
+    # govern X. A later working-tree edit must therefore fail at count 11.
+    baselines(tree, limits={X: 25})
+    commit(tree, "Prepare removed entry")
+    merge(tree, omit_ours=(X,), ours_cap=10, theirs_limits={X: 25})
+    write(tree, X, "value = 0\n" * 11)
+    before, index = snapshot(tree), git(tree, "ls-files", "--stage", "-z")
+    result = run(tree)
+    assert result.returncode == 1
+    assert f"{X}: merged count 11 exceeds min(ours 10, theirs 20)" in result.stderr
+    unchanged(tree, before, index)
 
 
 def test_unlisted_tracked_file_exceeding_cap(tree):
