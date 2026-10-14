@@ -330,7 +330,8 @@ def _is_diagnostic_upload(step: dict) -> bool:
     the shard's collected test list, to replay a CI-only failure). It runs no
     tests, so `if: always()` cannot spend the time the verdict exists to save."""
     return (str(step.get("uses", "")).startswith("actions/upload-artifact")
-            and step.get("if") == "always()" and "run" not in step)
+            and step.get("if") == "always()" and "run" not in step
+            and step.get("continue-on-error") is True)
 
 
 @pytest.mark.parametrize("job", HEAVY_JOBS)
@@ -563,8 +564,8 @@ def test_the_contract_tests_run_when_the_diff_is_code() -> None:
     assert len(sets) == 1 and "--splits 12 --group ${{ matrix.group }}" in sets[0], sets
     calls = [line for line in lines if re.match(r"(?:python -m )?pytest\s", line)]
     assert len(calls) == 2, calls
-    assert calls[0].startswith("pytest --collect-only ") and calls[1].startswith("pytest -q -ra "), calls
-    assert all(re.search(r'\s"\$@"(?:\s|$)', call) for call in calls), calls
+    assert re.fullmatch(r'pytest --collect-only -q "\$@" > "\$RUNNER_TEMP/[\w.-]+"(?: \|\| .*)?', calls[0]), calls
+    assert calls[1] == 'pytest -q -ra "$@"', calls
     assert "tests/contracts" not in suite, (
         "the sharded suite now names tests/contracts explicitly -- check it is "
         f"not being ignored: {suite}"
