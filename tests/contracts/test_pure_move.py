@@ -190,6 +190,429 @@ class Covered:
             pass
 '''
 
+P2_OLD = '''
+def capture():
+    return bar()
+
+def collision_def():
+    def bar():
+        pass
+
+def collision_class():
+    class bar:
+        pass
+
+def collision_parameter(bar):
+    pass
+
+def collision_lambda():
+    return lambda bar: 1
+
+def collision_import():
+    import bar
+
+def collision_alias():
+    import package as bar
+
+def collision_except():
+    try:
+        pass
+    except Exception as bar:
+        pass
+
+def collision_global():
+    global bar
+
+def collision_nonlocal():
+    nonlocal bar
+
+def collision_match(value):
+    match value:
+        case bar:
+            pass
+
+def collision_star(value):
+    match value:
+        case [*bar]:
+            pass
+
+def collision_mapping(value):
+    match value:
+        case {"key": _, **bar}:
+            pass
+
+def shadow(run):
+    return run
+
+def lambda_shadow():
+    return lambda run: run
+
+def except_shadow():
+    try:
+        pass
+    except Exception as run:
+        return run
+
+def global_shadow():
+    global run
+    run = 1
+
+def parameter_renamed(run):
+    return run
+
+def all_parameters(run, /, *args, keyword, **kwargs):
+    return run, args, keyword, kwargs
+
+def lambda_renamed():
+    return lambda run: run
+
+def except_renamed():
+    try:
+        pass
+    except Exception as run:
+        return run
+
+def global_renamed():
+    global run
+    run = 1
+
+def nonlocal_renamed():
+    run = 1
+    def inner():
+        nonlocal run
+        run = 2
+    return inner
+
+def match_renamed(value):
+    match value:
+        case run:
+            return run
+
+def star_renamed(value):
+    match value:
+        case [*run]:
+            return run
+
+def mapping_renamed(value):
+    match value:
+        case {"key": _, **run}:
+            return run
+
+def chain_start(a):
+    return a
+
+def literal_numeric(x: Literal["1"]):
+    pass
+
+def literal_typing(x: typing.Literal["1"]):
+    pass
+
+def literal_alias(x: t.Literal["1"]):
+    pass
+
+def literal_text(x: Literal["fast"]):
+    pass
+
+def literal_quoted(x: "typing.Literal['1']"):
+    pass
+
+def annotated_type(x: Annotated["Foo", "fast"]):
+    pass
+
+def annotated_metadata(x: Annotated["Foo", "fast"]):
+    pass
+
+def annotated_numeric(x: typing.Annotated[int, "1"]):
+    pass
+
+def annotated_alias(x: t.Annotated["Foo", "fast"]):
+    pass
+
+class Box:
+    @property
+    def prop(self):
+        return 1
+    @prop.setter
+    def prop(self, value):
+        self.value = value
+
+@overload
+def overloaded(x: int):
+    return 1
+@overload
+def overloaded(x: str):
+    return 2
+
+def repeated():
+    return 1
+def repeated():
+    return 2
+
+def reordered():
+    return 1
+def reordered():
+    return 2
+
+def count_less():
+    return 1
+def count_less():
+    return 2
+
+def count_more():
+    return 1
+
+def same_sequence():
+    return 1
+def same_sequence():
+    return 2
+
+class Host:
+    def private(self):
+        return self.__x
+    def private_name(self):
+        return __x
+    def private_parameter(self, __x):
+        return 1
+    def super_call(self):
+        return super()
+    def class_name(self):
+        return __class__
+    def safe_dunder(self):
+        return self.__len__()
+    def safe_class_attribute(self):
+        return self.__class__
+    def explicit_super(self):
+        return super(Host, self)
+
+def function_comment(x): # type: (int) -> int
+    return x
+
+def assignment_comment(x):
+    local = x # type: int
+    return local
+
+def argument_comment(
+    x, # type: int
+):
+    return x
+'''
+
+P2_NEW = '''
+def bar():
+    return bar()
+
+def shadow(run):
+    return run_new
+
+def lambda_shadow():
+    return lambda run: run_new
+
+def except_shadow():
+    try:
+        pass
+    except Exception as run:
+        return run_new
+
+def global_shadow():
+    global run
+    run_new = 1
+
+def parameter_renamed(run_new):
+    return run_new
+
+def all_parameters(run_new, /, *args_new, keyword_new, **kwargs_new):
+    return run_new, args_new, keyword_new, kwargs_new
+
+def lambda_renamed():
+    return lambda run_new: run_new
+
+def except_renamed():
+    try:
+        pass
+    except Exception as run_new:
+        return run_new
+
+def global_renamed():
+    global run_new
+    run_new = 1
+
+def nonlocal_renamed():
+    run_new = 1
+    def inner():
+        nonlocal run_new
+        run_new = 2
+    return inner
+
+def match_renamed(value):
+    match value:
+        case run_new:
+            return run_new
+
+def star_renamed(value):
+    match value:
+        case [*run_new]:
+            return run_new
+
+def mapping_renamed(value):
+    match value:
+        case {"key": _, **run_new}:
+            return run_new
+
+def chain_start(b):
+    return b
+
+def literal_numeric(x: Literal[1]):
+    pass
+
+def literal_typing(x: typing.Literal[1]):
+    pass
+
+def literal_alias(x: t.Literal[1]):
+    pass
+
+def literal_text(x: Literal["slow"]):
+    pass
+
+def literal_quoted(x: typing.Literal[1]):
+    pass
+
+def annotated_type(x: Annotated["NewFoo", "fast"]):
+    pass
+
+def annotated_metadata(x: Annotated["NewFoo", "slow"]):
+    pass
+
+def annotated_numeric(x: typing.Annotated[int, 1]):
+    pass
+
+def annotated_alias(x: t.Annotated[NewFoo, "fast"]):
+    pass
+
+class Box:
+    @property
+    def prop(self):
+        return 2
+    @prop.setter
+    def prop(self, value):
+        self.value = value
+
+@overload
+def overloaded(x: int):
+    return 3
+@overload
+def overloaded(x: str):
+    return 2
+
+def repeated():
+    return 3
+def repeated():
+    return 2
+
+def reordered():
+    return 2
+def reordered():
+    return 1
+
+def count_less():
+    return 2
+
+def count_more():
+    return 1
+def count_more():
+    return 2
+
+def same_sequence():
+    return 1
+def same_sequence():
+    return 2
+
+def private(self):
+    return self.__x
+def private_name(self):
+    return __x
+def private_parameter(self, __x):
+    return 1
+def super_call(self):
+    return super()
+def class_name(self):
+    return __class__
+def safe_dunder(self):
+    return self.__len__()
+def safe_class_attribute(self):
+    return self.__class__
+def explicit_super(self):
+    return super(Host, self)
+
+class Host:
+    def private(self):
+        return self.__x
+    def super_call(self):
+        return super()
+    def class_name(self):
+        return __class__
+
+class Other:
+    def private(self):
+        return self.__x
+
+def function_comment(x): # type: (str) -> int
+    return x
+
+def assignment_comment(x):
+    local = x # type: str
+    return local
+
+def argument_comment(
+    x, # type: str
+):
+    return x
+'''
+
+COMPOUNDS = '''
+def anchor():
+    return 1
+if True:
+    def in_if():
+        pass
+    if_value = 1
+elif False:
+    def in_elif():
+        pass
+else:
+    def in_else():
+        pass
+try:
+    def in_try():
+        pass
+except Exception as error:
+    def in_except():
+        pass
+else:
+    def in_try_else():
+        pass
+finally:
+    def in_finally():
+        pass
+with resource() as handle:
+    def in_with():
+        pass
+for item in items:
+    def in_for():
+        pass
+else:
+    for_else = 1
+while condition:
+    def in_while():
+        pass
+else:
+    while_else = 1
+import package.child
+import other as alias
+from source import imported
+from source import something as renamed
+from source import *
+'''
+
 
 @pytest.fixture(scope="module")
 def repo(tmp_path_factory):
@@ -228,6 +651,7 @@ def repo(tmp_path_factory):
         "unchanged.py": "def keep():\n    return 1\n",
         "diff.py": "def many():\n" + "    x = 1\n" * 30 + "    return x\n",
         "hunks.py": "def hunks():\n    a = 1\n    middle = 0\n    b = 2\n",
+        "p2_old.py": P2_OLD, "compound.py": COMPOUNDS,
     }.items():
         (work / path).write_text(source, encoding="utf-8")
     git("add", "--all")
@@ -235,6 +659,10 @@ def repo(tmp_path_factory):
     base = git("rev-parse", "HEAD")
     (work / "old.py").write_text("# moved\n", encoding="utf-8")
     (work / "new.py").write_text(NEW, encoding="utf-8")
+    (work / "p2_old.py").write_text("# moved\n", encoding="utf-8")
+    (work / "p2_new.py").write_text(P2_NEW, encoding="utf-8")
+    (work / "p2_same.py").write_text(P2_OLD, encoding="utf-8")
+    (work / "compound.py").write_text("def anchor():\n    return 1\n", encoding="utf-8")
     (work / "listing.py").write_text("def kept():\n    return 1\n", encoding="utf-8")
     (work / "deleted.py").unlink()
     (work / "destination.py").write_text(
@@ -331,11 +759,21 @@ def test_unparsable_string_annotation_stays_literal(repo, new_name, verdict, cod
     assert result.stdout.splitlines()[0] == f"old.py:invalid_annotation -> new.py:{new_name}  {verdict}"
 
 
-def test_renames_are_simultaneous_and_duplicates_allowed(repo):
+def test_simultaneous_map_rejects_existing_target(repo):
     result = run(repo, "--pair", "old.py:chain=new.py:chain", "--rename", "a=b",
                  "--rename", "b=c", "--rename", "a=b")
+    assert result.returncode == 1, result.stderr + result.stdout
+    assert result.stdout.splitlines()[:2] == [
+        "old.py:chain -> new.py:chain  DIFFERENT",
+        "rename collision: b already used in the old unit",
+    ]
+
+
+def test_renames_are_simultaneous_and_duplicates_allowed(repo):
+    result = run(repo, "--pair", "p2_old.py:chain_start=p2_new.py:chain_start",
+                 "--rename", "a=b", "--rename", "b=c", "--rename", "a=b")
     assert result.returncode == 0, result.stderr + result.stdout
-    assert result.stdout.splitlines()[0] == "old.py:chain -> new.py:chain  IDENTICAL"
+    assert result.stdout.splitlines()[0] == "p2_old.py:chain_start -> p2_new.py:chain_start  IDENTICAL"
 
 
 def test_pairs_file_and_implied_renames(repo, tmp_path):
@@ -387,6 +825,7 @@ def test_deleted_not_covered_including_deleted_file(repo, path):
     expected = [
         f"{path}:moved -> destination.py:moved  IDENTICAL",
         f"{path}:Covered -> destination.py:Covered  IDENTICAL",
+        "note: IDENTICAL covers the unit bodies only; the new module's imports, globals and __future__ flags are not compared",
         "deleted at HEAD, not in any pair:",
         f"{path}:Lost", f"{path}:Lost.Inner", f"{path}:Lost.Inner.method",
         f"{path}:ONE", f"{path}:TWO",
@@ -404,6 +843,7 @@ def test_empty_deletion_listing_and_repo_subdirectory(repo):
     assert result.returncode == 0, result.stderr
     assert result.stdout == (
         "unchanged.py:keep -> unchanged.py:keep  IDENTICAL\n"
+        "note: IDENTICAL covers the unit bodies only; the new module's imports, globals and __future__ flags are not compared\n"
         "deleted at HEAD, not in any pair: none\n"
     )
 
@@ -468,6 +908,7 @@ def test_diff_is_limited_to_twenty_lines(repo):
     assert result.returncode == 1
     assert result.stdout.splitlines()[1:] == [
         "@@ -2,30 +2,30 @@", *["-    x = 1"] * 19,
+        "note: IDENTICAL covers the unit bodies only; the new module's imports, globals and __future__ flags are not compared",
         "deleted at HEAD, not in any pair: none",
     ]
 
@@ -477,6 +918,7 @@ def test_only_first_diff_hunk_is_printed(repo):
     assert result.returncode == 1
     assert result.stdout.splitlines()[1:] == [
         "@@ -2 +2 @@", "-    a = 1", "+    a = 3",
+        "note: IDENTICAL covers the unit bodies only; the new module's imports, globals and __future__ flags are not compared",
         "deleted at HEAD, not in any pair: none",
     ]
 
@@ -486,3 +928,175 @@ def test_multiple_pairs_keep_nonzero_exit(repo):
                  "--pair", "unchanged.py:keep=unchanged.py:keep")
     assert result.returncode == 1
     assert "unchanged.py:keep -> unchanged.py:keep  IDENTICAL" in result.stdout
+
+
+def test_rename_collision_at_every_identifier_site(repo):
+    names = [
+        "collision_def", "collision_class", "collision_parameter", "collision_lambda",
+        "collision_import", "collision_alias", "collision_except", "collision_global",
+        "collision_nonlocal", "collision_match", "collision_star", "collision_mapping",
+    ]
+    args = ["--pair", "p2_old.py:capture=p2_new.py:bar", "--rename", "foo=bar"]
+    for name in names:
+        args.extend(["--pair", f"p2_old.py:{name}=p2_same.py:{name}"])
+    result = run(repo, *args)
+    assert result.returncode == 1, result.stderr + result.stdout
+    expected = [
+        "p2_old.py:capture -> p2_new.py:bar  DIFFERENT",
+        "rename collision: bar already used in the old unit",
+    ]
+    for name in names:
+        expected.extend([
+            f"p2_old.py:{name} -> p2_same.py:{name}  DIFFERENT",
+            "rename collision: bar already used in the old unit",
+        ])
+    assert result.stdout.splitlines()[:26] == expected
+
+
+def test_parameter_binding_rename(repo):
+    result = run(repo, "--rename", "run=run_new",
+                 "--pair", "p2_old.py:shadow=p2_new.py:shadow",
+                 "--pair", "p2_old.py:parameter_renamed=p2_new.py:parameter_renamed")
+    assert result.returncode == 1, result.stderr + result.stdout
+    assert "p2_old.py:shadow -> p2_new.py:shadow  DIFFERENT\n" in result.stdout
+    assert "p2_old.py:parameter_renamed -> p2_new.py:parameter_renamed  IDENTICAL\n" in result.stdout
+
+
+def test_other_binding_site_renames(repo):
+    different = ["lambda_shadow", "except_shadow", "global_shadow"]
+    identical = [
+        "all_parameters", "lambda_renamed", "except_renamed", "global_renamed",
+        "nonlocal_renamed", "match_renamed", "star_renamed", "mapping_renamed",
+    ]
+    args = ["--rename", "run=run_new", "--rename", "args=args_new",
+            "--rename", "keyword=keyword_new", "--rename", "kwargs=kwargs_new"]
+    for name in different + identical:
+        args.extend(["--pair", f"p2_old.py:{name}=p2_new.py:{name}"])
+    result = run(repo, *args)
+    assert result.returncode == 1, result.stderr + result.stdout
+    for name in different:
+        assert f"p2_old.py:{name} -> p2_new.py:{name}  DIFFERENT\n" in result.stdout
+    for name in identical:
+        assert f"p2_old.py:{name} -> p2_new.py:{name}  IDENTICAL\n" in result.stdout
+
+
+def test_literal_string_is_not_numeric(repo):
+    names = ["literal_numeric", "literal_typing", "literal_alias", "literal_quoted"]
+    args = []
+    for name in names:
+        args.extend(["--pair", f"p2_old.py:{name}=p2_new.py:{name}"])
+    result = run(repo, *args)
+    assert result.returncode == 1, result.stderr + result.stdout
+    for name in names:
+        assert f"p2_old.py:{name} -> p2_new.py:{name}  DIFFERENT\n" in result.stdout
+
+
+def test_literal_values_and_annotated_metadata_stay_literal(repo):
+    different = ["literal_text", "annotated_metadata", "annotated_numeric"]
+    identical = ["annotated_type", "annotated_alias"]
+    args = ["--rename", "fast=slow", "--rename", "Foo=NewFoo"]
+    for name in different + identical:
+        args.extend(["--pair", f"p2_old.py:{name}=p2_new.py:{name}"])
+    result = run(repo, *args)
+    assert result.returncode == 1, result.stderr + result.stdout
+    for name in different:
+        assert f"p2_old.py:{name} -> p2_new.py:{name}  DIFFERENT\n" in result.stdout
+    for name in identical:
+        assert f"p2_old.py:{name} -> p2_new.py:{name}  IDENTICAL\n" in result.stdout
+
+
+def test_property_getter_change_is_different(repo):
+    result = run(repo, "--pair", "p2_old.py:Box.prop=p2_new.py:Box.prop")
+    assert result.returncode == 1, result.stderr + result.stdout
+    assert result.stdout.splitlines()[0] == "p2_old.py:Box.prop -> p2_new.py:Box.prop  DIFFERENT"
+
+
+def test_ordered_repeated_definitions_and_counts(repo):
+    different = ["overloaded", "repeated", "reordered", "count_less", "count_more"]
+    args = []
+    for name in different + ["same_sequence"]:
+        args.extend(["--pair", f"p2_old.py:{name}=p2_new.py:{name}"])
+    result = run(repo, *args)
+    assert result.returncode == 1, result.stderr + result.stdout
+    for name in different:
+        assert f"p2_old.py:{name} -> p2_new.py:{name}  DIFFERENT\n" in result.stdout
+    assert "p2_old.py:same_sequence -> p2_new.py:same_sequence  IDENTICAL\n" in result.stdout
+    assert "p2_old.py:count_less -> p2_new.py:count_less  DIFFERENT\ndefinitions: 2 old, 1 new\n" in result.stdout
+    assert "p2_old.py:count_more -> p2_new.py:count_more  DIFFERENT\ndefinitions: 1 old, 2 new\n" in result.stdout
+
+
+def test_private_method_loses_class_context(repo):
+    result = run(repo, "--pair", "p2_old.py:Host.private=p2_new.py:private")
+    assert result.returncode == 1, result.stderr + result.stdout
+    assert result.stdout.splitlines()[:2] == [
+        "p2_old.py:Host.private -> p2_new.py:private  DIFFERENT",
+        "class context lost: __x",
+    ]
+
+
+def test_class_context_hazards_and_preserved_context(repo):
+    hazards = [
+        ("private_name", "__x"), ("private_parameter", "__x"),
+        ("super_call", "super()"), ("class_name", "__class__"),
+    ]
+    args = []
+    for name, _ in hazards:
+        args.extend(["--pair", f"p2_old.py:Host.{name}=p2_new.py:{name}"])
+    for name in ["private", "super_call", "class_name"]:
+        args.extend(["--pair", f"p2_old.py:Host.{name}=p2_new.py:Host.{name}"])
+    args.extend(["--pair", "p2_old.py:Host.private=p2_new.py:Other.private"])
+    for name in ["safe_dunder", "safe_class_attribute", "explicit_super"]:
+        args.extend(["--pair", f"p2_old.py:Host.{name}=p2_new.py:{name}"])
+    result = run(repo, *args)
+    assert result.returncode == 1, result.stderr + result.stdout
+    for name, detail in hazards:
+        assert f"p2_old.py:Host.{name} -> p2_new.py:{name}  DIFFERENT\nclass context lost: {detail}\n" in result.stdout
+    for name in ["private", "super_call", "class_name"]:
+        assert f"p2_old.py:Host.{name} -> p2_new.py:Host.{name}  IDENTICAL\n" in result.stdout
+    assert "p2_old.py:Host.private -> p2_new.py:Other.private  DIFFERENT\nclass context lost: __x\n" in result.stdout
+    for name in ["safe_dunder", "safe_class_attribute", "explicit_super"]:
+        assert f"p2_old.py:Host.{name} -> p2_new.py:{name}  IDENTICAL\n" in result.stdout
+
+
+def test_deleted_compound_definitions_bindings_and_imports(repo):
+    result = run(repo, "--pair", "compound.py:anchor=compound.py:anchor")
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert result.stdout.splitlines() == [
+        "compound.py:anchor -> compound.py:anchor  IDENTICAL",
+        "note: IDENTICAL covers the unit bodies only; the new module's imports, globals and __future__ flags are not compared",
+        "deleted at HEAD, not in any pair:",
+        "compound.py:alias", "compound.py:error", "compound.py:for_else",
+        "compound.py:handle", "compound.py:if_value", "compound.py:imported",
+        "compound.py:in_elif", "compound.py:in_else", "compound.py:in_except",
+        "compound.py:in_finally", "compound.py:in_for", "compound.py:in_if",
+        "compound.py:in_try", "compound.py:in_try_else", "compound.py:in_while",
+        "compound.py:in_with", "compound.py:item", "compound.py:package",
+        "compound.py:renamed", "compound.py:while_else",
+    ]
+
+
+def test_scope_note_printed_once_after_pairs(repo):
+    result = run(repo, "--pair", "unchanged.py:keep=unchanged.py:keep",
+                 "--pair", "unchanged.py:absent=unchanged.py:absent")
+    assert result.returncode == 1, result.stderr + result.stdout
+    assert result.stdout.splitlines() == [
+        "unchanged.py:keep -> unchanged.py:keep  IDENTICAL",
+        "unchanged.py:absent -> unchanged.py:absent  MISSING (both)",
+        "note: IDENTICAL covers the unit bodies only; the new module's imports, globals and __future__ flags are not compared",
+        "deleted at HEAD, not in any pair: none",
+    ]
+    spec = importlib.util.spec_from_file_location("pure_move_scope", SCRIPT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    assert "IDENTICAL covers the unit bodies only; the new module's imports, globals and __future__ flags are not compared" in " ".join(module.__doc__.split())
+
+
+def test_type_comment_changes_count(repo):
+    names = ["function_comment", "assignment_comment", "argument_comment"]
+    args = []
+    for name in names:
+        args.extend(["--pair", f"p2_old.py:{name}=p2_new.py:{name}"])
+    result = run(repo, *args)
+    assert result.returncode == 1, result.stderr + result.stdout
+    for name in names:
+        assert f"p2_old.py:{name} -> p2_new.py:{name}  DIFFERENT\n" in result.stdout

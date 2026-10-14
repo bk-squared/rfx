@@ -1,4 +1,8 @@
-"""Compare Python units across Git revisions using an explicit rename map."""
+"""Compare Python units across Git revisions using an explicit rename map.
+
+IDENTICAL covers the unit bodies only; the new module's imports, globals and
+__future__ flags are not compared.
+"""
 
 from __future__ import annotations
 
@@ -9,6 +13,10 @@ import subprocess
 
 
 DEFINITIONS = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+SCOPE_NOTE = (
+    "note: IDENTICAL covers the unit bodies only; the new module's imports, "
+    "globals and __future__ flags are not compared"
+)
 
 
 def parse_endpoint(value: str) -> tuple[str, str]:
@@ -47,10 +55,28 @@ class AnnotationStrings(ast.NodeTransformer):
         if not isinstance(node.value, str):
             return node
         try:
-            expression = ast.parse(node.value, mode="eval").body
+            expression = ast.parse(node.value, mode="eval", type_comments=True).body
         except SyntaxError:
             return node
         return ast.copy_location(self.visit(expression), node)
+
+    def visit_Subscript(self, node: ast.Subscript) -> ast.AST:
+        name = (
+            node.value.id if isinstance(node.value, ast.Name)
+            else node.value.attr if isinstance(node.value, ast.Attribute) else None
+        )
+        node.value = self.visit(node.value)
+        if name == "Literal":
+            return node
+        if name == "Annotated":
+            if isinstance(node.slice, ast.Tuple):
+                if node.slice.elts:
+                    node.slice.elts[0] = self.visit(node.slice.elts[0])
+            else:
+                node.slice = self.visit(node.slice)
+            return node
+        node.slice = self.visit(node.slice)
+        return node
 
 
 class NormalizeAnnotations(ast.NodeTransformer):
@@ -79,17 +105,25 @@ class RenameIdentifiers(ast.NodeTransformer):
             node.asname = self.renames.get(node.asname, node.asname)
         elif isinstance(node, ast.ImportFrom):
             node.module = self.renames.get(node.module, node.module)
+        elif isinstance(node, ast.arg):
+            node.arg = self.renames.get(node.arg, node.arg)
+        elif isinstance(node, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)):
+            node.name = self.renames.get(node.name, node.name)
+        elif isinstance(node, (ast.Global, ast.Nonlocal)):
+            node.names = [self.renames.get(name, name) for name in node.names]
+        elif isinstance(node, ast.MatchMapping):
+            node.rest = self.renames.get(node.rest, node.rest)
         return super().generic_visit(node)
 
 
-def addressable_units(tree: ast.Module | None) -> dict[str, ast.AST]:
-    units: dict[str, ast.AST] = {}
+def addressable_units(tree: ast.Module | None) -> dict[str, list[ast.stmt]]:
+    units: dict[str, list[ast.stmt]] = {}
 
     def collect(body: list[ast.stmt], prefix: str = "") -> None:
         for node in body:
             if isinstance(node, DEFINITIONS):
                 name = prefix + node.name
-                units[name] = node
+                units.setdefault(name, []).append(node)
                 if isinstance(node, ast.ClassDef):
                     collect(node.body, name + ".")
 
@@ -99,16 +133,100 @@ def addressable_units(tree: ast.Module | None) -> dict[str, ast.AST]:
 
 
 def listed_names(tree: ast.Module | None) -> set[str]:
-    names = set(addressable_units(tree))
-    if tree is not None:
-        for node in tree.body:
+    names: set[str] = set()
+
+    def bind(target: ast.AST | None) -> None:
+        if isinstance(target, ast.Name):
+            names.add(target.id)
+
+    def collect(body: list[ast.stmt], prefix: str = "") -> None:
+        for node in body:
+            if isinstance(node, DEFINITIONS):
+                name = prefix + node.name
+                names.add(name)
+                if isinstance(node, ast.ClassDef):
+                    collect(node.body, name + ".")
+                continue
+            # Class members contribute definitions, not module-level bindings.
+            if prefix:
+                continue
             targets = []
             if isinstance(node, ast.Assign):
                 targets = node.targets
             elif isinstance(node, (ast.AnnAssign, ast.AugAssign)):
                 targets = [node.target]
-            names.update(target.id for target in targets if isinstance(target, ast.Name))
+            elif isinstance(node, (ast.For, ast.AsyncFor)):
+                targets = [node.target]
+            elif isinstance(node, (ast.With, ast.AsyncWith)):
+                targets = [item.optional_vars for item in node.items]
+            for target in targets:
+                bind(target)
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                for alias in node.names:
+                    name = alias.asname or (
+                        alias.name.split(".")[0] if isinstance(node, ast.Import) else alias.name
+                    )
+                    if name != "*":
+                        names.add(name)
+            if isinstance(node, (ast.If, ast.For, ast.AsyncFor, ast.While)):
+                collect(node.body)
+                collect(node.orelse)
+            elif isinstance(node, (ast.With, ast.AsyncWith)):
+                collect(node.body)
+            elif isinstance(node, ast.Try):
+                collect(node.body)
+                for handler in node.handlers:
+                    if handler.name:
+                        names.add(handler.name)
+                    collect(handler.body)
+                collect(node.orelse)
+                collect(node.finalbody)
+
+    if tree is not None:
+        collect(tree.body)
     return names
+
+
+def identifier_names(unit: ast.AST) -> set[str]:
+    names: set[str] = set()
+    for node in ast.walk(unit):
+        if isinstance(node, ast.Name):
+            names.add(node.id)
+        elif isinstance(node, DEFINITIONS):
+            names.add(node.name)
+        elif isinstance(node, ast.arg):
+            names.add(node.arg)
+        elif isinstance(node, ast.alias):
+            names.add(node.name)
+            if node.asname:
+                names.add(node.asname)
+        elif isinstance(node, (ast.ExceptHandler, ast.MatchAs, ast.MatchStar)):
+            if node.name:
+                names.add(node.name)
+        elif isinstance(node, (ast.Global, ast.Nonlocal)):
+            names.update(node.names)
+        elif isinstance(node, ast.MatchMapping) and node.rest:
+            names.add(node.rest)
+    return names
+
+
+def class_context_losses(unit: ast.AST, old_name: str, new_name: str) -> list[str]:
+    old_class = old_name.rsplit(".", 1)[0].rsplit(".", 1)[-1] if "." in old_name else None
+    new_class = new_name.rsplit(".", 1)[0].rsplit(".", 1)[-1] if "." in new_name else None
+    if old_class is None or old_class == new_class:
+        return []
+    names = identifier_names(unit)
+    private_names = names | {
+        node.attr for node in ast.walk(unit) if isinstance(node, ast.Attribute)
+    }
+    losses = {name for name in private_names if name.startswith("__") and not name.endswith("__")}
+    if "__class__" in names:
+        losses.add("__class__")
+    for node in ast.walk(unit):
+        if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                and node.func.id == "super" and not node.args and not node.keywords):
+            losses.add("super()")
+    return sorted(losses)
 
 
 def git(*args: str, cwd: str | None = None) -> str:
@@ -126,26 +244,32 @@ def git(*args: str, cwd: str | None = None) -> str:
 
 class RevisionFiles:
     def __init__(self, base: str, head: str) -> None:
-        self.root = git("rev-parse", "--show-toplevel").strip()
-        self.refs = {
-            ref: git("rev-parse", "--verify", "--end-of-options", ref + "^{tree}",
-                     cwd=self.root).strip()
-            for ref in (base, head)
-        }
+        resolved = git(
+            "rev-parse", "--show-toplevel", "--revs-only", "--end-of-options",
+            base + "^{tree}", head + "^{tree}",
+        ).splitlines()
+        if len(resolved) != 3:
+            raise ValueError(f"git read error: cannot resolve trees for {base!r} and {head!r}")
+        self.root = resolved[0]
+        self.refs = dict(zip((base, head), resolved[1:]))
         self.cache: dict[tuple[str, str], str | None] = {}
 
     def read(self, ref: str, path: str) -> ast.Module | None:
         key = ref, path
         if key not in self.cache:
             revision = self.refs[ref]
-            entry = git("ls-tree", "-z", "--full-tree", revision, "--",
-                        ":(literal)" + path, cwd=self.root)
-            if not entry:
-                self.cache[key] = None
-            else:
+            try:
                 self.cache[key] = git("show", revision + ":" + path, cwd=self.root)
+            except ValueError:
+                entry = git("ls-tree", "-z", "--full-tree", revision, "--",
+                            ":(literal)" + path, cwd=self.root)
+                if entry:
+                    raise
+                self.cache[key] = None
         source = self.cache[key]
-        return None if source is None else ast.parse(source, filename=f"{ref}:{path}")
+        return None if source is None else ast.parse(
+            source, filename=f"{ref}:{path}", type_comments=True
+        )
 
 
 def first_diff(old: ast.AST, new: ast.AST) -> list[str]:
@@ -180,17 +304,29 @@ def check_pairs(files: RevisionFiles, base: str, head: str, pairs: list,
             status = 1
             continue
         # Each read parses a fresh tree so overlapping pairs cannot mutate each other.
+        details = []
+        if len(old) != len(new):
+            details.append(f"definitions: {len(old)} old, {len(new)} new")
+        old = ast.Module(body=old, type_ignores=[])
+        new = ast.Module(body=new, type_ignores=[])
+        losses = class_context_losses(old, old_name, new_name)
+        details.extend(f"class context lost: {loss}" for loss in losses)
         old = NormalizeAnnotations().visit(old)
         new = NormalizeAnnotations().visit(new)
+        collisions = sorted(set(renames.values()) & identifier_names(old))
+        details.extend(f"rename collision: {name} already used in the old unit" for name in collisions)
         old = RenameIdentifiers(renames).visit(old)
-        if ast.dump(old, include_attributes=False) == ast.dump(new, include_attributes=False):
+        if not details and ast.dump(old, include_attributes=False) == ast.dump(new, include_attributes=False):
             print(f"{label}  IDENTICAL")
         else:
             print(f"{label}  DIFFERENT")
+            for detail in details:
+                print(detail)
             for line in first_diff(old, new):
                 print(line)
             status = 1
 
+    print(SCOPE_NOTE)
     uncovered = []
     for path in sorted({old[0] for old, _ in pairs}):
         covered = {old[1] for old, _ in pairs if old[0] == path}
