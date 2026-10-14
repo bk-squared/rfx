@@ -557,7 +557,8 @@ def test_fence_anisotropic_and_bloch_paths():
     through ``forward(design_box=...)`` today, so they are checked on the
     resolver itself rather than through a fixture that cannot exist.
     """
-    from rfx.simulation import DesignBoxSpec, _resolve_design_box
+    from rfx.simulation import DesignBoxSpec
+    from rfx.model import resolve_design_box
 
     sim = _sim()
     grid = sim._build_grid()
@@ -573,13 +574,13 @@ def test_fence_anisotropic_and_bloch_paths():
     # are the WRITE window, one cell past the declared box on the plus side of
     # each axis since #1210 -- the design material reaches the E components on
     # those edges, so the redo has to write them.
-    assert _resolve_design_box(spec, **common).bounds == (10, 14, 9, 13, 8, 12)
+    assert resolve_design_box(spec, **common).bounds == (10, 14, 9, 13, 8, 12)
     ones = jnp.ones(grid.shape, jnp.float32)
     for flag, value in (("aniso_eps", (ones, ones, ones)),
                         ("aniso_inv_eps", (ones, ones, ones)),
                         ("bloch", (1.0 + 0j, 1.0 + 0j, 1.0 + 0j))):
         with pytest.raises(NotImplementedError, match="design-box"):
-            _resolve_design_box(spec, **{**common, flag: value})
+            resolve_design_box(spec, **{**common, flag: value})
 
 
 def test_fence_on_an_axis_the_grid_does_not_absorb_but_the_run_does():
@@ -591,7 +592,8 @@ def test_fence_on_an_axis_the_grid_does_not_absorb_but_the_run_does():
     always passes the grid's own ``cpml_axes``.
     """
     from rfx.grid import Grid
-    from rfx.simulation import DesignBoxSpec, _resolve_design_box
+    from rfx.simulation import DesignBoxSpec
+    from rfx.model import resolve_design_box
     from rfx.core.yee import init_materials
 
     grid = Grid(freq_max=16e9, domain=(24e-3, 20e-3, 16e-3), dx=2e-3,
@@ -605,9 +607,9 @@ def test_fence_on_an_axis_the_grid_does_not_absorb_but_the_run_does():
               aniso_inv_eps=None, stencil_order=2, bloch=None,
               sheet_impedance=None, cell_metas=())
     with pytest.raises(ValueError, match="CPML absorber"):
-        _resolve_design_box(spec, cpml_axes="xyz", **kw)
+        resolve_design_box(spec, cpml_axes="xyz", **kw)
     # The grid's own axes: x carries no absorber, the box is accepted.
-    _resolve_design_box(spec, cpml_axes="z", **kw)
+    resolve_design_box(spec, cpml_axes="z", **kw)
 
 
 def test_fence_design_box_flush_against_a_periodic_face():
@@ -619,7 +621,8 @@ def test_fence_design_box_flush_against_a_periodic_face():
     INTERIOR box on the same periodic domain is unaffected.
     """
     from rfx.grid import Grid
-    from rfx.simulation import DesignBoxSpec, _resolve_design_box
+    from rfx.simulation import DesignBoxSpec
+    from rfx.model import resolve_design_box
     from rfx.core.yee import init_materials
 
     # No absorber: this fence is about the periodic seam, and a CPML grid
@@ -637,14 +640,14 @@ def test_fence_design_box_flush_against_a_periodic_face():
     flush = DesignBoxSpec(bounds=(4, 7, 0, 3, 4, 7),
                           eps_r=jnp.ones((3, 3, 3), jnp.float32))
     with pytest.raises(NotImplementedError, match="PERIODIC y face"):
-        _resolve_design_box(flush, periodic=(False, True, False), **common)
+        resolve_design_box(flush, periodic=(False, True, False), **common)
     # the hi face too
     flush_hi = DesignBoxSpec(bounds=(4, 7, ny - 3, ny, 4, 7),
                              eps_r=jnp.ones((3, 3, 3), jnp.float32))
     with pytest.raises(NotImplementedError, match="PERIODIC y face"):
-        _resolve_design_box(flush_hi, periodic=(False, True, False), **common)
+        resolve_design_box(flush_hi, periodic=(False, True, False), **common)
     # interior on the same periodic axis resolves
     inner = DesignBoxSpec(bounds=(4, 7, 4, 7, 4, 7),
                           eps_r=jnp.ones((3, 3, 3), jnp.float32))
-    assert _resolve_design_box(
+    assert resolve_design_box(
         inner, periodic=(False, True, False), **common).bounds == (4, 8, 4, 8, 4, 8)

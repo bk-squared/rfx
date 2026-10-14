@@ -197,9 +197,11 @@ def _forward(sim, box=None, *, eps=None, sigma=None, holds=False,
 
 @contextmanager
 def _captured_box():
-    """Record every ``_resolve_design_box`` call: its spec, materials, dt
+    """Record every ``resolve_design_box`` call: its spec, materials, dt
     and the coefficients it built."""
-    real = _sim_mod._resolve_design_box
+    from rfx.model import resolve_design_box
+    import rfx.model as model
+    real = resolve_design_box
     seen = []
 
     def _spy(spec, **kw):
@@ -207,7 +209,8 @@ def _captured_box():
         seen.append((spec, kw["materials"], kw["dt"], out))
         return out
 
-    with mock.patch.object(_sim_mod, "_resolve_design_box", _spy):
+    with mock.patch.object(_sim_mod, "resolve_design_box", _spy), \
+            mock.patch.object(model, "resolve_design_box", _spy):
         yield seen
 
 

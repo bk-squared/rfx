@@ -13,6 +13,10 @@ from rfx.model.conductors import (
     distributed_solve_inputs, drawn_launch_eps, forward_kernel_inputs,
     forward_lumped_port_stage, forward_port_stage, forward_products, forward_sheet_context,
     prepare_port_occupancy, stage_distributed_edges, uniform_solve_inputs)
+from rfx.model.conductors import PreparedSolve
+from rfx.model.design_box import (
+    DesignBoxCoeffs, design_box_bounds, design_box_window, held_edge_masks,
+    resolve_design_box)
 from rfx.model.graded_admission import (
     NominalProfile, admit_graded_profiles, traced_cell_mask,
 )
@@ -20,6 +24,8 @@ from rfx.model.occupancy import select_occupancy_operator, with_edge_keep
 from rfx.model.thin_conductors import refuse_design_films
 
 __all__ = [
+    "DesignBoxCoeffs", "PreparedSolve", "design_box_bounds", "design_box_window",
+    "held_edge_masks", "resolve_design_box",
     "NominalProfile", "admit_adi_sources", "admit_graded_profiles", "distributed_kernel_inputs",
     "distributed_solve_inputs", "drawn_launch_eps", "forward_kernel_inputs",
     "forward_lumped_port_stage", "forward_port_stage", "forward_products", "forward_sheet_context",

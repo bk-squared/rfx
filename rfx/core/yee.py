@@ -1106,12 +1106,12 @@ def update_e_box(state: FDTDState, prev: FDTDState, box: tuple,
     produce that form. The #1210 edge average makes every coefficient
     per-component — an E component takes the mean of eps and sigma over the
     four cells its edge touches — which is what
-    :func:`rfx.simulation._design_box_edge_coeffs` builds. And a conducting
+    :func:`rfx.model.materials._design_box_edge_coeffs` builds. And a conducting
     SHEET (#1216) gives each component its own conductivity: its current runs
     along the two in-plane edges only, so the third component must keep the
     background coefficient while the other two carry the design conductivity.
     ``(v, v, v)`` is the scalar/array form cell for cell. Both sequence types
-    are accepted here because :func:`rfx.simulation._resolve_design_box`
+    are accepted here because :func:`rfx.model.resolve_design_box`
     accepts either for ``DesignBoxSpec.sigma``; it normalises what it builds
     to a tuple, so a list reaches this kernel only from a direct call.
 
