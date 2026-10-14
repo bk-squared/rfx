@@ -2729,11 +2729,8 @@ class _ExecuteMixin:
             _realized.sources(grid, materials, sources, "distributed_nu.sources")
         from rfx.model.electric_metrics import stage_forward_materials
         from rfx.stepping.slab import cut
-        sharded_grid = sharded_grid.select_step(
-            debye=debye_spec is not None, lorentz=lorentz_spec is not None,
-            pmc=bool(self._boundary_spec.pmc_faces()))
-        uniform = sharded_grid.step_kind == 'wrapped'
-        sharded_materials = stage_forward_materials(materials, sharded_grid.layout, mesh, uniform=uniform)
+        sharded_grid = sharded_grid.select_step(debye_spec, lorentz_spec, self._boundary_spec)
+        sharded_materials = stage_forward_materials(materials, sharded_grid.layout, mesh, uniform=sharded_grid.step_kind == 'wrapped')
         del materials
 
         sharded_pec_mask = _conductors.stage_distributed_edges(
@@ -2743,7 +2740,7 @@ class _ExecuteMixin:
         sharded_pec_occupancy = None
         if pec_occupancy_override is not None:
             sharded_pec_occupancy = cut(
-                pec_occupancy_override, sharded_grid.layout, "pec_occupancy", mesh=mesh, uniform=uniform)
+                pec_occupancy_override, sharded_grid.layout, "pec_occupancy", mesh=mesh, uniform=sharded_grid.step_kind == 'wrapped')
 
         sharded_debye = stage_forward_dispersion_x_slab(
             sharded_materials, grid.dt, debye_spec, sharded_grid, mesh, "debye",

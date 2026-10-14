@@ -23,7 +23,7 @@ import jax.numpy as jnp
 
 from rfx.core.drives import drive_layout, inject_drives
 from jax import lax
-from rfx.runners._rank import mesh_ranks, rank_shard_map
+from rfx.stepping.rank import mesh_ranks, rank_pair_exchange, rank_shard_map
 from jax.sharding import Mesh, PartitionSpec as P
 
 from rfx.model.conductors import distributed_mask_edges, distributed_mask_spec
@@ -419,12 +419,7 @@ def exchange_h_yee_shmap(state, mesh, n_devices, *, ranks, local=False):
         hz = hz.at[0].set(jnp.where(interior, received[1], hz[0]))
         return hy, hz
 
-    if local:
-        hy, hz = _exchange(state.hy, state.hz, rank=ranks)
-    else:
-        mapped = rank_shard_map(_exchange, mesh=mesh, in_specs=(P("x"), P("x")),
-                                out_specs=(P("x"), P("x")), check_rep=False)
-        hy, hz = mapped(ranks, state.hy, state.hz)
+    hy, hz = rank_pair_exchange(_exchange, mesh, ranks, state.hy, state.hz, local=local)
     return state._replace(hy=hy, hz=hz)
 
 
@@ -447,12 +442,7 @@ def exchange_e_yee_shmap(state, mesh, n_devices, *, ranks, local=False):
         ez = ez.at[-1].set(jnp.where(interior, received[1], ez[-1]))
         return ey, ez
 
-    if local:
-        ey, ez = _exchange(state.ey, state.ez, rank=ranks)
-    else:
-        mapped = rank_shard_map(_exchange, mesh=mesh, in_specs=(P("x"), P("x")),
-                                out_specs=(P("x"), P("x")), check_rep=False)
-        ey, ez = mapped(ranks, state.ey, state.ez)
+    ey, ez = rank_pair_exchange(_exchange, mesh, ranks, state.ey, state.ez, local=local)
     return state._replace(ey=ey, ez=ez)
 
 
