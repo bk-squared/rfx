@@ -6,7 +6,6 @@ from pathlib import Path
 
 
 ALLOWLIST = {
-    ('rfx/api/_execute.py', '_ExecuteMixin.run'): 1,
     ('rfx/measurement/flux_weights.py', 'build_flux_monitor_cfgs'): 1,
     ('rfx/measurement/plan.py', '_frequencies'): 1,
     ('rfx/measurement/plan.py', 'build_measurement_plan'): 1,

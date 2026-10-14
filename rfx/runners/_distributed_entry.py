@@ -143,9 +143,10 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args
             conformal_pec=conformal_pec,
         )
     if compute_s_params:
+        from rfx.measurement import default_frequency_grid
         from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
         if s_param_freqs is None:
-            s_param_freqs = jnp.linspace(self._freq_max / 10, self._freq_max, 50)
+            s_param_freqs = default_frequency_grid(self._freq_max, 50)
         _s_params, _ = compute_lumped_wire_s_matrix_via_scan(
             self, s_param_freqs,
             n_steps=s_param_n_steps if s_param_n_steps is not None else n_steps,
