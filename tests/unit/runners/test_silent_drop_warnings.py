@@ -975,10 +975,12 @@ FORWARD_CALL_ARGUMENTS = {
     "port_s11_freqs": {
         "uniform": "carries",
         "graded": "carries",
-        "distributed_uniform": "refuses",
+        "distributed_uniform": "carries",
         "distributed_graded": "refuses",
     },
 }
+FORWARD_LANES = {"uniform": "fwd_uniform", "graded": "fwd_nonuniform",
+                 "distributed_uniform": "fwd_distributed"}
 
 
 @pytest.mark.parametrize("lane,disposition", FORWARD_CALL_ARGUMENTS["port_s11_freqs"].items())
@@ -1003,5 +1005,4 @@ def test_forward_port_s11_freqs_disposition(lane, disposition, monkeypatch):
             sim.forward(n_steps=1, port_s11_freqs=[2e9], distributed=True,
                         skip_preflight=True)
     else:
-        assert sim._dispatch_plan(**kwargs).lane == (
-            "fwd_nonuniform" if graded else "fwd_uniform")
+        assert sim._dispatch_plan(**kwargs).lane == FORWARD_LANES[lane]
