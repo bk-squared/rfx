@@ -52,7 +52,6 @@
         "_ExecuteMixin._forward_from_materials",
         "_ExecuteMixin._nu_n_steps",
         "_ExecuteMixin._run_adi_from_materials",
-        "_ExecuteMixin._run_settling_witness",
         "_ExecuteMixin._warn_postrun_energy_witness",
         "_ExecuteMixin._warn_until_decay_dc_floor",
         "_ExecuteMixin.forward",
@@ -130,7 +129,6 @@
       ],
       "G": [
         "_assemble_nu_result",
-        "_build_nu_scan",
         "_update_e_nu_dispersive",
         "current_source_samples",
         "run_nonuniform",

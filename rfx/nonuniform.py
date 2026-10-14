@@ -18,8 +18,8 @@ per-axis inverse spacing arrays. Fully JIT-compiled via jax.lax.scan.
 
 from __future__ import annotations
 
-from rfx.measurement.time_records import with_graded_records, init_graded_records
-from rfx.measurement.port_registration import graded_specs, graded_s_ports, graded_accumulators, graded_acc_indices, graded_s_voltage
+from rfx.measurement import (graded_acc_indices, graded_accumulators, graded_s_ports, graded_s_voltage,
+                             graded_specs, init_graded_records, with_graded_records)
 
 from functools import partial
 from types import SimpleNamespace

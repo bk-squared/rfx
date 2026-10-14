@@ -1510,7 +1510,7 @@ class _ExecuteMixin:
         pec_occupancy_local = pec_occupancy
         conductors, _drawn_materials, pec_edge_masks_local = _conductors.forward_products(self, grid, materials, pec_mask, pec_sheets, pec_wires, periodic_bool, conductors, sheet_impedance)
         _msl_geometry_edges = pec_edge_masks_local  # before ANY port clearing
-        from rfx.measurement.port_registration import register_wire, register_lumped, ordered_specs
+        from rfx.measurement import ordered_specs, register_lumped, register_wire
         port_record_specs = []
         lumped_port_sparam_specs: list = []
         wire_port_sparam_specs: list = []
