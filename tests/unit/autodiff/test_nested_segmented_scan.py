@@ -7,6 +7,7 @@ Lengths are outermost first.
 """
 
 import json
+import sys
 
 import jax
 import jax.extend.core as jex
@@ -181,8 +182,35 @@ def test_invalid_lengths_are_refused(chunk):
         segmented_scan(lambda c, x: (c, x), 0.0, jnp.zeros(8), chunk)
 
 
-# Memory: compiled temp bytes, one level vs two levels.
-def test_two_levels_do_not_use_more_compiled_memory(record_property):
+# The tail of the outermost level is split again by the inner levels.
+def _tail_unit_depth(chunk, n):
+    """Checkpoint nesting depth inside the outermost tail unit only: the
+    top-level scan of length 1 that runs the r leftover steps."""
+    jaxpr = jax.make_jaxpr(_loss(segmented_scan, chunk, n))(COEF).jaxpr
+    tails = [eqn for eqn in jaxpr.eqns
+             if eqn.primitive.name == "scan" and eqn.params["length"] == 1]
+    assert len(tails) == 1, [e.params.get("length") for e in jaxpr.eqns
+                             if e.primitive.name == "scan"]
+    return _remat_depth(tails[0].params["jaxpr"].jaxpr)
+
+
+# Expected depth = 1 (the tail unit's own checkpoint) + the inner levels the
+# clamp leaves active on the tail's r steps, worked out by hand:
+@pytest.mark.parametrize("chunk,n,expected", [
+    ((24, 6, 2), 118, 3),  # r = 22: 6 active on 22, 2 active on 6
+    ((24, 6, 2), 100, 2),  # r = 4: 6 skipped on 4, 2 active on 4
+    ((36, 6), 287, 2),     # r = 35: 6 active on 35
+    ((24, 6, 2), 97, 1),   # r = 1: no inner level fits one step
+])
+def test_outer_tail_is_split_by_the_inner_levels(chunk, n, expected):
+    assert _tail_unit_depth(chunk, n) == expected
+
+
+# Memory: compiled temp bytes, (L1, L2) against (L1,) with the same outer
+# length run as one level. On CPU this is a report of XLA's static analysis;
+# the device gate for the memory claim is the GPU suite.
+def test_two_levels_use_less_compiled_memory_than_their_outer_level(
+        record_property):
     n = 288
     field = 3 * N * N * 4
     common = dict(boundary_bytes=field, step_bytes=field, static_bytes=0,
@@ -196,25 +224,25 @@ def test_two_levels_do_not_use_more_compiled_memory(record_property):
             COEF).compile()
         try:
             analysis = compiled.memory_analysis()
-        except Exception as exc:  # backend without memory analysis
-            pytest.skip(f"memory_analysis() raised {type(exc).__name__}")
+        except Exception:  # backend without memory analysis
+            return None
         value = getattr(analysis, "temp_size_in_bytes", None)
-        if value is None:
-            pytest.skip("memory_analysis() has no temp_size_in_bytes")
-        return int(value)
+        return None if value is None else int(value)
 
-    plain = temp_bytes(None)
-    first, second = temp_bytes(one.lengths), temp_bytes(two.lengths)
-    record_property("temp_bytes", dict(
-        plain=plain, one_level=first, two_levels=second,
-        one_level_lengths=one.lengths, two_level_lengths=two.lengths,
-        model_one=one.peak_bytes, model_two=two.peak_bytes))
-    if not second < first:
-        pytest.skip(
-            f"{jax.default_backend()} memory_analysis shows no reduction "
-            f"(plain {plain}, one level {first}, two levels {second} temp "
-            "bytes); the device gate is the GPU suite")
-    assert second <= first
+    outer = (two.lengths[0],)
+    nested, flat = temp_bytes(two.lengths), temp_bytes(outer)
+    if not nested and not flat:
+        pytest.skip(f"{jax.default_backend()} memory_analysis() gives no temp "
+                    "bytes; the device gate is the GPU suite")
+    report = dict(
+        nested=nested, nested_lengths=two.lengths, outer_only=flat,
+        outer_lengths=outer, planner_one_level=temp_bytes(one.lengths),
+        planner_one_level_lengths=one.lengths, plain=temp_bytes(None),
+        model_one_level=one.peak_bytes, model_two_levels=two.peak_bytes)
+    record_property("temp_bytes", report)
+    sys.stderr.write(f"compiled temp bytes: {report}\n")
+    assert nested is not None and flat is not None, report
+    assert nested < flat, report
 
 
 # Planner.
