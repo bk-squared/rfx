@@ -702,7 +702,8 @@ def test_pushes_to_main_still_trigger_the_lane() -> None:
 
 @pytest.mark.parametrize(
     "script",
-    ["lint.sh", "docs_hygiene.sh", "local.sh", "classify_changes.sh", "changed_paths.py"],
+    ["lint.sh", "docs_hygiene.sh", "local.sh", "classify_changes.sh", "changed_paths.py",
+     "resolve_baselines.py"],
 )
 def test_the_ci_scripts_exist_and_are_executable(script: str) -> None:
     path = REPO / "scripts" / "ci" / script
