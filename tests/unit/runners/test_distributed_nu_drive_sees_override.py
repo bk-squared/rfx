@@ -444,7 +444,7 @@ def test_the_traced_drive_coefficient_has_a_finite_gradient_under_a_large_cotang
     from rfx.nonuniform import current_source_cb
     dt = float(_board(EPS_LO)._build_nonuniform_grid().dt)
     for cotangent in (1e18, 1e22, 1e26, 1e30):
-        grads = jax.grad(lambda e, s: cotangent * current_source_cb(e, s, dt, traced=True),
+        grads = jax.grad(lambda e, s: cotangent * current_source_cb(e, s, dt),
                          argnums=(0, 1))(jnp.float32(2.0), jnp.float32(0.5))
         assert all(np.isfinite(float(g)) for g in grads), (cotangent, grads)
 
