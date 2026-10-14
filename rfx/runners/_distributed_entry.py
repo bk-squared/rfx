@@ -236,6 +236,8 @@ def forward_distributed(sim, *, plan, assembly, devices, exchange_interval,
     packed = pack_nu_forward_result(
         diagnostics=result.diagnostics, time_series=result.time_series,
         grid=result.grid, dt=result.dt, dft_planes=result.dft_planes,
+        flux_monitors=result.flux_monitors, waveguide_ports=result.waveguide_ports,
+        waveguide_sparams=result.waveguide_sparams,
         ntff_data=result.ntff_data, ntff_box=result.ntff_box,
         s_params=result.s_params, freqs=result.freqs,
         wire_port_sparams=result.wire_port_sparams,
