@@ -556,6 +556,15 @@ def test_the_contract_tests_run_when_the_diff_is_code() -> None:
     fast = load(PR_TESTS)["jobs"]["fast-suite"]
     suite = _physics_suite_step(fast)["run"]
     assert "--splits" in suite, "the fast-suite job no longer runs a sharded pytest"
+    # The shard arguments live in one `set --` line that BOTH pytest calls take as "$@":
+    # the uploaded test list and the real run cannot drift apart, and neither can drop the split.
+    lines = [line.strip() for line in suite.splitlines() if line.strip()]
+    sets = [line for line in lines if line.startswith("set -- ")]
+    assert len(sets) == 1 and "--splits 12 --group ${{ matrix.group }}" in sets[0], sets
+    calls = [line for line in lines if re.match(r"(?:python -m )?pytest\s", line)]
+    assert len(calls) == 2, calls
+    assert calls[0].startswith("pytest --collect-only ") and calls[1].startswith("pytest -q -ra "), calls
+    assert all(re.search(r'\s"\$@"(?:\s|$)', call) for call in calls), calls
     assert "tests/contracts" not in suite, (
         "the sharded suite now names tests/contracts explicitly -- check it is "
         f"not being ignored: {suite}"

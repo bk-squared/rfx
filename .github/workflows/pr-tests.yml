@@ -296,7 +296,8 @@ jobs:
         # GitHub assigns CPU models at random, and a float32 result near a bar can
         # differ between them; a shard that fails only in CI is read against this.
         run: |
-          lscpu | grep -E '^(Model name|CPU\(s\)|Flags)' | cut -c1-200
+          lscpu | grep -E '^(Model name|CPU\(s\))'
+          echo "SIMD flags: $(grep -m1 -oE 'avx512[a-z_0-9]*|avx2|fma' /proc/cpuinfo | sort -u | tr '\n' ' ')"
 
       - name: Contract tests — shard ${{ matrix.group }} of 12 (the diff is not code)
         if: needs.changes.outputs.code_changed == 'false'
@@ -333,14 +334,17 @@ jobs:
         # CI (the list is uploaded by the next step, pass or fail).
         run: |
           set -- -p no:cacheprovider --splits 12 --group ${{ matrix.group }}
-          pytest --collect-only -q "$@" > fast-suite-collection.txt || echo "::warning::collect-only failed; the run below reports the collection error"
+          pytest --collect-only -q "$@" > "$RUNNER_TEMP/fast-suite-collection.txt" || echo "::warning::collect-only failed; the run below reports the collection error"
           pytest -q -ra "$@"
 
       - name: Upload this shard's test list
         if: always()
+        # A diagnostic: an artifact-service error must not turn the required check red.
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: fast-suite-collection-${{ matrix.group }}
-          path: fast-suite-collection.txt
+          path: ${{ runner.temp }}/fast-suite-collection.txt
+          overwrite: true
           if-no-files-found: ignore
           retention-days: 14
