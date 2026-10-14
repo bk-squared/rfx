@@ -176,6 +176,10 @@ across the port refuses this model. It is carried by single-device,
 nondispersive 3-D second-order Yee `run()` and `forward()`; other solvers,
 Debye/Lorentz, tensor/design-box updates and traced mesh metrics refuse it.
 Resolve larger wire ports geometrically with a coax feed or a volume wire.
+Each halving of the transverse cell adds `ω·(μ0·ℓ/2π)·ln 2` of series reactance
+to a port of length `ℓ` without `radius=`, about 5 Ω per halving at 5.8 GHz for a
+1 mm port, so its S does not converge with the mesh. `run()` and `sim.preflight()`
+report it (code `wire_port_no_radius`).
 
 ### The coax→microstrip transition reads more power out than in.
 

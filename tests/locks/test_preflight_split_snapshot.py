@@ -367,6 +367,7 @@ from tests._structured_snapshot import assert_structured_close, without_prose
 _HERE = Path(__file__).resolve()
 _REPO = _HERE.parents[2]
 # #1512 adds stub findings: instrument 14→15, x-clearance 10→11, y-clearance 9→10, junction-short 12→14; existing values unchanged.
+# wire_port_no_radius appends ONE advisory, after every existing one, to the six fixtures with a radius-less wire port (add_port extent=, radius=None): wire_port_microstrip, wire_port_dead_extent, wire_port_end_gap, wire_port_dead_cell_nu, refplane_near_field, refplane_partial_optin; existing values unchanged.
 _SNAPSHOT_DIR = _REPO / "tests" / "data" / "preflight_split_snapshot"
 
 _UPDATE_ENV = "RFX_PREFLIGHT_SNAPSHOT_UPDATE"

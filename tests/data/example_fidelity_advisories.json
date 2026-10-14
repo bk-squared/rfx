@@ -555,6 +555,70 @@
    "variant": "examples/tutorials/slab_rt_flux_monitor.py::build_sim::with_slab=True"
   },
   {
+   "code": "wire_port_no_radius",
+   "disposition": "intended",
+   "reason": "This variant declares a wire port with extent= and no radius=, the shipped default filament, so the advisory is a true statement about it. Intended: the script is a frozen research record of the default port and is not changed by this PR (leader 2026-10-13; whether its own conclusion depends on the port's mesh-dependent reactance was not re-checked here).",
+   "ref": "validation/research/issue683_sampling_order_decision.py:1-6,96-104",
+   "rows": 1,
+   "variant": "validation/research/issue683_sampling_order_decision.py::build::nu-matched"
+  },
+  {
+   "code": "wire_port_no_radius",
+   "disposition": "intended",
+   "reason": "This variant declares a wire port with extent= and no radius=, the shipped default filament, so the advisory is a true statement about it. Intended: the script is a frozen research record of the default port and is not changed by this PR (leader 2026-10-13; whether its own conclusion depends on the port's mesh-dependent reactance was not re-checked here).",
+   "ref": "validation/research/issue764_wireport_norm_falsifiers.py:1-6,106-118",
+   "rows": 1,
+   "variant": "validation/research/issue764_wireport_norm_falsifiers.py::build_fix_a::short"
+  },
+  {
+   "code": "wire_port_no_radius",
+   "disposition": "intended",
+   "reason": "This variant declares a wire port with extent= and no radius=, the shipped default filament, so the advisory is a true statement about it. Intended: the script is a frozen research record of the default port and is not changed by this PR (leader 2026-10-13; whether its own conclusion depends on the port's mesh-dependent reactance was not re-checked here).",
+   "ref": "validation/research/issue770_offdiag_adjudication.py:1-6,111-115",
+   "rows": 1,
+   "variant": "validation/research/issue770_offdiag_adjudication.py::build_fix_t::nu-drive0"
+  },
+  {
+   "code": "wire_port_no_radius",
+   "disposition": "intended",
+   "reason": "This variant declares a wire port with extent= and no radius=, the shipped default filament, so the advisory is a true statement about it. Intended: the script is a frozen research record of the default port and is not changed by this PR (leader 2026-10-13; whether its own conclusion depends on the port's mesh-dependent reactance was not re-checked here).",
+   "ref": "validation/research/issue770_offdiag_adjudication.py:1-6,111-115",
+   "rows": 1,
+   "variant": "validation/research/issue770_offdiag_adjudication.py::build_fix_t::uniform-both"
+  },
+  {
+   "code": "wire_port_no_radius",
+   "disposition": "intended",
+   "reason": "This variant declares a wire port with extent= and no radius=, the shipped default filament, so the advisory is a true statement about it. Intended: the script is a frozen research record of the default port and is not changed by this PR (leader 2026-10-13; whether its own conclusion depends on the port's mesh-dependent reactance was not re-checked here).",
+   "ref": "validation/research/metal_edge/m6_wire_port_ad.py:1-6,216-218",
+   "rows": 1,
+   "variant": "validation/research/metal_edge/m6_wire_port_ad.py::build::delta_half_cell"
+  },
+  {
+   "code": "wire_port_no_radius",
+   "disposition": "intended",
+   "reason": "This variant declares a wire port with extent= and no radius=, the shipped default filament, so the advisory is a true statement about it. Intended: the script is a frozen research record of the default port and is not changed by this PR (leader 2026-10-13; whether its own conclusion depends on the port's mesh-dependent reactance was not re-checked here).",
+   "ref": "validation/research/thru_feedpost_deembed.py:1-6,105-108",
+   "rows": 1,
+   "variant": "validation/research/thru_feedpost_deembed.py::build_thru::band-pulse"
+  },
+  {
+   "code": "wire_port_no_radius",
+   "disposition": "intended",
+   "reason": "This variant declares a wire port with extent= and no radius=, the shipped default filament, so the advisory is a true statement about it. Intended: the script is a frozen research record of the default port and is not changed by this PR (leader 2026-10-13; whether its own conclusion depends on the port's mesh-dependent reactance was not re-checked here).",
+   "ref": "validation/research/thru_feedpost_deembed.py:1-6,105-108",
+   "rows": 1,
+   "variant": "validation/research/thru_feedpost_deembed.py::build_thru::insitu-refplane"
+  },
+  {
+   "code": "wire_port_no_radius",
+   "disposition": "intended",
+   "reason": "This variant declares a wire port with extent= and no radius=, the shipped default filament, so the advisory is a true statement about it. Intended: the script is a frozen research record of the default port and is not changed by this PR (leader 2026-10-13; whether its own conclusion depends on the port's mesh-dependent reactance was not re-checked here).",
+   "ref": "validation/research/thru_feedpost_twoseg_extraction.py:1-6,248-251",
+   "rows": 1,
+   "variant": "validation/research/thru_feedpost_twoseg_extraction.py::build_singlepost::refplane-n10"
+  },
+  {
    "code": "source_decoupled",
    "disposition": "intended",
    "reason": "The scene is the one-cell parallel-plate TEM channel of the lumped/wire port battery: PEC plates on z, PMC side walls on y one cell apart, so the lumped port's Ez edge necessarily lies on the y_lo magnetic-wall plane. The advisory itself states that the Yee magnetic image keeps tangential E on that face coupled to the interior and that a lumped port there describes the full symmetric object; the check's G1 gate confirms the port couples (mean |S11|^2 = 0.25).",

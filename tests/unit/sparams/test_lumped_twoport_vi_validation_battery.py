@@ -595,11 +595,16 @@ def test_thru_preflight_code_set_is_the_contract_set():
     off-lattice census measures a sheet's in-plane faces at the solved
     edge, so each on-node trace face reads 0.35 cell = 175 um off
     (0.5 mm cells in y) -- ``off_lattice_design_edges``.
+
+    A fourth code, true of this fixture: both feed posts are wire ports of
+    extent H with no ``radius=``, the default filament whose series
+    reactance changes with every mesh halving -- ``wire_port_no_radius``.
+    The battery referees the extraction on that default port, at one mesh.
     """
     report = _build_thru().preflight()
     codes = sorted(getattr(i, "code", None) for i in report)
     assert codes == ["off_lattice_design_edges", "pec_faces_finite_pec",
-                     "sheet_effective_size"], codes
+                     "sheet_effective_size", "wire_port_no_radius"], codes
     size = [str(i) for i in report
             if getattr(i, "code", None) == "sheet_effective_size"]
     assert "y: drawn 5mm, nodes cover 5mm, solved as 5.35mm" in size[0]
