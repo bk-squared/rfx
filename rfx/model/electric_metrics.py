@@ -49,7 +49,7 @@ def slab_metric_kwargs(grid, rank):
 
 
 def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks, grid=None,
-                          reduce_devices=True, sigma_film=None, realized=False):
+                          reduce_devices=True, sigma_film=None, realized=False, eager=False):
     """``Cb/dV`` of each material-driven current source, read from the slabs
     the E update receives (#1279). Called inside the runner's jitted program.
 
@@ -89,6 +89,9 @@ def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks, grid=None,
     sharded) permittivity stays on the tape and the gradient flows back to
     the design's owning slabs through the staging transpose.
     """
+    if eager and realized:
+        from rfx.stepping.slab_setup import eager_drive_scales
+        return eager_drive_scales(eps_r, sigma, mesh, drives, dt, ranks, reduce_devices)
     from functools import partial
     from jax import lax
     from jax.sharding import PartitionSpec as P

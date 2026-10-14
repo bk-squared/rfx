@@ -45,9 +45,6 @@ import numpy as np
 from jax.sharding import NamedSharding, PartitionSpec as P
 
 from rfx.stepping.slab import Slab, place, forward_sharding
-from rfx.stepping.staging_cache import retain_eager_callables
-
-retain_eager_callables()
 
 HALO_LO = 1
 HALO_HI = 0
@@ -89,6 +86,12 @@ def stack_and_place(array, rows, mesh, *, outside="replicate"):
 def uniform_from_owned(array, layout, mesh, *, outside='replicate'):
     """Exchange owned x slabs into two low rows and one high row, locally."""
     from rfx.stepping.rank import rank_shard_map, mesh_ranks
+    return _owned_map(layout, mesh, outside)(mesh_ranks(mesh), array)
+
+
+@lru_cache(maxsize=128)
+def _owned_map(layout, mesh, outside):
+    from rfx.stepping.rank import rank_shard_map
     right = [(r, r + 1) for r in range(layout.n_devices - 1)]
     left = [(r + 1, r) for r in range(layout.n_devices - 1)]
     def extend(local, *, rank):
@@ -104,8 +107,8 @@ def uniform_from_owned(array, layout, mesh, *, outside='replicate'):
             fill = jnp.asarray(outside, local.dtype)
         values = jnp.where(((indices >= 0) & (indices < layout.nx)).reshape(shape), values, fill)
         return values[None]
-    return rank_shard_map(extend, mesh=mesh, in_specs=P('x'), out_specs=P('x'),
-                         check_rep=False)(mesh_ranks(mesh), array)
+    return jax.jit(rank_shard_map(extend, mesh=mesh, in_specs=P('x'), out_specs=P('x'),
+                                check_rep=False))
 
 
 class UniformSlabView(NamedTuple):
@@ -246,12 +249,9 @@ def uniform_apply(producer, *inputs, mesh, row_count, row_axis=0):
             saved.update(tree=tree, leaves=leaves, dynamic=dynamic)
         return tuple(a if keep else None for a, keep in zip(leaves, dynamic))
 
-    # Keep the owners' local stencils inside the device boundary, including
-    # their reverse-mode residuals. Static metadata still bypasses vmap.
-    stage = jax.shard_map(lambda *a: jax.vmap(traced)(*a), mesh=mesh,
-                         in_specs=(P('x'),) * len(inputs), out_specs=P('x'),
-                         check_vma=False)
-    mapped = jax.checkpoint(stage)(*inputs)
+    # Arithmetic is eager over the placed device axis; R5 retains only
+    # stage inputs and outputs for reverse mode. Metadata bypasses vmap.
+    mapped = jax.checkpoint(jax.vmap(traced))(*inputs)
     return jax.tree.unflatten(saved['tree'], [
         a if keep else original for a, original, keep in
         zip(mapped, saved['leaves'], saved['dynamic'])])
@@ -269,6 +269,12 @@ def uniform_from_cut(array, layout, mesh, *, outside='replicate'):
         return array
     if array.ndim == 4:
         return array
+    return _cut_map(layout, mesh, outside)(mesh_ranks(mesh), array)
+
+
+@lru_cache(maxsize=128)
+def _cut_map(layout, mesh, outside):
+    from rfx.stepping.rank import rank_shard_map
     def extend(local, *, rank):
         extra = jax.lax.ppermute(local[-3:-2], 'x',
                                 [(r, r + 1) for r in range(layout.n_devices - 1)])
@@ -282,7 +288,7 @@ def uniform_from_cut(array, layout, mesh, *, outside='replicate'):
         values = jnp.where(((indices >= 0) & (indices < layout.nx))[:, None, None], values, fill)
         return values[None]
     return jax.jit(rank_shard_map(extend, mesh=mesh, in_specs=P('x'),
-        out_specs=P('x'), check_rep=False))(mesh_ranks(mesh), array)
+        out_specs=P('x'), check_rep=False))
 
 
 def product_rows(array, layout, mesh, kind, *, row_axis=1, dt=None, pole_rows=False):
@@ -317,3 +323,21 @@ def _product_map(mesh, row_axis, pole_rows, alignment_fill, physical_fill):
         return value.reshape((value.shape[0] * value.shape[1],) + value.shape[2:])
     return jax.jit(jax.shard_map(local, mesh=mesh, in_specs=(P('x'),) * 3,
                                 out_specs=P('x'), check_vma=False))
+
+
+@lru_cache(maxsize=128)
+def _axis_map(mesh, unpack, pole_rows):
+    """Only copies: expose or merge the device axis inside each shard."""
+    def local(a):
+        if unpack:
+            return (jnp.moveaxis(a, 1, 0) if pole_rows else a)[None]
+        if pole_rows:
+            a = jnp.moveaxis(a, 2, 1)
+        return a.reshape((a.shape[0] * a.shape[1],) + a.shape[2:])
+    return jax.jit(jax.shard_map(local, mesh=mesh, in_specs=P('x'),
+                                out_specs=P('x'), check_vma=False))
+
+
+def device_rows(value, mesh, *, unpack):
+    """Convert packed field/pole leaves without a cross-device reshape."""
+    return jax.tree.map(lambda a: _axis_map(mesh, unpack, a.ndim == (4 if unpack else 5))(a), value)

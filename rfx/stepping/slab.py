@@ -153,9 +153,14 @@ def place(array, sharding):
     tracer = array
     while isinstance(tracer, jax.core.Tracer):
         if getattr(tracer, 'batch_dim', None) is not None:
-            return jax.jit(lambda a: a, out_shardings=sharding)(array)
+            return _placement_map(sharding)(array)
         tracer = getattr(tracer, 'primal', None)
     return jax.device_put(array, sharding)
+
+
+@lru_cache(maxsize=128)
+def _placement_map(sharding):
+    return jax.jit(lambda a: a, out_shardings=sharding)
 
 
 def source_owner_mask(rank, device_ids):
@@ -183,6 +188,11 @@ def _halo(arr, layout, mesh, fill):
     """Keep the existing ppermute transpose: ghosts return cotangents to owners."""
     if layout.ghost_width != 1:
         raise NotImplementedError('sharded forward overrides require exchange_interval=1')
+    return _halo_map(layout, mesh, fill)(mesh_ranks(mesh), arr)
+
+
+@lru_cache(maxsize=128)
+def _halo_map(layout, mesh, fill):
     right = [(i, i + 1) for i in range(layout.n_devices - 1)]
     left = [(i + 1, i) for i in range(layout.n_devices - 1)]
 
@@ -192,24 +202,24 @@ def _halo(arr, layout, mesh, fill):
         slab = jnp.concatenate((lo, local, hi), axis=0)
         indices = rank * layout.nx_per_rank + jnp.arange(layout.nx_local) - 1
         real = (indices >= 0) & (indices < layout.nx)
-        shape = (-1,) + (1,) * (arr.ndim - 1)
+        shape = (-1,) + (1,) * (local.ndim - 1)
         if fill.alignment == fill.physical and fill.physical != 'edge':
-            return jnp.where(real.reshape(shape), slab, jnp.asarray(fill.physical, arr.dtype))
+            return jnp.where(real.reshape(shape), slab, jnp.asarray(fill.physical, local.dtype))
         padded = (indices >= layout.nx) & (indices < layout.nx_padded)
         if fill.physical == 'edge':
             # Widths are geometry, but retain a differentiable endpoint policy.
-            low = lax.psum(jnp.where(rank == 0, local[0], 0), 'x')
+            low = lax.all_gather(local[0], 'x')[0]
             owner = (layout.nx - 1) // layout.nx_per_rank
-            high = lax.psum(jnp.where(rank == owner, local[(layout.nx - 1) % layout.nx_per_rank], 0), 'x')
+            high = lax.all_gather(local[(layout.nx - 1) % layout.nx_per_rank], 'x')[owner]
             outside = jnp.where((indices < 0).reshape(shape), low, high)
         else:
             outside = jnp.where(padded.reshape(shape),
-                                jnp.asarray(fill.alignment, arr.dtype),
-                                jnp.asarray(fill.physical, arr.dtype))
+                                jnp.asarray(fill.alignment, local.dtype),
+                                jnp.asarray(fill.physical, local.dtype))
         return jnp.where(real.reshape(shape), slab, outside)
 
     return jax.jit(rank_shard_map(halo, mesh=mesh, in_specs=P('x'),
-        out_specs=P('x'), check_rep=False))(mesh_ranks(mesh), arr)
+        out_specs=P('x'), check_rep=False))
 
 
 def _pad(data, lo, hi, value, xp):
