@@ -90,6 +90,7 @@ from rfx.runners._distributed_common import (  # noqa: F401 -- compatibility re-
     apply_pec_face_shmap,
     apply_pec_mask_shmap,
     apply_pmc_face_shmap,
+    _slab_curl_kwargs,
     exchange_component_shmap,
     exchange_h_yee_shmap,
     exchange_e_yee_shmap,
@@ -200,7 +201,7 @@ _apply_pmc_shmap = apply_pmc_face_shmap
 def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
                          mesh, n_devices, ghost=1, materials=None, pad_x=0,
                          e_slab=None, e_materials=None,
-                         *, ranks, grid, e_curl_coeff=None):
+                         *, ranks, grid, e_curl_coeff=None, boundary=None):
     """Apply CPML E-field correction using shard_map.
 
     ``materials`` (the x-sharded :class:`MaterialArrays`) is a READ-ONLY
@@ -272,7 +273,7 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
         new_st, new_cs = apply_cpml_e(
             _st, cpml_params, _cs, grid, materials=mat_slab,
             inv_eps_r_update=None if eps_r_slab is None else tuple(1 / e for e in eps_r_slab),
-            e_loss=loss, e_curl_coeff=curl, faces=cpml_absorbing_faces(grid),
+            e_loss=loss, e_curl_coeff=curl, faces=cpml_absorbing_faces(grid), boundary=boundary,
             frame=cpml_slab_frame(ex.shape, ghost, pad_x),
             owned={"x_lo": rank == 0, "x_hi": rank == n_devices - 1})
         return (
@@ -689,6 +690,10 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         else ()
     )
 
+    from rfx.core.yee import CurlBoundary
+    curl_boundary = (CurlBoundary(_pec_faces_frozen, _pmc_faces_frozen, sim._periodic_flags())
+                     if _pmc_faces_frozen else None)
+
     # One device runs the same shard_map path on a one-device mesh (#1296).
     # Until #1296 this call was handed to the pmap runner, which dropped the
     # declared-PEC cell mask and so refused a PEC volume at one device that
@@ -896,7 +901,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     has_debye = debye_spec is not None
     has_lorentz = lorentz_spec is not None
     from rfx.boundaries.depths import distributed_electric_walls
-    e_wall_faces = distributed_electric_walls(grid)
+    e_wall_faces = distributed_electric_walls(grid) - _pmc_faces_frozen
     debye, lorentz = stage_dispersion_slabs(
         materials, grid.dt, debye_spec, lorentz_spec,
         n_devices, nx_per, ghost, shd, nx=nx)
@@ -1086,7 +1091,8 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
             from rfx.stepping.absorber import local_e_with_absorber
             new_st, new_db, new_lr, absorber = local_e_with_absorber(
                 _st, _mat, dt, dx, debye=_db, lorentz=_lr,
-                slab=(nx_per, nx), e_materials=means, rank=rank)
+                slab=(nx_per, nx), e_materials=means, rank=rank,
+                **_slab_curl_kwargs(curl_boundary, hx.shape, ghost, pad_x, rank, n_devices))
             # Unpack debye
             if new_db is not None:
                 nd_px, nd_py, nd_pz = new_db.px, new_db.py, new_db.pz
@@ -1165,9 +1171,8 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         ghost row is always a copy of the owner's FINISHED real row -- a
         row the realized-PEC mask stage has already zeroed where the
         geometry says metal (#1053). This is ``distributed_nu.py``'s order
-        since ``ac782d4f`` (#931 T3) and
-        the mirror of the H half, which applies the PMC face before the H
-        exchange "so the zero propagates via the exchange". Until #1041
+        since ``ac782d4f`` (#931 T3). The PMC image canonicalizes only
+        the global high H ghost, which no exchange sends. Until #1041
         this body exchanged BEFORE injecting, which lagged a seam-cell
         source by one step in the neighbour's copy -- see the comment on
         stage 7 for the measurement that moved it.
@@ -1194,9 +1199,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         # 3. Exchange the live H ghosts (entry validates interval == 1)
         st = _exchange(_exchange_h_ghosts_shmap, ("hx", "hy", "hz"), st, _step_idx, ranks=ranks)
 
-        # 3b. PMC face (H-tangential = 0) — T8, 2026-04. H-half hook per
-        #     OQ9: after H ghost exchange, before E update. PMC must
-        #     fire before the next E-update reads H via curl.
+        # Canonicalize PMC high ghosts after the final H update/correction.
         st = _apply_pmc_shmap(
             st, mesh, n_devices, nx_local, _pmc_faces_frozen, pad_x=pad_x, ranks=ranks)
 
@@ -1214,7 +1217,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
             pad_x=pad_x,
             e_slab=(nx_per, nx), e_materials=e_materials,
             ranks=ranks, grid=cpml_grid,
-            e_curl_coeff=absorber)
+            e_curl_coeff=absorber, boundary=curl_boundary)
 
         st = _inject_sources_shmap(st, src_vals, ranks=ranks)
 
@@ -1308,8 +1311,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         # 2. Exchange H ghost cells
         st = _exchange(_exchange_h_ghosts_shmap, ("hx", "hy", "hz"), st, _step_idx, ranks=ranks)
 
-        # 2b. PMC face (H-tangential = 0) — T8, 2026-04. H-half hook per
-        #     OQ9: after H ghost exchange, before E update.
+        # Canonicalize PMC high ghosts after the final H update/correction.
         st = _apply_pmc_shmap(
             st, mesh, n_devices, nx_local, _pmc_faces_frozen, pad_x=pad_x, ranks=ranks)
 
@@ -1330,7 +1332,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         #    is injected. #1041 measured no such fixture and did not change
         #    it -- a source on a PEC face is its own question.
         st = _apply_pec_shmap(
-            st, mesh, n_devices, nx_local, pad_x=pad_x, ranks=ranks)
+            st, mesh, n_devices, nx_local, pad_x=pad_x, pec_faces=e_wall_faces, ranks=ranks)
 
         # 5b. Realized-PEC cell mask (#1053), AFTER the domain faces and
         #     immediately before the E ghost exchange -- distributed_nu's

@@ -469,11 +469,11 @@ def wire_port_current(hx, hy, hz, comp, mi, mj, mk,
     raise ValueError(f"wire_port_current: unknown component {comp!r}")
 
 
-def _curl_h_nu(state, inv_dx, inv_dy, inv_dz, *, boundary=None):
+def _curl_h_nu(state, inv_dx, inv_dy, inv_dz, *, boundary=None, frame=None, owned=None):
     """ADE adapter to the shared graded E-update curl (no dtype change)."""
     from rfx.core.yee import curl_h_nu
     return curl_h_nu(state.hx, state.hy, state.hz, inv_dx, inv_dy, inv_dz,
-                     boundary=boundary)
+                     boundary=boundary, frame=frame, owned=owned)
 
 
 def _update_e_nu_dispersive(
@@ -487,7 +487,7 @@ def _update_e_nu_dispersive(
     debye: tuple | None = None,
     lorentz: tuple | None = None,
     e_old: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray] | None = None,
-    boundary=None,
+    boundary=None, frame=None, owned=None,
 ) -> tuple[FDTDState, object | None, object | None]:
     """E-field update with ADE dispersion on non-uniform grid.
 
@@ -517,7 +517,7 @@ def _update_e_nu_dispersive(
     from rfx.materials.debye import DebyeState
     from rfx.materials.lorentz import LorentzState
 
-    curl_x, curl_y, curl_z = _curl_h_nu(state, inv_dx, inv_dy, inv_dz, boundary=boundary)
+    curl_x, curl_y, curl_z = _curl_h_nu(state, inv_dx, inv_dy, inv_dz, boundary=boundary, frame=frame, owned=owned)
     if e_old is not None:
         ex_old, ey_old, ez_old = e_old
     else:
