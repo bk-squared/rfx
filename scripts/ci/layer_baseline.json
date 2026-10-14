@@ -3,9 +3,7 @@
     "rfx/api/__init__.py": {
       "I": [
         "rfx.boundaries.depths:adi_uniform_faces",
-        "rfx.boundaries.model:collect_requirements",
         "rfx.boundaries.model:resolve_kinds",
-        "rfx.boundaries.model:with_requirements",
         "rfx.boundaries.serialization:legacy_spec",
         "rfx.boundaries.spec:normalize_boundary",
         "rfx.boundaries.tfsf:validate_source_boundary",
@@ -25,7 +23,6 @@
       ],
       "D2": [
         "Simulation.auto",
-        "Simulation.boundary_model",
         "Simulation.mesh_intelligence_report",
         "Simulation.tfsf_box_indices",
         "Simulation.validate_subgrid"
