@@ -2677,8 +2677,8 @@ class Simulation(
         n_freqs : int
             Number of frequencies if freqs is None.
         """
-        if freqs is None:
-            freqs = jnp.linspace(self._freq_max / 10, self._freq_max, n_freqs)
+        from rfx.measurement import default_frequency_grid
+        freqs = default_frequency_grid(self._freq_max, n_freqs) if freqs is None else freqs
         self._ntff = (corner_lo, corner_hi, freqs)
         return self
 
