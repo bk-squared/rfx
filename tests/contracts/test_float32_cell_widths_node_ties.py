@@ -24,7 +24,7 @@ def _model(q, width, lane):
     return sim, h
 
 
-@pytest.fixture(params=[(q, width, lane) for q in (3, 4, 6)
+@pytest.fixture(params=[(q, width, lane) for q in (1, 3, 4, 6)
                        for width in ("w32", "w64") for lane in ("uniform", "graded")],
                 ids=lambda p: f"q{p[0]}-{p[1]}-{p[2]}")
 def scene(request):
@@ -76,7 +76,7 @@ def test_e3_half_cell_point_uses_lower_node(scene):
     assert index[0] == 13 * q + 2
 
 
-@pytest.mark.parametrize("q", [3, 4, 6])
+@pytest.mark.parametrize("q", [1, 3, 4, 6])
 @pytest.mark.parametrize("width", ["w32", "w64"])
 def test_e4_declared_domain_cell_count(q, width):
     sim, _ = _model(q, width, "uniform")
@@ -87,7 +87,8 @@ def test_e4_declared_domain_cell_count(q, width):
 @pytest.mark.parametrize("route", ["volume", "thin"])
 def test_e5_one_cell_box_is_admitted_and_has_one_row(scene, route):
     sim, h, q, _ = scene
-    shape = Box((13 * U, 13 * U, 2 * U), (13 * U + h, 17 * U, 3 * U))
+    # Two U in z, so x stays the one thinnest axis at q = 1 (1.524 mm cells).
+    shape = Box((13 * U, 13 * U, 2 * U), (13 * U + h, 17 * U, 4 * U))
     if route == "volume":
         sim.add(shape, material="pec")
     else:

@@ -492,6 +492,11 @@
       "kind": "boundary"
     },
     {
+      "file": "rfx/model/graded_grid.py",
+      "function": "_warn_float32_width_resolution",
+      "kind": "difference"
+    },
+    {
       "file": "rfx/model/graded_profile.py",
       "function": "_band_realize_free",
       "kind": "difference"

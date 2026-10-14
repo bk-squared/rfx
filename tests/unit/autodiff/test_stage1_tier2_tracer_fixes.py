@@ -80,8 +80,7 @@ def test_csg_box_mask_on_coords_forward_bit_identical():
     concrete coordinates.
 
     ``Box.mask_on_coords`` is the DIELECTRIC sampler — node coordinates,
-    half-open ``[lo, hi)`` — and #931 §1.8 leaves it exactly as it is, so
-    the reference below is unchanged by the lattice ownership contract.
+    half-open ``[lo, hi)`` with the solver-width band at both faces.
     What changed is who reads it: a PEC entry no longer goes through this
     mask at all. It is centre-sampled by ``classify_pec_entry`` and
     realized by ``realized_pec_edge_masks``, and the sibling test below
@@ -90,7 +89,9 @@ def test_csg_box_mask_on_coords_forward_bit_identical():
 
     Re-pinned at #802: concrete coordinates are compared on the HOST in
     float64, so the reference here widens the float32 linspace values to
-    float64 before comparing — exactly what ``_axis_mask`` does. The old
+    float64 before comparing. The reference writes out the float32-line
+    band, using each node's forward width (repeated at the final node).
+    The old
     reference compared in float32, where a coordinate equal to ``lo``
     after f32 rounding was included even when its f64 value sits below
     ``lo``; that flag-dependent inclusion is the defect the fix removed.
@@ -104,10 +105,20 @@ def test_csg_box_mask_on_coords_forward_bit_identical():
     xh = np.asarray(x, dtype=np.float64)
     yh = np.asarray(y, dtype=np.float64)
     zh = np.asarray(z, dtype=np.float64)
-    mx = (xh >= 0.002) & (xh < 0.0085)
-    expected = mx[:, None, None] & (
-        (yh >= 0.0) & (yh < 0.01))[None, :, None] & (
-        (zh >= 0.0) & (zh < 0.01))[None, None, :]
+    def direct_node_mask(coords, lo, hi):
+        widths = np.diff(coords)
+        widths = np.concatenate((widths, widths[-1:]))
+
+        def band(face):
+            return 1e-9 * widths + np.minimum(
+                16 * float(np.finfo(np.float32).eps) * abs(face), 5e-4 * widths)
+
+        return (coords >= lo - band(lo)) & (coords < hi - band(hi))
+
+    mx = direct_node_mask(xh, 0.002, 0.0085)
+    my = direct_node_mask(yh, 0.0, 0.01)
+    mz = direct_node_mask(zh, 0.0, 0.01)
+    expected = mx[:, None, None] & my[None, :, None] & mz[None, None, :]
     np.testing.assert_array_equal(m, expected)
 
 
