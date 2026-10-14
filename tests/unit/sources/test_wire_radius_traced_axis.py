@@ -76,6 +76,38 @@ def test_bit_identity_with_untraced_nominal_stamp(component):
             getattr(expected, field))
 
 
+def test_cpml_padded_nominal_widths_bit_identity():
+    nominal = np.full(16, D)
+    nominal[1:5] = .8 * D
+    nominal[9:13] = 1.2 * D
+
+    def stamp(profile, *, traced):
+        grid = make_nonuniform_grid(
+            (.016, .016), np.full(16, D), D, cpml_layers=4,
+            cpml_axes="x", dx_profile=profile,
+            nominal_profiles={"x": NominalProfile(nominal, (1, 3))} if traced else None)
+        assert grid.pad_x_lo == grid.pad_x_hi == 4
+        i = 7 + grid.pad_x_lo
+        # Padded stencil 9..12 maps to interior 5..8 (1 mm); omitting
+        # padding reads interior 9..12 (1.2 mm), which is not square with y.
+        np.testing.assert_array_equal(
+            nominal[i - 2 - grid.pad_x_lo:i + 2 - grid.pad_x_lo], np.full(4, D))
+        assert np.all(nominal[i - 2:i + 2] != D)
+        return stamp_wire_radius(
+            grid, init_materials(grid.shape), "ez", .0001, [(i, 7, 7)])
+
+    expected = stamp(nominal, traced=False)
+    moved = jnp.asarray(nominal).at[1].add(.0001).at[2].add(-.0001)
+    actual = jax.jit(lambda profile: stamp(profile, traced=True))(moved)
+    for field in ("mu_r_wire", "eps_r_lumped", "eps_r"):
+        got, want = getattr(actual, field), getattr(expected, field)
+        assert jax.tree.structure(got) == jax.tree.structure(want)
+        for a, b in zip(jax.tree.leaves(got), jax.tree.leaves(want)):
+            assert np.asarray(a).dtype == np.asarray(b).dtype
+            assert np.asarray(a).shape == np.asarray(b).shape
+            assert np.asarray(a).tobytes() == np.asarray(b).tobytes(), field
+
+
 @pytest.mark.parametrize("axis", ["x", "y", "z"])
 @pytest.mark.parametrize("offset", [-2, -1, 0, 1, 2, 3])
 def test_transverse_stencil_and_margin(axis, offset):
