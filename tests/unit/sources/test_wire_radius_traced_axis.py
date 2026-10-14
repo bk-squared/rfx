@@ -103,6 +103,36 @@ def test_one_cell_beyond_margin_is_admitted(axis, axial, side):
     _check_window(axis, component, (index, index + 1), refuses=False)
 
 
+@pytest.mark.parametrize("window, refuses", [
+    ((4, 5), True), ((3, 4), False),
+], ids=["touches_margin", "ends_before_margin"])
+def test_cpml_padded_traced_window(window, refuses):
+    def objective(profile):
+        grid = make_nonuniform_grid(
+            (.016, .016), np.full(16, D), D, cpml_layers=4,
+            cpml_axes="x", dx_profile=profile,
+            nominal_profiles={"x": NominalProfile(NOMINAL, window)})
+        assert grid.pad_x_lo == grid.pad_x_hi == 4
+        cell = (7 + grid.pad_x_lo, 7, 7)
+        # Compute the padded range directly from the declaration and grid pad.
+        last_moving_cell = window[1] - 1 + grid.pad_x_lo
+        margin_cell = cell[0] - 3
+        assert last_moving_cell == margin_cell - (0 if refuses else 1)
+        materials = init_materials(grid.shape)
+        if refuses:
+            with pytest.raises(NotImplementedError) as exc:
+                stamp_wire_radius(grid, materials, "ez", .0001, [cell])
+            message = str(exc.value)
+            assert f"port cell {cell}, axis x" in message
+            assert f"stencil cells {cell[0] - 2}..{cell[0] + 1} (padded)" in message
+            assert f"declared traced range {window} (half-open interior)" in message
+            return jnp.sum(profile)
+        stamped = stamp_wire_radius(grid, materials, "ez", .0001, [cell])
+        return jnp.sum(stamped.eps_r)
+
+    assert np.all(np.isfinite(jax.grad(objective)(jnp.asarray(NOMINAL))))
+
+
 def _check_window(axis, component, window, *, refuses):
     def objective(profile):
         grid = _grid({axis: profile}, {axis: window})

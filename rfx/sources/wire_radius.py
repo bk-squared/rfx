@@ -102,6 +102,9 @@ def stamp_wire_radius(grid, materials, component, radius, cells):
     and indices, and the pin index is resolved on the nominal profile
     (PR 1686): a moving range elsewhere may shift node positions without
     changing the stamp.
+    Because the stamp uses nominal widths, a whole-profile gradient has no
+    stamp term for the stencil's own cells; those cells are declared fixed
+    (the run stops if they move), so their gradient entries are not meaningful.
     Material differentiation stays in JAX throughout the stamping itself.
     """
     validate_radius(radius)
