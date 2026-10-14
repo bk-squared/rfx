@@ -618,19 +618,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                 "non-uniform path: the decay stop is a forward-only host "
                 "loop, so the warmup AD-tape split does not apply."
             )
-        for _fm in getattr(sim, "_flux_monitors", None) or []:
-            _win = getattr(_fm, "dft_window", "rect")
-            if _win != "rect":
-                raise ValueError(
-                    f"flux monitor {_fm.name!r} uses dft_window={_win!r}, "
-                    "which is not supported with until_decay on the "
-                    "non-uniform path: a streaming windowed DFT needs the "
-                    "true total step count in advance, and a "
-                    "decay-terminated run does not know it (sizing by "
-                    "decay_max_steps would silently mis-weight every "
-                    "sample). Use dft_window='rect' (the default) or a "
-                    "fixed n_steps run."
-                )
+        from rfx.measurement.decay import refuse_windowed_flux
+        refuse_windowed_flux(sim, "non-uniform")
 
     # Step-count-sized builds use ``sizing_n``: on the decay path every
     # source table / waveguide-port record buffer / DFT accumulator is
@@ -1187,6 +1176,11 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
             **_shared_run_kwargs,
         )
     elif until_decay is not None:
+        # The energy stop reads W only after every drive built above has ended.
+        from rfx.measurement.decay import advisory_inputs, drive_end
+        n_end = (drive_end(grid, decay_max_steps, sources=sources, tfsf=tfsf_pair,
+                           waveguide_ports=waveguide_port_cfgs)
+                 if until_decay > 0 and radiated_flux_box is None else None)
         # #383: chunked host loop with the interior-energy stop. The
         # fences above already rejected checkpoint_every / n_warmup /
         # non-rect flux windows; ``checkpoint`` is accepted-and-ignored
@@ -1195,6 +1189,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         r = run_nonuniform_until_decay(
             grid, materials,
             decay_by=until_decay,
+            n_end=n_end,
+            advisory=advisory_inputs(sim, dt=grid.dt, n_table=decay_max_steps),
             check_interval=decay_check_interval,
             min_steps=decay_min_steps,
             max_steps=decay_max_steps,
@@ -1296,9 +1292,11 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
             zip(r.get("wire_sparams_meta", ()), _wire_raw)
         )
 
+    # until_decay: one record of what ended the run (rfx.measurement.decay.finish_decay).
+    _stop = r.get("decay_stop")
     from rfx.model.design_admission import with_design_diagnostics
     return with_design_diagnostics(Result(
-        diagnostics=diagnostics,
+        diagnostics=tuple(diagnostics) + ((_stop,) if _stop is not None else ()),
         realized_geometry=geometry_record,
         state=r["state"],
         time_series=r["time_series"],

@@ -539,7 +539,8 @@ class _ExecuteMixin:
                 return result
         elif not hasattr(result, "_replace") or not hasattr(result, "settling_witness"):
             return result
-        settling_db, witness = self._run_settling_witness(result)
+        from rfx.measurement import decay_stop_first
+        settling_db, witness = decay_stop_first(result, *self._run_settling_witness(result))
         if not forward_result:
             result = result._replace(settling_db=settling_db,
                                      settling_witness=witness)
@@ -616,132 +617,6 @@ class _ExecuteMixin:
             )
         return result
 
-    def _warn_until_decay_dc_floor(self, *, dt, n_table: int) -> None:
-        """#388 predictor: warn when a soft source will floor ``until_decay``.
-
-        A soft current source deposits its waveform's discrete time integral
-        as a net static end-charge ``q = S/((1+loss)*dz_src)`` with
-        ``S = sum s(t_n)*dt`` — measured exactly on both the uniform and
-        non-uniform lanes (issue #388). The remnant's energy is the
-        discrete-Poisson self-energy of that charge: it does not decay and
-        CPML cannot absorb a static field, so it floors the interior-energy
-        decay criterion and ``until_decay`` cap-hits instead of stopping.
-
-        For each soft source (``impedance == 0`` port entries, plus MSL
-        ports — the same soft-Ez deposit mechanism drives them), compute
-        ``rel_DC = |sum s(t_n)*dt| / sum |s(t_n)|*dt`` over the planned
-        table length (``decay_max_steps`` — the decay lanes' buffer size)
-        and warn quantitatively above 1e-3 (the demo-scale GaussianPulse
-        sits at ~6e-5; a bandwidth=1.2 ModulatedGaussian at ~0.68).
-
-        The message is TRUNCATION-AWARE: rel_DC over the planned table
-        conflates intrinsic waveform DC with table-truncation DC. When the
-        table ends inside the source pulse (``n_table*dt`` below the
-        pulse-completion time ``t_done = t0 + 3*tau``), the estimate is
-        truncation-dominated — the remedy is a longer ``decay_max_steps``
-        (or a fixed ``n_steps``), and raising the waveform ``cutoff``
-        makes it WORSE because it lengthens the onset (measured: default
-        pulse + decay_max_steps=200 → rel_DC 2.14e-2 pure truncation
-        artifact; cutoff=4.5 at n_table~500 fires while cutoff=3 is
-        silent). Only past pulse completion do the intrinsic-DC remedies
-        (higher cutoff / narrower ModulatedGaussian) apply.
-
-        Lives with the run()-path warning helpers (not preflight) because
-        ``preflight()`` does not receive run kwargs and this advisory is
-        meaningful only when ``until_decay`` is requested.
-        """
-        import warnings
-
-        from rfx.core.jax_utils import is_tracer
-
-        if is_tracer(dt):
-            return  # traced dt: advisory host math is impossible here
-        dt = float(dt)
-        if not dt > 0.0 or n_table <= 0:
-            return
-        t = np.arange(int(n_table), dtype=np.float64) * dt
-        soft_entries = [
-            pe for pe in self._ports
-            if pe.impedance == 0.0 and getattr(pe, "excite", True)
-        ]
-        # MSL ports launch through the same soft-Ez deposit across the
-        # trace cross-section, so their waveform DC floors the criterion
-        # identically. Entry access mirrors the sibling #386
-        # unresolved-pulse validator: read the ``waveform`` attribute,
-        # skip string-named waveforms (below).
-        soft_entries += [
-            pe for pe in self._msl_ports if getattr(pe, "excite", True)
-        ]
-        for pe in soft_entries:
-            wf = getattr(pe, "waveform", None)
-            if wf is None or isinstance(wf, str):
-                continue
-            try:
-                s = np.asarray(wf(jnp.asarray(t)), dtype=np.float64)
-            except Exception:
-                continue  # non-vectorizable CustomWaveform etc. — skip
-            if s.shape != t.shape or not np.all(np.isfinite(s)):
-                continue
-            denom = float(np.sum(np.abs(s))) * dt
-            if denom == 0.0:
-                continue
-            s_int = float(np.sum(s)) * dt
-            rel_dc = abs(s_int) / denom
-            if rel_dc <= 1e-3:
-                continue
-            # Pulse-completion time t_done = t0 + 3*tau (the waveform's
-            # own t0 property when present, 3*tau otherwise). A table
-            # ending before t_done makes rel_DC truncation-dominated.
-            _loc = f"{pe.position} ({getattr(pe, 'component', 'msl port')})"
-            t_done = None
-            try:
-                _tau = float(wf.tau)
-            except (AttributeError, TypeError, ValueError):
-                _tau = None
-            if _tau is not None and math.isfinite(_tau) and _tau > 0.0:
-                try:
-                    _t0 = float(wf.t0)
-                except (AttributeError, TypeError, ValueError):
-                    _t0 = 3.0 * _tau
-                t_done = _t0 + 3.0 * _tau
-            if t_done is not None and n_table * dt < t_done:
-                warnings.warn(
-                    f"soft source at {_loc}: waveform {type(wf).__name__} "
-                    f"shows relative DC {rel_dc:.2e} over the planned "
-                    f"{int(n_table)}-step table, but the planned "
-                    f"decay_max_steps window ends inside the source pulse "
-                    f"(table {n_table * dt:.3e} s < pulse completion "
-                    f"t0+3*tau ~ {t_done:.3e} s) — the DC estimate is "
-                    "truncation-dominated, not intrinsic waveform DC; "
-                    "until_decay may cap-hit (issue #388). Increase "
-                    "decay_max_steps (or run with a fixed n_steps) so the "
-                    "table covers the full pulse; raising the waveform "
-                    "cutoff makes this WORSE (it lengthens the onset).",
-                    UserWarning, stacklevel=3,
-                )
-            else:
-                warnings.warn(
-                    f"soft source at {_loc}: "
-                    f"waveform {type(wf).__name__} deposits relative DC "
-                    f"{rel_dc:.2e} (|sum s*dt| = {abs(s_int):.3e} over the "
-                    f"planned {int(n_table)}-step table) — the deposited "
-                    "static charge will floor the interior-energy criterion "
-                    "(a static field neither decays nor is absorbed by "
-                    "CPML); until_decay may cap-hit (issue #388). The "
-                    "purpose-built remedy is the radiated-flux stop criterion "
-                    "(immune to this static floor — it terminates on "
-                    "outgoing-flux settling, not interior energy): "
-                    "run(..., radiated_flux_box=((x0,y0,z0),(x1,y1,z1))) with "
-                    "a box enclosing the radiator. Otherwise reduce "
-                    "the waveform's DC content: a higher GaussianPulse "
-                    "cutoff (e.g. cutoff=4.5), ModulatedGaussian with "
-                    "bandwidth <= 0.4, or run with a fixed n_steps. Note: "
-                    "this advisory does NOT catch low-rel_DC floors "
-                    "amplified by thin source cells (the #388 patch class "
-                    "measured the floor at rel_DC ~6e-5) — see issue #388.",
-                    UserWarning, stacklevel=3,
-                )
-
     def _warn_decay_param_sanity(self, *, until_decay, decay_min_steps,
                                  decay_max_steps) -> None:
         """Behaviour-NEUTRAL sanity advisories on the decay-stop params.
@@ -753,9 +628,9 @@ class _ExecuteMixin:
         * ``decay_min_steps > decay_max_steps`` — every check index lies
           past the table end, so zero energy checks occur and the run is
           a forced ``decay_max_steps`` run (the stop can never fire).
-        * ``until_decay >= 1`` — the criterion ``U < until_decay*peak_U``
-          is satisfied while the field energy is still rising, so the
-          stop can fire immediately after ``decay_min_steps``.
+        * ``until_decay >= 1`` — ``W < until_decay * reference`` holds at
+          every check where W is not still rising, so the stop can fire
+          right after the drive end and ``decay_min_steps``.
           (``until_decay == 0.0`` is the documented forced-N escape on
           the NU lane and is deliberately not warned about.)
         """
@@ -779,9 +654,9 @@ class _ExecuteMixin:
         if _ud >= 1.0:
             warnings.warn(
                 f"until_decay={until_decay} >= 1: the energy criterion "
-                "(U < until_decay * peak_U) is met while the field energy "
-                "is still rising, so the stop can fire immediately after "
-                "decay_min_steps; use a fraction well below 1 (e.g. 1e-3).",
+                "(W < until_decay * reference) holds at every check where W "
+                "is not still rising, so the stop can fire right after the "
+                "drive end and decay_min_steps; use a fraction such as 1e-3.",
                 UserWarning, stacklevel=3,
             )
 
@@ -3778,43 +3653,37 @@ class _ExecuteMixin:
             Timesteps for S-parameter simulation (may need more than
             the main simulation for frequency resolution).
         until_decay : float or None
-            When provided, overrides *n_steps* and runs until field
-            energy decays to this fraction of peak. E.g. ``1e-3``.
-            **Boundary-dependent stop (issue #169, RESOLVED for absorbing
-            boundaries):** On **absorbing** boundaries (``cpml`` / ``upml``)
-            the stop now uses the **total interior-domain energy**
-            ``U = sum(E^2 + H^2)`` over the non-CPML interior — a whole-domain
-            quantity that does not pass through the per-cell interference nulls
-            of the old single-cell point-field stop, so it **is** suitable for
-            flux / S-parameter / transmission measurements on guided / low-loss
-            geometries (#169 resolved). On **closed / PEC** boundaries domain
-            energy does not decay, so the stop falls back to the historical
-            *instantaneous* single-cell field; that fallback keeps the original
-            limitation (valid only for lossy / radiating ring-down, not flux /
-            S-param / transmission gating on guided / low-loss closed geometries
-            — use a fixed ``n_steps`` there, see the
-            :func:`rfx.simulation.run_until_decay` note).
-            **Non-uniform (dx/dy/dz-profile) meshes (issue #383):** the same
-            interior-energy stop runs on absorbing (``cpml``/``upml``)
-            boundaries via a chunked host loop over the NU scan step
-            (dV-weighted energy — per-cell ``dx*dy*dz`` — so graded cells
-            are weighted faithfully). Closed-boundary NU sims refuse
-            ``until_decay`` (no point-field fallback on the NU lane).
-            On the NU decay path all step-sized buffers are allocated at
-            ``decay_max_steps`` and flux monitors must keep the default
-            rectangular DFT window. (The non-uniform runner additionally
-            rejects its internal ``checkpoint_every`` segmentation option
-            when a decay stop is requested; that option belongs to the
-            ``forward()`` lane and is not reachable through ``run()``.)
-            **DC floor (issue #388):** a soft-source waveform with net DC
-            content deposits a static end-charge whose self-energy floors
-            the interior-energy criterion; ``run()`` warns quantitatively
-            when a planned soft-source waveform's relative DC exceeds 1e-3
-            (raise the ``GaussianPulse`` cutoff, narrow a
-            ``ModulatedGaussian`` to bandwidth <= 0.4, or use a fixed
-            ``n_steps``). This advisory does NOT catch low-rel_DC floors
-            amplified by thin source cells (the #388 patch class measured
-            the floor at rel_DC ~6e-5) — see issue #388.
+            When provided, overrides *n_steps*. On absorbing boundaries the
+            run stops when the stored field energy left after the source has
+            ended has decayed to this fraction of its value after the drive:
+            the leapfrog-conserved interior energy
+            ``W = sum((eps E^n.E^n + (mu0/eps0) mu H^(n-1/2).H^(n+1/2)) dV)``,
+            checked every ``decay_check_interval`` steps from the drive end on
+            against its running maximum over those checks. On a resonant
+            structure the run is as long as the threshold asks. On a high-Q
+            structure whose mode reaches the absorber, the stop can move by
+            about 170 steps with the check phase while the spectra stay within
+            1e-2 of the band peak. Closed uniform boxes keep the instantaneous
+            point-field stop (see :func:`rfx.simulation.run_until_decay`).
+            **Non-uniform meshes (issue #383):** the same rule on absorbing
+            boundaries (per-cell dV); closed boundaries refuse ``until_decay``.
+            On the decay path every step-sized buffer is allocated at
+            ``decay_max_steps``; NU flux monitors keep the rectangular window.
+            In a lossy dielectric the run can last longer than the field's
+            ringing: charge moved onto the dielectric's surfaces during the
+            drive relaxes with the time constant eps/sigma after it. That field
+            is quasi-static (out of band), the record stays correct, and the
+            stop record and the cap advisory say what ended the run.
+            **Float32 floor:** a check also counts as below when W is under
+            ``KAPPA = 1e-12`` of the largest W at any check (drive included)
+            and has stopped falling (under 5 % decay per 50 steps). Risk: a mode
+            below 1e-12 of the drive's peak energy that decays more slowly than
+            5 % per 50 steps is stopped as rounding. Every run adds one
+            ``until_decay.stop`` Diagnostic to ``Result.diagnostics``
+            (criterion ``threshold``, ``float32_floor`` or ``cap``).
+            **DC (issue #388):** a soft source whose waveform has relative
+            DC above 1e-6 leaves a static charge that holds W up; ``run()``
+            warns and names it (``rfx.measurement.decay``).
         decay_check_interval : int
             Check decay every N steps (default 50).
         decay_min_steps : int
@@ -3822,10 +3691,8 @@ class _ExecuteMixin:
         decay_max_steps : int
             Hard upper limit on steps (default 50000).
         decay_energy_consecutive : int
-            Absorbing-boundary only: number of consecutive sub-threshold
-            interior-energy checks required before stopping (default ``2``;
-            ``>= 2`` mandatory — the interior energy is not null-free and a
-            single check can false-fire on a transient inter-packet dip).
+            Absorbing-boundary only: consecutive sub-threshold energy checks
+            before stopping (default ``2``; values below 2 are refused).
         radiated_flux_box : tuple or None
             Physical lower/upper corners of a closed box enclosing the radiator,
             clear of CPML. Selects outgoing-flux decay instead of interior-energy
@@ -4099,9 +3966,8 @@ class _ExecuteMixin:
                 except Exception:
                     _nu_dt_for_dc = None
                 if _nu_dt_for_dc is not None:
-                    self._warn_until_decay_dc_floor(
-                        dt=_nu_dt_for_dc, n_table=decay_max_steps
-                    )
+                    from rfx.measurement import warn_dc_floor
+                    warn_dc_floor(self, dt=_nu_dt_for_dc, n_table=decay_max_steps)
             _nu_call = functools.partial(
                 self._run_nonuniform,
                 n_steps=n_steps,
@@ -4244,10 +4110,9 @@ class _ExecuteMixin:
             n_steps = grid.num_timesteps(num_periods=num_periods)
 
         if until_decay is not None:
-            # #388 DC-floor predictor for the decay stop.
-            self._warn_until_decay_dc_floor(
-                dt=grid.dt, n_table=decay_max_steps
-            )
+            # #388 DC-floor predictor for the decay stop (rfx.measurement.decay).
+            from rfx.measurement import warn_dc_floor
+            warn_dc_floor(self, dt=grid.dt, n_table=decay_max_steps)
 
         from rfx.runners.uniform import run_uniform
         _field_dtype = self._resolve_field_dtype()

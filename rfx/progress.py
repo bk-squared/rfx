@@ -259,6 +259,14 @@ class ProgressReporter:
         self.last_reported = steps_done
         return line
 
+    def note(self, text: str) -> str:
+        """Emit one line that is not a progress tick: how the run ended
+        (``until_decay``'s stop criterion). It does not count as a report."""
+        head = f"  [STOP] {self.label}: " if self.label else "  [STOP] "
+        line = f"{head}{text}"
+        print(line, file=self._stream, flush=True)
+        return line
+
 
 def scan_with_progress(
     body,

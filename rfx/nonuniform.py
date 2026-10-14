@@ -34,6 +34,7 @@ import jax
 import jax.numpy as jnp
 
 from rfx.core.drives import drive_layout
+from rfx.measurement import AUTO_END, finish_decay, make_decay_stop, one_step_xs
 from rfx.model.source_coefficients import drive_table
 from rfx.measurement import assemble_graded_result as _assemble_nu_result
 from rfx.model import current_source_samples, with_edge_keep
@@ -1256,6 +1257,7 @@ def run_nonuniform_until_decay(
     *,
     cpml_axes: str | None = None,
     decay_by: float = 1e-3,
+    n_end: int | None = AUTO_END,
     check_interval: int = 50,
     min_steps: int = 100,
     max_steps: int = 50_000,
@@ -1293,11 +1295,11 @@ def run_nonuniform_until_decay(
     design_box=None,
     stop_fn=None,
     record_dft: bool = False,
+    advisory: dict | None = None,
 ) -> dict:
-    """Run non-uniform FDTD until the interior-domain energy decays (#383).
+    """Run non-uniform FDTD until the field energy left after the drive decays.
 
-    NU port of the issue #169 total-domain-energy stop criterion: a
-    Python loop drives constant-length jitted chunks (``chunk =
+    A Python loop drives constant-length jitted chunks (``chunk =
     check_interval`` steps) of the SAME ``step_fn`` that
     :func:`run_nonuniform` scans, threading the SAME carry (NTFF Kahan
     compensation arrays included) across chunks. Per-chunk ``xs``
@@ -1305,50 +1307,24 @@ def run_nonuniform_until_decay(
     split in :func:`run_nonuniform`, so source waveforms / DFT phases
     are identical to a fixed-step run of the same length.
 
-    Stop criterion (absorbing boundaries — the ONLY supported class on
-    this entry point; the routing layer in ``rfx/api/_execute.py`` gates
-    on ``boundary in ('cpml', 'upml')``):
+    Stop rule: ``rfx.measurement.decay`` (shared with the uniform loop; the
+    leapfrog-conserved interior energy W after the drive end ``n_end``, per-cell
+    dV, the float32 floor ``KAPPA = 1e-12``); ``result["decay_stop"]`` is the
+    ``until_decay.stop`` Diagnostic of what ended the run. ``decay_by = 0`` runs
+    exactly ``max_steps``. On a high-Q structure whose mode reaches the absorber,
+    the stop can move by about 170 steps with the check phase while the spectra
+    stay within 1e-2 of the band peak. In a lossy dielectric the run can last
+    longer than the field's ringing: charge moved onto the dielectric's surfaces
+    during the drive relaxes with the time constant eps/sigma after it. That
+    field is quasi-static (out of band), the record stays correct, and the stop
+    record and the cap advisory say what ended the run.
 
-    * At each chunk boundary (after ``k * check_interval`` steps), once
-      ``steps_done >= min_steps``, compute the host-side dV-weighted
-      interior energy ``U = sum((Ex^2 + ... + Hz^2) * dV)`` over the
-      non-CPML interior slice, with ``dV = dx[i] * dy[j] * dz[k]`` the
-      per-cell primal volume (all six components weighted by the primal
-      cell dV — the same staggering simplification the uniform path
-      makes; on a uniform mesh this reduces to the uniform criterion up
-      to the constant dV factor).
-    * ``peak_U`` is updated at checks only, BEFORE the compare.
-    * The stop fires after ``decay_energy_consecutive`` CONSECUTIVE
-      sub-threshold checks (``U < decay_by * peak_U``); any
-      above-threshold check resets the counter. ``>= 2`` is mandatory
-      for the same reason as the uniform path: the interior energy is
-      not null-free (transient inter-packet minima recover).
-    * ``decay_by = 0.0`` preserves the forced-N escape (``U < 0`` is
-      never true for ``U >= 0``), so the loop runs exactly
-      ``max_steps`` steps.
-    * The loop is hard-bounded by ``max_steps``; a final partial chunk
-      (shorter than ``check_interval``) is allowed so the bound is
-      exact.
+    On a closed domain (no absorbing pads) the interior energy does not decay
+    and this runs to ``max_steps``; ``run()`` refuses ``until_decay`` there.
 
-    Check cadence note: the uniform ``run_until_decay`` checks after
-    steps ``k * interval + 1`` (its 0-based ``step % interval == 0``
-    fires at step index ``k * interval``); the chunked NU loop checks
-    after ``k * interval`` steps. The <= 1-step cadence difference is
-    deliberate (one XLA program per chunk length) — cross-lane stop-step
-    equality is NOT a contract (host/device float order already differs
-    between the lanes).
-
-    On a closed domain (no absorbing pads) the interior energy does not
-    decay and this function runs to ``max_steps``; there is NO
-    point-field fallback on the NU lane (no legacy behavior to
-    preserve). The routing layer warn-and-drops ``until_decay`` for
-    non-absorbing NU boundaries instead of calling this.
-
-    Forward-only: this is a host loop (not ``lax.scan``); it is not
-    reachable from ``forward()``/``optimize()`` and carries no AD tape
-    contract. ``checkpoint`` / ``checkpoint_every`` / ``n_warmup`` are
-    deliberately absent from the signature (the caller raises before
-    dispatching here).
+    Forward-only: a host loop, not reachable from ``forward()``/``optimize()``,
+    no AD tape contract; ``checkpoint`` / ``checkpoint_every`` / ``n_warmup``
+    are absent from the signature (the caller raises before dispatching here).
 
     ``stop_fn`` (issue #1254, ``run(..., until_identified=True)``), when
     given, is called at every chunk boundary after the energy check as
@@ -1359,14 +1335,10 @@ def run_nonuniform_until_decay(
     Returns
     -------
     dict
-        Same schema as :func:`run_nonuniform` (assembled by the shared
-        :func:`_assemble_nu_result`), plus a ``"decay_checks"``
-        diagnostic: a list of ``(step, U, peak_U)`` host-float tuples,
-        one per eligible energy check. The trace exists only on THIS
-        runner-dict return — ``run_nonuniform_path`` does not copy it
-        onto the public ``Result`` — so consumers that need to verify
-        the fire condition actually held (workspace rule R5) must call
-        this module function directly.
+        Same schema as :func:`run_nonuniform` (:func:`_assemble_nu_result`),
+        plus ``"decay_checks"``: ``(step, W, reference)`` per energy check from
+        ``max(min_steps, n_end)`` on, on this dict only (not on ``Result``),
+        for a caller verifying the fire condition (rule R5).
     """
     if check_interval < 1:
         raise ValueError(
@@ -1434,26 +1406,6 @@ def run_nonuniform_until_decay(
         step = partial(step_fn_inv, invariants=inv_rebuild(inv_args))
         return jax.lax.scan(step, carry_in, xs)
 
-    # Non-CPML interior slice bounds + per-cell primal volume dV
-    # (Python ints / concrete arrays — the reduction below is host-side;
-    # NonUniformGrid is always 3D).
-    _ix0, _ix1 = grid.pad_x_lo, grid.nx - grid.pad_x_hi
-    _iy0, _iy1 = grid.pad_y_lo, grid.ny - grid.pad_y_hi
-    _iz0, _iz1 = grid.pad_z_lo, grid.nz - grid.pad_z_hi
-    _dV = (
-        jnp.asarray(grid.dx_arr)[_ix0:_ix1, None, None]
-        * jnp.asarray(grid.dy_arr)[None, _iy0:_iy1, None]
-        * jnp.asarray(grid.dz)[None, None, _iz0:_iz1]
-    )
-
-    def _interior_energy(state) -> float:
-        """dV-weighted interior field energy (host float)."""
-        sx, sy, sz = (slice(_ix0, _ix1), slice(_iy0, _iy1), slice(_iz0, _iz1))
-        u = (state.ex[sx, sy, sz] ** 2 + state.ey[sx, sy, sz] ** 2
-             + state.ez[sx, sy, sz] ** 2 + state.hx[sx, sy, sz] ** 2
-             + state.hy[sx, sy, sz] ** 2 + state.hz[sx, sy, sz] ** 2)
-        return float(jnp.sum(u * _dV))
-
     # #388 opt-in RADIATED-FLUX stop (NU lane; mirrors the uniform run_until_decay path):
     # stop on the outgoing Poynting flux through a Huygens box instead of the interior energy,
     # so the non-radiating static soft-source charge (which FLOORS the energy criterion) and
@@ -1482,13 +1434,16 @@ def run_nonuniform_until_decay(
         p -= jnp.sum(ex[ii, jj, kl] * hy[ii, jj, kl] - ey[ii, jj, kl] * hx[ii, jj, kl])
         return float(p)
 
-    peak_U = 0.0           # running peak, updated at checks only
-    energy_below = 0       # consecutive sub-threshold energy checks
+    energy_stop, energy = make_decay_stop(
+        grid, materials, thr=decay_by, min_steps=min_steps, interval=check_interval,
+        consecutive=decay_energy_consecutive, n_end=n_end, criterion=not use_flux_stop,
+        rows=True, max_steps=max_steps, sources=sources, tfsf=tfsf,
+        waveguide_ports=waveguide_ports, side_step=(lambda c, xs, inv: _run_chunk(c, xs, inv)[0],
+                                                    lambda n: one_step_xs(n, src_waveforms), inv_args))
     peak_flux = 0.0        # #388 flux-stop: running peak of the |P| envelope (from first check)
     flux_below = 0         # #388 flux-stop: consecutive sub-threshold checks
     flux_hist: list = []   # recent |P| samples for the max-envelope
     decayed_fired = False  # #388: did the energy criterion fire (vs cap-hit)?
-    decay_checks: list = []
     ys_chunks = []
     steps_done = 0
     reporter = None
@@ -1533,29 +1488,9 @@ def run_nonuniform_until_decay(
                     break
             else:
                 flux_below = 0
-        elif decay_by > 0.0 or steps_done >= min_steps:
-            # Track the PEAK from the first chunk boundary, like the flux
-            # branch above; only the STOP (and the recorded check trace) waits
-            # for min_steps. Gating the peak on min_steps too reads the
-            # RESIDUAL as the reference on a domain that empties before
-            # min_steps, and no residual falls another ``decay_by`` below
-            # itself, so such a run reaches max_steps without firing (#1078;
-            # the uniform lane carried the same defect). ``decay_by == 0.0``
-            # is the forced-N escape and keeps the pre-min_steps chunks
-            # uncomputed, so its recorded trace is unchanged.
-            U = _interior_energy(carry["fdtd"])
-            if U > peak_U:
-                peak_U = U
-            if steps_done >= min_steps:
-                decay_checks.append((steps_done, U, peak_U))
-                # decay_by=0.0 forced-N escape: U >= 0 so U < 0 never fires.
-                if U < decay_by * peak_U:
-                    energy_below += 1
-                    if energy_below >= decay_energy_consecutive:
-                        decayed_fired = True
-                        break
-                else:
-                    energy_below = 0
+        elif energy_stop.check(steps_done, lambda: energy(carry, steps_done)) is not None:
+            decayed_fired = True
+            break
 
         # #1254: the caller's stop check at the chunk boundary.
         if stop_fn is not None:
@@ -1566,16 +1501,13 @@ def run_nonuniform_until_decay(
                     reporter.report(steps_done)
                 break
 
-    # #388: measured static-remnant advisory on cap-hit (until_decay is absorbing-only on
-    # the NU lane too, so a cap-hit without firing means the energy criterion could not
-    # self-terminate — warn if the remnant is electrostatic). Function-local import avoids
-    # a module-level simulation<->nonuniform cycle.
-    # decay_by == 0.0 is the forced-N escape (fixed-step progress route):
-    # running to max_steps is the DESIGN there, not a failed stop — the
-    # static-remnant advisory would be a false alarm.
-    if not decayed_fired and not use_flux_stop and decay_by > 0.0:
-        from rfx.simulation import _warn_static_remnant_cap_hit
-        _warn_static_remnant_cap_hit(carry["fdtd"], materials, grid)
+    # What ended the run (one Diagnostic; the static-remnant advisory on an energy cap).
+    # decay_by == 0.0 is the forced-N escape (fixed-step progress route): none.
+    decay_stop = finish_decay(
+        energy_stop, steps_done, fired=decayed_fired, reporter=reporter,
+        flux=(flux_hist, flux_env_checks, peak_flux) if use_flux_stop else None,
+        state=carry["fdtd"], materials=materials, grid=grid, advisory=advisory,
+        sources=sources)
 
     # Per-chunk ys concatenate to exactly steps_done rows; the
     # emit_time_series=False convention ((steps, 0)) is preserved
@@ -1583,5 +1515,6 @@ def run_nonuniform_until_decay(
     time_series = jnp.concatenate(ys_chunks, axis=0)
 
     result = _assemble_nu_result(setup, carry, time_series, n_record=steps_done)
-    result["decay_checks"] = decay_checks
+    result["decay_checks"] = energy_stop.decay_checks
+    result["decay_stop"] = decay_stop
     return result

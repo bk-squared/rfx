@@ -18,10 +18,11 @@ EXCLUDED = {"rfx/core/yee.py", "rfx/model/materials.py"}
 # 27 modules (the original five: 46 in 26), including two nonuniform.py aliases.
 ALLOWED_CALLS = {'rfx/adi.py': 3,
  'rfx/current_moments.py': 2,
+ # static_remnant_advisory's H average moved here from rfx/simulation.py (decay stop PR).
+ 'rfx/measurement/decay.py': 1,
  'rfx/runners/_distributed_common.py': 6,
  'rfx/runners/distributed_nu.py': 1,
  'rfx/runners/nonuniform.py': 1,
- 'rfx/simulation.py': 1,
  'rfx/sources/coaxial_port.py': 1,
  'rfx/sources/msl_port.py': 1,
  'rfx/sources/tfsf.py': 3,

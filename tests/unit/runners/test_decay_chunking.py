@@ -1,6 +1,6 @@
 """Uniform decay scans: exact stop steps and cross-trace output contracts.
 
-The reference is the pre-change loop, frozen on 4725b748 in
+The reference is an independent per-step loop with the inline v4 rule in
 _until_decay_reference.py. These are driver contracts, not accuracy claims.
 The PI's 2026-09-29 decision uses the existing A/B lock's derived floors
 for outputs against both the old loop and forced-N run(). Stop steps remain
@@ -28,8 +28,13 @@ from tests.locks.test_run_until_decay_ab_identity import (
     _reassoc_atol,
 )
 from tests.unit.runners._until_decay_reference import run_until_decay_reference
+
 from tests.unit.runners.test_snapshot_interval_and_axes import _loaded_sim, _observables
 from tests.unit.sparams.test_ringdown_run import _box
+
+# rfx CLAUDE.md, accumulated last-bit law: largest |old - new| over a field family
+# <= 1.2e-7 x the running sum over steps of that family's largest |field|.
+_ACCUMULATED_LAW = 1.2e-7
 
 
 def _arrays(value, name=""):
@@ -78,9 +83,10 @@ def _record_metrics(got, ref, record_property, *, comparison):
 
 
 def _run(
-    branch, driver, monkeypatch, *, cap=241, interval=17, snapshot_interval=7, report_every=None,
+    branch, driver, monkeypatch, *, cap=None, interval=17, snapshot_interval=7, report_every=None,
     record_dft=False,
 ):
+    cap = (1000 if branch == "energy" else 241) if cap is None else cap
     sim = _loaded_sim("pec" if branch in ("point", "min-cap", "zero-cap") else "cpml")
     freqs = np.array([2e9, 4e9])
     if branch in ("energy", "flux"):
@@ -99,11 +105,13 @@ def _run(
             slice_index=sim._build_grid().position_to_index((0, 0, 0.006))[2],
         )
     )
-    captured = {}
+    captured = {"family_peaks": {} if driver is run_until_decay_reference else None}
 
     def capture(*args, **kwargs):
         if record_dft:
             kwargs["record_dft"] = True
+        if captured["family_peaks"] is not None:
+            kwargs["family_peaks"] = captured["family_peaks"]
         captured["grid"], captured["materials"] = args[:2]
         captured["low"] = driver(*args, **kwargs)
         return captured["low"]
@@ -125,14 +133,24 @@ def _run(
             compute_s_params=True,
             skip_preflight=True,
         )
-    return result, captured["low"], captured["grid"], captured["materials"]
+    return (result, captured["low"], captured["grid"], captured["materials"],
+            captured["family_peaks"])
 
 
-def _assert_floor_arrays(left, right, n_steps, grid, materials, record_property, *, comparison):
+def _assert_floor_arrays(left, right, n_steps, grid, materials, record_property, *, comparison,
+                         family_peaks=None):
     """Reuse the lock's floors; no independently calibrated output tolerance.
 
-    Yee fields and snapshots use the lock's E/H curl-coupled component floors.
-    Each other floating array uses its own compared magnitudes, through the
+    With ``family_peaks`` (from the reference loop: ``e_sum`` / ``h_sum``, the
+    running sum over steps of the family's largest |field|), a Yee field row is
+    judged by the governance law for an accumulated last-bit difference:
+    max |old - new| <= 1.2e-7 x that sum, absolute, no rtol. The lock's floor
+    scales with the field left at the END of the run, a decayed window the rule
+    does not take as a unit, while a machine's last-bit difference grows with
+    the accumulated field (1742).
+
+    Without the sums, Yee fields and snapshots use the lock's E/H curl-coupled
+    component floors. Each other floating array uses its own compared magnitudes, through the
     lock's scalar-observable helper. Kahan pairs compare both the accumulator
     and acc + comp at the accumulator's floor, never compensation alone.
     Metadata and empty arrays stay exact.
@@ -142,13 +160,19 @@ def _assert_floor_arrays(left, right, n_steps, grid, materials, record_property,
         assert left[name].shape == b.shape, name
         assert left[name].dtype == b.dtype, name
 
-    atols = {}
+    atols, law_rows = {}, set()
     for pattern in (".state.{}", ".snapshots[{!r}]", "api.state.{}"):
         names = {c: pattern.format(c) for c in _E_COMPS + _H_COMPS}
         arrays = {c: [left[name], right[name]] for c, name in names.items()
                   if name in right and right[name].size}
-        if arrays:
+        if arrays and family_peaks is not None:
+            floors = {c: _ACCUMULATED_LAW
+                      * family_peaks[("h" if c in _H_COMPS else "e") + "_sum"]
+                      for c in arrays}
+            law_rows.update(names[c] for c in floors)
+        elif arrays:
             floors, _, _ = _field_reassoc_atols(arrays, n_steps, grid, materials)
+        if arrays:
             atols.update({names[c]: floor for c, floor in floors.items()})
 
     measured, failures = {}, {}
@@ -178,9 +202,10 @@ def _assert_floor_arrays(left, right, n_steps, grid, materials, record_property,
             np.testing.assert_array_equal(a, b, err_msg=name)
             continue
         atol = atols[name] if name in atols else _reassoc_atol(scale, n_steps)
-        passed = bool(np.allclose(a, b, rtol=_RTOL, atol=atol))
         delta = float(np.max(np.abs(a.astype(np.complex128) - b.astype(np.complex128))))
-        measured[name] = dict(atol=atol, rtol=_RTOL, max_abs_difference=delta, passed=passed)
+        rtol = 0.0 if name in law_rows else _RTOL
+        passed = (delta <= atol) if name in law_rows else bool(np.allclose(a, b, rtol=_RTOL, atol=atol))
+        measured[name] = dict(atol=atol, rtol=rtol, max_abs_difference=delta, passed=passed)
         if not passed:
             failures[name] = measured[name]
     record_property(f"reassociation_floors_{comparison}", json.dumps(measured, sort_keys=True))
@@ -194,6 +219,14 @@ def _assert_contract(got, ref, record_property):
     assert got_steps == ref_steps, f"stop step: got {got_steps}, reference {ref_steps}"
     for result in (got[0], got[1], ref[0], ref[1]):
         assert int(result.state.step) == ref_steps
+    # The loop's record of what ended the run is not an array output of the
+    # run: it is checked against the reference's stop here, then set aside.
+    stop = got[1].decay_stop
+    records = [d for d in got[0].diagnostics if d.code == "until_decay.stop"]
+    assert records == ([] if stop is None else [stop])
+    if stop is not None:
+        assert stop.values["stop_step"] == ref_steps
+    got = (got[0], got[1]._replace(decay_stop=None), *got[2:])
     _record_metrics(got[1], ref[1], record_property, comparison="old_loop")
     _record_metrics(_observables(got[0]), _observables(ref[0]), record_property,
                     comparison="old_loop_api")
@@ -209,7 +242,8 @@ def _assert_contract(got, ref, record_property):
         api_b[f"flux_spectrum[{name}]"] = np.asarray(flux_spectrum(ref[0].flux_monitors[name]))
     a.update({f"api.{name}": value for name, value in api_a.items()})
     b.update({f"api.{name}": value for name, value in api_b.items()})
-    _assert_floor_arrays(a, b, ref_steps, got[2], got[3], record_property, comparison="old_loop")
+    _assert_floor_arrays(a, b, ref_steps, got[2], got[3], record_property, comparison="old_loop",
+                         family_peaks=ref[4])
     if ref_steps > 1:
         for name in ("time_series", "s_params", "dft[pz]", "flux[fx].e1_dft", "state.ez"):
             assert np.max(np.abs(api_b[name])) > 0, name
@@ -243,15 +277,15 @@ def test_decay_chunks_match_old_loop_per_stop_branch(
     if branch.endswith("cap"):
         assert n == 241
     else:
-        assert 35 <= n < 241
-        assert (n - 1) % interval == 0
+        assert 35 <= n < (1000 if branch == "energy" else 241)
+        assert n % interval == 0
         if branch == "point":
-            # Reading peaks only at check steps would stop at 186, not 112.
-            assert n == 112
+            # The peak is read from every step of each chunk, not only at checks.
+            assert n == 111
 
 
-@pytest.mark.parametrize("branch,stop,interval", [("point", 112, 37), ("energy", 137, 17),
-                                                ("flux", 188, 17)])
+@pytest.mark.parametrize("branch,stop,interval", [("point", 111, 37), ("energy", 374, 17),
+                                                ("flux", 187, 17)])
 def test_decay_stops_before_absorbed_tail(branch, stop, interval, monkeypatch, record_property):
     kw = dict(cap=stop + 1, interval=interval, report_every=13)
     ref = _run(branch, run_until_decay_reference, monkeypatch, **kw)

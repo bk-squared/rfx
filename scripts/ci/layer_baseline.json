@@ -48,7 +48,6 @@
         "_ExecuteMixin._forward_from_materials",
         "_ExecuteMixin._run_adi_from_materials",
         "_ExecuteMixin._warn_postrun_energy_witness",
-        "_ExecuteMixin._warn_until_decay_dc_floor",
         "_ExecuteMixin.forward",
         "_ExecuteMixin.run",
         "_staged_by_an_outer_trace"
@@ -148,7 +147,6 @@
         "rfx.boundaries.upml:apply_upml_h",
         "rfx.boundaries.upml:init_upml",
         "rfx.core.yee:component_e_materials",
-        "rfx.core.yee:component_h_materials",
         "rfx.core.yee:curl_h",
         "rfx.core.yee:e_update_coeffs",
         "rfx.core.yee:init_state",
@@ -184,7 +182,6 @@
       "G": [
         "_build_step_setup",
         "_update_e_with_optional_dispersion",
-        "_warn_static_remnant_cap_hit",
         "run",
         "run_until_decay"
       ],

@@ -20,6 +20,7 @@ import jax
 import jax.numpy as jnp
 
 from rfx.core.drives import StepDrives, drive_layout, inject_drives
+from rfx.measurement import AUTO_END, finish_decay, make_decay_stop, one_step_xs
 from rfx.model.source_coefficients import drive_table
 from rfx.model import with_edge_keep
 import numpy as np
@@ -324,6 +325,7 @@ class SimResult(NamedTuple):
     adjoint_settling: object = None
     sparam_time_records: tuple | None = None
     dft_time_records: tuple | None = None
+    decay_stop: object = None   # run_until_decay: the until_decay.stop Diagnostic
 
 
 # ---------------------------------------------------------------------------
@@ -2333,74 +2335,12 @@ def run(
 # Field-decay-based stopping criterion (host checks + compiled scan chunks)
 # ---------------------------------------------------------------------------
 
-def _warn_static_remnant_cap_hit(state, materials, grid) -> None:
-    """#388: on an ``until_decay`` CAP-HIT, warn if the interior remnant is electrostatic.
-
-    A soft current source deposits net charge; the remnant's discrete-Poisson self-energy
-    neither radiates nor is absorbed by CPML, so it floors the interior-energy criterion and
-    ``until_decay`` silently cap-hits even though the radiating field has settled. This is a
-    MEASURED post-run advisory (complements the waveform-predicted pre-run
-    :meth:`_warn_until_decay_dc_floor`, which cannot see thin-source-cell-amplified floors).
-
-    Detection uses PHYSICAL energy (½ε|E|² vs ½μ|H|²): a propagating/radiating field is
-    equipartitioned (H-share ~0.5, and its instantaneous H-energy stays ~0.2 even at an E-max
-    2f-slosh instant), while a static electrostatic remnant is E-only (H-share ~1e-10). The
-    ``H-share < 1e-2`` gate separates them with enormous margin — no false-fire on a genuine
-    still-ringing cap-hit.
-    """
-    import warnings as _w
-    is_2d = getattr(grid, "is_2d", False)  # NonUniformGrid is always 3D (no is_2d attr)
-    ix0, ix1 = grid.pad_x_lo, grid.nx - grid.pad_x_hi
-    iy0, iy1 = grid.pad_y_lo, grid.ny - grid.pad_y_hi
-    iz0, iz1 = (0, grid.nz) if is_2d else (grid.pad_z_lo, grid.nz - grid.pad_z_hi)
-    sl = (slice(ix0, ix1), slice(iy0, iy1), slice(iz0, iz1))
-    eps_r = materials.eps_r[sl]
-    from rfx.core.yee import component_h_materials
-    mu_h = component_h_materials(
-        materials, cell_sizes=(grid.dx_arr, grid.dy_arr, grid.dz)
-        if hasattr(grid, "dx_arr") else None)
-    mu_h = tuple(m[sl] if jnp.ndim(m) else m for m in mu_h)
-    if is_2d:
-        e2 = state.ez[sl] ** 2
-        h2 = state.hx[sl] ** 2 + state.hy[sl] ** 2
-    else:
-        e2 = state.ex[sl] ** 2 + state.ey[sl] ** 2 + state.ez[sl] ** 2
-        h2 = state.hx[sl] ** 2 + state.hy[sl] ** 2 + state.hz[sl] ** 2
-    u_e = 0.5 * EPS_0 * float(jnp.sum(eps_r * e2))
-    weighted_h2 = mu_h[0] * state.hx[sl] ** 2 + mu_h[1] * state.hy[sl] ** 2
-    same = mu_h[0] == mu_h[1]
-    if not is_2d:
-        weighted_h2 = weighted_h2 + mu_h[2] * state.hz[sl] ** 2
-        same = same & (mu_h[0] == mu_h[2])
-    # Retain the homogeneous diagnostic's operation order and bits.
-    weighted_h2 = jnp.where(same, mu_h[0] * h2, weighted_h2)
-    u_h = 0.5 * MU_0 * float(jnp.sum(weighted_h2))
-    tot = u_e + u_h
-    if tot <= 0.0:
-        return
-    h_share = u_h / tot
-    if h_share < 1e-2:
-        _w.warn(
-            f"run(until_decay=...) cap-hit at max_steps without the energy criterion firing, and "
-            f"{100 * (1 - h_share):.1f}% of the final interior energy is electrostatic "
-            f"(H-share {h_share:.1e}). A static soft-source charge remnant (discrete-Poisson "
-            f"self-energy that neither radiates nor is absorbed by CPML) held the interior energy "
-            f"above decay_by*peak_U while the radiating field settled, so the energy criterion "
-            f"could not self-terminate. The purpose-built remedy is the radiated-flux stop "
-            f"criterion (immune to this static floor — it terminates on outgoing-flux settling, "
-            f"not interior energy): re-run with "
-            f"radiated_flux_box=((x0,y0,z0),(x1,y1,z1)) enclosing the radiator. Otherwise reduce "
-            f"the source's deposited DC (GaussianPulse cutoff / lower bandwidth), run a fixed "
-            f"n_steps, or confirm settling from the probe envelope. (issue #388)",
-            UserWarning,
-        )
-
-
 def run_until_decay(
     grid: Grid,
     materials: MaterialArrays,
     *,
     decay_by: float = 1e-3,
+    n_end: int | None = AUTO_END,
     check_interval: int = 50,
     min_steps: int = 100,
     max_steps: int = 50_000,
@@ -2449,16 +2389,26 @@ def run_until_decay(
     sheet_impedance: object | None = None,
     record_dft: bool = False,
     port_record_specs: tuple | None = None,
+    advisory: dict | None = None,
 ) -> SimResult:
-    """Run simulation until field energy decays to *decay_by* of peak.
+    """Run until the field energy left after the drive has decayed.
 
-    Runs compiled scan chunks with host-side decay checks at the historical
-    step indices (0, check_interval, ...).
+    Compiled scan chunks end at completed steps ``k * check_interval``; every
+    stop check runs on the host at those boundaries. On a high-Q structure
+    whose mode reaches the absorber, the stop can move by about 170 steps
+    with the check phase while the spectra stay within 1e-2 of the band peak.
 
     Parameters
     ----------
     decay_by : float
-        Stop when |field|^2 < decay_by * peak|field|^2.
+        Absorbing boundaries: stop once the conserved interior energy is below
+        ``decay_by`` times its reference (``rfx.measurement.decay``).
+    n_end : int or None
+        Step at which every drive has ended (None: still on at ``max_steps``,
+        no energy stop). Default: computed from this call's drive tables.
+    advisory : dict or None
+        ``rfx.measurement.decay.advisory_inputs`` (soft drives' DC, lossy
+        materials) for the cap advisory; None: this call's tables and arrays.
     check_interval : int
         Check decay every N steps.
     min_steps : int
@@ -2466,15 +2416,9 @@ def run_until_decay(
     max_steps : int
         Hard upper limit on steps.
     decay_energy_consecutive : int
-        On **absorbing** boundaries (``cpml`` / ``upml``) the stop uses the
-        total interior-domain energy criterion (issue #169). It fires only
-        after the interior energy ``U`` has stayed below ``decay_by * peak_U``
-        on this many *consecutive* checks. Default ``2`` (MANDATORY minimum):
-        the interior energy of a guided geometry is not null-free, dipping
-        through transient inter-packet minima that recover; a single below-
-        threshold check can false-fire on such a dip, so ``>= 2`` is required
-        to absorb the chatter. Has no effect on closed/PEC boundaries (which
-        use the instantaneous point-field fallback).
+        Absorbing boundaries: consecutive sub-threshold checks before the
+        energy stop. Values below 2 are refused (a single check stops on a
+        transient dip). No effect on closed/PEC boundaries.
     radiated_flux_box : tuple or None
         Opt-in (#388) RADIATED-FLUX stop for absorbing boundaries: a Huygens box
         ``((x_lo, y_lo, z_lo), (x_hi, y_hi, z_hi))`` in physical coordinates
@@ -2496,10 +2440,8 @@ def run_until_decay(
         Physical position (x, y, z) to monitor. If None, use center of
         the domain.
     checkpoint_segments : int or None
-        **Not supported** on the decay path.  ``run_until_decay`` uses a
-        host-driven early stop, so scan-level gradient checkpointing does
-        not apply.  Passing a non-None value raises
-        ``NotImplementedError``.
+        **Not supported** (a host-driven early stop); a non-None value
+        raises ``NotImplementedError``.
 
     Notes
     -----
@@ -2507,13 +2449,10 @@ def run_until_decay(
 
     * ``checkpoint_segments`` is not supported (raises ``NotImplementedError``
       when not ``None``).
-    * ``snapshot`` records a frame after every ``snapshot.interval``-th step
-      of the loop, as :func:`run` does (#1258): ``actual_steps // interval``
-      frames, positions and times in ``SimResult.snapshot_axes``. Reading
-      the frame does not touch the stepped state.
-    * ``checkpoint`` (``jax.checkpoint`` gradient tape) is accepted but
-      **silently ignored** — gradient checkpointing has no effect on the
-      host-driven decay path.
+    * ``snapshot`` records a frame every ``snapshot.interval`` steps, as
+      :func:`run` does (#1258); axes in ``SimResult.snapshot_axes``.
+    * ``checkpoint`` (``jax.checkpoint`` gradient tape) is accepted and has
+      no effect on the host-driven decay path.
     * Flux-monitor DFT accumulation uses a rectangular (no-window) weight
       instead of the streaming Hann window used by :func:`run`.  Flux values
       from the two paths are therefore not numerically identical even for
@@ -2524,20 +2463,21 @@ def run_until_decay(
        **The stop criterion depends on the boundary (issue #169, RESOLVED for
        absorbing boundaries).**
 
-       * **Absorbing boundaries (``cpml`` / ``upml``)** — the stop is gated on
-         the **total interior-domain energy** ``U = sum(E^2 + H^2)`` over the
-         non-CPML interior slice, declared decayed once ``U < decay_by * peak_U``
-         on ``decay_energy_consecutive`` consecutive checks. Because it is a
-         whole-domain energy, it does not pass through the per-cell
-         interference nulls that the old single-cell point-field stopper hit
-         between slow-tail wave packets, so it **is** suitable for flux /
-         S-parameter / transmission measurements on guided / low-loss
-         geometries. (On the cv03-class eps=12 guide it now stops at the
-         flux-converged transmission within ~0.13%, vs the prior ~7% under-run
-         of the point-field stop.) ``decay_energy_consecutive >= 2`` is
-         mandatory because the interior energy is *not* null-free — it dips
-         through transient inter-packet minima that recover, so a single
-         below-threshold check can false-fire.
+       * **Absorbing boundaries (``cpml`` / ``upml``)** — the stop reads the
+         leapfrog-conserved interior energy
+         ``W = sum((eps E^n.E^n + (mu0/eps0) mu H^(n-1/2).H^(n+1/2)) dV)``
+         at checks from ``n_end`` on, against the running maximum of W over
+         those checks: the drive's near field never enters the reference.
+         It stops after ``decay_energy_consecutive`` consecutive checks with
+         ``W < max(decay_by * reference, KAPPA * Wmax)``, ``KAPPA = 1e-12``
+         and Wmax the largest W at any check (drive included): a threshold
+         below float32 resolution ends on that floor and the result says so
+         (``rfx.measurement.decay.KAPPA``; ``SimResult.decay_stop``). In a
+         lossy dielectric the run can last longer than the field's ringing:
+         charge moved onto the dielectric's surfaces during the drive relaxes
+         with the time constant eps/sigma after it. That field is quasi-static
+         (out of band), the record stays correct, and the stop record and the
+         cap advisory say what ended the run.
 
        * **Closed / PEC boundaries** — domain energy does not decay in a
          lossless closed cavity, so the stop falls back to the historical
@@ -2708,10 +2648,10 @@ def run_until_decay(
         snap_shapes = jax.eval_shape(_take_snapshot, carry["fdtd"])
         snap_chunks = []
 
-    def step_fn(carry_in, xs):
+    def step_fn(carry_in, xs, inv_args=_inv_args):
         step_idx, src_vals, mag_src_vals = xs
         new_carry, probe_out, monitor_val = _single_step(
-            carry_in, step_idx, src_vals, mag_src_vals, _inv_args)
+            carry_in, step_idx, src_vals, mag_src_vals, inv_args)
         return new_carry, (probe_out, monitor_val)
 
     def step_with_previous(carries, xs):
@@ -2762,40 +2702,7 @@ def run_until_decay(
     _run_tail_chunk = _make_chunk_runner(keep_previous=True)
 
     # ---- host chunk loop with decay check ----
-    # Stop criterion depends on the boundary (issue #169):
-    #   * absorbing (cpml/upml): TOTAL interior-domain energy decay. The energy
-    #     leaves through the absorber, so U -> 0 and the criterion is a genuine
-    #     convergence witness for flux / S-param / transmission. Requires
-    #     decay_energy_consecutive >= 2 consecutive sub-threshold checks because
-    #     the interior energy is NOT null-free (it dips through transient
-    #     inter-packet minima that recover).
-    #   * closed/PEC: domain energy never decays in a lossless cavity, so fall
-    #     back to the historical instantaneous single-cell point-field stop.
-    #     That branch is BYTE-IDENTICAL to the pre-#169 behavior.
     use_absorbing = boundary in ("cpml", "upml")
-
-    # Non-CPML interior slice bounds (Python ints — never enter the traced
-    # step; the reduction below is host-side, like the existing float()).
-    _ix0, _ix1 = grid.pad_x_lo, grid.nx - grid.pad_x_hi
-    _iy0, _iy1 = grid.pad_y_lo, grid.ny - grid.pad_y_hi
-    if grid.is_2d:
-        _iz0, _iz1 = 0, grid.nz
-    else:
-        _iz0, _iz1 = grid.pad_z_lo, grid.nz - grid.pad_z_hi
-
-    def _interior_energy(state) -> float:
-        """Total interior-domain field energy U = sum(E^2 + H^2) (host float)."""
-        sx, sy, sz = (slice(_ix0, _ix1), slice(_iy0, _iy1), slice(_iz0, _iz1))
-        if grid.is_2d:
-            # 2d_tmz active fields: ez, hx, hy (ex/ey/hz are identically zero).
-            u = (state.ez[sx, sy, sz] ** 2
-                 + state.hx[sx, sy, sz] ** 2
-                 + state.hy[sx, sy, sz] ** 2)
-        else:
-            u = (state.ex[sx, sy, sz] ** 2 + state.ey[sx, sy, sz] ** 2
-                 + state.ez[sx, sy, sz] ** 2 + state.hx[sx, sy, sz] ** 2
-                 + state.hy[sx, sy, sz] ** 2 + state.hz[sx, sy, sz] ** 2)
-        return float(jnp.sum(u))
 
     # #388 opt-in RADIATED-FLUX stop: stop when the outgoing Poynting flux through a Huygens
     # box decays, instead of the interior energy. This is a *radiation-settling* criterion —
@@ -2836,8 +2743,14 @@ def run_until_decay(
         return float(p)
 
     peak_sq = 0.0          # closed/PEC point-field running peak
-    peak_U = 0.0           # absorbing interior-energy running peak (at checks)
-    energy_below = 0       # consecutive sub-threshold energy checks
+    # The absorbing-boundary energy stop (rfx.measurement.decay), read at k * check_interval.
+    energy_stop, energy = make_decay_stop(
+        grid, _setup.ctx_kwargs["materials"], thr=decay_by, min_steps=min_steps,
+        interval=check_interval, consecutive=decay_energy_consecutive, n_end=n_end,
+        criterion=use_absorbing and not use_flux_stop, max_steps=max_steps, sources=sources,
+        mag_sources=mag_sources, tfsf=tfsf, waveguide_ports=waveguide_ports, dx=dx,
+        periodic=_setup.periodic, side_step=(lambda c, xs, inv: jax.lax.scan(lambda cc, x: step_fn(
+            cc, x, inv), c, xs)[0], lambda n: one_step_xs(n, src_waveforms, mag_src_waveforms), _inv_args))
     peak_flux = 0.0        # #388 flux-stop: running peak of the |P| envelope
     flux_below = 0         # #388 flux-stop: consecutive sub-threshold checks
     flux_hist: list[float] = []   # recent |P| samples for the max-envelope
@@ -2860,15 +2773,12 @@ def run_until_decay(
             max_steps, label=report_label, total_is_cap=True)
 
     # Like scan_with_progress, call lax.scan directly: full chunks share
-    # its executable and only the ragged tail needs another length. The
-    # initial one-step check is required by the historical stop cadence.
+    # its executable and only the ragged tail needs another length.
     pending_tail = None
     while actual_steps < max_steps:
-        # The old loop checked step % interval == 0 AFTER stepping: completed
-        # steps 1, interval + 1, ... . In particular, the first chunk has one
-        # step. Reporting never changes these boundaries.
+        # All checks use completed counts k * check_interval.
         lo = actual_steps
-        next_check = 1 if lo == 0 else ((lo - 1) // check_interval + 1) * check_interval + 1
+        next_check = (lo // check_interval + 1) * check_interval
         if pending_tail is not None:
             carry, probe_out, monitor_vals, frames = pending_tail
             pending_tail = None
@@ -2897,7 +2807,6 @@ def run_until_decay(
                 hi -= 1
         probe_chunks.append(probe_out)
         actual_steps = hi
-        step = hi - 1
         if snapshot is not None:
             n_frames = hi // snap_interval - lo // snap_interval
             if n_frames:
@@ -2918,7 +2827,7 @@ def run_until_decay(
             # The flux PEAK is during the source drive, so track it from the FIRST check (unlike
             # the interior energy, whose peak is post-source); only the STOP check waits for
             # min_steps.
-            if step % check_interval == 0:
+            if actual_steps % check_interval == 0:
                 flux_hist.append(abs(_radiated_power(carry["fdtd"])))
                 env = max(flux_hist[-flux_env_checks:])
                 if env > peak_flux:
@@ -2931,40 +2840,11 @@ def run_until_decay(
                 else:
                     flux_below = 0
         elif use_absorbing:
-            # Interior-energy criterion. The reduction is check-step-only (the
-            # whole-domain sum is the expensive part), so we compute U ONLY on
-            # an eligible check step — never every step.
-            #
-            # The PEAK is tracked from the FIRST check, like the flux branch
-            # above, and only the STOP waits for min_steps. This block used to
-            # do both behind ``actual_steps >= min_steps``, on the assumption
-            # that the interior energy peaks after the source ends. That is
-            # false for a domain that empties before min_steps: the reference
-            # then IS the residual, no residual can fall another
-            # ``decay_by`` below itself, and the run goes to max_steps
-            # (#1078). Measured on the committed cv03-class guided fixture of
-            # tests/unit/runners/test_decay_flux_convergence.py: true peak
-            # 6.28e-10 at step 701, U = 6.13e-17 at step 2001 = 9.8e-8 of it,
-            # while the post-min_steps maximum reads 6.13e-17 — a reference
-            # 1.0e7 times too small.
-            if decay_by > 0.0 and step % check_interval == 0:
-                U = _interior_energy(carry["fdtd"])
-                if U > peak_U:
-                    peak_U = U
-            # Forced-N escape preserved: decay_by=0.0 -> neither this branch
-            # nor the peak branch above runs, so the loop is bounded by
-            # min/max-steps alone; check_interval > max_steps -> the stop is
-            # never evaluated.
-            if decay_by > 0.0 and actual_steps >= min_steps and step % check_interval == 0:
-                if U < decay_by * peak_U:
-                    energy_below += 1
-                    if energy_below >= decay_energy_consecutive:
-                        decayed_fired = True
-                        break
-                else:
-                    energy_below = 0
+            if energy_stop.check(actual_steps, lambda: energy(carry, actual_steps)) is not None:
+                decayed_fired = True
+                break
         else:
-            # Closed/PEC fallback — BYTE-IDENTICAL to the pre-#169 point stop.
+            # Closed/PEC fallback with the same point-field decision.
             # Decay check
             # One transfer per chunk; square in host float64 just as
             # float(monitor_val) ** 2 did for EVERY step of the old loop.
@@ -2975,8 +2855,9 @@ def run_until_decay(
                 peak_sq = float(chunk_peak)
             val_sq = float(values_sq[-1])
 
-            if actual_steps >= min_steps and step % check_interval == 0 and peak_sq > 0.0:
+            if actual_steps >= min_steps and actual_steps % check_interval == 0 and peak_sq > 0.0:
                 if val_sq < decay_by * peak_sq:
+                    decayed_fired = True
                     break
 
     if _reporter is not None and _reporter.last_reported != actual_steps:
@@ -2986,11 +2867,12 @@ def run_until_decay(
         jax.block_until_ready(carry["fdtd"])
         _reporter.report(actual_steps)
 
-    # #388: measured static-remnant advisory on an absorbing-lane ENERGY cap-hit (the energy
-    # criterion never fired). Complements the pre-run waveform-DC advisory. Not applicable to
-    # the flux-stop lane (which rejects the static remnant by construction).
-    if use_absorbing and not decayed_fired and not use_flux_stop:
-        _warn_static_remnant_cap_hit(carry["fdtd"], materials, grid)
+    # What ended the run (one Diagnostic; the static-remnant advisory on an energy cap).
+    decay_stop = finish_decay(
+        energy_stop, actual_steps, fired=decayed_fired, reporter=_reporter,
+        flux=(flux_hist, flux_env_checks, peak_flux) if use_flux_stop else None,
+        point=None if use_absorbing else (val_sq, peak_sq), state=carry["fdtd"],
+        materials=materials, grid=grid, advisory=advisory, sources=sources)
 
     # ---- assemble result ----
     time_series = concat_chunks(probe_chunks)
@@ -3072,4 +2954,5 @@ def run_until_decay(
         dt=_setup.dt,
         current_moment_data=carry.get("current_moments"),
         current_moment_monitor=current_moments,
+        decay_stop=decay_stop,
     )

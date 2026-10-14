@@ -1,5 +1,8 @@
 """Physical-clock measurement descriptions and shared DFT primitives."""
 
+from rfx.measurement.decay import (
+    AUTO_END, decay_stop_first, finish_decay, make_decay_stop, one_step_xs, warn_dc_floor,
+)
 from rfx.measurement.declared import package_declared_measurements
 from rfx.measurement.flux_weights import grid_flux_monitor
 from rfx.measurement.graded_result import assemble_graded_result
@@ -26,7 +29,9 @@ from rfx.measurement.waveguide_s import (
 __all__ = [
     "admit_waveguide_planes",
     "assemble_graded_result",
+    "AUTO_END",
     "build_measurement_plan",
+    "decay_stop_first",
     "default_frequency_grid",
     "extract_multimode_s_matrix",
     "extract_multimode_s_matrix_flux",
@@ -38,6 +43,7 @@ __all__ = [
     "extract_waveguide_s_params_normalized",
     "extract_waveguide_sparams",
     "extract_waveguide_sparams_overlap",
+    "finish_decay",
     "graded_acc_indices",
     "graded_accumulators",
     "graded_s_ports",
@@ -47,11 +53,13 @@ __all__ = [
     "init_graded_records",
     "init_overlap_dft",
     "init_uniform_records",
+    "make_decay_stop",
     "measurement_plan",
     "modal_current",
     "modal_voltage",
     "mode_self_overlap",
     "observed_port_s",
+    "one_step_xs",
     "ordered_specs",
     "overlap_modal_amplitude",
     "OverlapDFTAccumulators",
@@ -67,5 +75,6 @@ __all__ = [
     "update_overlap_dft",
     "update_waveguide_port_probe",
     "waveguide_plane_positions",
+    "warn_dc_floor",
     "with_graded_records",
 ]

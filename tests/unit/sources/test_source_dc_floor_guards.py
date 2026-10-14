@@ -33,6 +33,7 @@ import jax.numpy as jnp
 import pytest
 
 from rfx import Simulation, GaussianPulse, ModulatedGaussian
+from rfx.measurement.decay import warn_dc_floor
 
 DEMO_DT = 1.2e-12  # the issue-#388 measurement dt (patch_antenna_demo scale)
 
@@ -164,7 +165,7 @@ def _dc_floor_fires(waveform, n_table=50_000) -> list[str]:
     sim.add_source((0.01, 0.01, 0.01), "ez", waveform=waveform)
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        sim._warn_until_decay_dc_floor(dt=DEMO_DT, n_table=n_table)
+        warn_dc_floor(sim, dt=DEMO_DT, n_table=n_table)
     return [str(w.message) for w in caught if "issue #388" in str(w.message)]
 
 
@@ -180,9 +181,10 @@ def _dc_floor_fires(waveform, n_table=50_000) -> list[str]:
         # measured rel_DC 0.68 (DC suppression e^-1/bw^2 ~ 0.5 at bw=1.2)
         ("modgaussian_bw12",
          ModulatedGaussian(f0=2.2e9, bandwidth=1.2), True),
-        # measured rel_DC 4.0e-4 < 1e-3
+        # measured rel_DC 4.0e-4: above the 1e-6 threshold (it was 1e-3 until the
+        # after-drive reference, under which 6e-5 already blocked the stop)
         ("modgaussian_bw04",
-         ModulatedGaussian(f0=2.2e9, bandwidth=0.4), False),
+         ModulatedGaussian(f0=2.2e9, bandwidth=0.4), True),
     ],
 )
 def test_until_decay_dc_floor_matrix(label, waveform, expect_fire):
@@ -210,7 +212,7 @@ def test_until_decay_dc_floor_matrix(label, waveform, expect_fire):
 def test_static_remnant_cap_hit_points_to_flux_stop():
     """#388 post-run advisory: on a cap-hit with an electrostatic remnant (E-only, H≈0),
     the warning must route to the purpose-built flux-stop remedy (radiated_flux_box=)."""
-    from rfx.simulation import _warn_static_remnant_cap_hit
+    from rfx.measurement.decay import static_remnant_advisory as _warn_static_remnant_cap_hit
     from rfx.grid import Grid
     from rfx.core.yee import init_state, init_materials
 
@@ -274,18 +276,30 @@ def test_dc_floor_truncation_branch_when_table_ends_inside_pulse():
     assert "higher GaussianPulse cutoff" not in msg
 
 
+def test_dc_floor_table_ending_before_t0_plus_4p5_tau_is_truncation():
+    """A 400-step table at the demo dt (0.48 ns, 6.03*tau at f0=5 GHz,
+    bw=0.8) ends before t0 + 4.5*tau = 7.5*tau, where the differentiated
+    Gaussian is still above 1.4e-8 of its amplitude: its relative DC (5.3e-5)
+    is the cut tail, so the message is the truncation one, not the static
+    charge one."""
+    fired = _dc_floor_fires(GaussianPulse(f0=5e9, bandwidth=0.8), n_table=400)
+    assert fired and "truncation-dominated" in fired[0], fired
+    assert "static charge" not in fired[0]
+
+
 def test_dc_floor_truncation_worsens_with_higher_cutoff():
-    """Raising cutoff — the #392 intrinsic-DC remedy — makes TRUNCATION
-    worse: at n_table=400 (0.48 ns table, f0=5 GHz, bw=0.8) cutoff=3 is
-    silent (table covers the pulse, measured rel_DC 5.7e-6) while
-    cutoff=4.5 pushes completion to 7.5*tau ~ 0.60 ns past the table end
-    and fires the truncation branch (measured rel_DC 5.1e-2)."""
+    """Raising cutoff makes TRUNCATION worse: at n_table=480 (0.576 ns
+    table, 7.2*tau, f0=5 GHz, bw=0.8) cutoff=3 is silent at the 1e-6
+    threshold (the table runs 4.2*tau past t0; at 400 steps, 3.03*tau past
+    t0, the cut tail alone read 5.3e-5) while cutoff=4.5 pushes completion
+    to 7.5*tau ~ 0.60 ns past the table end and fires the truncation
+    branch."""
     silent = _dc_floor_fires(GaussianPulse(f0=5e9, bandwidth=0.8),
-                             n_table=400)
-    assert not silent, f"cutoff=3 must be silent at n_table=400: {silent}"
+                             n_table=480)
+    assert not silent, f"cutoff=3 must be silent at n_table=480: {silent}"
     fired = _dc_floor_fires(
-        GaussianPulse(f0=5e9, bandwidth=0.8, cutoff=4.5), n_table=400)
-    assert fired, "cutoff=4.5 must fire at n_table=400 (longer onset)"
+        GaussianPulse(f0=5e9, bandwidth=0.8, cutoff=4.5), n_table=480)
+    assert fired, "cutoff=4.5 must fire at n_table=480 (longer onset)"
     assert "truncation-dominated" in fired[0]
 
 
@@ -299,7 +313,7 @@ def test_dc_floor_covers_msl_ports():
                      waveform=ModulatedGaussian(f0=2.2e9, bandwidth=1.2))
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        sim._warn_until_decay_dc_floor(dt=DEMO_DT, n_table=50_000)
+        warn_dc_floor(sim, dt=DEMO_DT, n_table=50_000)
     fired = [str(w.message) for w in caught
              if "issue #388" in str(w.message)]
     assert fired, "MSL-port high-DC waveform must fire the #388 warning"
@@ -317,7 +331,7 @@ def test_dc_floor_silent_on_passive_msl_port():
                      waveform=ModulatedGaussian(f0=2.2e9, bandwidth=1.2))
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        sim._warn_until_decay_dc_floor(dt=DEMO_DT, n_table=50_000)
+        warn_dc_floor(sim, dt=DEMO_DT, n_table=50_000)
     assert not [w for w in caught if "issue #388" in str(w.message)], (
         "excite=False MSL port must not fire the #388 DC-floor warning")
 
@@ -427,6 +441,8 @@ def test_static_remnant_cap_hit_advisory_fires():
     assert n == 1500, "high-DC soft source must cap-hit (criterion cannot self-terminate)"
     assert fired, "measured #388 static-remnant advisory must fire on the cap-hit"
     assert "electrostatic" in fired[0] and "H-share" in fired[0]
+    # The drive that blocks the stop is named with its class and relative DC.
+    assert "ModulatedGaussian, relative DC" in fired[0], fired[0]
 
 
 def test_static_remnant_advisory_silent_on_settled_run():
@@ -454,7 +470,7 @@ def test_static_remnant_advisory_silent_when_field_balanced():
     BALANCED physical E/H share (H-share ~0.5), NOT a static remnant. Directly exercise
     the detector on synthetic states so the threshold logic is pinned without a fixture.
     """
-    from rfx.simulation import _warn_static_remnant_cap_hit
+    from rfx.measurement.decay import static_remnant_advisory as _warn_static_remnant_cap_hit
     from rfx.core.yee import init_state, init_materials, EPS_0, MU_0
     from rfx.grid import Grid
 
@@ -594,3 +610,21 @@ def test_unresolved_pulse_silent_on_tfsf_fractional_bandwidth():
     codes = {getattr(i, "code", None)
              for i in _tfsf_sim(1.2).preflight()}
     assert "unresolved_pulse" not in codes
+
+
+def test_cap_advisory_lists_lossy_media_but_not_conductors():
+    """With no DC drive the remnant is named as charge relaxing in a lossy medium; a
+    material whose eps/sigma is shorter than one step (a conductor) is not listed."""
+    from rfx.measurement.decay import static_remnant_advisory
+    from rfx.grid import Grid
+    from rfx.core.yee import init_state, init_materials
+
+    grid = Grid(freq_max=4e9, domain=(0.02, 0.02, 0.02), dx=2e-3, cpml_layers=4)
+    state = init_state(grid.shape)
+    state = state._replace(ez=state.ez.at[grid.nx // 2, grid.ny // 2, grid.nz // 2].set(1.0))
+    lossy = [("'copper'", 1.0, 5.8e7), ("'cube'", 6.0, 0.05)]
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        static_remnant_advisory(state, init_materials(grid.shape), grid, (), lossy)
+    msg = [str(w.message) for w in caught if "H-share" in str(w.message)][0]
+    assert "'cube'" in msg and "'copper'" not in msg, msg

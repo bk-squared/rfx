@@ -2048,6 +2048,7 @@
         "grid",
         "materials",
         "decay_by",
+        "n_end",
         "check_interval",
         "min_steps",
         "max_steps",
@@ -2095,7 +2096,8 @@
         "report_label",
         "sheet_impedance",
         "record_dft",
-        "port_record_specs"
+        "port_record_specs",
+        "advisory"
       ]
     },
     "save_experiment_report": {

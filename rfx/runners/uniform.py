@@ -111,6 +111,16 @@ def run_uniform(
     """
     from rfx.api import Result
 
+    # Step-count-sized builds (drive tables, DFT and flux accumulators, port
+    # records): on the decay path the loop runs up to decay_max_steps, so they
+    # are sized for it, as the graded runner's sizing_n. Sized by n_steps, a
+    # drive still on at n_steps was cut there while the run went on.
+    sizing_n = int(decay_max_steps) if until_decay is not None else n_steps
+    if until_decay is not None:
+        # The decay loop accumulates flux with rectangular weights only.
+        from rfx.measurement.decay import refuse_windowed_flux
+        refuse_windowed_flux(sim, "uniform")
+
     if conformal_pec is None:
         conformal_pec = bool(sim._boundary_spec.conformal_faces())
 
@@ -285,7 +295,7 @@ def run_uniform(
         if pe.impedance == 0.0:
             # The declared kind alone decides the drive (forward() calls the same).
             from rfx.sources.port_drive import defer_soft_source
-            defer_soft_source(sources, grid, pe, n_steps, field_dtype=field_dtype)
+            defer_soft_source(sources, grid, pe, sizing_n, field_dtype=field_dtype)
             continue
         if pe.extent is not None:
             # Multi-cell wire port
@@ -320,7 +330,7 @@ def run_uniform(
                                         pec_edge_masks=pec_edge_masks)
             if pe.excite:
                 sources.defer(_simulation.make_wire_port_sources,
-                    grid, wp, n_steps=n_steps,
+                    grid, wp, n_steps=sizing_n,
                     pec_edge_masks=pec_edge_masks)
             # No PEC clearing for a wire port (#931 §1.9, corrected):
             # a cell is LIVE exactly when the port component's own edge at
@@ -338,7 +348,7 @@ def run_uniform(
             lumped_ports.append(lp)
             materials = setup_lumped_port(grid, lp, materials)
             if pe.excite:
-                sources.defer(_simulation.make_port_source, grid, lp, n_steps=n_steps)
+                sources.defer(_simulation.make_port_source, grid, lp, n_steps=sizing_n)
             # Release the realized PEC edge the lumped port DRIVES — its
             # own component at its own cell, and nothing else (#931 §1.9,
             # corrected: the three-component form opened the conductor the
@@ -443,11 +453,11 @@ def run_uniform(
                 if eigenmode_data is not None:
                     # Schelkunoff J+M one-sided launch: both E and H sources
                     sources.defer(deferred_msl_sources_jm, grid, mp,
-                                  n_steps=n_steps, eigenmode_data=eigenmode_data,
+                                  n_steps=sizing_n, eigenmode_data=eigenmode_data,
                                   magnetic_sources=mag_sources)
                 else:
                     sources.defer(make_msl_port_sources,
-                        grid, mp, n_steps=n_steps,
+                        grid, mp, n_steps=sizing_n,
                         mode_profile=mode_profile,
                     )
             # Only the SUBSTRATE-NORMAL component over the
@@ -484,7 +494,7 @@ def run_uniform(
                 component=pe.component,
                 freqs=freqs_arr,
                 grid_shape=grid.shape,
-                dft_total_steps=n_steps,
+                dft_total_steps=sizing_n,
                 region=getattr(sim, "_dft_plane_regions", {}).get(pe.name),
             )
         )
@@ -496,7 +506,9 @@ def run_uniform(
         pec_axes = None
         for pe in sim._waveguide_ports:
             freqs_arr = resolve_waveguide_port_freqs(sim, pe)
-            waveguide_ports.append(sim._build_waveguide_port_config(pe, grid, freqs_arr, n_steps))
+            # The port applies its incident table by step index and holds its
+            # last entry past its end: sized by sizing_n (above).
+            waveguide_ports.append(sim._build_waveguide_port_config(pe, grid, freqs_arr, sizing_n))
 
     if sim._tfsf is not None:
         if not sim._tfsf.closed_box:
@@ -574,7 +586,7 @@ def run_uniform(
             else:
                 comp = "ez"
         from rfx.simulation import make_source as _make_src
-        sources.append(_make_src(grid, tuple(center), comp, wf, n_steps))
+        sources.append(_make_src(grid, tuple(center), comp, wf, sizing_n))
 
     from rfx.model.materials import with_components
     materials = with_components(materials, grid,
@@ -609,7 +621,7 @@ def run_uniform(
     # In-loop block current moments (rfx.current_moments). Built here rather
     # than at declaration time so the slab window and the block map come from
     # the grid the solve actually builds, not from the declared corners.
-    flux_monitors = build_flux_monitor_cfgs(sim, grid, n_steps, periodic=_simulation.resolve_periodic(grid, periodic))
+    flux_monitors = build_flux_monitor_cfgs(sim, grid, sizing_n, periodic=_simulation.resolve_periodic(grid, periodic))
     current_moments = _cm_for_sim(sim, grid, periodic, conductors=conductors)
 
     # Lumped RLC elements
@@ -694,9 +706,17 @@ def run_uniform(
 
     # Main simulation
     if until_decay is not None:
+        # The energy stop reads W only after every drive built above has ended.
+        from rfx.measurement.decay import advisory_inputs, drive_end
+        n_end = (drive_end(grid, decay_max_steps, sources=sources, mag_sources=mag_sources,
+                           tfsf=tfsf, waveguide_ports=waveguide_ports)
+                 if until_decay > 0 and sim._boundary in ("cpml", "upml")
+                 and radiated_flux_box is None else None)
         sim_result = _simulation.run_until_decay(
             grid, materials,
             decay_by=until_decay,
+            n_end=n_end,
+            advisory=advisory_inputs(sim, dt=grid.dt, n_table=decay_max_steps),
             check_interval=decay_check_interval,
             min_steps=decay_min_steps,
             max_steps=decay_max_steps,
@@ -912,8 +932,10 @@ def run_uniform(
             sim_result = reconstruct_oblique_physical(sim_result, tfsf[0], grid, probes)
 
     from rfx.sparams._record_selection import read_ids, SReadPorts
+    # until_decay: one record of what ended the run (rfx.measurement.decay.finish_decay).
+    _stop = getattr(sim_result, "decay_stop", None)
     return Result(
-        diagnostics=diagnostics,
+        diagnostics=tuple(diagnostics) + ((_stop,) if _stop is not None else ()),
         realized_geometry=geometry_record,
         state=sim_result.state,
         time_series=sim_result.time_series,
