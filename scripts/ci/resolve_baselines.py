@@ -181,9 +181,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--ours", default="HEAD")
     parser.add_argument("--theirs")
     parser.add_argument("--base")
-    parser.add_argument("--repo", type=Path, default=REPO)
+    # Default: the repository of the CURRENT directory (the tree being merged), not the one
+    # holding this script — a session may run another checkout's copy.
+    parser.add_argument("--repo", type=Path, default=None)
     args = parser.parse_args(argv)
-    return resolve(args.repo, args.ours, args.theirs, args.base)
+    repo = args.repo
+    if repo is None:
+        top = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True)
+        if top.returncode:
+            print("not inside a git working tree; pass --repo", file=sys.stderr)
+            return 2
+        repo = Path(top.stdout.strip())
+    return resolve(repo, args.ours, args.theirs, args.base)
 
 
 if __name__ == "__main__":

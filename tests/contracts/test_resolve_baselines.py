@@ -455,3 +455,16 @@ def test_main_tree_regeneration_is_byte_exact(kind):
         assert errors == []
         assert resolver.encode(data) == before[path]
         assert git(clone, "status", "--porcelain") == b""
+
+
+def test_default_repo_is_the_current_directory_not_the_script_location(tree):
+    # A session may run another checkout's copy of the script: the tree being merged is the
+    # current directory's repository. Run THIS worktree's script (not the tree's copy) from inside
+    # the tree with no --repo.
+    merge(tree)
+    result = subprocess.run(
+        [sys.executable, str(REPO / SCRIPT), "--theirs", "side-b"],
+        cwd=tree, capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    assert git(tree, "diff", "--name-only", "--diff-filter=U") == b""
