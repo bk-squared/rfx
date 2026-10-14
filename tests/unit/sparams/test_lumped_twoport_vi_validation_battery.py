@@ -653,26 +653,22 @@ def test_extract_lumped_s11_is_the_decompose_diagonal():
 
 
 def test_run_forward_shapes_are_the_intended_ranks(crosscheck):
-    """Rank contract: run() (1, 1, n_freqs) full-matrix vs forward() (n_freqs,).
+    """Rank contract: run() and forward() both return S[receive, drive, freq].
 
-    The rank difference is INTENDED behavior, pinned here on purpose
-    (rfx-known-issues 'Added 2026-06-21' item 3 asked for a contract test;
-    this is it, together with the value gate below): run() always reports
-    the S-matrix convention S[receive, drive, freq] — (1, 1, n_freqs) even
-    for one port — while forward() returns the AD-friendly per-port
-    diagonal, (n_freqs,) for one port, via extract_lumped_s11. PR #258
-    deliberately kept the 1-port wire run() path on the JIT main-scan
-    fast-path to preserve the run/forward PEC contract; do NOT re-unify
-    the ranks (or the paths) without a superseding decision.
+    Until decision C on #1373 (rfx-lead) this pinned forward()'s 1-D
+    per-port diagonal (n_freqs,) against run()'s (1, 1, n_freqs). Since then
+    forward() returns the (N, N, n_freqs) matrix on both meshes from the
+    shared assembler (rfx.measurement.port_s.port_s_from_record), so one
+    port reads (1, 1, n_freqs) on both entries.
     """
     S_run, S_fwd = crosscheck
     n_freqs = len(_XCHK_FREQS_HZ)
     assert S_run.shape == (1, 1, n_freqs), (
         f"run() 1-port S-matrix rank changed: {S_run.shape}, contract is "
         f"(1, 1, {n_freqs}) — full-matrix convention")
-    assert S_fwd.shape == (n_freqs,), (
+    assert S_fwd.shape == (1, 1, n_freqs), (
         f"forward() 1-port s_params rank changed: {S_fwd.shape}, contract "
-        f"is ({n_freqs},) — 1-D per-port diagonal")
+        f"is (1, 1, {n_freqs}) — full-matrix convention since #1373 decision C")
     assert np.iscomplexobj(S_run) and np.iscomplexobj(S_fwd), (
         "s_params must stay complex (magnitude-only returns would break "
         "phase-consuming consumers)")

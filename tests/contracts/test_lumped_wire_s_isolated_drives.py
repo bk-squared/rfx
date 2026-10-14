@@ -80,9 +80,11 @@ def test_graded_forward_ringdown_without_bins_refused_before_step(monkeypatch):
 def test_one_drive_and_passive_receiver_forms_s(path, graded, wire):
     result = _call(_model(graded, False, wire), path)
     assert result.s_params is not None
-    expected_shape = (2, 2, len(FREQS)) if graded else (2, len(FREQS))
-    assert np.asarray(result.s_params).shape == expected_shape
-    assert np.all(np.isfinite(result.s_params))
+    S = np.asarray(result.s_params)
+    assert S.shape == (2, 2, len(FREQS))
+    # One record measures one column: the driven port's column is S,
+    # the passive receiver's column is NaN (never measured).
+    assert np.all(np.isfinite(S[:, 0])) and np.all(np.isnan(S[:, 1]))
 
 
 def test_graded_forward_implicit_s_omitted_once():
