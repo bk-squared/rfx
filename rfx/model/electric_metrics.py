@@ -84,8 +84,8 @@ def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks, grid=None,
     The default returns a replicated ``(len(drives),)`` float32 vector: every device
     computes its own four-cell mean, the owner's is kept by the mask and
     ``psum`` hands it to all. The arithmetic is
-    :func:`rfx.nonuniform.current_source_cb`'s traced branch, the one the
-    single-device lane uses for a traced override, so a traced (or
+    :func:`rfx.nonuniform.current_source_cb`'s eps_r-units formula, the one the
+    single-device lane uses on every trace, so a traced (or
     sharded) permittivity stays on the tape and the gradient flows back to
     the design's owning slabs through the staging transpose.
     """
@@ -115,8 +115,7 @@ def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks, grid=None,
             # A non-owner read someone else's cells; keep its masked branch
             # finite so the cotangent through the mask stays zero, not NaN.
             cb = current_source_cb(jnp.where(owner, eps_c, 1.0),
-                                   jnp.where(owner, sigma_c + pole, 0.0), dt,
-                                   traced=True)
+                                   jnp.where(owner, sigma_c + pole, 0.0), dt)
             out.append(jnp.where(owner, cb / dV, 0.0))
         values = jnp.stack(out)
         return lax.psum(values, "x") if reduce_devices else values[None, :]

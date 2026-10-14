@@ -638,7 +638,7 @@ def e_update_coefficient_at(materials, cell, component, dt,
 
     Pole coefficients are sampled before constructing the scalar ADE operator;
     this avoids rebuilding grid-sized coefficient arrays for every source.
-    ``host`` retains the graded current source's historical scalar arithmetic
+    ``host`` selects the graded current source's eps_r-units formula
     on plain edges. All dispersive coefficients use the kernel's algebra.
     """
     from rfx.core.yee import e_update_coeffs
@@ -649,7 +649,7 @@ def e_update_coefficient_at(materials, cell, component, dt,
         terms = c.at(cell, dt)
         if terms[0] is not None or terms[1] is not None:
             return _ade_cb(eps, sigma, dt, axis, *terms)
-        c = None  # Plain graded drives retain their historical host arithmetic.
+        c = None  # Plain graded drives use the shared current-source formula.
     if c is not None and c.source_upml:
         # Admission excludes pads. There sigma_perp=0; UPML still uses its
         # cell-owned E operands, even at an interior material interface.
@@ -671,8 +671,7 @@ def e_update_coefficient_at(materials, cell, component, dt,
         return _ade_cb(eps, sigma, dt, axis, dt_terms, lt_terms)
     if host:
         from rfx.nonuniform import current_source_cb
-        return current_source_cb(eps, sigma, dt,
-                                 traced=is_tracer(eps) or is_tracer(sigma))
+        return current_source_cb(eps, sigma, dt)
     return e_update_coeffs(eps, sigma, dt)[1]
 
 

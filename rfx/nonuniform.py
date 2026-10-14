@@ -217,17 +217,8 @@ def make_current_source(grid: NonUniformGrid, position_ijk, component,
     """
     i, j, k = position_ijk
 
-    # GEO-C3: on the differentiable-material path ``materials.eps_r`` /
-    # ``materials.sigma`` are tracers — ``float()`` raised
-    # TracerArrayConversionError. Stay in jnp when traced so the gradient
-    # propagates into the waveform normalisation; keep the exact ``float()``
-    # path otherwise so non-traced output stays bit-identical (both branches
-    # live in ``current_source_cb``).
-    # #1210: the drive coefficient is the update's own PER-COMPONENT Cb --
-    # ``update_e_nu`` multiplies each component by the mean of eps and sigma
-    # over the four cells its edge touches, and this coefficient exists to
-    # equal it. ``cell_component_e_materials`` indexes four cells, so the
-    # tracer branch is the same branch it always was.
+    # Read the edge's own eps and sigma, averaged over its four cells
+    # (#1210), with the same differentiable drive formula on every trace.
     from rfx.model.materials import e_update_coefficient_at
     if str(component).lower() not in ("ex", "ey", "ez"):
         raise ValueError(
@@ -248,33 +239,23 @@ def make_current_source(grid: NonUniformGrid, position_ijk, component,
     return (i, j, k, component, waveform_out)
 
 
-def current_source_cb(eps_r_c, sigma_c, dt, *, traced):
+def current_source_cb(eps_r_c, sigma_c, dt):
     """``Cb = (dt/eps) / (1 + sigma*dt/(2*eps))`` of the edge a current
     source feeds, from that edge's ``(eps_r, sigma)``.
 
     ``eps_r_c`` / ``sigma_c`` are the edge's own values -- the mean over the
     four cells incident to it, :func:`rfx.core.yee.cell_component_e_materials`
-    (#1210). ``traced=True`` keeps the arithmetic in jnp so a traced
-    permittivity stays on the tape (GEO-C3); ``traced=False`` takes
-    ``float()`` of both and computes in Python floats, the historical path.
+    (#1210). Concrete and traced inputs use the same jnp arithmetic,
+    keeping a traced permittivity on the tape (GEO-C3).
     The one spelling of the drive coefficient: :func:`make_current_source`
     and the distributed graded forward, which builds it inside its jitted
     program from the slabs its E update receives (#1279), both call it.
     """
-    if traced:
-        # The same Cb written in eps_r units, dt/(eps0*(eps_r + sigma*dt/(2*eps0))):
-        # with eps = eps_r*eps0 ~ 1e-11, the reverse pass squares eps and a
-        # float32 cotangent above ~1e15 overflowed to a NaN gradient at the
-        # source's four cells (#1279 review). In eps_r units it stays finite.
-        eps_r = jnp.asarray(eps_r_c)
-        sigma = jnp.asarray(sigma_c)
-        return (dt / EPS_0) / (eps_r + sigma * (dt / (2.0 * EPS_0)))
-    eps = float(eps_r_c) * EPS_0
-    sigma = float(sigma_c)
-    loss = sigma * dt / (2.0 * eps)
-
-    # Cb = dt / (eps * (1 + loss))
-    return (dt / eps) / (1.0 + loss)
+    # In eps_r units the reverse pass avoids squaring eps ~ 1e-11,
+    # which overflowed float32 cotangents into NaN gradients (#1279).
+    eps_r = jnp.asarray(eps_r_c)
+    sigma = jnp.asarray(sigma_c)
+    return (dt / EPS_0) / (eps_r + sigma * (dt / (2.0 * EPS_0)))
 
 
 def current_source_samples(grid, waveform_fn, n_steps):
