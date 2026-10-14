@@ -17,13 +17,21 @@ the env-var injection arrived too late.  Setting the var here, at the very top
 of the first conftest that is loaded, ensures the flag is in the environment
 before JAX's C++ backend initialises.
 
-The ``setdefault`` call is intentional: if the user already has
-``XLA_FLAGS`` set (e.g. for a GPU run), this does not overwrite it.
+An ``XLA_FLAGS`` already in the environment is kept and the device-count flag
+is appended to it. Container images preset ``XLA_FLAGS`` (nvcr.io/nvidia/jax
+sets GPU scheduler flags), and a ``setdefault`` there left the suite on one
+device, where the two-device tests fail. A device count the caller set is
+left as it is.
 """
 
 import os
 
-os.environ.setdefault("XLA_FLAGS", "--xla_force_host_platform_device_count=2")
+_DEVICE_COUNT_FLAG = "--xla_force_host_platform_device_count"
+_preset_flags = os.environ.get("XLA_FLAGS", "")
+# XLA reads a value that does not start with "--" as a flag-file path; leave it.
+if _DEVICE_COUNT_FLAG not in _preset_flags and (
+        not _preset_flags.strip() or _preset_flags.lstrip().startswith("--")):
+    os.environ["XLA_FLAGS"] = f"{_preset_flags} {_DEVICE_COUNT_FLAG}=2".strip()
 
 import sys  # noqa: E402
 import threading  # noqa: E402
