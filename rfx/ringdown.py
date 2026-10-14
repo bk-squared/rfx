@@ -1523,7 +1523,7 @@ class RingdownRun:
             h_cols.append(h)
         return pms, e_cols, h_cols
 
-    def _error_witnesses(self, Y, dt, f_bins, ref_hz, to_s, plain, w2, state) -> list:
+    def _error_witnesses(self, Y, dt, f_bins, ref_hz, observable, plain, w2, state) -> list:
         """``WE`` judged and ``W2`` reported, or ``W2`` judged when ``WE`` cannot be formed.
 
         ``WE`` compares the completion from ``[ws T, T]`` with the one from
@@ -1554,7 +1554,7 @@ class RingdownRun:
         try:
             we = early_start_witness(
                 Y, dt, f_bins, self.n_steps, ws, freq_max=ref_hz, guard=spec.guard,
-                sv_rel=spec.sv_rel, unit_tol=spec.unit_tol, observable=to_s.measured,
+                sv_rel=spec.sv_rel, unit_tol=spec.unit_tol, observable=observable,
                 plain=plain, spectra=w2.spectra)
             we_value, we_note = we.value, ""
             state["long_rank"] = we.model_long.rank
@@ -1674,7 +1674,7 @@ class RingdownRun:
                   + ("; the plain record reads non-passive without the completion (the board or port itself, or a record cut while it still rings)"
                      if s_plain > p_bar else ""))
         src_ratio = max((r for _l, r in self.source_off), default=0.0)
-        witnesses += self._error_witnesses(Y, dt, f_bins, ref_hz, to_s, plain, w2, state)
+        witnesses += self._error_witnesses(Y, dt, f_bins, ref_hz, to_s.measured, plain, w2, state)
         witnesses += [
             RingdownWitness("growing_poles", float(len(grow)), 0.0, len(grow) == 0,
                             GROWING_POLE_RULE + ". Poles the pencil discarded as "
