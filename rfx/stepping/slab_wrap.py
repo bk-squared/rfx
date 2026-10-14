@@ -11,6 +11,7 @@ from rfx.core.yee import FDTDState
 from rfx.measurement.projector import ComponentTerms, SampleTable
 from rfx.stepping.graded import make_graded_step
 from rfx.stepping.rank import rank_shard_map
+from rfx.stepping.remat import segmented_scan
 from rfx.stepping.sequence import HookPoint
 from rfx.stepping.slab import cut, cut_pole_coeffs, cut_poles, place
 
@@ -236,20 +237,9 @@ def run_steps(carry, invariants, waves, ranks, advance, *, n_steps, n_warmup, ch
             carry, warm = scan_loop(step, carry, jax.tree.map(lambda a: a[:n_warmup], xs))
             carry, warm = jax.tree.map(jax.lax.stop_gradient, (carry, warm))
         xs = jax.tree.map(lambda a: a[n_warmup:], xs)
-        count = n_steps - n_warmup
-        if checkpoint_every is not None and checkpoint_every < count:
-            chunk = int(checkpoint_every)
-            segments = (count + chunk - 1) // chunk
-            padding = segments * chunk - count
-            padded = (jnp.arange(n_warmup, n_warmup + segments * chunk, dtype=jnp.int32),
-                      jnp.pad(xs[1], ((0, padding), (0, 0), (0, 0))))
-            segmented = jax.tree.map(lambda a: a.reshape((segments, chunk) + a.shape[1:]), padded)
-            def segment(c, x):
-                return scan_loop(step, c, x)
-            carry, records = scan_loop(jax.checkpoint(segment), carry, segmented)
-            records = records.reshape((-1,) + records.shape[2:])[:count]
-        else:
-            carry, records = scan_loop(step, carry, xs)
+        # One remat implementation (rfx.stepping.remat): full checkpointed
+        # segments and a real tail, never padded steps.
+        carry, records = segmented_scan(step, carry, xs, checkpoint_every, scan=scan_loop)
         if warm is not None:
             records = jnp.concatenate((warm, records))
         return carry, records

@@ -878,9 +878,9 @@ def _replay_msl_port_vi_dump(dump):
     """Independent NumPy replay of the declared MSL wave/assembly contract."""
     metadata = dump.metadata
     version = metadata.get("schema_version")
-    if version not in (3, 4):
-        raise ValueError("MSL V/I replay supports explicit v3 voltage-wave and v4 power-wave records")
-    expected = "power" if version == 4 else "voltage"
+    if version not in (3, 4, 5):
+        raise ValueError("MSL V/I replay supports explicit v3 voltage-wave and v4/v5 power-wave records")
+    expected = "power" if version in (4, 5) else "voltage"
     if metadata.get("s_wave_convention", "voltage" if version == 3 else None) != expected:
         raise ValueError("MSL dump wave convention conflicts with its schema version")
     legacy_current = ("line current sign normalized so +x and -x MSL ports "
@@ -932,6 +932,20 @@ def _replay_msl_port_vi_dump(dump):
                                  / (a_voltage[record, driven] + 1e-30))
     else:
         raise ValueError("MSL dump needs an explicit supported production assembly")
+    if version == 5:
+        # v5 production S is referred to the declared feed planes: apply the
+        # recorded shift S[i, j] *= D_i D_j, D_p = exp(-1j beta_p L_p), so the
+        # replay compares like with like. V/I stay at the probe-0 planes.
+        shift = metadata.get("feed_plane_shift")
+        if not shift:
+            raise ValueError("v5 MSL dump lacks its feed_plane_shift record")
+        offsets = np.asarray(shift["reference_plane_offsets_m"], dtype=np.float64)
+        beta = np.asarray(shift["shift_beta_rad_per_m"], dtype=np.float64)
+        if offsets.shape != (n_ports,) or beta.shape != (n_ports, n_freqs):
+            raise ValueError("v5 MSL dump feed_plane_shift does not match its V/I records")
+        from rfx.measurement.msl_planes import feed_plane_factors
+        d = feed_plane_factors(offsets, beta)
+        s = d[:, None, :] * s * d[None, :, :]
     return PortSMatrixObservable(s_params=s, freqs=np.asarray(dump.freqs),
                                 port_names=tuple(dump.port_names), source="msl_vi_dump_" + expected)
 

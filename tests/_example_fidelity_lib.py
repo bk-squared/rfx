@@ -822,7 +822,7 @@ CLASSIFICATION: dict[str, Entry] = {
         "f0) with no solve call",
         (Builder("build_problem", 0, (_v("default"),)),)),
     "validation/tmtt_paper/lumped_port_gradient_check.py": Entry(
-        "audited", "`build(f0=3.0e9)` returns Simulation with no solve call",
+        "audited", "`build(precision=\"float32\")` returns Simulation with no solve call",
         (Builder("build", None, (_v("default"),)),)),
     "validation/tmtt_paper/msl_stub_notch_tuning.py": Entry(
         "audited",

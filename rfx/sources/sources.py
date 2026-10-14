@@ -222,18 +222,21 @@ def port_d_parallel(grid, position_ijk: tuple[int, int, int],
 
 @dataclass(frozen=True)
 class GaussianPulse:
-    """Differentiated Gaussian pulse with center frequency f0.
+    """Differentiated Gaussian pulse with center frequency f0, starting at t=0.
 
-    s(t) = -2 * ((t - t0) / tau) * exp(-((t - t0) / tau)^2)
+    s(t) = -2 * x * exp(-x^2) - exp(-c^2) * exp(-u^2) * (2c + (4c^2 - 2) u - 4c u^2 - 4c^2 u^3)
+    for t >= 0 and 0 before, with x = (t - t0)/tau, u = t/tau, c = cutoff.
 
-    The onset truncation at t=0 leaves a nonzero time integral: over the
-    sampled table, S = sum s(t_n)*dt ~ -amplitude * tau * exp(-cutoff^2).
-    A soft current source deposits exactly that integral as a net static
-    end-charge q = S/((1+loss)*dz_src) (issue #388), so the deposited DC
-    scales as e^(-cutoff^2): raising ``cutoff`` from 3.0 to 4.5 cuts the
-    deposited charge by e^(4.5^2 - 3^2) ~ 7.7e4 — about 5 decades.
-    Use a higher cutoff when a static source remnant matters (e.g. the
-    ``until_decay`` interior-energy stop on absorbing boundaries).
+    The first term is the differentiated Gaussian. Cut at t=0 alone it would
+    start with a jump of 2c*exp(-c^2) (7.4e-4 at c=3) and have the time
+    integral -tau*exp(-c^2), which a soft current source deposits as a static
+    charge whose field never decays (issue #388). The second term is
+    tau * d/dt[exp(-c^2) * phi(t)] with phi = exp(-u^2)(1 + 2c u + 2c^2 u^2),
+    phi(0) = 1, phi(inf) = 0: it makes the integral exactly zero and the
+    start continuous in value and slope. The added term's largest magnitude,
+    near t = 0.36 tau, is 1.627e-3 of the amplitude at c = 3 and 1.837e-2 at
+    c = 2.5. Below c = 2.5 it exceeds 2 % (the uncorrected start would jump by
+    2c*exp(-c^2), 9.7e-3 at c = 2.5), so a smaller cutoff is refused.
 
     Parameters
     ----------
@@ -245,15 +248,25 @@ class GaussianPulse:
         Peak amplitude (V/m). Default 1.0.
     cutoff : float
         Number of tau between t=0 and the pulse peak: t0 = cutoff * tau.
-        Default 3.0 (historical value; waveform values are unchanged at
-        the default). Higher values buy an e^(-cutoff^2) reduction of the
-        deposited-DC integral at the cost of a longer onset (issue #388).
+        Default 3.0; at least 2.5.
     """
 
     f0: float
     bandwidth: float = 0.5
     amplitude: float = 1.0
     cutoff: float = 3.0
+
+    def __post_init__(self):
+        try:
+            cutoff = float(self.cutoff)
+        except TypeError:  # traced: checked where it was concrete
+            return
+        if not cutoff >= 2.5:
+            raise ValueError(
+                f"GaussianPulse cutoff={cutoff!r} is below 2.5: the start would "
+                "jump by 2c*exp(-c^2) of the amplitude and making it charge-free "
+                "changes the pulse by more than 2 % (1.84e-2 at c = 2.5). Use "
+                "cutoff >= 2.5 (default 3).")
 
     @property
     def tau(self) -> float:
@@ -262,13 +275,34 @@ class GaussianPulse:
 
     @property
     def t0(self) -> float:
-        """Pulse delay (cutoff*tau ensures smooth onset)."""
+        """Pulse delay: the peak lies cutoff*tau after the start at t=0."""
         return self.cutoff * self.tau
 
     def __call__(self, t: float) -> float:
-        """Evaluate pulse at time t."""
-        arg = (t - self.t0) / self.tau
-        return self.amplitude * (-2.0 * arg) * jnp.exp(-(arg**2))
+        """Evaluate pulse at time t (zero before t=0)."""
+        u = t / self.tau
+        c = self.cutoff
+        # Both terms are exactly 0 in float32 beyond 50 tau (exp(-2500)); the
+        # clamps keep u**3 and arg**2 from overflowing there (inf * 0 = NaN in
+        # the value and its gradient, e.g. for a tau of 1e-20 s), and change
+        # nothing, value or gradient, for u < 50.
+        uc = jnp.clip(u, -50.0, 50.0)
+        arg = jnp.clip((t - self.t0) / self.tau, -50.0, 50.0)
+        onset = jnp.exp(-c**2 - uc**2) * (2*c + (4*c**2 - 2)*uc - 4*c*uc**2 - 4*c**2*uc**3)
+        value = -2.0 * arg * jnp.exp(-(arg**2)) - onset
+        # For z = 2cu < 3 the two terms above nearly cancel (each about 2c*exp(-c^2)).
+        # There the same pulse is exp(-c^2 - u^2) * (2c*R1(z) - 2u*R2(z)), z = 2cu,
+        # with R1, R2 = exp(z) less its Taylor terms through z^1, z^2, summed as series
+        # so every evaluation path keeps float32's relative accuracy.
+        z = jnp.clip(2*c*u, 0.0, 3.0)
+        term, r1, r2 = z**2 / 2, 0.0, 0.0
+        for k in range(2, 22):
+            r1 = r1 + term
+            r2 = r2 + (term if k >= 3 else 0.0)
+            term = term * z / (k + 1)
+        near = jnp.exp(-c**2 - uc**2) * (2*c*r1 - 2*uc*r2)
+        value = jnp.where(2*c*u < 3.0, near, value)
+        return self.amplitude * jnp.where(t >= 0, value, 0.0)
 
 
 @dataclass(frozen=True)

@@ -115,6 +115,8 @@ def test_every_metadata_mismatch_raises_value_error(field):
     value = getattr(sample, field)
     if value is None:
         perturbed = jnp.ones_like(sample.dA)
+    elif isinstance(value, tuple):
+        perturbed = tuple(v * 2 + 1 for v in value)
     elif isinstance(value, str):
         perturbed = "hann" if value != "hann" else "rect"
     elif isinstance(value, (int, float)) and not isinstance(value, bool):

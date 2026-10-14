@@ -20,7 +20,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from rfx.harminv import HarminvMode, harminv
+from rfx.harminv import MatrixPencilMode, matrix_pencil
 
 # A synthetic ring-down that mirrors the issue-80 spectrum shape: a dominant
 # patch-mode tone with a couple of weaker neighbours, all decaying. The 9.30 GHz
@@ -44,13 +44,13 @@ def _synthetic_ringdown(dtype=np.float64) -> np.ndarray:
     return sig.astype(dtype)
 
 
-def _freqs_ghz(modes: list[HarminvMode]) -> list[float]:
+def _freqs_ghz(modes: list[MatrixPencilMode]) -> list[float]:
     return sorted(m.freq / 1e9 for m in modes)
 
 
 def test_harminv_recovers_known_synthetic_frequencies():
     """Matrix Pencil recovers all three planted tones to <0.5% on a clean signal."""
-    modes = harminv(_synthetic_ringdown(), _DT, 7.0e9, 14.0e9)
+    modes = matrix_pencil(_synthetic_ringdown(), _DT, 7.0e9, 14.0e9)
     got = _freqs_ghz(modes)
     for f_true_hz, _, _, _ in _TONES:
         f_true = f_true_hz / 1e9
@@ -70,7 +70,7 @@ def test_harminv_dominant_is_largest_amplitude_tone():
     this locks the estimator contract itself, and that 9.30 is dominant by
     ENERGY, not by proximity to an expected value.
     """
-    modes = harminv(_synthetic_ringdown(), _DT, 7.0e9, 14.0e9)
+    modes = matrix_pencil(_synthetic_ringdown(), _DT, 7.0e9, 14.0e9)
     assert modes, "no modes recovered"
     # API contract: sorted by amplitude, strongest first.
     amps = [m.amplitude for m in modes]
@@ -88,8 +88,8 @@ def test_harminv_float32_roundtrip_is_frequency_stable():
     dominant frequency essentially unchanged (the verification measured 9.3000
     under both float64 and float32-roundtrip).
     """
-    dom_f64 = harminv(_synthetic_ringdown(np.float64), _DT, 7.0e9, 14.0e9)[0].freq
-    dom_f32 = harminv(
+    dom_f64 = matrix_pencil(_synthetic_ringdown(np.float64), _DT, 7.0e9, 14.0e9)[0].freq
+    dom_f32 = matrix_pencil(
         _synthetic_ringdown(np.float32).astype(np.float64), _DT, 7.0e9, 14.0e9
     )[0].freq
     assert abs(dom_f64 - dom_f32) / dom_f64 < 1e-3, (
@@ -105,8 +105,8 @@ def test_harminv_dominant_is_window_stable():
     dominant mode.
     """
     sig = _synthetic_ringdown()
-    full = harminv(sig, _DT, 7.0e9, 14.0e9)[0].freq / 1e9
-    tail = harminv(sig[_N // 4:], _DT, 7.0e9, 14.0e9)[0].freq / 1e9
+    full = matrix_pencil(sig, _DT, 7.0e9, 14.0e9)[0].freq / 1e9
+    tail = matrix_pencil(sig[_N // 4:], _DT, 7.0e9, 14.0e9)[0].freq / 1e9
     assert abs(full - 9.30) < 0.05 and abs(tail - 9.30) < 0.05, (
         f"dominant not window-stable: full={full:.3f}, tail={tail:.3f} GHz"
     )
@@ -114,7 +114,7 @@ def test_harminv_dominant_is_window_stable():
 
 def test_harminv_recovers_q_within_band():
     """Recovered Q of the dominant tone is in the right ballpark (planted Q=44)."""
-    modes = harminv(_synthetic_ringdown(), _DT, 7.0e9, 14.0e9)
+    modes = matrix_pencil(_synthetic_ringdown(), _DT, 7.0e9, 14.0e9)
     dom = modes[0]
     # Matrix Pencil on a clean 3-tone signal recovers Q to a few %.
     assert 0.7 * 44.0 < dom.Q < 1.3 * 44.0, f"dominant Q={dom.Q:.1f} far from planted 44"
@@ -125,5 +125,5 @@ def test_harminv_modest_noise_does_not_move_dominant():
     rng = np.random.default_rng(20260617)
     sig = _synthetic_ringdown()
     noise = rng.standard_normal(_N) * 0.01 * np.max(np.abs(sig))  # ~40 dB SNR
-    dom = harminv(sig + noise, _DT, 7.0e9, 14.0e9)[0].freq / 1e9
+    dom = matrix_pencil(sig + noise, _DT, 7.0e9, 14.0e9)[0].freq / 1e9
     assert abs(dom - 9.30) < 0.05, f"noise moved dominant to {dom:.3f} GHz"

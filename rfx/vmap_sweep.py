@@ -705,8 +705,7 @@ def _build_full_scan_fn(
             #   'field'   -> raw make_source on EVERY boundary (E += w has
             #               no material dependence, so no dynamic path)
             #   'current' -> dynamic-Cb J-source on EVERY boundary, with the
-            #               same arithmetic order as run(): Cb*w then 1/dV
-            #               on CPML, or (Cb/dV)*w on PEC.
+            #               same arithmetic as run(): (1/dV)*(Cb*w).
             if pe.amplitude_kind == "field":
                 sources.append(make_source(grid, pe.position, pe.component,
                                            pe.waveform, n_steps))

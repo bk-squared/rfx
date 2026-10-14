@@ -9498,66 +9498,61 @@
         "domain": {
           "axes": {
             "x": {
-              "declared_extent_um": 60000.0,
+              "declared_extent_um": 31000.0,
               "declared_um": [
                 0.0,
-                60000.0
+                31000.0
               ],
               "face_residual_um": [
                 0.0,
                 0.0
               ],
-              "mesh_extent_um": 60000.0,
-              "n_cells": 40,
-              "realized_extent_um": 60000.0,
+              "mesh_extent_um": 31000.0,
+              "n_cells": 62,
+              "realized_extent_um": 31000.0,
               "realized_um": [
                 0.0,
-                60000.0
+                31000.0
               ]
             },
             "y": {
-              "declared_extent_um": 30000.0,
+              "declared_extent_um": 500.0,
               "declared_um": [
                 0.0,
-                30000.0
+                500.0
               ],
               "face_residual_um": [
                 0.0,
                 0.0
               ],
-              "mesh_extent_um": 30000.0,
-              "n_cells": 20,
-              "realized_extent_um": 30000.0,
+              "mesh_extent_um": 500.0,
+              "n_cells": 1,
+              "realized_extent_um": 500.0,
               "realized_um": [
                 0.0,
-                30000.0
+                500.0
               ]
             },
             "z": {
-              "declared_extent_um": 20000.0,
+              "declared_extent_um": 500.0,
               "declared_um": [
                 0.0,
-                20000.0
+                500.0
               ],
               "face_residual_um": [
                 0.0,
-                1000.0
+                0.0
               ],
-              "mesh_extent_um": 21000.0,
-              "n_cells": 14,
-              "realized_extent_um": 21000.0,
+              "mesh_extent_um": 500.0,
+              "n_cells": 1,
+              "realized_extent_um": 500.0,
               "realized_um": [
                 0.0,
-                21000.0
+                500.0
               ]
             }
           },
-          "findings": [
-            {
-              "axis": "z",
-              "kind": "domain-extent-quantized"
-            }
-          ],
+          "findings": [],
           "material": null,
           "n_cells": null
         },
@@ -9569,6 +9564,10 @@
                 {
                   "class": "lumped/wire port",
                   "count": 1
+                },
+                {
+                  "class": "lumped RLC",
+                  "count": 1
                 }
               ],
               "kind": "out-of-scope"
@@ -9578,7 +9577,20 @@
           "n_cells": null
         }
       },
-      "preflight": []
+      "preflight": [
+        {
+          "code": "source_decoupled",
+          "loc": null,
+          "numbers": [
+            0.0005,
+            0.0,
+            0.0,
+            4.0
+          ],
+          "severity": "warning",
+          "source": "_validate_cfg_source_on_reflector_plane"
+        }
+      ]
     },
     "validation/tmtt_paper/msl_stub_notch_tuning.py::build_sim::f_target": {
       "fidelity": {

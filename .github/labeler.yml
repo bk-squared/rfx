@@ -69,6 +69,7 @@
       - any-glob-to-any-file:
           - "rfx/boundaries/**"
           - "rfx/preflight/absorber.py"
+          - "rfx/model/pad_fill.py"
           - "rfx/geometry/smoothing.py"
           # Plane-wave source, far field and RCS (absorber's list, lead 2026-10-12).
           # Shared on purpose: tests/contracts/ files also earn lane:ci-infra,
@@ -98,6 +99,14 @@
           - "rfx/mesh_edges.py"
           - "rfx/preflight/mesh.py"
           - "rfx/amr.py"
+          # rfx/model/ (realized-model layer): the graded grid and the material modules
+          - "rfx/model/graded_grid.py"
+          - "rfx/model/graded_profile.py"
+          - "rfx/model/materials.py"
+          - "rfx/model/overrides.py"
+          - "rfx/model/electric_metrics.py"
+          - "rfx/model/pole_stability.py"
+          - "rfx/model/tensor_operands.py"
           - "tests/unit/nonuniform/**"
           - "tests/**/*nonuniform*"
           - "tests/**/*_nu_*"
@@ -151,6 +160,8 @@
           # Built-in waveforms and soft sources; the default pulse is acceleration's
           # (lead 2026-10-12). The TF/SF plane wave stays under lane:absorber.
           - "rfx/sources/sources.py"
+          - "rfx/model/source_admission.py"
+          - "rfx/model/source_coefficients.py"
           - "tests/unit/runners/test_profiling.py"
           - "tests/contracts/test_matmul_precision.py"
           - "tests/unit/sparams/test_ringdown_*.py"
@@ -158,3 +169,13 @@
           - "scripts/benchmarks/**"
           - "scripts/benchmark_*.py"
           - "scripts/diagnostics/gpu_throughput_bench.py"
+
+"lane:conductors":
+  - changed-files:
+      - any-glob-to-any-file:
+          # Conductor modules of the model layer (lead 2026-10-13; owner: idm).
+          - "rfx/model/conductors.py"
+          - "rfx/model/occupancy.py"
+          - "rfx/model/thin_conductors.py"
+          - "rfx/geometry/conformal.py"
+          - "rfx/realized_*.py"

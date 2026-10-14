@@ -329,13 +329,15 @@ def test_g5_kernel_refusals(flag):
 def test_g5_kernel_admission(case):
     from types import SimpleNamespace
     from rfx.adjoint import design_adjoint_scan
+    from rfx.model.tensor_operands import TensorOperands
     class Context(SimpleNamespace):
         def __getattr__(self, name):
             if name.startswith("use_"):
                 return False
             raise AttributeError(name)
     ctx = Context(use_design_box=True, bloch=None, periodic=(False,)*3,
-                  aniso_eps=None, stencil_order=2)
+                  materials=SimpleNamespace(components=SimpleNamespace(tensor=None)),
+                  stencil_order=2)
     initial = {"fdtd": SimpleNamespace(ex=jnp.zeros(1))}
     if case == "missing_design":
         ctx.use_design_box = False
@@ -344,7 +346,7 @@ def test_g5_kernel_admission(case):
     elif case == "periodic":
         ctx.periodic = (True, False, False)
     elif case == "anisotropy":
-        ctx.aniso_eps = (1, 1, 1)
+        ctx.materials.components.tensor = TensorOperands.of(eps=(1, 1, 1))
     elif case == "dtype":
         initial["fdtd"].ex = jnp.zeros(1, jnp.float16)
     elif case == "stencil":

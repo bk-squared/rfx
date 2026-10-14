@@ -169,9 +169,22 @@ def compute_msl_s_matrix(
     V/I and the analytic Hammerstad-Jensen reference impedance. The
     N-probe least-squares fit of
     ``V_n = α e^{-jβx_n} + γ e^{+jβx_n}`` supplies only the reported
-    beta/Z0 diagnostics. Those fitted values do not enter S. S is
-    referenced to each first probe plane, without translation back to
-    the physical feed planes. The two bracketing H planes are linearly
+    beta/Z0 diagnostics. Those fitted values do not enter S. S is formed
+    at each port's first probe plane and then referred back to the
+    DECLARED FEED PLANE, ``S_feed[i, j] = D_i S[i, j] D_j`` with
+    ``D_p = exp(-j β_p L_p)``, ``L_p`` the realized feed-to-probe-0
+    distance (``reference_plane_offsets_m``) and ``β_p`` the closed-form
+    β (Hammerstad-Jensen ε_eff(0) with Kirschning-Jansen dispersion, from
+    the port's width, height and substrate εr; ``shift_beta``). β is
+    real, so the shift moves phase only. Measured against the simulated
+    line's two-line β: within 0.76 % on the resolved boards measured
+    (chain-battery thru at 100 µm, 50 µm and z-graded; εr 10.2 / h 0.6 mm
+    board), phase error at most 5.5e-3 rad; within 1.23 % on a 4-cell
+    substrate (0.8 mm εr 2.2, dx 0.2 mm), phase error at most 1.9e-2 rad
+    over 2-18 GHz (1.33e-2 up to 15 GHz) (rfx-archive MSL-PLANE.md,
+    decision records 10-15). The phase-only shift is exact for a line whose
+    Zc equals the reference R (the closed-form Z0). Under ``eps_override``
+    the shift uses the declared εr: no gradient flows through β. The two bracketing H planes are linearly
     interpolated to the E-node using their physical coordinates, then
     the leapfrog temporal offset is corrected. Comparing different
     observation offsets still requires accounting for reference planes
@@ -477,6 +490,7 @@ def compute_msl_s_matrix(
             periodic=self._periodic_flags())
     beta0_per_port: list[np.ndarray] = []
     z0_hj_per_port: list[float] = []
+    eps_r_ref_per_port: list[float] = []
     for p_idx, pe in enumerate(entries):
         meta = port_idx_meta[p_idx]
         if pe.eps_r_sub is not None:
@@ -487,6 +501,7 @@ def compute_msl_s_matrix(
                 pe.direction, meta["i_feed"], meta["j_centre"], k_mid
             )
             eps_r_ref = float(np.asarray(_msl_materials.eps_r[eps_cell]))
+        eps_r_ref_per_port.append(eps_r_ref)
         z0_hj, eps_eff_hj = hammerstad_jensen_z0_eps_eff(
             pe.width, pe.height, eps_r_ref
         )
@@ -1043,6 +1058,34 @@ def compute_msl_s_matrix(
             )
             msl_cond_a = cond_a
 
+        # ---- Reference plane: probe 0 -> declared feed plane ----------
+        # S above is referred to each port's probe-0 plane. One resolver
+        # (rfx.measurement.msl_planes, shared with the mixed calculator)
+        # gives the realized feed-to-probe-0 distance L_p and the closed-
+        # form shift beta per bin (Hammerstad-Jensen eps_eff(0) with
+        # Kirschning-Jansen dispersion, from width, height and the eps_r
+        # resolved above; never the fitted beta), and
+        # S_feed[i, j] = D_i S[i, j] D_j with D = exp(-j beta L). beta is
+        # real, so |S|, singular values and cond(A) are unchanged. Applied
+        # before the dump and before the opt-in passivity projection, so
+        # S_raw carries it too.
+        from rfx.measurement.msl_planes import (
+            resolve_msl_planes as _resolve_msl_planes,
+            apply_feed_plane_shift as _apply_feed_plane_shift,
+        )
+        msl_planes = _resolve_msl_planes(
+            grid, msl_ports,
+            [int(pe.n_probe_offset) for pe in entries],
+            [xs[0] for xs in probe_xs],
+            [float(pe.width) for pe in entries],
+            [float(pe.height) for pe in entries],
+            eps_r_ref_per_port,
+            freqs_arr,
+        )
+        S = _apply_feed_plane_shift(
+            S, msl_planes.offsets_m, msl_planes.shift_beta,
+        ).astype(_complex_dtype)
+
         # Preserve the existing relative low-signal screen and S exactly.
         # Small passive-port wave pairs may be a true transmission zero;
         # this flag alone establishes neither matrix corruption nor an
@@ -1226,7 +1269,7 @@ def compute_msl_s_matrix(
             path.parent.mkdir(parents=True, exist_ok=True)
             metadata = {
                 "schema": "rfx.msl_nprobe_dump",
-                "schema_version": 4,
+                "schema_version": 5,
                 "s_wave_convention": "power",
                 "wave_definition": "a=(V+R*I)/(2*sqrt(R)); b=(V-R*I)/(2*sqrt(R))",
                 "solver_wave_common_scale": "sqrt(reference_impedances[0]); cancels from S and cond(A)",
@@ -1235,10 +1278,13 @@ def compute_msl_s_matrix(
                 "s_reference_impedances_ohm": z0_hj_per_port,
                 "production_smatrix_schema": "S[receiver_port, driven_port, frequency_index]",
                 "production_smatrix_stage": (
-                    "PRE-passivity-projection raw extraction; the same "
-                    "matrix MSLSMatrixResult.S carries by default, and "
+                    "PRE-passivity-projection raw extraction referred to "
+                    "the declared feed planes; the same matrix "
+                    "MSLSMatrixResult.S carries by default, and "
                     "MSLSMatrixResult.S_raw when enforce_passivity=True "
-                    "clipped something"
+                    "clipped something. raw_v/raw_i1 stay at the probe "
+                    "planes; undo the shift with "
+                    "feed_plane_shift before comparing to a probe-0 replay"
                 ),
                 # v3 (issue #523): production_smatrix is no longer always
                 # the N-probe-fit-derived S. Record WHICH assembly made
@@ -1265,15 +1311,33 @@ def compute_msl_s_matrix(
                     "least-squares wave-decomposition extractor (issue #80 "
                     "Fix C), which fits V_n = alpha*exp(-j beta x_n) + "
                     "gamma*exp(+j beta x_n) by SVD lstsq. The production "
-                    "S-matrix does NOT come from that fit: it is solved "
-                    "from the probe-0 wave amplitudes over all drives, "
-                    "S = B @ inv(A) (issue #507), at the first probe "
-                    "planes without translation to the feed planes, "
+                    "S-matrix is solved from the probe-0 wave amplitudes "
+                    "over all drives, S = B @ inv(A) (issue #507), then "
+                    "referred to the declared feed planes: "
+                    "S_feed[i, j] = D_i S[i, j] D_j with "
+                    "D_p = exp(-j beta_p L_p), L_p the realized "
+                    "feed-to-probe-0 distance and beta_p the closed-form "
+                    "Hammerstad-Jensen + Kirschning-Jansen beta (see "
+                    "feed_plane_shift; the fitted beta does not enter S), "
                     "with the modal voltage "
                     "spanning ground to the rasterized trace node (#511) "
                     "-- see production_smatrix_assembly for which rule "
                     "actually produced this dump's S"
                 ),
+                "feed_plane_shift": {
+                    "formula": (
+                        "S_feed[i, j, f] = D_i(f) S_probe0[i, j, f] D_j(f), "
+                        "D_p(f) = exp(-1j * shift_beta[p, f] * "
+                        "reference_plane_offsets_m[p])"),
+                    "reference_plane_offsets_m": [
+                        float(x) for x in msl_planes.offsets_m],
+                    "shift_beta_rad_per_m": np.asarray(
+                        msl_planes.shift_beta, dtype=np.float64).tolist(),
+                    "shift_beta_source": (
+                        "closed form: (2 pi f / c) sqrt(eps_eff(f)), "
+                        "Hammerstad-Jensen eps_eff(0) with Kirschning-"
+                        "Jansen dispersion"),
+                },
                 "grid": {
                     "dx_m": float(grid.dx),
                     "dt_s": float(grid.dt),
@@ -1364,6 +1428,8 @@ def compute_msl_s_matrix(
             beta_railed=beta_railed,
             probe_clearance=probe_clearance,
             reference_impedances=np.asarray(z0_hj_per_port, dtype=np.float64),
+            reference_plane_offsets_m=np.asarray(msl_planes.offsets_m),
+            shift_beta=np.asarray(msl_planes.shift_beta),
         )
         _warn_if_ringdown_truncated(
             settling_db_runs,

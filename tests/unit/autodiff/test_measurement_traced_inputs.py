@@ -130,7 +130,10 @@ def test_every_kernel_entry_takes_a_traced_dt_and_traced_bins(kind):
         port = port_dft_phase(jnp.int32(5), jnp.asarray(bins), d, kind)
         state = SimpleNamespace(**{c: jnp.ones((3, 3, 3), jnp.float32)
                                    for c in ("ex", "ey", "ez", "hx", "hy", "hz")})
-        meta = ((0, 1, bins, tuple(field_channel(c) for c in ("ey", "ez", "hy", "hz")), 0, 3, 0, 3),)
+        # (axis, index, bins, components, one region per component, normal-H zero,
+        #  normal-H weights, periodic normal axis), as flux_metadata builds it.
+        meta = ((0, 1, bins, tuple(field_channel(c) for c in ("ey", "ez", "hy", "hz")),
+                 ((0, 3, 0, 3),) * 4, False, (.5, .5), False),)
         accs = (tuple(jnp.zeros((3, 3, 3), jnp.complex64) for _ in range(4)),)
         flux_sum = sum(jnp.sum(a) for a in flux(state, accs, meta, d, 5)[0])
         tail = jnp.sum(transform(record, bins, d, kind)) + jnp.sum(half_step_current_phase(bins, d))

@@ -83,8 +83,11 @@ def _dispatch_plan(
     step count comes from a throwaway grid) and ``None`` for lanes that
     build-and-reuse a grid (the caller resolves it there).
     """
-    from rfx.boundaries.features import admit_waveguide
+    from rfx.boundaries.features import admit_ntff, admit_waveguide
     admit_waveguide(self, lane=f"{mode} dispatch")
+    # ADI must first report that it does not support NTFF accumulation.
+    if self._solver != "adi":
+        admit_ntff(self, lane=f"{mode} dispatch")
     from rfx.boundaries.tfsf import admit_simulation
     admit_simulation(self, material_overrides=tfsf_material_overrides)
     # Constructor checks cover explicit profiles only. Geometry can make

@@ -30,7 +30,9 @@ import importlib
 import inspect
 import json
 import re
+import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -44,6 +46,23 @@ EXAMPLE_SUFFIXES = (".py", ".yaml", ".yml")
 KINDS = {".py": "script", ".yaml": "config", ".yml": "config"}
 CONFIG_BUILDER = "rfx.config.simulation_from_yaml"
 _PLACEHOLDER = re.compile(r"\{[^{}]+\}")
+PR_LANE_PATHS = {
+    "examples/quickstart/hello_world.py",
+    "examples/tutorials/adi_solver_demo.py",
+    "examples/tutorials/antenna_farfield_pattern.py",
+    "examples/tutorials/artifact_report_demo.py",
+    "examples/tutorials/boundary_spec_demo.py",
+    "examples/tutorials/cad_mesh_import_demo.py",
+    "examples/tutorials/materials_and_dispersion.py",
+    "examples/tutorials/ports_and_sparams_101.py",
+    "examples/tutorials/rcs_scattering.py",
+    "examples/tutorials/resonance_harminv.py",
+    "examples/tutorials/run_control_and_fields.py",
+    "examples/tutorials/slab_rt_flux_monitor.py",
+    "examples/config/microstrip_thru.yaml",
+    "validation/research/subgrid/12_subgrid_disjoint_prototype.py",
+    "validation/research/subgrid/13_subgrid_material_validation.py",
+}
 
 
 def _load_index() -> dict:
@@ -52,6 +71,57 @@ def _load_index() -> dict:
 
 def _entries() -> list[dict]:
     return _load_index()["examples"]
+
+
+def _lane_entries() -> list[dict]:
+    index = _load_index()
+    return index["examples"] + index["validation_lanes"]
+
+
+def test_lane_records_are_well_formed() -> None:
+    with (lib.REPO_ROOT / "pyproject.toml").open("rb") as stream:
+        extras = tomllib.load(stream)["project"]["optional-dependencies"]
+    for entry in _lane_entries():
+        where = entry.get("path", "<no path>")
+        assert entry.get("lane") in {"pr", "weekly", "manual"}, (
+            f"{where}: missing or invalid lane {entry.get('lane')!r}")
+        if entry["lane"] == "manual":
+            reason = entry.get("lane_reason")
+            assert isinstance(reason, str) and reason.strip(), (
+                f"{where}: manual lane requires a non-empty lane_reason")
+        else:
+            assert "lane_reason" not in entry, (
+                f"{where}: lane_reason is only allowed with manual lane")
+        if "extra" in entry:
+            assert entry["extra"] in extras, (
+                f"{where}: unknown install extra {entry['extra']!r}")
+
+
+def test_every_tracked_file_has_exactly_one_lane_record() -> None:
+    tracked = subprocess.run(
+        ["git", "ls-files", "-z", "--", ":(glob)examples/**/*.py",
+         ":(glob)examples/**/*.yaml", ":(glob)examples/**/*.yml", "validation/tmtt_paper/*.py",
+         "validation/research/subgrid/12_subgrid_disjoint_prototype.py",
+         "validation/research/subgrid/13_subgrid_material_validation.py"],
+        cwd=lib.REPO_ROOT, check=True, capture_output=True, text=True,
+    ).stdout
+    listed = [entry["path"] for entry in _lane_entries()]
+    tracked_paths = set(tracked.split("\0")) - {""}
+    # The other direction too: a lane record for a file that was deleted or renamed is stale.
+    problems = [f"{path}: lane record for a file that is not tracked" for path in sorted(set(listed) - tracked_paths)]
+    problems += [
+        f"{path}: expected exactly one lane record, found {listed.count(path)}"
+        for path in sorted(set(tracked.split("\0")) - {""})
+        if listed.count(path) != 1
+    ]
+    assert not problems, "\n".join(problems)
+
+
+def test_lead_pr_lane_set_is_pinned() -> None:
+    actual = {entry["path"] for entry in _lane_entries() if entry.get("lane") == "pr"}
+    assert actual == PR_LANE_PATHS, (
+        f"PR lane missing {sorted(PR_LANE_PATHS - actual)}; "
+        f"unexpected {sorted(actual - PR_LANE_PATHS)}")
 
 
 def discover_examples() -> list[str]:

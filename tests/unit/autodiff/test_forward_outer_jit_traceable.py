@@ -26,10 +26,18 @@ from rfx.geometry import Box
 from tests.contracts.path_equivalence.comparison import compare
 
 
+def _pulse_for_60_steps(sim):
+    # Fractional bandwidth 0.8 with tau = 60/15 steps: the 60-step record holds
+    # the whole pulse (at f0 = 3 GHz the pulse would peak after step 83).
+    # Until 2026-10-12: bandwidth=3e9 (Hz), which drove nothing (issue 1668).
+    tau = 4.0 * float(sim._build_grid().dt)
+    return GaussianPulse(f0=1.0 / (np.pi * 0.8 * tau), bandwidth=0.8)
+
+
 def _pec_sim():
     s = Simulation(freq_max=6e9, domain=(0.04, 0.02, 0.02), boundary="pec")
     s.add_source((0.02, 0.01, 0.01), "ez",
-                 waveform=GaussianPulse(f0=3e9, bandwidth=3e9))
+                 waveform=_pulse_for_60_steps(s))
     s.add_probe((0.012, 0.008, 0.008), "ez")
     return s
 
@@ -82,7 +90,7 @@ def test_real_interior_pec_under_outer_jit_matches_eager():
     s = Simulation(freq_max=6e9, domain=(0.04, 0.02, 0.02), boundary="pec")
     s.add(Box((0.018, 0.006, 0.006), (0.024, 0.014, 0.014)), material="pec")
     s.add_source((0.008, 0.01, 0.01), "ez",
-                 waveform=GaussianPulse(f0=3e9, bandwidth=3e9))
+                 waveform=_pulse_for_60_steps(s))
     s.add_probe((0.012, 0.008, 0.008), "ez")
     shape = s.run(n_steps=1, skip_preflight=True).grid.shape
     # confirm this sim really populates pec_mask (the branch under test)

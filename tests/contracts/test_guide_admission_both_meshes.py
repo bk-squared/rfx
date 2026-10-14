@@ -251,7 +251,7 @@ def test_guide_admission_both_meshes(declaration, entry, monkeypatch):
                 assert caught.traceback[-1].name == "add_waveguide_port"
             if declaration == "perpendicular-pec-z" and not graded and entry.startswith("run"):
                 assert caught.traceback[-1].path.name == "uniform.py"
-                assert caught.traceback[-1].lineno + 1 == 337
+                assert caught.traceback[-1].name == "run_uniform"
             answer = ("refused", type(caught.value), message)
         assert answer == expected, (declaration, entry, "graded" if graded else "uniform")
         answers.append(answer)

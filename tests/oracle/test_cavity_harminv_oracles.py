@@ -14,7 +14,7 @@ class TestWaveguideCutoff:
     def test_rfx_waveguide_cutoff(self):
         """rfx should find TE10 cutoff within 0.5% via cavity mode."""
         from rfx import Simulation, GaussianPulse
-        from rfx.harminv import harminv
+        from rfx.harminv import matrix_pencil
 
         L_wg = 40e-3  # waveguide length
         dx = 0.5e-3
@@ -34,7 +34,7 @@ class TestWaveguideCutoff:
         ts = np.array(result.time_series).ravel()
         start = len(ts) // 4
         w = ts[start:] - np.mean(ts[start:])
-        modes = harminv(w, grid.dt, f_101 * 0.5, f_101 * 1.5)
+        modes = matrix_pencil(w, grid.dt, f_101 * 0.5, f_101 * 1.5)
 
         assert modes, "No modes found"
         best = min(modes, key=lambda m: abs(m.freq - f_101))
@@ -53,7 +53,7 @@ class TestLumpedPortCavity:
     def test_rfx_lumped_port_resonance_via_probe(self):
         """Lumped port should excite cavity; probe detects resonance via Harminv."""
         from rfx import Simulation, Box, GaussianPulse
-        from rfx.harminv import harminv
+        from rfx.harminv import matrix_pencil
 
         a, b, d = 50e-3, 40e-3, 20e-3
         eps_r = 2.2
@@ -76,7 +76,7 @@ class TestLumpedPortCavity:
         ts = np.array(result.time_series).ravel()
         start = len(ts) // 4
         w = ts[start:] - np.mean(ts[start:])
-        modes = harminv(w, grid.dt, f_110 * 0.5, f_110 * 1.5)
+        modes = matrix_pencil(w, grid.dt, f_110 * 0.5, f_110 * 1.5)
 
         assert modes, "Port excitation should produce detectable resonance"
         best = min(modes, key=lambda m: abs(m.freq - f_110))

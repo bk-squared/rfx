@@ -295,7 +295,7 @@ class TestDistributedCPML:
         sim.add_source(
             position=(0.065, 0.02, 0.02),
             component="ez",
-            waveform=GaussianPulse(f0=1.5e9, bandwidth=1.5e9),
+            waveform=GaussianPulse(f0=1.5e9, bandwidth=0.8),
         )
         sim.add_probe(position=(0.065, 0.02, 0.02), component="ez")
 
@@ -334,7 +334,7 @@ class TestDistributedCPML:
         sim.add_source(
             position=(0.065, 0.02, 0.02),
             component="ez",
-            waveform=GaussianPulse(f0=1.5e9, bandwidth=1.5e9),
+            waveform=GaussianPulse(f0=1.5e9, bandwidth=0.8),
         )
         sim.add_probe(position=(0.065, 0.02, 0.02), component="ez")
 
@@ -375,7 +375,7 @@ class TestDistributedCPML:
         sim.add_source(
             position=(0.065, 0.02, 0.02),
             component="ez",
-            waveform=GaussianPulse(f0=1.5e9, bandwidth=1.5e9),
+            waveform=GaussianPulse(f0=1.5e9, bandwidth=0.8),
         )
         sim.add_probe(position=(0.065, 0.02, 0.02), component="ez")
 
@@ -403,7 +403,7 @@ class TestDistributedCPML:
         sim.add_source(
             position=(0.065, 0.02, 0.02),
             component="ez",
-            waveform=GaussianPulse(f0=1.5e9, bandwidth=1.5e9),
+            waveform=GaussianPulse(f0=1.5e9, bandwidth=0.8),
         )
         # Probe away from source
         sim.add_probe(position=(0.09, 0.02, 0.02), component="ez")
@@ -468,7 +468,7 @@ class TestDistributedCPML:
         sim.add_source(
             position=(Lx / 2, 0.02, 0.02),
             component="ez",
-            waveform=GaussianPulse(f0=1.5e9, bandwidth=1.5e9),
+            waveform=GaussianPulse(f0=1.5e9, bandwidth=0.8),
         )
         # Probe near the x-hi physical face (inside the CPML zone) so
         # it is sensitive to the absorber window's exact placement.
@@ -520,7 +520,7 @@ class TestDistributedLumpedPort:
             position=(0.04, 0.012, 0.012),
             component="ez",
             impedance=50,
-            waveform=GaussianPulse(f0=2.5e9, bandwidth=2.5e9),
+            waveform=GaussianPulse(f0=2.5e9, bandwidth=0.8),
         )
         sim.add_probe(position=(0.04, 0.012, 0.012), component="ez")
 
@@ -543,7 +543,7 @@ class TestDistributedLumpedPort:
             position=(0.04, 0.012, 0.012),
             component="ez",
             impedance=50,
-            waveform=GaussianPulse(f0=2.5e9, bandwidth=2.5e9),
+            waveform=GaussianPulse(f0=2.5e9, bandwidth=0.8),
         )
         sim.add_probe(position=(0.04, 0.012, 0.012), component="ez")
 
@@ -563,7 +563,7 @@ class TestDistributedLumpedPort:
             position=(0.04, 0.012, 0.012),
             component="ez",
             impedance=50,
-            waveform=GaussianPulse(f0=2.5e9, bandwidth=2.5e9),
+            waveform=GaussianPulse(f0=2.5e9, bandwidth=0.8),
         )
         sim.add_probe(position=(0.04, 0.012, 0.012), component="ez")
 

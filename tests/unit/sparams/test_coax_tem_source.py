@@ -26,7 +26,13 @@ def test_thru_source_does_not_drive_longitudinal_fields(monkeypatch, geometry):
         fields = {c: np.zeros(shape, dtype=np.float32)
                   for c in ("ex", "ey", "hx", "hy")}
         for source in kw["sources"] + kw["mag_sources"]:
-            fields[source.component][source.i, source.j, 0] += float(source.waveform[0])
+            # The pulse starts at zero (issue 1668): read the first sample
+            # above 1e-3 of the table's peak. Each table is the cell's
+            # profile times one waveform, so every E (and every H) table
+            # picks the same step.
+            table = np.abs(np.asarray(source.waveform))
+            n_on = int(np.argmax(table > 1e-3 * table.max()))
+            fields[source.component][source.i, source.j, 0] += float(source.waveform[n_on])
         k = kw["sources"][0].k
         masks = [np.asarray(m)[:, :, k:k + 1] for m in kw["pec_edge_masks"]]
         for comp, mask in zip(("ex", "ey"), masks):
@@ -64,5 +70,9 @@ def test_thru_source_does_not_drive_longitudinal_fields(monkeypatch, geometry):
         sim._coaxial_ports[0] = port._replace(outer_radius=port.pin_radius + 2.5 * dx)
 
     monkeypatch.setattr("rfx.simulation.run", inspect_source)
+    # Tables long enough to hold the pulse to t0 + 4.5*tau (a one-step table
+    # holds only the zero at t=0). The runner is intercepted; nothing steps.
+    wf = sim._coaxial_ports[0].excitation
+    n_steps = int(np.ceil((wf.t0 + 4.5 * wf.tau) / float(sim._build_grid().dt))) + 1
     with pytest.raises(SourceChecked):
-        sim.compute_coaxial_two_port(n_steps=1, freqs=np.array([8e9]))
+        sim.compute_coaxial_two_port(n_steps=n_steps, freqs=np.array([8e9]))

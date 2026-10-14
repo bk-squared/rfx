@@ -75,12 +75,32 @@ class PortSourceQueue(list):
 
 
 def soft_source(grid, position, component, waveform, n_steps, *, materials,
-                amplitude_kind=None, raw=False, field_dtype=None):
-    """Build a soft source after the final material and load realization."""
-    from rfx.simulation import make_source, make_j_source
-    from rfx.api._source_semantics import guard_float16_source_increment
-    builder = make_source if raw else make_j_source
-    source = builder(grid, position, component, waveform, n_steps,
-                     materials=materials, amplitude_kind=amplitude_kind)
-    return source._replace(waveform=guard_float16_source_increment(
-        source.waveform, field_dtype, amplitude_kind))
+                amplitude_kind, field_dtype=None):
+    """Build a declared soft source after the final material and load realization.
+
+    The declared kind alone decides the drive, on every entry and boundary:
+    'field' adds ``w``, 'current' adds ``(1/dV)*(Cb*w)`` (run()/forward() census
+    row D2: the entries used to pick different helpers on a closed boundary).
+    """
+    from rfx._grid_metric import field_index
+    from rfx.api._source_semantics import (
+        SOURCE_AMPLITUDE_KINDS, guard_float16_source_increment)
+    from rfx.model.source_coefficients import uniform_source_table
+    from rfx.simulation import SourceSpec
+    if amplitude_kind not in SOURCE_AMPLITUDE_KINDS:
+        raise ValueError(
+            f"a declared soft source needs amplitude_kind 'field' or 'current' "
+            f"(add_source resolves None to 'current'), got {amplitude_kind!r}")
+    cell = field_index(grid, position, component)
+    table = uniform_source_table(grid, cell, component, waveform, n_steps,
+                                 materials, amplitude_kind)
+    return SourceSpec(i=cell[0], j=cell[1], k=cell[2], component=component,
+                      waveform=guard_float16_source_increment(
+                          table, field_dtype, amplitude_kind))
+
+
+def defer_soft_source(sources, grid, entry, n_steps, *, field_dtype):
+    """Queue an ``add_source`` entry's drive; run() and forward() both call this."""
+    sources.defer(soft_source, grid, entry.position, entry.component,
+                  entry.waveform, n_steps, amplitude_kind=entry.amplitude_kind,
+                  field_dtype=field_dtype)

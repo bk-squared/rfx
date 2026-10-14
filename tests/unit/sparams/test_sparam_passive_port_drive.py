@@ -59,7 +59,7 @@ def _default_waveform():
 def test_driver_lumped_passive_port_matches_explicit_default():
     pos0 = (0.008, 0.006, 0.006)
     pos1 = (0.016, 0.006, 0.006)
-    wf0 = GaussianPulse(f0=5.5e9, bandwidth=4e9)
+    wf0 = GaussianPulse(f0=5.5e9, bandwidth=0.8)
 
     # Port 1 passive, NO waveform (stores waveform=None) — pre-fix this
     # crashed on drive pass j=1 with jax.vmap(None).
@@ -96,7 +96,7 @@ def test_driver_wire_passive_port_matches_explicit_default():
     pos0 = (0.008, 0.006, 0.0045)
     pos1 = (0.016, 0.006, 0.0045)
     extent = 0.003
-    wf0 = GaussianPulse(f0=5.5e9, bandwidth=4e9)
+    wf0 = GaussianPulse(f0=5.5e9, bandwidth=0.8)
 
     sim_passive = _sim()
     sim_passive.add_port(position=pos0, component="ez", impedance=50.0,
@@ -130,7 +130,7 @@ def test_run_compute_s_params_wire_passive_port():
     pos0 = (0.008, 0.006, 0.0045)
     pos1 = (0.016, 0.006, 0.0045)
     extent = 0.003
-    wf0 = GaussianPulse(f0=5.5e9, bandwidth=4e9)
+    wf0 = GaussianPulse(f0=5.5e9, bandwidth=0.8)
 
     sim = _sim()
     sim.add_port(position=pos0, component="ez", impedance=50.0,

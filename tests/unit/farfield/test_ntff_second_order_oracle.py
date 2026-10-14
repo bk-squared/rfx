@@ -849,14 +849,11 @@ def test_nonuniform_runner_hands_back_a_face_centre_box():
     assert res.ntff_box.collocation == "face_centre"
 
 
-def test_subgridded_runner_hands_back_a_face_centre_box():
-    """Same for the subgridded runner, which also builds its box inline.
+def test_subgridded_ntff_request_is_refused_by_its_reflecting_exterior(monkeypatch):
+    """Subgridding: its x and y faces are always PEC (only a z lid may absorb).
 
-    The subgridded lane is an EXPERIMENTAL prototype (3D SBP-SAT falsified,
-    PR #90), so this is a wiring assertion only — no accuracy claim is made
-    for its far field here. A PEC box: the subgridded lane refuses an
-    absorber in every validation mode (lane admission), and the box's
-    collocation does not depend on one.
+    Such a box cannot supply the missing boundary images, so this request
+    must be refused before the experimental subgridded lane steps fields.
     """
     from rfx import Simulation
 
@@ -866,9 +863,23 @@ def test_subgridded_runner_hands_back_a_face_centre_box():
     sim.add_refinement(z_range=(0.0, 0.024), ratio=2, validation="research")
     sim.add_ntff_box(corner_lo=(0.021, 0.021, 0.006),
                      corner_hi=(0.039, 0.039, 0.018), freqs=[3e9])
-    res = sim.run(n_steps=8, skip_preflight=True)
-    assert res.ntff_data is not None, "subgrid lane accumulated no NTFF data"
-    assert res.ntff_box.collocation == "face_centre"
+
+    def field_loop(*args, **kwargs):
+        raise AssertionError("reflecting-exterior refusal reached a field loop")
+
+    for name in ("scan", "fori_loop", "while_loop"):
+        monkeypatch.setattr(jax.lax, name, field_loop)
+    with pytest.raises(ValueError) as caught:
+        sim.run(n_steps=8, skip_preflight=True)
+    assert str(caught.value) == (
+        "run dispatch: an NTFF box radiates its surface currents into free space, but "
+        "x_hi is pec; x_lo is pec; y_hi is pec; y_lo is pec; z_hi is pec; z_lo is pec: "
+        "the far field would miss their images (a symmetry or ground plane is not "
+        "reconstructed). Every face of the realized model must be absorbing: draw a "
+        "finite ground plane as geometry, and note that a waveguide port on the uniform mesh "
+        "solves its transverse faces as PEC walls; a symmetry plane is not supported "
+        "with NTFF yet."
+    )
 
 
 # ---------------------------------------------------------------------------

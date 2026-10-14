@@ -3,8 +3,22 @@
 These scripts reproduce the inverse-design results of the paper
 
 > **rfx: An End-to-End Differentiable 3-D FDTD Simulator for RF and Microwave
-> Engineering**, B. Kim, submitted to *IEEE Transactions on Microwave Theory and
+> Engineering**, B. Kim, *IEEE Transactions on Microwave Theory and
 > Techniques* (T-MTT).
+
+## Paper version and main
+
+The numbers in the paper, and the numbers this README quotes from it, were produced at the tagged
+release `paper-tmtt-2026` (2026-08-10). To reproduce them, run the scripts at that tag:
+
+```bash
+git checkout paper-tmtt-2026
+```
+
+The scripts in this directory on `main` are the CURRENT code. The solver's port, material and conductor
+models were corrected after the tag, so some numbers differ; each script's header says what it shows on
+`main`. The lumped-port gradient check on `main` runs a different scene from the paper's, because the
+paper's scene no longer exercises the gradient (see that script's header).
 
 ## Paper materials map (start here)
 
@@ -26,7 +40,7 @@ The smoke/full split differs per script — check before running:
 | `waveguide_dielectric_taper.py` | honored, `SMOKE=1` default (coarse grid, short run) | minutes |
 | `beam_steering_superstrate.py` | honored, `SMOKE=1` default (coarse grid, few iterations) | minutes |
 | `msl_stub_notch_tuning.py` | **not implemented — always runs its full multi-start workload** | ~12–15 min on a fast workstation; can exceed 45 min on slower CPUs |
-| `lumped_port_gradient_check.py` | not used (single forward + adjoint + FD check) | a few minutes |
+| `lumped_port_gradient_check.py` | not used (float32 adjoint against float64 finite differences) | about 20 min |
 
 `SMOKE=1` does not reproduce the headline numbers; `SMOKE=0` reproduces the
 paper's headline numbers and is GPU-backed in practice for the taper and the
@@ -67,20 +81,9 @@ quarter-wave length. Not duplicated here; see
 `validation/tmtt_paper/msl_stub_notch_tuning.py` (cross-validation companion:
 `validation/crossval/06b_msl_notch_filter_uniform.py`).
 
-> **-46.1 dB pending re-derivation (issue #514).** The descent objective
-> above is `|S21|²` from the plane-lane N-probe extractor
-> (`rfx.probes.msl_wave_decomp` via `register_msl_plane_probes` /
-> `_v_from_plane` / `_i_from_plane`), which was reproduced by the
-> **pre-#514** V/I definitions and is reproducible as-is at tag
-> `paper-tmtt-2026`. #514 pointed that lane's V/I integrals at
-> `compute_msl_s_matrix`'s own primitives instead of a drifted copy, so
-> a re-run after this change can move the -46.1 dB figure; it is pending
-> re-derivation and re-optimization (a PI decision + a lead-lane run, not
-> a pod task). Amendment threshold: any change beyond the quoted 0.1 dB
-> precision. The **-55.7 dB validated optimized-null** figure is the
-> unchanged reference — it comes from the production S-matrix path
-> (`compute_msl_s_matrix`, already flux-validated, #520/#549), which #514
-> does not touch.
+> The -46.1 dB and -55.7 dB figures are the paper's, produced at tag
+> `paper-tmtt-2026`. On `main` the descent reaches a different minimum; see
+> the header of `msl_stub_notch_tuning.py` for what `main` shows.
 
 **Example 2 - Waveguide dielectric taper (30 sections).**
 `waveguide_dielectric_taper.py` matches a WR-90 guide to a high-permittivity
@@ -114,10 +117,14 @@ toward 30 deg, with the pattern peak near 30 deg). Run:
 
 ## Gradient verification
 
-`lumped_port_gradient_check.py` verifies the lumped voltage-current S11 path:
-the analytic directional derivative of |S11|^2 (one reverse-mode pass) agrees
-with a central finite difference (two forward passes) to 0.2% over the 24-cell
-design region. Runs on CPU in ~5-10 min (no GPU needed):
+`lumped_port_gradient_check.py` verifies the lumped voltage-current S11 path.
+In the paper (tag `paper-tmtt-2026`) the directional derivative of |S11|^2
+agreed with a central finite difference to 0.2 % over a 24-cell block beside a
+lone port. On `main` that scene no longer exercises the gradient, so the script
+runs a port feeding a resistor-terminated line and checks the float32 adjoint
+against float64 finite differences per cell, plus a record-length check; its
+header gives the scene, the declared bars and the numbers on `main`. Runs on
+CPU in about 20 min:
 `JAX_PLATFORMS=cpu python validation/tmtt_paper/lumped_port_gradient_check.py`.
 
 The modal-S gradient check (taper) and the NTFF log-ratio gradient check

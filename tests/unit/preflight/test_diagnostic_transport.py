@@ -493,6 +493,20 @@ def test_native_fallback_keeps_parent_and_child_reports(kind, entry, monkeypatch
                 diagnostics=report.diagnostics,
             )
         )
-    assert result.diagnostics == (shared, parent, child)
+    assert len(result.diagnostics) == 4
+    fallback = result.diagnostics[2]
+    assert result.diagnostics == (shared, parent, fallback, child)
+    assert fallback.code == "distributed.one_device_fallback"
+    assert fallback.severity == "warning"
+    assert fallback.subject == (
+        "TFSF plane-wave sources" if kind == "tfsf" else "waveguide ports"
+    )
+    assert fallback.message == (
+        f"Distributed runner does not yet support {fallback.subject}. "
+        "Falling back to single-device execution with the same arguments."
+    )
+    assert fallback.values == {"requested_devices": len(devices), "devices_used": 1}
+    assert fallback.path == "run_distributed"
+    assert fallback.source is None
     assert result.time_series is payload
     assert native_result.diagnostics == (shared, child, child)

@@ -35,6 +35,7 @@ import warnings
 
 import jax
 import numpy as np
+from tests._msl_probe0 import probe0_s
 import pytest
 
 from jax import enable_x64
@@ -885,7 +886,7 @@ def test_solve_branch_is_recorded_and_is_the_default(tmp_path):
     )
 
     np.testing.assert_allclose(
-        np.asarray(res.S), S_expected, rtol=F32_TOL, atol=F32_TOL,
+        np.asarray(probe0_s(res)), S_expected, rtol=F32_TOL, atol=F32_TOL,
         err_msg="returned S is not the multi-drive solve of the recorded waves",
     )
 

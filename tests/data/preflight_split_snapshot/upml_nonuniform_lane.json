@@ -17,19 +17,6 @@
         "source": "_validate_cfg_upml_nonuniform_lane"
       },
       {
-        "code": "unresolved_pulse",
-        "loc": "waveform GaussianPulse at (0.002, 0.002, 0.0015)",
-        "numbers": [
-          6.37e-21,
-          3.0,
-          9.53e-13,
-          6.68e-09,
-          386.0
-        ],
-        "severity": "warning",
-        "source": "_validate_cfg_unresolved_pulse"
-      },
-      {
         "code": "nu_grading_reaches_absorber",
         "loc": null,
         "numbers": [
@@ -83,7 +70,7 @@
       }
     ],
     "n_errors": 0,
-    "n_issues": 5,
+    "n_issues": 4,
     "ok": true
   }
 }

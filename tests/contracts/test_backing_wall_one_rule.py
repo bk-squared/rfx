@@ -152,7 +152,12 @@ def capture(sim, entry, path, invoke=None):
 
     def factory(ctx, *args, **kwargs):
         captured.update(grid=ctx.grid, faces=ctx.pec_faces_frozen, backend='uniform')
-        captured['boundary'] = {name: freeze(getattr(ctx, name)) for name in BOUNDARY_INPUTS}
+        # The conformal weights the step reads ride on the realized material
+        # model's tensor operands (M4b), not on the context itself.
+        tensor = ctx.materials.components.tensor
+        held = {'conformal_weights': tensor.conformal_weights if tensor else None}
+        captured['boundary'] = {name: freeze(held[name] if name in held else getattr(ctx, name))
+                                for name in BOUNDARY_INPUTS}
         # Capture the shared factory's derived absorber/material boundary
         # coefficients too; this builds invariants, never advances fields.
         invariants = kernel.core_step_invariants(ctx)

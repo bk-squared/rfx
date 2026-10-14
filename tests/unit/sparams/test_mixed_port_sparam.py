@@ -618,7 +618,9 @@ def test_mixed_probe_fed_msl_plumbing_smoke():
     assert np.isnan(res.s21_power_witness).all()
     assert res.magnitude_channel == "flux"
     assert res.S_wave is not None and res.S_wave.shape == S.shape
-    _assert_drive_settling_witnesses(sim, res, 4., (0.0780274, 0.322321))
+    # re-pinned 2026-10-12: default pulse onset fix (issue 1668 PR); old values
+    # (0.0780274, 0.322321).
+    _assert_drive_settling_witnesses(sim, res, 4., (0.0780033, 0.322213))
     # Registration state restored after the drive loop.
     assert len(sim._dft_planes) == 0
     assert len(sim._probes) == 0
@@ -674,7 +676,9 @@ def test_mixed_probe_fed_msl_smoke_slow_lane_exists():
     assert np.all(np.isfinite(S[:, 1]))
     # Apply the unchanged bound to the retained, unprojected MSL column.
     assert np.all(np.abs(S[:, 1]) < 1.5), f"gross blow-up: max|S|={np.max(np.abs(S[:, 1])):.3f}"
-    _assert_drive_settling_witnesses(sim, res, 8., (4.13651e-21, 1.59952e-4))
+    # re-pinned 2026-10-12: default pulse onset fix (issue 1668 PR); old values
+    # (4.13651e-21, 1.59952e-4).
+    _assert_drive_settling_witnesses(sim, res, 8., (4.13523e-21, 1.59902e-4))
 
 
 # ---------------------------------------------------------------------------

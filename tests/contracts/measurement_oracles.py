@@ -51,7 +51,8 @@ def stamp(nu, family, kind):
              and isinstance(n.func, ast.Name) and n.func.id == name]
     assert len(calls) == 1
     dft_meta = ((field_channel(kind.lower()+'z'), 0, 1, bins, None),)
-    flux_meta = ((0, 1, bins, tuple(field_channel(c) for c in ('ey', 'ez', 'hy', 'hz')), 0, 3, 0, 3),)
+    # This synthetic interior plane has a nonperiodic normal axis.
+    flux_meta = ((0, 1, bins, tuple(field_channel(c) for c in ('ey', 'ez', 'hy', 'hz')), ((0, 3, 0, 3),)*4, False, (.5, .5), False),)
     env = dict(planes=planes, flux=flux, st=state, dt=1., step_idx=jnp.int32(3),
                carry={'dft_planes': (acc,), 'flux_monitors': ((acc, acc, acc, acc),)},
                dft_meta=dft_meta, flux_meta=flux_meta,
@@ -66,7 +67,9 @@ def flux_samples(nu, cfg, fields):
     from rfx.measurement.accumulators import flux_samples as sample
     from rfx.probes.probes import _FLUX_COMPONENTS
     return sample(fields, cfg.axis, cfg.index, _FLUX_COMPONENTS[cfg.axis],
-                  (cfg.lo1, cfg.hi1, cfg.lo2, cfg.hi2))
+                  tuple((cfg.lo1, cfg.lo1 + a.shape[-2], cfg.lo2, cfg.lo2 + a.shape[-1])
+                        for a in (cfg.e1_dft, cfg.e2_dft, cfg.h1_dft, cfg.h2_dft)),
+                  cfg.normal_h_zero, cfg.normal_h_weights, cfg.normal_periodic)
 
 
 def jacobian_nodes(function, shape):

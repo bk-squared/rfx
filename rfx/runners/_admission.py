@@ -274,6 +274,7 @@ DETECTORS: dict[Row, Callable] = {
     ("_dx", ""): _setting("_dx", "dx"),
     ("_dt_pin", ""): _setting("_dt_pin", "dt"),
     ("_dt_min_cell", ""): _setting("_dt_min_cell", "dt_min_cell"),
+    ("_nominal_profiles", ""): _setting("_nominal_profiles", "nominal_profiles"),
     ("_precision", ""): _setting("_precision", "precision"),
     ("_solver", ""): _setting("_solver", "solver"),
     ("_adi_cfl_factor", ""): _setting("_adi_cfl_factor", "adi_cfl_factor"),
@@ -353,6 +354,7 @@ ROW_WORDS: dict[Row, str] = {
     ("_dx", ""): "an explicit dx",
     ("_dt_pin", ""): "a pinned time step (dt=)",
     ("_dt_min_cell", ""): "dt_min_cell=",
+    ("_nominal_profiles", ""): "nominal_profiles=",
     ("_precision", ""): "a precision other than 'float32'",
     ("_solver", ""): "solver='adi'",
     ("_adi_cfl_factor", ""): "adi_cfl_factor",
@@ -432,6 +434,7 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_dx", ""): _OTHER_RUNNERS,
     ("_dt_pin", ""): _MESH_PINNED - _DISTRIBUTED_NU,
     ("_dt_min_cell", ""): _MESH_PINNED - _DISTRIBUTED_NU,
+    ("_nominal_profiles", ""): _MESH_PINNED - _DISTRIBUTED_NU,
     ("_precision", ""): _UNIFORM_YEE,
     ("_solver", ""): _ADI,
     ("_adi_cfl_factor", ""): _OTHER_RUNNERS,
@@ -485,7 +488,7 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_dft_planes", "dft_plane"): _NO_SHEETS,
     ("_flux_monitors", "flux"): frozenset({"run_uniform", "run_nonuniform", "fwd_uniform",
                                           "fwd_nonuniform", "fwd_adi"}),
-    ("_ntff", "ntff_box"): _OTHER_RUNNERS - _ADI,
+    ("_ntff", "ntff_box"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},  # Its x and y faces are always PEC (only a z lid may absorb).
     ("_current_moments", "block_moments"): _NO_SHEETS,
 }
 
@@ -527,6 +530,10 @@ for _row in _DISTRIBUTED_NU_ROWS:
 
 # Calculator memberships are independent of every shared lane set. A new
 # lane capability therefore never silently expands a calculator's contract.
+# waveguide_s_matrix drops NTFF with the #704 warning; material_fit drops it
+# without a warning (pre-existing behaviour, reported for its owner).
+NTFF_UNFORMED_LANES = frozenset({"waveguide_s_matrix", "material_fit"})
+
 # The waveguide extractor assembles these materials and PEC operators and
 # passes them to its device scans; its graded branch uses run_nonuniform_path.
 for _row in (
@@ -881,7 +888,7 @@ LANE_GATES: dict[str, dict[Row, Callable]] = {
     "run_adi": {row: _adi_homogeneous for row in _ADI_MATERIAL_ROWS},
     "fwd_adi": {row: _adi_homogeneous for row in _ADI_MATERIAL_ROWS},
     "waveguide_s_matrix": {row: _waveguide_profiled for row in (
-        ("_dt_pin", ""), ("_dt_min_cell", ""))},
+        ("_dt_pin", ""), ("_dt_min_cell", ""), ("_nominal_profiles", ""))},
 }
 
 
@@ -1003,11 +1010,35 @@ def message(lane: str, rows, sim, run_args=None) -> str:
             "carries it runs.")
 
 
+class _NoWarnings:
+    """Drops the unresolved-pulse advisory; admission keeps only its refusal."""
+
+    @staticmethod
+    def warn(*_args, **_kwargs):
+        return None
+
+
+def refuse_undriven_drives(sim) -> None:
+    """Issue 1668: refuse a drive whose pulse is not resolved by dt (its
+    table, sampled at dt over the pulse, holds no value above 1e-6 of its
+    amplitude), on entries that run no preflight. The same check preflight
+    runs, ``_validate_cfg_unresolved_pulse``; raises ``PreflightConfigError``
+    (a ``ValueError``)."""
+    from rfx.core.jax_utils import is_tracer
+    from rfx.grid import C0
+    check = getattr(sim, "_validate_cfg_unresolved_pulse", None)
+    if check is None or is_tracer(getattr(sim, "_dx", None)):
+        return
+    check(_NoWarnings, sim._dx or C0 / sim._freq_max / 20.0)
+
+
 def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None:
     """Raise ``NotImplementedError``, as the lanes' own refusals do, if
     ``lane`` does not carry every input ``sim`` declares. ``run_args`` are
     the call's static arguments that ``CALL_GATES`` read; ``grid`` is the
-    grid the lane built, for its ``LANE_GATES``."""
+    grid the lane built, for its ``LANE_GATES``. A drive whose pulse is not
+    resolved by dt is refused first (``refuse_undriven_drives``)."""
+    refuse_undriven_drives(sim)
     from rfx.sources.wire_radius import require_radius_support
     require_radius_support(sim, lane)
     rows = refused(sim, lane, run_args, grid)
@@ -1016,8 +1047,10 @@ def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None
             from rfx._diagnostic_transport import diagnostic_refusal
             raise diagnostic_refusal(NotImplementedError(message(lane, rows, sim, run_args)), diagnostics)
         raise NotImplementedError(message(lane, rows, sim, run_args))
-    from rfx.boundaries.features import admit_waveguide
+    from rfx.boundaries.features import admit_ntff, admit_waveguide
     from rfx.boundaries.tfsf import admit_simulation
+    if lane not in NTFF_UNFORMED_LANES:
+        admit_ntff(sim, lane=lane)
     admit_waveguide(sim, lane=lane)
     admit_simulation(sim, materials=(run_args or {}).get("tfsf_materials"))
 

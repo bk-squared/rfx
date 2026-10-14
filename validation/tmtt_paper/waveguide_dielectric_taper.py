@@ -1,5 +1,20 @@
 """Broadband WR-90 dielectric-taper matching via differentiable modal S-matrix.
 
+Paper version and main
+----------------------
+The numbers in the T-MTT paper were produced at the tagged release
+``paper-tmtt-2026`` (2026-08-10).  To reproduce them, check that tag out and
+run this script there::
+
+    git checkout paper-tmtt-2026
+    python validation/tmtt_paper/waveguide_dielectric_taper.py
+
+This file is the CURRENT code on main.  Since the tag the solver's port,
+material and conductor models were corrected, so some numbers differ.
+What main shows (re-run 2026-10-11, VESSL 369367270246, RTX 4070 SUPER): with
+SMOKE=1 (the default) the band-average |S11| goes from -6.88 dB to -12.09 dB
+(5.21 dB) on the 22.86 x 10.16 mm guide.  SMOKE=0 was not re-run on main.
+
 Physics
 -------
 A WR-90 (X-band) rectangular waveguide is terminated by a high-permittivity

@@ -278,19 +278,30 @@ def _warn_msl_beta_scan_railed(
     ports = ", ".join(
         repr(port_names[p]) for p in np.flatnonzero(np.any(railed, axis=1))
     )
+    per_port = "; ".join(
+        f"{port_names[p]!r}: "
+        + ", ".join(f"{freqs_arr[k] / 1e9:.4f}" for k in np.flatnonzero(railed[p]))
+        + " GHz"
+        for p in np.flatnonzero(np.any(railed, axis=1))
+    )
     warnings.warn(
         "N-probe beta scan pinned at its own window limit: "
         f"{affected_freqs.size} bins in [{f1:.4f}, {f2:.4f}] GHz at "
         f"port(s) {ports} minimized the fit residual at the edge of the "
         "±35% scan around the analytic Hammerstad-Jensen guess — the "
         "reported Z0/beta at those bins are the scan limit, NOT a "
-        "measurement (issue #681). Fitted Z0/beta are not used in S11/S21, "
+        f"measurement (issue #681). Railed bins per port: {per_port}. "
+        "Fitted Z0/beta are not used in S11/S21, "
         "which use measured V/I and the analytic Z0 anchor; this does not "
-        "certify those inputs. Common causes: the real eps_eff is far from "
-        "the HJ estimate (wrong eps_r_sub / substrate not detected under "
-        "the port), or a contaminated/under-settled record at those bins "
-        "(check settling_db and the reliable mask). Check the result's "
-        "beta_railed mask before quoting Z0 or beta.",
+        "certify those inputs. S is shifted from probe 0 to the declared "
+        "feed plane with the closed-form beta (Hammerstad-Jensen with "
+        "Kirschning-Jansen dispersion), not the fitted one. Common causes: "
+        "a record too short or a probe ladder too coarse for the fit "
+        "(check settling_db and the reliable mask), or the real eps_eff "
+        "is far from the HJ estimate (wrong eps_r_sub / substrate not "
+        "detected under the port) -- then the closed-form beta and the Z0 "
+        "anchor of S are wrong as well. Check the result's beta_railed mask "
+        "before quoting Z0 or beta.",
         stacklevel=2,
     )
 

@@ -37,6 +37,7 @@ from rfx.materials.lorentz import LorentzPole
 
 from rfx.materials.library import MATERIAL_LIBRARY
 from rfx.diagnostic_records import Diagnostic
+from rfx.measurement.msl_planes import MSLFeedPlaneFields
 
 
 def _artifact_to_dict(value: object) -> object:
@@ -758,7 +759,7 @@ class Result(NamedTuple):
     def find_resonances(self, freq_range=None, probe_idx=0,
                          source_decay_time=None, bandpass=None,
                          waveform=None):
-        """Extract resonant modes from probe time series via Harminv.
+        """Extract resonant modes from probe time series via the matrix pencil method.
 
         Parameters
         ----------
@@ -769,7 +770,7 @@ class Result(NamedTuple):
             computed as 2×(3/π/f_center/bandwidth) — skips the Gaussian
             excitation region for clean ring-down analysis.
         bandpass : bool or None
-            Apply FFT bandpass before Harminv. Default: auto (True for
+            Apply FFT bandpass before matrix pencil analysis. Default: auto (True for
             CPML results where DC/surface-wave artifacts exist, False
             for PEC cavities where signal is clean).
         waveform : source waveform or None
@@ -783,9 +784,9 @@ class Result(NamedTuple):
 
         Returns
         -------
-        list of HarminvMode
+        list of MatrixPencilMode
         """
-        from rfx.harminv import harminv, harminv_from_probe
+        from rfx.harminv import matrix_pencil, matrix_pencil_from_probe
         ts = np.asarray(self.time_series)
         if ts.ndim == 2:
             ts = ts[:, probe_idx]
@@ -826,10 +827,10 @@ class Result(NamedTuple):
             w_sub = w
             dt_h = self.dt
 
-        modes = harminv(w_sub, dt_h, fr[0], fr[1])
+        modes = matrix_pencil(w_sub, dt_h, fr[0], fr[1])
 
         if not modes and bandpass:
-            modes = harminv_from_probe(ts, self.dt, fr,
+            modes = matrix_pencil_from_probe(ts, self.dt, fr,
                                         source_decay_time=source_decay_time)
 
         return modes
@@ -1611,16 +1612,15 @@ class MSLProbeClearance:
 
 
 @dataclass
-class MSLSMatrixResult:
+class MSLSMatrixResult(MSLFeedPlaneFields):
     """MSL S-matrix result.
 
     Attributes
     ----------
     S : (n_ports, n_ports, n_freqs) complex
-        Power-wave S-matrix at each port's FIRST probe plane, formed from
-        a=(V+R*I)/(2*sqrt(R)), b=(V-R*I)/(2*sqrt(R)) with the positive real
-        analytic Hammerstad-Jensen reference R of each port. There
-        is no translation back to the physical feed planes. Bracketing H
+        Power-wave S (a=(V+R*I)/(2*sqrt(R)), b=(V-R*I)/(2*sqrt(R)), R the
+        positive real analytic Hammerstad-Jensen reference of each port) formed
+        at the first probe plane, shifted to the DECLARED FEED PLANE. Bracketing H
         samples are interpolated to this E-node plane using physical
         coordinates, with the temporal leapfrog offset corrected separately.
         The fitted ``Z0`` below is a diagnostic, not the reference used to form S.
@@ -1788,7 +1788,7 @@ class MSLSMatrixResult:
 
 
 @dataclass
-class MixedSMatrixResult:
+class MixedSMatrixResult(MSLFeedPlaneFields):
     """Mixed-family S-matrix result (issue #488, lumped/wire + MSL v1).
 
     ``S`` here is in the **Kurokawa

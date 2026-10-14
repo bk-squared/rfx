@@ -135,7 +135,7 @@ import pytest
 
 from rfx import Box, Simulation
 from rfx.preflight.line_port_coverage import local_port_cell
-from rfx.harminv import harminv
+from rfx.harminv import matrix_pencil
 from rfx.sources import GaussianPulse
 
 C0 = 2.99792458e8
@@ -477,7 +477,7 @@ def _census(sigs, dt):
     """Ring-down modes with a PARITY label from the probe cross. No amplitude rank."""
     seen = []
     for s in sigs:
-        for m in harminv(s, dt, *HARMINV_BAND_HZ):
+        for m in matrix_pencil(s, dt, *HARMINV_BAND_HZ):
             if m.Q > 2 and abs(m.amplitude) > 1e-12:
                 if not any(abs(m.freq - g.freq) / m.freq < 5e-3 for g in seen):
                     seen.append(m)

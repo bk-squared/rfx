@@ -24,6 +24,7 @@ from types import MethodType, SimpleNamespace
 
 import jax.numpy as jnp
 import numpy as np
+from tests._msl_probe0 import probe0_s
 import pytest
 
 from rfx.api import Simulation
@@ -231,7 +232,7 @@ def test_the_returned_s_is_the_planted_one_on_both_channels():
     )
     for label, result in (("plain", plain), ("eps_override", override)):
         np.testing.assert_allclose(
-            np.asarray(result.S), planted, rtol=0.0, atol=1e-5,
+            np.asarray(probe0_s(result)), planted, rtol=0.0, atol=1e-5,
             err_msg=f"{label} channel did not return the planted S")
 
 
@@ -298,7 +299,7 @@ def test_enforce_passivity_true_still_projects_and_keeps_the_raw():
                                           enforce_passivity=True)
     assert np.all(_sigma_max(result.S) <= 1.0)
     assert result.S_raw is not None
-    np.testing.assert_allclose(np.asarray(result.S_raw), planted,
+    np.testing.assert_allclose(np.asarray(probe0_s(result, result.S_raw)), planted,
                                rtol=0.0, atol=1e-5)
     np.testing.assert_allclose(np.asarray(result.passivity_correction),
                                np.maximum(_sigma_max(planted) - 1.0, 0.0),
@@ -320,7 +321,7 @@ def test_enforce_passivity_true_is_still_skipped_under_eps_override():
                       enforce_passivity=True)
     assert result.S_raw is None and result.passivity_correction is None
     assert float(_sigma_max(result.S).max()) > 1.05
-    np.testing.assert_allclose(np.asarray(result.S), planted,
+    np.testing.assert_allclose(np.asarray(probe0_s(result)), planted,
                                rtol=0.0, atol=1e-5)
 
 

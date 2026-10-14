@@ -14,6 +14,17 @@ summary numbers were edited by hand — or an assembler whose arithmetic drifts
 — reds instead of replaying. ``test_perturbing_the_stored_s_breaks_its_own_
 summary`` runs that as a mutation: it revives the defect (a wrong S behind a
 right-looking summary) with the checks left exactly as they ship.
+
+The frozen record is at the PROBE-0 planes: it was measured before
+``compute_msl_s_matrix`` referred S to the declared feed planes (rfx-archive
+MSL-PLANE.md, decision records 12 and 14). A re-measured fixture must store S
+at the probe-0 planes too (the live S with the shift undone,
+``tests/_msl_probe0.probe0_s``), or these tests must be re-derived for the
+feed planes. Two read the plane directly:
+``test_the_thru_is_as_long_electrically_as_its_closed_form`` (its line length
+is the distance between the first probe planes) and
+``test_the_plane_shift_rotates_the_phase_by_two_beta_delta`` (its base and
+shifted S are both observation-plane S).
 """
 import json
 import math

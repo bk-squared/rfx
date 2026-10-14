@@ -97,12 +97,16 @@ def test_g1c_probe_peak_ratio(graded_records, w, record_property):
     assert abs(ratio - 1.) <= 1e-3
 
 
-# rfx-archive records/20261008-occupancy-weight-order, main-era one-device peaks
+# rfx-archive records/20261008-occupancy-weight-order, main-era one-device peaks.
+# re-pinned 2026-10-12: default pulse onset fix (issue 1668 PR); Mac CPU, float32.
+# Old values: uniform (0.033985, 0.0086755, 0.0070076, 0.0070738),
+# graded (0.035304, 0.0087263, 0.0070309, 0.0070737),
+# two-device (0.035304, 0.0043632, 0.0017577, 0.00044211).
 MAIN_PEAKS = {
-    'uniform': (0.033985, 0.0086755, 0.0070076, 0.0070738),
-    'graded': (0.035304, 0.0087263, 0.0070309, 0.0070737),
+    'uniform': (0.034007, 0.0086868, 0.0070181, 0.0070820),
+    'graded': (0.035325, 0.0087397, 0.0070397, 0.0070826),
 }
-TWO_DEVICE_PEAKS = (0.035304, 0.0043632, 0.0017577, 0.00044211)
+TWO_DEVICE_PEAKS = (0.035325, 0.0043698, 0.0017599, 0.00044266)
 
 
 @pytest.mark.parametrize('lane', ['uniform', 'graded', 'distributed_graded'])

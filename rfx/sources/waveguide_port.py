@@ -2150,7 +2150,8 @@ def extract_waveguide_s_matrix_flux(
         raise ValueError("ref_shifts must match the number of waveguide ports when provided")
 
     from rfx.simulation import run as run_simulation
-    from rfx.probes.probes import init_flux_monitor, flux_spectrum
+    from rfx.probes.probes import flux_spectrum
+    from rfx.measurement import grid_flux_monitor
 
     _AXIS_IDX = {"x": 0, "y": 1, "z": 2}
 
@@ -2179,16 +2180,12 @@ def extract_waveguide_s_matrix_flux(
     def _make_flux_monitors():
         from rfx.boundaries.pec import resolve_wall_faces
         monitors = [
-            init_flux_monitor(
-                axis=_AXIS_IDX[cfg.normal_axis],
+            grid_flux_monitor(
+                grid, axis=_AXIS_IDX[cfg.normal_axis],
                 index=cfg.probe_x,
                 freqs=freqs,
-                grid_shape=grid.shape,
-                # Waveguide ports run on a cubic Grid — both tangential
-                # cell sizes equal cfg.dx (PROBE-C1: axis-aware API).
-                d1=cfg.dx,
-                d2=cfg.dx,
                 dft_total_steps=n_steps,
+                periodic=periodic,
                 lo1=cfg.u_lo, hi1=cfg.u_hi,
                 lo2=cfg.v_lo, hi2=cfg.v_hi,
                 pmc_faces=resolve_wall_faces(grid, periodic or (False, False, False))[1],

@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from rfx.probes.probes import PreDecisionLumpedDiagonalWarning
+from tests._msl_probe0 import probe0_s
 from tests.unit.sparams.test_mixed_port_sparam import _base_sim, _add_msl, _H_SUB, _DX
 
 
@@ -60,7 +61,9 @@ def _independent_msl_column(raw, n_live):
 
 def test_returned_entries_and_witnesses(measured):
     kind, channel, result, raw, _, _ = measured
-    s = np.asarray(result.S)
+    # The oracle is the documented b/a of the raw probe-0 phasors, so S is read
+    # at the MSL port's probe-0 plane (#1694 refers it to the feed plane).
+    s = np.asarray(probe0_s(result))
     assert np.isnan(s[:, 0]).all()
     assert np.isnan(result.s21_power_witness[:, 0]).all()
     expected = _independent_msl_column(raw, 3 if kind == 'wire3' else 1)
@@ -72,12 +75,13 @@ def test_returned_entries_and_witnesses(measured):
             np.testing.assert_allclose(s[0, 1], expected[0], rtol=1e-6, atol=1e-7)
         assert result.S_wave is None
     else:
-        assert np.isnan(result.S_wave[:, 0]).all()
-        np.testing.assert_allclose(result.S_wave[1, 1], expected[1], rtol=1e-6, atol=1e-7)
+        s_wave = np.asarray(probe0_s(result, np.asarray(result.S_wave)))
+        assert np.isnan(s_wave[:, 0]).all()
+        np.testing.assert_allclose(s_wave[1, 1], expected[1], rtol=1e-6, atol=1e-7)
         if kind == 'wire3':
-            assert np.isnan(result.S_wave[0, 1]).all()
+            assert np.isnan(s_wave[0, 1]).all()
         else:
-            np.testing.assert_allclose(result.S_wave[0, 1], expected[0], rtol=1e-6, atol=1e-7)
+            np.testing.assert_allclose(s_wave[0, 1], expected[0], rtol=1e-6, atol=1e-7)
         # Flux magnitudes use recorded flux, not the per-cell b/a magnitude.
         # The fixture faces -x, so its incident net flux is minus the +x plane.
         run = raw['drive_plan'].index(('msl', 0))

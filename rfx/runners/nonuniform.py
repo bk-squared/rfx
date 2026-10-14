@@ -123,6 +123,7 @@ def build_nonuniform_grid(
     dt: float | None = None,
     dt_min_cell: float | None = None,
     dt_caller: str | None = None,
+    nominal_profiles: dict | None = None,
 ) -> NonUniformGrid:
     """Build a NonUniformGrid from per-axis profiles.
 
@@ -132,6 +133,7 @@ def build_nonuniform_grid(
     the listed faces (PMC+CPML composition fix on the NU path, 2026-04).
     ``dt`` / ``dt_min_cell`` pin a concrete time step across a mesh
     deformation family — see :func:`rfx.nonuniform.make_nonuniform_grid`.
+    ``nominal_profiles`` is handed to it unchanged.
     """
     if dx is None:
         dx = C0 / freq_max / 20.0
@@ -157,6 +159,7 @@ def build_nonuniform_grid(
             pec_faces=pec_faces, pmc_faces=pmc_faces, cpml_axes=cpml_axes,
             face_layers=face_layers,
             dt=dt, dt_min_cell=dt_min_cell, dt_caller=dt_caller,
+            nominal_profiles=nominal_profiles,
         )
 
 
@@ -1089,15 +1092,9 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     # integrated correctly by FluxMonitor.dA.
     flux_monitor_objs = []
     if getattr(sim, "_flux_monitors", None):
-        from rfx.probes.probes import init_flux_monitor
+        from rfx.measurement.flux_weights import grid_flux_monitor
         from rfx.boundaries.pmc import magnetic_image_faces
         axis_to_index = {"x": 0, "y": 1, "z": 2}
-        # Per-axis tangential cell-size arrays for dA.
-        _d_arr = {
-            0: (np.asarray(grid.dy_arr), np.asarray(grid.dz)),
-            1: (np.asarray(grid.dx_arr), np.asarray(grid.dz)),
-            2: (np.asarray(grid.dx_arr), np.asarray(grid.dy_arr)),
-        }
         from rfx.probes.flux_region import resolve_flux_region
         for pe in sim._flux_monitors:
             axis_idx = axis_to_index[pe.axis]
@@ -1109,7 +1106,6 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                 if pe.freqs is not None
                 else jnp.linspace(sim._freq_max / 10, sim._freq_max, pe.n_freqs)
             )
-            d1_arr, d2_arr = _d_arr[axis_idx]
             # Finite-region window (B1): physical size/center -> CELL slice on
             # each tangential axis against the graded cumulative edges. Full
             # plane keeps init_flux_monitor's (0, -1) full-extent defaults.
@@ -1119,13 +1115,10 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                 (lo1, hi1), (lo2, hi2) = region["cell_slices"]
                 grid_index = region["normal_index"]
             flux_monitor_objs.append(
-                init_flux_monitor(
-                    axis=axis_idx,
+                grid_flux_monitor(
+                    grid, axis=axis_idx,
                     index=grid_index,
                     freqs=freqs_arr,
-                    grid_shape=(grid.nx, grid.ny, grid.nz),
-                    d1=d1_arr,
-                    d2=d2_arr,
                     dft_total_steps=sizing_n,
                     dft_window=getattr(pe, "dft_window", "rect"),
                     dft_window_alpha=getattr(pe, "dft_window_alpha", 0.25),
@@ -1207,25 +1200,16 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     # axis integrates correctly via FluxMonitor.dA.
     wg_flux_monitors = []
     if attach_waveguide_flux and waveguide_port_cfgs:
-        from rfx.probes.probes import init_flux_monitor
+        from rfx.measurement.flux_weights import grid_flux_monitor
         from rfx.boundaries.pmc import magnetic_image_faces
         _axis_idx = {"x": 0, "y": 1, "z": 2}
-        _tang_arrs = {
-            0: (np.asarray(grid.dy_arr), np.asarray(grid.dz)),
-            1: (np.asarray(grid.dx_arr), np.asarray(grid.dz)),
-            2: (np.asarray(grid.dx_arr), np.asarray(grid.dy_arr)),
-        }
         for cfg in waveguide_port_cfgs:
             ax = _axis_idx[cfg.normal_axis]
-            d1a, d2a = _tang_arrs[ax]
             wg_flux_monitors.append(
-                init_flux_monitor(
-                    axis=ax,
+                grid_flux_monitor(
+                    grid, axis=ax,
                     index=cfg.probe_x,
                     freqs=cfg.freqs,
-                    grid_shape=(grid.nx, grid.ny, grid.nz),
-                    d1=d1a,
-                    d2=d2a,
                     dft_total_steps=sizing_n,
                     lo1=cfg.u_lo, hi1=cfg.u_hi,
                     lo2=cfg.v_lo, hi2=cfg.v_hi,
@@ -1356,7 +1340,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     )
 
     conductors, pec_occupancy_override = prepare_port_occupancy(
-        conductors, waveguide_port_cfgs, pec_occupancy_override, None)
+        conductors, waveguide_port_cfgs, pec_occupancy_override, None, sim=sim, sheet_operator=sheet_ctx)
     conductors, geometry_record = at_kernel(sim, conductors, lane=lane, pec_edges=pec_edge_masks, sheet_operator=sheet_ctx)
     pec_edge_masks = conductors.pec_edges
     sheet_ctx = conductors.sheet_operator
@@ -1590,7 +1574,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
             zip(r.get("wire_sparams_meta", ()), _wire_raw)
         )
 
-    return Result(
+    from rfx.model.design_admission import with_design_diagnostics
+    return with_design_diagnostics(Result(
         diagnostics=diagnostics,
         realized_geometry=geometry_record,
         state=r["state"],
@@ -1614,4 +1599,4 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         grid=grid,
         dt=grid.dt,
         freq_range=(sim._freq_max / 10, sim._freq_max, sim._boundary),
-    )
+    ), conductors)

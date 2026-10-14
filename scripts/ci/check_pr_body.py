@@ -127,6 +127,9 @@ FALLBACK_LANE_LABELS = (
     # Created for speed and memory work (profiling, benchmarks, TF32); owner: the
     # acceleration session (2026-10-01).
     "lane:performance",
+    # Created 2026-10-13 for the conductor modules of the model layer (PEC occupancy,
+    # thin conductors, conformal metal); owner: the idm session.
+    "lane:conductors",
 )
 
 # Em dash, en dash or a plain hyphen. Codex-written bodies use the hyphen and a
@@ -267,9 +270,9 @@ def body_lines(body: str) -> list[str]:
 def deadorn(line: str) -> str:
     """The line with list bullets, quote markers and bold runs removed.
 
-    Only used to explain a failure. A body whose claim sits inside a bullet is
-    still a failing body -- the two lines have to start their own line so a
-    later audit can grep for them.
+    Used to count keyword lines and explain a failure. A body whose claim sits
+    inside a bullet is still a failing body -- the two lines have to start their
+    own line so a later audit can grep for them.
     """
     stripped = _ADORNMENT_RE.sub("", line)
     return _TRAILING_BOLD_RE.sub("", stripped)
@@ -365,6 +368,7 @@ def _check_lane(
     *issue_labels* allows the owner lane of an issue this PR closes instead.
     """
     matches = [m for m in (LANE_RE.match(line) for line in lines) if m]
+    lane_lines = [line for line in lines if deadorn(line).startswith("Lane:")]
     # Only labels the repository still HAS can cross-check anything. A retired
     # one would otherwise fail a correct line, one branch after the warning
     # promised it would not -- and the remediation text would then suggest that
@@ -373,10 +377,10 @@ def _check_lane(
     labelled = sorted(set(pr_labels) & set(lanes))
     issue_lanes = sorted(set(issue_labels) & set(lanes))
 
-    if len(matches) > 1:
-        found = ", ".join(m.group(1) for m in matches)
+    if len(lane_lines) > 1:
+        found = ", ".join(repr(line) for line in lane_lines)
         return [
-            f"{len(matches)} `Lane:` lines ({found}). A PR names exactly one "
+            f"{len(lane_lines)} `Lane:` lines ({found}). A PR names exactly one "
             "PRIMARY owner lane; keep one line and delete the rest."
         ]
 
@@ -401,12 +405,23 @@ def _check_lane(
             f"Allowed ({source}): {', '.join(sorted(lanes))}."
         ]
     if labelled and label not in labelled and label not in issue_lanes:
+        # Labels follow paths on every push; the line is written once by hand, so a
+        # PR whose paths changed keeps naming a lane it no longer earns (2026-10-13:
+        # 1650, 1653, 1684). Name the line to write when the labels decide it.
+        owners = [lane for lane in labelled if lane != "lane:ci-infra"]
+        if len(owners) == 1:
+            hint = (f" Use `Lane: {owners[0]}`: it is the only earned lane other than "
+                    "lane:ci-infra (the merge train makes this change itself).")
+        elif len(labelled) == 1:
+            hint = f" Use `Lane: {labelled[0]}`."
+        else:
+            hint = " Pick the owner lane among the earned ones."
         return [
             f"`Lane: {label}` is not among the lane labels the paths earned this "
             f"PR ({', '.join(labelled)}) or the lane labels of issues this PR "
             f"closes ({', '.join(issue_lanes) or 'none'}). Name a lane from either "
             "set, or fix `.github/labeler.yml` if a path mapping is missing -- "
-            "PR labels are recomputed on every push."
+            "PR labels are recomputed on every push." + hint
         ]
     return []
 
@@ -435,6 +450,7 @@ def lane_label_warnings(env: dict[str, str] | None = None) -> list[str]:
 
 
 def _check_review(lines: list[str]) -> list[str]:
+    review_lines = [line for line in lines if deadorn(line).startswith("Review:")]
     valid: list[str] = []
     placeholder: list[str] = []
     bad_skip: list[str] = []
@@ -456,10 +472,11 @@ def _check_review(lines: list[str]) -> list[str]:
         elif REVIEW_SHAPE_RE.match(line):
             malformed.append(line)
 
-    if len(valid) > 1:
+    if len(review_lines) > 1:
+        found = ", ".join(repr(line) for line in review_lines)
         return [
-            f"{len(valid)} `Review:` lines. Keep the one that reflects the verdict "
-            "the PR is merging on."
+            f"{len(review_lines)} `Review:` lines — a PR body carries exactly one: "
+            f"{found}. Keep the one the PR merges on and delete the others."
         ]
     if valid:
         return []

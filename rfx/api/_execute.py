@@ -1632,10 +1632,9 @@ class _ExecuteMixin:
 
         for _port_index, pe in enumerate(self._ports):
             if pe.impedance == 0.0:
-                from rfx.sources.port_drive import soft_source
-                sources.defer(soft_source, grid, pe.position, pe.component,
-                              pe.waveform, n_steps, amplitude_kind=pe.amplitude_kind,
-                              field_dtype=self._resolve_field_dtype())
+                from rfx.sources.port_drive import defer_soft_source
+                defer_soft_source(sources, grid, pe, n_steps,
+                                  field_dtype=self._resolve_field_dtype())
                 continue
 
             # Sparam-eligible lumped/wire port — advance the multi-drive index.
@@ -1978,7 +1977,7 @@ class _ExecuteMixin:
         flux_monitor_cfgs = []
         if _return_raw_port_sparams and self._flux_monitors:
             from rfx.runners.uniform import build_flux_monitor_cfgs
-            flux_monitor_cfgs = build_flux_monitor_cfgs(self, grid, n_steps)
+            flux_monitor_cfgs = build_flux_monitor_cfgs(self, grid, n_steps, periodic=periodic_bool)
 
         # DFT plane probes — mirror runners/uniform.py:340-359 so the
         # JIT scan body actually accumulates plane-resolved DFT, then
@@ -2018,7 +2017,7 @@ class _ExecuteMixin:
                     comp = {"z": "ey", "x": "ez", "y": "ez"}[fpe.axis]
                 from rfx.simulation import make_source as _make_src
                 sources.append(_make_src(grid, tuple(center), comp, wf, n_steps))
-        conductors, pec_occupancy_local = _conductors.prepare_port_occupancy(conductors, waveguide_ports, pec_occupancy_local, design_occupancy)
+        conductors, pec_occupancy_local = _conductors.prepare_port_occupancy(conductors, waveguide_ports, pec_occupancy_local, design_occupancy, sim=self, sheet_operator=sheet_impedance)
 
         # Tensor lane (opt-in via ``RFX_PEC_OCC_KOTTKE=1``): when
         # ``pec_occupancy_local`` is supplied, build an ``aniso_inv_eps``
@@ -2275,7 +2274,7 @@ class _ExecuteMixin:
                 for entry, probe in zip(self._dft_planes, sim_dft_planes)
             }
 
-        return ForwardResult(
+        return result_with_diagnostics(ForwardResult(
             diagnostics=diagnostics,
             time_series=result.time_series,
             ntff_data=result.ntff_data,
@@ -2295,7 +2294,7 @@ class _ExecuteMixin:
             current_moment_data=result.current_moment_data,
             current_moment_monitor=current_moments_fwd,
             adjoint_settling=result.adjoint_settling,
-        )
+        ), conductors.design_findings)
 
     _pack_nu_forward_result = staticmethod(pack_nu_forward_result)
 
@@ -2933,7 +2932,7 @@ class _ExecuteMixin:
 
         bounds = self._design_box_bounds_from_corners(grid, design_box)
 
-        from rfx.model.thin_conductors import refuse_design_films
+        from rfx.model import refuse_design_films
         refuse_design_films(self, grid, bounds)
 
         if not _want_eps:
@@ -4232,26 +4231,14 @@ class _ExecuteMixin:
         # ---- Distributed multi-device lane ----
         if plan.lane in ("run_distributed", "run_distributed_nu") and self._interface_eps == "dual_average":
             raise ValueError("interface_eps='dual_average' is not supported on the distributed lane")
-        if plan.lane in ("run_distributed", "run_distributed_nu") and (
-                self._tfsf is not None or self._waveguide_ports):
-            # TFSF sources and waveguide ports need the whole domain on one
-            # device. Re-run with every argument the caller gave, minus devices=;
-            # the runner's own fallback re-ran with n_steps alone and dropped
-            # the rest (#1305: an explicit conformal_pec=False came back as the
-            # declared conformal walls).
-            import warnings
-            warnings.warn(
-                "Distributed runner does not yet support "
-                + ("TFSF plane-wave sources" if self._tfsf is not None
-                   else "waveguide ports")
-                + ". Falling back to single-device execution with the same "
-                "arguments.",
-                stacklevel=2,
-            )
-            del _solve_assembly  # the fallback performs its own solve assembly
-            return result_with_diagnostics(self.run(**{**_call_args, "devices": None,
-                               "exchange_interval": 1,
-                               "skip_preflight": True}), _diagnostics)
+        if plan.lane in ("run_distributed", "run_distributed_nu"):
+            from rfx.runners.distributed_v2 import one_device_reason, run_on_one_device
+            if reason := one_device_reason(self):
+                del _solve_assembly  # the fallback performs its own solve assembly
+                return run_on_one_device(self, {**_call_args, "devices": None,
+                                         "exchange_interval": 1, "skip_preflight": True},
+                                         reason=reason, requested_devices=len(devices),
+                                         diagnostics=_diagnostics)
         if plan.lane in ("run_distributed", "run_distributed_nu"):
             if self._dft_planes:
                 raise NotImplementedError(

@@ -139,9 +139,11 @@ def _plane_nodes(grid, axis, index, component, region=None, weights=None):
     nodes = []
     for u, v in product(range(lo, hi), range(low, high)):
         idx = [0, 0, 0]
-        idx[axis], idx[axes[0]], idx[axes[1]] = index, u, v
+        # Flux windows alone may include a virtual periodic closing node.
+        us, vs = u % sizes[0], v % sizes[1]
+        idx[axis], idx[axes[0]], idx[axes[1]] = index, us, vs
         w = 1.0 if weights is None else float(weights[u-lo, v-low])
-        nodes.append(Node(component, *idx, w, float(cells[0][u] * cells[1][v])))
+        nodes.append(Node(component, *idx, w, float(cells[0][us] * cells[1][vs])))
     return tuple(nodes)
 
 
@@ -197,9 +199,11 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
         owners.append(Owner(f'dft_plane:{i}', 'dft_plane', (channel,),
                             _frequencies(sim, entry)))
     from rfx.probes.flux_region import resolve_flux_region
-    from rfx.probes.probes import init_flux_monitor, _FLUX_COMPONENTS
+    from rfx.probes.probes import _FLUX_COMPONENTS
+    from .flux_weights import grid_flux_monitor, flux_regions, monitor_periodic_flags, normal_h_neighbor
     from rfx.boundaries.pec import resolve_wall_faces
     from rfx.boundaries.pmc import magnetic_image_faces
+    flux_periodic = monitor_periodic_flags(sim, grid) if sim._flux_monitors else (False, False, False)
     for i, entry in enumerate(sim._flux_monitors):
         axis = 'xyz'.index(entry.axis)
         point = [0.0, 0.0, 0.0]
@@ -211,29 +215,27 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
         if region is not None:
             index = region['normal_index']
             bounds = tuple(v for span in region['cell_slices'] for v in span)
-        cells = [np.asarray(grid.cells(a)) for a in tangential]
-        cfg = init_flux_monitor(axis, index, jnp.asarray(_frequencies(sim, entry)), grid.shape,
-                                cells[0] if nu else cells[0][0],
-                                cells[1] if nu else cells[1][0],
+        cfg = grid_flux_monitor(grid, axis=axis, index=index, periodic=flux_periodic,
+                                freqs=jnp.asarray(_frequencies(sim, entry)),
                                 lo1=bounds[0], hi1=bounds[1], lo2=bounds[2], hi2=bounds[3],
                                 pmc_faces=(magnetic_image_faces(sim._boundary_spec.pmc_faces(), grid.shape)
-                                           if nu else resolve_wall_faces(grid, sim._periodic_flags())[1]),
-                                staggered_area=nu)
-        shape = (bounds[1]-bounds[0], bounds[3]-bounds[2])
-        areas = (np.broadcast_to(np.asarray(cfg.dA), shape),
-                 np.broadcast_to(np.asarray(cfg.dA if cfg.dA2 is None else cfg.dA2), shape))
+                                           if nu else resolve_wall_faces(grid, flux_periodic)[1]))
+        areas = (np.asarray(cfg.dA), np.asarray(cfg.dA2))
+        regions = flux_regions(cfg)
         channels = []
         for c, component in enumerate(_FLUX_COMPONENTS[axis]):
             # Weight belongs to the E/H product, not to each linear DFT.
             area = areas[(0, 1, 1, 0)[c]]
-            planes = ((index, 1.0),) if c < 2 else ((max(index-1, 0), .5), (index, .5))
+            planes = (((index, 1.0),) if c < 2 else
+                      ((index, 0.0),) if cfg.normal_h_zero else
+                      ((normal_h_neighbor(index, grid.shape[axis], cfg.normal_periodic), cfg.normal_h_weights[0]), (index, cfg.normal_h_weights[1])))
             nodes = tuple(Node(n.component, n.i, n.j, n.k, weight, float(a))
                           for plane, weight in planes
-                          for n, a in zip(_plane_nodes(grid, axis, plane, component, bounds), area.flat))
+                          for n, a in zip(_plane_nodes(grid, axis, plane, component, regions[c]), area.flat))
             channels.append(field_channel(component, nodes,
                                     e_time_offset=0., h_time_offset=0.))
         owners.append(Owner(f'flux_plane:{i}', 'flux', tuple(channels), _frequencies(sim, entry),
-                            known_differences=('uniform dA broadcast; NU staggered dA and dA2',),
+                            known_differences=(),
                             availability='result missing' if path.startswith('fwd') else 'sampled'))
     edges = _pec_edges(sim, grid) if any(p.impedance and p.extent is not None for p in sim._ports) else None
     from rfx.sources.sources import WirePort, _wire_port_live_cells

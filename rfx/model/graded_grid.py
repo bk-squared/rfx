@@ -98,6 +98,11 @@ class NonUniformGrid(NamedTuple):
     dy_arr_f64: np.ndarray | None = None
     dz_f64: np.ndarray | None = None
     face_layers: dict[str, int] | None = None
+    # The caller's concrete nominal interior widths of each TRACED axis
+    # (``Simulation(nominal_profiles=)``), float64 numpy keyed "x"/"y"/"z",
+    # or None. Read only by ``_axis_position_to_index`` to resolve a metre
+    # coordinate on a traced axis; never part of the node spine above.
+    nominal_cells: dict[str, np.ndarray] | None = None
 
     @property
     def shape(self):
@@ -742,6 +747,7 @@ def make_nonuniform_grid(
     dt: float | None = None,
     dt_min_cell: float | None = None,
     dt_caller: str | None = None,
+    nominal_profiles: dict | None = None,
 ) -> NonUniformGrid:
     """Create a non-uniform Yee grid.
 
@@ -790,6 +796,11 @@ def make_nonuniform_grid(
         realized Courant limit against. Concrete axes are always measured
         from their realized profile; this declared number is used only for
         the axes that cannot be.
+    nominal_profiles : dict or None
+        Concrete interior cell widths of each TRACED axis at the primal
+        point (see ``Simulation``); a metre coordinate on that axis resolves
+        on this profile's node line. Validated by
+        :func:`rfx.model.graded_admission.admit_nominal_profiles`.
     """
     _pec = pec_faces or set()
     _pmc = pmc_faces or set()
@@ -903,6 +914,11 @@ def make_nonuniform_grid(
     dy_arr_f64 = _exact_f64(dy_full)
     dz_f64 = _exact_f64(dz_full)
 
+    from rfx.model.graded_admission import admit_nominal_profiles
+    nominal_cells = admit_nominal_profiles(
+        nominal_profiles, (dx_profile, dy_profile, dz_profile),
+        (domain_xy[0], domain_xy[1], None))
+
     inv_dx, inv_dx_h = _profile_to_inv_arrays(dx_full)
     inv_dy, inv_dy_h = _profile_to_inv_arrays(dy_full)
     inv_dz, inv_dz_h = _profile_to_inv_arrays(dz_full)
@@ -921,12 +937,13 @@ def make_nonuniform_grid(
         face_layers=dict(x_lo=pad_x_lo, x_hi=pad_x_hi,
                          y_lo=pad_y_lo, y_hi=pad_y_hi,
                          z_lo=pad_z_lo, z_hi=pad_z_hi),
+        nominal_cells=nominal_cells,
     )
 
 
 def _assert_traced_index_matches_realized(
     d_arr, total_pad: int, pad_lo: int, pos: float, nominal_idx: int,
-    axis: str,
+    axis: str, declared: bool = False,
 ) -> None:
     """The node a coordinate names must be the same node on the mesh the run
     actually builds.
@@ -944,7 +961,9 @@ def _assert_traced_index_matches_realized(
     realized cumulative edges pick their own nearest node and the callback
     refuses when the two disagree, naming both. Nothing is raised while the
     two agree, which is the case a deformation that keeps its outer node
-    lines fixed (the mesh-as-design-variable pattern) is in.
+    lines fixed (the mesh-as-design-variable pattern) is in. ``declared``
+    says the index came from the caller's ``nominal_profiles=`` rather than
+    the uniform reference mesh; it changes the message only.
 
     A coordinate midway between two nodes is equally near both. The nominal
     index takes the lower one (``nearest_node_index``, #1295), but the
@@ -972,18 +991,23 @@ def _assert_traced_index_matches_realized(
         (jnp.abs(nearest - nominal) == 1)
         & (dist[nominal] - dist[nearest] <= tol))
 
+    mesh = ("on the declared nominal_profiles= profile" if declared else
+            "on the nominal uniform mesh this lane must use for a structural "
+            "index")
+    hint = ("" if declared else f" Or declare the concrete {axis} profile "
+            "with nominal_profiles=.")
+
     def _check(realized, agrees):
         realized = int(realized)
         if not bool(agrees):
             raise ValueError(
                 f"position {pos:.9g} m on the traced {axis} axis resolves to "
-                f"interior node {nominal_idx} on the nominal uniform mesh "
-                f"this lane must use for a structural index, but to node "
+                f"interior node {nominal_idx} {mesh}, but to node "
                 f"{realized} on the mesh the run built. The two runs would "
                 f"place this source / probe / port at different points of the "
                 f"board. Declare the {axis} deformation so the node lines "
                 "outside it do not move (stretch and shrink inside a window), "
-                "or give the position by node index."
+                "or give the position by node index." + hint
             )
 
     jax.debug.callback(_check, nearest, agrees)
@@ -1010,15 +1034,25 @@ def _axis_position_to_index(
     axis answers from a nominal mesh.
 
     When the axis's cell widths are a JAX tracer (mesh-as-design-variable
-    path) there is no host node line, so the index is resolved on a uniform
-    reference mesh of ``fallback_dx`` cells and checked against the realized
-    mesh at run time (``_assert_traced_index_matches_realized``). The traced
-    cell sizes drive the FDTD physics downstream; only the structural index
-    is resolved from the nominal mesh, with the same rule on its closed-form
-    node line.
+    path) there is no host node line. If the caller declared the concrete
+    profile (``grid.nominal_cells``, from ``nominal_profiles=``) the index is
+    resolved on its node line ``[0, cumsum(w)]``; otherwise on a uniform
+    reference mesh of ``fallback_dx`` cells. Either way it is checked against
+    the realized mesh at run time (``_assert_traced_index_matches_realized``).
+    The traced cell sizes drive the FDTD physics downstream; only the
+    structural index is resolved from the nominal mesh, with the same rule.
     """
     ax, n, pad_lo, pad_hi = grid._axis_layout(axis)
     store = grid._axis_store(ax)
+    from rfx.model.graded_admission import nominal_cells
+    widths = nominal_cells(grid, ax)
+    if widths is not None:
+        idx = _nearest_on_line(np.concatenate([[0.0], np.cumsum(widths)]),
+                               widths, pos)
+        _assert_traced_index_matches_realized(
+            store, pad_lo + pad_hi, pad_lo, float(pos), idx,
+            _axis_name(ax), declared=True)
+        return idx + pad_lo
     if is_tracer(store):
         if fallback_dx is None or fallback_dx <= 0:
             raise ValueError(

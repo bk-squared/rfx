@@ -26,9 +26,7 @@
       "D2": [
         "Simulation.auto",
         "Simulation.boundary_model",
-        "Simulation.fidelity_report",
         "Simulation.mesh_intelligence_report",
-        "Simulation.realized_geometry",
         "Simulation.tfsf_box_indices",
         "Simulation.validate_subgrid"
       ]
@@ -40,30 +38,16 @@
         "rfx.boundaries.tfsf:boundary_flags",
         "rfx.measurement.setup:build_planes",
         "rfx.model.conductors:_PreparedSolve",
-        "rfx.model.conductors:admit_adi_sources",
         "rfx.model.conductors:auto_preflight",
         "rfx.model.conductors:bind_solve_call",
-        "rfx.model.conductors:distributed_kernel_inputs",
-        "rfx.model.conductors:distributed_solve_inputs",
-        "rfx.model.conductors:drawn_launch_eps",
         "rfx.model.conductors:early_run_record",
-        "rfx.model.conductors:forward_kernel_inputs",
-        "rfx.model.conductors:forward_lumped_port_stage",
-        "rfx.model.conductors:forward_port_stage",
-        "rfx.model.conductors:forward_products",
-        "rfx.model.conductors:forward_sheet_context",
-        "rfx.model.conductors:prepare_port_occupancy",
-        "rfx.model.conductors:stage_distributed_edges",
-        "rfx.model.conductors:uniform_solve_inputs",
         "rfx.model.electric_metrics:stage_forward_materials",
         "rfx.model.materials:with_components",
-        "rfx.model.occupancy:select_occupancy_operator",
         "rfx.model.overrides:apply_material_overrides",
         "rfx.model.source_coefficients:debye_pole_term",
         "rfx.model.source_coefficients:dispersive_drive_model",
         "rfx.model.source_coefficients:field_source_samples",
         "rfx.model.source_coefficients:resolve_run_sources",
-        "rfx.model.thin_conductors:refuse_design_films",
         "rfx.stepping.slab:cut"
       ],
       "S": [],
@@ -134,7 +118,6 @@
         "rfx.model.materials:electric_materials_traced",
         "rfx.model.materials:kernel_materials",
         "rfx.model.materials:with_components",
-        "rfx.model.occupancy:with_edge_keep",
         "rfx.model.source_coefficients:drive_table",
         "rfx.model.source_coefficients:source_table",
         "rfx.stepping.absorber:apply_cpml_e_step",
@@ -205,7 +188,6 @@
         "rfx.model.materials:e_update_coefficient_at",
         "rfx.model.materials:electric_grid_kwargs",
         "rfx.model.materials:with_components",
-        "rfx.model.occupancy:with_edge_keep",
         "rfx.model.source_coefficients:drive_table",
         "rfx.model.source_coefficients:uniform_source_table",
         "rfx.stepping.absorber:cpml_context",
@@ -403,7 +385,7 @@
     "rfx/harminv.py": {
       "S": [],
       "M": [
-        "harminv_from_probe"
+        "matrix_pencil_from_probe"
       ]
     },
     "rfx/io.py": {

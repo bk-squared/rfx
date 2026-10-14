@@ -61,6 +61,10 @@ BUILDERS = {
     ('_dx', ''): ({}, _nothing),
     ('_dt_pin', ''): ({}, _nothing),
     ('_dt_min_cell', ''): ({'dt_min_cell': DX}, _nothing),
+    # nominal_profiles= needs a traced profile, which no lane of this concrete
+    # matrix has; only its refusal cells run, so the attribute is set after
+    # construction (the constructor refuses it on a concrete axis).
+    ('_nominal_profiles', ''): ({}, lambda sim: setattr(sim, '_nominal_profiles', {'x': np.full(4, DX)})),
     ('_precision', ''): ({'precision': 'mixed'}, _nothing),
     ('_solver', ''): ({'solver': 'adi', 'boundary': 'pec'}, _nothing),
     ('_adi_cfl_factor', ''): ({'adi_cfl_factor': 1.1}, _nothing),

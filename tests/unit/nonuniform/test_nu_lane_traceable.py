@@ -38,8 +38,10 @@ def test_graded_forward_traces_as_a_whole_and_the_jit_gradient_is_the_eager_one(
     sl = (slice(nx // 2 - 1, nx // 2 + 2), slice(ny // 2 - 1, ny // 2 + 2), slice(nz // 2 - 1, nz // 2 + 2))
 
     def loss(e):
+        # 14 steps (12 until 2026-10-12): the pulse now starts from zero
+        # (issue 1668), so the field reaches the eps window a step later.
         full = jnp.ones(shape, jnp.float32).at[sl].set(e)
-        r = sim.forward(eps_override=full, n_steps=12, skip_preflight=True)
+        r = sim.forward(eps_override=full, n_steps=14, skip_preflight=True)
         return jnp.sum(r.time_series ** 2)
 
     x = jnp.full((3, 3, 3), 3.0, jnp.float32)

@@ -357,8 +357,13 @@ def test_localized_operands(row, on, monkeypatch):
     from rfx.runners import _distributed_nu_wrapped as runner
     from rfx.stepping.slab import Slab
 
-    # The recorded first difference is step 3; verify step 2 still agrees.
-    step = 3
+    # The first differing step follows the source samples (3 with the old
+    # default pulse, 4-5 since it starts at zero): find it, then verify the
+    # step before still agrees. No difference in 12 steps is the stronger result.
+    def differs(n):
+        d = scene(row, on, n)
+        return bool(difference(single(d, n), several(d, n, 1)))
+    step = next((n for n in range(2, 13) if differs(n)), 3)
     data = scene(row, on, step)
     reference = canonical_setup(data, step)
     captures = []
@@ -387,7 +392,7 @@ def test_localized_operands(row, on, monkeypatch):
             assert record['all_recorded_operands_equal'], record
             break
     else:
-        pytest.fail('recorded step-3 first difference was not reproduced')
+        assert_bits(*current)
 
 
 @pytest.mark.parametrize('debye,lorentz', [(True, False), (False, True), (True, True)])

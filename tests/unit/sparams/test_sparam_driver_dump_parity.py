@@ -55,7 +55,7 @@ _GATE_ATOL = 2e-3  # CPML byte-closeness
 
 
 def _waveform():
-    return GaussianPulse(f0=5.5e9, bandwidth=4e9)
+    return GaussianPulse(f0=5.5e9, bandwidth=0.8)
 
 
 def _eager_grid():
