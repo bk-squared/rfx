@@ -88,6 +88,28 @@ def test_unsupported_keyword_refused(keyword):
                         skip_preflight=True, **{keyword: REFUSED[keyword]})
 
 
+@pytest.mark.parametrize("keyword,works_today", [
+    ("eps_override", "use a graded mesh"), ("sigma_override", "use a graded mesh"),
+    ("design_box", "omit distributed=True"), ("mu_r_override", "omit distributed=True"),
+    ("checkpoint_every", "omit the checkpoint arguments")])
+def test_refusal_says_what_works_today(keyword, works_today):
+    with pytest.raises(NotImplementedError) as caught:
+        scene().forward(n_steps=8, distributed=True, devices=devices(),
+                        skip_preflight=True, **{keyword: REFUSED[keyword]})
+    message = str(caught.value)
+    assert works_today in message and "omit distributed=True" in message
+    assert "run_distributed" not in message and "#" not in message
+
+
+def test_refused_in_plain_words_inside_jax_jit():
+    """The uniform multi-device runner reads concrete values while it runs; without
+    this refusal jax.jit of the call fails inside it with a tracer error."""
+    import jax
+    with pytest.raises(NotImplementedError, match="cannot run inside jax.jit"):
+        jax.jit(lambda: scene().forward(n_steps=8, distributed=True, devices=devices(),
+                                        skip_preflight=True).time_series)()
+
+
 def test_requested_port_s_matrix_matches_run_default():
     def port_scene():
         sim = Simulation(freq_max=20e9, domain=(.030, .020, .012), dx=.001,

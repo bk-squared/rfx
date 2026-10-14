@@ -377,6 +377,18 @@ difference. → [#1221](https://github.com/bk-squared/rfx/issues/1221)
 
 ## Gradients and optimization
 
+### A multi-device `forward()` on a uniform mesh takes no design variable
+
+Tracker: #1373
+
+`forward(distributed=True)` on a uniform mesh runs the same solve as
+`run(devices=...)` and returns its probe records. It refuses `eps_override`,
+`sigma_override`, `mu_r_override`, the PEC overrides, `design_box` and
+`rlc_values_override`, and it refuses to run inside `jax.jit`, so nothing can be
+optimized through it. For a gradient, run on one device, or use a graded mesh,
+where `forward(distributed=True)` takes traced permittivity, conductivity and
+PEC overrides.
+
 ### A gradient with respect to conductivity does not settle with simulation time on lossless or nearly lossless design cells
 
 Tracker: #1424

@@ -163,21 +163,29 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args
 
 
 
-# No separate forward refusal registry exists. Use the run entry's refusal
-# formatter, with this lane's reasons and explicit feature requests.
+# What a multi-device forward() on a uniform mesh refuses, in the user's words:
+# why, and what runs that request today. Formatted by the run entry's refusal.
+_NO_DESIGN_VARIABLE = ("a multi-device forward() on a uniform mesh solves the declared model "
+                       "only and takes no design variable")
+_ONE_DEVICE = "run on one device (omit distributed=True)"
+_ON_A_GRADED_MESH = "use a graded mesh, where forward(distributed=True) takes this override"
+_GRADED_TOO = ("eps_override", "sigma_override", "pec_mask_override", "pec_occupancy_override")
+_ONE_DEVICE_ONLY = ("mu_r_override", "design_box", "design_eps_override", "design_sigma_override",
+                    "design_occupancy_override", "design_box_holds_ports", "rlc_values_override")
+_CHECKPOINTS = ("checkpoint", "checkpoint_every", "checkpoint_segments")
 FORWARD_REFUSALS = {
-    **{name: "run_distributed consumes the prepared model and has no material or occupancy override input"
-       for name in ("eps_override", "sigma_override", "mu_r_override",
-                    "pec_mask_override", "pec_occupancy_override")},
-    **{name: "run_distributed has no design-box update or design override input"
-       for name in ("design_box", "design_eps_override", "design_sigma_override",
-                    "design_occupancy_override", "design_box_holds_ports")},
-    "rlc_values_override": "run_distributed has no lumped-RLC update or component-value override input",
-    **{name: "run_distributed has no checkpointed or segmented scan"
-       for name in ("checkpoint", "checkpoint_every", "checkpoint_segments")},
-    "n_warmup": "run_distributed records every step and has no warmup phase",
-    "emit_time_series": "run_distributed always emits the probe time series",
-    "ringdown": "run_distributed runs a fixed n_steps record and has no ringdown completion",
+    **{name: _NO_DESIGN_VARIABLE for name in _GRADED_TOO + _ONE_DEVICE_ONLY},
+    **{name: "the multi-device time loop on a uniform mesh keeps no checkpoints, and with no "
+             "design variable there is no gradient to save memory for" for name in _CHECKPOINTS},
+    "n_warmup": "every step of a multi-device forward() on a uniform mesh is recorded",
+    "emit_time_series": "a multi-device forward() on a uniform mesh always returns the probe records",
+    "ringdown": "a multi-device forward() on a uniform mesh runs a fixed number of steps",
+}
+FORWARD_REMEDIES = {
+    **{name: _ON_A_GRADED_MESH for name in _GRADED_TOO},
+    **{name: "omit the checkpoint arguments" for name in _CHECKPOINTS},
+    "n_warmup": "omit n_warmup",
+    "emit_time_series": "omit emit_time_series",
 }
 
 
@@ -188,7 +196,16 @@ def forward_distributed(sim, *, plan, assembly, devices, exchange_interval,
     """Admit the fixed-model forward request, execute once, and pack observables."""
     import jax
     from rfx.api._forward_result import pack_nu_forward_result
+    from rfx.core.jax_utils import is_tracer
 
+    if is_tracer(jnp.zeros(())):
+        # The uniform multi-device runner reads concrete values while it runs
+        # (measured: jax.jit of this call fails inside it with a tracer error).
+        raise NotImplementedError(
+            "forward(distributed=True) on a uniform mesh cannot run inside jax.jit "
+            "(or another JAX trace): call it directly. It takes no design variable, "
+            "so nothing is differentiated through it; for a traced or differentiated "
+            "solve run on one device (omit distributed=True) or use a graded mesh.")
     sim._refuse_unsupported_run_kwargs(
         "uniform distributed forward", {
             **overrides,
@@ -196,8 +213,8 @@ def forward_distributed(sim, *, plan, assembly, devices, exchange_interval,
             "emit_time_series": None if emit_time_series else False,
             "n_warmup": n_warmup if n_warmup else None,
             "design_box_holds_ports": True if design_box_holds_ports else None,
-        }, instead="use a single-device forward lane that carries the requested feature",
-        reason_overrides=FORWARD_REFUSALS, entry="Simulation.forward()")
+        }, instead=_ONE_DEVICE, reason_overrides=FORWARD_REFUSALS,
+        remedy_overrides=FORWARD_REMEDIES, entry="Simulation.forward()")
     devices = jax.devices() if devices is None else devices
     call_args = dict(n_steps=plan.n_steps, num_periods=num_periods,
                      compute_s_params=port_s11_freqs is not None,
