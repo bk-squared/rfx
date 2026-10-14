@@ -593,7 +593,8 @@ def cpml_metrics(one, several, dt, name):
     return e, h, float(np.max(np.abs(actual-expected))/np.max(np.abs(expected)))
 
 
-@pytest.mark.parametrize('name', ['scene2', 'debye'])
+@pytest.mark.parametrize('name', ['scene2', pytest.param('debye', marks=pytest.mark.skip(
+    reason='CPML with poles routes to the legacy step until rfx #1402 item 5; the wrapped setup is not reached'))])
 def test_cpml_one_slab_invariants(name, monkeypatch):
     from rfx import nonuniform
     from rfx.runners import _distributed_nu_wrapped as runner
