@@ -902,7 +902,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
             )
 
     sp_freqs = None
-    if wire_port_specs and (
+    if any(not p.get("record_only", False) for p in wire_port_specs) and (
         s_param_freqs is not None if lane == "fwd_nonuniform"
         else compute_s_params is None or compute_s_params
     ):
@@ -1311,6 +1311,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         dft_planes=dft_planes_dict,
         wire_port_sparams=wire_port_sparams_result,
         sparam_time_records=r.get("sparam_time_records"),
+        sparam_read_ids=r.get("sparam_read_ids"),
         dft_time_records={
             entry.name: record for entry, record in zip(sim._dft_planes, r.get("dft_time_records", ()))
         },

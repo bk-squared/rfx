@@ -163,7 +163,8 @@ def compute_lumped_wire_s_matrix_via_scan(
 
     # Ordered sparam-eligible lumped/wire ports (impedance != 0), in
     # registration order — the same order the multi-drive index counts.
-    eligible = [pe for pe in sim._ports if pe.impedance != 0.0]
+    eligible_ids = [i for i, pe in enumerate(sim._ports) if pe.impedance != 0.0]
+    eligible = [sim._ports[i] for i in eligible_ids]
     if not eligible:
         raise ValueError(
             "compute_lumped_wire_s_matrix_via_scan: no sparam-eligible "
@@ -279,7 +280,8 @@ def compute_lumped_wire_s_matrix_via_scan(
             driven_sim = copy(sim)
             driven_sim._ports = [replace(pe, excite=(pe is eligible[j]))
                                  if pe.impedance != 0 else pe for pe in sim._ports]
-            receivers = list(eligible)
+            receivers_by_id = {f"port:{i}:mode:0": pe for i, pe in zip(eligible_ids, eligible)}
+            plane_counts = {}
             for rp, _ in raw.get("wire_refplane") or ():
                 pe = eligible[rp.port_index]
                 position = list(pe.position)
@@ -293,7 +295,11 @@ def compute_lumped_wire_s_matrix_via_scan(
                 span = (widths[i0:i0 + n_out] if rp.outboard_sign > 0
                         else widths[max(i0 - n_out, 0):i0])
                 position[rp.line_axis] += rp.outboard_sign * float(np.sum(span))
-                receivers.append(replace(pe, position=tuple(position)))
+                port_id = f"port:{eligible_ids[rp.port_index]}:mode:0"
+                plane = plane_counts.get(port_id, 0)
+                plane_counts[port_id] = plane + 1
+                receivers_by_id[f"{port_id}/plane{plane}"] = replace(pe, position=tuple(position))
+            receivers = [receivers_by_id[record.id] for record in raw.get("sparam_time_records", ())]
             end = simulation_source_end_step(driven_sim, n_steps, grid.dt, receivers, grid=grid)
             settling_runs.append(port_record_witness(
                 raw.get("sparam_time_records", ()), raw.get("dt", grid.dt),

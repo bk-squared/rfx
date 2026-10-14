@@ -1934,7 +1934,8 @@
         "design_occupancy",
         "stop_fn",
         "stop_interval",
-        "record_dft"
+        "record_dft",
+        "port_record_specs"
       ]
     },
     "run_adi_2d": {
@@ -2093,7 +2094,8 @@
         "report_every",
         "report_label",
         "sheet_impedance",
-        "record_dft"
+        "record_dft",
+        "port_record_specs"
       ]
     },
     "save_experiment_report": {

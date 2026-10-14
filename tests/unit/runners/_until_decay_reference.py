@@ -100,6 +100,7 @@ def run_until_decay_reference(
     report_label: str = "",
     sheet_impedance: object | None = None,
     record_dft: bool = False,
+    port_record_specs: tuple | None = None,
 ) -> SimResult:
     if checkpoint_segments is not None:
         raise NotImplementedError(
@@ -155,10 +156,12 @@ def run_until_decay_reference(
         carry["dft_time_records"] = tuple(
             jnp.zeros((max_steps,) + plane.accumulator.shape[1:], dtype=carry["fdtd"].ex.dtype)
             for plane in dft_planes)
-    if wire_port_sparams or lumped_port_sparams:
+    record_kinds = ([spec[2] for spec in port_record_specs] if port_record_specs is not None
+                    else ['wire'] * len(wire_port_sparams) + ['lumped'] * len(lumped_port_sparams))
+    if record_kinds:
         carry["sparam_time_records"] = tuple(
-            jnp.zeros((max_steps, count), dtype=field_dtype)
-            for count in ([4] * len(wire_port_sparams) + [3] * len(lumped_port_sparams)))
+            jnp.zeros((max_steps, 4 if kind == 'wire' else 3), dtype=field_dtype)
+            for kind in record_kinds)
     dx = _setup.dx
     waveguide_meta = _setup.waveguide_meta
     wire_sparam_meta = _setup.wire_sparam_meta
@@ -201,6 +204,7 @@ def run_until_decay_reference(
         mag_src_waveforms = jnp.zeros((max_steps, 0), dtype=jnp.float32)
     _step_ctx = _StepContext(
         **_setup.ctx_kwargs,
+        port_record_specs=port_record_specs,
         drives=StepDrives(
             _reference_drives(_setup.src_meta, src_waveforms.T),
             _reference_drives(_setup.mag_src_meta, mag_src_waveforms.T)),
@@ -410,6 +414,8 @@ def run_until_decay_reference(
                 )
             }
         snap_axes = snapshot_axes(grid, snapshot, actual_steps, dt=_setup.dt)
+    from rfx.measurement import PortTimeRecord
+    record_ids = [spec[4] for spec in port_record_specs] if port_record_specs is not None else range(len(record_kinds))
     return SimResult(
         state=carry["fdtd"] if return_state else None,
         time_series=time_series,
@@ -427,5 +433,8 @@ def run_until_decay_reference(
         current_moment_data=carry.get("current_moments"),
         current_moment_monitor=current_moments,
         dft_time_records=tuple(r[:actual_steps] for r in carry.get("dft_time_records", ())),
-        sparam_time_records=tuple(r[:actual_steps] for r in carry.get("sparam_time_records", ())),
+        sparam_time_records=tuple(PortTimeRecord(f'port:{i}:mode:0', kind, names, r[:actual_steps])
+            for i, r, kind, names in zip(record_ids, carry.get("sparam_time_records", ()),
+                record_kinds,
+                [('V', 'I', 'V_port', 'V_ref') if kind == 'wire' else ('V', 'I', 'V_ref') for kind in record_kinds])),
     )

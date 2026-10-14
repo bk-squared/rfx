@@ -321,7 +321,7 @@ def test_runner_table_refuses_owner_metadata_disagreement(kind, defect, monkeypa
     monkeypatch.setattr(ports, 'lumped_wire_owner', altered)
     mid = (2, 2, 2)
     with pytest.raises(ValueError, match=f'port:0:mode:0:.*{defect.split("_")[0]}'):
-        port_table(grid_case('uniform'), (('ez', (mid,), kind, mid),),
+        port_table(grid_case('uniform'), (('ez', (mid,), kind, mid, 0),),
                    nu=False, boundary=CurlBoundary(), dtype=np.float32)
 
 

@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import jax.numpy as jnp
 import numpy as np
 
-from tests.contracts.measurement_oracles import COMPONENTS, assignment, jacobian_nodes, tree
+from tests.contracts.measurement_oracles import COMPONENTS, jacobian_nodes, tree
 
 
 def coefficients(channel):
@@ -20,18 +20,20 @@ def judge_v_ref(owner, spec, grid):
     from rfx.probes.probes import _port_voltage_value
     channel = next(c for c in owner.channels if c.name == 'V_ref')
     wire = owner.kind == 'wire'
-    name = 'v_ref' if wire else 'v_ref_l'
+    name = 'wire_ref_samples' if wire else 'lumped_ref_samples'
     idx = tuple(getattr(spec, ('mid_' if wire else '')+a) for a in 'ijk')
-    def sample(fields):
-        env = dict(st=fields, frame=SimpleNamespace(st=fields),
-                   dx=grid.dx, wp_meta=spec, lp_meta=spec,
-                   _port_voltage_value=_port_voltage_value)
-        env.update(zip(('mi', 'mj', 'mk') if wire else ('li', 'lj', 'lk'), idx))
-        return eval(assignment(False, name), env)
-    assert coefficients(channel) == jacobian_nodes(sample, grid.shape)
     statements = list(ast.walk(tree(False)))
-    reference = next(n for n in statements if isinstance(n, ast.Assign)
-                     and any(isinstance(t, ast.Name) and t.id == name for t in n.targets))
+    references = [n for n in statements if isinstance(n, ast.Assign)
+                  and any(isinstance(t, ast.Attribute) and t.attr == name for t in n.targets)]
+    assert len(references) == 1
+    reference = references[0]
+    expression = compile(ast.Expression(reference.value), '<production references>', 'eval')
+    def sample(fields):
+        env = dict(frame=SimpleNamespace(st=fields), dx=grid.dx,
+                   port_specs=((spec.component, (), owner.kind, idx, 0),),
+                   _port_voltage_value=_port_voltage_value)
+        return eval(expression, env)[0]
+    assert coefficients(channel) == jacobian_nodes(sample, grid.shape)
     containing = [n for n in statements if isinstance(n, ast.FunctionDef)
                   and any(child is reference for child in ast.walk(n))]
     body = min(containing, key=lambda n: n.end_lineno-n.lineno)

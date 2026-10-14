@@ -15,9 +15,7 @@
     },
     "port-time-record-missing": {
       "fingerprints": {
-        "f1": {"value": "sparam_time_records.0.V_port: record missing on A", "cells": ["_ports:lumped_port:fwd_uniform:fwd_nonuniform:constant:12", "_ports:passive_port:fwd_uniform:fwd_nonuniform:constant:12"]},
-        "f2": {"value": "sparam_time_records: record missing on A and B", "cells": ["_ports:lumped_port:run_uniform:run_distributed:constant:12", "_ports:lumped_port:run_uniform:run_nonuniform:constant:12", "_ports:passive_port:run_uniform:run_nonuniform:constant:12"]},
-        "f3": {"value": "sparam_time_records: record missing on B", "cells": ["_ports:wire_port:run_uniform:run_distributed:constant:12", "_ports:wire_port:run_uniform:run_distributed:constant:36"]}
+        "f3": {"value": "sparam_time_records: record missing on B", "cells": ["_ports:lumped_port:run_uniform:run_distributed:constant:12", "_ports:wire_port:run_uniform:run_distributed:constant:12", "_ports:wire_port:run_uniform:run_distributed:constant:36"]}
       },
       "witnesses": {}
     },
@@ -37,20 +35,20 @@
   "cells": {
     "_ports:lumped_port:fwd_uniform:fwd_nonuniform:constant:12": {
       "port_dft": ["nu-lumped-dft-record-missing", "uniform-wire-dft-record-missing", "s-parameter-shape"],
-      "port_samples": ["port-time-record-missing", "nu-missing-vref"]
+      "port_samples": ["nu-missing-vref"]
     },
     "_ports:lumped_port:run_uniform:run_distributed:constant:12": {
       "port_samples": ["port-time-record-missing"]
     },
     "_ports:lumped_port:run_uniform:run_nonuniform:constant:12": {
-      "port_samples": ["port-time-record-missing"]
+      "port_samples": ["nu-missing-vref"]
     },
     "_ports:passive_port:fwd_uniform:fwd_nonuniform:constant:12": {
       "port_dft": ["nu-lumped-dft-record-missing", "uniform-wire-dft-record-missing", "s-parameter-shape"],
-      "port_samples": ["port-time-record-missing", "nu-missing-vref"]
+      "port_samples": ["nu-missing-vref"]
     },
     "_ports:passive_port:run_uniform:run_nonuniform:constant:12": {
-      "port_samples": ["port-time-record-missing"]
+      "port_samples": ["nu-missing-vref"]
     },
     "_ports:wire_port:fwd_uniform:fwd_nonuniform:constant:12": {
       "port_dft": ["nu-missing-vref", "s-parameter-shape"],

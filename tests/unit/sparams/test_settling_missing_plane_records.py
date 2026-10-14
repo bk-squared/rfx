@@ -55,6 +55,8 @@ def test_far_field_or_plane_read_without_a_probe_is_not_witnessed_by_port_record
     from types import SimpleNamespace
     from rfx import Simulation
     from rfx.api._spec import Result
+    from rfx.measurement import PortTimeRecord
+    from rfx.sparams._record_selection import SReadPorts
 
     dt = 0.4
     t = np.arange(1000) * dt
@@ -63,8 +65,11 @@ def test_far_field_or_plane_read_without_a_probe_is_not_witnessed_by_port_record
               else dict(dft_planes={"e": SimpleNamespace(freqs=np.array([0.5]))}))
     sim = Simulation(freq_max=1.0, domain=(1.0,) * 3, dx=0.1)
     sim._settling_source_end = lambda *a, **k: 0
-    result = Result(state=None, s_params=None, dt=dt, time_series=np.zeros((1000, 0)),
-                    sparam_time_records=(port,), freqs=None, **fields)
+    # The port's S is read, so its record is scored; the far-field/plane bins still have no probe record.
+    result = Result(state=None, s_params=np.ones((1, 1, 1), complex), dt=dt, time_series=np.zeros((1000, 0)),
+                    sparam_time_records=(PortTimeRecord('port:0:mode:0', 'wire', ('V',), port[:, None]),),
+                    sparam_read_ids=SReadPorts(('port:0:mode:0',)), freqs=np.array([0.5]), **fields)
     _, detail = sim._run_settling_witness(result)
     assert detail["status"] != "pass"
     assert "no probe records" in detail["reason"]
+    assert detail["scored_port_record_ids"] == ["port:0:mode:0"]

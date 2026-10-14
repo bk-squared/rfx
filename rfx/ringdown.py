@@ -967,7 +967,7 @@ class _PortMeta(NamedTuple):
     owner: object        # shared realized sampling owner
 
 
-def _read_port_metas(lane: str, result, grid, boundary=None) -> list:
+def _read_port_metas(lane: str, result, grid, boundary=None, port_ids=None) -> list:
     """Realized cells, metrics and accumulators of every wire port, from the run."""
     import jax.numpy as jnp
 
@@ -977,7 +977,7 @@ def _read_port_metas(lane: str, result, grid, boundary=None) -> list:
             "run(ringdown=...) found no wire-port accumulators on the run's "
             "result; the port metadata it needs is missing.")
     out = []
-    for port_id, (meta, accs) in enumerate(wps):
+    for port_id, (meta, accs) in zip(range(len(wps)) if port_ids is None else port_ids, wps, strict=True):
         if lane == "uniform":
             mid = (int(meta.mid_i), int(meta.mid_j), int(meta.mid_k))
             comp = str(meta.component)
@@ -1171,7 +1171,10 @@ def _assemble_core(lane: str, pms, vp, ii, freqs32, dt, v_mid=None):
         for p in range(len(pms)))
     metas = [pm.meta for pm in pms]
     setup = SimpleNamespace(
-        dt=float(dt), dft_planes=None, flux_monitors=None, wire_ports=metas,
+        dt=float(dt), dft_planes=None, flux_monitors=None,
+        wire_ports=[{'kind': pm.owner.kind} for pm in pms],
+        # Spectral completion reuses S assembly without a time-step scan.
+        step_fn_inv=SimpleNamespace(port_owners=(), port_acc_indices=()),
         waveguide_meta=None, wp_meta=metas,
         sp_freqs=jnp.asarray(np.asarray(freqs32), dtype=jnp.float32),
         use_wire_ports=True, use_dft_planes=False, use_flux_monitors=False,
@@ -1326,8 +1329,9 @@ class RingdownRun:
                 f"[{self.n_start}, {self.n_steps}) and [{self.n_start}, {self.n_split})")
         self.freq_max = float(spec.freq_max if spec.freq_max is not None
                               else sim._freq_max)
-        self.wire_entries = [pe for pe in sim._ports
-                             if float(pe.impedance) > 0.0 and pe.extent is not None]
+        self.wire_port_ids = tuple(i for i, pe in enumerate(sim._ports)
+                                   if float(pe.impedance) > 0.0 and pe.extent is not None)
+        self.wire_entries = [sim._ports[i] for i in self.wire_port_ids]
         self.source_off, self.source_ratio_long = self._check_sources_off()
         self.probe_keys = self._plan_probes()
 
@@ -1564,7 +1568,8 @@ class RingdownRun:
     def _read_metas_checked(self, result, run_grid) -> list:
         """The wire ports as the run realized them, or ``_NotCompleted`` (W0)."""
         try:
-            pms = _read_port_metas(self.lane, result, run_grid, self.port_boundary)
+            pms = _read_port_metas(self.lane, result, run_grid, self.port_boundary,
+                self.wire_port_ids)
         except RuntimeError as exc:
             raise _NotCompleted("W0", math.nan, W0_REL_BAR, str(exc)) from None
         if len(pms) != len(self.wire_entries):

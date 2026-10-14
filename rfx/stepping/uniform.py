@@ -398,16 +398,16 @@ def make_uniform_step(
         # off-diagonal incident-wave denominator and the byte-frozen
         # legacy diagonal in decompose_wire_s_matrix. The physical
         # channels (v, i, v_port) are accumulated POST-injection below.
+        frame.wire_ref_samples = [-getattr(frame.st, component)[mid] * dx
+                                  for component, _, kind, mid, _ in port_specs if kind == 'wire']
+        frame.lumped_ref_samples = [_port_voltage_value(getattr(frame.st, component)[mid], dx)
+                                    for component, _, kind, mid, _ in port_specs if kind == 'lumped']
         if ctx.use_wire_sparams:
             frame.new_wire_refs = []
-            frame.wire_ref_samples = []
-            for accs, wp_meta in zip(frame.carry["wire_sparam_accs"], ctx.wire_sparam_meta):
+            for accs, wp_meta, v_ref in zip(frame.carry["wire_sparam_accs"], ctx.wire_sparam_meta, frame.wire_ref_samples):
                 v_ref_dft = accs[4]
-                mi, mj, mk = wp_meta.mid_i, wp_meta.mid_j, wp_meta.mid_k
-                v_ref = -getattr(frame.st, wp_meta.component)[mi, mj, mk] * dx
                 phase = port_dft_phase(frame.step_idx, wp_meta.freqs, dt, dtype=v_ref_dft.dtype)
                 frame.new_wire_refs.append((v_ref_dft + v_ref * phase, phase))
-                frame.wire_ref_samples.append(v_ref)
 
         # Lumped-port DRIVE-REFERENCE DFT accumulation at the historical
         # PRE-injection slot (issue #72): the #308 off-diagonal incident
@@ -418,14 +418,10 @@ def make_uniform_step(
         # the wire-port block above (issue #683).
         if ctx.use_lumped_sparams:
             frame.new_lumped_refs = []
-            frame.lumped_ref_samples = []
-            for accs, lp_meta in zip(frame.carry["lumped_sparam_accs"], ctx.lumped_sparam_meta):
+            for accs, lp_meta, v_ref_l in zip(frame.carry["lumped_sparam_accs"], ctx.lumped_sparam_meta, frame.lumped_ref_samples):
                 v_ref_dft_l = accs[2]
-                li, lj, lk = lp_meta.i, lp_meta.j, lp_meta.k
-                v_ref_l = _port_voltage_value(getattr(frame.st, lp_meta.component)[li, lj, lk], dx)
                 phase_l = port_dft_phase(frame.step_idx, lp_meta.freqs, dt, dtype=v_ref_dft_l.dtype)
                 frame.new_lumped_refs.append((v_ref_dft_l + v_ref_l * phase_l, phase_l))
-                frame.lumped_ref_samples.append(v_ref_l)
 
         # Reference-plane V/I DFT accumulation (issue #313 opt-in) — same
         # rect-DFT kernel as the port-cell channels.  This slot is before
@@ -458,10 +454,8 @@ def make_uniform_step(
             frame.st = inject(frame.st, drives, frame.src_vals)
 
     from rfx.measurement.projector import port_table, project
-    port_specs = tuple((m.component, m.live_cells or ((m.mid_i, m.mid_j, m.mid_k),), 'wire',
-                       (m.mid_i, m.mid_j, m.mid_k))
-                       for m in ctx.wire_sparam_meta) + tuple(
-                           (m.component, ((m.i, m.j, m.k),), 'lumped', (m.i, m.j, m.k)) for m in ctx.lumped_sparam_meta)
+    from rfx.measurement.time_records import uniform_specs, uniform_samples
+    port_specs = uniform_specs(ctx)
     port_tables = {}
 
     def after_sources(frame: UniformFrame):
@@ -473,6 +467,7 @@ def make_uniform_step(
                 port_tables[dtype] = port_table(grid, port_specs, nu=False,
                                                boundary=ctx.curl_boundary, dtype=dtype)
             port_values = project(frame.st, port_tables[dtype])
+            frame.port_samples = uniform_samples(port_values, port_specs, frame.wire_ref_samples, frame.lumped_ref_samples)
         if ctx.use_wire_sparams:
             frame.new_wire_accs = []
             for accs, wp_meta, (v_ref_new, phase) in zip(
@@ -482,8 +477,6 @@ def make_uniform_step(
                 offset = 3 * len(frame.new_wire_accs)
                 v, i_val, v_port = port_values[offset:offset + 3]
                 i_phase = port_dft_phase(frame.step_idx, wp_meta.freqs, dt, 'H', dtype=i_dft.dtype)
-                frame.port_samples.append(jnp.stack((v, i_val, v_port,
-                                                frame.wire_ref_samples[len(frame.new_wire_accs)])))
                 frame.new_wire_accs.append((
                     v_dft + v * phase,
                     i_dft + i_val * i_phase,
@@ -512,11 +505,9 @@ def make_uniform_step(
                     frame.carry["lumped_sparam_accs"], ctx.lumped_sparam_meta,
                     frame.new_lumped_refs):
                 v_dft_l, i_dft_l = accs[0], accs[1]
-                offset = 3 * len(ctx.wire_sparam_meta) + 2 * len(frame.new_lumped_accs)
+                offset = 3 * sum(p[2] == 'wire' for p in port_specs) + 2 * len(frame.new_lumped_accs)
                 v_l, i_val_l = port_values[offset:offset + 2]
                 i_phase_l = port_dft_phase(frame.step_idx, lp_meta.freqs, dt, 'H', dtype=i_dft_l.dtype)
-                frame.port_samples.append(jnp.stack((v_l, i_val_l,
-                                                frame.lumped_ref_samples[len(frame.new_lumped_accs)])))
                 frame.new_lumped_accs.append((
                     v_dft_l + v_l * phase_l,
                     i_dft_l + i_val_l * i_phase_l,
@@ -610,6 +601,7 @@ def make_uniform_step(
         if ctx.use_wire_refplanes:
             frame.port_samples.extend(frame.refplane_samples)
         if "sparam_time_records" in frame.carry:
+            assert len(frame.carry["sparam_time_records"]) == len(frame.port_samples)
             new_carry["sparam_time_records"] = tuple(
                 jax.lax.stop_gradient(record.at[frame.step_idx].set(sample))
                 for record, sample in zip(frame.carry["sparam_time_records"], frame.port_samples))
@@ -647,8 +639,7 @@ def make_uniform_step(
     attachments = {
         HookPoint.AFTER_H: (magnetic_drives,) if mag_drives is not None else (),
         HookPoint.AFTER_E_UPDATE: (design,) if design_hook is not None else (),
-        HookPoint.BEFORE_SOURCES: ((before_sources,) if (ctx.use_wire_sparams
-                                  or ctx.use_lumped_sparams or ctx.use_wire_refplanes) else ()),
+        HookPoint.BEFORE_SOURCES: ((before_sources,) if (port_specs or ctx.use_wire_refplanes) else ()),
         HookPoint.AFTER_SOURCES: (after_sources,),
         HookPoint.STEP_END: (step_end,),
     }

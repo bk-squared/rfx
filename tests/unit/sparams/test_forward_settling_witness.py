@@ -8,6 +8,7 @@ import numpy as np
 import pytest
 
 from rfx import Simulation
+from rfx.measurement import PortTimeRecord
 from rfx.api._spec import ForwardResult
 from rfx.probes.settling import probe_record_settling_witness
 from rfx.sparams._tail_witness import result_read_bins
@@ -158,16 +159,14 @@ def test_recorded_s_channels_reproduce_accumulators(extent):
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
         result = sim.forward(n_steps=120, port_s11_freqs=np.array([2e9, 3e9]), skip_preflight=True)
-    assert result.sparam_time_records[0].shape == (120, 3 if extent is None else 4)
+    assert result.sparam_time_records[0].samples.shape == (120, 3 if extent is None else 4)
     raw = result.lumped_port_sparams if extent is None else result.wire_port_sparams
     meta, accs = raw[0]
-    spectra = plain_dft(result.sparam_time_records[0], result.dt, meta.freqs)
-    for col, slot in ((0, 0), (1, 1), (2, 2)) if extent is None else ((0, 0), (1, 1), (2, 3), (3, 4)):
-        # plain_dft sums slot n at n dt. The accumulators are stamped with
-        # the time the field holds: E at (n+1) dt, the current (column 1) at
-        # (n+1/2) dt. History (S2 M2): they were stamped n dt and (n-1/2) dt.
-        offset = 0.5 if col == 1 else 1.0
-        got = spectra[:, col] * np.exp(-2j*np.pi*np.asarray(meta.freqs)*result.dt*offset)
+    record = result.sparam_time_records[0]
+    for channel, slot in (("V", 0), ("I", 1), ("V_ref", 2)) if extent is None else (("V", 0), ("I", 1), ("V_port", 3), ("V_ref", 4)):
+        offset = 0.5 if channel == "I" else 1.0
+        spectrum = plain_dft(record[channel], result.dt, meta.freqs)
+        got = spectrum * np.exp(-2j*np.pi*np.asarray(meta.freqs)*result.dt*offset)
         np.testing.assert_allclose(got, accs[slot], rtol=2e-5, atol=1e-20)
     assert result.settling_witness['route'] == 's_channels'
 
@@ -188,7 +187,7 @@ def test_reference_plane_drive_channels_and_source_selection(monkeypatch):
         return original_end(driven, n_steps, dt, records, **kwargs)
 
     def witness(records, *args, **kwargs):
-        shapes.append([record.shape for record in records])
+        shapes.append([record.samples.shape for record in records])
         return original_witness(records, *args, **kwargs)
 
     monkeypatch.setattr(settling, 'simulation_source_end_step', source_end)
@@ -233,6 +232,6 @@ def test_probe_source_end_uses_probe_count_when_port_channels_are_present(monkey
 
     monkeypatch.setattr(settling, 'simulation_source_end_step', source_end)
     result = SimpleNamespace(time_series=np.ones((200, 2)), dt=1.,
-                             sparam_time_records=(np.ones((200, 1)),))
+                             sparam_time_records=(PortTimeRecord('port:0:mode:0', 'lumped', ('V',), np.ones((200, 1))),))
     assert sim._settling_source_end(result) == 10
     assert selected == sim._probes

@@ -1305,8 +1305,8 @@ def _runner_mutations(kind):
             (acc, ""),
             ("    attachments = {", "    def moved_current_moments(frame):\n"
              + acc + "\n    attachments = {"),
-            ("or ctx.use_lumped_sparams or ctx.use_wire_refplanes) else ()),",
-             "or ctx.use_lumped_sparams or ctx.use_wire_refplanes) else ())"
+            ("(port_specs or ctx.use_wire_refplanes) else ()),",
+             "(port_specs or ctx.use_wire_refplanes) else ())"
              " + (moved_current_moments,),"),
         ]
     else:
@@ -1377,6 +1377,7 @@ def _slot_case(kind, edits):
             core = make_step(*args, **kwargs)
             assert core.__module__ == step_name
 
+            @functools.wraps(core)
             def observed_core(*values, **options):
                 executed.append(core)
                 return core(*values, **options)

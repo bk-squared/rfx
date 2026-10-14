@@ -88,15 +88,14 @@ def project(state, table):
     return combine(gather(state, table), table)
 
 
-def port_table(grid, specs, *, nu, boundary, dtype):
-    """Compile (component, live cells, kind, midpoint) specs; pin record order."""
-    from dataclasses import replace
+def port_owners(grid, specs, *, nu, boundary):
+    """Compile (component, live cells, kind, midpoint, port index) specs; pin record order."""
     from .ports import lumped_wire_owner
     sampled = []
-    for i, (component, live, kind, mid) in enumerate(specs):
+    for i, (component, live, kind, mid, port_id) in enumerate(specs):
         owner = lumped_wire_owner(grid, component, live, nu=nu,
                     pmc_faces=boundary.pmc_faces, periodic=boundary.periodic,
-                    port_id=i, kind=kind)
+                    port_id=port_id, kind=kind)
         channels = tuple(c for c in owner.channels if c.sample_stage == 'post-injection')
         names = tuple(c.name for c in channels)
         expected = ('V', 'I', 'V_port') if kind == 'wire' else ('V', 'I')
@@ -106,5 +105,14 @@ def port_table(grid, specs, *, nu, boundary, dtype):
         actual = tuple((n.i, n.j, n.k) for n in nodes)
         if actual != (tuple(mid),):
             raise ValueError(f'{owner.id}: owner midpoint {actual}, runner midpoint {tuple(mid)}')
-        sampled.append(replace(owner, channels=channels))
-    return sample_table(sampled, dtype=dtype)
+        sampled.append(owner)
+    return tuple(sampled)
+
+
+def port_table(grid, specs, *, nu, boundary, dtype):
+    """Evaluate owners in order, retaining only completed-field channels."""
+    from dataclasses import replace
+    owners = port_owners(grid, specs, nu=nu, boundary=boundary)
+    return sample_table(tuple(replace(o, channels=tuple(
+        c for c in o.channels if c.sample_stage == 'post-injection')) for o in owners),
+        dtype=dtype)
