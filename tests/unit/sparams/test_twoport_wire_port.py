@@ -228,7 +228,9 @@ def test_two_port_s_envelope_on_matched_line():
     )
     S = np.asarray(result.s_params)
     S11 = S[0, 0, :]; S21 = S[1, 0, :]
-    assert np.all(np.isfinite(S)), "non-finite entry in the S matrix"
+    # Port 2 is passive: its column is never measured and reads NaN (#1373 decision C).
+    assert np.all(np.isfinite(S[:, 0])), "non-finite entry in the driven column"
+    assert np.all(np.isnan(S[:, 1])), "the passive port's column must read NaN"
     p_total = np.abs(S11) ** 2 + np.abs(S21) ** 2
     assert float(np.max(p_total)) < 1.0 + 1e-2, (
         f"max(|S11|²+|S21|²) = {float(np.max(p_total)):.3f} above the "
