@@ -4,10 +4,11 @@ import math
 import warnings
 
 import jax
+import numpy as np
 import pytest
 
 from rfx import Simulation
-from rfx.geometry.csg import Box
+from rfx.geometry.csg import Box, OrientedBox
 import rfx.model
 
 
@@ -47,7 +48,17 @@ def sheet():
      'bounding box (Box corner_lo/corner_hi, or Shape.bounding_box()) — the sheet '
      'NORMAL is read from it, and on a graded mesh that normal decides which dual '
      'spacing normalizes the fold. NoBounds provides neither.'),
-], ids=['R1', 'R2', 'R3', 'R4', 'R5'])
+    # Two faults at once: the f0 check comes first, and every check runs
+    # before the record is built (ThinConductor refuses an OrientedBox
+    # with NotImplementedError).
+    (NoMask(), {'surface_impedance_f0': 0.0},
+     'add_thin_conductor: surface_impedance_f0=0.0 must be a positive frequency '
+     'in Hz (band centre for the Leontovich surface resistance).'),
+    (OrientedBox((3e-3, 3e-3, 1.5e-3), (2e-3, 2e-3, 1e-3), np.eye(3)),
+     {'surface_impedance_f0': 0.0},
+     'add_thin_conductor: surface_impedance_f0=0.0 must be a positive frequency '
+     'in Hz (band centre for the Leontovich surface resistance).'),
+], ids=['R1', 'R2', 'R3', 'R4', 'R5', 'R6_f0_first', 'R7_before_record'])
 def test_refusals(shape, kwargs, expected):
     sim = simulation()
     with pytest.raises(ValueError) as exc:

@@ -2,7 +2,7 @@
   "counts": "code-lines",
   "cap": 1588,
   "files": {
-    "rfx/api/__init__.py": 2612,
+    "rfx/api/__init__.py": 2505,
     "rfx/api/_execute.py": 3804,
     "rfx/api/_preflight.py": 1174,
     "rfx/api/_spec.py": 1931,
