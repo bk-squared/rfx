@@ -207,28 +207,29 @@ def test_requested_port_fields_match_one_device_forward(family):
     assert isinstance(actual.settling_witness, dict)
 
 
-def test_multiple_driven_ports_match_one_device_forward():
+def test_multi_port_s_requests_are_refused_on_this_path():
+    """Two excited ports in one record: both entries refuse S with the same words
+    (#1660's isolated-drive rule). A passive second port, which one-device forward()
+    takes, is refused here by the multi-device lane's passive-port refusal."""
     from tests.contracts.run_forward_census import build_p_lumped
-    from rfx.optimize_objectives import minimize_s11_at_freq_wave_decomp
 
-    def port_scene():
+    def port_scene(excite_second):
         return build_p_lumped("uniform").add_port(
-            (.022, .009, .0055), "ez", impedance=50.)
+            (.022, .009, .0055), "ez", impedance=50., excite=excite_second)
 
     freqs = np.array([4., 8., 12., 16., 20.]) * 1e9
-    expected = port_scene().forward(n_steps=150, port_s11_freqs=freqs,
-                                   checkpoint=False, skip_preflight=True)
-    actual = port_scene().forward(n_steps=150, distributed=True, devices=devices(),
-                                 port_s11_freqs=freqs, skip_preflight=True)
-    assert actual.s_params.shape == expected.s_params.shape == (2, 5)
-    for index in range(2):
-        reference = np.asarray(expected.s_params[index])
-        peak = np.max(np.abs(reference))
-        error = np.max(np.abs(np.asarray(actual.s_params[index]) - reference))
-        print(f"two-driven-ports/s_params[{index}]: max_relative_difference={error / peak:.12g}")
-        assert error <= 1e-4 * peak, (index, error, peak)
-        objective = minimize_s11_at_freq_wave_decomp(12e9, port_idx=index)
-        assert np.isfinite(np.asarray(objective(actual)))
+    messages = []
+    for kwargs in (dict(checkpoint=False),
+                   dict(distributed=True, devices=devices())):
+        with pytest.raises(ValueError, match="isolated drive") as caught:
+            port_scene(True).forward(n_steps=150, port_s11_freqs=freqs,
+                                     skip_preflight=True, **kwargs)
+        messages.append(str(caught.value))
+    assert messages[0] == messages[1]
+
+    with pytest.raises(NotImplementedError, match="passive port"):
+        port_scene(False).forward(n_steps=150, distributed=True, devices=devices(),
+                                  port_s11_freqs=freqs, skip_preflight=True)
 
 
 def test_gradient_of_port_s_refused_in_plain_words():
