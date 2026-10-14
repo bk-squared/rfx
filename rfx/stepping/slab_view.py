@@ -339,5 +339,17 @@ def _axis_map(mesh, unpack, pole_rows):
 
 
 def device_rows(value, mesh, *, unpack):
-    """Convert packed field/pole leaves without a cross-device reshape."""
-    return jax.tree.map(lambda a: _axis_map(mesh, unpack, a.ndim == (4 if unpack else 5))(a), value)
+    """Convert packed field/pole leaves without a cross-device reshape.
+
+    A leaf is a field array (packed ``(rows, ny, nz)``, unpacked
+    ``(device, rows, ny, nz)``) or a pole array with one more axis; the
+    rank alone tells them apart, so any other rank is refused.
+    """
+    field = 3 if unpack else 4
+    def convert(a):
+        if a.ndim not in (field, field + 1):
+            raise ValueError(
+                f"device_rows takes field ({field}-D) or pole ({field + 1}-D) "
+                f"leaves when unpack={unpack}; got shape {a.shape}")
+        return _axis_map(mesh, unpack, a.ndim == field + 1)(a)
+    return jax.tree.map(convert, value)
