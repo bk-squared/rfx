@@ -39,7 +39,7 @@ Test inventory (V3 plan §Phase 1 Tolerance Contract):
     |   Phase 2F custom_vjp path is the production segmented-remat path, so
     |   the minimal-reproducer xfail sentinel is no longer needed.
   1 | test_forward_distributed_flag_requires_multi_device          | E/API
-  3 | test_forward_distributed_rejects_uniform_mesh_in_v162        | E/API
+  3 | test_forward_distributed_admits_uniform_mesh                | E/API
   4 | test_forward_distributed_rejects_tfsf_on_nu_path             | E/API
   5 | test_forward_distributed_requested_devices_gt_available_raises| E/API
   6 | test_forward_distributed_devices_without_distributed_flag_raises| E/API
@@ -174,13 +174,9 @@ def test_forward_distributed_flag_requires_multi_device():
         sim.forward(n_steps=4, distributed=True, devices=[jax.devices()[0]])
 
 
-def test_forward_distributed_rejects_uniform_mesh_in_v162():
-    """forward(distributed=True) on a uniform mesh must raise NotImplementedError.
-
-    In v1.6.2 the distributed forward path is NU-only (DP3 locked decision).
-    A uniform mesh (no dx_profile) with distributed=True must be rejected.
-    """
-    _require_two_devices()
+def test_forward_distributed_admits_uniform_mesh():
+    """A uniform mesh is admitted by the shared distributed runner."""
+    devices = _require_two_devices()
 
     from rfx import Simulation
 
@@ -194,8 +190,9 @@ def test_forward_distributed_rejects_uniform_mesh_in_v162():
     sim.add_source(position=(0.025, 0.03, 0.03), component="ez")
     sim.add_probe(position=(0.05, 0.03, 0.03), component="ez")
 
-    with pytest.raises(NotImplementedError, match="non-uniform"):
-        sim.forward(n_steps=4, distributed=True)
+    result = sim.forward(n_steps=4, distributed=True, devices=devices)
+    assert result.time_series.shape == (4, 1)
+    assert np.isfinite(np.asarray(result.time_series)).all()
 
 
 def test_forward_distributed_rejects_tfsf_on_nu_path():

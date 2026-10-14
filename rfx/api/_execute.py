@@ -2996,7 +2996,7 @@ class _ExecuteMixin:
         pec_occupancy_override: jnp.ndarray | None = None,
         n_steps: int | None = None,
         num_periods: float = 20.0,
-        checkpoint: bool = True,
+        checkpoint: bool | None = None,
         gradient: str = "autodiff",
         checkpoint_segments: int | None = None,
         emit_time_series: bool = True,
@@ -3176,8 +3176,8 @@ class _ExecuteMixin:
             Number of timesteps. If None, auto-computed from *num_periods*.
         num_periods : float
             Number of periods at freq_max for auto step count.
-        checkpoint : bool
-            Enable gradient checkpointing (default True).
+        checkpoint : bool or None
+            None enables checkpointing except on uniform distributed forward.
         checkpoint_segments : int or None
             If set, route the uniform single-device forward through the
             segmented-checkpoint path (issue #73), which trades ≈2x compute
@@ -3279,15 +3279,12 @@ class _ExecuteMixin:
             known-spurious warning on a deliberate configuration.
         distributed : bool, optional
             **Opt-in, unstable, pending GPU evidence (issue #44).**  When
-            ``True`` and a non-uniform mesh is configured, route the
-            differentiable forward through the sharded NU runner
-            (``rfx.runners.distributed_nu.run_nonuniform_distributed_pec``)
-            using a 1-D x-slab decomposition across ``devices``.  Defaults
-            to ``False`` (single-device path, no behaviour change).  In
-            v1.6.2 the distributed forward path is **NU-only** (DP3): a
-            uniform mesh raises ``NotImplementedError``.  TFSF sources
-            and waveguide ports are unsupported on this path and raise
-            ``NotImplementedError`` at preflight.
+            ``True``, use the mesh's distributed runner across ``devices``.
+            Uniform meshes share run(devices=...) including its one-device
+            fallbacks; graded meshes use the distributed NU runner.
+            Uniform distributed execution refuses material/design overrides
+            and explicit checkpointing; an omitted checkpoint uses the
+            runner's ordinary loop. Other lanes default to checkpointing.
         devices : list of jax.Device or None, optional
             Devices for the distributed run.  When ``distributed=True``
             and ``devices=None``, defaults to ``jax.devices()``.  When
@@ -3310,7 +3307,7 @@ class _ExecuteMixin:
             ``run(compute_s_params=True)``.  Required by the
             :func:`minimize_s11_at_freq_wave_decomp` objective.  Currently
             supported on uniform and graded single-device paths;
-            ``distributed=True`` raises ``NotImplementedError``.
+            graded distributed execution raises ``NotImplementedError``.
         rlc_values_override : dict or None
             Differentiable-value injection for lumped RLC elements added with
             :meth:`add_lumped_rlc` (WP 4-E).  ``LumpedRLCSpec`` stores plain
@@ -3470,6 +3467,22 @@ class _ExecuteMixin:
         )
         if _realized.ACTIVE is not None:
             _realized.enter(self, plan.lane)
+        if plan.lane == "fwd_distributed":
+            from rfx.runners._distributed_entry import forward_distributed
+            return forward_distributed(
+                self, plan=plan, assembly=_solve_assembly, devices=devices,
+                exchange_interval=exchange_interval, num_periods=num_periods,
+                port_s11_freqs=port_s11_freqs, skip_preflight=skip_preflight,
+                eps_override=eps_override, sigma_override=sigma_override,
+                mu_r_override=mu_r_override, pec_mask_override=pec_mask_override,
+                pec_occupancy_override=pec_occupancy_override, design_box=design_box,
+                design_eps_override=design_eps_override, design_sigma_override=design_sigma_override,
+                design_occupancy_override=design_occupancy_override,
+                design_box_holds_ports=design_box_holds_ports, rlc_values_override=rlc_values_override,
+                checkpoint=checkpoint, checkpoint_every=checkpoint_every,
+                checkpoint_segments=checkpoint_segments, n_warmup=n_warmup,
+                emit_time_series=emit_time_series, ringdown=ringdown)
+        checkpoint = True if checkpoint is None else checkpoint
         # No forward lane (and so no optimize()) applies Dey-Mittra weights.
         self._refuse_conformal_boundary(
             {"fwd_uniform": "uniform forward",
@@ -4087,153 +4100,17 @@ class _ExecuteMixin:
                 if float(p.impedance) > 0.0 and p.extent is not None))
 
         # ---- Distributed multi-device lane ----
-        if plan.lane in ("run_distributed", "run_distributed_nu") and self._interface_eps == "dual_average":
-            raise ValueError("interface_eps='dual_average' is not supported on the distributed lane")
         if plan.lane in ("run_distributed", "run_distributed_nu"):
-            from rfx.runners.distributed_v2 import one_device_reason, run_on_one_device
-            if reason := one_device_reason(self):
-                del _solve_assembly  # the fallback performs its own solve assembly
-                return run_on_one_device(self, {**_call_args, "devices": None,
-                                         "exchange_interval": 1, "skip_preflight": True},
-                                         reason=reason, requested_devices=len(devices),
-                                         diagnostics=_diagnostics)
-        if plan.lane in ("run_distributed", "run_distributed_nu"):
-            if self._dft_planes:
-                raise NotImplementedError(
-                    "add_dft_plane_probe() is not supported on the "
-                    "distributed multi-device run() path (issue #579); "
-                    "rfx.runners.distributed_v2 does not accumulate DFT-plane fields, "
-                    "so a registered plane would be silently dropped. Drop "
-                    "DFT plane probes or omit devices=... (use a "
-                    "single-device run() instead)."
-                )
-            from rfx.runners.distributed_v2 import (
-                refuse_unsupported_distributed_features,
-            )
-            refuse_unsupported_distributed_features(
-                self,
-                lane="distributed multi-device run()",
-                diagnostics=_diagnostics,
-            )
-            _dist_conformal = bool(conformal_pec and self._has_pec_to_conform())
-            # One device on a graded mesh is the non-uniform lane, which
-            # carries neither snapshot nor conformal_pec, nor until_decay on
-            # closed boundaries.
-            _one_device = "omit devices= to run on one device"
-            _dist_instead = _one_device
-            if self._uses_nonuniform_mesh:
-                _one_uniform = ("omit devices= and run on a uniform mesh "
-                                "(no dx/dy/dz profile)")
-                _dist_instead = {"*": _one_device,
-                                 "snapshot": _one_uniform,
-                                 "conformal_pec": _one_uniform}
-                if self._boundary not in ("cpml", "upml"):
-                    _dist_instead["until_decay"] = _one_uniform
-            # Resolve the default as the one-device lane of this mesh does: the
-            # uniform runner computes S for every impedance port, the non-uniform
-            # runner only for wire ports (extent set).
-            if compute_s_params is None:
-                if self._uses_nonuniform_mesh:
-                    compute_s_params = any(pe.impedance != 0.0 and pe.extent is not None
-                                           for pe in self._ports)
-                else:
-                    compute_s_params = any(pe.impedance != 0.0 for pe in self._ports)
-                # Use the same refusal as an explicit S-parameter request.
-                self._validate_run_sparameter_request(
-                    compute_s_params=compute_s_params,
-                    s_param_freqs=s_param_freqs,
-                    s_param_n_steps=s_param_n_steps,
-                    devices=devices,
-                )
-            if compute_s_params:
-                _dist_ports = [pe for pe in self._ports if pe.impedance != 0.0]
-                if len(_dist_ports) == 1 and _dist_ports[0].extent is not None:
-                    self._refuse_unsupported_run_kwargs(
-                        "uniform single-wire-port S-parameter", {
-                            "s_param_n_steps": self._s_param_n_steps_off_record(
-                                s_param_n_steps, n_steps, until_decay),
-                        }, instead=None,
-                        reason_overrides={"s_param_n_steps":
-                            "this lane computes S11 with a second full distributed "
-                            "run with all sources on, using the main run's "
-                            "n_steps and source convention"})
-                from rfx.probes.sparam_driver import refuse_distributed_lumped_s_pmc
-                refuse_distributed_lumped_s_pmc(self)
-
-            self._refuse_unsupported_run_kwargs("distributed multi-device", {
-                "subpixel_smoothing": subpixel_smoothing,
-                "checkpoint": checkpoint,
-                "snapshot": snapshot,
-                "until_decay": until_decay,
-                "conformal_pec": _dist_conformal,
-                **({} if report_every is None else {"report_every": report_every}),
-            }, instead=_dist_instead)
-            from rfx.materials.thin_conductor import refuse_f0_sheets
-            refuse_f0_sheets(self._thin_conductors, "distributed multi-device run()")
-            from rfx.runners._admission import admit_run_s_matrix
-            admit_run_s_matrix(self, compute_s_params=compute_s_params,
-                               conformal_pec=conformal_pec, distributed=True)
-            if plan.lane == "run_distributed_nu":
-                from rfx.runners.distributed_v2 import _spans_other_processes
-                if devices is not None and _spans_other_processes(devices):
-                    # The graded runner does not gather the final fields
-                    # across processes (#1461 review), so run() could not
-                    # return them; forward(distributed=True) can.
-                    raise NotImplementedError(
-                        "run(devices=...) on a non-uniform mesh does not support "
-                        "devices from more than one JAX process: the final fields "
-                        "are not gathered across processes. Use devices from one "
-                        "process, or forward(distributed=True) for the probe traces.")
-                grid, result, geometry_record = self._execute_distributed_nonuniform_from_materials(
-                    assembly=_solve_assembly,
-                    n_steps=n_steps,
-                    devices=devices,
-                    exchange_interval=exchange_interval,
-                    skip_preflight=skip_preflight,
-                    gather_final_state=True,
-                    lane="run_distributed_nu",
-                    diagnostics=_diagnostics,
-                )
-                _res = Result(
-                    diagnostics=result.get("diagnostics", _diagnostics),
-                    state=result["final_state"],
-                    time_series=result["time_series"],
-                    s_params=None,
-                    freqs=None,
-                    grid=grid,
-                    dt=grid.dt,
-                    freq_range=(self._freq_max / 10, self._freq_max, self._boundary),
-                    realized_geometry=geometry_record,
-                )
-            else:
-                from rfx.runners.distributed_v2 import run_distributed
-                _res = run_distributed(
-                    self,
-                    n_steps=n_steps,
-                    devices=devices,
-                    diagnostics=_diagnostics,
-                    exchange_interval=exchange_interval,
-                    assembly=_solve_assembly,
-                    conformal_pec=conformal_pec,
-                )
-            if compute_s_params:
-                from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
-                if s_param_freqs is None:
-                    s_param_freqs = jnp.linspace(self._freq_max / 10, self._freq_max, 50)
-                _s_params, _ = compute_lumped_wire_s_matrix_via_scan(
-                    self, s_param_freqs,
-                    n_steps=s_param_n_steps if s_param_n_steps is not None else n_steps,
-                    devices=devices,
-                    **({"_main_wire_record": True} if len(_dist_ports) == 1
-                       and _dist_ports[0].extent is not None else {}),
-                )
-                _res = _res._replace(s_params=_s_params, freqs=np.asarray(s_param_freqs))
-            _res = self._attach_run_settling_witness(
-                _res, n_steps=n_steps, num_periods=num_periods)
-            _warn_if_nonfinite_result(_res, context="run")
-            from rfx.current_moments import require_accumulated_current_moments
-            require_accumulated_current_moments(self, _res, "run")
-            return _res
+            from rfx.runners._distributed_entry import execute_distributed
+            return execute_distributed(
+                self, plan=plan, _solve_assembly=_solve_assembly,
+                _diagnostics=_diagnostics, _call_args=_call_args,
+                n_steps=n_steps, num_periods=num_periods, devices=devices,
+                exchange_interval=exchange_interval, skip_preflight=skip_preflight,
+                compute_s_params=compute_s_params, s_param_freqs=s_param_freqs,
+                s_param_n_steps=s_param_n_steps, conformal_pec=conformal_pec,
+                subpixel_smoothing=subpixel_smoothing, checkpoint=checkpoint,
+                snapshot=snapshot, until_decay=until_decay, report_every=report_every)
 
         # ---- Non-uniform mesh lane ----
         if plan.lane == "run_nonuniform":

@@ -58,6 +58,7 @@ def compute_lumped_wire_s_matrix_via_scan(
     return_refplane_diagnostics=False, conformal_pec=None, devices=None,
     _main_wire_record=False,
     return_settling=False,
+    _forward_port_s11=False,
 ):
     """Full lumped/wire N-port S-matrix via the production scan.
 
@@ -355,6 +356,20 @@ def compute_lumped_wire_s_matrix_via_scan(
                 plane_outboard[p] = int(rp_spec.outboard_sign)
                 if s == 0:
                     plane_offsets[p] = int(rp_spec.n_cells_outboard)
+
+    if _forward_port_s11:
+        # Native forward records all declared drives together. Superpose the
+        # existing isolated-drive physical phasors, then extract its terminal
+        # diagonals instead of decomposing an N-port matrix. No extra solve or
+        # second S computation; the unmeasured reference slots are not used.
+        from rfx.probes.probes import driven_port_reflection
+        voltage = np.sum(vp_all if wire_mode else v_all, axis=0)
+        current = np.sum(i_all, axis=0)
+        diagonal = jnp.stack([
+            driven_port_reflection(jnp.asarray(voltage[p], dtype=result_dtype),
+                                   jnp.asarray(current[p], dtype=result_dtype), z0[p])
+            for p in range(n_ports)])
+        return diagonal[0] if n_ports == 1 else diagonal, freqs
 
     if wire_mode and plane_v is not None:
         # issue #313 reference-plane path: byte-frozen legacy diagonals +

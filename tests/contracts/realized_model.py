@@ -105,3 +105,8 @@ CONSUMPTION_SITES = {
        for site in ("uniform", "graded", "adi", "distributed",
                     "distributed_nu", "subgrid")},
 }
+
+# Uniform forward consumes the same material operands as distributed run.
+for _row in ROWS:
+    TABLE[_row]["fwd_distributed"] = TABLE[_row]["run_distributed"]
+    CONSUMPTION[_row]["fwd_distributed"] = CONSUMPTION[_row]["run_distributed"]

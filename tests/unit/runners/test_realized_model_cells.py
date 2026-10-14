@@ -98,7 +98,7 @@ def run(sim, lane, row, steps=4):
         if row == "conformal":
             kw["conformal_pec"] = True
         return sim.run(**kw)
-    if lane == "fwd_distributed_nu":
+    if lane in ("fwd_distributed", "fwd_distributed_nu"):
         kw.update(distributed=True, devices=jax.devices("cpu")[:2])
     if row == "override_drive":
         kw["eps_override"] = override_epsilon(sim, lane)
@@ -115,7 +115,7 @@ def measured(lane, row):
             jax.block_until_ready(result.time_series)
     if dump.lane != lane:
         raise RuntimeError(f"expected lane {lane}, recorded {dump.lane}")
-    if lane in ("run_distributed", "run_distributed_nu", "fwd_distributed_nu"):
+    if lane in ("run_distributed", "fwd_distributed", "run_distributed_nu", "fwd_distributed_nu"):
         dump.full_materials = cell_materials(sim, lane)
     return dump
 
@@ -133,12 +133,12 @@ def material_pairs(dump, row, axis):
     expected = ({"sat.c", "sat.f"} if row == "sat" else
                 {"aniso.E"} if row == "conformal" else
                 {"adi.E"} if dump.lane in ("run_adi", "fwd_adi") else
-                {"distributed.E"} if row != "mu" and dump.lane == "run_distributed" else
+                {"distributed.E"} if row != "mu" and dump.lane in ("run_distributed", "fwd_distributed") else
                 {"distributed_nu.E"} if row != "mu" and dump.lane in ("run_distributed_nu", "fwd_distributed_nu") else
                 set())
     if expected - sites:
         raise RuntimeError(f"no record at {sorted(expected - sites)}")
-    if row != "mu" and dump.lane in ("run_distributed", "run_distributed_nu", "fwd_distributed_nu"):
+    if row != "mu" and dump.lane in ("run_distributed", "fwd_distributed", "run_distributed_nu", "fwd_distributed_nu"):
         spans = sorted((int(r["owned_start"]), int(r["owned_count"])) for r in records)
         end = 0
         for start, count in spans:

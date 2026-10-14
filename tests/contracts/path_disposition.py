@@ -108,7 +108,7 @@ KINDS = (CARRIES, REFUSES, FALLS_BACK, NOT_REACHABLE, IGNORABLE, UNCLASSIFIED)
 
 LANES = (
     "run_uniform", "run_nonuniform", "run_subgridded", "run_adi",
-    "run_distributed", "run_distributed_nu", "fwd_uniform", "fwd_nonuniform", "fwd_distributed_nu",
+    "run_distributed", "run_distributed_nu", "fwd_distributed", "fwd_uniform", "fwd_nonuniform", "fwd_distributed_nu",
     "fwd_adi",
 )
 # Columns _dispatch_plan reports under another column's lane token.
@@ -1706,6 +1706,15 @@ TABLE["_waveguide_ports"]["waveguide_port"]["run_distributed_nu"] = falls_back(
     "run_nonuniform", "single-device graded run with the same arguments")
 
 
+# The uniform forward entry shares every distributed run disposition.
+CONFORMAL["fwd_distributed"] = CONFORMAL["run_distributed"]
+for _features in TABLE.values():
+    for _cells in _features.values():
+        if "run_distributed" in _cells:
+            _cells["fwd_distributed"] = _cells["run_distributed"]
+TABLE["_coaxial_ports"]["coax_port"]["fwd_distributed"] = FWD_COAX
+
+
 def cell(attr: str, feature: str, path: str) -> Cell:
     """The recorded disposition for one input and one execution path."""
     row = TABLE[attr][feature]
@@ -1718,5 +1727,5 @@ PLAIN_SOURCE_S_REQUEST = {
     path: refuses("rfx.runners._admission.refuse_plain_sources_s_matrix; "
                   "tests/unit/sparams/test_plain_source_refusal.py", raises="plain sources")
     for path in ("run_uniform", "run_nonuniform", "run_subgridded", "run_distributed", "run_distributed_nu",
-                 "s_matrix_scan", "fwd_uniform", "fwd_nonuniform")
+                 "s_matrix_scan", "fwd_distributed", "fwd_uniform", "fwd_nonuniform")
 }

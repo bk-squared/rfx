@@ -2411,13 +2411,19 @@ def test_every_user_facing_return_carries_the_backstop():
     hands a result back calls the backstop, so a new return site cannot skip
     it without this count changing."""
     import re
-    text = (REPO_ROOT / "rfx/api/_execute.py").read_text()
-    returns = len(re.findall(
-        r'_warn_if_nonfinite_result\(_res, context="(?:run|forward)"\)', text))
-    guards = len(re.findall(
-        r'require_accumulated_current_moments\(self, _res, "(?:run|forward)"\)',
-        text))
-    assert returns == guards == 6, (returns, guards)
+    counts = {}
+    for path in sorted((REPO_ROOT / "rfx").rglob("*.py")):
+        text = path.read_text()
+        returns = len(re.findall(
+            r'_warn_if_nonfinite_result\(_res, context="(?:run|forward)"\)', text))
+        guards = len(re.findall(
+            r'require_accumulated_current_moments\(self, _res, "(?:run|forward)"\)',
+            text))
+        if returns or guards:
+            counts[path.relative_to(REPO_ROOT).as_posix()] = (returns, guards)
+    # Each file that hands a result back guards every such site.
+    assert all(r == g for r, g in counts.values()), counts
+    assert sum(r for r, _ in counts.values()) == 6, counts
 
 
 def test_the_traceable_moment_unpack_matches_the_host_one():

@@ -238,8 +238,6 @@ def refusal(case, entry, path):
         return 'uniform, single-device'
     if case == 'pmc' and path.startswith('distributed'):
         return 'PMC|pmc'
-    if path == 'distributed-uniform' and entry == 'forward':
-        return 'only for non-uniform meshes'
     if case == 'periodic' and path != 'uniform':
         return 'periodic'
     if case == 'pmc' and path.startswith('distributed'):

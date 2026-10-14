@@ -254,7 +254,7 @@ def test_path_existing_refusals(kind, path):
         with pytest.raises(TypeError, match='pec_occupancy_override'):
             sim.run(**options)
     elif path == 'distributed':
-        with pytest.raises(NotImplementedError, match='only for non-uniform meshes'):
+        with pytest.raises(NotImplementedError, match='pec_occupancy_override'):
             sim.forward(distributed=True, **options)
     elif path == 'adi':
         sim._solver = 'adi'
