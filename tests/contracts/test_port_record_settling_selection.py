@@ -79,8 +79,9 @@ def _lumped_then_wire(graded):
 
 @pytest.mark.parametrize('graded, freqs, read_kinds', [
     (False, np.array([2e9, 4e9]), {'lumped'}),   # uniform forward forms S from the lumped accumulators only
-    (True, None, {'wire'}),                      # graded forward without bins: wire S, the lumped port only records
-], ids=['uniform-lumped-S', 'graded-wire-S-lumped-record-only'])
+    (True, np.array([2e9, 4e9]), {'lumped', 'wire'}),  # graded forward with bins: S from both kinds
+    (True, None, set()),                         # graded forward without bins: no S, both ports only record
+], ids=['uniform-lumped-S', 'graded-both-S', 'graded-no-S-records-only'])
 def test_real_forward_scores_exactly_the_records_behind_its_s(monkeypatch, graded, freqs, read_kinds):
     import warnings
     import rfx.sparams._tail_witness as witness
@@ -92,7 +93,7 @@ def test_real_forward_scores_exactly_the_records_behind_its_s(monkeypatch, grade
         result = _lumped_then_wire(graded).forward(n_steps=60, skip_preflight=True, port_s11_freqs=freqs)
         result.settling_witness
     records = result.sparam_time_records
-    assert result.s_params is not None and {r.kind for r in records} == {'lumped', 'wire'}
+    assert (result.s_params is not None) == bool(read_kinds) and {r.kind for r in records} == {'lumped', 'wire'}
     expected = {r.id for r in records if r.kind in read_kinds}
     assert {r.id for r in seen} == expected
     assert {s['id'] for s in result.settling_witness['skipped_port_records']} == {r.id for r in records} - expected
