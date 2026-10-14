@@ -97,8 +97,14 @@ def stamp_wire_radius(grid, materials, component, radius, cells):
     The transverse mesh must be locally square and uniform; spacing along
     the live port must also be uniform. Axial grading did not retain the
     plate oracle's 1% resistance bound in the measured profiles. Grading
-    away from this stencil is allowed. Traced mesh metrics are refused:
-    the local geometry/stability envelope cannot be checked there.
+    away from this stencil is allowed, including declared traced ranges
+    separated from it by a one-cell margin. The stamp reads only widths
+    and indices, and the pin index is resolved on the nominal profile
+    (PR 1686): a moving range elsewhere may shift node positions without
+    changing the stamp.
+    Because the stamp uses nominal widths, a whole-profile gradient has no
+    stamp term for the stencil's own cells; those cells are declared fixed
+    (the run stops if they move), so their gradient entries are not meaningful.
     Material differentiation stays in JAX throughout the stamping itself.
     """
     validate_radius(radius)
@@ -115,9 +121,34 @@ def stamp_wire_radius(grid, materials, component, radius, cells):
             widths = [np.asarray(v) for v in spine]
         else:
             metrics = port_metric_axes(grid)
-            if not all(host for _, host in metrics):
-                raise NotImplementedError("wire-port radius does not support traced mesh metrics")
-            widths = [np.asarray(v) for v, _ in metrics]
+            from rfx.model.graded_admission import nominal_cells, traced_cell_mask
+            widths = []
+            for a, (v, host) in enumerate(metrics):
+                if host:
+                    widths.append(np.asarray(v))
+                    continue
+                if spine[a] is not None:
+                    widths.append(np.asarray(spine[a]))
+                    continue
+                w = nominal_cells(grid, a, padded=True)
+                m = traced_cell_mask(grid, a, padded=True)
+                if w is None or m is None:
+                    raise NotImplementedError(
+                        "wire-port radius does not support traced mesh metrics; "
+                        "a nominal profile with traced_cells is needed")
+                widths.append(np.asarray(w, dtype=np.float64))
+                for cell in cells:
+                    i = cell[a]
+                    lo, hi = (i, i + 1) if a == axis else (i - 2, i + 2)
+                    if np.any(m[max(0, lo - 1):hi + 1]):
+                        raise NotImplementedError(
+                            f"wire-port radius at port cell {cell}, axis {'xyz'[a]} "
+                            f"reads stencil cells {lo}..{hi - 1} (padded); "
+                            f"declared traced range {grid.traced_cells['xyz'[a]]} "
+                            "(half-open interior) overlaps the stencil or its margin. "
+                            "A pin inside or next to a moving range needs the "
+                            "off-square Hankel bound and AD-vs-FD work, "
+                            "which is not implemented.")
     else:
         widths = [grid.cells(t) for t in range(3)]
 
