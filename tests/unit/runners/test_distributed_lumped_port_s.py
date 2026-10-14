@@ -225,7 +225,7 @@ def test_pmc_matched_line_refused(explicit, channel):
     # now intentionally uses absorbing x ends and no magnetic side walls.
     sim = _model(channel=channel, magnetic=True,
                  boundary=BoundarySpec(x="cpml", y="pmc", z="pec"))
-    with pytest.raises(NotImplementedError, match=r"PMC magnetic face.*y_lo.*distributed_v2.*magnetic image"):
+    with pytest.raises(NotImplementedError, match=r"Lumped-port S-parameters with magnetic \(PMC\) face\(s\).*y_lo.*not supported with devices="):
         sim.run(n_steps=8, devices=jax.devices("cpu")[:2], skip_preflight=True,
                 **({"compute_s_params": True} if explicit else {}))
 
@@ -245,7 +245,7 @@ def test_each_magnetic_face_refused_before_scan(monkeypatch, face, explicit):
         pytest.fail("magnetic S request must refuse before any distributed scan")
 
     monkeypatch.setattr(runner, "run_distributed", unexpected)
-    with pytest.raises(NotImplementedError, match=rf"PMC magnetic face.*{face}.*distributed_v2.*magnetic image"):
+    with pytest.raises(NotImplementedError, match=rf"Lumped-port S-parameters with magnetic \(PMC\) face\(s\).*{face}.*not supported with devices="):
         sim.run(n_steps=8, devices=jax.devices("cpu")[:2], skip_preflight=True,
                 **({"compute_s_params": True} if explicit else {}))
 

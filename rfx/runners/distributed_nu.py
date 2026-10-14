@@ -884,6 +884,9 @@ def run_nonuniform_distributed_pec(
             pec_faces={f"{axis}_{side}" for axis in "xyz" for side in ("lo", "hi")},
             pmc_faces=pmc_faces,
         )
+    elif pmc_faces:
+        # The graded grid keeps no PMC declaration, so init_cpml_slabs cannot see these faces.
+        _distributed_boundary_layers(sharded_grid, n_devices, pmc_faces=pmc_faces)
     if use_cpml and cpml_state is None:
         raise ValueError(
             "cpml_params was provided but cpml_state is None; pass the "

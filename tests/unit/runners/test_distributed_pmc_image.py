@@ -113,7 +113,6 @@ def measure(scene, record_property):
     row = dict(traces=traces, probe_own_peak_ulp=own_ulp, scene=scene, steps=60, nx=int(results[1].grid.nx), ulps=summary,
                measurements=measurements, failures=failures)
     record_property('pmc_record', json.dumps(row))
-    print('PMC_RECORD '+json.dumps(row), flush=True)
     assert not failures, failures
     jax.clear_caches()
 

@@ -9846,8 +9846,7 @@
           "numbers": [
             0.0005,
             0.0,
-            0.0,
-            4.0
+            0.0
           ],
           "severity": "warning",
           "source": "_validate_cfg_source_on_reflector_plane"
