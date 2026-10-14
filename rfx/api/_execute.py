@@ -3476,9 +3476,8 @@ class _ExecuteMixin:
             checks of the value (W0, W1, WE and the rest, as ``run()``'s),
             computed on the host from a concrete result and ``None`` while
             traced. Wire ports only (``add_port(..., extent=...)``); on the
-            uniform lane one port and ``port_s11_freqs=`` are needed (the
-            bins), on the graded lane the completion uses the lane's own
-            bins. Everything ``run(ringdown=...)`` refuses is refused, and
+            uniform lane one port is supported; ``port_s11_freqs=`` (the
+            bins) is needed on both lanes. Everything ``run(ringdown=...)`` refuses is refused, and
             so are ``distributed=True`` and ``emit_time_series=False``.
             ``None`` (default) leaves every output and the traced program as
             they were.

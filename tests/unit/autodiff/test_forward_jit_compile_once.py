@@ -179,7 +179,8 @@ def _s11_loss(sim, checkpoint=False):
     def loss(eps_box):
         r = sim.forward(design_box=BOX, design_eps_override=eps_box,
                         n_steps=N_STEPS, checkpoint=checkpoint,
-                        skip_preflight=True)
+                        skip_preflight=True,
+                        port_s11_freqs=np.linspace(sim._freq_max / 10, sim._freq_max, 50))
         return jnp.sum(jnp.abs(r.s_params[0, 0, 3:8]) ** 2)
     return loss
 
@@ -270,7 +271,8 @@ def _realistic_record(lane):
     sim = _box(lane)
     grid = sim._build_grid() if lane == "uniform" else sim._build_nonuniform_grid()
     eps = jnp.full(tuple(grid.shape), 2.2, jnp.float32)
-    kw = {"port_s11_freqs": FREQS} if lane == "uniform" else {}
+    kw = {"port_s11_freqs": FREQS if lane == "uniform" else
+          np.linspace(sim._freq_max / 10, sim._freq_max, 50)}
 
     def f(p):
         r = sim.forward(n_steps=4000, skip_preflight=True, eps_override=eps * p, **kw)
@@ -318,7 +320,8 @@ def test_repeat_calls_with_ringdown_do_not_compile(lane):
     sim = _box(lane)
     grid = sim._build_grid() if lane == "uniform" else sim._build_nonuniform_grid()
     eps = jnp.full(tuple(grid.shape), 2.2, jnp.float32)
-    kw = {"port_s11_freqs": FREQS} if lane == "uniform" else {}
+    kw = {"port_s11_freqs": FREQS if lane == "uniform" else
+          np.linspace(sim._freq_max / 10, sim._freq_max, 50)}
 
     def loss(p):
         r = sim.forward(n_steps=600, skip_preflight=True, eps_override=eps * p,
@@ -439,7 +442,8 @@ def test_a_trace_time_context_that_cannot_make_constants_does_not_recurse(
     monkeypatch.setattr(ex, "_staged_by_an_outer_trace", lambda: True)
     sim = _board()
     r = sim.forward(design_box=BOX, design_eps_override=_box_eps(sim),
-                    n_steps=5, checkpoint=False, skip_preflight=True)
+                    n_steps=5, checkpoint=False, skip_preflight=True,
+                    port_s11_freqs=np.linspace(sim._freq_max / 10, sim._freq_max, 50))
     assert np.all(np.isfinite(np.asarray(r.s_params)))
 
 

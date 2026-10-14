@@ -1137,7 +1137,10 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
             )
 
     sp_freqs = None
-    if wire_port_specs and (compute_s_params is None or compute_s_params):
+    if wire_port_specs and (
+        s_param_freqs is not None if lane == "fwd_nonuniform"
+        else compute_s_params is None or compute_s_params
+    ):
         sp_freqs = s_param_freqs
         if sp_freqs is None:
             sp_freqs = np.linspace(
