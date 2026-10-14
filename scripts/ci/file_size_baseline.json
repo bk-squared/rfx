@@ -15,7 +15,7 @@
     "rfx/runners/_distributed_common.py": 1136,
     "rfx/runners/distributed_nu.py": 1407,
     "rfx/simulation.py": 2688,
-    "rfx/sources/waveguide_port.py": 2664,
+    "rfx/sources/waveguide_port.py": 126,
     "rfx/sparams/_common.py": 2374,
     "rfx/sparams/coax.py": 1808,
     "rfx/subgridding/jit_runner.py": 2507

@@ -50,6 +50,7 @@ if str(ROOT) not in sys.path:
 
 import rfx.sources.waveguide_port as wg_mod  # noqa: E402
 import rfx.model.waveguide_modes as _wg_move_waveguide_modes
+import rfx.model.waveguide_mode_solver as _wg_move_mode_solver
 import rfx.measurement.waveguide_s as _wg_move_waveguide_s
 from rfx.sources.waveguide_port import WaveguidePort, WaveguidePortConfig  # noqa: E402
 
@@ -202,8 +203,8 @@ def _reduced_gevp_te_mode_profiles(
     if nu == 0 or nv == 0:
         raise ValueError("cannot build TE mode profile for an empty aperture")
 
-    d_uu = _wg_move_waveguide_modes._second_diff_1d(u_w, bc="neumann")
-    d_vv = _wg_move_waveguide_modes._second_diff_1d(v_w, bc="neumann")
+    d_uu = _wg_move_mode_solver._second_diff_1d(u_w, bc="neumann")
+    d_vv = _wg_move_mode_solver._second_diff_1d(v_w, bc="neumann")
     lap = np.kron(d_uu, np.eye(nv)) + np.kron(np.eye(nu), d_vv)
 
     dA = _partial_dA_np(u_w, v_w)
@@ -240,15 +241,15 @@ def _reduced_gevp_te_mode_profiles(
     if float(np.sum(hx * hx_ana * dA)) < 0.0:
         hx = -hx
 
-    d_hx_du = _wg_move_waveguide_modes._cell_centred_gradient(hx, u_w, axis=0, bc="neumann")
-    d_hx_dv = _wg_move_waveguide_modes._cell_centred_gradient(hx, v_w, axis=1, bc="neumann")
+    d_hx_du = _wg_move_mode_solver._cell_centred_gradient(hx, u_w, axis=0, bc="neumann")
+    d_hx_dv = _wg_move_mode_solver._cell_centred_gradient(hx, v_w, axis=1, bc="neumann")
     ey = d_hx_dv
     ez = -d_hx_du
     zero = ~keep.reshape(nu, nv)
     ey[zero] = 0.0
     ez[zero] = 0.0
-    hy = -_wg_move_waveguide_modes._shift_profile_to_dual(ez, h_offset)
-    hz = _wg_move_waveguide_modes._shift_profile_to_dual(ey, h_offset)
+    hy = -_wg_move_mode_solver._shift_profile_to_dual(ez, h_offset)
+    hz = _wg_move_mode_solver._shift_profile_to_dual(ey, h_offset)
     hy[zero] = 0.0
     hz[zero] = 0.0
 
@@ -263,7 +264,7 @@ def _reduced_gevp_te_mode_profiles(
     ez /= norm
     hy /= norm
     hz /= norm
-    hy, hz = _wg_move_waveguide_modes._scale_h_to_unit_cross(ey, ez, hy, hz, dA)
+    hy, hz = _wg_move_mode_solver._scale_h_to_unit_cross(ey, ez, hy, hz, dA)
     return ey, ez, hy, hz, float(np.sqrt(kc2))
 
 
@@ -418,7 +419,7 @@ def _normalize_profile_to_dA(profile: Profile, dA: np.ndarray) -> Profile:
     ez /= scale
     hy /= scale
     hz /= scale
-    hy, hz = _wg_move_waveguide_modes._scale_h_to_unit_cross(ey, ez, hy, hz, dA)
+    hy, hz = _wg_move_mode_solver._scale_h_to_unit_cross(ey, ez, hy, hz, dA)
     return ey, ez, hy, hz, kc
 
 

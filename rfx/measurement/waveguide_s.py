@@ -6,12 +6,10 @@ import jax.numpy as jnp
 import numpy as np
 from rfx.boundaries.axes import resolve_cpml_axes
 from rfx.model.waveguide_modes import (
+    C0_LOCAL,
     WaveguidePortConfig,
     _compute_beta,
     _compute_mode_impedance,
-)
-from rfx.measurement.waveguide_modal import (
-    _mode_indices_from_config,
 )
 from rfx.measurement.settling import (
     settling_db_from_port_records,
@@ -109,6 +107,34 @@ def waveguide_plane_positions(cfg: WaveguidePortConfig) -> dict[str, float]:
         "reference": cfg.reference_x_m,
         "probe": cfg.probe_x_m,
     }
+
+
+def _mode_indices_from_config(cfg: WaveguidePortConfig) -> tuple[int, int]:
+    """Best-effort extraction of (m, n) mode indices from a config.
+
+    Uses the cutoff frequency and aperture dimensions to identify the mode.
+    """
+    if getattr(cfg, "mode_indices", (0, 0)) != (0, 0):
+        return cfg.mode_indices
+    a, b = cfg.a, cfg.b
+    fc = cfg.f_cutoff
+    kc = 2 * np.pi * fc / C0_LOCAL
+    kc_sq = kc ** 2
+
+    best_err = float('inf')
+    best_mn = (0, 0)
+    for m in range(0, 8):
+        for n in range(0, 8):
+            if m == 0 and n == 0:
+                continue
+            kc_sq_an = (m * np.pi / a) ** 2 + (n * np.pi / b) ** 2
+            err = abs(kc_sq - kc_sq_an) / max(kc_sq_an, 1e-30)
+            if err < best_err:
+                best_err = err
+                best_mn = (m, n)
+    if best_err < 0.35:
+        return best_mn
+    return (0, 0)
 
 
 def _shift_modal_waves(
