@@ -325,6 +325,14 @@ def _is_both_branch_gate(job: str, step: dict) -> bool:
     return any(script in run for script in BOTH_BRANCH_GATES.get(job, ()))
 
 
+def _is_diagnostic_upload(step: dict) -> bool:
+    """An artifact upload that must run when the shard FAILS (its whole point:
+    the shard's collected test list, to replay a CI-only failure). It runs no
+    tests, so `if: always()` cannot spend the time the verdict exists to save."""
+    return (str(step.get("uses", "")).startswith("actions/upload-artifact")
+            and step.get("if") == "always()" and "run" not in step)
+
+
 @pytest.mark.parametrize("job", HEAVY_JOBS)
 def test_the_first_step_is_the_checkout(job: str) -> None:
     """Every test below reasons about "the steps after checkout"."""
@@ -363,7 +371,7 @@ def test_every_step_after_checkout_is_gated_on_the_verdict(job: str) -> None:  #
         physics = [step for step in test_steps if step is not contracts[0]]
         assert physics[0].get("if") == WORK_IF
         for step in steps[1:]:
-            if step not in test_steps:
+            if step not in test_steps and not _is_diagnostic_upload(step):
                 assert "if" not in step, step
         assert not any("Nothing to run" in step.get("name", "") for step in steps)
         return
@@ -395,6 +403,7 @@ def test_work_steps_skip_only_on_the_one_known_value(job: str) -> None:
         for step in steps
         if str(step.get("if", "")).strip()
         and str(step["if"]).strip() not in (WORK_IF, SKIP_IF)
+        and not _is_diagnostic_upload(step)
         and not (job == "guards-and-preflight" and (
             "scripts/ci/check_data_budget.py" in step.get("run", "")
             or step.get("name") == "Data budget already passed on the PR"

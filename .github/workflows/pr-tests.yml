@@ -292,6 +292,12 @@ jobs:
       - name: Record the resolved JAX/numpy versions (the pin this lane really has)
         run: python -c "import jax, jaxlib, numpy; print('jax', jax.__version__, 'jaxlib', jaxlib.__version__, 'numpy', numpy.__version__)"
 
+      - name: Record the runner CPU model
+        # GitHub assigns CPU models at random, and a float32 result near a bar can
+        # differ between them; a shard that fails only in CI is read against this.
+        run: |
+          lscpu | grep -E '^(Model name|CPU\(s\)|Flags)' | cut -c1-200
+
       - name: Contract tests — shard ${{ matrix.group }} of 12 (the diff is not code)
         if: needs.changes.outputs.code_changed == 'false'
         # The diff touches no file under rfx/, tests/, validation/ or examples/
@@ -322,6 +328,19 @@ jobs:
           # a no-op beyond this flag when nothing is anomalous. (Variable
           # name kept for continuity with the weekly lane's wiring.)
           RFX_WEEKLY_RSS: "1"
-        run: >
-          pytest -q -ra -p no:cacheprovider
-          --splits 12 --group ${{ matrix.group }}
+        # The shard's test list is written first with the SAME arguments ("$@"),
+        # so a failure that depends on collection order can be replayed outside
+        # CI (the list is uploaded by the next step, pass or fail).
+        run: |
+          set -- -p no:cacheprovider --splits 12 --group ${{ matrix.group }}
+          pytest --collect-only -q "$@" > fast-suite-collection.txt || echo "::warning::collect-only failed; the run below reports the collection error"
+          pytest -q -ra "$@"
+
+      - name: Upload this shard's test list
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fast-suite-collection-${{ matrix.group }}
+          path: fast-suite-collection.txt
+          if-no-files-found: ignore
+          retention-days: 14
