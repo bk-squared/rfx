@@ -106,7 +106,6 @@ PR_FINDING_CHOICES = {
     "nu-lumped-dft-record-missing": "_ports:lumped_port:fwd_uniform:fwd_nonuniform:constant:12",
     "nu-missing-vref": "_ports:wire_port:run_uniform:run_nonuniform:constant:12",
     "port-time-record-missing": "_ports:lumped_port:run_uniform:run_distributed:constant:12",
-    "s-parameter-shape": "_ports:wire_port:fwd_uniform:fwd_nonuniform:constant:12",
     "uniform-wire-dft-record-missing": "_ports:wire_port:run_uniform:run_nonuniform:constant:12"
 }
 

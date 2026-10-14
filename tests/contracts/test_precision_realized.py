@@ -338,6 +338,11 @@ def test_realized_field_storage(monkeypatch, entry, precision):
                     # precision still applies to every retained entry.
                     assert np.isnan(a[:, 0]).all(), entry
                     assert np.isfinite(a[:, 1]).all(), entry
+                elif entry.startswith('forward') and a.ndim == 3 and a.shape[:2] == (2, 2):
+                    # forward S-matrix (N, N, F): only port 0 is driven, so the
+                    # column of port 1 is NaN by definition (not measured).
+                    assert np.isfinite(a[:, 0]).all(), entry
+                    assert np.isnan(a[:, 1]).all(), entry
                 else:
                     assert np.isfinite(a).all(), entry
 
