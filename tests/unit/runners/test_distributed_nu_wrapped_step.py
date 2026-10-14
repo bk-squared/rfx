@@ -757,7 +757,7 @@ def _item6_identity(case, devices, mode='plain', mutate=None):
     lr = cells.lorentz_spec if case in ('lorentz', 'mixed') else None
     grid = s.grid
     layout = Slab(grid.nx, devices)
-    mesh = Mesh(np.asarray(jax.devices()[:devices]), ('x',))
+    mesh = Mesh(np.asarray(jax.devices('cpu')[:devices]), ('x',))
     occ = jnp.asarray(s.occupancy) if case == 'occupancy' else None
     sheets, wires = _conductors(s) if case == 'sheet_wire' else ((), ())
     mask = s.pec_mask if case in ('pec', 'sheet_wire') else None
@@ -861,7 +861,7 @@ def _item6_memory_worker(boundary, devices, mode, mutation=False):
         return scan(*args, **kwargs)
     jax.lax.scan = observe
     def forward(e):
-        return sim.forward(eps_override=e, distributed=True, devices=jax.devices()[:devices],
+        return sim.forward(eps_override=e, distributed=True, devices=jax.devices('cpu')[:devices],
                            n_steps=8, skip_preflight=True).time_series
     result = forward(eps) if mode == 'plain' else jax.grad(lambda e: jnp.sum(forward(e) ** 2))(eps)
     jax.block_until_ready(result)

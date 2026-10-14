@@ -245,7 +245,7 @@ def step_occupancy_on_ones(cells, n_devices):
         np.full(shape[2] - 1, .001), .001, cpml_layers=0)
     sg = nu.build_sharded_nu_grid(grid, n_devices)
     layout = Slab.from_grid(sg)
-    mesh = Mesh(np.asarray(jax.devices()[:n_devices]), ('x',))
+    mesh = Mesh(np.asarray(jax.devices('cpu')[:n_devices]), ('x',))
     slabs = cut(jnp.asarray(cells), layout, 'pec_occupancy', mesh=mesh)
     mat = MaterialArrays(*(cut(v, layout, kind, mesh=mesh)
                            for v, kind in zip(material(shape)[:3], ('eps_r', 'sigma', 'mu_r'))))
@@ -270,7 +270,7 @@ def step_occupancy_on_ones(cells, n_devices):
             patch.object(graded, 'apply_pec_faces', lambda st, *a, **k: st):
         result = nu.run_nonuniform_distributed_pec(
             sg, mat, None, 1, n_devices=n_devices,
-            devices=jax.devices()[:n_devices], sharded_pec_occupancy=slabs)
+            devices=jax.devices('cpu')[:n_devices], sharded_pec_occupancy=slabs)
         jax.block_until_ready(result)
         jax.effects_barrier()
     assert sorted(observed) == list(range(n_devices))
@@ -280,7 +280,7 @@ def step_occupancy_on_ones(cells, n_devices):
 
 @pytest.mark.parametrize('n_devices', [2, 3])
 def test_slab_owned_rows_match_operator_and_reference(n_devices):
-    if len(jax.devices()) < n_devices:
+    if len(jax.devices('cpu')) < n_devices:
         pytest.skip('requires three virtual CPU devices configured before import')
     from rfx.stepping.slab import Slab, cut
     shape = (11, 7, 5)
@@ -288,7 +288,7 @@ def test_slab_owned_rows_match_operator_and_reference(n_devices):
     cells[0, 2:5, 1:4] = .5
     layout = Slab(shape[0], n_devices)
     cells[layout.nx_per_rank-1:layout.nx_per_rank+1, 1:4, 2:4] = .75
-    mesh = Mesh(np.asarray(jax.devices()[:n_devices]), ('x',))
+    mesh = Mesh(np.asarray(jax.devices('cpu')[:n_devices]), ('x',))
     slabs = cut(jnp.asarray(cells), layout, 'pec_occupancy', mesh=mesh)
     result = publish_slab_occupancy(material(slabs.shape), slabs, mesh)
     effective = step_occupancy_on_ones(cells, n_devices)
@@ -343,7 +343,7 @@ def test_a_slab_with_its_low_ghost_row_gives_the_whole_domain_bits(n_ranks):
 @pytest.mark.parametrize('n_devices', [2, 3])
 @pytest.mark.parametrize('seams', [False, True], ids=['last-row', 'last-row-and-seams'])
 def test_slab_published_ghosts_are_one_and_alignment_bounded(n_devices, seams):
-    if len(jax.devices()) < n_devices:
+    if len(jax.devices('cpu')) < n_devices:
         pytest.skip('requires three virtual CPU devices configured before import')
     from rfx.stepping.slab import Slab, cut
     cells = np.zeros((11, 7, 5), dtype=np.float32)
@@ -353,7 +353,7 @@ def test_slab_published_ghosts_are_one_and_alignment_bounded(n_devices, seams):
     if seams:
         for seam in range(layout.nx_per_rank, layout.nx, layout.nx_per_rank):
             cells[seam-1:seam+1] = .5
-    mesh = Mesh(np.asarray(jax.devices()[:n_devices]), ('x',))
+    mesh = Mesh(np.asarray(jax.devices('cpu')[:n_devices]), ('x',))
     slabs = cut(jnp.asarray(cells), layout, 'pec_occupancy', mesh=mesh)
     published = publish_slab_occupancy(material(slabs.shape), slabs, mesh)
     for component, keep in zip(('ex', 'ey', 'ez'), published.edge_keep):
@@ -483,7 +483,7 @@ def slab_drive_scene(source_i, samples=(.137,), *, material_drive=False):
         dy_profile=np.array([.001, .0009, .0011, .001, .001, .001]))
     sg = nu.build_sharded_nu_grid(grid, 2)
     layout = Slab.from_grid(sg)
-    mesh = Mesh(np.asarray(jax.devices()[:2]), ('x',))
+    mesh = Mesh(np.asarray(jax.devices('cpu')[:2]), ('x',))
     mat = MaterialArrays(*(cut(v, layout, kind, mesh=mesh)
                            for v, kind in zip(material(grid.shape)[:3], ('eps_r', 'sigma', 'mu_r'))))
     node = (source_i, 3, 2)
@@ -494,7 +494,7 @@ def slab_drive_scene(source_i, samples=(.137,), *, material_drive=False):
         slabs = None if occupancy is None else cut(occupancy * block, layout, 'pec_occupancy', mesh=mesh)
         return nu.run_nonuniform_distributed_pec(
             sg, mat, None, len(samples), sources=[source], probes=[ProbeSpec(*node, 'ez')],
-            n_devices=2, devices=jax.devices()[:2], sharded_pec_occupancy=slabs,
+            n_devices=2, devices=jax.devices('cpu')[:2], sharded_pec_occupancy=slabs,
             material_drive=[1.] if material_drive else None,
             checkpoint_every=checkpoint_every, n_warmup=n_warmup)
 
