@@ -160,7 +160,6 @@ def test_advisory_fires_exactly_when_the_run_is_refused(boundary, profiles,
         f"run() raised={raised} — the advisory and the guard disagree")
 
 
-@pytest.mark.source_scan
 def test_advisory_carries_its_basis_not_only_its_verdict():
     """A finding a reader cannot audit is an assertion.
 

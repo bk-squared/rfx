@@ -65,6 +65,7 @@ def directly_imports(source: str, modules: set[str], filename: str = "<test>") -
 class Selection:
     files: tuple[str, ...]
     excluded: Mapping[str, float]
+    partly_added: Mapping[str, float]
     selected_seconds: float
     not_run_count: int
     not_run_seconds: float
@@ -73,6 +74,10 @@ class Selection:
     source_scan_count: int
     source_scan_files: int
     source_scan_seconds: float
+    source_scan_run_count: int
+    source_scan_run_seconds: float
+    source_scan_deselected_count: int
+    source_scan_deselected_seconds: float
 
     def summary(self) -> str:
         lines = [
@@ -80,6 +85,11 @@ class Selection:
             f"recorded {self.selected_seconds:.6f} s",
             f"source-scan tests added: {self.source_scan_count} tests in "
             f"{self.source_scan_files} files, recorded {self.source_scan_seconds:.6f} s",
+            f"source-scan tests that run: {self.source_scan_run_count} tests, "
+            f"recorded {self.source_scan_run_seconds:.6f} s",
+            "source-scan tests deselected by stage-2 markers: "
+            f"{self.source_scan_deselected_count} tests, "
+            f"recorded {self.source_scan_deselected_seconds:.6f} s",
             f"not run (돌리지 않은 시험): {self.not_run_count} recorded tests, "
             f"{self.not_run_seconds:.6f} s",
             "Counts use .test_durations nodeids; contracts run in stage 1 are excluded. "
@@ -92,6 +102,9 @@ class Selection:
                 f"{self.central_skipped_count} files, recorded {self.central_skipped_seconds:.6f} s"
             )
         lines.extend(f"  {path}: {seconds:.6f} s" for path, seconds in self.excluded.items())
+        lines.append(f"partly added by node id: {len(self.partly_added)} files")
+        lines.extend(f"  {path}: whole-file recorded {seconds:.6f} s"
+                     for path, seconds in self.partly_added.items())
         return "\n".join(lines) + "\n"
 
 
@@ -141,21 +154,31 @@ def select_tests(
     source_scan_nodes = set()
     source_scan_files = set()
     source_scan_count = 0
-    if any(path.startswith("rfx/") for path in changed):
-        for path in sorted(tests - selected - invalid):
-            if path.startswith(CONTRACT_DIR):
-                continue
-            scan = scan_source(test_sources[path], path)
-            marked = [test for test in scan.tests if test.marked]
-            if scan.module_marked:
-                source_scan_nodes.add(path)
-            else:
-                source_scan_nodes.update(f"{path}::{test.name}" for test in marked)
-            if marked or scan.module_marked:
-                source_scan_files.add(path)
-                source_scan_count += len(marked)
+    marked_run = set()
+    marked_deselected = set()
+    source_changed = any(path.startswith("rfx/") for path in changed)
+    summary_tests = tests if source_changed else selected
+    for path in sorted(summary_tests - invalid):
+        if path.startswith(CONTRACT_DIR):
+            continue
+        scan = scan_source(test_sources[path], path)
+        marked = [test for test in scan.tests if test.marked]
+        for test in marked:
+            target = marked_deselected if test.deselected_markers else marked_run
+            target.add(f"{path}::{test.name}")
+        if path in selected or not source_changed:
+            continue
+        if scan.module_marked:
+            source_scan_nodes.add(path)
+        else:
+            source_scan_nodes.update(f"{path}::{test.name}" for test in marked)
+        if marked or scan.module_marked:
+            source_scan_files.add(path)
+            source_scan_count += len(marked)
+    partly_added = {path: seconds for path, seconds in excluded.items()
+                    if path in source_scan_files and path not in source_scan_nodes}
     excluded = {path: seconds for path, seconds in excluded.items()
-                if path not in source_scan_nodes}
+                if path not in source_scan_files}
 
     def source_scan_selected(nodeid):
         return (nodeid.split("::", 1)[0] in source_scan_nodes
@@ -169,12 +192,16 @@ def select_tests(
         and not source_scan_selected(nodeid)
     ]
     return Selection(
-        tuple(sorted(selected | source_scan_nodes)), excluded,
+        tuple(sorted(selected | source_scan_nodes)), excluded, partly_added,
         sum(totals[path] for path in sorted(selected)) + source_scan_seconds,
         len(not_run), sum(not_run),
         len(central_tests) if central_changed and not central_paths else None,
         sum(totals[path] for path in sorted(central_tests)),
         source_scan_count, len(source_scan_files), source_scan_seconds,
+        len(marked_run), sum(seconds for nodeid, seconds in durations.items()
+                             if nodeid.split("[", 1)[0] in marked_run),
+        len(marked_deselected), sum(seconds for nodeid, seconds in durations.items()
+                                    if nodeid.split("[", 1)[0] in marked_deselected),
     )
 
 

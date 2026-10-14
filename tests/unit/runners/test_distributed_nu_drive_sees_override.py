@@ -268,7 +268,6 @@ def _drive_over_stepper(form):
     return out
 
 
-@pytest.mark.source_scan
 @pytest.mark.parametrize("form", ["local", "sharded", "vmap"])
 def test_every_edge_is_driven_through_the_steppers_cb_under_an_override(form):
     rel = _drive_over_stepper(form)
@@ -524,7 +523,6 @@ def _seam_reads_its_own_row():
         yield
 
 
-@pytest.mark.source_scan
 @pytest.mark.slow
 def test_mutation_the_drive_from_the_drawn_arrays_sends_a_b_c_red():
     grid = _edge_board()._build_nonuniform_grid()
@@ -545,7 +543,6 @@ def test_mutation_the_drive_from_the_drawn_arrays_sends_a_b_c_red():
     assert abs(g_d / g_s - 1.0) > 1e3 * GRAD_RTOL
 
 
-@pytest.mark.source_scan
 @pytest.mark.slow
 def test_mutation_the_seam_edge_reading_its_own_row_sends_a_red():
     with _seam_reads_its_own_row():

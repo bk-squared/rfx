@@ -248,7 +248,6 @@ def test_substrate_resolution_warning_silent_wording_at_6_cells():
     assert len(sub) == 0, f"expected no alignment-caveat text, got: {sub}"
 
 
-@pytest.mark.source_scan
 def test_mixed_cell_warning_separates_geometry_from_unvalidated_z0_bias():
     """Keep conditional occupancy guidance, but no bbox-derived Z0 claim."""
     sim = _build_sim(dx=80e-6, ly=W_TRACE + 8 * H_SUB, port_x=2e-3)

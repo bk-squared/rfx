@@ -319,7 +319,6 @@ def test_driver_refuses_to_write_anything_that_reads_as_a_record(name, tmp_path)
         m._assert_report_only(tmp_path / name)
 
 
-@pytest.mark.source_scan
 @pytest.mark.parametrize("rel", [
     "tests/x.json", "docs/x.json", "validation/x.json", "rfx/x.json",
 ])

@@ -37,7 +37,6 @@ def test_gradient_witness_zero_bins_axis_and_nan():
         rd.gradient_witness(g, g, against="longer_record", bin_axis=2)
 
 
-@pytest.mark.source_scan
 @pytest.mark.parametrize("lane", ["uniform", "graded"])
 def test_identification_channels_reach_both_pencils_and_preserve_ports(lane, monkeypatch):
     seen = []

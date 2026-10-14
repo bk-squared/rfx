@@ -169,7 +169,6 @@ def test_manifest_identity_is_rejected_before_export_or_temp_creation(tmp_path, 
     assert sentinel.read_text() == "owned by another task"
 
 
-@pytest.mark.source_scan
 @pytest.mark.parametrize("url,channel,prefix", [
     ("https://remilab.ai/rfx", "development", "rfx"),
     ("https://remilab.ai/rfx/versions/v1.8.0", "release", "rfx/versions/v1.8.0"),

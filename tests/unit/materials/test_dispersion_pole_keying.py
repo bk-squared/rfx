@@ -419,7 +419,6 @@ def test_rasterize_geometry_path_value_dedupe_and_traced():
     assert float(g) != 0.0
 
 
-@pytest.mark.source_scan
 def test_import_rfx_preserves_geometry_rasterize_function():
     """Landmine lock (#393 FIXED): ``from rfx.geometry import rasterize``
     must yield the public CSG ``rasterize`` FUNCTION.

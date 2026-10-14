@@ -6,12 +6,17 @@ from dataclasses import dataclass
 import re
 
 
+STAGE2_EXCLUDED_MARKERS = frozenset({"slow", "slow_physics", "gpu", "docs_consistency"})
+
+
 @dataclass(frozen=True)
 class ScannedTest:
     name: str
     lineno: int
     hit_line: int | None
+    reader_line: int | None
     marked: bool
+    deselected_markers: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -22,11 +27,11 @@ class SourceScan:
 
 
 def scan_source(source: str, filename: str = "<test>") -> SourceScan:
-    """Resolve source hits, helper/fixture dependencies and marks within a file.
+    """Resolve candidates and readers independently through names to a fixed point.
 
-    Names propagate to a fixed point without importing or collecting tests.
-    Hit lines point back to the source-reading expression, including when a
-    test reaches it through a module constant, helper or fixture.
+    A test needs a mark only when its reachable scope contains both. The two
+    origin lines identify the candidate and reader, including through helpers,
+    fixtures, parametrization and module bindings. No tests are imported.
     """
     tree = ast.parse(source, filename=filename)
     functions = (ast.FunctionDef, ast.AsyncFunctionDef)
@@ -43,7 +48,7 @@ def scan_source(source: str, filename: str = "<test>") -> SourceScan:
             for alias in node.names:
                 if node.module == "inspect" and alias.name == "*":
                     aliases.update((name, f"inspect.{name}") for name in (
-                        "getsource", "getsourcefile", "getsourcelines",
+                        "getfile", "getsource", "getsourcefile", "getsourcelines",
                     ))
                 bound = alias.asname or alias.name
                 aliases[bound] = f"{node.module}.{alias.name}"
@@ -57,58 +62,71 @@ def scan_source(source: str, filename: str = "<test>") -> SourceScan:
             return f"{qualified(node.value)}.{node.attr}"
         return ""
 
-    # A bare package-directory literal needs a reader in its own function or
-    # module statement. Nested functions have their own reader scopes.
-    owners: dict[ast.AST, ast.AST] = {}
-    reader_scopes = set()
+    def rfx_argument(node):
+        return (isinstance(node, ast.Constant) and isinstance(node.value, str)
+                and node.value.startswith("rfx"))
 
-    def reader_scopes_for(node, owner):
-        if isinstance(node, functions):
-            owner = node
-        owners[node] = owner
-        if isinstance(node, ast.Call):
-            name = qualified(node.func).rsplit(".", 1)[-1]
-            if name in {"read_text", "read_bytes", "open", "rglob", "glob",
-                        "iterdir", "walk", "listdir", "scandir"} or name.startswith("getsource"):
-                reader_scopes.add(owner)
-        for child in ast.iter_child_nodes(node):
-            reader_scopes_for(child, owner)
+    def inspection(node):
+        if not isinstance(node, ast.Call):
+            return False
+        name = qualified(node.func)
+        return name == "inspect.getfile" or name.startswith("inspect.getsource")
 
-    for statement in tree.body:
-        reader_scopes_for(statement, statement)
-
-    def direct_hit(node):
-        if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            return (re.fullmatch(r"rfx/[A-Za-z0-9_./-]*", node.value) is not None
-                    or (node.value == "rfx" and owners[node] in reader_scopes))
-        if isinstance(node, ast.Attribute):
-            return (node.attr == "__file__" and isinstance(node.value, ast.Name)
-                    and node.value.id in rfx_names)
-        if isinstance(node, ast.Call):
-            name = qualified(node.func)
-            if name in {"inspect.getsource", "inspect.getsourcefile", "inspect.getsourcelines"}:
-                return True
-            if name == "importlib.resources.files" and node.args:
-                arg = node.args[0]
-                return (isinstance(arg, ast.Constant) and isinstance(arg.value, str)
-                        and (arg.value == "rfx" or arg.value.startswith("rfx.")))
+    def source_handle(node):
+        if not isinstance(node, ast.Attribute) or node.attr not in {"__file__", "origin"}:
+            return False
+        root = node.value
+        while isinstance(root, ast.Attribute):
+            root = root.value
+        if isinstance(root, ast.Name):
+            return root.id in rfx_names
+        if isinstance(root, ast.Call):
+            return (qualified(root.func) in {
+                "__import__", "importlib.import_module", "importlib.util.find_spec",
+            } and bool(root.args) and rfx_argument(root.args[0]))
+        if isinstance(root, ast.Subscript) and qualified(root.value) == "sys.modules":
+            return rfx_argument(root.slice)
         return False
 
-    hit_names: dict[str, int] = {}
-    package_names: dict[str, int] = {}
+    def candidate(node):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str):
+            return re.fullmatch(r"rfx(?:/[A-Za-z0-9_./-]*)?", node.value) is not None
+        if source_handle(node) or inspection(node):
+            return True
+        if isinstance(node, ast.Call) and qualified(node.func) == "importlib.resources.files":
+            return (bool(node.args) and isinstance(node.args[0], ast.Constant)
+                    and isinstance(node.args[0].value, str)
+                    and (node.args[0].value == "rfx" or node.args[0].value.startswith("rfx.")))
+        return False
 
-    def hit_line(nodes):
-        lines = []
+    def reader(node):
+        if not isinstance(node, ast.Call):
+            return False
+        name = qualified(node.func)
+        return (inspection(node) or name == "os.walk" or name.rsplit(".", 1)[-1] in {
+            "read_text", "read_bytes", "open", "rglob", "glob", "iterdir",
+            "listdir", "scandir",
+        })
+
+    # Each binding carries independent origins, rather than becoming a source
+    # hit itself. A consumer can combine a candidate from one helper with a
+    # reader from another, but a location check alone remains unmarked.
+    name_signals: dict[str, tuple[int | None, int | None]] = {}
+
+    def combine(signals):
+        return tuple(min((signal[index] for signal in signals if signal[index] is not None),
+                         default=None) for index in (0, 1))
+
+    def signals_in(nodes):
+        signals = []
         for root in nodes:
             for node in ast.walk(root):
-                if direct_hit(node):
-                    lines.append(node.lineno)
-                elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
-                    if node.id in hit_names:
-                        lines.append(hit_names[node.id])
-                    if node.id in package_names and owners[node] in reader_scopes:
-                        lines.append(package_names[node.id])
-        return min(lines, default=None)
+                signals.append((node.lineno if candidate(node) else None,
+                                node.lineno if reader(node) else None))
+                if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+                    if node.id in name_signals:
+                        signals.append(name_signals[node.id])
+        return combine(signals)
 
     def mark_calls(nodes, name):
         for node in nodes:
@@ -116,15 +134,15 @@ def scan_source(source: str, filename: str = "<test>") -> SourceScan:
             if qualified(target) == f"pytest.mark.{name}":
                 yield node
 
-    def fixture_lines(node, decorators):
-        lines = [hit_names[arg.arg] for arg in (
+    def fixture_signals(node, decorators):
+        signals = [name_signals[arg.arg] for arg in (
             *node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs,
-        ) if arg.arg in hit_names]
+        ) if arg.arg in name_signals]
         for mark in mark_calls(decorators, "usefixtures"):
             if isinstance(mark, ast.Call):
-                lines.extend(hit_names[arg.value] for arg in mark.args
-                             if isinstance(arg, ast.Constant) and arg.value in hit_names)
-        return lines
+                signals.extend(name_signals[arg.value] for arg in mark.args
+                               if isinstance(arg, ast.Constant) and arg.value in name_signals)
+        return combine(signals)
 
     module_marks = []
     for statement in tree.body:
@@ -136,8 +154,6 @@ def scan_source(source: str, filename: str = "<test>") -> SourceScan:
                     module_marks.extend(value.elts if isinstance(value, (ast.List, ast.Tuple)) else [value])
     module_marked = bool(list(mark_calls(module_marks, "source_scan")))
 
-    # Only module bindings escape into the shared name table; function locals
-    # stay inside their function. Compound module statements can also bind names.
     def bindings(node):
         if isinstance(node, (*functions, ast.ClassDef)):
             return {node.name}
@@ -151,36 +167,14 @@ def scan_source(source: str, filename: str = "<test>") -> SourceScan:
 
     statements = [node for node in tree.body
                   if not (isinstance(node, functions) and node.name.startswith("test_"))]
-    # A module path binding alone is not a source hit. Retain its provenance so
-    # a function reading that path (for example PKG.rglob) can become a hit.
-    package_statements = [node for node in statements if not isinstance(node, functions)]
     while True:
-        previous = dict(package_names)
-        for statement in package_statements:
-            lines = []
-            for node in ast.walk(statement):
-                if owners[node] is not statement:
-                    continue
-                if isinstance(node, ast.Constant) and node.value == "rfx":
-                    lines.append(node.lineno)
-                elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
-                    if node.id in package_names:
-                        lines.append(package_names[node.id])
-            if lines:
-                line = min(lines)
-                for name in bindings(statement):
-                    package_names[name] = min(package_names.get(name, line), line)
-        if previous == package_names:
-            break
-
-    while True:
-        previous = dict(hit_names)
+        previous = dict(name_signals)
         for statement in statements:
-            lines = [hit_line([statement])]
+            signals = [signals_in([statement])]
             if isinstance(statement, functions):
-                lines.extend(fixture_lines(statement, statement.decorator_list))
-            line = min((line for line in lines if line is not None), default=None)
-            if line is not None:
+                signals.append(fixture_signals(statement, statement.decorator_list))
+            signal = combine(signals)
+            if signal != (None, None):
                 names = bindings(statement)
                 if isinstance(statement, functions):
                     for decorator in statement.decorator_list:
@@ -189,22 +183,25 @@ def scan_source(source: str, filename: str = "<test>") -> SourceScan:
                                          if keyword.arg == "name" and isinstance(keyword.value, ast.Constant)
                                          and isinstance(keyword.value.value, str))
                 for name in names:
-                    hit_names[name] = min(hit_names.get(name, line), line)
-        if previous == hit_names:
+                    name_signals[name] = combine([name_signals.get(name, (None, None)), signal])
+        if previous == name_signals:
             break
 
     tests = []
 
     def add_test(node, prefix="", class_marks=()):
         decorators = [*module_marks, *class_marks, *node.decorator_list]
-        lines = [hit_line(node.body), *fixture_lines(node, decorators)]
+        signals = [signals_in(node.body), fixture_signals(node, decorators)]
         for mark in mark_calls(node.decorator_list, "parametrize"):
             if isinstance(mark, ast.Call):
-                lines.append(hit_line([*mark.args, *[kw.value for kw in mark.keywords]]))
-        line = min((line for line in lines if line is not None), default=None)
+                signals.append(signals_in([*mark.args, *[kw.value for kw in mark.keywords]]))
+        candidate_line, reader_line = combine(signals)
+        hit_line = candidate_line if reader_line is not None else None
         tests.append(ScannedTest(
-            prefix + node.name, node.lineno, line,
+            prefix + node.name, node.lineno, hit_line, reader_line,
             bool(list(mark_calls(decorators, "source_scan"))),
+            tuple(sorted(name for name in STAGE2_EXCLUDED_MARKERS
+                         if list(mark_calls(decorators, name)))),
         ))
 
     for node in tree.body:
@@ -216,6 +213,8 @@ def scan_source(source: str, filename: str = "<test>") -> SourceScan:
                     add_test(method, node.name + "::", node.decorator_list)
 
     stale = [test.lineno for test in tests if test.marked and test.hit_line is None]
-    if module_marked and not tests and hit_line(tree.body) is None:
-        stale.extend(mark.lineno for mark in mark_calls(module_marks, "source_scan"))
+    if module_marked and not tests:
+        candidate_line, reader_line = signals_in(tree.body)
+        if candidate_line is None or reader_line is None:
+            stale.extend(mark.lineno for mark in mark_calls(module_marks, "source_scan"))
     return SourceScan(tuple(tests), module_marked, tuple(stale))
