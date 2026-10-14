@@ -238,7 +238,8 @@ def finish(invariants, carry, layout, mesh, *, waveforms, dt=None):
     """Publish already staged arrays and route the small source/probe tables."""
     from rfx.stepping.slab_wrap import cut_drives, cut_probe_table
     result = dict(invariants)
-    result['drives'] = cut_drives(invariants['drives'], layout, mesh, waveforms=waveforms)
+    result['drives'] = cut_drives(invariants['drives'], layout, mesh, waveforms=waveforms,
+                                  per_rank=True)
     result['probe_table'] = cut_probe_table(invariants['probe_table'], layout, mesh)
     result['owns_x'] = {face: place(jnp.asarray([p[side] for p in layout.faces]),
         NamedSharding(mesh, P('x'))) for side, face in enumerate(('x_lo', 'x_hi'))}

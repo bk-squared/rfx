@@ -899,3 +899,40 @@ def test_cut_drives_without_sources_keeps_rank_shards(n_devices):
     waves = result['drives'].waves
     assert {s.data.shape for s in waves.addressable_shards} == {(n_steps, 1, 0)}
     assert np.asarray(waves).shape == (n_steps, n_devices, 0)
+
+
+def _two_rank_drives(n_devices):
+    from jax.sharding import Mesh
+    from rfx.core.drives import drive_layout
+    from rfx.stepping.slab import Slab
+    if len(jax.devices('cpu')) < n_devices:
+        pytest.skip(f'needs {n_devices} host devices')
+    layout = Slab(SCENES['material_seam'].grid.nx, n_devices)
+    mesh = Mesh(np.asarray(jax.devices('cpu')[:n_devices]), ('x',))
+    # Source 0 on rank 0, source 1 on the last rank.
+    meta = [(1, 2, 2, 'ez'), (layout.nx - 2, 2, 2, 'ez')]
+    return drive_layout(meta, jnp.float32), layout, mesh
+
+
+@pytest.mark.parametrize('n_devices', DEVICES)
+def test_cut_drives_per_rank_refuses_a_wave_read_on_two_ranks(n_devices):
+    """A rank block holds only its own sources: a wave read by rows on two ranks would read zeros."""
+    from rfx.stepping.slab_wrap import cut_drives
+    drives, layout, mesh = _two_rank_drives(n_devices)
+    shared = drives._replace(wave_id={'ez': np.asarray([0, 0], np.int32)})
+    table = jnp.ones((3, n_devices * 2), jnp.float32)
+    with pytest.raises(ValueError, match='waves read on several ranks'):
+        cut_drives(shared, layout, mesh, waveforms=table, per_rank=True)
+    cut_drives(drives, layout, mesh, waveforms=table, per_rank=True)
+
+
+@pytest.mark.parametrize('n_devices', DEVICES)
+def test_cut_drives_form_is_declared_not_guessed(n_devices):
+    """A per-rank table of the wrong width raises instead of taking the replicated branch."""
+    from rfx.stepping.slab_wrap import cut_drives
+    drives, layout, mesh = _two_rank_drives(n_devices)
+    with pytest.raises(ValueError, match='expected n_devices \\* n_src'):
+        cut_drives(drives, layout, mesh, waveforms=jnp.ones((3, 2), jnp.float32), per_rank=True)
+    # The replicated form (the cut-of-whole caller) is selected by the keyword, not the width.
+    replicated = cut_drives(drives, layout, mesh, waveforms=jnp.ones((3, n_devices * 2), jnp.float32)[:, :2])
+    assert np.asarray(replicated.waves).shape[0] == 3

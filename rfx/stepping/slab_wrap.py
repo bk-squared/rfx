@@ -54,8 +54,13 @@ def _nodes(indices, layout):
     return np.asarray(nodes), np.asarray(selections), np.asarray(valid)
 
 
-def cut_drives(drives, layout, mesh, *, waveforms):
-    """Select canonical drive rows and their stored samples; never rescale them."""
+def cut_drives(drives, layout, mesh, *, waveforms, per_rank=False):
+    """Select canonical drive rows and their stored samples; never rescale them.
+
+    ``waveforms`` is the replicated ``(n_steps, n_src)`` table, or with
+    ``per_rank=True`` the slab-built ``(n_steps, n_devices * n_src)`` table on
+    ``P(None, 'x')`` whose rank block is zero for sources that rank does not own.
+    """
     routed = {component: _nodes(indices, layout)
               for component, indices in drives.nodes.items()}
     # Preserve the canonical waveform order on each owner. Several rows may
@@ -82,8 +87,22 @@ def cut_drives(drives, layout, mesh, *, waveforms):
                 rows, np.asarray(drives.wave_id[component])[ids[rank, valid[rank]]])
         wave_id[component] = _place(local_waves, mesh)
         owner[component] = _place(drives.owner[component][ids], mesh)
-    n_waves = max((int(np.max(a)) + 1 for a in drives.wave_id.values() if len(a)), default=0)
-    if layout.n_devices > 1 and n_waves > 0 and waveforms.shape[1] == layout.n_devices * n_waves:
+    if per_rank:
+        # A rank block holds only the sources that rank owns, so every wave
+        # must be read by rows on one rank only; and one row per source.
+        n_src = sum(len(a) for a in drives.wave_id.values())
+        if waveforms.shape[1] != layout.n_devices * n_src:
+            raise ValueError(f'per-rank drive table has {waveforms.shape[1]} columns; '
+                             f'expected n_devices * n_src = {layout.n_devices} * {n_src}')
+        readers = {}
+        for rank, rows in enumerate(wave_rows):
+            for wave in rows.tolist():
+                readers.setdefault(wave, []).append(rank)
+        shared = {wave: ranks for wave, ranks in readers.items() if len(ranks) > 1}
+        if shared:
+            raise ValueError(f'per-rank drive table: waves read on several ranks {shared}; '
+                             'each rank block holds only the sources it owns')
+    if per_rank and layout.n_devices > 1 and n_src > 0:
         @partial(jax.shard_map, mesh=mesh,
                  in_specs=(P(None, 'x'), P('x'), P('x')),
                  out_specs=P(None, 'x'), check_vma=False)
