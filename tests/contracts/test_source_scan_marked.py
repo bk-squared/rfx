@@ -39,7 +39,7 @@ def test_source_reading_tests_are_marked():
 
 
 @pytest.mark.parametrize("expression", [
-    '"rfx"', '"rfx/api/_execute.py"', '"rfx/core/a-b.py"',
+    '"rfx/api/_execute.py"', '"rfx/core/a-b.py"',
     'rfx.__file__', 'package.__file__', 'execute.__file__', 'Simulation.__file__',
     'inspect.getsource(object)', 'ins.getsourcefile(object)', 'get_lines(object)',
     'getsource(object)', 'importlib.resources.files("rfx")',
@@ -66,12 +66,76 @@ def test_scan():
 
 
 @pytest.mark.parametrize("expression", [
-    '"rfx_like/api.py"', '"prefix/rfx/api.py"', '"rfx/api.py extra"',
+    '"rfx"', '"rfx_like/api.py"', '"prefix/rfx/api.py"', '"rfx/api.py extra"',
     '"rfx/api.py\\n"', 'other.__file__', 'other.getsource(object)',
     'importlib.resources.files("other")',
 ])
 def test_non_hits(expression):
     assert scan_source(f"def test_plain():\n    {expression}\n").tests[0].hit_line is None
+
+
+def test_bare_package_directory_check_is_not_a_source_hit():
+    scan = scan_source('def test_path(p):\n    return (Path(p) / "rfx").is_dir()\n')
+    assert scan.tests[0].hit_line is None
+
+
+def test_bare_package_directory_rglob_is_a_source_hit():
+    scan = scan_source('def test_scan(root):\n    return (root / "rfx").rglob("*.py")\n')
+    assert scan.tests[0].hit_line == 2
+    assert not scan.tests[0].marked
+
+
+def test_module_package_path_needs_a_mark_when_a_function_rglobs_it():
+    source = ('PKG = ROOT / "rfx"\n'
+              'def test_scan():\n    return PKG.rglob("*.py")\n'
+              'def test_path():\n    return PKG.is_dir()\n')
+    scan = scan_source(source)
+    assert [test.hit_line for test in scan.tests] == [1, None]
+    assert "tests/test_scan.py::test_scan: unmarked source hit at line 1" in violations(source, "tests/test_scan.py")
+
+
+@pytest.mark.parametrize("reader", [
+    'path.read_text()', 'path.read_bytes()', 'open(path)', 'path.open()',
+    'path.rglob("*.py")', 'path.glob("*.py")', 'path.iterdir()', 'os.walk(path)',
+    'os.listdir(path)', 'os.scandir(path)', 'inspect.getsource(path)',
+    'inspect.getsourcefile(path)', 'inspect.getsourcelines(path)',
+    'read(path)', 'walk_tree(path)',
+])
+def test_bare_package_directory_with_each_file_reader(reader):
+    source = ('from pathlib import Path\nfrom os import walk as walk_tree\n'
+              'from builtins import open as read\n'
+              'def test_scan():\n    path = ROOT / "rfx"\n    ' + reader + '\n')
+    assert scan_source(source).tests[0].hit_line == 5
+
+
+def test_bare_package_hit_requires_a_reader_in_the_same_function():
+    source = ('def helper():\n    return (ROOT / "rfx").is_dir()\n'
+              'def test_plain():\n    helper()\n    open("other")\n'
+              'def test_nested():\n    path = ROOT / "rfx"\n'
+              '    def nested():\n        open("other")\n    return path.is_dir()\n')
+    assert all(test.hit_line is None for test in scan_source(source).tests)
+
+
+def test_bare_package_hit_requires_a_reader_in_the_same_module_statement():
+    scan = scan_source('PATH = ROOT / "rfx"\nOTHER = open("other")\n'
+                       'def test_plain():\n    return PATH.is_dir()\n')
+    assert scan.tests[0].hit_line is None
+    scan = scan_source('SOURCE = (ROOT / "rfx").rglob("*.py")\n'
+                       'def test_scan():\n    return SOURCE\n')
+    assert scan.tests[0].hit_line == 1
+
+
+def test_module_package_path_aliases_and_reading_helpers_propagate():
+    scan = scan_source('ALIAS = PKG\nPKG = ROOT / "rfx"\n'
+                       'def helper():\n    return ALIAS.rglob("*.py")\n'
+                       'def test_scan():\n    return helper()\n')
+    assert scan.tests[0].hit_line == 2
+
+
+def test_mark_on_a_bare_package_directory_check_is_stale():
+    source = ('import pytest\n@pytest.mark.source_scan\n'
+              'def test_path(p):\n    return (Path(p) / "rfx").is_dir()\n')
+    assert "stale source_scan" in "\n".join(violations(source, "tests/test_plain.py"))
 
 
 def test_module_helpers_fixtures_and_parametrize_propagate_to_fixed_point():

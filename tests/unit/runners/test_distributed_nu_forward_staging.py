@@ -514,13 +514,11 @@ def _child(mode, *args, devices=2, expected_error=None):
     return run
 
 
-@pytest.mark.source_scan
 @pytest.mark.parametrize("mode", ["plain", "grad"])
 def test_live_arrays_and_slab_initialization(mode):
     _child("memory", mode)
 
 
-@pytest.mark.source_scan
 @pytest.mark.parametrize("devices", [2, 3])
 def test_every_staged_shard_matches_legacy(devices):
     _child("shards", devices=devices)
@@ -532,13 +530,11 @@ def test_every_staged_shard_matches_legacy(devices):
 _slow = pytest.mark.slow
 
 
-@pytest.mark.source_scan
 @pytest.mark.parametrize("devices", [2, pytest.param(3, marks=_slow)])
 def test_multiple_pole_shards_match_legacy(devices):
     _child("multipole", devices=devices)
 
 
-@pytest.mark.source_scan
 @pytest.mark.parametrize("case,devices", [("mixed", 2)] + [
     pytest.param(case, devices, marks=_slow)
     for case in ("mixed", "debye", "lorentz", "lossy", "occupancy", "sigma")
@@ -548,21 +544,18 @@ def test_trace_and_eps_gradient_bits(case, devices):
     _child("bits", case, "None", 0, "bits", devices=devices)
 
 
-@pytest.mark.source_scan
 @_slow
 @pytest.mark.parametrize("checkpoint,warmup", [(2, 0), (2, 2), (None, 2)])
 def test_checkpoint_warmup_bits(checkpoint, warmup):
     _child("bits", "mixed", checkpoint, warmup, "bits")
 
 
-@pytest.mark.source_scan
 @pytest.mark.parametrize("transform", ["jvp", "vjp", "value_and_grad", "vmap",
                                        pytest.param("stop_gradient", marks=_slow)])
 def test_cross_trace_pattern(transform):
     _child("bits", "mixed", "None", 0, transform)
 
 
-@pytest.mark.source_scan
 @_slow
 @pytest.mark.parametrize("mutation,error", [
     ("whole_init", "whole-domain debye initialization"),
@@ -574,7 +567,6 @@ def test_mutations_trip_gate(mutation, error):
     _child("memory", "plain", mutation, expected_error=error)
 
 
-@pytest.mark.source_scan
 @_slow
 def test_zero_lorentz_cc_mutation():
     _child("cc")
@@ -593,7 +585,6 @@ def _vmap_local_bits():
                                   "batch": 2, "both_members_bit_identical": True}))
 
 
-@pytest.mark.source_scan
 @pytest.mark.parametrize("devices", [2, 3])
 def test_vmap_local_eps_matches_both_single_calls(devices):
     _child("vmap_local", devices=devices)

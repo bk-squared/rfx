@@ -57,9 +57,30 @@ def scan_source(source: str, filename: str = "<test>") -> SourceScan:
             return f"{qualified(node.value)}.{node.attr}"
         return ""
 
+    # A bare package-directory literal needs a reader in its own function or
+    # module statement. Nested functions have their own reader scopes.
+    owners: dict[ast.AST, ast.AST] = {}
+    reader_scopes = set()
+
+    def reader_scopes_for(node, owner):
+        if isinstance(node, functions):
+            owner = node
+        owners[node] = owner
+        if isinstance(node, ast.Call):
+            name = qualified(node.func).rsplit(".", 1)[-1]
+            if name in {"read_text", "read_bytes", "open", "rglob", "glob",
+                        "iterdir", "walk", "listdir", "scandir"} or name.startswith("getsource"):
+                reader_scopes.add(owner)
+        for child in ast.iter_child_nodes(node):
+            reader_scopes_for(child, owner)
+
+    for statement in tree.body:
+        reader_scopes_for(statement, statement)
+
     def direct_hit(node):
         if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            return re.fullmatch(r"rfx(?:/[A-Za-z0-9_./-]*)?", node.value) is not None
+            return (re.fullmatch(r"rfx/[A-Za-z0-9_./-]*", node.value) is not None
+                    or (node.value == "rfx" and owners[node] in reader_scopes))
         if isinstance(node, ast.Attribute):
             return (node.attr == "__file__" and isinstance(node.value, ast.Name)
                     and node.value.id in rfx_names)
@@ -74,6 +95,7 @@ def scan_source(source: str, filename: str = "<test>") -> SourceScan:
         return False
 
     hit_names: dict[str, int] = {}
+    package_names: dict[str, int] = {}
 
     def hit_line(nodes):
         lines = []
@@ -84,6 +106,8 @@ def scan_source(source: str, filename: str = "<test>") -> SourceScan:
                 elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
                     if node.id in hit_names:
                         lines.append(hit_names[node.id])
+                    if node.id in package_names and owners[node] in reader_scopes:
+                        lines.append(package_names[node.id])
         return min(lines, default=None)
 
     def mark_calls(nodes, name):
@@ -127,6 +151,28 @@ def scan_source(source: str, filename: str = "<test>") -> SourceScan:
 
     statements = [node for node in tree.body
                   if not (isinstance(node, functions) and node.name.startswith("test_"))]
+    # A module path binding alone is not a source hit. Retain its provenance so
+    # a function reading that path (for example PKG.rglob) can become a hit.
+    package_statements = [node for node in statements if not isinstance(node, functions)]
+    while True:
+        previous = dict(package_names)
+        for statement in package_statements:
+            lines = []
+            for node in ast.walk(statement):
+                if owners[node] is not statement:
+                    continue
+                if isinstance(node, ast.Constant) and node.value == "rfx":
+                    lines.append(node.lineno)
+                elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+                    if node.id in package_names:
+                        lines.append(package_names[node.id])
+            if lines:
+                line = min(lines)
+                for name in bindings(statement):
+                    package_names[name] = min(package_names.get(name, line), line)
+        if previous == package_names:
+            break
+
     while True:
         previous = dict(hit_names)
         for statement in statements:
