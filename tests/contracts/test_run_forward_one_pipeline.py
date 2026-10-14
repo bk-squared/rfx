@@ -325,8 +325,6 @@ ID_PATTERNS = {
     'D5': {'L1': (), 'L2': ('settling_witness/*',)},
     'D7': {'L1': (), 'L2': ('waveguide_ports/*', 'waveguide_sparams/*')},
     'D8': {'L1': (), 'L2': ('s_params', 'freqs', 'freqs_hz')},
-    'A1': {'run': ('admitted',), 'forward': ('raised', 'NotImplementedError',
-            'distributed=True on forward() is currently implemented only for non-uniform meshes')},
     'A2': {'run': ('raised', 'NotImplementedError',
             'Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports'),
            'forward': ('admitted',)},
