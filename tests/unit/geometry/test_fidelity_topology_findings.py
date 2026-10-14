@@ -577,6 +577,7 @@ def test_rule_ii_message_names_the_first_registered_pec_radius_on_a_partial_hole
     assert "316.2 um" in msg, msg
 
 
+@pytest.mark.source_scan
 def test_rule_ii_does_not_change_the_emission_classification():
     """compute_coax_msl_transition stays DIAGNOSTIC_ONLY: the advisory
     surfaces through sim.preflight() (the driver's --preflight) and through

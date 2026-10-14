@@ -1303,6 +1303,7 @@ def _scan_source_fences():
     return found
 
 
+@pytest.mark.source_scan
 def test_every_fence_in_the_source_is_pinned():
     """Every #677 lane fence in ``rfx/`` is named by ``FENCE_REGISTRY``.
 
@@ -1327,6 +1328,7 @@ def test_every_fence_in_the_source_is_pinned():
         f"fence was moved or deleted: {stale}")
 
 
+@pytest.mark.source_scan
 def test_every_registered_pinning_test_exists():
     """A registry row is only worth something if the test it names is real —
     a rename must not silently orphan a fence."""

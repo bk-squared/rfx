@@ -162,6 +162,7 @@ def _pad_column(captured) -> np.ndarray:
     return eps[eps.shape[0] - pad:, jm, km].astype(float)
 
 
+@pytest.mark.source_scan
 def test_the_lane_calls_the_runners_one_implementation() -> None:
     """A source check, cheap and exact, and NOT the gate.
 

@@ -13,6 +13,11 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
+try:
+    from scripts.ci.source_scan import scan_source
+except ModuleNotFoundError:
+    from source_scan import scan_source
+
 MAX_FILE_SECONDS = 400
 CENTRAL_PATHS = (
     "rfx/api/_execute.py",
@@ -65,14 +70,20 @@ class Selection:
     not_run_seconds: float
     central_skipped_count: int | None
     central_skipped_seconds: float
+    source_scan_count: int
+    source_scan_files: int
+    source_scan_seconds: float
 
     def summary(self) -> str:
         lines = [
-            f"selected-tests: {len(self.files)} files, recorded {self.selected_seconds:.6f} s",
+            f"selected-tests: {len({item.split('::', 1)[0] for item in self.files})} files, "
+            f"recorded {self.selected_seconds:.6f} s",
+            f"source-scan tests added: {self.source_scan_count} tests in "
+            f"{self.source_scan_files} files, recorded {self.source_scan_seconds:.6f} s",
             f"not run (돌리지 않은 시험): {self.not_run_count} recorded tests, "
             f"{self.not_run_seconds:.6f} s",
             "Counts use .test_durations nodeids; contracts run in stage 1 are excluded. "
-            "No pytest collection or marker evaluation is performed.",
+            "Markers are read from AST; no pytest collection or test imports are performed.",
             f"excluded by >{MAX_FILE_SECONDS} s rule: {len(self.excluded)} files",
         ]
         if self.central_skipped_count is not None:
@@ -127,15 +138,43 @@ def select_tests(
         if totals[path] > MAX_FILE_SECONDS and path not in edited and path not in invalid
     }
     selected = candidates - excluded.keys()
+    source_scan_nodes = set()
+    source_scan_files = set()
+    source_scan_count = 0
+    if any(path.startswith("rfx/") for path in changed):
+        for path in sorted(tests - selected - invalid):
+            if path.startswith(CONTRACT_DIR):
+                continue
+            scan = scan_source(test_sources[path], path)
+            marked = [test for test in scan.tests if test.marked]
+            if scan.module_marked:
+                source_scan_nodes.add(path)
+            else:
+                source_scan_nodes.update(f"{path}::{test.name}" for test in marked)
+            if marked or scan.module_marked:
+                source_scan_files.add(path)
+                source_scan_count += len(marked)
+    excluded = {path: seconds for path, seconds in excluded.items()
+                if path not in source_scan_nodes}
+
+    def source_scan_selected(nodeid):
+        return (nodeid.split("::", 1)[0] in source_scan_nodes
+                or nodeid.split("[", 1)[0] in source_scan_nodes)
+
+    source_scan_seconds = sum(seconds for nodeid, seconds in durations.items()
+                              if source_scan_selected(nodeid))
     not_run = [
         seconds for nodeid, seconds in durations.items()
         if nodeid.split("::", 1)[0] not in selected and not nodeid.startswith(CONTRACT_DIR)
+        and not source_scan_selected(nodeid)
     ]
     return Selection(
-        tuple(sorted(selected)), excluded, sum(totals[path] for path in sorted(selected)),
+        tuple(sorted(selected | source_scan_nodes)), excluded,
+        sum(totals[path] for path in sorted(selected)) + source_scan_seconds,
         len(not_run), sum(not_run),
         len(central_tests) if central_changed and not central_paths else None,
         sum(totals[path] for path in sorted(central_tests)),
+        source_scan_count, len(source_scan_files), source_scan_seconds,
     )
 
 

@@ -662,6 +662,7 @@ def _executable():
                                    marks=_xfail(c) if c.wrong else [])
 
 
+@pytest.mark.source_scan
 @pytest.mark.parametrize("attr,feature,lane", list(_executable()))
 def test_cell(attr, feature, lane):
     c = T.cell(attr, feature, lane)
@@ -720,6 +721,7 @@ def _relaxed_params():
             for mode, name in cases]
 
 
+@pytest.mark.source_scan
 @pytest.mark.parametrize("mode,name", _relaxed_params())
 def test_relaxed_subgrid_validation_refuses_or_carries(mode, name):
     """The subgridded cell of _refinement/relaxed_validation: what production
@@ -750,6 +752,7 @@ def test_relaxed_subgrid_validation_refuses_or_carries(mode, name):
         f"validation={mode!r}: the {name} input moved the record by {effect:.3e} of its peak")
 
 
+@pytest.mark.source_scan
 @pytest.mark.parametrize("mode", ["research", "off"])
 @pytest.mark.parametrize("absorber,words", [("cpml", "a CPML absorber"), ("upml", "a UPML absorber")])
 def test_relaxed_subgrid_validation_refuses_an_absorbing_box(mode, absorber, words):
@@ -767,6 +770,7 @@ def test_relaxed_subgrid_validation_refuses_an_absorbing_box(mode, absorber, wor
     assert f"{words} is not carried by the subgridded run() lane" in str(exc.value)
 
 
+@pytest.mark.source_scan
 @pytest.mark.parametrize("validation", ["production", "research", "off"])
 def test_the_guarded_lid_requires_experimental_validation(validation):
     """A CPML lid on a closed PEC box, the refined slab on the PEC floor:
@@ -799,6 +803,7 @@ def test_the_guarded_lid_requires_experimental_validation(validation):
     assert "a UPML absorber is not carried by the subgridded run() lane" in str(exc.value)
 
 
+@pytest.mark.source_scan
 @pytest.mark.parametrize("validation", ["production", "research", "off"])
 def test_a_slab_reaching_the_lid_is_refused_in_every_validation_mode(validation):
     """The guarded box, its refined slab carried up to 0.01 mm under the CPML

@@ -158,6 +158,7 @@ def test_lane_rule_is_lower_side_only():
     assert v({"R0": {"slope": 1.0}}) == "INCONCLUSIVE"
 
 
+@pytest.mark.source_scan
 @pytest.mark.parametrize("arm", ARMS)
 def test_selfcheck_recorded_before_arm(arm):
     d = _load(arm)

@@ -87,6 +87,7 @@ def _one_coax_port_sim() -> Simulation:
     return _coax_sim()
 
 
+@pytest.mark.source_scan
 def test_nothing_points_users_at_the_removed_coaxial_lane():
     for entry, call in (("run", lambda sim: sim.run(n_steps=1)),
                         ("forward", lambda sim: sim.forward(n_steps=1))):

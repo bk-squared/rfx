@@ -389,12 +389,14 @@ def test_compiled_loop_collectives(grad, source_kind):
     _assert_counts(_collectives(grad, source_kind), grad)
 
 
+@pytest.mark.source_scan
 @pytest.mark.slow
 @pytest.mark.parametrize("devices", [2, 3, 4])
 def test_topology_matrix(devices):
     _child("matrix", devices=devices)
 
 
+@pytest.mark.source_scan
 @pytest.mark.slow
 @pytest.mark.parametrize("devices", [2, 3, 4])
 def test_long_run_finite_gradients_and_dead_ghosts(devices):
@@ -482,6 +484,7 @@ def _worker(address, rank, output):
         jax.distributed.shutdown()
 
 
+@pytest.mark.source_scan
 @pytest.mark.slow
 @pytest.mark.skipif(sys.platform != "linux", reason="requires Linux: distributed gRPC bind fails on Darwin")
 def test_two_process_plain_and_grad(tmp_path):

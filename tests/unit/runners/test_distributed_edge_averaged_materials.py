@@ -500,6 +500,7 @@ def _matrix_main(n_dev, boundaries, cases, mutation):
                       flush=True)
 
 
+@pytest.mark.source_scan
 @pytest.mark.parametrize("n_dev", [3, pytest.param(4, marks=pytest.mark.slow)])
 def test_uneven_slabs_agree_with_one_device(n_dev):
     """13 cells over 3 slabs (pad 2) and 4 slabs (pad 3), PEC cube: the
@@ -509,6 +510,7 @@ def test_uneven_slabs_agree_with_one_device(n_dev):
                row["got"], row["floor"])
 
 
+@pytest.mark.source_scan
 @pytest.mark.slow
 @pytest.mark.parametrize("n_dev", [3, 4])
 def test_the_whole_matrix_agrees_with_one_device(n_dev):

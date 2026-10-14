@@ -175,6 +175,7 @@ def test_live_ad1_fast_profile_gradient():
 # Replay from the committed JSON
 # =============================================================================
 
+@pytest.mark.source_scan
 def test_replay_provenance_and_selfcheck(w7_json):
     sc = w7_json["selfcheck"]
     assert sc["all_pass"] and not sc["failed"]

@@ -210,16 +210,19 @@ def _child(mode, *args, devices=2):
     print(run.stdout)
 
 
+@pytest.mark.source_scan
 @pytest.mark.parametrize("devices", [2, pytest.param(3, marks=pytest.mark.slow)])
 def test_sharded_overrides_match_local_trace_and_gradient(devices):
     _child("parity", devices=devices)
 
 
+@pytest.mark.source_scan
 @pytest.mark.slow
 def test_sharded_transformed_primals():
     _child("transforms")
 
 
+@pytest.mark.source_scan
 @pytest.mark.parametrize("mode", ["plain", "grad"])
 def test_no_whole_domain_buffer_at_loop(mode):
     _child("memory", mode)
@@ -326,6 +329,7 @@ def test_vmap_over_a_traced_mask_matches_single_calls():
         _within(np.asarray(f(jnp.asarray(mask))), member)
 
 
+@pytest.mark.source_scan
 @pytest.mark.slow
 @pytest.mark.parametrize("kind,gate,error", [
     ("spacing", "closure", "captures"), ("halo", "parity", "ulp"),
@@ -414,6 +418,7 @@ def two_process_results(tmp_path_factory):
     return output, reference, logs
 
 
+@pytest.mark.source_scan
 def test_two_process_plain_and_grad(two_process_results):
     output, reference, _ = two_process_results
     expected_trace = np.load(reference / "trace-0.npy")
@@ -431,6 +436,7 @@ def test_two_process_plain_and_grad(two_process_results):
         print("RESULT gradient", name, _within(expected, gathered(output, name)))
 
 
+@pytest.mark.source_scan
 def test_two_process_local_override_refused(two_process_results):
     assert sum("local overrides refused" in log for log in two_process_results[2]) == 2
 

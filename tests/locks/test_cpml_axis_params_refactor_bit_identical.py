@@ -27,6 +27,7 @@ LOCK_PROVENANCE = {
     "pinned_until": "2026-10-15",
 }
 
+import pytest
 import numpy as np
 
 from rfx import Simulation
@@ -127,6 +128,7 @@ def test_distributed_runners_use_shared_cpml_coeff_helpers():
         assert module.apply_cpml_h is cpml.apply_cpml_h
 
 
+@pytest.mark.source_scan
 def test_distributed_common_cpml_coeff_tracks_canonical_constants():
     """Observe the shared kernel's scalar vacuum multipliers, before rounding."""
     import sys

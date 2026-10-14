@@ -27,6 +27,7 @@ def observation(subject='port'):
     return Diagnostic('msl.example', 'advisory', subject, 'length 2 mm', {'length_m': .002})
 
 
+@pytest.mark.source_scan
 def test_frozen_leaf_json_and_public_export():
     values = {'length_m': .002}
     d = Diagnostic('msl.example', 'advisory', 'port', 'length 2 mm', values)

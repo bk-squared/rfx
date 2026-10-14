@@ -171,6 +171,7 @@ RULINGS_LAPSED = {"open_not_judged_pi_2026_09_23", "loads_closed_can_footprint_p
 # provenance and geometry
 # ---------------------------------------------------------------------------
 
+@pytest.mark.source_scan
 def test_the_fixture_names_its_own_provenance(fixture):
     assert fixture["schema"] == "rfx.coax_chain_battery"
     assert fixture["predeclaration"].endswith("coax_chain_battery_predeclaration.md")
