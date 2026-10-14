@@ -15,7 +15,11 @@ WEEKLY_PREFIXES = (*range(1, 51), *range(60, 201, 10), *range(300, 801, 100))
 PR_PREFIXES = (200, 400, 800)
 
 
-def cross_trace(factory, lane, devices, label, *, prefixes):
+class CrossTraceBarExceeded(AssertionError):
+    """Only the 9-ULP parity bar may be covered by the mixed-row xfail."""
+
+
+def cross_trace(factory, lane, devices, label, *, prefixes, regression_guard=None):
     """Observe existing returns; leave solver inputs and compiled outputs intact."""
     captured = {}
     single_runner = nonuniform.run_nonuniform_path
@@ -85,6 +89,9 @@ def cross_trace(factory, lane, devices, label, *, prefixes):
         results[length] = dict(P_E=peak_e, P_H=peak_h, H_scale=scale_h,
                                steps=[steps[i] for i in selection], d=d.tolist(), max_d=d.max(axis=0).tolist())
     print('CROSS_TRACE ' + json.dumps(dict(label=label, windows=results)), flush=True)
+    if regression_guard is not None:
+        regression_guard(results)
     for length, result in results.items():
-        assert max(result['max_d']) <= 9, (label, length, dict(zip(FIELDS, result['max_d'])))
+        if not max(result['max_d']) <= 9:
+            raise CrossTraceBarExceeded(label, length, dict(zip(FIELDS, result['max_d'])))
     return results
