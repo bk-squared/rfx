@@ -1,20 +1,194 @@
 ---
 title: Boundaries
-description: Absorbing, electric, magnetic and periodic faces, and the rules ports and plane waves put on them.
+description: Absorbers, metal and magnetic walls, periodic walls, and the boundary rules of ports and plane waves.
 sidebar:
   order: 2
 ---
 
-<p data-rfx="note">Being written for 2.0 (tracker 1171).</p>
-
 ## What it is for
+
+Every FDTD domain ends somewhere, and what happens to a wave at that end is
+part of the model. An open structure (an antenna, a scatterer, a line that
+should look infinitely long) needs an absorber that takes the wave without
+reflecting it. A closed cavity needs metal walls. A symmetry plane can be a
+metal (PEC) or magnetic (PMC) wall that halves the domain. An array or a
+metasurface needs periodic walls. This page is how you declare each of them,
+face by face, and the rules that ports and plane waves put on them.
 
 ## How to use it
 
+`Simulation(boundary=...)` takes one word for all six faces: `"cpml"` (the
+default), `"upml"` or `"pec"`. For different faces, pass a `BoundarySpec` with
+one entry per axis; an entry is a word for both faces of that axis, or a
+`Boundary(lo=..., hi=...)` for two different faces. The words for a face are
+`"cpml"`, `"upml"`, `"pec"`, `"pmc"` and `"periodic"`.
+
+A board over a ground plane, open on top and at the sides, with a thinner
+absorber on top:
+
+```python
+from rfx import Simulation
+from rfx.boundaries.spec import Boundary, BoundarySpec
+
+spec = BoundarySpec(
+    x="cpml",
+    y="cpml",
+    z=Boundary(lo="pec", hi="cpml", hi_thickness=8),
+)
+sim = Simulation(freq_max=10e9, domain=(0.03, 0.03, 0.015), dx=0.5e-3,
+                 boundary=spec, cpml_layers=12)
+for axis, side, token in spec.faces():
+    print(axis, side, token)
+
+try:
+    Boundary(lo="periodic", hi="cpml")
+except ValueError as err:
+    print(err)
+```
+
+```text
+x lo cpml
+x hi cpml
+y lo cpml
+y hi cpml
+z lo pec
+z hi cpml
+periodic must be symmetric on an axis; got lo='periodic' hi='cpml'. Use Boundary(lo='periodic', hi='periodic') or rename the asymmetric side.
+```
+
+The rules the spec enforces when you build it:
+
+- A periodic axis is periodic on both faces.
+- `lo_thickness` and `hi_thickness` apply only to absorbing faces. They set
+  that face's layer count and may not exceed `cpml_layers`, which is the
+  largest depth rfx allocates; a face without its own thickness gets
+  `cpml_layers`.
+- CPML and UPML cannot be mixed in one model.
+- `Boundary(lo="pec", hi="pec", conformal=True)` places the metal walls at
+  their exact positions with the Dey–Mittra conformal correction, instead of on
+  the nearest cell faces.
+
+The 1.x arguments `pec_faces=` and `set_periodic_axes()` are gone; the error
+names the replacement (see [Upgrading to 2.0](/rfx/start/upgrading/)).
+
+### Where the absorber sits
+
+The absorber is added outside the domain you declare: the box from 0 to
+`domain` on each axis is free of absorber, and each absorbing face adds its
+layers beyond it. A metal, magnetic or periodic face adds nothing. So the
+domain size is the size of the region you model, and the absorber's depth is
+extra memory, not lost space.
+
+What an absorber needs from the model:
+
+- **Depth.** `cpml_layers` defaults to 16. The CPML reflects less with more
+  layers (see Accuracy). Preflight warns below 8 layers (`thin_absorber`).
+- **Room.** Keep shapes inside the domain: a shape that reaches past the
+  domain edge enters the absorber (`geometry_in_absorber`). Preflight also
+  warns when a probe, source or port is within two cells of the absorber
+  (`absorber_proximity`), where the fields carry the absorber's own error;
+  more room is better.
+- **A uniform medium next to each face.** On a graded mesh, keep the cells next
+  to each absorbing face uniform over as many cells as the face has layers
+  (`nu_grading_reaches_absorber`). A substrate that runs into the absorber on
+  purpose (a line meant to look infinitely long) is reported too; read the
+  warning and decide.
+- **CPML for most uses.** UPML is accepted on a uniform mesh on one device
+  only, is refused with a plane wave, and does
+  not read `cpml_kappa_max`. Use CPML unless you have a reason not to.
+
+### Metal and magnetic walls
+
+A `"pec"` face is a perfect electric conductor: tangential E is zero on it. A
+`"pmc"` face is a perfect magnetic conductor: tangential H is zero on it.
+Either can stand for a symmetry plane of the structure and its excitation: a
+PEC wall where the tangential E is zero by symmetry, a PMC wall where the
+tangential H is zero. A closed cavity is
+PEC on every face; do not mix an absorber into it.
+
+### Periodic walls and a phase across the cell
+
+A `"periodic"` axis joins its two faces: the field leaving one face enters the
+other. With no phase, this models an infinite array at normal incidence. A
+phase across the cell (a Bloch condition, for oblique incidence or a scanned
+array) is not set on the boundary itself but by the source that needs it:
+
+- `add_floquet_port(..., scan_theta=..., scan_phi=...)` turns on periodic
+  transverse axes for you. A port scanned off normal is refused on every solver
+  path today; at normal incidence it runs on a uniform mesh on one device.
+- A plane wave (`add_tfsf_source(..., angle_deg=..., method="bloch")`) applies
+  the phase across a periodic transverse axis.
+
+### Rules that ports and plane waves put on the boundary
+
+- **Waveguide port.** It needs at least one CPML face (`boundary="cpml"`, or
+  CPML on some faces of a `BoundarySpec`) and at least one layer. A full-aperture port
+  (the guide fills the domain cross-section) needs PEC on the transverse
+  faces; on a uniform mesh the default transverse absorbers are solved as PEC
+  with a warning, and on a graded mesh you declare them explicitly.
+- **Plane wave from a slab source.** On each axis across the beam, the two
+  faces must be periodic, or both the matching wall (PEC on the faces normal to
+  E, PMC on the faces normal to H), or both absorbing, which is the default.
+  Walls and absorbers there are solved as periodic, absorber layers included,
+  and preflight warns (`tfsf_transverse_periodic`): along that axis you model
+  an infinite array of your structure. A structure that is not uniform along
+  such an axis is refused; declare the axis `"periodic"` to solve an array on
+  purpose, or use `closed_box=True` for a finite scatterer. A mixed pair is
+  refused. This uniformity check applies at normal incidence. At an angle, the
+  axis the wave tilts along is not checked: the default `method="bloch"` solves
+  it as periodic (the preflight warning says the structure was not judged
+  along it), and `method="methodB"` absorbs on it.
+- **Plane wave in a closed box** (`closed_box=True`, a total-field box with
+  the scattered field around it) needs `boundary="cpml"`, not a PEC cavity.
+
 ## What is checked
+
+When the spec is built: the face words, a periodic axis on both faces,
+thickness only on absorbing faces and never above `cpml_layers`, and no
+CPML–UPML mix. Before the run, preflight checks the absorber depth, the room
+around the structure and the mesh next to each absorbing face (warnings), and
+the solver path checks that it implements every face (refusals, below).
 
 ## What is refused, and the way through
 
+| Input | Solver path | What happens | Instead |
+|---|---|---|---|
+| `"pmc"` face | multi-device, ADI, subgridded | refused | run on one device on a uniform or graded mesh |
+| `"periodic"` axis | graded mesh, multi-device, ADI, subgridded | refused | use a uniform mesh |
+| an absorbing face (`"cpml"` or `"upml"`) | ADI | refused when the `Simulation` is created | `boundary="pec"` for a closed cavity, or the default solver for an open structure |
+| `"upml"` | graded mesh, multi-device, ADI, subgridded | refused | use `"cpml"` |
+| `"upml"` with a plane wave (`add_tfsf_source`) | all | refused | use `"cpml"` |
+| UPML with `cpml_kappa_max` other than 1 | all | refused: UPML does not read it | use `"cpml"` |
+| a waveguide port with no CPML face | all | refused when the port is added | use CPML |
+| a Floquet port scanned off normal | all | refused | normal incidence only |
+| a slab plane wave with a mixed pair of side faces, or (at normal incidence) a structure not uniform along a side axis that is not periodic | all | refused | declare that axis `"periodic"`, or use `closed_box=True` |
+| `closed_box=True` plane wave in a PEC domain | all | refused | `boundary="cpml"` |
+
+[Refused inputs](/rfx/check/refusals/) explains how refusals read; the
+[support page](/rfx/support/) lists every refusal per solver path.
+
 ## Accuracy
 
+The CPML's reflection is measured directly: a plane wave in vacuum on a 1 mm
+mesh hits one face, and the reflected wave is separated from the incident one.
+At 2, 10 and 30 GHz and on both the low and the high face, the reflection stays
+below these bounds (`tests/unit/boundaries/test_cpml_reflection_coefficient.py`):
+
+| Layers | `cpml_kappa_max` | Reflection below |
+|---|---|---|
+| 4 | 1 | −13 dB |
+| 8 | 1 | −40 dB |
+| 16 (default) | 1 | −90 dB |
+| 8 | 3 | −25 dB |
+
+At 45° incidence with 8 layers, the reflection at 10 GHz is below −60 dB (same
+file). The bounds are test limits set above the measured values, not the
+measured values themselves.
+
 ## See also
+
+- [Domain and mesh](/rfx/model/domain-mesh/): the domain and the cells next to the absorber.
+- [Ports](/rfx/model/ports/) and [Sources](/rfx/model/sources/): what each port and source needs.
+- [Check the model on the grid](/rfx/check/model-on-grid/): the preflight warnings above.
+- [Known limitations](https://github.com/bk-squared/rfx/blob/main/docs/guides/known_limitations.md): magnetic faces, plane-wave side faces, and full-aperture
+  guides on a graded mesh each have an entry there.
