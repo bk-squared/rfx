@@ -181,10 +181,9 @@ def test_h_builder_inventory_reads_the_shared_owner():
     from rfx.sources import tfsf, tfsf_2d, tfsf_oblique_open, waveguide_port, msl_port, coaxial_port
     sites = [yee.update_h, yee.update_h_nu, yee.precompute_coeffs,
              dc._update_h_local, dc._update_h_local_nu, cpml.apply_cpml_h,
-             dc._apply_cpml_h_distributed, distributed_nu._apply_cpml_h_local_nu,
              upml.init_upml, adi.adi_step_2d, adi.adi_step_3d, adi.apply_adi_cpml_2d,
              sg._z_slab_material_coupling_h_3d, sg._z_slab_material_coupling_e_3d,
-             dc.cpml_coeff_h_vacuum, sbp_sat_1d._update_h_1d,
+             sbp_sat_1d._update_h_1d,
              sbp_sat_2d._update_hx_2d, sbp_sat_2d._update_hy_2d,
              tfsf.update_tfsf_1d_h, tfsf.apply_tfsf_h, tfsf._apply_closed_box_h,
              tfsf_2d._update_h_tmz, tfsf_2d._update_h_tez, tfsf_2d.apply_tfsf_2d_h,

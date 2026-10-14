@@ -20,12 +20,9 @@ reproduce a record that names it.
 from __future__ import annotations
 
 from rfx.runners._distributed_common import (  # noqa: F401 -- re-exported
-    cpml_coeff_e_vacuum,
-    cpml_coeff_h_vacuum,
     gather_array_x,
     split_array_x,
     split_poles_x,
-    zeros_psi_stacked,
     _split_state,
     _split_materials,
     _split_debye_coeffs,
@@ -37,9 +34,6 @@ from rfx.runners._distributed_common import (  # noqa: F401 -- re-exported
     _update_e_debye_local,
     _update_e_lorentz_local,
     _update_e_local_with_dispersion,
-    _init_cpml_distributed,
-    _apply_cpml_e_distributed,
-    _apply_cpml_h_distributed,
 )
 
 

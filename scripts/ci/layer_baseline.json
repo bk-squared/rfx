@@ -481,8 +481,6 @@
     },
     "rfx/runners/_distributed_common.py": {
       "S": [
-        "_apply_cpml_e_distributed",
-        "_apply_cpml_h_distributed",
         "_update_e_debye_local",
         "_update_e_local",
         "_update_e_local_nu",
@@ -503,8 +501,6 @@
     },
     "rfx/runners/distributed_nu.py": {
       "S": [
-        "_apply_cpml_e_local_nu",
-        "_apply_cpml_h_local_nu",
         "_exchange_e_ghosts_nu",
         "_exchange_h_ghosts_nu",
         "run_nonuniform_distributed_pec"

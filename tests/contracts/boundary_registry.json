@@ -585,21 +585,6 @@
     },
     {
       "file": "rfx/runners/_distributed_common.py",
-      "function": "_apply_cpml_e_distributed",
-      "kind": "neighbour"
-    },
-    {
-      "file": "rfx/runners/_distributed_common.py",
-      "function": "_apply_cpml_h_distributed",
-      "kind": "neighbour"
-    },
-    {
-      "file": "rfx/runners/_distributed_common.py",
-      "function": "_init_cpml_distributed",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/runners/_distributed_common.py",
       "function": "_update_e_debye_local",
       "kind": "difference",
       "count": 6
@@ -703,14 +688,9 @@
       "kind": "boundary"
     },
     {
-      "file": "rfx/runners/distributed_nu.py",
-      "function": "_apply_cpml_e_local_nu",
-      "kind": "neighbour"
-    },
-    {
-      "file": "rfx/runners/distributed_nu.py",
-      "function": "_apply_cpml_h_local_nu",
-      "kind": "neighbour"
+      "file": "rfx/runners/_distributed_common.py",
+      "function": "init_cpml_slabs",
+      "kind": "boundary"
     },
     {
       "file": "rfx/runners/distributed_nu.py",
