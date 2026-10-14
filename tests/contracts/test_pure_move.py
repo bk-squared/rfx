@@ -191,6 +191,14 @@ class Covered:
 '''
 
 P2_OLD = '''
+from typing import Literal as Lit
+
+def literal_import_alias(x: Lit["1"]):
+    pass
+
+def into_class(self):
+    return self.__x
+
 def capture():
     return bar()
 
@@ -298,8 +306,12 @@ def mapping_renamed(value):
         case {"key": _, **run}:
             return run
 
-def chain_start(a):
+def chain_start():
+    a = 1
     return a
+
+def posonly_only(run, /, *args, **kwargs):
+    return run, args, kwargs
 
 def literal_numeric(x: Literal["1"]):
     pass
@@ -398,6 +410,15 @@ def argument_comment(
 '''
 
 P2_NEW = '''
+from typing import Literal as Lit
+
+def literal_import_alias(x: Lit[1]):
+    pass
+
+class Receiver:
+    def into_class(self):
+        return self.__x
+
 def bar():
     return bar()
 
@@ -458,8 +479,12 @@ def mapping_renamed(value):
         case {"key": _, **run_new}:
             return run_new
 
-def chain_start(b):
+def chain_start():
+    b = 1
     return b
+
+def posonly_only(run_new, /, *args_new, **kwargs_new):
+    return run_new, args_new, kwargs_new
 
 def literal_numeric(x: Literal[1]):
     pass
@@ -959,13 +984,21 @@ def test_parameter_binding_rename(repo):
                  "--pair", "p2_old.py:parameter_renamed=p2_new.py:parameter_renamed")
     assert result.returncode == 1, result.stderr + result.stdout
     assert "p2_old.py:shadow -> p2_new.py:shadow  DIFFERENT\n" in result.stdout
-    assert "p2_old.py:parameter_renamed -> p2_new.py:parameter_renamed  IDENTICAL\n" in result.stdout
+    assert ("p2_old.py:parameter_renamed -> p2_new.py:parameter_renamed  DIFFERENT\n"
+            "parameter renamed: run -> run_new (callers passing it by keyword break)\n") in result.stdout
+
+
+def test_positional_only_and_star_parameter_renames_stay_identical(repo):
+    result = run(repo, "--rename", "run=run_new", "--rename", "args=args_new", "--rename", "kwargs=kwargs_new",
+                 "--pair", "p2_old.py:posonly_only=p2_new.py:posonly_only")
+    assert result.returncode == 0, result.stderr + result.stdout
+    assert result.stdout.splitlines()[0] == "p2_old.py:posonly_only -> p2_new.py:posonly_only  IDENTICAL"
 
 
 def test_other_binding_site_renames(repo):
-    different = ["lambda_shadow", "except_shadow", "global_shadow"]
+    different = ["lambda_shadow", "except_shadow", "global_shadow", "all_parameters"]
     identical = [
-        "all_parameters", "lambda_renamed", "except_renamed", "global_renamed",
+        "lambda_renamed", "except_renamed", "global_renamed",
         "nonlocal_renamed", "match_renamed", "star_renamed", "mapping_renamed",
     ]
     args = ["--rename", "run=run_new", "--rename", "args=args_new",
@@ -989,6 +1022,22 @@ def test_literal_string_is_not_numeric(repo):
     assert result.returncode == 1, result.stderr + result.stdout
     for name in names:
         assert f"p2_old.py:{name} -> p2_new.py:{name}  DIFFERENT\n" in result.stdout
+
+
+def test_literal_imported_under_another_name_stays_literal(repo):
+    result = run(repo, "--pair", "p2_old.py:literal_import_alias=p2_new.py:literal_import_alias")
+    assert result.returncode == 1, result.stderr + result.stdout
+    assert result.stdout.splitlines()[0] == (
+        "p2_old.py:literal_import_alias -> p2_new.py:literal_import_alias  DIFFERENT")
+
+
+def test_function_moved_into_class_gains_name_mangling(repo):
+    result = run(repo, "--pair", "p2_old.py:into_class=p2_new.py:Receiver.into_class")
+    assert result.returncode == 1, result.stderr + result.stdout
+    assert result.stdout.splitlines()[:2] == [
+        "p2_old.py:into_class -> p2_new.py:Receiver.into_class  DIFFERENT",
+        "class context lost: __x",
+    ]
 
 
 def test_literal_values_and_annotated_metadata_stay_literal(repo):

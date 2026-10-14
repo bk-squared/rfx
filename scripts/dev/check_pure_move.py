@@ -51,6 +51,9 @@ def add_rename(renames: dict[str, str], value: str) -> None:
 class AnnotationStrings(ast.NodeTransformer):
     """Expand parsable strings anywhere within an annotation expression."""
 
+    def __init__(self, aliases: dict[str, str] | None = None) -> None:
+        self.aliases = aliases or {}
+
     def visit_Constant(self, node: ast.Constant) -> ast.AST:
         if not isinstance(node.value, str):
             return node
@@ -66,6 +69,7 @@ class AnnotationStrings(ast.NodeTransformer):
             else node.value.attr if isinstance(node.value, ast.Attribute) else None
         )
         node.value = self.visit(node.value)
+        name = self.aliases.get(name, name)
         if name == "Literal":
             return node
         if name == "Annotated":
@@ -80,12 +84,15 @@ class AnnotationStrings(ast.NodeTransformer):
 
 
 class NormalizeAnnotations(ast.NodeTransformer):
+    def __init__(self, aliases: dict[str, str] | None = None) -> None:
+        self.aliases = aliases or {}
+
     def generic_visit(self, node: ast.AST) -> ast.AST:
         if isinstance(node, (ast.arg, ast.AnnAssign)) and node.annotation is not None:
-            node.annotation = AnnotationStrings().visit(node.annotation)
+            node.annotation = AnnotationStrings(self.aliases).visit(node.annotation)
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             if node.returns is not None:
-                node.returns = AnnotationStrings().visit(node.returns)
+                node.returns = AnnotationStrings(self.aliases).visit(node.returns)
         return super().generic_visit(node)
 
 
@@ -210,11 +217,44 @@ def identifier_names(unit: ast.AST) -> set[str]:
     return names
 
 
-def class_context_losses(unit: ast.AST, old_name: str, new_name: str) -> list[str]:
+def typing_aliases(tree: ast.Module | None) -> dict[str, str]:
+    """Local names bound to typing's Literal or Annotated by an import anywhere in the module."""
+    aliases: dict[str, str] = {}
+    for node in ast.walk(tree) if tree is not None else ():
+        if isinstance(node, ast.ImportFrom) and node.module in {"typing", "typing_extensions"}:
+            for alias in node.names:
+                if alias.name in {"Literal", "Annotated"} and alias.asname:
+                    aliases[alias.asname] = alias.name
+    return aliases
+
+
+def renamed_parameters(units: ast.Module, renames: dict[str, str]) -> list[str]:
+    """Keyword-callable parameters of the compared definitions that the map renames."""
+    found = set()
+    for unit in units.body:
+        defs = [unit] + (list(unit.body) if isinstance(unit, ast.ClassDef) else [])
+        for node in defs:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                for arg in [*node.args.args, *node.args.kwonlyargs]:
+                    if arg.arg in renames:
+                        found.add(f"{arg.arg} -> {renames[arg.arg]}")
+    return sorted(found)
+
+
+def class_context_losses(old_unit: ast.AST, new_unit: ast.AST, old_name: str, new_name: str) -> list[str]:
     old_class = old_name.rsplit(".", 1)[0].rsplit(".", 1)[-1] if "." in old_name else None
     new_class = new_name.rsplit(".", 1)[0].rsplit(".", 1)[-1] if "." in new_name else None
-    if old_class is None or old_class == new_class:
+    if old_class == new_class:
         return []
+    losses = set()
+    if old_class is not None:
+        losses |= context_uses(old_unit)
+    if new_class is not None:
+        losses |= context_uses(new_unit)
+    return sorted(losses)
+
+
+def context_uses(unit: ast.AST) -> set[str]:
     names = identifier_names(unit)
     private_names = names | {
         node.attr for node in ast.walk(unit) if isinstance(node, ast.Attribute)
@@ -226,7 +266,7 @@ def class_context_losses(unit: ast.AST, old_name: str, new_name: str) -> list[st
         if (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
                 and node.func.id == "super" and not node.args and not node.keywords):
             losses.add("super()")
-    return sorted(losses)
+    return losses
 
 
 def git(*args: str, cwd: str | None = None) -> str:
@@ -309,12 +349,14 @@ def check_pairs(files: RevisionFiles, base: str, head: str, pairs: list,
             details.append(f"definitions: {len(old)} old, {len(new)} new")
         old = ast.Module(body=old, type_ignores=[])
         new = ast.Module(body=new, type_ignores=[])
-        losses = class_context_losses(old, old_name, new_name)
+        losses = class_context_losses(old, new, old_name, new_name)
         details.extend(f"class context lost: {loss}" for loss in losses)
-        old = NormalizeAnnotations().visit(old)
-        new = NormalizeAnnotations().visit(new)
+        old = NormalizeAnnotations(typing_aliases(files.read(base, old_path))).visit(old)
+        new = NormalizeAnnotations(typing_aliases(files.read(head, new_path))).visit(new)
         collisions = sorted(set(renames.values()) & identifier_names(old))
         details.extend(f"rename collision: {name} already used in the old unit" for name in collisions)
+        details.extend(f"parameter renamed: {item} (callers passing it by keyword break)"
+                       for item in renamed_parameters(old, renames))
         old = RenameIdentifiers(renames).visit(old)
         if not details and ast.dump(old, include_attributes=False) == ast.dump(new, include_attributes=False):
             print(f"{label}  IDENTICAL")
