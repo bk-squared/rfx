@@ -230,18 +230,24 @@ def _assert_clamp_leaves_lengths(n, lengths):
         enclosing = length
 
 
+# Boundary carries far dearer than a step: the least peak sits at the clamp's
+# edge (two full units), where a length above n // 2 would hold fewer carries.
+BYTES_EDGE = dict(boundary_bytes=1.0e8, step_bytes=1.0e6, static_bytes=0.0)
+
+
+@pytest.mark.parametrize("byte_counts", (BYTES, BYTES_EDGE), ids=("fit", "edge"))
 @pytest.mark.parametrize("n", (4, 17, 97, 288, 1000, 19092))
-def test_planner_lengths_pass_validation_and_the_clamp(n):
+def test_planner_lengths_pass_validation_and_the_clamp(n, byte_counts):
     for budget in (1e8, 3e8, 1e9, 1e10, 1e12):
         for max_levels in (1, 2, 3):
             plan = plan_checkpoint_lengths(n, budget_bytes=budget,
-                                           max_levels=max_levels, **BYTES)
+                                           max_levels=max_levels, **byte_counts)
             assert plan.lengths is not None
             assert checkpoint_lengths(plan.lengths) == plan.lengths
             _assert_clamp_leaves_lengths(n, plan.lengths)
             assert plan.levels == len(plan.lengths) <= max_levels
             assert plan.forward_passes == 1 + plan.levels
-            assert checkpoint_memory(n, plan.lengths, **BYTES).lengths == plan.lengths
+            assert checkpoint_memory(n, plan.lengths, **byte_counts).lengths == plan.lengths
 
 
 def test_planner_is_monotone_in_budget():
