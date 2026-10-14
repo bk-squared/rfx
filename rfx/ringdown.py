@@ -915,11 +915,11 @@ def refuse_forward_lane(lane: str, n_wire_ports: int, *, port_s11_freqs) -> None
                 "forward(ringdown=...) on the uniform lane supports one wire port, "
                 "as run(ringdown=...) does. Use a graded mesh (any dx/dy/dz "
                 "profile), where one run fills the driven column.")
-        if port_s11_freqs is None:
-            raise ValueError(
-                "forward(ringdown=...) on the uniform lane needs port_s11_freqs=: "
-                "the completed S-parameters are evaluated at those bins, like "
-                "forward()'s own s_params there.")
+    if port_s11_freqs is None:
+        raise ValueError(
+            "forward(ringdown=...) needs port_s11_freqs=: the completed "
+            "S-parameters are evaluated at those bins, like forward()'s own "
+            "s_params, which forward() computes only on request.")
 
 
 def _lane_resolver(lane: str, grid):
@@ -2528,7 +2528,8 @@ def gradient_witness(grad, grad_other, *, against: str = "early_start",
     One forward pass serves both gradients of the early-start form::
 
         def both(p):
-            r = sim.forward(eps_override=p, n_steps=n, ringdown=RingdownSpec())
+            r = sim.forward(eps_override=p, n_steps=n, port_s11_freqs=bins,
+                            ringdown=RingdownSpec())
             return (loss(r.ringdown.s_params), loss(r.ringdown.s_params_long)), r.ringdown
 
         (l, l_long), pullback, rd_out = jax.vjp(both, p, has_aux=True)

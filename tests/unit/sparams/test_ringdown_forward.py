@@ -80,7 +80,8 @@ N_GRAD_SHORT, N_GRAD_LONG = 1500, 4000
 
 
 def _kw(lane):
-    return {"port_s11_freqs": FREQS} if lane == "uniform" else {}
+    return {"port_s11_freqs": FREQS if lane == "uniform" else
+            np.linspace(2e9, 20e9, 50)}
 
 
 def _run_kw(lane):
@@ -256,7 +257,7 @@ def test_a_jitted_long_record_reads_w0_ok(lane, bins, n):
     sim = _box(lane)
     grid = sim._build_grid() if lane == "uniform" else sim._build_nonuniform_grid()
     eps = jnp.full(tuple(grid.shape), 2.2, jnp.float32)
-    kw = ({} if lane == "graded" else
+    kw = (_kw(lane) if lane == "graded" else
           {"port_s11_freqs": DENSE if bins == "across TM110" else FREQS})
 
     def f(p):
@@ -340,7 +341,8 @@ def _loss_and_grad(sim, n, *, jit, bins=FREQS):
     graded = bool(sim._uses_nonuniform_mesh)
     grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
     eps = jnp.full(tuple(grid.shape), 2.2, jnp.float32)
-    kw = {} if graded else {"port_s11_freqs": bins}
+    kw = {"port_s11_freqs": np.linspace(sim._freq_max / 10, sim._freq_max, 50)
+          if graded else bins}
 
     def loss(p):
         r = sim.forward(n_steps=n, skip_preflight=True, eps_override=eps * p,
@@ -640,6 +642,12 @@ def _case_uniform_without_bins():
     return _box("uniform"), {"port_s11_freqs": None}, "needs port_s11_freqs"
 
 
+def _case_graded_without_bins():
+    # forward() computes port S only on request on both meshes (#1373), so the
+    # graded completion has no bins of its own either.
+    return _box("graded"), {"port_s11_freqs": None}, "needs port_s11_freqs"
+
+
 def _case_uniform_two_ports():
     return _box("uniform", second_port=True), {}, "supports one wire port"
 
@@ -667,7 +675,8 @@ def _case_not_a_spec():
 
 
 @pytest.mark.parametrize("case", [_case_distributed, _case_no_time_series,
-                                  _case_uniform_without_bins, _case_uniform_two_ports,
+                                  _case_uniform_without_bins, _case_graded_without_bins,
+                                  _case_uniform_two_ports,
                                   _case_lumped, _case_source_on, _case_stencil_order_4,
                                   _case_not_a_spec])
 def test_what_the_completion_does_not_cover_is_refused(case):
@@ -859,7 +868,7 @@ def test_forward_caps_the_pole_count_for_both_long_windows(monkeypatch):
     monkeypatch.setattr(rj, "host_poles", capture)
     jax.eval_shape(lambda p: sim.forward(
         n_steps=140000, skip_preflight=True, eps_override=eps * p,
-        ringdown=RingdownSpec()).ringdown, jnp.float32(1.0))
+        ringdown=RingdownSpec(), **_kw("graded")).ringdown, jnp.float32(1.0))
     assert [m for m, _k in seen] == [70000, 105000]
     assert all(0 < k <= rd.TRACED_POLE_BUDGET for _m, k in seen), seen
 
@@ -904,7 +913,8 @@ def test_over_budget_reports_the_kept_count_and_each_window_budget(monkeypatch):
     monkeypatch.setattr(rj, "host_poles", over_budget)
     sim = _box("graded")
     out = jax.jit(lambda: sim.forward(
-        n_steps=2500, skip_preflight=True, ringdown=RingdownSpec()).ringdown)()
+        n_steps=2500, skip_preflight=True, ringdown=RingdownSpec(),
+        **_kw("graded")).ringdown)()
     assert np.all(np.asarray(out._status) == rj.STATUS_OVER_BUDGET)
     assert np.asarray(out._pole_counts).tolist() == [kept, kept]
     assert int(out._pole_budgets[0]) == rd.TRACED_POLE_BUDGET

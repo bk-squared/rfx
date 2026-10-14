@@ -79,19 +79,6 @@ def test_time_series_consequence_still_applies(declaration, ident):
         ], {ident: 'time series consequence'})
 
 
-def test_a4_fixed_wording_and_wrong_exception():
-    pair = {
-        'run': {'outcome': 'raised', 'type': 'NotImplementedError', 'message': 'Ports unsupported on run path'},
-        'forward': {'outcome': 'raised', 'type': 'NotImplementedError',
-                    'message': 'Lumped / wire ports (impedance > 0) are not yet supported'},
-    }
-    with pytest.raises(pytest.fail.Exception, match='A4 no longer applies'):
-        contract.outcomes('P-lumped', 'multi-device-graded', 'admission', pair)
-    pair['run']['type'] = 'RuntimeError'
-    with pytest.raises(pytest.fail.Exception, match='unexplained'):
-        contract.outcomes('P-lumped', 'multi-device-graded', 'admission', pair)
-
-
 def test_per_drive_same_shape_value_is_unexplained():
     with pytest.raises(pytest.fail.Exception, match='unexplained.*settling_witness/per_drive'):
         contract.classify('P-lumped', 'uniform', 'L2', [

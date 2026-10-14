@@ -1055,6 +1055,39 @@ def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None
     admit_simulation(sim, materials=(run_args or {}).get("tfsf_materials"))
 
 
+def require_isolated_s_drive(sim, *, implicit=False, fields_only=False):
+    """Admit S from one record, or omit implicit S when drives are mixed."""
+    excited = [(index, port) for index, port in enumerate(sim._ports)
+               if port.impedance > 0 and port.excite]
+    if len(excited) < 2:
+        return True
+    ports = "; ".join(f"port {index} at {port.position}" for index, port in excited)
+    message = (
+        f"S-parameters from one record require an isolated drive; excited ports: {ports}. "
+        "set excite=False on every port but the driven one and run once per driven port, "
+        "or use the uniform run(compute_s_params=True), which drives one port per run"
+    )
+    if fields_only:
+        message += "; use run(compute_s_params=False) for fields only"
+    if implicit:
+        import sys
+        import warnings
+        stacklevel = 2
+        frame = sys._getframe(1)
+        try:
+            while frame is not None and (
+                frame.f_globals.get("__name__", "") == "rfx"
+                or frame.f_globals.get("__name__", "").startswith("rfx.")
+            ):
+                stacklevel += 1
+                frame = frame.f_back
+        finally:
+            del frame
+        warnings.warn(message + "; returning no S-parameters.", UserWarning, stacklevel=stacklevel)
+        return False
+    raise ValueError(message)
+
+
 def refuse_plain_sources_s_matrix(sim, *, main_record=False):
     """A port drive must be the only excitation of a lumped/wire S solve.
 
@@ -1078,6 +1111,12 @@ def refuse_plain_sources_s_matrix(sim, *, main_record=False):
         "Remove the plain source, or call run(compute_s_params=False) "
         "to get raw port waves with the source included."
     )
+
+
+def admit_forward_s_matrix(sim):
+    """Check explicit forward S requests before dispatch or stepping."""
+    refuse_plain_sources_s_matrix(sim, main_record=True)
+    require_isolated_s_drive(sim)
 
 
 def admit_run_s_matrix(sim, *, compute_s_params=None, conformal_pec=None,

@@ -465,7 +465,10 @@ def _enumerate_emission_sites():
 # ``_validate_cfg_unresolved_pulse``, code ``undriven_pulse`` -- a pulse whose
 # sampled drive has no value above 1e-6 of its amplitude (bandwidth given in
 # Hz) is refused instead of running with nothing driven.
-_FROZEN_TOTAL_SITES = 134
+# 134 -> 135 (#1691): ``preflight_wire_port_radius``, one advisory per
+# preflight naming every wire port declared without radius= (its S does not
+# converge with the mesh: each halving adds omega*(mu0*l/2pi)*ln2).
+_FROZEN_TOTAL_SITES = 135
 # 74 -> 73, 2026-09-15 (#1043 / PR #1047): ``conformal_nan`` was the only
 # site emitting that code, and the check was deleted when its own tripwire
 # XPASSed -- see the note on _FROZEN_TOTAL_SITES above.
@@ -499,7 +502,8 @@ _FROZEN_TOTAL_SITES = 134
 # 87 -> 89 (#1620): assembly_refusal, assembly_fault.
 # 89 -> 88 (#1624): sheet_gap_bridged retired.
 # 88 -> 89 (issue 1668): undriven_pulse.
-_FROZEN_LITERAL_CODE_COUNT = 89
+# 89 -> 90 (#1691): wire_port_no_radius.
+_FROZEN_LITERAL_CODE_COUNT = 90
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site

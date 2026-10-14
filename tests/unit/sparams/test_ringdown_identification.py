@@ -66,7 +66,8 @@ def test_identification_channels_reach_both_pencils_and_preserve_ports(lane, mon
     run_channels = seen[0]
     assert run_channels.shape == (600, 3)
     seen.clear()
-    kw = {"port_s11_freqs": FREQS} if lane == "uniform" else {}
+    kw = {"port_s11_freqs": FREQS if lane == "uniform" else
+          np.linspace(sim._freq_max / 10, sim._freq_max, 50)}
     forward = sim.forward(n_steps=600, skip_preflight=True, ringdown=spec, **kw)
     np.asarray(forward.ringdown.s_params)  # wait for host callback
     assert seen and all(y.shape[1] == 3 for y in seen)

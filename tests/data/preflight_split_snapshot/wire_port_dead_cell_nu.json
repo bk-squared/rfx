@@ -118,10 +118,37 @@
         ],
         "severity": "warning",
         "source": "_validate_cfg_off_lattice_design_edges"
+      },
+      {
+        "code": "wire_port_no_radius",
+        "loc": "_ports[0]",
+        "numbers": [
+          0.2,
+          2.0,
+          0.0,
+          2.0,
+          2.0,
+          1.4,
+          0.0,
+          226.2,
+          254.0,
+          84.67,
+          84.67,
+          0.1985,
+          16.81,
+          2.5,
+          0.0,
+          0.493,
+          0.2,
+          0.2,
+          16.93
+        ],
+        "severity": "warning",
+        "source": "preflight_wire_port_radius"
       }
     ],
     "n_errors": 0,
-    "n_issues": 7,
+    "n_issues": 8,
     "ok": true
   }
 }

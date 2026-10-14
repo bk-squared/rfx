@@ -234,9 +234,10 @@ def _two_wire_sim(nonuniform):
                          boundary="pec", cpml_layers=0,
                          **({"dz_profile": np.full(10, 1e-3)}
                             if nonuniform else {}))
-        for x in (0.006, 0.014):
+        # one driven port: S from one record needs isolated drives
+        for index, x in enumerate((0.006, 0.014)):
             sim.add_port((x, 0.01, 0.002), "ez", impedance=50.0,
-                         extent=0.006)
+                         extent=0.006, excite=index == 0)
         return sim
     return _quiet(build)
 

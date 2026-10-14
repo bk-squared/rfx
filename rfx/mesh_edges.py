@@ -138,12 +138,14 @@ def _inner_cell(span, k, r, cap, max_ratio):
     return S / n
 
 
-def _chain_r(chain, edges, cap, max_ratio):
+def _chain_r(chain, edges, cap, max_ratio, face_pairs=()):
     """ONE edge cell for a whole chain: the largest exact fit
     ``r = D_j / (n + k_j) <= cap`` of any pair j for which every pair of the
     chain closes (``_inner_cell`` is not None). Returns ``(r, inner cells)``
     or ``(None, None)`` when no fit down to ``1e-3 cap`` closes the chain."""
     spans = [(edges[i + 1].position - edges[i].position, k) for i, k in chain]
+    spans.extend((abs(face - edges[i].position), k)
+                 for i, face, k in face_pairs)
     heap = []
     for j, (span, k) in enumerate(spans):
         n = max(0, int(np.ceil(span / cap - k - 1e-9)))
@@ -156,7 +158,7 @@ def _chain_r(chain, edges, cap, max_ratio):
             break
         span, k = spans[j]
         heapq.heappush(heap, (-span / (n + 1 + k), j, n + 1))
-        if r > cap * (1.0 + 1e-12):
+        if r > cap * (1.0 + (1e-9 if face_pairs else 1e-12)):
             continue
         inner = [_inner_cell(d, kk, r, cap, max_ratio) for d, kk in spans]
         if all(c is not None for c in inner):
@@ -164,10 +166,30 @@ def _chain_r(chain, edges, cap, max_ratio):
     return None, None
 
 
+def _face_pairs(edges, fixed, res, edge_offset, partner_edges):
+    # Only the nearest face on either side can partner an edge. A face
+    # inside the protected cell at the cap joins the exact-fit constraints;
+    # merely capping r would leave a sliver when a chain chooses a smaller r.
+    face_pairs = {}
+    for i, edge in enumerate(edges):
+        if i not in partner_edges:
+            continue
+        for side in (-1, 1):
+            nearest = [f for f in fixed if (f - edge.position) * side > 0.0]
+            if not nearest:
+                continue
+            face = min(nearest, key=lambda f: abs(f - edge.position))
+            k = edge_offset if side == edge.metal_side else 1.0 - edge_offset
+            if abs(face - edge.position) <= k * res[i] * (1.0 + 1e-9):
+                face_pairs.setdefault(i, []).append((i, face, k))
+    return face_pairs
+
+
 def _build(lo, hi, dx, fixed, edges, res, edge_offset, max_ratio,
-           boundary_cell):
+           boundary_cell, partner_edges=frozenset()):
     """Lines for the given edge-cell sizes, then the cells between them."""
     res = list(res)
+    face_pairs = _face_pairs(edges, fixed, res, edge_offset, partner_edges)
     # Strips (metal between two edges) and gaps (air between two metals) with
     # no face in between form CHAINS of consecutive edges. Every edge of a
     # chain gets ONE edge-cell size r, an exact fit D = (n + k) r of one of
@@ -178,9 +200,16 @@ def _build(lo, hi, dx, fixed, edges, res, edge_offset, max_ratio,
     # gap on its own let a shared edge keep the LAST pair's r and left a
     # micrometre sliver between two lines that should coincide.
     paired = {}
-    for chain in _chains(_chain_pairs(edges, fixed, edge_offset)):
-        ids = [chain[0][0]] + [i + 1 for i, _ in chain]
-        r, inner = _chain_r(chain, edges, min(res[i] for i in ids), max_ratio)
+    face_inner = []
+    chains = _chains(_chain_pairs(edges, fixed, edge_offset))
+    groups = [([chain[0][0]] + [i + 1 for i, _ in chain], chain)
+              for chain in chains]
+    chained = {i for ids, _ in groups for i in ids}
+    groups.extend(([i], []) for i in face_pairs if i not in chained)
+    for ids, chain in groups:
+        partners = [pair for i in ids for pair in face_pairs.get(i, ())]
+        r, inner = _chain_r(chain, edges, min(res[i] for i in ids),
+                            max_ratio, partners)
         if r is None:
             continue
         for i in ids:
@@ -188,6 +217,10 @@ def _build(lo, hi, dx, fixed, edges, res, edge_offset, max_ratio,
         for (i, _), c in zip(chain, inner):
             if c > 0.0:
                 paired[i] = c
+        for (i, face, k), c in zip(partners, inner[len(chain):]):
+            if c > 0.0:
+                line = edges[i].position + np.sign(face - edges[i].position) * k * r
+                face_inner.append((min(line, face), max(line, face), c))
     # Shrink an edge cell until it clears its neighbours: other edge cells
     # and faces. Twelve steps of 0.8 take it to ~0.07 of its start; below
     # that the drawing, not the mesh, is the problem.
@@ -230,6 +263,8 @@ def _build(lo, hi, dx, fixed, edges, res, edge_offset, max_ratio,
         inner = [r for i, r in paired.items()
                  if min(ends[i], ends[i + 1]) - 1e-12 <= a
                  and b <= max(ends[i], ends[i + 1]) + 1e-12]
+        inner.extend(c for left, right, c in face_inner
+                     if left - 1e-12 <= a and b <= right + 1e-12)
         if is_edge_cell:
             sizes.append(b - a)
             prot.append(True)
@@ -311,41 +346,89 @@ def edge_aware_profile(
     # smaller edge cell often avoids the split altogether, so a few starting
     # sizes are tried and the profile with the LARGEST smallest cell wins:
     # the time step follows the smallest cell.
-    best = None
-    last_error = None
-    for scale in (1.0, 0.95, 0.9, 0.85, 0.8, 0.75):
-        res = [dx * scale] * len(edges)
-        try:
-            for _ in range(8):
-                cells, merged, ends, res = _build(
-                    lo, hi, dx, fixed, edges, res, edge_offset, max_ratio,
-                    boundary_cell)
-                nodes = lo + np.concatenate([[0.0], np.cumsum(cells)])
-                realized = []
-                for e in edges:
-                    k = int(np.searchsorted(nodes, e.position, side="right")) - 1
-                    realized.append(float(nodes[k + 1] - nodes[k]))
-                if all(abs(a - b) <= 1e-9 * dx for a, b in zip(realized, res)):
-                    break
-                res = [min(a, b) for a, b in zip(realized, res)]
-            else:
-                raise ValueError(
-                    "the edge cells did not settle under the ratio cap; "
-                    "raise max_ratio or lower dx")
-        except ValueError as exc:
-            last_error = exc
-            continue
-        key = (float(cells.min()), -int(cells.size))
-        if best is None or key > best[0]:
-            best = (key, cells, nodes, ends, realized)
-        if not edges:
+    def _profile(partner_edges):
+        best = None
+        last_error = None
+        for scale in (1.0, 0.95, 0.9, 0.85, 0.8, 0.75):
+            res = [dx * scale] * len(edges)
+            try:
+                for _ in range(8):
+                    cells, merged, ends, res = _build(
+                        lo, hi, dx, fixed, edges, res, edge_offset, max_ratio,
+                        boundary_cell, partner_edges=partner_edges)
+                    nodes = lo + np.concatenate([[0.0], np.cumsum(cells)])
+                    realized = []
+                    for e in edges:
+                        k = int(np.searchsorted(nodes, e.position, side="right")) - 1
+                        realized.append(float(nodes[k + 1] - nodes[k]))
+                    if all(abs(a - b) <= 1e-9 * dx for a, b in zip(realized, res)):
+                        break
+                    res = [min(a, b) for a, b in zip(realized, res)]
+                else:
+                    raise ValueError(
+                        "the edge cells did not settle under the ratio cap; "
+                        "raise max_ratio or lower dx")
+            except ValueError as exc:
+                last_error = exc
+                continue
+            except RuntimeError as exc:
+                # A partner candidate whose band fit does not converge is infeasible;
+                # without partners the error propagates as it did before.
+                if not partner_edges:
+                    raise
+                last_error = ValueError(str(exc))
+                continue
+            key = (float(cells.min()), -int(cells.size))
+            if best is None or key > best[0]:
+                best = (key, cells, nodes, ends, realized)
+            if not edges:
+                break
+        if best is None:
+            return last_error
+        key, cells, nodes, ends, realized = best
+        return key, EdgeAwareProfile(cells=cells, nodes=nodes,
+                                    metal_end_nodes=tuple(ends),
+                                    edge_cells=tuple(realized))
+
+    old = _profile(frozenset())
+    chains = _chains(_chain_pairs(edges, fixed, edge_offset))
+    groups = [frozenset([chain[0][0], *(i + 1 for i, _ in chain)])
+              for chain in chains]
+    chained = frozenset(i for group in groups for i in group)
+    groups.extend(frozenset([i]) for i in range(len(edges)) if i not in chained)
+    groups.sort(key=min)
+    partners = _face_pairs(edges, fixed, [dx] * len(edges), edge_offset,
+                           frozenset(range(len(edges))))
+    toggleable = [group for group in groups if group.intersection(partners)]
+    if not toggleable:
+        if isinstance(old, ValueError):
+            raise old
+        return old[1]
+
+    cur = frozenset(i for group in toggleable for i in group)
+    current = _profile(cur)
+    best_p = None if isinstance(current, ValueError) else current
+    for _ in range(3):
+        changed = False
+        for group in toggleable:
+            flipped = cur.symmetric_difference(group)
+            candidate = _profile(flipped)
+            if isinstance(candidate, ValueError):
+                continue
+            if isinstance(current, ValueError) or candidate[0] > current[0]:
+                cur, current = flipped, candidate
+                changed = True
+            if best_p is None or candidate[0] > best_p[0]:
+                best_p = candidate
+        if not changed:
             break
-    if best is None:
-        raise last_error
-    _, cells, nodes, ends, realized = best
-    return EdgeAwareProfile(cells=cells, nodes=nodes,
-                            metal_end_nodes=tuple(ends),
-                            edge_cells=tuple(realized))
+    # Equal minima (within the settle tolerance) retain the old profile, even if a partner uses fewer cells.
+    if best_p is not None and (isinstance(old, ValueError)
+                               or best_p[0][0] > old[0][0] + 1e-9 * dx):
+        return best_p[1]
+    if isinstance(old, ValueError):
+        raise old
+    return old[1]
 
 
 def _box_corners(shape):

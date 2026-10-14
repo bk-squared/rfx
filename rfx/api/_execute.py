@@ -2673,10 +2673,9 @@ class _ExecuteMixin:
         for pe in self._ports:
             if pe.impedance > 0.0:
                 raise NotImplementedError(
-                    "Lumped / wire ports (impedance > 0) are not yet "
-                    "supported on the distributed=True forward path; "
-                    "use distributed=False or replace with a current "
-                    "source (impedance=0).")
+                    "Lumped / wire ports (impedance > 0) are not yet supported on the multi-device graded path "
+                    "(run(devices=...) with more than one device, or forward(distributed=True)); "
+                    "run on one device (forward: distributed=False) or replace the port with a current source (impedance=0).")
             idx = _grid_metric.field_index(grid, pe.position, pe.component)
             if (_drive_from_override
                     and not _needs_scale(pe.amplitude_kind, "cb_over_dv")):
@@ -3483,9 +3482,8 @@ class _ExecuteMixin:
             checks of the value (W0, W1, WE and the rest, as ``run()``'s),
             computed on the host from a concrete result and ``None`` while
             traced. Wire ports only (``add_port(..., extent=...)``); on the
-            uniform lane one port and ``port_s11_freqs=`` are needed (the
-            bins), on the graded lane the completion uses the lane's own
-            bins. Everything ``run(ringdown=...)`` refuses is refused, and
+            uniform lane one port is supported; ``port_s11_freqs=`` (the
+            bins) is needed on both lanes. Everything ``run(ringdown=...)`` refuses is refused, and
             so are ``distributed=True`` and ``emit_time_series=False``.
             ``None`` (default) leaves every output and the traced program as
             they were.
@@ -3585,7 +3583,7 @@ class _ExecuteMixin:
                 "differentiable probe-feed S11 objectives."
             )
 
-        if port_s11_freqs is not None:
+        if port_s11_freqs is not None or ringdown is not None:
             self._validate_forward_sparameter_request()
         _line_stub_scope = _line_stub_admit(self, port_s11_freqs)
 

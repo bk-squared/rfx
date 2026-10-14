@@ -283,7 +283,10 @@ def test_zero_issue_summary_line_is_honest(capsys):
         sim.add_port(position=(0.0093, 0.0093, 0.0093), component="ez",
                      impedance=50.0,
                      waveform=GaussianPulse(f0=5e9, bandwidth=0.9),
-                     extent=0.004)
+                     extent=0.004,
+                     # A radius-less wire port draws wire_port_no_radius;
+                     # this fixture pins a fully clean report.
+                     radius=0.1e-3)
         return sim
 
     assert _clean_sim().preflight() == []

@@ -91,9 +91,12 @@ def model(precision, entry):
                 if entry.endswith('_ntff') or entry == 'ntff_sweep' else {'boundary': 'pec'})
     sim = Simulation(freq_max=5e9, domain=(.018, .012, .012), dx=.003,
                      precision=precision, **exterior)
-    for x in (.006, .012)[:1 if 'single' in entry else 2]:
+    for i, x in enumerate((.006, .012)[:1 if 'single' in entry else 2]):
+        # forward S from one record needs one driven port (isolated drives); the
+        # run/distributed entries keep both driven so their own refusal order is tested
         sim.add_port((x, .006, .006), 'ez', impedance=50.,
                      waveform=GaussianPulse(f0=3e9, bandwidth=.8),
+                     excite=i == 0 or not entry.startswith('forward'),
                      **({'extent': .003} if 'wire' in entry else {}))
     sim.add_probe((.009, .006, .006), 'ez')
     if entry.endswith('_adi'):

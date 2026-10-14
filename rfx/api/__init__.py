@@ -58,6 +58,7 @@ from rfx.sources.waveguide_port import (
     waveguide_plane_positions,  # noqa: F401
 )
 from rfx.boundaries.spec import BoundarySpec
+from rfx.boundaries import refresh_boundary_model
 from rfx.boundaries.model import DEFAULT_BOUNDARY
 
 # ---------------------------------------------------------------------------
@@ -2435,10 +2436,7 @@ class Simulation(
         No runner consumes this descriptor in B1. ``rcs=True`` collects the
         RCS requirement for a caller preparing that operation.
         """
-        from rfx.boundaries.model import collect_requirements, with_requirements
-        self._boundary_model = with_requirements(
-            self._boundary_model, collect_requirements(self, rcs=rcs))
-        return self._boundary_model
+        return refresh_boundary_model(self, rcs=rcs)
 
     # ---- Floquet ports ----
 
