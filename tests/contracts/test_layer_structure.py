@@ -276,10 +276,11 @@ def test_calibration_from_declaration_and_leader_correction(generated):
     # The waveguide port's plane check moved to rfx.measurement.waveguide_planes;
     # D1 detection itself stays pinned by test_declaration_grid_mutation.
     assert "Simulation.add_waveguide_port" not in api["D1"]
-    # This method still computes/checks values before a final return at this commit.
-    assert "Simulation.mesh_intelligence_report" in api["D2"]
+    # The report moved to rfx.mesh_planner.mesh_intelligence_report; the method only returns its call.
+    assert "Simulation.mesh_intelligence_report" not in api["D2"]
     node = target_unit(real_tree(API), "Simulation.mesh_intelligence_report")
-    assert len(gate.body_without_docstring(node)) > 1
+    assert len(gate.body_without_docstring(node)) == 1
+    assert "mesh_intelligence_report" in {name for name, _, _ in gate.units(real_tree("rfx/mesh_planner.py"))}
     moved = (
         "_ad_memory_static_accounting", "estimate_ad_memory", "explain_ad_memory",
         "plan_ad_memory", "ad_memory_preflight", "ad_memory_compiled_certificate",

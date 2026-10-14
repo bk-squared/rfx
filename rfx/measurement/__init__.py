@@ -2,6 +2,7 @@
 
 from rfx.measurement.declared import package_declared_measurements
 from rfx.measurement.flux_weights import grid_flux_monitor
+from rfx.measurement.graded_result import assemble_graded_result
 from rfx.measurement.monitors import default_frequency_grid
 from rfx.measurement.oblique import reconstruct_oblique_physical
 from rfx.measurement.plan import build_measurement_plan, measurement_plan
@@ -23,6 +24,7 @@ from rfx.measurement.waveguide_s import (
 
 __all__ = [
     "admit_waveguide_planes",
+    "assemble_graded_result",
     "build_measurement_plan",
     "default_frequency_grid",
     "extract_multimode_s_matrix",

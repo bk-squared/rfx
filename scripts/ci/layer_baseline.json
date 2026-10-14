@@ -13,13 +13,11 @@
       "M": [],
       "A": [],
       "G": [
-        "Simulation.__init__",
-        "Simulation.mesh_intelligence_report"
+        "Simulation.__init__"
       ],
       "D1": [],
       "D2": [
         "Simulation.auto",
-        "Simulation.mesh_intelligence_report",
         "Simulation.tfsf_box_indices",
         "Simulation.validate_subgrid"
       ]
@@ -124,13 +122,9 @@
         "run_nonuniform_until_decay"
       ],
       "M": [],
-      "A": [
-        "_assemble_nu_result"
-      ],
+      "A": [],
       "G": [
-        "_assemble_nu_result",
         "_update_e_nu_dispersive",
-        "current_source_samples",
         "run_nonuniform",
         "run_nonuniform_until_decay"
       ],

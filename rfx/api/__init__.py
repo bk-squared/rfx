@@ -98,7 +98,7 @@ from rfx.api._spec import (  # noqa: E402
     MSLSMatrixResult,
     MixedSMatrixResult,
 )
-from rfx.mesh_planner import MeshPlan, plan_simulation_mesh  # noqa: E402,F401
+from rfx.mesh_planner import MeshPlan, mesh_intelligence_report, plan_simulation_mesh  # noqa: E402,F401
 
 
 def _bloch_cutoff_level_db(angle_deg: float, bandwidth: float) -> float:
@@ -2794,141 +2794,12 @@ class Simulation(
         check_ntff: bool = True,
         check_resolution: bool = True,
     ) -> MeshIntelligenceReport:
-        """Return a consolidated mesh-quality and memory-planning report.
-
-        The report is intentionally advisory: it reuses ``preflight()``
-        for physics/geometry warnings, reuses ``estimate_ad_memory()``
-        when ``n_steps`` is provided, and adds a uniform-fine comparator
-        that estimates how many cells a globally fine mesh would need if
-        it used the minimum cell size present in any non-uniform profile.
-
-        This is the Stage-1 production-near "subgrid-like" planning
-        surface: it helps users decide whether existing non-uniform mesh
-        plus segmented checkpointing is enough before attempting
-        research-only true subgridding.
-
-        ``checkpoint_every`` and ``checkpoint_segments`` are forwarded to the
-        same AD estimator used by :meth:`plan_ad_memory`; they are mutually
-        exclusive. ``n_warmup`` is forwarded as reverse-mode tape metadata
-        only, matching ``estimate_ad_memory``.
-        """
-        import contextlib
-        import io
-
-        if any(
-            p is not None and is_tracer(p)
-            for p in (self._dx_profile, self._dy_profile, self._dz_profile)
-        ):
-            raise ValueError(
-                "mesh_intelligence_report requires concrete mesh profiles; "
-                "tracer-valued mesh-as-design-variable profiles cannot be "
-                "summarized host-side."
-            )
-
-        dx = self._dx or (C0 / self._freq_max / 20.0)
-
-        # #696: one shape source, shared with estimate_ad_memory — the
-        # grid the solve will actually build. This method carried its own
-        # copy of the same ceil(extent/dx)+1+2*cpml re-derivation, so the
-        # report's cell count and its AD estimate could describe two
-        # different grids, neither of them the one that runs.
-        _accounting = self._ad_memory_static_accounting()
-        grid_shape = (
-            _accounting["nx"], _accounting["ny"], _accounting["nz"],
-        )
-        cells = int(_accounting["cells"])
-
-        axis_min = [
-            float(np.min(self._dx_profile)) if self._dx_profile is not None else dx,
-            float(np.min(self._dy_profile)) if self._dy_profile is not None else dx,
-            float(np.min(self._dz_profile)) if self._dz_profile is not None else dx,
-        ]
-        min_cell_size = min(axis_min)
-        uniform_fine_shape = tuple(
-            int(math.ceil(extent / min_cell_size)) + 1 + 2 * self._cpml_layers
-            for extent in self._domain
-        )
-        uniform_fine_cells = int(
-            uniform_fine_shape[0] * uniform_fine_shape[1] * uniform_fine_shape[2]
-        )
-        cell_savings_factor = (
-            float(uniform_fine_cells / cells) if cells > 0 else float("inf")
-        )
-
-        # preflight() prints a summary by design; suppress it so the
-        # report method remains a pure information-returning API.
-        with contextlib.redirect_stdout(io.StringIO()):
-            preflight_issues = tuple(
-                self.preflight(
-                    strict=False,
-                    check_ntff=check_ntff,
-                    check_resolution=check_resolution,
-                    check_ad_memory=False,
-                )
-            )
-
-        ad_memory = None
-        if n_steps is not None:
-            ad_memory = self.estimate_ad_memory(
-                n_steps,
-                available_memory_gb=available_memory_gb,
-                checkpoint_every=checkpoint_every,
-                checkpoint_segments=checkpoint_segments,
-                n_warmup=n_warmup,
-            )
-
-        uses_nonuniform = any(
-            p is not None
-            for p in (self._dx_profile, self._dy_profile, self._dz_profile)
-        )
-        recommendation_parts: list[str] = []
-        if preflight_issues:
-            recommendation_parts.append(
-                f"resolve {len(preflight_issues)} preflight issue(s) before "
-                "trusting physics results"
-            )
-        elif uses_nonuniform and cell_savings_factor >= 2.0:
-            recommendation_parts.append(
-                f"non-uniform mesh is useful here: ~{cell_savings_factor:.1f}x "
-                "fewer cells than a uniform mesh at the finest spacing"
-            )
-        elif uses_nonuniform:
-            recommendation_parts.append(
-                "non-uniform mesh gives limited cell savings; verify that "
-                "the refinement profile is worth the added validation burden"
-            )
-        else:
-            recommendation_parts.append(
-                "uniform mesh: use preflight/memory estimates as baseline; "
-                "consider non-uniform profiles before research-only subgrid"
-            )
-
-        if ad_memory is not None:
-            if ad_memory.warning:
-                recommendation_parts.append(ad_memory.warning)
-            elif (checkpoint_every or checkpoint_segments) and ad_memory.ad_segmented_gb is not None:
-                recommendation_parts.append(
-                    f"use segmented AD estimate ({_format_memory_gb(ad_memory.ad_segmented_gb)}) "
-                    "rather than the legacy step-checkpoint heuristic"
-                )
-            else:
-                recommendation_parts.append(
-                    "estimated full reverse-mode AD memory is "
-                    f"{_format_memory_gb(ad_memory.ad_full_gb)}"
-                )
-
-        return MeshIntelligenceReport(
-            grid_shape=grid_shape,
-            cells=cells,
-            uniform_fine_shape=uniform_fine_shape,
-            uniform_fine_cells=uniform_fine_cells,
-            cell_savings_factor=cell_savings_factor,
-            min_cell_size=float(min_cell_size),
-            nominal_dx=float(dx),
-            uses_nonuniform=uses_nonuniform,
-            preflight_issues=preflight_issues,
-            ad_memory=ad_memory,
-            recommendation="; ".join(recommendation_parts) + ".",
+        """Return a consolidated mesh-quality and memory-planning report."""
+        return mesh_intelligence_report(
+            self, n_steps=n_steps, checkpoint_every=checkpoint_every,
+            checkpoint_segments=checkpoint_segments,
+            available_memory_gb=available_memory_gb, n_warmup=n_warmup,
+            check_ntff=check_ntff, check_resolution=check_resolution,
         )
     def _mesh_planner_state(self) -> dict[str, object]:
         """Return a narrow internal snapshot consumed by ``rfx.mesh_planner``.
