@@ -130,12 +130,13 @@ def test_kernel_import(tmp_path, generated):
 
 
 def test_module_attribute_import_is_per_file(tmp_path, generated):
-    name = "rfx.model.conductors:_PreparedSolve"
+    name = "rfx.model.conductors:_same_grid"
     assert name not in generated["files"][SIM]["I"]
-    assert name in generated["files"][EXECUTE]["I"]
+    assert name not in generated["files"][EXECUTE]["I"]
     observed = mutate(tmp_path, SIM, CLEAN,
-                      "from rfx.model import conductors as _c2\n_c2._PreparedSolve")
+                      "from rfx.model import conductors as _c2\n_c2._same_grid")
     assert_new_hit(generated, SIM, ["I"], name, observed)
+    assert name not in gate.count_file(CopiedSources(tmp_path), EXECUTE)["I"]
 
 
 def test_declaration_grid_mutation(tmp_path, generated):
@@ -296,7 +297,7 @@ def test_calibration_from_declaration_and_leader_correction(generated):
     # rfx/model/ in #1643; nonuniform.py now only imports it, counted under I.
     assert "NonUniformGrid.node_of" not in all_units
     assert "rfx.model.graded_grid:make_nonuniform_grid" in nonuniform["I"]
-    assert "rfx.model.materials:_design_box_edge_coeffs" in generated["files"][SIM]["I"]
+    assert "rfx.model.materials:_design_box_edge_coeffs" not in generated["files"][SIM]["I"]
 
 
 def empty_baseline():
@@ -502,7 +503,7 @@ def test_wiring_matches_file_size_gate():
 
 @pytest.mark.parametrize("target,statement,name", [
     (CLEAN, "from rfx.boundaries import apply_cpml_e", "rfx.boundaries:apply_cpml_e"),
-    (CLEAN, "from rfx.model.conductors import _PreparedSolve", "rfx.model.conductors:_PreparedSolve"),
+    (CLEAN, "from rfx.model.conductors import _same_grid", "rfx.model.conductors:_same_grid"),
     ("<module>", "from rfx.model.conductors import *", "rfx.model.conductors:*"),
 ])
 def test_review_import_mutations_on_real_source(tmp_path, generated, target, statement, name):

@@ -814,8 +814,8 @@ def _build_nu_scan(
     # fourth-order stencil, no Bloch phase, no Stage-2 inverse-eps tensor.
     design_box_coeffs = None
     if design_box is not None:
-        from rfx.simulation import _resolve_design_box
-        design_box_coeffs = _resolve_design_box(
+        from rfx.model import resolve_design_box
+        design_box_coeffs = resolve_design_box(
             design_box,
             grid=grid,
             materials=materials,

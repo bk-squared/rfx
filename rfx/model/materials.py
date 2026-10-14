@@ -928,13 +928,13 @@ def _design_box_edge_coeffs(bounds, eps_r_box, sigma_box, materials, dt, shape,
     whole-grid ``eps_override`` / ``sigma_override`` does, since the ports
     stamp their loads on top of the override. A per-edge conductivity has no
     such reading and is refused over an unheld load
-    (:func:`_resolve_design_box`).
+    (:func:`resolve_design_box`).
     """
-    from rfx.simulation import _design_box_window, _held_edge_masks
+    from rfx.model.design_box import design_box_window, held_edge_masks
     from rfx.core.yee import component_e_materials, e_update_coeffs, map_lumped
     from rfx.model.overrides import apply_material_overrides
     held = tuple(held_edges or ())
-    write_bounds, win, inner, box_local = _design_box_window(bounds, shape)
+    write_bounds, win, inner, box_local = design_box_window(bounds, shape)
 
     per_edge = isinstance(sigma_box, (tuple, list))
     # A lumped stamp in the window's context layer is edge-owned, not a cell
@@ -974,7 +974,7 @@ def _design_box_edge_coeffs(bounds, eps_r_box, sigma_box, materials, dt, shape,
                 lambda a: jnp.asarray(a)[win]))
         bg = [e_update_coeffs(e, s_, dt) for e, s_ in
               zip(*component_e_materials(bg_mats, (False, False, False), cell_sizes=widths))]
-        masks = _held_edge_masks(held, write_bounds)
+        masks = held_edge_masks(held, write_bounds)
         ca = tuple(a if m is None else jnp.where(m, b[0][inner], a)
                    for a, b, m in zip(ca, bg, masks))
         cb = tuple(c if m is None else jnp.where(m, b[1][inner], c)

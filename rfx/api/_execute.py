@@ -25,7 +25,7 @@ import math
 import os
 
 from rfx import _realized, _grid_metric
-from rfx.model import conductors as _conductors
+from rfx.model import conductors as _conductors, design_box_window
 from rfx.model.overrides import apply_material_overrides
 from rfx.model import occupancy as _occupancy
 
@@ -1163,7 +1163,7 @@ class _ExecuteMixin:
         self, *, skip: bool = False, context: str = "forward",
         check_ntff: bool | str = True, conductors=None,
         prepare=False, distributed=False, tfsf_material_overrides=(),
-    ) -> _conductors._PreparedSolve | _conductors.PreflightReport:
+    ) -> _conductors.PreparedSolve | _conductors.PreflightReport:
         """Delegate validation and optional solve ownership to the conductors layer."""
         return _conductors.auto_preflight(self, skip=skip, context=context, check_ntff=check_ntff, conductors=conductors, prepare=prepare, distributed=distributed, tfsf_material_overrides=tfsf_material_overrides)
 
@@ -2871,7 +2871,7 @@ class _ExecuteMixin:
         rejects every combination this lane does not carry. The checks that
         need the RESOLVED step context — the absorber depth, the port and
         source cells, the anisotropy flags — belong to
-        ``rfx.simulation._resolve_design_box`` /
+        ``rfx.model.resolve_design_box`` /
         ``_resolve_design_occupancy`` and run there; these are the ones that
         can be decided from the call itself.
 
@@ -2886,7 +2886,7 @@ class _ExecuteMixin:
         materials give it.
         """
         from rfx.simulation import (
-            DesignBoxSpec, DesignOccupancySpec, _design_box_window,
+            DesignBoxSpec, DesignOccupancySpec,
         )
 
         _want_eps = design_eps_override is not None
@@ -2976,7 +2976,7 @@ class _ExecuteMixin:
 
 
         # A port whose cells are in the box. The step-level check
-        # (``rfx.simulation._resolve_design_box``) sees only the ports that
+        # (``rfx.model.resolve_design_box``) sees only the ports that
         # left a source or an S-param accumulator behind, so a PASSIVE load
         # port — which folds its impedance into sigma at its own cells and
         # leaves neither — would pass it. Checked here from the
@@ -2991,7 +2991,7 @@ class _ExecuteMixin:
         # spelling both runners rasterize with) rather than re-derived here:
         # a sub-cell extent whose two ends snap to one node drives the edge
         # on the side the extent occupies, which ``hi - 1`` cannot know. The
-        # step-level fence (``rfx.simulation._resolve_design_box``) reads the
+        # step-level fence (``rfx.model.resolve_design_box``) reads the
         # port's ``live_cells`` on the uniform lane and, on the graded lane,
         # the mid cell plus the excited edges through its ``sources`` entry.
         #
@@ -3003,7 +3003,7 @@ class _ExecuteMixin:
         # and lumped stamp it can see against this list.
         from rfx.sources.sources import wire_port_edge_span
         _axis_of = {"ex": 0, "ey": 1, "ez": 2}
-        _w = _design_box_window(bounds, tuple(grid.shape))[0]
+        _w = design_box_window(bounds, tuple(grid.shape))[0]
         _held = set()
 
         def _in_window(cell):
@@ -3725,7 +3725,7 @@ class _ExecuteMixin:
                 # #1183: the corners resolve against the GRADED grid, whose
                 # z cell edges are not a multiple of any dx. Everything the
                 # resolved step context decides is
-                # ``rfx.simulation._resolve_design_box``'s, from
+                # ``rfx.model.resolve_design_box``'s, from
                 # ``_build_nu_scan``.
                 _nu_design_spec, _ = self._resolve_design_box_override(
                     self._build_nonuniform_grid(),

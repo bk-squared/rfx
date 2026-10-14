@@ -440,8 +440,8 @@ def refuse_design_films(sim, grid, bounds):
     from dataclasses import replace
     from rfx.core.yee import init_materials, lumped_components
     from rfx.geometry.smoothing import continued_conductor_shape
-    from rfx.simulation import _design_box_window
-    write, _, _, _ = _design_box_window(bounds, grid.shape)
+    from rfx.model.design_box import design_box_window
+    write, _, _, _ = design_box_window(bounds, grid.shape)
     sl = tuple(slice(write[a], write[a + 1]) for a in (0, 2, 4))
     f0_hits = set()
     if any(tc.surface_impedance_f0 is not None and not tc.is_pec for tc in sim._thin_conductors):

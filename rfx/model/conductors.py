@@ -433,7 +433,7 @@ def solve_conductors(sim, grid, *, nonuniform=False, preflight=None):
     return root
 
 
-class _PreparedSolve:
+class PreparedSolve:
     """Execution-local ownership, transferred once to the selected runner.
 
     With preflight disabled, assembly remains lazy until after lane admission.
@@ -468,7 +468,7 @@ def prepare_solve(sim, *, distributed=False):
     if distributed:
         sim._pf_campaign_ctx = None
         sim._realized_geometry_record = None
-    return _PreparedSolve(sim)
+    return PreparedSolve(sim)
 
 
 def assembled_materials(root, **collectors):

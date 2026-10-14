@@ -528,7 +528,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         (usually traced) permittivity, so reverse-mode AD keeps box-shaped
         arrays per timestep instead of grid-shaped ones. The graded-mesh
         counterpart of the uniform lane's ``rfx.simulation.run(design_box=)``
-        (#1179); ``rfx.simulation._resolve_design_box``, called from
+        (#1179); ``rfx.model.resolve_design_box``, called from
         ``_build_nu_scan``, carries the fences that need the resolved step
         context, and the ones below are this lane's own.
     lane : str
@@ -569,7 +569,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     # ---- #1183 design box: the fences only this lane can see ----
     # Everything the resolved step context decides (the absorber, the
     # source/wire-port/RLC cells, dispersion, subpixel eps, a sheet inside
-    # the box) is rfx.simulation._resolve_design_box's, from _build_nu_scan.
+    # the box) is rfx.model.resolve_design_box's, from _build_nu_scan.
     # These three are declarations that never reach it: a modal port writes
     # its own E over a whole plane from a mode profile, and an MSL port
     # REWRITES ``materials`` across its cross-section (_setup_msl_ports_nu)
