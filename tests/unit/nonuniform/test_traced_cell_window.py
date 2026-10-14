@@ -168,3 +168,58 @@ def test_nominal_profile_keeps_lane_refusal(lane):
         return jnp.sum(profile)
 
     jax.grad(objective)(jnp.asarray(CELLS))
+
+
+# Two windows on both sides of a centred feed: the slots (or a patch's two
+# opposite edges) move, the feed's own cells 3 and 4 stay at their nominal width.
+CELLS8 = np.array([1., 1.25, 0.75, 1., 1., 0.75, 1.25, 1.])
+WINDOWS = ((1, 3), (5, 7))
+
+
+def _grid8(profile, windows):
+    return make_nonuniform_grid(
+        (8., 3.), np.ones(3), 1., 2, dx_profile=profile,
+        face_layers={"x_lo": 1, "x_hi": 2},
+        nominal_profiles={"x": NominalProfile(CELLS8, windows)})
+
+
+@pytest.mark.parametrize("windows", [(), ((1, 3), (2,)), ((1, 3), (5, 9)),
+                                     ((1, 3), (True, 5)), ((1, 3), 5), ((1, 3), (4, 4))])
+def test_two_window_refusals(windows):
+    def objective(profile):
+        _grid8(profile, windows)
+        return jnp.sum(profile)
+
+    with pytest.raises(ValueError, match="nominal_profiles.*x.*traced_cells"):
+        jax.grad(objective)(jnp.asarray(CELLS8))
+
+
+def test_two_windows_mask_is_their_union():
+    def objective(profile):
+        grid = _grid8(profile, WINDOWS)
+        assert grid.traced_cells == {"x": WINDOWS}
+        expected = np.array([0, 1, 1, 0, 0, 1, 1, 0], dtype=bool)
+        np.testing.assert_array_equal(traced_cell_mask(grid, "x", padded=False), expected)
+        return jnp.sum(grid.dx_arr)
+
+    jax.grad(objective)(jnp.asarray(CELLS8))
+
+
+def _width_scalar8(profile):
+    return jnp.sum(_grid8(profile, WINDOWS).dx_arr ** 2)
+
+
+@pytest.mark.parametrize("moved, refused", [((1, 6), None), ((3,), 3), ((4,), 4), ((0,), 0), ((7,), 7)],
+                         ids=["both_slots", "feed_low", "feed_high", "below", "above"])
+def test_two_windows_feed_cells_stay_fixed(moved, refused):
+    widths = CELLS8.astype(np.float32)
+    for cell in moved:
+        widths[cell] *= np.float32(1.001)
+    derivative = jax.grad(_width_scalar8)
+    if refused is None:
+        actual = derivative(jnp.asarray(widths))
+        np.testing.assert_array_equal(actual, 2 * widths * np.array([2, 1, 1, 1, 1, 1, 1, 4]))
+    else:
+        with pytest.raises(ValueError, match=(
+                rf"traced x axis interior cell {refused}.*window \(\(1, 3\), \(5, 7\)\)")):
+            derivative(jnp.asarray(widths)).block_until_ready()
