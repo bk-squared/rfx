@@ -1,20 +1,171 @@
 ---
 title: Sources
-description: Point sources, plane waves and waveforms.
+description: Point sources and what their amplitude means, polarized sources, plane waves, and waveforms.
 sidebar:
   order: 5
 ---
 
-<p data-rfx="note">Being written for 2.0 (tracker 1171).</p>
-
 ## What it is for
+
+A source puts energy into the model without being part of the structure. rfx
+has two kinds: a point source, which drives one field component at one cell
+(a short current element), and a plane wave, which illuminates the structure
+from one side. A source has no impedance and absorbs nothing, so it gives no
+S-parameters; for those, use a [port](/rfx/model/ports/). This page is how to
+declare each source, what its amplitude means, and which time signal drives
+it.
 
 ## How to use it
 
+### Point source
+
+`sim.add_source(position, component, waveform=..., amplitude_kind=...)` drives
+`"ex"`, `"ey"` or `"ez"` at the cell nearest `position` (metres). The source is
+soft: it adds to the field there and leaves the field free to pass through.
+
+`amplitude_kind` says what the waveform's amplitude is:
+
+| `amplitude_kind` | The amplitude is | Use it when |
+|---|---|---|
+| `"current"` | a current moment I·l in A·m, the strength of a short current element | you want the radiated field to stay the same when you change the mesh |
+| `"field"` | an increment of E added at the cell every time step | you need a raw field kick, or the solver path takes only this (ADI) |
+
+Leaving `amplitude_kind` out means `"current"` and gives one
+`DeprecationWarning` per simulation. Pass it explicitly.
+
+The difference shows when the mesh changes. The same source and probe on three
+cell sizes:
+
+```python
+import numpy as np
+from rfx import ModulatedGaussian, Simulation
+
+
+def peak(dx, kind):
+    sim = Simulation(freq_max=6e9, domain=(0.06, 0.06, 0.06), dx=dx,
+                     boundary="cpml", cpml_layers=8)
+    sim.add_source((0.03, 0.03, 0.03), "ez", amplitude_kind=kind,
+                   waveform=ModulatedGaussian(f0=3e9, bandwidth=0.5))
+    sim.add_probe((0.048, 0.03, 0.03), "ez")
+    n = int(round(400 * 2e-3 / dx))          # the same simulation time
+    result = sim.run(n_steps=n, skip_preflight=True)
+    return float(np.max(np.abs(np.asarray(result.time_series))))
+
+
+for kind in ("current", "field"):
+    print(kind, " ".join(f"{peak(dx, kind):.4g}" for dx in (2e-3, 1.5e-3, 1e-3)))
+```
+
+```text
+current 1.055e+05 1.043e+05 1.035e+05
+field 0.00196 0.00109 0.0004805
+```
+
+With `"current"`, the peak field at the probe 18 mm away moves by 1.1 % from
+2 mm to 1.5 mm cells and by 0.8 % from 1.5 mm to 1 mm: it converges, as a
+physical source should. With `"field"`, adding a fixed E increment to one cell
+every step is a current moment proportional to the cell volume over the time
+step, so it scales as dx². The peaks follow that: ratios of 0.556 and 0.441
+against 0.5625 and 0.444 predicted. The result then depends on the cell size
+you happened to choose.
+
+### Polarized source
+
+`sim.add_polarized_source(position, polarization=..., waveform=...,
+amplitude_kind=...)` drives Ex and Ey at one point with fixed weights; a single
+component (`"ez"`) is the same as `add_source` with that component.
+`polarization` is a component (`"ez"`), a name (`"slant45"`, `"rhcp"`,
+`"lhcp"`, `"circular"`), or a Jones vector `(Ex, Ey)`, normalized for you. A
+complex weight sets the phase of Ey relative to Ex. Circular polarization is
+not checked by any test; treat it as unchecked.
+
+### Plane wave
+
+`sim.add_tfsf_source(...)` launches a plane wave along x with the
+total-field/scattered-field method: inside a box the field is incident plus
+scattered, outside it only the scattered field remains, so what you measure
+outside is the structure's response alone.
+
+| Argument | Default | Meaning |
+|---|---|---|
+| `direction` | `"+x"` | `"+x"` or `"-x"` |
+| `polarization` | `"ez"` | `"ez"` or `"ey"`, the E component of the incident wave |
+| `angle_deg` | 0 | angle from the x axis, below 90° |
+| `method` | `"bloch"` | for oblique incidence: `"bloch"` makes the side axis periodic with the matching phase; `"methodB"` absorbs on it |
+| `closed_box` | `False` | `True`: a finite box with six faces around the structure, for a single scatterer; `False`: two planes across the domain |
+| `f0`, `bandwidth`, `amplitude` | `freq_max/2`, 0.5, 1 | the pulse |
+| `waveform` | `"differentiated_gaussian"` | also `"modulated_gaussian"`, `"continuous_wave"`, or a `CustomWaveform` |
+| `margin` | 3 | cells between the injection planes and the absorber |
+
+The injection planes must lie in vacuum. With `closed_box=False` the planes
+span the domain, and the faces across the beam are solved as periodic, so the
+structure is repeated along them; see [Boundaries](/rfx/model/boundaries/#rules-that-ports-and-plane-waves-put-on-the-boundary)
+for the rule and its warning. For a single scatterer use `closed_box=True`.
+
+### Waveforms
+
+| Waveform | What it is | Parameters (defaults) |
+|---|---|---|
+| `GaussianPulse` | derivative of a Gaussian, no carrier | `f0`, `bandwidth=0.5`, `amplitude=1.0`, `cutoff=3.0` |
+| `ModulatedGaussian` | a carrier at `f0` under a Gaussian envelope | `f0`, `bandwidth=0.5`, `amplitude=1.0`, `cutoff=5.0` |
+| `CWSource` | a sine at `f0`, switched on over `ramp_steps` cycles of `f0` (not time steps) | `f0`, `amplitude=1.0`, `ramp_steps=50` |
+| `CustomWaveform` | your function of time, `func(t)` with t in seconds | `func` |
+
+`bandwidth` is a fraction of `f0`; the pulse peaks `cutoff` envelope widths
+after t = 0, so it starts near zero. `add_source` and `add_port` use
+`GaussianPulse(f0=freq_max/2, bandwidth=0.8)` when you give no waveform.
+
+A pulse gives the response over its whole band from one run. A `CWSource` gives
+one frequency and never switches off, so the
+[settling check](/rfx/evidence/simulation-time/), which needs the source to be
+off before the end of the run, cannot judge it.
+
+<p data-rfx="note">Pending for 2.0: the default pulse is being changed so that
+its time integral is zero; the truncated pulse today leaves a small static
+charge at a current source (tracker 1668, PR 1684). This section is updated
+when it lands.</p>
+
 ## What is checked
+
+When you declare a source: the component, `amplitude_kind`, and for a plane
+wave every argument in the table above against its allowed values and the
+faces across the beam. Before the first step on a uniform mesh, the run refuses
+a plane wave whose injection planes are not in vacuum; this check does not
+depend on preflight. The solver path then checks that it implements the source
+(below).
 
 ## What is refused, and the way through
 
+| Input | Solver path | What happens | Instead |
+|---|---|---|---|
+| `amplitude_kind="current"` | ADI | refused | pass `amplitude_kind="field"` |
+| a plane wave together with a lumped port | all | refused | drive the port alone, or use a probe for the response |
+| a plane wave with `boundary="upml"`, or in a closed (all-metal) domain | all | refused | `boundary="cpml"` |
+| `waveform="continuous_wave"` at an angle | all | refused | a pulse waveform |
+| a `CustomWaveform` plane wave, or `closed_box=True`, at an angle or in 2-D | all | refused | normal incidence in 3-D |
+| `method="methodB"` at normal incidence, with `"ey"`, or along `"-x"` | all | refused | `method="bloch"` |
+| an injection plane inside a material | uniform mesh, `run()` and `forward()` | refused before the first step | move the structure clear of the planes |
+| a plane wave at an angle, with `closed_box=True`, or with a `CustomWaveform` | graded mesh | refused | use a uniform mesh |
+| a plane wave | graded mesh with `forward()`, graded mesh on several devices | refused | use a uniform mesh, or `run()` |
+| a plane wave | uniform mesh on several devices | runs on one device, with a warning | — |
+
+[Refused inputs](/rfx/check/refusals/) explains how refusals read; the
+[support page](/rfx/support/) lists them per solver path.
+
 ## Accuracy
 
+- A plane wave at 30° and at 45° leaks less than 1 % of its energy outside
+  the total-field region, and less than 0.1 % at normal incidence, in vacuum on
+  a 1 mm mesh at 5 GHz (`tests/unit/sources/test_tfsf_oblique.py`).
+- Oblique plane-wave reflection from an εr = 4 slab agrees with the Fresnel
+  coefficient within 10 % at 30° and within 8 % at 45°, on a 2 mm mesh at 5 GHz
+  (`tests/oracle/test_oblique_fresnel_magnitude.py`).
+- A closed-box plane wave in vacuum reproduces the incident pulse inside the
+  box, and outside it the field stays below 9 float32 rounding steps of the
+  pulse peak (`tests/unit/sources/test_tfsf_closed_box.py`).
+
 ## See also
+
+- [Ports](/rfx/model/ports/): sources with an impedance, for S-parameters.
+- [Boundaries](/rfx/model/boundaries/): the faces a plane wave needs.
+- [Is the run long enough?](/rfx/evidence/simulation-time/): the source must end inside the run.
