@@ -194,7 +194,7 @@ depth. A physical junction S-matrix also needs:
 
 The walls here are PEC volumes, so the guide width the solver sees is the
 width you drew. See
-[How conductors land on the lattice](/rfx/model/materials/#how-conductors-land-on-the-lattice).
+[How conductors land on the lattice](/rfx/model/conductors/#how-conductors-land-on-the-lattice).
 
 ## Absorber depth
 
