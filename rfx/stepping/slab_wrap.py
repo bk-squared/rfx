@@ -78,7 +78,7 @@ def cut_drives(drives, layout, mesh, *, waveforms):
         wave_id[component] = _place(local_waves, mesh)
         owner[component] = _place(drives.owner[component][ids], mesh)
     n_waves = max((int(np.max(a)) + 1 for a in drives.wave_id.values() if len(a)), default=0)
-    if layout.n_devices > 1 and waveforms.shape[1] == layout.n_devices * n_waves:
+    if layout.n_devices > 1 and n_waves > 0 and waveforms.shape[1] == layout.n_devices * n_waves:
         @partial(jax.shard_map, mesh=mesh,
                  in_specs=(P(None, 'x'), P('x'), P('x')),
                  out_specs=P(None, 'x'), check_vma=False)

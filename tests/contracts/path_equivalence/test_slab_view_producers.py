@@ -875,3 +875,27 @@ def test_uniform_absent_release_uses_out_of_bounds_sentinel(negative):
             _assert_uniform(producer, scene, 3, releases=release, negative_release=True)
     else:
         _assert_uniform(producer, scene, 3, releases=release)
+
+
+@pytest.mark.parametrize('n_devices', DEVICES)
+def test_cut_drives_without_sources_keeps_rank_shards(n_devices):
+    """No source: the per-rank table is (n_steps, 0); every shard is one rank's (n_steps, 1, 0)."""
+    from jax.sharding import Mesh
+    from rfx.model.electric_metrics import stage_forward_materials
+    from rfx.simulation import ProbeSpec
+    from rfx.stepping.slab import Slab
+    from rfx.stepping.slab_setup import build_setup, finish, stage_pec
+    if len(jax.devices('cpu')) < n_devices:
+        pytest.skip(f'needs {n_devices} host devices')
+    scene = SCENES['material_seam']
+    grid, n_steps = scene.grid, 3
+    mesh = Mesh(np.asarray(jax.devices('cpu')[:n_devices]), ('x',))
+    layout = Slab(grid.nx, n_devices)
+    material = stage_forward_materials(_cells(scene).materials, layout, mesh, uniform=True)
+    setup = build_setup(grid, material, layout, mesh, n_steps, [], [ProbeSpec(4, 2, 2, 'ez')],
+                        pec_mask=stage_pec(None, (), (), grid, layout, mesh))
+    result, _ = finish(setup.invariants, setup.carry_init, layout, mesh,
+                       waveforms=setup.src_waveforms, dt=grid.dt)
+    waves = result['drives'].waves
+    assert {s.data.shape for s in waves.addressable_shards} == {(n_steps, 1, 0)}
+    assert np.asarray(waves).shape == (n_steps, n_devices, 0)
