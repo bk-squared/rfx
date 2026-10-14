@@ -115,7 +115,7 @@ ALLOWED_SCALAR_READS: dict[str, int] = {
     "rfx/amr.py": 2,
     "rfx/api/__init__.py": 3,
     "rfx/api/_compile.py": 11,
-    "rfx/api/_execute.py": 6,
+    "rfx/api/_execute.py": 5,
     "rfx/api/_mesh.py": 1,
     "rfx/artifacts.py": 2,
     "rfx/boundaries/upml.py": 1,
@@ -130,9 +130,7 @@ ALLOWED_SCALAR_READS: dict[str, int] = {
     "rfx/preflight/realization.py": 1,
     "rfx/rcs.py": 1,
     "rfx/runners/distributed_v2.py": 1,
-    "rfx/runners/nonuniform.py": 1,
     "rfx/runners/subgridded.py": 1,
-    "rfx/runners/uniform.py": 4,
     "rfx/simulation.py": 6,
     "rfx/sources/coaxial_port.py": 14,  # #1356 replaces two radial-grid reads with one Laplace spacing
     "rfx/sources/msl_eigenmode.py": 2,

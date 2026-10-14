@@ -20,7 +20,7 @@ def run_wrapped(sg, materials, pec_mask, n_steps, sources, probes, *,
         raise ValueError(f'need {sg.n_devices} devices, got {len(devices)}')
     mesh = Mesh(np.asarray(devices), ('x',))
     layout = Slab.from_grid(sg)
-    grid = sg.original_grid or NonUniformGrid(
+    grid = sg.global_grid or NonUniformGrid(
         sg.nx, sg.ny, sg.nz, float(sg.dx_padded[0]), float(sg.dy_cells[0]),
         np.asarray(sg.dx_padded[:sg.nx]), np.asarray(sg.dy_cells), np.asarray(sg.dz_cells),
         sg.dt, 0, np.asarray(sg.inv_dx_global[:sg.nx]), sg.inv_dy, sg.inv_dz,

@@ -523,7 +523,8 @@ class _CampaignStaticsContext:
             if k + 1 < len(nodes):
                 d_lo = abs(mid - float(nodes[k]))
                 d_hi = abs(float(nodes[k + 1]) - mid)
-                if abs(d_lo - d_hi) <= 1e-9 * d_local and d_lo > 0.0:
+                from rfx._grid_metric import node_tie_tol
+                if abs(d_lo - d_hi) <= node_tie_tol(mid, d_local) and d_lo > 0.0:
                     return mid, (k, k + 1)
             return mid, None
 

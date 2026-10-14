@@ -118,67 +118,46 @@ def test_cpml_axis_params_boundary_cell_sizes_match_grid_dx():
 # ---------------------------------------------------------------------------
 
 
-def test_distributed_common_cpml_coeff_helpers_are_vacuum_only():
-    """Stage 1.5a / architect residual (a) — the extracted CPML-coefficient
-    helpers must stay VACUUM-ONLY.
-
-    `cpml_coeff_e_vacuum` / `cpml_coeff_h_vacuum` take ONLY `dt`. The
-    distributed CPML correction runs where per-cell permittivity is not in
-    scope, so the vacuum form is structural. If a future change adds an
-    `eps_r` / `mu_r` / `materials` parameter (a CORE-C2-class hidden-
-    assumption bug), this guard fails — by design.
-    """
-    import inspect
-
-    from rfx.runners._distributed_common import (
-        cpml_coeff_e_vacuum,
-        cpml_coeff_h_vacuum,
-    )
-
-    for fn in (cpml_coeff_e_vacuum, cpml_coeff_h_vacuum):
-        params = list(inspect.signature(fn).parameters)
-        assert params == ["dt"], (
-            f"{fn.__name__} must take only 'dt' (vacuum-only); got {params}. "
-            f"A non-vacuum eps_r/mu_r/materials parameter would reintroduce "
-            f"a CORE-C2-class hidden-assumption bug."
-        )
+def test_distributed_runners_use_shared_cpml_coeff_helpers():
+    """The retired copies' coefficient ownership now belongs to shared CPML."""
+    from rfx.boundaries import cpml
+    from rfx.runners import distributed_v2, distributed_nu
+    for module in (distributed_v2, distributed_nu):
+        assert module.apply_cpml_e is cpml.apply_cpml_e
+        assert module.apply_cpml_h is cpml.apply_cpml_h
 
 
 def test_distributed_common_cpml_coeff_tracks_canonical_constants():
-    """De-dup guard — the shared vacuum CPML coefficients must equal
-    ``dt / EPS_0`` and ``dt / MU_0`` for the canonical ``rfx.core.yee``
-    constants.
-
-    Stage 1.5a introduced these helpers as a byte-identical de-dup of
-    the inline literals (pre-2019 ``8.854187817e-12`` /
-    ``1.2566370614e-6``); the review-remediation Stage 3.5b then moved
-    EPS_0/MU_0 to the post-2019 SI/CODATA pair. Asserting against the
-    imported constants (not a frozen literal) keeps the helpers pinned
-    to ``dt / const`` while staying robust to future constant updates.
-    """
-    from rfx.core.yee import EPS_0, MU_0
-    from rfx.runners._distributed_common import (
-        cpml_coeff_e_vacuum,
-        cpml_coeff_h_vacuum,
-    )
+    """Observe the shared kernel's scalar vacuum multipliers, before rounding."""
+    import sys
+    from types import SimpleNamespace
+    from rfx.boundaries import cpml
+    from rfx.core.yee import EPS_0, MU_0, init_state
 
     dt = 1.234e-12
-    assert cpml_coeff_e_vacuum(dt) == dt / EPS_0
-    assert cpml_coeff_h_vacuum(dt) == dt / MU_0
-
-
-def test_distributed_runners_use_shared_cpml_coeff_helpers():
-    """Stage 1.5a de-dup guard — the uniform and NU distributed runners
-    must reference the shared vacuum CPML-coefficient helpers, not a
-    re-introduced inline literal. Catches sibling drift mechanically."""
-    import rfx.runners.distributed as dmod
-    import rfx.runners.distributed_nu as numod
-    from rfx.runners import _distributed_common as common
-
-    assert dmod.cpml_coeff_e_vacuum is common.cpml_coeff_e_vacuum
-    assert dmod.cpml_coeff_h_vacuum is common.cpml_coeff_h_vacuum
-    assert numod.cpml_coeff_e_vacuum is common.cpml_coeff_e_vacuum
-    assert numod.cpml_coeff_h_vacuum is common.cpml_coeff_h_vacuum
+    grid = Grid(freq_max=10e9, domain=(.008,) * 3, dx=.001, cpml_layers=2)
+    params, auxiliary = init_cpml(grid)
+    view = SimpleNamespace(**{name: getattr(grid, name) for name in (
+        'nx', 'ny', 'nz', 'shape', 'cpml_layers', 'face_layers', 'cpml_axes',
+        'pec_faces', 'pmc_faces')}, dt=dt)
+    observed = {}
+    # _face is nested. Observe its returned scalar and H's formed ch tuple
+    # without recreating either coefficient or rounding it through a field.
+    def observe(frame, event, value):
+        if event == 'return' and frame.f_code.co_filename == cpml.__file__:
+            if frame.f_code.co_name == '_face':
+                observed['electric'] = value
+            elif frame.f_code.co_name == 'apply_cpml_h':
+                observed['magnetic'] = frame.f_locals['ch'][0]
+    previous = sys.getprofile()
+    try:
+        sys.setprofile(observe)
+        cpml.apply_cpml_e(init_state(grid.shape), params, auxiliary, view)
+        cpml.apply_cpml_h(init_state(grid.shape), params, auxiliary, view)
+    finally:
+        sys.setprofile(previous)
+    assert observed['electric'] == dt / EPS_0
+    assert observed['magnetic'] == dt / MU_0
 
 
 def test_distributed_ghost_exchange_is_single_shared_body():

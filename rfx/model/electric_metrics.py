@@ -149,7 +149,7 @@ def stage_forward_dispersion_x_slab(materials, dt, spec, sharded_grid, mesh, kin
         return stage_slab_pole_coeffs(poles, masks, dt, kind, mesh,
             sharded_grid.nx_per_rank, sharded_grid.nx, materials.eps_r.shape, grid=sharded_grid)
     from rfx.stepping.slab_setup import stage_dispersion
-    return stage_dispersion(materials, dt, spec, sharded_grid.original_grid,
+    return stage_dispersion(materials, dt, spec, sharded_grid.global_grid,
                             Slab.from_grid(sharded_grid), mesh, kind)
 
 

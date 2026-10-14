@@ -1021,7 +1021,7 @@ def trace_far_end_findings(sim, grid=None) -> list[str]:
     Both tangential ends are included in the declared pairing. Admission
     depends on the realized footprint, not whether a declared edge rounds.
     """
-    from rfx._grid_metric import NODE_TIE_REL
+    from rfx._grid_metric import node_tie_tol
     from rfx.geometry.rasterize_grid import (
         _local_cell, cell_sizes_from_nonuniform_grid, cell_sizes_from_uniform_grid,
         coords_from_nonuniform_grid, coords_from_uniform_grid, sheet_spec_from_shape,
@@ -1061,14 +1061,14 @@ def trace_far_end_findings(sim, grid=None) -> list[str]:
             start = float(pe.position[normal])
             end = start + (float(pe.extent) if pe.extent is not None
                            else _local_cell(nodes[normal], sizes[normal], start))
-            tol = NODE_TIE_REL * _local_cell(nodes[normal], sizes[normal], plane)
+            tol = node_tie_tol(plane, _local_cell(nodes[normal], sizes[normal], plane))
             if min(abs(start - plane), abs(end - plane)) > tol:
                 continue
             # A port declared within the tie band of a trace edge (e.g. one float
             # step outside it through a float sum) still touches that trace.
-            if any(not (lo[a] - NODE_TIE_REL * _local_cell(nodes[a], sizes[a], lo[a])
+            if any(not (lo[a] - node_tie_tol(lo[a], _local_cell(nodes[a], sizes[a], lo[a]))
                         <= float(pe.position[a])
-                        <= hi[a] + NODE_TIE_REL * _local_cell(nodes[a], sizes[a], hi[a]))
+                        <= hi[a] + node_tie_tol(hi[a], _local_cell(nodes[a], sizes[a], hi[a])))
                    for a in tangent):
                 continue
             sheet = sheet_spec_from_shape(shape, coords, sizes, name=name, grid=grid)

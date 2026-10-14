@@ -858,7 +858,7 @@ def stage_distributed_edges(edges, grid, mesh, multiprocess, *, inputs=None):
     if inputs is not None and _realized.ACTIVE is None and grid.step_kind != 'legacy':
         from rfx.stepping.slab_setup import stage_pec
         cells, sheets, wires = inputs
-        return stage_pec(cells, sheets, wires, grid.original_grid, Slab.from_grid(grid), mesh)
+        return stage_pec(cells, sheets, wires, grid.global_grid, Slab.from_grid(grid), mesh)
     return cut(edges, Slab.from_grid(grid), "pec_edge", mesh=mesh)
 
 

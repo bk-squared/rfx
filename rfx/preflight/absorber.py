@@ -1368,19 +1368,10 @@ def _validate_cfg_thin_absorber(self, _w, dx) -> None:
         else:
             cpml_axes = grid.cpml_axes
             if self._tfsf is not None:
-                from rfx.sources.tfsf import init_tfsf
+                from rfx.sources.tfsf import tfsf_from_declaration
                 from rfx.boundaries.tfsf import boundary_flags as tfsf_boundary_flags
                 entry = self._tfsf
-                cfg, _ = init_tfsf(
-                    grid.nx, float(grid.cells("x")[0]), grid.dt,
-                    ny=grid.ny, nz=grid.nz, cpml_layers=grid.cpml_layers,
-                    tfsf_margin=entry.margin,
-                    f0=entry.f0 if entry.f0 is not None else self._freq_max / 2,
-                    bandwidth=entry.bandwidth, amplitude=entry.amplitude,
-                    polarization=entry.polarization, direction=entry.direction,
-                    angle_deg=entry.angle_deg, waveform=entry.waveform,
-                    method=entry.method, closed_box=entry.closed_box,
-                )
+                cfg, _ = tfsf_from_declaration(entry, grid, self._freq_max)
                 periodic, _ = tfsf_boundary_flags(cfg, grid)
     except (ValueError, TypeError, AttributeError, KeyError, IndexError, NotImplementedError):
         # An unavailable grid has no realized depth to report. Keep the

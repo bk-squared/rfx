@@ -114,7 +114,9 @@ def admit_dc_film(shape, grid, *, snap='strict', emit=True):
     with jax.ensure_compile_time_eval():
         local = _local_cell(coords[normal], np.asarray(grid.cells(normal)),
                             plane_coordinate(grid, normal, mid))
-        if extents[normal] > local * (1 + 1e-9):
+        from rfx._grid_metric import node_tie_tol
+        if extents[normal] > (local + node_tie_tol(lo[normal], local)
+                              + node_tie_tol(hi[normal], local)):
             raise DCFilmAdmissionError(
                 f'{name} DC film: multiple layers, normal extent {extents[normal]:.12g} m '
                 f'exceeds local cell {local:.12g} m; use add() for a volume.', code='dc_film_layers')

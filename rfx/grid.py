@@ -10,7 +10,7 @@ from math import lcm
 from rfx.boundaries.depths import resolve_face_depths
 
 from rfx._grid_metric import (
-    NODE_TIE_REL,
+    node_tie_tol,
     nearest_uniform_index,
     axis_name as _axis_name,
     dual_spacings_from_cells as _dual_spacings_from_cells,
@@ -132,7 +132,7 @@ def cells_spanning(length: float, dx: float, *,
     """Cells needed to span *length* at cell size *dx* (issue #1070).
 
     ``ceil(length / dx)``, except that a ratio sitting within
-    ``max(NODE_TIE_REL, ulp_budget * eps * max(1, abs(r)))`` of an integer
+    ``max(node_tie_tol(r, 1), ulp_budget * eps * max(1, abs(r)))`` of an integer
     is taken to BE that integer. The shared on-lattice band keeps sizing
     and Box faces on the same node (#1138); the existing ULP rule remains
     a floor for very large cell counts. Plain ``ceil`` buys an extra cell for float
@@ -148,7 +148,7 @@ def cells_spanning(length: float, dx: float, *,
     ratio = length / dx
     nearest = round(ratio)
     tolerance = max(
-        NODE_TIE_REL,
+        node_tie_tol(ratio, 1.0),
         ulp_budget * float(np.finfo(float).eps) * max(1.0, abs(ratio)))
     if abs(ratio - nearest) <= tolerance:
         cells = int(nearest)

@@ -736,8 +736,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
         run_distributed=falls_back("run_uniform", "one device, with a warning and every "
                                    "argument the caller gave (#1305)"),
         fwd_uniform=carries(),
-        fwd_nonuniform=refuses("TFSF refused off the uniform forward lane",
-                               raises="Differentiable TFSF plane-wave forward is supported only"),
+        fwd_nonuniform=carries(),
         fwd_distributed_nu=refuses("TFSF refused",
                                    raises="TFSF sources are not supported on the distributed forward path"),
         fwd_adi=ADI_ABSORBER,

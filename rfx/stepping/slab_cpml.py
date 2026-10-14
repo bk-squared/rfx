@@ -81,47 +81,69 @@ def operands(ctx, invariants, psi):
 def apply(kernel, ctx, invariants, state, psi, **kwargs):
     """Call the canonical boundary kernel and restore its cut psi layout."""
     params, grid, compact, windows = operands(ctx, invariants, psi)
-    state, updated = kernel(state, params, compact, grid, ctx.cpml_axes_eff,
-                           frame=ctx.x_face_frame, owned=invariants['owns_x'],
-                           x_depths=tuple(w.stop - w.start for w in windows.values()), **kwargs)
-    updated = type(psi)(*(a.at[windows[name[-2:]]].set(b) if name.split('_')[-1][0] == 'x' else b
+    # The kernel keeps x psi at the one-device depth and reads each framed
+    # face's realized rows (lo: first rows, hi: last rows); pad to that depth.
+    full = grid.cpml_layers
+
+    def pad(a, side):
+        extra = full - a.shape[0]
+        return jnp.pad(a, [(0, extra) if side == 'lo' else (extra, 0)] + [(0, 0)] * (a.ndim - 1))
+
+    def active(a, side, depth):
+        return a[:depth] if side == 'lo' else a[full - depth:]
+
+    x_psi = lambda name: name.split('_')[-1][0] == 'x'
+    padded = type(psi)(*(pad(a, name[-2:]) if x_psi(name) else a for name, a in zip(psi._fields, compact)))
+    state, updated = kernel(state, params, padded, grid, ctx.cpml_axes_eff,
+                           frame=ctx.x_face_frame, owned=invariants['owns_x'], **kwargs)
+    updated = type(psi)(*(a.at[windows[name[-2:]]].set(
+                              active(b, name[-2:], windows[name[-2:]].stop - windows[name[-2:]].start))
+                          if x_psi(name) else b
                           for name, a, b in zip(psi._fields, psi, updated)))
     return state, updated
 
 
 def export_state(psi, grid, layout):
-    """Retain the runner's public derivative/component/remaining-axis packing."""
+    """Return psi in the runner's ``init_cpml_slabs`` layout (#1745).
+
+    Field order with the rank merged into x: y/z faces keep this rank's x rows;
+    x faces hold the one-device depth, real only on the owning end rank (rank 0
+    for x_lo, the last rank for x_hi) and zero elsewhere.
+    """
+    from rfx.boundaries.cpml import _axis_buffer_depths
+    full = _axis_buffer_depths(grid, grid.cpml_layers)[0]
     fields = {}
     for name, a in zip(psi._fields, psi):
-        _, component, face = name.split('_')
-        axis, side = face[0], face[1:]
-        depth = max(1, getattr(grid, 'pad_' + axis + '_' + side))
+        side = name.split('_')[-1][1:]
+        if name.split('_')[-1][0] != 'x':
+            fields[name] = a
+            continue
         rows = a.reshape((layout.n_devices, layout.nx_local) + a.shape[1:])
-        window = [slice(None)] * 4
-        if axis == 'x':
-            end = layout.ghost_width + layout.nx_per_rank - layout.pad_x
-            window[1] = (slice(layout.ghost_width, layout.ghost_width + depth) if side == 'lo'
-                         else slice(end - depth, end))
-        else:
-            window[1 + 'xyz'.index(axis)] = slice(None, depth) if side == 'lo' else slice(-depth, None)
-        rows = rows[tuple(window)]
-        order = (axis, component[1], next(c for c in 'xyz' if c not in (axis, component[1])))
-        rows = rows.transpose((0,) + tuple(1 + 'xyz'.index(c) for c in order))
-        fields[name] = rows.reshape((layout.n_devices * depth,) + rows.shape[2:])
+        depth = max(1, getattr(grid, 'pad_x_' + side))
+        end = layout.ghost_width + layout.nx_per_rank - layout.pad_x
+        owner = 0 if side == 'lo' else layout.n_devices - 1
+        real = (rows[owner, layout.ghost_width:layout.ghost_width + depth] if side == 'lo'
+                else rows[owner, end - depth:end])
+        real = jnp.pad(real, [(0, full - depth) if side == 'lo' else (full - depth, 0), (0, 0), (0, 0)])
+        out = jnp.zeros((layout.n_devices, full) + a.shape[1:], a.dtype).at[owner].set(real)
+        fields[name] = out.reshape((layout.n_devices * full,) + a.shape[1:])
     return type(psi)(**fields)
 
 
 def import_state(psi, canonical, layout):
-    """Recover physical psi rows from the runner's existing compact input."""
+    """Recover one-device psi from the runner's per-rank input.
+
+    ``init_cpml_slabs`` layout (#1745): field order on every rank, x faces
+    (s_x, Ny, Nz) at the one-device depth, y/z faces over the rank's local x
+    rows; the rank axis is leading or merged into x.
+    """
     from rfx.runners._distributed_common import unstack_and_gather
     fields = {}
     for name, a in zip(psi._fields, psi):
         _, component, face = name.split('_')
         axis, side = face[0], face[1:]
-        depth = a.shape[0] // layout.n_devices
-        rows = a.reshape((layout.n_devices, depth) + a.shape[1:])
-        order = (axis, component[1], next(c for c in 'xyz' if c not in (axis, component[1])))
-        rows = rows.transpose((0,) + tuple(1 + order.index(c) for c in 'xyz'))
+        rows = a if a.ndim == 4 else a.reshape((layout.n_devices, a.shape[0] // layout.n_devices) + a.shape[1:])
+        depth = rows.shape[1 + 'xyz'.index(axis)]
         if axis == 'x':
             whole = rows[0 if side == 'lo' else -1]
         else:
