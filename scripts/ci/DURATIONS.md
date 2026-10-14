@@ -4,7 +4,7 @@ Regenerated 2026-10-10 at `3b62b21bef6a16f3c7aae8274a0f3798e6ff3a0d` from
 `regen-durations` run [37983083757](https://github.com/bk-squared/rfx/actions/runs/37983083757),
 measured 2026-10-09 UTC (2026-10-09/10 Asia/Seoul) on `main` (`4a42dbc9`),
 `ubuntu-latest` with Python 3.11 / JAX 0.10.2.
-**20403 entries in the file**, of which **14 of them carried unchanged** from the
+**20407 entries in the file**, of which **14 of them carried unchanged** from the
 17565-entry file this replaces. All 17 jobs succeeded. The slow (5) pytest summary
 nevertheless reports one failed test:
 `tests/unit/sparams/test_msl_sheet_threading.py::test_o3_mean_s21_drift_lock`;
@@ -51,6 +51,10 @@ The four entries once set by hand retain raw runner measurements:
 
 All 20389 refreshed entries retain raw artifact measurements; the 14 highmem-only
 entries are carried. **No floor is added.**
+
+PR 1745 (2026-10-14) replaced 8 CPML dispersive entries with 12: 9 measured on the gate node and scaled by
+1.12 to the GitHub runner, and the three cpml `run` rows set to 19.5 s. That gives 20407 entries. The next
+regeneration replaces them with runner measurements.
 
 ## The 0.3 s floor, retired 2026-09-18
 
