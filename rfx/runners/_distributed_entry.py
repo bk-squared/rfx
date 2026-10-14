@@ -219,11 +219,19 @@ def forward_distributed(sim, *, plan, assembly, devices, exchange_interval,
     call_args = dict(n_steps=plan.n_steps, num_periods=num_periods,
                      compute_s_params=port_s11_freqs is not None,
                      s_param_freqs=port_s11_freqs, skip_preflight=skip_preflight)
-    result = execute_distributed(
-        sim, plan=plan, _solve_assembly=assembly,
-        _diagnostics=assembly.diagnostics, _call_args=call_args,
-        devices=devices, exchange_interval=exchange_interval, _forward_port_s11=True,
-        conformal_pec=bool(sim._boundary_spec.conformal_faces()), **call_args)
+    try:
+        result = execute_distributed(
+            sim, plan=plan, _solve_assembly=assembly,
+            _diagnostics=assembly.diagnostics, _call_args=call_args,
+            devices=devices, exchange_interval=exchange_interval, _forward_port_s11=True,
+            conformal_pec=bool(sim._boundary_spec.conformal_faces()), **call_args)
+    except (jax.errors.TracerArrayConversionError, jax.errors.ConcretizationTypeError) as error:
+        # Measured: jax.grad through port_s11_freqs fails inside the S driver,
+        # which reads its records as concrete arrays.
+        raise NotImplementedError(
+            "forward(distributed=True) on a uniform mesh cannot differentiate this request "
+            "(its port S-parameters from port_s11_freqs are measured outside the trace): "
+            "take this gradient on one device (omit distributed=True).") from error
     packed = pack_nu_forward_result(
         diagnostics=result.diagnostics, time_series=result.time_series,
         grid=result.grid, dt=result.dt, dft_planes=result.dft_planes,

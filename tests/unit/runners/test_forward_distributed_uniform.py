@@ -229,3 +229,21 @@ def test_multiple_driven_ports_match_one_device_forward():
         assert error <= 1e-4 * peak, (index, error, peak)
         objective = minimize_s11_at_freq_wave_decomp(12e9, port_idx=index)
         assert np.isfinite(np.asarray(objective(actual)))
+
+
+def test_gradient_of_port_s_refused_in_plain_words():
+    """jax.grad through port_s11_freqs on this path used to fail inside the S driver
+    with a JAX tracer error; it is refused with a reason instead."""
+    from tests.contracts.run_forward_census import build_p_lumped
+    from rfx.optimize_objectives import minimize_s11_at_freq_wave_decomp
+
+    def loss(eps):
+        sim = build_p_lumped("uniform")
+        sim.add_material("design", eps_r=eps)
+        sim.add(Box((.013, .006, .003), (.020, .012, .008)), material="design")
+        result = sim.forward(n_steps=60, distributed=True, devices=devices(),
+                             port_s11_freqs=np.array([8e9, 12e9]), skip_preflight=True)
+        return minimize_s11_at_freq_wave_decomp(12e9)(result)
+
+    with pytest.raises(NotImplementedError, match="take this gradient on one device"):
+        jax.grad(loss)(2.0)
