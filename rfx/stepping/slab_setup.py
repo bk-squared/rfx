@@ -24,58 +24,67 @@ def stage_x_widths(grid, rows, mesh):
     return stack_and_place(widths, rows, mesh)
 
 
-def source_coefficient(materials, debye, lorentz, source, dt, layout, mesh):
-    """Read only the owner's scalar source coefficient inside the slab map."""
-    from rfx.stepping.rank import rank_shard_map, mesh_ranks
-    owner = layout.owner(source.i)
-    cell = (layout.local_index(source.i), source.j, source.k)
-    axis = ('ex', 'ey', 'ez').index(source.component)
-    if debye is None and lorentz is None:
-        if not any(isinstance(a, jax.core.Tracer) for a in
-                   jax.tree.leaves((materials.components.eps_update, materials.components.sigma_update))):
-            # Plain graded sources: read just the owning edge, form Cb with the
-            # one-device formula (one jnp expression since #1741), and keep the
-            # pre-loop (Cb / dV) * samples product.
-            from rfx.nonuniform import current_source_cb
-            stage = _source_means_map(mesh, owner, axis, cell)
-            eps, sigma = jax.checkpoint(stage)(mesh_ranks(mesh), materials.components.eps_update,
-                                             materials.components.sigma_update)
-            return current_source_cb(eps, sigma, dt)
-        from rfx.runners import distributed_nu
-        def read_material(eps, sigma, ranks):
-            return distributed_nu.material_drive_scales(eps, sigma, mesh,
-                ((owner, 0, cell, source.component, 1., 0.),), dt,
-                ranks=ranks, realized=True, reduce_devices=True, eager=True)
-        return jax.checkpoint(read_material)(materials.components.eps_update,
-            materials.components.sigma_update, mesh_ranks(mesh))[0]
-    def coefficient(d, l):
-        if d is not None and l is not None:
-            from rfx.materials.lorentz import mixed_e_component_coeffs
+@lru_cache(maxsize=128)
+def _drive_inputs_map(mesh, cells):
+    """Copy only local edge scalars; retain the device axis, without gathering."""
+    from rfx.stepping.rank import rank_shard_map
+    def read(eps, sigma, keep, cb, *, rank):
+        def take(arrays):
+            return (None if arrays is None else
+                    jnp.stack([arrays[axis][cell] for axis, cell in cells])[None])
+        return tuple(take(arrays) for arrays in (eps, sigma, keep, cb))
+    return jax.jit(rank_shard_map(read, mesh=mesh, in_specs=(P('x'),) * 4,
+                                out_specs=P('x'), check_rep=False))
+
+
+def slab_drive_columns(materials, debye, lorentz, sources, volumes, dt, layout, mesh, n_steps):
+    """Read the local inputs, then run the model's eager source products."""
+    from rfx.model.source_coefficients import drive_columns
+    from rfx.stepping.rank import mesh_ranks
+    from rfx import _realized
+    if not sources:
+        return place(jnp.zeros((n_steps, 0), jnp.float32), NamedSharding(mesh, P(None, 'x')))
+    cells = tuple((('ex', 'ey', 'ez').index(s.component),
+                   (layout.local_index(s.i), s.j, s.k)) for s in sources)
+    owners = jnp.asarray([layout.owner(s.i) for s in sources])
+    ranks = mesh_ranks(mesh)
+    cb = None
+    if debye is not None and lorentz is not None:
+        from rfx.materials.lorentz import mixed_e_component_coeffs
+        def coefficients(d, l):
             d, l = device_rows(d, mesh, unpack=True), device_rows(l, mesh, unpack=True)
-            values = jax.vmap(lambda d, l: mixed_e_component_coeffs(d, l, axis, dt)[1])(d, l)
-        else:
-            values = device_rows((d if d is not None else l).cb[axis], mesh, unpack=True)
-        return _owner_cell_map(mesh, owner, cell)(mesh_ranks(mesh), values)
-    return jax.checkpoint(coefficient)(None if debye is None else debye[0],
-                                       None if lorentz is None else lorentz[0])
-
-
-@lru_cache(maxsize=128)
-def _source_means_map(mesh, owner, axis, cell):
-    from rfx.stepping.rank import rank_shard_map
-    def read(eps, sigma, *, rank):
-        return tuple(jax.lax.all_gather(a[axis][cell], 'x')[owner]
-                     for a in (eps, sigma))
-    return jax.jit(rank_shard_map(read, mesh=mesh, in_specs=(P('x'),) * 2,
-                                out_specs=P(), check_rep=False))
-
-
-@lru_cache(maxsize=128)
-def _owner_cell_map(mesh, owner, cell):
-    from rfx.stepping.rank import rank_shard_map
-    def read(a, *, rank):
-        return jax.lax.all_gather(a[0][cell], 'x')[owner]
-    return jax.jit(rank_shard_map(read, mesh=mesh, in_specs=P('x'), out_specs=P(), check_rep=False))
+            values = tuple(jax.vmap(lambda d, l: mixed_e_component_coeffs(d, l, axis, dt)[1])(d, l)
+                           for axis in range(3))
+            return device_rows(values, mesh, unpack=False)
+        cb = jax.checkpoint(coefficients)(debye[0], lorentz[0])
+    elif debye is not None or lorentz is not None:
+        cb = (debye if debye is not None else lorentz)[0].cb
+    eps, sigma, keep, cb = _drive_inputs_map(mesh, cells)(ranks,
+        materials.components.eps_update, materials.components.sigma_update, materials.edge_keep, cb)
+    # The read map packs scalar edges as a tiny synthetic component array.
+    # drive_columns uses the same indexing and products as its whole-grid call.
+    scalar_cells = tuple((0, (n, 0, 0)) for n in range(len(sources)))
+    samples = jnp.stack([jnp.asarray(s.waveform) for s in sources], axis=-1)
+    def local(e, s, k, c, rank, samples=samples, volumes=volumes):
+        arrays = lambda a: None if a is None else (a[:, None, None],)
+        return drive_columns(arrays(e), arrays(s), arrays(k), scalar_cells,
+                             owners == rank, samples, volumes, dt, cb=c)
+    if _realized.ACTIVE is None:
+        table = jax.vmap(local)(eps, sigma, keep, cb, ranks)
+    else:
+        columns = tuple(n for n, v in enumerate(volumes) if v is not None)
+        def scales(e, s, c, rank):
+            return local(e, s, None, c, rank, samples=jnp.ones((1, len(sources)), samples.dtype))[0]
+        scales = jax.vmap(scales)(eps, sigma, cb, ranks)
+        observed = _realized.runtime_drive(jnp.sum(scales[:, jnp.asarray(columns, dtype=jnp.int32)], axis=0), columns)
+        # Publish the observed scales only to their source owners. A unit
+        # volume preserves those already divided scalars exactly.
+        factors = jnp.ones((len(sources),), samples.dtype).at[jnp.asarray(columns, dtype=jnp.int32)].set(observed)
+        volumes = tuple(None if v is None else 1. for v in volumes)
+        table = jax.vmap(lambda e, s, k, rank: local(e, s, k, factors, rank, volumes=volumes))(
+            eps, sigma, keep, ranks)
+    table = jnp.transpose(table, (1, 0, 2)).reshape(n_steps, layout.n_devices * len(sources))
+    return place(table, NamedSharding(mesh, P(None, 'x')))
 
 
 @lru_cache(maxsize=128)
@@ -245,10 +254,6 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
     from rfx.stepping.absorber import apply_cpml_h, apply_cpml_e_step
     from rfx.stepping.graded import GradedStepContext, make_graded_step, graded_probe_table
     from rfx.core.drives import drive_layout
-    from rfx.nonuniform import drive_table
-    from rfx.model.materials import e_update_coefficient_at
-    from rfx.model.source_coefficients import source_table
-    from rfx import _realized
     staged, inverse, loss = realize_materials(materials, grid, layout, mesh, occupancy,
         cpml=cpml, debye=debye is not None, lorentz=lorentz is not None)
     bundles = [debye, lorentz]
@@ -269,30 +274,11 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
                                            staged.components.sigma_update, *terms)
             bundles[i] = (coeffs, state)
     debye, lorentz = bundles
-    source_rows = []
     material_drive = (None,) * len(sources) if material_drive is None else material_drive
     if len(material_drive) != len(sources):
         raise ValueError('material_drive must contain one entry per source')
-    for source, volume in zip(sources, material_drive):
-        samples = source.waveform
-        # rfx #1402 item 4 (nu): drive_table slab view plugs in here
-        if volume is not None:
-            volume = volume[0] if isinstance(volume, tuple) else volume
-            cb = source_coefficient(staged, debye, lorentz, source, grid.dt, layout, mesh)
-            if _realized.ACTIVE is None:
-                samples = source_table(samples, native='cb_over_dv', volume=volume, coefficient=lambda: cb)
-            else:
-                samples = _realized.runtime_drive(jnp.reshape(cb / volume, (1,)), (len(source_rows),))[0] * samples
-        source_rows.append((source.i, source.j, source.k, source.component, samples))
-    source_meta = [(s.i, s.j, s.k, s.component) for s in sources]
-    waves = drive_table([jnp.array(s[4]) for s in source_rows], source_meta, n_steps)
-    if staged.edge_keep is not None and sources:
-        from rfx.model.source_coefficients import weight_drive_columns
-        from rfx.stepping.rank import rank_shard_map, mesh_ranks
-        nodes = tuple((layout.owner(s.i), ('ex', 'ey', 'ez').index(s.component),
-                       (layout.local_index(s.i), s.j, s.k)) for s in sources)
-        weights = jax.checkpoint(_keep_map(mesh, nodes))(mesh_ranks(mesh), staged.edge_keep)
-        waves = weight_drive_columns(waves, weights, source_meta)
+    waves = slab_drive_columns(staged, debye, lorentz, sources, material_drive,
+                               grid.dt, layout, mesh, n_steps)
     faces = None if cpml else {f'{a}_{s}' for a in 'xyz' for s in ('lo', 'hi')}
     (use_cpml, params, psi, cpml_grid, axes, curl_boundary, pec_faces, pmc_faces, use_pmc) = nonuniform_boundaries(
         grid, resolve_cpml_axes(grid, None if cpml else ''), faces, None)
@@ -372,12 +358,3 @@ def stage_pec(cells, sheets, wires, grid, layout, mesh):
             return realized_pec_edge_masks(cells, view=view)
         masks = uniform_apply(local, cell_rows, indices, static, mesh=mesh, row_count=layout.nx_local + 1)
     return jax.tree.map(lambda a: product_rows(a, layout, mesh, 'pec_edge'), masks)
-
-
-@lru_cache(maxsize=128)
-def _keep_map(mesh, nodes):
-    from rfx.stepping.rank import rank_shard_map
-    def read(keep, *, rank):
-        weights = [jax.lax.all_gather(keep[axis][cell], 'x')[owner] for owner, axis, cell in nodes]
-        return jnp.stack(weights)
-    return jax.jit(rank_shard_map(read, mesh=mesh, in_specs=P('x'), out_specs=P(), check_rep=False))

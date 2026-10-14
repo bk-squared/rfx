@@ -308,14 +308,21 @@ def _seam_gradient(form, frozen_drive=False):
 def _frozen_drive():
     """The drive's Cb read through ``stop_gradient``: what the gradient is
     without the drive's own derivative (a witness of its size)."""
+    from rfx.model import source_coefficients
     real = nu.material_drive_scales
+    columns = source_coefficients.drive_columns
 
     def frozen(eps_r, sigma, mesh, drives, dt, *, ranks=None, grid=None, **film):
         return real(jax.lax.stop_gradient(eps_r), jax.lax.stop_gradient(sigma),
                     mesh, drives, dt, ranks=ranks, grid=grid, **film)
 
+    def frozen_columns(eps, sigma, *args, **kwargs):
+        # The per-slab drive table (rfx #1402 item 4) reads the edge here.
+        return columns(jax.lax.stop_gradient(eps), jax.lax.stop_gradient(sigma), *args, **kwargs)
+
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(nu, "material_drive_scales", frozen)
+        patch.setattr(source_coefficients, "drive_columns", frozen_columns)
         yield
 
 

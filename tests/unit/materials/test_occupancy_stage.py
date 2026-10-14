@@ -532,14 +532,18 @@ def test_slab_occupancy_gradient_has_field_and_drive_paths(monkeypatch):
     # Since W1 the multi-device PEC graded run cuts the SINGLE-DEVICE drive table, whose
     # occupancy weights are applied by rfx.model.source_coefficients.weight_drive_columns.
     import rfx.model.source_coefficients as sc
-    weigh = sc.weight_drive_columns
+    # The per-slab drive table (rfx #1402 item 4) reads the weight as drive_columns' keep.
+    weigh, columns = sc.weight_drive_columns, sc.drive_columns
+    def patch(change):
+        monkeypatch.setattr(sc, 'weight_drive_columns',
+                            lambda table, weights, meta: weigh(table, change(weights), meta))
+        monkeypatch.setattr(sc, 'drive_columns', lambda eps, sigma, keep, *a, **k: columns(
+            eps, sigma, None if keep is None else change(keep), *a, **k))
     # Keep the same forward drive values, removing only their gradient path.
-    monkeypatch.setattr(sc, 'weight_drive_columns',
-                        lambda table, weights, meta: weigh(table, jax.lax.stop_gradient(weights), meta))
+    patch(jax.lax.stop_gradient)
     field_only = jax.grad(loss)(value)
     # Requested comparison with drive scaling disabled altogether: unit weight on every column.
-    monkeypatch.setattr(sc, 'weight_drive_columns',
-                        lambda table, weights, meta: weigh(table, jax.tree.map(jnp.ones_like, weights), meta))
+    patch(lambda weights: jax.tree.map(jnp.ones_like, weights))
     unscaled = jax.grad(loss)(value)
     assert np.isfinite([full, field_only, unscaled]).all()
     assert field_only != 0  # Field multiply reaches occupancy.

@@ -38,6 +38,7 @@ from rfx.model.pole_stability import (CourantBudget, pole_set_extremes, combine_
                                      judge_pole_sets, refuse_unstable_cells, courant_budget)
 from rfx.model.occupancy import build_edge_keep, publish_occupancy, with_edge_keep
 from rfx.stepping.slab_view import slab_views
+from rfx.model.source_coefficients import drive_columns as _slab_drive_columns
 
 PERIODIC = (False, False, False)
 DEVICES = (2, 3)
@@ -231,10 +232,94 @@ def _realized_slab(scene, view):
                                                  periodic=PERIODIC, view=view))
 
 
+_DRIVE_SOURCE_CELLS = {}
+
+
+def _drive_sources(scene):
+    """Asymmetric seam, material-interior and partial-occupancy source edges."""
+    if scene.name in _DRIVE_SOURCE_CELLS:
+        return _DRIVE_SOURCE_CELLS[scene.name]
+    seam = slab_views(scene.grid, 3)[1].x0
+    keep = np.asarray(build_edge_keep(jnp.asarray(scene.occupancy))[2])
+    candidates = np.argwhere((keep[11:16, 1:-1, 1:-1] > 0.) &
+                            (keep[11:16, 1:-1, 1:-1] < 1.) &
+                            (keep[11:16, 1:-1, 1:-1] * 16 % 1 != 0))
+    assert len(candidates), 'scene needs a non-dyadic occupancy edge'
+    partial = tuple(int(a + b) for a, b in zip(candidates[0], (11, 1, 1)))
+    _DRIVE_SOURCE_CELLS[scene.name] = ((1, (seam, 2, 2)), (0, (3, 3, 2)), (2, partial))
+    return _DRIVE_SOURCE_CELLS[scene.name]
+
+
+def _drive_operands(scene):
+    from rfx.nonuniform import current_source_volume
+    cells = _drive_sources(scene)
+    volumes = tuple(current_source_volume(scene.grid, cell, ('ex', 'ey', 'ez')[axis])[0]
+                    for axis, cell in cells)
+    samples = jnp.asarray([[.13, .23, .37], [.71, .89, .59],
+                           [1.37, 1.19, 1.73], [.83, .47, .31]], jnp.float32)
+    return cells, volumes, samples
+
+
+def _drive_cb(components, cells, dt):
+    from rfx.materials.debye import debye_e_coeffs
+    from rfx.materials.lorentz import lorentz_e_coeffs, mixed_e_component_coeffs
+    coefficients = []
+    for family, builder in (('debye', debye_e_coeffs), ('lorentz', lorentz_e_coeffs)):
+        pole = components[family]
+        terms = None if pole is None else jax.tree.map(
+            lambda a: jnp.moveaxis(a, 0, 1), pole.coefficients)
+        coefficients.append(None if terms is None else builder(
+            (components['eps_update'], components['sigma_update']), dt, *terms))
+    d, l = coefficients
+    if d is None and l is None:
+        return None
+    arrays = (tuple(mixed_e_component_coeffs(d, l, axis, dt)[1] for axis in range(3))
+              if d is not None and l is not None else (d if d is not None else l).cb)
+    return jnp.stack([arrays[axis][cell] for axis, cell in cells])
+
+
+def _drive_whole(scene, *, with_keep=True):
+    from rfx.model.source_coefficients import drive_columns
+    components = _realized_whole(scene)
+    cells, volumes, samples = _drive_operands(scene)
+    keep = build_edge_keep(jnp.asarray(scene.occupancy)) if with_keep else None
+    return drive_columns(components['eps_update'], components['sigma_update'], keep,
+        cells, jnp.ones(len(cells), dtype=bool), samples, volumes, scene.grid.dt,
+        cb=_drive_cb(components, cells, scene.grid.dt))
+
+
+def _drive_slab(scene, view, *, with_keep=True):
+    components = _realized_slab(scene, view)
+    global_cells, volumes, samples = _drive_operands(scene)
+    if isinstance(view, _UniformHarnessView):
+        lo = view.indices[0]
+        x0, x1 = view.indices[view.halo_lo], view.indices[-view.halo_hi - 1] + 1
+    else:
+        lo, x0, x1 = view.lo, view.x0, view.x1
+    cells = tuple((axis, (i - lo, j, k)) for axis, (i, j, k) in global_cells)
+    owned = jnp.asarray([(x0 <= i) & (i < x1) for _, (i, j, k) in global_cells])
+    keep = build_edge_keep(view.rows(scene.occupancy), view=view) if with_keep else None
+    return _slab_drive_columns(components['eps_update'], components['sigma_update'], keep,
+        cells, owned, samples, volumes, scene.grid.dt,
+        cb=_drive_cb(components, cells, scene.grid.dt))
+
+
+def _assert_drive_columns(scene, n, expected, actual):
+    expected = np.asarray(expected)
+    sources = _drive_sources(scene)
+    for view, got in zip(slab_views(scene.grid, n), actual):
+        got = np.asarray(got)
+        owned = np.asarray([view.x0 <= cell[0] < view.x1 for _, cell in sources])
+        assert got.shape == expected.shape and got.dtype == expected.dtype == np.float32
+        assert got[:, owned].tobytes() == expected[:, owned].tobytes(), 'drive owned columns differ'
+        assert np.all(got[:, ~owned] == 0), 'drive non-owned columns are nonzero'
+
+
 # Reference entries: the stencil functions under the realized-materials and
 # occupancy producers. Owners add the producers themselves (realize_components,
 # build_edge_keep with sheets, realized_pec_edge_masks, drive_table, CPML state).
 PRODUCERS = [
+    Producer('drive_table', _drive_whole, _drive_slab, ('material_seam', 'poles')),
     Producer("realize_components", _realized_whole, _realized_slab),
     Producer(
         "edge_averaged_materials",
@@ -281,6 +366,11 @@ PRODUCERS = [
 
 
 def assert_slab_view(producer, scene, n_devices, **view_kwargs):
+    if producer.name == 'drive_table':
+        expected = producer.whole(scene)
+        actual = [producer.slab(scene, view) for view in slab_views(scene.grid, n_devices, **view_kwargs)]
+        _assert_drive_columns(scene, n_devices, expected, actual)
+        return
     whole = jax.tree.leaves(producer.whole(scene))
     nx = int(scene.grid.nx)
     for view in slab_views(scene.grid, n_devices, globals=scene.globals, **view_kwargs):
@@ -674,11 +764,17 @@ def _uniform_producer(producer, scene, n, *, missing_extra=False, zero_material=
             return jax.tree.map(lambda a, b: jnp.where(uniform, a, b), equal, graded)
         return producer.slab(scene, view)
     apply = (lambda f, *args, **kw: jax.vmap(f)(*args)) if metadata_through else uniform_apply
+    count = _drive_operands(scene)[2].shape[0] if producer.name == 'drive_table' else rows.indices.shape[1]
     return rows.indices, apply(local, indices, arrays, static, released,
-                              mesh=mesh, row_count=rows.indices.shape[1], row_axis=producer.x_axis)
+                              mesh=mesh, row_count=count, row_axis=producer.x_axis)
 
 
 def _assert_uniform(producer, scene, n, **kwargs):
+    if producer.name == 'drive_table':
+        expected = producer.whole(scene)
+        _, actual = _uniform_producer(producer, scene, n, **kwargs)
+        _assert_drive_columns(scene, n, expected, actual)
+        return
     rows, actual = _uniform_producer(producer, scene, n, **kwargs)
     expected = jax.tree.leaves(producer.whole(scene))
     leaves = jax.tree.leaves(actual)
@@ -705,6 +801,39 @@ def _assert_uniform(producer, scene, n, **kwargs):
 @pytest.mark.parametrize('producer,scene,n_devices', _CASES)
 def test_uniform_producer_equals_whole_on_all_real_rows(producer, scene, n_devices):
     _assert_uniform(producer, scene, n_devices)
+
+
+@pytest.mark.parametrize('mode', ('view', 'uniform'))
+@pytest.mark.parametrize('mutation', ('M1', 'M2', 'M3'))
+def test_drive_column_mutations_are_caught(monkeypatch, mode, mutation):
+    import inspect
+    import sys
+    from functools import partial
+    from rfx.model.source_coefficients import drive_columns
+    producer = next(p for p in PRODUCERS if p.name == 'drive_table')
+    if mutation == 'M1':
+        # Without occupancy, step 3 alone must suppress the finite dummy Cb.
+        # Keep both calls unchanged between the control and mutated checks.
+        producer = producer._replace(whole=partial(_drive_whole, with_keep=False),
+                                     slab=partial(_drive_slab, with_keep=False))
+    check = assert_slab_view if mode == 'view' else _assert_uniform
+    check(producer, SCENES['material_seam'], 3)
+    source = inspect.getsource(drive_columns)
+    if mutation == 'M1':
+        source = source.replace('scale = jnp.where(owned[n], coefficient / volume, 0.)',
+                                'scale = coefficient / volume')
+    elif mutation == 'M2':
+        source = source.replace('column = scale * samples[:, n]',
+            'column = (scale * jnp.where(owned[n], keep[axis][cell], 0.)) * samples[:, n]')
+        source = source.replace('if keep is not None:', 'if keep is not None and volume is None:')
+    else:
+        source = source.replace('if volume is None:',
+            'cell = (cell[0] - 1, cell[1], cell[2])\n        if volume is None:', 1)
+    namespace = {}
+    exec(compile(source, '<drive-column-mutation>', 'exec'), namespace)
+    monkeypatch.setattr(sys.modules[__name__], '_slab_drive_columns', namespace['drive_columns'])
+    with pytest.raises(AssertionError, match='drive .* columns'):
+        check(producer, SCENES['material_seam'], 3)
 
 
 @pytest.mark.parametrize('mutation', ('missing_extra', 'zero_material', 'local_metric'))

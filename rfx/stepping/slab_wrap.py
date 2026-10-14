@@ -77,8 +77,17 @@ def cut_drives(drives, layout, mesh, *, waveforms):
                 rows, np.asarray(drives.wave_id[component])[ids[rank, valid[rank]]])
         wave_id[component] = _place(local_waves, mesh)
         owner[component] = _place(drives.owner[component][ids], mesh)
-    samples = jnp.where(wave_valid[None, :, :], waveforms[:, selected_waves],
-                        jnp.zeros((), waveforms.dtype))
+    n_waves = max((int(np.max(a)) + 1 for a in drives.wave_id.values() if len(a)), default=0)
+    if layout.n_devices > 1 and waveforms.shape[1] == layout.n_devices * n_waves:
+        @partial(jax.shard_map, mesh=mesh,
+                 in_specs=(P(None, 'x'), P('x'), P('x')),
+                 out_specs=P(None, 'x'), check_vma=False)
+        def select(local, ids, valid):
+            return jnp.where(valid[None], local[:, ids], jnp.zeros((), local.dtype))
+        samples = select(waveforms, _place(selected_waves, mesh), _place(wave_valid, mesh))
+    else:
+        samples = jnp.where(wave_valid[None, :, :], waveforms[:, selected_waves],
+                            jnp.zeros((), waveforms.dtype))
     samples = place(samples, NamedSharding(mesh, P(None, 'x')))
     return drives._replace(nodes=nodes, coef=coef, wave_id=wave_id, owner=owner, waves=samples)
 
