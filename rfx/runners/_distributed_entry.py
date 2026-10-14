@@ -12,7 +12,7 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args
                         s_param_freqs=None, s_param_n_steps=None,
                         conformal_pec=False, subpixel_smoothing=False,
                         checkpoint=False, snapshot=None, until_decay=None,
-                        report_every=None):
+                        report_every=None, _forward_port_s11=False):
     """Use the run entry's admission, fallback, execution and S-matrix path."""
     # ---- Distributed multi-device lane ----
     if self._interface_eps == "dual_average":
@@ -152,6 +152,7 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args
             devices=devices,
             **({"_main_wire_record": True} if len(_dist_ports) == 1
                and _dist_ports[0].extent is not None else {}),
+            **({"_forward_port_s11": True} if _forward_port_s11 else {}),
         )
         _res = _res._replace(s_params=_s_params, freqs=np.asarray(s_param_freqs))
     _res = self._attach_run_settling_witness(
@@ -165,8 +166,8 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args
 
 # What a multi-device forward() on a uniform mesh refuses, in the user's words:
 # why, and what runs that request today. Formatted by the run entry's refusal.
-_NO_DESIGN_VARIABLE = ("a multi-device forward() on a uniform mesh solves the declared model "
-                       "only and takes no design variable")
+_NO_DESIGN_VARIABLE = ("a multi-device forward() on a uniform mesh takes none of "
+                       "forward()'s override or design arguments")
 _ONE_DEVICE = "run on one device (omit distributed=True)"
 _ON_A_GRADED_MESH = "use a graded mesh, where forward(distributed=True) takes this override"
 _GRADED_TOO = ("eps_override", "sigma_override", "pec_mask_override", "pec_occupancy_override")
@@ -179,7 +180,6 @@ FORWARD_REFUSALS = {
              "design variable there is no gradient to save memory for" for name in _CHECKPOINTS},
     "n_warmup": "every step of a multi-device forward() on a uniform mesh is recorded",
     "emit_time_series": "a multi-device forward() on a uniform mesh always returns the probe records",
-    "ringdown": "a multi-device forward() on a uniform mesh runs a fixed number of steps",
 }
 FORWARD_REMEDIES = {
     **{name: _ON_A_GRADED_MESH for name in _GRADED_TOO},
@@ -203,9 +203,9 @@ def forward_distributed(sim, *, plan, assembly, devices, exchange_interval,
         # (measured: jax.jit of this call fails inside it with a tracer error).
         raise NotImplementedError(
             "forward(distributed=True) on a uniform mesh cannot run inside jax.jit "
-            "(or another JAX trace): call it directly. It takes no design variable, "
-            "so nothing is differentiated through it; for a traced or differentiated "
-            "solve run on one device (omit distributed=True) or use a graded mesh.")
+            "(or another JAX trace that stages it): call it directly. For a staged or "
+            "differentiated solve with override or design arguments, run on one device "
+            "(omit distributed=True) or use a graded mesh.")
     sim._refuse_unsupported_run_kwargs(
         "uniform distributed forward", {
             **overrides,
@@ -222,7 +222,7 @@ def forward_distributed(sim, *, plan, assembly, devices, exchange_interval,
     result = execute_distributed(
         sim, plan=plan, _solve_assembly=assembly,
         _diagnostics=assembly.diagnostics, _call_args=call_args,
-        devices=devices, exchange_interval=exchange_interval,
+        devices=devices, exchange_interval=exchange_interval, _forward_port_s11=True,
         conformal_pec=bool(sim._boundary_spec.conformal_faces()), **call_args)
     packed = pack_nu_forward_result(
         diagnostics=result.diagnostics, time_series=result.time_series,
@@ -234,5 +234,10 @@ def forward_distributed(sim, *, plan, assembly, devices, exchange_interval,
         dft_time_records=result.dft_time_records,
         current_moment_data=result.current_moment_data,
         current_moment_monitor=result.current_moment_monitor)
-    return sim._attach_run_settling_witness(
+    packed = sim._attach_run_settling_witness(
         packed, n_steps=plan.n_steps, num_periods=num_periods, context="forward")
+    ports = [pe for pe in sim._ports if pe.impedance != 0]
+    if port_s11_freqs is not None and ports:
+        from rfx.runners._uniform_forward_result import pack_port_result
+        packed = pack_port_result(packed, wire=ports[0].extent is not None)
+    return packed

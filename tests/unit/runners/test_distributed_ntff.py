@@ -225,12 +225,13 @@ def test_more_devices(n_devices):
 
 
 @pytest.mark.parametrize("kind", ["forward", "graded_forward", "graded_run", "graded_direct"])
-def test_out_of_scope_refused(kind):
+def test_ntff_path_admission(kind):
     sim = _model("cpml")
     if kind == "forward":
-        with pytest.raises(NotImplementedError, match="only for non-uniform meshes"):
-            sim.forward(n_steps=8, distributed=True, devices=jax.devices("cpu")[:2],
-                        skip_preflight=True)
+        result = sim.forward(n_steps=8, distributed=True, devices=jax.devices("cpu")[:2],
+                             skip_preflight=True)
+        assert result.ntff_data is not None and result.ntff_box is not None
+        assert all(np.isfinite(np.asarray(a)).all() for a in result.ntff_data)
     else:
         sim._dz_profile = np.array([1e-3] * 3 + [0.5e-3] * 8)
         with pytest.raises(NotImplementedError, match="NTFF|ntff|graded"):

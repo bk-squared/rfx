@@ -60,6 +60,41 @@ def test_run_forward_bit_identical(lossy):
     assert actual.dt == expected.dt
 
 
+def test_ntff_records_match_run_bit_identically():
+    from tests.contracts.run_forward_census import build_o_ntff
+
+    expected = build_o_ntff("uniform").run(
+        n_steps=60, devices=devices(), compute_s_params=False, skip_preflight=True)
+    actual = build_o_ntff("uniform").forward(
+        n_steps=60, distributed=True, devices=devices(), skip_preflight=True)
+    assert expected.ntff_data is not None and actual.ntff_data is not None
+    assert expected.ntff_box is not None and actual.ntff_box is not None
+    assert actual.ntff_data._fields == expected.ntff_data._fields
+    for name in expected.ntff_data._fields:
+        assert np.array_equal(getattr(actual.ntff_data, name),
+                              getattr(expected.ntff_data, name)), name
+    assert any(np.any(np.asarray(a)) for a in expected.ntff_data)
+
+
+def test_conformal_request_refused_by_both_entries():
+    def conformal_scene():
+        boundary = BoundarySpec(
+            x="cpml", y=Boundary(lo="pec", hi="pec", conformal=True), z="cpml")
+        sim = Simulation(freq_max=20e9, domain=(.030, .020, .012), dx=.001,
+                         cpml_layers=4, boundary=boundary)
+        sim.add(Box((.013, .006, .003), (.022, .014, .009)), material="pec")
+        sim.add_source((.009, .008, .005), "ez", amplitude_kind="field")
+        sim.add_probe((.024, .012, .007), "ez")
+        return sim
+
+    with pytest.raises(NotImplementedError, match="conformal_pec") as expected:
+        conformal_scene().run(n_steps=8, devices=devices(),
+                              compute_s_params=False, skip_preflight=True)
+    with pytest.raises(type(expected.value), match="conformal_pec"):
+        conformal_scene().forward(n_steps=8, distributed=True,
+                                  devices=devices(), skip_preflight=True)
+
+
 REFUSED = {
     "eps_override": jnp.asarray(2.0),
     "sigma_override": jnp.asarray(.02),
@@ -110,17 +145,87 @@ def test_refused_in_plain_words_inside_jax_jit():
                                         skip_preflight=True).time_series)()
 
 
-def test_requested_port_s_matrix_matches_run_default():
+@pytest.mark.parametrize("family", ["lumped", "wire"])
+def test_requested_port_fields_match_one_device_forward(family):
+    from tests.contracts.run_forward_census import build_p_lumped, build_p_wire
+    from rfx.probes import sparam_driver
+    from rfx.optimize_objectives import minimize_s11_at_freq_wave_decomp
+
     def port_scene():
-        sim = Simulation(freq_max=20e9, domain=(.030, .020, .012), dx=.001,
-                         cpml_layers=4, boundary="cpml")
-        sim.add_port((.009, .008, .005), "ez", impedance=50.0)
-        sim.add_probe((.024, .012, .007), "ez")
+        sim = (build_p_wire if family == "wire" else build_p_lumped)("uniform")
+        if family == "wire":
+            # Run's S driver admits an impedance port without a plain source.
+            sim._ports = [pe for pe in sim._ports if pe.impedance != 0]
         return sim
 
-    expected = port_scene().run(n_steps=60, devices=devices(), skip_preflight=True)
-    actual = port_scene().forward(n_steps=60, distributed=True, devices=devices(),
-                                  port_s11_freqs=expected.freqs, skip_preflight=True)
-    assert np.array_equal(expected.s_params, actual.s_params)
-    assert np.array_equal(expected.freqs, actual.freqs)
-    assert np.array_equal(expected.time_series, actual.time_series)
+    freqs = np.array([4., 8., 12., 16., 20.]) * 1e9
+    expected = port_scene().forward(n_steps=150, port_s11_freqs=freqs,
+                                   checkpoint=False, skip_preflight=True)
+    observed = []
+    original = sparam_driver._distributed_lumped_accumulators
+
+    def capture(*args, **kwargs):
+        raw = original(*args, **kwargs)
+        observed.append(raw)
+        return raw
+
+    with patch.object(sparam_driver, "_distributed_lumped_accumulators", capture):
+        actual = port_scene().forward(n_steps=150, distributed=True, devices=devices(),
+                                     port_s11_freqs=freqs, skip_preflight=True)
+    assert len(observed) == 1  # The existing S driver ran once, without a second computation.
+
+    def compare_field(name, value, reference):
+        value, reference = np.asarray(value), np.asarray(reference)
+        assert value.shape == reference.shape, name
+        peak = np.max(np.abs(reference), initial=0)
+        error = np.max(np.abs(value.astype(np.complex128) - reference), initial=0)
+        assert error <= 1e-4 * peak, (name, error, peak)
+        print(f"{family}/{name}: max_relative_difference={error / peak if peak else 0:.12g}")
+
+    compare_field("s_params", actual.s_params, expected.s_params)
+    compare_field("freqs", actual.freqs, expected.freqs)
+    field = f"{family}_port_sparams"
+    native_accs = getattr(expected, field)[0][1]
+    driver_accs = observed[0][family][0][1]
+    for index, name in ((0, "v_dft"), (1, "i_dft")):
+        compare_field(name, driver_accs[index], native_accs[index])
+    if family == "wire":
+        compare_field("v_port_dft", driver_accs[3], native_accs[3])
+    # Raw tuples include unmeasured reference channels, so the whole public
+    # quantity refuses rather than masquerading as a native accumulator tuple.
+    reason = "does not record this port quantity; run on one device"
+    for unavailable in (field, "sparam_time_records"):
+        assert getattr(expected, unavailable) is not None
+        with pytest.raises(NotImplementedError, match=reason):
+            getattr(actual, unavailable)
+    other = "lumped_port_sparams" if family == "wire" else "wire_port_sparams"
+    assert getattr(actual, other) is None and getattr(expected, other) is None
+    objective = minimize_s11_at_freq_wave_decomp(12e9)
+    assert np.isfinite(np.asarray(objective(actual)))
+    compare_field("objective", objective(actual), objective(expected))
+    # Refusing raw records must leave the recorded-probe settling report usable.
+    assert isinstance(actual.settling_witness, dict)
+
+
+def test_multiple_driven_ports_match_one_device_forward():
+    from tests.contracts.run_forward_census import build_p_lumped
+    from rfx.optimize_objectives import minimize_s11_at_freq_wave_decomp
+
+    def port_scene():
+        return build_p_lumped("uniform").add_port(
+            (.022, .009, .0055), "ez", impedance=50.)
+
+    freqs = np.array([4., 8., 12., 16., 20.]) * 1e9
+    expected = port_scene().forward(n_steps=150, port_s11_freqs=freqs,
+                                   checkpoint=False, skip_preflight=True)
+    actual = port_scene().forward(n_steps=150, distributed=True, devices=devices(),
+                                 port_s11_freqs=freqs, skip_preflight=True)
+    assert actual.s_params.shape == expected.s_params.shape == (2, 5)
+    for index in range(2):
+        reference = np.asarray(expected.s_params[index])
+        peak = np.max(np.abs(reference))
+        error = np.max(np.abs(np.asarray(actual.s_params[index]) - reference))
+        print(f"two-driven-ports/s_params[{index}]: max_relative_difference={error / peak:.12g}")
+        assert error <= 1e-4 * peak, (index, error, peak)
+        objective = minimize_s11_at_freq_wave_decomp(12e9, port_idx=index)
+        assert np.isfinite(np.asarray(objective(actual)))

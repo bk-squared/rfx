@@ -1712,6 +1712,7 @@ for _features in TABLE.values():
     for _cells in _features.values():
         if "run_distributed" in _cells:
             _cells["fwd_distributed"] = _cells["run_distributed"]
+TABLE["_coaxial_ports"]["coax_port"]["fwd_distributed"] = FWD_COAX
 
 
 def cell(attr: str, feature: str, path: str) -> Cell:

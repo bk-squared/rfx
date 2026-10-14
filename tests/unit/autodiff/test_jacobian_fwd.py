@@ -529,15 +529,11 @@ def test_g5_batched_and_sequential_agree_many_output():
 # ---------------------------------------------------------------------------
 
 def test_g6a_uniform_distributed_raises_a_different_earlier_check():
-    """A uniform sim + distributed=True DOES raise NotImplementedError, but
-    via forward()'s general "distributed=True is NU-only" dispatch guard
-    (_execute.py's "only for non-uniform meshes" check) -- NOT the
-    DFT-plane-specific fence jacobian_fwd's own docstring names as fence
-    #1 (the #619 fence, which needs a non-uniform mesh to even reach). This
-    test pins that this EARLIER, more general check also propagates
-    through jax.jvp/jacobian_fwd unchanged; the NAMED fence itself is
-    exercised separately below by
-    test_g6a_distributed_nu_dft_plane_fence_raises."""
+    """Uniform distributed forward refuses eps_override before its DFT fence.
+
+    The override refusal propagates through jvp/jacobian_fwd. The named
+    graded DFT-plane fence is exercised separately below.
+    """
     sim = _build_sim()
 
     def sim_fn(alpha):
@@ -547,7 +543,7 @@ def test_g6a_uniform_distributed_raises_a_different_earlier_check():
         )
         return dft_field(_PLANE)(result)
 
-    with pytest.raises(NotImplementedError, match="non-uniform meshes"):
+    with pytest.raises(NotImplementedError, match="eps_override"):
         jacobian_fwd(sim_fn, jnp.asarray(1.0, dtype=jnp.float32))
 
 
