@@ -1,17 +1,8 @@
-"""Contract: the waveguide mode-solver extraction preserves every import path.
+"""Contract: waveguide mode helpers live in rfx.model.waveguide_mode_solver.
 
-The pure-NumPy transverse mode solver + mode-profile algebra were extracted
-verbatim from ``rfx/sources/waveguide_port.py`` into the sibling module
-``rfx/sources/_waveguide_modes.py`` (off the FDTD/JAX AD tape). The extraction
-re-imports every moved name back into the ``waveguide_port`` namespace so that
-existing import paths keep resolving. This test pins that surface so a future
-edit that drops or renames a re-export fails fast (CI), and confirms the two
-sibling modules expose the SAME object (a real re-export, not a divergent copy).
-
-It also pins that the symbols ``rfx/eigenmode.py`` imports privately from
-``waveguide_port`` (``_te_mode_profiles``, ``_tm_mode_profiles``,
-``cutoff_frequency``, ``C0_LOCAL``) were NOT moved — they must stay importable
-from ``waveguide_port`` or eigenmode.py breaks.
+The ten pure-NumPy helpers and the four dependencies imported by
+rfx.eigenmode live in the model layer. Private helpers are not re-exported
+from rfx.sources.waveguide_port.
 """
 
 import pytest
@@ -19,7 +10,7 @@ import importlib
 
 import numpy as np
 
-# The 10 helpers extracted into rfx.sources._waveguide_modes.
+# The 10 helpers extracted into rfx.model.waveguide_mode_solver.
 _MOVED = (
     "_second_diff_1d",
     "_galerkin_stiffness_mass_1d",
@@ -33,7 +24,7 @@ _MOVED = (
     "_scale_h_to_unit_cross",
 )
 
-# Symbols eigenmode.py imports privately from waveguide_port — must NOT have moved.
+# Symbols eigenmode.py imports from the model layer.
 _EIGENMODE_PRIVATE_DEPS = (
     "_te_mode_profiles",
     "_tm_mode_profiles",
@@ -43,27 +34,23 @@ _EIGENMODE_PRIVATE_DEPS = (
 
 
 def test_moved_helpers_importable_from_new_module():
-    mod = importlib.import_module("rfx.sources._waveguide_modes")
+    mod = importlib.import_module("rfx.model.waveguide_mode_solver")
     missing = [n for n in _MOVED if not hasattr(mod, n)]
     assert not missing, f"_waveguide_modes is missing extracted symbols: {missing}"
 
 
 def test_moved_helpers_reexported_with_same_identity():
     wp = importlib.import_module("rfx.sources.waveguide_port")
-    modes = importlib.import_module("rfx.sources._waveguide_modes")
     for name in _MOVED:
-        assert hasattr(wp, name), f"waveguide_port no longer re-exports {name}"
-        assert getattr(wp, name) is getattr(modes, name), (
-            f"{name} re-export diverged from _waveguide_modes (must be the same object)"
-        )
+        assert not hasattr(wp, name), f"waveguide_port re-exports private helper {name}"
 
 
 def test_eigenmode_private_deps_stay_in_waveguide_port():
-    wp = importlib.import_module("rfx.sources.waveguide_port")
+    modes = importlib.import_module("rfx.model.waveguide_modes")
     for name in _EIGENMODE_PRIVATE_DEPS:
-        assert hasattr(wp, name), (
-            f"waveguide_port.{name} is imported privately by rfx/eigenmode.py "
-            "and must not be moved/dropped"
+        assert hasattr(modes, name), (
+            f"rfx.model.waveguide_modes.{name} is imported by rfx/eigenmode.py "
+            "and must be present"
         )
     # eigenmode.py must still import cleanly against that surface.
     importlib.import_module("rfx.eigenmode")
@@ -73,9 +60,9 @@ def test_eigenmode_private_deps_stay_in_waveguide_port():
 def test_extracted_module_has_no_rfx_dependencies():
     """The extracted module is pure NumPy (no FDTD/AD coupling) — keep it that
     way so it can never reintroduce an import cycle through waveguide_port."""
-    import rfx.sources._waveguide_modes as mod
+    import rfx.model.waveguide_mode_solver as mod
 
-    src = importlib.util.find_spec("rfx.sources._waveguide_modes").origin
+    src = importlib.util.find_spec("rfx.model.waveguide_mode_solver").origin
     text = open(src).read()
     for forbidden in ("import jax", "from rfx", "jnp", "EPS_0", "MU_0"):
         assert forbidden not in text, (
@@ -85,11 +72,7 @@ def test_extracted_module_has_no_rfx_dependencies():
 
 def test_mode_solver_smoke():
     """A light functional smoke so the contract also exercises the code path."""
-    from rfx.sources._waveguide_modes import (
-        _galerkin_eigh_separable_laplacian_2d,
-        _galerkin_stiffness_mass_1d,
-        _second_diff_1d,
-    )
+    from rfx.model.waveguide_mode_solver import _galerkin_eigh_separable_laplacian_2d, _galerkin_stiffness_mass_1d, _second_diff_1d
 
     uw = np.full(8, 1e-3)
     D = _second_diff_1d(uw, bc="dirichlet")

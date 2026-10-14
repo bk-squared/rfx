@@ -201,64 +201,11 @@
       "D2": []
     },
     "rfx/sources/waveguide_port.py": {
-      "I": [
-        "rfx.boundaries.axes:hi_face_is_wall",
-        "rfx.boundaries.axes:resolve_cpml_axes",
-        "rfx.boundaries.pec:resolve_wall_faces",
-        "rfx.core.yee:component_h_materials",
-        "rfx.measurement.dft:phase",
-        "rfx.measurement.modal:legacy_current_spectrum",
-        "rfx.measurement.modal:record_waveguide",
-        "rfx.measurement.modal:recorded",
-        "rfx.measurement.modal:rect_dft"
-      ],
+      "I": [],
       "S": [],
-      "M": [
-        "_shift_modal_waves",
-        "extract_multimode_s_matrix_flux",
-        "extract_waveguide_s_matrix_flux",
-        "init_waveguide_port"
-      ],
-      "A": [
-        "apply_waveguide_port_e",
-        "apply_waveguide_port_h",
-        "inject_waveguide_port"
-      ],
-      "G": [
-        "<module>",
-        "WaveguidePortConfig.<body>",
-        "_compute_beta",
-        "_compute_mode_impedance",
-        "_discrete_te_mode_profiles",
-        "_discrete_tm_mode_profiles",
-        "_gram_schmidt_modes",
-        "_modal_net_power",
-        "_overlap_cross_products",
-        "_plane_h_field_at_dual",
-        "_settling_db_for_record",
-        "_shift_modal_waves",
-        "_te_mode_profiles",
-        "_tm_mode_profiles",
-        "apply_waveguide_port_e",
-        "apply_waveguide_port_h",
-        "cutoff_frequency",
-        "extract_multimode_s_matrix",
-        "extract_multimode_s_matrix_flux",
-        "extract_waveguide_s_matrix",
-        "extract_waveguide_s_matrix_flux",
-        "extract_waveguide_s_params_normalized",
-        "extract_waveguide_sparams",
-        "extract_waveguide_sparams_overlap",
-        "init_multimode_waveguide_port",
-        "init_overlap_dft",
-        "init_waveguide_port",
-        "inject_waveguide_port",
-        "modal_current",
-        "modal_voltage",
-        "mode_self_overlap",
-        "overlap_modal_amplitude",
-        "settling_db_from_port_records"
-      ],
+      "M": [],
+      "A": [],
+      "G": [],
       "D1": [],
       "D2": []
     }

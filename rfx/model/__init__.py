@@ -23,6 +23,16 @@ from rfx.model.graded_admission import (
 from rfx.model.occupancy import select_occupancy_operator, with_edge_keep
 from rfx.model.thin_conductors import refuse_design_films
 
+from rfx.model.waveguide_modes import (
+    WaveguidePort,
+    WaveguidePortConfig,
+    cutoff_frequency,
+    init_waveguide_port,
+    solve_rectangular_modes,
+    init_multimode_waveguide_port,
+    C0_LOCAL,
+)
+
 __all__ = [
     "DesignBoxCoeffs", "PreparedSolve", "design_box_bounds", "design_box_window",
     "held_edge_masks", "resolve_design_box",
@@ -31,4 +41,11 @@ __all__ = [
     "forward_lumped_port_stage", "forward_port_stage", "forward_products", "forward_sheet_context",
     "prepare_port_occupancy", "refuse_design_films", "select_occupancy_operator",
     "stage_distributed_edges", "traced_cell_mask", "uniform_solve_inputs", "with_edge_keep",
+    "WaveguidePort",
+    "WaveguidePortConfig",
+    "cutoff_frequency",
+    "init_waveguide_port",
+    "solve_rectangular_modes",
+    "init_multimode_waveguide_port",
+    "C0_LOCAL",
 ]

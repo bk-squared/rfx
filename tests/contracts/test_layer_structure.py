@@ -610,9 +610,11 @@ _MODULE_PHASE = jnp.exp(1j * angle)
 def test_review_pseudo_unit_calibration(generated):
     # nonuniform.py lost its module-level hit when #1643 moved the grid tables out.
     assert "<module>" not in generated["files"]["rfx/nonuniform.py"]["G"]
+    # waveguide_port.py lost both when its definitions moved to the layer
+    # packages and the file kept only re-exports.
     waveguide = generated["files"]["rfx/sources/waveguide_port.py"]
-    assert "<module>" in waveguide["G"]
-    assert "WaveguidePortConfig.<body>" in waveguide["G"]
+    assert "<module>" not in waveguide["G"]
+    assert "WaveguidePortConfig.<body>" not in waveguide["G"]
 
 
 def test_missing_base_baseline_is_not_adoption_after_checker_exists(synthetic, monkeypatch, capsys):

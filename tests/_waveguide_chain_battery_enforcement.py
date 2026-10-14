@@ -45,7 +45,7 @@ def replay_shift_sign_refute(fx: dict, *, flip_sign: bool = True) -> dict:
     flip_sign=False is the control and must reproduce the stored shifted S.
     """
     import jax.numpy as jnp
-    from rfx.sources.waveguide_port import _shift_modal_waves
+    from rfx.measurement.waveguide_s import _shift_modal_waves
 
     cases = []
     for key, plane in fx["plane_shift"].items():

@@ -13,9 +13,9 @@ import pytest
 
 import jax.numpy as jnp
 
-from rfx.sources.waveguide_port import (
-    _modal_net_power, _co_located_current_spectrum, _rect_dft, _compute_beta, C0_LOCAL,
-)
+from rfx.measurement.waveguide_s import _modal_net_power, _co_located_current_spectrum, _rect_dft
+from rfx.model.waveguide_modes import _compute_beta
+from rfx.sources.waveguide_port import C0_LOCAL
 
 
 def test_modal_net_power_applies_halfstep_colocation():

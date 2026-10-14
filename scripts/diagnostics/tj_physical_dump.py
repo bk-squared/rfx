@@ -11,9 +11,8 @@ import numpy as np, jax.numpy as jnp
 from rfx.grid import Grid
 from rfx.materials import init_materials
 from rfx.geometry.csg import Box
-from rfx.sources.waveguide_port import (
-    WaveguidePort, init_waveguide_port, extract_waveguide_s_matrix_flux,
-    modal_voltage, _plane_field)
+from rfx.sources.waveguide_port import WaveguidePort, init_waveguide_port, extract_waveguide_s_matrix_flux, modal_voltage
+from rfx.measurement.waveguide_modal import _plane_field
 from rfx.simulation import run as run_sim
 
 ap = argparse.ArgumentParser(); ap.add_argument("--dx_mm", type=float, required=True); A = ap.parse_args()

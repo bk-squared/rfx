@@ -16,6 +16,7 @@ from rfx import Simulation
 import rfx.nonuniform as nonuniform_core
 import rfx.simulation as uniform_core
 import rfx.sources.waveguide_port as waveguide_port
+import rfx.measurement.waveguide_s as _wg_move_waveguide_s
 from tests._x64_compat import enable_x64
 
 
@@ -109,7 +110,7 @@ def test_core_field_dtype(monkeypatch, normalize, n_modes, expected_runs,
     initialize = uniform_core.init_state
     run = uniform_core.run
     make_step = uniform_core.make_core_step
-    extract_waves = waveguide_port._s_matrix_port_waves
+    extract_waves = _wg_move_waveguide_s._s_matrix_port_waves
     # With x64 on, even explicit float32 frequencies keep extraction at
     # least as wide as main, independently of the core field-storage dtype.
     expected_record = np.dtype(np.float64)
@@ -157,7 +158,7 @@ def test_core_field_dtype(monkeypatch, normalize, n_modes, expected_runs,
     monkeypatch.setattr(uniform_core, "init_state", observe_fields)
     monkeypatch.setattr(uniform_core, "run", observe_run)
     monkeypatch.setattr(uniform_core, "make_core_step", observe_step)
-    monkeypatch.setattr(waveguide_port, "_s_matrix_port_waves", observe_waves)
+    monkeypatch.setattr(_wg_move_waveguide_s, "_s_matrix_port_waves", observe_waves)
     try:
         with enable_x64(True), warnings.catch_warnings():
             warnings.simplefilter("ignore", UserWarning)

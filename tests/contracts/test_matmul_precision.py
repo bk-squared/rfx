@@ -179,7 +179,7 @@ def test_port_extraction_cores():
     from rfx.probes.msl_wave_decomp import _lstsq_alpha_gamma
     from rfx.sources.coaxial_port import (_coaxial_line_reflection_jnp,
                                           _solve_two_port_from_wave_amplitudes_jnp)
-    from rfx.sources.waveguide_port import _rect_dft
+    from rfx.measurement.waveguide_s import _rect_dft
 
     ts = jnp.linspace(0.0, 1.0, 64, dtype=jnp.float32)
     freqs = jnp.array([1e9, 2e9], jnp.float32)
