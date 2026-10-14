@@ -89,14 +89,16 @@ def _check_half_node(position_index, axis_index, expected_position, expected_axi
 @pytest.mark.parametrize('dtype', [np.float32, np.float64])
 @pytest.mark.parametrize('axis', [0, 1, 2])
 def test_nonperiodic_half_node_takes_the_lower_node(dtype, axis):
-    # Both take lower ties, with their original division arithmetic:
-    # position_to_index keeps the scalar dtype; index_of divides float64.
-    # float32(.00075) is above the tie when promoted before division.
+    # float32(.00075) is above the half-node tie after promotion, but
+    # inside the solver-width band: both lookups take the lower node.
     grid = Grid(60e9, (.009, .006, .0042), dx=.0003, cpml_layers=0)
     position = [0., 0., 0.]
     position[axis] = dtype(.00075)
+    ratio = float(position[axis]) / grid.dx
+    band = 1e-9 + 4 * float(np.finfo(np.float32).eps) * 2.5
+    assert abs(ratio - 2.5) < band
     _check_half_node(grid.position_to_index(position)[axis],
-                     grid.index_of(axis, position[axis]), 2, 3 if dtype is np.float32 else 2)
+                     grid.index_of(axis, position[axis]), 2, 2)
 
 
 @pytest.mark.parametrize('mode', ['2d_tmz', '2d_tez'])

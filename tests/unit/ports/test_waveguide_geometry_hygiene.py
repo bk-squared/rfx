@@ -351,13 +351,14 @@ def test_half_cell_outward_offset_opens_one_cell_too_wide(cells, d_mm):
 
 
 def test_the_knife_edge_moved_from_the_node_plane_to_the_cell_centre():
-    """PEC centre ownership is stable within the #1138 1e-9-cell band.
+    """PEC centre ownership is stable within the solver-width tie band.
 
     Draw on node planes for cell-boundary walls; moving a centre-aligned
     face beyond the band still changes ownership by one cell.
     """
     y, dx = _real_node_coords(30)
     centre = float(y[8]) + 0.5 * dx
+    band = 1e-9 * dx + 4 * float(np.finfo(np.float32).eps) * abs(centre)
     ulp = float(np.nextafter(centre, 1.0) - centre)
     assert 0 < ulp < 1e-15, "the comparison runs in host float64 (#802)"
 
@@ -366,7 +367,7 @@ def test_the_knife_edge_moved_from_the_node_plane_to_the_cell_centre():
                  float(np.nextafter(centre, 1.0)), centre + 0.5e-9 * dx):
         np.testing.assert_array_equal(_occupied(face, 30), np.arange(8))
         assert _occupied_hi(face, 30)[0] == 8
-    for face in (centre + 2e-9 * dx, centre + 0.5 * dx):
+    for face in (centre + 2 * band, centre + 0.5 * dx):
         np.testing.assert_array_equal(_occupied(face, 30), np.arange(9))
         assert _occupied_hi(face, 30)[0] == 9
     node = float(y[8])
