@@ -21,14 +21,16 @@ NOMINAL_SUM_RTOL = 1e-9
 
 
 class NominalProfile(NamedTuple):
-    """Concrete interior widths and an optional half-open deformation window.
+    """Concrete interior widths and optional half-open deformation windows.
 
     Only cells in ``traced_cells=(i0, i1)`` may move from ``cells``. Indices
-    are Python ints, with ``0 <= i0 < i1 <= len(cells)``.
+    are Python ints, with ``0 <= i0 < i1 <= len(cells)``. A tuple of such
+    windows, ``((i0, i1), (j0, j1), ...)``, declares their union: cells on
+    both sides of a centred feed move while the feed's own cells stay fixed.
     """
 
     cells: object
-    traced_cells: tuple[int, int] | None = None
+    traced_cells: tuple | None = None
 
 
 def admit_graded_profiles(domain, dx_profile, dy_profile, dz_profile, *,
@@ -174,19 +176,30 @@ def admit_traced_windows(nominal_profiles):
         if not isinstance(value, NominalProfile) or value.traced_cells is None:
             continue
         window = value.traced_cells
-        if (not isinstance(window, tuple) or len(window) != 2
-                or any(type(i) is not int for i in window)):
-            raise ValueError(
-                f"nominal_profiles[{axis!r}].traced_cells must be a 2-tuple "
-                "of Python ints (not bool).")
-        i0, i1 = window
+        windows = (window if isinstance(window, tuple) and window
+                   and all(isinstance(w, tuple) for w in window) else (window,))
         n = len(value.cells)
-        if not 0 <= i0 < i1 <= n:
-            raise ValueError(
-                f"nominal_profiles[{axis!r}].traced_cells={window!r} must "
-                f"satisfy 0 <= i0 < i1 <= {n}.")
+        for w in windows:
+            if (not isinstance(w, tuple) or len(w) != 2
+                    or any(type(i) is not int for i in w)):
+                raise ValueError(
+                    f"nominal_profiles[{axis!r}].traced_cells must be a 2-tuple "
+                    "of Python ints (not bool), or a non-empty tuple of them.")
+            if not 0 <= w[0] < w[1] <= n:
+                raise ValueError(
+                    f"nominal_profiles[{axis!r}].traced_cells={window!r} must "
+                    f"satisfy 0 <= i0 < i1 <= {n} in every window.")
         out[axis] = window
     return out or None
+
+
+def window_mask(window, n):
+    """Interior flags of a declared window or tuple of windows (their union)."""
+    windows = window if isinstance(window[0], tuple) else (window,)
+    interior = np.zeros(n, dtype=bool)
+    for i0, i1 in windows:
+        interior[i0:i1] = True
+    return interior
 
 
 def nominal_cells(grid, axis, padded: bool = False):
@@ -229,8 +242,7 @@ def traced_cell_mask(grid, axis, padded: bool = True):
     window = (getattr(grid, "traced_cells", None) or {}).get(_axis_name(ax))
     if window is None:
         return None
-    interior = np.zeros(n - pad_lo - pad_hi - 1, dtype=bool)
-    interior[window[0]:window[1]] = True
+    interior = window_mask(window, n - pad_lo - pad_hi - 1)
     if not padded:
         return interior
     return np.pad(interior, (pad_lo, pad_hi + 1), mode="edge")

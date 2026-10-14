@@ -983,8 +983,8 @@ def _assert_traced_cells_match_nominal(profile, nominal, window, axis):
     """
     realized = jnp.asarray(profile, dtype=jnp.float32)
     nominal32 = jnp.asarray(nominal, dtype=jnp.float32)
-    indices = jnp.arange(realized.shape[0])
-    outside = (indices < window[0]) | (indices >= window[1])
+    from rfx.model.graded_admission import window_mask
+    outside = ~window_mask(window, realized.shape[0])
     tolerance = 4 * jnp.finfo(jnp.float32).eps * nominal32
     bad = outside & ~(jnp.abs(realized - nominal32) <= tolerance)
     first = jnp.argmax(bad)
