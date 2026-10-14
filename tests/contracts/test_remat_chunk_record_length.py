@@ -145,3 +145,30 @@ def test_a_chunk_above_half_the_record_still_leaves_two_full_segments():
             used = effective_chunk(n, chunk)
             assert 1 <= used <= chunk and n // used >= 2, (n, chunk, used)
     assert effective_chunk(60, None) is None and effective_chunk(60, 60) is None
+
+
+@pytest.mark.parametrize('n', (STEPS, 61, 97))
+@pytest.mark.parametrize('lengths', ((30, 7), (24, 6, 2), (40, 30), (7, 3)))
+def test_nested_lengths_keep_the_record(lengths, n):
+    """A tuple of checkpoint lengths neither lengthens nor shortens the
+    record: every step runs once, in order, and nothing is padded. Not yet
+    reachable from forward(), so it is checked on segmented_scan itself."""
+    from rfx.stepping.remat import segmented_scan
+
+    def step(carry, x):
+        e, h = carry
+        h = h + 0.5 * (jnp.roll(e, -1) - e)
+        e = e + 0.5 * (h - jnp.roll(h, 1))
+        e = e.at[3].add(x)
+        return (e, h), e[11]
+
+    t = jnp.arange(n, dtype=jnp.float32)
+    xs = jnp.exp(-((t - 9.0) / 4.0) ** 2) * jnp.sin(0.7 * t)
+    carry = (jnp.zeros(64, jnp.float32), jnp.zeros(64, jnp.float32))
+    reference = jax.jit(lambda x: jax.lax.scan(step, carry, x))(xs)
+    actual = jax.jit(lambda x: segmented_scan(step, carry, x, lengths))(xs)
+    assert actual[1].shape == (n,)
+    for ref, act in zip(jax.tree_util.tree_leaves(reference),
+                        jax.tree_util.tree_leaves(actual)):
+        ref, act = np.asarray(ref), np.asarray(act)
+        assert ref.shape == act.shape and ref.tobytes() == act.tobytes()

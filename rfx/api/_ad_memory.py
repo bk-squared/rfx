@@ -35,6 +35,28 @@ from rfx.api._validators import (
 AD_MEMORY_FIT_SAFETY_FACTOR = 1.30
 
 
+# Nested checkpointing (a tuple ``checkpoint_every``): per-step record of
+# the unit being reversed, per held boundary carry, and a fixed part, as
+# multiples of the six float32 field arrays (fixed part: bytes per cell).
+# Provisional, measured on one graded case; to be confirmed.
+NESTED_STEP_FIELD_FACTOR = 3.85
+NESTED_BOUNDARY_FIELD_FACTOR = 1.45
+NESTED_FIXED_BYTES_PER_CELL = 3.5e9 / 5.67e6
+
+
+def _nested_checkpoint_bytes(accounting: Mapping[str, Any]) -> dict[str, float]:
+    """Byte counts of the nested-checkpoint memory model for one grid."""
+    field_bytes = accounting["field_bytes"]
+    return {
+        "boundary_bytes": NESTED_BOUNDARY_FIELD_FACTOR * field_bytes,
+        "step_bytes": NESTED_STEP_FIELD_FACTOR * field_bytes,
+        "static_bytes": (
+            accounting["forward_bytes"] + accounting["ntff_bytes"]
+            + NESTED_FIXED_BYTES_PER_CELL * accounting["cells"]
+        ),
+    }
+
+
 AD_MEMORY_PREFLIGHT_EVIDENCE_BOUNDARIES = (
     "static memory planning only",
     "trace-time JAX saved-residual explainability only when residual_diagnostic is present",
@@ -176,7 +198,7 @@ class _AdMemoryMixin:
         n_steps: int,
         *,
         available_memory_gb: float | None = None,
-        checkpoint_every: int | None = None,
+        checkpoint_every: int | tuple[int, ...] | None = None,
         checkpoint_segments: int | None = None,
         n_warmup: int = 0,
     ) -> "AD_MemoryEstimate":
@@ -219,12 +241,26 @@ class _AdMemoryMixin:
         for backwards compatibility; it
         is NOT accurate for FDTD on the non-uniform path — see the
         class docstring.
+
+        A tuple ``checkpoint_every`` (nested checkpointing, outermost length
+        first, as :func:`rfx.stepping.segmented_scan` takes it) is estimated
+        by :func:`rfx.stepping.remat.checkpoint_memory`, the model the
+        planner uses: a fixed part plus the forward and NTFF terms, the held
+        boundary carries, and the per-step record of the innermost unit.
+        ``ad_segmented_active_segments`` is then the number of boundary
+        carries held at once. Its coefficients are provisional, fitted on
+        one graded case (rows outside the fit within 6 %); it is an
+        estimate, not a bound. :meth:`explain_ad_memory` itemises it.
         """
         n_steps_i = _require_integral_param("n_steps", n_steps)
         n_warmup_i = _require_integral_param("n_warmup", n_warmup)
+        nested_lengths = None
+        if isinstance(checkpoint_every, tuple):
+            from rfx.stepping.remat import checkpoint_lengths
+            nested_lengths = checkpoint_lengths(checkpoint_every)
         checkpoint_every_i = (
             None
-            if checkpoint_every is None
+            if checkpoint_every is None or nested_lengths is not None
             else _require_integral_param("checkpoint_every", checkpoint_every)
         )
         checkpoint_segments_i = (
@@ -246,6 +282,10 @@ class _AdMemoryMixin:
             raise ValueError("n_warmup must be >= 0")
         if n_warmup_i >= n_steps_i:
             raise ValueError(f"n_warmup ({n_warmup_i}) must be < n_steps ({n_steps_i})")
+        if nested_lengths is not None and checkpoint_segments_i is not None:
+            raise ValueError(
+                "checkpoint_every and checkpoint_segments are mutually exclusive"
+            )
         if checkpoint_every_i is not None and checkpoint_segments_i is not None:
             raise ValueError(
                 "checkpoint_every and checkpoint_segments are mutually exclusive"
@@ -300,6 +340,15 @@ class _AdMemoryMixin:
                 * active_tape_field_bytes
                 + forward_bytes + ntff_bytes
             )
+        elif nested_lengths is not None:
+            from rfx.stepping.remat import checkpoint_memory
+            memory = checkpoint_memory(
+                n_steps_i - n_warmup_i, nested_lengths,
+                **_nested_checkpoint_bytes(accounting),
+            )
+            segmented_active_segments = memory.held_boundaries
+            segmented_live_tape_steps = memory.live_steps
+            ad_seg_bytes = memory.peak_bytes
         elif checkpoint_every_i is not None:
             # The graded runners segment only the optimized steps after the
             # warm-up, with the chunk rfx.stepping.remat.effective_chunk uses.
@@ -349,7 +398,9 @@ class _AdMemoryMixin:
                 and segmented_live_tape_steps
                 > 2 * segmented_active_segments
             )
-            if checkpoint_segments_i is not None:
+            if nested_lengths is not None:
+                action = "Use plan_ad_memory(max_levels=...) to choose nested checkpoint lengths, reduce grid size, or reduce n_steps."
+            elif checkpoint_segments_i is not None:
                 if segmented_active_segments == 1:
                     action = "Reduce grid size, reduce n_steps, or use a more aggressive memory-reduction lane."
                 elif live_dominates:
@@ -378,7 +429,9 @@ class _AdMemoryMixin:
             available_gb=avail_gb,
             warning=warning,
             ad_segmented_gb=(ad_seg_bytes * to_gb) if ad_seg_bytes is not None else None,
-            checkpoint_every=checkpoint_every_i,
+            checkpoint_every=(
+                nested_lengths if nested_lengths is not None else checkpoint_every_i
+            ),
             checkpoint_segments=checkpoint_segments_i,
             ad_active_steps=active_steps,
             ad_segmented_active_segments=segmented_active_segments,
@@ -393,7 +446,7 @@ class _AdMemoryMixin:
         n_steps: int,
         *,
         available_memory_gb: float | None = None,
-        checkpoint_every: int | None = None,
+        checkpoint_every: int | tuple[int, ...] | None = None,
         checkpoint_segments: int | None = None,
         n_warmup: int = 0,
     ) -> ADMemoryExplainabilityReport:
@@ -424,7 +477,29 @@ class _AdMemoryMixin:
         bytes_per_cell = accounting["bytes_per_cell"]
 
         active_steps = estimate.ad_active_steps if estimate.ad_active_steps is not None else n_steps_i
-        if estimate.ad_segmented_gb is not None:
+        nested = None
+        nested_components: tuple[ADMemoryComponent, ...] = ()
+        if isinstance(estimate.checkpoint_every, tuple):
+            from rfx.stepping.remat import checkpoint_memory
+            nested = checkpoint_memory(
+                active_steps, estimate.checkpoint_every,
+                **_nested_checkpoint_bytes(accounting),
+            )
+        if nested is not None:
+            selected_field = "ad_segmented_gb"
+            selected_gb = float(estimate.ad_segmented_gb)
+            strategy = "nested_checkpoint_every"
+            tape_count = int(nested.held_boundaries)
+            tape_bytes = tape_count * nested.boundary_bytes
+            tape_name = "nested_boundary_carries"
+            tape_explanation = (
+                "Boundary carries held at once by nested checkpointing: the "
+                "units of the outermost level plus the units per enclosing "
+                "unit of every inner level (provisional coefficient)."
+            )
+            tape_unit = "held-boundary-carry"
+            live_tape_steps = int(nested.live_steps)
+        elif estimate.ad_segmented_gb is not None:
             selected_field = "ad_segmented_gb"
             selected_gb = float(estimate.ad_segmented_gb)
             strategy = (
@@ -500,16 +575,37 @@ class _AdMemoryMixin:
                 explanation=explanation,
             )
 
+        step_bytes = field_bytes if nested is None else nested.step_bytes
+        boundary_unit_bytes = field_bytes if nested is None else nested.boundary_bytes
+        if nested is not None:
+            fixed_bytes = (
+                nested.static_bytes - accounting["forward_bytes"] - ntff_bytes
+            )
+            nested_components = (
+                _component(
+                    "nested_fixed_state",
+                    fixed_bytes,
+                    "reverse_ad_saved_state",
+                    unit="per-cell-fixed-overhead",
+                    count=int(cells),
+                    bytes_per_unit=NESTED_FIXED_BYTES_PER_CELL,
+                    explanation=(
+                        "Fixed reverse-pass memory of nested checkpointing "
+                        "that does not grow with the record (provisional "
+                        "coefficient, bytes per cell)."
+                    ),
+                ),
+            )
         live_components: tuple[ADMemoryComponent, ...] = ()
         if live_tape_steps is not None:
             live_components = (
                 _component(
                     "segmented_live_segment_tape",
-                    live_tape_steps * field_bytes,
+                    live_tape_steps * step_bytes,
                     "reverse_ad_saved_state",
                     unit="live-segment-time-step-field-state",
                     count=int(live_tape_steps),
-                    bytes_per_unit=field_bytes,
+                    bytes_per_unit=step_bytes,
                     explanation=(
                         "The backward pass rematerializes one segment at a "
                         "time, so the live segment's per-step field tape is "
@@ -558,10 +654,11 @@ class _AdMemoryMixin:
                 "reverse_ad_saved_state",
                 unit=tape_unit,
                 count=tape_count,
-                bytes_per_unit=field_bytes,
+                bytes_per_unit=boundary_unit_bytes,
                 explanation=tape_explanation,
             ),
             *live_components,
+            *nested_components,
             _component(
                 "surface_impedance_sheet_state",
                 sheet_bytes,
@@ -608,6 +705,12 @@ class _AdMemoryMixin:
                 f"time-step tape entries, instead of {active_steps} active "
                 "time-step tape entries."
             )
+        if nested is not None:
+            recommendations.append(
+                f"Nested checkpoint lengths {nested.lengths} run "
+                f"{nested.forward_passes} forward passes of the record per "
+                "gradient (the plain forward plus one recomputation per level)."
+            )
         if estimate.warning:
             recommendations.append(estimate.warning)
 
@@ -630,6 +733,7 @@ class _AdMemoryMixin:
         target_fraction: float = 0.85,
         n_warmup: int = 0,
         safety_factor: float = AD_MEMORY_FIT_SAFETY_FACTOR,
+        max_levels: int | None = None,
     ) -> ADMemoryPlan:
         """Choose a segmented-AD memory plan for a memory budget.
 
@@ -646,6 +750,13 @@ class _AdMemoryMixin:
         reduces active reverse-mode time. Raw estimates must also fit after
         multiplying by ``safety_factor`` before fit flags are set, so
         near-boundary plans stay conservative.
+
+        ``max_levels`` (non-uniform grids only; default None keeps the
+        one-level search above) chooses nested checkpoint lengths with
+        :func:`rfx.stepping.remat.plan_checkpoint_lengths`, fewest levels
+        first, up to ``max_levels``; ``checkpoint_every`` is then a tuple and
+        ``selected_estimate`` its estimate from the same model. The runners
+        do not accept a tuple yet.
         """
         n_steps_i = _require_integral_param("n_steps", n_steps)
         n_warmup_i = _require_integral_param("n_warmup", n_warmup)
@@ -669,6 +780,12 @@ class _AdMemoryMixin:
             raise ValueError("target_fraction must be in the interval (0, 1]")
         if safety_factor_f < 1.0:
             raise ValueError("safety_factor must be >= 1")
+        max_levels_i = (
+            None if max_levels is None
+            else _require_integral_param("max_levels", max_levels)
+        )
+        if max_levels_i is not None and max_levels_i < 1:
+            raise ValueError(f"max_levels must be >= 1, got {max_levels_i}")
 
         target_memory_gb = available_memory_gb_f * target_fraction_f
         full_estimate = self.estimate_ad_memory(
@@ -701,6 +818,18 @@ class _AdMemoryMixin:
             or self._dy_profile is not None
             or self._dz_profile is not None
         )
+        if max_levels_i is not None:
+            if not uses_nonuniform:
+                raise ValueError(
+                    "max_levels (nested checkpointing) is planned for the "
+                    "non-uniform segmented scan only; this simulation uses "
+                    "a uniform grid"
+                )
+            return self._plan_nested_ad_memory(
+                n_steps_i, n_warmup_i, available_memory_gb_f,
+                target_fraction_f, target_memory_gb, safety_factor_f,
+                max_levels_i,
+            )
         if not uses_nonuniform:
             divisors = _positive_divisors(n_steps_i)
             sqrt_steps = math.sqrt(n_steps_i)
@@ -869,6 +998,55 @@ class _AdMemoryMixin:
                 f"{_format_memory_gb(target_memory_gb)} target; reduce mesh size, reduce "
                 "n_steps, or use a more aggressive memory-reduction lane"
             ),
+        )
+
+    def _plan_nested_ad_memory(
+        self, n_steps_i, n_warmup_i, available_memory_gb_f, target_fraction_f,
+        target_memory_gb, safety_factor_f, max_levels_i,
+    ) -> ADMemoryPlan:
+        """The nested-checkpoint branch of :meth:`plan_ad_memory`."""
+        from rfx.stepping.remat import plan_checkpoint_lengths
+        plan = plan_checkpoint_lengths(
+            n_steps_i - n_warmup_i,
+            **_nested_checkpoint_bytes(self._ad_memory_static_accounting()),
+            budget_bytes=target_memory_gb * 1e9 / safety_factor_f,
+            max_levels=max_levels_i,
+        )
+        estimate = self.estimate_ad_memory(
+            n_steps_i,
+            available_memory_gb=available_memory_gb_f,
+            checkpoint_every=plan.lengths,
+            n_warmup=n_warmup_i,
+        )
+        peak_gb = plan.peak_bytes / 1e9
+        if plan.fits:
+            recommendation = (
+                f"use checkpoint_every={plan.lengths}: nested AD estimate "
+                f"{_format_memory_with_safety(peak_gb, safety_factor_f)} fits within the "
+                f"{_format_memory_gb(target_memory_gb)} target with "
+                f"{plan.forward_passes} forward passes per gradient"
+            )
+        else:
+            recommendation = (
+                f"no nested checkpoint lengths up to {max_levels_i} levels fit; "
+                f"the least-memory candidate checkpoint_every={plan.lengths} is "
+                f"estimated at {_format_memory_with_safety(peak_gb, safety_factor_f)}, "
+                f"above the {_format_memory_gb(target_memory_gb)} target; reduce "
+                "mesh size, reduce n_steps, or allow more levels"
+            )
+        return ADMemoryPlan(
+            n_steps=n_steps_i,
+            available_memory_gb=available_memory_gb_f,
+            target_fraction=target_fraction_f,
+            target_memory_gb=target_memory_gb,
+            checkpoint_every=plan.lengths,
+            checkpoint_segments=None,
+            checkpoint_mode="checkpoint_every",
+            fit_safety_factor=safety_factor_f,
+            selected_estimate=estimate,
+            full_ad_fits=False,
+            segmented_fits=bool(plan.fits),
+            recommendation=recommendation,
         )
 
     def ad_memory_preflight(

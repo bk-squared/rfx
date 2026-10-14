@@ -2,6 +2,6 @@
 from .sequence import HookPoint, Kernel, STEP_SEQUENCE, compose
 from .graded import GradedStepContext, GradedFrame, make_graded_step
 from .slab import FILL, Fill, Slab, cut
-from .remat import segmented_scan
+from .remat import checkpoint_memory, plan_checkpoint_lengths, segmented_scan
 
-__all__ = ['FILL', 'Fill', 'GradedStepContext', 'GradedFrame', 'HookPoint', 'Kernel', 'STEP_SEQUENCE', 'Slab', 'compose', 'cut', 'make_graded_step', 'segmented_scan']
+__all__ = ['FILL', 'Fill', 'GradedStepContext', 'GradedFrame', 'HookPoint', 'Kernel', 'STEP_SEQUENCE', 'Slab', 'compose', 'cut', 'checkpoint_memory', 'make_graded_step', 'plan_checkpoint_lengths', 'segmented_scan']
