@@ -212,19 +212,41 @@ def axis_name(axis) -> str:
 #: lookups read the same constant through :func:`nearest_node_index`. Box
 #: volume faces and closed sheet footprints use the same on-lattice band.
 NODE_TIE_REL = 1e-9
+SOLVER_WIDTH_EPS = 4 * float(np.finfo(np.float32).eps)
+
+
+class Float32WidthResolutionWarning(UserWarning):
+    """Float32-valued widths can place a declared face beyond the node band."""
+
+
+def node_tie_tol(x, d_local, dtype=np.float64):
+    """Metre band for a declared coordinate on a solver node line.
+
+    Float32 width and coordinate rounding grow with distance from the
+    interior origin. Cap that contribution at half the touching width.
+    Beyond about 8,400 cells from the origin, float32-valued widths can
+    exceed the cap again. Dtype metadata is static; values may be traced.
+    """
+    from rfx.core.jax_utils import is_tracer
+    if is_tracer(x) or is_tracer(d_local):
+        import jax.numpy as xp
+    else:
+        xp = np
+    rel = max(SOLVER_WIDTH_EPS, 16 * float(np.finfo(dtype).eps))
+    return NODE_TIE_REL * d_local + xp.minimum(rel * abs(x), 0.5 * NODE_TOUCH_REL * d_local)
 
 
 def half_open_volume_mask(coords, lo, hi, d_local):
     """Half-open Box volume window with an on-lattice band (#1138).
 
-    Shift both faces down by ``NODE_TIE_REL * d_local``: a low face a few
+    Shift each face down by its ``node_tie_tol``: a low face a few
     ULP above its sample includes it, and a high face a few ULP above its
     sample excludes it. ``d_local`` is the caller's local cell width (a
     scalar or one width per sample). Arithmetic stays in numpy or traced
     JAX according to the input arrays; no host conversion is performed.
     """
-    tol = NODE_TIE_REL * d_local
-    return (coords >= lo - tol) & (coords < hi - tol)
+    return ((coords >= lo - node_tie_tol(lo, d_local, coords.dtype))
+            & (coords < hi - node_tie_tol(hi, d_local, coords.dtype)))
 
 
 def nearest_node_index(nodes, x: float, d_local: float, *, xp=None) -> int:
@@ -234,7 +256,7 @@ def nearest_node_index(nodes, x: float, d_local: float, *, xp=None) -> int:
     ``d_local`` is the cell ``x`` lies in (``rasterize_grid._local_cell``).
 
     The rule: the NEAREST node by float64 distance; when the two nearest
-    distances agree to ``NODE_TIE_REL`` of the local cell, the LOWER node. It
+    distances agree within ``node_tie_tol``, the LOWER node. It
     is the sheet snap's rule (#931, ``_nearest_plane`` calls this function),
     so a port, source or probe and a sheet declared at the same coordinate
     land on the same node bit for bit, on a constant axis and a graded one.
@@ -248,11 +270,12 @@ def nearest_node_index(nodes, x: float, d_local: float, *, xp=None) -> int:
         k = xp.argmin(dist)
         prev = xp.maximum(k - 1, 0)
         return xp.where((k > 0) & (xp.abs(dist[prev] - dist[k])
-                                  <= NODE_TIE_REL * d_local), prev, k)
+                                  <= node_tie_tol(x, d_local, line.dtype)), prev, k)
+    dtype = np.result_type(np.asarray(nodes).dtype, np.float32)
     line = np.asarray(nodes, dtype=np.float64)
     dist = np.abs(line - float(x))
     k = int(np.argmin(dist))
-    if k - 1 >= 0 and abs(dist[k - 1] - dist[k]) <= NODE_TIE_REL * float(d_local):
+    if k - 1 >= 0 and abs(dist[k - 1] - dist[k]) <= node_tie_tol(x, d_local, dtype):
         k -= 1
     return k
 
@@ -266,7 +289,8 @@ def nearest_uniform_index(ratio) -> int:
     """
     from math import floor
     lower = floor(ratio)
-    return lower + nearest_node_index((0., 1.), float(ratio) - lower, 1.)
+    delta = 2.0 * (float(ratio) - lower) - 1.0
+    return lower + int(delta > node_tie_tol(float(ratio), 1.0))
 
 
 def dual_spacings_from_cells(cells: np.ndarray) -> np.ndarray:

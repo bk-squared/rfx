@@ -467,7 +467,7 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_floquet_ports", "scan_angle"): frozenset(),
     ("_lumped_rlc", "R"): _NO_SHEETS,
     ("_lumped_rlc", "series_RL"): _NO_SHEETS,
-    ("_tfsf", "plane_wave"): frozenset({"run_uniform", "run_nonuniform", "fwd_uniform"}),
+    ("_tfsf", "plane_wave"): frozenset({"run_uniform", "run_nonuniform", "fwd_uniform", "fwd_nonuniform"}),
     ("_refinement", "slab"): frozenset(),
     ("_refinement", "relaxed_validation"): frozenset(),
     ("_boundary", "cpml"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},

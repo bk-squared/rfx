@@ -144,8 +144,6 @@ def _placement_violations(source, path):
                     for call in ast.walk(body[0])):
                 violations.append((str(path), node.name, node.lineno, 'retired implementation'))
         # Follow local names so renaming lo/hi or nx_per cannot hide a copy.
-        if node.name in ('_apply_cpml_e_distributed', '_apply_cpml_h_distributed'):
-            continue  # CPML face views inside updates are outside spatial staging.
         assigned = {}
         def assign(target, value):
             if isinstance(target, ast.Name):
@@ -254,11 +252,10 @@ def test_device_selection_is_not_spatial_placement():
 
 # Exact calls and multiplicities, frozen here; a new placement fails the scan.
 PLACEMENT_ALLOWLIST = {
-    ('runners/_distributed_common.py', 'shard_stacked_psi', 'jax.device_put(merged, shd)'): (1, 'CPML face-depth packing remains absorber-owned (#1535).'),
-    ('runners/_distributed_common.py', '_distributed_cpml_state', "jnp.zeros((n_devices * depth, d1, d2), dtype=jnp.float32, device=NamedSharding(mesh, P('x')))"): (1, 'CPML state allocation remains absorber-owned (#1535).'),
+    ('runners/_distributed_common.py', 'init_cpml_slabs', "jnp.zeros((n_devices * shape[0], *shape[1:]), jnp.float32, device=NamedSharding(mesh, P('x')))"): (1, 'Single-device field-order CPML state placed per rank (#952).'),
+    ('runners/distributed_nu.py', 'shard_cpml_state_x_slab', 'shard_stacked(value, shd)'): (1, 'Merge rank into field-order x for the shared CPML kernel (#952).'),
     ('runners/_distributed_ntff.py', 'initial', "jax.device_put(jnp.zeros((self.n_devices, self.capacity), self.dtype), NamedSharding(self.mesh, P('x')))"): (1, 'NTFF observer buffer; source/observer packing is step 3c.'),
     ('runners/_distributed_ntff.py', 'assemble', 'jax.device_put(buffer, NamedSharding(self.mesh, P()))'): (1, 'Replicated NTFF output assembly; gathering is step 3d.'),
-    ('runners/distributed_nu.py', 'shard_cpml_state_x_slab._shard_psi', 'shard_stacked_psi(arr, shd)'): (1, 'CPML face-depth packing remains absorber-owned (#1535).'),
     ('runners/distributed_nu.py', '_concrete_on_mesh', 'jax.device_put(arr, sharding)'): (1, 'Replicated geometry, CPML profiles, source tables and step indices; callers use P().'),
     ('runners/distributed_nu.py', '_concrete_on_mesh', 'jax.make_array_from_callback(host.shape, sharding, lambda index: host[index])'): (1, 'Replicated geometry, CPML profiles, source tables and step indices; callers use P().'),
     ('runners/distributed_nu.py', 'run_nonuniform_distributed_pec._zeros', 'jnp.zeros((n_devices * nx_local, ny, nz), dtype=jnp.float32, device=shd)'): (1, 'Direct zero field-carry allocation; no whole-domain slicing.'),
@@ -272,7 +269,6 @@ PLACEMENT_ALLOWLIST = {
     ('runners/distributed_v2.py', '_shard_materials', 'jax.device_put(materials.eps_r, shd)'): (1, 'Compatibility placement of already laid-out material buffers.'),
     ('runners/distributed_v2.py', '_shard_materials', 'jax.device_put(materials.sigma, shd)'): (1, 'Compatibility placement of already laid-out material buffers.'),
     ('runners/distributed_v2.py', '_shard_materials', 'jax.device_put(materials.mu_r, shd)'): (1, 'Compatibility placement of already laid-out material buffers.'),
-    ('runners/distributed_v2.py', '_init_cpml_sharded._shard_psi', 'shard_stacked_psi(arr, shd)'): (1, 'CPML face-depth packing remains absorber-owned (#1535).'),
     ('runners/distributed_v2.py', 'run_distributed', 'jnp.zeros(field_shape, dtype=jnp.float32, device=shd)'): (1, 'Direct zero fields, unread absent-pole dummy carries, CPML dummy state, replicated step/source table.'),
     ('runners/distributed_v2.py', 'run_distributed', 'jax.device_put(jnp.int32(0), rep)'): (1, 'Direct zero fields, unread absent-pole dummy carries, CPML dummy state, replicated step/source table.'),
     ('runners/distributed_v2.py', 'run_distributed', 'jnp.zeros((n_devices, 1, 1), dtype=jnp.float32, device=shd)'): (2, 'Direct zero fields, unread absent-pole dummy carries, CPML dummy state, replicated step/source table.'),
@@ -281,7 +277,6 @@ PLACEMENT_ALLOWLIST = {
     ('runners/distributed_v2.py', 'run_distributed', 'jax.device_put(_dz5, shd)'): (6, 'Direct zero fields, unread absent-pole dummy carries, CPML dummy state, replicated step/source table.'),
     ('runners/distributed_v2.py', 'run_distributed', 'jax.device_put(_lz, shd)'): (3, 'Direct zero fields, unread absent-pole dummy carries, CPML dummy state, replicated step/source table.'),
     ('runners/distributed_v2.py', 'run_distributed', 'jax.device_put(_lz5, shd)'): (9, 'Direct zero fields, unread absent-pole dummy carries, CPML dummy state, replicated step/source table.'),
-    ('runners/distributed_v2.py', 'run_distributed', 'jax.device_put(jnp.zeros((_total_x, 1, 1), dtype=jnp.float32), shd)'): (1, 'Direct zero fields, unread absent-pole dummy carries, CPML dummy state, replicated step/source table.'),
     ('runners/distributed_v2.py', 'run_distributed', 'jax.device_put(src_waveforms, rep)'): (1, 'Direct zero fields, unread absent-pole dummy carries, CPML dummy state, replicated step/source table.'),
 }
 

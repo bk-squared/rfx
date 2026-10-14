@@ -23,6 +23,8 @@ from rfx.core.yee import (
 from rfx.core.jax_utils import is_tracer
 from rfx._grid_metric import (
     DECLARED_SPAN_TOL_M,
+    Float32WidthResolutionWarning,
+    NODE_TOUCH_REL,
     axis_name as _axis_name,
     dual_spacings_from_cells as _dual_spacings_from_cells,
     nearest_node_index,
@@ -733,6 +735,28 @@ def _assert_declared_floor_at_runtime(profile_full, declared_min, axis,
     jax.debug.callback(_check, jnp.min(jnp.asarray(profile_full)))
 
 
+def _warn_float32_width_resolution(profile, axis):
+    """Check shared interior nodes before padding or solver dtype conversion."""
+    if is_tracer(profile):
+        return
+    widths = np.asarray(profile, dtype=np.float64)
+    if widths.size < 2 or not np.all(widths.astype(np.float32).astype(np.float64) == widths):
+        return
+    nodes = np.cumsum(widths)[:-1]
+    local = np.minimum(widths[:-1], widths[1:])
+    ratios = (float(np.finfo(np.float32).eps) / 2) * np.abs(nodes) / local
+    worst = int(np.argmax(ratios))
+    cap = 0.5 * NODE_TOUCH_REL
+    if ratios[worst] > cap:
+        import warnings
+        warnings.warn(
+            f"axis {axis}: float32-valued widths at interior node "
+            f"x={nodes[worst]:.12g} m have r={ratios[worst]:.12g}, "
+            f"exceeding the node-band cap {cap:.12g}; faces declared near "
+            "such nodes may move one cell. Widths built in float64 avoid it.",
+            Float32WidthResolutionWarning, stacklevel=3)
+
+
 def make_nonuniform_grid(
     domain_xy: tuple[float, float],
     dz_profile: np.ndarray,
@@ -875,6 +899,9 @@ def make_nonuniform_grid(
         assert_cells_span_declared_profile(
             dz_full, pad_z_lo, pad_z_hi, dz_profile, "z")
     nz = int(dz_full.shape[0])
+
+    for axis, profile in zip("xyz", (dx_prof_phys, dy_prof_phys, dz_profile)):
+        _warn_float32_width_resolution(profile, axis)
 
     # --- CFL from minimum cell size on every axis ---
     dt_pin = dt

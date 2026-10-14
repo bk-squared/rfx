@@ -667,7 +667,8 @@ def test_cpml_one_slab_invariants(name, monkeypatch):
                 n_steps=2, devices=jax.devices('cpu')[:1], skip_preflight=True)
 
 
-@pytest.mark.parametrize('name', ['scene2', 'debye'])
+@pytest.mark.parametrize('name', ['scene2', pytest.param('debye', marks=pytest.mark.skip(
+    reason='CPML with poles routes to the legacy step until rfx #1402 item 5; the wrapped-step state capture is not reached'))])
 def test_cpml_two_vs_three_bitwise_and_bars(name):
     sim = cpml_scene(name)
     outputs = [sim.forward(n_steps=60, checkpoint=False, skip_preflight=True,
@@ -696,7 +697,9 @@ def test_cpml_two_vs_three_bitwise_and_bars(name):
 
 @pytest.mark.parametrize('debye,lorentz', [(False, False), (True, False), (False, True), (True, True)])
 def test_cpml_selector(debye, lorentz):
-    assert select_step(cpml=True, debye=debye, lorentz=lorentz) == 'wrapped'
+    # CPML with poles stays on the legacy step until rfx #1402 item 5.
+    expected = 'legacy' if (debye or lorentz) else 'wrapped'
+    assert select_step(cpml=True, debye=debye, lorentz=lorentz) == expected
 
 
 @pytest.mark.parametrize('name,mode', [('scene2', 'run'), ('scene2', 'grad'), ('debye', 'grad')])
@@ -719,7 +722,10 @@ def test_cpml_entries_reach_wrap(name, mode, monkeypatch):
                 n_warmup=3, checkpoint_every=3)
             return jnp.sum(result.time_series**2)
         assert np.isfinite(jax.grad(loss)(materials.eps_r)).all()
-    assert calls and all(calls)
+    if name == 'debye':  # CPML with poles routes to the legacy step (item 5)
+        assert not calls
+    else:
+        assert calls and all(calls)
 
 
 @pytest.mark.parametrize('devices', [2, 3])
@@ -907,8 +913,8 @@ def _assert_item6_memory(record):
 
 
 @pytest.mark.parametrize('boundary', [
-    'pec', pytest.param('cpml', marks=pytest.mark.xfail(strict=True,
-                        reason='rfx #1402 item 5: CPML psi per slab'))])
+    'pec', pytest.param('cpml', marks=pytest.mark.skip(
+        reason='CPML with poles routes to the legacy step until rfx #1402 item 5; this scene has poles, so the row would compare legacy with itself'))])
 @pytest.mark.parametrize('devices', (2, 3))
 @pytest.mark.parametrize('mode', ('plain', 'grad'))
 def test_item6_first_scan_memory(boundary, devices, mode):

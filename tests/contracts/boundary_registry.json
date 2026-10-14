@@ -492,6 +492,11 @@
       "kind": "boundary"
     },
     {
+      "file": "rfx/model/graded_grid.py",
+      "function": "_warn_float32_width_resolution",
+      "kind": "difference"
+    },
+    {
       "file": "rfx/model/graded_profile.py",
       "function": "_band_realize_free",
       "kind": "difference"
@@ -576,21 +581,6 @@
     {
       "file": "rfx/probes/probes.py",
       "function": "extract_s_matrix_wire",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/runners/_distributed_common.py",
-      "function": "_apply_cpml_e_distributed",
-      "kind": "neighbour"
-    },
-    {
-      "file": "rfx/runners/_distributed_common.py",
-      "function": "_apply_cpml_h_distributed",
-      "kind": "neighbour"
-    },
-    {
-      "file": "rfx/runners/_distributed_common.py",
-      "function": "_init_cpml_distributed",
       "kind": "boundary"
     },
     {
@@ -698,14 +688,9 @@
       "kind": "boundary"
     },
     {
-      "file": "rfx/runners/distributed_nu.py",
-      "function": "_apply_cpml_e_local_nu",
-      "kind": "neighbour"
-    },
-    {
-      "file": "rfx/runners/distributed_nu.py",
-      "function": "_apply_cpml_h_local_nu",
-      "kind": "neighbour"
+      "file": "rfx/runners/_distributed_common.py",
+      "function": "init_cpml_slabs",
+      "kind": "boundary"
     },
     {
       "file": "rfx/runners/distributed_nu.py",

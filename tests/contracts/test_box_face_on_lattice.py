@@ -179,15 +179,30 @@ def test_graded_centre_band_uses_primal_width_not_neighbour_spacing():
     widths = np.array([.01, .0001, .003, .02])
     nodes = np.r_[0., np.cumsum(widths[:-1])]
     centres = nodes + .5 * widths
-    # Two bands above this narrow cell's centre is outside its band, even
-    # though it is inside a band based on the neighbouring centre spacing.
-    lo = centres[1] + 2 * NODE_TIE_REL * widths[1]
-    hi = centres[3] + 2 * NODE_TIE_REL * widths[3]
-    exact = (centres >= lo) & (centres < hi)
+    gaps = np.diff(centres)
+    neighbours = np.r_[gaps, gaps[-1]]
+
+    def band(face, cells):
+        return 1e-9 * cells + np.minimum(
+            4 * float(np.finfo(np.float32).eps) * abs(face), .5e-3 * cells)
+
+    primal, neighbour = band(centres, widths), band(centres, neighbours)
+    offsets = .5 * (primal + neighbour)
+    assert primal[1] < offsets[1] < neighbour[1]
+    assert neighbour[3] < offsets[3] < primal[3]
+    lo, hi = centres[[1, 3]] + offsets[[1, 3]]
+    exact = ((centres >= lo - band(lo, widths))
+             & (centres < hi - band(hi, widths)))
+    wrong = ((centres >= lo - band(lo, neighbours))
+             & (centres < hi - band(hi, neighbours)))
+    assert not np.array_equal(exact, wrong)
     np.testing.assert_array_equal(_box_axis_volume(centres, lo, hi, widths), exact)
 
 
-@pytest.mark.parametrize("shift", [-.5, -2e-9, 2e-9, .5])
+@pytest.mark.parametrize("shift", [
+    -.5, -2 * (1e-9 + 4 * float(np.finfo(np.float32).eps) * (FIRST + 7)),
+    2 * (1e-9 + 4 * float(np.finfo(np.float32).eps) * (FIRST + 7)), .5,
+])
 def test_samples_outside_the_band_keep_exact_membership(shift):
     dx = DXS[0]
     samples = np.arange(20, dtype=np.float64) * dx
@@ -263,10 +278,11 @@ def test_domain_and_box_share_the_band_at_a_cpml_face(dx, delta):
 @pytest.mark.parametrize("traced", [False, True], ids=["numpy", "traced"])
 @pytest.mark.parametrize("below,above,split", [(10., 1., 4), (1., 10., 3)])
 def test_stacked_graded_boxes_partition_every_node(below, above, split, traced):
-    """A shared face 5 nm above a node uses that node's forward cell.
+    """A shared face 5 nm beyond node 3's float32 resolution uses its forward cell.
 
-    Midpoint widths leave a gap with 10 m cells below / 1 m above, and an
-    overlap with the reverse grading. Both boxes must agree on ownership.
+    The band is 1e-9 of the node's forward cell plus 4 float32 eps of |z|. The
+    face sits 5 nm past the |z| part, between the 1 m-cell and 10 m-cell bands,
+    so the two gradings split differently. Both boxes still agree on ownership.
     """
     widths = np.r_[np.full(3, below), np.full(6, above)]
     domain = float(np.sum(widths))
@@ -275,7 +291,8 @@ def test_stacked_graded_boxes_partition_every_node(below, above, split, traced):
         boundary="pec", cpml_layers=0)
     grid = sim._build_nonuniform_grid()
     coords = coords_from_nonuniform_grid(grid)
-    face = float(coords.z[3]) + 5e-9
+    node = float(coords.z[3])
+    face = node + 4 * float(np.finfo(np.float32).eps) * abs(node) + 5e-9
     boxes = (Box((0., 0., 0.), (4., 4., face)),
              Box((0., 0., face), (4., 4., domain)))
     masks = []

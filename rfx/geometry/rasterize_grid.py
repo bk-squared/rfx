@@ -14,7 +14,7 @@ import numpy as np
 import jax.numpy as jnp
 
 from rfx.core.jax_utils import is_tracer
-from rfx._grid_metric import NODE_TIE_REL, half_open_volume_mask
+from rfx._grid_metric import NODE_TIE_REL, half_open_volume_mask, node_tie_tol
 from rfx.core.yee import MaterialArrays
 from rfx.geometry.csg import Cylinder, OrientedBox, Sphere, declared_bounds
 from rfx.geometry._pole_keying import (
@@ -362,7 +362,7 @@ def _nearest_plane(nodes, pos: float, d_local: float, *, what: str = "sheet",
     x = np.asarray(nodes, dtype=np.float64)
     dist = np.abs(x - pos)
     k = int(np.argmin(dist))
-    if dist[k] > 0.5 * d_local * (1.0 + NODE_TIE_REL):
+    if dist[k] > 0.5 * d_local + node_tie_tol(pos, d_local):
         raise ValueError(
             f"{what} {name!r}: the declared plane {'xyz'[axis]} = {pos:.6g} m "
             f"lies {dist[k]:.6g} m from the nearest node line "
@@ -393,14 +393,13 @@ def _box_axis_volume(centres, lo: float, hi: float, cell_widths):
 
 def _box_axis_closed(nodes, lo: float, hi: float, d_local: float):
     """§1.3 CLOSED footprint sampling on NODES: ``lo <= x_i <= hi`` with an
-    on-lattice tolerance of ``1e-9`` cell so a corner spelled through a
-    different f64 route (``a + b`` vs ``m*dx``) keeps its row."""
-    tol = NODE_TIE_REL * d_local
+    on-lattice tolerance that includes float32 width rounding."""
     if is_tracer(nodes):
         x = jnp.asarray(nodes)
-        return (x >= lo - tol) & (x <= hi + tol)
-    x = np.asarray(nodes, dtype=np.float64)
-    return (x >= lo - tol) & (x <= hi + tol)
+    else:
+        x = np.asarray(nodes, dtype=np.float64)
+    return ((x >= lo - node_tie_tol(lo, d_local, x.dtype))
+            & (x <= hi + node_tie_tol(hi, d_local, x.dtype)))
 
 
 def _is_traced_coords(coords) -> bool:
@@ -533,7 +532,8 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
     requested_mid = mid
     mid = plane_coordinate(grid, a, mid)
     d_local = _local_cell(node_axes[a], cell_sizes[a], mid)
-    if refuse_thick and extents[a] > d_local * (1.0 + NODE_TIE_REL):
+    if refuse_thick and extents[a] > (d_local + node_tie_tol(lo[a], d_local)
+                                    + node_tie_tol(hi[a], d_local)):
         raise ValueError(
             f"add_thin_conductor: shape {name!r} is {extents[a]:.6g} m thick "
             f"along {'xyz'[a]} against a local cell of {d_local:.6g} m — not a "
@@ -759,17 +759,15 @@ def sheet_footprint_traced(shape, coords: GridCoords, normal_axis: int, cell_siz
 def _node_tie_band(c, xp):
     """``face -> tolerance per node`` for "this node is ON that drawn face".
 
-    ``NODE_TIE_REL`` of the smaller cell at each node, plus a few ulp of the
-    coordinate in the node line's own dtype: a float64 host line keeps the
-    1e-9-cell band, a float32 (traced) line is only exact to its rounding.
+    Use the smaller adjacent cell and the line's dtype in the shared band.
+    Both concrete and traced lines include solver-width rounding.
     """
     if c.size < 2:
         return lambda face: 0.0
     gaps = xp.diff(c)
     cell = xp.minimum(xp.concatenate((gaps[:1], gaps)),
                       xp.concatenate((gaps, gaps[-1:])))
-    ulp = 16.0 * float(np.finfo(c.dtype).eps)
-    return lambda face: NODE_TIE_REL * cell + ulp * abs(face)
+    return lambda face: node_tie_tol(face, cell, c.dtype)
 
 
 def _box_zero_axes(lo, hi):
@@ -793,7 +791,8 @@ def _subcell_axes(lo, hi, node_axes, cell_sizes):
             continue
         mid = 0.5 * (float(lo[i]) + float(hi[i]))
         d_local = _local_cell(node_axes[i], cell_sizes[i], mid)
-        if ext < d_local * (1.0 - NODE_TIE_REL):
+        if ext < (d_local - node_tie_tol(lo[i], d_local)
+                  - node_tie_tol(hi[i], d_local)):
             out.append((i, ext, d_local))
     return out
 

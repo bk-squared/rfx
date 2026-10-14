@@ -12,6 +12,7 @@ from pathlib import Path
 import sys
 import time
 import warnings
+from unittest.mock import patch
 
 import jax
 import jax.numpy as jnp
@@ -28,11 +29,38 @@ FREQS = np.array([12, 16, 20, 24, 28]) * 1e9
 NY = 20
 NEAR, FAR, REFERENCE = 30, 120, 260
 STEPS = int(0.9 * (2 * FAR * DX / C0) / DT)
+RUNNER_CALLS = []
+ECHO_BIT_EQUAL = {}
 
 
 def pulse(t, scale=1.0):
     arg = (t - 60e-12) / 12e-12
     return scale * -arg * jnp.exp(-arg**2)
+
+
+def _run_with_device_witness(sim, **kwargs):
+    from rfx.runners import distributed_nu, distributed_v2
+
+    calls = []
+
+    def observe(original):
+        def run(*args, **kw):
+            count = len(kw["devices"])
+            calls.append({"runner": f"{original.__module__}.{original.__name__}",
+                          "device_count": count,
+                          "n_devices": kw.get("n_devices", count)})
+            return original(*args, **kw)
+        return run
+
+    with patch.object(distributed_v2, "run_distributed",
+                      observe(distributed_v2.run_distributed)), patch.object(
+            distributed_nu, "run_nonuniform_distributed_pec",
+            observe(distributed_nu.run_nonuniform_distributed_pec)):
+        result = sim.run(**kwargs)
+    assert calls, "two-device run did not reach a multi-device runner"
+    assert all(c["device_count"] == c["n_devices"] == 2 for c in calls), calls
+    RUNNER_CALLS.extend(calls)
+    return result
 
 
 @lru_cache(maxsize=None)
@@ -52,7 +80,8 @@ def trace(nonuniform, distributed, interior, source):
     devices = jax.devices("cpu")[:2] if distributed else None
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        result = sim.run(n_steps=STEPS, devices=devices, skip_preflight=True)
+        run = _run_with_device_witness if distributed else lambda sim, **kw: sim.run(**kw)
+        result = run(sim, n_steps=STEPS, devices=devices, skip_preflight=True)
     samples = np.asarray(result.time_series[:, 0])
     assert samples.dtype == np.float32, "reflection floor is calibrated in float32"
     return samples
@@ -70,7 +99,7 @@ def measure():
             if distributed:
                 for source, samples in zip((NEAR, FAR), echoes):
                     single = trace(nonuniform, False, NEAR + FAR, source)
-                    assert not np.array_equal(samples, single), "two-device echo trace silently used one device"
+                    ECHO_BIT_EQUAL[f"{lane}/source={source}"] = bool(np.array_equal(samples, single))
             returns[lane] = np.array([
                 _reflection_db(samples, reference, DT, FREQS) for samples in echoes
             ])
@@ -81,6 +110,8 @@ def main():
     started = time.monotonic()
     result = measure()
     payload = {"reflection_db": {key: value.tolist() for key, value in result.items()},
+               "runner_calls": RUNNER_CALLS,
+               "echo_bit_equal": ECHO_BIT_EQUAL,
                "elapsed_seconds": time.monotonic() - started,
                "dt": DT, "steps": STEPS, "frequencies_hz": FREQS.tolist()}
     Path(sys.argv[1]).write_text(json.dumps(payload, indent=2) + "\n")

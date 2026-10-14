@@ -108,10 +108,12 @@ def test_only_the_duplicated_end_edge_is_exempt(skip, slot, monkeypatch):
 def test_traced_override_is_admitted_with_unjudged_finding(skip, transform, finite, monkeypatch):
     sim = plane(finite=finite)
     shape = sim._build_grid().shape
+    x_lo, x_hi = sim.tfsf_box_indices()["x"]
     stop_kernel(monkeypatch)
 
     def loss(value):
-        result = sim.forward(n_steps=1, eps_override=jnp.ones(shape) * value,
+        override = jnp.ones(shape).at[x_lo + 2:x_hi - 1, :, :].set(value)
+        result = sim.forward(n_steps=1, eps_override=override,
                              skip_preflight=skip)
         return jnp.sum(result.time_series)
 
@@ -126,9 +128,11 @@ def test_traced_override_is_admitted_with_unjudged_finding(skip, transform, fini
 @pytest.mark.parametrize("skip", [False, True])
 def test_concrete_override_replaces_finite_base_for_admission(skip, monkeypatch):
     sim = plane(finite=True)
+    x_lo, x_hi = sim.tfsf_box_indices()["x"]
+    override = jnp.ones(sim._build_grid().shape).at[x_lo + 2:x_hi - 1, :, :].set(2.)
     stop_kernel(monkeypatch, periodic=(False, True, True))
     with pytest.raises(Admitted):
-        sim.forward(n_steps=1, eps_override=jnp.full(sim._build_grid().shape, 2.),
+        sim.forward(n_steps=1, eps_override=override,
                     skip_preflight=skip)
 
 

@@ -11,7 +11,7 @@ def test_d4_fixed_while_d5_open():
         ], {'D4': 'flux absent', 'D5': 'witness shape'})
 
 
-@pytest.mark.parametrize('declaration,ident', [('R-rlc', 'D6'), ('PW-oblique', 'D3')])
+@pytest.mark.parametrize('declaration,ident', [('R-rlc', 'D6')])
 def test_consequences_do_not_explain_witness(declaration, ident):
     with pytest.raises(pytest.fail.Exception, match='unexplained.*settling_witness/residual'):
         contract.classify(declaration, 'uniform', 'L2', [
@@ -71,7 +71,7 @@ def test_unmeasured_waveguide_flux_is_unexplained():
         ], {'D7': 'waveguide records'})
 
 
-@pytest.mark.parametrize('declaration,ident', [('R-rlc', 'D6'), ('PW-oblique', 'D3')])
+@pytest.mark.parametrize('declaration,ident', [('R-rlc', 'D6')])
 def test_time_series_consequence_still_applies(declaration, ident):
     with pytest.raises(pytest.xfail.Exception):
         contract.classify(declaration, 'uniform', 'L2', [

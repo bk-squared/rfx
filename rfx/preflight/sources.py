@@ -129,19 +129,31 @@ def _validate_tfsf_vacuum_boundary(materials: MaterialArrays, tfsf_cfg,
         ("x_hi+1", slice(tfsf_cfg.x_hi + 1, tfsf_cfg.x_hi + 2)),
     )
 
-    for plane_name, xs in boundary_slices:
-        eps = np.asarray(materials.eps_r[xs, :, :])
-        sigma = np.asarray(conductivity_envelope(materials)[xs, :, :])
-        mu = np.asarray(materials.mu_r[xs, :, :])
-        if not (
-            np.allclose(eps, 1.0)
-            and np.allclose(sigma, 0.0)
-            and np.allclose(mu, 1.0)
-        ):
-            raise ValueError(
-                "TFSF plane-wave source requires vacuum on and adjacent to "
-                f"the TFSF x boundaries; non-vacuum material found at {plane_name}"
-            )
+    import jax
+    arrays = tuple(value[xs, :, :] for _, xs in boundary_slices
+                   for value in (materials.eps_r, conductivity_envelope(materials),
+                                 materials.mu_r, *nonvacuum_masks))
+    width = 3 + len(nonvacuum_masks)
+
+    def check(*values):
+        for index, (plane_name, _) in enumerate(boundary_slices):
+            group = values[width * index:width * (index + 1)]
+            eps, sigma, mu = (np.asarray(v) for v in group[:3])
+            if not (
+                np.allclose(eps, 1.0)
+                and np.allclose(sigma, 0.0)
+                and np.allclose(mu, 1.0)
+                and all(not np.any(np.asarray(v)) for v in group[3:])
+            ):
+                raise ValueError(
+                    "TFSF plane-wave source requires vacuum on and adjacent to "
+                    f"the TFSF x boundaries; non-vacuum material found at {plane_name}"
+                )
+
+    if any(isinstance(a, jax.core.Tracer) for a in arrays):
+        jax.debug.callback(check, *arrays, ordered=True)
+    else:
+        check(*arrays)
 
 
 def _validate_cfg_source_on_reflector_plane(

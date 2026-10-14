@@ -19,9 +19,14 @@ from rfx.stepping.slab import cut, cut_pole_coeffs, cut_poles, place
 def select_step(*, cpml=False, debye=False, lorentz=False, ports=False,
                 dft=False, flux=False, ntff=False, pmc=False, periodic_x=False,
                 point_sources=True, point_probes=True, pec=True):
-    """The W1 PEC, pole and CPML admission decision (upstream refusals still apply)."""
+    """The W1 PEC, pole and CPML admission decision (upstream refusals still apply).
+
+    CPML with Debye or Lorentz media stays on the legacy step: on the wrapped step
+    it leaves one device by 17-760 float32 ULP over 200-800 steps (rfx #1402
+    item 5; the legacy step holds 9 ULP).
+    """
     return "wrapped" if (pec and point_sources and point_probes and not any((
-        ports, dft, flux, ntff, pmc, periodic_x))) else "legacy"
+        ports, dft, flux, ntff, pmc, periodic_x, cpml and (debye or lorentz)))) else "legacy"
 
 
 def _place(value, mesh):
