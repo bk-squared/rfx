@@ -1535,13 +1535,13 @@ class _ExecuteMixin:
         rlc_metas = None
         if self._lumped_rlc:
             from rfx.lumped import (
-                setup_rlc_materials_traced,
-                build_rlc_meta_traced,
+                setup_rlc_materials,
+                build_rlc_meta,
             )
             _rlc_ov = rlc_values_override or {}
             for _rlc_idx, _rlc_spec in enumerate(self._lumped_rlc):
                 _v = _rlc_ov.get(_rlc_idx, {})
-                materials = setup_rlc_materials_traced(
+                materials = setup_rlc_materials(
                     grid, _rlc_spec, materials,
                     r_val=_v.get("R"), c_val=_v.get("C"),
                 )
@@ -2014,11 +2014,11 @@ class _ExecuteMixin:
         pec_occupancy_for_run, aniso_inv_eps_run = _occupancy.select_occupancy_operator(
             self, grid, materials, pec_occupancy_local, periodic_bool, design_occupancy)
 
-        # Build the TRACED RLC metas now that all material folding (RLC + ports)
-        # is complete — build_rlc_meta_traced reads the final eps/sigma at each
+        # Build the RLC metas now that all material folding (RLC + ports)
+        # is complete — build_rlc_meta reads the final eps/sigma at each
         # element cell, mirroring the concrete runners/uniform.py:516 ordering.
         if self._lumped_rlc:
-            from rfx.lumped import build_rlc_meta_traced
+            from rfx.lumped import build_rlc_meta
             _rlc_ov = rlc_values_override or {}
             rlc_metas = []
             from rfx.simulation import resolve_periodic as _resolve_periodic
@@ -2027,7 +2027,7 @@ class _ExecuteMixin:
             _rlc_periodic = _resolve_periodic(grid, periodic_bool)
             for _rlc_idx, _rlc_spec in enumerate(self._lumped_rlc):
                 _v = _rlc_ov.get(_rlc_idx, {})
-                rlc_metas.append(build_rlc_meta_traced(
+                rlc_metas.append(build_rlc_meta(
                     grid, _rlc_spec, materials,
                     r_val=_v.get("R"), l_val=_v.get("L"), c_val=_v.get("C"),
                     periodic=_rlc_periodic,
