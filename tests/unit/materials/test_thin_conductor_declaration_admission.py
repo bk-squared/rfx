@@ -58,7 +58,14 @@ def sheet():
      {'surface_impedance_f0': 0.0},
      'add_thin_conductor: surface_impedance_f0=0.0 must be a positive frequency '
      'in Hz (band centre for the Leontovich surface resistance).'),
-], ids=['R1', 'R2', 'R3', 'R4', 'R5', 'R6_f0_first', 'R7_before_record'])
+    (sheet(), {'surface_impedance_f0': 0.0, 'sigma_bulk': 0.0},
+     'add_thin_conductor: surface_impedance_f0=0.0 must be a positive frequency '
+     'in Hz (band centre for the Leontovich surface resistance).'),
+    (NoMask(), {'surface_impedance_f0': 1e10, 'sigma_bulk': 0.0},
+     'add_thin_conductor: sigma_bulk=0.0 must be > 0 when surface_impedance_f0 is set '
+     '— Rs0 = sqrt(pi*f0*mu0/sigma_bulk) is undefined otherwise.'),
+], ids=['R1', 'R2', 'R3', 'R4', 'R5', 'R6_f0_first', 'R7_before_record',
+        'R8_f0_before_sigma', 'R9_sigma_before_mask'])
 def test_refusals(shape, kwargs, expected):
     sim = simulation()
     with pytest.raises(ValueError) as exc:
