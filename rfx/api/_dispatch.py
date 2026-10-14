@@ -4,7 +4,6 @@ from __future__ import annotations
 from typing import NamedTuple
 import numpy as np
 
-from rfx._diagnostic_transport import diagnostic_refusal
 
 
 class _DispatchPlan(NamedTuple):
@@ -75,7 +74,7 @@ def _dispatch_plan(
     ``is_nonuniform`` boolean and the NU ``n_steps`` formula but have
     disjoint lane-token sets:
 
-    - forward: ``fwd_distributed_nu`` / ``fwd_nonuniform`` / ``fwd_uniform``
+    - forward: ``fwd_distributed`` / ``fwd_distributed_nu`` / ``fwd_nonuniform`` / ``fwd_uniform``
     - run: ``run_distributed`` / ``run_distributed_nu`` / ``run_nonuniform`` / ``run_adi`` /
       ``run_subgridded`` / ``run_uniform``
 
@@ -158,8 +157,8 @@ def _dispatch_plan(
             return int(np.ceil(
                 num_periods * period / float(grid_probe.dt)))
 
-        # Distributed runners do not carry port S-parameter accumulators.
-        if port_s11_freqs is not None and distributed:
+        # The graded distributed runner has no port S-parameter accumulators.
+        if port_s11_freqs is not None and distributed and is_nonuniform:
             raise NotImplementedError(
                 "forward(port_s11_freqs=...) is supported only on "
                 "single-device forward paths (issue #72). Drop "
@@ -172,7 +171,7 @@ def _dispatch_plan(
         # get a silent fall-back to the linear-memory scan that this kwarg
         # was meant to fix. NU follow-up will mirror the pattern in
         # run_nonuniform; track on issue #73.
-        if checkpoint_segments is not None and (distributed or is_nonuniform):
+        if checkpoint_segments is not None and is_nonuniform:
             raise NotImplementedError(
                 "forward(checkpoint_segments=...) is currently wired only "
                 "on the uniform single-device forward path (issue #73). "
@@ -182,13 +181,14 @@ def _dispatch_plan(
 
         # Phase 3: distributed dispatch (V3 lines 842-847).
         if distributed:
-            # NU-only in v1.6.2 (DP3 locked decision).
             if not is_nonuniform:
-                raise diagnostic_refusal(NotImplementedError(
-                    "distributed=True on forward() is currently implemented "
-                    "only for non-uniform meshes; use run(..., devices=...) "
-                    "for the uniform distributed path."
-                ), diagnostics)
+                if self._solver == "adi":
+                    raise ValueError("solver='adi' does not support distributed execution")
+                if self._boundary == "upml":
+                    raise ValueError("boundary='upml' does not support distributed execution")
+                _n = n_steps if n_steps is not None else self._build_grid().num_timesteps(num_periods=num_periods)
+                _reject_lane_precision("run_distributed")
+                return _DispatchPlan(lane="fwd_distributed", n_steps=_n)
             # Reject TFSF / waveguide ports up front (V3 §3 unsupported).
             if self._tfsf is not None:
                 raise NotImplementedError(
