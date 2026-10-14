@@ -53,6 +53,8 @@
           - "rfx/sparams/mixed.py"
           - "rfx/**/*wire*"
           - "rfx/lumped.py"
+          # Lumped and wire port S and records live in the measurement layer.
+          - "rfx/measurement/port*.py"
           - "tests/**/*coax*"
           # NOT `tests/**/*mixed*`: that also owns tests/unit/grid/
           # test_mixed_precision.py, which is f32/f64 arithmetic and has nothing
