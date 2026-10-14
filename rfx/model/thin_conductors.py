@@ -13,10 +13,105 @@ from rfx.geometry.rasterize_grid import (
     sheet_end_rows, sheet_footprint_traced, sheet_spec_from_shape,
 )
 from rfx.materials.thin_conductor import (
+    _PEC_SIGMA_THRESHOLD, ThinConductor,
     SheetImpedanceSpec, check_sheet_occupancy, leontovich_rs, sheet_bounds,
     sheet_normal_axis,
 )
 from rfx.nonuniform import e_node_dual_spacings
+
+
+def admit_thin_conductor(
+    shape, *, sigma_bulk, thickness, eps_r, surface_impedance_f0,
+) -> ThinConductor:
+    """Admit one ``Simulation.add_thin_conductor`` declaration and build its record.
+
+    Raises on the concrete-value checks, then warns which model the record
+    selects (PEC sheet or Leontovich sheet); the warnings name the user's call.
+    """
+    if surface_impedance_f0 is not None:
+        # Concrete-value checks only: traced f0 / sigma_bulk are legal
+        # differentiable DoFs and skip these (documented on Simulation.add_thin_conductor).
+        if (not is_tracer(surface_impedance_f0)
+                and float(surface_impedance_f0) <= 0.0):
+            raise ValueError(
+                f"add_thin_conductor: surface_impedance_f0="
+                f"{surface_impedance_f0!r} must be a positive frequency "
+                f"in Hz (band centre for the Leontovich surface "
+                f"resistance).")
+        if not is_tracer(sigma_bulk) and float(sigma_bulk) <= 0.0:
+            raise ValueError(
+                f"add_thin_conductor: sigma_bulk={sigma_bulk!r} must be "
+                f"> 0 when surface_impedance_f0 is set — Rs0 = "
+                f"sqrt(pi*f0*mu0/sigma_bulk) is undefined otherwise.")
+        # #674: any shape that can rasterize itself is allowed — the
+        # fold is per occupied cell and shape-agnostic. Two structural
+        # requirements survive, and both fail loud on BOTH lanes rather
+        # than repeat the former NU warn-and-skip (the #369
+        # silently-vaporized-metal class: a sheet that vanishes on one
+        # lane is a wrong answer, not a degraded one).
+        if not callable(getattr(shape, "mask_on_coords", None)):
+            raise ValueError(
+                f"add_thin_conductor: surface_impedance_f0 requires a "
+                f"shape that implements mask_on_coords(x, y, z) — the "
+                f"sheet is rasterized from that mask on both lanes, and "
+                f"{type(shape).__name__} does not provide it.")
+        if sheet_bounds(shape) == (None, None):
+            raise ValueError(
+                f"add_thin_conductor: surface_impedance_f0 requires a "
+                f"shape with an axis-aligned bounding box (Box "
+                f"corner_lo/corner_hi, or Shape.bounding_box()) — the "
+                f"sheet NORMAL is read from it, and on a graded mesh that "
+                f"normal decides which dual spacing normalizes the fold. "
+                f"{type(shape).__name__} provides neither.")
+    tc = ThinConductor(
+        shape=shape, sigma_bulk=sigma_bulk,
+        thickness=thickness, eps_r=eps_r,
+        surface_impedance_f0=surface_impedance_f0,
+    )
+    # Tell the caller which model they actually got. The predicate is
+    # sigma_bulk ALONE (materials/thin_conductor.py:60-62) — an earlier
+    # version of this warning printed sigma_bulk*thickness/dx and claimed
+    # it "exceeds 1e6", which was a false statement for ordinary inputs
+    # (e.g. aluminium at 17 um and dx = 1 mm gives 5.95e5, announced as
+    # exceeding 1e6 while the conductor was routed to PEC anyway).
+    if tc.is_pec:
+        import warnings
+        _thin_dflt = 35e-6
+        _asked = (
+            f" You passed thickness={thickness:.3g} m, which is not used"
+            if thickness != _thin_dflt else
+            " thickness is not used"
+        )
+        warnings.warn(
+            f"add_thin_conductor: sigma_bulk={sigma_bulk:.2e} S/m is at or "
+            f"above the {_PEC_SIGMA_THRESHOLD:.0e} S/m PEC threshold, so "
+            f"this is a LOSSLESS PEC sheet.{_asked} here, and neither is "
+            f"eps_r. Every metal is above this threshold — a lower "
+            f"sigma_bulk would be a different material, not thinner "
+            f"copper (issue #504). For conductor loss pass "
+            f"surface_impedance_f0=<band centre Hz> (Leontovich sheet, "
+            f"issue #669).",
+            stacklevel=3,
+        )
+    if surface_impedance_f0 is not None:
+        import warnings
+        if not (is_tracer(surface_impedance_f0) or is_tracer(sigma_bulk)):
+            _rs0 = float(tc.r_s_leontovich)
+            _rs_txt = f"Rs0 = {_rs0:.4g} ohm/sq"
+        else:
+            _rs_txt = ("Rs0 = sqrt(pi*f0*mu0/sigma_bulk) (traced value "
+                       "not evaluated here)")
+        warnings.warn(
+            f"add_thin_conductor: surface_impedance_f0="
+            f"{surface_impedance_f0!r} Hz — Leontovich surface-"
+            f"resistance sheet with {_rs_txt}. Rs is FREQUENCY-FLAT "
+            f"within the run, frozen at f0, with relative band error "
+            f"|sqrt(f/f0)-1|; the reactive part Xs = Rs (internal "
+            f"inductance) is NOT modeled, so resonances read slightly "
+            f"high.",
+            stacklevel=3,
+        )
+    return tc
 
 
 class DCFilmAdmissionError(ValueError):

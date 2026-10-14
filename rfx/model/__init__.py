@@ -21,7 +21,7 @@ from rfx.model.graded_admission import (
     NominalProfile, admit_graded_profiles, traced_cell_mask,
 )
 from rfx.model.occupancy import select_occupancy_operator, with_edge_keep
-from rfx.model.thin_conductors import refuse_design_films
+from rfx.model.thin_conductors import admit_thin_conductor, refuse_design_films
 
 __all__ = [
     "DesignBoxCoeffs", "PreparedSolve", "design_box_bounds", "design_box_window",
@@ -29,6 +29,6 @@ __all__ = [
     "NominalProfile", "admit_adi_sources", "admit_graded_profiles", "distributed_kernel_inputs",
     "distributed_solve_inputs", "drawn_launch_eps", "forward_kernel_inputs",
     "forward_lumped_port_stage", "forward_port_stage", "forward_products", "forward_sheet_context",
-    "prepare_port_occupancy", "refuse_design_films", "select_occupancy_operator",
+    "admit_thin_conductor", "prepare_port_occupancy", "refuse_design_films", "select_occupancy_operator",
     "stage_distributed_edges", "traced_cell_mask", "uniform_solve_inputs", "with_edge_keep",
 ]
