@@ -62,6 +62,7 @@ S2. The per-ENTRY-POINT classification below (``EMISSION_CLASSIFICATION``).
 
 from __future__ import annotations
 
+import pytest
 import ast
 import inspect
 import textwrap
@@ -527,6 +528,7 @@ _FROZEN_DYNAMIC_SITES_BY_FUNCTION = {
 }
 
 
+@pytest.mark.source_scan
 def test_preflight_emission_site_surface_is_frozen():
     sites = _enumerate_emission_sites()
     assert len(sites) == _FROZEN_TOTAL_SITES, (
@@ -562,6 +564,7 @@ def test_preflight_emission_site_surface_is_frozen():
     )
 
 
+@pytest.mark.source_scan
 def test_finite_flux_emitter_has_a_bounded_explicit_code_surface():
     """A shared constructor must not hide new or dynamically chosen slugs."""
     tree = ast.parse(textwrap.dedent(inspect.getsource(Simulation._collect_flux_regions)))
@@ -755,6 +758,7 @@ def test_every_functional_entry_point_is_emission_classified():
     )
 
 
+@pytest.mark.source_scan
 def test_emission_classification_matches_measured_reachability():
     surface = _exported_surface()
     for name, (category, citation) in EMISSION_CLASSIFICATION.items():

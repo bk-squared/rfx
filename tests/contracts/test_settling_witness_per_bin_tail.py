@@ -335,6 +335,8 @@ def test_run_scores_probe_resonance_with_weak_port_coupling(monkeypatch, readout
     from rfx import Simulation
     from rfx.api._spec import Result
     from rfx.sparams._tail_witness import port_record_witness
+    from rfx.measurement import PortTimeRecord
+    from rfx.sparams._record_selection import SReadPorts
 
     sim = Simulation(freq_max=1., domain=(1.,)*3, dx=.1)
     sim.add_probe((.5,)*3, 'ez')
@@ -342,13 +344,15 @@ def test_run_scores_probe_resonance_with_weak_port_coupling(monkeypatch, readout
     fast = np.exp((-.1 + 2j*np.pi*.5)*t)
     slow = np.exp((-.001 + 2j*np.pi*.5)*t)
     port = fast + 1e-6*slow
-    _, port_detail = port_record_witness([port], DT, 0, [.5], freq_max=1.)
+    _, port_detail = port_record_witness([PortTimeRecord('port:0:mode:0', 'wire', ('V',), port[:, None])], DT, 0, [.5], freq_max=1.)
     assert port_detail['status'] == 'pass', port_detail
     fields = {'s': dict(freqs=np.array([.5])),
               'ntff': dict(freqs=None, ntff_box=SimpleNamespace(freqs=np.array([.5]))),
               'dft': dict(freqs=None, dft_planes={'e': SimpleNamespace(freqs=np.array([.5]))})}
     if family == 'wire':
-        ports = dict(sparam_time_records=(port,))
+        ports = dict(s_params=np.zeros((1, 1, 1), np.complex64),
+                     sparam_read_ids=SReadPorts(('port:0:mode:0',)),
+                     sparam_time_records=(PortTimeRecord('port:0:mode:0', 'wire', ('V',), port[:, None]),))
     else:
         incident = np.zeros(len(t))
         incident[0] = 1.
@@ -356,8 +360,8 @@ def test_run_scores_probe_resonance_with_weak_port_coupling(monkeypatch, readout
             v_probe_t=port, i_probe_t=port, v_ref_t=port, i_ref_t=port,
             dt=DT, freqs=np.array([.5]), src_amp=1., v_inc_t=incident,
             source_x_m=0., reference_x_m=0., probe_x_m=0.)
-        ports = dict(waveguide_ports={'p': cfg})
-    result = Result(state=None, s_params=None, dt=DT, time_series=slow[:, None],
+        ports = dict(s_params=None, waveguide_ports={'p': cfg})
+    result = Result(state=None, dt=DT, time_series=slow[:, None],
                     **ports, **fields[readout])
     if precomputed:
         result = result._replace(settling_witness=port_detail, settling_db=port_detail['db'])
@@ -400,15 +404,16 @@ def test_precomputed_s_witness_aligns_with_additional_dft_bins(monkeypatch):
     from rfx import Simulation
     from rfx.api._spec import Result
     from rfx.sparams._tail_witness import port_record_witness
+    from rfx.measurement import PortTimeRecord
 
     sim = Simulation(freq_max=1., domain=(1.,)*3, dx=.1)
     sim.add_probe((.5,)*3, 'ez')
     t = np.arange(1000)*DT
     port = np.exp((-.1 + 2j*np.pi*.5)*t)
     slow = np.exp((-.001 + 2j*np.pi*.8)*t)
-    _, prior = port_record_witness([port], DT, 0, [.5], freq_max=1.)
+    _, prior = port_record_witness([PortTimeRecord('port:0:mode:0', 'wire', ('V',), port[:, None])], DT, 0, [.5], freq_max=1.)
     result = Result(state=None, s_params=None, freqs=np.array([.5]), dt=DT,
-                    time_series=slow[:, None], sparam_time_records=(port,),
+                    time_series=slow[:, None], sparam_time_records=(PortTimeRecord('port:0:mode:0', 'wire', ('V',), port[:, None]),),
                     dft_planes={'e': SimpleNamespace(freqs=np.array([.8]))},
                     settling_db=prior['db'], settling_witness=prior)
     monkeypatch.setattr(sim, '_settling_source_end', lambda *a, **kw: 0)

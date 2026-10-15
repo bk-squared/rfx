@@ -217,3 +217,46 @@ def test_forward_width_gradient_is_finite():
 
     derivative = jax.grad(objective)(jnp.asarray(NOMINAL[1]))
     assert np.isfinite(float(derivative))
+
+
+# Two moving windows, one on each side of the pin (#1750). The radius stamp
+# reads the union of the windows: the pin is admitted when both stay clear of
+# its stencil and one-cell margin, and refused when either one reaches them.
+CLEAR = ((1, 4), (10, 13))
+
+
+@pytest.mark.parametrize("component", ["ex", "ez"])
+def test_two_windows_clear_of_pin_bit_identity(component):
+    expected = _stamp_ports(_grid({}, {}), component)
+
+    def stamp(profile):
+        grid = _grid({"x": profile}, {"x": CLEAR})
+        assert grid.traced_cells == {"x": CLEAR}
+        return _stamp_ports(grid, component)
+
+    # Move cells in both windows; each window keeps its own width sum.
+    moved = (jnp.asarray(NOMINAL).at[1].add(.0001).at[2].add(-.0001)
+             .at[11].add(.0001).at[12].add(-.0001))
+    actual = jax.jit(stamp)(moved)
+    for field in ("mu_r_wire", "eps_r_lumped", "eps_r"):
+        got, want = getattr(actual, field), getattr(expected, field)
+        assert jax.tree.structure(got) == jax.tree.structure(want)
+        for a, b in zip(jax.tree.leaves(got), jax.tree.leaves(want)):
+            assert np.asarray(a).dtype == np.asarray(b).dtype
+            assert np.asarray(a).shape == np.asarray(b).shape
+            assert np.asarray(a).tobytes() == np.asarray(b).tobytes(), field
+
+
+# Pin cell 7 on x. Across the wire (ez) the stamp reads cells 5..8 with
+# margin cells 4 and 9; along it (ex) it reads cell 7 with margin cells 6 and 8.
+@pytest.mark.parametrize("component, windows, refuses", [
+    ("ez", CLEAR, False),
+    ("ez", ((1, 5), (10, 13)), True),
+    ("ez", ((1, 4), (9, 13)), True),
+    ("ex", ((1, 6), (9, 13)), False),
+    ("ex", ((1, 7), (9, 13)), True),
+    ("ex", ((1, 6), (8, 13)), True),
+], ids=["across_clear", "across_low_on_margin", "across_high_on_margin",
+        "along_clear", "along_low_on_margin", "along_high_on_margin"])
+def test_two_windows_margin(component, windows, refuses):
+    _check_window("x", component, windows, refuses=refuses)

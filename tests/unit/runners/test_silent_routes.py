@@ -381,6 +381,7 @@ _SCAN_CALLERS = {
 }
 
 
+@pytest.mark.source_scan
 def test_forward_scan_callers_are_listed():
     import ast
     from pathlib import Path

@@ -148,6 +148,7 @@ def test_declared_meshes_regenerate_on_this_tree():
 # Replay from the committed JSON
 # =============================================================================
 
+@pytest.mark.source_scan
 def test_replay_provenance_and_selfcheck(e2_json):
     sc = e2_json["selfcheck"]
     assert sc["all_pass"] and not sc["failed"]

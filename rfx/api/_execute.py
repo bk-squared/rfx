@@ -499,95 +499,12 @@ class _ExecuteMixin:
             )
 
     def _run_settling_witness(self, result):
-        """Judge retained records at the result's spectral read bins.
-
-        sensitivities are judged by a separate witness
-        """
-        from rfx.probes.settling import probe_record_settling_witness
-        from rfx.sparams._tail_witness import (
-            combine_witness_details, port_record_witness, result_read_bins,
-        )
-        from rfx.sources.waveguide_port import settling_db_from_port_records
-
-        prior = (getattr(result, "settling_witness", None)
-                 if not isinstance(result, ForwardResult) else None)
-        if prior and prior.get("run_records_scored"):
-            return result.settling_db, prior
-
-        bins = result_read_bins(result)
-        dt = getattr(result, "dt", None) or getattr(getattr(result, "grid", None), "dt", None)
-        rows = []
-        if prior:
-            prior_bins = np.asarray(getattr(result, "freqs", None), dtype=float).reshape(-1)
-            if len(prior['share_per_bin']) != bins.size:
-                aligned = {}
-                for key in ('share_per_bin', 'error_per_bin'):
-                    values = np.zeros(bins.size)
-                    np.maximum.at(values, np.searchsorted(bins, prior_bins), prior[key])
-                    aligned[key] = values
-                prior = {**prior, **aligned}
-            rows.append(prior)
-        port_records = getattr(result, "sparam_time_records", None)
-        if port_records:
-            _, detail = port_record_witness(
-                port_records, dt,
-                self._settling_source_end(result, records=self._ports),
-                bins, freq_max=self._freq_max)
-            rows.append(detail)
-        if getattr(result, "waveguide_ports", None):
-            _, detail = settling_db_from_port_records(
-                result.waveguide_ports.values(), freqs=bins,
-                freq_max=self._freq_max, return_detail=True)
-            rows.append(detail)
-        series = getattr(result, "time_series", None)
-        selection = self._settling_probe_selection(result)
-        probe_db, probe_detail = probe_record_settling_witness(
-            series, selection,
-            source_end_index=self._settling_source_end(result),
-            dt=dt, freqs=bins, freq_max=self._freq_max)
-        if selection:
-            rows.append(probe_detail)
-        elif rows and _reads_unrecorded_fields(result):
-            rows.append({**probe_detail, 'status': 'absent', 'db': None,
-                         'worst_freq_hz': None, 'floor_amplitude': None,
-                         'share_per_bin': np.zeros(bins.size),
-                         'error_per_bin': np.zeros(bins.size),
-                         'reason': 'far-field or DFT-plane frequencies are read but no '
-                                   'probe records the fields they come from'})
-        if not rows:
-            return probe_db, {**probe_detail, 'run_records_scored': True}
-        detail = combine_witness_details(*rows) if len(rows) > 1 else rows[0]
-        if len(rows) > 1 and bins.size:
-            shares = np.maximum.reduce([row['share_per_bin'] for row in rows])
-            errors = np.maximum.reduce([row['error_per_bin'] for row in rows])
-            detail = {**detail, 'share_per_bin': shares, 'error_per_bin': errors,
-                      'worst_freq_hz': (float(bins[np.argmax(shares)])
-                                        if np.any(shares) or detail['status'] == 'pass'
-                                        else float('nan'))}
-        return detail['db'], {**detail, 'run_records_scored': True}
+        from rfx.api._settling import run_settling_witness
+        return run_settling_witness(self, result)
 
     def _settling_source_end(self, result, records=None):
-        from rfx.probes.settling import simulation_source_end_step
-
-        series = getattr(result, "time_series", None)
-        shape = getattr(series, "shape", ())
-        port_records = getattr(result, "sparam_time_records", None)
-        if port_records and (records is not None or not shape):
-            series = port_records[0]
-            shape = series.shape
-        if not shape:
-            return None
-        grid = getattr(result, "grid", None)
-        dt = getattr(result, "dt", None)
-        if dt is None:
-            dt = getattr(grid, "dt", None)
-        if records is None:
-            internal = getattr(self, "_internal_probe_indices", ()) or ()
-            count = 1 if len(shape) == 1 else shape[1]
-            records = [p for i, p in enumerate(self._probes[:count]) if i not in internal]
-        return simulation_source_end_step(
-            self, series.shape[0], dt, records, grid=grid,
-            waveguide_configs=getattr(result, "waveguide_ports", None))
+        from rfx.api._settling import settling_source_end
+        return settling_source_end(self, result, records)
 
     def _settling_probe_selection(self, result):
         """Numeric probe selection metadata, with the #1090 drive flag.
@@ -621,11 +538,12 @@ class _ExecuteMixin:
         forward_result = isinstance(result, ForwardResult)
         if forward_result:
             from rfx.core.jax_utils import is_tracer
+            from rfx.sparams._record_selection import s_read_records
             result = result._replace(
                 settling_probe_info=self._settling_probe_selection(result),
                 settling_freq_max=self._freq_max,
                 settling_source_end_index=self._settling_source_end(
-                    result, records=self._ports if result.sparam_time_records else None))
+                    result, records=self._ports if s_read_records(result) else None))
             if is_tracer(result.time_series):
                 return result
         elif not hasattr(result, "_replace") or not hasattr(result, "settling_witness"):
@@ -1512,8 +1430,6 @@ class _ExecuteMixin:
             make_probe,
             make_port_source,
             make_wire_port_sources,
-            LumpedPortSParamSpec,
-            WirePortSParamSpec,
         )
         from rfx.sources.sources import (
             LumpedPort,
@@ -1594,6 +1510,8 @@ class _ExecuteMixin:
         pec_occupancy_local = pec_occupancy
         conductors, _drawn_materials, pec_edge_masks_local = _conductors.forward_products(self, grid, materials, pec_mask, pec_sheets, pec_wires, periodic_bool, conductors, sheet_impedance)
         _msl_geometry_edges = pec_edge_masks_local  # before ANY port clearing
+        from rfx.measurement import ordered_specs, register_lumped, register_wire
+        port_record_specs = []
         lumped_port_sparam_specs: list = []
         wire_port_sparam_specs: list = []
         wire_refplane_specs: list = []
@@ -1688,21 +1606,8 @@ class _ExecuteMixin:
                 # wire_sparam_meta in the JIT scan body of
                 # rfx/simulation.py) and carries the static live run for
                 # the whole-port gap-voltage accumulator.
-                if _s11_freqs_arr is not None and wp_cells:
-                    _live_764 = tuple(
-                        (int(c[0]), int(c[1]), int(c[2]))
-                        for c, live in zip(wp_cells, wp_live_flags) if live)
-                    mid_cell = _live_764[len(_live_764) // 2]
-                    wire_port_sparam_specs.append(WirePortSParamSpec(
-                        mid_i=int(mid_cell[0]),
-                        mid_j=int(mid_cell[1]),
-                        mid_k=int(mid_cell[2]),
-                        component=pe.component,
-                        freqs=_s11_freqs_arr,
-                        impedance=float(pe.impedance),
-                        live_cells=_live_764,
-                        excite=bool(_drive_this_port),
-                    ))
+                register_wire(port_record_specs, wire_port_sparam_specs, pe.component,
+                              wp_cells, wp_live_flags, _s11_freqs_arr, pe.impedance, _drive_this_port, _port_index)
                 # Opt-in reference-plane V/I accumulators (issue #313).
                 # Registered ONLY on the production-scan S-matrix driver
                 # path (_sparam_drive_idx is not None): the plane waves
@@ -1805,14 +1710,8 @@ class _ExecuteMixin:
             # lumped port when the user requested forward(port_s11_freqs=...)
             # (issue #72). Skipping passive ports keeps S11 indexing
             # aligned with the active-port list.
-            if _s11_freqs_arr is not None:
-                lumped_port_sparam_specs.append(LumpedPortSParamSpec(
-                    i=int(idx[0]), j=int(idx[1]), k=int(idx[2]),
-                    component=pe.component,
-                    freqs=_s11_freqs_arr,
-                    impedance=float(pe.impedance),
-                    excite=bool(_drive_this_port),
-                ))
+            register_lumped(port_record_specs, lumped_port_sparam_specs, pe.component,
+                            idx, _s11_freqs_arr, pe.impedance, _drive_this_port, _port_index)
 
         # MSL ports — full cross-section distributed feed; built like the
         # wire-port branch above but with N_y × N_z cells.  S-parameters are
@@ -2104,6 +2003,7 @@ class _ExecuteMixin:
             pec_occupancy=pec_occupancy_for_run,
             aniso_inv_eps=aniso_inv_eps_run,
             aniso_inv_eps_smooth=(aniso_inv_eps_run is not None),
+            port_record_specs=ordered_specs(port_record_specs),
             lumped_port_sparams=lumped_port_sparam_specs or None,
             wire_port_sparams=wire_port_sparam_specs or None,
             wire_refplane_sparams=wire_refplane_specs or None,
@@ -2255,10 +2155,11 @@ class _ExecuteMixin:
                 extractor="forward(port_s11_freqs=...)",
             )
 
-        return result_with_diagnostics(pack_uniform_forward_result(
+        from rfx.sparams._record_selection import finish_forward
+        return result_with_diagnostics(finish_forward(pack_uniform_forward_result(
             self, grid, result, diagnostics=diagnostics, s_params=s_params_out,
             freqs=freqs_out, current_moment_monitor=current_moments_fwd,
-        ), conductors.design_findings)
+        )), conductors.design_findings)
 
     _pack_nu_forward_result = staticmethod(pack_nu_forward_result)
 
@@ -2358,6 +2259,7 @@ class _ExecuteMixin:
             waveguide_sparams=result.waveguide_sparams,
             wire_port_sparams=getattr(result, "wire_port_sparams", None),
             sparam_time_records=getattr(result, "sparam_time_records", None),
+            sparam_read_ids=getattr(result, "sparam_read_ids", None),
             dft_time_records=getattr(result, "dft_time_records", None),
             dt=getattr(result, "dt", None),
             current_moment_data=getattr(result, "current_moment_data", None),
@@ -3094,7 +2996,7 @@ class _ExecuteMixin:
         pec_occupancy_override: jnp.ndarray | None = None,
         n_steps: int | None = None,
         num_periods: float = 20.0,
-        checkpoint: bool = True,
+        checkpoint: bool | None = None,
         gradient: str = "autodiff",
         checkpoint_segments: int | None = None,
         emit_time_series: bool = True,
@@ -3274,8 +3176,8 @@ class _ExecuteMixin:
             Number of timesteps. If None, auto-computed from *num_periods*.
         num_periods : float
             Number of periods at freq_max for auto step count.
-        checkpoint : bool
-            Enable gradient checkpointing (default True).
+        checkpoint : bool or None
+            None enables checkpointing except on uniform distributed forward.
         checkpoint_segments : int or None
             If set, route the uniform single-device forward through the
             segmented-checkpoint path (issue #73), which trades ≈2x compute
@@ -3377,15 +3279,12 @@ class _ExecuteMixin:
             known-spurious warning on a deliberate configuration.
         distributed : bool, optional
             **Opt-in, unstable, pending GPU evidence (issue #44).**  When
-            ``True`` and a non-uniform mesh is configured, route the
-            differentiable forward through the sharded NU runner
-            (``rfx.runners.distributed_nu.run_nonuniform_distributed_pec``)
-            using a 1-D x-slab decomposition across ``devices``.  Defaults
-            to ``False`` (single-device path, no behaviour change).  In
-            v1.6.2 the distributed forward path is **NU-only** (DP3): a
-            uniform mesh raises ``NotImplementedError``.  TFSF sources
-            and waveguide ports are unsupported on this path and raise
-            ``NotImplementedError`` at preflight.
+            ``True``, use the mesh's distributed runner across ``devices``.
+            Uniform meshes share run(devices=...) including its one-device
+            fallbacks; graded meshes use the distributed NU runner.
+            Uniform distributed execution refuses material/design overrides
+            and explicit checkpointing; an omitted checkpoint uses the
+            runner's ordinary loop. Other lanes default to checkpointing.
         devices : list of jax.Device or None, optional
             Devices for the distributed run.  When ``distributed=True``
             and ``devices=None``, defaults to ``jax.devices()``.  When
@@ -3408,7 +3307,7 @@ class _ExecuteMixin:
             ``run(compute_s_params=True)``.  Required by the
             :func:`minimize_s11_at_freq_wave_decomp` objective.  Currently
             supported on uniform and graded single-device paths;
-            ``distributed=True`` raises ``NotImplementedError``.
+            graded distributed execution raises ``NotImplementedError``.
         rlc_values_override : dict or None
             Differentiable-value injection for lumped RLC elements added with
             :meth:`add_lumped_rlc` (WP 4-E).  ``LumpedRLCSpec`` stores plain
@@ -3568,6 +3467,22 @@ class _ExecuteMixin:
         )
         if _realized.ACTIVE is not None:
             _realized.enter(self, plan.lane)
+        if plan.lane == "fwd_distributed":
+            from rfx.runners._distributed_entry import forward_distributed
+            return forward_distributed(
+                self, plan=plan, assembly=_solve_assembly, devices=devices,
+                exchange_interval=exchange_interval, num_periods=num_periods,
+                port_s11_freqs=port_s11_freqs, skip_preflight=skip_preflight,
+                eps_override=eps_override, sigma_override=sigma_override,
+                mu_r_override=mu_r_override, pec_mask_override=pec_mask_override,
+                pec_occupancy_override=pec_occupancy_override, design_box=design_box,
+                design_eps_override=design_eps_override, design_sigma_override=design_sigma_override,
+                design_occupancy_override=design_occupancy_override,
+                design_box_holds_ports=design_box_holds_ports, rlc_values_override=rlc_values_override,
+                checkpoint=checkpoint, checkpoint_every=checkpoint_every,
+                checkpoint_segments=checkpoint_segments, n_warmup=n_warmup,
+                emit_time_series=emit_time_series, ringdown=ringdown)
+        checkpoint = True if checkpoint is None else checkpoint
         # No forward lane (and so no optimize()) applies Dey-Mittra weights.
         self._refuse_conformal_boundary(
             {"fwd_uniform": "uniform forward",
@@ -4185,153 +4100,17 @@ class _ExecuteMixin:
                 if float(p.impedance) > 0.0 and p.extent is not None))
 
         # ---- Distributed multi-device lane ----
-        if plan.lane in ("run_distributed", "run_distributed_nu") and self._interface_eps == "dual_average":
-            raise ValueError("interface_eps='dual_average' is not supported on the distributed lane")
         if plan.lane in ("run_distributed", "run_distributed_nu"):
-            from rfx.runners.distributed_v2 import one_device_reason, run_on_one_device
-            if reason := one_device_reason(self):
-                del _solve_assembly  # the fallback performs its own solve assembly
-                return run_on_one_device(self, {**_call_args, "devices": None,
-                                         "exchange_interval": 1, "skip_preflight": True},
-                                         reason=reason, requested_devices=len(devices),
-                                         diagnostics=_diagnostics)
-        if plan.lane in ("run_distributed", "run_distributed_nu"):
-            if self._dft_planes:
-                raise NotImplementedError(
-                    "add_dft_plane_probe() is not supported on the "
-                    "distributed multi-device run() path (issue #579); "
-                    "rfx.runners.distributed_v2 does not accumulate DFT-plane fields, "
-                    "so a registered plane would be silently dropped. Drop "
-                    "DFT plane probes or omit devices=... (use a "
-                    "single-device run() instead)."
-                )
-            from rfx.runners.distributed_v2 import (
-                refuse_unsupported_distributed_features,
-            )
-            refuse_unsupported_distributed_features(
-                self,
-                lane="distributed multi-device run()",
-                diagnostics=_diagnostics,
-            )
-            _dist_conformal = bool(conformal_pec and self._has_pec_to_conform())
-            # One device on a graded mesh is the non-uniform lane, which
-            # carries neither snapshot nor conformal_pec, nor until_decay on
-            # closed boundaries.
-            _one_device = "omit devices= to run on one device"
-            _dist_instead = _one_device
-            if self._uses_nonuniform_mesh:
-                _one_uniform = ("omit devices= and run on a uniform mesh "
-                                "(no dx/dy/dz profile)")
-                _dist_instead = {"*": _one_device,
-                                 "snapshot": _one_uniform,
-                                 "conformal_pec": _one_uniform}
-                if self._boundary not in ("cpml", "upml"):
-                    _dist_instead["until_decay"] = _one_uniform
-            # Resolve the default as the one-device lane of this mesh does: the
-            # uniform runner computes S for every impedance port, the non-uniform
-            # runner only for wire ports (extent set).
-            if compute_s_params is None:
-                if self._uses_nonuniform_mesh:
-                    compute_s_params = any(pe.impedance != 0.0 and pe.extent is not None
-                                           for pe in self._ports)
-                else:
-                    compute_s_params = any(pe.impedance != 0.0 for pe in self._ports)
-                # Use the same refusal as an explicit S-parameter request.
-                self._validate_run_sparameter_request(
-                    compute_s_params=compute_s_params,
-                    s_param_freqs=s_param_freqs,
-                    s_param_n_steps=s_param_n_steps,
-                    devices=devices,
-                )
-            if compute_s_params:
-                _dist_ports = [pe for pe in self._ports if pe.impedance != 0.0]
-                if len(_dist_ports) == 1 and _dist_ports[0].extent is not None:
-                    self._refuse_unsupported_run_kwargs(
-                        "uniform single-wire-port S-parameter", {
-                            "s_param_n_steps": self._s_param_n_steps_off_record(
-                                s_param_n_steps, n_steps, until_decay),
-                        }, instead=None,
-                        reason_overrides={"s_param_n_steps":
-                            "this lane computes S11 with a second full distributed "
-                            "run with all sources on, using the main run's "
-                            "n_steps and source convention"})
-                from rfx.probes.sparam_driver import refuse_distributed_lumped_s_pmc
-                refuse_distributed_lumped_s_pmc(self)
-
-            self._refuse_unsupported_run_kwargs("distributed multi-device", {
-                "subpixel_smoothing": subpixel_smoothing,
-                "checkpoint": checkpoint,
-                "snapshot": snapshot,
-                "until_decay": until_decay,
-                "conformal_pec": _dist_conformal,
-                **({} if report_every is None else {"report_every": report_every}),
-            }, instead=_dist_instead)
-            from rfx.materials.thin_conductor import refuse_f0_sheets
-            refuse_f0_sheets(self._thin_conductors, "distributed multi-device run()")
-            from rfx.runners._admission import admit_run_s_matrix
-            admit_run_s_matrix(self, compute_s_params=compute_s_params,
-                               conformal_pec=conformal_pec, distributed=True)
-            if plan.lane == "run_distributed_nu":
-                from rfx.runners.distributed_v2 import _spans_other_processes
-                if devices is not None and _spans_other_processes(devices):
-                    # The graded runner does not gather the final fields
-                    # across processes (#1461 review), so run() could not
-                    # return them; forward(distributed=True) can.
-                    raise NotImplementedError(
-                        "run(devices=...) on a non-uniform mesh does not support "
-                        "devices from more than one JAX process: the final fields "
-                        "are not gathered across processes. Use devices from one "
-                        "process, or forward(distributed=True) for the probe traces.")
-                grid, result, geometry_record = self._execute_distributed_nonuniform_from_materials(
-                    assembly=_solve_assembly,
-                    n_steps=n_steps,
-                    devices=devices,
-                    exchange_interval=exchange_interval,
-                    skip_preflight=skip_preflight,
-                    gather_final_state=True,
-                    lane="run_distributed_nu",
-                    diagnostics=_diagnostics,
-                )
-                _res = Result(
-                    diagnostics=result.get("diagnostics", _diagnostics),
-                    state=result["final_state"],
-                    time_series=result["time_series"],
-                    s_params=None,
-                    freqs=None,
-                    grid=grid,
-                    dt=grid.dt,
-                    freq_range=(self._freq_max / 10, self._freq_max, self._boundary),
-                    realized_geometry=geometry_record,
-                )
-            else:
-                from rfx.runners.distributed_v2 import run_distributed
-                _res = run_distributed(
-                    self,
-                    n_steps=n_steps,
-                    devices=devices,
-                    diagnostics=_diagnostics,
-                    exchange_interval=exchange_interval,
-                    assembly=_solve_assembly,
-                    conformal_pec=conformal_pec,
-                )
-            if compute_s_params:
-                from rfx.probes.sparam_driver import compute_lumped_wire_s_matrix_via_scan
-                if s_param_freqs is None:
-                    s_param_freqs = jnp.linspace(self._freq_max / 10, self._freq_max, 50)
-                _s_params, _ = compute_lumped_wire_s_matrix_via_scan(
-                    self, s_param_freqs,
-                    n_steps=s_param_n_steps if s_param_n_steps is not None else n_steps,
-                    devices=devices,
-                    **({"_main_wire_record": True} if len(_dist_ports) == 1
-                       and _dist_ports[0].extent is not None else {}),
-                )
-                _res = _res._replace(s_params=_s_params, freqs=np.asarray(s_param_freqs))
-            _res = self._attach_run_settling_witness(
-                _res, n_steps=n_steps, num_periods=num_periods)
-            _warn_if_nonfinite_result(_res, context="run")
-            from rfx.current_moments import require_accumulated_current_moments
-            require_accumulated_current_moments(self, _res, "run")
-            return _res
+            from rfx.runners._distributed_entry import execute_distributed
+            return execute_distributed(
+                self, plan=plan, _solve_assembly=_solve_assembly,
+                _diagnostics=_diagnostics, _call_args=_call_args,
+                n_steps=n_steps, num_periods=num_periods, devices=devices,
+                exchange_interval=exchange_interval, skip_preflight=skip_preflight,
+                compute_s_params=compute_s_params, s_param_freqs=s_param_freqs,
+                s_param_n_steps=s_param_n_steps, conformal_pec=conformal_pec,
+                subpixel_smoothing=subpixel_smoothing, checkpoint=checkpoint,
+                snapshot=snapshot, until_decay=until_decay, report_every=report_every)
 
         # ---- Non-uniform mesh lane ----
         if plan.lane == "run_nonuniform":
@@ -4594,12 +4373,3 @@ class _ExecuteMixin:
         from rfx.current_moments import require_accumulated_current_moments
         require_accumulated_current_moments(self, _res, "run")
         return _res
-
-
-def _reads_unrecorded_fields(result) -> bool:
-    """True when NTFF, DFT-plane, flux or current-moment outputs are read."""
-    if getattr(result, "ntff_box", None) is not None:
-        return True
-    if getattr(result, "current_moment_monitor", None) is not None:
-        return True
-    return any(getattr(result, f, None) for f in ("dft_planes", "flux_monitors"))

@@ -937,12 +937,14 @@ def test_a2_gate_separates_upstream_from_repo_internal_provenance(ref):
 # checks below. The run is also pinned by what it returns, on a fake solver
 # that writes a chosen log and returns a chosen notch: a truncated real pass,
 # or a notch outside the band, must fail the leg however the source is spelled.
+@pytest.mark.source_scan
 def test_a1_reads_truncation_from_the_real_run_log(ref):
     import inspect
     src = inspect.getsource(ref._run_stage_a_reproduce_gate)
     assert "_log_indicates_truncation(real_log)" in src
 
 
+@pytest.mark.source_scan
 def test_a1_passed_consults_truncation(ref):
     import inspect
     src = inspect.getsource(ref._run_stage_a_reproduce_gate)

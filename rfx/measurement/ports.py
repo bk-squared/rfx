@@ -77,7 +77,7 @@ def lumped_wire_owner(grid, component, live_cells, *, nu, pmc_faces, periodic,
                 continue
         current.append(Node(h_component, *back, -sign*width*(2 if factor == 0 else 1)))
     channels = [Channel('V', 'E', v), Channel('I', 'H', tuple(current))]
-    if kind == 'wire' or nu:
+    if kind == 'wire':
         channels.append(Channel('V_port', 'E', voltage))
     if not nu:
         channels.append(Channel('V_ref', 'E', v, sample_stage='pre-injection'))

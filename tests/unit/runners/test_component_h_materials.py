@@ -172,6 +172,7 @@ def test_unimplemented_carrier_refuses_non_none_record(path):
             sim._run_adi_from_materials(grid, marked, None, None, n_steps=1, lane="run_adi")
 
 
+@pytest.mark.source_scan
 def test_h_builder_inventory_reads_the_shared_owner():
     """Structural backstop for the vacuum-only and refusing coefficient sites."""
     from rfx import adi

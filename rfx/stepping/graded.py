@@ -79,6 +79,8 @@ class GradedStepContext:
     _accumulate_cm: Callable | None
     emit_time_series: bool
     x_face_frame: Mapping[str, tuple[int, int]] | None = None  # Axis -> static (lo, hi) physical rows.
+    port_record_specs: tuple | None = None
+    port_acc_indices: tuple = ()
 
 
 @dataclass
@@ -128,8 +130,12 @@ def make_graded_step(
 ) -> Callable:
     """Bind graded kernels and measurements, then user hooks at each point."""
     from rfx.nonuniform import _update_e_nu_dispersive
-    from rfx.measurement.projector import port_table, project
-    port_specs = tuple((m[3], m[13], 'wire', m[:3]) for m in ctx.wp_meta) if ctx.use_wire_ports else ()
+    from rfx.measurement.projector import port_table, project, port_owners
+    port_specs = ctx.port_record_specs if ctx.port_record_specs is not None else tuple(
+        (m[3], m[13], 'wire', m[:3], i) for i, m in enumerate(ctx.wp_meta))
+    acc_indices = ctx.port_acc_indices if ctx.port_record_specs is not None else tuple(range(len(ctx.wp_meta)))
+    widths = tuple(3 if p[2] == 'wire' else 2 for p in port_specs)
+    offsets = tuple(sum(widths[:i]) for i in range(len(widths)))
     port_tables = {}
 
     def prepare(frame: GradedFrame):
@@ -347,7 +353,7 @@ def make_graded_step(
         # PASSIVE ports are unaffected either way: I reads H only, and the
         # source loop writes E only, at the SOURCE cell.
         frame.new_wire_sp = None
-        if ctx.use_wire_ports:
+        if port_specs:
             from rfx.core.dft_utils import port_dft_phase
             frame.new_wire_sp = []
             frame.port_samples = []
@@ -360,11 +366,14 @@ def make_graded_step(
                     port_tables[dtype] = port_table(ctx.grid, port_specs, nu=True,
                                                     boundary=ctx.curl_boundary, dtype=dtype)
             port_values = project(frame.st, port_tables[dtype])
+            frame.port_samples = [jnp.stack(tuple(port_values[offset:offset+width]))
+                                  for offset, width in zip(offsets, widths)]
             for p, (v_dft, i_dft, vinc_dft, v_port_dft) in enumerate(frame.carry.get("wire_sparams", ())):
-                v, i_val, v_port = port_values[3*p:3*p+3]
+                sample = frame.port_samples[acc_indices[p]]
+                v, i_val = sample[:2]
+                v_port = sample[2] if widths[acc_indices[p]] == 3 else v
                 phase = port_dft_phase(frame.step_idx, ctx.sp_freqs, ctx.dt, dtype=v_dft.dtype)
                 i_phase = port_dft_phase(frame.step_idx, ctx.sp_freqs, ctx.dt, 'H', dtype=i_dft.dtype)
-                frame.port_samples.append(jnp.stack((v, i_val, v_port)))
                 frame.new_wire_sp.append((
                     v_dft + v * phase,
                     i_dft + i_val * i_phase,
@@ -421,6 +430,7 @@ def make_graded_step(
                 jax.lax.stop_gradient(record.at[frame.step_idx].set(sample))
                 for record, sample in zip(frame.carry["dft_time_records"], frame.plane_samples))
         if "sparam_time_records" in frame.carry:
+            assert len(frame.carry["sparam_time_records"]) == len(frame.port_samples)
             new_carry["sparam_time_records"] = tuple(
                 jax.lax.stop_gradient(record.at[frame.step_idx].set(sample))
                 for record, sample in zip(frame.carry["sparam_time_records"], frame.port_samples))
@@ -468,6 +478,8 @@ def make_graded_step(
         advance(frame)
         return finish(frame)
 
+    step_fn.port_owners = port_owners(ctx.grid, port_specs, nu=True, boundary=ctx.curl_boundary)
+    step_fn.port_acc_indices = acc_indices
     return step_fn
 
 

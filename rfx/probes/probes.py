@@ -115,9 +115,8 @@ def _project_port(state, grid, port, *, wire, periodic=(False, False, False),
     else:
         live = (tuple(field_index(grid, port.position, port.component)),)
     nu = isinstance(grid, NonUniformGrid)
-    # Graded lumped probes use the runner's one-cell wire channel layout.
     mid = live[len(live)//2] if live else ()
-    table = port_table(grid, ((port.component, live, 'wire' if wire or nu else 'lumped', mid),),
+    table = port_table(grid, ((port.component, live, 'wire' if wire else 'lumped', mid, 0),),
                        nu=nu,
                        boundary=_port_curl_boundary(grid, periodic), dtype=state.ex.dtype)
     return project(state, table)

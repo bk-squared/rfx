@@ -1305,8 +1305,8 @@ def _runner_mutations(kind):
             (acc, ""),
             ("    attachments = {", "    def moved_current_moments(frame):\n"
              + acc + "\n    attachments = {"),
-            ("or ctx.use_lumped_sparams or ctx.use_wire_refplanes) else ()),",
-             "or ctx.use_lumped_sparams or ctx.use_wire_refplanes) else ())"
+            ("(port_specs or ctx.use_wire_refplanes) else ()),",
+             "(port_specs or ctx.use_wire_refplanes) else ())"
              " + (moved_current_moments,),"),
         ]
     else:
@@ -1377,6 +1377,7 @@ def _slot_case(kind, edits):
             core = make_step(*args, **kwargs)
             assert core.__module__ == step_name
 
+            @functools.wraps(core)
             def observed_core(*values, **options):
                 executed.append(core)
                 return core(*values, **options)
@@ -1407,6 +1408,7 @@ def _slot_witnesses(case, record_property):
     return vac, src_err
 
 
+@pytest.mark.source_scan
 @pytest.mark.parametrize("kind", ["uniform", "graded"])
 def test_unmutated_snapshot_slot_copy_is_green(kind, record_property):
     """The identical copy loader/binding path preserves both witnesses."""
@@ -1415,6 +1417,7 @@ def test_unmutated_snapshot_slot_copy_is_green(kind, record_property):
     assert src_err <= 1e-4, src_err
 
 
+@pytest.mark.source_scan
 @pytest.mark.parametrize("kind", ["uniform", "graded"])
 @pytest.mark.parametrize("mut", [
     "snapshot taken after the E update",
@@ -2405,18 +2408,25 @@ def test_a_declared_monitor_cannot_come_back_empty_from_any_lane():
     require_accumulated_current_moments(plain, emptied, "run")
 
 
+@pytest.mark.source_scan
 def test_every_user_facing_return_carries_the_backstop():
     """Static half of the same guarantee: each place ``run()`` / ``forward()``
     hands a result back calls the backstop, so a new return site cannot skip
     it without this count changing."""
     import re
-    text = (REPO_ROOT / "rfx/api/_execute.py").read_text()
-    returns = len(re.findall(
-        r'_warn_if_nonfinite_result\(_res, context="(?:run|forward)"\)', text))
-    guards = len(re.findall(
-        r'require_accumulated_current_moments\(self, _res, "(?:run|forward)"\)',
-        text))
-    assert returns == guards == 6, (returns, guards)
+    counts = {}
+    for path in sorted((REPO_ROOT / "rfx").rglob("*.py")):
+        text = path.read_text()
+        returns = len(re.findall(
+            r'_warn_if_nonfinite_result\(_res, context="(?:run|forward)"\)', text))
+        guards = len(re.findall(
+            r'require_accumulated_current_moments\(self, _res, "(?:run|forward)"\)',
+            text))
+        if returns or guards:
+            counts[path.relative_to(REPO_ROOT).as_posix()] = (returns, guards)
+    # Each file that hands a result back guards every such site.
+    assert all(r == g for r, g in counts.values()), counts
+    assert sum(r for r, _ in counts.values()) == 6, counts
 
 
 def test_the_traceable_moment_unpack_matches_the_host_one():

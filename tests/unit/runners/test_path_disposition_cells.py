@@ -447,7 +447,7 @@ def _run(sim, lane, feature, *, entry=None):
             kwargs.update(feature.run_kwargs(entry))
             return sim.run(**kwargs)
         kwargs["checkpoint"] = False
-        if entry == "fwd_distributed_nu":
+        if entry in ("fwd_distributed", "fwd_distributed_nu"):
             kwargs.update(distributed=True, devices=_devices())
         return sim.forward(**kwargs)
 
@@ -1053,6 +1053,7 @@ BASE_ROWS = {
     "run_subgridded": _EVERY_BASE | {("_refinement", "slab")},
     "run_adi": _EVERY_BASE | {("_solver", "")},
     "run_distributed": _EVERY_BASE,
+    "fwd_distributed": _EVERY_BASE,
     "run_distributed_nu": _EVERY_BASE | {("_dx_profile", "graded")},
     "fwd_uniform": _EVERY_BASE,
     "fwd_nonuniform": _EVERY_BASE | {("_dx_profile", "graded")},

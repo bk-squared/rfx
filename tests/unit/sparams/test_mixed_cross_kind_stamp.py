@@ -63,10 +63,10 @@ def test_cross_kind_s_is_the_float64_dft_of_both_records_at_the_physical_stamps(
     host = [np.zeros_like(a, dtype=np.complex128) for a in seen["spectra"]]
     v_ref = np.zeros_like(seen["v_ref"], dtype=np.complex128)
     for run, (channels, dt, freqs) in enumerate(seen["runs"]):
-        wire, msl = np.asarray(channels["wire0/V_I"]), np.asarray(channels["msl0/V_I"])
-        host[0][run, 0] = _host(wire[:, 0], freqs, dt, 1.0)
-        host[1][run, 0] = _host(wire[:, 1], freqs, dt, 0.5)
-        v_ref[run, 0] = _host(wire[:, 3], freqs, dt, 1.0)
+        msl = np.asarray(channels["msl0/V_I"])
+        host[0][run, 0] = _host(channels["port:0:mode:0/V"], freqs, dt, 1.0)
+        host[1][run, 0] = _host(channels["port:0:mode:0/I"], freqs, dt, 0.5)
+        v_ref[run, 0] = _host(channels["port:0:mode:0/V_ref"], freqs, dt, 1.0)
         host[2][run, 0] = _host(msl[:, 0], freqs, dt, 1.0)
         host[3][run, 0] = _host(msl[:, -1], freqs, dt, 0.5)
     for name, got, want in zip(("wire V", "wire I", "microstrip V", "microstrip I"),

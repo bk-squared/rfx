@@ -224,6 +224,7 @@ def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
                 # voltage V_port = sum_live(-E_c * d_par,c) and its count.
                 'live_cells': _live_cells,
                 'n_live': int(n_live),
+                'kind': 'wire', 'port_id': _port_index,
             })
         else:
             # Single-cell lumped port
@@ -276,16 +277,17 @@ def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
             # driven-column matrix (n, n, nf); uniform lumped forward
             # returns per-port diagonals (n, nf), squeezed for one port.
             # Leave the historical default (wire ports only) unchanged.
-            if lane == "fwd_nonuniform" and s_param_freqs is not None:
-                lumped_port_specs.append({
-                    'mid_i': i, 'mid_j': j, 'mid_k': k,
-                    'component': pe.component,
-                    'impedance': pe.impedance,
-                    'excite': bool(pe.excite),
-                    'direction': pe.direction or _auto_direction(pe.position),
-                    'live_cells': ((i, j, k),),
-                    'n_live': 1,
-                })
+            lumped_port_specs.append({
+                'mid_i': i, 'mid_j': j, 'mid_k': k,
+                'component': pe.component,
+                'impedance': pe.impedance,
+                'excite': bool(pe.excite),
+                'direction': pe.direction or _auto_direction(pe.position),
+                'live_cells': ((i, j, k),),
+                'n_live': 1,
+                'kind': 'lumped', 'port_id': _port_index,
+                'record_only': not (lane == 'fwd_nonuniform' and s_param_freqs is not None),
+            })
 
     # Preserve wire indices when explicit bins also include lumped ports.
     wire_port_specs.extend(lumped_port_specs)

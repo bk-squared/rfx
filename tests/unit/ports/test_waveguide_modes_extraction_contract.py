@@ -14,6 +14,7 @@ It also pins that the symbols ``rfx/eigenmode.py`` imports privately from
 from ``waveguide_port`` or eigenmode.py breaks.
 """
 
+import pytest
 import importlib
 
 import numpy as np
@@ -68,6 +69,7 @@ def test_eigenmode_private_deps_stay_in_waveguide_port():
     importlib.import_module("rfx.eigenmode")
 
 
+@pytest.mark.source_scan
 def test_extracted_module_has_no_rfx_dependencies():
     """The extracted module is pure NumPy (no FDTD/AD coupling) — keep it that
     way so it can never reintroduce an import cycle through waveguide_port."""

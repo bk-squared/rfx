@@ -41,7 +41,7 @@ Row = tuple[str, str]
 
 LANES = (
     "run_uniform", "run_nonuniform", "run_subgridded", "run_adi",
-    "run_distributed", "run_distributed_nu", "fwd_uniform", "fwd_nonuniform", "fwd_distributed_nu",
+    "run_distributed", "run_distributed_nu", "fwd_distributed", "fwd_uniform", "fwd_nonuniform", "fwd_distributed_nu",
     "fwd_adi",
 )
 
@@ -73,6 +73,7 @@ LANE_WORDS = {
     "run_distributed_nu": "graded multi-device run(devices=...)",
     "fwd_uniform": "uniform forward()",
     "fwd_nonuniform": "graded forward()",
+    "fwd_distributed": "forward(distributed=True)",
     "fwd_distributed_nu": "forward(distributed=True)",
     "fwd_adi": "ADI forward()",
 }
@@ -798,6 +799,11 @@ _CALCULATOR_ROWS = {
 for _calculator, _rows in _CALCULATOR_ROWS.items():
     for _row in _rows:
         _ADMITTED_ON[_row] = _ADMITTED_ON[_row] | {_calculator}
+
+# Both uniform distributed entries reach the same runner and admission.
+for _row, _lanes in _ADMITTED_ON.items():
+    _ADMITTED_ON[_row] = (_lanes - {"fwd_distributed"}) | (
+        {"fwd_distributed"} if "run_distributed" in _lanes else set())
 
 ADMITS: dict[str, frozenset] = {
     lane: frozenset(row for row, lanes in _ADMITTED_ON.items() if lane in lanes)

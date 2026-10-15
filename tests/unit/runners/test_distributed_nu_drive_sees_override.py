@@ -615,6 +615,7 @@ def _main_tree(tmp_path_factory):
     return tree
 
 
+@pytest.mark.source_scan
 def test_field_sources_and_runs_without_an_override_are_main_bit_for_bit(tmp_path_factory):
     main = _main_tree(tmp_path_factory)
     results = {}

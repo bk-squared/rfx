@@ -13,6 +13,8 @@ from pathlib import Path
 
 import pytest
 
+from scripts.ci.source_scan import STAGE2_EXCLUDED_MARKERS
+
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location("gate_test_selector", ROOT / "scripts/ci/select_gate_tests.py")
 selector = importlib.util.module_from_spec(SPEC)
@@ -294,6 +296,9 @@ def test_selected_stage_markers_match_pyproject():
         return {term.removeprefix("not ") for term in terms}
 
     assert excluded_markers(stage_expression) == excluded_markers(default_expression)
+    assert excluded_markers(stage_expression) == STAGE2_EXCLUDED_MARKERS
+    registered = config["tool"]["pytest"]["ini_options"]["markers"]
+    assert any(marker.startswith("source_scan:") for marker in registered)
 
 
 @pytest.mark.parametrize("use_head", [False, True])
@@ -333,6 +338,177 @@ def test_rename_preserves_old_imports_and_central_expansion(tmp_path, use_head):
     paths = selector.changed_paths(base, "HEAD" if use_head else None, repo)
     assert set(selector.select_tests(paths, sources, {}, central_paths=True).files) == set(sources)
     assert set(paths) == {"rfx/core/a.py", "rfx/other/a2.py"}
+
+
+def test_function_move_selects_both_real_source_scans_without_import_matches():
+    paths = {
+        "tests/unit/farfield/test_current_moment_monitor.py":
+            "test_every_user_facing_return_carries_the_backstop",
+        "tests/unit/materials/test_sheet_impedance.py":
+            "test_every_fence_in_the_source_is_pinned",
+    }
+    sources = {path: (ROOT / path).read_text() for path in paths}
+    changed = ["rfx/core/source_owner.py", "rfx/core/moved_owner.py"]
+    modules = {selector.module_name(path) for path in changed}
+    assert all(not selector.directly_imports(source, modules) for source in sources.values())
+    result = selector.select_tests(changed, sources, {})
+    for path, name in paths.items():
+        assert f"{path}::{name}" in result.files
+        assert path not in result.files
+
+
+def test_source_scans_are_not_added_without_rfx_changes():
+    path = "tests/unit/farfield/test_current_moment_monitor.py"
+    sources = {path: (ROOT / path).read_text()}
+    result = selector.select_tests(["docs/page.md", "scripts/helper.py"], sources, {})
+    assert result.files == ()
+    assert "source-scan tests added: 0 tests in 0 files, recorded 0.000000 s" in result.summary()
+
+
+@pytest.mark.parametrize("edited", [False, True])
+def test_whole_file_selection_wins_over_source_scan_node_ids(edited):
+    path = "tests/unit/test_scan.py"
+    source = ('import pytest\nimport rfx.core.changed\n'
+              '@pytest.mark.source_scan\ndef test_scan():\n    return "rfx/api/a.py"\n')
+    changed = ["rfx/core/changed.py", *([path] if edited else [])]
+    result = selector.select_tests(changed, {path: source}, {f"{path}::test_scan": 5})
+    assert result.files == (path,)
+    assert result.selected_seconds == 5
+    assert result.source_scan_count == 0
+    assert result.source_scan_seconds == 0
+
+
+def test_source_scan_node_ids_bypass_budget_and_account_for_parameters():
+    path = "tests/unit/test_scan.py"
+    source = ('import pytest\nimport rfx.core.changed\n'
+              '@pytest.mark.source_scan\ndef test_scan():\n    return "rfx/api/a.py"\n'
+              'def test_plain():\n    pass\n')
+    durations = {f"{path}::test_scan[a]": 3, f"{path}::test_scan[b]": 4,
+                 f"{path}::test_plain": 500}
+    result = selector.select_tests(["rfx/core/changed.py"], {path: source}, durations)
+    assert result.files == (f"{path}::test_scan",)
+    assert not result.excluded
+    assert result.partly_added == {path: 507}
+    assert result.selected_seconds == result.source_scan_seconds == 7
+    assert result.not_run_count == 1
+    assert result.not_run_seconds == 500
+    assert "source-scan tests added: 1 tests in 1 files, recorded 7.000000 s" in result.summary()
+    assert "selected-tests: 1 files, recorded 7.000000 s" in result.summary()
+    assert "excluded by >400 s rule: 0 files" in result.summary()
+    assert "partly added by node id: 1 files" in result.summary()
+    assert "source-scan tests that run: 1 tests, recorded 7.000000 s" in result.summary()
+
+
+@pytest.mark.parametrize("imports_changed", [False, True])
+def test_module_source_scan_mark_adds_whole_file_even_over_budget(imports_changed):
+    path = "tests/unit/test_scan.py"
+    source = ('import pytest\npytestmark = [pytest.mark.source_scan]\n'
+              'def test_scan():\n    return "rfx/api/a.py"\n')
+    if imports_changed:
+        source = "import rfx.core.changed\n" + source
+    result = selector.select_tests(["rfx/non_python_data", "rfx/core/changed.py"], {path: source},
+                                   {f"{path}::test_scan": 401})
+    assert result.files == (path,)
+    assert result.source_scan_count == result.source_scan_files == 1
+    assert result.source_scan_seconds == result.selected_seconds == 401
+    assert result.not_run_count == 0
+    assert not result.excluded
+
+
+def test_class_source_scan_mark_selects_method_nodes_and_excludes_contracts():
+    source = ('import pytest\n@pytest.mark.source_scan\nclass TestScanner:\n'
+              '    def test_scan(self):\n        return "rfx/api/a.py"\n')
+    path = "tests/unit/test_scan.py"
+    result = selector.select_tests(["rfx/new.py"], {
+        path: source, "tests/contracts/test_scan.py": source,
+    }, {})
+    assert result.files == (f"{path}::TestScanner::test_scan",)
+    assert result.source_scan_count == result.source_scan_files == 1
+
+
+def test_cli_emits_source_scan_node_ids(monkeypatch, tmp_path, capsys):
+    durations = tmp_path / "durations.json"
+    durations.write_text("{}")
+    monkeypatch.setattr(sys, "argv", ["select_gate_tests.py", "--base", "base",
+                                     "--durations", str(durations)])
+    monkeypatch.setattr(selector.subprocess, "check_output", lambda *a, **k: str(ROOT))
+    monkeypatch.setattr(selector, "changed_paths", lambda *a: ["rfx/new.py"])
+    monkeypatch.setattr(selector, "read_test_sources", lambda *a: {
+        "tests/unit/test_scan.py": 'import pytest\n@pytest.mark.source_scan\n'
+                                   'def test_scan():\n    return "rfx/api/a.py"\n',
+    })
+    assert selector.main() == 0
+    output = capsys.readouterr()
+    assert output.out == "tests/unit/test_scan.py::test_scan\n"
+    assert "source-scan tests added: 1 tests in 1 files" in output.err
+
+
+@pytest.mark.parametrize("whole_file", [False, True])
+def test_source_scan_summary_splits_running_and_deselected_tests(whole_file):
+    path = "tests/unit/test_scan.py"
+    sources = {path: ('import pytest\n'
+                     '@pytest.mark.source_scan\ndef test_run():\n    open("rfx/api/a.py")\n'
+                     '@pytest.mark.slow\n@pytest.mark.source_scan\n'
+                     'def test_slow():\n    open("rfx/api/a.py")\n')}
+    if whole_file:
+        sources[path] = "import rfx.core.changed\n" + sources[path]
+    result = selector.select_tests(["rfx/core/changed.py"], sources, {
+        f"{path}::test_run[a]": 3, f"{path}::test_run[b]": 4,
+        f"{path}::test_slow": 9,
+    })
+    assert result.source_scan_run_count == result.source_scan_deselected_count == 1
+    assert result.source_scan_run_seconds == 7
+    assert result.source_scan_deselected_seconds == 9
+    assert "source-scan tests that run: 1 tests, recorded 7.000000 s" in result.summary()
+    assert "source-scan tests deselected by stage-2 markers: 1 tests, recorded 9.000000 s" in result.summary()
+    assert result.files == ((path,) if whole_file else (f"{path}::test_run", f"{path}::test_slow"))
+
+
+@pytest.mark.parametrize("scope", ["module", "class"])
+def test_selector_summary_inherits_stage2_exclusion_marks(scope):
+    path = "tests/unit/test_scan.py"
+    if scope == "module":
+        source = ('import pytest\npytestmark = [pytest.mark.source_scan, pytest.mark.gpu]\n'
+                  'def test_scan():\n    open("rfx/api/a.py")\n')
+        node = f"{path}::test_scan"
+    else:
+        source = ('import pytest\n@pytest.mark.source_scan\n@pytest.mark.docs_consistency\n'
+                  'class TestScan:\n    def test_scan(self):\n        open("rfx/api/a.py")\n')
+        node = f"{path}::TestScan::test_scan"
+    result = selector.select_tests(["rfx/new.py"], {path: source}, {node: 5})
+    assert result.source_scan_run_count == result.source_scan_run_seconds == 0
+    assert result.source_scan_deselected_count == 1
+    assert result.source_scan_deselected_seconds == 5
+
+
+def test_summary_counts_marked_tests_in_an_edited_file_without_rfx_changes():
+    path = "tests/unit/test_scan.py"
+    source = ('import pytest\n@pytest.mark.source_scan\ndef test_run():\n'
+              '    open("rfx/api/a.py")\n'
+              '@pytest.mark.source_scan\n@pytest.mark.slow\ndef test_slow():\n'
+              '    open("rfx/api/a.py")\n')
+    result = selector.select_tests([path], {path: source}, {
+        f"{path}::test_run": 3, f"{path}::test_slow": 4,
+    })
+    assert result.files == (path,)
+    assert result.source_scan_count == 0
+    assert result.source_scan_run_count == result.source_scan_deselected_count == 1
+    assert result.source_scan_run_seconds == 3
+    assert result.source_scan_deselected_seconds == 4
+
+
+def test_local_shell_passes_selected_node_ids_unchanged(tmp_path):
+    node = "tests/unit/test_scan.py::TestScanner::test_scan"
+    (tmp_path / "files").write_text(node + "\n")
+    stage = (ROOT / "scripts/ci/local.sh").read_text().split("selected_tests=()", 1)[1]
+    read_array = "selected_tests=()" + stage.split("# Bash 3.2", 1)[0]
+    result = subprocess.run(
+        ["bash", "-uc", 'selection_dir="$1"\n' + read_array
+         + 'stage2_pytest() { printf "%s\\n" "${@:2}"; }\n'
+         + 'stage2_pytest selected "${selected_tests[@]}"', "bash", str(tmp_path)],
+        capture_output=True, text=True, check=True, timeout=10,
+    )
+    assert result.stdout.splitlines() == [node]
 
 
 @pytest.mark.parametrize("status", [0, 1, 2, 3, 4, 5, 130])

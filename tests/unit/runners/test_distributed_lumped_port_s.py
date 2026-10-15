@@ -319,12 +319,14 @@ def _assert_shared_step_order(source):
                        for node in ast.walk(step)), "drive-dependent step"
 
 
+@pytest.mark.source_scan
 def test_shared_step_order():
     import inspect
     from rfx.runners import distributed_v2 as runner
     _assert_shared_step_order(inspect.getsource(runner.run_distributed))
 
 
+@pytest.mark.source_scan
 def test_drive_only_order_mutation(monkeypatch):
     import inspect
     from rfx.runners import distributed_v2 as runner

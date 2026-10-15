@@ -81,6 +81,7 @@ def test_bundle_tamper_extra_file_and_symlink_are_rejected(tmp_path):
         bundle.validate_bundle(root)
 
 
+@pytest.mark.source_scan
 def test_export_keeps_immutable_releases_but_removes_stale_content(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     public = repo / "docs/public"
@@ -101,6 +102,7 @@ def test_export_keeps_immutable_releases_but_removes_stale_content(tmp_path, mon
     assert not (destination / "untracked-secret.md").exists()
 
 
+@pytest.mark.source_scan
 def test_export_rejects_source_symlink_before_mutation(tmp_path):
     repo = tmp_path / "repo"
     public = repo / "docs/public"
@@ -181,6 +183,7 @@ def test_valid_identity_resolves_within_fixed_parent(tmp_path, url, channel, pre
     assert destination == parent / prefix
 
 
+@pytest.mark.source_scan
 @pytest.mark.parametrize("prefix", ["../rfx", "rfx/../../outside", "/rfx", "rfx/versions/..", "other"])
 def test_export_destination_cannot_escape_fixed_parent(tmp_path, prefix):
     sentinel = tmp_path / "keep.txt"
@@ -190,6 +193,7 @@ def test_export_destination_cannot_escape_fixed_parent(tmp_path, prefix):
     assert sentinel.read_text() == "keep"
 
 
+@pytest.mark.source_scan
 def test_export_destination_rejects_containment_escape_through_symlink(tmp_path):
     parent = tmp_path / "fixed-snapshot"
     parent.mkdir()
@@ -202,6 +206,7 @@ def test_export_destination_rejects_containment_escape_through_symlink(tmp_path)
     assert (outside / "keep.txt").read_text() == "keep"
 
 
+@pytest.mark.source_scan
 def test_direct_export_rejects_traversal_before_reading_or_mutating(tmp_path):
     outside = tmp_path / "outside"
     outside.mkdir()

@@ -1149,7 +1149,8 @@ FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
         (__name__, "test_fence_adi_forward"),
     ("rfx/api/_execute.py", "forward", "distributed non-uniform forward()"):
         (__name__, "test_fence_distributed_nonuniform_forward"),
-    ("rfx/api/_execute.py", "run", "distributed multi-device run()"):
+    ("rfx/runners/_distributed_entry.py", "execute_distributed",
+     "distributed multi-device run()"):
         (__name__, "test_fence_distributed_multidevice_run"),
     ("rfx/api/_execute.py", "run", "ADI run()"):
         (__name__, "test_fence_adi_run"),
@@ -1303,6 +1304,7 @@ def _scan_source_fences():
     return found
 
 
+@pytest.mark.source_scan
 def test_every_fence_in_the_source_is_pinned():
     """Every #677 lane fence in ``rfx/`` is named by ``FENCE_REGISTRY``.
 

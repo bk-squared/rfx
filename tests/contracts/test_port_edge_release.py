@@ -317,7 +317,7 @@ def test_c6_other_refusals(monkeypatch,refusal):
         with pytest.raises(TypeError,match="unexpected keyword argument 'pec_occupancy_override'"):
             sim.run(**kwargs)
     elif refusal=='distributed':
-        with pytest.raises(NotImplementedError,match='only for non-uniform meshes'):
+        with pytest.raises(NotImplementedError,match="takes none of forward\\(\\)'s override or design arguments"):
             sim.forward(distributed=True,**kwargs)
     elif refusal=='adi':
         sim._solver='adi'

@@ -113,10 +113,12 @@ def measure_scene(graded, model, steps=STEPS):
                      sources=[make_port_source(grid, port, materials, steps)],
                      lumped_port_sparams=[spec], flux_monitors=build_flux_monitor_cfgs(sim, grid, steps))
         monitors = result.flux_monitors
-    power_channels = np.asarray(result.sparam_time_records[0])
-    time = np.arange(len(power_channels))
-    voltage = np.exp(-2j*np.pi*FREQS[:, None]*(time+1)*grid.dt) @ power_channels[:, 0] * grid.dt
-    current = np.exp(-2j*np.pi*FREQS[:, None]*(time+.5)*grid.dt) @ power_channels[:, 1] * grid.dt
+    record = result.sparam_time_records[0]
+    v_t, i_t = np.asarray(record['V']), np.asarray(record['I'])
+    power_channels = np.stack([v_t, i_t], axis=1)  # columns V, I by name
+    time = np.arange(len(v_t))
+    voltage = np.exp(-2j*np.pi*FREQS[:, None]*(time+1)*grid.dt) @ v_t * grid.dt
+    current = np.exp(-2j*np.pi*FREQS[:, None]*(time+.5)*grid.dt) @ i_t * grid.dt
     power = .5*np.real(voltage*np.conj(current))
     net, expected = np.zeros((3, 3)), np.zeros((3, 3))
     face, interior, residual = [], [], []
