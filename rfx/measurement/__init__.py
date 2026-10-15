@@ -45,8 +45,10 @@ from rfx.measurement.port_time import (
     PortTimeRecord,
 )
 from rfx.measurement.settling import (
+    attach_run_settling_witness,
     settling_db_from_named_records,
     settling_db_from_port_records,
+    warn_postrun_energy_witness,
 )
 from rfx.measurement.time_records import (
     init_graded_records,
@@ -84,6 +86,7 @@ from rfx.measurement.waveguide_s import (
 __all__ = [
     "admit_waveguide_planes",
     "assemble_graded_result",
+    "attach_run_settling_witness",
     "AUTO_END",
     "build_measurement_plan",
     "decay_stop_first",
@@ -131,5 +134,6 @@ __all__ = [
     "update_waveguide_port_probe",
     "warn_dc_floor",
     "waveguide_plane_positions",
+    "warn_postrun_energy_witness",
     "with_graded_records",
 ]

@@ -44,10 +44,8 @@
         "_ExecuteMixin._forward_from_materials"
       ],
       "G": [
-        "_ExecuteMixin._attach_run_settling_witness",
         "_ExecuteMixin._forward_from_materials",
         "_ExecuteMixin._run_adi_from_materials",
-        "_ExecuteMixin._warn_postrun_energy_witness",
         "_ExecuteMixin.forward",
         "_ExecuteMixin.run",
         "_staged_by_an_outer_trace"
