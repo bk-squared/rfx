@@ -45,10 +45,6 @@ def test_distributed_admits_image_before_kernel(graded, entry, skip):
     else:
         kw["compute_s_params"] = False
     assert len(kw["devices"]) == 2
-    if entry == "forward" and not graded:
-        with pytest.raises(NotImplementedError, match="only for non-uniform meshes"):
-            sim.forward(**kw)
-        return
     sim.add_source((.002, .003, .002), "ez", amplitude_kind="field")
     sim.add_probe((.003, .004, .003), "ez")
     result = getattr(sim, entry)(**kw)
