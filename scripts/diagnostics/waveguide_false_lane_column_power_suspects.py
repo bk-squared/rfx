@@ -197,7 +197,7 @@ def analyse() -> dict:
     import jax.numpy as jnp
 
     import tests._waveguide_chain_battery_fixture as F
-    from rfx.sources.waveguide_port import _compute_beta, _compute_mode_impedance
+    from rfx.model.waveguide_modes import _compute_beta, _compute_mode_impedance
 
     fixture = json.loads(FIXTURE.read_text())
     freqs = np.asarray(fixture["fixture"]["freqs_hz"], dtype=float)

@@ -344,6 +344,46 @@ def _decimation_factors(target: int) -> list[int]:
     return []
 
 
+def _ring_down_modes(series, dt, f_min, f_max, source_decay_time, **matrix_pencil_kwargs):
+    """Fit a mean-free ring-down, capping pencil size by truncating time."""
+    series = np.asarray(series).ravel()
+    start = min(int(np.ceil(source_decay_time / dt)), max(len(series) - 20, 0))
+    windowed = series[start:]
+    if not len(windowed):
+        return []
+    windowed = windowed - np.mean(windowed)
+    plan_kwargs = {
+        "decimate": matrix_pencil_kwargs.get("decimate", "auto"),
+        "pencil_parameter": matrix_pencil_kwargs.get("pencil_parameter", 0.33),
+        "max_modes": matrix_pencil_kwargs.get("max_modes", 50),
+    }
+    factors, kept = _decimation_plan(len(windowed), dt, f_max, **plan_kwargs)
+    n_keep = len(windowed)
+
+    def capacity(n):
+        columns = _pencil_columns(n, plan_kwargs["pencil_parameter"])
+        return min(plan_kwargs["max_modes"] + 1, columns, n - columns)
+
+    while kept > 10_000:
+        candidate = 10_000
+        for factor in reversed(factors):
+            candidate = (candidate + 2 * _FIR_HALF_OUTPUT_SAMPLES) * factor
+        # At fixed capacity, shortening cannot admit another FIR stage.
+        # The next possible solution is this inverse bound or the last
+        # length with lower capacity (which can admit additional stages).
+        low, high = 10_000, n_keep
+        required = capacity(n_keep)
+        while low + 1 < high:
+            middle = (low + high) // 2
+            if capacity(middle) < required:
+                low = middle
+            else:
+                high = middle
+        n_keep = max(candidate, low)
+        factors, kept = _decimation_plan(n_keep, dt, f_max, **plan_kwargs)
+    return matrix_pencil(windowed[:n_keep], dt, f_min, f_max, **matrix_pencil_kwargs)
+
+
 def matrix_pencil_from_probe(
     time_series: np.ndarray,
     dt: float,
@@ -374,34 +414,17 @@ def matrix_pencil_from_probe(
     freq_range : (f_min, f_max) in Hz
     source_decay_time : float
         Time at which source has decayed (seconds).
+    max_samples : ignored, deprecated
+        Unfiltered subsampling was removed because it could alias modes.
     """
-    ts = np.asarray(time_series).ravel()
-    start_idx = int(np.ceil(source_decay_time / dt))
-    start_idx = min(start_idx, max(len(ts) - 20, 0))
-    windowed = ts[start_idx:]
-    windowed = windowed - np.mean(windowed)
-
-    if len(windowed) < 20:
-        return []
-
-    f_min, f_max = freq_range
-
-    # FFT-based bandpass filter to isolate modes in freq_range.
-    # This removes DC surface charge artifacts and out-of-band modes
-    # that can overwhelm the target resonance (especially at fine dx).
-    fft_data = np.fft.rfft(windowed)
-    fft_freqs = np.fft.rfftfreq(len(windowed), d=dt)
-    bp_mask = (fft_freqs >= f_min * 0.8) & (fft_freqs <= f_max * 1.2)
-    windowed = np.fft.irfft(fft_data * bp_mask, n=len(windowed))
-
-    # Subsample for matrix pencil speed (SVD scales as N³)
-    max_samples = kwargs.pop("max_samples", 3000)
-    if len(windowed) > max_samples:
-        step = len(windowed) // max_samples
-        windowed = windowed[::step][:max_samples]
-        dt = dt * step
-
-    return matrix_pencil(windowed, dt, f_min, f_max, **kwargs)
+    if "max_samples" in kwargs:
+        kwargs.pop("max_samples")
+        warnings.warn(
+            "max_samples is ignored because unfiltered subsampling was removed "
+            "to prevent aliased modes absent from the record.",
+            DeprecationWarning, stacklevel=2,
+        )
+    return _ring_down_modes(time_series, dt, *freq_range, source_decay_time, **kwargs)
 
 
 HarminvMode = MatrixPencilMode

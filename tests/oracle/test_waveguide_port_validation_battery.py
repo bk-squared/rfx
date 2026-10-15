@@ -790,10 +790,8 @@ def test_source_directionality_early_time():
 # This test is pure algebra — no FDTD run — so it's cheap to leave on.
 
 def test_below_cutoff_z_mode_no_nan():
-    from rfx.sources.waveguide_port import (
-        _compute_mode_impedance,
-        _extract_global_waves,
-    )
+    from rfx.model.waveguide_modes import _compute_mode_impedance
+    from rfx.measurement.waveguide_s import _extract_global_waves
 
     # WR-90-like f_cutoff = 13.12 GHz (TE20 cutoff); probe a frequency
     # below that to exercise the evanescent branch.

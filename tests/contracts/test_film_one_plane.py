@@ -310,7 +310,7 @@ CONSTRUCTOR_EXCEPTIONS = {
     ('rfx/sources/tfsf_2d.py', '_update_h_tmz'): (1, 'H-only operand: no electric conductivity consumed'),
     ('rfx/sources/tfsf_2d.py', 'apply_tfsf_2d_h'): (1, 'H-only operand: no electric conductivity consumed'),
     ('rfx/sources/tfsf_oblique_open.py', 'apply_methodB_h'): (1, 'H-only operand: no electric conductivity consumed'),
-    ('rfx/sources/waveguide_port.py', 'apply_waveguide_port_h'): (1, 'H-only operand: no electric conductivity consumed'),
+    ('rfx/stepping/waveguide_source.py', 'apply_waveguide_port_h'): (1, 'H-only operand: no electric conductivity consumed'),
     ('rfx/stepping/slab.py', '_vacuum_dispersion_values'): (1, 'vacuum reference, with sigma explicitly zero'),
     ('rfx/subgridding/disjoint_3d.py', ''): (1, 'H-only operand: no electric conductivity consumed'),
     ('rfx/subgridding/sbp_sat_1d.py', '_update_h_1d'): (1, 'H-only operand: no electric conductivity consumed'),

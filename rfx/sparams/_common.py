@@ -1469,7 +1469,7 @@ def s21_phase_residual_deg_rms(
         meta["reason"] = "reference-plane separation is not a positive length"
         return None, meta
 
-    from rfx.sources.waveguide_port import _compute_beta
+    from rfx.model.waveguide_modes import _compute_beta
 
     beta = np.real(np.asarray(
         _compute_beta(jnp.asarray(f), f_c, dt=float(dt), dx=float(dx)),

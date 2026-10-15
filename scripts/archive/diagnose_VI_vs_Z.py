@@ -22,17 +22,19 @@ _ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_ROOT))
 
 from rfx.sources import waveguide_port as wg  # noqa: E402
+import rfx.measurement.waveguide_s as _wg_move_waveguide_s
+import rfx.model.waveguide_modes as _wg_move_waveguide_modes
 
 # Patch _extract_global_waves to capture V_dft, I_dft, Z_mode
 _CAPS: list[dict] = []
-_orig = wg._extract_global_waves
+_orig = _wg_move_waveguide_s._extract_global_waves
 
 
 def _capture_extract(cfg, voltage_dft, current_dft):
-    Z = wg._compute_mode_impedance(
+    Z = _wg_move_waveguide_modes._compute_mode_impedance(
         cfg.freqs, cfg.f_cutoff, cfg.mode_type, dt=cfg.dt, dx=cfg.dx
     )
-    I_corr = wg._co_located_current_spectrum(cfg, current_dft)
+    I_corr = _wg_move_waveguide_s._co_located_current_spectrum(cfg, current_dft)
     _CAPS.append({
         "ref_x_m": float(cfg.reference_x_m),
         "direction": cfg.direction,
@@ -45,7 +47,7 @@ def _capture_extract(cfg, voltage_dft, current_dft):
     return _orig(cfg, voltage_dft, current_dft)
 
 
-wg._extract_global_waves = _capture_extract
+_wg_move_waveguide_s._extract_global_waves = _capture_extract
 
 sys.path.insert(0, str(_ROOT / "examples" / "crossval"))
 from importlib import import_module  # noqa: E402

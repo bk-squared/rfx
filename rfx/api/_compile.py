@@ -28,12 +28,8 @@ from rfx.materials.thin_conductor import (
     conductor_footprint,
 )
 from rfx.nonuniform import NonUniformGrid  # noqa: F401
-from rfx.sources.waveguide_port import (
-    WaveguidePort,
-    _node_span_to_cell_span,
-    init_waveguide_port,
-    init_multimode_waveguide_port,
-)
+from rfx.sources.waveguide_port import WaveguidePort, init_waveguide_port, init_multimode_waveguide_port
+from rfx.model.waveguide_modes import _node_span_to_cell_span
 from rfx.api._spec import _WaveguidePortEntry  # noqa: F401
 
 # Type aliases mirrored from rfx/api/__init__.py (used in moved signatures).

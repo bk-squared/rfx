@@ -461,11 +461,8 @@ class TestNearCutoffRobustness:
         With freq_max=7 GHz, only TE10 barely propagates; others are below cutoff.
         Mode profiles must be finite and properly normalized.
         """
-        from rfx.sources.waveguide_port import (
-            solve_rectangular_modes,
-            _te_mode_profiles,
-            _tm_mode_profiles,
-        )
+        from rfx.sources.waveguide_port import solve_rectangular_modes
+        from rfx.model.waveguide_modes import _te_mode_profiles, _tm_mode_profiles
         a, b = 22.86e-3, 10.16e-3  # WR-90
         modes = solve_rectangular_modes(a, b, freq_max=7e9, n_modes=3)
 
@@ -558,7 +555,7 @@ class TestNearCutoffRobustness:
         Even though their cutoff frequencies coincide, their spatial profiles
         must remain linearly independent (zero overlap integral).
         """
-        from rfx.sources.waveguide_port import _te_mode_profiles
+        from rfx.model.waveguide_modes import _te_mode_profiles
         a = b = 20e-3
         n_pts = 30
         y_coords = np.linspace(0.5e-4, a - 0.5e-4, n_pts)

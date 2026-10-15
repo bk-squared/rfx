@@ -80,12 +80,8 @@ import rfx  # noqa: E402
 from rfx.api._sparams import _assert_nu_shift_span_in_one_grading_zone  # noqa: E402
 from rfx.nonuniform import interior_cells  # noqa: E402
 from rfx.runners.nonuniform import _build_waveguide_port_config_nu  # noqa: E402
-from rfx.sources.waveguide_port import (  # noqa: E402
-    C0_LOCAL,
-    _compute_beta,
-    _compute_mode_impedance,
-    waveguide_plane_positions,
-)
+from rfx.sources.waveguide_port import C0_LOCAL, waveguide_plane_positions
+from rfx.model.waveguide_modes import _compute_beta, _compute_mode_impedance
 
 OUT_PATH = REPO / "tests" / "fixtures" / "waveguide_nu_beta_cell_size_envelope.json"
 FIXTURE_MODULE = "tests/unit/autodiff/test_waveguide_nu_flux_ad.py"

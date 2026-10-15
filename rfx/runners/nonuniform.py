@@ -16,7 +16,7 @@ from rfx.core.yee import MaterialArrays, add_lumped_eps, permittivity_without_lu
 from rfx.materials.debye import init_debye
 from rfx.materials.lorentz import init_lorentz
 from rfx.model.overrides import apply_material_overrides
-from rfx.sources.waveguide_port import _node_span_to_cell_span
+from rfx.model.waveguide_modes import _node_span_to_cell_span
 from rfx.sources.port_drive import port_drive_waveform
 from rfx.nonuniform import (
     NonUniformGrid,

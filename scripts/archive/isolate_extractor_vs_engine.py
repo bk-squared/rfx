@@ -41,12 +41,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)) + "/..")
 
 from rfx.api import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
-from rfx.sources.waveguide_port import (
-    extract_waveguide_port_waves,
-    _compute_beta,
-    _compute_mode_impedance,
-    _co_located_current_spectrum,
-)
+from rfx.sources.waveguide_port import extract_waveguide_port_waves
+from rfx.model.waveguide_modes import _compute_beta, _compute_mode_impedance
+from rfx.measurement.waveguide_s import _co_located_current_spectrum
 
 C0 = 2.998e8
 

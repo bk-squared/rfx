@@ -45,8 +45,9 @@ def _patch_analytic_beta_z():
     """Force `_compute_beta` and `_compute_mode_impedance` to ignore
     dt/dx and use the analytic continuous-medium formulas."""
     import rfx.sources.waveguide_port as wp
-    orig_beta = wp._compute_beta
-    orig_z = wp._compute_mode_impedance
+    import rfx.model.waveguide_modes as _wg_move_waveguide_modes
+    orig_beta = _wg_move_waveguide_modes._compute_beta
+    orig_z = _wg_move_waveguide_modes._compute_mode_impedance
 
     def patched_beta(freqs, f_cutoff, *, dt=0.0, dx=0.0):
         return orig_beta(freqs, f_cutoff, dt=0.0, dx=0.0)
@@ -54,8 +55,8 @@ def _patch_analytic_beta_z():
     def patched_z(freqs, f_cutoff, mode_type, *, dt=0.0, dx=0.0):
         return orig_z(freqs, f_cutoff, mode_type, dt=0.0, dx=0.0)
 
-    wp._compute_beta = patched_beta
-    wp._compute_mode_impedance = patched_z
+    _wg_move_waveguide_modes._compute_beta = patched_beta
+    _wg_move_waveguide_modes._compute_mode_impedance = patched_z
 
 
 def _build_pec_short(cv, mode_profile):

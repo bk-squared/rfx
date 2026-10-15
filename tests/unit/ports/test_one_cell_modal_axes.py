@@ -5,11 +5,9 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx.sources._waveguide_modes import _cell_centred_gradient, _shift_profile_to_dual
+from rfx.model.waveguide_mode_solver import _cell_centred_gradient, _shift_profile_to_dual
 from rfx.sources._laplace import _solve_laplace_2d
-from rfx.sources.waveguide_port import (
-    _discrete_te_mode_profiles, _discrete_tm_mode_profiles,
-)
+from rfx.model.waveguide_modes import _discrete_te_mode_profiles, _discrete_tm_mode_profiles
 
 
 @pytest.mark.parametrize('axis', [0, 1])
@@ -134,7 +132,7 @@ def test_scalar_eigenmode_vector_conversion_singleton(axis, kind):
 @pytest.mark.parametrize('axis', [0, 1])
 @pytest.mark.parametrize('kind', ['TE', 'TM'])
 def test_analytic_profiles_singleton_spacing_fallback(axis, kind):
-    from rfx.sources.waveguide_port import _te_mode_profiles, _tm_mode_profiles
+    from rfx.model.waveguide_modes import _te_mode_profiles, _tm_mode_profiles
     widths = [np.full(7, .001), np.array([.001])]
     if axis == 0:
         widths.reverse()

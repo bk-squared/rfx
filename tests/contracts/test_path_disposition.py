@@ -54,7 +54,7 @@ KERNEL_CALLERS = {
     "rfx/sparams/mixed.py:compute_mixed_s_matrix": "mixed_s_matrix",
     "rfx/topology.py:topology_optimize": "topology_optimize",
     "rfx/sparams/waveguide.py:_compute_waveguide_s_matrix_nu": "waveguide_s_matrix",
-    **{f"rfx/sources/waveguide_port.py:{name}": "internal to waveguide_s_matrix" for name in (
+    **{f"rfx/measurement/waveguide_s.py:{name}": "internal to waveguide_s_matrix" for name in (
         "extract_waveguide_s_matrix", "extract_waveguide_s_matrix_flux",
         "extract_waveguide_s_params_normalized", "extract_multimode_s_matrix",
         "extract_multimode_s_matrix_flux")},

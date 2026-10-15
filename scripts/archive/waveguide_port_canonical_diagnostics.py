@@ -24,12 +24,9 @@ from rfx.api import Simulation
 from rfx.core.yee import init_materials as _init_vacuum_materials
 from rfx.geometry.csg import Box
 from rfx.simulation import run as run_simulation
-from rfx.sources.waveguide_port import (
-    _compute_beta,
-    _extract_port_waves,
-    _shift_modal_waves,
-    waveguide_plane_positions,
-)
+from rfx.model.waveguide_modes import _compute_beta
+from rfx.measurement.waveguide_s import _extract_port_waves, _shift_modal_waves
+from rfx.sources.waveguide_port import waveguide_plane_positions
 
 
 FREQS_HZ = np.linspace(4.5e9, 8.0e9, 20)

@@ -28,8 +28,9 @@ MU_0 = 4.0 * np.pi * 1e-7
 VARIANT = sys.argv[1] if len(sys.argv) > 1 else "PROD"
 
 import rfx.sources.waveguide_port as wg_mod  # noqa: E402
+import rfx.model.waveguide_modes as _wg_move_waveguide_modes
 
-_orig_aperture_dA = wg_mod._aperture_dA
+_orig_aperture_dA = _wg_move_waveguide_modes._aperture_dA
 
 
 def _frac_between(widths_np, wall_m):
@@ -114,7 +115,7 @@ variants = {
     "V4": _aperture_dA_V4,
     "DROP_BOTH": _aperture_dA_DROP_BOTH,
 }
-wg_mod._aperture_dA = variants[VARIANT]
+_wg_move_waveguide_modes._aperture_dA = variants[VARIANT]
 print(f"[runner] variant {VARIANT}", flush=True)
 
 from rfx.sources import waveguide_port as wg  # noqa: E402

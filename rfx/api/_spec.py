@@ -771,9 +771,8 @@ class Result(NamedTuple):
             computed as 2×(3/π/f_center/bandwidth) — skips the Gaussian
             excitation region for clean ring-down analysis.
         bandpass : bool or None
-            Apply FFT bandpass before matrix pencil analysis. Default: auto (True for
-            CPML results where DC/surface-wave artifacts exist, False
-            for PEC cavities where signal is clean).
+            Ignored; explicit True emits a DeprecationWarning because the
+            band-pass fallback reported modes absent from the record.
         waveform : source waveform or None
             Used only when ``source_decay_time`` is None: when the
             waveform exposes ``t0`` (``GaussianPulse`` /
@@ -787,7 +786,8 @@ class Result(NamedTuple):
         -------
         list of MatrixPencilMode
         """
-        from rfx.harminv import matrix_pencil, matrix_pencil_from_probe
+        import warnings
+        from rfx.harminv import _ring_down_modes
         ts = np.asarray(self.time_series)
         if ts.ndim == 2:
             ts = ts[:, probe_idx]
@@ -802,39 +802,20 @@ class Result(NamedTuple):
             fr = self.freq_range
         if fr is None:
             raise ValueError("freq_range not specified")
-        stored_boundary = 'cpml'
-        if self.freq_range is not None and len(self.freq_range) > 2:
-            stored_boundary = self.freq_range[2]
         if len(fr) > 2:
-            stored_boundary = fr[2]
             fr = (fr[0], fr[1])
 
-        if bandpass is None:
-            bandpass = stored_boundary == 'cpml'
+        if bandpass is True:
+            warnings.warn(
+                "bandpass=True is ignored because the band-pass fallback was "
+                "removed after reporting modes absent from the record.",
+                DeprecationWarning, stacklevel=2,
+            )
 
         if source_decay_time is None:
             source_decay_time = _auto_source_decay_time(fr, waveform)
 
-        start = int(np.ceil(source_decay_time / self.dt))
-        start = min(start, max(len(ts) - 20, 0))
-        w = ts[start:] - np.mean(ts[start:])
-
-        max_direct = 10000
-        if len(w) > max_direct:
-            step = len(w) // max_direct
-            w_sub = w[::step][:max_direct]
-            dt_h = self.dt * step
-        else:
-            w_sub = w
-            dt_h = self.dt
-
-        modes = matrix_pencil(w_sub, dt_h, fr[0], fr[1])
-
-        if not modes and bandpass:
-            modes = matrix_pencil_from_probe(ts, self.dt, fr,
-                                        source_decay_time=source_decay_time)
-
-        return modes
+        return _ring_down_modes(ts, self.dt, fr[0], fr[1], source_decay_time)
 
     def assert_finite(self, *, raise_on_nonfinite: bool = False) -> bool:
         """Check that the result's observables contain no NaN/Inf.
