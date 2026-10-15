@@ -868,6 +868,11 @@
       "kind": "boundary"
     },
     {
+      "file": "rfx/stepping/slab_wrap.py",
+      "function": "cut_probe_table",
+      "kind": "roll/diff"
+    },
+    {
       "file": "rfx/stepping/uniform.py",
       "function": "apply_pec_faces",
       "kind": "boundary"

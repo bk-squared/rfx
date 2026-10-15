@@ -421,7 +421,8 @@ def _memory(mode, mutation="none", legacy=False):
         return
     for kind, seen in extents.items():
         assert seen or kind == "state", f"{kind} initialization was not observed"
-        assert all(e <= nx_local for e in seen), f"whole-domain {kind} initialization: {seen} > {nx_local}"
+        # one extra low input row: the product's low ghost row is the neighbour's true value (rfx #1402)
+        assert all(e <= nx_local + 1 for e in seen), f"whole-domain {kind} initialization: {seen} > {nx_local + 1}"
     unexpected = [a for a in record["whole"] if not a["caller"]]
     assert not unexpected, f"whole-domain setup arrays: {unexpected}"
     sizes = list(record["bytes"].values())
@@ -598,10 +599,11 @@ if __name__ == "__main__":
         _memory(*args)
     elif command == "before":
         _memory(args[0], legacy=True)
-    elif command == "shards":
-        _per_shard()
-    elif command == "multipole":
-        _multipole_shards()
+    elif command in ("shards", "multipole"):
+        # These assertions pin the fixed-term staging consumed by the legacy step.
+        from unittest.mock import patch
+        with patch("rfx.stepping.slab_wrap.select_step", return_value="legacy"):
+            (_per_shard if command == "shards" else _multipole_shards)()
     elif command == "cc":
         _mutation_cc()
     elif command == "bits":

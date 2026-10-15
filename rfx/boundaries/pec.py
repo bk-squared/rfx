@@ -9,7 +9,7 @@ volumes, sheets and wires.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import jax.numpy as jnp
 import numpy as np
@@ -647,8 +647,31 @@ def _sheet_edge_masks(sheets, shape, periodic):
     return edge
 
 
+_SHEET_X_READ_AHEAD = 1
+
+
+def _slab_sheets(sheets, view, end):
+    """Cut static global footprints, retaining the forward node of Ex."""
+    cut = []
+    for sheet in sheets:
+        plane = sheet.plane
+        if sheet.normal_axis == 0:
+            if _is_tracer(plane):
+                raise ValueError("realized_pec_edge_masks: traced sheet plane with a view")
+            if not view.lo <= plane < end:
+                continue
+            plane -= view.lo
+        cut.append(replace(
+            sheet, plane=plane, footprint=sheet.footprint[view.lo:end],
+            unwrapped_footprint=(None if sheet.unwrapped_footprint is None
+                                 else sheet.unwrapped_footprint[view.lo:end]),
+            end_rows=(None if sheet.end_rows[0] is None
+                      else sheet.end_rows[0][view.lo:end],) + sheet.end_rows[1:]))
+    return cut
+
+
 def realized_pec_edge_masks(cell_mask, sheets=(), wires=(),
-                            periodic=(False, False, False)):
+                            periodic=(False, False, False), *, view=None):
     """The one function that turns conductor geometry into PEC E edges.
 
     Parameters
@@ -665,6 +688,8 @@ def realized_pec_edge_masks(cell_mask, sheets=(), wires=(),
         The run's per-axis periodic flags (#689).  Callers on a periodic
         lane MUST pass their own; the default is the non-periodic
         convention.
+    view : SlabView or None
+        Cell rows are already local; sheet and wire specs remain global.
 
     Returns
     -------
@@ -677,6 +702,8 @@ def realized_pec_edge_masks(cell_mask, sheets=(), wires=(),
     """
     sheets = list(sheets or ())
     wires = list(wires or ())
+    if view is not None and periodic[0]:
+        raise ValueError("realized_pec_edge_masks: periodic x is not supported with a view")
     if cell_mask is None:
         src = next((sp.footprint for sp in sheets), None)
         if src is None:
@@ -686,7 +713,19 @@ def realized_pec_edge_masks(cell_mask, sheets=(), wires=(),
         shape = tuple(src.shape)
     else:
         shape = tuple(cell_mask.shape)
-    sheet_edges = _sheet_edge_masks(sheets, shape, periodic)
+    if view is not None and "pec_static_edge_masks" in view.globals:
+        sheet_edges = view.globals["pec_static_edge_masks"]
+        shape = tuple(sheet_edges[0].shape)
+        wires = []
+    elif view is None:
+        sheet_edges = _sheet_edge_masks(sheets, shape, periodic)
+    else:
+        shape = (view.hi - view.lo,) + shape[1:]
+        end = min(view.hi + _SHEET_X_READ_AHEAD, view.nx)
+        sheet_edges = _sheet_edge_masks(
+            _slab_sheets(sheets, view, end), (end - view.lo,) + shape[1:], periodic)
+        sheet_edges = [None if m is None else m[:shape[0]] for m in sheet_edges]
+        wires = [replace(w, edges=tuple(m[view.lo:view.hi] for m in w.edges)) for w in wires]
     cells = cell_mask
     if cells is not None:
         out = list(_volume_edge_masks(cells.astype(bool), periodic))

@@ -177,7 +177,11 @@ def make_graded_step(
             for cfg_meta, _m in zip(ctx.waveguide_meta,
                                     ctx.waveguide_port_metrics):
                 frame.st = _apply_wg_h_nu(frame.st, cfg_meta, frame.step_idx, ctx.dt, _m[0])
-        if ctx.use_cpml:
+        if ctx.use_cpml and 'cpml_x' in frame.invariants:
+            from rfx.stepping.slab_cpml import apply
+            frame.st, frame.cpml_new = apply(ctx.apply_cpml_h, ctx, frame.invariants,
+                frame.st, frame.carry['cpml'], materials=frame.materials)
+        elif ctx.use_cpml:
             frame.st, frame.cpml_new = ctx.apply_cpml_h(frame.st, ctx.cpml_params, frame.carry["cpml"],
                                          ctx.cpml_grid, ctx.cpml_axes_eff,
                                          materials=frame.materials)
@@ -241,7 +245,13 @@ def make_graded_step(
             for cfg_meta, _m in zip(ctx.waveguide_meta,
                                     ctx.waveguide_port_metrics):
                 frame.st = _apply_wg_e_nu(frame.st, cfg_meta, frame.step_idx, ctx.dt, _m[1])
-        if ctx.use_cpml:
+        if ctx.use_cpml and 'cpml_x' in frame.invariants:
+            from rfx.stepping.slab_cpml import apply
+            frame.st, frame.cpml_new = apply(ctx.apply_cpml_e, ctx, frame.invariants,
+                frame.st, frame.cpml_new, materials=frame.materials,
+                e_loss=frame.invariants['e_loss'], inv_eps_r_update=frame._cpml_inv_eps_r,
+                boundary=ctx.curl_boundary, debye=frame.debye_coeffs, lorentz=frame.lorentz_coeffs)
+        elif ctx.use_cpml:
             frame.st, frame.cpml_new = ctx.apply_cpml_e(frame.st, ctx.cpml_params, frame.cpml_new,
                                          ctx.cpml_grid, ctx.cpml_axes_eff,
                                          materials=frame.materials, e_loss=frame.invariants["e_loss"],
@@ -478,6 +488,7 @@ def make_graded_step(
         advance(frame)
         return finish(frame)
 
+    step_fn.context = ctx
     step_fn.port_owners = port_owners(ctx.grid, port_specs, nu=True, boundary=ctx.curl_boundary)
     step_fn.port_acc_indices = acc_indices
     return step_fn

@@ -1835,7 +1835,8 @@
         "cell_mask",
         "sheets",
         "wires",
-        "periodic"
+        "periodic",
+        "view"
       ]
     },
     "realized_wall_planes": {

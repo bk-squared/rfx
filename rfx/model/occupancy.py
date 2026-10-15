@@ -74,9 +74,17 @@ def _window_factors(box, design_occupancy, occ, *, dtype, periodic):
     return write, tuple(k[inner] for k in keep)
 
 
+def _local_released(cells, view):
+    """Select global release indices in the input rows and rebase x."""
+    if "released_cells" in view.globals:
+        return view.globals["released_cells"]
+    cells = cells[(cells[:, 0] >= view.lo) & (cells[:, 0] < view.hi)]
+    return cells.at[:, 0].add(-view.lo)
+
+
 def build_edge_keep(occupancy, *, dtype=jnp.float32,
                     periodic=(False, False, False), sheet_edge_masks=None,
-                    released_cells=None, shape=None, design=None):
+                    released_cells=None, shape=None, design=None, view=None):
     """The factor each E edge is multiplied by, as three arrays on the E edges.
 
     ``released_cells`` are integer cell indices, shape (N, 3), including N=0,
@@ -84,7 +92,13 @@ def build_edge_keep(occupancy, *, dtype=jnp.float32,
     their write window replaces the background factor (including its static
     sheet fold), as the step's window rewrite does. No occupancy and no
     design input gives None, even with static sheets.
+    With a view, arrays and shape are local; release indices remain global.
     """
+    if view is not None:
+        if design is not None:
+            raise NotImplementedError("build_edge_keep: design occupancy with a view is not supported")
+        if periodic[0]:
+            raise NotImplementedError("build_edge_keep: periodic x with a view is not supported")
     if occupancy is None and design is None:
         return None
     if occupancy is None:
@@ -95,6 +109,8 @@ def build_edge_keep(occupancy, *, dtype=jnp.float32,
         cells = jnp.asarray(released_cells)
         if cells.ndim != 2 or cells.shape[1] != 3 or not jnp.issubdtype(cells.dtype, jnp.integer):
             raise ValueError("released_cells must be an integer array of shape (N, 3)")
+        if view is not None:
+            cells = _local_released(cells, view)
         occ = occ.at[cells[:, 0], cells[:, 1], cells[:, 2]].set(0.0)
     keep = _edge_factors(occ, sheet_edge_masks if occupancy is not None else None,
                          dtype=dtype, periodic=periodic)
@@ -106,7 +122,7 @@ def build_edge_keep(occupancy, *, dtype=jnp.float32,
 
 
 def with_edge_keep(materials, occupancy, *, dtype, periodic=(False,) * 3,
-                   sheet_edge_masks=None):
+                   sheet_edge_masks=None, view=None):
     """Publish the static stage's factor using its already-resolved masks.
 
     ``dtype`` is the E field's. The factor is formed in that real type but
@@ -123,22 +139,22 @@ def with_edge_keep(materials, occupancy, *, dtype, periodic=(False,) * 3,
     real = jnp.promote_types(jnp.finfo(dtype).dtype, jnp.float32)
     return materials._replace(edge_keep=build_edge_keep(
         occupancy, dtype=real, periodic=periodic,
-        sheet_edge_masks=sheet_edge_masks))
+        sheet_edge_masks=sheet_edge_masks, view=view))
 
 
 def publish_occupancy(materials, occupancy, *, dtype=jnp.float32,
                       periodic=(False, False, False), sheets=(), wires=(),
-                      edge_masks=None, released_cells=None, design=None):
+                      edge_masks=None, released_cells=None, design=None, view=None):
     """Publish the same static sheet/wire fold as the single-device steps."""
     static = None
     if occupancy is not None and (sheets or wires):
         static = realized_pec_edge_masks(None, sheets=sheets, wires=wires,
-                                         periodic=periodic)
+                                         periodic=periodic, view=view)
         if edge_masks is not None:
             static = tuple(s & m for s, m in zip(static, edge_masks))
     keep = build_edge_keep(occupancy, dtype=dtype, periodic=periodic,
         sheet_edge_masks=static, released_cells=released_cells,
-        shape=materials.eps_r.shape, design=design)
+        shape=materials.eps_r.shape, design=design, view=view)
     return materials._replace(edge_keep=keep)
 
 

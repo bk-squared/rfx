@@ -849,7 +849,7 @@ def distributed_kernel_inputs(sim, root, grid, materials, cells, sheets, wires, 
     return root.pec_edges, record
 
 
-def stage_distributed_edges(edges, grid, mesh, multiprocess):
+def stage_distributed_edges(edges, grid, mesh, multiprocess, *, inputs=None):
     """Stage final edge components; traced geometry remains single-process."""
     import jax
     from rfx.stepping.slab import Slab, cut
@@ -857,6 +857,11 @@ def stage_distributed_edges(edges, grid, mesh, multiprocess):
         return None
     if multiprocess and any(isinstance(edge, jax.core.Tracer) for edge in edges):
         raise ValueError("a traced pec_mask_override is supported in one process only")
+    from rfx import _realized
+    if inputs is not None and _realized.ACTIVE is None and grid.step_kind != 'legacy':
+        from rfx.stepping.slab_setup import stage_pec
+        cells, sheets, wires = inputs
+        return stage_pec(cells, sheets, wires, grid.global_grid, Slab.from_grid(grid), mesh)
     return cut(edges, Slab.from_grid(grid), "pec_edge", mesh=mesh)
 
 

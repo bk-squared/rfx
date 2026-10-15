@@ -6,6 +6,16 @@ import numpy as np
 from rfx import Simulation
 
 
+def host_devices(n):
+    """The first n CPU devices, or skip: the PR lane runs with 2 host devices,
+    the weekly lane's three-device step with 3 (XLA_FLAGS)."""
+    import pytest
+    devices = jax.devices("cpu")[:n]
+    if len(devices) < n:
+        pytest.skip(f"needs XLA_FLAGS=--xla_force_host_platform_device_count={n}")
+    return devices
+
+
 def scene(devices, *, n=16, steps=6, uniform=False, debye=False, sharded=False, **options):
     dy = np.where(np.arange(n) % 2 == 0, .9e-3, 1.1e-3)
     dy[[0, -1]] = 1e-3

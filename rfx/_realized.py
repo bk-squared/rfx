@@ -94,6 +94,22 @@ def capture(*, transform=None):
             jax.clear_caches()
 
 
+#: (start, count) of the x slab whose step is being traced, set by the
+#: multi-device wrapper so a record from the one-device kernels says which
+#: global rows its local rows (after one low ghost) are.
+OWNED = None
+
+
+@contextmanager
+def owned(start, count):
+    global OWNED
+    previous, OWNED = OWNED, (start, count)
+    try:
+        yield
+    finally:
+        OWNED = previous
+
+
 def enter(sim, lane):
     ACTIVE.sim = sim
     ACTIVE.lane = "fwd_adi" if lane == "fwd_uniform" and sim._solver == "adi" else lane
@@ -108,6 +124,8 @@ def electric(materials, eps, sigma, site, *, periodic=(False,) * 3,
     sigma = ACTIVE.apply(site, "sigma_e", sigma)
     # Keep the legacy cell-view payload; eps/sigma above are the consumed arrays.
     payload = dict(eps_e=eps, sigma_e=sigma, materials=materials._replace(components=None))
+    if owned_start is None and OWNED is not None:
+        owned_start, owned_count = OWNED
     if owned_start is not None:
         payload.update(owned_start=owned_start, owned_count=owned_count)
     ACTIVE.observe(site, payload, region=region, periodic=periodic)

@@ -192,6 +192,17 @@ jobs:
           pytest -v -ra -p no:cacheprovider -o addopts=""
           tests/contracts/path_equivalence/test_one_vs_several_devices_occupancy.py
 
+      - name: Run three-device graded wrapped-step cases (2 vs 3 devices, slab views, slab cut)
+        if: matrix.group == 1
+        env:
+          JAX_PLATFORMS: cpu
+          XLA_FLAGS: "--xla_force_host_platform_device_count=3"
+        run: >
+          pytest -v -ra -p no:cacheprovider -o addopts=""
+          tests/unit/runners/test_distributed_nu_wrapped_step.py
+          tests/contracts/path_equivalence/test_slab_view_producers.py
+          tests/contracts/test_slab_cut.py
+
       - name: Shard time against the job limit
         if: always()
         # Tests are added daily: requiring zero unpriced tests would turn the lane

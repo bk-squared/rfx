@@ -737,7 +737,7 @@ def _realize_poles(spec, periodic, kind, grid, shape, *, cell_sizes=None):
     return ComponentDispersion(tuple(poles), build(poles, grid.dt, shape, weights), None, grid.dt)
 
 
-def realize_components(cells, grid, *, periodic, dt=None, budget=None, grid_kind="Grid"):
+def realize_components(cells, grid, *, periodic, view=None, dt=None, budget=None, grid_kind="Grid"):
     """Realize final cells once, using the existing E/pole and H rules.
 
     ``cells`` is a MaterialArrays or ComponentCells with dispersion specs.
@@ -750,7 +750,14 @@ def realize_components(cells, grid, *, periodic, dt=None, budget=None, grid_kind
     else:
         materials, debye_spec, lorentz_spec = cells, None, None
     from rfx.model.pole_stability import courant_budget, refuse_unstable_cells
-    if lorentz_spec is not None and (grid is not None or budget is not None):
+    if view is not None and periodic[0]:
+        raise ValueError("slab realization of an x-periodic grid: the first slab's "
+                         "edge mean would wrap onto its own last row, not global row nx-1")
+    if view is not None and lorentz_spec is not None:
+        if view.globals.get("pole_sets_judged") is not True:
+            raise ValueError("slab Lorentz materials require pole_set_extremes / "
+                             "combine_pole_extremes / judge_pole_sets before realization")
+    if view is None and lorentz_spec is not None and (grid is not None or budget is not None):
         refuse_unstable_cells(materials, lorentz_spec, grid.dt if grid is not None else dt,
                               courant_budget(grid) if grid is not None else budget,
                               grid_kind=type(grid).__name__ if grid is not None else grid_kind)
@@ -765,11 +772,20 @@ def realize_components(cells, grid, *, periodic, dt=None, budget=None, grid_kind
     sigma_stamp = lumped_total(sigma_lumped)
     if sigma_stamp is not None:
         sigma_volume = sigma_volume - sigma_stamp
+    electric_widths = electric_cell_sizes(grid)
+    if view is not None and electric_widths is not None:
+        electric_widths = (None if electric_widths[0] is None else
+                           view.rows(electric_widths[0]),) + tuple(electric_widths[1:])
     eps, sigma = edge_averaged_materials(
         permittivity_without_lumped(materials), sigma_volume, periodic,
-        cell_sizes=electric_cell_sizes(grid))
+        cell_sizes=electric_widths)
     widths = ((grid.dx_arr, grid.dy_arr, grid.dz)
               if hasattr(grid, "dx_arr") else None)
+    if view is not None and widths is not None:
+        x = jnp.asarray(widths[0])
+        if x.shape[0] == grid.shape[0] - 1:
+            x = jnp.concatenate((x, x[-1:]))
+        widths = (view.rows(x),) + tuple(widths[1:])
     mu = component_h_materials(materials._replace(mu_r_wire=None),
                                periodic, cell_sizes=widths)
     mu_wire = lumped_components(materials.mu_r_wire)
@@ -782,14 +798,14 @@ def realize_components(cells, grid, *, periodic, dt=None, budget=None, grid_kind
         eps, sigma, mu, eps_lumped, sigma_lumped, mu_wire,
         eps_update, sigma_update, mu_update, upml_eps, upml_sigma,
         _realize_poles(debye_spec, periodic, "Debye", grid, materials.eps_r.shape,
-                       cell_sizes=electric_cell_sizes(grid)),
+                       cell_sizes=electric_widths),
         _realize_poles(lorentz_spec, periodic, "Lorentz", grid, materials.eps_r.shape,
-                       cell_sizes=electric_cell_sizes(grid)),
-        materials, tuple(periodic), _grid_key(grid))
+                       cell_sizes=electric_widths),
+        materials, tuple(periodic), _component_grid_key(grid, view))
 
 
 def with_components(materials, grid, *, periodic, debye_spec=None, lorentz_spec=None,
-                    dt=None, budget=None, grid_kind="Grid", tensor=None):
+                    view=None, dt=None, budget=None, grid_kind="Grid", tensor=None):
     """Attach one realization after the last cell/stamp write, or reuse it.
 
     Callers must not modify the cells after this boundary. Raw low-level
@@ -799,10 +815,11 @@ def with_components(materials, grid, *, periodic, debye_spec=None, lorentz_spec=
     :func:`rfx.model.tensor_operands.attach_tensor`.
     """
     if materials.components is not None:
-        validate_components(materials, periodic=periodic, grid=grid)
+        validate_components(materials, periodic=periodic, grid=grid, view=view)
     else:
         components = realize_components(
             ComponentCells(materials, debye_spec, lorentz_spec), grid, periodic=periodic,
+            **({} if view is None else dict(view=view)),
             **({} if budget is None else dict(dt=dt, budget=budget, grid_kind=grid_kind)))
         materials = materials._replace(components=components)
     if tensor is None:
@@ -818,7 +835,13 @@ def _grid_key(grid):
                                     for name in ("dx_arr", "dy_arr", "dz")))
 
 
-def validate_components(materials, *, periodic, grid=None):
+def _component_grid_key(grid, view):
+    if view is None:
+        return _grid_key(grid)
+    return (_grid_key(grid), view.x0, view.x1, view.halo_lo, view.halo_hi)
+
+
+def validate_components(materials, *, periodic, grid=None, view=None):
     """Reject stale assembly views before entering any compiled time loop."""
     components = materials.components
     if components.periodic != tuple(periodic):
@@ -828,7 +851,7 @@ def validate_components(materials, *, periodic, grid=None):
     for name in ("eps_r", "sigma", "mu_r", "sigma_lumped", "eps_r_lumped", "mu_r_wire", "sigma_film"):
         if getattr(components.cells_view, name, None) is not getattr(materials, name, None):
             raise ValueError(f"stale realized material: {name} cell array changed")
-    if grid is not None and components.grid_key and components.grid_key != _grid_key(grid):
+    if grid is not None and components.grid_key and components.grid_key != _component_grid_key(grid, view):
         raise ValueError("realized material grid differs from the kernel")
 
 

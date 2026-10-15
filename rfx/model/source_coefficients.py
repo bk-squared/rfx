@@ -6,6 +6,39 @@ import jax
 import jax.numpy as jnp
 
 
+def drive_columns(eps, sigma, keep, cells, owned, samples, volumes, dt, *, cb=None):
+    """Build graded increments from local realized edges in source order.
+
+    Run eagerly (including eager vmap over ranks): compiling these products
+    may replace division by a constant with reciprocal multiplication.
+    ``cb`` supplies the unchanged ADE coefficients on dispersive edges.
+    A None volume denotes an already resolved field increment.
+    """
+    import jax.numpy as jnp
+    from rfx.nonuniform import current_source_cb
+
+    columns = []
+    for n, ((axis, cell), volume) in enumerate(zip(cells, volumes)):
+        if volume is None:
+            column = jnp.where(owned[n], samples[:, n], 0.)
+        else:
+            if cb is None:
+                e, s = eps[axis][cell], sigma[axis][cell]
+                pole = volume[1] if isinstance(volume, tuple) else 0.
+                coefficient = current_source_cb(jnp.where(owned[n], e, 1.),
+                    jnp.where(owned[n], s + pole, 0.), dt)
+            else:
+                coefficient = cb[n]
+            volume = volume[0] if isinstance(volume, tuple) else volume
+            scale = jnp.where(owned[n], coefficient / volume, 0.)
+            column = scale * samples[:, n]
+        if keep is not None:
+            column = column * jnp.where(owned[n], keep[axis][cell], 0.)
+        columns.append(column)
+    return (jnp.stack(columns, axis=-1) if columns else
+            jnp.zeros((samples.shape[0], 0), dtype=jnp.float32))
+
+
 def drive_table(series, meta, n_steps, *, occupancy=None, periodic=(False,) * 3,
                 sheet_edge_masks=None, design=None, shape=None, pad=False, keep=None):
     """Stack resolved drives, storing each electric edge's occupancy weight.
