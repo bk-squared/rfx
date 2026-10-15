@@ -135,7 +135,7 @@ ALLOWED_SCALAR_READS: dict[str, int] = {
     "rfx/sources/msl_eigenmode.py": 2,
     "rfx/sources/msl_port.py": 5,
     "rfx/sources/sources.py": 3,
-    "rfx/sources/waveguide_port.py": 1,
+    "rfx/model/waveguide_modes.py": 1,
     "rfx/sparams/coax.py": 3,  # 4 until #1212 removed compute_coaxial_s_matrix
     "rfx/sparams/mixed.py": 3,
     "rfx/sparams/msl.py": 1,

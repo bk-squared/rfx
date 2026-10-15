@@ -53,7 +53,7 @@ import pytest
 
 from rfx import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
-from rfx.sources.waveguide_port import _plane_indexer
+from rfx.stepping.waveguide_source import _plane_indexer
 
 C0 = 299_792_458.0
 A_WR90 = 0.02286

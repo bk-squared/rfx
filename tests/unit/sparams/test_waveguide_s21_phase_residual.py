@@ -32,7 +32,7 @@ from rfx.api._sparams import (
     WAVEGUIDE_PHASE_MAG_FLOOR,
     s21_phase_residual_deg_rms,
 )
-from rfx.sources.waveguide_port import _compute_beta
+from rfx.model.waveguide_modes import _compute_beta
 
 from tests import _waveguide_chain_battery_fixture as F
 

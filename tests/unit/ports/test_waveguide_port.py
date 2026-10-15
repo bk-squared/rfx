@@ -34,7 +34,7 @@ def test_te10_mode_profile_shape():
     With propagation along +x and width a in y, TE10 has Ez as the
     dominant transverse field (from d(Hx)/dy derivative).
     """
-    from rfx.sources.waveguide_port import _te_mode_profiles
+    from rfx.model.waveguide_modes import _te_mode_profiles
 
     a, b = 0.04, 0.02
     ny, nz = 20, 10
@@ -70,7 +70,7 @@ def test_te11_mode_profile_derivative_weights():
     amplitudes for Ey and Ez. For a=40mm, b=20mm:
         |Ey_max|/|Ez_max| = (pi/b) / (pi/a) = a/b = 2.0
     """
-    from rfx.sources.waveguide_port import _te_mode_profiles
+    from rfx.model.waveguide_modes import _te_mode_profiles
 
     a, b = 0.04, 0.02
     ny, nz = 40, 20
@@ -110,7 +110,7 @@ def test_te11_mode_profile_derivative_weights():
 
 def test_tm_mode_invalid():
     """TM modes with m=0 or n=0 should raise ValueError."""
-    from rfx.sources.waveguide_port import _tm_mode_profiles
+    from rfx.model.waveguide_modes import _tm_mode_profiles
 
     a, b = 0.04, 0.02
     y = np.linspace(0.001, a - 0.001, 10)

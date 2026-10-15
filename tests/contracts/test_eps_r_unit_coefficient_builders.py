@@ -153,10 +153,10 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
     ("rfx/sources/tfsf_2d.py", "apply_tfsf_2d_e"): _VACUUM,
     ("rfx/sources/tfsf_2d.py", "init_tfsf_2d"): _C0,
     ("rfx/sources/tfsf_oblique_open.py", "apply_methodB_e"): _VACUUM,
-    ("rfx/sources/waveguide_port.py", "_compute_mode_impedance"):
+    ("rfx/model/waveguide_modes.py", "_compute_mode_impedance"):
         "a modal impedance beta/(omega*EPS_0): EPS_0 divides no permittivity",
-    ("rfx/sources/waveguide_port.py", "apply_waveguide_port_e"): _VACUUM,
-    ("rfx/sources/waveguide_port.py", "init_waveguide_port"): _HOST,
+    ("rfx/stepping/waveguide_source.py", "apply_waveguide_port_e"): _VACUUM,
+    ("rfx/model/waveguide_modes.py", "init_waveguide_port"): _HOST,
     ("rfx/sparams/_common.py", "_resolve_msl_auto_offsets"): _C0,
     ("rfx/sparams/mixed.py", "compute_mixed_s_matrix"): _C0,
     ("rfx/sparams/msl.py", "compute_msl_s_matrix"): _C0,

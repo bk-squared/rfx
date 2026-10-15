@@ -75,7 +75,7 @@ def test_matrix_pencil_record_duration_legacy_is_identical(settings):
 
 
 @pytest.mark.parametrize("settings", [{}, {"source_decay_time": 32 * _DT,
-                                          "max_modes": 8, "max_samples": 400}])
+                                          "max_modes": 8}])
 def test_matrix_pencil_from_probe_legacy_modes_are_bitwise_identical(settings):
     # Result construction follows tests/contracts/test_settling_witness_per_bin_tail.py:360.
     result = rfx.Result(state=None, s_params=None, freqs=None, dt=_DT,

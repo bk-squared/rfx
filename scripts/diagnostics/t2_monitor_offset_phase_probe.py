@@ -30,11 +30,9 @@ from __future__ import annotations
 import numpy as np
 
 from rfx.api import Simulation
-from rfx.sources.waveguide_port import (
-    _extract_port_waves_from_time_series,
-    _compute_beta,
-    C0_LOCAL,
-)
+from rfx.measurement.waveguide_s import _extract_port_waves_from_time_series
+from rfx.model.waveguide_modes import _compute_beta
+from rfx.sources.waveguide_port import C0_LOCAL
 
 # Canonical 40 mm x 20 mm guide (matches the validation battery).
 # Port moved interior (x=0.025 -> ref/probe > CPML edge ~18.7 mm) and band

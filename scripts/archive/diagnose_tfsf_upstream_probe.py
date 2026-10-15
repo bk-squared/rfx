@@ -31,6 +31,8 @@ sys.path.insert(0, str(_ROOT))
 from rfx.api import Simulation  # noqa: E402
 from rfx.boundaries.spec import Boundary, BoundarySpec  # noqa: E402
 from rfx.sources import waveguide_port as wg  # noqa: E402
+import rfx.measurement.waveguide_s as _wg_move_waveguide_s
+import rfx.model.waveguide_modes as _wg_move_waveguide_modes
 
 A_WG, B_WG = 22.86e-3, 10.16e-3
 DX_M = 0.001
@@ -131,10 +133,10 @@ V_U_arr = jnp.asarray(V_U)
 I_U_arr = jnp.asarray(I_U)
 V_D_arr = jnp.asarray(V_D)
 I_D_arr = jnp.asarray(I_D)
-I_U_corr = np.asarray(wg._co_located_current_spectrum(left_cfg, I_U_arr))
-I_D_corr = np.asarray(wg._co_located_current_spectrum(left_cfg, I_D_arr))
+I_U_corr = np.asarray(_wg_move_waveguide_s._co_located_current_spectrum(left_cfg, I_U_arr))
+I_D_corr = np.asarray(_wg_move_waveguide_s._co_located_current_spectrum(left_cfg, I_D_arr))
 
-Z = np.asarray(wg._compute_mode_impedance(left_cfg.freqs, left_cfg.f_cutoff,
+Z = np.asarray(_wg_move_waveguide_modes._compute_mode_impedance(left_cfg.freqs, left_cfg.f_cutoff,
                                           left_cfg.mode_type,
                                           dt=left_cfg.dt, dx=left_cfg.dx))
 

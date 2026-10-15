@@ -118,7 +118,7 @@ def main():
     # template above is the discrete-vs-continuous shape gap, which means
     # Phase 1A (analytic-only extractor) will NOT close the loop without
     # also rebuilding the source (Phase 1B).
-    from rfx.sources.waveguide_port import _discrete_te_mode_profiles
+    from rfx.model.waveguide_modes import _discrete_te_mode_profiles
     u_widths = np.full(ny, dy)
     v_widths = np.full(nz, dz)
     aperture_dA_full = (u_widths[:, None] * v_widths[None, :])

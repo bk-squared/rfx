@@ -19,12 +19,8 @@ import numpy as np
 from scipy import sparse
 from scipy.sparse.linalg import eigsh
 
-from rfx.sources.waveguide_port import (
-    _te_mode_profiles,
-    _tm_mode_profiles,
-    cutoff_frequency,
-    C0_LOCAL,
-)
+from rfx.model.waveguide_modes import _te_mode_profiles, _tm_mode_profiles
+from rfx.sources.waveguide_port import cutoff_frequency, C0_LOCAL
 
 
 class WaveguideMode(NamedTuple):

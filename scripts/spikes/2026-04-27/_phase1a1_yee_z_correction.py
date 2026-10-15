@@ -41,7 +41,7 @@ def run(cv, dx_m, num_periods, *, use_yee_z):
     from rfx.api import Simulation
     from rfx.boundaries.spec import Boundary, BoundarySpec
     from rfx.geometry.csg import Box
-    from rfx.sources.waveguide_port import _compute_beta, _compute_mode_impedance
+    from rfx.model.waveguide_modes import _compute_beta, _compute_mode_impedance
 
     freqs = cv.FREQS_HZ
     f0 = float(freqs.mean())

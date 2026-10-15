@@ -2,6 +2,9 @@
 from rfx._grid_metric import field_index
 from dataclasses import replace
 
+import jax
+import jax.numpy as jnp
+
 
 def drive_table(series, meta, n_steps, *, occupancy=None, periodic=(False,) * 3,
                 sheet_edge_masks=None, design=None, shape=None, pad=False, keep=None):
@@ -104,6 +107,12 @@ def field_source_samples(waveform, n_steps, dt):
     import jax.numpy as jnp
     return source_table(jax.vmap(waveform)(jnp.arange(n_steps, dtype=jnp.float32) * dt), "field")
 
+
+def current_source_samples(grid, waveform_fn, n_steps):
+    """The current ``I(t)`` in amperes at the ``n_steps`` step times
+    ``t = n*dt`` (float32), before any ``Cb/dV`` normalisation."""
+    times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
+    return jax.vmap(waveform_fn)(times)
 
 def scale_source_columns(xs, scales, columns):
     """Finish distributed current tables from slab-local Cb/dV reads."""

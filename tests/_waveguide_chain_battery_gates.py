@@ -53,12 +53,9 @@ from build_waveguide_band_broad_e5_phase_envelope import (  # type: ignore  # no
 )
 
 from rfx.api._sparams import _SETTLING_WITNESS_DB  # noqa: E402
-from rfx.sources.waveguide_port import (  # noqa: E402
-    C0_LOCAL,
-    _compute_beta,
-    _settling_db_for_record,
-    _settling_record_floor_amplitude,
-)
+from rfx.sources.waveguide_port import C0_LOCAL
+from rfx.model.waveguide_modes import _compute_beta
+from rfx.measurement.settling import _settling_db_for_record, _settling_record_floor_amplitude
 
 from tests import _waveguide_chain_battery_fixture as F  # noqa: E402
 from tests._gate_policy import gate_from_envelope  # noqa: E402

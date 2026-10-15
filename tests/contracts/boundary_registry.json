@@ -753,7 +753,7 @@
       "kind": "boundary"
     },
     {
-      "file": "rfx/sources/_waveguide_modes.py",
+      "file": "rfx/model/waveguide_mode_solver.py",
       "function": "_cell_centred_gradient",
       "kind": "difference"
     },

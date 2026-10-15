@@ -13,15 +13,17 @@ _ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_ROOT))
 
 from rfx.sources import waveguide_port as wg  # noqa: E402
+import rfx.measurement.waveguide_s as _wg_move_waveguide_s
+import rfx.model.waveguide_modes as _wg_move_waveguide_modes
 
 _CAPS: list[dict] = []
-_orig = wg._extract_global_waves
+_orig = _wg_move_waveguide_s._extract_global_waves
 
 
 def _capture(cfg, V, I):
     Vc = np.asarray(V).copy()
-    Ic = np.asarray(wg._co_located_current_spectrum(cfg, I)).copy()
-    Zc = np.asarray(wg._compute_mode_impedance(cfg.freqs, cfg.f_cutoff,
+    Ic = np.asarray(_wg_move_waveguide_s._co_located_current_spectrum(cfg, I)).copy()
+    Zc = np.asarray(_wg_move_waveguide_modes._compute_mode_impedance(cfg.freqs, cfg.f_cutoff,
                     cfg.mode_type, dt=cfg.dt, dx=cfg.dx)).copy()
     _CAPS.append({"V": Vc, "I": Ic, "Z": Zc, "f": np.asarray(cfg.freqs).copy(),
                   "ref_x_m": float(cfg.reference_x_m),
@@ -29,7 +31,7 @@ def _capture(cfg, V, I):
     return _orig(cfg, V, I)
 
 
-wg._extract_global_waves = _capture
+_wg_move_waveguide_s._extract_global_waves = _capture
 
 from rfx.api import Simulation  # noqa: E402
 from rfx.boundaries.spec import Boundary, BoundarySpec  # noqa: E402

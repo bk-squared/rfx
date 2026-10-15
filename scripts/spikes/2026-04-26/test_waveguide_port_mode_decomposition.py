@@ -15,15 +15,8 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx.sources.waveguide_port import (
-    WaveguidePort,
-    _aperture_dA,
-    _discrete_te_mode_profiles,
-    init_waveguide_port,
-    modal_current,
-    modal_voltage,
-    overlap_modal_amplitude,
-)
+from rfx.sources.waveguide_port import WaveguidePort, init_waveguide_port, modal_current, modal_voltage, overlap_modal_amplitude
+from rfx.model.waveguide_modes import _aperture_dA, _discrete_te_mode_profiles
 from rfx.api import Simulation
 
 

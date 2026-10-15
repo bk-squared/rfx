@@ -85,9 +85,8 @@ def jacobian_nodes(function, shape):
 def judge_metadata(plan, actual):
     """Compare every channel's pair of offsets and record slot to production."""
     from rfx.core.dft_utils import port_dft_phase
-    from rfx.sources.waveguide_port import (
-        update_waveguide_port_probe, _rect_dft,
-    )
+    from rfx.sources.waveguide_port import update_waveguide_port_probe
+    from rfx.measurement.waveguide_s import _rect_dft
     nu = 'nonuniform' in plan.path
     for owner in plan.owners:
         for channel in owner.channels:

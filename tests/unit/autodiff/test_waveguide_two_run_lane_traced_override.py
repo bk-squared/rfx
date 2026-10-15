@@ -116,7 +116,7 @@ def _rfx_frames(exc: BaseException) -> list[traceback.FrameSummary]:
     """
     return [
         f for f in traceback.extract_tb(exc.__traceback__)
-        if f.filename.endswith(("waveguide_port.py", "_sparams.py", "/sparams/waveguide.py"))
+        if f.filename.endswith(("waveguide_port.py", "waveguide_s.py", "_sparams.py", "/sparams/waveguide.py"))
     ]
 
 

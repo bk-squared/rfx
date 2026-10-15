@@ -10,8 +10,9 @@ import numpy as np, jax.numpy as jnp
 from rfx.grid import Grid
 from rfx.materials import init_materials
 from rfx.geometry.csg import Box
-from rfx.sources.waveguide_port import (WaveguidePort, init_waveguide_port,
-    _rect_dft, _compute_mode_impedance, _co_located_current_spectrum)
+from rfx.sources.waveguide_port import WaveguidePort, init_waveguide_port
+from rfx.measurement.waveguide_s import _rect_dft, _co_located_current_spectrum
+from rfx.model.waveguide_modes import _compute_mode_impedance
 from rfx.simulation import run as run_sim
 
 ap = argparse.ArgumentParser(); ap.add_argument("--lx", type=float, required=True); A = ap.parse_args()

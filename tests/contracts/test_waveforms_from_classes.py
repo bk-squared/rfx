@@ -67,11 +67,11 @@ KNOWN = (
     ("rfx/sources/tfsf.py", "update_tfsf_1d_e", "lane:absorber", "issue 1668"),
     ("rfx/sources/tfsf_2d.py", "_update_e_tez", "lane:absorber", "issue 1668"),
     ("rfx/sources/tfsf_2d.py", "_update_e_tmz", "lane:absorber", "issue 1668"),
-    ("rfx/sources/waveguide_port.py", "apply_waveguide_port_e",
+    ("rfx/stepping/waveguide_source.py", "apply_waveguide_port_e",
      "lane:waveguide-port", "issue 1668"),
-    ("rfx/sources/waveguide_port.py", "init_waveguide_port",
+    ("rfx/model/waveguide_modes.py", "init_waveguide_port",
      "lane:waveguide-port", "issue 1668"),
-    ("rfx/sources/waveguide_port.py", "inject_waveguide_port",
+    ("rfx/stepping/waveguide_source.py", "inject_waveguide_port",
      "lane:waveguide-port", "issue 1668"),
 )
 
