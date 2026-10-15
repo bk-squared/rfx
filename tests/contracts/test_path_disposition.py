@@ -30,19 +30,21 @@ ROOT = Path(__file__).resolve().parents[2]
 # "grid-level: <why>" for a function that takes a Grid, not a Simulation.
 KERNEL_CALLERS = {
     "rfx/api/_execute.py:_ExecuteMixin.run":
-        "internal to run_uniform, run_nonuniform, run_subgridded, run_adi, run_distributed",
+        "internal to run_uniform, run_nonuniform, run_subgridded, run_adi, run_distributed, run_distributed_nu",
     "rfx/api/_execute.py:_ExecuteMixin.forward":
-        "internal to fwd_uniform, fwd_nonuniform, fwd_distributed_nu",
+        "internal to fwd_uniform, fwd_nonuniform, fwd_distributed, fwd_distributed_nu",
     "rfx/api/_execute.py:_ExecuteMixin._forward_from_materials":
         "internal to fwd_uniform, s_matrix_scan, mixed_s_matrix, topology_optimize",
     "rfx/api/_execute.py:_ExecuteMixin._forward_nonuniform_from_materials": "internal to fwd_nonuniform",
     "rfx/api/_execute.py:_ExecuteMixin._forward_distributed_nonuniform_from_materials":
         "internal to fwd_distributed_nu",
     "rfx/api/_execute.py:_ExecuteMixin._execute_distributed_nonuniform_from_materials":
-        "internal to run_distributed, fwd_distributed_nu",
+        "internal to run_distributed_nu, fwd_distributed_nu",
     "rfx/api/_execute.py:_ExecuteMixin._run_adi_from_materials": "internal to run_adi, fwd_adi",
     "rfx/api/_execute.py:_ExecuteMixin._run_nonuniform": "internal to run_nonuniform",
     "rfx/api/_execute.py:_ExecuteMixin._run_subgridded": "internal to run_subgridded",
+    "rfx/runners/_distributed_entry.py:execute_distributed":
+        "internal to run_distributed, run_distributed_nu, fwd_distributed",
     "rfx/runners/nonuniform.py:run_nonuniform_path":
         "internal to run_nonuniform, fwd_nonuniform, waveguide_s_matrix",
     "rfx/runners/subgridded.py:_run_subgridded_once": "internal to run_subgridded",
@@ -52,7 +54,7 @@ KERNEL_CALLERS = {
     "rfx/sparams/mixed.py:compute_mixed_s_matrix": "mixed_s_matrix",
     "rfx/topology.py:topology_optimize": "topology_optimize",
     "rfx/sparams/waveguide.py:_compute_waveguide_s_matrix_nu": "waveguide_s_matrix",
-    **{f"rfx/sources/waveguide_port.py:{name}": "internal to waveguide_s_matrix" for name in (
+    **{f"rfx/measurement/waveguide_s.py:{name}": "internal to waveguide_s_matrix" for name in (
         "extract_waveguide_s_matrix", "extract_waveguide_s_matrix_flux",
         "extract_waveguide_s_params_normalized", "extract_multimode_s_matrix",
         "extract_multimode_s_matrix_flux")},
@@ -69,20 +71,21 @@ KERNEL_CALLERS = {
 FIELD_STEPPERS = {
     "rfx/adi.py:run_adi_2d": "internal to run_adi",
     "rfx/adi.py:run_adi_3d": "internal to run_adi",
-    "rfx/nonuniform.py:_build_nu_scan": "internal to run_nonuniform, fwd_nonuniform",
-    "rfx/probes/probes.py:extract_s_matrix": "grid-level: the eager lumped extractor",
-    "rfx/probes/probes.py:extract_s_matrix_wire": "grid-level: the eager wire extractor",
-    "rfx/runners/_distributed_common.py:update_h_nu_shmap": "internal to run_distributed, fwd_distributed_nu",
-    "rfx/runners/_distributed_common.py:update_e_nu_shmap": "internal to run_distributed, fwd_distributed_nu",
+    "rfx/runners/_distributed_common.py:update_h_nu_shmap": "internal to run_distributed_nu, fwd_distributed_nu",
+    "rfx/runners/_distributed_common.py:update_e_nu_shmap": "internal to run_distributed_nu, fwd_distributed_nu",
     "rfx/runners/_distributed_common.py:_update_e_local_with_dispersion":
-        "internal to run_distributed, fwd_distributed_nu",
+        "internal to run_distributed, run_distributed_nu, fwd_distributed_nu",
     "rfx/runners/distributed_v2.py:run_distributed": "internal to run_distributed",
     "rfx/simulation.py:_update_e_with_optional_dispersion":
         "internal to run_uniform, fwd_uniform, s_matrix_scan, mixed_s_matrix, topology_optimize, "
         "waveguide_s_matrix, coaxial_line_reflection, coaxial_two_port, coax_msl_transition, material_fit",
-    "rfx/simulation.py:make_core_step":
+    # The one uniform-mesh step (S3-2): the scan step, the material sweep and the
+    # grid-level eager lumped and wire extractors all build their step here.
+    "rfx/stepping/uniform.py:make_uniform_step":
         "internal to run_uniform, fwd_uniform, s_matrix_scan, mixed_s_matrix, topology_optimize, "
-        "waveguide_s_matrix, coaxial_line_reflection, coaxial_two_port, coax_msl_transition, material_fit",
+        "waveguide_s_matrix, coaxial_line_reflection, coaxial_two_port, coax_msl_transition, material_fit, vmap_sweep_batched",
+    # The one graded-mesh step (S3-2 stage B).
+    "rfx/stepping/graded.py:make_graded_step": "internal to run_nonuniform, fwd_nonuniform",
     "rfx/subgridding/disjoint_3d.py:_yee_step": "internal to run_subgridded",
     "rfx/subgridding/disjoint_3d.py:_yee_h_step": "internal to run_subgridded",
     "rfx/subgridding/disjoint_3d.py:_yee_e_step": "internal to run_subgridded",
@@ -91,7 +94,6 @@ FIELD_STEPPERS = {
     "rfx/subgridding/runner.py:run_subgridded": "grid-level: the non-jitted subgrid runner; rfx does not call it",
     "rfx/subgridding/sbp_sat_3d.py:_update_h_only": "internal to run_subgridded",
     "rfx/subgridding/sbp_sat_3d.py:_update_e_only": "internal to run_subgridded",
-    "rfx/vmap_sweep.py:_build_vmap_scan_fn": "vmap_sweep_batched",
 }
 
 _KERNELS = {
@@ -238,16 +240,18 @@ def test_every_cell_says_what_it_needs_to():
 
 
 def test_lane_columns_are_the_lanes_dispatch_plan_selects():
-    tree = ast.parse((ROOT / "rfx/api/_execute.py").read_text())
+    tree = ast.parse((ROOT / "rfx/api/_dispatch.py").read_text())
     lanes = set()
     for node in ast.walk(tree):
         if not (isinstance(node, ast.Call) and getattr(node.func, "id", "") == "_DispatchPlan"):
             continue
         lane = [kw.value for kw in node.keywords if kw.arg == "lane"]
-        assert not node.args and len(lane) == 1 and isinstance(lane[0], ast.Constant), (
-            f"rfx/api/_execute.py:{node.lineno}: a _DispatchPlan whose lane is not a keyword "
-            "constant; this test reads the lanes from those keywords")
-        lanes.add(lane[0].value)
+        assert not node.args and len(lane) == 1 and isinstance(lane[0], (ast.Constant, ast.IfExp)), (
+            f"rfx/api/_dispatch.py:{node.lineno}: a _DispatchPlan whose lane is not a keyword "
+            "constant or conditional constants; this test reads those lane keywords")
+        values = (lane[0].body, lane[0].orelse) if isinstance(lane[0], ast.IfExp) else lane
+        assert all(isinstance(value, ast.Constant) for value in values)
+        lanes.update(value.value for value in values)
     routes = set(T.KERNEL_ROUTES)
     assert lanes == set(T.LANES) - routes, (
         f"_dispatch_plan lanes {sorted(lanes)} != table lanes {sorted(set(T.LANES) - routes)}: "

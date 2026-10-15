@@ -234,7 +234,7 @@ def test_waveguide_port_through_api():
     sim = Simulation(
         freq_max=10e9,
         domain=(0.12, 0.04, 0.02),
-        boundary="cpml",
+        boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=10,
         dx=0.002,
     )
@@ -287,7 +287,7 @@ def test_waveguide_port_rejects_unsupported_configuration():
     sim_multi = Simulation(
         freq_max=10e9,
         domain=(0.12, 0.04, 0.02),
-        boundary="cpml",
+        boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=10,
         dx=0.002,
     )
@@ -302,7 +302,7 @@ def test_waveguide_port_geometry_changes_response():
     base_kwargs = dict(
         freq_max=10e9,
         domain=(0.12, 0.04, 0.02),
-        boundary="cpml",
+        boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=10,
         dx=0.002,
     )
@@ -346,7 +346,7 @@ def test_waveguide_two_port_s_matrix_through_api():
     sim = Simulation(
         freq_max=10e9,
         domain=(0.12, 0.04, 0.02),
-        boundary="cpml",
+        boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=10,
         dx=0.002,
     )
@@ -398,7 +398,7 @@ def test_waveguide_multiport_same_direction_requires_shared_boundary_plane():
     sim = Simulation(
         freq_max=10e9,
         domain=(0.12, 0.04, 0.02),
-        boundary="cpml",
+        boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=10,
         dx=0.002,
     )
@@ -511,7 +511,7 @@ def test_waveguide_two_port_y_normal_s_matrix_through_api():
     sim = Simulation(
         freq_max=10e9,
         domain=(0.04, 0.12, 0.02),
-        boundary="cpml",
+        boundary={"x": "pec", "y": "cpml", "z": "pec"},
         cpml_layers=10,
         dx=0.002,
     )
@@ -637,7 +637,7 @@ def test_waveguide_sparams_default_output():
     sim = Simulation(
         freq_max=10e9,
         domain=(0.12, 0.04, 0.02),
-        boundary="cpml",
+        boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=10,
         dx=0.002,
     )
@@ -658,14 +658,14 @@ def test_waveguide_sparams_default_output():
     assert result.waveguide_sparams is not None
     raw_cfg = result.waveguide_ports["wg0"]
     calibrated = result.waveguide_sparams["wg0"]
-    raw_s11, raw_s21 = extract_waveguide_sparams(raw_cfg)
+    raw_s11, raw_s21 = extract_waveguide_sparams(raw_cfg, ref_shift=0.01 - 0.016)
     np.testing.assert_allclose(calibrated.s11, np.array(raw_s11))
     np.testing.assert_allclose(calibrated.s21, np.array(raw_s21))
-    assert calibrated.calibration_preset == "measured"
+    assert calibrated.calibration_preset == "source_to_probe"
     assert calibrated.source_plane == pytest.approx(0.01)
     assert calibrated.measured_reference_plane == pytest.approx(0.016)
     assert calibrated.measured_probe_plane == pytest.approx(0.040)
-    assert calibrated.reference_plane == pytest.approx(0.016)
+    assert calibrated.reference_plane == pytest.approx(0.01)
     assert calibrated.probe_plane == pytest.approx(0.040)
 
 
@@ -674,7 +674,7 @@ def test_waveguide_sparams_deembedded_planes():
     sim = Simulation(
         freq_max=10e9,
         domain=(0.12, 0.04, 0.02),
-        boundary="cpml",
+        boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=10,
         dx=0.002,
     )
@@ -712,7 +712,7 @@ def test_waveguide_sparams_source_to_probe_preset():
     sim = Simulation(
         freq_max=10e9,
         domain=(0.12, 0.04, 0.02),
-        boundary="cpml",
+        boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=10,
         dx=0.002,
     )
@@ -749,7 +749,7 @@ def test_waveguide_sparams_report_snapped_planes_for_non_aligned_input():
     sim = Simulation(
         freq_max=10e9,
         domain=(0.12, 0.04, 0.02),
-        boundary="cpml",
+        boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=10,
         dx=0.002,
     )
@@ -794,7 +794,7 @@ def test_waveguide_port_allows_near_boundary_input_when_snapped_planes_fit():
     sim = Simulation(
         freq_max=10e9,
         domain=(0.12, 0.04, 0.02),
-        boundary="cpml",
+        boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=10,
         dx=0.002,
     )
@@ -894,15 +894,20 @@ def test_waveguide_port_rejects_invalid_freq_arrays():
         sim.add_waveguide_port(0.01, freqs=jnp.array([5e9, -1.0]))
 
 
-def test_waveguide_port_rejects_measurement_planes_outside_domain():
+@pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
+def test_waveguide_port_rejects_measurement_planes_outside_domain(graded):
     """Stored ref/probe measurement planes must stay inside the physical domain."""
+    extra = {"dz_profile": np.array([0.003, 0.002, 0.002, 0.002, 0.002,
+                                     0.002, 0.002, 0.002, 0.003])} if graded else {}
     sim = Simulation(
         freq_max=10e9,
         domain=(0.03, 0.04, 0.02),
         boundary="cpml",
         cpml_layers=10,
         dx=0.002,
+        **extra,
     )
+    assert sim._uses_nonuniform_mesh is graded
     with pytest.raises(ValueError, match="measurement planes exceed the physical x-domain after grid snapping"):
         sim.add_waveguide_port(
             0.024,
@@ -971,7 +976,7 @@ def test_periodic_axes_through_api_matches_low_level():
 def test_tfsf_requires_supported_configuration():
     """Unsupported TFSF configurations should fail clearly."""
     sim_pec = Simulation(freq_max=8e9, domain=(0.08, 0.006, 0.006), boundary="pec")
-    with pytest.raises(ValueError, match="boundary='cpml'"):
+    with pytest.raises(ValueError, match="cpml_layers > 0"):
         sim_pec.add_tfsf_source()
 
     sim_no_cpml = Simulation(

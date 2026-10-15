@@ -6,6 +6,7 @@ simulation, avoiding the need to store full time-series.
 
 from __future__ import annotations
 
+from rfx._grid_metric import field_index
 from dataclasses import dataclass
 from typing import NamedTuple
 
@@ -13,9 +14,12 @@ import jax
 import jax.numpy as jnp
 
 from rfx.core.dft_utils import dft_window_weight as _dft_window_weight
-from rfx.core.dft_utils import half_step_current_phase as _half_step_current_phase
+from rfx.measurement.dft import phase as _dft_phase, accumulate as _accumulate
+from rfx.measurement.plan import field_channel
 from rfx.grid import Grid
-from rfx.sources.sources import LumpedPort
+from rfx.boundaries.axes import resolve_cpml_axes
+from rfx.boundaries.cpml import apply_cpml_e, apply_cpml_h, init_cpml
+from rfx.sources.sources import LumpedPort, _wire_port_live_cells, _wire_port_cells
 
 
 @dataclass(frozen=True)
@@ -28,7 +32,7 @@ class FieldMonitor:
 
 def sample_field(state, grid: Grid, monitor: FieldMonitor) -> float:
     """Sample a field component at a monitor position."""
-    idx = grid.position_to_index(monitor.position)
+    idx = field_index(grid, monitor.position, monitor.component)
     field = getattr(state, monitor.component)
     return field[idx[0], idx[1], idx[2]]
 
@@ -60,7 +64,7 @@ def init_dft_probe(
     dft_window_alpha: float = 0.25,
 ) -> DFTProbe:
     """Create a DFT probe at a point for given frequencies."""
-    idx = grid.position_to_index(position)
+    idx = field_index(grid, position, component)
     # Accumulator dtype follows the x64 state (issue #477 residual): under
     # x64 the per-step update (field * complex phase) is complex128, and a
     # hardcoded complex64 accumulator breaks the scan-carry dtype contract.
@@ -87,11 +91,10 @@ def update_dft_probe(
 
     X(f) += x(t) * exp(-j*2π*f*t) * dt
     """
-    t = state.step * dt
     field = getattr(state, probe.component)
     value = field[probe.index[0], probe.index[1], probe.index[2]]
 
-    phase = jnp.exp(-1j * 2.0 * jnp.pi * probe.freqs * t)
+    phase = (_dft_phase(state.step-1, probe.freqs, dt, field_channel(probe.component)) / dt)
     weight = _dft_window_weight(state.step, probe.total_steps, probe.window, probe.window_alpha)
     new_acc = probe.accumulator + value * phase * dt * weight
 
@@ -101,6 +104,23 @@ def update_dft_probe(
 # ---------------------------------------------------------------------------
 # Port voltage / current extraction
 # ---------------------------------------------------------------------------
+
+def _project_port(state, grid, port, *, wire, periodic=(False, False, False),
+                  pec_edge_masks=None):
+    from rfx.measurement.projector import port_table, project
+    from rfx.nonuniform import NonUniformGrid
+    if wire:
+        cells, flags, _ = _wire_port_live_cells(grid, port, pec_edge_masks)
+        live = tuple(tuple(c) for c, flag in zip(cells, flags) if flag)
+    else:
+        live = (tuple(field_index(grid, port.position, port.component)),)
+    nu = isinstance(grid, NonUniformGrid)
+    mid = live[len(live)//2] if live else ()
+    table = port_table(grid, ((port.component, live, 'wire' if wire else 'lumped', mid, 0),),
+                       nu=nu,
+                       boundary=_port_curl_boundary(grid, periodic), dtype=state.ex.dtype)
+    return project(state, table)
+
 
 def port_voltage(state, grid: Grid, port: LumpedPort) -> jnp.ndarray:
     """Voltage across the lumped port cell.
@@ -120,10 +140,7 @@ def port_voltage(state, grid: Grid, port: LumpedPort) -> jnp.ndarray:
     -------
     float scalar
     """
-    idx = grid.position_to_index(port.position)
-    i, j, k = idx
-    field = getattr(state, port.component)
-    return _port_voltage_value(field[i, j, k], grid.dx)
+    return _project_port(state, grid, port, wire=False)[0]
 
 
 def _port_curl_boundary(grid, periodic):
@@ -209,19 +226,26 @@ def port_current(state, grid: Grid, port: LumpedPort,
     -------
     float scalar
     """
-    idx = tuple(grid.position_to_index(port.position))
-    dx = grid.dx
+    return _project_port(state, grid, port, wire=False, periodic=periodic)[1]
 
-    return _ampere_loop(state, idx, port.component, dx, periodic,
-                        boundary=_port_curl_boundary(grid, periodic))
+
+def _metric_ampere_loop(state, idx, component, grid, periodic, boundary=None):
+    """Ampere contour uses the transverse dual lengths at the E node."""
+    h_a, axis_a, h_b, axis_b = _ampere_loop_components(component)
+    da, db = grid.duals(axis_a)[idx[axis_a]], grid.duals(axis_b)[idx[axis_b]]
+    if not isinstance(da + db, jax.core.Tracer) and float(da) == float(db):
+        return _ampere_loop(state, idx, component, float(da), periodic, boundary)
+    a, b = getattr(state, h_a), getattr(state, h_b)
+    return ((a[idx] - _bwd_h(a, idx, axis_a, periodic, boundary)) * db
+            - (b[idx] - _bwd_h(b, idx, axis_b, periodic, boundary)) * da)
 
 
 def _ampere_loop(state, idx, component, dx, periodic, boundary=None):
     """4-term discrete Ampere loop at ``idx`` on a uniform (cubic) grid.
 
-    Single spelling shared by :func:`port_current` and
-    :func:`wire_port_current` — they were two verbatim copies of the same
-    six branches, and #692 had to fix the same wrap twice because of it.
+    Retained for multi-device, reference-plane and subgridded consumers.
+    Completed single-device port samples use measurement.projector; this
+    arithmetic also remains an independent comparison oracle.
     """
     h_a, axis_a, h_b, axis_b = _ampere_loop_components(component)
     a, b = getattr(state, h_a), getattr(state, h_b)
@@ -373,7 +397,7 @@ def init_sparam_probe(
     -------
     SParamProbe
     """
-    idx = grid.position_to_index(port.position)
+    idx = field_index(grid, port.position, port.component)
     n = len(freqs)
     zeros = jnp.zeros(n, dtype=jnp.complex64)
     return SParamProbe(
@@ -440,11 +464,10 @@ def update_sparam_probe(
     """
     t = state.step * dt  # keep traceable: float(state.step) leaked the tracer
 
-    v = port_voltage(state, grid, port)
-    i = port_current(state, grid, port)
+    v, i = _project_port(state, grid, port, wire=False)[:2]
     v_inc = port.excitation(t)
 
-    phase = jnp.exp(-1j * 2.0 * jnp.pi * probe.freqs * t)
+    phase = (_dft_phase(state.step-1, probe.freqs, dt, 'E') / dt)
     # Yee half-step: I is H-derived (H^{n+1/2}) while V is E-derived
     # (E^{n+1}); advance the current sample by dt/2 so both DFT channels
     # share one reference time (rfx/core/dft_utils). The 2026-09-05 scope
@@ -452,7 +475,7 @@ def update_sparam_probe(
     # — E = E^{n+1} at the sample — did not hold at the pre-injection slot.
     # The slot above is now post-injection, so the premise holds here for
     # the same reason it holds on the wire lane.
-    i_phase = phase * _half_step_current_phase(probe.freqs, dt)
+    i_phase = (_dft_phase(state.step-1, probe.freqs, dt, 'H') / dt)
     weight = _dft_window_weight(state.step, probe.total_steps, probe.window, probe.window_alpha)
     new_v = probe.v_dft + v * phase * dt * weight
     new_i = probe.i_dft + i * i_phase * dt * weight
@@ -480,9 +503,8 @@ def update_lumped_drive_ref_probe(
     :func:`update_sparam_probe`.  Mirrors
     :func:`update_wire_drive_ref_probe` on the wire family.
     """
-    t = state.step * dt
     v_ref = port_voltage(state, grid, port)
-    phase = jnp.exp(-1j * 2.0 * jnp.pi * probe.freqs * t)
+    phase = (_dft_phase(state.step-1, probe.freqs, dt, 'E') / dt)
     weight = _dft_window_weight(state.step, probe.total_steps, probe.window,
                                 probe.window_alpha)
     old_ref = probe.v_ref_dft if probe.v_ref_dft is not None else 0.0
@@ -645,36 +667,14 @@ def init_dft_plane_probe(
     )
 
 
-def update_dft_plane_probe(
-    probe: DFTPlaneProbe, state, dt: float,
-) -> DFTPlaneProbe:
-    """Accumulate one timestep into the plane DFT."""
-    t = state.step * dt
-    field = getattr(state, probe.component)
-
-    region = probe.region
-    if region is None:
-        lo1 = lo2 = 0
-        if probe.axis == 0:
-            hi1, hi2 = field.shape[1], field.shape[2]
-        elif probe.axis == 1:
-            hi1, hi2 = field.shape[0], field.shape[2]
-        else:
-            hi1, hi2 = field.shape[0], field.shape[1]
-    else:
-        lo1, hi1, lo2, hi2 = region
-
-    if probe.axis == 0:
-        plane = field[probe.index, lo1:hi1, lo2:hi2]
-    elif probe.axis == 1:
-        plane = field[lo1:hi1, probe.index, lo2:hi2]
-    else:
-        plane = field[lo1:hi1, lo2:hi2, probe.index]
-
-    phase = jnp.exp(-1j * 2.0 * jnp.pi * probe.freqs * t)
-    weight = _dft_window_weight(state.step, probe.total_steps, probe.window, probe.window_alpha)
-    new_acc = probe.accumulator + plane[None, :, :] * phase[:, None, None] * dt * weight
-    return probe._replace(accumulator=new_acc)
+def update_dft_plane_probe(probe: DFTPlaneProbe, state, dt: float) -> DFTPlaneProbe:
+    """Accumulate a plane with its physical component clock."""
+    from rfx.measurement.accumulators import plane_sample
+    sample = plane_sample(state, probe.component, probe.axis, probe.index, probe.region)
+    return probe._replace(accumulator=_accumulate(
+        probe.accumulator, sample, state.step-1, probe.freqs, dt, field_channel(probe.component),
+        total_steps=probe.total_steps, window=probe.window, alpha=probe.window_alpha,
+        window_step=state.step))
 
 
 # ---------------------------------------------------------------------------
@@ -691,6 +691,9 @@ class FluxMonitor(NamedTuple):
     For x-normal plane: flux = Re(Ey·Hz* - Ez·Hy*) integrated over y,z.
     For y-normal plane: flux = Re(Ez·Hx* - Ex·Hz*) integrated over x,z.
     For z-normal plane: flux = Re(Ex·Hy* - Ey·Hx*) integrated over x,y.
+
+    E1/H2 and E2/H1 are paired arrays. At finite windows each pair includes
+    the high endpoint on its nodal tangential axis, so their shapes differ.
     """
     e1_dft: jnp.ndarray   # (n_freqs, n1, n2) complex — first tangential E
     e2_dft: jnp.ndarray   # (n_freqs, n1, n2) complex — second tangential E
@@ -707,10 +710,13 @@ class FluxMonitor(NamedTuple):
     window: str
     window_alpha: float
     lo1: int = 0          # start index in first tangential dimension
-    hi1: int = -1         # end index (exclusive); -1 = full extent
+    hi1: int = -1         # cell end / included nodal endpoint; -1 = full extent
     lo2: int = 0          # start index in second tangential dimension
-    hi2: int = -1         # end index (exclusive); -1 = full extent
-    dA2: jnp.ndarray | None = None  # second staggered E/H product on graded or PMC-cut planes
+    hi2: int = -1         # cell end / included nodal endpoint; -1 = full extent
+    dA2: jnp.ndarray | None = None  # second staggered E/H product
+    normal_h_zero: bool = False  # odd tangential-H image on a magnetic plane
+    normal_h_weights: tuple[float, float] = (.5, .5)  # left/right half-cell planes
+    normal_periodic: bool = False
 
 
 # Tangential field component names for each normal axis
@@ -737,21 +743,22 @@ def init_flux_monitor(
     hi2: int = -1,
     pmc_faces: frozenset = frozenset(),
     staggered_area: bool = False,
+    node_coords=None,
+    periodic_axes: str = "",
+    normal_h_weights: tuple[float, float] = (.5, .5),
 ) -> FluxMonitor:
     """Create a Poynting flux monitor on a (possibly finite-size) plane region.
 
     ``lo1/hi1`` and ``lo2/hi2`` restrict the DFT accumulation to a
     sub-region of the tangential plane.  -1 means "full extent".
 
-    ``d1`` / ``d2`` are the cell sizes along the two tangential axes of
-    the monitor plane (axis-1 / axis-2 of ``_FLUX_COMPONENTS``). Each may
-    be a scalar (uniform mesh) or a per-cell 1-D array (non-uniform). The
-    With ``staggered_area=True``, nodal axes use adjacent-cell dual widths
-    and each E/H product has its own area. PMC face nodes have half weight;
-    unused high cell-centered ghosts have zero weight. Otherwise the
-    flux area element is ``dA = d1 * d2`` — for an x-normal plane that is
-    ``dy * dz``, etc. (PROBE-C1 fix: the old API took a single scalar
-    ``dx`` and assumed a cubic cell.)
+    ``d1`` / ``d2`` are tangential cell widths for low-level callers.
+    Grid constructors supply canonical ``node_coords``. Finite windows use
+    clipped dual widths on nodes lo..hi and primal widths on cells lo..hi-1.
+    Full non-periodic planes end at the last stored node; the high cell ghost
+    has zero weight. Periodic planes cover one period, and a collapsed axis
+    carries one extruded cell width. ``staggered_area`` is retained for callers;
+    both meshes now always use the same staggered quadrature.
     """
     from rfx.boundaries.pmc import magnetic_image_faces
     pmc_faces = magnetic_image_faces(pmc_faces, grid_shape)
@@ -767,48 +774,32 @@ def init_flux_monitor(
     if hi2 < 0:
         hi2 = full2
 
-    n1 = hi1 - lo1
-    n2 = hi2 - lo2
-    nf = len(freqs)
-    zeros = jnp.zeros((nf, n1, n2), dtype=jnp.complex128)
-
-    # Axis-aware area element dA = d1*d2 over the (lo,hi) sub-region.
-    # Scalars stay scalar (broadcast); per-cell arrays are sliced and
-    # outer-multiplied to (n1, n2). jnp.reshape(scalar, (-1,1)) -> (1,1).
-    w1 = jnp.asarray(d1, dtype=jnp.float32)
-    w2 = jnp.asarray(d2, dtype=jnp.float32)
-    # The two products live at distinct transverse Yee locations. An E
-    # component is half-cell shifted on its own axis and nodal on the other.
-    # Only nodal samples receive the half dual-cell weight at a PMC face.
+    import numpy as np
+    from rfx.measurement.flux_weights import flux_weights
     tangential = [a for a in range(3) if a != axis]
-    def face_weights(w, size, lo, hi, a, component):
-        nodal = component != a
-        if w.ndim > 0:
-            if staggered_area and nodal:
-                # Node-centered dual length versus edge-centered primal
-                # length. Transform before slicing to retain the left cell.
-                w = jnp.concatenate((w[:1], .5 * (w[:-1] + w[1:])))
-            w = w[lo:hi]
-        if not any(f"{'xyz'[a]}_{side}" in pmc_faces for side in ("lo", "hi")):
-            return w
-        w = jnp.broadcast_to(w, (hi - lo,))
-        if nodal and lo == 0 and f"{'xyz'[a]}_lo" in pmc_faces:
-            w = w.at[0].multiply(0.5)
-        if hi == size and f"{'xyz'[a]}_hi" in pmc_faces:
-            w = w.at[-1].multiply(0.5 if nodal else 0.)
-        return w
-    def area(component):
-        a = face_weights(w1, full1, lo1, hi1, tangential[0], component)
-        b = face_weights(w2, full2, lo2, hi2, tangential[1], component)
-        return jnp.reshape(a, (-1, 1)) * jnp.reshape(b, (1, -1))
-    dA = area("xyz".index(_FLUX_COMPONENTS[axis][0][1]))
-    dA2 = area("xyz".index(_FLUX_COMPONENTS[axis][1][1])) if pmc_faces or staggered_area else None
+    widths = [np.broadcast_to(np.asarray(d, dtype=float), (n,))
+              for d, n in zip((d1, d2), (full1, full2))]
+    if node_coords is None:
+        node_coords = tuple(np.r_[0., np.cumsum(w)][:n + int('xyz'[a] in periodic_axes)]
+                            for w, n, a in zip(widths, (full1, full2), tangential))
+    extrusions = tuple(float(w[0]) if n == 1 else None
+                       for w, n in zip(widths, (full1, full2)))
+    dA, dA2 = (jnp.asarray(a, dtype=jnp.float32) for a in flux_weights(
+        node_coords, ((lo1, hi1), (lo2, hi2)), tangential,
+        tuple('xyz'.index(c[1]) for c in _FLUX_COMPONENTS[axis][:2]),
+        periodic_axes, extrusions))
+    dtype = jnp.complex128 if jax.config.x64_enabled else jnp.complex64
+    zeros1 = jnp.zeros((len(freqs),) + dA.shape, dtype=dtype)
+    zeros2 = jnp.zeros((len(freqs),) + dA2.shape, dtype=dtype)
+    normal_h_zero = ((index == 0 and f"{'xyz'[axis]}_lo" in pmc_faces) or
+                     (index == grid_shape[axis]-1 and f"{'xyz'[axis]}_hi" in pmc_faces))
 
     return FluxMonitor(
-        e1_dft=zeros, e2_dft=zeros,
-        h1_dft=zeros, h2_dft=zeros,
+        e1_dft=zeros1, e2_dft=zeros2,
+        h1_dft=zeros2, h2_dft=zeros1,
         freqs=freqs, axis=axis, index=index,
-        dA=dA, dA2=dA2,
+        dA=dA, dA2=dA2, normal_h_zero=normal_h_zero,
+        normal_h_weights=normal_h_weights, normal_periodic="xyz"[axis] in periodic_axes,
         total_steps=int(dft_total_steps),
         window=dft_window,
         window_alpha=float(dft_window_alpha),
@@ -820,31 +811,16 @@ def update_flux_monitor(
     mon: FluxMonitor, state, dt: float,
 ) -> FluxMonitor:
     """Accumulate one timestep of E and H tangential fields."""
-    t = state.step * dt
-    e1_name, e2_name, h1_name, h2_name = _FLUX_COMPONENTS[mon.axis]
-
-    def _slice(field):
-        if mon.axis == 0:
-            return field[mon.index, :, :]
-        elif mon.axis == 1:
-            return field[:, mon.index, :]
-        return field[:, :, mon.index]
-
-    e1 = _slice(getattr(state, e1_name))
-    e2 = _slice(getattr(state, e2_name))
-    h1 = _slice(getattr(state, h1_name))
-    h2 = _slice(getattr(state, h2_name))
-
-    phase = jnp.exp(-1j * 2.0 * jnp.pi * mon.freqs * t)
-    weight = _dft_window_weight(state.step, mon.total_steps, mon.window, mon.window_alpha)
-    kernel = phase[:, None, None] * dt * weight
-
-    return mon._replace(
-        e1_dft=mon.e1_dft + e1[None, :, :] * kernel,
-        e2_dft=mon.e2_dft + e2[None, :, :] * kernel,
-        h1_dft=mon.h1_dft + h1[None, :, :] * kernel,
-        h2_dft=mon.h2_dft + h2[None, :, :] * kernel,
-    )
+    from rfx.measurement.accumulators import flux_samples
+    from rfx.measurement.flux_weights import flux_regions
+    values = flux_samples(state, mon.axis, mon.index, _FLUX_COMPONENTS[mon.axis],
+                          flux_regions(mon), mon.normal_h_zero, mon.normal_h_weights, mon.normal_periodic)
+    names = ('e1_dft', 'e2_dft', 'h1_dft', 'h2_dft')
+    return mon._replace(**{
+        name: _accumulate(getattr(mon, name), value, state.step-1, mon.freqs, dt,
+                          'E' if k < 2 else 'H', total_steps=mon.total_steps,
+                          window=mon.window, alpha=mon.window_alpha, window_step=state.step)
+        for k, (name, value) in enumerate(zip(names, values))})
 
 
 def flux_spectrum(mon: FluxMonitor, *, exact_f64: bool = False) -> jnp.ndarray:
@@ -889,22 +865,20 @@ def flux_spectrum(mon: FluxMonitor, *, exact_f64: bool = False) -> jnp.ndarray:
         e2 = np.asarray(mon.e2_dft, dtype=np.complex128)
         h1 = np.asarray(mon.h1_dft, dtype=np.complex128)
         h2 = np.asarray(mon.h2_dft, dtype=np.complex128)
-        integrand = e1 * np.conj(h2) - e2 * np.conj(h1)
         dA = np.asarray(mon.dA, dtype=np.float64)
         if mon.dA2 is None:
-            return np.real(np.sum(integrand * dA, axis=(-2, -1)))
+            return np.real(np.sum((e1 * np.conj(h2) - e2 * np.conj(h1)) * dA, axis=(-2, -1)))
         dA2 = np.asarray(mon.dA2, dtype=np.float64)
-        return np.real(np.sum(e1 * np.conj(h2) * dA - e2 * np.conj(h1) * dA2,
-                              axis=(-2, -1)))
+        return np.real(np.sum(e1 * np.conj(h2) * dA, axis=(-2, -1))
+                       - np.sum(e2 * np.conj(h1) * dA2, axis=(-2, -1)))
     # Poynting: S_n = E1*H2* - E2*H1* (cyclic cross product).
     # mon.dA is the axis-aware area weight (scalar or (n1,n2)).
-    integrand = mon.e1_dft * jnp.conj(mon.h2_dft) - mon.e2_dft * jnp.conj(mon.h1_dft)
     if mon.dA2 is None:
-        flux = jnp.real(jnp.sum(integrand * mon.dA, axis=(-2, -1)))
+        flux = jnp.real(jnp.sum((mon.e1_dft * jnp.conj(mon.h2_dft)
+                                 - mon.e2_dft * jnp.conj(mon.h1_dft)) * mon.dA, axis=(-2, -1)))
     else:
-        flux = jnp.real(jnp.sum(mon.e1_dft * jnp.conj(mon.h2_dft) * mon.dA
-                               - mon.e2_dft * jnp.conj(mon.h1_dft) * mon.dA2,
-                               axis=(-2, -1)))
+        flux = jnp.real(jnp.sum(mon.e1_dft * jnp.conj(mon.h2_dft) * mon.dA, axis=(-2, -1))
+                        - jnp.sum(mon.e2_dft * jnp.conj(mon.h1_dft) * mon.dA2, axis=(-2, -1)))
     _warn_if_flux_subnormal_flush(mon, flux)
     return flux
 
@@ -940,9 +914,9 @@ def _warn_if_flux_subnormal_flush(mon: FluxMonitor, flux) -> None:
     dA = np.asarray(mon.dA, dtype=np.float64)
     term1 = e1.astype(np.complex128) * np.conj(h2)
     term2 = e2.astype(np.complex128) * np.conj(h1)
-    weighted = ((term1 - term2) * dA if mon.dA2 is None else
-                term1 * dA - term2 * np.asarray(mon.dA2, dtype=np.float64))
-    f64 = np.real(np.sum(weighted, axis=(-2, -1)))
+    area2 = dA if mon.dA2 is None else np.asarray(mon.dA2, dtype=np.float64)
+    f64 = np.real(np.sum(term1 * dA, axis=(-2, -1))
+                  - np.sum(term2 * area2, axis=(-2, -1)))
     if not np.any(f64 != 0.0):
         return  # float64 agrees the flux is zero — no artefact
     import warnings
@@ -1094,7 +1068,6 @@ def _wire_port_live_mid(grid, port, pec_edge_masks=None):
     as the port current. With ``pec_edge_masks=None`` — or no dead cells — this is
     bit-identical to the historical all-extent midpoint.
     """
-    from rfx.sources.sources import _wire_port_live_cells
 
     cells, live_flags, _ = _wire_port_live_cells(grid, port, pec_edge_masks)
     live = [c for c, l in zip(cells, live_flags) if l]
@@ -1122,7 +1095,7 @@ def wire_port_voltage(state, grid, port, pec_edge_masks=None) -> jnp.ndarray:
     """
     mid = _wire_port_live_mid(grid, port, pec_edge_masks)
     field = getattr(state, port.component)
-    return -field[mid[0], mid[1], mid[2]] * grid.dx
+    return -field[mid[0], mid[1], mid[2]] * grid.cells(port.component[1])[mid['xyz'.index(port.component[1])]]
 
 
 def wire_port_gap_voltage(state, grid, port, pec_edge_masks=None) -> jnp.ndarray:
@@ -1137,16 +1110,8 @@ def wire_port_gap_voltage(state, grid, port, pec_edge_masks=None) -> jnp.ndarray
     ``S_kk = (V_port - Z0*I)/(V_port + Z0*I)`` against the whole-port Z0
     that #318 physically realizes as the series termination.
     """
-    from rfx.sources.sources import _wire_port_live_cells
 
-    cells, live_flags, _ = _wire_port_live_cells(grid, port, pec_edge_masks)
-    field = getattr(state, port.component)
-    v_port = 0.0
-    for cell, live in zip(cells, live_flags):
-        if not live:
-            continue
-        v_port = v_port - field[cell[0], cell[1], cell[2]] * grid.dx
-    return v_port
+    return _project_port(state, grid, port, wire=True, pec_edge_masks=pec_edge_masks)[2]
 
 
 def wire_port_current(state, grid, port,
@@ -1173,11 +1138,8 @@ def wire_port_current(state, grid, port,
     -------
     float scalar
     """
-    mid = _wire_port_live_mid(grid, port, pec_edge_masks)
-    dx = grid.dx
-
-    return _ampere_loop(state, tuple(mid), port.component, dx, periodic,
-                        boundary=_port_curl_boundary(grid, periodic))
+    return _project_port(state, grid, port, wire=True, periodic=periodic,
+                         pec_edge_masks=pec_edge_masks)[1]
 
 
 # ---------------------------------------------------------------------------
@@ -1250,22 +1212,19 @@ def update_wire_sparam_probe(
     all-cells count, the historical behaviour and the degenerate
     no-dead-cells case).
     """
-    from rfx.sources.sources import _wire_port_cells
 
     t = state.step * dt  # keep traceable: float(state.step) leaked the tracer
     if n_live is None:
         n_live = max(len(_wire_port_cells(grid, port)), 1)
 
-    v = wire_port_voltage(state, grid, port, pec_edge_masks=pec_edge_masks)
-    i_val = wire_port_current(state, grid, port, pec_edge_masks=pec_edge_masks)
-    v_port = wire_port_gap_voltage(state, grid, port, pec_edge_masks=pec_edge_masks)
+    v, i_val, v_port = _project_port(state, grid, port, wire=True, pec_edge_masks=pec_edge_masks)
     v_inc = port.excitation(t) / n_live
 
-    phase = jnp.exp(-1j * 2.0 * jnp.pi * probe.freqs * t)
+    phase = (_dft_phase(state.step-1, probe.freqs, dt, 'E') / dt)
     # Yee half-step: H (hence the Ampere-loop current) is at n+1/2 while E
     # (voltage / gap voltage) is at n+1; advance the current sample by dt/2
     # so both DFT channels share the same reference time (rfx/core/dft_utils).
-    i_phase = phase * _half_step_current_phase(probe.freqs, dt)
+    i_phase = (_dft_phase(state.step-1, probe.freqs, dt, 'H') / dt)
     weight = _dft_window_weight(state.step, probe.total_steps, probe.window, probe.window_alpha)
     new_v = probe.v_dft + v * phase * dt * weight
     new_i = probe.i_dft + i_val * i_phase * dt * weight
@@ -1297,9 +1256,8 @@ def update_wire_drive_ref_probe(
     physical V/I/V_port channels are accumulated post-injection by
     ``update_wire_sparam_probe``.
     """
-    t = state.step * dt
     v_ref = wire_port_voltage(state, grid, port, pec_edge_masks=pec_edge_masks)
-    phase = jnp.exp(-1j * 2.0 * jnp.pi * probe.freqs * t)
+    phase = (_dft_phase(state.step-1, probe.freqs, dt, 'E') / dt)
     weight = _dft_window_weight(state.step, probe.total_steps, probe.window,
                                 probe.window_alpha)
     old_ref = probe.v_ref_dft if probe.v_ref_dft is not None else 0.0
@@ -1534,7 +1492,7 @@ def decompose_wire_s_matrix(v, i, z0, port_cell_counts, v_port=None,
     v_ref = v if v_ref is None else jnp.asarray(v_ref)
     n_ports = v.shape[0]
     n_freqs = v.shape[-1]
-    S = jnp.zeros((n_ports, n_ports, n_freqs), dtype=jnp.complex64)
+    S = jnp.zeros((n_ports, n_ports, n_freqs), dtype=jnp.result_type(v, i, jnp.complex64))
     for j in range(n_ports):
         z0_j = z0[j]
         safe_i = jnp.where(
@@ -1552,7 +1510,7 @@ def decompose_wire_s_matrix(v, i, z0, port_cell_counts, v_port=None,
             z0_i = z0[ri]
             if ri == j:
                 S = S.at[ri, j, :].set(
-                    ((z_in_j - z0_i) / (z_in_j + z0_i)).astype(jnp.complex64))
+                    ((z_in_j - z0_i) / (z_in_j + z0_i)).astype(S.dtype))
             elif v_port is not None:
                 # Whole-port off-diagonal frame (issue #770, adjudicated
                 # 2026-08-29 — see OFF-DIAGONAL FRAME above): outgoing
@@ -1565,7 +1523,7 @@ def decompose_wire_s_matrix(v, i, z0, port_cell_counts, v_port=None,
                 a_j = (v_port[j, j] + z0_j * i[j, j]) / (
                     2.0 * jnp.sqrt(z0_j))
                 safe_a = jnp.where(jnp.abs(a_j) > 0, a_j, jnp.ones_like(a_j))
-                S = S.at[ri, j, :].set((b_i / safe_a).astype(jnp.complex64))
+                S = S.at[ri, j, :].set((b_i / safe_a).astype(S.dtype))
             else:
                 # LEGACY per-cell off-diagonal (byte-frozen; #313 refplane
                 # decomposer + pre-#770 dump replay only).
@@ -1586,7 +1544,7 @@ def decompose_wire_s_matrix(v, i, z0, port_cell_counts, v_port=None,
                 a_j = (-v_ref[j, j] + z0_cell_j * i[j, j]) / (
                     2.0 * jnp.sqrt(z0_cell_j))
                 safe_a = jnp.where(jnp.abs(a_j) > 0, a_j, jnp.ones_like(a_j))
-                S = S.at[ri, j, :].set((b_i / safe_a).astype(jnp.complex64))
+                S = S.at[ri, j, :].set((b_i / safe_a).astype(S.dtype))
     return S
 
 
@@ -1598,7 +1556,7 @@ def extract_s_matrix(
     n_steps: int | None = None,
     *,
     boundary: str = "pec",
-    cpml_axes: str = "xyz",
+    cpml_axes: str | None = None,
     debye_spec: tuple[list, list[jnp.ndarray]] | None = None,
     lorentz_spec: tuple[list, list[jnp.ndarray]] | None = None,
     pec_edge_masks: object | None = None,
@@ -1619,7 +1577,7 @@ def extract_s_matrix(
     n_steps : int or None
         Defaults to ``grid.num_timesteps(num_periods=30)``.
     boundary : "pec" or "cpml"
-    cpml_axes : axes string for CPML (default "xyz")
+    cpml_axes : str or None: the grid's absorbing axes when omitted; subsets accepted
     debye_spec, lorentz_spec : optional ``(poles, masks)`` tuples
         Used to rebuild dispersive coefficients after port loading is
         folded into ``materials``.
@@ -1635,24 +1593,22 @@ def extract_s_matrix(
         when exciting port *j*). With ``return_vi_dump=True``, the bundle also
         carries replayable raw phasors.
     """
+    cpml_axes = resolve_cpml_axes(grid, cpml_axes)
     import numpy as np
-    from rfx.core.yee import init_state, update_h
-    from rfx.boundaries.pec import apply_pec
+    from rfx.core.yee import init_state
     from rfx.materials.debye import init_debye
     from rfx.materials.lorentz import init_lorentz
-    from rfx.simulation import _update_e_with_optional_dispersion
-    from rfx.sources.sources import setup_lumped_port, apply_lumped_port
+    from rfx.sources.sources import setup_lumped_port
 
     n_ports = len(ports)
     n_freqs = len(freqs)
     if n_steps is None:
         n_steps = grid.num_timesteps(num_periods=30)
 
-    dt, dx = grid.dt, grid.dx
+    dt = grid.dt
     use_cpml = boundary == "cpml" and grid.cpml_layers > 0
 
     if use_cpml:
-        from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
         cpml_params, cpml_state_init = init_cpml(grid)
 
     # Fold ALL port impedances into materials (once)
@@ -1668,7 +1624,7 @@ def extract_s_matrix(
     lorentz = None
     if lorentz_spec is not None:
         lorentz_poles, lorentz_masks = lorentz_spec
-        lorentz = init_lorentz(lorentz_poles, mats, dt, mask=lorentz_masks)
+        lorentz = init_lorentz(lorentz_poles, mats, dt, mask=lorentz_masks, grid=grid)
 
     # FDTD-sign V/I phasors per (drive j, receive i) for the shared decomposer.
     v_all = np.zeros((n_ports, n_ports, n_freqs), dtype=np.complex128)
@@ -1693,63 +1649,23 @@ def extract_s_matrix(
         debye_state = debye[1] if debye is not None else None
         lorentz_state = lorentz[1] if lorentz is not None else None
 
+        from rfx.stepping.probe_loop import make_probe_step
+        core, source_values = make_probe_step(
+            grid, mats, ports, j, use_cpml=use_cpml,
+            cpml_params=cpml_params if use_cpml else None, cpml_axes=cpml_axes,
+            debye=debye, lorentz=lorentz, pec_edge_masks=pec_edge_masks,
+            curl_boundary=curl_boundary, wire=False)
+        carry = {"fdtd": state, "sprobes": tuple(sprobes)}
+        if use_cpml:
+            carry["cpml"] = cpml_state
+        if debye is not None:
+            carry["debye"] = debye_state
+        if lorentz is not None:
+            carry["lorentz"] = lorentz_state
         for step in range(n_steps):
-            t = step * dt
-            state = update_h(state, mats, dt, dx)
-            if use_cpml:
-                state, cpml_state = apply_cpml_h(
-                    state, cpml_params, cpml_state, grid, cpml_axes,
-                    materials=mats)
-
-            state, debye_state, lorentz_state = _update_e_with_optional_dispersion(
-                state,
-                mats,
-                dt,
-                dx,
-                debye=(debye[0], debye_state) if debye is not None else None,
-                lorentz=(lorentz[0], lorentz_state) if lorentz is not None else None,
-                boundary=curl_boundary,
-            )
-
-            if use_cpml:
-                state, cpml_state = apply_cpml_e(
-                    state, cpml_params, cpml_state, grid, cpml_axes,
-                    materials=mats, boundary=curl_boundary)
-            state = apply_pec(state)
-
-            # Apply interior PEC mask (e.g. ground plane, scatterers
-            # added via ``Box(..., material="pec")``).  Without this,
-            # eval simulations driven from ``run(compute_s_params=True)``
-            # for lumped ports lose the ground-plane / scatterer
-            # geometry — antenna stops coupling and |S11| collapses
-            # toward 0 dB across the band, producing a 9–10 dB
-            # train/eval disconnect identical in shape to the prior
-            # time-gating-heuristic bug (issue #72).
-            if pec_edge_masks is not None:
-                from rfx.boundaries.pec import apply_pec_edges
-                # #931 §1.7: the realized (Mx, My, Mz) of the caller's
-                # geometry, sheets included — a sheet-declared ground
-                # plane owns no cell and used to vanish from this eager
-                # re-run entirely.
-                state = apply_pec_edges(state, pec_edge_masks)
-
-            # PRE-injection drive-sample reference at all ports (the
-            # historical #72 slot): the #308 receive-wave sign and the
-            # incident-wave denominator are calibrated against it.
-            for i in range(n_ports):
-                sprobes[i] = update_lumped_drive_ref_probe(
-                    sprobes[i], state, grid, ports[i], dt)
-
-            # Excite only port j
-            state = apply_lumped_port(state, grid, ports[j], t, mats)
-
-            # Physical V / I AFTER injection — the terminal pair of the
-            # driven circuit (known-load decision run; see
-            # update_sparam_probe).  At a passive port this reads the same
-            # field as the slot above.
-            for i in range(n_ports):
-                sprobes[i] = update_sparam_probe(
-                    sprobes[i], state, grid, ports[i], dt)
+            carry, _, extras = core(carry, jnp.int32(step), source_values(step * dt), jnp.zeros(0))
+            sprobes = extras["sprobes"]
+            carry["sprobes"] = sprobes
 
         # Collect per-(drive j, receive i) V/I DFT phasors for the shared
         # wave decomposer (``decompose_lumped_s_matrix``) — single source of
@@ -1940,7 +1856,7 @@ def extract_s_matrix_wire(
     n_steps: int | None = None,
     *,
     boundary: str = "pec",
-    cpml_axes: str = "xyz",
+    cpml_axes: str | None = None,
     debye_spec: tuple[list, list[jnp.ndarray]] | None = None,
     lorentz_spec: tuple[list, list[jnp.ndarray]] | None = None,
     pec_edge_masks: object | None = None,
@@ -1961,7 +1877,7 @@ def extract_s_matrix_wire(
     n_steps : int or None
         Defaults to ``grid.num_timesteps(num_periods=30)``.
     boundary : "pec" or "cpml"
-    cpml_axes : axes string for CPML (default "xyz")
+    cpml_axes : str or None: the grid's absorbing axes when omitted; subsets accepted
     debye_spec, lorentz_spec : optional dispersion specs
     return_vi_dump : bool
         When True, return a :class:`WirePortVIReplayBundle` containing the
@@ -1974,15 +1890,13 @@ def extract_s_matrix_wire(
         By default, returns an S-matrix. With ``return_vi_dump=True``, the
         bundle also carries raw phasors and per-port wire cell counts.
     """
+    cpml_axes = resolve_cpml_axes(grid, cpml_axes)
     import numpy as np
-    from rfx.core.yee import init_state, update_h
-    from rfx.boundaries.pec import apply_pec
+    from rfx.core.yee import init_state
     from rfx.materials.debye import init_debye
     from rfx.materials.lorentz import init_lorentz
-    from rfx.simulation import _update_e_with_optional_dispersion
     from rfx.sources.sources import (
         setup_wire_port,
-        apply_wire_port,
         _wire_port_cells,
         _wire_port_live_cells,
     )
@@ -1992,11 +1906,10 @@ def extract_s_matrix_wire(
     if n_steps is None:
         n_steps = grid.num_timesteps(num_periods=30)
 
-    dt, dx = grid.dt, grid.dx
+    dt = grid.dt
     use_cpml = boundary == "cpml" and grid.cpml_layers > 0
 
     if use_cpml:
-        from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
         cpml_params, cpml_state_init = init_cpml(grid)
 
     # Fold ALL port impedances into materials (once), over LIVE cells only
@@ -2017,7 +1930,7 @@ def extract_s_matrix_wire(
     lorentz = None
     if lorentz_spec is not None:
         lorentz_poles, lorentz_masks = lorentz_spec
-        lorentz = init_lorentz(lorentz_poles, mats, dt, mask=lorentz_masks)
+        lorentz = init_lorentz(lorentz_poles, mats, dt, mask=lorentz_masks, grid=grid)
 
     # FDTD-sign midpoint V/I phasors per (drive j, receive i) for the
     # shared wire decomposer (``decompose_wire_s_matrix``), plus the
@@ -2056,69 +1969,23 @@ def extract_s_matrix_wire(
         debye_state = debye[1] if debye is not None else None
         lorentz_state = lorentz[1] if lorentz is not None else None
 
+        from rfx.stepping.probe_loop import make_probe_step
+        core, source_values = make_probe_step(
+            grid, mats, ports, j, use_cpml=use_cpml,
+            cpml_params=cpml_params if use_cpml else None, cpml_axes=cpml_axes,
+            debye=debye, lorentz=lorentz, pec_edge_masks=pec_edge_masks,
+            curl_boundary=curl_boundary, wire=True)
+        carry = {"fdtd": state, "sprobes": tuple(sprobes)}
+        if use_cpml:
+            carry["cpml"] = cpml_state
+        if debye is not None:
+            carry["debye"] = debye_state
+        if lorentz is not None:
+            carry["lorentz"] = lorentz_state
         for step in range(n_steps):
-            t = step * dt
-            state = update_h(state, mats, dt, dx)
-            if use_cpml:
-                state, cpml_state = apply_cpml_h(
-                    state, cpml_params, cpml_state, grid, cpml_axes,
-                    materials=mats)
-
-            state, debye_state, lorentz_state = _update_e_with_optional_dispersion(
-                state,
-                mats,
-                dt,
-                dx,
-                debye=(debye[0], debye_state) if debye is not None else None,
-                lorentz=(lorentz[0], lorentz_state) if lorentz is not None else None,
-                boundary=curl_boundary,
-            )
-
-            if use_cpml:
-                state, cpml_state = apply_cpml_e(
-                    state, cpml_params, cpml_state, grid, cpml_axes,
-                    materials=mats, boundary=curl_boundary)
-            state = apply_pec(state)
-
-            if pec_edge_masks is not None:
-                from rfx.boundaries.pec import apply_pec_edges
-                # #931 §1.7: the realized (Mx, My, Mz) of the caller's
-                # geometry, sheets included — a sheet-declared ground
-                # plane owns no cell and used to vanish from this eager
-                # re-run entirely.
-                state = apply_pec_edges(state, pec_edge_masks)
-
-            # Record the PRE-injection drive-sample REFERENCE channel at
-            # the historical (#72) slot — the #308/#313 off-diagonal
-            # calibration is pinned against this sample (issue #683 x
-            # #764 decomposer recalibration; bit-identical to the
-            # pre-#683 v_dft).
-            for i in range(n_ports):
-                sprobes[i] = update_wire_drive_ref_probe(
-                    sprobes[i], state, grid, ports[i], dt,
-                    pec_edge_masks=pec_edge_masks)
-
-            # Excite only port j (live cells only, issue #318)
-            state = apply_wire_port(state, grid, ports[j], t, mats,
-                                    pec_edge_masks=pec_edge_masks)
-
-            # Record the PHYSICAL V / I / V_port channels at all ports
-            # AFTER source injection (issue #683, decided by measurement
-            # 2026-08-29 — docs/design_notes/
-            # issue683_sampling_order_decision_protocol.md section 9).
-            # The pre-injection sample is not any field time level of the
-            # discrete update and fails the known-load circuit law at the
-            # driven port; the post-injection sample is the true E^{n+1}.
-            # Passive ports (every i != j) read identically on either
-            # side: the injection writes only port j's live cells, and I
-            # reads H only.  This keeps the eager path in lockstep with
-            # the production-scan driver (rfx/simulation.py wire block),
-            # which flipped in the same commit —
-            # test_sparam_driver_matches_eager pins that.
-            for i in range(n_ports):
-                sprobes[i] = update_wire_sparam_probe(
-                    sprobes[i], state, grid, ports[i], dt,
-                    n_live=port_n_live[i], pec_edge_masks=pec_edge_masks)
+            carry, _, extras = core(carry, jnp.int32(step), source_values(step * dt), jnp.zeros(0))
+            sprobes = extras["sprobes"]
+            carry["sprobes"] = sprobes
 
         # Collect per-(drive j, receive i) midpoint V/I DFT phasors for the
         # shared wire wave decomposer (``decompose_wire_s_matrix``) — single

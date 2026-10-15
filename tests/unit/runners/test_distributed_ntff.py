@@ -87,8 +87,13 @@ def _compare(actual, reference, case):
 def _parity(case, n_devices=2):
     sim = _model(case, n_devices)
     kwargs = dict(n_steps=160, skip_preflight=True)
-    reference = sim.run(**kwargs)
-    actual = sim.run(devices=jax.devices("cpu")[:n_devices], **kwargs)
+    with pytest.MonkeyPatch.context() as patch:
+        # The PEC accumulators are compared as a bit-exact parity witness.
+        # Users' PEC far fields are refused, as pinned by tests/contracts/test_ntff_boundary_admission.py.
+        if case != "cpml":
+            patch.setattr("rfx.boundaries.features.refuse_ntff_reflecting_faces", lambda *args, **kwargs: None)
+        reference = sim.run(**kwargs)
+        actual = sim.run(devices=jax.devices("cpu")[:n_devices], **kwargs)
     if case == "x_hi_padded":
         assert actual.ntff_box.i_hi == (actual.grid.shape[0] + n_devices - 1) // n_devices
     print(f"devices={n_devices} case={case}")
@@ -181,6 +186,7 @@ def test_lumped_patch_s_and_ntff():
     _patch_parity()
 
 
+@pytest.mark.source_scan
 @pytest.mark.parametrize("mutation", ["skip", "duplicate", "compensation"])
 def test_mutations(monkeypatch, mutation):
     from rfx.runners import _distributed_ntff as owner
@@ -220,12 +226,13 @@ def test_more_devices(n_devices):
 
 
 @pytest.mark.parametrize("kind", ["forward", "graded_forward", "graded_run", "graded_direct"])
-def test_out_of_scope_refused(kind):
-    sim = _model("spanning")
+def test_ntff_path_admission(kind):
+    sim = _model("cpml")
     if kind == "forward":
-        with pytest.raises(NotImplementedError, match="only for non-uniform meshes"):
-            sim.forward(n_steps=8, distributed=True, devices=jax.devices("cpu")[:2],
-                        skip_preflight=True)
+        result = sim.forward(n_steps=8, distributed=True, devices=jax.devices("cpu")[:2],
+                             skip_preflight=True)
+        assert result.ntff_data is not None and result.ntff_box is not None
+        assert all(np.isfinite(np.asarray(a)).all() for a in result.ntff_data)
     else:
         sim._dz_profile = np.array([1e-3] * 3 + [0.5e-3] * 8)
         with pytest.raises(NotImplementedError, match="NTFF|ntff|graded"):

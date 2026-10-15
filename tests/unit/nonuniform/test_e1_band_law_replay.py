@@ -279,6 +279,7 @@ def test_results_control_cell_equals_lane_a(sweep_json, w6_json):
             arm["n_b"], arm["R_meas"], lane_a[arm["n_b"]])
 
 
+@pytest.mark.source_scan
 def test_results_provenance(sweep_json):
     assert sweep_json["rfx_file"].endswith("rfx/__init__.py")
     assert len(sweep_json["git_sha"]) == 40

@@ -62,6 +62,7 @@ S2. The per-ENTRY-POINT classification below (``EMISSION_CLASSIFICATION``).
 
 from __future__ import annotations
 
+import pytest
 import ast
 import inspect
 import textwrap
@@ -79,7 +80,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[3]
 # still reads only the facade would record that as a SHRINKING surface and
 # invite someone to re-freeze the counts downward -- the surface would then be
 # unpinned wherever the code actually lives. Both paths are read and the sites
-# summed, so pure code motion leaves the frozen numbers below unchanged and
+# summed (the glob includes rfx/preflight/_impl.py), so pure code motion leaves the frozen numbers below unchanged and
 # only a real new advisory moves them. Globbed, not listed, for the reason
 # tests/unit/nonuniform/test_dz_only_dispatch_contract.py gives at its own
 # rfx/preflight/ row: a later leg must not have to remember this file.
@@ -89,7 +90,7 @@ _PREFLIGHT_SRCS = (
 )
 
 # ---------------------------------------------------------------------------
-# S1: frozen check-site surface (rfx/api/_preflight.py + rfx/preflight/).
+# S1: frozen check-site surface (facade, conductor adapter, check families).
 # ---------------------------------------------------------------------------
 
 _ISSUE_CLASSES = {
@@ -104,7 +105,7 @@ def _enumerate_emission_sites():
     its ``code=`` is a source literal or computed at runtime (``getattr``
     off a caught exception -- ``preflight()``'s own uncoded fallback).
 
-    Walks ``rfx/api/_preflight.py`` and every module of ``rfx/preflight/``
+    Walks the preflight facade, conductor adapter, and ``rfx/preflight/``
     and returns one flat list, so a site that changes FILE under #980 Phase
     3 does not change the totals frozen below. Line numbers are per file and
     were never part of the freeze anyway.
@@ -446,7 +447,29 @@ def _enumerate_emission_sites():
 # ``_validate_cfg_adi_boundary``, code ``adi_absorber_unsupported`` -- ADI with an
 # absorbing boundary (an unmatched sponge, -10.4 dB at 10 GHz); construction refuses
 # it too.
-_FROZEN_TOTAL_SITES = 127
+# 127 -> 128 (#1512): open signal tail behind a line port, one advisory site.
+# 128 -> 129 (#1512): blocking realization errors must not abort later checks.
+# 129 -> 130 (#1512): explicit could-not-inspect advisory.
+# 130 -> 131 (#1560): one ``PreflightErrorWarning`` in
+# ``_validate_cfg_source_on_reflector_plane``, existing code ``source_decoupled`` -- a source
+# or port edge tangential in a declared PEC wall is shorted; assembly refuses it on every
+# path and preflight reports the same finding as an error (was the #1075 advisory text).
+# 131 -> 132 (#PENDING): DC film two-plane error, one model-owned emitter.
+# 132 -> 133 (#1373): sheet_gap_bridged reports shorted drawn sheet gaps.
+# 133 -> 132 (#1603): the one-plane film retires the DC film two-plane error.
+# 132 -> 134 (#1620): ``_validate_cfg_assembly`` reports a refusal the model
+# assembly raises as an error, one literal-code site each for assembly_refusal
+# and assembly_fault, so a model run() refuses can no longer print a clean
+# preflight.
+# 134 -> 133 (#1624): sheet_gap_bridged removed; drawn sheet gaps now open.
+# 133 -> 134 (issue 1668): one ``PreflightConfigError`` in
+# ``_validate_cfg_unresolved_pulse``, code ``undriven_pulse`` -- a pulse whose
+# sampled drive has no value above 1e-6 of its amplitude (bandwidth given in
+# Hz) is refused instead of running with nothing driven.
+# 134 -> 135 (#1691): ``preflight_wire_port_radius``, one advisory per
+# preflight naming every wire port declared without radius= (its S does not
+# converge with the mesh: each halving adds omega*(mu0*l/2pi)*ln2).
+_FROZEN_TOTAL_SITES = 135
 # 74 -> 73, 2026-09-15 (#1043 / PR #1047): ``conformal_nan`` was the only
 # site emitting that code, and the check was deleted when its own tripwire
 # XPASSed -- see the note on _FROZEN_TOTAL_SITES above.
@@ -471,7 +494,17 @@ _FROZEN_TOTAL_SITES = 127
 # 81 -> 82 (#1373): ``adi_material_interface_unsupported`` -- see the note on
 # _FROZEN_TOTAL_SITES above.
 # 82 -> 83 (#1480): ``adi_absorber_unsupported``.
-_FROZEN_LITERAL_CODE_COUNT = 83
+# 83 -> 84 (#1512): ``line_stub_behind_port``.
+# 84 -> 85 (#1512): line_stub_realization retains the blocking build error.
+# 85 -> 86 (#1512): line_stub_inspection_unavailable names unsupported geometry.
+# 86 -> 87 (#PENDING): dc_film_half_sheet_error.
+# 87 -> 88 (#1373): sheet_gap_bridged.
+# 88 -> 87 (#1603): dc_film_half_sheet_error retired.
+# 87 -> 89 (#1620): assembly_refusal, assembly_fault.
+# 89 -> 88 (#1624): sheet_gap_bridged retired.
+# 88 -> 89 (issue 1668): undriven_pulse.
+# 89 -> 90 (#1691): wire_port_no_radius.
+_FROZEN_LITERAL_CODE_COUNT = 90
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site
@@ -486,7 +519,7 @@ _FROZEN_LITERAL_CODE_COUNT = 83
 # conversion reads ``code=`` off the caught PreflightWarning instance rather
 # than naming a slug at the site -- the same shape as preflight()'s own two.
 _FROZEN_DYNAMIC_SITES_BY_FUNCTION = {
-    "preflight": 2,
+    "_preflight_impl": 2,
     # 2 -> 3, 2026-09-19 (#726): the msl fold-in block added beside the
     # waveguide one reads ``code=``/``source=`` off the caught
     # PreflightWarning instance in exactly the same way.
@@ -495,6 +528,7 @@ _FROZEN_DYNAMIC_SITES_BY_FUNCTION = {
 }
 
 
+@pytest.mark.source_scan
 def test_preflight_emission_site_surface_is_frozen():
     sites = _enumerate_emission_sites()
     assert len(sites) == _FROZEN_TOTAL_SITES, (
@@ -530,6 +564,7 @@ def test_preflight_emission_site_surface_is_frozen():
     )
 
 
+@pytest.mark.source_scan
 def test_finite_flux_emitter_has_a_bounded_explicit_code_surface():
     """A shared constructor must not hide new or dynamically chosen slugs."""
     tree = ast.parse(textwrap.dedent(inspect.getsource(Simulation._collect_flux_regions)))
@@ -631,7 +666,7 @@ EMISSION_CLASSIFICATION = {
         "DIAGNOSTIC_ONLY on a technicality."),
 }
 
-_PREFLIGHT_CALL_NAMES = {"preflight", "_auto_preflight", "preflight_sparameters"}
+_PREFLIGHT_CALL_NAMES = {"preflight", "_preflight_impl", "_auto_preflight", "preflight_sparameters"}
 
 
 def _exported_surface() -> dict:
@@ -723,6 +758,7 @@ def test_every_functional_entry_point_is_emission_classified():
     )
 
 
+@pytest.mark.source_scan
 def test_emission_classification_matches_measured_reachability():
     surface = _exported_surface()
     for name, (category, citation) in EMISSION_CLASSIFICATION.items():

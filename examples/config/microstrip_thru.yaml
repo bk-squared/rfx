@@ -1,6 +1,6 @@
 # Microstrip through-line on FR4 — a small, fast config-CLI example.
 #
-# A 8 mm PEC trace on a 1 mm FR4 substrate over a PEC ground plane, fed by
+# A 1.35 x 8.35 mm PEC trace on a 1 mm FR4 substrate over a PEC ground plane, fed by
 # a 50 ohm lumped wire port at each end (port 1 excited, port 2 passive
 # matched load) for a 2-port S-parameter sweep.
 #
@@ -21,13 +21,9 @@
 # the 1 mm substrate is only ~2 cells thick. Refine `dx` for a quantitative
 # run.
 #
-# Preflight advisories to expect from `rfx run` on this file: a line naming the
-# realized PEC sheets and whether each landed on the plane it declared
-# (#931 §1.3), and the "Gap between PEC structures ... coupling may be
-# under-resolved" advisory — 1 mm of FR4 is two cells at this dx. An earlier
-# revision of this comment said preflight could not see a sheet and that the
-# gap advisory went silent; that was true only of the branch state before the
-# sheet collectors were threaded through every assembler caller.
+# Preflight on this file prints "All checks passed" (checked 2026-10-12 on
+# main 50e266bc3). Until the trace was drawn at its solved size it was refused:
+# preflight stops a sheet solved more than 1 % off its drawing (#1455).
 #
 #   rfx run examples/config/microstrip_thru.yaml --output thru.h5
 #   rfx plot thru.h5 --quantity s_params --out thru_s11.png
@@ -54,10 +50,16 @@ thin_conductors:
   # node plane of this mesh. sigma_bulk is above the 1e6 S/m PEC threshold,
   # so this is a lossless PEC sheet and `thickness` is not read.
   - {shape: box, bounds: [[0.0, 0.0, 0.002], [0.020, 0.012, 0.002]], sigma_bulk: 5.8e7}
-  # Microstrip trace: 1 mm wide, 8 mm long, ON the substrate's upper face
-  # (z = 3 mm). A sheet Box footprint is sampled CLOSED on its in-plane axes,
-  # so the drawn 1 mm width is realized as 1 mm (y nodes 5.5 .. 6.5 mm).
-  - {shape: box, bounds: [[0.006, 0.0055, 0.003], [0.014, 0.0065, 0.003]], sigma_bulk: 5.8e7}
+  # Microstrip trace ON the substrate's upper face (z = 3 mm), drawn at the
+  # size the solver realizes. A PEC sheet is solved 0.35 cell (0.175 mm here)
+  # beyond the last node it covers at each free edge, so on this uniform
+  # 0.5 mm mesh a sheet covering k cells is solved (k + 0.7) x 0.5 mm. The
+  # trace covers y nodes 5.5 .. 6.5 mm (2 cells) and x nodes 6 .. 14 mm
+  # (16 cells), so it is drawn 1.35 mm wide (y 5.325 .. 6.675 mm) and
+  # 8.35 mm long (x 5.825 .. 14.175 mm): drawn = solved. A sheet drawn a whole
+  # number of cells (1 mm, 8 mm) is solved 0.35 mm larger and preflight
+  # refuses it (more than 1 % off its drawing).
+  - {shape: box, bounds: [[0.005825, 0.005325, 0.003], [0.014175, 0.006675, 0.003]], sigma_bulk: 5.8e7}
 
 sources:
   # Port 1: excited 50 ohm lumped wire port, seated inside the substrate near

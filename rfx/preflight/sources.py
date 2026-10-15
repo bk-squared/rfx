@@ -50,6 +50,8 @@ acyclic. This module moves no module-level name, so
 
 from __future__ import annotations
 
+from rfx.model.thin_conductors import conductivity_envelope
+
 import math
 
 import numpy as np
@@ -58,7 +60,7 @@ from rfx.preflight._common import profile_boundary_cell
 from rfx.core.yee import MaterialArrays
 from rfx.grid import C0
 
-from rfx.preflight._common import PreflightWarning, _fmt_len
+from rfx.preflight._common import PreflightConfigError, PreflightWarning, _fmt_len
 
 
 def _validate_tfsf_vacuum_boundary(materials: MaterialArrays, tfsf_cfg,
@@ -97,7 +99,7 @@ def _validate_tfsf_vacuum_boundary(materials: MaterialArrays, tfsf_cfg,
                 slices.append(tuple(sl))
                 names.append(f"{'xyz'[axis]}={index}")
         arrays = tuple(value[sl] for sl in slices
-                       for value in (materials.eps_r, materials.sigma, materials.mu_r,
+                       for value in (materials.eps_r, conductivity_envelope(materials), materials.mu_r,
                                      *nonvacuum_masks))
         width = 3 + len(nonvacuum_masks)
 
@@ -127,73 +129,46 @@ def _validate_tfsf_vacuum_boundary(materials: MaterialArrays, tfsf_cfg,
         ("x_hi+1", slice(tfsf_cfg.x_hi + 1, tfsf_cfg.x_hi + 2)),
     )
 
-    for plane_name, xs in boundary_slices:
-        eps = np.asarray(materials.eps_r[xs, :, :])
-        sigma = np.asarray(materials.sigma[xs, :, :])
-        mu = np.asarray(materials.mu_r[xs, :, :])
-        if not (
-            np.allclose(eps, 1.0)
-            and np.allclose(sigma, 0.0)
-            and np.allclose(mu, 1.0)
-        ):
-            raise ValueError(
-                "TFSF plane-wave source requires vacuum on and adjacent to "
-                f"the TFSF x boundaries; non-vacuum material found at {plane_name}"
-            )
+    import jax
+    arrays = tuple(value[xs, :, :] for _, xs in boundary_slices
+                   for value in (materials.eps_r, conductivity_envelope(materials),
+                                 materials.mu_r, *nonvacuum_masks))
+    width = 3 + len(nonvacuum_masks)
+
+    def check(*values):
+        for index, (plane_name, _) in enumerate(boundary_slices):
+            group = values[width * index:width * (index + 1)]
+            eps, sigma, mu = (np.asarray(v) for v in group[:3])
+            if not (
+                np.allclose(eps, 1.0)
+                and np.allclose(sigma, 0.0)
+                and np.allclose(mu, 1.0)
+                and all(not np.any(np.asarray(v)) for v in group[3:])
+            ):
+                raise ValueError(
+                    "TFSF plane-wave source requires vacuum on and adjacent to "
+                    f"the TFSF x boundaries; non-vacuum material found at {plane_name}"
+                )
+
+    if any(isinstance(a, jax.core.Tracer) for a in arrays):
+        jax.debug.callback(check, *arrays, ordered=True)
+    else:
+        check(*arrays)
 
 
 def _validate_cfg_source_on_reflector_plane(
     self, _w, dx: float, _pmc_faces_set: set
 ) -> None:
-    """P1.6: Source / port placed ON a PEC or PMC face plane. Both
-    reflectors zero specific field components at the plane every
-    time step (PEC: tangential E; PMC: tangential H); a source
-    that drives a zeroed component is silently discarded. A
-    source that drives a component forced to zero by the mirror
-    image (e.g. normal E on a PMC face) fights the symmetry and
-    yields numerically inconsistent results.
-
-    Which faces are reflectors (#1075): the canonical
-    ``Simulation._boundary_spec``, NOT the legacy ``self._pec_faces``
-    view. The legacy view is filled in only by an explicit
-    ``pec_faces=`` kwarg or a per-face ``BoundarySpec``; the scalar
-    ``boundary="pec"`` -- a PEC box on all six faces, realized as
-    ``apply_pec(axes=pec_axes)`` -- left it empty, and this check was
-    therefore SKIPPED ENTIRELY on the commonest way of asking for a
-    PEC wall. Periodic axes carry ``periodic`` in the spec and are
-    excluded by construction. PMC needs no counterpart change: there
-    is no whole-boundary PMC mode, and the PMC face set handed in is
-    already read off the same spec.
-
-    The PEC tangential-E text is lane-explicit for the same issue.
-    Measured on the pre-fix tree (``scripts/diagnostics/
-    issue1075_source_on_face.py``, 20x15x15 cells at dx = 1 mm, ez on
-    the x_lo wall, 400 steps): the distributed lanes return a probe
-    peak of EXACTLY 0 -- they apply the PEC face after injection since
-    #1041/#1055 -- while the single-device lane, which applies it
-    before injection, returns 8.92558e5 against 4.00560e6 for the same
-    source one cell inside. So on that lane the source is not
-    discarded at all; it drives a component the mirror is supposed to
-    hold at zero. The retention is not a constant worth quoting in the
-    message: swept over probe distance on that fixture the peak ratio
-    runs 0.074 (4 mm) to 2.026 (12 mm), because the two placements
-    excite different modes of a closed cavity.
-
-    Component-specific rule:
-      PEC face (axis = ax_name): tangential E (Ex/Ey/Ez with
-        component axis != ax_name) is zeroed every E update.
-        Normal E (component axis == ax_name) is the legitimate
-        way to drive a PEC mirror.
-      PMC face (axis = ax_name): tangential H (Hx/Hy/Hz with
-        component axis != ax_name) is zeroed; the outgoing
-        wave from an on-plane tangential E source is killed via
-        this H zeroing. Normal E (component axis == ax_name) is
-        odd-symmetric and must be zero at the plane by image,
-        so injecting it fights the mirror.
-
-    This follows the industry convention (Meep / OpenEMS /
-    Tidy3D all follow the same rule).
-    """
+    """Report realized PEC-wall refusal; preserve other reflector advisories."""
+    from rfx.model.source_admission import wall_source_findings
+    from rfx.preflight._common import PreflightErrorWarning
+    ctx = self._campaign_ctx()
+    if ctx.grid is not None:
+        for msg in wall_source_findings(self, ctx.grid,
+                                       nonuniform=ctx.lane == 'nonuniform'):
+            _w.warn(PreflightErrorWarning(
+                msg, code="source_decoupled",
+                source="_validate_cfg_source_on_reflector_plane"), stacklevel=3)
     # The reflector faces come from the CANONICAL BoundarySpec, not from
     # ``self._pec_faces``. Issue #1075: ``self._pec_faces`` is populated only
     # by an explicit ``pec_faces=`` kwarg or by a per-face ``BoundarySpec``;
@@ -262,11 +237,11 @@ def _validate_cfg_source_on_reflector_plane(
                             msg = (
                                 f"Source/port at {pos} m (component={pe.component}) "
                                 f"sits on the magnetic-wall plane {face}. The "
-                                f"single-device Yee magnetic image keeps tangential E "
+                                f"Yee magnetic image keeps tangential E "
                                 f"on the declared face coupled to the interior. "
                                 f"Face sources and lumped/wire ports describe the full symmetric "
-                                f"object, including its reflected half. Distributed "
-                                f"kernels refuse magnetic faces until B4. Waveguide ports "
+                                f"object, including its reflected half. Distributed lumped/wire "
+                                f"measurements remain unsupported. Waveguide ports "
                                 f"refuse them because their aperture mode solver is PEC-only."
                             )
                     elif comp_field == "e" and not is_tangential:
@@ -291,24 +266,7 @@ def _validate_cfg_source_on_reflector_plane(
                         msg = None      # normal H on PMC plane is legit
                 else:                    # PEC
                     if comp_field == "e" and is_tangential:
-                        msg = (
-                            f"Source/port at {pos} (component={pe.component}) "
-                            f"sits on the PEC {face} plane and drives a "
-                            f"tangential E, the component a perfect conductor "
-                            f"holds at zero. What happens next DEPENDS ON THE "
-                            f"LANE (issue #1075): the distributed lanes "
-                            f"(run(devices=...), forward(distributed=True)) "
-                            f"apply the PEC face AFTER injection, so the "
-                            f"source is discarded and the probes read exactly "
-                            f"zero; the single-device lane applies it BEFORE "
-                            f"injection, so the source is NOT discarded and "
-                            f"instead drives a component the mirror should "
-                            f"force to zero, which makes the result "
-                            f"numerically inconsistent rather than silent. "
-                            f"Use a normal E source at this face, or offset "
-                            f"by one cell ({_face_cell*1e3:.3g} mm) off "
-                            f"the plane."
-                        )
+                        msg = None  # Realized classification above owns this case.
                     elif comp_field == "h" and not is_tangential:
                         msg = (
                             f"Source/port at {pos} (component={pe.component}) "
@@ -363,62 +321,117 @@ def _validate_cfg_unresolved_pulse(self, _w, dx: float) -> None:
     misses by ~9 orders of magnitude), so this fires regardless of
     ``until_decay`` — a sub-dt spike is always broken.
 
-    ``dt`` is estimated from the preflight ``dx`` via the uniform-lane
-    3D Courant formula (``Grid.courant_dt``). A refining ``dz_profile``
-    makes the actual dt smaller, so the estimate errs toward firing; a
-    strictly coarsening profile can raise the NU dt above this estimate
-    by at most sqrt(3/2) ~ 1.22x (the NU dt combines per-axis minimum
-    cell sizes, ``rfx/nonuniform.py``), so the check can under-fire by
-    <= 22% — harmless against a mistake that misses the threshold by
-    ~9 orders of magnitude, not by percent.
+    ``dt`` is that of the realized grid an existing campaign context holds
+    (uniform or graded; preflight builds it before this check), else the
+    uniform-lane Courant estimate from the preflight ``dx``; the check never
+    builds either. ADI's
+    ``adi_cfl_factor`` is not in it, so on ADI the actual dt is larger.
+
+    Issue 1668: every excited drive is judged -- sources and lumped, wire
+    and MSL ports by their waveform, coaxial ports by their excitation,
+    and TF/SF sources, waveguide and Floquet ports by the waveform class of
+    their waveform name at their own f0 and bandwidth. A pulse with
+    ``tau < 3*dt`` whose table, sampled at dt over the pulse, has no value
+    above 1e-6 of its amplitude is refused (PreflightConfigError,
+    ``undriven_pulse``); one that still has samples gets the warning.
     """
     dt = dx / (C0 * math.sqrt(3.0)) * 0.99  # Grid.courant_dt(dx, ndim=3)
-    entries = list(self._ports) + list(self._msl_ports)
+    # Issue 1668: judge against the realized dt of a grid that already
+    # exists -- the one the campaign context holds when preflight built it.
+    # Never create a context, grid or assembly state here (admit() calls
+    # this outside preflight, and a failed assembly must not be retried);
+    # without one, keep the dx-based estimate.
+    cached = getattr(self, "_pf_campaign_ctx", None)
+    grid = getattr(cached[1], "grid", None) if cached is not None else None
+    if grid is not None:
+        dt = float(grid.dt)
+    from rfx.sources.sources import GaussianPulse, ModulatedGaussian
+
+    def _class_pulse(entry, waveform):
+        # A string-named incident (TF/SF, waveguide port) is judged by the
+        # waveform class of the same name at the entry's f0 and bandwidth,
+        # not by its inline copy (issue 1668).
+        f0 = getattr(entry, "f0", None)
+        f0 = float(self._freq_max) / 2.0 if f0 is None else float(f0)
+        bw, amp = float(entry.bandwidth), float(entry.amplitude)
+        if not (f0 > 0.0 and bw > 0.0):
+            return None
+        if waveform == "modulated_gaussian":
+            return ModulatedGaussian(f0=f0, bandwidth=bw, amplitude=amp)
+        if waveform == "differentiated_gaussian":
+            return GaussianPulse(f0=f0, bandwidth=bw, amplitude=amp)
+        return None
+
+    # (kind, entry, the waveform the check samples, name in the messages)
+    drives = []
+    for kind, group in (("source/port", self._ports), ("MSL port", self._msl_ports)):
+        for entry in group:
+            if getattr(entry, "excite", True):
+                drives.append((kind, entry, getattr(entry, "waveform", None)))
+    for entry in getattr(self, "_coaxial_ports", ()):
+        drives.append(("coaxial port", entry, getattr(entry, "excitation", None)))
+    for entry in getattr(self, "_waveguide_ports", ()):
+        drives.append(("waveguide port", entry,
+                       _class_pulse(entry, getattr(entry, "waveform", None))))
+    for entry in getattr(self, "_floquet_ports", ()):
+        drives.append(("Floquet port", entry,
+                       _class_pulse(entry, "differentiated_gaussian")))
     if self._tfsf is not None:
-        entries.append(self._tfsf)
-    for entry in entries:
-        wf = getattr(entry, "waveform", None)
-        tau = None
-        if wf is not None and not isinstance(wf, str):
-            try:
-                tau = float(wf.tau)
-            except (AttributeError, TypeError, ValueError,
-                    ZeroDivisionError):
-                tau = None
-        else:
-            # String-named waveforms (the TFSF entry's
-            # "differentiated_gaussian" / "modulated_gaussian"): both
-            # pulse families share tau = 1/(pi*f0*bandwidth), so the
-            # absolute-Hz-bandwidth footgun on
-            # add_tfsf_source(bandwidth=...) is computable from the
-            # entry's own f0/bandwidth attributes when both are set.
-            f0 = getattr(entry, "f0", None)
-            bw = getattr(entry, "bandwidth", None)
-            if f0 and bw:
-                try:
-                    tau = 1.0 / (math.pi * float(f0) * float(bw))
-                except (TypeError, ValueError, ZeroDivisionError):
-                    tau = None
-        if tau is None or not math.isfinite(tau) or tau <= 0.0:
+        wf = self._tfsf.waveform
+        drives.append(("TF/SF source", self._tfsf,
+                       _class_pulse(self._tfsf, wf) if isinstance(wf, str) else wf))
+    for kind, entry, wf in drives:
+        if wf is None or isinstance(wf, str):
             continue
-        if tau < 3.0 * dt:
-            _wf_name = wf if isinstance(wf, str) else type(wf).__name__
-            _w.warn(
-                PreflightWarning(
-                    f"waveform tau={tau:.3g}s is below 3*dt "
-                    f"(dt~{dt:.3g}s, tau/dt={tau/dt:.3g}): pulse "
-                    "unresolved by the time step — an absolute-Hz "
-                    "bandwidth was likely passed where a FRACTIONAL "
-                    "one is expected; the discrete DC residue leaves "
-                    "a static charge field CPML cannot absorb "
-                    "(issue #386)",
-                    code="unresolved_pulse",
-                    loc=f"waveform {_wf_name} at "
-                        f"{getattr(entry, 'position', None)}",
-                    source="_validate_cfg_unresolved_pulse",
-                ),
-                stacklevel=3,
-            )
+        try:
+            tau = float(wf.tau)
+        except (AttributeError, TypeError, ValueError, ZeroDivisionError):
+            continue
+        if not math.isfinite(tau) or tau <= 0.0 or not tau < 3.0 * dt:
+            continue
+        where = (getattr(entry, "name", None) or getattr(entry, "position", None)
+                 or getattr(entry, "x_position", None))
+        loc = f"{kind} {where}: waveform {type(wf).__name__}"
+        # A pulse far below dt (bandwidth given in Hz) samples to zero at
+        # every step. Sample it as the drive table does (float32 n*dt) over
+        # the pulse, t = 0 .. t0 + 3*tau, and refuse when no sample exceeds
+        # 1e-6 of the amplitude. A pulse with tau >= 3*dt always has samples
+        # near its peak.
+        amp = getattr(wf, "amplitude", None)
+        t0 = getattr(wf, "t0", None)
+        if amp is not None and t0 is not None and float(amp) != 0.0:
+            import jax
+            import jax.numpy as jnp
+            n_pulse = int(math.ceil((float(t0) + 3.0 * tau) / dt)) + 1
+            times = jnp.arange(n_pulse, dtype=jnp.float32) * dt
+            table = np.abs(np.asarray(jax.vmap(wf)(times), dtype=np.float64))
+            if not np.any(table > 1e-6 * abs(float(amp))):
+                raise PreflightConfigError(
+                    f"{loc} (component {getattr(entry, 'component', '-')}): "
+                    f"the pulse (tau={tau:.3g}s) is not resolved by dt "
+                    f"(~{dt:.3g}s): sampled at dt over the pulse (n = 0.."
+                    f"{n_pulse - 1}, to t0 + 3*tau) it has no value above "
+                    "1e-6 of its amplitude. GaussianPulse / ModulatedGaussian "
+                    "bandwidth, and the bandwidth of a TF/SF source, "
+                    "waveguide or Floquet port, is FRACTIONAL (e.g. 0.8), "
+                    "not in Hz (issue 1668).",
+                    code="undriven_pulse", loc=loc,
+                    source="_validate_cfg_unresolved_pulse")
+        _w.warn(
+            PreflightWarning(
+                f"waveform tau={tau:.3g}s is below 3*dt "
+                f"(dt~{dt:.3g}s, tau/dt={tau/dt:.3g}): pulse "
+                "unresolved by the time step — an absolute-Hz "
+                "bandwidth was likely passed where a FRACTIONAL "
+                "one is expected; the discrete DC residue leaves "
+                "a static charge field CPML cannot absorb "
+                "(issue #386)",
+                code="unresolved_pulse",
+                loc=loc,
+                source="_validate_cfg_unresolved_pulse",
+            ),
+            stacklevel=3,
+        )
 
 
 # ---------------------------------------------------------------------------

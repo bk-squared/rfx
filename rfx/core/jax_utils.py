@@ -232,6 +232,29 @@ def _all_equal(x) -> bool:
     return bool(jnp.all(x == x.reshape(-1)[0]))
 
 
+def _one_bit_pattern(x):
+    """The single element of an all-equal strong-typed ``jax.Array``, else None.
+
+    ``==`` is not enough to rebuild an array from one element: +0.0 equals
+    -0.0. So the signs must agree as well (NaN never compares equal, so an
+    array holding one is not all-equal to begin with). A NumPy leaf and a
+    weak-typed array are left as they are: the first stays a host constant
+    its consumers may read while tracing, the second would come back
+    strong-typed.
+    """
+    import numpy as np
+    import jax.numpy as jnp
+    if not isinstance(x, jax.Array) or getattr(x, "weak_type", False):
+        return None
+    first = x.reshape(-1)[0]
+    if jnp.issubdtype(x.dtype, jnp.inexact):
+        parts = (jnp.real, jnp.imag) if jnp.iscomplexobj(x) else (lambda v: v,)
+        if not all(bool(jnp.all(jnp.signbit(p(x)) == jnp.signbit(p(first))))
+                   for p in parts):
+            return None
+    return np.asarray(first)[()]
+
+
 def _const(value):
     return lambda a: value
 
@@ -259,7 +282,11 @@ def split_loop_invariants(tree, grid_shape):
       it is lowered as one scalar broadcast, so it costs the compile
       nothing, and as a constant the compiler keeps simplifying arithmetic
       on it. As an argument it does not, which moved uniform-permittivity
-      results by up to 7 float32 ULP in #1211.
+      results by up to 7 float32 ULP in #1211. It stays a constant, but not
+      a closed-over array: when it is a ``jax.Array`` with one bit pattern
+      everywhere, ``rebuild`` forms it as ``jnp.full(shape, value)`` inside
+      the traced function (see :func:`_one_bit_pattern`), so the function
+      holds no grid-sized object (rfx tracker 1606).
     * CPML profiles and other small arrays, for the same reason (as
       arguments they moved results by float32 rounding).
     * Python scalars and tuples (slice bounds, flags), which must stay static.
@@ -274,10 +301,21 @@ def split_loop_invariants(tree, grid_shape):
         # Returns a rebuild function, or None when nothing below is lifted
         # (the object is then kept as it is, never reconstructed). A rebuild
         # function holds the objects it keeps, never a lifted array.
-        if _is_cell_array(value, grid_shape) and not _all_equal(value):
-            k = len(arrays)
-            arrays.append(value)
-            return lambda a: a[k]
+        if _is_cell_array(value, grid_shape):
+            if not _all_equal(value):
+                k = len(arrays)
+                arrays.append(value)
+                return lambda a: a[k]
+            # One bit pattern everywhere: the program gets the same constant
+            # as a broadcast of that value, formed where the step is traced,
+            # so no array of the grid's size is closed over. A jitted step
+            # that closes over one and is called inside a scan stays in JAX's
+            # caches with it after the run (rfx tracker 1606).
+            one = _one_bit_pattern(value)
+            if one is not None:
+                import jax.numpy as jnp
+                shape = tuple(value.shape)
+                return lambda a: jnp.full(shape, one)
         if isinstance(value, dict):
             parts = {key: split(v) for key, v in value.items()}
             if not any(parts.values()):

@@ -33,8 +33,13 @@ def refuse_waveguide_pmc(sim):
             "implements magnetic symmetry.")
 
 
-def apply_pmc_faces(state, faces: set[str], *, image: bool = False) -> object:
+def apply_pmc_faces(state, faces: set[str], *, image: bool = False, frame=None, owned=None) -> object:
     """Canonicalize ghosts for image paths, or apply legacy half-cell zeros.
+
+    Image paths accept axis-name ``frame`` bounds and per-face ``owned``:
+    only x bounds may differ from (0, n); x-hi writes hi - 1, x-lo nothing.
+    ``owned=None`` means the caller owns every named face (one device).
+    The legacy path refuses either new argument when it is not None.
 
     Parameters
     ----------
@@ -56,6 +61,13 @@ def apply_pmc_faces(state, faces: set[str], *, image: bool = False) -> object:
     that let the wall behave as PEC. Fixed 2026-04 (see
     tests/unit/boundaries/test_boundary_pmc_hi_faces.py for the regression lock).
     """
+    from ._face_frame import apply_framed_faces, needs_face_frame
+
+    if not image and (frame is not None or owned is not None):
+        raise ValueError("PMC frame and owned require image=True")
+    if image and needs_face_frame(state.hx.shape, faces, frame, owned):
+        return apply_framed_faces(state, magnetic_image_faces(faces, state.hx.shape),
+                                  frame, owned, magnetic=True)
     if not faces:
         return state
     if image:

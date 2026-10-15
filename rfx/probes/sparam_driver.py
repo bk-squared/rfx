@@ -20,6 +20,9 @@ eager loops are untouched (their removal is Stage 3).
 
 from __future__ import annotations
 
+from rfx._precision import resolve_field_dtype
+
+from rfx._grid_metric import field_index
 import numpy as np
 
 import jax.numpy as jnp
@@ -55,6 +58,7 @@ def compute_lumped_wire_s_matrix_via_scan(
     return_refplane_diagnostics=False, conformal_pec=None, devices=None,
     _main_wire_record=False,
     return_settling=False,
+    _forward_port_s11=False,
 ):
     """Full lumped/wire N-port S-matrix via the production scan.
 
@@ -115,6 +119,7 @@ def compute_lumped_wire_s_matrix_via_scan(
     Mixed lumped + wire port sets are not supported.
     """
     # A plain source fires in every port drive, so it is refused here (#1420).
+    resolve_field_dtype(sim._precision)
     from rfx.runners._admission import refuse_plain_sources_s_matrix
     refuse_plain_sources_s_matrix(sim)
     if devices is not None:
@@ -140,33 +145,27 @@ def compute_lumped_wire_s_matrix_via_scan(
         _sheet_specs: list = []
         _pec_sheets: list = []
         _pec_wires: list = []
-        materials, debye_spec, lorentz_spec, pec_mask, _, _, _ = \
-            sim._assemble_materials(grid, sheet_specs=_sheet_specs,
-                                    pec_sheets=_pec_sheets, pec_wires=_pec_wires)
+        from rfx.model.conductors import realized_conductors, assembled_materials
+        conductors = realized_conductors(sim, grid)
+        materials, debye_spec, lorentz_spec, pec_mask, _, _, _ = assembled_materials(
+            conductors, sheet_specs=_sheet_specs, pec_sheets=_pec_sheets,
+            pec_wires=_pec_wires)
         _pec_sheets = tuple(_pec_sheets)
         _pec_wires = tuple(_pec_wires)
         # #931 §1.7: the realized PEC edges of this model — volumes, sheets and
         # wires — read once here, under the RUN's #689 flags (preflight refuses
         # lumped/wire S-params under periodic axes (#206), so this is normally
         # the non-periodic convention — but the flags are read, not assumed).
-        from rfx.boundaries.pec import realized_pec_edge_masks as _rpem
-        _pec_edge_masks = None
-        if pec_mask is not None or _pec_sheets or _pec_wires:
-            _pec_edge_masks = _rpem(pec_mask, sheets=_pec_sheets,
-                                    wires=_pec_wires,
-                                    periodic=sim._periodic_flags())
-        # #677: node-thin sheet ctx, applied by every per-drive forward run.
-        from rfx.materials.thin_conductor import build_sheet_impedance_ctx
-        _sheet_ctx = build_sheet_impedance_ctx(
-            _sheet_specs, pec_edge_masks=_pec_edge_masks,
-            periodic=sim._periodic_flags())
+        _pec_edge_masks = conductors.pec_edges
+        _sheet_ctx = conductors.sheet_context(_pec_edge_masks)
 
     if n_steps is None:
         n_steps = grid.num_timesteps(num_periods=30)
 
     # Ordered sparam-eligible lumped/wire ports (impedance != 0), in
     # registration order — the same order the multi-drive index counts.
-    eligible = [pe for pe in sim._ports if pe.impedance != 0.0]
+    eligible_ids = [i for i, pe in enumerate(sim._ports) if pe.impedance != 0.0]
+    eligible = [sim._ports[i] for i in eligible_ids]
     if not eligible:
         raise ValueError(
             "compute_lumped_wire_s_matrix_via_scan: no sparam-eligible "
@@ -184,11 +183,10 @@ def compute_lumped_wire_s_matrix_via_scan(
     wire_mode = any(is_wire)
     if wire_mode and devices is not None:
         # Geometry only: release the assembled materials before any scan stages slabs.
-        from rfx.boundaries.pec import realized_pec_edge_masks
-        assembled = sim._assemble_materials(grid)
-        _pec_edge_masks = (realized_pec_edge_masks(assembled[3], periodic=sim._periodic_flags())
-                           if assembled[3] is not None else None)
-        del assembled
+        from rfx.model.conductors import realized_conductors
+        conductors = realized_conductors(sim, grid)
+        _pec_edge_masks = conductors.pec_edges
+        del conductors
 
     n_ports = len(eligible)
     z0 = np.asarray([pe.impedance for pe in eligible], dtype=np.float64)
@@ -271,7 +269,7 @@ def compute_lumped_wire_s_matrix_via_scan(
                 port_s11_freqs=freqs,
                 _sparam_drive_idx=j,
                 _return_raw_port_sparams=True,
-                sheet_impedance=_sheet_ctx,
+                sheet_impedance=_sheet_ctx, conductors=conductors,
                 conformal_pec=conformal_pec,
             )
 
@@ -283,7 +281,8 @@ def compute_lumped_wire_s_matrix_via_scan(
             driven_sim = copy(sim)
             driven_sim._ports = [replace(pe, excite=(pe is eligible[j]))
                                  if pe.impedance != 0 else pe for pe in sim._ports]
-            receivers = list(eligible)
+            receivers_by_id = {f"port:{i}:mode:0": pe for i, pe in zip(eligible_ids, eligible)}
+            plane_counts = {}
             for rp, _ in raw.get("wire_refplane") or ():
                 pe = eligible[rp.port_index]
                 position = list(pe.position)
@@ -297,7 +296,11 @@ def compute_lumped_wire_s_matrix_via_scan(
                 span = (widths[i0:i0 + n_out] if rp.outboard_sign > 0
                         else widths[max(i0 - n_out, 0):i0])
                 position[rp.line_axis] += rp.outboard_sign * float(np.sum(span))
-                receivers.append(replace(pe, position=tuple(position)))
+                port_id = f"port:{eligible_ids[rp.port_index]}:mode:0"
+                plane = plane_counts.get(port_id, 0)
+                plane_counts[port_id] = plane + 1
+                receivers_by_id[f"{port_id}/plane{plane}"] = replace(pe, position=tuple(position))
+            receivers = [receivers_by_id[record.id] for record in raw.get("sparam_time_records", ())]
             end = simulation_source_end_step(driven_sim, n_steps, grid.dt, receivers, grid=grid)
             settling_runs.append(port_record_witness(
                 raw.get("sparam_time_records", ()), raw.get("dt", grid.dt),
@@ -312,6 +315,9 @@ def compute_lumped_wire_s_matrix_via_scan(
                 "out of sync with the eligible-port list."
             )
 
+        result_dtype = np.result_type(
+            accs[0][1][0].dtype if sim._precision == "float64" else np.complex64,
+            np.complex64)
         for i in range(n_ports):
             spec, vi = accs[i]
             # Lumped accs are (v_dft, i_dft, v_ref_dft); wire accs are
@@ -351,6 +357,20 @@ def compute_lumped_wire_s_matrix_via_scan(
                 if s == 0:
                     plane_offsets[p] = int(rp_spec.n_cells_outboard)
 
+    if _forward_port_s11:
+        # Native forward records all declared drives together. Superpose the
+        # existing isolated-drive physical phasors, then extract its terminal
+        # diagonals instead of decomposing an N-port matrix. No extra solve or
+        # second S computation; the unmeasured reference slots are not used.
+        from rfx.probes.probes import driven_port_reflection
+        voltage = np.sum(vp_all if wire_mode else v_all, axis=0)
+        current = np.sum(i_all, axis=0)
+        diagonal = jnp.stack([
+            driven_port_reflection(jnp.asarray(voltage[p], dtype=result_dtype),
+                                   jnp.asarray(current[p], dtype=result_dtype), z0[p])
+            for p in range(n_ports)])
+        return diagonal[0] if n_ports == 1 else diagonal, freqs
+
     if wire_mode and plane_v is not None:
         # issue #313 reference-plane path: byte-frozen legacy diagonals +
         # plane-wave off-diagonals where both ports opted in.  The V/I
@@ -375,18 +395,18 @@ def compute_lumped_wire_s_matrix_via_scan(
             outboard_signs=plane_outboard,
             freqs=freqs,
             dt=float(grid.dt),
-            dx=float(grid.dx),
+            dx=float(grid.cells('x')[0]),
             return_line_diagnostics=return_refplane_diagnostics,
         )
         if return_refplane_diagnostics:
             S, diag = out
-            return np.asarray(S, dtype=np.complex64), freqs, diag
+            return np.asarray(S, dtype=result_dtype), freqs, diag
         if return_settling:
             missing = [item for item in settling_runs if not np.isfinite(item[0])]
             worst = missing[0] if missing else max(settling_runs, key=lambda item: item[0])
-            return np.asarray(out, dtype=np.complex64), freqs, {
+            return np.asarray(out, dtype=result_dtype), freqs, {
                 **worst[1], "db": worst[0], "per_drive": [d for _, d in settling_runs]}
-        return np.asarray(out, dtype=np.complex64), freqs
+        return np.asarray(out, dtype=result_dtype), freqs
 
     if wire_mode:
         # Issue #764 diagonal + issue #770 off-diagonal: the whole-port
@@ -398,12 +418,12 @@ def compute_lumped_wire_s_matrix_via_scan(
             from rfx.probes.probes import driven_port_reflection
             S = np.asarray(driven_port_reflection(
                 jnp.asarray(vp_all[0, 0]), jnp.asarray(i_all[0, 0]), z0[0]),
-                dtype=np.complex64)[None, None, :]
+                dtype=result_dtype)[None, None, :]
         else:
             S = np.asarray(
                 decompose_wire_s_matrix(v_all, i_all, z0, port_cell_counts,
                                         v_port=vp_all, v_ref=vref_all),
-                dtype=np.complex64,
+                dtype=result_dtype,
             )
         if return_vi_dump:
             # Mirror ``extract_s_matrix_wire``'s WirePortVIReplayBundle
@@ -425,7 +445,7 @@ def compute_lumped_wire_s_matrix_via_scan(
     else:
         S = np.asarray(
             decompose_lumped_s_matrix(v_all, i_all, z0, v_ref=vref_all),
-            dtype=np.complex64,
+            dtype=result_dtype,
         )
         if return_vi_dump:
             # Mirror ``extract_s_matrix``'s PortVIReplayBundle field-for-field.
@@ -464,7 +484,7 @@ def _lumped_recording_probes(grid, ports, live_cells=None):
     probes, zero_columns = [], []
     for p, pe in enumerate(ports):
         cells = (live_cells[p] if live_cells is not None else
-                 (tuple(int(i) for i in grid.position_to_index(pe.position)),))
+                 (tuple(int(i) for i in field_index(grid, pe.position, pe.component)),))
         idx = cells[len(cells) // 2]
         probes.extend(ProbeSpec(*cell, pe.component) for cell in cells)
         a, axis_a, b, axis_b = _ampere_loop_components(pe.component)
@@ -483,28 +503,15 @@ def _lumped_recording_probes(grid, ports, live_cells=None):
 
 def _lumped_recording_dfts(samples, freqs, dt, dx):
     """Host DFT of post-injection V and Yee-staggered I using scan helpers."""
-    import jax
-    from rfx.core.dft_utils import port_dft_phase, half_step_current_phase
+    from rfx.measurement.dft import transform
     from rfx.probes.probes import _ampere_loop_values, _port_voltage_value
 
     fields = np.asarray(samples).reshape(len(samples), -1, 5)
     v = _port_voltage_value(fields[:, :, 0], dx)
     i = _ampere_loop_values(*(fields[:, :, k] for k in range(1, 5)), dx)
-    vd = np.zeros((fields.shape[1], len(freqs)), dtype=np.complex128)
-    id_ = np.zeros_like(vd)
-    # Bounded phase workspace on the host, independent of scan length.
-    # Frequencies enter the uniform scan as float32 even with x64 enabled.
-    with jax.default_device(jax.devices("cpu")[0]):
-        f = jnp.asarray(freqs, dtype=jnp.float32)
-        phase_dtype = jnp.float64 if jax.config.x64_enabled else jnp.float32
-        half = half_step_current_phase(f.astype(phase_dtype), dt).astype(jnp.complex64)
-        for start in range(0, len(samples), 256):
-            stop = min(start + 256, len(samples))
-            phase = port_dft_phase(jnp.arange(start, stop)[:, None], f[None, :], dt)
-            e_phase, h_phase = np.asarray(phase), np.asarray(phase * half)
-            vd += np.einsum("np,nf->pf", v[start:stop], e_phase, dtype=np.complex128)
-            id_ += np.einsum("np,nf->pf", i[start:stop], h_phase, dtype=np.complex128)
-    return vd, id_
+    f = np.asarray(freqs, dtype=np.float32)
+    return (np.asarray(transform(v, f, dt, 'E')).T,
+            np.asarray(transform(i, f, dt, 'H')).T)
 
 
 def _distributed_port_cells(grid, ports, pec_edge_masks=None):
@@ -512,7 +519,7 @@ def _distributed_port_cells(grid, ports, pec_edge_masks=None):
     live_cells = []
     for pe in ports:
         if pe.extent is None:
-            cells = (tuple(int(i) for i in grid.position_to_index(pe.position)),)
+            cells = (tuple(int(i) for i in field_index(grid, pe.position, pe.component)),)
         else:
             from rfx.sources.sources import wire_port_from_entry, _wire_port_live_cells
             all_cells, flags, _ = _wire_port_live_cells(
@@ -538,7 +545,8 @@ def _distributed_lumped_accumulators(sim, grid, ports, freqs, n_steps, devices, 
     axis_of = {"ex": 0, "ey": 1, "ez": 2}
     dx_ports = np.array([
         float(grid.cells(axis_of[pe.component])[
-            int(grid.position_to_index(pe.position)[axis_of[pe.component]])])
+            int((grid.position_to_index(pe.position) if pe.extent is not None else
+                 field_index(grid, pe.position, pe.component))[axis_of[pe.component]])])
         for pe in ports])
     if any(pe.extent is not None for pe in ports):
         raw = {"lumped": [], "wire": []}

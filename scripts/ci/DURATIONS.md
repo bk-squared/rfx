@@ -1,37 +1,60 @@
 # .test_durations — provenance
 
-Regenerated 2026-10-01 on `main` (`e6151107`) from `regen-durations` run
-[36752442156](https://github.com/bk-squared/rfx/actions/runs/36752442156), measured on
-`ubuntu-latest` with Python 3.11 / JAX 0.10.2. **15500 entries in the
-file**, of which **14 of them carried unchanged** from the 12677-entry file this
-replaces. All eleven jobs succeeded. Slow artifacts are merged first, then fast artifacts;
-the last input wins for overlapping nodeids. The artifacts contain 15486 distinct
-nodeids; 0 measured entries and 41 old entries are not collected at HEAD and are
-dropped. The 14 carried entries are collected highmem tests outside both GitHub selections;
-no new a6000 measurements were supplied. At the `1c3617d7` tree, the fast, slow and highmem selections
-collect 15231, 15474 and 15 tests respectively (15500 distinct), with no
-missing durations in any selection. Collection used the specified local Python 3.11 / JAX 0.10.2
-CPU environment, with the locally available trimesh package for the fast/highmem collections;
-slow collection has no CAD extra, matching validation.yml. Plotly is absent and its optional
-module is skipped. These counts come from the artifacts, the replaced file and HEAD collection;
-the contract below checks the entry count and carried-count bounds. All eleven job logs were
-checked: **1 entry was re-priced from its job log** because pytest-split 0.11.0 drops setup or
-teardown phases above its 600 s `STORE_DURATIONS_SETUP_AND_TEARDOWN_THRESHOLD`.
-`test_ringdowns_are_settled` is 1448.8538443 s from the log, replacing the artifact's
-0.000938106 s (the replaced file held 1514.934755 s). No floor is added.
+Regenerated 2026-10-10 at `3b62b21bef6a16f3c7aae8274a0f3798e6ff3a0d` from
+`regen-durations` run [37983083757](https://github.com/bk-squared/rfx/actions/runs/37983083757),
+measured 2026-10-09 UTC (2026-10-09/10 Asia/Seoul) on `main` (`4a42dbc9`),
+`ubuntu-latest` with Python 3.11 / JAX 0.10.2.
+**20407 entries in the file**, of which **14 of them carried unchanged** from the
+17565-entry file this replaces. All 17 jobs succeeded. The slow (5) pytest summary
+nevertheless reports one failed test:
+`tests/unit/sparams/test_msl_sheet_threading.py::test_o3_mean_s21_drift_lock`;
+the workflow's pytest commands use `|| true`.
+Slow artifacts are merged first, then fast artifacts; the last input wins for
+overlapping nodeids. The artifacts contain 20389 distinct nodeids; 0 measured
+entries and 103 old entries are not collected at HEAD and are dropped.
+The 14 carried entries are collected highmem tests outside both GitHub selections;
+no new a6000 measurements were supplied.
 
-The four entries once set by hand are runner measurements, from the slow
-artifacts except the open-end test, which now uses its fast artifact:
-`tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_end_to_end_matches_historical_base`
-2006.5 s (was 2218.1 s), the two coaxial chain-battery drift locks
-`tests/locks/test_coax_chain_battery_drift.py::test_the_coarsest_mesh_still_solves_to_its_stored_s[bead]`
-and `[thru]` 176.9 s and 178.5 s (were 171.6 s and 170.6 s), and
-`tests/oracle/test_coax_open_end_settles.py::test_the_open_end_is_passive_and_settled` 61.4 s (was
-57.1 s).
+At the tree above, fast, weekly and highmem collect 20180, 20941 and 15 tests
+respectively (20967 distinct), with 107, 564 and 0 missing durations
+respectively (564 distinct unmeasured nodeids). The not-code contract selection
+collects 6052 tests, with 0 missing durations (2283 were missing in the replaced file).
+Collection used Python 3.11 / JAX 0.10.2 CPU, pytest 9.1.1 and pytest-split 0.11.0.
+Fast collection includes trimesh 5.1.1 supplied in the temporary directory;
+weekly and highmem collection have no CAD extra. Plotly is absent.
+Weekly collection sets `RFX_S0_FULL=1`, matching validation.yml.
+Counts use `python -m pytest --collect-only -q -p no:cacheprovider`:
+fast uses default addopts; weekly adds
+`-m "not gpu and not highmem and not docs_consistency"`; highmem adds
+`-m "highmem and not gpu"`; contracts adds
+`tests/contracts -o addopts="" -m "not gpu and not docs_consistency"`.
+The full inventory uses `RFX_S0_FULL=1 -o addopts=""` and includes the CAD tests
+collected by fast. The contract checks the entry count and carried-count bounds
+dynamically; it has no fixed entry or carried count to update.
 
-Of the refreshed entries, 15485 retain raw artifact measurements and 1 uses log-derived pricing;
-the 14 highmem-only entries are carried.
-**No floor is added** — see below.
+All 17 job logs were checked: **0 entries were re-priced from job logs**.
+All 40450 test result lines were timed from the previous result line, with the
+first test timed from the pytest session-start line. No gap exceeds the merged
+value by more than 600 s. The formerly corrected
+`test_ringdowns_are_settled` now retains its artifact value, 310.3921270119997 s;
+its slow (2) log gap is 310.3928750 s, from
+2026-10-09T20:19:41.1379318Z to 2026-10-09T20:24:51.5308068Z.
+
+The four entries once set by hand retain raw runner measurements:
+
+| nodeid | recorded seconds |
+|---|---:|
+| `tests/unit/autodiff/test_msl_sparam_ad.py::test_compute_msl_s_matrix_end_to_end_matches_historical_base` | 1014.1397751879999 |
+| `tests/locks/test_coax_chain_battery_drift.py::test_the_coarsest_mesh_still_solves_to_its_stored_s[bead]` | 139.71913598599997 |
+| `tests/locks/test_coax_chain_battery_drift.py::test_the_coarsest_mesh_still_solves_to_its_stored_s[thru]` | 142.896389494 |
+| `tests/oracle/test_coax_open_end_settles.py::test_the_open_end_is_passive_and_settled` | 52.19136173999999 |
+
+All 20389 refreshed entries retain raw artifact measurements; the 14 highmem-only
+entries are carried. **No floor is added.**
+
+PR 1745 (2026-10-14) replaced 8 CPML dispersive entries with 12: 9 measured on the gate node and scaled by
+1.12 to the GitHub runner, and the three cpml `run` rows set to 19.5 s. That gives 20407 entries. The next
+regeneration replaces them with runner measurements.
 
 ## The 0.3 s floor, retired 2026-09-18
 
@@ -60,7 +83,7 @@ and adding 0.3 s to 10625 entries adds 53 minutes of fiction spread evenly acros
 Evenly is the problem: a constant per test does not model a real cost, it just pulls every shard
 toward equal test COUNTS and away from equal time.
 
-So the floor is gone, and step 4 of Regenerating below says not to re-add it. Two consequences to
+So the floor is gone, and step 4 of Regenerating below says not to re-add it. One consequence to
 keep in mind:
 
 - The 14 carried entries retain their previous measurements. No floor is added to them or to
@@ -73,25 +96,48 @@ longer stands on the 2026-09-08 measurement either.
 
 ## Sources
 
-Where each entry's value comes from. `merge_test_durations.py` takes the last input's value for an
-id measured twice; `slow (1)`–`(5)` went first, then `fast (1)`–`(6)`.
+Where each entry's value comes from. `merge_test_durations.py` takes the last
+input's value for an id measured twice; `slow (1)`–`(5)` went first, then
+`fast (1)`–`(12)`, in numeric order within each lane.
 
 | source | entries |
-|---|---|
-| `slow (1)`–`(5)` artifacts, for ids no fast source priced, excluding the log-corrected entry | 254 |
-| `slow (2)` job log, correcting a dropped setup phase | 1 |
-| `fast (1)`–`(6)` artifacts, including overlapping ids | 15231 |
+|---|---:|
+| slow artifacts, for ids no fast source priced | 316 |
+| fast artifacts, including overlapping ids | 20073 |
+| log-derived corrections | 0 |
 | carried unchanged from the replaced file | 14 |
 
-- The artifacts are `pytest --store-durations` output of run 36752442156 on `ubuntu-latest`, the
-  runner class the lanes use, with Python 3.11 / JAX 0.10.2.
-- All 30705 test result lines in the eleven jobs of run 36752442156 were checked. Each test's
-  wall time is the timestamp gap from the previous result line in that job; the first test is
-  timed from the pytest session-start line. Exactly one gap exceeds its new stored value by
-  more than 600 s: `tests/locks/test_patch_edgefed_resonance_harminv.py::test_ringdowns_are_settled`
-  in `slow (2)`, 1448.8538443 s versus 0.0009381059999213903 s stored (1514.934755 s in the
-  replaced file). Its duration now uses that gap. Module sums: old 1515.9735370 s; slow-artifact raw 1.8687104 s;
-  fast-last raw 1.9359451 s; log-corrected fast-last 1450.7888513 s.
+All 17 downloaded artifacts had the documented layout:
+`durations-slow-N/slow_N.json` and `durations-fast-N/fast_N.json`.
+The following compares each raw artifact sum with its pytest session summary.
+Sums are exact decimal sums of the recorded JSON numbers; no duration is rounded.
+
+| job | entries / result lines | artifact seconds | session seconds |
+|---|---:|---:|---:|
+| slow (1) | 4076 | 1892.30791771400947728836 | 1917.92 |
+| slow (2) | 4076 | 4816.47788627496861112753 | 4841.76 |
+| slow (3) | 4076 | 8352.47736137299563342507 | 8384.81 |
+| slow (4) | 4076 | 10550.28045739796571283792 | 10583.91 |
+| slow (5) | 4073 | 10474.84668043799913718666 | 10507.50 |
+| fast (1) | 1673 | 982.0858886190035106980 | 1013.22 |
+| fast (2) | 1673 | 1329.59095399300199812892 | 1360.42 |
+| fast (3) | 1673 | 1111.2056761850081721491 | 1143.55 |
+| fast (4) | 1673 | 466.3925578120031319358 | 496.77 |
+| fast (5) | 1673 | 1914.8531834199998581145 | 1947.39 |
+| fast (6) | 1673 | 2990.1831097710139055818 | 3014.58 |
+| fast (7) | 1673 | 1224.0627920830008835834 | 1253.86 |
+| fast (8) | 1673 | 776.35146230800359434850 | 802.91 |
+| fast (9) | 1673 | 1656.0678250429997536884 | 1687.37 |
+| fast (10) | 1673 | 3439.17228643799534898566 | 3471.14 |
+| fast (11) | 1673 | 1587.4622946870009852813 | 1622.74 |
+| fast (12) | 1670 | 3794.4133760550038207565 | 3827.53 |
+
+Fast (4) is more than 5% short: its session exceeds the artifact sum by
+30.3774421879968680642 s. Its session-start and collected timestamps are
+19:52:09.7494240Z and 19:52:39.2155498Z (2026-10-09), a 29.4661258 s collection
+interval. None of its 1673 result-line gaps meets the re-pricing rule.
+All other jobs are less than 5% short; every job is less than a minute short.
+
 - **The previous run 36394962310 used log-derived `slow (5)` entries.** With `-v` each test's result line is written when
   the test ends, and the job log stamps every line. An entry is the gap between a test's result
   line and the one before it; the first test is timed from the `collected` line. The gap holds
@@ -115,18 +161,27 @@ id measured twice; `slow (1)`–`(5)` went first, then `fast (1)`–`(6)`.
   (2026-09-21), measured before that.
   The 14th, `tests/unit/autodiff/test_coax_two_port_ad.py::test_coax_two_port_eps_scale_unity_matches_concrete_path`,
   is also outside both GitHub selections now; its 21.178872745 s is carried from the replaced file.
-- Recorded total: 29019.1 s (8.06 h), against 28509.1 s (7.92 h) for the file this replaces.
+- Recorded total: 36728.06249896402403329589 s, against 34424.59722538594211760151 s for the file this replaces.
 
 ## The one highmem test the fast lane does run
 
 `tests/unit/ports/test_msl_source_fixture_static.py::test_auto_eps_msl_gradient_matches_fd_mini_referee`
 carries `highmem` and nothing else, so pyproject's default `-m 'not gpu and not slow and not
-slow_physics'` does not deselect it and it runs in a fast shard. Its entry must therefore be a
-runner measurement, and it is: 47.77 s from `fast (4)` of run 36752442156 (it was 61.22 s from run
-36394962310; the a6000 said 28.9 s). It is the one highmem-marked entry the regen refreshed; the
-other 14 carried. When regenerating, do not overwrite this one from the a6000 map.
+slow_physics and not docs_consistency'` does not deselect it and it runs in a fast shard. Its entry must therefore be a
+runner measurement, and it is: 42.09557991500037 s from `fast (9)` of run 37983083757.
+It is the one highmem-marked entry the regeneration refreshed; the other 14 are
+carried. When regenerating, do not overwrite this one from the a6000 map.
 
 ## Regenerating
+
+Each weekly run uploads `weekly-durations-N` artifacts measured on the weekly
+selection; merge them as slow inputs using the existing procedure below. A shard
+using more than 85 % of its 180-minute job limit fails its final budget check:
+add a weekly shard or regenerate `.test_durations`. Unpriced test counts are
+reported without failing the check.
+pytest-split reads prices from and stores measurements to one file, so the
+weekly step seeds that file with `.test_durations` and the budget check prunes
+it to the entries the shard measured before the upload.
 
 1. Dispatch `.github/workflows/regen-durations.yml` and download the artifacts.
 2. `python scripts/ci/merge_test_durations.py .test_durations <slow shards...> <fast shards...>`.
@@ -157,41 +212,125 @@ other 14 carried. When regenerating, do not overwrite this one from the a6000 ma
 
 ## Balance
 
-Recomputed on the `1c3617d7` tree with the fast-last file and log correction above,
-using pytest-split 0.11.0's own `pytest --collect-only --splits N --group k` for all
-11 groups (`duration_based_chunks`): fast 15231 tests / 6 groups, slow 15474 tests /
-5 groups. Every group's ordered nodeids and summed durations match the reviewer's
-`sim.py` cross-check exactly; plugin estimates agree to their displayed 0.01 s.
-Python 3.11 / JAX 0.10.2 CPU; fast includes the locally available trimesh package,
+Collected at `3b62b21bef6a16f3c7aae8274a0f3798e6ff3a0d` with the new file using
+pytest-split 0.11.0's `duration_based_chunks`, by `--collect-only` for all 29 groups.
+These 29 invocations executed no tests. The ordered groups concatenate to
+each unsplit selection exactly, with no duplicate nodeids.
+
+Commands, with `k` ranging over every group (Python and optional dependencies as
+specified in the header):
+
+```sh
+RFX_S0_FULL=1 python -m pytest --collect-only -q -p no:cacheprovider \
+  -m "not gpu and not highmem and not docs_consistency" --splits 5 --group "$k"
+python -m pytest --collect-only -q -p no:cacheprovider --splits 12 --group "$k"
+python -m pytest tests/contracts --collect-only -q -p no:cacheprovider \
+  -o addopts="" -m "not gpu and not docs_consistency" --splits 12 --group "$k"
+```
+
+The table sums only entries present in the new file, using exact decimal
+arithmetic. Missing tests contribute no recorded seconds to this table;
+pytest-split uses the mean recorded duration in that selection when assigning
+those tests to groups. These sums are recorded test seconds, not observed shard
+wall times or estimates including the plugin's missing-duration fallback.
+
+| selection | group | tests | recorded seconds | missing durations |
+|---|---:|---:|---:|---:|
+| weekly | 1 | 8000 | 6731.15030291301552742902 | 457 |
+| weekly | 2 | 3140 | 7463.05064197900535506421 | 0 |
+| weekly | 3 | 4137 | 7482.21194214600592788110 | 0 |
+| weekly | 4 | 3709 | 7288.09371869699608202306 | 99 |
+| weekly | 5 | 1955 | 7337.2141672090023410625 | 8 |
+| fast | 1 | 2655 | 1785.65200252400071172775 | 0 |
+| fast | 2 | 3198 | 1782.87584452501298138727 | 0 |
+| fast | 3 | 1694 | 1782.6513163670030354908 | 0 |
+| fast | 4 | 1533 | 1792.0887382479979263766 | 0 |
+| fast | 5 | 1232 | 1782.6028205570164612784 | 0 |
+| fast | 6 | 3033 | 1789.65390449500426981420 | 0 |
+| fast | 7 | 1704 | 1677.8309318019979743143 | 99 |
+| fast | 8 | 1023 | 1788.81842801800211609046 | 0 |
+| fast | 9 | 1721 | 1784.9404569499945010480 | 0 |
+| fast | 10 | 1213 | 1806.4172510680017829841 | 0 |
+| fast | 11 | 916 | 1952.2808278520025411029 | 0 |
+| fast | 12 | 258 | 1546.0288840080006616371 | 8 |
+| contract | 1 | 227 | 315.2948128149998165981 | 0 |
+| contract | 2 | 997 | 311.6519956050009904505 | 0 |
+| contract | 3 | 143 | 335.7669219510013342763 | 0 |
+| contract | 4 | 408 | 312.7734711170010443642 | 0 |
+| contract | 5 | 821 | 311.90673305999763415965 | 0 |
+| contract | 6 | 92 | 311.234374045999855950 | 0 |
+| contract | 7 | 503 | 322.45159430500303044637 | 0 |
+| contract | 8 | 480 | 311.4951441430017946798 | 0 |
+| contract | 9 | 259 | 312.6788554160000898642 | 0 |
+| contract | 10 | 375 | 312.2940423989990675828 | 0 |
+| contract | 11 | 1431 | 313.2927033870084870616 | 0 |
+| contract | 12 | 316 | 263.0001858480020466514 | 0 |
+
+The four slab-order nodeids are all in weekly group 3:
+
+| nodeid | recorded seconds | weekly group |
+|---|---:|---:|
+| `tests/unit/nonuniform/test_dual_volume_interface_order.py::test_slab_three_mesh_orders[eps4]` | 593.0778320900001 | 3 |
+| `tests/unit/nonuniform/test_dual_volume_interface_order.py::test_slab_three_mesh_orders[lossy]` | 584.498005817 | 3 |
+| `tests/unit/nonuniform/test_dual_volume_interface_order.py::test_slab_three_mesh_orders[debye]` | 870.602081947 | 3 |
+| `tests/unit/nonuniform/test_dual_volume_interface_order.py::test_slab_three_mesh_orders[lorentz]` | 862.1636578080002 | 3 |
+
+### Previous balance, 2026-10-07
+
+Recomputed on the `bf9af229` tree with the fast-last file from run 37444295688
+and its 1417.9070415 s log correction for `test_ringdowns_are_settled`,
+using pytest-split 0.11.0's own `pytest --collect-only -q -p no:cacheprovider --splits N --group k`
+for all 23 groups (`duration_based_chunks`): fast 17427 tests / 6 and 12 groups,
+slow 18129 tests / 5 groups. Every group's ordered nodeids and duration match the
+plugin algorithm applied to the unsplit collection; estimates agree to their displayed 0.01 s.
+Python 3.11 / JAX 0.10.2 CPU; fast includes trimesh 5.1.1,
 slow excludes the CAD extra, and Plotly is absent. Fast uses
 `not gpu and not slow and not slow_physics and not docs_consistency`; slow uses
-`not gpu and not highmem and not docs_consistency`, matching the workflows.
-The file has no missing entries in either selection. With these optional-dependency
-settings the local selections overlap on 15219 ids; the 11 CAD tests are collected
-only in fast, in addition to its one highmem test.
+`not gpu and not highmem and not docs_consistency` with `RFX_S0_FULL=1`, matching
+validation.yml. There are 149 fast and 590 slow nodeids without stored measurements;
+the plugin prices them at the mean of the measured tests in that selection.
+Without `RFX_S0_FULL=1`, the slow selection collects 17688 tests; the flag adds
+441 path-equivalence cases. With these optional-dependency settings the local
+selections overlap on 17415 ids; the 11 CAD tests are collected only in fast,
+in addition to its one highmem test.
 
-The reviewer found that slow-last pricing gave fast groups 3 and 4 predictions near
+For the 2026-10-01 refresh, the reviewer found that slow-last pricing gave fast groups 3 and 4 predictions near
 40 min but fast-artifact prices near 52.5 min; slow jobs 3 and 4 had fitted speed
 factors 0.74 / 0.76 versus 0.93–1.20 for the other nine jobs. On runs 36739385830 and
 36766208720, fast-artifact pricing matched old-split group 3 within 1 min in both runs;
 across all 12 jobs the observed/price ratio was 0.69–1.22. The table below uses this file's fast-last prices in both lanes; these
-are duration sums, not observed CI wall times.
+are plugin estimates, including mean-duration fallback, not observed CI wall times.
 
 | lane | group | fast-last minutes |
 |---|---|---:|
-| fast | 1 | 45.49 |
-| fast | 2 | 45.50 |
-| fast | 3 | 46.10 |
-| fast | 4 | 45.58 |
-| fast | 5 | 46.12 |
-| fast | 6 | 44.12 |
-| fast | max | 46.12 |
-| slow | 1 | 95.30 |
-| slow | 2 | 95.32 |
-| slow | 3 | 95.30 |
-| slow | 4 | 95.59 |
-| slow | 5 | 94.86 |
-| slow | max | 95.59 |
+| fast (6-way) | 1 | 56.10 |
+| fast (6-way) | 2 | 56.11 |
+| fast (6-way) | 3 | 56.29 |
+| fast (6-way) | 4 | 56.10 |
+| fast (6-way) | 5 | 56.21 |
+| fast (6-way) | 6 | 54.93 |
+| fast (6-way) | max | 56.29 |
+| fast (12-way) | 1 | 28.80 |
+| fast (12-way) | 2 | 28.22 |
+| fast (12-way) | 3 | 28.22 |
+| fast (12-way) | 4 | 28.35 |
+| fast (12-way) | 5 | 28.05 |
+| fast (12-way) | 6 | 28.09 |
+| fast (12-way) | 7 | 28.00 |
+| fast (12-way) | 8 | 28.11 |
+| fast (12-way) | 9 | 28.23 |
+| fast (12-way) | 10 | 28.01 |
+| fast (12-way) | 11 | 31.63 |
+| fast (12-way) | 12 | 22.04 |
+| fast (12-way) | max | 31.63 |
+| slow (5-way) | 1 | 117.12 |
+| slow (5-way) | 2 | 117.11 |
+| slow (5-way) | 3 | 117.80 |
+| slow (5-way) | 4 | 119.63 |
+| slow (5-way) | 5 | 113.90 |
+| slow (5-way) | max | 119.63 |
+
+Since 2026-10-06 (PI decision), the fast lane uses a 12-way split; historical measurements below retain their original split counts.
 
 Earlier balance records follow.
 

@@ -20,6 +20,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx import Simulation
+from tests.contracts.path_equivalence.comparison import compare
 
 
 def _build_sim():
@@ -42,7 +43,7 @@ def test_nu_forward_ckpt_matches_plain():
     ts_ckpt = np.asarray(sim.forward(n_steps=n_steps, checkpoint=True).time_series)
     ts_plain = np.asarray(sim.forward(n_steps=n_steps, checkpoint=False).time_series)
     assert ts_ckpt.shape == ts_plain.shape
-    np.testing.assert_allclose(ts_ckpt, ts_plain, rtol=1e-6, atol=1e-12)
+    compare(ts_ckpt, ts_plain, record="graded.checkpoint_probe", kind="step", measurements=[])
 
 
 def test_nu_grad_ckpt_matches_plain():

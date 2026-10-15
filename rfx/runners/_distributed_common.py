@@ -8,18 +8,25 @@ CPML kernel retains its per-axis, per-face spacing implementation.
 
 from __future__ import annotations
 
-from functools import lru_cache, partial
+from rfx.stepping.slab import (
+    Slab, Fill, cut, cut_poles, cut_pole_coeffs, fill_pole_rows, stage_poles,
+    _vacuum_dispersion_values, vacuum_dispersion_values, shard_stacked, shard_stacked_poles,
+)
+
+from functools import partial
 
 from rfx import _realized
 
 import jax
 import numpy as np
 import jax.numpy as jnp
+
+from rfx.core.drives import drive_layout, inject_drives
 from jax import lax
 from rfx.runners._rank import mesh_ranks, rank_shard_map
 from jax.sharding import Mesh, PartitionSpec as P
 
-from rfx.boundaries.pec import realized_pec_edge_masks
+from rfx.model.conductors import distributed_mask_edges, distributed_mask_spec
 from rfx.core.yee import (
     EPS_0,
     MU_0,
@@ -46,20 +53,16 @@ from rfx.materials.lorentz import (
 )
 
 __all__ = [
-    "cpml_coeff_e_vacuum",
-    "cpml_coeff_h_vacuum",
     "split_array_x",
     "gather_array_x",
     "split_poles_x",
     "unstack_and_gather",
-    "zeros_psi_stacked",
     "exchange_component_shmap",
     "apply_pec_face_shmap",
     "apply_pmc_face_shmap",
     "apply_pec_mask_shmap",
     "shard_stacked",
     "shard_stacked_poles",
-    "shard_stacked_psi",
     "inject_sources_shmap",
     "sample_probes_shmap",
     "_update_h_local_nu",
@@ -79,11 +82,7 @@ __all__ = [
     "_update_e_debye_local",
     "_update_e_lorentz_local",
     "_update_e_local_with_dispersion",
-    "_init_cpml_distributed",
-    "_distributed_cpml_state",
     "_distributed_boundary_layers",
-    "_apply_cpml_e_distributed",
-    "_apply_cpml_h_distributed",
 ]
 
 
@@ -100,89 +99,20 @@ __all__ = [
 # defined, so ``rfx.runners.distributed.split_array_x`` / ``.gather_array_x``
 # still resolve for its external importers.
 #
-# Both are closure-free and use only ``jnp``, so this module stays the
-# dependency-DAG leaf (inventory §2.5): it imports nothing from
-# ``rfx.runners.*``.
+# Spatial placement delegates to rfx.stepping.slab; gather retains its
+# original shape-only operation. The public re-exports remain identical.
 
 
 def split_array_x(arr, n_devices, ghost=1, pad_value=0.0):
-    """Split a 3D array into N slabs along x with ghost cells.
-
-    Parameters
-    ----------
-    arr : ndarray, shape (nx, ny, nz)
-    n_devices : int
-    ghost : int
-        Number of ghost cells on each side.
-    pad_value : float
-        Value used for ghost cells at the physical boundary (device 0
-        left ghost and device N-1 right ghost).  Default 0.0 is correct
-        for field arrays; use 1.0 for eps_r and mu_r to avoid division
-        by zero in the Yee update.
-
-    Returns
-    -------
-    slabs : ndarray, shape (n_devices, nx_local + 2*ghost, ny, nz)
-    """
-    nx = arr.shape[0]
-    nx_per = nx // n_devices
-    slabs = []
-    for i in range(n_devices):
-        x_start = i * nx_per
-        x_end = x_start + nx_per
-
-        # Desired range including ghosts
-        want_lo = x_start - ghost
-        want_hi = x_end + ghost
-
-        # Clamp to valid array range
-        g_lo = max(0, want_lo)
-        g_hi = min(nx, want_hi)
-
-        slab_data = arr[g_lo:g_hi]
-
-        # Pad where the desired range exceeds array bounds
-        pad_lo = g_lo - want_lo   # > 0 when want_lo < 0
-        pad_hi = want_hi - g_hi   # > 0 when want_hi > nx
-
-        if pad_lo > 0 or pad_hi > 0:
-            pad_widths = [(pad_lo, pad_hi)] + [(0, 0)] * (arr.ndim - 1)
-            slab_data = jnp.pad(slab_data, pad_widths, mode='constant',
-                                constant_values=pad_value)
-
-        slabs.append(slab_data)
-    return jnp.stack(slabs)
+    if arr.shape[0] % n_devices:
+        raise ValueError('split_array_x requires x length divisible by n_devices')
+    return cut(arr, Slab(arr.shape[0], n_devices, ghost), Fill(pad_value, pad_value), mesh=None)
 
 
 def shard_x_slabs(arr, n_devices, nx_per, ghost, pad_value, sharding):
-    """Place padded x slabs directly, constructing only addressable shards.
-
-    ``arr`` already includes any high-x alignment padding. Physical-boundary
-    ghosts use ``pad_value``; interior ghosts copy the adjacent slab's cells,
-    exactly as in ``shard_stacked(split_array_x(...))``. No device-axis stack
-    or whole-domain reshape is staged on the default device.
-    """
     if arr.ndim != 3:
-        raise ValueError(f"shard_x_slabs stages 3-D (x, y, z) arrays, got shape {arr.shape}")
-    nx_local = nx_per + 2 * ghost
-    shape = (n_devices * nx_local,) + arr.shape[1:]
-
-    def slab(index):
-        rank = (index[0].start or 0) // nx_local
-        want_lo = rank * nx_per - ghost
-        want_hi = (rank + 1) * nx_per + ghost
-        lo, hi = max(0, want_lo), min(arr.shape[0], want_hi)
-        data = arr[lo:hi]
-        if lo != want_lo or hi != want_hi:
-            data = jnp.pad(
-                data, ((lo - want_lo, want_hi - hi), (0, 0), (0, 0)),
-                constant_values=pad_value,
-            )
-        return data
-
-    # No ``dtype=`` argument: jax.make_array_from_callback gained it only after
-    # 0.5.0 (the VESSL image runs 0.4.33). Slicing and jnp.pad keep arr's dtype.
-    return jax.make_array_from_callback(shape, sharding, slab)
+        raise ValueError('shard_x_slabs requires a 3-D array')
+    return cut(arr, Slab(n_devices * nx_per, n_devices, ghost), Fill(pad_value, pad_value), mesh=sharding)
 
 
 def stage_dispersion_slabs(materials, dt, debye_spec, lorentz_spec,
@@ -200,7 +130,7 @@ def stage_dispersion_slabs(materials, dt, debye_spec, lorentz_spec,
             continue
         poles, masks = spec
         masks = jax.tree.map(
-            lambda a: shard_x_slabs(a, n_devices, nx_per, ghost, False, sharding),
+            lambda a: cut(a, Slab(nx, n_devices, ghost), "pole_mask", mesh=sharding),
             masks)
         out.append(stage_slab_pole_coeffs(
             poles, masks, dt, kind, sharding.mesh, nx_per, nx,
@@ -208,21 +138,20 @@ def stage_dispersion_slabs(materials, dt, debye_spec, lorentz_spec,
     return tuple(out)
 
 
-def stage_slab_pole_coeffs(poles, masks, dt, kind, mesh, nx_per, nx, shape):
+from rfx.model.electric_metrics import slab_cell_sizes, slab_metric_kwargs
+
+
+def stage_slab_pole_coeffs(poles, masks, dt, kind, mesh, nx_per, nx, shape, *, grid=None):
     """Fixed ADE terms and zero carry; E coefficient slots stay ``None``.
 
     The compiled setup contains only pole-mask means and their fixed ADE
     factors, never differentiable epsilon/sigma coefficients. In particular,
     forward does not execute a large eager shard_map on every call (#1260).
     """
-    from jax.sharding import NamedSharding
-
-    @partial(rank_shard_map, mesh=mesh, in_specs=P("x"), out_specs=P("x"),
-             check_rep=False)
     def local(local_masks, *, rank):
         shape_local = (nx_per + 2,) + shape[1:]
         fractions = [None] * len(poles) if local_masks is None else [
-            slab_pole_fractions(m, nx_per, nx, rank=rank) for m in
+            slab_pole_fractions(m, nx_per, nx, rank=rank, cell_sizes=slab_cell_sizes(grid, rank)) for m in
             (local_masks if isinstance(local_masks, (tuple, list)) else [local_masks] * len(poles))]
         if len(fractions) != len(poles):
             raise ValueError(f"Expected {len(poles)} {kind} masks, got {len(fractions)}")
@@ -234,68 +163,15 @@ def stage_slab_pole_coeffs(poles, masks, dt, kind, mesh, nx_per, nx, shape):
             coeffs = LorentzCoeffs(ca=None, cb=None, cc=None, a=a, b=b, c=c)
         return _pad_slab_dispersion_coeffs(coeffs, dt, nx_per, nx, rank=rank)
 
-    coeffs = jax.jit(local)(mesh_ranks(mesh), masks)
-    n_devices = mesh.size
     state_type = DebyeState if kind == "debye" else LorentzState
-    state_shape = (n_devices * len(poles), nx_per + 2) + shape[1:]
-    zeros = jnp.zeros(state_shape, dtype=ade_state_dtype(),
-                      device=NamedSharding(mesh, P("x")))
-    return coeffs, state_type(*(zeros for _ in state_type._fields))
+    return stage_poles(local, masks, Slab(nx, mesh.size), shape[1:], mesh=mesh,
+                       n_poles=len(poles), state_type=state_type,
+                       dtype=ade_state_dtype(), kind=kind)
 
-
-@lru_cache(maxsize=None)
-def _vacuum_dispersion_values(kind, n_poles, dt):
-    """Per field, the coefficient ``init_debye`` / ``init_lorentz`` give ONE
-    vacuum cell (eps_r 1, sigma 0, no pole reaching it) at this ``dt``
-    (#1302): Debye ``ca = 1, cb = dt/eps_0, cc = 1/eps_0, alpha = beta = 0``;
-    Lorentz ``ca = 1, cb = dt/eps_0, cc = 1/eps_0, a = b = c = 0``.
-
-    No pole reaches the cell (all-False masks), so the pole parameters do not
-    enter; placeholder poles only fix the pole count. Returned as Python
-    floats (one per field, equal across components and poles, checked).
-    """
-    with jax.ensure_compile_time_eval():
-        one = jnp.ones((1, 1, 1))
-        vacuum = MaterialArrays(eps_r=one, sigma=jnp.zeros((1, 1, 1)), mu_r=one)
-        masks = [jnp.zeros((1, 1, 1), dtype=bool)] * n_poles
-        if kind == "debye":
-            coeffs, _ = init_debye([DebyePole(1.0, 1e-11)] * n_poles, vacuum, dt,
-                                   mask=masks)
-        else:
-            coeffs, _ = init_lorentz([LorentzPole(1.0, 1.0, 1.0)] * n_poles, vacuum,
-                                     dt, mask=masks)
-    values = {}
-    for name, field in zip(coeffs._fields, coeffs):
-        leaves = [float(v) for leaf in jax.tree.leaves(field)
-                  for v in np.asarray(leaf).ravel()]
-        if len(set(leaves)) != 1:
-            raise AssertionError(f"vacuum {kind} {name} is not one value: {leaves}")
-        values[name] = leaves[0]
-    return values
-
-
-def vacuum_dispersion_values(coeffs, dt):
-    """:func:`_vacuum_dispersion_values` for a coefficient bundle's type and
-    pole count (a per-pole field's leading axis)."""
-    if isinstance(coeffs, DebyeCoeffs):
-        kind, n_poles = "debye", coeffs.alpha.shape[0]
-    else:
-        kind, n_poles = "lorentz", coeffs.a.shape[0]
-    return _vacuum_dispersion_values(kind, int(n_poles), float(dt))
 
 
 def _pad_slab_dispersion_coeffs(coeffs, dt, nx_per, nx, rank=None):
-    """Fill the rows outside the domain -- the physical-face ghost and the
-    x-hi alignment pad -- with the vacuum-cell coefficients (#1302); interior
-    ghosts are real cells and keep their values."""
-    if rank is None:
-        raise ValueError("slab rank must be supplied as data")
-    rows = rank * nx_per + jnp.arange(nx_per + 2) - 1
-    real = ((rows >= 0) & (rows < nx))[:, None, None]
-    vacuum = vacuum_dispersion_values(coeffs, dt)
-    return type(coeffs)(*(
-        jax.tree.map(lambda a, _v=vacuum[name]: jnp.where(real, a, _v), field)
-        for name, field in zip(coeffs._fields, coeffs)))
+    return fill_pole_rows(coeffs, dt, nx_per, nx, rank=rank)
 
 
 def slab_dispersion_coeffs(coeffs, e_materials, dt, nx_per, nx, rank=None):
@@ -330,23 +206,7 @@ def gather_array_x(slabs, ghost=1):
 
 
 def split_poles_x(arr, n_poles, n_devices, ghost):
-    """Split a per-pole array ``(n_poles, nx, ny, nz)`` into x-slabs.
-
-    Applies :func:`split_array_x` to each pole and stacks the results on
-    axis 1, giving ``(n_devices, n_poles, nx_local, ny, nz)``. Ghost cells
-    at the physical x boundaries are padded with ``0.0``, which is the
-    correct fill for every array this is used on: the polarization state
-    fields of Debye/Lorentz, and Lorentz's ``a``/``b``/``c`` coefficients.
-
-    NOT for a coefficient whose ghost fill must be non-zero --
-    ``_split_lorentz_coeffs`` splits ``cc`` with ``pad_value=1/EPS_0``
-    through :func:`split_array_x` directly, and its comment records the
-    NaN-in-backward reason. That call is deliberately not routed here.
-    """
-    return jnp.stack([
-        split_array_x(arr[p], n_devices, ghost, pad_value=0.0)
-        for p in range(n_poles)
-    ], axis=1)
+    return cut_poles(arr[:n_poles], Slab(arr.shape[1], n_devices, ghost), "state")
 
 
 def unstack_and_gather(sharded_arr, n_devices, nx_local, ghost, pad_x, nx):
@@ -411,33 +271,8 @@ def unstack_and_gather(sharded_arr, n_devices, nx_local, ghost, pad_x, nx):
 # deliberately NOT supported by this signature.
 
 
-def cpml_coeff_e_vacuum(dt: float) -> float:
-    """Vacuum CPML E-field update coefficient ``dt / eps_0``.
-
-    Returns ``dt / EPS_0`` using the canonical ``rfx.core.yee.EPS_0``
-    (post-2019 SI value 8.8541878128e-12). The pre-refactor distributed
-    runners held the literal ``8.854187817e-12`` inline; Stage 3.5b
-    consolidated every EPS_0 site onto the canonical constant.
-
-    Takes ONLY ``dt`` — no ``eps_r``/``materials`` argument. The vacuum
-    assumption is intentional and load-bearing: see the module docstring.
-    """
-    return dt / EPS_0
 
 
-def cpml_coeff_h_vacuum(dt: float) -> float:
-    """Vacuum CPML H-field update coefficient ``dt / mu_0``.
-
-    Returns ``dt / MU_0`` using the canonical ``rfx.core.yee.MU_0``
-    (post-2019 SI value 1.25663706212e-6). The pre-refactor distributed
-    runners held the literal ``1.2566370614e-6`` inline; Stage 3.5b
-    consolidated every MU_0 site onto the canonical post-2019 constant.
-
-    Takes ONLY ``dt`` — no ``mu_r``/``materials`` argument. The vacuum
-    assumption is intentional and load-bearing: see the module docstring.
-    """
-    mu = component_h_materials(MaterialArrays(None, None, 1.0))[0]
-    return dt / (mu * MU_0)
 
 
 # ---------------------------------------------------------------------------
@@ -457,25 +292,6 @@ def cpml_coeff_h_vacuum(dt: float) -> float:
 # move carries no jaxpr-shape change.
 
 
-def zeros_psi_stacked(n_devices, n, dim1, dim2):
-    """Zero CPML psi array stacked over ranks: ``(n_devices, n, dim1, dim2)``.
-
-    Parameters
-    ----------
-    n_devices : int
-        Number of ranks the psi array is stacked over (axis 0).
-    n : int
-        CPML layer count (``grid.cpml_layers``) -- the psi depth on axis 1.
-    dim1, dim2 : int
-        The two face-parallel extents. Which grid dimensions these are
-        depends on the face; callers pass ``nx_local`` for a y-/z-face psi
-        that indexes along the rank-local x slab, and the global ``ny``/``nz``
-        for an x-face psi.
-
-    ``float32`` is fixed here, matching the single-device
-    ``rfx.boundaries.cpml.init_cpml`` convention both callers mirror.
-    """
-    return jnp.zeros((n_devices, n, dim1, dim2), dtype=jnp.float32)
 
 
 # ---------------------------------------------------------------------------
@@ -708,43 +524,10 @@ def apply_pec_face_shmap(state: FDTDState, mesh: Mesh, n_devices: int,
 def apply_pmc_face_shmap(state: FDTDState, mesh: Mesh, n_devices: int,
                          nx_local_with_ghost: int,
                          pmc_faces: frozenset, pad_x: int = 0, *, ranks) -> FDTDState:
-    """Apply PMC (``H_tangential = 0``) on the physical domain faces under
-    ``shard_map``.
+    """Canonicalize only owned PMC high ghosts; retain every physical H row.
 
-    Electromagnetic dual of :func:`apply_pec_face_shmap`: PEC zeroes
-    tangential E, PMC zeroes tangential H. Y- and Z-face PMC is local to
-    every rank; X-face PMC is rank-conditional (only rank 0 zeroes
-    x_lo, only rank N-1 zeroes x_hi).
-
-    Yee convention: a ``_hi`` face acts on index ``-2`` (half a cell
-    INSIDE the wall), not ``-1`` (the ghost outside) -- see
-    ``rfx/boundaries/pmc.py``. On the x axis that is ``last_inside``,
-    one cell in from the last real cell
-    ``nx_local_with_ghost - 1 - ghost - pad_x``; the faces never act on
-    a seam ghost, nor on the alignment-pad cells when ``pad_x > 0``
-    (#622, same class as the PEC face fix).
-
-    ``pmc_faces`` is a Python ``frozenset`` read at trace time, so each
-    face's ``if`` is resolved while the kernel is staged out, not at
-    run time. An empty set short-circuits before the kernel is built.
-
-    #1038 leg 3. ``distributed_v2.py::_apply_pmc_shmap`` and
-    ``distributed_nu.py::_apply_pmc_face_nu_shmap`` were the SAME kernel
-    with one token of difference, each runner's own spelling of the
-    slab length; after the rename in this leg's first commit the two
-    inner bodies hashed byte-identical
-    (``c6baaf31de52299c39c564403a6fda4fbebdaea26014bbceb7f12d30983f0b12``).
-
-    **This function does not encode a hook point, and the two runners
-    disagree about one.** ``distributed_v2`` calls it AFTER the H ghost
-    exchange (``step_fn_cpml`` 3b / ``step_fn_pec`` 2b);
-    ``distributed_nu`` calls it BEFORE the H ghost exchange (step 2b),
-    so that the zero propagates to neighbour ranks through the
-    exchange. Both cite the same OQ9 directive for the H-half placement
-    and reach opposite conclusions about the exchange. That is inventory
-    §3.2 / leg 5 territory -- a physics question with its own gate --
-    and merging the kernel settles nothing about it. Callers own their
-    ordering.
+    The image path zeroes only the global high ghost, which no exchange sends,
+    so the order relative to the exchange does not change any value.
     """
     if not pmc_faces:
         return state
@@ -765,41 +548,12 @@ def apply_pmc_face_shmap(state: FDTDState, mesh: Mesh, n_devices: int,
         check_rep=False,
     )
     def _pmc(hx, hy, hz, *, rank):
-        ghost = 1
-
-        # Yee convention: _hi PMC acts on index -2 (0.5·dx INSIDE the
-        # wall), not -1 (ghost outside). See rfx/boundaries/pmc.py.
-        if "y_lo" in pmc_faces:
-            hx = hx.at[:, 0, :].set(0.0)
-            hz = hz.at[:, 0, :].set(0.0)
-        if "y_hi" in pmc_faces:
-            hx = hx.at[:, -2, :].set(0.0)
-            hz = hz.at[:, -2, :].set(0.0)
-        if "z_lo" in pmc_faces:
-            hx = hx.at[:, :, 0].set(0.0)
-            hy = hy.at[:, :, 0].set(0.0)
-        if "z_hi" in pmc_faces:
-            hx = hx.at[:, :, -2].set(0.0)
-            hy = hy.at[:, :, -2].set(0.0)
-
-        device_idx = rank
-        is_first = (device_idx == 0)
-        is_last = (device_idx == n_devices - 1)
-        last_real = nx_local_with_ghost - 1 - ghost - pad_x
-        last_inside = last_real - 1
-
-        if "x_lo" in pmc_faces:
-            hy_new = jnp.where(is_first, 0.0, hy[ghost, :, :])
-            hz_new = jnp.where(is_first, 0.0, hz[ghost, :, :])
-            hy = hy.at[ghost, :, :].set(hy_new)
-            hz = hz.at[ghost, :, :].set(hz_new)
-        if "x_hi" in pmc_faces:
-            hy_new = jnp.where(is_last, 0.0, hy[last_inside, :, :])
-            hz_new = jnp.where(is_last, 0.0, hz[last_inside, :, :])
-            hy = hy.at[last_inside, :, :].set(hy_new)
-            hz = hz.at[last_inside, :, :].set(hz_new)
-
-        return hx, hy, hz
+        from rfx.boundaries.pmc import apply_pmc_faces
+        local = FDTDState(hx, hx, hx, hx, hy, hz, 0)
+        local = apply_pmc_faces(
+            local, pmc_faces, image=True, frame=cpml_slab_frame(hx.shape, 1, pad_x),
+            owned={"x_lo": rank == 0, "x_hi": rank == n_devices - 1})
+        return local.hx, local.hy, local.hz
 
     hx, hy, hz = _pmc(ranks, state.hx, state.hy, state.hz)
     return state._replace(hx=hx, hy=hy, hz=hz)
@@ -832,7 +586,7 @@ def apply_pec_mask_shmap(state: FDTDState, sharded_pec_mask, mesh,
     re-zero PEC cells that live in another rank's slab; per V3 bullet 7,
     seam ghost cells must not be acted on.
 
-    The implementation:
+    For legacy cell masks (instead of precomputed edge tuples), this:
       * computes the per-component edge masks on the local slab
         including ghost cells by CALLING
         ``rfx.boundaries.pec.realized_pec_edge_masks`` — the same
@@ -861,7 +615,7 @@ def apply_pec_mask_shmap(state: FDTDState, sharded_pec_mask, mesh,
     @partial(
         rank_shard_map,
         mesh=mesh,
-        in_specs=(P("x"), P("x"), P("x"), P("x")),
+        in_specs=(P("x"), P("x"), P("x"), distributed_mask_spec(sharded_pec_mask)),
         out_specs=(P("x"), P("x"), P("x")),
         check_rep=False,
     )
@@ -885,8 +639,7 @@ def apply_pec_mask_shmap(state: FDTDState, sharded_pec_mask, mesh,
         # y and z have no ghosts and no periodic BC on this lane (the NU
         # runners install none), so they take the same zero-pad convention
         # ``rfx/nonuniform.py``'s ``apply_pec_mask(st, pec_mask)`` takes.
-        mask_ex, mask_ey, mask_ez = realized_pec_edge_masks(
-            mask, periodic=(True, False, False))
+        mask_ex, mask_ey, mask_ez = distributed_mask_edges(mask)
 
         # Force ghost rows to False so we never touch a neighbour rank's
         # cells.  Real cells span [ghost, nx_local - ghost).
@@ -912,76 +665,9 @@ def apply_pec_mask_shmap(state: FDTDState, sharded_pec_mask, mesh,
 
 
 # ---------------------------------------------------------------------------
-# Device-axis merge + x-slab sharding (host side, eager)
-# ---------------------------------------------------------------------------
-#
-# These three take an array whose leading axis is the DEVICE axis, fold that
-# axis into the next one, and ``jax.device_put`` the result onto an
-# x-sharding.  They run at setup time, outside any ``jit``/``shard_map``
-# trace, so lifting them out of their enclosing closures cannot change a
-# jaxpr -- the only thing that moved into the signature is ``shd``, a
-# ``NamedSharding`` the caller already had in hand (#1038 leg 1).
-#
-# The bodies are the pre-move bodies verbatim.  They are three FUNCTIONS and
-# not one, on purpose: ``shard_stacked``'s generic ``*rest`` form would
-# numerically subsume the other two, but that would be an algebra change on a
-# leg whose whole contract is byte-identical motion.  Merging them is a later
-# decision with its own evidence, not a side effect of de-duplication.
+# CPML face-depth packing remains with the absorber adapters (#1535).
 
 
-def shard_stacked(arr, shd):
-    """Merge the device axis into x, then shard.
-
-    ``(n_devices, nx_local, ny, nz) -> (n_devices*nx_local, ny, nz)``.
-
-    Extracted verbatim from four byte-identical copies that carried two
-    different names: ``distributed_nu.py::shard_debye_coeffs_x_slab._shard_3d``,
-    ``distributed_nu.py::shard_lorentz_coeffs_x_slab._shard_3d``,
-    ``distributed_nu.py::run_nonuniform_distributed_pec._shard_stacked`` and
-    ``distributed_v2.py::run_distributed._shard_stacked``.  All four bodies
-    hashed ``ab71430ea8cb``.
-    """
-    n_dev = arr.shape[0]
-    rest = arr.shape[1:]
-    return jax.device_put(arr.reshape(n_dev * rest[0], *rest[1:]), shd)
-
-
-def shard_stacked_poles(arr, shd):
-    """Merge the device axis into the pole axis, then shard.
-
-    ``(n_devices, n_poles, nx_local, ny, nz) ->``
-    ``(n_devices*n_poles, nx_local, ny, nz)``, so ``P("x")`` hands each
-    device ``(n_poles, nx_local, ny, nz)``.
-
-    Extracted verbatim from the four ``_shard_4d`` copies in
-    ``distributed_nu.py`` (``shard_debye_coeffs_x_slab``,
-    ``shard_debye_state_x_slab``, ``shard_lorentz_coeffs_x_slab``,
-    ``shard_lorentz_state_x_slab``), body ``2883a7c93bd2`` on all four.
-
-    NOT the same text as ``distributed_v2.py::_shard_stacked_5d``, which
-    computes the same thing through a named intermediate; that copy is
-    outside this leg's byte-identical set and is deliberately left alone.
-    """
-    n_dev, n_poles, nx_loc, ny_a, nz_a = arr.shape
-    return jax.device_put(
-        arr.reshape(n_dev * n_poles, nx_loc, ny_a, nz_a), shd,
-    )
-
-
-def shard_stacked_psi(arr, shd):
-    """Merge the device axis into the CPML-depth axis, then shard.
-
-    ``arr``: ``(n_devices, n_cpml, d1, d2)`` -- re-interpreted as
-    ``(n_devices * n_cpml, d1, d2)`` so x-sharding distributes the first
-    axis across devices correctly.  Each device owns ``n_cpml`` rows.
-
-    Extracted verbatim from ``distributed_nu.py::shard_cpml_state_x_slab.
-    _shard_psi`` and ``distributed_v2.py::_init_cpml_sharded._shard_psi``,
-    body ``6ae90bb58fb5`` on both (the copies differed only in comments).
-    """
-    n_dev, n_c, d1, d2 = arr.shape
-    merged = arr.reshape(n_dev * n_c, d1, d2)
-    return jax.device_put(merged, shd)
 
 
 # ---------------------------------------------------------------------------
@@ -1008,50 +694,46 @@ def shard_stacked_psi(arr, shd):
 
 
 def inject_sources_shmap(st, src_vals_step, mesh, n_src,
-                         src_local_specs, src_device_ids, *, ranks):
+                         src_local_specs, src_device_ids, *, ranks, drives=None):
     """Inject sources on their owning device using ``shard_map``.
 
     ``shard_map`` gives each device its own slab; device identity inside
     the kernel comes from the explicit sharded rank input, and a source whose owner
     is some other device contributes ``jnp.where(... , 0.0)``.  So every
-    device runs the same unrolled add and only the owner's lands.
+    device runs the same grouped add and only the owner's lands.
 
     ``in_specs`` are ``ex``, ``ey``, ``ez`` sharded on ``P("x")`` and
-    ``src_vals_step`` replicated (``P()``) -- it is a per-step scalar vector
-    indexed by source, not a field.
+    ``src_vals_step`` slab-local (``P("x")``), shape (n_devices, n_sources).
+    Each device receives its stored row, with all non-owned entries zero.
 
     ``src_local_specs[i]`` is ``(li, lj, lk, lc)``: the LOCAL index triple
     on the owning device plus the component name; ``src_device_ids[i]`` is
     that owner.  Both are Python data read at trace time, so the traced
     graph depends on their VALUES, not just their shapes.
 
-    Extracted verbatim from
-    ``distributed_nu.py::run_nonuniform_distributed_pec._inject_sources_shmap``
-    and ``distributed_v2.py::run_distributed._inject_sources_shmap``.
+    Shared by the uniform and graded runners. Their trace-time layout uses
+    these local indices; unchanged waveform samples arrive as scan inputs.
     """
     if n_src == 0:
         return st
 
+    if drives is None:
+        drives = drive_layout(src_local_specs, src_vals_step.dtype,
+                              electric_only_path="distributed")
+    device_ids = np.asarray(src_device_ids, dtype=np.int32)
+
     @partial(
         rank_shard_map,
         mesh=mesh,
-        in_specs=(P("x"), P("x"), P("x"), P()),
+        in_specs=(P("x"), P("x"), P("x"), P("x")),
         out_specs=(P("x"), P("x"), P("x")),
         check_rep=False,
     )
     def _inject(ex, ey, ez, sv, *, rank):
-        device_idx = rank
-        for idx_s in range(n_src):
-            li, lj, lk, lc = src_local_specs[idx_s]
-            dev_id = src_device_ids[idx_s]
-            val = jnp.where(device_idx == dev_id, sv[idx_s], 0.0)
-            if lc == "ex":
-                ex = ex.at[li, lj, lk].add(val)
-            elif lc == "ey":
-                ey = ey.at[li, lj, lk].add(val)
-            elif lc == "ez":
-                ez = ez.at[li, lj, lk].add(val)
-        return ex, ey, ez
+        from rfx.core.yee import FDTDState
+        local = FDTDState(ex, ey, ez, None, None, None, None)
+        local = inject_drives(local, drives, jnp.where(rank == device_ids, sv[0], 0.0))
+        return local.ex, local.ey, local.ez
 
     ex, ey, ez = _inject(ranks, st.ex, st.ey, st.ez, src_vals_step)
     return st._replace(ex=ex, ey=ey, ez=ez)
@@ -1173,29 +855,13 @@ def _update_h_local_nu(state, materials, dt,
     return state._replace(hx=hx, hy=hy, hz=hz)
 
 
-def _slab_x_lo_view(arr, rank):
-    return arr.at[0].set(jnp.where(rank == 0, arr[1], arr[0]))
+from rfx.model.electric_metrics import _slab_x_lo_view, _slab_model_rows
 
 
-def _slab_model_rows(nx_local, nx_per, nx, rank):
-    local = jnp.arange(nx_local)
-    rows = rank * nx_per - 1 + local
-    return ((local >= 1) & (local < nx_local - 1) & (rows < nx))[:, None, None]
+from rfx.model.materials import slab_pole_fractions
 
 
-def slab_pole_fractions(mask, nx_per, nx, rank=None):
-    """Pole-mask means with slab_e_component_materials' halo/face convention."""
-    if mask is None:
-        return None
-    if rank is None:
-        raise ValueError("slab rank must be supplied as data")
-    cell = jnp.asarray(mask, dtype=bool).astype(jnp.float32)
-    edge = edge_mean_components(_slab_x_lo_view(cell, rank))
-    real = _slab_model_rows(cell.shape[0], nx_per, nx, rank)
-    return tuple(jnp.where(real, e, cell) for e in edge)
-
-
-def slab_e_component_materials(materials, nx_per, nx, rank=None):
+def slab_e_component_materials(materials, nx_per, nx, rank=None, *, cell_sizes=None):
     """Per-E-component ``(eps_r, sigma)`` of one x slab, by the single-device
     rule (#1303).
 
@@ -1242,11 +908,12 @@ def slab_e_component_materials(materials, nx_per, nx, rank=None):
         eps_r=x_lo_replicated(materials.eps_r),
         sigma=x_lo_replicated(materials.sigma),
         mu_r=materials.mu_r,
+        sigma_film=map_lumped(materials.sigma_film, x_lo_replicated),
         sigma_lumped=map_lumped(getattr(materials, "sigma_lumped", None),
                                 x_lo_replicated),
         eps_r_lumped=map_lumped(getattr(materials, "eps_r_lumped", None),
                                 x_lo_replicated))
-    eps_edge, sig_edge = component_e_materials(view, (False, False, False))
+    eps_edge, sig_edge = component_e_materials(view, (False, False, False), **({} if cell_sizes is None else dict(cell_sizes=cell_sizes)))
     eps_cell, sig_cell = cell_owned_component_materials(materials)
     model_cell = _slab_model_rows(nx_local, nx_per, nx, rank)
 
@@ -1282,7 +949,7 @@ def slab_e_coeffs(materials, nx_per, nx, dt, rank=None):
         slab_e_component_materials(materials, nx_per, nx, rank), dt)
 
 
-def slab_e_materials_shmap(mat, mesh, nx_per, nx, *, ranks):
+def slab_e_materials_shmap(mat, mesh, nx_per, nx, *, ranks, grid=None):
     """:func:`slab_e_component_materials` of every slab, as x-sharded
     arrays, for a runner that averages once, before its time loop, and
     forms the coefficients (:func:`component_e_coeffs`) inside it.
@@ -1304,16 +971,18 @@ def slab_e_materials_shmap(mat, mesh, nx_per, nx, *, ranks):
     @partial(rank_shard_map, mesh=mesh, in_specs=(P("x"),), out_specs=P("x"),
              check_rep=False)
     def _mean(local, *, rank):
-        return slab_e_component_materials(local, nx_per, nx, rank=rank)
+        return slab_e_component_materials(local, nx_per, nx, rank=rank,
+                                          **slab_metric_kwargs(grid, rank))
 
     return jax.checkpoint(_mean)(ranks, MaterialArrays(
         eps_r=mat.eps_r, sigma=mat.sigma, mu_r=mat.mu_r,
+        sigma_film=mat.sigma_film,
         sigma_lumped=getattr(mat, "sigma_lumped", None),
         eps_r_lumped=getattr(mat, "eps_r_lumped", None)))
 
 
 def _update_e_local_nu(state, e_coeffs,
-                      inv_dx_slab, inv_dy_full, inv_dz_full):
+                      inv_dx_slab, inv_dy_full, inv_dz_full, *, boundary=None, frame=None, owned=None):
     """E update on a local slab using NU inverse (cell-local) spacings.
 
     Mirrors ``rfx/core/yee.py::update_e_nu``. ``e_coeffs`` is the slab's
@@ -1321,19 +990,21 @@ def _update_e_local_nu(state, e_coeffs,
     :func:`slab_e_coeffs` / :func:`component_e_coeffs`).
     """
     hx, hy, hz = state.hx, state.hy, state.hz
+    def backward(h, axis):
+        return _h_backward(h, axis, boundary=boundary, frame=frame, owned=owned)
     (ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z) = e_coeffs
 
     curl_x = (
-        (hz - _shift_bwd(hz, 1)) * inv_dy_full[None, :, None]
-        - (hy - _shift_bwd(hy, 2)) * inv_dz_full[None, None, :]
+        (hz - backward(hz, 1)) * inv_dy_full[None, :, None]
+        - (hy - backward(hy, 2)) * inv_dz_full[None, None, :]
     )
     curl_y = (
-        (hx - _shift_bwd(hx, 2)) * inv_dz_full[None, None, :]
-        - (hz - _shift_bwd(hz, 0)) * inv_dx_slab[:, None, None]
+        (hx - backward(hx, 2)) * inv_dz_full[None, None, :]
+        - (hz - backward(hz, 0)) * inv_dx_slab[:, None, None]
     )
     curl_z = (
-        (hy - _shift_bwd(hy, 0)) * inv_dx_slab[:, None, None]
-        - (hx - _shift_bwd(hx, 1)) * inv_dy_full[None, :, None]
+        (hy - backward(hy, 0)) * inv_dx_slab[:, None, None]
+        - (hx - backward(hx, 1)) * inv_dy_full[None, :, None]
     )
 
     ex = ca_x * state.ex + cb_x * curl_x
@@ -1440,7 +1111,7 @@ def update_h_nu_shmap(st, mat, mesh, dt,
 
 def update_e_nu_shmap(st, mat, mesh, dt,
                       inv_dx_sharded, inv_dy_rep, inv_dz_rep, nx_per, nx,
-                      e_materials=None, *, ranks):
+                      e_materials=None, *, ranks, boundary=None, ghost=1, pad_x=0):
     """E update on the NU distributed path, via ``shard_map``.
 
     The E sibling of :func:`update_h_nu_shmap`, shared by the same two
@@ -1469,7 +1140,7 @@ def update_e_nu_shmap(st, mat, mesh, dt,
             P("x"), P("x"), P("x"),
             P(),
             P("x"), P("x"), P("x"),
-            P("x"), P("x"),          # lumped records: None or (x, y, z)
+            P("x"), P("x"), P("x"),  # lumped and film component records
             P("x"), P(None), P(None),
             P("x"),                  # e_materials: None or ((eps...), (sig...))
         ),
@@ -1477,23 +1148,25 @@ def update_e_nu_shmap(st, mat, mesh, dt,
         check_rep=False,
     )
     def _e(ex, ey, ez, hx, hy, hz, step, eps_r, sigma, mu_r,
-           sigma_lumped, eps_r_lumped, invdx, invdy, invdz, means, *, rank):
+           sigma_lumped, eps_r_lumped, sigma_film, invdx, invdy, invdz, means, *, rank):
         _st = FDTDState(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz, step=step)
         if means is None:
             _mat = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r,
+                                  sigma_film=sigma_film,
                                   sigma_lumped=sigma_lumped,
                                   eps_r_lumped=eps_r_lumped)
             coeffs = slab_e_coeffs(_mat, nx_per, nx, dt, rank=rank)
         else:
             coeffs = component_e_coeffs(means, dt)
-        new_st = _update_e_local_nu(_st, coeffs, invdx, invdy, invdz)
+        new_st = _update_e_local_nu(_st, coeffs, invdx, invdy, invdz,
+            **_slab_curl_kwargs(boundary, hx.shape, ghost, pad_x, rank, mesh.size))
         return new_st.ex, new_st.ey, new_st.ez, new_st.step
 
     ex, ey, ez, step = _e(
         ranks, st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, st.step,
         mat.eps_r, mat.sigma, mat.mu_r,
         getattr(mat, "sigma_lumped", None), getattr(mat, "eps_r_lumped", None),
-        inv_dx_sharded, inv_dy_rep, inv_dz_rep, e_materials,
+        mat.sigma_film, inv_dx_sharded, inv_dy_rep, inv_dz_rep, e_materials,
     )
     return st._replace(ex=ex, ey=ey, ez=ez, step=step)
 
@@ -1516,16 +1189,9 @@ def update_e_nu_shmap(st, mat, mesh, dt,
 
 
 def _split_state(state, n_devices, ghost=1):
-    """Split an FDTDState into per-device slabs with ghost cells."""
-    return FDTDState(
-        ex=split_array_x(state.ex, n_devices, ghost),
-        ey=split_array_x(state.ey, n_devices, ghost),
-        ez=split_array_x(state.ez, n_devices, ghost),
-        hx=split_array_x(state.hx, n_devices, ghost),
-        hy=split_array_x(state.hy, n_devices, ghost),
-        hz=split_array_x(state.hz, n_devices, ghost),
-        step=jnp.broadcast_to(state.step, (n_devices,)),
-    )
+    layout = Slab(state.ex.shape[0], n_devices, ghost)
+    return FDTDState(*(cut(field, layout, "state", mesh=None) for field in state[:6]),
+                     step=jnp.broadcast_to(state.step, (n_devices,)))
 
 
 def magnetic_low_ghost(mu_r, rank, ghost=1):
@@ -1539,28 +1205,12 @@ def magnetic_low_ghost(mu_r, rank, ghost=1):
 
 
 def _split_materials(materials, n_devices, ghost=1):
-    """Split MaterialArrays into per-device slabs with ghost cells.
-
-    Uses pad_value=1.0 for eps_r and mu_r (vacuum) to prevent
-    division-by-zero in Yee updates at boundary ghost cells, and
-    pad_value=0.0 for sigma (lossless). The per-component lumped records
-    (#1236) are split like ``sigma`` (a ghost holds no stamp).
-    """
+    """Legacy stacked material record; radius support is still refused."""
     from rfx.sources.wire_radius import require_radius_update
     require_radius_update(materials, lane="distributed material split", unsupported=True)
-
-    def _split_lumped(arr):
-        return split_array_x(arr, n_devices, ghost, pad_value=0.0)
-
-    return MaterialArrays(
-        eps_r=split_array_x(materials.eps_r, n_devices, ghost, pad_value=1.0),
-        sigma=split_array_x(materials.sigma, n_devices, ghost, pad_value=0.0),
-        mu_r=split_array_x(materials.mu_r, n_devices, ghost, pad_value=1.0),
-        sigma_lumped=map_lumped(
-            getattr(materials, "sigma_lumped", None), _split_lumped),
-        eps_r_lumped=map_lumped(
-            getattr(materials, "eps_r_lumped", None), _split_lumped),
-    )
+    return cut(materials, Slab(materials.eps_r.shape[0], n_devices, ghost),
+               dict(eps_r="eps_r", sigma="sigma", mu_r="mu_r",
+                    sigma_lumped="lumped", eps_r_lumped="lumped", sigma_film="lumped"), mesh=None)
 
 
 
@@ -1569,110 +1219,21 @@ def _split_materials(materials, n_devices, ghost=1):
 # ---------------------------------------------------------------------------
 
 def _split_debye_coeffs(coeffs: DebyeCoeffs, n_devices, ghost=1, *, dt):
-    """Split DebyeCoeffs arrays along x into per-device slabs.
-
-    3-D arrays (nx, ny, nz) are split with ghost cells.
-    4-D arrays (n_poles, nx, ny, nz) are split per-pole along x.
-    A per-E-component field (#1260) is a 3-tuple of such arrays; each is
-    split the same way. The physical-face ghosts take the vacuum-cell
-    coefficients at ``dt`` (:func:`vacuum_dispersion_values`, #1302), the
-    rule the slab staging uses.
-    """
-    vacuum = vacuum_dispersion_values(coeffs, dt)
-
-    def _split3(name):
-        return lambda arr: split_array_x(arr, n_devices, ghost,
-                                         pad_value=vacuum[name])
-
-    def _split4(name):
-        # (n_poles, nx, ny, nz) -> (n_devices, n_poles, nx_local, ny, nz)
-        return lambda arr: jnp.stack([
-            split_array_x(arr[p], n_devices, ghost, pad_value=vacuum[name])
-            for p in range(arr.shape[0])
-        ], axis=1)
-
-    return DebyeCoeffs(
-        ca=jax.tree.map(_split3("ca"), coeffs.ca),
-        cb=jax.tree.map(_split3("cb"), coeffs.cb),
-        cc=jax.tree.map(_split4("cc"), coeffs.cc),
-        alpha=jax.tree.map(_split4("alpha"), coeffs.alpha),
-        beta=jax.tree.map(_split4("beta"), coeffs.beta),
-    )
+    return cut_pole_coeffs(coeffs, Slab(jax.tree.leaves(coeffs.ca)[0].shape[0], n_devices, ghost),
+                           "debye", dt=dt)
 
 
 def _split_debye_state(state: DebyeState, n_devices, ghost=1):
-    """Split DebyeState arrays along x into per-device slabs.
-
-    Each field is (n_poles, nx, ny, nz) — split each pole along x.
-    """
-    n_poles = state.px.shape[0]
-
-    def _split_poles(arr):
-        # (n_devices, n_poles, nx_local, ny, nz)
-        return split_poles_x(arr, n_poles, n_devices, ghost)
-
-    return DebyeState(
-        px=_split_poles(state.px),
-        py=_split_poles(state.py),
-        pz=_split_poles(state.pz),
-    )
+    return cut_poles(state, Slab(state.px.shape[1], n_devices, ghost), "debye_state")
 
 
 def _split_lorentz_coeffs(coeffs: LorentzCoeffs, n_devices, ghost=1, *, dt):
-    """Split LorentzCoeffs arrays along x into per-device slabs (a
-    per-E-component field, #1260, split leaf by leaf). The physical-face
-    ghosts take the vacuum-cell coefficients at ``dt``
-    (:func:`vacuum_dispersion_values`, #1302), the rule the slab staging
-    uses."""
-    vacuum = vacuum_dispersion_values(coeffs, dt)
-    ca = jax.tree.map(
-        lambda arr: split_array_x(arr, n_devices, ghost, pad_value=vacuum["ca"]),
-        coeffs.ca)
-    cb = jax.tree.map(
-        lambda arr: split_array_x(arr, n_devices, ghost, pad_value=vacuum["cb"]),
-        coeffs.cb)
-    # cc = 1 / safe_gamma; the mixed Debye+Lorentz path computes
-    # `gamma_base = 1 / cc`, so padding cc=0 at physical-boundary ghosts
-    # yields gamma_base=inf and `numer_base = ca*gamma_base = 0*inf = NaN`.
-    # Forward stays bit-perfect (ghost cells drop before output assembly),
-    # but in backward `cb_mixed[ghost] * curl = 0 * NaN = NaN` leaks the
-    # NaN from the ghost's cb_mixed into real cells' hy/hz gradients and
-    # ultimately into d_loss/d_eps at the first/last x cells.  The vacuum
-    # cc value (1/EPS_0) keeps gamma_base=EPS_0 finite at ghosts.
-    cc = jax.tree.map(
-        lambda arr: split_array_x(arr, n_devices, ghost,
-                                  pad_value=vacuum["cc"]),
-        coeffs.cc)
-
-    n_poles = coeffs.a.shape[0]
-
-    def _split_poles(arr):
-        return split_poles_x(arr, n_poles, n_devices, ghost)
-
-    return LorentzCoeffs(
-        ca=ca, cb=cb,
-        a=_split_poles(coeffs.a),
-        b=_split_poles(coeffs.b),
-        c=jax.tree.map(_split_poles, coeffs.c),
-        cc=cc,
-    )
+    return cut_pole_coeffs(coeffs, Slab(jax.tree.leaves(coeffs.ca)[0].shape[0], n_devices, ghost),
+                           "lorentz", dt=dt)
 
 
 def _split_lorentz_state(state: LorentzState, n_devices, ghost=1):
-    """Split LorentzState arrays along x into per-device slabs."""
-    n_poles = state.px.shape[0]
-
-    def _split_poles(arr):
-        return split_poles_x(arr, n_poles, n_devices, ghost)
-
-    return LorentzState(
-        px=_split_poles(state.px),
-        py=_split_poles(state.py),
-        pz=_split_poles(state.pz),
-        px_prev=_split_poles(state.px_prev),
-        py_prev=_split_poles(state.py_prev),
-        pz_prev=_split_poles(state.pz_prev),
-    )
+    return cut_poles(state, Slab(state.px.shape[1], n_devices, ghost), "lorentz_state")
 
 
 # ---------------------------------------------------------------------------
@@ -1712,7 +1273,7 @@ def _update_h_local(state, materials, dt, dx):
     return state._replace(hx=hx, hy=hy, hz=hz)
 
 
-def _update_e_local(state, e_coeffs, dx):
+def _update_e_local(state, e_coeffs, dx, *, boundary=None, frame=None, owned=None):
     """E update on a local slab (including ghost cells).
 
     Identical to yee.update_e but without jit decorator and always
@@ -1723,19 +1284,21 @@ def _update_e_local(state, e_coeffs, dx):
     rule (#1210, #1236, #1303).
     """
     hx, hy, hz = state.hx, state.hy, state.hz
+    def backward(h, axis):
+        return _h_backward(h, axis, boundary=boundary, frame=frame, owned=owned)
     (ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z) = e_coeffs
 
     curl_x = (
-        (hz - _shift_bwd(hz, 1)) / dx
-        - (hy - _shift_bwd(hy, 2)) / dx
+        (hz - backward(hz, 1)) / dx
+        - (hy - backward(hy, 2)) / dx
     )
     curl_y = (
-        (hx - _shift_bwd(hx, 2)) / dx
-        - (hz - _shift_bwd(hz, 0)) / dx
+        (hx - backward(hx, 2)) / dx
+        - (hz - backward(hz, 0)) / dx
     )
     curl_z = (
-        (hy - _shift_bwd(hy, 0)) / dx
-        - (hx - _shift_bwd(hx, 1)) / dx
+        (hy - backward(hy, 0)) / dx
+        - (hx - backward(hx, 1)) / dx
     )
 
     ex = ca_x * state.ex + cb_x * curl_x
@@ -1749,17 +1312,19 @@ def _update_e_local(state, e_coeffs, dx):
 # Local dispersive E-update functions (operate on per-device slab)
 # ---------------------------------------------------------------------------
 
-def _update_e_debye_local(state, debye_coeffs, debye_state, dt, dx):
+def _update_e_debye_local(state, debye_coeffs, debye_state, dt, dx, *, boundary=None, frame=None, owned=None):
     """E update with Debye ADE on a local slab (always non-periodic).
 
     Per E component (#1260), the single-device body's arithmetic
     (``rfx.materials.debye.debye_e_component``) without its dtype narrowing.
     """
     hx, hy, hz = state.hx, state.hy, state.hz
+    def backward(h, axis):
+        return _h_backward(h, axis, boundary=boundary, frame=frame, owned=owned)
 
-    curl_x = ((hz - _shift_bwd(hz, 1)) - (hy - _shift_bwd(hy, 2))) / dx
-    curl_y = ((hx - _shift_bwd(hx, 2)) - (hz - _shift_bwd(hz, 0))) / dx
-    curl_z = ((hy - _shift_bwd(hy, 0)) - (hx - _shift_bwd(hx, 1))) / dx
+    curl_x = ((hz - backward(hz, 1)) - (hy - backward(hy, 2))) / dx
+    curl_y = ((hx - backward(hx, 2)) - (hz - backward(hz, 0))) / dx
+    curl_z = ((hy - backward(hy, 0)) - (hx - backward(hx, 1))) / dx
 
     ex_new, px_new = debye_e_component(debye_coeffs, 0, state.ex, curl_x,
                                        debye_state.px)
@@ -1773,17 +1338,19 @@ def _update_e_debye_local(state, debye_coeffs, debye_state, dt, dx):
     return new_fdtd, new_debye
 
 
-def _update_e_lorentz_local(state, lorentz_coeffs, lor_state, dt, dx):
+def _update_e_lorentz_local(state, lorentz_coeffs, lor_state, dt, dx, *, boundary=None, frame=None, owned=None):
     """E update with Lorentz/Drude ADE on a local slab (always non-periodic).
 
     Per E component (#1260), as ``rfx.materials.lorentz.update_e_lorentz``
     without its dtype narrowing.
     """
     hx, hy, hz = state.hx, state.hy, state.hz
+    def backward(h, axis):
+        return _h_backward(h, axis, boundary=boundary, frame=frame, owned=owned)
 
-    curl_x = ((hz - _shift_bwd(hz, 1)) - (hy - _shift_bwd(hy, 2))) / dx
-    curl_y = ((hx - _shift_bwd(hx, 2)) - (hz - _shift_bwd(hz, 0))) / dx
-    curl_z = ((hy - _shift_bwd(hy, 0)) - (hx - _shift_bwd(hx, 1))) / dx
+    curl_x = ((hz - backward(hz, 1)) - (hy - backward(hy, 2))) / dx
+    curl_y = ((hx - backward(hx, 2)) - (hz - backward(hz, 0))) / dx
+    curl_z = ((hy - backward(hy, 0)) - (hx - backward(hx, 1))) / dx
 
     px_new = lorentz_p_component(lorentz_coeffs, 0, state.ex, lor_state.px,
                                  lor_state.px_prev)
@@ -1809,7 +1376,7 @@ def _update_e_lorentz_local(state, lorentz_coeffs, lor_state, dt, dx):
 
 
 def _update_e_local_with_dispersion(state, materials, dt, dx,
-                                     debye=None, lorentz=None, *, slab=None, e_materials=None, rank=None):
+                                     debye=None, lorentz=None, *, slab=None, e_materials=None, rank=None, boundary=None, frame=None, owned=None):
     """E update on a local slab with optional Debye/Lorentz dispersion.
 
     Every model uses the per-component edge means of
@@ -1822,7 +1389,8 @@ def _update_e_local_with_dispersion(state, materials, dt, dx,
     """
     if debye is None and lorentz is None:
         return _update_e_local(
-            state, slab_e_coeffs(materials, *slab, dt, rank=rank), dx), None, None
+            state, slab_e_coeffs(materials, *slab, dt, rank=rank), dx,
+            boundary=boundary, frame=frame, owned=owned), None, None
 
     if e_materials is not None:
         if debye is not None:
@@ -1833,13 +1401,13 @@ def _update_e_local_with_dispersion(state, materials, dt, dx,
     if debye is not None and lorentz is None:
         debye_coeffs, debye_state = debye
         new_state, new_debye = _update_e_debye_local(
-            state, debye_coeffs, debye_state, dt, dx)
+            state, debye_coeffs, debye_state, dt, dx, boundary=boundary, frame=frame, owned=owned)
         return new_state, new_debye, None
 
     if lorentz is not None and debye is None:
         lorentz_coeffs, lorentz_state = lorentz
         new_state, new_lorentz = _update_e_lorentz_local(
-            state, lorentz_coeffs, lorentz_state, dt, dx)
+            state, lorentz_coeffs, lorentz_state, dt, dx, boundary=boundary, frame=frame, owned=owned)
         return new_state, None, new_lorentz
 
     # Mixed Debye + Lorentz: the single-device combined coefficients
@@ -1852,10 +1420,12 @@ def _update_e_local_with_dispersion(state, materials, dt, dx,
     debye_coeffs, debye_state = debye
     lorentz_coeffs, lorentz_state = lorentz
     hx, hy, hz = state.hx, state.hy, state.hz
+    def backward(h, axis):
+        return _h_backward(h, axis, boundary=boundary, frame=frame, owned=owned)
 
-    curl_x = ((hz - _shift_bwd(hz, 1)) - (hy - _shift_bwd(hy, 2))) / dx
-    curl_y = ((hx - _shift_bwd(hx, 2)) - (hz - _shift_bwd(hz, 0))) / dx
-    curl_z = ((hy - _shift_bwd(hy, 0)) - (hx - _shift_bwd(hx, 1))) / dx
+    curl_x = ((hz - backward(hz, 1)) - (hy - backward(hy, 2))) / dx
+    curl_y = ((hx - backward(hx, 2)) - (hz - backward(hz, 0))) / dx
+    curl_z = ((hy - backward(hy, 0)) - (hx - backward(hx, 1))) / dx
     e_old = (state.ex, state.ey, state.ez)
     curls = (curl_x, curl_y, curl_z)
     p_l = (lorentz_state.px, lorentz_state.py, lorentz_state.pz)
@@ -1892,39 +1462,6 @@ def _update_e_local_with_dispersion(state, materials, dt, dx,
 # Distributed CPML support (Phase 2)
 # ---------------------------------------------------------------------------
 
-def _init_cpml_distributed(grid, nx_local, n_devices):
-    """Initialize CPML params and per-device state for distributed slabs.
-
-    In 1D slab decomposition along x:
-    - Y/Z CPML faces: applied on ALL devices (each owns full y/z extent).
-      Psi arrays that index along x use ``nx_local`` (slab width with ghosts).
-    - X CPML faces: applied only on boundary devices (device 0 for x-lo,
-      device N-1 for x-hi). Psi arrays allocated on all devices but
-      masked to zero on non-boundary devices via ``jnp.where``.
-
-    Parameters
-    ----------
-    grid : Grid
-        Full-domain grid with CPML configuration.
-    nx_local : int
-        Per-device slab width including ghost cells.
-    n_devices : int
-        Number of devices.
-
-    Returns
-    -------
-    cpml_params : CPMLParams
-        Shared CPML profile coefficients.
-    cpml_state_stacked : dict
-        Per-device CPML state arrays stacked along axis 0,
-        shape ``(n_devices, ...)``.
-    """
-    from rfx.boundaries.cpml import init_cpml
-
-    # Each face uses the native builder's electric and Yee-staggered magnetic
-    # profiles, including no-op PEC/PMC faces and per-face absorber depths.
-    params, _single_state = init_cpml(grid)
-    return _distributed_cpml_state(grid, params, nx_local, n_devices)
 
 
 def _distributed_boundary_layers(grid, n_devices, *, pec_faces=None,
@@ -1939,14 +1476,10 @@ def _distributed_boundary_layers(grid, n_devices, *, pec_faces=None,
     """
     pec_faces = set(getattr(grid, "pec_faces", None) or ()) if pec_faces is None else set(pec_faces)
     pmc_faces = set(getattr(grid, "pmc_faces", None) or ()) if pmc_faces is None else set(pmc_faces)
-    walls = pec_faces | pmc_faces
-    budget = grid.cpml_layers if cpml_layers is None else cpml_layers
-    face_layers = getattr(grid, "face_layers", None) or {}
-    layers = {
-        f"{axis}_{side}": (0 if f"{axis}_{side}" in walls else
-                          int(face_layers.get(f"{axis}_{side}", budget)))
-        for axis in "xyz" for side in ("lo", "hi")
-    }
+    from rfx.boundaries.depths import grid_face_depths
+
+    layers = {face.name: face.realized for face in grid_face_depths(
+        grid, pec_faces=pec_faces, pmc_faces=pmc_faces, budget=cpml_layers)}
     pad_x = (-grid.nx) % n_devices
     nx_per = (grid.nx + pad_x) // n_devices
     for face, rank, width in (("x_lo", 0, nx_per),
@@ -1974,678 +1507,70 @@ def _distributed_boundary_layers(grid, n_devices, *, pec_faces=None,
     return layers
 
 
-def _distributed_cpml_state(grid, params, nx_local, n_devices, *, mesh=None):
-    """Keep each absorber on its owning device, with one exchanged curl neighbour.
 
-    E uses the backward neighbour and H the forward neighbour. Both face
-    windows must lie in owned rows; the existing one-row ghosts provide the
-    extra curl sample, so an L-layer face needs L owned rows (not 2*L).
-    Alignment rows on the last device are not owned physical rows.
-    Wall profiles need only one identity row, even on a thin PEC/PMC axis.
+
+
+
+
+def init_cpml_slabs(grid, nx_local, n_devices, *, mesh=None, **profile_options):
+    """Build global profiles and the single-device psi layout on every rank.
+
+    x faces are (s_x, Ny, Nz), y faces (L, s_y, Nz), and z faces
+    (L, Ny, s_z). Merge the rank dimension into x when placing on a mesh.
     """
-    from rfx.boundaries.cpml import CPMLState
+    from rfx.boundaries.cpml import CPMLState, init_cpml, _axis_buffer_depths
     from jax.sharding import NamedSharding
 
-    layers = _distributed_boundary_layers(grid, n_devices)
-
-    depths = {face: max(1, depth) for face, depth in layers.items()}
-
-    def trim(profiles):
-        if profiles is None:
-            return None
-        faces = {}
-        for face, depth in depths.items():
-            window = slice(None, depth) if face.endswith("lo") else slice(-depth, None)
-            faces[face] = jax.tree.map(lambda a: a[window], getattr(profiles, face))
-        return profiles._replace(**faces, magnetic=trim(profiles.magnetic))
-
-    params = trim(params)
-    extents = {"x": nx_local, "y": grid.ny, "z": grid.nz}
+    _distributed_boundary_layers(grid, n_devices)
+    params, _ = init_cpml(grid, **profile_options)
+    depths = _axis_buffer_depths(grid, grid.cpml_layers)
+    extents = (nx_local, grid.ny, grid.nz)
     state = {}
     for name in CPMLState._fields:
-        _, component, face_token = name.split("_")
-        axis, side = face_token[0], face_token[1:]
-        face = f"{axis}_{side}"
-        # The native psi convention puts the derivative axis first, then
-        # the field-component axis and the remaining transverse axis.
-        transverse = [component[1], next(a for a in "xyz" if a not in (axis, component[1]))]
-        d1, d2 = (extents[a] for a in transverse)
-        depth = depths[face]
+        axis = "xyz".index(name.split("_")[-1][0])
+        shape = tuple(depths[i] if i == axis else extents[i] for i in range(3))
         if mesh is None:
-            state[name] = zeros_psi_stacked(n_devices, depth, d1, d2)
+            state[name] = jnp.zeros((n_devices, *shape), jnp.float32)
         else:
-            state[name] = jnp.zeros((n_devices * depth, d1, d2), dtype=jnp.float32,
+            state[name] = jnp.zeros((n_devices * shape[0], *shape[1:]), jnp.float32,
                                    device=NamedSharding(mesh, P("x")))
     return params, CPMLState(**state)
 
 
-def _apply_cpml_e_distributed(
-    state, cpml_params, cpml_state, n_cpml, dt, dx,
-    n_devices, ghost=1, axis_name="devices", eps_r=None, pad_x: int = 0,
-    separate_x_terms: bool = False,
-    *, rank=None,
-):
-    """Apply CPML E-field correction on a distributed slab.
-
-    Y/Z faces: applied on all devices (each owns full y/z extent).
-    X faces: x-lo on device 0 only, x-hi on device N-1 only.
-    Non-active faces are masked to zero via jnp.where.
-
-    X-axis indexing accounts for ghost cells: x-lo uses
-    ``[ghost:ghost+n]``, x-hi uses ``[-(ghost+pad_x+n):-(ghost+pad_x)]``.
-
-    Parameters
-    ----------
-    state : FDTDState
-        Per-device slab state (nx_local, ny, nz).
-    cpml_params : CPMLParams
-        Shared CPML profile coefficients.
-    cpml_state : CPMLState
-        Per-device CPML auxiliary state.
-    n_cpml : int
-        Number of CPML layers.
-    dt, dx : float
-        Timestep and cell size.
-    n_devices : int
-    ghost : int
-        Number of ghost cells on each side of x (default 1).
-    axis_name : str
-    eps_r : jnp.ndarray, 3-tuple of them, or None
-        Relative permittivity slab (nx_local+2*ghost, ny, nz), same ghost
-        layout as the field slab: one array for all three components, or one
-        per component ``(eps_x, eps_y, eps_z)``. The CPML E-coefficient is
-        the material-aware ``dt / (eps_r * eps_0)`` so the absorber stays
-        impedance-matched inside a dielectric (mirrors the single-device
-        ``apply_cpml_e``), and it must be the permittivity the E update of
-        the same step used (#1043): the per-component edge mean
-        (:func:`slab_e_component_materials`, #1303), including on dispersive
-        models (#1260). ``None`` falls back to
-        the vacuum scalar ``dt / eps_0`` (bit-identical to the pre-#205
-        behaviour).
-    pad_x : int
-        Number of alignment-pad cells appended to the high-x end of the
-        last rank's slab so that ``(nx + pad_x) % n_devices == 0``
-        (#623, same class as #622). The x-hi CPML window is shifted left
-        by ``pad_x`` so it covers the real physical face (global node
-        ``nx - 1``), matching single-device ``cpml.py``'s ``[nx-n, nx)``
-        (a no-op on other ranks / when ``pad_x == 0``).
-    separate_x_terms : bool
-        Add the psi and kappa corrections in two scatters, as the single-device
-        CPML does. Dispersive v2 runs need this order for the cross-trace ULP
-        bound; False preserves the established no-pole arithmetic.
-    """
-    if rank is None:
-        raise ValueError("slab rank must be supplied as data")
-    from rfx.boundaries.cpml import CPMLAxisParams, _ce_eps_r, _ce_si
-    from rfx.core.yee import si_value_eps_r_grad
-    if not isinstance(cpml_params, CPMLAxisParams):
-        raise TypeError("distributed CPML requires per-face CPMLAxisParams")
-    n_xlo, n_xhi = cpml_state.psi_ey_xlo.shape[0], cpml_state.psi_ey_xhi.shape[0]
-    n_ylo, n_yhi = cpml_state.psi_ex_ylo.shape[0], cpml_state.psi_ex_yhi.shape[0]
-    n_zlo, n_zhi = cpml_state.psi_ex_zlo.shape[0], cpml_state.psi_ex_zhi.shape[0]
-    g = ghost
-    # #623: on the last rank, pad_x alignment cells sit past the real
-    # x-hi face — shift the window left by pad_x.
-    x_hi_edge = g + pad_x
-    # Per-(component, face) E-coefficient (material-aware when eps_r is
-    # supplied). Each face slice broadcasts element-wise against its
-    # correction array (x faces account for the ghost offset; y/z faces have
-    # no x-ghost). x faces drive Ey/Ez, y faces Ex/Ez, z faces Ex/Ey.
-    if eps_r is not None:
-        eps_x, eps_y, eps_z = (tuple(eps_r) if isinstance(eps_r, (tuple, list))
-                               else (eps_r,) * 3)
-        xhi_ = (slice(-(x_hi_edge + n_xhi), -x_hi_edge) if x_hi_edge > 0
-                else slice(-n_xhi, None))
-
-        def _ce(eps_face):
-            # Sliced to the face BEFORE the division: the time loop then
-            # holds face-sized coefficients, not a slab per component.
-            # Each face at its own depth (#1365: walls one identity row).
-            # #1357: ``dt / (eps_face * EPS_0)``'s bits (cpml._ce_si), the
-            # eps_r-unit derivative, as the single-device apply_cpml_e.
-            return si_value_eps_r_grad(_ce_si, _ce_eps_r, eps_face, dt)
-
-        ce_ey_xlo, ce_ey_xhi = _ce(eps_y[g:g + n_xlo]), _ce(eps_y[xhi_])
-        ce_ez_xlo, ce_ez_xhi = _ce(eps_z[g:g + n_xlo]), _ce(eps_z[xhi_])
-        ce_ex_ylo, ce_ex_yhi = _ce(eps_x[:, :n_ylo]), _ce(eps_x[:, -n_yhi:])
-        ce_ez_ylo, ce_ez_yhi = _ce(eps_z[:, :n_ylo]), _ce(eps_z[:, -n_yhi:])
-        ce_ex_zlo, ce_ex_zhi = _ce(eps_x[:, :, :n_zlo]), _ce(eps_x[:, :, -n_zhi:])
-        ce_ey_zlo, ce_ey_zhi = _ce(eps_y[:, :, :n_zlo]), _ce(eps_y[:, :, -n_zhi:])
+def cpml_h_materials(mu_r, rank, ghost):
+    """Reuse the uniform slab's component means, including its low ghost."""
+    from types import SimpleNamespace
+    if mu_r is None:
+        means = component_h_materials(MaterialArrays(None, None, 1.0))
     else:
-        ce_ey_xlo = ce_ey_xhi = ce_ez_xlo = ce_ez_xhi = cpml_coeff_e_vacuum(dt)
-        ce_ex_ylo = ce_ex_yhi = ce_ez_ylo = ce_ez_yhi = ce_ey_xlo
-        ce_ex_zlo = ce_ex_zhi = ce_ey_zlo = ce_ey_zhi = ce_ey_xlo
-
-    px_lo, px_hi = cpml_params.x_lo, cpml_params.x_hi
-    py_lo, py_hi = cpml_params.y_lo, cpml_params.y_hi
-    pz_lo, pz_hi = cpml_params.z_lo, cpml_params.z_hi
-
-    ex = state.ex
-    ey = state.ey
-    ez = state.ez
-
-    device_idx = rank
-    is_first = (device_idx == 0)
-    is_last = (device_idx == n_devices - 1)
-
-    # X-axis slice helpers (account for ghost offset AND alignment pad,
-    # #623 — xhi shifted left by pad_x so it covers the real x-hi face)
-    xlo = slice(g, g + n_xlo)          # first n real cells
-    xhi = slice(-(x_hi_edge + n_xhi), -x_hi_edge) if x_hi_edge > 0 else slice(-n_xhi, None)
-
-    # =======================================================================
-    # X-axis CPML (device-conditional)
-    # =======================================================================
-    b_x = px_lo.b[:, None, None]
-    c_x = px_lo.c[:, None, None]
-    b_xr = px_hi.b[:, None, None]
-    c_xr = px_hi.c[:, None, None]
-    k_x = px_lo.kappa[:, None, None]
-    k_xr = px_hi.kappa[:, None, None]
-
-    # --- X-lo: Ey correction from dHz/dx (device 0 only) ---
-    hz_xlo = state.hz[xlo, :, :]
-    hz_shifted_xlo = _shift_bwd(state.hz, 0)[xlo, :, :]
-    curl_hz_dx_xlo = (hz_xlo - hz_shifted_xlo) / dx
-
-    new_psi_ey_xlo = b_x * cpml_state.psi_ey_xlo + c_x * curl_hz_dx_xlo
-    if separate_x_terms:
-        ey = ey.at[xlo, :, :].add(jnp.where(is_first, -ce_ey_xlo * new_psi_ey_xlo, 0.0))
-        ey = ey.at[xlo, :, :].add(jnp.where(is_first, -ce_ey_xlo * (1.0 / k_x - 1.0) * curl_hz_dx_xlo, 0.0))
-    else:
-        ey_corr_xlo = -ce_ey_xlo * new_psi_ey_xlo - ce_ey_xlo * (1.0 / k_x - 1.0) * curl_hz_dx_xlo
-        # Mask: only device 0
-        ey_corr_xlo = jnp.where(is_first, ey_corr_xlo, 0.0)
-        ey = ey.at[xlo, :, :].add(ey_corr_xlo)
-    new_psi_ey_xlo = jnp.where(is_first, new_psi_ey_xlo, cpml_state.psi_ey_xlo)
-
-    # --- X-hi: Ey correction from dHz/dx (device N-1 only) ---
-    hz_xhi = state.hz[xhi, :, :]
-    hz_shifted_xhi = _shift_bwd(state.hz, 0)[xhi, :, :]
-    curl_hz_dx_xhi = (hz_xhi - hz_shifted_xhi) / dx
-
-    new_psi_ey_xhi = b_xr * cpml_state.psi_ey_xhi + c_xr * curl_hz_dx_xhi
-    if separate_x_terms:
-        ey = ey.at[xhi, :, :].add(jnp.where(is_last, -ce_ey_xhi * new_psi_ey_xhi, 0.0))
-        ey = ey.at[xhi, :, :].add(jnp.where(is_last, -ce_ey_xhi * (1.0 / k_xr - 1.0) * curl_hz_dx_xhi, 0.0))
-    else:
-        ey_corr_xhi = -ce_ey_xhi * new_psi_ey_xhi - ce_ey_xhi * (1.0 / k_xr - 1.0) * curl_hz_dx_xhi
-        ey_corr_xhi = jnp.where(is_last, ey_corr_xhi, 0.0)
-        ey = ey.at[xhi, :, :].add(ey_corr_xhi)
-    new_psi_ey_xhi = jnp.where(is_last, new_psi_ey_xhi, cpml_state.psi_ey_xhi)
-
-    # --- X-lo: Ez correction from dHy/dx (device 0 only) ---
-    hy_xlo = state.hy[xlo, :, :]
-    hy_shifted_xlo = _shift_bwd(state.hy, 0)[xlo, :, :]
-    curl_hy_dx_xlo = (hy_xlo - hy_shifted_xlo) / dx
-    curl_hy_dx_xlo_t = jnp.transpose(curl_hy_dx_xlo, (0, 2, 1))
-
-    new_psi_ez_xlo = b_x * cpml_state.psi_ez_xlo + c_x * curl_hy_dx_xlo_t
-    correction_ez_xlo = jnp.transpose(new_psi_ez_xlo, (0, 2, 1))
-    if separate_x_terms:
-        ez = ez.at[xlo, :, :].add(jnp.where(is_first, ce_ez_xlo * correction_ez_xlo, 0.0))
-        ez = ez.at[xlo, :, :].add(jnp.where(is_first, ce_ez_xlo * (1.0 / k_x - 1.0) * curl_hy_dx_xlo, 0.0))
-    else:
-        ez_corr_xlo = ce_ez_xlo * correction_ez_xlo + ce_ez_xlo * (1.0 / k_x - 1.0) * curl_hy_dx_xlo
-        ez_corr_xlo = jnp.where(is_first, ez_corr_xlo, 0.0)
-        ez = ez.at[xlo, :, :].add(ez_corr_xlo)
-    new_psi_ez_xlo = jnp.where(is_first, new_psi_ez_xlo, cpml_state.psi_ez_xlo)
-
-    # --- X-hi: Ez correction from dHy/dx (device N-1 only) ---
-    hy_xhi = state.hy[xhi, :, :]
-    hy_shifted_xhi = _shift_bwd(state.hy, 0)[xhi, :, :]
-    curl_hy_dx_xhi = (hy_xhi - hy_shifted_xhi) / dx
-    curl_hy_dx_xhi_t = jnp.transpose(curl_hy_dx_xhi, (0, 2, 1))
-
-    new_psi_ez_xhi = b_xr * cpml_state.psi_ez_xhi + c_xr * curl_hy_dx_xhi_t
-    correction_ez_xhi = jnp.transpose(new_psi_ez_xhi, (0, 2, 1))
-    if separate_x_terms:
-        ez = ez.at[xhi, :, :].add(jnp.where(is_last, ce_ez_xhi * correction_ez_xhi, 0.0))
-        ez = ez.at[xhi, :, :].add(jnp.where(is_last, ce_ez_xhi * (1.0 / k_xr - 1.0) * curl_hy_dx_xhi, 0.0))
-    else:
-        ez_corr_xhi = ce_ez_xhi * correction_ez_xhi + ce_ez_xhi * (1.0 / k_xr - 1.0) * curl_hy_dx_xhi
-        ez_corr_xhi = jnp.where(is_last, ez_corr_xhi, 0.0)
-        ez = ez.at[xhi, :, :].add(ez_corr_xhi)
-    new_psi_ez_xhi = jnp.where(is_last, new_psi_ez_xhi, cpml_state.psi_ez_xhi)
-
-    # =======================================================================
-    # Y-axis CPML (all devices)
-    # =======================================================================
-    b_yn = py_lo.b[:, None, None]
-    c_yn = py_lo.c[:, None, None]
-    b_yrn = py_hi.b[:, None, None]
-    c_yrn = py_hi.c[:, None, None]
-    k_yn = py_lo.kappa[:, None, None]
-    k_yrn = py_hi.kappa[:, None, None]
-
-    # --- Y-lo: Ex correction from dHz/dy ---
-    hz_ylo = state.hz[:, :n_ylo, :]
-    hz_shifted_ylo = _shift_bwd(state.hz, 1)[:, :n_ylo, :]
-    curl_hz_dy_ylo = (hz_ylo - hz_shifted_ylo) / dx
-    curl_hz_dy_ylo_t = jnp.transpose(curl_hz_dy_ylo, (1, 0, 2))
-
-    new_psi_ex_ylo = b_yn * cpml_state.psi_ex_ylo + c_yn * curl_hz_dy_ylo_t
-    correction_ex_ylo = jnp.transpose(new_psi_ex_ylo, (1, 0, 2))
-    ex = ex.at[:, :n_ylo, :].add(ce_ex_ylo * correction_ex_ylo)
-    kappa_corr_ylo = jnp.transpose((1.0 / k_yn - 1.0) * curl_hz_dy_ylo_t, (1, 0, 2))
-    ex = ex.at[:, :n_ylo, :].add(ce_ex_ylo * kappa_corr_ylo)
-
-    # --- Y-hi: Ex correction from dHz/dy ---
-    hz_yhi = state.hz[:, -n_yhi:, :]
-    hz_shifted_yhi = _shift_bwd(state.hz, 1)[:, -n_yhi:, :]
-    curl_hz_dy_yhi = (hz_yhi - hz_shifted_yhi) / dx
-    curl_hz_dy_yhi_t = jnp.transpose(curl_hz_dy_yhi, (1, 0, 2))
-
-    new_psi_ex_yhi = b_yrn * cpml_state.psi_ex_yhi + c_yrn * curl_hz_dy_yhi_t
-    correction_ex_yhi = jnp.transpose(new_psi_ex_yhi, (1, 0, 2))
-    ex = ex.at[:, -n_yhi:, :].add(ce_ex_yhi * correction_ex_yhi)
-    kappa_corr_yhi = jnp.transpose((1.0 / k_yrn - 1.0) * curl_hz_dy_yhi_t, (1, 0, 2))
-    ex = ex.at[:, -n_yhi:, :].add(ce_ex_yhi * kappa_corr_yhi)
-
-    # --- Y-lo: Ez correction from dHx/dy ---
-    hx_ylo = state.hx[:, :n_ylo, :]
-    hx_shifted_ylo = _shift_bwd(state.hx, 1)[:, :n_ylo, :]
-    curl_hx_dy_ylo = (hx_ylo - hx_shifted_ylo) / dx
-    curl_hx_dy_ylo_t = jnp.transpose(curl_hx_dy_ylo, (1, 2, 0))
-
-    new_psi_ez_ylo = b_yn * cpml_state.psi_ez_ylo + c_yn * curl_hx_dy_ylo_t
-    correction_ez_ylo = jnp.transpose(new_psi_ez_ylo, (2, 0, 1))
-    ez = ez.at[:, :n_ylo, :].add(-ce_ez_ylo * correction_ez_ylo)
-    kappa_corr_ez_ylo = jnp.transpose((1.0 / k_yn - 1.0) * curl_hx_dy_ylo_t, (2, 0, 1))
-    ez = ez.at[:, :n_ylo, :].add(-ce_ez_ylo * kappa_corr_ez_ylo)
-
-    # --- Y-hi: Ez correction from dHx/dy ---
-    hx_yhi = state.hx[:, -n_yhi:, :]
-    hx_shifted_yhi = _shift_bwd(state.hx, 1)[:, -n_yhi:, :]
-    curl_hx_dy_yhi = (hx_yhi - hx_shifted_yhi) / dx
-    curl_hx_dy_yhi_t = jnp.transpose(curl_hx_dy_yhi, (1, 2, 0))
-
-    new_psi_ez_yhi = b_yrn * cpml_state.psi_ez_yhi + c_yrn * curl_hx_dy_yhi_t
-    correction_ez_yhi = jnp.transpose(new_psi_ez_yhi, (2, 0, 1))
-    ez = ez.at[:, -n_yhi:, :].add(-ce_ez_yhi * correction_ez_yhi)
-    kappa_corr_ez_yhi = jnp.transpose((1.0 / k_yrn - 1.0) * curl_hx_dy_yhi_t, (2, 0, 1))
-    ez = ez.at[:, -n_yhi:, :].add(-ce_ez_yhi * kappa_corr_ez_yhi)
-
-    # =======================================================================
-    # Z-axis CPML (all devices)
-    # =======================================================================
-    b_zn = pz_lo.b[:, None, None]
-    c_zn = pz_lo.c[:, None, None]
-    k_zn = pz_lo.kappa[:, None, None]
-    b_zrn = pz_hi.b[:, None, None]
-    c_zrn = pz_hi.c[:, None, None]
-    k_zrn = pz_hi.kappa[:, None, None]
-
-    # --- Z-lo: Ex correction from dHy/dz ---
-    hy_zlo = state.hy[:, :, :n_zlo]
-    hy_shifted_zlo = _shift_bwd(state.hy, 2)[:, :, :n_zlo]
-    curl_hy_dz_zlo = (hy_zlo - hy_shifted_zlo) / dx
-    curl_hy_dz_zlo_t = jnp.transpose(curl_hy_dz_zlo, (2, 0, 1))
-
-    new_psi_ex_zlo = b_zn * cpml_state.psi_ex_zlo + c_zn * curl_hy_dz_zlo_t
-    correction_ex_zlo = jnp.transpose(new_psi_ex_zlo, (1, 2, 0))
-    ex = ex.at[:, :, :n_zlo].add(-ce_ex_zlo * correction_ex_zlo)
-    kappa_corr_ex_zlo = jnp.transpose((1.0 / k_zn - 1.0) * curl_hy_dz_zlo_t, (1, 2, 0))
-    ex = ex.at[:, :, :n_zlo].add(-ce_ex_zlo * kappa_corr_ex_zlo)
-
-    # --- Z-hi: Ex correction from dHy/dz ---
-    hy_zhi = state.hy[:, :, -n_zhi:]
-    hy_shifted_zhi = _shift_bwd(state.hy, 2)[:, :, -n_zhi:]
-    curl_hy_dz_zhi = (hy_zhi - hy_shifted_zhi) / dx
-    curl_hy_dz_zhi_t = jnp.transpose(curl_hy_dz_zhi, (2, 0, 1))
-
-    new_psi_ex_zhi = b_zrn * cpml_state.psi_ex_zhi + c_zrn * curl_hy_dz_zhi_t
-    correction_ex_zhi = jnp.transpose(new_psi_ex_zhi, (1, 2, 0))
-    ex = ex.at[:, :, -n_zhi:].add(-ce_ex_zhi * correction_ex_zhi)
-    kappa_corr_ex_zhi = jnp.transpose((1.0 / k_zrn - 1.0) * curl_hy_dz_zhi_t, (1, 2, 0))
-    ex = ex.at[:, :, -n_zhi:].add(-ce_ex_zhi * kappa_corr_ex_zhi)
-
-    # --- Z-lo: Ey correction from dHx/dz ---
-    hx_zlo = state.hx[:, :, :n_zlo]
-    hx_shifted_zlo = _shift_bwd(state.hx, 2)[:, :, :n_zlo]
-    curl_hx_dz_zlo = (hx_zlo - hx_shifted_zlo) / dx
-    curl_hx_dz_zlo_t = jnp.transpose(curl_hx_dz_zlo, (2, 1, 0))
-
-    new_psi_ey_zlo = b_zn * cpml_state.psi_ey_zlo + c_zn * curl_hx_dz_zlo_t
-    correction_ey_zlo = jnp.transpose(new_psi_ey_zlo, (2, 1, 0))
-    ey = ey.at[:, :, :n_zlo].add(ce_ey_zlo * correction_ey_zlo)
-    kappa_corr_ey_zlo = jnp.transpose((1.0 / k_zn - 1.0) * curl_hx_dz_zlo_t, (2, 1, 0))
-    ey = ey.at[:, :, :n_zlo].add(ce_ey_zlo * kappa_corr_ey_zlo)
-
-    # --- Z-hi: Ey correction from dHx/dz ---
-    hx_zhi = state.hx[:, :, -n_zhi:]
-    hx_shifted_zhi = _shift_bwd(state.hx, 2)[:, :, -n_zhi:]
-    curl_hx_dz_zhi = (hx_zhi - hx_shifted_zhi) / dx
-    curl_hx_dz_zhi_t = jnp.transpose(curl_hx_dz_zhi, (2, 1, 0))
-
-    new_psi_ey_zhi = b_zrn * cpml_state.psi_ey_zhi + c_zrn * curl_hx_dz_zhi_t
-    correction_ey_zhi = jnp.transpose(new_psi_ey_zhi, (2, 1, 0))
-    ey = ey.at[:, :, -n_zhi:].add(ce_ey_zhi * correction_ey_zhi)
-    kappa_corr_ey_zhi = jnp.transpose((1.0 / k_zrn - 1.0) * curl_hx_dz_zhi_t, (2, 1, 0))
-    ey = ey.at[:, :, -n_zhi:].add(ce_ey_zhi * kappa_corr_ey_zhi)
-
-    state = state._replace(ex=ex, ey=ey, ez=ez)
-    cpml_state = cpml_state._replace(
-        # x-axis
-        psi_ey_xlo=new_psi_ey_xlo,
-        psi_ey_xhi=new_psi_ey_xhi,
-        psi_ez_xlo=new_psi_ez_xlo,
-        psi_ez_xhi=new_psi_ez_xhi,
-        # y-axis
-        psi_ex_ylo=new_psi_ex_ylo,
-        psi_ex_yhi=new_psi_ex_yhi,
-        psi_ez_ylo=new_psi_ez_ylo,
-        psi_ez_yhi=new_psi_ez_yhi,
-        # z-axis
-        psi_ex_zlo=new_psi_ex_zlo,
-        psi_ex_zhi=new_psi_ex_zhi,
-        psi_ey_zlo=new_psi_ey_zlo,
-        psi_ey_zhi=new_psi_ey_zhi,
-    )
-
-    return state, cpml_state
-
-
-def _apply_cpml_h_distributed(
-    state, cpml_params, cpml_state, n_cpml, dt, dx,
-    n_devices, ghost=1, axis_name="devices", mu_r=None, pad_x: int = 0,
-    separate_x_terms: bool = False,
-    *, rank=None,
-):
-    """Apply CPML H-field correction on a distributed slab.
-
-    Y/Z faces: applied on all devices.
-    X faces: x-lo on device 0 only, x-hi on device N-1 only.
-
-    X-axis indexing accounts for ghost cells: x-lo uses
-    ``[ghost:ghost+n]``, x-hi uses
-    ``[-(ghost+pad_x+n):-(ghost+pad_x)]``.
-
-    Parameters
-    ----------
-    state : FDTDState
-        Per-device slab state (nx_local, ny, nz).
-    cpml_params : CPMLParams
-        Shared CPML profile coefficients.
-    cpml_state : CPMLState
-        Per-device CPML auxiliary state.
-    n_cpml : int
-        Number of CPML layers.
-    dt, dx : float
-    n_devices : int
-    ghost : int
-        Number of ghost cells on each side of x (default 1).
-    axis_name : str
-    mu_r : jnp.ndarray or None
-        Per-cell relative permeability slab (nx_local+2*ghost, ny, nz),
-        same ghost layout as the field slab.  When provided, the CPML
-        H-coefficient is the material-aware ``dt / (mu_r * mu_0)`` (mirrors
-        the single-device ``apply_cpml_h``).  ``None`` falls back to the
-        vacuum scalar ``dt / mu_0`` (bit-identical to pre-#205 behaviour).
-    pad_x : int
-        Number of alignment-pad cells appended to the high-x end of the
-        last rank's slab so that ``(nx + pad_x) % n_devices == 0``
-        (#623, same class as #622). The x-hi CPML window is shifted left
-        by ``pad_x`` so it covers the real physical face (global node
-        ``nx - 1``), matching single-device ``cpml.py``'s ``[nx-n, nx)``
-        (a no-op on other ranks / when ``pad_x == 0``).
-    separate_x_terms : bool
-        Add the psi and kappa corrections in two scatters, as the single-device
-        CPML does. Dispersive v2 runs need this order for the cross-trace ULP
-        bound; False preserves the established no-pole arithmetic.
-    """
-    if rank is None:
-        raise ValueError("slab rank must be supplied as data")
-    from rfx.boundaries.cpml import CPMLAxisParams
-    if not isinstance(cpml_params, CPMLAxisParams):
-        raise TypeError("distributed CPML requires per-face CPMLAxisParams")
-    n_xlo, n_xhi = cpml_state.psi_hy_xlo.shape[0], cpml_state.psi_hy_xhi.shape[0]
-    n_ylo, n_yhi = cpml_state.psi_hx_ylo.shape[0], cpml_state.psi_hx_yhi.shape[0]
-    n_zlo, n_zhi = cpml_state.psi_hx_zlo.shape[0], cpml_state.psi_hx_zhi.shape[0]
-    g = ghost
-    # #623: on the last rank, pad_x alignment cells sit past the real
-    # x-hi face — shift the window left by pad_x.
-    x_hi_edge = g + pad_x
-    # Per-face H-coefficient (material-aware when mu_r is supplied).
-    if mu_r is not None:
         mu_r = magnetic_low_ghost(mu_r, rank, ghost)
-        _mu = component_h_materials(MaterialArrays(None, None, mu_r))
-        _ch = tuple(dt / (m * MU_0) for m in _mu)
-        ch_xlo = tuple(c[g:g + n_xlo, :, :] for c in _ch)
-        hi = slice(-(x_hi_edge + n_xhi), -x_hi_edge) if x_hi_edge > 0 else slice(-n_xhi, None)
-        ch_xhi = tuple(c[hi, :, :] for c in _ch)
-        ch_ylo = tuple(c[:, :n_ylo, :] for c in _ch)
-        ch_yhi = tuple(c[:, -n_yhi:, :] for c in _ch)
-        ch_zlo = tuple(c[:, :, :n_zlo] for c in _ch)
-        ch_zhi = tuple(c[:, :, -n_zhi:] for c in _ch)
-    else:
-        ch_xlo = ch_xhi = ch_ylo = ch_yhi = ch_zlo = ch_zhi = (cpml_coeff_h_vacuum(dt),) * 3
+        means = component_h_materials(MaterialArrays(None, None, mu_r))
+    return SimpleNamespace(mu_r=mu_r, components=SimpleNamespace(mu_update=means))
 
-    profiles = cpml_params.magnetic if cpml_params.magnetic is not None else cpml_params
-    px_lo, px_hi = profiles.x_lo, profiles.x_hi
-    py_lo, py_hi = profiles.y_lo, profiles.y_hi
-    pz_lo, pz_hi = profiles.z_lo, profiles.z_hi
 
-    hx = state.hx
-    hy = state.hy
-    hz = state.hz
+def cpml_slab_frame(shape, ghost, pad_x):
+    """The last rank's physical x end is static on every rank."""
+    return {"x": (ghost, shape[0] - ghost - pad_x)}
 
-    device_idx = rank
-    is_first = (device_idx == 0)
-    is_last = (device_idx == n_devices - 1)
 
-    # X-axis slice helpers (account for ghost offset AND alignment pad,
-    # #623 — xhi shifted left by pad_x so it covers the real x-hi face)
-    xlo = slice(g, g + n_xlo)          # first n real cells
-    xhi = slice(-(x_hi_edge + n_xhi), -x_hi_edge) if x_hi_edge > 0 else slice(-n_xhi, None)
+def cpml_absorbing_faces(grid):
+    """Select the realized absorbing faces of the global model."""
+    from rfx.boundaries.depths import grid_face_depths
+    return tuple(face.name for face in grid_face_depths(grid) if face.realized > 0)
 
-    # =======================================================================
-    # X-axis CPML (device-conditional)
-    # =======================================================================
-    b_x = px_lo.b[:, None, None]
-    c_x = px_lo.c[:, None, None]
-    b_xr = px_hi.b[:, None, None]
-    c_xr = px_hi.c[:, None, None]
-    k_x = px_lo.kappa[:, None, None]
-    k_xr = px_hi.kappa[:, None, None]
 
-    # --- X-lo: Hy correction from dEz/dx (device 0 only) ---
-    ez_xlo = state.ez[xlo, :, :]
-    ez_shifted_xlo = _shift_fwd(state.ez, 0)[xlo, :, :]
-    curl_ez_dx_xlo = (ez_shifted_xlo - ez_xlo) / dx
+def _h_backward(h, axis, *, boundary=None, frame=None, owned=None):
+    """Keep nonmagnetic slab programs unchanged; share the one magnetic image."""
+    if boundary is None or not boundary.pmc_faces:
+        return _shift_bwd(h, axis)
+    from rfx.core.yee import h_neighbor
+    return h_neighbor(h, axis, boundary=boundary,
+                      frame=None if frame is None else frame.get("xyz"[axis]), owned=owned)
 
-    new_psi_hy_xlo = b_x * cpml_state.psi_hy_xlo + c_x * curl_ez_dx_xlo
-    if separate_x_terms:
-        hy = hy.at[xlo, :, :].add(jnp.where(is_first, ch_xlo[1] * new_psi_hy_xlo, 0.0))
-        hy = hy.at[xlo, :, :].add(jnp.where(is_first, ch_xlo[1] * (1.0 / k_x - 1.0) * curl_ez_dx_xlo, 0.0))
-    else:
-        hy_corr_xlo = ch_xlo[1] * new_psi_hy_xlo + ch_xlo[1] * (1.0 / k_x - 1.0) * curl_ez_dx_xlo
-        hy_corr_xlo = jnp.where(is_first, hy_corr_xlo, 0.0)
-        hy = hy.at[xlo, :, :].add(hy_corr_xlo)
-    new_psi_hy_xlo = jnp.where(is_first, new_psi_hy_xlo, cpml_state.psi_hy_xlo)
 
-    # --- X-hi: Hy correction from dEz/dx (device N-1 only) ---
-    ez_xhi = state.ez[xhi, :, :]
-    ez_shifted_xhi = _shift_fwd(state.ez, 0)[xhi, :, :]
-    curl_ez_dx_xhi = (ez_shifted_xhi - ez_xhi) / dx
-
-    new_psi_hy_xhi = b_xr * cpml_state.psi_hy_xhi + c_xr * curl_ez_dx_xhi
-    if separate_x_terms:
-        hy = hy.at[xhi, :, :].add(jnp.where(is_last, ch_xhi[1] * new_psi_hy_xhi, 0.0))
-        hy = hy.at[xhi, :, :].add(jnp.where(is_last, ch_xhi[1] * (1.0 / k_xr - 1.0) * curl_ez_dx_xhi, 0.0))
-    else:
-        hy_corr_xhi = ch_xhi[1] * new_psi_hy_xhi + ch_xhi[1] * (1.0 / k_xr - 1.0) * curl_ez_dx_xhi
-        hy_corr_xhi = jnp.where(is_last, hy_corr_xhi, 0.0)
-        hy = hy.at[xhi, :, :].add(hy_corr_xhi)
-    new_psi_hy_xhi = jnp.where(is_last, new_psi_hy_xhi, cpml_state.psi_hy_xhi)
-
-    # --- X-lo: Hz correction from dEy/dx (device 0 only) ---
-    ey_xlo = state.ey[xlo, :, :]
-    ey_shifted_xlo = _shift_fwd(state.ey, 0)[xlo, :, :]
-    curl_ey_dx_xlo = (ey_shifted_xlo - ey_xlo) / dx
-    curl_ey_dx_xlo_t = jnp.transpose(curl_ey_dx_xlo, (0, 2, 1))
-
-    new_psi_hz_xlo = b_x * cpml_state.psi_hz_xlo + c_x * curl_ey_dx_xlo_t
-    correction_hz_xlo = jnp.transpose(new_psi_hz_xlo, (0, 2, 1))
-    if separate_x_terms:
-        hz = hz.at[xlo, :, :].add(jnp.where(is_first, -ch_xlo[2] * correction_hz_xlo, 0.0))
-        hz = hz.at[xlo, :, :].add(jnp.where(is_first, -ch_xlo[2] * (1.0 / k_x - 1.0) * curl_ey_dx_xlo, 0.0))
-    else:
-        hz_corr_xlo = -ch_xlo[2] * correction_hz_xlo - ch_xlo[2] * (1.0 / k_x - 1.0) * curl_ey_dx_xlo
-        hz_corr_xlo = jnp.where(is_first, hz_corr_xlo, 0.0)
-        hz = hz.at[xlo, :, :].add(hz_corr_xlo)
-    new_psi_hz_xlo = jnp.where(is_first, new_psi_hz_xlo, cpml_state.psi_hz_xlo)
-
-    # --- X-hi: Hz correction from dEy/dx (device N-1 only) ---
-    ey_xhi = state.ey[xhi, :, :]
-    ey_shifted_xhi = _shift_fwd(state.ey, 0)[xhi, :, :]
-    curl_ey_dx_xhi = (ey_shifted_xhi - ey_xhi) / dx
-    curl_ey_dx_xhi_t = jnp.transpose(curl_ey_dx_xhi, (0, 2, 1))
-
-    new_psi_hz_xhi = b_xr * cpml_state.psi_hz_xhi + c_xr * curl_ey_dx_xhi_t
-    correction_hz_xhi = jnp.transpose(new_psi_hz_xhi, (0, 2, 1))
-    if separate_x_terms:
-        hz = hz.at[xhi, :, :].add(jnp.where(is_last, -ch_xhi[2] * correction_hz_xhi, 0.0))
-        hz = hz.at[xhi, :, :].add(jnp.where(is_last, -ch_xhi[2] * (1.0 / k_xr - 1.0) * curl_ey_dx_xhi, 0.0))
-    else:
-        hz_corr_xhi = -ch_xhi[2] * correction_hz_xhi - ch_xhi[2] * (1.0 / k_xr - 1.0) * curl_ey_dx_xhi
-        hz_corr_xhi = jnp.where(is_last, hz_corr_xhi, 0.0)
-        hz = hz.at[xhi, :, :].add(hz_corr_xhi)
-    new_psi_hz_xhi = jnp.where(is_last, new_psi_hz_xhi, cpml_state.psi_hz_xhi)
-
-    # =======================================================================
-    # Y-axis CPML (all devices)
-    # =======================================================================
-    b_yn = py_lo.b[:, None, None]
-    c_yn = py_lo.c[:, None, None]
-    b_yrn = py_hi.b[:, None, None]
-    c_yrn = py_hi.c[:, None, None]
-    k_yn = py_lo.kappa[:, None, None]
-    k_yrn = py_hi.kappa[:, None, None]
-
-    # --- Y-lo: Hx correction from dEz/dy ---
-    ez_ylo = state.ez[:, :n_ylo, :]
-    ez_shifted_ylo = _shift_fwd(state.ez, 1)[:, :n_ylo, :]
-    curl_ez_dy_ylo = (ez_shifted_ylo - ez_ylo) / dx
-    curl_ez_dy_ylo_t = jnp.transpose(curl_ez_dy_ylo, (1, 0, 2))
-
-    new_psi_hx_ylo = b_yn * cpml_state.psi_hx_ylo + c_yn * curl_ez_dy_ylo_t
-    correction_hx_ylo = jnp.transpose(new_psi_hx_ylo, (1, 0, 2))
-    hx = hx.at[:, :n_ylo, :].add(-ch_ylo[0] * correction_hx_ylo)
-    kappa_corr_hx_ylo = jnp.transpose((1.0 / k_yn - 1.0) * curl_ez_dy_ylo_t, (1, 0, 2))
-    hx = hx.at[:, :n_ylo, :].add(-ch_ylo[0] * kappa_corr_hx_ylo)
-
-    # --- Y-hi: Hx correction from dEz/dy ---
-    ez_yhi = state.ez[:, -n_yhi:, :]
-    ez_shifted_yhi = _shift_fwd(state.ez, 1)[:, -n_yhi:, :]
-    curl_ez_dy_yhi = (ez_shifted_yhi - ez_yhi) / dx
-    curl_ez_dy_yhi_t = jnp.transpose(curl_ez_dy_yhi, (1, 0, 2))
-
-    new_psi_hx_yhi = b_yrn * cpml_state.psi_hx_yhi + c_yrn * curl_ez_dy_yhi_t
-    correction_hx_yhi = jnp.transpose(new_psi_hx_yhi, (1, 0, 2))
-    hx = hx.at[:, -n_yhi:, :].add(-ch_yhi[0] * correction_hx_yhi)
-    kappa_corr_hx_yhi = jnp.transpose((1.0 / k_yrn - 1.0) * curl_ez_dy_yhi_t, (1, 0, 2))
-    hx = hx.at[:, -n_yhi:, :].add(-ch_yhi[0] * kappa_corr_hx_yhi)
-
-    # --- Y-lo: Hz correction from dEx/dy ---
-    ex_ylo = state.ex[:, :n_ylo, :]
-    ex_shifted_ylo = _shift_fwd(state.ex, 1)[:, :n_ylo, :]
-    curl_ex_dy_ylo = (ex_shifted_ylo - ex_ylo) / dx
-    curl_ex_dy_ylo_t = jnp.transpose(curl_ex_dy_ylo, (1, 2, 0))
-
-    new_psi_hz_ylo = b_yn * cpml_state.psi_hz_ylo + c_yn * curl_ex_dy_ylo_t
-    correction_hz_ylo = jnp.transpose(new_psi_hz_ylo, (2, 0, 1))
-    hz = hz.at[:, :n_ylo, :].add(ch_ylo[2] * correction_hz_ylo)
-    kappa_corr_hz_ylo = jnp.transpose((1.0 / k_yn - 1.0) * curl_ex_dy_ylo_t, (2, 0, 1))
-    hz = hz.at[:, :n_ylo, :].add(ch_ylo[2] * kappa_corr_hz_ylo)
-
-    # --- Y-hi: Hz correction from dEx/dy ---
-    ex_yhi = state.ex[:, -n_yhi:, :]
-    ex_shifted_yhi = _shift_fwd(state.ex, 1)[:, -n_yhi:, :]
-    curl_ex_dy_yhi = (ex_shifted_yhi - ex_yhi) / dx
-    curl_ex_dy_yhi_t = jnp.transpose(curl_ex_dy_yhi, (1, 2, 0))
-
-    new_psi_hz_yhi = b_yrn * cpml_state.psi_hz_yhi + c_yrn * curl_ex_dy_yhi_t
-    correction_hz_yhi = jnp.transpose(new_psi_hz_yhi, (2, 0, 1))
-    hz = hz.at[:, -n_yhi:, :].add(ch_yhi[2] * correction_hz_yhi)
-    kappa_corr_hz_yhi = jnp.transpose((1.0 / k_yrn - 1.0) * curl_ex_dy_yhi_t, (2, 0, 1))
-    hz = hz.at[:, -n_yhi:, :].add(ch_yhi[2] * kappa_corr_hz_yhi)
-
-    # =======================================================================
-    # Z-axis CPML (all devices)
-    # =======================================================================
-    b_zn = pz_lo.b[:, None, None]
-    c_zn = pz_lo.c[:, None, None]
-    k_zn = pz_lo.kappa[:, None, None]
-    b_zrn = pz_hi.b[:, None, None]
-    c_zrn = pz_hi.c[:, None, None]
-    k_zrn = pz_hi.kappa[:, None, None]
-
-    # --- Z-lo: Hx correction from dEy/dz ---
-    ey_zlo = state.ey[:, :, :n_zlo]
-    ey_shifted_zlo = _shift_fwd(state.ey, 2)[:, :, :n_zlo]
-    curl_ey_dz_zlo = (ey_shifted_zlo - ey_zlo) / dx
-    curl_ey_dz_zlo_t = jnp.transpose(curl_ey_dz_zlo, (2, 0, 1))
-
-    new_psi_hx_zlo = b_zn * cpml_state.psi_hx_zlo + c_zn * curl_ey_dz_zlo_t
-    correction_hx_zlo = jnp.transpose(new_psi_hx_zlo, (1, 2, 0))
-    hx = hx.at[:, :, :n_zlo].add(ch_zlo[0] * correction_hx_zlo)
-    kappa_corr_hx_zlo = jnp.transpose((1.0 / k_zn - 1.0) * curl_ey_dz_zlo_t, (1, 2, 0))
-    hx = hx.at[:, :, :n_zlo].add(ch_zlo[0] * kappa_corr_hx_zlo)
-
-    # --- Z-hi: Hx correction from dEy/dz ---
-    ey_zhi = state.ey[:, :, -n_zhi:]
-    ey_shifted_zhi = _shift_fwd(state.ey, 2)[:, :, -n_zhi:]
-    curl_ey_dz_zhi = (ey_shifted_zhi - ey_zhi) / dx
-    curl_ey_dz_zhi_t = jnp.transpose(curl_ey_dz_zhi, (2, 0, 1))
-
-    new_psi_hx_zhi = b_zrn * cpml_state.psi_hx_zhi + c_zrn * curl_ey_dz_zhi_t
-    correction_hx_zhi = jnp.transpose(new_psi_hx_zhi, (1, 2, 0))
-    hx = hx.at[:, :, -n_zhi:].add(ch_zhi[0] * correction_hx_zhi)
-    kappa_corr_hx_zhi = jnp.transpose((1.0 / k_zrn - 1.0) * curl_ey_dz_zhi_t, (1, 2, 0))
-    hx = hx.at[:, :, -n_zhi:].add(ch_zhi[0] * kappa_corr_hx_zhi)
-
-    # --- Z-lo: Hy correction from dEx/dz ---
-    ex_zlo = state.ex[:, :, :n_zlo]
-    ex_shifted_zlo = _shift_fwd(state.ex, 2)[:, :, :n_zlo]
-    curl_ex_dz_zlo = (ex_shifted_zlo - ex_zlo) / dx
-    curl_ex_dz_zlo_t = jnp.transpose(curl_ex_dz_zlo, (2, 1, 0))
-
-    new_psi_hy_zlo = b_zn * cpml_state.psi_hy_zlo + c_zn * curl_ex_dz_zlo_t
-    correction_hy_zlo = jnp.transpose(new_psi_hy_zlo, (2, 1, 0))
-    hy = hy.at[:, :, :n_zlo].add(-ch_zlo[1] * correction_hy_zlo)
-    kappa_corr_hy_zlo = jnp.transpose((1.0 / k_zn - 1.0) * curl_ex_dz_zlo_t, (2, 1, 0))
-    hy = hy.at[:, :, :n_zlo].add(-ch_zlo[1] * kappa_corr_hy_zlo)
-
-    # --- Z-hi: Hy correction from dEx/dz ---
-    ex_zhi = state.ex[:, :, -n_zhi:]
-    ex_shifted_zhi = _shift_fwd(state.ex, 2)[:, :, -n_zhi:]
-    curl_ex_dz_zhi = (ex_shifted_zhi - ex_zhi) / dx
-    curl_ex_dz_zhi_t = jnp.transpose(curl_ex_dz_zhi, (2, 1, 0))
-
-    new_psi_hy_zhi = b_zrn * cpml_state.psi_hy_zhi + c_zrn * curl_ex_dz_zhi_t
-    correction_hy_zhi = jnp.transpose(new_psi_hy_zhi, (2, 1, 0))
-    hy = hy.at[:, :, -n_zhi:].add(-ch_zhi[1] * correction_hy_zhi)
-    kappa_corr_hy_zhi = jnp.transpose((1.0 / k_zrn - 1.0) * curl_ex_dz_zhi_t, (2, 1, 0))
-    hy = hy.at[:, :, -n_zhi:].add(-ch_zhi[1] * kappa_corr_hy_zhi)
-
-    state = state._replace(hx=hx, hy=hy, hz=hz)
-    cpml_state = cpml_state._replace(
-        # x-axis
-        psi_hy_xlo=new_psi_hy_xlo,
-        psi_hy_xhi=new_psi_hy_xhi,
-        psi_hz_xlo=new_psi_hz_xlo,
-        psi_hz_xhi=new_psi_hz_xhi,
-        # y-axis
-        psi_hx_ylo=new_psi_hx_ylo,
-        psi_hx_yhi=new_psi_hx_yhi,
-        psi_hz_ylo=new_psi_hz_ylo,
-        psi_hz_yhi=new_psi_hz_yhi,
-        # z-axis
-        psi_hx_zlo=new_psi_hx_zlo,
-        psi_hx_zhi=new_psi_hx_zhi,
-        psi_hy_zlo=new_psi_hy_zlo,
-        psi_hy_zhi=new_psi_hy_zhi,
-    )
-
-    return state, cpml_state
+def _slab_curl_kwargs(boundary, shape, ghost, pad_x, rank, n_devices):
+    """Only magnetic slabs trace ownership; transverse axes use the full extent."""
+    if boundary is None or not boundary.pmc_faces:
+        return {}
+    return dict(boundary=boundary, frame=cpml_slab_frame(shape, ghost, pad_x),
+                owned={"x_lo": rank == 0, "x_hi": rank == n_devices - 1})

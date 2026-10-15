@@ -364,7 +364,7 @@ def test_waveguide_port_reference_model_with_a_refinement_refuses():
     """A per-port reference model is built on the uniform grid too."""
     def two_port(refine):
         sim = Simulation(freq_max=10e9, domain=(0.12, 0.04, 0.02),
-                         boundary="cpml", cpml_layers=10, dx=0.004)
+                         boundary={"x": "cpml", "y": "pec", "z": "pec"}, cpml_layers=10, dx=0.004)
         common = dict(mode=(1, 0), mode_type="TE",
                       freqs=np.linspace(4.5e9, 8e9, 3), f0=6e9,
                       ref_offset=3, probe_offset=8)

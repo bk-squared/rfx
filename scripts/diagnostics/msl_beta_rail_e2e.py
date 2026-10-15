@@ -1,6 +1,6 @@
 """Issue #681 end-to-end confirmation on real FDTD phasors (CPU-scale).
 
-Three single-port MSL runs on the same physical board (eps_r 2.2 open
+Historical plan: three single-port MSL runs on the same physical board (eps_r 2.2 open
 thru, dx = 200 um, f_max = 20 GHz — the tests/unit/sparams/test_msl_probe_offset_interval
 open-thru geometry):
 
@@ -54,6 +54,13 @@ shipped semantics ("scan failed to bracket; do not quote Z0/beta at
 flagged bins") stand. Committed evidence:
 docs/design_notes/issue681_rail_adjudication_report.json.
 
+#1512 geometry update: the 5 mm-feed adjudication configuration trims and
+grounds all three runs. At the historical 2.5 mm-feed default, A/A'/B are
+outside the refusal interval using the realized substrate and share the
+original missing-ground drawing; they still fail current ground-attachment
+preflight. No new RF measurement is recorded
+here; the dated numbers above remain historical observations.
+
 Run:  python scripts/diagnostics/msl_beta_rail_e2e.py [--out out.json]
 Exit code 0 = all assertions hold.
 """
@@ -74,6 +81,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from rfx import Box, Simulation
+from dataclasses import replace
+from rfx.preflight.line_stub import line_stub_findings, read_band, resonant_odd_orders
 
 DX = 2e-4
 Y_C = 0.01316
@@ -98,6 +107,14 @@ def _build(args, eps_r_sub_declared: float, n_probe_spacing=None) -> Simulation:
     sim.add_msl_port(position=(args.feed_x, Y_C, 0.0), width=W_TRACE,
                      height=H_SUB, direction="+x", impedance=50.0,
                      eps_r_sub=eps_r_sub_declared, name="p1", **kw)
+    # #1512: retain outside-band drawings; a resonant volume starts at the port node.
+    for finding in line_stub_findings(sim):
+        if resonant_odd_orders(finding, read_band(sim, FREQS)) is not None:
+            trace = sim._geometry[1]
+            lo = (finding.port_node_m, *trace.shape.corner_lo[1:])
+            sim._geometry[1] = replace(trace, shape=Box(lo, trace.shape.corner_hi))
+            # The converted lane must also declare its missing ground surface.
+            sim.add(Box((0, 0, 0), (domain[0], domain[1], 0)), material="pec")
     return sim
 
 

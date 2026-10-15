@@ -15,14 +15,18 @@ from types import MethodType
 import jax
 import jax.numpy as jnp
 from functools import partial
-from jax.experimental.shard_map import shard_map
+from jax import shard_map
 from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
+from rfx.stepping.slab import Slab, cut
+
 import numpy as np
 import pytest
 
 from rfx import Box, DebyePole, Simulation
 from rfx.core.yee import EPS_0, MaterialArrays, init_state
 from rfx.materials.debye import init_debye
+from rfx.model.materials import with_components
+from rfx.model.electric_metrics import slab_cell_sizes
 from rfx.materials.lorentz import init_lorentz, lorentz_pole
 from rfx.nonuniform import make_current_source, position_to_index
 from rfx.runners import distributed_nu as nu
@@ -84,8 +88,10 @@ def _legacy_forward(self, *, eps_override=None, sigma_override=None,
     )
     if pec_mask_override is not None:
         mask = pec_mask_override if mask is None else mask | pec_mask_override
-    debye = None if db_spec is None else init_debye(db_spec[0], materials, grid.dt, mask=db_spec[1])
-    lorentz = None if lr_spec is None else init_lorentz(lr_spec[0], materials, grid.dt, mask=lr_spec[1])
+    realized = with_components(materials, grid, periodic=(False, False, False),
+                               debye_spec=db_spec, lorentz_spec=lr_spec)
+    debye = None if db_spec is None else init_debye(db_spec[0], realized, grid.dt, mask=db_spec[1])
+    lorentz = None if lr_spec is None else init_lorentz(lr_spec[0], realized, grid.dt, mask=lr_spec[1])
     sg = nu.build_sharded_nu_grid(grid, len(devices))
     mesh = Mesh(np.array(devices), ("x",))
     shd = NamedSharding(mesh, P("x"))
@@ -97,7 +103,7 @@ def _legacy_forward(self, *, eps_override=None, sigma_override=None,
     slabs = _split_materials(padded, len(devices), sg.ghost_width)
     placed = MaterialArrays(*(shard_stacked(a, shd) for a in slabs[:3]))
     pec = nu.shard_pec_mask_x_slab(mask, sg)
-    occupancy = nu.shard_pec_occupancy_x_slab(pec_occupancy_override, sg)
+    occupancy = None if pec_occupancy_override is None else cut(pec_occupancy_override, Slab.from_grid(sg), "pec_occupancy", mesh=None).reshape(-1, *pec_occupancy_override.shape[1:])
     cpml_params, cpml_stacked = nu.init_cpml_for_sharded_nu(
         sg, len(devices), pec_faces=getattr(self, "_pec_faces", None))
     cpml = nu.shard_cpml_state_x_slab(cpml_stacked, sg, mesh)
@@ -151,7 +157,7 @@ def _bits(a, b, label):
     assert a.shape == b.shape and a.dtype == b.dtype, label
     assert np.isfinite(a).all() and np.isfinite(b).all(), label + " nonfinite"
     assert a.tobytes() == b.tobytes(), (label, int(np.count_nonzero(a != b)),
-                                      float(np.max(np.abs(a - b))))
+                                      float(np.max(a != b)) if a.dtype == bool else float(np.max(np.abs(a - b))))
 
 
 def _cross_trace(a, b, label, summed=False):
@@ -230,10 +236,11 @@ def _completed_slabs(staged, materials, sg, dt, mesh):
     coeffs, state = staged
     assert coeffs.ca is coeffs.cb is coeffs.cc is None, "E coefficients must wait for the scan"
 
-    @partial(shard_map, mesh=mesh, in_specs=(P("x"), P("x")), out_specs=P("x"), check_rep=False)
+    @partial(shard_map, mesh=mesh, in_specs=(P("x"), P("x")), out_specs=P("x"), check_vma=False)
     def complete(c, m):
         rank = jax.lax.axis_index("x")
-        means = common.slab_e_component_materials(m, sg.nx_per_rank, sg.nx, rank)
+        means = common.slab_e_component_materials(m, sg.nx_per_rank, sg.nx, rank,
+                                                  cell_sizes=slab_cell_sizes(sg, rank))
         return common.slab_dispersion_coeffs(c, means, dt, sg.nx_per_rank, sg.nx, rank)
 
     return jax.jit(complete)(coeffs, materials), state
@@ -302,6 +309,19 @@ def _per_shard():
     dt = sim._build_nonuniform_grid().dt
     for kind in ("debye", "lorentz"):
         captures[0][kind] = _completed_slabs(captures[0][kind], captures[0]["sharded_materials"], sg, dt, mesh)
+    # The legacy runner takes sharded cells and derives edges per slab. G1
+    # takes final edge components converted once globally. Keep the cell
+    # oracle; the edge comparison below uses the same global conversion as G1,
+    # so the independent witness is test_trace_and_eps_gradient_bits.
+    from rfx.boundaries.pec import realized_pec_edge_masks
+    grid = sim._build_nonuniform_grid()
+    cells = sim._assemble_materials_nu(grid)[3]
+    shd = NamedSharding(mesh, P("x"))
+    legacy_cells = jax.device_put(nu.shard_pec_mask_x_slab(cells, sg), shd)
+    _bits(captures[1]["sharded_pec_mask"], legacy_cells, "legacy PEC cells")
+    edges = realized_pec_edge_masks(cells, periodic=(False, False, False))
+    captures[1]["sharded_pec_mask"] = tuple(
+        jax.device_put(nu.shard_pec_mask_x_slab(edge, sg), shd) for edge in edges)
     checked = 0
     for name in captures[0]:
         if name in ("debye", "lorentz"):
@@ -312,7 +332,7 @@ def _per_shard():
                     assert x.device == y.device and x.index == y.index
                     _bits(x.data, y.data, str(path))
                     checked += 1
-    assert checked == 65 * len(jax.devices()), checked
+    assert checked == 67 * len(jax.devices()), checked
     print("RESULT " + json.dumps({"shard_arrays": checked, "version": jax.__version__}))
 
 
@@ -434,7 +454,9 @@ def _multipole_shards():
     ):
         actual = nu.stage_forward_dispersion_x_slab(
             placed, grid.dt, (poles, masks), sg, mesh, kind)
-        coeffs, state = init(poles, materials, grid.dt, mask=masks)
+        realized = with_components(materials, grid, periodic=(False, False, False),
+                                   **{kind + "_spec": (poles, masks)})
+        coeffs, state = init(poles, realized, grid.dt, mask=masks)
         expected = split_c(coeffs, sg, mesh), split_s(state, sg, mesh)
         actual = _completed_slabs(actual, placed, sg, grid.dt, mesh)
         checked += _check_slabs(actual, expected, sg)
@@ -550,9 +572,29 @@ def test_zero_lorentz_cc_mutation():
     _child("cc")
 
 
+
+def _vmap_local_bits():
+    sim = _model("mixed")
+    eps, kwargs = _inputs(sim, "mixed")
+    batch = jnp.stack([eps, eps * 1.1])
+    f = lambda e: _forward(sim, e, kwargs)
+    expected = jnp.stack([f(e) for e in batch])
+    actual = jax.vmap(f)(batch)
+    _bits(actual, expected, "vmap local eps: both batch members")
+    print("RESULT " + json.dumps({"devices": len(jax.devices("cpu")),
+                                  "batch": 2, "both_members_bit_identical": True}))
+
+
+@pytest.mark.parametrize("devices", [2, 3])
+def test_vmap_local_eps_matches_both_single_calls(devices):
+    _child("vmap_local", devices=devices)
+
+
 if __name__ == "__main__":
     command, *args = sys.argv[1:]
-    if command == "memory":
+    if command == "vmap_local":
+        _vmap_local_bits()
+    elif command == "memory":
         _memory(*args)
     elif command == "before":
         _memory(args[0], legacy=True)

@@ -31,6 +31,11 @@ body, exactly as they were, and so do not run at import time.
 
 from __future__ import annotations
 
+from rfx._precision import resolve_field_dtype
+
+from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
+from rfx._diagnostic_transport import merge_diagnostics, report_diagnostics, diagnostic_refusal
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -39,6 +44,8 @@ from rfx.core.jax_utils import is_tracer
 from rfx.sources.sources import GaussianPulse
 
 from rfx.api._spec import MixedSMatrixResult
+
+from rfx.sparams._mixed_checks import _mixed_refusal_masks, _warn_refused_mixed_entries
 
 from rfx.sparams._common import (
     _msl_cell_profile,
@@ -156,7 +163,8 @@ def compute_mixed_s_matrix(
       direction against a delivered-power normalization; quote it
       alongside ``|S|``.
     * Cross-family off-diagonal PHASE mixes two reference-plane
-      conventions (port cell vs de-embedded MSL probe plane) and a
+      conventions (port cell vs the MSL port's declared feed plane, to
+      which the MSL rows/columns are shifted from probe 0) and a
       component-mixing ±1 (probes.py sign-convention fence);
       magnitude is the validated observable.
     * ``settling_db`` is the ring-down witness (above −40 dB =
@@ -187,6 +195,8 @@ def compute_mixed_s_matrix(
     -------
     MixedSMatrixResult
     """
+    resolve_field_dtype(self._precision)
+    _diagnostics = ()
     import dataclasses as _dc
 
     from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff
@@ -201,127 +211,97 @@ def compute_mixed_s_matrix(
 
     # ---- Registration guards (v1 envelope) --------------------------
     if not self._msl_ports:
-        raise ValueError(
+        raise diagnostic_refusal(ValueError(
             "compute_mixed_s_matrix() needs at least one add_msl_port() "
             "registration (for a pure lumped/wire multiport use the "
             "production scan driver / extract_s_matrix)."
-        )
+        ), _diagnostics)
     lw_entries = [pe for pe in self._ports if pe.impedance != 0.0]
     if not lw_entries:
-        raise ValueError(
+        raise diagnostic_refusal(ValueError(
             "compute_mixed_s_matrix() needs at least one sparam-eligible "
             "add_port() lumped/wire port (impedance != 0). For a pure "
             "MSL multiport use compute_msl_s_matrix()."
-        )
+        ), _diagnostics)
     if any(pe.impedance == 0.0 for pe in self._ports):
-        raise NotImplementedError(
+        raise diagnostic_refusal(NotImplementedError(
             "compute_mixed_s_matrix() does not support bare sources / "
             "0-ohm ports (add_source or add_port(impedance=0)): they "
             "are not excite-gated and would fire in EVERY drive run, "
             "contaminating the single-drive S-parameter contract."
-        )
+        ), _diagnostics)
     if self._waveguide_ports or self._floquet_ports:
-        raise NotImplementedError(
+        raise diagnostic_refusal(NotImplementedError(
             "compute_mixed_s_matrix() v1 covers lumped/wire + MSL only; "
             "waveguide/Floquet ports are not part of the validated "
-            "mixed lane (issue #488)."
-        )
+            "mixed method (issue #488)."
+        ), _diagnostics)
     _mixed_non_x = [
         pe.name for pe in self._msl_ports
         if pe.direction not in ("+x", "-x")
     ]
     if _mixed_non_x:
-        raise NotImplementedError(
+        raise diagnostic_refusal(NotImplementedError(
             "compute_mixed_s_matrix() v1 covers '+x'/'-x' MSL ports "
             f"only; {_mixed_non_x} are not x-directed. The y-directed "
-            "MSL lane landed in issue #661 for compute_msl_s_matrix(); "
-            "this mixed lane is itself EXPERIMENTAL (issue #488) with "
+            "MSL support landed in issue #661 for compute_msl_s_matrix(); "
+            "this mixed method is itself EXPERIMENTAL (issue #488) with "
             "both diagonals unverified, so it is fenced rather than "
             "extended untested. Use compute_msl_s_matrix() for a pure "
             "MSL multiport."
-        )
+        ), _diagnostics)
     if self._coaxial_ports:
-        raise NotImplementedError(
+        raise diagnostic_refusal(NotImplementedError(
             "compute_mixed_s_matrix() v1 covers lumped/wire + MSL only; "
             "coaxial ports need a separate calibration contract."
-        )
+        ), _diagnostics)
     if self._tfsf is not None:
-        raise NotImplementedError(
+        raise diagnostic_refusal(NotImplementedError(
             "compute_mixed_s_matrix() is not supported together with "
             "TFSF; TFSF is a plane-wave source, not a port."
-        )
+        ), _diagnostics)
     is_wire = [pe.extent is not None for pe in lw_entries]
     if any(is_wire) and not all(is_wire):
-        raise NotImplementedError(
+        raise diagnostic_refusal(NotImplementedError(
             "compute_mixed_s_matrix(): mixed lumped + wire port sets "
             "are not supported (the off-diagonal wave-decomposition "
             "conventions differ — same fence as "
             "compute_lumped_wire_s_matrix_via_scan)."
-        )
+        ), _diagnostics)
     wire_mode = all(is_wire)
-    if not wire_mode:
-        # This lane keeps the PRE-decision lumped driven diagonal — the
-        # passive port-branch algebra, which on a known load is the
-        # reciprocal of the physical reflection
-        # (scripts/diagnostics/lumped_port_known_load_line.py).  Correcting
-        # it is cross-family work the PI deferred on 2026-09-15, so the
-        # algebra stays; saying nothing about it does not.
-        #
-        # Its drive reference reads the pre-injection channel explicitly, so
-        # the sample the #488 algebra was calibrated against did not move.
-        # What did move is the current, which now carries the Yee half-step
-        # phase: measured on a lumped-feed variant of the committed fixture,
-        # max |dS| = 1.8e-05 and max |d|S|| = 1.7e-07.  The committed
-        # fixtures drive a WIRE feed and are bit-identical (max |dS| = 0.0).
-        import warnings as _w
-        from rfx.probes.probes import PreDecisionLumpedDiagonalWarning as _W
-        _w.warn(
-            "compute_mixed_s_matrix: the LUMPED driven diagonal in this lane "
-            "is on the pre-decision convention (the passive port-branch "
-            "algebra applied to a driven port), which on a known load reads "
-            "the reciprocal of the physical reflection — see "
-            "scripts/diagnostics/lumped_port_known_load_line.py. The uniform "
-            "single-family lumped lane was corrected on 2026-09-21; this "
-            "cross-family lane is fenced experimental and was deliberately "
-            "not. Its numbers also shifted by the Yee half-step current "
-            "phase (max |dS| = 1.8e-05 measured on a lumped-feed fixture). "
-            "Use compute_lumped_wire_s_matrix_via_scan for a lumped-only "
-            "set; do not report this diagonal as physics.",
-            _W,
-            stacklevel=2,
-        )
     if any(getattr(pe, "reference_plane_cells", None) for pe in lw_entries):
-        raise NotImplementedError(
+        raise diagnostic_refusal(NotImplementedError(
             "compute_mixed_s_matrix() v1 does not support "
-            "add_port(reference_plane_cells=...); the mixed lane uses "
+            "add_port(reference_plane_cells=...); the mixed method uses "
             "the delivered-power witness for magnitude honesty instead."
-        )
+        ), _diagnostics)
     if (
         self._dz_profile is not None
         or self._dx_profile is not None
         or self._dy_profile is not None
     ):
-        raise NotImplementedError(
+        raise diagnostic_refusal(NotImplementedError(
             "compute_mixed_s_matrix() v1 supports the uniform mesh "
             "only (issue #488 scope: NU is explicitly out until the "
             "first pair ships)."
-        )
+        ), _diagnostics)
     if self._refinement is not None:
-        raise NotImplementedError(
+        raise diagnostic_refusal(NotImplementedError(
             "compute_mixed_s_matrix() is not supported with SBP-SAT "
             "subgridding."
-        )
+        ), _diagnostics)
     if self._solver == "adi":
-        raise NotImplementedError(
+        raise diagnostic_refusal(NotImplementedError(
             "compute_mixed_s_matrix() is not supported with "
             "solver='adi'; use the uniform Yee solver."
-        )
+        ), _diagnostics)
 
     n_lw = len(lw_entries)
     from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0_hj
     _refuse_f0_hj(self._thin_conductors, "MSL junction S-parameter")
     from rfx.runners._admission import admit
     admit(self, "mixed_s_matrix")
+    _line_stub_scope = _line_stub_admit(self, freqs)
     grid = self._build_grid()
 
     if freqs is None:
@@ -404,7 +384,7 @@ def compute_mixed_s_matrix(
             for q in range(len(xs) - 1)
         )
         if (not mono) or min(xs) <= 0.0 or max(xs) >= _lx_dom:
-            raise ValueError(
+            raise diagnostic_refusal(ValueError(
                 f"compute_mixed_s_matrix: MSL port {pe.name!r} probe "
                 f"ladder ({', '.join(f'{x * 1e3:.2f}' for x in xs)} mm) "
                 f"leaves the declared x-domain (0, {_lx_dom * 1e3:.2f}) "
@@ -414,7 +394,7 @@ def compute_mixed_s_matrix(
                 "measures the stub standing wave, not the line. Face "
                 "the port toward the DUT (direction), reduce "
                 "n_probe_offset/n_probe_spacing, or enlarge the domain."
-            )
+            ), _diagnostics)
         _edge_d = min(xs[0], _lx_dom - xs[0])
         if _edge_d < _clear:
             import warnings as _w488
@@ -466,6 +446,7 @@ def compute_mixed_s_matrix(
     # eps_r at the trace-centre substrate cell).
     z0_hj_per_port: list[float] = []
     beta0_per_port: list[np.ndarray] = []
+    eps_r_ref_per_port: list[float] = []
     from rfx.core.yee import EPS_0 as _EPS_0, MU_0 as _MU_0
     _c0_mixed = 1.0 / float(np.sqrt(_MU_0 * _EPS_0))
     for p_idx, pe in enumerate(entries):
@@ -478,6 +459,7 @@ def compute_mixed_s_matrix(
             eps_r_ref = float(np.asarray(
                 materials.eps_r[i_feed_p, meta["j_centre"], k_mid]
             ))
+        eps_r_ref_per_port.append(eps_r_ref)
         z0_hj, eps_eff_hj = hammerstad_jensen_z0_eps_eff(
             pe.width, pe.height, eps_r_ref
         )
@@ -528,13 +510,13 @@ def compute_mixed_s_matrix(
     if not skip_preflight:
         # One preflight for the full registration (run() would fire it
         # per drive run — 2*n_ports repeats of the same advisories).
-        self._auto_preflight(context="compute_mixed_s_matrix", check_ntff="advisory")
+        _diagnostics = report_diagnostics(self._auto_preflight(context="compute_mixed_s_matrix", check_ntff="advisory"))
 
     if magnitude_channel not in ("flux", "wave"):
-        raise ValueError(
+        raise diagnostic_refusal(ValueError(
             "compute_mixed_s_matrix: magnitude_channel must be 'flux' "
             f"(default) or 'wave', got {magnitude_channel!r}."
-        )
+        ), _diagnostics)
     if magnitude_channel == "flux":
         # The per-port flux box is CLOSED by the z-lo PEC ground: it
         # has five faces and omits the bottom because flux through a
@@ -548,7 +530,7 @@ def compute_mixed_s_matrix(
             if self._boundary_spec is not None else set()
         )
         if "z_lo" not in _pec_faces:
-            raise NotImplementedError(
+            raise diagnostic_refusal(NotImplementedError(
                 "compute_mixed_s_matrix(magnitude_channel='flux') "
                 "requires a PEC z_lo boundary: the per-port flux box "
                 "omits its bottom face because flux through a PEC "
@@ -558,16 +540,16 @@ def compute_mixed_s_matrix(
                 "BoundarySpec(z=Boundary(lo='pec', ...)), or pass "
                 "magnitude_channel='wave' (which carries the #313 "
                 "port-cell deflation instead)."
-            )
+            ), _diagnostics)
         _bad = [pe for pe in lw_entries if pe.component != "ez"]
         if _bad:
-            raise NotImplementedError(
+            raise diagnostic_refusal(NotImplementedError(
                 "compute_mixed_s_matrix(magnitude_channel='flux') "
                 "supports vertical (component='ez') lumped/wire ports "
                 "only: the flux box is built assuming the port extent "
                 "is a z height above the ground plane. Offending "
                 f"component(s): {sorted({pe.component for pe in _bad})}."
-            )
+            ), _diagnostics)
 
     drive_plan = [("lw", j) for j in range(n_lw)] + \
                  [("msl", d) for d in range(n_msl)]
@@ -729,6 +711,7 @@ def compute_mixed_s_matrix(
                 port_s11_freqs=freqs_arr,
                 _return_raw_port_sparams=True,
             )
+            _diagnostics = merge_diagnostics(_diagnostics, raw.get("diagnostics", ()))
             accs = raw["wire"] if wire_mode else raw["lumped"]
             if accs is None or len(accs) != n_lw:
                 raise RuntimeError(
@@ -818,8 +801,9 @@ def compute_mixed_s_matrix(
                         [{**meta, "dy_arr": dy_arr} for meta in port_idx_meta],
                         trace_k_per_port, dz_arr, [port.direction for port in msl_ports],
                     ) if _plane_records else []
-                    _channels.extend((f"wire{p}/V_I", record) for p, record in
-                                     enumerate(raw.get("sparam_time_records") or ()))
+                    _channels.extend((f"{record.id}/{channel}", record[channel])
+                                     for record in raw.get("sparam_time_records") or ()
+                                     for channel in record.channels)
                     _channels.extend((f"probe{i}", _ts_np[:, i])
                                      for i in range(_ts_np.shape[1]))
                     settling_db_runs[run_idx], settling_details[run_idx] = settling_db_from_named_records(
@@ -828,14 +812,7 @@ def compute_mixed_s_matrix(
 
 
 
-            # MSL line V (probe-0 plane) + closed-loop I, with the
-            # leapfrog E/H half-step correction (mirrors
-            # compute_msl_s_matrix line-for-line; see that method for
-            # the full derivation comments).
-            _hs_phase = jnp.exp(
-                1j * 2.0 * jnp.pi * jnp.asarray(freqs_arr)
-                * (float(grid.dt) * 0.5)
-            )
+            # MSL planes already carry physical E/H stamps from the shared DFT.
             for p_idx, meta in enumerate(port_idx_meta):
                 nm = names[p_idx]
                 for q_idx in range(len(probe_xs[p_idx])):
@@ -856,8 +833,6 @@ def compute_mixed_s_matrix(
                 hy_plane, hz_plane = _collocated_msl_h(
                     planes, h_names[p_idx], h_stencils[p_idx]["weights"],
                 )
-                hy_plane = hy_plane * _hs_phase[:, None, None].astype(hy_plane.dtype)
-                hz_plane = hz_plane * _hs_phase[:, None, None].astype(hz_plane.dtype)
                 k_tr_lo, k_tr_hi = trace_k_per_port[p_idx]
                 i_f = msl_loop_current(
                     hy_plane, hz_plane,
@@ -956,6 +931,7 @@ def compute_mixed_s_matrix(
             beta_railed_msl[d, :] = np.asarray(
                 jax.lax.stop_gradient(res_fit["beta_railed"])
             ).astype(bool)
+
             _dev = float(np.max(
                 np.abs(z0_msl_fit[d, :] - z0_hj_per_port[d])
                 / z0_hj_per_port[d]
@@ -977,21 +953,27 @@ def compute_mixed_s_matrix(
         # β-scan rail flags for the diagnostic N-probe fit (issue
         # #681): a railed bin's |Zc|/β above are the ±35% scan-window
         # limit, not a measurement. S is unaffected (the MSL diagonal
-        # uses the analytic HJ anchor).
+        # uses the analytic HJ anchor; the feed-plane shift below uses
+        # the closed-form beta, never the fit).
         _warn_msl_beta_scan_railed(
             beta_railed_msl, freqs_arr,
             tuple(pe.name for pe in entries),
         )
+        refused_flux, refused_wave = _mixed_refusal_masks(
+            n_lw + n_msl, n_lw, n_live_lw, wire_mode, drive_plan)
+        refused_positions = refused_flux if magnitude_channel == "flux" else refused_wave
         s_wave_full = None
 
         if magnitude_channel == "flux":
             import warnings as _wf
-            s_wave_full = np.asarray(jax.lax.stop_gradient(S))
+            s_wave_full = np.asarray(jax.lax.stop_gradient(S)).copy()
+            s_wave_full[refused_wave] = np.nan
             msl_away = [
                 (+1.0 if pe.direction == "+x" else -1.0) for pe in entries
             ]
             S, _ill_cond, _neg_power = _mixed_flux_magnitude_override(
                 S, box_lw, plane_msl, drive_plan, msl_away, n_lw,
+                refused_columns=np.flatnonzero(np.all(refused_flux, axis=0)),
             )
             S = jnp.asarray(S, dtype=_complex_dtype)
             for col in range(n_lw + n_msl):
@@ -1023,6 +1005,39 @@ def compute_mixed_s_matrix(
                         stacklevel=2,
                     )
 
+        # ---- Reference plane: MSL probe 0 -> declared feed plane -------
+        # The same resolver as compute_msl_s_matrix (one expression for
+        # both calculators): L_p from the realized nodes, the closed-form
+        # shift beta (Hammerstad-Jensen + Kirschning-Jansen dispersion),
+        # S[i, j] <- D_i S[i, j] D_j with D = exp(-j beta L) on the MSL
+        # rows and columns and D = 1 on the lumped/wire ones. After the
+        # flux magnitude override, which it cannot disturb (|D| = 1).
+        # S_wave (the pre-override wave-channel matrix) gets the same D, so
+        # every S this result reports is referred to one plane per port.
+        from rfx.measurement.msl_planes import (
+            resolve_msl_planes as _resolve_msl_planes,
+            apply_feed_plane_shift as _apply_feed_plane_shift,
+            full_port_shift as _full_port_shift,
+        )
+        _msl_plane = _resolve_msl_planes(
+            grid, msl_ports,
+            [int(pe.n_probe_offset) for pe in entries],
+            [xs[0] for xs in probe_xs],
+            [float(pe.width) for pe in entries],
+            [float(pe.height) for pe in entries],
+            eps_r_ref_per_port, freqs_arr,
+        )
+        plane_offsets_all, shift_beta_all = _full_port_shift(
+            n_lw + n_msl, range(n_lw, n_lw + n_msl), _msl_plane,
+        )
+        S = _apply_feed_plane_shift(
+            S, plane_offsets_all, shift_beta_all,
+        ).astype(_complex_dtype)
+        if s_wave_full is not None:
+            s_wave_full = np.asarray(_apply_feed_plane_shift(
+                s_wave_full, plane_offsets_all, shift_beta_all,
+            ))
+
         # MSL standing-wave-null reliability from each MSL port's own
         # driven run (mirrors compute_msl_s_matrix issue #337).
         reliable = None
@@ -1053,9 +1068,11 @@ def compute_mixed_s_matrix(
             + z0_hj_per_port
         )
 
+        S = jnp.where(refused_positions[..., None], jnp.nan, S)
         s_raw = None
         passivity_correction = None
-        if enforce_passivity and not is_tracer(S):
+        _warn_refused_mixed_entries(port_names, refused_flux, refused_wave, magnitude_channel)
+        if enforce_passivity and not np.any(refused_positions) and not is_tracer(S):
             s_projected, correction = _project_passive(S)
             if bool(np.any(np.asarray(correction) > 0.0)):
                 s_raw = S
@@ -1063,12 +1080,14 @@ def compute_mixed_s_matrix(
                 S = s_projected
 
         result = MixedSMatrixResult(
+            diagnostics=_diagnostics,
             S=S,
             freqs=np.asarray(freqs_arr),
             port_names=port_names,
             port_families=port_families,
             z0_ref=z0_ref,
-            settling_db=settling_db_runs, settling_witness=tuple(settling_details),
+            settling_db=settling_db_runs,
+            settling_witness=tuple(settling_details),
             s21_power_witness=s21_power,
             reliable=reliable,
             S_raw=s_raw,
@@ -1077,6 +1096,8 @@ def compute_mixed_s_matrix(
             magnitude_channel=magnitude_channel,
             beta_railed=beta_railed_msl,
             probe_clearance=probe_clearance,
+            reference_plane_offsets_m=plane_offsets_all,
+            shift_beta=shift_beta_all,
         )
         _warn_if_ringdown_truncated(
             settling_db_runs, port_names, num_periods=num_periods, witnesses=settling_details,
@@ -1092,6 +1113,7 @@ def compute_mixed_s_matrix(
             extractor="compute_mixed_s_matrix",
             strict=strict_extractor,
             passivity_tol=0.10,
+            refused_positions=refused_positions,
         )
         # RECIPROCITY WITNESS — the only independent runtime check on
         # the flux channel (review finding: the shared passivity audit

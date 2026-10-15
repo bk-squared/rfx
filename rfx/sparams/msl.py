@@ -18,6 +18,11 @@ step; the move itself is gated on bit identity of the extracted S arrays
 
 from __future__ import annotations
 
+from rfx._precision import resolve_field_dtype
+
+from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
+from rfx._diagnostic_transport import merge_diagnostics, report_diagnostics, diagnostic_refusal
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -164,9 +169,22 @@ def compute_msl_s_matrix(
     V/I and the analytic Hammerstad-Jensen reference impedance. The
     N-probe least-squares fit of
     ``V_n = α e^{-jβx_n} + γ e^{+jβx_n}`` supplies only the reported
-    beta/Z0 diagnostics. Those fitted values do not enter S. S is
-    referenced to each first probe plane, without translation back to
-    the physical feed planes. The two bracketing H planes are linearly
+    beta/Z0 diagnostics. Those fitted values do not enter S. S is formed
+    at each port's first probe plane and then referred back to the
+    DECLARED FEED PLANE, ``S_feed[i, j] = D_i S[i, j] D_j`` with
+    ``D_p = exp(-j β_p L_p)``, ``L_p`` the realized feed-to-probe-0
+    distance (``reference_plane_offsets_m``) and ``β_p`` the closed-form
+    β (Hammerstad-Jensen ε_eff(0) with Kirschning-Jansen dispersion, from
+    the port's width, height and substrate εr; ``shift_beta``). β is
+    real, so the shift moves phase only. Measured against the simulated
+    line's two-line β: within 0.76 % on the resolved boards measured
+    (chain-battery thru at 100 µm, 50 µm and z-graded; εr 10.2 / h 0.6 mm
+    board), phase error at most 5.5e-3 rad; within 1.23 % on a 4-cell
+    substrate (0.8 mm εr 2.2, dx 0.2 mm), phase error at most 1.9e-2 rad
+    over 2-18 GHz (1.33e-2 up to 15 GHz) (rfx-archive MSL-PLANE.md,
+    decision records 10-15). The phase-only shift is exact for a line whose
+    Zc equals the reference R (the closed-form Z0). Under ``eps_override``
+    the shift uses the declared εr: no gradient flows through β. The two bracketing H planes are linearly
     interpolated to the E-node using their physical coordinates, then
     the leapfrog temporal offset is corrected. Comparing different
     observation offsets still requires accounting for reference planes
@@ -243,6 +261,8 @@ def compute_msl_s_matrix(
     -------
     MSLSMatrixResult
     """
+    resolve_field_dtype(self._precision)
+    _diagnostics = ()
     from rfx.probes.msl_wave_decomp import extract_msl_nprobe
     from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff
     from rfx.sources.msl_port import (
@@ -258,25 +278,25 @@ def compute_msl_s_matrix(
     )
 
     if not self._msl_ports:
-        raise ValueError("No MSL ports registered. Call add_msl_port() first.")
+        raise diagnostic_refusal(ValueError("No MSL ports registered. Call add_msl_port() first."), _diagnostics)
     if self._ports or self._waveguide_ports or self._floquet_ports:
-        raise NotImplementedError(
+        raise diagnostic_refusal(NotImplementedError(
             "compute_msl_s_matrix() is defined only for add_msl_port(...) "
             "families in the current simulation. Use separate "
             "simulations for add_port(...), add_waveguide_port(...), "
             "or add_floquet_port(...) S-parameter workflows."
-        )
+        ), _diagnostics)
     if self._tfsf is not None:
-        raise NotImplementedError(
+        raise diagnostic_refusal(NotImplementedError(
             "compute_msl_s_matrix() is not supported together with TFSF; "
             "TFSF is a plane-wave source, not an MSL port."
-        )
+        ), _diagnostics)
     if self._coaxial_ports:
-        raise NotImplementedError(
+        raise diagnostic_refusal(NotImplementedError(
             "compute_msl_s_matrix() does not include add_coaxial_port(...); "
             "coaxial-port S-parameters need a separate validated V/I "
             "extraction and calibration contract."
-        )
+        ), _diagnostics)
     is_nonuniform = (
         self._dz_profile is not None
         or self._dx_profile is not None
@@ -286,23 +306,23 @@ def compute_msl_s_matrix(
         getattr(pe, "mode", "laplace") == "eigenmode"
         for pe in self._msl_ports
     ):
-        raise NotImplementedError(
+        raise diagnostic_refusal(NotImplementedError(
             "compute_msl_s_matrix() on a non-uniform mesh supports "
             "mode='laplace'/'uniform' (Ez static-Laplace feed) only; the "
             "eigenmode J+M launch needs the magnetic-source channel that "
             "the non-uniform runner does not carry. Use mode='laplace' "
             "(the add_msl_port default) on the graded-mesh lane."
-        )
+        ), _diagnostics)
     if self._refinement is not None:
-        raise NotImplementedError(
+        raise diagnostic_refusal(NotImplementedError(
             "compute_msl_s_matrix() is not supported with SBP-SAT "
             "subgridding."
-        )
+        ), _diagnostics)
     if self._solver == "adi":
-        raise NotImplementedError(
+        raise diagnostic_refusal(NotImplementedError(
             "compute_msl_s_matrix() is not supported with solver='adi'; "
             "use the uniform Yee solver."
-        )
+        ), _diagnostics)
 
     # Issue #704: an NTFF box would be silently dropped on this path.
     _warn_ntff_box_dropped(self, "compute_msl_s_matrix()")
@@ -314,6 +334,7 @@ def compute_msl_s_matrix(
     # mesh. Missing z profiles are synthesized locally by the grid builder;
     # writing a derived profile into the declaration would freeze auto-mesh
     # state and change the resolved domain during the driver.
+    _line_stub_scope = _line_stub_admit(self, freqs)
     grid = self._build_realized_grid()
 
     if freqs is None:
@@ -469,6 +490,7 @@ def compute_msl_s_matrix(
             periodic=self._periodic_flags())
     beta0_per_port: list[np.ndarray] = []
     z0_hj_per_port: list[float] = []
+    eps_r_ref_per_port: list[float] = []
     for p_idx, pe in enumerate(entries):
         meta = port_idx_meta[p_idx]
         if pe.eps_r_sub is not None:
@@ -479,6 +501,7 @@ def compute_msl_s_matrix(
                 pe.direction, meta["i_feed"], meta["j_centre"], k_mid
             )
             eps_r_ref = float(np.asarray(_msl_materials.eps_r[eps_cell]))
+        eps_r_ref_per_port.append(eps_r_ref)
         z0_hj, eps_eff_hj = hammerstad_jensen_z0_eps_eff(
             pe.width, pe.height, eps_r_ref
         )
@@ -706,6 +729,8 @@ def compute_msl_s_matrix(
                 planes = result.dft_planes or {}
                 _ts_result = result
 
+            _diagnostics = merge_diagnostics(_diagnostics, report_diagnostics(_ts_result))
+
             # Score recorded S channels and witness probes.
             _ts = getattr(_ts_result, "time_series", None)
             if _ts is not None and not is_tracer(_ts):
@@ -802,24 +827,6 @@ def compute_msl_s_matrix(
                     )
                     and hz_plane.shape == hy_plane.shape
                 )
-                # Leapfrog E/H half-step time correction. add_dft_plane_probe
-                # timestamps EVERY component at t = step·dt
-                # (rfx/probes/probes.py:457), but H lives half a step behind E
-                # (H at t − dt/2), so the recorded Hy/Hz DFT is missing the
-                # exp(+jω·dt/2) factor the flux monitor already applies
-                # (rfx/simulation.py:1380-1382: phase_h = phase_e·exp(+jω·dt/2)).
-                # Ez (→ V) is correctly at t and needs no correction. Without
-                # this, I = ∮H·dl carries a spurious exp(−jω·dt/2) so the V·I
-                # de-embedding sees Zin = V/I rotated by exp(+jω·dt/2) — a
-                # frequency-dependent phase that can push Re(Zin) < 0 → a
-                # non-physical |S11| > 1 near the passive boundary (the same
-                # half-step class as the 2026-04-28 s11_from_dumps artefact).
-                _hs_phase = jnp.exp(
-                    1j * 2.0 * jnp.pi * jnp.asarray(freqs_arr)
-                    * (float(grid.dt) * 0.5)
-                ).astype(hy_plane.dtype)
-                hy_plane = hy_plane * _hs_phase[:, None, None]
-                hz_plane = hz_plane * _hs_phase[:, None, None]
                 # Closed Ampere-loop current ∮H·dl around the trace
                 # conductor (issue #80 stage S1). The pre-S1 inline
                 # integral summed the bottom Hy leg only and undercounted
@@ -877,8 +884,6 @@ def compute_msl_s_matrix(
                     for side in (0, 1):
                         side_a = jnp.asarray(planes[h_probe_names[p_idx][0][side]].accumulator)
                         side_b = jnp.asarray(planes[h_probe_names[p_idx][1][side]].accumulator)
-                        side_a = side_a * _hs_phase[:, None, None]
-                        side_b = side_b * _hs_phase[:, None, None]
                         if not meta["a_is_width"]:
                             side_a = jnp.transpose(side_a, (0, 2, 1))
                             side_b = jnp.transpose(side_b, (0, 2, 1))
@@ -1053,6 +1058,34 @@ def compute_msl_s_matrix(
             )
             msl_cond_a = cond_a
 
+        # ---- Reference plane: probe 0 -> declared feed plane ----------
+        # S above is referred to each port's probe-0 plane. One resolver
+        # (rfx.measurement.msl_planes, shared with the mixed calculator)
+        # gives the realized feed-to-probe-0 distance L_p and the closed-
+        # form shift beta per bin (Hammerstad-Jensen eps_eff(0) with
+        # Kirschning-Jansen dispersion, from width, height and the eps_r
+        # resolved above; never the fitted beta), and
+        # S_feed[i, j] = D_i S[i, j] D_j with D = exp(-j beta L). beta is
+        # real, so |S|, singular values and cond(A) are unchanged. Applied
+        # before the dump and before the opt-in passivity projection, so
+        # S_raw carries it too.
+        from rfx.measurement.msl_planes import (
+            resolve_msl_planes as _resolve_msl_planes,
+            apply_feed_plane_shift as _apply_feed_plane_shift,
+        )
+        msl_planes = _resolve_msl_planes(
+            grid, msl_ports,
+            [int(pe.n_probe_offset) for pe in entries],
+            [xs[0] for xs in probe_xs],
+            [float(pe.width) for pe in entries],
+            [float(pe.height) for pe in entries],
+            eps_r_ref_per_port,
+            freqs_arr,
+        )
+        S = _apply_feed_plane_shift(
+            S, msl_planes.offsets_m, msl_planes.shift_beta,
+        ).astype(_complex_dtype)
+
         # Preserve the existing relative low-signal screen and S exactly.
         # Small passive-port wave pairs may be a true transmission zero;
         # this flag alone establishes neither matrix corruption nor an
@@ -1172,7 +1205,7 @@ def compute_msl_s_matrix(
                     "S11/S21 at this bin are UNRELIABLE."
                 )
                 if strict_extractor:
-                    raise ValueError(msg)
+                    raise diagnostic_refusal(ValueError(msg), _diagnostics)
                 _w.warn(msg, stacklevel=2)
             # Secondary — reported-Z0 sanity (retained N-probe fit).
             if z0_dev_max > _Z0_TOL:
@@ -1236,7 +1269,7 @@ def compute_msl_s_matrix(
             path.parent.mkdir(parents=True, exist_ok=True)
             metadata = {
                 "schema": "rfx.msl_nprobe_dump",
-                "schema_version": 4,
+                "schema_version": 5,
                 "s_wave_convention": "power",
                 "wave_definition": "a=(V+R*I)/(2*sqrt(R)); b=(V-R*I)/(2*sqrt(R))",
                 "solver_wave_common_scale": "sqrt(reference_impedances[0]); cancels from S and cond(A)",
@@ -1245,10 +1278,13 @@ def compute_msl_s_matrix(
                 "s_reference_impedances_ohm": z0_hj_per_port,
                 "production_smatrix_schema": "S[receiver_port, driven_port, frequency_index]",
                 "production_smatrix_stage": (
-                    "PRE-passivity-projection raw extraction; the same "
-                    "matrix MSLSMatrixResult.S carries by default, and "
+                    "PRE-passivity-projection raw extraction referred to "
+                    "the declared feed planes; the same matrix "
+                    "MSLSMatrixResult.S carries by default, and "
                     "MSLSMatrixResult.S_raw when enforce_passivity=True "
-                    "clipped something"
+                    "clipped something. raw_v/raw_i1 stay at the probe "
+                    "planes; undo the shift with "
+                    "feed_plane_shift before comparing to a probe-0 replay"
                 ),
                 # v3 (issue #523): production_smatrix is no longer always
                 # the N-probe-fit-derived S. Record WHICH assembly made
@@ -1275,15 +1311,33 @@ def compute_msl_s_matrix(
                     "least-squares wave-decomposition extractor (issue #80 "
                     "Fix C), which fits V_n = alpha*exp(-j beta x_n) + "
                     "gamma*exp(+j beta x_n) by SVD lstsq. The production "
-                    "S-matrix does NOT come from that fit: it is solved "
-                    "from the probe-0 wave amplitudes over all drives, "
-                    "S = B @ inv(A) (issue #507), at the first probe "
-                    "planes without translation to the feed planes, "
+                    "S-matrix is solved from the probe-0 wave amplitudes "
+                    "over all drives, S = B @ inv(A) (issue #507), then "
+                    "referred to the declared feed planes: "
+                    "S_feed[i, j] = D_i S[i, j] D_j with "
+                    "D_p = exp(-j beta_p L_p), L_p the realized "
+                    "feed-to-probe-0 distance and beta_p the closed-form "
+                    "Hammerstad-Jensen + Kirschning-Jansen beta (see "
+                    "feed_plane_shift; the fitted beta does not enter S), "
                     "with the modal voltage "
                     "spanning ground to the rasterized trace node (#511) "
                     "-- see production_smatrix_assembly for which rule "
                     "actually produced this dump's S"
                 ),
+                "feed_plane_shift": {
+                    "formula": (
+                        "S_feed[i, j, f] = D_i(f) S_probe0[i, j, f] D_j(f), "
+                        "D_p(f) = exp(-1j * shift_beta[p, f] * "
+                        "reference_plane_offsets_m[p])"),
+                    "reference_plane_offsets_m": [
+                        float(x) for x in msl_planes.offsets_m],
+                    "shift_beta_rad_per_m": np.asarray(
+                        msl_planes.shift_beta, dtype=np.float64).tolist(),
+                    "shift_beta_source": (
+                        "closed form: (2 pi f / c) sqrt(eps_eff(f)), "
+                        "Hammerstad-Jensen eps_eff(0) with Kirschning-"
+                        "Jansen dispersion"),
+                },
                 "grid": {
                     "dx_m": float(grid.dx),
                     "dt_s": float(grid.dt),
@@ -1357,13 +1411,15 @@ def compute_msl_s_matrix(
                 S = s_projected
 
         result = MSLSMatrixResult(
+            diagnostics=_diagnostics,
             S=S,
             freqs=np.asarray(freqs_arr),
             Z0=Z0_per_run,
             beta=beta_first,
             port_names=tuple(pe.name for pe in entries),
             reliable=reliable,
-            settling_db=settling_db_runs, settling_witness=tuple(settling_details),
+            settling_db=settling_db_runs,
+            settling_witness=tuple(settling_details),
             S_raw=s_raw,
             passivity_correction=passivity_correction,
             sigma_max_excess=sigma_max_excess,
@@ -1372,6 +1428,8 @@ def compute_msl_s_matrix(
             beta_railed=beta_railed,
             probe_clearance=probe_clearance,
             reference_impedances=np.asarray(z0_hj_per_port, dtype=np.float64),
+            reference_plane_offsets_m=np.asarray(msl_planes.offsets_m),
+            shift_beta=np.asarray(msl_planes.shift_beta),
         )
         _warn_if_ringdown_truncated(
             settling_db_runs,

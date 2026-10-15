@@ -17,7 +17,7 @@ from __future__ import annotations
 import numpy as np
 
 from rfx import GaussianPulse, Simulation
-from rfx.harminv import harminv
+from rfx.harminv import matrix_pencil
 
 C0 = 299792458.0
 L, DX, STEPS = 24e-3, 1e-3, 2400
@@ -32,7 +32,7 @@ def _sim():
 
 
 def _strongest_mode(ts, dt):
-    modes = [m for m in harminv(ts[STEPS // 4:], dt, 2e9, 14e9) if m.Q > 30]
+    modes = [m for m in matrix_pencil(ts[STEPS // 4:], dt, 2e9, 14e9) if m.Q > 30]
     return max(modes, key=lambda m: m.amplitude).freq
 
 

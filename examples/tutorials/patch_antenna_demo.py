@@ -2,9 +2,18 @@
 
 Geometry: the openEMS "Simple Patch Antenna" tutorial — a 32 x 40 mm patch on a
 1.524 mm, eps_r = 3.38, tan_delta = 1e-3 substrate over a 60 x 60 mm finite
-ground plane, probe-fed 6 mm off centre.  The identical geometry in openEMS,
-with that tutorial's thirds-rule edge meshing, gives the reference numbers used
-below: f_res = 2.4221 GHz, broadside directivity 6.79 dBi.
+ground plane, probe-fed 6 mm off centre.  The reference numbers used below
+come from openEMS solving the identical geometry in this script's box (same
+air distances, PML outside it), with that tutorial's thirds-rule edge meshing,
+on three meshes (air cell 5.0 / 3.5 / 2.5 mm, substrate 4 / 6 / 8 cells):
+f_res = 2.4436 GHz on the finest mesh (2.4249 / 2.4400 / 2.4436 GHz, the steps
+shrinking), from ``harminv`` on an Ez probe driven by a soft Ez source at this
+script's feed and probe points; maximum directivity 6.83 dBi (openEMS's
+near-to-far-field transform on the finest mesh, in the run fed by the 50 ohm
+lumped port, at its |S11| dip, 2.455 GHz).  The same
+openEMS build first reproduced its own tutorial's documented |S11| dip
+(2.4330 GHz against 2.430 GHz).  Run: VESSL 369367270650; record: rfx-archive
+rfx/records/20261011-examples-recheck/openems/o2/.
 
 What this tutorial teaches, in order:
 
@@ -42,20 +51,36 @@ What this tutorial teaches, in order:
 
 Error budget at this deliberately coarse resolution (dx = 2 mm):
 
-- The resonance reads HIGH against openEMS-with-thirds: +1.0 % at dx = 2 mm,
-  2.4460 GHz here against 2.4221 GHz (VESSL 369367265975).  Both numbers are
+- The resonance agrees with openEMS within 1 %: +0.13 to +0.33 % over three
+  rfx meshes (dx = 2 / 1 / 0.5 mm: 2.4479 / 2.4516 / 2.4491 GHz) against the
+  converged openEMS ladder (finest 2.4436 GHz, extrapolated about 2.4448 GHz);
+  this script at dx = 2 mm prints +0.18 %.  The narrow-band condition (a
+  frequency within 10 % of the resonance's 2.35 % bandwidth (1/Q, Q 42.6),
+  0.235 %) is NOT
+  judged: the scatter of rfx's own three meshes (0.15 %, not monotone) is as
+  large as that margin, so do not read it as passed.  The +1.1 % this
+  docstring printed before came from a single openEMS run on one mesh,
+  2.4221 GHz, which is 0.88 % below the converged openEMS value.  That run
+  also read a different quantity in a different box (harminv on the 50 ohm
+  port voltage, port-loaded Q 20, in openEMS's own tutorial domain; VESSL
+  369367246713, ``scripts/diagnostics/patch_tutorial_openems.py``), so the
+  0.88 % is not a mesh error alone.  The
+  percentages in the history below are against that former reference.
+  This script read 2.4460 GHz (VESSL 369367265975) until #1546 gave an E edge
+  between unequal graded cells the cell-area weighted permittivity; the
+  substrate faces lie on this graded z mesh.  Both numbers are
   the 32 mm feed-axis design mode.  The feed sits on the patch's y centre
   line, as in openEMS, and the 40 mm cross mode is absent from the printed
   mode list.  (Mode pairing repinned 2026-08-27, #693.)
   Until #1375 the x/y lattice was uniform with every edge mid-cell: the patch
   was solved 31.4 x 39.4 mm, the feed sat 1 mm off in x and y, and the board
-  read +3.5 % (2.5072 GHz, cross mode 2.0345 GHz — VESSL 369367259175).
+  read 2.5072 GHz (cross mode 2.0345 GHz — VESSL 369367259175), +3.5 %.
   Before the ownership contract that board read +11.3 % (2.6953 GHz,
   cross mode 2.2157 GHz — VESSL 369367259020, which reproduces the numbers
   this docstring used to carry).  The committed lock
   ``tests/crossval/test_patch_canonical_farfield_e4.py`` solves its own copy
-  of the pre-#1375 board (#1382), so it does not gate this number: +1.0 % is
-  a measurement, not a pass.  On the pre-#1375 board the ownership contract
+  of the pre-#1375 board (#1382), so it does not gate this number: the
+  agreement above is a measurement, not a pass.  On the pre-#1375 board the ownership contract
   moved the resonance the way issue #740's A/B predicted: that study's arm with
   a wall on BOTH faces of the ground's cell — the closest thing then available
   to a cavity with no vacuum in it — measured -4.7 % at dx = 2.  The board
@@ -67,8 +92,10 @@ Error budget at this deliberately coarse resolution (dx = 2 mm):
   reads high, the staircased PEC patch edge reads low, and they are not
   separated here.  The substrate-permittivity half is addressable with the
   opt-in interface treatment ``sim.run(..., subpixel_smoothing=True)``
-  (cavity-oracle evidence in ``tests/oracle/test_patch_cavity_eps_oracle.py``).
-  Measure "finer dx recovers it" on this fixture before assuming it.
+  (closed-form cavity comparison in ``tests/oracle/test_patch_cavity_eps_oracle.py``).
+  Measured on this fixture (dx = 2 / 1 / 0.5 mm, substrate 4 / 8 / 16 cells):
+  2.4479 / 2.4516 / 2.4491 GHz, so finer cells do not move the resonance
+  steadily in either direction at this level.
 - Until the lattice ownership contract this model carried a third error that
   had nothing to do with either: the mesh reserved one fine cell for the
   ground foil, the old realization put a wall only on that cell's lower face,
@@ -76,20 +103,23 @@ Error budget at this deliberately coarse resolution (dx = 2 mm):
   1.905 mm thick against the declared 1.524 mm.  The foils are sheets now, so
   the realized cavity is the declared one and the run asserts it at build
   time.
-- The far field is the observable that agrees.  This configuration prints
-  D = 6.60 dBi at its radiating bin (2.4 GHz) against openEMS 6.79 dBi,
-  -0.19 dB (VESSL 369367265975), inside the 1.0 dB the lock's
-  ``D_ABS_TOL_DB`` carries — though the lock solves its own board, so this
+- The far field agrees as well.  This configuration prints
+  D = 6.59 dBi at its radiating bin (2.4 GHz) against openEMS 6.83 dBi,
+  -0.24 dB (VESSL 369367270265; 6.60 dBi before #1546; openEMS's value is
+  taken at its 50 ohm |S11| dip, 2.455 GHz, and rfx prints 6.74 dBi at its
+  2.5 GHz bin, so part of the difference is the frequency), inside the 1.0 dB
+  the lock's ``D_ABS_TOL_DB`` carries — though the lock solves its own board, so this
   too is a measurement rather than a pass.  The pre-#1375 board printed
-  6.72 dBi (-0.07 dB), the pre-contract board 7.39 dBi (+0.60 dB).  The demo trims the air above
-  the patch to 84 mm with ``num_periods = 125``; the research frame behind the
-  reference numbers used 95 mm and ``num_periods = 250``.
+  6.72 dBi, the pre-contract board 7.39 dBi (against the former openEMS
+  6.79 dBi: -0.07 dB and +0.60 dB).  The openEMS reference above uses this
+  script's air distances (84 mm above the patch); it runs to openEMS's energy
+  end criterion 1e-5 instead of ``num_periods``.
 - Read the per-bin radiated-power trace, not just the headline.  The mode is
   identified by the peak of that spectrum, and on the pre-contract board the
   peak sat on 2.8 GHz — the LAST monitored bin, with the spectrum still rising
   into it, so the selector was pinned at the edge of its own frequency list.
   On this board the spectrum peaks at the 2.4 GHz bin with 2.5 GHz at
-  -1.0 dB, 2.3 GHz at -8.8 dB and 2.8 GHz at -15.6 dB (369367265975): an
+  -0.5 dB, 2.3 GHz at -8.7 dB and 2.8 GHz at -15.3 dB (369367270265): an
   interior maximum, which is what the mode-identification rule assumes it is
   looking at.
 
@@ -108,8 +138,8 @@ measuring.  This board on an 8-CPU VESSL CPU pod: 968 s of FDTD in 989 s
 settling bar near 115 on the average slope, and the multi-mode tail beats
 rather than decaying smoothly.  The corrected board's cavity is thinner and
 its modes are higher-Q, so that ladder is not transferable; what is measured
-on it is the endpoint, -48.2 dB at 125 periods (369367265975), SETTLED with
-8.2 dB of margin (-45.4 dB on the pre-#1375 board, 369367259175; -50.9 dB on
+on it is the endpoint, -48.4 dB at 125 periods (369367270265), SETTLED with
+8.4 dB of margin (-45.4 dB on the pre-#1375 board, 369367259175; -50.9 dB on
 the pre-contract one).  The witness below re-measures the end-of-run envelope
 every run — trust it over this paragraph.
 """
@@ -154,9 +184,10 @@ FEED_OFFSET_X = -6.0e-3    # probe feed 6 mm off centre
 F_DESIGN = 2.2e9
 SIGMA_SUB = 2 * math.pi * 2.45e9 * EPS0 * SUB_EPS_R * TAN_DELTA
 
-# openEMS-with-thirds reference values for the identical geometry.
-OPENEMS_F_RES = 2.4221e9
-OPENEMS_D_DBI = 6.79
+# openEMS reference for the identical geometry in this box, finest of three
+# converged meshes (VESSL 369367270650; see the module docstring).
+OPENEMS_F_RES = 2.4436e9
+OPENEMS_D_DBI = 6.83
 
 # ---- Mesh and domain (coarse on purpose: dx = 2 mm, 22 min measured) ----
 DX = 2.0e-3
@@ -166,12 +197,12 @@ DZ_SUB = SUB_THICK / N_SUB
 MARGIN_XY = 85.0e-3        # air beyond the ground-plane edge, x and y
 AIR_BELOW = 30.0e-3
 # 84 mm keeps the top NTFF face half a wavelength above the patch at F_DESIGN
-# at the measured 22-minute runtime.  The research frame behind the quoted
-# openEMS reference numbers used 95 mm of air and num_periods = 250.
+# at the measured 22-minute runtime.  The openEMS reference uses the same
+# air distances.
 AIR_ABOVE = 84.0e-3
 
-# 125 periods settles this fixture past the -40 dB bar: measured -48.2 dB,
-# SETTLED (VESSL 369367265975).  On the pre-contract board, endpoints
+# 125 periods settles this fixture past the -40 dB bar: measured -48.4 dB,
+# SETTLED (VESSL 369367270265; -48.2 dB before #1546, 369367265975).  On the pre-contract board, endpoints
 # -36.5 dB at 90 periods and -52.6 dB at 204 put the bar near 115 on the
 # average slope, but the multi-mode tail beats
 # rather than decaying smoothly, so trust the printed witness over slope
@@ -480,8 +511,8 @@ def main():
         "mode-identification criterion)"
     )
     print(
-        f"openEMS-with-thirds reference for this geometry: f_res = "
-        f"{OPENEMS_F_RES / 1e9:.4f} GHz, broadside D = {OPENEMS_D_DBI:.2f} dBi"
+        f"openEMS reference for this geometry (finest of three meshes): f_res = "
+        f"{OPENEMS_F_RES / 1e9:.4f} GHz, maximum D = {OPENEMS_D_DBI:.2f} dBi"
     )
 
     sim = build_simulation()
@@ -588,7 +619,7 @@ def main():
     print("\nAccuracy recap (error budget in the module docstring):")
     print(
         f"  f_res {radiating.freq / 1e9:.4f} GHz vs openEMS "
-        f"{OPENEMS_F_RES / 1e9:.4f} GHz: {dev_pct:+.1f}% — the design mode "
+        f"{OPENEMS_F_RES / 1e9:.4f} GHz: {dev_pct:+.2f}% — the design mode "
         "is measured on the registered board. The former far-field lock "
         "used a different board and does not gate this result. "
         "The patch is solved at its drawn size; refine the mesh to measure "

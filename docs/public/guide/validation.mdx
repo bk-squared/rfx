@@ -2,7 +2,7 @@
 title: "Cross-Validation and Accuracy"
 description: "How to know an rfx result is right: what rfx checks for you, what you must check yourself, and where the evidence lives."
 sidebar:
-  order: 7
+  order: 10
 ---
 
 A finished run, a clean preflight and a smooth plot do not show that a number
@@ -31,7 +31,7 @@ Two limits apply to all of this evidence:
 - **A passing case covers its own setup.** The geometry, mesh, band, port
   family and observable of that case. It does not cover your structure.
 - **Some features have little or no evidence.** The support tables in
-  [Support Boundaries](/rfx/api/support-boundaries/) say which are
+  [Support Boundaries](/rfx/support/) say which are
   *recommended*, which are *limited* to stated conditions, and which are
   outside the documented scope. The maintainer
   [support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md)
@@ -46,13 +46,16 @@ through this list.
    condition that can make the result wrong without an error: a mesh too
    coarse for the material, a probe inside the absorber, geometry that lands
    off the grid, a lossless resonator.
-2. **Run length.** Check `result.settling_db`. At −40 dB or below, the field
-   had rung down when the run stopped. Above that, spectra, S-parameters and
-   far fields still contain a cut-off transient. For gradients, the record
+2. **Run length.** Check `result.settling_witness["status"]`. It is `pass`
+   when, at every frequency the run's spectral results read, the part of the
+   value still ringing past the record's end is at or below −40 dB
+   (`settling_db` is the worst of these). `fail`, `undetermined` and `absent`
+   are not passes; above the bar, spectra, S-parameters and far fields still
+   carry a cut-off transient. For gradients, the record
    must be longer still: `rfx.gradient_record_length_witness` checks that a
    gradient does not change when the record is doubled.
 3. **Mesh convergence.** Refine the mesh and report how far your number moves,
-   not only the finest answer. [Convergence Study](/rfx/guide/tutorial-convergence/)
+   not only the finest answer. [Convergence Study](/rfx/evidence/mesh-convergence/)
    walks through one.
 4. **Physical sanity.** A passive structure has `|S| ≤ 1`. A reciprocal one
    has `S21 = S12`. A lossless one conserves power, `|S11|² + |S21|² = 1` or
@@ -62,7 +65,7 @@ through this list.
    otherwise with another solver or a measurement of your structure.
 6. **Stay inside the support boundaries.** Use the calculator that matches
    your port family, within its stated limits. See
-   [Support Boundaries](/rfx/api/support-boundaries/).
+   [Support Boundaries](/rfx/support/).
 
 ## Example: a cavity against its closed form
 
@@ -119,18 +122,17 @@ starting points for a convergence study. They are not a substitute for one.
 | Microstrip line, `compute_msl_s_matrix` | at least 4 cells through the substrate (preflight warns below that) | the substrate thickness sets the cell size, not the wavelength |
 | Coaxial line | at least 4 cells across the annulus | refining shortens the probe span the phase fit uses, so give the probe array enough physical length |
 
-The microstrip evidence behind that row: on an open-stub notch filter
-(600 µm trace, 254 µm substrate with εr 3.66, 12 mm stub) the notch frequency
-converges to within 0.036 % of the openEMS tutorial result on a uniform mesh
-with 6 cells through the substrate, and to within 0.03 % on a band-graded mesh
-with 6 substrate cells. Coarser meshes are further off.
+The microstrip row's cross-check, an open-stub notch filter against the
+openEMS tutorial (`tests/crossval/msl_notch_filter/`), is pending for 2.0
+(tracker 1471): it is being re-measured under the current settling check, and
+no agreement figure is quoted until that run is in the repository.
 
 ## Where the evidence lives
 
 | Question | Page |
 |---|---|
 | Which cases compare rfx with another solver, and what do they show? | [Benchmarks](/rfx/guide/benchmarks/) |
-| Is this feature or combination supported? | [Support Boundaries](/rfx/api/support-boundaries/) |
+| Is this feature or combination supported? | [Support Boundaries](/rfx/support/) |
 | Where do I start, and which calculators have narrower limits? | [Recommended Configuration](/rfx/validation/recommended-configuration/) |
 | How do I run a comparison script, and what do its exit codes mean? | [Cross-Solver Validation](/rfx/validation/cross-solver/) |
 | What is currently known to be wrong? | [known limitations](https://github.com/bk-squared/rfx/blob/main/docs/guides/known_limitations.md) on GitHub |

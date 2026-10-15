@@ -55,7 +55,7 @@ def _pec_sim():
 def _cpml_sim():
     sim = Simulation(freq_max=3e9, domain=(0.13, 0.04, 0.04), boundary="cpml")
     sim.add_source(position=(0.065, 0.02, 0.02), component="ez",
-                   waveform=GaussianPulse(f0=1.5e9, bandwidth=1.5e9))
+                   waveform=GaussianPulse(f0=1.5e9, bandwidth=0.8))
     sim.add_probe(position=(0.065, 0.02, 0.02), component="ez")
     return sim, 200
 
@@ -63,7 +63,7 @@ def _cpml_sim():
 def _lumped_sim():
     sim = Simulation(freq_max=5e9, domain=(0.08, 0.024, 0.024), boundary="pec")
     sim.add_port(position=(0.04, 0.012, 0.012), component="ez", impedance=50,
-                 waveform=GaussianPulse(f0=2.5e9, bandwidth=2.5e9))
+                 waveform=GaussianPulse(f0=2.5e9, bandwidth=0.8))
     sim.add_probe(position=(0.04, 0.012, 0.012), component="ez")
     return sim, 100
 

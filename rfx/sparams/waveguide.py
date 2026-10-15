@@ -27,6 +27,12 @@ composition point and the import graph stays acyclic.
 
 from __future__ import annotations
 
+from rfx._precision import resolve_field_dtype
+from rfx.model.thin_conductors import conductivity_envelope
+
+from rfx.sparams._waveguide_planes import resolve_reported_planes
+import copy
+
 import jax.numpy as jnp
 import numpy as np
 
@@ -46,7 +52,6 @@ from rfx.api._spec import (
 )
 
 from rfx.sparams._common import (
-    _assert_nu_shift_span_in_one_grading_zone,
     _finalize_sparam_result,
     _warn_if_ringdown_truncated,
     _warn_junction_probe_clearance,
@@ -241,6 +246,7 @@ def compute_waveguide_s_matrix(
         valid. Consult ``docs/guides/sparameter_support_matrix.md`` for
         the current waveguide evidence and scope.
     """
+    resolve_field_dtype(self._precision)
     if not normalize:
         import warnings
         warnings.warn(
@@ -512,11 +518,32 @@ def compute_waveguide_s_matrix(
     _wg_sheet_specs: list = []
     _wg_pec_sheets: list = []
     _wg_pec_wires: list = []
-    base_materials, debye_spec, lorentz_spec, pec_mask_wg, pec_shapes, boundary_pec_shapes, _ = self._assemble_materials(
-        grid, sheet_specs=_wg_sheet_specs, pec_sheets=_wg_pec_sheets,
+    from rfx.model.conductors import realized_conductors, assembled_materials
+    conductors = realized_conductors(self, grid)
+    base_materials, debye_spec, lorentz_spec, pec_mask_wg, pec_shapes, boundary_pec_shapes, _ = assembled_materials(
+        conductors, sheet_specs=_wg_sheet_specs, pec_sheets=_wg_pec_sheets,
         pec_wires=_wg_pec_wires)
     _wg_pec_sheets = tuple(_wg_pec_sheets)
     _wg_pec_wires = tuple(_wg_pec_wires)
+    # The smoothed tensor (Stage 1 and "kottke_pec") is built from the DECLARED
+    # shapes and replaces the cell permittivity in the E update, so an
+    # eps_override would never reach the solve: S came back identical with a
+    # slab's permittivity doubled, and d/d(eps_override) was zero (#1524).
+    # sigma_override is read by the tensor kernels and is not affected.
+    if eps_override is not None and subpixel_smoothing:
+        self._refuse_unsupported_run_kwargs(
+            "waveguide S-matrix with eps_override",
+            {"subpixel_smoothing": subpixel_smoothing},
+            instead="declare the permittivity as a material instead of "
+                    "eps_override",
+            entry="compute_waveguide_s_matrix()",
+            reason_overrides={
+                "subpixel_smoothing":
+                    "the smoothed permittivity tensor is built from the "
+                    "declared shapes and replaces the cell permittivity in "
+                    "the E update, so eps_override would not reach the "
+                    "solve",
+            })
     # A Debye/Lorentz E update reads neither the smoothed permittivity tensor
     # nor the Dey-Mittra eps correction built below, so both would be
     # dropped; refused as on run()'s uniform lane (rfx/runners/uniform.py).
@@ -547,12 +574,7 @@ def compute_waveguide_s_matrix(
     # sheets and wires — built ONCE and handed to every device run of
     # the extractors below.  This replaces the sigma=1e10 CELL fold
     # this lane used to do (see the note at the old fold site).
-    from rfx.boundaries.pec import realized_pec_edge_masks as _rpem
-    _wg_pec_edge_masks = None
-    if pec_mask_wg is not None or _wg_pec_sheets or _wg_pec_wires:
-        _wg_pec_edge_masks = _rpem(
-            pec_mask_wg, sheets=_wg_pec_sheets, wires=_wg_pec_wires,
-            periodic=self._periodic_flags())
+    _wg_pec_edge_masks = conductors.pec_edges
     # The junction geometry census also needs these edges when Kottke
     # below encodes PEC in inverse permittivity and clears solver masks.
     _wg_geometry_pec_edges = _wg_pec_edge_masks
@@ -560,14 +582,12 @@ def compute_waveguide_s_matrix(
     # edge exclusion uses the same realized edges so sheet and PEC
     # never contend for one edge.  The vacuum REFERENCE runs never
     # receive the ctx (explicit strip at the extractor call sites).
-    from rfx.materials.thin_conductor import build_sheet_impedance_ctx as _build_sheet_ctx
-    _wg_sheet_ctx = _build_sheet_ctx(
-        _wg_sheet_specs, pec_edge_masks=_wg_pec_edge_masks)
+    _wg_sheet_ctx = conductors.sheet_context(_wg_pec_edge_masks)
     if _wg_sheet_ctx is not None and subpixel_smoothing:
         raise ValueError(
             "surface-impedance (surface_impedance_f0) sheets are not "
             "supported with subpixel_smoothing / conformal on the "
-            "waveguide S-matrix lane (#677 v1): the sheet operator "
+            "waveguide S-matrix method (#677 v1): the sheet operator "
             "assumes the plain isotropic E update at its edges.")
     # #931 §1.7: the interior PEC of this lane is the realized edge
     # set, applied per step by the shared ``apply_pec_edges``.  The
@@ -586,10 +606,10 @@ def compute_waveguide_s_matrix(
     # G-AD-WIRE-WG2: public eps_override / sigma_override channel.
     # Mirror the MSL pattern: replace eps_r / sigma on the assembled
     # materials *after* the PEC fold so PEC boundaries are untouched.
-    if eps_override is not None:
-        materials = materials._replace(eps_r=eps_override)
-    if sigma_override is not None:
-        materials = materials._replace(sigma=sigma_override)
+    from rfx.model.overrides import apply_material_overrides
+    materials = apply_material_overrides(
+        materials, eps_override=eps_override, sigma_override=sigma_override,
+        keep_lumped=True)
 
     # Per-port straight-guide reference materials for interior-PEC
     # junctions. Each reference sim is a geometry carrier: assemble its
@@ -621,15 +641,17 @@ def compute_waveguide_s_matrix(
             _ref_edges_i = None
             if (_ref_pec_mask is not None or _ref_pec_sheets
                     or _ref_pec_wires):
-                _ref_edges_i = _rpem(
+                from rfx.boundaries.pec import realized_pec_edge_masks
+                _ref_edges_i = realized_pec_edge_masks(
                     _ref_pec_mask, sheets=tuple(_ref_pec_sheets),
                     wires=tuple(_ref_pec_wires))
             ref_pec_edge_masks_per_port.append(_ref_edges_i)
 
     if n_steps is None:
         n_steps = grid.num_timesteps(num_periods=num_periods)
+    from rfx.model.pole_stability import courant_budget
     _, debye, lorentz = self._init_dispersion(
-        materials, grid.dt, debye_spec, lorentz_spec,
+        materials, grid.dt, debye_spec, lorentz_spec, budget=courant_budget(grid),
         periodic=self._periodic_flags())
 
     # Build configs — may be a single config or a list of configs per port
@@ -683,175 +705,27 @@ def compute_waveguide_s_matrix(
         grid=grid, cfgs=raw_cfgs, n_steps=int(n_steps),
     )
 
-    # Compute Kottke per-component smoothed permittivity if requested.
-    # Shared by both single-mode and multi-mode paths. The reference run is
-    # vacuum and has no eps interfaces, so it always passes aniso_eps=None
-    # inside the extractor.
-    #
-    # #1066: both sites below build their pairs through
-    # ``rfx.geometry.smoothing.smoothed_shape_pairs``, the same one
-    # implementation the three runner sites use since #1043 stage B. It
-    # continues a dielectric that reaches a CPML/UPML face out through that
-    # pad; without it such a structure is solved with eps_r = 1 in its own
-    # absorber and ends in a facet (#831). This lane used to rebuild the raw
-    # list here, under a comment saying it mirrored the runner while it no
-    # longer did.
-    #
-    # Folding it moved no committed verdict, which is why it could be folded
-    # at all: ``subpixel_smoothing`` defaults to False (see this function's
-    # signature), both blocks below sit behind that flag, and an AST census of
-    # the whole tree finds four in-tree callers passing a truthy value --
-    # three fences that raise before the solve, and one real solve whose only
-    # interior geometry is a PEC box reaching no pad (PEC is continued by
-    # neither lane). The census this PR adds brings that to seven, its own
-    # three being build-only.
-    # ``scripts/diagnostics/waveguide_lane_pad_continuation_census.py``
-    # re-runs both that census and the pad comparison.
-    #
-    # WHAT THE CENSUS DOES NOT ESTABLISH (review of PR #1131, F3). It matches
-    # on the callee name, so of 177 calls into this lane's entry points it can
-    # classify 7 explicit and leaves 17 UNKNOWN -- they forward ``**kwargs``
-    # and could be passing the flag. ``compute_s_matrix``
-    # (``rfx/sparams/dispatch.py:452``) reaches this function that way. That
-    # the other 153 pass neither IS a census result; that the 17 do not pass
-    # it is not, and "everything else takes the default" was a grep result
-    # reported as a census result. The script now prints the three buckets
-    # separately.
-    # Stage 2 unified path: subpixel_smoothing="kottke_pec" routes
-    # through compute_inv_eps_tensor_diag and skips the Stage 1
-    # eps_correction + apply_conformal_pec chain entirely. Both
-    # device and reference (vacuum) runs see the same boundary-
-    # face PEC walls, so the inverse-permittivity tensor is
-    # computed twice (once per material context).
     if subpixel_smoothing:
         from rfx.geometry.smoothing import refuse_pmc_smoothing
         refuse_pmc_smoothing(self, grid)
-    use_kottke_pec = (subpixel_smoothing == "kottke_pec")
-    aniso_eps = None
-    aniso_inv_eps = None
-    ref_aniso_inv_eps = None
-    if use_kottke_pec:
-        from rfx.geometry.smoothing import (
-            compute_inv_eps_tensor_diag, smoothed_shape_pairs,
-            warn_unextendable_shapes,
-        )
-        # ``warn_unextendable_shapes`` defaults to stacklevel 3, chosen for
-        # the runners. This lane sits one wrapper deeper, so an unextendable
-        # shape reported here can be attributed to a different frame than the
-        # same shape reported from ``rfx/runners/uniform.py``. The text and
-        # the condition are identical; only the file:line Python prints in
-        # front of it can differ. Left as is -- no fixture in the tree
-        # exercises it, and a per-caller stacklevel is a change to the
-        # helper's contract, not to this fold.
-        shape_eps_pairs, _unextendable = smoothed_shape_pairs(self, grid)
+    from rfx.model.tensor_operands import (
+        form_tensor_operands, finish_tensor_operands, form_reference_operands,
+    )
+    aniso_eps, aniso_inv_eps, conformal_weights, _unextendable = form_tensor_operands(
+        self, grid, materials, subpixel_smoothing=subpixel_smoothing,
+        conformal=self._boundary_spec.conformal_faces(), conformal_min_weight=0.1,
+        pec_shapes=pec_shapes, zero_inverse_on=pec_mask_wg)
+    if subpixel_smoothing:
+        from rfx.geometry.smoothing import warn_unextendable_shapes
         warn_unextendable_shapes(_unextendable)
-        aniso_inv_eps = compute_inv_eps_tensor_diag(
-            grid,
-            dielectric_shapes=shape_eps_pairs,
-            pec_shapes=pec_shapes or [],
-            background_eps=1.0,
-        )
-        # Reference run is empty guide with same boundary walls only.
-        # Must NOT include interior PEC geometry (e.g. PEC short box):
-        # if device and reference share the same obstacle, both DFTs
-        # are identical and (device - reference) / incident = 0.
-        ref_aniso_inv_eps = compute_inv_eps_tensor_diag(
-            grid,
-            dielectric_shapes=[],
-            pec_shapes=boundary_pec_shapes,
-            background_eps=1.0,
-        )
-        # Yee-stagger correction: the Kottke union reaches inv=0
-        # on Yee-staggered components only when the cell-center
-        # AND the offset position are both inside the PEC shape.
-        # For thin PEC obstacles (e.g. a 1-cell-wide PEC short),
-        # cell-center is inside but Ey/Ez Yee positions are at
-        # cell-corner offsets that fall *outside* the box → inv
-        # remains 1 (vacuum). That leaves the H field free to
-        # propagate inside the PEC region and seeds late-time
-        # exponential growth.
-        #
-        # Fix: where ``pec_mask`` (cell-center binary) is True,
-        # force all three inv components to zero. This is the
-        # cell-center analogue of Stage 1's sigma=1e10 fold,
-        # without the Ca→-1 instability that the sigma fold has
-        # at Yee-staggered cells where inv > 0.
-        if pec_mask_wg is not None:
-            inv_xx, inv_yy, inv_zz = aniso_inv_eps
-            inv_xx = jnp.where(pec_mask_wg, 0.0, inv_xx)
-            inv_yy = jnp.where(pec_mask_wg, 0.0, inv_yy)
-            inv_zz = jnp.where(pec_mask_wg, 0.0, inv_zz)
-            aniso_inv_eps = (inv_xx, inv_yy, inv_zz)
-            # pec_mask_wg marks interior PEC geometry (e.g. the PEC
-            # short). The reference run has no interior PEC — do NOT
-            # apply pec_mask_wg to ref_aniso_inv_eps, or the reference
-            # becomes identical to the device and S11 = 0.
-    elif subpixel_smoothing:
-        from rfx.geometry.smoothing import (
-            compute_smoothed_eps, smoothed_shape_pairs,
-            warn_unextendable_shapes,
-        )
-        shape_eps_pairs, _unextendable = smoothed_shape_pairs(self, grid)
-        warn_unextendable_shapes(_unextendable)
-        if shape_eps_pairs:
-            aniso_eps = compute_smoothed_eps(
-                grid, shape_eps_pairs, background_eps=1.0,
-            )
-
-    # Stage 1 conformal PEC: when BoundarySpec declares conformal
-    # faces and pec_shapes was populated (boundary half-space +
-    # any user PEC), compute Dey-Mittra weights and apply
-    # eps_correction. Mirrors runners/uniform.py:96-124.
-    # ``conformal_weights`` flows through extract_waveguide_*
-    # into rfx.simulation.run, which already calls
-    # ``apply_conformal_pec`` per step in its scan body.
-    # Suppressed when use_kottke_pec — Stage 2 owns the PEC
-    # tensor encoding and the eps_correction would double-correct.
-    conformal_weights = None
-    ref_aniso_eps = None
-    if (self._boundary_spec.conformal_faces() and pec_shapes
-            and not use_kottke_pec):
-        from rfx.geometry.conformal import (
-            compute_conformal_weights_sdf,
-            clamp_conformal_weights,
-            conformal_eps_correction,
-        )
-        w_ex, w_ey, w_ez = compute_conformal_weights_sdf(grid, pec_shapes)
-        w_ex, w_ey, w_ez = clamp_conformal_weights(w_ex, w_ey, w_ez, 0.1)
-        conformal_weights = (w_ex, w_ey, w_ez)
-        # Per-component conformal-corrected eps. Merge with the
-        # smoothed eps (if any): conformal overrides at boundary
-        # cells, smoothed survives in the interior.
-        # #1373: the plain E update's four-cell edge mean of the volume
-        # permittivity, then 1/w -- never the per-cell array.
-        from rfx.core.yee import (
-            edge_mean_components, permittivity_without_lumped,
-        )
+    if conformal_weights is not None:
+        from rfx.model.materials import with_components
         from rfx.simulation import resolve_periodic
-        eps_base = edge_mean_components(
-            permittivity_without_lumped(materials),
-            resolve_periodic(grid, None))
-        eps_ex_c, eps_ey_c, eps_ez_c = conformal_eps_correction(
-            eps_base, w_ex, w_ey, w_ez,
-        )
-        if aniso_eps is not None:
-            s_ex, s_ey, s_ez = aniso_eps
-            boundary_ex = w_ex < 1.0
-            boundary_ey = w_ey < 1.0
-            boundary_ez = w_ez < 1.0
-            eps_ex_c = jnp.where(boundary_ex, eps_ex_c, s_ex)
-            eps_ey_c = jnp.where(boundary_ey, eps_ey_c, s_ey)
-            eps_ez_c = jnp.where(boundary_ez, eps_ez_c, s_ez)
-        aniso_eps = (eps_ex_c, eps_ey_c, eps_ez_c)
-        # The reference run (vacuum) shares the same boundary
-        # walls, so the conformal eps correction applies equally.
-        # Build it from the ref vacuum eps so the only difference
-        # ref-vs-device is the obstacle in ``materials.eps_r``.
-        ref_eps_base = jnp.ones_like(materials.eps_r)
-        ref_ex, ref_ey, ref_ez = conformal_eps_correction(
-            ref_eps_base, w_ex, w_ey, w_ez,
-        )
-        ref_aniso_eps = (ref_ex, ref_ey, ref_ez)
+        materials = with_components(materials, grid, periodic=resolve_periodic(grid, None))
+    aniso_eps = finish_tensor_operands(materials, aniso_eps, conformal_weights)
+    ref_aniso_eps, ref_aniso_inv_eps = form_reference_operands(
+        grid, materials, subpixel_smoothing=subpixel_smoothing,
+        conformal_weights=conformal_weights, boundary_pec_shapes=boundary_pec_shapes)
 
     if has_multimode and _wg_sheet_ctx is not None:
         raise ValueError(
@@ -875,15 +749,11 @@ def compute_waveguide_s_matrix(
         for entry, mode_cfgs in zip(entries, port_mode_cfgs):
             first_cfg = mode_cfgs[0]
             planes = waveguide_plane_positions(first_cfg)
-            desired_ref = (
-                entry.reference_plane
-                if entry.reference_plane is not None
-                else planes["source"]
-            )
+            desired_ref = resolve_reported_planes(entry, first_cfg).reference
             ref_shifts_mm.append(desired_ref - planes["reference"])
             desired_refs_mm.append(desired_ref)
 
-        mm_pec_axes = "".join(axis for axis in "xyz" if axis not in grid.cpml_axes)
+        mm_pec_axes = None
         if normalize == "flux":
             from rfx.core.yee import init_materials as _init_vacuum_materials
             ref_materials = _init_vacuum_materials(grid.shape)
@@ -979,8 +849,8 @@ def compute_waveguide_s_matrix(
     # Pure-numpy heuristics emitted BEFORE the FDTD runs; no simulation.
     if port_reference_sims is not None:
         _warn_junction_probe_clearance(
-            grid, cfgs, materials.sigma,
-            [m.sigma for m in ref_materials_per_port], freqs,
+            grid, cfgs, conductivity_envelope(materials),
+            [conductivity_envelope(m) for m in ref_materials_per_port], freqs,
             device_pec_edges=_wg_geometry_pec_edges,
             ref_pec_edges=ref_pec_edge_masks_per_port,
         )
@@ -1017,23 +887,11 @@ def compute_waveguide_s_matrix(
 
     ref_shifts = []
     for entry, cfg in zip(entries, cfgs):
-        # Default reference plane = the user-facing port plane
-        # (snapped x_position). Previously defaulted to the internal
-        # ``reference_x_m`` (= source + ref_offset·dx) which left the
-        # returned S-matrix phase-shifted by `exp(-jβ·ref_offset·dx)`
-        # relative to the physical port — a silent convention mismatch
-        # vs. Meep, OpenEMS, and any analytic formula the user would
-        # compare against. Keep the ``entry.reference_plane`` override
-        # for explicit user control.
         planes = waveguide_plane_positions(cfg)
-        desired_ref = (
-            entry.reference_plane
-            if entry.reference_plane is not None
-            else planes["source"]
-        )
+        desired_ref = resolve_reported_planes(entry, cfg).reference
         ref_shifts.append(desired_ref - planes["reference"])
 
-    _pec_axes = "".join(axis for axis in "xyz" if axis not in grid.cpml_axes)
+    _pec_axes = None
     # The G-WI5 runtime guardrail that stood here -- "conformal=True is
     # KNOWN to produce NaN S-parameters at fine mesh" -- was DELETED
     # 2026-09-15 (#1043 / PR #1047). The NaN was the CPML psi coefficient
@@ -1133,13 +991,7 @@ def compute_waveguide_s_matrix(
         )
     reference_planes = np.array(
         [
-            entry.reference_plane
-            if entry.reference_plane is not None
-            # Report the de-embed TARGET (the physical port/source plane, line 1042), not the
-            # internal raw-extraction plane. Previously reported ["reference"] = source +
-            # ref_offset·dx, so the metadata claimed a plane ref_offset cells off from where the
-            # S-params are actually referenced (RF-audit 2026-07-23; matches the NU sibling).
-            else waveguide_plane_positions(cfg)["source"]
+            resolve_reported_planes(entry, cfg).reference
             for entry, cfg in zip(entries, cfgs)
         ],
         dtype=float,
@@ -1183,14 +1035,15 @@ def _empty_waveguide_reference(self):
     # Its empty geometry rasterizes vacuum exactly as init_materials does on
     # the uniform calculator. Only the mesh, boundary walls and modal ports
     # are shared; material poles, sheets and lumped elements cannot leak in.
+    from rfx.boundaries.serialization import constructor_boundary
     return type(self)(
         freq_max=self._freq_max, domain=self._domain,
-        boundary=self._boundary_spec, cpml_layers=self._cpml_layers,
+        boundary=constructor_boundary(self), cpml_layers=self._cpml_layers,
         cpml_kappa_max=self._cpml_kappa_max, dx=self._dx,
         dx_profile=self._dx_profile, dy_profile=self._dy_profile,
         dz_profile=self._dz_profile, dt=self._dt_pin,
         dt_min_cell=self._dt_min_cell, precision=self._precision,
-        snap=self._snap,
+        snap=self._snap, nominal_profiles=self._nominal_profiles,
     )
 
 
@@ -1313,6 +1166,7 @@ def _compute_waveguide_s_matrix_nu(
         dt=getattr(self, "_dt_pin", None),
         dt_min_cell=getattr(self, "_dt_min_cell", None),
         dt_caller="Simulation",
+        nominal_profiles=getattr(self, "_nominal_profiles", None),
     )
     if n_steps is None:
         # ``NonUniformGrid`` does not expose ``num_timesteps`` (known
@@ -1343,7 +1197,7 @@ def _compute_waveguide_s_matrix_nu(
     settling_runs: list[float] = []
     settling_details = []
     ref_shifts: tuple[float, ...] | None = None
-    reference_planes_out: np.ndarray | None = None
+    reference_planes: list[float] = []
     final_cfgs: list | None = None
 
     original_entries = list(entries)
@@ -1384,8 +1238,11 @@ def _compute_waveguide_s_matrix_nu(
                 _ck = _nearest_divisor(n_steps, max(1, n_steps // int(checkpoint_segments)))
                 if 0 < _ck < n_steps:
                     _ckpt_every = _ck
+            # The #704 warning promises no NTFF accumulation in this calculator.
+            device = copy.copy(self)
+            device._ntff = None
             dev_result = run_nonuniform_path(
-                self, n_steps=n_steps,
+                device, n_steps=n_steps,
                 eps_override=eps_override,
                 sigma_override=sigma_override,
                 attach_waveguide_flux=_flux_mode,
@@ -1425,27 +1282,13 @@ def _compute_waveguide_s_matrix_nu(
             # measured planes for every drive / run).
             if ref_shifts is None:
                 shifts = []
-                planes_out = []
                 for entry in original_entries:
                     cfg = dev_wg[entry.name]
                     planes = waveguide_plane_positions(cfg)
-                    desired = (
-                        entry.reference_plane
-                        if entry.reference_plane is not None
-                        else planes["source"]
-                    )
-                    # Grading-zone assertion: beta for this shift is the
-                    # boundary-cell value (cfg.dx), so the span the
-                    # shift covers must lie inside one uniform zone of
-                    # the profile -- otherwise fail loudly here rather
-                    # than apply one beta across cells of two sizes.
-                    _assert_nu_shift_span_in_one_grading_zone(
-                        grid, cfg, desired, entry.name,
-                    )
+                    desired = resolve_reported_planes(entry, cfg, grid=grid).reference
+                    reference_planes.append(desired)
                     shifts.append(desired - planes["reference"])
-                    planes_out.append(desired)
                 ref_shifts = tuple(shifts)
-                reference_planes_out = np.asarray(planes_out, dtype=float)
                 # The same final configs, kept for the post-solve S21
                 # phase residual below (its beta ingredients are the
                 # extractor's own f_cutoff / dt / dx, not re-derived).
@@ -1570,18 +1413,7 @@ def _compute_waveguide_s_matrix_nu(
     )
     _s_params_nu = jnp.stack(
         [jnp.stack(col) for col in s_columns], axis=1)
-    _reference_planes_nu = (
-        reference_planes_out
-        if reference_planes_out is not None
-        else np.array(
-            [
-                e.reference_plane if e.reference_plane is not None
-                else 0.0
-                for e in original_entries
-            ],
-            dtype=float,
-        )
-    )
+    _reference_planes_nu = np.asarray(reference_planes, dtype=float)
     # Post-solve discretization witness (post-v1.8 plan item 5), same
     # banner and same field as the uniform lane. Report-only.
     _ph_rms_nu, _ph_meta_nu = _waveguide_s21_phase_residual(

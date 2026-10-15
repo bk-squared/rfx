@@ -1,7 +1,7 @@
 ---
 title: "Waveguide Ports"
 sidebar:
-  order: 10
+  order: 3
 ---
 
 A waveguide port launches one TE or TM mode of a rectangular aperture and
@@ -9,10 +9,14 @@ splits the fields at its plane into incident and reflected mode amplitudes.
 This page shows how to get a rectangular-guide S-matrix, which normalization
 to pick, and how to handle junctions.
 
-The port aperture defines the guide. For a straight guide you do not draw
-side walls: the aperture edges act as the walls. Ports need
-`boundary="cpml"` and `mode="3d"`, and cannot share a model with lumped ports
-or a TFSF source.
+The port aperture defines the guide. A port that spans the whole domain
+cross-section (no `y_range=` / `z_range=`, or ranges equal to it) uses the transverse domain faces as
+the guide walls, so those faces must be PEC: declare the absorber on the port
+axis only, for an x-directed guide `boundary={"x": "cpml", "y": "pec", "z": "pec"}`.
+On a uniform mesh `boundary="cpml"` on all faces is refused before the first step. If you leave
+`boundary` out, a uniform mesh solves those faces as PEC and warns once; a graded
+mesh refuses until you declare them. Ports need `mode="3d"`, and cannot share a
+model with lumped ports or a TFSF source.
 
 ## A two-port S-matrix
 
@@ -28,7 +32,8 @@ from rfx import Simulation
 freqs = jnp.linspace(5e9, 6.5e9, 7)
 
 sim = Simulation(freq_max=10e9, domain=(0.10, 0.04, 0.02),
-                 boundary="cpml", cpml_layers=16, dx=0.002)
+                 boundary={"x": "cpml", "y": "pec", "z": "pec"},
+                 cpml_layers=16, dx=0.002)
 sim.add_waveguide_port(0.01, direction="+x", mode=(1, 0), mode_type="TE",
                        freqs=freqs, f0=6e9, name="left")
 sim.add_waveguide_port(0.09, direction="-x", mode=(1, 0), mode_type="TE",
@@ -79,7 +84,8 @@ driven-in-turn matrix.
 
 ```python
 single = Simulation(freq_max=10e9, domain=(0.12, 0.04, 0.02),
-                    boundary="cpml", cpml_layers=10, dx=0.002)
+                    boundary={"x": "cpml", "y": "pec", "z": "pec"},
+                    cpml_layers=10, dx=0.002)
 single.add_waveguide_port(0.01, mode=(1, 0), freqs=freqs, f0=6e9, name="input")
 
 res = single.run(n_steps=500)
@@ -93,7 +99,8 @@ nearest one and reports where they landed. You choose where S is reported:
 
 ```python
 cal = Simulation(freq_max=10e9, domain=(0.12, 0.04, 0.02),
-                 boundary="cpml", cpml_layers=10, dx=0.002)
+                 boundary={"x": "cpml", "y": "pec", "z": "pec"},
+                 cpml_layers=10, dx=0.002)
 
 # Report at the snapped measurement planes (the default).
 cal.add_waveguide_port(0.01, calibration_preset="measured", name="a")
@@ -114,7 +121,8 @@ Ports can face along any axis, and several can share one boundary:
 ```python
 # A y-directed guide.
 ydir = Simulation(freq_max=10e9, domain=(0.04, 0.12, 0.02),
-                  boundary="cpml", cpml_layers=10, dx=0.002)
+                  boundary={"x": "pec", "y": "cpml", "z": "pec"},
+                  cpml_layers=10, dx=0.002)
 ydir.add_waveguide_port(0.01, direction="+y", name="bottom")
 ydir.add_waveguide_port(0.09, direction="-y", name="top")
 
@@ -186,7 +194,7 @@ depth. A physical junction S-matrix also needs:
 
 The walls here are PEC volumes, so the guide width the solver sees is the
 width you drew. See
-[How conductors land on the lattice](/rfx/guide/materials-geometry/#how-conductors-land-on-the-lattice).
+[How conductors land on the lattice](/rfx/model/materials/#how-conductors-land-on-the-lattice).
 
 ## Absorber depth
 

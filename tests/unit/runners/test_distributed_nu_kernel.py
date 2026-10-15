@@ -28,6 +28,8 @@ import os
 os.environ.setdefault(
     "XLA_FLAGS", "--xla_force_host_platform_device_count=2")
 
+from rfx.stepping.slab import Slab, cut
+
 import numpy as np
 import jax.numpy as jnp
 import pytest
@@ -508,7 +510,6 @@ import jax  # noqa: E402
 from rfx.runners.distributed_nu import (  # noqa: E402
     run_nonuniform_distributed_pec,
     shard_pec_mask_x_slab,
-    shard_pec_occupancy_x_slab,
 )
 from rfx.nonuniform import (  # noqa: E402
     run_nonuniform,
@@ -1892,7 +1893,7 @@ def test_distributed_pec_occupancy_2device_matches_single_device():
     sharded_grid = build_sharded_nu_grid(grid, n_devices=n_devices,
                                          exchange_interval=1)
     sharded_mat = _phase2b_shard_mat(materials, sharded_grid)
-    sharded_occ = shard_pec_occupancy_x_slab(occ, sharded_grid)
+    sharded_occ = cut(occ, Slab.from_grid(sharded_grid), "pec_occupancy", mesh=None).reshape(-1, *occ.shape[1:])
     out = run_nonuniform_distributed_pec(
         sharded_grid=sharded_grid,
         sharded_materials=sharded_mat,
@@ -1978,7 +1979,7 @@ def test_distributed_pec_occupancy_seam_no_double_application():
     ts_single = jnp.asarray(single_out["time_series"])[:, 0]
 
     sharded_mat = _phase2b_shard_mat(materials, sharded_grid)
-    sharded_occ = shard_pec_occupancy_x_slab(occ, sharded_grid)
+    sharded_occ = cut(occ, Slab.from_grid(sharded_grid), "pec_occupancy", mesh=None).reshape(-1, *occ.shape[1:])
     out = run_nonuniform_distributed_pec(
         sharded_grid=sharded_grid,
         sharded_materials=sharded_mat,
@@ -2385,7 +2386,7 @@ def test_distributed_emit_time_series_false_skips_probe():
 # against analytic / first-principles references (Class F tolerance, see
 # ``tests/_distributed_nu_tolerances.py``).
 
-from rfx.harminv import harminv_from_probe  # noqa: E402
+from rfx.harminv import matrix_pencil_from_probe  # noqa: E402
 from rfx.core.yee import EPS_0 as _EPS_0_F, MU_0 as _MU_0_F  # noqa: E402
 from tests._distributed_nu_tolerances import (  # noqa: E402
     RTOL_ANALYTIC_F,
@@ -2557,7 +2558,7 @@ def test_distributed_pec_cavity_analytic_resonance():
     f_min = 0.85 * f_analytic
     f_max = 1.15 * f_analytic
 
-    modes = harminv_from_probe(
+    modes = matrix_pencil_from_probe(
         ts, dt=float(grid.dt),
         freq_range=(f_min, f_max),
         source_decay_time=source_decay_time,

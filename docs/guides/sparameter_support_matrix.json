@@ -162,7 +162,7 @@
       "validated_scope": "Uniform Yee laplace/quasi-TEM MSL calculator for the cited thru and notch configurations. Nonuniform mode is experimental and eigenmode is unsupported.",
       "caveats": [
         "the external notch comparison is characterized, not a tight cross-solver match",
-        "low-signal mask semantics are documented in docs/public/guide/probes-sparams.mdx#low-signal-msl-bins",
+        "low-signal mask semantics are documented in docs/public/measure/s-parameters.mdx#low-signal-msl-bins",
         "do not generalize matched/thru/notch evidence to strong reflectors or arbitrary launches",
         "scripts/diagnostics/replay_msl_3probe_dump.py is SUPERSEDED: retired raw_v123/single-ratio schema v1, does not run against schema_version>=3 dumps (raises a clear error rather than a bare KeyError); current independent check is scripts/diagnostics/msl_vi_flux_oracle.py"
       ],

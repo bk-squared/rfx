@@ -318,6 +318,7 @@ def test_committed_aligned_rows_are_a_pre802_record_not_live():
         )
 
 
+@pytest.mark.source_scan
 def test_preflight_advisories_make_no_stale_absolute_realized_bound():
     """Anti-overclaim regression lock (audit 2026-09-02, finding A1).
 

@@ -72,6 +72,7 @@ from rfx.sources.msl_port import (
     msl_probe_x_coords_n,
     setup_msl_port,
 )
+from tests._line_stub_geometry import trim_resonant_trace
 
 EPS_R, H_SUB, W_TRACE = 3.66, 254e-6, 600e-6
 # ON-LATTICE board (#931 §1.3): h_sub / dx = 3 exactly, so the laminate
@@ -437,6 +438,7 @@ def _board(domain, direction, feed, lat_c, *, trace_len_axis, dx=DX):
         width=W_TRACE, height=H_SUB, direction=direction, impedance=50.0,
         n_probe_offset=16,
     )
+    trim_resonant_trace(sim, 1)
     return sim
 
 
@@ -542,6 +544,7 @@ def test_probe_span_absorber_check_fires_on_the_propagation_axis():
     sim.add_msl_port(position=(L_LAT / 2, L_PROP - 1e-3, 0.0), width=W_TRACE,
                      height=H_SUB, direction="+y", impedance=50.0,
                      n_probe_offset=20, n_probe_spacing=6)
+    trim_resonant_trace(sim, 1)
     msgs = [m for m in _msl_warnings(sim)
             if "deepest" in m and "domain" in m]
     assert msgs, "probe-span absorber check did not fire"
@@ -696,15 +699,19 @@ def test_equivalence_harness_can_move():
     """Negative control for the falsifier above.
 
     A rotation-equivalence assertion that compares two runs is worthless
-    if the comparison cannot register a difference. Perturb the y lane's
-    trace width by one mesh cell and confirm the same statistic moves far
+    if the comparison cannot register a difference. Widen the y lane's
+    trace by one mesh cell on each side and confirm the same statistic moves far
     past the 1e-4 bound -- so a PASS above is evidence, not a tautology.
     """
     rx, _ = _thru("x", n_freqs=6, num_periods=8)
 
     lat_c = L_LAT / 2.0
-    w_bad = W_TRACE + DX
-    sim = Simulation(freq_max=F_MAX, domain=(L_LAT, L_PROP, LZ), dx=DX,
+    # One cell (W_TRACE + DX) realizes the SAME 7-cell sheet as the baseline and only widens
+    # the port aperture; two cells really widen the solved strip (asserted below).
+    w_bad = W_TRACE + 2 * DX
+    # Same snap mode as _thru, which it is compared with (#1138): without it
+    # the sheet-size preflight refuses the off-mesh trace and the control never runs.
+    sim = Simulation(snap="declared", freq_max=F_MAX, domain=(L_LAT, L_PROP, LZ), dx=DX,
                      cpml_layers=8,
                      boundary=BoundarySpec(x="cpml", y="cpml",
                                            z=Boundary(lo="pec", hi="cpml")))
@@ -718,11 +725,14 @@ def test_equivalence_harness_can_move():
                      height=H_SUB, direction="-y", impedance=50.0)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
+        wide = [e for e in sim.realized_geometry().entities if e.kind == "sheet"][0]
         r_bad = sim.compute_msl_s_matrix(n_freqs=6, num_periods=8)
+    lo, hi = wide.axes[0].node_range
+    assert hi - lo == 9, f"the control's strip must be solved 9 cells wide (baseline 7), got {hi - lo}"
 
     d = float(np.max(np.abs(np.asarray(rx.S) - np.asarray(r_bad.S))))
-    print(f"\n[#661 negative control] one-cell wider trace -> max|dS|={d:.3e}")
+    print(f"\n[#661 negative control] trace two cells wider -> max|dS|={d:.3e}")
     assert d > 1e-3, (
-        f"the equivalence statistic moved only {d:.3e} for a one-cell "
+        f"the equivalence statistic moved only {d:.3e} for a two-cell "
         f"geometry change -- it is too blunt to be evidence"
     )

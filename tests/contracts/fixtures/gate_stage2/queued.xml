@@ -1,0 +1,13 @@
+<?xml version='1.0' encoding='utf-8'?>
+<testsuites name="pytest tests">
+  <testsuite name="pytest" errors="1" failures="0" skipped="0" tests="6" time="0.778">
+    <testcase classname="test_b" name="test_one" time="0.120" />
+    <testcase classname="test_a" name="test_before" time="0.000" />
+    <testcase classname="test_a" name="test_crash" time="0.000">
+      <error message="failed on setup with &quot;worker 'gw0' crashed while running 'test_a.py::test_crash'&quot;">worker 'gw0' crashed while running 'test_a.py::test_crash'</error>
+    </testcase>
+    <testcase classname="test_b" name="test_two" time="0.126" />
+    <testcase classname="test_c" name="test_one" time="0.110" />
+    <testcase classname="test_c" name="test_two" time="0.109" />
+  </testsuite>
+</testsuites>

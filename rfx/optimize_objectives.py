@@ -104,9 +104,9 @@ def minimize_s11(
         if s_params is None:
             raise ValueError(
                 "minimize_s11 requires result.s_params but got None. "
-                "The optimize() / topology_optimize() forward pass does not "
-                "compute S-parameters. Use minimize_reflected_energy() as a "
-                "time-domain proxy objective for gradient-based optimization."
+                "forward() computes port S-parameters only when asked: pass "
+                "port_s11_freqs=... to the forward pass, or use "
+                "minimize_reflected_energy() as a time-domain proxy objective."
             )
         result_freqs = result.freqs  # (n_freqs,)
 
@@ -149,9 +149,9 @@ def maximize_s21(
         if s_params is None:
             raise ValueError(
                 "maximize_s21 requires result.s_params but got None. "
-                "The optimize() / topology_optimize() forward pass does not "
-                "compute S-parameters. Use maximize_transmitted_energy() as a "
-                "time-domain proxy objective for gradient-based optimization."
+                "forward() computes port S-parameters only when asked: pass "
+                "port_s11_freqs=... to the forward pass, or use "
+                "maximize_transmitted_energy() as a time-domain proxy objective."
             )
         result_freqs = result.freqs
 
@@ -195,9 +195,9 @@ def target_impedance(
         if s_params is None:
             raise ValueError(
                 "target_impedance requires result.s_params but got None. "
-                "The optimize() / topology_optimize() forward pass does not "
-                "compute S-parameters. Use a time-domain proxy objective "
-                "for gradient-based optimization."
+                "forward() computes port S-parameters only when asked: pass "
+                "port_s11_freqs=... to the forward pass, or use a time-domain "
+                "proxy objective."
             )
         result_freqs = result.freqs
 
@@ -255,9 +255,9 @@ def maximize_bandwidth(
         if s_params is None:
             raise ValueError(
                 "maximize_bandwidth requires result.s_params but got None. "
-                "The optimize() / topology_optimize() forward pass does not "
-                "compute S-parameters. Use minimize_reflected_energy() as a "
-                "time-domain proxy objective for gradient-based optimization."
+                "forward() computes port S-parameters only when asked: pass "
+                "port_s11_freqs=... to the forward pass, or use "
+                "minimize_reflected_energy() as a time-domain proxy objective."
             )
         result_freqs = jnp.asarray(result.freqs, dtype=jnp.float32)
 

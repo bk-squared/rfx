@@ -94,6 +94,9 @@
     "DesignRegion": {
       "kind": "class"
     },
+    "Diagnostic": {
+      "kind": "class"
+    },
     "FarFieldResult": {
       "kind": "class"
     },
@@ -143,6 +146,9 @@
       "kind": "class"
     },
     "MaterialFitResult": {
+      "kind": "class"
+    },
+    "MatrixPencilMode": {
       "kind": "class"
     },
     "MeshIntelligenceReport": {
@@ -402,7 +408,8 @@
         "sheet_specs",
         "sheets",
         "geometry_masks",
-        "geometry_key"
+        "geometry_key",
+        "snap"
       ]
     },
     "apply_thirds_rule": {
@@ -1208,7 +1215,10 @@
         "lo2",
         "hi2",
         "pmc_faces",
-        "staggered_area"
+        "staggered_area",
+        "node_coords",
+        "periodic_axes",
+        "normal_h_weights"
       ]
     },
     "init_multimode_waveguide_port": {
@@ -1228,7 +1238,8 @@
         "waveform",
         "mode_profile",
         "grid",
-        "h_offset"
+        "h_offset",
+        "field_dtype"
       ]
     },
     "init_waveguide_port": {
@@ -1247,7 +1258,8 @@
         "waveform",
         "mode_profile",
         "grid",
-        "h_offset"
+        "h_offset",
+        "field_dtype"
       ]
     },
     "init_wire_sparam_probe": {
@@ -1394,7 +1406,8 @@
         "face_layers",
         "dt",
         "dt_min_cell",
-        "dt_caller"
+        "dt_caller",
+        "nominal_profiles"
       ]
     },
     "make_ntff_box": {
@@ -1434,6 +1447,30 @@
         "n_steps",
         "materials",
         "amplitude_kind"
+      ]
+    },
+    "matrix_pencil": {
+      "kind": "function",
+      "params": [
+        "signal",
+        "dt",
+        "f_min",
+        "f_max",
+        "pencil_parameter",
+        "min_Q",
+        "max_modes",
+        "sv_threshold",
+        "decimate"
+      ]
+    },
+    "matrix_pencil_from_probe": {
+      "kind": "function",
+      "params": [
+        "time_series",
+        "dt",
+        "freq_range",
+        "source_decay_time",
+        "kwargs"
       ]
     },
     "maximize_bandwidth": {
@@ -1860,6 +1897,7 @@
         "debye",
         "lorentz",
         "tfsf",
+        "_feature_tfsf",
         "sources",
         "probes",
         "dft_planes",
@@ -1896,7 +1934,8 @@
         "design_occupancy",
         "stop_fn",
         "stop_interval",
-        "record_dft"
+        "record_dft",
+        "port_record_specs"
       ]
     },
     "run_adi_2d": {
@@ -1969,6 +2008,7 @@
         "grid",
         "materials",
         "n_steps",
+        "cpml_axes",
         "pec_mask",
         "pec_sheets",
         "pec_wires",
@@ -1990,6 +2030,7 @@
         "current_moments",
         "waveguide_ports",
         "tfsf",
+        "_feature_tfsf",
         "flux_monitors",
         "checkpoint",
         "emit_time_series",
@@ -2022,6 +2063,7 @@
         "debye",
         "lorentz",
         "tfsf",
+        "_feature_tfsf",
         "sources",
         "probes",
         "dft_planes",
@@ -2052,7 +2094,8 @@
         "report_every",
         "report_label",
         "sheet_impedance",
-        "record_dft"
+        "record_dft",
+        "port_record_specs"
       ]
     },
     "save_experiment_report": {
@@ -2734,6 +2777,7 @@
       "report_every"
     ],
     "compute_s_matrix": [
+      "method",
       "lane",
       "kwargs"
     ],
@@ -2877,6 +2921,7 @@
       "until_identified"
     ],
     "s_matrix_lane": [
+      "method",
       "lane"
     ],
     "shard_distributed_override": [

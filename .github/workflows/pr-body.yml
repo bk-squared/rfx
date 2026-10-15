@@ -22,6 +22,8 @@ name: pr-body
 # label set is read from the API at check time rather than taken from the event
 # payload -- see the step below.
 on:
+  merge_group:
+    types: [checks_requested]
   pull_request:
     types: [opened, edited, reopened, synchronize, labeled, unlabeled]
 
@@ -41,11 +43,19 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: PR gate already passed before queue admission
+        if: github.event_name == 'merge_group'
+        run: echo 'PR-level gate; the queue admits only PRs that passed it'
+
       - name: Check out repository
+        if: github.event_name != 'merge_group'
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Read the live lane labels, and this PR's own
-        # Two different questions. LANE_LABELS is which lanes EXIST, so a lane
+        if: github.event_name != 'merge_group'
+        # LANE_LABELS is which lanes EXIST, so a lane
         # added after the script was written does not fail a PR; `grep` exits 1
         # on no match, which would fail the step -- hence `|| true`, and an
         # empty value makes the script fall back to its own list.
@@ -56,7 +66,10 @@ jobs:
         # .github/workflows/labeler.yml has not run yet, and when that job does
         # run its label change fires no event here at all, because an event
         # triggered by GITHUB_TOKEN creates no workflow run. Only a live read
-        # sees what the PR actually carries.
+        # sees what the PR actually carries. ISSUE_LANES_JSON carries the owner
+        # lanes of issues this PR closes, read through closingIssuesReferences.
+        # Only issues in this repository: a cross-repository reference's number
+        # would otherwise be looked up here (another issue, a PR, or none at all).
         env:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -73,14 +86,53 @@ jobs:
             echo "$pr_labels"
             echo "EOF"
           } >> "$GITHUB_ENV"
+          closing_issues=$(gh pr view "$PR_NUMBER" --json closingIssuesReferences --jq '.closingIssuesReferences[] | select("\(.repository.owner.login)/\(.repository.name)" == env.GITHUB_REPOSITORY) | .number')
+          # Share the same repository-filtered references with the limitation gate.
+          {
+            echo "CLOSING_ISSUES<<EOF"
+            echo "$closing_issues"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+          issue_lanes='[]'
+          while IFS= read -r issue; do
+            [ -n "$issue" ] || continue
+            labels=$(gh issue view "$issue" --json labels --jq '[.labels[].name | select(startswith("lane:"))]')
+            issue_lanes=$(jq -cn --argjson current "$issue_lanes" --argjson labels "$labels" '$current + $labels | unique')
+          done <<< "$closing_issues"
+          {
+            echo "ISSUE_LANES_JSON<<EOF"
+            echo "$issue_lanes"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+
+      - name: Known limitations closed by this PR
+        if: github.event_name != 'merge_group'
+        # CLOSING_ISSUES comes from the single filtered read above. This fast
+        # required job already re-runs on body edits, unlike the physics suite.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python scripts/ci/check_known_limitations.py
 
       - name: Check the PR body
+        if: github.event_name != 'merge_group'
         # The body is passed through the environment, never interpolated into
         # the shell: a body is attacker-controlled text and `${{ }}` inside a
         # `run:` block is a script injection.
-        # PR_LABELS_JSON reaches the script through GITHUB_ENV, set by the step
-        # above. It cross-checks the `Lane:` line against the labels the paths
-        # earned; it never satisfies the line on its own.
+        # PR_LABELS_JSON and ISSUE_LANES_JSON reach the script through GITHUB_ENV.
+        # They cross-check the `Lane:` line against the labels the paths earned
+        # or the owner lanes of closing issues; neither replaces the line.
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
-        run: python scripts/ci/check_pr_body.py
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          case "$PR_HEAD_REPO:$PR_HEAD_REF" in
+            "$GITHUB_REPOSITORY":merge-train/batch-*)
+              git checkout --no-overlay "$BASE_SHA" -- scripts/ci scripts/changelog
+              python scripts/ci/check_batch.py body ;;
+            *) python scripts/ci/check_pr_body.py ;;
+          esac

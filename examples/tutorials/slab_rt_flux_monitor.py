@@ -26,8 +26,8 @@ matches the lossless analytic Fresnel reference.
 
 Public docs:
   - docs/agent/recipe-rt-measurement.mdx   (canonical two-run pattern)
-  - docs/public/guide/probes-sparams.mdx   (flux monitors as non-port observables)
-  - docs/public/api/results-observables.mdx (add_flux_monitor -> Result.flux_monitors)
+  - docs/public/measure/s-parameters.mdx   (flux monitors as non-port observables)
+  - docs/public/api/results.mdx (add_flux_monitor -> Result.flux_monitors)
 
 Run:  python examples/slab_rt_flux_monitor.py
 """

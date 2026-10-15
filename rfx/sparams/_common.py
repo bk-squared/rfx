@@ -27,6 +27,8 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from rfx.sparams._settling_warning import _warn_if_ringdown_truncated
+
 try:  # Public API on current JAX; the 0.4.x GPU image uses the old location.
     from jax import enable_x64 as _enable_x64
 except ImportError:
@@ -34,6 +36,8 @@ except ImportError:
 
 from rfx._grid_metric import cells_crossed, distinct_cell_sizes
 from rfx.core.jax_utils import is_tracer
+from rfx.sparams._mixed_checks import _mixed_reciprocity_deviation, _warn_partial_nonpassive
+from rfx.sparams._grid_metrics import absorber_depth, junction_absorber_depth, node_distance
 
 from rfx.nonuniform import NonUniformGrid, interior_cells
 
@@ -42,16 +46,8 @@ def _msl_cell_profile(grid, axis: str, n: int) -> np.ndarray:
     """Per-cell size array (length ``n``, full/padded) along ``axis`` for
     MSL V/I integration. Graded-mesh aware.
 
-    ``NonUniformGrid`` (a NamedTuple) stores per-cell spacings as
-    ``dx_arr`` / ``dy_arr`` / ``dz`` and exposes NO ``*_profile``
-    attributes — so the legacy ``getattr(grid, "dy_profile", None)``
-    fell through to ``np.full(n, grid.dx)``, i.e. the SCALAR boundary-x
-    cell for every transverse cell (wrong axis AND scalar-not-per-cell).
-    This reads the real per-cell array on a NU grid. On a uniform
-    ``Grid`` it is byte-identical to the legacy path (``Grid`` is not a
-    ``NonUniformGrid``, so the per-cell branch is never taken): the
-    ``*_profile`` attr if present, else ``np.full(n, grid.dx)`` — the
-    legacy behaviour of using ``grid.dx`` for every axis is preserved.
+    NU integration retains its solver-facing primal arrays. Uniform grids
+    use their axis cell; optional legacy profiles still take precedence.
     """
     if isinstance(grid, NonUniformGrid):
         per_cell = {"x": grid.dx_arr, "y": grid.dy_arr, "z": grid.dz}[axis]
@@ -69,7 +65,7 @@ def _msl_cell_profile(grid, axis: str, n: int) -> np.ndarray:
     prof = getattr(grid, attr, None)
     if prof is not None:
         return np.asarray(prof, dtype=float)
-    return np.full(n, float(grid.dx), dtype=float)
+    return np.full(n, float(grid.boundary_cell(axis, "lo")), dtype=float)
 
 
 def msl_modal_voltage(ez_plane, *, j_centre: int, k_lo: int, k_hi: int,
@@ -282,19 +278,30 @@ def _warn_msl_beta_scan_railed(
     ports = ", ".join(
         repr(port_names[p]) for p in np.flatnonzero(np.any(railed, axis=1))
     )
+    per_port = "; ".join(
+        f"{port_names[p]!r}: "
+        + ", ".join(f"{freqs_arr[k] / 1e9:.4f}" for k in np.flatnonzero(railed[p]))
+        + " GHz"
+        for p in np.flatnonzero(np.any(railed, axis=1))
+    )
     warnings.warn(
         "N-probe beta scan pinned at its own window limit: "
         f"{affected_freqs.size} bins in [{f1:.4f}, {f2:.4f}] GHz at "
         f"port(s) {ports} minimized the fit residual at the edge of the "
         "±35% scan around the analytic Hammerstad-Jensen guess — the "
         "reported Z0/beta at those bins are the scan limit, NOT a "
-        "measurement (issue #681). Fitted Z0/beta are not used in S11/S21, "
+        f"measurement (issue #681). Railed bins per port: {per_port}. "
+        "Fitted Z0/beta are not used in S11/S21, "
         "which use measured V/I and the analytic Z0 anchor; this does not "
-        "certify those inputs. Common causes: the real eps_eff is far from "
-        "the HJ estimate (wrong eps_r_sub / substrate not detected under "
-        "the port), or a contaminated/under-settled record at those bins "
-        "(check settling_db and the reliable mask). Check the result's "
-        "beta_railed mask before quoting Z0 or beta.",
+        "certify those inputs. S is shifted from probe 0 to the declared "
+        "feed plane with the closed-form beta (Hammerstad-Jensen with "
+        "Kirschning-Jansen dispersion), not the fitted one. Common causes: "
+        "a record too short or a probe ladder too coarse for the fit "
+        "(check settling_db and the reliable mask), or the real eps_eff "
+        "is far from the HJ estimate (wrong eps_r_sub / substrate not "
+        "detected under the port) -- then the closed-form beta and the Z0 "
+        "anchor of S are wrong as well. Check the result's beta_railed mask "
+        "before quoting Z0 or beta.",
         stacklevel=2,
     )
 
@@ -375,58 +382,6 @@ def _validate_extra_flux_monitor_entries(entries, domain, fn_name):
         seen.add(pe.name)
 
 
-def _warn_if_ringdown_truncated(
-    settling_db: np.ndarray,
-    port_names: tuple,
-    *,
-    num_periods: float | None = None,
-    n_steps: int | None = None,
-    drive_labels: tuple | None = None,
-    consequence: str | None = None,
-    quoted_thing: str = "any S value",
-    witnesses: list | tuple | None = None,
-) -> None:
-    """Warn for excessive pole tails or concrete undetermined witnesses."""
-    values = np.atleast_1d(np.asarray(settling_db, dtype=float))
-    hot = np.array([settling_verdict(v) == "fail" for v in values], dtype=bool)
-    unknown = np.zeros(len(values), dtype=bool)
-    if witnesses is not None:
-        for i, row in enumerate(witnesses):
-            if i < len(values) and 'share_per_bin' in row and 'traced' not in row['reason']:
-                unknown[i] = row['status'] in {'undetermined', 'absent'}
-    hot |= unknown
-    if not bool(np.any(hot)):
-        return
-
-    import warnings
-
-    if num_periods is not None:
-        knob, record = "num_periods", f"num_periods={num_periods:g}"
-    elif n_steps is not None:
-        knob, record = "n_steps", f"n_steps={int(n_steps):d}"
-    else:  # pragma: no cover - guarded by the call sites
-        knob, record = "the record length", "fixed-length"
-    def _label(i: int) -> str:
-        if drive_labels is not None:
-            return drive_labels[i] if i < len(drive_labels) else str(i)
-        return f"port {port_names[i] if i < len(port_names) else i} driven"
-
-    per_run = ", ".join(
-        (f"{_label(i)}: {witnesses[i]['status']} ({witnesses[i]['reason']})"
-         if unknown[i] else f"{_label(i)}: {values[i]:+.1f} dB")
-        for i in np.flatnonzero(hot)
-    )
-    consequence_text = f" {consequence}." if consequence else ""
-    warnings.warn(
-        "ring-down settling witness NOT PASSED (pole-tail amplitude threshold "
-        f"{_SETTLING_WITNESS_DB:.0f} dB): {per_run}. The {record} "
-        f"record has no passing value witness.{consequence_text} Increase "
-        f"{knob} and check identification before quoting "
-        f"{quoted_thing} (see the result's settling_db and settling_witness fields).",
-        stacklevel=2,
-    )
-
-
 def _nu_shift_span_cells(grid, cfg, desired_plane_m: float):
     """Cell sizes a waveguide port's reference-plane span crosses on a NU grid.
 
@@ -504,59 +459,7 @@ def _assert_nu_shift_span_in_one_grading_zone(grid, cfg, desired_plane_m: float,
     return axis, lo, hi, sizes
 
 
-def _msl_axis_spacing(grid, axis: int):
-    """Cell spacing along one grid axis, and whether that axis is GRADED.
-
-    Returns ``(spacing_m, graded, evaluable)``:
-
-    * uniform :class:`~rfx.grid.Grid` — ``(grid.dx, False, True)``: every
-      axis carries the one scalar spacing.
-    * :class:`~rfx.nonuniform.NonUniformGrid` — the axis's own interior
-      cell-size array decides. ``graded`` is True when max/min differ by
-      more than 1e-6 relative.  ``spacing_m`` is the (single) interior
-      cell size when the axis is ungraded, ``None`` when it is graded.
-    * traced (mesh-as-design-variable) profiles — ``(None, None, False)``:
-      the answer is not available host-side.
-
-    Issue #686: the #469 probe-offset interval solve used to bail on ANY
-    non-uniform grid (``getattr(grid, "dz", None) is not None``). Its
-    stated reason — "cell-counted intervals are ill-defined under graded
-    dx" — is a statement about the PROPAGATION axis, and a ``dz_profile``
-    does not grade dx. For a microstrip the propagation axis is x or y,
-    so on a z-graded mesh (the boundary-fitted stackup case) the interval
-    is perfectly well defined and the solve simply never ran.
-    """
-    from rfx.core.jax_utils import is_tracer
-    from rfx.nonuniform import NonUniformGrid, interior_cells
-
-    if not isinstance(grid, NonUniformGrid):
-        return float(grid.dx), False, True
-    arr = (grid.dx_arr, grid.dy_arr, grid.dz)[axis]
-    pad_lo = (grid.pad_x_lo, grid.pad_y_lo, grid.pad_z_lo)[axis]
-    pad_hi = (grid.pad_x_hi, grid.pad_y_hi, grid.pad_z_hi)[axis]
-    if is_tracer(arr):
-        return None, None, False
-    cells = np.asarray(interior_cells(np.asarray(arr), pad_lo, pad_hi),
-                       dtype=np.float64)
-    if cells.size == 0:
-        return None, None, False
-    lo, hi = float(cells.min()), float(cells.max())
-    if lo <= 0.0:
-        return None, None, False
-    graded = (hi - lo) / lo > 1e-6
-    return (None if graded else lo), graded, True
-
-
-def _msl_axis_cell_f64(grid, axis: int) -> float:
-    """The cell of an ungraded axis, from the float64 cell spine.
-
-    ``_msl_axis_spacing`` reads the float32 solver store, which is what the
-    interval solve has always counted in. A count compared with the one
-    ``add_msl_port`` made in its float64 scalar is read here instead, so an
-    axis whose cell IS that scalar reproduces the stored count exactly.
-    """
-    pad_lo = (grid.pad_x_lo, grid.pad_y_lo, grid.pad_z_lo)[axis]
-    return float(np.asarray(grid.cells(axis), dtype=np.float64)[pad_lo])
+from rfx.sparams._grid_metrics import _msl_axis_spacing, _msl_axis_cell_f64
 
 
 def _resolve_msl_auto_offsets(sim, entries, grid):
@@ -661,13 +564,14 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
         return entries
 
     import dataclasses
+    from rfx.preflight.msl_codes import msl_text, msl_join, placement_warning
     import warnings
 
     from rfx.api._preflight import (
         msl_min_probe_clearance,
         msl_nearest_downstream_reflector,
     )
-    from rfx.preflight._common import _fmt_len
+    from rfx.preflight._common import _fmt_len, local_cell
     from rfx.preflight.msl import (
         msl_auto_probe_ladder,
         msl_auto_probe_offset_cells,
@@ -693,14 +597,17 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
         _prop_ax, _width_ax, _, _dir_sign = _msl_axis_roles(pe.direction)
         _ip = _MSL_AX[_prop_ax]
         _iw = _MSL_AX[_width_ax]
-        # Issue #686: the bail-out is about THIS port's propagation axis.
+        # Grading gates propagation; tracing also gates width tolerances.
         dx_u, _graded, _evaluable = _msl_axis_spacing(grid, _ip)
-        if not _evaluable:
+        if not _evaluable or (not _graded and is_tracer(grid.cells(_iw))):
             _graded_skips.append(
-                f"{pe.name!r} (direction={pe.direction!r}): the "
-                f"{_prop_ax}-axis cell sizes are a traced "
-                f"mesh-as-design-variable profile and cannot be inspected "
-                f"host-side; the stored offset and spacing are kept")
+                msl_text(
+                    "placement_traced",
+                    port_name=pe.name,
+                    direction=pe.direction,
+                    axis=_prop_ax if not _evaluable else _width_ax,
+                )
+            )
             resolved.append(pe)
             continue
         if _graded:
@@ -709,10 +616,13 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
             _lengths = _auto_lengths.get(pe.name)
             if _lengths is None:
                 _graded_skips.append(
-                    f"{pe.name!r} (direction={pe.direction!r}): the "
-                    f"propagation axis {_prop_ax} is GRADED and the lengths "
-                    f"its automatic probe ladder was counted from were not "
-                    f"recorded; the stored offset and spacing are kept")
+                    msl_text(
+                        "placement_missing_lengths",
+                        port_name=pe.name,
+                        direction=pe.direction,
+                        propagation_axis=_prop_ax,
+                    )
+                )
                 resolved.append(pe)
                 continue
             from rfx.nonuniform import interior_cells as _interior_cells
@@ -729,19 +639,25 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
                                 else pe.n_probe_offset),
                 n_probe_spacing=(None if sp_eps_eff is not None
                                  else pe.n_probe_spacing))
-            _ladder_txt = (
-                f"offset {_off} + {int(pe.n_probes) - 1} x spacing {_sp} "
-                f"cells of {_fmt_len(_cell)}")
+            _ladder_txt = msl_text(
+                "placement_ladder",
+                runway_offset_cells=_off,
+                probe_intervals=int(pe.n_probes) - 1,
+                runway_spacing_cells=_sp,
+                runway_cell_m=_cell,
+            )
             if not _one_zone:
                 _graded_skips.append(
-                    f"{pe.name!r} (direction={pe.direction!r}): the "
-                    f"propagation axis {_prop_ax} is GRADED and this port's "
-                    f"automatic probe ladder counted in its runway cell "
-                    f"({_ladder_txt}) would cross a grading ramp, so no "
-                    f"cell count names one length along it; the offset "
-                    f"{int(pe.n_probe_offset)} and spacing "
-                    f"{int(pe.n_probe_spacing)} counted in the boundary "
-                    f"cell at registration are kept")
+                    msl_text(
+                        "placement_crosses_ramp",
+                        port_name=pe.name,
+                        direction=pe.direction,
+                        propagation_axis=_prop_ax,
+                        ladder=_ladder_txt,
+                        stored_offset_cells=int(pe.n_probe_offset),
+                        stored_spacing_cells=int(pe.n_probe_spacing),
+                    )
+                )
                 resolved.append(pe)
                 continue
             _fields = {}
@@ -750,11 +666,15 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
             if sp_eps_eff is not None and _sp != int(pe.n_probe_spacing):
                 _fields["n_probe_spacing"] = _sp
             _graded_skips.append(
-                f"{pe.name!r} (direction={pe.direction!r}): the "
-                f"propagation axis {_prop_ax} is GRADED; the automatic "
-                f"probe ladder is counted in this port's own runway cell "
-                f"({_ladder_txt}, probe 0 {_fmt_len(_off * _cell)} "
-                f"from the source)")
+                msl_text(
+                    "placement_uniform_zone",
+                    port_name=pe.name,
+                    direction=pe.direction,
+                    propagation_axis=_prop_ax,
+                    ladder=_ladder_txt,
+                    first_probe_distance_m=_off * _cell,
+                )
+            )
             resolved.append(
                 dataclasses.replace(pe, **_fields) if _fields else pe)
             continue
@@ -786,9 +706,11 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
             x_feed=float(pe.position[_ip]),
             y_feed=float(pe.position[_iw]),
             w_trace=float(pe.width),
-            dx=dx_u,
+            dx=local_cell(grid, _ip, float(pe.position[_ip])),
+            width_cell=min(local_cell(grid, _iw, float(pe.position[_iw]) - float(pe.width) / 2),
+                           local_cell(grid, _iw, float(pe.position[_iw]) + float(pe.width) / 2)),
             domain_y=float(sim._domain[_iw]),
-            direction=pe.direction,
+            direction=pe.direction, port_position=pe.position,
             # Issue #685: same conductor rule as the assembler, and thin
             # conductors included, so the solved offset is not derived
             # from a scan that was blind to most of the metal.
@@ -798,12 +720,15 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
         )
         if _unevaluated:
             _graded_skips.append(
-                f"{pe.name!r} (direction={pe.direction!r}): the downstream "
-                f"reflector scan could not evaluate "
-                f"{len(_unevaluated)} conductor(s) — "
+                msl_text(
+                    "placement_uninspected",
+                    port_name=pe.name,
+                    direction=pe.direction,
+                    unevaluated_conductor_count=len(_unevaluated),
+                )
                 + "; ".join(_unevaluated)
-                + "; the upstream-only offset and the registration spacing, "
-                "counted in this axis's cell, are kept")
+                + msl_text("placement_uninspected_remedy")
+            )
             resolved.append(pe)
             continue
         # --- Auto probe-spacing widening (issue #681, docstring above).
@@ -858,20 +783,20 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
                 MSL_PROBE_CLEARANCE_GUIDANCE as _MSL_PROBE_CLEARANCE_GUIDANCE,
             )
             warnings.warn(
-                f"MSL port {pe.name!r}: the upstream and downstream "
-                f"probe clearances are mutually unsatisfiable on this "
-                f"feed (upstream needs n_probe_offset >= {off_min} "
-                f"cells = max(λ/4π, 5·h_sub)/dx; downstream needs "
-                f"<= {off_max} cells to keep the deepest of "
-                f"{int(pe.n_probes)} probes ≥ "
-                f"{clear*1e6:.0f}µm (λ_g/4 at f_max) clear of the "
-                f"reflector {d_refl*1e3:.2f}mm from the feed). "
-                f"The feed line is too short for a clean N-probe "
-                f"measurement (issue #469) — keeping the upstream-priority "
-                f"offset {off_min}, which puts the deep probes inside the "
-                f"reflector's near field. "
-                + _MSL_PROBE_CLEARANCE_EFFECT + " "
-                + _MSL_PROBE_CLEARANCE_GUIDANCE,
+                placement_warning(
+                    msl_text(
+                        "placement_empty_interval",
+                        port_name=pe.name,
+                        offset_min_cells=off_min,
+                        offset_max_cells=off_max,
+                        probe_count=int(pe.n_probes),
+                        recommended_reflector_gap_m=clear,
+                        feed_reflector_gap_m=d_refl,
+                    )
+                    + _MSL_PROBE_CLEARANCE_EFFECT
+                    + " "
+                    + _MSL_PROBE_CLEARANCE_GUIDANCE
+                ),
                 stacklevel=3,
             )
             resolved.append(
@@ -879,16 +804,17 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
             )
     if _graded_skips:
         warnings.warn(
-            "MSL auto probe-offset interval solve (issue #469) SKIPPED for "
-            + str(len(_graded_skips)) + " port(s), so the downstream "
-            "reflector clearance is NOT enforced for them and no auto probe "
-            "spacing is widened (#681; on a graded propagation axis both "
-            "would count reflector and absorber distances in cells of more "
-            "than one size). Per port: " + "; ".join(_graded_skips)
-            + ". This used to be silent for every non-uniform mesh (issue "
-            "#686). Set n_probe_offset explicitly on these ports, or make "
-            "the propagation axis uniform, if the deepest probe's "
-            "clearance matters.",
+            placement_warning(
+                msl_text(
+                    "placement_graded_skipped",
+                    port_count=len(_graded_skips),
+                    details=msl_join(
+                        "; ",
+                        _graded_skips,
+                        indexed=True,
+                    ),
+                )
+            ),
             stacklevel=3,
         )
     return resolved
@@ -1239,6 +1165,7 @@ def _warn_if_nonpassive_smatrix(
     passivity_tol: float = 0.10,
     amplitude_eps: float = 0.05,
     check_reciprocity: bool = False,
+    refused_positions=None,
     reciprocity_tol: float = WAVEGUIDE_RECIPROCITY_ADVISORY_TOL,
 ) -> None:
     """Auto-run the passivity/finiteness self-check on a freshly-extracted
@@ -1279,6 +1206,11 @@ def _warn_if_nonpassive_smatrix(
     except Exception:
         # Traced / non-materializable — never let a diagnostic break the
         # numeric return path.
+        return
+
+    if refused_positions is not None and np.any(refused_positions):
+        _warn_partial_nonpassive(
+            s_np, refused_positions, extractor, strict, passivity_tol, amplitude_eps)
         return
 
     # WARN-ONLY reciprocity advisory, enabled per port family by the caller
@@ -1537,7 +1469,7 @@ def s21_phase_residual_deg_rms(
         meta["reason"] = "reference-plane separation is not a positive length"
         return None, meta
 
-    from rfx.sources.waveguide_port import _compute_beta
+    from rfx.model.waveguide_modes import _compute_beta
 
     beta = np.real(np.asarray(
         _compute_beta(jnp.asarray(f), f_c, dt=float(dt), dx=float(dx)),
@@ -1666,7 +1598,6 @@ def _warn_junction_probe_clearance(
     f_arr = np.asarray(freqs, dtype=float)
     f_max = float(f_arr.max())
     f_cen = 0.5 * (float(f_arr.min()) + f_max)
-    dx = float(grid.dx)
     for i, cfg in enumerate(cfgs):
         a = float(cfg.a)
         fc2 = _C0_SPARAMS / a  # TE20 cutoff for a TE10 port of width a
@@ -1693,8 +1624,8 @@ def _warn_junction_probe_clearance(
         if differing.size == 0:
             continue
         probe = int(cfg.probe_x)
-        nearest = int(differing[np.argmin(np.abs(differing - probe))])
-        clearance_m = abs(nearest - probe) * dx
+        clearance_m = min(node_distance(grid, ax, probe, int(node))
+                          for node in differing)
         alpha = 2.0 * np.pi * np.sqrt(max(fc2 ** 2 - f_cen ** 2, 0.0)) / _C0_SPARAMS
         if alpha <= 0.0:
             continue
@@ -1723,7 +1654,7 @@ def _warn_junction_cpml_thickness(grid, cfgs, freqs, cpml_layers):
 
     For each port compute the TE10 guide wavelength at band centre,
     ``lambda_g = lambda0 / sqrt(1 - (fc1 / f)^2)`` with ``fc1 = C0 / (2 a)``
-    and ``lambda0 = C0 / f``. If the CPML stack (``cpml_layers * dx``) is
+    and ``lambda0 = C0 / f``. If the thinnest active propagation pad is
     thinner than ``0.5 * lambda_g`` the absorber may under-drain guided energy.
     Heuristic from the validated campaign: 20 mm CPML produced |S11| ripple
     ~0.11, 48 mm passed. Emits ``warnings.warn`` per thin-CPML port; does not
@@ -1733,8 +1664,8 @@ def _warn_junction_cpml_thickness(grid, cfgs, freqs, cpml_layers):
 
     f_arr = np.asarray(freqs, dtype=float)
     f_cen = 0.5 * (float(f_arr.min()) + float(f_arr.max()))
-    cpml_m = int(cpml_layers) * float(grid.dx)
     for i, cfg in enumerate(cfgs):
+        cpml_m = junction_absorber_depth(grid, cfg.normal_axis, int(cpml_layers))
         a = float(cfg.a)
         fc1 = _C0_SPARAMS / (2.0 * a)  # TE10 cutoff
         if f_cen <= fc1:
@@ -1816,8 +1747,9 @@ def _assemble_mixed_power_wave_s(
 ):
     """Assemble the mixed-family power-wave S-matrix (issue #488).
 
-    Pure function of the recorded phasors so the cross-impedance
-    normalization is unit-testable without an FDTD run.
+    Lumped/wire-driven columns and their power witnesses are refused.
+    MSL-driven waves retain the recorded-phasor algebra below. The caller
+    refuses multi-cell wire receive waves after preserving their flux phase.
 
     .. warning::
 
@@ -1907,13 +1839,6 @@ def _assemble_mixed_power_wave_s(
     s21_power : (n_msl, n_lw, n_freqs) real — |S21| power witness.
     """
     v_lw = jnp.asarray(v_lw)
-    # Issue #683 x #764 (wire mode): drive-sample reference — the
-    # pre-injection drive sample every wave formula below was calibrated
-    # against; v_lw now carries the physical POST samples.  None (lumped
-    # mode / legacy callers) falls back to v_lw, which then IS the
-    # reference.  Only the DRIVE port's own sample differs between the
-    # two; passive receives are slot-invariant.
-    v_ref_lw = v_lw if v_ref_lw is None else jnp.asarray(v_ref_lw)
     i_lw = jnp.asarray(i_lw)
     v0_msl = jnp.asarray(v0_msl)
     i_msl = jnp.asarray(i_msl)
@@ -1944,47 +1869,9 @@ def _assemble_mixed_power_wave_s(
 
     for run, (fam, loc) in enumerate(drive_plan):
         if fam == "lw":
-            col = loc
-            v_d, i_d = v_ref_lw[run, loc], i_lw[run, loc]
-            # Drive wave — probes.py:913/:1018 (z0_cell for wire).
-            a = (-v_d + z0c_lw[loc] * i_d) / (2.0 * sq_lw[loc])
-            safe_a = jnp.where(jnp.abs(a) > 0, a, jnp.ones_like(a))
-            # Diagonal first (byte-frozen legacy algebra, full Z0).
-            if wire_mode:
-                safe_i = jnp.where(
-                    jnp.abs(i_d) > 0, i_d, jnp.ones_like(i_d) * 1e-30
-                )
-                z_in = -v_d / safe_i
-                s_jj = (z_in - z0_lw[loc]) / (z_in + z0_lw[loc])
-            else:
-                b_diag = (-v_d - z0_lw[loc] * i_d) / (
-                    2.0 * jnp.sqrt(jnp.asarray(z0_lw[loc]))
-                )
-                s_jj = b_diag / safe_a
-            S = S.at[col, col, :].set(s_jj.astype(cdt))
-            for ri in range(n_lw):
-                if ri == loc:
-                    continue
-                S = S.at[ri, col, :].set(
-                    (_b_lw_passive(run, ri) / safe_a).astype(cdt)
-                )
-            # Power witness: |a| from delivered power, not the port-cell
-            # wave magnitude (#313 near-field pollution triangulation).
-            safe_i = jnp.where(
-                jnp.abs(i_d) > 0, i_d, jnp.ones_like(i_d) * 1e-30
-            )
-            z_in = -v_d / safe_i
-            p_del = 0.5 * jnp.real(z_in) * jnp.abs(i_d) ** 2
-            one_minus = jnp.clip(1.0 - jnp.abs(s_jj) ** 2, 1e-9, None)
-            a_recon = jnp.sqrt(jnp.clip(2.0 * p_del, 0.0, None) / one_minus)
-            safe_ar = jnp.where(a_recon > 0, a_recon, jnp.ones_like(a_recon))
-            for p in range(n_msl):
-                b_p = _b_msl(run, p)
-                S = S.at[n_lw + p, col, :].set((b_p / safe_a).astype(cdt))
-                s21_power[p, loc, :] = np.asarray(
-                    jax.lax.stop_gradient(jnp.abs(b_p) / safe_ar),
-                    dtype=np.float64,
-                )
+            # The per-cell drive frame invalidates the entire driven column.
+            S = S.at[:, loc, :].set(jnp.nan)
+            s21_power[:, loc, :] = np.nan
         else:
             col = n_lw + loc
             # MSL drive wave (stage-S1 V*I split), power-wave normalized.
@@ -2003,32 +1890,9 @@ def _assemble_mixed_power_wave_s(
     return S, s21_power
 
 
-def _mixed_reciprocity_deviation(S):
-    """Worst relative |S_ij| vs |S_ji| disagreement (issue #488).
-
-    Magnitude-only by design: cross-family phase mixes two reference-plane
-    conventions on this lane, so a complex comparison would misfire.
-    Returns ``((i, j), max_relative_deviation)`` over all off-diagonal
-    pairs and frequencies, or ``None`` for a 1-port / tracer input.
-    """
-    s = np.abs(np.asarray(jax.lax.stop_gradient(S)))
-    n = int(s.shape[0])
-    if n < 2 or not np.all(np.isfinite(s)):
-        return None
-    worst_pair, worst = None, 0.0
-    for i in range(n):
-        for j in range(i + 1, n):
-            a, b = s[i, j, :], s[j, i, :]
-            denom = np.maximum(np.maximum(a, b), 1e-12)
-            dev = float(np.max(np.abs(a - b) / denom))
-            if dev >= worst:
-                worst, worst_pair = dev, (i, j)
-    return worst_pair, worst
-
-
 def _mixed_flux_magnitude_override(
     S_wave, box_lw, plane_msl, drive_plan, msl_away_signs, n_lw,
-    ill_cond_floor=0.05,
+    ill_cond_floor=0.05, refused_columns=(),
 ):
     """Replace off-diagonal MAGNITUDES with Poynting-flux ratios (issue #488).
 
@@ -2074,7 +1938,8 @@ def _mixed_flux_magnitude_override(
             p_net = msl_away_signs[loc] * plane_msl[run_idx, loc, :]
         neg_power[col, :] |= p_net < 0.0
         p_inc = np.clip(p_net, 0.0, None) / np.clip(one_minus, ill_cond_floor, None)
-        safe_pinc = np.where(p_inc > 0.0, p_inc, np.inf)
+        safe_pinc = (np.full_like(p_inc, np.nan) if col in refused_columns
+                     else np.where(p_inc > 0.0, p_inc, np.inf))
         for i in range(n_tot):
             if i == col:
                 continue
@@ -2145,7 +2010,6 @@ def _warn_thin_absorber_vs_guide_wavelength(
     if f_arr.size == 0:
         return
     f_lo = float(f_arr.min())
-    dx = float(grid.dx)
     seen: set = set()
     for cfg in cfgs:
         # A multimode port arrives as a list of per-mode configs; the
@@ -2163,30 +2027,25 @@ def _warn_thin_absorber_vs_guide_wavelength(
 
         if fc <= 0.0 or f_lo <= fc:
             continue
-        axis_boundary = getattr(boundary_spec, axis, None)
-        if axis_boundary is None:
-            continue
-        faces = []
-        for side in ("lo", "hi"):
-            if getattr(axis_boundary, side, None) not in ("cpml", "upml"):
-                continue
-            override = getattr(axis_boundary, f"{side}_thickness", None)
-            n_cells = int(cpml_layers if override is None else override)
-            if n_cells > 0:
-                faces.append((side, n_cells))
+        from rfx.boundaries.depths import grid_face_depths
+        faces = [(record.name.split("_")[1], record.realized)
+                 for record in grid_face_depths(grid, spec=boundary_spec, budget=cpml_layers)
+                 if record.name.startswith(axis + "_") and record.realized > 0]
         if not faces:
             continue
 
         lambda_g = (_C0_SPARAMS / f_lo) / np.sqrt(1.0 - (fc / f_lo) ** 2)
         required_m = _FAR_PORT_LAMBDA_G_FRACTION * lambda_g
-        thin = [(side, n) for side, n in faces if n * dx < required_m]
+        depths = [(side, n, absorber_depth(grid, axis, side, n)) for side, n in faces]
+        thin = [(side, n, depth) for side, n, depth in depths if depth < required_m]
         if not thin:
             continue
         detail = ", ".join(
-            f"{axis}-{side} {n} cells = {n * dx * 1e3:.1f} mm "
-            f"({n * dx / lambda_g:.2f} lambda_g)"
-            for side, n in thin
+            f"{axis}-{side} {n} cells = {depth * 1e3:.1f} mm "
+            f"({depth / lambda_g:.2f} lambda_g)"
+            for side, n, depth in thin
         )
+        dx = min(float(grid.boundary_cell(axis, side)) for side, _, _ in thin)
         warnings.warn(
             f"compute_waveguide_s_matrix: absorber on the {axis} propagation "
             f"axis is thinner than the documented "

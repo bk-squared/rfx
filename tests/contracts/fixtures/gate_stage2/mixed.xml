@@ -1,0 +1,19 @@
+<?xml version='1.0' encoding='utf-8'?>
+<testsuites name="pytest tests">
+  <testsuite name="pytest" errors="1" failures="1" skipped="0" tests="6" time="0.674">
+    <testcase classname="test_b" name="test_one" time="0.000">
+      <failure message="assert False">def test_one():
+&gt;       assert False
+E       assert False
+
+test_b.py:2: AssertionError</failure>
+    </testcase>
+    <testcase classname="test_a" name="test_before" time="0.000" />
+    <testcase classname="test_a" name="test_crash" time="0.000">
+      <error message="failed on setup with &quot;worker 'gw1' crashed while running 'test_a.py::test_crash'&quot;">worker 'gw1' crashed while running 'test_a.py::test_crash'</error>
+    </testcase>
+    <testcase classname="test_b" name="test_two" time="0.000" />
+    <testcase classname="test_c" name="test_one" time="0.112" />
+    <testcase classname="test_c" name="test_two" time="0.111" />
+  </testsuite>
+</testsuites>

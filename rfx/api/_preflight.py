@@ -416,7 +416,7 @@ class _PreflightMixin:
                 "use Simulation.compute_coaxial_line_reflection(...) for a "
                 "one-port reflection or Simulation.compute_coaxial_two_port(...) "
                 "for a through line (for a single add_coaxial_port(), "
-                "compute_s_matrix(lane=...) dispatches to either), or "
+                "compute_s_matrix(method=...) dispatches to either), or "
                 "add_port(extent=...) for the probe-feed S-parameter path"
             )
 
@@ -500,8 +500,8 @@ class _PreflightMixin:
 
         # The port S11 is the port drive's own reflection only if nothing else
         # excites the model (#1420), as on run()'s S request.
-        from rfx.runners._admission import refuse_plain_sources_s_matrix
-        refuse_plain_sources_s_matrix(self, main_record=True)
+        from rfx.runners._admission import admit_forward_s_matrix
+        admit_forward_s_matrix(self)
         port_entries = self._port_sparameter_entries()
         messages: list[str] = []
         if self._msl_ports:
@@ -917,109 +917,13 @@ class _PreflightMixin:
             Empty if no issues found. Finite flux-window geometry is recorded
             separately in ``flux_regions``, including for issue-free reports.
         """
-        import warnings
-        # Selection information belongs outside the captured legality findings.
-        # Resolve before any validator reads a profile or fallback spacing.
-        self._resolve_mesh()
-        issues = PreflightReport()
+        return self._preflight_impl(
+            strict=strict, check_ntff=check_ntff, check_resolution=check_resolution,
+            check_ad_memory=check_ad_memory, n_steps_for_memory=n_steps_for_memory,
+            available_memory_gb=available_memory_gb,
+        )
 
-        # Static geometry diagnostics must stay host-side under an outer
-        # jit, just like mesh selection. Otherwise even a concrete Box's
-        # mask becomes a tracer before validators convert it to numpy.
-        # Incoming mesh/design tracers remain tracers and retain the
-        # validators' existing not-evaluable guards.
-        with warnings.catch_warnings(record=True) as caught, jax.ensure_compile_time_eval():
-            warnings.simplefilter("always")
-            self._collect_flux_regions(issues)
-            try:
-                if check_resolution:
-                    self._validate_mesh_quality()
-                self._validate_simulation_config()
-                if check_ntff:
-                    self._validate_ntff_inverse_design(
-                        include_pec_overlap_error=(check_ntff != "advisory"),
-                    )
-            except ValueError as e:
-                # Collect (do NOT fail-on-first): the aggregated raise at the
-                # end escalates every finding at once under strict.
-                # Structurally-impossible configs raise PreflightConfigError
-                # with the slug set at the check site; any other ValueError is
-                # error-severity but uncoded.
-                issues.append(PreflightIssue(
-                    f"ERROR: {e}",
-                    severity="error",
-                    code=getattr(e, "code", "uncoded"),
-                    loc=getattr(e, "loc", None),
-                    source=getattr(e, "source", None),
-                ))
-
-        for w in caught:
-            msg = str(w.message)
-            # Collect (do NOT fail-on-first): aggregated raise at the end.
-            # Prefer the structured fields carried on the warning INSTANCE
-            # (PreflightWarning); fall back to the category-derived severity for
-            # the legacy ``warnings.warn(msg, PreflightErrorWarning)`` form, and
-            # to severity="warning"/code="uncoded" for any plain UserWarning.
-            inst = w.message
-            if isinstance(inst, PreflightWarning):
-                severity = inst.severity
-                code = inst.code
-                loc = inst.loc
-                source = inst.source
-            else:
-                severity = (
-                    "error" if issubclass(w.category, PreflightErrorWarning)
-                    else "warning"
-                )
-                code = "uncoded"
-                loc = None
-                source = None
-            issues.append(PreflightIssue(
-                msg, severity=severity, code=code, loc=loc, source=source
-            ))
-
-        if check_ad_memory:
-            if n_steps_for_memory is None:
-                raise ValueError("check_ad_memory=True requires n_steps_for_memory")
-            est = self.estimate_ad_memory(
-                n_steps_for_memory,
-                available_memory_gb=available_memory_gb,
-            )
-            if est.warning:
-                issues.append(PreflightIssue(
-                    est.warning, severity="warning", code="ad_memory"
-                ))
-
-        if strict and len(issues):   # PreflightReport refuses bool() (#980)
-            # Aggregate-then-raise: escalate ALL findings at once. Preserves the
-            # historical "strict escalates any issue to ValueError" contract,
-            # but reports every problem in one pass instead of fail-on-first
-            # (pydantic / Tidy3D pattern). For an errors-only gate that lets
-            # advisories through, call ``report.raise_for_failure()`` on a
-            # ``strict=False`` report instead.
-            raise ValueError(
-                f"preflight (strict) found {len(issues)} issue(s):\n  - "
-                + "\n  - ".join(issues)
-            )
-
-        if len(issues):              # PreflightReport refuses bool() (#980)
-            for iss in issues:
-                print(f"  [PREFLIGHT] {iss}")
-        elif check_ntff is True:
-            print("  [PREFLIGHT] All checks passed.")
-        elif check_ntff == "advisory":
-            print("  [PREFLIGHT] All checks passed (NTFF advisory tier; the "
-                  "PEC-overlap error check runs on forward()/preflight()).")
-        else:
-            print("  [PREFLIGHT] All checks passed (NTFF checks skipped; "
-                  "run sim.preflight() for the full set).")
-
-        if issues.flux_regions:
-            from rfx.probes.flux_region import flux_region_message
-            for record in issues.flux_regions:
-                print(f"  [FLUX REGION] {flux_region_message(record)}")
-
-        return issues
+    from rfx.preflight._impl import _preflight_impl
 
     def preflight_sparameters(
         self,
@@ -1106,7 +1010,7 @@ class _PreflightMixin:
         if calculator.lower() == "compute_coaxial_s_matrix":  # removed, #1212
             raise ValueError(
                 "calculator='compute_coaxial_s_matrix' names a method removed in #1212. "
-                "Use calculator='coaxial' to check the coaxial lanes, "
+                "Use calculator='coaxial' to check the coaxial methods, "
                 "compute_coaxial_line_reflection() (one-port reflection) and "
                 "compute_coaxial_two_port() (through line)."
             )
@@ -1159,6 +1063,7 @@ class _PreflightMixin:
                 severity="error",
                 code=getattr(exc, "code", f"sparam_routing_{key}"),
                 source="preflight_sparameters",
+                diagnostic=getattr(exc, "diagnostic", None),
             ))
 
         # Waveguide setup audits (post-v1.8 plan item 2, sections 2-1/2-4 of
@@ -1191,7 +1096,7 @@ class _PreflightMixin:
                 for _rec in _msl_caught:
                     _inst = _rec.message
                     issues.append(PreflightIssue(
-                        str(_inst),
+                        _inst,
                         severity=getattr(_inst, "severity", "warning"),
                         code=getattr(_inst, "code", "msl_port_geometry"),
                         source=getattr(_inst, "source",
@@ -1212,7 +1117,7 @@ class _PreflightMixin:
                 for _rec in _wg_caught:
                     _inst = _rec.message
                     issues.append(PreflightIssue(
-                        str(_inst),
+                        _inst,
                         severity=getattr(_inst, "severity", "warning"),
                         code=getattr(_inst, "code", "uncoded"),
                         loc=getattr(_inst, "loc", None),
@@ -1229,7 +1134,7 @@ class _PreflightMixin:
         _errors = issues.errors
         if strict and _errors:
             _advisory = len(issues) - len(_errors)
-            raise ValueError(
+            raise issues.exception(
                 f"preflight_sparameters (strict) found {len(_errors)} "
                 f"error-severity issue(s)"
                 + (f" (plus {_advisory} advisory/informational finding(s), "
@@ -1246,52 +1151,8 @@ class _PreflightMixin:
 
     def _validate_msl_sparameter_request_for_preflight(self) -> None:
         """Mirror ``compute_msl_s_matrix`` family-routing checks."""
-
-        if not self._msl_ports:
-            raise ValueError("No MSL ports registered. Call add_msl_port() first.")
-        if self._ports or self._waveguide_ports or self._floquet_ports:
-            raise NotImplementedError(
-                "compute_msl_s_matrix() is defined only for add_msl_port(...) "
-                "families in the current simulation. Use separate simulations "
-                "for add_port(...), add_waveguide_port(...), or "
-                "add_floquet_port(...) S-parameter workflows."
-            )
-        if self._tfsf is not None:
-            raise NotImplementedError(
-                "compute_msl_s_matrix() is not supported together with TFSF; "
-                "TFSF is a plane-wave source, not an MSL port."
-            )
-        if self._coaxial_ports:
-            raise NotImplementedError(
-                "compute_msl_s_matrix() does not include add_coaxial_port(...); "
-                "coaxial-port S-parameters need a separate validated V/I "
-                "extraction and calibration contract."
-            )
-        if (
-            self._dz_profile is not None
-            or self._dx_profile is not None
-            or self._dy_profile is not None
-        ) and any(
-            getattr(pe, "mode", "laplace") == "eigenmode"
-            for pe in self._msl_ports
-        ):
-            raise NotImplementedError(
-                "compute_msl_s_matrix() on a non-uniform mesh supports "
-                "mode='laplace'/'uniform' (Ez static-Laplace feed) only; the "
-                "eigenmode J+M launch needs the magnetic-source channel that "
-                "the non-uniform runner does not carry. Use mode='laplace' "
-                "(the add_msl_port default) on the graded-mesh lane."
-            )
-        if self._refinement is not None:
-            raise NotImplementedError(
-                "compute_msl_s_matrix() is not supported with SBP-SAT "
-                "subgridding."
-            )
-        if self._solver == "adi":
-            raise NotImplementedError(
-                "compute_msl_s_matrix() is not supported with solver='adi'; "
-                "use the uniform Yee solver."
-            )
+        from rfx.preflight.msl_routing import _validate_msl_sparameter_request_for_preflight
+        return _validate_msl_sparameter_request_for_preflight(self)
 
     def _validate_waveguide_sparameter_request_for_preflight(
         self,
@@ -1411,14 +1272,8 @@ class _PreflightMixin:
         else:
             # Both lanes absorb on all three axes (issue 1218): a face without
             # an absorber is a PEC wall that closes a can around the line.
-            if any(
-                face.lo != "cpml"
-                or face.hi != "cpml"
-                or face.resolved_lo_thickness(self._cpml_layers) <= 0
-                or face.resolved_hi_thickness(self._cpml_layers) <= 0
-                for face in (self._boundary_spec.x, self._boundary_spec.y,
-                             self._boundary_spec.z)
-            ):
+            from rfx.boundaries.depths import has_positive_cpml_faces
+            if not has_positive_cpml_faces(self._boundary_spec, self._cpml_layers):
                 failed.append("positive CPML thickness on all six faces")
             if any(token != "cpml"
                    for _, _, token in self._boundary_spec.faces()):
@@ -1434,7 +1289,7 @@ class _PreflightMixin:
         if self._stencil_order != 2:
             failed.append(f"stencil_order=2 (got {self._stencil_order})")
         if self._tfsf is not None:
-            failed.append("no TFSF source (each lane builds its own)")
+            failed.append("no TFSF source (each method builds its own)")
         declared_mesh = self._declared_mesh
         if any(declared_mesh[name] is not None
                for name in ("_dx_profile", "_dy_profile", "_dz_profile")):
@@ -1443,7 +1298,7 @@ class _PreflightMixin:
             failed.append("no SBP-SAT refinement")
         if self._geometry or self._thin_conductors:
             failed.append(
-                "no registered geometry or thin conductors (each lane "
+                "no registered geometry or thin conductors (each method "
                 "builds the complete line)")
         if self._lumped_rlc:
             failed.append("no lumped RLC elements")
@@ -1542,56 +1397,13 @@ class _PreflightMixin:
         ))
 
     def _validate_cfg_precision_x64(self, _w) -> None:
-        """Warn when ``precision`` cannot actually take effect.
+        """Report missing x64 as an error; retain the nonuniform advisory."""
+        from rfx._precision import FLOAT64_MODE_ERROR
 
-        Two independent ways ``precision != "float32"`` silently degrades
-        back to float32 with no error:
-
-        1. ``precision="float64"`` requires JAX x64 mode already enabled by
-           the caller (``jax.config.update("jax_enable_x64", True)`` or
-           ``jax.experimental.enable_x64()``) — process-global JAX
-           behavior, not something ``Simulation`` can flip on its own: this
-           package never flips ``jax_enable_x64`` at import/module scope,
-           since that would be permanent for the rest of the process and
-           is the caller's decision to make, not a library's to make for
-           them. Without this check, ``precision="float64"`` would look
-           accepted (no error) while silently running float32 fields
-           (issue #630: the Yee update arithmetic used to re-quantize
-           float64 fields to float32 every timestep even when storage WAS
-           float64 -- that half is fixed, but storage never becoming
-           float64 in the first place is a distinct, still-live footgun).
-        2. The non-uniform mesh runner (``rfx/runners/nonuniform.py``) does
-           not thread ``field_dtype`` at all (issue #630 review) -- a
-           non-uniform-mesh sim with ``precision="mixed"`` or
-           ``"float64"`` silently runs float32 fields regardless. This is
-           an ADVISORY heads-up only: ``_dispatch_plan`` (the single
-           lane-decision point) hard-rejects the same combination with
-           ``NotImplementedError`` before any compute runs, so this warning
-           cannot actually be missed in practice -- it exists to explain
-           the coming error before the run gets that far, and to cover the
-           ``skip_preflight=True`` escape hatch, which does NOT bypass
-           ``_dispatch_plan``'s own guard. The distributed lanes
-           (``distributed.py``/``distributed_nu.py``/``distributed_v2.py``)
-           have the same gap but ``distributed=True`` is a call-time
-           ``run()``/``forward()`` kwarg, not visible here at
-           ``Simulation``-construction-time preflight (matches the
-           established "P3 (Distributed path)" precedent in
-           ``_validate_cfg_subgrid_limitations`` below) -- ``_dispatch_plan``
-           is therefore the ONLY enforcement point for the distributed
-           case, not merely a backstop.
-
-        Both are exactly the SILENT_WRONG class this preflight system
-        exists to catch.
-        """
-        if self._precision == "float64" and not jax.config.jax_enable_x64:
+        if self._precision == "float64" and not jax.config.x64_enabled:
             _w.warn(PreflightWarning(
-                "precision='float64' was requested, but JAX x64 mode is not "
-                "enabled (jax.config.jax_enable_x64 is False). JAX silently "
-                "downcasts float64 arrays to float32, so fields will run at "
-                "float32 despite this setting. Enable x64 before constructing "
-                "this Simulation: jax.config.update('jax_enable_x64', True) "
-                "(process-global) or wrap the call in "
-                "jax.experimental.enable_x64() (scoped).",
+                FLOAT64_MODE_ERROR,
+                severity="error",
                 code="precision_float64_without_x64",
                 source="_validate_cfg_precision_x64",
             ))
@@ -2174,7 +1986,7 @@ class _PreflightMixin:
     # composed ``Simulation``, so not one call site changes and none of those
     # modules imports this one.
     # ------------------------------------------------------------------
-    from rfx.preflight.realization import _campaign_ctx
+    from rfx.preflight.realization import _campaign_ctx, _validate_cfg_assembly
     # ------------------------------------------------------------------
     # #980 Phase 3 leg 2: the #703 campaign-statics umbrella, its four
     # checks and the #931 per-declaration realization findings moved

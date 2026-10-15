@@ -123,13 +123,14 @@ def resolve_flux_region(grid, entry, domain, *, warn=True):
                 cells = 1
             else:
                 cells = grid.shape[t] - pad_lo - pad_hi - (letter not in getattr(grid, "periodic_axes", ""))
-            edges = np.arange(cells + 1, dtype=float) * grid.dx
+            cell = float(grid.boundary_cell(letter, "lo"))
+            edges = np.arange(cells + 1, dtype=float) * cell
             c = float(domain[t]) / 2 if c is None else c
             from rfx._periodic import interval_coordinates
             interval_coordinates(grid, t, c - size[n] / 2, c + size[n] / 2)
             from rfx._grid_metric import nearest_uniform_index
-            indices = (nearest_uniform_index(c / grid.dx - size[n] / (2 * grid.dx)),
-                       nearest_uniform_index(c / grid.dx + size[n] / (2 * grid.dx)))
+            indices = (nearest_uniform_index(c / cell - size[n] / (2 * cell)),
+                       nearest_uniform_index(c / cell + size[n] / (2 * cell)))
         axes.append(resolve_flux_axis(edges, pad_lo, c, size[n], indices=indices))
     record = dict(
         name=entry.name, axis=entry.axis, lane="nonuniform" if nonuniform else "uniform",

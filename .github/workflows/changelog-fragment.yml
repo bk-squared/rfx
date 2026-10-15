@@ -13,6 +13,8 @@ name: changelog-fragment
 # were convention, not enforcement.
 
 on:
+  merge_group:
+    types: [checks_requested]
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled]
 
@@ -26,6 +28,7 @@ concurrency:
 
 permissions:
   contents: read
+  pull-requests: read
 
 jobs:
   fragment:
@@ -33,7 +36,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: PR gate already passed before queue admission
+        if: github.event_name == 'merge_group'
+        run: echo 'PR-level gate; the queue admits only PRs that passed it'
+
       - name: Check out repository
+        if: github.event_name != 'merge_group'
         # fetch-depth: 0 — the check diffs base.sha...head.sha, and a shallow
         # clone has neither commit's history to compute the merge base from.
         uses: actions/checkout@v4
@@ -41,11 +49,13 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Python
+        if: github.event_name != 'merge_group'
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
       - name: Require a changelog fragment
+        if: github.event_name != 'merge_group'
         # The checker is stdlib-only; nothing is installed.
         env:
           # toJSON, not join(..., ','): a label may contain a comma, and a
@@ -58,7 +68,16 @@ jobs:
           # expression inside any `run:` block rather than judging case by case.
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          PR_HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          python scripts/ci/check_changelog_fragment.py \
-            --base "$BASE_SHA" \
-            --head "$HEAD_SHA"
+          case "$PR_HEAD_REPO:$PR_HEAD_REF" in
+            "$GITHUB_REPOSITORY":merge-train/batch-*)
+              git checkout --no-overlay "$BASE_SHA" -- scripts/ci scripts/changelog
+              python scripts/ci/check_batch.py fragments --base "$BASE_SHA" --head "$HEAD_SHA" ;;
+            *)
+              python scripts/ci/check_changelog_fragment.py \
+                --base "$BASE_SHA" \
+                --head "$HEAD_SHA" ;;
+          esac

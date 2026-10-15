@@ -111,14 +111,16 @@ def _fill_image_range(grid, shape, axis, *, closed_footprint=False, padding=0.):
             # Preserve endpoint expression roundoff, including a bound one
             # float step outside [0,L]; it must not add an exterior image.
             return nearest if abs(q - nearest) <= 8 * math.ulp(max(1., abs(q))) else q
-        return range(math.floor(period_quotient(lo)),
-                     math.ceil(period_quotient(hi)))
+        # A footprint of zero width on a multiple of L is one rim, not none:
+        # it keeps the image that puts it on node 0.
+        first = math.floor(period_quotient(lo))
+        return range(first, max(math.ceil(period_quotient(hi)), first + 1))
     return range(math.floor(float(lo) / length),
                  math.floor(float(hi) / length) + 1)
 
 
 def periodic_mask(grid, shape, coords, *, sample=None, axes=None,
-                  closed_footprint=False):
+                  closed_footprint=False, axis_samplers=None):
     """Union a fill's images using its existing coordinate sampler.
 
     Separable axis masks are folded before their Cartesian product is built,
@@ -127,6 +129,14 @@ def periodic_mask(grid, shape, coords, *, sample=None, axes=None,
     samplers stream and fold one image axis at a time.
     No array has the product of two image counts. Non-periodic calls retain
     their original sampler and coordinates.
+
+    ``axis_samplers`` = three callables, one per axis, each mapping that axis's
+    coordinate line to a 1-D mask, for a ``sample`` that is their outer
+    product (a Box). The union over the image lattice of an outer product is
+    the outer product of the per-axis unions, so the images are folded one
+    axis at a time: the cost is the SUM of the image counts, not their
+    product. A Box declared 2 m wide on two periodic axes of 0.75 mm took
+    1602 s through the nested fold below (2667 x 2667 whole-grid samples).
     """
     from rfx.core.jax_utils import is_tracer
     import jax.numpy as jnp
@@ -157,6 +167,17 @@ def periodic_mask(grid, shape, coords, *, sample=None, axes=None,
         else:
             ks = (0,)
         images.append(ks)
+    if axis_samplers is not None:
+        masks = []
+        for a, (line, ks) in enumerate(zip(coords, images)):
+            folded = None
+            for k in ks:
+                part = axis_samplers[a](
+                    line + k * float(grid.domain[a]) if k else line)
+                folded = part if folded is None else folded | part
+            masks.append(folded)
+        return (masks[0][:, None, None] & masks[1][None, :, None]
+                & masks[2][None, None, :])
     if separable is not None:
         expanded = []
         for a, (line, ks) in enumerate(zip(coords, images)):

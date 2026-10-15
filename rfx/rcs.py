@@ -397,7 +397,7 @@ def compute_rcs(
         if (_oblique or float(theta_inc) != 0.0 or float(phi_inc) != 0.0
                 or not isinstance(grid, Grid) or grid.is_2d or boundary != "cpml"
                 or cpml_layers <= 0
-                or any(v != cpml_layers for v in grid.face_layers.values())
+                or any(face.declared != cpml_layers for face in grid.boundary_depths)
                 or any(getattr(grid, f"pad_{axis}_{side}") != cpml_layers
                        for axis in "xyz" for side in ("lo", "hi"))):
             raise NotImplementedError(
@@ -472,6 +472,17 @@ def compute_rcs(
         nz=grid.nz,
         method="methodB" if _oblique else "bloch",
     )
+    # This calculator owns its NTFF request and bypasses Simulation dispatch.
+    from rfx.boundaries.depths import FACES, grid_face_depths
+    from rfx.boundaries.features import refuse_ntff_reflecting_faces
+    # Non-absorbing strings install array walls, not a periodic exterior.
+    # The oblique path wraps z, regardless of the grid's face declarations.
+    walls = (tuple(face for face in FACES if not (_oblique and face.startswith("z_")))
+             if boundary not in ("cpml", "upml") else None)
+    faces = grid_face_depths(grid, pec_faces=walls)
+    if _oblique:
+        faces = tuple(face for face in faces if not face.name.startswith("z_"))
+    refuse_ntff_reflecting_faces(faces, lane="compute_rcs")
     if reference_index is not None and not tfsf_cfg.x_lo <= reference_index <= tfsf_cfg.x_hi:
         raise ValueError("phase_reference.x must lie inside the total-field slab")
 
@@ -571,7 +582,7 @@ def compute_rcs(
     # (byte-identical: `_run_kw` collapses to the pre-relaxation call).
     _run_kw = dict(boundary=boundary, tfsf=(tfsf_cfg, tfsf_st), ntff=ntff_box)
     if _oblique:
-        _run_kw.update(cpml_axes="xy", periodic=(False, False, True), pec_axes="")
+        _run_kw.update(cpml_axes="xy", periodic=(False, False, True))
     result = run(grid, materials, n_steps, **_run_kw)
 
     # --- 4. Compute far-field from NTFF data ---

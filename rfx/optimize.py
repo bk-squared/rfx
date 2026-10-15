@@ -19,6 +19,8 @@ Example
 
 from __future__ import annotations
 
+from rfx._precision import resolve_field_dtype
+
 import math
 from dataclasses import dataclass
 from typing import Callable
@@ -390,6 +392,7 @@ def optimize(
         For ``n_starts>1`` this is the winning restart's result
         (``loss_history`` is that restart's own trajectory).
     """
+    resolve_field_dtype(sim._precision)
     if n_starts < 1:
         raise ValueError(f"optimize: n_starts must be >= 1, got {n_starts}")
     sim._auto_preflight(skip=skip_preflight, context="optimize")
@@ -596,6 +599,7 @@ def gradient_check(
     GradientCheckResult
         Contains ad_grad, fd_grad, and relative_error.
     """
+    resolve_field_dtype(sim._precision)
     grid = sim._build_realized_grid()
     from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0_gc
     _refuse_f0_gc(sim._thin_conductors, "gradient-check")
@@ -782,6 +786,7 @@ def progressive_optimize(
                   f"lr={stage.lr} ===")
 
         sim = sim_factory(stage.dx)
+        resolve_field_dtype(sim._precision)
 
         is_nonuniform = (
             sim._dz_profile is not None

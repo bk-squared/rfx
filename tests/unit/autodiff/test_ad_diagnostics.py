@@ -453,7 +453,7 @@ def test_ad_memory_preflight_residual_context_rejects_nonfinite_values():
 
 @pytest.mark.docs_consistency
 def test_memory_reduction_docs_include_residual_inspection_boundary():
-    doc = Path("docs/public/guide/memory-reduction.mdx").read_text()
+    doc = Path("docs/public/run/memory-and-speed.mdx").read_text()
 
     assert "`jax_saved_residuals_inspection`" in doc
     assert "`rfx_ad_saved_residuals_diagnostic`" in doc

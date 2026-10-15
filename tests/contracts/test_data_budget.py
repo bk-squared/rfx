@@ -69,6 +69,7 @@ def test_code_prose_and_images_are_not_data(path: str) -> None:
     "docs/public/site_map.json",
     "docs/public/gallery/assets/patch_antenna/sparams.s1p",
     "tests/contracts/boundary_registry.json",
+    "scripts/ci/layer_baseline.json",
     "tests/fixtures/a.json",
     "tests/fixtures/deep/er/a.npz",
     "tests/data/preflight_split_snapshot/x.json",

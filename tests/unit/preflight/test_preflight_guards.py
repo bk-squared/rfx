@@ -322,6 +322,25 @@ def test_dielectric_sparam_active_raises_threshold_to_20():
     )
 
 
+@pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
+def test_wg_default_bins_below_cutoff_are_advised(graded, record_property):
+    sim = Simulation(
+        freq_max=12e9, domain=(0.08, 0.024, 0.012), dx=0.002,
+        dx_profile=np.full(40, 0.002) if graded else None,
+        boundary={"x": "cpml", "y": "pec", "z": "pec"}, cpml_layers=4,
+    )
+    sim.add_waveguide_port(0.012, f0=10e9, ref_offset=3, probe_offset=10)
+    result = sim.run(n_steps=16, compute_s_params=False)
+    bins = np.asarray(result.waveguide_ports["waveguide_0"].freqs)
+    record_property("default_bin_count", len(bins))
+    record_property("default_min_hz", float(bins.min()))
+    findings = [issue for issue in _issues(sim)
+                if getattr(issue, "code", None) == "port_freqs_below_cutoff"]
+    assert len(findings) == 1
+    assert f"minimum measurement frequency {bins.min() / 1e9:.3f} GHz" in findings[0]
+    assert bins.min() < float(result.waveguide_ports["waveguide_0"].f_cutoff)
+
+
 def test_wg_port_evanescent_no_warning_below_threshold():
     """freqs up to 6.5 GHz in a 40×20 mm guide: fc_TE20=7.5 GHz,
     threshold=0.90×7.5=6.75 GHz → 6.5 < 6.75, no evanescent warning.
@@ -1107,13 +1126,16 @@ _TFSF_RLC_DECAY = 1e-3
     (0.0, "series"), (1e-9, "series"), (0.0, "parallel"),
 ], ids=["series-RC", "series-RLC", "parallel-RC"])
 def test_tfsf_plane_wave_on_a_lumped_rlc_decays(l_h, topology):
-    sim = Simulation(freq_max=16e9, domain=(0.02, 0.02, 0.02), dx=0.02 / 20,
-                     boundary="cpml", cpml_layers=8, mode="3d")
+    # Declare the legacy transverse period, including its eight-cell pads and
+    # bounding node; translated coordinates retain the same sampled nodes.
+    sim = Simulation(freq_max=16e9, domain=(0.02, 0.037, 0.037), dx=0.02 / 20,
+                     boundary={"x": "cpml", "y": "periodic", "z": "periodic"},
+                     cpml_layers=8, mode="3d")
     sim.add_tfsf_source(f0=8e9, bandwidth=0.6, polarization="ez", direction="+x",
                         waveform="modulated_gaussian")
-    sim.add_lumped_rlc(position=(0.010, 0.010, 0.010), component="ez",
+    sim.add_lumped_rlc(position=(0.010, 0.018, 0.018), component="ez",
                        R=50.0, L=l_h, C=0.20e-12, topology=topology)
-    sim.add_vector_probe((0.010, 0.010, 0.010))
+    sim.add_vector_probe((0.010, 0.018, 0.018))
     ts = np.abs(np.asarray(
         sim.run(n_steps=_TFSF_RLC_STEPS, skip_preflight=True).time_series))
     assert np.all(np.isfinite(ts)), (

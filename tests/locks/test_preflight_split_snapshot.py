@@ -70,16 +70,22 @@ Measured with the command below on the tree before and after: 67 -> 66
 snapshot files, 77 -> 76 literal codes, 66 -> 65 witnessed, and the same 11
 unwitnessed codes -- the removed code was witnessed and left both sides.
 
-The 11 unwitnessed codes left are the honest hole, and every one of them
+The 10 unwitnessed codes left are the honest hole, and every one of them
 belongs to a family this lock has already discharged or to a body no builder
 reaches: the two remaining ``precision_*`` guards,
 ``port_aperture_unrasterizable`` /
 ``port_index_mirror_asymmetry`` / ``record_far_boundary_band_below_cutoff`` /
-``waveguide_setup_audit_skipped`` / ``port_freqs_below_cutoff`` /
+``waveguide_setup_audit_skipped`` /
 ``port_source_below_cutoff`` (the waveguide leg),
 ``campaign_statics_unavailable`` (leg 2), ``mesh_import_underresolved``
 (leg 5, which needs the optional ``cad`` extra -- see below) and
 ``dielectric_at_absorber_seam`` (#1043 stage B).
+
+SNAPSHOT CHANGE, 2026-10-12 (#1662). The below-cutoff advisory now evaluates
+the default bins a waveguide port declared without freqs is run with.
+``conformal_fine_dx`` uses default bins starting at 1 GHz, below its WR-90
+cutoff of 6.517 GHz, so it now correctly emits ``port_freqs_below_cutoff``.
+Only that fixture's snapshot is regenerated; the code is now witnessed.
 
 SNAPSHOT CHANGE, 2026-09-15 (#801). One committed report moved, and the reason
 is written here BEFORE the regeneration because this lock's own hint says a diff
@@ -360,6 +366,8 @@ from tests._structured_snapshot import assert_structured_close, without_prose
 
 _HERE = Path(__file__).resolve()
 _REPO = _HERE.parents[2]
+# #1512 adds stub findings: instrument 14→15, x-clearance 10→11, y-clearance 9→10, junction-short 12→14; existing values unchanged.
+# wire_port_no_radius appends ONE advisory, after every existing one, to the six fixtures with a radius-less wire port (add_port extent=, radius=None): wire_port_microstrip, wire_port_dead_extent, wire_port_end_gap, wire_port_dead_cell_nu, refplane_near_field, refplane_partial_optin; existing values unchanged.
 _SNAPSHOT_DIR = _REPO / "tests" / "data" / "preflight_split_snapshot"
 
 _UPDATE_ENV = "RFX_PREFLIGHT_SNAPSHOT_UPDATE"
@@ -612,6 +620,7 @@ def test_reexported_preflight_names_are_the_same_objects():
         "pytest.warns and isinstance start testing the wrong one.")
 
 
+@pytest.mark.source_scan
 def test_the_declared_reexport_surface_is_the_whole_import_block():
     """The tuple above must name exactly what the facade imports.
 
@@ -683,6 +692,8 @@ def test_the_declared_reexport_surface_is_the_whole_import_block():
 # public members only, and every name below is private.
 # ---------------------------------------------------------------------------
 _REBOUND_ON_MIXIN = {
+    # S1 G1: the run-all-checks body moved out of rfx/api/_preflight.py.
+    "rfx.preflight._impl": ("_preflight_impl",),
     "rfx.preflight.msl": (
         "_check_msl_port_geometry", "_msl_assemble_once",
         "_msl_conductor_gap", "_msl_declared_face_geometry",
@@ -815,6 +826,8 @@ _REBOUND_ON_MIXIN = {
     "rfx.preflight.realization": (
         "_assemble_realized", "_campaign_ctx", "_port_pec_mask",
         "_port_realized_edges",
+        # 2026-10-11 (#1620): the assembly-refusal check, bound on the mixin.
+        "_validate_cfg_assembly",
     ),
     "rfx.preflight.ports": (
         "_check_coaxial_port_junction_aperture",
@@ -921,6 +934,7 @@ def test_moved_mixin_methods_are_rebound_objects_with_their_qualname():
                 "and the mixin name leaks into TypeError text")
 
 
+@pytest.mark.source_scan
 def test_the_class_scoped_imports_are_the_declared_rebind_surface():
     """The tuples above must name exactly what ``_PreflightMixin`` imports.
 
@@ -1744,6 +1758,8 @@ def _source_decoupled_whole_boundary_sim():
         freq_max=10e9, domain=(0.02, 0.015, 0.015), dx=1e-3,
         boundary="pec", cpml_layers=0,
     )
+    # Assembly now refuses this declaration: a tangential source in a PEC
+    # wall is shorted. Issue 1075 previously covered only the advisory.
     sim.add_source((0.0, 0.0075, 0.0075), component="ez",
                    amplitude_kind="field")
     return sim
@@ -2241,6 +2257,7 @@ def test_structured_split_snapshot_mutations(monkeypatch, tmp_path, mutation):
             test_preflight_report_matches_the_committed_snapshot("mutation", None, None, None)
 
 
+@pytest.mark.source_scan
 @pytest.mark.parametrize("replacement,red", [
     ("{gap/(2*cell):.1f}", True),
     ("{gap/cell:.1f}", False),

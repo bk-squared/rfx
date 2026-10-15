@@ -8,6 +8,7 @@ import pytest
 
 from rfx import Simulation
 from rfx import simulation
+from rfx.boundaries import tfsf as boundary_policy
 from rfx.sources import tfsf
 
 
@@ -24,14 +25,14 @@ def test_uniform_entry_points_use_tfsf_boundary_policy(monkeypatch, entry, kind,
 
 @pytest.mark.parametrize("entry", ["run", "forward"])
 def test_methodb_helper_change_reaches_both_entry_points(monkeypatch, entry):
-    original = tfsf.tfsf_boundary_flags
+    original = boundary_policy.boundary_flags
 
-    def changed(cfg):
+    def changed(cfg, grid=None):
         if tfsf.is_tfsf_methodB(cfg):
             return (False, True, False), "xz"
-        return original(cfg)
+        return original(cfg, grid)
 
-    monkeypatch.setattr(tfsf, "tfsf_boundary_flags", changed)
+    monkeypatch.setattr(boundary_policy, "boundary_flags", changed)
     _capture_policy(monkeypatch, entry, "methodB", ((False, True, False), "xz"))
 
 
@@ -57,6 +58,7 @@ def _capture_policy(monkeypatch, entry, kind, expected):
     with pytest.raises(Captured):
         getattr(sim, entry)(n_steps=2, skip_preflight=True)
     assert (captured["periodic"], captured["cpml_axes"]) == expected
-    # Preserve forward's existing wall policy as well as the shared flags.
+    # #1549: forward passes no wall selection of its own on any kind; the walls come from the realized
+    # boundary record (resolve_wall_faces), which never walls a face the plane wave wraps.
     if entry == "forward":
-        assert captured["pec_axes"] == (None if kind == "closed" else "")
+        assert captured["pec_axes"] is None

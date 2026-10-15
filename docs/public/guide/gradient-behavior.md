@@ -2,14 +2,14 @@
 title: "Gradient Behavior in rfx"
 description: "Where rfx gradients are reliable, where they are noisy or meaningless, and three checks to run before you optimize: finite differences, loss magnitude, and record length."
 sidebar:
-  order: 14
+  order: 5
 ---
 
 An rfx gradient is the exact derivative of the discrete simulation you set up.
 Whether it is *useful* depends on the design variable, the objective and the
 run length. This page lists the cases that behave well, the ones that don't, and
 three checks to run before you trust a gradient. For the background, see
-[Autodiff and Adjoint Background](/rfx/guide/autodiff-adjoint/).
+[Autodiff and Adjoint Background](/rfx/design/gradients/).
 
 ## Three checks before you optimize
 
@@ -81,7 +81,7 @@ So compare the loss **magnitude** with a physical expectation, not only the
 relative error. A reflected-energy proxy on a design that reflects a meaningful
 fraction of the pulse lands near `1e-2` to `1e-1`. A value like `~1e-7`
 signals an empty window, not a matched design. See the split-window rule in
-[Inverse Design](/rfx/guide/inverse-design/).
+[Inverse Design](/rfx/design/optimization/).
 
 ### 3. The record length
 
@@ -107,7 +107,7 @@ you whether the direction changed or only the step length. A failed witness
 means the record is too short for this gradient: lengthen the run and check
 again. The witness costs about `1 + factor` differentiated runs, so use it
 once per new setup, not every iteration. Pair it with the settling check in
-[Probes and S-Parameters](/rfx/guide/probes-sparams/); it does not replace it.
+[Probes and S-Parameters](/rfx/measure/s-parameters/); it does not replace it.
 
 ## What behaves well
 

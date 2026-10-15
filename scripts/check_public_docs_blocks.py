@@ -32,7 +32,7 @@ becomes visible before it breaks the docs.
 Usage::
 
     python3 scripts/check_public_docs_blocks.py
-    python3 scripts/check_public_docs_blocks.py --only guide/probes-sparams
+    python3 scripts/check_public_docs_blocks.py --only measure/s-parameters
     python3 scripts/check_public_docs_blocks.py --format json --strict
 """
 
@@ -137,7 +137,7 @@ def parse_args() -> argparse.Namespace:
         default=None,
         metavar="PAGE",
         help="Restrict to these pages, by path relative to docs/public, with or "
-        "without extension (e.g. guide/probes-sparams). A directory prefix "
+        "without extension (e.g. measure/s-parameters). A directory prefix "
         "selects everything under it.",
     )
     parser.add_argument(

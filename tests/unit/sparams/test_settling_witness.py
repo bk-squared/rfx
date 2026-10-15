@@ -32,8 +32,11 @@ def _msl_thru(domain_y=0.008, y_c=0.004):
     # node line and the sheet lands on it exactly. Drawn one cell thick
     # before the contract, it would now be a VOLUME — walls at BOTH z
     # faces and the Ez edge between them shorted.
-    sim.add(Box((0.0, y_c - 0.0006, 0.0008),
-                (0.012, y_c + 0.0006, 0.0008)), material="pec")
+    # #1512: the strip spans the two port nodes (2 and 10 mm). Drawn across the whole
+    # domain it left 2 mm open stubs whose effective quarter wave (23.8 GHz) is within
+    # 1.5x of the 2-18 GHz read.
+    sim.add(Box((0.002, y_c - 0.0006, 0.0008),
+                (0.010, y_c + 0.0006, 0.0008)), material="pec")
     sim.add_msl_port(position=(0.002, y_c, 0.0), width=0.0012, height=0.0008,
                      direction="+x", impedance=50.0, eps_r_sub=2.2, name="p1")
     sim.add_msl_port(position=(0.010, y_c, 0.0), width=0.0012, height=0.0008,
@@ -267,6 +270,7 @@ def _producers_in(tree):
     return out
 
 
+@pytest.mark.source_scan
 def test_every_settling_db_producer_routes_through_the_shared_warner():
     """The #662 defect in structural form.
 
@@ -285,6 +289,7 @@ def test_every_settling_db_producer_routes_through_the_shared_warner():
     )
 
 
+@pytest.mark.source_scan
 def test_the_known_lanes_are_all_covered():
     """Companion to the gate above: pins WHICH lanes carry the witness, so a
     lane silently losing its witness entirely (producer disappears -> the gate
@@ -414,7 +419,7 @@ _WG_FREQS = np.linspace(8.2e9, 12.4e9, 5)
 
 def _wg_two_port():
     sim = Simulation(freq_max=float(_WG_FREQS[-1]), domain=(0.12, 0.04, 0.02),
-                     dx=0.004, boundary="cpml", cpml_layers=10)
+                     dx=0.004, boundary={"x": "cpml", "y": "pec", "z": "pec"}, cpml_layers=10)
     for x, direction in ((0.02, "+x"), (0.10, "-x")):
         sim.add_waveguide_port(
             x, direction=direction, mode=(1, 0), mode_type="TE",

@@ -94,7 +94,7 @@ def _git_commit() -> str:
 # --------------------------------------------------------------------------
 def _eig1d(widths: np.ndarray, bc: str) -> tuple[np.ndarray, np.ndarray]:
     """Unit-mass-normalised eigenpairs of the 1-D Galerkin transverse operator."""
-    import rfx.sources._waveguide_modes as wm
+    import rfx.model.waveguide_modes as wm
 
     K, m = wm._galerkin_stiffness_mass_1d(np.asarray(widths, float), bc=bc)
     s = 1.0 / np.sqrt(m)
@@ -117,7 +117,7 @@ def build_basis(a: float, b: float, u_widths, v_widths, dA, h_offset) -> dict:
     a unique vector and no picker.  Everything else (the transverse gradient, the
     dual co-location stencil, the amplitude normalisation) is the port's own.
     """
-    import rfx.sources._waveguide_modes as wm
+    import rfx.model.waveguide_modes as wm
 
     u_widths = np.asarray(u_widths, float)
     v_widths = np.asarray(v_widths, float)
@@ -291,17 +291,18 @@ def _aperture_capture_run(setup: dict, drive_idx: int = 0):
     """One driven run whose per-step record holds the whole aperture slice."""
     import jax.numpy as jnp
     import rfx.sources.waveguide_port as wp
+    import rfx.measurement.waveguide_modal as _wg_move_waveguide_modal
     from rfx.simulation import run as run_simulation
 
     def modal_voltage_capture(state, cfg, x_idx, dx):
-        e_u = wp._plane_field(getattr(state, cfg.e_u_component), cfg, x_idx)
-        e_v = wp._plane_field(getattr(state, cfg.e_v_component), cfg, x_idx)
+        e_u = _wg_move_waveguide_modal._plane_field(getattr(state, cfg.e_u_component), cfg, x_idx)
+        e_v = _wg_move_waveguide_modal._plane_field(getattr(state, cfg.e_v_component), cfg, x_idx)
         return jnp.stack([e_u, e_v])
 
     def modal_current_capture(state, cfg, x_idx, dx):
-        h_u = wp._plane_h_field_at_dual(
+        h_u = _wg_move_waveguide_modal._plane_h_field_at_dual(
             getattr(state, cfg.h_u_component), cfg, x_idx, cfg.h_offset)
-        h_v = wp._plane_h_field_at_dual(
+        h_v = _wg_move_waveguide_modal._plane_h_field_at_dual(
             getattr(state, cfg.h_v_component), cfg, x_idx, cfg.h_offset)
         return jnp.stack([h_u, h_v])
 
@@ -851,7 +852,7 @@ def _serialise_rung(rung: str, data: dict, control_rung: dict) -> dict:
     # far-plane slice is sin(pi*m*j/nu) on j = 0..nu-1, so that is the shape a
     # mode of this guide actually presents. The cell-centred parity argument
     # that makes <e_20, e_10> vanish does not apply to it.
-    import rfx.sources._waveguide_modes as wm
+    import rfx.model.waveguide_modes as wm
 
     nu, nv = dA.shape
     jj = np.arange(nu)

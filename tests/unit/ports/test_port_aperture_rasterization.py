@@ -39,6 +39,7 @@ import contextlib
 import io
 
 import jax.numpy as jnp
+import numpy as np
 import pytest
 
 from rfx import Simulation
@@ -737,9 +738,9 @@ def test_a_multimode_build_failure_is_not_reported_as_a_budget_decline(monkeypat
 class _AnisotropicGridProxy:
     """A real grid with two transverse cell sizes bolted on.
 
-    Everything except ``dy``/``dz`` delegates to the grid the simulation
-    actually built, so the slices, pads and node counts under test are the
-    committed ones and only the per-axis cell size is synthetic.
+    Everything except ``dy``/``dz`` and their ``cells`` accessor delegates
+    to the grid the simulation actually built. Slices, pads and node counts
+    remain unchanged; only the per-axis cell sizes are synthetic.
     """
 
     def __init__(self, grid, dy=None, dz=None):
@@ -748,6 +749,11 @@ class _AnisotropicGridProxy:
             self.dy = dy
         if dz is not None:
             self.dz = dz
+
+    def cells(self, axis):
+        cells = self._grid.cells(axis)
+        value = self.__dict__.get("d" + axis)
+        return cells if value is None else np.full_like(cells, value)
 
     def __getattr__(self, name):
         return getattr(self._grid, name)
@@ -779,7 +785,7 @@ def test_the_per_axis_cell_size_is_a_no_op_on_a_uniform_grid():
 
 
 def test_a_nonuniform_axis_size_is_read_per_axis_not_from_dx():
-    """``getattr(grid, "dy", grid.dx)`` has to reach the span arithmetic.
+    """The axis-specific ``cells`` accessor has to reach the span arithmetic.
 
     The proxy gives y cells twice dx and z cells three times dx, so a span
     still computed from ``dx`` would read the cubic number and fail here.

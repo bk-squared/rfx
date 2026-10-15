@@ -51,7 +51,7 @@ pip install "jax[cuda12]" rfx-fdtd
 ```
 
 For the development version, clone this repository and run `pip install -e ".[dev]"`.
-The [installation guide](https://remilab.ai/rfx/guide/installation/) covers optional packages.
+The [installation guide](https://remilab.ai/rfx/start/install/) covers optional packages.
 
 ## First run
 
@@ -90,7 +90,7 @@ print(result.time_series.shape)
 <!-- rfx-hello-world:end -->
 
 All lengths are metres and frequencies are hertz. Read the preflight findings.
-Continue with [building and measuring a model](https://remilab.ai/rfx/guide/quickstart/).
+Continue with [building and measuring a model](https://remilab.ai/rfx/start/first-simulation/).
 
 ## Accuracy and development
 

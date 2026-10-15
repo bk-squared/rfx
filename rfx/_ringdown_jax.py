@@ -120,6 +120,8 @@ def host_poles(identify_window, window, k_max, dt, freqs):
     import jax
     import jax.numpy as jnp
 
+    from rfx.ringdown import IdentificationMemoryRefused
+
     rdt, cdt = working_dtypes()
     K = int(k_max)
     part = np.dtype(rdt)
@@ -144,6 +146,8 @@ def host_poles(identify_window, window, k_max, dt, freqs):
         status = STATUS_OK
         try:
             s = np.asarray(identify_window(w), dtype=np.complex128).ravel()
+        except IdentificationMemoryRefused:
+            raise
         except Exception:  # noqa: BLE001  (reported by the host report, not here)
             s, status = np.zeros(0, dtype=np.complex128), STATUS_FAILED
         count = -1 if status == STATUS_FAILED else s.size

@@ -97,6 +97,18 @@ def _accumulate_pole_mask(masks_by_pole: dict, pole, mask) -> None:
         masks_by_pole[key] = (pole, mask)
 
 
+def _clear_pole_masks(masks_by_pole: dict, mask) -> None:
+    """Remove ``mask``'s cells from every pole collected so far.
+
+    A later geometry entry replaces the cells it covers ("last declaration
+    wins" for eps_r, sigma and mu_r); the poles of what was there before go
+    with them. Without this a block drawn inside a dispersive body kept the
+    body's poles under the block's own permittivity.
+    """
+    for key, (pole, previous) in list(masks_by_pole.items()):
+        masks_by_pole[key] = (pole, previous & ~mask)
+
+
 def _spec_from_pole_masks(masks_by_pole: dict):
     """Build a ``(poles, masks)`` spec tuple, or None when empty."""
     if not masks_by_pole:

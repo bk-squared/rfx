@@ -40,12 +40,9 @@ import numpy as np
 import pytest
 
 from rfx.api import Simulation
-from rfx.sources.waveguide_port import (
-    _extract_port_waves_from_time_series,
-    extract_waveguide_port_waves,
-    _compute_beta,
-    C0_LOCAL,
-)
+from rfx.measurement.waveguide_s import _extract_port_waves_from_time_series
+from rfx.sources.waveguide_port import extract_waveguide_port_waves, C0_LOCAL
+from rfx.model.waveguide_modes import _compute_beta
 
 # Canonical 40 mm x 20 mm guide (matches the validation battery), but with the
 # port moved interior so the reference/probe planes sit OUTSIDE the CPML, and
@@ -87,7 +84,8 @@ def _measure_phase(direction: str, port_x: float):
     f0 = float(freqs.mean())
     bandwidth = max(0.2, min(0.8, (freqs[-1] - freqs[0]) / max(f0, 1.0)))
     sim = Simulation(
-        freq_max=float(freqs[-1]), domain=DOMAIN, boundary="cpml", cpml_layers=10,
+        freq_max=float(freqs[-1]), domain=DOMAIN,
+        boundary={"x": "cpml", "y": "pec", "z": "pec"}, cpml_layers=10,
     )
     sim.add_waveguide_port(
         port_x, direction=direction, mode=(1, 0), mode_type="TE",
@@ -228,7 +226,8 @@ def test_deembed_step_sign_rotation_correct(direction, port_x):
     f0 = float(freqs.mean())
     bandwidth = max(0.2, min(0.8, (freqs[-1] - freqs[0]) / max(f0, 1.0)))
     sim = Simulation(
-        freq_max=float(freqs[-1]), domain=DOMAIN, boundary="cpml", cpml_layers=10,
+        freq_max=float(freqs[-1]), domain=DOMAIN,
+        boundary={"x": "cpml", "y": "pec", "z": "pec"}, cpml_layers=10,
     )
     sim.add_waveguide_port(
         port_x, direction=direction, mode=(1, 0), mode_type="TE",

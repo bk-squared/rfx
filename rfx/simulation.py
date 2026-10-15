@@ -9,23 +9,30 @@ the needed code paths.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from rfx.measurement import init_uniform_records, uniform_records
+
+from dataclasses import dataclass, replace
 from typing import Any, Callable, NamedTuple
 
-from rfx import _realized
+from rfx import _realized, _grid_metric
 
 import jax
 import jax.numpy as jnp
+
+from rfx.core.drives import StepDrives, drive_layout, inject_drives
+from rfx.model.source_coefficients import drive_table
+from rfx.model import with_edge_keep
 import numpy as np
 
+from rfx.boundaries.axes import drop_periodic_axes, resolve_cpml_axes
 from rfx.grid import Grid
 from rfx.core.jax_utils import recorded_scan
 from rfx.core.yee import (
     FDTDState, MaterialArrays, init_state,
     update_e, update_e_aniso, update_e_aniso_inv, update_e_box, update_h,
-    e_update_coeffs, edge_averaged_materials, component_e_materials,
-    e_component_coeffs, cell_component_e_coeffs, EPS_0, MU_0, curl_h, CurlBoundary, _shift_bwd,
-    map_lumped, lumped_components, lumped_total,
+    e_update_coeffs, component_e_materials,
+    EPS_0, MU_0, curl_h, CurlBoundary,
+    map_lumped, lumped_total,
     precompute_coeffs, update_he_fast,
 )
 from rfx.boundaries.pec import (
@@ -33,8 +40,6 @@ from rfx.boundaries.pec import (
     resolve_wall_faces,
     apply_pec_edges,
     apply_pec_faces,
-    apply_pec_occupancy,
-    apply_pec_occupancy_box,
     kottke_fenced_edge_masks,
     realized_pec_edge_masks,
 )
@@ -225,21 +230,6 @@ class DesignBoxSpec(NamedTuple):
     held_edges: tuple = ()
 
 
-class _DesignBoxCoeffs(NamedTuple):
-    """Resolved ``(Ca, Cb)`` for a design box, built once outside the scan.
-
-    ``bounds`` is the WRITE window, not the declared box: since #1210 the
-    design material reaches one cell past the box on the plus side of each
-    transverse axis (:func:`_design_box_edge_coeffs`). ``ca`` and ``cb`` are
-    3-tuples of window-shaped arrays, one per E component in x, y, z order —
-    per-component because of the edge average, and because a design
-    conductivity may itself be per-component (#1216).
-    """
-    bounds: tuple
-    ca: Any
-    cb: Any
-
-
 class DesignOccupancySpec(NamedTuple):
     """One static box whose PEC occupancy is the design variable (#1183).
 
@@ -352,10 +342,10 @@ def _source_cell_cb(grid: Grid, idx, materials, component,
     touches. Reading the owning cell here instead put 0.556x the declared
     current into an Ey source standing on an eps 1|9 step along y.
     ``materials.eps_r``/``sigma`` may be JAX tracers (forward/AD path) —
-    ``cell_component_e_coeffs`` indexes four cells and never calls ``float()``.
+    The model accessor reads the finished edge and retains JAX derivatives.
     """
-    return cell_component_e_coeffs(
-        materials, idx, component, grid.dt, periodic)[1]
+    from rfx.model.materials import e_update_coefficient_at, electric_grid_kwargs
+    return e_update_coefficient_at(materials, idx, component, grid.dt, periodic, **electric_grid_kwargs(grid))
 
 
 def _uniform_cell_volume(grid: Grid) -> float:
@@ -374,28 +364,21 @@ def make_source(grid: Grid, position, component, waveform_fn, n_steps,
     Prefer ``make_j_source`` for resonance detection.
 
     Native amplitude convention (issue #571): ``'field'`` — ``E += w``.
-    ``amplitude_kind='current'`` rescales the waveform by ``Cb/dV`` via
-    ``rfx.api._source_semantics.source_amplitude_scale`` and REQUIRES
+    ``amplitude_kind='current'`` uses the shared source-table builder's
+    ``Cb/dV`` coefficient and REQUIRES
     ``materials`` (for Cb at the source cell). ``amplitude_kind`` of
     None or ``'field'`` is bit-identical to the historical output (no
     multiply is applied at all). ``materials`` is accepted and unused in
     that legacy/native case.
     """
-    from rfx.api._source_semantics import needs_scale, source_amplitude_scale
-    idx = grid.position_to_index(position)
-    times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
-    waveform = jax.vmap(waveform_fn)(times)
-    if needs_scale(amplitude_kind, "raw"):
-        # only 'current' lands here
-        if materials is None:
-            raise ValueError(
-                "make_source(amplitude_kind='current') needs materials "
-                "for the Cb normalization at the source cell")
-        scale = source_amplitude_scale(
-            amplitude_kind, "raw",
-            cb=_source_cell_cb(grid, idx, materials, component),
-            dV=_uniform_cell_volume(grid))
-        waveform = scale * waveform
+    from rfx.model.source_coefficients import uniform_source_table
+    idx = _grid_metric.field_index(grid, position, component)
+    if amplitude_kind == "current" and materials is None:
+        raise ValueError(
+            "make_source(amplitude_kind='current') needs materials "
+            "for the Cb normalization at the source cell")
+    waveform = uniform_source_table(
+        grid, idx, component, waveform_fn, n_steps, materials, amplitude_kind)
     return SourceSpec(i=idx[0], j=idx[1], k=idx[2],
                       component=component, waveform=waveform)
 
@@ -419,8 +402,8 @@ def make_j_source(grid: Grid, position, component, waveform_fn, n_steps, materia
 
     Native amplitude convention (issue #571): ``'cb'`` — ``E += Cb*w`` —
     which is NEITHER named kind (the legacy open-uniform third contract).
-    ``amplitude_kind='current'`` rescales by ``1/dV``, ``'field'`` by
-    ``1/Cb``, both via ``rfx.api._source_semantics.source_amplitude_scale``.
+    ``amplitude_kind='current'`` uses ``Cb*w/dV``; ``'field'`` returns the
+    waveform directly through the shared source-table builder.
     None is bit-identical to the historical output (no multiply applied).
 
     Parameters
@@ -433,26 +416,12 @@ def make_j_source(grid: Grid, position, component, waveform_fn, n_steps, materia
     materials : MaterialArrays (for Cb computation at source cell)
     amplitude_kind : 'field' | 'current' | None (issue #571, above)
     """
-    from rfx.api._source_semantics import needs_scale, source_amplitude_scale
-    idx = grid.position_to_index(position)
+    from rfx.model.source_coefficients import uniform_source_table
+    idx = _grid_metric.field_index(grid, position, component)
     i, j, k = idx
-    cb = _source_cell_cb(grid, idx, materials, component)
-
-    times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
-    # Cb normalization: the source enters the update equation through
-    # the Cb coefficient (dt/eps/(1+loss)). This ensures:
-    # 1. No DC accumulation on PEC (Cb scales with dt)
-    # 2. Proper coupling to cavity modes
-    # Power scales as Cb²·dx³ — weaker at fine grids, but Harminv
-    # with bandpass filtering reliably extracts modes at all resolutions.
-    waveform = cb * jax.vmap(waveform_fn)(times)
-    if needs_scale(amplitude_kind, "cb"):
-        # Python-level dispatch (issue #571 dossier): the scale may be a
-        # tracer ('field' -> 1/Cb with traced materials), so never gate
-        # the multiply on its value.
-        waveform = source_amplitude_scale(
-            amplitude_kind, "cb", cb=cb,
-            dV=_uniform_cell_volume(grid)) * waveform
+    waveform = uniform_source_table(
+        grid, idx, component, waveform_fn, n_steps, materials, amplitude_kind,
+        native="cb")
     return SourceSpec(i=i, j=j, k=k,
                       component=component, waveform=waveform)
 
@@ -464,7 +433,7 @@ def make_port_source(grid: Grid, port, materials: MaterialArrays, n_steps):
     ``setup_lumped_port()``.
     """
     from rfx.sources.port_drive import stamped_drive, port_drive_waveform
-    idx = grid.position_to_index(port.position)
+    idx = _grid_metric.field_index(grid, port.position, port.component)
     i, j, k = idx
 
     waveform = port_drive_waveform(
@@ -508,7 +477,7 @@ def make_wire_port_sources(grid, port, materials, n_steps, pec_edge_masks=None):
 
 def make_probe(grid: Grid, position, component):
     """Create a ProbeSpec from a physical position."""
-    idx = grid.position_to_index(position)
+    idx = _grid_metric.field_index(grid, position, component)
     return ProbeSpec(i=idx[0], j=idx[1], k=idx[2], component=component)
 
 
@@ -785,29 +754,6 @@ def resolve_periodic(grid, periodic):
     return periodic
 
 
-def _design_box_bounds(bounds, grid):
-    """``(bounds, realized cell counts)`` of a design box on this grid.
-
-    One spelling for the permittivity box (#1179) and the occupancy box
-    (#1183): the REALIZED cell counts are what a design array must match,
-    and a box that is empty or leaves the grid is an error, not a clamp.
-    """
-    i0, i1, j0, j1, k0, k1 = (int(v) for v in bounds)
-    bounds = (i0, i1, j0, j1, k0, k1)
-    box_shape = (i1 - i0, j1 - j0, k1 - k0)
-    if any(n <= 0 for n in box_shape):
-        raise ValueError(
-            f"design box {bounds} is empty (realized cell counts "
-            f"{box_shape}); it must span at least one cell per axis.")
-    for axis, (lo, hi, n) in enumerate(
-            zip((i0, j0, k0), (i1, j1, k1), grid.shape)):
-        if lo < 0 or hi > n:
-            raise ValueError(
-                f"design box {bounds} leaves the grid on axis "
-                f"{'xyz'[axis]}: cells [{lo}, {hi}) against {n} cells.")
-    return bounds, box_shape
-
-
 def _resolve_design_occupancy(
     spec: "DesignOccupancySpec",
     *,
@@ -818,7 +764,7 @@ def _resolve_design_occupancy(
 ) -> "_DesignOccupancyKeep":
     """Check an occupancy design box against this run, then build ``1 - M`` (#1183).
 
-    Far fewer fences than :func:`_resolve_design_box`, and the reason is
+    Far fewer fences than :func:`resolve_design_box`, and the reason is
     physical: the occupancy scaling is a pure multiply applied AFTER the E
     update and the absorber, and it reads no material array. Whatever the E
     update was — dispersive, anisotropic, fourth-order — the step arrives at
@@ -829,7 +775,7 @@ def _resolve_design_occupancy(
     """
     from rfx.boundaries.pec import pec_occupancy_box_keep
 
-    bounds, box_shape = _design_box_bounds(spec.bounds, grid)
+    bounds, box_shape = design_box_bounds(spec.bounds, grid)
     occ = jnp.asarray(spec.occupancy)
     if tuple(occ.shape) != box_shape:
         raise ValueError(
@@ -841,470 +787,7 @@ def _resolve_design_occupancy(
     return _DesignOccupancyKeep(write=write, keep=keep)
 
 
-def _design_box_window(bounds, shape):
-    """``(write bounds, computation window, write slice in it, box slice)``.
-
-    The same window arithmetic :func:`rfx.boundaries.pec.pec_occupancy_box_keep`
-    does for a traced occupancy, for the same reason. A cell's permittivity
-    reaches the E components on the edges incident to it, and those are the
-    edges at the cell and at its PLUS neighbour along each transverse axis
-    (:func:`edge_averaged_materials` averages over BACKWARD neighbours). So the
-    design material moves the update one cell past the box on the plus side —
-    that layer must be written. One cell of context on the MINUS side is
-    computed and not written: its own backward neighbour lies outside the
-    window, so its value is wrong, while every cell in the write window has
-    all four of its incident cells inside.
-    """
-    i0, i1, j0, j1, k0, k1 = (int(v) for v in bounds)
-    lo = (i0, j0, k0)
-    hi = (i1, j1, k1)
-    c_lo = tuple(max(v - 1, 0) for v in lo)
-    c_hi = tuple(min(v + 1, n) for v, n in zip(hi, shape))
-    win = tuple(slice(a, b) for a, b in zip(c_lo, c_hi))
-    write_bounds = (lo[0], c_hi[0], lo[1], c_hi[1], lo[2], c_hi[2])
-    inner = tuple(slice(a - c, b - c) for a, b, c in zip(lo, c_hi, c_lo))
-    box_local = tuple(slice(a - c, b - c) for a, b, c in zip(lo, hi, c_lo))
-    return write_bounds, win, inner, box_local
-
-
-def _held_edge_masks(held_edges, write_bounds):
-    """One boolean array per E component over the write window, True on a
-    held edge; ``None`` for a component with no held edge."""
-    import numpy as np
-    shape = tuple(write_bounds[2 * d + 1] - write_bounds[2 * d]
-                  for d in range(3))
-    masks = [None, None, None]
-    for axis, i, j, k in held_edges:
-        if masks[axis] is None:
-            masks[axis] = np.zeros(shape, dtype=bool)
-        masks[axis][i - write_bounds[0], j - write_bounds[2],
-                    k - write_bounds[4]] = True
-    return masks
-
-
-def _design_box_edge_coeffs(bounds, eps_r_box, sigma_box, materials, dt, shape,
-                            held_edges=()):
-    """Per-component ``(Ca, Cb)`` over the design box's write window (#1210).
-
-    The box works in EDGE (per-E-component) values, and what it is handed
-    decides how each value is made:
-
-    * a CELL quantity -- the design permittivity always, and a single design
-      conductivity array -- is written into a COPY of the background over the
-      computation window and turned into edge values by the same four-cell
-      average as the rest of the grid (``component_e_materials``). The
-      window's minus-side context supplies the neighbour cells outside the box
-      on its faces, and its plus-side layer is written because a cell's value
-      reaches the edges on its plus faces. The box lane then equals what
-      ``update_e`` would do with the design values in ``materials``.
-    * a 3-tuple ``(sigma_x, sigma_y, sigma_z)`` is ALREADY per edge (#1216,
-      the sheet lane: one conductivity per Yee edge, component ``c`` at the
-      same box index). It is taken as-is and NOT averaged again: it replaces
-      the edge conductivity at the box indices, and every other edge in the
-      window -- the plus-side layer included -- keeps the background edge
-      value. A box-shaped edge array cannot address the plus-face edge layer
-      a cell array reaches, which is why a single array ``s`` and the tuple of
-      its own averages agree on the box's edges and not on that layer.
-
-    ``sigma_box=None`` keeps the window's own conductivity.
-
-    ``held_edges`` (``(axis, i, j, k)`` tuples, all inside the write window)
-    are a port's edges held out of the design (:class:`DesignBoxSpec`). Each
-    one gets the coefficient ``materials`` itself gives it — the same
-    arithmetic over the same window with no design value in it, which is the
-    grid-wide ``update_e`` coefficient bit for bit, the port's own load
-    included — so the drive built from ``materials`` before the time loop
-    meets the update it was built for, and the design values' derivative
-    through that edge is exactly zero.
-
-    At a box cell carrying a lumped load -- a held port's, or a passive
-    termination's (an MSL port with ``excite=False``) -- a CELL design value
-    is that cell's volume material: the load is added back on top of it, so
-    the average that removes every stamp before it spreads the cell over its
-    edges finds the design value there and not the design value less the
-    load (which was a negative conductance, and NaN, before). That is what a
-    whole-grid ``eps_override`` / ``sigma_override`` does, since the ports
-    stamp their loads on top of the override. A per-edge conductivity has no
-    such reading and is refused over an unheld load
-    (:func:`_resolve_design_box`).
-    """
-    held = tuple(held_edges or ())
-    write_bounds, win, inner, box_local = _design_box_window(bounds, shape)
-
-    def _cell_value(box_value, record):
-        # A lumped load lives on its own edge; keep it off the cell volume.
-        total = lumped_total(record)
-        if total is None:
-            return box_value
-        return box_value + jnp.asarray(total)[win][box_local]
-
-    eps_box = jnp.asarray(eps_r_box)
-    eps = jnp.asarray(materials.eps_r)[win]
-    # Promote the BACKGROUND to the design dtype, never the other way: a
-    # traced float64 design permittivity cast down to the float32 background
-    # would silently lose the precision the x64 AD lanes run for (#646).
-    eps = eps.astype(jnp.promote_types(eps.dtype, eps_box.dtype))
-    eps = eps.at[box_local].set(_cell_value(
-        eps_box, getattr(materials, "eps_r_lumped", None)))
-
-    per_edge = isinstance(sigma_box, (tuple, list))
-    sig = jnp.asarray(materials.sigma)[win]
-    if not per_edge and sigma_box is not None:
-        sig_box = jnp.asarray(sigma_box)
-        sig = sig.astype(jnp.promote_types(sig.dtype, sig_box.dtype))
-        sig = sig.at[box_local].set(_cell_value(
-            sig_box, getattr(materials, "sigma_lumped", None)))
-
-    # A lumped stamp in the window's context layer is edge-owned, not a cell
-    # volume, so it is removed before the average and added back at its cell,
-    # on its own component — the same rule ``component_e_materials`` applies
-    # grid-wide (#1210, #1236). The design box itself is fenced off port and
-    # source cells, except a port's own edges on explicit opt-in (held).
-    win_mats = MaterialArrays(
-        eps_r=eps, sigma=sig, mu_r=None,
-        eps_r_lumped=map_lumped(
-            getattr(materials, "eps_r_lumped", None),
-            lambda a: jnp.asarray(a)[win].astype(eps.dtype)),
-        sigma_lumped=map_lumped(
-            getattr(materials, "sigma_lumped", None),
-            lambda a: jnp.asarray(a)[win].astype(sig.dtype)))
-    eps_c, sig_c = component_e_materials(win_mats, (False, False, False))
-
-    if per_edge:
-        def _put(edge_bg, edge_box):
-            edge_box = jnp.asarray(edge_box)
-            edge_bg = edge_bg.astype(
-                jnp.promote_types(edge_bg.dtype, edge_box.dtype))
-            return edge_bg.at[box_local].set(edge_box)
-        sig_c = tuple(_put(bg, v) for bg, v in zip(sig_c, sigma_box))
-
-    pairs = [e_update_coeffs(e, s_, dt) for e, s_ in zip(eps_c, sig_c)]
-    ca = tuple(p[0][inner] for p in pairs)
-    cb = tuple(p[1][inner] for p in pairs)
-    if held:
-        bg_mats = MaterialArrays(
-            eps_r=jnp.asarray(materials.eps_r)[win],
-            sigma=jnp.asarray(materials.sigma)[win], mu_r=None,
-            eps_r_lumped=map_lumped(
-                getattr(materials, "eps_r_lumped", None),
-                lambda a: jnp.asarray(a)[win]),
-            sigma_lumped=map_lumped(
-                getattr(materials, "sigma_lumped", None),
-                lambda a: jnp.asarray(a)[win]))
-        bg = [e_update_coeffs(e, s_, dt) for e, s_ in
-              zip(*component_e_materials(bg_mats, (False, False, False)))]
-        masks = _held_edge_masks(held, write_bounds)
-        ca = tuple(a if m is None else jnp.where(m, b[0][inner], a)
-                   for a, b, m in zip(ca, bg, masks))
-        cb = tuple(c if m is None else jnp.where(m, b[1][inner], c)
-                   for c, b, m in zip(cb, bg, masks))
-    return write_bounds, ca, cb
-
-
-def _resolve_design_box(
-    spec: "DesignBoxSpec",
-    *,
-    grid,
-    materials,
-    dt,
-    use_cpml: bool,
-    use_upml: bool,
-    cpml_axes: str,
-    use_debye: bool,
-    use_lorentz: bool,
-    use_kerr: bool,
-    aniso_eps,
-    aniso_inv_eps,
-    stencil_order: int,
-    bloch,
-    sheet_impedance,
-    cell_metas,
-    periodic=(False, False, False),
-) -> "_DesignBoxCoeffs":
-    """Check a design box against this run, then build its Ca/Cb (#1179).
-
-    The box carries its own permittivity, so ``materials`` stays constant and
-    the E update inside the box is redone from these coefficients. That is
-    only the same physics while NOTHING ELSE in the step reads ``materials``
-    at a design cell — and the checks below are how that is decided, in the
-    one place where every resolved flag and every port/source cell is in
-    hand. Everything unsupported raises; nothing is silently dropped, because
-    a dropped design variable is a zero gradient that looks like a converged
-    optimisation.
-
-    Raises for: UPML, Debye/Lorentz dispersion, anisotropic / subpixel
-    permittivity, Kerr, ``stencil_order=4``, the oblique-periodic Bloch path,
-    a box that reaches into the CPML absorber, and a box holding a source,
-    port, RLC element or surface-impedance sheet edge -- except a lumped or
-    wire port's own edges listed in ``spec.held_edges``, which keep their
-    ``materials`` coefficients (:func:`_design_box_edge_coeffs`).
-
-    ``cell_metas`` entries are ``(i, j, k)`` or ``(i, j, k, component)``; a
-    source or port cell is accepted only with its component, on a held edge.
-    """
-    unsupported = []
-    if use_upml:
-        unsupported.append("boundary='upml'")
-    if use_debye:
-        unsupported.append("debye dispersion")
-    if use_lorentz:
-        unsupported.append("lorentz dispersion")
-    if aniso_eps is not None:
-        unsupported.append("aniso_eps (subpixel/anisotropic eps)")
-    if aniso_inv_eps is not None:
-        unsupported.append("aniso_inv_eps (Kottke inverse-eps tensor)")
-    if use_kerr:
-        unsupported.append("Kerr nonlinearity")
-    if stencil_order != 2:
-        unsupported.append(f"stencil_order={stencil_order}")
-    if bloch is not None:
-        unsupported.append("oblique-periodic Bloch path (#404)")
-    if unsupported:
-        raise NotImplementedError(
-            "the design-box permittivity (#1179) rebuilds only the plain "
-            "lossy Yee E update inside its box, so every path that computes "
-            "E some other way is rejected rather than silently ignored. "
-            "Unsupported feature(s) present: " + ", ".join(unsupported)
-            + ". Use eps_override (the whole-grid traced permittivity) for "
-            "these — it is exact on every path, at a grid-sized AD tape."
-        )
-
-    bounds, box_shape = _design_box_bounds(spec.bounds, grid)
-    i0, i1, j0, j1, k0, k1 = bounds
-    # #1210: the design material reaches one cell past the box on the plus
-    # side of every axis, and the redo WRITES there. Every fence below is
-    # therefore held against the write window, not the declared box — a
-    # source, a sheet edge or an absorber cell in that layer is the same
-    # collision the declared box was already fenced against.
-    _write_bounds, _, _, _ = _design_box_window(bounds, tuple(grid.shape))
-    w_i0, w_i1, w_j0, w_j1, w_k0, w_k1 = _write_bounds
-    # #1210: the window is built with the non-periodic convention -- it clips
-    # at the grid face where the grid-wide update would WRAP. That is only a
-    # difference for a box that touches a periodic face, and there it is a
-    # silent one, so it is refused rather than approximated. The occupancy
-    # box's sibling (``pec_occupancy_box_keep``) refuses periodic axes for the
-    # same reason.
-    for _axis, _name in enumerate("xyz"):
-        if not periodic[_axis]:
-            continue
-        _lo, _hi = bounds[2 * _axis], bounds[2 * _axis + 1]
-        _n = grid.shape[_axis]
-        if _lo == 0 or _hi == _n:
-            raise NotImplementedError(
-                f"a design box (#1179) flush against a PERIODIC {_name} face "
-                f"is not supported: cells [{_lo}, {_hi}) on a {_n}-cell "
-                f"periodic axis. An E component takes the mean of its four "
-                f"incident cells (#1210), and across a periodic seam those "
-                f"neighbours wrap -- the box's one-cell window does not. Move "
-                f"the box off the {_name} faces, or use eps_override (the "
-                f"whole-grid traced permittivity), which wraps correctly.")
-
-    # The absorber. apply_cpml_e's psi correction is written at the [:n] /
-    # [-n:] face slabs, and its coefficient is dt/(eps_r*EPS_0) from
-    # ``materials`` -- the one array this design stops tracing. A box inside
-    # an ABSORBING slab would therefore be absorbed with the BACKGROUND
-    # permittivity while it is updated with the design one.
-    #
-    # Per FACE, not per axis. The kernel's window width
-    # (``_axis_buffer_depths``) is the axis MAXIMUM of the two pads, floored
-    # at 1, and it is applied to both faces -- but a face whose profile is
-    # the all-no-op one (b=1, c=0, kappa=1) adds exactly zero however wide
-    # that window is: psi stays at its zero init and the kappa term is
-    # (1/1 - 1). A face gets that profile exactly when its allocated pad is
-    # 0, i.e. PEC / PMC / periodic (``Grid._face_pad``), and an absorbing
-    # face's own pad IS its active layer count (the invariant stated in
-    # ``_axis_buffer_depths``'s docstring). Reading the axis maximum instead
-    # refused the ordinary patch on a ground plane: x_lo PEC + x_hi CPML at
-    # cpml_layers=5 gives axis depths (5, 1, 1), so a box sitting on the PEC
-    # wall was rejected for entering a 5-layer absorber that face does not
-    # have, and the y/z floor of 1 rejected any box touching a PEC face.
-    #
-    # A per-face pad is that proxy only on an axis the GRID says it absorbs
-    # on. ``init_cpml`` builds a real profile on every axis ``cpml_axes`` of
-    # the RUN names, and a grid built with a narrower ``cpml_axes`` allocates
-    # no pad on the others -- so "pad 0" there means "no padding cells", not
-    # "no absorber" (the trap ``_axis_buffer_depths`` documents, measured at
-    # a 49 % energy change). On such an axis, and on a duck-typed grid with
-    # no per-face pads, fall back to the axis window: nothing is known to be
-    # a no-op there.
-    if use_cpml or use_upml:
-        from rfx.boundaries.cpml import _axis_buffer_depths
-        depths = _axis_buffer_depths(grid, grid.cpml_layers)
-        grid_axes = getattr(grid, "cpml_axes", cpml_axes)
-        for axis, name in enumerate("xyz"):
-            if name not in cpml_axes:
-                continue  # no correction is written on this axis at all
-            if name in grid_axes and hasattr(grid, f"pad_{name}_lo"):
-                pad_lo = int(getattr(grid, f"pad_{name}_lo"))
-                pad_hi = int(getattr(grid, f"pad_{name}_hi"))
-            else:
-                pad_lo = pad_hi = int(depths[axis])
-            lo = _write_bounds[2 * axis]
-            hi = _write_bounds[2 * axis + 1]
-            n = grid.shape[axis]
-            if lo < pad_lo or hi > n - pad_hi:
-                raise ValueError(
-                    f"design box cells [{bounds[2 * axis]}, "
-                    f"{bounds[2 * axis + 1]}) on axis {name} reach "
-                    f"into the CPML absorber ({pad_lo} layer(s) at {name}_lo "
-                    f"and {pad_hi} at {name}_hi, on a {n}-cell axis; the box's "
-                    f"update window is [{lo}, {hi}), one cell wider on the "
-                    f"plus side since #1210). The "
-                    f"absorber builds its own coefficient from the background "
-                    f"permittivity, which the design box no longer carries. "
-                    f"Move the box into cells [{pad_lo}, {n - pad_hi - 1}).")
-
-    def _in_box(cell) -> bool:
-        i, j, k = (int(v) for v in cell[:3])
-        return (w_i0 <= i < w_i1) and (w_j0 <= j < w_j1) and (w_k0 <= k < w_k1)
-
-    # Held edges: a port's own edges, kept on the coefficients ``materials``
-    # gives them (DesignBoxSpec.held_edges). Each must be an E edge in the
-    # window -- one outside it holds nothing, and is a caller error.
-    held = set()
-    for edge in (getattr(spec, "held_edges", ()) or ()):
-        edge = tuple(int(v) for v in edge)
-        if len(edge) != 4 or edge[0] not in (0, 1, 2) or not _in_box(edge[1:]):
-            raise ValueError(
-                f"DesignBoxSpec.held_edges entry {edge} is not an (axis, i, "
-                f"j, k) E edge inside the design box's update window "
-                f"{_write_bounds} (axis 0, 1, 2 for Ex, Ey, Ez).")
-        held.add(edge)
-    held = tuple(sorted(held))
-    _held_kinds = ("source", "lumped port", "wire port")
-    _axis_of = {"ex": 0, "ey": 1, "ez": 2}
-
-    def _on_held_edge(kind, cell) -> bool:
-        if kind not in _held_kinds or len(cell) != 4:
-            return False
-        axis = _axis_of.get(str(cell[3]).lower())
-        return axis is not None and (axis, *(int(v) for v in cell[:3])) in held
-
-    # A source or port cell reads the material AT SETUP to turn a current
-    # into a field increment (``_source_cell_cb``) or to fold an impedance
-    # into sigma. Those reads see the background array, so a design cell
-    # under one of them would drive with the wrong permittivity -- unless its
-    # edge is held, and then the update there reads the background too.
-    for kind, cells in cell_metas:
-        hits = [tuple(int(v) for v in c[:3]) for c in cells
-                if _in_box(c) and not _on_held_edge(kind, c)]
-        if hits:
-            how = (" A lumped or wire port may stay inside: "
-                   "Simulation.forward(design_box_holds_ports=True) keeps "
-                   "the port's own edges on the coefficients the drawn "
-                   "materials give them (DesignBoxSpec.held_edges on this "
-                   "entry)")
-            if kind == "source":
-                how += ("; a soft source cannot be held -- a port's drive is "
-                        "accepted only on the port's held edges.")
-            elif kind not in _held_kinds:
-                how = (f" Only a lumped or wire port's own edges can be held "
-                       f"(forward(design_box_holds_ports=True)); a {kind} "
-                       f"cannot.")
-            else:
-                how += "."
-            raise ValueError(
-                f"the design box {bounds} holds {kind} cell(s) {hits}. "
-                f"That cell's drive/load coefficient is built from the "
-                f"background permittivity before the time loop starts, so "
-                f"the design permittivity would not reach it. Move the box "
-                f"off the {kind} cells, or use eps_override." + how)
-
-    sl = (slice(i0, i1), slice(j0, j1), slice(k0, k1))
-
-    # A per-edge design conductivity laid over a lumped load (a port's
-    # termination, an RLC element's R) that is not on a held edge. The tuple
-    # REPLACES the edge's conductivity at the box indices (#1216), load
-    # included, so the load would silently vanish. A cell design value keeps
-    # it -- the lay-in in ``_design_box_edge_coeffs`` puts the stamp back on
-    # top of the cell's volume material -- so only this form is refused. A
-    # passive termination that registers no accumulator leaves no cell in
-    # ``cell_metas``, so the stamps are read from ``materials`` itself, and
-    # only when they are concrete (a traced R or a traced mesh keeps the cell
-    # checks above).
-    if isinstance(spec.sigma, (tuple, list)):
-        import numpy as np
-        from rfx.core.jax_utils import is_tracer
-        for axis, part in enumerate(lumped_components(
-                getattr(materials, "sigma_lumped", None))):
-            if part is None or is_tracer(part):
-                continue
-            nz = np.argwhere(np.asarray(jnp.asarray(part)[sl]) != 0)
-            loose = [(int(a) + i0, int(b) + j0, int(c) + k0)
-                     for a, b, c in nz
-                     if (axis, int(a) + i0, int(b) + j0, int(c) + k0)
-                     not in held]
-            if loose:
-                raise ValueError(
-                    f"the design box {bounds} lays a per-edge design "
-                    f"conductivity over a lumped load on the "
-                    f"{'xyz'[axis]} edge at cell(s) {loose} (a port's "
-                    f"termination or an RLC element). A per-edge "
-                    f"conductivity REPLACES the edge's conductivity, load "
-                    f"included, so the load would be removed. Give the "
-                    f"design conductivity as one cell array instead (the "
-                    f"load then stays on its own edge and the design value "
-                    f"is the cell's volume material), or move the box off "
-                    f"the load. A lumped or wire port inside a permittivity "
-                    f"box can instead be held with "
-                    f"forward(design_box_holds_ports=True); an MSL port's "
-                    f"termination cannot be held.")
-    w_sl = (slice(w_i0, w_i1), slice(w_j0, w_j1), slice(w_k0, w_k1))
-    if sheet_impedance is not None:
-        for mask in (sheet_impedance.mask_ex, sheet_impedance.mask_ey,
-                     sheet_impedance.mask_ez):
-            if mask is not None and bool(jnp.any(jnp.asarray(mask)[w_sl])):
-                raise ValueError(
-                    f"a surface_impedance_f0 sheet (#677) has loaded edges "
-                    f"inside the design box {bounds}. The sheet operator "
-                    f"REPLACES the E update at those edges with coefficients "
-                    f"built from the background permittivity, so it would "
-                    f"overwrite the design update. Move the box off the "
-                    f"sheet, or use eps_override.")
-
-    eps_r = jnp.asarray(spec.eps_r)
-    if tuple(eps_r.shape) != box_shape:
-        raise ValueError(
-            f"design permittivity has shape {tuple(eps_r.shape)} but the "
-            f"design box {bounds} realizes {box_shape} cells.")
-    sigma = materials.sigma[sl] if spec.sigma is None else spec.sigma
-    if isinstance(sigma, (tuple, list)):
-        # Per-component conductivity: one (Ca, Cb) pair per E component, in
-        # x, y, z order. The permittivity stays shared — a design SHEET is
-        # one material whose current is anisotropic, not three materials.
-        if len(sigma) != 3:
-            raise ValueError(
-                f"a per-component design conductivity is a 3-tuple "
-                f"(sigma_x, sigma_y, sigma_z); got {len(sigma)} entries.")
-        for name, s in zip("xyz", sigma):
-            s = jnp.asarray(s)
-            if tuple(jnp.shape(s)) != box_shape:
-                raise ValueError(
-                    f"design conductivity sigma_{name} has shape "
-                    f"{tuple(jnp.shape(s))} but the design box {bounds} "
-                    f"realizes {box_shape} cells.")
-        # The tuple is already per E edge (#1216) and is taken as-is; the
-        # shared permittivity is still a cell quantity and is edge-averaged
-        # over the window (#1210). See _design_box_edge_coeffs.
-        write_bounds, ca, cb = _design_box_edge_coeffs(
-            bounds, eps_r, tuple(jnp.asarray(s) for s in sigma), materials,
-            dt, tuple(grid.shape), held_edges=held)
-        return _DesignBoxCoeffs(bounds=write_bounds, ca=ca, cb=cb)
-    sigma = jnp.asarray(sigma)
-    if tuple(jnp.shape(sigma)) != box_shape:
-        raise ValueError(
-            f"design conductivity has shape {tuple(jnp.shape(sigma))} but "
-            f"the design box {bounds} realizes {box_shape} cells.")
-    # #1210: per-component coefficients over the write window, the design
-    # values laid into a copy of the background so the box-edge cells average
-    # with the constant background exactly as the grid-wide update would.
-    # ``sigma=None`` hands the window its own conductivity: the slice read
-    # above is the cell TOTAL, a held port's load included, and laying it
-    # back as a design (volume) value would count that load twice.
-    write_bounds, ca, cb = _design_box_edge_coeffs(
-        bounds, eps_r, None if spec.sigma is None else sigma, materials, dt,
-        tuple(grid.shape), held_edges=held)
-    return _DesignBoxCoeffs(bounds=write_bounds, ca=ca, cb=cb)
+from rfx.model import design_box_bounds, resolve_design_box
 
 
 def _build_step_setup(
@@ -1318,6 +801,7 @@ def _build_step_setup(
     debye: "tuple | None",
     lorentz: "tuple | None",
     tfsf: "tuple | None",
+    _feature_tfsf: bool = False,
     sources: list,
     probes: list,
     dft_planes: list,
@@ -1352,6 +836,19 @@ def _build_step_setup(
     with its own driver-specific ``_StepContext`` fields before constructing
     the context.
     """
+    dt = grid.dt
+    dx = grid.dx
+
+    # ---- boundary configuration ----
+    periodic = resolve_periodic(grid, periodic)
+    from rfx.model.materials import with_components
+    from rfx.model.tensor_operands import TensorOperands
+    materials = with_components(materials, grid, periodic=periodic, tensor=
+        TensorOperands.of(aniso_eps, aniso_inv_eps, conformal_weights, aniso_inv_eps_smooth))
+    tensor = materials.components.tensor
+    aniso_eps, aniso_inv_eps = (tensor.eps, tensor.inv_eps) if tensor else (None, None)
+    conformal_weights = tensor.conformal_weights if tensor else None
+    aniso_inv_eps_smooth = tensor.inv_eps_smooth if tensor else False
     from rfx.sources.wire_radius import require_radius_update
     require_radius_update(
         materials, lane="uniform Yee with dispersion/UPML/tensor or design-box updates",
@@ -1359,17 +856,7 @@ def _build_step_setup(
                      or aniso_eps is not None or aniso_inv_eps is not None
                      or stencil_order != 2 or design_box is not None
                      or design_occupancy is not None or kerr_chi3 is not None))
-    dt = grid.dt
-    dx = grid.dx
-
-    # ---- boundary configuration ----
-    periodic = resolve_periodic(grid, periodic)
-
-    # Skip CPML / PEC on periodic axes.
-    axis_names = ("x", "y", "z")
-    for axis_name, is_periodic in zip(axis_names, periodic):
-        if is_periodic:
-            cpml_axes = cpml_axes.replace(axis_name, "")
+    cpml_axes = drop_periodic_axes(cpml_axes, periodic)  # no CPML/PEC on periodic axes
     # ---- the walls, per face, from the grid's declaration (#1164) ----
     # ``resolve_wall_faces`` is the one rule every entry point shares:
     # periodic -> none; a magnetic face is never an electric wall; a
@@ -1458,50 +945,25 @@ def _build_step_setup(
     use_wire_refplanes = len(wire_refplane_sparams) > 0
     use_lumped_rlc = len(lumped_rlc) > 0
     use_kerr = kerr_chi3 is not None
-    use_mag_sources = len(mag_sources) > 0
 
-    # ---- #404 oblique-periodic complex Bloch path activation ----
-    # An oblique (2D-aux) TFSF injects a tilted plane wave that a plain-periodic
-    # REAL grid cannot sustain (the pre-#404 under-tilt). Drive the shared solver
-    # on a complex Bloch-envelope path instead: fields carry the envelope P and a
-    # per-axis phase rides the periodic roll; the physical field is
-    # Re(P·exp(-j k_t·y)). Gated strictly on the 2D-aux discriminator, so normal
-    # incidence and every non-TFSF run stay real float32 and byte-identical.
-    # NOTE: gated strictly on the 2D-aux (Bloch) discriminator. Open-domain
-    # oblique Method B (MethodBConfig, NOT TFSF2DConfig) intentionally bypasses
-    # this lane: it stays real float32 and its NTFF/DFT/flux monitors read
-    # physical fields, so the fail-loud below must NOT be widened to angle != 0.
-    _oblique_bloch = False
-    if use_tfsf:
-        from rfx.sources.tfsf import is_tfsf_2d as _is_tfsf_2d_early
-        _oblique_bloch = _is_tfsf_2d_early(tfsf[0])
-    if _oblique_bloch:
-        # Frequency-domain monitors accumulate the complex envelope P, not the
-        # physical spectrum — fail loud rather than return truncated garbage.
-        _unsupported_ob = []
-        if use_ntff:
-            _unsupported_ob.append("NTFF box")
-        if use_dft_planes:
-            _unsupported_ob.append("DFT plane probe")
-        if use_flux_monitors:
-            _unsupported_ob.append("flux monitor")
-        if _unsupported_ob:
-            raise NotImplementedError(
-                "Oblique (angle_deg != 0) TFSF uses the #404 complex Bloch path; "
-                "frequency-domain monitors are not yet transform-aware on it. "
-                "Unsupported: " + ", ".join(_unsupported_ob) + ". Use field "
-                "snapshots / final state (returned as physical fields), or "
-                "compute_rcs for open-domain oblique scattering."
-            )
+    from rfx.boundaries.setup import oblique_bloch
+    _oblique_bloch = oblique_bloch(tfsf, use_ntff=use_ntff,
+                                 use_dft_planes=use_dft_planes, use_flux_monitors=use_flux_monitors)
 
     # The far-field integral is over the SCATTERED field, which it only is
     # when the Huygens box encloses the whole injected region. Plain ints,
     # evaluated here at trace time.
-    if use_tfsf and use_ntff:
-        from rfx.farfield import require_box_encloses_injected_region
-        from rfx.sources.tfsf import tfsf_injection_planes
-        require_box_encloses_injected_region(
-            ntff, tfsf_injection_planes(tfsf[0]), shape=grid.shape)
+    from rfx.boundaries.tfsf import admit_setup
+    admit_setup(grid=grid, tfsf=tfsf, materials=materials, waveguide_ports=waveguide_ports,
+                ntff=ntff if use_ntff else None, periodic=periodic, feature_owned=_feature_tfsf,
+                updates=dict(debye=debye, lorentz=lorentz, aniso_eps=aniso_eps,
+                             aniso_inv_eps=aniso_inv_eps, pec_mask=pec_mask, pec_edge_masks=pec_edge_masks,
+                             pec_occupancy=pec_occupancy, conformal_weights=conformal_weights,
+                             sheet_impedance=sheet_impedance, kerr_chi3=kerr_chi3,
+                             design_box=design_box, design_occupancy=design_occupancy),
+                localized=(("sources", sources), ("mag_sources", mag_sources),
+                           ("waveguide_ports", waveguide_ports), ("wire_port_sparams", wire_port_sparams),
+                           ("lumped_port_sparams", lumped_port_sparams), ("lumped_rlc", lumped_rlc)))
 
     # ---- (2,4) fourth-order-in-space stencil (PR-1b) ----
     # order=2 is the default and BYTE-IDENTICAL: dt and every kernel call are
@@ -1564,6 +1026,8 @@ def _build_step_setup(
         # Complex envelope P; overrides mixed-precision (float16) for this path.
         _field_dtype = jnp.complex64
     fdtd = init_state(grid.shape, field_dtype=_field_dtype)
+    materials = with_edge_keep(materials, pec_occupancy, dtype=fdtd.ex.dtype,
+        periodic=periodic, sheet_edge_masks=pec_static_edge_masks)
     carry_init: dict = {"fdtd": fdtd}
 
     if use_cpml:
@@ -1577,7 +1041,7 @@ def _build_step_setup(
         from rfx.boundaries.upml import init_upml
         from rfx.boundaries.upml import apply_upml_e, apply_upml_h
         upml_coeffs = init_upml(grid, materials, axes=cpml_axes,
-                                aniso_eps=aniso_eps)
+                                aniso_eps=aniso_eps, periodic=periodic)
 
     if use_debye:
         debye_coeffs, debye_state = debye
@@ -1714,18 +1178,9 @@ def _build_step_setup(
     flux_meta_8: tuple = ()
     flux_meta_11: tuple = ()
     if use_flux_monitors:
-        from rfx.probes.probes import _FLUX_COMPONENTS as _FC
-        flux_meta_8 = tuple(
-            (fm.axis, fm.index, fm.freqs, _FC[fm.axis],
-             fm.lo1, fm.hi1, fm.lo2, fm.hi2)
-            for fm in flux_monitors
-        )
-        flux_meta_11 = tuple(
-            (fm.axis, fm.index, fm.freqs, _FC[fm.axis],
-             fm.lo1, fm.hi1, fm.lo2, fm.hi2,
-             fm.total_steps, fm.window, fm.window_alpha)
-            for fm in flux_monitors
-        )
+        from rfx.measurement.accumulators import flux_metadata
+        flux_meta_8 = flux_metadata(flux_monitors, window=False)
+        flux_meta_11 = flux_metadata(flux_monitors, window=True)
         carry_init["flux_monitors"] = tuple(
             (fm.e1_dft, fm.e2_dft, fm.h1_dft, fm.h2_dft) for fm in flux_monitors
         )
@@ -1751,16 +1206,14 @@ def _build_step_setup(
     src_meta = [(s.i, s.j, s.k, s.component) for s in sources]
     mag_src_meta = [(s.i, s.j, s.k, s.component) for s in mag_sources]
     prb_meta = [(p.i, p.j, p.k, p.component) for p in probes]
-    dft_meta = tuple(
-        (probe.component, probe.axis, probe.index, probe.freqs, probe.region)
-        for probe in dft_planes
-    )
+    from rfx.measurement.accumulators import plane_metadata
+    dft_meta = plane_metadata(dft_planes)
     waveguide_meta = tuple(waveguide_ports)
 
     # ---- #1179 design box: fence, then build its coefficients once ----
     design_box_coeffs = None
     if design_box is not None:
-        design_box_coeffs = _resolve_design_box(
+        design_box_coeffs = resolve_design_box(
             design_box,
             grid=grid,
             materials=materials,
@@ -1837,7 +1290,6 @@ def _build_step_setup(
         use_wire_refplanes=use_wire_refplanes,
         use_lumped_rlc=use_lumped_rlc,
         use_kerr=use_kerr,
-        use_mag_sources=use_mag_sources,
         use_sheet_impedance=sheet_impedance is not None,
         sheet_impedance=sheet_impedance,
         use_design_box=design_box_coeffs is not None,
@@ -1852,19 +1304,13 @@ def _build_step_setup(
         bloch=_bloch,
         debye_coeffs=debye_coeffs,
         lorentz_coeffs=lorentz_coeffs,
-        aniso_eps=aniso_eps,
-        aniso_inv_eps=aniso_inv_eps,
         pec_edge_masks=pec_edge_masks,
         pec_static_edge_masks=pec_static_edge_masks,
-        pec_occupancy=pec_occupancy,
-        conformal_weights=conformal_weights,
         kerr_chi3=kerr_chi3,
         ntff=ntff,
         pec_faces_frozen=_pec_faces_frozen,
         pmc_faces_frozen=_pmc_faces_frozen,
         curl_boundary=CurlBoundary(_pec_faces_frozen, _pmc_faces_frozen, periodic),
-        src_meta=tuple(src_meta),
-        mag_src_meta=tuple(mag_src_meta),
         prb_meta=tuple(prb_meta),
         dft_meta=dft_meta,
         waveguide_meta=waveguide_meta,
@@ -1981,7 +1427,6 @@ class _StepContext:
     use_lumped_sparams: bool
     use_lumped_rlc: bool
     use_kerr: bool
-    use_mag_sources: bool
 
     # ---- output behaviour ----
     use_snapshot: bool
@@ -1998,12 +1443,8 @@ class _StepContext:
     bloch: Any = None  # per-axis Bloch phase for oblique-periodic TFSF (#404); None = real path
     debye_coeffs: Any = None
     lorentz_coeffs: Any = None
-    aniso_eps: Any = None
-    aniso_inv_eps: Any = None
     pec_edge_masks: Any = None
     pec_static_edge_masks: Any = None
-    pec_occupancy: Any = None
-    conformal_weights: Any = None
     kerr_chi3: Any = None
     ntff: Any = None
     # In-loop block current moments (rfx.current_moments). Default OFF so
@@ -2015,12 +1456,15 @@ class _StepContext:
     pmc_faces_frozen: Any = frozenset()
 
     # ---- pre-extracted metadata ----
-    src_meta: tuple = ()
-    mag_src_meta: tuple = ()
+    # Sole source authority: None suppresses BOTH stages, including when xs
+    # still contains primal samples (the reciprocity adjoint pass).
+    drives: StepDrives | None = None
+    electric_injector: Callable | None = None
     prb_meta: tuple = ()
     dft_meta: tuple = ()
     flux_meta: tuple = ()
     waveguide_meta: tuple = ()
+    port_record_specs: tuple | None = None
     wire_sparam_meta: tuple = ()
     lumped_sparam_meta: tuple = ()
     rlc_meta: tuple = ()
@@ -2062,6 +1506,15 @@ class _StepContext:
     apply_kerr_ade: Callable | None = None
     update_rlc_element: Callable | None = None
 
+    @property
+    def src_meta(self):
+        """Read-only aperture view for legacy diagnostics, never a kernel input."""
+        if self.drives is None:
+            return ()
+        return tuple((i, j, k, component)
+                     for component, nodes in self.drives.electric.nodes.items()
+                     for i, j, k in zip(*nodes))
+
 
 def core_step_invariants(ctx: _StepContext) -> dict:
     """What :func:`make_core_step`'s kernel reads besides its arguments.
@@ -2073,10 +1526,11 @@ def core_step_invariants(ctx: _StepContext) -> dict:
     dict to ``make_core_step(ctx, invariants=...)`` inside the trace, so they
     are not compiled into the program as grid-sized constants.
     """
+    from rfx.model.materials import with_components
+    ctx = replace(ctx, materials=with_components(ctx.materials, ctx.grid, periodic=ctx.periodic))
     materials = ctx.materials
-    periodic = ctx.periodic
-    aniso_eps = ctx.aniso_eps
-    aniso_inv_eps = ctx.aniso_inv_eps
+    tensor = materials.components.tensor
+    aniso_eps, aniso_inv_eps = (tensor.eps, tensor.inv_eps) if tensor else (None, None)
 
     # #1043. ``apply_cpml_e`` builds its psi coefficient from a permittivity,
     # and it has to be the SAME one the Yee half of this timestep used, or the
@@ -2084,29 +1538,19 @@ def core_step_invariants(ctx: _StepContext) -> dict:
     # amplify (see that function's ``inv_eps_r_update`` docstring for the
     # derivation and the measured spectral radius). ``None`` on every path
     # that has no anisotropic array, which keeps those byte-identical.
-    # The guard mirrors ``_update_e_with_optional_dispersion``'s own
-    # ``debye is None and lorentz is None``: with a dispersion model active the
-    # E update never consults the anisotropic arrays, so neither may this.
+    # With dispersion active the E update ignores anisotropic arrays,
+    # so the CPML coefficient must also ignore them.
     #
-    # #1210 made the PLAIN path per-component too: ``update_e`` builds its
-    # coefficients from the mean of eps_r over each edge's four incident
-    # cells, so ``materials.eps_r`` is no longer the permittivity the Yee half
-    # used anywhere a material interface crosses the pad. The same argument
-    # that threaded the subpixel arrays threads this one; where the pad is
-    # homogeneous the mean IS ``materials.eps_r``, so those runs keep their
-    # bytes.
-    #
+    # Plain and dispersive updates share the realized E-edge permittivity.
     # #1260 made the DISPERSIVE update per-component as well: its ε_∞ is the
-    # same ``component_e_materials`` mean, so a dispersive run threads the same
-    # array. (It used to fall back to the cell's ``materials.eps_r``.)
+    # same ``component_e_materials`` mean, also threaded for dispersive runs.
     _aniso_is_live = not (ctx.use_debye or ctx.use_lorentz)
     if _aniso_is_live and aniso_inv_eps is not None:
         cpml_inv_eps_r = aniso_inv_eps
     elif _aniso_is_live and aniso_eps is not None:
         cpml_inv_eps_r = tuple(1.0 / e for e in aniso_eps)
     else:
-        _eps_edge, _ = component_e_materials(materials, periodic)
-        cpml_inv_eps_r = tuple(1.0 / e for e in _eps_edge)
+        cpml_inv_eps_r = tuple(1.0 / e for e in materials.components.eps_update)
 
     # #677 surface-impedance sheet: Holland exponential-stepping A/B built
     # once from the FINAL run materials (background eps_r/sigma at the sheet
@@ -2118,710 +1562,25 @@ def core_step_invariants(ctx: _StepContext) -> dict:
         )
         _sheet_coeffs = _sheet_update_coeffs(
             ctx.sheet_impedance.sigma_sheet, materials, ctx.dt)
-    return {"ctx": ctx, "cpml_inv_eps_r": cpml_inv_eps_r,
-            "sheet_coeffs": _sheet_coeffs}
+    from rfx.stepping.absorber import cpml_context
+    ctx, e_loss = cpml_context(ctx)
+    return {"ctx": ctx, "cpml_inv_eps_r": cpml_inv_eps_r if ctx.use_cpml else None,
+            "sheet_coeffs": _sheet_coeffs, "e_loss": e_loss}
 
 
 def make_core_step(ctx: _StepContext, invariants: dict | None = None,
-                   *, design_hook=None):
-    """Build the shared per-step Yee kernel from an explicit context.
+                   *, design_hook=None, hooks=None):
+    """Compose the uniform step; retain the runner and adjoint call signatures.
 
-    Returns ``core_step(carry, step_idx, src_vals, mag_src_vals)`` ->
-    ``(new_carry, probe_out, extras)`` where ``extras`` is a dict carrying the
-    optional per-step outputs each caller needs:
-      * ``extras["snap_fields"]`` — snapshot field list (``use_snapshot``).
-      * ``extras["monitor_val"]`` — monitored scalar (``use_monitor``).
-
-    ``design_hook``, when supplied by the design adjoint, observes the
-    pre-update fields and can inject a local E perturbation immediately after
-    the design update. It returns ``(state, record)``; the record is an extra.
-    With no hook the production operations are unchanged.
-
-    ``invariants`` is :func:`core_step_invariants`'s dict (built from ``ctx``
-    when omitted); a jitted caller passes one whose per-cell arrays are its
-    arguments.
+    Returns ``core_step(carry, step_idx, src_vals, mag_src_vals)`` yielding
+    ``(new_carry, probe_out, extras)``. The design callback attaches immediately
+    after the E update; optional hook attachments use the transient uniform frame.
     """
+    from rfx.stepping.uniform import make_uniform_step
     if invariants is None:
         invariants = core_step_invariants(ctx)
-    ctx = invariants["ctx"]
-    materials = ctx.materials
-    dt = ctx.dt
-    dx = ctx.dx
-    periodic = ctx.periodic
-    grid = ctx.grid
-    aniso_eps = ctx.aniso_eps
-    aniso_inv_eps = ctx.aniso_inv_eps
-    cpml_inv_eps_r = invariants["cpml_inv_eps_r"]
-    _sheet_coeffs = invariants["sheet_coeffs"]
-
-    if ctx.use_sheet_impedance:
-        from rfx.materials.thin_conductor import (
-            apply_sheet_impedance_e as _apply_sheet_e,
-        )
-
-    if ctx.use_current_moments:
-        from rfx.current_moments import slab_e_snapshot as _slab_e_snapshot
-
-    def core_step(carry, step_idx, src_vals, mag_src_vals):
-        st = carry["fdtd"]
-        tfsf_h_state = None
-        # #1163: a series RLC element is solved together with its edge field
-        # and needs E^n there; nothing before the E update writes E, so the
-        # carry's value IS E^n on every path (fast H+E kernel included).
-        rlc_e_prev = (
-            tuple(getattr(st, m.component)[m.i, m.j, m.k]
-                  for m in ctx.rlc_meta)
-            if ctx.use_lumped_rlc else ())
-
-        # E^n on the slab, taken before anything in this step writes E. The
-        # H update below does not touch E, so this is the same array the
-        # E update is about to consume — and the difference against the
-        # post-update field is exactly one timestep, which is what makes
-        # ``J = curl_h H - eps0 dE/dt`` the lattice's own current.
-        # Slab-sized: the reverse-mode tape carries the slab, not the domain.
-        if ctx.use_current_moments:
-            e_prev_slab = _slab_e_snapshot(st, ctx.current_moments)
-
-        if ctx.use_fast_he:
-            # Fast path: combined H+E update with PEC baked into
-            # pre-computed coefficients — eliminates separate apply_pec(),
-            # coefficient recomputation, and reduces XLA scatter ops.
-            st = update_he_fast(st, ctx.fast_coeffs, boundary=ctx.curl_boundary)
-        else:
-            # H update
-            if ctx.use_upml:
-                st = ctx.apply_upml_h(st, ctx.upml_coeffs, periodic=periodic)
-            else:
-                st = update_h(st, materials, dt, dx, periodic=periodic,
-                              stencil_order=ctx.stencil_order, bloch=ctx.bloch)
-            if ctx.use_tfsf:
-                st = ctx.apply_tfsf_h(st, ctx.tfsf_cfg, carry["tfsf"], dx, dt)
-            if ctx.use_waveguide_ports:
-                from rfx.sources.waveguide_port import apply_waveguide_port_h as _apply_wg_h
-                for cfg_meta in ctx.waveguide_meta:
-                    st = _apply_wg_h(st, cfg_meta, step_idx, dt, dx)
-            if ctx.use_cpml:
-                st, cpml_new = ctx.apply_cpml_h(
-                    st, ctx.cpml_params, carry["cpml"], grid, ctx.cpml_axes,
-                    materials=materials, periodic=periodic)
-            # Stage 2 H damping — applied AFTER CPML-H so CPML cannot
-            # un-zero H at Kottke-frozen PEC cells.  Threshold rather
-            # than ``== 0.0`` so smooth-Kottke (eps_inside = 1e10)
-            # cells (inv ≈ 1e-10 at f=1) are caught alongside exact-PEC
-            # cells (inv = 0 from binary `pec_shapes`).  Smooth-Kottke
-            # path uses ONLY the full-PEC mask (all three inv below
-            # threshold); the pairwise per-component masks would trigger
-            # spuriously at sigmoid-edge cells (where 2 of 3 components
-            # are frozen due to Kottke anisotropy but the cell is
-            # legitimately a partial-fill interface, not full PEC) —
-            # killing wave propagation INTO the stub region.  Binary
-            # Stage 2 path keeps the pairwise masks as before (boundary
-            # cells of binary PEC need the corner-specific H zero).
-            if ctx.use_aniso_inv:
-                from rfx.boundaries.pec import apply_pec_h_mask
-                _inv_xx, _inv_yy, _inv_zz = aniso_inv_eps
-                _PEC_INV_THRESHOLD = 1e-9
-                _xx0 = (_inv_xx < _PEC_INV_THRESHOLD)
-                _yy0 = (_inv_yy < _PEC_INV_THRESHOLD)
-                _zz0 = (_inv_zz < _PEC_INV_THRESHOLD)
-                if ctx.aniso_inv_eps_smooth:
-                    st = apply_pec_h_mask(
-                        st,
-                        pec_mask=_xx0 & _yy0 & _zz0,
-                    )
-                else:
-                    st = apply_pec_h_mask(
-                        st,
-                        pec_mask=_xx0 & _yy0 & _zz0,
-                        mask_hx=_yy0 & _zz0,
-                        mask_hy=_xx0 & _zz0,
-                        mask_hz=_xx0 & _yy0,
-                    )
-            if ctx.use_pmc_faces:
-                from rfx.boundaries.pmc import apply_pmc_faces
-                st = apply_pmc_faces(st, ctx.pmc_faces_frozen, image=True)
-            if ctx.use_tfsf:
-                if ctx.tfsf_is_2d:
-                    tfsf_h_state = ctx.update_tfsf_2d_h(ctx.tfsf_cfg, carry["tfsf"], dx, dt)
-                else:
-                    tfsf_h_state = ctx.update_tfsf_1d_h(ctx.tfsf_cfg, carry["tfsf"], dx, dt)
-
-            # Magnetic current (Schelkunoff M / J-magnetic) injection —
-            # applied after H update so the Yee leapfrog ordering is
-            # H^{n+1/2} += -dt/mu · M^{n+1/2}. The coefficient is
-            # pre-baked into the waveform values at construction time.
-            if ctx.use_mag_sources:
-                for idx_m, (mi, mj, mk, mc) in enumerate(ctx.mag_src_meta):
-                    h_field = getattr(st, mc)
-                    h_field = h_field.at[mi, mj, mk].add(
-                        mag_src_vals[idx_m].astype(h_field.dtype))
-                    st = st._replace(**{mc: h_field})
-
-            # Snapshot E^n before the linear E-update for the reactive Kerr
-            # increment (#437): E^{n+1} = E^n + (E_lin - E^n)/(1 + chi3|E^n|^2/eps_r).
-            e_prev_kerr = (st.ex, st.ey, st.ez) if ctx.use_kerr else None
-            # Snapshot E^n for the #677 sheet operator (it REPLACES the
-            # standard update at masked tangential edges with
-            # A*E^n + B*curlH, so it needs the pre-update E).
-            e_prev_sheet = (
-                (st.ex, st.ey, st.ez) if ctx.use_sheet_impedance else None)
-            # #1179: the design box REDOES the E update at its own cells from
-            # the pre-update state.  The whole state, because it needs E^n and
-            # the same H^{n+1/2} the update below consumes; H is not touched
-            # between the two, and a NamedTuple alias costs nothing.
-            st_prev_design = st if ctx.use_design_box else None
-
-            if ctx.use_upml:
-                if ctx.use_debye or ctx.use_lorentz:
-                    raise ValueError("boundary='upml' does not yet support dispersion")
-                st = ctx.apply_upml_e(st, ctx.upml_coeffs, periodic=periodic,
-                                      boundary=ctx.curl_boundary)
-                debye_new = None
-                lorentz_new = None
-            else:
-                st, debye_new, lorentz_new = _update_e_with_optional_dispersion(
-                    st,
-                    materials,
-                    dt,
-                    dx,
-                    debye=(ctx.debye_coeffs, carry["debye"]) if ctx.use_debye else None,
-                    lorentz=(ctx.lorentz_coeffs, carry["lorentz"]) if ctx.use_lorentz else None,
-                    periodic=periodic,
-                    aniso_eps=aniso_eps,
-                    aniso_inv_eps=aniso_inv_eps,
-                    stencil_order=ctx.stencil_order,
-                    bloch=ctx.bloch,
-                    boundary=ctx.curl_boundary,
-                )
-
-            # #1179 design box: redo the E update at the design cells with
-            # coefficients built from the traced permittivity, leaving the
-            # grid-wide ``materials`` constant.  Slot: immediately after the
-            # E update, on the same H, before anything that reads or writes
-            # E.  The fences in _build_step_setup guarantee that nothing
-            # later in this step reads ``materials`` at a design cell.
-            if ctx.use_design_box:
-                st = update_e_box(
-                    st, st_prev_design, ctx.design_box.bounds,
-                    ctx.design_box.ca, ctx.design_box.cb, dx,
-                    periodic=periodic,
-                    stencil_order=ctx.stencil_order,
-                    bloch=ctx.bloch,
-                    boundary=ctx.curl_boundary,
-                )
-
-            if design_hook is not None:
-                st, design_record = design_hook(st_prev_design, st)
-
-            # Reactive Kerr correction: scale the E-increment by eps_r/eps_eff (#437).
-            if ctx.use_kerr:
-                st = ctx.apply_kerr_ade(st, e_prev_kerr, ctx.kerr_chi3, materials.eps_r)
-
-            if ctx.use_tfsf:
-                st = ctx.apply_tfsf_e(st, ctx.tfsf_cfg, tfsf_h_state, dx, dt)
-            if ctx.use_waveguide_ports:
-                from rfx.sources.waveguide_port import apply_waveguide_port_e as _apply_wg_e
-                for cfg_meta in ctx.waveguide_meta:
-                    st = _apply_wg_e(st, cfg_meta, step_idx, dt, dx)
-            if ctx.use_cpml:
-                st, cpml_new = ctx.apply_cpml_e(
-                    st, ctx.cpml_params, cpml_new, grid, ctx.cpml_axes,
-                    materials=materials,
-                    inv_eps_r_update=cpml_inv_eps_r,
-                    boundary=ctx.curl_boundary)
-            # Re-enforce Kottke-frozen E cells after CPML-E correction.
-            # CPML adds a psi-driven correction that can thaw cells
-            # where inv_eps==0; re-zero them here so the frozen
-            # boundary condition is not violated.
-            if ctx.use_aniso_inv:
-                _inv_xx_r, _inv_yy_r, _inv_zz_r = aniso_inv_eps
-                _PEC_INV_THRESHOLD = 1e-9
-                st = st._replace(
-                    ex=jnp.where(_inv_xx_r < _PEC_INV_THRESHOLD, 0.0, st.ex),
-                    ey=jnp.where(_inv_yy_r < _PEC_INV_THRESHOLD, 0.0, st.ey),
-                    ez=jnp.where(_inv_zz_r < _PEC_INV_THRESHOLD, 0.0, st.ez),
-                )
-
-            if ctx.use_pec_faces:
-                st = apply_pec_faces(st, ctx.pec_faces_frozen)
-
-            if ctx.use_conformal and not ctx.use_aniso_inv:
-                # Stage 1 path. Stage 2 (use_aniso_inv) skips this —
-                # the inv-eps tensor encodes the fully-PEC-cell zero
-                # already, so this would be redundant double-zeroing.
-                from rfx.geometry.conformal import apply_conformal_pec
-                st = apply_conformal_pec(st, ctx.conformal_weights[0], ctx.conformal_weights[1], ctx.conformal_weights[2])
-            if ctx.use_pec_edges:
-                # #931 §1.7: the (Mx, My, Mz) realized once at setup.
-                #
-                # NOT an ``elif`` on the conformal branch. Dey-Mittra is a
-                # subpixel UPDATE-COEFFICIENT model, not a second geometry
-                # realization: ``apply_conformal_pec`` zeroes only edges
-                # whose weight is exactly 0, and no edge of a one-cell PEC
-                # slab is fully covered — both its faces sit ON the slab's
-                # own boundary, so w = 1/2 there. While the waveguide
-                # S-matrix lane folded interior PEC into sigma=1e10 the
-                # conductor survived anyway; with that fold deleted (#931)
-                # the ``elif`` dropped it outright — measured on the
-                # conformal PEC-short battery, min|S11| 0.2296 against a
-                # gate of 0.99, restored to 0.9942 by applying both.
-                st = apply_pec_edges(st, ctx.pec_edge_masks)
-
-            # #1183: the design occupancy REDOES the scaling at its window
-            # from the field BEFORE the grid-wide one, for the same reason
-            # the design box keeps the pre-update state -- the multiply is
-            # not invertible where the static factor is 0.
-            st_prev_occ = st if ctx.use_design_occupancy else None
-
-            if ctx.use_pec_occupancy:
-                st = apply_pec_occupancy(
-                    st, ctx.pec_occupancy, ctx.periodic,
-                    sheet_edge_masks=ctx.pec_static_edge_masks)
-
-            # #1183 design occupancy: the traced 1 - M on its window, over
-            # a field the static occupancy has not scaled. Outside the
-            # window no design cell can reach, so the grid-wide factor
-            # there is already the right one.
-            if ctx.use_design_occupancy:
-                st = apply_pec_occupancy_box(
-                    st, st_prev_occ, ctx.design_occupancy.write,
-                    ctx.design_occupancy.keep)
-
-            # #677 node-thin surface-impedance sheet operator. Contract slot:
-            # AFTER apply_pec_mask/apply_pec_occupancy (PEC wins on overlap —
-            # PEC-owned edges are already excluded from the ctx masks at
-            # build time, and running after keeps the ordering honest),
-            # BEFORE the S-param DFT sampling and source injection below.
-            # curlH comes from the SAME shared stencil helper update_e uses,
-            # on the same H^{n+1/2} the E update consumed (H is unchanged
-            # between the E update and this slot).
-            if ctx.use_sheet_impedance:
-                from rfx.core.yee import curl_h as _curl_h
-                _scd = jnp.promote_types(st.ex.dtype, jnp.float32)
-                _curls = _curl_h(
-                    st.hx.astype(_scd), st.hy.astype(_scd),
-                    st.hz.astype(_scd), dx, periodic,
-                    ctx.stencil_order, ctx.bloch, boundary=ctx.curl_boundary)
-                st = _apply_sheet_e(
-                    st, e_prev_sheet, _curls, ctx.sheet_impedance,
-                    _sheet_coeffs)
-
-        # Lumped RLC ADE update (after E update + boundaries, before sources)
-        if ctx.use_lumped_rlc:
-            new_rlc_states = []
-            for rlc_st, meta, e_prev in zip(
-                    carry["rlc_states"], ctx.rlc_meta, rlc_e_prev):
-                st, rlc_st_new = ctx.update_rlc_element(
-                    st, rlc_st, meta, e_prev)
-                new_rlc_states.append(rlc_st_new)
-
-        # Compute step time first; the lumped S-param DFT block below
-        # needs `t` and accumulates BEFORE source injection per the
-        # rfx/probes/probes.py update_sparam_probe docstring contract
-        # ("sample after E-update/apply_pec but before apply_lumped_port
-        # so V reflects only the cavity/load response, not the driving
-        # waveform"; issue #72 — the JIT scan path violated it via PR #72
-        # ordering, producing 5-10 dB train/eval |S11| disagreement on
-        # near-matched antennas). The WIRE-port physical V/I/V_port block
-        # moved to AFTER the soft-source loop below (issue #683, decided
-        # by measurement 2026-08-29: only the post-injection sample is the
-        # true field level E^{n+1} and satisfies the known-load circuit
-        # law at an excited port — see
-        # docs/design_notes/issue683_sampling_order_decision_protocol.md
-        # section 9). The lumped ordering is deliberately unchanged: the
-        # #683 measurement was made on wire ports, and flipping lumped on
-        # a wire-port measurement would repeat the align-first-decide-
-        # later mistake the ledger's #673/#672 entry warns about.
-        t = step_idx.astype(jnp.float32) * dt
-
-        # Wire-port DRIVE-REFERENCE DFT accumulation at the historical
-        # PRE-injection slot (issue #683 x #764 decomposer recalibration,
-        # docs/design_notes/issue683_decomposer_flip_predeclaration.md
-        # section 3): the #308 receive-wave sign and Z0/n_cells
-        # normalization were calibrated against the pre-injection drive
-        # sample, so that sample is kept as its own channel `v_ref_dft` —
-        # bit-identical to the historical `v_dft` — and feeds ONLY the
-        # off-diagonal incident-wave denominator and the byte-frozen
-        # legacy diagonal in decompose_wire_s_matrix. The physical
-        # channels (v, i, v_port) are accumulated POST-injection below.
-        if ctx.use_wire_sparams or ctx.use_lumped_sparams:
-            from rfx.probes.probes import _ampere_loop, _port_voltage_value
-            from rfx.core.dft_utils import port_dft_phase
-            # Both families advance their H-derived current by dt/2 to the
-            # E time level; one import for both blocks.
-            from rfx.core.dft_utils import half_step_current_phase as _half_i_phase
-        if ctx.use_wire_sparams:
-            new_wire_refs = []
-            wire_ref_samples = []
-            for accs, wp_meta in zip(carry["wire_sparam_accs"], ctx.wire_sparam_meta):
-                v_ref_dft = accs[4]
-                mi, mj, mk = wp_meta.mid_i, wp_meta.mid_j, wp_meta.mid_k
-                v_ref = -getattr(st, wp_meta.component)[mi, mj, mk] * dx
-                t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
-                phase = jnp.exp(-1j * 2.0 * jnp.pi * wp_meta.freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
-                new_wire_refs.append((v_ref_dft + v_ref * phase, phase))
-                wire_ref_samples.append(v_ref)
-
-        # Lumped-port DRIVE-REFERENCE DFT accumulation at the historical
-        # PRE-injection slot (issue #72): the #308 off-diagonal incident
-        # wave is calibrated against this sample, so it is kept as its own
-        # channel — bit-identical to the pre-decision `v_dft` — and feeds
-        # ONLY the off-diagonal denominator in decompose_lumped_s_matrix.
-        # The physical V/I are accumulated POST-injection below.  Mirrors
-        # the wire-port block above (issue #683).
-        if ctx.use_lumped_sparams:
-            new_lumped_refs = []
-            lumped_ref_samples = []
-            for accs, lp_meta in zip(carry["lumped_sparam_accs"], ctx.lumped_sparam_meta):
-                v_ref_dft_l = accs[2]
-                li, lj, lk = lp_meta.i, lp_meta.j, lp_meta.k
-                v_ref_l = _port_voltage_value(getattr(st, lp_meta.component)[li, lj, lk], dx)
-                phase_l = port_dft_phase(step_idx, lp_meta.freqs, dt)
-                new_lumped_refs.append((v_ref_dft_l + v_ref_l * phase_l, phase_l))
-                lumped_ref_samples.append(v_ref_l)
-
-        # Reference-plane V/I DFT accumulation (issue #313 opt-in) — same
-        # rect-DFT kernel as the port-cell channels.  This slot is before
-        # the soft-source loop, but the planes sit >= 1 cell from every
-        # source cell, so pre/post-injection sampling is identical here
-        # and the #683 wire-port flip (which moved only the port-CELL
-        # physical channels below the source loop) does not apply.
-        if ctx.use_wire_refplanes:
-            from rfx.probes.refplane import wire_refplane_step_vi
-            new_refplane_accs = []
-            refplane_samples = []
-            for accs, rp_meta in zip(carry["wire_refplane_accs"],
-                                     ctx.wire_refplane_meta):
-                v_dft_r, im_dft_r, ip_dft_r = accs
-                v_r, im_r, ip_r = wire_refplane_step_vi(st, rp_meta, dx)
-                refplane_samples.append(jnp.stack((v_r, im_r, ip_r)))
-                t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
-                phase_r = jnp.exp(-1j * 2.0 * jnp.pi * rp_meta.freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
-                new_refplane_accs.append((
-                    v_dft_r + v_r * phase_r,
-                    im_dft_r + im_r * phase_r,
-                    ip_dft_r + ip_r * phase_r,
-                ))
-
-        # Soft sources — cast source value to field dtype to avoid
-        # mixed-precision scatter warnings (float32 -> float16).
-        for idx_s, (si, sj, sk, sc) in enumerate(ctx.src_meta):
-            field = getattr(st, sc)
-            field = field.at[si, sj, sk].add(src_vals[idx_s].astype(field.dtype))
-            st = st._replace(**{sc: field})
-
-        # Wire-port PHYSICAL V/I/V_port DFT accumulation AFTER soft-source
-        # injection (issue #683, decided by measurement 2026-08-29;
-        # protocol + results in docs/design_notes/
-        # issue683_sampling_order_decision_protocol.md, recalibration in
-        # issue683_decomposer_flip_predeclaration.md).  This block used to
-        # sit BEFORE the source loop (the #72 wire slot).  The #683
-        # known-load experiment refuted that sample at an EXCITED port:
-        # pre-injection Re(V/I) does not track a known external load
-        # (slope -0.62, intercept -81 Ohm vs the circuit law's +1/n_live
-        # slope), and the pre-injection E is not any field time level of
-        # the discrete update (Ampere-identity residual 3.25 vs 2.3e-7
-        # post).  The post-injection sample here IS the true E^{n+1}: the
-        # soft-source loop above is the last write to E in the step (the
-        # TFSF call below only advances the auxiliary 1D/2D state), and
-        # `t` stamping is unchanged (phase computed at the pre slot and
-        # reused), so a PASSIVE port (no source at its own cells) reads
-        # bit-identically to the old slot.  This also makes the uniform
-        # lane agree with the NU lane (rfx/nonuniform.py), whose
-        # post-injection slot the #683 run validated.
-        port_samples = []
-        if ctx.use_wire_sparams:
-            new_wire_accs = []
-            for accs, wp_meta, (v_ref_new, phase) in zip(
-                    carry["wire_sparam_accs"], ctx.wire_sparam_meta,
-                    new_wire_refs):
-                v_dft, i_dft, vinc_dft, v_port_dft = accs[0], accs[1], accs[2], accs[3]
-                mi, mj, mk = wp_meta.mid_i, wp_meta.mid_j, wp_meta.mid_k
-                field_c = getattr(st, wp_meta.component)
-                v = -field_c[mi, mj, mk] * dx
-                # Whole-port gap voltage (issue #764): the discrete line
-                # integral of E across the LIVE run,
-                # V_port = sum_live(-E_c*dx).  Only this SUM is
-                # KVL/Faraday-constrained on the staggered grid; a single
-                # cell is not (a PEC short forces sum V_c = 0 while V_mid
-                # stays finite).  ``live_cells`` is a static tuple, so the
-                # unroll resolves at trace time; an empty tuple (pre-#764
-                # spec constructor) degenerates to the single midpoint cell.
-                _lc = wp_meta.live_cells or ((mi, mj, mk),)
-                v_port = -sum(
-                    field_c[ci, cj, ck] for (ci, cj, ck) in _lc) * dx
-                # #692: the SHARED loop, not a fourth inline copy. This block
-                # used to spell the six branches verbatim with a raw
-                # `h[i-1]`, so a port at index 0 read H from the OPPOSITE
-                # face of the domain — and this lane is the one described at
-                # the top of this file as "an AD-compatible alternative to
-                # the Python-loop extract_s_matrix path", i.e. it must agree
-                # with `probes.port_current` cell for cell. Measured against
-                # the helper on random H: the two spellings disagreed at 9 of
-                # 21 sampled (index, component) cells, every one of them at
-                # an index with a zero coordinate on a back-read axis.
-                # `_ampere_loop` is jit-safe here: `component` is a static
-                # str and `mi/mj/mk` are static Python ints (see
-                # WireSParamSpec), so every branch resolves at trace time.
-                # (I reads H only, so it is identical on both sides of the
-                # source loop; the flip moves V by the same-step injection
-                # increment at driven cells, which #683's gate G2 measured
-                # as EXACTLY the pre/post lane difference.)
-                i_val = _ampere_loop(
-                    st, (mi, mj, mk), wp_meta.component, dx, periodic, boundary=ctx.curl_boundary)
-                # Yee half-step: I is H-derived (H^{n+1/2}) while V/V_port are
-                # E-derived (E^{n+1}); advance the current sample by dt/2 so
-                # both DFT channels share a reference time
-                # (`dft_utils.half_step_current_phase`). The
-                # E-derived channels keep the uncorrected `phase`.
-                i_phase = phase * _half_i_phase(
-                    wp_meta.freqs.astype(jnp.float64), dt).astype(jnp.complex64)
-                port_samples.append(jnp.stack((v, i_val, v_port,
-                                                wire_ref_samples[len(new_wire_accs)])))
-                new_wire_accs.append((
-                    v_dft + v * phase,
-                    i_dft + i_val * i_phase,
-                    vinc_dft,
-                    v_port_dft + v_port * phase,
-                    v_ref_new,
-                ))
-
-        # Lumped-port PHYSICAL V/I DFT accumulation AFTER source injection.
-        # Decided by the lumped known-load decision run
-        # (scripts/diagnostics/lumped_port_known_load_line.py), which the
-        # 2026-09-05 scope note said was the missing input: on a
-        # parallel-plate line terminated in a known R, the pre-injection
-        # slot read |S11| 0.714 / 1.248 / 4.757 against a closed form of
-        # 0.333 / 0 / 0.333, and its terminal V/(Zc·I) was -0.167 / +0.110
-        # / +0.659 where the load is 0.5 / 1.0 / 2.0.  The one-cell WIRE
-        # port on the SAME cell — same sigma (setup_wire_port with
-        # n_live=1), same injection (apply_wire_port with n_live=1) — read
-        # 0.334 / 0.0004 / 0.333 and 0.500 / 0.999 / 1.988.  The physics
-        # was never the difference; the extraction lane was.  `t` stamping
-        # is unchanged (phase computed at the pre slot and reused), so a
-        # PASSIVE port reads bit-identically to the old slot in V.
-        if ctx.use_lumped_sparams:
-            new_lumped_accs = []
-            for accs, lp_meta, (v_ref_new_l, phase_l) in zip(
-                    carry["lumped_sparam_accs"], ctx.lumped_sparam_meta,
-                    new_lumped_refs):
-                v_dft_l, i_dft_l = accs[0], accs[1]
-                li, lj, lk = lp_meta.i, lp_meta.j, lp_meta.k
-                v_l = _port_voltage_value(getattr(st, lp_meta.component)[li, lj, lk], dx)
-                # #692: shared loop — see the wire-port block above.
-                i_val_l = _ampere_loop(
-                    st, (li, lj, lk), lp_meta.component, dx, periodic, boundary=ctx.curl_boundary)
-                # Yee half-step: I is H-derived (H^{n+1/2}), V is E-derived
-                # (E^{n+1}).  Withheld on this lane until the slot above
-                # was post-injection, because that is the correction's
-                # premise (2026-09-05 scope note).
-                i_phase_l = phase_l * _half_i_phase(
-                    lp_meta.freqs.astype(jnp.float64), dt).astype(jnp.complex64)
-                port_samples.append(jnp.stack((v_l, i_val_l,
-                                                lumped_ref_samples[len(new_lumped_accs)])))
-                new_lumped_accs.append((
-                    v_dft_l + v_l * phase_l,
-                    i_dft_l + i_val_l * i_phase_l,
-                    v_ref_new_l,
-                ))
-
-        if ctx.use_tfsf:
-            if ctx.tfsf_is_2d:
-                tfsf_new = ctx.update_tfsf_2d_e(ctx.tfsf_cfg, tfsf_h_state, dx, dt, t)
-            else:
-                tfsf_new = ctx.update_tfsf_1d_e(ctx.tfsf_cfg, tfsf_h_state, dx, dt, t)
-
-        if ctx.use_waveguide_ports:
-            from rfx.sources.waveguide_port import (
-                update_waveguide_port_probe,
-            )
-
-            new_waveguide_port_accs = []
-            for accs, cfg_meta in zip(carry["waveguide_port_accs"], ctx.waveguide_meta):
-                cfg = cfg_meta._replace(
-                    v_probe_t=accs[0],
-                    v_ref_t=accs[1],
-                    i_probe_t=accs[2],
-                    i_ref_t=accs[3],
-                    v_inc_t=accs[4],
-                    n_steps_recorded=accs[5],
-                )
-                # TFSF-style H and E corrections are applied earlier in
-                # their respective Yee sub-steps (canonical TFSF slots).
-                # NOTE: this samples `st` AFTER source injection above.
-                # The same docstring-contract concern as wire/lumped
-                # applies here, but waveguide-port is out of scope for
-                # this fix (issue #29 OPEN tracks waveguide-port issues).
-                cfg_updated = update_waveguide_port_probe(cfg, st, dt, dx)
-                new_waveguide_port_accs.append(
-                    (
-                        cfg_updated.v_probe_t,
-                        cfg_updated.v_ref_t,
-                        cfg_updated.i_probe_t,
-                        cfg_updated.i_ref_t,
-                        cfg_updated.v_inc_t,
-                        cfg_updated.n_steps_recorded,
-                    )
-                )
-
-        # Probe samples
-        samples = [getattr(st, pc)[pi, pj, pk]
-                   for pi, pj, pk, pc in ctx.prb_meta]
-        probe_out = jnp.stack(samples) if samples else jnp.zeros(0)
-
-        # NTFF accumulation
-        if ctx.use_ntff:
-            ntff_new = ctx.accumulate_ntff(
-                carry["ntff"], st, ctx.ntff, dt, step_idx)
-
-        # Block current moments — same slot as the NTFF box, so the state
-        # holds E at (n+1)*dt and H at (n+1/2)*dt, and the soft-source loop
-        # above has already put the feed current into E.
-        if ctx.use_current_moments:
-            cm_new = ctx.accumulate_current_moments(
-                carry["current_moments"], st, e_prev_slab,
-                ctx.current_moments, dt, step_idx)
-
-        if ctx.use_dft_planes:
-            t_plane = st.step * dt
-            new_dft_planes = []
-            plane_samples = []
-            for acc, (component, axis, index, freqs, region) in zip(
-                carry["dft_planes"], ctx.dft_meta
-            ):
-                field = getattr(st, component)
-                if region is None:
-                    lo1 = lo2 = 0
-                    if axis == 0:
-                        hi1, hi2 = field.shape[1], field.shape[2]
-                    elif axis == 1:
-                        hi1, hi2 = field.shape[0], field.shape[2]
-                    else:
-                        hi1, hi2 = field.shape[0], field.shape[1]
-                else:
-                    lo1, hi1, lo2, hi2 = region
-                if axis == 0:
-                    plane = field[index, lo1:hi1, lo2:hi2]
-                elif axis == 1:
-                    plane = field[lo1:hi1, index, lo2:hi2]
-                else:
-                    plane = field[lo1:hi1, lo2:hi2, index]
-                phase = jnp.exp(-1j * 2.0 * jnp.pi * freqs * t_plane)
-                plane_samples.append(plane)
-                new_dft_planes.append(
-                    acc + plane[None, :, :] * phase[:, None, None] * dt
-                )
-
-        # Flux monitor DFT accumulation (co-located E/H, finite-size region).
-        if ctx.use_flux_monitors:
-            t_flux = st.step * dt
-            new_flux_accs = []
-            if ctx.use_flux_window:
-                from rfx.core.dft_utils import dft_window_weight as _dft_w
-            for (e1_acc, e2_acc, h1_acc, h2_acc), fmeta in zip(
-                carry["flux_monitors"], ctx.flux_meta
-            ):
-                if ctx.use_flux_window:
-                    (ax, idx, fqs, comp_names, _lo1, _hi1, _lo2, _hi2,
-                     _tot_steps, _win_name, _win_alpha) = fmeta
-                else:
-                    (ax, idx, fqs, comp_names, _lo1, _hi1, _lo2, _hi2) = fmeta
-                e1n, e2n, h1n, h2n = comp_names
-                # H-fields are offset by +dx/2 along the normal axis on
-                # the Yee grid.  Average H at idx-1 and idx to co-locate
-                # with E at idx, giving a correct Poynting cross-product.
-                # Slice to the finite-size region [lo1:hi1, lo2:hi2].
-                idx_m1 = max(idx - 1, 0)
-                if ax == 0:
-                    e1 = getattr(st, e1n)[idx, _lo1:_hi1, _lo2:_hi2]
-                    e2 = getattr(st, e2n)[idx, _lo1:_hi1, _lo2:_hi2]
-                    h1 = (getattr(st, h1n)[idx_m1, _lo1:_hi1, _lo2:_hi2] + getattr(st, h1n)[idx, _lo1:_hi1, _lo2:_hi2]) * 0.5
-                    h2 = (getattr(st, h2n)[idx_m1, _lo1:_hi1, _lo2:_hi2] + getattr(st, h2n)[idx, _lo1:_hi1, _lo2:_hi2]) * 0.5
-                elif ax == 1:
-                    e1 = getattr(st, e1n)[_lo1:_hi1, idx, _lo2:_hi2]
-                    e2 = getattr(st, e2n)[_lo1:_hi1, idx, _lo2:_hi2]
-                    h1 = (getattr(st, h1n)[_lo1:_hi1, idx_m1, _lo2:_hi2] + getattr(st, h1n)[_lo1:_hi1, idx, _lo2:_hi2]) * 0.5
-                    h2 = (getattr(st, h2n)[_lo1:_hi1, idx_m1, _lo2:_hi2] + getattr(st, h2n)[_lo1:_hi1, idx, _lo2:_hi2]) * 0.5
-                else:
-                    e1 = getattr(st, e1n)[_lo1:_hi1, _lo2:_hi2, idx]
-                    e2 = getattr(st, e2n)[_lo1:_hi1, _lo2:_hi2, idx]
-                    h1 = (getattr(st, h1n)[_lo1:_hi1, _lo2:_hi2, idx_m1] + getattr(st, h1n)[_lo1:_hi1, _lo2:_hi2, idx]) * 0.5
-                    h2 = (getattr(st, h2n)[_lo1:_hi1, _lo2:_hi2, idx_m1] + getattr(st, h2n)[_lo1:_hi1, _lo2:_hi2, idx]) * 0.5
-                t_f64 = t_flux.astype(jnp.float64) if hasattr(t_flux, 'astype') else jnp.float64(t_flux)
-                fqs64 = fqs.astype(jnp.float64)
-                # E is at time t_flux = step*dt; H is at t_flux - dt/2
-                phase_e = jnp.exp(-1j * 2.0 * jnp.pi * fqs64 * t_f64)
-                phase_h = jnp.exp(-1j * 2.0 * jnp.pi * fqs64 * (t_f64 - jnp.float64(dt * 0.5)))
-                if ctx.use_flux_window:
-                    # Streaming DFT window weight (rect=1.0 default; Tukey/Hann
-                    # suppress late-time contributions from CPML reflections).
-                    _w = _dft_w(st.step, _tot_steps, _win_name, _win_alpha).astype(jnp.float64)
-                    kernel_e = (phase_e[:, None, None] * dt * _w).astype(jnp.complex128)
-                    kernel_h = (phase_h[:, None, None] * dt * _w).astype(jnp.complex128)
-                else:
-                    kernel_e = (phase_e[:, None, None] * dt).astype(jnp.complex128)
-                    kernel_h = (phase_h[:, None, None] * dt).astype(jnp.complex128)
-                # Preserve the declared storage when x64 phase arithmetic
-                # is wider than this monitor's complex64 accumulators.
-                new_flux_accs.append((
-                    (e1_acc + e1.astype(jnp.float64)[None, :, :] * kernel_e).astype(e1_acc.dtype),
-                    (e2_acc + e2.astype(jnp.float64)[None, :, :] * kernel_e).astype(e2_acc.dtype),
-                    (h1_acc + h1.astype(jnp.float64)[None, :, :] * kernel_h).astype(h1_acc.dtype),
-                    (h2_acc + h2.astype(jnp.float64)[None, :, :] * kernel_h).astype(h2_acc.dtype),
-                ))
-
-        # ---- per-step extras (caller-specific outputs) ----
-        extras: dict = {}
-        if ctx.use_snapshot:
-            extras["snap_fields"] = ctx.snapshot_extractor(st)
-        if ctx.use_monitor:
-            extras["monitor_val"] = getattr(st, ctx.monitor_component)[
-                ctx.mon_idx[0], ctx.mon_idx[1], ctx.mon_idx[2]]
-
-        # Rebuild carry
-        new_carry: dict = {"fdtd": st}
-        if "dft_time_records" in carry:
-            new_carry["dft_time_records"] = tuple(
-                jax.lax.stop_gradient(record.at[step_idx].set(sample))
-                for record, sample in zip(carry["dft_time_records"], plane_samples))
-        if ctx.use_wire_refplanes:
-            port_samples.extend(refplane_samples)
-        if "sparam_time_records" in carry:
-            new_carry["sparam_time_records"] = tuple(
-                jax.lax.stop_gradient(record.at[step_idx].set(sample))
-                for record, sample in zip(carry["sparam_time_records"], port_samples))
-        if ctx.use_cpml:
-            new_carry["cpml"] = cpml_new
-        if ctx.use_debye:
-            new_carry["debye"] = debye_new
-        if ctx.use_lorentz:
-            new_carry["lorentz"] = lorentz_new
-        if ctx.use_tfsf:
-            new_carry["tfsf"] = tfsf_new
-        if ctx.use_ntff:
-            new_carry["ntff"] = ntff_new
-        if ctx.use_current_moments:
-            new_carry["current_moments"] = cm_new
-        if ctx.use_dft_planes:
-            new_carry["dft_planes"] = tuple(new_dft_planes)
-        if ctx.use_flux_monitors:
-            new_carry["flux_monitors"] = tuple(new_flux_accs)
-        if ctx.use_waveguide_ports:
-            new_carry["waveguide_port_accs"] = tuple(new_waveguide_port_accs)
-        if ctx.use_wire_sparams:
-            new_carry["wire_sparam_accs"] = tuple(new_wire_accs)
-        if ctx.use_lumped_sparams:
-            new_carry["lumped_sparam_accs"] = tuple(new_lumped_accs)
-        if ctx.use_wire_refplanes:
-            new_carry["wire_refplane_accs"] = tuple(new_refplane_accs)
-        if ctx.use_lumped_rlc:
-            new_carry["rlc_states"] = tuple(new_rlc_states)
-
-        if design_hook is not None:
-            extras["design_record"] = design_record
-        return new_carry, probe_out, extras
-
-    return core_step
+    return make_uniform_step(invariants["ctx"], invariants,
+                             design_hook=design_hook, hooks=hooks)
 
 
 def run(
@@ -2830,12 +1589,13 @@ def run(
     n_steps: int,
     *,
     boundary: str = "pec",
-    cpml_axes: str = "xyz",
+    cpml_axes: str | None = None,
     pec_axes: str | None = None,
     periodic: tuple[bool, bool, bool] | None = None,
     debye: tuple | None = None,
     lorentz: tuple | None = None,
     tfsf: tuple | None = None,
+    _feature_tfsf: bool = False,
     sources: list[SourceSpec] | None = None,
     probes: list[ProbeSpec] | None = None,
     dft_planes: list | None = None,
@@ -2873,6 +1633,7 @@ def run(
     stop_fn: Callable | None = None,
     stop_interval: int = 250,
     record_dft: bool = False,
+    port_record_specs: tuple | None = None,
 ) -> SimResult:
     """Run a compiled FDTD simulation via ``jax.lax.scan``.
 
@@ -2886,7 +1647,7 @@ def run(
         DFTs instead of checkpoints; checkpoint options are unused.
         See the module docstring of ``rfx.adjoint``.
     boundary : "pec", "cpml", or "upml"
-    cpml_axes : axes string for CPML (default "xyz")
+    cpml_axes : str or None: the grid's absorbing axes when omitted; subsets accepted
     pec_axes : axes string or None
         Axes on which to enforce PEC after each update. If None, uses
         all non-periodic axes.
@@ -2976,7 +1737,7 @@ def run(
         reverse-mode tape holds box-shaped arrays instead of grid-shaped
         ones. ``None`` (default) is the unchanged path.
 
-        ``_resolve_design_box`` rejects, from what this function resolves:
+        ``resolve_design_box`` rejects, from what this function resolves:
         UPML, Debye/Lorentz, anisotropic eps, Kerr, ``stencil_order=4``, the
         Bloch path, a box reaching into the CPML absorber, and a box holding
         a source, magnetic source, lumped/wire S-param port or RLC cell or a
@@ -3021,6 +1782,7 @@ def run(
     -------
     SimResult with final state, time series, and optional NTFF data.
     """
+    cpml_axes = resolve_cpml_axes(grid, cpml_axes)
     sources = sources or []
     probes = probes or []
     dft_planes = dft_planes or []
@@ -3045,7 +1807,7 @@ def run(
         periodic=periodic,
         debye=debye,
         lorentz=lorentz,
-        tfsf=tfsf,
+        tfsf=tfsf, _feature_tfsf=_feature_tfsf,
         sources=sources,
         probes=probes,
         dft_planes=dft_planes,
@@ -3079,11 +1841,7 @@ def run(
         carry_init["dft_time_records"] = tuple(
             jnp.zeros((n_steps,) + plane.accumulator.shape[1:], dtype=carry_init["fdtd"].ex.dtype)
             for plane in dft_planes)
-    if wire_port_sparams or lumped_port_sparams:
-        carry_init["sparam_time_records"] = tuple(
-            jnp.zeros((n_steps, count), dtype=field_dtype)
-            for count in ([4] * len(wire_port_sparams) + [3] * len(lumped_port_sparams)
-                          + [3] * len(wire_refplane_sparams)))
+    init_uniform_records(carry_init, n_steps, wire_port_sparams, lumped_port_sparams, wire_refplane_sparams, field_dtype, port_record_specs)
     dt = _setup.dt
     dx = _setup.dx
     periodic = _setup.periodic
@@ -3118,7 +1876,8 @@ def run(
         # the baked step applies no per-face masks after its H update, so a
         # magnetic wall would be neither electric nor magnetic there (#1164)
         and not _ctx["use_pmc_faces"]
-        and not _ctx["use_tfsf"]
+        # the baked step has no slot for a TFSF or a waveguide-port correction
+        and not (_ctx["use_tfsf"] or _ctx["use_waveguide_ports"])
         and not _ctx["use_debye"]
         and not _ctx["use_lorentz"]
         and not _ctx["use_pec_edges"]
@@ -3126,7 +1885,7 @@ def run(
         and not _ctx["use_conformal"]
         and not _ctx["use_lumped_rlc"]
         and not _ctx["use_kerr"]
-        and not _ctx["use_mag_sources"]
+        and not mag_sources
         # #677: the GPU baked fast path has an inline H+E update with no
         # sheet-operator slot, so a surface-impedance sheet is DELIBERATELY
         # unsupported here: an f0 sheet takes the standard path, which costs
@@ -3145,7 +1904,13 @@ def run(
         # no occupancy slot at all -- it would drop the design variable and
         # return an all-zero gradient, which reads like a converged design.
         and not _ctx["use_design_occupancy"]
-        and aniso_eps is None
+        # Either permittivity tensor (Stage 1, or the inverse one that
+        # ``subpixel_smoothing="kottke_pec"`` and the occupancy tensor build):
+        # the baked coefficients come from the scalar realized permittivity,
+        # so a tensor would be dropped (kottke_pec returned the unsmoothed
+        # field bit for bit on this path).
+        and not _ctx["use_aniso_inv"]
+        and (_ctx["materials"].components.tensor is None or _ctx["materials"].components.tensor.eps is None)
         and periodic == (False, False, False)
     )
     # On GPU the baked-PEC path eliminates expensive scatter-update
@@ -3157,7 +1922,7 @@ def run(
     # produce a 2nd-order result. Gate it on order==2.
     use_fast_he = _fast_eligible and _on_gpu and stencil_order == 2
     _fast_coeffs = (
-        precompute_coeffs(materials, dt, dx, pec_faces=_setup.pec_faces,
+        precompute_coeffs(_setup.ctx_kwargs["materials"], dt, dx, pec_faces=_setup.pec_faces,
                           periodic=periodic)
         if use_fast_he else None
     )
@@ -3182,10 +1947,11 @@ def run(
     if _realized.ACTIVE is not None:
         _realized.sources(grid, materials, sources, "uniform.sources")
     # ---- precompute source waveform matrix (n_steps, n_sources) ----
-    if sources:
-        src_waveforms = jnp.stack([s.waveform for s in sources], axis=-1)
-    else:
-        src_waveforms = jnp.zeros((n_steps, 0), dtype=jnp.float32)
+    src_waveforms = drive_table([s.waveform for s in sources], _setup.src_meta, n_steps,
+        occupancy=pec_occupancy, periodic=periodic,
+        sheet_edge_masks=_ctx["pec_static_edge_masks"],
+        design=design_occupancy, shape=grid.shape,
+        keep=_ctx["materials"].edge_keep)
 
     # ---- magnetic source (H-field) waveform matrix ----
     if mag_sources:
@@ -3195,7 +1961,11 @@ def run(
 
     # ---- scan body (shared kernel; W6.1 kernel + W6.2 setup) ----
     _step_ctx = _StepContext(
+        port_record_specs=port_record_specs,
         **_setup.ctx_kwargs,
+        drives=StepDrives(
+            drive_layout(_setup.src_meta, src_waveforms.dtype),
+            drive_layout(_setup.mag_src_meta, mag_src_waveforms.dtype)),
         # run()-specific overrides
         use_fast_he=use_fast_he,
         use_snapshot=snap_in_body,
@@ -3349,9 +2119,8 @@ def run(
                 n_steps=n_steps,
                 report_every=report_every,
                 label=report_label,
-                trace_probes=(materials, aniso_eps, aniso_inv_eps,
-                              pec_mask, pec_edge_masks,
-                              pec_occupancy, conformal_weights,
+                trace_probes=(_step_ctx.materials,
+                              pec_mask, pec_edge_masks, pec_occupancy,
                               kerr_chi3, debye, lorentz, tfsf),
                 stop_fn=_after_chunk,
                 chunk=int(stop_interval),
@@ -3377,9 +2146,8 @@ def run(
                 # in its closure — carry_init and xs stay concrete under bare
                 # grad/vmap, so checking only those would let the request
                 # through and print trace-time lines.
-                trace_probes=(materials, aniso_eps, aniso_inv_eps,
-                              pec_mask, pec_edge_masks,
-                              pec_occupancy, conformal_weights,
+                trace_probes=(_step_ctx.materials,
+                              pec_mask, pec_edge_masks, pec_occupancy,
                               kerr_chi3, debye, lorentz, tfsf),
                 # #1258: a chunk that does not start on a multiple of the
                 # snapshot interval still records at the global multiples.
@@ -3546,8 +2314,7 @@ def run(
         waveguide_ports=final_waveguide_ports,
         wire_port_sparams=final_wire_sparams,
         lumped_port_sparams=final_lumped_sparams,
-        sparam_time_records=tuple(r[:int(final_carry["fdtd"].step)] if stop_fn is not None else r
-                                   for r in final_carry.get("sparam_time_records", ())),
+        sparam_time_records=uniform_records(final_carry, _step_ctx, int(final_carry["fdtd"].step) if stop_fn is not None else None),
         dft_time_records=tuple(r[:int(final_carry["fdtd"].step)] if stop_fn is not None else r
                                 for r in final_carry.get("dft_time_records", ())),
         snapshots=snapshots,
@@ -3643,12 +2410,13 @@ def run_until_decay(
     monitor_component: str = "ez",
     monitor_position: tuple[float, float, float] | None = None,
     boundary: str = "pec",
-    cpml_axes: str = "xyz",
+    cpml_axes: str | None = None,
     pec_axes: str | None = None,
     periodic: tuple[bool, bool, bool] | None = None,
     debye: tuple | None = None,
     lorentz: tuple | None = None,
     tfsf: tuple | None = None,
+    _feature_tfsf: bool = False,
     sources: list[SourceSpec] | None = None,
     probes: list[ProbeSpec] | None = None,
     dft_planes: list | None = None,
@@ -3680,6 +2448,7 @@ def run_until_decay(
     report_label: str = "",
     sheet_impedance: object | None = None,
     record_dft: bool = False,
+    port_record_specs: tuple | None = None,
 ) -> SimResult:
     """Run simulation until field energy decays to *decay_by* of peak.
 
@@ -3795,6 +2564,7 @@ def run_until_decay(
     -------
     SimResult
     """
+    cpml_axes = resolve_cpml_axes(grid, cpml_axes)
     if checkpoint_segments is not None:
         raise NotImplementedError(
             "checkpoint_segments is not supported by run_until_decay: "
@@ -3827,7 +2597,7 @@ def run_until_decay(
         periodic=periodic,
         debye=debye,
         lorentz=lorentz,
-        tfsf=tfsf,
+        tfsf=tfsf, _feature_tfsf=_feature_tfsf,
         sources=sources,
         probes=probes,
         dft_planes=dft_planes,
@@ -3858,10 +2628,7 @@ def run_until_decay(
         carry["dft_time_records"] = tuple(
             jnp.zeros((max_steps,) + plane.accumulator.shape[1:], dtype=carry["fdtd"].ex.dtype)
             for plane in dft_planes)
-    if wire_port_sparams or lumped_port_sparams:
-        carry["sparam_time_records"] = tuple(
-            jnp.zeros((max_steps, count), dtype=field_dtype)
-            for count in ([4] * len(wire_port_sparams) + [3] * len(lumped_port_sparams)))
+    init_uniform_records(carry, max_steps, wire_port_sparams, lumped_port_sparams, (), field_dtype, port_record_specs)
     dx = _setup.dx
     waveguide_meta = _setup.waveguide_meta
     wire_sparam_meta = _setup.wire_sparam_meta
@@ -3880,7 +2647,20 @@ def run_until_decay(
         cy = (grid.ny - 1) * dx / 2.0
         cz = 0.0 if grid.is_2d else (grid.nz - 1) * dx / 2.0
         monitor_position = (cx, cy, cz)
-    mon_idx = grid.position_to_index(monitor_position)
+    mon_idx = _grid_metric.field_index(grid, monitor_position, monitor_component)
+
+    # ---- precompute source waveforms up to max_steps ----
+    src_waveforms = drive_table([s.waveform for s in sources], _setup.src_meta, max_steps,
+        occupancy=pec_occupancy, periodic=_setup.periodic, pad=True,
+        sheet_edge_masks=_setup.ctx_kwargs["pec_static_edge_masks"], keep=_setup.ctx_kwargs["materials"].edge_keep)
+
+    if mag_sources:
+        mag_src_waveforms = jnp.stack(
+            [s.waveform[:max_steps] if s.waveform.shape[0] >= max_steps
+             else jnp.pad(s.waveform, (0, max_steps - s.waveform.shape[0]))
+             for s in mag_sources], axis=-1)
+    else:
+        mag_src_waveforms = jnp.zeros((max_steps, 0), dtype=jnp.float32)
 
     # ---- shared kernel (W6.1 + W6.2 setup) ----
     # run_until_decay does NOT build the GPU fast-HE coeffs and uses the
@@ -3889,7 +2669,11 @@ def run_until_decay(
     # flux values stay bit-identical to the pre-refactor body. Unifying the
     # decay path onto windows is a deliberate follow-up.
     _step_ctx = _StepContext(
+        port_record_specs=port_record_specs,
         **_setup.ctx_kwargs,
+        drives=StepDrives(
+            drive_layout(_setup.src_meta, src_waveforms.dtype),
+            drive_layout(_setup.mag_src_meta, mag_src_waveforms.dtype)),
         # decay-path-specific overrides
         use_fast_he=False,
         use_snapshot=False,
@@ -3976,22 +2760,6 @@ def run_until_decay(
 
     _run_chunk = _make_chunk_runner()
     _run_tail_chunk = _make_chunk_runner(keep_previous=True)
-
-    # ---- precompute source waveforms up to max_steps ----
-    if sources:
-        src_waveforms = jnp.stack([s.waveform[:max_steps] if s.waveform.shape[0] >= max_steps
-                                   else jnp.pad(s.waveform, (0, max_steps - s.waveform.shape[0]))
-                                   for s in sources], axis=-1)
-    else:
-        src_waveforms = jnp.zeros((max_steps, 0), dtype=jnp.float32)
-
-    if mag_sources:
-        mag_src_waveforms = jnp.stack(
-            [s.waveform[:max_steps] if s.waveform.shape[0] >= max_steps
-             else jnp.pad(s.waveform, (0, max_steps - s.waveform.shape[0]))
-             for s in mag_sources], axis=-1)
-    else:
-        mag_src_waveforms = jnp.zeros((max_steps, 0), dtype=jnp.float32)
 
     # ---- host chunk loop with decay check ----
     # Stop criterion depends on the boundary (issue #169):
@@ -4085,9 +2853,8 @@ def run_until_decay(
         # Probe the material/geometry arrays too, not just the carry: under
         # a bare grad/vmap the carry stays concrete and the tracer rides in
         # through the closure instead.
-        check_not_traced(carry, materials, aniso_eps, aniso_inv_eps,
-                         pec_mask, pec_edge_masks,
-                         pec_occupancy, conformal_weights,
+        check_not_traced(carry, _step_ctx.materials,
+                         pec_mask, pec_edge_masks, pec_occupancy,
                          kerr_chi3, debye, lorentz, tfsf)
         _reporter = ProgressReporter(
             max_steps, label=report_label, total_is_cap=True)
@@ -4296,7 +3063,7 @@ def run_until_decay(
         waveguide_ports=final_waveguide_ports,
         wire_port_sparams=final_wire_sparams,
         lumped_port_sparams=final_lumped_sparams,
-        sparam_time_records=tuple(r[:actual_steps] for r in carry.get("sparam_time_records", ())),
+        sparam_time_records=uniform_records(carry, _step_ctx, actual_steps),
         dft_time_records=tuple(r[:actual_steps] for r in carry.get("dft_time_records", ())),
         snapshots=snapshots,
         ntff_box=ntff,

@@ -2,12 +2,12 @@
 title: "Geometry and Materials"
 description: "Documented shape constructors and material registration for rfx."
 sidebar:
-  order: 23
+  order: 6
 ---
 
 This page lists the calls that define what is in the domain: materials,
 shapes, metal sheets and dispersive media. The guide
-[Materials and Geometry](/rfx/guide/materials-geometry/) explains how shapes
+[Materials and Geometry](/rfx/model/materials/) explains how shapes
 land on the grid and which kind of conductor to use. All lengths are in metres
 and conductivity is in S/m.
 
@@ -35,8 +35,8 @@ sim.add_material("water_body", eps_r=4.9,
                  debye_poles=[DebyePole(delta_eps=74.1, tau=8.3e-12)])
 sim.add_material("resonant", lorentz_poles=[
     lorentz_pole(delta_eps=2.0, omega_0=2 * np.pi * 10e9, delta=1e8)])
-sim.add_material("drude_metal",
-                 lorentz_poles=[drude_pole(omega_p=1.37e16, gamma=4.05e13)])
+sim.add_material("plasma",                              # 10 GHz plasma frequency
+                 lorentz_poles=[drude_pole(omega_p=2 * np.pi * 10e9, gamma=2 * np.pi * 1e9)])
 ```
 
 | Argument | Meaning |
@@ -45,7 +45,7 @@ sim.add_material("drude_metal",
 | `sigma` | conductivity in S/m. At or above `1e6` the material is a perfect conductor (see below). |
 | `mu_r` | relative permeability |
 | `debye_poles` | list of `DebyePole(delta_eps, tau)`: Δε = εs − ε∞, τ in seconds |
-| `lorentz_poles` | list of `LorentzPole`. Build them with `lorentz_pole(delta_eps, omega_0, delta)` or `drude_pole(omega_p, gamma)` (all rates in rad/s) rather than by hand. |
+| `lorentz_poles` | list of `LorentzPole`. Build them with `lorentz_pole(delta_eps, omega_0, delta)` or `drude_pole(omega_p, gamma)` (all rates in rad/s) rather than by hand. A pole set above its own time-step limit on the model's cells is refused when the model is assembled (an optical-frequency metal such as gold always is on RF cells). |
 | `chi3` | Kerr (third-order) nonlinearity |
 
 **Library materials** need no `add_material` call: `"vacuum"`, `"air"`,
@@ -151,5 +151,5 @@ a PEC volume already gets both faces.
   check with `fidelity_report()`.
 - A sheet declared through `add_thin_conductor` must be one grid plane thick.
   A PEC shape that is thinner than a cell but not zero is ambiguous; see
-  [How conductors land on the lattice](/rfx/guide/materials-geometry/#how-conductors-land-on-the-lattice).
+  [How conductors land on the lattice](/rfx/model/materials/#how-conductors-land-on-the-lattice).
 - `MeshShape` geometry is not differentiable.

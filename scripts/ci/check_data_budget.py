@@ -110,6 +110,7 @@ ALLOWLIST: Tuple[Tuple[str, str], ...] = (
     ("docs/public/site_map.json", "public docs map scripts/check_public_docs_manifest.py reads (1 PR, 1 line)"),
     ("docs/public/gallery/assets/**", "gallery precompute outputs (1 PR, 1 line)"),
     ("tests/contracts/boundary_registry.json", "registry tests/contracts reads (1 PR, 1,041 lines)"),
+    ("scripts/ci/layer_baseline.json", "unit lists the layer-structure ratchet reads; every PR that removes a layer violation edits it (rfx PR 1637, 623 lines)"),
     ("tests/fixtures/**", "frozen reference data, rule 3 applies (34 PRs, 324,083 lines)"),
     ("tests/data/**", "frozen snapshots, rule 3 applies (34 PRs, 8,094 lines)"),
     ("tests/crossval/*/reference/**", "frozen external-solver data, rule 3 applies (5 PRs, 117,199 lines)"),

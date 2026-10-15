@@ -348,6 +348,7 @@ def _guard_emission_sites():
     return len(warns), len(raises)
 
 
+@pytest.mark.source_scan
 def test_runtime_guard_advisory_surface_is_frozen():
     warns, raises = _guard_emission_sites()
     assert warns == _FROZEN_GUARD_WARN_SITES, (

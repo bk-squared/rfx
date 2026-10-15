@@ -45,7 +45,6 @@ import jax.numpy as jnp
 
 from rfx.core.yee import (
     si_value_eps_r_grad, EPS_0, FDTDState, MaterialArrays, curl_h, ade_state_dtype,
-    component_e_materials, edge_mean_components,
 )
 
 
@@ -104,10 +103,8 @@ def pole_edge_fractions(mask, periodic=(False, False, False)):
     """Per E component, the fraction of each edge's four cells that carry a
     pole: ``edge_mean_components`` of the pole's cell mask (#1260). ``None``
     (the pole everywhere) stays ``None``."""
-    if mask is None:
-        return None
-    m = jnp.asarray(mask, dtype=bool).astype(jnp.float32)
-    return edge_mean_components(m, periodic)
+    from rfx.model.materials import pole_component_weights
+    return pole_component_weights(mask, periodic)
 
 
 def pole_reach(fractions):
@@ -273,22 +270,16 @@ def init_debye(
     shape = materials.eps_r.shape
     n_poles = len(poles)
 
-    if isinstance(mask, (list, tuple)):
-        if len(mask) != n_poles:
-            raise ValueError(
-                f"Expected {n_poles} Debye masks, got {len(mask)}"
-            )
-        pole_masks = [jnp.asarray(mask_i, dtype=bool) for mask_i in mask]
-    else:
-        shared_mask = None if mask is None else jnp.asarray(mask, dtype=bool)
-        pole_masks = [shared_mask] * n_poles
-
-    # Per-component ε_∞ and σ: the #1210 edge mean, lumped stamps removed
-    # before it and added back to their own component (#1236).
-    eps_c, sig_c = component_e_materials(materials, periodic)
-
-    alpha, beta = debye_pole_coeffs(
-        poles, dt, shape, [pole_edge_fractions(m, periodic) for m in pole_masks])
+    from rfx.model.materials import validate_dispersion, with_components
+    components = with_components(materials, None, periodic=periodic,
+        debye_spec=(poles, mask)).components
+    eps_c, sig_c = components.eps_update, components.sigma_update
+    realized = components.debye
+    if realized is None or len(realized.poles) != n_poles:
+        raise ValueError("realized debye poles do not match the requested poles")
+    validate_dispersion(realized, poles, dt)
+    alpha, beta = (realized.coefficients if realized.coefficients is not None else
+                  debye_pole_coeffs(poles, dt, shape, realized.weights))
     coeffs = debye_e_coeffs((eps_c, sig_c), dt, alpha, beta)
 
     # Zero-initialized polarization state

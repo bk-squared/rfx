@@ -50,14 +50,14 @@ def test_objective_docstring_pins_split_window_precondition():
 
 
 def test_inverse_design_guide_pins_split_window_precondition():
-    text = _norm((_DOCS / "guide/inverse-design.md").read_text())
+    text = _norm((_DOCS / "design/optimization.md").read_text())
     assert "split window must contain the reflection" in text
     assert "round trip" in text
     assert "1e-2" in text and "1e-7" in text
 
 
 def test_autodiff_guide_pins_fd_necessary_not_sufficient():
-    text = _norm((_DOCS / "guide/autodiff-adjoint.mdx").read_text())
+    text = _norm((_DOCS / "design/gradients.mdx").read_text())
     assert "necessary, not sufficient" in text
     assert "autodiff machinery" in text
     assert "numerical noise" in text

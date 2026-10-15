@@ -176,8 +176,8 @@ def test_progressive_optimize_distributed_true_runs_on_nu_mesh():
 def test_progressive_optimize_distributed_rejects_uniform_mesh():
     """Issue #69: `distributed=True` on a uniform mesh must raise up front.
 
-    Inherits the reject rule from `Simulation.forward(distributed=True)`
-    (NU-only in v1.6.2 per DP3).
+    Inherits the rule of `Simulation.forward(distributed=True)`: on a uniform
+    mesh it takes no override or design argument, so a design variable is refused.
     """
     import jax
     import pytest
@@ -194,7 +194,8 @@ def test_progressive_optimize_distributed_rejects_uniform_mesh():
     schedule = [
         ProgressiveStage(dx=1.0e-3, n_iters=1, lr=0.05, n_steps=10),
     ]
-    with pytest.raises(NotImplementedError, match="non-uniform"):
+    with pytest.raises(NotImplementedError,
+                       match=r"takes none of forward\(\)'s override or design arguments"):
         progressive_optimize(
             factory, region, _loss, schedule,
             verbose=False, skip_preflight=True, distributed=True,

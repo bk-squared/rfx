@@ -351,13 +351,14 @@ def test_half_cell_outward_offset_opens_one_cell_too_wide(cells, d_mm):
 
 
 def test_the_knife_edge_moved_from_the_node_plane_to_the_cell_centre():
-    """PEC centre ownership is stable within the #1138 1e-9-cell band.
+    """PEC centre ownership is stable within the solver-width tie band.
 
     Draw on node planes for cell-boundary walls; moving a centre-aligned
     face beyond the band still changes ownership by one cell.
     """
     y, dx = _real_node_coords(30)
     centre = float(y[8]) + 0.5 * dx
+    band = 1e-9 * dx + 4 * float(np.finfo(np.float32).eps) * abs(centre)
     ulp = float(np.nextafter(centre, 1.0) - centre)
     assert 0 < ulp < 1e-15, "the comparison runs in host float64 (#802)"
 
@@ -366,7 +367,7 @@ def test_the_knife_edge_moved_from_the_node_plane_to_the_cell_centre():
                  float(np.nextafter(centre, 1.0)), centre + 0.5e-9 * dx):
         np.testing.assert_array_equal(_occupied(face, 30), np.arange(8))
         assert _occupied_hi(face, 30)[0] == 8
-    for face in (centre + 2e-9 * dx, centre + 0.5 * dx):
+    for face in (centre + 2 * band, centre + 0.5 * dx):
         np.testing.assert_array_equal(_occupied(face, 30), np.arange(9))
         assert _occupied_hi(face, 30)[0] == 9
     node = float(y[8])
@@ -424,7 +425,7 @@ _FREQS = np.linspace(4.5e9, 8.0e9, 4)
 _F0 = float(_FREQS.mean())
 
 
-def _two_port(cpml_layers, *, boundary="cpml", freqs=_FREQS, dx=0.004):
+def _two_port(cpml_layers, *, boundary=BoundarySpec(x="cpml", y="pec", z="pec"), freqs=_FREQS, dx=0.004):
     sim = Simulation(
         freq_max=float(freqs[-1]),
         domain=(0.12, 0.04, 0.02),
@@ -760,7 +761,7 @@ def test_advisory_uses_the_lowest_cutoff_mode_of_a_multimode_port():
     dx = 0.004
     sim = Simulation(
         freq_max=float(_FREQS[-1]), domain=(0.12, 0.04, 0.02), dx=dx,
-        boundary="cpml", cpml_layers=10,
+        boundary={"x": "cpml", "y": "pec", "z": "pec"}, cpml_layers=10,
     )
     for pos, direction in ((0.02, "+x"), (0.10, "-x")):
         sim.add_waveguide_port(
@@ -865,7 +866,7 @@ def test_advisory_dedupe_key_keeps_cutoffs_apart_on_one_axis():
     """
     sim = Simulation(
         freq_max=float(_FREQS[-1]), domain=(0.12, 0.08, 0.02), dx=0.004,
-        boundary="cpml", cpml_layers=6,
+        boundary={"x": "cpml", "y": "pec", "z": "pec"}, cpml_layers=6,
     )
     for pos, direction, mode in ((0.02, "+x", (1, 0)), (0.10, "-x", (2, 0))):
         sim.add_waveguide_port(

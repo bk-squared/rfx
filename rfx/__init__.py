@@ -13,6 +13,7 @@ from rfx._runtime_floor import check as _check_runtime_floor
 
 _check_runtime_floor(_sys.version_info, _jax.__version__, _jaxlib.__version__)
 
+from rfx.diagnostic_records import Diagnostic
 from rfx.grid import Grid
 from rfx.simulation import run, run_until_decay, make_source, make_probe, make_port_source, SimResult
 from rfx.adi import ADIState2D, ADIState3D, thomas_solve, adi_step_2d, run_adi_2d, adi_step_3d, run_adi_3d
@@ -199,7 +200,11 @@ from rfx.lumped import LumpedRLCSpec, RLCState, RLCCellMeta
 from rfx.nonuniform import NonUniformGrid, make_nonuniform_grid, run_nonuniform, make_current_source, make_band_profile
 from rfx.auto_config import auto_configure, SimConfig, analyze_features, smooth_grading, apply_thirds_rule
 from rfx.mesh_planner import MeshPlan, plan_mesh, plan_simulation_mesh
-from rfx.harminv import harminv, harminv_from_probe, HarminvMode
+# The harminv names are deprecated 2.x aliases: still attributes, no longer on the star surface.
+from rfx.harminv import (
+    matrix_pencil, matrix_pencil_from_probe, MatrixPencilMode,
+    harminv, harminv_from_probe, HarminvMode,
+)
 from rfx.probes.probes import (
     wire_port_voltage, wire_port_current,
     init_wire_sparam_probe, update_wire_sparam_probe,
@@ -266,6 +271,7 @@ from rfx.convergence import (
 #     replay_smatrix_from_port_vi_dump, save_optimization_trajectory,
 #     render_artifact_markdown, validate_artifact_report, build_*_report/artifact
 __all__ = [
+    "Diagnostic",
     # grid / core simulation entry points
     "Grid", "NonUniformGrid", "make_nonuniform_grid",
     "make_band_profile",
@@ -340,7 +346,7 @@ __all__ = [
     # probes / measurements / spectral
     "wire_port_voltage", "wire_port_current",
     "FluxMonitor", "flux_spectrum", "subtract_flux_monitors",
-    "harminv", "harminv_from_probe", "HarminvMode",
+    "matrix_pencil", "matrix_pencil_from_probe", "MatrixPencilMode",
     # eigenmode (optional scipy)
     "WaveguideMode", "solve_waveguide_modes",
     # lumped

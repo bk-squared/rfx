@@ -133,7 +133,8 @@ def test_corec2_e_update_uses_mean_spacing():
     # Production wiring: the runner passes the E array (1st) to update_e_nu.
     inv_dz_e, _ = _profile_to_inv_arrays(np.asarray(dz))
     inv_xy_e, _ = _profile_to_inv_arrays(np.full(nx, dx, dtype=np.float64))
-    new = update_e_nu(state, mats, dt, inv_xy_e, inv_xy_e, inv_dz_e)
+    new = update_e_nu(state, mats, dt, inv_xy_e, inv_xy_e, inv_dz_e,
+                      cell_sizes=(None, None, dz))
 
     # curl_x = dHz/dy - dHy/dz = -discrete(dHy/dz); ex = (dt/eps)*curl_x
     # => discrete(dHy/dz) = -ex * eps / dt
@@ -227,10 +228,11 @@ def test_probec1_flux_area_is_axis_aware():
     mon = mon._replace(e1_dft=ones, h2_dft=ones, e2_dft=zeros, h1_dft=zeros)
 
     flux = float(np.asarray(flux_spectrum(mon))[0])
-    correct = n1 * n2 * DY * DZ  # x-normal face: area element is dy*dz
+    # Five stored nodes bound four cells on each non-periodic axis (F2a).
+    correct = (n1-1) * (n2-1) * DY * DZ
     assert flux == pytest.approx(correct, rel=1e-5)
     # ...and NOT the pre-fix cubic-cell dx*dx weighting.
-    assert flux != pytest.approx(n1 * n2 * DX * DX, rel=1e-3)
+    assert flux != pytest.approx((n1-1) * (n2-1) * DX * DX, rel=1e-3)
 
 
 # ===========================================================================

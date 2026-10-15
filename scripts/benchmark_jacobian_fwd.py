@@ -23,7 +23,7 @@ Measures, for `n_t` in `--n-t-values` (default 1, 4, 10) against one plain
       BODY's per-step cost, not a measured runtime profile)
     - XLA temp bytes (`compiled.memory_analysis().temp_size_in_bytes` -- a
       COMPILER ESTIMATE, not a measured/observed/certified runtime peak;
-      see rfx/api/__init__.py's `ad_memory_compiled_certificate` for the
+      see rfx/api/_ad_memory.py's `ad_memory_compiled_certificate` for the
       one sanctioned way to attach a measured-memory number to a compiled
       object, which this script does not attempt)
 

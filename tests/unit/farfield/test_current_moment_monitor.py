@@ -35,6 +35,7 @@ outside the source's block, over the source block's.
 
 from __future__ import annotations
 
+import ast
 import functools
 import importlib.util
 import sys
@@ -113,7 +114,7 @@ def _plane_route_edges(planes, end_state, *, nodes, cells, window, freqs, dt,
 
     Frequency-domain Ampere on the lattice, per edge::
 
-        J_post = curl(H_dft) - j w~ eps0 E_dft exp(-j w dt/2),
+        J_post = curl(H_dft) - j w~ eps0 E_dft,
         j w~   = (2j/dt) sin(w dt/2)
 
     The in-loop monitor sums ``J^{n+1/2} = curl H^{n+1/2}
@@ -141,7 +142,6 @@ def _plane_route_edges(planes, end_state, *, nodes, cells, window, freqs, dt,
     freqs = np.asarray(freqs, dtype=np.float64)
     w = 2.0 * np.pi * freqs[:, None, None]
     jw = (2j / dt) * np.sin(w * dt / 2.0)
-    half = np.exp(-1j * w * dt / 2.0)
     to_loop = np.exp(1j * w * dt * (float(stamp) - 0.5))
     end_phase = np.exp(-1j * w * (float(n_steps) + 0.5) * dt)
 
@@ -157,7 +157,7 @@ def _plane_route_edges(planes, end_state, *, nodes, cells, window, freqs, dt,
            "post": []}
 
     def add(comp, k, curl, e_name, pos, vol):
-        post = to_loop * (curl - jw * EPS_0 * P(e_name, k) * half)
+        post = to_loop * (curl - jw * EPS_0 * P(e_name, k))
         a = post - EPS_0 * end(e_name, k) * end_phase
         n = II.size
         out["pos"].append(np.stack(pos, axis=-1).reshape(n, 3))
@@ -708,22 +708,17 @@ def test_the_modules_own_conversion_matches_the_plane_route(kind):
     assert worst <= EQUALITY_BAR, worst
 
 
-def test_the_two_runners_stamp_dft_planes_one_step_apart():
-    """The plane probes of the two runners write different times on one state.
-
-    Both runners sample the plane probes at the same slot — electric field at
-    ``(n+1) dt``, magnetic at ``(n+1/2) dt`` — and ``rfx/simulation.py``
-    stamps it ``st.step * dt`` while ``rfx/nonuniform.py`` stamps it
-    ``step_idx * dt``, one whole timestep earlier. A magnitude spectrum cannot
-    see it; a current, which subtracts a scaled electric field from a
-    magnetic curl, carries it in full. This pins each lane to its constant
-    and the size of the difference to ``|exp(-j w dt) - 1|``.
+def test_the_two_runners_use_physical_plane_stamps():
+    """M2 history: E shifts by 0/-omega dt (uniform/NU), H by
+    +omega dt/2 or -omega dt/2. The independent Ampere route now uses
+    physical E and H spectra, with no extra H correction. Old equality
+    residuals were .0359-.1053; the unchanged EQUALITY_BAR still applies.
     """
     uni = _reference("uniform")
     gra = _reference("graded")
-    assert plane_stamp_steps(uni["grid"]) == UNIFORM_PLANE_STAMP_STEPS == 1.0
-    assert plane_stamp_steps(gra["grid"]) == NONUNIFORM_PLANE_STAMP_STEPS == 0.0
-    _e, wrong = _route_blocks(gra, stamp=UNIFORM_PLANE_STAMP_STEPS)
+    assert plane_stamp_steps(uni["grid"]) == UNIFORM_PLANE_STAMP_STEPS == 0.5
+    assert plane_stamp_steps(gra["grid"]) == NONUNIFORM_PLANE_STAMP_STEPS == 0.5
+    _e, wrong = _route_blocks(gra, stamp=1.5)
     a_wrong = _disagreement(gra["acc"], gra["monitor"], wrong, orders=("P",))
     one_step = float(np.max(np.abs(
         np.exp(-2j * np.pi * FREQS * float(gra["grid"].dt)) - 1.0)))
@@ -1098,7 +1093,7 @@ def test_the_public_run_matches_the_plane_route_with_a_port(lane):
     assert m is not None and res.current_moment_data is not None
     planes = {spec: np.asarray(res.dft_planes[f"{spec[0]}{spec[1]}"]
                                .accumulator) for spec in specs}
-    stamp = 1.0 if lane == "uniform" else 0.0
+    stamp = plane_stamp_steps(grid)  # M2: physical H stamp on both lanes.
     edges = _plane_route_edges(
         planes, res.state, nodes=[_node_line(grid, a) for a in range(3)],
         cells=[_cells(grid, a) for a in range(3)],
@@ -1245,43 +1240,54 @@ def test_monitor_mutations_are_caught(kind, name):
 
 def _load_mutated(path: Path, name: str, replacements):
     """Import a copy of a runner module with the given text edits applied."""
-    src = path.read_text()
+    original = src = path.read_text()
     for old, new in replacements:
         assert src.count(old) == 1, (path.name, src.count(old), old[:60])
         src = src.replace(old, new)
+
+    # Moving a slot must retain every call, including reduction and phase.
+    def calls(text):
+        return sorted(ast.dump(node) for node in ast.walk(ast.parse(text))
+                      if isinstance(node, ast.Call))
+    assert calls(src) == calls(original)
     spec = importlib.util.spec_from_loader(name, loader=None)
     mod = importlib.util.module_from_spec(spec)
     mod.__file__ = str(path)
     sys.modules[name] = mod
-    exec(compile(src, str(path), "exec"), mod.__dict__)
+    try:
+        exec(compile(src, str(path), "exec"), mod.__dict__)
+    except BaseException:
+        sys.modules.pop(name, None)
+        raise
     return mod
 
 
-UNIFORM_SRC = REPO_ROOT / "rfx" / "simulation.py"
-GRADED_SRC = REPO_ROOT / "rfx" / "nonuniform.py"
+UNIFORM_RUNNER_SRC = REPO_ROOT / "rfx" / "simulation.py"
+UNIFORM_SRC = REPO_ROOT / "rfx" / "stepping" / "uniform.py"
+GRADED_RUNNER_SRC = REPO_ROOT / "rfx" / "nonuniform.py"
+GRADED_SRC = REPO_ROOT / "rfx" / "stepping" / "graded.py"
 
 _SNAP_UNI = ("        if ctx.use_current_moments:\n"
-             "            e_prev_slab = _slab_e_snapshot(st, ctx.current_moments)\n")
+             "            frame.e_prev_slab = _slab_e_snapshot(frame.st, ctx.current_moments)\n")
 _ACC_UNI = ("        if ctx.use_current_moments:\n"
-            "            cm_new = ctx.accumulate_current_moments(\n"
-            "                carry[\"current_moments\"], st, e_prev_slab,\n"
-            "                ctx.current_moments, dt, step_idx)\n")
-_SRCLOOP_UNI = "        # Soft sources — cast source value to field dtype"
-_RLC_UNI = "        # Lumped RLC ADE update (after E update + boundaries, before sources)"
+            "            frame.cm_new = ctx.accumulate_current_moments(\n"
+            "                frame.carry[\"current_moments\"], frame.st, frame.e_prev_slab,\n"
+            "                ctx.current_moments, dt, frame.step_idx)\n")
+_RLC_UNI = ("        if ctx.use_lumped_rlc:\n"
+            "            frame.new_rlc_states = []")
 
-_SNAP_NU = ("        if use_current_moments:\n"
-            "            e_prev_slab = _slab_e_snapshot(st, current_moments)\n")
-_ACC_NU = ("        new_cm = None\n"
-           "        if use_current_moments:\n"
-           "            new_cm = _accumulate_cm(\n"
-           "                carry[\"current_moments\"], st, e_prev_slab, current_moments,\n"
-           "                dt, step_idx)\n")
-_SRCLOOP_NU = "        # Sources (point sources + wire port excitation)"
+_SNAP_NU = ("        if ctx.use_current_moments:\n"
+            "            frame.e_prev_slab = ctx._slab_e_snapshot(frame.st, ctx.current_moments)\n")
+_ACC_NU = ("        frame.new_cm = None\n"
+           "        if ctx.use_current_moments:\n"
+           "            frame.new_cm = ctx._accumulate_cm(\n"
+           "                frame.carry[\"current_moments\"], frame.st, frame.e_prev_slab, ctx.current_moments,\n"
+           "                ctx.dt, frame.step_idx)\n")
 _RLC_NU = "        # Lumped RLC ADE update (after E update + boundaries, before sources)"
 
 
 def _runner_mutations(kind):
-    """Three ways of getting the snapshot slot wrong, in the runner's own text.
+    """Three ways of getting the snapshot slot wrong, in its owning source.
 
     ``after the E update`` and ``after the source loop`` both break the vacuum
     identity, because the difference of the two electric fields no longer
@@ -1291,23 +1297,127 @@ def _runner_mutations(kind):
     witness cannot see, so the closed-form check is what has to catch it.
     """
     if kind == "uniform":
-        snap, acc, srcloop, rlc = _SNAP_UNI, _ACC_UNI, _SRCLOOP_UNI, _RLC_UNI
-        path, name = UNIFORM_SRC, "_mutated_rfx_simulation"
-        entry = "run"
+        snap, acc, rlc = _SNAP_UNI, _ACC_UNI, _RLC_UNI
+        # Split only this observer out of AFTER_SOURCES and attach it at
+        # BEFORE_SOURCES. Moving after_sources itself would also move ports,
+        # NTFF, planes and flux, which is a different defect.
+        before_sources = [
+            (acc, ""),
+            ("    attachments = {", "    def moved_current_moments(frame):\n"
+             + acc + "\n    attachments = {"),
+            ("(port_specs or ctx.use_wire_refplanes) else ()),",
+             "(port_specs or ctx.use_wire_refplanes) else ())"
+             " + (moved_current_moments,),"),
+        ]
     else:
-        snap, acc, srcloop, rlc = _SNAP_NU, _ACC_NU, _SRCLOOP_NU, _RLC_NU
-        path, name = GRADED_SRC, "_mutated_rfx_nonuniform"
-        entry = "run_nonuniform"
+        snap, acc, rlc = _SNAP_NU, _ACC_NU, _RLC_NU
+        before_sources = [
+            (acc, ""),
+            ("    attachments = {", "    def moved_current_moments(frame):\n"
+             + acc + "\n    attachments = {"),
+            ("    attachments[HookPoint.AFTER_SOURCES] = (after_sources,)",
+             "    attachments[HookPoint.AFTER_SOURCES] = (after_sources,)\n"
+             "    attachments[HookPoint.BEFORE_SOURCES] = (moved_current_moments,)"),
+        ]
     return {
-        "snapshot taken after the E update": (
-            path, name + "_a", entry, [(snap, ""), (rlc, snap + rlc)]),
-        "snapshot taken after the source loop": (
-            path, name + "_b", entry, [(snap, ""), (acc, snap + acc)]),
-        "accumulated before the source loop": (
-            path, name + "_c", entry, [(acc, ""), (srcloop, acc + srcloop)]),
+        "snapshot taken after the E update": [(snap, ""), (rlc, snap + rlc)],
+        "snapshot taken after the source loop": [(snap, ""), (acc, snap + acc)],
+        "accumulated before the source loop": before_sources,
     }
 
 
+def _slot_case(kind, edits):
+    """Load private source copies, and route the case through their real step.
+
+    Each lane's snapshot lives in prepare(); the accumulation lives in the
+    AFTER_SOURCES observer. Move just their guarded blocks: snapshot to the
+    constitutive kernel before RLC, snapshot to just before accumulation, or
+    accumulation to its own BEFORE_SOURCES attachment. All other observers
+    and the declared sequence remain in place.
+
+    Relative imports need a private name inside rfx.stepping. A separately
+    compiled runner copy imports that exact private step module in its
+    setup. Neither production module is replaced in sys.modules.
+    The unmutated-copy canary uses this identical loading/binding path.
+    """
+    names = []
+    try:
+        if kind == "uniform":
+            step_name = "rfx.stepping._current_moment_slot_copy"
+            step = _load_mutated(UNIFORM_SRC, step_name, edits)
+            names.append(step_name)
+            make_step = step.make_uniform_step
+            executed = []
+
+            def observed_step(*args, **kwargs):
+                core = make_step(*args, **kwargs)
+                assert core.__module__ == step_name
+
+                def observed_core(*values):
+                    executed.append(core)
+                    return core(*values)
+                return observed_core
+
+            step.make_uniform_step = observed_step
+            name = "rfx._current_moment_runner_copy"
+            mod = _load_mutated(UNIFORM_RUNNER_SRC, name, [(
+                "    from rfx.stepping.uniform import make_uniform_step",
+                f"    from {step_name} import make_uniform_step")])
+            names.append(name)
+            case = CASE_BUILDERS[kind](with_planes=False, runner=mod.run)
+            assert executed, "the copied runner never executed the copied step"
+            return case
+        step_name = "rfx.stepping._current_moment_graded_slot_copy"
+        step = _load_mutated(GRADED_SRC, step_name, edits)
+        names.append(step_name)
+        make_step = step.make_graded_step
+        executed = []
+
+        def observed_step(*args, **kwargs):
+            core = make_step(*args, **kwargs)
+            assert core.__module__ == step_name
+
+            @functools.wraps(core)
+            def observed_core(*values, **options):
+                executed.append(core)
+                return core(*values, **options)
+            return observed_core
+
+        step.make_graded_step = observed_step
+        name = "rfx._current_moment_nonuniform_copy"
+        mod = _load_mutated(GRADED_RUNNER_SRC, name, [(
+            "    from rfx.stepping.graded import GradedStepContext, make_graded_step, graded_probe_table",
+            f"    from {step_name} import GradedStepContext, make_graded_step, graded_probe_table")])
+        names.append(name)
+        case = CASE_BUILDERS[kind](with_planes=False, runner=mod.run_nonuniform)
+        assert executed, "the copied runner never executed the copied step"
+        return case
+    finally:
+        for name in reversed(names):
+            sys.modules.pop(name, None)
+
+
+def _slot_witnesses(case, record_property):
+    vac = _vacuum_against_the_closed_form(case)
+    analytic, _vol = _analytic_source_moment(case)
+    g = _source_block(case)
+    src_err = float(np.max(np.abs(case["acc"][..., 0][:, g, 2] - analytic)
+                           / np.abs(analytic)))
+    record_property("vac", vac)
+    record_property("src_err", src_err)
+    return vac, src_err
+
+
+@pytest.mark.source_scan
+@pytest.mark.parametrize("kind", ["uniform", "graded"])
+def test_unmutated_snapshot_slot_copy_is_green(kind, record_property):
+    """The identical copy loader/binding path preserves both witnesses."""
+    vac, src_err = _slot_witnesses(_slot_case(kind, []), record_property)
+    assert vac <= VACUUM_BAR[kind], vac
+    assert src_err <= 1e-4, src_err
+
+
+@pytest.mark.source_scan
 @pytest.mark.parametrize("kind", ["uniform", "graded"])
 @pytest.mark.parametrize("mut", [
     "snapshot taken after the E update",
@@ -1315,25 +1425,15 @@ def _runner_mutations(kind):
                  marks=pytest.mark.slow),
     pytest.param("accumulated before the source loop",
                  marks=pytest.mark.slow)])
-def test_snapshot_slot_mutations_in_the_runner(kind, mut):
+def test_snapshot_slot_mutations_in_the_runner(kind, mut, record_property):
     """Move the snapshot or the accumulate call in a copy of the runner.
 
     Not a switch turned off: every helper call stays, the monitor is still
     built, reduced and phased, and only the STEP at which the electric field
     is read moves.
     """
-    path, modname, entry, edits = _runner_mutations(kind)[mut]
-    mod = _load_mutated(path, modname, edits)
-    try:
-        case = CASE_BUILDERS[kind](with_planes=False,
-                                   runner=getattr(mod, entry))
-    finally:
-        sys.modules.pop(modname, None)
-    vac = _vacuum_against_the_closed_form(case)
-    analytic, _vol = _analytic_source_moment(case)
-    g = _source_block(case)
-    src_err = float(np.max(np.abs(case["acc"][..., 0][:, g, 2] - analytic)
-                           / np.abs(analytic)))
+    case = _slot_case(kind, _runner_mutations(kind)[mut])
+    vac, src_err = _slot_witnesses(case, record_property)
     vac_red = vac > VACUUM_BAR[kind]
     src_red = src_err > 1e-4
     if mut == "accumulated before the source loop":
@@ -2152,7 +2252,9 @@ def test_concrete_pec_overrides_are_measured(override, inside):
     of the conductor the run solves, and the guard reads it."""
     sim = _guard_sim()
     shape = sim._build_grid().shape
-    cell = (12, 12, 12) if inside else (5, 12, 12)
+    # Inside the monitor slab, one cell above the source: off its own Ez edge at
+    # (12, 12, 12): a soft source on a realized PEC edge is refused (#1508).
+    cell = (12, 12, 13) if inside else (5, 12, 12)
     if override == "pec_mask_override":
         arr = np.zeros(shape, dtype=bool)
         arr[cell] = True
@@ -2306,18 +2408,25 @@ def test_a_declared_monitor_cannot_come_back_empty_from_any_lane():
     require_accumulated_current_moments(plain, emptied, "run")
 
 
+@pytest.mark.source_scan
 def test_every_user_facing_return_carries_the_backstop():
     """Static half of the same guarantee: each place ``run()`` / ``forward()``
     hands a result back calls the backstop, so a new return site cannot skip
     it without this count changing."""
     import re
-    text = (REPO_ROOT / "rfx/api/_execute.py").read_text()
-    returns = len(re.findall(
-        r'_warn_if_nonfinite_result\(_res, context="(?:run|forward)"\)', text))
-    guards = len(re.findall(
-        r'require_accumulated_current_moments\(self, _res, "(?:run|forward)"\)',
-        text))
-    assert returns == guards == 6, (returns, guards)
+    counts = {}
+    for path in sorted((REPO_ROOT / "rfx").rglob("*.py")):
+        text = path.read_text()
+        returns = len(re.findall(
+            r'_warn_if_nonfinite_result\(_res, context="(?:run|forward)"\)', text))
+        guards = len(re.findall(
+            r'require_accumulated_current_moments\(self, _res, "(?:run|forward)"\)',
+            text))
+        if returns or guards:
+            counts[path.relative_to(REPO_ROOT).as_posix()] = (returns, guards)
+    # Each file that hands a result back guards every such site.
+    assert all(r == g for r, g in counts.values()), counts
+    assert sum(r for r, _ in counts.values()) == 6, counts
 
 
 def test_the_traceable_moment_unpack_matches_the_host_one():

@@ -31,20 +31,24 @@ Limitations
 
 from __future__ import annotations
 
+from rfx._precision import resolve_field_dtype
+
+from rfx._grid_metric import field_index
 from dataclasses import dataclass, replace
 
 import jax
 import jax.numpy as jnp
+
+from rfx.core.drives import drive_layout, StepDrives, inject_drives
 import numpy as np
 
-from rfx.core.yee import (MaterialArrays,
-                          component_e_materials, init_state,
-                          update_e, update_h)
+from rfx.core.yee import MaterialArrays, init_state
 from rfx.geometry.rasterize_grid import (
     _material_cell_mask, centres_from_uniform_grid, coords_from_uniform_grid,
     extend_cpml_pad_materials,
 )
 from rfx.materials.thin_conductor import apply_thin_conductor
+from rfx.measurement.accumulators import plane_metadata
 from rfx.probes.probes import DFTPlaneProbe, init_dft_plane_probe
 from rfx.simulation import (
     SourceSpec,
@@ -52,7 +56,6 @@ from rfx.simulation import (
     make_source,
     make_probe,
 )
-from rfx.boundaries.pec import apply_pec
 
 
 # ---------------------------------------------------------------------------
@@ -204,7 +207,7 @@ def _extend_batched_cpml_pad(
 
     Returns
     -------
-    (eps_r, sigma, mu_r) — same shapes as the inputs.
+    (eps_r, sigma, mu_r) — the three extended cell arrays.
     """
     plx, phx = grid.pad_x_lo, grid.pad_x_hi
     ply, phy = grid.pad_y_lo, grid.pad_y_hi
@@ -263,10 +266,10 @@ def _apply_batched_thin_conductors(
     conductors = tuple(replace(tc, shape=continued_conductor_shape(sim, grid, tc.shape, entry=tc))
                        for tc in sim._thin_conductors)
     if not conductors:
-        return eps_r, sigma, mu_r
+        return eps_r, sigma, mu_r, None
 
     def _one(e, s, m):
-        mats = MaterialArrays(eps_r=e, sigma=s, mu_r=m)
+        mats = MaterialArrays(eps_r=e, sigma=s, mu_r=m, sigma_film=None)
         for tc in conductors:
             # #677: an f0 (surface-impedance) conductor is a no-op on the
             # material arrays by design — the sheet is a per-step operator
@@ -278,8 +281,8 @@ def _apply_batched_thin_conductors(
             # off the full assembly, so the collector here is deliberately
             # discarded (it would be a per-batch-element duplicate).
             mats, _ = apply_thin_conductor(grid, tc, mats, pec_mask=None,
-                                           sheets=[])
-        return mats.eps_r, mats.sigma, mats.mu_r
+                                           sheets=[], snap=sim._snap)
+        return mats.eps_r, mats.sigma, mats.mu_r, mats.sigma_film
 
     return jax.vmap(_one)(eps_r, sigma, mu_r)
 
@@ -414,10 +417,13 @@ def _build_batched_materials(
 
         # #642: and only NOW the conductors, which is where
         # _assemble_materials applies them relative to the extension above.
-        batch_eps, batch_sigma, batch_mu = _apply_batched_thin_conductors(
+        batch_eps, batch_sigma, batch_mu, batch_film = _apply_batched_thin_conductors(
             sim, grid, batch_eps, batch_sigma, batch_mu,
         )
     else:
+        from rfx.core.yee import map_lumped
+        batch_film = map_lumped(base_materials.sigma_film,
+            lambda a: jnp.broadcast_to(a[None], (n_batch,) + a.shape))
         # Global sweep: apply to all non-background cells
         if field == "eps_r":
             # Identify cells that have non-vacuum eps_r
@@ -452,6 +458,7 @@ def _build_batched_materials(
         eps_r=batch_eps,
         sigma=batch_sigma,
         mu_r=batch_mu,
+        sigma_film=batch_film,
     )
 
 
@@ -459,18 +466,7 @@ def _build_batched_materials(
 # Core: vmapped FDTD scan
 # ---------------------------------------------------------------------------
 #
-# W6.6: ``run()`` material sweeps need two FDTD loops — a PEC/periodic-walls
-# loop and a CPML loop — that were previously two ~50-line near-identical scan
-# bodies.  ``_build_vmap_scan_fn`` is the single parameterized builder; the two
-# callers differ ONLY in:
-#   * ``use_cpml`` — carry the per-step CPML psi-state and apply the CPML
-#     H/E sub-steps (PEC/periodic carries just the field state);
-#   * the source helper selected before vmap — CPML uses make_j_source;
-#     PEC current uses make_source. Both receive each element's materials
-#     and preserve run()'s scalar float32 arithmetic (#1373).
-# Everything else — Yee H/E update, PEC walls, pec-mask, non-J soft sources,
-# probe sampling, dtypes, sub-step ordering — is identical and shared.  This is
-# the shared structure introduced by W6.6.
+# Material preparation is batched here; physical phases use the uniform builder.
 
 
 def _build_vmap_scan_fn(
@@ -488,12 +484,12 @@ def _build_vmap_scan_fn(
     pec_sheets=(),
     pec_wires=(),
     dft_probes: list[DFTPlaneProbe] | None = None,
+    conductors=None,
 ):
     """Build a pure function ``f(materials, drives) -> (time_series, dft_accs)``
     suitable for vmap.
 
-    Constructs a minimal FDTD loop (H update -> [CPML H] -> E update ->
-    [CPML E] -> PEC -> sources -> DFT-plane accumulation -> probes) without
+    Composes the uniform FDTD step, including CPML, PEC and observations, without
     dispersion, TFSF, or waveguide ports.  For the common material-sweep use
     case (PEC cavity, CPML absorber, DFT-plane probe, or simple probe
     measurement) this covers the needed physics.
@@ -514,10 +510,8 @@ def _build_vmap_scan_fn(
         the SAME helper ``run()`` uses — rfx/runners/uniform.py:489-497).
         Their ``.accumulator`` seeds the scan-carry accumulator for that
         plane; ``.component``/``.axis``/``.index``/``.freqs`` drive the
-        per-step kernel, inlined here to match ``Simulation.run()``'s rect
-        kernel exactly (rfx/simulation.py:1512-1526): ``t = st.step * dt``
-        (the STATE's step counter, NOT the scan's ``xs`` step index — using
-        the latter is an off-step, per-bin-phase-error class bug, #404).
+        per-step kernel shared with ``Simulation.run()``. Scan slot n reads
+        E at (n+1)*dt and H half a step earlier (#404).
         The returned ``run_one`` always returns a 2-tuple
         ``(time_series, dft_accs)`` where ``dft_accs`` is a tuple of final
         accumulators in the SAME order as ``dft_probes`` (empty tuple if
@@ -535,16 +529,14 @@ def _build_vmap_scan_fn(
     # this is the only place the batched lane can see them.
     pec_sheets = tuple(pec_sheets or ())
     pec_wires = tuple(pec_wires or ())
-    pec_edge_masks = None
-    if pec_mask is not None or pec_sheets or pec_wires:
+    pec_edge_masks = None if conductors is None else conductors.pec_edges
+    if conductors is None and (pec_mask is not None or pec_sheets or pec_wires):
         from rfx.boundaries.pec import realized_pec_edge_masks
         pec_edge_masks = realized_pec_edge_masks(
             pec_mask, sheets=pec_sheets, wires=pec_wires, periodic=periodic)
     use_pec_edges = pec_edge_masks is not None
     use_dft = len(dft_probes) > 0
-    dft_meta = tuple(
-        (p.component, p.axis, p.index, p.freqs) for p in dft_probes
-    )
+    dft_meta = plane_metadata(dft_probes)
     dft_acc_init = tuple(p.accumulator for p in dft_probes)
 
     if use_cpml:
@@ -574,108 +566,56 @@ def _build_vmap_scan_fn(
         n2)`` complex accumulators, one per registered DFT plane (empty
         tuple if none).
         """
+        from rfx.model.materials import with_components
+        materials = with_components(materials, grid, periodic=periodic)
         fdtd = init_state(grid.shape)
+        drives = drive_layout(src_meta + list(j_src_meta), fdtd.ex.dtype)
 
         j_src_waveforms = prepared_j_waveforms
 
+        from rfx.simulation import _StepContext, make_core_step
+        ctx = _StepContext(
+            grid=grid, materials=materials, dt=dt, dx=dx, periodic=periodic,
+            pec_axes=pec_axes, stencil_order=2, use_fast_he=False,
+            use_upml=False, use_cpml=use_cpml, use_tfsf=False,
+            use_debye=False, use_lorentz=False, use_ntff=False,
+            use_dft_planes=use_dft, use_flux_monitors=False,
+            use_waveguide_ports=False, use_pec_faces=bool(pec_axes),
+            use_pmc_faces=False, use_aniso_inv=False, aniso_inv_eps_smooth=False,
+            use_pec_edges=use_pec_edges, use_pec_occupancy=False,
+            use_conformal=False, use_wire_sparams=False, use_lumped_sparams=False,
+            use_lumped_rlc=False, use_kerr=False, use_snapshot=False,
+            use_monitor=False, use_flux_window=False,
+            drives=StepDrives(electric=drives, magnetic=None), electric_injector=inject_drives,
+            prb_meta=tuple(prb_meta), dft_meta=dft_meta,
+            pec_faces_frozen=frozenset(f"{axis}_{side}" for axis in pec_axes
+                                       for side in ("lo", "hi")),
+            pec_edge_masks=pec_edge_masks,
+            cpml_params=cpml_params if use_cpml else None, cpml_axes=cpml_axes,
+            apply_cpml_h=apply_cpml_h if use_cpml else None,
+            apply_cpml_e=apply_cpml_e if use_cpml else None,
+        )
+        core = make_core_step(ctx)
+
         def step_fn(carry, xs):
-            _step_idx, src_vals, j_src_vals = xs
-            if use_cpml:
-                st, cpml_st, dft_accs = carry
-            else:
-                st, dft_accs = carry
-
-            # H update
-            st = update_h(st, materials, dt, dx, periodic=periodic)
-            if use_cpml:
-                # Material-aware CPML: pass the per-element materials so the
-                # absorber is impedance-matched to the local dielectric. Under
-                # vmap, ``materials`` is the per-batch-element MaterialArrays
-                # (the run_one arg), so vmap batches this transparently — no
-                # batch-axis slicing needed. WITHOUT this, a dielectric that
-                # fills the CPML region gets a free-space (eps_r x too strong)
-                # absorber and the scan diverges to NaN (issue #205, same
-                # mechanism as #203/#204 uniform and #208 non-uniform).
-                st, cpml_st = apply_cpml_h(
-                    st, cpml_params, cpml_st, grid, cpml_axes,
-                    materials=materials, periodic=periodic)
-
-            # E update
-            st = update_e(st, materials, dt, dx, periodic=periodic)
-            if use_cpml:
-                # #1043 + #1210: the absorber's psi coefficient must take its
-                # permittivity from the array the Yee half used, and since
-                # #1210 that is the per-component edge average, not
-                # ``materials.eps_r``. Without this the two halves of one
-                # timestep integrate different media wherever an interface
-                # crosses the pad, and this lane stops reproducing ``run()``.
-                _eps_c, _ = component_e_materials(materials, periodic)
-                st, cpml_st = apply_cpml_e(
-                    st, cpml_params, cpml_st, grid, cpml_axes,
-                    materials=materials,
-                    inv_eps_r_update=tuple(1.0 / e for e in _eps_c))
-
-            # PEC boundaries
-            if pec_axes:
-                st = apply_pec(st, axes=pec_axes)
-
-            if use_pec_edges:
-                from rfx.boundaries.pec import apply_pec_edges
-                st = apply_pec_edges(st, pec_edge_masks)
-
-            # Non-J soft sources (raw field add, no Cb dependence)
-            for idx_s, (si, sj, sk, sc) in enumerate(src_meta):
-                field = getattr(st, sc)
-                field = field.at[si, sj, sk].add(src_vals[idx_s])
-                st = st._replace(**{sc: field})
-
-            # J-sources (Cb-normalized, material-dependent): legacy cpml
-            # route, plus amplitude_kind='current' on any boundary (#571)
-            for idx_j, (si, sj, sk, sc) in enumerate(j_src_meta):
-                field = getattr(st, sc)
-                field = field.at[si, sj, sk].add(j_src_vals[idx_j])
-                st = st._replace(**{sc: field})
-
-            # DFT-plane accumulation (rect window always — matches
-            # Simulation.run()'s inline kernel, rfx/simulation.py:1512-1526).
-            # ``t`` is derived from the STATE's own step counter, not the
-            # scan xs step index, so it matches run() bit-for-bit under vmap.
-            if use_dft:
-                t_plane = st.step * dt
-                new_dft_accs = []
-                for acc, (component, axis, index, freqs) in zip(dft_accs, dft_meta):
-                    field = getattr(st, component)
-                    if axis == 0:
-                        plane = field[index, :, :]
-                    elif axis == 1:
-                        plane = field[:, index, :]
-                    else:
-                        plane = field[:, :, index]
-                    phase = jnp.exp(-1j * 2.0 * jnp.pi * freqs * t_plane)
-                    new_dft_accs.append(
-                        acc + plane[None, :, :] * phase[:, None, None] * dt)
-                dft_accs = tuple(new_dft_accs)
-
-            # Probe samples
-            samples = [getattr(st, pc)[pi, pj, pk]
-                       for pi, pj, pk, pc in prb_meta]
-            probe_out = jnp.stack(samples) if samples else jnp.zeros(0)
-
-            if use_cpml:
-                return (st, cpml_st, dft_accs), probe_out
-            return (st, dft_accs), probe_out
+            step_idx, src_vals, j_src_vals = xs
+            values = jnp.concatenate((src_vals.astype(fdtd.ex.dtype),
+                                      j_src_vals.astype(fdtd.ex.dtype)))
+            carry, probe_out, _ = core(carry, step_idx, values, jnp.zeros(0))
+            return carry, probe_out
 
         xs = (
             jnp.arange(n_steps, dtype=jnp.int32),
             src_waveforms,
             j_src_waveforms,
         )
+        init_carry = {"fdtd": fdtd}
         if use_cpml:
-            init_carry = (fdtd, cpml_state_init, dft_acc_init)
-        else:
-            init_carry = (fdtd, dft_acc_init)
+            init_carry["cpml"] = cpml_state_init
+        if use_dft:
+            init_carry["dft_planes"] = dft_acc_init
         final_carry, time_series = jax.lax.scan(step_fn, init_carry, xs)
-        final_dft_accs = final_carry[-1]
+        final_dft_accs = final_carry.get("dft_planes", ())
         return time_series, final_dft_accs
 
     return run_one
@@ -765,13 +705,12 @@ def _build_full_scan_fn(
             #   'field'   -> raw make_source on EVERY boundary (E += w has
             #               no material dependence, so no dynamic path)
             #   'current' -> dynamic-Cb J-source on EVERY boundary, with the
-            #               same arithmetic order as run(): Cb*w then 1/dV
-            #               on CPML, or (Cb/dV)*w on PEC.
+            #               same arithmetic as run(): (1/dV)*(Cb*w).
             if pe.amplitude_kind == "field":
                 sources.append(make_source(grid, pe.position, pe.component,
                                            pe.waveform, n_steps))
             elif pe.amplitude_kind == "current":
-                idx = grid.position_to_index(pe.position)
+                idx = field_index(grid, pe.position, pe.component)
                 j_source_meta.append((idx[0], idx[1], idx[2], pe.component))
             else:
                 sources.append(make_source(grid, pe.position, pe.component,
@@ -854,12 +793,17 @@ def _build_full_scan_fn(
             a for a in "xyz"
             if f"{a}_lo" in pec_faces_vm and f"{a}_hi" in pec_faces_vm)
 
+        from rfx.model.conductors import kernel_conductors
+        conductors = kernel_conductors(sim, grid, base_materials, pec_mask,
+            pec_sheets, pec_wires, periodic=periodic)
+
         if boundary == "cpml":
             # CPML requires its own state management.  For the vmapped path,
             # we build a scan function that includes CPML handling.
             run_one_fn = _build_vmap_scan_fn(
                 grid, n_steps,
                 use_cpml=True,
+                conductors=conductors,
                 sources=sources,
                 j_source_meta=j_source_meta,
                 probes=probes,
@@ -875,6 +819,7 @@ def _build_full_scan_fn(
             run_one_fn = _build_vmap_scan_fn(
                 grid, n_steps,
                 use_cpml=False,
+                conductors=conductors,
                 sources=sources,
                 # non-empty only for amplitude_kind='current' soft sources
                 # on a non-cpml boundary (issue #571): their Cb is material-
@@ -999,6 +944,7 @@ def vmap_material_sweep(
     — are already fully batched via ``add_probe`` + ``.time_series`` on
     both paths.
     """
+    resolve_field_dtype(sim._precision)
     from rfx.current_moments import refuse_current_moment_monitor
     refuse_current_moment_monitor(sim, "vmap material sweep")
     if return_fields:
@@ -1067,30 +1013,35 @@ def vmap_material_sweep(
         # vector division difference in Cb/dV (8972096 vs 8972095 in the
         # PEC eps_r=6 fixture). Only source preparation is serial; the
         # field evolution below remains vmapped (#1373).
-        from rfx.simulation import make_j_source
+        from rfx.model.source_coefficients import uniform_source_table
+        from rfx.simulation import resolve_periodic
+        source_periodic = resolve_periodic(
+            grid, tuple(a in sim._periodic_axes for a in "xyz"))
         dynamic_sources = [
             pe for pe in sim._ports
             if pe.impedance == 0.0 and pe.amplitude_kind == "current"
         ]
         prepared_drives = []
-        make_drive = make_j_source if sim._boundary == "cpml" else make_source
+        native = "cb" if sim._boundary == "cpml" else "raw"
         for batch_idx in range(len(param_values)):
             mats = MaterialArrays(
                 eps_r=batched_materials.eps_r[batch_idx],
                 sigma=batched_materials.sigma[batch_idx],
                 mu_r=batched_materials.mu_r[batch_idx],
+                sigma_film=jax.tree.map(lambda a: a[batch_idx], batched_materials.sigma_film),
             )
-            waveforms = [make_drive(
-                grid, pe.position, pe.component, pe.waveform, n_steps,
-                materials=mats, amplitude_kind=pe.amplitude_kind,
-            ).waveform for pe in dynamic_sources]
+            waveforms = [uniform_source_table(
+                grid, field_index(grid, pe.position, pe.component), pe.component,
+                pe.waveform, n_steps, mats, pe.amplitude_kind,
+                native=native, periodic=source_periodic,
+            ) for pe in dynamic_sources]
             prepared_drives.append(
                 jnp.stack(waveforms, axis=-1) if waveforms else
                 jnp.zeros((n_steps, 0), dtype=jnp.float32))
 
         # vmap run_one over the batch dimension of materials and source samples
-        def run_one_from_materials(eps_r, sigma, mu_r, drives):
-            mats = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r)
+        def run_one_from_materials(eps_r, sigma, mu_r, film, drives):
+            mats = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r, sigma_film=film)
             return run_one_fn(mats, drives)
 
         batched_run = jax.vmap(run_one_from_materials)
@@ -1098,6 +1049,7 @@ def vmap_material_sweep(
             batched_materials.eps_r,
             batched_materials.sigma,
             batched_materials.mu_r,
+            batched_materials.sigma_film,
             jnp.stack(prepared_drives),
         )
         time_series_np = np.asarray(time_series)

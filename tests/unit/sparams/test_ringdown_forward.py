@@ -68,6 +68,9 @@ BAR_VALUE_F32 = 1.5e-5
 #: and I divided by the incident wave. Measured 6.7e-8 .. 2.4e-7 on the
 #: bandwidth-0.42 pulse (a bin driven at 3.6e-4 of the peak). Bar: about 6x.
 BAR_VALUE_F32_INCIDENT = 1.5e-6
+#: K in the weak-bin bar max(own, K eps32 / a_rel): twice the measured maximum
+#: of err a_rel / eps32 (1.416), rounded up; see the test using it
+WEAK_BIN_K = 3
 #: The same under scoped x64 (the map in complex128), 600-step records:
 #: measured 3.8e-8 on the uniform lane (the complex64 rounding of run()'s
 #: (1, 1, nf) S container there) and 0.0 on the graded lane. Bar: about 5x.
@@ -77,7 +80,8 @@ N_GRAD_SHORT, N_GRAD_LONG = 1500, 4000
 
 
 def _kw(lane):
-    return {"port_s11_freqs": FREQS} if lane == "uniform" else {}
+    return {"port_s11_freqs": FREQS if lane == "uniform" else
+            np.linspace(2e9, 20e9, 50)}
 
 
 def _run_kw(lane):
@@ -253,7 +257,7 @@ def test_a_jitted_long_record_reads_w0_ok(lane, bins, n):
     sim = _box(lane)
     grid = sim._build_grid() if lane == "uniform" else sim._build_nonuniform_grid()
     eps = jnp.full(tuple(grid.shape), 2.2, jnp.float32)
-    kw = ({} if lane == "graded" else
+    kw = (_kw(lane) if lane == "graded" else
           {"port_s11_freqs": DENSE if bins == "across TM110" else FREQS})
 
     def f(p):
@@ -337,7 +341,8 @@ def _loss_and_grad(sim, n, *, jit, bins=FREQS):
     graded = bool(sim._uses_nonuniform_mesh)
     grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
     eps = jnp.full(tuple(grid.shape), 2.2, jnp.float32)
-    kw = {} if graded else {"port_s11_freqs": bins}
+    kw = {"port_s11_freqs": np.linspace(sim._freq_max / 10, sim._freq_max, 50)
+          if graded else bins}
 
     def loss(p):
         r = sim.forward(n_steps=n, skip_preflight=True, eps_override=eps * p,
@@ -350,8 +355,14 @@ def _loss_and_grad(sim, n, *, jit, bins=FREQS):
 
 
 @pytest.mark.parametrize("jit", [False, True])
+def test_missing_h_column_refuses_before_traced_identification(jit, monkeypatch):
+    _wrong_h_loop(monkeypatch)
+    with pytest.raises(ValueError, match=r'wire port 0.*port:0:mode:0.*hy.*1, 2, 0'):
+        _loss_and_grad(_box('uniform'), 1500, jit=jit)
+
+
+@pytest.mark.parametrize("jit", [False, True])
 @pytest.mark.parametrize("defect, lane, cells", [
-    (_wrong_h_loop, "uniform", 1),
     (_midpoint_voltage, "uniform", 3),
     (_half_step_dropped, "uniform", 1),
     (_half_step_dropped, "graded", 1),
@@ -428,7 +439,48 @@ def test_a_weakly_driven_bin_is_completed_as_run_completes_it():
     assert r.ringdown.report.ok
     assert np.all(np.isfinite(S)) and c <= rd.CONSISTENCY_BAR
     assert weighted <= BAR_VALUE_F32_INCIDENT, weighted
-    assert err.max() <= own, (err.max(), own)
+    # Where the bar is judged (S2 pre-declaration, decision record 2026-10-07):
+    # at bins whose incident wave is within 40 dB of its band peak the bar is
+    # unchanged, run()'s own accumulator round-off. At a weaker bin the
+    # float32 sums of terms of the order of the peak leave an absolute error of
+    # the order of eps32 x peak, that is eps32 / a_rel of that bin, so the bar
+    # there is max(own, K eps32 / a_rel). Measured err a_rel / eps32 over the
+    # 33 weak bins: 0.084 / 0.56 / 1.416 (min / median / max, the max at
+    # 17.5 GHz, a_rel 6.2e-4), the same before and after S2 M2; K = 3 is the
+    # smallest integer at least twice that maximum. M2 did not move the
+    # difference (2.72e-4 at 17.5 GHz, 7.2e-6 over the 68 strong bins, both
+    # sides); it lowered run()'s own round-off from 1.10e-3 to 1.95e-4.
+    strong = a_rel >= 1.0e-2
+    assert strong.any() and (~strong).any()
+    assert err[strong].max() <= own, (err[strong].max(), own)
+    weak_bar = np.maximum(own, WEAK_BIN_K * np.finfo(np.float32).eps / a_rel[~strong])
+    assert np.all(err[~strong] <= weak_bar), float(np.max(err[~strong] / weak_bar))
+
+
+def test_an_x64_run_weights_the_port_dft_in_complex128():
+    """Under float64 the port V and I accumulators are complex128 and so are
+    their Fourier weights (S2 pre-declaration 7.3): S is the float64 sum of the
+    run's own port record at the port's bins, with E at (n+1) dt and H at
+    (n+1/2) dt. Until M2 the weights were complex64 on an x64 run too, and the
+    weak bins of this pulse carried their rounding: 2.5e-5 of peak before M2,
+    5.6e-5 with the one kernel and complex64 weights (3000 steps), 2e-12 now."""
+    pulse = GaussianPulse(f0=13.0e9, bandwidth=0.42, cutoff=4.5)
+    with enable_x64():
+        f = _box("uniform", pulse=pulse, precision="float64").forward(
+            n_steps=600, skip_preflight=True, port_s11_freqs=FREQS)
+        meta, accs = f.wire_port_sparams[0]
+        assert all(np.asarray(accs[k]).dtype == np.complex128 for k in (1, 3))
+        record = f.sparam_time_records[0]
+        bins = np.asarray(meta.freqs, dtype=np.float64)
+        S = np.asarray(f.s_params).ravel()
+    n = np.arange(record.samples.shape[0], dtype=np.float64)
+    dt = float(f.dt)
+    vp = np.exp(-2j * np.pi * bins[:, None] * (n + 1.0) * dt) @ np.asarray(record['V_port'], dtype=np.float64)
+    ii = np.exp(-2j * np.pi * bins[:, None] * (n + 0.5) * dt) @ np.asarray(record['I'], dtype=np.float64)
+    ref = (vp - 50.0 * ii) / (vp + 50.0 * ii)
+    err = float(np.max(np.abs(S - ref)) / np.max(np.abs(ref)))
+    print(f"\n[x64, 600 steps] |S - float64 sum of the record| {err:.3g} of peak")
+    assert err <= 1.0e-9, err
 
 
 def _stub_identification(monkeypatch):
@@ -590,6 +642,12 @@ def _case_uniform_without_bins():
     return _box("uniform"), {"port_s11_freqs": None}, "needs port_s11_freqs"
 
 
+def _case_graded_without_bins():
+    # forward() computes port S only on request on both meshes (#1373), so the
+    # graded completion has no bins of its own either.
+    return _box("graded"), {"port_s11_freqs": None}, "needs port_s11_freqs"
+
+
 def _case_uniform_two_ports():
     return _box("uniform", second_port=True), {}, "supports one wire port"
 
@@ -617,7 +675,8 @@ def _case_not_a_spec():
 
 
 @pytest.mark.parametrize("case", [_case_distributed, _case_no_time_series,
-                                  _case_uniform_without_bins, _case_uniform_two_ports,
+                                  _case_uniform_without_bins, _case_graded_without_bins,
+                                  _case_uniform_two_ports,
                                   _case_lumped, _case_source_on, _case_stencil_order_4,
                                   _case_not_a_spec])
 def test_what_the_completion_does_not_cover_is_refused(case):
@@ -795,6 +854,8 @@ def test_the_poles_derivative_is_what_carries_the_shift(monkeypatch):
 
 def test_forward_caps_the_pole_count_for_both_long_windows(monkeypatch):
     """A 140,000-step one-port record never traces more than the pole budget."""
+    # Shape-only tracing allocates no pencil; test the pole cap independently.
+    monkeypatch.setattr(rd, "IDENTIFY_MEMORY_BOUND_BYTES", math.inf)
     sim = _box("graded")
     eps = jnp.full(tuple(sim._build_nonuniform_grid().shape), 2.2, jnp.float32)
     seen = []
@@ -807,7 +868,7 @@ def test_forward_caps_the_pole_count_for_both_long_windows(monkeypatch):
     monkeypatch.setattr(rj, "host_poles", capture)
     jax.eval_shape(lambda p: sim.forward(
         n_steps=140000, skip_preflight=True, eps_override=eps * p,
-        ringdown=RingdownSpec()).ringdown, jnp.float32(1.0))
+        ringdown=RingdownSpec(), **_kw("graded")).ringdown, jnp.float32(1.0))
     assert [m for m, _k in seen] == [70000, 105000]
     assert all(0 < k <= rd.TRACED_POLE_BUDGET for _m, k in seen), seen
 
@@ -852,7 +913,8 @@ def test_over_budget_reports_the_kept_count_and_each_window_budget(monkeypatch):
     monkeypatch.setattr(rj, "host_poles", over_budget)
     sim = _box("graded")
     out = jax.jit(lambda: sim.forward(
-        n_steps=2500, skip_preflight=True, ringdown=RingdownSpec()).ringdown)()
+        n_steps=2500, skip_preflight=True, ringdown=RingdownSpec(),
+        **_kw("graded")).ringdown)()
     assert np.all(np.asarray(out._status) == rj.STATUS_OVER_BUDGET)
     assert np.asarray(out._pole_counts).tolist() == [kept, kept]
     assert int(out._pole_budgets[0]) == rd.TRACED_POLE_BUDGET

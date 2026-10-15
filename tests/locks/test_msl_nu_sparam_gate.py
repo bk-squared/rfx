@@ -27,6 +27,10 @@ Validation rationale (R5 / canonical anchor):
     separate question 'does coarsening the far-air dz preserve the patch resonance'
     (a graded-z efficiency follow-up; the runner is identical).
 
+Like the uniform gate, its pins are probe-0-plane quantities (see that file's
+"THE PLANE THESE PINS ARE AT"): S is read at the probe-0 plane with the
+feed-plane shift undone by ``tests/_msl_probe0.probe0_s``.
+
 Marked gpu + slow: dx=0.197 mm over ~30x18x13 mm with num_periods=280 — GPU-scale,
 run by the VESSL validation harness, excluded from the default CPU suite (mirrors the
 uniform issue-80 gate's resourcing).
@@ -47,9 +51,11 @@ import warnings
 
 import jax.numpy as jnp
 import numpy as np
+from tests._msl_probe0 import probe0_s
 import pytest
 
 from rfx import Box, Simulation
+from rfx.preflight.line_port_coverage import local_port_cell
 from rfx.sources import GaussianPulse
 from rfx.runners.nonuniform import assemble_materials_nu
 
@@ -76,6 +82,7 @@ W = 10.129e-3
 L = 8.595e-3
 W_MSL = 1.8e-3
 L_MSL = 8.0e-3
+# #1512: port plane; feed covers its node with one local-cell drawing allowance.
 PORT_MARGIN = 5.0e-3
 DX = 0.197e-3
 DOM_X = 29.747e-3
@@ -115,7 +122,7 @@ def _build_patch_sim_nu() -> Simulation:
     sim.add(Box((0, 0, Z_SUB_LO), (DOM_X, DOM_Y, Z_SUB_HI)),
             material="ro4003c")
     sim.add_thin_conductor(
-        Box((0, Y_C - W_MSL / 2, Z_SUB_HI),
+        Box((PORT_MARGIN - local_port_cell(sim, (PORT_MARGIN, Y_C, Z_SUB_LO)), Y_C - W_MSL / 2, Z_SUB_HI),
             (PORT_MARGIN + L_MSL, Y_C + W_MSL / 2, Z_SUB_HI)),
         sigma_bulk=5.8e7)
     sim.add_thin_conductor(
@@ -261,7 +268,8 @@ def test_nu_msl_patch_s11_passive_and_edge_fed_match():
     )
 
     fr = np.asarray(res.freqs, dtype=float) / 1e9
-    s = np.asarray(res.S)[0, 0, :]
+    # Pins are probe-0-plane quantities (see the uniform twin): undo the shift.
+    s = np.asarray(probe0_s(res))[0, 0, :]
     z0 = np.asarray(res.Z0)[0, :]
     zin = z0 * (1.0 + s) / (1.0 - s)
     s11 = np.abs(s)

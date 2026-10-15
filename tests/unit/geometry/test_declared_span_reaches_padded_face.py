@@ -348,3 +348,18 @@ def test_a_lo_face_shortfall_is_silent_and_that_is_the_documented_scope(
     # The contrast: two nodes at a hi face on the defective rig do raise.
     with pytest.raises(PadFillShortfall):
         _rig(10)._assemble_materials(_rig(10)._build_grid())
+
+
+@pytest.mark.parametrize("skip_preflight", [False, True])
+def test_run_raises_pad_fill_shortfall(monkeypatch, skip_preflight):
+    """A diagnostic collector must never turn an invalid solve into vacuum."""
+    _size_by_plain_ceil(monkeypatch)
+    sim = _rig(10)
+    # Keep the mutation witness build-only if a collector suppresses the raise.
+    from rfx import Result
+    import rfx.runners.uniform as uniform
+    monkeypatch.setattr(uniform, "run_uniform", lambda *a, **k:
+                        Result(None, np.zeros((0, 0)), None, None))
+    monkeypatch.setattr(sim, "_attach_run_settling_witness", lambda result, **k: result)
+    with pytest.raises(PadFillShortfall, match="x-hi.*2 interior nodes short"):
+        sim.run(n_steps=1, skip_preflight=skip_preflight, compute_s_params=False)

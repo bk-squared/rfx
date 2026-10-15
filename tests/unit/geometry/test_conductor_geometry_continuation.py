@@ -250,7 +250,7 @@ def test_conductor_continues_but_pole_occupancy_stays_declared(nu, sheet, kind):
                      boundary="cpml", cpml_layers=2,
                      **({"dz_profile": np.ones(8)} if nu else {}))
     pole = (DebyePole(delta_eps=1., tau=1e-10) if kind == "debye" else
-            LorentzPole(omega_0=1e9, delta=1e7, kappa=1e18))
+            LorentzPole(omega_0=1e8, delta=1e6, kappa=1e14))   # omega_0*dt = 0.19, delta_eps 0.01: below the pole's own step limit
     sim.add_material("conducting_pole", sigma=1e7, **{kind+"_poles": [pole]})
     declared = Box((0., 2., 4. if sheet else 2.),
                    (8., 6., 4. if sheet else 6.))

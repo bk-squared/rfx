@@ -7,8 +7,10 @@ import warnings
 from fractions import Fraction
 from math import lcm
 
+from rfx.boundaries.depths import resolve_face_depths
+
 from rfx._grid_metric import (
-    NODE_TIE_REL,
+    node_tie_tol,
     nearest_uniform_index,
     axis_name as _axis_name,
     dual_spacings_from_cells as _dual_spacings_from_cells,
@@ -130,7 +132,7 @@ def cells_spanning(length: float, dx: float, *,
     """Cells needed to span *length* at cell size *dx* (issue #1070).
 
     ``ceil(length / dx)``, except that a ratio sitting within
-    ``max(NODE_TIE_REL, ulp_budget * eps * max(1, abs(r)))`` of an integer
+    ``max(node_tie_tol(r, 1), ulp_budget * eps * max(1, abs(r)))`` of an integer
     is taken to BE that integer. The shared on-lattice band keeps sizing
     and Box faces on the same node (#1138); the existing ULP rule remains
     a floor for very large cell counts. Plain ``ceil`` buys an extra cell for float
@@ -146,7 +148,7 @@ def cells_spanning(length: float, dx: float, *,
     ratio = length / dx
     nearest = round(ratio)
     tolerance = max(
-        NODE_TIE_REL,
+        node_tie_tol(ratio, 1.0),
         ulp_budget * float(np.finfo(float).eps) * max(1.0, abs(ratio)))
     if abs(ratio - nearest) <= tolerance:
         cells = int(nearest)
@@ -223,22 +225,6 @@ class Grid:
         # cell is the principled handler when a conformal Box is in
         # ``pec_shapes``.
         self.conformal_faces = conformal_faces or set()
-        # T7 Phase 2 PR2: per-face active CPML layer counts (thickness).
-        # Defaults to the scalar ``cpml_layers`` on every face (the
-        # symmetric fast path). Asymmetric thickness is achieved by
-        # capping active layers below ``cpml_layers`` per face — the
-        # unused allocation stays as no-op padding in the CPML profile
-        # so the Yee grid + CPMLState shape stay uniform.
-        _default_face_n = {f: cpml_layers for f in
-                           ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi")}
-        self.face_layers = {**_default_face_n, **(face_layers or {})}
-        for _face, _n in self.face_layers.items():
-            if _n > cpml_layers:
-                raise ValueError(
-                    f"face_layers[{_face!r}]={_n} exceeds cpml_layers="
-                    f"{cpml_layers}; the scalar is the allocation budget "
-                    f"and per-face active layers must be <= that budget."
-                )
         self.cpml_axes = "".join(axis for axis in "xyz" if axis in cpml_axes)
         self.mode = mode
         self.is_2d = mode.startswith("2d")
@@ -267,24 +253,15 @@ class Grid:
         # side even when the axis as a whole participates in CPML —
         # this is the Meep / OpenEMS / Tidy3D convention and the
         # architectural fix for PMC + CPML composition.
-        def _face_pad(axis: str, side: str) -> int:
-            face = f"{axis}_{side}"
-            if face in self.pec_faces or face in self.pmc_faces:
-                return 0
-            if axis not in self.cpml_axes:
-                return 0
-            return int(self.face_layers.get(face, cpml_layers))
-
-        self.pad_x_lo = _face_pad("x", "lo")
-        self.pad_x_hi = _face_pad("x", "hi")
-        self.pad_y_lo = _face_pad("y", "lo")
-        self.pad_y_hi = _face_pad("y", "hi")
-        if self.is_2d:
-            self.pad_z_lo = 0
-            self.pad_z_hi = 0
-        else:
-            self.pad_z_lo = _face_pad("z", "lo")
-            self.pad_z_hi = _face_pad("z", "hi")
+        self.boundary_depths = resolve_face_depths(
+            budget=cpml_layers, absorbing_axes=self.cpml_axes,
+            pec_faces=self.pec_faces, pmc_faces=self.pmc_faces,
+            periodic_axes=self.periodic_axes, mode=mode, face_layers=face_layers,
+        )
+        # Legacy view retains declared depths, including scalar defaults on walls.
+        self.face_layers = {record.name: record.declared for record in self.boundary_depths}
+        for record in self.boundary_depths:
+            setattr(self, f"pad_{record.name}", record.realized)
 
         # Legacy scalar ``pad_{axis}`` kept for callers that use it as
         # "nominal CPML thickness on this axis". When lo / hi differ

@@ -76,6 +76,7 @@ def build_preflight_model() -> Simulation:
         polarization="ez",
         direction="+x",
         margin=3,
+        closed_box=True,
     )
     return sim
 

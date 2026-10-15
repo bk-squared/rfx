@@ -243,6 +243,7 @@ def save_materials(path: str | Path, materials: MaterialArrays) -> None:
         # reloaded port load is averaged over four cells (quartered).
         for name, components in (("sigma_lumped", ("ex", "ey", "ez")),
                                  ("eps_r_lumped", ("ex", "ey", "ez")),
+                                 ("sigma_film", ("ex", "ey", "ez")),
                                  ("mu_r_wire", ("hx", "hy", "hz"))):
             parts = lumped_components(getattr(materials, name, None))
             for comp, part in zip(components, parts):
@@ -260,6 +261,7 @@ def load_materials(path: str | Path) -> MaterialArrays:
         records = {}
         for name, components in (("sigma_lumped", ("ex", "ey", "ez")),
                                  ("eps_r_lumped", ("ex", "ey", "ez")),
+                                 ("sigma_film", ("ex", "ey", "ez")),
                                  ("mu_r_wire", ("hx", "hy", "hz"))):
             parts = tuple(
                 jnp.array(grp[f"{name}_{comp}"][:])

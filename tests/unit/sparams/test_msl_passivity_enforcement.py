@@ -183,7 +183,10 @@ def _thru():
     # node line and the sheet lands on it exactly. Drawn one cell thick
     # before the contract, it would now be a VOLUME — walls at BOTH z
     # faces and the Ez edge between them shorted.
-    sim.add(Box((0.0, 0.0034, 0.0008), (0.012, 0.0046, 0.0008)), material="pec")
+    # #1512: the strip spans the two port nodes (2 and 10 mm). Drawn across the whole
+    # domain it left 2 mm open stubs whose effective quarter wave (23.8 GHz) is within
+    # 1.5x of the 2-18 GHz read.
+    sim.add(Box((0.002, 0.0034, 0.0008), (0.010, 0.0046, 0.0008)), material="pec")
     sim.add_msl_port(position=(0.002, 0.004, 0.0), width=0.0012, height=0.0008,
                      direction="+x", impedance=50.0, eps_r_sub=2.2, name="p1")
     sim.add_msl_port(position=(0.010, 0.004, 0.0), width=0.0012, height=0.0008,

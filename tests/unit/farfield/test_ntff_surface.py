@@ -5,7 +5,7 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx import NTFFSurface, Simulation, export_ntff_surface
+from rfx import NTFFSurface, export_ntff_surface
 from rfx.core.yee import FDTDState
 from rfx.farfield import NTFFBox, NTFFData, accumulate_ntff, init_ntff_data
 from rfx.grid import Grid
@@ -173,16 +173,13 @@ def test_actual_accumulator_keeps_yee_clock_and_raw_integral_units():
 
 
 def test_subgrid_result_without_global_origin_is_refused():
-    # A real caller path: a local fine grid would export z planes 6 mm low.
-    # Eight steps test admission/dataflow only, not settled radiation accuracy.
-    # A PEC box: the subgridded lane refuses an absorber in every validation
-    # mode (lane admission), and the refusal below does not depend on one.
-    sim = Simulation(freq_max=5e9, domain=(0.03,) * 3, dx=3e-3, boundary="pec")
-    sim.add_source((0.015,) * 3, "ez", amplitude_kind="field")
-    sim.add_refinement(z_range=(0.006, 0.024), ratio=2, validation="research")
-    sim.add_ntff_box(corner_lo=(0.009, 0.009, 0.012),
-                     corner_hi=(0.021, 0.021, 0.018), freqs=[3e9])
-    result = sim.run(n_steps=8, skip_preflight=True)
+    # A subgrid result marks its local fine grid with _shape_override but
+    # supplies no global origin. Exercise that export guard without a solve:
+    # an NTFF request on the reflecting subgridded exterior is now refused.
+    grid = Grid(5e9, (0.03,) * 3, dx=3e-3, cpml_layers=0)
+    grid._shape_override = grid.shape
+    box = NTFFBox.from_grid(grid, i_lo=3, i_hi=7, j_lo=3, j_hi=7,
+                           k_lo=4, k_hi=6, freqs=np.array([3e9]))
+    data = init_ntff_data(box)
     with pytest.raises(ValueError, match="subgrid.*global-origin"):
-        export_ntff_surface(result.ntff_data, result.ntff_box, result.grid,
-                            dt=result.dt, n_steps=8)
+        export_ntff_surface(data, box, grid, dt=grid.dt, n_steps=8)

@@ -467,7 +467,7 @@ def _validate_cfg_pec_realization(self, _w, ctx) -> None:
     # info-severity (the historical contract at :2999), so an
     # unconditional "N sheets realized, 0 of them off" line failed every
     # strict run on a correct board — measured on
-    # docs/public/guide/first-patch.mdx. The realized planes stay
+    # docs/public/examples/first-patch.mdx. The realized planes stay
     # available from fidelity_report(); this finding reports a CONDITION.
     if n_off == 0 and not ties:
         rows = []
@@ -623,7 +623,7 @@ def _validate_cfg_pec_face_short_of_domain_wall(self, _w, ctx) -> None:
         return          # non-uniform lane: no interior slices
     from rfx.boundaries.pec import realized_wall_planes
 
-    face_layers = self._preflight_face_layers()
+    realized_depths = self._preflight_face_layers()
     shape = tuple(ctx.grid.shape)
     rows = []
     for e in ctx.interior_pec_entries():
@@ -643,7 +643,7 @@ def _validate_cfg_pec_face_short_of_domain_wall(self, _w, ctx) -> None:
                 step = 1 if side == "lo" else -1
                 if face - wall != step:
                     continue
-                if face_layers.get(f"{'xyz'[a]}_{side}", 0):
+                if realized_depths.get(f"{'xyz'[a]}_{side}", 0):
                     continue    # absorbing face: no wall
                 rows.append((e, a, side, face, wall))
     if not rows:
@@ -712,7 +712,7 @@ def _congruence_origin_shift(ctx, members, counts):
         return None
     if not all(exact for (_e, _lo, _hi, exact) in members):
         return None
-    d = float(ctx.grid.dx)
+    d = float(ctx.grid.cells("x")[0])
     fracs = np.array([ctx.sub_lattice_offsets(lo)
                       for (_e, lo, _hi, _x) in members])
 
@@ -1144,6 +1144,9 @@ def _sheet_solved_spans(ctx, boxes):
     fps = [interior_lattice_mask(e.sheet.footprint, ctx.grid) for e in sheets]
     union, volume_edges = sheet_continuation_masks(
         ctx.interior_pec_entries(), ctx.periodic, ctx.grid.shape)
+    from rfx.model.conductors import port_fed_nodes
+    fed = (port_fed_nodes(ctx.sim, ctx.realized())
+           if any(not hasattr(e.sheet, 'solved_spans') for e in sheets) else None)
     out = []
     for e, fp in zip(sheets, fps):
         for a in range(3):
@@ -1151,10 +1154,13 @@ def _sheet_solved_spans(ctx, boxes):
                 continue
             if float(e.hi[a] - e.lo[a]) <= 0.0:
                 continue
-            span = solved_sheet_span(fp, a, ctx.nodes[a], float(e.lo[a]),
-                                     float(e.hi[a]), float(domain[a]),
-                                     union=union, volume_edges=volume_edges,
-                                     periodic='xyz'[a] in getattr(ctx.grid, 'periodic_axes', ''))
+            if hasattr(e.sheet, 'solved_spans'):
+                span = e.sheet.solved_spans[a]
+            else:
+                span = solved_sheet_span(fp, a, ctx.nodes[a], float(e.lo[a]),
+                                         float(e.hi[a]), float(domain[a]),
+                                         union=union, volume_edges=volume_edges, fed=fed,
+                                         periodic='xyz'[a] in getattr(ctx.grid, 'periodic_axes', ''))
             if span is not None:
                 out.append((e, a, span))
     return out

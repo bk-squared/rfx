@@ -77,8 +77,12 @@ def _runner_arguments(monkeypatch, sim: Simulation, lane: str, **kw) -> dict:
 def test_the_runner_absorbs_on_every_axis(monkeypatch, lane):
     seen = _runner_arguments(monkeypatch, _sim(lane), lane)
     assert seen["boundary"] == "cpml"
-    assert seen["cpml_axes"] == "xyz", (
-        f"{lane} handed the runner cpml_axes={seen['cpml_axes']!r}: the lateral pads "
+    # The runner absorbs on the axes it resolves from the grid (#1494), so
+    # judge the effective axes, not the literal argument.
+    from rfx.boundaries.axes import resolve_cpml_axes
+    effective = resolve_cpml_axes(seen["grid"], seen["cpml_axes"])
+    assert effective == "xyz", (
+        f"{lane} handed the runner cpml_axes={seen['cpml_axes']!r} (effective {effective!r}): the lateral pads "
         "are then vacuum backed by PEC grid faces, a closed can around the line "
         "(issue 1218)")
     grid = seen["grid"]
@@ -87,9 +91,9 @@ def test_the_runner_absorbs_on_every_axis(monkeypatch, lane):
 
 
 @pytest.mark.parametrize("lane", LANES)
-def test_the_lane_defaults_to_absorbing_on_every_axis(lane):
+def test_the_lane_defaults_to_the_grids_absorbing_axes(lane):
     default = inspect.signature(getattr(Simulation, lane)).parameters["cpml_axes"].default
-    assert default == "xyz", f"{lane} defaults to cpml_axes={default!r}"
+    assert default is None, f"{lane} defaults to cpml_axes={default!r}"
 
 
 @pytest.mark.parametrize("axes", ["z", "xy", "x", ""])

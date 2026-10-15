@@ -24,7 +24,7 @@ if __name__ == "__main__" and sys.argv[1] == "worker" and sys.argv[2] != "refere
 
 import jax.numpy as jnp
 from jax import lax
-from jax.experimental.shard_map import shard_map
+from jax import shard_map
 from jax.sharding import PartitionSpec as P
 import numpy as np
 import pytest
@@ -47,7 +47,7 @@ SCRIPT = Path(__file__).resolve()
 N_STEPS = 8
 
 
-def _model():
+def _model(source_kind="field"):
     dx = np.full(14, 1e-3)
     dx[3:6] *= .8
     dx[6:9] *= 1.2
@@ -70,7 +70,7 @@ def _model():
         pos = (float(edges[i] - edges[grid.pad_x_lo]), 2e-3, 2e-3)
         assert position_to_index(grid, pos)[0] == i
         for component in ("ey", "ez"):
-            sim.add_source(pos, component, amplitude_kind="field",
+            sim.add_source(pos, component, amplitude_kind=source_kind,
                            waveform=lambda t: jnp.cos(t * 2e10))
         for component in _FIELDS:
             sim.add_probe(pos, component)
@@ -247,7 +247,7 @@ def _loop_counts(hlo):
 
         lines = walk(body)
         counts = {}
-        for op in ("collective-permute", "all-reduce"):
+        for op in ("collective-permute", "all-reduce", "all-gather", "all-to-all"):
             matches = [line for line in lines if re.search(rf"\s{op}(?:-start|-done)?\(", line)]
             starts = sum(f" {op}-start(" in line for line in matches)
             dones = sum(f" {op}-done(" in line for line in matches)
@@ -262,8 +262,8 @@ def _loop_counts(hlo):
     return result
 
 
-def _collectives(grad=False):
-    sim = _model()
+def _collectives(grad=False, source_kind="field"):
+    sim = _model(source_kind)
     designs = _inputs(sim, True)
     captured = []
 
@@ -286,15 +286,16 @@ def _collectives(grad=False):
         c0, invariants, warmup, opt = args
         materials, mask, occupancy, debye, lorentz, cpml, spacings = invariants
 
-        def loss(eps, sigma, occ, db, lr, ranks):
+        def loss(eps, sigma, occ, db, lr, ranks, e_cell_sizes):
             # These are the loop inputs reached by the three design gradients;
             # replicated spacings/CPML coefficients are constants in that AD.
             inv = (materials._replace(eps_r=eps, sigma=sigma), mask, occ,
                    db, lr, cpml, spacings)
-            return jnp.sum(entry(c0, inv, warmup, opt, ranks=ranks)[1] ** 2)
+            return jnp.sum(entry(c0, inv, warmup, opt, ranks=ranks, e_cell_sizes=e_cell_sizes)[1] ** 2)
 
         compiled = jax.jit(jax.grad(loss, argnums=(0, 1, 2, 3, 4))).lower(
-            materials.eps_r, materials.sigma, occupancy, debye, lorentz, kwargs["ranks"]).compile()
+            materials.eps_r, materials.sigma, occupancy, debye, lorentz, kwargs["ranks"],
+            kwargs["e_cell_sizes"]).compile()
     else:
         compiled = entry.lower(*args, **kwargs).compile()
     hlo = compiled.as_text()
@@ -306,7 +307,7 @@ def _collectives(grad=False):
 def _assert_counts(counts, grad=False):
     # No warmup/remat here: one forward loop and, under grad, its transpose.
     assert len(counts) == (2 if grad else 1), counts
-    assert all(c == {"collective-permute": 2, "all-reduce": 0} for c in counts), counts
+    assert all(c == {"collective-permute": 2, "all-reduce": 0, "all-gather": 0, "all-to-all": 0} for c in counts), counts
 
 
 def _long_run(patch, sharded=True):
@@ -382,9 +383,10 @@ def test_live_ghost_poison_is_detected(monkeypatch):
         _poison_case(monkeypatch, live=True)
 
 
+@pytest.mark.parametrize("source_kind", ["field", "current"])
 @pytest.mark.parametrize("grad", [False, True])
-def test_compiled_loop_collectives(grad):
-    _assert_counts(_collectives(grad), grad)
+def test_compiled_loop_collectives(grad, source_kind):
+    _assert_counts(_collectives(grad, source_kind), grad)
 
 
 @pytest.mark.slow
@@ -402,7 +404,7 @@ def test_long_run_finite_gradients_and_dead_ghosts(devices):
 @pytest.mark.slow
 def test_mutations_trip_gates(monkeypatch):
     def missing_ez(st, mesh, n_devices, *, ranks=None):
-        @partial(shard_map, mesh=mesh, in_specs=P("x"), out_specs=P("x"), check_rep=False)
+        @partial(shard_map, mesh=mesh, in_specs=P("x"), out_specs=P("x"), check_vma=False)
         def only_ey(ey):
             received = lax.ppermute(ey[1], "x", [(i, i - 1) for i in range(1, n_devices)])
             return ey.at[-1].set(jnp.where(lax.axis_index("x") < n_devices - 1, received, ey[-1]))
@@ -418,7 +420,8 @@ def test_mutations_trip_gates(monkeypatch):
     _report("mutation_red", mutation="live_poison")
     with _reference(monkeypatch, probes=False):
         counts = _collectives()
-        assert counts == [{"collective-permute": 12, "all-reduce": 0}], counts
+        assert counts == [{"collective-permute": 12, "all-reduce": 0,
+                           "all-gather": 0, "all-to-all": 0}], counts
         with pytest.raises(AssertionError):
             _assert_counts(counts)
     _report("mutation_red", mutation="full_exchange", loops=counts)
@@ -479,6 +482,7 @@ def _worker(address, rank, output):
         jax.distributed.shutdown()
 
 
+@pytest.mark.source_scan
 @pytest.mark.slow
 @pytest.mark.skipif(sys.platform != "linux", reason="requires Linux: distributed gRPC bind fails on Darwin")
 def test_two_process_plain_and_grad(tmp_path):

@@ -12,6 +12,8 @@ name: lint
 # of the sub-three-minute gates in the same order.
 
 on:
+  merge_group:
+    types: [checks_requested]
   push:
     branches:
       - main

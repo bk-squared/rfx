@@ -23,10 +23,12 @@ if __name__ == "__main__" and sys.argv[1] == "worker" and sys.argv[2] != "refere
     jax.distributed.initialize(sys.argv[2], 2, int(sys.argv[3]), initialization_timeout=30)
 
 import jax.numpy as jnp
+from jax import shard_map
 import numpy as np
 import pytest
 
 from rfx.runners import distributed_nu as nu
+from rfx.stepping import slab as slab_placement
 from tests.unit.runners.test_distributed_nu_forward_arguments import loop_program as _loop_program
 from tests.unit.runners.test_distributed_nu_forward_staging import _model
 
@@ -166,15 +168,15 @@ def _mutate(kind):
         # Keep the module globals so the closure gate can instrument jit/scan.
         exec(source, vars(nu))
     elif kind == "halo":
-        original = nu.stage_sharded_forward_override
+        original = slab_placement._halo
 
         def no_halo(arr, sg, mesh, pad_value):
             result = original(arr, sg, mesh, pad_value)
-            return nu.shard_map(lambda slab: slab.at[0].set(0).at[-1].set(0),
+            return shard_map(lambda slab: slab.at[0].set(0).at[-1].set(0),
                                 mesh=mesh, in_specs=nu.P("x"), out_specs=nu.P("x"),
-                                check_rep=False)(result)
+                                check_vma=False)(result)
 
-        nu.stage_sharded_forward_override = no_halo
+        slab_placement._halo = no_halo
     elif kind == "whole":
         retained = []
 
@@ -183,9 +185,9 @@ def _mutate(kind):
             # through the loop, as happens when a caller owns the local design.
             local = jnp.asarray(np.asarray(arr), device=jax.devices()[0])
             retained.append(local)
-            return nu.stage_forward_array_x_slab(local[:sg.nx], sg, mesh, pad_value)
+            return slab_placement.cut(local[:sg.nx], sg, pad_value, mesh=mesh)
 
-        nu.stage_sharded_forward_override = copy_whole
+        slab_placement._halo = copy_whole
     else:
         raise AssertionError(kind)
 
@@ -208,16 +210,19 @@ def _child(mode, *args, devices=2):
     print(run.stdout)
 
 
+@pytest.mark.source_scan
 @pytest.mark.parametrize("devices", [2, pytest.param(3, marks=pytest.mark.slow)])
 def test_sharded_overrides_match_local_trace_and_gradient(devices):
     _child("parity", devices=devices)
 
 
+@pytest.mark.source_scan
 @pytest.mark.slow
 def test_sharded_transformed_primals():
     _child("transforms")
 
 
+@pytest.mark.source_scan
 @pytest.mark.parametrize("mode", ["plain", "grad"])
 def test_no_whole_domain_buffer_at_loop(mode):
     _child("memory", mode)
@@ -324,6 +329,7 @@ def test_vmap_over_a_traced_mask_matches_single_calls():
         _within(np.asarray(f(jnp.asarray(mask))), member)
 
 
+@pytest.mark.source_scan
 @pytest.mark.slow
 @pytest.mark.parametrize("kind,gate,error", [
     ("spacing", "closure", "captures"), ("halo", "parity", "ulp"),
@@ -412,6 +418,7 @@ def two_process_results(tmp_path_factory):
     return output, reference, logs
 
 
+@pytest.mark.source_scan
 def test_two_process_plain_and_grad(two_process_results):
     output, reference, _ = two_process_results
     expected_trace = np.load(reference / "trace-0.npy")
@@ -429,6 +436,7 @@ def test_two_process_plain_and_grad(two_process_results):
         print("RESULT gradient", name, _within(expected, gathered(output, name)))
 
 
+@pytest.mark.source_scan
 def test_two_process_local_override_refused(two_process_results):
     assert sum("local overrides refused" in log for log in two_process_results[2]) == 2
 

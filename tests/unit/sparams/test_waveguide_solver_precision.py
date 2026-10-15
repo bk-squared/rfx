@@ -16,15 +16,17 @@ from rfx import Simulation
 import rfx.nonuniform as nonuniform_core
 import rfx.simulation as uniform_core
 import rfx.sources.waveguide_port as waveguide_port
+import rfx.measurement.waveguide_s as _wg_move_waveguide_s
 from tests._x64_compat import enable_x64
 
 
 def _guide(*, precision="float32", solver="yee", nonuniform=False, n_modes=1):
+    """Addendum 5f: graded transverse PEC leaves solver/precision guards reachable."""
     sim = Simulation(
         freq_max=12e9,
         domain=(0.09, 0.04, 0.02),
         dx=0.005,
-        boundary="cpml",
+        boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=4,
         precision=precision,
         solver="yee",
@@ -62,12 +64,15 @@ def test_adi_refused_before_fields(monkeypatch, nonuniform):
 
 
 @pytest.mark.parametrize("precision", ["float64", "mixed"])
-def test_nonuniform_precision_still_refused_before_fields(monkeypatch, precision):
+@pytest.mark.parametrize("x64", [False, True])
+def test_nonuniform_precision_still_refused_before_fields(monkeypatch, precision, x64):
     monkeypatch.setattr(nonuniform_core, "init_state", _forbid_field_initialization)
-    with enable_x64(True), warnings.catch_warnings():
+    with enable_x64(x64), warnings.catch_warnings():
         warnings.simplefilter("ignore", UserWarning)
         sim = _guide(nonuniform=True, precision=precision)
-        with pytest.raises(NotImplementedError, match="precision other than 'float32'"):
+        error = ValueError if precision == "float64" and not x64 else NotImplementedError
+        message = "Build and run the Simulation" if error is ValueError else "precision other than 'float32'"
+        with pytest.raises(error, match=message):
             sim.compute_waveguide_s_matrix(n_steps=4, normalize=True)
 
 
@@ -105,7 +110,7 @@ def test_core_field_dtype(monkeypatch, normalize, n_modes, expected_runs,
     initialize = uniform_core.init_state
     run = uniform_core.run
     make_step = uniform_core.make_core_step
-    extract_waves = waveguide_port._s_matrix_port_waves
+    extract_waves = _wg_move_waveguide_s._s_matrix_port_waves
     # With x64 on, even explicit float32 frequencies keep extraction at
     # least as wide as main, independently of the core field-storage dtype.
     expected_record = np.dtype(np.float64)
@@ -113,6 +118,10 @@ def test_core_field_dtype(monkeypatch, normalize, n_modes, expected_runs,
 
     def observe_run(*args, **kwargs):
         for cfg in kwargs["waveguide_ports"]:
+            for name in ("ey_profile", "ez_profile", "hy_profile", "hz_profile",
+                         "e_inc_table", "h_inc_table", "u_widths", "v_widths", "aperture_dA"):
+                assert getattr(cfg, name).dtype == np.dtype(
+                    np.float64 if precision == "float64" else np.float32), name
             for name in ("v_probe_t", "v_ref_t", "i_probe_t", "i_ref_t", "v_inc_t"):
                 assert getattr(cfg, name).dtype == expected_record, name
         for monitor in kwargs.get("flux_monitors", ()):
@@ -149,7 +158,7 @@ def test_core_field_dtype(monkeypatch, normalize, n_modes, expected_runs,
     monkeypatch.setattr(uniform_core, "init_state", observe_fields)
     monkeypatch.setattr(uniform_core, "run", observe_run)
     monkeypatch.setattr(uniform_core, "make_core_step", observe_step)
-    monkeypatch.setattr(waveguide_port, "_s_matrix_port_waves", observe_waves)
+    monkeypatch.setattr(_wg_move_waveguide_s, "_s_matrix_port_waves", observe_waves)
     try:
         with enable_x64(True), warnings.catch_warnings():
             warnings.simplefilter("ignore", UserWarning)

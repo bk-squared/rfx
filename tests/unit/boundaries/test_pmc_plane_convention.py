@@ -34,11 +34,14 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SCAN_DIRS = ("validation", "examples")
 
-#: Scripts known to construct a real "pmc" boundary token. Empty since the
-#: cv09 case was removed on 2026-09-21. Update this set -- and add the
+#: Scripts known to construct a real "pmc" boundary token. Empty from the
+#: removal of the cv09 case (2026-09-21) until the TMTT lumped-port gradient
+#: check (parallel-plate line with PMC side walls). Update this set -- and add the
 #: docstring marker to the new script -- the day a PMC-mirror script is
 #: committed.
-EXPECTED_PMC_SCRIPTS: set[str] = set()
+EXPECTED_PMC_SCRIPTS: set[str] = {
+    "validation/tmtt_paper/lumped_port_gradient_check.py",
+}
 
 MARKER = "PMC-plane convention:"
 

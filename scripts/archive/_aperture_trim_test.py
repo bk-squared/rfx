@@ -24,8 +24,9 @@ MU_0 = 4.0 * np.pi * 1e-7
 VARIANT = sys.argv[1] if len(sys.argv) > 1 else "V0_BASELINE"
 
 import rfx.sources.waveguide_port as wg_mod  # noqa: E402
+import rfx.model.waveguide_modes as _wg_move_waveguide_modes
 
-_orig = wg_mod._aperture_dA
+_orig = _wg_move_waveguide_modes._aperture_dA
 
 
 def _v0_baseline(cfg):
@@ -78,7 +79,7 @@ variants = {
     "V3_GHOST_HALF": _v3_ghost_half,
     "V4_TRIM_V_ONLY": _v4_trim_v_only,
 }
-wg_mod._aperture_dA = variants[VARIANT]
+_wg_move_waveguide_modes._aperture_dA = variants[VARIANT]
 print(f"[runner] variant {VARIANT}", flush=True)
 
 from rfx.sources import waveguide_port as wg  # noqa: E402

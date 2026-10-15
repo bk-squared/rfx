@@ -12,14 +12,10 @@ sources, point probes, lumped ports, and dispersive materials
 
 A direct one-device call uses the same ``shard_map`` path on a one-device mesh.
 
-Declared PEC (#1053): a PEC VOLUME is realized here.  ``pec_mask`` is
-sharded with the material arrays and applied in both step bodies after
-source injection and immediately before the E ghost exchange, which is
-``distributed_nu``'s stage 8 at the #1041 ordering.  Declared SHEETS and
-sub-cell WIRES own no cell, this lane has no other carrier for them, and
-they are refused rather than silently dropped. A direct one-device call
-also realizes the PEC mask. ``Simulation.run(devices=...)`` routes here
-only for ``len(devices) > 1``; otherwise it uses the single-device lane.
+Declared PEC volumes, sheets and sub-cell wires share the conductor object's
+edge masks. Each slab applies only owned rows after source injection and
+before E ghost exchange; the high-side slab owns a seam node plane.
+``Simulation.run(devices=...)`` routes here only for ``len(devices) > 1``.
 
 Known limitations (transparent single-device fallback):
 - TFSF plane-wave sources: require full-domain field injection, not
@@ -28,7 +24,6 @@ Known limitations (transparent single-device fallback):
   cross-section on one device.  Detected and warned at runtime.
 - Non-divisible nx: automatically padded to nearest multiple of n_devices
   with PEC-filled cells, then trimmed after gathering.
-- Declared PEC sheets and sub-cell wires: refused (see above).
 
 The public entry point ``run_distributed`` has an identical signature to the
 retired pmap version so callers retain the same entry-point arguments.
@@ -37,13 +32,22 @@ retired pmap version so callers retain the same entry-point arguments.
 from __future__ import annotations
 
 from functools import partial
+from types import SimpleNamespace
+
+from rfx.boundaries.cpml import apply_cpml_e, apply_cpml_h, cpml_grid_metadata
+from rfx.runners._distributed_common import (
+    init_cpml_slabs, cpml_slab_frame, cpml_absorbing_faces, cpml_h_materials,
+)
 
 from rfx.runners._exchange_interval import validate_exchange_interval
 
 from rfx import _realized
+from rfx.stepping.slab import Slab, cut
 
 import jax
 import jax.numpy as jnp
+
+from rfx.core.drives import drive_layout
 from jax import lax
 import numpy as np
 from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
@@ -61,6 +65,7 @@ from rfx.simulation import (
     make_port_source,
 )
 from rfx.sources.sources import LumpedPort, setup_lumped_port
+from rfx.sources.port_drive import PortSourceQueue
 from rfx.materials.debye import DebyeCoeffs, DebyeState
 from rfx.materials.lorentz import LorentzCoeffs, LorentzState
 
@@ -68,7 +73,7 @@ from rfx.materials.lorentz import LorentzCoeffs, LorentzState
 # ``distributed.py`` until its pmap runner was retired; the names this module
 # does not call are still bound here so callers that import them from it keep
 # working.
-from rfx.runners._distributed_common import (
+from rfx.runners._distributed_common import (  # noqa: F401 -- compatibility re-exports
     gather_array_x,
     _split_state,
     _split_materials,
@@ -79,22 +84,19 @@ from rfx.runners._distributed_common import (
     _update_h_local,
     magnetic_low_ghost,
     _update_e_local_with_dispersion,
-    _init_cpml_distributed,
     _distributed_boundary_layers,
-    _apply_cpml_e_distributed,
-    _apply_cpml_h_distributed,
 )
-from rfx.runners._distributed_common import (
+from rfx.runners._distributed_common import (  # noqa: F401 -- compatibility re-exports
     apply_pec_face_shmap,
     apply_pec_mask_shmap,
     apply_pmc_face_shmap,
+    _slab_curl_kwargs,
     exchange_component_shmap,
     exchange_h_yee_shmap,
     exchange_e_yee_shmap,
     inject_sources_shmap,
     sample_probes_shmap,
     shard_stacked,
-    shard_stacked_psi,
     slab_e_component_materials,
     slab_e_materials_shmap,
     stage_dispersion_slabs,
@@ -150,6 +152,9 @@ def _shard_field_state(state: FDTDState, mesh: Mesh) -> FDTDState:
 def _shard_materials(materials: MaterialArrays, mesh: Mesh) -> MaterialArrays:
     from rfx.sources.wire_radius import require_radius_update
     require_radius_update(materials, lane="distributed_v2 material shard", unsupported=True)
+    if materials.sigma_film is not None:
+        raise ValueError("distributed_v2 material shard does not place a lossy film; "
+                         "run_distributed cuts sigma_film through rfx.stepping.slab.cut")
     shd = _x_sharding(mesh)
     return MaterialArrays(
         eps_r=jax.device_put(materials.eps_r, shd),
@@ -195,7 +200,8 @@ _apply_pmc_shmap = apply_pmc_face_shmap
 
 def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
                          mesh, n_devices, ghost=1, materials=None, pad_x=0,
-                         e_slab=None, e_materials=None, separate_x_terms=False, *, ranks):
+                         e_slab=None, e_materials=None,
+                         *, ranks, grid, e_curl_coeff=None, boundary=None):
     """Apply CPML E-field correction using shard_map.
 
     ``materials`` (the x-sharded :class:`MaterialArrays`) is a READ-ONLY
@@ -233,6 +239,7 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
             P("x"), P("x"), P("x"), P("x"),  # ex_zlo/zhi, ey_zlo/zhi
             P("x"),  # materials (read-only, material-aware coefficient)
             P("x"),  # precomputed component means, if supplied
+            P("x"),  # in-loop dispersive curl coefficient; no slab-sized loss
         ),
         out_specs=(
             P("x"), P("x"), P("x"),           # ex, ey, ez
@@ -246,16 +253,13 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
                 psi_ey_xlo, psi_ey_xhi, psi_ez_xlo, psi_ez_xhi,
                 psi_ex_ylo, psi_ex_yhi, psi_ez_ylo, psi_ez_yhi,
                 psi_ex_zlo, psi_ex_zhi, psi_ey_zlo, psi_ey_zhi,
-                mat_slab, means, *, rank):
+                mat_slab, means, curl, *, rank):
         # Reconstruct minimal state and cpml_state objects
         from rfx.core.yee import FDTDState as _FS
         _st = _FS(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz, step=jnp.int32(0))
-        if mat_slab is None:
-            eps_r_slab = None
-        elif means is not None:
-            eps_r_slab = means[0]
-        else:
-            eps_r_slab = slab_e_component_materials(mat_slab, *e_slab, rank=rank)[0]
+        if mat_slab is not None and means is None:
+            means = slab_e_component_materials(mat_slab, *e_slab, rank=rank)
+        eps_r_slab = None if means is None else means[0]
         _cs = cpml_state._replace(
             psi_ey_xlo=psi_ey_xlo, psi_ey_xhi=psi_ey_xhi,
             psi_ez_xlo=psi_ez_xlo, psi_ez_xhi=psi_ez_xhi,
@@ -264,10 +268,14 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
             psi_ex_zlo=psi_ex_zlo, psi_ex_zhi=psi_ex_zhi,
             psi_ey_zlo=psi_ey_zlo, psi_ey_zhi=psi_ey_zhi,
         )
-        new_st, new_cs = _apply_cpml_e_distributed(
-            _st, cpml_params, _cs, n_cpml, dt, dx,
-            n_devices, ghost=ghost, axis_name="x", eps_r=eps_r_slab,
-            pad_x=pad_x, separate_x_terms=separate_x_terms, rank=rank)
+        from rfx.boundaries.electric_coefficient import loss_terms
+        loss = loss_terms(means, dt) if means is not None and curl is None else None
+        new_st, new_cs = apply_cpml_e(
+            _st, cpml_params, _cs, grid, materials=mat_slab,
+            inv_eps_r_update=None if eps_r_slab is None else tuple(1 / e for e in eps_r_slab),
+            e_loss=loss, e_curl_coeff=curl, faces=cpml_absorbing_faces(grid), boundary=boundary,
+            frame=cpml_slab_frame(ex.shape, ghost, pad_x),
+            owned={"x_lo": rank == 0, "x_hi": rank == n_devices - 1})
         return (
             new_st.ex, new_st.ey, new_st.ez,
             new_cs.psi_ey_xlo, new_cs.psi_ey_xhi,
@@ -290,7 +298,7 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
         cpml_state.psi_ez_ylo, cpml_state.psi_ez_yhi,
         cpml_state.psi_ex_zlo, cpml_state.psi_ex_zhi,
         cpml_state.psi_ey_zlo, cpml_state.psi_ey_zhi,
-        materials, e_materials,
+        materials, e_materials, e_curl_coeff,
     )
     new_state = state._replace(ex=ex, ey=ey, ez=ez)
     new_cpml = cpml_state._replace(
@@ -306,7 +314,7 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
 
 def _apply_cpml_h_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
                          mesh, n_devices, ghost=1, mu_r=None, pad_x=0,
-                         separate_x_terms=False, *, ranks):
+                         *, ranks, grid):
     """Apply CPML H-field correction using shard_map.
 
     ``mu_r`` (the x-sharded per-cell relative permeability slab) is a new
@@ -359,10 +367,11 @@ def _apply_cpml_h_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
             psi_hx_zlo=psi_hx_zlo, psi_hx_zhi=psi_hx_zhi,
             psi_hy_zlo=psi_hy_zlo, psi_hy_zhi=psi_hy_zhi,
         )
-        new_st, new_cs = _apply_cpml_h_distributed(
-            _st, cpml_params, _cs, n_cpml, dt, dx,
-            n_devices, ghost=ghost, axis_name="x", mu_r=mu_r_slab,
-            pad_x=pad_x, separate_x_terms=separate_x_terms, rank=rank)
+        new_st, new_cs = apply_cpml_h(
+            _st, cpml_params, _cs, grid,
+            materials=cpml_h_materials(mu_r_slab, rank, ghost),
+            faces=cpml_absorbing_faces(grid), frame=cpml_slab_frame(ex.shape, ghost, pad_x),
+            owned={"x_lo": rank == 0, "x_hi": rank == n_devices - 1})
         return (
             new_st.hx, new_st.hy, new_st.hz,
             new_cs.psi_hy_xlo, new_cs.psi_hy_xhi,
@@ -404,57 +413,8 @@ def _apply_cpml_h_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
 # ---------------------------------------------------------------------------
 
 def _init_cpml_sharded(grid, nx_local, n_devices, mesh):
-    """Initialize CPML params and per-slab state sharded along x.
-
-    Returns ``(cpml_params, cpml_state)`` where all psi arrays in
-    ``cpml_state`` have been placed on the mesh with x-sharding.
-    Their global leading dim is ``n_devices * n_cpml`` (or ``n_devices *
-    nx_local`` for y/z-indexed faces) but each shard sees the per-device
-    slice.
-    """
-    cpml_params, cpml_state_stacked = _init_cpml_distributed(
-        grid, nx_local, n_devices)
-    shd = _x_sharding(mesh)
-
-    def _shard_psi(arr):
-        # arr: (n_devices, n_cpml, d1, d2) — merge device+cpml dims then shard
-        # Re-interpret as (n_devices * n_cpml, d1, d2) so x-sharding distributes
-        # the first axis across devices correctly.  Each device owns n_cpml rows.
-        return shard_stacked_psi(arr, shd)
-
-    def _shard_psi_field(arr):
-        # arr: (n_devices, n_cpml, d1, d2) same as above
-        return _shard_psi(arr)
-
-    # Build sharded CPMLState
-    from rfx.boundaries.cpml import CPMLState
-    cpml_state_sharded = CPMLState(
-        psi_ex_ylo=_shard_psi(cpml_state_stacked.psi_ex_ylo),
-        psi_ex_yhi=_shard_psi(cpml_state_stacked.psi_ex_yhi),
-        psi_ex_zlo=_shard_psi(cpml_state_stacked.psi_ex_zlo),
-        psi_ex_zhi=_shard_psi(cpml_state_stacked.psi_ex_zhi),
-        psi_ey_xlo=_shard_psi(cpml_state_stacked.psi_ey_xlo),
-        psi_ey_xhi=_shard_psi(cpml_state_stacked.psi_ey_xhi),
-        psi_ey_zlo=_shard_psi(cpml_state_stacked.psi_ey_zlo),
-        psi_ey_zhi=_shard_psi(cpml_state_stacked.psi_ey_zhi),
-        psi_ez_xlo=_shard_psi(cpml_state_stacked.psi_ez_xlo),
-        psi_ez_xhi=_shard_psi(cpml_state_stacked.psi_ez_xhi),
-        psi_ez_ylo=_shard_psi(cpml_state_stacked.psi_ez_ylo),
-        psi_ez_yhi=_shard_psi(cpml_state_stacked.psi_ez_yhi),
-        psi_hx_ylo=_shard_psi(cpml_state_stacked.psi_hx_ylo),
-        psi_hx_yhi=_shard_psi(cpml_state_stacked.psi_hx_yhi),
-        psi_hx_zlo=_shard_psi(cpml_state_stacked.psi_hx_zlo),
-        psi_hx_zhi=_shard_psi(cpml_state_stacked.psi_hx_zhi),
-        psi_hy_xlo=_shard_psi(cpml_state_stacked.psi_hy_xlo),
-        psi_hy_xhi=_shard_psi(cpml_state_stacked.psi_hy_xhi),
-        psi_hy_zlo=_shard_psi(cpml_state_stacked.psi_hy_zlo),
-        psi_hy_zhi=_shard_psi(cpml_state_stacked.psi_hy_zhi),
-        psi_hz_xlo=_shard_psi(cpml_state_stacked.psi_hz_xlo),
-        psi_hz_xhi=_shard_psi(cpml_state_stacked.psi_hz_xhi),
-        psi_hz_ylo=_shard_psi(cpml_state_stacked.psi_hz_ylo),
-        psi_hz_yhi=_shard_psi(cpml_state_stacked.psi_hz_yhi),
-    )
-    return cpml_params, cpml_state_sharded
+    """Place the shared kernel's per-rank state directly on the x mesh."""
+    return init_cpml_slabs(grid, nx_local, n_devices, mesh=mesh)
 
 
 # ---------------------------------------------------------------------------
@@ -490,7 +450,36 @@ def refuse_distributed_periodic(sim, *, lane, bloch=None):
         )
 
 
-def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
+def one_device_reason(sim):
+    """Name the feature that needs the full domain on one device."""
+    if sim._tfsf is not None:
+        return "TFSF plane-wave sources"
+    if sim._waveguide_ports:
+        return "waveguide ports"
+    return None
+
+
+def run_on_one_device(sim, run_kwargs, *, reason, requested_devices, diagnostics):
+    """Run the full-domain fallback and record the requested and used devices."""
+    import warnings
+
+    from rfx._diagnostic_transport import result_with_diagnostics
+    from rfx.diagnostic_records import Diagnostic
+
+    message = (
+        f"Distributed runner does not yet support {reason}. "
+        "Falling back to single-device execution with the same arguments."
+    )
+    warnings.warn(message, stacklevel=3)
+    diagnostic = Diagnostic(
+        "distributed.one_device_fallback", "warning", reason, message,
+        {"requested_devices": requested_devices, "devices_used": 1},
+        path="run_distributed",
+    )
+    return result_with_diagnostics(sim.run(**run_kwargs), diagnostics + (diagnostic,))
+
+
+def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostics=()):
     """Refuse what the multi-device lanes would silently drop or get wrong.
 
     Periodic/Bloch boundaries, reference-plane or passive ports, Kerr materials,
@@ -559,14 +548,15 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
 
     msl = getattr(sim, "_msl_ports", None) or ()
     if msl:
-        raise NotImplementedError(
+        from rfx._diagnostic_transport import diagnostic_refusal
+        raise diagnostic_refusal(NotImplementedError(
             f"add_msl_port() port(s) ({len(msl)}): not supported on the {lane} path; "
             "the lane never drives or terminates microstrip ports, so a model fed "
             "only by them returns a zero field, with no warning "
             "(rfx.runners.distributed_v2.run_distributed / "
             "rfx.runners.distributed.run_distributed have no MSL port update). "
             f"Remove the MSL ports, or {single_device_hint}."
-        )
+        ), diagnostics)
 
     if getattr(sim, "_refinement", None) is not None:
         raise NotImplementedError(
@@ -596,8 +586,8 @@ def refuse_unsupported_distributed_features(sim, *, lane, bloch=None):
         )
 
 
-def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
-                    _source_port_indices=None, _record_probes=None, **kwargs):
+def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_interval=1,
+                    _source_port_indices=None, _record_probes=None, preflight=None, assembly=None, **kwargs):
     """Run FDTD simulation distributed across multiple devices.
 
     Uses 1D slab decomposition along the x-axis.  Supports PEC and
@@ -629,13 +619,13 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     -------
     Result
     """
+    from rfx._diagnostic_transport import merge_diagnostics, report_diagnostics, result_with_diagnostics
+    diagnostics = merge_diagnostics(diagnostics, report_diagnostics(assembly))
     validate_exchange_interval(exchange_interval)
     from rfx.sources.tfsf import _refuse_extended_tfsf
     _refuse_extended_tfsf(sim._tfsf, "the distributed runner")
     from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
     _refuse_f0(sim._thin_conductors, "distributed (v2) runner")
-    import warnings
-
     if sim._boundary == "upml":
         raise ValueError("boundary='upml' does not support distributed execution")
 
@@ -643,24 +633,29 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # Graceful fallback for features that require the full domain on a
     # single device.
     # ------------------------------------------------------------------
-    if sim._tfsf is not None:
-        warnings.warn(
-            "Distributed runner does not yet support TFSF plane-wave "
-            "sources. Falling back to single-device execution.",
-            stacklevel=2,
+    reason = one_device_reason(sim)
+    if reason is not None:
+        if _source_port_indices is not None or _record_probes is not None or kwargs:
+            raise NotImplementedError(
+                f"Distributed runner does not yet support {reason}; "
+                "the one-device run cannot honour those arguments "
+                "(_source_port_indices, _record_probes, or keyword arguments)."
+            )
+        # The nested run builds its own solve product; release the one
+        # built for this call's preflight first.
+        assembly = None
+        return run_on_one_device(
+            sim, {"n_steps": n_steps}, reason=reason,
+            requested_devices=len(jax.devices() if devices is None else devices),
+            diagnostics=diagnostics,
         )
-        return sim.run(n_steps=n_steps)
-
-    if sim._waveguide_ports:
-        warnings.warn(
-            "Distributed runner does not yet support waveguide ports. "
-            "Falling back to single-device execution.",
-            stacklevel=2,
-        )
-        return sim.run(n_steps=n_steps)
 
     refuse_unsupported_distributed_features(
-        sim, lane="distributed (v2) runner", bloch=kwargs.get("bloch"))
+        sim,
+        lane="distributed (v2) runner",
+        bloch=kwargs.get("bloch"),
+        diagnostics=diagnostics,
+    )
 
     # Only now, past the single-device fallbacks above: those return through
     # ``sim.run()``, which DOES accumulate the monitor.
@@ -695,6 +690,10 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         else ()
     )
 
+    from rfx.core.yee import CurlBoundary
+    curl_boundary = (CurlBoundary(_pec_faces_frozen, _pmc_faces_frozen, sim._periodic_flags())
+                     if _pmc_faces_frozen else None)
+
     # One device runs the same shard_map path on a one-device mesh (#1296).
     # Until #1296 this call was handed to the pmap runner, which dropped the
     # declared-PEC cell mask and so refused a PEC volume at one device that
@@ -708,89 +707,42 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         raise NotImplementedError(
             "distributed_v2 is a uniform-grid runner; use sim.run(devices=...) "
             "for a non-uniform grid (shared distributed NU staging).")
-    # Declared PEC on this lane, after #1053: VOLUMES are realized, SHEETS
-    # and WIRES are not.
-    #
-    # A volume is carried as ``pec_mask``, which #1053 legs 1-2 shard next
-    # to the material arrays and apply in both step bodies through
-    # ``apply_pec_mask_shmap`` — after source injection and the domain
-    # faces, immediately before the E ghost exchange, i.e. distributed_nu's
-    # stage 8 at the #1041 ordering. Gated end-to-end against the
-    # single-device lane by tests/unit/runners/
-    # test_distributed_v2_pec_body_seam.py (three bodies; seam-face body
-    # 3.074e-05 relative against a 1e-3 gate, 3.203e-01 with the stage one
-    # step late).
-    #
-    # A sheet and a sub-cell wire own no cell, so the mask carries neither.
-    # Nothing else on this lane does either: the step body's only other PEC
-    # is the DOMAIN FACE (``_apply_pec_shmap``). Declaring one here would
-    # put metal in the model that is absent from every rank with no sign of
-    # it, so both are still refused.
-    #
-    # The pre-#1053 refusal covered volumes too, because the mask was
-    # assembled and then dropped (measured then: a two-device run probing
-    # inside a declared PEC Box returned a trace bit-identical to the same
-    # model with the Box deleted). It also had to warn that redrawing a
-    # sheet as a volume did NOT help. Both statements are now false here.
-    # Those limitations also applied to the now-retired pmap runner.
-    # run()'s preflight memoizes the production assembly -- whole-domain
-    # materials and realized conductor masks -- on Simulation
-    # (rfx/preflight/realization.py::_campaign_ctx). Only preflight reads it,
-    # and its checks are done; drop it before this lane assembles its own
-    # copy, so neither copy is on the device when the slabs are staged and
-    # the time loop runs. A later preflight rebuilds it from the same key.
+    # Drop any standalone diagnostic arrays before allocating solve products.
     sim._pf_campaign_ctx = None
+    sim._realized_geometry_record = None
+    from rfx.model.conductors import assembled_materials, solve_conductors, kernel_conductors, at_kernel
     _d_pec_sheets: list = []
     _d_pec_wires: list = []
     _geometry_masks, _assembly_entries = [], []
-    grid = sim._build_grid()
+    if assembly is None:
+        grid = sim._build_grid()
+        conductors = solve_conductors(sim, grid)
+        if preflight is not None:
+            diagnostics = merge_diagnostics(
+                diagnostics, report_diagnostics(sim._auto_preflight(conductors=conductors, **preflight))
+            )
+    else:
+        conductors = assembly.take()
+        grid = conductors.grid
     base_materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, *_assembly_rest = (
-        sim._assemble_materials(grid, pec_sheets=_d_pec_sheets,
+        assembled_materials(conductors, pec_sheets=_d_pec_sheets,
                                 pec_wires=_d_pec_wires,
                                    geometry_masks=_geometry_masks, assembly_entries=_assembly_entries)
     )
     # The rest (Kerr chi3 among it, refused above) is unused on this lane;
     # drop it now so no whole-domain array stays alive through the loop.
     del _assembly_rest
-    from rfx.realized_geometry import record_from_assembly
-    geometry_record = record_from_assembly(
-        sim, grid, base_materials, pec_mask, _d_pec_sheets, _d_pec_wires,
-        _geometry_masks, _assembly_entries, lane="run_distributed")
+    conductors = kernel_conductors(sim, grid, base_materials, pec_mask,
+        _d_pec_sheets, _d_pec_wires, periodic=sim._periodic_flags(), root=conductors)
     del _geometry_masks, _assembly_entries
     from rfx.sources.wire_radius import require_radius_update
     require_radius_update(base_materials, lane="distributed_v2", unsupported=True)
-    if _d_pec_sheets or _d_pec_wires:
-        _d_declared = []
-        if _d_pec_sheets:
-            _d_declared.append(f"{len(_d_pec_sheets)} PEC sheet(s)")
-        if _d_pec_wires:
-            _d_declared.append(f"{len(_d_pec_wires)} sub-cell wire(s)")
-        raise NotImplementedError(
-            "run_distributed_v2() does not realize declared PEC SHEETS or "
-            "sub-cell WIRES: this lane carries geometry PEC only as a cell "
-            "mask, and a sheet or a wire owns no cell to begin with, so it "
-            "would be absent from every rank with no sign of it. Declared "
-            f"here: {', '.join(_d_declared)}. A declared PEC VOLUME is a "
-            "different case and DOES run here: since #1053 this lane shards "
-            "pec_mask and applies it in both step bodies, at the #1041 "
-            "ordering. So redrawing a sheet as a volume does realize metal "
-            "on this lane — but a volume is not the same object as a sheet "
-            "(it shorts the normal E edge between its two faces, #690), so "
-            "redraw only if that is the conductor you meant. Otherwise use "
-            "sim.run() without devices=, which realizes all three, or model "
-            "the conductor as a sigma fill, which rides in the material "
-            "arrays this lane does shard.")
     # Every declared input this lane does not carry is refused here, after
     # the single-device fallbacks (judged on the lane they fall back to) and
     # the specific refusals above, and before the first step.
     from rfx.runners._admission import admit
     admit(sim, "run_distributed", run_args={"conformal_pec": kwargs.get("conformal_pec")})
     materials = base_materials
-    wire_edges = None
-    if any(pe.extent is not None for pe in sim._ports):
-        from rfx.boundaries.pec import realized_pec_edge_masks
-        if pec_mask is not None:
-            wire_edges = realized_pec_edge_masks(pec_mask, periodic=sim._periodic_flags())
 
     _distributed_boundary_layers(
         grid, n_devices,
@@ -800,41 +752,9 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         cpml_layers=grid.cpml_layers if sim._boundary == "cpml" else 0,
     )
     nx, ny, nz = grid.shape
-    # Pad nx to nearest multiple of n_devices (PEC-filled padding cells)
-    pad_x = 0
-    if nx % n_devices != 0:
-        pad_x = n_devices - (nx % n_devices)
-    nx_padded = nx + pad_x
-
-    if pad_x > 0:
-        _pad_x = ((0, pad_x), (0, 0), (0, 0))
-        materials = MaterialArrays(
-            eps_r=jnp.pad(materials.eps_r, _pad_x, constant_values=1.0),
-            sigma=jnp.pad(materials.sigma, _pad_x, constant_values=0.0),
-            mu_r=jnp.pad(materials.mu_r, _pad_x, constant_values=1.0),
-            # #1236: the lumped records ride along (a pad cell holds none),
-            # so the slab update can keep each stamp on its own component.
-            sigma_lumped=map_lumped(
-                materials.sigma_lumped,
-                lambda a: jnp.pad(a, _pad_x, constant_values=0.0)),
-            eps_r_lumped=map_lumped(
-                materials.eps_r_lumped,
-                lambda a: jnp.pad(a, _pad_x, constant_values=0.0)),
-        )
-        if pec_mask is not None:
-            pec_mask = jnp.pad(pec_mask, _pad_x, constant_values=True)
-        if debye_spec is not None:
-            d_poles, d_masks = debye_spec
-            d_masks = [jnp.pad(m, _pad_x, constant_values=False) for m in d_masks]
-            debye_spec = (d_poles, d_masks)
-        if lorentz_spec is not None:
-            l_poles, l_masks = lorentz_spec
-            l_masks = [jnp.pad(m, _pad_x, constant_values=False) for m in l_masks]
-            lorentz_spec = (l_poles, l_masks)
-
-    nx_per = nx_padded // n_devices
-    ghost = 1
-    nx_local = nx_per + 2 * ghost
+    layout = Slab(nx, n_devices)
+    pad_x = layout.pad_x
+    nx_per, ghost, nx_local = layout.nx_per_rank, layout.ghost_width, layout.nx_local
 
     use_cpml = sim._boundary == "cpml" and grid.cpml_layers > 0
     n_cpml = grid.cpml_layers if use_cpml else 0
@@ -850,10 +770,14 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # ------------------------------------------------------------------
     # Build sources and probes
     # ------------------------------------------------------------------
-    sources = []
+    sources = PortSourceQueue()
     probes = []
     port_idx = -1
-    for pe in sim._ports:
+    wire_edges = None
+    from rfx.model.conductors import lumped_port_stage, publish_port_release
+    for _port_index, pe in enumerate(sim._ports):
+        if pe.component not in ("ex", "ey", "ez"):
+            raise ValueError(f"distributed_v2: unsupported source component {pe.component}")
         if pe.impedance > 0.0 and pe.extent is None:
             port_idx += 1
             lp = LumpedPort(
@@ -861,27 +785,34 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                 impedance=pe.impedance, excitation=pe.waveform,
             )
             materials = setup_lumped_port(grid, lp, materials)
+            conductors = lumped_port_stage(conductors, pe, f"port[{_port_index}]")
             if _source_port_indices is None or port_idx in _source_port_indices:
-                sources.append(make_port_source(grid, lp, materials, n_steps))
+                sources.defer(make_port_source, grid, lp, n_steps=n_steps)
         elif pe.impedance > 0.0 and pe.extent is not None:
             from rfx.sources.sources import wire_port_from_entry, setup_wire_port
             from rfx.simulation import make_wire_port_sources
             port_idx += 1
             wp = wire_port_from_entry(pe)
+            wire_edges = conductors.pec_edges
+            from rfx.sources.sources import _wire_port_live_cells
+            cells, live, _ = _wire_port_live_cells(grid, wp, wire_edges)
+            conductors = publish_port_release(conductors, [c for c, on in zip(cells, live) if on],
+                component=pe.component, entity_id=f"port[{_port_index}]", kind="wire")
             materials = setup_wire_port(grid, wp, materials, pec_edge_masks=wire_edges)
             if _source_port_indices is None or port_idx in _source_port_indices:
-                sources.extend(make_wire_port_sources(
-                    grid, wp, materials, n_steps, pec_edge_masks=wire_edges))
+                sources.defer(make_wire_port_sources,
+                              grid, wp, n_steps=n_steps, pec_edge_masks=wire_edges)
         elif pe.impedance == 0.0:
+            # Deferred like the ports: a load declared after this source is
+            # on the edge before the drive reads it.
             if sim._boundary == "cpml":
-                sources.append(make_j_source(grid, pe.position, pe.component,
-                                             pe.waveform, n_steps, materials,
-                                             amplitude_kind=pe.amplitude_kind))
+                sources.defer(make_j_source, grid, pe.position, pe.component,
+                              pe.waveform, n_steps,
+                              amplitude_kind=pe.amplitude_kind)
             else:
-                sources.append(make_source(grid, pe.position, pe.component,
-                                           pe.waveform, n_steps,
-                                           materials=materials,
-                                           amplitude_kind=pe.amplitude_kind))
+                sources.defer(make_source, grid, pe.position, pe.component,
+                              pe.waveform, n_steps,
+                              amplitude_kind=pe.amplitude_kind)
     if _record_probes is None:
         for pe in sim._probes:
             probes.append(make_probe(grid, pe.position, pe.component))
@@ -889,22 +820,31 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         # Global cells enter the ordinary owner mapping below independently.
         probes.extend(_record_probes)
 
-    del wire_edges
+    # All port loads must be present before any drive reads its E operands.
+    # No whole-domain realization here: the slab kernels form their own edge
+    # means, so the drive reads the four cells around its edge directly (this
+    # path refuses periodic axes); M3 gives the slab kernel the realized rule.
+    # A dispersive edge's drive needs the ADE update's coefficient, as on one
+    # device (#1524); the pole terms are read edge by edge from the specs.
+    from rfx.model.source_coefficients import dispersive_drive_model
+    drive_materials = dispersive_drive_model(materials, debye_spec, lorentz_spec, stability_grid=grid)
+    sources = sources.resolve(drive_materials)
+    del wire_edges, drive_materials
 
     # Map source/probe global indices to (device_id, local_index)
     src_device_ids = []
     src_local_specs = []
     for s in sources:
-        dev_id = s.i // nx_per
-        local_i = (s.i % nx_per) + ghost
+        dev_id = layout.owner(s.i)
+        local_i = layout.local_index(s.i)
         src_device_ids.append(dev_id)
         src_local_specs.append((local_i, s.j, s.k, s.component))
 
     prb_device_ids = []
     prb_local_specs = []
     for p in probes:
-        dev_id = p.i // nx_per
-        local_i = (p.i % nx_per) + ghost
+        dev_id = layout.owner(p.i)
+        local_i = layout.local_index(p.i)
         prb_device_ids.append(dev_id)
         prb_local_specs.append((local_i, p.j, p.k, p.component))
 
@@ -917,28 +857,13 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         src_waveforms = jnp.zeros((n_steps, 0), dtype=jnp.float32)
 
     # ------------------------------------------------------------------
+    conductors, geometry_record = at_kernel(sim, conductors, lane="run_distributed", pec_edges=conductors.pec_edges)
+    pec_edges = conductors.pec_edges
+    del conductors, base_materials
     # Create state directly on its owning devices and stage materials one
     # addressable slab at a time, without whole-domain slab stacks.
     # ------------------------------------------------------------------
-    from rfx.runners._distributed_common import shard_x_slabs
 
-    # #1053 leg 1: carry the realized-PEC cell mask into the sharded world.
-    # ``pec_mask`` is the full-domain primal-cell occupancy of every declared
-    # PEC VOLUME, already padded to ``nx_padded`` above (with ``True``, the
-    # high-x alignment convention ``shard_pec_mask_x_slab`` also uses). Until
-    # now this lane built it and dropped it on the floor.
-    #
-    # ``pad_value=False`` fills the PHYSICAL-boundary ghost rows -- device 0's
-    # left ghost and device N-1's right ghost. It must be False and not True:
-    # a True there puts a spurious PEC wall on the whole x_lo / x_hi node
-    # plane of the outer ranks and shorts a CPML face (#689/#931, recorded at
-    # distributed_nu.py:538-547). Interior ghost rows get the seam
-    # neighbour's real value from the slicing, which is what lets a rank's
-    # first/last real cell see its true x neighbour under the four-incident-
-    # cell rule.
-    #
-    # The direct sharder preserves the same ghost and alignment convention
-    # as split_array_x + shard_stacked, including False boundary mask ghosts.
     shd = _x_sharding(mesh)
     rep = _rep_sharding(mesh)
 
@@ -950,17 +875,14 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     )
 
     sharded_materials = MaterialArrays(
-        eps_r=shard_x_slabs(materials.eps_r, n_devices, nx_per, ghost, 1.0, shd),
-        sigma=shard_x_slabs(materials.sigma, n_devices, nx_per, ghost, 0.0, shd),
-        mu_r=shard_x_slabs(materials.mu_r, n_devices, nx_per, ghost, 1.0, shd),
+        eps_r=cut(materials.eps_r, layout, "eps_r", mesh=mesh),
+        sigma=cut(materials.sigma, layout, "sigma", mesh=mesh),
+        mu_r=cut(materials.mu_r, layout, "mu_r", mesh=mesh),
         # #1236: a lumped element loads its own E edge only; the slab update
         # needs the per-component record for that (None when no stamp).
-        sigma_lumped=map_lumped(
-            materials.sigma_lumped,
-            lambda a: shard_x_slabs(a, n_devices, nx_per, ghost, 0.0, shd)),
-        eps_r_lumped=map_lumped(
-            materials.eps_r_lumped,
-            lambda a: shard_x_slabs(a, n_devices, nx_per, ghost, 0.0, shd)),
+        sigma_film=cut(materials.sigma_film, layout, "lumped", mesh=mesh),
+        sigma_lumped=cut(materials.sigma_lumped, layout, "lumped", mesh=mesh),
+        eps_r_lumped=cut(materials.eps_r_lumped, layout, "lumped", mesh=mesh),
     )
 
     # #1053 leg 1. ``None`` whenever the model declares no PEC volume. The
@@ -969,34 +891,22 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # ``run_distributed``'s ``**kwargs``: that bag is read only for ``bloch``
     # and otherwise discarded (it was forwarded only to the pmap runner at one
     # device, until #1296).
-    sharded_pec_mask = (
-        None if pec_mask is None
-        else shard_x_slabs(pec_mask, n_devices, nx_per, ghost, False, shd))
+    # Alignment rows are still PEC; ghosts are still excluded by the kernel.
+    sharded_pec_mask = cut(pec_edges, layout, "pec_edge", mesh=mesh)
+    del pec_edges
 
     # ------------------------------------------------------------------
     # Dispersive materials
     # ------------------------------------------------------------------
     has_debye = debye_spec is not None
     has_lorentz = lorentz_spec is not None
-    e_wall_faces = _pec_faces_frozen
-    if has_debye or has_lorentz:
-        from rfx.boundaries.pec import resolve_wall_faces
-
-        # ADE runs need the single-device PEC backing on the absorber's
-        # outer node planes too. Keep this separate from the declared walls
-        # that determine the CPML profiles and their required slab depth.
-        e_wall_faces, _ = resolve_wall_faces(grid, (False, False, False))
+    from rfx.boundaries.depths import distributed_electric_walls
+    e_wall_faces = distributed_electric_walls(grid) - _pmc_faces_frozen
     debye, lorentz = stage_dispersion_slabs(
         materials, grid.dt, debye_spec, lorentz_spec,
         n_devices, nx_per, ghost, shd, nx=nx)
-    del base_materials, materials, pec_mask, pec_shapes
+    del materials, pec_mask, pec_shapes
     del debye_spec, lorentz_spec
-    if pad_x > 0:
-        if has_debye:
-            del d_poles, d_masks
-        if has_lorentz:
-            del l_poles, l_masks
-
     if has_debye:
         debye_coeffs_sharded, debye_state_sharded = debye
     else:
@@ -1048,24 +958,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         cpml_params, cpml_state_sharded = _init_cpml_sharded(
             grid, nx_local, n_devices, mesh)
     else:
-        from rfx.boundaries.cpml import CPMLState
-        _total_x = n_devices * nx_local
-        _z = jax.device_put(
-            jnp.zeros((_total_x, 1, 1), dtype=jnp.float32), shd)
-        cpml_state_sharded = CPMLState(
-            psi_ex_ylo=_z, psi_ex_yhi=_z,
-            psi_ex_zlo=_z, psi_ex_zhi=_z,
-            psi_ey_xlo=_z, psi_ey_xhi=_z,
-            psi_ey_zlo=_z, psi_ey_zhi=_z,
-            psi_ez_xlo=_z, psi_ez_xhi=_z,
-            psi_ez_ylo=_z, psi_ez_yhi=_z,
-            psi_hx_ylo=_z, psi_hx_yhi=_z,
-            psi_hx_zlo=_z, psi_hx_zhi=_z,
-            psi_hy_xlo=_z, psi_hy_xhi=_z,
-            psi_hy_zlo=_z, psi_hy_zhi=_z,
-            psi_hz_xlo=_z, psi_hz_xhi=_z,
-            psi_hz_ylo=_z, psi_hz_yhi=_z,
-        )
+        _, cpml_state_sharded = init_cpml_slabs(grid, nx_local, n_devices, mesh=mesh)
         cpml_params = None
 
     # ------------------------------------------------------------------
@@ -1100,10 +993,14 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
 
     def _inject_sources_shmap(st, src_vals_step, *, ranks):
         """Inject sources on their owning device using shard_map."""
+        # Construct host constants while tracing: the outer scan closes over
+        # Python metadata only, never concrete device or NumPy arrays.
+        source_drives = drive_layout(src_local_specs, src_vals_step.dtype,
+                                     electric_only_path="distributed_v2")
         return inject_sources_shmap(
             st, src_vals_step, mesh, n_src,
             src_local_specs, src_device_ids,
-            ranks=ranks)
+            ranks=ranks, drives=source_drives)
 
     def _sample_probes_shmap(st, *, ranks):
         """Keep masked samples local until the scan has finished."""
@@ -1154,7 +1051,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                 P(),                     # step
                 P("x"), P("x"), P("x"),  # eps_r, sigma, mu_r
                 # #1236 lumped records: None or (x, y, z) of arrays / None
-                P("x"), P("x"),
+                P("x"), P("x"), P("x"),
                 P("x"),  # shared component means
                 # debye coeffs
                 P("x"), P("x"), P("x"), P("x"), P("x"),
@@ -1170,17 +1067,19 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                 P("x"), P("x"), P("x"),        # new debye px, py, pz
                 P("x"), P("x"), P("x"),        # new lorentz px, py, pz
                 P("x"), P("x"), P("x"),        # new lorentz px_prev, py_prev, pz_prev
+                P("x"),                         # in-loop dispersive curl coefficient
             ),
             check_rep=False,
         )
         def _e(ex, ey, ez, hx, hy, hz, step,
-               eps_r, sigma, mu_r, sigma_lumped, eps_r_lumped, means,
+               eps_r, sigma, mu_r, sigma_lumped, eps_r_lumped, sigma_film, means,
                d_ca, d_cb, d_cc, d_alpha, d_beta,
                d_px, d_py, d_pz,
                l_ca, l_cb, l_cc, l_a, l_b, l_c,
                l_px, l_py, l_pz, l_px_prev, l_py_prev, l_pz_prev, *, rank):
             _st = FDTDState(ex=ex, ey=ey, ez=ez, hx=hx, hy=hy, hz=hz, step=step)
             _mat = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=mu_r,
+                                  sigma_film=sigma_film,
                                   sigma_lumped=sigma_lumped,
                                   eps_r_lumped=eps_r_lumped)
             _db = (DebyeCoeffs(ca=d_ca, cb=d_cb, cc=d_cc, alpha=d_alpha, beta=d_beta),
@@ -1189,9 +1088,11 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                    LorentzState(px=l_px, py=l_py, pz=l_pz,
                                 px_prev=l_px_prev, py_prev=l_py_prev, pz_prev=l_pz_prev)) \
                    if has_lorentz else None
-            new_st, new_db, new_lr = _update_e_local_with_dispersion(
+            from rfx.stepping.absorber import local_e_with_absorber
+            new_st, new_db, new_lr, absorber = local_e_with_absorber(
                 _st, _mat, dt, dx, debye=_db, lorentz=_lr,
-                slab=(nx_per, nx), e_materials=means, rank=rank)
+                slab=(nx_per, nx), e_materials=means, rank=rank,
+                **_slab_curl_kwargs(curl_boundary, hx.shape, ghost, pad_x, rank, n_devices))
             # Unpack debye
             if new_db is not None:
                 nd_px, nd_py, nd_pz = new_db.px, new_db.py, new_db.pz
@@ -1207,14 +1108,14 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             return (new_st.ex, new_st.ey, new_st.ez, new_st.step,
                     nd_px, nd_py, nd_pz,
                     nl_px, nl_py, nl_pz,
-                    nl_pxp, nl_pyp, nl_pzp)
+                    nl_pxp, nl_pyp, nl_pzp, absorber)
 
         (ex, ey, ez, step,
          nd_px, nd_py, nd_pz,
          nl_px, nl_py, nl_pz,
-         nl_pxp, nl_pyp, nl_pzp) = _e(
+         nl_pxp, nl_pyp, nl_pzp, absorber) = _e(
             ranks, st.ex, st.ey, st.ez, st.hx, st.hy, st.hz, st.step,
-            mat.eps_r, mat.sigma, mat.mu_r, mat.sigma_lumped, mat.eps_r_lumped, e_materials,
+            mat.eps_r, mat.sigma, mat.mu_r, mat.sigma_lumped, mat.eps_r_lumped, mat.sigma_film, e_materials,
             db_coeffs.ca, db_coeffs.cb, db_coeffs.cc, db_coeffs.alpha, db_coeffs.beta,
             db_st.px, db_st.py, db_st.pz,
             lr_coeffs.ca, lr_coeffs.cb, lr_coeffs.cc, lr_coeffs.a, lr_coeffs.b, lr_coeffs.c,
@@ -1225,7 +1126,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         new_lr_st = lr_st._replace(
             px=nl_px, py=nl_py, pz=nl_pz,
             px_prev=nl_pxp, py_prev=nl_pyp, pz_prev=nl_pzp)
-        return new_st, new_db_st, new_lr_st
+        return new_st, new_db_st, new_lr_st, absorber
 
     ntff_box = None
     ntff_layout = None
@@ -1239,6 +1140,20 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # ------------------------------------------------------------------
     # Step function (operates on sharded arrays)
     # ------------------------------------------------------------------
+
+    cpml_grid = cpml_grid_metadata(grid)
+    cpml_spacings = {}
+    magnetic_cpml_spacings = {}
+    if use_cpml:
+        # Face widths are static grid data; only array leaves enter the jit.
+        cpml_spacings = {name: float(getattr(cpml_params, name)) for name in (
+            "dx_x_lo", "dx_x_hi", "dx_y_lo", "dx_y_hi", "dz_lo", "dz_hi")}
+        cpml_params = cpml_params._replace(**dict.fromkeys(cpml_spacings))
+        if cpml_params.magnetic is not None:
+            magnetic_cpml_spacings = {
+                name: float(getattr(cpml_params.magnetic, name)) for name in cpml_spacings}
+            cpml_params = cpml_params._replace(magnetic=cpml_params.magnetic._replace(
+                **dict.fromkeys(magnetic_cpml_spacings)))
 
     def step_fn_cpml(
         carry, xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
@@ -1256,13 +1171,16 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         ghost row is always a copy of the owner's FINISHED real row -- a
         row the realized-PEC mask stage has already zeroed where the
         geometry says metal (#1053). This is ``distributed_nu.py``'s order
-        since ``ac782d4f`` (#931 T3) and
-        the mirror of the H half, which applies the PMC face before the H
-        exchange "so the zero propagates via the exchange". Until #1041
+        since ``ac782d4f`` (#931 T3). The PMC image canonicalizes only
+        the global high H ghost, which no exchange sends. Until #1041
         this body exchanged BEFORE injecting, which lagged a seam-cell
         source by one step in the neighbour's copy -- see the comment on
         stage 7 for the measurement that moved it.
         """
+        cpml_params_arg = cpml_params_arg._replace(**cpml_spacings)
+        if magnetic_cpml_spacings:
+            cpml_params_arg = cpml_params_arg._replace(
+                magnetic=cpml_params_arg.magnetic._replace(**magnetic_cpml_spacings))
         _step_idx, src_vals = xs
         st = carry["fdtd"]
         cpml_st = carry["cpml"]
@@ -1276,19 +1194,17 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         st, cpml_st = _apply_cpml_h_shmap(
             st, cpml_params_arg, cpml_st, n_cpml, dt, dx,
             mesh, n_devices, ghost=ghost, mu_r=materials_arg.mu_r,
-            pad_x=pad_x, separate_x_terms=has_debye or has_lorentz, ranks=ranks)
+            pad_x=pad_x, ranks=ranks, grid=cpml_grid)
 
         # 3. Exchange the live H ghosts (entry validates interval == 1)
         st = _exchange(_exchange_h_ghosts_shmap, ("hx", "hy", "hz"), st, _step_idx, ranks=ranks)
 
-        # 3b. PMC face (H-tangential = 0) — T8, 2026-04. H-half hook per
-        #     OQ9: after H ghost exchange, before E update. PMC must
-        #     fire before the next E-update reads H via curl.
+        # Canonicalize PMC high ghosts after the final H update/correction.
         st = _apply_pmc_shmap(
             st, mesh, n_devices, nx_local, _pmc_faces_frozen, pad_x=pad_x, ranks=ranks)
 
         # 4. E update
-        st, db_st, lr_st = _update_e_shmap(
+        st, db_st, lr_st, absorber = _update_e_shmap(
             st, materials_arg,
             debye_coeffs_arg, db_st,
             lorentz_coeffs_arg, lr_st, e_materials, ranks=ranks)
@@ -1300,22 +1216,20 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
             mesh, n_devices, ghost=ghost, materials=materials_arg,
             pad_x=pad_x,
             e_slab=(nx_per, nx), e_materials=e_materials,
-            separate_x_terms=has_debye or has_lorentz, ranks=ranks)
+            ranks=ranks, grid=cpml_grid,
+            e_curl_coeff=absorber, boundary=curl_boundary)
 
         st = _inject_sources_shmap(st, src_vals, ranks=ranks)
 
-        # A mixed wall/absorber box still enforces its declared electric walls.
+        # Every electric face: the declared walls and the conducting plane behind each absorbing face.
         st = _apply_pec_shmap(
             st, mesh, n_devices, nx_local, pad_x=pad_x,
             pec_faces=e_wall_faces, ranks=ranks)
 
-        # 6b. Realized-PEC cell mask (#1053). Geometry PEC is distinct from
-        #     the declared domain faces above. Each rank realizes the
-        #     per-component edge masks on its own slab by calling the one
-        #     owner, rfx.boundaries.pec.realized_pec_edge_masks, and zeroes
-        #     only its REAL cells; the ghost rows are forced False inside the
-        #     kernel so a seam cell is zeroed exactly once, by the rank that
-        #     owns it.
+        # 6b. Realized conductor edges, distinct from domain walls. The
+        #     global object already applied the shared PEC rule. Each rank
+        #     zeros only owned rows; the kernel excludes ghosts so a seam
+        #     edge is zeroed once and exchanged from its owner.
         #
         #     POSITION IS LOAD-BEARING: after injection, immediately BEFORE
         #     the E ghost exchange. The exchange then hands the neighbour a
@@ -1397,22 +1311,19 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         # 2. Exchange H ghost cells
         st = _exchange(_exchange_h_ghosts_shmap, ("hx", "hy", "hz"), st, _step_idx, ranks=ranks)
 
-        # 2b. PMC face (H-tangential = 0) — T8, 2026-04. H-half hook per
-        #     OQ9: after H ghost exchange, before E update.
+        # Canonicalize PMC high ghosts after the final H update/correction.
         st = _apply_pmc_shmap(
             st, mesh, n_devices, nx_local, _pmc_faces_frozen, pad_x=pad_x, ranks=ranks)
 
         # 3. E update
-        st, db_st, lr_st = _update_e_shmap(
+        st, db_st, lr_st, absorber = _update_e_shmap(
             st, materials_arg,
             debye_coeffs_arg, db_st,
             lorentz_coeffs_arg, lr_st, e_materials, ranks=ranks)
 
         st = _inject_sources_shmap(st, src_vals, ranks=ranks)
 
-        # 5. PEC boundaries (domain faces only; a declared PEC VOLUME is
-        #    realized at stage 5b below, and declared sheets/wires are
-        #    refused -- see the NotImplementedError in run_distributed).
+        # 5. PEC boundaries (domain faces only; conductor edges follow).
         #    Injection runs BEFORE the face, matching distributed_nu stage 7.
         #    The two lanes therefore both differ from the single-device lane,
         #    which applies the faces before its soft-source loop; the
@@ -1421,7 +1332,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         #    is injected. #1041 measured no such fixture and did not change
         #    it -- a source on a PEC face is its own question.
         st = _apply_pec_shmap(
-            st, mesh, n_devices, nx_local, pad_x=pad_x, ranks=ranks)
+            st, mesh, n_devices, nx_local, pad_x=pad_x, pec_faces=e_wall_faces, ranks=ranks)
 
         # 5b. Realized-PEC cell mask (#1053), AFTER the domain faces and
         #     immediately before the E ghost exchange -- distributed_nu's
@@ -1466,8 +1377,8 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
     # ------------------------------------------------------------------
     step_indices = jnp.arange(n_steps, dtype=jnp.int32)
     # src_waveforms shape: (n_steps, n_sources) — replicated, not sharded
-    src_waveforms_rep = jax.device_put(src_waveforms, rep)
-    xs = (step_indices, src_waveforms_rep)
+    xs = (step_indices, jax.device_put(src_waveforms, rep))
+    from rfx.model.source_coefficients import slab_drive_table
 
     # ------------------------------------------------------------------
     # Run with jit + lax.scan
@@ -1499,7 +1410,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                     ranks=ranks,
                 ),
                 carry,
-                scan_xs,
+                slab_drive_table(scan_xs, mesh, src_device_ids, src_local_specs, ranks=ranks),
             )
 
             # Each probe has exactly one owner; all other contributions are
@@ -1539,7 +1450,7 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
                     ranks=ranks,
                 ),
                 carry,
-                scan_xs,
+                slab_drive_table(scan_xs, mesh, src_device_ids, src_local_specs, ranks=ranks),
             )
 
             # Each probe has exactly one owner; all other contributions are
@@ -1614,8 +1525,10 @@ def run_distributed(sim, *, n_steps, devices=None, exchange_interval=1,
         ntff_data = ntff_layout.assemble(buffer)
 
     return Result(
+        diagnostics=diagnostics,
         realized_geometry=geometry_record,
-        ntff_data=ntff_data, ntff_box=ntff_box,
+        ntff_data=ntff_data,
+        ntff_box=ntff_box,
         state=final_state,
         time_series=time_series,
         s_params=None,

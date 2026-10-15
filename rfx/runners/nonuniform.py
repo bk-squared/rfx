@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from rfx._grid_metric import field_index
 import warnings
 from dataclasses import replace
 
@@ -14,18 +15,13 @@ from rfx.core.jax_utils import is_tracer
 from rfx.core.yee import MaterialArrays, add_lumped_eps, permittivity_without_lumped
 from rfx.materials.debye import init_debye
 from rfx.materials.lorentz import init_lorentz
-from rfx.materials.thin_conductor import check_sheet_occupancy, sheet_bounds
-from rfx.sources.waveguide_port import _node_span_to_cell_span
-from rfx.sources.sources import stamp_lumped_sigma as _stamp_lumped_sigma
+from rfx.model.overrides import apply_material_overrides
+from rfx.model.waveguide_modes import _node_span_to_cell_span
 from rfx.sources.port_drive import port_drive_waveform
 from rfx.nonuniform import (
     NonUniformGrid,
-    e_node_dual_spacing_at,
-    e_node_dual_spacings,
     interior_cells,
     make_nonuniform_grid,
-    port_metric,
-    port_metric_axes,
     run_nonuniform,
     run_nonuniform_until_decay,
     make_current_source,
@@ -84,6 +80,10 @@ def assemble_interface_eps_nu(sim, grid, materials):
     eps = np.asarray(cell.eps_r, dtype=np.float64)
     volume_eps = np.asarray(permittivity_without_lumped(materials), dtype=np.float64)
     live = np.ones(grid.shape, dtype=np.float64) if pec is None else (~np.asarray(pec)).astype(np.float64)
+    if any(not grid.is_constant(a) for a in range(3)):
+        from rfx.model.materials import geometric_interface_components
+        return tuple(jnp.asarray(e, dtype=materials.eps_r.dtype) for e in
+                     geometric_interface_components(eps, live, volume_eps, widths))
     components = []
     for c in range(3):
         num, den = eps * live, live
@@ -119,6 +119,7 @@ def build_nonuniform_grid(
     dt: float | None = None,
     dt_min_cell: float | None = None,
     dt_caller: str | None = None,
+    nominal_profiles: dict | None = None,
 ) -> NonUniformGrid:
     """Build a NonUniformGrid from per-axis profiles.
 
@@ -128,6 +129,7 @@ def build_nonuniform_grid(
     the listed faces (PMC+CPML composition fix on the NU path, 2026-04).
     ``dt`` / ``dt_min_cell`` pin a concrete time step across a mesh
     deformation family — see :func:`rfx.nonuniform.make_nonuniform_grid`.
+    ``nominal_profiles`` is handed to it unchanged.
     """
     if dx is None:
         dx = C0 / freq_max / 20.0
@@ -153,28 +155,8 @@ def build_nonuniform_grid(
             pec_faces=pec_faces, pmc_faces=pmc_faces, cpml_axes=cpml_axes,
             face_layers=face_layers,
             dt=dt, dt_min_cell=dt_min_cell, dt_caller=dt_caller,
+            nominal_profiles=nominal_profiles,
         )
-
-
-def nu_thin_conductor_refusal(tc) -> str | None:
-    """Why the non-uniform assembler refuses this thin conductor, or None.
-
-    A lossy DC sheet (``add_thin_conductor`` with ``sigma_bulk`` and no
-    ``surface_impedance_f0``) folds by its Box corners here; a shape
-    without them has no fold on this lane. ``fidelity_report()`` reads the
-    same answer to report the refusal instead of raising.
-    """
-    if (getattr(tc, "is_pec", False)
-            or getattr(tc, "surface_impedance_f0", None) is not None):
-        return None
-    if (getattr(tc.shape, "corner_lo", None) is not None
-            and getattr(tc.shape, "corner_hi", None) is not None):
-        return None
-    return ("a lossy thin conductor (add_thin_conductor without "
-            "surface_impedance_f0) with a non-Box shape "
-            f"({type(tc.shape).__name__}) is not implemented on the "
-            "non-uniform lane; skipping it would leave the conductor out of "
-            "the solve. Instead: draw it as a Box, or run on a uniform mesh.")
 
 
 def assemble_materials_nu(
@@ -186,273 +168,13 @@ def assemble_materials_nu(
     geometry_masks: list | None = None,
     assembly_entries: list | None = None,
 ) -> tuple[MaterialArrays, object, object, jnp.ndarray | None]:
-    """Build material arrays and dispersion specs for non-uniform grid.
-
-    Delegates to the shared rasterize_geometry() with non-uniform coordinates.
-    Supports all shape types, Debye/Lorentz poles, chi3, and thin conductors.
-    Lattice ownership contract (#931): PEC volumes are centre-sampled into
-    ``pec_mask``; PEC thin conductors and zero-thickness PEC Boxes are
-    :class:`~rfx.boundaries.pec.SheetSpec` sheets (``pec_sheets``
-    out-parameter), sub-cell ``PolylineWire`` filaments are ``WireSpec``
-    (``pec_wires``); neither is in ``pec_mask``. Lossy sheets fold into
-    sigma with the LOCAL E-node DUAL spacing normal to the sheet (#373,
-    corrected #669-review) — both the DC fold (sigma_bulk*t/d_norm) and the
-    opt-in Leontovich surface-impedance mode (sigma_eff = 1/(Rs0*d_norm)
-    when surface_impedance_f0 is set, issue #669). Only non-Box LOSSY
-    sheets on the legacy DC path warn-and-skip.
-
-    Returns
-    -------
-    materials, debye_spec, lorentz_spec, pec_mask
-    """
-    from rfx.geometry.rasterize_grid import (
-        rasterize_geometry, coords_from_nonuniform_grid, extend_cpml_pad_materials,
-        cell_sizes_from_nonuniform_grid, centres_from_nonuniform_grid,
-        sheet_footprint_traced, sheet_spec_from_shape,
-    )
-
-    coords = coords_from_nonuniform_grid(grid)
-    cell_sizes = cell_sizes_from_nonuniform_grid(grid)
-    centres = centres_from_nonuniform_grid(grid, coords)
-    _pec_sheets = pec_sheets if pec_sheets is not None else []
-    _pec_wires = pec_wires if pec_wires is not None else []
-    from rfx.geometry.smoothing import continued_conductor_shape, warn_unextendable_shapes
-    conductor_findings = []
-    geometry = [replace(entry, shape=continued_conductor_shape(
-                    sim, grid, entry.shape, entry=entry, unextendable=conductor_findings))
-                if sim._resolve_material(entry.material_name).sigma >= sim._PEC_SIGMA_THRESHOLD
-                else entry for entry in sim._geometry]
-
-    result = rasterize_geometry(
-        geometry,
-        sim._resolve_material,
-        coords,
-        pec_sigma_threshold=sim._PEC_SIGMA_THRESHOLD,
-        pole_geometry_entries=sim._geometry,
-        geometry_masks=geometry_masks,
+    """Assemble cells; preserve the four-item profiled-grid return contract."""
+    from rfx.model.materials import assemble_cells
+    return assemble_cells(
+        sim, grid, sheet_specs=sheet_specs, pec_sheets=pec_sheets,
+        pec_wires=pec_wires, geometry_masks=geometry_masks,
         assembly_entries=assembly_entries,
-        centres=centres,
-        cell_sizes=cell_sizes,
-        sheets=_pec_sheets,
-        wires=_pec_wires,
-        # The NU stepper installs no periodic BC and NU grids are 3-D, so the
-        # non-periodic #689 convention is the one this lane's step function
-        # uses (see the realization comment further down); the guard must ask
-        # with the SAME flags or it judges a seam the solve never has.
-        periodic=(False, False, False),
-    )
-    materials, debye_spec, lorentz_spec, pec_mask, _pec_shapes, _kerr_chi3 = result
-
-    # Extend material properties into CPML padding so that guided modes in
-    # dielectric waveguides see an impedance-matched absorber (equivalent to
-    # UPML). Each CPML face copies the interior-edge slice outward, as if
-    # the geometry continued beyond the domain. Mirrors the uniform path's
-    # identical step (rfx/api/_compile.py) exactly via the shared
-    # extend_cpml_pad_materials helper, adapted to the NU per-face pad
-    # bookkeeping (``grid.pad_{axis}_{lo,hi}``, already zero on
-    # PEC/PMC/periodic faces). Before this fix the NU assembler had NO such
-    # step, so an edge-touching structure saw a different absorber medium
-    # per path (#582: measured 736 pad cells eps 4.0-vs-1.0 at the slab's
-    # k=9 layer) and the uniform-mesh reduction anchor diverged wherever
-    # that mismatch interacted with subpixel smoothing. #627 moved this
-    # (and the uniform mirror) onto one shared implementation.
-    #
-    # Dispersion-pole masks are deliberately NOT extended here (#627b tried
-    # and reverted): see extend_cpml_pad_materials's docstring — extending
-    # a high-Q Lorentz pole into the pad turns a stable edge-touching
-    # simulation into a divergent one, with no NaN/exception to catch it.
-    # And a pole-carrying column's STATICS are not promoted by the hi-face
-    # fallback either (#808, same shared rule, same gate as the uniform
-    # lane): the promoted eps_inf-without-pole material matches no
-    # declared model and moved a committed Debye recovery past its gate.
-    if sim._boundary in ("cpml", "upml") and sim._cpml_layers > 0:
-        plx, phx = grid.pad_x_lo, grid.pad_x_hi
-        ply, phy = grid.pad_y_lo, grid.pad_y_hi
-        plz, phz = grid.pad_z_lo, grid.pad_z_hi
-        _pole_mask_any = None
-        for _spec in (debye_spec, lorentz_spec):
-            if _spec is not None:
-                for _pmask in _spec[1]:
-                    _pole_mask_any = (_pmask if _pole_mask_any is None
-                                      else (_pole_mask_any | _pmask))
-        eps_r_ext, sigma_ext, mu_r_ext = extend_cpml_pad_materials(
-            materials.eps_r, materials.sigma, materials.mu_r,
-            plx, phx, ply, phy, plz, phz,
-            dispersion_pole_mask=_pole_mask_any,
-        )
-        materials = MaterialArrays(eps_r=eps_r_ext, sigma=sigma_ext, mu_r=mu_r_ext)
-
-    # Thin conductors. A PEC thin conductor is a SHEET (#931 §1.3): one
-    # node plane (nearest node to its mid-plane, tie -> lower), a closed
-    # footprint, no cell. It is emitted as a SheetSpec, never OR'd into
-    # pec_mask; the run lanes realize it through
-    # rfx.boundaries.pec.realized_pec_edge_masks. A shape thicker than one
-    # local cell along its normal is refused ("not a sheet; use add()").
-    if sim._thin_conductors:
-        conductors = [replace(tc, shape=continued_conductor_shape(
-                        sim, grid, tc.shape, entry=tc, unextendable=conductor_findings))
-                      for tc in sim._thin_conductors]
-        conductor_keys = {id(tc): id(original)
-                          for tc, original in zip(conductors, sim._thin_conductors, strict=True)}
-        pec_tcs = [tc for tc in conductors
-                   if getattr(tc, "is_pec", False)]
-        lossy_tcs = [tc for tc in conductors
-                     if not getattr(tc, "is_pec", False)]
-        for tc in pec_tcs:
-            _pec_sheets.append(sheet_spec_from_shape(
-                tc.shape, coords, cell_sizes, name="thin_conductor",
-                lane="non-uniform", refuse_thick=True))
-            if assembly_entries is not None:
-                assembly_entries.append((conductor_keys[id(tc)], None, _pec_sheets[-1], None, tc.shape))
-        # #373: lossy (non-PEC) thin conductors fold into sigma using the LOCAL
-        # spacing NORMAL to the sheet, not a uniform grid.dx. The sheet has
-        # bulk conductivity sigma_bulk and physical thickness t but is realized
-        # on ONE E node along its normal; preserving the sheet resistance
-        # R_s = 1/(sigma_bulk*t) needs sigma_eff = sigma_bulk*t/d_norm with
-        # d_norm the length that node's sigma actually acts over.
-        #
-        # That length is the DUAL spacing (d[k-1]+d[k])/2, NOT the primal cell
-        # d[k] (#669 review). The NU E update divides the curl at node k by
-        # inv_d_e[k] = 2/(d[k-1]+d[k]) (rfx/nonuniform.py), so multiplying the
-        # discrete Ampere law at that node by (d[k-1]+d[k])/2 turns the loss
-        # term into a surface current sigma_eff*dual*E — the realized sheet
-        # conductance is sigma_eff*dual. Dividing by the primal d[k] instead
-        # realizes R_s*d[k]/dual, correct only where the two adjacent cells are
-        # equal (all uniform meshes, and NU nodes away from a grading step) and
-        # wrong by the local cell ratio ON a transition: measured attenuation
-        # ratio 1.2021 (0.25/0.50 mm step) and 0.6214 (1.00/0.25 mm step)
-        # against the matched-mesh case, where a mesh-independent sheet must
-        # give 1.000. This corrects the legacy #373 DC fold as well as the
-        # #669 Leontovich mode — NU DC thin conductors at grading transitions
-        # now realize their specified sheet resistance instead of a
-        # cell-ratio-scaled one.
-        #
-        # AD-safe: sigma_eff is a smooth function of the sigma_bulk*t DoF times
-        # a grid quantity built with jnp (so a traced dz_profile still flows),
-        # and jnp.where keeps the sigma field (an AD-live material)
-        # differentiable.
-        for tc in lossy_tcs:
-            if assembly_entries is not None:
-                assembly_entries.append((conductor_keys[id(tc)], None, None, None, tc.shape))
-            _f0 = getattr(tc, "surface_impedance_f0", None)
-            if _f0 is not None:
-                # #674: a surface-impedance sheet may be ANY
-                # ``mask_on_coords`` shape — the fold below is per occupied
-                # cell and shape-agnostic, and the rasterization on this lane
-                # has been coords-based since #369. What the shape still owes
-                # is an axis-aligned bounding box, because the sheet NORMAL
-                # (hence which axis' dual spacing normalizes the fold) is read
-                # from it. ``sheet_bounds`` reads Box's corner_lo/corner_hi
-                # first, so a Box takes bit-identically the arithmetic it took
-                # before this generalization.
-                lo, hi = sheet_bounds(tc.shape)
-                if lo is None or hi is None:
-                    # Defensive mirror of the add-time check (issue #669):
-                    # a surface-impedance sheet must fail LOUD, never
-                    # warn-and-skip (the #369 silently-vaporized-metal
-                    # class). Reachable only for a ThinConductor built
-                    # outside add_thin_conductor().
-                    raise ValueError(
-                        "surface-impedance (surface_impedance_f0) thin "
-                        "conductor requires a shape with an axis-aligned "
-                        "bounding box (Box corner_lo/corner_hi, or "
-                        "Shape.bounding_box()) to locate its normal; "
-                        "refusing to skip it on the non-uniform path.")
-            else:
-                # Legacy DC fold: left as #373 shipped it for Box sheets. A
-                # non-Box DC sheet used to warn and be skipped, which solved
-                # the board without that conductor; since 2.0 it is refused.
-                # Folding it instead stays the separate decision #674 left.
-                _refusal = nu_thin_conductor_refusal(tc)
-                if _refusal is not None:
-                    raise NotImplementedError(_refusal)
-                lo = tc.shape.corner_lo
-                hi = tc.shape.corner_hi
-            extents = [float(hi[i]) - float(lo[i]) for i in range(3)]
-            n_axis = min(range(3), key=lambda i: extents[i])  # sheet normal axis
-            d_norm = e_node_dual_spacings(
-                (grid.dx_arr, grid.dy_arr, grid.dz)[n_axis])
-            bshape = [1, 1, 1]
-            bshape[n_axis] = int(d_norm.shape[0])
-            _plane = None
-            if _f0 is not None:
-                # #931 G4 by construction: the f0 sheet takes the SAME
-                # footprint and plane a PEC sheet on this shape gets
-                # (sheet_spec_from_shape: nearest node to the mid-plane,
-                # closed Box footprint). A traced mesh (mesh-as-design-
-                # variable) has no static plane; there the footprint keeps
-                # the shape's own traced node sampler, as before #931.
-                if any(is_tracer(c) for c in (coords.x, coords.y, coords.z)):
-                    m = sheet_footprint_traced(tc.shape, coords, n_axis)
-                else:
-                    _spec = sheet_spec_from_shape(
-                        tc.shape, coords, cell_sizes, normal_axis=n_axis,
-                        name="thin_conductor", lane="non-uniform",
-                        refuse_thick=True)
-                    m = _spec.footprint
-                    _plane = _spec.plane
-                # #674 guard: the realization normalizes ONE E node along the
-                # sheet normal, so the rasterized sheet must occupy exactly
-                # one layer there — and must not have vaporized.
-                check_sheet_occupancy(m, n_axis, lane="non-uniform")
-                if geometry_masks is not None:
-                    geometry_masks.append((conductor_keys[id(tc)], m))
-                # Leontovich band-centre surface-impedance mode (#669/#677):
-                # since #677 the sheet does NOT fold into materials.sigma
-                # (that realized it as a full-cell slab and moved resonances
-                # by geometry, issue #677). It is emitted as a
-                # SheetImpedanceSpec with sigma_sheet = (1/Rs0)/d_norm per
-                # node — d_norm the LOCAL E-node dual spacing along the
-                # sheet normal (#671), so sigma_sheet * Rs0 * d_norm == 1 on
-                # every layer of a graded mesh — and realized NODE-THIN by
-                # the per-step operator on the sheet edge set. Thickness
-                # deliberately does not enter (Leontovich loss is
-                # thickness-independent). eps_r stays at background (a sheet
-                # is a surface, not a dielectric fill).
-                #
-                # The sheet is not resident in materials.sigma. Operator
-                # isolation tests use strip_sheet_impedance to omit it;
-                # the waveguide calculator builds an independent empty
-                # guide with no device geometry or sheet declarations.
-                from rfx.materials.thin_conductor import (
-                    SheetImpedanceSpec, leontovich_rs)
-                rs0 = leontovich_rs(_f0, tc.sigma_bulk)
-                g_sheet = 1.0 / rs0
-                if sheet_specs is not None:
-                    sigma_sheet = jnp.where(
-                        m, (g_sheet / d_norm).reshape(bshape) *
-                        jnp.ones_like(materials.sigma), 0.0)
-                    sheet_specs.append(SheetImpedanceSpec(
-                        mask=m, normal_axis=n_axis, g_sheet=g_sheet,
-                        sigma_sheet=sigma_sheet, plane=_plane))
-                continue
-            m = tc.shape.mask_on_coords(coords.x, coords.y, coords.z)
-            if geometry_masks is not None:
-                geometry_masks.append((conductor_keys[id(tc)], m))
-            sigma_eff = tc.sigma_bulk * (tc.thickness / d_norm.reshape(bshape))
-            materials = materials._replace(
-                eps_r=jnp.where(m, tc.eps_r, materials.eps_r),
-                sigma=jnp.where(m, sigma_eff, materials.sigma),
-            )
-    # Node-pinned PEC sheets (add_pinned_sheet): built from node indices, so
-    # they need no node POSITION and are the one sheet declaration a traced
-    # mesh can carry. Same helper as the uniform lane, so the two cannot
-    # disagree on what a pinned range realizes.
-    if getattr(sim, "_pinned_sheets", None):
-        from rfx.materials.thin_conductor import pinned_sheet_spec
-        for _ps in sim._pinned_sheets:
-            _pec_sheets.append(pinned_sheet_spec(grid, _ps))
-
-    from rfx.materials.thin_conductor import (
-        warn_sheet_planes_inside_dielectric,
-    )
-    warn_sheet_planes_inside_dielectric(_pec_sheets, materials.eps_r)
-    from rfx.api._compile import _refuse_uncollected_pec
-    _refuse_uncollected_pec(_pec_sheets if pec_sheets is None else (),
-                            _pec_wires if pec_wires is None else (),
-                            lane="non-uniform")
-    warn_unextendable_shapes(conductor_findings)
-    return materials, debye_spec, lorentz_spec, pec_mask
+    )[:4]
 
 
 def pos_to_nu_index(grid: NonUniformGrid, pos) -> tuple[int, int, int]:
@@ -520,6 +242,14 @@ def _range_to_slice_nu(grid, axis, value_range):
             f"range {value_range!r} resolves to invalid aperture span {actual_span}"
         )
     return (lo_idx, hi_idx), actual_span
+
+
+def _resolve_waveguide_run_freqs_nu(sim):
+    """The shared bins built by the graded runner, also read by preflight."""
+    for entry in sim._waveguide_ports:
+        if entry.freqs is not None:
+            return jnp.asarray(entry.freqs, dtype=jnp.float32)
+    return jnp.linspace(sim._freq_max * 0.5, sim._freq_max, 20, dtype=jnp.float32)
 
 
 def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
@@ -613,9 +343,18 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
     )
 
 
+def _port_drive_source(grid, cell, component, excitation, n_steps, *, materials,
+                      sigma_port, unit_field):
+    """NU tuple source, built from the final realized materials."""
+    waveform = port_drive_waveform(
+        grid, cell, component, excitation, n_steps, materials,
+        sigma_port=sigma_port, unit_field=unit_field)
+    return (*cell, component, waveform)
+
+
 def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
                         n_steps, pec_edge_masks, *, geometry_edge_masks=None,
-                        sheet_specs=(), drawn_eps_r=None):
+                        sheet_specs=(), drawn_eps_r=None, conductors=None):
     """Set up MSL ports on the non-uniform mesh (Ez static-Laplace feed only).
 
     Mirrors the uniform MSL block (``rfx/runners/uniform.py``: ``_msl_ports``)
@@ -625,8 +364,8 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
         nowhere to go; and
       * the feed's own termination conductance is stamped into
         ``materials_drive`` as well as ``materials`` before the feed is
-        built from it (#1256: the drive's Cb has to be the E update's, port
-        load included), and ``materials_drive`` carries any whole-grid
+        queued (#1256). The queue reads final realized materials after all
+        stamps; ``materials_drive`` carries any whole-grid
         eps/sigma override, traced or not (#1267).
 
     The substrate ``eps_r`` of the launch fixture -- the static-Laplace mode
@@ -657,8 +396,14 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
         msl_port_from_entry,
         setup_msl_port,
     )
+    from rfx.model.conductors import kernel_conductors, clear_conductor_edges
+    return_object = conductors is not None
+    if conductors is None:
+        from dataclasses import replace
+        conductors = replace(kernel_conductors(sim, grid, materials, None,
+            periodic=(False, False, False), sheet_specs=sheet_specs), pec_edges=pec_edge_masks)
     original_edges = pec_edge_masks if geometry_edge_masks is None else geometry_edge_masks
-    for pe in sim._msl_ports:
+    for _msl_port_index, pe in enumerate(sim._msl_ports):
         # Issue #661: one shared projection of position -> port frame.
         mp = msl_port_from_entry(pe)
         port_mode = getattr(pe, "mode", "laplace")
@@ -674,7 +419,7 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
         # substrate eps_r read concretely under the trace centre.
         from rfx.sources.msl_port import validate_msl_port_geometry
         validate_msl_port_geometry(
-            grid, mp, pec_edge_masks=original_edges, sheet_specs=sheet_specs,
+            grid, mp, pec_edge_masks=original_edges, conductors=conductors,
             pec_faces=sim._boundary_spec.pec_faces(), name=pe.name)
         span = msl_cross_section_span(grid, mp)
         k_mid = (span["n_lo"] + span["n_hi"]) // 2
@@ -693,22 +438,23 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
         materials_drive = setup_msl_port(      # #1256
             grid, mp, materials_drive, mode_profile=mode_profile)
         if pe.excite and pe.waveform is not None:
-            sources.extend(make_msl_port_sources(
-                grid, mp, materials_drive, n_steps, mode_profile=mode_profile,
-            ))
-        if pec_edge_masks is not None:
-            from rfx.boundaries.pec import clear_edges
-            # Only the SUBSTRATE-NORMAL component: the edge the modal
-            # source drives.  The three-component form opened a
-            # width-long slot in the ground plane at the feed (#931
-            # §1.9, corrected).
-            pec_edge_masks = clear_edges(
-                pec_edge_masks, list(_msl_yz_cells(grid, mp)),
-                component=_msl_normal_component(mp))
-    return materials, pec_edge_masks
+            sources.defer(make_msl_port_sources,
+                grid, mp, n_steps=n_steps, mode_profile=mode_profile,
+            )
+        # Only the SUBSTRATE-NORMAL component: the edge the modal
+        # source drives.  The three-component form opened a
+        # width-long slot in the ground plane at the feed (#931
+        # §1.9, corrected).
+        conductors = clear_conductor_edges(
+            conductors, list(_msl_yz_cells(grid, mp)),
+            component=_msl_normal_component(mp),
+            entity_id=f"msl_port[{_msl_port_index}]", port_kind="microstrip", released_edges=mode_profile["cell_indices"])
+        pec_edge_masks = conductors.pec_edges
+    return materials, conductors if return_object else pec_edge_masks
 
 
-def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=None,
+def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, s_param_freqs=None,
+                        preflight=None, conductors=None,
                         eps_override=None, sigma_override=None,
                         pec_mask_override=None, pec_occupancy_override=None,
                         checkpoint=False,
@@ -782,7 +528,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         (usually traced) permittivity, so reverse-mode AD keeps box-shaped
         arrays per timestep instead of grid-shaped ones. The graded-mesh
         counterpart of the uniform lane's ``rfx.simulation.run(design_box=)``
-        (#1179); ``rfx.simulation._resolve_design_box``, called from
+        (#1179); ``rfx.model.resolve_design_box``, called from
         ``_build_nu_scan``, carries the fences that need the resolved step
         context, and the ones below are this lane's own.
     lane : str
@@ -800,6 +546,14 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         from rfx.runners._admission import refuse_plain_sources_s_matrix
         refuse_plain_sources_s_matrix(sim, main_record=True)
 
+    if (compute_s_params is not False
+            and any(p.impedance > 0 and p.extent is not None for p in sim._ports)):
+        from rfx.runners._admission import require_isolated_s_drive
+        if not require_isolated_s_drive(
+                sim, implicit=lane == "fwd_nonuniform" and s_param_freqs is None,
+                fields_only=lane == "run_nonuniform"):
+            compute_s_params = False
+
     # every single-device non-uniform solve (run AND forward) enters here
     from rfx.sources.tfsf import _refuse_extended_tfsf
     _refuse_extended_tfsf(sim._tfsf, "the non-uniform runner")
@@ -815,7 +569,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     # ---- #1183 design box: the fences only this lane can see ----
     # Everything the resolved step context decides (the absorber, the
     # source/wire-port/RLC cells, dispersion, subpixel eps, a sheet inside
-    # the box) is rfx.simulation._resolve_design_box's, from _build_nu_scan.
+    # the box) is rfx.model.resolve_design_box's, from _build_nu_scan.
     # These three are declarations that never reach it: a modal port writes
     # its own E over a whole plane from a mode profile, and an MSL port
     # REWRITES ``materials`` across its cross-section (_setup_msl_ports_nu)
@@ -886,34 +640,24 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     # DFT-plane / flux / wire-port accumulators simply stop accumulating).
     sizing_n = int(decay_max_steps) if until_decay is not None else n_steps
 
-    grid = build_nonuniform_grid(
-        sim._freq_max, sim._domain, sim._dx, sim._cpml_layers, sim._dz_profile,
-        dx_profile=sim._dx_profile, dy_profile=sim._dy_profile,
-        face_layers=sim._resolve_face_layers(),
-        pec_faces=sim._boundary_spec.pec_faces()
-            if sim._boundary_spec is not None else None,
-        pmc_faces=sim._boundary_spec.pmc_faces()
-            if sim._boundary_spec is not None else None,
-        cpml_axes="".join(
-            ax for ax in "xyz"
-            if ax not in (sim._periodic_axes or "")
-        ),
-        dt=getattr(sim, "_dt_pin", None),
-        dt_min_cell=getattr(sim, "_dt_min_cell", None),
-        dt_caller="Simulation",
-    )
+    # Public run/forward lend their preflighted solve object; internal callers
+    # without one still use the same builder here.
+    grid = conductors.grid if conductors is not None else sim._build_nonuniform_grid()
     _sheet_specs: list = []
     _pec_sheets: list = []
     _pec_wires: list = []
     _geometry_masks, _assembly_entries = ([], []) if lane == "run_nonuniform" else (None, None)
-    materials, debye_spec, lorentz_spec, pec_mask = assemble_materials_nu(
-        sim, grid, sheet_specs=_sheet_specs, pec_sheets=_pec_sheets,
+    from rfx.model.conductors import assembled_materials, solve_conductors, kernel_conductors, prepare_port_occupancy, at_kernel
+    if conductors is None:
+        conductors = solve_conductors(sim, grid, nonuniform=True)
+    if preflight is not None:
+        from rfx._diagnostic_transport import merge_diagnostics, report_diagnostics
+        diagnostics = merge_diagnostics(
+            diagnostics, report_diagnostics(sim._auto_preflight(conductors=conductors, **preflight))
+        )
+    materials, debye_spec, lorentz_spec, pec_mask = assembled_materials(
+        conductors, sheet_specs=_sheet_specs, pec_sheets=_pec_sheets,
         pec_wires=_pec_wires, geometry_masks=_geometry_masks, assembly_entries=_assembly_entries)
-    from rfx.realized_geometry import record_from_assembly
-    geometry_record = (record_from_assembly(
-        sim, grid, materials, pec_mask, _pec_sheets, _pec_wires,
-        _geometry_masks, _assembly_entries, lane="run_nonuniform")
-        if lane == "run_nonuniform" else None)
     del _geometry_masks, _assembly_entries
     if getattr(sim, "_interface_eps", "sampled") == "dual_average" and (
             debye_spec is not None or lorentz_spec is not None):
@@ -969,14 +713,8 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         # A whole-grid override REPLACES the array, so any lumped stamp that
         # was folded into it is gone; its #1210 record goes with it, or the
         # E update would add back a load the override does not carry.
-        materials = materials._replace(
-            eps_r=eps_override if eps_override is not None else materials.eps_r,
-            sigma=sigma_override if sigma_override is not None else materials.sigma,
-            eps_r_lumped=(None if eps_override is not None
-                          else materials.eps_r_lumped),
-            sigma_lumped=(None if sigma_override is not None
-                          else materials.sigma_lumped),
-        )
+        materials = apply_material_overrides(
+            materials, eps_override=eps_override, sigma_override=sigma_override)
         materials_drive = materials     # #1267: the drive sees the override
     elif design_box is not None:
         # #1183, the same rule at the same place: the design permittivity
@@ -984,11 +722,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         # ``eps_override`` array does one branch up. Without it the two
         # halves of one grid step at two precisions -- the float32 rounding
         # of ``eps_r * EPS_0`` alone moves the field by ~1e-7 relative.
-        _design_dtype = jnp.promote_types(
-            materials.eps_r.dtype, jnp.result_type(design_box.eps_r))
-        if _design_dtype != materials.eps_r.dtype:
-            materials = materials._replace(
-                eps_r=materials.eps_r.astype(_design_dtype))
+        materials = apply_material_overrides(materials, design_box=design_box)
 
     if pec_mask_override is not None:
         pec_mask = pec_mask_override if pec_mask is None else (pec_mask | pec_mask_override)
@@ -997,17 +731,11 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     # periodic BC and NU grids are 3-D, so the non-periodic #689 convention
     # is the one the step function uses.  Port clearing, wire-port liveness
     # and the sheet ctx all read THIS object from here on.
-    from rfx.boundaries.pec import (
-        clear_edges as _clear_edges,
-        edge_is_pec as _edge_is_pec,
-        realized_pec_edge_masks as _rpem,
-    )
     _pec_sheets = tuple(_pec_sheets)
     _pec_wires = tuple(_pec_wires)
-    pec_edge_masks = None
-    if pec_mask is not None or _pec_sheets or _pec_wires:
-        pec_edge_masks = _rpem(pec_mask, sheets=_pec_sheets,
-                               wires=_pec_wires)
+    conductors = kernel_conductors(sim, grid, materials, pec_mask,
+        _pec_sheets, _pec_wires, periodic=(False, False, False), sheet_specs=_sheet_specs, root=conductors)
+    pec_edge_masks = conductors.pec_edges
     _msl_geometry_edges = pec_edge_masks  # before ANY port clearing
 
     if subpixel_smoothing:
@@ -1038,9 +766,10 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             # the three cannot drift the way the array-side replication did
             # before #627.
             from rfx.geometry.smoothing import (
-                smoothed_shape_pairs, warn_unextendable_shapes,
+                smoothed_shape_pairs, warn_unextendable_shapes, warn_curved_high_contrast,
             )
             shape_eps_pairs, _unextendable = smoothed_shape_pairs(sim, grid)
+            warn_curved_high_contrast(shape_eps_pairs, sim=sim)
             warn_unextendable_shapes([u for u in _unextendable if not u.conductor])
             if shape_eps_pairs:
                 aniso_eps = compute_smoothed_eps_nonuniform(
@@ -1064,269 +793,38 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     # Fold first, then put each capacitor on its own edge exactly once.
     aniso_eps = add_lumped_eps(aniso_eps, materials.eps_r_lumped)
 
-    sources = []
+    from rfx.sources.port_drive import PortSourceQueue
+    sources = PortSourceQueue()
     probes = []
-    wire_port_specs = []
-    lumped_port_specs = []
-
-    # Domain extents (for auto-detecting port direction).
-    dom_lx = float(sim._domain[0])
-    dom_ly = float(sim._domain[1])
-
-    def _auto_direction(position) -> str:
-        """Pick the outward-normal direction (+x/-x/+y/-y) of the port
-        by finding the smallest *relative* distance to a boundary
-        face. Relative (not absolute) distance avoids the trap where
-        a short domain extent makes a completely-centered port appear
-        "close" to its narrow-axis boundary.
-        """
-        x, y, _z = position
-        rel = {
-            "-x": float(x) / max(dom_lx, 1e-30),
-            "+x": float(dom_lx - x) / max(dom_lx, 1e-30),
-            "-y": float(y) / max(dom_ly, 1e-30),
-            "+y": float(dom_ly - y) / max(dom_ly, 1e-30),
-        }
-        return min(rel, key=rel.get)
-
-    for pe in sim._ports:
-        idx = pos_to_nu_index(grid, pe.position)
+    from rfx.model.graded_ports import assemble_graded_ports
+    ports = assemble_graded_ports(
+        sim, grid, materials, materials_drive, conductors,
+        pec_edge_masks=pec_edge_masks, sizing_n=sizing_n, lane=lane,
+        s_param_freqs=s_param_freqs)
+    materials, materials_drive, conductors = (
+        ports.materials, ports.materials_drive, ports.conductors)
+    # Wire publication leaves pec_edges unchanged; only lumped releases
+    # advance them inside assembly, as in the original port loop.
+    pec_edge_masks = conductors.pec_edges
+    wire_port_specs = ports.port_specs
+    drives_by_port = {}
+    for port_index, drive in ports.drives:
+        drives_by_port.setdefault(port_index, []).append(drive)
+    for port_index, pe in enumerate(sim._ports):
         if pe.impedance == 0.0:
-            # Current source with dV normalization; amplitude_kind (issue
-            # #571) threaded — None/'current' are bit-identical no-ops here.
-            src = make_current_source(
-                grid, idx, pe.component, pe.waveform, sizing_n,
-                materials_drive, amplitude_kind=pe.amplitude_kind)
-            sources.append(src)
-        elif pe.extent is not None:
-            # Wire port on non-uniform grid
-            axis_map = {"ex": 0, "ey": 1, "ez": 2}
-            axis = axis_map[pe.component]
-            end_pos = list(pe.position)
-            end_pos[axis] += pe.extent
-            idx_end = pos_to_nu_index(grid, tuple(end_pos))
-            lo_k = min(idx[axis], idx_end[axis])
-            hi_k = max(idx[axis], idx_end[axis])
-
-            # HALF-OPEN in edges, from the shared spelling: the driven
-            # edges are the ones whose own location lies inside the
-            # declared extent. This lane had its own endpoint-INCLUSIVE
-            # copy, so the same declaration drove one more edge here than
-            # on the uniform lane once that lane was corrected.
-            from rfx.sources.sources import wire_port_edge_span
-            _first_k, _last_k = wire_port_edge_span(
-                grid, axis, lo_k, hi_k,
-                float(pe.position[axis]), float(end_pos[axis]))
-            wire_cells = list(range(_first_k, _last_k + 1))
-
-            # Live-cell split (issue #318): a cell whose extent lies inside
-            # PEC (assembled-geometry mask, read BEFORE this port's own
-            # clearing below) is dead — it carries no port sigma and no
-            # source, and drops out of the 1/n scaling. With no dead cells
-            # this is bit-identical to the historical all-cells formula.
-            _cells_ijk = []
-            for k in wire_cells:
-                cell = list(idx)
-                cell[axis] = k
-                _cells_ijk.append(tuple(cell))
-            if pec_edge_masks is not None:
-                live_flags = [
-                    not _edge_is_pec(pec_edge_masks, pe.component,
-                                     c[0], c[1], c[2])
-                    for c in _cells_ijk]
-            else:
-                live_flags = [True] * len(_cells_ijk)
-            n_live = sum(live_flags)
-            if n_live == 0:
-                raise ValueError(
-                    f"WirePort at {pe.position} ({pe.component}, extent "
-                    f"{pe.extent}): all {len(_cells_ijk)} extent cells land "
-                    "inside PEC geometry, so the port has no live cell to "
-                    "terminate or drive (issue #318). Shorten the extent or "
-                    "move the port so at least one cell center sits outside "
-                    "PEC."
-                )
-
-            # float64 so these are the SAME numbers the extractor reads at
-            # rfx/nonuniform.py (`_dx_arr_np`/`_dy_arr_np`, both float64).
-            # sigma and I must be sized on one set of metrics. Bit-identical
-            # on a uniform profile. A TRACED axis stays a tracer instead —
-            # ``port_metric_axes`` is the one place that decides which.
-            (_dx_np, _x_host), (_dy_np, _y_host), (_dz_m, _z_host) = \
-                port_metric_axes(grid)
-            drive_stamps = {}
-            for (ci, cj, ck), live in zip(_cells_ijk, live_flags):
-                dxi = port_metric(_dx_np[ci], _x_host)
-                dyj = port_metric(_dy_np[cj], _y_host)
-                dual_xi = port_metric(
-                    e_node_dual_spacing_at(_dx_np, ci), _x_host)
-                dual_yj = port_metric(
-                    e_node_dual_spacing_at(_dy_np, cj), _y_host)
-                dual_zk = port_metric(
-                    e_node_dual_spacing_at(_dz_m, ck), _z_host)
-                # 3D wire port: σ = n_live * d_parallel / (Z0 * d_perp1 * d_perp2)
-                # Each LIVE cell in the wire carries 1/n_live of total
-                # impedance Z0 (issue #318 — dead cells excluded).
-                #
-                # #688: d_perp1/d_perp2 are the E-node DUAL spacings on the
-                # two axes TRANSVERSE to the port component — the same
-                # metrics `wire_port_current` weights its Ampere legs by
-                # (#672). They are the sides of the dual face the conduction
-                # current pierces, so V/I closes only if the termination and
-                # the measurement use one metric family. d_parallel stays
-                # PRIMAL: it is the length of the E edge V is taken over.
-                # The old primal spelling for d_perp is right only where the
-                # two transverse axes are locally uniform (measured 1.7778x
-                # too small a conductance on a 2:1 step on both).
-                if live:
-                    if axis == 2:
-                        d_cell = port_metric(_dz_m[ck], _z_host)
-                        dp1, dp2 = dual_xi, dual_yj
-                    elif axis == 1:
-                        d_cell = dyj
-                        dp1, dp2 = dual_xi, dual_zk
-                    else:
-                        d_cell = dxi
-                        dp1, dp2 = dual_yj, dual_zk
-                    sigma_port = n_live * d_cell / (pe.impedance * dp1 * dp2)
-                    drive_stamps[(ci, cj, ck)] = (sigma_port, 1 / (n_live * d_cell))
-                    # #1210: a port's load is a device across ONE edge, so
-                    # it is recorded as an edge-owned stamp and kept out of
-                    # the edge average. Stamped bare it was quartered, and a
-                    # 50 ohm termination presented 200 ohm.
-                    materials = _stamp_lumped_sigma(
-                        materials, (ci, cj, ck), sigma_port, pe.component)
-                    # #1256: and into the copy the drive is built from.
-                    materials_drive = _stamp_lumped_sigma(
-                        materials_drive, (ci, cj, ck), sigma_port, pe.component)
-                    # No PEC clearing here (#931 §1.9, corrected): a cell
-                    # is LIVE exactly when the port component's own edge is
-                    # not PEC, so releasing that component is a no-op, and
-                    # releasing the two tangential edges would open the
-                    # conductor the port foot stands on.
-
-            # Create per-cell sources — only when the port is excited.
-            # Passive (excite=False) ports contribute just the σ
-            # resistive termination above, acting as a matched load.
-            #
-            # Issue #764: the V/I reference cell is the midpoint of the
-            # LIVE run, not of the raw extent. A dead extent cell (inside
-            # PEC, #318) carries essentially no port current
-            # (|I_dead|/|I_mid| = 0.003-0.03 measured on the #313 thru),
-            # so an all-extent midpoint landing on a dead cell read a
-            # quenched Ampere loop as the port current. With no dead
-            # cells the live midpoint is bit-identical to the historical
-            # all-extent midpoint.
-            _live_cells = tuple(
-                c for c, live in zip(_cells_ijk, live_flags) if live)
-            mid_cell = list(_live_cells[len(_live_cells) // 2])
-
-            if pe.radius is not None:
-                from rfx.sources.wire_radius import stamp_wire_radius
-                materials = stamp_wire_radius(
-                    grid, materials, pe.component, pe.radius, _live_cells)
-                materials_drive = stamp_wire_radius(
-                    grid, materials_drive, pe.component, pe.radius, _live_cells)
-
-            if pe.excite:
-                for cell_ijk, live in zip(_cells_ijk, live_flags):
-                    # Dead extent cells get no source (issue #318).
-                    if not live:
-                        continue
-                    waveform = port_drive_waveform(
-                        grid, cell_ijk, pe.component, pe.waveform, sizing_n,
-                        materials_drive, sigma_port=drive_stamps[tuple(cell_ijk)][0],
-                        unit_field=drive_stamps[tuple(cell_ijk)][1])
-                    sources.append((*cell_ijk, pe.component, waveform))
-
-            # Wire port S-param spec — include excite/direction so the
-            # runner scan body can record V/I and the post-processing
-            # can orient the wave decomposition correctly.
-            port_direction = pe.direction or _auto_direction(pe.position)
-            wire_port_specs.append({
-                'mid_i': mid_cell[0], 'mid_j': mid_cell[1],
-                'mid_k': mid_cell[2],
-                'component': pe.component,
-                'impedance': pe.impedance,
-                'excite': bool(pe.excite),
-                'direction': port_direction,
-                # Issue #764: static live-cell run for the whole-port gap
-                # voltage V_port = sum_live(-E_c * d_par,c) and its count.
-                'live_cells': _live_cells,
-                'n_live': int(n_live),
-            })
-        else:
-            # Single-cell lumped port
-            i, j, k = idx
-            (_dx_np, _x_host), (_dy_np, _y_host), (_dz_m, _z_host) = \
-                port_metric_axes(grid)
-            dxi = port_metric(_dx_np[i], _x_host)
-            dyj = port_metric(_dy_np[j], _y_host)
-            dual_xi = port_metric(e_node_dual_spacing_at(_dx_np, i), _x_host)
-            dual_yj = port_metric(e_node_dual_spacing_at(_dy_np, j), _y_host)
-            dual_zk = port_metric(e_node_dual_spacing_at(_dz_m, k), _z_host)
-            # 3D lumped port: σ = d_parallel / (Z0 * d_perp1 * d_perp2)
-            # This ensures correct power dissipation P = V²/Z0 in
-            # anisotropic cells where dz ≠ dx.  The old formula
-            # σ = 1/(Z0*d_parallel) is only valid for cubic cells.
-            #
-            # #688: d_perp1/d_perp2 are the E-node DUAL spacings on the two
-            # axes transverse to the port component (the sides of the dual
-            # face the conduction current pierces), matching the metrics
-            # the wire-port Ampere loop uses (#672). d_parallel stays PRIMAL
-            # — it is the E edge V is taken over. Sharpening the sentence
-            # above: the primal spelling for d_perp is valid whenever the
-            # two TRANSVERSE axes are locally uniform, which is strictly
-            # weaker than cubic and is what actually makes the uniform lane
-            # right.
-            axis_map = {"ex": 0, "ey": 1, "ez": 2}
-            port_axis = axis_map[pe.component]
-            if port_axis == 2:
-                d_parallel = port_metric(_dz_m[k], _z_host)
-                d_perp1, d_perp2 = dual_xi, dual_yj
-            elif port_axis == 1:
-                d_parallel = dyj
-                d_perp1, d_perp2 = dual_xi, dual_zk
-            else:
-                d_parallel = dxi
-                d_perp1, d_perp2 = dual_yj, dual_zk
-            sigma_port = d_parallel / (pe.impedance * d_perp1 * d_perp2)
-            materials = _stamp_lumped_sigma(      # #1210, #1236
-                materials, (i, j, k), sigma_port, pe.component)
-            materials_drive = _stamp_lumped_sigma(    # #1256, #1236
-                materials_drive, (i, j, k), sigma_port, pe.component)
-            if pec_edge_masks is not None:
-                # The lumped port drives ONE edge: its own component at
-                # its own cell (#931 §1.9, corrected).
-                pec_edge_masks = _clear_edges(
-                    pec_edge_masks, [(i, j, k)], component=pe.component)
-            if pe.excite:
-                waveform = port_drive_waveform(
-                    grid, idx, pe.component, pe.waveform, sizing_n, materials_drive,
-                    sigma_port=sigma_port, unit_field=1 / d_parallel)
-                sources.append((*idx, pe.component, waveform))
-
-            # Explicit bins opt lumped ports into the same V/I accumulators
-            # as a one-cell wire port (#1410). Graded forward returns a
-            # driven-column matrix (n, n, nf); uniform lumped forward
-            # returns per-port diagonals (n, nf), squeezed for one port.
-            # Leave the historical default (wire ports only) unchanged.
-            if lane == "fwd_nonuniform" and s_param_freqs is not None:
-                lumped_port_specs.append({
-                    'mid_i': i, 'mid_j': j, 'mid_k': k,
-                    'component': pe.component,
-                    'impedance': pe.impedance,
-                    'excite': bool(pe.excite),
-                    'direction': pe.direction or _auto_direction(pe.position),
-                    'live_cells': ((i, j, k),),
-                    'n_live': 1,
-                })
-
-    # Preserve wire indices when explicit bins also include lumped ports.
-    wire_port_specs.extend(lumped_port_specs)
+            idx = (pos_to_nu_index(grid, pe.position) if getattr(pe, "extent", None) is not None
+                   else field_index(grid, pe.position, pe.component))
+            sources.defer(make_current_source,
+                          grid, idx, pe.component, pe.waveform, sizing_n,
+                          amplitude_kind=pe.amplitude_kind)
+        for cell, component, waveform, sigma_port, unit_field in drives_by_port.get(port_index, ()):
+            sources.defer(_port_drive_source,
+                          grid, cell, component, waveform, sizing_n,
+                          sigma_port=sigma_port, unit_field=unit_field)
 
     for pe in sim._probes:
-        idx = pos_to_nu_index(grid, pe.position)
+        idx = (pos_to_nu_index(grid, pe.position) if getattr(pe, "extent", None) is not None
+               else field_index(grid, pe.position, pe.component))
         probes.append((*idx, pe.component))
 
     # DFT plane probes — mirror the uniform-path setup in
@@ -1367,15 +865,9 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     # integrated correctly by FluxMonitor.dA.
     flux_monitor_objs = []
     if getattr(sim, "_flux_monitors", None):
-        from rfx.probes.probes import init_flux_monitor
+        from rfx.measurement.flux_weights import grid_flux_monitor
         from rfx.boundaries.pmc import magnetic_image_faces
         axis_to_index = {"x": 0, "y": 1, "z": 2}
-        # Per-axis tangential cell-size arrays for dA.
-        _d_arr = {
-            0: (np.asarray(grid.dy_arr), np.asarray(grid.dz)),
-            1: (np.asarray(grid.dx_arr), np.asarray(grid.dz)),
-            2: (np.asarray(grid.dx_arr), np.asarray(grid.dy_arr)),
-        }
         from rfx.probes.flux_region import resolve_flux_region
         for pe in sim._flux_monitors:
             axis_idx = axis_to_index[pe.axis]
@@ -1387,7 +879,6 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 if pe.freqs is not None
                 else jnp.linspace(sim._freq_max / 10, sim._freq_max, pe.n_freqs)
             )
-            d1_arr, d2_arr = _d_arr[axis_idx]
             # Finite-region window (B1): physical size/center -> CELL slice on
             # each tangential axis against the graded cumulative edges. Full
             # plane keeps init_flux_monitor's (0, -1) full-extent defaults.
@@ -1397,13 +888,10 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 (lo1, hi1), (lo2, hi2) = region["cell_slices"]
                 grid_index = region["normal_index"]
             flux_monitor_objs.append(
-                init_flux_monitor(
-                    axis=axis_idx,
+                grid_flux_monitor(
+                    grid, axis=axis_idx,
                     index=grid_index,
                     freqs=freqs_arr,
-                    grid_shape=(grid.nx, grid.ny, grid.nz),
-                    d1=d1_arr,
-                    d2=d2_arr,
                     dft_total_steps=sizing_n,
                     dft_window=getattr(pe, "dft_window", "rect"),
                     dft_window_alpha=getattr(pe, "dft_window_alpha", 0.25),
@@ -1414,11 +902,43 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             )
 
     sp_freqs = None
-    if wire_port_specs and (compute_s_params is None or compute_s_params):
+    if any(not p.get("record_only", False) for p in wire_port_specs) and (
+        s_param_freqs is not None if lane == "fwd_nonuniform"
+        else compute_s_params is None or compute_s_params
+    ):
         sp_freqs = s_param_freqs
         if sp_freqs is None:
             sp_freqs = np.linspace(
                 sim._freq_max / 10, sim._freq_max, 50)
+
+    # Waveguide ports: build per-port config via NU-aware
+    # init_waveguide_port (duck-types on grid for per-axis widths).
+    waveguide_port_cfgs = []
+    if sim._waveguide_ports:
+        wg_freqs = _resolve_waveguide_run_freqs_nu(sim)
+        for pe in sim._waveguide_ports:
+            waveguide_port_cfgs.append(
+                _build_waveguide_port_config_nu(
+                    sim, pe, grid, wg_freqs, sizing_n,
+                )
+            )
+
+    # MSL ports — full cross-section distributed Ez feed (NU lane). Sources
+    # ride the generic point-source `sources` list; per-probe DFT planes are
+    # registered by compute_msl_s_matrix via add_dft_plane_probe.
+    if getattr(sim, "_msl_ports", None):
+        materials, conductors = _setup_msl_ports_nu(
+            sim, grid, materials, materials_drive, sources, sizing_n,
+            pec_edge_masks,
+            geometry_edge_masks=_msl_geometry_edges, sheet_specs=_sheet_specs,
+            drawn_eps_r=_drawn_eps_r, conductors=conductors,
+        )
+        pec_edge_masks = conductors.pec_edges
+
+    from rfx.model.materials import with_components
+    materials = with_components(materials, grid, periodic=(False, False, False),
+        debye_spec=debye_spec, lorentz_spec=lorentz_spec)
+    sources = sources.resolve(materials)
 
     # Lumped RLC: build per-element metadata + zero-init ADE states
     rlc_metas: tuple = ()
@@ -1432,37 +952,6 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         # #1245: at most one element with its own solve per realized edge.
         refuse_stacked_solved_elements(sim._lumped_rlc, rlc_metas)
         rlc_states_init = tuple(init_rlc_state() for _ in sim._lumped_rlc)
-
-    # Waveguide ports: build per-port config via NU-aware
-    # init_waveguide_port (duck-types on grid for per-axis widths).
-    waveguide_port_cfgs = []
-    if sim._waveguide_ports:
-        wg_freqs = None
-        for pe in sim._waveguide_ports:
-            if pe.freqs is not None:
-                wg_freqs = jnp.asarray(pe.freqs, dtype=jnp.float32)
-                break
-        if wg_freqs is None:
-            wg_freqs = jnp.linspace(
-                sim._freq_max * 0.5, sim._freq_max, 20, dtype=jnp.float32
-            )
-        for pe in sim._waveguide_ports:
-            waveguide_port_cfgs.append(
-                _build_waveguide_port_config_nu(
-                    sim, pe, grid, wg_freqs, sizing_n,
-                )
-            )
-
-    # MSL ports — full cross-section distributed Ez feed (NU lane). Sources
-    # ride the generic point-source `sources` list; per-probe DFT planes are
-    # registered by compute_msl_s_matrix via add_dft_plane_probe.
-    if getattr(sim, "_msl_ports", None):
-        materials, pec_edge_masks = _setup_msl_ports_nu(
-            sim, grid, materials, materials_drive, sources, sizing_n,
-            pec_edge_masks,
-            geometry_edge_masks=_msl_geometry_edges, sheet_specs=_sheet_specs,
-            drawn_eps_r=_drawn_eps_r,
-        )
 
     # Debye/Lorentz coefficients, AFTER the last stamp into ``materials``
     # (the wire, lumped and MSL port loads above), as the uniform lane builds
@@ -1487,25 +976,16 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     # axis integrates correctly via FluxMonitor.dA.
     wg_flux_monitors = []
     if attach_waveguide_flux and waveguide_port_cfgs:
-        from rfx.probes.probes import init_flux_monitor
+        from rfx.measurement.flux_weights import grid_flux_monitor
         from rfx.boundaries.pmc import magnetic_image_faces
         _axis_idx = {"x": 0, "y": 1, "z": 2}
-        _tang_arrs = {
-            0: (np.asarray(grid.dy_arr), np.asarray(grid.dz)),
-            1: (np.asarray(grid.dx_arr), np.asarray(grid.dz)),
-            2: (np.asarray(grid.dx_arr), np.asarray(grid.dy_arr)),
-        }
         for cfg in waveguide_port_cfgs:
             ax = _axis_idx[cfg.normal_axis]
-            d1a, d2a = _tang_arrs[ax]
             wg_flux_monitors.append(
-                init_flux_monitor(
-                    axis=ax,
+                grid_flux_monitor(
+                    grid, axis=ax,
                     index=cfg.probe_x,
                     freqs=cfg.freqs,
-                    grid_shape=(grid.nx, grid.ny, grid.nz),
-                    d1=d1a,
-                    d2=d2a,
                     dft_total_steps=sizing_n,
                     lo1=cfg.u_lo, hi1=cfg.u_hi,
                     lo2=cfg.v_lo, hi2=cfg.v_hi,
@@ -1540,23 +1020,22 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
                 "TFSF on nonuniform mesh supports only direction='+x' or "
                 f"'-x'; got {entry.direction!r}."
             )
-        from rfx.sources.tfsf import init_tfsf
-        tfsf_pair = init_tfsf(
-            grid.nx,
-            grid.dx,
-            grid.dt,
-            cpml_layers=grid.cpml_layers,
-            tfsf_margin=entry.margin,
-            f0=entry.f0 if entry.f0 is not None else sim._freq_max / 2,
-            bandwidth=entry.bandwidth,
-            amplitude=entry.amplitude,
-            polarization=entry.polarization,
-            direction=entry.direction,
-            angle_deg=entry.angle_deg,
-            ny=grid.ny,
-            nz=grid.nz,
-            waveform=getattr(entry, 'waveform', 'differentiated_gaussian'),
+        if is_tracer(grid.cells("x")):
+            raise ValueError(
+                "a plane wave on a graded mesh needs a fixed, uniform x axis; "
+                "the x cell sizes are traced")
+        from rfx.sources.tfsf import tfsf_from_declaration
+        tfsf_pair = tfsf_from_declaration(
+            entry, grid, sim._freq_max, n_steps=n_steps,
         )
+        nonvacuum = []
+        if design_box is not None:
+            b = design_box.bounds
+            window = tuple(slice(b[2 * d], min(b[2 * d + 1] + 1, grid.shape[d]))
+                           for d in range(3))
+            nonvacuum.append(jnp.zeros(grid.shape, dtype=bool).at[window].set(True))
+        sim._validate_tfsf_vacuum_boundary(
+            materials, tfsf_pair[0], nonvacuum_masks=tuple(nonvacuum))
 
     # NTFF box: build once (indices are Python-static) + zero-init
     # DFT accumulators that will be threaded through the scan carry.
@@ -1595,7 +1074,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     _declared_periodic = tuple(
         axis in getattr(sim, "_periodic_axes", "") for axis in "xyz")
     current_moments = _cm_for_sim(
-        sim, grid, periodic=_declared_periodic,
+        sim, grid, periodic=_declared_periodic, conductors=conductors,
         overrides={"eps_r": eps_override, "sigma": sigma_override,
                    "pec_mask": pec_mask_override,
                    "pec_occupancy": pec_occupancy_override,
@@ -1605,9 +1084,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     # assembler emitted, against the FINAL realized PEC edges of this run
     # (PEC wins on overlapping edges). Crossing-normal refusal lives in the
     # builder.
-    from rfx.materials.thin_conductor import build_sheet_impedance_ctx
-    sheet_ctx = build_sheet_impedance_ctx(
-        _sheet_specs, pec_edge_masks=pec_edge_masks)
+    sheet_ctx = conductors.sheet_context(pec_edge_masks)
     if sheet_ctx is not None:
         # v1 fences (loud, never silent): the sheet operator replaces the
         # standard E update at its edges, which is only correct against the
@@ -1630,9 +1107,18 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     # Every declared input this lane does not carry is refused here, after
     # the specific refusals above and before the first step.
     from rfx.runners._admission import admit
-    admit(sim, lane, run_args={"conformal_pec": conformal_pec,
-                               "compute_s_params": compute_s_params})
+    admit(
+        sim,
+        lane,
+        run_args={"conformal_pec": conformal_pec, "compute_s_params": compute_s_params},
+        diagnostics=diagnostics,
+    )
 
+    conductors, pec_occupancy_override = prepare_port_occupancy(
+        conductors, waveguide_port_cfgs, pec_occupancy_override, None, sim=sim, sheet_operator=sheet_ctx)
+    conductors, geometry_record = at_kernel(sim, conductors, lane=lane, pec_edges=pec_edge_masks, sheet_operator=sheet_ctx)
+    pec_edge_masks = conductors.pec_edges
+    sheet_ctx = conductors.sheet_operator
     _shared_run_kwargs = dict(
         design_box=design_box,
         sheet_impedance=sheet_ctx,
@@ -1662,7 +1148,7 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         ntff_data=ntff_data_init,
         current_moments=current_moments,
         waveguide_ports=waveguide_port_cfgs if waveguide_port_cfgs else None,
-        tfsf=tfsf_pair,
+        tfsf=tfsf_pair, _feature_tfsf=True,
         emit_time_series=emit_time_series,
     )
     if stop_fn is not None:
@@ -1759,70 +1245,12 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
     s_params = r.get("s_params")
     freqs_out = r.get("s_param_freqs")
 
-    # Waveguide-port output: dict[name -> cfg], optional sparams dict.
-    waveguide_ports_result = None
-    waveguide_sparams_result = None
-    if sim._waveguide_ports and "waveguide_ports" in r:
-        from rfx.sources.waveguide_port import (
-            extract_waveguide_sparams,
-            waveguide_plane_positions,
-        )
-        from rfx.api import WaveguideSParamResult
-        final_cfgs = r["waveguide_ports"]
-        waveguide_ports_result = {
-            entry.name: cfg
-            for entry, cfg in zip(sim._waveguide_ports, final_cfgs)
-        }
-        waveguide_sparams_result = {}
-        for entry, cfg in zip(sim._waveguide_ports, final_cfgs):
-            plane_positions = waveguide_plane_positions(cfg)
-            source_plane = plane_positions["source"]
-            measured_reference_plane = plane_positions["reference"]
-            measured_probe_plane = plane_positions["probe"]
-            if entry.calibration_preset == "source_to_probe":
-                reference_plane = source_plane
-                probe_plane = measured_probe_plane
-                calibration_preset = "source_to_probe"
-            elif entry.reference_plane is not None or entry.probe_plane is not None:
-                reference_plane = (
-                    entry.reference_plane
-                    if entry.reference_plane is not None
-                    else measured_reference_plane
-                )
-                probe_plane = (
-                    entry.probe_plane
-                    if entry.probe_plane is not None
-                    else measured_probe_plane
-                )
-                calibration_preset = "explicit"
-            else:
-                reference_plane = measured_reference_plane
-                probe_plane = measured_probe_plane
-                calibration_preset = "measured"
-            s11, s21 = extract_waveguide_sparams(
-                cfg,
-                ref_shift=reference_plane - measured_reference_plane,
-                probe_shift=probe_plane - measured_probe_plane,
-            )
-            # jnp-native (NU flux-AD): this per-port diagnostic is a SIDE
-            # output the normalize='flux' S-matrix path does not consume, but
-            # run_nonuniform_path always assembles it. np.array(tracer) here
-            # detaches / crashes the eps_override-traced device run (the same
-            # concretization class as issue #70 / #148). Keeping these as
-            # jnp arrays is forward bit-identical for concrete consumers
-            # (np.asarray accepts jnp transparently — test_nonuniform_api /
-            # test_api read .s11 via np.abs / np.isfinite).
-            waveguide_sparams_result[entry.name] = WaveguideSParamResult(
-                freqs=cfg.freqs,
-                s11=s11,
-                s21=s21,
-                calibration_preset=calibration_preset,
-                source_plane=float(source_plane),
-                measured_reference_plane=measured_reference_plane,
-                measured_probe_plane=measured_probe_plane,
-                reference_plane=reference_plane,
-                probe_plane=probe_plane,
-            )
+    from rfx.measurement import package_declared_measurements
+    declared_measurements = package_declared_measurements(
+        sim, grid,
+        flux_monitors=r.get("flux_monitors", ()),
+        waveguide_cfgs=r.get("waveguide_ports", ()),
+    )
 
     # Repack DFT planes into {name: DFTPlaneProbe} dict to match
     # the uniform path's Result schema.
@@ -1831,16 +1259,6 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         dft_planes_dict = {
             entry.name: probe
             for entry, probe in zip(sim._dft_planes, r["dft_planes"])
-        }
-
-    # Repack flux monitors into {name: FluxMonitor} dict (uniform schema).
-    # The accumulated list is sim._flux_monitors (front) + per-waveguide-port
-    # flux monitors (back, only when attach_waveguide_flux=True).
-    flux_monitors_dict = None
-    if getattr(sim, "_flux_monitors", None) and "flux_monitors" in r:
-        flux_monitors_dict = {
-            entry.name: mon
-            for entry, mon in zip(sim._flux_monitors, r["flux_monitors"])
         }
 
     # Extract per-waveguide-port Poynting flux spectra (issue #88 flux path).
@@ -1878,7 +1296,9 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
             zip(r.get("wire_sparams_meta", ()), _wire_raw)
         )
 
-    return Result(
+    from rfx.model.design_admission import with_design_diagnostics
+    return with_design_diagnostics(Result(
+        diagnostics=diagnostics,
         realized_geometry=geometry_record,
         state=r["state"],
         time_series=r["time_series"],
@@ -1891,13 +1311,13 @@ def run_nonuniform_path(sim, *, n_steps, compute_s_params=None, s_param_freqs=No
         dft_planes=dft_planes_dict,
         wire_port_sparams=wire_port_sparams_result,
         sparam_time_records=r.get("sparam_time_records"),
-        dft_time_records={entry.name: record for entry, record in zip(
-            sim._dft_planes, r.get("dft_time_records", ()))},
-        flux_monitors=flux_monitors_dict,
-        waveguide_ports=waveguide_ports_result,
-        waveguide_sparams=waveguide_sparams_result,
+        sparam_read_ids=r.get("sparam_read_ids"),
+        dft_time_records={
+            entry.name: record for entry, record in zip(sim._dft_planes, r.get("dft_time_records", ()))
+        },
+        **declared_measurements,
         waveguide_port_flux=waveguide_port_flux_result,
         grid=grid,
         dt=grid.dt,
         freq_range=(sim._freq_max / 10, sim._freq_max, sim._boundary),
-    )
+    ), conductors)

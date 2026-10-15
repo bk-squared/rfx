@@ -85,19 +85,7 @@ def is_tfsf_methodB(cfg) -> bool:
     return isinstance(cfg, MethodBConfig)
 
 
-def tfsf_boundary_flags(cfg) -> tuple[tuple[bool, bool, bool], str]:
-    """Periodic flags and CPML axes for an initialized uniform TF/SF source.
-
-    A closed box absorbs on all axes. Open oblique Method B absorbs on x/y
-    and wraps z; the normal and Bloch slabs absorb on x and wrap y/z.
-    The initialized config matters: zero-angle Method B uses the normal slab.
-    This override is not used by the non-uniform runner.
-    """
-    if getattr(cfg, "closed_box", False):
-        return (False, False, False), "xyz"
-    if is_tfsf_methodB(cfg):
-        return (False, False, True), "xy"
-    return (False, True, True), "x"
+from rfx.boundaries.tfsf import boundary_flags as tfsf_boundary_flags
 
 
 def tfsf_injection_planes(cfg) -> "dict[str, tuple[int, int]]":
@@ -201,6 +189,10 @@ def validate_custom_tfsf_waveform(waveform, dt: float, n_steps: int) -> None:
     with jax.ensure_compile_time_eval():
         times = jnp.arange(n_steps, dtype=jnp.result_type(float)) * dt
         values = jax.vmap(waveform)(times)
+        if isinstance(values, jax.core.Tracer):
+            raise ValueError(
+                "TFSF CustomWaveform is a fixed input: it cannot depend on a traced "
+                "parameter (differentiate the materials, not the source waveform)")
         if values.shape != (n_steps,) or not jnp.issubdtype(values.dtype, jnp.floating):
             raise ValueError("TFSF CustomWaveform must return real scalar floating-point samples")
         if not np.all(np.isfinite(np.asarray(values))):
@@ -545,6 +537,25 @@ def init_tfsf(
     )
 
     return config, state
+
+
+def tfsf_from_declaration(entry, grid, freq_max, *, n_steps=None):
+    """The TF/SF configuration a plane-wave declaration realizes on ``grid``.
+
+    One builder for every entry (run on the uniform and graded lanes, forward,
+    the injection-plane query), so no two entries build different sources.
+    With ``n_steps``, a CustomWaveform is checked over that record first.
+    """
+    if n_steps is not None:
+        validate_custom_tfsf_waveform(entry.waveform, grid.dt, n_steps)
+    return init_tfsf(
+        grid.nx, float(grid.cells("x")[0]), grid.dt, cpml_layers=grid.cpml_layers,
+        tfsf_margin=entry.margin,
+        f0=entry.f0 if entry.f0 is not None else freq_max / 2,
+        bandwidth=entry.bandwidth, amplitude=entry.amplitude,
+        polarization=entry.polarization, direction=entry.direction,
+        angle_deg=entry.angle_deg, ny=grid.ny, nz=grid.nz,
+        waveform=entry.waveform, method=entry.method, closed_box=entry.closed_box)
 
 
 def update_tfsf_1d(cfg: TFSFConfig, st: TFSFState, dx: float, dt: float,

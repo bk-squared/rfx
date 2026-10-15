@@ -33,14 +33,9 @@ from rfx.api import Simulation  # noqa: E402
 from rfx.core.yee import EPS_0, MU_0, init_materials as init_vacuum_materials  # noqa: E402
 from rfx.geometry.csg import Box  # noqa: E402
 from rfx.simulation import SnapshotSpec, make_source, run as run_simulation  # noqa: E402
-from rfx.sources.waveguide_port import (  # noqa: E402
-    WaveguidePortConfig,
-    _compute_beta,
-    _compute_mode_impedance,
-    _rect_dft,
-    extract_waveguide_port_waves,
-    waveguide_plane_positions,
-)
+from rfx.sources.waveguide_port import WaveguidePortConfig, extract_waveguide_port_waves, waveguide_plane_positions
+from rfx.model.waveguide_modes import _compute_beta, _compute_mode_impedance
+from rfx.measurement.waveguide_s import _rect_dft
 
 DOMAIN = (0.12, 0.04, 0.02)
 PORT_LEFT_X = 0.01
@@ -559,7 +554,7 @@ def _build_wr90_two_port_sim(
     sim_kwargs: dict[str, Any] = {
         "freq_max": max(float(freqs[-1]), f0),
         "domain": DOMAIN,
-        "boundary": "cpml",
+        "boundary": {"x": "cpml", "y": "pec", "z": "pec"},
         "cpml_layers": int(cpml_layers),
     }
     if dx is not None:

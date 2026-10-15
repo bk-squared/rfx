@@ -34,9 +34,8 @@ is ``False`` (the zero pad), not ``True``: under the volume rule a
 ``True`` ghost would put a spurious wall on the whole x_lo/x_hi node
 plane of the outer ranks.
 
-Sheets are not on this lane: it shards a CELL mask and a sheet owns no
-cell, so ``forward(distributed=True)`` refuses one loudly. That refusal is
-pinned here too, next to the single-device lane's positive sheet result.
+G3 carries realized sheet edges on this lane. The public sheet behavior is
+pinned in tests/contracts/test_multidevice_sheets_wires.py.
 """
 
 import os
@@ -207,23 +206,10 @@ def test_a_sheet_is_realized_on_the_single_device_lane():
 
 def _distributed_occ_nnz(occ, n_devices=1):
     """The SOFT twin of ``_distributed_nnz``; real cells only."""
-    from rfx.runners.distributed_nu import _apply_pec_occupancy_nu_shmap
+    from tests.unit.materials.test_occupancy_stage import step_occupancy_on_ones
     nx_per = NX // n_devices
     nx_local = nx_per + 2 * GHOST
-    slabs = np.zeros((n_devices * nx_local, NY, NZ), np.float32)
-    for d in range(n_devices):
-        lo, hi = d * nx_per, (d + 1) * nx_per
-        base = d * nx_local
-        slabs[base + GHOST:base + GHOST + nx_per] = occ[lo:hi]
-        slabs[base] = occ[lo - 1] if d > 0 else 0.0
-        slabs[base + nx_local - 1] = occ[hi] if d < n_devices - 1 else 0.0
-    shape = (n_devices * nx_local, NY, NZ)
-    mesh = Mesh(np.asarray(jax.devices()[:n_devices]).reshape(n_devices), ("x",))
-    st = init_state(shape)
-    one = jnp.ones(shape, jnp.float32)
-    out = _apply_pec_occupancy_nu_shmap(st._replace(ex=one, ey=one, ez=one),
-                                        jnp.asarray(slabs), mesh, n_devices,
-                                        nx_local, ranks=mesh_ranks(mesh))
+    out = step_occupancy_on_ones(occ, n_devices)
     tot = [0, 0, 0]
     for c, comp in enumerate((out.ex, out.ey, out.ez)):
         a = np.asarray(comp)
@@ -246,7 +232,7 @@ def test_soft_equals_hard_on_the_distributed_lane_including_faces(axis, idx):
     single-device lane in tests/contracts; this is the shmap twin, which
     is where the two spellings drifted apart before (``rfx/boundaries/pec.py``
     used to record that ``apply_pec_occupancy``,
-    ``_apply_pec_occupancy_nu_shmap`` and ``geometry/smoothing.py`` still
+    the former in-step occupancy helper and ``geometry/smoothing.py`` still
     spelled the rule with ``roll`` while the hard path zero-padded, so hard
     and soft disagreed at a non-periodic domain face and no test
     discriminated). The face rows are the discriminating ones.
@@ -256,18 +242,5 @@ def test_soft_equals_hard_on_the_distributed_lane_including_faces(axis, idx):
     assert _distributed_occ_nnz(occ) == _distributed_nnz(g) == _oracle_counts(g)
 
 
-def test_the_distributed_nu_forward_lane_refuses_a_sheet():
-    """It shards a CELL mask; a silently-absent sheet is not acceptable."""
-    import warnings
-
-    import rfx
-
-    # #1138: geometry[0] x solved +11.67 % off; this test checks the distributed nu forward lane refuses a sheet.
-    sim = rfx.Simulation(snap="declared", freq_max=10e9, domain=(0.06, 0.01, 0.01), dx=1e-3,
-                         cpml_layers=4, dz_profile=np.full(18, 1e-3))
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        sim.add(rfx.Box((0.002, 0.002, 0.005), (0.008, 0.008, 0.005)),
-                material="pec")
-    with pytest.raises(NotImplementedError, match="PEC sheets"):
-        sim.forward(distributed=True, n_steps=2)
+# Graded forward sheet admission and JVP controls are pinned by
+# tests/contracts/test_multidevice_sheets_wires.py.

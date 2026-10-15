@@ -32,7 +32,7 @@ def build(dx, n_probe_offset):
     x_patch0 = PORT_MARGIN + FEED_LEN; y_c = DOM[1] / 2.0
     sim.add(Box((0, 0, Z_GND), (DOM[0], DOM[1], z_gnd_hi)), material="pec")
     sim.add(Box((0, 0, z_sub_lo), (DOM[0], DOM[1], z_sub_hi)), material="ro4003c")
-    sim.add(Box((0, y_c - W_MSL / 2, z_tr_lo), (x_patch0, y_c + W_MSL / 2, z_tr_hi)), material="pec")
+    sim.add(Box((PORT_MARGIN, y_c - W_MSL / 2, z_tr_lo), (x_patch0, y_c + W_MSL / 2, z_tr_hi)), material="pec")
     sim.add(Box((x_patch0, y_c - W / 2, z_tr_lo), (x_patch0 + L, y_c + W / 2, z_tr_hi)), material="pec")
     sim.add_msl_port(position=(PORT_MARGIN, y_c, z_sub_lo), width=W_MSL, height=H_SUB,
                      direction="+x", impedance=50.0,

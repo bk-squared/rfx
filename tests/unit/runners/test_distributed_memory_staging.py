@@ -17,7 +17,7 @@ from types import FunctionType, SimpleNamespace
 
 import jax
 import jax.numpy as jnp
-from jax.experimental.shard_map import shard_map
+from jax import shard_map
 from jax.sharding import Mesh, NamedSharding, PartitionSpec as P, SingleDeviceSharding
 import numpy as np
 import pytest
@@ -125,8 +125,11 @@ def _measure(case, multi_process):
             bound = inspect.signature(f).bind(*entry_args, **entry_kwargs).arguments
             mask = bound.get("pec_mask_arg")
             if mask is not None:
-                slabs = np.asarray(mask).reshape(len(devices), -1, *mask.shape[1:])
-                boundary_ghosts_true = int(slabs[0, 0].sum() + slabs[-1, -1].sum())
+                masks = mask if isinstance(mask, tuple) else (mask,)
+                boundary_ghosts_true = 0
+                for component in masks:
+                    slabs = np.asarray(component).reshape(len(devices), -1, *component.shape[1:])
+                    boundary_ghosts_true += int(slabs[0, 0].sum() + slabs[-1, -1].sum())
             # The compiled program itself: a per-cell array that reaches the
             # scan by any route (closure, dict, host numpy copy, global) is
             # compiled in as a literal of at least one slab's worth of elements.
@@ -149,7 +152,7 @@ def _measure(case, multi_process):
                 assert partial_coeffs.ca is partial_coeffs.cb is partial_coeffs.cc is None
 
                 @partial(shard_map, mesh=Mesh(np.array(devices), ("x",)),
-                         in_specs=(P("x"), P("x")), out_specs=P("x"), check_rep=False)
+                         in_specs=(P("x"), P("x")), out_specs=P("x"), check_vma=False)
                 def finish(c, m):
                     rank = jax.lax.axis_index("x")
                     means = common.slab_e_component_materials(m, nx_local - 2, grid.shape[0], rank)
@@ -409,7 +412,8 @@ def test_direct_slabs_callback_only_builds_addressable_shards(monkeypatch):
         return result
 
     monkeypatch.setattr(jax, "make_array_from_callback", local_callback)
-    shard_x_slabs(ReadRecorder(), 2, 4, 1, 0.0, None)
+    mesh = Mesh(np.array(jax.devices()[:2]), ("x",))
+    shard_x_slabs(ReadRecorder(), 2, 4, 1, 0.0, NamedSharding(mesh, P("x")))
     assert len(seen) == 1
     assert reads == [slice(3, 8)]
     expected = np.pad(np.asarray(values)[3:8], ((0, 1), (0, 0), (0, 0)))
@@ -437,7 +441,7 @@ def _direct_dispersion_slabs():
         dt = np.float64(1e-12)
         sg = SimpleNamespace(n_devices=n, ghost_width=1, pad_x=pad, nx=nx,
                              nx_padded=n * 4, nx_per_rank=4, nx_local=6, ny=3, nz=4,
-                             dt=dt)
+                             dt=dt, e_cell_sizes=(None, None, None))
         materials = MaterialArrays(
             eps_r=jnp.asarray(rng.uniform(1, 6, shape).astype(np.float32)),
             sigma=jnp.asarray(rng.uniform(0, 0.1, shape).astype(np.float32)),
@@ -470,7 +474,7 @@ def _addressable_dispersion_slabs():
     """A remote rank stages only its own pole-mask halo before shard_map."""
     devices = jax.devices("cpu")[:2]
     mesh = Mesh(np.array(devices), ("x",))
-    local_only = SimpleNamespace(mesh=mesh)
+    local_only = NamedSharding(mesh, P("x"))
     values = jnp.arange(8 * 3 * 4, dtype=jnp.float32).reshape(8, 3, 4) + 1
     materials = MaterialArrays(values, values * 0.001, jnp.ones_like(values))
     mask = values > 10

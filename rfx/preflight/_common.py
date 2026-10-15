@@ -48,6 +48,31 @@ from rfx._grid_metric import (
     NODE_TOUCH_REL, cells_crossed, is_one_cell_size, nearest_node_index,
 )
 from rfx.core.jax_utils import is_tracer
+from rfx.diagnostic_records import Diagnostic, from_legacy, for_legacy_issue
+
+
+def local_cell(grid, axis, x):
+    """Local rasterization resolution at the node nearest ``x``.
+
+    Use the smaller adjacent primal cell: a coarse neighbour alone must
+    not make a conductor count as the port's own trace. The first/last
+    node has only one physical adjacent cell; the final cells entry is a
+    node-provider, not an extra cell. A traced axis retains the boundary
+    tolerance because its local node cannot be resolved on the host.
+
+    Not the same rule as ``rfx.geometry.rasterize_grid._local_cell`` (the
+    cell CONTAINING x) or ``rfx.preflight.mesh._local_cell`` (the coarsest
+    cell over an interval); this one is for preflight tolerances only.
+    """
+    cells = grid.cells(axis)
+    if is_tracer(cells):
+        return grid.boundary_cell(axis, "lo")
+    index = grid.index_of(axis, x)
+    if index == 0 or len(cells) == 1:
+        return float(cells[0])
+    if index == len(cells) - 1:
+        return float(cells[index - 1])
+    return float(min(cells[index - 1], cells[index]))
 
 
 def _fmt_len(meters: float) -> str:
@@ -165,7 +190,7 @@ def _axis_pad_thickness_m(grid, axis_idx: int, side: str) -> float:
             return float(a[:n].sum())
         if side == "hi" and a.size >= n + 1:
             return float(a[a.size - 1 - n:a.size - 1].sum())
-    scalar = float(getattr(grid, "dy", grid.dx)) if ax == "y" else float(grid.dx)
+    scalar = float(grid.boundary_cell(ax, side))
     return n * scalar
 
 
@@ -250,10 +275,27 @@ class PreflightWarning(UserWarning):
         message,
         *,
         code: str = "uncoded",
-        severity: str = "warning",
+        severity: str | None = None,
         loc: str | None = None,
         source: str | None = None,
     ) -> None:
+        severity = severity or (message.legacy_severity if isinstance(message, Diagnostic) else "warning")
+        self.diagnostic = (
+            message
+            if isinstance(message, Diagnostic)
+            else from_legacy(
+                message,
+                code=code,
+                severity=severity,
+                loc=loc,
+                source=source,
+            )
+        )
+        if isinstance(message, Diagnostic):
+            source = source if source is not None else message.source
+            code = message.code if code == "uncoded" else code
+            message = message.message
+        self.diagnostic = for_legacy_issue(self.diagnostic, message, severity)
         super().__init__(message)
         self.message = str(message)
         self.code = code
@@ -313,6 +355,24 @@ class PreflightConfigError(ValueError):
         loc: str | None = None,
         source: str | None = None,
     ) -> None:
+        self.diagnostic = (
+            message
+            if isinstance(message, Diagnostic)
+            else from_legacy(
+                message,
+                code=code,
+                severity="error",
+                loc=loc,
+                source=source,
+                refusal=True,
+            )
+        )
+        self.diagnostic = for_legacy_issue(self.diagnostic, self.diagnostic.message, "error")
+        self.diagnostics = (self.diagnostic,)
+        if isinstance(message, Diagnostic):
+            loc, source = message.subject, message.source
+            code = message.code if code == "uncoded" else code
+            message = message.message
         super().__init__(message)
         self.code = code
         self.loc = loc
@@ -360,12 +420,29 @@ class PreflightIssue(str):
         cls,
         message,
         *,
-        severity: str = "warning",
+        severity: str | None = None,
         code: str = "uncoded",
         loc: str | None = None,
         source: str | None = None,
+        diagnostic: Diagnostic | None = None,
     ):
+        if isinstance(message, Diagnostic):
+            severity = severity or message.legacy_severity
+            code = message.code if code == "uncoded" else code
+            diagnostic, message = message, message.message
+        severity = severity or "warning"
+        if diagnostic is None:
+            diagnostic = getattr(message, "diagnostic", None)
+        if diagnostic is None:
+            diagnostic = from_legacy(
+                message,
+                code=code,
+                severity=severity,
+                loc=loc,
+                source=source,
+            )
         obj = super().__new__(cls, str(message))
+        obj.diagnostic = for_legacy_issue(diagnostic, message, severity)
         obj.severity = severity
         obj.code = code
         obj.loc = loc
@@ -408,6 +485,18 @@ class PreflightReport(list):
     def __init__(self, issues=(), *, flux_regions=None):
         super().__init__(issues)
         self.flux_regions = [] if flux_regions is None else list(flux_regions)
+
+    def exception(self, message):
+        """Preserve the historical ValueError text and attach the complete tuple."""
+        error = ValueError(message)
+        error.diagnostics = self.diagnostics
+        return error
+
+    @property
+    def diagnostics(self) -> tuple[Diagnostic, ...]:
+        """Complete tuple, including mechanical records for unmoved families."""
+        return tuple(getattr(issue, "diagnostic", None) or from_legacy(issue)
+                     for issue in self)
 
     # Class attribute, not a module-level constant: the module namespace of
     # ``rfx.api._preflight`` is pinned by set equality
@@ -495,7 +584,7 @@ class PreflightReport(list):
         errors = self.errors
         if errors:
             detail = "\n  - ".join(str(e) for e in errors)
-            raise ValueError(
+            raise self.exception(
                 f"preflight found {len(errors)} blocking error(s):\n  - {detail}"
             )
         return self

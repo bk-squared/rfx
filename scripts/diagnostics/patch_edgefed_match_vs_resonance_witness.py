@@ -53,7 +53,7 @@ DOM_Y = 18.130e-3
 DOM_Z = 12.787e-3
 Y_C = DOM_Y / 2.0
 
-NUM_PERIODS = float(sys.argv[1]) if len(sys.argv) > 1 else 200.0
+NUM_PERIODS = 200.0
 # Gated antiresonance band, measured on this board 2026-09-01 (post-#702 tree;
 # tests/locks/test_patch_edgefed_s11_passivity.py, issue #782). The pre-#702 tree read
 # its crossings at ~9.5-9.6 GHz — that number is retired with #702.
@@ -70,7 +70,7 @@ def build() -> Simulation:
     sim.add(Box((0, 0, 4e-3), (DOM_X, DOM_Y, 4e-3 + DX)), material="pec")
     sim.add(Box((0, 0, 4e-3 + DX), (DOM_X, DOM_Y, 4e-3 + DX + H_SUB)),
             material="ro4003c")
-    sim.add(Box((0, Y_C - W_MSL / 2, 4e-3 + DX + H_SUB + DX),
+    sim.add(Box((PORT_MARGIN, Y_C - W_MSL / 2, 4e-3 + DX + H_SUB + DX),
                 (PORT_MARGIN + L_MSL, Y_C + W_MSL / 2,
                  4e-3 + DX + H_SUB + 2 * DX)),
             material="pec")
@@ -78,9 +78,10 @@ def build() -> Simulation:
                 (PORT_MARGIN + L_MSL + L, Y_C + W / 2,
                  4e-3 + DX + H_SUB + 2 * DX)),
             material="pec")
+    # #1512: this legacy drawing leaves one cell of air below the trace.
     sim.add_msl_port(
         position=(PORT_MARGIN, Y_C, 4e-3 + DX),
-        width=W_MSL, height=H_SUB, direction="+x", impedance=50.0,
+        width=W_MSL, height=H_SUB + DX, direction="+x", impedance=50.0,
         waveform=GaussianPulse(f0=8.5e9, bandwidth=1.6),
     )
     return sim
@@ -99,8 +100,9 @@ def zero_crossing_ghz(fr_ghz, y):
 
 
 def main() -> int:
+    num_periods = float(sys.argv[1]) if len(sys.argv) > 1 else NUM_PERIODS
     sim = build()
-    print(f"[ISSUE118-WITNESS] num_periods={NUM_PERIODS}  dx={DX*1e6:.1f}um "
+    print(f"[ISSUE118-WITNESS] num_periods={num_periods}  dx={DX*1e6:.1f}um "
           f"grid={sim._build_grid().shape}", flush=True)
 
     # R: never ignore preflight — surface warnings before trusting numbers.
@@ -110,7 +112,7 @@ def main() -> int:
     for wm in caught:
         print(f"[PREFLIGHT] {wm.category.__name__}: {wm.message}", flush=True)
 
-    res = sim.compute_msl_s_matrix(freqs=jnp.asarray(FREQS), num_periods=NUM_PERIODS)
+    res = sim.compute_msl_s_matrix(freqs=jnp.asarray(FREQS), num_periods=num_periods)
 
     fr = np.asarray(res.freqs, dtype=float) / 1e9
     s11 = np.asarray(res.S)[0, 0, :]

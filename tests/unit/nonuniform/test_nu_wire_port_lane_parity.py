@@ -505,7 +505,8 @@ def test_both_lanes_hand_back_the_raw_accumulators_as_meta_acc_pairs():
     """
     uni = _build(False).forward(n_steps=N_STEPS, port_s11_freqs=FREQS,
                                 skip_preflight=True)
-    nu = _build(True).forward(n_steps=N_STEPS, skip_preflight=True)
+    nu = _build(True).forward(n_steps=N_STEPS, skip_preflight=True,
+                              port_s11_freqs=np.linspace(1e9, 10e9, 50))
 
     for name, fr in (("uniform", uni), ("non-uniform", nu)):
         wps = fr.wire_port_sparams

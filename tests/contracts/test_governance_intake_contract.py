@@ -454,3 +454,23 @@ def test_the_new_ci_scripts_are_executable(script: str) -> None:
     path = REPO / "scripts" / "ci" / script
     assert path.is_file(), f"missing {path}"
     assert os.access(path, os.X_OK), f"{path} is not executable (chmod +x)"
+
+
+@pytest.mark.parametrize("filename,job_id,context", [
+    ("pr-body.yml", "pr-body-contract", "pr-body-contract"),
+    ("changelog-fragment.yml", "fragment", "changelog-fragment"),
+])
+def test_pr_level_gates_short_circuit_only_on_merge_group(filename, job_id, context):
+    workflow = load(WORKFLOWS / filename)
+    assert triggers(workflow)["merge_group"] == {"types": ["checks_requested"]}
+    job = workflow["jobs"][job_id]
+    assert job.get("name", job_id) == context
+    assert "if" not in job
+    assert not job.get("continue-on-error")
+    first, *real_steps = job["steps"]
+    assert first["if"] == "github.event_name == 'merge_group'"
+    assert first["run"] == "echo 'PR-level gate; the queue admits only PRs that passed it'"
+    assert real_steps
+    for step in real_steps:
+        assert step["if"] == "github.event_name != 'merge_group'"
+        assert not step.get("continue-on-error")

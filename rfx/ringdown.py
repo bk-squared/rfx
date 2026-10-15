@@ -15,8 +15,9 @@ closed form::
     z = exp(-j 2 pi f dt),   N = index of the LAST recorded sample,
     Y_T(f) = dt * sum_{n=0..N} y_n z**n.
 
-Sample ``n`` is paired with the time ``n dt``, as rfx's port accumulators pair
-``step`` with ``t = step * dt``. ``1 - lambda_k z`` is evaluated as
+The analytic model uses a slot-relative ``n dt`` clock. Physical port
+stamps add a common E phase, which cancels in S; channel-level comparisons
+use the shared physical-clock DFT. ``1 - lambda_k z`` is evaluated as
 ``-expm1(s_k dt - j 2 pi f dt)`` so a slow pole next to a bin keeps its
 digits.
 
@@ -70,6 +71,7 @@ S-matrix with the lane's own assembly (the graded lane's
 ``rfx.probes.probes.driven_port_reflection``). When W0, W1 or the pole
 identification fails, the run is returned as it is, uncompleted, with the
 failed check in ``Result.ringdown.report`` and a warning.
+Main-completion memory refusals raise :class:`IdentificationMemoryRefused`.
 
 With ``until_identified=True`` (:class:`RingdownStop`)
 -------------------------------------------------------
@@ -88,6 +90,18 @@ report in ``Result.ringdown.stop``.
 
 from __future__ import annotations
 
+from rfx._grid_metric import field_index
+from rfx._ringdown_pencil import (
+    IdentificationMemoryRefused,
+    _check_run_identification_memory,
+    _witness_identification,
+    _check_identification_memory,
+    _decimate,
+    _fit_residues,
+    _pencil,
+    _to_original_rate,
+    decimation_plan,
+)
 import inspect
 import math
 import warnings
@@ -104,12 +118,14 @@ _harminv = import_module("rfx.harminv")
 # harminv's own defaults, read from its signature rather than re-typed, so the
 # decimation plan and pencil shape here follow the estimator they came from.
 _HARMINV_DEFAULTS = {
-    k: v.default for k, v in inspect.signature(_harminv.harminv).parameters.items()
+    k: v.default for k, v in inspect.signature(_harminv.matrix_pencil).parameters.items()
     if v.default is not inspect.Parameter.empty
 }
 PENCIL_PARAMETER = float(_HARMINV_DEFAULTS["pencil_parameter"])
 HARMINV_MAX_MODES = int(_HARMINV_DEFAULTS["max_modes"])
 
+# Default from decision g (2026-10-12); users can raise it by assignment.
+IDENTIFY_MEMORY_BOUND_BYTES = 4 * 2**30
 # The largest kept count across the ringdown fixtures is 431, from a seeded-noise
 # record's 900-sample window. Measured cavities keep 38-44 poles on 10,000-70,000
 # step windows. A budget of 512 preserves all these completions without new NaNs
@@ -125,6 +141,9 @@ __all__ = [
     "RingdownReport",
     "RingdownResult",
     "identify",
+    "decimation_plan",
+    "IdentificationMemoryRefused",
+    "IDENTIFY_MEMORY_BOUND_BYTES",
     "plain_dft",
     "tail_dft",
     "complete_spectra",
@@ -539,101 +558,6 @@ def complete_spectra(series, dt, freqs, model: RingdownModel, n_record: int) -> 
 # Identification
 # ---------------------------------------------------------------------------
 
-def decimation_plan(n_samples: int, dt: float, freq_max: float) -> tuple:
-    """harminv's plan for a window of ``n_samples``: ``(factors, kept samples)``."""
-    factors, kept = _harminv._decimation_plan(
-        int(n_samples), float(dt), float(freq_max), "auto",
-        pencil_parameter=PENCIL_PARAMETER, max_modes=HARMINV_MAX_MODES)
-    return tuple(int(q) for q in factors), int(kept)
-
-
-def _decimate(Y: np.ndarray, factors) -> np.ndarray:
-    """harminv's FIR stage, per channel and per factor. ``Y (n, C)`` -> ``(Nd, C)``."""
-    half = int(_harminv._FIR_HALF_OUTPUT_SAMPLES)
-    cols = []
-    for ch in range(Y.shape[1]):
-        y = Y[:, ch]
-        for q in factors:
-            y = _harminv.scipy_decimate(y, q, n=2 * half * q, ftype="fir",
-                                        zero_phase=True)[half:-half]
-        cols.append(y)
-    return np.stack(cols, axis=1)
-
-
-def _pencil(Yd: np.ndarray, sv_rel: float, unit_tol: float):
-    """Side-by-side stacked matrix pencil on ``Yd (Nd, C)``."""
-    from numpy.lib.stride_tricks import sliding_window_view
-
-    Nd, C = Yd.shape
-    L = int(_harminv._pencil_columns(Nd, PENCIL_PARAMETER))
-    M = Nd - L
-    if M < 1 or L < 1:
-        raise ValueError(
-            f"a window of {Nd} decimated samples is too short for a matrix "
-            "pencil; use a longer record or an earlier window_start")
-    rms = np.sqrt(np.mean(np.abs(Yd) ** 2, axis=0))
-    if np.any(rms <= 0) or not np.all(np.isfinite(rms)):
-        raise ValueError(
-            f"a channel has zero or non-finite RMS over the window ({rms}); "
-            "the identification channel saw no ringing to identify")
-    b0, b1 = [], []
-    for ch in range(C):
-        y = Yd[:, ch].astype(np.complex128) / rms[ch]
-        b0.append(sliding_window_view(y, L)[:M])        # [i, j] = y[i + j]
-        b1.append(sliding_window_view(y[1:], L)[:M])    # [i, j] = y[i + j + 1]
-    Y0 = np.concatenate(b0, axis=1)
-    Y1 = np.concatenate(b1, axis=1)
-    U, sv, Vh = np.linalg.svd(Y0, full_matrices=False)
-    if not sv[0] > 0:
-        raise ValueError("the stacked Hankel matrix of the window is zero")
-    rank = max(int(np.sum(sv > sv_rel * sv[0])), 1)
-    Ur, sr, Vr = U[:, :rank], sv[:rank], Vh[:rank].conj().T
-    Z = (Ur.conj().T @ Y1 @ Vr) / sr[:, None]
-    lam = np.linalg.eigvals(Z)
-    valid = np.isfinite(lam) & (np.abs(lam) > 0)
-    n_invalid = int(np.sum(~valid))
-    lam = lam[valid]
-    growing = np.abs(lam) > 1.0 + unit_tol
-    return lam[~growing], rank, lam[growing], n_invalid, sv
-
-
-def _to_original_rate(lam_dec: np.ndarray, D: int, dt: float, guard):
-    """Method step 4 and the map ``s = log(lambda_dec) / (D dt)``.
-
-    Returns ``(s, n_dropped_by_guard)``. With ``D > 1`` the principal log's
-    cut (``arg lambda_dec = +-pi``, the decimated Nyquist frequency) is where a
-    pole's original-rate frequency jumps by ``1 / (D dt)``; the guard drops
-    every pole within ``(1 - guard) pi`` of it. With ``D == 1`` the tail uses
-    ``exp(s dt) = lambda`` itself, so the branch does not matter.
-    """
-    lam_dec = np.asarray(lam_dec, dtype=np.complex128)
-    n_guard = 0
-    if guard is not None and D > 1:
-        keep = np.abs(np.angle(lam_dec)) <= float(guard) * np.pi
-        n_guard = int(np.sum(~keep))
-        lam_dec = lam_dec[keep]
-    return np.log(lam_dec) / (int(D) * float(dt)), n_guard
-
-
-def _fit_residues(Y_win: np.ndarray, s: np.ndarray, dt: float, *,
-                  column_reference: bool = False) -> np.ndarray:
-    """Fit bounded exponential columns and return start- or column-referenced residues."""
-    if s.size == 0:
-        return np.zeros((0, Y_win.shape[1]), dtype=np.complex128)
-    m = np.arange(Y_win.shape[0], dtype=np.float64) * float(dt)
-    growing = s.real > 0
-    exponents = np.outer(m, s)
-    exponents[:, growing] = np.outer(m - m[-1], s[growing])
-    basis = np.exp(exponents)
-    norms = np.linalg.norm(basis, axis=0)
-    norms = np.where(norms > 0, norms, 1.0)
-    coef = np.linalg.lstsq(basis / norms, Y_win.astype(np.complex128), rcond=None)[0]
-    residues = coef / norms[:, None]
-    if not column_reference:
-        residues[growing] *= np.exp(-m[-1] * s[growing])[:, None]
-    return residues
-
-
 def identify(series, dt, n_start, n_stop, *, freq_max, guard=0.9,
              sv_rel=1.0e-6, unit_tol=1.0e-6) -> RingdownModel:
     """Poles and residues of samples ``[n_start, n_stop)`` of ``series (n, C)``.
@@ -656,7 +580,13 @@ def identify(series, dt, n_start, n_stop, *, freq_max, guard=0.9,
     factors, _kept = decimation_plan(win.shape[0], dt, freq_max)
     Yd = _decimate(win, factors) if factors else win
     D = int(np.prod(factors)) if factors else 1
+    _check_identification_memory(
+        win.shape[0], Yd.shape, bound=IDENTIFY_MEMORY_BOUND_BYTES,
+        pencil_parameter=PENCIL_PARAMETER)
     lam_dec, rank, lam_grow, n_invalid, sv = _pencil(Yd, float(sv_rel), float(unit_tol))
+    _check_identification_memory(
+        win.shape[0], Yd.shape, r=rank, bound=IDENTIFY_MEMORY_BOUND_BYTES,
+        pencil_parameter=PENCIL_PARAMETER)
     s, n_guard = _to_original_rate(lam_dec, D, dt, guard)
     c = _fit_residues(win, s, dt)
     rms = np.sqrt(np.mean(np.abs(win) ** 2, axis=0))
@@ -839,7 +769,6 @@ _LOOP_LEGS = {
     "ey": (("hx", 2), ("hz", 0)),
 }
 _AXIS_OF = {"ex": 0, "ey": 1, "ez": 2}
-_LOCAL = (1, 1, 1)
 
 
 def refuse_run_request(sim, spec, *, devices, until_decay, compute_s_params,
@@ -986,11 +915,11 @@ def refuse_forward_lane(lane: str, n_wire_ports: int, *, port_s11_freqs) -> None
                 "forward(ringdown=...) on the uniform lane supports one wire port, "
                 "as run(ringdown=...) does. Use a graded mesh (any dx/dy/dz "
                 "profile), where one run fills the driven column.")
-        if port_s11_freqs is None:
-            raise ValueError(
-                "forward(ringdown=...) on the uniform lane needs port_s11_freqs=: "
-                "the completed S-parameters are evaluated at those bins, like "
-                "forward()'s own s_params there.")
+    if port_s11_freqs is None:
+        raise ValueError(
+            "forward(ringdown=...) needs port_s11_freqs=: the completed "
+            "S-parameters are evaluated at those bins, like forward()'s own "
+            "s_params, which forward() computes only on request.")
 
 
 def _lane_resolver(lane: str, grid):
@@ -999,6 +928,22 @@ def _lane_resolver(lane: str, grid):
         return grid.position_to_index
     from rfx.runners.nonuniform import pos_to_nu_index
     return lambda pos: pos_to_nu_index(grid, pos)
+
+
+def _user_geometry(result, n_user: int, n_int: int):
+    """Drop the realized-geometry rows of the channel probes this run attached.
+
+    A point-probe row is labelled by its index in ``sim._probes``; the attached
+    ones are indices ``[n_user, n_user + n_int)``, the columns the time series drops.
+    """
+    import dataclasses
+    record = getattr(result, "realized_geometry", None)
+    probes = getattr(record, "probes", None)
+    if not probes or not n_int:
+        return result
+    attached = {f"probe[{i}]" for i in range(n_user, n_user + n_int)}
+    kept = tuple(p for p in probes if not (p.kind == "point" and p.label in attached))
+    return result._replace(realized_geometry=dataclasses.replace(record, probes=kept))
 
 
 def _node_position(grid, idx) -> tuple:
@@ -1019,9 +964,10 @@ class _PortMeta(NamedTuple):
     accs: tuple          # rfx's (v, i, v_port) accumulators
     freqs: object        # jnp float32 bins the accumulators used
     meta: object         # the run's own metadata entry
+    owner: object        # shared realized sampling owner
 
 
-def _read_port_metas(lane: str, result, grid) -> list:
+def _read_port_metas(lane: str, result, grid, boundary=None, port_ids=None) -> list:
     """Realized cells, metrics and accumulators of every wire port, from the run."""
     import jax.numpy as jnp
 
@@ -1031,7 +977,7 @@ def _read_port_metas(lane: str, result, grid) -> list:
             "run(ringdown=...) found no wire-port accumulators on the run's "
             "result; the port metadata it needs is missing.")
     out = []
-    for meta, accs in wps:
+    for port_id, (meta, accs) in zip(range(len(wps)) if port_ids is None else port_ids, wps, strict=True):
         if lane == "uniform":
             mid = (int(meta.mid_i), int(meta.mid_j), int(meta.mid_k))
             comp = str(meta.component)
@@ -1058,43 +1004,22 @@ def _read_port_metas(lane: str, result, grid) -> list:
         if mid not in live:
             raise RuntimeError(
                 f"wire port metadata: midpoint {mid} is not among its live cells {live}")
+        from rfx.measurement.ports import lumped_wire_owner
+        from rfx.probes.probes import _port_curl_boundary
+        boundary = boundary or _port_curl_boundary(grid, (False, False, False))
+        owner = lumped_wire_owner(grid, comp, live, nu=lane != 'uniform',
+                                  pmc_faces=boundary.pmc_faces, periodic=boundary.periodic,
+                                  port_id=port_id, kind='wire')
         out.append(_PortMeta(mid=mid, component=comp, z0=z0, excite=excite,
                              live_cells=live, k_mid=live.index(mid), raw=raw,
-                             f64=f64, accs=acc3, freqs=freqs, meta=meta))
+                             f64=f64, accs=acc3, freqs=freqs, meta=meta, owner=owner))
     return out
 
 
-class _HLocal(NamedTuple):
-    hx: object
-    hy: object
-    hz: object
-
-
 def _port_vi(lane: str, pm: _PortMeta, metrics: dict, e, hx, hy, hz):
-    """``(v_mid, v_port, i)`` from the port's E edges and local Ampere-loop H.
-
-    ``e`` indexes the live edges on its FIRST axis (``e[c]``); ``hx, hy, hz``
-    are 2x2x2 neighbourhoods (optionally with a trailing time axis) holding
-    the loop's H samples around local index (1, 1, 1). The current goes
-    through the lane's OWN loop function; the voltage is the lane's inline
-    sum, spelled as the scan spells it (W0 checks the two against the run).
-    """
-    n_live = len(pm.live_cells)
-    if lane == "uniform":
-        from rfx.probes.probes import _ampere_loop
-        dx = metrics["dx"]
-        v = -e[pm.k_mid] * dx
-        v_port = -sum(e[c] for c in range(n_live)) * dx
-        i_val = _ampere_loop(_HLocal(hx, hy, hz), _LOCAL, pm.component, dx,
-                             (False, False, False))
-    else:
-        from rfx.nonuniform import wire_port_current
-        v = -e[pm.k_mid] * metrics["v_metric"]
-        v_port = -sum(e[c] * dp for c, dp in zip(range(n_live), metrics["d_par"]))
-        i_val = wire_port_current(hx, hy, hz, pm.component, *_LOCAL,
-                                  metrics["dual_x"], metrics["dual_y"],
-                                  metrics["dual_z"])
-    return v, v_port, i_val
+    """Evaluate recorded probe samples with the same table as the live scan."""
+    from rfx.measurement.port_records import recorded_port_vi
+    return recorded_port_vi(pm, e, hx, hy, hz)
 
 
 def _port_layout(pm: _PortMeta, col: dict) -> tuple:
@@ -1107,16 +1032,21 @@ def _port_layout(pm: _PortMeta, col: dict) -> tuple:
     absent at index 0, where the runner reads zero). Raises ``KeyError`` when
     a live edge or loop sample was not probed.
     """
-    e_cols = [col[(pm.component, c)] for c in pm.live_cells]
     h_cells = []
-    for hname, back_axis in _LOOP_LEGS[pm.component]:
-        h_cells.append((hname, (1, 1, 1), col[(hname, pm.mid)]))
-        if pm.mid[back_axis] > 0:
-            back = list(pm.mid)
-            back[back_axis] -= 1
-            lb = [1, 1, 1]
-            lb[back_axis] = 0
-            h_cells.append((hname, tuple(lb), col[(hname, tuple(back))]))
+    for channel in pm.owner.channels:
+        if channel.sample_stage != 'post-injection':
+            continue
+        for node in channel.nodes:
+            key = (node.component, (node.i, node.j, node.k))
+            if key not in col:
+                raise KeyError(f'{pm.owner.id}: missing probe column for node {key}')
+            if channel.kind == 'H':
+                local = tuple(a-b+1 for a, b in zip(key[1], pm.mid))
+                if not all(v in (0, 1) for v in local):
+                    raise ValueError(
+                        f'{pm.owner.id}: node {key} outside the local 2x2x2 neighbourhood')
+                h_cells.append((node.component, local, col[key]))
+    e_cols = [col[(pm.component, c)] for c in pm.live_cells]
     return e_cols, h_cells
 
 
@@ -1135,7 +1065,7 @@ def _rebuild_channels(lane: str, pms, e_cols, h_cols) -> np.ndarray:
     """The float64 port channels ``(n, 2P)``: ``V_port, I`` per port.
 
     The float64 rebuild of the port voltage and current from the probe
-    samples, with the lane's own formulas (:func:`_port_vi`) and the port's
+    samples, with the shared table (:func:`_port_vi`) and the port's
     metrics as Python floats. ``run(ringdown=...)`` identifies and completes
     these; ``forward(ringdown=...)``'s host identification sees the same.
     """
@@ -1155,16 +1085,15 @@ def _emulate_accumulators(lane: str, pm: _PortMeta, e32, h32, dt):
     """rfx's wire-port DFT accumulation re-run on the probe samples (W0).
 
     The scan body is the lane's wire block with the field reads replaced by
-    the probe samples: ``t = float32(step) * dt``, the kernel
-    ``exp(-j 2 pi f t)`` cast to complex64 and times ``dt``, the current's
-    kernel times ``half_step_current_phase``, a sequential complex64 sum.
+    the probe samples, using the shared physical E/H phase kernel and a
+    sequential sum in the run's accumulator dtype.
     Returns ``((v, i, v_port) accumulators as numpy arrays of the run's dtype,
     (v_port, i) per step)`` -- the per-step series are the values the scan
     accumulated, in the dtype it computed them in (float32 on a float32 run).
     """
     import jax
     import jax.numpy as jnp
-    from rfx.core.dft_utils import half_step_current_phase as _half_i_phase
+    from rfx.core.dft_utils import port_dft_phase
 
     freqs = pm.freqs
 
@@ -1172,12 +1101,8 @@ def _emulate_accumulators(lane: str, pm: _PortMeta, e32, h32, dt):
         step_idx, e, hx, hy, hz = xs
         v_dft, i_dft, vp_dft = carry
         v, v_port, i_val = _port_vi(lane, pm, pm.raw, e, hx, hy, hz)
-        t = step_idx.astype(jnp.float32) * dt
-        t_f64 = t.astype(jnp.float64)
-        phase = jnp.exp(-1j * 2.0 * jnp.pi * freqs.astype(jnp.float64)
-                        * t_f64).astype(jnp.complex64) * dt
-        i_phase = phase * _half_i_phase(
-            freqs.astype(jnp.float64), dt).astype(jnp.complex64)
+        phase = port_dft_phase(step_idx, freqs, dt, dtype=v_dft.dtype)
+        i_phase = port_dft_phase(step_idx, freqs, dt, 'H', dtype=i_dft.dtype)
         return (v_dft + v * phase, i_dft + i_val * i_phase,
                 vp_dft + v_port * phase), (v_port, i_val)
 
@@ -1189,8 +1114,6 @@ def _emulate_accumulators(lane: str, pm: _PortMeta, e32, h32, dt):
     xs = (jnp.arange(n, dtype=jnp.int32), jnp.asarray(e32),
           jnp.asarray(h32["hx"]), jnp.asarray(h32["hy"]), jnp.asarray(h32["hz"]))
     with warnings.catch_warnings():
-        # rfx's own kernel requests float64 that x64-off JAX serves as
-        # float32; the emulation repeats the request, and its warning.
         warnings.simplefilter("ignore")
         final, per_step = jax.jit(lambda c, x: jax.lax.scan(body, c, x))(init, xs)
     return tuple(np.asarray(a) for a in final), tuple(np.asarray(a) for a in per_step)
@@ -1248,7 +1171,10 @@ def _assemble_core(lane: str, pms, vp, ii, freqs32, dt, v_mid=None):
         for p in range(len(pms)))
     metas = [pm.meta for pm in pms]
     setup = SimpleNamespace(
-        dt=float(dt), dft_planes=None, flux_monitors=None, wire_ports=metas,
+        dt=float(dt), dft_planes=None, flux_monitors=None,
+        wire_ports=[{'kind': pm.owner.kind} for pm in pms],
+        # Spectral completion reuses S assembly without a time-step scan.
+        step_fn_inv=SimpleNamespace(port_owners=(), port_acc_indices=()),
         waveguide_meta=None, wp_meta=metas,
         sp_freqs=jnp.asarray(np.asarray(freqs32), dtype=jnp.float32),
         use_wire_ports=True, use_dft_planes=False, use_flux_monitors=False,
@@ -1353,7 +1279,7 @@ W1_BAR = 1.0e-4
 #: defects 0.044-0.96 (the wrong H loop 0.71-0.96, the midpoint voltage of a
 #: 3-cell port 0.54-0.67, the half-step phase dropped 0.044-0.074, the current
 #: one step late 0.088-0.15, every channel one step late 0.088-0.15). Limit:
-#: the run's accumulators build their phase 2 pi f float32(step) dt in float32,
+#: before M2, the run built 2 pi f float32(step) dt in float32,
 #: so on a very long ringing record they drift from the float64 DFT of the
 #: probes -- the lossless box reads 2.3e-4 at 60k steps, 5.5e-4 at 120k, 8.5e-4
 #: at 180k and 1.1e-3 at 240k (jitted), where the check NaNs a correct record.
@@ -1383,10 +1309,14 @@ class RingdownRun:
     #: The entry point named in refusal messages.
     caller = "run"
 
-    def __init__(self, sim, spec: RingdownSpec, *, lane: str, n_steps: int, grid):
+    def __init__(self, sim, spec: RingdownSpec, *, lane: str, n_steps: int, grid, bins=None):
         if lane not in ("uniform", "graded"):
             raise ValueError(f"lane must be 'uniform' or 'graded', got {lane!r}")
         self.sim, self.spec, self.lane = sim, spec, lane
+        self.bins = None if bins is None else np.asarray(bins, dtype=np.float64)
+        from rfx.core.yee import CurlBoundary
+        self.port_boundary = CurlBoundary(pmc_faces=sim._boundary_spec.pmc_faces(),
+                                          periodic=sim._periodic_flags())
         self.n_steps = int(n_steps)
         self.grid = grid
         self.dt = grid.dt
@@ -1399,8 +1329,9 @@ class RingdownRun:
                 f"[{self.n_start}, {self.n_steps}) and [{self.n_start}, {self.n_split})")
         self.freq_max = float(spec.freq_max if spec.freq_max is not None
                               else sim._freq_max)
-        self.wire_entries = [pe for pe in sim._ports
-                             if float(pe.impedance) > 0.0 and pe.extent is not None]
+        self.wire_port_ids = tuple(i for i, pe in enumerate(sim._ports)
+                                   if float(pe.impedance) > 0.0 and pe.extent is not None)
+        self.wire_entries = [sim._ports[i] for i in self.wire_port_ids]
         self.source_off, self.source_ratio_long = self._check_sources_off()
         self.probe_keys = self._plan_probes()
 
@@ -1455,9 +1386,10 @@ class RingdownRun:
         keys = []
         seen = set()
 
-        def add(comp, idx):
+        def add(comp, idx, *, wire=True):
             key = (comp, tuple(int(v) for v in idx))
-            if key not in seen:
+            # Drop only a wire node that is an outside component entry; any other mis-resolution stays for the round-trip check.
+            if key not in seen and (not wire or tuple(map(int, resolve(p := _node_position(self.grid, key[1])))) != key[1] or field_index(self.grid, p, comp) == key[1]):
                 seen.add(key)
                 keys.append(key)
 
@@ -1496,13 +1428,13 @@ class RingdownRun:
                 hi = self.grid.shape[ax] - int(getattr(self.grid, f"pad_{'xyz'[ax]}_hi", 0))
                 if not (self.grid.node_of(ax, lo) <= coord <= self.grid.node_of(ax, hi - 1)):
                     raise ValueError("identification probe position is outside the probeable interior (absorber pad or domain)")
-            idx = tuple(int(v) for v in resolve(position))
+            idx = tuple(int(v) for v in field_index(self.grid, position, component))
             identification_keys.append((component, idx))
-            add(component, idx)
+            add(component, idx, wire=False)
         self.identification_keys = tuple(identification_keys)
         for comp, idx in keys:
             pos = _node_position(self.grid, idx)
-            got = tuple(int(v) for v in resolve(pos))
+            got = tuple(int(v) for v in field_index(self.grid, pos, comp))
             if got != idx:
                 raise RuntimeError(
                     f"port-channel probe {comp}{idx}: its node position {pos} "
@@ -1522,6 +1454,7 @@ class RingdownRun:
         """Attach the probes, call the lane's runner, detach, complete."""
         from rfx.api._spec import _ProbeEntry
 
+        _check_run_identification_memory(self)
         probes = self.sim._probes
         n_user = len(probes)
         probes.extend(_ProbeEntry(position=_node_position(self.grid, idx),
@@ -1545,9 +1478,10 @@ class RingdownRun:
                 f"run(ringdown=...): the run returned a time series of shape "
                 f"{ts_all.shape}, expected ({self.n_steps}, {n_user} user + "
                 f"{n_int} port-channel probes)")
-        stripped = result._replace(
+        stripped = _user_geometry(result._replace(
             time_series=full[:, :n_user],
-            **({"wire_port_sparams": None} if self.lane == "uniform" else {}))
+            **({"wire_port_sparams": None} if self.lane == "uniform" else {})),
+            n_user, n_int)
         S, report, nc = self._host_report(result, ts_all, n_user)
         if nc is not None:
             warnings.warn(
@@ -1575,7 +1509,8 @@ class RingdownRun:
         series, the port-channel probes from column ``n_user`` on. Returns
         ``(S, report, None)``, or ``(None, report, failure)`` when a check
         that decides whether the completion can be trusted at all failed.
-        Raises nothing for a failed check.
+        Memory refusals raise; other failed checks are reported. A probe layout
+        missing a table node raises ``ValueError`` before identification.
         """
         dt = float(result.grid.dt)
         ref_hz = max(self.freq_max, float(np.max(np.asarray(result.freqs,
@@ -1633,7 +1568,8 @@ class RingdownRun:
     def _read_metas_checked(self, result, run_grid) -> list:
         """The wire ports as the run realized them, or ``_NotCompleted`` (W0)."""
         try:
-            pms = _read_port_metas(self.lane, result, run_grid)
+            pms = _read_port_metas(self.lane, result, run_grid, self.port_boundary,
+                self.wire_port_ids)
         except RuntimeError as exc:
             raise _NotCompleted("W0", math.nan, W0_REL_BAR, str(exc)) from None
         if len(pms) != len(self.wire_entries):
@@ -1644,25 +1580,21 @@ class RingdownRun:
         return pms
 
     def _layouts_checked(self, pms, col) -> list:
-        """:func:`_port_layout` of every port, or ``_NotCompleted`` (W0)."""
+        """:func:`_port_layout` of every port, refusing missing nodes before identification."""
         out = []
         for p, pm in enumerate(pms):
             try:
                 out.append(_port_layout(pm, col))
-            except KeyError:
-                raise _NotCompleted(
-                    "W0", math.nan, W0_REL_BAR,
-                    f"wire port {p}: realized live edges {pm.live_cells} / "
-                    f"midpoint {pm.mid} not all inside the probed span.") from None
+            except KeyError as exc:
+                raise ValueError(f"wire port {p}: {exc}") from None
         return out
 
     def _rebuild_inputs(self, result, ts_all, n_user):
         """The port metadata the run realized and the probe samples it covers."""
         self._check_solver_step(result)
         run_grid = result.grid
-        resolve = _lane_resolver(self.lane, run_grid)
         for comp, idx in self.probe_keys:
-            got = tuple(int(v) for v in resolve(_node_position(self.grid, idx)))
+            got = tuple(int(v) for v in field_index(run_grid, _node_position(self.grid, idx), comp))
             if got != idx:
                 raise _NotCompleted(
                     "W0", math.nan, W0_REL_BAR,
@@ -1803,6 +1735,8 @@ class RingdownRun:
                 Y, dt, f_bins, self.n_steps, self.n_start, freq_max=ref_hz,
                 split=spec.split, guard=spec.guard, sv_rel=spec.sv_rel,
                 unit_tol=spec.unit_tol, observable=to_s, plain=plain)
+        except IdentificationMemoryRefused:
+            raise
         except (ValueError, np.linalg.LinAlgError) as exc:
             raise _NotCompleted("identification", math.nan, math.nan,
                                 f"{exc}.") from None
@@ -2107,6 +2041,8 @@ def _judge_record(Y, dt: float, f_bins, n_record: int, n_start: int,
         plain = plain_dft(Y, dt, f_bins)
         model = identify(Y, dt, n_start, n_record, **kw)
         spectra = plain + tail_dft(model, n_record - 1, f_bins)
+    except IdentificationMemoryRefused:
+        raise
     except (ValueError, np.linalg.LinAlgError) as exc:
         return dict(note=f"the identification on [{spec.window_start:g} T, T] "
                          f"failed: {exc}")
@@ -2597,7 +2533,8 @@ def gradient_witness(grad, grad_other, *, against: str = "early_start",
     One forward pass serves both gradients of the early-start form::
 
         def both(p):
-            r = sim.forward(eps_override=p, n_steps=n, ringdown=RingdownSpec())
+            r = sim.forward(eps_override=p, n_steps=n, port_s11_freqs=bins,
+                            ringdown=RingdownSpec())
             return (loss(r.ringdown.s_params), loss(r.ringdown.s_params_long)), r.ringdown
 
         (l, l_long), pullback, rd_out = jax.vjp(both, p, has_aux=True)
@@ -2858,26 +2795,20 @@ def _rdt_nan(result):
 class RingdownForward(RingdownRun):
     """One ``forward(..., ringdown=spec)``: probes in, forward, probes out, traced completion.
 
-    Everything that can refuse the request does so before the call, as in
-    :class:`RingdownRun`. After the call nothing raises and nothing warns: the
-    completed S-parameters are traced JAX arrays (NaN where the host
-    identification failed), and the checks run lazily on the concrete result
-    (:attr:`RingdownForwardResult.report`).
+    Request preconditions are checked before the call, as in :class:`RingdownRun`.
+    Main-window memory refusals raise with the needed and allowed memory.
+    Long-window refusals and other host identification failures produce
+    NaN completed S-parameters in the traced JAX arrays; their checks run lazily
+    on the concrete result (:attr:`RingdownForwardResult.report`).
     """
 
     caller = "forward"
-
-    def __init__(self, sim, spec: RingdownSpec, *, lane: str, n_steps: int, grid,
-                 bins=None):
-        super().__init__(sim, spec, lane=lane, n_steps=n_steps, grid=grid)
-        #: float64 bins of the completion when the lane's own ``freqs`` are
-        #: its float32 accumulator bins (the uniform lane's port_s11_freqs)
-        self.bins = None if bins is None else np.asarray(bins, dtype=np.float64)
 
     def run(self, call):
         """Attach the probes, call the lane, detach, complete (traced)."""
         from rfx.api._spec import _ProbeEntry
 
+        _check_run_identification_memory(self)
         probes = self.sim._probes
         n_declared = len(probes)
         if self.lane == "uniform" and n_declared == 0:
@@ -2905,7 +2836,7 @@ class RingdownForward(RingdownRun):
                 f"{tuple(full.shape)}, expected ({self.n_steps}, {n_user} user + "
                 f"{n_int} port-channel probes)")
         channels = full[:, n_user:]
-        stripped = result._replace(time_series=full[:, :n_user])
+        stripped = _user_geometry(result._replace(time_series=full[:, :n_user]), n_user, n_int)
         return stripped._replace(ringdown=self._traced(result, channels))
 
     def _traced(self, result, channels) -> RingdownForwardResult:
@@ -2992,10 +2923,15 @@ class RingdownForward(RingdownRun):
         # is not the port's V and I unseen. (An S-level reading divides by the
         # incident wave and amplified float32 rounding where the drive is weak.)
         plain = rj.plain_dft(Y, dt, f_bins)
+        from rfx.measurement.dft import phase
+        # The analytic completion is slot-relative. Compare its actual V/I
+        # conversion (including `half` above) on the physical E clock.
+        # Checking a separate replay would miss a broken completion mapping.
+        stamp = phase(0, f_bins, dt, 'E', dtype=cdt) / dt
         worst = []
         for p in range(len(pms)):
-            for ours, theirs in ((plain[:, 2 * p], accs[p][3]),
-                                 (plain[:, 2 * p + 1] * half, accs[p][1])):
+            for ours, theirs in ((plain[:, 2 * p] * stamp, accs[p][3]),
+                                 (plain[:, 2 * p + 1] * stamp * half, accs[p][1])):
                 theirs = jnp.asarray(theirs)
                 ours = ours.astype(theirs.dtype)
                 worst.append(jnp.max(jnp.abs(ours - theirs))
@@ -3008,7 +2944,8 @@ class RingdownForward(RingdownRun):
             k_max = min(static_pole_bound(n - n0, Y.shape[1], dt, ref_hz),
                         TRACED_POLE_BUDGET)
             s0, mask, st, tail_arg, count = rj.host_poles(
-                identify_window, raw[n0:], k_max, dt, f_bins)
+                identify_window if n0 == self.n_start else _witness_identification(identify_window),
+                raw[n0:], k_max, dt, f_bins)
             spectra = rj.completion(Y, dt, f_bins, n0, s0, mask, tail_arg, plain=plain)
             S = to_s(spectra)
             st = jnp.where(consistent, st, rj.STATUS_INCONSISTENT)

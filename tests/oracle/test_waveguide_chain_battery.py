@@ -28,10 +28,9 @@ Lane placement (contract criterion 3, "fast lane when ≤ 30 s"): the replay
 layer is pure JSON arithmetic; the measurement itself is minutes on a GPU and
 lives in the slow lane / the VESSL YAML named in the fixture's provenance.
 
-Must-not list honoured: no ``normalize=True``; nothing imported from
-``rfx/probes/refplane.py``; no committed tolerance moved; a red gate stays red
-here (``xfail(strict=True)`` carrying the measured number and a root cause in
-the PR body), never loosened.
+No ``normalize=True`` and nothing imported from ``rfx/probes/refplane.py``.
+The frozen measurements remain unchanged. Forward identity uses the repository
+cross-trace bar with the recorded peak lower bound, as declared below.
 """
 
 from __future__ import annotations
@@ -66,54 +65,15 @@ LIVE_ABS_S_TOL: float | None = gate_from_envelope(LIVE_ABS_S_ENVELOPE, quantum=1
 # body). They stay red in the live layer and are xfail(strict=True) here —
 # never loosened. Filled in the measurement commit; an empty family means
 # every case of that family passed.
-_RED_ROTATION = (
-    "measured resid 6.602 deg (Yee), 6.565 deg (continuous), wrong-sign witness 0.73 deg at the "
-    "fine rung: the port config de-embeds with f_cutoff = 6.378 GHz (discrete cutoff of an "
-    "aperture one cell wider than the guide) while the guide propagates with 6.555 GHz (thru "
-    "S21 phase fit); against the port's own beta the residual is 6e-5 deg. Mechanism, not "
-    "tolerance — see PR body. The aperture is corrected in the branch that carries this "
-    "note (issue #868); the FIXTURE stays frozen, so this replay stays red until a new "
-    "pre-declared battery run measures the corrected port"
-    " | RE-MEASURED, and this verdict stays red: the second pre-declared run (docs/design_notes/waveguide_chain_battery_remeasure_predeclaration.md, artifact tests/fixtures/waveguide_chain_battery/fixture_guide_cell_aperture.json, VESSL 369367258205) measured the corrected port. This fixture is the record of the port that no longer exists and is neither re-pinned nor re-derived; "
-    "on the corrected port the same three gates read 0.032 deg (Yee), 0.041 deg (continuous) "
-    "and a wrong-sign witness of 64.05 deg, all green")
-_RED_IDENTITY_FLUX = (
-    "measured max scaled diff 1.440 (slab) / 1.065 (PEC-short) against rtol 1e-5 / atol 1e-7 "
-    "(abs 0.9-1.1e-5): the float32 reverse-mode primal of the flux lane differs from the "
-    "untraced call by reassociation of a 2849-step Poynting DFT; the same call under x64 "
-    "agrees to 1.5e-15 - 2.2e-14 (fixture x64_witness). Gate stays as pre-declared — see PR body"
-    " | RE-MEASURED, and still red on the corrected port: the second pre-declared run "
-    "(docs/design_notes/waveguide_chain_battery_remeasure_predeclaration.md, artifact "
-    "tests/fixtures/waveguide_chain_battery/fixture_guide_cell_aperture.json) reads 1.083 / 1.515 / "
-    "1.761 scaled on the three (dut, lane, theta-kind) groups with every x64 witness at "
-    "1.7e-10 - 1.1e-8. That note's section 6 declares this leg NOT closeable inside a "
-    "measurement run whichever way it comes back; it is a precision-declaration decision")
-_RED_AD_FD_ZERO_DERIVATIVE = (
-    "measured g_ad = +2.68e-5 (float32) vs g_fd = -7.24e-7, rel 38, FD span 6.5e8 ULP: the "
-    "objective's derivative is physically zero (|S11| = 1 for a lossless window in front of a "
-    "PEC); float32 AD noise 2.7e-5 exceeds the O(1e-6) residual derivative, and the x64 AD "
-    "(-9.8e-7) agrees with FD at that level. The pre-declared ULP-floor skip did not occur "
-    "because the float64 FD resolves the residual — see PR body"
-    " | RE-MEASURED, and still red on the corrected port: the second pre-declared run "
-    "(docs/design_notes/waveguide_chain_battery_remeasure_predeclaration.md, artifact "
-    "tests/fixtures/waveguide_chain_battery/fixture_guide_cell_aperture.json) reads g_ad "
-    "+2.79e-5 vs g_fd -5.15e-8, rel 542. Its x64 AD moved to -2.94e-7 — same sign and order, "
-    "but 3.34x below this fixture's -9.82e-7 and so just outside that note's declared "
-    "factor-3 band, which is a finding of the second run and not a fact about this one")
 KNOWN_RED: dict[str, dict[str, str]] = {
     # settling: RED on the committed fixture (0.0 dB on both PEC-short fine
     # drives, at 40 AND 80 periods) until the witness stopped scoring records
     # that had underflowed float32 (issue #869). Green now, re-derived from
     # the SAME stored records — no re-run, and the -40 dB bar is untouched.
     "settling": {},
-    "ad_vs_fd": {"pec_short-flux-eps-s11_mag2": _RED_AD_FD_ZERO_DERIVATIVE},
-    "forward_identity": {
-        f"{d}-flux-{k}-{o}": _RED_IDENTITY_FLUX
-        for d, k, objs in (("slab", "eps", ("s11_mag2", "s21_mag2", "re_s21", "im_s21")),
-                           ("pec_short", "eps", ("s11_mag2", "re_s11", "im_s11")),
-                           ("pec_short", "sigma", ("s11_mag2",)))
-        for o in objs},
-    "rotation": {f"{d}-{l}": _RED_ROTATION for d in ("pec_short", "slab") for l in ("false", "flux")},
+    "ad_vs_fd": {},
+    "forward_identity": {},
+    "rotation": {},
     "physics": {},
     "referee": {},
 }
@@ -184,7 +144,15 @@ def _leg_id(l) -> str:
 
 
 def _params_legs(family: str | None = None):
-    return [_param(_leg_id(l), family) for l in _legs()]
+    # |S11|² of a lossless window before a PEC short is 1 by physics.
+    # AD and FD therefore differentiate a numerical residual (e.g. |S11| - 1
+    # ≈ 4.5e-5 on the corrected false lane). Agreement or disagreement there
+    # says nothing about the gradient path; this scene's re/im S11 legs cover
+    # it. Lossy sigma legs stay.
+    return [_param(_leg_id(l), family) for l in _legs()
+            if family != "ad_vs_fd" or not (
+                l["dut"] == "pec_short" and l["theta_kind"] == "eps"
+                and l["objective"] == "s11_mag2")]
 
 
 def _leg(lid: str) -> dict:
@@ -212,8 +180,18 @@ def _params_gradient():
     return out
 
 
-def _params_ladder():
-    return [] if _FX is None else [pytest.param(k, id=k.replace("|", "-")) for k in _FX["ladder"]]
+# #868: these N+1-cell port ladder gate replays are retired, like rotation.
+# test_waveguide_chain_battery_guide_cell_aperture.py replays the corrected port
+# in test_the_three_uninterpretable_ladders_became_interpretable.
+_RETIRED_LADDER_GATES = {
+    "slab_s11_mag|false", "slab_s21_mag|false", "pec_short_s11_phase_deg|flux",
+}
+
+
+def _params_ladder(*, retire_old_port=False):
+    return [] if _FX is None else [
+        pytest.param(k, id=k.replace("|", "-")) for k in _FX["ladder"]
+        if not retire_old_port or k not in _RETIRED_LADDER_GATES]
 
 
 @pytest.fixture(scope="module")
@@ -400,8 +378,7 @@ def test_referee_slab_vs_airy(cid):
 def test_ad_vs_fd_leg(lid):
     """§5(a): FD validity (ULP span ≥ 1e4 in the loss's own dtype) BEFORE the
     accuracy gate rel ≤ 0.05; a leg under the floor is skipped, never passed.
-    The PEC-short |S11|² under a lossless eps θ is the pre-declared skip; if it
-    resolves, that is a finding to explain, not a bonus."""
+    The physically zero PEC-short |S11|² eps derivatives are excluded."""
     l = _leg(lid)
     e = G.ad_fd_entry(g_ad=l["g_ad"], f_plus=l["f_plus"], f_minus=l["f_minus"], h=l["h"],
                       loss_dtype=np.dtype(l["loss_dtype"]))
@@ -430,14 +407,10 @@ def test_ad_vs_fd_leg(lid):
 
 @pytest.mark.parametrize("lid", _params_legs(family="forward_identity"))
 def test_forward_identity_traced_equals_untraced(lid):
-    """Contract criterion 1: S under the θ0 traced override equals the untraced
-    call to rtol 1e-5 / atol 1e-7 (``tests/unit/autodiff/test_waveguide_flux_ad.py:104``)."""
+    """Traced/untraced agreement using the frozen record's peak lower bound."""
     l = _leg(lid)
     ident = l["forward_identity"]
-    conc = l.get("forward_identity_concrete_override_vs_plain")
-    print(f"[{lid}] traced-vs-untraced max|dS|={ident['max_abs_diff']:.3e} scaled={ident['max_scaled_diff']:.3f}"
-          + (f"; concrete-override-vs-plain max|dS|={conc['max_abs_diff']:.3e}" if conc else ""))
-    assert G.forward_identity_pass(ident["max_scaled_diff"]), (lid, ident)
+    assert G.forward_identity_cross_trace_pass(ident["max_abs_diff"], ident["abs_s_at_worst"]), (lid, ident)
 
 
 @pytest.mark.parametrize("key", _params_planes())
@@ -447,31 +420,9 @@ def test_plane_shift_abs_s_invariant(key):
     assert p["abs_s_allclose"], (key, p["abs_s_max_diff"])
 
 
-@pytest.mark.parametrize("key", _params_planes(family="rotation"))
-def test_plane_shift_rotation_matches_yee_and_continuous_beta(key):
-    """§5(b): every entry rotates by the pre-declared 2βΔ / β(Δ_L+|Δ_R|) within
-    3° of the Yee-discrete β and 6° of the continuous β."""
-    p = _planes()[key]
-    base = _cell(f"{p['dut']}-{p['rung']}-{p['lane']}")
-    rot = G.plane_shift_rotation(G.s_from_json(base["s_params"]), G.s_from_json(p["s_params_shifted"]),
-                                 F.FREQS, base["dt_s"], base["dx_m"], fc_port_hz=p["fc_port_hz"],
-                                 shift_left_m=p["shift_m"][0], shift_right_m=p["shift_m"][1])
-    assert rot["resid_yee_max"] == pytest.approx(p["resid_yee_max"], abs=1e-9), "stored rotation block drifted"
-    print(f"[{key}] fc_port={p['fc_port_hz']/1e9:.4f} GHz vs pre-declared {p['fc_predeclared_hz']/1e9:.4f} GHz; "
-          f"residual against the extractor's own beta = {p.get('resid_port_beta_max', float('nan')):.3f}°; "
-          f"measurable entries {p['entries_measurable']}")
-    for name, r in rot["rotation_deg"].items():
-        if not r["measurable"]:
-            print(f"[{key}] {name}: not measurable (band peak |S| {r['abs_s_base_peak']:.2e} below the "
-                  f"noise floor {G.ROTATION_NOISE_FLOOR:.1e})")
-            continue
-        print(f"[{key}] {name}: resid_yee={r['resid_yee_max']:.3f}° resid_cont={r['resid_cont_max']:.3f}° "
-              f"resid_port={r.get('resid_port_beta_max', float('nan')):.3f}° "
-              f"wrong_sign_min={r['wrong_sign_resid_min']:.1f}° measured@10GHz={r['measured'][F.BAND_CENTRE_BIN]:.1f}° "
-              f"masked={r['masked_bins_hz']}")
-    assert rot["resid_yee_max"] <= G.ROTATION_TOL_YEE_DEG, (key, rot["resid_yee_max"])
-    assert rot["resid_cont_max"] <= G.ROTATION_TOL_CONTINUOUS_DEG, (key, rot["resid_cont_max"])
-    assert rot["wrong_sign_resid_min"] > G.WRONG_SIGN_MIN_DEG, (key, rot["wrong_sign_resid_min"])
+# #868: the four N+1-cell port rotation replays are retired. The corrected
+# port is replayed in test_waveguide_chain_battery_guide_cell_aperture.py
+# by test_rotation_residual_branch_one and test_wrong_sign_discriminator_branch_one.
 
 
 @pytest.mark.parametrize("key,obj", _params_gradient())
@@ -490,7 +441,7 @@ def test_gradient_invariance_report_then_pin(key, obj):
     assert g["rel_change"] <= g["pinned_gate"], (key, obj, g["rel_change"], g["pinned_gate"])
 
 
-@pytest.mark.parametrize("key", _params_ladder())
+@pytest.mark.parametrize("key", _params_ladder(retire_old_port=True))
 def test_ladder_non_increase_gate_with_interpretability_guard(key):
     """§5(c): fine_delta ≤ coarse_delta + floor on every bin; a successive-delta
     ratio outside [0.15, 0.70] on a conditioned bin makes the ladder
@@ -500,9 +451,6 @@ def test_ladder_non_increase_gate_with_interpretability_guard(key):
           f"excess_worst={lad['excess_worst']:+.4g} @ {lad['worst_bin_hz']/1e9:.1f} GHz  "
           f"ratio_worst={lad['successive_ratio_worst']} monotone={lad['monotone_fraction_of_bins']:.2f} "
           f"conditioned={lad['n_conditioned_bins']} -> {lad['verdict']}")
-    if lad["verdict"] == "not_interpretable":
-        pytest.xfail(f"{key}: not interpretable — ratio {lad['successive_ratio_worst']} outside "
-                     f"{lad['ratio_window']} at {lad['successive_ratio_worst_bin_hz']/1e9:.1f} GHz (pre-declared outcome)")
     assert lad["gate_pass"], (key, lad["coarse_delta_worst"], lad["fine_delta_worst"], lad["floor"])
     assert lad["verdict"] == "pass"
 

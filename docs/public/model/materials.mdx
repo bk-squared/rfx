@@ -1,0 +1,406 @@
+---
+title: "Materials and Geometry"
+description: "Library and custom materials, dispersive poles, CSG shapes, PEC handling, and thin conductors in rfx."
+sidebar:
+  order: 3
+---
+
+A structure in rfx is a shape plus a material: pick a library material or
+register your own with `add_material()`, then attach it to a shape with
+`sim.add()`. This page covers materials, shapes, and exactly how metal is
+placed on the grid. For the short version of the three conductor kinds, see
+[Core Concepts](/rfx/start/concepts/).
+
+## Library materials
+
+`MATERIAL_LIBRARY` holds common RF materials. Use them by name; no
+registration is needed.
+
+```python
+from rfx import MATERIAL_LIBRARY, Box, Simulation
+
+print(list(MATERIAL_LIBRARY))
+
+sim = Simulation(freq_max=10e9, domain=(0.05, 0.05, 0.02), boundary="cpml")
+sim.add(Box((0.005, 0.005, 0.005), (0.045, 0.045, 0.0066)), material="fr4")
+# A 1 mm PEC plate. It has real thickness, so it is a volume (see below).
+sim.add(Box((0.005, 0.005, 0.004), (0.045, 0.045, 0.005)), material="pec")
+```
+
+| Name | ε_r | σ (S/m) | Notes |
+|---|---|---|---|
+| `vacuum` | 1.0 | 0 | |
+| `air` | 1.0006 | 0 | |
+| `fr4` | 4.4 | 0.025 | lossy PCB laminate |
+| `rogers4003c` | 3.55 | 2.67×10⁻³ | σ from tan δ 0.0027 at 5 GHz |
+| `rogers4350b` | 3.48 | 7.16×10⁻³ | σ from tan δ 0.0037 at 10 GHz |
+| `rt_duroid_5880` | 2.20 | 1.10×10⁻³ | σ from tan δ 0.0009 at 10 GHz |
+| `alumina` | 9.8 | 0 | |
+| `silicon` | 11.9 | 0.01 | lightly doped |
+| `ptfe` | 2.1 | 0 | |
+| `copper` | 1.0 | 5.8×10⁷ | treated as PEC |
+| `aluminum` | 1.0 | 3.5×10⁷ | treated as PEC |
+| `pec` | 1.0 | 1×10¹⁰ | perfect conductor |
+| `water_20c` | 4.9 + one Debye pole | 0 | water at 20 °C |
+
+The laminate σ values are a constant conductivity that matches the datasheet
+loss tangent at one frequency. Loss away from that frequency scales as 1/f, so
+it is not a frequency-dependent loss model.
+
+When you omit `dx`, rfx picks the mesh from your geometry and materials, and
+`preflight()`, `fidelity_report()` and `run()` all use that same mesh. Adding
+geometry can change it. To differentiate with respect to geometry or mesh
+inputs, pass an explicit `dx` (and any profiles) up front.
+
+## Custom materials
+
+```python
+sim.add_material("my_ceramic", eps_r=9.0, sigma=0.001, mu_r=1.0)
+sim.add(Box((0.01, 0.01, 0.0), (0.04, 0.04, 0.002)), material="my_ceramic")
+```
+
+`add_material()` and `add()` return the simulation, so you can chain them:
+
+```python
+(sim
+ .add_material("sub", eps_r=3.55, sigma=0.0)
+ .add_material("metal", eps_r=1.0, sigma=5.8e7)
+ .add(Box((0, 0, 0), (0.05, 0.03, 0.001)), material="sub")
+ .add(Box((0.005, 0.005, 0.001), (0.045, 0.025, 0.0015)), material="metal"))
+```
+
+Any material with σ ≥ 10⁶ S/m, such as `"metal"` above, becomes a perfect
+conductor. See [How conductors land on the lattice](#how-conductors-land-on-the-lattice).
+
+## Dispersive materials
+
+### Debye poles
+
+A Debye pole models dipolar relaxation (water, tissue):
+ε(ω) = ε_∞ + Δε / (1 + jωτ). `eps_r` is ε_∞.
+
+```python
+from rfx import DebyePole
+
+sim.add_material("water_body", eps_r=4.9,
+                 debye_poles=[DebyePole(delta_eps=74.1, tau=8.3e-12)])
+```
+
+`delta_eps` is εₛ − ε_∞ and `tau` is the relaxation time in seconds.
+
+### Lorentz and Drude poles
+
+Build Lorentz and Drude poles with the helpers and pass them as
+`lorentz_poles=[...]`:
+
+```python
+import numpy as np
+from rfx import drude_pole, lorentz_pole
+
+# Lorentz oscillator: strength, resonance (rad/s), damping (rad/s).
+sim.add_material("resonant", eps_r=1.0, lorentz_poles=[
+    lorentz_pole(delta_eps=2.0, omega_0=2 * np.pi * 10e9, delta=1e8)])
+
+# Drude plasma: plasma frequency and collision rate, both in rad/s.
+sim.add_material("plasma", eps_r=1.0,
+                 lorentz_poles=[drude_pole(omega_p=2 * np.pi * 10e9, gamma=2 * np.pi * 1e9)])
+```
+
+Both helpers return a `LorentzPole(omega_0, delta, kappa)`. Use the helpers
+rather than building that tuple yourself.
+
+A Drude or Lorentz medium has its own time-step limit, and a medium above it
+is refused when the model is assembled, with the largest stable step in the
+message. A metal at its optical plasma frequency (gold: ω_p ≈ 1.37×10¹⁶ rad/s)
+is far above that limit on any RF cell, and no stable step is found. Model RF
+metal as a conductor (`material="pec"`, a thin conductor, or a finite `sigma`)
+instead.
+
+## Shapes
+
+Coordinates are in metres. Shapes are rasterized onto the grid when the
+simulation is built.
+
+```python
+from rfx import Cylinder, Sphere
+
+slab = Box((0.0, 0.0, 0.0), (0.05, 0.05, 0.002))         # corner_lo, corner_hi
+ball = Sphere((0.025, 0.025, 0.010), radius=0.005)        # center, radius
+via = Cylinder((0.025, 0.015, 0.001), radius=0.0005,      # center, radius,
+               height=0.002, axis="z")                     # height, axis
+sim.add(ball, material="alumina")
+sim.add(via, material="copper")
+```
+
+`Cylinder` takes its centre point, not its base: the via above spans
+z = 0 to 2 mm. rfx also provides `PolylineWire`, `Via` and `CurvedPatch`; see
+the [Geometry and Materials API](/rfx/api/geometry-materials/).
+
+### CAD import
+
+`MeshShape` imports STL, OBJ and PLY files, and STEP/STP through the CAD extra
+(`pip install "rfx-fdtd[cad]"`). `scale` converts the file's length unit to
+metres:
+
+```python
+import tempfile
+from pathlib import Path
+
+import trimesh
+from rfx import MeshShape
+
+# A stand-in CAD part: 30 x 20 x 2 mm, drawn in millimetres.
+with tempfile.TemporaryDirectory() as tmp:
+    stl = Path(tmp) / "bracket.stl"
+    trimesh.creation.box(extents=(30.0, 20.0, 2.0)).export(stl)
+    part = MeshShape.from_file(str(stl), scale=1e-3,
+                               translate=(0.025, 0.025, 0.010))
+
+sim.add(part, material="pec")
+```
+
+STL in millimetres needs `scale=1e-3`. STEP files are converted to metres on
+import, so use `scale=1.0`. `MeshShape` is not differentiable: it raises on
+traced coordinates. Use `Box`, `Sphere` or `Cylinder` for any shape that must
+be a design variable.
+
+### Draw order
+
+There is no Boolean CSG. Shapes are rasterized in the order you add them, and
+where they overlap, a later dielectric overwrites an earlier one. To carve a
+hole in a dielectric, add the hole's material second:
+
+```python
+sim.add(Box((0.010, 0.010, 0.0), (0.040, 0.040, 0.004)), material="alumina")
+sim.add(Box((0.020, 0.020, 0.0), (0.030, 0.030, 0.004)), material="air")
+```
+
+This works for dielectrics only. Conductors accumulate and are never removed,
+so a later shape cannot cut a hole in metal. Draw metal only where metal
+should be.
+
+## How conductors land on the lattice
+
+This section is the full rule. Other pages link here instead of restating it.
+
+Any material with σ ≥ 10⁶ S/m is a **conductor**. rfx zeroes the tangential E
+on it instead of using σ in the update, which would be unstable. This covers
+`pec`, `copper` and `aluminum`, so all three are lossless. To model a lossy
+bulk material, keep σ below 10⁶ S/m. For conductor loss on a metal sheet, use
+`add_thin_conductor(..., surface_impedance_f0=f0)` (see
+[Thin conductors](#thin-conductors)).
+
+### The rule
+
+**An E component is PEC if and only if its location lies inside the closed
+conductor region.** Every conductor is exactly one of three kinds, and your
+declaration decides which. rfx never infers the kind from how a shape happens
+to rasterize.
+
+| Kind | What it is | Declare it with | An E edge is PEC when |
+|---|---|---|---|
+| **volume** | a set of cells | `sim.add(shape, material="pec")` with `Box`, `Sphere`, `Cylinder` | the edge touches an occupied cell |
+| **sheet** | a footprint on one node plane, zero thickness | `sim.add_thin_conductor(shape)`, or a zero-thickness `Box` in `sim.add()` | the edge lies in the plane and both its end nodes are in the footprint |
+| **wire** | a path of edges | `PolylineWire` thinner than half a local cell | the edge lies on the path |
+
+### Where things sit
+
+Node `i` is at `x_i = i·Δx`. Cell `i` spans `[x_i, x_{i+1}]`. `Ex[i,j,k]` sits
+at `(x_{i+½}, y_j, z_k)`, and `Ey`, `Ez` likewise are offset by half a cell
+along their own axis.
+
+- **Volumes** are sampled at cell centres: cell `i` is occupied when
+  `lo ≤ x_{i+½} < hi`. A box drawn on node planes occupies exactly the cells
+  between them. An off-lattice face rounds to the nearest node plane.
+- **Dielectrics** are sampled at nodes, half-open.
+- **Sheets** land on the node plane nearest the shape's mid-plane along its
+  normal. An exact half-cell tie goes to the lower plane.
+
+### What follows
+
+- A PEC `Box` from `z_a` to `z_b` on node planes has walls at **both** faces,
+  and every edge between them is shorted. The realized thickness equals the
+  drawn thickness, including for a one-cell plate.
+- A sheet owns no cell. It writes no ε_r or σ, and the E component normal to
+  it stays live.
+- Sheets on the same plane are merged first, so abutting sheets join without a
+  seam. Sheets on adjacent planes stay two separate films.
+- For a sheet to sit on a dielectric face, that face must be on a node plane.
+  Node planes are integer multiples of `dx` from the domain origin. Choosing
+  `dx = h_sub / n` sets the laminate's thickness in cells but does not put its
+  face on a node; the face's offset must also be a whole number of cells.
+  Otherwise the sheet snaps to the nearest node, and preflight reports the
+  offset.
+- The rule does not depend on axis order or mirroring.
+
+`sim.fidelity_report()` prints each conductor's drawn extent next to the
+realized wall planes, in your units. Read it whenever placement matters.
+
+### What rfx refuses
+
+These declarations are accepted by `sim.add()` or `add_thin_conductor()`, but
+`sim.preflight()` reports them as errors ("cannot be realized on this
+lattice"), and `run()` and `forward()` raise `ValueError`:
+
+- A PEC shape with `0 < thickness < one local cell` on any axis. It is neither
+  a sheet nor a resolved volume. Declare a sheet, or resolve the thickness.
+- A PEC shape that rasterizes to zero cells, such as a sphere smaller than a
+  cell. Metal never vanishes silently.
+- A PEC `Box` with two or three zero-thickness axes. A line or a point is not
+  a conductor; use `PolylineWire`.
+- An `add_thin_conductor()` shape thicker than one cell along its normal. That
+  is a volume; use `add()`.
+
+A PEC `Box` with exactly **one** zero-thickness axis is fine: it is a sheet,
+realized exactly as `add_thin_conductor()` would realize it.
+
+The removed `two_plane=True` keyword on `sim.add()` raises `TypeError`
+immediately. The volume rule already gives every plate both faces.
+
+### Metal that is not a declared conductor
+
+Three things put metal in a domain outside this rule. Know which one a result
+came from:
+
+- **A PEC boundary** (`boundary="pec"` or a `BoundarySpec` face) zeroes
+  tangential E on the domain face. It is part of the domain, not a body.
+- **A σ fill through the low-level `rasterize()`**, such as
+  `rasterize(grid, [(shape, 1.0, 1e7)])`, writes a large conductivity into
+  cells and lets the update damp the field. It is a lossy-volume model, not
+  PEC: no edge is zeroed and `fidelity_report()` does not list it. Some
+  scattering examples use it on purpose because TFSF illumination takes
+  material arrays directly.
+- **Subpixel smoothing and conformal PEC** (`subpixel_smoothing="kottke_pec"`,
+  `conformal_pec=True`) use their own weights near curved metal.
+
+Coax conductors built by the coaxial port are realized PEC, not a σ fill; see
+[Sources and Ports](/rfx/model/ports/#coaxial-ports).
+
+### Freeze the mesh before placing geometry from it
+
+With an automatic mesh, adding geometry can refine the mesh and move node
+planes. If you place conductors using grid coordinates, first register the
+geometry that drives the mesh, then call `sim.freeze_mesh()`:
+
+```python
+frozen = Simulation(freq_max=10e9, domain=(0.03, 0.03, 0.03), boundary="pec")
+grid = frozen.freeze_mesh()
+d = float(grid.dx)
+frozen.add(Box((5 * d, 5 * d, 5 * d), (9 * d, 9 * d, 6 * d)), material="pec")
+```
+
+Reading the grid or running preflight does not freeze it. After freezing, a
+feature the mesh cannot resolve is still refused. On a non-uniform grid, use the
+node coordinates, since `grid.dx` is only the boundary spacing. Register ports
+and boundaries before you keep array indices, because they can change the
+padding. Alternatively, pass explicit `dx=` and profiles from the start.
+
+### Worked example: foil is a sheet
+
+35 µm copper under a 0.787 mm RO4003C laminate, with `dx = h_sub / 4`. The
+copper is a fifth of a cell thick, so a `Box` in `add()` could not be
+realized: preflight flags it and `run()` raises. Declare it as a sheet, and
+put the laminate floor on a node plane by writing its position as a whole
+number of cells:
+
+```python
+H_SUB = 0.787e-3
+DX = H_SUB / 4                     # 196.75 um: four cells through the laminate
+Z_GND = 20 * DX                    # node plane 20
+XY_LO, XY_HI = 25 * DX, 175 * DX   # nodes 25 and 175
+
+board = Simulation(freq_max=12e9, domain=(0.04, 0.04, 0.012), dx=DX,
+                   boundary="cpml")
+board.add(Box((XY_LO, XY_LO, Z_GND), (XY_HI, XY_HI, Z_GND + H_SUB)),
+          material="rogers4003c")
+board.add_thin_conductor(Box((XY_LO, XY_LO, Z_GND), (XY_HI, XY_HI, Z_GND)))
+board.fidelity_report()
+```
+
+The report has no findings. The z rows read:
+
+```text
+  geometry[0] 'rogers4003c'
+    z: declared [3935.0, 4722.0] um -> realized [3935.0, 4722.0] um | face residuals (0.0, 0.0) um | extent 787.0 -> 787.0 um
+  thin_conductor[0] sigma_bulk=5.8e+07 S/m -> pec — PEC sheet on node plane z = 3935.00 um (...)
+    z: declared [3935.0, 3935.0] um -> realized [3935.0, 3935.0] um | face residuals (0.0, 0.0) um | extent 0.0 -> 0.0 um
+```
+
+A floor at a round `z = 4 mm` would not be a node plane (4 mm / 196.75 µm =
+20.33). The sheet would land at node 20, 65 µm below the dielectric. Drawing
+the foil as a one-cell `Box` is also wrong: it becomes a volume that takes the
+laminate's bottom cell, and the report flags that 25 % of the dielectric's
+cells are also PEC.
+
+### Worked example: a plate is a volume
+
+A 2 mm iris in a WR-90 guide at `dx = 1 mm`:
+
+```python
+guide = Simulation(freq_max=12e9, domain=(0.30, 0.02286, 0.01016), dx=1e-3,
+                   boundary="cpml")
+guide.add(Box((0.145, 0.0, 0.0), (0.147, 0.02286, 0.01016)), material="pec")
+```
+
+It is realized with faces at x = 145 mm and 147 mm and everything between them
+shorted, so a closed-form model can use the drawn 2 mm directly.
+`fidelity_report()` lists three wall planes (145, 146 and 147 mm) because the
+interior plane is shorted too. `max − min` of those planes is the plate's outer
+span. To measure an aperture, take the gap between wall groups.
+
+## Thin conductors
+
+Use `add_thin_conductor()` for printed copper and resistive films that are
+thinner than a cell:
+
+```python
+trace = Box((0.010, 0.014, 0.0016), (0.040, 0.016, 0.0016))
+sim.add_thin_conductor(trace, sigma_bulk=5.8e7, thickness=35e-6)
+```
+
+`sigma_bulk` and `surface_impedance_f0` choose the model:
+
+| Setting | Model |
+|---|---|
+| `sigma_bulk >= 1e6` (default copper) | lossless PEC sheet on one node plane. `thickness` is ignored. rfx warns. |
+| `sigma_bulk < 1e6` (resistive film, ink) | lossy sheet with conductivity `sigma_bulk * thickness / d`, preserving the sheet resistance 1/(σ·t) |
+| `surface_impedance_f0=f0` | resistive sheet with Rs = √(π f0 μ0 / σ_bulk), same footprint and edges as the PEC sheet |
+
+Here `d` is the cell size normal to the sheet. On a graded mesh it is
+`(d[k-1] + d[k]) / 2`, the average of the two cells either side of the sheet
+plane, so you get the sheet resistance you asked for wherever the sheet lands.
+
+The surface-impedance model is a thick-conductor (Leontovich) loss:
+
+- It adds loss only. It does not model the surface reactance, so resonances
+  read slightly high.
+- Rs is fixed at `f0` for the whole run. Its error grows as |√(f/f0) − 1| away
+  from `f0`.
+- It is valid for conductors at least about three skin depths thick. For
+  thinner films, use the `sigma_bulk < 1e6` path instead.
+- The sheet can have any shape (discs, meanders, `MeshShape` outlines, ground
+  planes with holes), but it must rasterize to exactly one cell layer.
+
+A surface-impedance sheet does not appear in `pec_mask` or in the σ array. To
+find all metal in a model, use `sim.conductor_mask()`.
+
+A sheet owns no cell, so it does not take the material of the cells around
+it. If you leave a vacuum slot for the foil between two dielectric boxes, the
+E edges on the sheet plane sit in vacuum and the stack-up gains a thin air
+layer. Extend the dielectric to the sheet plane; preflight flags the slot.
+
+## Limits
+
+- **Metal loss.** Every metal in the library is lossless PEC. For conductor
+  loss on a sheet, use `surface_impedance_f0`. There is no volumetric metal
+  loss.
+- **Laminate loss is constant σ.** It matches tan δ at one frequency only.
+  For broadband loss, fit Debye or Lorentz poles to your material data.
+- **Off-grid geometry moves.** A face between node planes lands on the
+  nearest one, up to half a cell away. Check `fidelity_report()`, and refine
+  instead of rounding your design to the grid.
+- **Surface-impedance sheets** run on the uniform and single-device
+  graded-mesh `run()` and S-parameter paths. Distributed, subgridded, ADI,
+  UPML, multimode-waveguide, MSL-junction and optimization paths refuse them.
+  See the [support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md).
+- **`MeshShape`** is not differentiable.

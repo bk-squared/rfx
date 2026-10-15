@@ -22,7 +22,7 @@ import shutil
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
-LANES = ("rfx/runners", "rfx/sources", "rfx/sparams", "rfx/simulation.py", "rfx/nonuniform.py")
+LANES = ("rfx/runners", "rfx/sources", "rfx/sparams", "rfx/simulation.py", "rfx/nonuniform.py", "rfx/stepping")
 ALLOWED = {("rfx/sources/sources.py", "stamp_lumped_sigma"),
            ("rfx/sources/sources.py", "stamp_lumped_eps")}
 _BARE_ADD = re.compile(r"\b(sigma|eps_r)\.at\[[^\]]*\]\.add\(")

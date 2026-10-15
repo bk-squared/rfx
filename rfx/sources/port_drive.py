@@ -3,7 +3,7 @@
 import jax
 import jax.numpy as jnp
 
-from rfx.core.yee import cell_component_e_coeffs
+from rfx.model.materials import e_update_coefficient_at, electric_grid_kwargs
 
 
 def stamped_drive(port, cell):
@@ -40,10 +40,67 @@ def port_drive_waveform(grid, cell, component, excitation, n_steps, materials,
     material and mesh derivatives. ``n_steps=None, time=t`` selects the
     eager single-step application instead of a precomputed waveform.
     """
-    cb = cell_component_e_coeffs(materials, cell, component, grid.dt)[1]
+    cb = e_update_coefficient_at(materials, cell, component, grid.dt, **electric_grid_kwargs(grid))
     if n_steps is None:
         samples = excitation(time)
     else:
         times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
         samples = jax.vmap(excitation)(times)
-    return (cb * sigma_port * unit_field) * samples
+    from rfx.model.source_coefficients import source_table
+    return source_table(samples, native="cb", coefficient=cb * sigma_port * unit_field)
+
+
+class PortSourceQueue(list):
+    """Preserve source order while deferring port builders until realization.
+
+    Ordinary source specs can be appended/extended as usual. A deferred builder
+    receives final materials at resolve time; its other arguments (including
+    pre-clearing wire masks) are captured at registration time.
+    """
+
+    def defer(self, builder, *args, **kwargs):
+        from functools import partial
+        self.append(partial(builder, *args, **kwargs))
+
+    def resolve(self, materials):
+        from functools import partial
+        sources = []
+        for entry in self:
+            if isinstance(entry, partial):
+                built = entry(materials=materials)
+                sources.extend(built if isinstance(built, list) else [built])
+            else:
+                sources.append(entry)
+        return sources
+
+
+def soft_source(grid, position, component, waveform, n_steps, *, materials,
+                amplitude_kind, field_dtype=None):
+    """Build a declared soft source after the final material and load realization.
+
+    The declared kind alone decides the drive, on every entry and boundary:
+    'field' adds ``w``, 'current' adds ``(1/dV)*(Cb*w)`` (run()/forward() census
+    row D2: the entries used to pick different helpers on a closed boundary).
+    """
+    from rfx._grid_metric import field_index
+    from rfx.api._source_semantics import (
+        SOURCE_AMPLITUDE_KINDS, guard_float16_source_increment)
+    from rfx.model.source_coefficients import uniform_source_table
+    from rfx.simulation import SourceSpec
+    if amplitude_kind not in SOURCE_AMPLITUDE_KINDS:
+        raise ValueError(
+            f"a declared soft source needs amplitude_kind 'field' or 'current' "
+            f"(add_source resolves None to 'current'), got {amplitude_kind!r}")
+    cell = field_index(grid, position, component)
+    table = uniform_source_table(grid, cell, component, waveform, n_steps,
+                                 materials, amplitude_kind)
+    return SourceSpec(i=cell[0], j=cell[1], k=cell[2], component=component,
+                      waveform=guard_float16_source_increment(
+                          table, field_dtype, amplitude_kind))
+
+
+def defer_soft_source(sources, grid, entry, n_steps, *, field_dtype):
+    """Queue an ``add_source`` entry's drive; run() and forward() both call this."""
+    sources.defer(soft_source, grid, entry.position, entry.component,
+                  entry.waveform, n_steps, amplitude_kind=entry.amplitude_kind,
+                  field_dtype=field_dtype)

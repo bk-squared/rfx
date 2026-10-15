@@ -1,0 +1,317 @@
+"""Immutable, host-only snapshot of today's measurement conventions.
+
+The shared DFT reads this physical clock. Call the builder once with
+its realized grid and retain the returned snapshot. There are no buffers,
+waveforms, material masks, or mutable array leaves in the result. Sampling
+weights and quadrature areas are separate: a raw DFT plane does not integrate
+its field, whereas a modal channel does.
+
+TimeBase is physical leapfrog: scan step n has E=(n+1)*dt, H=(n+.5)*dt.
+Channel time offsets, in units of dt, describe TODAY's stamps relative to
+that clock; active record stamps have zero offset. They do not change stepping.
+slot_offset describes storage only: scan step n writes record[n+slot_offset].
+It is independent of the timestamp; waveguide retains its historical
+endpoint exclusion while storing the retained samples at slot n. Raw point probes have no Fourier stamp and use their physical
+sample time. Current-moment stencil contributions form a current channel at the H time;
+their pre-update/post-injection stages distinguish the two E states.
+Calculator-only observations require their actual setup (MSL/coax calculators
+choose planes independently of run()). Missing observations remain owners with
+an availability explanation, never invented run() channels.
+"""
+from __future__ import annotations
+
+from rfx._grid_metric import field_index
+from dataclasses import dataclass, replace
+from itertools import product
+
+import jax.numpy as jnp
+import numpy as np
+
+
+@dataclass(frozen=True)
+class Node:
+    component: str
+    i: int
+    j: int
+    k: int
+    weight: float
+    area: float | None = None
+
+
+@dataclass(frozen=True)
+class Channel:
+    name: str
+    kind: str
+    nodes: tuple[Node, ...]
+    sample_stage: str = 'post-injection'
+    slot_offset: int = 0
+    e_time_offset: float = 0.0
+    h_time_offset: float = 0.0
+
+
+def field_channel(component, nodes=(), **metadata):
+    """Declare a field channel once, before any DFT consumer sees it."""
+    kind = {'ex': 'E', 'ey': 'E', 'ez': 'E', 'hx': 'H', 'hy': 'H', 'hz': 'H'}[component]
+    return Channel(component, kind, nodes, **metadata)
+
+
+@dataclass(frozen=True)
+class ReferencePlane:
+    name: str
+    axis: int
+    index: int
+    coordinate_m: float
+
+
+@dataclass(frozen=True)
+class Owner:
+    id: str
+    kind: str
+    channels: tuple[Channel, ...]
+    frequencies: tuple[float, ...] = ()
+    reference_planes: tuple[ReferencePlane, ...] = ()
+    mode: tuple[int, int] | None = None
+    mode_profile_reference: str | None = None
+    known_differences: tuple[str, ...] = ()
+    availability: str = 'sampled'
+
+
+@dataclass(frozen=True)
+class TimeBase:
+    dt: float
+    record_length: int
+    e_offset: float = 1.0
+    h_offset: float = 0.5
+    host_step_dtype: str = 'int64'
+    scan_step_dtype: str = 'int32'
+    host_time_dtype: str = 'float64'
+
+    def time(self, n: int, kind: str) -> float:
+        """Compute from the integer clock, never repeated addition."""
+        if isinstance(n, bool) or not isinstance(n, (int, np.integer)):
+            raise TypeError('measurement step must be an integer')
+        if kind not in ('E', 'H'):
+            raise ValueError('channel kind must be E or H')
+        return float((np.float64(n) + (self.e_offset if kind == 'E' else self.h_offset))
+                     * np.float64(self.dt))
+
+
+#: Sums that are not on the shared DFT kernel (rfx.measurement.dft), and the
+#: one case in which the kernel itself is less accurate. Decision record
+#: 2026-10-07 "M2 after two reviews", items 3 and 4.
+KERNEL_KNOWN_DIFFERENCES = (
+    'rfx/floquet.py update_floquet_dft: own sum, E and H stamped at one time; no caller in rfx/',
+    'subgridded runner: own lumped V/I sum stamped n dt, without the H half step',
+    'rfx/adjoint.py: own plane sum, physically stamped',
+    'traced dt or frequencies: the phase is evaluated in the trace; its float32 error grows with the step index',
+)
+
+
+@dataclass(frozen=True)
+class MeasurementPlan:
+    path: str
+    time_base: TimeBase
+    owners: tuple[Owner, ...]
+    schema_version: int = 1
+    known_differences: tuple[str, ...] = ()
+
+
+def _frequencies(sim, entry=None, freqs=None):
+    if freqs is None and entry is not None:
+        freqs = getattr(entry, 'freqs', None)
+    if freqs is None:
+        freqs = jnp.linspace(sim._freq_max / 10, sim._freq_max,
+                             getattr(entry, 'n_freqs', 50))
+    return tuple(float(v) for v in np.asarray(freqs))
+
+
+def _index(grid, position):
+    from rfx.nonuniform import NonUniformGrid, position_to_index
+    indices = position_to_index(grid, position) if isinstance(grid, NonUniformGrid) else grid.position_to_index(position)
+    return tuple(int(i) for i in indices)
+
+
+def _plane_nodes(grid, axis, index, component, region=None, weights=None):
+    axes = [a for a in range(3) if a != axis]
+    sizes = tuple(len(grid.cells(a)) for a in axes)
+    lo, hi, low, high = region or (0, sizes[0], 0, sizes[1])
+    cells = [np.asarray(grid.cells(a)) for a in axes]
+    nodes = []
+    for u, v in product(range(lo, hi), range(low, high)):
+        idx = [0, 0, 0]
+        # Flux windows alone may include a virtual periodic closing node.
+        us, vs = u % sizes[0], v % sizes[1]
+        idx[axis], idx[axes[0]], idx[axes[1]] = index, us, vs
+        w = 1.0 if weights is None else float(weights[u-lo, v-low])
+        nodes.append(Node(component, *idx, w, float(cells[0][us] * cells[1][vs])))
+    return tuple(nodes)
+
+
+def _pec_edges(sim, grid):
+    from rfx.boundaries.pec import realized_pec_edge_masks
+    sheets, wires = [], []
+    assemble = sim._assemble_materials_nu if sim._uses_nonuniform_mesh else sim._assemble_materials
+    result = assemble(grid, pec_sheets=sheets, pec_wires=wires)
+    if result[3] is None and not sheets and not wires:
+        return None
+    return realized_pec_edge_masks(result[3], sheets=tuple(sheets), wires=tuple(wires),
+                                   periodic=sim._periodic_flags())
+
+
+def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
+                           calculator_owners=()):
+    """Build a frozen snapshot from a Simulation and the run's realized grid.
+
+    ``path`` selects run/forward availability on the selected mesh. Optional
+    ``calculator_owners`` are frozen observations made by the calculator setup
+    adapters; calculator planes cannot be inferred from a run declaration.
+    ``frequencies`` is the run's explicit port frequency request, if any.
+    """
+    from rfx.nonuniform import NonUniformGrid
+    if isinstance(n_steps, bool) or not isinstance(n_steps, (int, np.integer)) or n_steps < 0:
+        raise ValueError('n_steps must be a nonnegative integer')
+    nu = isinstance(grid, NonUniformGrid)
+    path = path or ('run_nonuniform' if nu else 'run_uniform')
+    allowed = ('run_nonuniform', 'fwd_nonuniform') if nu else ('run_uniform', 'fwd_uniform')
+    if path == ('msl_nonuniform' if nu else 'msl_uniform'):
+        from .ports import build_msl_owners
+        if calculator_owners:
+            raise ValueError('msl path builds its own calculator owners')
+        bins = frequencies if frequencies is not None else jnp.linspace(sim._freq_max/10, sim._freq_max, 100)
+        calculator_owners = build_msl_owners(sim, grid, frequencies=bins)
+    elif path not in allowed:
+        raise ValueError(f'unsupported measurement path {path!r} for this grid; expected {allowed}')
+    owners = []
+    for i, entry in enumerate(sim._probes):
+        owners.append(Owner(f'probe:{i}', 'probe',
+                            (field_channel(entry.component,
+                                     (Node(entry.component, *field_index(grid, entry.position, entry.component), 1.0),),
+                                     e_time_offset=0., h_time_offset=0.),)))
+    for i, entry in enumerate(sim._dft_planes):
+        axis = 'xyz'.index(entry.axis)
+        point = [0.0, 0.0, 0.0]
+        point[axis] = entry.coordinate
+        index = _index(grid, tuple(point))[axis]
+        region = getattr(sim, '_dft_plane_regions', {}).get(entry.name)
+        channel = field_channel(entry.component,
+                          _plane_nodes(grid, axis, index, entry.component, region),
+                          e_time_offset=0., h_time_offset=0.)
+        owners.append(Owner(f'dft_plane:{i}', 'dft_plane', (channel,),
+                            _frequencies(sim, entry)))
+    from rfx.probes.flux_region import resolve_flux_region
+    from rfx.probes.probes import _FLUX_COMPONENTS
+    from .flux_weights import grid_flux_monitor, flux_regions, monitor_periodic_flags, normal_h_neighbor
+    from rfx.boundaries.pec import resolve_wall_faces
+    from rfx.boundaries.pmc import magnetic_image_faces
+    flux_periodic = monitor_periodic_flags(sim, grid) if sim._flux_monitors else (False, False, False)
+    for i, entry in enumerate(sim._flux_monitors):
+        axis = 'xyz'.index(entry.axis)
+        point = [0.0, 0.0, 0.0]
+        point[axis] = entry.coordinate
+        index = _index(grid, tuple(point))[axis]
+        tangential = [a for a in range(3) if a != axis]
+        region = resolve_flux_region(grid, entry, sim._domain)
+        bounds = (0, len(grid.cells(tangential[0])), 0, len(grid.cells(tangential[1])))
+        if region is not None:
+            index = region['normal_index']
+            bounds = tuple(v for span in region['cell_slices'] for v in span)
+        cfg = grid_flux_monitor(grid, axis=axis, index=index, periodic=flux_periodic,
+                                freqs=jnp.asarray(_frequencies(sim, entry)),
+                                lo1=bounds[0], hi1=bounds[1], lo2=bounds[2], hi2=bounds[3],
+                                pmc_faces=(magnetic_image_faces(sim._boundary_spec.pmc_faces(), grid.shape)
+                                           if nu else resolve_wall_faces(grid, flux_periodic)[1]))
+        areas = (np.asarray(cfg.dA), np.asarray(cfg.dA2))
+        regions = flux_regions(cfg)
+        channels = []
+        for c, component in enumerate(_FLUX_COMPONENTS[axis]):
+            # Weight belongs to the E/H product, not to each linear DFT.
+            area = areas[(0, 1, 1, 0)[c]]
+            planes = (((index, 1.0),) if c < 2 else
+                      ((index, 0.0),) if cfg.normal_h_zero else
+                      ((normal_h_neighbor(index, grid.shape[axis], cfg.normal_periodic), cfg.normal_h_weights[0]), (index, cfg.normal_h_weights[1])))
+            nodes = tuple(Node(n.component, n.i, n.j, n.k, weight, float(a))
+                          for plane, weight in planes
+                          for n, a in zip(_plane_nodes(grid, axis, plane, component, regions[c]), area.flat))
+            channels.append(field_channel(component, nodes,
+                                    e_time_offset=0., h_time_offset=0.))
+        owners.append(Owner(f'flux_plane:{i}', 'flux', tuple(channels), _frequencies(sim, entry),
+                            known_differences=(),
+                            availability='result missing' if path.startswith('fwd') else 'sampled'))
+    edges = _pec_edges(sim, grid) if any(p.impedance and p.extent is not None for p in sim._ports) else None
+    from rfx.sources.sources import WirePort, _wire_port_live_cells
+    from .ports import lumped_wire_owner
+    for i, entry in enumerate(sim._ports):
+        if not entry.impedance:
+            continue  # a soft source has no measurement owner
+        live = (field_index(grid, entry.position, entry.component),)
+        if entry.extent is not None:
+            end = list(entry.position)
+            end['xyz'.index(entry.component[1])] += entry.extent
+            port = WirePort(entry.position, tuple(end), entry.component, entry.impedance,
+                            entry.waveform, radius=entry.radius)
+            cells, flags, _ = _wire_port_live_cells(grid, port, edges)
+            live = tuple(tuple(int(v) for v in p) for p, flag in zip(cells, flags) if flag)
+        if not live:
+            raise ValueError(f'port:{i} has no live measurement edges')
+        references = ()
+        if getattr(entry, 'reference_plane_cells', None) is not None:
+            line_axis = 'xyz'.index(entry.direction[1])
+            outboard = -1 if entry.direction[0] == '+' else 1
+            target = live[len(live)//2][line_axis]
+            indices = (target, target+outboard*entry.reference_plane_cells,
+                       target+outboard*2*entry.reference_plane_cells)
+            references = tuple(ReferencePlane(name, line_axis, int(p),
+                                              float(grid.node_of(line_axis, int(p))))
+                               for name, p in zip(('port', 'reference', 'impedance'), indices))
+        owners.append(lumped_wire_owner(
+                            grid, entry.component, live, nu=nu,
+                            pmc_faces=sim._boundary_spec.pmc_faces(), periodic=sim._periodic_flags(),
+                            port_id=i, kind='wire' if entry.extent is not None else 'lumped',
+                            frequencies=_frequencies(sim, freqs=(np.asarray(frequencies, dtype=np.float32)
+                                                    if frequencies is not None else None)),
+                            reference_planes=references,
+                            known_differences=(('NU missing pre-injection V_ref',
+                                                'NU port weights retain solver-store float32 rounding') if nu else ())
+                            + (('wire reference planes belong to multi-drive scan, not diagonal forward',)
+                               if references else ()),
+                            availability=(('V/I unavailable in main scan; sampled in second scan when compute_s_params is on'
+                                           if not nu else 'V/I unavailable in run without wire extent')
+                                          if entry.extent is None and path.startswith('run') else 'sampled')))
+        if entry.extent is None and edges is not None:
+            from rfx.boundaries.pec import clear_edges
+            edges = clear_edges(edges, list(live), component=entry.component)
+    from .ports import waveguide_owners
+    owners.extend(waveguide_owners(sim, grid, n_steps, nu))
+    supplied = {owner.id: owner for owner in calculator_owners}
+    for attr, kind in (('_msl_ports', 'msl'), ('_coaxial_ports', 'coax')):
+        for i, _ in enumerate(getattr(sim, attr)):
+            key = f'{kind}_port:{i}:mode:0'
+            owners.append(supplied.pop(key) if key in supplied else Owner(
+                key, kind, (), availability='calculator setup required; run() has no V/I projector',
+                known_differences=(('coax calculator refuses NU; no run() measurement' if kind == 'coax'
+                                    else 'MSL calculator owns V ladder and PEC-anchored I stencil'),)))
+    owners.extend(supplied.values())
+    from .monitors import monitor_owners
+    owners.extend(monitor_owners(sim, grid))
+    owners = [with_clock_differences(owner) for owner in owners]
+    ids = [o.id for o in owners]
+    if len(ids) != len(set(ids)):
+        raise ValueError('duplicate measurement owner id')
+    return MeasurementPlan(path, TimeBase(float(grid.dt), int(n_steps)), tuple(owners),
+                           known_differences=KERNEL_KNOWN_DIFFERENCES)
+
+
+def measurement_plan(sim, *, n_steps, path=None, frequencies=None, calculator_owners=()):
+    """Frozen measurement plan on the grid this configuration builds (read-only; no path consumes it yet)."""
+    return build_measurement_plan(
+        sim, sim._build_realized_grid(), n_steps=n_steps, path=path,
+        frequencies=frequencies, calculator_owners=calculator_owners)
+
+
+def with_clock_differences(owner):
+    """Enumerate every channel whose present stamp differs from the time base."""
+    flags = tuple(f'{c.name}: {c.kind} stamp offset {offset:+g} dt from physical clock'
+                  for c in owner.channels
+                  for offset in (c.e_time_offset if c.kind == 'E' else c.h_time_offset,)
+                  if offset != 0)
+    return replace(owner, known_differences=tuple(dict.fromkeys((*owner.known_differences, *flags))))

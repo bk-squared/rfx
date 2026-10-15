@@ -43,7 +43,7 @@ from rfx.boundaries.cpml import init_cpml, apply_cpml_e, apply_cpml_h
 from rfx.boundaries.pec import apply_pec
 from rfx.sources.sources import GaussianPulse
 
-pytestmark = pytest.mark.gpu
+pytestmark = [pytest.mark.gpu, pytest.mark.gpu_gate]
 
 
 def _reflection_db_vs_clean_reference(f0, freq_max, n_layers, n_steps,
@@ -127,8 +127,11 @@ def test_cpml_energy_decay():
             + 0.5 * MU_0 * (s.hx**2 + s.hy**2 + s.hz**2).sum()
         )
 
-    # Inject source for 200 steps (pulse fully decays)
-    for n in range(200):
+    # Drive over the whole pulse, to t0 + 4.5*tau: a drive cut earlier leaves
+    # the cut pulse's time integral as a static field no absorber removes
+    # (issue 1668).
+    n_src = int(np.ceil((pulse.t0 + 4.5 * pulse.tau) / dt)) + 1
+    for n in range(n_src):
         t = n * dt
         state = update_h(state, materials, dt, dx)
         state, cpml_state = apply_cpml_h(state, cpml_params, cpml_state, grid)

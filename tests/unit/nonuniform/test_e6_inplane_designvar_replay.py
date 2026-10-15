@@ -223,16 +223,22 @@ def test_revert_proof_replay():
     assert d["requirement_met"] == (d["w_fired_on_order"] and d["xc_unchanged"])
 
 
-@pytest.mark.xfail(strict=True, reason=(
-    "pre-declared expectation (program 5.3, test committed at bd1ea262 before the first "
-    "measurement): x_c's dt-path share exactly 0. Measured -1.48e-4 (float32 recompilation "
-    "under stop_gradient(dt), amplified by the 43x lead/tail cancellation; note 'Diagnostic'). "
-    "The declared line stands as written and its failure is the record; second pass restored it "
-    "after the first pass had rewritten it to the measured value at 064d6035."))
-def test_predeclared_xc_share_expectation():
-    d = _load("revert_l1_nodt")
+def _predeclared_xc_share_expectation(d):
+    """The pre-declared expectation (program 5.3, committed at bd1ea262 before the first
+    measurement), as written: x_c's dt-path share exactly 0."""
     share = dict(zip(e6.NAMES, d["dt_path_share"]))
     assert share["x_c"] == 0.0
+
+
+def test_predeclared_xc_share_expectation():
+    """Measured -1.48e-4 (float32 recompilation under stop_gradient(dt), amplified by the
+    43x lead/tail cancellation; note 'Diagnostic'). The declared line stands as written and
+    its failure is the record (a second pass restored it after the first had rewritten it
+    to the measured value at 064d6035). A record, not an isolated defect: the test asserts
+    that the declared line still fails on it."""
+    record = _load("revert_l1_nodt")
+    with pytest.raises(AssertionError):
+        _predeclared_xc_share_expectation(record)
 
 
 def test_recorded_outcomes_are_pinned():
@@ -252,7 +258,7 @@ def test_recorded_outcomes_are_pinned():
     assert rv["requirement_met"] is True and rv["directions"]["w"]["fd"]["verdict"] == "FIRED"
     assert rv["directions"]["w"]["order"]["R1"]["slope"] < 1.3 and rv["dt_path_share"][0] > 0.5
     # The measured x_c share, pinned as a record (the declared expectation is
-    # test_predeclared_xc_share_expectation, xfail strict).
+    # test_predeclared_xc_share_expectation, asserted to fail on the record).
     assert rv["dt_path_share"][1] == -0.0001483932070827205
     assert 0.80 <= l1["coverage_verified"]["fraction"] <= 0.81 and 0.67 <= l2["coverage_verified"]["fraction"] <= 0.68
 

@@ -146,18 +146,6 @@ def test_forward_s11_rejects_non_port_source_only_request():
         sim.forward(n_steps=1, port_s11_freqs=np.array([1.0e9]), skip_preflight=True)
 
 
-def test_forward_tfsf_nonuniform_lane_fenced():
-    """Differentiable TFSF forward is wired on the uniform single-device lane
-    (see test_forward_tfsf_differentiable.py); the non-uniform lane has no TFSF
-    handling and must fail loud rather than silently drop the source."""
-    dz = np.array([0.5e-3] * 8)  # dz_profile => non-uniform forward lane
-    sim = Simulation(freq_max=10e9, domain=(0.02, 0.02, 0.004), dx=0.5e-3,
-                     dz_profile=dz, boundary="cpml", cpml_layers=6)
-    sim.add_tfsf_source(f0=10e9, polarization="ez", direction="+x")
-    with pytest.raises(NotImplementedError, match="uniform single-device"):
-        sim.forward(n_steps=1, skip_preflight=True)
-
-
 def test_preflight_sparameters_routes_forward_specialized_families():
     sim = Simulation(
         freq_max=12e9,
@@ -265,11 +253,12 @@ _NU_WG_PROFILES = {
 
 
 def _nu_waveguide_sim(n_modes: int = 1, profile_axis: str = "dy") -> "Simulation":
+    """Addendum 5f: transverse PEC leaves the NU calculator fences reachable."""
     sim = Simulation(
         freq_max=12e9,
         domain=(0.10, 0.023, 0.010),
         dx=1e-3,
-        boundary="cpml",
+        boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=4,
         **_NU_WG_PROFILES[profile_axis],
     )

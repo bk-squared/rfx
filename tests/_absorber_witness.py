@@ -10,6 +10,7 @@ from rfx.boundaries import cpml
 from rfx.boundaries.pec import apply_pec_faces
 from rfx.core.yee import init_materials, init_state, update_e, update_h
 from rfx.grid import C0, Grid
+from rfx.model.materials import electric_cell_sizes
 
 
 @lru_cache(maxsize=16)
@@ -58,7 +59,7 @@ def _line(n_layers, kappa_max, interior, dx, transverse_phase=None,
             state, auxiliary = cpml.apply_cpml_h(state, params, auxiliary, grid, axes=axis)
             if nonuniform:
                 state = update_e_nu(state, materials, dt, grid.inv_dx,
-                                    grid.inv_dy, grid.inv_dz)
+                                    grid.inv_dy, grid.inv_dz, cell_sizes=electric_cell_sizes(grid))
                 state = apply_pec_faces(state, {f"{electric}_lo", f"{electric}_hi"})
             else:
                 state = update_e(state, materials, dt, dx, periodic=tuple(a != axis for a in "xyz"), bloch=bloch)

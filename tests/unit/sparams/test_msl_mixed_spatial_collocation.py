@@ -12,6 +12,7 @@ from types import MethodType
 
 import jax.numpy as jnp
 import numpy as np
+from tests._msl_probe0 import probe0_s
 import pytest
 
 from rfx import Box, Simulation
@@ -70,7 +71,11 @@ def _backend(target, direction, mode, captures):
                     assert entry.component == "hz"
                     profile = np.broadcast_to(0.25 * y_h[:, None] / U, yz_shape)
                 field = sign * H_GAIN * factor * profile
-                phase = np.exp(-1j * 2 * np.pi * freqs * grid.dt / 2)
+                # M2 history: mock physical H spectra directly. The old
+                # fixture baked in -omega*dt/2 for the consumer to undo;
+                # removing that extra correction measured .00233972 relative
+                # at the top bin, exactly the predicted half-step rotation.
+                phase = np.ones(n_f, dtype=complex)
             accumulator = (jnp.asarray(field, dtype=jnp.complex64)[None, :, :]
                            * jnp.asarray(phase, dtype=jnp.complex64)[:, None, None])
             planes[entry.name] = DFTPlaneProbe(
@@ -122,7 +127,9 @@ def test_mixed_affine_h_matches_constant_reference_and_refutes_single_plane(
     for key in ("v0_msl", "v_lw", "i_lw"):
         np.testing.assert_array_equal(got[key], ref[key])
     assert np.all(np.abs(ref["i_msl"]) > 0)
-    assert np.all(np.abs(reference.S[[0, 1], [1, 0]]) > 1e-2)
+    # The lumped-driven transmission is refused; the MSL-driven receive is retained.
+    assert np.isnan(reference.S[:, 0]).all()
+    assert np.all(np.abs(reference.S[0, 1]) > 1e-2)
     np.testing.assert_allclose(affine.S, reference.S, rtol=2e-6, atol=2e-7)
 
     # Explicit falsifier: restore only the old right-H sampling, keeping
@@ -146,9 +153,11 @@ def test_mixed_affine_h_matches_constant_reference_and_refutes_single_plane(
     expected_s11 = (voltage - zi) / (voltage + zi)
     expected_wrong = (voltage - zi * (1 + SLOPE / 2)) / (voltage + zi * (1 + SLOPE / 2))
     assert abs(expected_wrong - expected_s11) > 0.05
-    np.testing.assert_allclose(reference.S[1, 1], expected_s11, rtol=2e-6, atol=2e-7)
-    np.testing.assert_allclose(bypassed.S[1, 1], expected_wrong, rtol=2e-6, atol=2e-7)
-    assert np.max(np.abs(bypassed.S - reference.S)) > 0.05
+    np.testing.assert_allclose(probe0_s(reference)[1, 1], expected_s11, rtol=2e-6, atol=2e-7)
+    np.testing.assert_allclose(probe0_s(bypassed)[1, 1], expected_wrong, rtol=2e-6, atol=2e-7)
+    # The refused lumped diagonal cannot contribute a numeric difference;
+    # this falsifier measures the MSL diagonal derived immediately above.
+    assert np.max(np.abs(bypassed.S[1, 1] - reference.S[1, 1])) > 0.05
 
 
 @pytest.mark.parametrize("entry", ["compute_mixed_s_matrix", "compute_s_matrix"])

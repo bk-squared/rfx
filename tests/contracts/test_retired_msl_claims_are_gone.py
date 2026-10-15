@@ -4,7 +4,7 @@ Issue #726. Two honesty messages about the same condition contradicted each
 other, and the measurement retired BOTH of their headline claims: the guard's
 "The V·I-split S11/S21 are unaffected" and preflight's "may read as -5 to -10 dB
 instead of 0 dB". The code was fixed first and the PUBLIC GUIDE was not --
-``docs/public/guide/sources-ports.mdx`` and ``probes-sparams.mdx`` were still
+``docs/public/model/ports.mdx`` and ``docs/public/measure/s-parameters.mdx`` were still
 narrating the old guard output, one of them across a line break where a naive
 grep for the sentence missed it.
 
@@ -41,7 +41,7 @@ from rfx.preflight.msl import MSL_PROBE_CLEARANCE_RETRACTION
 
 REPO = Path(__file__).resolve().parents[2]
 SCANNED = sorted(
-    list((REPO / "docs" / "public" / "guide").glob("*.mdx"))
+    list((REPO / "docs" / "public").glob("**/*.md*"))
     + list((REPO / "docs" / "guides").glob("*.md"))
 )
 
@@ -88,9 +88,9 @@ def scan(path: Path) -> list[tuple[str, str]]:
 
 def test_the_scan_covers_the_pages_it_claims_to() -> None:
     assert SCANNED, "the scan found no pages -- the glob is wrong"
-    names = {p.name for p in SCANNED}
-    for expected in ("sources-ports.mdx", "probes-sparams.mdx",
-                     "known_limitations.md", "sparameter_support_matrix.md"):
+    names = {p.relative_to(REPO).as_posix() for p in SCANNED}
+    for expected in ("docs/public/model/ports.mdx", "docs/public/measure/s-parameters.mdx",
+                     "docs/guides/known_limitations.md", "docs/guides/sparameter_support_matrix.md"):
         assert expected in names, f"{expected} is not being scanned"
 
 

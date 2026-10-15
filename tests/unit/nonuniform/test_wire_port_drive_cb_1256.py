@@ -190,7 +190,7 @@ def _unstamped_drive(strip="sigma"):
     _cut = _STRIP[strip]
 
     def _pre_fix(grid, ijk, comp, wf, n, materials, *a, **kw):
-        return real(grid, ijk, comp, wf, n, _cut(materials), *a, **kw)
+        return real(grid, ijk, comp, wf, n, _cut(materials)._replace(components=None), *a, **kw)
 
     return mock.patch.object(_nu_runner, "port_drive_waveform", _pre_fix)
 
@@ -328,7 +328,7 @@ def _drive_and_stepper_materials(sim, *, strip=None):
     real_msl = _msl.make_msl_port_sources
 
     def _in(materials):
-        return _STRIP[strip](materials) if strip else materials
+        return _STRIP[strip](materials)._replace(components=None) if strip else materials
 
     def _cs(grid, ijk, comp, wf, n, materials, *a, **kw):
         m = _in(materials)

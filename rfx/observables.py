@@ -56,29 +56,13 @@ full probe time-series tape alongside the DFT accumulators --
 (``rfx/api/_execute.py`` forward() docstring); a DFT-only uniform-lane
 objective still pays for the time-series tape today.
 
-E/H mixing hazard
-------------------
-``update_dft_plane_probe`` stamps EVERY component -- electric or magnetic --
-at the same traced time ``t = state.step * dt``
-(``rfx/probes/probes.py:452-460``). Physically, on the Yee leapfrog H lives
-half a step behind E (``H`` at ``t - dt/2``, not ``t``). Magnitude-only
-objectives (``field_energy``, ``field_softmax``, or any other function of
-``|field|`` alone) are UNAFFECTED -- a uniform per-frequency phase rotation
-does not change a magnitude. But composing an E x H* cross term (a Poynting-
-flux-like quantity, or anything computing complex ``Zin = V/I`` from a
-line-integrated E-derived V and H-derived I) needs the same correction the
-production MSL V/I extractor applies: multiply every H-component plane by
-``exp(+j * 2*pi*f * dt/2)`` before combining it with an E-component plane
-(see ``rfx/api/_sparams.py:2975-2995`` for the worked derivation and the
-"``Re(Zin) < 0``" artefact class this omission produces). ``dt`` is not
-carried on ``ForwardResult`` or ``DFTPlaneProbe`` -- it comes from the
-``Simulation`` / ``Grid`` the caller already built (``sim._build_grid().dt``
-or ``result.grid.dt`` when the result carries one), so this module does not
-attempt the correction itself and does not accept an ``h_phase_correction``
-kwarg: it would need a value neither object supplies, and unit-modulus phase
-is invisible to both built-in functionals, so an untested flag would ship.
-Apply the ``exp(+j*omega*dt/2)`` factor to H-component planes yourself, one
-line, if you build an E x H* objective on top of :func:`dft_field`.
+Physical E/H stamps
+-------------------
+DFT planes use the shared measurement kernel: slot n has E at (n+1)*dt
+and H at (n+1/2)*dt on both runners. H spectra already include the
+leapfrog half-step. Combine them directly in E x H* or V/I expressions;
+applying another half-step correction would rotate the current twice.
+Magnitude-only objectives retain their existing convention.
 
 Fail-loud fences
 -----------------

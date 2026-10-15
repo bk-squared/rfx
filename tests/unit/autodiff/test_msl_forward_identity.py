@@ -24,12 +24,14 @@ from types import MethodType, SimpleNamespace
 
 import jax.numpy as jnp
 import numpy as np
+from tests._msl_probe0 import probe0_s
 import pytest
 
 from rfx.api import Simulation
 from rfx.geometry.csg import Box
 from rfx.probes.probes import DFTPlaneProbe
 from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff
+from tests.contracts.path_equivalence.comparison import compare
 from tests._printed_numbers import agrees, printed_after
 
 # ---------------------------------------------------------------------------
@@ -104,8 +106,16 @@ def _build_planted_sim(scale: float):
                     profile = np.broadcast_to(0.25 * y_h[:, None], shape)
                 sign = 1 if port == 0 else -1
                 field = sign * factor * profile / (0.75 * 5 * U)
-                amplitude = current[port, driven] * np.exp(
-                    -1j * np.pi * FREQS * grid.dt)
+                # History (S2 M2): the plant used to stamp this H plane at
+                # E's time, current * exp(-j pi f dt), because the extractor
+                # then applied the half step. The DFT kernel now stamps H at
+                # (n + 1/2) dt itself and the extractor applies nothing, so
+                # the plant supplies the physically stamped current. Left
+                # as it was, the returned S is off by the omega dt / 2 the
+                # extractor no longer removes (1.17e-3 .. 2.34e-3 rad at
+                # these bins, dt = 4.65e-13 s): 1.789e-3 predicted from the
+                # planted V and I, 1.789e-3 measured.
+                amplitude = current[port, driven]
             planes[entry.name] = DFTPlaneProbe(
                 accumulator=(
                     jnp.asarray(field, dtype=jnp.complex64)[None, :, :]
@@ -222,7 +232,7 @@ def test_the_returned_s_is_the_planted_one_on_both_channels():
     )
     for label, result in (("plain", plain), ("eps_override", override)):
         np.testing.assert_allclose(
-            np.asarray(result.S), planted, rtol=0.0, atol=1e-5,
+            np.asarray(probe0_s(result)), planted, rtol=0.0, atol=1e-5,
             err_msg=f"{label} channel did not return the planted S")
 
 
@@ -289,7 +299,7 @@ def test_enforce_passivity_true_still_projects_and_keeps_the_raw():
                                           enforce_passivity=True)
     assert np.all(_sigma_max(result.S) <= 1.0)
     assert result.S_raw is not None
-    np.testing.assert_allclose(np.asarray(result.S_raw), planted,
+    np.testing.assert_allclose(np.asarray(probe0_s(result, result.S_raw)), planted,
                                rtol=0.0, atol=1e-5)
     np.testing.assert_allclose(np.asarray(result.passivity_correction),
                                np.maximum(_sigma_max(planted) - 1.0, 0.0),
@@ -311,7 +321,7 @@ def test_enforce_passivity_true_is_still_skipped_under_eps_override():
                       enforce_passivity=True)
     assert result.S_raw is None and result.passivity_correction is None
     assert float(_sigma_max(result.S).max()) > 1.05
-    np.testing.assert_allclose(np.asarray(result.S), planted,
+    np.testing.assert_allclose(np.asarray(probe0_s(result)), planted,
                                rtol=0.0, atol=1e-5)
 
 
@@ -327,7 +337,10 @@ def _live_thru() -> Simulation:
     sim.add_material("sub", eps_r=2.2)
     sim.add(Box((0, 0, 0), (0.012, 0.008, 0.0008)), material="sub")
     sim.add(Box((0., 0., 0.), (0.012, 0.008, 0.)), material="pec")
-    sim.add(Box((0.0, 0.0034, 0.0008), (0.012, 0.0046, 0.0008)), material="pec")
+    # #1512: the strip spans the two port nodes (2 and 10 mm). Drawn across the whole
+    # domain it left 2 mm open stubs whose effective quarter wave (23.8 GHz) is within
+    # 1.5x of the 2-18 GHz read.
+    sim.add(Box((0.002, 0.0034, 0.0008), (0.010, 0.0046, 0.0008)), material="pec")
     sim.add_msl_port(position=(0.002, 0.004, 0.0), width=0.0012, height=0.0008,
                      direction="+x", impedance=50.0, eps_r_sub=2.2, name="p1")
     sim.add_msl_port(position=(0.010, 0.004, 0.0), width=0.0012, height=0.0008,
@@ -346,9 +359,9 @@ def test_live_thru_eps_override_matches_the_plain_call():
     RUNNERS land on the same S once the post-processing no longer differs.
 
     MEASURED (CPU float32, freqs 2-18 GHz x 4, num_periods=2.0): max|dS| =
-    6.664e-08 across the 16 complex entries, no entry outside rtol=1e-5 /
-    atol=1e-7. That residual is the two lanes' float32 arithmetic, not the
-    projection.
+    6.664e-08 across the 16 complex entries. That residual is the two lanes'
+    float32 arithmetic, not the projection; the bar is the cross-trace one
+    for a quantity summed over the record (1e-4 of the peak).
 
     WHAT THIS TEST CANNOT SEE, measured rather than assumed: restoring
     ``enforce_passivity: bool = True`` moves the plain call's S here by only
@@ -371,8 +384,8 @@ def test_live_thru_eps_override_matches_the_plain_call():
             eps_override=_noop_eps_override(sim))
 
     assert plain.S_raw is None, "the plain call must return the raw extraction"
-    np.testing.assert_allclose(np.asarray(override.S), np.asarray(plain.S),
-                               rtol=1e-5, atol=1e-7)
+    compare(override.S, plain.S, record="msl_thru_s.forward_vs_run",
+            kind="accumulated", measurements=[])
 
 
 def test_the_raw_path_warning_has_a_rounding_floor():

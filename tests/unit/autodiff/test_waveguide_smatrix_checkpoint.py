@@ -2,7 +2,7 @@
 
 Validates the checkpoint_segments plumbing added in issue #131:
   - Forward equivalence: S(checkpoint=None) == S(K) bit-identically.
-  - Gradient equivalence: grad wrt eps_override with None vs K, rel < 1e-5.
+  - Gradient equivalence: grad wrt eps_override with None vs K, cross-trace bar.
   - Non-divisor checkpoint_segments raises ValueError.
   - NU mesh + checkpoint_segments is now SUPPORTED (issue #73; was a fence).
 
@@ -17,6 +17,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
+from tests.contracts.path_equivalence.comparison import ACCUMULATED_RELATIVE
 
 
 # ---------------------------------------------------------------------------
@@ -146,11 +147,11 @@ def test_forward_equivalence_checkpoint_vs_none(normalize):
 
 
 # ---------------------------------------------------------------------------
-# 2. Gradient equivalence: grad wrt eps_override, None vs K, rel < 1e-5
+# 2. Gradient equivalence: grad wrt eps_override, None vs K, cross-trace bar
 # ---------------------------------------------------------------------------
 
 def test_grad_equivalence_checkpoint_vs_none():
-    """jax.grad wrt eps_override: None vs K produce rel deviation < 1e-5."""
+    """jax.grad wrt eps_override: None vs K agree to the cross-trace bar."""
     sim = _make_sim_with_eps_override()
     n_steps = _get_n_steps(sim, num_periods=4.0)
     K = _find_divisor_near_sqrt(n_steps)
@@ -188,8 +189,8 @@ def test_grad_equivalence_checkpoint_vs_none():
         f"max|grad_none|={denom:.3e}, "
         f"max|grad_none - grad_k|/max|grad_none| = {rel_dev:.3e}"
     )
-    assert rel_dev < 1e-5, (
-        f"grad relative deviation {rel_dev:.3e} >= 1e-5 for K={K}. "
+    assert rel_dev <= ACCUMULATED_RELATIVE, (
+        f"grad relative deviation {rel_dev:.3e} > {ACCUMULATED_RELATIVE:g} for K={K}. "
         "checkpoint_segments changes the gradient — threading is wrong."
     )
 

@@ -16,14 +16,18 @@ class ExperimentalSubgridWarning(UserWarning):
     """An explicit opt-in to the unstable, unverified subgridded lane."""
 
 
-def require_experimental(sim):
+def require_experimental(sim, *, diagnostics=None):
     """Use lane admission to refuse production before entering the runner."""
     # Only a declared refinement selects the unstable lane; a direct runner
     # call without one is left to that runner's own refusals.
     refinement = getattr(sim, "_refinement", None)
     if refinement is not None and refinement.get("validation", "production") == "production":
         from rfx.runners._admission import admit
-        admit(sim, "run_subgridded")
+        admit(
+            sim,
+            "run_subgridded",
+            diagnostics=diagnostics,
+        )
 
 
 def warn_experimental():

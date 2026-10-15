@@ -71,6 +71,7 @@ import sys
 import numpy as np
 
 from rfx import Box, Simulation
+from rfx.preflight.line_port_coverage import local_port_cell
 from rfx.harminv import harminv
 from rfx.sources import GaussianPulse
 
@@ -117,7 +118,7 @@ Y_C = DOM_Y / 2.0
 
 _FOILS = (
     ("ground", (0.0, 0.0), (DOM_X, DOM_Y), Z_GND_PLANE),
-    ("feed", (0.0, Y_C - W_MSL / 2), (X_PATCH0, Y_C + W_MSL / 2), Z_TRACE_PLANE),
+    ("feed", (PORT_MARGIN, Y_C - W_MSL / 2), (X_PATCH0, Y_C + W_MSL / 2), Z_TRACE_PLANE),
     ("patch", (X_PATCH0, Y_C - W / 2), (X_PATCH0 + L, Y_C + W / 2), Z_TRACE_PLANE),
 )
 
@@ -133,6 +134,8 @@ def build(kind: str) -> Simulation:
             material="ro4003c")
     for _name, (x0, y0), (x1, y1), z in _FOILS:
         if kind == "sheet":
+            if _name == "feed":
+                x0 -= local_port_cell(sim, (PORT_MARGIN, Y_C, Z_GND_PLANE))
             # A 35 um foil is 0.18 of a cell: it is a sheet, and the
             # declaration says so.  thickness= is read only on the lossy
             # path; this is PEC copper, so it is documentation here.
@@ -140,9 +143,10 @@ def build(kind: str) -> Simulation:
                                    thickness=T_COPPER)
         else:
             sim.add(Box((x0, y0, z), (x1, y1, z + DX)), material="pec")
+    # #1512: the volume ground ends one cell above its declared lower face.
     sim.add_msl_port(
-        position=(PORT_MARGIN, Y_C, Z_GND_PLANE),
-        width=W_MSL, height=H_SUB, direction="+x", impedance=50.0,
+        position=(PORT_MARGIN, Y_C, Z_GND_PLANE + (DX if kind == "volume" else 0.0)),
+        width=W_MSL, height=H_SUB - (DX if kind == "volume" else 0.0), direction="+x", impedance=50.0,
         waveform=GaussianPulse(f0=8.5e9, bandwidth=1.6),
     )
     sim.add_probe(position=(X_PATCH0 + 0.7 * L, Y_C - 0.2 * W,

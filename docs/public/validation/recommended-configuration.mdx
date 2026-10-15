@@ -2,7 +2,7 @@
 title: "Recommended Configuration"
 description: "Where to start, and the extra limits each S-parameter calculator and non-default mesh carries."
 sidebar:
-  order: 41
+  order: 9
 ---
 
 Use this page to choose a starting setup and the right calculator for your
@@ -21,7 +21,7 @@ For ordinary RF work, start from the **uniform Cartesian Yee** grid:
 
 This is the configuration with the broadest evidence. A graded mesh, the ADI
 solver and multi-device runs each carry narrower limits, listed below and in
-[Support Boundaries](/rfx/api/support-boundaries/).
+[Support Boundaries](/rfx/support/).
 
 ## Pick the calculator for your port
 
@@ -51,7 +51,7 @@ conductor that runs into the absorber unterminated.
 
 | Configuration | What to know |
 |---|---|
-| Graded (non-uniform) mesh | Check the limit for each source, port and observable in [Non-Uniform Mesh](/rfx/guide/nonuniform-mesh/). A plane wave along a graded axis leaks into the scattered-field region (preflight warns); normal incidence along x needs a uniform x axis. `add_refinement` is refused on a graded mesh. |
+| Graded (non-uniform) mesh | Check the limit for each source, port and observable in [Non-Uniform Mesh](/rfx/model/domain-mesh/). A plane wave along a graded axis leaks into the scattered-field region (preflight warns); normal incidence along x needs a uniform x axis. `add_refinement` is refused on a graded mesh. |
 | Local refinement, `add_refinement` | Takes effect only through `run()` on a uniform mesh. `forward()`, `optimize()`, `topology_optimize()` and the S-parameter calculators refuse a refined model. |
 | Multi-device, `run(devices=[...])` | Uses the shard_map runner with `exchange_interval=1`. Lumped RLC elements, MSL ports, refinements, Kerr materials and DFT planes are refused. |
 | Differentiable design | The objective is a proxy. Check the final design with a converged forward run of the RF quantity you report. |

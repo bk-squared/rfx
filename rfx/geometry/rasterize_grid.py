@@ -14,11 +14,12 @@ import numpy as np
 import jax.numpy as jnp
 
 from rfx.core.jax_utils import is_tracer
-from rfx._grid_metric import NODE_TIE_REL, half_open_volume_mask
+from rfx._grid_metric import NODE_TIE_REL, half_open_volume_mask, node_tie_tol
 from rfx.core.yee import MaterialArrays
 from rfx.geometry.csg import Cylinder, OrientedBox, Sphere, declared_bounds
 from rfx.geometry._pole_keying import (
     _accumulate_pole_mask,
+    _clear_pole_masks,
     _spec_from_pole_masks,
 )
 
@@ -361,7 +362,7 @@ def _nearest_plane(nodes, pos: float, d_local: float, *, what: str = "sheet",
     x = np.asarray(nodes, dtype=np.float64)
     dist = np.abs(x - pos)
     k = int(np.argmin(dist))
-    if dist[k] > 0.5 * d_local * (1.0 + NODE_TIE_REL):
+    if dist[k] > 0.5 * d_local + node_tie_tol(pos, d_local):
         raise ValueError(
             f"{what} {name!r}: the declared plane {'xyz'[axis]} = {pos:.6g} m "
             f"lies {dist[k]:.6g} m from the nearest node line "
@@ -392,14 +393,13 @@ def _box_axis_volume(centres, lo: float, hi: float, cell_widths):
 
 def _box_axis_closed(nodes, lo: float, hi: float, d_local: float):
     """§1.3 CLOSED footprint sampling on NODES: ``lo <= x_i <= hi`` with an
-    on-lattice tolerance of ``1e-9`` cell so a corner spelled through a
-    different f64 route (``a + b`` vs ``m*dx``) keeps its row."""
-    tol = NODE_TIE_REL * d_local
+    on-lattice tolerance that includes float32 width rounding."""
     if is_tracer(nodes):
         x = jnp.asarray(nodes)
-        return (x >= lo - tol) & (x <= hi + tol)
-    x = np.asarray(nodes, dtype=np.float64)
-    return (x >= lo - tol) & (x <= hi + tol)
+    else:
+        x = np.asarray(nodes, dtype=np.float64)
+    return ((x >= lo - node_tie_tol(lo, d_local, x.dtype))
+            & (x <= hi + node_tie_tol(hi, d_local, x.dtype)))
 
 
 def _is_traced_coords(coords) -> bool:
@@ -422,7 +422,13 @@ def pec_volume_cell_mask(shape, centres: GridCoords, cell_sizes, *, grid=None):
         def sample(x, y, z):
             return pec_volume_cell_mask(
                 shape, GridCoords(x, y, z, (len(x), len(y), len(z))), cell_sizes)
-        return periodic_mask(grid, shape, centres[:3], sample=sample)
+        box_lo, box_hi = shape.corner_lo, shape.corner_hi
+        return jnp.asarray(periodic_mask(
+            grid, shape, centres[:3], sample=sample,
+            axis_samplers=tuple(
+                (lambda line, t=t: _box_axis_volume(
+                    line, float(box_lo[t]), float(box_hi[t]), cell_sizes[t]))
+                for t in range(3))))
     lo = getattr(shape, "corner_lo", None)
     hi = getattr(shape, "corner_hi", None)
     if lo is not None and hi is not None:
@@ -526,7 +532,8 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
     requested_mid = mid
     mid = plane_coordinate(grid, a, mid)
     d_local = _local_cell(node_axes[a], cell_sizes[a], mid)
-    if refuse_thick and extents[a] > d_local * (1.0 + NODE_TIE_REL):
+    if refuse_thick and extents[a] > (d_local + node_tie_tol(lo[a], d_local)
+                                    + node_tie_tol(hi[a], d_local)):
         raise ValueError(
             f"add_thin_conductor: shape {name!r} is {extents[a]:.6g} m thick "
             f"along {'xyz'[a]} against a local cell of {d_local:.6g} m — not a "
@@ -543,20 +550,24 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
     shape_3 = tuple(len(line) for line in node_axes)
     is_box = getattr(shape, "corner_lo", None) is not None
     if is_box:
+        def axis_sample(t, line):
+            if t == a:
+                m = np.zeros((len(line),), dtype=bool)
+                m[plane] = True
+                return m
+            d_t = _local_cell(node_axes[t], cell_sizes[t],
+                              0.5 * (lo[t] + hi[t]))
+            return np.asarray(_box_axis_closed(line, lo[t], hi[t], d_t))
+
         def sample(x, y, z):
-            masks = []
-            for t, line in enumerate((x, y, z)):
-                if t == a:
-                    m = np.zeros((len(line),), dtype=bool)
-                    m[plane] = True
-                    masks.append(m)
-                else:
-                    d_t = _local_cell(node_axes[t], cell_sizes[t],
-                                      0.5 * (lo[t] + hi[t]))
-                    masks.append(np.asarray(_box_axis_closed(line, lo[t], hi[t], d_t)))
+            masks = [axis_sample(t, line) for t, line in enumerate((x, y, z))]
             return masks[0][:, None, None] & masks[1][None, :, None] & masks[2][None, None, :]
+        # Per-axis samplers: the image fold costs the sum of the image
+        # counts, not their product (see periodic_mask).
         fp = periodic_mask(grid, shape, node_axes, sample=sample,
-                           axes=tuple(t for t in range(3) if t != a), closed_footprint=True)
+                           axes=tuple(t for t in range(3) if t != a), closed_footprint=True,
+                           axis_samplers=tuple(
+                               (lambda line, t=t: axis_sample(t, line)) for t in range(3)))
     else:
         sample = [np.asarray(n, dtype=np.float64) for n in node_axes]
         sample[a] = np.asarray([requested_mid], dtype=np.float64)
@@ -573,14 +584,67 @@ def sheet_spec_from_shape(shape, coords: GridCoords, cell_sizes=None, *,
             f"grid{(' (' + lane + ' lane)') if lane else ''} at plane "
             f"{'xyz'[a]}={plane}; it would silently vanish (#369 class). "
             "Widen the footprint to reach a node line or refine the mesh.")
+    end_rows = sheet_end_rows(shape, coords, a, grid=grid)
     unwrapped = None
     if shape_3 != tuple(coords.shape):
         from rfx.boundaries.pec import _fold_sheet_nodes
         unwrapped = jnp.asarray(fp)
         fp = _fold_sheet_nodes(fp, coords.shape, xp=np)
     return SheetSpec(normal_axis=a, plane=plane, footprint=jnp.asarray(fp),
-                     name=name, unwrapped_footprint=unwrapped)
+                     name=name, unwrapped_footprint=unwrapped, end_rows=end_rows,
+                     drawn=_sheet_drawn_bounds(lo, hi, a, cell_sizes, grid=grid))
 
+
+def sheet_end_rows(shape, coords: GridCoords, normal_axis: int, *, grid=None):
+    """Node rows that lie ON a drawn face of a sheet, per in-plane axis.
+
+    The one marking of a finite-R_s sheet's END ROWS, for every shape and for
+    concrete and traced node lines alike. Entry ``t`` is a boolean vector over
+    the nodes of axis ``t``: True where a node coincides with the low or the
+    high DRAWN face of the shape on that axis -- the faces of its axis-aligned
+    bounding box (``sheet_bounds``) -- within the node tie band. ``None`` on
+    the normal axis, for a shape that declares no bounds, and where the two
+    faces coincide.
+
+    A face drawn BETWEEN two nodes matches no node. On a non-periodic axis
+    the first and the last node of the lattice line are a wall (or the end of
+    the absorber continuation), never an end row; on a periodic axis the seam
+    node is an ordinary node and a face on either image of it marks it.
+    Whether a marked row really is a free edge of the footprint is decided
+    from the footprint itself by the sheet operator
+    (``rfx.materials.thin_conductor.sheet_end_row_masks``), so a curved or
+    rotated outline, whose bounding-box face touches it in a point, gets no
+    end row from here.
+    """
+    from rfx.materials.thin_conductor import sheet_bounds
+    lo, hi = sheet_bounds(shape)
+    out = [None, None, None]
+    if lo is None or hi is None:
+        return tuple(out)
+    for t, nodes in enumerate((coords.x, coords.y, coords.z)):
+        if t == int(normal_axis) or float(hi[t]) == float(lo[t]):
+            continue
+        traced = is_tracer(nodes)
+        xp = jnp if traced else np
+        c = jnp.asarray(nodes) if traced else np.asarray(nodes, dtype=np.float64)
+        if c.size < 2:
+            continue
+        band = _node_tie_band(c, xp)
+        period = (float(grid.domain[t])
+                  if 'xyz'[t] in getattr(grid, 'periodic_axes', '') else None)
+        row = None
+        for face in (float(lo[t]), float(hi[t])):
+            gap = xp.abs(c - face)
+            if period:
+                gap = xp.minimum(gap % period, period - gap % period)
+            hit = gap <= band(max(abs(face), period or 0.0))
+            row = hit if row is None else row | hit
+        if not period:
+            keep = np.ones((c.size,), dtype=bool)
+            keep[[0, -1]] = False
+            row = row & keep
+        out[t] = row
+    return tuple(out)
 
 
 def refuse_vaporized_sheets(sheets, *, lane: str = "",
@@ -628,7 +692,26 @@ def refuse_vaporized_sheets(sheets, *, lane: str = "",
             "at least one cell in an in-plane direction, or refine the mesh.")
 
 
-def sheet_footprint_traced(shape, coords: GridCoords, normal_axis: int):
+def _sheet_drawn_bounds(lo, hi, normal, cell_sizes, *, grid=None, xp=np):
+    """Retain bounds, tolerance, and concrete index-wrap length on every axis.
+
+    Summing the stored cells spans one complete index cycle, including pad
+    and any closing wall node. Uniform axes therefore wrap at shape[t]*dx;
+    on declared periodic grids this is exactly the physical domain length.
+    Traced graded footprints deliberately retain only three entries.
+    """
+    import math
+    if xp is np:
+        lo, hi = tuple(min(a, b) for a, b in zip(lo, hi)), tuple(max(a, b) for a, b in zip(lo, hi))
+    return tuple(
+        None if t == normal else
+        (lo[t], hi[t], 1e-6 * (float(np.min(cell_sizes[t])) if xp is np else jnp.min(jnp.asarray(cell_sizes[t]))))
+        + (((float(grid.domain[t]) if 'xyz'[t] in getattr(grid, 'periodic_axes', '')
+             else math.fsum(cell_sizes[t])),) if xp is np else ())
+        for t in range(3))
+
+
+def sheet_footprint_traced(shape, coords: GridCoords, normal_axis: int, cell_sizes=None, *, with_drawn=False):
     """Sheet footprint on a TRACED mesh (mesh-as-design-variable), no plane.
 
     The plane of a sheet is a static integer under the contract, which a
@@ -638,18 +721,24 @@ def sheet_footprint_traced(shape, coords: GridCoords, normal_axis: int):
     CLOSED on the in-plane axes and one-hot at the nearest node along the
     normal (``argmin`` first occurrence = the lower plane on an exact tie),
     any other shape is its own ``mask_on_coords`` — so eager and traced
-    builds agree on the footprint.
+    builds agree on the footprint. ``with_drawn`` also returns the bounds
+    carrier for the f0 constructor; the default preserves mask-only callers.
     """
     from rfx.materials.thin_conductor import sheet_bounds
     lo, hi = sheet_bounds(shape)
+    sizes = cell_sizes if cell_sizes is not None else tuple(
+        jnp.diff(c) if len(c) > 1 else jnp.ones(1) for c in coords[:3])
+    drawn = None if lo is None else _sheet_drawn_bounds(
+        lo, hi, normal_axis, sizes, xp=jnp)
     if getattr(shape, "corner_lo", None) is None or lo is None:
-        return shape.mask_on_coords(coords.x, coords.y, coords.z)
+        mask = shape.mask_on_coords(coords.x, coords.y, coords.z)
+        return (mask, drawn) if with_drawn else mask
     a = int(normal_axis)
     axes = []
     for t, nodes in enumerate((coords.x, coords.y, coords.z)):
         c = jnp.asarray(nodes)
         if t == a:
-            mid = 0.5 * (float(lo[a]) + float(hi[a]))
+            mid = 0.5 * (lo[a] + hi[a])
             from rfx._grid_metric import nearest_node_index
             k = jnp.clip(jnp.searchsorted(c, mid, side="right") - 1,
                          0, max(c.size - 2, 0))
@@ -657,8 +746,28 @@ def sheet_footprint_traced(shape, coords: GridCoords, normal_axis: int):
             axes.append(jnp.zeros(c.shape, dtype=bool).at[
                 nearest_node_index(c, mid, d_local, xp=jnp)].set(True))
         else:
-            axes.append((c >= float(lo[t])) & (c <= float(hi[t])))
-    return axes[0][:, None, None] & axes[1][None, :, None] & axes[2][None, None, :]
+            # The concrete rule's on-lattice band (``_box_axis_closed``), at
+            # the node line's own precision: a traced line is float32, and a
+            # face drawn on a node otherwise loses that row to rounding.
+            band = _node_tie_band(c, jnp)
+            axes.append((c >= lo[t] - band(lo[t]))
+                        & (c <= hi[t] + band(hi[t])))
+    mask = axes[0][:, None, None] & axes[1][None, :, None] & axes[2][None, None, :]
+    return (mask, drawn) if with_drawn else mask
+
+
+def _node_tie_band(c, xp):
+    """``face -> tolerance per node`` for "this node is ON that drawn face".
+
+    Use the smaller adjacent cell and the line's dtype in the shared band.
+    Both concrete and traced lines include solver-width rounding.
+    """
+    if c.size < 2:
+        return lambda face: 0.0
+    gaps = xp.diff(c)
+    cell = xp.minimum(xp.concatenate((gaps[:1], gaps)),
+                      xp.concatenate((gaps, gaps[-1:])))
+    return lambda face: node_tie_tol(face, cell, c.dtype)
 
 
 def _box_zero_axes(lo, hi):
@@ -682,7 +791,8 @@ def _subcell_axes(lo, hi, node_axes, cell_sizes):
             continue
         mid = 0.5 * (float(lo[i]) + float(hi[i]))
         d_local = _local_cell(node_axes[i], cell_sizes[i], mid)
-        if ext < d_local * (1.0 - NODE_TIE_REL):
+        if ext < (d_local - node_tie_tol(lo[i], d_local)
+                  - node_tie_tol(hi[i], d_local)):
             out.append((i, ext, d_local))
     return out
 
@@ -1036,6 +1146,14 @@ def rasterize_geometry(
             eps_r = jnp.where(mask, mat.eps_r, eps_r)
             sigma = jnp.where(mask, mat.sigma, sigma)
             mu_r = jnp.where(mask, mat.mu_r, mu_r)
+            # The entry replaces the cells it writes, the earlier entries' poles included.
+            # A PEC entry writes no cell material, so it leaves the poles as well.
+            # The Kerr coefficient follows the same rule: the entry's own value is written
+            # below when it has one; otherwise the earlier value is removed here.
+            if has_kerr:
+                chi3_arr = jnp.where(mask, 0.0, chi3_arr)
+            _clear_pole_masks(debye_masks_by_pole, mask)
+            _clear_pole_masks(lorentz_masks_by_pole, mask)
 
         if geometry_masks is not None and mat.sigma < pec_sigma_threshold:
             declared_entry = (entry if pole_geometry_entries is None
@@ -1207,7 +1325,8 @@ def assert_declared_span_is_filled(name, shape, mask, grid, domain, *,
         return
     _, declared_hi = bounds
 
-    pads = grid.face_pads
+    pads = tuple(getattr(grid, f"pad_{axis}_{side}")
+                 for axis in "xyz" for side in ("lo", "hi"))
     eps = float(_np.finfo(float).eps)
     for axis in range(min(3, len(domain), len(declared_hi))):
         lo_pad, hi_pad = pads[2 * axis], pads[2 * axis + 1]
@@ -1236,14 +1355,16 @@ def assert_declared_span_is_filled(name, shape, mask, grid, domain, *,
             continue
         axis_name = "xyz"[axis]
         declared = float(domain[axis])
-        dx = float(grid.dx)
+        widths = _np.asarray(grid.cells(axis))[lo_pad:lo_pad + n_int - 1]
+        declared_cells = float(_np.interp(declared, _np.r_[0., _np.cumsum(widths)],
+                                          _np.arange(n_int)))
         if record is not None:
             record.append(dict(
                 entity=name, shape=shape, axis=axis_name, face=f"{axis_name}-hi",
                 empty_interior_nodes=empty_tail,
                 allowed_empty_interior_nodes=shortfall_limit,
                 declared_extent_m=declared,
-                declared_cells=declared / dx,
+                declared_cells=declared_cells,
                 interior_nodes=n_int,
                 last_filled_interior_node=n_int - 1 - empty_tail,
                 pad_cells=int(hi_pad),
@@ -1259,7 +1380,7 @@ def assert_declared_span_is_filled(name, shape, mask, grid, domain, *,
             f"vacuum and the structure would end in a facet inside its own "
             f"absorber (#1070, #831).\n"
             f"  declared {axis_name} extent: {declared * 1e6:.4f} um "
-            f"= {declared / dx!r} cells at dx = {dx * 1e6:.4f} um\n"
+            f"= {declared_cells!r} cells on this axis\n"
             f"  interior nodes on {axis_name}: {n_int}; "
             f"last filled: {n_int - 1 - empty_tail}\n"
             f"Likeliest cause: the grid was sized with one cell more than the "

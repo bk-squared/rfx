@@ -1,0 +1,323 @@
+---
+title: "Changelog"
+description: "What changed for users in each rfx release, and what is coming in 2.0."
+sidebar:
+  order: 1
+---
+
+This page summarizes user-visible changes: what moved, and what to change in
+your scripts. The repository's `CHANGELOG.md` has the full detail, including
+the measurements behind each entry.
+
+## Unreleased — 2.0.0
+
+2.0 changes how conductors are built, how several ports read their
+S-parameters, and how the absorber reflects. Expect results with conductors,
+lumped or coaxial ports, or open boundaries to move. Re-run anything you
+compare against a 1.x number.
+
+### Breaking
+
+- **The coaxial calculators absorb on all three axes** (#1218).
+  `compute_coaxial_line_reflection` and `compute_coaxial_two_port` now use
+  `cpml_axes="xyz"`, the only accepted value; `cpml_axes="z"` raises. With
+  absorbers on z only the line sat in a closed metal can, so an open end read
+  |S11| above 1. Every coaxial S moves slightly, and a line whose outer wall
+  comes within one cell of a side absorber is refused.
+- **A conductor is a volume, a sheet or a wire, and your declaration says
+  which.** `sim.add(shape, material="pec")` is a volume, with walls at both
+  drawn faces, so its realized thickness equals its drawn thickness.
+  `sim.add_thin_conductor(...)`, or a zero-thickness `Box`, is a sheet on one
+  grid plane that owns no cell. A `PolylineWire` is a wire. See
+  [How conductors land on the lattice](/rfx/model/materials/#how-conductors-land-on-the-lattice).
+  Recipes that drew a conductor one cell longer to make up for a missing face
+  are no longer needed. Models without conductors give the same results as
+  1.x.
+- **The `two_plane=True` keyword on `sim.add()` is removed**, with no
+  deprecation period. Passing it raises `TypeError`; the volume rule now gives
+  every PEC body both faces. Design documents move to IR v2, and a v1
+  document carrying `two_plane` is refused with a message.
+- **Thin PEC shapes are checked against the grid.** When the grid is built, a
+  PEC shape thinner than one cell (but not zero), a shape that rasterizes to no
+  cell, a `Box` with two or three zero-length sides, and an
+  `add_thin_conductor` shape thicker than one cell all raise. Declare a sheet
+  or resolve the thickness.
+- **`run()` refuses arguments its path does not implement** (#1297). The
+  graded-mesh, multi-device, subgridded and ADI paths used to warn and run
+  without `until_decay`, snapshots, conformal walls, subpixel smoothing or
+  checkpointing. They now raise `NotImplementedError` before the first step.
+  `Boundary(conformal=True)` raises in `forward()` and `optimize()`.
+- **A driven lumped port reads `S11` from its terminal voltage and current**
+  (#1162). The old reading returned the reciprocal of the physical reflection.
+  Every lumped-port `|S11|`, and every lumped multi-port off-diagonal, changes.
+  A one-cell lumped port and a one-cell wire port now return the same
+  S-matrix.
+- **`compute_msl_s_matrix` returns the raw extracted `S`** (#1154). The
+  passivity projection is opt-in with `enforce_passivity=True`. The new
+  `sigma_max_excess` field reports any passivity breach, and a warning names
+  it.
+- **The coaxial lanes build the pin and outer conductor as PEC**, with the
+  outer wall at the declared outer radius (#1169). Every coaxial S-parameter
+  moves. The wall is `min(1 mm, clearance to the nearest absorber − 1 cell)`
+  thick, and a line with less than one cell of room raises.
+- **`compute_coaxial_s_matrix` is removed**, with `add_coaxial_matched_load`,
+  `add_coaxial_open_termination` and `add_coaxial_pec_end_cap` (#1212). Use
+  `compute_coaxial_line_reflection` for one port, `compute_coaxial_two_port`
+  for a through line, or `compute_s_matrix(lane=...)`.
+- **`compute_coax_msl_transition` refuses a non-passive `S` by default**
+  (#838). Pass `strict_passivity=False` to get the diagnostic matrix and a
+  warning, as before.
+- **A far-field (NTFF) box must sit at least one cell inside the grid** on
+  every axis, and a far-field box in a 2-D run raises (#1159). With an
+  absorber, nothing changes.
+- **rfx Studio, the experiment service, the agent tools and their CLI
+  commands leave the package** (#1150). `rfx run`, `rfx plot` and
+  `rfx export-geometry` stay; the `studio` and `agent` extras are gone.
+
+### Removed
+
+- **The `jax.pmap` multi-device runner** (#1296). Calling
+  `rfx.runners.distributed.run_distributed` raises `RuntimeError`. Use
+  `sim.run(devices=[...])`, which never used it.
+- **The scripts in `validation/crossval/` and its manifest** (#1156, #1157,
+  #1160, #1165, #1168, #1170, #1175, #1315); the RT/Duroid 5880 patch case
+  became `tests/crossval/rt5880_patch`. Structures with a closed form are now compared with it
+  by the analytic tests in `tests/oracle/`, and comparisons with other solvers
+  run against frozen reference records in `tests/crossval/`. See
+  [Benchmarks](/rfx/guide/benchmarks/).
+
+### Changed
+
+- **Multi-device runs** accept only `exchange_interval=1` (#1185). They now
+  send only the four field faces the update reads, which makes the time loop
+  several times faster across nodes (#1222, #1252), and they pass material
+  arrays to the time loop as arguments, so no device keeps whole-domain copies
+  (#1211, #1217).
+- **`run(ringdown=...)` judges its completion against a window that starts
+  twice as early** (#1254). Some short records that read ok before now read
+  not ok; the completed S-parameters themselves are unchanged.
+- **The ring-down W0 check reads the summed port accumulators at 1e-4 of each
+  array's peak** instead of a count of float rounding steps, so a jitted
+  `forward()` is no longer reported as not completed (#1318). `run(ringdown=...)`'s
+  completed S can change in its last bits.
+
+### Added
+
+- **Phase-referenced complex scattering**: `compute_rcs(...,
+  phase_reference=(x, y, z), subtract_incident_reference=True)` returns a
+  `ScatteringResponse` with complex `F_theta` / `F_phi` in metres (#1327).
+  Normal +x incidence on a uniform 3-D grid with symmetric CPML for now;
+  existing calls still return `RCSResult`.
+- **A design box can contain its own feed port** with
+  `forward(design_box_holds_ports=True)` (#1319). The port's edges keep the
+  drawn materials and the 50 Ω load, their gradient is zero, and
+  `ForwardResult.design_box_held_edges` lists them. Without the option, a box
+  holding a lumped or wire port still raises.
+- **`run(..., ringdown=RingdownSpec())`** completes a wire port's
+  S-parameters when the record ends while the structure still rings (#1254).
+  `result.ringdown.report` holds the fitted poles and the witnesses; none of
+  them is an error bound.
+- **`forward(..., ringdown=RingdownSpec())`** puts the same completion inside
+  the differentiable program, so `jax.grad` differentiates the ringing a short
+  record has not reached (#1318). `rfx.ringdown.gradient_witness` compares the
+  gradients from two completion windows; a failure makes the value and the
+  gradient NaN. Refused with `distributed=True` and `stencil_order=4`, as well
+  as wherever `run(ringdown=...)` is refused.
+- **Mesh lines that follow sheet edges**: `rfx.mesh_edges.edge_aware_profile`
+  and `edge_aware_profiles` (#1138). A new preflight advisory,
+  `sheet_effective_size`, reports a sheet solved more than 1 % off its drawn
+  size.
+- **`rfx.gradient_record_length_witness`** checks that a gradient does not
+  change when the record is doubled, the gradient counterpart of the −40 dB
+  settling check (#1186).
+- **Design-box gradients.** `forward(design_box=..., design_eps_override=...)`
+  differentiates the permittivity in one box without putting the whole grid on
+  the AD tape (#1179). It also runs on graded meshes and takes a conductor
+  occupancy (#1183), and `design_sigma_override` takes one conductivity per E
+  component, so a design sheet is a sheet (#1216).
+- **`Simulation.add_pinned_sheet`** declares a sheet by grid node lines, so
+  the mesh itself can be a design variable (#1199). A 50 Ω wire port runs on a
+  traced mesh, and `Simulation(dt=..., dt_min_cell=...)` pins one time step
+  across a family of deformed meshes (#1207).
+- **`forward(distributed=True)` runs across several processes** and takes its
+  design variables as sharded arrays (#1247).
+- **`Simulation.boundary_model()`** reports each face's declared kind and
+  plane (#1223).
+- **`result.snapshot_axes`** gives the position and time of every snapshot
+  sample (#1258).
+
+### Fixed
+
+- **A current source in material supplied by `eps_override` /
+  `sigma_override` on the distributed graded `forward()`** was driven through
+  the permittivity as drawn, and its permittivity gradient missed the drive's
+  own derivative (#1317). It now uses the materials the field is stepped with,
+  as the single-device lane does.
+
+- **The CPML reflects far less** (#1012). Its magnetic half now reads the loss
+  profile at the magnetic field's own position. Every result that depends on
+  an absorber moves. A thin absorber (4–6 layers) close to a source now holds
+  low-frequency field longer; use 8 or more layers there.
+- **A conductor that reaches an absorbing boundary continues through the
+  absorber**, as dielectrics already did (#801). A port ends the conductor you
+  name with `terminates=`, and preflight names any conductor that runs into
+  the absorber unterminated.
+- **Each E component averages the permittivity and conductivity of its four
+  neighbouring cells** (#1210). A conductivity-defined volume's faces now sit
+  where they were drawn, and dielectric interfaces converge at second order.
+- **Lumped elements** load only their own edge, not all three E components at
+  their node (#1236). A series R+C, R+L or R+L+C now realizes its declared
+  resistance and no longer drives low-resistance runs to NaN (#1163). A lumped
+  inductor no longer carries a spurious series resistance (#1245).
+- **Far fields.** The near-to-far-field transform is second order in the cell
+  size and stamps E at the right time, so directivities and RCS values move
+  slightly (#1159). Normal-incidence `compute_rcs` read every σ about 1.1 dB
+  low (#820). A far-field box that does not enclose the plane-wave injection
+  region is refused instead of returning a wrong cross section (#1176).
+- **Snapshots.** `SnapshotSpec(interval=m)` records every m-th step, as
+  documented, instead of every step, and `run(until_decay=...)` records
+  snapshots (#1258). With `stencil_order=4`, `result.dt` is the step the
+  solver actually took.
+- **Closed boxes and magnetic walls.** `forward()` on a closed PEC box applies
+  the walls (#1193). A magnetic-wall face is no longer shorted by a PEC wall on
+  the uniform and graded-mesh paths (#1164). The Kottke PEC occupancy lane
+  places the conductor where the occupancy is (#1197).
+- **Graded meshes.** A port's drive includes its own load (#1256) and sees
+  `eps_override` / `sigma_override` (#1267). With a Debye or Lorentz material
+  present, ports terminate instead of acting as open circuits (#1283). A
+  waveguide port inside a refined band injects at its own cell (#810), and a
+  microstrip port's automatic probe ladder has the right length (#1278).
+  Preflight checks read the cells at their own site (#1209). A 2-D `mode` on a
+  graded mesh is refused instead of returning zero fields (#1148).
+- **`add_refinement`** is refused where it used to be ignored: on a graded
+  mesh, and by `forward()`, `optimize()` and the S-parameter calculators
+  (#1282).
+- **Tracing.** A graded-mesh run can be traced as a whole (#1188), and
+  `jax.jit(jax.value_and_grad(...))` over `forward()` traces for wire-port
+  boards, so `rfx.optimize(jit=True)` compiles once per call (#1225).
+- **Multi-device runs** refuse features they do not implement instead of
+  dropping them: lumped RLC elements, MSL ports, refinements, Kerr materials,
+  periodic axes, passive ports, flux monitors and far-field boxes (#1039,
+  #1214, #1241). They also use far less memory on the first device (#1208,
+  #1214, #1227) and return full results across processes (#1202).
+- **Smaller fixes.** The microstrip `Z0` guard and preflight agree on probe
+  clearance (#726), the microstrip `beta` estimate no longer wobbles with its
+  scan grid (#830), a boundary-touching dielectric continues into the
+  waveguide lane's absorber (#1066), a rounding excess in `domain / dx` no
+  longer adds an empty cell at an absorber face (#1070), and `eval_lorentz`
+  evaluates a Drude pole correctly (#1158).
+
+## v1.8.0 — September 6, 2026
+
+- The rectangular-waveguide S-matrix closed its chain of checks for uniform
+  single-mode guides on the `normalize=False` and `normalize="flux"` lanes.
+  `normalize="flux"` now follows `JAX_ENABLE_X64`, and `normalize=True`
+  rejects a traced `eps_override` up front.
+- The wire-port current carries the Yee half-step phase, so wire-port
+  S-parameters rotate slightly in phase.
+- Finite-region `add_flux_monitor(size=...)` runs on graded meshes.
+- A face-touching dispersive material no longer gets an absorber surround
+  that carries its static permittivity without its poles (#808).
+- Realized geometry no longer depends on `JAX_ENABLE_X64` or the solver path
+  (#802, #807).
+- A `dz_profile`-only simulation reaches the graded-mesh waveguide S-matrix
+  path instead of solving on a uniform grid (#811).
+- `add_port(reference_plane_cells=N)` rejects reference planes outside the
+  uniform line or inside a microstrip port's probe ladder.
+- At this release, the `amplitude_kind` plan deferred the required argument
+  to 1.9. The shipped 2.0 behavior resolves omission and `None` to `'current'`
+  (#1442; `tests/unit/sources/test_source_amplitude_kind.py`).
+
+## v1.7.0 — September 1, 2026
+
+- Long solves can report step count, elapsed time, rate, and ETA with
+  `report_every=N` on supported uniform and single-device non-uniform runs.
+  Reporting is off by default and the reported and unreported results are
+  byte-identity locked.
+- `Simulation.fidelity_report()` audits declared geometry against the cells and
+  material realization the solver will use, before a run. It reports
+  rasterization and realization only; it does not predict RF error.
+- `add_msl_port(direction=...)` supports `"+x"`, `"-x"`, `"+y"`, and `"-y"`
+  for the Laplace/quasi-TEM path. The eigenmode path remains x-only and outside
+  the public support envelope.
+- `add_thin_conductor(..., surface_impedance_f0=...)` accepts patterned shapes
+  that rasterize to exactly one cell layer and at least one cell, including
+  CAD-backed `MeshShape` objects. (Superseded at 2.0: a sheet is one node plane,
+  not one cell layer.) Unsupported sheet realizations and execution
+  lanes fail explicitly.
+- The uniform single-device solver offers `precision="float64"` when JAX x64
+  is enabled. `precision="mixed"` works with CPML, but its float16 field
+  storage raises the absorber residual floor and is not a substitute for
+  float32 in low-reflection or S-parameter work.
+- `compute_far_field_jax(..., max_phase_bytes=...)` bounds the NTFF phase-array
+  allocation by splitting the theta grid. The split is exact and avoids
+  materializing the full direction-by-surface array at once.
+- S-parameter settling warnings use the same -40 dB rule in
+  `compute_msl_s_matrix`, `compute_waveguide_s_matrix`,
+  `compute_mixed_s_matrix`, `compute_coaxial_two_port`, and
+  `compute_coax_msl_transition`.
+- Multi-band graded-z meshes now preserve declared blocks through smoothing,
+  with a measured z-axis adjacent-cell ratio cap of 1.4 and explicit
+  preflight advisories outside the validated envelope.
+- New rasterized-slice and stack-profile views show the cells and material
+  layers the solver actually builds.
+- Wire-port decomposition, MSL probe extraction, CPML material padding,
+  graded-mesh NTFF integration, mesh import containment, and preflight
+  diagnostics received correctness fixes without widening their documented
+  validation envelopes.
+- MSL internal DFT planes now store only the extractor's required crop,
+  reducing accumulator cells without changing the extracted matrix.
+- Differentiable `forward(...)` objectives are now safe to wrap in an outer `jax.jit`: both `jax.jit(loss)` and `jax.jit(jax.grad(loss))` over `forward(eps_override=...)` are regression-locked against the eager path. This fixes a tracer crash in material assembly without changing eager results.
+- `optimize(...)` gained default-off robustness knobs for difficult proxy losses: `n_starts`, `best_iterate`, `step_clamp`, and `seed`. The default single-start Adam path remains byte-identical.
+- `add_lumped_rlc(...)` elements now participate in the differentiable uniform `forward(...)` lane. Use `forward(rlc_values_override={...})` when R/L/C values themselves are scalar design variables; this is still a lumped circuit element, not a `Z0`-referenced port.
+- Waveguide S-matrix extraction now emits a soft advisory for passive `normalize=False` results whose column power is above the documented single-run over-unity envelope but below the hard unreliability limit. The physics and hard pass/fail thresholds are unchanged.
+- RCS and inverse-design docs now pin recent footguns: RCS validation is monostatic-only unless additional evidence is supplied, and a finite-difference gradient check does not prove an empty observation window is physically meaningful.
+- A standalone real multi-device witness (`scripts/diagnostics/distributed_witness/multigpu_witness.py`) now compares single-device and sharded PEC/CPML/lumped-port runs on machines with two or more JAX devices; it is a distributed-runner identity check, not a new physics-validation envelope.
+- [AD memory-planning docs](/rfx/run/memory-and-speed/) now tag each artifact with an evidence class — static estimate, conservative budget-fit plan, or explainability breakdown — so a planning estimate is never read as a runtime profiler measurement, a peak-memory guarantee, or RF validation evidence. The compiled-executable check reports the JAX compiler's memory *estimate*, not a runtime peak.
+- [Differentiable-design guidance](/rfx/design/gradients/) was tightened: it separates JAX-traced objectives and finite-difference gradient checks from the final port/resonance/far-field physics validation.
+- [Non-uniform mesh guidance](/rfx/model/domain-mesh/) now frames graded-z meshes as a bounded workflow for thin layered structures, stating the unsupported combinations and the caller's validation responsibilities up front.
+
+## v1.6.7 — July 2026
+
+- Open-domain oblique RCS is available through `compute_rcs(theta_inc != 0)` for its documented uniform-grid, `ez`-polarized Method-B TFSF envelope; unsupported combinations fail explicitly.
+- The opt-in plane-wave design lane adds complex-Bloch TFSF in `run()`, uniform `forward()` support, differentiable `mu_r_override`, and `compute_rcs_jax`.
+- `rfx.MeshShape` imports voxelized STL, OBJ, and PLY geometry; STEP support is available with the `cad` extra. Mesh import is not differentiable.
+- `rfx.interop` can emit a validated design document and a runnable openEMS script for representable simulations.
+- `run(until_decay=..., radiated_flux_box=...)` can stop on radiated-energy flux, and MSL extraction now resolves automatic probe offsets against both documented clearances. Returned MSL S-matrices enforce passivity by default while retaining raw results in `S_raw`.
+
+## v1.6.6 — June 2026
+
+- Maintenance-only release: a behavior-preserving rectangular-waveguide mode-solver refactor and shipped-documentation hygiene. There was no public API or user-visible behavior change.
+
+## v1.6.5 — June 2026
+
+- [Validation reporting](/rfx/guide/validation/) is stricter: a promoted port-family result now requires magnitude evidence, a phase-consistency witness, an AD-vs-finite-difference check where gradients are part of the claim, and committed (reproducible) artifacts.
+- Port-family support wording is clearer: users should match each source or port family to its documented calculator and evidence envelope instead of treating any S-parameter helper as universal.
+- `compute_msl_s_matrix` now reports a positive characteristic impedance on both ports. This fixes reported metadata while leaving the S-parameter calculation invariant.
+- Non-uniform mesh accuracy coverage now includes an analytic gated cavity case whose resonance frequency depends on the graded axis.
+- Public guides and support pages were tightened around maintained workflows, validation boundaries, and device-count-adaptive test behavior.
+
+## v1.6.4 — June 2026
+
+- Rectangular waveguide-port evidence now covers WR-band empty-guide, PEC-short, and dielectric-slab cases with analytic and external-reference comparisons.
+- `preflight()` and `preflight_sparameters()` now expose coded report objects for automation while preserving older list/string behavior.
+- Run/forward results, S-matrix calculators, sweeps, and optimizers now surface finite-data, passivity, setup, and NaN-gradient issues earlier.
+- `compute_coaxial_line_reflection(...)` is the current coaxial line-reflection path inside its documented transmission-line envelope.
+- `compute_waveguide_s_matrix(checkpoint_segments=...)` adds segmented checkpointing for uniform waveguide AD-heavy runs.
+- Finite-size flux monitors are regression-locked against the matching full-plane integrand window; the old finite-size instability caveat is superseded.
+- The directivity objective gained a log-ratio option for sign-correct gradients when design variables change total radiated power.
+
+## v1.6 line
+
+- Advanced the differentiable design loops and validation-boundary reporting.
+- Added feature-boundary wording so repository code outside the documented support scope is not presented as the default public path.
+- Improved port and observable APIs for RF workflows.
+
+## v1.5 line
+
+- Expanded the public guide structure for examples, API surfaces, and validation/support boundaries.
+- Added RF examples and clearer routing for patch, waveguide, and microstrip workflows.
+
+## Earlier releases
+
+Earlier releases introduced the core JAX FDTD solver, material/geometry helpers, sources, probes, ports, far-field utilities, and inverse-design workflows. See the Git history and package releases for full implementation detail.

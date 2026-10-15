@@ -58,7 +58,7 @@ def test_rcsresult_docstring_pins_validation_scope():
 
 
 def test_public_guide_pins_bistatic_caveat():
-    guide = Path(__file__).resolve().parents[2] / "docs/public/guide/farfield-rcs.md"
+    guide = Path(__file__).resolve().parents[2] / "docs/public/measure/far-field-and-rcs.md"
     assert guide.exists(), guide
     text = _norm(guide.read_text())
     assert "bistatic pattern is not validated" in text

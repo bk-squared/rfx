@@ -183,7 +183,21 @@ Full contract, fence reasoning, and gates:
   verdict fields by their own names: `passed`, `worst` (the largest
   relative change of the gradient vector over the bins), `n_steps` and
   `n_steps_long`. `grad_rel_change` is a per-element table for locating a
-  failure, not the verdict. For a gradient through the
+  failure, not the verdict. The pattern, as used in
+  [`examples/inverse_design/multilayer_ar_coating.py`](https://github.com/bk-squared/rfx/blob/main/examples/inverse_design/multilayer_ar_coating.py):
+
+  ```python
+  from rfx import gradient_record_length_witness
+
+  def objective(params, n_steps):      # the observable from a record of n_steps
+      result = sim.forward(eps_override=render(params), n_steps=n_steps)
+      return figure_of_merit(result, n_steps)
+
+  witness = gradient_record_length_witness(objective, params, N_STEPS, tol=0.05)
+  print(f"passed={witness.passed} worst={witness.worst:.3g} "
+        f"n_steps={witness.n_steps} n_steps_long={witness.n_steps_long}")
+  ```
+  For a gradient through the
   ring-down completion, use `rfx.ringdown.gradient_witness` instead
   ([resonance recipe](./recipe-resonance-extraction)).
 - Check the full |S11(f)| curve, not just the objective bin.

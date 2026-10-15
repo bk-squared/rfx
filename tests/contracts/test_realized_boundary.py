@@ -14,7 +14,43 @@ from tests.contracts.boundary_fields import measure, measured_fields
 
 ROOT = Path(__file__).resolve().parents[2]
 BASELINE = json.loads((ROOT / "scripts/diagnostics/boundary_model/B1/MATRIX.json").read_text())
-CELLS = BASELINE["cells"]
+# PR3a supersedes the explicit-guide departure rows without rewriting B1's record.
+WALLED_DEFAULT_ENTRIES = {"run", "forward", "distributed", "sweep", "gpu-query", "subgridded"}
+# Addendum 5f (2026-10-11) supersedes the graded explicit-guide rows; B1's record stays immutable.
+# The graded default stays refused (5d), so it has no walled-default twin below.
+GUIDE_REFUSAL_ENTRIES = WALLED_DEFAULT_ENTRIES | {"nonuniform"}
+CELLS = [dict(c, status="REFUSED_AT_DISPATCH", departures=[])
+         if c["case"] == "waveguide-cpml" and c["entry"] in GUIDE_REFUSAL_ENTRIES else c
+         for c in BASELINE["cells"]]
+
+
+def backed(cell):
+    """Tracker 1549 supersedes B1's "electric backing required" rows (code f, "fixed in B3") without rewriting
+    B1's record: forward() and the multi-device uniform run now apply the conducting plane behind every absorbing
+    face from the boundary record, as run() does, and so do the waveguide entries. Where B1 recorded the backing as
+    missing, the expected record becomes "present at the plane B1 said it was required at"."""
+    if cell["status"] != "MEASURED" or not (cell["entry"] in ("forward", "distributed")
+                                             or cell["case"] == "waveguide-pec"):
+        return cell
+    # A face a feature wraps (TF/SF, Floquet: code "feature") is not an absorbing face in the run; it gets no
+    # conducting plane and its "f" row stays listed.
+    wrapped = {d["face"] for d in cell["departures"] if d["code"] == "feature"}
+    missing = {d["face"] for d in cell["departures"] if d["code"] == "f"} - wrapped
+    faces = {name: dict(face, e_zero=True, e_zero_planes_m=[face["e_plane_m"]]) if name in missing else face
+             for name, face in cell["faces"].items()}
+    return dict(cell, faces=faces,
+                departures=[d for d in cell["departures"] if d["code"] != "f" or d["face"] in wrapped])
+
+
+def magnetic_distributed(cell):
+    """#1221 B4 supersedes B1's refused distributed PMC cells with their single-device run records."""
+    if cell["case"].startswith("pmc-") and cell["entry"] == "distributed" and cell["status"] == "REFUSED":
+        reference = next(c for c in CELLS if c["case"] == cell["case"] and c["entry"] == "run")
+        return dict(cell, **{key: reference[key] for key in ("status", "faces", "departures")})
+    return cell
+
+
+CELLS = [backed(magnetic_distributed(c)) for c in CELLS]
 BY_CELL = {(c["case"], c["entry"]): c for c in CELLS}
 
 
@@ -44,6 +80,14 @@ def compare_departures(problems):
 @pytest.mark.parametrize("cell", [pytest.param(c, id=f"{c['case']}--{c['entry']}",
                                               marks=pytest.mark.xdist_group(f"{c['case']}--{c['entry']}")) for c in CELLS])
 def test_no_unlisted_departures(cell):
+    if cell["status"] == "REFUSED_AT_DISPATCH":
+        with pytest.raises(ValueError) as caught:
+            measured(cell["case"], cell["entry"])
+        message = str(caught.value)
+        assert "full-aperture waveguide requires PEC" in message
+        assert all(face in message for face in ("y_lo", "y_hi", "z_lo", "z_hi"))
+        assert "declare boundary=" in message and "'y': 'pec'" in message and "'z': 'pec'" in message
+        return
     # The public sponge refusal supersedes B1; retain the historical record.
     if adi_absorber_cell(cell["case"], cell["entry"]):
         with pytest.raises(ValueError, match="unmatched graded-conductivity sponge"):
@@ -74,11 +118,11 @@ EXPECTED = [pytest.param(cell["case"], cell["entry"], departure["face"], departu
             for cell in CELLS if cell["status"] == "MEASURED"
             and not adi_absorber_cell(cell["case"], cell["entry"])
             for departure in cell["departures"]]
-# Distributed PMC now refuses before the kernel; its status is tested above.
+# PMC images are checked at the declared plane on both device counts.
 EXPECTED += [pytest.param(case, entry, face, code,
                           id=f"{case}--{entry}--{face}--{code}")
              for case in ("pmc-pec", "pmc-cpml")
-             for entry in ("run", "forward", "nonuniform", "wire-fast", "gpu-query")
+             for entry in ("run", "forward", "nonuniform", "wire-fast", "gpu-query", "distributed")
              for face in ("x_lo", "x_hi") for code in ("b1", "h")]
 # Waveguide PMC now refuses; test_no_unlisted_departures pins that status.
 EXPECTED += [pytest.param("periodic-xy", entry, face, "e",
@@ -151,3 +195,43 @@ def test_cpu_gpu_query_dispatch(case, expected):
     _, _, _, records = measure(case, "gpu-query")
     assert any(r["fast_trace_calls"] > 0 for r in records) == expected
     jax.clear_caches()
+
+
+@pytest.mark.parametrize("entry", sorted(WALLED_DEFAULT_ENTRIES))
+def test_default_waveguide_twin_records_its_walls(entry, monkeypatch):
+    import warnings
+    from rfx.boundaries.depths import Kind
+    from rfx.boundaries.features import WaveguideBoundaryWarning
+    from rfx.boundaries.model import realize
+    from tests.contracts.boundary_cases import build
+    from tests.contracts.boundary_fields import execute
+
+    class Admitted(Exception):
+        pass
+
+    def stop(*args, **kwargs):
+        raise Admitted
+
+    sim, _ = build("waveguide-default", "run" if entry == "gpu-query" else entry)
+    grid = sim._build_grid()
+    assert tuple(f.kind for f in grid.boundary_depths) == (
+        Kind.ABSORBER, Kind.ABSORBER, Kind.PEC, Kind.PEC, Kind.PEC, Kind.PEC)
+    assert tuple(f.realized for f in grid.boundary_depths) == (8, 8, 0, 0, 0, 0)
+    assert tuple(f.kind for f in realize(sim.boundary_model(), grid).faces) == tuple(
+        f.kind for f in grid.boundary_depths)
+    monkeypatch.setattr(jax.lax, "scan", stop)
+    if entry == "gpu-query":
+        monkeypatch.setattr(jax, "default_backend", lambda: "gpu")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        # Each sweep invocation constructs a distinct Simulation copy.
+        for _ in range(1 if entry == "sweep" else 2):
+            if entry == "subgridded":
+                with pytest.raises(NotImplementedError, match="subgridded lane is unstable and unverified"):
+                    execute(sim, entry)
+            else:
+                with pytest.raises(Admitted):
+                    execute(sim, "run" if entry == "gpu-query" else entry)
+    defaults = [w for w in caught if issubclass(w.category, WaveguideBoundaryWarning)]
+    assert len(defaults) == 1
+    assert all(face in str(defaults[0].message) for face in ("y_lo", "y_hi", "z_lo", "z_hi"))

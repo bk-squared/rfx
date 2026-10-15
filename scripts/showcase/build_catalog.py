@@ -220,7 +220,10 @@ def headlines(share: Share) -> dict[str, list[dict]]:
         h("Adam steps", ar["model"]["adam"]["iters"], "steps", comma, (DESCENT,),
           "ar-coating/result.json model.adam.iters"),
     ]
-    out["forward-checks"] = forward_headlines(share, h)
+    # The two forward numbers were computed on rfx 1.8.0 under the settling check before #1426;
+    # they are withdrawn until the cases are re-measured under the current one (#1471).
+    # Restore with: out["forward-checks"] = forward_headlines(share, h)
+    out["forward-checks"] = []
     lens = share.json("grin-lens", "mesh_trend.json")
     designed = lens["reported"]["boresight_dbi"][-1]
     feed = lens["no_lens"]["boresight_dbi"][-1]

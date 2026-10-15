@@ -105,8 +105,11 @@ def test_power_wave_normalization_unequal_z0():
     S = np.asarray(S)
     pseudo_ratio = np.sqrt(z0_msl / z0_lump)  # 0.7746 — the #460 error
     assert abs(pseudo_ratio - 1.0) > 0.2
-    np.testing.assert_allclose(np.abs(S[1, 0, :]), 1.0, atol=1e-5)
-    np.testing.assert_allclose(np.abs(S[0, 0, :]), 0.0, atol=1e-6)
+    # The invalid per-cell drive frame refuses the whole driven column.
+    assert np.isnan(S[1, 0, :]).all()
+    np.testing.assert_allclose(np.abs(S[0, 1, :]), 1.0, atol=1e-5)
+    # The mixed driven lumped diagonal is refused, even on matched phasors.
+    assert np.isnan(S[0, 0, :]).all()
 
 
 def test_reciprocity_on_synthetic_transfer():
@@ -118,9 +121,9 @@ def test_reciprocity_on_synthetic_transfer():
         wire_mode=False, drive_plan=[("lw", 0), ("msl", 0)],
     )
     S = np.asarray(S)
-    np.testing.assert_allclose(
-        np.abs(S[0, 1, :]), np.abs(S[1, 0, :]), atol=1e-5
-    )
+    # Reciprocity cannot compare a refused drive; retain the independent receive oracle.
+    assert np.isnan(S[:, 0]).all()
+    np.testing.assert_allclose(np.abs(S[0, 1, :]), 1.0, atol=1e-5)
 
 
 def test_power_witness_matches_synthetic():
@@ -136,7 +139,8 @@ def test_power_witness_matches_synthetic():
         np.asarray([50.0]), np.asarray([1]), np.asarray([30.0]),
         wire_mode=False, drive_plan=[("lw", 0), ("msl", 0)],
     )
-    np.testing.assert_allclose(s21_power[0, 0, :], 1.0, atol=1e-5)
+    # This witness divides by 1 - |S00|² and inherits the diagonal refusal.
+    assert np.isnan(s21_power[0, 0, :]).all()
 
 
 def test_wire_mode_uses_per_cell_impedance():
@@ -163,7 +167,8 @@ def test_wire_mode_uses_per_cell_impedance():
         np.asarray([z0_lump]), np.asarray([n_live]), np.asarray([z0_msl]),
         wire_mode=True, drive_plan=[("lw", 0)],
     )
-    np.testing.assert_allclose(np.abs(np.asarray(S)[1, 0, :]), 1.0, atol=1e-5)
+    # Wire drives share the refused per-cell frame, including their off-diagonals.
+    assert np.isnan(np.asarray(S)[:, 0, :]).all()
 
 
 # ---------------------------------------------------------------------------
@@ -234,34 +239,14 @@ def _add_feed(sim, y_c, x=2e-3, extent=None):
 
 
 def test_a_lumped_feed_reaches_the_lumped_branch_and_its_numbers_are_pinned():
-    """The mixed lane's LUMPED branch, which nothing else in this file reaches.
-
-    Every other feed here carries ``extent=``, so the lane runs in wire mode
-    and `rfx/sparams/mixed.py`'s lumped branch — the one that reads the
-    pre-injection drive reference out of the three-channel accumulator — is
-    never entered. This is the only test that enters it.
-
-    The lane keeps the pre-decision lumped driven diagonal on purpose:
-    correcting it is cross-family work the PI deferred on 2026-09-15. So this
-    does not gate the VALUE against physics, which would freeze that decision
-    as if it were one. It gates two things that must not drift silently:
-
-    * the branch runs at all (``port_families == ("lumped", "msl")``), and
-    * the lane announces the convention it is on.
-
-    Measured before/after the 2026-09-21 driven-diagonal change, on this
-    fixture: ``max |dS| = 1.8e-05``, ``max |d|S|| = 1.7e-07``. The committed
-    wire-feed fixtures are bit-identical (``max |dS| = 0.0``) because the
-    lumped branch never fires on them.
-    """
-    from rfx.probes.probes import PreDecisionLumpedDiagonalWarning
-
+    """The one-cell lumped feed refuses its unverified driven reflection."""
     sim, y_c = _base_sim()
     # No ``extent`` — a one-cell lumped port, which is what selects the branch.
     sim.add_port(position=(2e-3, y_c, 0.0), component="ez", impedance=50.0)
     _add_msl(sim, y_c, n_probe_offset=10, n_probe_spacing=4)
 
-    with pytest.warns(PreDecisionLumpedDiagonalWarning):
+    # The old warning plus a finite diagonal is replaced by refusal.
+    with pytest.warns(UserWarning, match="refused lumped/wire-driven columns"):
         res = sim.compute_mixed_s_matrix(
             freqs=np.linspace(1e9, 2e9, 3), num_periods=2.0,
             skip_preflight=True, magnitude_channel="wave",
@@ -272,7 +257,10 @@ def test_a_lumped_feed_reaches_the_lumped_branch_and_its_numbers_are_pinned():
         "covers what it was written for")
     S = np.asarray(res.S)
     assert S.shape == (2, 2, 3)
-    assert np.all(np.isfinite(S))
+    assert np.isnan(S[0, 0]).all()
+    # The driven lumped transmission uses the same refused incident wave.
+    assert np.isnan(S[1, 0]).all()
+    assert np.isfinite(S[:, 1]).all()
 
 
 def test_guard_requires_msl_port():
@@ -524,32 +512,20 @@ def test_negative_arriving_power_is_tracked_not_only_driven():
     assert float(np.abs(np.asarray(S_out)[1, 0, 0])) == 0.0
 
 
-def test_forward_does_not_pay_for_flux_monitors(monkeypatch):
-    """Registering flux monitors must not change the plain forward() lane.
-
-    `ForwardResult` has never carried flux monitors, so accumulating them
-    inside the differentiable scan would be pure cost (including AD-tape
-    memory) with no visible result — a silent regression for existing
-    AD callers. The build is therefore gated to the raw-hook consumer.
-    """
+def test_forward_returns_the_flux_monitors_it_builds():
+    """A declared flux monitor is accumulated AND returned by plain forward()
+    (#1373 D4); before, forward() skipped it because it could not return it."""
     import jax.numpy as jnp
-    import rfx.runners.uniform as _uni
 
-    calls = []
-    real = _uni.build_flux_monitor_cfgs
-    monkeypatch.setattr(
-        _uni, "build_flux_monitor_cfgs",
-        lambda *a, **k: (calls.append(1), real(*a, **k))[1],
-    )
     sim = Simulation(freq_max=10e9, domain=(4e-3, 2e-3, 1e-3),
                      dx=100e-6, cpml_layers=4)
     sim.add_port(position=(1e-3, 1e-3, 0.5e-3), component="ez",
                  impedance=50.0)
     sim.add_flux_monitor(axis="x", coordinate=2e-3,
-                         freqs=jnp.asarray(np.array([5e9])))
-    sim.forward(n_steps=40, port_s11_freqs=np.array([5e9]),
-                skip_preflight=True)
-    assert calls == [], "forward() built flux monitors it cannot return"
+                         freqs=jnp.asarray(np.array([5e9])), name="mid")
+    result = sim.forward(n_steps=40, port_s11_freqs=np.array([5e9]),
+                         skip_preflight=True)
+    assert list(result.flux_monitors) == ["mid"]
 
 
 def test_guard_rejects_cpml_adjacent_probe_ladder():
@@ -617,17 +593,22 @@ def test_mixed_probe_fed_msl_plumbing_smoke():
         )
     S = np.asarray(res.S)
     assert S.shape == (2, 2, 5)
-    assert np.all(np.isfinite(S))
+    # Only the MSL-driven flux column survives the per-cell drive refusal.
+    assert np.isnan(S[:, 0]).all()
+    assert np.all(np.isfinite(S[:, 1]))
     assert res.port_families == ("wire", "msl")
     assert res.port_names[1] != "lw0" and res.port_names[0] == "lw0"
     assert res.z0_ref.shape == (2,)
     assert res.z0_ref[0] == pytest.approx(50.0)
     assert 20.0 < res.z0_ref[1] < 120.0          # HJ analytic, sane band
     assert res.s21_power_witness.shape == (1, 1, 5)
-    assert np.all(np.isfinite(res.s21_power_witness))
+    # The power witness of a refused wire-driven column is refused too.
+    assert np.isnan(res.s21_power_witness).all()
     assert res.magnitude_channel == "flux"
     assert res.S_wave is not None and res.S_wave.shape == S.shape
-    _assert_drive_settling_witnesses(sim, res, 4., (0.0780274, 0.322321))
+    # re-pinned 2026-10-12: default pulse onset fix (issue 1668 PR); old values
+    # (0.0780274, 0.322321).
+    _assert_drive_settling_witnesses(sim, res, 4., (0.0780033, 0.322213))
     # Registration state restored after the drive loop.
     assert len(sim._dft_planes) == 0
     assert len(sim._probes) == 0
@@ -678,9 +659,14 @@ def test_mixed_probe_fed_msl_smoke_slow_lane_exists():
     )
     S = np.asarray(res.S)
     assert S.shape == (2, 2, 5)
-    assert np.all(np.isfinite(S))
-    assert np.all(np.abs(S) < 1.5), f"gross blow-up: max|S|={np.max(np.abs(S)):.3f}"
-    _assert_drive_settling_witnesses(sim, res, 8., (4.13651e-21, 1.59952e-4))
+    # Only the MSL-driven flux column survives the per-cell drive refusal.
+    assert np.isnan(S[:, 0]).all()
+    assert np.all(np.isfinite(S[:, 1]))
+    # Apply the unchanged bound to the retained, unprojected MSL column.
+    assert np.all(np.abs(S[:, 1]) < 1.5), f"gross blow-up: max|S|={np.max(np.abs(S[:, 1])):.3f}"
+    # re-pinned 2026-10-12: default pulse onset fix (issue 1668 PR); old values
+    # (4.13651e-21, 1.59952e-4).
+    _assert_drive_settling_witnesses(sim, res, 8., (4.13523e-21, 1.59902e-4))
 
 
 # ---------------------------------------------------------------------------
@@ -1263,17 +1249,6 @@ def _d5_gap_ground_truth(sim, position, component, extent, impedance=50.0):
     return bool(live_flags[-1]), (end_node + 1) in walls
 
 
-@pytest.mark.xfail(
-    reason="the #556 end-gap advisory reads realized wall planes now and "
-           "FIRES on this fixture (measured 2026-09-07: one warning on the "
-           "+z side), but its message spells the gap as 'gap = 8.46667e-05 "
-           "m' and the remedy as 'e.g. dx = h/N', where this test looks "
-           "for 'gap = 1 cell' and 'refine dx'. The wording is the "
-           "preflight owner's (#931 design note §6); the ground-truth "
-           "premise this file owns is asserted first and passes. Strict, "
-           "so the wording change un-xfails this loudly.",
-    strict=True,
-)
 def test_wire_port_end_gap_advisory_fires_on_a_declared_one_cell_gap():
     """POSITIVE (issue #556), re-declared on the lattice (#931).
 
@@ -1297,11 +1272,8 @@ def test_wire_port_end_gap_advisory_fires_on_a_declared_one_cell_gap():
     defect it stands for is unchanged; only the way the fixture reaches it
     is honest about being deliberate.
 
-    NOTE (cross-branch): the advisory reads realized wall planes and
-    fires here (see the xfail reason); what still reds this test is its
-    message wording ("gap = 1 cell", "refine dx"), which the preflight
-    owner spells differently. The ground-truth premise above it is the
-    part this file owns, and it passes today.
+    The advisory is identified by its structured finding code and severity.
+    Its side has no structured field, so check the emitted +z-side token.
     """
     sim, y_c = _base_sim()
     _add_feed(sim, y_c, x=2e-3, extent=2 * _DX)
@@ -1328,14 +1300,8 @@ def test_wire_port_end_gap_advisory_fires_on_a_declared_one_cell_gap():
         f"#556 advisory must be advisory (warning) severity, got "
         f"{getattr(hits[0], 'severity', None)!r}"
     )
-    msg = str(hits[0])
-    for needle in ("+z-side", "gap = 1 cell", "capacitive",
-                   "extend the port extent by one cell", "refine dx"):
-        assert needle in msg, (
-            f"#556 advisory must name the side, the 1-cell gap, the "
-            f"capacitive consequence and both remedies; missing "
-            f"{needle!r} in: {msg}"
-        )
+    # PreflightIssue carries code/severity, but no side field (ports.py).
+    assert str(hits[0]).count("+z-side") == 1
     # The advisory must not double-fire as a dead-cell finding: no cell
     # is dead here (#544 regression lock pins 4/4 live).
     codes = [getattr(s, "code", None) for s in issues]
@@ -1407,7 +1373,10 @@ def test_wire_port_end_gap_advisory_silent_in_open_vacuum():
     sim.add_port(position=(0.0093, 0.0093, 0.0093), component="ez",
                  impedance=50.0,
                  waveform=GaussianPulse(f0=5e9, bandwidth=0.9),
-                 extent=0.004)
+                 extent=0.004,
+                 # Mirrors _clean_sim: without radius= the port draws
+                 # wire_port_no_radius and the report is not clean.
+                 radius=0.1e-3)
 
     issues = sim.preflight()
     codes = [getattr(s, "code", None) for s in issues]

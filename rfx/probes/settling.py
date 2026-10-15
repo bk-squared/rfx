@@ -1,6 +1,7 @@
 """Host diagnostics for already-recorded user probes, shared by run/forward."""
 from __future__ import annotations
 
+from rfx._grid_metric import field_index
 
 import jax
 import numpy as np
@@ -54,7 +55,9 @@ def source_end_step(drives, n_steps, dt, *, tolerance=1e-6,
         raw = np.asarray(samples)
         w = (np.abs(raw.astype(np.complex128)) if np.iscomplexobj(raw)
              else np.abs(np.asarray(raw, dtype=np.float64)))
-        if w.ndim != 1 or len(w) != n_steps:
+        # A recorded table may lack the scan's last step (the waveguide
+        # port does not write it); it then speaks for the steps it holds.
+        if w.ndim != 1 or not n_steps - 1 <= len(w) <= n_steps:
             available = False
             continue
         if not np.isfinite(w).all():
@@ -63,7 +66,7 @@ def source_end_step(drives, n_steps, dt, *, tolerance=1e-6,
         on = np.flatnonzero(w > float(tolerance) * peak)
         off = int(on[-1]) + 1 if on.size else 0
         rows.append((w, peak, off))
-        if off >= n_steps and peak > 0:
+        if off >= len(w) and peak > 0:
             available = False
         if distance is None or not np.isfinite(distance) or distance < 0:
             available = False
@@ -80,6 +83,7 @@ def simulation_source_end_step(sim, n_steps, dt, records, grid=None,
     Unknown plane/volume drives must not silently disappear from coverage.
     TF/SF uses its waveform and box diagonal in addition to point drives.
     """
+    from rfx.measurement.modal import recorded
     from rfx.sources.sources import GaussianPulse
 
     if dt is None or is_tracer(dt):
@@ -102,7 +106,7 @@ def simulation_source_end_step(sim, n_steps, dt, records, grid=None,
                 axis = "xyz".index(cfg.normal_axis)
                 distance = max(abs(float(p[axis]) - float(cfg.source_x_m))
                                for p in positions)
-                drives.append((cfg.v_inc_t, distance))
+                drives.append((recorded(cfg, "v_inc_t"), distance))
     for pe in (*getattr(sim, "_ports", ()), *getattr(sim, "_msl_ports", ())):
         if getattr(pe, "impedance", None) != 0 and not getattr(pe, "excite", True):
             continue
@@ -131,15 +135,8 @@ def simulation_source_end_step(sim, n_steps, dt, records, grid=None,
     if tf is not None:
         if grid is None:
             return None
-        from rfx.sources.tfsf import init_tfsf
-        cfg, _ = init_tfsf(
-            grid.nx, grid.boundary_cell("x", "lo"), dt, cpml_layers=grid.cpml_layers,
-            ny=grid.ny, nz=grid.nz, tfsf_margin=tf.margin,
-            f0=tf.f0 if tf.f0 is not None else sim._freq_max / 2,
-            bandwidth=tf.bandwidth, amplitude=tf.amplitude,
-            polarization=tf.polarization, direction=tf.direction,
-            angle_deg=tf.angle_deg, waveform=tf.waveform,
-            method=tf.method, closed_box=tf.closed_box)
+        from rfx.sources.tfsf import tfsf_from_declaration
+        cfg, _ = tfsf_from_declaration(tf, grid, sim._freq_max)
         drives.append(tfsf_source_drive(cfg, grid))
     return source_end_step(drives, n_steps, dt) if drives else None
 
@@ -191,14 +188,11 @@ def sampled_source_end_step(sources, probes, grid, n_steps):
         n_steps, grid.dt)
 
 
-def _cell_of(grid, position):
+def _cell_of(grid, position, component=None):
     """Yee cell of a physical position, or None when it is not resolvable.
 
-    Uses the SAME mapping that PLACES sources and probes --
-    ``grid.position_to_index`` (uniform ``Grid``) / ``rfx.nonuniform.
-    position_to_index`` (``NonUniformGrid``), duck-typed through
-    ``rfx.lumped._resolve_position_to_index``, which is what
-    ``rfx.simulation.make_source`` and ``make_probe`` both call. The
+    Point components use ``field_index``, as their source/probe constructors
+    do. Extents and geometry retain the component-free node lookup. The
     co-location test is therefore "the grid puts them in the same cell",
     exactly; it is never a ``dx``-relative distance, which would be wrong
     on a graded mesh and arbitrary on a uniform one.
@@ -207,8 +201,9 @@ def _cell_of(grid, position):
         return None
     from rfx.lumped import _resolve_position_to_index
     try:
-        idx = _resolve_position_to_index(
-            grid, tuple(float(c) for c in position))
+        position = tuple(float(c) for c in position)
+        idx = (field_index(grid, position, component) if component is not None
+               else _resolve_position_to_index(grid, position))
     except Exception:
         # A drive or probe declared outside the built grid cannot be
         # co-located with anything; position_to_index raises there.
@@ -236,7 +231,8 @@ def drive_cells(grid, *entry_groups):
     cells: set[tuple[int, int, int]] = set()
     for entries in entry_groups:
         for entry in entries or ():
-            start = _cell_of(grid, getattr(entry, "position", None))
+            start = _cell_of(grid, getattr(entry, "position", None),
+                             getattr(entry, "component", None) if getattr(entry, "extent", None) is None else None)
             if start is None:
                 continue
             cells.add(start)
@@ -269,7 +265,8 @@ def source_dominated_columns(grid, entries, cells):
         return frozenset()
     dominated = set()
     for col, entry in enumerate(entries or ()):
-        cell = _cell_of(grid, getattr(entry, "position", None))
+        cell = _cell_of(grid, getattr(entry, "position", None),
+                        getattr(entry, "component", None))
         if cell is not None and cell in cells:
             dominated.add(col)
     return frozenset(dominated)

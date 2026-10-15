@@ -40,7 +40,7 @@ def _empty_guide_residual(dx):
     freqs = np.linspace(*BAND_HZ, N_FREQS)
     f0 = float(freqs.mean())
     bw = max(0.2, min(0.8, (freqs[-1] - freqs[0]) / max(f0, 1.0)))
-    sim = Simulation(freq_max=float(freqs[-1]), domain=DOMAIN, boundary="cpml",
+    sim = Simulation(freq_max=float(freqs[-1]), domain=DOMAIN, boundary={"x": "cpml", "y": "pec", "z": "pec"},
                      cpml_layers=10, dx=dx)
     for x, d, name in ((PORT_LEFT_X, "+x", "left"), (PORT_RIGHT_X, "-x", "right")):
         sim.add_waveguide_port(

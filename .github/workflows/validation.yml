@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # slow-tests (5-shard since 2026-09-21, was 4) + weekly-a6000-lane (formerly slow-tests-highmem) (serial) split (issue #545 step 3).
+  # slow-tests (6-shard since 2026-10-10, was 5) + weekly-a6000-lane (formerly slow-tests-highmem) (serial) split (issue #545 step 3).
   #
   # Weekly run 31103127491 (2026-08-06, first run with both the #566 rebalance
   # AND the RSS reporter live) proved the recurring shard-1/2/3 kills (exit 143,
@@ -63,6 +63,10 @@ jobs:
   # entry simply won't see the deselected highmem tests, and the file's
   # existing per-test duration entries for them (if present) are just unused
   # by this selection, not stale/wrong.
+  # 2026-10-10: six shards, was five. On 2026-10-09 (run 37961778854), shard 3
+  # was cancelled at 180 min with no test failure; the others took 74–119 min.
+  # With regenerated durations (PR #1592), five groups hold 6731–7482 s of
+  # recorded tests each, about 36,300 s total for the lane.
   slow-tests:
     runs-on: ubuntu-latest
     # 90 not 60: the slowest shard reached ~52 min on 2026-07-27 and the slow
@@ -94,11 +98,24 @@ jobs:
       # report all of its failures.
       fail-fast: false
       matrix:
-        group: [1, 2, 3, 4, 5]
+        group: [1, 2, 3, 4, 5, 6]
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Record shard start time
+        run: echo "SHARD_T0=$(date +%s)" >> "$GITHUB_ENV"
+
+      - name: Raise the memory-mapping limit for the test process
+        # JAX keeps every compiled program mapped until its test module ends. On
+        # 2026-10-07 one compile-heavy module took a pytest process to 65,521 of
+        # the default 65,530 mappings and it died inside the compiler (measured
+        # on the pre-push gate machine). The first command prints this runner's
+        # value before the change.
+        run: |
+          sysctl vm.max_map_count
+          sudo sysctl -w vm.max_map_count=262144
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -144,13 +161,17 @@ jobs:
       # "not docs_consistency": for the same reason this -m would re-include the
       # tests that compare documentation prose. Those run in docs-consistency.yml;
       # a documentation mismatch must not turn this physics lane red.
-      - name: Run slow suite — shard ${{ matrix.group }} of 5
+      - name: Run slow suite — shard ${{ matrix.group }} of 6
         env:
           RFX_WEEKLY_RSS: "1"
+          RFX_S0_FULL: "1"
         run: >
+          mkdir -p durations &&
+          cp .test_durations durations/weekly_${{ matrix.group }}.json &&
           pytest -v -ra -s
           -m "not gpu and not highmem and not docs_consistency"
-          --splits 5 --group ${{ matrix.group }}
+          --splits 6 --group ${{ matrix.group }}
+          --store-durations --durations-path durations/weekly_${{ matrix.group }}.json
 
       - name: Run three-device x-wall alignment cases
         if: matrix.group == 1
@@ -161,6 +182,36 @@ jobs:
           pytest -v -ra -p no:cacheprovider -o addopts=""
           tests/unit/runners/test_distributed_cpml_face_matrix.py
           -k pad_3
+
+      - name: Run three-device one-vs-several occupancy cases
+        if: matrix.group == 1
+        env:
+          JAX_PLATFORMS: cpu
+          XLA_FLAGS: "--xla_force_host_platform_device_count=3"
+        run: >
+          pytest -v -ra -p no:cacheprovider -o addopts=""
+          tests/contracts/path_equivalence/test_one_vs_several_devices_occupancy.py
+
+      - name: Shard time against the job limit
+        if: always()
+        # Tests are added daily: requiring zero unpriced tests would turn the lane
+        # red every week. Time is the quantity that cancels a shard.
+        # pytest-split reads prices from and stores measurements to ONE file
+        # (--durations-path), so the test step seeds that file with .test_durations
+        # and --prune here keeps only what this shard measured, for the upload.
+        run: >
+          python scripts/ci/weekly_shard_budget.py --start "$SHARD_T0"
+          --limit-minutes 180 --fraction 0.85
+          --measured durations/weekly_${{ matrix.group }}.json --recorded .test_durations
+          --prune
+
+      - name: Upload weekly shard durations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-durations-${{ matrix.group }}
+          path: durations/weekly_${{ matrix.group }}.json
+          if-no-files-found: warn
 
   # The 7 `highmem`-marked tests, run SERIALLY in one job (no shard split, no
   # xdist) so only one multi-GB peak exists on the runner at a time -- see the
@@ -236,6 +287,64 @@ jobs:
           case "$ST" in completed|failed|terminated|stopped) DONE=1;; *) echo "a6000 lane still $ST after the poll budget; terminating"; exit 1;; esac
           [ "$ST" = completed ] || { echo "a6000 lane ended with status $ST"; exit 1; }
 
+  # Multi-device runs on two CUDA GPUs in one node (tracker 1598): no other lane has
+  # two cards, so the multi_gpu-marked tests skip everywhere else. This job submits
+  # scripts/vessl_validation_multigpu_a6000x2.yaml at this workflow's SHA and waits.
+  # It starts after the single-card lane so the workflow holds one GPU job at a time,
+  # and it still runs when that lane fails (only a cancelled run stops it).
+  weekly-a6000x2-multigpu:
+    needs: [weekly-a6000-lane]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    # The poll (150 x ~63 s = ~158 min) outlasts the job file's 3600 s pytest limit plus
+    # setup and a wait for the two-card node.
+    timeout-minutes: 170
+    concurrency:
+      group: weekly-a6000x2-multigpu
+      cancel-in-progress: false
+    environment: vessl
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install the VESSL CLI
+        run: pip install -q vessl
+      - name: Submit the two-card job at this SHA and wait for it
+        env:
+          VESSL_ACCESS_TOKEN: ${{ secrets.VESSL_ACCESS_TOKEN }}
+          VESSL_ORGANIZATION: ${{ vars.VESSL_ORGANIZATION }}
+          VESSL_PROJECT: ${{ vars.VESSL_PROJECT }}
+        run: |
+          set -uo pipefail
+          vessl configure -t "$VESSL_ACCESS_TOKEN" -o "$VESSL_ORGANIZATION" -p "$VESSL_PROJECT" >/dev/null || { echo "vessl configure failed"; exit 1; }
+          sed "s|RFX_SHA: \"origin/main\"|RFX_SHA: \"${GITHUB_SHA}\"|" scripts/vessl_validation_multigpu_a6000x2.yaml > /tmp/multigpu.yaml
+          grep -q "RFX_SHA: \"${GITHUB_SHA}\"" /tmp/multigpu.yaml || { echo "could not pin the SHA into the job file"; exit 1; }
+          OUT=$(vessl run create -f /tmp/multigpu.yaml 2>&1 || true)
+          printf '%s\n' "$OUT" | grep -vi token || true
+          RID=$(printf '%s\n' "$OUT" | grep -oE 'runs/[^/]+/[0-9]+' | grep -oE '[0-9]+$' | head -1 || true)
+          [ -n "$RID" ] || { echo "could not parse a run id from the create output (a YAML verification failure prints nothing at exit 0)"; exit 1; }
+          echo "VESSL run $RID"
+          # Whatever ends this step must not leave two A6000 cards held.
+          trap 'if [ "${DONE:-0}" != 1 ]; then echo "terminating VESSL run $RID"; vessl run terminate "$RID" </dev/null >/dev/null 2>&1 || true; fi' EXIT
+          ST=""; MISSES=0
+          for i in $(seq 1 150); do
+            ST=$(vessl run read "$RID" 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | grep -E '^\s*Status\s' | head -1 | awk '{print $2}' || true)
+            if [ -z "$ST" ]; then
+              MISSES=$((MISSES+1)); echo "$(date -u +%H:%M) status unreadable ($MISSES in a row)"
+              [ "$MISSES" -ge 15 ] && { echo "status unreadable 15 times in a row; giving up"; exit 1; }
+            else
+              MISSES=0; echo "$(date -u +%H:%M) status=$ST"
+              case "$ST" in completed|failed|terminated|stopped) break;; esac
+            fi
+            sleep 60
+          done
+          vessl run logs "$RID" --tail 400 2>/dev/null | grep -vi token | tail -60 || true
+          case "$ST" in completed|failed|terminated|stopped) DONE=1;; *) echo "two-card job still $ST after the poll budget; terminating"; exit 1;; esac
+          [ "$ST" = completed ] || { echo "two-card job ended with status $ST"; exit 1; }
+
   # The weekly external-solver job (crossval-external: Meep legs of the scheduled
   # cross-validation cases) was removed on 2026-09-21 with the last scheduled case.
   # CI does not run external solvers: a cross-validation case compares rfx with
@@ -287,7 +396,7 @@ jobs:
   # that must at least show up as an annotation on the run. `core.error` cannot
   # red the job on its own, so the "never red the run" rule still holds.
   notify:
-    needs: [slow-tests, weekly-a6000-lane]
+    needs: [slow-tests, weekly-a6000-lane, weekly-a6000x2-multigpu]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 10

@@ -20,7 +20,7 @@ REFERENCE_DISTANCE = 0.006
 PROBE_DISTANCE = 0.020
 
 
-def build(freqs, dx, cpml):
+def build(freqs, dx, cpml, *, boundary="cpml"):
     freqs = np.asarray(freqs, float)
     f0 = float(freqs.mean())
     bw = max(0.2, min(0.8, (freqs[-1] - freqs[0]) / f0))
@@ -29,7 +29,7 @@ def build(freqs, dx, cpml):
     np.testing.assert_allclose(np.asarray(coordinates) / dx,
                                np.rint(np.asarray(coordinates) / dx), atol=1e-10, rtol=0)
     sim = Simulation(freq_max=float(freqs[-1]), domain=DOMAIN,
-                     boundary="cpml", cpml_layers=cpml, dx=dx)
+                     boundary=boundary, cpml_layers=cpml, dx=dx)
     sim.freeze_mesh()
     sim.add(Box((SHORT_FACES[0], 0, 0),
                 (SHORT_FACES[1], DOMAIN[1], DOMAIN[2])), material="pec")

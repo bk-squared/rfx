@@ -34,7 +34,7 @@ import numpy as np
 
 from rfx.boundaries.cpml import _get_axis_cell_sizes
 from rfx.core.yee import (EPS_0, MU_0, FDTDState, MaterialArrays, curl_h,
-                          _shift_fwd, cell_owned_component_materials,
+                          _shift_fwd,
                           si_value_eps_r_grad)
 
 
@@ -102,7 +102,8 @@ def _axis_sigma_E_H(grid, axis: str) -> tuple[jnp.ndarray, jnp.ndarray]:
         z = jnp.zeros(grid.shape, dtype=jnp.float32)
         return z, z
 
-    dx_x, dx_y, dz_lo, dz_hi = _get_axis_cell_sizes(grid)
+    # UPML runs on the uniform lane only (graded refuses it), where lo == hi.
+    dx_x, _, dx_y, _, dz_lo, dz_hi = _get_axis_cell_sizes(grid)
     pec_faces = getattr(grid, "pec_faces", None) or set()
     pmc_faces = getattr(grid, "pmc_faces", None) or set()
 
@@ -201,6 +202,7 @@ def init_upml(
     *,
     axes: str = "xyz",
     aniso_eps=None,
+    periodic=None,
 ) -> UPMLCoeffs:
     """Build static UPML coefficients for uniform-grid Yee updates.
 
@@ -224,13 +226,15 @@ def init_upml(
     sEy, sHy = _get_sigma("y")
     sEz, sHz = _get_sigma("z")
 
-    from rfx.core.yee import component_h_materials
+    from rfx.model.materials import with_components
     from rfx.sources.wire_radius import require_radius_update
     require_radius_update(materials, lane="UPML", unsupported=True)
-    mu_abs = tuple(m * jnp.float32(MU_0) for m in component_h_materials(
-        materials, periodic=tuple(a in getattr(grid, "periodic_axes", "") for a in "xyz"),
-        cell_sizes=(grid.dx_arr, grid.dy_arr, grid.dz)
-        if hasattr(grid, "dx_arr") else None))
+    from rfx.simulation import resolve_periodic
+    if periodic is None:
+        periodic = tuple(a in getattr(grid, "periodic_axes", "") for a in "xyz")
+    components = with_components(materials, grid,
+        periodic=resolve_periodic(grid, periodic)).components
+    mu_abs = tuple(m * jnp.float32(MU_0) for m in components.mu_update)
     # #1236: a lumped element (a port's load, an RLC R or C) loads its own E
     # edge only. This lane's E coefficients stay CELL-owned for the volume --
     # #1210's four-cell edge average was not carried into UPML, and doing it
@@ -238,7 +242,7 @@ def init_upml(
     # so each component takes the cell total minus the stamps that belong to
     # the other two components, the rule the distributed slab update uses.
     # With no lumped record the three entries ARE materials.eps_r / .sigma.
-    eps_r_c, sigma_c = cell_owned_component_materials(materials)
+    eps_r_c, sigma_c = components.upml_eps, components.upml_sigma
     sigma_mat_c = tuple(s_.astype(jnp.float32) for s_ in sigma_c)
     dt = jnp.float32(grid.dt)
 

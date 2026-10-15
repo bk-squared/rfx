@@ -10,6 +10,7 @@ from types import MethodType, SimpleNamespace
 import jax
 import jax.numpy as jnp
 import numpy as np
+from tests._msl_probe0 import probe0_s
 import pytest
 
 from rfx.api import Simulation
@@ -270,7 +271,11 @@ def _run_manufactured_assembly(*, use_x64: bool):
                     profile = np.broadcast_to(0.25 * y_h[:, None], shape)
                 sign = 1 if port == 0 else -1
                 field = sign * factor * profile / (0.75 * 5 * u)
-                amplitude = current[port, driven] * np.exp(-1j * np.pi * freqs * grid.dt)
+                # History (S2 M2): was current * exp(-j pi f dt), an H plane
+                # stamped at E's time for an extractor that applied the half
+                # step. The DFT kernel stamps H itself now; the plant is the
+                # physically stamped current (measured 8.97e-4 in S otherwise).
+                amplitude = current[port, driven]
             accumulator = (jnp.asarray(field, dtype=jnp.complex64)[None, :, :]
                            * jnp.asarray(amplitude, dtype=jnp.complex64)[:, None, None])
             planes[entry.name] = DFTPlaneProbe(
@@ -297,7 +302,7 @@ def _run_manufactured_assembly(*, use_x64: bool):
         assert result.S.dtype == (jnp.complex128 if use_x64 else jnp.complex64)
         assert result.assembly == "multi_drive_solve"
         assert np.max(result.cond_a) < 2
-        actual = np.asarray(result.S)
+        actual = np.asarray(probe0_s(result))
     for driven in range(2):
         for port, target in enumerate((12 * u, 28 * u)):
             for component in ("hy", "hz"):
@@ -758,6 +763,15 @@ def test_compute_msl_s_matrix_end_to_end_matches_historical_base():
     2e-3 - 1.2e-4; the next deliberate re-baseline should quote this number
     as its starting point.
 
+    PLANE (rfx-archive MSL-PLANE.md, decision record 14). The committed golden
+    and ``qualify_result``'s line oracle (``REFERENCE_PLANES_M`` = 5 and 9 mm)
+    are probe-0-plane quantities. ``compute_msl_s_matrix`` now reports S at the
+    declared feed planes, so this test compares the live S with the feed-plane
+    shift undone (``tests/_msl_probe0.probe0_s``, from the result's own
+    ``shift_beta`` and ``reference_plane_offsets_m``). Read at the feed planes,
+    the S21 phase against the 4 mm line is off by -37 to -55 degrees over
+    3-4.5 GHz. No stored value or tolerance changed.
+
     MEASURED, NOT RE-BASELINED (2026-09-21, the raw-S default). This test's
     call takes the default, so ``result.S`` used to be the PROJECTED matrix
     and is now the raw extraction. The committed golden .npy stays the
@@ -782,6 +796,12 @@ def test_compute_msl_s_matrix_end_to_end_matches_historical_base():
     freqs = jnp.linspace(F_MAX / 10, F_MAX, golden.shape[-1], dtype=jnp.float32)
 
     result = sim.compute_msl_s_matrix(freqs=freqs, num_periods=E2E_PERIODS)
+    # The golden and the qualification oracle are at the probe-0 planes (5 and
+    # 9 mm); read the live S there (see the docstring's PLANE paragraph).
+    import dataclasses
+    result = dataclasses.replace(
+        result, S=probe0_s(result),
+        S_raw=None if result.S_raw is None else probe0_s(result, result.S_raw))
     qualification = qualify_result(result)
     s_actual = np.asarray(result.S).astype(np.complex128)
 

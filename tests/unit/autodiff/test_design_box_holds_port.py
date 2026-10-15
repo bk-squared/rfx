@@ -78,6 +78,7 @@ import rfx.simulation as _sim_mod
 from rfx import Box, GaussianPulse, Simulation
 from rfx.core.yee import cell_component_e_coeffs, e_component_coeffs
 from tests._x64_compat import enable_x64
+from tests.contracts.path_equivalence.comparison import ACCUMULATED_RELATIVE
 
 F0 = 8e9
 DX = 1e-3
@@ -185,6 +186,8 @@ def _forward(sim, box=None, *, eps=None, sigma=None, holds=False,
         # the wire board. They are only ever compared between two
         # formulations of one board.
         kw["port_s11_freqs"] = jnp.asarray(FREQS)
+    elif any(p.extent is not None for p in sim._ports):
+        kw["port_s11_freqs"] = np.linspace(sim._freq_max / 10, sim._freq_max, 50)
     if box is not None:
         kw.update(design_box=box, design_eps_override=eps,
                   design_sigma_override=sigma,
@@ -194,9 +197,11 @@ def _forward(sim, box=None, *, eps=None, sigma=None, holds=False,
 
 @contextmanager
 def _captured_box():
-    """Record every ``_resolve_design_box`` call: its spec, materials, dt
+    """Record every ``resolve_design_box`` call: its spec, materials, dt
     and the coefficients it built."""
-    real = _sim_mod._resolve_design_box
+    from rfx.model import resolve_design_box
+    import rfx.model as model
+    real = resolve_design_box
     seen = []
 
     def _spy(spec, **kw):
@@ -204,7 +209,8 @@ def _captured_box():
         seen.append((spec, kw["materials"], kw["dt"], out))
         return out
 
-    with mock.patch.object(_sim_mod, "_resolve_design_box", _spy):
+    with mock.patch.object(_sim_mod, "resolve_design_box", _spy), \
+            mock.patch.object(model, "resolve_design_box", _spy):
         yield seen
 
 
@@ -281,9 +287,10 @@ def test_t1_uniform_run_equals_the_run_without_the_box_float64(port):
 
 @pytest.mark.parametrize("port", PORTS)
 def test_t1_graded_run_equals_the_run_without_the_box_float32(port):
-    """The graded lane stores float32 fields (#630); the bar is 1e-5 of the
-    peak, about 80 float32 ULPs there. Measured 6 (wire) and 3.5 (lumped)
-    ULPs at the peak over 300 steps."""
+    """The graded lane stores float32 fields (#630); the probe bar is 1e-5 of
+    the peak, about 80 float32 ULPs there. Measured 6 (wire) and 3.5 (lumped)
+    ULPs at the peak over 300 steps. S is summed over the record and takes
+    the cross-trace bar for such a quantity."""
     sim = _board(port, graded=True)
     box = _box(port, graded=True)
     eps, _ = _background(sim, box, True)
@@ -297,7 +304,7 @@ def test_t1_graded_run_equals_the_run_without_the_box_float32(port):
         if got.s_params is not None:
             s_rel = _peak_rel(got.s_params, ref.s_params)
             msg += f", S rel {s_rel:.2e}"
-            assert s_rel < 1e-5, (form, s_rel)
+            assert s_rel <= ACCUMULATED_RELATIVE, (form, s_rel)
         print(msg)
         assert t_rel < 1e-5, (form, t_rel)
 
@@ -491,7 +498,7 @@ def test_t3_graded_gradient_beside_the_port_float32(port):
     v_o, g_o = jax.value_and_grad(outside)(p0)
     g_h, g_o = float(g_h), float(g_o)
     assert g_h != 0.0
-    assert abs(float(v_h) - float(v_o)) <= 1e-5 * abs(float(v_o))
+    assert abs(float(v_h) - float(v_o)) <= ACCUMULATED_RELATIVE * abs(float(v_o))
     assert abs(g_h - g_o) <= 1e-3 * abs(g_o), (g_h, g_o)
     rel = []
     for h in (1.0, 0.5, 0.25):
@@ -697,7 +704,7 @@ def _msl_board():
                 ((MSL_NX - 2) * DX, (MSL_NY - 2) * DX, MSL_ZP)), material="sub")
     sim.add_pinned_sheet(plane_index=2, i_range=(2, MSL_NX - 2),
                          j_range=(2, MSL_NY - 2), name="ground")
-    sim.add_pinned_sheet(plane_index=4, i_range=(2, MSL_NX - 2),
+    sim.add_pinned_sheet(plane_index=4, i_range=(5, MSL_NX - 5),
                          j_range=(8, 12), name="trace")
     pulse = GaussianPulse(f0=8e9, bandwidth=0.9)
     sim.add_msl_port(position=(5 * DX, 10 * DX, MSL_ZG), width=4 * DX,

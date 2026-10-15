@@ -1,7 +1,7 @@
 """Record-length witness for a gradient taken through a finite time record.
 
 Import contract: this module is a leaf of ``rfx.api``. It imports only
-stdlib / jax / numpy, never ``rfx.api`` or ``. import`` the package, so
+stdlib / jax / numpy and external ``rfx.*``, never ``rfx.api`` or ``. import`` the package, so
 ``rfx/api/__init__.py`` stays the sole composition point.
 
 Why this exists
@@ -59,6 +59,61 @@ from typing import Any
 import jax
 import jax.numpy as jnp
 import numpy as np
+
+from rfx._diagnostic_transport import result_with_diagnostics
+from rfx.core.jax_utils import is_tracer
+from rfx.core.yee import EPS_0
+from rfx.diagnostic_records import Diagnostic
+
+
+X_PER_CELL = "minimum over the design cells of record time * sigma / (eps0 * eps_r)"
+X_LOWER_BOUND = "lower bound of that minimum: record time * min(sigma) / (eps0 * max(eps_r))"
+
+
+def conductivity_gradient_record(design_sigma, sigma_override, design_eps, n_steps, dt) -> tuple[Diagnostic, ...]:
+    """Describe the supplied conductivity's record time, without a verdict."""
+    if design_sigma is None and not is_tracer(sigma_override):
+        return ()
+    sigma = design_sigma if design_sigma is not None else sigma_override
+    components = sigma if isinstance(sigma, tuple) else (sigma,)
+    record_time, definition = (None if dt is None else n_steps * dt), X_PER_CELL
+    if record_time is None:
+        # A result that carries no grid (no time step to read): say so, never fail the solve.
+        record_time = x_min = "not available (no time step)"
+    elif any(is_tracer(component) for component in components) or is_tracer(design_eps):
+        x_min = "not evaluated (traced)"
+    elif design_eps is None:
+        x_min = "not evaluated (no permittivity)"
+    elif len(components) == 1 and np.shape(components[0]) == np.shape(design_eps):
+        # Cell conductivity on the permittivity's own cells: the ratio's minimum itself.
+        x_min = float(record_time * np.min(np.asarray(components[0]) / np.asarray(design_eps)) / EPS_0)
+    else:
+        # Per-edge conductivity has no cell-for-cell permittivity: a lower bound of the ratio.
+        definition = X_LOWER_BOUND
+        x_min = float(record_time * min(float(np.min(np.asarray(component))) for component in components)
+                      / (EPS_0 * float(np.max(np.asarray(design_eps)))))
+    return (Diagnostic(
+        code="conductivity_gradient_record_length", severity="advisory",
+        subject="design conductivity",
+        message="A gradient with respect to conductivity keeps a static part on cells where the "
+                "charge relaxation time eps/sigma is not short against the record, so it can depend on "
+                "the record length's phase; check it with gradient_record_length_witness. "
+                "x_min reports record time over relaxation time; no threshold is applied.",
+        values={
+            "record_time_s": record_time,
+            "n_steps": n_steps,
+            "x_min": x_min,
+            "x_definition": definition,
+            "permittivity_used": "design_eps_override" if design_eps is not None else "not available",
+        },
+    ),)
+
+
+def with_conductivity_record(result, **kwargs):
+    """Attach the advisory only to result types that carry diagnostics."""
+    if not hasattr(result, "diagnostics"):
+        return result
+    return result_with_diagnostics(result, conductivity_gradient_record(**kwargs))
 
 
 __all__ = [

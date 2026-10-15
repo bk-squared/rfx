@@ -489,7 +489,7 @@ def test_mutation_b_duals_revived_to_the_primal_goes_red(monkeypatch):
 
     _check_duals(grid, "x")          # green before the mutation
 
-    monkeypatch.setattr("rfx.nonuniform._dual_spacings_from_cells",
+    monkeypatch.setattr("rfx.model.graded_grid._dual_spacings_from_cells",
                         lambda cells: np.asarray(cells, dtype=np.float64))
     with pytest.raises(AssertionError):
         _check_duals(grid, "x")
@@ -513,7 +513,7 @@ def test_mutation_b_the_leading_dual_end_rule_goes_red(monkeypatch):
 
     padded = FIXTURES["api_source"]()
     pad_free = FIXTURES["padfree_graded_end"]()
-    monkeypatch.setattr("rfx.nonuniform._dual_spacings_from_cells", defective)
+    monkeypatch.setattr("rfx.model.graded_grid._dual_spacings_from_cells", defective)
 
     _check_duals(padded, "z")        # silent: the pad makes d[0] == d[1]
     with pytest.raises(AssertionError):

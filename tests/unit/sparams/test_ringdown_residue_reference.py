@@ -60,7 +60,7 @@ def test_existing_box_record_keeps_poles_and_residues_bit_identical(monkeypatch,
     from tests.unit.sparams.test_ringdown_run import _box, FREQS
 
     result = _box(lane).forward(n_steps=1500, port_s11_freqs=FREQS, skip_preflight=True)
-    y = np.asarray(result.sparam_time_records[0])[:, :2]
+    y = np.column_stack([result.sparam_time_records[0][name] for name in ('V', 'I')])
     actual = rd.identify(y, result.dt, 750, 1500, freq_max=20e9)
     monkeypatch.setattr(rd, '_fit_residues', start_referenced_fit)
     old = rd.identify(y, result.dt, 750, 1500, freq_max=20e9)

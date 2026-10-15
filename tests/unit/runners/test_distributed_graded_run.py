@@ -63,6 +63,9 @@ def test_graded_run_matches_single_device(case, n_devices, record_property):
     distributed = model(case).run(n_steps=40, devices=devices, skip_preflight=True)
     want, got = arrays(single), arrays(distributed)
     assert np.max(np.abs(want["time_series"])) > 1e-5
+    # The record names the path that ran: graded slabs, not the uniform-slab runner.
+    assert distributed.realized_geometry.lane == "run_distributed_nu"
+    assert single.realized_geometry.lane == "run_nonuniform"
     # Compare H as eta0*H, on the scale of E: H decays while a static E stays,
     # so a peak of H alone would make the bar depend on the record length.
     # The remaining gap is the rounding of the distributed graded kernel

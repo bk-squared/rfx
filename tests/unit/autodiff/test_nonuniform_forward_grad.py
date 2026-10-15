@@ -24,6 +24,7 @@ import numpy as np
 import pytest
 
 from rfx import Simulation
+from tests.contracts.path_equivalence.comparison import compare
 
 
 def _build_sim():
@@ -119,10 +120,7 @@ def test_forward_nonuniform_pec_occupancy_accepted():
     ts_zero = np.asarray(fr_zero.time_series)
     # Different XLA graphs for occ=0.0 vs no-occupancy baseline;
     # bit-identity not guaranteed across separate JIT compilations.
-    assert np.allclose(ts_base, ts_zero, atol=1e-7, rtol=1e-7), (
-        "zero pec_occupancy should be a no-op — got difference "
-        f"max={np.max(np.abs(ts_base - ts_zero)):.3e}"
-    )
+    compare(ts_base, ts_zero, record="graded.zero_occupancy_probe", kind="step", measurements=[])
 
     # Full-occupancy shell around the probe must shrink the probe trace
     # (soft-PEC zeros tangential E just like hard PEC for 1.0 occupancy).

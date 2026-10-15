@@ -1,7 +1,7 @@
 """Lane admission: a lane solves only the inputs it declares it carries.
 
 A ``Simulation`` is a declaration: materials, conductors, ports, sources,
-boundaries, a mesh and observers. Nine time-stepping lanes run it, and each
+boundaries, a mesh and observers. Ten time-stepping lanes run it, and each
 one solves only part of it. Until this module each lane listed the inputs it
 refused and solved every other one as if it had not been declared: ADI solved
 a μr = 4 block as vacuum, the graded ``run()`` solved a Kerr block as linear,
@@ -41,7 +41,7 @@ Row = tuple[str, str]
 
 LANES = (
     "run_uniform", "run_nonuniform", "run_subgridded", "run_adi",
-    "run_distributed", "fwd_uniform", "fwd_nonuniform", "fwd_distributed_nu",
+    "run_distributed", "run_distributed_nu", "fwd_distributed", "fwd_uniform", "fwd_nonuniform", "fwd_distributed_nu",
     "fwd_adi",
 )
 
@@ -70,8 +70,10 @@ LANE_WORDS = {
     "run_subgridded": "subgridded run()",
     "run_adi": "ADI run()",
     "run_distributed": "multi-device run(devices=...)",
+    "run_distributed_nu": "graded multi-device run(devices=...)",
     "fwd_uniform": "uniform forward()",
     "fwd_nonuniform": "graded forward()",
+    "fwd_distributed": "forward(distributed=True)",
     "fwd_distributed_nu": "forward(distributed=True)",
     "fwd_adi": "ADI forward()",
 }
@@ -273,6 +275,7 @@ DETECTORS: dict[Row, Callable] = {
     ("_dx", ""): _setting("_dx", "dx"),
     ("_dt_pin", ""): _setting("_dt_pin", "dt"),
     ("_dt_min_cell", ""): _setting("_dt_min_cell", "dt_min_cell"),
+    ("_nominal_profiles", ""): _setting("_nominal_profiles", "nominal_profiles"),
     ("_precision", ""): _setting("_precision", "precision"),
     ("_solver", ""): _setting("_solver", "solver"),
     ("_adi_cfl_factor", ""): _setting("_adi_cfl_factor", "adi_cfl_factor"),
@@ -352,6 +355,7 @@ ROW_WORDS: dict[Row, str] = {
     ("_dx", ""): "an explicit dx",
     ("_dt_pin", ""): "a pinned time step (dt=)",
     ("_dt_min_cell", ""): "dt_min_cell=",
+    ("_nominal_profiles", ""): "nominal_profiles=",
     ("_precision", ""): "a precision other than 'float32'",
     ("_solver", ""): "solver='adi'",
     ("_adi_cfl_factor", ""): "adi_cfl_factor",
@@ -414,44 +418,49 @@ ROW_WORDS: dict[Row, str] = {
 # Per input row, the lanes that admit it: those whose cell in the table is
 # ``carries`` or ``ignorable``. ADMITS below is the same list read by lane.
 
+_DISTRIBUTED_NU = frozenset({"run_distributed_nu", "fwd_distributed_nu"})
 _ALL = frozenset(LANES)
+_OTHER_RUNNERS = _ALL - _DISTRIBUTED_NU
 _ADI = frozenset({"run_adi", "fwd_adi"})
-_GRADED = frozenset({"run_nonuniform", "fwd_nonuniform", "fwd_distributed_nu"})
+_GRADED = frozenset({"run_nonuniform", "fwd_nonuniform"}) | _DISTRIBUTED_NU
 _UNIFORM_YEE = frozenset({"run_uniform", "fwd_uniform"})
-_MESH_PINNED = _GRADED | {"run_distributed"}   # the lanes a dx/dy/dz profile reaches
-_NO_SHEETS = _ALL - {"run_subgridded", "run_adi", "run_distributed", "fwd_distributed_nu", "fwd_adi"}
+_MESH_PINNED = _GRADED   # the lanes a dx/dy/dz profile reaches
+_NO_SHEETS = _OTHER_RUNNERS - {"run_subgridded", "run_adi", "run_distributed", "fwd_adi"}
+# PEC edges are carried by both graded entries and uniform distributed runs.
+_PEC_EDGES = _NO_SHEETS | {"run_distributed"} | _DISTRIBUTED_NU
 
 _ADMITTED_ON: dict[Row, frozenset] = {
-    ("_freq_max", ""): _ALL,
-    ("_domain", ""): _ALL,
-    ("_dx", ""): _ALL,
-    ("_dt_pin", ""): _MESH_PINNED,
-    ("_dt_min_cell", ""): _MESH_PINNED,
+    ("_freq_max", ""): _OTHER_RUNNERS,
+    ("_domain", ""): _OTHER_RUNNERS,
+    ("_dx", ""): _OTHER_RUNNERS,
+    ("_dt_pin", ""): _MESH_PINNED - _DISTRIBUTED_NU,
+    ("_dt_min_cell", ""): _MESH_PINNED - _DISTRIBUTED_NU,
+    ("_nominal_profiles", ""): _MESH_PINNED - _DISTRIBUTED_NU,
     ("_precision", ""): _UNIFORM_YEE,
     ("_solver", ""): _ADI,
-    ("_adi_cfl_factor", ""): _ALL,
+    ("_adi_cfl_factor", ""): _OTHER_RUNNERS,
     ("_stencil_order", ""): _UNIFORM_YEE,
-    ("_mode", ""): _UNIFORM_YEE | _ADI | {"run_distributed"},
+    ("_mode", ""): _UNIFORM_YEE | _ADI,
     # ADI carries a homogeneous fill only: LANE_GATES decides (#1373).
-    ("_materials", "eps"): _ALL - _ADI,
-    ("_materials", "sigma"): _ALL - _ADI,
-    ("_materials", "mu"): _ALL - _ADI,
-    ("_materials", "debye"): _ALL - _ADI - {"run_subgridded"},
-    ("_materials", "lorentz"): _ALL - _ADI - {"run_subgridded"},
-    ("_materials", "drude"): _ALL - _ADI - {"run_subgridded"},
+    ("_materials", "eps"): _OTHER_RUNNERS - _ADI,
+    ("_materials", "sigma"): _OTHER_RUNNERS - _ADI,
+    ("_materials", "mu"): _OTHER_RUNNERS - _ADI,
+    ("_materials", "debye"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},
+    ("_materials", "lorentz"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},
+    ("_materials", "drude"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},
     ("_materials", "kerr"): _UNIFORM_YEE,
-    ("_geometry", "pec_volume"): _ALL - _ADI,
-    ("_geometry", "pec_sheet"): _NO_SHEETS,
-    ("_geometry", "pec_wire"): _NO_SHEETS,
-    ("_thin_conductors", "lossy_sheet"): _ALL - _ADI - {"run_subgridded"},
-    ("_thin_conductors", "pec_sheet"): _NO_SHEETS,
+    ("_geometry", "pec_volume"): _OTHER_RUNNERS - _ADI,
+    ("_geometry", "pec_sheet"): _PEC_EDGES,
+    ("_geometry", "pec_wire"): _PEC_EDGES,
+    ("_thin_conductors", "lossy_sheet"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},
+    ("_thin_conductors", "pec_sheet"): _PEC_EDGES,
     ("_thin_conductors", "surface_impedance"): _NO_SHEETS,
-    ("_pinned_sheets", "pec_sheet"): _NO_SHEETS,
-    ("_ports", "source"): _ALL,
-    ("_ports", "amplitude_kind"): _ALL - _ADI,
-    ("_ports", "lumped_port"): _ALL - _ADI - {"fwd_distributed_nu"},
-    ("_ports", "passive_port"): _ALL - _ADI - {"run_distributed", "fwd_distributed_nu"},
-    ("_ports", "wire_port"): _ALL - _ADI - {"fwd_distributed_nu"},
+    ("_pinned_sheets", "pec_sheet"): _PEC_EDGES,
+    ("_ports", "source"): _OTHER_RUNNERS,
+    ("_ports", "amplitude_kind"): _OTHER_RUNNERS - _ADI,
+    ("_ports", "lumped_port"): _OTHER_RUNNERS - _ADI,
+    ("_ports", "passive_port"): _OTHER_RUNNERS - _ADI - {"run_distributed"},
+    ("_ports", "wire_port"): _OTHER_RUNNERS - _ADI,
     ("_msl_ports", "msl_port"): _NO_SHEETS,
     ("_waveguide_ports", "waveguide_port"): _NO_SHEETS,
     ("_coaxial_ports", "coax_port"): frozenset(),
@@ -459,33 +468,74 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_floquet_ports", "scan_angle"): frozenset(),
     ("_lumped_rlc", "R"): _NO_SHEETS,
     ("_lumped_rlc", "series_RL"): _NO_SHEETS,
-    ("_tfsf", "plane_wave"): frozenset({"run_uniform", "run_nonuniform", "fwd_uniform"}),
+    ("_tfsf", "plane_wave"): frozenset({"run_uniform", "run_nonuniform", "fwd_uniform", "fwd_nonuniform"}),
     ("_refinement", "slab"): frozenset(),
     ("_refinement", "relaxed_validation"): frozenset(),
-    ("_boundary", "cpml"): _ALL - _ADI - {"run_subgridded"},
+    ("_boundary", "cpml"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},
     ("_boundary", "upml"): _UNIFORM_YEE,
-    ("_pec_faces", "pec_face"): _ALL - _ADI - {"run_subgridded"},
-    ("_boundary_spec", "pmc_face"): _ALL - _ADI - {"run_subgridded", "run_distributed", "fwd_distributed_nu"},
+    ("_pec_faces", "pec_face"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},
+    ("_boundary_spec", "pmc_face"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},
     ("_boundary_spec", "conformal"): frozenset({"run_uniform"}),
     ("_boundary_spec", "conformal_s_matrix"): frozenset(),
-    ("_boundary_spec", "absorbing_lid"): _ALL - _ADI,
+    ("_boundary_spec", "absorbing_lid"): _OTHER_RUNNERS - _ADI,
     ("_periodic_axes", "periodic"): _UNIFORM_YEE,
-    ("_cpml_layers", "layers"): _ALL - _ADI - {"run_subgridded"},
+    ("_cpml_layers", "layers"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},
     ("_cpml_kappa_max", "kappa"): frozenset({"run_uniform", "run_distributed", "fwd_uniform"}),
     ("_interface_eps", "dual_average"): frozenset({"run_nonuniform", "fwd_nonuniform"}),
-    ("_dx_profile", "graded"): _MESH_PINNED,
-    ("_dy_profile", "graded"): _MESH_PINNED,
-    ("_dz_profile", "graded"): _MESH_PINNED,
-    ("_probes", "probe"): _ALL,
+    ("_dx_profile", "graded"): _MESH_PINNED - _DISTRIBUTED_NU,
+    ("_dy_profile", "graded"): _MESH_PINNED - _DISTRIBUTED_NU,
+    ("_dz_profile", "graded"): _MESH_PINNED - _DISTRIBUTED_NU,
+    ("_probes", "probe"): _OTHER_RUNNERS,
     ("_dft_planes", "dft_plane"): _NO_SHEETS,
     ("_flux_monitors", "flux"): frozenset({"run_uniform", "run_nonuniform", "fwd_uniform",
                                           "fwd_nonuniform", "fwd_adi"}),
-    ("_ntff", "ntff_box"): _ALL - _ADI - {"fwd_distributed_nu"},
+    ("_ntff", "ntff_box"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},  # Its x and y faces are always PEC (only a z lid may absorb).
     ("_current_moments", "block_moments"): _NO_SHEETS,
 }
 
+# Both public entries use distributed_nu.run_nonuniform_distributed_pec.
+# Define that runner's carried rows once; neither entry inherits uniform v2.
+_DISTRIBUTED_NU_ROWS = frozenset({
+    ('_boundary_spec', 'pmc_face'),
+    ('_adi_cfl_factor', ''),
+    ('_boundary', 'cpml'),
+    ('_boundary_spec', 'absorbing_lid'),
+    ('_cpml_layers', 'layers'),
+    ('_domain', ''),
+    ('_dt_min_cell', ''),
+    ('_dt_pin', ''),
+    ('_dx', ''),
+    ('_dx_profile', 'graded'),
+    ('_dy_profile', 'graded'),
+    ('_dz_profile', 'graded'),
+    ('_freq_max', ''),
+    ('_geometry', 'pec_volume'),
+    ('_geometry', 'pec_sheet'),
+    ('_geometry', 'pec_wire'),
+    ('_thin_conductors', 'pec_sheet'),
+    ('_pinned_sheets', 'pec_sheet'),
+    ('_materials', 'debye'),
+    ('_materials', 'drude'),
+    ('_materials', 'eps'),
+    ('_materials', 'lorentz'),
+    ('_materials', 'mu'),
+    ('_materials', 'sigma'),
+    ('_pec_faces', 'pec_face'),
+    ('_ports', 'amplitude_kind'),
+    ('_ports', 'source'),
+    ('_probes', 'probe'),
+    ('_thin_conductors', 'lossy_sheet'),
+})
+for _row in _DISTRIBUTED_NU_ROWS:
+    _ADMITTED_ON[_row] = _ADMITTED_ON[_row] | _DISTRIBUTED_NU
+
+
 # Calculator memberships are independent of every shared lane set. A new
 # lane capability therefore never silently expands a calculator's contract.
+# waveguide_s_matrix drops NTFF with the #704 warning; material_fit drops it
+# without a warning (pre-existing behaviour, reported for its owner).
+NTFF_UNFORMED_LANES = frozenset({"waveguide_s_matrix", "material_fit"})
+
 # The waveguide extractor assembles these materials and PEC operators and
 # passes them to its device scans; its graded branch uses run_nonuniform_path.
 for _row in (
@@ -751,6 +801,11 @@ for _calculator, _rows in _CALCULATOR_ROWS.items():
     for _row in _rows:
         _ADMITTED_ON[_row] = _ADMITTED_ON[_row] | {_calculator}
 
+# Both uniform distributed entries reach the same runner and admission.
+for _row, _lanes in _ADMITTED_ON.items():
+    _ADMITTED_ON[_row] = (_lanes - {"fwd_distributed"}) | (
+        {"fwd_distributed"} if "run_distributed" in _lanes else set())
+
 ADMITS: dict[str, frozenset] = {
     lane: frozenset(row for row, lanes in _ADMITTED_ON.items() if lane in lanes)
     for lane in LANES + CALCULATORS
@@ -801,7 +856,13 @@ def _adi_homogeneous(sim, grid) -> bool:
     if sim._uses_nonuniform_mesh:
         return False   # ADI refuses a graded mesh first; no uniform grid to read
     grid = sim._build_grid() if grid is None else grid
-    materials = sim._assemble_materials(grid)[0]
+    # The gate reads eps_r/sigma cells only. Sheets and wires are refused on
+    # ADI by their own (ungated) rows; collecting and dropping them is the
+    # assembler's explicit "I read cells only" (_refuse_uncollected_pec).
+    # Without it every refusal of a sheet/wire model ran this gate (message()
+    # lists carriers through refused() on every lane) and ended in the
+    # assembler's internal ValueError instead of the refusal.
+    materials = sim._assemble_materials(grid, pec_sheets=[], pec_wires=[])[0]
     return adi_material_interface_refusal(materials.eps_r, materials.sigma) is None
 
 
@@ -834,7 +895,7 @@ LANE_GATES: dict[str, dict[Row, Callable]] = {
     "run_adi": {row: _adi_homogeneous for row in _ADI_MATERIAL_ROWS},
     "fwd_adi": {row: _adi_homogeneous for row in _ADI_MATERIAL_ROWS},
     "waveguide_s_matrix": {row: _waveguide_profiled for row in (
-        ("_dt_pin", ""), ("_dt_min_cell", ""))},
+        ("_dt_pin", ""), ("_dt_min_cell", ""), ("_nominal_profiles", ""))},
 }
 
 
@@ -956,16 +1017,82 @@ def message(lane: str, rows, sim, run_args=None) -> str:
             "carries it runs.")
 
 
-def admit(sim, lane: str, *, run_args=None, grid=None) -> None:
+class _NoWarnings:
+    """Drops the unresolved-pulse advisory; admission keeps only its refusal."""
+
+    @staticmethod
+    def warn(*_args, **_kwargs):
+        return None
+
+
+def refuse_undriven_drives(sim) -> None:
+    """Issue 1668: refuse a drive whose pulse is not resolved by dt (its
+    table, sampled at dt over the pulse, holds no value above 1e-6 of its
+    amplitude), on entries that run no preflight. The same check preflight
+    runs, ``_validate_cfg_unresolved_pulse``; raises ``PreflightConfigError``
+    (a ``ValueError``)."""
+    from rfx.core.jax_utils import is_tracer
+    from rfx.grid import C0
+    check = getattr(sim, "_validate_cfg_unresolved_pulse", None)
+    if check is None or is_tracer(getattr(sim, "_dx", None)):
+        return
+    check(_NoWarnings, sim._dx or C0 / sim._freq_max / 20.0)
+
+
+def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None:
     """Raise ``NotImplementedError``, as the lanes' own refusals do, if
     ``lane`` does not carry every input ``sim`` declares. ``run_args`` are
     the call's static arguments that ``CALL_GATES`` read; ``grid`` is the
-    grid the lane built, for its ``LANE_GATES``."""
+    grid the lane built, for its ``LANE_GATES``. A drive whose pulse is not
+    resolved by dt is refused first (``refuse_undriven_drives``)."""
+    refuse_undriven_drives(sim)
     from rfx.sources.wire_radius import require_radius_support
     require_radius_support(sim, lane)
     rows = refused(sim, lane, run_args, grid)
     if rows:
+        if diagnostics is not None:
+            from rfx._diagnostic_transport import diagnostic_refusal
+            raise diagnostic_refusal(NotImplementedError(message(lane, rows, sim, run_args)), diagnostics)
         raise NotImplementedError(message(lane, rows, sim, run_args))
+    from rfx.boundaries.features import admit_ntff, admit_waveguide
+    from rfx.boundaries.tfsf import admit_simulation
+    if lane not in NTFF_UNFORMED_LANES:
+        admit_ntff(sim, lane=lane)
+    admit_waveguide(sim, lane=lane)
+    admit_simulation(sim, materials=(run_args or {}).get("tfsf_materials"))
+
+
+def require_isolated_s_drive(sim, *, implicit=False, fields_only=False):
+    """Admit S from one record, or omit implicit S when drives are mixed."""
+    excited = [(index, port) for index, port in enumerate(sim._ports)
+               if port.impedance > 0 and port.excite]
+    if len(excited) < 2:
+        return True
+    ports = "; ".join(f"port {index} at {port.position}" for index, port in excited)
+    message = (
+        f"S-parameters from one record require an isolated drive; excited ports: {ports}. "
+        "set excite=False on every port but the driven one and run once per driven port, "
+        "or use the uniform run(compute_s_params=True), which drives one port per run"
+    )
+    if fields_only:
+        message += "; use run(compute_s_params=False) for fields only"
+    if implicit:
+        import sys
+        import warnings
+        stacklevel = 2
+        frame = sys._getframe(1)
+        try:
+            while frame is not None and (
+                frame.f_globals.get("__name__", "") == "rfx"
+                or frame.f_globals.get("__name__", "").startswith("rfx.")
+            ):
+                stacklevel += 1
+                frame = frame.f_back
+        finally:
+            del frame
+        warnings.warn(message + "; returning no S-parameters.", UserWarning, stacklevel=stacklevel)
+        return False
+    raise ValueError(message)
 
 
 def refuse_plain_sources_s_matrix(sim, *, main_record=False):
@@ -991,6 +1118,12 @@ def refuse_plain_sources_s_matrix(sim, *, main_record=False):
         "Remove the plain source, or call run(compute_s_params=False) "
         "to get raw port waves with the source included."
     )
+
+
+def admit_forward_s_matrix(sim):
+    """Check explicit forward S requests before dispatch or stepping."""
+    refuse_plain_sources_s_matrix(sim, main_record=True)
+    require_isolated_s_drive(sim)
 
 
 def admit_run_s_matrix(sim, *, compute_s_params=None, conformal_pec=None,

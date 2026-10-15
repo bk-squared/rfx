@@ -54,6 +54,7 @@ which stay in the facade with the realization family. The third,
 
 from __future__ import annotations
 
+from rfx._grid_metric import field_index
 import math
 
 import numpy as np
@@ -142,7 +143,7 @@ def _check_coaxial_port_junction_aperture(self) -> None:
     realized = self._port_realized_edges(grid)
     if realized is None:
         return
-    dx = float(grid.dx)
+    dx = float(grid.cells("x")[0])
     pads = (int(grid.pad_x_lo), int(grid.pad_y_lo), int(grid.pad_z_lo))
     axis_names = ("x", "y", "z")
     for n, port in enumerate(self._coaxial_ports):
@@ -604,11 +605,7 @@ def _validate_cfg_port_inside_pec(self, _w, dx: float) -> None:
         if component not in ("ex", "ey", "ez", "hx", "hy", "hz"):
             continue
         try:
-            if is_nonuniform:
-                from rfx.nonuniform import position_to_index as _nu_p2i
-                idx = tuple(int(v) for v in _nu_p2i(grid, pos))
-            else:
-                idx = tuple(int(v) for v in grid.position_to_index(pos))
+            idx = tuple(int(v) for v in field_index(grid, pos, component))
         except (ValueError, TypeError, IndexError, AttributeError):
             continue
         if not realized.component_is_dead(component, idx):
@@ -632,6 +629,39 @@ def _validate_cfg_port_inside_pec(self, _w, dx: float) -> None:
             stacklevel=3,
         )
 
+def _wire_port_realized_cells(grid, pe):
+    """The E-edge cells a wire port drives on ``grid``, either mesh lane.
+
+    The production endpoint snap and the shared half-open edge span
+    (``wire_port_edge_span`` / ``_wire_port_cells``), so a preflight reader
+    and the runner count the same driven edges. Indices are into the padded
+    arrays. May raise; callers that must not crash catch.
+    """
+    from rfx.sources.sources import (
+        WirePort, _wire_port_cells, wire_port_edge_span,
+    )
+    from rfx.nonuniform import NonUniformGrid, position_to_index
+    axis = {"ex": 0, "ey": 1, "ez": 2}[pe.component]
+    end = list(pe.position)
+    end[axis] += pe.extent
+    if isinstance(grid, NonUniformGrid):
+        start_idx = position_to_index(grid, pe.position)
+        end_idx = position_to_index(grid, tuple(end))
+        lo, hi = sorted((start_idx[axis], end_idx[axis]))
+        first, last = wire_port_edge_span(
+            grid, axis, lo, hi, float(pe.position[axis]),
+            float(end[axis]))
+        cells = []
+        for k in range(first, last + 1):
+            cell = list(start_idx)
+            cell[axis] = k
+            cells.append(tuple(cell))
+        return cells
+    wp = WirePort(start=tuple(pe.position), end=tuple(end),
+                  component=pe.component, impedance=pe.impedance)
+    return list(_wire_port_cells(grid, wp))
+
+
 def _wire_port_cell_centers(self, pe):
     """Per-cell physical sample centers of a wire port's rasterization.
 
@@ -642,34 +672,16 @@ def _wire_port_cell_centers(self, pe):
     cannot be rasterized (diagnostics must not crash a run).
     """
     try:
-        from rfx.sources.sources import (
-            WirePort, _wire_port_cells, wire_port_edge_span,
-        )
-        from rfx.nonuniform import NonUniformGrid, position_to_index
+        from rfx.nonuniform import NonUniformGrid
         from rfx.geometry.rasterize_grid import (
             coords_from_nonuniform_grid, coords_from_uniform_grid,
         )
         axis = {"ex": 0, "ey": 1, "ez": 2}[pe.component]
-        end = list(pe.position)
-        end[axis] += pe.extent
         grid = self._build_realized_grid()
+        cells = _wire_port_realized_cells(grid, pe)
         if isinstance(grid, NonUniformGrid):
-            start_idx = position_to_index(grid, pe.position)
-            end_idx = position_to_index(grid, tuple(end))
-            lo, hi = sorted((start_idx[axis], end_idx[axis]))
-            first, last = wire_port_edge_span(
-                grid, axis, lo, hi, float(pe.position[axis]),
-                float(end[axis]))
-            cells = []
-            for k in range(first, last + 1):
-                cell = list(start_idx)
-                cell[axis] = k
-                cells.append(tuple(cell))
             coords = coords_from_nonuniform_grid(grid)
         else:
-            wp = WirePort(start=tuple(pe.position), end=tuple(end),
-                          component=pe.component, impedance=pe.impedance)
-            cells = _wire_port_cells(grid, wp)
             coords = coords_from_uniform_grid(grid)
         if not cells:
             return None
@@ -830,11 +842,14 @@ def half_node_split_findings(sim, grid=None) -> list[str]:
     # (key, label, position) per point feature; a wire port's two ends
     # share its key.
     points = []
+    point_components = {}
     for pe in getattr(sim, "_ports", ()):
         pos = tuple(float(v) for v in pe.position)
         kind = ("add_source" if float(pe.impedance) == 0.0
                 and pe.extent is None else "add_port")
         points.append((id(pe), f"{kind} at {pos}", pos))
+        if pe.extent is None:
+            point_components[id(pe)] = pe.component
         if pe.extent is not None:
             end = list(pos)
             end["xyz".index(pe.component[-1])] += float(pe.extent)
@@ -844,6 +859,7 @@ def half_node_split_findings(sim, grid=None) -> list[str]:
     for pr in getattr(sim, "_probes", ()):
         pos = tuple(float(v) for v in pr.position)
         points.append((id(pr), f"add_probe at {pos}", pos))
+        point_components[id(pr)] = pr.component
     if not points:
         return []
 
@@ -964,7 +980,8 @@ def half_node_split_findings(sim, grid=None) -> list[str]:
     seen = set()
     for pkey, label, pos in points:
         try:
-            idx = (position_to_index(grid, pos) if nonuniform
+            idx = (field_index(grid, pos, point_components[pkey]) if pkey in point_components
+                   else position_to_index(grid, pos) if nonuniform
                    else grid.position_to_index(pos))
         except ValueError:
             continue          # outside the grid: reported elsewhere
@@ -1004,7 +1021,7 @@ def trace_far_end_findings(sim, grid=None) -> list[str]:
     Both tangential ends are included in the declared pairing. Admission
     depends on the realized footprint, not whether a declared edge rounds.
     """
-    from rfx._grid_metric import NODE_TIE_REL
+    from rfx._grid_metric import node_tie_tol
     from rfx.geometry.rasterize_grid import (
         _local_cell, cell_sizes_from_nonuniform_grid, cell_sizes_from_uniform_grid,
         coords_from_nonuniform_grid, coords_from_uniform_grid, sheet_spec_from_shape,
@@ -1044,14 +1061,14 @@ def trace_far_end_findings(sim, grid=None) -> list[str]:
             start = float(pe.position[normal])
             end = start + (float(pe.extent) if pe.extent is not None
                            else _local_cell(nodes[normal], sizes[normal], start))
-            tol = NODE_TIE_REL * _local_cell(nodes[normal], sizes[normal], plane)
+            tol = node_tie_tol(plane, _local_cell(nodes[normal], sizes[normal], plane))
             if min(abs(start - plane), abs(end - plane)) > tol:
                 continue
             # A port declared within the tie band of a trace edge (e.g. one float
             # step outside it through a float sum) still touches that trace.
-            if any(not (lo[a] - NODE_TIE_REL * _local_cell(nodes[a], sizes[a], lo[a])
+            if any(not (lo[a] - node_tie_tol(lo[a], _local_cell(nodes[a], sizes[a], lo[a]))
                         <= float(pe.position[a])
-                        <= hi[a] + NODE_TIE_REL * _local_cell(nodes[a], sizes[a], hi[a]))
+                        <= hi[a] + node_tie_tol(hi[a], _local_cell(nodes[a], sizes[a], hi[a])))
                    for a in tangent):
                 continue
             sheet = sheet_spec_from_shape(shape, coords, sizes, name=name, grid=grid)
@@ -1060,9 +1077,11 @@ def trace_far_end_findings(sim, grid=None) -> list[str]:
                 continue
             if nu:
                 from rfx.nonuniform import position_to_index
-                port_node = position_to_index(grid, pe.position)
+                port_node = (position_to_index(grid, pe.position) if pe.extent is not None
+                             else field_index(grid, pe.position, pe.component))
             else:
-                port_node = grid.position_to_index(pe.position)
+                port_node = (grid.position_to_index(pe.position) if pe.extent is not None
+                             else field_index(grid, pe.position, pe.component))
             for dimension, a in enumerate(tangent):
                 first, last = int(occupied[dimension].min()), int(occupied[dimension].max())
                 if not first <= port_node[a] <= last:
@@ -1103,6 +1122,143 @@ def _validate_cfg_half_node_split(self, _w) -> None:
             stacklevel=3,
         )
 
+
+def _wire_cell_widths(grid):
+    """Per-axis primal cell widths (float64, padded) or None when traced.
+
+    The same metric ``rfx.sources.wire_radius.stamp_wire_radius`` sizes a
+    declared radius on: the float64 host spines on the graded lane, else
+    ``port_metric_axes``; ``grid.cells`` on the uniform lane.
+    """
+    if hasattr(grid, "dx_arr"):
+        spine = (getattr(grid, "dx_arr_f64", None),
+                 getattr(grid, "dy_arr_f64", None),
+                 getattr(grid, "dz_f64", None))
+        if all(v is not None for v in spine):
+            return [np.asarray(v, dtype=float) for v in spine]
+        from rfx.nonuniform import port_metric_axes
+        metrics = port_metric_axes(grid)
+        if not all(host for _, host in metrics):
+            return None
+        return [np.asarray(v, dtype=float) for v, _ in metrics]
+    return [np.asarray(grid.cells(t), dtype=float) for t in range(3)]
+
+
+def wire_port_radius_findings(sim, grid=None) -> list[dict]:
+    """Wire ports (``add_port(..., extent=)``) declared without ``radius``.
+
+    Such a port is a filament whose effective radius is the lattice's,
+    ``LATTICE_RADIUS * d`` (about 0.20 d, d the transverse cell), so its
+    series inductance differs from a wire of fixed physical radius by
+    ``(mu0 l / 2 pi) ln(0.20 d / a)``: every halving of d adds
+    ``omega (mu0 l / 2 pi) ln 2`` of reactance and S at the port does not
+    converge with the mesh (rfx-archive ledger, "A wire port has no
+    radius"). A single-cell port (no extent, or a sub-cell extent realized as
+    one edge) has l = d, so its term shrinks with the mesh and is not
+    reported.
+
+    One dict per such port, active and passive alike: ``index`` into
+    ``sim._ports``, ``component``, realized length ``length`` (sum of the
+    axial widths of the driven edges), declared ``extent``, the transverse
+    cells ``d`` at the driven edge the V/I probe reads (``{axis: width}``),
+    ``f_c`` and where it came from, and ``dX`` = 2 pi f_c (mu0 l / 2 pi) ln 2
+    in ohms. A port whose cells cannot be read is skipped; a traced mesh
+    returns ``[]``.
+    """
+    from rfx.core.jax_utils import is_tracer
+    from rfx.core.yee import MU_0
+
+    ports = [(i, pe) for i, pe in enumerate(getattr(sim, "_ports", ()))
+             if pe.extent is not None and float(pe.impedance) != 0.0
+             and getattr(pe, "radius", None) is None]
+    if not ports:
+        return []
+    if any(p is not None and is_tracer(p) for p in (
+            getattr(sim, "_dx_profile", None),
+            getattr(sim, "_dy_profile", None),
+            getattr(sim, "_dz_profile", None))):
+        return []
+    if grid is None:
+        grid = sim._build_realized_grid()
+    widths = _wire_cell_widths(grid)
+    if widths is None:
+        return []
+    out = []
+    for index, pe in ports:
+        axis = {"ex": 0, "ey": 1, "ez": 2}[pe.component]
+        try:
+            cells = _wire_port_realized_cells(grid, pe)
+        except (ValueError, NotImplementedError):
+            continue
+        length = float(sum(widths[axis][c[axis]] for c in cells))
+        if len(cells) == 1 and abs(float(pe.extent)) < length * (1 - 1e-6):
+            # A sub-cell extent realizes as one edge, l = d: the term
+            # shrinks with the mesh. An extent of exactly one cell keeps its
+            # physical length and is reported.
+            continue
+        mid = cells[len(cells) // 2]
+        d = {"xyz"[t]: float(widths[t][mid[t]]) for t in range(3)
+             if t != axis}
+        f0 = getattr(pe.waveform, "f0", None) if pe.excite else None
+        if f0 is not None:
+            f_c, f_c_from = float(f0), "the port's pulse centre f0"
+        else:
+            f_c = float(sim._freq_max) / 2.0
+            f_c_from = "freq_max/2, the default pulse centre"
+        dX = 2.0 * math.pi * f_c * (MU_0 * length / (2.0 * math.pi)) * math.log(2.0)
+        out.append(dict(index=index, component=pe.component,
+                        excite=bool(pe.excite), length=length,
+                        extent=float(pe.extent), d=d, f_c=f_c,
+                        f_c_from=f_c_from, dX=dX))
+    return out
+
+
+def preflight_wire_port_radius(sim, warn) -> None:
+    """ONE advisory per preflight naming every radius-less wire port."""
+    try:
+        findings = wire_port_radius_findings(sim)
+    except (ValueError, NotImplementedError):
+        # A grid the model refuses to build is reported by the checks and
+        # admission that own that refusal; any other exception is a bug in
+        # this check and propagates.
+        return
+    if not findings:
+        return
+    from rfx.sources.wire_radius import LATTICE_RADIUS, MAX_RADIUS_RATIO
+    from rfx.preflight._common import _fmt_freq
+    lines, d_min = [], math.inf
+    for f in findings:
+        d_text = " x ".join(f"{_fmt_len(v)} ({ax})" for ax, v in f["d"].items())
+        d_min = min(d_min, *f["d"].values())
+        length = _fmt_len(f["length"])
+        if not math.isclose(f["length"], abs(f["extent"]), rel_tol=1e-6):
+            length += f" (declared extent {_fmt_len(abs(f['extent']))})"
+        lines.append(
+            f"port {f['index']} ({f['component']}"
+            f"{'' if f['excite'] else ', passive'}): l = {length}, "
+            f"transverse cell d = {d_text}, filament radius "
+            f"{LATTICE_RADIUS:.4f}*d = "
+            f"{_fmt_len(LATTICE_RADIUS * min(f['d'].values()))}; "
+            f"f_c = {_fmt_freq(f['f_c'])} ({f['f_c_from']}); "
+            f"dX per mesh halving = {f['dX']:.3g} ohm")
+    warn.warn(PreflightWarning(
+        "Wire port without radius: the port is a filament of the lattice's "
+        "own radius, about 0.20*d, so each halving of the transverse cell d "
+        "adds at least dX = 2*pi*f_c*(mu0*l/(2*pi))*ln2 of series reactance "
+        "(the wire's own term; a feed meeting sheet edges measured up to "
+        "1.4x this); S at this port changes with every mesh refinement and "
+        "does not converge.\n    " + "\n    ".join(lines) + "\n    "
+        "Remedy: pass add_port(..., radius=a) with a <= 0.20*d at the "
+        f"coarsest mesh you compare (here 0.20*d = "
+        f"{_fmt_len(MAX_RADIUS_RATIO * d_min)}); the model needs square, "
+        "locally uniform transverse cells at the port and uniform spacing "
+        "along it, and is supported on single-device run()/forward(); "
+        "elsewhere it refuses.",
+        code="wire_port_no_radius",
+        severity="warning",
+        source="preflight_wire_port_radius",
+        loc=", ".join(f"_ports[{f['index']}]" for f in findings),
+    ), stacklevel=3)
 
 # ---------------------------------------------------------------------------
 # Pre-move ``__qualname__``, restored explicitly.

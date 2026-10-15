@@ -1373,7 +1373,7 @@ def test_import_does_not_widen_the_tfsf_boundary_fence():
     document["boundary"]["legacy"]["boundary"] = "pec"
     document["boundary"]["legacy"]["cpml_layers"] = 0
 
-    with pytest.raises(ValueError, match="requires boundary='cpml'"):
+    with pytest.raises(ValueError, match="requires cpml_layers > 0"):
         simulation_from_design(document)
 
 

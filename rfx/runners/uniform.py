@@ -14,126 +14,20 @@ from rfx import simulation as _simulation
 # resolved at CALL time and always reflects the current attribute. These are
 # setup-time calls (once per port/source registration), not per-timestep.
 from rfx.sources.sources import LumpedPort, setup_lumped_port, WirePort, setup_wire_port
-from rfx.probes.probes import init_dft_plane_probe, init_flux_monitor
-from rfx.sources.waveguide_port import (
-    extract_waveguide_sparams,
-    waveguide_plane_positions,
-)
+from rfx.probes.probes import init_dft_plane_probe
+from rfx.measurement.flux_weights import build_flux_monitor_cfgs
+from rfx.measurement import package_declared_measurements
 from rfx.current_moments import monitor_for_simulation as _cm_for_sim
 from rfx.farfield import make_ntff_box
 from rfx.lumped import setup_rlc_materials, build_rlc_meta
-from rfx.core.yee import (
-    add_lumped_eps, edge_mean_components, permittivity_without_lumped,
-)
+from rfx.measurement.oblique import reconstruct_oblique_physical
 
-
-def _reconstruct_oblique_physical(sim_result, tfsf_cfg, grid, probes):
-    """#404: convert the complex Bloch envelope P back to the physical real field
-    ``Re(P·exp(-j k_t·x_t))`` for the oblique-periodic path.
-
-    Reconstructs the final ``state`` (per-cell transverse phase ramp along the
-    periodic axis) and point-probe ``time_series`` (fixed phase at each probe's
-    transverse cell). Other outputs are fenced upstream. The sign convention is
-    ``cfg.k_transverse`` — the same one the 2D-aux injection and the hand-rolled
-    acceptance tests use (``exp(-1j·k_transverse·y)``).
-    """
-    import jax.numpy as _jnp
-    k_t = float(tfsf_cfg.k_transverse)
-    taxis = 1 if tfsf_cfg.transverse_axis == "y" else 2
-    d_t = float(getattr(grid, "dy", grid.dx)) if taxis == 1 \
-        else float(getattr(grid, "dz", grid.dx))
-    n_t = grid.shape[taxis]
-    ramp = _jnp.exp(-1j * k_t * _jnp.arange(n_t) * d_t)
-
-    new_state = sim_result.state
-    if new_state is not None and _jnp.iscomplexobj(new_state.ex):
-        shp = [1, 1, 1]
-        shp[taxis] = n_t
-        ramp3 = ramp.reshape(shp)
-        new_state = new_state._replace(**{
-            f: _jnp.real(getattr(new_state, f) * ramp3)
-            for f in ("ex", "ey", "ez", "hx", "hy", "hz")
-        })
-
-    new_ts = sim_result.time_series
-    if new_ts is not None and _jnp.iscomplexobj(new_ts):
-        if probes:  # time_series is (n_steps, n_probes) in probe order
-            idxs = _jnp.array([(p.j if taxis == 1 else p.k) for p in probes])
-            ph = _jnp.exp(-1j * k_t * idxs * d_t)
-            new_ts = _jnp.real(new_ts * ph[None, :])
-        else:
-            new_ts = _jnp.real(new_ts)
-
-    return sim_result._replace(state=new_state, time_series=new_ts)
-
-
-def build_flux_monitor_cfgs(sim, grid, n_steps, entries=None):
-    """Materialize ``sim._flux_monitors`` entries into scan monitor configs.
-
-    Shared extraction of the ``run_uniform`` inline block so
-    the low-level forward lane (``_forward_from_materials``, issue-#488
-    mixed-family flux magnitude channel) can register the SAME monitors
-    the run() lane does. Pure function of (sim registrations, grid,
-    n_steps). Finite regions resolve to interior cells via the same geometry
-    resolver used by preflight; ``size=None`` keeps the legacy full plane.
-
-    ``entries`` overrides the entry list (same ``_FluxMonitorEntry``
-    objects ``add_flux_monitor`` registers) without touching the sim's
-    own registrations — the ``extra_flux_monitors=`` opt-in on the coax
-    extractors (#589 flux-adjudication instrument) passes caller-built
-    entries here while the registered-monitor guard stays intact. ``sim``
-    is still consulted for ``_freq_max``/``_domain``.
-    """
-    axis_to_index = {"x": 0, "y": 1, "z": 2}
-    from rfx.probes.flux_region import resolve_flux_region
-    from rfx.boundaries.pec import resolve_wall_faces
-    flux_monitors = []
-    if entries is None:
-        entries = getattr(sim, '_flux_monitors', [])
-    for pe in entries:
-        axis_idx = axis_to_index[pe.axis]
-        plane_pos = [0.0, 0.0, 0.0]
-        plane_pos[axis_idx] = pe.coordinate
-        grid_index = grid.position_to_index(tuple(plane_pos))[axis_idx]
-        freqs_arr = (
-            pe.freqs
-            if pe.freqs is not None
-            else jnp.linspace(sim._freq_max / 10, sim._freq_max, pe.n_freqs)
-        )
-        # Compute tangential index bounds from size (finite flux region)
-        tangential_axes = [a for a in range(3) if a != axis_idx]
-        grid_ns = [grid.shape[a] for a in tangential_axes]
-        region = resolve_flux_region(grid, pe, sim._domain)
-        if region is not None:
-            (lo1, hi1), (lo2, hi2) = region["cell_slices"]
-            grid_index = region["normal_index"]
-        else:
-            lo1, hi1 = 0, grid_ns[0]
-            lo2, hi2 = 0, grid_ns[1]
-        flux_monitors.append(
-            init_flux_monitor(
-                axis=axis_idx,
-                index=grid_index,
-                freqs=freqs_arr,
-                grid_shape=grid.shape,
-                # Grid is cubic (single dx) — both tangential cell sizes
-                # equal grid.dx. If Grid ever becomes non-cubic, select
-                # the two tangential sizes by axis_idx here.
-                d1=grid.dx,
-                d2=grid.dx,
-                dft_total_steps=n_steps,
-                dft_window=getattr(pe, 'dft_window', 'rect'),
-                dft_window_alpha=getattr(pe, 'dft_window_alpha', 0.25),
-                lo1=lo1, hi1=hi1, lo2=lo2, hi2=hi2,
-                pmc_faces=resolve_wall_faces(grid, sim._periodic_flags())[1],
-            )
-        )
-    return flux_monitors
 
 
 def run_uniform(
     sim,
     *,
+    diagnostics=(),
     n_steps: int,
     until_decay=None,
     decay_check_interval: int = 50,
@@ -156,6 +50,7 @@ def run_uniform(
     # pre-built grid and materials passed in from Simulation.run()
     grid=None,
     base_materials=None,
+    conductors=None,
     debye_spec=None,
     lorentz_spec=None,
     pec_mask=None,
@@ -214,7 +109,7 @@ def run_uniform(
     -------
     Result
     """
-    from rfx.api import Result, WaveguideSParamResult
+    from rfx.api import Result
 
     if conformal_pec is None:
         conformal_pec = bool(sim._boundary_spec.conformal_faces())
@@ -297,89 +192,26 @@ def run_uniform(
     for spec in sim._lumped_rlc:
         materials = setup_rlc_materials(grid, spec, materials)
 
-    # Stage 2 unified path: subpixel_smoothing="kottke_pec" replaces
-    # the Stage 1 (Kottke dielectric + Dey-Mittra weights + per-step
-    # apply_conformal_pec) chain with a single inverse-permittivity
-    # tensor that encodes both dielectric subpixel smoothing and PEC
-    # behaviour (inv = 0 freezes the field).
-    aniso_eps = None
-    aniso_inv_eps = None
     use_kottke_pec = (subpixel_smoothing == "kottke_pec")
     if use_kottke_pec:
         from rfx.current_moments import refuse_h_side_conductor
         refuse_h_side_conductor(sim, 'subpixel_smoothing="kottke_pec"')
-        from rfx.geometry.smoothing import (
-            compute_inv_eps_tensor_diag, smoothed_shape_pairs,
-            warn_unextendable_shapes,
-        )
-        # #1043 stage B: the pairs carry the CPML/UPML pad continuation, so a
-        # dielectric that touches the domain edge is solved with the material
-        # in its own pad instead of a vacuum facet at the seam. PEC shapes
-        # arrive continued from assembly, with the MSL entry exception.
-        shape_eps_pairs, _unextendable = smoothed_shape_pairs(sim, grid)
+    from rfx.model.tensor_operands import form_tensor_operands, finish_tensor_operands
+    aniso_eps, aniso_inv_eps, conformal_weights, _unextendable = form_tensor_operands(
+        sim, grid, materials, subpixel_smoothing=subpixel_smoothing,
+        conformal=conformal_pec, conformal_min_weight=conformal_min_weight,
+        pec_shapes=pec_shapes)
+    if subpixel_smoothing:
+        from rfx.geometry.smoothing import warn_unextendable_shapes
         # Assembly already emitted the conductor findings for this run.
         warn_unextendable_shapes([u for u in _unextendable if not u.conductor])
-        aniso_inv_eps = compute_inv_eps_tensor_diag(
-            grid,
-            dielectric_shapes=shape_eps_pairs,
-            pec_shapes=pec_shapes or [],
-            background_eps=1.0,
-        )
-        # Stage 2 *keeps* pec_mask alive (was previously null'd here).
-        # Reasons:
-        # 1. ``apply_pec_edges`` on top of inv=0 provides defense-in-
-        #    depth: numerical noise that creeps into PEC cells (e.g.
-        #    via float-arithmetic-ordering at boundary cells with
-        #    fractional inv) is zeroed each step rather than
-        #    accumulating.
-        # 2. ``apply_pec_h_mask`` (NEW, Step 5 fix) zeros H inside
-        #    PEC cells — Stage 1 lacked this but its ``sigma=1e10``
-        #    fold provided implicit damping that Stage 2 doesn't.
-        #    Without H zeroing, late-time NaN at the cells deep
-        #    inside PEC half-spaces (k=z_max in the 50·τ stability
-        #    test).
-        # ``conformal_weights`` is intentionally left unset (None) so
-        # the legacy ``apply_conformal_pec`` per-step E zero is
-        # skipped — that path's eps_correction would conflict with
-        # the inv tensor.
-    elif subpixel_smoothing:
-        from rfx.geometry.smoothing import (
-            compute_smoothed_eps, smoothed_shape_pairs,
-            warn_unextendable_shapes,
-        )
-        # #1043 stage B: same pad continuation as the Stage-2 site above.
-        shape_eps_pairs, _unextendable = smoothed_shape_pairs(sim, grid)
-        warn_unextendable_shapes([u for u in _unextendable if not u.conductor])
-        if shape_eps_pairs:
-            aniso_eps = compute_smoothed_eps(grid, shape_eps_pairs, background_eps=1.0)
-
-    # Conformal PEC (Stage 1): compute weights and produce anisotropic
-    # eps. Skipped when Stage 2 unified path is active (use_kottke_pec)
-    # — the inv-eps tensor already encodes the conformal behaviour.
-    conformal_weights = None
-    if conformal_pec and pec_shapes and not use_kottke_pec:
-        from rfx.geometry.conformal import (
-            compute_conformal_weights_sdf,
-            clamp_conformal_weights,
-            conformal_eps_correction,
-        )
-        w_ex, w_ey, w_ez = compute_conformal_weights_sdf(grid, pec_shapes)
-        w_ex, w_ey, w_ez = clamp_conformal_weights(w_ex, w_ey, w_ez, conformal_min_weight)
-        conformal_weights = (w_ex, w_ey, w_ez)
-
-        # The 1/w permittivity is formed below, once the run's final
-        # periodic flags are known (#1373).
-        # Conformal replaces binary pec_mask
+    if conformal_weights is not None:
+        # Conformal replaces binary pec_mask; Stage 2 keeps it alive.
         pec_mask = None
 
-    # Edge-owned capacitors go onto the Stage-2 inverse tensor here; the
-    # Stage-1 / smoothed tensor gets them below, after the conformal
-    # correction, so a conformal weight never divides a lumped C.
-    aniso_inv_eps = add_lumped_eps(
-        aniso_inv_eps, materials.eps_r_lumped, inverse=True)
-
     # Build sources and probes for the compiled runner
-    sources = []
+    from rfx.sources.port_drive import PortSourceQueue
+    sources = PortSourceQueue()
     mag_sources = []
     probes = []
     dft_planes = []
@@ -404,21 +236,26 @@ def run_uniform(
     if sim._periodic_axes:
         periodic = tuple(axis in sim._periodic_axes for axis in "xyz")
 
+    if sim._tfsf is not None:
+        from rfx.sources.tfsf import tfsf_from_declaration
+
+        tfsf = tfsf_from_declaration(
+            sim._tfsf, grid, sim._freq_max, n_steps=n_steps,
+        )
+        from rfx.boundaries.tfsf import boundary_flags as tfsf_boundary_flags
+        periodic, cpml_axes = tfsf_boundary_flags(tfsf[0], grid)
+
     # #931 §1.7: realize (Mx, My, Mz) ONCE, under the flags the stepper
     # will use, and keep working on THOSE from here on — port clearing,
     # wire-port liveness, the sheet ctx and the run all read the same
     # object.  A sheet owns no cell, so it exists only here.
-    from rfx.boundaries.pec import (
-        clear_edges as _clear_edges,
-        realized_pec_edge_masks as _rpem,
-    )
+    from rfx.model.conductors import kernel_conductors, clear_conductor_edges, lumped_port_stage, publish_port_release, at_kernel
     _pec_periodic = _simulation.resolve_periodic(grid, periodic)
     pec_sheets = tuple(pec_sheets or ())
     pec_wires = tuple(pec_wires or ())
-    pec_edge_masks = None
-    if pec_mask is not None or pec_sheets or pec_wires:
-        pec_edge_masks = _rpem(pec_mask, sheets=pec_sheets, wires=pec_wires,
-                               periodic=_pec_periodic)
+    conductors = kernel_conductors(sim, grid, base_materials, pec_mask,
+        pec_sheets, pec_wires, periodic=_pec_periodic, sheet_specs=sheet_specs or (), root=conductors)
+    pec_edge_masks = conductors.pec_edges
     _msl_geometry_edges = pec_edge_masks  # before ANY port clearing
     if sim._msl_ports and use_kottke_pec:
         from rfx.boundaries.pec import PEC_INV_THRESHOLD, kottke_fenced_edge_masks
@@ -444,27 +281,11 @@ def run_uniform(
     # this port's own clearing) is in hand.  Feed the S-param specs below.
     wire_port_live_cells = []
     wire_port_excites = []
-    for pe in sim._ports:
+    for _port_index, pe in enumerate(sim._ports):
         if pe.impedance == 0.0:
-            # Auto-select source type based on boundary conditions:
-            # - CPML (open): Cb/dx normalized (prevents DC on PEC surface)
-            # - PEC (closed): raw field add (broadband, exact cavity modes)
-            # amplitude_kind (issue #571) rides on top: the helper stays
-            # boundary-selected (its native numerics are deliberate); the
-            # KIND only rescales the waveform inside the helper. kind=None
-            # threads through as a no-op (legacy, bit-identical).
-            if sim._boundary in ("cpml", "upml"):
-                sources.append(_simulation.make_j_source(grid, pe.position, pe.component,
-                                             pe.waveform, n_steps, materials,
-                                             amplitude_kind=pe.amplitude_kind))
-            else:
-                sources.append(_simulation.make_source(grid, pe.position, pe.component,
-                                           pe.waveform, n_steps,
-                                           materials=materials,
-                                           amplitude_kind=pe.amplitude_kind))
-            from rfx.api._source_semantics import guard_float16_source_increment
-            sources[-1] = sources[-1]._replace(waveform=guard_float16_source_increment(
-                sources[-1].waveform, field_dtype, pe.amplitude_kind))
+            # The declared kind alone decides the drive (forward() calls the same).
+            from rfx.sources.port_drive import defer_soft_source
+            defer_soft_source(sources, grid, pe, n_steps, field_dtype=field_dtype)
             continue
         if pe.extent is not None:
             # Multi-cell wire port
@@ -489,6 +310,8 @@ def run_uniform(
             wire_port_live_cells.append(tuple(
                 (int(c[0]), int(c[1]), int(c[2]))
                 for c, live in zip(_wp_cells_764, _wp_live_764) if live))
+            conductors = publish_port_release(conductors, wire_port_live_cells[-1],
+                component=pe.component, entity_id=f"port[{_port_index}]", kind="wire")
             # Live-cell-aware fold + injection (issue #318): dead extent
             # cells inside PEC carry no port sigma and no source. The mask
             # here is the assembled-geometry state BEFORE this port's own
@@ -496,9 +319,9 @@ def run_uniform(
             materials = setup_wire_port(grid, wp, materials,
                                         pec_edge_masks=pec_edge_masks)
             if pe.excite:
-                sources.extend(_simulation.make_wire_port_sources(
-                    grid, wp, materials, n_steps,
-                    pec_edge_masks=pec_edge_masks))
+                sources.defer(_simulation.make_wire_port_sources,
+                    grid, wp, n_steps=n_steps,
+                    pec_edge_masks=pec_edge_masks)
             # No PEC clearing for a wire port (#931 §1.9, corrected):
             # a cell is LIVE exactly when the port component's own edge at
             # that index is not PEC, so releasing that component at the
@@ -515,15 +338,13 @@ def run_uniform(
             lumped_ports.append(lp)
             materials = setup_lumped_port(grid, lp, materials)
             if pe.excite:
-                sources.append(_simulation.make_port_source(grid, lp, materials, n_steps))
+                sources.defer(_simulation.make_port_source, grid, lp, n_steps=n_steps)
             # Release the realized PEC edge the lumped port DRIVES — its
             # own component at its own cell, and nothing else (#931 §1.9,
             # corrected: the three-component form opened the conductor the
             # port sits on).
-            if pec_edge_masks is not None:
-                idx = grid.position_to_index(pe.position)
-                pec_edge_masks = _clear_edges(
-                    pec_edge_masks, [idx], component=pe.component)
+            conductors = lumped_port_stage(conductors, pe, f"port[{_port_index}]")
+            pec_edge_masks = conductors.pec_edges
 
     # One wire port and no lumped port: S11 is read from the main run's own
     # record (the fast path below), so s_param_n_steps cannot set its length.
@@ -538,6 +359,9 @@ def run_uniform(
             reason_overrides={"s_param_n_steps":
                 "this lane reads S11 from the main run's port record, "
                 "whose length is n_steps"})
+
+    from rfx.measurement.port_registration import uniform_run_specs
+    record_specs = uniform_run_specs(grid, wire_ports, wire_port_live_cells, lumped_ports, sim._ports)
 
     # Build wire port S-param specs for JIT-integrated DFT
     wire_sparam_specs = []
@@ -570,19 +394,19 @@ def run_uniform(
             msl_normal_component as _msl_normal_component,
             compute_msl_mode_profile,
             make_msl_port_sources,
-            make_msl_port_sources_jm,
+            deferred_msl_sources_jm,
             msl_cell,
             msl_cross_section_span,
             msl_port_from_entry,
             setup_msl_port,
         )
-        for pe in sim._msl_ports:
+        for _msl_port_index, pe in enumerate(sim._msl_ports):
             # Issue #661: one shared projection of position -> port frame.
             mp = msl_port_from_entry(pe)
             from rfx.sources.msl_port import validate_msl_port_geometry
             validate_msl_port_geometry(
                 grid, mp, pec_edge_masks=_msl_geometry_edges,
-                sheet_specs=sheet_specs, periodic=_pec_periodic,
+                conductors=conductors, periodic=_pec_periodic,
                 pec_faces=sim._boundary_spec.pec_faces(), name=pe.name)
             mode_profile = None
             eigenmode_data = None
@@ -618,25 +442,26 @@ def run_uniform(
             if pe.excite and pe.waveform is not None:
                 if eigenmode_data is not None:
                     # Schelkunoff J+M one-sided launch: both E and H sources
-                    e_specs, h_specs = make_msl_port_sources_jm(
-                        grid, mp, materials, n_steps, eigenmode_data)
-                    sources.extend(e_specs)
-                    mag_sources.extend(h_specs)
+                    sources.defer(deferred_msl_sources_jm, grid, mp,
+                                  n_steps=n_steps, eigenmode_data=eigenmode_data,
+                                  magnetic_sources=mag_sources)
                 else:
-                    sources.extend(make_msl_port_sources(
-                        grid, mp, materials, n_steps,
+                    sources.defer(make_msl_port_sources,
+                        grid, mp, n_steps=n_steps,
                         mode_profile=mode_profile,
-                    ))
-            if pec_edge_masks is not None:
-                # Only the SUBSTRATE-NORMAL component over the
-                # cross-section: that is the edge the modal source drives
-                # (V = sum(E_n * d_n)).  Releasing the two in-plane
-                # components as well would punch a width-long slot through
-                # the ground plane and the trace at the feed column
-                # (#931 §1.9, corrected).
-                pec_edge_masks = _clear_edges(
-                    pec_edge_masks, list(_msl_yz_cells(grid, mp)),
-                    component=_msl_normal_component(mp))
+                    )
+            # Only the SUBSTRATE-NORMAL component over the
+            # cross-section: that is the edge the modal source drives
+            # (V = sum(E_n * d_n)).  Releasing the two in-plane
+            # components as well would punch a width-long slot through
+            # the ground plane and the trace at the feed column
+            # (#931 §1.9, corrected).
+            conductors = clear_conductor_edges(
+                conductors, list(_msl_yz_cells(grid, mp)),
+                component=_msl_normal_component(mp),
+                entity_id=f"msl_port[{_msl_port_index}]", port_kind="microstrip",
+                released_edges=(mode_profile["cell_indices"] if mode_profile is not None else list(_msl_yz_cells(grid, mp))))
+            pec_edge_masks = conductors.pec_edges
 
     for pe in sim._probes:
         probes.append(_simulation.make_probe(grid, pe.position, pe.component))
@@ -664,47 +489,18 @@ def run_uniform(
             )
         )
 
-    # Flux monitors (Poynting flux through plane)
-    flux_monitors = build_flux_monitor_cfgs(sim, grid, n_steps)
-
     if sim._waveguide_ports:
+        from rfx.preflight.waveguide import resolve_waveguide_port_freqs
+
         cpml_axes = grid.cpml_axes
-        pec_axes = "".join(axis for axis in "xyz" if axis not in cpml_axes)
+        pec_axes = None
         for pe in sim._waveguide_ports:
-            freqs_arr = (
-                pe.freqs
-                if pe.freqs is not None
-                else jnp.linspace(sim._freq_max / 10, sim._freq_max, pe.n_freqs)
-            )
+            freqs_arr = resolve_waveguide_port_freqs(sim, pe)
             waveguide_ports.append(sim._build_waveguide_port_config(pe, grid, freqs_arr, n_steps))
 
     if sim._tfsf is not None:
-        from rfx.sources.tfsf import init_tfsf, validate_custom_tfsf_waveform
-
-        validate_custom_tfsf_waveform(sim._tfsf.waveform, grid.dt, n_steps)
-
-        tfsf = init_tfsf(
-            grid.nx,
-            grid.dx,
-            grid.dt,
-            cpml_layers=grid.cpml_layers,
-            tfsf_margin=sim._tfsf.margin,
-            f0=sim._tfsf.f0 if sim._tfsf.f0 is not None else sim._freq_max / 2,
-            bandwidth=sim._tfsf.bandwidth,
-            amplitude=sim._tfsf.amplitude,
-            polarization=sim._tfsf.polarization,
-            direction=sim._tfsf.direction,
-            angle_deg=sim._tfsf.angle_deg,
-            ny=grid.ny,
-            nz=grid.nz,
-            waveform=getattr(sim._tfsf, 'waveform', 'differentiated_gaussian'),
-            method=getattr(sim._tfsf, 'method', 'bloch'),
-            closed_box=sim._tfsf.closed_box,
-        )
         if not sim._tfsf.closed_box:
             sim._validate_tfsf_vacuum_boundary(materials, tfsf[0])
-        from rfx.sources.tfsf import tfsf_boundary_flags
-        periodic, cpml_axes = tfsf_boundary_flags(tfsf[0])
         # #404: an oblique (2D-aux) TFSF drives the shared solver on the complex
         # Bloch-envelope path; final `state` and point-probe time series are
         # reconstructed to physical fields after the run, but the streaming/
@@ -780,29 +576,15 @@ def run_uniform(
         from rfx.simulation import make_source as _make_src
         sources.append(_make_src(grid, tuple(center), comp, wf, n_steps))
 
-    # Conformal PEC (Stage 1) permittivity, #1373: the same four-cell
-    # edge mean of the volume permittivity the plain E update uses, on the
-    # run's final periodic flags (after the TFSF / 2-D overrides), divided
-    # by the edge's open fraction w. On an edge no PEC touches (w == 1) it
-    # is the plain path's value exactly.
-    if conformal_weights is not None:
-        w_ex, w_ey, w_ez = conformal_weights
-        eps_mean = edge_mean_components(
-            permittivity_without_lumped(materials),
-            _simulation.resolve_periodic(grid, periodic))
-        eps_ex_c, eps_ey_c, eps_ez_c = conformal_eps_correction(
-            eps_mean, w_ex, w_ey, w_ez)
-        if aniso_eps is not None:
-            # Merge: conformal PEC overrides smoothed eps at PEC boundary cells
-            s_ex, s_ey, s_ez = aniso_eps
-            eps_ex_c = jnp.where(w_ex < 1.0, eps_ex_c, s_ex)
-            eps_ey_c = jnp.where(w_ey < 1.0, eps_ey_c, s_ey)
-            eps_ez_c = jnp.where(w_ez < 1.0, eps_ez_c, s_ez)
-        aniso_eps = (eps_ex_c, eps_ey_c, eps_ez_c)
+    from rfx.model.materials import with_components
+    materials = with_components(materials, grid,
+        periodic=_simulation.resolve_periodic(grid, periodic),
+        debye_spec=debye_spec, lorentz_spec=lorentz_spec)
+    from rfx.model.source_coefficients import resolve_run_sources
+    sources = resolve_run_sources(sources, materials, sim, grid,
+        tensor=aniso_eps is not None or conformal_weights is not None)
 
-    # Complete the volume tensor before adding edge-owned capacitors:
-    # conformal weights must act on the volume, never on a lumped C.
-    aniso_eps = add_lumped_eps(aniso_eps, materials.eps_r_lumped)
+    aniso_eps = finish_tensor_operands(materials, aniso_eps, conformal_weights)
 
     # Thread the field storage dtype into the ADE carry (issue #656), the
     # same way ``rfx.simulation.run`` threads it into the CPML psi / NTFF /
@@ -827,7 +609,8 @@ def run_uniform(
     # In-loop block current moments (rfx.current_moments). Built here rather
     # than at declaration time so the slab window and the block map come from
     # the grid the solve actually builds, not from the declared corners.
-    current_moments = _cm_for_sim(sim, grid, periodic)
+    flux_monitors = build_flux_monitor_cfgs(sim, grid, n_steps, periodic=_simulation.resolve_periodic(grid, periodic))
+    current_moments = _cm_for_sim(sim, grid, periodic, conductors=conductors)
 
     # Lumped RLC elements
     rlc_metas = None
@@ -845,11 +628,7 @@ def run_uniform(
     # realized PEC edges of this run (after the port clearing above —
     # PEC wins on overlapping edges). Crossing-normal refusal lives in the
     # builder.
-    from rfx.materials.thin_conductor import build_sheet_impedance_ctx
-    sheet_ctx = build_sheet_impedance_ctx(
-        sheet_specs,
-        pec_edge_masks=pec_edge_masks,
-        periodic=_pec_periodic)
+    sheet_ctx = conductors.sheet_context(pec_edge_masks)
     if sim._tfsf is not None and sim._tfsf.closed_box:
         nonvacuum = list(pec_edge_masks or ())
         # These operators can replace the scalar material/PEC update.
@@ -876,8 +655,12 @@ def run_uniform(
     # Every declared input this lane does not carry is refused here, after
     # the specific refusals above and before the first step.
     from rfx.runners._admission import admit
-    admit(sim, "run_uniform", run_args={"compute_s_params": compute_s_params,
-                                        "conformal_pec": conformal_pec})
+    admit(
+        sim,
+        "run_uniform",
+        run_args={"compute_s_params": compute_s_params, "conformal_pec": conformal_pec},
+        diagnostics=diagnostics,
+    )
     from rfx.runners._admission import admit_run_s_matrix
     admit_run_s_matrix(sim, compute_s_params=compute_s_params,
                        conformal_pec=conformal_pec)
@@ -904,6 +687,11 @@ def run_uniform(
         _stop_kwargs = {"stop_fn": _stop_with_bins,
                         "stop_interval": int(stop_interval)}
 
+    # The record and the call below read the same final conductor object.
+    conductors, geometry_record = at_kernel(sim, conductors, lane="run_uniform", pec_edges=pec_edge_masks, sheet_operator=sheet_ctx)
+    pec_edge_masks = conductors.pec_edges
+    sheet_ctx = conductors.sheet_operator
+
     # Main simulation
     if until_decay is not None:
         sim_result = _simulation.run_until_decay(
@@ -923,7 +711,7 @@ def run_uniform(
             periodic=periodic,
             debye=debye,
             lorentz=lorentz,
-            tfsf=tfsf,
+            tfsf=tfsf, _feature_tfsf=True,
             sources=sources,
             probes=probes,
             dft_planes=dft_planes,
@@ -942,6 +730,7 @@ def run_uniform(
             pec_wires=pec_wires,
             conformal_weights=conformal_weights,
             wire_port_sparams=wire_sparam_specs or None,
+            port_record_specs=record_specs,
             lumped_rlc=rlc_metas,
             kerr_chi3=kerr_chi3,
             field_dtype=field_dtype,
@@ -960,7 +749,7 @@ def run_uniform(
             periodic=periodic,
             debye=debye,
             lorentz=lorentz,
-            tfsf=tfsf,
+            tfsf=tfsf, _feature_tfsf=True,
             sources=sources,
             probes=probes,
             dft_planes=dft_planes,
@@ -979,6 +768,7 @@ def run_uniform(
             pec_wires=pec_wires,
             conformal_weights=conformal_weights,
             wire_port_sparams=wire_sparam_specs or None,
+            port_record_specs=record_specs,
             lumped_rlc=rlc_metas,
             kerr_chi3=kerr_chi3,
             field_dtype=field_dtype,
@@ -1038,7 +828,9 @@ def run_uniform(
                 break
         freqs_out = np.array(s_param_freqs)
         n_freqs = len(freqs_out)
-        S = np.zeros((n_wp, n_wp, n_freqs), dtype=np.complex64)
+        S = np.zeros((n_wp, n_wp, n_freqs), dtype=np.result_type(
+            sim_result.wire_port_sparams[0][1][0].dtype
+            if sim._precision == "float64" else np.complex64, np.complex64))
         for j, (wp_meta, accs) in enumerate(sim_result.wire_port_sparams):
             v_dft, i_dft = accs[0], accs[1]
             v_port_dft = accs[3]
@@ -1105,58 +897,11 @@ def run_uniform(
             return_settling=True,
         )
 
-    waveguide_ports_result = (
-        {
-            entry.name: cfg
-            for entry, cfg in zip(sim._waveguide_ports, sim_result.waveguide_ports or ())
-        }
-        if sim._waveguide_ports
-        else None
+    declared_measurements = package_declared_measurements(
+        sim, grid,
+        flux_monitors=sim_result.flux_monitors or (),
+        waveguide_cfgs=sim_result.waveguide_ports or (),
     )
-    waveguide_sparams_result = None
-    if sim._waveguide_ports:
-        waveguide_sparams_result = {}
-        for entry, cfg in zip(sim._waveguide_ports, sim_result.waveguide_ports or ()):
-            plane_positions = waveguide_plane_positions(cfg)
-            source_plane = plane_positions["source"]
-            measured_reference_plane = plane_positions["reference"]
-            measured_probe_plane = plane_positions["probe"]
-            if entry.calibration_preset == "source_to_probe":
-                reference_plane = source_plane
-                probe_plane = measured_probe_plane
-                calibration_preset = "source_to_probe"
-            elif entry.reference_plane is not None or entry.probe_plane is not None:
-                reference_plane = (
-                    entry.reference_plane
-                    if entry.reference_plane is not None
-                    else measured_reference_plane
-                )
-                probe_plane = (
-                    entry.probe_plane
-                    if entry.probe_plane is not None
-                    else measured_probe_plane
-                )
-                calibration_preset = "explicit"
-            else:
-                reference_plane = measured_reference_plane
-                probe_plane = measured_probe_plane
-                calibration_preset = "measured"
-            s11, s21 = extract_waveguide_sparams(
-                cfg,
-                ref_shift=reference_plane - measured_reference_plane,
-                probe_shift=probe_plane - measured_probe_plane,
-            )
-            waveguide_sparams_result[entry.name] = WaveguideSParamResult(
-                freqs=np.array(cfg.freqs),
-                s11=np.array(s11),
-                s21=np.array(s21),
-                calibration_preset=calibration_preset,
-                source_plane=float(source_plane),
-                measured_reference_plane=measured_reference_plane,
-                measured_probe_plane=measured_probe_plane,
-                reference_plane=reference_plane,
-                probe_plane=probe_plane,
-            )
 
     # #404: oblique 2D-aux TFSF evolved the complex Bloch envelope P; convert the
     # returned state + point probes back to physical real fields (real path and
@@ -1164,9 +909,12 @@ def run_uniform(
     if sim._tfsf is not None:
         from rfx.sources.tfsf import is_tfsf_2d as _is_tfsf_2d_out
         if _is_tfsf_2d_out(tfsf[0]):
-            sim_result = _reconstruct_oblique_physical(sim_result, tfsf[0], grid, probes)
+            sim_result = reconstruct_oblique_physical(sim_result, tfsf[0], grid, probes)
 
+    from rfx.sparams._record_selection import read_ids, SReadPorts
     return Result(
+        diagnostics=diagnostics,
+        realized_geometry=geometry_record,
         state=sim_result.state,
         time_series=sim_result.time_series,
         s_params=s_params,
@@ -1176,26 +924,11 @@ def run_uniform(
         current_moment_data=sim_result.current_moment_data,
         current_moment_monitor=current_moments,
         dft_planes=(
-            {
-                entry.name: probe
-                for entry, probe in zip(sim._dft_planes, sim_result.dft_planes or ())
-            }
+            {entry.name: probe for entry, probe in zip(sim._dft_planes, sim_result.dft_planes or ())}
             if sim._dft_planes
             else None
         ),
-        flux_monitors=(
-            {
-                entry.name: fm
-                for entry, fm in zip(
-                    getattr(sim, '_flux_monitors', []),
-                    sim_result.flux_monitors or (),
-                )
-            }
-            if getattr(sim, '_flux_monitors', [])
-            else None
-        ),
-        waveguide_ports=waveguide_ports_result,
-        waveguide_sparams=waveguide_sparams_result,
+        **declared_measurements,
         snapshots=sim_result.snapshots,
         snapshot_axes=sim_result.snapshot_axes,
         grid=grid,
@@ -1204,11 +937,12 @@ def run_uniform(
         # (find_resonances, an FFT of time_series) needs the real one.
         dt=sim_result.dt,
         sparam_time_records=sim_result.sparam_time_records,
-        dft_time_records={entry.name: rec for entry, rec in zip(
-            sim._dft_planes, sim_result.dft_time_records or ())},
+        sparam_read_ids=read_ids(sim_result.sparam_time_records) if _single_wire_fastpath else SReadPorts(),
+        dft_time_records={
+            entry.name: rec for entry, rec in zip(sim._dft_planes, sim_result.dft_time_records or ())
+        },
         settling_db=s_settling["db"] if s_settling else None,
         settling_witness=s_settling,
         freq_range=(sim._freq_max / 10, sim._freq_max, sim._boundary),
-        wire_port_sparams=(sim_result.wire_port_sparams
-                           if keep_wire_port_sparams else None),
+        wire_port_sparams=(sim_result.wire_port_sparams if keep_wire_port_sparams else None),
     )

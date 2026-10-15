@@ -69,9 +69,10 @@ def build_generic_port_demo(*, add_component: bool) -> Simulation:
         # that cell into the surrounding field.  A component inside the feed
         # cell is in parallel with the source rather than in the network the
         # port measures, so it changes the drive level and not S11: measured
-        # here, co-located moves max |S11| by 0.00000 and one cell away by
-        # 0.00868.  The component is in the model either way — it changes the
-        # fields — but only the second placement is something S11 can show.
+        # here, co-located moved max |S11| by 0.00000 and one cell away by
+        # 0.00868; one cell away now prints 0.0015 (re-run 2026-10-11, VESSL
+        # 369367270246; the co-located case was not re-run).  The component
+        # is in the model either way — it changes the fields — but only the second placement is something S11 can show.
         #
         # R is 500 ohm and not 50 for a separate reason: a series R+C on a
         # cell that carries no port conductance is unstable below roughly

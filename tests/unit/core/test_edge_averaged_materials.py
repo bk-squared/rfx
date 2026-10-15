@@ -358,12 +358,13 @@ def test_a_current_source_injects_the_update_s_own_coefficient(monkeypatch,
     from rfx.core.yee import e_component_coeffs
     from rfx.grid import Grid
     import rfx.simulation as _sim
+    import rfx.model.materials as _materials
 
     if mutate:
         monkeypatch.setattr(
-            _sim, "cell_component_e_coeffs",
+            _materials, "e_update_coefficient_at",
             lambda m, cell, comp, dt, periodic=(False, False, False):
-                e_update_coeffs(m.eps_r[tuple(cell)], m.sigma[tuple(cell)], dt))
+                e_update_coeffs(m.eps_r[tuple(cell)], m.sigma[tuple(cell)], dt)[1])
 
     grid = Grid(freq_max=1e10, domain=(9e-3, 9e-3, 9e-3), dx=1e-3,
                 cpml_layers=0, cpml_axes="")
@@ -462,7 +463,7 @@ def test_the_aniso_updates_decay_with_the_edge_averaged_sigma(monkeypatch,
     if mutate:
         monkeypatch.setattr(
             _yee, "component_e_materials",
-            lambda m, periodic=(False, False, False): (
+            lambda m, periodic=(False, False, False), *, cell_sizes=None: (
                 (m.eps_r,) * 3, (m.sigma,) * 3))
 
     idx = np.indices(SHAPE)[2]
@@ -492,7 +493,8 @@ def test_the_aniso_updates_decay_with_the_edge_averaged_sigma(monkeypatch,
     nu_inv = jnp.ones(SHAPE[0], jnp.float32)
     out_nu = update_e_nu_aniso(st, mats, eps, eps, eps, DT,
                                nu_inv, jnp.ones(SHAPE[1], jnp.float32),
-                               jnp.ones(SHAPE[2], jnp.float32))
+                               jnp.ones(SHAPE[2], jnp.float32),
+                               cell_sizes=(None, None, None))
     got_nu = float(np.asarray(out_nu.ex)[cell])
 
     expect = ca_owned if mutate else ca_edge
@@ -525,9 +527,9 @@ def test_the_applied_port_drives_use_the_update_s_own_coefficient(monkeypatch,
 
     if mutate:
         monkeypatch.setattr(
-            _src, "cell_component_e_coeffs",
+            _src, "e_update_coefficient_at",
             lambda m, cell, comp, dt, periodic=(False, False, False):
-                e_update_coeffs(m.eps_r[tuple(cell)], m.sigma[tuple(cell)], dt))
+                e_update_coeffs(m.eps_r[tuple(cell)], m.sigma[tuple(cell)], dt)[1])
 
     grid = Grid(freq_max=1e10, domain=(9e-3, 9e-3, 9e-3), dx=1e-3,
                 cpml_layers=0, cpml_axes="")

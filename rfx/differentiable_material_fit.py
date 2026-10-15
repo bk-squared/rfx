@@ -61,6 +61,7 @@ Example
 
 from __future__ import annotations
 
+from rfx._grid_metric import field_index
 from dataclasses import dataclass, field
 from typing import Callable
 
@@ -361,7 +362,7 @@ def _require_ports_clear_of_pec(sim, grid, pec_mask, pec_sheets, pec_wires) -> N
         pec_mask, sheets=pec_sheets, wires=pec_wires,
         periodic=resolve_periodic(grid, None))
     for pe in sim._ports:
-        if edge_is_pec(edges, pe.component, *grid.position_to_index(pe.position)):
+        if edge_is_pec(edges, pe.component, *field_index(grid, pe.position, pe.component)):
             raise NotImplementedError(
                 "differentiable_material_fit() does not support add_port() "
                 f"on a PEC edge (position={pe.position} m, component={pe.component}) "
@@ -448,12 +449,11 @@ def differentiable_material_fit(
         spectrum (same normalization as the loss) — previously this field
         was always ``None``.
     """
-    from rfx.simulation import run as sim_run, make_port_source, make_probe
+    from rfx.simulation import run as sim_run, make_port_source, make_probe, resolve_periodic
     from rfx.sources.sources import LumpedPort, setup_lumped_port
 
     freqs = np.asarray(freqs, dtype=np.float64)
     s_measured = np.asarray(s_measured)
-    s_meas_jnp = jnp.array(s_measured)
 
     # ------------------------------------------------------------------
     # Build initial guess
@@ -486,9 +486,6 @@ def differentiable_material_fit(
             LorentzPole(omega_0=omega0, delta=omega0 * 0.05, kappa=omega0 ** 2)
         )
 
-    params = _poles_to_params(eps_inf_init, debye_init[:n_debye_poles],
-                               lorentz_init[:n_lorentz_poles])
-
     # ------------------------------------------------------------------
     # Static setup: build grid and non-DUT materials ONCE
     # ------------------------------------------------------------------
@@ -498,6 +495,12 @@ def differentiable_material_fit(
         debye_init[:n_debye_poles],
         lorentz_init[:n_lorentz_poles],
     )
+    from rfx._precision import resolve_field_dtype
+    resolve_field_dtype(dummy_sim._precision)
+    s_meas_jnp = jnp.array(s_measured)
+    params = _poles_to_params(eps_inf_init, debye_init[:n_debye_poles],
+                             lorentz_init[:n_lorentz_poles])
+
     def forward(p, *, _fixture=None, _validate_only=False):
         """log-space params -> FDTD -> S-params -> loss scalar."""
         # Unpack traced pole parameters
@@ -509,6 +512,8 @@ def differentiable_material_fit(
         # but the pole VALUES inside DebyePole/LorentzPole are JAX tracers)
         sim = (_fixture if _fixture is not None
                else sim_factory(eps_inf, debye_poles, lorentz_poles))
+
+        resolve_field_dtype(sim._precision)
 
         # Assemble materials (geometry masks are static, but eps_inf flows through)
         from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
@@ -534,16 +539,21 @@ def differentiable_material_fit(
             materials = setup_lumped_port(grid, lp, materials)
             loaded_ports.append(lp)
 
+        from rfx.model.materials import with_components
+        periodic = resolve_periodic(grid, None)
+        materials = with_components(materials, grid, periodic=periodic,
+            debye_spec=debye_spec, lorentz_spec=lorentz_spec)
+
         # Initialize dispersion with traced poles
         debye = None
         if debye_spec is not None:
             debye_poles_spec, debye_masks = debye_spec
-            debye = init_debye(debye_poles_spec, materials, dt, mask=debye_masks)
+            debye = init_debye(debye_poles_spec, materials, dt, mask=debye_masks, periodic=periodic)
 
         lorentz = None
         if lorentz_spec is not None:
             lorentz_poles_spec, lorentz_masks = lorentz_spec
-            lorentz = init_lorentz(lorentz_poles_spec, materials, dt, mask=lorentz_masks)
+            lorentz = init_lorentz(lorentz_poles_spec, materials, dt, mask=lorentz_masks, periodic=periodic)
 
         # Build sources and probes
         sources = []

@@ -46,6 +46,7 @@ import pytest
 from rfx import Simulation
 from rfx.observables import dft_field, field_energy, field_softmax
 from rfx.topology import density_to_material_fields
+from tests.contracts.path_equivalence.comparison import ACCUMULATED_RELATIVE
 
 try:
     from jax import enable_x64
@@ -481,7 +482,7 @@ def test_run_forward_dft_plane_parity():
     peak = np.max(np.abs(run_acc)) + 1e-30
     assert peak > 1e-20, "accumulator is empty -- source did not couple"
     rel_err = np.max(np.abs(run_acc - fwd_acc)) / peak
-    assert rel_err < 1e-5, (
+    assert rel_err <= ACCUMULATED_RELATIVE, (
         f"run() vs forward() dft_planes accumulator mismatch: rel_err={rel_err:.2e} "
         f"(run peak={np.max(np.abs(run_acc)):.4e}, forward peak={np.max(np.abs(fwd_acc)):.4e})"
     )

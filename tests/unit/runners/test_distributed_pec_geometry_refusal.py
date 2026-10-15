@@ -1,26 +1,4 @@
-"""What each distributed lane does with a declared PEC conductor.
-
-Both distributed runners used to assemble ``pec_mask`` and never apply it:
-their step bodies called the DOMAIN-FACE PEC alone. That gap predates #931.
-What #931 added was a refusal whose remedy told the user to redraw an
-unsupported sheet as a VOLUME — advice that on these lanes produced a run with
-the metal still missing and nothing to show for it. Measured before that fix:
-a two-device run probing inside a declared PEC Box returned a trace
-bit-identical to the same model with the Box deleted. So the refusal was
-widened to cover volumes too, and the remedy named what worked.
-
-#1053 closed the gap on the shard_map lane only. ``distributed_v2`` now shards
-``pec_mask`` and applies it in both step bodies at the #1041 ordering, so a
-declared PEC VOLUME runs there and is gated against the single-device lane by
-``test_distributed_v2_pec_body_seam.py``. Sheets and sub-cell wires own no
-cell, nothing on that lane carries them, and they are still refused.
-
-The pmap lane in ``rfx/runners/distributed.py`` never realized the mask, so
-its refusal covered all three kinds (#1055), and ``distributed_v2`` handed a
-one-device call to it. #1296 removed that runner: one device now runs the
-shard_map path on a one-device mesh, which realizes a volume there too and
-refuses sheets and wires with the same message it gives at two devices.
-"""
+"""Declared PEC volumes, sheets and wires on one- and two-device meshes."""
 # Simulate 2 devices on CPU. Must be set BEFORE importing JAX.
 import os  # noqa: I001
 
@@ -66,25 +44,6 @@ def _build(kind):
     return sim
 
 
-def _assert_shmap_remedy_is_honest(msg):
-    """The shard_map lane's message, after #1053.
-
-    Deliberately NOT the assertions above. "does NOT help" became false here
-    the moment the lane started realizing volumes, and a shared helper would
-    have forced the sentence to stay. What the message must still do is name
-    the kinds it refuses, say what DOES run, and point at a lane that realizes
-    everything.
-    """
-    assert "SHEETS" in msg and "WIRES" in msg, msg
-    assert "does NOT help" not in msg, (
-        "this lane realizes a declared PEC volume since #1053, so the message "
-        "must not still tell the user that redrawing as one is useless")
-    assert "#1053" in msg and "VOLUME" in msg, (
-        "the refusal must say that a declared PEC volume DOES run here, "
-        "otherwise it reads as a refusal of all declared PEC")
-    assert "sim.run()" in msg, msg
-
-
 def test_the_shmap_distributed_lane_realizes_a_declared_volume():
     """#1053 leg 4: the volume half of the refusal is gone because the metal
     is now there.
@@ -109,28 +68,21 @@ def test_the_shmap_distributed_lane_realizes_a_declared_volume():
 
 
 @pytest.mark.parametrize("kind", ["sheet", "wire"])
-def test_the_shmap_distributed_lane_refuses_a_sheet_and_a_wire(kind):
-    """Neither owns a cell, and the cell mask is the only carrier this lane
-    has, so both would be absent from every rank with no sign of it."""
-    if len(jax.devices()) < 2:
-        pytest.skip("need 2 virtual devices "
-                    "(XLA_FLAGS=--xla_force_host_platform_device_count=2)")
+@pytest.mark.parametrize("n_devices", [1, 2])
+def test_distributed_sheet_and_wire_match_single_device(kind, n_devices):
     from rfx.runners.distributed_v2 import run_distributed
+    from tests.unit.runners.test_distributed_v2_pec_body_seam import GATE
 
+    if len(jax.devices()) < n_devices:
+        pytest.skip("need two virtual CPU devices")
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        with pytest.raises(NotImplementedError) as excinfo:
-            run_distributed(_build(kind), n_steps=4)
-    msg = str(excinfo.value)
-    _assert_shmap_remedy_is_honest(msg)
-    assert ("PEC sheet(s)" if kind == "sheet" else "sub-cell wire(s)") in msg, (
-        f"the refusal must name what was declared; got: {msg}")
-
-    # the control: without the conductor the same model runs
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        res = run_distributed(_build("none"), n_steps=4)
-    assert res.time_series is not None
+        reference = np.asarray(_build(kind).run(n_steps=300, skip_preflight=True).time_series)
+        actual = np.asarray(run_distributed(_build(kind), n_steps=300,
+                            devices=jax.devices()[:n_devices]).time_series)
+    peak = np.max(np.abs(reference), axis=0)
+    assert np.all(peak > 0)
+    assert np.all(np.max(np.abs(actual - reference), axis=0) / peak < GATE)
 
 
 def test_the_one_device_path_runs_a_declared_volume():
@@ -155,15 +107,3 @@ def test_the_one_device_path_runs_a_declared_volume():
         f"the probe inside the declared PEC volume reads "
         f"{np.max(np.abs(inside)):.3e} against {np.max(np.abs(empty)):.3e} "
         "with the volume deleted: the one-device path dropped the metal")
-
-
-@pytest.mark.parametrize("kind", ["sheet", "wire"])
-def test_the_one_device_path_refuses_a_sheet_and_a_wire(kind):
-    """The same refusal, and the same message, as at two devices."""
-    from rfx.runners.distributed_v2 import run_distributed as shmap_run
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        with pytest.raises(NotImplementedError) as excinfo:
-            shmap_run(_build(kind), n_steps=4, devices=jax.devices()[:1])
-    _assert_shmap_remedy_is_honest(str(excinfo.value))

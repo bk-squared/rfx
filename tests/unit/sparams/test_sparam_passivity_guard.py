@@ -307,7 +307,8 @@ def test_public_waveguide_advisory_policy(monkeypatch, normalize, strict,
         "silent" if power <= 1.10 else "hard")
     with warnings.catch_warnings(record=True) as rec:
         warnings.simplefilter("always")
-        sim = build(np.linspace(4e9, 6e9, 6), dx=2e-3, cpml=8)
+        sim = build(np.linspace(4e9, 6e9, 6), dx=2e-3, cpml=8,
+                    boundary={"x": "cpml", "y": "pec", "z": "pec"})
         if strict and expected == "hard":
             with pytest.raises(ValueError, match="UNRELIABLE"):
                 sim.compute_waveguide_s_matrix(

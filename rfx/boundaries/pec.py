@@ -95,8 +95,32 @@ def resolve_wall_faces(grid, periodic, pec_axes=None):
     return frozenset(pec), magnetic_image_faces(pmc, grid.shape, periodic)
 
 
-def apply_pec_faces(state, faces: set[str]) -> object:
+def wall_edge_masks(shape, faces):
+    """Tangential E edges zeroed by ``apply_pec_faces``, including face rims.
+
+    The normal Ez high-z ghost row is excluded: it is storage cleanup,
+    not a tangential wall edge. Absorber backings are included only when
+    the caller explicitly supplies their faces; admission supplies PEC only.
+    """
+    masks = tuple(np.zeros(shape, dtype=bool) for _ in range(3))
+    for face in faces:
+        axis = "xyz".index(face[0])
+        plane = [slice(None)] * 3
+        plane[axis] = 0 if face.endswith("lo") else -1
+        for component, mask in enumerate(masks):
+            if component != axis:
+                mask[tuple(plane)] = True
+    return masks
+
+
+def apply_pec_faces(state, faces: set[str], *, frame=None, owned=None) -> object:
     """Apply PEC (E_tan = 0) on specific boundary faces.
+
+    Its tangential zero set is ``wall_edge_masks(state.ex.shape, faces)``;
+    the extra Ez high-z ghost cleanup below is excluded from that set.
+    ``frame`` maps axes to static (lo, hi) rows; only x may differ from
+    (0, n). ``owned`` selects each named face's write on its row only;
+    ``owned=None`` means the caller owns every named face (one device).
 
     Parameters
     ----------
@@ -106,6 +130,10 @@ def apply_pec_faces(state, faces: set[str]) -> object:
         ``"x_lo"``, ``"x_hi"``, ``"y_lo"``, ``"y_hi"``,
         ``"z_lo"``, ``"z_hi"``.
     """
+    from ._face_frame import apply_framed_faces, needs_face_frame
+
+    if needs_face_frame(state.ex.shape, faces, frame, owned):
+        return apply_framed_faces(state, faces, frame, owned)
     if not faces:
         return state
     ex, ey, ez = state.ex, state.ey, state.ez
@@ -155,7 +183,7 @@ def apply_pec_faces(state, faces: set[str]) -> object:
 # ---------------------------------------------------------------------------
 
 
-def _shift(arr, ax, periodic, direction):
+def _shift(arr, ax, periodic, direction, *, xp=jnp):
     """THE single spelling of the #689 boundary convention.
 
     ``direction=+1`` returns ``arr[i-1]`` (backward neighbour), ``-1``
@@ -166,6 +194,13 @@ def _shift(arr, ax, periodic, direction):
     second neighbour rule is this repo's recurring defect (#689/#690
     class); volume, sheet and wire realization all come through here.
     """
+    if xp is np:
+        shifted = np.roll(arr, direction, axis=ax)
+        if arr.shape[ax] > 1 and not periodic[ax]:
+            rim = [slice(None)] * arr.ndim
+            rim[ax] = 0 if direction > 0 else -1
+            shifted[tuple(rim)] = False
+        return shifted
     if arr.shape[ax] == 1 or periodic[ax]:
         return jnp.roll(arr, direction, axis=ax)
     return _shift_bwd(arr, ax) if direction > 0 else _shift_fwd(arr, ax)
@@ -191,6 +226,14 @@ class SheetSpec:
     # A physical in-plane interval distinguishes node 0 from its virtual
     # endpoint N until its edges have been enumerated.
     unwrapped_footprint: object | None = None
+    # Per axis: a boolean vector over that axis' nodes, True on the rows that
+    # lie ON a drawn face of the shape (``None`` = no drawn face there). Made
+    # with the footprint (``rasterize_grid.sheet_end_rows``); read by the
+    # finite-R_s sheet operator only -- a PEC sheet has no weight to adjust.
+    end_rows: tuple = (None, None, None)
+    # Per axis: None on the normal, (lo, hi, tol) in metres otherwise.
+    # Concrete axes append the index-wrap length as a fourth entry.
+    drawn: tuple | None = None
 
     @classmethod
     def from_node_ranges(cls, grid_shape, *, normal_axis: int, plane: int,
@@ -427,6 +470,103 @@ def _fold_sheet_nodes(mask, shape, *, edge_axis=None, xp=jnp):
     return mask
 
 
+def _sheet_pair_touches(left, right, axis, periodic):
+    """Drawn intervals authorize cross-sheet edges; indices retain legacy joins."""
+    if left.drawn is None or right.drawn is None:
+        return True
+    from rfx.core.jax_utils import is_tracer
+    a, b = left.drawn[axis], right.drawn[axis]
+    xp = jnp if any(is_tracer(v) for v in (*a, *b)) else np
+    shifts = (0.0,)
+    if periodic[axis] and left.footprint.shape[axis] > 1:
+        if len(a) < 4 and len(b) < 4:
+            raise ValueError("periodic drawn-sheet joins require the grid domain length")
+        length = a[3] if len(a) == 4 else b[3]
+        shifts = (0.0, length, -length)
+    gap = xp.minimum.reduce(xp.asarray([
+        xp.maximum(b[0] + shift - a[1], a[0] - b[1] - shift)
+        for shift in shifts]))
+    return gap <= xp.maximum(a[2], b[2])
+
+
+def _sheet_entry(sp, footprint):
+    """Cache a concrete plane view and occupied ranges once per realization."""
+    from rfx.core.jax_utils import is_tracer
+    ranges = None
+    if not is_tracer(footprint):
+        footprint = np.asarray(footprint)
+        view = footprint
+        if isinstance(sp.plane, (int, np.integer)):
+            plane = [slice(None)] * 3
+            plane[sp.normal_axis] = slice(sp.plane, sp.plane + 1)
+            view = footprint[tuple(plane)]
+        ranges = []
+        for t in range(3):
+            indices = np.flatnonzero(view.any(axis=tuple(a for a in range(3) if a != t)))
+            ranges.append((int(indices[0]), int(indices[-1])) if indices.size else (1, -1))
+        ranges = tuple(ranges)
+    return sp, footprint, ranges
+
+
+def _sheet_ranges_can_join(left, right, normal, axis, shape, periodic):
+    """Conservative occupied-index rejection, before array cross products."""
+    if left is None or right is None:
+        return True
+    transverse = 3 - normal - axis
+    if max(left[transverse][0], right[transverse][0]) > min(left[transverse][1], right[transverse][1]):
+        return False
+    shifts = (0, shape[axis], -shape[axis]) if periodic[axis] else (0,)
+    return any(max(right[axis][0] + shift - left[axis][1],
+                   left[axis][0] - right[axis][1] - shift) <= 1 for shift in shifts)
+
+
+def _sheet_plane_edges(entries, normal, axis, periodic, *, unwrapped=False):
+    """One edge rule; concrete planes and occupied ranges prune candidates.
+
+    Concrete plane views avoid full-grid temporaries. A traced/unknown plane
+    retains the full mask and pairs with every plane of this normal axis.
+    """
+    neighbour_periodic = (False, False, False) if unwrapped else periodic
+    from rfx.core.jax_utils import is_tracer
+    concrete = all(ranges is not None and isinstance(sp.plane, (int, np.integer))
+                   and not any(is_tracer(v) for row in (sp.drawn or ()) if row is not None for v in row)
+                   for sp, _, ranges in entries)
+    xp = np if concrete else jnp
+    edge = xp.zeros(entries[0][1].shape, dtype=bool)
+    by_plane, unknown, previous = {}, [], []
+    for sp, footprint, ranges in entries:
+        plane = sp.plane if isinstance(sp.plane, (int, np.integer)) else None
+        index = [slice(None)] * 3
+        if concrete:
+            index[normal] = slice(plane, plane + 1)
+        index = tuple(index)
+        view = footprint[index]
+        shifted = None if axis == normal else _shift(view, axis, neighbour_periodic, -1, xp=xp)
+        own = view if axis == normal else view & shifted
+        if concrete:
+            edge[index] |= own
+        else:
+            edge = edge | own
+        candidates = previous if plane is None else by_plane.get(plane, []) + unknown
+        if axis != normal:
+            for other, other_view, other_shifted, other_ranges in candidates:
+                if not _sheet_ranges_can_join(ranges, other_ranges, normal, axis,
+                                              footprint.shape, neighbour_periodic):
+                    continue
+                touch = _sheet_pair_touches(sp, other, axis, periodic)
+                if isinstance(touch, (bool, np.bool_)) and not touch:
+                    continue
+                cross = (view & other_shifted) | (other_view & shifted)
+                if concrete:
+                    edge[index] |= cross & touch
+                else:
+                    edge = edge | (cross & touch)
+        item = (sp, view, shifted, ranges)
+        previous.append(item)
+        (unknown if plane is None else by_plane.setdefault(plane, [])).append(item)
+    return edge
+
+
 def _unwrapped_sheet_edge_masks(sheets, shape, periodic):
     """Union physical footprints before folding their endpoint nodes."""
     per_axis = {}
@@ -452,16 +592,17 @@ def _unwrapped_sheet_edge_masks(sheets, shape, periodic):
             if tuple(raw.shape) != tuple(full.shape):
                 raise ValueError("SheetSpec unwrapped footprint does not match the periodic grid")
             full = raw & full
-        per_axis[a] = full if a not in per_axis else (per_axis[a] | full)
+        per_axis.setdefault(a, []).append(_sheet_entry(sp, full))
     edge = [None, None, None]
-    for a, full in per_axis.items():
+    for a, entries in per_axis.items():
         for t in range(3):
             if t == a:
                 if shape[a] != 1:
                     continue
-                mask = _fold_sheet_nodes(full, shape)
+                mask = _fold_sheet_nodes(
+                    _sheet_plane_edges(entries, a, t, periodic, unwrapped=True), shape)
             else:
-                mask = full & _shift(full, t, (False, False, False), -1)
+                mask = _sheet_plane_edges(entries, a, t, periodic, unwrapped=True)
                 mask = _fold_sheet_nodes(mask, shape, edge_axis=t)
             edge[t] = mask if edge[t] is None else (edge[t] | mask)
     return edge
@@ -470,13 +611,9 @@ def _unwrapped_sheet_edge_masks(sheets, shape, periodic):
 def _sheet_edge_masks(sheets, shape, periodic):
     """§1.3: E_t (t != normal) on the sheet plane, both end nodes in F.
 
-    Footprints are UNIONED per normal axis BEFORE the edge rule (two
-    abutting sheets realize seamlessly; a per-sheet application would leave
-    the shared edge live — a slit).  Because a footprint is a full-shape
-    mask that is non-zero only on its own plane and the end-node shift runs
-    along an IN-PLANE axis, the per-axis union is exactly the per-(axis,
-    plane) union the design note asks for, and sheets on adjacent planes
-    stay two films with the normal edge between them live (#690).
+    Each sheet owns its internal edges. Cross-sheet edges require touching
+    drawn extents along that edge's axis; index declarations retain the
+    legacy union. Full footprints isolate different normal planes (#690).
 
     On a length-1 normal axis (the 2-D lane) the region has no thickness
     direction, so the "normal" component is not a through-sheet edge: it
@@ -497,14 +634,15 @@ def _sheet_edge_masks(sheets, shape, periodic):
                 f"SheetSpec footprint shape {tuple(fp.shape)} does not match the "
                 f"grid shape {tuple(shape)}")
         a = sp.normal_axis
-        per_axis[a] = fp if a not in per_axis else (per_axis[a] | fp)
-    for a, F in per_axis.items():
+        per_axis.setdefault(a, []).append(_sheet_entry(sp, fp))
+    for a, entries in per_axis.items():
         for t in range(3):
             if t == a:
                 if shape[a] == 1:
-                    edge[t] = F if edge[t] is None else (edge[t] | F)
+                    m = _sheet_plane_edges(entries, a, t, periodic)
+                    edge[t] = m if edge[t] is None else (edge[t] | m)
                 continue
-            m = F & _shift(F, t, periodic, -1)
+            m = _sheet_plane_edges(entries, a, t, periodic)
             edge[t] = m if edge[t] is None else (edge[t] | m)
     return edge
 
@@ -829,6 +967,19 @@ def apply_pec_h_mask(state, pec_mask=None, *,
         hx=state.hx * keep_hx,
         hy=state.hy * keep_hy,
         hz=state.hz * keep_hz,
+    )
+
+
+def apply_edge_keep(state, keep):
+    """Multiply E by the model's published conductor edge weight.
+
+    The weight is cast to the field's type first (a no-op at float32), so a
+    half-precision field stays half precision.
+    """
+    return state._replace(
+        ex=state.ex * keep[0].astype(state.ex.dtype),
+        ey=state.ey * keep[1].astype(state.ey.dtype),
+        ez=state.ez * keep[2].astype(state.ez.dtype),
     )
 
 

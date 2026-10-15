@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 
-from rfx.harminv import _fit_mode_amplitudes, harminv
+from rfx.harminv import _fit_mode_amplitudes, matrix_pencil
 
 
 @pytest.mark.parametrize("real_signal", [False, True])
@@ -15,7 +15,7 @@ def test_amplitude_and_phase_use_the_input_origin_with_conjugates(real_signal, s
                  for f, q, a, phase in truth)
     if real_signal:
         signal = signal.real
-    modes = sorted(harminv(signal, dt, 0.6e9, 1.4e9), key=lambda m: m.freq)
+    modes = sorted(matrix_pencil(signal, dt, 0.6e9, 1.4e9), key=lambda m: m.freq)
     assert len(modes) == len(truth)
     for mode, (f, q, a, phase) in zip(modes, truth):
         coefficient = a * np.exp((-np.pi * f / q + 2j * np.pi * f) * start * dt + 1j * phase)
@@ -32,7 +32,7 @@ def test_unreported_pole_still_participates_in_the_amplitude_fit():
     times = np.arange(512) * dt
     signal = (0.01 * np.exp((-np.pi * 1e9 / 100 + 2j * np.pi * 1e9) * times)
               + np.exp((-np.pi * 1.3e9 / 10 + 2j * np.pi * 1.3e9) * times))
-    modes = harminv(signal, dt, 0.9e9, 1.1e9)
+    modes = matrix_pencil(signal, dt, 0.9e9, 1.1e9)
     assert len(modes) == 1  # 1.3 GHz lies outside the expanded report band
     assert modes[0].freq == pytest.approx(1e9, rel=1e-7)
     assert modes[0].amplitude == pytest.approx(0.01, rel=1e-7)

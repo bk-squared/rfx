@@ -57,18 +57,19 @@ def test_old_ulp_cutoffs_inside_the_node_band_do_not_add_a_cell(k: int) -> None:
 
 
 def test_the_ulp_budget_remains_a_floor_for_large_cell_counts() -> None:
-    """At a million cells 14 ULP exceeds 1e-9 cell but fits the old budget."""
+    """The solver-width contribution is capped at 5e-4 cell."""
     r = _ratio(1000000, 14)
     assert r - 1000000 > NODE_TIE_REL
     assert cells_spanning(r * DX, DX, ulp_budget=CELL_COUNT_ULP_BUDGET) == 1000000
-    assert cells_spanning(r * DX, DX, ulp_budget=1) == 1000001
+    assert cells_spanning((1000000.0 + 2e-3) * DX, DX, ulp_budget=1) == 1000001
 
 
 @pytest.mark.parametrize("outside,expected", [(False, 232), (True, 233)])
 def test_the_node_band_boundary_keeps_a_real_overhang(outside, expected) -> None:
-    """Representable lengths bracket the shared 1e-9-cell band."""
-    length = np.nextafter(232 + NODE_TIE_REL, np.inf if outside else 232)
-    assert (length - 232 > NODE_TIE_REL) == outside
+    """Lengths bracket the coordinate-dependent solver-width band."""
+    band = 1e-9 + 4 * float(np.finfo(np.float32).eps) * 232
+    length = 232 + (1.01 if outside else 0.99) * band
+    assert (length - 232 > band) == outside
     assert cells_spanning(length, 1.0) == expected
 
 
@@ -110,12 +111,19 @@ def test_a_genuine_half_cell_still_takes_the_cell() -> None:
 @pytest.mark.parametrize("excess,label", [
     (0.01, "a hundredth of a cell"),
     (1e-6 * 232, "one part in a million of the length"),
-    (1e-9 * 232, "one part in a billion of the length"),
 ])
 def test_a_declared_sub_cell_overhang_still_takes_the_cell(
         excess: float, label: str) -> None:
-    """The smallest overhang is 2.32e-7 cells, 232 times the #1138 band."""
+    """Both overhangs exceed the solver-width band."""
     assert cells_spanning((232.0 + excess) * DX, DX) == 233, label
+
+
+@pytest.mark.parametrize("length,dx,expected", [
+    ((232 + 1e-9 * 232) * DX, DX, 232),
+    (30 * 1.524e-3, float(np.float32(1.524e-3 / 4)), 120),
+])
+def test_a_float32_width_overhang_is_dust(length, dx, expected):
+    assert cells_spanning(length, dx) == expected
 
 
 def test_a_large_domain_keeps_dust_but_not_a_real_overhang() -> None:

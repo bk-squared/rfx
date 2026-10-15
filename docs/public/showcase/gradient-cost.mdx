@@ -2,7 +2,7 @@
 title: "What does a gradient cost?"
 description: "Wall time and memory of the value and gradient against a forward run, for design regions of 12,400 to 43,008 cells on one GPU."
 sidebar:
-  order: 3
+  order: 4
 ---
 
 The patch model above has 1.98 million cells and runs 9,912 time steps. On one
@@ -24,7 +24,7 @@ holds 12,400, 20,592 or 43,008 cells.
 
 Memory. The reverse pass keeps a per-step record for the cells of the design
 box, so peak device memory rises from 0.44–0.45 GB for a forward run to 4.7,
-7.6 and 15.5 GB. For larger regions, [Reduce Memory Use](/rfx/guide/memory-reduction/)
+7.6 and 15.5 GB. For larger regions, [Reduce Memory Use](/rfx/run/memory-and-speed/)
 explains checkpointing, which trades recomputation for memory.
 
 <p data-rfx="note">The central-difference column is not measured: it is 2 × N × the measured forward time.</p>

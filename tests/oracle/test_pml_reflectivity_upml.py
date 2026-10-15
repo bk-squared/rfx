@@ -126,9 +126,13 @@ def _upml_reflection_db_vs_clean_reference(f0, freq_max, n_layers, n_steps,
 # Oracle 2 helper: INTERIOR (non-PML) energy decay after source-off.
 # --------------------------------------------------------------------------- #
 def _upml_interior_energy_decay_db(n_layers, *, boundary="upml", f0=2e9,
-                                   freq_max=3e9, domain=0.12, n_src=200,
+                                   freq_max=3e9, domain=0.12, n_src=None,
                                    n_relax=600):
     """Energy in the interior (non-PML) cells: ratio of final to post-source.
+
+    The source is driven over the whole pulse, to t0 + 4.5*tau (``n_src=None``):
+    a drive cut earlier leaves the cut pulse's time integral as a static field
+    in the interior, which no absorber removes (issue 1668).
 
     A working absorber lets outgoing waves LEAVE the domain, so interior energy
     decays. A reflecting boundary (``boundary='pec'``, or a sigma=0 "dead" UPML
@@ -142,6 +146,8 @@ def _upml_interior_energy_decay_db(n_layers, *, boundary="upml", f0=2e9,
     coeffs = init_upml(grid, materials, axes="xyz") if boundary == "upml" else None
     cx, cy, cz = grid.nx // 2, grid.ny // 2, grid.nz // 2
     dt, dx = grid.dt, grid.dx
+    if n_src is None:
+        n_src = int(np.ceil((pulse.t0 + 4.5 * pulse.tau) / dt)) + 1
 
     # Interior = the non-PML core. For the PEC control keep a 2-cell margin so
     # the two boundaries integrate a comparable interior volume.
@@ -209,8 +215,9 @@ def test_upml_reflection_floor_regression():
 def test_upml_interior_energy_decay():
     """A healthy UPML drains interior energy after the source stops.
 
-    Measured on current main (2026-07-20): 12-layer -17.4 dB, 8-layer -19.5 dB.
-    The -12 dB gate sits ~5 dB above the 12-layer floor. The falsifier that this
+    Measured on current main (2026-07-20): 12-layer -17.4 dB, 8-layer -19.5 dB,
+    with the drive cut at 200 steps. Re-measured 2026-10-12 with the drive over
+    the whole pulse (252 steps): 12-layer -14.0 dB. The -12 dB gate is unchanged. The falsifier that this
     gate is not vacuous is ``..._discriminates_dead_absorber`` below (a sigma=0
     UPML and a PEC box stay near 0 dB and fail this same gate).
     """

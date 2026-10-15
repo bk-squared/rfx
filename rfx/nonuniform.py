@@ -18,28 +18,36 @@ per-axis inverse spacing arrays. Fully JIT-compiled via jax.lax.scan.
 
 from __future__ import annotations
 
+from rfx.measurement import (graded_acc_indices, graded_accumulators, graded_s_ports, graded_specs,
+                             init_graded_records)
+
 from functools import partial
 from types import SimpleNamespace
 
 from typing import NamedTuple
 
 from rfx import _realized
+from rfx.boundaries.axes import padded_axes, resolve_cpml_axes
+from rfx.boundaries.depths import resolve_face_depths
 
 import jax
 import jax.numpy as jnp
+
+from rfx.core.drives import drive_layout
+from rfx.model.source_coefficients import drive_table
+from rfx.measurement import assemble_graded_result as _assemble_nu_result
+from rfx.model import current_source_samples, with_edge_keep
 import numpy as np
 
 from rfx.core.yee import (
     FDTDState, MaterialArrays, init_state,
-    update_h_nu, update_e_nu, EPS_0, MU_0,
+    EPS_0, MU_0,
 )
 from rfx.boundaries.pec import (
-    apply_pec_faces,
-    apply_pec_edges,
-    apply_pec_occupancy,
     realized_pec_edge_masks,
 )
 from rfx.core.jax_utils import is_tracer, recorded_scan
+from rfx.stepping import segmented_scan
 from rfx._grid_metric import (
     DECLARED_SPAN_TOL_M,
     axis_name as _axis_name,
@@ -48,600 +56,43 @@ from rfx._grid_metric import (
     normalize_axis as _normalize_axis,
 )
 
-C0 = 1.0 / np.sqrt(float(EPS_0) * float(MU_0))
-
-
-class NonUniformGrid(NamedTuple):
-    """Non-uniform grid with per-axis cell-size arrays.
-
-    ``dx`` / ``dy`` are the BOUNDARY cell sizes (used by CPML and any
-    legacy code that reads a scalar spacing); ``dx_arr`` / ``dy_arr`` /
-    ``dz`` hold the per-cell spacings. In the uniform-xy case,
-    ``dx_arr`` is ``jnp.full(nx, dx)`` and ``dy_arr`` is analogous.
-
-    ``pad_{axis}_{lo|hi}`` mirror ``rfx.grid.Grid`` per-face padding —
-    a face whose token is ``pmc``/``pec``/``periodic`` gets 0 cells on
-    that side even when the axis as a whole uses CPML. For back-compat
-    the six fields default to ``cpml_layers`` on every face (the
-    pre-per-face-allocation symmetric layout).
-    """
-    nx: int
-    ny: int
-    nz: int
-    dx: float              # BOUNDARY x cell size (CPML + legacy scalars)
-    dy: float              # BOUNDARY y cell size
-    dx_arr: jnp.ndarray    # (nx,) — per-cell dx (includes CPML padding)
-    dy_arr: jnp.ndarray    # (ny,) — per-cell dy
-    dz: jnp.ndarray        # (nz,) z cell sizes (already per-cell)
-    dt: float | jax.Array  # timestep; eager float in normal use, traced
-                           # jax.Array on the run_nonuniform traced path.
-                           # Readers must not apply float() / .item() without
-                           # an is_tracer(dt) guard or a host-boundary context.
-    cpml_layers: int
-    # Cell-size arrays are padded AND carry one trailing duplicate cell so N
-    # cells are bounded by N+1 E-nodes (#562, see _append_bounding_node). The
-    # duplicate is a node-provider, not physical extent: its H term is the one
-    # the stencil zeroes. Read extents from node positions
-    # (coords_from_nonuniform_grid, or cumsum edges up to index nx-1) — NEVER
-    # from sum(dx_arr), which overshoots by that trailing cell.
-    # Pre-computed inverse spacing arrays (length N, padded).
-    # CORE-C2: inv_d* feed the E update (mean spacing), inv_d*_h feed
-    # the H update (local cell width). See _profile_to_inv_arrays.
-    inv_dx: jnp.ndarray    # (nx,) — E update: 2/(dx[i-1]+dx[i]); [0]=1/dx[0]
-    inv_dy: jnp.ndarray    # (ny,) — E update: 2/(dy[j-1]+dy[j]); [0]=1/dy[0]
-    inv_dz: jnp.ndarray    # (nz,) — E update: 2/(dz[k-1]+dz[k]); [0]=1/dz[0]
-    inv_dx_h: jnp.ndarray  # (nx,) — H update: 1/dx[i]; [nx-1]=0
-    inv_dy_h: jnp.ndarray  # (ny,) — H update: 1/dy[j]; [ny-1]=0
-    inv_dz_h: jnp.ndarray  # (nz,) — H update: 1/dz[k]; [nz-1]=0
-    # Per-face CPML padding (PMC+CPML composition fix, 2026-04)
-    pad_x_lo: int = 0
-    pad_x_hi: int = 0
-    pad_y_lo: int = 0
-    pad_y_hi: int = 0
-    pad_z_lo: int = 0
-    pad_z_hi: int = 0
-    # Exact float64 copies of the padded cell-size profiles (#802/#807).
-    # The node-position spine (coords_from_nonuniform_grid) reads these, so
-    # realized geometry does not inherit the float32 quantization of the
-    # solver-facing stores above — a cumsum of f32-widened cell sizes lands
-    # ~1e-10 m off the exact node positions, which flips half-open inclusion
-    # at node-aligned faces and splits the one-cell-sheet plane between the
-    # uniform and NU lanes. Populated by make_nonuniform_grid on the
-    # concrete path only (None when the profile is traced, and on grids
-    # built by hand — the coordinate producer then widens the f32 store,
-    # the pre-#802 values, and emits ExactNodeSpineMissingWarning so the
-    # degraded node line is never silent). Solver arithmetic keeps reading
-    # the float32 fields; both derive from the same padded profile at
-    # construction, so they cannot drift independently.
-    dx_arr_f64: np.ndarray | None = None
-    dy_arr_f64: np.ndarray | None = None
-    dz_f64: np.ndarray | None = None
-    face_layers: dict[str, int] | None = None
-
-    @property
-    def shape(self):
-        """Grid shape (nx, ny, nz) — duck-typing compatible with Grid."""
-        return (self.nx, self.ny, self.nz)
-
-    @property
-    def axis_pads(self):
-        """Leading (``lo``) per-axis pad — the number coordinate-offset
-        callers subtract from array indices to recover user coords."""
-        return (self.pad_x_lo, self.pad_y_lo, self.pad_z_lo)
-
-    # ------------------------------------------------------------------
-    # Grid metric interface (step 0a, design note
-    # docs/design_notes/20260922_nu_grid_core_predeclaration.md decision 2).
-    #
-    # THE CONVENTION -- index origin, the primal/dual rule, the end entries
-    # of ``inv_d_e`` / ``inv_d_h``, and which consumer is entitled to which
-    # metric -- is written once, in ``rfx/_grid_metric.py``. Read that module
-    # before adding a metric formula at a call site.
-    #
-    # ``rfx.grid.Grid`` carries the same seven methods with the same meaning,
-    # so a consumer can hold either class and never branch on its type. 0a
-    # adds the interface only: no consumer moves onto it here, and the scalar
-    # ``dx`` / ``dy`` fields keep their present meaning (the BOUNDARY cell).
-    #
-    # Source of truth (decision 1): the float64 cell arrays
-    # ``dx_arr_f64`` / ``dy_arr_f64`` / ``dz_f64``. ``make_nonuniform_grid``
-    # fills all three for every CONCRETE axis, and re-checks that the cells
-    # it realized between the declared domain faces sum to the declared
-    # profile. Nodes, duals and both inverse-metric arrays are derived from
-    # the cells; none of them is stored independently.
-    # ------------------------------------------------------------------
-
-    def _axis_layout(self, axis) -> tuple[int, int, int, int]:
-        """``(axis_index, n, pad_lo, pad_hi)`` for a normalized axis."""
-        ax = _normalize_axis(axis)
-        n = (self.nx, self.ny, self.nz)[ax]
-        pad_lo = (self.pad_x_lo, self.pad_y_lo, self.pad_z_lo)[ax]
-        pad_hi = (self.pad_x_hi, self.pad_y_hi, self.pad_z_hi)[ax]
-        return ax, int(n), int(pad_lo), int(pad_hi)
-
-    def _axis_store(self, axis):
-        """The solver-facing float32 cell store for ``axis``."""
-        return (self.dx_arr, self.dy_arr, self.dz)[_normalize_axis(axis)]
-
-    def _axis_exact(self, axis):
-        """The float64 cell spine for ``axis``, or ``None`` if absent."""
-        return (self.dx_arr_f64, self.dy_arr_f64,
-                self.dz_f64)[_normalize_axis(axis)]
-
-    def is_traced(self, axis) -> bool:
-        """Whether ``axis``'s cell widths are a JAX tracer (decision 6).
-
-        True on the mesh-as-design-variable path, where the profile is a
-        trace leaf and has no host copy. A traced axis still steps the solver
-        and still differentiates; what it cannot do is answer a host-side
-        structural question, which is why ``index_of`` refuses on it.
-        """
-        return bool(is_tracer(self._axis_store(axis)))
-
-    def cells(self, axis) -> np.ndarray:
-        """PRIMAL cell widths along ``axis``, full padded length ``n``.
-
-        float64 on the host for a concrete axis -- the float64 spine, which
-        is the source of truth (decision 1), NOT the float32 solver store.
-        A traced axis returns its tracer unchanged, in jnp.
-
-        The last entry is the bounding-node duplicate (#562): it supplies the
-        ``N+1``-th E node and carries no physical extent, so ``sum(cells)``
-        overshoots the realized wall-to-wall extent by one cell. Read extents
-        from ``node_of`` or ``interior_cells``.
-
-        A spine whose length disagrees with the axis is REFUSED rather than
-        returned: the spine and the float32 store are two views of one padded
-        profile, so a length mismatch means they are not, and every node
-        derived from it would sit at the wrong index. A MISSING spine is a
-        different case, handled below.
-
-        A grid built by hand (the ``NonUniformGrid(...)`` constructor called
-        directly, rather than ``make_nonuniform_grid``) may carry no spine.
-        It then gets the float32 store widened back to float64 AND an
-        ``ExactNodeSpineMissingWarning``, the same degraded line and the same
-        warning ``coords_from_nonuniform_grid`` emits -- silently falling
-        back is the #802 realization with no trace of why.
-        """
-        ax, n, _pad_lo, _pad_hi = self._axis_layout(axis)
-        store = self._axis_store(ax)
-        if is_tracer(store):
-            return store
-        exact = self._axis_exact(ax)
-        if exact is not None and np.asarray(exact).shape != (n,):
-            raise ValueError(
-                f"axis {_axis_name(ax)!r} declares {n} cells but its float64 "
-                f"spine holds {np.asarray(exact).shape}. The spine and the "
-                "solver's float32 store are two views of one padded profile; "
-                "a length that disagrees with the axis means they are not, "
-                "and every node position derived from the spine would sit at "
-                "the wrong index. Rebuild the grid with make_nonuniform_grid."
-            )
-        if exact is None or np.asarray(exact).dtype != np.float64:
-            import warnings
-            from rfx.geometry.rasterize_grid import (
-                ExactNodeSpineMissingWarning,
-            )
-            warnings.warn(
-                f"NonUniformGrid axis {_axis_name(ax)!r} has no float64 "
-                "cell spine; cells() widened the float32 store instead. Node "
-                "positions derived from it carry the pre-#802 quantization "
-                "(~1e-10 m), which flips half-open inclusion at node-aligned "
-                "faces. Build the grid with make_nonuniform_grid.",
-                ExactNodeSpineMissingWarning, stacklevel=2)
-            return np.asarray(store, dtype=np.float64)
-        return np.asarray(exact, dtype=np.float64)
-
-    def duals(self, axis) -> np.ndarray:
-        """DUAL (E-node) spacings along ``axis``.
-
-        ``dual[0] = d[0]``, ``dual[k] = (d[k-1]+d[k])/2`` -- the control
-        volume an E node's material acts over, and the metric the NU E update
-        divides its curl by. float64 for a concrete axis; a traced axis goes
-        through ``e_node_dual_spacings`` so the gradient survives.
-
-        Reproduces ``e_node_dual_spacing_at(grid.cells(axis), k)`` for every
-        ``k`` bit for bit. Against the float32 solver store the two spellings
-        agree only to float32 roundoff -- that gap is the store's, not the
-        rule's, and it is why the accessor reads the spine.
-        """
-        d = self.cells(axis)
-        if is_tracer(d):
-            return e_node_dual_spacings(d)
-        return _dual_spacings_from_cells(d)
-
-    def index_of(self, axis, x: float) -> int:
-        """Padded index of the node nearest physical coordinate ``x``.
-
-        Refuses on a traced axis (decision 6, closes G9). The existing
-        ``position_to_index`` answers there by substituting a NOMINAL uniform
-        mesh of ``fallback_dx`` cells and returns an index for a mesh the
-        solver is not running -- silently the wrong cell whenever the traced
-        profile is graded. That fallback stays in ``position_to_index`` for
-        0a because consumers still call it; 0b retires it as each consumer
-        moves onto this accessor.
-
-        Which node (#1295, #1342): the nearest one by float64 distance, and
-        at a tie (two distances agreeing to 1e-9 of the local cell) the
-        LOWER one -- ``nearest_node_index``, the function the sheet snap
-        itself calls, on the node line the conductors are rasterized on
-        (``_axis_node_positions`` of the float64 spine: the closed form
-        ``(i - pad_lo) * cell`` on a constant axis, the cumulative sum on a
-        graded one). A port, source or probe and a sheet declared at the
-        same coordinate therefore land on the same node, bit for bit.
-        ``position_to_index`` and ``pos_to_nu_index`` resolve through the
-        same function. The uniform ``Grid`` still rounds an exact tie to the
-        even node until #1342.
-
-        A coordinate outside the interior span is REFUSED, as on the uniform
-        grid. ``_axis_position_to_index`` clamps instead: ``argmin`` over the
-        edge list always returns some index, so asking for a position a metre
-        outside a 6 mm domain silently gives the last face and the caller
-        stamps its material there. That legacy clamp stays where it is for
-        0a -- consumers still call ``position_to_index`` -- and 0b retires it
-        as each consumer moves onto this accessor.
-
-        The bound is the interior, ``[node_of(pad_lo), node_of(last interior
-        node)]``, because that is the range the edge list can represent; a
-        coordinate inside an absorber pad has no interior node to name. The
-        comparison carries ``DECLARED_SPAN_TOL_M`` (1e-12 m) of slack at
-        each end. That is not a fudge factor: it is the node tolerance the
-        mesh builder itself claims. ``make_band_profile`` guarantees that
-        every declared interface lands on a cumulative node coordinate to
-        1e-12 m and that the cells sum to the declared span to the same
-        figure, and ``assert_cells_span_declared_profile`` holds the
-        constructor to it. A grid that only places a node to 1e-12 m cannot
-        tell a coordinate 1e-13 m past the face from the face, so refusing
-        one would be refusing a distinction the grid does not make. Outside
-        that band the refusal is exact.
-
-        That figure grows with the column: the builder documents 1e-11 m on
-        a 10 m column of 1e5 cells. On a board or a waveguide, the sizes
-        this lane meshes, 1e-12 m is the right order. A caller meshing
-        metres should read the builder's guarantee before trusting the
-        boundary case.
-        """
-        ax, _n, pad_lo, pad_hi = self._axis_layout(axis)
-        if self.is_traced(ax):
-            raise ValueError(
-                f"index_of: axis {_axis_name(ax)!r} carries a TRACED cell "
-                "profile (mesh-as-design-variable), so a physical coordinate "
-                "cannot be resolved to an index on the host. The nominal "
-                "uniform fallback the old position_to_index used returns an "
-                "index for a mesh the solver is not running (gap G9). "
-                "Resolve structural positions before tracing the mesh, or "
-                "pass the index directly."
-            )
-        nodes, cells = self._node_line(ax)
-        pos = float(x)
-        lo, hi = float(nodes[0]), float(nodes[-1])
-        if not (lo - DECLARED_SPAN_TOL_M <= pos <= hi + DECLARED_SPAN_TOL_M):
-            raise ValueError(
-                f"position {pos} on axis {_axis_name(ax)!r} lies outside "
-                f"this axis's interior span [{lo}, {hi}] m. Check the "
-                f"coordinate lies inside the simulation domain."
-            )
-        return _nearest_on_line(nodes, cells, pos) + pad_lo
-
-    def _node_line(self, axis):
-        """``(nodes, cells)`` a coordinate on a CONCRETE ``axis`` resolves on.
-
-        ``nodes`` are the INTERIOR entries of ``_axis_node_positions`` on the
-        float64 spine -- the node coordinates ``coords_from_nonuniform_grid``
-        gives the rasterizer, first interior node at 0 -- and ``cells`` the
-        interior cells between them.
-        """
-        from rfx.geometry.rasterize_grid import _axis_node_positions
-        ax, n, pad_lo, pad_hi = self._axis_layout(axis)
-        d = self.cells(ax)
-        nodes = _axis_node_positions(d, pad_lo)[pad_lo:n - pad_hi]
-        return nodes, interior_cells(d, pad_lo, pad_hi)
-
-    def node_of(self, axis, i: int):
-        """Physical coordinate of the E node at padded index ``i``.
-
-        Origin at the first interior node, so ``node_of(axis, pad_lo) ==
-        0.0``. Derived from the cells by cumulative sum, except that a
-        CONSTANT axis takes the closed form ``(i - pad_lo) * d[0]`` -- which
-        is what keeps a uniform-valued NU axis bit-identical to the uniform
-        lane's own node line (#807). Both branches are
-        ``_axis_node_positions``, so this equals
-        ``coords_from_nonuniform_grid(grid).<axis>[i]`` bit for bit.
-
-        A traced axis returns a traced scalar (jnp cumulative sum), the same
-        arithmetic ``coords_from_nonuniform_grid`` runs in-trace.
-
-        Cost: this builds the whole axis to return one entry, because reusing
-        the spine producer is what makes the answer bit-identical to the
-        coordinate arrays. Nothing calls it in a loop in 0a. A consumer in 0b
-        that needs many nodes asks ``coords_from_nonuniform_grid`` once, or
-        this grows a cached array -- not a second spelling of the arithmetic.
-        """
-        ax, n, pad_lo, _pad_hi = self._axis_layout(axis)
-        idx = int(i)
-        if not (0 <= idx < n):
-            raise IndexError(
-                f"padded index {idx} is outside axis {_axis_name(ax)!r}, "
-                f"which has {n} entries"
-            )
-        d = self.cells(ax)
-        if is_tracer(d):
-            d_j = jnp.asarray(d)
-            cum = jnp.concatenate(
-                [jnp.zeros((1,), dtype=d_j.dtype), jnp.cumsum(d_j)])
-            return cum[idx] - cum[pad_lo]
-        from rfx.geometry.rasterize_grid import _axis_node_positions
-        return float(_axis_node_positions(d, pad_lo)[idx])
-
-    def boundary_cell(self, axis, side: str):
-        """The cell width at the ``"lo"`` or ``"hi"`` face of ``axis``.
-
-        The number a CPML profile is entitled to calibrate against, per face.
-        ``make_nonuniform_grid`` pins the first and last interior cells of x
-        and y to the scalar ``dx`` / ``dy`` and pads each face with copies of
-        them, so on a built grid both sides equal that scalar; z has no
-        scalar and this is the only way to ask.
-
-        ``cpml.py`` fills all six of its per-face slots from the ONE scalar
-        today (G11). 0b replaces that with this accessor.
-        """
-        if side not in ("lo", "hi"):
-            raise ValueError(f"side must be 'lo' or 'hi', got {side!r}")
-        d = self.cells(axis)
-        entry = d[0] if side == "lo" else d[-1]
-        return entry if is_tracer(d) else float(entry)
-
-    def is_constant(self, axis) -> bool:
-        """Whether every cell on ``axis`` has the same width.
-
-        The predicate decision 4 selects the uniform kernel on, instead of
-        "was a profile given" (``rfx/api/_mesh.py:152-156``).
-
-        A TRACED axis returns ``False``. Constancy is not decidable on the
-        host there, and ``False`` is the safe direction: it routes the axis
-        to the non-uniform kernel, which is correct for a constant mesh too,
-        whereas ``True`` would hand a possibly graded mesh to a kernel that
-        folds one scalar.
-        """
-        d = self._axis_store(axis)
-        if is_tracer(d):
-            return False
-        arr = self.cells(axis)
-        return bool(arr.size and np.all(arr == arr[0]))
-
-
-
-
-
-def _pad_profile(profile, pad_lo: int, pad_hi: int | None = None):
-    """Pad a 1-D cell-size profile with CPML cells on each end.
-
-    ``pad_lo`` and ``pad_hi`` may differ (per-face allocation, 2026-04 —
-    a PMC/PEC face gets 0 cells on that side while the opposing CPML
-    face keeps its allocation). If ``pad_hi`` is omitted the symmetric
-    ``pad_lo`` count is used on both ends (pre-per-face-allocation behaviour).
-
-    CPML uses constant spacing matching the boundary cell size, so the
-    ``pad_lo`` cells on the leading side carry ``profile[0]`` and the
-    ``pad_hi`` cells on the trailing side carry ``profile[-1]``.
-
-    When ``profile`` is a JAX tracer the padding stays in-trace (needed
-    for ``jax.grad`` w.r.t. ``dz_profile`` — mesh-as-design-variable).
-    Otherwise the numpy path is used, preserving the Python-float ``dt``
-    that Simulation-level callers depend on.
-    """
-    if pad_hi is None:
-        pad_hi = pad_lo
-    if is_tracer(profile):
-        prof = jnp.asarray(profile, dtype=jnp.float32)
-        lo_pad = jnp.full(pad_lo, prof[0])
-        hi_pad = jnp.full(pad_hi, prof[-1])
-        return jnp.concatenate([lo_pad, prof, hi_pad])
-    lo_pad = np.full(pad_lo, float(profile[0]))
-    hi_pad = np.full(pad_hi, float(profile[-1]))
-    return np.concatenate([lo_pad, np.asarray(profile, dtype=np.float64), hi_pad])
-
-
-def _append_bounding_node(profile_full):
-    """Append one duplicate boundary cell so an N-cell profile yields N+1
-    E-nodes — the node count the uniform ``Grid`` allocates for N cells.
-
-    N cells are bounded by N+1 nodes, and the E-nodes this grid steps sit on
-    cell EDGES (``inv_d_e[i] = 2/(d[i-1]+d[i])`` is the dual spacing of an
-    edge-centred node). Without this the array carried only N nodes, the
-    stencil zeroed the last cell's H term (``inv_d_h[N-1] = 0``), and the
-    realized wall-to-wall extent came out ``sum(d) - d[-1]`` — one cell
-    short of what the caller asked for (#562: +2.47 % of TM110 on a
-    45 x 39-cell PEC box, +37 MHz of WR-90 TE101 centre frequency from the
-    guide-width axis alone).
-
-    Duplicating the boundary cell is what makes the far node's coefficient
-    the mirror of the near one's: ``inv_d_e[N] = 2/(d[N-1]+d[N])``, which is
-    ``1/d[N-1]`` exactly when ``d[N] == d[N-1]``, matching the existing
-    ``inv_d_e[0] = 1/d[0]`` boundary treatment. The appended cell's own H
-    term is the one the stencil zeroes, so it adds a node without adding a
-    cell of physical extent.
-    """
-    if is_tracer(profile_full):
-        return jnp.concatenate([profile_full, profile_full[-1:]])
-    return np.concatenate([profile_full, profile_full[-1:]])
-
-
-def interior_cells(d_full, pad_lo: int, pad_hi: int):
-    """The physical interior cells of a padded NU cell-size array.
-
-    The array is ``[lo pad | interior | hi pad | bounding-node duplicate]``
-    (#562, see ``_append_bounding_node``), so the interior ends one entry
-    before ``len - pad_hi``. Slicing without that ``-1`` pulls in a pad cell
-    — or the duplicate itself on a face with no pad — and overstates the
-    extent by one cell, which is the same class of error #562 was.
-
-    Returns the CELLS; ``np.insert(np.cumsum(cells), 0, 0.0)`` then gives the
-    ``N+1`` interior NODE positions, the last of which lands exactly on the
-    requested domain face.
-    """
-    return d_full[pad_lo : len(d_full) - pad_hi - 1]
-
-
-def assert_cells_span_declared_profile(d_full, pad_lo, pad_hi, profile,
-                                       axis: str = "?") -> None:
-    """Refuse a padded cell array whose interior does not add up to the
-    profile that was declared (step 0a, decision 1).
-
-    The realized interior of a padded array is
-    ``[lo pad | interior | hi pad | bounding-node duplicate]``, so the cells
-    that carry physical extent are ``interior_cells(d_full, pad_lo, pad_hi)``
-    and nothing else. Their count must equal the declared profile's, and
-    their sum must equal the declared profile's sum to
-    ``DECLARED_SPAN_TOL_M`` (1e-12 m).
-
-    That tolerance is the one ``make_band_profile`` already meets between any
-    two DECLARED LINES it was given: it returns float64 cells whose running
-    sum lands on every declared edge to 1e-12 m, and whose total equals
-    ``edges[-1] - edges[0]`` to the same figure. This grid-side check is the
-    re-check of that guarantee after padding and the bounding node have been
-    applied -- the step where the #562 class of error lives, and the step the
-    band builder cannot see.
-
-    ``make_nonuniform_grid`` takes a flat profile, not a set of declared
-    lines, so the per-LINE form of the check has no input here and this is
-    the strongest statement the constructor can make. The per-line check
-    belongs with whatever owns the lines, i.e. the mesher of step 1: when
-    ``GridSpec`` auto-meshing lands it carries the declared edges into the
-    grid and re-checks each interval, and that is where the mesher note
-    records it. Until then a caller holding declared lines gets the per-line
-    guarantee from ``make_band_profile`` itself.
-
-    Raises ``ValueError``; a traced profile is skipped by the caller, since
-    neither side of the comparison is a host number there.
-    """
-    interior = interior_cells(np.asarray(d_full, dtype=np.float64),
-                              int(pad_lo), int(pad_hi))
-    declared = np.asarray(profile, dtype=np.float64)
-    if interior.shape[0] != declared.shape[0]:
-        raise ValueError(
-            f"{axis} axis: the padded cell array realizes "
-            f"{interior.shape[0]} interior cells but {declared.shape[0]} "
-            "were declared. The interior of a padded array ends one entry "
-            "before len - pad_hi (the bounding-node duplicate, #562); a "
-            "count that disagrees means the padding or that duplicate was "
-            "applied differently than interior_cells reads it."
-        )
-    miss = float(interior.sum() - declared.sum())
-    if abs(miss) > DECLARED_SPAN_TOL_M:
-        raise ValueError(
-            f"{axis} axis: the realized interior cells span "
-            f"{float(interior.sum()):.12e} m but the declared profile spans "
-            f"{float(declared.sum()):.12e} m, a miss of {miss:.3e} m "
-            f"(tolerance {DECLARED_SPAN_TOL_M:.0e} m). Every declared "
-            "interface is placed by the running sum of these cells, so a "
-            "miss of one cell puts a material plane one cell away from the "
-            "face that declared it."
-        )
-
-
-
-def node_positions_from_profile(profile):
-    """Interior E-node positions for a RAW (unpadded) cell-size profile.
-
-    ``N`` cells give ``N+1`` nodes, the first at 0 and the last exactly on the
-    profile's total extent — the same positions
-    ``coords_from_nonuniform_grid`` produces for the interior of a built grid.
-    Public because callers outside this module legitimately need the
-    convention (the #325 graded-rasterization preflight models what the
-    rasterizer will do, and modelling it with a private-import composition or,
-    worse, a hand-rolled copy, is how that check drifted in the first place —
-    #562 review F2, #568).
-    """
-    from rfx.geometry.rasterize_grid import _axis_node_positions
-    return _axis_node_positions(_append_bounding_node(profile), 0)
-
-
-def _profile_to_inv_arrays(profile_full: np.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
-    """Return ``(inv_d_e, inv_d_h)`` — the E-update and H-update inverse
-    cell-spacing arrays for a padded 1-D cell-size profile ``d``.
-
-    CORE-C2 fix (2026-05-16). The non-uniform Yee stencil needs a
-    *different* metric for each update:
-
-    * **H update** — the H-curl differences two E nodes that straddle
-      one cell, so it divides by the **local cell width**::
-
-          inv_d_h[k] = 1/d[k]       (k < N-1);   inv_d_h[N-1] = 0
-
-    * **E update** — the E-curl differences two H cell-centres, whose
-      separation is the **mean** of the two adjacent cell widths::
-
-          inv_d_e[k] = 2/(d[k-1]+d[k])   (k >= 1);   inv_d_e[0] = 1/d[0]
-
-    On a uniform mesh both collapse to ``1/d`` so the uniform path is
-    bit-identical. The pre-fix code had the two swapped (H got the mean,
-    E got the local width) — a stencil inconsistency that scaled the
-    curl by ``2 d[k]/(d[k]+d[k±1])`` on every graded cell. The boundary
-    entries (``inv_d_h[N-1]=0``, ``inv_d_e[0]=1/d[0]``) reproduce the
-    prior boundary behaviour exactly, so PEC/CPML faces are untouched.
-
-    The return order ``(inv_d_e, inv_d_h)`` matches the caller's
-    ``inv_dx, inv_dx_h = _profile_to_inv_arrays(...)`` unpacking: the
-    first slot feeds the E update, the second feeds ``update_h_nu``.
-    """
-    arr = jnp.asarray(profile_full, dtype=jnp.float32)
-    inv_local = 1.0 / arr                          # 1/d[k]
-    inv_mean = 2.0 / (arr[:-1] + arr[1:])          # 2/(d[k]+d[k+1])
-    # H update: local cell width; trailing 0 (forward-diff has no d[N]).
-    inv_d_h = jnp.concatenate([inv_local[:-1], jnp.zeros(1, dtype=jnp.float32)])
-    # E update: mean of (d[k-1], d[k]); leading 1/d[0] (backward-diff
-    # boundary — reproduces the pre-fix value so the face cell is
-    # unchanged).
-    inv_d_e = jnp.concatenate([inv_local[:1], inv_mean])
-    return inv_d_e, inv_d_h
-
-
-def e_node_dual_spacings(profile_full):
-    """Per-node DUAL spacing — the length an E node's material acts over.
-
-    ``inv_d_e[k] = 2/(d[k-1]+d[k])`` (``inv_d_e[0] = 1/d[0]``) is the metric
-    the non-uniform E update divides the curl by, so the control volume of
-    the E node at index ``k`` extends half a cell either side::
-
-        dual[k] = (d[k-1] + d[k]) / 2     (k >= 1);   dual[0] = d[0]
-
-    which is exactly ``1/inv_d_e``. Anything folded into ``materials.sigma``
-    at an E node is a volumetric quantity whose realized SHEET value is
-    ``sigma * dual[k]`` — never ``sigma * d[k]``. Dividing a sheet fold by
-    the primal cell ``d[k]`` instead realizes ``Rs * d[k]/dual[k]``, which
-    is right only where the two adjacent cells are equal; on a grading
-    transition it is wrong by up to the local cell ratio (issue #669 review:
-    a Leontovich sheet on a 0.25/0.50 mm transition node measured an
-    attenuation ratio of 1.2021 against the matched-mesh case, and 0.6214 on
-    a 1.00/0.25 mm one, where a mesh-independent sheet must give 1.000).
-
-    Computed as ``(d[k-1]+d[k])/2`` rather than ``1/inv_d_e`` so a uniform
-    profile returns the cell size bit-exactly (``0.5*(d+d) == d`` in
-    floating point, while ``1/(2/(d+d))`` need not be). ``jnp`` throughout so
-    a traced ``dz_profile`` (mesh-as-design-variable) stays differentiable.
-    """
-    arr = jnp.asarray(profile_full)
-    return jnp.concatenate([arr[:1], 0.5 * (arr[:-1] + arr[1:])])
-
-
-def e_node_dual_spacing_at(profile_full, k: int):
-    """Scalar dual spacing at node ``k`` — same rule as
-    :func:`e_node_dual_spacings`, evaluated on the caller's array WITHOUT the
-    dtype-normalizing ``jnp.asarray``.
-
-    Two callers need that: a float64 numpy profile must keep float64 so a
-    uniform mesh stays bit-identical to the old primal spelling (a float32
-    round-trip alone moves the last bits), and a traced profile must stay a
-    tracer so the mesh-as-design-variable path keeps its gradient.
-
-    ``tests/unit/nonuniform/test_nonuniform_source_port_dual_spacing.py`` pins this against
-    :func:`e_node_dual_spacings` element-by-element, so the two spellings
-    cannot drift.
-    """
-    if k <= 0:
-        return profile_full[0]
-    return 0.5 * (profile_full[k - 1] + profile_full[k])
+from rfx.model.graded_grid import (  # noqa: F401 -- moved; re-exported
+    C0,
+    NonUniformGrid,
+    _pad_profile,
+    _append_bounding_node,
+    interior_cells,
+    assert_cells_span_declared_profile,
+    node_positions_from_profile,
+    _profile_to_inv_arrays,
+    e_node_dual_spacings,
+    e_node_dual_spacing_at,
+    _pinned_dt,
+    _assert_declared_floor_at_runtime,
+    make_nonuniform_grid,
+    _assert_traced_index_matches_realized,
+    z_position_to_index,
+    _axis_position_to_index,
+    _nearest_on_line,
+    position_to_index,
+)
+from rfx.model.graded_profile import (  # noqa: F401 -- moved; re-exported
+    _BandSeg,
+    _Anchor,
+    _RATIO_FLOOR,
+    _MAX_PROFILE_CELLS,
+    _STEP_TOL,
+    _EDGE_TOL,
+    _ramp_steps,
+    _ramp_spec,
+    _ramp_sum,
+    _ramp_cells,
+    _band_realize_free,
+    _band_realize_protected,
+    _build_band_profile,
+    make_band_profile,
+    make_z_profile,
+)
 
 
 def port_metric_axes(grid):
@@ -748,1222 +199,6 @@ def _waveguide_port_axis_metrics(grid, cfg):
     return float(cells[h_plane]), float(duals[e_plane])
 
 
-def _pinned_dt(dt_pin, dt_min_cell, profiles, axis_names,
-               where="make_nonuniform_grid") -> float:
-    """Validate a caller-pinned time step against the REALIZED Courant limit.
-
-    The limit is ``1 / (c0 * sqrt(sum_a 1/d_a_min^2))`` with ``d_a_min`` the
-    smallest cell on axis ``a``. Every axis whose profile is concrete
-    contributes its realized minimum, measured off the padded profile the
-    grid actually carries. A traced axis has no host value at trace time, so
-    it contributes ``dt_min_cell`` — the caller's declared floor for that
-    axis — and ``dt_min_cell`` is REQUIRED as soon as one axis is traced.
-
-    The step is refused, not clipped: a silently shortened step would run a
-    different physics problem from the one the caller pinned, and the whole
-    point of pinning is that every member of a deformation family shares one
-    step.
-    """
-    if is_tracer(dt_pin):
-        raise ValueError(
-            f"{where}(dt=...) must be a concrete float; a traced "
-            "dt puts the time step itself into the derivative, which is the "
-            "thing pinning it is meant to remove."
-        )
-    dt_val = float(dt_pin)
-    if not np.isfinite(dt_val) or dt_val <= 0.0:
-        raise ValueError(
-            f"{where}(dt=...) must be finite and positive, got "
-            f"{dt_pin!r}."
-        )
-    traced_axes = [n for n, p in zip(axis_names, profiles) if is_tracer(p)]
-    if traced_axes and dt_min_cell is None:
-        raise ValueError(
-            f"{where}(dt={dt_val:.6e}) with a traced "
-            f"{'/'.join(traced_axes)} profile also needs dt_min_cell=: a "
-            "tracer carries no host cell size, so the Courant limit of the "
-            "realized mesh cannot be measured here. Pass the smallest cell "
-            "the traced axes reach anywhere in the family you will run."
-        )
-    if dt_min_cell is not None:
-        if is_tracer(dt_min_cell) or not np.isfinite(float(dt_min_cell)) \
-                or float(dt_min_cell) <= 0.0:
-            raise ValueError(
-                f"{where}(dt_min_cell=...) must be a concrete "
-                f"positive float (m), got {dt_min_cell!r}."
-            )
-    inv_sq = 0.0
-    realized = {}
-    for name, prof in zip(axis_names, profiles):
-        if is_tracer(prof):
-            d_min = float(dt_min_cell)
-            realized[name] = (d_min, "declared")
-        else:
-            d_min = float(np.min(np.asarray(prof, dtype=np.float64)))
-            realized[name] = (d_min, "realized")
-        inv_sq += 1.0 / d_min ** 2
-    limit = 1.0 / (C0 * np.sqrt(inv_sq))
-    if dt_val > limit:
-        detail = ", ".join(
-            f"{n} {realized[n][0] * 1e3:.6g} mm ({realized[n][1]})"
-            for n in axis_names)
-        raise ValueError(
-            f"{where}(dt={dt_val:.6e} s) exceeds the Courant "
-            f"limit {limit:.6e} s of the smallest cells [{detail}] — the run "
-            f"would diverge. Ratio dt/limit = {dt_val / limit:.4f}."
-        )
-    # A DECLARED floor is a claim about cells nobody has measured yet. Declare
-    # it too large and the check above passes on a mesh whose smallest cell is
-    # actually below the pinned step: the fields then diverge to NaN with
-    # nothing said, while the same profile handed over concretely is refused
-    # here. Measure the claim against the realized cells when they arrive.
-    for name, prof in zip(axis_names, profiles):
-        if is_tracer(prof):
-            _assert_declared_floor_at_runtime(prof, float(dt_min_cell), name,
-                                              dt_val, limit)
-    return dt_val
-
-
-def _assert_declared_floor_at_runtime(profile_full, declared_min, axis,
-                                      dt_val, limit) -> None:
-    """Check a traced axis's REALIZED smallest cell against the floor the
-    caller declared, at the moment the values exist.
-
-    A tracer carries no value at trace time, so the host-side check in
-    :func:`_pinned_dt` can only compare the caller's number with itself. This
-    stages a host callback that runs when the mesh does, reads
-    ``min(realized cells)`` and raises if it is below the declared floor. The
-    message names both numbers and the step they were checked against; under
-    ``jax.jit`` it arrives wrapped in the runtime's callback error, which is
-    still the message rather than a silent NaN.
-    """
-    def _check(realized_min):
-        realized = float(realized_min)
-        if realized < declared_min * (1.0 - 1e-9):
-            raise ValueError(
-                f"dt_min_cell={declared_min * 1e3:.6g} mm was declared for "
-                f"the traced {axis} profile, but the mesh this run built has "
-                f"a smallest {axis} cell of {realized * 1e3:.6g} mm. The "
-                f"pinned dt={dt_val:.6e} s was checked against the declared "
-                f"floor (Courant limit {limit:.6e} s there) and is not "
-                f"guaranteed stable on the realized mesh — the fields would "
-                "diverge with nothing said. Declare the smallest cell the "
-                "deformation family actually reaches, or shorten dt."
-            )
-
-    jax.debug.callback(_check, jnp.min(jnp.asarray(profile_full)))
-
-
-def make_nonuniform_grid(
-    domain_xy: tuple[float, float],
-    dz_profile: np.ndarray,
-    dx: float,
-    cpml_layers: int = 8,
-    *,
-    dx_profile: np.ndarray | None = None,
-    dy_profile: np.ndarray | None = None,
-    pec_faces: set[str] | None = None,
-    pmc_faces: set[str] | None = None,
-    cpml_axes: str = "xyz",
-    face_layers: dict[str, int] | None = None,
-    dt: float | None = None,
-    dt_min_cell: float | None = None,
-    dt_caller: str | None = None,
-) -> NonUniformGrid:
-    """Create a non-uniform Yee grid.
-
-    Parameters
-    ----------
-    domain_xy : (Lx, Ly) in metres
-        Only used when ``dx_profile`` / ``dy_profile`` are None — in
-        that case the xy mesh is uniform with spacing ``dx``.
-    dz_profile : 1D array of z cell sizes in metres (physical domain only)
-    dx : float
-        Boundary cell size (also used for CPML padding and as the
-        uniform-xy spacing when no xy profile is provided).
-    cpml_layers : int
-        Number of CPML cells added to each face (when that face is
-        absorbing — see ``pec_faces`` / ``pmc_faces``).
-    dx_profile, dy_profile : 1D arrays or None
-        Optional per-cell x / y spacings for the physical (non-CPML)
-        interior. When provided, the first and last values must match
-        ``dx`` (they set the boundary cell size used by the CPML).
-    pec_faces, pmc_faces : set of str or None
-        Face labels (``x_lo``, ``x_hi``, ``y_lo``, ``y_hi``, ``z_lo``,
-        ``z_hi``) where the boundary is PEC / PMC. Per-face pad count
-        is forced to 0 on these faces so the reflector plane aligns
-        with the user domain edge. Added 2026-04 to close the
-        PMC+CPML composition gap on the non-uniform mesh path.
-    cpml_axes : str
-        Axes that participate in CPML allocation (default ``"xyz"``).
-        Per-face allocation still applies; an axis absent from
-        ``cpml_axes`` gets pad=0 on both faces.
-    dt : float or None
-        Concrete time step (s) to use INSTEAD of the Courant step this
-        builder derives from ``min(cell)``. ``None`` (default) keeps the
-        derived step and is byte-identical to the historical behaviour.
-
-        Why it exists: the derived step is a function of the smallest
-        cell, so a mesh that is a design variable moves ``dt`` with the
-        deformation, and every observable read off the run then carries
-        the step change as well as the geometry change. Pinning one step
-        across a deformation family makes the sweep one antenna at one
-        step. The value must be CONCRETE — a traced ``dt`` would put the
-        step itself in the derivative.
-    dt_min_cell : float or None
-        Smallest cell size (m) the caller's TRACED axes reach anywhere in
-        the family they will run. Required with ``dt`` when any profile is
-        a tracer, because a tracer carries no host value to measure the
-        realized Courant limit against. Concrete axes are always measured
-        from their realized profile; this declared number is used only for
-        the axes that cannot be.
-    """
-    _pec = pec_faces or set()
-    _pmc = pmc_faces or set()
-    requested_layers = face_layers or {}
-
-    def _face_pad(axis: str, side: str) -> int:
-        face = f"{axis}_{side}"
-        if face in _pec or face in _pmc:
-            return 0
-        if axis not in cpml_axes:
-            return 0
-        depth = requested_layers.get(face, cpml_layers)
-        if int(depth) != depth or not 0 <= depth <= cpml_layers:
-            raise ValueError(
-                f"face_layers[{face!r}]={depth} must be an integer between "
-                f"0 and cpml_layers={cpml_layers} (the allocation budget)."
-            )
-        return int(depth)
-
-    pad_x_lo = _face_pad("x", "lo")
-    pad_x_hi = _face_pad("x", "hi")
-    pad_y_lo = _face_pad("y", "lo")
-    pad_y_hi = _face_pad("y", "hi")
-    pad_z_lo = _face_pad("z", "lo")
-    pad_z_hi = _face_pad("z", "hi")
-    # --- x profile (uniform or provided) ---
-    if dx_profile is None:
-        nx_interior = int(round(domain_xy[0] / dx))
-        dx_prof_phys = np.full(nx_interior, float(dx))
-    elif is_tracer(dx_profile):
-        # Tracer path (mesh-as-design-variable): stay in jnp and skip the
-        # concrete boundary validation. Caller is responsible for keeping
-        # `dx_profile[0] == dx_profile[-1] == dx` (the CPML uses the
-        # boundary scalar). Mirrors the 2026-04-17 dz tracer refactor.
-        dx_prof_phys = jnp.asarray(dx_profile, dtype=jnp.float32)
-    else:
-        dx_prof_phys = np.asarray(dx_profile, dtype=np.float64)
-        # Guard: CPML cells must have the same size as the boundary interior
-        # cells, otherwise the CPML σ/κ profile is miscalibrated.
-        if abs(float(dx_prof_phys[0]) - float(dx)) > 1e-12:
-            raise ValueError(
-                f"dx_profile[0]={float(dx_prof_phys[0])} must equal boundary "
-                f"dx={float(dx)} (CPML cells use the boundary spacing)."
-            )
-        if abs(float(dx_prof_phys[-1]) - float(dx)) > 1e-12:
-            raise ValueError(
-                f"dx_profile[-1]={float(dx_prof_phys[-1])} must equal boundary "
-                f"dx={float(dx)}."
-            )
-    dx_full = _append_bounding_node(_pad_profile(dx_prof_phys, pad_x_lo, pad_x_hi))
-    if not is_tracer(dx_full):
-        assert_cells_span_declared_profile(
-            dx_full, pad_x_lo, pad_x_hi, dx_prof_phys, "x")
-    nx = int(dx_full.shape[0])
-
-    # --- y profile ---
-    if dy_profile is None:
-        # Uniform y uses `dx` as the cell size (legacy behaviour)
-        ny_interior = int(round(domain_xy[1] / dx))
-        dy_prof_phys = np.full(ny_interior, float(dx))
-        dy_boundary = float(dx)
-    elif is_tracer(dy_profile):
-        # Tracer path: stay in jnp. Use the concrete scalar `dx` as the
-        # boundary cell size — the caller must align `dy_profile[0]` and
-        # `dy_profile[-1]` with `dx` (same contract as the concrete path).
-        dy_prof_phys = jnp.asarray(dy_profile, dtype=jnp.float32)
-        dy_boundary = float(dx)
-    else:
-        dy_prof_phys = np.asarray(dy_profile, dtype=np.float64)
-        dy_boundary = float(dy_prof_phys[0])
-        if abs(float(dy_prof_phys[-1]) - dy_boundary) > 1e-12:
-            raise ValueError(
-                f"dy_profile boundary cells must match each other "
-                f"(got lo={dy_boundary}, hi={float(dy_prof_phys[-1])})."
-            )
-    dy_full = _append_bounding_node(_pad_profile(dy_prof_phys, pad_y_lo, pad_y_hi))
-    if not is_tracer(dy_full):
-        assert_cells_span_declared_profile(
-            dy_full, pad_y_lo, pad_y_hi, dy_prof_phys, "y")
-    ny = int(dy_full.shape[0])
-
-    # --- z profile ---
-    dz_full = _append_bounding_node(_pad_profile(dz_profile, pad_z_lo, pad_z_hi))
-    if not is_tracer(dz_full):
-        assert_cells_span_declared_profile(
-            dz_full, pad_z_lo, pad_z_hi, dz_profile, "z")
-    nz = int(dz_full.shape[0])
-
-    # --- CFL from minimum cell size on every axis ---
-    dt_pin = dt
-
-    def _axis_min(d_full):
-        return jnp.min(d_full) if is_tracer(d_full) else float(np.min(d_full))
-
-    any_traced = (
-        is_tracer(dx_full) or is_tracer(dy_full) or is_tracer(dz_full)
-    )
-    dx_min = _axis_min(dx_full)
-    dy_min = _axis_min(dy_full)
-    dz_min = _axis_min(dz_full)
-    if any_traced:
-        dt = 0.99 / (C0 * jnp.sqrt(1 / dx_min ** 2 + 1 / dy_min ** 2 + 1 / dz_min ** 2))
-    else:
-        dt = float(
-            0.99 / (C0 * np.sqrt(1 / dx_min ** 2 + 1 / dy_min ** 2 + 1 / dz_min ** 2))
-        )
-    if dt_pin is not None:
-        dt = _pinned_dt(dt_pin, dt_min_cell,
-                        (dx_full, dy_full, dz_full), ("x", "y", "z"),
-                        where=dt_caller or "make_nonuniform_grid")
-
-    # --- Per-cell arrays + inverse spacings ---
-    dx_arr = jnp.asarray(dx_full, dtype=jnp.float32)
-    dy_arr = jnp.asarray(dy_full, dtype=jnp.float32)
-    dz_arr = jnp.asarray(dz_full, dtype=jnp.float32)
-
-    # Exact float64 spine for node positions (#802/#807): concrete profiles
-    # only — a traced profile has no host copy and its axis keeps the traced
-    # coordinate path.
-    def _exact_f64(d_full):
-        return None if is_tracer(d_full) else np.asarray(d_full,
-                                                         dtype=np.float64)
-
-    dx_arr_f64 = _exact_f64(dx_full)
-    dy_arr_f64 = _exact_f64(dy_full)
-    dz_f64 = _exact_f64(dz_full)
-
-    inv_dx, inv_dx_h = _profile_to_inv_arrays(dx_full)
-    inv_dy, inv_dy_h = _profile_to_inv_arrays(dy_full)
-    inv_dz, inv_dz_h = _profile_to_inv_arrays(dz_full)
-
-    return NonUniformGrid(
-        nx=nx, ny=ny, nz=nz,
-        dx=float(dx), dy=dy_boundary,
-        dx_arr=dx_arr, dy_arr=dy_arr, dz=dz_arr,
-        dt=dt, cpml_layers=cpml_layers,
-        inv_dx=inv_dx, inv_dy=inv_dy, inv_dz=inv_dz,
-        inv_dx_h=inv_dx_h, inv_dy_h=inv_dy_h, inv_dz_h=inv_dz_h,
-        pad_x_lo=pad_x_lo, pad_x_hi=pad_x_hi,
-        pad_y_lo=pad_y_lo, pad_y_hi=pad_y_hi,
-        pad_z_lo=pad_z_lo, pad_z_hi=pad_z_hi,
-        dx_arr_f64=dx_arr_f64, dy_arr_f64=dy_arr_f64, dz_f64=dz_f64,
-        face_layers=dict(x_lo=pad_x_lo, x_hi=pad_x_hi,
-                         y_lo=pad_y_lo, y_hi=pad_y_hi,
-                         z_lo=pad_z_lo, z_hi=pad_z_hi),
-    )
-
-
-def _assert_traced_index_matches_realized(
-    d_arr, total_pad: int, pad_lo: int, pos: float, nominal_idx: int,
-    axis: str,
-) -> None:
-    """The node a coordinate names must be the same node on the mesh the run
-    actually builds.
-
-    On a traced axis the index above is resolved against a UNIFORM reference
-    mesh of the boundary cell size, because a tracer has no host node line to
-    measure against. That reference is the realized mesh only where the
-    declared nominal profile is itself uniform up to the queried coordinate.
-    Where it is not — a graded band, a fine window — the same declared
-    position names one node concretely and a different node under tracing, so
-    the traced run feeds or probes a different point of the board than the
-    concrete run of the same script. Silently.
-
-    A tracer has values at RUN time, so the comparison is made there: the
-    realized cumulative edges pick their own nearest node and the callback
-    refuses when the two disagree, naming both. Nothing is raised while the
-    two agree, which is the case a deformation that keeps its outer node
-    lines fixed (the mesh-as-design-variable pattern) is in.
-
-    A coordinate midway between two nodes is equally near both. The nominal
-    index takes the lower one (``nearest_node_index``, #1295), but the
-    realized edges are cumulative sums in the traced dtype, so one neighbour
-    comes out a few ulp nearer, either one (at most 5 float32 ulp of the
-    coordinate measured on constant 0.127 to 1 mm columns of up to 400
-    cells). The nominal index is therefore accepted when it is the realized
-    nearest node, or its neighbour at a realized distance within 16 ulp of
-    the coordinate of the nearest one. That is under 1e-3 of a cell on
-    those columns; a deformation that moves a node line moves it by far more.
-    """
-    n_total = int(d_arr.shape[0])
-    pad_hi = total_pad - pad_lo
-    if n_total - total_pad <= 0:
-        return
-    interior = jnp.asarray(d_arr)[pad_lo:n_total - pad_hi]
-    edges = jnp.concatenate(
-        [jnp.zeros((1,), dtype=interior.dtype), jnp.cumsum(interior)])
-    dist = jnp.abs(edges - float(pos))
-    nearest = jnp.argmin(dist)
-    nominal = min(int(nominal_idx), int(dist.shape[0]) - 1)
-    tol = 16 * jnp.finfo(dist.dtype).eps * jnp.maximum(
-        abs(float(pos)), edges[nearest])
-    agrees = (nearest == nominal) | (
-        (jnp.abs(nearest - nominal) == 1)
-        & (dist[nominal] - dist[nearest] <= tol))
-
-    def _check(realized, agrees):
-        realized = int(realized)
-        if not bool(agrees):
-            raise ValueError(
-                f"position {pos:.9g} m on the traced {axis} axis resolves to "
-                f"interior node {nominal_idx} on the nominal uniform mesh "
-                f"this lane must use for a structural index, but to node "
-                f"{realized} on the mesh the run built. The two runs would "
-                f"place this source / probe / port at different points of the "
-                f"board. Declare the {axis} deformation so the node lines "
-                "outside it do not move (stretch and shrink inside a window), "
-                "or give the position by node index."
-            )
-
-    jax.debug.callback(_check, nearest, agrees)
-
-
-def z_position_to_index(grid: NonUniformGrid, z_phys: float) -> int:
-    """Convert physical z-coordinate to (cpml-offset) grid index."""
-    return _axis_position_to_index(grid, "z", z_phys,
-                                   fallback_dx=float(grid.dx))
-
-
-def _axis_position_to_index(
-    grid: NonUniformGrid,
-    axis,
-    pos: float,
-    fallback_dx: float | None = None,
-) -> int:
-    """Padded index of the node nearest ``pos`` on ``axis``, clamped.
-
-    The node is the one ``index_of`` names: ``nearest_node_index`` on the
-    node line the conductors are rasterized on, a tie to the lower node
-    (#1295, #1342). Two legacy behaviours stay here and not in ``index_of``:
-    a coordinate outside the interior CLAMPS to the end node, and a traced
-    axis answers from a nominal mesh.
-
-    When the axis's cell widths are a JAX tracer (mesh-as-design-variable
-    path) there is no host node line, so the index is resolved on a uniform
-    reference mesh of ``fallback_dx`` cells and checked against the realized
-    mesh at run time (``_assert_traced_index_matches_realized``). The traced
-    cell sizes drive the FDTD physics downstream; only the structural index
-    is resolved from the nominal mesh, with the same rule on its closed-form
-    node line.
-    """
-    ax, n, pad_lo, pad_hi = grid._axis_layout(axis)
-    store = grid._axis_store(ax)
-    if is_tracer(store):
-        if fallback_dx is None or fallback_dx <= 0:
-            raise ValueError(
-                "tracer-valued cell-size profile requires a concrete "
-                "fallback_dx for position->index resolution."
-            )
-        last = n - pad_lo - pad_hi
-        from rfx.geometry.rasterize_grid import _uniform_axis_nodes
-        nominal = _uniform_axis_nodes(last + 1, 0, float(fallback_dx))
-        idx = _nearest_on_line(nominal, np.full(last, float(fallback_dx)),
-                               pos)
-        _assert_traced_index_matches_realized(
-            store, pad_lo + pad_hi, pad_lo, float(pos), idx,
-            _axis_name(ax))
-        return idx + pad_lo
-    nodes, cells = grid._node_line(ax)
-    return _nearest_on_line(nodes, cells, pos) + pad_lo
-
-
-def _nearest_on_line(nodes, cells, pos) -> int:
-    """``nearest_node_index`` on a node line, with the local cell the sheet
-    snap uses (``_local_cell``). A coordinate outside the line gets its end
-    node, which is the legacy clamp of ``position_to_index``."""
-    from rfx.geometry.rasterize_grid import _local_cell
-    return nearest_node_index(nodes, float(pos),
-                              _local_cell(nodes, cells, float(pos)))
-
-
-def position_to_index(grid: NonUniformGrid, pos: tuple[float, float, float]) -> tuple[int, int, int]:
-    """Convert physical (x, y, z) to grid indices for NonUniformGrid.
-
-    Accounts for per-face CPML padding (``pad_{axis}_lo`` leading offset).
-    Each axis resolves through ``_axis_position_to_index``: the node
-    ``index_of`` names, clamped into the interior. On a constant axis, for a
-    coordinate inside the interior that is not a tie, that is the uniform
-    ``Grid`` lookup. Both lanes take the lower node within the tie band. Outside the
-    interior this clamps to the end node, while the uniform grid returns a
-    pad index or refuses.
-    """
-    i = _axis_position_to_index(grid, "x", pos[0],
-                                fallback_dx=float(grid.dx))
-    j = _axis_position_to_index(grid, "y", pos[1],
-                                fallback_dx=float(grid.dy))
-    k = z_position_to_index(grid, pos[2])
-    return (i, j, k)
-
-
-# ---------------------------------------------------------------------------
-# Band profile builder — axis-agnostic, interface-exact, ratio-law-exact.
-# Design note: docs/design_notes/20260907_nu_band_profile_predeclaration.md
-# ---------------------------------------------------------------------------
-
-class _BandSeg(NamedTuple):
-    """One declared segment of a band profile (private engine input).
-
-    ``length``/``target`` in metres. A protected segment is realized as
-    uniform cells (``n = max(min_cells, ceil(length/target - 1e-9))``) and
-    never hosts a ramp; a free segment may host ramps on either side.
-    ``split_lo``/``split_hi``/``verbatim`` exist for the auto-z path only:
-    ``_make_dz_profile`` applies the thirds rule BEFORE smoothing, so a
-    protected block there carries 1/3 + 2/3 edge sub-cells. ``verbatim`` is
-    the post-thirds block passed through bit-identically while the block is
-    unrefined; a block the seam rule refines is re-derived with the same
-    arithmetic ``apply_thirds_rule`` uses. ``emax_lo``/``emax_hi`` (free
-    only) bound the first/last cell of the run (``make_z_profile``'s
-    "fine cell at every feature plane").
-    """
-    length: float
-    target: float
-    protected: bool
-    min_cells: int = 1
-    split_lo: bool = False
-    split_hi: bool = False
-    verbatim: tuple | None = None
-    emax_lo: float | None = None
-    emax_hi: float | None = None
-
-
-class _Anchor(NamedTuple):
-    """What a free run ramps from on one side.
-
-    ``kind``: ``"nb"`` — the neighbouring segment's seam cell (the run ramps
-    UP from it when the run is coarser; when the run is finer the neighbour
-    is responsible — refine if protected, ramp if free); ``"pin"`` — a fixed
-    boundary cell (the run ramps up OR down from it, it can never change);
-    ``"emax"`` — a bound on the run's own first cell, which becomes the
-    ramp's first cell.
-    """
-    value: float
-    kind: str
-
-
-# Engine constants — see make_band_profile's docstring for the numbers.
-_RATIO_FLOOR = 1.0001        # a 2x transition already needs 6932 cells here
-_MAX_PROFILE_CELLS = 1_000_000
-_STEP_TOL = 1e-10            # relative slack on the ramp step count (F5 fix)
-_EDGE_TOL = 1e-12            # the I1 node tolerance, metres
-
-
-def _ramp_steps(ratio: float, cap: float) -> int:
-    """Minimal step count ``m`` with ``cap**m >= ratio`` (``ratio > 1``).
-
-    The ceiling carries a 1e-10 relative slack on the logarithm: a seam
-    cell on the ratio law exactly (``ratio == cap**k``) arrives with float
-    noise of order ``ulp(column) / cell`` — 5.5e-13 relative on a 39 m
-    column of mm cells — and a 1e-12 slack flipped ``k`` to ``k + 1``
-    there, which broke the exact-fit branch (review finding, 2026-09-07).
-    The per-step ratio may then exceed ``cap`` by at most
-    ``cap x ln(cap) x 1e-10 / m`` — 4.7e-11 absolute at 1.4, far inside
-    the I2 tolerance of 1e-9.
-    """
-    return max(1, int(np.ceil(np.log(ratio) / np.log(cap) - _STEP_TOL)))
-
-
-def _ramp_spec(anchor: _Anchor | None, u: float, cap: float) -> tuple[str, int]:
-    """Classify the ramp one side needs to reach the plateau ``u``.
-
-    Returns ``(mode, m)``: ``"none"`` (no ramp on this side), ``"up"``
-    (``m`` cells from the neighbour's seam cell up to ``u``, the seam cell
-    excluded), ``"down"`` (from a pinned cell down to ``u``, pin
-    excluded), ``"emax"`` (the run's own first cell bounded by ``anchor``,
-    ``m + 1`` cells including that first cell). ``m`` is the minimal
-    step count for the anchor/``u`` pair.
-    """
-    if anchor is None:
-        return "none", 0
-    v, kind = float(anchor.value), anchor.kind
-    tol = 1e-12
-    if kind == "emax":
-        if u <= v * (1.0 + tol):
-            return "none", 0            # thin run: its cells are <= emax
-        return "emax", _ramp_steps(u / v, cap)
-    if u > v * (1.0 + tol):
-        return "up", _ramp_steps(u / v, cap)
-    if kind == "pin" and v > u * (1.0 + tol):
-        return "down", _ramp_steps(v / u, cap)
-    return "none", 0
-
-
-def _ramp_sum(anchor: _Anchor | None, u: float, mode: str, m: int) -> float:
-    """Closed-form sum of the ramp ``(mode, m)`` from ``anchor`` to ``u``.
-
-    Geometric series; O(1) whatever ``m`` is (the old cell-by-cell sum made
-    the plateau solve quadratic in the ramp length — 8.5 s at
-    ``max_ratio = 1.0001`` on a 40-cell profile). ``m == 1`` is returned
-    directly (the closed form divides by ``rho - 1``, which vanishes as
-    the one-step ratio approaches 1).
-    """
-    if mode == "none":
-        return 0.0
-    v = float(anchor.value)
-    if mode == "up":
-        if m == 1:
-            return u
-        rho = (u / v) ** (1.0 / m)
-        return rho * (u - v) / (rho - 1.0)
-    if mode == "down":
-        if m == 1:
-            return u
-        rho = (v / u) ** (1.0 / m)
-        return (v - u) / (rho - 1.0)
-    # emax: v, v rho, ..., u  (m + 1 cells)
-    if m == 1:
-        return v + u
-    rho = (u / v) ** (1.0 / m)
-    return (u * rho - v) / (rho - 1.0)
-
-
-def _ramp_cells(anchor: _Anchor | None, u: float, mode: str, m: int) -> list[float]:
-    """The cells of the ramp ``(mode, m)``, edge-adjacent cell first; the
-    last cell is ``u`` itself (the ramp ends ON the first plateau cell, so
-    the ramp/plateau junction ratio is the ramp's own ratio whatever the
-    plateau count)."""
-    if mode == "none":
-        return []
-    v = float(anchor.value)
-    if mode == "up":
-        rho = (u / v) ** (1.0 / m)
-        cells = [v * rho ** i for i in range(1, m + 1)]
-    elif mode == "down":
-        rho = (v / u) ** (1.0 / m)
-        cells = [v / rho ** i for i in range(1, m + 1)]
-    else:
-        rho = (u / v) ** (1.0 / m)
-        cells = [v * rho ** i for i in range(0, m + 1)]
-    cells[-1] = float(u)
-    return cells
-
-
-def _band_realize_free(length: float, target: float, cap: float,
-                       lo: _Anchor | None, hi: _Anchor | None,
-                       what: str = "free segment") -> list[float]:
-    """Exact-fit realization of one free run.
-
-    Cells are ``ramp(lo -> u) + [u] * n + ramp(u <- hi)`` with a plateau
-    value ``u <= min(target, length)`` and an integer ``n >= 0`` chosen so
-    the run sums to ``length`` EXACTLY: ``G(u) = (length - S_lo(u) -
-    S_hi(u)) / u`` must be an integer. The candidate range ``[u_floor, P]``
-    is cut into pieces at every value where a ramp's step count changes
-    (``v cap^k`` for an ascending side, ``v / cap^k`` for a descent from a
-    pin); on each CLOSED piece the step counts are held at the piece's
-    interior value, so ``G`` is continuous and strictly decreasing there
-    and its ends can be evaluated exactly (no inset, no snap — the inset
-    version missed roots inside its own 1e-10 band on long plateaus).
-    Scanned from the largest ``u`` down, so the first solution has the
-    fewest cells. Never rescales, never places a cell above ``target``,
-    never moves a pinned cell.
-
-    Tolerance on "G is an integer": ``1e-10 x (|G| + ramp cells + 1)``,
-    the float error of ``(length - S) / u`` scaled the same way; the
-    residual is spread over the plateau cells (or, with no plateau, as a
-    uniform scale of the run), so every ratio moves by at most 1e-10
-    relative.
-    """
-    if length <= 0.0:
-        return []
-    P = min(float(target), float(length))
-    u_floor = P * 1e-9
-
-    th: set[float] = set()
-    for anchor in (lo, hi):
-        if anchor is None:
-            continue
-        v = float(anchor.value)
-        k = 0
-        while True:
-            t = v * cap ** k
-            if t >= P * (1.0 - _STEP_TOL):
-                break
-            if t > u_floor * (1.0 + _STEP_TOL):
-                th.add(t)
-            k += 1
-        if anchor.kind == "pin":
-            k = 1
-            while True:
-                t = v / cap ** k
-                if t <= u_floor * (1.0 + _STEP_TOL):
-                    break
-                if t < P * (1.0 - _STEP_TOL):
-                    th.add(t)
-                k += 1
-    # Merge thresholds closer than the step slack (a seam cell on the law
-    # exactly produces two thresholds 1e-13 apart from the two sides).
-    bounds = [P]
-    for t in sorted(th, reverse=True):
-        if t < bounds[-1] * (1.0 - _STEP_TOL):
-            bounds.append(t)
-    bounds.append(u_floor)
-
-    for b_hi, b_lo in zip(bounds[:-1], bounds[1:]):
-        mid = float(np.sqrt(b_hi * b_lo))
-        mode_lo, m_lo = _ramp_spec(lo, mid, cap)
-        mode_hi, m_hi = _ramp_spec(hi, mid, cap)
-
-        def _G(u):
-            s = _ramp_sum(lo, u, mode_lo, m_lo) + _ramp_sum(hi, u, mode_hi, m_hi)
-            return (length - s) / u
-
-        g_hi = _G(b_hi)
-        g_lo = _G(b_lo)
-        has_ramp = mode_lo != "none" or mode_hi != "none"
-        tol_g = 1e-10 * (abs(g_hi) + m_lo + m_hi + 1.0)
-        n = max(int(np.ceil(g_hi - tol_g)), 0 if has_ramp else 1)
-        if n > g_lo + tol_g:
-            continue                      # no integer reachable on this piece
-        if g_hi >= n - tol_g:
-            u = b_hi                      # root at the top (u == P exact)
-        elif g_lo <= n + tol_g:
-            u = b_lo
-        else:
-            a, b = b_lo, b_hi             # G(a) > n > G(b)
-            for _ in range(200):
-                mid = 0.5 * (a + b)
-                if _G(mid) - n > 0.0:
-                    a = mid
-                else:
-                    b = mid
-                if b - a <= 1e-15 * b_hi:
-                    break
-            u = 0.5 * (a + b)
-        if abs(_G(u) - n) > tol_g:
-            continue
-        left = _ramp_cells(lo, u, mode_lo, m_lo)
-        right = _ramp_cells(hi, u, mode_hi, m_hi)
-        cells = left + [float(u)] * n + right[::-1]
-        if not cells:
-            continue
-        # Float dust: onto the plateau cells; with no plateau, spread
-        # over the ramp cells that are not pinned by construction (an
-        # ``emax`` first/last cell is ``dx_fine`` exactly and stays so).
-        dust = length - float(np.sum(cells))
-        if n > 0:
-            per = dust / n
-            for j in range(len(left), len(left) + n):
-                cells[j] += per
-        else:
-            free_idx = list(range(len(cells)))
-            if mode_lo == "emax" and len(free_idx) > 1:
-                free_idx = free_idx[1:]
-            if mode_hi == "emax" and len(free_idx) > 1:
-                free_idx = free_idx[:-1]
-            base = sum(cells[j] for j in free_idx)
-            scale = 1.0 + dust / base
-            for j in free_idx:
-                cells[j] *= scale
-        return [float(c) for c in cells]
-    raise ValueError(
-        f"{what}: span {length*1e3:.6g} mm cannot hold its ramps at ratio "
-        f"<= {cap:g} (pinned boundary cell too large for the span, or the "
-        f"segment is too thin for the neighbouring cells it must reach)."
-    )
-
-
-def _band_realize_protected(seg: _BandSeg, lim_lo: float | None,
-                            lim_hi: float | None) -> list[float]:
-    """Uniform realization of a protected segment under seam limits.
-
-    ``lim_lo``/``lim_hi`` are the maximum seam cells the seam rule has
-    imposed (None = unconstrained). With no limit the ``verbatim`` block
-    (auto-z post-thirds cells) passes through bit-identically.
-    """
-    if lim_lo is None and lim_hi is None and seg.verbatim is not None:
-        return [float(c) for c in seg.verbatim]
-    f_lo = 1.0 / 3.0 if seg.split_lo else 1.0
-    f_hi = 1.0 / 3.0 if seg.split_hi else 1.0
-    c = float(seg.target)
-    if lim_lo is not None:
-        c = min(c, lim_lo / f_lo)
-    if lim_hi is not None:
-        c = min(c, lim_hi / f_hi)
-    n = max(int(seg.min_cells), int(np.ceil(seg.length / c - 1e-9)))
-    if seg.split_lo or seg.split_hi:
-        n = max(n, 2)
-    if n > _MAX_PROFILE_CELLS:
-        raise ValueError(
-            f"protected segment of span {seg.length*1e3:.6g} mm would need "
-            f"{n} cells (seam limit {c*1e6:.4g} um) — more than the "
-            f"{_MAX_PROFILE_CELLS} cell ceiling. A neighbouring segment is "
-            "a sliver (edges from float noise?) and the ratio law is "
-            "pulling this one down to its size; merge or widen it.")
-    # Seam guard: the realized seam cell must respect the limit itself (the
-    # 1e-9 ceil tolerance above is for float dust on the declared quotient,
-    # not a licence to overshoot a seam limit).
-    while True:
-        d = seg.length / n
-        if lim_lo is not None and d * f_lo > lim_lo * (1.0 + 1e-13):
-            n += 1
-            continue
-        if lim_hi is not None and d * f_hi > lim_hi * (1.0 + 1e-13):
-            n += 1
-            continue
-        break
-    cells = [d] * n
-    if seg.split_lo:
-        cells = [d / 3, d * 2 / 3] + cells[1:]
-    if seg.split_hi:
-        cells = cells[:-1] + [d * 2 / 3, d / 3]
-    return cells
-
-
-def _build_band_profile(segs: list[_BandSeg], cap: float,
-                        pin_lo: float | None = None,
-                        pin_hi: float | None = None) -> np.ndarray:
-    """Engine behind ``make_band_profile`` / ``make_z_profile`` /
-    ``_make_dz_profile``.
-
-    Fixed-point iteration over segment realizations: free runs ramp from
-    their neighbours' ACTUAL seam cells; a protected segment that is the
-    coarser side of a seam violating ``cap`` gets its uniform cell reduced
-    (more cells) until the seam complies — including a seam between two
-    protected segments, which no ramp can ever serve. Seam limits only
-    ever tighten, so the iteration is monotone. Returns float64 cells.
-    """
-    n_seg = len(segs)
-    if n_seg == 0:
-        return np.zeros(0, dtype=np.float64)
-    if not (np.isfinite(cap) and cap > 1.0):
-        raise ValueError(f"max_ratio must be a finite number > 1 (got {cap})")
-    if cap < _RATIO_FLOOR:
-        raise ValueError(
-            f"max_ratio must be >= {_RATIO_FLOOR} (got {cap!r}): a 2x "
-            f"transition at that ratio already needs "
-            f"{int(np.ceil(np.log(2.0) / np.log(_RATIO_FLOOR)))} cells, and "
-            "the plateau solve's cost grows with the ramp length")
-    for k, s in enumerate(segs):
-        if not (s.length > 0.0):
-            raise ValueError(f"segment {k}: span must be > 0 (got {s.length})")
-        if not (s.target > 0.0):
-            raise ValueError(f"segment {k}: cell size must be > 0 (got {s.target})")
-    if pin_lo is not None and segs[0].protected:
-        raise ValueError("boundary_cell needs a FREE first segment (a "
-                         "protected end segment cannot host the pinned cell)")
-    if pin_hi is not None and segs[-1].protected:
-        raise ValueError("boundary_cell needs a FREE last segment (a "
-                         "protected end segment cannot host the pinned cell)")
-
-    def _free_len(k):
-        L = float(segs[k].length)
-        if k == 0 and pin_lo is not None:
-            L -= float(pin_lo)
-        if k == n_seg - 1 and pin_hi is not None:
-            L -= float(pin_hi)
-        if L < -1e-12 * float(segs[k].length):
-            raise ValueError(
-                f"segment {k}: span {segs[k].length*1e3:.6g} mm is shorter "
-                f"than the pinned boundary cell(s) it must hold")
-        # A remainder inside the node tolerance is float dust from the
-        # edge subtraction (10 mm - 9 mm - 1 mm = 8.7e-19 m), not a run.
-        return L if L > _EDGE_TOL else 0.0
-
-    lens = [_free_len(k) if not s.protected else float(s.length)
-            for k, s in enumerate(segs)]
-    seam_lim: list[list[float | None]] = [[None, None] for _ in segs]
-
-    real: list[list[float]] = []
-    for k, s in enumerate(segs):
-        if s.protected:
-            real.append(_band_realize_protected(s, None, None))
-        elif lens[k] <= 0.0:
-            real.append([])
-        else:
-            P = min(float(s.target), lens[k])
-            m = max(1, int(np.ceil(lens[k] / P - 1e-9)))
-            real.append([lens[k] / m] * m)
-
-    # An end segment whose span EQUALS its pinned cell has no free cells:
-    # the pin is then that segment's seam cell on BOTH sides (its lo side
-    # for k == 0, its hi side for k == n_seg - 1), so the neighbour ramps
-    # from it and the seam audit sees it. Before the 2026-09-07 review the
-    # pin was visible from the outside only, and
-    # ``make_band_profile([0, 1e-3, 5e-3], [1e-3, 1e-4], boundary_cell=1e-3)``
-    # returned a ratio-10 seam with no error.
-    def _lo_cell(k, cur):
-        if cur[k]:
-            return cur[k][0]
-        if k == 0 and pin_lo is not None:
-            return float(pin_lo)
-        if k == n_seg - 1 and pin_hi is not None:
-            return float(pin_hi)
-        return None
-
-    def _hi_cell(k, cur):
-        if cur[k]:
-            return cur[k][-1]
-        if k == n_seg - 1 and pin_hi is not None:
-            return float(pin_hi)
-        if k == 0 and pin_lo is not None:
-            return float(pin_lo)
-        return None
-
-    def _anchor_lo(k, new, cur):
-        s = segs[k]
-        if k == 0:
-            base = _Anchor(float(pin_lo), "pin") if pin_lo is not None else None
-        else:
-            c = _hi_cell(k - 1, new)
-            if c is None:
-                base = None
-            elif not new[k - 1] and k - 1 == 0 and pin_lo is not None:
-                base = _Anchor(c, "pin")
-            else:
-                base = _Anchor(c, "nb")
-        if s.emax_lo is not None and base is not None and base.kind == "nb":
-            if s.emax_lo <= base.value * cap:
-                return _Anchor(float(s.emax_lo), "emax")
-            return base
-        if s.emax_lo is not None and base is None:
-            return _Anchor(float(s.emax_lo), "emax")
-        return base
-
-    def _anchor_hi(k, new, cur):
-        s = segs[k]
-        if k == n_seg - 1:
-            base = _Anchor(float(pin_hi), "pin") if pin_hi is not None else None
-        else:
-            c = _lo_cell(k + 1, cur)
-            if c is None:
-                base = None
-            elif not cur[k + 1] and k + 1 == n_seg - 1 and pin_hi is not None:
-                base = _Anchor(c, "pin")
-            else:
-                base = _Anchor(c, "nb")
-        if s.emax_hi is not None and base is not None and base.kind == "nb":
-            if s.emax_hi <= base.value * cap:
-                return _Anchor(float(s.emax_hi), "emax")
-            return base
-        if s.emax_hi is not None and base is None:
-            return _Anchor(float(s.emax_hi), "emax")
-        return base
-
-    max_iter = 60 + 6 * n_seg
-    for _it in range(max_iter):
-        new: list[list[float]] = []
-        for k, s in enumerate(segs):
-            if s.protected:
-                new.append(_band_realize_protected(s, *seam_lim[k]))
-            elif lens[k] <= 0.0:
-                new.append([])
-            else:
-                new.append(_band_realize_free(
-                    lens[k], float(s.target), cap,
-                    _anchor_lo(k, new, real), _anchor_hi(k, new, real),
-                    what=f"segment {k}"))
-        n_cells = sum(len(x) for x in new)
-        if n_cells > _MAX_PROFILE_CELLS:
-            raise ValueError(
-                f"band profile would need {n_cells} cells, more than the "
-                f"{_MAX_PROFILE_CELLS} cell ceiling (a sliver segment or a "
-                "ratio close to 1 is driving the count)")
-        # Seam audit on the ACTUAL seam cells.
-        viol = []
-        for k in range(n_seg - 1):
-            a = _hi_cell(k, new)
-            b = _lo_cell(k + 1, new)
-            if a is None or b is None:
-                continue
-            r = max(a / b, b / a)
-            if r > cap * (1.0 + 1e-11):
-                viol.append((k, a, b))
-        # Convergence is judged with a 1e-11 relative tolerance: two adjacent
-        # free runs feed each other their seam cells, and the ramp
-        # arithmetic can flip those by one ulp in a two-cycle (measured on
-        # the fuzz family: 1e-18 m swings, every seam compliant), which an
-        # exact-equality test never settles.
-        changed = any(
-            len(x) != len(y)
-            or any(abs(p - q) > 1e-11 * max(abs(p), abs(q))
-                   for p, q in zip(x, y))
-            for x, y in zip(new, real))
-        if not viol and not changed:
-            real = new
-            break
-        for k, a, b in viol:
-            coarse = k if a > b else k + 1
-            fine_cell = min(a, b)
-            side = 1 if coarse == k else 0
-            s = segs[coarse]
-            if s.protected:
-                lim = fine_cell * cap
-                cur = seam_lim[coarse][side]
-                if cur is None or lim < cur * (1.0 - 1e-13):
-                    seam_lim[coarse][side] = lim
-                else:
-                    raise RuntimeError(
-                        f"band profile: protected segment {coarse} cannot "
-                        f"satisfy its seam (limit {cur}, needed {lim})")
-            else:
-                empty_pin = (
-                    (coarse == 0 and pin_lo is not None and not new[0])
-                    or (coarse == n_seg - 1 and pin_hi is not None
-                        and not new[-1]))
-                if empty_pin:
-                    raise ValueError(
-                        f"segment {coarse}: the pinned boundary cell "
-                        f"{max(a, b)*1e3:.6g} mm faces a {fine_cell*1e3:.6g} "
-                        f"mm cell with no room for a ramp (ratio "
-                        f"{max(a, b)/fine_cell:.3f} > {cap:g}); widen the "
-                        f"segment so it can hold the ramp")
-                # free coarse side re-ramps from the fresh neighbour cell
-        real = new
-    else:
-        raise RuntimeError("band profile: fixed-point iteration did not "
-                           f"converge in {max_iter} passes")
-
-    parts: list[float] = []
-    if pin_lo is not None:
-        parts.append(float(pin_lo))
-    for cells in real:
-        parts.extend(cells)
-    if pin_hi is not None:
-        parts.append(float(pin_hi))
-    out = np.asarray(parts, dtype=np.float64)
-    # Self-audit of the invariants the caller relies on.
-    total = float(sum(float(s.length) for s in segs))
-    if abs(float(np.sum(out)) - total) > 1e-12:
-        raise RuntimeError("band profile: column length not realized "
-                           f"({float(np.sum(out))} vs {total})")
-    return out
-
-
-def make_band_profile(
-    edges,
-    cell_sizes,
-    *,
-    max_ratio: float = 1.4,
-    protected=None,
-    boundary_cell: float | None = None,
-    min_cells: int = 1,
-) -> np.ndarray:
-    """Build a 1-D cell-size profile whose interfaces land on node planes
-    and whose adjacent-cell ratios obey ``max_ratio`` everywhere.
-
-    Axis-agnostic: the same output serves ``dx_profile``, ``dy_profile``
-    or ``dz_profile`` of :func:`make_nonuniform_grid`.
-
-    Parameters
-    ----------
-    edges : sequence of float
-        Sorted physical coordinates (m) of every interface that must lie
-        on a node plane, INCLUDING the domain start and end.
-    cell_sizes : sequence of float
-        Target cell size (m) per segment, ``len(edges) - 1`` entries.
-    max_ratio : float
-        Cap on every adjacent-cell ratio (default 1.4 — the validated
-        z-axis multi-band cap; pass 1.3 for an in-plane profile, the
-        in-plane threshold, see docs/guides/support_matrix.md). Must be
-        finite and ``>= 1.0001`` (a 2x transition at that ratio already
-        needs 6932 cells; the plateau solve's cost grows with the ramp
-        length — measured 0.03 s at 1.0001 on a 40-cell profile and
-        0.4 s for a 1 um pin descending into 10 mm of 100 um cells, an
-        8110-cell profile).
-    protected : sequence of bool, optional
-        Per segment. A protected segment is realized UNIFORM —
-        ``n = max(min_cells, ceil(span / target - 1e-9))`` equal cells —
-        and never hosts a ramp cell; a free segment (default) may host the
-        ramps its neighbours need.
-    boundary_cell : float, optional
-        Pins ``cells[0] == cells[-1] == boundary_cell`` exactly (the x/y
-        CPML contract of :func:`make_nonuniform_grid`). Both end segments
-        must be free and wide enough to hold the pinned cell plus its ramp
-        (``ValueError`` otherwise).
-    min_cells : int
-        Minimum cell count of a PROTECTED segment (default 1).
-
-    Returns
-    -------
-    np.ndarray
-        float64 cells. Invariants, for any valid input: every edge is a
-        cumulative node coordinate to 1e-12 m; every adjacent ratio is
-        ``<= max_ratio`` (to 1e-9), INCLUDING seams between two protected
-        segments; the sum equals ``edges[-1] - edges[0]`` to 1e-12 m;
-        with ``boundary_cell``, both end cells equal it bit-exactly.
-        The two 1e-12 m figures are float64 accumulation of the cells
-        (a running sum, as the rasterizer positions nodes) and hold for
-        columns up to about 1 m with up to 1e4 cells; the miss grows
-        with column length and cell count (measured 1e-11 m on a 10 m
-        column of 1e5 cells, 2.2e-9 m on 100 m / 1e6 cells), while each
-        cell itself matches its declared value to 1e-15 relative.
-
-    Raises
-    ------
-    ValueError
-        On inconsistent input: edges not strictly increasing or two edges
-        closer than 1e-12 m (the node tolerance — merge them), a
-        non-positive cell size, ``max_ratio`` not finite or below 1.0001,
-        a protected end segment with ``boundary_cell``, an end segment
-        shorter than the pinned cell or too short to hold the pin plus
-        its ramp, and a profile that would exceed 1,000,000 cells (a
-        sliver segment pulls its neighbours down to its size under the
-        ratio law: a 1e-9 m protected sliver between 1 mm blocks asks
-        for 1.4e6 cells).
-
-    Notes
-    -----
-    Ramps are geometric (per-step ratio spread evenly, ``<= max_ratio``)
-    and placed INSIDE the coarser free segment on whichever side needs
-    one; the free run's plateau value is solved so the run sums to its
-    declared span exactly (no cell above its target, no rescale). Two
-    adjacent PROTECTED segments whose seam exceeds the cap cannot be
-    served by a ramp: the coarser one's uniform cell is reduced (more
-    cells) until the seam complies, iterated to a fixed point. The cost
-    is cells AND, whenever the refined block was the coarsest declared
-    cell, a smaller minimum cell than declared — the time step follows
-    the global minimum, so dt drops with it. Measured on 3000 seeded
-    stacks (rng 1; 2-6 segments, spans 20 um-3 mm, targets 0.05-2x the
-    span, 70 % protected, caps 1.2-1.4): the realized minimum sits below
-    the declared minimum in 410 of them, down to 0.31x in the worst case
-    (two single-cell protected blocks whose span ratio just exceeds the
-    cap at 1.2). Hand case: ``[0, 0.1, 0.1355] mm, [25, 100] um, both
-    protected, 1.4`` realizes 5 x 20 um + 2 x 17.75 um, minimum 0.71x
-    the declared 25 um. A free segment too thin for any ramp is a
-    refinement source for its neighbours in the same way.
-    """
-    e = np.asarray(edges, dtype=np.float64).ravel()
-    cs = np.asarray(cell_sizes, dtype=np.float64).ravel()
-    if e.size < 2:
-        raise ValueError("edges needs at least two entries (domain start and end)")
-    if cs.size != e.size - 1:
-        raise ValueError(
-            f"cell_sizes must have len(edges)-1 = {e.size - 1} entries "
-            f"(got {cs.size})")
-    spans = np.diff(e)
-    if np.any(spans <= 0.0):
-        raise ValueError("edges must be strictly increasing")
-    if np.any(spans <= _EDGE_TOL):
-        k = int(np.argmax(spans <= _EDGE_TOL))
-        raise ValueError(
-            f"edges[{k}] and edges[{k + 1}] are {spans[k]:.3g} m apart, "
-            f"closer than the {_EDGE_TOL:g} m node tolerance: merge them")
-    if np.any(cs <= 0.0):
-        raise ValueError("cell_sizes must be > 0")
-    if protected is None:
-        prot = [False] * int(cs.size)
-    else:
-        prot = [bool(p) for p in protected]
-        if len(prot) != int(cs.size):
-            raise ValueError("protected must have one entry per segment")
-    if int(min_cells) < 1:
-        raise ValueError("min_cells must be >= 1")
-    if boundary_cell is not None and not (float(boundary_cell) > 0.0):
-        raise ValueError("boundary_cell must be > 0")
-    segs = [
-        _BandSeg(length=float(spans[k]), target=float(cs[k]),
-                 protected=prot[k], min_cells=int(min_cells))
-        for k in range(int(cs.size))
-    ]
-    pin = None if boundary_cell is None else float(boundary_cell)
-    return _build_band_profile(segs, float(max_ratio), pin_lo=pin, pin_hi=pin)
-
-
-def make_z_profile(
-    features: list[float],
-    domain_z: float,
-    dx_fine: float,
-    dx_coarse: float | None = None,
-    grading: float = 1.4,
-) -> np.ndarray:
-    """Generate a z-profile that snaps to feature planes: fine cells at
-    every feature plane, coarse cells away from them.
-
-    Every segment between consecutive features (plus 0 and ``domain_z``)
-    is realized as fine -> coarse -> fine: a cell of at most ``dx_fine`` on
-    each end, a geometric ramp with per-step ratio ``<= grading`` up to a
-    plateau of at most ``dx_coarse`` and back down, the run summing to the
-    segment exactly. Segments too thin for grading (``span <= 4 dx_fine``,
-    or ``dx_coarse <= 1.01 dx_fine``) are realized uniform at about
-    ``dx_fine``. Built on :func:`make_band_profile`'s engine, so every
-    feature coordinate is a node plane (1e-12 m), every adjacent ratio is
-    ``<= grading`` and ``sum == domain_z``.
-
-    Parameters
-    ----------
-    features : list of z-positions that must align to cell boundaries
-    domain_z : total z domain height
-    dx_fine : fine cell size (at feature planes)
-    dx_coarse : coarse cell size (away from features). If None, uses dx_fine
-        everywhere (no grading).
-    grading : max ratio between adjacent cells (default 1.4). A value
-        ``<= 1`` means no grading (uniform ``dx_fine`` everywhere, as
-        before); otherwise it must be ``>= 1.0001`` (see
-        :func:`make_band_profile`).
-
-    Raises
-    ------
-    ValueError
-        A feature outside ``[0, domain_z]`` (the column must sum to
-        ``domain_z``), non-positive sizes, or a non-finite ``grading``.
-        Features closer than 1e-12 m are merged into one plane.
-    """
-    if dx_coarse is None:
-        dx_coarse = dx_fine
-    if not (dx_fine > 0.0) or not (dx_coarse > 0.0):
-        raise ValueError("dx_fine and dx_coarse must be > 0")
-    grading = float(grading)
-    if not np.isfinite(grading):
-        raise ValueError(f"grading must be a finite number (got {grading})")
-    cap = grading
-    if grading <= 1.0:
-        # No grading: uniform dx_fine everywhere, which is what the old
-        # loop produced for grading <= 1 (its plateau never grew). The
-        # seams between the uniform segments are then held at the
-        # default 1.4.
-        dx_coarse = dx_fine
-        cap = 1.4
-    if not (domain_z > 0.0):
-        raise ValueError(f"domain_z must be > 0 (got {domain_z})")
-
-    # Features outside [0, domain_z] cannot be node planes of a column
-    # that sums to domain_z (the old loop silently extended the column);
-    # features closer together than the 1e-12 m node tolerance are one
-    # plane (0.1 mm + 0.2 mm vs 0.3 mm differ by 5e-20 m and used to
-    # become a 5e-20 m cell).
-    pts = sorted(float(f) for f in features)
-    for f in pts:
-        if f < -_EDGE_TOL or f > domain_z + _EDGE_TOL:
-            raise ValueError(
-                f"feature {f} lies outside [0, domain_z = {domain_z}]")
-    feats = [0.0]
-    for f in pts:
-        if f - feats[-1] > _EDGE_TOL:
-            feats.append(f)
-    if domain_z - feats[-1] > _EDGE_TOL:
-        feats.append(float(domain_z))
-    else:
-        feats[-1] = float(domain_z)
-
-    segs: list[_BandSeg] = []
-    for i in range(len(feats) - 1):
-        span = float(feats[i + 1] - feats[i])
-        if span <= 0:
-            continue
-        if dx_coarse <= dx_fine * 1.01 or span <= 4 * dx_fine:
-            # Uniform fine cells for thin segments or when no grading needed
-            n = max(1, int(round(span / dx_fine)))
-            segs.append(_BandSeg(length=span, target=span / n, protected=False))
-        else:
-            segs.append(_BandSeg(length=span, target=float(dx_coarse),
-                                 protected=False,
-                                 emax_lo=float(dx_fine), emax_hi=float(dx_fine)))
-    if not segs:
-        return np.array([])
-    return _build_band_profile(segs, cap)
-
-
 def make_current_source(grid: NonUniformGrid, position_ijk, component,
                         waveform_fn, n_steps, materials, amplitude_kind=None):
     """Create a properly normalized current source for non-uniform grid.
@@ -1981,89 +216,50 @@ def make_current_source(grid: NonUniformGrid, position_ijk, component,
     Native amplitude convention (issue #571): ``'current'`` —
     ``amplitude_kind`` of None or ``'current'`` is bit-identical to the
     historical output (no extra multiply). ``amplitude_kind='field'``
-    rescales by ``dV/Cb`` via
-    ``rfx.api._source_semantics.source_amplitude_scale``, computed AFTER
-    the tracer-safe cb/dV resolution below so the GEO-C3
-    differentiable-material path is preserved unchanged.
+    returns the waveform directly, without reading a material coefficient.
+    The shared builder preserves the current drive's differentiable Cb/dV.
     """
     i, j, k = position_ijk
 
-    # GEO-C3: on the differentiable-material path ``materials.eps_r`` /
-    # ``materials.sigma`` are tracers — ``float()`` raised
-    # TracerArrayConversionError. Stay in jnp when traced so the gradient
-    # propagates into the waveform normalisation; keep the exact ``float()``
-    # path otherwise so non-traced output stays bit-identical (both branches
-    # live in ``current_source_cb``).
-    # #1210: the drive coefficient is the update's own PER-COMPONENT Cb --
-    # ``update_e_nu`` multiplies each component by the mean of eps and sigma
-    # over the four cells its edge touches, and this coefficient exists to
-    # equal it. ``cell_component_e_materials`` indexes four cells, so the
-    # tracer branch is the same branch it always was.
-    from rfx.core.yee import cell_component_e_materials as _cell_comp_mats
+    # Read the edge's own eps and sigma, averaged over its four cells
+    # (#1210), with the same differentiable drive formula on every trace.
+    from rfx.model.materials import e_update_coefficient_at
     if str(component).lower() not in ("ex", "ey", "ez"):
         raise ValueError(
             f"unknown component {component!r}: a current source injects an "
             f"electric field component, one of 'ex', 'ey', 'ez'.")
-    materials_traced = (
-        is_tracer(materials.eps_r) or is_tracer(materials.sigma)
-    )
-    _eps_r_c, _sigma_c = _cell_comp_mats(materials, (i, j, k), component)
-    cb = current_source_cb(_eps_r_c, _sigma_c, grid.dt,
-                           traced=materials_traced)
+    from rfx.model.materials import electric_materials_traced
+    materials_traced = electric_materials_traced(materials)
+    from rfx.model.source_coefficients import source_table
     dV, grid_traced = current_source_volume(grid, (i, j, k), component)
     any_traced = materials_traced or grid_traced
+    waveform = source_table(
+        current_source_samples(grid, waveform_fn, n_steps), amplitude_kind,
+        native="cb_over_dv", volume=dV,
+        coefficient=lambda: e_update_coefficient_at(
+            materials, (i, j, k), component, grid.dt, host=True, grid=grid))
 
-    # Normalized waveform: Cb * I(t) / dV
-    # This ensures power = ∫(J·E)dV is independent of cell size
-    waveform = (cb / dV) * current_source_samples(grid, waveform_fn, n_steps)
-
-    from rfx.api._source_semantics import needs_scale, source_amplitude_scale
-    if needs_scale(amplitude_kind, "cb_over_dv"):
-        # only 'field' lands here (scale dV/Cb). Python-level dispatch on
-        # the kind string (issue #571 dossier): cb/dV may be tracers on
-        # the GEO-C3 / mesh-as-design-variable paths, so never gate the
-        # multiply on the scale VALUE.
-        waveform = source_amplitude_scale(
-            amplitude_kind, "cb_over_dv", cb=cb, dV=dV) * waveform
-
-    waveform_out = waveform if any_traced else np.array(waveform)
+    waveform_out = waveform if any_traced or is_tracer(waveform) else np.array(waveform)
     return (i, j, k, component, waveform_out)
 
 
-def current_source_cb(eps_r_c, sigma_c, dt, *, traced):
+def current_source_cb(eps_r_c, sigma_c, dt):
     """``Cb = (dt/eps) / (1 + sigma*dt/(2*eps))`` of the edge a current
     source feeds, from that edge's ``(eps_r, sigma)``.
 
     ``eps_r_c`` / ``sigma_c`` are the edge's own values -- the mean over the
     four cells incident to it, :func:`rfx.core.yee.cell_component_e_materials`
-    (#1210). ``traced=True`` keeps the arithmetic in jnp so a traced
-    permittivity stays on the tape (GEO-C3); ``traced=False`` takes
-    ``float()`` of both and computes in Python floats, the historical path.
+    (#1210). Concrete and traced inputs use the same jnp arithmetic,
+    keeping a traced permittivity on the tape (GEO-C3).
     The one spelling of the drive coefficient: :func:`make_current_source`
     and the distributed graded forward, which builds it inside its jitted
     program from the slabs its E update receives (#1279), both call it.
     """
-    if traced:
-        # The same Cb written in eps_r units, dt/(eps0*(eps_r + sigma*dt/(2*eps0))):
-        # with eps = eps_r*eps0 ~ 1e-11, the reverse pass squares eps and a
-        # float32 cotangent above ~1e15 overflowed to a NaN gradient at the
-        # source's four cells (#1279 review). In eps_r units it stays finite.
-        eps_r = jnp.asarray(eps_r_c)
-        sigma = jnp.asarray(sigma_c)
-        return (dt / EPS_0) / (eps_r + sigma * (dt / (2.0 * EPS_0)))
-    eps = float(eps_r_c) * EPS_0
-    sigma = float(sigma_c)
-    loss = sigma * dt / (2.0 * eps)
-
-    # Cb = dt / (eps * (1 + loss))
-    return (dt / eps) / (1.0 + loss)
-
-
-def current_source_samples(grid, waveform_fn, n_steps):
-    """The current ``I(t)`` in amperes at the ``n_steps`` step times
-    ``t = n*dt`` (float32), before any ``Cb/dV`` normalisation."""
-    times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
-    return jax.vmap(waveform_fn)(times)
+    # In eps_r units the reverse pass avoids squaring eps ~ 1e-11,
+    # which overflowed float32 cotangents into NaN gradients (#1279).
+    eps_r = jnp.asarray(eps_r_c)
+    sigma = jnp.asarray(sigma_c)
+    return (dt / EPS_0) / (eps_r + sigma * (dt / (2.0 * EPS_0)))
 
 
 def current_source_volume(grid, position_ijk, component):
@@ -2273,11 +469,11 @@ def wire_port_current(hx, hy, hz, comp, mi, mj, mk,
     raise ValueError(f"wire_port_current: unknown component {comp!r}")
 
 
-def _curl_h_nu(state, inv_dx, inv_dy, inv_dz, *, boundary=None):
+def _curl_h_nu(state, inv_dx, inv_dy, inv_dz, *, boundary=None, frame=None, owned=None):
     """ADE adapter to the shared graded E-update curl (no dtype change)."""
     from rfx.core.yee import curl_h_nu
     return curl_h_nu(state.hx, state.hy, state.hz, inv_dx, inv_dy, inv_dz,
-                     boundary=boundary)
+                     boundary=boundary, frame=frame, owned=owned)
 
 
 def _update_e_nu_dispersive(
@@ -2291,7 +487,7 @@ def _update_e_nu_dispersive(
     debye: tuple | None = None,
     lorentz: tuple | None = None,
     e_old: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray] | None = None,
-    boundary=None,
+    boundary=None, frame=None, owned=None,
 ) -> tuple[FDTDState, object | None, object | None]:
     """E-field update with ADE dispersion on non-uniform grid.
 
@@ -2321,7 +517,7 @@ def _update_e_nu_dispersive(
     from rfx.materials.debye import DebyeState
     from rfx.materials.lorentz import LorentzState
 
-    curl_x, curl_y, curl_z = _curl_h_nu(state, inv_dx, inv_dy, inv_dz, boundary=boundary)
+    curl_x, curl_y, curl_z = _curl_h_nu(state, inv_dx, inv_dy, inv_dz, boundary=boundary, frame=frame, owned=owned)
     if e_old is not None:
         ex_old, ey_old, ez_old = e_old
     else:
@@ -2473,6 +669,7 @@ def _build_nu_scan(
     materials: MaterialArrays,
     n_steps: int,
     *,
+    cpml_axes: str | None = None,
     pec_mask=None,
     pec_sheets=(),
     pec_wires=(),
@@ -2494,6 +691,7 @@ def _build_nu_scan(
     current_moments=None,
     waveguide_ports: list | None = None,
     tfsf: tuple | None = None,
+    _feature_tfsf: bool = False,
     flux_monitors: list | None = None,
     emit_time_series: bool = True,
     aniso_eps: tuple | None = None,
@@ -2508,6 +706,9 @@ def _build_nu_scan(
     placeholder table; the source waveform arrays themselves define the
     table length when sources are present.
     """
+    cpml_axes = resolve_cpml_axes(grid, cpml_axes)
+    from rfx.model.materials import kernel_materials, with_components
+    materials = with_components(materials, grid, periodic=(False, False, False))
     from rfx.sources.wire_radius import require_radius_update
     require_radius_update(
         materials, lane="non-uniform Yee with dispersion/tensor or design-box updates",
@@ -2536,64 +737,13 @@ def _build_nu_scan(
     # The far-field integral is over the SCATTERED field, which it only is
     # when the Huygens box encloses the whole injected region. Same check the
     # uniform lane runs (rfx/simulation.py), same helper.
-    if use_tfsf and use_ntff:
-        from rfx.farfield import require_box_encloses_injected_region
-        from rfx.sources.tfsf import tfsf_injection_planes
-        require_box_encloses_injected_region(
-            ntff_box, tfsf_injection_planes(tfsf[0]), shape=grid.shape)
+    from rfx.boundaries.tfsf import admit_setup
 
-    # CPML: only initialize when cpml_layers > 0 (skip for PEC boundary)
-    use_cpml = grid.cpml_layers > 0
-
-    cpml_params = None
-    cpml_state_init = None
-    cpml_grid = None
-    # Effective CPML axes after PEC/PMC closure. Axes whose lo+hi pad is
-    # zero are fully closed and the apply path's `state.e*[:, :, :n]`
-    # slices clip to the (small) axis length, breaking the broadcast
-    # against the (cpml_layers,) profile coefficients. Drop those axes
-    # from `apply_cpml_*` so the no-op branch passes psi through
-    # unchanged. Mirrors the uniform runner, which already threads
-    # `cpml_axes` from the grid (rfx/runners/uniform.py).
-    cpml_axes_eff = "xyz"
-
-    if use_cpml:
-        from rfx.boundaries.cpml import init_cpml, apply_cpml_h, apply_cpml_e
-
-        # Pass NonUniformGrid directly — init_cpml duck-types dx/dy/dz.
-        # NonUniformGrid does not carry pmc_faces / pec_faces attrs
-        # (frozen dataclass, pytree-registered), so the sets must be
-        # threaded through from the caller.
-        cpml_params, cpml_state_init = init_cpml(
-            grid, pec_faces=pec_faces, pmc_faces=pmc_faces,
-        )
-        cpml_grid = grid
-        cpml_axes_eff = "".join(
-            ax for ax, lo, hi in (
-                ("x", grid.pad_x_lo, grid.pad_x_hi),
-                ("y", grid.pad_y_lo, grid.pad_y_hi),
-                ("z", grid.pad_z_lo, grid.pad_z_hi),
-            )
-            if (lo + hi) > 0
-        )
-
-    # PMC enforcement (2026-04). The NU scan body previously never
-    # zeroed H_tan on PMC faces, so a half-symmetric configuration
-    # that relied on the mirror plane was running with an effectively
-    # free boundary. Frozen set gives JIT cache a stable hash; empty
-    # set short-circuits the apply to a no-op.
-    # The electric walls, per face, by the one rule the uniform scan uses
-    # (#1164): the NU grid carries no face attributes, so the declared sets
-    # threaded in from the caller stand in for them. With no magnetic face
-    # this is the six faces ``apply_pec`` zeroed before, plane for plane.
-    from rfx.boundaries.pec import resolve_wall_faces as _resolve_walls
-    _pec_faces_frozen, _pmc_faces_frozen = _resolve_walls(
-        SimpleNamespace(pec_faces=set(pec_faces or ()), pmc_faces=set(pmc_faces or ()),
-                        shape=(grid.nx, grid.ny, grid.nz)),
-        (False, False, False), None)
-    from rfx.core.yee import CurlBoundary
-    curl_boundary = CurlBoundary(_pec_faces_frozen, _pmc_faces_frozen)
-    use_pmc_faces = bool(_pmc_faces_frozen)
+    from rfx.boundaries.setup import nonuniform_boundaries
+    from rfx.stepping.absorber import apply_cpml_h, apply_cpml_e_step as apply_cpml_e, graded_cpml_operands
+    (use_cpml, cpml_params, cpml_state_init, cpml_grid, cpml_axes_eff,
+     curl_boundary, _pec_faces_frozen, _pmc_faces_frozen, use_pmc_faces) = nonuniform_boundaries(
+         grid, cpml_axes, pec_faces, pmc_faces)
 
     # #931 §1.7: realize the PEC edges ONCE here.  The NU stepper installs
     # no periodic BC at all and NU grids are 3-D, so the non-periodic #689
@@ -2619,6 +769,15 @@ def _build_nu_scan(
             pec_static_edge_masks = tuple(
                 s & m for s, m in zip(pec_static_edge_masks, pec_edge_masks))
 
+    admit_setup(grid=grid, tfsf=tfsf, materials=materials, waveguide_ports=waveguide_ports,
+                ntff=ntff_box if use_ntff else None, periodic=(False, False, False),
+                pec_faces=pec_faces, pmc_faces=pmc_faces, feature_owned=_feature_tfsf, nonuniform=True,
+                updates=dict(debye=debye, lorentz=lorentz, aniso_eps=aniso_eps, pec_mask=pec_mask,
+                             pec_edge_masks=pec_edge_masks, pec_occupancy=pec_occupancy,
+                             sheet_impedance=sheet_impedance, design_box=design_box),
+                localized=(("sources", sources), ("waveguide_ports", waveguide_ports),
+                           ("wire_ports", wire_ports), ("rlc_metas", rlc_metas)))
+
     # #677 surface-impedance sheet: exponential-stepping A/B built once
     # from the FINAL scan materials; applied per step at tangential edges
     # in step_fn (after apply_pec_mask, before sources/DFT sampling).
@@ -2628,14 +787,13 @@ def _build_nu_scan(
         sheet_coeffs = sheet_update_coeffs(
             sheet_impedance.sigma_sheet, materials, dt)
 
-    if sources:
-        src_waveforms = jnp.stack([jnp.array(s[4]) for s in sources], axis=-1)
-    else:
-        src_waveforms = jnp.zeros((n_steps, 0), dtype=jnp.float32)
+    state = init_state((grid.nx, grid.ny, grid.nz))
     src_meta = [(s[0], s[1], s[2], s[3]) for s in sources]
+    materials = with_edge_keep(materials, pec_occupancy, dtype=state.ex.dtype, sheet_edge_masks=pec_static_edge_masks)
+    src_waveforms = drive_table([jnp.array(s[4]) for s in sources], src_meta, n_steps,
+        occupancy=pec_occupancy, sheet_edge_masks=pec_static_edge_masks, keep=materials.edge_keep)
     prb_meta = [(p[0], p[1], p[2], p[3]) for p in probes]
 
-    state = init_state((grid.nx, grid.ny, grid.nz))
 
     inv_dx_h = grid.inv_dx_h
     inv_dy_h = grid.inv_dy_h
@@ -2653,8 +811,8 @@ def _build_nu_scan(
     # fourth-order stencil, no Bloch phase, no Stage-2 inverse-eps tensor.
     design_box_coeffs = None
     if design_box is not None:
-        from rfx.simulation import _resolve_design_box
-        design_box_coeffs = _resolve_design_box(
+        from rfx.model import resolve_design_box
+        design_box_coeffs = resolve_design_box(
             design_box,
             grid=grid,
             materials=materials,
@@ -2695,32 +853,13 @@ def _build_nu_scan(
         lorentz_coeffs, lorentz_state = lorentz
         carry_init["lorentz"] = lorentz_state
 
-    # Wire port S-param DFT accumulators
-    # (defaults bound unconditionally so _NUScanSetup can carry them;
-    # both stay unused unless the branch below runs — no behavior change)
-    sp_freqs = None
-    wp_meta: list = []
-    if use_wire_ports and s_param_freqs is not None:
-        sp_freqs = jnp.asarray(s_param_freqs, dtype=jnp.float32)
-        nf = len(sp_freqs)
-        carry_init["wire_sparams"] = tuple(
-            (jnp.zeros(nf, dtype=jnp.complex64),  # v_dft
-             jnp.zeros(nf, dtype=jnp.complex64),  # i_dft
-             jnp.zeros(nf, dtype=jnp.complex64),  # v_inc_dft
-             jnp.zeros(nf, dtype=jnp.complex64))  # v_port_dft (issue #764)
-            for _ in wire_ports
-        )
-        wp_meta = _build_wp_meta(wire_ports, grid)
-    else:
-        use_wire_ports = False
+    sp_freqs, wp_meta, use_wire_ports = graded_accumulators(wire_ports, grid, s_param_freqs, carry_init)
 
     # DFT plane probe carry + static metadata
     if use_dft_planes:
         carry_init["dft_planes"] = tuple(probe.accumulator for probe in dft_planes)
-        dft_meta = tuple(
-            (probe.component, probe.axis, probe.index, probe.freqs, probe.region)
-            for probe in dft_planes
-        )
+        from rfx.measurement.accumulators import plane_metadata
+        dft_meta = plane_metadata(dft_planes)
     else:
         dft_meta = ()
 
@@ -2729,13 +868,8 @@ def _build_nu_scan(
     # no per-axis time weighting; the axis-aware area element dA already
     # lives on each FluxMonitor (handles graded tangential cells).
     if use_flux_monitors:
-        from rfx.probes.probes import _FLUX_COMPONENTS as _FC
-        flux_meta = tuple(
-            (fm.axis, fm.index, fm.freqs, _FC[fm.axis],
-             fm.lo1, fm.hi1, fm.lo2, fm.hi2,
-             fm.total_steps, fm.window, fm.window_alpha)
-            for fm in flux_monitors
-        )
+        from rfx.measurement.accumulators import flux_metadata
+        flux_meta = flux_metadata(flux_monitors, window=True)
         carry_init["flux_monitors"] = tuple(
             (fm.e1_dft, fm.e2_dft, fm.h1_dft, fm.h2_dft)
             for fm in flux_monitors
@@ -2805,36 +939,27 @@ def _build_nu_scan(
             )
         carry_init["tfsf"] = tfsf_state
 
-    # #1043: ``apply_cpml_e``'s psi coefficient must take its permittivity from
-    # the array the E half-step uses, or the two halves of one timestep
-    # integrate different media and the combined update can amplify (see
-    # ``rfx/boundaries/cpml.py``'s ``inv_eps_r_update`` docstring). The guard
-    # is the same condition that selects ``update_e_nu_aniso`` below, so a
-    # dispersive run — which ignores ``aniso_eps`` — never takes it.
-    # #1210: the plain graded-mesh update ``update_e_nu`` is per-component too
-    # now (the mean of eps_r over each edge's four incident cells), so it gets
-    # the same threading. Homogeneous pads keep their bytes — the mean of four
-    # equal floats is that float exactly.
-    # #1260: the dispersive update takes its ε_∞ per component from the same
-    # mean, so a dispersive run threads it too (it used to keep the cell's
-    # ``materials.eps_r``).
-    if not (use_debye or use_lorentz) and aniso_eps is not None:
-        _cpml_inv_eps_r = tuple(1.0 / e for e in aniso_eps)
-    else:
-        from rfx.core.yee import component_e_materials as _comp_mats
-        _eps_edge_nu, _ = _comp_mats(materials, (False, False, False))
-        _cpml_inv_eps_r = tuple(1.0 / e for e in _eps_edge_nu)
+    _cpml_inv_eps_r, _cpml_loss = graded_cpml_operands(
+        materials, aniso_eps, use_cpml=use_cpml,
+        use_debye=use_debye, use_lorentz=use_lorentz)
 
-    # The per-cell arrays the step reads reach it through ``invariants`` so
-    # that a jitted loop can pass them as an argument (_NUScanSetup). The
-    # CPML profiles and spacing vectors stay in the closure: they are not
-    # grid-sized.
+    # The per-cell arrays and x spacing vectors reach the step through
+    # ``invariants`` so a jitted loop can pass arrays as an argument.
+    # Spacing vectors are not grid-sized and stay compile-time constants
+    # on one device; CPML profiles stay in the closure (_NUScanSetup).
+    from rfx.stepping.graded import GradedStepContext, make_graded_step, graded_probe_table
     invariants = {
-        "materials": materials,
+        "inv_dx": inv_dx,
+        "inv_dx_h": inv_dx_h,
+        "dx_arr": grid.dx_arr,
+        "drives": drive_layout(src_meta, src_waveforms.dtype),
+        "probe_table": graded_probe_table(prb_meta, grid.shape, dtype=state.ex.dtype),
+        "materials": kernel_materials(materials, electric=not (use_debye or use_lorentz), epsilon=aniso_eps is None),
         "pec_edge_masks": pec_edge_masks,
         "pec_occupancy": pec_occupancy,
         "pec_static_edge_masks": pec_static_edge_masks,
         "cpml_inv_eps_r": _cpml_inv_eps_r,
+        "e_loss": _cpml_loss,
         "debye_coeffs": debye_coeffs if use_debye else None,
         "lorentz_coeffs": lorentz_coeffs if use_lorentz else None,
         "aniso_eps": aniso_eps,
@@ -2843,410 +968,65 @@ def _build_nu_scan(
         "design_box_coeffs": design_box_coeffs,
     }
 
-    def step_fn(carry, xs, invariants):
-        materials = invariants["materials"]
-        pec_edge_masks = invariants["pec_edge_masks"]
-        pec_occupancy = invariants["pec_occupancy"]
-        pec_static_edge_masks = invariants["pec_static_edge_masks"]
-        _cpml_inv_eps_r = invariants["cpml_inv_eps_r"]
-        debye_coeffs = invariants["debye_coeffs"]
-        lorentz_coeffs = invariants["lorentz_coeffs"]
-        aniso_eps = invariants["aniso_eps"]
-        sheet_impedance = invariants["sheet_impedance"]
-        sheet_coeffs = invariants["sheet_coeffs"]
-        design_box_coeffs = invariants["design_box_coeffs"]
-        step_idx, src_vals = xs
-        st = carry["fdtd"]
-        # #1163: E^n at each lumped RLC edge, read before the E update (the
-        # series element is solved together with its edge field).
-        rlc_e_prev = (
-            tuple(getattr(st, m.component)[m.i, m.j, m.k] for m in rlc_metas)
-            if use_lumped_rlc else ())
-
-        # E^n on the slab, before anything in this step writes E (the H
-        # update below does not touch it). Slab-sized so the reverse-mode
-        # tape carries the slab and not the domain.
-        if use_current_moments:
-            e_prev_slab = _slab_e_snapshot(st, current_moments)
-
-        # H update (non-uniform)
-        st = update_h_nu(st, materials, dt, inv_dx_h, inv_dy_h, inv_dz_h,
-                         cell_sizes=(grid.dx_arr, grid.dy_arr, grid.dz))
-        tfsf_h_state = None
-        if use_tfsf:
-            from rfx.sources.tfsf import apply_tfsf_h
-            st = apply_tfsf_h(st, tfsf_cfg, carry["tfsf"], grid.dx, dt)
-        if use_waveguide_ports:
-            from rfx.sources.waveguide_port import apply_waveguide_port_h as _apply_wg_h_nu
-            for cfg_meta, _m in zip(waveguide_meta,
-                                    waveguide_port_metrics):
-                st = _apply_wg_h_nu(st, cfg_meta, step_idx, dt, _m[0])
-        if use_cpml:
-            st, cpml_new = apply_cpml_h(st, cpml_params, carry["cpml"],
-                                         cpml_grid, cpml_axes_eff,
-                                         materials=materials)
-        else:
-            cpml_new = None
-        if use_pmc_faces:
-            from rfx.boundaries.pmc import apply_pmc_faces
-            st = apply_pmc_faces(st, _pmc_faces_frozen, image=True)
-        if use_tfsf:
-            from rfx.sources.tfsf import update_tfsf_1d_h
-            tfsf_h_state = update_tfsf_1d_h(tfsf_cfg, carry["tfsf"], grid.dx, dt)
-
-        # Snapshot E^n for the #677 sheet operator (it REPLACES the
-        # standard update at masked tangential edges with A*E^n + B*curlH).
-        e_prev_sheet = (st.ex, st.ey, st.ez) if use_sheet_impedance else None
-        # #1183: the design box REDOES the E update at its own cells from
-        # the pre-update state (E^n and the same H^{n+1/2}).
-        st_prev_design = st if use_design_box else None
-
-        # E update: use ADE-aware path when dispersive materials are present
-        debye_new = None
-        lorentz_new = None
-        if use_debye or use_lorentz:
-            st, debye_new, lorentz_new = _update_e_nu_dispersive(
-                st, materials, dt, inv_dx, inv_dy, inv_dz,
-                debye=(debye_coeffs, carry["debye"]) if use_debye else None,
-                lorentz=(lorentz_coeffs, carry["lorentz"]) if use_lorentz else None,
-                boundary=curl_boundary,
-            )
-        elif aniso_eps is not None:
-            from rfx.core.yee import update_e_nu_aniso
-            _eex, _eey, _eez = aniso_eps
-            st = update_e_nu_aniso(
-                st, materials, _eex, _eey, _eez, dt,
-                inv_dx, inv_dy, inv_dz, boundary=curl_boundary,
-            )
-        else:
-            st = update_e_nu(st, materials, dt, inv_dx, inv_dy, inv_dz,
-                             boundary=curl_boundary)
-
-        # #1183 design box: redo the E update at the design cells from the
-        # traced permittivity, on the graded-mesh curl. Same slot as the
-        # uniform lane — immediately after the E update, on the same H,
-        # before anything that reads or writes E.
-        if use_design_box:
-            from rfx.core.yee import update_e_box
-            st = update_e_box(
-                st, st_prev_design, design_box_coeffs.bounds,
-                design_box_coeffs.ca, design_box_coeffs.cb, grid.dx,
-                inv_d=(inv_dx, inv_dy, inv_dz), boundary=curl_boundary,
-            )
-
-        if use_tfsf:
-            from rfx.sources.tfsf import apply_tfsf_e
-            st = apply_tfsf_e(st, tfsf_cfg, tfsf_h_state, grid.dx, dt)
-        if use_waveguide_ports:
-            from rfx.sources.waveguide_port import apply_waveguide_port_e as _apply_wg_e_nu
-            for cfg_meta, _m in zip(waveguide_meta,
-                                    waveguide_port_metrics):
-                st = _apply_wg_e_nu(st, cfg_meta, step_idx, dt, _m[1])
-        if use_cpml:
-            st, cpml_new = apply_cpml_e(st, cpml_params, cpml_new,
-                                         cpml_grid, cpml_axes_eff,
-                                         materials=materials,
-                                         inv_eps_r_update=_cpml_inv_eps_r,
-                                         boundary=curl_boundary)
-
-        # PEC, per face (#1164)
-        st = apply_pec_faces(st, _pec_faces_frozen)
-        if use_pec_edges:
-            st = apply_pec_edges(st, pec_edge_masks)
-        if use_pec_occupancy:
-            st = apply_pec_occupancy(
-                st, pec_occupancy, sheet_edge_masks=pec_static_edge_masks)
-
-        # #677 node-thin surface-impedance sheet operator. Contract slot:
-        # AFTER apply_pec_mask/apply_pec_occupancy (PEC wins on overlap),
-        # BEFORE sources and the port DFT sampling below. curlH comes from
-        # the SAME shared stencil helper update_e_nu uses, on the same
-        # H^{n+1/2} the E update consumed.
-        if use_sheet_impedance:
-            from rfx.core.yee import curl_h_nu as _curl_h_nu
-            from rfx.materials.thin_conductor import (
-                apply_sheet_impedance_e as _apply_sheet_e)
-            _scd = jnp.promote_types(st.ex.dtype, jnp.float32)
-            _curls = _curl_h_nu(
-                st.hx.astype(_scd), st.hy.astype(_scd), st.hz.astype(_scd),
-                inv_dx, inv_dy, inv_dz, boundary=curl_boundary)
-            st = _apply_sheet_e(st, e_prev_sheet, _curls,
-                                sheet_impedance, sheet_coeffs)
-
-        # Lumped RLC ADE update (after E update + boundaries, before sources)
-        new_rlc_states = None
-        if use_lumped_rlc:
-            from rfx.lumped import update_rlc_element
-            new_rlc_states = []
-            for rlc_st, meta, e_prev in zip(
-                    carry["rlc_states"], rlc_metas, rlc_e_prev):
-                st, rlc_st_new = update_rlc_element(st, rlc_st, meta, e_prev)
-                new_rlc_states.append(rlc_st_new)
-
-        # Sources (point sources + wire port excitation)
-        for idx_s, (si, sj, sk, sc) in enumerate(src_meta):
-            field = getattr(st, sc)
-            field = field.at[si, sj, sk].add(src_vals[idx_s])
-            st = st._replace(**{sc: field})
-
-        # Waveguide-port injection + DFT probe accumulation. The dx
-        # arg is unused by the per-cell-weighted integrals (cfg already
-        # stores u_widths/v_widths), but kept in the function signature
-        # for back-compat. It is handed the port's own primal cell rather
-        # than the grid's boundary scalar so that nothing here reads a
-        # scalar the port does not sit on; because the callee ignores it,
-        # no recorded number moves either way.
-        new_waveguide_port_accs = None
-        if use_waveguide_ports:
-            from rfx.sources.waveguide_port import (
-                update_waveguide_port_probe,
-            )
-            new_waveguide_port_accs = []
-            for accs, cfg_meta, _m in zip(
-                carry["waveguide_port_accs"], waveguide_meta,
-                waveguide_port_metrics,
-            ):
-                cfg = cfg_meta._replace(
-                    v_probe_t=accs[0],
-                    v_ref_t=accs[1],
-                    i_probe_t=accs[2],
-                    i_ref_t=accs[3],
-                    v_inc_t=accs[4],
-                    n_steps_recorded=accs[5],
-                )
-                # TFSF-style corrections applied earlier at canonical slots.
-                cfg_updated = update_waveguide_port_probe(cfg, st, dt, _m[0])
-                new_waveguide_port_accs.append((
-                    cfg_updated.v_probe_t,
-                    cfg_updated.v_ref_t,
-                    cfg_updated.i_probe_t,
-                    cfg_updated.i_ref_t,
-                    cfg_updated.v_inc_t,
-                    cfg_updated.n_steps_recorded,
-                ))
-
-        # Wire port V/I DFT accumulation.
-        #
-        # Ordering: AFTER source injection.  Issue #683 is DECIDED (by
-        # measurement, 2026-08-29 — docs/design_notes/
-        # issue683_sampling_order_decision_protocol.md section 9): this
-        # slot is the terminal-consistent, physically correct one.  The
-        # known-load circuit law holds only for the post-injection pair
-        # (n*a = +0.9987/+0.9950, n*|b| = 0.08/0.32 Ohm over a six-point
-        # R_L sweep at both decision bins), and the post-injection E is
-        # the true field level E^{n+1} of the discrete update
-        # (Ampere-identity residual 2.3e-7 vs 3.25 pre-injection).  The
-        # once-CONTESTED known-load sweep was settled by that protocol run
-        # (gates G0-G2 all passed; the earlier independent repro's fixture
-        # had failed to load the port), and the once-UNEXAMINED Ampere
-        # identity was examined in the same run (section 7).
-        #
-        # The uniform lane (rfx/simulation.py wire block) flipped to this
-        # same POST slot for its physical V/I/V_port channels, with the
-        # pre-injection drive sample kept as a separate calibration
-        # reference channel for its #308/#313 off-diagonal decomposition
-        # (issue #683 x #764,
-        # docs/design_notes/issue683_decomposer_flip_predeclaration.md).
-        # This lane's decomposition was calibrated in the POST frame
-        # directly, so it needs NO reference channel and NO change.
-        #
-        # PASSIVE ports are unaffected either way: I reads H only, and the
-        # source loop writes E only, at the SOURCE cell.
-        t = step_idx.astype(jnp.float32) * dt
-        new_wire_sp = None
-        if use_wire_ports:
-            from rfx.core.dft_utils import half_step_current_phase as _half_i_phase
-            new_wire_sp = []
-            port_samples = []
-            for (v_dft, i_dft, vinc_dft, v_port_dft), \
-                (mi, mj, mk, comp, z0, dxi, dyj,
-                 _excite, _dir, dual_xi, dual_yj,
-                 dz_local, dual_zk, live_cells, d_par_cells) in \
-                    zip(carry.get("wire_sparams", ()), wp_meta):
-                # V = -E_comp * (PRIMAL width on the component's own axis):
-                # the E edge's own length. I = the Ampere loop on the DUAL
-                # face (issue #672); both metric families are precomputed in
-                # wp_meta above.
-                field_c = getattr(st, comp)
-                v = -field_c[mi, mj, mk] * (
-                    dz_local if comp == "ez" else
-                    dxi if comp == "ex" else dyj)
-                # Whole-port gap voltage (issue #764): the discrete line
-                # integral of E across the LIVE run,
-                # V_port = sum_live(-E_c * d_par,c), same PRIMAL metric
-                # family per cell. Static unroll — live_cells is a static
-                # tuple, so this resolves at trace time.
-                v_port = -sum(
-                    field_c[ci, cj, ck] * dp
-                    for (ci, cj, ck), dp in zip(live_cells, d_par_cells))
-                i_val = wire_port_current(
-                    st.hx, st.hy, st.hz, comp, mi, mj, mk,
-                    dual_xi, dual_yj, dual_zk, boundary=curl_boundary)
-                t_f64 = t.astype(jnp.float64) if hasattr(t, 'astype') else jnp.float64(t)
-                phase = jnp.exp(-1j * 2.0 * jnp.pi * sp_freqs.astype(jnp.float64) * t_f64).astype(jnp.complex64) * dt
-                # Yee half-step: I is H-derived (H^{n+1/2}) while V/V_port are
-                # E-derived (E^{n+1}); advance the current sample by dt/2 so
-                # both DFT channels share a reference time
-                # (`dft_utils.half_step_current_phase`).
-                i_phase = phase * _half_i_phase(
-                    sp_freqs.astype(jnp.float64), dt).astype(jnp.complex64)
-                port_samples.append(jnp.stack((v, i_val, v_port)))
-                new_wire_sp.append((
-                    v_dft + v * phase,
-                    i_dft + i_val * i_phase,
-                    vinc_dft,
-                    v_port_dft + v_port * phase,
-                ))
-
-        # DFT plane probe accumulation (identical math to uniform path)
-        new_dft_planes = None
-        if use_dft_planes:
-            t_plane = step_idx.astype(jnp.float32) * dt
-            new_dft_planes = []
-            plane_samples = []
-            for acc, (component, axis, index, freqs, region) in zip(
-                carry["dft_planes"], dft_meta
-            ):
-                field = getattr(st, component)
-                if region is None:
-                    lo1 = lo2 = 0
-                    if axis == 0:
-                        hi1, hi2 = field.shape[1], field.shape[2]
-                    elif axis == 1:
-                        hi1, hi2 = field.shape[0], field.shape[2]
-                    else:
-                        hi1, hi2 = field.shape[0], field.shape[1]
-                else:
-                    lo1, hi1, lo2, hi2 = region
-                if axis == 0:
-                    plane = field[index, lo1:hi1, lo2:hi2]
-                elif axis == 1:
-                    plane = field[lo1:hi1, index, lo2:hi2]
-                else:
-                    plane = field[lo1:hi1, lo2:hi2, index]
-                phase = jnp.exp(-1j * 2.0 * jnp.pi * freqs * t_plane)
-                plane_samples.append(plane)
-                new_dft_planes.append(
-                    acc + plane[None, :, :] * phase[:, None, None] * dt
-                )
-
-        # Flux monitor accumulation (mirrors uniform scan body in
-        # rfx/simulation.py). H is offset +dx/2 along the normal axis on
-        # the Yee grid; average H at idx-1 and idx to co-locate with E at
-        # idx for a correct Poynting cross-product. E is sampled at
-        # t=step*dt, H at t-dt/2.
-        new_flux_monitors = None
-        if use_flux_monitors:
-            from rfx.core.dft_utils import dft_window_weight as _dft_w
-            t_flux = step_idx.astype(jnp.float32) * dt
-            new_flux_monitors = []
-            for (e1_acc, e2_acc, h1_acc, h2_acc), (
-                ax, idx, fqs, comp_names, _lo1, _hi1, _lo2, _hi2,
-                _tot_steps, _win_name, _win_alpha,
-            ) in zip(carry["flux_monitors"], flux_meta):
-                e1n, e2n, h1n, h2n = comp_names
-                idx_m1 = max(idx - 1, 0)
-                if ax == 0:
-                    e1 = getattr(st, e1n)[idx, _lo1:_hi1, _lo2:_hi2]
-                    e2 = getattr(st, e2n)[idx, _lo1:_hi1, _lo2:_hi2]
-                    h1 = (getattr(st, h1n)[idx_m1, _lo1:_hi1, _lo2:_hi2] + getattr(st, h1n)[idx, _lo1:_hi1, _lo2:_hi2]) * 0.5
-                    h2 = (getattr(st, h2n)[idx_m1, _lo1:_hi1, _lo2:_hi2] + getattr(st, h2n)[idx, _lo1:_hi1, _lo2:_hi2]) * 0.5
-                elif ax == 1:
-                    e1 = getattr(st, e1n)[_lo1:_hi1, idx, _lo2:_hi2]
-                    e2 = getattr(st, e2n)[_lo1:_hi1, idx, _lo2:_hi2]
-                    h1 = (getattr(st, h1n)[_lo1:_hi1, idx_m1, _lo2:_hi2] + getattr(st, h1n)[_lo1:_hi1, idx, _lo2:_hi2]) * 0.5
-                    h2 = (getattr(st, h2n)[_lo1:_hi1, idx_m1, _lo2:_hi2] + getattr(st, h2n)[_lo1:_hi1, idx, _lo2:_hi2]) * 0.5
-                else:
-                    e1 = getattr(st, e1n)[_lo1:_hi1, _lo2:_hi2, idx]
-                    e2 = getattr(st, e2n)[_lo1:_hi1, _lo2:_hi2, idx]
-                    h1 = (getattr(st, h1n)[_lo1:_hi1, _lo2:_hi2, idx_m1] + getattr(st, h1n)[_lo1:_hi1, _lo2:_hi2, idx]) * 0.5
-                    h2 = (getattr(st, h2n)[_lo1:_hi1, _lo2:_hi2, idx_m1] + getattr(st, h2n)[_lo1:_hi1, _lo2:_hi2, idx]) * 0.5
-                t_f64 = t_flux.astype(jnp.float64)
-                fqs64 = fqs.astype(jnp.float64)
-                _w = _dft_w(step_idx, _tot_steps, _win_name, _win_alpha).astype(jnp.float64)
-                phase_e = jnp.exp(-1j * 2.0 * jnp.pi * fqs64 * t_f64)
-                phase_h = jnp.exp(-1j * 2.0 * jnp.pi * fqs64 * (t_f64 - jnp.float64(dt * 0.5)))
-                kernel_e = (phase_e[:, None, None] * dt * _w).astype(jnp.complex128)
-                kernel_h = (phase_h[:, None, None] * dt * _w).astype(jnp.complex128)
-                new_flux_monitors.append((
-                    e1_acc + e1.astype(jnp.float64)[None, :, :] * kernel_e,
-                    e2_acc + e2.astype(jnp.float64)[None, :, :] * kernel_e,
-                    h1_acc + h1.astype(jnp.float64)[None, :, :] * kernel_h,
-                    h2_acc + h2.astype(jnp.float64)[None, :, :] * kernel_h,
-                ))
-
-        # NTFF: accumulate tangential E/H DFT on 6 box faces
-        new_ntff = None
-        if use_ntff:
-            from rfx.farfield import accumulate_ntff
-            new_ntff = accumulate_ntff(carry["ntff"], st, ntff_box, dt, step_idx)
-
-        # Block current moments — same slot as the NTFF box: E at (n+1)*dt,
-        # H at (n+1/2)*dt, with the feed current already injected.
-        new_cm = None
-        if use_current_moments:
-            new_cm = _accumulate_cm(
-                carry["current_moments"], st, e_prev_slab, current_moments,
-                dt, step_idx)
-
-        # TFSF 1D auxiliary E-field update (mirrors uniform scan body:
-        # called AFTER sources, closes the leapfrog step).
-        tfsf_new = None
-        if use_tfsf:
-            from rfx.sources.tfsf import update_tfsf_1d_e
-            t_tfsf = step_idx.astype(jnp.float32) * dt
-            tfsf_new = update_tfsf_1d_e(tfsf_cfg, tfsf_h_state, grid.dx, dt, t_tfsf)
-
-        # Probes
-        if emit_time_series and prb_meta:
-            samples = [getattr(st, pc)[pi, pj, pk] for pi, pj, pk, pc in prb_meta]
-            probe_out = jnp.stack(samples)
-        else:
-            probe_out = jnp.zeros(0)
-
-        new_carry = {"fdtd": st}
-        if "dft_time_records" in carry:
-            new_carry["dft_time_records"] = tuple(
-                jax.lax.stop_gradient(record.at[step_idx].set(sample))
-                for record, sample in zip(carry["dft_time_records"], plane_samples))
-        if "sparam_time_records" in carry:
-            new_carry["sparam_time_records"] = tuple(
-                jax.lax.stop_gradient(record.at[step_idx].set(sample))
-                for record, sample in zip(carry["sparam_time_records"], port_samples))
-        if use_cpml:
-            new_carry["cpml"] = cpml_new
-        if use_debye and debye_new is not None:
-            new_carry["debye"] = debye_new
-        if use_lorentz and lorentz_new is not None:
-            new_carry["lorentz"] = lorentz_new
-        if use_wire_ports and new_wire_sp is not None:
-            new_carry["wire_sparams"] = tuple(new_wire_sp)
-        if use_dft_planes and new_dft_planes is not None:
-            new_carry["dft_planes"] = tuple(new_dft_planes)
-        if use_flux_monitors and new_flux_monitors is not None:
-            new_carry["flux_monitors"] = tuple(new_flux_monitors)
-        if use_lumped_rlc and new_rlc_states is not None:
-            new_carry["rlc_states"] = tuple(new_rlc_states)
-        if use_ntff and new_ntff is not None:
-            new_carry["ntff"] = new_ntff
-        if use_current_moments and new_cm is not None:
-            new_carry["current_moments"] = new_cm
-        if use_waveguide_ports and new_waveguide_port_accs is not None:
-            new_carry["waveguide_port_accs"] = tuple(new_waveguide_port_accs)
-        if use_tfsf and tfsf_new is not None:
-            new_carry["tfsf"] = tfsf_new
-        return new_carry, probe_out
+    ctx = GradedStepContext(
+        use_lumped_rlc=use_lumped_rlc,
+        rlc_metas=rlc_metas,
+        use_current_moments=use_current_moments,
+        _slab_e_snapshot=_slab_e_snapshot if use_current_moments else None,
+        current_moments=current_moments,
+        dt=dt,
+        inv_dy_h=inv_dy_h,
+        inv_dz_h=inv_dz_h,
+        grid=grid,
+        use_tfsf=use_tfsf,
+        tfsf_cfg=tfsf_cfg if use_tfsf else None,
+        use_waveguide_ports=use_waveguide_ports,
+        waveguide_meta=waveguide_meta,
+        waveguide_port_metrics=waveguide_port_metrics,
+        use_cpml=use_cpml,
+        apply_cpml_h=apply_cpml_h,
+        cpml_params=cpml_params,
+        cpml_grid=cpml_grid,
+        cpml_axes_eff=cpml_axes_eff,
+        use_pmc_faces=use_pmc_faces,
+        _pmc_faces_frozen=_pmc_faces_frozen,
+        use_sheet_impedance=use_sheet_impedance,
+        use_design_box=use_design_box,
+        use_debye=use_debye,
+        use_lorentz=use_lorentz,
+        inv_dy=inv_dy,
+        inv_dz=inv_dz,
+        curl_boundary=curl_boundary,
+        apply_cpml_e=apply_cpml_e,
+        _pec_faces_frozen=_pec_faces_frozen,
+        use_pec_edges=use_pec_edges,
+        use_pec_occupancy=use_pec_occupancy,
+        use_wire_ports=use_wire_ports,
+        wp_meta=wp_meta,
+        port_record_specs=graded_specs(wire_ports),
+        port_acc_indices=graded_acc_indices(wire_ports),
+        sp_freqs=sp_freqs,
+        use_dft_planes=use_dft_planes,
+        dft_meta=dft_meta,
+        use_flux_monitors=use_flux_monitors,
+        flux_meta=flux_meta,
+        use_ntff=use_ntff,
+        ntff_box=ntff_box,
+        _accumulate_cm=_accumulate_cm if use_current_moments else None,
+        emit_time_series=emit_time_series,
+    )
+    step = make_graded_step(ctx)
 
     return _NUScanSetup(
-        step_fn=partial(step_fn, invariants=invariants),
-        step_fn_inv=step_fn,
+        step_fn=partial(step, invariants=invariants),
+        step_fn_inv=step,
         invariants=invariants,
         carry_init=carry_init,
         src_waveforms=src_waveforms,
         dt=dt,
         sources=sources,
         probes=probes,
-        wire_ports=wire_ports,
+        wire_ports=graded_s_ports(wire_ports),
         dft_planes=dft_planes,
         flux_monitors=flux_monitors,
         waveguide_meta=waveguide_meta,
@@ -3268,6 +1048,7 @@ def run_nonuniform(
     materials: MaterialArrays,
     n_steps: int,
     *,
+    cpml_axes: str | None = None,
     pec_mask=None,
     pec_sheets=(),
     pec_wires=(),
@@ -3289,6 +1070,7 @@ def run_nonuniform(
     current_moments=None,
     waveguide_ports: list | None = None,
     tfsf: tuple | None = None,
+    _feature_tfsf: bool = False,
     flux_monitors: list | None = None,
     checkpoint: bool = False,
     emit_time_series: bool = True,
@@ -3303,6 +1085,7 @@ def run_nonuniform(
 
     Parameters
     ----------
+    cpml_axes : str or None: axes with absorber pads when omitted; subsets accepted
     sources : list of (i, j, k, component, waveform_array)
     probes : list of (i, j, k, component)
     wire_ports : list of dict with keys:
@@ -3317,6 +1100,7 @@ def run_nonuniform(
     """
     setup = _build_nu_scan(
         grid, materials, n_steps,
+        cpml_axes=cpml_axes,
         pec_mask=pec_mask,
         pec_sheets=pec_sheets,
         pec_wires=pec_wires,
@@ -3337,7 +1121,7 @@ def run_nonuniform(
         ntff_data=ntff_data,
         current_moments=current_moments,
         waveguide_ports=waveguide_ports,
-        tfsf=tfsf,
+        tfsf=tfsf, _feature_tfsf=_feature_tfsf,
         flux_monitors=flux_monitors,
         emit_time_series=emit_time_series,
         aniso_eps=aniso_eps,
@@ -3350,9 +1134,7 @@ def run_nonuniform(
         carry_init["dft_time_records"] = tuple(
             jnp.zeros((n_steps,) + p.accumulator.shape[1:], dtype=carry_init["fdtd"].ex.dtype)
             for p in dft_planes)
-    if "wire_sparams" in carry_init:
-        carry_init["sparam_time_records"] = tuple(
-            jnp.zeros((n_steps, 3), dtype=carry_init["fdtd"].ex.dtype) for _ in carry_init["wire_sparams"])
+    init_graded_records(carry_init, n_steps, setup)
     src_waveforms = setup.src_waveforms
 
     xs = (jnp.arange(n_steps, dtype=jnp.int32), src_waveforms)
@@ -3452,40 +1234,9 @@ def run_nonuniform(
         and 0 < int(checkpoint_every) < n_steps_opt
     )
     if use_segmented:
-        # Scan-of-scan: outer scan over segments wrapped in jax.checkpoint
-        # forces XLA to remat the inner scan during backward, so the AD
-        # tape only stores carry at segment boundaries (≈ sqrt(n_steps)
-        # × carry_size when checkpoint_every ≈ sqrt(n_steps)).
-        chunk = int(checkpoint_every)
-        n_segments = (n_steps_opt + chunk - 1) // chunk
-        pad = n_segments * chunk - n_steps_opt
-        opt_steps = xs[0]
-        opt_src = xs[1]
-        if pad > 0:
-            steps_padded = jnp.arange(
-                int(opt_steps[0]),
-                int(opt_steps[0]) + n_segments * chunk,
-                dtype=jnp.int32,
-            )
-            n_sources = opt_src.shape[1]
-            src_pad = jnp.zeros((pad, n_sources), dtype=opt_src.dtype)
-            src_padded = jnp.concatenate([opt_src, src_pad], axis=0)
-        else:
-            steps_padded = opt_steps
-            src_padded = opt_src
-
-        seg_steps = steps_padded.reshape(n_segments, chunk)
-        seg_src = src_padded.reshape(n_segments, chunk, src_padded.shape[1])
-
-        def segment_body(carry, segment_xs):
-            return jax.lax.scan(step_fn, carry, segment_xs)
-
-        seg_body = jax.checkpoint(segment_body)
-        final, segment_ys = recorded_scan(
-            seg_body, carry_init, (seg_steps, seg_src)
+        final, opt_ys = segmented_scan(
+            step_fn, carry_init, xs, int(checkpoint_every), scan=recorded_scan
         )
-        flat = segment_ys.reshape((n_segments * chunk,) + segment_ys.shape[2:])
-        opt_ys = flat[:n_steps_opt]
     else:
         body = jax.checkpoint(step_fn) if checkpoint else step_fn
         final, opt_ys = recorded_scan(body, carry_init, xs)
@@ -3499,290 +1250,11 @@ def run_nonuniform(
     return _assemble_nu_result(setup, final, time_series)
 
 
-def _assemble_nu_result(setup: _NUScanSetup, final: dict, time_series, n_record=None) -> dict:
-    """Assemble the NU result dict (pure code motion from run_nonuniform,
-    #383). Shared by :func:`run_nonuniform` and
-    :func:`run_nonuniform_until_decay` so the two paths return the exact
-    same schema (state, time_series, dt, conditional dft_planes /
-    flux_monitors / ntff_data / waveguide_ports / s_params...)."""
-    dt = setup.dt
-    dft_planes = setup.dft_planes
-    flux_monitors = setup.flux_monitors
-    wire_ports = setup.wire_ports
-    waveguide_meta = setup.waveguide_meta
-    wp_meta = setup.wp_meta
-    sp_freqs = setup.sp_freqs
-    use_wire_ports = setup.use_wire_ports
-    use_dft_planes = setup.use_dft_planes
-    use_flux_monitors = setup.use_flux_monitors
-    use_lumped_rlc = setup.use_lumped_rlc
-    use_ntff = setup.use_ntff
-    use_waveguide_ports = setup.use_waveguide_ports
-
-    result = {
-        "dft_time_records": tuple(r[:n_record] for r in final.get("dft_time_records", ())),
-        "state": final["fdtd"],
-        "time_series": time_series,
-        "dt": dt,
-    }
-
-    # Surface final RLC ADE states (per element).
-    if use_lumped_rlc:
-        result["rlc_states"] = tuple(final["rlc_states"])
-
-    # Repack DFT plane probes with their final accumulators.
-    if use_dft_planes:
-        result["dft_planes"] = tuple(
-            probe._replace(accumulator=acc)
-            for probe, acc in zip(dft_planes, final["dft_planes"])
-        )
-
-    # Repack flux monitors with their final E/H DFT accumulators so the
-    # caller can call flux_spectrum() on them (same schema as uniform).
-    if use_flux_monitors:
-        result["flux_monitors"] = tuple(
-            mon._replace(e1_dft=e1, e2_dft=e2, h1_dft=h1, h2_dft=h2)
-            for mon, (e1, e2, h1, h2) in zip(
-                flux_monitors, final["flux_monitors"]
-            )
-        )
-
-    # Surface final NTFF DFT accumulators
-    if use_ntff:
-        result["ntff_data"] = final["ntff"]
-
-    # Surface the in-loop block current moments and the slab they belong to.
-    # getattr: run(ringdown=) assembles S through here with a stand-in setup
-    # (rfx.ringdown._assemble) that carries no monitor.
-    if getattr(setup, "use_current_moments", False):
-        result["current_moment_data"] = final["current_moments"]
-        result["current_moment_monitor"] = setup.current_moments
-
-    # Surface final waveguide-port configs (with recorded modal V/I
-    # time series; spectra are extracted post-scan via rect-DFT).
-    if use_waveguide_ports:
-        result["waveguide_ports"] = tuple(
-            cfg_meta._replace(
-                v_probe_t=accs[0],
-                v_ref_t=accs[1],
-                i_probe_t=accs[2],
-                i_ref_t=accs[3],
-                v_inc_t=accs[4],
-                n_steps_recorded=accs[5],
-            )
-            for cfg_meta, accs in zip(
-                waveguide_meta, final["waveguide_port_accs"]
-            )
-        )
-
-    # ---- Extract full S-matrix column from wire port DFTs ----
-    #
-    # Each port has a V/I DFT pair. The wave decomposition below is
-    # DIRECTION-FREE, and that is a physics statement, not a shortcut
-    # (issue #673). The port's outward normal is not a degree of freedom
-    # for a lumped gap V/I pair:
-    #
-    #   V = -E_comp * d_parallel      (the E edge's own length)
-    #   I = (curl H)_comp * A_perp    (right-hand loop about the SAME axis)
-    #
-    # Neither expression contains the port's position or an outward
-    # normal, so their RELATIVE sign is fixed by the sampling code and no
-    # port placement can flip it. The E update at that edge enforces
-    # eps*dE/dt + sigma*E = (curl H)_comp, so in phasor form, with
-    # C = eps*A/d and the runner's sigma = n_live*d/(Z0*dp1*dp2),
-    #
-    #       V / I = -1 / (n_live/Z0 + j*w*C + Y_ext)
-    #
-    # for any passive Y_ext attached across the gap (Re Y_ext >= 0), at a
-    # port that is NOT itself driven. Hence Z_in = -V/I sits in the right
-    # half plane and
-    #
-    #       S = (Z_in - Z0)/(Z_in + Z0) = (V + Z0*I)/(V - Z0*I),
-    #
-    # which is the same ratio as a = (-V + Z0*I)/2, b = (-V - Z0*I)/2.
-    # The reciprocal form maps that passive disk to its EXTERIOR, i.e. it
-    # returns |S| >= 1 at EVERY bin on ANY passive structure — which is
-    # what the pre-#673 direction switch did on "-x"/"-y". That is what
-    # fixes the CONVENTION; the convention is then applied unconditionally,
-    # exactly as the uniform lane does.
-    # Scope note, measured: the |S| <= 1 consequence is a statement about an
-    # UNDRIVEN port, and it is a property of the port CELL rather than of the
-    # structure across the gap (vacuum, PEC plates shorting the gap and an
-    # eps_r=10 slab filling it all read S11 = -0.600000 at n_live = 4).
-    # That is exactly why the all-passive fallback below is INTENTIONALLY
-    # frozen on this per-cell convention: no physical falsifier can gate a
-    # load-independent reading, so it is a diagnostic/self-consistency
-    # channel, not S_jj (S_jj requires driving port j) — and the
-    # excite=False locks (lane-parity closed forms, sigma ORACLE 1/2) keep
-    # their n_live sensitivity as witnesses. Do not "unify" it with the
-    # driven diagonal below.
-    #
-    # DRIVEN diagonal (issue #764). At a genuinely excited port the per-cell
-    # convention above stops tracking the load entirely — PROVENANCE, all
-    # measured before the #764 fix: one geometry with only `excite` flipped
-    # read S11(0.2 GHz) = -0.600000 passive against +0.999670-0.022145j
-    # driven though the quasi-static input impedance is identical; the
-    # 2-port MSL stub in tests/unit/sparams/test_twoport_wire_port.py reached
-    # max|S11| = 4.648 (the reciprocal class that (-V - Z0*I)/(-V + Z0*I)
-    # applied to a driven port yields); a matched 50 ohm load read
-    # S11 = +0.35426 and a PEC short +0.26780. Root cause was the #313/#318
-    # frame mismatch: V and I sampled at ONE cell measure the per-cell
-    # Z0/n_live while the reflection formula references the whole-port Z0.
-    # The fix is frame-consistent terminal quantities:
-    #
-    #   V_port = sum_live(-E_c * d_par,c)   (whole-gap line integral,
-    #                                        PRIMAL metric per cell, #672)
-    #   I      = Ampere loop at the LIVE-run midpoint cell (DUAL metrics)
-    #   S_kk   = (V_port - Z0*I) / (V_port + Z0*I)
-    #
-    # where Z0 is the whole-port port.impedance — the impedance #318
-    # physically realizes as the series termination (n_live cells of
-    # sigma-folded Z0/n_live in series). Sense: from the pinned per-cell law
-    # with equal per-cell injection I0, V_port + Z0*I = Z0*I0 is a
-    # drive-only constant (the incident wave), and closing the loop through
-    # the external DUT gives V_port = +Z_L*I and I = Z0*I0/(Z0+Z_L) — the
-    # measured #683 circuit law. The opposite branch sign (V_port = -Z_L*I)
-    # would put I = Z0*I0/(Z0-Z_L), divergent at a matched load — refuted.
-    # Only the SUM is KVL/Faraday-constrained on the staggered grid; a
-    # single cell is not (a PEC short forces sum V_c = 0 while V_mid stays
-    # finite — why the short used to read +0.268: a structural error, not a
-    # scale factor).
-    # Quasi-static check on the PASSIVE path: with Y_ext -> 0 and
-    # w*C*Z0/n_live << 1 the per-cell convention gives
-    # S11 -> (1 - n_live)/(1 + n_live), measured to 5 decimals on both
-    # lanes (tests/unit/nonuniform/test_nu_wire_port_lane_parity.py).
-    #
-    # `direction` is still carried on the port spec — the reference-plane
-    # path (add_port(reference_plane_cells=...)) needs it for the outboard
-    # sign — but it must NOT enter this wave split.
-    #
-    # Given these, with ONE excited port `k` the full k-th column of
-    # the S-matrix is
-    #       S[j, k] = b_j / a_k          (j = every port)
-    # which reduces to the familiar S11 = b_k/a_k for j==k (reflection)
-    # and to S21 = b_2/a_1 for j != k (transmission). Other columns of
-    # the S matrix stay zero — callers need to run additional sims
-    # with different excited ports to fill them (reciprocity lets us
-    # infer S12 from S21 for passive networks).
-    #
-    # Which (a, b) pair fills a GENUINELY excited column is the issue
-    # #770 whole-port pair (see the in-loop derivation below); the
-    # per-cell `_ab` split above survives only in the all-passive
-    # diagnostic fallback.
-    if use_wire_ports and "wire_sparams" in final:
-        import numpy as _np
-        n_wp = len(wire_ports)
-        nf = len(sp_freqs)
-        # Tracer-safe accumulation (issue #70): build S with jnp + .at[].set
-        # so jax.grad on an objective that pulls through the wire_sparams
-        # extractor does not hit TracerArrayConversionError. Concrete-path
-        # callers still get a jnp.ndarray that numpy consumers accept via
-        # np.asarray(...) (jnp arrays implement __array__).
-        S = jnp.zeros((n_wp, n_wp, nf), dtype=jnp.complex64)
-
-        # Pick the excited ports as the filled columns. If no port is
-        # excited (all passive), fall back to the legacy diagnostic
-        # extraction (no meaningful S-matrix in that case).
-        # ``genuinely_excited`` (issues #764 + #770) keys the whole-port
-        # wave pair to meta[7] ONLY — the all-passive fallback stays on
-        # the frozen per-cell convention (see the scope note above).
-        genuinely_excited = [
-            idx for idx, meta in enumerate(wp_meta) if meta[7]]
-        excited_idx = genuinely_excited
-        if not excited_idx:
-            excited_idx = list(range(n_wp))   # legacy: treat all as self-excited
-
-        def _ab(v_dft, i_dft, z0):
-            """Return (a_incoming, b_outgoing) at one port.
-
-            Direction-free, written in the uniform lane's sign so it reads
-            line-for-line against rfx/runners/uniform.py (the overall -1
-            cancels in the ratio b/a). See the derivation above (#673).
-            """
-            zi = z0 * i_dft
-            return (-v_dft + zi) / 2.0, (-v_dft - zi) / 2.0
-
-        ab_per_port = []
-        for (v_dft, i_dft, _, _vp), meta in zip(final["wire_sparams"],
-                                                wp_meta):
-            z0 = meta[4]
-            a, b = _ab(v_dft, i_dft, z0)
-            ab_per_port.append((a, b))
-
-        # All-passive fallback ONLY: the frozen per-cell diagnostic
-        # convention (see the scope note above — no physical falsifier
-        # can gate a load-independent reading; do not "unify").
-        if not genuinely_excited:
-            for k in excited_idx:
-                a_k = ab_per_port[k][0]
-                safe_a_k = jnp.where(jnp.abs(a_k) > 0, a_k,
-                                     jnp.ones_like(a_k))
-                for j in range(n_wp):
-                    b_j = ab_per_port[j][1]
-                    S = S.at[j, k, :].set(b_j / safe_a_k)
-
-        # Issue #764 + #770: every GENUINELY excited column is the
-        # whole-port wave pair, frame-consistent across diagonal and
-        # off-diagonal (adjudicated against external physics 2026-08-29,
-        # docs/design_notes/issue770_offdiag_adjudication_predeclaration.md
-        # + results note):
-        #
-        #   a_k = (V_port,k + Z0*I_k) / (2*sqrt(Z0))   # measured drive-only
-        #                                              # constant Z0*I0 (#683)
-        #   b_j = (V_port,j - Z0*I_j) / (2*sqrt(Z0))   # outgoing at port j
-        #   S[j, k] = b_j / a_k    (diagonal reduces to the #764
-        #                           (V_port - Z0*I)/(V_port + Z0*I))
-        #
-        # The old mixed split (per-cell midpoint v against the whole-port
-        # Z0, the open defect #764 section 6 named) measured neither
-        # frame on the canonical thru (|S21| 0.65-0.97, drifting); the
-        # whole-port pair measured |S21| = 0.934-0.995 vs the external
-        # flux referee 0.971-0.997, power closure deficit 0.9-4.4% vs
-        # the 0.2-4.0% flux gap, reciprocity 2.67e-4, and lane parity
-        # 3.97e-6 against the uniform decomposer (#770 harness).
-        # Global receive sign: +1, DC-witness pinned (S21(DC) -> +1,
-        # dev -0.058/-0.115 rad at 0.5/1 GHz; flipped channel at ~pi).
-        for k in genuinely_excited:
-            v_port_k = final["wire_sparams"][k][3]
-            i_k = final["wire_sparams"][k][1]
-            z0_k = wp_meta[k][4]
-            a_k = v_port_k + z0_k * i_k
-            safe_a_k = jnp.where(jnp.abs(a_k) > 0, a_k, jnp.ones_like(a_k))
-            sqrt_z0_k = jnp.sqrt(z0_k)
-            for j in range(n_wp):
-                v_port_j = final["wire_sparams"][j][3]
-                i_j = final["wire_sparams"][j][1]
-                z0_j = wp_meta[j][4]
-                b_j = (v_port_j - z0_j * i_j) * (
-                    sqrt_z0_k / jnp.sqrt(z0_j))
-                S = S.at[j, k, :].set(b_j / safe_a_k)
-
-        result["s_params"] = S
-        result["s_param_freqs"] = _np.array(sp_freqs)
-        # Raw per-port DFT accumulators (v_dft, i_dft, v_inc_dft,
-        # v_port_dft), surfaced for diagnostics/validation harnesses
-        # (issue #764; mirrors the uniform lane's raw-acc access via
-        # forward()'s wire_port_sparams).
-        result["sparam_time_records"] = tuple(
-            record[:n_record] for record in final.get("sparam_time_records", ()))
-        result["wire_sparams_raw"] = final["wire_sparams"]
-        # The static per-port metadata those accumulators were recorded
-        # with, in the same order (:func:`_build_wp_meta` slots). The
-        # accumulators alone say nothing about which port they came from
-        # or at what impedance; ``run_nonuniform_path`` zips the two into
-        # the ``(meta, accs)`` pairs the uniform lane's
-        # ``Result.wire_port_sparams`` already carries. The existing
-        # ``wire_sparams_raw`` shape is unchanged — validation harnesses
-        # index it per port.
-        result["wire_sparams_meta"] = tuple(wp_meta)
-
-    return result
-
-
 def run_nonuniform_until_decay(
     grid: NonUniformGrid,
     materials: MaterialArrays,
     *,
+    cpml_axes: str | None = None,
     decay_by: float = 1e-3,
     check_interval: int = 50,
     min_steps: int = 100,
@@ -3813,6 +1285,7 @@ def run_nonuniform_until_decay(
     current_moments=None,
     waveguide_ports: list | None = None,
     tfsf: tuple | None = None,
+    _feature_tfsf: bool = False,
     flux_monitors: list | None = None,
     emit_time_series: bool = True,
     aniso_eps: tuple | None = None,
@@ -3903,6 +1376,7 @@ def run_nonuniform_until_decay(
 
     setup = _build_nu_scan(
         grid, materials, max_steps,
+        cpml_axes=cpml_axes,
         pec_mask=pec_mask,
         pec_sheets=pec_sheets,
         pec_wires=pec_wires,
@@ -3923,7 +1397,7 @@ def run_nonuniform_until_decay(
         ntff_data=ntff_data,
         current_moments=current_moments,
         waveguide_ports=waveguide_ports,
-        tfsf=tfsf,
+        tfsf=tfsf, _feature_tfsf=_feature_tfsf,
         flux_monitors=flux_monitors,
         emit_time_series=emit_time_series,
         aniso_eps=aniso_eps,
@@ -3935,9 +1409,7 @@ def run_nonuniform_until_decay(
         carry["dft_time_records"] = tuple(
             jnp.zeros((max_steps,) + p.accumulator.shape[1:], dtype=carry["fdtd"].ex.dtype)
             for p in dft_planes)
-    if "wire_sparams" in carry:
-        carry["sparam_time_records"] = tuple(
-            jnp.zeros((max_steps, 3), dtype=carry["fdtd"].ex.dtype) for _ in carry["wire_sparams"])
+    init_graded_records(carry, max_steps, setup)
 
     # Source table: pad/truncate to max_steps so every chunk slice is
     # full-length (mirrors the uniform run_until_decay pad/truncate).

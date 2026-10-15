@@ -256,6 +256,11 @@ class Box:
     corner_lo: tuple[float, float, float]
     corner_hi: tuple[float, float, float]
 
+    def footprint_area(self, normal):
+        """Declared rectangle area transverse to the supplied normal axis."""
+        return float(np.prod([self.corner_hi[a] - self.corner_lo[a]
+                              for a in range(3) if a != normal]))
+
     def bounding_box(self):
         return (self.corner_lo, self.corner_hi)
 
@@ -464,6 +469,10 @@ class Cylinder:
     radius: float
     height: float
     axis: str = "z"  # "x", "y", or "z"
+
+    def footprint_area(self, normal):
+        """Area of an axial disc; other normals do not describe this film."""
+        return float(np.pi * self.radius**2) if normal == 'xyz'.index(self.axis) else None
 
     def bounding_box(self):
         r = self.radius

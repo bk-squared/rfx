@@ -23,12 +23,21 @@ import numpy as np
 
 from rfx import GaussianPulse, Simulation
 from rfx.geometry import Box
+from tests.contracts.path_equivalence.comparison import compare
+
+
+def _pulse_for_60_steps(sim):
+    # Fractional bandwidth 0.8 with tau = 60/15 steps: the 60-step record holds
+    # the whole pulse (at f0 = 3 GHz the pulse would peak after step 83).
+    # Until 2026-10-12: bandwidth=3e9 (Hz), which drove nothing (issue 1668).
+    tau = 4.0 * float(sim._build_grid().dt)
+    return GaussianPulse(f0=1.0 / (np.pi * 0.8 * tau), bandwidth=0.8)
 
 
 def _pec_sim():
     s = Simulation(freq_max=6e9, domain=(0.04, 0.02, 0.02), boundary="pec")
     s.add_source((0.02, 0.01, 0.01), "ez",
-                 waveform=GaussianPulse(f0=3e9, bandwidth=3e9))
+                 waveform=_pulse_for_60_steps(s))
     s.add_probe((0.012, 0.008, 0.008), "ez")
     return s
 
@@ -53,7 +62,7 @@ def test_forward_wrappable_in_outer_jit():
     eager = float(loss(eps))
     jitted = float(jax.jit(loss)(eps))  # must not raise
     assert np.isfinite(jitted)
-    assert abs(eager - jitted) <= 1e-6 * (abs(eager) + 1e-12), (eager, jitted)
+    compare(jitted, eager, record="pec_box.jit_value_vs_eager", kind="accumulated", measurements=[])
 
 
 def test_grad_wrappable_in_outer_jit():
@@ -81,7 +90,7 @@ def test_real_interior_pec_under_outer_jit_matches_eager():
     s = Simulation(freq_max=6e9, domain=(0.04, 0.02, 0.02), boundary="pec")
     s.add(Box((0.018, 0.006, 0.006), (0.024, 0.014, 0.014)), material="pec")
     s.add_source((0.008, 0.01, 0.01), "ez",
-                 waveform=GaussianPulse(f0=3e9, bandwidth=3e9))
+                 waveform=_pulse_for_60_steps(s))
     s.add_probe((0.012, 0.008, 0.008), "ez")
     shape = s.run(n_steps=1, skip_preflight=True).grid.shape
     # confirm this sim really populates pec_mask (the branch under test)
@@ -91,7 +100,7 @@ def test_real_interior_pec_under_outer_jit_matches_eager():
     loss = _reflected_energy_loss(s)
     eager = float(loss(eps))
     jitted = float(jax.jit(loss)(eps))
-    assert abs(eager - jitted) <= 1e-5 * (abs(eager) + 1e-12), (eager, jitted)
+    compare(jitted, eager, record="interior_pec.jit_value_vs_eager", kind="accumulated", measurements=[])
     g_plain = jax.grad(loss)(eps)
     g_jit = jax.jit(jax.grad(loss))(eps)
     assert np.allclose(np.asarray(g_plain), np.asarray(g_jit), rtol=3e-4, atol=1e-6)

@@ -266,6 +266,10 @@ def test_phase2a_windowed_dft_full_window_matches_rect_dft():
     windowed = oracle._rect_dft_windowed(signal, np.array([freq]), dt, 0, signal.size)
     reference = np.asarray(oracle._rect_dft(jnp.asarray(signal), jnp.asarray([freq]), dt, signal.size))
 
+    # M2 history: the synthetic window oracle uses slot-relative n*dt;
+    # shared _rect_dft now stamps E at (n+1)*dt. Measured change -pi/16
+    # at this bin (absolute complex difference 7.841375e-10); magnitude unchanged.
+    windowed *= np.exp(-2j * np.pi * freq * dt)
     assert np.max(np.abs(windowed - reference)) < 1e-12
     assert oracle._window_bounds(signal.size, "late_half", dt=dt) == (signal.size // 2, signal.size)
     metrics = oracle._window_energy_metrics(signal, signal.size // 2, signal.size, signal.size)

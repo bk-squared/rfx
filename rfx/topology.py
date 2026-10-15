@@ -36,6 +36,8 @@ Key concepts
 
 from __future__ import annotations
 
+from rfx._precision import resolve_field_dtype
+
 from dataclasses import dataclass
 from typing import Callable
 
@@ -389,6 +391,7 @@ def topology_optimize(
     TopologyResult
         Contains final density, permittivity, loss history, and beta history.
     """
+    resolve_field_dtype(sim._precision)
     sim._require_uniform_mesh("topology_optimize")
     sim._auto_preflight(skip=skip_preflight, context="topology_optimize")
     # #677 lane fence, deliberately ABOVE the optional-dependency import:
@@ -444,6 +447,9 @@ def topology_optimize(
     monitor_for_simulation(sim, grid, sim._periodic_flags(),
                            overrides={"design_region": design_region_cells})
 
+    from rfx.model.thin_conductors import refuse_design_films
+    refuse_design_films(sim, grid, tuple(v for a, b in zip(lo_idx, hi_idx) for v in (a, b + 1)))
+
     try:
         import optax
     except ImportError:
@@ -485,8 +491,6 @@ def topology_optimize(
     _topo_pec_wires: list = []
     base_materials, debye_spec, lorentz_spec, base_pec_mask, *_ = sim._assemble_materials(
         grid, pec_sheets=_topo_pec_sheets, pec_wires=_topo_pec_wires)
-    base_eps_r = base_materials.eps_r
-    base_sigma = base_materials.sigma
     base_mu_r = base_materials.mu_r
 
     # Initialize density
@@ -525,16 +529,18 @@ def topology_optimize(
 
         si, sj, sk = lo_idx
         ei, ej, ek = hi_idx
-        eps_r = base_eps_r.at[si:ei+1, sj:ej+1, sk:ek+1].set(fields.eps)
-        sigma = base_sigma.at[si:ei+1, sj:ej+1, sk:ek+1].set(fields.sigma)
-
+        from rfx.model.overrides import apply_material_overrides
         from rfx.core.yee import MaterialArrays
-        materials = MaterialArrays(eps_r=eps_r, sigma=sigma, mu_r=base_mu_r)
-
-        pec_occupancy = None
-        if fields.pec_occupancy is not None:
-            pec_occupancy = jnp.zeros(grid.shape, dtype=jnp.float32)
-            pec_occupancy = pec_occupancy.at[si:ei+1, sj:ej+1, sk:ek+1].set(fields.pec_occupancy)
+        from rfx.model.occupancy import occupancy_from_design
+        window = (slice(si, ei + 1), slice(sj, ej + 1), slice(sk, ek + 1))
+        # Retain the existing fresh-container boundary (including absent records).
+        cells = MaterialArrays(eps_r=base_materials.eps_r, sigma=base_materials.sigma,
+                               mu_r=base_mu_r, sigma_film=base_materials.sigma_film)
+        materials = apply_material_overrides(
+            cells, eps_override=fields.eps.astype(base_materials.eps_r.dtype),
+            sigma_override=fields.sigma.astype(base_materials.sigma.dtype),
+            window=(slice(None),) * 3, box_local=window)._replace(mu_r=base_mu_r)
+        pec_occupancy = occupancy_from_design(grid.shape, window, fields.pec_occupancy)
 
         result = sim._forward_from_materials(
             grid,

@@ -66,6 +66,10 @@ edge here reds most of the corpus rather than one line of one report.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
+
+import jax
 import jax.numpy as jnp
 import numpy as np
 
@@ -73,6 +77,7 @@ from rfx.core.jax_utils import is_tracer
 from rfx.geometry.csg import Box
 
 from rfx.preflight._common import (
+    PreflightWarning,
     _component_is_dead,
     _sorted_box_corners,
 )
@@ -296,6 +301,25 @@ class _EntryRealization:
                                     periodic)
 
 
+# Deferral is scoped to one public preflight call. Standalone readers emit
+# directly; a scope exit flushes even when no later realization reader runs.
+_assembly_warning_readers = ContextVar("assembly_warning_readers", default=None)
+
+
+@contextmanager
+def assembly_warning_scope():
+    readers = []
+    token = _assembly_warning_readers.set(readers)
+    try:
+        yield
+    finally:
+        try:
+            for ctx in readers:
+                ctx._emit_assembly_warnings()
+        finally:
+            _assembly_warning_readers.reset(token)
+
+
 class _CampaignStaticsContext:
     """Shared lazily-built state for the issue-#703 campaign checks and
     every other preflight check that reads conductor geometry.
@@ -388,27 +412,46 @@ class _CampaignStaticsContext:
                                  getattr(sim, "_periodic_axes", "")))
         except self._NARROW_EXCS as exc:  # malformed config; preflight
             self.error = f"{type(exc).__name__}: {exc}"  # must not crash
+            self._assembly_exception = exc
 
     # ------------------------------------------------------------------
     # The realized conductor set (whole model) and per-entry realization
     # ------------------------------------------------------------------
 
-    def realized(self, *, strict=False):
+    def realized(self, *, strict=False, defer_warnings=False):
         """:class:`_RealizedPEC` from the PRODUCTION assembly (with the
         #931 sheet/wire collectors), once; ``None`` when the assembly
         raised (``assembly_error`` says why). Strict execution/build readers
         re-raise the original exception, including after a diagnostic read.
         """
+        import warnings
+        from contextlib import nullcontext
+        readers = _assembly_warning_readers.get()
+        defer = defer_warnings and readers is not None
         if self._realized is None and self.assembly_error is None:
-            try:
-                self._realized = self.sim._assemble_realized(
-                    self.grid, nonuniform=(self.lane == "nonuniform"))
-            except self._NARROW_EXCS as exc:
-                self.assembly_error = f"{type(exc).__name__}: {exc}"
-                self._assembly_exception = exc
+            with (warnings.catch_warnings(record=True) if defer else nullcontext([])) as emitted:
+                try:
+                    self._realized = self.sim._assemble_realized(
+                        self.grid, nonuniform=(self.lane == "nonuniform"))
+                except self._NARROW_EXCS as exc:
+                    self.assembly_error = f"{type(exc).__name__}: {exc}"
+                    self._assembly_exception = exc
+            if emitted:
+                self._assembly_warnings = tuple(emitted)
+                readers.append(self)
+        if not defer:
+            self._emit_assembly_warnings()
         if strict and self._assembly_exception is not None:
             raise self._assembly_exception
         return self._realized
+
+    def _emit_assembly_warnings(self):
+        import warnings
+        emitted = getattr(self, '_assembly_warnings', ())
+        self._assembly_warnings = ()
+        for warning in emitted:
+            warnings.warn_explicit(warning.message, warning.category,
+                                   warning.filename, warning.lineno)
 
     def assembled(self):
         """``(materials, pec_mask)`` — kept for callers that only read
@@ -443,6 +486,10 @@ class _CampaignStaticsContext:
         from rfx.geometry.smoothing import continued_conductor_shape
         sim = self.sim
         out = []
+        assembled = self.realized(defer_warnings=True)
+        products = {key: (cells, sheet, wire, shape)
+                    for key, cells, sheet, wire, shape in
+                    getattr(assembled, "assembly_entries", ())}
 
         def _bounds(shape):
             lo, hi = _sorted_box_corners(shape)
@@ -454,6 +501,8 @@ class _CampaignStaticsContext:
                 return None, None
             if blo is None or bhi is None:
                 return None, None
+            if any(is_tracer(v) for v in jax.tree_util.tree_leaves((blo, bhi))):
+                return None, None  # Assembly owns the traced-shape refusal.
             blo = np.asarray(blo, dtype=np.float64)
             bhi = np.asarray(bhi, dtype=np.float64)
             return np.minimum(blo, bhi), np.maximum(blo, bhi)
@@ -474,7 +523,8 @@ class _CampaignStaticsContext:
             if k + 1 < len(nodes):
                 d_lo = abs(mid - float(nodes[k]))
                 d_hi = abs(float(nodes[k + 1]) - mid)
-                if abs(d_lo - d_hi) <= 1e-9 * d_local and d_lo > 0.0:
+                from rfx._grid_metric import node_tie_tol
+                if abs(d_lo - d_hi) <= node_tie_tol(mid, d_local) and d_lo > 0.0:
                     return mid, (k, k + 1)
             return mid, None
 
@@ -488,12 +538,15 @@ class _CampaignStaticsContext:
             label = f"geometry[{i}]"
             lo, hi = _bounds(entry.shape)
             try:
-                solved = continued_conductor_shape(
-                    sim, self.grid, entry.shape, entry=entry)
-                cells, sheet, wire = classify_pec_entry(
-                    solved,
-                    self.coords, self.centres, self.cell_sizes,
-                    name=entry.material_name, grid=self.grid)
+                if id(entry) in products:
+                    cells, sheet, wire, solved = products[id(entry)]
+                else:
+                    # Refused-model diagnostics retain per-entity evidence.
+                    solved = continued_conductor_shape(
+                        sim, self.grid, entry.shape, entry=entry)
+                    cells, sheet, wire = classify_pec_entry(
+                        solved, self.coords, self.centres, self.cell_sizes,
+                        name=entry.material_name, grid=self.grid)
             except self._NARROW_EXCS as exc:
                 # A shape that cannot be rasterized is a FINDING, not a
                 # crash: preflight's job is to report. One unplaceable
@@ -532,12 +585,14 @@ class _CampaignStaticsContext:
                         sim, self.grid, tc.shape, entry=tc)))
                 continue
             try:
-                solved = continued_conductor_shape(
-                    sim, self.grid, tc.shape, entry=tc)
-                sheet = sheet_spec_from_shape(
-                    solved,
-                    self.coords, self.cell_sizes, name=label,
-                    lane=self.lane or "", refuse_thick=True, grid=self.grid)
+                if id(tc) in products:
+                    _, sheet, _, solved = products[id(tc)]
+                else:
+                    solved = continued_conductor_shape(
+                        sim, self.grid, tc.shape, entry=tc)
+                    sheet = sheet_spec_from_shape(
+                        solved, self.coords, self.cell_sizes, name=label,
+                        lane=self.lane or "", refuse_thick=True, grid=self.grid)
             except ValueError as exc:
                 out.append(_EntryRealization(
                     label=label, name=label, shape=tc.shape, kind="refused",
@@ -653,23 +708,8 @@ def _assemble_realized(self, grid, *, nonuniform: bool):
     cell mask: a sheet owns no cell, and a volume's far face is a
     wall the cell mask does not mark (the #868 class).
     """
-    sheets: list = []
-    wires: list = []
-    sheet_specs: list = []
-    geometry_masks: list = []
-    if nonuniform:
-        mats, _, _, pec_mask = self._assemble_materials_nu(
-            grid, sheet_specs=sheet_specs, pec_sheets=sheets,
-            pec_wires=wires, geometry_masks=geometry_masks)
-    else:
-        mats, _, _, pec_mask, _, _, _ = self._assemble_materials(
-            grid, sheet_specs=sheet_specs, pec_sheets=sheets,
-            pec_wires=wires, geometry_masks=geometry_masks)
-    return _RealizedPEC(
-        lane="nonuniform" if nonuniform else "uniform", grid=grid,
-        materials=mats, pec_mask=pec_mask, sheets=sheets, wires=wires,
-        periodic=self._periodic_flags(), sheet_specs=sheet_specs,
-        geometry_masks=geometry_masks)
+    from rfx.model.conductors import realized_conductors
+    return realized_conductors(self, grid, nonuniform=nonuniform, mode="audit")
 
 def _port_realized_edges(self, grid):
     """:class:`_RealizedPEC` for the uniform lane, or ``None``.
@@ -714,6 +754,39 @@ def _port_pec_mask(self, grid):
     :meth:`_port_transverse_spans` takes. Callers should move to the
     new name; delete this once the fixture does."""
     return self._port_realized_edges(grid)
+
+
+def context_from_conductors(sim, conductors):
+    """Lend realized products to readers without reassembling declarations."""
+    from rfx.realized_geometry import _node_arrays
+    ctx = object.__new__(_CampaignStaticsContext)
+    ctx.sim, ctx.grid = sim, conductors.grid
+    ctx.lane, ctx.periodic = conductors.lane, conductors.periodic
+    ctx.error = ctx.assembly_error = ctx._assembly_exception = None
+    ctx._realized, ctx._entries = conductors, []
+    ctx.spacings, ctx.nodes = _node_arrays(sim, ctx.grid, ctx.lane == 'nonuniform')
+    products = {key: (cells, sheet, wire, shape)
+                for key, cells, sheet, wire, shape in conductors.assembly_entries}
+    for collection, prefix in ((sim._geometry, 'geometry'), (sim._thin_conductors, 'thin_conductor')):
+        for i, entry in enumerate(collection):
+            label = f'{prefix}[{i}]'
+            cells, sheet, wire, shape = products.get(id(entry), (None, None, None, entry.shape))
+            if id(entry) not in products and prefix == 'geometry':
+                continue
+            kind = 'volume' if cells is not None else 'sheet' if sheet is not None else 'wire' if wire is not None else 'lossy'
+            bounds = _shape_bounds(entry.shape)
+            ctx._entries.append(_EntryRealization(label=label,
+                name=getattr(entry, 'material_name', label), shape=entry.shape,
+                solved_shape=shape, kind=kind, cells=cells, sheet=sheet, wire=wire,
+                lo=None if bounds is None else np.asarray(bounds[0]),
+                hi=None if bounds is None else np.asarray(bounds[1])))
+    for entity in conductors.stamped_entities:
+        if entity.kind != 'material':
+            lo, hi = entity.shape.bounding_box()
+            ctx._entries.append(_EntryRealization(label=entity.entity_id,
+                name=entity.entity_id, shape=entity.shape, kind=entity.kind,
+                cells=entity.cells, lo=np.asarray(lo), hi=np.asarray(hi)))
+    return ctx
 
 
 def _campaign_ctx(self):
@@ -788,3 +861,60 @@ _assemble_realized.__qualname__ = "_PreflightMixin._assemble_realized"
 _port_realized_edges.__qualname__ = "_PreflightMixin._port_realized_edges"
 _port_pec_mask.__qualname__ = "_PreflightMixin._port_pec_mask"
 _campaign_ctx.__qualname__ = "_PreflightMixin._campaign_ctx"
+
+
+# Standalone preflight: report what the production assembly refuses (an error, never a pass).
+def _same_assembly_failure(sim, exc):
+    """Recognize a later validator re-raising the same admission failure."""
+    original = sim._campaign_ctx()._assembly_exception
+    if type(original) is not type(exc) or str(original) != str(exc):
+        return False
+
+    def origin(error):
+        tb = error.__traceback__
+        if tb is None:
+            return None
+        while tb.tb_next is not None:
+            tb = tb.tb_next
+        return tb.tb_frame.f_code, tb.tb_lineno
+
+    return origin(original) is not None and origin(original) == origin(exc)
+
+
+def _validate_cfg_assembly(self, _w) -> None:
+    ctx = self._campaign_ctx()
+    if getattr(ctx, "_assembly_lent", False):
+        # Execution has already admitted the product lent by run()/forward().
+        return
+    if ctx.error == "traced-mesh":
+        return  # The concrete-geometry checks retain their own advisory.
+    if ctx.error is None:
+        ctx.realized(defer_warnings=True)
+    if ctx._realized is not None and ctx._assembly_exception is None:
+        from rfx.model.pad_fill import check_pad_fill
+        from rfx.model.source_admission import refuse_dead_soft_sources
+        try:
+            # These solve-mode gates read the audit product without assembling
+            # again. Preserve solve order: pad fill precedes source admission.
+            root = ctx._realized
+            check_pad_fill(self, root.grid, root.geometry_masks)
+            refuse_dead_soft_sources(self, root)
+        except ctx._NARROW_EXCS as exc:
+            ctx._assembly_exception = exc
+    exc = ctx._assembly_exception
+    if exc is None:
+        return
+    if isinstance(exc, (ValueError, NotImplementedError)):
+        _w.warn(PreflightWarning(
+            f"The model cannot be assembled: {exc}",
+            severity="error", code="assembly_refusal", source="_validate_cfg_assembly",
+        ))
+    else:
+        _w.warn(PreflightWarning(
+            f"The model assembly raised {type(exc).__name__}: {exc}; "
+            "this is a defect, please report it.",
+            severity="error", code="assembly_fault", source="_validate_cfg_assembly",
+        ))
+
+
+_validate_cfg_assembly.__qualname__ = "_PreflightMixin._validate_cfg_assembly"

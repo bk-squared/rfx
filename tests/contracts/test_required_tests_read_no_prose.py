@@ -338,6 +338,8 @@ def test_the_required_gates_deselect_the_marker_and_the_docs_lane_selects_it() -
 #: Every required test allowed to read prose, and why. Adding one is a gate
 #: decision; it goes here, in the same change, where a reviewer reads it.
 GATE_OPT_OUTS = {
+    "tests/contracts/test_known_limitations_tracker.py::test_every_limitation_has_a_valid_tracker":
+        "Every known limitation must have an explicit tracker or accepted reason",
     "tests/contracts/test_known_limitations_citations.py::"
     "test_every_pinned_issue_keeps_its_entry":
         "a known-limitations entry must stay while its defect is open: the one "
@@ -352,7 +354,8 @@ GATE_OPT_OUTS = {
 #: as documentation takes it out of the required lanes, so a new entry here is
 #: something a reviewer should see: a number check must not leave this way.
 DOCS_CONSISTENCY_TESTS = frozenset({
-    "tests/contracts/test_ci_workflows_contract.py::test_local_sh_and_the_runbook_list_the_same_steps_in_the_same_order",
+    "tests/contracts/test_doc_python_blocks.py::test_public_python_blocks_parse",
+    "tests/contracts/test_ci_workflows_contract.py::test_local_sh_preserves_the_runbook_baseline_before_selected_tests",
     "tests/contracts/test_ci_workflows_contract.py::test_the_runbook_says_changes_must_be_a_required_check",
     "tests/contracts/test_ci_workflows_contract.py::test_the_runbook_tells_authors_to_run_it_before_every_push",
     "tests/contracts/test_empty_window_gradient_caveat_docpin.py::test_autodiff_guide_pins_fd_necessary_not_sufficient",

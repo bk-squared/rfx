@@ -103,6 +103,7 @@ import sys
 import numpy as np
 
 from rfx import Box, Simulation
+from rfx.preflight.line_port_coverage import local_port_cell
 from rfx.geometry.rasterize_grid import coords_from_uniform_grid
 from rfx.sources import GaussianPulse
 
@@ -145,9 +146,11 @@ def build(kind: str, h_sub: float = H_SUB, dx: float = DX) -> Simulation:
     z_sub_lo, z_sub_hi = z_gnd_hi, z_gnd_hi + h_sub
     x_patch0 = PORT_MARGIN + FEED_LEN
     y_c = DOM_Y / 2.0
+    start = PORT_MARGIN - (local_port_cell(sim, (PORT_MARGIN, y_c, z_sub_lo))
+                           if kind == "sheet" else 0.0)
     foils = (
         ((0.0, 0.0), (DOM_X, DOM_Y), Z_GND, z_gnd_hi),
-        ((0.0, y_c - W_MSL / 2), (x_patch0, y_c + W_MSL / 2),
+        ((start, y_c - W_MSL / 2), (x_patch0, y_c + W_MSL / 2),
          z_sub_hi, z_sub_hi + t_metal),
         ((x_patch0, y_c - W / 2), (x_patch0 + L, y_c + W / 2),
          z_sub_hi, z_sub_hi + t_metal),

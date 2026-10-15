@@ -1,5 +1,5 @@
 name: rfx-weekly-a6000
-description: "Weekly validation lane on a6000: the highmem selection (one multi-GB peak at a time, incl. the ~24 GB oblique-TFSF AD test that no GitHub runner fits) and the gpu-marked suite, at a pinned SHA cloned from the NFS checkout"
+description: "Weekly validation lane on a6000: the highmem selection (one multi-GB peak at a time, incl. the ~24 GB oblique-TFSF AD test that no GitHub runner fits) and the gpu-marked suite, at a pinned SHA cloned from the public repository"
 tags: [rfx, weekly, validation, a6000]
 resources:
   cluster: remilab-c0
@@ -14,21 +14,20 @@ env:
   RFX_WEEKLY_RSS: "1"
   RFX_SHA: "origin/main"
 mount:
-  /root/workspace/: volume://remilab-fs/personal-workspaces/
+  /results: volume://remilab-fs/rfx-vessl-tests
 run: |-
   set -eu
   command -v git >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y -qq git; }
-  SRC=/root/workspace/byungkwan-workspace/research/rfx
-  git config --global --add safe.directory '*'
-  git -C "$SRC" fetch -q origin main
-  git -C "$SRC" cat-file -e "$RFX_SHA^{commit}" 2>/dev/null || git -C "$SRC" fetch -q origin "$RFX_SHA"
-  SHA=$(git -C "$SRC" rev-parse --short "$RFX_SHA")
-  OUT=/root/workspace/byungkwan-workspace/opt/rfx-vessl-tests/weekly_a6000_${SHA}_$(date -u +%Y%m%dT%H%M%SZ)
-  mkdir -p "$OUT"
-  WORK=/tmp/rfx-weekly-$SHA
+  # The job mounts only its own results folder (PI 2026-10-06: no whole-tree mount) and
+  # takes the source from the public repository, so it does not touch the NFS clone.
+  WORK=/tmp/rfx-weekly-src
   rm -rf "$WORK"
-  git clone -q --no-checkout --shared "$SRC" "$WORK"
+  git clone -q --no-checkout --filter=blob:none https://github.com/bk-squared/rfx.git "$WORK"
   cd "$WORK"
+  case "$RFX_SHA" in origin/*) ;; *) git cat-file -e "$RFX_SHA^{commit}" 2>/dev/null || git fetch -q origin "$RFX_SHA";; esac
+  SHA=$(git rev-parse --short=8 "$RFX_SHA^{commit}")
+  OUT=/results/weekly_a6000_${SHA}_$(date -u +%Y%m%dT%H%M%SZ)
+  mkdir -p "$OUT"
   git checkout -q --detach "$SHA"
   echo "checked out $(git rev-parse HEAD): $(git ls-files | wc -l) tracked files"
   # Python 3.11 + JAX 0.10.2 in a uv venv (PI 2026-09-25). On VESSL 369367265580 (A6000) this

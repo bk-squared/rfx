@@ -71,7 +71,8 @@ from rfx.core.yee import (
     update_e_box, update_e_nu, update_h_nu,
 )
 from rfx.nonuniform import make_nonuniform_grid, position_to_index
-from rfx.simulation import _design_box_edge_coeffs
+from rfx.model.materials import electric_cell_sizes
+from rfx.model.materials import _design_box_edge_coeffs
 from tests._x64_compat import enable_x64
 
 F0 = 8e9
@@ -160,6 +161,7 @@ def _nu_step_loop(box=(8, 12, 8, 12, 6, 10), n_steps=120, nxy=8e-3,
     grid = make_nonuniform_grid((nxy, nxy), DZ_PROFILE / 4.0, 0.5e-3,
                                 cpml_layers=4)
     shape = grid.shape
+    cell_sizes = electric_cell_sizes(grid)
     ones = jnp.ones(shape, field_dtype)
     mats = MaterialArrays(eps_r=ones, sigma=0.0 * ones, mu_r=ones)
     dt = float(grid.dt)
@@ -189,7 +191,7 @@ def _nu_step_loop(box=(8, 12, 8, 12, 6, 10), n_steps=120, nxy=8e-3,
                 # hand was a second spelling of the material-to-edge rule,
                 # and it is the spelling #1210 corrected.
                 box_w, ca, cb = _design_box_edge_coeffs(
-                    box, eps_design, jnp.zeros_like(eps_design), m, dt, shape)
+                    box, eps_design, jnp.zeros_like(eps_design), m, dt, shape, grid=grid)
 
             def step(carry, n):
                 st, cpml, acc = carry
@@ -199,7 +201,7 @@ def _nu_step_loop(box=(8, 12, 8, 12, 6, 10), n_steps=120, nxy=8e-3,
                                         materials=m)
                 prev = st
                 st = update_e_nu(st, m, dt, grid.inv_dx, grid.inv_dy,
-                                 grid.inv_dz)
+                                 grid.inv_dz, cell_sizes=cell_sizes)
                 if split:
                     st = update_e_box(
                         st, prev, box_w, ca, cb, grid.dx,
@@ -381,7 +383,7 @@ def test_nu_design_box_leaves_the_grid_wide_permittivity_concrete():
         traced.append(isinstance(materials.eps_r, jax.core.Tracer))
         return real_update_e_nu(state, materials, *args, **kwargs)
 
-    with mock.patch("rfx.nonuniform.update_e_nu", spy):
+    with mock.patch("rfx.stepping.graded.update_e_nu", spy):
         grad = jax.grad(lambda e: _nu_loss_box(sim, e, n_steps=12))(eps)
     assert traced, "the grid-wide E update never ran"
     assert float(jnp.max(jnp.abs(grad))) > 0.0, "the design box reached nothing"
@@ -398,8 +400,12 @@ def _nu_forward_with_box(sim, **kwargs):
 
 
 def test_nu_fence_waveguide_port():
-    """A modal port writes its own field over a whole plane."""
-    sim = Simulation(freq_max=2 * F0, domain=DOMAIN, dx=DX, boundary="cpml",
+    """A modal port writes its own field over a whole plane.
+
+    Addendum 5f: transverse PEC lets the design-box fence remain the subject.
+    """
+    sim = Simulation(freq_max=2 * F0, domain=DOMAIN, dx=DX,
+                     boundary={"x": "cpml", "y": "pec", "z": "pec"},
                      cpml_layers=CPML, dz_profile=DZ_PROFILE)
     # No point source: a waveguide port refuses to share a run with one.
     sim.add_waveguide_port(6e-3, mode=(1, 0), f0=F0,

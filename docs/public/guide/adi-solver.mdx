@@ -1,8 +1,8 @@
 ---
 title: "ADI Solver (Experimental)"
-description: "Experimental ADI-FDTD: the cavity accuracy envelope, timestep trade, and unsupported interior PEC."
+description: "Experimental ADI-FDTD for closed, homogeneous cavities: the timestep trade and what it refuses."
 sidebar:
-  order: 9
+  order: 4
 ---
 
 `solver="adi"` is an implicit time-stepping scheme that can take steps larger
@@ -40,7 +40,7 @@ def cavity(solver, factor=2.0):
                      boundary="pec", solver=solver, adi_cfl_factor=factor)
     sim.add_source((0.37 * a, 0.41 * b, 0.20 * d), "ey",
                    waveform=GaussianPulse(f0=f_te101, bandwidth=0.9),
-                   amplitude_kind="current")
+                   amplitude_kind="field")      # ADI implements field sources only
     sim.add_probe((0.63 * a, 0.58 * b, 0.80 * d), "ey")
     return sim
 
@@ -58,40 +58,32 @@ for label, solver, factor in [("yee", "yee", 1.0),
     print(f"{label}: {n_steps} steps, TE101 error {err:+.2f}%")
 ```
 
-At about 27 cells per wavelength this prints:
-
-```text
-yee: 2412 steps, TE101 error -0.06%
-adi x2: 1206 steps, TE101 error -0.54%
-adi x5: 482 steps, TE101 error -2.59%
-```
-
-The factor-5 run triggers the `adi_3d_accuracy` preflight advisory, which
-quotes the envelope below.
+The ADI runs take a half and a fifth of the Yee steps for the same record, and
+their TE101 error grows with the factor. The factor-5 run triggers the
+`adi_3d_accuracy` preflight advisory.
 
 ## Choosing `adi_cfl_factor`
 
-On a lossless PEC cavity at about 15 cells per wavelength:
-
-| `adi_cfl_factor` | eigenfrequency error |
-|---|---|
-| 2 (default) | −1.4 % |
-| 3 | −2.8 % |
-| 5 (explicit) | −6.7 % |
+The committed check holds the 3-D lane at the default factor 2 within 2 % of
+the analytic eigenfrequency of an empty PEC cavity
+(`tests/unit/misc/test_review_tier1_validation_battery.py::test_optc1_adi_3d_cavity_eigenfrequency`).
+Larger factors are not judged; the error grows with the factor and shrinks with
+finer cells.
 
 **Use `adi_cfl_factor <= 2` when a frequency must be accurate.** The default
-is 2; explicitly selecting 5 trades accuracy for larger steps on stiff meshes. The error shrinks with finer
-cells, as the example shows.
+is 2; a larger factor trades accuracy for larger steps on stiff meshes.
 
 ## What ADI can model
 
 ADI runs a small subset of rfx:
 
 - `mode="3d"` or `mode="2d_tmz"`, on a uniform mesh;
-- `boundary="pec"` or `"cpml"` (on ADI, `"cpml"` is a graded-conductivity
-  absorber, not the full CPML);
-- non-dispersive dielectrics;
-- soft sources (`add_source`) and point probes.
+- `boundary="pec"` only. Every absorbing boundary is refused when the
+  `Simulation` is built, and the default boundary is `"cpml"`, so pass
+  `boundary="pec"` explicitly;
+- a uniform, non-dispersive dielectric filling the whole domain. A dielectric or
+  conductivity interface is refused;
+- soft sources with `amplitude_kind="field"` (`add_source`) and point probes.
 
 It refuses everything else before the first step: interior conductors of any
 kind (volumes, sheets, wires), ports, TFSF, waveguide, coaxial and Floquet
@@ -112,7 +104,8 @@ solves.
 
 - **Experimental.** The 3-D lane is checked against an analytic PEC cavity
   (within 2 % at factor 2), and the 2-D TMz lane against a cavity resonance at
-  factor 5. Neither contains a conductor or material interface.
+  factor 5. Neither contains a conductor or material interface, and ADI refuses
+  both.
 - **No demonstrated speed-up.** The larger step is allowed, but no measured
   end-to-end speed and accuracy gain on a real stiff mesh has been published.
   Do not assume ADI is faster for your model.

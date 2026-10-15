@@ -20,6 +20,7 @@ import pytest
 from rfx.api import Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.preflight._common import profile_boundary_cell
+from tests._line_stub_geometry import trim_resonant_trace
 
 _DX = 1.0e-3
 
@@ -347,9 +348,11 @@ def test_a_source_a_coarse_half_cell_from_the_far_wall_is_caught():
     """
     report = _pec_box_with_source_below_z_hi(_z_ends(0.2 * _DX, _DX), 0.3e-3)
     assert "source_decoupled" in _codes(report), _codes(report)
-    text = next(str(i) for i in report.issues
-                if getattr(i, "code", None) == "source_decoupled")
-    assert "z_hi" in text and "(1 mm)" in text, text
+    issue = next(i for i in report.issues
+                 if getattr(i, "code", None) == "source_decoupled")
+    assert issue.severity == "error"
+    text = str(issue)
+    assert "z_hi" in text and "at least one cell inside the domain, off the wall" in text, text
 
 
 def test_a_source_outside_the_fine_wall_half_cell_is_not_flagged():
@@ -489,6 +492,7 @@ def _notch_like_sim(feed_cells, n_probe_offset, tail=14):
                      width=w, height=h, direction="+x", impedance=50.0,
                      n_probe_offset=n_probe_offset, n_probe_spacing=3,
                      n_probes=5)
+    trim_resonant_trace(sim, 1)
     return sim, len(ramp)
 
 
@@ -658,6 +662,7 @@ def _ramp_feed_board(n_probe_offset, stub_gap_m=1.0e-3):
                      direction="+x", impedance=50.0,
                      n_probe_offset=n_probe_offset, n_probe_spacing=3,
                      n_probes=5)
+    trim_resonant_trace(sim, 1)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         return sim, sim.preflight()
@@ -801,6 +806,7 @@ def _two_zone_board(direction, n_probe_offset):
                      direction=direction, impedance=50.0,
                      n_probe_offset=n_probe_offset, n_probe_spacing=3,
                      n_probes=5)
+    trim_resonant_trace(sim, 1)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         return sim.preflight()
@@ -1097,6 +1103,7 @@ def _auto_offset_board(f_max=20e9, runway_node=20.3, **port_kw):
     feed = x_run + runway_node * _NOTCH_RUNWAY
     sim.add_msl_port(position=(feed, y_c, 0), width=w, height=h,
                      direction="+x", impedance=50.0, **port_kw)
+    trim_resonant_trace(sim, 1)
     return sim
 
 

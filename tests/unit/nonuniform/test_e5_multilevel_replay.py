@@ -196,6 +196,7 @@ def _compare_arm(a, b, key):
 
 # --- model side ----------------------------------------------------------------------------
 
+@pytest.mark.source_scan
 def test_model_provenance(model_json):
     assert model_json["rfx_file"].endswith("rfx/__init__.py")
     assert len(model_json["git_sha"]) == 40
@@ -270,6 +271,7 @@ def test_fixture_relabel_identity_no_fdtd():
 
 # --- results side ------------------------------------------------------------------------------
 
+@pytest.mark.source_scan
 @pytest.mark.parametrize("axis", ["z", "x", "y"])
 def test_results_provenance(axis):
     res = _load(_AXIS[axis])
@@ -448,6 +450,7 @@ def test_results_prose_numbers_second_pass():
     assert blk["git_dirty_at_refresh"] is True and len(blk["git_sha"]) == 40
 
 
+@pytest.mark.source_scan
 def test_results_window_scan_replays():
     scan = _load(_RESULTS / "e5_window_scan.json")
     assert scan["diagnostic"] == "window_scan" and scan["rfx_file"].endswith("rfx/__init__.py")

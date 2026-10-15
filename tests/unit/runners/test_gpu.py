@@ -9,7 +9,7 @@ import pytest
 
 from rfx.gpu import device_info, benchmark, BenchResult, DeviceInfo
 
-pytestmark = pytest.mark.gpu
+pytestmark = [pytest.mark.gpu, pytest.mark.gpu_gate]
 
 
 def test_device_info():

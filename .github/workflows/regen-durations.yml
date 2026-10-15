@@ -11,25 +11,35 @@ on:
 
 jobs:
   fast:
+    # Durations are keyed by test, so changing the split count needs no file conversion.
     runs-on: ubuntu-latest
     timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
-        group: [1, 2, 3, 4, 5, 6]
+        group: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     steps:
       - uses: actions/checkout@v4
+      - name: Raise the memory-mapping limit for the test process
+        # JAX keeps every compiled program mapped until its test module ends. On
+        # 2026-10-07 one compile-heavy module took a pytest process to 65,521 of
+        # the default 65,530 mappings and it died inside the compiler (measured
+        # on the pre-push gate machine). The first command prints this runner's
+        # value before the change.
+        run: |
+          sysctl vm.max_map_count
+          sudo sysctl -w vm.max_map_count=262144
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       - run: pip install -e ".[dev,cad]" "jax==0.10.2" "jaxlib==0.10.2"
-      - name: Fast selection, shard ${{ matrix.group }} of 6, store durations
+      - name: Fast selection, shard ${{ matrix.group }} of 12, store durations
         env:
           RFX_WEEKLY_RSS: "1"
         run: >
           mkdir -p durations &&
           pytest -v -ra -p no:cacheprovider
-          --splits 6 --group ${{ matrix.group }}
+          --splits 12 --group ${{ matrix.group }}
           --store-durations --durations-path durations/fast_${{ matrix.group }}.json
           || true
       - uses: actions/upload-artifact@v4
@@ -47,9 +57,18 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        group: [1, 2, 3, 4, 5]
+        group: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@v4
+      - name: Raise the memory-mapping limit for the test process
+        # JAX keeps every compiled program mapped until its test module ends. On
+        # 2026-10-07 one compile-heavy module took a pytest process to 65,521 of
+        # the default 65,530 mappings and it died inside the compiler (measured
+        # on the pre-push gate machine). The first command prints this runner's
+        # value before the change.
+        run: |
+          sysctl vm.max_map_count
+          sudo sysctl -w vm.max_map_count=262144
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
@@ -57,14 +76,17 @@ jobs:
       # shards run: no cad extra (tests/unit/geometry/test_mesh_import.py killed slow (3) here on
       # 2026-09-16 and 2026-09-21 and does not run in that lane) and no docs_consistency tests.
       - run: pip install -e ".[dev]" "jax==0.10.2" "jaxlib==0.10.2"
-      - name: Slow selection, shard ${{ matrix.group }} of 5, store durations
+      - name: Slow selection, shard ${{ matrix.group }} of 6, store durations
         env:
           RFX_WEEKLY_RSS: "1"
+          # As in validation.yml: without it the 457 weekly-only cells of the
+          # path-equivalence matrix are never measured and stay unpriced.
+          RFX_S0_FULL: "1"
         run: >
           mkdir -p durations &&
           pytest -v -ra -p no:cacheprovider
           -m "not gpu and not highmem and not docs_consistency"
-          --splits 5 --group ${{ matrix.group }}
+          --splits 6 --group ${{ matrix.group }}
           --store-durations --durations-path durations/slow_${{ matrix.group }}.json
           || true
       - uses: actions/upload-artifact@v4

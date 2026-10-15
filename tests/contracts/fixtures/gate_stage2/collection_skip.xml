@@ -1,0 +1,9 @@
+<?xml version='1.0' encoding='utf-8'?>
+<testsuites name="pytest tests">
+  <testsuite name="pytest" errors="0" failures="0" skipped="1" tests="2" time="0.081">
+    <testcase classname="" name="tests.unit.geometry.test_mesh_import" time="0.000">
+      <skipped message="collection skipped">('tests/unit/geometry/test_mesh_import.py', 11, "Skipped: optional 'cad' extra (trimesh) not installed")</skipped>
+    </testcase>
+    <testcase classname="test_pass" name="test_pass" time="0.000" />
+  </testsuite>
+</testsuites>

@@ -150,6 +150,11 @@ def _mirror_consistent_psi(auxiliary, axis: int, magnetic: bool, seed: int):
     """
     lo_name, hi_name = (_MAGNETIC_PSI if magnetic else _ELECTRIC_PSI)[axis]
     template = np.asarray(getattr(auxiliary, lo_name))
+    # Seed in the fixture's original layout, then restore field axis order.
+    component_axis = "xyz".index(lo_name.split("_")[1][1])
+    order = [axis, component_axis]
+    order += [i for i in range(3) if i not in order]
+    template = template.transpose(order)
     rng = np.random.default_rng(seed)
     lo = rng.standard_normal(template.shape).astype(template.dtype)
     hi = np.zeros_like(lo)
@@ -162,7 +167,11 @@ def _mirror_consistent_psi(auxiliary, axis: int, magnetic: bool, seed: int):
         hi[:-1] = -np.flip(lo[:-1], axis=0)
     else:
         hi[:] = np.flip(lo, axis=0)
-    return auxiliary._replace(**{lo_name: jnp.asarray(lo), hi_name: jnp.asarray(hi)})
+    inverse = tuple(np.argsort(order))
+    return auxiliary._replace(**{
+        lo_name: jnp.asarray(lo.transpose(inverse)),
+        hi_name: jnp.asarray(hi.transpose(inverse)),
+    })
 
 
 @pytest.mark.parametrize("axis_name", ["x", "y", "z"])

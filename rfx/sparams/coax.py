@@ -26,6 +26,12 @@ they do not run at import time.
 
 from __future__ import annotations
 
+from rfx._precision import resolve_field_dtype
+
+from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
+from rfx.sparams._grid_metrics import _calculator_source_plane
+from rfx.model.conductors import coax_declared_conductors, coax_kernel_conductors
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -48,19 +54,6 @@ from rfx.sparams._common import (
     _ladder_split_witness,
     _assemble_coax_msl_transition_from_voltages,
 )
-
-
-def _calculator_source_plane(grid, port):
-    """Keep the calculator's derived half-cell source on its original node.
-
-    This is an internal one-cell descriptor, not a declared coordinate.
-    Preserve its float64 half-to-even arithmetic independently of the
-    declared-coordinate tie rule.
-    """
-    direction = 1 if port.face == "bottom" else -1
-    centre = port.position[2] + direction * port.pin_length / 2.0
-    dz = float(grid.cells(2)[0])   # uniform z only (coax calculators refuse a graded mesh)
-    return int(round(centre / dz)) + grid.pad_z_lo
 
 
 def _coax_pec_edge_masks(pec_cells, periodic=(False, False, False), merge_with=None):
@@ -87,7 +80,7 @@ def _coax_pec_edge_masks(pec_cells, periodic=(False, False, False), merge_with=N
     return tuple(np.asarray(e) | np.asarray(m) for e, m in zip(edges, merge_with))
 
 
-def _require_absorption_on_every_axis(sim, cpml_axes: str, lane: str) -> None:
+def _require_absorption_on_every_axis(sim, cpml_axes: str | None, lane: str) -> None:
     """Both coax line lanes absorb on x, y and z (issue 1218).
 
     With absorbers on z only, the lateral pads were vacuum backed by the PEC
@@ -103,21 +96,15 @@ def _require_absorption_on_every_axis(sim, cpml_axes: str, lane: str) -> None:
     A face without an absorber is a PEC wall and closes the can again, so
     every face needs positive CPML thickness.
     """
-    for axis_name in "xyz":
-        face = getattr(sim._boundary_spec, axis_name)
-        if (
-            face.lo != "cpml"
-            or face.hi != "cpml"
-            or face.resolved_lo_thickness(sim._cpml_layers) <= 0
-            or face.resolved_hi_thickness(sim._cpml_layers) <= 0
-        ):
-            raise ValueError(
-                f"{lane}() requires positive CPML thickness on all six faces: "
-                "it absorbs on all three axes, and a face without an absorber "
-                "is a PEC wall that closes a metal can around the line "
-                "(issue 1218)."
-            )
-    if cpml_axes != "xyz":
+    from rfx.boundaries.depths import has_positive_cpml_faces
+    if not has_positive_cpml_faces(sim._boundary_spec, sim._cpml_layers):
+        raise ValueError(
+            f"{lane}() requires positive CPML thickness on all six faces: "
+            "it absorbs on all three axes, and a face without an absorber "
+            "is a PEC wall that closes a metal can around the line "
+            "(issue 1218)."
+        )
+    if cpml_axes is not None and set(cpml_axes) != set("xyz"):
         raise ValueError(
             f"{lane}() absorbs on all three axes and accepts only "
             f"cpml_axes='xyz' (got {cpml_axes!r}). With absorbers on z only "
@@ -136,7 +123,7 @@ def compute_coaxial_line_reflection(
     freqs: jnp.ndarray | None = None,
     n_freqs: int = 11,
     field_scale: float = 1.0e4,
-    cpml_axes: str = "xyz",
+    cpml_axes: str | None = None,
     dut_offset_cells: int = 4,
     probe_count: int = 12,
     probe_start_cells: int = 8,
@@ -168,7 +155,7 @@ def compute_coaxial_line_reflection(
     PEC into CPML is numerically unstable.
 
     The line sits in open space: the run absorbs on all three axes
-    (``cpml_axes="xyz"``, the default and the only value accepted), so what
+    (``cpml_axes=None`` reads the grid; all three axes are required), so what
     leaves the line's unshielded ends — the open termination, and the pin and
     shell ending one cell past the matched feed — is absorbed as it would
     radiate from a cable. ``cpml_axes="z"`` is refused: it left the lateral
@@ -215,6 +202,7 @@ def compute_coaxial_line_reflection(
     path. The AD↔FD gate is ``tests/unit/autodiff/test_coax_end_to_end_ad.py``.
     """
 
+    resolve_field_dtype(self._precision)
     if self._boundary != "cpml" or self._cpml_layers <= 0:
         raise ValueError(
             "compute_coaxial_line_reflection() requires boundary='cpml' "
@@ -242,9 +230,7 @@ def compute_coaxial_line_reflection(
             "solver='adi' is not supported."
         )
     if self._precision != "float32":
-        raise ValueError(
-            "compute_coaxial_line_reflection() requires precision='float32'."
-        )
+        raise ValueError("compute_coaxial_line_reflection() requires precision='float32'.")
     if self._stencil_order != 2:
         raise ValueError(
             "compute_coaxial_line_reflection() requires stencil_order=2."
@@ -340,6 +326,7 @@ def compute_coaxial_line_reflection(
     from rfx.runners._admission import admit
     admit(self, "coaxial_line_reflection")
 
+    _line_stub_scope = _line_stub_admit(self, freqs)
     grid = self._build_grid()
     nz = grid.shape[2]
     dz = float(grid.dx)
@@ -379,9 +366,10 @@ def compute_coaxial_line_reflection(
     R_dut = float(dut_impedance) if dut_impedance is not None else R_feed
 
     materials, _, _ = self._build_materials(grid)
+    stamp_entities = []
     materials, shell_inner, pec_cells = stamp_coaxial_line(
         grid, materials, center_xy=center_xy, z_lo_index=z_dut,
-        z_hi_index=z_hi_coax, pin_radius=a, outer_radius=b,
+        z_hi_index=z_hi_coax, pin_radius=a, outer_radius=b, realized_entities=stamp_entities,
     )
     materials = stamp_coaxial_annular_resistor(
         grid, materials, center_xy=center_xy, z_index=z_feed, pin_radius=a,
@@ -436,10 +424,12 @@ def compute_coaxial_line_reflection(
                     grid_shape=grid.shape, dft_total_steps=int(n_steps),
                 )
             )
+    conductors = coax_kernel_conductors(self, grid, materials, pec_cells,
+        _coax_pec_edge_masks(pec_cells), stamp_entities)
     result = _run(
         grid, materials, int(n_steps), boundary="cpml", cpml_axes=cpml_axes,
         sources=list(spec.electric_sources), mag_sources=list(spec.magnetic_sources),
-        dft_planes=planes, pec_edge_masks=_coax_pec_edge_masks(pec_cells),
+        dft_planes=planes, pec_edge_masks=conductors.pec_edges,
         return_state=False,
     )
     if result.dft_planes is None:
@@ -554,7 +544,7 @@ def compute_coaxial_two_port(
     freqs: jnp.ndarray | None = None,
     n_freqs: int = 11,
     field_scale: float = 1.0e4,
-    cpml_axes: str = "xyz",
+    cpml_axes: str | None = None,
     probe_count: int = 12,
     probe_start_cells: int = 8,
     probe_spacing_cells: int = 4,
@@ -686,6 +676,7 @@ def compute_coaxial_two_port(
     this sim still raise, because this method builds its own probes.
     """
 
+    resolve_field_dtype(self._precision)
     if self._boundary != "cpml" or self._cpml_layers <= 0:
         raise ValueError(
             "compute_coaxial_two_port() requires boundary='cpml' "
@@ -713,9 +704,7 @@ def compute_coaxial_two_port(
             "solver='adi' is not supported."
         )
     if self._precision != "float32":
-        raise ValueError(
-            "compute_coaxial_two_port() requires precision='float32'."
-        )
+        raise ValueError("compute_coaxial_two_port() requires precision='float32'.")
     if self._stencil_order != 2:
         raise ValueError(
             "compute_coaxial_two_port() requires stencil_order=2."
@@ -809,6 +798,7 @@ def compute_coaxial_two_port(
     from rfx.runners._admission import admit
     admit(self, "coaxial_two_port")
 
+    _line_stub_scope = _line_stub_admit(self, freqs)
     grid = self._build_grid()
     nz = grid.shape[2]
     dz = float(grid.dx)
@@ -855,9 +845,10 @@ def compute_coaxial_two_port(
     R_feed = float(feed_impedance) if feed_impedance is not None else float(z_tem)
 
     materials, _, _ = self._build_materials(grid)
+    stamp_entities = []
     materials, shell_inner, pec_cells = stamp_coaxial_line(
         grid, materials, center_xy=center_xy, z_lo_index=z_lo_coax_bot,
-        z_hi_index=z_hi_coax_top, pin_radius=a, outer_radius=b,
+        z_hi_index=z_hi_coax_top, pin_radius=a, outer_radius=b, realized_entities=stamp_entities,
     )
     materials = stamp_coaxial_annular_resistor(
         grid, materials, center_xy=center_xy, z_index=z_feed_top, pin_radius=a,
@@ -935,7 +926,8 @@ def compute_coaxial_two_port(
 
     # Realized once, outside the per-drive loop: the geometry does not change
     # between the two drives and the realization is not cheap.
-    _coax_edges = _coax_pec_edge_masks(pec_cells)
+    conductors = coax_kernel_conductors(self, grid, materials, pec_cells,
+        _coax_pec_edge_masks(pec_cells), stamp_entities)
 
     _traced_eps = eps_scale is not None
     if _traced_eps:
@@ -973,7 +965,7 @@ def compute_coaxial_two_port(
             grid, materials, int(n_steps), boundary="cpml", cpml_axes=cpml_axes,
             sources=list(spec.electric_sources), mag_sources=list(spec.magnetic_sources),
             probes=witness_probes, dft_planes=planes, record_dft=True,
-            pec_edge_masks=_coax_edges, return_state=False,
+            pec_edge_masks=conductors.pec_edges, return_state=False,
             **_flux_run_kwargs,
         )
         if result.dft_planes is None:
@@ -1123,7 +1115,7 @@ def compute_coaxial_two_port(
 # shared message (rfx/sparams/_common.py) is used by five extractors and is
 # left untouched; only this lane refuses by default (issue #838).
 COAX_MSL_TRANSITION_REFUSAL_HINT = (
-    "compute_coax_msl_transition is an EXPERIMENTAL cross-family lane and "
+    "compute_coax_msl_transition is an EXPERIMENTAL cross-family method and "
     "refuses a non-passive S by default (strict_passivity=True); pass "
     "strict_passivity=False to get the diagnostic matrix back with a "
     "UserWarning instead of this error."
@@ -1383,6 +1375,7 @@ def compute_coax_msl_transition(
     -------
     CoaxMSLTransitionResult
     """
+    resolve_field_dtype(self._precision)
     from rfx.sources.coaxial_port import (
         CoaxialPort as _CoaxPort,
         build_coaxial_tem_plane_source_specs,
@@ -1439,9 +1432,7 @@ def compute_coax_msl_transition(
             "compute_coax_msl_transition() supports solver='yee' only."
         )
     if self._precision != "float32":
-        raise ValueError(
-            "compute_coax_msl_transition() requires precision='float32'."
-        )
+        raise ValueError("compute_coax_msl_transition() requires precision='float32'.")
     if self._stencil_order != 2:
         raise ValueError(
             "compute_coax_msl_transition() requires stencil_order=2."
@@ -1537,6 +1528,7 @@ def compute_coax_msl_transition(
             "(this method does not auto-detect it from geometry)."
         )
 
+    _line_stub_scope = _line_stub_admit(self, freqs)
     if not skip_preflight:
         # This lane owns its port checks; run only the shared sheet verdict.
         import warnings
@@ -1583,20 +1575,11 @@ def compute_coax_msl_transition(
             "layer; check both registrations reference the SAME "
             "physical ground plane."
         )
-    _cx_pec_sheets: list = []
-    _cx_pec_wires: list = []
-    materials, debye_spec, lorentz_spec, pec_mask, _, _, _ = \
-        self._assemble_materials(
-            grid, pec_sheets=_cx_pec_sheets, pec_wires=_cx_pec_wires)
-    from rfx.boundaries.pec import (
-        realized_pec_edge_masks as _rpem_cx,
-    )
-    _cx_pec_edge_masks = None
-    if pec_mask is not None or _cx_pec_sheets or _cx_pec_wires:
-        _cx_pec_edge_masks = _rpem_cx(
-            pec_mask, sheets=tuple(_cx_pec_sheets),
-            wires=tuple(_cx_pec_wires),
-            periodic=self._periodic_flags())
+    declared_conductors = coax_declared_conductors(self, grid)
+    materials, debye_spec, lorentz_spec, pec_mask, _, _, _ = declared_conductors.assembly
+    # Board stage: both MSL geometry readers use these pre-stamp edges.
+    # The owner makes the coax/board union only for the kernel stage below.
+    _cx_pec_edge_masks = declared_conductors.pec_edges
 
     if freqs is None:
         freqs_arr = np.asarray(
@@ -1661,9 +1644,10 @@ def compute_coax_msl_transition(
     z_tem = coaxial_tem_characteristic_impedance(a, b)
     r_feed = float(feed_impedance) if feed_impedance is not None else float(z_tem)
     junction_materials = materials
+    stamp_entities = []
     materials, shell_inner, coax_pec_cells = stamp_coaxial_line(
         grid, materials, center_xy=center_xy, z_lo_index=z_stub_lo,
-        z_hi_index=z_stub_hi, pin_radius=a, outer_radius=b,
+        z_hi_index=z_stub_hi, pin_radius=a, outer_radius=b, realized_entities=stamp_entities,
     )
     materials = stamp_coaxial_annular_resistor(
         grid, materials, center_xy=center_xy, z_index=z_feed,
@@ -1673,12 +1657,8 @@ def compute_coax_msl_transition(
     # The declared stub ends below the junction node. The caller owns the
     # junction, post and laminate: preserve the registered arrays at and above
     # that node, so no DUT conductor/dielectric is cut.
-    materials = materials._replace(
-        eps_r=materials.eps_r.at[:, :, z_junction_idx:].set(
-            junction_materials.eps_r[:, :, z_junction_idx:]),
-        sigma=materials.sigma.at[:, :, z_junction_idx:].set(
-            junction_materials.sigma[:, :, z_junction_idx:]),
-    )
+    from rfx.model.thin_conductors import splice_junction_materials
+    materials = splice_junction_materials(materials, junction_materials, z_junction_idx)
 
     src_port = _CoaxPort(
         position=(center_xy[0], center_xy[1], (z_src - grid.pad_z_lo) * dz),
@@ -1707,7 +1687,6 @@ def compute_coax_msl_transition(
             stacklevel=2,
         )
 
-    # ---- MSL side (mirrors compute_mixed_s_matrix's MSL consumption) ---
     from rfx.sources.msl_port import validate_msl_port_geometry
     validate_msl_port_geometry(
         grid, msl_port_base, pec_edge_masks=_cx_pec_edge_masks,
@@ -1715,6 +1694,8 @@ def compute_coax_msl_transition(
         pec_faces=self._boundary_spec.pec_faces(), name=msl_pe.name)
     mode_profile = compute_msl_mode_profile(grid, msl_port_base, eps_r_sub_resolved)
     materials = setup_msl_port(grid, msl_port_base, materials, mode_profile=mode_profile)
+    from rfx.model.materials import with_components
+    materials = with_components(materials, grid, periodic=(False, False, False))
     z0_msl, eps_eff_msl = hammerstad_jensen_z0_eps_eff(
         msl_pe.width, msl_pe.height, eps_r_sub_resolved
     )
@@ -1908,7 +1889,9 @@ def compute_coax_msl_transition(
     j_probe_msl = int(grid.pad_y_lo) + int(round(y_centre / dz))
     k_probe_msl = int(round((msl_z_lo + 0.5 * msl_pe.height) / dz)) + int(grid.pad_z_lo)
 
-    # drive_idx 0 drives the coax port; drive_idx 1 drives the MSL port.
+    conductors = coax_kernel_conductors(self, grid, materials, coax_pec_cells,
+        _coax_pec_edge_masks(coax_pec_cells), stamp_entities, root=declared_conductors,
+        skip_preflight=skip_preflight)
     for drive_idx in range(2):
         if drive_idx == 0:
             sources = list(spec_coax.electric_sources)
@@ -1953,8 +1936,7 @@ def compute_coax_msl_transition(
             grid, materials, int(n_steps), boundary="cpml", cpml_axes="xyz",
             sources=sources, mag_sources=mag_sources, probes=witness_probes,
             dft_planes=planes, record_dft=True,
-            pec_edge_masks=_coax_pec_edge_masks(
-                coax_pec_cells, merge_with=_cx_pec_edge_masks),
+            pec_edge_masks=conductors.pec_edges,
             return_state=False,
             **_flux_run_kwargs,
         )

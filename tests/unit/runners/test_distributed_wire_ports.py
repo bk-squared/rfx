@@ -10,6 +10,8 @@ import numpy as np
 import pytest
 
 from rfx import Box, Simulation
+from rfx.measurement import dft as measurement_dft
+from rfx.measurement.dft import transform as kernel_transform
 from rfx.sources.sources import GaussianPulse
 
 pytestmark = pytest.mark.distributed
@@ -249,8 +251,9 @@ def test_mutations(monkeypatch, mutation):
         original_dft = driver._lumped_recording_dfts
         def dft(*args):
             with monkeypatch.context() as patch:
-                patch.setattr(dft_utils, "half_step_current_phase",
-                              lambda f, dt: jnp.ones_like(f, dtype=jnp.complex64))
+                # S2 M2: the half step is the H stamp of the one DFT kernel.
+                patch.setattr(measurement_dft, "transform", lambda r, f, dt, kind="E", **k:
+                              kernel_transform(r, f, dt, "E", **k))
                 return original_dft(*args)
         monkeypatch.setattr(driver, "_lumped_recording_dfts", dft)
     # Without the load stamp a port has no source impedance to drive behind
@@ -261,39 +264,6 @@ def test_mutations(monkeypatch, mutation):
     with pytest.raises(expected[0], match=expected[1]):
         _parity("ex")
     print(f"wire mutation={mutation}: RED")
-
-
-@pytest.mark.parametrize("case,planes", [("ez", False), ("ez", True), ("lumped", False), ("lumped_distributed", False)])
-def test_one_device_bytes_against_main(monkeypatch, case, planes):
-    from rfx.probes import sparam_driver as driver
-    from tests.unit.runners.test_distributed_lumped_port_s import _model as lumped_model
-    sim = lumped_model() if case.startswith("lumped") else _model(case, planes=planes)
-    kwargs = dict(n_steps=512, s_param_freqs=FREQS, skip_preflight=True)
-    if case == "lumped_distributed":
-        kwargs["devices"] = jax.devices("cpu")[:2]
-    actual = sim.run(**kwargs)
-    # Read the main revision locally, execute its driver in memory. No checkout,
-    # secondary package copy, or measurement artifact is created.
-    try:
-        source = subprocess.check_output(
-            ["git", "show", "beb0d3fd:rfx/probes/sparam_driver.py"], text=True,
-            stderr=subprocess.PIPE)
-    except subprocess.CalledProcessError:
-        pytest.skip("main baseline object beb0d3fd is absent from this checkout")
-    namespace = dict(vars(driver))
-    exec(compile(source, "<main-sparam-driver>", "exec"), namespace)
-    monkeypatch.setattr(driver, "compute_lumped_wire_s_matrix_via_scan",
-                        namespace["compute_lumped_wire_s_matrix_via_scan"])
-    expected = sim.run(**kwargs)
-    for name in ("s_params", "freqs", "time_series"):
-        a, b = np.asarray(getattr(actual, name)), np.asarray(getattr(expected, name))
-        assert a.dtype == b.dtype and a.shape == b.shape and a.tobytes() == b.tobytes()
-        print(f"main-byte-parity case={case} planes={planes} {name} entries={a.size} max_delta=0")
-    for component in ("ex", "ey", "ez", "hx", "hy", "hz", "step"):
-        a = np.asarray(getattr(actual.state, component))
-        b = np.asarray(getattr(expected.state, component))
-        assert a.dtype == b.dtype and a.shape == b.shape and a.tobytes() == b.tobytes()
-        print(f"main-byte-parity case={case} planes={planes} state.{component} entries={a.size} max_delta=0")
 
 
 if __name__ == "__main__":

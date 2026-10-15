@@ -143,6 +143,8 @@ def _digests(sim):
     return {
         "eps_r": _sha(mats.eps_r),
         "sigma": _sha(mats.sigma),
+        "sigma_film": None if mats.sigma_film is None else tuple(
+            None if part is None else _sha(part) for part in mats.sigma_film),
         "mu_r": _sha(mats.mu_r),
         "pec_mask": _sha(pec_mask),
         "pec_sheets": tuple((int(sp.normal_axis), int(sp.plane),
@@ -1074,7 +1076,7 @@ def test_fence_waveguide_s_matrix_subpixel():
             _wr90().compute_waveguide_s_matrix(n_steps=4,
                                                subpixel_smoothing=True)
     _fence(go, where=("waveguide.py", "compute_waveguide_s_matrix"),
-           match=r"on the waveguide S-matrix lane")
+           match=r"on the waveguide S-matrix method")
 
 
 def test_fence_waveguide_s_matrix_multimode():
@@ -1147,7 +1149,8 @@ FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
         (__name__, "test_fence_adi_forward"),
     ("rfx/api/_execute.py", "forward", "distributed non-uniform forward()"):
         (__name__, "test_fence_distributed_nonuniform_forward"),
-    ("rfx/api/_execute.py", "run", "distributed multi-device run()"):
+    ("rfx/runners/_distributed_entry.py", "execute_distributed",
+     "distributed multi-device run()"):
         (__name__, "test_fence_distributed_multidevice_run"),
     ("rfx/api/_execute.py", "run", "ADI run()"):
         (__name__, "test_fence_adi_run"),
@@ -1184,7 +1187,7 @@ FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
     ("rfx/api/_execute.py", "forward", "dispersive (Debye/Lorentz)"):
         (__name__, "test_fence_forward_dispersive_overlap"),
     ("rfx/sparams/waveguide.py", "compute_waveguide_s_matrix",
-     "waveguide S-matrix lane"):
+     "waveguide S-matrix method"):
         (__name__, "test_fence_waveguide_s_matrix_subpixel"),
     ("rfx/sparams/waveguide.py", "compute_waveguide_s_matrix",
      "multimode waveguide S-matrix path"):
@@ -1232,7 +1235,7 @@ _MANUAL_FENCES: dict[tuple[str, str, str], tuple[str, str]] = {
 #: call, and a row that stops matching the source is reported as stale, so
 #: this list cannot silently outlive its call site.
 _NON_FENCE_F0_QUERIES: dict[tuple[str, str, str], str] = {
-    ("rfx/api/__init__.py", "_ad_memory_static_accounting", "has_f0_sheets"):
+    ("rfx/api/_ad_memory.py", "_ad_memory_static_accounting", "has_f0_sheets"):
         "#696 memory ACCOUNTING: adds the sheet operator's three edge masks "
         "+ sigma_sheet to the forward working-set estimate. It changes a "
         "reported number, never whether the lane runs.",
@@ -1301,6 +1304,7 @@ def _scan_source_fences():
     return found
 
 
+@pytest.mark.source_scan
 def test_every_fence_in_the_source_is_pinned():
     """Every #677 lane fence in ``rfx/`` is named by ``FENCE_REGISTRY``.
 
@@ -1760,7 +1764,7 @@ def _uniform_sigma(shape, **kw):
         assert float(np.asarray(mats.sigma).max()) == 0.0
         assert len(specs) == 1
         return np.asarray(specs[0].sigma_sheet), pec_mask, grid, sim
-    return np.asarray(mats.sigma), pec_mask, grid, sim
+    return np.asarray(mats.sigma_film[0]), pec_mask, grid, sim
 
 
 def _nu_grid(sim):
@@ -1790,7 +1794,7 @@ def _nu_sigma(shape, **kw):
         assert float(np.asarray(mats.sigma).max()) == 0.0
         assert len(specs) == 1
         return np.asarray(specs[0].sigma_sheet), pec_mask, grid, sim
-    return np.asarray(mats.sigma), pec_mask, grid, sim
+    return np.asarray(mats.sigma_film[0]), pec_mask, grid, sim
 
 
 def _box_sheet(z, foot):
@@ -1861,23 +1865,27 @@ def test_box_and_equivalent_mask_shape_fold_bit_identically(lane):
 
 
 def test_dc_fold_also_accepts_a_mask_shape_on_the_uniform_lane():
-    """The legacy DC fold was never Box-only on the uniform lane (it reads
-    ``shape.mask``); pin that #674 did not change it. The NU DC path refuses
-    a non-Box shape (2.0); it used to warn and solve without the conductor."""
-    # The DC fold samples ``shape.mask`` half-open (a sigma-fill volume
-    # model, unchanged by #931), so the equivalent mask shape is half-open.
+    """DC admission declaration: unknown area needs declared acceptance on both lanes."""
     sig_box, _, _, _ = _uniform_sigma(_box_sheet(U_Z, U_FOOT))
-    sig_msk, _, _, _ = _uniform_sigma(_planar_sheet(U_Z, U_FOOT, closed=False))
-    assert _sha(sig_box) == _sha(sig_msk)
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        sim = Simulation(freq_max=10e9, domain=(NU_L, NU_L, 0), dx=NU_DX,
-                         dz_profile=NU_DZ, boundary="cpml", cpml_layers=6)
-        sim.add_thin_conductor(_planar_sheet(NU_Z, NU_FOOT),
-                               sigma_bulk=SIGMA_BULK, thickness=THICKNESS)
-    with pytest.raises(NotImplementedError, match="non-Box shape"):
-        assemble_materials_nu(sim, _nu_grid(sim))
+    for nonuniform in (False, True):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            sim = (Simulation(freq_max=10e9, domain=(NU_L, NU_L, 0), dx=NU_DX,
+                              dz_profile=NU_DZ, boundary="cpml", cpml_layers=6)
+                   if nonuniform else Simulation(freq_max=10e9, domain=U_DOMAIN, dx=U_DX))
+            shape = (_planar_sheet(NU_Z, NU_FOOT) if nonuniform
+                     else _planar_sheet(U_Z, U_FOOT, closed=False))
+            sim.add_thin_conductor(shape, sigma_bulk=SIGMA_BULK, thickness=THICKNESS)
+        grid = _nu_grid(sim) if nonuniform else sim._build_grid()
+        assemble = sim._assemble_materials_nu if nonuniform else sim._assemble_materials
+        with pytest.raises(ValueError, match="cannot judge"):
+            assemble(grid)
+        sim._snap = 'declared'
+        with pytest.warns(UserWarning, match="cannot judge"):
+            sigma = np.asarray(assemble(grid)[0].sigma_film[0])
+        assert np.any(sigma > 0)
+        if not nonuniform:
+            assert _sha(sig_box) == _sha(sigma)
 
 
 # ---------------------------------------------------------------------------

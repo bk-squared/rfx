@@ -19,6 +19,19 @@ WRONG PHYSICS for a *directly edge-fed* patch and is NOT achievable by refining 
     most optimistic fit needs ~7e8 cells to reach the then-target band. Mesh
     refinement is a diminishing-returns R2 loop here, not a fix.
 
+THE PLANE THESE PINS ARE AT (rfx-archive MSL-PLANE.md, decision record 14)
+------------------------------------------------------------------------
+Every pin below (the Im(Zin)=0 crossing band, the in-band Re(Zin) floor, the
+|S11| readings) was measured on S at the port's probe-0 plane, 3.94 mm (20
+cells) inside the declared feed. ``compute_msl_s_matrix`` now reports S at the
+feed plane; Zin is a port-plane observable, and 3.94 mm of line (2*beta*L =
+1.6-3.9 rad over 6-14 GHz) turns this board's high-impedance antiresonance into
+a low-impedance resonance (crossing 7.46 -> 8.24 GHz, in-band max Re(Zin)
+1223 -> 15 ohm; VESSL 369367270919). So this gate reads S at the probe-0 plane:
+``tests/_msl_probe0.probe0_s`` undoes the shift with the result's own
+``shift_beta`` and ``reference_plane_offsets_m``. |S11| is the same at either
+plane.
+
 THE BOARD THIS GATE MEASURES ("Board S", issue #782 one-mesh anchor rule)
 -------------------------------------------------------------------------
 ``DX = 0.197 mm`` exactly — NOT ``H_SUB/4 = 196.75 um`` — so this fixture rasterizes to
@@ -73,6 +86,11 @@ moved, so the band that brackets its antiresonance moved with it:
     min|S11| over (7.4, 8.2) GHz = 0.9096
     dip 8.800 GHz, |S11| = 0.6418 (the off-resonance match point, still OUTSIDE
         the resonance band — the assertion (2) thesis is intact)
+
+    #1512 geometry, run 369367268214 (all existing pins pass, unchanged):
+    max|S11| = 0.9844; in-band Im(Zin) crossing 7.458 GHz;
+    in-band peak Re(Zin) 1223 ohm at 7.5 GHz; band min|S11| = 0.885;
+    global dip 9.10 GHz, |S11| = 0.713.
 
 WHY IT MOVED DOWN while the isolated patch moved UP (Board H's Leg A went
 -6.17 -> -1.871 % on the same redraw): they are different features. The patch
@@ -175,9 +193,11 @@ import warnings
 
 import jax.numpy as jnp
 import numpy as np
+from tests._msl_probe0 import probe0_s
 import pytest
 
 from rfx import Box, Simulation
+from rfx.preflight.line_port_coverage import local_port_cell
 from rfx.sources import GaussianPulse
 
 # --- issue #80 reproduction geometry (mirrors scripts/patch_edgefed_s11_validation.py) ---
@@ -187,6 +207,7 @@ W = 10.129e-3
 L = 8.595e-3
 W_MSL = 1.8e-3
 L_MSL = 8.0e-3
+# #1512: port plane; feed covers its node with one local-cell drawing allowance.
 PORT_MARGIN = 5.0e-3
 DX = 0.197e-3
 # Board height SNAPPED TO THE NODE LINE (#931 §1.3 off-lattice interfaces): the
@@ -259,7 +280,7 @@ def _build_patch_sim() -> Simulation:
     sim.add(Box((0, 0, Z_SUB_LO), (DOM_X, DOM_Y, Z_SUB_HI)),
             material="ro4003c")
     sim.add_thin_conductor(
-        Box((0, Y_C - W_MSL / 2, Z_SUB_HI),
+        Box((PORT_MARGIN - local_port_cell(sim, (PORT_MARGIN, Y_C, Z_SUB_LO)), Y_C - W_MSL / 2, Z_SUB_HI),
             (PORT_MARGIN + L_MSL, Y_C + W_MSL / 2, Z_SUB_HI)),
         sigma_bulk=5.8e7)
     sim.add_thin_conductor(_patch_box(), sigma_bulk=5.8e7)
@@ -436,7 +457,8 @@ def test_patch_edgefed_s11_passive_and_match():
     )
 
     fr = np.asarray(res.freqs, dtype=float) / 1e9
-    s = np.asarray(res.S)[0, 0, :]
+    # Pins are probe-0-plane quantities (module docstring): undo the shift.
+    s = np.asarray(probe0_s(res))[0, 0, :]
     z0 = np.asarray(res.Z0)[0, :]
     g = _gate_readings(fr, s, z0)
 

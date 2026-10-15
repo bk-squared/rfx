@@ -82,10 +82,6 @@ BUILDERS = {
         "a lumped element's D0 = eps/dt + sigma/2 (traced branch)",
     ("rfx/runners/_distributed_common.py", "component_e_coeffs"):
         "both multi-device lanes' slab Ca/Cb (#1303: e_update_coeffs per component)",
-    ("rfx/runners/_distributed_common.py", "_apply_cpml_e_distributed"):
-        "sim.run(devices=...) CPML psi coefficient dt/eps (_ce)",
-    ("rfx/runners/distributed_nu.py", "_apply_cpml_e_local_nu"):
-        "forward(distributed=True) CPML psi coefficient dt/eps (_ce)",
     ("rfx/materials/debye.py", "init_debye"): "Debye initialization",
     ("rfx/materials/debye.py", "debye_e_coeffs"):
         "Debye ADE ca/cb/cc, including distributed in-loop builders",
@@ -111,6 +107,12 @@ _SUBGRID = ("the SBP-SAT coupling takes SI eps, but no traced permittivity "
 # (file, qualified function) -> why no traced permittivity is divided through
 # EPS_0 here. May only shrink (ALLOWLIST_CEILING).
 NOT_A_TRACED_EPS_COEFFICIENT = {
+    ("rfx/model/pole_stability.py", "largest_growth"):
+        "host-only admission predicate on concrete floats (tracker 1590): sigma*dt/(2 EPS_0) enters a "
+        "stability matrix; traced values reach this host predicate through an ordered callback",
+    ("rfx/measurement/monitors.py", "current_moment_owner"):
+        "measurement-plan description of the current-moment reduction: the vacuum constant EPS_0/dt scales "
+        "a recorded field difference; no permittivity, traced or not, is divided through it",
     ("rfx/materials/debye.py", "debye_pole_coeffs"):
         "material-independent ADE beta: EPS_0 multiplies the pole strength",
     ("rfx/materials/lorentz.py", "lorentz_pole_coeffs"):
@@ -132,14 +134,12 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
     ("rfx/floquet.py", "extract_floquet_modes"): _C0,
     ("rfx/lumped.py", "setup_rlc_materials"):
         "a capacitor's eps_r stamp C*d/(EPS_0*A): EPS_0 divides a capacitance",
-    ("rfx/lumped.py", "setup_rlc_materials_traced"):
-        "a capacitor's eps_r stamp C*d/(EPS_0*A): EPS_0 divides a capacitance",
     ("rfx/nonuniform.py", "current_source_cb"):
         "the drive Cb: its traced branch is already in eps_r units (#1317), "
         "its float branch is host arithmetic",
     ("rfx/ris.py", "RISUnitCell._build_sim"): _HOST,
-    ("rfx/runners/_distributed_common.py", "cpml_coeff_e_vacuum"): _VACUUM,
     ("rfx/runners/subgridded.py", "_run_subgridded_once"): _C0,
+    ("rfx/api/_gradient_witness.py", "conductivity_gradient_record"): _HOST,
     ("rfx/simulation.py", "_warn_static_remnant_cap_hit"): _ENERGY,
     ("rfx/sources/coaxial_port.py", "build_coaxial_tem_plane_source_specs"):
         _HOST + " (float(eps_r))",
@@ -153,10 +153,10 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
     ("rfx/sources/tfsf_2d.py", "apply_tfsf_2d_e"): _VACUUM,
     ("rfx/sources/tfsf_2d.py", "init_tfsf_2d"): _C0,
     ("rfx/sources/tfsf_oblique_open.py", "apply_methodB_e"): _VACUUM,
-    ("rfx/sources/waveguide_port.py", "_compute_mode_impedance"):
+    ("rfx/model/waveguide_modes.py", "_compute_mode_impedance"):
         "a modal impedance beta/(omega*EPS_0): EPS_0 divides no permittivity",
-    ("rfx/sources/waveguide_port.py", "apply_waveguide_port_e"): _VACUUM,
-    ("rfx/sources/waveguide_port.py", "init_waveguide_port"): _HOST,
+    ("rfx/stepping/waveguide_source.py", "apply_waveguide_port_e"): _VACUUM,
+    ("rfx/model/waveguide_modes.py", "init_waveguide_port"): _HOST,
     ("rfx/sparams/_common.py", "_resolve_msl_auto_offsets"): _C0,
     ("rfx/sparams/mixed.py", "compute_mixed_s_matrix"): _C0,
     ("rfx/sparams/msl.py", "compute_msl_s_matrix"): _C0,
@@ -176,7 +176,7 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
 
 # The allow-list's length when it was written. Lower it when a row goes; a PR
 # that raises it is adding an EPS_0 reader it says is not a coefficient.
-ALLOWLIST_CEILING = 47
+ALLOWLIST_CEILING = 50  # 47 -> 48: rfx/measurement/monitors.py current_moment_owner (S2 M1, vacuum constant); 48 -> 49: rfx/api/_gradient_witness.py conductivity_gradient_record (advisory record: record time over eps/sigma on concrete values only); 49 -> 50: rfx/model/pole_stability.py largest_growth (host-only stability predicate)
 
 HELPER = "si_value_eps_r_grad"
 SHARED_ROUTES = {
@@ -402,10 +402,9 @@ def test_discovery_finds_a_missed_builder():
         "                                   sigma_perp, eps_r, sigma_mat, dt)\n",
         "        eps_abs = eps_r * jnp.float32(EPS_0)\n"
         "        return sigma_perp, (dt / eps_abs) / (1.0 + sigma_mat)\n")
-    # The two spellings nothing hands to the helper any more surface too.
+    # The model's interior-source accessor still routes both shared UPML
+    # spellings through the AD helper. Only the planted local builder is new.
     assert unclassified(_parse(REPO, planted)) == [
-        "rfx/boundaries/upml.py::_upml_e_coeffs_eps_r",
-        "rfx/boundaries/upml.py::_upml_e_coeffs_si",
         "rfx/boundaries/upml.py::init_upml._e_coeffs"]
     new_file = ("from rfx.core.yee import EPS_0 as _E0\n\n\n"
                 "def new_cb(eps_r, dt):\n    return dt / (eps_r * _E0)\n")

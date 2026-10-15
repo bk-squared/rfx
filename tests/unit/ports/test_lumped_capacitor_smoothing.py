@@ -180,6 +180,17 @@ def _assert_one_edge(lane, component, tolerance, *, fractional=False):
     stamp = CAPACITANCE / (EPS_0 * DX)
     expected = np.zeros(3)
     expected[axis] = stamp
+    if lane.endswith("occ") and fractional:
+        # Design-region admission (D1): a lumped element's edge is released
+        # like a port's, so the 0.2 occupancy on its cell is cleared when the
+        # element is declared. With it: eps 4 everywhere at the node plus the
+        # stamp on its own edge; without it the occupancy stays (eps 5).
+        released = np.full(3, 4.0)
+        released[axis] += stamp
+        np.testing.assert_allclose(with_c["eps"], released, rtol=tolerance,
+                                   atol=tolerance * 4.0)
+        np.testing.assert_allclose(without["eps"], 5.0, rtol=FLOOR)
+        return
     delta = with_c["eps"] - without["eps"]
     np.testing.assert_allclose(delta, expected, rtol=tolerance,
                                atol=tolerance * 4.0)

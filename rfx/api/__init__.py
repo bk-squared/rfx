@@ -31,10 +31,12 @@ import numpy as np
 
 
 from rfx.grid import Grid, C0  # noqa: F401
-from rfx.core.jax_utils import is_tracer
 from rfx.geometry.csg import Box, Shape  # noqa: F401
 from rfx.nonuniform import NonUniformGrid  # noqa: F401
 from rfx.sources.sources import GaussianPulse
+from rfx.realized_geometry import realized_geometry as _realized_geometry_fn
+from rfx.fidelity import fidelity_report as _fidelity_report
+from rfx.measurement import admit_waveguide_planes as _admit_waveguide_planes
 from rfx.sources.coaxial_port import CoaxialPort
 from rfx.materials.debye import DebyePole
 from rfx.materials.lorentz import LorentzPole
@@ -56,6 +58,7 @@ from rfx.sources.waveguide_port import (
     waveguide_plane_positions,  # noqa: F401
 )
 from rfx.boundaries.spec import BoundarySpec
+from rfx.boundaries import refresh_boundary_model
 from rfx.boundaries.model import DEFAULT_BOUNDARY
 
 # ---------------------------------------------------------------------------
@@ -94,7 +97,7 @@ from rfx.api._spec import (  # noqa: E402
     MSLSMatrixResult,
     MixedSMatrixResult,
 )
-from rfx.mesh_planner import MeshPlan, plan_simulation_mesh  # noqa: E402,F401
+from rfx.mesh_planner import MeshPlan, mesh_intelligence_report, plan_simulation_mesh  # noqa: E402,F401
 
 
 def _bloch_cutoff_level_db(angle_deg: float, bandwidth: float) -> float:
@@ -107,145 +110,13 @@ def _bloch_cutoff_level_db(angle_deg: float, bandwidth: float) -> float:
     return -(20.0 / math.log(10.0)) * offset * offset
 
 
-def _require_integral_param(name: str, value: object) -> int:
-    """Return ``value`` as int after rejecting bools and non-integral values."""
-    if isinstance(value, (bool, np.bool_)) or not isinstance(value, Integral):
-        raise TypeError(f"{name} must be an integer, got {value!r}")
-    return int(value)
-
-
-def _require_positive_finite_scalar(name: str, value: object) -> float:
-    """Return ``value`` as a finite positive Python float."""
-    if isinstance(value, (bool, np.bool_)):
-        raise TypeError(f"{name} must be a finite real scalar, got {value!r}")
-    arr = np.asarray(value)
-    if arr.shape != ():
-        raise TypeError(
-            f"{name} must be a finite real scalar, got array shape {arr.shape}"
-        )
-    if not np.issubdtype(arr.dtype, np.number) or np.issubdtype(
-        arr.dtype, np.complexfloating
-    ):
-        raise TypeError(f"{name} must be a finite real scalar, got {value!r}")
-    out = float(arr.item())
-    if not math.isfinite(out):
-        raise ValueError(f"{name} must be finite")
-    if out <= 0.0:
-        raise ValueError(f"{name} must be positive")
-    return out
-
-
-def _positive_divisors(value: int) -> list[int]:
-    """Return positive divisors of ``value`` sorted ascending."""
-    small: list[int] = []
-    large: list[int] = []
-    root = math.isqrt(value)
-    for divisor in range(1, root + 1):
-        if value % divisor == 0:
-            small.append(divisor)
-            paired = value // divisor
-            if paired != divisor:
-                large.append(paired)
-    return small + large[::-1]
-
-AD_MEMORY_FIT_SAFETY_FACTOR = 1.30
-
-
-def _format_memory_gb(value: float) -> str:
-    """Render GB values without hiding sub-10MB estimates as ``0.00 GB``."""
-    if value < 0.01:
-        return f"{value * 1000.0:.1f} MB"
-    return f"{value:.2f} GB"
-
-
-def _format_memory_with_safety(value: float, safety_factor: float) -> str:
-    """Render raw and safety-adjusted memory when the safety factor is active."""
-    if safety_factor == 1.0:
-        return _format_memory_gb(value)
-    return (
-        f"{_format_memory_gb(value)} "
-        f"({_format_memory_gb(value * safety_factor)} with {safety_factor:.2f}x safety)"
-    )
-
-
-AD_MEMORY_PREFLIGHT_EVIDENCE_BOUNDARIES = (
-    "static memory planning only",
-    "trace-time JAX saved-residual explainability only when residual_diagnostic is present",
-    "not a runtime peak-memory guarantee",
-    "not XLA memory analysis",
-    "not profiler evidence",
-    "not a certificate",
-    "not RF validation",
+from rfx.api._validators import (  # noqa: E402
+    _require_integral_param,
+    _require_positive_finite_scalar,
+    _positive_divisors,
+    _preflight_json_safe,
+    _validate_residual_context,
 )
-
-AD_COMPILED_MEMORY_CERTIFICATE_EVIDENCE_BOUNDARIES = (
-    "bounded to one caller-supplied compiled executable",
-    "uses JAX Compiled.memory_analysis() estimates",
-    "not a universal guaranteed peak-memory predictor",
-    "not profiler evidence",
-    "not RF validation",
-    "digests are audit identities, not executable correspondence proof",
-)
-
-
-def _preflight_json_safe(value: object, *, path: str = "residual_context") -> object:
-    """Return ``value`` as JSON-native data or raise a residual-context error."""
-    if value is None or isinstance(value, (str, bool, int)):
-        return value
-    if isinstance(value, float):
-        if not math.isfinite(value):
-            raise ValueError(f"{path} contains non-finite JSON value")
-        return value
-    if hasattr(value, "to_dict") and callable(value.to_dict):
-        return _preflight_json_safe(value.to_dict(), path=path)
-    if hasattr(value, "to_json") and callable(value.to_json):
-        try:
-            parsed = json.loads(value.to_json())
-        except Exception as exc:
-            raise TypeError(f"{path} to_json() did not return JSON data") from exc
-        return _preflight_json_safe(parsed, path=path)
-    if hasattr(value, "tolist") and callable(value.tolist):
-        return _preflight_json_safe(value.tolist(), path=path)
-    if isinstance(value, Mapping):
-        return {
-            str(key): _preflight_json_safe(item, path=f"{path}.{key}")
-            for key, item in value.items()
-        }
-    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
-        return [
-            _preflight_json_safe(item, path=f"{path}[{index}]")
-            for index, item in enumerate(value)
-        ]
-    raise TypeError(f"{path} contains unsupported value {type(value).__name__}")
-
-
-def _validate_residual_context(
-    context: Mapping[str, object] | None,
-    *,
-    owned_fields: Mapping[str, object],
-) -> dict[str, object]:
-    """Merge and validate caller residual context before returning a report."""
-    caller_context = (
-        {}
-        if context is None
-        else _preflight_json_safe(context, path="residual_context")
-    )
-    if not isinstance(caller_context, dict):
-        raise TypeError("residual_context must be a mapping")
-    merged = dict(caller_context)
-    merged.update(
-        {
-            key: _preflight_json_safe(value, path=f"residual_context.{key}")
-            for key, value in owned_fields.items()
-        }
-    )
-    try:
-        json.dumps(merged, allow_nan=False)
-    except ValueError as exc:
-        raise ValueError("residual_context contains non-finite JSON value") from exc
-    except TypeError as exc:
-        raise TypeError("residual_context contains unsupported JSON value") from exc
-    return merged
 
 from rfx.api._compiled_memory import (  # noqa: E402
     _canonicalize_exact_scope,
@@ -281,6 +152,13 @@ from rfx.api._compile import _CompileMixin  # noqa: E402
 from rfx.api._execute import _ExecuteMixin  # noqa: E402
 from rfx.api._mesh import _MeshMixin  # noqa: E402
 from rfx.api._artifacts import _ArtifactsMixin  # noqa: E402
+from rfx.api._ad_memory import (  # noqa: E402
+    _AdMemoryMixin,
+    _format_memory_gb,
+    AD_MEMORY_FIT_SAFETY_FACTOR,
+    AD_MEMORY_PREFLIGHT_EVIDENCE_BOUNDARIES,
+    AD_COMPILED_MEMORY_CERTIFICATE_EVIDENCE_BOUNDARIES,
+)
 
 # ---------------------------------------------------------------------------
 # Record-length witness for GRADIENTS, the companion to the -40 dB settling
@@ -310,6 +188,7 @@ class Simulation(
     _CompileMixin,
     _ExecuteMixin,
     _ArtifactsMixin,
+    _AdMemoryMixin,
 ):
     """Declarative FDTD simulation builder.
 
@@ -354,6 +233,10 @@ class Simulation(
         measured from their realized profile; a traced axis is measured
         against this declared floor when the run builds its mesh, and the
         run is refused if the realized cells fall below it.
+    nominal_profiles : dict or None
+        ``{"x" | "y" | "z": concrete cell widths}`` of a TRACED profile at the
+        primal point. Ports, probes and sources given in metres on that axis
+        resolve to nodes of this profile; the run refuses a node it moves.
     precision : str
         ``"float32"`` (default), ``"mixed"``, or ``"float64"``.  When
         ``"mixed"``, field arrays (E, H) use float16 for ~2x memory
@@ -450,6 +333,7 @@ class Simulation(
         dy_profile: np.ndarray | None = None,
         dt: float | None = None,
         dt_min_cell: float | None = None,
+        nominal_profiles: dict | None = None,
         precision: str = "float32",
         solver: str = "yee",
         adi_cfl_factor: float = 2.0,
@@ -482,7 +366,8 @@ class Simulation(
         # boundary=<str>. A BoundarySpec provided here is authoritative;
         # removed keywords are rejected above.
         _explicit_spec = isinstance(boundary, (BoundarySpec, dict))
-        _boundary_origin = "default" if boundary is DEFAULT_BOUNDARY else "declared"
+        self._boundary_explicit = boundary is not DEFAULT_BOUNDARY
+        _boundary_origin = "declared" if self._boundary_explicit else "default"
         if boundary is DEFAULT_BOUNDARY:
             boundary = "cpml"
         if _explicit_spec:
@@ -507,108 +392,14 @@ class Simulation(
             raise ValueError(f"adi_cfl_factor must be positive, got {adi_cfl_factor}")
         if stencil_order not in (2, 4):
             raise ValueError(f"stencil_order must be 2 or 4, got {stencil_order}")
-        # Synthesize domain extents from axis profiles before validation.
-        # dx_profile / dy_profile set x / y; dz_profile sets z.
-        # Tracer-valued profiles require the caller to supply a concrete
-        # domain extent for that axis since the profile sum cannot be
-        # host-coerced during tracing.
-        if dx_profile is not None:
-            if is_tracer(dx_profile):
-                if len(domain) < 1 or domain[0] <= 0:
-                    raise ValueError(
-                        "dx_profile is a JAX tracer; provide a concrete "
-                        "domain[0] (profile sum cannot be host-coerced)."
-                    )
-            else:
-                domain = (float(np.sum(dx_profile)),
-                          domain[1] if len(domain) >= 2 else 0.0,
-                          domain[2] if len(domain) >= 3 else 0.0)
-        if dy_profile is not None:
-            if is_tracer(dy_profile):
-                if len(domain) < 2 or domain[1] <= 0:
-                    raise ValueError(
-                        "dy_profile is a JAX tracer; provide a concrete "
-                        "domain[1] (profile sum cannot be host-coerced)."
-                    )
-            else:
-                domain = (domain[0],
-                          float(np.sum(dy_profile)),
-                          domain[2] if len(domain) >= 3 else 0.0)
-        if dz_profile is not None:
-            if any(d <= 0 for d in domain[:2]):
-                raise ValueError(f"domain x/y must be positive, got {domain}")
-            if is_tracer(dz_profile):
-                if len(domain) < 3 or domain[2] <= 0:
-                    raise ValueError(
-                        "dz_profile is a JAX tracer; provide a concrete "
-                        "domain=(..., ..., dz_total) extent (the profile "
-                        "sum cannot be host-coerced during tracing)."
-                    )
-            else:
-                dz_total = float(np.sum(dz_profile))
-                if len(domain) < 3 or domain[2] <= 0:
-                    domain = (domain[0], domain[1], dz_total)
-        elif any(d <= 0 for d in domain):
-            raise ValueError(f"domain dimensions must be positive, got {domain}")
-
-        # P2: Warn on abrupt grading in a user-supplied profile. This ran
-        # for dz only, so an in-plane profile with a 2:1 or 4:1 jump was
-        # accepted in silence (#743) — the axes differ in which physics
-        # they carry, not in whether an abrupt ratio reflects.
-        # Tracer profiles skip the warning — adjacent ratios can't be
-        # computed host-side during tracing.
-        # Threshold, PER AXIS. dz: 1.3 -> 1.4 (SPEC-01 WP6, #780).
-        # PROVENANCE for that move: 1.3 was `smooth_grading`'s own per-step
-        # default with no measurement behind it, so ratios in (1.3, 1.4]
-        # warned without evidence that they cost anything. The multi-band
-        # witness battery (validation/research/multiband_nu/,
-        # pre-declaration note
-        # docs/design_notes/20260829_spec01_multiband_predeclaration.md)
-        # measures the r = 1.4 transition directly: reflection inside the
-        # exact discrete chain-model window (-54 dB class at 30
-        # cells/wavelength; the class scales as (dz/lambda)^2), round-trip
-        # amplitude asymmetry under the 3e-4 floor, 1e6-step energy bounded
-        # at the float-accumulation class, and 2nd-order supraconvergence
-        # preserved on a fixture whose graded axis carries ~90 % of the
-        # error budget.
-        # dx/dy STAY AT 1.3: every witness in that battery grades z and
-        # holds the transverse mesh uniform (the harness takes a scalar
-        # transverse cell), so there is no in-plane provenance for moving
-        # an in-plane lock — SPEC-00 0.2-4. The 2026-08-29 adversarial
-        # review found this axis overclaim in the docs; it lived here too.
-        # Beyond the cap this warning still fires, and preflight adds the
-        # richer advisory nu_grading_ratio_beyond_validated_cap with the
-        # accuracy class on both sides.
-        # Caps come from _PreflightMixin (single source of truth — do not
-        # re-type the literals here; _validate_cfg_multiband_grading reads
-        # the same two class attributes).
-        for _axis_name, _profile, _cap, _scope in (
-                ("dz_profile", dz_profile, self._MULTIBAND_RATIO_CAP,
-                 "the validated multi-band grading cap"),
-                ("dx_profile", dx_profile, self._INPLANE_RATIO_CAP,
-                 "the in-plane grading threshold — the validated "
-                 f"{self._MULTIBAND_RATIO_CAP:g} multi-band cap is a "
-                 "z-axis envelope and no witness grades an in-plane axis"),
-                ("dy_profile", dy_profile, self._INPLANE_RATIO_CAP,
-                 "the in-plane grading threshold — the validated "
-                 f"{self._MULTIBAND_RATIO_CAP:g} multi-band cap is a "
-                 "z-axis envelope and no witness grades an in-plane axis")):
-            if (_profile is not None and not is_tracer(_profile)
-                    and len(_profile) > 1):
-                import warnings as _w
-                _p = np.asarray(_profile, dtype=float)
-                ratios = _p[1:] / _p[:-1]
-                max_ratio = float(np.max(np.maximum(ratios, 1.0 / ratios)))
-                if max_ratio > _cap + 1e-6:
-                    _w.warn(
-                        f"{_axis_name} has max adjacent cell ratio "
-                        f"{max_ratio:.3f} (> {_cap:g}, {_scope} — "
-                        "docs/guides/support_matrix.md, "
-                        "'Multi-band graded mesh'). This may cause "
-                        "numerical reflections. Use "
-                        f"rfx.smooth_grading({_axis_name}) to fix.",
-                        stacklevel=2,
-                    )
+        from rfx.model import admit_graded_profiles
+        # Caps come from _PreflightMixin (single source of truth; preflight's
+        # _validate_cfg_multiband_grading reads the same two attributes).
+        domain, self._nominal_profiles = admit_graded_profiles(
+            domain, dx_profile, dy_profile, dz_profile, dt=dt,
+            dt_min_cell=dt_min_cell, nominal_profiles=nominal_profiles,
+            multiband_ratio_cap=self._MULTIBAND_RATIO_CAP,
+            inplane_ratio_cap=self._INPLANE_RATIO_CAP)
 
         if _explicit_spec:
             # BoundarySpec is authoritative; derive the legacy views so
@@ -637,21 +428,7 @@ class Simulation(
         self._dz_profile = dz_profile
         self._dx_profile = dx_profile
         self._dy_profile = dy_profile
-        # Pinned time step (non-uniform lane only). The Courant step is a
-        # function of the smallest cell, so a mesh that is a design variable
-        # moves the step with the deformation and every observable then
-        # carries the step change as well as the geometry change. Pinning one
-        # concrete step makes a deformation sweep one antenna at one step.
-        # None keeps the derived step, byte-identical.
-        if dt is not None and dz_profile is None and dx_profile is None \
-                and dy_profile is None:
-            raise ValueError(
-                "dt= pins the non-uniform lane's time step and needs at least "
-                "one of dz_profile / dx_profile / dy_profile; the uniform "
-                "lane derives its step in Grid.courant_dt."
-            )
-        if dt is None and dt_min_cell is not None:
-            raise ValueError("dt_min_cell= has no effect without dt=")
+        # Pinned time step (non-uniform lane only); admitted above.
         self._dt_pin = dt
         self._dt_min_cell = dt_min_cell
         self._precision = precision
@@ -768,17 +545,8 @@ class Simulation(
                     getattr(getattr(self._boundary_spec, ax), side)
                 for ax in "xyz" for side in ("lo", "hi")
             }
-            _adi_thick = {
-                f"{ax}_{side}": getattr(
-                    getattr(self._boundary_spec, ax), f"{side}_thickness")
-                for ax in "xyz" for side in ("lo", "hi")
-            }
-            _nonuniform = (
-                set(_adi_faces.values()) != {"cpml"}
-                or any(t is not None and t != cpml_layers
-                       for t in _adi_thick.values())
-            )
-            if _nonuniform:
+            from rfx.boundaries.depths import adi_uniform_faces
+            if not adi_uniform_faces(self._boundary_spec, cpml_layers):
                 _layout = ", ".join(
                     f"{face}={tok!r}"
                     for face, tok in sorted(_adi_faces.items())
@@ -1043,16 +811,14 @@ class Simulation(
         are built on request here. ``run()`` attaches a compact record built
         independently from its own assembly as ``Result.realized_geometry``.
         """
-        from rfx.realized_geometry import realized_geometry
-        return realized_geometry(self)
+        return _realized_geometry_fn(self)
 
     def fidelity_report(self, print_report: bool = True):
         """Input-fidelity audit: declared vs solved, per entity, in input
         units — run BEFORE any solve. See :func:`rfx.fidelity.fidelity_report`
         (design rule: never predicts result-side impact; rasterization,
         realization class and materialization only)."""
-        from rfx.fidelity import fidelity_report as _fr
-        return _fr(self, print_report=print_report)
+        return _fidelity_report(self, print_report=print_report)
 
     # ---- sources (non-port) ----
 
@@ -1459,91 +1225,11 @@ class Simulation(
         is electromagnetically a half-space — but it is a real limit for
         anything whose loss budget IS the conductor, e.g. resonator Q.
         """
-        from rfx.core.jax_utils import is_tracer
-        from rfx.materials.thin_conductor import sheet_bounds
-        if surface_impedance_f0 is not None:
-            # Concrete-value checks only: traced f0 / sigma_bulk are legal
-            # differentiable DoFs and skip these (documented above).
-            if (not is_tracer(surface_impedance_f0)
-                    and float(surface_impedance_f0) <= 0.0):
-                raise ValueError(
-                    f"add_thin_conductor: surface_impedance_f0="
-                    f"{surface_impedance_f0!r} must be a positive frequency "
-                    f"in Hz (band centre for the Leontovich surface "
-                    f"resistance).")
-            if not is_tracer(sigma_bulk) and float(sigma_bulk) <= 0.0:
-                raise ValueError(
-                    f"add_thin_conductor: sigma_bulk={sigma_bulk!r} must be "
-                    f"> 0 when surface_impedance_f0 is set — Rs0 = "
-                    f"sqrt(pi*f0*mu0/sigma_bulk) is undefined otherwise.")
-            # #674: any shape that can rasterize itself is allowed — the
-            # fold is per occupied cell and shape-agnostic. Two structural
-            # requirements survive, and both fail loud on BOTH lanes rather
-            # than repeat the former NU warn-and-skip (the #369
-            # silently-vaporized-metal class: a sheet that vanishes on one
-            # lane is a wrong answer, not a degraded one).
-            if not callable(getattr(shape, "mask_on_coords", None)):
-                raise ValueError(
-                    f"add_thin_conductor: surface_impedance_f0 requires a "
-                    f"shape that implements mask_on_coords(x, y, z) — the "
-                    f"sheet is rasterized from that mask on both lanes, and "
-                    f"{type(shape).__name__} does not provide it.")
-            if sheet_bounds(shape) == (None, None):
-                raise ValueError(
-                    f"add_thin_conductor: surface_impedance_f0 requires a "
-                    f"shape with an axis-aligned bounding box (Box "
-                    f"corner_lo/corner_hi, or Shape.bounding_box()) — the "
-                    f"sheet NORMAL is read from it, and on a graded mesh that "
-                    f"normal decides which dual spacing normalizes the fold. "
-                    f"{type(shape).__name__} provides neither.")
-        tc = ThinConductor(
-            shape=shape, sigma_bulk=sigma_bulk,
-            thickness=thickness, eps_r=eps_r,
+        from rfx.model import admit_thin_conductor
+        tc = admit_thin_conductor(
+            shape, sigma_bulk=sigma_bulk, thickness=thickness, eps_r=eps_r,
             surface_impedance_f0=surface_impedance_f0,
         )
-        # Tell the caller which model they actually got. The predicate is
-        # sigma_bulk ALONE (materials/thin_conductor.py:60-62) — an earlier
-        # version of this warning printed sigma_bulk*thickness/dx and claimed
-        # it "exceeds 1e6", which was a false statement for ordinary inputs
-        # (e.g. aluminium at 17 um and dx = 1 mm gives 5.95e5, announced as
-        # exceeding 1e6 while the conductor was routed to PEC anyway).
-        if tc.is_pec:
-            import warnings
-            _thin_dflt = 35e-6
-            _asked = (
-                f" You passed thickness={thickness:.3g} m, which is not used"
-                if thickness != _thin_dflt else
-                " thickness is not used"
-            )
-            warnings.warn(
-                f"add_thin_conductor: sigma_bulk={sigma_bulk:.2e} S/m is at or "
-                f"above the {_PEC_SIGMA_THRESHOLD:.0e} S/m PEC threshold, so "
-                f"this is a LOSSLESS PEC sheet.{_asked} here, and neither is "
-                f"eps_r. Every metal is above this threshold — a lower "
-                f"sigma_bulk would be a different material, not thinner "
-                f"copper (issue #504). For conductor loss pass "
-                f"surface_impedance_f0=<band centre Hz> (Leontovich sheet, "
-                f"issue #669).",
-                stacklevel=2,
-            )
-        if surface_impedance_f0 is not None:
-            import warnings
-            if not (is_tracer(surface_impedance_f0) or is_tracer(sigma_bulk)):
-                _rs0 = float(tc.r_s_leontovich)
-                _rs_txt = f"Rs0 = {_rs0:.4g} ohm/sq"
-            else:
-                _rs_txt = ("Rs0 = sqrt(pi*f0*mu0/sigma_bulk) (traced value "
-                           "not evaluated here)")
-            warnings.warn(
-                f"add_thin_conductor: surface_impedance_f0="
-                f"{surface_impedance_f0!r} Hz — Leontovich surface-"
-                f"resistance sheet with {_rs_txt}. Rs is FREQUENCY-FLAT "
-                f"within the run, frozen at f0, with relative band error "
-                f"|sqrt(f/f0)-1|; the reactive part Xs = Rs (internal "
-                f"inductance) is NOT modeled, so resonances read slightly "
-                f"high.",
-                stacklevel=2,
-            )
         self._thin_conductors.append(tc)
         return self
 
@@ -2209,10 +1895,10 @@ class Simulation(
             added to the auxiliary E node at ``t=n*dt``; it is not the
             launched E amplitude. Normal incidence only; use a fixed
             record length (``until_decay`` has no source-off contract).
-            These new source inputs support ordinary ``forward`` and its
-            internal checkpoints. External JAX transformations, including
-            grad/value_and_grad/JVP/vmap/jit/checkpoint/scan, are refused:
-            transformed scattered-field traces do not meet the cross-trace bar.
+            These source inputs support ``forward`` and its internal
+            checkpoints, including external JAX transformations through
+            grad/value_and_grad/JVP/vmap/jit/checkpoint/scan. ``run`` refuses
+            external transforms; differentiate ``forward`` instead.
         method : {"bloch", "methodB"}
             Oblique-incidence engine (ignored for ``angle_deg=0``, which always
             uses the normal 1D-aux path). ``"bloch"`` (default) is the narrowband
@@ -2224,8 +1910,8 @@ class Simulation(
             read physical fields. ``"methodB"`` currently requires
             ``polarization='ez'`` and a single-device uniform grid.
         """
-        if self._boundary != "cpml":
-            raise ValueError("TFSF plane-wave source requires boundary='cpml'")
+        from rfx.boundaries.tfsf import validate_source_boundary
+        validate_source_boundary(self, closed_box=closed_box)
         if self._cpml_layers <= 0:
             raise ValueError("TFSF plane-wave source requires cpml_layers > 0")
         if self._mode not in ("3d", "2d_tmz", "2d_tez"):
@@ -2326,18 +2012,10 @@ class Simulation(
         """
         if self._tfsf is None:
             raise ValueError("No TFSF source registered")
-        from rfx.sources.tfsf import init_tfsf, tfsf_injection_planes
+        from rfx.sources.tfsf import tfsf_from_declaration, tfsf_injection_planes
         grid = self._build_grid()
         entry = self._tfsf
-        cfg, _ = init_tfsf(
-            grid.nx, float(grid.cells("x")[0]), grid.dt, ny=grid.ny, nz=grid.nz,
-            cpml_layers=grid.cpml_layers, tfsf_margin=entry.margin,
-            f0=entry.f0 if entry.f0 is not None else self._freq_max / 2,
-            bandwidth=entry.bandwidth, amplitude=entry.amplitude,
-            polarization=entry.polarization, direction=entry.direction,
-            angle_deg=entry.angle_deg, waveform=entry.waveform,
-            method=entry.method, closed_box=entry.closed_box,
-        )
+        cfg, _ = tfsf_from_declaration(entry, grid, self._freq_max)
         return tfsf_injection_planes(cfg)
 
     def add_waveguide_port(
@@ -2375,11 +2053,11 @@ class Simulation(
         apertures, with `boundary='cpml'` and `mode='3d'`.
 
         Calibration options:
-        - `reference_plane` / `probe_plane`: explicit reported planes in
-          physical coordinates along the port normal axis
-        - `calibration_preset='source_to_probe'`: auto-report `S11` at the
-          snapped source plane and `S21` from source to the snapped probe plane
-        - `calibration_preset=None` or `'measured'`: use the snapped stored
+        - `reference_plane` / `probe_plane`: explicit reported coordinates;
+          an unset reference uses the source plane, an unset probe the measured probe
+        - `calibration_preset=None` or `'source_to_probe'`: report `S11` at the
+          snapped source plane and `S21` from source to the measured probe plane
+        - `calibration_preset='measured'`: use the snapped stored
           reference/probe planes directly
 
         Sampling still occurs on the nearest snapped grid planes, and the
@@ -2503,44 +2181,10 @@ class Simulation(
             raise ValueError(
                 "calibration_preset cannot be combined with explicit reference_plane/probe_plane"
             )
-        pos_vec = [0.0, 0.0, 0.0]
-        pos_vec[axis_idx] = x_position
-        step_sign = 1 if direction.startswith("+") else -1
-        if self._uses_nonuniform_mesh:
-            from rfx.nonuniform import position_to_index
-            from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
-            grid = self._build_nonuniform_grid()
-            x_index = position_to_index(grid, tuple(pos_vec))[axis_idx]
-            coords = coords_from_nonuniform_grid(grid)
-            nodes = np.asarray((coords.x, coords.y, coords.z)[axis_idx])
-            snapped_source_plane = float(nodes[x_index])
-            measured_reference_plane = float(nodes[np.clip(
-                x_index + step_sign * ref_offset, 0, len(nodes) - 1)])
-            measured_probe_plane = float(nodes[np.clip(
-                x_index + step_sign * probe_offset, 0, len(nodes) - 1)])
-        else:
-            grid = self._build_grid(extra_waveguide_axes=axis_name)
-            x_index = grid.position_to_index(tuple(pos_vec))[axis_idx]
-            axis_pad = grid.axis_pads[axis_idx]
-            snapped_source_plane = (x_index - axis_pad) * grid.dx
-            measured_reference_plane = snapped_source_plane + step_sign * ref_offset * grid.dx
-            measured_probe_plane = snapped_source_plane + step_sign * probe_offset * grid.dx
+        _admit_waveguide_planes(self, axis_idx=axis_idx, x_position=x_position,
+                                direction=direction, ref_offset=ref_offset,
+                                probe_offset=probe_offset)
         axis_domain = self._domain[axis_idx]
-        if (
-            measured_reference_plane < 0.0
-            or measured_reference_plane > axis_domain
-            or measured_probe_plane < 0.0
-            or measured_probe_plane > axis_domain
-            or x_index + step_sign * ref_offset < 0
-            or x_index + step_sign * ref_offset >= grid.shape[axis_idx]
-            or x_index + step_sign * probe_offset < 0
-            or x_index + step_sign * probe_offset >= grid.shape[axis_idx]
-        ):
-            raise ValueError(
-                "Waveguide port measurement planes exceed the physical "
-                f"{axis_name}-domain after grid snapping; reduce ref_offset/probe_offset, "
-                "flip direction, or move x_position inward"
-            )
         if reference_plane is not None and not (0.0 <= reference_plane <= axis_domain):
             raise ValueError(
                 f"reference_plane {reference_plane} m is outside the {axis_name}-domain [0, {axis_domain}]"
@@ -2599,25 +2243,7 @@ class Simulation(
         ))
         return self
 
-    def _build_spec_from_legacy(self):
-        """T7-B: compose a canonical BoundarySpec from the legacy triad.
-
-        Called once at ``__init__`` time for scalar boundaries. The
-        spec is the single source of truth for T7-D preflight and
-        T7-C / T7-E runner integration; the legacy fields remain as
-        derived views for code that has not yet migrated.
-        """
-        from rfx.boundaries.spec import BoundarySpec, Boundary
-        default = self._boundary  # 'cpml' | 'upml' | 'pec'
-        axes = {}
-        for axis_name in "xyz":
-            if axis_name in self._periodic_axes:
-                axes[axis_name] = Boundary(lo="periodic", hi="periodic")
-            else:
-                lo_tok = "pec" if f"{axis_name}_lo" in self._pec_faces else default
-                hi_tok = "pec" if f"{axis_name}_hi" in self._pec_faces else default
-                axes[axis_name] = Boundary(lo=lo_tok, hi=hi_tok)
-        return BoundarySpec(x=axes["x"], y=axes["y"], z=axes["z"])
+    from rfx.boundaries.serialization import legacy_spec as _build_spec_from_legacy
 
     def __getattr__(self, name):
         if name == "set_periodic_axes":
@@ -2633,10 +2259,7 @@ class Simulation(
         No runner consumes this descriptor in B1. ``rcs=True`` collects the
         RCS requirement for a caller preparing that operation.
         """
-        from rfx.boundaries.model import collect_requirements, with_requirements
-        self._boundary_model = with_requirements(
-            self._boundary_model, collect_requirements(self, rcs=rcs))
-        return self._boundary_model
+        return refresh_boundary_model(self, rcs=rcs)
 
     # ---- Floquet ports ----
 
@@ -2824,37 +2447,8 @@ class Simulation(
         name : str or None
             Optional result key.
         """
-        if axis not in ("x", "y", "z"):
-            raise ValueError(f"axis must be 'x', 'y', or 'z', got {axis!r}")
-        if component not in ("ex", "ey", "ez", "hx", "hy", "hz"):
-            raise ValueError(f"component must be a field name, got {component!r}")
-
-        self._validate_declared_plane_coordinate(axis, coordinate)
-        if freqs is None:
-            if n_freqs <= 0:
-                raise ValueError(f"n_freqs must be positive, got {n_freqs}")
-            freqs_arr = None
-        else:
-            freqs_arr = jnp.asarray(freqs)
-            if freqs_arr.ndim != 1 or freqs_arr.size == 0:
-                raise ValueError("freqs must be a non-empty 1-D array")
-
-        if name is None:
-            name = f"{component}_{axis}_{len(self._dft_planes)}"
-
-        self._dft_planes.append(_DFTPlaneEntry(
-            name=name,
-            axis=axis,
-            coordinate=coordinate,
-            component=component,
-            freqs=freqs_arr,
-            n_freqs=n_freqs,
-        ))
-        if region is not None:
-            if not hasattr(self, "_dft_plane_regions"):
-                self._dft_plane_regions = {}
-            self._dft_plane_regions[name] = tuple(region)
-        return self
+        from rfx.measurement.setup import register_plane
+        return register_plane(self, axis, coordinate, component, freqs, n_freqs, name, region)
 
     def add_flux_monitor(
         self,
@@ -2947,8 +2541,8 @@ class Simulation(
         n_freqs : int
             Number of frequencies if freqs is None.
         """
-        if freqs is None:
-            freqs = jnp.linspace(self._freq_max / 10, self._freq_max, n_freqs)
+        from rfx.measurement import default_frequency_grid
+        freqs = default_frequency_grid(self._freq_max, n_freqs) if freqs is None else freqs
         self._ntff = (corner_lo, corner_hi, freqs)
         return self
 
@@ -3038,1214 +2632,6 @@ class Simulation(
 
     # ---- build helpers ----
 
-    # ---- AD memory estimation (issue #30 CHECK 4) ----
-    def _ad_memory_static_accounting(self) -> dict[str, int]:
-        """Return shared static byte accounting for AD memory artifacts.
-
-        Issue #696: the cell count comes from the grid the SOLVE WILL
-        ACTUALLY BUILD — ``_build_nonuniform_grid()`` when any mesh
-        profile is set, ``_build_grid()`` otherwise — not from a private
-        re-derivation of the shape. The re-derivation
-        (``ceil(extent/dx) + 1 + 2*cpml_layers`` per axis) silently
-        disagreed with both real grids wherever the shape depends on
-        anything it did not model: per-face pads (a ``pec``/``pmc``/
-        ``periodic`` face allocates 0 cells on that side) and 2-D mode
-        (``nz == 1``). Measured on a 20x20mm graded-dz stackup, dx=0.2mm,
-        cpml_layers=8: with PEC y faces the re-derivation says 0.780 M
-        cells against the real NU grid's 0.674 M (+15.7 %); in
-        ``mode="2d_tmz"`` it says 1.602 M against the real 0.014 M
-        (117x). The estimate is what a user sizes a GPU with, so a grid
-        it does not describe is worse than no estimate.
-
-        ``grid_kind`` names which grid the numbers describe and travels
-        with the estimate into its artifact — a uniform-lane ``dt`` has
-        already been mistaken for the NU one here.
-        """
-        dx = self._dx or (C0 / self._freq_max / 20.0)
-        is_nonuniform = any(
-            p is not None
-            for p in (self._dx_profile, self._dy_profile, self._dz_profile)
-        )
-        grid_kind = "nonuniform" if is_nonuniform else "uniform"
-        grid_source = "built"
-        try:
-            _grid = (self._build_nonuniform_grid() if is_nonuniform
-                     else self._build_grid())
-            nx, ny, nz = (int(v) for v in _grid.shape)
-        except Exception:
-            # Keep a number rather than raising out of a planning helper;
-            # the fallback is the pre-#696 arithmetic and is LABELLED as
-            # such so the artifact does not present it as the real grid.
-            def _nx(extent: float, prof) -> int:
-                if prof is not None:
-                    return len(prof) + 1 + 2 * self._cpml_layers
-                return int(math.ceil(extent / dx)) + 1 + 2 * self._cpml_layers
-
-            nx = _nx(self._domain[0], self._dx_profile)
-            ny = _nx(self._domain[1], self._dy_profile)
-            nz = _nx(self._domain[2], self._dz_profile)
-            grid_source = "estimated_from_domain"
-        cells = int(nx * ny * nz)
-
-        # Forward working set: 6 field + ~6 material + ~4 CPML psi (~15%)
-        bytes_per_cell = 4  # float32
-        field_bytes = cells * 6 * bytes_per_cell
-        material_bytes = cells * 6 * bytes_per_cell
-        cpml_bytes = (
-            int(cells * 0.15 * 24 * bytes_per_cell)
-            if self._cpml_layers > 0
-            else 0
-        )
-        # Surface-impedance (f0) sheet operator (#677) — three boolean
-        # tangential edge masks plus one float32 sigma_sheet array, all
-        # full-grid, resident for the whole run. Counted here because
-        # they are NOT part of the six material arrays above: since #677
-        # the sheet touches neither pec_mask nor materials.sigma, so the
-        # estimate for a lossy board was the estimate for the SAME board
-        # without loss — which is exactly the model that then fit on the
-        # same GPU (#696).
-        sheet_bytes = 0
-        if has_f0_sheets(getattr(self, "_thin_conductors", ())):
-            sheet_bytes = cells * (3 * 1 + bytes_per_cell)
-        forward_bytes = field_bytes + material_bytes + cpml_bytes + sheet_bytes
-
-        # NTFF DFT state: 6 faces × n_freqs × face cells × (3 E + 3 H) × complex64.
-        ntff_bytes = 0
-        if self._ntff is not None:
-            _, _, freqs = self._ntff
-            n_freqs = int(len(freqs)) if freqs is not None else 10
-            face_est = 2 * ((nx * ny) + (ny * nz) + (nx * nz))
-            ntff_bytes = face_est * n_freqs * 6 * 8
-
-        return {
-            "nx": nx,
-            "ny": ny,
-            "nz": nz,
-            "cells": cells,
-            "bytes_per_cell": bytes_per_cell,
-            "field_bytes": field_bytes,
-            "material_bytes": material_bytes,
-            "cpml_bytes": cpml_bytes,
-            "sheet_bytes": sheet_bytes,
-            "forward_bytes": forward_bytes,
-            "ntff_bytes": ntff_bytes,
-            "grid_kind": grid_kind,
-            "grid_source": grid_source,
-        }
-
-
-    def estimate_ad_memory(
-        self,
-        n_steps: int,
-        *,
-        available_memory_gb: float | None = None,
-        checkpoint_every: int | None = None,
-        checkpoint_segments: int | None = None,
-        n_warmup: int = 0,
-    ) -> "AD_MemoryEstimate":
-        """Estimate reverse-mode AD memory for this simulation.
-
-        Returns a static-estimate AD_MemoryEstimate with forward,
-        checkpointed-AD, and non-checkpointed-AD sizes in GB, plus a
-        best-effort warning if estimated AD memory exceeds 85% of available
-        VRAM. This artifact is planning evidence, not a certificate of peak
-        runtime memory.
-
-        When ``checkpoint_every`` is provided, the returned
-        ``ad_segmented_gb`` reflects the non-uniform segmented scan-of-scan
-        chunk-size path from issue #31. When ``checkpoint_segments`` is
-        provided, it reflects the uniform segmented-scan segment-count path
-        from issue #73.
-
-        The segmented model (issue #277) counts BOTH terms of the
-        rematerialized backward pass:
-
-        * segment-boundary storage — carry + cotangent per active segment,
-          ``2 * active_segments * field_bytes``;
-        * the live-segment rematerialization tape — the backward pass
-          replays one segment at a time, so that segment's per-step field
-          tape (``n_steps // checkpoint_segments`` steps on the uniform
-          path, ``checkpoint_every`` steps on the chunked path) is resident
-          on top of the boundary storage. The non-uniform runner pads the
-          trailing chunk with zero source to a full chunk, so the full
-          chunk length is the correct live-tape size; both live terms are
-          capped at the active (post-warmup) step count.
-
-        The segmented estimate is therefore minimized when the two terms
-        balance, near ``sqrt(2 * n_steps)`` steps per segment — NOT by
-        pushing the segment count to either extreme. Use
-        :meth:`plan_ad_memory` to pick a balanced knob for a budget.
-        ``n_warmup`` must be an integer with
-        ``0 <= n_warmup < n_steps`` and reduces reported reverse-mode tape
-        time. The legacy
-        ``ad_checkpointed_gb`` field keeps its old (optimistic) heuristic
-        for backwards compatibility; it
-        is NOT accurate for FDTD on the non-uniform path — see the
-        class docstring.
-        """
-        n_steps_i = _require_integral_param("n_steps", n_steps)
-        n_warmup_i = _require_integral_param("n_warmup", n_warmup)
-        checkpoint_every_i = (
-            None
-            if checkpoint_every is None
-            else _require_integral_param("checkpoint_every", checkpoint_every)
-        )
-        checkpoint_segments_i = (
-            None
-            if checkpoint_segments is None
-            else _require_integral_param("checkpoint_segments", checkpoint_segments)
-        )
-        avail_gb = (
-            None
-            if available_memory_gb is None
-            else _require_positive_finite_scalar(
-                "available_memory_gb", available_memory_gb
-            )
-        )
-
-        if n_steps_i <= 0:
-            raise ValueError("n_steps must be positive")
-        if n_warmup_i < 0:
-            raise ValueError("n_warmup must be >= 0")
-        if n_warmup_i >= n_steps_i:
-            raise ValueError(f"n_warmup ({n_warmup_i}) must be < n_steps ({n_steps_i})")
-        if checkpoint_every_i is not None and checkpoint_segments_i is not None:
-            raise ValueError(
-                "checkpoint_every and checkpoint_segments are mutually exclusive"
-            )
-        if checkpoint_every_i is not None and checkpoint_every_i <= 0:
-            raise ValueError(
-                f"checkpoint_every must be positive when provided, got {checkpoint_every_i}"
-            )
-        if checkpoint_segments_i is not None:
-            if checkpoint_segments_i < 1:
-                raise ValueError(
-                    f"checkpoint_segments must be ≥ 1, got {checkpoint_segments_i}"
-                )
-            if n_steps_i % checkpoint_segments_i != 0:
-                raise ValueError(
-                    f"checkpoint_segments={checkpoint_segments_i} does not divide "
-                    f"n_steps={n_steps_i}"
-                )
-        accounting = self._ad_memory_static_accounting()
-        field_bytes = accounting["field_bytes"]
-        forward_bytes = accounting["forward_bytes"]
-        ntff_bytes = accounting["ntff_bytes"]
-
-        # Legacy "checkpointed" estimate: remat-recomputes internals of
-        # step_fn. NOT valid for the NU path after issue #31 because the
-        # scan carry itself is not rematerialised.
-        ad_ckpt_bytes = 4 * forward_bytes + ntff_bytes
-        active_steps = n_steps_i - n_warmup_i
-        active_tape_field_bytes = field_bytes
-
-        # Non-checkpointed AD: O(active_steps) full-grid field tape.
-        # ``n_warmup`` reduces active reverse-mode time.
-        ad_full_bytes = active_steps * active_tape_field_bytes + ntff_bytes + forward_bytes
-
-        # Segmented scan paths. ``checkpoint_every`` is the non-uniform
-        # scan-of-scan chunk length (issue #31); ``checkpoint_segments`` is
-        # the uniform segmented-scan segment count (issue #73). Both store
-        # carry + cotangent at segment boundaries, AND during the backward
-        # pass the segment currently being differentiated is rematerialized
-        # as a whole, so its per-step field tape is live at the same time
-        # (issue #277; the runners document peak as O((K + s) · |carry|)).
-        ad_seg_bytes: int | None = None
-        segmented_active_segments: int | None = None
-        segmented_live_tape_steps: int | None = None
-        if checkpoint_segments_i is not None:
-            segment_len = n_steps_i // checkpoint_segments_i
-            first_active_segment = n_warmup_i // segment_len
-            segmented_active_segments = checkpoint_segments_i - first_active_segment
-            segmented_live_tape_steps = min(segment_len, active_steps)
-            ad_seg_bytes = (
-                (2 * segmented_active_segments + segmented_live_tape_steps)
-                * active_tape_field_bytes
-                + forward_bytes + ntff_bytes
-            )
-        elif checkpoint_every_i is not None:
-            total_segments = math.ceil(n_steps_i / checkpoint_every_i)
-            inactive_segments = n_warmup_i // checkpoint_every_i
-            segmented_active_segments = total_segments - inactive_segments
-            # The non-uniform runner pads the trailing chunk with zero
-            # source up to a full ``checkpoint_every`` steps, so the live
-            # rematerialized chunk is a full chunk (capped at the active
-            # reverse-mode step count).
-            segmented_live_tape_steps = min(checkpoint_every_i, active_steps)
-            ad_seg_bytes = (
-                (2 * segmented_active_segments + segmented_live_tape_steps)
-                * active_tape_field_bytes
-                + forward_bytes + ntff_bytes
-            )
-
-        # VRAM detection (best effort)
-        if avail_gb is None:
-            try:
-                devs = jax.local_devices()
-                for d in devs:
-                    if d.platform == "gpu":
-                        stats = d.memory_stats() if hasattr(d, "memory_stats") else None
-                        if stats and "bytes_limit" in stats:
-                            avail_gb = stats["bytes_limit"] / 1e9
-                            break
-            except Exception:
-                avail_gb = None
-
-        to_gb = 1.0 / 1e9
-        # Pick the most realistic estimate for the warning: segmented if
-        # requested, otherwise full-AD (since the legacy "checkpointed"
-        # number is unreliable — see class docstring).
-        primary_bytes = ad_seg_bytes if ad_seg_bytes is not None else ad_full_bytes
-        warning = None
-        if avail_gb is not None and primary_bytes * to_gb > avail_gb * 0.85:
-            label = "segmented" if ad_seg_bytes is not None else "non-checkpointed"
-            # Direction-aware advice (#277): with the live-segment tape in
-            # the model, the segmented peak is minimized when the boundary
-            # term (2 · active_segments) and the live term (steps per
-            # segment) balance near sqrt(2 · n_steps). Point the user
-            # toward the dominant term.
-            live_dominates = (
-                segmented_live_tape_steps is not None
-                and segmented_active_segments is not None
-                and segmented_live_tape_steps
-                > 2 * segmented_active_segments
-            )
-            if checkpoint_segments_i is not None:
-                if segmented_active_segments == 1:
-                    action = "Reduce grid size, reduce n_steps, or use a more aggressive memory-reduction lane."
-                elif live_dominates:
-                    action = "Increase checkpoint_segments toward sqrt(n_steps) to shrink the live-segment tape, reduce grid size, or reduce n_steps."
-                else:
-                    action = "Reduce checkpoint_segments, reduce grid size, or reduce n_steps."
-            elif ad_seg_bytes is not None:
-                if segmented_active_segments == 1:
-                    action = "Reduce grid size, reduce n_steps, or use a more aggressive memory-reduction lane."
-                elif live_dominates:
-                    action = "Reduce checkpoint_every toward sqrt(n_steps) to shrink the live-chunk tape, reduce grid size, or reduce n_steps."
-                else:
-                    action = "Increase checkpoint_every, reduce grid size, or reduce n_steps."
-            else:
-                action = "Use plan_ad_memory() to choose a segmented checkpoint setting, reduce grid size, or reduce n_steps."
-            warning = (
-                f"AD memory estimate {_format_memory_gb(primary_bytes * to_gb)} ({label}) "
-                f"exceeds 85% of {_format_memory_gb(avail_gb)} available VRAM. "
-                f"{action}"
-            )
-        return AD_MemoryEstimate(
-            forward_gb=forward_bytes * to_gb,
-            ad_checkpointed_gb=ad_ckpt_bytes * to_gb,
-            ad_full_gb=ad_full_bytes * to_gb,
-            ntff_dft_gb=ntff_bytes * to_gb,
-            available_gb=avail_gb,
-            warning=warning,
-            ad_segmented_gb=(ad_seg_bytes * to_gb) if ad_seg_bytes is not None else None,
-            checkpoint_every=checkpoint_every_i,
-            checkpoint_segments=checkpoint_segments_i,
-            ad_active_steps=active_steps,
-            ad_segmented_active_segments=segmented_active_segments,
-            grid_kind=accounting["grid_kind"],
-            grid_source=accounting["grid_source"],
-            grid_shape=(accounting["nx"], accounting["ny"], accounting["nz"]),
-            sheet_gb=accounting["sheet_bytes"] * to_gb,
-        )
-
-    def explain_ad_memory(
-        self,
-        n_steps: int,
-        *,
-        available_memory_gb: float | None = None,
-        checkpoint_every: int | None = None,
-        checkpoint_segments: int | None = None,
-        n_warmup: int = 0,
-    ) -> ADMemoryExplainabilityReport:
-        """Explain the static reverse-mode AD memory estimate.
-
-        This method uses the same conservative accounting as
-        :meth:`estimate_ad_memory`, then decomposes the selected AD memory
-        number into named contributors. It is meant to answer "what is making
-        this AD run large?" without claiming profiler evidence or a runtime
-        peak bound.
-        """
-        n_steps_i = _require_integral_param("n_steps", n_steps)
-        estimate = self.estimate_ad_memory(
-            n_steps_i,
-            available_memory_gb=available_memory_gb,
-            checkpoint_every=checkpoint_every,
-            checkpoint_segments=checkpoint_segments,
-            n_warmup=n_warmup,
-        )
-
-        accounting = self._ad_memory_static_accounting()
-        field_bytes = accounting["field_bytes"]
-        material_bytes = accounting["material_bytes"]
-        cpml_bytes = accounting["cpml_bytes"]
-        sheet_bytes = accounting["sheet_bytes"]
-        ntff_bytes = accounting["ntff_bytes"]
-        cells = accounting["cells"]
-        bytes_per_cell = accounting["bytes_per_cell"]
-
-        active_steps = estimate.ad_active_steps if estimate.ad_active_steps is not None else n_steps_i
-        if estimate.ad_segmented_gb is not None:
-            selected_field = "ad_segmented_gb"
-            selected_gb = float(estimate.ad_segmented_gb)
-            strategy = (
-                "segmented_checkpoint_segments"
-                if estimate.checkpoint_segments is not None
-                else "segmented_checkpoint_every"
-            )
-            active_segments = (
-                estimate.ad_segmented_active_segments
-                if estimate.ad_segmented_active_segments is not None
-                else 0
-            )
-            tape_count = int(2 * active_segments)
-            tape_bytes = tape_count * field_bytes
-            tape_name = "segmented_boundary_field_tape"
-            tape_explanation = (
-                "Segmented reverse-mode AD stores field carry and cotangent "
-                "state at active segment boundaries instead of every active "
-                "time step."
-            )
-            tape_unit = "carry-or-cotangent-field-state"
-            # Live-segment rematerialization tape (#277): backward replays
-            # one segment at a time, so that segment's per-step field tape
-            # is resident on top of the boundary storage. Mirrors the
-            # estimate_ad_memory accounting.
-            if estimate.checkpoint_segments is not None:
-                live_tape_steps = min(
-                    n_steps_i // int(estimate.checkpoint_segments), active_steps
-                )
-            else:
-                live_tape_steps = min(int(estimate.checkpoint_every), active_steps)
-        else:
-            live_tape_steps = None
-            selected_field = "ad_full_gb"
-            selected_gb = float(estimate.ad_full_gb)
-            strategy = "full_reverse_ad_static_tape"
-            tape_count = int(active_steps)
-            tape_bytes = tape_count * field_bytes
-            tape_name = "full_reverse_field_tape"
-            tape_explanation = (
-                "Full reverse-mode AD stores a field tape entry for each "
-                "active post-warmup time step."
-            )
-            tape_unit = "active-time-step-field-state"
-
-        def _share(memory_bytes: int) -> float:
-            if selected_gb <= 0.0:
-                return 0.0
-            return float(memory_bytes / 1e9 / selected_gb)
-
-        def _component(
-            name: str,
-            memory_bytes: int,
-            kind: str,
-            *,
-            unit: str | None,
-            count: int | None,
-            bytes_per_unit: int | None,
-            explanation: str,
-        ) -> ADMemoryComponent:
-            return ADMemoryComponent(
-                name=name,
-                kind=kind,
-                memory_gb=memory_bytes / 1e9,
-                share_of_selected=_share(memory_bytes),
-                unit=unit,
-                count=count,
-                bytes_per_unit_gb=(
-                    None if bytes_per_unit is None else bytes_per_unit / 1e9
-                ),
-                explanation=explanation,
-            )
-
-        live_components: tuple[ADMemoryComponent, ...] = ()
-        if live_tape_steps is not None:
-            live_components = (
-                _component(
-                    "segmented_live_segment_tape",
-                    live_tape_steps * field_bytes,
-                    "reverse_ad_saved_state",
-                    unit="live-segment-time-step-field-state",
-                    count=int(live_tape_steps),
-                    bytes_per_unit=field_bytes,
-                    explanation=(
-                        "The backward pass rematerializes one segment at a "
-                        "time, so the live segment's per-step field tape is "
-                        "resident on top of the segment-boundary storage."
-                    ),
-                ),
-            )
-
-        components = (
-            _component(
-                "field_state",
-                field_bytes,
-                "forward_working_set",
-                unit="field-array",
-                count=6,
-                bytes_per_unit=cells * bytes_per_cell,
-                explanation="Six E/H field arrays carried by the forward solve.",
-            ),
-            _component(
-                "material_auxiliary_state",
-                material_bytes,
-                "forward_working_set",
-                unit="material-array",
-                count=6,
-                bytes_per_unit=cells * bytes_per_cell,
-                explanation=(
-                    "Static material/ADE auxiliary allocation used by the "
-                    "planner's forward working-set model."
-                ),
-            ),
-            _component(
-                "cpml_auxiliary_state",
-                cpml_bytes,
-                "forward_working_set",
-                unit="cpml-overhead",
-                count=None,
-                bytes_per_unit=None,
-                explanation=(
-                    "CPML auxiliary state estimate; zero when the simulation "
-                    "does not use CPML layers."
-                ),
-            ),
-            _component(
-                tape_name,
-                tape_bytes,
-                "reverse_ad_saved_state",
-                unit=tape_unit,
-                count=tape_count,
-                bytes_per_unit=field_bytes,
-                explanation=tape_explanation,
-            ),
-            *live_components,
-            _component(
-                "surface_impedance_sheet_state",
-                sheet_bytes,
-                "forward_working_set",
-                unit="sheet-operator-array",
-                count=None,
-                bytes_per_unit=None,
-                explanation=(
-                    "Surface-impedance (surface_impedance_f0) sheet "
-                    "operator state: three boolean tangential edge masks "
-                    "plus sigma_sheet, all full-grid. Zero when no f0 "
-                    "sheet is registered. Since #677 the sheet is in "
-                    "neither pec_mask nor materials.sigma, so nothing "
-                    "else in this accounting covers it (#696)."
-                ),
-            ),
-            _component(
-                "ntff_dft_state",
-                ntff_bytes,
-                "monitor_state",
-                unit="ntff-dft-state",
-                count=None,
-                bytes_per_unit=None,
-                explanation=(
-                    "Near-to-far-field DFT monitor state retained in forward "
-                    "and AD planning estimates."
-                ),
-            ),
-        )
-
-        dominant = max(components, key=lambda component: component.memory_gb)
-        recommendations: list[str] = [
-            f"Dominant AD memory contributor is {dominant.name}.",
-            "Treat ad_checkpointed_gb as a legacy heuristic; use the selected memory field in this report for planning.",
-        ]
-        if estimate.ad_segmented_gb is None:
-            recommendations.append(
-                "Use plan_ad_memory() to choose a supported segmented checkpoint knob when full reverse-mode AD is too large."
-            )
-        else:
-            recommendations.append(
-                f"Selected strategy stores {tape_count} {tape_unit} unit(s) "
-                f"plus one live rematerialized segment of {live_tape_steps} "
-                f"time-step tape entries, instead of {active_steps} active "
-                "time-step tape entries."
-            )
-        if estimate.warning:
-            recommendations.append(estimate.warning)
-
-        return ADMemoryExplainabilityReport(
-            n_steps=n_steps_i,
-            strategy=strategy,
-            selected_memory_gb=selected_gb,
-            selected_memory_field=selected_field,
-            estimate=estimate,
-            components=components,
-            dominant_component=dominant.name,
-            recommendations=tuple(recommendations),
-        )
-
-    def plan_ad_memory(
-        self,
-        n_steps: int,
-        available_memory_gb: float,
-        *,
-        target_fraction: float = 0.85,
-        n_warmup: int = 0,
-        safety_factor: float = AD_MEMORY_FIT_SAFETY_FACTOR,
-    ) -> ADMemoryPlan:
-        """Choose a segmented-AD memory plan for a memory budget.
-
-        The planner reuses :meth:`estimate_ad_memory` and returns a
-        calibrated conservative planning artifact rather than mutating the
-        simulation or certifying runtime peak memory. If ordinary reverse-mode
-        AD already fits under ``target_fraction * available_memory_gb``, both
-        checkpoint knobs are ``None``. Otherwise it returns a segmented
-        candidate: ``checkpoint_every`` for non-uniform grids or
-        ``checkpoint_segments`` for uniform grids. Only wire the candidate when
-        ``segmented_fits`` is true; a non-fitting plan keeps the least-memory
-        candidate as diagnostics.
-        ``n_warmup`` must be an integer with ``0 <= n_warmup < n_steps`` and
-        reduces active reverse-mode time. Raw estimates must also fit after
-        multiplying by ``safety_factor`` before fit flags are set, so
-        near-boundary plans stay conservative.
-        """
-        n_steps_i = _require_integral_param("n_steps", n_steps)
-        n_warmup_i = _require_integral_param("n_warmup", n_warmup)
-        available_memory_gb_f = _require_positive_finite_scalar(
-            "available_memory_gb", available_memory_gb
-        )
-        target_fraction_f = _require_positive_finite_scalar(
-            "target_fraction", target_fraction
-        )
-        safety_factor_f = _require_positive_finite_scalar(
-            "safety_factor", safety_factor
-        )
-
-        if n_steps_i <= 0:
-            raise ValueError("n_steps must be positive")
-        if n_warmup_i < 0:
-            raise ValueError("n_warmup must be >= 0")
-        if n_warmup_i >= n_steps_i:
-            raise ValueError(f"n_warmup ({n_warmup_i}) must be < n_steps ({n_steps_i})")
-        if target_fraction_f > 1.0:
-            raise ValueError("target_fraction must be in the interval (0, 1]")
-        if safety_factor_f < 1.0:
-            raise ValueError("safety_factor must be >= 1")
-
-        target_memory_gb = available_memory_gb_f * target_fraction_f
-        full_estimate = self.estimate_ad_memory(
-            n_steps_i,
-            available_memory_gb=available_memory_gb_f,
-            n_warmup=n_warmup_i,
-        )
-        if full_estimate.ad_full_gb * safety_factor_f <= target_memory_gb:
-            return ADMemoryPlan(
-                n_steps=n_steps_i,
-                available_memory_gb=available_memory_gb_f,
-                target_fraction=target_fraction_f,
-                target_memory_gb=target_memory_gb,
-                checkpoint_every=None,
-                checkpoint_segments=None,
-                checkpoint_mode=None,
-                fit_safety_factor=safety_factor_f,
-                selected_estimate=full_estimate,
-                full_ad_fits=True,
-                segmented_fits=False,
-                recommendation=(
-                    f"full reverse-mode AD estimate ({_format_memory_with_safety(full_estimate.ad_full_gb, safety_factor_f)}) "
-                    f"fits within the {_format_memory_gb(target_memory_gb)} target; "
-                    "segmented checkpointing is optional for memory"
-                ),
-            )
-
-        uses_nonuniform = (
-            self._dx_profile is not None
-            or self._dy_profile is not None
-            or self._dz_profile is not None
-        )
-        if not uses_nonuniform:
-            divisors = _positive_divisors(n_steps_i)
-            sqrt_steps = math.sqrt(n_steps_i)
-            recommended_segments = min(
-                divisors,
-                key=lambda divisor: (
-                    abs(float(divisor) - sqrt_steps),
-                    -divisor,
-                ),
-            )
-            best_segments: int | None = None
-            best_estimate: AD_MemoryEstimate | None = None
-            for segments in sorted(
-                (divisor for divisor in divisors if divisor <= recommended_segments),
-                reverse=True,
-            ):
-                estimate = self.estimate_ad_memory(
-                    n_steps_i,
-                    available_memory_gb=available_memory_gb_f,
-                    checkpoint_segments=segments,
-                    n_warmup=n_warmup_i,
-                )
-                segmented_gb = estimate.ad_segmented_gb
-                if segmented_gb is not None and segmented_gb * safety_factor_f <= target_memory_gb:
-                    best_segments = segments
-                    best_estimate = estimate
-                    break
-
-            if best_segments is not None and best_estimate is not None:
-                return ADMemoryPlan(
-                    n_steps=n_steps_i,
-                    available_memory_gb=available_memory_gb_f,
-                    target_fraction=target_fraction_f,
-                    target_memory_gb=target_memory_gb,
-                    checkpoint_every=None,
-                    checkpoint_segments=best_segments,
-                    checkpoint_mode="checkpoint_segments",
-                    fit_safety_factor=safety_factor_f,
-                    selected_estimate=best_estimate,
-                    full_ad_fits=False,
-                    segmented_fits=True,
-                    recommendation=(
-                        f"use checkpoint_segments={best_segments}: segmented AD estimate "
-                        f"{_format_memory_with_safety(best_estimate.ad_segmented_gb, safety_factor_f)} fits within the "
-                        f"{_format_memory_gb(target_memory_gb)} target"
-                    ),
-                )
-
-            # With the live-segment term (#277) the least-memory candidate
-            # is the divisor balancing the boundary and live tape terms,
-            # NOT checkpoint_segments=1 (which is ~full-AD-sized). Report
-            # the true least-memory divisor as the diagnostic candidate.
-            least_segments: int | None = None
-            least_estimate: AD_MemoryEstimate | None = None
-            for segments in sorted(divisors):
-                estimate = self.estimate_ad_memory(
-                    n_steps_i,
-                    available_memory_gb=available_memory_gb_f,
-                    checkpoint_segments=segments,
-                    n_warmup=n_warmup_i,
-                )
-                segmented_gb = estimate.ad_segmented_gb
-                if segmented_gb is None:
-                    continue
-                if least_estimate is None or segmented_gb < least_estimate.ad_segmented_gb:
-                    least_segments = segments
-                    least_estimate = estimate
-            least_fits = (
-                least_estimate is not None
-                and least_estimate.ad_segmented_gb * safety_factor_f
-                <= target_memory_gb
-            )
-            if least_fits:
-                recommendation = (
-                    f"use checkpoint_segments={least_segments}: segmented AD estimate "
-                    f"{_format_memory_with_safety(least_estimate.ad_segmented_gb, safety_factor_f)} fits within the "
-                    f"{_format_memory_gb(target_memory_gb)} target"
-                )
-            else:
-                recommendation = (
-                    f"no checkpoint_segments divisor fits; the least-memory candidate "
-                    f"checkpoint_segments={least_segments} is estimated at "
-                    f"{_format_memory_with_safety(least_estimate.ad_segmented_gb, safety_factor_f)}, above the "
-                    f"{_format_memory_gb(target_memory_gb)} target; reduce mesh size, reduce "
-                    "n_steps, or use a more aggressive memory-reduction lane"
-                )
-            return ADMemoryPlan(
-                n_steps=n_steps_i,
-                available_memory_gb=available_memory_gb_f,
-                target_fraction=target_fraction_f,
-                target_memory_gb=target_memory_gb,
-                checkpoint_every=None,
-                checkpoint_segments=least_segments,
-                checkpoint_mode="checkpoint_segments",
-                fit_safety_factor=safety_factor_f,
-                selected_estimate=least_estimate,
-                full_ad_fits=False,
-                segmented_fits=least_fits,
-                recommendation=recommendation,
-            )
-
-        best_checkpoint: int | None = None
-        best_estimate: AD_MemoryEstimate | None = None
-        least_checkpoint: int | None = None
-        least_estimate: AD_MemoryEstimate | None = None
-        for checkpoint in range(1, n_steps_i + 1):
-            estimate = self.estimate_ad_memory(
-                n_steps_i,
-                available_memory_gb=available_memory_gb_f,
-                checkpoint_every=checkpoint,
-                n_warmup=n_warmup_i,
-            )
-            segmented_gb = estimate.ad_segmented_gb
-            if segmented_gb is not None and (
-                least_estimate is None
-                or segmented_gb < least_estimate.ad_segmented_gb
-            ):
-                least_checkpoint = checkpoint
-                least_estimate = estimate
-            if segmented_gb is not None and segmented_gb * safety_factor_f <= target_memory_gb:
-                best_checkpoint = checkpoint
-                best_estimate = estimate
-                break
-
-        if best_checkpoint is not None and best_estimate is not None:
-            return ADMemoryPlan(
-                n_steps=n_steps_i,
-                available_memory_gb=available_memory_gb_f,
-                target_fraction=target_fraction_f,
-                target_memory_gb=target_memory_gb,
-                checkpoint_every=best_checkpoint,
-                checkpoint_segments=None,
-                checkpoint_mode="checkpoint_every",
-                fit_safety_factor=safety_factor_f,
-                selected_estimate=best_estimate,
-                full_ad_fits=False,
-                segmented_fits=True,
-                recommendation=(
-                    f"use checkpoint_every={best_checkpoint}: segmented AD estimate "
-                    f"{_format_memory_with_safety(best_estimate.ad_segmented_gb, safety_factor_f)} fits within the "
-                    f"{_format_memory_gb(target_memory_gb)} target"
-                ),
-            )
-
-        # The full 1..n_steps sweep found no fitting chunk, so nothing
-        # fits. With the live-chunk term (#277) the least-memory candidate
-        # balances the boundary and live tape terms near
-        # sqrt(2 * n_steps), NOT checkpoint_every=n_steps (which is
-        # ~full-AD-sized) — report the tracked least-memory candidate.
-        return ADMemoryPlan(
-            n_steps=n_steps_i,
-            available_memory_gb=available_memory_gb_f,
-            target_fraction=target_fraction_f,
-            target_memory_gb=target_memory_gb,
-            checkpoint_every=least_checkpoint,
-            checkpoint_segments=None,
-            checkpoint_mode="checkpoint_every",
-            fit_safety_factor=safety_factor_f,
-            selected_estimate=least_estimate,
-            full_ad_fits=False,
-            segmented_fits=False,
-            recommendation=(
-                f"no checkpoint_every value fits; the least-memory candidate "
-                f"checkpoint_every={least_checkpoint} is estimated at "
-                f"{_format_memory_with_safety(least_estimate.ad_segmented_gb, safety_factor_f)}, above the "
-                f"{_format_memory_gb(target_memory_gb)} target; reduce mesh size, reduce "
-                "n_steps, or use a more aggressive memory-reduction lane"
-            ),
-        )
-
-    def ad_memory_preflight(
-        self,
-        n_steps: int,
-        available_memory_gb: float,
-        *,
-        target_fraction: float = 0.85,
-        n_warmup: int = 0,
-        safety_factor: float = AD_MEMORY_FIT_SAFETY_FACTOR,
-        include_mesh_report: bool = True,
-        check_ntff: bool = True,
-        check_resolution: bool = True,
-        residual_fun: Callable[..., Any] | None = None,
-        residual_args: tuple[Any, ...] = (),
-        residual_kwargs: Mapping[str, Any] | None = None,
-        residual_top_n: int = 10,
-        residual_workflow: str | None = None,
-        residual_context: Mapping[str, object] | None = None,
-    ) -> ADMemoryPreflightReport:
-        """Return a one-call AD-memory preflight planning artifact.
-
-        The report composes existing static memory planning, static
-        explainability, optional mesh advisories, and optional trace-time JAX
-        saved-residual diagnostics. It does not run FDTD and does not upgrade
-        static planning evidence into runtime memory proof.
-        """
-        plan = self.plan_ad_memory(
-            n_steps,
-            available_memory_gb,
-            target_fraction=target_fraction,
-            n_warmup=n_warmup,
-            safety_factor=safety_factor,
-        )
-
-        if plan.full_ad_fits:
-            status = "full_ad_fits"
-            selected_checkpoint_every = None
-            selected_checkpoint_segments = None
-            supported_checkpoint_mode = None
-        else:
-            selected_checkpoint_every = plan.checkpoint_every
-            selected_checkpoint_segments = plan.checkpoint_segments
-            supported_checkpoint_mode = plan.checkpoint_mode
-            status = "checkpointing_fits" if plan.segmented_fits else "does_not_fit"
-
-        explanation = self.explain_ad_memory(
-            n_steps,
-            available_memory_gb=available_memory_gb,
-            checkpoint_every=selected_checkpoint_every,
-            checkpoint_segments=selected_checkpoint_segments,
-            n_warmup=n_warmup,
-        )
-
-        mesh_report = (
-            self.mesh_intelligence_report(
-                n_steps=n_steps,
-                checkpoint_every=selected_checkpoint_every,
-                checkpoint_segments=selected_checkpoint_segments,
-                available_memory_gb=available_memory_gb,
-                n_warmup=n_warmup,
-                check_ntff=check_ntff,
-                check_resolution=check_resolution,
-            )
-            if include_mesh_report
-            else None
-        )
-
-        action_hints: list[ADMemoryActionHint] = []
-        if plan.full_ad_fits:
-            recommendation = "Full reverse-mode AD fits the conservative memory target; checkpointing is optional for memory."
-            action_hints.append(
-                ADMemoryActionHint(
-                    code="full_ad_fits",
-                    severity="info",
-                    message="Full reverse-mode AD fits the configured conservative memory target.",
-                    action="Run full reverse-mode AD or still choose checkpointing for extra margin.",
-                )
-            )
-        elif plan.segmented_fits:
-            if plan.checkpoint_mode == "checkpoint_every":
-                code = "use_checkpoint_every"
-                action = (
-                    f"Wire checkpoint_every={plan.checkpoint_every} into the supported non-uniform runner."
-                )
-            else:
-                code = "use_checkpoint_segments"
-                action = (
-                    f"Wire checkpoint_segments={plan.checkpoint_segments} into the supported uniform runner."
-                )
-            recommendation = plan.recommendation
-            action_hints.append(
-                ADMemoryActionHint(
-                    code=code,
-                    severity="warning",
-                    message="Supported segmented checkpointing fits the configured conservative memory target.",
-                    action=action,
-                    checkpoint_mode=plan.checkpoint_mode,
-                    checkpoint_every=plan.checkpoint_every,
-                    checkpoint_segments=plan.checkpoint_segments,
-                )
-            )
-        else:
-            recommendation = (
-                f"{plan.recommendation}; do not launch the returned checkpoint "
-                "candidate as a fit. It is diagnostic-only."
-            )
-            action_hints.append(
-                ADMemoryActionHint(
-                    code="memory_budget_unfit",
-                    severity="blocker",
-                    message="Neither full reverse-mode AD nor the least-memory supported checkpoint candidate fits the configured conservative memory target.",
-                    action=(
-                        "Do not launch the returned checkpoint candidate as a fit; "
-                        "reduce mesh size, reduce n_steps, increase memory, or choose a stronger memory-reduction lane."
-                    ),
-                    checkpoint_mode=plan.checkpoint_mode,
-                    checkpoint_every=plan.checkpoint_every,
-                    checkpoint_segments=plan.checkpoint_segments,
-                    blocking=True,
-                )
-            )
-
-        owned_residual_context = {
-            "n_steps": int(plan.n_steps),
-            "available_memory_gb": float(plan.available_memory_gb),
-            "target_fraction": float(plan.target_fraction),
-            "target_memory_gb": float(plan.target_memory_gb),
-            "fit_safety_factor": float(plan.fit_safety_factor),
-            "checkpoint_mode": supported_checkpoint_mode,
-            "checkpoint_every": selected_checkpoint_every,
-            "checkpoint_segments": selected_checkpoint_segments,
-            "preflight_status": status,
-        }
-        # Validate whenever context is supplied (a malformed context must be
-        # rejected early even without residual_fun), but warn if a valid
-        # context is provided without a function, since it is then unused.
-        merged_residual_context = (
-            _validate_residual_context(
-                residual_context,
-                owned_fields=owned_residual_context,
-            )
-            if residual_fun is not None or residual_context is not None
-            else None
-        )
-        if residual_context is not None and residual_fun is None:
-            import warnings
-
-            warnings.warn(
-                "residual_context is ignored because residual_fun was not "
-                "provided; pass residual_fun to produce a saved-residual "
-                "diagnostic.",
-                stacklevel=2,
-            )
-        residual_diagnostic = None
-        if residual_fun is not None:
-            from rfx.ad_diagnostics import diagnose_ad_saved_residuals
-            artifact_snapshots: dict[str, object] = {
-                "memory_plan": plan,
-                "explainability": explanation,
-            }
-            if mesh_report is not None:
-                artifact_snapshots["mesh_report"] = mesh_report
-            residual_diagnostic = diagnose_ad_saved_residuals(
-                residual_fun,
-                *residual_args,
-                top_n=residual_top_n,
-                workflow=residual_workflow,
-                context=merged_residual_context,
-                artifacts=artifact_snapshots,
-                **(dict(residual_kwargs) if residual_kwargs is not None else {}),
-            )
-            action_hints.append(
-                ADMemoryActionHint(
-                    code="inspect_saved_residuals",
-                    severity="info",
-                    message="JAX saved-residual trace context is attached for comparison with static memory artifacts.",
-                    action="Compare top residuals and groups with the static explanation before changing checkpoint policy.",
-                )
-            )
-
-        action_hints.append(
-            ADMemoryActionHint(
-                code="validate_physics_separately",
-                severity="info",
-                message="Memory preflight is separate from electromagnetic correctness checks.",
-                action="Run convergence, reference, or observable checks before making physics claims.",
-            )
-        )
-
-        return ADMemoryPreflightReport(
-            n_steps=plan.n_steps,
-            available_memory_gb=plan.available_memory_gb,
-            target_fraction=plan.target_fraction,
-            target_memory_gb=plan.target_memory_gb,
-            fit_safety_factor=plan.fit_safety_factor,
-            status=status,
-            supported_checkpoint_mode=supported_checkpoint_mode,
-            checkpoint_every=selected_checkpoint_every,
-            checkpoint_segments=selected_checkpoint_segments,
-            full_ad_fits=plan.full_ad_fits,
-            checkpointing_fits=plan.segmented_fits,
-            memory_plan=plan,
-            explainability=explanation,
-            mesh_report=mesh_report,
-            residual_diagnostic=residual_diagnostic,
-            action_hints=tuple(action_hints),
-            evidence_boundaries=AD_MEMORY_PREFLIGHT_EVIDENCE_BOUNDARIES,
-            recommendation=recommendation,
-        )
-
-    def ad_memory_compiled_certificate(
-        self,
-        compiled: object,
-        *,
-        n_steps: int,
-        available_memory_gb: float,
-        target_fraction: float = 0.85,
-        checkpoint_every: int | None = None,
-        checkpoint_segments: int | None = None,
-        n_warmup: int = 0,
-        precision: str | None = None,
-        input_signature: object | None = None,
-        static_signature: object | None = None,
-        compiled_object_id: str | None = None,
-        runner_or_objective: str | None = None,
-        preflight: ADMemoryPreflightReport | None = None,
-        scope_context: Mapping[str, object] | None = None,
-    ) -> ADCompiledMemoryCertificate:
-        """Return a fail-closed compiler-memory certificate for one executable.
-
-        This method accepts an already-compiled JAX object and reads only its
-        ``memory_analysis()`` output. It does not compile callables, run FDTD,
-        profile runtime memory, or convert static memory plans into guarantees.
-        Green statuses are bounded to the supplied compiled object and complete
-        exact-scope metadata.
-        """
-        n_steps_i = _require_integral_param("n_steps", n_steps)
-        n_warmup_i = _require_integral_param("n_warmup", n_warmup)
-        checkpoint_every_i = (
-            None
-            if checkpoint_every is None
-            else _require_integral_param("checkpoint_every", checkpoint_every)
-        )
-        checkpoint_segments_i = (
-            None
-            if checkpoint_segments is None
-            else _require_integral_param("checkpoint_segments", checkpoint_segments)
-        )
-        available_memory_gb_f = _require_positive_finite_scalar(
-            "available_memory_gb",
-            available_memory_gb,
-        )
-        target_fraction_f = _require_positive_finite_scalar(
-            "target_fraction",
-            target_fraction,
-        )
-        if target_fraction_f > 1.0:
-            raise ValueError("target_fraction must be in the interval (0, 1]")
-
-        # Reuse the existing AD-memory validation contract for counts and
-        # checkpoint knob exclusivity/divisibility.
-        self.estimate_ad_memory(
-            n_steps_i,
-            available_memory_gb=available_memory_gb_f,
-            checkpoint_every=checkpoint_every_i,
-            checkpoint_segments=checkpoint_segments_i,
-            n_warmup=n_warmup_i,
-        )
-
-        target_memory_gb = available_memory_gb_f * target_fraction_f
-        analysis = _normalize_compiled_memory_analysis(compiled)
-        memory_analysis_fields = (
-            tuple(analysis.fields)
-            if analysis.status == "complete"
-            else None
-        )
-        scope = _canonicalize_exact_scope(
-            compiled=compiled,
-            n_steps=n_steps_i,
-            n_warmup=n_warmup_i,
-            checkpoint_every=checkpoint_every_i,
-            checkpoint_segments=checkpoint_segments_i,
-            available_memory_gb=available_memory_gb_f,
-            target_fraction=target_fraction_f,
-            target_memory_gb=target_memory_gb,
-            precision=precision,
-            input_signature=input_signature,
-            static_signature=static_signature,
-            compiled_object_id=compiled_object_id,
-            runner_or_objective=runner_or_objective,
-            memory_analysis_fields=memory_analysis_fields,
-            preflight=preflight,
-            scope_context=scope_context,
-        )
-
-        utilization_ratio: float | None = None
-        if scope.status != "complete":
-            status = scope.status
-            status_reason = scope.reason
-        elif analysis.status != "complete":
-            status = analysis.status
-            status_reason = analysis.reason
-        else:
-            required_bytes = int(analysis.required_bytes)
-            target_bytes = target_memory_gb * 1e9
-            utilization_ratio = (
-                required_bytes / target_bytes if target_bytes > 0 else None
-            )
-            if required_bytes <= target_bytes:
-                status = "compiler_estimate_within_budget"
-                status_reason = (
-                    "compiled memory_analysis() required bytes fit within "
-                    "available_memory_gb * target_fraction"
-                )
-            else:
-                status = "compiler_estimate_exceeds_budget"
-                status_reason = (
-                    "compiled memory_analysis() required bytes exceed "
-                    "available_memory_gb * target_fraction"
-                )
-
-        def _bytes(field: str) -> int | None:
-            return analysis.fields.get(field) if analysis.status == "complete" else None
-
-        def _gb(value: int | None) -> float | None:
-            return None if value is None else value / 1e9
-
-        temp_bytes = _bytes("temp_size_in_bytes")
-        argument_bytes = _bytes("argument_size_in_bytes")
-        output_bytes = _bytes("output_size_in_bytes")
-        alias_bytes = _bytes("alias_size_in_bytes")
-        required_bytes_out = (
-            int(analysis.required_bytes)
-            if analysis.status == "complete"
-            else None
-        )
-        env = _environment_summary()
-        exact_scope = scope.exact_scope
-        jax_version = (
-            str(exact_scope.get("jax_version"))
-            if exact_scope is not None and "jax_version" in exact_scope
-            else str(env["jax_version"])
-        )
-        recommendations = [
-            "Treat this as a bounded certificate for the exact compiled object and declared scope only.",
-            "Digests are audit identities only; they do not prove source-to-executable correspondence.",
-        ]
-        if status == "compiler_estimate_within_budget":
-            util_txt = (
-                f" (compiler estimate is {utilization_ratio * 100:.1f}% of the "
-                "target budget)"
-                if utilization_ratio is not None
-                else ""
-            )
-            recommendations.insert(
-                0,
-                "Compiler memory analysis fits the target budget for this exact "
-                f"scope{util_txt}. This is a JAX compiler estimate; it excludes "
-                "allocator fragmentation and runtime scratch, so a fit at high "
-                "utilization can still OOM at runtime.",
-            )
-        elif status == "compiler_estimate_exceeds_budget":
-            recommendations.insert(
-                0,
-                "Compiler memory analysis exceeds the target budget; reduce scope, checkpoint more aggressively, or increase memory.",
-            )
-        elif status == "scope_incomplete":
-            recommendations.insert(
-                0,
-                "Provide complete JSON-safe exact-scope metadata before relying on compiler memory evidence.",
-            )
-        elif status == "scope_mismatch":
-            recommendations.insert(
-                0,
-                "Resolve contradictions between declared scope, preflight metadata, and compiled-object introspection.",
-            )
-        elif status == "analysis_unavailable":
-            recommendations.insert(
-                0,
-                "JAX did not provide memory_analysis() evidence for this compiled object/backend.",
-            )
-        else:
-            recommendations.insert(
-                0,
-                "JAX memory_analysis() output is incomplete or invalid for certificate use.",
-            )
-
-        return ADCompiledMemoryCertificate(
-            status=status,
-            status_reason=status_reason,
-            available_memory_gb=available_memory_gb_f,
-            target_fraction=target_fraction_f,
-            target_memory_gb=target_memory_gb,
-            compiler_reported_required_bytes=required_bytes_out,
-            compiler_reported_required_gb=_gb(required_bytes_out),
-            temp_size_in_bytes=temp_bytes,
-            argument_size_in_bytes=argument_bytes,
-            output_size_in_bytes=output_bytes,
-            alias_size_in_bytes=alias_bytes,
-            temp_gb=_gb(temp_bytes),
-            argument_gb=_gb(argument_bytes),
-            output_gb=_gb(output_bytes),
-            alias_gb=_gb(alias_bytes),
-            exact_scope=exact_scope,
-            scope_status=scope.status,
-            scope_status_reason=scope.reason,
-            scope_digest=scope.scope_digest,
-            config_digest=scope.config_digest,
-            environment_digest=scope.environment_digest,
-            memory_analysis_status=analysis.status,
-            memory_analysis_status_reason=analysis.reason,
-            jax_version=jax_version,
-            evidence_boundaries=AD_COMPILED_MEMORY_CERTIFICATE_EVIDENCE_BOUNDARIES,
-            recommendations=tuple(recommendations),
-            source_preflight=scope.source_preflight,
-        )
-
     def freeze_mesh(self):
         """Finalize mesh spacing/profiles and extent, returning the selected grid.
 
@@ -4272,141 +2658,12 @@ class Simulation(
         check_ntff: bool = True,
         check_resolution: bool = True,
     ) -> MeshIntelligenceReport:
-        """Return a consolidated mesh-quality and memory-planning report.
-
-        The report is intentionally advisory: it reuses ``preflight()``
-        for physics/geometry warnings, reuses ``estimate_ad_memory()``
-        when ``n_steps`` is provided, and adds a uniform-fine comparator
-        that estimates how many cells a globally fine mesh would need if
-        it used the minimum cell size present in any non-uniform profile.
-
-        This is the Stage-1 production-near "subgrid-like" planning
-        surface: it helps users decide whether existing non-uniform mesh
-        plus segmented checkpointing is enough before attempting
-        research-only true subgridding.
-
-        ``checkpoint_every`` and ``checkpoint_segments`` are forwarded to the
-        same AD estimator used by :meth:`plan_ad_memory`; they are mutually
-        exclusive. ``n_warmup`` is forwarded as reverse-mode tape metadata
-        only, matching ``estimate_ad_memory``.
-        """
-        import contextlib
-        import io
-
-        if any(
-            p is not None and is_tracer(p)
-            for p in (self._dx_profile, self._dy_profile, self._dz_profile)
-        ):
-            raise ValueError(
-                "mesh_intelligence_report requires concrete mesh profiles; "
-                "tracer-valued mesh-as-design-variable profiles cannot be "
-                "summarized host-side."
-            )
-
-        dx = self._dx or (C0 / self._freq_max / 20.0)
-
-        # #696: one shape source, shared with estimate_ad_memory — the
-        # grid the solve will actually build. This method carried its own
-        # copy of the same ceil(extent/dx)+1+2*cpml re-derivation, so the
-        # report's cell count and its AD estimate could describe two
-        # different grids, neither of them the one that runs.
-        _accounting = self._ad_memory_static_accounting()
-        grid_shape = (
-            _accounting["nx"], _accounting["ny"], _accounting["nz"],
-        )
-        cells = int(_accounting["cells"])
-
-        axis_min = [
-            float(np.min(self._dx_profile)) if self._dx_profile is not None else dx,
-            float(np.min(self._dy_profile)) if self._dy_profile is not None else dx,
-            float(np.min(self._dz_profile)) if self._dz_profile is not None else dx,
-        ]
-        min_cell_size = min(axis_min)
-        uniform_fine_shape = tuple(
-            int(math.ceil(extent / min_cell_size)) + 1 + 2 * self._cpml_layers
-            for extent in self._domain
-        )
-        uniform_fine_cells = int(
-            uniform_fine_shape[0] * uniform_fine_shape[1] * uniform_fine_shape[2]
-        )
-        cell_savings_factor = (
-            float(uniform_fine_cells / cells) if cells > 0 else float("inf")
-        )
-
-        # preflight() prints a summary by design; suppress it so the
-        # report method remains a pure information-returning API.
-        with contextlib.redirect_stdout(io.StringIO()):
-            preflight_issues = tuple(
-                self.preflight(
-                    strict=False,
-                    check_ntff=check_ntff,
-                    check_resolution=check_resolution,
-                    check_ad_memory=False,
-                )
-            )
-
-        ad_memory = None
-        if n_steps is not None:
-            ad_memory = self.estimate_ad_memory(
-                n_steps,
-                available_memory_gb=available_memory_gb,
-                checkpoint_every=checkpoint_every,
-                checkpoint_segments=checkpoint_segments,
-                n_warmup=n_warmup,
-            )
-
-        uses_nonuniform = any(
-            p is not None
-            for p in (self._dx_profile, self._dy_profile, self._dz_profile)
-        )
-        recommendation_parts: list[str] = []
-        if preflight_issues:
-            recommendation_parts.append(
-                f"resolve {len(preflight_issues)} preflight issue(s) before "
-                "trusting physics results"
-            )
-        elif uses_nonuniform and cell_savings_factor >= 2.0:
-            recommendation_parts.append(
-                f"non-uniform mesh is useful here: ~{cell_savings_factor:.1f}x "
-                "fewer cells than a uniform mesh at the finest spacing"
-            )
-        elif uses_nonuniform:
-            recommendation_parts.append(
-                "non-uniform mesh gives limited cell savings; verify that "
-                "the refinement profile is worth the added validation burden"
-            )
-        else:
-            recommendation_parts.append(
-                "uniform mesh: use preflight/memory estimates as baseline; "
-                "consider non-uniform profiles before research-only subgrid"
-            )
-
-        if ad_memory is not None:
-            if ad_memory.warning:
-                recommendation_parts.append(ad_memory.warning)
-            elif (checkpoint_every or checkpoint_segments) and ad_memory.ad_segmented_gb is not None:
-                recommendation_parts.append(
-                    f"use segmented AD estimate ({_format_memory_gb(ad_memory.ad_segmented_gb)}) "
-                    "rather than the legacy step-checkpoint heuristic"
-                )
-            else:
-                recommendation_parts.append(
-                    "estimated full reverse-mode AD memory is "
-                    f"{_format_memory_gb(ad_memory.ad_full_gb)}"
-                )
-
-        return MeshIntelligenceReport(
-            grid_shape=grid_shape,
-            cells=cells,
-            uniform_fine_shape=uniform_fine_shape,
-            uniform_fine_cells=uniform_fine_cells,
-            cell_savings_factor=cell_savings_factor,
-            min_cell_size=float(min_cell_size),
-            nominal_dx=float(dx),
-            uses_nonuniform=uses_nonuniform,
-            preflight_issues=preflight_issues,
-            ad_memory=ad_memory,
-            recommendation="; ".join(recommendation_parts) + ".",
+        """Return a consolidated mesh-quality and memory-planning report."""
+        return mesh_intelligence_report(
+            self, n_steps=n_steps, checkpoint_every=checkpoint_every,
+            checkpoint_segments=checkpoint_segments,
+            available_memory_gb=available_memory_gb, n_warmup=n_warmup,
+            check_ntff=check_ntff, check_resolution=check_resolution,
         )
     def _mesh_planner_state(self) -> dict[str, object]:
         """Return a narrow internal snapshot consumed by ``rfx.mesh_planner``.
@@ -4542,6 +2799,7 @@ class Simulation(
 # ---------------------------------------------------------------------------
 for _mixin in (
     _PreflightMixin, _SparamMixin, _CompileMixin, _ExecuteMixin, _ArtifactsMixin,
+    _AdMemoryMixin,
 ):
     for _name, _member in vars(_mixin).items():
         if (

@@ -21,6 +21,8 @@ from rfx import _realized
 import jax
 import jax.numpy as jnp
 
+from rfx.core.drives import drive_layout, inject_drives
+
 from rfx.core.yee import (
     FDTDState, MaterialArrays, init_state,
     update_h, update_e,
@@ -1661,6 +1663,8 @@ _STEP_FN_CAPTURES = (
     "pec_mask_f",
     "prb_meta",
     "prb_meta_c",
+    "src_waveforms",
+    "src_waveforms_c",
     "src_meta",
     "src_meta_c",
     "sync_box_shadow_from_fine",
@@ -1705,6 +1709,8 @@ _STEP_FN_REQUIRED_CAPTURES = frozenset({
     "pec_mask_f",
     "prb_meta",
     "prb_meta_c",
+    "src_waveforms",
+    "src_waveforms_c",
     "src_meta",
     "src_meta_c",
     "use_cpml",
@@ -1755,6 +1761,8 @@ def _make_step_fn(ctx):
     prb_meta_c = ctx.get("prb_meta_c")
     src_meta = ctx.get("src_meta")
     src_meta_c = ctx.get("src_meta_c")
+    drives_f = drive_layout(src_meta, ctx["src_waveforms"].dtype, electric_only_path="subgridded fine")
+    drives_c = drive_layout(src_meta_c, ctx["src_waveforms_c"].dtype, electric_only_path="subgridded coarse")
     sync_box_shadow_from_fine = ctx.get("sync_box_shadow_from_fine")
     sync_coarse_interface_from_fine = ctx.get("sync_coarse_interface_from_fine")
     sync_coarse_shadow_from_fine = ctx.get("sync_coarse_shadow_from_fine")
@@ -1773,52 +1781,17 @@ def _make_step_fn(ctx):
         ex_c, ey_c, ez_c, hx_c, hy_c, hz_c = carry["c"]
         ex_f, ey_f, ez_f, hx_f, hy_f, hz_f = carry["f"]
 
-        def _inject_fine_sources(ex_arr, ey_arr, ez_arr):
-            # src_vals (this scan's xs, built from the "Precompute source
-            # waveforms matrix" src_waveforms = jnp.stack([jnp.array(s[4])
-            # ...]) below) is ALREADY float64 by the time it gets here, once
-            # x64 is scoped on: s[4] is a host numpy array built in
-            # rfx/runners/subgridded.py's _run_subgridded_once as
-            # np.array(waveform) * fine_source_scale, and dt there comes from
-            # a plain np.sqrt(...) -- numpy always defaults to float64 on the
-            # host, independent of the JAX x64 flag -- which promotes the
-            # downstream jax.vmap(waveform)(times) computation to genuine
-            # float64 once x64 is enabled (under x64 off, JAX's own
-            # canonicalization keeps that same computation at float32
-            # instead). jnp.array(...)/jnp.stack(...) here PRESERVES that
-            # host dtype rather than promoting it. ex/ey/ez_arr stay float32
-            # regardless (init_state's field_dtype default is
-            # x64-independent), so the x64-on scatter mismatches dtypes and
-            # JAX raises a cast-safety FutureWarning (issue #485). Cast
-            # explicitly to the destination array's own dtype: a no-op under
-            # the float32 default (bit-identical), and a safe explicit
-            # downcast under x64.
-            for idx_s, (si, sj, sk, sc) in enumerate(src_meta):
-                if sc == "ez":
-                    ez_arr = ez_arr.at[si, sj, sk].add(src_vals[idx_s].astype(ez_arr.dtype))
-                elif sc == "ex":
-                    ex_arr = ex_arr.at[si, sj, sk].add(src_vals[idx_s].astype(ex_arr.dtype))
-                elif sc == "ey":
-                    ey_arr = ey_arr.at[si, sj, sk].add(src_vals[idx_s].astype(ey_arr.dtype))
-            return ex_arr, ey_arr, ez_arr
+        def _inject_fields(ex, ey, ez, drives, values):
+            from rfx.core.yee import FDTDState
+            st = inject_drives(FDTDState(ex, ey, ez, None, None, None, None),
+                               drives, values)
+            return st.ex, st.ey, st.ez
 
-        def _inject_coarse_sources(ex_arr, ey_arr, ez_arr):
-            # Same leak as _inject_fine_sources above (issue #485), same
-            # mechanism: src_vals_c's host array (np.array(waveform) *
-            # coarse_shadow_source_scale, built in _run_subgridded_once) is
-            # already float64 once x64 is scoped on; the src_waveforms_c =
-            # jnp.stack([jnp.array(s[4]) ...]) below preserves that dtype
-            # rather than promoting it, while ex/ey/ez_arr stay float32
-            # regardless (init_state's field_dtype default). Cast explicitly
-            # to the destination array's own dtype for the same reason.
-            for idx_s, (si, sj, sk, sc) in enumerate(src_meta_c):
-                if sc == "ez":
-                    ez_arr = ez_arr.at[si, sj, sk].add(src_vals_c[idx_s].astype(ez_arr.dtype))
-                elif sc == "ex":
-                    ex_arr = ex_arr.at[si, sj, sk].add(src_vals_c[idx_s].astype(ex_arr.dtype))
-                elif sc == "ey":
-                    ey_arr = ey_arr.at[si, sj, sk].add(src_vals_c[idx_s].astype(ey_arr.dtype))
-            return ex_arr, ey_arr, ez_arr
+        def _inject_fine_sources(ex, ey, ez):
+            return _inject_fields(ex, ey, ez, drives_f, src_vals)
+
+        def _inject_coarse_sources(ex, ey, ez):
+            return _inject_fields(ex, ey, ez, drives_c, src_vals_c)
 
         if sync_coarse_shadow_from_fine and is_full_xy_z_slab:
             ex_c, ey_c, ez_c, hx_c, hy_c, hz_c = _sync_z_slab_coarse_shadow_from_fine(

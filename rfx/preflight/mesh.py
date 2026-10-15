@@ -656,15 +656,8 @@ def _validate_cfg_multiband_grading(self, _w) -> None:
     "uniform" up to 1 ppm of cell size — far below any grading a user
     can mean, and above float round-tripping in a computed profile.
 
-    Inherited caveat: ``_preflight_face_layers`` over-reports the
-    absorber on the non-port axes of a waveguide-port simulation (the
-    grid drops those axes from ``cpml_axes``, the helper does not).
-    This check inherits that, as every other consumer of the helper
-    does; the effect is a possible advisory on an axis whose absorber
-    the grid will not actually allocate. Advisory tier, so it costs a
-    line of noise, never a run.
     """
-    face_layers = None
+    realized_depths = None
     for ax_name, profile in (("x", self._dx_profile),
                              ("y", self._dy_profile),
                              ("z", self._dz_profile)):
@@ -705,10 +698,10 @@ def _validate_cfg_multiband_grading(self, _w) -> None:
                 ),
                 stacklevel=3,
             )
-        if face_layers is None:
-            face_layers = self._preflight_face_layers()
+        if realized_depths is None:
+            realized_depths = self._preflight_face_layers()
         for side in ("lo", "hi"):
-            layers = face_layers.get(f"{ax_name}_{side}", 0)
+            layers = realized_depths.get(f"{ax_name}_{side}", 0)
             if layers < 2 or len(p) < layers:
                 # layers < 2: "one uniform cell" is vacuous (no adjacent
                 # ratio exists inside a single-cell runway).
@@ -788,18 +781,11 @@ def _validate_cfg_thin_conductor_graded_node(self, _w) -> None:
         return
 
     for i, tc in enumerate(tcs):
-        # Bounds source (issue #674): a surface-impedance sheet may be any
-        # ``mask_on_coords`` shape, so read its bounding box; the legacy DC
-        # fold is still Box-only on this lane (it warn-and-skips a non-Box
-        # sheet), and advising about a sheet that is not folded would be
-        # worse than silence.
-        if getattr(tc, "surface_impedance_f0", None) is not None:
-            lo, hi = sheet_bounds(tc.shape)
-        else:
-            lo = getattr(tc.shape, "corner_lo", None)
-            hi = getattr(tc.shape, "corner_hi", None)
+        lo, hi = sheet_bounds(tc.shape)
         if lo is None or hi is None:
             continue
+        if any(is_tracer(v) for bounds in (lo, hi) for v in bounds):
+            continue  # Assembly reports shapes whose bounds cannot be judged.
         extents = [float(hi[a]) - float(lo[a]) for a in range(3)]
         n_axis = min(range(3), key=lambda a: extents[a])
         prof = profiles[n_axis]
@@ -833,8 +819,17 @@ def _validate_cfg_thin_conductor_graded_node(self, _w) -> None:
 
         # Bounding-box centre first — for a Box that is the whole story,
         # and it is bit-identically the probe this check has always run.
-        hit = _occupied_layers((0.5,))
-        if hit.size == 0:
+        from rfx.geometry.csg import Box
+        dc_film = tc.surface_impedance_f0 is None and not isinstance(tc.shape, Box)
+        if dc_film:
+            from rfx.model.thin_conductors import admit_dc_film
+            grid = self._build_realized_grid()
+            film = admit_dc_film(tc.shape, grid, snap=self._snap, emit=False)
+            hit = np.flatnonzero(np.asarray(film.mask).any(axis=_other))
+            hit = hit - int(getattr(grid, f'pad_{"xyz"[n_axis]}_lo'))
+        else:
+            hit = _occupied_layers((0.5,))
+        if hit.size == 0 and not dc_film:
             # #674: a PATTERNED sheet can have its bbox centre inside a
             # clearance hole, which would read as "no sheet here" and
             # silently drop the advisory. Fan out before giving up.
@@ -860,11 +855,9 @@ def _validate_cfg_thin_conductor_graded_node(self, _w) -> None:
                 f"{axis_name} = {_fmt_len(float(nodes[k]))}, an E node "
                 f"whose adjacent cells differ by "
                 f"{(large / small - 1.0):.0%} ({_fmt_len(d_below)} below, "
-                f"{_fmt_len(d_above)} above). Its sheet fold is "
-                f"normalized by the E-node DUAL spacing "
-                f"{_fmt_len(dual)} — the length that node's sigma acts "
-                f"over — which is neither adjacent cell. That IS the "
-                f"correct normalization, but a sheet on a grading step is "
+                f"{_fmt_len(d_above)} above). A DC fold is normalized by "
+                f"the occupied cell's primal width; a surface-impedance sheet by the "
+                f"E-node DUAL spacing {_fmt_len(dual)}. A sheet on a grading step is "
                 f"where the realized sheet resistance is most "
                 f"mesh-sensitive: move the sheet onto a locally uniform "
                 f"node (or flatten the grading there) if its loss is "
@@ -1101,8 +1094,8 @@ def _validate_cfg_nonuniform_limitations(
         # PEC/PMC (allocation 0) no longer reports a thin absorber that
         # does not exist, and a per-face `hi_thickness` is measured at the
         # thickness it actually allocates.
-        _face_layers = self._preflight_face_layers()
-        _z_layers = max(_face_layers["z_lo"], _face_layers["z_hi"])
+        _realized_depths = self._preflight_face_layers()
+        _z_layers = max(_realized_depths["z_lo"], _realized_depths["z_hi"])
         if (self._boundary == "cpml"
                 and _z_layers > 0
                 and not is_tracer(self._dz_profile)):
@@ -1121,11 +1114,11 @@ def _validate_cfg_nonuniform_limitations(
             _z_thick_by_face = {
                 _side: _thick[2]
                 for _side, _thick in (("lo", _ct_lo), ("hi", _ct_hi))
-                if _face_layers[f"z_{_side}"] > 0
+                if _realized_depths[f"z_{_side}"] > 0
             }
             _thin_side = min(_z_thick_by_face, key=_z_thick_by_face.get)
             cpml_z_thick = _z_thick_by_face[_thin_side]
-            _z_cells_reported = _face_layers[f"z_{_thin_side}"]
+            _z_cells_reported = _realized_depths[f"z_{_thin_side}"]
             if cpml_z_thick < cpml_thickness * 0.3:
                 _w.warn(
                     PreflightWarning(

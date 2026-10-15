@@ -49,7 +49,8 @@ def main():
     build, test_hash = fixture_builder()
     frequencies, dx, cpml, periods = ((np.linspace(5e9, 7e9, 6), 1e-3, 10, 40)
                                     if args.fine else (np.linspace(4e9, 6e9, 6), 2e-3, 8, 30))
-    sim = build(frequencies, dx, cpml)
+    sim = build(frequencies, dx, cpml,
+                boundary={"x": "cpml", "y": "pec", "z": "pec"})
     grid = sim._build_grid()
     sheets, wires = [], []
     materials, _, _, current_cells, *_ = sim._assemble_materials(grid, pec_sheets=sheets, pec_wires=wires)

@@ -62,9 +62,9 @@ from tests.unit.nonuniform.test_refinement_refused_on_graded_mesh import _box as
 N_STEPS = 40
 EFFECT_FLOOR = 1e-3
 PARITY_TOL = 1e-4
-PARITY_LANES = ("run_nonuniform", "run_distributed", "fwd_uniform",
+PARITY_LANES = ("run_nonuniform", "run_distributed", "run_distributed_nu", "fwd_uniform",
                 "fwd_nonuniform", "fwd_distributed_nu", "fwd_adi")
-GRADED = ("run_nonuniform", "fwd_nonuniform", "fwd_distributed_nu")
+GRADED = ("run_nonuniform", "run_distributed_nu", "fwd_nonuniform", "fwd_distributed_nu")
 ADI = ("run_adi", "fwd_adi")
 WAVEFORM = GaussianPulse(f0=5e9, bandwidth=0.8)
 # Modules whose lax.scan is a time loop; a refusal must come before any of them.
@@ -167,7 +167,8 @@ def _plus(add):
 
 def _observer(add, field, **base):
     def build(lane, on, ref=False):
-        options = base | ({"boundary": "pec"} if lane in ADI else {})
+        options = base | ({"boundary": "pec"}
+                          if lane in ADI or (field == "ntff_data" and lane == "run_subgridded") else {})
         return _added(add, **options)(lane, on, ref)
     return Feature(build, observer=field)
 
@@ -421,7 +422,7 @@ FEATURES: dict[tuple[str, str], Feature] = {
     ("_flux_monitors", "flux"): _observer(
         lambda s, _: s.add_flux_monitor(axis="x", coordinate=6e-3, n_freqs=3), "flux_monitors"),
     ("_ntff", "ntff_box"): _observer(
-        lambda s, _: s.add_ntff_box(mm(2, 2, 2), mm(10, 10, 8), n_freqs=3), "ntff_data"),
+        lambda s, _: s.add_ntff_box(mm(2, 2, 2), mm(10, 10, 8), n_freqs=3), "ntff_data", boundary="cpml"),
     ("_current_moments", "block_moments"): _observer(
         lambda s, _: s.add_current_moment_monitor(mm(2, 2, 2), mm(10, 10, 10), block_size=4e-3,
                                                   freqs=np.array([5e9])),
@@ -439,14 +440,14 @@ def _run(sim, lane, feature, *, entry=None):
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         if entry.startswith("run_"):
-            if entry == "run_distributed":
+            if entry in ("run_distributed", "run_distributed_nu"):
                 kwargs["devices"] = _devices()
             # These cells compare field records; S-request cells opt in below.
             kwargs.update(compute_s_params=False)
             kwargs.update(feature.run_kwargs(entry))
             return sim.run(**kwargs)
         kwargs["checkpoint"] = False
-        if entry == "fwd_distributed_nu":
+        if entry in ("fwd_distributed", "fwd_distributed_nu"):
             kwargs.update(distributed=True, devices=_devices())
         return sim.forward(**kwargs)
 
@@ -1052,6 +1053,8 @@ BASE_ROWS = {
     "run_subgridded": _EVERY_BASE | {("_refinement", "slab")},
     "run_adi": _EVERY_BASE | {("_solver", "")},
     "run_distributed": _EVERY_BASE,
+    "fwd_distributed": _EVERY_BASE,
+    "run_distributed_nu": _EVERY_BASE | {("_dx_profile", "graded")},
     "fwd_uniform": _EVERY_BASE,
     "fwd_nonuniform": _EVERY_BASE | {("_dx_profile", "graded")},
     "fwd_distributed_nu": _EVERY_BASE | {("_dx_profile", "graded")},

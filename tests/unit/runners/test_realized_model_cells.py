@@ -39,7 +39,7 @@ def model(lane, row, fill=False):
     kw = dict(freq_max=10e9, domain=(12*MM, 11*MM, (20 if sg else 12)*MM),
               dx=MM, boundary="cpml" if row.startswith("open_") else "pec",
               cpml_layers=3)
-    if lane in ("run_nonuniform", "fwd_nonuniform", "fwd_distributed_nu"):
+    if lane in ("run_nonuniform", "run_distributed_nu", "fwd_nonuniform", "fwd_distributed_nu"):
         kw["dx_profile"] = np.array([MM]*4 + [MM/2]*8 + [MM]*4)
     if lane in ("run_adi", "fwd_adi"):
         kw["solver"] = "adi"
@@ -79,7 +79,7 @@ def model(lane, row, fill=False):
 
 
 def cell_materials(sim, lane):
-    if lane in ("run_nonuniform", "fwd_nonuniform", "fwd_distributed_nu"):
+    if lane in ("run_nonuniform", "run_distributed_nu", "fwd_nonuniform", "fwd_distributed_nu"):
         return sim._assemble_materials_nu(sim._build_nonuniform_grid())[0]
     return sim._assemble_materials(sim._build_grid())[0]
 
@@ -93,12 +93,12 @@ def run(sim, lane, row, steps=4):
     kw = dict(n_steps=steps, skip_preflight=True)
     if lane.startswith("run"):
         kw["compute_s_params"] = False
-        if lane == "run_distributed":
+        if lane in ("run_distributed", "run_distributed_nu"):
             kw["devices"] = jax.devices("cpu")[:2]
         if row == "conformal":
             kw["conformal_pec"] = True
         return sim.run(**kw)
-    if lane == "fwd_distributed_nu":
+    if lane in ("fwd_distributed", "fwd_distributed_nu"):
         kw.update(distributed=True, devices=jax.devices("cpu")[:2])
     if row == "override_drive":
         kw["eps_override"] = override_epsilon(sim, lane)
@@ -115,7 +115,7 @@ def measured(lane, row):
             jax.block_until_ready(result.time_series)
     if dump.lane != lane:
         raise RuntimeError(f"expected lane {lane}, recorded {dump.lane}")
-    if lane in ("run_distributed", "fwd_distributed_nu"):
+    if lane in ("run_distributed", "fwd_distributed", "run_distributed_nu", "fwd_distributed_nu"):
         dump.full_materials = cell_materials(sim, lane)
     return dump
 
@@ -133,12 +133,12 @@ def material_pairs(dump, row, axis):
     expected = ({"sat.c", "sat.f"} if row == "sat" else
                 {"aniso.E"} if row == "conformal" else
                 {"adi.E"} if dump.lane in ("run_adi", "fwd_adi") else
-                {"distributed.E"} if row != "mu" and dump.lane == "run_distributed" else
-                {"distributed_nu.E"} if row != "mu" and dump.lane == "fwd_distributed_nu" else
+                {"distributed.E"} if row != "mu" and dump.lane in ("run_distributed", "fwd_distributed") else
+                {"distributed_nu.E"} if row != "mu" and dump.lane in ("run_distributed_nu", "fwd_distributed_nu") else
                 set())
     if expected - sites:
         raise RuntimeError(f"no record at {sorted(expected - sites)}")
-    if row != "mu" and dump.lane in ("run_distributed", "fwd_distributed_nu"):
+    if row != "mu" and dump.lane in ("run_distributed", "fwd_distributed", "run_distributed_nu", "fwd_distributed_nu"):
         spans = sorted((int(r["owned_start"]), int(r["owned_count"])) for r in records)
         end = 0
         for start, count in spans:
@@ -178,7 +178,9 @@ def material_pairs(dump, row, axis):
             if stamps is not None and stamps[axis] is not None:
                 ref = ref + np.asarray(stamps[axis])
         else:
-            eps, sig = component_e_materials(mats, r["periodic"])
+            from rfx.model.materials import electric_cell_sizes
+            eps, sig = component_e_materials(mats, r["periodic"],
+                cell_sizes=electric_cell_sizes(dump.sim._build_realized_grid()))
             ref = np.asarray(sig[axis] if row == "sigma" else eps[axis])
         got = r[quantity][axis]
         if r["region"] is not None:
@@ -219,7 +221,8 @@ def drive_pairs(dump, row):
         materials = r["materials"]
         if row == "override_drive":
             materials = materials._replace(eps_r=override_epsilon(dump.sim, dump.lane))
-        eps, sig = component_e_materials(materials)
+        from rfx.model.materials import electric_cell_sizes
+        eps, sig = component_e_materials(materials, cell_sizes=electric_cell_sizes(grid))
         expected = []
         for i, j, k, component in r["cells"]:
             axis = "xyz".index(component[1])
@@ -353,7 +356,7 @@ def test_dump_is_consumed(lane, row):
           f"traced_sites={sorted({r['site'] for r in same.records if r['traced']})}", file=sys.stderr)
 
 
-@pytest.mark.parametrize("lane", ["run_distributed", "fwd_distributed_nu"])
+@pytest.mark.parametrize("lane", ["run_distributed", "run_distributed_nu", "fwd_distributed_nu"])
 @pytest.mark.parametrize("row", ["eps", "sigma"])
 def test_ghost_row_mutation_is_detected(monkeypatch, lane, row):
     from rfx.runners import _distributed_common as dc

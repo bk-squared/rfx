@@ -2,6 +2,8 @@
 
 import re
 
+import jax
+
 import numpy as np
 import pytest
 
@@ -119,7 +121,7 @@ def test_unsupported_fixture_is_refused_before_assembly(
     monkeypatch.setattr(Simulation, "_assemble_materials", unexpected_assembly)
     monkeypatch.setattr("rfx.simulation.run", unexpected_assembly)
     match = re.escape(input_name) + r".*#1290.*" + re.escape(remedy)
-    with pytest.raises(NotImplementedError, match=match):
+    with jax.enable_x64(), pytest.raises(NotImplementedError, match=match):
         differentiable_material_fit(
             factory, np.zeros((1, 1, 3), complex), np.array([2e9, 3e9, 4e9]),
             n_iterations=1, verbose=False)
@@ -155,7 +157,11 @@ class _FDTDReached(RuntimeError):
 
 
 def _fit_to_scan(monkeypatch, factory):
-    def reached(*args, **kwargs):
+    def reached(grid, materials, *args, **kwargs):
+        from rfx.model.materials import validate_components
+        from rfx.simulation import resolve_periodic
+        assert materials.components is not None
+        validate_components(materials, grid=grid, periodic=resolve_periodic(grid, None))
         raise _FDTDReached("material fit reached FDTD")
 
     monkeypatch.setattr("rfx.simulation.run", reached)

@@ -1,0 +1,354 @@
+---
+title: "Reduce Memory Use"
+description: "Estimate and reduce reverse-mode AD memory in rfx: plan a checkpointing option for a budget, use design boxes and graded meshes, inspect what JAX saves, and check a compiled executable."
+sidebar:
+  order: 2
+---
+
+A forward FDTD run needs memory for the fields and materials on the grid. A
+gradient needs much more: reverse-mode AD keeps field state from every time
+step for the backward pass, so its memory grows with `n_steps`. This page shows
+how to estimate that memory before you launch, how to cut it, and what each
+memory report can and cannot tell you.
+
+## Ways to reduce AD memory
+
+| Option | What it does | Where |
+|---|---|---|
+| `forward(design_box=..., design_eps_override=..., checkpoint=False)` | keeps only the design box on the tape instead of whole-grid material arrays; same gradient | [Inverse Design](/rfx/design/optimization/) |
+| `checkpoint_segments=K` | uniform mesh: stores state at segment boundaries and replays one segment at a time, about `sqrt(n_steps)` memory for about 2x compute. `K` must divide `n_steps`. | `forward()`, `optimize()` |
+| `checkpoint_every=K` | the same on a non-uniform mesh; `K` is a chunk length in steps | `forward()`, `optimize()` |
+| a graded mesh | fewer cells when one thin feature needs fine cells along one axis | [Non-Uniform Mesh](/rfx/model/domain-mesh/) |
+| a shorter record | fewer steps on the tape; check the gradient still converges | [Gradient Behavior](/rfx/guide/gradient-behavior/) |
+| `n_warmup=K` | non-uniform mesh only: no tape for the first `K` steps. This **approximates** the gradient | `forward()` docstring |
+
+Don't pick a segment count by hand. Boundary storage shrinks as segments get
+longer while the live segment's replay tape grows, so memory is lowest near
+`sqrt(2 x n_steps)` steps per segment and rises toward either extreme. Let
+`plan_ad_memory(...)` choose.
+
+`n_warmup` cuts the gradient paths through the first `K` steps. That is nearly
+exact only while the wave has not yet reached the design region; beyond that the
+error grows. On a uniform mesh `forward(n_warmup=...)` raises
+`NotImplementedError`.
+
+Changing the mesh or checkpointing does not extend what a port, S-parameter or
+far-field calculator supports. Check the
+[support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md)
+for your combination.
+
+## Plan, then run
+
+`plan_ad_memory(n_steps, available_memory_gb)` estimates the memory of full
+reverse-mode AD and, if that does not fit, picks a checkpointing option that
+does. It does not run FDTD. The model below is tiny; the budget is set to
+0.1 GB so the planner has to choose checkpointing:
+
+```python
+import jax
+import jax.numpy as jnp
+from rfx import Box, GaussianPulse, Simulation
+
+sim = Simulation(freq_max=5e9, domain=(0.02, 0.02, 0.01), dx=2e-3,
+                 boundary="cpml", cpml_layers=4)
+sim.add_material("slab", eps_r=4.0, sigma=0.01)
+sim.add(Box((0.006, 0.006, 0.003), (0.014, 0.014, 0.007)), material="slab")
+sim.add_source((0.005, 0.010, 0.005), "ez",
+               waveform=GaussianPulse(f0=3e9, bandwidth=0.8),
+               amplitude_kind="current")
+sim.add_probe((0.015, 0.010, 0.005), "ez")
+
+N = 2_000
+BUDGET_GB = 0.1
+
+plan = sim.plan_ad_memory(n_steps=N, available_memory_gb=BUDGET_GB)
+print(plan.recommendation)
+
+if plan.full_ad_fits:
+    checkpoint_kwargs = {}
+elif plan.segmented_fits and plan.checkpoint_mode == "checkpoint_segments":
+    checkpoint_kwargs = {"checkpoint_segments": plan.checkpoint_segments}
+elif plan.segmented_fits and plan.checkpoint_mode == "checkpoint_every":
+    checkpoint_kwargs = {"checkpoint_every": plan.checkpoint_every}
+else:
+    raise RuntimeError(plan.recommendation)
+print(checkpoint_kwargs)
+
+eps = jnp.full(sim.run(n_steps=1).grid.shape, 4.0, dtype=jnp.float32)
+
+
+def loss(eps_r):
+    out = sim.forward(eps_override=eps_r, n_steps=N, **checkpoint_kwargs)
+    return jnp.sum(out.time_series ** 2)
+
+
+grad = jax.grad(loss)(eps)
+print(grad.shape)
+```
+
+How to read the plan:
+
+- `full_ad_fits=True`: ordinary AD fits. Both checkpoint values are `None` and
+  `segmented_fits` is `False`, because no segmented option is needed.
+- Otherwise the plan proposes `checkpoint_segments` (uniform mesh) or
+  `checkpoint_every` (non-uniform mesh) in `checkpoint_mode`. Use it only when
+  `segmented_fits` is `True`.
+- If both flags are `False`, the returned candidate is the least-memory option
+  and still does not fit. Follow `plan.recommendation` (a smaller mesh, fewer
+  steps, a design box) instead of launching it.
+
+The estimate is multiplied by a safety factor (`plan.fit_safety_factor`,
+default 1.3) before the fit flags are set, so a plan near the limit stays
+conservative.
+
+## The one-call preflight
+
+`ad_memory_preflight(...)` runs the planner together with
+`explain_ad_memory(...)`, `mesh_intelligence_report(...)` and, if you pass a
+function, the saved-residual diagnostic. It returns one report with a status,
+the selected checkpoint option and action hints:
+
+```python
+preflight = sim.ad_memory_preflight(n_steps=N, available_memory_gb=BUDGET_GB)
+
+if preflight.full_ad_fits:
+    checkpoint_kwargs = {}
+elif (preflight.checkpointing_fits
+      and preflight.supported_checkpoint_mode == "checkpoint_every"):
+    checkpoint_kwargs = {"checkpoint_every": preflight.checkpoint_every}
+elif (preflight.checkpointing_fits
+      and preflight.supported_checkpoint_mode == "checkpoint_segments"):
+    checkpoint_kwargs = {"checkpoint_segments": preflight.checkpoint_segments}
+else:
+    raise RuntimeError(preflight.recommendation)
+
+print(preflight.status)
+print([hint.to_dict() for hint in preflight.action_hints])
+preflight_json = preflight.to_json()
+# then: sim.forward(n_steps=N, **checkpoint_kwargs)
+```
+
+To include a JAX trace of what reverse mode saves, pass a small representative
+loss as `residual_fun`, with its arguments. `residual_context` is metadata
+copied into the report. It accepts JSON values, mappings, sequences, NumPy/JAX
+values (through `.tolist()`), and objects with a valid `to_dict()` or
+`to_json()`; anything else raises `TypeError`, and non-finite numbers raise
+`ValueError`.
+
+```python
+def reduced_loss(params):
+    return jnp.sum(jnp.sin(params) ** 2)
+
+
+preflight = sim.ad_memory_preflight(
+    n_steps=N,
+    available_memory_gb=BUDGET_GB,
+    residual_fun=reduced_loss,
+    residual_args=(jnp.ones((32,)),),
+    residual_workflow="reduced-inverse-design-loss",
+    residual_context={"case": "slab-demo"},
+)
+```
+
+The preflight report states its own evidence boundaries:
+
+- `static memory planning only`
+- `trace-time JAX saved-residual explainability only when residual_diagnostic is present`
+- `not a runtime peak-memory guarantee`
+- `not XLA memory analysis`
+- `not profiler evidence`
+- `not a certificate`
+- `not RF validation`
+
+In short: it is a planning estimate. A run that the plan says fits can still
+run out of memory.
+
+## What the reports measure
+
+Current `estimate_ad_memory(...)`, `plan_ad_memory(...)`, and `explain_ad_memory(...)` artifacts are not certificates. Each report carries an `evidence_class` that says what kind of information it is:
+
+| `evidence_class` | Available | From | Meaning |
+|---|---:|---|---|
+| `static_estimate` | yes | `estimate_ad_memory(...)` | formula estimate from grid shape, dtype, monitors and active steps |
+| `calibrated_conservative_plan` | yes | `plan_ad_memory(...)` | budget check on the static estimate with a safety multiplier |
+| `static_ad_explainability` | yes | `explain_ad_memory(...)` | breakdown of the static estimate into its parts |
+| `jax_saved_residuals_inspection` | yes | `inspect_ad_saved_residuals(...)` | trace-time listing of what JAX saves; not an XLA memory report or a runtime profile |
+| `rfx_ad_saved_residuals_diagnostic` | yes | `diagnose_ad_saved_residuals(...)` | parsed and grouped residuals with recommendations; trace-time information, not profiling |
+| `composite_ad_memory_preflight` | yes | `ad_memory_preflight(...)` | the combined report above |
+| `static_action_hint` | yes | `ad_memory_preflight(...)` | a deterministic next action, such as `use_checkpoint_every` |
+| `bounded_certificate` | yes | `ad_memory_compiled_certificate(...)` | the compiler's memory estimate for one exact compiled executable and scope |
+
+## Explain an estimate
+
+`explain_ad_memory(...)` breaks the selected estimate (`ad_full_gb` or
+`ad_segmented_gb`) into the full field tape, segment-boundary state, the live
+segment's replay tape, CPML and material state, and NTFF monitor state.
+`mesh_intelligence_report(...)` adds how many cells a graded mesh saves and any
+geometry or resolution warnings:
+
+```python
+explain = sim.explain_ad_memory(n_steps=N, available_memory_gb=BUDGET_GB,
+                                **checkpoint_kwargs)
+print(explain.dominant_component)
+print(explain.recommendations)
+
+report = sim.mesh_intelligence_report(n_steps=N, available_memory_gb=BUDGET_GB,
+                                      **checkpoint_kwargs)
+print(report.cell_savings_factor)
+print(report.recommendation)
+```
+
+Useful fields of the mesh report:
+
+- `cell_savings_factor`: cell count compared with a uniform grid at the
+  smallest configured cell size;
+- `preflight_issues`: geometry, resolution and feature-support warnings;
+- `ad_memory.ad_segmented_gb` and `ad_memory.ad_segmented_active_segments`:
+  the segmented estimate and number of active segments;
+- `recommendation`: the suggested next step.
+
+From a source checkout you can write the same planning artifact without running
+FDTD (`scripts/` is not installed with the wheel):
+
+```bash
+python scripts/memory_reduction_planning_artifact.py \
+  --n-steps 10000 \
+  --available-memory-gb 8.0 \
+  --output /tmp/rfx-memory-plan.json
+```
+
+## Inspect what JAX saves
+
+`diagnose_ad_saved_residuals(...)` traces a function and lists what JAX keeps
+for the backward pass. Use a small loss or a reduced problem:
+
+```python
+from rfx import diagnose_ad_saved_residuals
+
+diagnostic = diagnose_ad_saved_residuals(
+    reduced_loss,
+    jnp.ones((32,)),
+    workflow="reduced-inverse-design-loss",
+    context={"n_steps": N},
+    artifacts={"memory_plan": plan.to_json()},
+)
+print(diagnostic.parser_health)
+print(diagnostic.top_residuals)
+print(diagnostic.recommendations)
+```
+
+The report keeps the raw output of
+`jax.ad_checkpoint.print_saved_residuals(...)` and adds each residual's dtype,
+shape and estimated bytes, grouped summaries, the JAX version, parser health and
+recommendations. `inspect_ad_saved_residuals(...)` returns only the low-level
+listing. Both are trace-time information: not profiling, and not XLA memory
+analysis.
+
+## Check an exact compiled executable
+
+The static estimates are formulas. For the compiler's own estimate, compile the
+exact function you will launch and pass it to
+`ad_memory_compiled_certificate(...)` with the same checkpoint arguments and a
+description of its scope. It reads `Compiled.memory_analysis()` once and fails
+closed if the scope or the byte fields are incomplete:
+
+```python
+grad_fn = jax.jit(jax.grad(loss))
+compiled = grad_fn.lower(eps).compile()
+
+certificate = sim.ad_memory_compiled_certificate(
+    compiled,
+    n_steps=N,
+    available_memory_gb=BUDGET_GB,
+    target_fraction=0.85,
+    **checkpoint_kwargs,
+    precision="float32",
+    input_signature={"eps_r": jax.ShapeDtypeStruct(eps.shape, eps.dtype)},
+    static_signature={"dx": 2e-3, "boundary": "cpml"},
+    compiled_object_id="slab-demo-grad-v1",
+    runner_or_objective="slab-demo-probe-energy",
+    preflight=preflight,
+)
+print(certificate.status)
+```
+
+Signature dictionaries may hold NumPy/JAX arrays or `jax.ShapeDtypeStruct`
+leaves. rfx records their shape, dtype and weak-type metadata,
+not full array values. Add explicit fields such as `"role": "design"` when a label matters.
+
+| `status` | Meaning |
+|---|---|
+| `compiler_estimate_within_budget` | the compiler's estimate fits `available_memory_gb * target_fraction` for this exact scope |
+| `compiler_estimate_exceeds_budget` | it does not fit; don't launch this scope on this budget |
+| `scope_incomplete` | required scope metadata is missing or not JSON-safe |
+| `scope_mismatch` | the preflight metadata contradicts the supplied scope or the compiled object |
+| `analysis_unavailable` | `memory_analysis()` is missing, raises or returns `None` |
+| `analysis_incomplete` | a required byte field is missing or invalid |
+
+The required bytes are `temp + argument + output - alias`, from the fields
+`temp_size_in_bytes`, `argument_size_in_bytes`, `output_size_in_bytes` and
+`alias_size_in_bytes`.
+
+Read a pass narrowly. The compiler does not model allocator fragmentation or
+runtime scratch, so a fit at high utilization can still run out of memory. JAX
+memory analysis is estimated, version/backend dependent and may be unavailable.
+`scope_digest`, `config_digest` and `environment_digest` are audit identities
+over canonical JSON; they do not prove that your Python source corresponds to
+the compiled executable. A `bounded_certificate` is a compiler estimate for one
+exact scope, not profiler evidence, not RF validation, and not a runtime
+peak-memory guarantee.
+
+## Restrict which cells carry a derivative
+
+Masking which cells carry a derivative does **not** save memory: JAX keeps
+whole arrays, not the masked part. (A former `forward(design_mask=...)` option
+was removed for that reason.) To save memory, use a design box or segmented
+checkpointing.
+
+To keep a gradient out of cells you don't want to design (for example near the
+absorber), stop it at the `eps_override` call site:
+
+```python
+region_mask = jnp.zeros_like(eps, dtype=bool).at[4:-4, 4:-4, 4:-4].set(True)
+eps_masked = jnp.where(region_mask, eps, jax.lax.stop_gradient(eps))
+result = sim.forward(eps_override=eps_masked, n_steps=200)
+```
+
+The forward values are unchanged. The gradient is exactly zero outside
+`region_mask` and unchanged inside it.
+
+## Runtime invariant checks
+
+`checkify_invariants(...)` makes bounds checks survive `jit` and `grad`:
+
+```python
+from rfx import check_bounds, checkify_invariants
+
+
+def bounded_loss(eps_r):
+    check_bounds(eps_r, lower=1.0, upper=12.0, name="eps_r")
+    return jnp.sum(eps_r)
+
+
+err, value = checkify_invariants(bounded_loss)(jnp.ones((16,)))
+assert err.get() is None
+```
+
+These catch invalid values at run time. They say nothing about the physics.
+
+## Limits
+
+- **The plan fits but the run runs out of memory.** Static estimates are
+  planning numbers, not a runtime peak-memory guarantee. Lower the budget you
+  plan against, or compile the exact function and check it with
+  `ad_memory_compiled_certificate(...)`.
+- **`checkpoint_segments` raises.** It must divide `n_steps`, and it works only
+  on the uniform single-device path; use `checkpoint_every` on a non-uniform
+  mesh.
+- **`n_warmup` changes the gradient.** It is an approximation, and it raises on
+  a uniform mesh.
+- **Fewer steps save memory but can change the gradient.** Run the record-length
+  check in [Gradient Behavior](/rfx/guide/gradient-behavior/).
+- **Keep the evidence with the result**: the plan and mesh report
+  (`.to_json()`), the run command and rfx version, and the validation of the RF
+  quantity you report. A memory report is not RF validation.

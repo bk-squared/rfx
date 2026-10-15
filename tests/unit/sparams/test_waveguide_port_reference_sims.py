@@ -47,7 +47,7 @@ from tests._realized_geometry import assert_wall_planes, realized
 def _tiny_two_port(*, dx=0.004, n_modes=1):
     s = Simulation(
         freq_max=10e9, domain=(0.12, 0.04, 0.02),
-        boundary="cpml", cpml_layers=10, dx=dx,
+        boundary={"x": "cpml", "y": "pec", "z": "pec"}, cpml_layers=10, dx=dx,
     )
     common = dict(
         mode=(1, 0), mode_type="TE", freqs=jnp.linspace(4.5e9, 8e9, 3),
@@ -293,7 +293,9 @@ def test_junction_clearance_reads_material_and_component_edges(difference, expec
     with warnings.catch_warnings(record=True) as record:
         warnings.simplefilter("always")
         _warn_junction_probe_clearance(
-            SimpleNamespace(dx=0.02), [cfg], dev_sigma, [ref_sigma],
+            SimpleNamespace(is_constant=lambda axis: True,
+                            boundary_cell=lambda axis, side: 0.02),
+            [cfg], dev_sigma, [ref_sigma],
             np.array([4.5e9, 6.5e9]),
             device_pec_edges=dev_edges, ref_pec_edges=[ref_edges],
         )

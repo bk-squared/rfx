@@ -2,14 +2,14 @@
 title: "Simulation"
 description: "Constructor, run loop, and orchestration entry points for the curated rfx API."
 sidebar:
-  order: 21
+  order: 2
 ---
 
 `Simulation` holds one model: the domain and mesh, boundaries, materials,
 geometry, sources, ports and observables. You build it with `add_*` calls,
 check it with `preflight()`, and solve it with `run()` or, for gradients,
 `forward()`. This page lists the constructor and those entry points. The
-mental model behind them is in [Core Concepts](/rfx/guide/concepts/).
+mental model behind them is in [Core Concepts](/rfx/start/concepts/).
 
 ## Constructor
 
@@ -39,9 +39,9 @@ sim = Simulation(
 | `freq_max` | Highest frequency you care about, in Hz. It sets the default time step, the default `dx` and the mesh checks in preflight. |
 | `domain` | `(Lx, Ly, Lz)` in metres. On a graded axis, pass `0` for that axis and the size comes from the profile's sum. |
 | `dx` | Cell size in metres. If omitted, rfx derives it from `freq_max`. |
-| `boundary` | `"cpml"` (default), `"pec"`, `"upml"`, or a `BoundarySpec` for per-face control, including `"pmc"` and `"periodic"`. See [Core Concepts](/rfx/guide/concepts/#boundaries). |
+| `boundary` | `"cpml"` (default), `"pec"`, `"upml"`, or a `BoundarySpec` for per-face control, including `"pmc"` and `"periodic"`. See [Core Concepts](/rfx/start/concepts/#boundaries). |
 | `cpml_layers` | Absorber thickness in cells (default 16). rfx adds the absorber **outside** `domain` on each CPML face, so the whole domain is interior. Keep sources and structures a few cells from its edge. |
-| `dx_profile`, `dy_profile`, `dz_profile` | Cell sizes along an axis, for a graded mesh. See [Non-Uniform Mesh](/rfx/guide/nonuniform-mesh/). |
+| `dx_profile`, `dy_profile`, `dz_profile` | Cell sizes along an axis, for a graded mesh. See [Non-Uniform Mesh](/rfx/model/domain-mesh/). |
 | `mode` | `"3d"` (default), `"2d_tmz"` (Ez, Hx, Hy) or `"2d_tez"` (Hz, Ex, Ey). |
 | `precision` | `"float32"` (default), `"float64"` (enable JAX x64 first) or `"mixed"` (float16 fields). The last two run on the uniform single-device solver only. |
 | `solver` | `"yee"` (default) or the experimental `"adi"`. See [ADI Solver](/rfx/guide/adi-solver/). |
@@ -63,7 +63,7 @@ Every `add_*` method returns the simulation, so calls can be chained.
 | `add_source`, `add_polarized_source`, `add_tfsf_source` | field excitation, no impedance | [Sources & Ports](/rfx/api/sources-ports/) |
 | `add_port`, `add_msl_port`, `add_waveguide_port`, `add_coaxial_port` | ports for S-parameters | [Sources & Ports](/rfx/api/sources-ports/) |
 | `add_lumped_rlc` | an R/L/C element in one cell | [Sources & Ports](/rfx/api/sources-ports/) |
-| `add_probe`, `add_vector_probe`, `add_dft_plane_probe`, `add_flux_monitor`, `add_ntff_box` | observables | [Results & Observables](/rfx/api/results-observables/) |
+| `add_probe`, `add_vector_probe`, `add_dft_plane_probe`, `add_flux_monitor`, `add_ntff_box` | observables | [Results & Observables](/rfx/api/results/) |
 | `add_refinement(z_range, *, ratio=4, ...)` | a finer z slab (subgridding) | experimental; only `run()` on a uniform mesh accepts it |
 
 ```python
@@ -83,7 +83,7 @@ sim.add_probe((0.030, 0.015, 0.015), "ez")
 | `preflight_sparameters(*, calculator="run", strict=False, ...)` | `PreflightReport` | Is this port family valid for the S-parameter calculator you plan to call? See [Sources & Ports](/rfx/api/sources-ports/#checking-a-calculator-before-the-run). |
 | `fidelity_report(print_report=True)` | report | Where each shape actually landed on the grid, next to what you drew. |
 | `freeze_mesh()` | `Grid` or `NonUniformGrid` | Fix the mesh now, so you can read grid indices before placing more geometry. |
-| `plan_mesh(*, n_steps=None, available_memory_gb=None, sparameter_calculator=None, ...)` | `MeshPlan` | A serializable summary of the mesh, memory estimate and checks. See [Automation](/rfx/api/automation/). |
+| `plan_mesh(*, n_steps=None, available_memory_gb=None, sparameter_calculator=None, ...)` | `MeshPlan` | A serializable summary of the mesh, memory estimate and checks. See [Automation](/rfx/api/functions/). |
 | `mesh_intelligence_report(...)` | `MeshIntelligenceReport` | Grid, preflight issues and AD memory in one report. |
 
 ```python
@@ -101,7 +101,7 @@ raises `TypeError`, because an advisory-only report is non-empty but fine.
 ## `run()`
 
 `run()` is the general entry point. It returns a `Result`; see
-[Results & Observables](/rfx/api/results-observables/).
+[Results & Observables](/rfx/api/results/).
 
 ```text
 run(*, n_steps=None, num_periods=20.0, until_decay=None,
@@ -140,7 +140,7 @@ studies.
 | Argument | Meaning |
 |---|---|
 | `compute_s_params=True`, `s_param_freqs=` | S-parameters for lumped and wire ports (`add_port`) only. Other port families have their own calculator. |
-| `snapshot=SnapshotSpec(interval=10, components=("ez",), slice_axis=None, slice_index=None)` | Record field snapshots. See [Visualization and Analysis](/rfx/guide/visualization-and-analysis/). |
+| `snapshot=SnapshotSpec(interval=10, components=("ez",), slice_axis=None, slice_index=None)` | Record field snapshots. See [Visualization and Analysis](/rfx/measure/plots-and-export/). |
 | `report_every=N` | Print progress (steps, rate, ETA) every N steps. Does not change the result. |
 | `subpixel_smoothing=True` | Smoothed permittivity at dielectric interfaces. |
 | `conformal_pec=True` | Dey–Mittra conformal PEC for curved metal. |
@@ -230,9 +230,9 @@ Keep anything that changes array shapes, the geometry list or the solver path
 outside the function you differentiate. A combination the differentiable path
 does not support raises instead of returning a zero gradient. A model with
 `add_refinement` is refused by `forward()`. Guides:
-[Autodiff and Adjoint](/rfx/guide/autodiff-adjoint/),
-[Inverse Design](/rfx/guide/inverse-design/),
-[Memory Reduction](/rfx/guide/memory-reduction/).
+[Autodiff and Adjoint](/rfx/design/gradients/),
+[Inverse Design](/rfx/design/optimization/),
+[Memory Reduction](/rfx/run/memory-and-speed/).
 
 ## S-parameter calculators
 
@@ -259,14 +259,14 @@ alone. `accuracy` is `"draft"`, `"standard"` or `"high"`. Any keyword argument
 overrides the derived value. It warns on purpose: the domain was sized without
 your geometry, so check it after you add shapes. To derive a mesh from your
 geometry instead, use `auto_configure` or `plan_mesh` on the
-[Automation](/rfx/api/automation/) page.
+[Automation](/rfx/api/functions/) page.
 
 ## Other methods
 
 These are documented in the [generated reference](/rfx/api/generated/):
 `estimate_ad_memory`, `plan_ad_memory`, `ad_memory_preflight` and
 `explain_ad_memory` (reverse-mode memory, see
-[Memory Reduction](/rfx/guide/memory-reduction/)); `export_scene`,
+[Memory Reduction](/rfx/run/memory-and-speed/)); `export_scene`,
 `export_artifact_bundle` and `artifact_report` (saving a model and its
 results); `conductor_mask`.
 
@@ -274,11 +274,11 @@ results); `conductor_mask`.
 
 - A graded mesh accepts fewer features than a uniform one. Snapshots, lumped
   port S-parameters, coaxial ports, UPML and Floquet ports raise there. See
-  [Support Boundaries](/rfx/api/support-boundaries/).
+  [Support Boundaries](/rfx/support/).
 - `add_refinement` works only through `run()` on a uniform mesh. `forward()`,
   `optimize()` and `topology_optimize()` refuse a refined model.
 - `precision="mixed"` raises the CPML reflection floor. Don't use it for
   S-parameters or low-reflection work.
 - A completed run is not a converged run. Check `result.settling_db` and do a
-  [convergence study](/rfx/guide/tutorial-convergence/) before you quote a
+  [convergence study](/rfx/evidence/mesh-convergence/) before you quote a
   number.

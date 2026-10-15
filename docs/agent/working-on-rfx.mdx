@@ -95,7 +95,7 @@ refiled; the problem does not.
 Run every short gate locally first. `bash scripts/ci/local.sh` is the six of them in
 the order CI runs them, stopping at the first failure, and it calls the same scripts
 the workflows call; pass a file path to check a pull-request body too. It does not run
-the six simulator shards or the guard suite, so a green local run is a pass on the
+the twelve simulator shards or the guard suite, so a green local run is a pass on the
 short gates only. The step list and what each one costs are in [What runs on a PR, and
 how to run it
 locally](./agent-runbook.mdx#what-runs-on-a-pr-and-how-to-run-it-locally).
@@ -106,7 +106,7 @@ three pull requests that touched no simulator code: 13 `pr-tests` runs, 8 of the
 cancelled by a newer push.
 
 The heavy lane is path-aware, so what a push costs depends on what it touches. A diff
-confined to docs, most of `scripts/` or `changelog.d/` skips the six simulator shards
+confined to docs, most of `scripts/` or `changelog.d/` skips the twelve simulator shards
 and runs the contract tests in their place; anything touching `rfx/`, `tests/`,
 `validation/`, `examples/` or the lane configuration runs everything, as does any push
 to `main`. This page's own pull request is the docs-only case: run 35416500768 finished
@@ -200,8 +200,8 @@ gh api repos/bk-squared/rfx/rules/branches/main \
   --jq '.[]|select(.type=="required_status_checks")|.parameters.required_status_checks[].context'
 ```
 
-On 2026-09-20 that returns eleven: `ruff`, `guards-and-preflight`,
-`fast-suite (1)`…`(6)`, `changes`, `pr-body-contract` and `changelog-fragment`. That
+The 2026-10-06 PI decision expects seventeen required contexts after the ruleset update: `ruff`, `guards-and-preflight`,
+`fast-suite (1)`…`(12)`, `changes`, `pr-body-contract` and `changelog-fragment`. That
 they bind, and that nothing older binds instead:
 
 ```
@@ -222,7 +222,7 @@ pull request, and whether it blocks a merge:
 
 | context | required |
 |---|---|
-| `ruff`, `guards-and-preflight`, `fast-suite (1)`…`(6)` | yes |
+| `ruff`, `guards-and-preflight`, `fast-suite (1)`…`(12)` | yes |
 | `changes` | yes, for the reason below |
 | `pr-body-contract`, `changelog-fragment` | yes |
 | `lane-label`, `agent-docs-hygiene`, `public-docs-source`, `api-reference` | no |

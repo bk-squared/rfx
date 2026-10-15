@@ -19,7 +19,7 @@ dJ/dCb_j = Re sum_bins A_j curlH_j / Cb_j.
 Both field factors include dt; the source DFT targets b, not b*dt.
 JAX differentiates the production edge averaging and Ca/Cb arithmetic
 outside the custom VJP. Public adjoint admission refuses every supplied
-`design_sigma_override` (#1424: conductivity derivative not validated).
+`design_sigma_override` (#1424: on lossless design cells the conductivity gradient has no settled value in a finite record; static sensitivity remains although the field decays, and this adjoint returns settled-spectrum gradients only).
 Fixed material conductivity remains allowed; its dCa/deps reaches gCa.
 Finite record endpoint terms are omitted: the result is a settled-spectrum
 gradient. No time tape or transposed time sweep is part of F2.
@@ -64,8 +64,10 @@ def admit_forward_adjoint(sim, *, distributed, ringdown, design_box, design_eps,
     """Refuse inputs outside the first implementation before lane dispatch."""
     if design_sigma is not None:
         raise NotImplementedError(
-            "gradient='adjoint' refuses design_sigma_override: #1424 "
-            "the conductivity derivative is not validated")
+            "gradient='adjoint' refuses design_sigma_override (#1424): "
+            "on lossless design cells the gradient with respect to conductivity has no "
+            "settled value in a finite record (a static sensitivity remains although "
+            "the field decays), and this adjoint returns settled-spectrum gradients only")
     reason = None
     if distributed:
         reason = "distributed execution"
@@ -154,7 +156,8 @@ def design_adjoint_scan(ctx, initial, xs):
             raise NotImplementedError(f"gradient='adjoint' does not support {name}")
     if not ctx.use_design_box:
         raise NotImplementedError("gradient='adjoint' requires a design box")
-    if ctx.bloch is not None or any(ctx.periodic) or ctx.aniso_eps is not None:
+    tensor = ctx.materials.components.tensor
+    if ctx.bloch is not None or any(ctx.periodic) or (tensor is not None and tensor.eps is not None):
         raise NotImplementedError("gradient='adjoint' does not support Bloch/periodic/anisotropy")
     dtype = initial["fdtd"].ex.dtype
     if dtype not in (jnp.float32, jnp.float64) or ctx.stencil_order != 2:
@@ -163,7 +166,7 @@ def design_adjoint_scan(ctx, initial, xs):
         raise NotImplementedError("gradient='adjoint' requires E DFT monitors; time-domain objectives unsupported")
     freqs_host = []
     for meta in ctx.dft_meta:
-        if meta[0] not in ("ex", "ey", "ez"):
+        if meta[0].name not in ("ex", "ey", "ez"):
             raise NotImplementedError("gradient='adjoint' does not support H DFT planes")
         f = np.asarray(meta[3])
         if (not np.all(np.isfinite(f)) or np.any(f <= 0)
@@ -189,13 +192,14 @@ def design_adjoint_scan(ctx, initial, xs):
     cdtype = jnp.complex128 if dtype == jnp.float64 else jnp.complex64
     z = tuple(jnp.zeros((nf,) + a.shape, cdtype) for a in ab[0])
     steps = len(xs[0])
+    tail_steps = min(steps, int(np.ceil(1 / (min(freqs_host) * ctx.dt))))
     wavelet_length = min(steps, max(16, steps // 4))
 
     def run(coeffs, targets=None, recording=False):
         local = replace(base, design_box=base.design_box._replace(ca=coeffs[0], cb=coeffs[1]))
         if targets is not None:
             # Suppress primal drives. CPML and ordinary Yee updates are reused.
-            local = replace(local, src_meta=(), mag_src_meta=(), use_mag_sources=False,
+            local = replace(local, drives=None,
                             use_dft_planes=False, dft_meta=(), prb_meta=())
             monitor_cb = list(e_component_coeffs(ctx.materials, ctx.dt, ctx.periodic)[1])
             monitor_cb = [a.at[sl].set(b) for a, b in zip(monitor_cb, coeffs[1])]
@@ -210,7 +214,7 @@ def design_adjoint_scan(ctx, initial, xs):
             if targets is not None:
                 n = prev.step
                 for m, w in zip(ctx.dft_meta, weights):
-                    c = m[0]
+                    c = m[0].name
                     slot = _plane_slice(m, ctx.grid.shape)
                     basis = _wavelet_basis(jnp.asarray(m[3], dtype=dtype), ctx.dt,
                                            wavelet_length, n.astype(dtype))
@@ -221,7 +225,7 @@ def design_adjoint_scan(ctx, initial, xs):
 
         core = make_core_step(local, {**invariants, "ctx": local}, design_hook=hook if recording else None)
         def step(carry, row):
-            state, acc_e, acc_h, peak, last_e = carry
+            state, acc_e, acc_h, peak, last_e, tail = carry
             state, probes, extras = core(state, *row)
             if targets is None:
                 # Yee E edges owned by the design box, after the full update.
@@ -229,6 +233,8 @@ def design_adjoint_scan(ctx, initial, xs):
                     jnp.max(jnp.abs(getattr(state["fdtd"], c)[sl]))
                     for c in ("ex", "ey", "ez")]))
                 peak = jnp.maximum(peak, last_e)
+                tail = jnp.where(row[0] >= steps - tail_steps,
+                                 jnp.maximum(tail, last_e), tail)
             if recording:
                 # Forward Epre and curl use the post-update timestamp. Adjoint
                 # E is post-update; its DFT then represents L^-1 b.
@@ -239,14 +245,15 @@ def design_adjoint_scan(ctx, initial, xs):
                 acc_e = tuple(a + phase[:, None, None, None]*v for a, v in zip(acc_e, e))
                 if targets is None:
                     acc_h = tuple(a + phase[:, None, None, None]*v for a, v in zip(acc_h, h))
-            return (state, acc_e, acc_h, peak, last_e), (probes,) if targets is None else None
+            return (state, acc_e, acc_h, peak, last_e, tail), (probes,) if targets is None else None
         start = initial if targets is None else {k: v for k, v in initial.items() if k != "dft_planes"}
-        (last, e, h, peak, last_e), outputs = recorded_scan(
-            step, (start, z, z, jnp.zeros((), dtype), jnp.zeros((), dtype)), xs)
+        (last, e, h, peak, last_e, tail), outputs = recorded_scan(
+            step, (start, z, z, jnp.zeros((), dtype), jnp.zeros((), dtype),
+                   jnp.zeros((), dtype)), xs)
         if targets is None:
             # No excitation gives no settling evidence, rather than a false zero.
             last = {**last, "adjoint_settling": jax.lax.stop_gradient(
-                jnp.where(peak > 0, last_e / peak, jnp.nan))}
+                jnp.where(peak > 0, tail / peak, jnp.nan))}
         return (last, e, h), outputs
 
     @jax.custom_vjp

@@ -1,0 +1,392 @@
+---
+title: "Sources and Ports"
+description: "rfx source and port primitives: waveforms, point and polarized sources, lumped/wire/microstrip/waveguide ports, TFSF plane waves, and how each feeds S-parameter extraction."
+sidebar:
+  order: 6
+---
+
+This page shows how to excite a model. A **source** injects a field and has no
+impedance. A **port** also terminates the line in a known impedance, so rfx can
+compute S-parameters from it. [Core Concepts](/rfx/start/concepts/#sources-and-ports)
+explains the difference.
+
+Each port family has its own S-parameter calculator. Only that calculator
+gives S-parameters for it:
+
+| Structure | Port | Calculator |
+|---|---|---|
+| discrete feed, component terminals | `add_port(...)` (lumped; with `extent=` a wire port) | `run(compute_s_params=True)`, or `forward(port_s11_freqs=...)` for gradients |
+| microstrip line | `add_msl_port(...)` | `compute_msl_s_matrix()` |
+| rectangular waveguide | `add_waveguide_port(...)` | `compute_waveguide_s_matrix()` |
+| coaxial line | `add_coaxial_port(...)` | `compute_coaxial_line_reflection()`, `compute_coaxial_two_port()` |
+
+Port families cannot be mixed in one S-parameter calculation. If you are not
+sure which calculator a model needs, `sim.s_matrix_lane()` tells you without
+running anything, and `sim.compute_s_matrix(**kwargs)` calls it for you. The
+one exception is a lumped/wire-only model, which `compute_s_matrix` refuses:
+call `run(compute_s_params=True)` for those.
+
+## Waveforms
+
+Point sources and lumped/wire ports take a waveform object. Waveguide and TFSF
+sources take `f0` and `bandwidth` directly.
+
+```python
+import jax.numpy as jnp
+from rfx import CustomWaveform, CWSource, GaussianPulse, ModulatedGaussian
+
+pulse = GaussianPulse(f0=2.4e9, bandwidth=0.5)       # broadband, no carrier
+burst = ModulatedGaussian(f0=3e9, bandwidth=0.6)     # carrier with a Gaussian envelope
+cw = CWSource(f0=5.8e9, ramp_steps=50)               # sinusoid, tapered on over 50 cycles
+
+def chirp(t):
+    rate = (4e9 - 1e9) / 10e-9
+    return jnp.sin(2 * jnp.pi * (1e9 * t + 0.5 * rate * t**2))
+
+sweep = CustomWaveform(func=chirp)                   # any JAX-traceable f(t)
+```
+
+| Waveform | Spectrum | Use it for |
+|---|---|---|
+| `GaussianPulse` | differentiated Gaussian; broad, extends well below `f0` | the default; broadband S-parameters |
+| `ModulatedGaussian` | Gaussian centred on `f0`, width `f0·bandwidth` | a band away from DC; resonance searches |
+| `CWSource` | one frequency | steady-state field pictures |
+| `CustomWaveform` | whatever `func` gives | chirps, measured drive signals |
+
+`bandwidth` is fractional. When you omit `waveform`, rfx uses
+`GaussianPulse(f0=freq_max/2, bandwidth=0.8)`.
+
+A pulse that turns on abruptly leaves a small net charge behind. It usually
+does not matter. If you stop a run on `until_decay` and a static remnant keeps
+it from stopping, raise `GaussianPulse(cutoff=4.5)` or use a
+`ModulatedGaussian` with `bandwidth <= 0.4`.
+
+## Point sources
+
+`add_source` is a soft source at one grid edge. It does not load the
+structure, so a cavity's Q is unchanged. Use it for resonances, field
+patterns and far fields.
+
+```python
+from rfx import Box, Simulation
+
+sim = Simulation(freq_max=6e9, domain=(0.05, 0.05, 0.02), dx=2.5e-3,
+                 boundary="cpml", cpml_layers=6)
+sim.add_material("substrate", eps_r=3.2, sigma=0.01)
+sim.add(Box((0.010, 0.010, 0.005), (0.040, 0.040, 0.015)), material="substrate")
+
+sim.add_source((0.025, 0.025, 0.010), "ez",
+               waveform=GaussianPulse(f0=3e9), amplitude_kind="current")
+```
+
+Always pass `amplitude_kind`:
+
+- `"current"`: the amplitude is a current moment in A·m. The injected power does
+  not change when you refine the mesh. Use this by default.
+- `"field"`: the amplitude is added to E each step, in V/m.
+
+Omitting it or passing `None` selects `"current"` and warns once per simulation.
+The default is boundary- and mesh-independent on Yee paths; ADI requires
+explicit `"field"`. Witness: `tests/unit/sources/test_source_amplitude_kind.py`.
+
+### Polarized sources
+
+`add_polarized_source` drives two components together:
+
+```python
+sim.add_polarized_source((0.025, 0.025, 0.010), polarization="slant45",
+                         amplitude_kind="current")
+sim.add_polarized_source((0.025, 0.025, 0.010), polarization=(1.0, -0.5),
+                         waveform=GaussianPulse(f0=3e9), amplitude_kind="current")
+```
+
+`"ex"`, `"ey"`, `"ez"`, `"slant45"` and real `(Ex, Ey)` tuples give linear
+polarization. `"circular"`, `"rhcp"`, `"lhcp"` and complex tuples are accepted,
+but their time-domain phasing has not been verified. Do not rely on them for
+axial ratio or handedness.
+
+## Plane waves (TFSF)
+
+`add_tfsf_source` launches a plane wave inside a total-field region, for
+scattering and RCS. It travels along x (`"+x"` or `"-x"`) with `"ez"` or `"ey"`
+polarization, and needs a CPML boundary.
+
+```python
+scatter = Simulation(freq_max=8e9, domain=(0.06, 0.06, 0.06), dx=3e-3,
+                     boundary="cpml", cpml_layers=6)
+scatter.add_tfsf_source(f0=5e9, bandwidth=0.4, polarization="ez",
+                        direction="+x")
+```
+
+For oblique incidence, set `angle_deg` and choose `method`:
+
+- `method="bloch"` (default): a periodic unit cell, for infinite arrays and
+  surfaces. Its fields are complex, and frequency monitors do not account for
+  that.
+- `method="methodB"`: an open domain around a compact scatterer. It needs
+  `polarization="ez"`, `direction="+x"` and a uniform grid.
+
+TFSF cannot share a simulation with any port. It is not a port and gives no
+S-parameters. For RCS, see [Far-Field and RCS](/rfx/measure/far-field-and-rcs/).
+
+## Lumped and wire ports
+
+`add_port` is a feed with a resistive load equal to `impedance`. It is the
+port to use for a discrete feed, a probe feed, or a component's terminals.
+
+- Without `extent`, it is a **lumped port**: one cell.
+- With `extent`, it is a **wire port** that spans `extent` metres along its
+  component axis, from `position` to `position + extent`. Use it to bridge a
+  gap between two conductors, such as a probe feed through a substrate.
+- `radius=` declares the wire port's probe-pin radius, within the local
+  thin-probe mesh restrictions. If omitted, the effective pin radius follows
+  the mesh and its series inductance changes under refinement.
+
+```python
+sim = Simulation(freq_max=6e9, domain=(0.05, 0.05, 0.02), dx=2.5e-3,
+                 boundary="cpml", cpml_layers=6)
+sim.add_port((0.01, 0.025, 0.010), "ez", impedance=50.0,
+             waveform=GaussianPulse(f0=3e9))
+sim.add_port((0.04, 0.025, 0.010), "ez", impedance=50.0,
+             waveform=GaussianPulse(f0=3e9))
+
+result = sim.run(n_steps=300, compute_s_params=True,
+                 s_param_freqs=jnp.linspace(1e9, 5e9, 21))
+s11 = result.s_params[0, 0, :]    # S[receiver, driven, freq], complex
+s21 = result.s_params[1, 0, :]
+```
+
+With several ports, rfx drives each in turn and assembles the full matrix.
+All ports in one calculation must be lumped, or all wire. Without
+`s_param_freqs`, rfx uses 50 points from `freq_max/10` to `freq_max`. The run
+above is far too short to settle; it only shows the calls.
+[Probes and S-Parameters](/rfx/measure/s-parameters/) covers plotting and
+Touchstone export.
+
+### Getting accurate S11
+
+- **Resolve the wavelength.** Use about **60 cells per wavelength** at the
+  highest frequency you care about. At 60 cells per wavelength, one-port |S11|
+  lands within 0.54 dB of the closed form on resistive loads, and exactly on a
+  short or open. At 30 cells per wavelength, magnitudes are within 1.1 dB,
+  and the line's phase-crossing frequencies sit 1.7–2.9 % from the closed
+  form. These figures come from the lumped/wire chain battery, which measures
+  `forward(port_s11_freqs=...)` on a one-cell parallel-plate line.
+- **Know the reference plane.** A one-cell port reads its voltage at the port
+  node and its current half a cell toward the line.
+- Lumped and wire ports give identical S11 on the same cells.
+
+### Completing a short record
+
+A resonant structure can take far longer to ring down than you want to
+simulate. For wire ports, `run(..., ringdown=RingdownSpec())` fits the
+decaying tail of the record and adds the unrecorded part of each spectrum in
+closed form:
+
+```python
+import numpy as np
+from rfx.ringdown import RingdownSpec
+
+MM = 1e-3
+box = Simulation(freq_max=20e9, domain=(12 * MM, 11 * MM, 5 * MM), dx=1 * MM,
+                 boundary="pec")
+box.add_material("fill", eps_r=2.2, sigma=2 * np.pi * 12.5e9 * 8.854e-12 * 2.2 / 300)
+box.add(Box((0, 0, 0), (12 * MM, 11 * MM, 5 * MM)), material="fill")
+box.add_port((2 * MM, 2 * MM, 0.0), "ez", impedance=50.0, extent=1 * MM,
+             waveform=GaussianPulse(f0=13e9, bandwidth=0.8, cutoff=4.5))
+
+short = box.run(n_steps=1500, compute_s_params=True,
+                s_param_freqs=np.linspace(8e9, 18e9, 101),
+                ringdown=RingdownSpec())
+print(short.ringdown.report.ok)          # did the completion pass its checks?
+s11_completed = short.ringdown.s_params[0, 0, :]
+```
+
+`short.s_params` is still the plain, truncated result. The completed matrix is
+`short.ringdown.s_params`, and `short.ringdown.report` lists the fitted poles
+and the checks. `report.ok` is decided by comparing completions from two
+different windows of the record. These checks catch a bad fit. They are not an
+error bound.
+
+`ringdown=` works with wire ports on a fixed-length record: one port on a
+uniform mesh, or several on a graded mesh. The source must be off in the
+second half of the record. Lumped, microstrip, waveguide and coaxial ports,
+TFSF, `until_decay` and `devices=` are refused.
+`forward(..., ringdown=RingdownSpec())` puts the same completion inside the
+differentiable program, so `jax.grad` sees the ringing too; it is also refused
+with `distributed=True`.
+
+### Ending a line at a port
+
+When a trace runs to the edge of the domain, rfx extends it into the absorber,
+as if the line continued forever. If the line is meant to end at your port,
+name its conductor with `terminates=`:
+
+```python
+line = Simulation(freq_max=6e9, domain=(0.04, 0.02, 0.01), dx=1e-3,
+                  boundary="cpml", cpml_layers=6)
+line.add_thin_conductor(Box((0.0, 0.0, 0.001), (0.04, 0.02, 0.001)))  # ground
+strip = Box((0.0, 0.009, 0.004), (0.04, 0.011, 0.004))
+line.add_thin_conductor(strip)
+line.add_port((0.035, 0.010, 0.001), "ez", extent=3e-3,
+              waveform=GaussianPulse(f0=3e9), terminates=strip)
+```
+
+Preflight warns (`port_conductor_continues`) when a port's conductor runs into
+the absorber and no port terminates it. A ground plane should continue; name
+only the line the port ends. Microstrip ports do this automatically for the
+trace under them.
+
+### Lumped circuit elements
+
+`add_lumped_rlc` puts a resistor, inductor, capacitor or RLC combination on
+one grid edge. It is **not a port**: it has no reference impedance. To measure
+the reflection it presents, drive the line with `add_port(...)` and use the
+RLC element as the load.
+
+```python
+sim.add_lumped_rlc((0.03, 0.02, 0.01), "ez", R=50.0, C=0.2e-12)
+```
+
+`topology` is `"series"` (default) or `"parallel"`. On the uniform,
+single-device `forward()` path, `rlc_values_override={0: {"R": R}}` makes a
+component value differentiable. The key is the element's registration order.
+
+## Microstrip ports
+
+`add_msl_port` spans the full width under the trace and extracts the line's
+wave amplitudes from a row of probe planes downstream of the feed. Use
+`compute_msl_s_matrix()`, not `run(compute_s_params=True)`:
+
+```python
+# Run from the repository root to use the tutorial's edge-aware board.
+from examples.tutorials.ports_and_sparams_101 import build_microstrip_ports
+
+board = build_microstrip_ports()
+msl = board.compute_msl_s_matrix(freqs=np.linspace(2e9, 6e9, 13),
+                                 num_periods=20)
+print(np.abs(msl.S[1, 0]))     # |S21| across the band
+```
+
+`position` is `(feed plane, trace centre, substrate bottom)`. `direction` may
+be `"+x"`, `"-x"`, `"+y"` or `"-y"`; the substrate normal is always z. `S` is
+returned as extracted. A warning names any bins where it is not passive;
+`enforce_passivity=True` projects it instead. `msl.reliable` flags bins with
+too little signal to trust.
+
+The builder in `examples/tutorials/ports_and_sparams_101.py` uses a
+44 × 34 mm domain, edge-aware x/y profiles, and a uniform z profile of 16 cells of 0.25 mm. It
+builds and preflights this board without solving it in the tutorial; the
+calculation above runs it. The tutorial's live generic-port S11 examples
+use `S11_STEPS = 600` each. This board is coarse for speed, so check the fitted
+Z0 against the closed form.
+S11 and S21 use the measured V and I with the analytic Z0, not the fitted
+Z0. Refine before you quote Z0.
+
+Getting an accurate microstrip result:
+
+- **The substrate sets the cell size.** On a thin substrate the substrate
+  thickness binds long before the wavelength does. Preflight warns below 4
+  cells through the substrate. Start there, then refine and check that your
+  answer stops moving.
+- **End the line at its ports, not in the absorber.** CPML is a much poorer
+  termination for a two-conductor line than for a plane wave. Put a port at
+  each end of the line.
+- **Give the probes room.** The automatic probe offset and spacing are chosen
+  in cells from the mesh under the port, and recounted at run time on graded
+  or automatic meshes. On a short feed, rfx warns if there is no clean place
+  for them. Check `msl.probe_clearance`, and lengthen the feed if it is
+  insufficient.
+
+## Waveguide ports
+
+`add_waveguide_port` launches a TE or TM mode of a rectangular aperture and
+decomposes the fields into that mode. Its aperture defines the guide. A port
+that spans the whole cross-section uses the transverse domain faces as the
+guide walls, so declare them PEC and put the absorber on the port axis only;
+on a uniform mesh `boundary="cpml"` on every face is refused.
+
+```python
+guide = Simulation(freq_max=11e9, domain=(0.10, 0.023, 0.010), dx=1e-3,
+                   boundary={"x": "cpml", "y": "pec", "z": "pec"}, cpml_layers=8)
+guide.add_waveguide_port(0.01, mode=(1, 0), mode_type="TE", direction="+x",
+                         f0=10e9, bandwidth=0.5, name="port1")
+guide.add_waveguide_port(0.09, mode=(1, 0), mode_type="TE", direction="-x",
+                         f0=10e9, bandwidth=0.5, name="port2")
+print(guide.s_matrix_lane())
+```
+
+Compute the matrix with `guide.compute_waveguide_s_matrix(normalize=...)`.
+[Waveguide Ports](/rfx/guide/waveguide-ports/) covers normalization,
+calibration planes and junctions.
+
+## Coaxial ports
+
+The coaxial calculators build their own line: a coax along z with a matched
+feed, a TEM source, and a row of probe planes. You register one
+`add_coaxial_port` for the cross-section (its x/y centre, radii and
+waveform) and call a calculator:
+
+- `compute_coaxial_line_reflection(termination=...)`: one port. The line ends
+  in `"short"` or a `"matched"` load; `dut_impedance=R` makes the load a
+  resistor.
+- `compute_coaxial_two_port()`: a through line with a port at each end.
+
+```python
+coax = Simulation(freq_max=40e9, domain=(0.008, 0.008, 0.040),
+                  boundary="cpml", cpml_layers=8)
+coax.add_coaxial_port((0.004, 0.004, 0.020), face="top",
+                      pin_radius=0.635e-3, outer_radius=2.055e-3,
+                      waveform=GaussianPulse(f0=8e9, bandwidth=1.2))
+
+refl = coax.compute_coaxial_line_reflection(
+    termination="short", n_steps=3000, freqs=np.linspace(4e9, 12e9, 5))
+print(refl.status, f"{refl.annulus_cells:.1f} annulus cells")
+print(np.abs(refl.s11))
+```
+
+The line's conductors are realized PEC. Their wall thickness is 1 mm, or the
+room to the nearest absorber less one cell if that is smaller; a line with
+less than a cell of room raises.
+
+What the calculators need:
+
+- A uniform, float32, 3-D Yee grid with CPML on all six faces. Exactly one
+  coaxial port with `face="top"`, and nothing else in the model: no geometry,
+  sheets, probes, monitors or other ports. The calculator refuses extras
+  rather than ignoring them.
+- The port's z position, `pin_length` and `impedance` do not place the line
+  or set its loads. Use `feed_impedance=` and `dut_impedance=`.
+
+Getting an accurate result:
+
+- **Use at least 4 cells across the annulus** (between pin and outer
+  conductor). Raise `freq_max` to shrink the cell. `status` reports
+  `"under_resolved"` below about 3.5. The example above uses 3.8 for speed.
+- **Keep the probe span physical.** Probe planes are placed in cells
+  (`probe_start_cells`, `probe_spacing_cells`), so refining the mesh shortens
+  the length the phase fit sees. Scale the spacing up when you refine.
+- **Leave room around the line.** Both coax calculators absorb on all three
+  axes, so an open end radiates instead of ringing in a closed can. A line
+  whose outer wall comes within one cell of a lateral absorber is refused.
+
+## Limits
+
+- **Sources give no S-parameters.** `add_source`, polarized sources and TFSF
+  have no impedance. Use a port and its calculator.
+- **One port family per calculation.** Mixed lumped + microstrip and
+  coax-to-microstrip calculators exist but are experimental; measure each line
+  with its own calculator instead.
+- **Circular polarization** from `add_polarized_source` is unverified.
+- **Lumped/wire ports** need about 60 cells per wavelength for S11 within
+  about 0.5 dB. `forward(port_s11_freqs=...)` is uniform and single-device
+  only. Wire ports on a graded mesh are experimental.
+- **Microstrip** `mode="eigenmode"` is unsupported. Graded-mesh microstrip has
+  no external comparison yet. ADI, subgridding and TFSF are refused.
+- **Coax** lanes cover one
+  geometry family, and only azimuthally symmetric discontinuities.
+- **TFSF on a graded axis:** preflight warns, because the scattered-field
+  region picks up a spurious field (about 0.7 of the total-field peak with no
+  scatterer). Normal incidence along ±x needs a uniform x axis.
+- Detailed scope for every port family is in the
+  [S-parameter support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/sparameter_support_matrix.md).

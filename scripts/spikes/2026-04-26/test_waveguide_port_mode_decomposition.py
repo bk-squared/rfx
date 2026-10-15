@@ -15,15 +15,8 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-from rfx.sources.waveguide_port import (
-    WaveguidePort,
-    _aperture_dA,
-    _discrete_te_mode_profiles,
-    init_waveguide_port,
-    modal_current,
-    modal_voltage,
-    overlap_modal_amplitude,
-)
+from rfx.sources.waveguide_port import WaveguidePort, init_waveguide_port, modal_current, modal_voltage, overlap_modal_amplitude
+from rfx.model.waveguide_modes import _aperture_dA, _discrete_te_mode_profiles
 from rfx.api import Simulation
 
 
@@ -241,7 +234,7 @@ def test_zero_weight_aperture_cells_are_dropped_and_backfilled_as_zero_profiles(
 
 def test_multimode_normalize_true_api_dispatch_smoke():
     """The public API no longer rejects normalize=True for multi-mode ports."""
-    sim = Simulation(freq_max=10e9, domain=(0.06, 0.04, 0.02), dx=0.002, boundary="cpml")
+    sim = Simulation(freq_max=10e9, domain=(0.06, 0.04, 0.02), dx=0.002, boundary={"x": "cpml", "y": "pec", "z": "pec"})
     common = dict(
         y_range=(0.0, 0.04),
         z_range=(0.0, 0.02),

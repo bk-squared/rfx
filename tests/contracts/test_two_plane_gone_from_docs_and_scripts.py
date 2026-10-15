@@ -83,12 +83,15 @@ ALLOWED = {
         "release history; the 2.0.0 entry removes the keyword and says so",
     "ROADMAP.md":
         "the v2.0 row names #931 and the removed keyword",
-    "docs/public/guide/changelog.mdx":
+    "docs/public/project/changelog.mdx":
         "public release history; states two_plane is removed, not deprecated",
-    "docs/public/guide/materials-geometry.mdx":
+    "docs/public/model/materials.mdx":
         "the canonical contract page; names the keyword to say it is gone",
     "docs/public/api/geometry-materials.mdx":
         "API page; names the keyword to say passing it raises TypeError",
+    "docs/public/start/upgrading.mdx":
+        "the 1.x-to-2.0 page; its Removed table names the keyword and what "
+        "replaces it",
     "scripts/diagnostics/slow_931_farfield_attribution.py":
         "attribution diagnostic; its header cites the removed map by commit "
         "(a3e4dba4^:rfx/boundaries/pec.py tangential_edge_masks) to say which "

@@ -165,14 +165,14 @@ def test_default_simulation_run_unchanged():
         freq_max=10e9,
         domain=(0.04, 0.04, 0.04),
         dx=0.002,
-        boundary="cpml",
+        boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=4,
     )
     sim_b = Simulation(
         freq_max=10e9,
         domain=(0.04, 0.04, 0.04),
         dx=0.002,
-        boundary="cpml",
+        boundary={"x": "cpml", "y": "pec", "z": "pec"},
         cpml_layers=4,
     )
     sim_a.add_waveguide_port(
@@ -220,7 +220,7 @@ def test_dual_path_dielectric_only_equivalent_to_ulp():
             freq_max=10e9,
             domain=(0.04, 0.04, 0.04),
             dx=0.002,
-            boundary="cpml",
+            boundary={"x": "cpml", "y": "pec", "z": "pec"},
             cpml_layers=4,
         )
         sim.add_material("substrate", eps_r=4.0, sigma=0.0)
@@ -322,7 +322,9 @@ def test_pec_short_s11_with_kottke_pec_path():
 def test_nu_runner_hard_fails_on_kottke_pec():
     """Per Step 3a scope decision: NU + Stage 2 unified path is out
     of scope for v1. Must hard-fail at run time, not silently
-    misbehave."""
+    misbehave.
+    Addendum 5f requires transverse z PEC so guide admission reaches Kottke.
+    """
     sim = Simulation(
         freq_max=10e9,
         domain=(0.04, 0.04, 0.04),
@@ -332,7 +334,7 @@ def test_nu_runner_hard_fails_on_kottke_pec():
         boundary=BoundarySpec(
             x="cpml",
             y=Boundary(lo="pec", hi="pec"),
-            z="cpml",
+            z=Boundary(lo="pec", hi="pec"),
         ),
         cpml_layers=4,
     )

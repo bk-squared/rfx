@@ -53,8 +53,8 @@ For every model:
 5. Repeat the requested observable on at least one finer mesh before using it
    as an RF result.
 
-See [Nonuniform mesh](../public/guide/nonuniform-mesh.mdx) for supported graded-z
-usage and [Automation](../public/api/automation.mdx) for the exact planning API.
+See [Nonuniform mesh](../public/model/domain-mesh.mdx) for supported graded-z
+usage and [Automation](../public/api/functions.mdx) for the exact planning API.
 
 ## 3. Model materials and conductors explicitly
 
@@ -76,7 +76,7 @@ PEC iff its own location lies inside the closed conductor region. A volume's
 drawn extent equals its realized extent (walls at both drawn faces); a sheet is
 one node plane. Sub-cell PEC shapes are refused at `add()` rather than warned
 about. See
-[How conductors land on the lattice](../public/guide/materials-geometry.mdx).
+[How conductors land on the lattice](../public/model/materials.mdx).
 
 ## 4. Keep active geometry clear of absorbers
 
@@ -91,7 +91,7 @@ sheet planes alike, through `realized_wall_planes` / `edge_is_pec`). Passing tho
 far-field separation. The transform may use a closed surface in the near field;
 mesh convergence and an analytic or independent reference remain necessary.
 
-See [Far field and RCS](../public/guide/farfield-rcs.md) for the six-face box,
+See [Far field and RCS](../public/measure/far-field-and-rcs.md) for the six-face box,
 clearance calculation, settling checks, and reference-subtraction procedure.
 
 ## 5. Run preflight and act on every finding
@@ -175,7 +175,7 @@ or to CW drive.
 - AD/FD agreement checks differentiation of the implemented computation. It
   does not validate the physical model that produced the objective.
 
-See [Probes and S-parameters](../public/guide/probes-sparams.mdx) and
+See [Probes and S-parameters](../public/measure/s-parameters.mdx) and
 [Simulation](../public/api/simulation.mdx) for return fields and warning scope.
 
 ## 8. Establish evidence for the stated use

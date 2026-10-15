@@ -36,10 +36,21 @@
         ],
         "severity": "warning",
         "source": "_check_waveguide_port_aperture_snap"
+      },
+      {
+        "code": "port_freqs_below_cutoff",
+        "loc": null,
+        "numbers": [
+          1.0,
+          10.0,
+          6.517
+        ],
+        "severity": "warning",
+        "source": "_check_waveguide_port_evanescent"
       }
     ],
     "n_errors": 0,
-    "n_issues": 2,
+    "n_issues": 3,
     "ok": true
   }
 }

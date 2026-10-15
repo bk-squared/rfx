@@ -56,7 +56,7 @@ def test_cylindrical_pec_dual_path_equivalent():
             freq_max=10e9,
             domain=(0.04, 0.04, 0.04),
             dx=0.002,
-            boundary="cpml",
+            boundary={"x": "cpml", "y": "pec", "z": "pec"},
             cpml_layers=4,
         )
         sim.add(Cylinder((0.02, 0.02, 0.02), radius=0.006, height=0.02,
@@ -211,7 +211,7 @@ def test_kottke_pec_90_corner_finite_and_convergent_signal():
             freq_max=10e9,
             domain=(0.06, 0.04, 0.02),
             dx=dx,
-            boundary="cpml",
+            boundary={"x": "cpml", "y": "pec", "z": "pec"},
             cpml_layers=4,
         )
         # PEC L-shape: a Box that has one corner inside the domain.

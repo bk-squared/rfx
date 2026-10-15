@@ -109,6 +109,9 @@ _REPO = _HERE.parents[2]
 #: derived and for why the argument lists are pinned here rather than left to
 #: the report snapshots.
 _CALL_SEQUENCE_AT_LEG7_TIP = (
+    # 2026-10-11: production assembly admission now precedes diagnostics;
+    # the report post-pass preserves existing located refusal findings.
+    ("_validate_cfg_assembly", ("warn",)),
     ("_validate_cfg_precision_x64", ("warn",)),
     ("_validate_cfg_pec_faces_with_finite_pec", ("warn",)),
     ("_validate_cfg_upml_refinement", ()),
@@ -330,6 +333,7 @@ def _registry_adapter_calls() -> list[tuple[str, tuple[str, ...]]]:
     return out
 
 
+@pytest.mark.source_scan
 def test_each_adapter_passes_the_arguments_the_hub_passed():
     """Every check must receive exactly what the pre-registry hub gave it.
 
@@ -390,6 +394,7 @@ def test_every_check_name_is_a_callable_attribute_of_the_mixin():
         assert callable(attr), f"_PreflightMixin.{check.name} is not callable"
 
 
+@pytest.mark.source_scan
 def test_every_family_names_the_module_that_defines_the_check():
     """``family`` must be checkable, not decorative.
 

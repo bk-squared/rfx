@@ -2,7 +2,7 @@
 title: "API Reference"
 description: "Documented rfx API pages and configuration limits."
 sidebar:
-  order: 20
+  order: 1
 ---
 
 These pages describe the rfx API you should build on: the `Simulation` class,
@@ -16,11 +16,11 @@ the [generated reference](/rfx/api/generated/).
 | Page | Covers |
 |---|---|
 | [Simulation](/rfx/api/simulation/) | the constructor, preflight, `run()`, `forward()`, `Simulation.auto()` |
-| [Results & Observables](/rfx/api/results-observables/) | probes, flux monitors, DFT planes, NTFF, snapshots; `Result`, `ForwardResult` and the S-parameter result objects |
+| [Results & Observables](/rfx/api/results/) | probes, flux monitors, DFT planes, NTFF, snapshots; `Result`, `ForwardResult` and the S-parameter result objects |
 | [Geometry & Materials](/rfx/api/geometry-materials/) | `add_material`, dispersive poles, shapes, CAD import, metal sheets |
 | [Sources & Ports](/rfx/api/sources-ports/) | waveforms, sources, the four port families, lumped R/L/C, the S-parameter calculators |
-| [Automation](/rfx/api/automation/) | `plan_mesh`, `auto_configure`, graded-profile builders |
-| [Support Boundaries](/rfx/api/support-boundaries/) | what is supported, limited, experimental or refused |
+| [Automation](/rfx/api/functions/) | `plan_mesh`, `auto_configure`, graded-profile builders |
+| [Support Boundaries](/rfx/support/) | what is supported, limited, experimental or refused |
 
 ## Conventions
 
@@ -53,5 +53,5 @@ result = sim.run(n_steps=300)
 print(result.time_series.shape, f"{result.settling_db:.1f} dB")
 ```
 
-[Quick Start](/rfx/guide/quickstart/) walks through the same steps, and
-[Core Concepts](/rfx/guide/concepts/) explains the choices behind them.
+[Quick Start](/rfx/start/first-simulation/) walks through the same steps, and
+[Core Concepts](/rfx/start/concepts/) explains the choices behind them.

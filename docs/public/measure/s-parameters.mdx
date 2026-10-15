@@ -1,0 +1,508 @@
+---
+title: "Probes and S-Parameters"
+description: "Extract field data with point, vector, and DFT-plane probes; compute S-parameters per port family; and pull resonances via harmonic inversion."
+sidebar:
+  order: 2
+---
+
+This page covers everything you read out of a run: field probes, power flux,
+resonances and S-parameters. It also shows how to check that a spectrum can
+be trusted, and how to de-embed and export S-parameters.
+
+Every example uses a coarse mesh so the page runs in about a minute on a
+laptop CPU. A real study would refine the mesh and run longer; see
+[Convergence Study](/rfx/evidence/mesh-convergence/).
+
+## Field probes
+
+A probe records one field component at one Yee cell at every time step. It
+has no impedance and does not load the structure.
+
+| Call | Records | Where the data ends up |
+|---|---|---|
+| `add_probe(position, component)` | one component (`"ex"` … `"hz"`) | one column of `result.time_series` |
+| `add_vector_probe(position)` | all six components | six columns, in the order Ex, Ey, Ez, Hx, Hy, Hz |
+| `add_dft_plane_probe(axis=, coordinate=, component=, freqs=)` | one component on a whole plane, at chosen frequencies | `result.dft_planes[name]` |
+
+```python
+import numpy as np
+from rfx import GaussianPulse, Simulation
+
+sim = Simulation(freq_max=5e9, domain=(0.05, 0.05, 0.05), dx=2.5e-3,
+                 boundary="cpml", cpml_layers=6)
+sim.add_source((0.015, 0.025, 0.025), "ez",
+               waveform=GaussianPulse(f0=2.5e9, bandwidth=0.8),
+               amplitude_kind="current")
+
+sim.add_probe((0.035, 0.025, 0.025), "ez")      # column 0
+sim.add_vector_probe((0.025, 0.035, 0.025))     # columns 1-6
+sim.add_dft_plane_probe(axis="z", coordinate=0.025, component="ez",
+                        freqs=np.array([2e9, 3e9]), name="ez_mid")
+
+result = sim.run(n_steps=400)   # short: rfx warns the record is cut
+
+ts = np.asarray(result.time_series)       # shape (n_steps, 7)
+t = np.arange(ts.shape[0]) * result.dt    # seconds
+ez_probe = ts[:, 0]
+hy_vector = ts[:, 1 + 4]                  # Hy of the vector probe
+
+plane = result.dft_planes["ez_mid"]
+print(plane.accumulator.shape)            # (n_freqs, nx, ny), complex
+```
+
+Columns follow registration order across all probe calls, so a vector probe
+added after two point probes occupies columns 2–7.
+
+A position snaps to the nearest grid cell, so a probe can read a field up to
+half a cell from the coordinate you gave. If you omit `freqs` on a DFT plane,
+rfx uses `n_freqs` points from `freq_max / 10` to `freq_max`.
+
+A DFT plane accumulates its spectrum during the run, which is much cheaper
+than saving full snapshots. It is still the transform of a finite record: if
+the fields have not rung down when the run stops, the spectrum is wrong. See
+[Is the run finished?](#is-the-run-finished) below.
+
+## Power flux and R/T
+
+`add_flux_monitor` accumulates the Poynting flux through a plane, per
+frequency. `flux_spectrum(monitor)` returns the net power through it, positive
+along `+axis`. If it returns exact zeros at every frequency while the fields are
+clearly nonzero, the float32 `E × H*` products underflowed; outside `jit`/`grad`
+rfx warns when it detects this. That is not a physical null: pass
+`flux_spectrum(monitor, exact_f64=True)` to recompute the sum in float64, or
+increase the source amplitude.
+
+To get reflection and transmission of a slab or scatterer, run twice: once
+without the object (the **reference run**, which measures the incident power)
+and once with it. Transmission is the ratio of the transmitted fluxes.
+Reflection needs the incident field removed first, and it must be removed
+from the **fields**, not from the fluxes. Flux is a product of E and H, so
+subtracting two fluxes leaves cross terms. `subtract_flux_monitors` subtracts
+the field accumulators for you.
+
+This example measures a 10 mm, ε_r = 4 slab in 2-D with a plane wave:
+
+```python
+from rfx import Box, flux_spectrum, subtract_flux_monitors
+
+dx = 1e-3
+freqs_rt = np.linspace(4e9, 14e9, 11)
+slab_lo, slab_hi = 95 * dx, 105 * dx       # 10 cells, on grid planes
+
+def slab_run(with_slab):
+    s = Simulation(freq_max=16e9, domain=(0.2, 8e-3, dx), dx=dx,
+                   boundary="cpml", cpml_layers=10, mode="2d_tmz")
+    if with_slab:
+        s.add_material("slab", eps_r=4.0)
+        # A plane wave makes the transverse axes periodic: span them fully.
+        s.add(Box((slab_lo, -1, -1), (slab_hi, 1, 1)), material="slab")
+    s.add_tfsf_source(f0=9e9, bandwidth=0.9, polarization="ez", direction="+x")
+    s.add_flux_monitor(axis="x", coordinate=0.06, freqs=freqs_rt, name="refl")
+    s.add_flux_monitor(axis="x", coordinate=0.14, freqs=freqs_rt, name="trans")
+    return s.run(n_steps=4000, until_decay=1e-3)
+
+ref = slab_run(with_slab=False)
+dut = slab_run(with_slab=True)
+
+incident = np.asarray(flux_spectrum(ref.flux_monitors["trans"]))
+T = np.asarray(flux_spectrum(dut.flux_monitors["trans"])) / incident
+scattered = subtract_flux_monitors(dut.flux_monitors["refl"],
+                                   ref.flux_monitors["refl"])
+R = -np.asarray(flux_spectrum(scattered)) / incident   # reflected power flows -x
+print(np.round(R + T, 3))
+```
+
+For a lossless slab `R + T` should be 1, and here it is to three decimals.
+That checks energy bookkeeping, not accuracy: preflight warns that 1 mm cells
+give only about 9 cells per wavelength in the slab at 16 GHz, so R and T
+themselves need a finer mesh before you compare them with the Fresnel result.
+
+Two rules for this measurement:
+
+- Keep both runs identical except for the object: same mesh, source, monitors
+  and record length.
+- Use `until_decay=` so each run stops when the fields have died out, not at an
+  arbitrary step.
+
+`add_flux_monitor(size=, center=)` limits the monitor to a finite rectangle;
+the [flux regions contract](https://github.com/bk-squared/rfx/blob/main/docs/guides/flux_regions.md)
+explains how that rectangle lands on the grid.
+
+## Resonances (Harminv)
+
+`result.find_resonances(freq_range=...)` fits the ring-down of a probe record
+as a sum of damped sinusoids (harmonic inversion by the matrix pencil method).
+It returns `HarminvMode` objects, strongest first, with `freq` (Hz), `Q`,
+`decay` (1/s), `amplitude`, `phase` and a relative fit `error`.
+
+The example below is a small PEC cavity fed by a 50 Ω wire port. The port's
+resistor loads the cavity, so the modes have a finite Q. The same run is used
+for S-parameters later on this page.
+
+```python
+C0 = 299_792_458.0
+a, b, h = 0.030, 0.024, 0.012                     # cavity size (m)
+f_tm110 = C0 / 2 * np.sqrt(1 / a**2 + 1 / b**2)   # analytic TM110
+
+cav = Simulation(freq_max=10e9, domain=(a, b, h), dx=1e-3, boundary="pec")
+cav.add_port((0.0075, 0.006, 0.0), "ez", impedance=50.0, extent=h)  # floor to ceiling
+cav.add_probe((0.020, 0.016, 0.006), "ez")
+cav_run = cav.run(n_steps=1500, compute_s_params=True)
+
+modes = cav_run.find_resonances(freq_range=(6e9, 10e9))
+if not modes:
+    raise RuntimeError("no mode found: lengthen the run or widen freq_range")
+for m in modes[:3]:
+    print(f"f = {m.freq / 1e9:.3f} GHz   Q = {m.Q:.0f}")
+print(f"analytic TM110: {f_tm110 / 1e9:.3f} GHz")
+```
+
+The strongest mode need not sit at the empty-cavity TM110 value: the wire
+port is a metal post with a resistor inside the cavity, so this is no longer
+the empty cavity.
+
+Harminv only works on the free ring-down, so it skips the start of the record
+where the source is still on. When `source_decay_time=None`, rfx estimates
+that interval from the centre of `freq_range` and a fixed fractional bandwidth
+of 0.8; it does not inspect your source. Pass `source_decay_time=` (seconds)
+or `waveform=` when your pulse is longer than that estimate.
+
+To pick a physical mode, check its field pattern or compare with an analytic
+value; don't assume the strongest peak is the one you want. The standalone
+`harminv(signal, dt, f_min, f_max)` works on any sampled signal.
+
+## S-parameters: pick the calculator for your port
+
+S-parameters need a **port**: something that injects a signal and terminates
+the line in a known impedance. Each port family has its own calculator, and
+only that calculator gives S-parameters for it:
+
+| Port | Calculator | Result |
+|---|---|---|
+| lumped `add_port(...)` (one cell) | `run(compute_s_params=True)` | `result.s_params`, `result.freqs` |
+| wire `add_port(..., extent=...)` | `run(compute_s_params=True)` | `result.s_params`, `result.freqs` |
+| lumped or wire, inside `jax.grad` | `forward(port_s11_freqs=...)` | S11 per port in `ForwardResult.s_params` |
+| microstrip `add_msl_port(...)` | `compute_msl_s_matrix()` | `MSLSMatrixResult` (`.S`, `.freqs`, `.reliable`, …) |
+| rectangular waveguide `add_waveguide_port(...)` | `compute_waveguide_s_matrix()` | `WaveguideSMatrixResult` (`.s_params`, `.freqs`, …) |
+| coaxial `add_coaxial_port(...)` | `compute_coaxial_line_reflection()` (one-port) or `compute_coaxial_two_port()` | their own result objects |
+
+Every full matrix has shape `(n_ports, n_ports, n_freqs)` and is indexed
+`S[receiver, driven, freq]`, so `S[1, 0]` is S21.
+
+If you are unsure which calculator applies, ask the simulation.
+`sim.s_matrix_lane()` names it without running anything, and
+`sim.compute_s_matrix(**kwargs)` calls it for you (except for lumped and wire
+ports, which use `run()`).
+
+Probes, DFT planes, flux monitors and plane-wave sources have no reference
+impedance, so none of them can give S-parameters. Setting up each port family
+is covered in [Sources and Ports](/rfx/model/ports/) and
+[Waveguide Ports](/rfx/guide/waveguide-ports/).
+
+### Lumped and wire ports
+
+Pass `compute_s_params=True` to `run()`. S is normalized to each port's
+`impedance`:
+
+```python
+lp = Simulation(freq_max=5e9, domain=(0.05, 0.04, 0.02), dx=2.5e-3,
+                boundary="cpml", cpml_layers=6)
+lp.add_port((0.015, 0.02, 0.01), "ez", impedance=50.0)
+lp.add_port((0.035, 0.02, 0.01), "ez", impedance=50.0)
+lp.add_probe((0.025, 0.02, 0.01), "ez")
+
+lp_run = lp.run(n_steps=600, compute_s_params=True)
+S = np.asarray(lp_run.s_params)          # (2, 2, n_freqs)
+freqs = np.asarray(lp_run.freqs)         # Hz
+s21_db = 20 * np.log10(np.abs(S[1, 0]) + 1e-30)
+```
+
+rfx runs one simulation per driven port to fill the matrix. Use
+`s_param_freqs=` to choose the frequencies.
+
+For one-port S11, aim for about **60 cells per wavelength** at the highest
+frequency you care about. At 30 cells per wavelength, magnitudes can be off
+by about 1 dB and resonant frequencies move by 1–3 %. A one-cell port reads its
+voltage at its node and its current half a cell toward the line.
+
+### Completing a record that was cut short
+
+A resonant structure can ring long after the pulse ends. Rather than running
+it out, `run(..., ringdown=RingdownSpec())` fits the slow decay in the last
+part of the record and adds the unrecorded tail of each port spectrum in
+closed form:
+
+```python
+from rfx.ringdown import RingdownSpec
+
+cav_rd = cav.run(n_steps=1500, compute_s_params=True, ringdown=RingdownSpec())
+report = cav_rd.ringdown.report
+print(report.summary())
+if report.ok:
+    s11_completed = cav_rd.ringdown.s_params[0, 0]   # same bins as cav_rd.freqs
+```
+
+What to know before you rely on it:
+
+- It supports wire ports only (`add_port(..., extent=...)`), at a fixed
+  record length. On a uniform mesh it handles one wire port; on a graded mesh
+  it handles several. Other port families, plane waves, `until_decay`,
+  `devices=` and nonlinear materials are refused with the reason.
+- The fit window is `[window_start * T, T]` (default: the second half of the
+  record). The source must be off in that window, or `run()` raises and tells
+  you to lengthen the record.
+- `report.ok` is True when the completion was produced and every judged check
+  passed. The deciding check is `WE`: it completes the same record again using
+  poles fitted on a window that starts twice as early, and compares the two
+  answers. `W2` (a shorter second window) is reported but not judged.
+- None of these checks is an error bound. They tell you whether the
+  completion is self-consistent, not how close it is to the true answer.
+- If completion cannot be produced, `cav_rd.ringdown.s_params` is `None` and
+  `report.summary()` says why. `result.s_params` is always the plain,
+  uncompleted answer.
+
+In this example the plain record is cut while the cavity still rings, and its
+|S11| exceeds 1, which a passive port cannot do. The report notes that, and
+the completed S11 is passive.
+
+### Microstrip lines
+
+Microstrip ports use `compute_msl_s_matrix()`. It runs one simulation per
+driven port and extracts S from a ladder of voltage and current probes
+downstream of each feed:
+
+```python
+from rfx.boundaries.spec import Boundary, BoundarySpec
+from rfx.mesh_edges import edge_aware_profiles
+
+h_sub, w_trace, L = 0.75e-3, 1.5e-3, 0.013
+substrate = Box((0, 0, 0), (L, 0.008, h_sub))
+# The trace runs from port to port, so the ports terminate it.
+trace = Box((0.0035, 0.004 - w_trace / 2, h_sub), (L - 0.0035, 0.004 + w_trace / 2, h_sub))
+# x and y mesh lines placed so the trace is solved at its drawn size.
+profiles = edge_aware_profiles((L, 0.008, 0.003), 0.25e-3,
+                               sheets=[trace], solids=[substrate])
+board = Simulation(
+    freq_max=10e9, domain=(L, 0.008, 0.003), dx=0.25e-3, cpml_layers=6,
+    # The z = 0 PEC wall is the ground plane.
+    boundary=BoundarySpec(x="cpml", y="cpml", z=Boundary(lo="pec", hi="cpml")),
+    **profiles,
+)
+board.add_material("sub", eps_r=3.66)
+board.add(substrate, material="sub")
+board.add_thin_conductor(trace)
+for x_feed, direction, name in ((0.0035, "+x", "p1"), (L - 0.0035, "-x", "p2")):
+    board.add_msl_port((x_feed, 0.004, 0.0), width=w_trace, height=h_sub,
+                       direction=direction, eps_r_sub=3.66, name=name)
+
+print(board.s_matrix_lane())                 # compute_msl_s_matrix
+msl = board.compute_msl_s_matrix(n_freqs=21)
+S_msl = np.asarray(msl.S)                    # (2, 2, 21)
+```
+
+`num_periods=40` is the default and sets the record length; don't shorten it
+without checking `msl.settling_db`.
+
+The edge-aware mesh makes this a microstrip S-matrix on a graded mesh, which
+the [support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md)
+lists as **experimental**; the microstrip S-matrix on a uniform mesh is the
+supported path.
+
+This board has only 3 cells through the substrate and 6 across the trace, so
+it runs quickly but prints several warnings. They are the ones you should
+expect on your own coarse runs:
+
+- preflight reports that 3 cells through the substrate is below its
+  recommendation of 4, that the graded in-plane mesh reaches the absorber
+  runway, and that the automatic probe-offset solve is skipped on this graded
+  board, so the clearance from the deepest probe to the next reflector is not
+  enforced (set `n_probe_offset` on the ports, or keep the propagation axis
+  uniform, if that clearance matters). (On a plain uniform grid the trace would be solved wider than drawn,
+  because a sheet's free edge acts a fraction of a cell beyond its last grid
+  node; preflight reports that as an error and the run stops. The
+  `edge_aware_profiles` mesh above avoids it.)
+- a **low-signal** warning names three bins at the top of the band, and
+  `msl.reliable` is False there;
+- a **passivity** warning reports that the largest singular value of S is
+  slightly above 1 (1.005 here).
+
+Refining the mesh is the fix for all of them. For microstrip the substrate
+thickness, not the wavelength, usually sets the cell size: a reasonable
+starting point is 4 cells through the substrate (preflight warns below that),
+then refine and check that your answer stops moving.
+
+End lines at their ports, as here, rather than running them into the
+absorber. CPML is a much poorer termination for a two-conductor line than for
+a plane wave.
+
+#### The `reliable` mask
+
+`msl.reliable` is a boolean array `(n_ports, n_freqs)`. `reliable[p, k]` is
+False when, in at least one of the drive runs, both the voltage and the
+current at port `p`'s probes were weak at frequency `k` (below 10 % of that
+record's median over the band). S is returned unchanged either way.
+
+Read it like this:
+
+- **False:** too little signal reached that port's probes at that frequency to
+  trust the number. Because every entry of S at a frequency comes from one
+  joint solve, treat the whole `S[:, :, k]` slice as suspect, not just one
+  entry. A deep, real notch can also trigger it, so check whether you expect
+  one there.
+- **True:** the low-signal check did not fire. It is not a guarantee of
+  accuracy.
+
+To keep only the bins where no port was flagged:
+
+```python
+if msl.reliable is not None:        # None when the run was traced by JAX
+    keep = np.all(np.asarray(msl.reliable), axis=0)
+    S_kept, f_kept = S_msl[..., keep], np.asarray(msl.freqs)[keep]
+```
+
+The fitted `msl.Z0` and `msl.beta` are diagnostics. S is formed from the
+measured voltages and currents with the analytic line impedance as reference,
+so a warning that the fitted Z0 deviates from Hammerstad–Jensen does not by
+itself change S. Refine the mesh before quoting Z0.
+
+### Waveguide and coaxial ports
+
+These families have their own set-up rules and their own calculators:
+
+- Waveguide: `compute_waveguide_s_matrix(normalize=...)`. The `normalize`
+  choice matters for strong reflectors. See
+  [Waveguide Ports](/rfx/guide/waveguide-ports/).
+- Coax: `compute_coaxial_line_reflection()` builds its own line and returns
+  one-port S11; `compute_coaxial_two_port()` gives a through-line 2-port.
+  Use at least 4 cells across the annulus.
+  See [Sources and Ports](/rfx/model/ports/).
+
+The [S-parameter support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/sparameter_support_matrix.md)
+lists what each calculator has been compared against.
+
+## Checking an S-matrix
+
+`network_quality_metrics(S)` checks any `(n_ports, n_ports, n_freqs)` array
+for finiteness, passivity and reciprocity. It only reads the array:
+
+```python
+from rfx import network_quality_metrics
+
+q = network_quality_metrics(S, passivity_tol=1e-4, reciprocity_tol=1e-3)
+print(q["is_passive"], q["passivity_excess"], q["reciprocity_error"])
+```
+
+The default tolerances are 1e-12, which a float32 result will rarely meet, so
+pass tolerances that match your precision. Other keys include `finite`,
+`max_abs_s`, `max_column_power` and `is_reciprocal`.
+
+The calculators also warn by themselves, but the checks differ by family:
+
+| Calculator | Automatic checks |
+|---|---|
+| `run(compute_s_params=True)` | non-finite entries, any single `|S| > 1.1` (not column power) |
+| `compute_msl_s_matrix`, `compute_waveguide_s_matrix` | single entries and total column power |
+| `compute_coaxial_two_port` | the shared passivity check |
+| `compute_coaxial_line_reflection` | none: read its `status`, `fit_residual` and `recurrence_residual` |
+
+A warning never changes the returned numbers. No warning means only that no
+check fired; it does not mean the S-matrix is correct.
+
+## Is the run finished?
+
+Every spectrum on this page is the Fourier transform of a finite record. If
+the record stops while the structure still rings, the spectrum is wrong, and
+no single check catches every case.
+
+- `result.settling_db` is the worst share, over the frequencies the run's
+  spectral results read, of the value still ringing past the record's end,
+  estimated from poles fitted after the source ends. At or below −40 dB the
+  record is long enough. `result.settling_witness["status"]` is `pass`,
+  `fail`, `undetermined` or `absent` (nothing recorded to judge); only `pass`
+  is a pass.
+- `compute_msl_s_matrix`, `compute_waveguide_s_matrix` and the coax two-port
+  calculators check each drive run against the same −40 dB bar and warn when
+  a record ends too early. Their results carry `settling_db` per drive.
+- When a run has an NTFF box or a DFT plane, `run()` warns if a probe is
+  still ringing at the end, and warns that the check is missing if there is
+  no probe.
+
+```python
+print(f"cavity settling: {cav_run.settling_db:.1f} dB")
+print("MSL settling per drive:", msl.settling_db)
+```
+
+The PEC cavity above is far from settled at 1500 steps, which is why ring-down
+completion is useful there. To fix a short record, use a longer `n_steps`,
+`until_decay=`, or `num_periods=` on the calculators. A structure with quality
+factor Q decays over roughly Q / (π f) seconds.
+[Recorded-probe settling](https://github.com/bk-squared/rfx/blob/main/docs/guides/probe_settling.md)
+defines the check exactly.
+
+## De-embedding
+
+`rfx.deembed` post-processes an S-matrix to move reference planes or remove a
+fixture:
+
+| Function | Removes |
+|---|---|
+| `deembed_port_extension(S, freqs, port_lengths, eps_eff=)` | the phase of a matched feed line at each port (reference plane moves inward) |
+| `deembed_thru(S, S_thru)` | a symmetric two-port fixture measured as a thru |
+| `deembed_series_impedance(S, freqs, series_z)` / `deembed_series_inductance(S, freqs, inductances)` | a known series element at each port of a 2-port |
+| `deembed_line_segment(S, freqs, segments)` | a short lossless line segment at each port of a 2-port |
+
+```python
+from rfx import deembed_port_extension
+
+S_shifted = deembed_port_extension(S, freqs, port_lengths=[2.5e-3, 2.5e-3],
+                                   eps_eff=1.0)
+```
+
+## Touchstone export
+
+`write_touchstone` takes the `(n_ports, n_ports, n_freqs)` array and the
+frequencies in Hz. `read_touchstone` returns `(S, freqs, z0)`;
+`read_touchstone_full` also returns per-port reference impedances and
+metadata.
+
+```python
+import os
+import tempfile
+from rfx import read_touchstone, read_touchstone_full, write_touchstone
+
+out = tempfile.mkdtemp()
+write_touchstone(os.path.join(out, "two_port.s2p"), S, freqs, z0=50.0)
+S_back, f_back, z0 = read_touchstone(os.path.join(out, "two_port.s2p"))
+
+# Touchstone 2.0 with explicit per-port reference impedances.
+write_touchstone(os.path.join(out, "two_port_v2.s2p"), S, freqs,
+                 version="2.0", layout="standard", port_z0=[50.0, 50.0])
+network = read_touchstone_full(os.path.join(out, "two_port_v2.s2p"))
+```
+
+For plotting S-parameters, fields and time series, see
+[Visualization and Analysis](/rfx/measure/plots-and-export/).
+
+## Limits
+
+- **Probe or flux spectrum looks noisy or has ripples** → the record ended
+  before the fields decayed. Check `settling_db`, then run longer or use
+  `until_decay=`.
+- **Reflection from two flux runs looks wrong** → subtract the fields with
+  `subtract_flux_monitors`, not the flux values, and keep the two runs
+  identical apart from the object.
+- **Lumped or wire S11 is off by around 1 dB** → the mesh is too coarse; aim
+  for about 60 cells per wavelength at the top frequency.
+- **`reliable` is False at some bins** → don't plot, fit or optimize those
+  bins as data; refine the mesh, lengthen the record, or check whether a real
+  notch is there.
+- **Passivity warning (|S| or column power above 1)** → usually a record that
+  ended too early or a mesh too coarse. The returned S is not clipped.
+- **Microstrip line runs into the absorber** → CPML reflects a guided line
+  noticeably; end the line at its port instead.
+- **Coax refuses the model with a lateral-absorber message** → the line's
+  outer wall is within one cell of a side absorber; widen the domain.
+- **Harminv returns nothing, or a mode you did not expect** → lengthen the
+  record, narrow `freq_range`, and identify modes by field pattern.
+- **Ring-down completion refuses the run** → the source is still on in the
+  fit window; lengthen the record or raise `window_start`.

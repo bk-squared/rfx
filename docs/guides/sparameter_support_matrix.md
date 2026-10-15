@@ -391,7 +391,7 @@ during JAX tracing. Under the multi-drive solve (issue #507) a `False` entry at
 any port contaminates the entire frequency slice `S[:, :, k]`, so the only safe
 per-bin filter is `np.all(reliable, axis=0)`; the per-port index tells you which
 probe plane collapsed. Details and the filtering example:
-[Low-signal MSL bins](../public/guide/probes-sparams.mdx#low-signal-msl-bins).
+[Low-signal MSL bins](../public/measure/s-parameters.mdx#low-signal-msl-bins).
 A `True` entry is not an accuracy guarantee.
 
 **Restrictions:**

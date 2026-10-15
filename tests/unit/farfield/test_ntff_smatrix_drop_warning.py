@@ -49,7 +49,14 @@ class _GridBuildIntercept(Exception):
 
 
 def _intercept_grid_build(monkeypatch):
+    original = Simulation._build_grid
+    admitted = set()
     def _boom(self, **kwargs):
+        # #1512 admission must read the realized geometry before the calculator
+        # emits its NTFF warning; intercept the calculator's subsequent build.
+        if self._msl_ports and id(self) not in admitted:
+            admitted.add(id(self))
+            return original(self, **kwargs)
         raise _GridBuildIntercept
 
     monkeypatch.setattr(Simulation, "_build_grid", _boom)
@@ -71,8 +78,8 @@ def _msl_thru() -> Simulation:
     # the trace is foil: a SHEET on the substrate-top node plane (#931 §1.3),
     # not a one-cell Box (which the contract realizes as a filled slab with a
     # wall on its underside AND its topside).
-    sim.add(Box((0.0, y_c - 0.0006, 0.0008),
-                (0.012, y_c + 0.0006, 0.0008)), material="pec")
+    sim.add(Box((0.002, y_c - 0.0006, 0.0008),
+                (0.010, y_c + 0.0006, 0.0008)), material="pec")
     sim.add_msl_port(position=(0.002, y_c, 0.0), width=0.0012, height=0.0008,
                      direction="+x", impedance=50.0, eps_r_sub=2.2, name="p1")
     sim.add_msl_port(position=(0.010, y_c, 0.0), width=0.0012, height=0.0008,

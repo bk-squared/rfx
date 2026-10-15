@@ -340,7 +340,7 @@ def _padx_sim():
     lx = 0.125
     sim = Simulation(freq_max=3e9, domain=(lx, 0.04, 0.04), boundary="cpml")
     sim.add_source(position=(lx / 2, 0.02, 0.02), component="ez",
-                   waveform=GaussianPulse(f0=1.5e9, bandwidth=1.5e9))
+                   waveform=GaussianPulse(f0=1.5e9, bandwidth=0.8))
     sim.add_probe(position=(lx - 0.006, 0.02, 0.02), component="ez")
     return sim
 
@@ -492,7 +492,6 @@ def _f_distributed_nu_pec_mask_seam():
     from rfx.core.yee import init_state
     from rfx.runners.distributed_nu import (
         _apply_pec_mask_nu_shmap,
-        _apply_pec_occupancy_nu_shmap,
     )
 
     n_devices = 2
@@ -500,19 +499,18 @@ def _f_distributed_nu_pec_mask_seam():
     xbar[:, 2:4, 2:4] = True                 # spans x ACROSS the seam
     gmask = _seam_plates(2, [0, _SEAM_NZ - 1]) | xbar
     hard_slabs, nx_local = _seam_slabs(gmask, n_devices, bool, False)
-    soft_slabs, _ = _seam_slabs(gmask.astype(np.float32), n_devices,
-                                np.float32, 0.0)
+    from tests.unit.materials.test_occupancy_stage import step_occupancy_on_ones
     mesh = Mesh(np.asarray(jax.devices()[:n_devices]).reshape(n_devices),
                 ("x",))
     shape = (n_devices * nx_local, _SEAM_NY, _SEAM_NZ)
     state = init_state(shape)
     one = jnp.ones(shape, jnp.float32)
     live = state._replace(ex=one, ey=one, ez=one)
+    effective = step_occupancy_on_ones(gmask.astype(np.float32), n_devices)
     return {
         "hard": _apply_pec_mask_nu_shmap(live, jnp.asarray(hard_slabs), mesh,
                                          n_devices, nx_local, ranks=mesh_ranks(mesh)),
-        "soft": _apply_pec_occupancy_nu_shmap(live, jnp.asarray(soft_slabs),
-                                              mesh, n_devices, nx_local, ranks=mesh_ranks(mesh)),
+        "soft": live._replace(ex=effective.ex, ey=effective.ey, ez=effective.ez),
     }
 
 
@@ -854,10 +852,6 @@ def test_runner_is_bit_identical_to_the_pre_split_baseline(
 #
 # (name in _distributed_common, importing module, attribute it is bound to)
 _SHARED_HELPER_BINDINGS = (
-    ("cpml_coeff_e_vacuum", "rfx.runners.distributed", "cpml_coeff_e_vacuum"),
-    ("cpml_coeff_h_vacuum", "rfx.runners.distributed", "cpml_coeff_h_vacuum"),
-    ("cpml_coeff_e_vacuum", "rfx.runners.distributed_nu", "cpml_coeff_e_vacuum"),
-    ("cpml_coeff_h_vacuum", "rfx.runners.distributed_nu", "cpml_coeff_h_vacuum"),
     ("exchange_component_shmap", "rfx.runners.distributed_v2",
      "_exchange_component_shmap"),
     ("exchange_component_shmap", "rfx.runners.distributed_nu",
@@ -870,8 +864,6 @@ _SHARED_HELPER_BINDINGS = (
     ("shard_stacked", "rfx.runners.distributed_v2", "shard_stacked"),
     ("shard_stacked_poles", "rfx.runners.distributed_nu",
      "shard_stacked_poles"),
-    ("shard_stacked_psi", "rfx.runners.distributed_nu", "shard_stacked_psi"),
-    ("shard_stacked_psi", "rfx.runners.distributed_v2", "shard_stacked_psi"),
     # #1038 leg 1 -- the two shard_map helpers called from inside the jitted
     # step body. These are the leg's real jaxpr-shape change: four locals
     # (mesh, n_{src,prb}, *_local_specs, *_device_ids) became parameters, and
@@ -890,9 +882,7 @@ _SHARED_HELPER_BINDINGS = (
     # closures over (n_devices, n) that differed only in how they spelled the
     # two face-parallel extents (inventory §2.3(b)). Both callers are
     # setup-time, so this row guards a de-duplication with no jaxpr exposure.
-    ("zeros_psi_stacked", "rfx.runners.distributed", "zeros_psi_stacked"),
     # #1350/#1351: NU now imports the complete per-face sizing routine.
-    ("_distributed_cpml_state", "rfx.runners.distributed_nu", "_distributed_cpml_state"),
     ("_distributed_boundary_layers", "rfx.runners.distributed_v2", "_distributed_boundary_layers"),
     ("_distributed_boundary_layers", "rfx.runners.distributed_nu", "_distributed_boundary_layers"),
     # #1038 leg 2 -- the x-slab primitives. Not a de-duplication: these were
@@ -1034,18 +1024,6 @@ _SHARED_HELPER_BINDINGS = (
      "_update_e_local_with_dispersion"),
     ("_update_e_local_with_dispersion", "rfx.runners.distributed",
      "_update_e_local_with_dispersion"),
-    ("_init_cpml_distributed", "rfx.runners.distributed_v2",
-     "_init_cpml_distributed"),
-    ("_init_cpml_distributed", "rfx.runners.distributed",
-     "_init_cpml_distributed"),
-    ("_apply_cpml_e_distributed", "rfx.runners.distributed_v2",
-     "_apply_cpml_e_distributed"),
-    ("_apply_cpml_e_distributed", "rfx.runners.distributed",
-     "_apply_cpml_e_distributed"),
-    ("_apply_cpml_h_distributed", "rfx.runners.distributed_v2",
-     "_apply_cpml_h_distributed"),
-    ("_apply_cpml_h_distributed", "rfx.runners.distributed",
-     "_apply_cpml_h_distributed"),
 )
 
 
@@ -1254,6 +1232,7 @@ def test_the_package_no_longer_exports_run_distributed():
         assert needle in msg, msg
 
 
+@pytest.mark.source_scan
 def test_runners_package_eager_import_list_is_unchanged():
     """Read with ast, so it measures the SOURCE and not a polluted sys.modules."""
     init = Path(importlib.import_module("rfx.runners").__file__)

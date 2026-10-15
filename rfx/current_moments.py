@@ -34,12 +34,11 @@ Relation to the post-processing route
 The same current can be built after the run from recorded frequency-domain
 planes (DFT plane probes), in the frequency domain::
 
-    J_dft = curl(H_dft) - j w_tilde eps0 E_dft exp(-j w dt / 2),
+    J_dft = curl(H_dft) - j w_tilde eps0 E_dft,
     j w_tilde = (2j/dt) sin(w dt / 2)
 
 and drops the field left standing at the end of the record. The time-domain
-form here is the same quantity with a different time stamp and that one term
-kept. Writing ``A`` for this module's accumulator and ``E^N`` for the final
+form here is the same physical-clock quantity with that one term kept. Writing ``A`` for this module's accumulator and ``E^N`` for the final
 electric field, the algebra is exact::
 
     sum_n (E^{n+1} - E^n) e^{-j w (n+1/2) dt}
@@ -49,10 +48,9 @@ so that
 
     post_J_dft = exp(-j w dt (s - 1/2)) * ( A + eps0 E^N e^{-j w (N+1/2) dt} )
 
-where ``s`` is the time, in units of dt, that the recording runner's plane
-probes wrote on the state they sampled — 1 on the uniform lane, 0 on the
-graded-mesh lane, which is a measured difference between the two runners and
-not a choice (see :data:`UNIFORM_PLANE_STAMP_STEPS`).
+Here ``s = 1/2`` on both runners: H planes use the physical half-step,
+while E planes use the physical integer step. The former common E/H plane
+stamps (uniform 1, graded 0) were removed by M2.
 :func:`to_post_processing_convention` applies exactly that, and
 :func:`end_of_record_moments` supplies the end term from the final state.
 The stamp this module uses, ``(n + 1/2) dt``, is the physical one: the
@@ -67,6 +65,7 @@ is one of the 30 numbers a block keeps (3 components x 10 weights).
 
 from __future__ import annotations
 
+from rfx._grid_metric import field_index
 from typing import NamedTuple
 
 import numpy as np
@@ -664,7 +663,6 @@ def accumulate_current_moments(data, state, e_prev_slab,
     m = monitor
     acc, comp = data
     cdtype = acc.dtype
-    rdtype = jnp.finfo(cdtype).dtype
 
     curl_x, curl_y, curl_z = slab_curl_h(state, m)
     ex_new, ey_new, ez_new = slab_e_snapshot(state, m)
@@ -677,12 +675,9 @@ def accumulate_current_moments(data, state, e_prev_slab,
 
     moments = _reduce_to_blocks(m, jx, jy, jz).astype(cdtype)
 
-    _dt = jnp.asarray(dt, dtype=rdtype)
-    t = (jnp.asarray(step_idx, dtype=rdtype)
-         + jnp.asarray(m.half_step, dtype=rdtype)) * _dt
-    omega = jnp.asarray(2.0 * jnp.pi, dtype=rdtype) * jnp.asarray(
-        m.freqs, dtype=rdtype)
-    phase = jnp.exp(jnp.asarray(-1j, dtype=cdtype) * omega * t) * _dt
+    from rfx.measurement.dft import phase as dft_phase
+    phase = dft_phase(step_idx, m.freqs, dt, 'H', dtype=cdtype,
+                      time_shift=m.half_step-.5)
 
     val = moments[None, :, :, :] * phase[:, None, None, None]
     # Kahan compensated summation, as in ``accumulate_ntff``.
@@ -761,24 +756,19 @@ def end_of_record_moments(monitor: CurrentMomentMonitor, state, n_steps, dt):
     return mom[None, :, :, :] * ph[:, None, None, None]
 
 
-# Where each runner's DFT plane probe stamps the state it samples, in units
-# of dt, counting the scan step as n. Both runners sample the SAME state (E at
-# (n+1)dt, H at (n+1/2)dt) at the same slot, and then stamp it differently:
-#
-#   rfx/simulation.py      t = st.step * dt   -> (n+1) dt   (st.step is n+1
-#                                                 after update_e)
-#   rfx/nonuniform.py      t = step_idx * dt  ->  n dt
-#
-# These stamps differ by a full timestep. The constants let callers state
-# which record they hold rather than guess; see the recording expressions above.
-UNIFORM_PLANE_STAMP_STEPS = 1.0
-NONUNIFORM_PLANE_STAMP_STEPS = 0.0
+# The H-derived current's physical clock; E planes independently use n+1.
+# M2 history: formerly 1 (uniform) and 0 (NU), when both kinds shared a stamp.
+UNIFORM_PLANE_STAMP_STEPS = 0.5
+NONUNIFORM_PLANE_STAMP_STEPS = 0.5
 
 
-def plane_stamp_steps(grid) -> float:
-    """Which of the two stamps the DFT plane probes of this grid's runner use."""
-    return (NONUNIFORM_PLANE_STAMP_STEPS if getattr(grid, "dx_arr", None)
-            is not None else UNIFORM_PLANE_STAMP_STEPS)
+def plane_stamp_steps(grid=None) -> float:
+    """Physical H-plane/current offset, identical on both runners.
+
+    ``grid`` no longer selects anything; it stays so callers that pass
+    their grid (the stamp used to differ by runner) need no change.
+    """
+    return 0.5
 
 
 def to_post_processing_convention(accumulator, end_term, dt, freqs, *,
@@ -789,7 +779,7 @@ def to_post_processing_convention(accumulator, end_term, dt, freqs, *,
     term, and by nothing else; both are exact algebra, not corrections. The
     current here sits at ``(n + 1/2) dt`` because it is the difference of two
     electric fields; the post-processing route inherits whatever time its
-    plane probes wrote on the state, so::
+    H plane probes wrote on the state (physical default s=1/2), so::
 
         post_J = exp(-j w dt (s - 1/2)) * (A + eps0 E^N e^{-j w (N+1/2) dt})
 
@@ -959,7 +949,7 @@ def weight_dtype_for(sim):
             else np.float32)
 
 
-def monitor_for_simulation(sim, grid, periodic=None, *, overrides=None):
+def monitor_for_simulation(sim, grid, periodic=None, *, overrides=None, conductors=None):
     """The monitor a ``Simulation`` declared, realized against the built grid.
 
     ``Simulation.add_current_moment_monitor`` only records the declaration;
@@ -1001,8 +991,11 @@ def monitor_for_simulation(sim, grid, periodic=None, *, overrides=None):
         grid, corner_lo=corner_lo, corner_hi=corner_hi,
         block_size=block_size, freqs=freqs, order=order,
         periodic=periodic, dtype=weight_dtype_for(sim), **(extra or {}))
+    if conductors is None:
+        from rfx.model.conductors import realized_conductors
+        conductors = realized_conductors(sim, grid, nonuniform=hasattr(grid, 'dx_arr'))
     refuse_current_the_monitor_cannot_see(sim, grid, monitor,
-                                          overrides=overrides)
+                                         overrides=overrides, conductors=conductors)
     refuse_blocks_too_large(monitor, freqs)
     return monitor
 
@@ -1078,7 +1071,7 @@ def _outside_slab_refusal(monitor, grid, what, component, index):
 
 
 def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
-                                          overrides=None):
+                                          overrides=None, conductors=None):
     """Refuse, before the run, a model whose current the monitor cannot see.
 
     The monitor's pattern is the radiation of the ELECTRIC current inside its
@@ -1171,19 +1164,21 @@ def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
 
     nonuniform = getattr(grid, "dx_arr", None) is not None
     periodic = sim._periodic_flags()
-    sheet_specs, pec_sheets, pec_wires = [], [], []
     with jax.ensure_compile_time_eval(), _warnings.catch_warnings():
         _warnings.simplefilter("ignore")
-        if nonuniform:
-            materials, debye, lorentz, pec_mask = sim._assemble_materials_nu(
-                grid, sheet_specs=sheet_specs, pec_sheets=pec_sheets,
-                pec_wires=pec_wires)
-            kerr = None
-        else:
-            (materials, debye, lorentz, pec_mask, _shapes, _bshapes,
-             kerr) = sim._assemble_materials(
-                grid, sheet_specs=sheet_specs, pec_sheets=pec_sheets,
-                pec_wires=pec_wires)
+        from rfx.model.conductors import realized_conductors
+        model = conductors
+        # The census is the declared sim, not topology/mixed caller arrays.
+        # Kernel-only products lack the sim's dispersive/Kerr assembly too.
+        if (model is None or not model.assembly_from_sim
+                or any(is_tracer(v) for v in jax.tree.leaves(
+                    (model.materials, model.assembly)))):
+            model = realized_conductors(sim, grid, nonuniform=nonuniform)
+        if conductors is None:
+            conductors = model
+        sheet_specs, pec_sheets, pec_wires = model.sheet_specs, model.sheets, model.wires
+        materials, debye, lorentz, pec_mask = model.assembly[:4]
+        kerr = None if nonuniform else model.assembly[6]
         replace = {name: ov[name] for name in ("eps_r", "sigma", "mu_r")
                    if ov.get(name) is not None}
         if replace:
@@ -1210,7 +1205,8 @@ def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
                         monitor, grid, what, c,
                         tuple(v[0] for v in np.nonzero(bad)))
 
-        eps_c, sig_c = component_e_materials(materials, periodic)
+        from rfx.model.materials import electric_cell_sizes
+        eps_c, sig_c = component_e_materials(materials, periodic, cell_sizes=electric_cell_sizes(grid))
         check([(np.asarray(e) != 1.0) | (np.asarray(g) != 0.0)
                for e, g in zip(eps_c, sig_c)],
               "a dielectric or lossy material")
@@ -1225,9 +1221,11 @@ def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
                                           wires=tuple(pec_wires),
                                           periodic=periodic),
                   "a conductor (PEC volume, sheet or wire)")
-        if sheet_specs:
-            from rfx.materials.thin_conductor import build_sheet_impedance_ctx
-            ctx = build_sheet_impedance_ctx(sheet_specs, periodic=periodic)
+        if sheet_specs or conductors.sheet_operator is not None:
+            ctx = conductors.sheet_operator
+            if ctx is None:
+                owner = conductors if conductors.sheet_specs else model
+                ctx = owner.sheet_context(conductors.pec_edges)
             check((ctx.mask_ex, ctx.mask_ey, ctx.mask_ez),
                   "a surface-impedance sheet")
         for poles in (debye, lorentz):
@@ -1255,7 +1253,8 @@ def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
     fed = [np.zeros(tuple(int(v) for v in grid.shape), bool) for _ in range(3)]
     for pe in list(getattr(sim, "_ports", ()) or ()):
         c = "xyz".index(str(pe.component)[-1])
-        start = _index(grid, tuple(pe.position))
+        start = (_index(grid, tuple(pe.position)) if pe.extent is not None else
+                 field_index(grid, tuple(pe.position), pe.component))
         stop = start
         if getattr(pe, "extent", None) is not None:
             end = list(pe.position)
@@ -1268,7 +1267,7 @@ def refuse_current_the_monitor_cannot_see(sim, grid, monitor, *,
             fed[c][tuple(idx)] = True
     for spec_rlc in list(getattr(sim, "_lumped_rlc", ()) or ()):
         c = "xyz".index(str(spec_rlc.component)[-1])
-        fed[c][tuple(_index(grid, tuple(spec_rlc.position)))] = True
+        fed[c][tuple(field_index(grid, tuple(spec_rlc.position), spec_rlc.component))] = True
     check(fed, "a source, port or lumped element")
 
     for pe in list(getattr(sim, "_msl_ports", ()) or ()):

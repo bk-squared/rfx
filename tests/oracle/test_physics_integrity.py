@@ -254,7 +254,7 @@ def test_reciprocity_two_port():
     a, b, d = 0.12, 0.04, 0.03  # 120mm long waveguide
     f0 = (C0 / 2) * np.sqrt((1/0.04)**2 + (1/0.03)**2)  # TE10 of b×d cross-section
 
-    sim = Simulation(freq_max=f0 * 2, domain=(a, b, d), boundary="cpml",
+    sim = Simulation(freq_max=f0 * 2, domain=(a, b, d), boundary={"x": "cpml", "y": "pec", "z": "pec"},
                      cpml_layers=8, dx=0.002)
     sim.add_material("dielectric", eps_r=2.2)
     sim.add(Box((a/3, 0, 0), (2*a/3, b, d)), material="dielectric")
