@@ -30,7 +30,7 @@ KNOWN_ROWS = (
     ('P-waveguide', 'multi-device-uniform', 'L2', 'D5', '#1373 D5 (ports): settling witness arrays differ between entries'),
     ('P-waveguide', 'uniform', 'L2', 'D5', '#1373 D5 (ports): settling witness arrays differ between entries'),
     ('P-wire', 'graded', 'admission', 'A2', 'A2 expected: equal S requests give equal refusals; forward without an S request admits'),
-    ('P-wire', 'multi-device-uniform', 'admission', 'A2', '#1373 A2 (ports): run refuses the wire port that forward admits'),
+    ('P-wire', 'multi-device-uniform', 'admission', 'A2', 'A2 expected: equal S requests give equal refusals; forward without an S request admits'),
     ('P-wire', 'uniform', 'admission', 'A2', 'A2 expected: equal S requests give equal refusals; forward without an S request admits'),
 )
 
