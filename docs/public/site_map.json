@@ -9,8 +9,7 @@
         "rfx/showcase/gradient-cost",
         "rfx/showcase/descent-to-optimum",
         "rfx/showcase/forward-checks",
-        "rfx/showcase/grin-lens",
-        "rfx/showcase/waveguide-filter"
+        "rfx/showcase/grin-lens"
       ]
     },
     {

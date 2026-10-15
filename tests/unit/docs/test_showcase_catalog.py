@@ -39,7 +39,6 @@ PAGES = {
     "/rfx/showcase/gradient-cost/": "showcase/gradient-cost.mdx",
     "/rfx/showcase/descent-to-optimum/": "showcase/descent-to-optimum.mdx",
     "/rfx/showcase/grin-lens/": "showcase/grin-lens.mdx",
-    "/rfx/showcase/waveguide-filter/": "showcase/waveguide-filter.mdx",
     "/rfx/showcase/forward-checks/": "showcase/forward-checks.mdx",
 }
 
@@ -162,11 +161,9 @@ def page_numbers(route: str) -> list[str]:
     # The cost table's rows (a Markdown table: header and delimiter rows skipped).
     rows = [line for line in text.splitlines() if line.startswith("|")]
     chunks += [cell for row in rows[2:] for cell in row.split("|")]
-    if route in ("/rfx/showcase/grin-lens/", "/rfx/showcase/waveguide-filter/"):
+    if route == "/rfx/showcase/grin-lens/":
         values = [re.sub(r" (?:dBi|dB)$", "", v) for v in re.findall(r"<strong>(.*?)</strong>", text)]
-        if route.endswith("grin-lens/"):
-            values += re.findall(r"feed alone ([0-9.]+) dBi", text)
-        return values
+        return values + re.findall(r"feed alone ([0-9.]+) dBi", text)
     values = []
     for chunk in chunks:
         counts = re.findall(r"\b\d+ of \d+\b", chunk)

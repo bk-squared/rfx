@@ -4,14 +4,14 @@
   "share": {
     "base_url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/",
     "manifest_url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/manifest.json",
-    "manifest_sha256": "e1e8fbd3e4120beefadec946823ff33858df53d81cfbcc960400497e4bbe6ad6",
-    "created": "2026-10-05",
+    "manifest_sha256": "ee9ef3e2774a074594727101c2723550edbec862ff74c2733ae1274d08e772b5",
+    "created": "2026-10-16",
     "cite": "B. Kim, \"rfx: An End-to-End Differentiable 3-D FDTD Simulator for RF and Microwave Engineering,\" IEEE Trans. Microw. Theory Techn., 2026, doi:10.1109/TMTT.2026.3729863",
     "supersedes": {
       "batch": "7c02ad43c580",
-      "added": ["grin-lens/eligibility.json", "grin-lens/fd_float32.json", "grin-lens/grin_lens.mp4", "grin-lens/grin_lens_hero_4k.png", "grin-lens/grin_lens_poster.png", "grin-lens/grin_lens_site.png", "grin-lens/grin_lens_social.mp4", "grin-lens/grin_lens_social.png", "grin-lens/iterations.npz", "grin-lens/lens_cuts.png", "grin-lens/lens_iterations.png", "grin-lens/lens_mesh.png", "grin-lens/lens_slices.png", "grin-lens/mesh_trend.json", "grin-lens/result.json", "grin-lens/rlw_reported.json", "grin-lens/rlw_start.json", "waveguide-filter/eligibility.json", "waveguide-filter/fd_float32.json", "waveguide-filter/filter_maps.png", "waveguide-filter/filter_mesh.png", "waveguide-filter/filter_objective.png", "waveguide-filter/filter_sparams.png", "waveguide-filter/iterations.npz", "waveguide-filter/mesh_trend.json", "waveguide-filter/result.json", "waveguide-filter/rlw_reported.json", "waveguide-filter/rlw_start.json", "waveguide-filter/waveguide_filter.mp4", "waveguide-filter/waveguide_filter_hero_4k.png", "waveguide-filter/waveguide_filter_poster.png", "waveguide-filter/waveguide_filter_site.png", "waveguide-filter/waveguide_filter_social.mp4", "waveguide-filter/waveguide_filter_social.png"],
+      "added": ["grin-lens/eligibility.json", "grin-lens/fan_eligibility.json", "grin-lens/fan_iterations.npz", "grin-lens/fan_mesh_trend.json", "grin-lens/fan_result.json", "grin-lens/fd_float32.json", "grin-lens/grin_lens_fan.png", "grin-lens/grin_lens_film.mp4", "grin-lens/grin_lens_film_poster.png", "grin-lens/grin_lens_start.png", "grin-lens/iterations.npz", "grin-lens/lens_cuts.png", "grin-lens/lens_iterations.png", "grin-lens/lens_mesh.png", "grin-lens/lens_slices.png", "grin-lens/mesh_trend.json", "grin-lens/result.json", "grin-lens/rlw_reported.json", "grin-lens/rlw_start.json"],
       "replaced": [],
-      "note": "every file of 7c02ad43c580 byte-identical; two new cases (issue 1359)"
+      "note": "every file of 7c02ad43c580 byte-identical; one new case (issue 1359): the printable lens with its narrated film, three of its frames and the fan-beam design on the same block"
     }
   },
   "cases": [
@@ -200,13 +200,15 @@
           "result_json": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/result.json",
           "files": [
             {"name": "eligibility.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/eligibility.json", "bytes": 150, "sha256": "02fc7b2f6b6dccad62f81ea79a51d5e23f058e5b573220b5984555a2ba755bd9"},
+            {"name": "fan_eligibility.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/fan_eligibility.json", "bytes": 839, "sha256": "1ab3d75199471551af827a86f889a4648ad989f30611185164d2514b0d69fa15"},
+            {"name": "fan_iterations.npz", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/fan_iterations.npz", "bytes": 32804766, "sha256": "d2ae9afffe08da0f5ac04741b2b4046abfeb85fb2a15c56ad16754d22ad03167"},
+            {"name": "fan_mesh_trend.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/fan_mesh_trend.json", "bytes": 3665, "sha256": "a54aaf140a53d009837fef77ff4ea6df23c13339890c1253065f797481ee7944"},
+            {"name": "fan_result.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/fan_result.json", "bytes": 10708, "sha256": "5d2b2496bb7097f075e95d034be62fa27dda4be128d220246145f1af40615625"},
             {"name": "fd_float32.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/fd_float32.json", "bytes": 66368, "sha256": "c04372af01520c1c48920f0b98672319428bc82f663d8a5d1bf6151ae8907d4d"},
-            {"name": "grin_lens.mp4", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens.mp4", "bytes": 646760, "sha256": "b07a8b8f83d9ecb0b44ad929ecb7df737248b8590b0fff2d9c4d3027c735dbc9"},
-            {"name": "grin_lens_hero_4k.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens_hero_4k.png", "bytes": 1817356, "sha256": "58641bbb9fb5fa4ada23ee2135af812a186f84b4b09549cca3ed2e09f7e81bde"},
-            {"name": "grin_lens_poster.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens_poster.png", "bytes": 591375, "sha256": "fb7957c0a9c1f1fa2db723230de5e94890214020391371e97c9bea147558430d"},
-            {"name": "grin_lens_site.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens_site.png", "bytes": 591375, "sha256": "fb7957c0a9c1f1fa2db723230de5e94890214020391371e97c9bea147558430d"},
-            {"name": "grin_lens_social.mp4", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens_social.mp4", "bytes": 417664, "sha256": "12cc51bf24473f068b661a7379a10f8f331b8eb96a1b54bf203796e260f48c1a"},
-            {"name": "grin_lens_social.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens_social.png", "bytes": 294825, "sha256": "4e44288bf3598b42b20a0fdaec818f6c87fcfdc90505bde7574d711f1d1a9f29"},
+            {"name": "grin_lens_fan.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens_fan.png", "bytes": 448886, "sha256": "90eaff418643db35b5cefcc8a6c7dd9c69aa824cd4a2f8c4e0197625b33e5b83"},
+            {"name": "grin_lens_film.mp4", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens_film.mp4", "bytes": 16919740, "sha256": "8b87491c6d68ca14940a1484e1d466336f9df823140bd9fec6967e7ac61bfc97"},
+            {"name": "grin_lens_film_poster.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens_film_poster.png", "bytes": 567380, "sha256": "852495efabe08da474cae4973406e5d65770d51b6e30eea28ddc97248cb57895"},
+            {"name": "grin_lens_start.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens_start.png", "bytes": 573486, "sha256": "beafb8023943cf9f29bc6436bacf0ac343885713b056f3d555c13c33012b0f6c"},
             {"name": "iterations.npz", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/iterations.npz", "bytes": 16458366, "sha256": "a821633d8b04ed21b29829fcfc548d5ca1c20f98b564275814cb0670d9ef7449"},
             {"name": "lens_cuts.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/lens_cuts.png", "bytes": 402686, "sha256": "5e0665e487a09b8bb7157c7efc0de39cc1ab08858d38c7265456c3d0c68b972a"},
             {"name": "lens_iterations.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/lens_iterations.png", "bytes": 190886, "sha256": "cab5ae2c3b89396487f7940800c7771bc8f54b42d1e28fe580cf847cd003d6dc"},
@@ -224,47 +226,6 @@
         {"quantity": "feed boresight directivity at 10 GHz, 0.75 mm mesh", "printed": "7.5", "value": 7.4537224769592285, "unit": "dBi", "routes": ["/rfx/showcase/grin-lens/"], "from": "grin-lens/mesh_trend.json no_lens.boresight_dbi[-1][1]"},
         {"quantity": "minimum designed minus feed directivity, floored", "printed": "+11", "value": 11, "unit": "dB", "routes": ["/rfx/showcase/grin-lens/"], "from": "grin-lens/mesh_trend.json floor(min(reported.boresight_dbi[-1] - no_lens.boresight_dbi[-1]))"},
         {"quantity": "designed minus textbook GRIN directivity at 10 GHz", "printed": "+1.8", "value": 1.775552749633789, "unit": "dB", "routes": ["/rfx/showcase/grin-lens/"], "from": "grin-lens/mesh_trend.json reported.boresight_dbi[-1][1] - grin.boresight_dbi[-1][1]"}
-      ]
-    },
-    {
-      "id": "waveguide-filter",
-      "title": "A printed waveguide filter, designed by gradient",
-      "question": "Gradient descent through the FDTD solve and the waveguide S-matrix shapes an 81 mm ceramic-filled insert (1 ≤ εr ≤ 10) in WR-90, starting from a uniform fill, into a 10.0–10.6 GHz bandpass filter that meets a −15 dB return-loss and −25 dB rejection mask on three meshes.",
-      "route": "/rfx/showcase/waveguide-filter/",
-      "markdown": "/rfx/markdown/showcase/waveguide-filter.md",
-      "rfx_commits": ["9ed83eb804874feec1f05f0cee75992c05da2182"],
-      "sources": [
-        {
-          "folder": "waveguide-filter",
-          "base_url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/waveguide-filter/",
-          "rfx_commit": "9ed83eb804874feec1f05f0cee75992c05da2182",
-          "question": "WR-90 specification mask",
-          "result_json": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/waveguide-filter/result.json",
-          "files": [
-            {"name": "eligibility.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/waveguide-filter/eligibility.json", "bytes": 150, "sha256": "02fc7b2f6b6dccad62f81ea79a51d5e23f058e5b573220b5984555a2ba755bd9"},
-            {"name": "fd_float32.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/waveguide-filter/fd_float32.json", "bytes": 6721, "sha256": "73661128edafcb34c54bfb61aee0e365b5f7f51358ed1f02797eb8876a19f198"},
-            {"name": "filter_maps.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/waveguide-filter/filter_maps.png", "bytes": 89751, "sha256": "d4330b65301bfd16560dfe4a355e71ae7144b5cde6697f6beb7b2c9239551983"},
-            {"name": "filter_mesh.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/waveguide-filter/filter_mesh.png", "bytes": 173292, "sha256": "fedd62b695a74e7172a8279bbd14e48ae834764ed0a0e5a821f91673d8e12dbf"},
-            {"name": "filter_objective.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/waveguide-filter/filter_objective.png", "bytes": 94458, "sha256": "20808b5db7eb27a06fd34f018f7b7d826d4c675c7837962ca7091d02107e204e"},
-            {"name": "filter_sparams.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/waveguide-filter/filter_sparams.png", "bytes": 169804, "sha256": "5351f036923762cdb23305efc207e2a78e0c0f33e12c7e949dfa7382b5d22b14"},
-            {"name": "iterations.npz", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/waveguide-filter/iterations.npz", "bytes": 1978170, "sha256": "b35b8942733e90a841b7eb1c0ebfe6d695ec12dc31904a274958bbfd71aa9d16"},
-            {"name": "mesh_trend.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/waveguide-filter/mesh_trend.json", "bytes": 605, "sha256": "deae73201b1852d58dd0bbbb6b39de11d26acfb620235a11a0228c1115d0ac52"},
-            {"name": "result.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/waveguide-filter/result.json", "bytes": 5974, "sha256": "7eed9209c8ffa4aa8a301605c623d5a53dcd99ab308bcc1eb2635f26821d01ec"},
-            {"name": "rlw_reported.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/waveguide-filter/rlw_reported.json", "bytes": 15223, "sha256": "7edea6ad6d6a2e93fbca2c8d127b59ac256482e822099afa8d210ff78562a184"},
-            {"name": "rlw_start.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/waveguide-filter/rlw_start.json", "bytes": 14710, "sha256": "0e0dd511fc7be59862684c4e1140a08723a667ff64c5f549f00f2a92361e221d"},
-            {"name": "waveguide_filter.mp4", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/waveguide-filter/waveguide_filter.mp4", "bytes": 3615454, "sha256": "f217b38da007814ccf09b749ba0947a849183e2838d27162e06ad2c928d34754"},
-            {"name": "waveguide_filter_hero_4k.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/waveguide-filter/waveguide_filter_hero_4k.png", "bytes": 3422665, "sha256": "040b1d773878ad78a46370c67c882d13ec2c2f0869c371a6caabc803dc742126"},
-            {"name": "waveguide_filter_poster.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/waveguide-filter/waveguide_filter_poster.png", "bytes": 788886, "sha256": "0805310a4fdaeba0162ba18d9db995d3fad00a4a765816d3dffbcc7694e4a1d0"},
-            {"name": "waveguide_filter_site.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/waveguide-filter/waveguide_filter_site.png", "bytes": 788886, "sha256": "0805310a4fdaeba0162ba18d9db995d3fad00a4a765816d3dffbcc7694e4a1d0"},
-            {"name": "waveguide_filter_social.mp4", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/waveguide-filter/waveguide_filter_social.mp4", "bytes": 1277138, "sha256": "f2daaec8ac51c58a0ec2eb61d7cf029cf5777359e01e9f91e67dccba3d1cbdb4"},
-            {"name": "waveguide_filter_social.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/waveguide-filter/waveguide_filter_social.png", "bytes": 374481, "sha256": "be84a9abd774c1a75cdfdbfb7d1b6e53b8150b66d0c77c3627cef9c3d5499daf"}
-          ]
-        }
-      ],
-      "headlines": [
-        {"quantity": "meshes with the response inside the mask", "printed": "3 of 3", "value": 3, "unit": "", "routes": ["/rfx/showcase/waveguide-filter/", "/rfx/showcase/"], "from": "waveguide-filter/mesh_trend.json sum(mask_each_mesh)"},
-        {"quantity": "worst |S11| over 10.0–10.6 GHz, 0.318 mm mesh", "printed": "−16.6", "value": -16.641252517700195, "unit": "dB", "routes": ["/rfx/showcase/waveguide-filter/"], "from": "waveguide-filter/mesh_trend.json worst_passband_S11_db[-1]"},
-        {"quantity": "worst |S21| in the stopbands, 0.318 mm mesh", "printed": "−25.5", "value": -25.546722412109375, "unit": "dB", "routes": ["/rfx/showcase/waveguide-filter/"], "from": "waveguide-filter/mesh_trend.json worst_stopband_S21_db[-1]"}
       ]
     }
   ]
