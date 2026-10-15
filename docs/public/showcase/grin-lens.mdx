@@ -10,8 +10,8 @@ A dipole above a 30 mm ground plate has a broad beam: 7.5 dBi toward boresight a
 highest on the axis and falls toward the rim, so that the central rays are delayed
 more than the edge rays and the phase front leaving the lens is flat. Here the lens
 is 90 × 90 × 30 mm, 45 mm above the dipole, and its permittivity is limited to what
-PLA at variable infill can print, 1 ≤ εr ≤ 2.7, in 3 mm pixels: 2250 free variables
-after the feed's two mirror symmetries. Adam raises the boresight directivity
+PLA at variable infill can print, 1 ≤ εr ≤ 2.7, in 3 mm pixels: 9,000 cells, 2,250 free
+variables after the feed's two mirror symmetries. Adam raises the boresight directivity
 averaged over 9.5, 10 and 10.5 GHz, with the gradient taken through the FDTD solve
 and the near-to-far-field transform.
 
@@ -88,10 +88,11 @@ uniform block.
   <img src="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens_fan.png" loading="lazy" alt="The block after the fan-beam design, with its radiation lobe wide in one plane: the lowest directivity over ±30° in that plane is 10.6 dBi at 10 GHz" />
 </figure>
 
-Solved again on the 1.5, 1.0 and 0.75 mm meshes, the wide plane is flat within 1 dB
-over ±30° at every frequency. On the finest mesh its lowest value is 10.0 / 10.6 /
-10.7 dBi at 9.5 / 10 / 10.5 GHz, and the half-power beamwidth in the narrow plane is
-26.9° / 26.1° / 24.8°. The targets declared before the run were 2 dB ripple, 11.0 dBi
+Solved again on the 1.5, 1.0 and 0.75 mm meshes, the directivity over ±30° in the wide
+plane varies by 0.98 / 0.66 / 0.64 dB at 9.5 / 10 / 10.5 GHz on the finest mesh, and
+less as the mesh is refined (1.14, 1.02 and 0.98 dB at 9.5 GHz). On the finest mesh its
+lowest value is 10.0 / 10.6 / 10.7 dBi, and the half-power beamwidth in the narrow
+plane is 26.9° / 26.1° / 24.8°. The targets declared before the run were 2 dB ripple, 11.0 dBi
 and 23°: the ripple target is met, the level is 0.3–0.95 dB short and the narrow
 plane 1.8–3.9° wider than asked. The same gradient, simulation-time and mesh checks
 as for the lens passed.
@@ -109,6 +110,7 @@ main 9ed83eb8 (2026-10-05). The film is rendered with Blender
   <li><a href="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/mesh_trend.json">mesh_trend.json</a></li>
   <li><a href="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/fan_result.json">fan_result.json</a></li>
   <li><a href="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/fan_mesh_trend.json">fan_mesh_trend.json</a></li>
+  <li><a href="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/fan_iterations.npz">fan_iterations.npz</a></li>
 </ul>
 
 ## Run it

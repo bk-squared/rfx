@@ -91,6 +91,8 @@ def assemble(args):
         else:
             sources.update({name: args.lens_film_dir / source for name, source in LENS_FILM.items()})
             sources.update({name: runs / run / source for name, (run, source) in FAN.items()})
+            # The fan run's iterates (the film's fan counters) are not in the archive: 32 MB, kept on NFS.
+            sources['fan_iterations.npz'] = args.fan_iterations
         for name, source in sources.items():
             shutil.copyfile(source, dest / name)
         if short == 'lens' and digest(dest / 'grin_lens_film.mp4')['sha256'] != LENS_FILM_SHA256:
@@ -146,6 +148,8 @@ def main():
                         help='directory with figures/ and films/')
     parser.add_argument('--lens-film-dir', type=Path, required=True,
                         help='directory with lens_film.mp4 and output frames 1920, 2340 and 2760 as PNG')
+    parser.add_argument('--fan-iterations', type=Path, required=True,
+                        help='iterations.npz of the fan main run 20261010T162447Z-dbf41692-main-fan')
     parser.add_argument('--output-dir', type=Path, default=LOCAL / 'share/f3a80981ec4b')
     parser.add_argument('--allow-placeholders', action='store_true')
     assemble(parser.parse_args())
