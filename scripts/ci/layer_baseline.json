@@ -16,8 +16,7 @@
       "D1": [],
       "D2": [
         "Simulation.auto",
-        "Simulation.tfsf_box_indices",
-        "Simulation.validate_subgrid"
+        "Simulation.tfsf_box_indices"
       ]
     },
     "rfx/api/_execute.py": {
