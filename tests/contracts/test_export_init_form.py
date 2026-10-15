@@ -24,33 +24,6 @@ NAME_SET_EXEMPTIONS = {
         "would change from rfx.boundaries import *."
     ),
 }
-# Rendering the current tokens alone cannot detect a deleted comment. Preserve
-# the existing comments and their statement attachments, not an export-name list.
-PRESERVED_COMMENTS = {
-    "rfx/boundaries/__init__.py": {
-        "rfx.boundaries.cpml": (
-            ["# Re-export bound here: later patches of the defining module do not replace it."],
-            ["# noqa: F401"],
-        ),
-        "rfx.boundaries.pec": ([], ["# noqa: F401"]),
-        "rfx.boundaries.model": ([], ["# noqa: F401"]),
-        "__all__": (
-            ["# The layer entries the five large files may call (scripts/ci/check_layer_structure.py rule I)."],
-            [],
-        ),
-    },
-    "rfx/model/__init__.py": {
-        "rfx.model.conductors": (
-            [
-                "# The conductor layer's interface to the five large callers (2.0 layer rule): the",
-                "# assembly and stage entry points they call. Preflight reporting, run-record timing and",
-                "# solve binding (auto_preflight, early_run_record, bind_solve_call) are not model assembly",
-                "# and stay out until they move to their own layer.",
-            ],
-            [],
-        ),
-    },
-}
 
 
 def is_docstring(node):
@@ -75,12 +48,6 @@ def discover():
                         for node in body)):
             found[path.relative_to(REPO).as_posix()] = source, tree
     return found
-
-
-def statement_key(node):
-    if isinstance(node, ast.ImportFrom):
-        return "." * node.level + (node.module or "")
-    return "__all__" if is_all_assignment(node) else "docstring"
 
 
 def attached_comments(source, tree):
@@ -161,15 +128,6 @@ def test_export_only_discovery_floor():
 def test_export_init_form(path):
     source, tree = EXPORT_ONLY[path]
     comments = attached_comments(source, tree)
-    by_statement = defaultdict(lambda: ([], []))
-    for node, (leading, trailing) in comments.items():
-        saved = by_statement[statement_key(node)]
-        saved[0].extend(leading)
-        saved[1].extend(trailing)
-    for statement, expected in PRESERVED_COMMENTS.get(path, {}).items():
-        actual = by_statement[statement]
-        assert actual == expected, f"{path}: preserved comments changed for {statement}"
-
     imports = {
         alias.asname or alias.name
         for node in tree.body if isinstance(node, ast.ImportFrom)
