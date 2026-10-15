@@ -23,6 +23,7 @@ from rfx.stepping.step_count import steps_for_periods
 from rfx._precision import resolve_field_dtype
 
 import math
+import warnings
 from dataclasses import dataclass
 from typing import Callable
 
@@ -71,6 +72,40 @@ def _latent_to_eps(latent: jnp.ndarray, eps_min: float, eps_max: float) -> jnp.n
     return eps_min + (eps_max - eps_min) * jax.nn.sigmoid(latent)
 
 
+def _value_and_grad_with_fallback(fn: Callable, jit: bool, caller: str):
+    """Compile once, falling back only for a first-call trace-time host read."""
+    eager = jax.value_and_grad(fn)
+    if not jit:
+        return eager
+    compiled = jax.jit(eager)
+    first_call = True
+    active = compiled
+
+    def evaluate(*args, **kwargs):
+        nonlocal first_call, active
+        if not first_call:
+            return active(*args, **kwargs)
+        first_call = False
+        try:
+            return compiled(*args, **kwargs)
+        except (jax.errors.ConcretizationTypeError,
+                jax.errors.TracerArrayConversionError,
+                jax.errors.TracerBoolConversionError,
+                jax.errors.TracerIntegerConversionError) as exc:
+            active = eager
+            warnings.warn(
+                f"{caller}: {type(exc).__name__}: {str(exc).splitlines()[0]}; "
+                "the objective reads a traced value on the host; "
+                "every iteration now recompiles the whole simulation (on a board-sized "
+                "model most of the iteration's wall time); pass jit=False to choose "
+                "this path without a warning, or make the objective traceable",
+                UserWarning, stacklevel=2,
+            )
+            return eager(*args, **kwargs)
+
+    return evaluate
+
+
 def _adam_multistart(
     cost_fn: Callable,
     latent_inits,
@@ -84,7 +119,7 @@ def _adam_multistart(
     eps_adam: float = 1e-8,
     verbose: bool = False,
     it_count: list | None = None,
-    jit: bool = False,
+    jit: bool = True,
 ):
     """Best-of multi-start Adam with optional best-iterate + step-clamp.
 
@@ -92,9 +127,9 @@ def _adam_multistart(
     (issue #171).  The three knobs are all OPT-IN and, with a single
     start (``len(latent_inits) == 1``), ``best_iterate=False`` and
     ``step_clamp=None``, this runs the hand-rolled Adam loop with the exact
-    same arithmetic as the legacy inline ``optimize()`` loop — the default
-    ``optimize()`` path is therefore byte-identical to before this helper
-    existed (see ``tests/unit/autodiff/test_optimize_multistart.py`` bit-identity gate).
+    same arithmetic as the legacy inline ``optimize()`` loop. With
+    ``jit=False`` the path is byte-identical to before this helper existed
+    (see ``tests/unit/autodiff/test_optimize_multistart.py`` bit-identity gate).
 
     Unlike the example, the step-clamp here is GENERIC: it bounds the L2
     norm of the DoF (latent) update vector, rescaling the whole step by
@@ -128,7 +163,8 @@ def _adam_multistart(
         so the ``forward()`` first-call banner fires exactly once.
     jit : bool
         Wrap ``jax.value_and_grad(cost_fn)`` in ``jax.jit`` once per call
-        (#1225); see :func:`optimize`.  Default False = the legacy eager loop.
+        by default; see :func:`optimize`. First-call host-read tracing errors
+        fall back to the eager loop with one warning. ``jit=False`` is eager.
 
     Returns
     -------
@@ -148,12 +184,7 @@ def _adam_multistart(
     if step_clamp is not None and step_clamp <= 0:
         raise ValueError(f"optimize: step_clamp must be > 0, got {step_clamp}")
 
-    grad_fn = jax.value_and_grad(cost_fn)
-    if jit:
-        # #1225: compiled once per call, reused by every iteration and every
-        # start. Un-jitted, each call of ``grad_fn`` compiles the whole FDTD
-        # solve again. ``cost_fn`` is then traced, not run.
-        grad_fn = jax.jit(grad_fn)
+    grad_fn = _value_and_grad_with_fallback(cost_fn, jit, "optimize")
 
     def _run_one(init_lat):
         m = jnp.zeros_like(init_lat)
@@ -273,7 +304,7 @@ def optimize(
     best_iterate: bool = False,
     step_clamp: float | None = None,
     seed: int = 0,
-    jit: bool = False,
+    jit: bool = True,
 ) -> OptimizeResult:
     """Run gradient-based optimization on a design region.
 
@@ -357,23 +388,10 @@ def optimize(
         PRNG seed for the extra ``n_starts`` restart inits (deterministic /
         reproducible).  Unused when ``n_starts=1``.
     jit : bool
-        Compile the loss and its gradient once per ``optimize()`` call and
-        reuse the program in every iteration and every start (#1225).
-        Default False runs ``jax.value_and_grad`` eagerly, which compiles
-        the whole FDTD solve again on every iteration — on a board-sized
-        model most of the iteration's wall time.
-
-        With ``jit=True`` the objective is traced, not run, so it must not
-        read a traced value on the host (``float(...)``, ``np.asarray(...)``,
-        a Python ``if`` on an array). Wire ports on either mesh and lumped
-        ports on a graded mesh trace since #1225. Known exception: a model
-        with an MSL port —
-        its port set-up reads the realized PEC mask on the host
-        (``rfx/sources/msl_port.py``) and the MSL wave-decomposition
-        extractor converts a grid spacing with ``float()``
-        (``rfx/sparams/_common.py:143``); under ``jit=True`` the call stops
-        with ``TracerArrayConversionError`` or ``ConcretizationTypeError``.
-        Use the default there.
+        Default True compiles the loss and gradient once per call, reused
+        across iterations and starts. First-call host-read tracing errors
+        fall back to eager execution with one warning naming the reason.
+        ``jit=False`` selects the eager loop without a fallback warning.
 
         The jitted loss and gradient can differ from the eager ones in the
         last float32 bits, because XLA compiles the whole step as one
@@ -729,6 +747,7 @@ def progressive_optimize(
     emit_time_series: bool = True,
     n_warmup: int = 0,
     distributed: bool = False,
+    jit: bool = True,
 ) -> ProgressiveOptimizeResult:
     """Progressive multi-resolution inverse design (issue #42).
 
@@ -758,6 +777,11 @@ def progressive_optimize(
         see :func:`optimize`'s own ``n_warmup`` entry for the full
         behaviour (issue #40/#626): an approximation on non-uniform
         meshes, a fail-loud ``NotImplementedError`` on uniform ones.
+
+    jit : bool
+        Default True compiles each stage's loss and gradient once. First-call
+        host-read tracing errors fall back with one warning per stage.
+        ``jit=False`` selects the eager loop without a fallback warning.
 
     Returns
     -------
@@ -839,6 +863,7 @@ def progressive_optimize(
             emit_time_series=emit_time_series,
             n_warmup=n_warmup,
             distributed=distributed,
+            jit=jit,
         )
 
         stage_results.append(stage_result)

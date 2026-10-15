@@ -308,13 +308,13 @@ def test_path_topology(monkeypatch, kind):
         seen.append(result)
         return result
     monkeypatch.setattr(products, 'prepare_port_occupancy', prepare)
-    monkeypatch.setattr(jax, 'value_and_grad', lambda fn: lambda x: (fn(x), jnp.zeros_like(x)))
+    monkeypatch.setattr(jax, 'value_and_grad', lambda fn: lambda x, *args: (fn(x, *args), jnp.zeros_like(x)))
     def objective(result):
         assert sum(d.code == 'source_under_design_occupancy' for d in result.diagnostics) == 1
         raise Captured
     with pytest.raises(Captured):
         topology_optimize(sim, region, objective, n_iterations=1,
-            init_density=jnp.full((5,5,5), .5), skip_preflight=True, verbose=False)
+            init_density=jnp.full((5,5,5), .5), skip_preflight=True, verbose=False, jit=False)
     assert seen
     if kind == 'rc':
         for root, occ in seen:
