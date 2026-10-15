@@ -153,10 +153,11 @@ def _radiator_power(full, *, wire=False, high_face=False):
     # physical clock. No S, port-power helper, or mirror factor enters P.
     owner = next(o for o in build_measurement_plan(sim, grid, n_steps=768, path='run_uniform').owners
                  if o.id == 'port:0:mode:0')
-    records = np.asarray(result.sparam_time_records[0])
-    channels = {c.name: records[:, i] for i, c in enumerate(owner.channels)}
+    record = result.sparam_time_records[0]
+    assert record.channels == tuple(c.name for c in owner.channels)
+    channels = {name: np.asarray(record[name]) for name in record.channels}
     voltage = 'V_port' if wire else 'V'  # Whole-gap wire voltage, not midpoint voltage.
-    spectra = {name: (np.exp(-2j*np.pi*bins[:, None]*(np.arange(len(records))+offset)*result.dt)
+    spectra = {name: (np.exp(-2j*np.pi*bins[:, None]*(np.arange(record.samples.shape[0])+offset)*result.dt)
                      @ channels[name]) * result.dt for name, offset in [(voltage, 1.), ('I', .5)]}
     power = .5*np.real(spectra[voltage]*np.conj(spectra['I']))
     # flux_spectrum returns Re(E x H*); .5 puts it in the same power units.
