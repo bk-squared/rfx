@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Assemble the local f3a80981ec4b share batch; never upload anything.
 
-Run with --hero-dir, --archive-root and --assets-dir; missing heroes require --allow-placeholders. All output
-is restricted to .local_checks. Old assets are downloaded serially with curl and
+Run with --hero-dir, --archive-root, --assets-dir and --lens-film-dir; missing heroes require
+--allow-placeholders. All output is restricted to .local_checks. Old assets are downloaded serially with curl and
 accepted only after matching both the old manifest's size and SHA-256.
 """
 from __future__ import annotations
@@ -24,9 +24,18 @@ RUNS = {
     'grin-lens': ('lens', '20261004T182324Z-b184fc8e-main', '20261004T205610Z-b184fc8e-resolve', '4705f69e'),
     'waveguide-filter': ('filter', '20261006T162805Z-b8119151-main', '20261006T191443Z-b8119151-resolve', '9ed83eb8'),
 }
-#: Cases whose film is published.
-FILMS = ('lens', 'filter')
+#: Cases whose PyVista loop and composed hero stills are published.
+FILMS = ('filter',)
 SIZES = {'site': (1920, 1080), 'social': (1080, 1350), 'hero_4k': (3840, 2160)}
+#: The lens page shows the narrated film instead (rfx-research ``showcase/film``, composed at 9b87e97ce by remi
+#: job showcase-lens-final-compose-h2zrb) and three of its output frames: published name -> name in --lens-film-dir.
+LENS_FILM = {'grin_lens_film.mp4': 'lens_film.mp4', 'grin_lens_film_poster.png': 'frame_2340.png',
+             'grin_lens_start.png': 'frame_1920.png', 'grin_lens_fan.png': 'frame_2760.png'}
+LENS_FILM_SHA256 = '8b87491c6d68ca14940a1484e1d466336f9df823140bd9fec6967e7ac61bfc97'
+#: The fan-beam objective on the same lens (amendment 7): its main run and three-mesh resolve.
+FAN = {'fan_result.json': ('20261010T162447Z-dbf41692-main-fan', 'result.json'),
+       'fan_mesh_trend.json': ('20261010T170039Z-dbf41692-resolve-fan', 'mesh_trend.json'),
+       'fan_eligibility.json': ('20261010T170039Z-dbf41692-resolve-fan', 'eligibility.json')}
 
 
 def digest(path):
@@ -79,10 +88,15 @@ def assemble(args):
         if short in FILMS:
             sources.update({prefix + suffix: args.assets_dir / 'films' / (short + suffix)
                             for suffix in ('.mp4', '_poster.png', '_social.mp4')})
+        else:
+            sources.update({name: args.lens_film_dir / source for name, source in LENS_FILM.items()})
+            sources.update({name: runs / run / source for name, (run, source) in FAN.items()})
         for name, source in sources.items():
             shutil.copyfile(source, dest / name)
+        if short == 'lens' and digest(dest / 'grin_lens_film.mp4')['sha256'] != LENS_FILM_SHA256:
+            raise ValueError('grin_lens_film.mp4 is not the composed final film')
         files = list(sources)
-        for kind, size in SIZES.items():
+        for kind, size in SIZES.items() if short in FILMS else ():
             name = f'{prefix}_{kind}.png'
             source = args.hero_dir / name
             marker = dest / f'PLACEHOLDER_{name}'
@@ -105,7 +119,8 @@ def assemble(args):
         added.extend(f'{folder}/{name}' for name in sorted(files))
     manifest['supersedes'] = {
         'batch': '7c02ad43c580', 'added': added, 'replaced': [],
-        'note': 'every file of 7c02ad43c580 byte-identical; two new cases (issue 1359)',
+        'note': 'every file of 7c02ad43c580 byte-identical; two new cases (issue 1359); the lens case carries the '
+                'narrated film and three of its frames instead of a loop and composed stills',
     }
     fetch('index.html', cache / 'index.html')
     index = (cache / 'index.html').read_text()
@@ -129,6 +144,8 @@ def main():
                         help='records directory holding 20261004-showcase-{lens,filter}/runs')
     parser.add_argument('--assets-dir', type=Path, required=True,
                         help='directory with figures/ and films/')
+    parser.add_argument('--lens-film-dir', type=Path, required=True,
+                        help='directory with lens_film.mp4 and output frames 1920, 2340 and 2760 as PNG')
     parser.add_argument('--output-dir', type=Path, default=LOCAL / 'share/f3a80981ec4b')
     parser.add_argument('--allow-placeholders', action='store_true')
     assemble(parser.parse_args())

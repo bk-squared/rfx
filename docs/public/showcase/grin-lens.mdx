@@ -16,7 +16,11 @@ averaged over 9.5, 10 and 10.5 GHz, with the gradient taken through the FDTD sol
 and the near-to-far-field transform.
 
 <figure data-rfx="media">
-  <img src="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens_site.png" alt="A cut-open graded-index lens above a small dipole feed and its reflector at iteration 5 of 150: each cell is more opaque where its permittivity is higher and coloured by how boresight directivity would change with more permittivity (red helps, blue hurts), with the radiation lobe (radius proportional to gain in dBi) rising through it; beside it the boresight directivity of 15.8 dBi, the E-plane pattern against the start and the final design, and directivity over the iterations" />
+  <video controls playsInline preload="metadata" poster="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens_film_poster.png" aria-label="A narrated film of the design: how rfx computes a gradient through the simulation, the lens cells changing over 150 iterations with their gradient colour and the radiation lobe, and the same block optimised again for a fan beam">
+    <source src="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens_film.mp4" type="video/mp4" />
+    <a href="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens_film.mp4">Download the film (MP4, 1920×1080, 99 s)</a>.
+  </video>
+  <figcaption>The design in 99 seconds, with narration. Music: Haydn, String Quartet Op. 64 No. 5 “The Lark”, II. Adagio cantabile, Musopen String Quartet (public domain).</figcaption>
 </figure>
 
 <div data-rfx="tiles">
@@ -25,20 +29,18 @@ and the near-to-far-field transform.
   <div><strong>+1.8 dB</strong> <span>over the textbook GRIN lens of the same size and material, 10 GHz</span></div>
 </div>
 
-<figure data-rfx="media">
-  <video data-rfx="loop" autoplay muted loop playsInline preload="metadata" poster="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens_poster.png" aria-label="The same frame over the descent: the lens cells and their gradient colour, the radiation lobe, the E-plane pattern and boresight directivity from the start to the final design">
-    <source src="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens.mp4" type="video/mp4" />
-    <a href="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens.mp4">Download the loop (MP4)</a>.
-  </video>
-</figure>
-
 ## What happened
 
-At the start, every pixel has εr = 1.85 and the gradient already says where to
+At the start, every pixel has εr = 1.85; this uniform block gives 12.2 dBi at
+10 GHz on the 1.0 mm mesh the optimiser runs on. The gradient already says where to
 change: raising the permittivity near the axis raises boresight directivity, and
 raising it near the rim lowers it. The descent grows that profile into a
 graded-index lens, εr 2.6 on the axis falling to about 1 at the corners, with a
 ring structure in the layer nearest the feed.
+
+<figure data-rfx="media">
+  <img src="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens_start.png" loading="lazy" alt="The uniform block cut open above the dipole at the start, 12.2 dBi: cells coloured by the gradient, red where more permittivity would raise boresight directivity (near the axis) and blue where it would lower it (toward the rim)" />
+</figure>
 
 Solved again without the optimiser on 1.5, 1.0 and 0.75 mm meshes, the lens gives
 18.5 / 19.0 / 18.8 dBi at 9.5 / 10 / 10.5 GHz on the finest mesh. The feed alone
@@ -73,16 +75,40 @@ before any run.
   <img src="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/lens_mesh.png" loading="lazy" alt="Boresight directivity of each design on the 1.5, 1.0 and 0.75 mm meshes" />
 </figure>
 
-<p data-rfx="note">Computed with rfx main 4705f69e (2026-10-04); the numbers will be recomputed after rfx 2.0. The feed is a soft source, so these are directivities, not realized gains; the lens is a lossless dielectric.</p>
+## A second goal: a fan beam
+
+The same block, feed and permittivity range can serve another pattern. The second
+design asks for a fan beam, wide in the plane across the dipole and narrow in the
+other, the kind of coverage an automotive radar uses for its detection region. The
+objective is the ripple of directivity over ±30° in the wide plane minus its lowest
+value there, averaged over the three frequencies; 300 iterations start from the same
+uniform block.
+
+<figure data-rfx="media">
+  <img src="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens_fan.png" loading="lazy" alt="The block after the fan-beam design, with its radiation lobe wide in one plane: the lowest directivity over ±30° in that plane is 10.6 dBi at 10 GHz" />
+</figure>
+
+Solved again on the 1.5, 1.0 and 0.75 mm meshes, the wide plane is flat within 1 dB
+over ±30° at every frequency. On the finest mesh its lowest value is 10.0 / 10.6 /
+10.7 dBi at 9.5 / 10 / 10.5 GHz, and the half-power beamwidth in the narrow plane is
+26.9° / 26.1° / 24.8°. The targets declared before the run were 2 dB ripple, 11.0 dBi
+and 23°: the ripple target is met, the level is 0.3–0.95 dB short and the narrow
+plane 1.8–3.9° wider than asked. The same gradient, simulation-time and mesh checks
+as for the lens passed.
+
+<p data-rfx="note">Computed with rfx main 4705f69e (2026-10-04); the numbers will be recomputed after rfx 2.0. The feed is a soft source, so these are directivities, not realized gains; the lens is a lossless dielectric. The fan-beam design was computed with rfx
+main 9ed83eb8 (2026-10-05). The film is rendered with Blender
+(Cycles) from the stored iterates; every number in it comes from the records below.</p>
 
 ## Downloads
 
 <ul data-rfx="downloads">
-  <li><a href="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens_social.mp4">grin_lens_social.mp4</a></li>
+  <li><a href="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens_film.mp4">grin_lens_film.mp4</a></li>
   <li><a href="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/result.json">result.json</a></li>
   <li><a href="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/iterations.npz">iterations.npz</a></li>
   <li><a href="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/mesh_trend.json">mesh_trend.json</a></li>
-  <li><a href="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens_social.png">grin_lens_social.png</a></li>
+  <li><a href="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/fan_result.json">fan_result.json</a></li>
+  <li><a href="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/fan_mesh_trend.json">fan_mesh_trend.json</a></li>
 </ul>
 
 ## Run it
