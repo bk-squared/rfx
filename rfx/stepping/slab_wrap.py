@@ -30,6 +30,23 @@ def select_step(*, cpml=False, debye=False, lorentz=False, ports=False,
         ports, dft, flux, ntff, pmc, periodic_x, cpml))) else "legacy"
 
 
+def record_step_kind(grid, debye_spec, lorentz_spec, boundary_spec):
+    """Record the runner's choice before any slab operands are staged."""
+    if grid.step_kind is not None:
+        return grid
+    return grid._replace(step_kind=select_step(
+        cpml=bool(grid.cpml_layers), debye=debye_spec is not None,
+        lorentz=lorentz_spec is not None, pmc=bool(boundary_spec.pmc_faces())))
+
+
+def runner_step_kind(grid, **flags):
+    """The step a direct runner call takes: the one the grid recorded, else the decision from flags."""
+    step_kind = grid.step_kind
+    if step_kind is None:
+        step_kind = select_step(**flags)
+    return step_kind
+
+
 def _place(value, mesh):
     return place(value, NamedSharding(mesh, P('x')))
 

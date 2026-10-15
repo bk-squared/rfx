@@ -404,8 +404,6 @@
     },
     "rfx/runners/distributed_nu.py": {
       "S": [
-        "_exchange_e_ghosts_nu",
-        "_exchange_h_ghosts_nu",
         "run_nonuniform_distributed_pec"
       ],
       "M": []

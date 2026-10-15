@@ -48,6 +48,7 @@ from rfx.runners._distributed_common import (
 
 from rfx import _realized
 from rfx.stepping import segmented_scan
+from rfx.stepping.slab_wrap import record_step_kind, runner_step_kind
 from rfx.stepping.slab import (
     Slab, Fill, cut, cut_poles, cut_pole_coeffs, owned_values, forward_sharding as _forward_sharding,
 )
@@ -288,14 +289,7 @@ class ShardedNUGrid(_NamedTuple):
     global_grid: object = None
     step_kind: str | None = None
 
-    def select_step(self, debye_spec, lorentz_spec, boundary_spec):
-        """Record the runner's choice before any slab operands are staged."""
-        from rfx.stepping.slab_wrap import select_step
-        if self.step_kind is not None:
-            return self
-        return self._replace(step_kind=select_step(
-            cpml=bool(self.cpml_layers), debye=debye_spec is not None,
-            lorentz=lorentz_spec is not None, pmc=bool(boundary_spec.pmc_faces())))
+    select_step = record_step_kind  # Record the runner's choice before any slab operands are staged.
 
 
 def split_1d_with_ghost(arr: "np.ndarray", n_devices: int, nx_per: int,
@@ -428,22 +422,10 @@ def shard_pec_mask_x_slab(global_mask, sharded_grid: ShardedNUGrid):
 _exchange_component_nu_shmap = exchange_component_shmap
 
 
-def _exchange_h_ghosts_nu(state: FDTDState, mesh, n_devices: int, *, ranks, local=False) -> FDTDState:
-    """Refill only the Hy/Hz left ghosts consumed by the E curl."""
-    return exchange_h_yee_shmap(state, mesh, n_devices, ranks=ranks, local=local)
-
-
-def _exchange_e_ghosts_nu(state: FDTDState, mesh, n_devices: int, *, ranks, local=False) -> FDTDState:
-    """Refill only Ey/Ez right ghosts from the neighbour ranks' real rows.
-
-    Placement contract: this is the LAST stage of the E half-step in
-    :func:`run_nonuniform_distributed_pec` — after sources and after every
-    PEC stage — so a ghost row is a copy of the owner's FINISHED real row.
-    The H update at a rank's last real cell reads ``Ey``/``Ez`` on the
-    right ghost plane; a copy taken before the owner zeroed its PEC edges
-    there is stale (#931 seam-cell divergence).
-    """
-    return exchange_e_yee_shmap(state, mesh, n_devices, ranks=ranks, local=local)
+# Module-local aliases of the shared exchanges (placement contract on exchange_e_yee_shmap);
+# tests patch these names on this module.
+_exchange_h_ghosts_nu = exchange_h_yee_shmap
+_exchange_e_ghosts_nu = exchange_e_yee_shmap
 
 
 # #1038 leg 3. ``_apply_pec_face_nu_shmap``'s body now lives as
@@ -923,11 +905,7 @@ def run_nonuniform_distributed_pec(
             raise ValueError(f"distributed_nu: unsupported source component {source.component}")
     probes = list(probes) if probes is not None else []
 
-    from rfx.stepping.slab_wrap import select_step
-    step_kind = sharded_grid.step_kind
-    if step_kind is None:
-        step_kind = select_step(cpml=use_cpml, debye=use_debye, lorentz=use_lorentz, pmc=bool(pmc_faces))
-    if step_kind == "wrapped":
+    if runner_step_kind(sharded_grid, cpml=use_cpml, debye=use_debye, lorentz=use_lorentz, pmc=bool(pmc_faces)) == "wrapped":
         from rfx.runners._distributed_nu_wrapped import run_wrapped
         return run_wrapped(sharded_grid, sharded_materials, sharded_pec_mask,
             n_steps, sources, probes, devices=devices, occupancy=sharded_pec_occupancy,

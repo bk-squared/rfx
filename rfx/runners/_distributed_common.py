@@ -354,6 +354,7 @@ def exchange_h_yee_shmap(state, mesh, n_devices, *, ranks, local=False):
 
     The second-order Yee E curl reads only these two x-neighbours. Keep
     physical-boundary ghosts verbatim; there is no wraparound on this lane.
+    Refill only the Hy/Hz left ghosts consumed by the E curl.
     """
     if n_devices == 1:
         return state
@@ -377,6 +378,15 @@ def exchange_e_yee_shmap(state, mesh, n_devices, *, ranks, local=False):
     The second-order Yee H curl reads only these two x-neighbours. Ex/Hx
     and the opposite ghosts are dead: local ghost updates are overwritten
     by the next live exchange before a real cell can consume them.
+
+    Refill only Ey/Ez right ghosts from the neighbour ranks' real rows.
+
+    Placement contract: this is the LAST stage of the E half-step in
+    :func:`run_nonuniform_distributed_pec` — after sources and after every
+    PEC stage — so a ghost row is a copy of the owner's FINISHED real row.
+    The H update at a rank's last real cell reads ``Ey``/``Ez`` on the
+    right ghost plane; a copy taken before the owner zeroed its PEC edges
+    there is stale (#931 seam-cell divergence).
     """
     if n_devices == 1:
         return state
