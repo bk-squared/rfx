@@ -41,9 +41,15 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -e ".[dev,cad]" "jax==0.10.2" "jaxlib==0.10.2"
+      - name: Runner CPU (durations are runner-dependent; recorded for normalisation)
+        run: lscpu | grep -E '^(Model name|CPU\(s\))'
       - name: Fast selection, shard ${{ matrix.group }} of 12, store durations
         env:
           RFX_WEEKLY_RSS: "1"
+          # Same compilation cache as pr-tests.yml's fast suite (#1779), so the stored durations
+          # are the times the fast lane actually sees: one empty directory per job.
+          JAX_COMPILATION_CACHE_DIR: ${{ runner.temp }}/jax-compilation-cache
+          JAX_PERSISTENT_CACHE_MIN_COMPILE_TIME_SECS: "0"
         run: >
           mkdir -p durations &&
           pytest -v -ra -p no:cacheprovider
