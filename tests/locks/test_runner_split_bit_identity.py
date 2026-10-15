@@ -1119,7 +1119,11 @@ _RUNNER_ENTRY_POINTS = (
 #: surface change is the removal; the module itself is untouched and still
 #: importable by full path. Re-adding "run_distributed" here would restore the
 #: collision, so this pin now guards the removal rather than the collision.
-_RUNNERS_ALL = ("run_uniform", "run_nonuniform_path", "run_subgridded_path")
+#:
+#: CHANGED BY the export-only __init__ form (tests/contracts/test_export_init_form.py):
+#: export lists are one name per line, sorted, so two PRs adding names touch
+#: different lines instead of one shared line. Same three names; order only.
+_RUNNERS_ALL = ("run_nonuniform_path", "run_subgridded_path", "run_uniform")
 
 #: The module-level ``from rfx.runners.X import Y`` statements in
 #: rfx/runners/__init__.py, read with ast. §5e: __init__.py eagerly imports
@@ -1137,10 +1141,15 @@ _RUNNERS_ALL = ("run_uniform", "run_nonuniform_path", "run_subgridded_path")
 #: full module path or as ``from rfx.runners import _distributed_common``,
 #: and conftest.py's repair guard walks the loaded set rather than a fixed
 #: list, so a shorter chain gives it less to repair, not more.
+#:
+#: CHANGED BY the export-only __init__ form: import statements are sorted by
+#: module, so nonuniform now loads before uniform. Same three rows, same
+#: chain; each of rfx and its runner submodules imports cleanly in a fresh
+#: process in the new order.
 _RUNNERS_EAGER_IMPORTS = (
-    ("rfx.runners.uniform", "run_uniform"),
     ("rfx.runners.nonuniform", "run_nonuniform_path"),
     ("rfx.runners.subgridded", "run_subgridded_path"),
+    ("rfx.runners.uniform", "run_uniform"),
 )
 
 
