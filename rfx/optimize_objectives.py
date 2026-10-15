@@ -59,6 +59,20 @@ def _db_to_linear(db: float) -> float:
     return 10.0 ** (db / 10.0)
 
 
+def _port_s(s_params, name: str, receive: int, drive: int) -> jnp.ndarray:
+    """``S[receive, drive, :]``, or a ValueError naming the shape it got."""
+    shape = tuple(getattr(s_params, "shape", ()))
+    if len(shape) != 3 or shape[0] != shape[1]:
+        raise ValueError(
+            f"{name} expects result.s_params of shape (n_ports, n_ports, n_freqs); "
+            f"got {shape}.")
+    if max(receive, drive) >= shape[0]:
+        raise ValueError(
+            f"{name} reads S[{receive}, {drive}] but result.s_params has shape {shape} "
+            f"({shape[0]} port(s)); declare port {max(receive, drive)} to measure it.")
+    return s_params[receive, drive, :]
+
+
 def _find_freq_indices(result_freqs: jnp.ndarray, target_freqs: jnp.ndarray) -> jnp.ndarray:
     """Find nearest indices in *result_freqs* for each entry in *target_freqs*.
 
@@ -110,7 +124,7 @@ def minimize_s11(
             )
         result_freqs = result.freqs  # (n_freqs,)
 
-        s11 = s_params[0, 0, :]  # (n_freqs,) complex
+        s11 = _port_s(s_params, "minimize_s11", 0, 0)  # (n_freqs,) complex
         mag_sq = jnp.abs(s11) ** 2  # |S11|² linear
 
         indices = _find_freq_indices(
@@ -155,7 +169,7 @@ def maximize_s21(
             )
         result_freqs = result.freqs
 
-        s21 = s_params[1, 0, :]  # (n_freqs,) complex
+        s21 = _port_s(s_params, "maximize_s21", 1, 0)  # (n_freqs,) complex
         mag_sq = jnp.abs(s21) ** 2
 
         indices = _find_freq_indices(
@@ -201,7 +215,7 @@ def target_impedance(
             )
         result_freqs = result.freqs
 
-        s11 = s_params[0, 0, :]  # (n_freqs,) complex
+        s11 = _port_s(s_params, "target_impedance", 0, 0)  # (n_freqs,) complex
 
         idx = _find_freq_indices(
             jnp.asarray(result_freqs, dtype=jnp.float32), freq_arr,
@@ -261,7 +275,7 @@ def maximize_bandwidth(
             )
         result_freqs = jnp.asarray(result.freqs, dtype=jnp.float32)
 
-        s11 = s_params[0, 0, :]  # (n_freqs,) complex
+        s11 = _port_s(s_params, "maximize_bandwidth", 0, 0)  # (n_freqs,) complex
         mag_sq = jnp.abs(s11) ** 2
 
         # Select frequency bins within the target band
