@@ -304,7 +304,7 @@ def optimize(
     best_iterate: bool = False,
     step_clamp: float | None = None,
     seed: int = 0,
-    jit: bool = True,
+    jit: bool | None = None,
 ) -> OptimizeResult:
     """Run gradient-based optimization on a design region.
 
@@ -387,11 +387,14 @@ def optimize(
     seed : int
         PRNG seed for the extra ``n_starts`` restart inits (deterministic /
         reproducible).  Unused when ``n_starts=1``.
-    jit : bool
-        Default True compiles the loss and gradient once per call, reused
-        across iterations and starts. First-call host-read tracing errors
-        fall back to eager execution with one warning naming the reason.
-        ``jit=False`` selects the eager loop without a fallback warning.
+    jit : bool or None
+        Default None means True without ``distributed`` and False with it.
+        True compiles the loss and gradient once per call, reused across
+        iterations and starts; first-call host-read tracing errors fall back
+        to eager execution with one warning naming the reason. ``jit=False``
+        selects the eager loop without a fallback warning. A multi-device run
+        on GPUs refuses an enclosing jit, so ``distributed=True`` stays eager
+        unless ``jit=True`` is passed.
 
         The jitted loss and gradient can differ from the eager ones in the
         last float32 bits, because XLA compiles the whole step as one
@@ -545,7 +548,7 @@ def optimize(
         step_clamp=step_clamp,
         verbose=verbose,
         it_count=it_count,
-        jit=jit,
+        jit=(not distributed) if jit is None else jit,
     )
 
     eps_design = _latent_to_eps(best_latent, eps_min, eps_max)
@@ -747,7 +750,7 @@ def progressive_optimize(
     emit_time_series: bool = True,
     n_warmup: int = 0,
     distributed: bool = False,
-    jit: bool = True,
+    jit: bool | None = None,
 ) -> ProgressiveOptimizeResult:
     """Progressive multi-resolution inverse design (issue #42).
 
@@ -778,10 +781,10 @@ def progressive_optimize(
         behaviour (issue #40/#626): an approximation on non-uniform
         meshes, a fail-loud ``NotImplementedError`` on uniform ones.
 
-    jit : bool
-        Default True compiles each stage's loss and gradient once. First-call
-        host-read tracing errors fall back with one warning per stage.
-        ``jit=False`` selects the eager loop without a fallback warning.
+    jit : bool or None
+        Forwarded to each stage's :func:`optimize` (default None: compiled once
+        per stage unless ``distributed``). First-call host-read tracing errors
+        fall back with one warning per stage.
 
     Returns
     -------

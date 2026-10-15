@@ -174,7 +174,7 @@ def test_progressive_optimize_distributed_true_runs_on_nu_mesh():
     )
 
 
-@pytest.mark.parametrize("jit", [True, False])
+@pytest.mark.parametrize("jit", [None, False, True])
 def test_progressive_optimize_distributed_rejects_uniform_mesh(jit):
     """Issue #69: `distributed=True` on a uniform mesh must raise up front.
 
@@ -196,9 +196,11 @@ def test_progressive_optimize_distributed_rejects_uniform_mesh(jit):
     schedule = [
         ProgressiveStage(dx=1.0e-3, n_iters=1, lr=0.05, n_steps=10),
     ]
+    # The default (None) keeps distributed runs eager; only an explicit jit=True
+    # meets the enclosing-jit refusal first.
     message = (r"on a uniform mesh cannot run inside jax.jit" if jit else
                r"takes none of forward\(\)'s override or design arguments")
-    options = {} if jit else {"jit": False}  # Exercise the default as well as eager.
+    options = {} if jit is None else {"jit": jit}
     with pytest.raises(NotImplementedError, match=message):
         progressive_optimize(
             factory, region, _loss, schedule,

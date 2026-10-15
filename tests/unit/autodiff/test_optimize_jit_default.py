@@ -158,3 +158,23 @@ def test_checkpoint_segments_work_under_default():
     eager = _run(3, checkpoint_segments=4, jit=False)
     _difference(actual.loss_history, eager.loss_history)
     _difference(actual.latent, eager.latent)
+
+
+def test_distributed_default_stays_eager_on_a_gpu_mesh(monkeypatch):
+    """A multi-device run on GPUs refuses an enclosing jit, so ``distributed=True``
+    keeps the eager loop by default; an explicit ``jit=True`` still refuses loudly."""
+    if jax.device_count() < 2:
+        pytest.skip("needs two devices")
+    import rfx.stepping.rank as rank
+    from tests.unit.autodiff.test_progressive_optimize import _make_nu_factory
+    monkeypatch.setattr(rank, "_is_gpu_mesh", lambda mesh: True)
+    region = DesignRegion(corner_lo=(0.003, 0.003, 0.004), corner_hi=(0.007, 0.007, 0.006),
+                          eps_range=(1.0, 4.0))
+    def run(**kw):
+        return optimize(_make_nu_factory()(1e-3), region, lambda r: -jnp.sum(r.time_series ** 2),
+                        n_iters=1, lr=0.05, n_steps=10, verbose=False, skip_preflight=True,
+                        distributed=True, **kw)
+    default, eager = run(), run(jit=False)
+    np.testing.assert_array_equal(default.loss_history, eager.loss_history)
+    with pytest.raises(NotImplementedError):
+        run(jit=True)
