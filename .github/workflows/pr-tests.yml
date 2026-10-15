@@ -333,6 +333,14 @@ jobs:
           # a no-op beyond this flag when nothing is anomalous. (Variable
           # name kept for continuity with the weekly lane's wiring.)
           RFX_WEEKLY_RSS: "1"
+          # JAX's on-disk compilation cache, one empty directory per job (no state crosses runs).
+          # Many tests rebuild the same compiled program under a fresh jit wrapper; the in-memory
+          # cache misses those, the disk cache keyed on the program does not. Measured on
+          # tests/unit/runners/test_realized_model_cells.py (88 % of its time is compilation):
+          # 826 s -> 450 s at equal load, backend compile 608 s -> 202 s; a pre-filled cache
+          # added nothing. Compile-time threshold 0 (default 1 s) so short compiles are cached too.
+          JAX_COMPILATION_CACHE_DIR: ${{ runner.temp }}/jax-compilation-cache
+          JAX_PERSISTENT_CACHE_MIN_COMPILE_TIME_SECS: "0"
         # The shard's test list is written first with the SAME arguments ("$@"),
         # so a failure that depends on collection order can be replayed outside
         # CI (the list is uploaded by the next step, pass or fail).
