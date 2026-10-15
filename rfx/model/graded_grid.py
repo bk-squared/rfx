@@ -397,6 +397,10 @@ class NonUniformGrid(NamedTuple):
         arr = self.cells(axis)
         return bool(arr.size and np.all(arr == arr[0]))
 
+    def num_timesteps(self, freq_max: float, num_periods: float) -> int:
+        """Steps covering ``num_periods`` periods of ``freq_max`` at this grid's ``dt``."""
+        return int(np.ceil(num_periods / (freq_max * self.dt)))
+
 
 
 

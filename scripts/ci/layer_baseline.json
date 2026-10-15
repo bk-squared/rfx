@@ -12,9 +12,7 @@
       "S": [],
       "M": [],
       "A": [],
-      "G": [
-        "Simulation.__init__"
-      ],
+      "G": [],
       "D1": [],
       "D2": [
         "Simulation.auto",
@@ -48,7 +46,6 @@
       "G": [
         "_ExecuteMixin._attach_run_settling_witness",
         "_ExecuteMixin._forward_from_materials",
-        "_ExecuteMixin._nu_n_steps",
         "_ExecuteMixin._run_adi_from_materials",
         "_ExecuteMixin._warn_postrun_energy_witness",
         "_ExecuteMixin._warn_until_decay_dc_floor",
