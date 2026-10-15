@@ -379,7 +379,7 @@ def test_every_staged_single_device_forward_evaluates_its_setup_at_trace_time(
     whitelist turns the first two models red; the positive controls keep a
     spy that saw no call from passing.
     """
-    import rfx.api._execute as ex
+    import rfx.api._dispatch as ex
 
     answers = []
     real = ex._setup_evaluated_at_trace_time
@@ -437,7 +437,7 @@ def test_a_trace_time_context_that_cannot_make_constants_does_not_recurse(
     never re-call itself until RecursionError. The probe is forced True here,
     which reproduces that state on a plain call.
     """
-    import rfx.api._execute as ex
+    import rfx.api._dispatch as ex
 
     monkeypatch.setattr(ex, "_staged_by_an_outer_trace", lambda: True)
     sim = _board()

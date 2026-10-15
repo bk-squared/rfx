@@ -1,6 +1,9 @@
 """Shared run/forward lane admission, before execution or sharding."""
 from __future__ import annotations
 
+import functools
+import jax.numpy as jnp
+
 from typing import NamedTuple
 import numpy as np
 
@@ -334,3 +337,74 @@ def _dispatch_plan(
 
     # ---- Uniform lane (n_steps resolved by caller from the reused grid) ----
     return _DispatchPlan(lane="run_uniform", n_steps=n_steps)
+
+
+def _staged_by_an_outer_trace() -> bool:
+    """Whether ``forward()`` is being recorded into a compiled program (#1225).
+
+    Under ``jax.jit`` — and ``jax.checkpoint``, ``lax.scan`` or
+    ``jax.eval_shape`` — JAX records every array operation instead of running
+    it, including the ones that read only the model: the grid, the realized
+    materials and PEC edge masks, the port cells. Under ``jax.grad``,
+    ``jax.jvp`` or ``jax.vmap`` alone, an operation that does not touch the
+    traced inputs still runs at once. The probe asks exactly that: is an array
+    built from a constant a tracer here?
+    """
+    from rfx.core.jax_utils import is_tracer
+    return is_tracer(jnp.zeros(()))
+
+
+def _setup_evaluated_at_trace_time(*, distributed: bool) -> bool:
+    """Whether a forward entry evaluates its set-up while being traced (#1367).
+
+    The rule: set-up that reads only the declaration is always concrete, and
+    the time stepping is always recorded (``rfx.core.jax_utils``). Under an
+    outer ``jax.jit`` every operation is recorded, including the ones that
+    read only the model, and set-up reads the model on the host in many
+    places: a wire port's live edges and an MSL port's geometry check read
+    the realized PEC edge mask, a graded-lane port takes its cell sizes as
+    Python floats, the far-field transform reads an NTFF box's frequency
+    count. #1225 answered True for a whitelist of ports and missed the rest
+    (MSL ports, #1367; the NTFF box, #1364), so the answer no longer depends
+    on the model: staged by an outer trace, and not distributed.
+
+    Operations that read a traced input stay recorded, so a gradient is
+    unchanged. The distributed lane is excluded: its ``shard_map`` step
+    cannot run its constant-operand collectives outside the mesh.
+    """
+    return not distributed and _staged_by_an_outer_trace()
+
+
+def _declaration_setup_at_trace_time(entry):
+    """Give a shared forward entry the set-up / time-stepping boundary.
+
+    ``forward()`` and the entries its single-device lanes share with the
+    calculators (``_forward_from_materials``,
+    ``_forward_nonuniform_from_materials``) carry it, so the rule holds
+    wherever one of them is staged. The calculators that call
+    ``_forward_from_materials`` directly (``topology_optimize``,
+    ``compute_mixed_s_matrix``, the S-matrix driver) run it without an outer
+    trace, where the rule is inactive: ``topology_optimize`` differentiates
+    with an un-jitted ``jax.value_and_grad`` and still compiles the solve on
+    every iteration. When :func:`_setup_evaluated_at_trace_time` holds, the
+    entry runs inside
+    ``rfx.core.jax_utils.declaration_setup()``; a nested entry then sees no
+    staging and runs its body directly. The time-stepping scans inside leave
+    that region through ``rfx.core.jax_utils.recorded_scan``.
+
+    The body runs in the region only if the region really made constants
+    concrete: inside an eager ``jax.shard_map`` the probe still reads True
+    there, and the entry then runs its body outside the region, exactly as
+    before #1225, instead of re-entering without end.
+    """
+    @functools.wraps(entry)
+    def staged_entry(self, *args, **kwargs):
+        self._resolve_field_dtype()
+        if _setup_evaluated_at_trace_time(
+                distributed=bool(kwargs.get("distributed", False))):
+            from rfx.core.jax_utils import declaration_setup
+            with declaration_setup():
+                if not _staged_by_an_outer_trace():
+                    return entry(self, *args, **kwargs)
+        return entry(self, *args, **kwargs)
+    return staged_entry

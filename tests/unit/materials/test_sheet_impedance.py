@@ -879,7 +879,7 @@ def test_fence_adi_forward():
     """See the scope note on ``test_fence_adi_run``: ADI carries a second,
     older thin-conductor guard behind this fence on both entry points."""
     _fence(lambda: _cube(solver="adi").forward(n_steps=4, skip_preflight=True),
-           where=("_execute.py", "_forward_from_materials"),
+           where=("uniform_forward.py", "_forward_from_materials"),
            match=r"on the ADI forward lane")
 
 
@@ -1145,7 +1145,7 @@ def test_vmap_sweep_fallback_still_applies_the_sheet():
 #: distinctive message fragment for the inline ``(#677 v1)`` fences.
 FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
     # --- refuse_f0_sheets(...) call sites ---
-    ("rfx/api/_execute.py", "_forward_from_materials", "ADI forward"):
+    ("rfx/runners/uniform_forward.py", "_forward_from_materials", "ADI forward"):
         (__name__, "test_fence_adi_forward"),
     ("rfx/api/_execute.py", "forward", "distributed non-uniform forward()"):
         (__name__, "test_fence_distributed_nonuniform_forward"),

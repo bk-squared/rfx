@@ -326,7 +326,7 @@ SIGMA_READS = {
     ('rfx/api/_compile.py', '_CompileMixin._has_pec_to_conform', 'self._resolve_material(e.material_name)'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/api/_compile.py', '_CompileMixin.conductor_mask', 'materials'): (1, 'threshold / conductor cell footprint'),
     ('rfx/api/_execute.py', '_ExecuteMixin._auto_configure_mesh', 'spec'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
-    ('rfx/api/_execute.py', '_ExecuteMixin._run_adi_from_materials', 'materials'): (5, 'interface/refusal test, tracer test, broadcasting and slicing to ADI'),
+    ('rfx/runners/adi.py', '_run_adi_from_materials', 'materials'): (5, 'interface/refusal test, tracer test, broadcasting and slicing to ADI'),
     ('rfx/artifacts.py', '_material_summary', 'material'): (1, 'report text / safe scalar conversion'),
     ('rfx/auto_config.py', 'analyze_features', 'mat'): (1, 'documented dict of MaterialSpec or dict at :136; no assembled grid input'),
     ('rfx/boundaries/cpml.py', '_flip_profile', 'p'): (1, 'CPMLParams profile record, returned explicitly as CPMLParams in this function'),

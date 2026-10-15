@@ -22,35 +22,24 @@
     },
     "rfx/api/_execute.py": {
       "I": [
-        "rfx.boundaries.pec:realized_pec_edge_masks",
         "rfx.boundaries.pmc:refuse_waveguide_pmc",
-        "rfx.boundaries.tfsf:boundary_flags",
-        "rfx.measurement.setup:build_planes",
         "rfx.model.conductors:auto_preflight",
         "rfx.model.conductors:bind_solve_call",
         "rfx.model.conductors:early_run_record",
         "rfx.model.electric_metrics:stage_forward_materials",
-        "rfx.model.materials:with_components",
         "rfx.model.overrides:apply_material_overrides",
         "rfx.model.source_coefficients:debye_pole_term",
         "rfx.model.source_coefficients:dispersive_drive_model",
-        "rfx.model.source_coefficients:field_source_samples",
-        "rfx.model.source_coefficients:resolve_run_sources",
         "rfx.stepping.slab:cut"
       ],
       "S": [],
       "M": [],
-      "A": [
-        "_ExecuteMixin._forward_from_materials"
-      ],
+      "A": [],
       "G": [
         "_ExecuteMixin._attach_run_settling_witness",
-        "_ExecuteMixin._forward_from_materials",
-        "_ExecuteMixin._run_adi_from_materials",
         "_ExecuteMixin._warn_postrun_energy_witness",
         "_ExecuteMixin.forward",
-        "_ExecuteMixin.run",
-        "_staged_by_an_outer_trace"
+        "_ExecuteMixin.run"
       ],
       "D1": [],
       "D2": []

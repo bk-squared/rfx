@@ -114,7 +114,6 @@ SCALAR_ATTRS = frozenset({"dx", "dy"})
 ALLOWED_SCALAR_READS: dict[str, int] = {
     "rfx/amr.py": 2,
     "rfx/api/_compile.py": 11,
-    "rfx/api/_execute.py": 5,
     "rfx/api/_mesh.py": 1,
     "rfx/artifacts.py": 2,
     "rfx/boundaries/upml.py": 1,
@@ -128,6 +127,7 @@ ALLOWED_SCALAR_READS: dict[str, int] = {
     "rfx/model/graded_grid.py": 3,  # moved, not new: rfx/nonuniform.py's 3 reads moved with position_to_index and its helpers (total unchanged)
     "rfx/preflight/realization.py": 1,
     "rfx/rcs.py": 1,
+    "rfx/runners/adi.py": 5,  # moved, not new: rfx/api/_execute.py's 5 reads moved with _run_adi_from_materials (Block E1; total unchanged)
     "rfx/runners/distributed_v2.py": 1,
     "rfx/runners/subgridded.py": 1,
     "rfx/simulation.py": 6,
