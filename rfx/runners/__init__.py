@@ -12,8 +12,18 @@ as a re-export whose ``run_distributed`` raises and names the replacement,
 Neither ``run_distributed`` is exported from this package.
 """
 
-from rfx.runners.uniform import run_uniform
-from rfx.runners.nonuniform import run_nonuniform_path
-from rfx.runners.subgridded import run_subgridded_path
+from rfx.runners.nonuniform import (
+    run_nonuniform_path,
+)
+from rfx.runners.subgridded import (
+    run_subgridded_path,
+)
+from rfx.runners.uniform import (
+    run_uniform,
+)
 
-__all__ = ["run_uniform", "run_nonuniform_path", "run_subgridded_path"]
+__all__ = [
+    "run_nonuniform_path",
+    "run_subgridded_path",
+    "run_uniform",
+]

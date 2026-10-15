@@ -1,17 +1,45 @@
 """Time stepping: the fixed physical step order, and placement of its inputs."""
-from .sequence import HookPoint, Kernel, STEP_SEQUENCE, compose
-from .graded import GradedStepContext, GradedFrame, make_graded_step
-from .slab import FILL, Fill, Slab, cut
-from .remat import segmented_scan
 
 from rfx.stepping.waveguide_source import (
-    inject_waveguide_port,
-    apply_waveguide_port_h,
     apply_waveguide_port_e,
+    apply_waveguide_port_h,
+    inject_waveguide_port,
+)
+from .graded import (
+    GradedFrame,
+    GradedStepContext,
+    make_graded_step,
+)
+from .remat import (
+    segmented_scan,
+)
+from .sequence import (
+    compose,
+    HookPoint,
+    Kernel,
+    STEP_SEQUENCE,
+)
+from .slab import (
+    cut,
+    FILL,
+    Fill,
+    Slab,
 )
 
-__all__ = ['FILL', 'Fill', 'GradedStepContext', 'GradedFrame', 'HookPoint', 'Kernel', 'STEP_SEQUENCE', 'Slab', 'compose', 'cut', 'make_graded_step', 'segmented_scan',
-    "inject_waveguide_port",
-    "apply_waveguide_port_h",
+__all__ = [
     "apply_waveguide_port_e",
+    "apply_waveguide_port_h",
+    "compose",
+    "cut",
+    "FILL",
+    "Fill",
+    "GradedFrame",
+    "GradedStepContext",
+    "HookPoint",
+    "inject_waveguide_port",
+    "Kernel",
+    "make_graded_step",
+    "segmented_scan",
+    "Slab",
+    "STEP_SEQUENCE",
 ]
