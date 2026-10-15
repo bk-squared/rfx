@@ -1795,7 +1795,8 @@
         "checkpoint_every",
         "emit_time_series",
         "n_warmup",
-        "distributed"
+        "distributed",
+        "jit"
       ]
     },
     "quick_convergence": {
@@ -2342,7 +2343,8 @@
         "beta_schedule",
         "init_density",
         "verbose",
-        "skip_preflight"
+        "skip_preflight",
+        "jit"
       ]
     },
     "update_floquet_dft": {
