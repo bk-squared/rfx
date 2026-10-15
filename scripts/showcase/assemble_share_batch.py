@@ -29,7 +29,7 @@ FILMS = ('filter',)
 SIZES = {'site': (1920, 1080), 'social': (1080, 1350), 'hero_4k': (3840, 2160)}
 #: The lens page shows the narrated film instead (rfx-research ``showcase/film``, composed at 9b87e97ce by remi
 #: job showcase-lens-final-compose-h2zrb) and three of its output frames: published name -> name in --lens-film-dir.
-LENS_FILM = {'grin_lens_film.mp4': 'lens_film.mp4', 'grin_lens_film_poster.png': 'frame_2340.png',
+LENS_FILM = {'grin_lens_film.mp4': 'lens_film.mp4', 'grin_lens_film_poster.png': 'frame_2291.png',
              'grin_lens_start.png': 'frame_1920.png', 'grin_lens_fan.png': 'frame_2760.png'}
 LENS_FILM_SHA256 = '8b87491c6d68ca14940a1484e1d466336f9df823140bd9fec6967e7ac61bfc97'
 #: The fan-beam objective on the same lens (amendment 7): its main run and three-mesh resolve.
@@ -147,7 +147,7 @@ def main():
     parser.add_argument('--assets-dir', type=Path, required=True,
                         help='directory with figures/ and films/')
     parser.add_argument('--lens-film-dir', type=Path, required=True,
-                        help='directory with lens_film.mp4 and output frames 1920, 2340 and 2760 as PNG')
+                        help='directory with lens_film.mp4 and output frames 1920, 2291 and 2760 as PNG')
     parser.add_argument('--fan-iterations', type=Path, required=True,
                         help='iterations.npz of the fan main run 20261010T162447Z-dbf41692-main-fan')
     parser.add_argument('--output-dir', type=Path, default=LOCAL / 'share/f3a80981ec4b')
