@@ -80,6 +80,26 @@ def test_until_decay_keeps_unread_records(graded, wire):
 
 
 @pytest.mark.parametrize('graded', [False, True])
+@pytest.mark.parametrize('wire', [False, True])
+def test_until_decay_records_are_sized_by_decay_max_steps(graded, wire):
+    # The decay loop runs past n_steps: a record sized by n_steps (8) would
+    # end at step 8 or repeat its last row, not match the fixed 24-step run.
+    def solve(**kw):
+        with warnings.catch_warnings():
+            warnings.simplefilter('ignore')
+            return model(graded, wire, boundary='cpml').run(
+                compute_s_params=False, skip_preflight=True, **kw)
+    decay = solve(n_steps=8, until_decay=0., decay_min_steps=24, decay_max_steps=24,
+                  decay_check_interval=4)
+    fixed = solve(n_steps=24)
+    got, ref = decay.sparam_time_records[0].samples, fixed.sparam_time_records[0].samples
+    assert got.shape == ref.shape == (24, len(decay.sparam_time_records[0].channels))
+    peak = float(np.max(np.abs(ref)))
+    assert peak > 0 and np.max(np.abs(np.asarray(got)[8:])) > 0.1 * peak
+    np.testing.assert_allclose(got, ref, rtol=0, atol=1e-4 * peak)
+
+
+@pytest.mark.parametrize('graded', [False, True])
 def test_forward_records_cross_grad_and_vmap(graded):
     sim = model(graded)
     grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
