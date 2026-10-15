@@ -357,19 +357,13 @@ def compute_lumped_wire_s_matrix_via_scan(
                 if s == 0:
                     plane_offsets[p] = int(rp_spec.n_cells_outboard)
 
-    if _forward_port_s11:
-        # Native forward records all declared drives together. Superpose the
-        # existing isolated-drive physical phasors, then extract its terminal
-        # diagonals instead of decomposing an N-port matrix. No extra solve or
-        # second S computation; the unmeasured reference slots are not used.
-        from rfx.probes.probes import driven_port_reflection
-        voltage = np.sum(vp_all if wire_mode else v_all, axis=0)
-        current = np.sum(i_all, axis=0)
-        diagonal = jnp.stack([
-            driven_port_reflection(jnp.asarray(voltage[p], dtype=result_dtype),
-                                   jnp.asarray(current[p], dtype=result_dtype), z0[p])
-            for p in range(n_ports)])
-        return diagonal[0] if n_ports == 1 else diagonal, freqs
+    def _forward_columns(S):
+        # forward()'s port S is run()'s matrix with each undeclared drive's
+        # column NaN (#1373 decision C), as one-device forward() returns it.
+        if not _forward_port_s11:
+            return S
+        driven = np.asarray([bool(pe.excite) for pe in eligible])
+        return np.where(driven[None, :, None], S, np.asarray(np.nan + 1j * np.nan, dtype=S.dtype))
 
     if wire_mode and plane_v is not None:
         # issue #313 reference-plane path: byte-frozen legacy diagonals +
@@ -406,7 +400,7 @@ def compute_lumped_wire_s_matrix_via_scan(
             worst = missing[0] if missing else max(settling_runs, key=lambda item: item[0])
             return np.asarray(out, dtype=result_dtype), freqs, {
                 **worst[1], "db": worst[0], "per_drive": [d for _, d in settling_runs]}
-        return np.asarray(out, dtype=result_dtype), freqs
+        return _forward_columns(np.asarray(out, dtype=result_dtype)), freqs
 
     if wire_mode:
         # Issue #764 diagonal + issue #770 off-diagonal: the whole-port
@@ -469,7 +463,7 @@ def compute_lumped_wire_s_matrix_via_scan(
         missing = [item for item in settling_runs if not np.isfinite(item[0])]
         worst = missing[0] if missing else max(settling_runs, key=lambda item: item[0])
         return S, freqs, {**worst[1], "db": worst[0], "per_drive": [d for _, d in settling_runs]}
-    return S, freqs
+    return _forward_columns(S), freqs
 
 
 def _lumped_recording_probes(grid, ports, live_cells=None):

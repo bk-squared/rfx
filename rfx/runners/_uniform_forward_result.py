@@ -49,6 +49,6 @@ class _WirePortForwardResult(_PortForwardResult):
 
 
 def pack_port_result(result, *, wire):
-    """Keep the driver's forward diagonal and refuse its missing records."""
+    """Keep the driver's forward port S matrix and refuse its missing records."""
     cls = _WirePortForwardResult if wire else _LumpedPortForwardResult
     return cls(*result)
