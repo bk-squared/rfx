@@ -8,10 +8,18 @@ name: regen-durations
 # shard 1 at ~1 min and shards 3-6 at 23-35 min (60-min cap).
 on:
   workflow_dispatch:
+    inputs:
+      lanes:
+        description: "fast, slow or both: which lanes to measure (the slow lane takes up to 6 h per shard)"
+        required: false
+        default: both
+        type: choice
+        options: [both, fast, slow]
 
 jobs:
   fast:
     # Durations are keyed by test, so changing the split count needs no file conversion.
+    if: inputs.lanes != 'slow'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     strategy:
@@ -49,6 +57,7 @@ jobs:
           if-no-files-found: error
 
   slow:
+    if: inputs.lanes != 'fast'
     runs-on: ubuntu-latest
     # 360, the hosted maximum, was 180. With no durations file this job splits by test count, so one
     # shard can hold most of the expensive tests: on run 36394962310 slow (5) was cut at 180 min with
