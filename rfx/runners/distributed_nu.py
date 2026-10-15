@@ -79,8 +79,7 @@ from rfx.runners._distributed_common import (
     magnetic_low_ghost,
     apply_pec_face_shmap,
     apply_pec_mask_shmap,
-    apply_pmc_face_shmap,
-    _slab_curl_kwargs,
+    apply_pmc_face_shmap, _slab_curl_kwargs,
     exchange_component_shmap,
     exchange_h_yee_shmap,
     exchange_e_yee_shmap,
@@ -574,8 +573,7 @@ def _update_e_dispersive_local_nu(
     *,
     debye=None,
     lorentz=None,
-    e_old: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray] | None = None,
-    boundary=None, frame=None, owned=None,
+    e_old: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray] | None = None, boundary=None, frame=None, owned=None,
 ):
     """Per-rank slab-aware NU dispersive E update.
 
@@ -669,9 +667,8 @@ def run_nonuniform_distributed_pec(
         9. Ghost exchange of E                       via lax.ppermute
        10. Probe accumulation (rank-conditional sum) via lax.psum
 
-    Exchange E after all electric writes. PMC canonicalization follows CPML H;
-    it changes only the global high ghost, which no exchange sends.
-    Only Hy/Hz left ghosts and Ey/Ez right ghosts are refreshed from owners.
+    Exchange E after all electric writes. PMC canonicalization follows CPML H and changes only the global
+    high ghost, which no exchange sends. Only Hy/Hz left and Ey/Ez right ghosts are refreshed from owners.
     Other field, CPML and dispersion ghost entries are locally updated
     scratch values, can grow, and are never read by real cells. Exclude them
     from physical energy calculations; ``forward()`` discards this state.
@@ -871,10 +868,8 @@ def run_nonuniform_distributed_pec(
     else:
         lorentz_coeffs = None
         lorentz_state_init = None
-    from rfx.boundaries.depths import distributed_electric_walls
-    from rfx.core.yee import CurlBoundary
-    e_wall_faces = distributed_electric_walls(sharded_grid.global_grid) - pmc_faces
-    curl_boundary = CurlBoundary(e_wall_faces, pmc_faces) if pmc_faces else None
+    from rfx.boundaries.depths import distributed_wall_faces
+    e_wall_faces, curl_boundary = distributed_wall_faces(sharded_grid.global_grid, pmc_faces)
     use_dispersion = use_debye or use_lorentz
     use_cpml = cpml_params is not None
     if not use_cpml:
