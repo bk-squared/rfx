@@ -60,7 +60,7 @@ CASES = {
     "forward-checks": ("docs/public/showcase/forward-checks.mdx", ("forward-patch", "forward-notch")),
 }
 CASES.update({
-    "grin-lens": ("docs/public/showcase/grin-lens.mdx", ("grin-lens",)),
+    "grin-lens": ("docs/public/showcase/grin-lens.mdx", ("grin-lens", "grin-lens-fan")),
 })
 BOXES = ("patch", "design", "layer")
 

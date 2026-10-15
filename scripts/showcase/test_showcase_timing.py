@@ -30,6 +30,7 @@ class TimingTests(unittest.TestCase):
     out=Path(tmp)
     case=SimpleNamespace(CASE=kind,__doc__='timing stub',SMOKE_DX=.003,DESIGN_DX=.001,
                          starts=lambda:{'primary':np.ones(2),'S1':np.ones(2)},loss=lambda r:jnp.sum(r*r))
+    case.with_objective=lambda objective,case=case:case  # the lens driver binds its objective first
     model=SimpleNamespace(dx=.003,grid=SimpleNamespace(shape=(3,4,5),dt=1e-12),default_steps=200,
                           response_fn=lambda n:lambda eps:2*eps)
     def optimize(*args):
@@ -53,6 +54,7 @@ class TimingTests(unittest.TestCase):
     print(kind,': three forward samples; two existing gradient samples; summary/stage keys agree',flush=True)
  def test_arguments_unchanged(self):
   case=SimpleNamespace(CASE='lens',__doc__='timing stub')
+  case.with_objective=lambda objective:case
   with contextlib.redirect_stderr(io.StringIO()),self.assertRaises(SystemExit):
    common.main(case,['--stage','timing','--iterations','3','--out',str(OUT/'unused')])
 

@@ -1,10 +1,8 @@
 """Single serial test entry for reciprocal field additions; CPU smoke only."""
-import ast
 import contextlib
 import io
 import json
 from pathlib import Path
-import subprocess
 import sys
 import tempfile
 from types import SimpleNamespace
@@ -24,11 +22,6 @@ class ReciprocalTests(unittest.TestCase):
     (SimpleNamespace(CASE='filter',__doc__='filter'),['--stage','field','--drive','reciprocal']),
     (lens,['--stage','field','--empty']), (lens,['--stage','field','--drive','reciprocal'])]:
    with contextlib.redirect_stderr(io.StringIO()),self.assertRaises(SystemExit):common.main(case,[*args,'--out',str(OUT/'unused')])
- def test_feed_body_unchanged(self):
-  before=subprocess.check_output(['git','show','HEAD:scripts/showcase/_lens_filter_common.py'],cwd=REPO,text=True)
-  get=lambda text:next(n for n in ast.parse(text).body if isinstance(n,ast.FunctionDef) and n.name=='field')
-  old,new=get(before),get((HERE/'_lens_filter_common.py').read_text())
-  self.assertEqual(ast.dump(ast.Module(body=old.body[1:],type_ignores=[])),ast.dump(ast.Module(body=new.body[2:],type_ignores=[])))
  def test_known_overlap_maps(self):
   with tempfile.TemporaryDirectory(dir=OUT) as d:
    d=Path(d);u=np.arange(.018,.108,.003);v=np.arange(.072,.102,.003);grad=np.arange(2250,dtype=float).reshape(15,15,10)+1

@@ -80,16 +80,16 @@ before any run.
 The same block, feed and permittivity range can serve another pattern. The second
 design asks for a fan beam, wide in the plane across the dipole and narrow in the
 other, the kind of coverage an automotive radar uses for its detection region. The
-objective is the ripple of directivity over ±30° in the wide plane minus its lowest
-value there, averaged over the three frequencies; 300 iterations start from the same
+objective is the ripple of directivity over a ±30° strip along the wide plane (within
+5° of it) minus its lowest value there, averaged over the three frequencies; 300 iterations start from the same
 uniform block.
 
 <figure data-rfx="media">
-  <img src="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens_fan.png" loading="lazy" alt="The block after the fan-beam design, with its radiation lobe wide in one plane: the lowest directivity over ±30° in that plane is 10.6 dBi at 10 GHz" />
+  <img src="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens_fan.png" loading="lazy" alt="The block after the fan-beam design, with its radiation lobe wide in one plane: the lowest directivity over the ±30° strip along that plane is 10.6 dBi at 10 GHz" />
 </figure>
 
-Solved again on the 1.5, 1.0 and 0.75 mm meshes, the directivity over ±30° in the wide
-plane varies by 0.98 / 0.66 / 0.64 dB at 9.5 / 10 / 10.5 GHz on the finest mesh, and
+Solved again on the 1.5, 1.0 and 0.75 mm meshes, the directivity over that strip
+varies by 0.98 / 0.66 / 0.64 dB at 9.5 / 10 / 10.5 GHz on the finest mesh, and
 less as the mesh is refined (1.14, 1.02 and 0.98 dB at 9.5 GHz). On the finest mesh its
 lowest value is 10.0 / 10.6 / 10.7 dBi, and the half-power beamwidth in the narrow
 plane is 26.9° / 26.1° / 24.8°. The targets declared before the run were 2 dB ripple, 11.0 dBi
@@ -108,9 +108,9 @@ main 9ed83eb8 (2026-10-05). The film is rendered with Blender
   <li><a href="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/result.json">result.json</a></li>
   <li><a href="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/iterations.npz">iterations.npz</a></li>
   <li><a href="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/mesh_trend.json">mesh_trend.json</a></li>
-  <li><a href="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/fan_result.json">fan_result.json</a></li>
-  <li><a href="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/fan_mesh_trend.json">fan_mesh_trend.json</a></li>
-  <li><a href="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/fan_iterations.npz">fan_iterations.npz</a></li>
+  <li><a href="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens-fan/result.json">fan beam: result.json</a></li>
+  <li><a href="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens-fan/mesh_trend.json">fan beam: mesh_trend.json</a></li>
+  <li><a href="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens-fan/iterations.npz">fan beam: iterations.npz</a></li>
 </ul>
 
 ## Run it

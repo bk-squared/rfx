@@ -4,14 +4,14 @@
   "share": {
     "base_url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/",
     "manifest_url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/manifest.json",
-    "manifest_sha256": "ee9ef3e2774a074594727101c2723550edbec862ff74c2733ae1274d08e772b5",
+    "manifest_sha256": "49e7550bdf951c7cde5d38f2985979b851d73e40517699cf75e9a812856477fe",
     "created": "2026-10-16",
     "cite": "B. Kim, \"rfx: An End-to-End Differentiable 3-D FDTD Simulator for RF and Microwave Engineering,\" IEEE Trans. Microw. Theory Techn., 2026, doi:10.1109/TMTT.2026.3729863",
     "supersedes": {
       "batch": "7c02ad43c580",
-      "added": ["grin-lens/eligibility.json", "grin-lens/fan_eligibility.json", "grin-lens/fan_iterations.npz", "grin-lens/fan_mesh_trend.json", "grin-lens/fan_result.json", "grin-lens/fd_float32.json", "grin-lens/grin_lens_fan.png", "grin-lens/grin_lens_film.mp4", "grin-lens/grin_lens_film_poster.png", "grin-lens/grin_lens_start.png", "grin-lens/iterations.npz", "grin-lens/lens_cuts.png", "grin-lens/lens_iterations.png", "grin-lens/lens_mesh.png", "grin-lens/lens_slices.png", "grin-lens/mesh_trend.json", "grin-lens/result.json", "grin-lens/rlw_reported.json", "grin-lens/rlw_start.json"],
+      "added": ["grin-lens/eligibility.json", "grin-lens/fd_float32.json", "grin-lens/grin_lens_fan.png", "grin-lens/grin_lens_film.mp4", "grin-lens/grin_lens_film_poster.png", "grin-lens/grin_lens_start.png", "grin-lens/iterations.npz", "grin-lens/lens_cuts.png", "grin-lens/lens_iterations.png", "grin-lens/lens_mesh.png", "grin-lens/lens_slices.png", "grin-lens/mesh_trend.json", "grin-lens/result.json", "grin-lens/rlw_reported.json", "grin-lens/rlw_start.json", "grin-lens-fan/eligibility.json", "grin-lens-fan/fd_float32.json", "grin-lens-fan/fd_float64.json", "grin-lens-fan/iterations.npz", "grin-lens-fan/mesh_trend.json", "grin-lens-fan/result.json", "grin-lens-fan/rlw_reported.json", "grin-lens-fan/rlw_start.json"],
       "replaced": [],
-      "note": "every file of 7c02ad43c580 byte-identical; one new case (issue 1359): the printable lens with its narrated film, three of its frames and the fan-beam design on the same block"
+      "note": "every file of 7c02ad43c580 byte-identical; one new case (issue 1359): the printable lens with its narrated film and three of its frames (grin-lens/), and the fan-beam design on the same block (grin-lens-fan/, computed on a later rfx main)"
     }
   },
   "cases": [
@@ -190,7 +190,7 @@
       "question": "Gradient descent through the FDTD solve and the far-field transform grows a graded-index flat lens of printable permittivity (1 ≤ εr ≤ 2.7) that raises a small feed's boresight directivity from 7.5 to 19.0 dBi at 10 GHz, 1.8 dB above the textbook GRIN lens of the same size.",
       "route": "/rfx/showcase/grin-lens/",
       "markdown": "/rfx/markdown/showcase/grin-lens.md",
-      "rfx_commits": ["4705f69e90602e52168eb9d37079a1a0ab3f919b"],
+      "rfx_commits": ["4705f69e90602e52168eb9d37079a1a0ab3f919b", "9ed83eb804874feec1f05f0cee75992c05da2182"],
       "sources": [
         {
           "folder": "grin-lens",
@@ -200,10 +200,6 @@
           "result_json": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/result.json",
           "files": [
             {"name": "eligibility.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/eligibility.json", "bytes": 150, "sha256": "02fc7b2f6b6dccad62f81ea79a51d5e23f058e5b573220b5984555a2ba755bd9"},
-            {"name": "fan_eligibility.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/fan_eligibility.json", "bytes": 839, "sha256": "1ab3d75199471551af827a86f889a4648ad989f30611185164d2514b0d69fa15"},
-            {"name": "fan_iterations.npz", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/fan_iterations.npz", "bytes": 32804766, "sha256": "d2ae9afffe08da0f5ac04741b2b4046abfeb85fb2a15c56ad16754d22ad03167"},
-            {"name": "fan_mesh_trend.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/fan_mesh_trend.json", "bytes": 3665, "sha256": "a54aaf140a53d009837fef77ff4ea6df23c13339890c1253065f797481ee7944"},
-            {"name": "fan_result.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/fan_result.json", "bytes": 10708, "sha256": "5d2b2496bb7097f075e95d034be62fa27dda4be128d220246145f1af40615625"},
             {"name": "fd_float32.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/fd_float32.json", "bytes": 66368, "sha256": "c04372af01520c1c48920f0b98672319428bc82f663d8a5d1bf6151ae8907d4d"},
             {"name": "grin_lens_fan.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens_fan.png", "bytes": 448886, "sha256": "90eaff418643db35b5cefcc8a6c7dd9c69aa824cd4a2f8c4e0197625b33e5b83"},
             {"name": "grin_lens_film.mp4", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens_film.mp4", "bytes": 16919740, "sha256": "8b87491c6d68ca14940a1484e1d466336f9df823140bd9fec6967e7ac61bfc97"},
@@ -218,6 +214,23 @@
             {"name": "result.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/result.json", "bytes": 9327, "sha256": "299c70d52910a63292a9ce3ddb141ac86f67d63677d1d9d3e124f8c59d8d6b6d"},
             {"name": "rlw_reported.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/rlw_reported.json", "bytes": 211642, "sha256": "41053fc5eb3b5dd4554d50781ea2623c64375d58d76730debef5cc92dd47f8c9"},
             {"name": "rlw_start.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/rlw_start.json", "bytes": 208266, "sha256": "52fb2310733a942de1f0ad1fe6f00302abc948a074a5f58ac5bd506d5b7610a7"}
+          ]
+        },
+        {
+          "folder": "grin-lens-fan",
+          "base_url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens-fan/",
+          "rfx_commit": "9ed83eb804874feec1f05f0cee75992c05da2182",
+          "question": "Fan beam (flat over ±30° in one plane, narrow in the other)",
+          "result_json": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens-fan/result.json",
+          "files": [
+            {"name": "eligibility.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens-fan/eligibility.json", "bytes": 839, "sha256": "1ab3d75199471551af827a86f889a4648ad989f30611185164d2514b0d69fa15"},
+            {"name": "fd_float32.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens-fan/fd_float32.json", "bytes": 63317, "sha256": "ca690d5d54a3c5d899c661190750b00174e0edb0148ed1eb8b194db5f535d6c1"},
+            {"name": "fd_float64.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens-fan/fd_float64.json", "bytes": 63422, "sha256": "6a3e719f6e506fcdc7c8df1e50e9d3b6d5fcc024798a543328fa925fc6f9d2fb"},
+            {"name": "iterations.npz", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens-fan/iterations.npz", "bytes": 32804766, "sha256": "d2ae9afffe08da0f5ac04741b2b4046abfeb85fb2a15c56ad16754d22ad03167"},
+            {"name": "mesh_trend.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens-fan/mesh_trend.json", "bytes": 3665, "sha256": "a54aaf140a53d009837fef77ff4ea6df23c13339890c1253065f797481ee7944"},
+            {"name": "result.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens-fan/result.json", "bytes": 10708, "sha256": "5d2b2496bb7097f075e95d034be62fa27dda4be128d220246145f1af40615625"},
+            {"name": "rlw_reported.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens-fan/rlw_reported.json", "bytes": 207918, "sha256": "456296e7b4a7d8662b886b246d13860417e50b74e3e621037f9172ad455833cf"},
+            {"name": "rlw_start.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens-fan/rlw_start.json", "bytes": 202290, "sha256": "9132b0541770aa308c13b1fd8905ccc8cabe31e484fae13c6e5be22e80db6a3f"}
           ]
         }
       ],

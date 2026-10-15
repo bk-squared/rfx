@@ -20,6 +20,8 @@ LOCAL = REPO / '.local_checks'
 OLD = 'https://remilab.cnu.ac.kr/share/7c02ad43c580/'
 RUNS = {
     'grin-lens': ('lens', '20261004T182324Z-b184fc8e-main', '20261004T205610Z-b184fc8e-resolve', '4705f69e'),
+    # The fan-beam objective on the same lens (amendment 7), computed on a later rfx main.
+    'grin-lens-fan': ('lens', '20261010T162447Z-dbf41692-main-fan', '20261010T170039Z-dbf41692-resolve-fan', '9ed83eb8'),
 }
 #: The waveguide filter waits for visuals in the site tone (rfx-lead, 2026-10-15); its page is on the
 #: branch showcase/site-filter-held.
@@ -28,10 +30,6 @@ RUNS = {
 LENS_FILM = {'grin_lens_film.mp4': 'lens_film.mp4', 'grin_lens_film_poster.png': 'frame_2291.png',
              'grin_lens_start.png': 'frame_1920.png', 'grin_lens_fan.png': 'frame_2760.png'}
 LENS_FILM_SHA256 = '8b87491c6d68ca14940a1484e1d466336f9df823140bd9fec6967e7ac61bfc97'
-#: The fan-beam objective on the same lens (amendment 7): its main run and three-mesh resolve.
-FAN = {'fan_result.json': ('20261010T162447Z-dbf41692-main-fan', 'result.json'),
-       'fan_mesh_trend.json': ('20261010T170039Z-dbf41692-resolve-fan', 'mesh_trend.json'),
-       'fan_eligibility.json': ('20261010T170039Z-dbf41692-resolve-fan', 'eligibility.json')}
 
 
 def digest(path):
@@ -77,15 +75,18 @@ def assemble(args):
         sources = {name: runs / main / name for name in
                    ('result.json', 'iterations.npz', 'fd_float32.json', 'rlw_start.json', 'rlw_reported.json')}
         sources.update({name: runs / resolve / name for name in ('mesh_trend.json', 'eligibility.json')})
-        sources.update({f'{short}_{name}.png': args.assets_dir / 'figures' / f'{short}_{name}.png'
-                        for name in ('cuts', 'mesh', 'slices', 'iterations')})
-        sources.update({name: args.lens_film_dir / source for name, source in LENS_FILM.items()})
-        sources.update({name: runs / run / source for name, (run, source) in FAN.items()})
-        # The fan run's iterates (the film's fan counters) are not in the archive: 32 MB, kept on NFS.
-        sources['fan_iterations.npz'] = args.fan_iterations
+        if folder == 'grin-lens':
+            sources.update({f'{short}_{name}.png': args.assets_dir / 'figures' / f'{short}_{name}.png'
+                            for name in ('cuts', 'mesh', 'slices', 'iterations')})
+            sources.update({name: args.lens_film_dir / source for name, source in LENS_FILM.items()})
+        else:
+            # The fan run's iterates (the film's fan counters) are not in the archive: 32 MB, kept on NFS.
+            sources['iterations.npz'] = args.fan_iterations
+            # Its central-difference check passed on the float64 repeat (the float32 ladder is kept too).
+            sources['fd_float64.json'] = runs / main / 'fd_float64.json'
         for name, source in sources.items():
             shutil.copyfile(source, dest / name)
-        if digest(dest / 'grin_lens_film.mp4')['sha256'] != LENS_FILM_SHA256:
+        if folder == 'grin-lens' and digest(dest / 'grin_lens_film.mp4')['sha256'] != LENS_FILM_SHA256:
             raise ValueError('grin_lens_film.mp4 is not the composed final film')
         files = list(sources)
         manifest['cases'][folder] = {'rfx_commit': commit,
@@ -94,7 +95,8 @@ def assemble(args):
     manifest['supersedes'] = {
         'batch': '7c02ad43c580', 'added': added, 'replaced': [],
         'note': 'every file of 7c02ad43c580 byte-identical; one new case (issue 1359): the printable lens with its '
-                'narrated film, three of its frames and the fan-beam design on the same block',
+                'narrated film and three of its frames (grin-lens/), and the fan-beam design on the same block '
+                '(grin-lens-fan/, computed on a later rfx main)',
     }
     fetch('index.html', cache / 'index.html')
     index = (cache / 'index.html').read_text()
