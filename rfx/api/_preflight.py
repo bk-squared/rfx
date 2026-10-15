@@ -505,6 +505,8 @@ class _PreflightMixin:
         port_entries = self._port_sparameter_entries()
         messages: list[str] = []
         if self._msl_ports:
+            from rfx.preflight._msl_probe_rules import admit_msl_auto_probes
+            admit_msl_auto_probes(self)
             messages.append("MSL ports use compute_msl_s_matrix()")
             # Near-field guard (issue #80): probe 0 must clear the source
             # FRINGING transient (~5·h_sub), which decays over a few substrate

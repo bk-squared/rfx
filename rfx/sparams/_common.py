@@ -487,9 +487,9 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
       priority — the fringing transient is the historically dominant
       corruption, issue #80).
 
-    Explicit offsets are never touched. The solve always starts from the
-    STORED lower edge (``sim._msl_auto_offset_min``), so repeated calls are
-    idempotent. Returns a new entries list; ``sim`` is not mutated.
+    Explicit offsets are never touched. Automatic values are first re-derived
+    from the full declaration into the bookkeeping dictionaries; repeated calls
+    are idempotent. Returns a new entries list, leaving raw entries unchanged.
 
     Auto probe SPACING (issue #681). A ~0.1·λ_g probe span leaves the
     N-probe β fit noise-fragile: the two model columns ``e^{∓jβx}`` are
@@ -559,6 +559,8 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
     matters where that cell is not the scalar: a uniform ``dy_profile`` finer
     than ``dx``, or an auto mesh that chose ``dx`` after the port.
     """
+    from rfx.preflight._msl_probe_rules import admit_msl_auto_probes
+    admit_msl_auto_probes(sim)
     _auto_spacing = getattr(sim, "_msl_auto_probe_spacing", {}) or {}
     if not sim._msl_auto_offset_min and not _auto_spacing:
         return entries
