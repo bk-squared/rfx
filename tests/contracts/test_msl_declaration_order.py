@@ -74,13 +74,15 @@ def test_t1_full_declaration_sets_automatic_probe_planes():
     assert _automatic_rows(direct) == first_rows
 
 
-def _box_board(*, sideways=0.0, normal=0.0):
+def _box_board(*, sideways=0.0, normal=0.0, second_trace=False):
     sim = Simulation(freq_max=20e9, domain=(.003, .003, .001),
                      dx=50e-6, cpml_layers=0)
     sim.add_material("sub", eps_r=3.66)
     sim.add(Box((0, 0, .0002), (.003, .003, .0004)), material="sub")
     sim.add(Box((0, 0, .0002), (.003, .003, .0002)), material="pec")
     sim.add(Box((0, .000987, .0004), (.003, .001587, .0004)), material="pec")
+    if second_trace:  # another line on the same plane, not under the port
+        sim.add(Box((0, .0021, .0004), (.003, .0025, .0004)), material="pec")
     sim.add_msl_port(position=(.0005, .001287 + sideways, .0002 + normal),
                      width=.0006, height=.0002, direction="+x", name="checked")
     return sim
@@ -99,6 +101,11 @@ def test_t2_sideways_overhang_names_width_and_preserves_z_mismatch():
     assert "[0.001, 0.0016] m" in message
     assert "[0.001, 0.00155] m" in message
     assert "50 um past" in message
+    neighbour = _box_board(sideways=13e-6, second_trace=True)
+    with pytest.raises(ValueError) as caught:
+        neighbour._msl_conductor_gap(neighbour._msl_ports[0],
+                                     neighbour._msl_assemble_once())
+    assert str(caught.value) == message
     normal = _box_board(normal=50e-6)
     with pytest.raises(ValueError, match="maps to node"):
         normal._msl_conductor_gap(normal._msl_ports[0], normal._msl_assemble_once())
@@ -132,3 +139,35 @@ def test_t3_value_error_remains_an_assembly_diagnostic(monkeypatch):
     assert any(issue.diagnostic is not None
                and issue.diagnostic.code == "msl.conductor_assembly_unavailable"
                for issue in report)
+
+
+def _port_first(sim):
+    """Re-declare ``sim``'s single port before all of its geometry."""
+    pe, = sim._msl_ports
+    geometry = list(sim._geometry)
+    sim._geometry.clear()
+    sim._msl_ports.clear()
+    for rows in (sim._msl_auto_offset_min, sim._msl_auto_probe_spacing,
+                 sim._msl_auto_probe_lengths):
+        rows.clear()
+    sim.add_msl_port(position=pe.position, width=pe.width, height=pe.height,
+                     direction=pe.direction, impedance=pe.impedance, name=pe.name)
+    sim._geometry.extend(geometry)
+    return sim
+
+
+@pytest.mark.parametrize("direction", ("+x", "-y"))
+def test_a_ladder_crossing_a_ramp_keeps_the_full_declaration_counts(direction):
+    """Graded runway, ladder crossing the trailing ramp: the resolver keeps
+    scalar-cell counts instead of recounting. Structure first they are
+    (9, 4) (tests/unit/sparams/test_msl_probe_offset_interval.py); declared
+    port first, cd180aa36 kept the add-time eps=1 counts (17, 7)."""
+    from tests.unit.sparams.test_msl_probe_offset_interval import (
+        _resolve_on_its_grid, _runway_board)
+    sim = _port_first(_runway_board(direction, 5.5e9, runway_node=50.3))
+    assert (sim._msl_ports[0].n_probe_offset,
+            sim._msl_ports[0].n_probe_spacing) == (17, 7)
+    r, _, skips = _resolve_on_its_grid(sim)
+    assert (r.n_probe_offset, r.n_probe_spacing) == (9, 4)
+    (msg,) = skips
+    assert "would cross a grading ramp" in msg

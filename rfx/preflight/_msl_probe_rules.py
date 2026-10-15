@@ -234,6 +234,22 @@ def admit_msl_auto_probes(sim):
             spacings[pe.name] = float(eps_eff)
 
 
+def msl_admitted_scalar_counts(sim, pe):
+    """The port's probe counts in the scalar cell from the full declaration.
+
+    What a path that cannot recount on the runway (a traced axis, a ladder
+    crossing a grading ramp) keeps: the automatic counts re-derived at
+    admission, an explicit count as declared (#1584).
+    """
+    _, _, _, _, offset, spacing = msl_auto_probe_declaration(
+        sim, position=pe.position, width=pe.width, height=pe.height,
+        n_probes=pe.n_probes, eps_r_sub=pe.eps_r_sub)
+    auto_offset = pe.name in getattr(sim, "_msl_auto_offset_min", {})
+    auto_spacing = pe.name in getattr(sim, "_msl_auto_probe_spacing", {})
+    return (int(offset) if auto_offset else pe.n_probe_offset,
+            int(spacing) if auto_spacing else pe.n_probe_spacing)
+
+
 def msl_auto_probe_offset_term(near_field_m: float, h_sub_m: float,
                                cell_m: float) -> str:
     """Name the term that sets :func:`msl_auto_probe_offset_cells`, with its

@@ -396,10 +396,17 @@ def validate_msl_port_geometry(grid, port, *, pec_edge_masks=None,
     for w in widths:
         for role, k, declared in (("ground", lower, port.z_lo), ("trace", upper, port.z_hi)):
             if not along_trace(w, k):
-                if along_trace(span["w_centre"], k):
-                    found = [float(nodes[iw][j]) for j in range(len(nodes[iw]))
-                             if along_trace(j, k)]
-                    found_lo, found_hi = min(found), max(found)
+                # Only the conductor run under the port's centre node counts;
+                # another trace on the same plane is not this port's. A
+                # periodic width axis keeps the node-level message.
+                if (span["width_axis"] not in getattr(grid, "periodic_axes", "")
+                        and along_trace(span["w_centre"], k)):
+                    lo_j = hi_j = span["w_centre"]
+                    while lo_j > 0 and along_trace(lo_j - 1, k):
+                        lo_j -= 1
+                    while hi_j < len(nodes[iw]) - 1 and along_trace(hi_j + 1, k):
+                        hi_j += 1
+                    found_lo, found_hi = float(nodes[iw][lo_j]), float(nodes[iw][hi_j])
                     overhang = (found_lo - port.y_lo if w < span["w_centre"]
                                 else port.y_hi - found_hi)
                     raise msl_geometry_error(
