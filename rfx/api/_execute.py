@@ -2705,11 +2705,11 @@ class _ExecuteMixin:
 
         Pure: ``_build_nonuniform_grid()`` synthesises any missing dz/dx/dy
         profile internally without mutating sim state (W1.3). The single
-        formula, now :meth:`NonUniformGrid.num_timesteps`, replaces the four byte-identical
+        formula, now :meth:`NonUniformGrid.steps_for_periods`, replaces the four byte-identical
         ``int(np.ceil(num_periods / (freq_max * grid.dt)))`` snippets that
         used to live at each NU/distributed dispatch site.
         """
-        return self._build_nonuniform_grid().num_timesteps(self._freq_max, num_periods)
+        return self._build_nonuniform_grid().steps_for_periods(self._freq_max, num_periods)
 
     from rfx.api._dispatch import _dispatch_plan
 
