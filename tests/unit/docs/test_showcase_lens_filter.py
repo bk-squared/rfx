@@ -514,6 +514,7 @@ def test_frame_iterate_refuses(kind, values):
 
 
 def test_main_iterations_schedule(tmp_path, monkeypatch):
+    pytest.importorskip("optax")  # optional extra "optimization"; CI and the local gate install .[dev] only
     from types import SimpleNamespace
     import jax.numpy as jnp
     case = SimpleNamespace(UPPER=2.7, LR=(.15, .015), ITERATIONS=200,
@@ -644,6 +645,7 @@ def _toy_filter(monkeypatch):
 
 @pytest.mark.parametrize("count", [2, 7])
 def test_y_uniform_broadcast_and_storage(tmp_path, monkeypatch, count):
+    pytest.importorskip("optax")  # optional extra "optimization"; CI and the local gate install .[dev] only
     case, model = _toy_filter(monkeypatch)
     start = np.broadcast_to(np.linspace(1.2, 6., 32, dtype=np.float32)[:, None], (32, 5))
     common.optimize(case, model, start, 10, count, tmp_path, "main", y_uniform=True)
@@ -662,7 +664,7 @@ def test_y_uniform_broadcast_and_storage(tmp_path, monkeypatch, count):
 def test_y_uniform_gradient_column_sum(tmp_path, monkeypatch):
     import jax
     import jax.numpy as jnp
-    import optax
+    optax = pytest.importorskip("optax")  # optional extra "optimization"; CI and the local gate install .[dev] only
     from types import SimpleNamespace
     case, model = _toy_filter(monkeypatch)
     original_adam = optax.adam
@@ -711,7 +713,7 @@ def test_y_uniform_refuses_nonuniform_start(tmp_path, monkeypatch):
 def test_default_optimizer_bit_identical(tmp_path, monkeypatch):
     import jax
     import jax.numpy as jnp
-    import optax
+    optax = pytest.importorskip("optax")  # optional extra "optimization"; CI and the local gate install .[dev] only
     case, model = _toy_filter(monkeypatch)
     start = np.linspace(1.2, 6., 160, dtype=np.float32).reshape(32, 5)
     count = 4
