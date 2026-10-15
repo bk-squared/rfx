@@ -155,6 +155,7 @@ def test_traced_warning_W4():
     assert len(sim._thin_conductors) == 1
 
 
+@pytest.mark.source_scan
 def test_public_admission_and_declaration_only():
     assert callable(rfx.model.admit_thin_conductor)
     source = inspect.getsource(Simulation.add_thin_conductor)
