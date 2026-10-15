@@ -259,8 +259,12 @@ jobs:
     # 2026-10-06 PI: twelve shards target ~25-30 min PR and merge-train test execution.
     name: fast-suite (${{ matrix.group }})
     runs-on: ubuntu-latest
-    # 12-way pytest-split estimate at 728b1eccb: max 1726 s (28.8 min); x1.22 runner variance ~35 min, plus install and JAX import ~40 min, so 60 min leaves margin.
-    timeout-minutes: 60
+    # (Superseded 2026-10-16, see below.) 12-way pytest-split estimate at 728b1eccb: max 1726 s (28.8 min); x1.22 runner variance ~35 min, plus install and JAX import ~40 min, so 60 min leaves margin.
+    # 2026-10-16 stopgap: main's slowest shard measured 55.4-58.2 min over four runs, and the hosted
+    # runner's CPU alone spreads a shard by ~1.4x (actual/predicted 0.71-0.85 on EPYC 9V74/9V45,
+    # 1.03-1.16 on EPYC 7763), so a correct PR was ~2 min from a false cancel. 75 until the shards
+    # fit again (shard count or runners-only group, being measured); then back to 60.
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
