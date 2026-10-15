@@ -585,6 +585,11 @@
     },
     {
       "file": "rfx/runners/_distributed_common.py",
+      "function": "_h_backward",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/runners/_distributed_common.py",
       "function": "_update_e_debye_local",
       "kind": "difference",
       "count": 6
@@ -594,6 +599,11 @@
       "function": "_update_e_debye_local",
       "kind": "neighbour",
       "count": 6
+    },
+    {
+      "file": "rfx/runners/_distributed_common.py",
+      "function": "_update_e_debye_local.backward",
+      "kind": "neighbour"
     },
     {
       "file": "rfx/runners/_distributed_common.py",
@@ -609,6 +619,11 @@
     },
     {
       "file": "rfx/runners/_distributed_common.py",
+      "function": "_update_e_local.backward",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/runners/_distributed_common.py",
       "function": "_update_e_local_nu",
       "kind": "difference",
       "count": 6
@@ -618,6 +633,11 @@
       "function": "_update_e_local_nu",
       "kind": "neighbour",
       "count": 6
+    },
+    {
+      "file": "rfx/runners/_distributed_common.py",
+      "function": "_update_e_local_nu.backward",
+      "kind": "neighbour"
     },
     {
       "file": "rfx/runners/_distributed_common.py",
@@ -633,6 +653,11 @@
     },
     {
       "file": "rfx/runners/_distributed_common.py",
+      "function": "_update_e_local_with_dispersion.backward",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/runners/_distributed_common.py",
       "function": "_update_e_lorentz_local",
       "kind": "difference",
       "count": 6
@@ -642,6 +667,11 @@
       "function": "_update_e_lorentz_local",
       "kind": "neighbour",
       "count": 6
+    },
+    {
+      "file": "rfx/runners/_distributed_common.py",
+      "function": "_update_e_lorentz_local.backward",
+      "kind": "neighbour"
     },
     {
       "file": "rfx/runners/_distributed_common.py",

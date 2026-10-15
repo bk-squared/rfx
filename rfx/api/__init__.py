@@ -31,7 +31,6 @@ import numpy as np
 
 
 from rfx.grid import Grid, C0  # noqa: F401
-from rfx.core.jax_utils import is_tracer
 from rfx.geometry.csg import Box, Shape  # noqa: F401
 from rfx.nonuniform import NonUniformGrid  # noqa: F401
 from rfx.sources.sources import GaussianPulse
@@ -394,68 +393,13 @@ class Simulation(
         if stencil_order not in (2, 4):
             raise ValueError(f"stencil_order must be 2 or 4, got {stencil_order}")
         from rfx.model import admit_graded_profiles
+        # Caps come from _PreflightMixin (single source of truth; preflight's
+        # _validate_cfg_multiband_grading reads the same two attributes).
         domain, self._nominal_profiles = admit_graded_profiles(
             domain, dx_profile, dy_profile, dz_profile, dt=dt,
-            dt_min_cell=dt_min_cell, nominal_profiles=nominal_profiles)
-
-        # P2: Warn on abrupt grading in a user-supplied profile. This ran
-        # for dz only, so an in-plane profile with a 2:1 or 4:1 jump was
-        # accepted in silence (#743) — the axes differ in which physics
-        # they carry, not in whether an abrupt ratio reflects.
-        # Tracer profiles skip the warning — adjacent ratios can't be
-        # computed host-side during tracing.
-        # Threshold, PER AXIS. dz: 1.3 -> 1.4 (SPEC-01 WP6, #780).
-        # PROVENANCE for that move: 1.3 was `smooth_grading`'s own per-step
-        # default with no measurement behind it, so ratios in (1.3, 1.4]
-        # warned without evidence that they cost anything. The multi-band
-        # witness battery (validation/research/multiband_nu/,
-        # pre-declaration note
-        # docs/design_notes/20260829_spec01_multiband_predeclaration.md)
-        # measures the r = 1.4 transition directly: reflection inside the
-        # exact discrete chain-model window (-54 dB class at 30
-        # cells/wavelength; the class scales as (dz/lambda)^2), round-trip
-        # amplitude asymmetry under the 3e-4 floor, 1e6-step energy bounded
-        # at the float-accumulation class, and 2nd-order supraconvergence
-        # preserved on a fixture whose graded axis carries ~90 % of the
-        # error budget.
-        # dx/dy STAY AT 1.3: every witness in that battery grades z and
-        # holds the transverse mesh uniform (the harness takes a scalar
-        # transverse cell), so there is no in-plane provenance for moving
-        # an in-plane lock — SPEC-00 0.2-4. The 2026-08-29 adversarial
-        # review found this axis overclaim in the docs; it lived here too.
-        # Beyond the cap this warning still fires, and preflight adds the
-        # richer advisory nu_grading_ratio_beyond_validated_cap with the
-        # accuracy class on both sides.
-        # Caps come from _PreflightMixin (single source of truth — do not
-        # re-type the literals here; _validate_cfg_multiband_grading reads
-        # the same two class attributes).
-        for _axis_name, _profile, _cap, _scope in (
-                ("dz_profile", dz_profile, self._MULTIBAND_RATIO_CAP,
-                 "the validated multi-band grading cap"),
-                ("dx_profile", dx_profile, self._INPLANE_RATIO_CAP,
-                 "the in-plane grading threshold — the validated "
-                 f"{self._MULTIBAND_RATIO_CAP:g} multi-band cap is a "
-                 "z-axis envelope and no witness grades an in-plane axis"),
-                ("dy_profile", dy_profile, self._INPLANE_RATIO_CAP,
-                 "the in-plane grading threshold — the validated "
-                 f"{self._MULTIBAND_RATIO_CAP:g} multi-band cap is a "
-                 "z-axis envelope and no witness grades an in-plane axis")):
-            if (_profile is not None and not is_tracer(_profile)
-                    and len(_profile) > 1):
-                import warnings as _w
-                _p = np.asarray(_profile, dtype=float)
-                ratios = _p[1:] / _p[:-1]
-                max_ratio = float(np.max(np.maximum(ratios, 1.0 / ratios)))
-                if max_ratio > _cap + 1e-6:
-                    _w.warn(
-                        f"{_axis_name} has max adjacent cell ratio "
-                        f"{max_ratio:.3f} (> {_cap:g}, {_scope} — "
-                        "docs/guides/support_matrix.md, "
-                        "'Multi-band graded mesh'). This may cause "
-                        "numerical reflections. Use "
-                        f"rfx.smooth_grading({_axis_name}) to fix.",
-                        stacklevel=2,
-                    )
+            dt_min_cell=dt_min_cell, nominal_profiles=nominal_profiles,
+            multiband_ratio_cap=self._MULTIBAND_RATIO_CAP,
+            inplane_ratio_cap=self._INPLANE_RATIO_CAP)
 
         if _explicit_spec:
             # BoundarySpec is authoritative; derive the legacy views so

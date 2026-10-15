@@ -524,43 +524,10 @@ def apply_pec_face_shmap(state: FDTDState, mesh: Mesh, n_devices: int,
 def apply_pmc_face_shmap(state: FDTDState, mesh: Mesh, n_devices: int,
                          nx_local_with_ghost: int,
                          pmc_faces: frozenset, pad_x: int = 0, *, ranks) -> FDTDState:
-    """Apply PMC (``H_tangential = 0``) on the physical domain faces under
-    ``shard_map``.
+    """Canonicalize only owned PMC high ghosts; retain every physical H row.
 
-    Electromagnetic dual of :func:`apply_pec_face_shmap`: PEC zeroes
-    tangential E, PMC zeroes tangential H. Y- and Z-face PMC is local to
-    every rank; X-face PMC is rank-conditional (only rank 0 zeroes
-    x_lo, only rank N-1 zeroes x_hi).
-
-    Yee convention: a ``_hi`` face acts on index ``-2`` (half a cell
-    INSIDE the wall), not ``-1`` (the ghost outside) -- see
-    ``rfx/boundaries/pmc.py``. On the x axis that is ``last_inside``,
-    one cell in from the last real cell
-    ``nx_local_with_ghost - 1 - ghost - pad_x``; the faces never act on
-    a seam ghost, nor on the alignment-pad cells when ``pad_x > 0``
-    (#622, same class as the PEC face fix).
-
-    ``pmc_faces`` is a Python ``frozenset`` read at trace time, so each
-    face's ``if`` is resolved while the kernel is staged out, not at
-    run time. An empty set short-circuits before the kernel is built.
-
-    #1038 leg 3. ``distributed_v2.py::_apply_pmc_shmap`` and
-    ``distributed_nu.py::_apply_pmc_face_nu_shmap`` were the SAME kernel
-    with one token of difference, each runner's own spelling of the
-    slab length; after the rename in this leg's first commit the two
-    inner bodies hashed byte-identical
-    (``c6baaf31de52299c39c564403a6fda4fbebdaea26014bbceb7f12d30983f0b12``).
-
-    **This function does not encode a hook point, and the two runners
-    disagree about one.** ``distributed_v2`` calls it AFTER the H ghost
-    exchange (``step_fn_cpml`` 3b / ``step_fn_pec`` 2b);
-    ``distributed_nu`` calls it BEFORE the H ghost exchange (step 2b),
-    so that the zero propagates to neighbour ranks through the
-    exchange. Both cite the same OQ9 directive for the H-half placement
-    and reach opposite conclusions about the exchange. That is inventory
-    §3.2 / leg 5 territory -- a physics question with its own gate --
-    and merging the kernel settles nothing about it. Callers own their
-    ordering.
+    The image path zeroes only the global high ghost, which no exchange sends,
+    so the order relative to the exchange does not change any value.
     """
     if not pmc_faces:
         return state
@@ -581,41 +548,12 @@ def apply_pmc_face_shmap(state: FDTDState, mesh: Mesh, n_devices: int,
         check_rep=False,
     )
     def _pmc(hx, hy, hz, *, rank):
-        ghost = 1
-
-        # Yee convention: _hi PMC acts on index -2 (0.5·dx INSIDE the
-        # wall), not -1 (ghost outside). See rfx/boundaries/pmc.py.
-        if "y_lo" in pmc_faces:
-            hx = hx.at[:, 0, :].set(0.0)
-            hz = hz.at[:, 0, :].set(0.0)
-        if "y_hi" in pmc_faces:
-            hx = hx.at[:, -2, :].set(0.0)
-            hz = hz.at[:, -2, :].set(0.0)
-        if "z_lo" in pmc_faces:
-            hx = hx.at[:, :, 0].set(0.0)
-            hy = hy.at[:, :, 0].set(0.0)
-        if "z_hi" in pmc_faces:
-            hx = hx.at[:, :, -2].set(0.0)
-            hy = hy.at[:, :, -2].set(0.0)
-
-        device_idx = rank
-        is_first = (device_idx == 0)
-        is_last = (device_idx == n_devices - 1)
-        last_real = nx_local_with_ghost - 1 - ghost - pad_x
-        last_inside = last_real - 1
-
-        if "x_lo" in pmc_faces:
-            hy_new = jnp.where(is_first, 0.0, hy[ghost, :, :])
-            hz_new = jnp.where(is_first, 0.0, hz[ghost, :, :])
-            hy = hy.at[ghost, :, :].set(hy_new)
-            hz = hz.at[ghost, :, :].set(hz_new)
-        if "x_hi" in pmc_faces:
-            hy_new = jnp.where(is_last, 0.0, hy[last_inside, :, :])
-            hz_new = jnp.where(is_last, 0.0, hz[last_inside, :, :])
-            hy = hy.at[last_inside, :, :].set(hy_new)
-            hz = hz.at[last_inside, :, :].set(hz_new)
-
-        return hx, hy, hz
+        from rfx.boundaries.pmc import apply_pmc_faces
+        local = FDTDState(hx, hx, hx, hx, hy, hz, 0)
+        local = apply_pmc_faces(
+            local, pmc_faces, image=True, frame=cpml_slab_frame(hx.shape, 1, pad_x),
+            owned={"x_lo": rank == 0, "x_hi": rank == n_devices - 1})
+        return local.hx, local.hy, local.hz
 
     hx, hy, hz = _pmc(ranks, state.hx, state.hy, state.hz)
     return state._replace(hx=hx, hy=hy, hz=hz)
@@ -1044,7 +982,7 @@ def slab_e_materials_shmap(mat, mesh, nx_per, nx, *, ranks, grid=None):
 
 
 def _update_e_local_nu(state, e_coeffs,
-                      inv_dx_slab, inv_dy_full, inv_dz_full):
+                      inv_dx_slab, inv_dy_full, inv_dz_full, *, boundary=None, frame=None, owned=None):
     """E update on a local slab using NU inverse (cell-local) spacings.
 
     Mirrors ``rfx/core/yee.py::update_e_nu``. ``e_coeffs`` is the slab's
@@ -1052,19 +990,21 @@ def _update_e_local_nu(state, e_coeffs,
     :func:`slab_e_coeffs` / :func:`component_e_coeffs`).
     """
     hx, hy, hz = state.hx, state.hy, state.hz
+    def backward(h, axis):
+        return _h_backward(h, axis, boundary=boundary, frame=frame, owned=owned)
     (ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z) = e_coeffs
 
     curl_x = (
-        (hz - _shift_bwd(hz, 1)) * inv_dy_full[None, :, None]
-        - (hy - _shift_bwd(hy, 2)) * inv_dz_full[None, None, :]
+        (hz - backward(hz, 1)) * inv_dy_full[None, :, None]
+        - (hy - backward(hy, 2)) * inv_dz_full[None, None, :]
     )
     curl_y = (
-        (hx - _shift_bwd(hx, 2)) * inv_dz_full[None, None, :]
-        - (hz - _shift_bwd(hz, 0)) * inv_dx_slab[:, None, None]
+        (hx - backward(hx, 2)) * inv_dz_full[None, None, :]
+        - (hz - backward(hz, 0)) * inv_dx_slab[:, None, None]
     )
     curl_z = (
-        (hy - _shift_bwd(hy, 0)) * inv_dx_slab[:, None, None]
-        - (hx - _shift_bwd(hx, 1)) * inv_dy_full[None, :, None]
+        (hy - backward(hy, 0)) * inv_dx_slab[:, None, None]
+        - (hx - backward(hx, 1)) * inv_dy_full[None, :, None]
     )
 
     ex = ca_x * state.ex + cb_x * curl_x
@@ -1171,7 +1111,7 @@ def update_h_nu_shmap(st, mat, mesh, dt,
 
 def update_e_nu_shmap(st, mat, mesh, dt,
                       inv_dx_sharded, inv_dy_rep, inv_dz_rep, nx_per, nx,
-                      e_materials=None, *, ranks):
+                      e_materials=None, *, ranks, boundary=None, ghost=1, pad_x=0):
     """E update on the NU distributed path, via ``shard_map``.
 
     The E sibling of :func:`update_h_nu_shmap`, shared by the same two
@@ -1218,7 +1158,8 @@ def update_e_nu_shmap(st, mat, mesh, dt,
             coeffs = slab_e_coeffs(_mat, nx_per, nx, dt, rank=rank)
         else:
             coeffs = component_e_coeffs(means, dt)
-        new_st = _update_e_local_nu(_st, coeffs, invdx, invdy, invdz)
+        new_st = _update_e_local_nu(_st, coeffs, invdx, invdy, invdz,
+            **_slab_curl_kwargs(boundary, hx.shape, ghost, pad_x, rank, mesh.size))
         return new_st.ex, new_st.ey, new_st.ez, new_st.step
 
     ex, ey, ez, step = _e(
@@ -1332,7 +1273,7 @@ def _update_h_local(state, materials, dt, dx):
     return state._replace(hx=hx, hy=hy, hz=hz)
 
 
-def _update_e_local(state, e_coeffs, dx):
+def _update_e_local(state, e_coeffs, dx, *, boundary=None, frame=None, owned=None):
     """E update on a local slab (including ghost cells).
 
     Identical to yee.update_e but without jit decorator and always
@@ -1343,19 +1284,21 @@ def _update_e_local(state, e_coeffs, dx):
     rule (#1210, #1236, #1303).
     """
     hx, hy, hz = state.hx, state.hy, state.hz
+    def backward(h, axis):
+        return _h_backward(h, axis, boundary=boundary, frame=frame, owned=owned)
     (ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z) = e_coeffs
 
     curl_x = (
-        (hz - _shift_bwd(hz, 1)) / dx
-        - (hy - _shift_bwd(hy, 2)) / dx
+        (hz - backward(hz, 1)) / dx
+        - (hy - backward(hy, 2)) / dx
     )
     curl_y = (
-        (hx - _shift_bwd(hx, 2)) / dx
-        - (hz - _shift_bwd(hz, 0)) / dx
+        (hx - backward(hx, 2)) / dx
+        - (hz - backward(hz, 0)) / dx
     )
     curl_z = (
-        (hy - _shift_bwd(hy, 0)) / dx
-        - (hx - _shift_bwd(hx, 1)) / dx
+        (hy - backward(hy, 0)) / dx
+        - (hx - backward(hx, 1)) / dx
     )
 
     ex = ca_x * state.ex + cb_x * curl_x
@@ -1369,17 +1312,19 @@ def _update_e_local(state, e_coeffs, dx):
 # Local dispersive E-update functions (operate on per-device slab)
 # ---------------------------------------------------------------------------
 
-def _update_e_debye_local(state, debye_coeffs, debye_state, dt, dx):
+def _update_e_debye_local(state, debye_coeffs, debye_state, dt, dx, *, boundary=None, frame=None, owned=None):
     """E update with Debye ADE on a local slab (always non-periodic).
 
     Per E component (#1260), the single-device body's arithmetic
     (``rfx.materials.debye.debye_e_component``) without its dtype narrowing.
     """
     hx, hy, hz = state.hx, state.hy, state.hz
+    def backward(h, axis):
+        return _h_backward(h, axis, boundary=boundary, frame=frame, owned=owned)
 
-    curl_x = ((hz - _shift_bwd(hz, 1)) - (hy - _shift_bwd(hy, 2))) / dx
-    curl_y = ((hx - _shift_bwd(hx, 2)) - (hz - _shift_bwd(hz, 0))) / dx
-    curl_z = ((hy - _shift_bwd(hy, 0)) - (hx - _shift_bwd(hx, 1))) / dx
+    curl_x = ((hz - backward(hz, 1)) - (hy - backward(hy, 2))) / dx
+    curl_y = ((hx - backward(hx, 2)) - (hz - backward(hz, 0))) / dx
+    curl_z = ((hy - backward(hy, 0)) - (hx - backward(hx, 1))) / dx
 
     ex_new, px_new = debye_e_component(debye_coeffs, 0, state.ex, curl_x,
                                        debye_state.px)
@@ -1393,17 +1338,19 @@ def _update_e_debye_local(state, debye_coeffs, debye_state, dt, dx):
     return new_fdtd, new_debye
 
 
-def _update_e_lorentz_local(state, lorentz_coeffs, lor_state, dt, dx):
+def _update_e_lorentz_local(state, lorentz_coeffs, lor_state, dt, dx, *, boundary=None, frame=None, owned=None):
     """E update with Lorentz/Drude ADE on a local slab (always non-periodic).
 
     Per E component (#1260), as ``rfx.materials.lorentz.update_e_lorentz``
     without its dtype narrowing.
     """
     hx, hy, hz = state.hx, state.hy, state.hz
+    def backward(h, axis):
+        return _h_backward(h, axis, boundary=boundary, frame=frame, owned=owned)
 
-    curl_x = ((hz - _shift_bwd(hz, 1)) - (hy - _shift_bwd(hy, 2))) / dx
-    curl_y = ((hx - _shift_bwd(hx, 2)) - (hz - _shift_bwd(hz, 0))) / dx
-    curl_z = ((hy - _shift_bwd(hy, 0)) - (hx - _shift_bwd(hx, 1))) / dx
+    curl_x = ((hz - backward(hz, 1)) - (hy - backward(hy, 2))) / dx
+    curl_y = ((hx - backward(hx, 2)) - (hz - backward(hz, 0))) / dx
+    curl_z = ((hy - backward(hy, 0)) - (hx - backward(hx, 1))) / dx
 
     px_new = lorentz_p_component(lorentz_coeffs, 0, state.ex, lor_state.px,
                                  lor_state.px_prev)
@@ -1429,7 +1376,7 @@ def _update_e_lorentz_local(state, lorentz_coeffs, lor_state, dt, dx):
 
 
 def _update_e_local_with_dispersion(state, materials, dt, dx,
-                                     debye=None, lorentz=None, *, slab=None, e_materials=None, rank=None):
+                                     debye=None, lorentz=None, *, slab=None, e_materials=None, rank=None, boundary=None, frame=None, owned=None):
     """E update on a local slab with optional Debye/Lorentz dispersion.
 
     Every model uses the per-component edge means of
@@ -1442,7 +1389,8 @@ def _update_e_local_with_dispersion(state, materials, dt, dx,
     """
     if debye is None and lorentz is None:
         return _update_e_local(
-            state, slab_e_coeffs(materials, *slab, dt, rank=rank), dx), None, None
+            state, slab_e_coeffs(materials, *slab, dt, rank=rank), dx,
+            boundary=boundary, frame=frame, owned=owned), None, None
 
     if e_materials is not None:
         if debye is not None:
@@ -1453,13 +1401,13 @@ def _update_e_local_with_dispersion(state, materials, dt, dx,
     if debye is not None and lorentz is None:
         debye_coeffs, debye_state = debye
         new_state, new_debye = _update_e_debye_local(
-            state, debye_coeffs, debye_state, dt, dx)
+            state, debye_coeffs, debye_state, dt, dx, boundary=boundary, frame=frame, owned=owned)
         return new_state, new_debye, None
 
     if lorentz is not None and debye is None:
         lorentz_coeffs, lorentz_state = lorentz
         new_state, new_lorentz = _update_e_lorentz_local(
-            state, lorentz_coeffs, lorentz_state, dt, dx)
+            state, lorentz_coeffs, lorentz_state, dt, dx, boundary=boundary, frame=frame, owned=owned)
         return new_state, None, new_lorentz
 
     # Mixed Debye + Lorentz: the single-device combined coefficients
@@ -1472,10 +1420,12 @@ def _update_e_local_with_dispersion(state, materials, dt, dx,
     debye_coeffs, debye_state = debye
     lorentz_coeffs, lorentz_state = lorentz
     hx, hy, hz = state.hx, state.hy, state.hz
+    def backward(h, axis):
+        return _h_backward(h, axis, boundary=boundary, frame=frame, owned=owned)
 
-    curl_x = ((hz - _shift_bwd(hz, 1)) - (hy - _shift_bwd(hy, 2))) / dx
-    curl_y = ((hx - _shift_bwd(hx, 2)) - (hz - _shift_bwd(hz, 0))) / dx
-    curl_z = ((hy - _shift_bwd(hy, 0)) - (hx - _shift_bwd(hx, 1))) / dx
+    curl_x = ((hz - backward(hz, 1)) - (hy - backward(hy, 2))) / dx
+    curl_y = ((hx - backward(hx, 2)) - (hz - backward(hz, 0))) / dx
+    curl_z = ((hy - backward(hy, 0)) - (hx - backward(hx, 1))) / dx
     e_old = (state.ex, state.ey, state.ez)
     curls = (curl_x, curl_y, curl_z)
     p_l = (lorentz_state.px, lorentz_state.py, lorentz_state.pz)
@@ -1607,3 +1557,20 @@ def cpml_absorbing_faces(grid):
     """Select the realized absorbing faces of the global model."""
     from rfx.boundaries.depths import grid_face_depths
     return tuple(face.name for face in grid_face_depths(grid) if face.realized > 0)
+
+
+def _h_backward(h, axis, *, boundary=None, frame=None, owned=None):
+    """Keep nonmagnetic slab programs unchanged; share the one magnetic image."""
+    if boundary is None or not boundary.pmc_faces:
+        return _shift_bwd(h, axis)
+    from rfx.core.yee import h_neighbor
+    return h_neighbor(h, axis, boundary=boundary,
+                      frame=None if frame is None else frame.get("xyz"[axis]), owned=owned)
+
+
+def _slab_curl_kwargs(boundary, shape, ghost, pad_x, rank, n_devices):
+    """Only magnetic slabs trace ownership; transverse axes use the full extent."""
+    if boundary is None or not boundary.pmc_faces:
+        return {}
+    return dict(boundary=boundary, frame=cpml_slab_frame(shape, ghost, pad_x),
+                owned={"x_lo": rank == 0, "x_hi": rank == n_devices - 1})

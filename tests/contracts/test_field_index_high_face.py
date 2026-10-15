@@ -187,7 +187,7 @@ def test_c2_c2b(lane, boundary, axis, row, record_property):
         refusal = 'subgridd|production|unstable'
     elif row == 'iii' and lane in ('two_graded_forward', 'adi_run'):
         refusal = 'port|impedance|ADI|adi|distributed|PMC|magnetic'
-    elif boundary == 'pmc' and (lane.startswith('two_') or lane == 'adi_run'):
+    elif boundary == 'pmc' and (lane == 'adi_run' or (row == 'iii' and lane.startswith('two_'))):
         refusal = 'PMC|pmc|magnetic'
     if refusal:
         for side, d in (('lo', 0.), ('hi', 0.), ('hi', .4), ('hi', 1.)):

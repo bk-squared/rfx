@@ -55,14 +55,6 @@ def _run(sim, lane, devices=None, **kwargs):
     return sim.forward(n_steps=240, **({"distributed": True, "devices": devices} if devices else {}), **kwargs)
 
 
-def _assert_pmc_refused(sim, lane, devices, face):
-    kernel = "distributed_nu" if lane == "nu" else "distributed_v2"
-    for bypass in (False, True):
-        with pytest.raises(NotImplementedError,
-                           match=rf"PMC magnetic face.*{face}.*{kernel}.*magnetic image"):
-            _run(sim, lane, devices, skip_preflight=bypass)
-
-
 @pytest.mark.parametrize("axis", tuple("xyz"))
 @pytest.mark.parametrize("skip_preflight", (False, True))
 def test_periodic_nu_refuses_axis(axis, skip_preflight):
@@ -91,8 +83,6 @@ def test_absorber_must_fit_owned_slab(lane, count, x_cells, x_wall, face, width,
 
 
 @pytest.mark.parametrize("lane", ("uniform", "nu"))
-# The mixed PEC/PMC no_x_absorber variants are deferred with the PMC image.
-# PEC/absorber slab admission and all existing PEC width rows remain below.
 @pytest.mark.parametrize("case,count", [
     ("plate", 2),
     ("exact_depth", 2), ("exact_depth", 3),
@@ -147,11 +137,7 @@ def test_wall_must_fit_owned_slab(lane, count, x_cells, hi, all_walls, width, pa
                **({"y": "pec", "z": "pec"} if all_walls else {}))
     grid = sim._build_grid() if lane == "uniform" else sim._build_nonuniform_grid()
     assert grid.nx == x_cells + 1
-    if hi == "pmc":
-        # Any slab width refuses until B4 implements the declared-face image.
-        _assert_pmc_refused(sim, lane, devices, "x_hi")
-        return
-    required = 1
+    required = 2 if hi == "pmc" else 1
     with pytest.raises(ValueError, match=(
         rf"distributed {hi.upper()} face x_hi: boundary rank {count - 1} has "
         rf"{width} physical x cells, but {hi.upper()} requires at least {required} physical x cells "
@@ -174,9 +160,6 @@ def test_minimum_wall_width_matches_one_device(lane, count, x_cells, hi, all_wal
     kw = dict(x_cells=x_cells, x=Boundary(lo="pec", hi=hi))
     if all_walls:
         kw.update(y="pec", z="pec")
-    if hi == "pmc":
-        _assert_pmc_refused(_box(lane, **kw), lane, devices, "x_hi")
-        return
     with jax.default_device(devices[0]):
         one = np.asarray(_run(_box(lane, **kw), lane).time_series)
         result = _run(_box(lane, **kw), lane, devices)
@@ -197,14 +180,26 @@ def test_minimum_wall_width_matches_one_device(lane, count, x_cells, hi, all_wal
 def test_pmc_low_face_must_fit_owned_slab(lane):
     devices = _devices(2)
     sim = _box(lane, x_cells=1, x=Boundary(lo="pmc", hi="pec"))
-    _assert_pmc_refused(sim, lane, devices, "x_lo")
+    for bypass in (False, True):
+        with pytest.raises(ValueError, match=(
+            r"distributed PMC face x_lo: boundary rank 0 has 1 physical x cells, "
+            r"but PMC requires at least 2 physical x cells"
+        )):
+            _run(sim, lane, devices, skip_preflight=bypass)
 
 
 @pytest.mark.parametrize("lane", ("uniform", "nu"))
-def test_two_rows_on_pmc_low_face_refuse(lane):
+def test_two_rows_on_pmc_low_face_match_one_device(lane, record_property):
     devices = _devices(2)
     kw = dict(x_cells=3, x=Boundary(lo="pmc", hi="pec"))
-    _assert_pmc_refused(_box(lane, **kw), lane, devices, "x_lo")
+    with jax.default_device(devices[0]):
+        one = np.asarray(_run(_box(lane, **kw), lane).time_series)
+        many = np.asarray(_run(_box(lane, **kw), lane, devices).time_series)
+    peak = np.abs(one).max(axis=0)
+    assert np.all(peak > 0) and np.isfinite(many).all()
+    relative = np.abs(many - one).max(axis=0) / peak
+    record_property("relative_probe_error", relative.tolist())
+    assert np.all(relative <= 1e-4), relative
 
 
 @pytest.mark.parametrize("case", ("y_hi", "z_faces", "yz_faces"))

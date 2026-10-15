@@ -187,7 +187,7 @@ def capture(sim, entry, path, invoke=None):
             raise Captured
         if fun is not None and fun.__module__ == 'rfx.runners.distributed_nu' and fun.__name__ == 'run_fn':
             frame = inspect.currentframe().f_back
-            # The step omits pec_faces. Resolve that actual default inside
+            # The step passes the runner's e_wall_faces (#1221 B4). Resolve it inside
             # the unmodified wall factory and stop at its shard-map builder;
             # no state is read and no field operation is traced or executed.
             from rfx.runners.distributed_nu import _apply_pec_face_nu_shmap
@@ -202,7 +202,7 @@ def capture(sim, entry, path, invoke=None):
             with patch.object(walls, 'rank_shard_map', wall_factory):
                 _apply_pec_face_nu_shmap(None, frame.f_locals['mesh'],
                     frame.f_locals['n_devices'], frame.f_locals['nx_local'],
-                    pad_x=frame.f_locals['pad_x'], ranks=None)
+                    pad_x=frame.f_locals['pad_x'], pec_faces=frame.f_locals['e_wall_faces'], ranks=None)
             raise AssertionError('distributed wall factory was not observed')
         return jit_original(fun, *args, **kwargs)
 
@@ -236,12 +236,8 @@ def capture(sim, entry, path, invoke=None):
 def refusal(case, entry, path):
     if case == 'closed_box' and path != 'uniform':
         return 'uniform, single-device'
-    if case == 'pmc' and path.startswith('distributed'):
-        return 'PMC|pmc'
     if case == 'periodic' and path != 'uniform':
         return 'periodic'
-    if case == 'pmc' and path.startswith('distributed'):
-        return 'PMC|pmc'
     if case in ('plane', 'closed_box') and path == 'distributed-graded':
         return 'TFSF'
     if case == 'W-guide' and path == 'distributed-graded' and entry == 'forward':

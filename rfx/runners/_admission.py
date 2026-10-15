@@ -474,7 +474,7 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_boundary", "cpml"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},
     ("_boundary", "upml"): _UNIFORM_YEE,
     ("_pec_faces", "pec_face"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},
-    ("_boundary_spec", "pmc_face"): _OTHER_RUNNERS - _ADI - {"run_subgridded", "run_distributed"},
+    ("_boundary_spec", "pmc_face"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},
     ("_boundary_spec", "conformal"): frozenset({"run_uniform"}),
     ("_boundary_spec", "conformal_s_matrix"): frozenset(),
     ("_boundary_spec", "absorbing_lid"): _OTHER_RUNNERS - _ADI,
@@ -496,6 +496,7 @@ _ADMITTED_ON: dict[Row, frozenset] = {
 # Both public entries use distributed_nu.run_nonuniform_distributed_pec.
 # Define that runner's carried rows once; neither entry inherits uniform v2.
 _DISTRIBUTED_NU_ROWS = frozenset({
+    ('_boundary_spec', 'pmc_face'),
     ('_adi_cfl_factor', ''),
     ('_boundary', 'cpml'),
     ('_boundary_spec', 'absorbing_lid'),

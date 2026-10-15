@@ -237,11 +237,11 @@ def _validate_cfg_source_on_reflector_plane(
                             msg = (
                                 f"Source/port at {pos} m (component={pe.component}) "
                                 f"sits on the magnetic-wall plane {face}. The "
-                                f"single-device Yee magnetic image keeps tangential E "
+                                f"Yee magnetic image keeps tangential E "
                                 f"on the declared face coupled to the interior. "
                                 f"Face sources and lumped/wire ports describe the full symmetric "
-                                f"object, including its reflected half. Distributed "
-                                f"kernels refuse magnetic faces until B4. Waveguide ports "
+                                f"object, including its reflected half. Distributed lumped/wire "
+                                f"measurements remain unsupported. Waveguide ports "
                                 f"refuse them because their aperture mode solver is PEC-only."
                             )
                     elif comp_field == "e" and not is_tangential:

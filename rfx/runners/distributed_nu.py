@@ -79,7 +79,7 @@ from rfx.runners._distributed_common import (
     magnetic_low_ghost,
     apply_pec_face_shmap,
     apply_pec_mask_shmap,
-    apply_pmc_face_shmap,
+    apply_pmc_face_shmap, _slab_curl_kwargs,
     exchange_component_shmap,
     exchange_h_yee_shmap,
     exchange_e_yee_shmap,
@@ -573,7 +573,7 @@ def _update_e_dispersive_local_nu(
     *,
     debye=None,
     lorentz=None,
-    e_old: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray] | None = None,
+    e_old: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray] | None = None, boundary=None, frame=None, owned=None,
 ):
     """Per-rank slab-aware NU dispersive E update.
 
@@ -592,7 +592,7 @@ def _update_e_dispersive_local_nu(
 
     return _update_e_nu_dispersive(
         state, materials, dt, inv_dx, inv_dy, inv_dz,
-        debye=debye, lorentz=lorentz, e_old=e_old,
+        debye=debye, lorentz=lorentz, e_old=e_old, boundary=boundary, frame=frame, owned=owned,
     )
 
 
@@ -667,13 +667,8 @@ def run_nonuniform_distributed_pec(
         9. Ghost exchange of E                       via lax.ppermute
        10. Probe accumulation (rank-conditional sum) via lax.psum
 
-    The E ghost exchange is the LAST E-half-step stage, after every
-    operator that writes E on real cells (sources, the domain-face PEC,
-    the PEC mask, the soft occupancy) — the same placement the H half
-    gives the PMC face (stage 2b before the H exchange, "so the zero
-    propagates to neighbours via the exchange").  A rank acts only on
-    its real cells. Only Hy/Hz left ghosts and Ey/Ez right ghosts are
-    refreshed from their owners each step, after those owners finish.
+    Exchange E after all electric writes. PMC canonicalization follows CPML H and changes only the global
+    high ghost, which no exchange sends. Only Hy/Hz left and Ey/Ez right ghosts are refreshed from owners.
     Other field, CPML and dispersion ghost entries are locally updated
     scratch values, can grow, and are never read by real cells. Exclude them
     from physical energy calculations; ``forward()`` discards this state.
@@ -873,6 +868,8 @@ def run_nonuniform_distributed_pec(
     else:
         lorentz_coeffs = None
         lorentz_state_init = None
+    from rfx.boundaries.depths import distributed_wall_faces
+    e_wall_faces, curl_boundary = distributed_wall_faces(sharded_grid.global_grid, pmc_faces)
     use_dispersion = use_debye or use_lorentz
     use_cpml = cpml_params is not None
     if not use_cpml:
@@ -882,6 +879,9 @@ def run_nonuniform_distributed_pec(
             pec_faces={f"{axis}_{side}" for axis in "xyz" for side in ("lo", "hi")},
             pmc_faces=pmc_faces,
         )
+    elif pmc_faces:
+        # The graded grid keeps no PMC declaration, so init_cpml_slabs cannot see these faces.
+        _distributed_boundary_layers(sharded_grid, n_devices, pmc_faces=pmc_faces)
     if use_cpml and cpml_state is None:
         raise ValueError(
             "cpml_params was provided but cpml_state is None; pass the "
@@ -1051,7 +1051,7 @@ def run_nonuniform_distributed_pec(
             st, mat, mesh, dt,
             inv_dx_sharded, inv_dy_rep, inv_dz_rep,
             nx_per, nx_real, e_materials=e_materials,
-            ranks=ranks)
+            ranks=ranks, boundary=curl_boundary, ghost=ghost, pad_x=pad_x)
 
     # ------------------------------------------------------------------
     # Phase 2D: dispersive E shmap helper
@@ -1236,6 +1236,7 @@ def run_nonuniform_distributed_pec(
                     _st, _mat, dt, invdx, invdy, invdz,
                     debye=db_local, lorentz=lr_local,
                     e_old=(ex_old_local, ey_old_local, ez_old_local),
+                    **_slab_curl_kwargs(curl_boundary, hx.shape, ghost, pad_x, rank, n_devices),
                 )
 
                 from rfx.boundaries.electric_coefficient import dispersive_curl
@@ -1471,7 +1472,7 @@ def run_nonuniform_distributed_pec(
             )
             new_st, new_cs = apply_cpml_e(
                 _st, cpml_params, _cs, global_grid, materials=mat_slab,
-                inv_eps_r_update=tuple(1 / e for e in eps_r_slab), e_loss=loss, e_curl_coeff=curl,
+                inv_eps_r_update=tuple(1 / e for e in eps_r_slab), e_loss=loss, e_curl_coeff=curl, boundary=curl_boundary,
                 faces=cpml_absorbing_faces(global_grid), frame=cpml_slab_frame(ex.shape, ghost, pad_x),
                 owned={"x_lo": rank == 0, "x_hi": rank == n_devices - 1})
             return (new_st.ex, new_st.ey, new_st.ez,
@@ -1537,12 +1538,7 @@ def run_nonuniform_distributed_pec(
             st, cs = _apply_cpml_h_shmap(st, cs, cpml_params, sharded_materials.mu_r,
                                         spacings[6:], ranks=ranks)
 
-        # 2b. PMC face (H-tangential = 0) before H ghost exchange so the
-        #     zero propagates to neighbours via the exchange. H-half hook
-        #     per OQ9 — mirrors single-device ordering in simulation.py
-        #     (apply_cpml_h -> apply_pmc_faces). NOT the E-half position
-        #     of PEC: PMC must fire before the next E-update reads H via
-        #     curl.
+        # Canonicalize PMC high ghosts after the final H update/correction.
         st = _apply_pmc_face_nu_shmap(
             st, mesh, n_devices, nx_local, pmc_faces, pad_x=pad_x, ranks=ranks)
 
@@ -1581,7 +1577,7 @@ def run_nonuniform_distributed_pec(
         st = _inject_sources_shmap(st, src_vals, ranks=ranks)
 
         # 7. PEC on physical domain faces (X-faces are rank-conditional).
-        st = _apply_pec_face_nu_shmap(st, mesh, n_devices, nx_local, pad_x=pad_x, ranks=ranks)
+        st = _apply_pec_face_nu_shmap(st, mesh, n_devices, nx_local, pad_x=pad_x, pec_faces=e_wall_faces, ranks=ranks)
 
         # 8. PEC mask zeroing (geometry + override union).  No-op when
         #    sharded_pec_mask is None.
