@@ -620,6 +620,7 @@ def test_reexported_preflight_names_are_the_same_objects():
         "pytest.warns and isinstance start testing the wrong one.")
 
 
+@pytest.mark.source_scan
 def test_the_declared_reexport_surface_is_the_whole_import_block():
     """The tuple above must name exactly what the facade imports.
 
@@ -933,6 +934,7 @@ def test_moved_mixin_methods_are_rebound_objects_with_their_qualname():
                 "and the mixin name leaks into TypeError text")
 
 
+@pytest.mark.source_scan
 def test_the_class_scoped_imports_are_the_declared_rebind_surface():
     """The tuples above must name exactly what ``_PreflightMixin`` imports.
 
@@ -2255,6 +2257,7 @@ def test_structured_split_snapshot_mutations(monkeypatch, tmp_path, mutation):
             test_preflight_report_matches_the_committed_snapshot("mutation", None, None, None)
 
 
+@pytest.mark.source_scan
 @pytest.mark.parametrize("replacement,red", [
     ("{gap/(2*cell):.1f}", True),
     ("{gap/cell:.1f}", False),

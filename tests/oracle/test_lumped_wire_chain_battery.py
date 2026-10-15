@@ -459,6 +459,7 @@ def _measured_provenance(fixture):
     yield "pilot", fixture["pilot"]["provenance"]
 
 
+@pytest.mark.source_scan
 def test_every_measured_record_names_the_battery_commit(fixture):
     """One commit for the whole measurement, named here. A record stamped with
     another commit was measured on another tree, whatever its numbers say."""

@@ -104,6 +104,7 @@ FAMILY_MODULES = (
 )
 
 
+@pytest.mark.source_scan
 def test_jd_no_print_and_no_hardcoded_emission_bypass():
     from rfx.preflight.msl_codes import CODES, TEMPLATES
     # These are the only opaque messages: inspection exceptions or forwarded
@@ -271,6 +272,7 @@ def test_two_simulations_alternating_do_not_retain_findings():
         assert clean.diagnostics == ()
 
 
+@pytest.mark.source_scan
 @pytest.mark.parametrize(
     "graded",
     [False, True],

@@ -1232,6 +1232,7 @@ def test_the_package_no_longer_exports_run_distributed():
         assert needle in msg, msg
 
 
+@pytest.mark.source_scan
 def test_runners_package_eager_import_list_is_unchanged():
     """Read with ast, so it measures the SOURCE and not a polluted sys.modules."""
     init = Path(importlib.import_module("rfx.runners").__file__)

@@ -351,6 +351,7 @@ _DISPATCH_FILES = (
 )
 
 
+@pytest.mark.source_scan
 def test_no_transverse_only_dispatch_predicate_remains():
     offenders = []
     for rel in _DISPATCH_FILES:

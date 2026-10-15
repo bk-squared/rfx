@@ -186,6 +186,7 @@ def test_lumped_patch_s_and_ntff():
     _patch_parity()
 
 
+@pytest.mark.source_scan
 @pytest.mark.parametrize("mutation", ["skip", "duplicate", "compensation"])
 def test_mutations(monkeypatch, mutation):
     from rfx.runners import _distributed_ntff as owner

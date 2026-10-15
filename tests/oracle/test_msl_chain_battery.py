@@ -122,6 +122,7 @@ def _solve(fixture, key):
 ALL_SOLVES = [f"{dut}_{um}um" for dut in ("notch", "thru") for um in (100, 50, 25)]
 
 
+@pytest.mark.source_scan
 def test_the_fixture_names_its_own_provenance(fixture):
     assert fixture["schema"] == "rfx.msl_chain_battery"
     assert fixture["predeclaration"].endswith("msl_chain_battery_predeclaration.md")

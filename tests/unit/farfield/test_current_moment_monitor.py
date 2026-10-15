@@ -1408,6 +1408,7 @@ def _slot_witnesses(case, record_property):
     return vac, src_err
 
 
+@pytest.mark.source_scan
 @pytest.mark.parametrize("kind", ["uniform", "graded"])
 def test_unmutated_snapshot_slot_copy_is_green(kind, record_property):
     """The identical copy loader/binding path preserves both witnesses."""
@@ -1416,6 +1417,7 @@ def test_unmutated_snapshot_slot_copy_is_green(kind, record_property):
     assert src_err <= 1e-4, src_err
 
 
+@pytest.mark.source_scan
 @pytest.mark.parametrize("kind", ["uniform", "graded"])
 @pytest.mark.parametrize("mut", [
     "snapshot taken after the E update",
@@ -2406,6 +2408,7 @@ def test_a_declared_monitor_cannot_come_back_empty_from_any_lane():
     require_accumulated_current_moments(plain, emptied, "run")
 
 
+@pytest.mark.source_scan
 def test_every_user_facing_return_carries_the_backstop():
     """Static half of the same guarantee: each place ``run()`` / ``forward()``
     hands a result back calls the backstop, so a new return site cannot skip

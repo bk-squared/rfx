@@ -300,6 +300,7 @@ _BACKWARD_H_DEFINERS = {
 }
 
 
+@pytest.mark.source_scan
 def test_no_module_hand_rolls_a_backward_h_read_outside_the_two_definers():
     """No fifth copy.
 

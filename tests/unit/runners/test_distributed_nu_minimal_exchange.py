@@ -482,6 +482,7 @@ def _worker(address, rank, output):
         jax.distributed.shutdown()
 
 
+@pytest.mark.source_scan
 @pytest.mark.slow
 @pytest.mark.skipif(sys.platform != "linux", reason="requires Linux: distributed gRPC bind fails on Darwin")
 def test_two_process_plain_and_grad(tmp_path):

@@ -422,6 +422,7 @@ def test_gradient_is_the_same_whole_domain_and_under_jit():
     np.testing.assert_allclose(jitted, eager, rtol=1e-6, atol=1e-6)
 
 
+@pytest.mark.source_scan
 def test_one_publication_builder_definition():
     import ast
     from pathlib import Path
