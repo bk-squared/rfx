@@ -418,7 +418,7 @@ def _diff_fwd_o(arr, axis, periodic, order, bloch=None):
     return _ribbon_2nd(_C4_NEAR * near + _C4_FAR * far, near, axis)
 
 
-def _diff_bwd_o(arr, axis, periodic, order, bloch=None, *, boundary=None):
+def _diff_bwd_o(arr, axis, periodic, order, bloch=None, *, boundary=None, frame=None, owned=None):
     """Backward staggered first difference (f[i]-f[i-1] family), at i-1/2; the
     caller divides by dx. order=2 is byte-identical to ``arr-_shift_bwd(arr)``
     when ``bloch is None``.
@@ -431,7 +431,7 @@ def _diff_bwd_o(arr, axis, periodic, order, bloch=None, *, boundary=None):
     if order != 2 and boundary is not None and boundary.pmc_faces:
         raise NotImplementedError("PMC magnetic image: yee._diff_bwd_o far neighbors "
                                   "require stencil_order=2")
-    back = h_neighbor(arr, axis, periodic=periodic, boundary=boundary)
+    back = h_neighbor(arr, axis, periodic=periodic, boundary=boundary, frame=frame, owned=owned)
     if order == 2:
         if periodic[axis] and bloch is not None:
             back = back * bloch[axis].conjugate()
@@ -536,7 +536,7 @@ class CurlBoundary(NamedTuple):
 
 
 def h_neighbor(h, axis, *, boundary=None, periodic=(False, False, False),
-               index=None):
+               index=None, frame=None, owned=None):
     """Backward operand for a tangential-H difference at an E node.
 
     With N cells, physical H indices are 0..N-1 and the stored high ghost
@@ -544,7 +544,11 @@ def h_neighbor(h, axis, *, boundary=None, periodic=(False, False, False),
     includes H[N] to cancel the stored ghost at consumption, including any
     source/absorber change since canonicalization. No physical H is zeroed.
     Periodic and indexed invariant-axis conventions take precedence.
+    ``frame`` bounds this axis's physical rows; ``owned`` selects global faces.
+    Neither argument applies to an indexed read.
     """
+    if index is not None and (frame is not None or owned is not None):
+        raise ValueError("indexed h_neighbor does not accept frame or owned")
     if boundary is not None:
         periodic = boundary.periodic
     n = h.shape[axis]
@@ -555,14 +559,22 @@ def h_neighbor(h, axis, *, boundary=None, periodic=(False, False, False),
     if index is None:
         back = jnp.roll(h, 1, axis) if periodic[axis] else _shift_bwd(h, axis)
         edge = [slice(None)] * h.ndim
-        if lo:
-            edge[axis] = 0
-            back = back.at[tuple(edge)].set(-h[tuple(edge)])
-        if hi:
-            edge[axis] = -1
+        lo_owner = True if owned is None else owned.get(f"{'xyz'[axis]}_lo", True)
+        hi_owner = True if owned is None else owned.get(f"{'xyz'[axis]}_hi", True)
+        if lo and lo_owner is not False:
+            edge[axis] = 0 if frame is None else frame[0]
+            value = -h[tuple(edge)]
+            if lo_owner is not True:
+                value = jnp.where(lo_owner, value, back[tuple(edge)])
+            back = back.at[tuple(edge)].set(value)
+        if hi and hi_owner is not False:
+            edge[axis] = -1 if frame is None else frame[1] - 1
             inner = list(edge)
-            inner[axis] = -2
-            back = back.at[tuple(edge)].set(h[tuple(edge)] + 2 * h[tuple(inner)])
+            inner[axis] = -2 if frame is None else frame[1] - 2
+            value = h[tuple(edge)] + 2 * h[tuple(inner)]
+            if hi_owner is not True:
+                value = jnp.where(hi_owner, value, back[tuple(edge)])
+            back = back.at[tuple(edge)].set(value)
         return back
     i = int(index[axis])
     if n == 1 or periodic[axis]:
@@ -580,7 +592,7 @@ def h_neighbor(h, axis, *, boundary=None, periodic=(False, False, False),
 
 def curl_h(hx, hy, hz, dx: float | None, periodic: tuple,
            stencil_order: int = 2, bloch: tuple | None = None, *,
-           boundary=None, scale_after=False, inv_spacing=None):
+           boundary=None, scale_after=False, inv_spacing=None, frame=None, owned=None):
     """The uniform E-update curl, with the realized terminal boundary.
 
     ``scale_after`` preserves ADE's subtraction-before-division arithmetic;
@@ -593,8 +605,10 @@ def curl_h(hx, hy, hz, dx: float | None, periodic: tuple,
         periodic = boundary.periodic
 
     def component(ha, a, hb, b):
-        da = _diff_bwd_o(ha, a, periodic, stencil_order, bloch, boundary=boundary)
-        db = _diff_bwd_o(hb, b, periodic, stencil_order, bloch, boundary=boundary)
+        da = _diff_bwd_o(ha, a, periodic, stencil_order, bloch, boundary=boundary,
+                         frame=None if frame is None else frame.get("xyz"[a]), owned=owned)
+        db = _diff_bwd_o(hb, b, periodic, stencil_order, bloch, boundary=boundary,
+                         frame=None if frame is None else frame.get("xyz"[b]), owned=owned)
         if inv_spacing is not None:
             return da * inv_spacing[a] - db * inv_spacing[b]
         if dx is None:
@@ -607,13 +621,13 @@ def curl_h(hx, hy, hz, dx: float | None, periodic: tuple,
             component(hy, 0, hx, 1))
 
 
-def curl_h_nu(hx, hy, hz, inv_dx, inv_dy, inv_dz, *, boundary=None):
+def curl_h_nu(hx, hy, hz, inv_dx, inv_dy, inv_dz, *, boundary=None, frame=None, owned=None):
     """Graded E-update curl using the same boundary neighbour convention.
 
     Inverse spacings are the E-update dual metrics, unchanged by B3a.
     """
     return curl_h(
-        hx, hy, hz, None, (False, False, False), boundary=boundary,
+        hx, hy, hz, None, (False, False, False), boundary=boundary, frame=frame, owned=owned,
         inv_spacing=(inv_dx[:, None, None], inv_dy[None, :, None],
                      inv_dz[None, None, :]))
 

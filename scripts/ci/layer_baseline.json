@@ -305,12 +305,6 @@
       ],
       "M": []
     },
-    "rfx/harminv.py": {
-      "S": [],
-      "M": [
-        "matrix_pencil_from_probe"
-      ]
-    },
     "rfx/io.py": {
       "S": [],
       "M": [

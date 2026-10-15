@@ -37,16 +37,19 @@ def model(graded=False, high=False, **kwargs):
 @pytest.mark.parametrize("graded", [False, True])
 @pytest.mark.parametrize("entry", ["run", "forward"])
 @pytest.mark.parametrize("skip", [False, True])
-def test_distributed_refuses_image_before_kernel(graded, entry, skip):
+def test_distributed_admits_image_before_kernel(graded, entry, skip):
     sim = model(graded)
-    kw = dict(n_steps=2, skip_preflight=skip, devices=[jax.devices()[0]] * 2)
+    kw = dict(n_steps=2, skip_preflight=skip, devices=jax.devices("cpu")[:2])
     if entry == "forward":
         kw["distributed"] = True
     else:
         kw["compute_s_params"] = False
-    kernel = "distributed_nu" if graded else "distributed_v2"
-    with pytest.raises(NotImplementedError, match=f"x_lo.*{kernel}"):
-        getattr(sim, entry)(**kw)
+    assert len(kw["devices"]) == 2
+    sim.add_source((.002, .003, .002), "ez", amplitude_kind="field")
+    sim.add_probe((.003, .004, .003), "ez")
+    result = getattr(sim, entry)(**kw)
+    assert np.asarray(result.time_series).shape == (2, 1)
+    assert np.isfinite(np.asarray(result.time_series)).all()
 
 
 @pytest.mark.parametrize("entry", ["run", "forward"])

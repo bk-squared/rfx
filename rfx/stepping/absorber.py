@@ -29,7 +29,7 @@ def apply_cpml_e_step(*args, debye=None, lorentz=None, **kwargs):
 
 
 def local_e_with_absorber(state, materials, dt, dx, *, debye, lorentz,
-                          slab, e_materials, rank):
+                          slab, e_materials, rank, boundary=None, frame=None, owned=None):
     """Build local ADE coefficients once, inside the distributed E step."""
     from rfx.runners._distributed_common import (
         _update_e_local_with_dispersion, slab_e_component_materials,
@@ -48,7 +48,7 @@ def local_e_with_absorber(state, materials, dt, dx, *, debye, lorentz,
                           None if lorentz is None else lorentz[0], dt)
     result = _update_e_local_with_dispersion(
         state, materials, dt, dx, debye=debye, lorentz=lorentz,
-        slab=slab, rank=rank)
+        slab=slab, rank=rank, boundary=boundary, frame=frame, owned=owned)
     return (*result, curl)
 
 

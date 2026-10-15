@@ -42,7 +42,15 @@ def backed(cell):
                 departures=[d for d in cell["departures"] if d["code"] != "f" or d["face"] in wrapped])
 
 
-CELLS = [backed(c) for c in CELLS]
+def magnetic_distributed(cell):
+    """#1221 B4 supersedes B1's refused distributed PMC cells with their single-device run records."""
+    if cell["case"].startswith("pmc-") and cell["entry"] == "distributed" and cell["status"] == "REFUSED":
+        reference = next(c for c in CELLS if c["case"] == cell["case"] and c["entry"] == "run")
+        return dict(cell, **{key: reference[key] for key in ("status", "faces", "departures")})
+    return cell
+
+
+CELLS = [backed(magnetic_distributed(c)) for c in CELLS]
 BY_CELL = {(c["case"], c["entry"]): c for c in CELLS}
 
 
@@ -110,11 +118,11 @@ EXPECTED = [pytest.param(cell["case"], cell["entry"], departure["face"], departu
             for cell in CELLS if cell["status"] == "MEASURED"
             and not adi_absorber_cell(cell["case"], cell["entry"])
             for departure in cell["departures"]]
-# Distributed PMC now refuses before the kernel; its status is tested above.
+# PMC images are checked at the declared plane on both device counts.
 EXPECTED += [pytest.param(case, entry, face, code,
                           id=f"{case}--{entry}--{face}--{code}")
              for case in ("pmc-pec", "pmc-cpml")
-             for entry in ("run", "forward", "nonuniform", "wire-fast", "gpu-query")
+             for entry in ("run", "forward", "nonuniform", "wire-fast", "gpu-query", "distributed")
              for face in ("x_lo", "x_hi") for code in ("b1", "h")]
 # Waveguide PMC now refuses; test_no_unlisted_departures pins that status.
 EXPECTED += [pytest.param("periodic-xy", entry, face, "e",

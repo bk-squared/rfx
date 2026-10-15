@@ -1,7 +1,7 @@
 """PMC lives on E nodes; adjacent H samples are physical half-cell samples.
 
 B3b replaces the former H[0]=0 mechanism pins with odd-image checks.
-Distributed kernels refuse until they implement the same image.
+Distributed kernels use the same image.
 """
 
 from __future__ import annotations
@@ -71,8 +71,8 @@ def test_mixed_pmc_cpml_seam_is_finite():
     assert np.all(np.isfinite(ts))
 
 
-def test_pmc_plus_distributed_forward_refuses_until_image_lands():
-    """The old distributed H-zero rule is not the declared-face image."""
+def test_pmc_plus_distributed_forward_is_finite():
+    """The graded forward entry admits the declared-face image."""
     import jax
     dz = np.array([0.5e-3] * 10, dtype=np.float64)
     sim = Simulation(
@@ -86,9 +86,10 @@ def test_pmc_plus_distributed_forward_refuses_until_image_lands():
     # Use a real single-device list. Multi-device sharded-PMC evidence
     # lives in tests/unit/boundaries/test_boundary_pmc_distributed.py.
     devices = [jax.devices()[0]]
-    with pytest.raises(NotImplementedError, match="z_lo.*distributed_nu.*magnetic image"):
-        sim.forward(n_steps=20, distributed=True, devices=devices,
-                    skip_preflight=True)
+    result = sim.forward(n_steps=20, distributed=True, devices=devices,
+                         skip_preflight=True)
+    assert np.asarray(result.time_series).shape == (20, 1)
+    assert np.isfinite(np.asarray(result.time_series)).all()
 
 
 def test_pmc_and_pec_produce_physically_different_h_at_face():
