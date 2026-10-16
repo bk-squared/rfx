@@ -138,17 +138,19 @@ deprecated aliases (see [Upgrading](/rfx/start/upgrading/)).
 - **The fit on known signals.** Three synthetic tones: frequencies within
   0.05 GHz, the dominant tone also with 1 % noise, and its Q within 30 %
   (`tests/unit/misc/test_harminv_estimator.py`); amplitudes and phases
-  (`tests/unit/misc/test_harminv_amplitudes.py`); automatic resampling leaves
-  frequency and Q unchanged on clean signals and within 2 % with noise
+  (`tests/unit/misc/test_harminv_amplitudes.py`); automatic resampling keeps
+  the poles of an exact sum of decaying tones to 10⁻⁷, and on a test record
+  moves frequency by at most 0.2 % and Q by at most 10 % against a fit of
+  every sample
   (`tests/unit/misc/test_harminv_decimation.py`).
-- **No modes the record does not hold.** A record of zeros, or a window too
-  short to fit, returns no modes, and `find_resonances` returns the same modes
-  as a direct `matrix_pencil` call on the same window
+- **No modes the record does not hold.** A record of zeros returns no modes,
+  nor does a short window holding only a tone outside the band, and
+  `find_resonances` returns the same modes as a direct `matrix_pencil` call on
+  the same window
   (`tests/contracts/test_find_resonances_window_adds_no_modes.py`).
 - **Graded meshes.** Stored records of PEC cavities graded along z return
   exactly the modes in the band
   (`tests/oracle/test_harminv_retained_cavity_records.py`).
-
 
 ## What is refused, and the way through
 
