@@ -25,7 +25,7 @@ import pytest
 REPO = Path(__file__).resolve().parents[3]
 PUBLIC = REPO / "docs" / "public"
 CATALOG = PUBLIC / "showcase" / "showcase.json"
-SHARE = "https://remilab.cnu.ac.kr/share/f3a80981ec4b/"
+SHARE = "https://remilab.cnu.ac.kr/share/ca3dd98f4722/"
 SUPERSCRIPT = str.maketrans("⁻⁰¹²³⁴⁵⁶⁷⁸⁹", "-0123456789")
 #: A printed number: 20,592 / 0.097 / 2×10⁻⁵.  Not a digit inside a word
 #: (RTX A6000, float64, TM010) or a date.
@@ -33,6 +33,7 @@ NUMBER = re.compile(r"(?<![\w.,/-])(\d{1,3}(?:,\d{3})+|\d+(?:\.\d+)?)"
                     r"(?:×10([⁻⁰¹²³⁴⁵⁶⁷⁸⁹]+))?(?![\w,]|\.\d)")
 #: Pages that print catalog numbers, by route.
 PAGES = {
+    "/rfx/showcase/waveguide-filter/": "showcase/waveguide-filter.mdx",
     "/rfx/": "index.mdx",
     "/rfx/showcase/": "showcase/index.mdx",
     "/rfx/showcase/sensitivity-map/": "showcase/sensitivity-map.mdx",
@@ -161,9 +162,11 @@ def page_numbers(route: str) -> list[str]:
     # The cost table's rows (a Markdown table: header and delimiter rows skipped).
     rows = [line for line in text.splitlines() if line.startswith("|")]
     chunks += [cell for row in rows[2:] for cell in row.split("|")]
-    if route == "/rfx/showcase/grin-lens/":
+    if route in ("/rfx/showcase/grin-lens/", "/rfx/showcase/waveguide-filter/"):
         values = [re.sub(r" (?:dBi|dB)$", "", v) for v in re.findall(r"<strong>(.*?)</strong>", text)]
-        return values + re.findall(r"feed alone ([0-9.]+) dBi", text)
+        if route.endswith("grin-lens/"):
+            values += re.findall(r"feed alone ([0-9.]+) dBi", text)
+        return values
     values = []
     for chunk in chunks:
         counts = re.findall(r"\b\d+ of \d+\b", chunk)
@@ -183,7 +186,7 @@ def test_every_headline_number_on_a_page_is_a_catalog_number_for_that_page():
             counted += 1
             if not any(h["printed"] == text and rounds_to(h["value"], text) for h in known):
                 missing.setdefault(route, []).append(text)
-    assert counted >= 35, f"only {counted} headline numbers found on the pages"
+    assert counted >= 45, f"only {counted} headline numbers found on the pages"
     assert not missing, f"page numbers with no catalog number that rounds to them: {missing}"
 
 

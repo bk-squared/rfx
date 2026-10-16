@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import time
 import numpy as np
-from _visual_data import lens_mirror, filter_mirror, dbi, plane_cut, read_json, load_record, write_manifest, LENS_LABELS, lens_label, FILTER_MESHES, amplitude_db
+from _visual_data import lens_mirror, filter_mirror, dbi, plane_cut, read_json, load_record, write_manifest, lens_label, FILTER_MESHES, amplitude_db
 
 
 def mask(ax, channel=None):
@@ -122,7 +122,7 @@ def main():
         ax.plot(a['iteration'], a['objective'], 'k-')
         ax.plot(a['iteration'][best], a['objective'][best], 'k*', ms=9, label='Best')
         ax.legend()
-        ax.set(xlabel='Iteration (1)', ylabel='Objective (dB²)')
+        ax.set(xlabel='Iteration (1)', ylabel='Objective (dB²)', yscale='log')
         save(fig, 'objective')
         fig, axes = sub()
         ax = axes[0, 0]

@@ -761,6 +761,7 @@ CLASSIFICATION: dict[str, str] = {
     "docs/public/showcase/descent-to-optimum.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/showcase/forward-checks.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/showcase/grin-lens.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/showcase/waveguide-filter.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/validation/cross-solver.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/validation/index.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/validation/recommended-configuration.mdx": NO_ARTIFACT_REFERENCE,
