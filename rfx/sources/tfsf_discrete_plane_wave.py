@@ -465,7 +465,10 @@ def validate_declaration(sim, theta, phi, tol, cap, pol, direction, angle, wavef
     if any(not np.all(np.asarray(grid.cells(a)) == cell) for a in "xyz"):
         raise NotImplementedError("closed_box requires a cubic uniform grid (dx=dy=dz)")
     cfg = box_bounds(grid.shape, grid.cpml_layers, margin)
-    materials, debye, lorentz, pec, _, _, kerr = sim._assemble_materials(grid)
+    # Declaration checks read cells only; sheets and wires are checked by the
+    # final realized-operator check at execution.
+    materials, debye, lorentz, pec, _, _, kerr = sim._assemble_materials(
+        grid, pec_sheets=[], pec_wires=[])
     masks = [v for v in (pec, kerr) if v is not None]
     for spec in (debye, lorentz):
         if spec is not None:

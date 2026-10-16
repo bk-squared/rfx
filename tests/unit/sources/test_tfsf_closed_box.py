@@ -463,3 +463,25 @@ def test_transform_guard_uses_older_public_jax_exports(monkeypatch, public_api):
         assert str(exc.value) == (
             "CustomWaveform and closed_box TFSF cannot be passed through run() "
             "under external JAX transformations; differentiate forward() instead.")
+
+
+@pytest.mark.parametrize("entry", ("run", "forward"))
+@pytest.mark.parametrize("crossing", (False, True), ids=("inside", "crossing"))
+def test_closed_box_pec_sheet_declaration_and_execution(entry, crossing):
+    from rfx import Box
+
+    sim = Simulation(freq_max=15e9, domain=(0.036, 0.024, 0.024), dx=1e-3,
+                     boundary="cpml", cpml_layers=8)
+    sheet = (Box((0.002, 0.010, 0.012), (0.006, 0.014, 0.012)) if crossing else
+             Box((0.018, 0.008, 0.008), (0.018, 0.016, 0.016)))
+    sim.add(sheet, material="pec")
+    sim.add_tfsf_source(f0=8e9, margin=4, direction="+x", polarization="ez",
+                        closed_box=True)
+    sim.add_probe((0.0215, 0.0135, 0.0105), "ez")
+    if crossing:
+        with pytest.raises(ValueError, match="requires vacuum on and adjacent to all six faces"):
+            getattr(sim, entry)(n_steps=20, skip_preflight=True)
+    else:
+        result = getattr(sim, entry)(n_steps=20, skip_preflight=True)
+        assert result.time_series.shape[0] == 20
+        assert np.isfinite(np.asarray(result.time_series)).all()
