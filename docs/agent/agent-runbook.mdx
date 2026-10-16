@@ -216,7 +216,7 @@ a failure, because it is configuration that silently owns nothing.
 ## PR body contract
 
 Every PR body carries two lines outside code fences, HTML comments and `pre`
-blocks: one `Lane:` line and exactly one valid `Review:` line:
+blocks: exactly one `Lane:` line and exactly one `Review:` line, each valid:
 
 - `Lane: lane:<label>` — the owner lane, one of the repository's `lane:*` labels
   (`gh label list | grep '^lane:'`). Required on every PR. The `lane:*` labels
@@ -232,9 +232,9 @@ closes, because a line contradicting the
 - `Review: <who read it> (separate instance) — ACCEPT` (or `ACCEPT WITH CHANGES`).
   A merged change is read by an agent instance other than the one that wrote it;
   several pods push under one GitHub account, so the body is the only provenance.
-  A body whose only `Review:` line says `REJECT` fails. The check counts only valid
-  lines, so a stray `REJECT` or malformed line next to a valid one is not caught;
-  do not leave one there.
+  A `REJECT` verdict fails. A second `Review:` or `Lane:` line fails too, even next
+  to a valid one: keep the line the PR merges on and put earlier rounds on a line
+  that does not start with `Review:`, such as `Review notes:`.
 
 `<who read it>` names the reviewing instance. A field that is nothing but an
 angle-bracketed span is an unedited stub and fails; a name that merely contains
