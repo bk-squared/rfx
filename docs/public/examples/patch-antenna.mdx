@@ -48,11 +48,8 @@ cases compare with openEMS.
 ## Resonance
 
 A patch rings down slowly, so run for many periods and check
-`result.settling_db` against a -40 dB bar before you quote a frequency. With a
-soft current source feeding the patch, `run(until_decay=...)` may never stop:
-the source leaves a static charge between patch and ground that neither
-radiates nor decays. Use a fixed `num_periods` and read the settling level
-instead.
+`result.settling_db` against a -40 dB bar before you quote a frequency. The
+example runs a fixed `num_periods` and reads the settling level afterwards.
 
 `result.find_resonances(freq_range=...)` returns several modes. A rectangular
 patch has at least two low-order modes (one along each side). Identify the

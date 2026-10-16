@@ -56,10 +56,9 @@ sweep = CustomWaveform(func=chirp)                   # any JAX-traceable f(t)
 `bandwidth` is fractional. When you omit `waveform`, rfx uses
 `GaussianPulse(f0=freq_max/2, bandwidth=0.8)`.
 
-A pulse that turns on abruptly leaves a small net charge behind. It usually
-does not matter. If you stop a run on `until_decay` and a static remnant keeps
-it from stopping, raise `GaussianPulse(cutoff=4.5)` or use a
-`ModulatedGaussian` with `bandwidth <= 0.4`.
+`GaussianPulse` starts from zero and its time integral is zero, so a soft
+source driven by it leaves no static field behind. Its `cutoff` (the number of
+`tau` before the peak) must be at least 2.5.
 
 ## Point sources
 
