@@ -397,14 +397,6 @@ class NonUniformGrid(NamedTuple):
         arr = self.cells(axis)
         return bool(arr.size and np.all(arr == arr[0]))
 
-    def steps_for_periods(self, freq_max: float, num_periods: float) -> int:
-        """Steps covering ``num_periods`` periods of ``freq_max`` at this grid's ``dt``.
-
-        Not named ``num_timesteps``: code that duck-types ``Grid.num_timesteps(num_periods)``
-        must keep finding no such method on a graded grid.
-        """
-        return int(np.ceil(num_periods / (freq_max * self.dt)))
-
 
 
 

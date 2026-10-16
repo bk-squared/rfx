@@ -13,6 +13,7 @@ LEAF mixin module — it must NEVER do ``from rfx.api import ...`` or
 """
 from __future__ import annotations
 
+from rfx.stepping import steps_for_periods
 from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
 from rfx.api._removed_kwargs import _reject_removed_forward_kwargs
 from rfx.api._forward_result import pack_nu_forward_result
@@ -1382,11 +1383,10 @@ class _ExecuteMixin:
 
         Pure: ``_build_nonuniform_grid()`` synthesises any missing dz/dx/dy
         profile internally without mutating sim state (W1.3). The single
-        formula, now :meth:`NonUniformGrid.steps_for_periods`, replaces the four byte-identical
-        ``int(np.ceil(num_periods / (freq_max * grid.dt)))`` snippets that
-        used to live at each NU/distributed dispatch site.
+        rule is :func:`rfx.stepping.step_count.steps_for_periods`.
         """
-        return self._build_nonuniform_grid().steps_for_periods(self._freq_max, num_periods)
+        grid = self._build_nonuniform_grid()
+        return steps_for_periods(grid.dt, self._freq_max, num_periods)
 
     from rfx.api._dispatch import _dispatch_plan
 
@@ -2344,7 +2344,7 @@ class _ExecuteMixin:
         if n_steps is None:
             if self._solver == "adi":
                 dt_adi = float(grid.dt * self._adi_cfl_factor)
-                n_steps = int(np.ceil(num_periods / grid.freq_max / dt_adi))
+                n_steps = steps_for_periods(dt_adi, grid.freq_max, num_periods)
             else:
                 n_steps = grid.num_timesteps(num_periods=num_periods)
 
@@ -2895,7 +2895,7 @@ class _ExecuteMixin:
             }, instead="use the default solver='yee'")
             if n_steps is None:
                 dt_adi = float(grid.dt * self._adi_cfl_factor)
-                n_steps = int(np.ceil(num_periods / grid.freq_max / dt_adi))
+                n_steps = steps_for_periods(dt_adi, grid.freq_max, num_periods)
             _res = self._run_adi_from_materials(
                 grid,
                 base_materials,

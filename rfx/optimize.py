@@ -19,6 +19,7 @@ Example
 
 from __future__ import annotations
 
+from rfx.stepping.step_count import steps_for_periods
 from rfx._precision import resolve_field_dtype
 
 import math
@@ -429,10 +430,9 @@ def optimize(
         _opt_wires: list = []
         base_materials, _, _, base_pec_mask = sim._assemble_materials_nu(
             grid, pec_sheets=_opt_sheets, pec_wires=_opt_wires)
-        period = 1.0 / float(sim._freq_max)
         # float(grid.dt): host-boundary context — called after _build_nonuniform_grid()
         # outside any JIT trace, so grid.dt is always a Python float here.
-        _n_steps_auto = int(np.ceil(num_periods * period / float(grid.dt)))
+        _n_steps_auto = steps_for_periods(grid.dt, sim._freq_max, num_periods)
     else:
         grid = sim._build_grid()
         from rfx._periodic import interval_indices

@@ -153,12 +153,7 @@ def _dispatch_plan(
 
     if mode == "forward":
         def _fwd_nu_n_steps() -> int:
-            # Throwaway NU grid build for the step count; mirrors the
-            # original forward() inline form (period = 1/freq_max).
-            grid_probe = self._build_nonuniform_grid()
-            period = 1.0 / float(self._freq_max)
-            return int(np.ceil(
-                num_periods * period / float(grid_probe.dt)))
+            return self._nu_n_steps(num_periods)
 
         # The graded distributed runner has no port S-parameter accumulators.
         if port_s11_freqs is not None and distributed and is_nonuniform:
