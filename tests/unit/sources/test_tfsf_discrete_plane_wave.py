@@ -346,8 +346,10 @@ def measure_scene(theta, phi, pol, n_steps=300, direction='+x', _line_peaks=None
     probe = 'ez' if pol in ('ez', 's') else 'ey'
     for point in points:
         sim.add_probe(tuple((int(v) - 8) * DX for v in point), component=probe)
+    import rfx.sources.tfsf as tfsf_module
     captured = {}
     setup_fn, core_fn = engine._build_step_setup, engine.make_core_step
+    prepare_fn = tfsf_module.prepare_tfsf_for_scan
     def setup(*args, **kwargs):
         result = setup_fn(*args, **kwargs)
         captured['setup'] = result
@@ -356,9 +358,14 @@ def measure_scene(theta, phi, pol, n_steps=300, direction='+x', _line_peaks=None
         result = core_fn(*args, **kwargs)
         captured['core'], captured['ctx'] = result, args[0]
         return result
-    with patch.object(engine, '_build_step_setup', setup), patch.object(engine, 'make_core_step', core):
+    def prepare(tfsf, *args):
+        # The line itself; the field scan carries only its face record's step.
+        captured['line'] = tfsf
+        return prepare_fn(tfsf, *args)
+    with patch.object(engine, '_build_step_setup', setup), patch.object(engine, 'make_core_step', core), \
+            patch.object(tfsf_module, 'prepare_tfsf_for_scan', prepare):
         ordinary = sim.run(n_steps=n_steps)
-    cfg, initial = captured['ctx'].tfsf_cfg, captured['setup'].carry_init
+    (cfg, line), initial = captured['line'], captured['setup'].carry_init
     box_shape = hi - lo + 1
     flat = np.random.default_rng(1662).choice(int(np.prod(box_shape)), 64, replace=False)
     nodes = np.array(np.unravel_index(flat, tuple(box_shape))).T + lo
@@ -375,7 +382,7 @@ def measure_scene(theta, phi, pol, n_steps=300, direction='+x', _line_peaks=None
         peak = jnp.max(jnp.stack([jnp.max(jnp.abs(getattr(st, c)[idx]))
                                   for c, idx in zip(COMP[:3], peak_indices)]))
         return st, (samples, peak)
-    _, (samples, incident) = jax.lax.scan(auxiliary, initial['tfsf'], jnp.arange(n_steps))
+    _, (samples, incident) = jax.lax.scan(auxiliary, line, jnp.arange(n_steps))
     samples, incident = np.asarray(samples), np.asarray(incident, np.float64)
     def full_step(carry, n):
         carry, _, _ = captured['core'](carry, n, jnp.zeros(0, jnp.float32), jnp.zeros(0, jnp.float32))
@@ -572,8 +579,7 @@ def table_defect_record(entry=None, epsilon=0.):
             reads[('H' if magnetic else 'E', ti, int(n))] = np.array(array)
         jax.debug.callback(save, step, values, ordered=True)
     source = inspect.getsource(plane.apply_tables)
-    source = source.replace('for table in tables:', 'for ti, table in enumerate(tables):')
-    needle = '        values = getattr(incident, COMPONENTS[table.source_component])[table.source_index]'
+    needle = '        values = table_operands(cfg, incident, table, ti, magnetic)'
     assert source.count(needle) == 1
     source = source.replace(needle, needle + '\n        _tap(incident.step + 1, values, magnetic, ti)')
     namespace = dict(vars(plane), _tap=tap)

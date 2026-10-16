@@ -209,7 +209,7 @@ def _forward_from_materials(
     if self._tfsf is not None:
         from rfx.sources.tfsf import tfsf_from_declaration
         tfsf_run = tfsf_from_declaration(
-            self._tfsf, grid, self._freq_max, n_steps=n_steps,
+            self._tfsf, grid, self._freq_max, n_steps=n_steps, record_faces=True,
         )
         # The slab's vacuum check uses the final materials below.
         # The closed box also checks the final realized operators below,

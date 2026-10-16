@@ -40,6 +40,10 @@ class LaunchWindow(NamedTuple):
     delays: np.ndarray
 
 
+class IncidentStep(NamedTuple):
+    step: object
+
+
 @dataclass(frozen=True)
 class PlaneWaveConfig:
     """Static lattice geometry and gathers for one bounded record."""
@@ -72,6 +76,9 @@ class PlaneWaveConfig:
     window_sigma: int = 0
     window_q1: float = 0.0
     closed_box: bool = True
+    face_record: object = None
+    face_gathers: tuple = ()
+    record_faces: bool = False
 
     def __getattr__(self, name):
         if name in {a + side for a in "xyz" for side in ("_lo", "_hi")}:
@@ -305,12 +312,20 @@ def update_line_e(cfg, state, dx, dt, t=None):
     return tree_util.tree_map(lax.stop_gradient, state._replace(**changes, step=state.step + 1))
 
 
+def table_operands(cfg, incident, table, ti, magnetic):
+    """What table ``ti`` reads this step: the carried line, or its face record."""
+    if cfg.face_record is None:
+        return getattr(incident, COMPONENTS[table.source_component])[table.source_index]
+    side = 0 if magnetic else 1
+    return cfg.face_record[side][incident.step][cfg.face_gathers[side][ti]]
+
+
 def apply_tables(state, cfg, incident, *, magnetic):
     """Gather each commutator term and scatter-add after its grid update."""
     tables = cfg.tables_h if magnetic else cfg.tables_e
-    for table in tables:
+    for ti, table in enumerate(tables):
         name = COMPONENTS[table.target_component]
-        values = getattr(incident, COMPONENTS[table.source_component])[table.source_index]
+        values = table_operands(cfg, incident, table, ti, magnetic)
         field = getattr(state, name).reshape(-1)
         field = field.at[table.target_index].add(jnp.asarray(table.coefficient) * values)
         state = state._replace(**{name: field.reshape(cfg.shape)})

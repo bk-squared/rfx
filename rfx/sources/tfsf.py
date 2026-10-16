@@ -537,8 +537,11 @@ def init_tfsf(
     return config, state
 
 
+from rfx.stepping.incident_line import prepare_tfsf_for_scan
+
+
 def tfsf_from_declaration(entry, grid, freq_max, *, n_steps=None, line_steps=None,
-                          bounds_only=False):
+                          bounds_only=False, record_faces=False):
     """The TF/SF configuration a plane-wave declaration realizes on ``grid``.
 
     One builder for every entry (run on the uniform and graded lanes, forward,
@@ -546,13 +549,16 @@ def tfsf_from_declaration(entry, grid, freq_max, *, n_steps=None, line_steps=Non
     With ``n_steps``, a CustomWaveform is checked over that record first.
     ``line_steps`` independently sizes the closed-box line; ``bounds_only``
     returns closed-box metadata without allocating that line.
+    ``record_faces`` marks a closed box whose loop runs exactly ``line_steps``
+    (fixed-step run, forward): the field scan then reads a precomputed face
+    record instead of carrying the line. until_decay keeps the line.
     """
     if n_steps is not None:
         validate_custom_tfsf_waveform(entry.waveform, grid.dt, n_steps)
     if bounds_only and entry.closed_box:
         from rfx.sources.tfsf_discrete_plane_wave import box_bounds
         return box_bounds(grid.shape, grid.cpml_layers, entry.margin), None
-    return init_tfsf(
+    pair = init_tfsf(
         grid.nx, float(grid.cells("x")[0]), grid.dt, cpml_layers=grid.cpml_layers,
         tfsf_margin=entry.margin,
         f0=entry.f0 if entry.f0 is not None else freq_max / 2,
@@ -563,6 +569,10 @@ def tfsf_from_declaration(entry, grid, freq_max, *, n_steps=None, line_steps=Non
         theta_deg=entry.theta_deg, phi_deg=entry.phi_deg,
         direction_tol_deg=entry.direction_tol_deg, max_component=entry.max_component,
         n_steps=line_steps if line_steps is not None else n_steps)
+    if record_faces and entry.closed_box:
+        from dataclasses import replace
+        pair = (replace(pair[0], record_faces=True), pair[1])
+    return pair
 
 
 def update_tfsf_1d(cfg: TFSFConfig, st: TFSFState, dx: float, dt: float,
@@ -598,6 +608,8 @@ def update_tfsf_1d_h(cfg: TFSFConfig, st: TFSFState, dx: float,
     propagation direction.
     """
     if getattr(cfg, "closed_box", False):
+        if cfg.face_record is not None:
+            return st
         from rfx.sources.tfsf_discrete_plane_wave import update_line_h
         return update_line_h(cfg, st, dx, dt)
     mu_abs = component_h_materials(MaterialArrays(None, None, 1.0))[0] * MU_0
@@ -634,6 +646,8 @@ def update_tfsf_1d_e(cfg: TFSFConfig, st: TFSFState, dx: float,
     The 1D grid uses cfg.dx_1d (= dx/cos(theta) for oblique, dx for normal).
     """
     if getattr(cfg, "closed_box", False):
+        if cfg.face_record is not None:
+            return st._replace(step=st.step + 1)
         from rfx.sources.tfsf_discrete_plane_wave import update_line_e
         return update_line_e(cfg, st, dx, dt, t)
     n = cfg.n_cpml
