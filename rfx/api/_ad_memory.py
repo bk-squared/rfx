@@ -196,9 +196,8 @@ class _AdMemoryMixin:
         carry-plus-window bound. The fixed term is calibrated on GPU with
         JAX 0.10.2, rather than a bound for CPU compiler temporaries.
 
-        With checkpoint=True, segments save one carry per active boundary
-        and one live segment. With checkpoint=False, the complete active
-        tape and one live segment remain resident: segments raise memory.
+        Segments save one carry per active boundary and one live segment,
+        independently of the per-step checkpoint flag.
         Balance K_active*carry_bytes against s*tape_step_bytes. Warmup
         reduces the reverse-mode time. The legacy ad_checkpointed_gb
         heuristic remains for compatibility; use ad_full_gb or the requested
@@ -241,8 +240,7 @@ class _AdMemoryMixin:
             n_steps_i, n_warmup_i, checkpoint_every_i, checkpoint_segments_i)
         ad_seg_bytes = None
         if segmented_active_segments is not None:
-            saved = (segmented_active_segments * model["carry_bytes"] if checkpoint
-                     else active_steps * model["tape_step_bytes"])
+            saved = segmented_active_segments * model["carry_bytes"]
             ad_seg_bytes = (fixed_bytes + saved
                             + segmented_live_tape_steps * model["tape_step_bytes"] + ntff_bytes)
 
@@ -340,7 +338,7 @@ class _AdMemoryMixin:
                   "calibrated_working_set",
                   explanation="GPU, jax 0.10.2 calibrated fixed term minus the listed forward working set.")
         count, live = segment_counts(int(n_steps), int(n_warmup), checkpoint_every, checkpoint_segments)
-        if segmented and checkpoint:
+        if segmented:
             component("segmented_boundary_field_tape", count * estimate.carry_bytes,
                       "reverse_ad_saved_state", count=count, per=estimate.carry_bytes,
                       unit="field-and-CPML-carry",
@@ -349,7 +347,7 @@ class _AdMemoryMixin:
             component("full_reverse_field_tape", estimate.ad_active_steps * estimate.tape_step_bytes,
                       "reverse_ad_saved_state", count=estimate.ad_active_steps,
                       per=estimate.tape_step_bytes, unit="active-time-step-tape",
-                      explanation="Formulation-specific per-step tape, including the full active tape when segments lack remat.")
+                      explanation="Formulation-specific per-step tape for the full active time record.")
         if segmented:
             component("segmented_live_segment_tape", live * estimate.tape_step_bytes,
                       "reverse_ad_saved_state", count=live, per=estimate.tape_step_bytes,

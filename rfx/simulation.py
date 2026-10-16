@@ -1693,9 +1693,9 @@ def run(
         ``checkpoint_segments`` the interval must divide the segment length
         ``n_steps // checkpoint_segments``.
     checkpoint : bool
-        If True, wrap the scan body with ``jax.checkpoint`` to
-        trade compute for memory during reverse-mode AD.  Reduces
-        backward-pass memory from O(n_steps) to O(1) per step.
+        If True, wrap the unsegmented step body with ``jax.checkpoint`` to
+        trade compute for memory during reverse-mode AD. With segments,
+        each segment is rematerialised regardless of ``checkpoint``.
     return_state : bool
         If False, do not expose the final FDTD state in the result.
         This shrinks the differentiable output surface for optimisation.
@@ -2218,8 +2218,7 @@ def run(
             new_carry, seg_outputs = jax.lax.scan(step_fn, carry, seg_xs)
             return new_carry, seg_outputs
 
-        seg_body_ckpt = jax.checkpoint(
-            segment_body, prevent_cse=False) if checkpoint else segment_body
+        seg_body_ckpt = jax.checkpoint(segment_body, prevent_cse=False)
         final_carry, seg_outputs = recorded_scan(
             seg_body_ckpt, carry_init, xs_segmented)
         # seg_outputs leaves: (K, per-segment rows, ...). Flatten back to

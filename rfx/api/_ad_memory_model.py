@@ -80,13 +80,11 @@ def tape_warning(model, *, checkpoint, segments, live, active):
         messages.append("AD carry modelled=False; missing components: " + ", ".join(model["unmodelled_features"]) + ".")
     if model["tape_is_bound"]:
         messages.append("The checkpoint=True box tape is a bound; pass checkpoint=False without segments for the window-only tape.")
-    if segments is not None and not checkpoint:
-        messages.append("rfx#1789: Segments without checkpoint=True do not reduce memory: they retain the whole active tape plus one live segment. Use checkpoint=True with segments.")
     if segments is not None:
         boundary = segments * model["carry_bytes"]
         tape = live * model["tape_step_bytes"]
         direction = "shrink the live tape" if tape > boundary else "shrink boundary storage"
-        messages.append(f"Balance K_active*carry_bytes = s*tape_step_bytes to {direction}; segmented plans require checkpoint=True.")
+        messages.append(f"Balance K_active*carry_bytes = s*tape_step_bytes to {direction} in the segmented plan.")
     return " ".join(messages) or None
 
 

@@ -12,9 +12,9 @@ class ADMemoryUnavailable(ValueError):
 class AD_MemoryEstimate(NamedTuple):
     """Reverse-mode tape estimate, calibrated on GPU with JAX 0.10.2.
 
-    Sizes are decimal GB. Segment boundaries save one saved scan carry
-    with checkpoint=True. Without it, segments retain the complete active
-    tape plus a live segment. The fixed AD working set is calibrated by
+    Sizes are decimal GB. Segments save one scan carry per active boundary
+    plus a live segment, independently of the per-step checkpoint flag.
+    The fixed AD working set is calibrated by
     formulation; it is distinct from the forward-only working set.
     """
     forward_gb: float
