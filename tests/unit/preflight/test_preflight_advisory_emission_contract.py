@@ -469,7 +469,12 @@ def _enumerate_emission_sites():
 # 134 -> 135 (#1691): ``preflight_wire_port_radius``, one advisory per
 # preflight naming every wire port declared without radius= (its S does not
 # converge with the mesh: each halving adds omega*(mu0*l/2pi)*ln2).
-_FROZEN_TOTAL_SITES = 135
+# 135 -> 136 (#1786): one ``PreflightIssue`` error in ``_preflight_impl``
+# (rfx/preflight/_impl.py), existing code ``ad_memory`` -- an AD memory
+# estimate the solve cannot give (float64 or mixed precision, a request that
+# cannot be traced) is reported as an error finding instead of aborting
+# preflight. The literal-code count holds.
+_FROZEN_TOTAL_SITES = 136
 # 74 -> 73, 2026-09-15 (#1043 / PR #1047): ``conformal_nan`` was the only
 # site emitting that code, and the check was deleted when its own tripwire
 # XPASSed -- see the note on _FROZEN_TOTAL_SITES above.
