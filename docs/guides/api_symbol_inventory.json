@@ -2488,6 +2488,10 @@
       "checkpoint_every",
       "checkpoint_segments",
       "n_warmup",
+      "design_box",
+      "design",
+      "checkpoint",
+      "distributed",
       "precision",
       "input_signature",
       "static_signature",
@@ -2501,6 +2505,10 @@
       "available_memory_gb",
       "target_fraction",
       "n_warmup",
+      "design_box",
+      "design",
+      "checkpoint",
+      "distributed",
       "safety_factor",
       "include_mesh_report",
       "check_ntff",
@@ -2811,14 +2819,22 @@
       "available_memory_gb",
       "checkpoint_every",
       "checkpoint_segments",
-      "n_warmup"
+      "n_warmup",
+      "design_box",
+      "design",
+      "checkpoint",
+      "distributed"
     ],
     "explain_ad_memory": [
       "n_steps",
       "available_memory_gb",
       "checkpoint_every",
       "checkpoint_segments",
-      "n_warmup"
+      "n_warmup",
+      "design_box",
+      "design",
+      "checkpoint",
+      "distributed"
     ],
     "export_artifact_bundle": [
       "path",
@@ -2875,7 +2891,11 @@
       "available_memory_gb",
       "target_fraction",
       "n_warmup",
-      "safety_factor"
+      "safety_factor",
+      "design_box",
+      "design",
+      "checkpoint",
+      "distributed"
     ],
     "plan_mesh": [
       "n_steps",
