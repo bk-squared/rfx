@@ -84,10 +84,11 @@ def _edge_lines(edge: SheetEdge, res: float, offset: float):
     return (inside, outside) if inside < outside else (outside, inside), inside
 
 
-def _chain_pairs(edges, fixed, edge_offset):
+def _chain_pairs(edges, fixed, edge_offset, *, same_direction: bool = False):
     """Strips (+1, -1) and gaps (-1, +1) between consecutive edges with no
     face strictly between them, as ``(i, k)``: k = 2a inside a strip,
-    2(1 - a) across a gap."""
+    2(1 - a) across a gap. With ``same_direction``, steps (same-direction
+    pairs) have k = 1; coincident same-direction edges share one cell."""
     pairs = []
     for i in range(len(edges) - 1):
         e1, e2 = edges[i], edges[i + 1]
@@ -97,6 +98,10 @@ def _chain_pairs(edges, fixed, edge_offset):
             k = 2.0 * edge_offset
         elif (e1.metal_side, e2.metal_side) == (-1, 1):
             k = 2.0 * (1.0 - edge_offset)
+        elif same_direction and e1.metal_side == e2.metal_side:
+            if e2.position - e1.position <= 1e-12 * abs(fixed[-1] - fixed[0]):
+                continue
+            k = 1.0
         else:
             continue
         if e2.position - e1.position <= 0.0:
@@ -186,7 +191,7 @@ def _face_pairs(edges, fixed, res, edge_offset, partner_edges):
 
 
 def _build(lo, hi, dx, fixed, edges, res, edge_offset, max_ratio,
-           boundary_cell, partner_edges=frozenset()):
+           boundary_cell, partner_edges=frozenset(), *, same_direction=False):
     """Lines for the given edge-cell sizes, then the cells between them."""
     res = list(res)
     face_pairs = _face_pairs(edges, fixed, res, edge_offset, partner_edges)
@@ -201,7 +206,8 @@ def _build(lo, hi, dx, fixed, edges, res, edge_offset, max_ratio,
     # micrometre sliver between two lines that should coincide.
     paired = {}
     face_inner = []
-    chains = _chains(_chain_pairs(edges, fixed, edge_offset))
+    chains = _chains(_chain_pairs(edges, fixed, edge_offset,
+                                   same_direction=same_direction))
     groups = [([chain[0][0]] + [i + 1 for i, _ in chain], chain)
               for chain in chains]
     chained = {i for ids, _ in groups for i in ids}
@@ -315,6 +321,10 @@ def edge_aware_profile(
     cells, or a gap narrower than ``2*(1 - edge_offset)`` cells, is meshed
     with smaller edge cells rather than refused).
 
+    Consecutive same-direction edges (two sheet ends facing the same way)
+    are also paired, and that profile is used only when it raises the
+    smallest cell; otherwise the profile without them is kept.
+
     Raises
     ------
     ValueError
@@ -346,7 +356,7 @@ def edge_aware_profile(
     # smaller edge cell often avoids the split altogether, so a few starting
     # sizes are tried and the profile with the LARGEST smallest cell wins:
     # the time step follows the smallest cell.
-    def _profile(partner_edges):
+    def _profile(partner_edges, *, same_direction=False):
         best = None
         last_error = None
         for scale in (1.0, 0.95, 0.9, 0.85, 0.8, 0.75):
@@ -355,7 +365,8 @@ def edge_aware_profile(
                 for _ in range(8):
                     cells, merged, ends, res = _build(
                         lo, hi, dx, fixed, edges, res, edge_offset, max_ratio,
-                        boundary_cell, partner_edges=partner_edges)
+                        boundary_cell, partner_edges=partner_edges,
+                        same_direction=same_direction)
                     nodes = lo + np.concatenate([[0.0], np.cumsum(cells)])
                     realized = []
                     for e in edges:
@@ -390,45 +401,64 @@ def edge_aware_profile(
                                     metal_end_nodes=tuple(ends),
                                     edge_cells=tuple(realized))
 
-    old = _profile(frozenset())
-    chains = _chains(_chain_pairs(edges, fixed, edge_offset))
-    groups = [frozenset([chain[0][0], *(i + 1 for i, _ in chain)])
-              for chain in chains]
-    chained = frozenset(i for group in groups for i in group)
-    groups.extend(frozenset([i]) for i in range(len(edges)) if i not in chained)
-    groups.sort(key=min)
-    partners = _face_pairs(edges, fixed, [dx] * len(edges), edge_offset,
-                           frozenset(range(len(edges))))
-    toggleable = [group for group in groups if group.intersection(partners)]
-    if not toggleable:
+    def _select(*, same_direction=False):
+        old = _profile(frozenset(), same_direction=same_direction)
+        chains = _chains(_chain_pairs(edges, fixed, edge_offset,
+                                       same_direction=same_direction))
+        groups = [frozenset([chain[0][0], *(i + 1 for i, _ in chain)])
+                  for chain in chains]
+        chained = frozenset(i for group in groups for i in group)
+        groups.extend(frozenset([i]) for i in range(len(edges)) if i not in chained)
+        groups.sort(key=min)
+        partners = _face_pairs(edges, fixed, [dx] * len(edges), edge_offset,
+                               frozenset(range(len(edges))))
+        toggleable = [group for group in groups if group.intersection(partners)]
+        if not toggleable:
+            if isinstance(old, ValueError):
+                raise old
+            return old[1]
+
+        cur = frozenset(i for group in toggleable for i in group)
+        current = _profile(cur, same_direction=same_direction)
+        best_p = None if isinstance(current, ValueError) else current
+        for _ in range(3):
+            changed = False
+            for group in toggleable:
+                flipped = cur.symmetric_difference(group)
+                candidate = _profile(flipped, same_direction=same_direction)
+                if isinstance(candidate, ValueError):
+                    continue
+                if isinstance(current, ValueError) or candidate[0] > current[0]:
+                    cur, current = flipped, candidate
+                    changed = True
+                if best_p is None or candidate[0] > best_p[0]:
+                    best_p = candidate
+            if not changed:
+                break
+        # Equal minima (within the settle tolerance) retain the old profile, even if a partner uses fewer cells.
+        if best_p is not None and (isinstance(old, ValueError)
+                                   or best_p[0][0] > old[0][0] + 1e-9 * dx):
+            return best_p[1]
         if isinstance(old, ValueError):
             raise old
         return old[1]
 
-    cur = frozenset(i for group in toggleable for i in group)
-    current = _profile(cur)
-    best_p = None if isinstance(current, ValueError) else current
-    for _ in range(3):
-        changed = False
-        for group in toggleable:
-            flipped = cur.symmetric_difference(group)
-            candidate = _profile(flipped)
-            if isinstance(candidate, ValueError):
-                continue
-            if isinstance(current, ValueError) or candidate[0] > current[0]:
-                cur, current = flipped, candidate
-                changed = True
-            if best_p is None or candidate[0] > best_p[0]:
-                best_p = candidate
-        if not changed:
-            break
-    # Equal minima (within the settle tolerance) retain the old profile, even if a partner uses fewer cells.
-    if best_p is not None and (isinstance(old, ValueError)
-                               or best_p[0][0] > old[0][0] + 1e-9 * dx):
-        return best_p[1]
-    if isinstance(old, ValueError):
-        raise old
-    return old[1]
+    old = _select(same_direction=False)
+    if any(
+        e1.metal_side == e2.metal_side
+        and e2.position - e1.position > 1e-12 * abs(hi - lo)
+        and not any(e1.position < f < e2.position for f in fixed)
+        for e1, e2 in zip(edges, edges[1:])
+    ):
+        # The paired selection only ever replaces a profile that exists today:
+        # if it cannot be built, today's profile stands.
+        try:
+            paired = _select(same_direction=True)
+        except (ValueError, RuntimeError):
+            return old
+        if paired.cells.min() > old.cells.min() + 1e-9 * dx:
+            return paired
+    return old
 
 
 def _box_corners(shape):
