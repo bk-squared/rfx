@@ -186,8 +186,9 @@ rebase, and never force-push over it; any push of yours restarts the checks.
 
 When the train cannot land a pull request, it adds `merge-train-blocked` and comments
 with the reason: most often a rebase conflict with `main`, otherwise the failing
-required check. Rebase onto `main` and resolve the conflict, or fix the check, push,
-then remove `merge-train-blocked` to put the same pull request back in line;
+required check. Rebase onto `main` and resolve the conflict, then push with
+`--force-with-lease` (the train did not rebase this time, so your rewrite is the one to
+keep), or fix the check and push; then remove `merge-train-blocked` to put the same pull request back in line;
 `merge-train` stays.
 
 The train can also land several pull requests together through a batch pull request
