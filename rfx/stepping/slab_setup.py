@@ -255,8 +255,14 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
     from rfx.stepping.absorber import apply_cpml_h, apply_cpml_e_step
     from rfx.stepping.graded import GradedStepContext, make_graded_step, graded_probe_table
     from rfx.core.drives import drive_layout
+    if cpml and (debye is not None or lorentz is not None):
+        # select_step keeps dispersive CPML on the legacy step; the wrapped
+        # CPML call carries no pole coefficients (rfx #1402 item 5).
+        raise ValueError("the wrapped graded step does not take CPML with Debye/Lorentz poles")
+    # The wrapped CPML call forms its loss and 1/eps from the staged components
+    # (graded.e_boundary); the legacy-layout operands would be unused copies.
     staged, inverse, loss = realize_materials(materials, grid, layout, mesh, occupancy,
-        cpml=cpml, debye=debye is not None, lorentz=lorentz is not None)
+        cpml=False, debye=debye is not None, lorentz=lorentz is not None)
     bundles = [debye, lorentz]
     for i, bundle in enumerate(bundles):
         if bundle is not None and bundle[0].ca is None:

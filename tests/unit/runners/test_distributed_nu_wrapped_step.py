@@ -636,11 +636,13 @@ def test_cpml_one_slab_invariants(name, monkeypatch):
         layout = args[2]
         owned = slice(layout.ghost_width, layout.ghost_width + layout.nx)
         for key in inv:
-            if key in ('drives', 'probe_table', 'debye_coeffs', 'lorentz_coeffs', 'e_loss'):
+            if key in ('drives', 'probe_table', 'debye_coeffs', 'lorentz_coeffs', 'e_loss',
+                       'cpml_inv_eps_r'):
                 continue
             assert_same_tree(inv[key], actual[key], key, owned=owned)
-        if inv['e_loss'] is not None:
-            assert_same_tree(inv['e_loss'][:2], actual['e_loss'], 'e_loss', owned=owned)
+        # The wrapped CPML call forms 1/eps and the loss from the staged
+        # components (compared above); no unused legacy-layout copy is staged.
+        assert actual['e_loss'] is None and actual['cpml_inv_eps_r'] is None
         for family in ('debye', 'lorentz'):
             coeffs = inv[family + '_coeffs']
             if coeffs is None:
@@ -732,13 +734,27 @@ def test_cpml_entries_reach_wrap(name, mode, monkeypatch):
         sim.run(n_steps=12, devices=host_devices(2), skip_preflight=True)
     else:
         materials, _, _, _ = sim._assemble_materials_nu(sim._build_nonuniform_grid())
-        def loss(eps):
+        def loss(eps, **kw):
             result = sim.forward(n_steps=12, checkpoint=False, skip_preflight=True,
-                eps_override=eps, distributed=True, devices=host_devices(2),
-                n_warmup=3, checkpoint_every=3)
+                eps_override=eps, n_warmup=3, checkpoint_every=3, **kw)
             return jnp.sum(result.time_series**2)
-        assert np.isfinite(jax.grad(loss)(materials.eps_r)).all()
+        two = np.asarray(jax.grad(lambda e: loss(e, distributed=True, devices=host_devices(2)))(materials.eps_r))
+        assert np.isfinite(two).all()
+        if name == 'scene2':
+            one = np.asarray(jax.grad(loss)(materials.eps_r))
+            # A gradient summed over the record: 1e-4 of its peak (cross-trace bar).
+            assert np.max(np.abs(two - one)) <= 1e-4 * np.max(np.abs(one))
     assert calls and all(calls) if name == 'scene2' else not calls
+
+
+def test_wrapped_setup_refuses_cpml_with_poles(monkeypatch):
+    """Forced past select_step, a Lorentz CPML model is refused, never run without its poles."""
+    from rfx.stepping import slab_wrap
+    from tests.unit.runners.test_distributed_edge_averaged_materials import _cpml_1302_box
+    monkeypatch.setattr(slab_wrap, 'select_step', lambda **kw: 'wrapped')
+    sim = _cpml_1302_box('lorentz', 'fwd_graded')
+    with pytest.raises(ValueError, match='CPML with Debye/Lorentz poles'):
+        sim.run(n_steps=4, devices=host_devices(2), skip_preflight=True)
 
 
 @pytest.mark.parametrize('devices', [2, 3])
@@ -809,11 +825,11 @@ def test_graded_cpml_runs_on_wrapped_equal_values(monkeypatch):
     assert np.array_equal(one, two), _probe_ulp(one, two)
 
 
-def test_wrapped_cpml_within_probe_bar():
+def test_graded_cpml_three_devices_equal_values():
     sim = graded_cpml_box()
     one = sim.run(n_steps=200, skip_preflight=True).time_series
-    two = sim.run(n_steps=200, devices=host_devices(2), skip_preflight=True).time_series
-    assert np.array_equal(np.asarray(one), np.asarray(two)), _probe_ulp(one, two)
+    three = sim.run(n_steps=200, devices=host_devices(3), skip_preflight=True).time_series
+    assert np.array_equal(np.asarray(one), np.asarray(three)), _probe_ulp(one, three)
 
 
 def _item6_identity(case, devices, mode='plain', mutate=None):
@@ -982,11 +998,7 @@ def _assert_item6_memory(record):
 @pytest.mark.parametrize('boundary', ['pec', 'cpml'])
 @pytest.mark.parametrize('devices', (2, 3))
 @pytest.mark.parametrize('mode', ('plain', 'grad'))
-def test_item6_first_scan_memory(boundary, devices, mode, request):
-    if boundary == 'cpml' and devices == 2:
-        request.node.add_marker(pytest.mark.xfail(strict=True, raises=AssertionError,
-            reason='rfx #1402 item 5: at two devices the wrapped CPML step holds 2.06x legacy '
-                   'per device (0.76x one device); three devices 1.98x passes'))
+def test_item6_first_scan_memory(boundary, devices, mode):
     # CPML: the staging scene without poles, against legacy on that scene.
     kw = dict(case='nopole') if boundary == 'cpml' else {}
     _assert_item6_memory(_item6_memory_subprocess(boundary, devices, mode, **kw))

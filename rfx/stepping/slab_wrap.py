@@ -21,9 +21,9 @@ def select_step(*, cpml=False, debye=False, lorentz=False, ports=False,
                 point_sources=True, point_probes=True, pec=True):
     """Wrap PEC and plain CPML; keep dispersive CPML on the legacy step.
 
-    The legacy-form CPML call is bit-equal to one device on the nx=28 graded
-    box at 200/400 steps on two devices; see the prototype evidence in
-    records/20261017-item5-first-divergence. Upstream refusals still apply.
+    The legacy-form CPML call is bit-equal to one device on four graded CPML
+    boxes up to 1600 steps on two and three devices (rfx-archive
+    records/20261017-item5-first-divergence). Upstream refusals still apply.
     """
     return "wrapped" if (pec and point_sources and point_probes and not any((
         ports, dft, flux, ntff, pmc, periodic_x, cpml and (debye or lorentz)))) else "legacy"
