@@ -325,20 +325,6 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
     if cpml:
         # rfx #1402 item 5 (absorber)
         from rfx.stepping.slab_cpml import publish, import_state
-        # Retain raw slab mu only for the legacy-form CPML H correction.
-        # The runner input has already been staged, with an extra low row
-        # for uniform component realization. Recover its physical cell rows
-        # without arithmetic before the amendment's explicit mu_r cut.
-        raw_mu = materials.mu_r
-        if raw_mu.ndim == 4:
-            low = raw_mu.shape[1] - layout.nx_per_rank - layout.ghost_width
-            whole_mu = raw_mu[:, low:low + layout.nx_per_rank]
-            whole_mu = whole_mu.reshape((-1,) + raw_mu.shape[-2:])[:layout.nx]
-        else:
-            from rfx.runners._distributed_common import unstack_and_gather
-            whole_mu = unstack_and_gather(raw_mu, layout.n_devices, layout.nx_local,
-                                         layout.ghost_width, layout.pad_x, layout.nx)
-        inv['cpml_mu_r'] = cut(whole_mu, layout, 'mu_r', mesh=mesh)
         shell = SimpleNamespace(step_fn_inv=SimpleNamespace(context=ctx), invariants={}, carry_init={'cpml': psi})
         ctx, profiles, initial = publish(shell, layout, mesh)
         inv['cpml_x'] = profiles['cpml_x']

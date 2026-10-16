@@ -130,18 +130,3 @@ def publish(setup, layout, mesh):
     return context, {**setup.invariants, 'cpml_x': params}, {
         **setup.carry_init, 'cpml': type(psi)(**fields)}
 
-
-def h_materials(ctx, invariants):
-    """Form the legacy H material view from the CPML-only raw slab mu."""
-    from rfx.core.yee import MaterialArrays, component_h_materials
-    from rfx.runners._distributed_common import magnetic_low_ghost
-
-    rank0 = invariants['owns_x']['x_lo']
-    ghost = ctx.x_face_frame['x'][0]
-    # magnetic_low_ghost accepts a numeric rank and tests rank == 0.
-    # Map the ownership predicate to 0 for the low owner, 1 otherwise.
-    rank = jnp.where(rank0, 0, 1)
-    mu = magnetic_low_ghost(invariants['cpml_mu_r'], rank, ghost)
-    cell_sizes = (invariants['dx_arr'], ctx.grid.dy_arr, ctx.grid.dz)
-    means = component_h_materials(MaterialArrays(None, None, mu), cell_sizes=cell_sizes)
-    return SimpleNamespace(mu_r=mu, components=SimpleNamespace(mu_update=means))

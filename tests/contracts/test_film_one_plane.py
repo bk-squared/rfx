@@ -285,7 +285,6 @@ def test_c6_graded_sigma_gradient():
 # Constructors that intentionally omit an explicit carrier keyword. Counts also
 # catch a new unclassified construction added inside an already reviewed function.
 CONSTRUCTOR_EXCEPTIONS = {
-    ('rfx/stepping/slab_cpml.py', 'h_materials'): (1, 'H-only local means passed to the shared CPML kernel; no conductivity consumed'),
     ('rfx/runners/_distributed_common.py', 'cpml_h_materials'): (2, 'H-only local/vacuum means passed to the shared CPML kernel; no conductivity consumed'),
     ('rfx/runners/distributed_nu.py', 'run_nonuniform_distributed_pec._apply_cpml_h_shmap._h'): (1, 'H-only local means passed to the shared CPML kernel; no conductivity consumed'),
     ('rfx/adi.py', 'adi_step_2d'): (1, 'ADI refuses thin-conductor declarations before stepping'),

@@ -179,9 +179,9 @@ def make_graded_step(
                                     ctx.waveguide_port_metrics):
                 frame.st = _apply_wg_h_nu(frame.st, cfg_meta, frame.step_idx, ctx.dt, _m[0])
         if ctx.use_cpml and 'cpml_x' in frame.invariants:
-            from rfx.stepping.slab_cpml import apply, h_materials
+            from rfx.stepping.slab_cpml import apply
             frame.st, frame.cpml_new = apply(ctx.apply_cpml_h, ctx, frame.invariants,
-                frame.st, frame.carry['cpml'], materials=h_materials(ctx, frame.invariants))
+                frame.st, frame.carry['cpml'], materials=frame.materials)
         elif ctx.use_cpml:
             frame.st, frame.cpml_new = ctx.apply_cpml_h(frame.st, ctx.cpml_params, frame.carry["cpml"],
                                          ctx.cpml_grid, ctx.cpml_axes_eff,
