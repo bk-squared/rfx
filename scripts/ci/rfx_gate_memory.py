@@ -18,3 +18,21 @@ def pytest_runtest_teardown(item, nextitem):
 
         jax.clear_caches()
         gc.collect()
+        _release_freed_memory()
+
+
+def _release_freed_memory():
+    """Hand memory the program already freed back to the system (glibc ``malloc_trim``).
+
+    After the clearing above, a contract-step worker holds no live JAX arrays and few new
+    Python objects per module, yet its resident memory keeps rising (Mac probe 2026-10-16,
+    8 contract files: 0.8 -> 3.9 GiB with one live array). Freed native memory that the
+    allocator keeps is the candidate; this returns it. No-op where glibc is absent.
+    """
+    import ctypes
+
+    try:
+        trim = ctypes.CDLL(None).malloc_trim
+    except (AttributeError, OSError):
+        return
+    trim(0)
