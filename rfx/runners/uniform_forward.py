@@ -753,7 +753,9 @@ def _forward_from_materials(
         pec_occupancy=pec_occupancy_for_run,
         aniso_eps=aniso_eps,
         aniso_inv_eps=aniso_inv_eps_run,
-        aniso_inv_eps_smooth=(aniso_inv_eps_run is not None),
+        # Only the occupancy operator is smooth; the Kottke tensor keeps
+        # run()'s fenced PEC edges.
+        aniso_inv_eps_smooth=(aniso_inv_eps is None and aniso_inv_eps_run is not None),
         port_record_specs=ordered_specs(port_record_specs),
         lumped_port_sparams=lumped_port_sparam_specs or None,
         wire_port_sparams=wire_port_sparam_specs or None,

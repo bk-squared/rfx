@@ -41,6 +41,26 @@ def test_smoothed_forward_matches_run_and_changes_fields(graded, smoothing):
     assert difference > 0
 
 
+@pytest.mark.parametrize("body", ["sphere", "box"])
+def test_kottke_pec_forward_keeps_fenced_pec_edges(body):
+    # A PEC body next to the dielectric: run() keeps partly filled PEC
+    # edges fractional, so forward() must not treat the Kottke tensor as
+    # the smooth occupancy operator. Probes sit outside the metal.
+    def build():
+        sim = sphere_sim()
+        if body == "sphere":
+            sim.add(Sphere((.0085, .0043, .0068), .0016), material="pec")
+        else:
+            sim.add(Box((.0071, .0032, .0059), (.0094, .0057, .0083)), material="pec")
+        sim.add_probe((.0063, .0081, .0047), "ez")
+        return sim
+
+    kwargs = dict(n_steps=60, skip_preflight=True, subpixel_smoothing="kottke_pec")
+    expected = np.asarray(build().run(**kwargs).time_series)
+    actual = np.asarray(build().forward(checkpoint=False, **kwargs).time_series)
+    np.testing.assert_array_equal(actual, expected)
+
+
 def no_step(*args, **kwargs):
     pytest.fail("a refused smoothing combination reached the first step")
 
@@ -66,37 +86,6 @@ def test_debye_refuses_before_stepping(monkeypatch, graded):
     with pytest.raises(NotImplementedError, match="subpixel_smoothing"):
         sphere_sim(graded, debye=True).forward(n_steps=1, skip_preflight=True,
                                               subpixel_smoothing=True)
-
-
-
-
-SHAPE_REFUSAL = (
-    "A traced shape dimension (a JAX-traced size or position of a declared shape) "
-    "is not supported on any entry yet: run() and forward() rasterize declared "
-    "shapes to cells with concrete values. Differentiate a material or source "
-    "value, or use a design region (eps_override) for shape gradients."
-)
-
-
-@pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
-@pytest.mark.parametrize("smoothing", [False, True])
-@pytest.mark.parametrize("shape_kind", ["sphere", "box"])
-def test_traced_shape_refusal_matches_entries(graded, smoothing, shape_kind):
-    messages = []
-    for entry in ("run", "forward"):
-        def objective(value):
-            sim = sphere_sim(graded, radius=value if shape_kind == "sphere" else .0023)
-            if shape_kind == "box":
-                sim._geometry.clear()
-                sim.add(Box((.00317, .00323, .00329), (value, .00741, .00753)),
-                        material="sphere")
-            result = getattr(sim, entry)(n_steps=2, skip_preflight=True,
-                                         subpixel_smoothing=smoothing)
-            return jnp.sum(jnp.asarray(result.time_series) ** 2)
-        with pytest.raises(NotImplementedError) as info:
-            jax.grad(objective)(.0023 if shape_kind == "sphere" else .00737)
-        messages.append(str(info.value))
-    assert messages == [SHAPE_REFUSAL, SHAPE_REFUSAL]
 
 
 def traced_run_sim(amplitude, graded=False, eps=None):

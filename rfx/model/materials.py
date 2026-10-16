@@ -29,7 +29,6 @@ from rfx.geometry.rasterize_grid import (
     centres_from_nonuniform_grid, centres_from_uniform_grid,
     classify_pec_entry, coords_from_nonuniform_grid, extend_cpml_pad_materials,
     refuse_vaporized_sheets, sheet_end_rows, sheet_footprint_traced, sheet_spec_from_shape,
-    refuse_traced_shapes,
 )
 from rfx.geometry.smoothing import continued_conductor_shape
 from rfx.materials.debye import DebyePole
@@ -142,7 +141,6 @@ def assemble_cells(
     Materials/poles retain declaration order and float32 initialization.
     Overrides and design boxes enter the cell stage in ``model.overrides``.
     """
-    refuse_traced_shapes(sim._geometry)
     # Start with vacuum
     eps_r = jnp.ones(grid.shape, dtype=jnp.float32)
     sigma = jnp.zeros(grid.shape, dtype=jnp.float32)

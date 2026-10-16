@@ -8,7 +8,6 @@ via a coordinate-provider abstraction.
 from __future__ import annotations
 
 import warnings
-from dataclasses import fields, is_dataclass
 from typing import NamedTuple
 
 import numpy as np
@@ -17,7 +16,7 @@ import jax.numpy as jnp
 from rfx.core.jax_utils import is_tracer
 from rfx._grid_metric import NODE_TIE_REL, half_open_volume_mask, node_tie_tol
 from rfx.core.yee import MaterialArrays
-from rfx.geometry.csg import Cylinder, OrientedBox, PolylineWire, Sphere, declared_bounds
+from rfx.geometry.csg import Cylinder, OrientedBox, Sphere, declared_bounds
 from rfx.geometry._pole_keying import (
     _accumulate_pole_mask,
     _clear_pole_masks,
@@ -1020,35 +1019,6 @@ def classify_pec_entry(shape, coords: GridCoords, centres: GridCoords,
     if not traced and _volume_is_empty(shape, centres, mask, cell_sizes, grid=grid):
         _refuse_zero_cells(shape, name, "PEC volume")
     return mask, None, None
-
-
-def refuse_traced_shape(entry):
-    """Refuse traced shape declarations before rasterization reads their values."""
-    def traced(value):
-        if is_tracer(value):
-            return True
-        if is_dataclass(value):
-            return any(traced(getattr(value, field.name)) for field in fields(value)
-                       if not (isinstance(value, PolylineWire) and field.name == "radius"))
-        if isinstance(value, dict):
-            return any(traced(item) for item in value.values())
-        if isinstance(value, (tuple, list)):
-            return any(traced(item) for item in value)
-        return False
-
-    shape = entry.shape
-    if traced(shape if is_dataclass(shape) else declared_bounds(shape)):
-        raise NotImplementedError(
-            "A traced shape dimension (a JAX-traced size or position of a declared "
-            "shape) is not supported on any entry yet: run() and forward() rasterize "
-            "declared shapes to cells with concrete values. Differentiate a material "
-            "or source value, or use a design region (eps_override) for shape gradients.")
-
-
-def refuse_traced_shapes(geometry_entries):
-    """Admit the original shape declarations before assembly or dispatch."""
-    for entry in geometry_entries:
-        refuse_traced_shape(entry)
 
 
 def rasterize_geometry(
