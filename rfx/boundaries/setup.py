@@ -76,9 +76,9 @@ def nonuniform_boundaries(grid, cpml_axes, pec_faces, pmc_faces):
     _pec_faces_frozen, _pmc_faces_frozen = _resolve_walls(
         SimpleNamespace(pec_faces=set(pec_faces or ()), pmc_faces=set(pmc_faces or ()),
                         shape=(grid.nx, grid.ny, grid.nz)),
-        (False, False, False), None)
+        tuple(a in grid.periodic_axes for a in "xyz"), None)
     from rfx.core.yee import CurlBoundary
-    curl_boundary = CurlBoundary(_pec_faces_frozen, _pmc_faces_frozen)
+    curl_boundary = CurlBoundary(_pec_faces_frozen, _pmc_faces_frozen, tuple(a in grid.periodic_axes for a in "xyz"))
     use_pmc_faces = bool(_pmc_faces_frozen)
 
     return (use_cpml, cpml_params, cpml_state_init, cpml_grid, cpml_axes_eff,

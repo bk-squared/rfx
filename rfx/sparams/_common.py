@@ -414,7 +414,7 @@ def _nu_shift_span_cells(grid, cfg, desired_plane_m: float):
     else:
         d_full = grid.dz_f64 if getattr(grid, "dz_f64", None) is not None else grid.dz
         pad_lo, pad_hi = int(grid.pad_z_lo), int(grid.pad_z_hi)
-    cells = np.asarray(interior_cells(np.asarray(d_full, dtype=np.float64), pad_lo, pad_hi),
+    cells = np.asarray(interior_cells(np.asarray(d_full, dtype=np.float64), pad_lo, pad_hi, periodic=axis in grid.periodic_axes),
                        dtype=np.float64)
     planes = (float(cfg.source_x_m), float(cfg.reference_x_m), float(desired_plane_m))
     lo, hi = min(planes), max(planes)
@@ -630,7 +630,7 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
                      (grid.pad_y_lo, grid.pad_y_hi),
                      (grid.pad_z_lo, grid.pad_z_hi))[_ip]
             _runway = np.asarray(
-                _interior_cells(grid.cells(_ip), *_pads), dtype=np.float64)
+                _interior_cells(grid.cells(_ip), *_pads, periodic="xyz"[_ip] in grid.periodic_axes), dtype=np.float64)
             _off, _sp, _cell, _one_zone = msl_auto_probe_ladder(
                 _runway, float(_runway[0]), float(pe.position[_ip]),
                 _dir_sign, int(pe.n_probes), _lengths[0], float(pe.height),

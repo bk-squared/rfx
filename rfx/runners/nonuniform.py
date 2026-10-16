@@ -120,6 +120,7 @@ def build_nonuniform_grid(
     dt_min_cell: float | None = None,
     dt_caller: str | None = None,
     nominal_profiles: dict | None = None,
+    periodic_axes: str = "",
 ) -> NonUniformGrid:
     """Build a NonUniformGrid from per-axis profiles.
 
@@ -131,8 +132,20 @@ def build_nonuniform_grid(
     deformation family — see :func:`rfx.nonuniform.make_nonuniform_grid`.
     ``nominal_profiles`` is handed to it unchanged.
     """
+    automatic = dx is None
     if dx is None:
         dx = C0 / freq_max / 20.0
+    from rfx.grid import _periodic_resolution
+    profiles = dict(zip("xyz", (dx_profile, dy_profile, dz_profile)))
+    # Unsupported profiles retain their old grid until the lane's refusal.
+    periodic_axes = "".join(a for a in periodic_axes if profiles[a] is None or (
+        not is_tracer(profiles[a]) and np.all(np.asarray(profiles[a]) == np.asarray(profiles[a])[0])))
+    implicit = "".join(a for a in periodic_axes if profiles[a] is None)
+    dx = _periodic_resolution(domain, implicit, dx, automatic=automatic)
+    for axis in periodic_axes:
+        profile = profiles[axis]
+        if profile is not None:
+            _periodic_resolution(domain, axis, float(profile[0]), automatic=False)
     if dz_profile is None:
         # Synthesise the uniform dz profile LOCALLY (pure) when only
         # dx/dy are non-uniform. This used to be done at every
@@ -155,7 +168,7 @@ def build_nonuniform_grid(
             pec_faces=pec_faces, pmc_faces=pmc_faces, cpml_axes=cpml_axes,
             face_layers=face_layers,
             dt=dt, dt_min_cell=dt_min_cell, dt_caller=dt_caller,
-            nominal_profiles=nominal_profiles,
+            nominal_profiles=nominal_profiles, periodic_axes=periodic_axes, domain=tuple(map(float, domain)),
         )
 
 
@@ -188,7 +201,7 @@ def pos_to_nu_index(grid: NonUniformGrid, pos) -> tuple[int, int, int]:
 
 
 def _nu_flux_tangential_bounds(d_arr, pad_lo: int, pad_hi: int,
-                               center, size) -> tuple[int, int]:
+                               center, size, *, periodic=False) -> tuple[int, int]:
     """Resolve a finite graded-axis CELL window inside the physical interior.
 
     Uses nearest cumulative edges, with the lower edge at a tie. Every
@@ -197,7 +210,7 @@ def _nu_flux_tangential_bounds(d_arr, pad_lo: int, pad_hi: int,
     """
     from rfx.probes.flux_region import resolve_flux_axis
 
-    interior = interior_cells(np.asarray(d_arr, dtype=float), pad_lo, pad_hi)
+    interior = interior_cells(np.asarray(d_arr, dtype=float), pad_lo, pad_hi, periodic=periodic)
     edges = np.insert(np.cumsum(interior), 0, 0.0)
     result = resolve_flux_axis(edges, pad_lo, center, size)
     if result["clamped_low"] or result["clamped_high"]:
@@ -220,7 +233,7 @@ def _range_to_slice_nu(grid, axis, value_range):
     d_np = np.asarray(d_arr_jnp)
     # Cell-edge positions in physical coords (interior only, edge=0 at first
     # interior face). Length = n_interior + 1.
-    interior = interior_cells(d_np, pad_lo, pad_hi)
+    interior = interior_cells(d_np, pad_lo, pad_hi, periodic=axis in grid.periodic_axes)
     edges = np.insert(np.cumsum(interior), 0, 0.0)
     if value_range is None:
         return (pad_lo, n_axis - pad_hi), float(edges[-1])
@@ -300,7 +313,7 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
         d_axis_np = np.asarray(grid.dz)
     _pad_lo_axis = getattr(grid, f"pad_{normal_axis}_lo")
     _pad_hi_axis = getattr(grid, f"pad_{normal_axis}_hi")
-    _interior = interior_cells(d_axis_np, _pad_lo_axis, _pad_hi_axis)
+    _interior = interior_cells(d_axis_np, _pad_lo_axis, _pad_hi_axis, periodic=normal_axis in grid.periodic_axes)
     _edges_axis = np.insert(np.cumsum(_interior), 0, 0.0)
     _local_axis = max(0, min(x_index - _pad_lo_axis, len(_edges_axis) - 1))
     snapped_source_plane = float(_edges_axis[_local_axis])
@@ -401,7 +414,7 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
     if conductors is None:
         from dataclasses import replace
         conductors = replace(kernel_conductors(sim, grid, materials, None,
-            periodic=(False, False, False), sheet_specs=sheet_specs), pec_edges=pec_edge_masks)
+            periodic=tuple(a in grid.periodic_axes for a in "xyz"), sheet_specs=sheet_specs), pec_edges=pec_edge_masks)
     original_edges = pec_edge_masks if geometry_edge_masks is None else geometry_edge_masks
     for _msl_port_index, pe in enumerate(sim._msl_ports):
         # Issue #661: one shared projection of position -> port frame.
@@ -723,7 +736,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     _pec_sheets = tuple(_pec_sheets)
     _pec_wires = tuple(_pec_wires)
     conductors = kernel_conductors(sim, grid, materials, pec_mask,
-        _pec_sheets, _pec_wires, periodic=(False, False, False), sheet_specs=_sheet_specs, root=conductors)
+        _pec_sheets, _pec_wires, periodic=tuple(a in grid.periodic_axes for a in "xyz"), sheet_specs=_sheet_specs, root=conductors)
     pec_edge_masks = conductors.pec_edges
     _msl_geometry_edges = pec_edge_masks  # before ANY port clearing
 
@@ -852,43 +865,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     # ``_nu_flux_tangential_bounds`` (audit c/B1, issue #764). Tangential cell
     # sizes are passed as per-cell arrays so a graded tangential axis is
     # integrated correctly by FluxMonitor.dA.
-    flux_monitor_objs = []
-    if getattr(sim, "_flux_monitors", None):
-        from rfx.measurement.flux_weights import grid_flux_monitor
-        from rfx.boundaries.pmc import magnetic_image_faces
-        axis_to_index = {"x": 0, "y": 1, "z": 2}
-        from rfx.probes.flux_region import resolve_flux_region
-        for pe in sim._flux_monitors:
-            axis_idx = axis_to_index[pe.axis]
-            plane_pos = [0.0, 0.0, 0.0]
-            plane_pos[axis_idx] = pe.coordinate
-            grid_index = pos_to_nu_index(grid, tuple(plane_pos))[axis_idx]
-            freqs_arr = (
-                pe.freqs
-                if pe.freqs is not None
-                else jnp.linspace(sim._freq_max / 10, sim._freq_max, pe.n_freqs)
-            )
-            # Finite-region window (B1): physical size/center -> CELL slice on
-            # each tangential axis against the graded cumulative edges. Full
-            # plane keeps init_flux_monitor's (0, -1) full-extent defaults.
-            lo1, hi1, lo2, hi2 = 0, -1, 0, -1
-            region = resolve_flux_region(grid, pe, sim._domain)
-            if region is not None:
-                (lo1, hi1), (lo2, hi2) = region["cell_slices"]
-                grid_index = region["normal_index"]
-            flux_monitor_objs.append(
-                grid_flux_monitor(
-                    grid, axis=axis_idx,
-                    index=grid_index,
-                    freqs=freqs_arr,
-                    dft_total_steps=sizing_n,
-                    dft_window=getattr(pe, "dft_window", "rect"),
-                    dft_window_alpha=getattr(pe, "dft_window_alpha", 0.25),
-                    lo1=lo1, hi1=hi1, lo2=lo2, hi2=hi2,
-                    pmc_faces=magnetic_image_faces(sim._boundary_spec.pmc_faces(),
-                                                   (grid.nx, grid.ny, grid.nz)), staggered_area=True,
-                )
-            )
+    flux_monitor_objs = build_flux_monitor_cfgs_nu(sim, grid, sizing_n)
 
     sp_freqs = None
     if any(not p.get("record_only", False) for p in wire_port_specs) and (
@@ -925,7 +902,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         pec_edge_masks = conductors.pec_edges
 
     from rfx.model.materials import with_components
-    materials = with_components(materials, grid, periodic=(False, False, False),
+    materials = with_components(materials, grid, periodic=tuple(a in grid.periodic_axes for a in "xyz"),
         debye_spec=debye_spec, lorentz_spec=lorentz_spec)
     sources = sources.resolve(materials)
 
@@ -951,12 +928,14 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     debye = None
     if debye_spec is not None:
         debye_poles, debye_masks = debye_spec
-        debye = init_debye(debye_poles, materials, grid.dt, mask=debye_masks)
+        debye = init_debye(debye_poles, materials, grid.dt, mask=debye_masks,
+                           periodic=tuple(a in grid.periodic_axes for a in "xyz"))
 
     lorentz = None
     if lorentz_spec is not None:
         lorentz_poles, lorentz_masks = lorentz_spec
-        lorentz = init_lorentz(lorentz_poles, materials, grid.dt, mask=lorentz_masks)
+        lorentz = init_lorentz(lorentz_poles, materials, grid.dt, mask=lorentz_masks,
+                               periodic=tuple(a in grid.periodic_axes for a in "xyz"))
 
     # Optional per-waveguide-port Poynting flux monitors at each port's
     # probe plane (issue #88 flux-extractor path). Built from the same
@@ -1052,18 +1031,10 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     # In-loop block current moments (rfx.current_moments), realized against
     # the grid the solve actually builds.
     #
-    # The DECLARED axes are handed over, not this lane's effective ones. The
-    # NU stepper installs no periodic boundary at all (the assembler above
-    # passes ``periodic=(False, False, False)`` unconditionally), so passing
-    # the effective flags would make the monitor's periodic refusal dead code
-    # here and a user who called ``set_periodic_axes()`` would get a monitor
-    # built for a wrap the solve does not have. Refusing the declaration is
-    # the honest answer on this lane.
+    # The monitor receives the same effective flags as the graded step.
     from rfx.current_moments import monitor_for_simulation as _cm_for_sim
-    _declared_periodic = tuple(
-        axis in getattr(sim, "_periodic_axes", "") for axis in "xyz")
     current_moments = _cm_for_sim(
-        sim, grid, periodic=_declared_periodic, conductors=conductors,
+        sim, grid, periodic=tuple(a in grid.periodic_axes for a in "xyz"), conductors=conductors,
         overrides={"eps_r": eps_override, "sigma": sigma_override,
                    "pec_mask": pec_mask_override,
                    "pec_occupancy": pec_occupancy_override,
@@ -1096,6 +1067,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     # Every declared input this lane does not carry is refused here, after
     # the specific refusals above and before the first step.
     from rfx.runners._admission import admit
+    from rfx.boundaries.graded_periodic import admit_graded_periodic
+    admit_graded_periodic(sim)
     admit(
         sim,
         lane,
@@ -1319,3 +1292,46 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         dt=grid.dt,
         freq_range=(sim._freq_max / 10, sim._freq_max, sim._boundary),
     ), conductors)
+
+
+def build_flux_monitor_cfgs_nu(sim, grid, sizing_n):
+    """Build the graded lane's flux monitors on its realized cell windows."""
+    flux_monitor_objs = []
+    if getattr(sim, "_flux_monitors", None):
+        from rfx.measurement.flux_weights import grid_flux_monitor
+        from rfx.boundaries.pmc import magnetic_image_faces
+        axis_to_index = {"x": 0, "y": 1, "z": 2}
+        from rfx.probes.flux_region import resolve_flux_region
+        for pe in sim._flux_monitors:
+            axis_idx = axis_to_index[pe.axis]
+            plane_pos = [0.0, 0.0, 0.0]
+            plane_pos[axis_idx] = pe.coordinate
+            grid_index = pos_to_nu_index(grid, tuple(plane_pos))[axis_idx]
+            freqs_arr = (
+                pe.freqs
+                if pe.freqs is not None
+                else jnp.linspace(sim._freq_max / 10, sim._freq_max, pe.n_freqs)
+            )
+            # Finite-region window (B1): physical size/center -> CELL slice on
+            # each tangential axis against the graded cumulative edges. Full
+            # plane keeps init_flux_monitor's (0, -1) full-extent defaults.
+            lo1, hi1, lo2, hi2 = 0, -1, 0, -1
+            region = resolve_flux_region(grid, pe, sim._domain)
+            if region is not None:
+                (lo1, hi1), (lo2, hi2) = region["cell_slices"]
+                grid_index = region["normal_index"]
+            flux_monitor_objs.append(
+                grid_flux_monitor(
+                    grid, axis=axis_idx,
+                    index=grid_index,
+                    freqs=freqs_arr,
+                    dft_total_steps=sizing_n,
+                    dft_window=getattr(pe, "dft_window", "rect"),
+                    dft_window_alpha=getattr(pe, "dft_window_alpha", 0.25),
+                    lo1=lo1, hi1=hi1, lo2=lo2, hi2=hi2,
+                    pmc_faces=magnetic_image_faces(sim._boundary_spec.pmc_faces(),
+                                                   (grid.nx, grid.ny, grid.nz)), staggered_area=True,
+                )
+            )
+
+    return flux_monitor_objs

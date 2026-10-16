@@ -73,7 +73,8 @@ def assemble_graded_ports(sim, grid, materials, materials_drive, conductors, *,
             axis = axis_map[pe.component]
             end_pos = list(pe.position)
             end_pos[axis] += pe.extent
-            idx_end = position_to_index(grid, tuple(end_pos))
+            from rfx._periodic import interval_indices
+            idx, idx_end = interval_indices(grid, pe.position, tuple(end_pos))
             lo_k = min(idx[axis], idx_end[axis])
             hi_k = max(idx[axis], idx_end[axis])
 

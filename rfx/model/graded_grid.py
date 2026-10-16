@@ -61,12 +61,14 @@ class NonUniformGrid(NamedTuple):
                            # Readers must not apply float() / .item() without
                            # an is_tracer(dt) guard or a host-boundary context.
     cpml_layers: int
-    # Cell-size arrays are padded AND carry one trailing duplicate cell so N
+    # Non-periodic cell-size arrays carry pads and a trailing duplicate so N
     # cells are bounded by N+1 E-nodes (#562, see _append_bounding_node). The
     # duplicate is a node-provider, not physical extent: its H term is the one
     # the stencil zeroes. Read extents from node positions
     # (coords_from_nonuniform_grid, or cumsum edges up to index nx-1) — NEVER
     # from sum(dx_arr), which overshoots by that trailing cell.
+    # Periodic axes have N cells and N nodes, no pads or duplicate, and both
+    # inverse metrics are 1/d at every node, including the seam.
     # Pre-computed inverse spacing arrays (length N, padded).
     # CORE-C2: inv_d* feed the E update (mean spacing), inv_d*_h feed
     # the H update (local cell width). See _profile_to_inv_arrays.
@@ -106,6 +108,8 @@ class NonUniformGrid(NamedTuple):
     # coordinate on a traced axis; never part of the node spine above.
     nominal_cells: dict[str, np.ndarray] | None = None
     traced_cells: dict[str, tuple[int, int]] | None = None
+    periodic_axes: str = ""
+    domain: tuple[float, float, float] | None = None
 
     @property
     def shape(self):
@@ -174,10 +178,11 @@ class NonUniformGrid(NamedTuple):
         is the source of truth (decision 1), NOT the float32 solver store.
         A traced axis returns its tracer unchanged, in jnp.
 
-        The last entry is the bounding-node duplicate (#562): it supplies the
+        On a non-periodic axis the last entry is the duplicate (#562), supplying
         ``N+1``-th E node and carries no physical extent, so ``sum(cells)``
         overshoots the realized wall-to-wall extent by one cell. Read extents
-        from ``node_of`` or ``interior_cells``.
+        from ``node_of`` or ``interior_cells``. A periodic axis has no duplicate:
+        its N widths sum to the declared period and all N cells are stepped.
 
         A spine whose length disagrees with the axis is REFUSED rather than
         returned: the spine and the float32 store are two views of one padded
@@ -301,6 +306,8 @@ class NonUniformGrid(NamedTuple):
                 "Resolve structural positions before tracing the mesh, or "
                 "pass the index directly."
             )
+        if _axis_name(ax) in self.periodic_axes:
+            return _periodic_index(self, ax, float(x))
         nodes, cells = self._node_line(ax)
         pos = float(x)
         lo, hi = float(nodes[0]), float(nodes[-1])
@@ -324,7 +331,7 @@ class NonUniformGrid(NamedTuple):
         ax, n, pad_lo, pad_hi = self._axis_layout(axis)
         d = self.cells(ax)
         nodes = _axis_node_positions(d, pad_lo)[pad_lo:n - pad_hi]
-        return nodes, interior_cells(d, pad_lo, pad_hi)
+        return nodes, interior_cells(d, pad_lo, pad_hi, periodic=_axis_name(ax) in self.periodic_axes)
 
     def node_of(self, axis, i: int):
         """Physical coordinate of the E node at padded index ``i``.
@@ -430,7 +437,7 @@ def _pad_profile(profile, pad_lo: int, pad_hi: int | None = None):
     return np.concatenate([lo_pad, np.asarray(profile, dtype=np.float64), hi_pad])
 
 
-def _append_bounding_node(profile_full):
+def _append_bounding_node(profile_full, *, periodic=False):
     """Append one duplicate boundary cell so an N-cell profile yields N+1
     E-nodes — the node count the uniform ``Grid`` allocates for N cells.
 
@@ -448,14 +455,17 @@ def _append_bounding_node(profile_full):
     ``1/d[N-1]`` exactly when ``d[N] == d[N-1]``, matching the existing
     ``inv_d_e[0] = 1/d[0]`` boundary treatment. The appended cell's own H
     term is the one the stencil zeroes, so it adds a node without adding a
-    cell of physical extent.
+    cell of physical extent. Periodic axes already have N nodes for N cells
+    and return the profile unchanged.
     """
+    if periodic:
+        return profile_full
     if is_tracer(profile_full):
         return jnp.concatenate([profile_full, profile_full[-1:]])
     return np.concatenate([profile_full, profile_full[-1:]])
 
 
-def interior_cells(d_full, pad_lo: int, pad_hi: int):
+def interior_cells(d_full, pad_lo: int, pad_hi: int, *, periodic=False):
     """The physical interior cells of a padded NU cell-size array.
 
     The array is ``[lo pad | interior | hi pad | bounding-node duplicate]``
@@ -463,16 +473,17 @@ def interior_cells(d_full, pad_lo: int, pad_hi: int):
     before ``len - pad_hi``. Slicing without that ``-1`` pulls in a pad cell
     — or the duplicate itself on a face with no pad — and overstates the
     extent by one cell, which is the same class of error #562 was.
+    A periodic axis has neither pads nor duplicate, so every entry is interior.
 
     Returns the CELLS; ``np.insert(np.cumsum(cells), 0, 0.0)`` then gives the
     ``N+1`` interior NODE positions, the last of which lands exactly on the
     requested domain face.
     """
-    return d_full[pad_lo : len(d_full) - pad_hi - 1]
+    return d_full[pad_lo : len(d_full) - pad_hi - int(not periodic)]
 
 
 def assert_cells_span_declared_profile(d_full, pad_lo, pad_hi, profile,
-                                       axis: str = "?") -> None:
+                                       axis: str = "?", *, periodic=False) -> None:
     """Refuse a padded cell array whose interior does not add up to the
     profile that was declared (step 0a, decision 1).
 
@@ -504,7 +515,7 @@ def assert_cells_span_declared_profile(d_full, pad_lo, pad_hi, profile,
     neither side of the comparison is a host number there.
     """
     interior = interior_cells(np.asarray(d_full, dtype=np.float64),
-                              int(pad_lo), int(pad_hi))
+                              int(pad_lo), int(pad_hi), periodic=periodic)
     declared = np.asarray(profile, dtype=np.float64)
     if interior.shape[0] != declared.shape[0]:
         raise ValueError(
@@ -545,7 +556,7 @@ def node_positions_from_profile(profile):
     return _axis_node_positions(_append_bounding_node(profile), 0)
 
 
-def _profile_to_inv_arrays(profile_full: np.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
+def _profile_to_inv_arrays(profile_full: np.ndarray, *, periodic=False) -> tuple[jnp.ndarray, jnp.ndarray]:
     """Return ``(inv_d_e, inv_d_h)`` — the E-update and H-update inverse
     cell-spacing arrays for a padded 1-D cell-size profile ``d``.
 
@@ -568,6 +579,7 @@ def _profile_to_inv_arrays(profile_full: np.ndarray) -> tuple[jnp.ndarray, jnp.n
     curl by ``2 d[k]/(d[k]+d[k±1])`` on every graded cell. The boundary
     entries (``inv_d_h[N-1]=0``, ``inv_d_e[0]=1/d[0]``) reproduce the
     prior boundary behaviour exactly, so PEC/CPML faces are untouched.
+    On a constant-spacing periodic axis both metrics are 1/d everywhere.
 
     The return order ``(inv_d_e, inv_d_h)`` matches the caller's
     ``inv_dx, inv_dx_h = _profile_to_inv_arrays(...)`` unpacking: the
@@ -575,6 +587,9 @@ def _profile_to_inv_arrays(profile_full: np.ndarray) -> tuple[jnp.ndarray, jnp.n
     """
     arr = jnp.asarray(profile_full, dtype=jnp.float32)
     inv_local = 1.0 / arr                          # 1/d[k]
+    if periodic:
+        inv_periodic = jnp.asarray(1.0 / np.asarray(profile_full, dtype=np.float64), dtype=jnp.float32)
+        return inv_periodic, inv_periodic
     inv_mean = 2.0 / (arr[:-1] + arr[1:])          # 2/(d[k]+d[k+1])
     # H update: local cell width; trailing 0 (forward-diff has no d[N]).
     inv_d_h = jnp.concatenate([inv_local[:-1], jnp.zeros(1, dtype=jnp.float32)])
@@ -773,6 +788,8 @@ def make_nonuniform_grid(
     dt_min_cell: float | None = None,
     dt_caller: str | None = None,
     nominal_profiles: dict | None = None,
+    periodic_axes: str = "",
+    domain: tuple | None = None,
 ) -> NonUniformGrid:
     """Create a non-uniform Yee grid.
 
@@ -830,7 +847,7 @@ def make_nonuniform_grid(
     _pec = pec_faces or set()
     _pmc = pmc_faces or set()
     boundary_depths = resolve_face_depths(
-        budget=cpml_layers, absorbing_axes=cpml_axes,
+        budget=cpml_layers, absorbing_axes="".join(a for a in cpml_axes if a not in periodic_axes),
         pec_faces=_pec, pmc_faces=_pmc, face_layers=face_layers,
     )
     (pad_x_lo, pad_x_hi, pad_y_lo, pad_y_hi, pad_z_lo, pad_z_hi) = (
@@ -861,10 +878,10 @@ def make_nonuniform_grid(
                 f"dx_profile[-1]={float(dx_prof_phys[-1])} must equal boundary "
                 f"dx={float(dx)}."
             )
-    dx_full = _append_bounding_node(_pad_profile(dx_prof_phys, pad_x_lo, pad_x_hi))
+    dx_full = _append_bounding_node(_pad_profile(dx_prof_phys, pad_x_lo, pad_x_hi), periodic="x" in periodic_axes)
     if not is_tracer(dx_full):
         assert_cells_span_declared_profile(
-            dx_full, pad_x_lo, pad_x_hi, dx_prof_phys, "x")
+            dx_full, pad_x_lo, pad_x_hi, dx_prof_phys, "x", periodic="x" in periodic_axes)
     nx = int(dx_full.shape[0])
 
     # --- y profile ---
@@ -887,17 +904,17 @@ def make_nonuniform_grid(
                 f"dy_profile boundary cells must match each other "
                 f"(got lo={dy_boundary}, hi={float(dy_prof_phys[-1])})."
             )
-    dy_full = _append_bounding_node(_pad_profile(dy_prof_phys, pad_y_lo, pad_y_hi))
+    dy_full = _append_bounding_node(_pad_profile(dy_prof_phys, pad_y_lo, pad_y_hi), periodic="y" in periodic_axes)
     if not is_tracer(dy_full):
         assert_cells_span_declared_profile(
-            dy_full, pad_y_lo, pad_y_hi, dy_prof_phys, "y")
+            dy_full, pad_y_lo, pad_y_hi, dy_prof_phys, "y", periodic="y" in periodic_axes)
     ny = int(dy_full.shape[0])
 
     # --- z profile ---
-    dz_full = _append_bounding_node(_pad_profile(dz_profile, pad_z_lo, pad_z_hi))
+    dz_full = _append_bounding_node(_pad_profile(dz_profile, pad_z_lo, pad_z_hi), periodic="z" in periodic_axes)
     if not is_tracer(dz_full):
         assert_cells_span_declared_profile(
-            dz_full, pad_z_lo, pad_z_hi, dz_profile, "z")
+            dz_full, pad_z_lo, pad_z_hi, dz_profile, "z", periodic="z" in periodic_axes)
     nz = int(dz_full.shape[0])
 
     for axis, profile in zip("xyz", (dx_prof_phys, dy_prof_phys, dz_profile)):
@@ -951,9 +968,9 @@ def make_nonuniform_grid(
         profile = (dx_profile, dy_profile, dz_profile)["xyz".index(axis)]
         _assert_traced_cells_match_nominal(profile, nominal_cells[axis], window, axis)
 
-    inv_dx, inv_dx_h = _profile_to_inv_arrays(dx_full)
-    inv_dy, inv_dy_h = _profile_to_inv_arrays(dy_full)
-    inv_dz, inv_dz_h = _profile_to_inv_arrays(dz_full)
+    inv_dx, inv_dx_h = _profile_to_inv_arrays(dx_full, periodic="x" in periodic_axes)
+    inv_dy, inv_dy_h = _profile_to_inv_arrays(dy_full, periodic="y" in periodic_axes)
+    inv_dz, inv_dz_h = _profile_to_inv_arrays(dz_full, periodic="z" in periodic_axes)
 
     return NonUniformGrid(
         nx=nx, ny=ny, nz=nz,
@@ -970,7 +987,7 @@ def make_nonuniform_grid(
                          y_lo=pad_y_lo, y_hi=pad_y_hi,
                          z_lo=pad_z_lo, z_hi=pad_z_hi),
         nominal_cells=nominal_cells,
-        traced_cells=traced_cells,
+        traced_cells=traced_cells, periodic_axes=periodic_axes, domain=domain,
     )
 
 
@@ -1101,6 +1118,8 @@ def _axis_position_to_index(
     structural index is resolved from the nominal mesh, with the same rule.
     """
     ax, n, pad_lo, pad_hi = grid._axis_layout(axis)
+    if _axis_name(ax) in grid.periodic_axes:
+        return _periodic_index(grid, ax, pos)
     store = grid._axis_store(ax)
     from rfx.model.graded_admission import nominal_cells
     widths = nominal_cells(grid, ax)
@@ -1156,3 +1175,13 @@ def position_to_index(grid: NonUniformGrid, pos: tuple[float, float, float]) -> 
                                 fallback_dx=float(grid.dy))
     k = z_position_to_index(grid, pos[2])
     return (i, j, k)
+
+
+def _periodic_index(grid, axis, coordinate):
+    """Grid's half-open periodic point admission and lower-node tie rule."""
+    from rfx._grid_metric import nearest_uniform_index
+    ratio = coordinate / float(grid.cells(axis)[0])
+    n = grid.shape[axis]
+    if ratio < -.5 or ratio >= n + .5:
+        raise ValueError(f"position {coordinate} on axis {'xyz'[axis]!r} lies outside this axis's {n} entries")
+    return nearest_uniform_index(ratio) % n

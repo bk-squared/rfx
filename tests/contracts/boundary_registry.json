@@ -385,12 +385,6 @@
     {
       "file": "rfx/core/yee.py",
       "function": "update_h_nu",
-      "kind": "difference",
-      "count": 6
-    },
-    {
-      "file": "rfx/core/yee.py",
-      "function": "update_h_nu",
       "kind": "neighbour",
       "count": 6
     },
@@ -505,6 +499,11 @@
       "file": "rfx/model/graded_profile.py",
       "function": "make_band_profile",
       "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/model/waveguide_mode_solver.py",
+      "function": "_cell_centred_gradient",
+      "kind": "difference"
     },
     {
       "file": "rfx/nonuniform.py",
@@ -781,11 +780,6 @@
       "file": "rfx/simulation.py",
       "function": "run",
       "kind": "boundary"
-    },
-    {
-      "file": "rfx/model/waveguide_mode_solver.py",
-      "function": "_cell_centred_gradient",
-      "kind": "difference"
     },
     {
       "file": "rfx/sources/coaxial_port.py",
