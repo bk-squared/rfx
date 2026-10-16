@@ -69,7 +69,7 @@ def conductor_width_axes(root, sim, mask, *, kind, sheet, node_based,
             span = (sheet.solved_spans[a] if hasattr(sheet, 'solved_spans') else
                     solved_sheet_span(mask, a, nodes[a], float(bounds[0][a]),
                         float(bounds[1][a]), float(sim._domain[a]), union=union,
-                        volume_edges=volume_edges, periodic=periodic, fed=fed))
+                        volume_edges=volume_edges, periodic=periodic, fed=fed, normal_axis=sheet.normal_axis))
             if span is not None:
                 lo, hi = span.lo, span.hi
                 comparison = span.comparison_bounds(bounds[0][a], bounds[1][a], sim._domain[a])
@@ -574,6 +574,7 @@ def _with_sheet_spans(sim, conductors):
         spans[entry.label] = tuple(None if a == entry.sheet.normal_axis else solved_sheet_span(
             entry.sheet.footprint, a, nodes[a], float(bounds[0][a]), float(bounds[1][a]),
             float(sim._domain[a]), union=union, volume_edges=volume_edges, fed=fed,
+            normal_axis=entry.sheet.normal_axis,
             periodic='xyz'[a] in getattr(grid, 'periodic_axes', '')) for a in range(3))
     pinned = getattr(sim, '_pinned_sheets', ())
     if pinned:
@@ -595,6 +596,7 @@ def _with_sheet_spans(sim, conductors):
                     footprint, a, nodes[a], float(nodes[a][occupied[a].min()]),
                     float(nodes[a][occupied[a].max()]), float(sim._domain[a]),
                     union=pin_union, volume_edges=volume_edges, fed=fed,
+                    normal_axis=sheet.normal_axis,
                     periodic='xyz'[a] in getattr(grid, 'periodic_axes', '')) for a in range(3))
     replacements = {}
     for sheet in conductors.sheets:

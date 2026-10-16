@@ -1160,6 +1160,7 @@ def _sheet_solved_spans(ctx, boxes):
                 span = solved_sheet_span(fp, a, ctx.nodes[a], float(e.lo[a]),
                                          float(e.hi[a]), float(domain[a]),
                                          union=union, volume_edges=volume_edges, fed=fed,
+                                         normal_axis=e.sheet.normal_axis,
                                          periodic='xyz'[a] in getattr(ctx.grid, 'periodic_axes', ''))
             if span is not None:
                 out.append((e, a, span))
