@@ -136,6 +136,8 @@ def capture(sim, entry, path, invoke=None):
     nu_original = nu._build_nu_scan
     jit_original = jax.jit
     grid_original = sim._build_nonuniform_grid
+    from rfx.runners import _distributed_nu_wrapped as wrapped
+    wrapped_original = wrapped.wrap
 
     def built_grid(*args, **kwargs):
         grid = grid_original(*args, **kwargs)
@@ -169,6 +171,28 @@ def capture(sim, entry, path, invoke=None):
         # The graded step is composed from stages (S3-2 stage B); read the set its wall stage applies.
         wall_stage = closure_values(stage(result.step_fn_inv, 'pec'))
         captured.update(grid=args[0], faces=wall_stage['ctx']._pec_faces_frozen, backend='graded')
+        raise Captured
+
+    def wrapped_factory(*args, **kwargs):
+        # The wrapped multi-device step (#1776, plain CPML since #1402 item 5) rebuilds
+        # the one-device graded step per slab from the context wrap() closes over.
+        # Build that step from that context and read the faces its wall stage applies.
+        from rfx.stepping.graded import make_graded_step
+        advance = wrapped_original(*args, **kwargs)
+        seen, todo, contexts = set(), [advance], []
+        while todo:
+            f = todo.pop()
+            if id(f) in seen or not hasattr(f, '__code__'):
+                continue
+            seen.add(id(f))
+            values = closure_values(f)
+            if 'context' in values:
+                contexts.append(values['context'])
+            todo.extend(v for v in values.values() if callable(v))
+        assert len({id(c) for c in contexts}) == 1, contexts
+        wall_stage = closure_values(stage(make_graded_step(contexts[0]), 'pec'))
+        assert 'grid' in captured
+        captured.update(faces=wall_stage['ctx']._pec_faces_frozen, backend='distributed-graded')
         raise Captured
 
     def distributed_factory(fun=None, *args, **kwargs):
@@ -214,6 +238,7 @@ def capture(sim, entry, path, invoke=None):
                                        (kernel, '_build_step_setup', setup),
                                        (kernel, 'make_core_step', factory),
                                        (nu, '_build_nu_scan', nu_factory),
+                                       (wrapped, 'wrap', wrapped_factory),
                                        (jax, 'jit', distributed_factory),
                                        (jax.lax, 'scan', forbidden)):
             stack.enter_context(patch.object(obj, name, replacement))
