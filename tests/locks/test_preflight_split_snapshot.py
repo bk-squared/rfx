@@ -15,6 +15,12 @@ numbers are regenerated: whole-grid tape now counts the real per-step scan
 carry (fields, CPML psi and other saved leaves), verified by compiled B1
 slopes, instead of the old 24 B/cell field term.
 
+SNAPSHOT CHANGE, 2026-10-17 (#1800). cavity_faces gains one
+sheet_cavity_spacing error row under strict; tie_stack gains one
+sheet_cavity_spacing warning row under declared. Parallel sheet spacing
+more than 1% off the drawing now refuses strict solves and warns under
+declared; the existing electrical-thickness rows are unchanged.
+
 Structured snapshot policy
 --------------------------
 Pin report codes, locations, counts, severity, source and emission order.

@@ -622,7 +622,9 @@ class TestSheetCavityThickness:
         starts at 0.9), so the cavity reads 350 um vs 250 um (+40.0%) and
         the snap printed for foil A is -100 um. No 'own cell' story: a
         sheet owns no cell, the number is the plane snap and the drawing."""
-        hits = _tie_stack_sim().preflight().by_code(CAVITY_CODE)
+        sim = _tie_stack_sim()
+        sim._snap = "declared"  # Exercise the electrical advisory, not the spacing refusal.
+        hits = sim.preflight().by_code(CAVITY_CODE)
         assert len(hits) == 1
         msg = str(hits[0])
         assert "sum(d/eps) mesh 350µm vs physical 250µm (+40.0%)" in msg
@@ -785,7 +787,9 @@ class TestRealizationFindings:
     def test_half_cell_tie_is_a_warning_naming_both_planes(self):
         """A face-registered foil (both faces on nodes) has its mid-plane
         on an exact tie; the contract resolves it LOWER and says so."""
-        rep = _tie_stack_sim().preflight()
+        sim = _tie_stack_sim()
+        sim._snap = "declared"  # Exercise the plane warning on the unresolved cavity.
+        rep = sim.preflight()
         hits = [h for h in rep.by_code(PLANE_CODE) if h.severity == "warning"]
         assert len(hits) == 1
         msg = str(hits[0])
