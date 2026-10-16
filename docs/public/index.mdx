@@ -74,6 +74,8 @@ box. JAX differentiates the whole time-stepping loop.
 {/* rfx-showcase-objective:start */}
 
 ```python
+...  # imports, board, corners, freqs, n_steps, checkpoint_segments, eps_bg: see the full script
+
 def J(eps_box):
     res = board.sim.forward(
         design_box=corners, design_eps_override=eps_box,
