@@ -152,7 +152,7 @@ def test_substrate_walk_starts_at_the_ports_own_ground_plane():
     dx = 80e-6
     z_gnd = 10 * dx                       # 800um: ground plane above the floor
     ly = W_TRACE + 8 * H_SUB
-    # The walk tests an unresolved substrate; strict refuses that cavity (#1800).
+    # The substrate is unresolved on purpose; under strict, run() would refuse this cavity (#1800).
     sim = Simulation(
         freq_max=5e9, domain=(LX, ly, z_gnd + H_SUB + 1.5e-3), dx=dx,
         cpml_layers=8, snap="declared",

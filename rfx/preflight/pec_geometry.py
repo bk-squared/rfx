@@ -881,6 +881,88 @@ def _validate_cfg_congruent_rasterization_parity(self, _w, ctx) -> None:
         source="_validate_cfg_congruent_rasterization_parity",
     ))
 
+def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
+    """Judge drawn-order sheet adjacency independently of electrical columns."""
+    sheets = [e for e in entries if e.kind == "sheet"]
+    if len(sheets) < 2:
+        return
+    shape = tuple(ctx.grid.shape)
+    pec_np = np.asarray(pec_np, dtype=bool)
+    results = []
+    for a in range(3):
+        planes = []
+        for e in sheets:
+            if int(e.sheet.normal_axis) != a:
+                continue
+            k = int(e.sheet.plane)
+            planes.append((e, k, e.footprint_on_plane(a, k, ctx.periodic, shape)))
+        planes.sort(key=lambda p: (0.5 * (float(p[0].lo[a]) + float(p[0].hi[a])),
+                                   float(p[0].lo[a])))
+        for si, (e1, k1, foot1) in enumerate(planes):
+            covered = np.zeros(foot1.shape, dtype=bool)
+            for e2, k2, foot2 in planes[si + 1:]:
+                overlap = foot1 & foot2 & ~covered
+                if not overlap.any():
+                    continue
+                covered |= foot1 & foot2
+                # A post blocks some columns, not the whole cavity. Same-node
+                # sheets have no intervening cells and must still be judged.
+                between = [slice(None)] * 3
+                between[a] = slice(k1, k2)
+                blocked = np.any(pec_np[tuple(between)], axis=a)
+                if np.all(blocked[overlap]):
+                    continue
+                g_lo, g_hi = float(e1.hi[a]), float(e2.lo[a])
+                drawn = g_hi - g_lo
+                z1, z2 = float(ctx.nodes[a][k1]), float(ctx.nodes[a][k2])
+                solved = z2 - z1
+                if drawn > 0:
+                    rel = solved / drawn - 1.0
+                    if abs(rel) <= _CAVITY_THICKNESS_TOL:
+                        continue
+                    score = abs(rel)
+                    spacing = (f"drawn spacing {_fmt_len(drawn)}, solved spacing "
+                               f"{_fmt_len(solved)} ({rel:+.2%})")
+                elif solved > 0:
+                    # There is no finite relative error for a nonpositive gap.
+                    score = math.inf
+                    spacing = ("drawn touching/overlapping, solved spacing "
+                               f"{_fmt_len(solved)}")
+                else:
+                    continue
+                thickness = (
+                    ". A sheet is solved on one plane, so its drawn "
+                    "thickness counts into the spacing; draw it as a "
+                    "zero-thickness sheet on the interface it bounds"
+                    if e1.lo[a] != e1.hi[a] or e2.lo[a] != e2.hi[a]
+                    else "")
+                results.append((score, (
+                    f"[{'xyz'[a]}] {e1.label} '{e1.name}' plane at "
+                    f"{_fmt_len(z1)} (drawn {_fmt_len(g_lo)}) / "
+                    f"{e2.label} '{e2.name}' plane at {_fmt_len(z2)} "
+                    f"(drawn {_fmt_len(g_hi)}): {spacing}{thickness}")))
+    if not results:
+        return
+    results.sort(key=lambda t: -t[0])
+    lines = " | ".join(r[1] for r in results[:_CAMPAIGN_MAX_OFFENDERS])
+    _w.warn(PreflightWarning(
+        f"{len(results)} pair(s) of parallel PEC sheets are solved "
+        "more than 1% off their drawn spacing. "
+        f"{lines}. WHY: a cavity resonance follows its spacing. "
+        "REMEDY: put both planes on mesh nodes: use a cell size that "
+        "divides the heights, or build a graded profile whose nodes include "
+        "both planes with rfx.mesh_edges.edge_aware_profiles(domain, dx, "
+        'sheets=[...], axes="xyz") and pass it as Simulation(dx_profile=..., '
+        "dy_profile=..., dz_profile=...). To accept the solved spacing "
+        'knowingly, use Simulation(..., snap="declared"). '
+        "STALE IF: the named sheets or mesh change; the printed planes "
+        "are this run's node coordinates.",
+        code="sheet_cavity_spacing",
+        severity="warning" if ctx.sim._snap == "declared" else "error",
+        source="_validate_cfg_sheet_cavity_thickness",
+    ))
+
+
 def _validate_cfg_sheet_cavity_thickness(self, _w, ctx) -> None:
     """#703 check 3: each conductor-bounded cavity's electrical thickness.
 
@@ -954,7 +1036,6 @@ def _validate_cfg_sheet_cavity_thickness(self, _w, ctx) -> None:
         < self._PEC_SIGMA_THRESHOLD)
 
     results = []
-    spacing_results = []
     n_pairs = 0
     n_skipped_pec_between = 0
     lam0 = C0 / float(self._freq_max)
@@ -1017,27 +1098,6 @@ def _validate_cfg_sheet_cavity_thickness(self, _w, ctx) -> None:
                 g_lo, g_hi = f1_hi, f2_lo
                 if g_hi <= g_lo:
                     continue
-                # Geometric spacing is independent of the electrical measures.
-                if e1.kind == "sheet" and e2.kind == "sheet":
-                    drawn = g_hi - g_lo
-                    z1 = float(ctx.nodes[a][k1])
-                    z2 = float(ctx.nodes[a][k2])
-                    solved = z2 - z1
-                    rel = solved / drawn - 1.0
-                    if abs(rel) > _CAVITY_THICKNESS_TOL:
-                        thickness = (
-                            " A sheet is solved on one plane, so its drawn "
-                            "thickness counts into the spacing; draw it as a "
-                            "zero-thickness sheet on the interface it bounds."
-                            if e1.lo[a] != e1.hi[a] or e2.lo[a] != e2.hi[a]
-                            else "")
-                        spacing_results.append((abs(rel), (
-                            f"[{'xyz'[a]}] {e1.label} '{e1.name}' plane at "
-                            f"{_fmt_len(z1)} (drawn {_fmt_len(g_lo)}) / "
-                            f"{e2.label} '{e2.name}' plane at {_fmt_len(z2)} "
-                            f"(drawn {_fmt_len(g_hi)}): drawn spacing "
-                            f"{_fmt_len(drawn)}, solved spacing "
-                            f"{_fmt_len(solved)} ({rel:+.2%}){thickness}")))
                 # in-plane physical point: centre of the two entries'
                 # in-plane bounding-box intersection
                 p = [0.0, 0.0, 0.0]
@@ -1147,24 +1207,7 @@ def _validate_cfg_sheet_cavity_thickness(self, _w, ctx) -> None:
             source="_validate_cfg_sheet_cavity_thickness",
         ))
 
-    if spacing_results:
-        spacing_results.sort(key=lambda t: -t[0])
-        lines = " | ".join(r[1] for r in spacing_results[:_CAMPAIGN_MAX_OFFENDERS])
-        _w.warn(PreflightWarning(
-            f"{len(spacing_results)} pair(s) of parallel PEC sheets are solved "
-            "more than 1% off their drawn spacing. "
-            f"{lines}. WHY: a cavity resonance follows its spacing. "
-            "REMEDY: put both planes on mesh nodes: use a cell size that "
-            "divides the heights, or a graded profile whose nodes include "
-            "both planes passed as Simulation(dx_profile=..., "
-            "dy_profile=..., dz_profile=...). To accept the solved spacing "
-            'knowingly, use Simulation(..., snap="declared"). '
-            "STALE IF: the named sheets or mesh change; the printed planes "
-            "are this run's node coordinates.",
-            code="sheet_cavity_spacing",
-            severity="warning" if ctx.sim._snap == "declared" else "error",
-            source="_validate_cfg_sheet_cavity_thickness",
-        ))
+    _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np)
 
 #: A sheet's electrical size differing from its drawing by more than this is
 #: reported. 1 % is the frequency tolerance the project judges results by; a
