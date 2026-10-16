@@ -433,7 +433,8 @@ def _setup_msl_ports_nu(sim, grid, materials, materials_drive, sources,
         from rfx.sources.msl_port import validate_msl_port_geometry
         validate_msl_port_geometry(
             grid, mp, pec_edge_masks=original_edges, conductors=conductors,
-            pec_faces=sim._boundary_spec.pec_faces(), name=pe.name)
+            pec_faces=sim._boundary_spec.pec_faces(), name=pe.name,
+            periodic=tuple(a in grid.periodic_axes for a in "xyz"))
         span = msl_cross_section_span(grid, mp)
         k_mid = (span["n_lo"] + span["n_hi"]) // 2
         eps_cell = msl_cell(

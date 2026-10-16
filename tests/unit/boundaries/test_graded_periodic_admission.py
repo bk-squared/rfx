@@ -9,6 +9,17 @@ from tests.unit.boundaries.graded_periodic_cases import simulation
 
 
 @pytest.mark.parametrize("entry", ["run", "forward"])
+def test_dual_average_periodic_graded_mesh_refuses(entry):
+    sim = simulation(True, 20e9, (.012, .012, .012), dx=.001, cpml_layers=0,
+                     boundary=BoundarySpec(x="periodic", y="pec", z="pec"),
+                     interface_eps="dual_average")
+    with pytest.raises(NotImplementedError, match=(
+            "interface_eps='dual_average'.*periodic axes 'x'.*"
+            "use the default interface_eps on a periodic axis")):
+        getattr(sim, entry)(n_steps=1, skip_preflight=True)
+
+
+@pytest.mark.parametrize("entry", ["run", "forward"])
 @pytest.mark.parametrize("skip_preflight", [False, True])
 @pytest.mark.parametrize("axis", list("xyz"))
 def test_nonconstant_periodic_profile_refuses(entry, skip_preflight, axis):

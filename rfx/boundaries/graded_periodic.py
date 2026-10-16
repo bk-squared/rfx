@@ -9,6 +9,10 @@ def admit_graded_periodic(sim):
     axes = sim._periodic_axes or ""
     if not axes:
         return
+    if sim._interface_eps == "dual_average":
+        raise NotImplementedError(
+            f"interface_eps='dual_average' with graded periodic axes {axes!r} "
+            "is not implemented; use the default interface_eps on a periodic axis")
     if sim._tfsf is not None:
         raise NotImplementedError(
             f"A plane wave with periodic axes {axes!r} on the graded mesh "

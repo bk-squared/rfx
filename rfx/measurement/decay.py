@@ -226,7 +226,7 @@ def boundary_energy(grid, materials, side_step, *, dx=None,
     graded = hasattr(grid, "dx_arr")
     if not graded and dx is None:
         raise ValueError("the uniform energy measure needs the loop's cell size dx")
-    periodic = tuple(periodic)
+    periodic = tuple(a in grid.periodic_axes for a in "xyz") if graded else tuple(periodic)
     materials = with_components(materials, grid, periodic=periodic)
     sizes = (grid.dx_arr, grid.dy_arr, grid.dz) if graded else None
     region = tuple(slice(lo, hi) for lo, hi in _interior(grid))
@@ -242,7 +242,7 @@ def boundary_energy(grid, materials, side_step, *, dx=None,
         eps, sigma, mu = (m.components.eps_update, m.components.sigma_update,
                           m.components.mu_update)
         if _realized.ACTIVE is not None:
-            kw = dict(cell_sizes=sizes) if graded else dict(periodic=periodic)
+            kw = dict(cell_sizes=sizes, periodic=periodic) if graded else dict(periodic=periodic)
             eps, _ = _realized.electric(m, eps, sigma, "yee.E", periodic=periodic)
             mu = _realized.magnetic(m, mu, "yee.H", **kw)
         volume = arrays["volumes"] if graded else dx ** 3
