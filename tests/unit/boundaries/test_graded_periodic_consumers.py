@@ -170,3 +170,26 @@ def test_oriented_box_mask_matches_uniform():
                         rotation=((1., 0., 0.), (0., 1., 0.), (0., 0., 1.)))
     np.testing.assert_array_equal(shape.mask(_sim(True)._build_nonuniform_grid()),
                                   shape.mask(_sim(False)._build_grid()))
+
+
+def test_dc_film_crossing_the_seam_matches_uniform():
+    """A lossy film y 8-12 mm on a 10 mm period covers y 8-10 and 0-2 mm: ex edges on nodes 8, 9, 0, 1, 2,
+    ey edges in cells 8, 9, 0, 1, on both meshes (record 12 addendum; review A's crossing scene)."""
+    from rfx.core.yee import lumped_components
+
+    films = []
+    for graded in (False, True):
+        profile = {"dz_profile": np.full(8, 1e-3)} if graded else {}
+        sim = Simulation(20e9, (.008, .010, .008), dx=1e-3, cpml_layers=0,
+                         boundary=BoundarySpec(x="pec", y="periodic", z="pec"), **profile)
+        sim.add_thin_conductor(Box((.002, .008, .004), (.006, .012, .004)), sigma_bulk=1e3, thickness=1e-4)
+        grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
+        materials = (sim._assemble_materials_nu(grid) if graded else sim._assemble_materials(grid))[0]
+        films.append([None if p is None else np.asarray(p) for p in lumped_components(materials.sigma_film)])
+    uniform, graded = films
+    rows = lambda p: sorted(set(np.nonzero(p)[1].tolist()))
+    assert rows(uniform[0]) == rows(graded[0]) == [0, 1, 2, 8, 9]
+    assert rows(uniform[1]) == rows(graded[1]) == [0, 1, 8, 9]
+    for u, g in zip(uniform, graded):
+        if u is not None:
+            np.testing.assert_allclose(g, u, rtol=1e-6, atol=0)

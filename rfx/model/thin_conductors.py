@@ -468,9 +468,6 @@ def fold_thin_conductor(grid, conductor, materials, pec_mask=None, *,
         if not isinstance(conductor.shape, Box):
             film = admit_dc_film(conductor.shape, grid, snap=snap)
             mask, normal = film.mask, film.normal
-        elif nonuniform:
-            normal = sheet_normal_axis(conductor.shape.corner_lo, conductor.shape.corner_hi)
-            mask = conductor.shape.mask_on_coords(*coords[:3])
         else:
             normal = sheet_normal_axis(conductor.shape.corner_lo, conductor.shape.corner_hi)
             mask = dc_cell_mask(conductor.shape, grid)
