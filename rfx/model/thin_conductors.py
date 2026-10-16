@@ -449,7 +449,7 @@ def fold_thin_conductor(grid, conductor, materials, pec_mask=None, *,
         else:
             spec = sheet_spec_from_shape(
                 conductor.shape, coords, sizes, name='thin_conductor',
-                lane=lane, refuse_thick=True, grid=None if nonuniform else grid)
+                lane=lane, refuse_thick=True, grid=grid)
             if conductor.is_pec:
                 if sheets is None:
                     raise ValueError(

@@ -236,7 +236,7 @@ def capture(sim, entry, path, invoke=None):
 def refusal(case, entry, path):
     if case == 'closed_box' and path != 'uniform':
         return 'uniform, single-device'
-    if case == 'periodic' and path != 'uniform':
+    if case == 'periodic' and path.startswith('distributed'):
         return 'periodic'
     if case in ('plane', 'closed_box') and path == 'distributed-graded':
         return 'TFSF'
