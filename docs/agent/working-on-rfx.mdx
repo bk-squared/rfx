@@ -27,8 +27,8 @@ PR #1112: of the 90 pull requests merged since 2026-09-11, 35 carried no review 
 at all, and all 17 open pull requests lacked one. Several sessions in several pods,
 some Claude and some Codex, commit under a single account, so neither the author field
 nor the assignee says who did what, and no session's memory reaches another. The
-tracker and the pull-request body are the only shared store, and everything below is a
-CI check, a repository setting, or a row in a weekly report.
+tracker and the pull-request body are the only shared store, and most of what follows
+is a CI check, a repository setting, or a row in a weekly report.
 
 ## Before you start
 
@@ -45,9 +45,9 @@ work. It is where the pull requests are going.
 Then find the lane's open work. `gh issue list -l lane:msl-port` answers that from any
 machine, and [Lanes](./agent-runbook.mdx#lanes) explains where a lane comes from and
 what the labels can and cannot say. `.github/labeler.yml` maps every `lane:*` label
-to paths except two, on purpose: `lane:plan` marks plans, trackers and deferred
-decisions that nobody implements from, and `lane:research` marks exploratory tracks on
-paths no other lane owns. The labels name the lane that owns a change,
+to paths except two: `lane:plan` has none on purpose, because it marks plans, trackers
+and deferred decisions that nobody implements from, and `lane:research`, for
+exploratory research tracks, has none either. The labels name the lane that owns a change,
 never the session driving it; which session drives a lane is recorded in the private
 governance appendix that the engineering standard points at, not in an issue. Before
 starting an issue, look for a `Taken by <session>` comment on it; if there is none,
@@ -66,11 +66,11 @@ git fetch -q origin
 git worktree add -b nu/seam-source /path/to/rfx-worktrees/nu--seam-source origin/main
 ```
 
-Branches are named `<session>/<topic>`, after the session doing the work; older
-branches carry a kind prefix instead (`fix/`, `feat/`, `refactor/`, `docs/`, …). The
+Branches are mostly named `<session>/<topic>`, after the session doing the work;
+others carry a kind prefix instead (`fix/`, `feat/`, `refactor/`, `docs/`, …). The
 prefix is a convention and no check reads it, with one exception: `merge-train/batch-*`
 belongs to the [merge train](#landing-the-merge-train), and the body and changelog
-checks treat a branch of that name as a batch. The `Lane:` line in the pull-request
+checks treat a branch of that name in this repository as a batch. The `Lane:` line in the pull-request
 body is the record of which lane the work belongs to.
 
 **Removing the worktree is the last step of the task, after the merge.** Sessions
@@ -176,16 +176,19 @@ literal `(a)` or `(b)`, so the weekly audit can say which was claimed.
 ## Landing: the merge train
 
 Pull requests land through the merge train, not by hand. Once a pull request is
-reviewed and green, the lead adds the `merge-train` label (`merge-priority` moves it up
-the line). The train takes labelled pull requests one at a time: when `main` has moved
-it rebases the branch onto it, because the ruleset requires a branch to be up to date
-before it lands, then waits for the required checks on that head and squash-merges
-exactly that commit. The rebase is a push to your branch, so fetch before you push to it again; any
-push of yours restarts the checks.
+reviewed, green and approved for merge, it gets the `merge-train` label
+(`merge-priority` moves it up the line). The train takes labelled pull requests one at
+a time: when `main` has moved it rebases the branch onto it, because the ruleset
+requires a branch to be up to date before it lands, then waits for the required checks
+on that head and squash-merges exactly that commit. The rebase is a force-push to your
+branch, so before you push to it again run `git pull --rebase` to build on the train's
+rebase, and never force-push over it; any push of yours restarts the checks.
 
-When a required check fails, the train adds `merge-train-blocked` and comments with the
-failing context. Fix the cause, then remove `merge-train-blocked` to put the same pull
-request back in line; `merge-train` stays.
+When the train cannot land a pull request, it adds `merge-train-blocked` and comments
+with the reason: most often a rebase conflict with `main`, otherwise the failing
+required check. Rebase onto `main` and resolve the conflict, or fix the check, push,
+then remove `merge-train-blocked` to put the same pull request back in line;
+`merge-train` stays.
 
 The train can also land several pull requests together through a batch pull request
 from a `merge-train/batch-*` branch, labelled `merge-train-batch`. Its body lists each
@@ -214,7 +217,7 @@ The repository keeps the remote branch after a pull request lands. Then:
 |---|---|
 | CI checks | the two body lines, changelog fragments, lint, contract tests, and the physics shards whenever the diff touches code |
 | repository settings | a pull request is required and GitHub asks for zero approvals on it, squash and rebase are the merge methods allowed, a branch must be up to date with `main`, history stays linear, force-push and deleting `main` are off |
-| weekly governance audit | skipped reviews, issues with no lane label or filed outside the forms, pull requests that carried records past the data budget on its exception label, merged pull requests closing an issue outside every open milestone |
+| weekly governance audit | skipped reviews, issues with no lane label or filed outside the forms, merged pull requests labelled `data-budget-exception`, merged pull requests closing an issue outside every open milestone |
 
 Read all of this rather than trusting the page. Which contexts are required:
 

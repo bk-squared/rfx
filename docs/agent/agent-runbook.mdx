@@ -206,8 +206,8 @@ separate rows: an issue can have been filed through the form and still never hav
 a label.
 
 Query a lane from any machine with `gh issue list -l lane:msl-port`. Who currently
-DRIVES each lane is a separate question the labels do not answer — that lives in the
-pinned lane-board issue, which the labeler file replaces as the path mapping.
+DRIVES each lane is a separate question the labels do not answer — that is recorded
+in the private governance appendix, not in an issue.
 
 Every glob in `.github/labeler.yml` is checked against `git ls-files` by
 `tests/contracts/test_governance_intake_contract.py`; a glob that matches nothing is
@@ -233,8 +233,9 @@ closes, because a line contradicting the
   A merged change is read by an agent instance other than the one that wrote it;
   several pods push under one GitHub account, so the body is the only provenance.
   A `REJECT` verdict fails. A second `Review:` or `Lane:` line fails too, even next
-  to a valid one: keep the line the PR merges on and put earlier rounds on a line
-  that does not start with `Review:`, such as `Review notes:`.
+  to a valid one, and list markers and bold are stripped before the lines are
+  counted, so `- **Review:** round 1` counts. Keep the line the PR merges on and put
+  earlier rounds on a line such as `Review notes:`.
 
 `<who read it>` names the reviewing instance. A field that is nothing but an
 angle-bracketed span is an unedited stub and fails; a name that merely contains
@@ -370,8 +371,9 @@ enough.
 
 The local branch is a separate decision from the worktree. It is deleted only when
 origin already has its tip or the tip is an ancestor of `origin/main`, and only when
-some other ref contains it. This repository squash-merges, so a merged branch is never
-an ancestor of `main`: a commit made after the merge lives on that branch alone, and
+some other ref contains it. Every pull request lands on `main` as a new commit
+(squash-merged, or replayed as a batch member), so a merged branch is never an
+ancestor of `main`: a commit made after the merge lives on that branch alone, and
 the branch stays even though its worktree goes. **No unpushed branch is deleted on any
 path.** `--archive` pushes one to origin first, and only then may its worktree be
 removed.
