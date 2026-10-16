@@ -19,6 +19,8 @@ def tape_accounting(sim, accounting, *, design_box, design, checkpoint, segmente
         raise ValueError("design must be 'permittivity' or 'occupancy'")
     if not isinstance(checkpoint, bool):
         raise ValueError("checkpoint must be a bool")
+    if sim._precision == "float64":
+        raise ValueError("AD memory's fixed per-cell term is calibrated on float32 only; precision='float64' is not supported")
     grid = accounting.get("grid")
     if distributed:
         raise ValueError("AD memory carry could not be read: distributed forward is not supported by this trace")
@@ -41,12 +43,15 @@ def tape_accounting(sim, accounting, *, design_box, design, checkpoint, segmente
         shape=shape, checkpoint=checkpoint, checkpoint_every=checkpoint_every,
         checkpoint_segments=checkpoint_segments, n_warmup=n_warmup)
     carry = sum(x["bytes"] for x in saved)
-    tape = carry if window is None else (6 if design == "permittivity" else 3) * window * 4
+    # Box residuals hold compute values: mixed uses float32, despite its
+    # float16 field storage. Float64 remains refused until c0 is calibrated.
+    compute_itemsize = 8 if sim._precision == "float64" else 4
+    tape = carry if window is None else (6 if design == "permittivity" else 3) * window * compute_itemsize
     bounded = window is not None and checkpoint and not segmented
     if bounded:
         # The rematted box's no-segment mechanism is not identified: bound
         # it by the carry plus six window arrays, rather than claiming a fit.
-        tape = carry + 6 * window * 4
+        tape = carry + 6 * window * compute_itemsize
     return dict(saved=saved, excluded_linear=excluded, carry_warnings=carry_warnings,
                 modelled=True, unmodelled_features=[],
                 carry_bytes=carry,

@@ -1235,13 +1235,8 @@ def test_segmented_estimate_within_tolerance(chunk, n_steps, observed_gb):
     assert 0.5 * observed_gb <= pred <= 2.0 * observed_gb, (
         f"chunk={chunk}: predicted {pred:.3f} GB vs observed {observed_gb} GB"
     )
-    # Retain the original historical calibration bound without asserting
-    # that the new program-requirement margin covers an old allocator peak.
-    accounting = sim._ad_memory_static_accounting()
-    historical = ((2 * int(np.ceil(n_steps / chunk)) + chunk)
-                  * accounting["field_bytes"] + accounting["forward_bytes"]
-                  + accounting["ntff_bytes"]) / 1e9
-    assert historical * 1.30 >= observed_gb
+    target_fraction = 0.85
+    assert pred * AD_MEMORY_FIT_SAFETY_FACTOR / target_fraction >= observed_gb
 
 
 def test_checkpoint_every_none_leaves_segmented_null():
@@ -1249,6 +1244,26 @@ def test_checkpoint_every_none_leaves_segmented_null():
     est = sim.estimate_ad_memory(n_steps=1000)
     assert est.ad_segmented_gb is None
     assert est.checkpoint_every is None
+
+
+def test_segmented_plan_preserves_estimate_warnings(monkeypatch):
+    sim = _uniform_sim()
+    original = sim.estimate_ad_memory
+    feature_warning = "Linear accumulator flux monitors on the graded path could not be initialized."
+    bound_warning = "The checkpoint=True box tape is a bound."
+    segment_warning = "rfx#1789: Segments without checkpoint=True do not reduce memory."
+
+    def warned(*args, **kwargs):
+        estimate = original(*args, **kwargs)
+        return estimate._replace(warning=feature_warning + " " + (
+            bound_warning if kwargs["checkpoint"] else segment_warning))
+
+    monkeypatch.setattr(sim, "estimate_ad_memory", warned)
+    plan = sim.plan_ad_memory(120, available_memory_gb=.006)
+    assert plan.segmented_fits
+    assert plan.checkpoint is True
+    for text in (feature_warning, bound_warning, segment_warning):
+        assert text in plan.selected_estimate.warning
 
 
 def test_u_shaped_in_chunk_with_minimum_near_balanced_size():
@@ -1477,7 +1492,7 @@ def test_checkpoint_segments_accounting_matches_uniform_segment_count():
 
 def test_checkpoint_segments_rejects_unadmitted_uniform_warmup():
     sim = _uniform_sim()
-    for warmup in (60, 61):
+    for warmup in (1, 60, 61):
         with pytest.raises(ValueError, match="carry could not be read.*n_warmup"):
             sim.estimate_ad_memory(n_steps=120, checkpoint_segments=10, n_warmup=warmup)
 

@@ -235,14 +235,15 @@ class _AdMemoryMixin:
         ntff_bytes = accounting["ntff_bytes"]
         ad_ckpt_bytes = 4 * forward_bytes + ntff_bytes  # legacy heuristic
         active_steps = n_steps_i - n_warmup_i
-        ad_full_bytes = model["c0_bytes"] + active_steps * model["tape_step_bytes"] + ntff_bytes
+        fixed_bytes = model["c0_bytes"] + accounting["sheet_bytes"]
+        ad_full_bytes = fixed_bytes + active_steps * model["tape_step_bytes"] + ntff_bytes
         segmented_active_segments, segmented_live_tape_steps = segment_counts(
             n_steps_i, n_warmup_i, checkpoint_every_i, checkpoint_segments_i)
         ad_seg_bytes = None
         if segmented_active_segments is not None:
             saved = (segmented_active_segments * model["carry_bytes"] if checkpoint
                      else active_steps * model["tape_step_bytes"])
-            ad_seg_bytes = (model["c0_bytes"] + saved
+            ad_seg_bytes = (fixed_bytes + saved
                             + segmented_live_tape_steps * model["tape_step_bytes"] + ntff_bytes)
 
         # VRAM detection (best effort)
@@ -279,7 +280,7 @@ class _AdMemoryMixin:
             carry_bytes=model["carry_bytes"],
             tape_step_bytes=model["tape_step_bytes"], tape_window_cells=model["tape_window_cells"],
             design_box_bounds=model["design_box_bounds"], tape_is_bound=model["tape_is_bound"],
-            ad_fixed_gb=model["c0_bytes"] * to_gb,
+            ad_fixed_gb=fixed_bytes * to_gb,
             forward_gb=forward_bytes * to_gb,
             ad_checkpointed_gb=ad_ckpt_bytes * to_gb,
             ad_full_gb=ad_full_bytes * to_gb,
@@ -394,6 +395,8 @@ class _AdMemoryMixin:
         allocator was requested). SF is not inflated to cover rounding.
         Reading the real carry costs about 90 bytes of host memory per cell
         and a few seconds, measured on 4.3e7 cells.
+        The fixed term is GPU-calibrated, so a CPU plan is not a fit guarantee;
+        plan_ad_memory traces twice and ad_memory_preflight up to four times.
         """
         available = _require_positive_finite_scalar("available_memory_gb", available_memory_gb)
         fraction = _require_positive_finite_scalar("target_fraction", target_fraction)
@@ -407,6 +410,8 @@ class _AdMemoryMixin:
                                       n_warmup=n_warmup, checkpoint=checkpoint, **options)
         window_full = self.estimate_ad_memory(n_steps, available_memory_gb=available,
                                              n_warmup=n_warmup, checkpoint=False, **options)
+        estimate_warning = " ".join(dict.fromkeys(
+            warning for warning in (full.warning, window_full.warning) if warning)) or None
         if window_full.ad_full_gb < full.ad_full_gb:
             full = window_full
         target = available * fraction
@@ -450,7 +455,7 @@ class _AdMemoryMixin:
                       + (count * window_full.carry_bytes + live * window_full.tape_step_bytes) / 1e9)
             estimate = window_full._replace(
                 checkpoint=True, checkpoint_every=every, checkpoint_segments=segments,
-                ad_segmented_active_segments=count, ad_segmented_gb=memory, warning=None)
+                ad_segmented_active_segments=count, ad_segmented_gb=memory, warning=estimate_warning)
             if least is None or memory < least.ad_segmented_gb:
                 least = estimate
             if memory * safety <= target:

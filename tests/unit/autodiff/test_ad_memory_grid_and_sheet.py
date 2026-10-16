@@ -157,6 +157,10 @@ def test_f0_sheet_operator_is_counted():
     e_sheet = sheet.estimate_ad_memory(1000)
     assert e_plain.sheet_gb == 0.0
     assert e_sheet.sheet_gb > 0.0
+    expected_sheet_gb = math.prod(sheet._build_nonuniform_grid().shape) * 7 * 1e-9
+    assert e_sheet.ad_full_gb - e_plain.ad_full_gb == pytest.approx(expected_sheet_gb)
+    assert e_sheet.ad_fixed_gb - e_plain.ad_fixed_gb == pytest.approx(expected_sheet_gb)
+    assert e_sheet.sheet_gb == expected_sheet_gb
     assert e_sheet.forward_gb == pytest.approx(0.054151, rel=1e-4)
     assert e_plain.forward_gb == pytest.approx(0.048689, rel=1e-4)
     assert e_sheet.forward_gb / e_plain.forward_gb == pytest.approx(1.113,

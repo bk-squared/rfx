@@ -28,6 +28,23 @@ def _sane_sim(freq_max=5e9, domain=(0.04, 0.04, 0.04)):
     return sim
 
 
+def test_ad_memory_trace_error_is_an_aggregated_issue(monkeypatch):
+    sim = _sane_sim()
+    baseline = sim.preflight(strict=False)
+    cause = "AD memory carry could not be read: request trace failed"
+
+    def refuse(*args, **kwargs):
+        raise ValueError(cause)
+
+    monkeypatch.setattr(sim, "estimate_ad_memory", refuse)
+    report = sim.preflight(strict=False, check_ad_memory=True, n_steps_for_memory=1000)
+    assert list(report[:-1]) == list(baseline)
+    issue = report[-1]
+    assert (issue.severity, issue.code, str(issue)) == ("error", "ad_memory", cause)
+    with pytest.raises(ValueError, match=cause):
+        sim.preflight(strict=True, check_ad_memory=True, n_steps_for_memory=1000)
+
+
 def test_ntff_pec_overlap_rejects():
     """NTFF face crossing a PEC bbox must raise an error."""
     sim = _sane_sim()

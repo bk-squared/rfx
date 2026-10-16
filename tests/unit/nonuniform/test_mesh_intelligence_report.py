@@ -30,6 +30,23 @@ def _patch_like_nonuniform_sim():
     return sim
 
 
+def test_mesh_report_retains_ad_memory_trace_error(monkeypatch):
+    sim = _patch_like_nonuniform_sim()
+    baseline = sim.mesh_intelligence_report()
+    cause = "AD memory carry could not be read: request trace failed"
+
+    def refuse(*args, **kwargs):
+        raise ValueError(cause)
+
+    monkeypatch.setattr(sim, "estimate_ad_memory", refuse)
+    report = sim.mesh_intelligence_report(n_steps=1000)
+    assert report.ad_memory is None
+    assert report.preflight_issues[:-1] == baseline.preflight_issues
+    issue = report.preflight_issues[-1]
+    assert (issue.severity, issue.code, str(issue)) == ("error", "ad_memory", cause)
+    assert "resolve" in report.recommendation
+
+
 def test_mesh_intelligence_report_compares_uniform_fine_cells(capsys):
     sim = _patch_like_nonuniform_sim()
 

@@ -113,14 +113,18 @@ def mesh_intelligence_report(
 
     ad_memory = None
     if n_steps is not None:
-        ad_memory = sim.estimate_ad_memory(
-            n_steps,
-            available_memory_gb=available_memory_gb,
-            checkpoint_every=checkpoint_every,
-            checkpoint_segments=checkpoint_segments,
-            n_warmup=n_warmup,
-            **(ad_memory_options or {}),
-        )
+        try:
+            ad_memory = sim.estimate_ad_memory(
+                n_steps,
+                available_memory_gb=available_memory_gb,
+                checkpoint_every=checkpoint_every,
+                checkpoint_segments=checkpoint_segments,
+                n_warmup=n_warmup,
+                **(ad_memory_options or {}),
+            )
+        except ValueError as error:
+            from rfx.preflight._common import PreflightIssue
+            preflight_issues += (PreflightIssue(str(error), severity="error", code="ad_memory"),)
 
     uses_nonuniform = any(
         p is not None

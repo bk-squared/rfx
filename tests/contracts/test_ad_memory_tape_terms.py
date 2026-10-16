@@ -16,10 +16,10 @@ from rfx.farfield import compute_far_field
 from rfx.geometry import Sphere
 
 
-def _scene(graded=False):
+def _scene(graded=False, precision="float32"):
     profile = {"dz_profile": np.array([.0015] + [.0014, .0016] * 7 + [.0015])} if graded else {}
     sim = Simulation(freq_max=7.5e9, domain=(.024,) * 3, dx=.0015,
-                     boundary="cpml", cpml_layers=4, **profile)
+                     boundary="cpml", cpml_layers=4, precision=precision, **profile)
     if graded:
         sim.add_source((.003, .012, .012), "ez")
         sim.add_probe((.021, .012, .012), "ez")
@@ -37,8 +37,8 @@ def _scene(graded=False):
     return sim, grid, box, shape
 
 
-def _measure(n, *, box, checkpoint, k=None, occupancy=False, graded=False):
-    sim, grid, corners, shape = _scene(graded)
+def _measure(n, *, box, checkpoint, k=None, occupancy=False, graded=False, precision="float32"):
+    sim, grid, corners, shape = _scene(graded, precision)
     knobs = {"checkpoint_every" if graded else "checkpoint_segments": k} if k else {}
 
     def objective(p):
@@ -72,7 +72,7 @@ def _measure(n, *, box, checkpoint, k=None, occupancy=False, graded=False):
         assert "Segments without checkpoint=True do not reduce memory" in estimate.warning
     estimated = (estimate.ad_segmented_gb if k else estimate.ad_full_gb) * 1e9
     row = dict(n=n, box=box, checkpoint=checkpoint, K=k, occupancy=occupancy,
-               graded=graded, compiled_bytes=compiled, estimate_bytes=estimated)
+               graded=graded, precision=precision, compiled_bytes=compiled, estimate_bytes=estimated)
     print("AD_TAPE_ROW " + json.dumps(row), file=sys.stderr, flush=True)
     return row
 
@@ -83,6 +83,27 @@ def _assert_slope(label, estimated, compiled):
                                         compiled_slope=compiled, ratio=ratio)),
           file=sys.stderr, flush=True)
     assert .999 <= ratio <= 1.6, f"B1 {label}: est slope={estimated}, compiled slope={compiled}, ratio={ratio}"
+
+
+def test_mixed_box_slope():
+    a, b = (_measure(n, box=True, checkpoint=False, precision="mixed") for n in (800, 1600))
+    estimated = (b["estimate_bytes"] - a["estimate_bytes"]) / 800
+    compiled = (b["compiled_bytes"] - a["compiled_bytes"]) / 800
+    ratio = estimated / compiled
+    print("AD_TAPE_MIXED " + json.dumps(dict(est_slope=estimated, compiled_slope=compiled,
+                                             ratio=ratio)), file=sys.stderr, flush=True)
+    assert ratio >= .999, f"mixed box: est slope={estimated}, compiled slope={compiled}, ratio={ratio}"
+    jax.clear_caches()
+
+
+@pytest.mark.parametrize("box", (False, True))
+def test_float64_fixed_term_refused(box):
+    sim, _, corners, _ = _scene(precision="float64")
+    options = dict(design_box=corners if box else None)
+    with pytest.raises(ValueError, match="fixed per-cell term is calibrated on float32 only"):
+        sim.estimate_ad_memory(800, **options)
+    with pytest.raises(ValueError, match="fixed per-cell term is calibrated on float32 only"):
+        sim.plan_ad_memory(800, available_memory_gb=1., **options)
 
 
 def _scan_carries(jaxpr):
