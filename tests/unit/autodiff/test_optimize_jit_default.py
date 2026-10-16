@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import importlib.util
+import sys
+
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -63,7 +66,7 @@ def _difference(actual, eager):
     actual, eager = np.asarray(actual), np.asarray(eager)
     delta = np.max(np.abs(actual - eager))
     scale = np.max(np.abs(eager))
-    print(f"max difference={delta:.12g}, eager peak={scale:.12g}")
+    print(f"max difference={delta:.12g}, eager peak={scale:.12g}", file=sys.stderr)
     assert delta <= 1e-4 * scale
 
 
@@ -71,7 +74,7 @@ def test_default_compiles_once():
     _run(1)
     _, n1 = _compiles(_run, 1)
     result, n4 = _compiles(_run, 4)
-    print(f"T1 backend compiles: {n1}, {n4}")
+    print(f"T1 backend compiles: {n1}, {n4}", file=sys.stderr)
     assert n1 >= 1
     assert n4 == n1
     assert len(result.loss_history) == 4
@@ -138,11 +141,12 @@ def _topology(n_iterations, **kwargs):
                              verbose=False, skip_preflight=True, **kwargs)
 
 
+@pytest.mark.skipif(not importlib.util.find_spec("optax"), reason="optax not installed")
 def test_topology_dynamic_beta_compiles_once():
     _topology(4)
     _, n1 = _compiles(_topology, 1)
     actual, n4 = _compiles(_topology, 4)
-    print(f"T5 backend compiles: {n1}, {n4}")
+    print(f"T5 backend compiles: {n1}, {n4}", file=sys.stderr)
     assert n1 >= 1
     assert n4 == n1
     assert actual.beta_history == [1.0, 1.0, 4.0, 4.0]
