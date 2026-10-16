@@ -203,3 +203,29 @@ def test_pinned_patch_metric_wall():
     assert (patch.free_lo, patch.free_hi) == (False, True)
     assert (patch.lo, patch.hi) == pytest.approx((.008, .01435), abs=1e-12)
     _census_matches(issues, fidelity, record)
+
+
+def test_closed_box_every_end_joined():
+    """Six sheets close a box (x 4..12, y 5..14, z 3..7 mm, unequal on purpose):
+    every in-plane end of every face lies on a perpendicular face, so every
+    span is node to node and no end is free. Covers x-, y- and z-normal sheets
+    along each of their in-plane axes."""
+    x, y, z = (4, 12), (5, 14), (3, 7)
+    faces = {
+        'x_lo': _box((x[0], y[0], z[0]), (x[0], y[1], z[1])),
+        'x_hi': _box((x[1], y[0], z[0]), (x[1], y[1], z[1])),
+        'y_lo': _box((x[0], y[0], z[0]), (x[1], y[0], z[1])),
+        'y_hi': _box((x[0], y[1], z[0]), (x[1], y[1], z[1])),
+        'z_lo': _box((x[0], y[0], z[0]), (x[1], y[1], z[0])),
+        'z_hi': _box((x[0], y[0], z[1]), (x[1], y[1], z[1])),
+    }
+    sim, labels = _build(faces, (20 * MM, 20 * MM, 9 * MM), MM)
+    issues, fidelity, record = _reports(sim)
+    entities = {entity.label: entity for entity in record.entities}
+    span = {'x': x, 'y': y, 'z': z}
+    for name in faces:
+        for axis in 'xyz':
+            if axis != name[0]:
+                _assert_span(issues, fidelity, entities[labels[name]], axis,
+                             (*span[axis], False, False))
+    _census_matches(issues, fidelity, record)
