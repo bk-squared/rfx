@@ -147,10 +147,9 @@ def test_finite_scatterer_refuses_every_dispatch_path(skip, path, monkeypatch):
         with pytest.raises(ValueError, match='solver="adi" refuses absorbing boundaries'):
             plane(finite=True, **mesh)
         return  # this declaration cannot reach ADI dispatch
+    # Both meshes run the same invariance admission (#1794): a finite scatterer
+    # under an open plane wave is refused on the graded paths too.
     sim = plane(finite=True, **mesh)
-    if path in ("nonuniform", "distributed_nu"):
-        assert_graded_admitted(sim, skip, path == "distributed_nu", monkeypatch)
-        return  # Addendum 5e: these paths install no transverse wrap.
     if path == "subgridded":
         sim.add_refinement(z_range=(0., .004), ratio=2, validation="research")
     kwargs = {"devices": jax.devices()} if path.startswith("distributed") else {}
@@ -257,11 +256,12 @@ def assert_graded_admitted(sim, skip, distributed, monkeypatch):
         sim.run(n_steps=1, skip_preflight=skip, **kwargs)
 
 
-@pytest.mark.parametrize("finite", [False, True])
 @pytest.mark.parametrize("skip", [False, True])
 @pytest.mark.parametrize("distributed", [False, True])
-def test_graded_plane_wave_keeps_absorbers(finite, skip, distributed, monkeypatch):
-    sim = plane(finite=finite, dz_profile=np.full(10, .001))
+def test_graded_plane_wave_keeps_absorbers(skip, distributed, monkeypatch):
+    # A laterally invariant slab; a finite one is refused on both meshes (#1794,
+    # test_finite_scatterer_refuses_every_dispatch_path).
+    sim = plane(finite=False, dz_profile=np.full(10, .001))
     assert_graded_admitted(sim, skip, distributed, monkeypatch)
 
 
