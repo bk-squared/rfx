@@ -102,7 +102,7 @@ Helpers on `Result`:
 
 | Method | Returns |
 |---|---|
-| `find_resonances(freq_range=None, probe_idx=0, source_decay_time=None, bandpass=None, waveform=None)` | list of `HarminvMode(freq, decay, Q, amplitude, phase, error)` from one probe |
+| `find_resonances(freq_range=None, probe_idx=0, source_decay_time=None, bandpass=None, waveform=None)` | list of `MatrixPencilMode(freq, decay, Q, amplitude, phase, error)` from one probe, strongest first |
 | `s(m, n)`, `s11()`, `s21()`, `s12()`, `s22()` | complex S-parameter vector, ports numbered from 1 |
 | `s_db(m, n)` | `20 log10 |S_mn|` |
 | `freqs_hz` | the S-parameter frequency vector |
@@ -111,10 +111,11 @@ Helpers on `Result`:
 
 ### Resonances
 
-`find_resonances()` runs Harminv on the part of a probe record after the
-source has died away. It suits resonators better than S-parameters because it
-does not depend on port calibration. Record a long ring-down, and give the
-structure some loss, or Q has no finite value to converge to.
+`find_resonances()` fits the part of a probe record after the source has
+ended by the matrix pencil method. It suits resonators better than
+S-parameters because it does not depend on port calibration. Give the
+structure some loss, or Q has no finite value to converge to;
+[Resonances](/rfx/measure/resonances/) has the options and what is checked.
 
 ```python
 cav = Simulation(freq_max=12e9, domain=(0.030, 0.020, 0.010), dx=1e-3,
@@ -134,8 +135,8 @@ c0 = 299_792_458.0
 print(f"analytic TM110: {c0 / 2 * np.hypot(1 / 0.030, 1 / 0.020) / 1e9:.3f} GHz")
 ```
 
-For a lower-level call on any signal, use `harminv(signal, dt, f_min, f_max,
-...)`.
+For a lower-level call on any signal, use `matrix_pencil(signal, dt, f_min,
+f_max, ...)` or `matrix_pencil_from_probe(...)`.
 
 ## `ForwardResult`
 
