@@ -656,7 +656,8 @@ def solved_sheet_span(footprint, axis: int, nodes, declared_lo: float,
     metal along the sheet's normal axis, or the optional grid-shaped ``fed``
     mask joins that node. The end is joined only when every end node is
     joined; partial contact leaves a free edge. Normal-axis metal is skipped
-    on the 2-D lane (normal size one), and never wraps across a periodic
+    on the 2-D lane (normal size one), is inspected only on the end rows,
+    and never wraps across a periodic
     normal boundary. If ``normal_axis`` is omitted, infer the uniquely
     singleton occupied transverse axis; ambiguous footprints retain the
     continuation/fed rule alone.
@@ -691,18 +692,6 @@ def solved_sheet_span(footprint, axis: int, nodes, declared_lo: float,
         if len(candidates) == 1 and all(
                 np.unique(occupied[a]).size > 1 for a in other if a != candidates[0]):
             normal_axis = candidates[0]
-    normal_touch = np.zeros_like(fp)
-    if normal_axis is not None and fp.shape[normal_axis] > 1:
-        n = normal_axis
-        lower = [slice(None)] * fp.ndim
-        upper = [slice(None)] * fp.ndim
-        lower[n], upper[n] = slice(None, -1), slice(1, None)
-        lower, upper = tuple(lower), tuple(upper)
-        for edges in (union if isinstance(union, (tuple, list)) else None, volume_edges):
-            if edges is not None and edges[n] is not None:
-                metal = np.asarray(edges[n], dtype=bool)
-                normal_touch[lower] |= metal[lower]
-                normal_touch[upper] |= metal[lower]
 
     def _joined(i_end, i_next):
         edge_index = min(i_end, i_next)
@@ -710,7 +699,21 @@ def solved_sheet_span(footprint, axis: int, nodes, declared_lo: float,
             i_end, i_next = i_end % fp.shape[axis], i_next % fp.shape[axis]
             edge_index %= fp.shape[axis]
         end = np.take(fp, i_end, axis=axis)
-        joined = np.take(normal_touch, i_end, axis=axis).copy()
+        joined = np.zeros_like(end)
+        if normal_axis is not None and fp.shape[normal_axis] > 1:
+            n = normal_axis
+            row_index = [slice(None)] * fp.ndim
+            row_index[axis] = i_end
+            row_normal = n - (axis < n)
+            lower = [slice(None)] * end.ndim
+            upper = [slice(None)] * end.ndim
+            lower[row_normal], upper[row_normal] = slice(None, -1), slice(1, None)
+            lower, upper = tuple(lower), tuple(upper)
+            for edges in (union if isinstance(union, (tuple, list)) else None, volume_edges):
+                if edges is not None and edges[n] is not None:
+                    metal = np.asarray(edges[n][tuple(row_index)], dtype=bool)
+                    joined[lower] |= metal[lower]
+                    joined[upper] |= metal[lower]
         if union is not None:
             if isinstance(union, (tuple, list)):
                 if union[axis] is not None:

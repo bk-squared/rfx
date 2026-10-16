@@ -565,6 +565,16 @@ def _with_sheet_spans(sim, conductors):
                 owners[id(sheet)] = label
     interior = ctx.interior_pec_entries()
     union, volume_edges = sheet_continuation_masks(interior, ctx.periodic, grid.shape)
+    pinned = getattr(sim, '_pinned_sheets', ())
+    if pinned:
+        from rfx.geometry.rasterize_grid import interior_lattice_mask
+        pin_specs = conductors.sheets[-len(pinned):]
+        pin_masks = [interior_lattice_mask(sheet.footprint, grid) for sheet in pin_specs]
+        from rfx.boundaries.pec import _sheet_edge_masks
+        report_sheets = [entry.sheet for entry in interior if entry.sheet is not None]
+        report_sheets += [replace(sheet, footprint=mask)
+                          for sheet, mask in zip(pin_specs, pin_masks, strict=True)]
+        union = _sheet_edge_masks(report_sheets, grid.shape, ctx.periodic)
     fed = port_fed_nodes(sim, conductors)
     spans = {}
     for entry in interior:
@@ -576,16 +586,7 @@ def _with_sheet_spans(sim, conductors):
             float(sim._domain[a]), union=union, volume_edges=volume_edges, fed=fed,
             normal_axis=entry.sheet.normal_axis,
             periodic='xyz'[a] in getattr(grid, 'periodic_axes', '')) for a in range(3))
-    pinned = getattr(sim, '_pinned_sheets', ())
     if pinned:
-        from rfx.geometry.rasterize_grid import interior_lattice_mask
-        pin_specs = conductors.sheets[-len(pinned):]
-        pin_masks = [interior_lattice_mask(sheet.footprint, grid) for sheet in pin_specs]
-        from rfx.boundaries.pec import _sheet_edge_masks
-        report_sheets = [entry.sheet for entry in interior if entry.sheet is not None]
-        report_sheets += [replace(sheet, footprint=mask)
-                          for sheet, mask in zip(pin_specs, pin_masks, strict=True)]
-        pin_union = _sheet_edge_masks(report_sheets, grid.shape, ctx.periodic)
         for i, (sheet, footprint) in enumerate(zip(pin_specs, pin_masks, strict=True)):
             label = f'pinned_sheet[{i}]'
             owners[id(sheet)] = label
@@ -595,7 +596,7 @@ def _with_sheet_spans(sim, conductors):
                 spans[label] = tuple(None if a == sheet.normal_axis else solved_sheet_span(
                     footprint, a, nodes[a], float(nodes[a][occupied[a].min()]),
                     float(nodes[a][occupied[a].max()]), float(sim._domain[a]),
-                    union=pin_union, volume_edges=volume_edges, fed=fed,
+                    union=union, volume_edges=volume_edges, fed=fed,
                     normal_axis=sheet.normal_axis,
                     periodic='xyz'[a] in getattr(grid, 'periodic_axes', '')) for a in range(3))
     replacements = {}

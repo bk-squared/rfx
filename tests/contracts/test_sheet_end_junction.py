@@ -85,7 +85,7 @@ def _census_matches(issues, fidelity, record):
             for m in _ROW.finditer(issue['message'].split('. OBSERVED')[0] + ' '):
                 rows[m[1], m[2]] = float(m[3]) * _UNIT_UM[m[4]]
     for entity in record.entities:
-        if entity.kind != 'sheet':
+        if entity.kind != 'sheet' or all(a.declared_bounds_m is None for a in entity.axes):
             continue
         item, = [item for item in fidelity if str(item.get('entity', '')).split(' ')[0] == entity.label]
         for a, axis in zip(entity.axes, item['axes'], strict=True):
@@ -165,4 +165,41 @@ def test_strict_admission(case):
     issues, fidelity, record = _reports(sim)
     assert not [i for i in issues if i['code'] == 'sheet_effective_size' and i['severity'] == 'error']
     assert not [i for i in issues if i['code'] == 'off_lattice_design_edges']
+    _census_matches(issues, fidelity, record)
+
+
+@pytest.mark.parametrize('case', ['wider_wall', 'beside_end'])
+def test_helper_free_top(case):
+    shapes = _drawing(2, 4.6)
+    if case == 'wider_wall':
+        shapes['wall'] = _box((8, 5, 3), (8, 15, 4.6))
+    else:
+        shapes['patch'] = _box((9, 6, 4.6), (14, 14, 4.6))
+    profiles = edge_aware_profiles((.030, .030, .012), .0005,
+                                   sheets=list(shapes.values()), axes='xyz')
+    z = np.r_[0., np.cumsum(profiles['dz_profile'])]
+    # Drawn wall top 4.6 mm is a free edge: last node + .35 outside cell.
+    i = np.searchsorted(z, .0046) - 1
+    assert z[i] + EDGE_OFFSET * (z[i + 1] - z[i]) == pytest.approx(.0046, abs=1e-12)
+    if case == 'wider_wall':
+        # Partial contact leaves the top free, so its edge displaces the
+        # coincident patch face from every node.
+        assert min(abs(z - .0046)) > 1e-12
+
+
+def test_pinned_patch_metric_wall():
+    shapes = {
+        'ground': _box((4, 4, 3), (16, 16, 3)),
+        'wall': _box((8, 6, 3), (8, 14, 5)),
+    }
+    sim, labels = _build(shapes, (.020, .020, .009), .001)
+    sim.add_pinned_sheet(plane_index=5, i_range=(8, 14), j_range=(6, 14))
+    issues, fidelity, record = _reports(sim)
+    entities = {entity.label: entity for entity in record.entities}
+    _assert_span(issues, fidelity, entities[labels['wall']], 'z', (3, 5, False, False))
+    # Pinned record axes expose node bounds; solved spans are on its sheet.
+    # x-lo=8 mm meets the wall; x-hi=14 mm has a 1 mm outside cell.
+    patch = entities['pinned_sheet[0]'].sheet.solved_spans[0]
+    assert (patch.free_lo, patch.free_hi) == (False, True)
+    assert (patch.lo, patch.hi) == pytest.approx((.008, .01435), abs=1e-12)
     _census_matches(issues, fidelity, record)
