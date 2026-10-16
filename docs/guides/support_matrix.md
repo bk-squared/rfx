@@ -196,7 +196,7 @@ Left out of these tables, each for one reason:
 | A magnetic (PMC) face | `_boundary_spec/pmc_face` | supported | supported | refused | refused (waveguide_s_matrix, vmap_sweep_batched) | Run it on one device. |
 | Conformal PEC (`Boundary(conformal=True)` or `conformal_pec=True`) | `_boundary_spec/conformal` | supported (run); refused (forward) | refused | refused | refused (s_matrix_scan, mixed_s_matrix, topology_optimize, vmap_sweep_batched, material_fit) | It is solved by a single-device uniform `run()` only. |
 | Conformal PEC together with a lumped or wire-port S-matrix request | `_boundary_spec/conformal_s_matrix` | refused | refused | refused | refused (s_matrix_scan, mixed_s_matrix, topology_optimize, waveguide_s_matrix, vmap_sweep_batched, material_fit) | Request the S-matrix without conformal PEC. |
-| A periodic axis | `_periodic_axes/periodic` | supported | refused | refused | refused (waveguide_s_matrix) | Use a uniform mesh on one device. |
+| A periodic axis | `_periodic_axes/periodic` | supported | supported (constant cell size along the axis; refused with a graded profile along it, a plane wave or `interface_eps='dual_average'`) | refused | refused (waveguide_s_matrix) | Run it on one device; on a graded mesh keep the periodic axis's cell size constant. |
 | `cpml_kappa_max` other than 1 | `_cpml_kappa_max/kappa` | supported | refused | supported (uniform); refused (graded) | — | Leave `cpml_kappa_max=1` on a graded mesh. |
 
 #### Mesh
