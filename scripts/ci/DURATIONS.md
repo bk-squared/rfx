@@ -252,7 +252,9 @@ pytest-split reads prices from and stores measurements to one file, so the
 weekly step seeds that file with `.test_durations` and the budget check prunes
 it to the entries the shard measured before the upload.
 
-1. Dispatch `.github/workflows/regen-durations.yml` and download the artifacts.
+1. Dispatch `.github/workflows/regen-durations.yml` and download the artifacts. Read each job's CPU from its
+   "Runner CPU" step and multiply that job's artifact values by its factor to the EPYC 7763 (table in the header;
+   a CPU model with no measured factor is an assumption, named in the header). Merge the scaled maps.
 2. `python scripts/ci/merge_test_durations.py .test_durations <slow shards...> <fast shards...>`.
    Later inputs win: slow first, fast last — the required lane must be priced by its own runs.
    A shard cut before the session ends uploads nothing; price what it finished from its job log
