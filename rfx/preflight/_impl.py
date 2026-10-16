@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import jax
 
+from rfx.api._ad_memory_types import ADMemoryUnavailable
 from rfx.preflight._common import (
     PreflightErrorWarning, PreflightIssue, PreflightReport, PreflightWarning,
 )
@@ -143,14 +144,18 @@ def _preflight_impl(
     if check_ad_memory:
         if n_steps_for_memory is None:
             raise ValueError("check_ad_memory=True requires n_steps_for_memory")
-        est = self.estimate_ad_memory(
-            n_steps_for_memory,
-            available_memory_gb=available_memory_gb,
-        )
-        if est.warning:
-            issues.append(PreflightIssue(
-                est.warning, severity="warning", code="ad_memory"
-            ))
+        try:
+            est = self.estimate_ad_memory(
+                n_steps_for_memory,
+                available_memory_gb=available_memory_gb,
+            )
+        except ADMemoryUnavailable as error:
+            issues.append(PreflightIssue(str(error), severity="error", code="ad_memory"))
+        else:
+            if est.warning:
+                issues.append(PreflightIssue(
+                    est.warning, severity="warning", code="ad_memory"
+                ))
 
     # A located validator may already explain the same assembly failure.
     # Wait until all findings exist so that its entry information wins over

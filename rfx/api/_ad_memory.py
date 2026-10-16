@@ -8,6 +8,7 @@ from typing import Any
 
 import jax
 
+from rfx.api._ad_memory_model import tape_accounting, segment_counts, tape_warning, validate_counts
 from rfx.grid import C0
 from rfx.materials.thin_conductor import has_f0_sheets
 from rfx.api._spec import (
@@ -32,7 +33,7 @@ from rfx.api._validators import (
 )
 
 
-AD_MEMORY_FIT_SAFETY_FACTOR = 1.30
+AD_MEMORY_FIT_SAFETY_FACTOR = 1.15
 
 
 AD_MEMORY_PREFLIGHT_EVIDENCE_BOUNDARIES = (
@@ -105,6 +106,7 @@ class _AdMemoryMixin:
         )
         grid_kind = "nonuniform" if is_nonuniform else "uniform"
         grid_source = "built"
+        _grid = None
         try:
             _grid = (self._build_nonuniform_grid() if is_nonuniform
                      else self._build_grid())
@@ -155,6 +157,7 @@ class _AdMemoryMixin:
             ntff_bytes = face_est * n_freqs * 6 * 8
 
         return {
+            "grid": _grid,
             "nx": nx,
             "ny": ny,
             "nz": nz,
@@ -179,46 +182,27 @@ class _AdMemoryMixin:
         checkpoint_every: int | None = None,
         checkpoint_segments: int | None = None,
         n_warmup: int = 0,
+        design_box: object | None = None,
+        design: str = "permittivity",
+        checkpoint: bool = True,
+        distributed: bool = False,
     ) -> "AD_MemoryEstimate":
-        """Estimate reverse-mode AD memory for this simulation.
+        """Estimate saved carry, per-step tape, and calibrated AD working set.
 
-        Returns a static-estimate AD_MemoryEstimate with forward,
-        checkpointed-AD, and non-checkpointed-AD sizes in GB, plus a
-        best-effort warning if estimated AD memory exceeds 85% of available
-        VRAM. This artifact is planning evidence, not a certificate of peak
-        runtime memory.
+        ``design_box`` accepts forward's corners/region forms. The window
+        comes from the same realized-grid resolver. Whole-grid tape saves
+        the real scan carry except declared linear accumulators; box tape
+        saves six permittivity or three occupancy window arrays. A rematted, unsegmented box uses a labelled
+        carry-plus-window bound. The fixed term is calibrated on GPU with
+        JAX 0.10.2, rather than a bound for CPU compiler temporaries.
 
-        When ``checkpoint_every`` is provided, the returned
-        ``ad_segmented_gb`` reflects the non-uniform segmented scan-of-scan
-        chunk-size path from issue #31. When ``checkpoint_segments`` is
-        provided, it reflects the uniform segmented-scan segment-count path
-        from issue #73.
-
-        The segmented model (issue #277) counts BOTH terms of the
-        rematerialized backward pass:
-
-        * segment-boundary storage — carry + cotangent per active segment,
-          ``2 * active_segments * field_bytes``;
-        * the live-segment rematerialization tape — the backward pass
-          replays one segment at a time, so that segment's per-step field
-          tape (``n_steps // checkpoint_segments`` steps on the uniform
-          path, ``checkpoint_every`` steps on the chunked path) is resident
-          on top of the boundary storage. The non-uniform runner pads the
-          trailing chunk with zero source to a full chunk, so the full
-          chunk length is the correct live-tape size; both live terms are
-          capped at the active (post-warmup) step count.
-
-        The segmented estimate is therefore minimized when the two terms
-        balance, near ``sqrt(2 * n_steps)`` steps per segment — NOT by
-        pushing the segment count to either extreme. Use
-        :meth:`plan_ad_memory` to pick a balanced knob for a budget.
-        ``n_warmup`` must be an integer with
-        ``0 <= n_warmup < n_steps`` and reduces reported reverse-mode tape
-        time. The legacy
-        ``ad_checkpointed_gb`` field keeps its old (optimistic) heuristic
-        for backwards compatibility; it
-        is NOT accurate for FDTD on the non-uniform path — see the
-        class docstring.
+        With checkpoint=True, segments save one carry per active boundary
+        and one live segment. With checkpoint=False, the complete active
+        tape and one live segment remain resident: segments raise memory.
+        Balance K_active*carry_bytes against s*tape_step_bytes. Warmup
+        reduces the reverse-mode time. The legacy ad_checkpointed_gb
+        heuristic remains for compatibility; use ad_full_gb or the requested
+        ad_segmented_gb for planning. These are estimates, not certificates.
         """
         n_steps_i = _require_integral_param("n_steps", n_steps)
         n_warmup_i = _require_integral_param("n_warmup", n_warmup)
@@ -240,82 +224,27 @@ class _AdMemoryMixin:
             )
         )
 
-        if n_steps_i <= 0:
-            raise ValueError("n_steps must be positive")
-        if n_warmup_i < 0:
-            raise ValueError("n_warmup must be >= 0")
-        if n_warmup_i >= n_steps_i:
-            raise ValueError(f"n_warmup ({n_warmup_i}) must be < n_steps ({n_steps_i})")
-        if checkpoint_every_i is not None and checkpoint_segments_i is not None:
-            raise ValueError(
-                "checkpoint_every and checkpoint_segments are mutually exclusive"
-            )
-        if checkpoint_every_i is not None and checkpoint_every_i <= 0:
-            raise ValueError(
-                f"checkpoint_every must be positive when provided, got {checkpoint_every_i}"
-            )
-        if checkpoint_segments_i is not None:
-            if checkpoint_segments_i < 1:
-                raise ValueError(
-                    f"checkpoint_segments must be ≥ 1, got {checkpoint_segments_i}"
-                )
-            if n_steps_i % checkpoint_segments_i != 0:
-                raise ValueError(
-                    f"checkpoint_segments={checkpoint_segments_i} does not divide "
-                    f"n_steps={n_steps_i}"
-                )
+        validate_counts(n_steps_i, n_warmup_i, checkpoint_every_i, checkpoint_segments_i)
         accounting = self._ad_memory_static_accounting()
-        field_bytes = accounting["field_bytes"]
+        model = tape_accounting(
+            self, accounting, design_box=design_box, design=design,
+            checkpoint=checkpoint, distributed=distributed, n_steps=n_steps_i,
+            checkpoint_every=checkpoint_every_i, checkpoint_segments=checkpoint_segments_i, n_warmup=n_warmup_i,
+            segmented=checkpoint_segments_i is not None or checkpoint_every_i is not None)
         forward_bytes = accounting["forward_bytes"]
         ntff_bytes = accounting["ntff_bytes"]
-
-        # Legacy "checkpointed" estimate: remat-recomputes internals of
-        # step_fn. NOT valid for the NU path after issue #31 because the
-        # scan carry itself is not rematerialised.
-        ad_ckpt_bytes = 4 * forward_bytes + ntff_bytes
+        ad_ckpt_bytes = 4 * forward_bytes + ntff_bytes  # legacy heuristic
         active_steps = n_steps_i - n_warmup_i
-        active_tape_field_bytes = field_bytes
-
-        # Non-checkpointed AD: O(active_steps) full-grid field tape.
-        # ``n_warmup`` reduces active reverse-mode time.
-        ad_full_bytes = active_steps * active_tape_field_bytes + ntff_bytes + forward_bytes
-
-        # Segmented scan paths. ``checkpoint_every`` is the non-uniform
-        # scan-of-scan chunk length (issue #31); ``checkpoint_segments`` is
-        # the uniform segmented-scan segment count (issue #73). Both store
-        # carry + cotangent at segment boundaries, AND during the backward
-        # pass the segment currently being differentiated is rematerialized
-        # as a whole, so its per-step field tape is live at the same time
-        # (issue #277; the runners document peak as O((K + s) · |carry|)).
-        ad_seg_bytes: int | None = None
-        segmented_active_segments: int | None = None
-        segmented_live_tape_steps: int | None = None
-        if checkpoint_segments_i is not None:
-            segment_len = n_steps_i // checkpoint_segments_i
-            first_active_segment = n_warmup_i // segment_len
-            segmented_active_segments = checkpoint_segments_i - first_active_segment
-            segmented_live_tape_steps = min(segment_len, active_steps)
-            ad_seg_bytes = (
-                (2 * segmented_active_segments + segmented_live_tape_steps)
-                * active_tape_field_bytes
-                + forward_bytes + ntff_bytes
-            )
-        elif checkpoint_every_i is not None:
-            # The graded runners segment only the optimized steps after the
-            # warm-up, with the chunk rfx.stepping.remat.effective_chunk uses.
-            from rfx.stepping.remat import effective_chunk
-            n_opt_i = n_steps_i - n_warmup_i
-            chunk_i = effective_chunk(n_opt_i, checkpoint_every_i) or checkpoint_every_i
-            segmented_active_segments = math.ceil(n_opt_i / chunk_i)
-            # A real partial tail keeps ceil(n/chunk) boundary carries;
-            # the live rematerialized tape is still at most one full
-            # chunk (capped at the active reverse-mode step count).
-            segmented_live_tape_steps = min(chunk_i, active_steps)
-            ad_seg_bytes = (
-                (2 * segmented_active_segments + segmented_live_tape_steps)
-                * active_tape_field_bytes
-                + forward_bytes + ntff_bytes
-            )
+        fixed_bytes = model["c0_bytes"] + accounting["sheet_bytes"]
+        ad_full_bytes = fixed_bytes + active_steps * model["tape_step_bytes"] + ntff_bytes
+        segmented_active_segments, segmented_live_tape_steps = segment_counts(
+            n_steps_i, n_warmup_i, checkpoint_every_i, checkpoint_segments_i)
+        ad_seg_bytes = None
+        if segmented_active_segments is not None:
+            saved = (segmented_active_segments * model["carry_bytes"] if checkpoint
+                     else active_steps * model["tape_step_bytes"])
+            ad_seg_bytes = (fixed_bytes + saved
+                            + segmented_live_tape_steps * model["tape_step_bytes"] + ntff_bytes)
 
         # VRAM detection (best effort)
         if avail_gb is None:
@@ -335,42 +264,24 @@ class _AdMemoryMixin:
         # requested, otherwise full-AD (since the legacy "checkpointed"
         # number is unreliable — see class docstring).
         primary_bytes = ad_seg_bytes if ad_seg_bytes is not None else ad_full_bytes
-        warning = None
+        warning = tape_warning(model, checkpoint=checkpoint,
+                               segments=segmented_active_segments,
+                               live=segmented_live_tape_steps, active=active_steps)
         if avail_gb is not None and primary_bytes * to_gb > avail_gb * 0.85:
-            label = "segmented" if ad_seg_bytes is not None else "non-checkpointed"
-            # Direction-aware advice (#277): with the live-segment tape in
-            # the model, the segmented peak is minimized when the boundary
-            # term (2 · active_segments) and the live term (steps per
-            # segment) balance near sqrt(2 · n_steps). Point the user
-            # toward the dominant term.
-            live_dominates = (
-                segmented_live_tape_steps is not None
-                and segmented_active_segments is not None
-                and segmented_live_tape_steps
-                > 2 * segmented_active_segments
-            )
-            if checkpoint_segments_i is not None:
-                if segmented_active_segments == 1:
-                    action = "Reduce grid size, reduce n_steps, or use a more aggressive memory-reduction lane."
-                elif live_dominates:
-                    action = "Increase checkpoint_segments toward sqrt(n_steps) to shrink the live-segment tape, reduce grid size, or reduce n_steps."
-                else:
-                    action = "Reduce checkpoint_segments, reduce grid size, or reduce n_steps."
-            elif ad_seg_bytes is not None:
-                if segmented_active_segments == 1:
-                    action = "Reduce grid size, reduce n_steps, or use a more aggressive memory-reduction lane."
-                elif live_dominates:
-                    action = "Reduce checkpoint_every toward sqrt(n_steps) to shrink the live-chunk tape, reduce grid size, or reduce n_steps."
-                else:
-                    action = "Increase checkpoint_every, reduce grid size, or reduce n_steps."
-            else:
-                action = "Use plan_ad_memory() to choose a segmented checkpoint setting, reduce grid size, or reduce n_steps."
-            warning = (
-                f"AD memory estimate {_format_memory_gb(primary_bytes * to_gb)} ({label}) "
+            budget_warning = (
+                f"AD memory estimate {_format_memory_gb(primary_bytes * to_gb)} "
                 f"exceeds 85% of {_format_memory_gb(avail_gb)} available VRAM. "
-                f"{action}"
-            )
+                "Use plan_ad_memory(), reduce grid size, or reduce n_steps.")
+            warning = " ".join(filter(None, (budget_warning, warning)))
         return AD_MemoryEstimate(
+            saved=tuple(model["saved"]), excluded_linear=tuple(model["excluded_linear"]),
+            carry_warnings=tuple(model["carry_warnings"]),
+            modelled=model["modelled"], unmodelled_features=tuple(model["unmodelled_features"]),
+            checkpoint=checkpoint, design=design,
+            carry_bytes=model["carry_bytes"],
+            tape_step_bytes=model["tape_step_bytes"], tape_window_cells=model["tape_window_cells"],
+            design_box_bounds=model["design_box_bounds"], tape_is_bound=model["tape_is_bound"],
+            ad_fixed_gb=fixed_bytes * to_gb,
             forward_gb=forward_bytes * to_gb,
             ad_checkpointed_gb=ad_ckpt_bytes * to_gb,
             ad_full_gb=ad_full_bytes * to_gb,
@@ -389,238 +300,72 @@ class _AdMemoryMixin:
         )
 
     def explain_ad_memory(
-        self,
-        n_steps: int,
-        *,
-        available_memory_gb: float | None = None,
-        checkpoint_every: int | None = None,
-        checkpoint_segments: int | None = None,
-        n_warmup: int = 0,
+        self, n_steps: int, *, available_memory_gb: float | None = None,
+        checkpoint_every: int | None = None, checkpoint_segments: int | None = None,
+        n_warmup: int = 0, design_box: object | None = None,
+        design: str = "permittivity", checkpoint: bool = True, distributed: bool = False,
     ) -> ADMemoryExplainabilityReport:
-        """Explain the static reverse-mode AD memory estimate.
-
-        This method uses the same conservative accounting as
-        :meth:`estimate_ad_memory`, then decomposes the selected AD memory
-        number into named contributors. It is meant to answer "what is making
-        this AD run large?" without claiming profiler evidence or a runtime
-        peak bound.
-        """
-        n_steps_i = _require_integral_param("n_steps", n_steps)
+        """Decompose the same calibrated working set and saved tape as the estimate."""
         estimate = self.estimate_ad_memory(
-            n_steps_i,
-            available_memory_gb=available_memory_gb,
-            checkpoint_every=checkpoint_every,
-            checkpoint_segments=checkpoint_segments,
-            n_warmup=n_warmup,
-        )
-
+            n_steps, available_memory_gb=available_memory_gb,
+            checkpoint_every=checkpoint_every, checkpoint_segments=checkpoint_segments,
+            n_warmup=n_warmup, design_box=design_box, design=design,
+            checkpoint=checkpoint, distributed=distributed)
         accounting = self._ad_memory_static_accounting()
-        field_bytes = accounting["field_bytes"]
-        material_bytes = accounting["material_bytes"]
-        cpml_bytes = accounting["cpml_bytes"]
-        sheet_bytes = accounting["sheet_bytes"]
-        ntff_bytes = accounting["ntff_bytes"]
-        cells = accounting["cells"]
-        bytes_per_cell = accounting["bytes_per_cell"]
+        segmented = estimate.ad_segmented_gb is not None
+        selected = estimate.ad_segmented_gb if segmented else estimate.ad_full_gb
+        strategy = ("segmented_checkpoint_segments" if checkpoint_segments is not None
+                    else "segmented_checkpoint_every" if checkpoint_every is not None
+                    else "full_reverse_ad_static_tape")
+        parts = []
 
-        active_steps = estimate.ad_active_steps if estimate.ad_active_steps is not None else n_steps_i
-        if estimate.ad_segmented_gb is not None:
-            selected_field = "ad_segmented_gb"
-            selected_gb = float(estimate.ad_segmented_gb)
-            strategy = (
-                "segmented_checkpoint_segments"
-                if estimate.checkpoint_segments is not None
-                else "segmented_checkpoint_every"
-            )
-            active_segments = (
-                estimate.ad_segmented_active_segments
-                if estimate.ad_segmented_active_segments is not None
-                else 0
-            )
-            tape_count = int(2 * active_segments)
-            tape_bytes = tape_count * field_bytes
-            tape_name = "segmented_boundary_field_tape"
-            tape_explanation = (
-                "Segmented reverse-mode AD stores field carry and cotangent "
-                "state at active segment boundaries instead of every active "
-                "time step."
-            )
-            tape_unit = "carry-or-cotangent-field-state"
-            # Live-segment rematerialization tape (#277): backward replays
-            # one segment at a time, so that segment's per-step field tape
-            # is resident on top of the boundary storage. Mirrors the
-            # estimate_ad_memory accounting.
-            if estimate.checkpoint_segments is not None:
-                live_tape_steps = min(
-                    n_steps_i // int(estimate.checkpoint_segments), active_steps
-                )
-            else:
-                from rfx.stepping.remat import effective_chunk
-                chunk = int(estimate.checkpoint_every)
-                live_tape_steps = min(effective_chunk(n_steps_i - int(n_warmup), chunk) or chunk, active_steps)
+        def component(name, size, kind, *, unit=None, count=None, per=None, explanation=""):
+            parts.append(ADMemoryComponent(
+                name=name, memory_gb=size / 1e9, share_of_selected=size / 1e9 / selected,
+                kind=kind, unit=unit, count=count,
+                bytes_per_unit_gb=per / 1e9 if per is not None else None,
+                explanation=explanation))
+
+        array = accounting["cells"] * 4
+        for name, key, count in (
+                ("field_state", "field_bytes", 6),
+                ("material_auxiliary_state", "material_bytes", 6),
+                ("cpml_auxiliary_state", "cpml_bytes", None),
+                ("surface_impedance_sheet_state", "sheet_bytes", None)):
+            component(name, accounting[key], "forward_working_set", count=count,
+                      per=array if count else None,
+                      explanation="Forward working-set component within the calibrated fixed AD term.")
+        component("calibrated_ad_workspace",
+                  round(estimate.ad_fixed_gb * 1e9) - accounting["forward_bytes"],
+                  "calibrated_working_set",
+                  explanation="GPU, jax 0.10.2 calibrated fixed term minus the listed forward working set.")
+        count, live = segment_counts(int(n_steps), int(n_warmup), checkpoint_every, checkpoint_segments)
+        if segmented and checkpoint:
+            component("segmented_boundary_field_tape", count * estimate.carry_bytes,
+                      "reverse_ad_saved_state", count=count, per=estimate.carry_bytes,
+                      unit="field-and-CPML-carry",
+                      explanation="One saved field/CPML carry per active segment boundary.")
         else:
-            live_tape_steps = None
-            selected_field = "ad_full_gb"
-            selected_gb = float(estimate.ad_full_gb)
-            strategy = "full_reverse_ad_static_tape"
-            tape_count = int(active_steps)
-            tape_bytes = tape_count * field_bytes
-            tape_name = "full_reverse_field_tape"
-            tape_explanation = (
-                "Full reverse-mode AD stores a field tape entry for each "
-                "active post-warmup time step."
-            )
-            tape_unit = "active-time-step-field-state"
-
-        def _share(memory_bytes: int) -> float:
-            if selected_gb <= 0.0:
-                return 0.0
-            return float(memory_bytes / 1e9 / selected_gb)
-
-        def _component(
-            name: str,
-            memory_bytes: int,
-            kind: str,
-            *,
-            unit: str | None,
-            count: int | None,
-            bytes_per_unit: int | None,
-            explanation: str,
-        ) -> ADMemoryComponent:
-            return ADMemoryComponent(
-                name=name,
-                kind=kind,
-                memory_gb=memory_bytes / 1e9,
-                share_of_selected=_share(memory_bytes),
-                unit=unit,
-                count=count,
-                bytes_per_unit_gb=(
-                    None if bytes_per_unit is None else bytes_per_unit / 1e9
-                ),
-                explanation=explanation,
-            )
-
-        live_components: tuple[ADMemoryComponent, ...] = ()
-        if live_tape_steps is not None:
-            live_components = (
-                _component(
-                    "segmented_live_segment_tape",
-                    live_tape_steps * field_bytes,
-                    "reverse_ad_saved_state",
-                    unit="live-segment-time-step-field-state",
-                    count=int(live_tape_steps),
-                    bytes_per_unit=field_bytes,
-                    explanation=(
-                        "The backward pass rematerializes one segment at a "
-                        "time, so the live segment's per-step field tape is "
-                        "resident on top of the segment-boundary storage."
-                    ),
-                ),
-            )
-
-        components = (
-            _component(
-                "field_state",
-                field_bytes,
-                "forward_working_set",
-                unit="field-array",
-                count=6,
-                bytes_per_unit=cells * bytes_per_cell,
-                explanation="Six E/H field arrays carried by the forward solve.",
-            ),
-            _component(
-                "material_auxiliary_state",
-                material_bytes,
-                "forward_working_set",
-                unit="material-array",
-                count=6,
-                bytes_per_unit=cells * bytes_per_cell,
-                explanation=(
-                    "Static material/ADE auxiliary allocation used by the "
-                    "planner's forward working-set model."
-                ),
-            ),
-            _component(
-                "cpml_auxiliary_state",
-                cpml_bytes,
-                "forward_working_set",
-                unit="cpml-overhead",
-                count=None,
-                bytes_per_unit=None,
-                explanation=(
-                    "CPML auxiliary state estimate; zero when the simulation "
-                    "does not use CPML layers."
-                ),
-            ),
-            _component(
-                tape_name,
-                tape_bytes,
-                "reverse_ad_saved_state",
-                unit=tape_unit,
-                count=tape_count,
-                bytes_per_unit=field_bytes,
-                explanation=tape_explanation,
-            ),
-            *live_components,
-            _component(
-                "surface_impedance_sheet_state",
-                sheet_bytes,
-                "forward_working_set",
-                unit="sheet-operator-array",
-                count=None,
-                bytes_per_unit=None,
-                explanation=(
-                    "Surface-impedance (surface_impedance_f0) sheet "
-                    "operator state: three boolean tangential edge masks "
-                    "plus sigma_sheet, all full-grid. Zero when no f0 "
-                    "sheet is registered. Since #677 the sheet is in "
-                    "neither pec_mask nor materials.sigma, so nothing "
-                    "else in this accounting covers it (#696)."
-                ),
-            ),
-            _component(
-                "ntff_dft_state",
-                ntff_bytes,
-                "monitor_state",
-                unit="ntff-dft-state",
-                count=None,
-                bytes_per_unit=None,
-                explanation=(
-                    "Near-to-far-field DFT monitor state retained in forward "
-                    "and AD planning estimates."
-                ),
-            ),
-        )
-
-        dominant = max(components, key=lambda component: component.memory_gb)
-        recommendations: list[str] = [
-            f"Dominant AD memory contributor is {dominant.name}.",
-            "Treat ad_checkpointed_gb as a legacy heuristic; use the selected memory field in this report for planning.",
-        ]
-        if estimate.ad_segmented_gb is None:
-            recommendations.append(
-                "Use plan_ad_memory() to choose a supported segmented checkpoint knob when full reverse-mode AD is too large."
-            )
-        else:
-            recommendations.append(
-                f"Selected strategy stores {tape_count} {tape_unit} unit(s) "
-                f"plus one live rematerialized segment of {live_tape_steps} "
-                f"time-step tape entries, instead of {active_steps} active "
-                "time-step tape entries."
-            )
+            component("full_reverse_field_tape", estimate.ad_active_steps * estimate.tape_step_bytes,
+                      "reverse_ad_saved_state", count=estimate.ad_active_steps,
+                      per=estimate.tape_step_bytes, unit="active-time-step-tape",
+                      explanation="Formulation-specific per-step tape, including the full active tape when segments lack remat.")
+        if segmented:
+            component("segmented_live_segment_tape", live * estimate.tape_step_bytes,
+                      "reverse_ad_saved_state", count=live, per=estimate.tape_step_bytes,
+                      unit="live-segment-time-step-tape", explanation="One live rematerialized segment.")
+        component("ntff_dft_state", accounting["ntff_bytes"], "monitor_state",
+                  explanation="NTFF DFT state counted separately from the calibrated fixed term.")
+        dominant = max(parts, key=lambda c: c.memory_gb).name
+        recommendations = [f"Dominant AD memory contributor is {dominant}.",
+                           "Treat ad_checkpointed_gb as a legacy heuristic; use the selected memory field for planning."]
         if estimate.warning:
             recommendations.append(estimate.warning)
-
         return ADMemoryExplainabilityReport(
-            n_steps=n_steps_i,
-            strategy=strategy,
-            selected_memory_gb=selected_gb,
-            selected_memory_field=selected_field,
-            estimate=estimate,
-            components=components,
-            dominant_component=dominant.name,
-            recommendations=tuple(recommendations),
-        )
+            n_steps=int(n_steps), strategy=strategy, selected_memory_gb=selected,
+            selected_memory_field="ad_segmented_gb" if segmented else "ad_full_gb",
+            estimate=estimate, components=tuple(parts), dominant_component=dominant,
+            recommendations=tuple(recommendations))
 
     def plan_ad_memory(
         self,
@@ -630,246 +375,92 @@ class _AdMemoryMixin:
         target_fraction: float = 0.85,
         n_warmup: int = 0,
         safety_factor: float = AD_MEMORY_FIT_SAFETY_FACTOR,
+        design_box: object | None = None,
+        design: str = "permittivity",
+        checkpoint: bool = True,
+        distributed: bool = False,
     ) -> ADMemoryPlan:
-        """Choose a segmented-AD memory plan for a memory budget.
+        """Compare full AD with segmented candidates using checkpoint=True.
 
-        The planner reuses :meth:`estimate_ad_memory` and returns a
-        calibrated conservative planning artifact rather than mutating the
-        simulation or certifying runtime peak memory. If ordinary reverse-mode
-        AD already fits under ``target_fraction * available_memory_gb``, both
-        checkpoint knobs are ``None``. Otherwise it returns a segmented
-        candidate: ``checkpoint_every`` for non-uniform grids or
-        ``checkpoint_segments`` for uniform grids. Only wire the candidate when
-        ``segmented_fits`` is true; a non-fitting plan keeps the least-memory
-        candidate as diagnostics.
-        ``n_warmup`` must be an integer with ``0 <= n_warmup < n_steps`` and
-        reduces active reverse-mode time. Raw estimates must also fit after
-        multiplying by ``safety_factor`` before fit flags are set, so
-        near-boundary plans stay conservative.
+        The selected plan returns the checkpoint flag it assumes. Uniform
+        candidates are divisors, in ascending K order, retaining the smallest
+        fitting K; graded candidates retain the smallest fitting chunk.
+        A box also tries the window-only, unsegmented checkpoint=False lane.
+        A non-fitting result is diagnostic, never permission to launch.
+        plan_ad_memory promises XLA's requirement (memory_analysis:
+        argument + output + temp − alias) times SF, within
+        target_fraction × budget. Allocator overhead and rounding are what
+        target_fraction (0.85) is for. Under a non-default growth-mode setup
+        the allocator was seen to round the temp buffer to the next power
+        of two (G2: 3 of 6 rows, pool_bytes non-zero although the platform
+        allocator was requested). SF is not inflated to cover rounding.
+        Reading the real carry costs about 90 bytes of host memory per cell
+        and a few seconds, measured on 4.3e7 cells.
+        The fixed term is GPU-calibrated, so a CPU plan is not a fit guarantee;
+        plan_ad_memory traces twice and ad_memory_preflight up to four times.
         """
-        n_steps_i = _require_integral_param("n_steps", n_steps)
-        n_warmup_i = _require_integral_param("n_warmup", n_warmup)
-        available_memory_gb_f = _require_positive_finite_scalar(
-            "available_memory_gb", available_memory_gb
-        )
-        target_fraction_f = _require_positive_finite_scalar(
-            "target_fraction", target_fraction
-        )
-        safety_factor_f = _require_positive_finite_scalar(
-            "safety_factor", safety_factor
-        )
-
-        if n_steps_i <= 0:
-            raise ValueError("n_steps must be positive")
-        if n_warmup_i < 0:
-            raise ValueError("n_warmup must be >= 0")
-        if n_warmup_i >= n_steps_i:
-            raise ValueError(f"n_warmup ({n_warmup_i}) must be < n_steps ({n_steps_i})")
-        if target_fraction_f > 1.0:
+        available = _require_positive_finite_scalar("available_memory_gb", available_memory_gb)
+        fraction = _require_positive_finite_scalar("target_fraction", target_fraction)
+        safety = _require_positive_finite_scalar("safety_factor", safety_factor)
+        if fraction > 1:
             raise ValueError("target_fraction must be in the interval (0, 1]")
-        if safety_factor_f < 1.0:
+        if safety < 1:
             raise ValueError("safety_factor must be >= 1")
+        options = dict(design_box=design_box, design=design, distributed=distributed)
+        full = self.estimate_ad_memory(n_steps, available_memory_gb=available,
+                                      n_warmup=n_warmup, checkpoint=checkpoint, **options)
+        window_full = self.estimate_ad_memory(n_steps, available_memory_gb=available,
+                                             n_warmup=n_warmup, checkpoint=False, **options)
+        estimate_warning = " ".join(window_full.carry_warnings) or None
+        if window_full.ad_full_gb < full.ad_full_gb:
+            full = window_full
+        target = available * fraction
+        n = _require_integral_param("n_steps", n_steps)
+        warmup = _require_integral_param("n_warmup", n_warmup)
 
-        target_memory_gb = available_memory_gb_f * target_fraction_f
-        full_estimate = self.estimate_ad_memory(
-            n_steps_i,
-            available_memory_gb=available_memory_gb_f,
-            n_warmup=n_warmup_i,
-        )
-        if full_estimate.ad_full_gb * safety_factor_f <= target_memory_gb:
-            return ADMemoryPlan(
-                n_steps=n_steps_i,
-                available_memory_gb=available_memory_gb_f,
-                target_fraction=target_fraction_f,
-                target_memory_gb=target_memory_gb,
-                checkpoint_every=None,
-                checkpoint_segments=None,
-                checkpoint_mode=None,
-                fit_safety_factor=safety_factor_f,
-                selected_estimate=full_estimate,
-                full_ad_fits=True,
-                segmented_fits=False,
-                recommendation=(
-                    f"full reverse-mode AD estimate ({_format_memory_with_safety(full_estimate.ad_full_gb, safety_factor_f)}) "
-                    f"fits within the {_format_memory_gb(target_memory_gb)} target; "
-                    "segmented checkpointing is optional for memory"
-                ),
-            )
-
-        uses_nonuniform = (
-            self._dx_profile is not None
-            or self._dy_profile is not None
-            or self._dz_profile is not None
-        )
-        if not uses_nonuniform:
-            divisors = _positive_divisors(n_steps_i)
-            sqrt_steps = math.sqrt(n_steps_i)
-            recommended_segments = min(
-                divisors,
-                key=lambda divisor: (
-                    abs(float(divisor) - sqrt_steps),
-                    -divisor,
-                ),
-            )
-            best_segments: int | None = None
-            best_estimate: AD_MemoryEstimate | None = None
-            for segments in sorted(
-                (divisor for divisor in divisors if divisor <= recommended_segments),
-                reverse=True,
-            ):
-                estimate = self.estimate_ad_memory(
-                    n_steps_i,
-                    available_memory_gb=available_memory_gb_f,
-                    checkpoint_segments=segments,
-                    n_warmup=n_warmup_i,
-                )
-                segmented_gb = estimate.ad_segmented_gb
-                if segmented_gb is not None and segmented_gb * safety_factor_f <= target_memory_gb:
-                    best_segments = segments
-                    best_estimate = estimate
-                    break
-
-            if best_segments is not None and best_estimate is not None:
-                return ADMemoryPlan(
-                    n_steps=n_steps_i,
-                    available_memory_gb=available_memory_gb_f,
-                    target_fraction=target_fraction_f,
-                    target_memory_gb=target_memory_gb,
-                    checkpoint_every=None,
-                    checkpoint_segments=best_segments,
-                    checkpoint_mode="checkpoint_segments",
-                    fit_safety_factor=safety_factor_f,
-                    selected_estimate=best_estimate,
-                    full_ad_fits=False,
-                    segmented_fits=True,
-                    recommendation=(
-                        f"use checkpoint_segments={best_segments}: segmented AD estimate "
-                        f"{_format_memory_with_safety(best_estimate.ad_segmented_gb, safety_factor_f)} fits within the "
-                        f"{_format_memory_gb(target_memory_gb)} target"
-                    ),
-                )
-
-            # With the live-segment term (#277) the least-memory candidate
-            # is the divisor balancing the boundary and live tape terms,
-            # NOT checkpoint_segments=1 (which is ~full-AD-sized). Report
-            # the true least-memory divisor as the diagnostic candidate.
-            least_segments: int | None = None
-            least_estimate: AD_MemoryEstimate | None = None
-            for segments in sorted(divisors):
-                estimate = self.estimate_ad_memory(
-                    n_steps_i,
-                    available_memory_gb=available_memory_gb_f,
-                    checkpoint_segments=segments,
-                    n_warmup=n_warmup_i,
-                )
-                segmented_gb = estimate.ad_segmented_gb
-                if segmented_gb is None:
-                    continue
-                if least_estimate is None or segmented_gb < least_estimate.ad_segmented_gb:
-                    least_segments = segments
-                    least_estimate = estimate
-            least_fits = (
-                least_estimate is not None
-                and least_estimate.ad_segmented_gb * safety_factor_f
-                <= target_memory_gb
-            )
-            if least_fits:
-                recommendation = (
-                    f"use checkpoint_segments={least_segments}: segmented AD estimate "
-                    f"{_format_memory_with_safety(least_estimate.ad_segmented_gb, safety_factor_f)} fits within the "
-                    f"{_format_memory_gb(target_memory_gb)} target"
-                )
+        def result(estimate, *, full_fits=False, segmented_fits=False):
+            mode = ("checkpoint_every" if estimate.checkpoint_every is not None
+                    else "checkpoint_segments" if estimate.checkpoint_segments is not None else None)
+            memory = estimate.ad_segmented_gb if mode else estimate.ad_full_gb
+            if not estimate.modelled:
+                advice = "No fitting plan: unmodelled carry components " + ", ".join(estimate.unmodelled_features)
+            elif full_fits:
+                advice = f"full reverse-mode AD with checkpoint={estimate.checkpoint} fits; segmented checkpointing is optional for memory"
+            elif segmented_fits:
+                knob = estimate.checkpoint_every if mode == "checkpoint_every" else estimate.checkpoint_segments
+                advice = f"use {mode}={knob}, checkpoint=True; balance K_active*carry_bytes = s*tape_step_bytes"
             else:
-                recommendation = (
-                    f"no checkpoint_segments divisor fits; the least-memory candidate "
-                    f"checkpoint_segments={least_segments} is estimated at "
-                    f"{_format_memory_with_safety(least_estimate.ad_segmented_gb, safety_factor_f)}, above the "
-                    f"{_format_memory_gb(target_memory_gb)} target; reduce mesh size, reduce "
-                    "n_steps, or use a more aggressive memory-reduction lane"
-                )
+                knob = estimate.checkpoint_every if mode == "checkpoint_every" else estimate.checkpoint_segments
+                advice = (f"no {mode} candidate fits; the least-memory candidate {mode}={knob}, "
+                          "checkpoint=True is diagnostic only; reduce mesh size, reduce n_steps, or increase memory")
             return ADMemoryPlan(
-                n_steps=n_steps_i,
-                available_memory_gb=available_memory_gb_f,
-                target_fraction=target_fraction_f,
-                target_memory_gb=target_memory_gb,
-                checkpoint_every=None,
-                checkpoint_segments=least_segments,
-                checkpoint_mode="checkpoint_segments",
-                fit_safety_factor=safety_factor_f,
-                selected_estimate=least_estimate,
-                full_ad_fits=False,
-                segmented_fits=least_fits,
-                recommendation=recommendation,
-            )
+                n_steps=n, available_memory_gb=available, target_fraction=fraction,
+                target_memory_gb=target, checkpoint_every=estimate.checkpoint_every,
+                checkpoint_segments=estimate.checkpoint_segments, checkpoint_mode=mode,
+                checkpoint=estimate.checkpoint, fit_safety_factor=safety,
+                selected_estimate=estimate, full_ad_fits=full_fits, segmented_fits=segmented_fits,
+                recommendation=f"{advice}; estimate {_format_memory_with_safety(memory, safety)}, target {_format_memory_gb(target)}")
 
-        best_checkpoint: int | None = None
-        best_estimate: AD_MemoryEstimate | None = None
-        least_checkpoint: int | None = None
-        least_estimate: AD_MemoryEstimate | None = None
-        for checkpoint in range(1, n_steps_i + 1):
-            estimate = self.estimate_ad_memory(
-                n_steps_i,
-                available_memory_gb=available_memory_gb_f,
-                checkpoint_every=checkpoint,
-                n_warmup=n_warmup_i,
-            )
-            segmented_gb = estimate.ad_segmented_gb
-            if segmented_gb is not None and (
-                least_estimate is None
-                or segmented_gb < least_estimate.ad_segmented_gb
-            ):
-                least_checkpoint = checkpoint
-                least_estimate = estimate
-            if segmented_gb is not None and segmented_gb * safety_factor_f <= target_memory_gb:
-                best_checkpoint = checkpoint
-                best_estimate = estimate
-                break
-
-        if best_checkpoint is not None and best_estimate is not None:
-            return ADMemoryPlan(
-                n_steps=n_steps_i,
-                available_memory_gb=available_memory_gb_f,
-                target_fraction=target_fraction_f,
-                target_memory_gb=target_memory_gb,
-                checkpoint_every=best_checkpoint,
-                checkpoint_segments=None,
-                checkpoint_mode="checkpoint_every",
-                fit_safety_factor=safety_factor_f,
-                selected_estimate=best_estimate,
-                full_ad_fits=False,
-                segmented_fits=True,
-                recommendation=(
-                    f"use checkpoint_every={best_checkpoint}: segmented AD estimate "
-                    f"{_format_memory_with_safety(best_estimate.ad_segmented_gb, safety_factor_f)} fits within the "
-                    f"{_format_memory_gb(target_memory_gb)} target"
-                ),
-            )
-
-        # The full 1..n_steps sweep found no fitting chunk, so nothing
-        # fits. With the live-chunk term (#277) the least-memory candidate
-        # balances the boundary and live tape terms near
-        # sqrt(2 * n_steps), NOT checkpoint_every=n_steps (which is
-        # ~full-AD-sized) — report the tracked least-memory candidate.
-        return ADMemoryPlan(
-            n_steps=n_steps_i,
-            available_memory_gb=available_memory_gb_f,
-            target_fraction=target_fraction_f,
-            target_memory_gb=target_memory_gb,
-            checkpoint_every=least_checkpoint,
-            checkpoint_segments=None,
-            checkpoint_mode="checkpoint_every",
-            fit_safety_factor=safety_factor_f,
-            selected_estimate=least_estimate,
-            full_ad_fits=False,
-            segmented_fits=False,
-            recommendation=(
-                f"no checkpoint_every value fits; the least-memory candidate "
-                f"checkpoint_every={least_checkpoint} is estimated at "
-                f"{_format_memory_with_safety(least_estimate.ad_segmented_gb, safety_factor_f)}, above the "
-                f"{_format_memory_gb(target_memory_gb)} target; reduce mesh size, reduce "
-                "n_steps, or use a more aggressive memory-reduction lane"
-            ),
-        )
+        if not full.modelled:
+            return result(full)
+        if full.ad_full_gb * safety <= target:
+            return result(full, full_fits=True)
+        graded = any(p is not None for p in (self._dx_profile, self._dy_profile, self._dz_profile))
+        candidates = range(1, n + 1) if graded else _positive_divisors(n)
+        least = None
+        for knob in sorted(candidates):
+            every, segments = (knob, None) if graded else (None, knob)
+            count, live = segment_counts(n, warmup, every, segments)
+            memory = (window_full.ad_fixed_gb + window_full.ntff_dft_gb
+                      + (count * window_full.carry_bytes + live * window_full.tape_step_bytes) / 1e9)
+            estimate = window_full._replace(
+                checkpoint=True, checkpoint_every=every, checkpoint_segments=segments,
+                ad_segmented_active_segments=count, ad_segmented_gb=memory, warning=estimate_warning)
+            if least is None or memory < least.ad_segmented_gb:
+                least = estimate
+            if memory * safety <= target:
+                return result(estimate, segmented_fits=True)
+        return result(least)
 
     def ad_memory_preflight(
         self,
@@ -878,6 +469,10 @@ class _AdMemoryMixin:
         *,
         target_fraction: float = 0.85,
         n_warmup: int = 0,
+        design_box: object | None = None,
+        design: str = "permittivity",
+        checkpoint: bool = True,
+        distributed: bool = False,
         safety_factor: float = AD_MEMORY_FIT_SAFETY_FACTOR,
         include_mesh_report: bool = True,
         check_ntff: bool = True,
@@ -896,12 +491,14 @@ class _AdMemoryMixin:
         saved-residual diagnostics. It does not run FDTD and does not upgrade
         static planning evidence into runtime memory proof.
         """
+        options = dict(design_box=design_box, design=design, checkpoint=checkpoint,
+                       distributed=distributed)
         plan = self.plan_ad_memory(
             n_steps,
             available_memory_gb,
             target_fraction=target_fraction,
             n_warmup=n_warmup,
-            safety_factor=safety_factor,
+            safety_factor=safety_factor, **options,
         )
 
         if plan.full_ad_fits:
@@ -921,10 +518,12 @@ class _AdMemoryMixin:
             checkpoint_every=selected_checkpoint_every,
             checkpoint_segments=selected_checkpoint_segments,
             n_warmup=n_warmup,
+            **dict(options, checkpoint=plan.checkpoint),
         )
 
+        from rfx.mesh_planner import mesh_intelligence_report
         mesh_report = (
-            self.mesh_intelligence_report(
+            mesh_intelligence_report(self,
                 n_steps=n_steps,
                 checkpoint_every=selected_checkpoint_every,
                 checkpoint_segments=selected_checkpoint_segments,
@@ -932,6 +531,7 @@ class _AdMemoryMixin:
                 n_warmup=n_warmup,
                 check_ntff=check_ntff,
                 check_resolution=check_resolution,
+                ad_memory_options=dict(options, checkpoint=plan.checkpoint),
             )
             if include_mesh_report
             else None
@@ -952,12 +552,12 @@ class _AdMemoryMixin:
             if plan.checkpoint_mode == "checkpoint_every":
                 code = "use_checkpoint_every"
                 action = (
-                    f"Wire checkpoint_every={plan.checkpoint_every} into the supported non-uniform runner."
+                    f"Wire checkpoint=True, checkpoint_every={plan.checkpoint_every} into the supported non-uniform runner."
                 )
             else:
                 code = "use_checkpoint_segments"
                 action = (
-                    f"Wire checkpoint_segments={plan.checkpoint_segments} into the supported uniform runner."
+                    f"Wire checkpoint=True, checkpoint_segments={plan.checkpoint_segments} into the supported uniform runner."
                 )
             recommendation = plan.recommendation
             action_hints.append(
@@ -993,6 +593,8 @@ class _AdMemoryMixin:
             )
 
         owned_residual_context = {
+            "checkpoint": plan.checkpoint,
+            "design": design,
             "n_steps": int(plan.n_steps),
             "available_memory_gb": float(plan.available_memory_gb),
             "target_fraction": float(plan.target_fraction),
@@ -1090,6 +692,10 @@ class _AdMemoryMixin:
         checkpoint_every: int | None = None,
         checkpoint_segments: int | None = None,
         n_warmup: int = 0,
+        design_box: object | None = None,
+        design: str = "permittivity",
+        checkpoint: bool = True,
+        distributed: bool = False,
         precision: str | None = None,
         input_signature: object | None = None,
         static_signature: object | None = None,
@@ -1129,15 +735,18 @@ class _AdMemoryMixin:
         if target_fraction_f > 1.0:
             raise ValueError("target_fraction must be in the interval (0, 1]")
 
-        # Reuse the existing AD-memory validation contract for counts and
-        # checkpoint knob exclusivity/divisibility.
-        self.estimate_ad_memory(
-            n_steps_i,
-            available_memory_gb=available_memory_gb_f,
-            checkpoint_every=checkpoint_every_i,
-            checkpoint_segments=checkpoint_segments_i,
-            n_warmup=n_warmup_i,
-        )
+        # A certificate inspects an existing executable; validation must not
+        # trace forward or depend on a usable backend before fail-closed scope.
+        validate_counts(n_steps_i, n_warmup_i, checkpoint_every_i, checkpoint_segments_i)
+        if design not in ("permittivity", "occupancy"):
+            raise ValueError("design must be 'permittivity' or 'occupancy'")
+        if not isinstance(checkpoint, bool):
+            raise ValueError("checkpoint must be a bool")
+        box_bounds = None
+        if design_box is not None:
+            from rfx.model.design_box import design_box_bounds
+            grid = self._build_realized_grid()
+            box_bounds, _ = design_box_bounds(self._design_box_bounds_from_corners(grid, design_box), grid)
 
         target_memory_gb = available_memory_gb_f * target_fraction_f
         analysis = _normalize_compiled_memory_analysis(compiled)
@@ -1163,6 +772,8 @@ class _AdMemoryMixin:
             memory_analysis_fields=memory_analysis_fields,
             preflight=preflight,
             scope_context=scope_context,
+            ad_memory_scope={"checkpoint": checkpoint, "design": design,
+                             "design_box_bounds": box_bounds, "distributed": distributed},
         )
 
         utilization_ratio: float | None = None

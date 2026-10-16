@@ -157,6 +157,10 @@ def test_f0_sheet_operator_is_counted():
     e_sheet = sheet.estimate_ad_memory(1000)
     assert e_plain.sheet_gb == 0.0
     assert e_sheet.sheet_gb > 0.0
+    expected_sheet_gb = math.prod(sheet._build_nonuniform_grid().shape) * 7 * 1e-9
+    assert e_sheet.ad_full_gb - e_plain.ad_full_gb == pytest.approx(expected_sheet_gb)
+    assert e_sheet.ad_fixed_gb - e_plain.ad_fixed_gb == pytest.approx(expected_sheet_gb)
+    assert e_sheet.sheet_gb == expected_sheet_gb
     assert e_sheet.forward_gb == pytest.approx(0.054151, rel=1e-4)
     assert e_plain.forward_gb == pytest.approx(0.048689, rel=1e-4)
     assert e_sheet.forward_gb / e_plain.forward_gb == pytest.approx(1.113,
@@ -219,7 +223,7 @@ def test_explain_lists_the_sheet_component():
 # pin WHAT the fallback computes, not only what it is called.
 # ---------------------------------------------------------------------------
 
-def test_unbuildable_profile_still_estimates_and_says_it_estimated():
+def test_unbuildable_profile_refuses_ad_tape_estimation():
     """A user-reachable trigger: a profile the grid builder rejects.
 
     ``dx_profile[0]`` must equal the boundary ``dx`` (the CPML cells use
@@ -238,10 +242,8 @@ def test_unbuildable_profile_still_estimates_and_says_it_estimated():
     assert acc["grid_source"] == "estimated_from_domain"
     assert acc["grid_kind"] == "nonuniform"
     assert (acc["nx"], acc["ny"], acc["nz"]) == _legacy_shape(sim)
-    est = sim.estimate_ad_memory(1000)
-    assert est.grid_source == "estimated_from_domain"
-    assert est.to_dict()["grid_source"] == "estimated_from_domain"
-    assert est.forward_gb > 0.0
+    with pytest.raises(ValueError, match="carry could not be read"):
+        sim.estimate_ad_memory(1000)
 
 
 def test_fallback_label_and_number_both_differ_from_the_built_grid():

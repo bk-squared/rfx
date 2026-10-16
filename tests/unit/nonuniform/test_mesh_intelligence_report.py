@@ -9,8 +9,10 @@ from __future__ import annotations
 import json
 
 import numpy as np
+import pytest
 
 from rfx import MeshIntelligenceReport, Simulation, Box
+from rfx.api._ad_memory_types import ADMemoryUnavailable
 
 
 def _patch_like_nonuniform_sim():
@@ -28,6 +30,29 @@ def _patch_like_nonuniform_sim():
     sim.add_source((ext / 2, ext / 2, 1e-3), "ez")
     sim.add_probe((ext / 2, ext / 2, 2e-3), "ez")
     return sim
+
+
+def test_mesh_report_retains_ad_memory_trace_error(monkeypatch):
+    sim = _patch_like_nonuniform_sim()
+    baseline = sim.mesh_intelligence_report()
+    cause = "AD memory carry could not be read: request trace failed"
+
+    def refuse(*args, **kwargs):
+        raise ADMemoryUnavailable(cause)
+
+    monkeypatch.setattr(sim, "estimate_ad_memory", refuse)
+    report = sim.mesh_intelligence_report(n_steps=1000)
+    assert report.ad_memory is None
+    assert report.preflight_issues[:-1] == baseline.preflight_issues
+    issue = report.preflight_issues[-1]
+    assert (issue.severity, issue.code, str(issue)) == ("error", "ad_memory", cause)
+    assert "resolve" in report.recommendation
+
+
+def test_mesh_report_ad_memory_argument_error_propagates():
+    with pytest.raises(ValueError, match="does not divide") as error:
+        _patch_like_nonuniform_sim().mesh_intelligence_report(n_steps=120, checkpoint_segments=7)
+    assert type(error.value) is ValueError
 
 
 def test_mesh_intelligence_report_compares_uniform_fine_cells(capsys):
@@ -57,8 +82,8 @@ def test_mesh_intelligence_report_uses_segmented_ad_estimate():
     assert report.ad_memory is not None
     assert report.ad_memory.checkpoint_every == 1000
     assert report.ad_memory.ad_segmented_gb is not None
-    assert "segmented AD estimate" in report.recommendation
-    assert "legacy step-checkpoint" in report.recommendation
+    assert "K_active*carry_bytes = s*tape_step_bytes" in report.recommendation
+    assert "checkpoint=True" in report.recommendation
 
 
 def test_mesh_intelligence_report_forwards_ad_tape_metadata():
@@ -95,7 +120,7 @@ def test_mesh_intelligence_report_uses_uniform_checkpoint_segments():
     assert report.ad_memory.checkpoint_segments == 10
     assert report.ad_memory.checkpoint_every is None
     assert report.ad_memory.ad_segmented_gb is not None
-    assert "segmented AD estimate" in report.recommendation
+    assert "K_active*carry_bytes = s*tape_step_bytes" in report.recommendation
 
 
 def test_mesh_intelligence_report_serializes_artifact():

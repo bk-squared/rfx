@@ -10,6 +10,11 @@ look right".
 
 This module is that witness for preflight.
 
+SNAPSHOT CHANGE, 2026-10-16 (#1786). Only ad_memory_sane's AD-memory
+numbers are regenerated: whole-grid tape now counts the real per-step scan
+carry (fields, CPML psi and other saved leaves), verified by compiled B1
+slopes, instead of the old 24 B/cell field term.
+
 Structured snapshot policy
 --------------------------
 Pin report codes, locations, counts, severity, source and emission order.
@@ -1928,7 +1933,7 @@ _FIXTURES = (
     # the ad_memory advisory fires at all. On this CPU pod it is unavailable
     # and the fixture emitted nothing; on a GPU host the same fixture would
     # emit, and the committed snapshot would be wrong. 0.5 GB is below the
-    # 0.72 GB non-checkpointed estimate, so the advisory fires on every host.
+    # 1.47 GB non-checkpointed estimate, so the advisory fires on every host.
     ("ad_memory_sane",
      lambda: _inverse_design("_sane_sim"),
      {"check_ad_memory": True, "n_steps_for_memory": 1000,
