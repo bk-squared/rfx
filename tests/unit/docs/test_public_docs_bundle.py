@@ -374,6 +374,10 @@ def test_sync_check_of_a_bundle_export_needs_the_bundle(tmp_path, monkeypatch):
     # A real text change still reads as drift with the bundle.
     (deploy / "index.mdx").write_text("edited by hand\n")
     assert sync.make_report(repo, deploy, root)["content_drift"] == ["index.mdx"]
+    # A source-only export is still compared without a bundle.
+    source_only = tmp_path / "source-only/rfx"
+    export_snapshot(repo, source_only)
+    assert sync.make_report(repo, source_only)["has_drift"] is False
 
 
 def test_raw_anchors_keep_their_own_text_and_urls():

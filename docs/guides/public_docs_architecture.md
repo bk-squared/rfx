@@ -73,17 +73,21 @@ If a feature is outside the documented public support scope but still exists in 
 ## Maintenance workflow
 
 1. Author or edit public pages in `docs/public/`.
-2. Run the manifest and source drift checks:
+2. Build the bundle from a clean checkout of the commit, with the toolchain
+   pinned in `scripts/requirements-public-docs.txt`, and run the manifest and
+   drift checks. A snapshot exported with a bundle is compared with that bundle;
+   without `--bundle-dir` the drift check refuses it.
 
    ```bash
    python scripts/check_public_docs_manifest.py
-   python scripts/check_public_docs_sync.py --format text
+   python scripts/build_public_docs_bundle.py --output-dir <bundle> --source-sha "$(git rev-parse HEAD)"
+   python scripts/check_public_docs_sync.py --bundle-dir <bundle> --format text
    ```
 
-3. Export the source pages to gitops:
+3. Export the pages and the bundle to gitops:
 
    ```bash
-   python scripts/export_public_docs_to_gitops.py
+   python scripts/export_public_docs_to_gitops.py --gitops-root <gitops> --bundle-dir <bundle>
    ```
 
 4. In gitops, build and validate the Starlight site.

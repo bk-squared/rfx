@@ -10,7 +10,7 @@ This policy keeps repository docs and the public `remilab.ai/rfx` surface in syn
 | `docs/guides/support_matrix.md` | support-status contract | reviewed whenever public claims change |
 | `docs/guides/sparameter_support_matrix.md` | S-parameter claim contract | reviewed whenever ports/S-parameters change |
 | `docs/guides/public_surface_scope_inventory_*.md` | maintainer inventory for repository surfaces outside public support scope | reviewed before public-doc refreshes |
-| gitops `seed-pages/rfx` | deployed `remilab.ai/rfx` snapshot | `python scripts/check_public_docs_sync.py --format text` |
+| gitops `seed-pages/rfx` | deployed `remilab.ai/rfx` snapshot | `python scripts/check_public_docs_sync.py --bundle-dir <bundle> --format text` (the bundle built from the same commit) |
 
 `docs/public/**` is the only public-doc source surface. `docs/agent/**` is Git-repository public guidance for external LLM agents, but is excluded from `remilab.ai` navigation, export, deployment snapshots, and gitops. `docs/agent-memory/**` and `docs/research_notes/**` are private/ignored; development records and incomplete pages are not public-doc source surfaces.
 
@@ -32,8 +32,9 @@ Before publishing a release or merging a docs-heavy feature:
 
 ```bash
 python scripts/check_public_docs_manifest.py
-python scripts/check_public_docs_sync.py --format text
-python scripts/export_public_docs_to_gitops.py --check
+python scripts/build_public_docs_bundle.py --output-dir <bundle> --source-sha "$(git rev-parse HEAD)"
+python scripts/check_public_docs_sync.py --bundle-dir <bundle> --format text
+python scripts/export_public_docs_to_gitops.py --check --bundle-dir <bundle>
 python -m py_compile scripts/check_public_docs_manifest.py scripts/check_public_docs_sync.py scripts/export_public_docs_to_gitops.py
 ```
 
