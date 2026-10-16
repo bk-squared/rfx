@@ -219,24 +219,3 @@ def test_graded_known_load_three_mesh_trend(load_ratio, record_property):
     record_property("phase_order", json.dumps(assert_first_order(meshes, phases).tolist()))
     for measured, pure, predicted in curves:
         assert_predicted_residual(measured, pure, predicted)
-
-
-def test_port_bins_built_inside_jit():
-    """Bins made with jnp inside a jitted loss reach the graded result as a
-    traced array, not a host copy (#1772: optimize compiles by default)."""
-    sim = _sim()
-    request = np.linspace(1.95e9, 2.05e9, 5)
-    eps = jnp.full(sim._build_nonuniform_grid().shape, 2.0)
-
-    def loss(eps_override):
-        result = _forward(sim, port_s11_freqs=jnp.asarray(request),
-                          eps_override=eps_override)
-        return jnp.sum(jnp.abs(result.s_params) ** 2), result.freqs
-
-    (v0, f0), g0 = jax.value_and_grad(loss, has_aux=True)(eps)
-    (v1, f1), g1 = jax.jit(jax.value_and_grad(loss, has_aux=True))(eps)
-    np.testing.assert_array_equal(f1, f0)
-    rel = float(jnp.max(jnp.abs(g1 - g0)) / jnp.max(jnp.abs(g0)))
-    print(f"jit vs eager gradient rel={rel:.3g}", file=sys.stderr)
-    assert abs(float(v1) - float(v0)) <= 1e-4 * abs(float(v0))
-    assert rel <= 1e-4

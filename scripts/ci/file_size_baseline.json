@@ -11,7 +11,7 @@
     "rfx/nonuniform.py": 1256,
     "rfx/preflight/msl.py": 1359,
     "rfx/probes/probes.py": 1597,
-    "rfx/ringdown.py": 2494,
+    "rfx/ringdown.py": 2487,
     "rfx/runners/_distributed_common.py": 1136,
     "rfx/runners/distributed_nu.py": 1383,
     "rfx/simulation.py": 2320,

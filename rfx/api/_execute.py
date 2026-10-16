@@ -2316,10 +2316,10 @@ class _ExecuteMixin:
             if ringdown is None:
                 result = _nu_fwd_call()
             else:
-                from rfx.ringdown import RingdownForward
+                from rfx.ringdown import RingdownForward, host_bins
                 result = RingdownForward(
                     self, ringdown, lane="graded", n_steps=plan.n_steps,
-                    grid=_nu_grid, bins=None if port_s11_freqs is None else np.asarray(port_s11_freqs, dtype=np.float32)).run(_nu_fwd_call)
+                    grid=_nu_grid, bins=None if port_s11_freqs is None else host_bins(port_s11_freqs, np.float32)).run(_nu_fwd_call)
             if _nu_design_spec is not None:
                 result = result._replace(
                     design_box_held_edges=_nu_design_spec.held_edges)
