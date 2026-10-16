@@ -178,7 +178,7 @@ def rlc_carry_dtype(metas, field_dtype=jnp.float32):
     returned float32 — measured false, issue #646.)
 
     The differentiable ``forward()`` lane builds metas with
-    ``build_rlc_meta_traced``; when a component value is supplied as a tracer
+    ``build_rlc_meta``; when a component value is supplied as a tracer
     (via ``forward(rlc_values_override=...)``) the numeric coefficients carry a
     JAX dtype.  Under a scoped ``jax_enable_x64`` that dtype is ``float64``, so
     the ADE state update promotes to ``float64`` — this returns ``float64`` and
@@ -302,7 +302,29 @@ def _resolve_position_to_index(grid, position):
     return _nu_p2i(grid, position)
 
 
-def setup_rlc_materials(grid, spec: LumpedRLCSpec, materials):
+# One material setup and one metadata builder serve run() and forward().
+# Topology comes from the static plain-float spec. Concrete inputs keep the
+# float64 host arithmetic; traced inputs keep array arithmetic so gradients
+# flow through material arrays and forward(rlc_values_override=...) values.
+
+
+def _rlc_inputs_traced(materials, *overrides):
+    # Any traced material array (or override) selects array arithmetic.
+    import jax
+    return any(is_tracer(value) for value in
+               (*overrides, *jax.tree_util.tree_leaves(materials))
+               if value is not None)
+
+
+def _resolve_value(static_val, override_val, *, traced):
+    """Keep static values; coerce concrete overrides to host floats."""
+    if override_val is None:
+        return static_val
+    return override_val if traced else float(override_val)
+
+
+def setup_rlc_materials(grid, spec: LumpedRLCSpec, materials, *,
+                        r_val=None, c_val=None):
     """Fold R and C into material arrays at the element cell.
 
     For **parallel** topology:
@@ -328,7 +350,9 @@ def setup_rlc_materials(grid, spec: LumpedRLCSpec, materials):
     - The component is folded into material arrays as in the parallel
       case, since a single component does not need current sharing.
 
-    Returns updated MaterialArrays.
+    Topology uses the static spec; optional R/C overrides supply numeric
+    values. Concrete inputs use host arithmetic and traced inputs retain
+    array arithmetic. Returns updated MaterialArrays.
     """
     idx = field_index(grid, spec.position, spec.component)
     i, j, k = idx
@@ -349,10 +373,13 @@ def setup_rlc_materials(grid, spec: LumpedRLCSpec, materials):
     # at its own cell (see rfx.core.yee.MaterialArrays).
     from rfx.sources.sources import (
         stamp_lumped_sigma as _stamp_sigma, stamp_lumped_eps as _stamp_eps)
+    traced = _rlc_inputs_traced(materials, r_val, c_val)
+    R = _resolve_value(spec.R, r_val, traced=traced)
+    C = _resolve_value(spec.C, c_val, traced=traced)
     if spec.R > 0:
         materials = _stamp_sigma(
             materials, (i, j, k),
-            _port_sigma(grid, (i, j, k), spec.component, spec.R),
+            _port_sigma(grid, (i, j, k), spec.component, R),
             spec.component)
 
     if spec.C > 0:
@@ -360,12 +387,13 @@ def setup_rlc_materials(grid, spec: LumpedRLCSpec, materials):
         dual_b, dual_c = _dual_perp(grid, (i, j, k), spec.component)
         materials = _stamp_eps(
             materials, (i, j, k),
-            spec.C * d_par / (EPS_0 * dual_b * dual_c), spec.component)
+            C * d_par / (EPS_0 * dual_b * dual_c), spec.component)
 
     return materials
 
 
 def build_rlc_meta(grid, spec: LumpedRLCSpec, materials, *,
+                   r_val=None, l_val=None, c_val=None,
                    periodic=(False, False, False)) -> RLCCellMeta:
     """Build per-element metadata from (modified) materials.
 
@@ -373,7 +401,9 @@ def build_rlc_meta(grid, spec: LumpedRLCSpec, materials, *,
     fold into the material arrays (ports), with the materials the run's E
     update uses: an element takes ``D0`` from the edge's own update
     coefficient (:func:`edge_update_denominator`), and ``periodic`` is the
-    run's periodic flags for that lookup.
+    run's periodic flags for that lookup. Topology uses the static spec;
+    optional R/L/C overrides supply numeric values. Concrete inputs keep
+    host arithmetic and traced inputs retain array arithmetic.
     """
     from rfx.sources.sources import port_d_parallel as _d_par
     from rfx.sources.sources import port_dual_transverse as _dual_t
@@ -388,10 +418,15 @@ def build_rlc_meta(grid, spec: LumpedRLCSpec, materials, *,
     has_capacitor = spec.C > 0
     is_series = spec.topology == "series" and _series_needs_ade(spec)
 
+    traced = _rlc_inputs_traced(materials, r_val, l_val, c_val)
+    R = _resolve_value(spec.R, r_val, traced=traced)
+    L = _resolve_value(spec.L, l_val, traced=traced)
+    C = _resolve_value(spec.C, c_val, traced=traced)
+
     # #1163: the edge's own E-update denominator, not the cell's (series
     # and parallel alike).
     D0 = edge_update_denominator(
-        materials, (i, j, k), spec.component, dt, periodic, as_float=True, grid=grid)
+        materials, (i, j, k), spec.component, dt, periodic, as_float=not traced, grid=grid)
 
     if has_inductor:
         # gamma = dt * d_par / (L * dual_area) is the inductor's implicit
@@ -401,140 +436,6 @@ def build_rlc_meta(grid, spec: LumpedRLCSpec, materials, *,
         # i.e. a CUBIC cell.  It was self-consistent with the equally cubic
         # I/(dx*dx) below, which is why the pair realized an inductance
         # L * d_par**2 / dual_area instead of L (issue #691 follow-up).
-        gamma = dt * d_par / (spec.L * dual_area)
-        dt_dx_over_L = dt * d_par / spec.L
-    else:
-        gamma = 0.0
-        dt_dx_over_L = 0.0
-
-    if has_capacitor:
-        dt_over_C_dx = dt / (spec.C * d_par)
-    else:
-        dt_over_C_dx = 0.0
-
-    return RLCCellMeta(
-        i=i, j=j, k=k,
-        component=spec.component,
-        has_inductor=has_inductor,
-        has_capacitor=has_capacitor,
-        gamma=gamma,
-        D0=D0,
-        dx=d_par,
-        dt_dx_over_L=dt_dx_over_L,
-        dt_over_C_dx=dt_over_C_dx,
-        dual_area=dual_area,
-        R=spec.R,
-        dt=dt,
-        is_series=is_series,
-    )
-
-
-# ---------------------------------------------------------------------------
-# Differentiable (traced) setup — WP 4-E
-#
-# The concrete ``setup_rlc_materials`` / ``build_rlc_meta`` above are the
-# byte-identical ``run()`` path (Python ``float()`` coercions, float64 scalar
-# arithmetic).  The two functions below are the parallel TRACED lane used only
-# by the differentiable ``Simulation.forward()``.  They:
-#   * decide the element TOPOLOGY (which components are present, series-vs-fold)
-#     from the STATIC plain-float ``spec`` — so the Python ``if`` gates and
-#     ``_series_needs_ade`` never see a JAX bool tracer, and
-#   * feed the NUMERIC component VALUES (which may be tracers supplied via
-#     ``forward(rlc_values_override=...)``) into the jnp-native coefficients
-#     without any ``float()`` coercion, so ``jax.grad`` flows w.r.t. R/L/C.
-# This mirrors the coax ``eps_scale`` (PR #261) and waveguide-flux AD (#148/#172)
-# dual-path idiom: concrete path frozen, a separate traced path added.
-# ---------------------------------------------------------------------------
-
-def _resolve_value(static_val, override_val):
-    """Pick the traced override when supplied, else the static spec float."""
-    return static_val if override_val is None else override_val
-
-
-def setup_rlc_materials_traced(grid, spec: LumpedRLCSpec, materials, *,
-                               r_val=None, c_val=None):
-    """jnp-native counterpart of ``setup_rlc_materials`` for ``forward()``.
-
-    Topology decisions (series-needs-ADE, component presence) use the STATIC
-    plain-float ``spec``.  Only the NUMERIC R/C values folded into the material
-    arrays may be tracers (``r_val`` / ``c_val``); when ``None`` the static
-    spec float is used, so a plain ``forward()`` on a sim with a registered RLC
-    element correctly reflects the element (no more silent no-op).
-    """
-    idx = field_index(grid, spec.position, spec.component)
-    i, j, k = idx
-
-    # Series topology with multiple components: ADE handles R and C (static).
-    if spec.topology == "series" and _series_needs_ade(spec):
-        return materials
-
-    from rfx.sources.sources import (
-        port_sigma as _port_sigma,
-        port_d_parallel as _d_par,
-        port_dual_transverse as _dual_perp,
-    )
-    # #1210: same lumped-stamp treatment as the concrete path above.
-    from rfx.sources.sources import (
-        stamp_lumped_sigma as _stamp_sigma, stamp_lumped_eps as _stamp_eps)
-    if spec.R > 0:  # static presence check on the plain-float spec
-        R = _resolve_value(spec.R, r_val)
-        materials = _stamp_sigma(
-            materials, (i, j, k),
-            _port_sigma(grid, (i, j, k), spec.component, R), spec.component)
-
-    if spec.C > 0:
-        C = _resolve_value(spec.C, c_val)
-        d_par = _d_par(grid, (i, j, k), spec.component)
-        dual_b, dual_c = _dual_perp(grid, (i, j, k), spec.component)
-        # Same dual-face fold as the concrete path (#691). d_par / dual_b /
-        # dual_c are plain floats from the grid, so a traced C stays traced.
-        materials = _stamp_eps(
-            materials, (i, j, k), C * d_par / (EPS_0 * dual_b * dual_c),
-            spec.component)
-
-    return materials
-
-
-def build_rlc_meta_traced(grid, spec: LumpedRLCSpec, materials, *,
-                          r_val=None, l_val=None, c_val=None,
-                          periodic=(False, False, False)) -> RLCCellMeta:
-    """jnp-native counterpart of ``build_rlc_meta`` for ``forward()``.
-
-    Structural fields (``i/j/k``, ``component``, ``has_inductor``,
-    ``has_capacitor``, ``is_series``) are STATIC, resolved from the plain-float
-    ``spec`` exactly as ``build_rlc_meta`` does — so the Python ``if`` gates
-    below dispatch at trace time (no ``TracerBoolConversionError``).  The
-    NUMERIC coefficients (``D0``, ``gamma``, ``dt_dx_over_L``,
-    ``dt_over_C_dx``, ``R``) are computed jnp-natively with NO ``float()``
-    coercion, so a traced ``r_val`` / ``l_val`` / ``c_val`` flows through
-    ``jax.grad``.  Must be called AFTER ``setup_rlc_materials_traced``.
-    """
-    from rfx.sources.sources import port_d_parallel as _d_par
-    from rfx.sources.sources import port_dual_transverse as _dual_t
-    idx = field_index(grid, spec.position, spec.component)
-    i, j, k = idx
-    d_par = _d_par(grid, idx, spec.component)
-    _b, _c = _dual_t(grid, idx, spec.component)
-    dual_area = _b * _c
-    dt = grid.dt
-
-    # STATIC topology from the plain-float spec.
-    has_inductor = spec.L > 0
-    has_capacitor = spec.C > 0
-    is_series = spec.topology == "series" and _series_needs_ade(spec)
-
-    # No float() coercion: eps/sigma may carry a folded R/C tracer. #1163:
-    # the edge's own E-update denominator (same as the concrete twin), for
-    # series and parallel elements.
-    D0 = edge_update_denominator(
-        materials, (i, j, k), spec.component, dt, periodic, grid=grid)
-
-    R = _resolve_value(spec.R, r_val)
-    L = _resolve_value(spec.L, l_val)
-    C = _resolve_value(spec.C, c_val)
-
-    if has_inductor:
-        # Same fold as the concrete twin above; see its comment.
         gamma = dt * d_par / (L * dual_area)
         dt_dx_over_L = dt * d_par / L
     else:

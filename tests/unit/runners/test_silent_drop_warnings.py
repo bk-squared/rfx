@@ -234,9 +234,10 @@ def _two_wire_sim(nonuniform):
                          boundary="pec", cpml_layers=0,
                          **({"dz_profile": np.full(10, 1e-3)}
                             if nonuniform else {}))
-        for x in (0.006, 0.014):
+        # one driven port: S from one record needs isolated drives
+        for index, x in enumerate((0.006, 0.014)):
             sim.add_port((x, 0.01, 0.002), "ez", impedance=50.0,
-                         extent=0.006)
+                         extent=0.006, excite=index == 0)
         return sim
     return _quiet(build)
 
@@ -974,10 +975,12 @@ FORWARD_CALL_ARGUMENTS = {
     "port_s11_freqs": {
         "uniform": "carries",
         "graded": "carries",
-        "distributed_uniform": "refuses",
+        "distributed_uniform": "carries",
         "distributed_graded": "refuses",
     },
 }
+FORWARD_LANES = {"uniform": "fwd_uniform", "graded": "fwd_nonuniform",
+                 "distributed_uniform": "fwd_distributed"}
 
 
 @pytest.mark.parametrize("lane,disposition", FORWARD_CALL_ARGUMENTS["port_s11_freqs"].items())
@@ -1002,5 +1005,4 @@ def test_forward_port_s11_freqs_disposition(lane, disposition, monkeypatch):
             sim.forward(n_steps=1, port_s11_freqs=[2e9], distributed=True,
                         skip_preflight=True)
     else:
-        assert sim._dispatch_plan(**kwargs).lane == (
-            "fwd_nonuniform" if graded else "fwd_uniform")
+        assert sim._dispatch_plan(**kwargs).lane == FORWARD_LANES[lane]

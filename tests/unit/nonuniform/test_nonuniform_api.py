@@ -702,15 +702,19 @@ class TestFluxMonitorOnNonUniform:
             # edge-centered in y and nodal in x. Nodal control volumes run
             # between adjacent cell centers, so the two areas differ on a
             # graded mesh. This is quadrature bookkeeping, not a mode oracle.
-            dx_arr = np.asarray(grid.dx_arr)
-            dy_arr = np.asarray(grid.dy_arr)
-            dual_x = np.r_[dx_arr[0], .5 * (dx_arr[:-1] + dx_arr[1:])]
-            dual_y = np.r_[dy_arr[0], .5 * (dy_arr[:-1] + dy_arr[1:])]
-            exp_dA = float(np.sum(np.outer(dx_arr[mon_fin.lo1:mon_fin.hi1],
-                                           dual_y[mon_fin.lo2:mon_fin.hi2])))
-            exp_dA2 = np.outer(dual_x[mon_fin.lo1:mon_fin.hi1],
-                               dy_arr[mon_fin.lo2:mon_fin.hi2])
-            np.testing.assert_allclose(mon_fin.dA2, exp_dA2, rtol=1e-6, atol=0)
+            from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
+            coords = coords_from_nonuniform_grid(grid)
+            dx_arr = np.diff(coords.x[mon_fin.lo1:mon_fin.hi1+1])
+            dy_arr = np.diff(coords.y[mon_fin.lo2:mon_fin.hi2+1])
+            dual_x, dual_y = np.zeros(n_x+1), np.zeros(n_y+1)
+            dual_x[:-1] += dx_arr/2
+            dual_x[1:] += dx_arr/2
+            dual_y[:-1] += dy_arr/2
+            dual_y[1:] += dy_arr/2
+            expected_area1 = np.asarray(np.outer(dx_arr, dual_y), dtype=np.float32)
+            expected_area2 = np.asarray(np.outer(dual_x, dy_arr), dtype=np.float32)
+            exp_dA = float(expected_area1.sum())
+            np.testing.assert_allclose(mon_fin.dA2, expected_area2, rtol=1e-6, atol=0)
             got_dA = float(np.sum(np.asarray(mon_fin.dA)))
             rel_dA = abs(got_dA - exp_dA) / max(exp_dA, 1e-300)
             print(f"\n[z-normal dA] window=({mon_fin.lo1}:{mon_fin.hi1},"
@@ -722,7 +726,7 @@ class TestFluxMonitorOnNonUniform:
                 f"summed dA {got_dA:.9e} != the realized graded window area "
                 f"{exp_dA:.9e} (rel {rel_dA:.2e}) - the z-normal window does "
                 "not weight the cells it selected")
-            assert np.shape(np.asarray(mon_fin.dA)) == (n_x, n_y), (
+            assert np.shape(np.asarray(mon_fin.dA)) == (n_x, n_y+1), (
                 f"dA shape {np.shape(np.asarray(mon_fin.dA))} != the window "
                 f"shape ({n_x},{n_y}) - the two tangential axes are swapped")
 
@@ -743,18 +747,16 @@ class TestFluxMonitorOnNonUniform:
             w2 = slice(mon_fin.lo2, mon_fin.hi2)
             old_ref = np.real(np.sum(integrand[:, w1, w2] * dA_full[w1, w2][None],
                                      axis=(-2, -1)))
-            dA2_full = np.asarray(mon_full.dA2)
-            # Restrict each Yee product with its own control-volume area.
-            # A shared dA incorrectly weights Ey*Hx by the nodal-y width.
-            ref = np.real(np.sum(
-                (e1 * np.conj(h2))[:, w1, w2] * dA_full[w1, w2][None]
-                - (e2 * np.conj(h1))[:, w1, w2] * dA2_full[w1, w2][None],
-                axis=(-2, -1)))
+            wy_node = slice(mon_fin.lo2, mon_fin.hi2+1)
+            wx_node = slice(mon_fin.lo1, mon_fin.hi1+1)
+            ref = np.real(np.sum((e1 * np.conj(h2))[:, w1, wy_node] * expected_area1, axis=(-2, -1))
+                          - np.sum((e2 * np.conj(h1))[:, wx_node, w2] * expected_area2, axis=(-2, -1)))
             for name in ("e1_dft", "e2_dft", "h1_dft", "h2_dft"):
+                region = (w1, wy_node) if name in ('e1_dft', 'h2_dft') else (wx_node, w2)
                 np.testing.assert_array_equal(getattr(mon_fin, name),
-                                              np.asarray(getattr(mon_full, name))[:, w1, w2])
-            np.testing.assert_array_equal(mon_fin.dA, dA_full[w1, w2])
-            np.testing.assert_array_equal(mon_fin.dA2, dA2_full[w1, w2])
+                                              np.asarray(getattr(mon_full, name))[:, region[0], region[1]])
+            np.testing.assert_array_equal(mon_fin.dA, expected_area1)
+            np.testing.assert_array_equal(mon_fin.dA2, expected_area2)
             record_property("old_shared_area_flux", old_ref.tolist())
             record_property("restricted_two_area_flux", ref.tolist())
             fin = np.asarray(flux_spectrum(mon_fin))

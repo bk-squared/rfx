@@ -283,7 +283,7 @@ sim3.add_lumped_rlc(position=load_pos, component="ez",
 def load_loss(R):
     out = sim3.forward(n_steps=800, port_s11_freqs=jnp.array([5e9]),
                        rlc_values_override={0: {"R": R}})
-    return jnp.abs(out.s_params[0]) ** 2      # |S11|^2 at 5 GHz
+    return jnp.abs(out.s_params[0, 0, 0]) ** 2      # |S11|^2 at 5 GHz
 
 
 R0 = 200.0

@@ -5,7 +5,8 @@ import numpy as np
 from rfx import Simulation
 from rfx.boundaries.spec import BoundarySpec
 from rfx.core.yee import EPS_0, MU_0
-from rfx.sources.waveguide_port import C0_LOCAL, _compute_mode_impedance
+from rfx.sources.waveguide_port import C0_LOCAL
+from rfx.model.waveguide_modes import _compute_mode_impedance
 
 FREQS = jnp.array([9e9, 10e9, 11e9])
 DX = .001

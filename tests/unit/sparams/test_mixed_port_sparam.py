@@ -512,32 +512,20 @@ def test_negative_arriving_power_is_tracked_not_only_driven():
     assert float(np.abs(np.asarray(S_out)[1, 0, 0])) == 0.0
 
 
-def test_forward_does_not_pay_for_flux_monitors(monkeypatch):
-    """Registering flux monitors must not change the plain forward() lane.
-
-    `ForwardResult` has never carried flux monitors, so accumulating them
-    inside the differentiable scan would be pure cost (including AD-tape
-    memory) with no visible result — a silent regression for existing
-    AD callers. The build is therefore gated to the raw-hook consumer.
-    """
+def test_forward_returns_the_flux_monitors_it_builds():
+    """A declared flux monitor is accumulated AND returned by plain forward()
+    (#1373 D4); before, forward() skipped it because it could not return it."""
     import jax.numpy as jnp
-    import rfx.runners.uniform as _uni
 
-    calls = []
-    real = _uni.build_flux_monitor_cfgs
-    monkeypatch.setattr(
-        _uni, "build_flux_monitor_cfgs",
-        lambda *a, **k: (calls.append(1), real(*a, **k))[1],
-    )
     sim = Simulation(freq_max=10e9, domain=(4e-3, 2e-3, 1e-3),
                      dx=100e-6, cpml_layers=4)
     sim.add_port(position=(1e-3, 1e-3, 0.5e-3), component="ez",
                  impedance=50.0)
     sim.add_flux_monitor(axis="x", coordinate=2e-3,
-                         freqs=jnp.asarray(np.array([5e9])))
-    sim.forward(n_steps=40, port_s11_freqs=np.array([5e9]),
-                skip_preflight=True)
-    assert calls == [], "forward() built flux monitors it cannot return"
+                         freqs=jnp.asarray(np.array([5e9])), name="mid")
+    result = sim.forward(n_steps=40, port_s11_freqs=np.array([5e9]),
+                         skip_preflight=True)
+    assert list(result.flux_monitors) == ["mid"]
 
 
 def test_guard_rejects_cpml_adjacent_probe_ladder():
@@ -618,7 +606,9 @@ def test_mixed_probe_fed_msl_plumbing_smoke():
     assert np.isnan(res.s21_power_witness).all()
     assert res.magnitude_channel == "flux"
     assert res.S_wave is not None and res.S_wave.shape == S.shape
-    _assert_drive_settling_witnesses(sim, res, 4., (0.0780274, 0.322321))
+    # re-pinned 2026-10-12: default pulse onset fix (issue 1668 PR); old values
+    # (0.0780274, 0.322321).
+    _assert_drive_settling_witnesses(sim, res, 4., (0.0780033, 0.322213))
     # Registration state restored after the drive loop.
     assert len(sim._dft_planes) == 0
     assert len(sim._probes) == 0
@@ -674,7 +664,9 @@ def test_mixed_probe_fed_msl_smoke_slow_lane_exists():
     assert np.all(np.isfinite(S[:, 1]))
     # Apply the unchanged bound to the retained, unprojected MSL column.
     assert np.all(np.abs(S[:, 1]) < 1.5), f"gross blow-up: max|S|={np.max(np.abs(S[:, 1])):.3f}"
-    _assert_drive_settling_witnesses(sim, res, 8., (4.13651e-21, 1.59952e-4))
+    # re-pinned 2026-10-12: default pulse onset fix (issue 1668 PR); old values
+    # (4.13651e-21, 1.59952e-4).
+    _assert_drive_settling_witnesses(sim, res, 8., (4.13523e-21, 1.59902e-4))
 
 
 # ---------------------------------------------------------------------------
@@ -1381,7 +1373,10 @@ def test_wire_port_end_gap_advisory_silent_in_open_vacuum():
     sim.add_port(position=(0.0093, 0.0093, 0.0093), component="ez",
                  impedance=50.0,
                  waveform=GaussianPulse(f0=5e9, bandwidth=0.9),
-                 extent=0.004)
+                 extent=0.004,
+                 # Mirrors _clean_sim: without radius= the port draws
+                 # wire_port_no_radius and the report is not clean.
+                 radius=0.1e-3)
 
     issues = sim.preflight()
     codes = [getattr(s, "code", None) for s in issues]

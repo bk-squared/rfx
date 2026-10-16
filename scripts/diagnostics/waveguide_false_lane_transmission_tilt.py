@@ -222,6 +222,7 @@ def _sparams(sim, **kw):
 def stage_planes() -> dict:
     """Modal V/I at all four recorded planes, for drive 0."""
     import rfx.sources.waveguide_port as wp
+    import rfx.measurement.waveguide_s as _wg_move_waveguide_s
     F = _fixture_module()
     stash: list = []
     original = wp.extract_waveguide_port_waves
@@ -252,8 +253,8 @@ def stage_planes() -> dict:
 
             def spectra(cfg, v_t, i_t):
                 n = cfg.n_steps_recorded
-                v = np.asarray(wp._rect_dft(v_t, cfg.freqs, cfg.dt, n))
-                i = np.asarray(wp._rect_dft(i_t, cfg.freqs, cfg.dt, n))
+                v = np.asarray(_wg_move_waveguide_s._rect_dft(v_t, cfg.freqs, cfg.dt, n))
+                i = np.asarray(_wg_move_waveguide_s._rect_dft(i_t, cfg.freqs, cfg.dt, n))
                 return v, i * np.exp(+1j * omega * 0.5 * dt)
 
             planes = {}

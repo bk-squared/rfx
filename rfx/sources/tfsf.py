@@ -537,6 +537,34 @@ def init_tfsf(
     return config, state
 
 
+def tfsf_from_declaration(entry, grid, freq_max, *, n_steps=None, line_steps=None,
+                          bounds_only=False):
+    """The TF/SF configuration a plane-wave declaration realizes on ``grid``.
+
+    One builder for every entry (run on the uniform and graded lanes, forward,
+    the injection-plane query), so no two entries build different sources.
+    With ``n_steps``, a CustomWaveform is checked over that record first.
+    ``line_steps`` independently sizes the closed-box line; ``bounds_only``
+    returns closed-box metadata without allocating that line.
+    """
+    if n_steps is not None:
+        validate_custom_tfsf_waveform(entry.waveform, grid.dt, n_steps)
+    if bounds_only and entry.closed_box:
+        from rfx.sources.tfsf_discrete_plane_wave import box_bounds
+        return box_bounds(grid.shape, grid.cpml_layers, entry.margin), None
+    return init_tfsf(
+        grid.nx, float(grid.cells("x")[0]), grid.dt, cpml_layers=grid.cpml_layers,
+        tfsf_margin=entry.margin,
+        f0=entry.f0 if entry.f0 is not None else freq_max / 2,
+        bandwidth=entry.bandwidth, amplitude=entry.amplitude,
+        polarization=entry.polarization, direction=entry.direction,
+        angle_deg=entry.angle_deg, ny=grid.ny, nz=grid.nz,
+        waveform=entry.waveform, method=entry.method, closed_box=entry.closed_box,
+        theta_deg=entry.theta_deg, phi_deg=entry.phi_deg,
+        direction_tol_deg=entry.direction_tol_deg, max_component=entry.max_component,
+        n_steps=line_steps if line_steps is not None else n_steps)
+
+
 def update_tfsf_1d(cfg: TFSFConfig, st: TFSFState, dx: float, dt: float,
                    t: float) -> TFSFState:
     """Advance the 1D auxiliary FDTD by one full timestep (convenience wrapper).

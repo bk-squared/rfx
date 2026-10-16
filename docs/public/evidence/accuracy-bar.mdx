@@ -1,20 +1,88 @@
 ---
-title: The accuracy bar and status words
-description: What validated, diagnostic, provisional, planned and refused mean on these pages.
+title: The accuracy bar
+description: The terms on which rfx calls a result accurate enough, and how to read an accuracy statement on these pages.
 sidebar:
   order: 4
 ---
 
-<p data-rfx="note">Being written for 2.0 (tracker 1171).</p>
-
 ## What it is for
+
+rfx is an open-source simulator with basic feature support, not production
+software. Whether a result is accurate enough is decided by a stated bar, not
+by how small a residual can be made. The project judges its own validation
+cases by this bar, and you can judge your results by it too.
 
 ## How to use it
 
+A comparison of an rfx result with a reference (a closed form, a measurement or
+another solver) passes the bar when all of these hold:
+
+1. **The mesh has converged.** The result was computed on at least three
+   meshes and the trend is stated. A comparison on a mesh that has not been
+   shown to converge says nothing either way: it is neither a pass nor a
+   defect. See [Mesh convergence](/rfx/evidence/mesh-convergence/).
+2. **The trend over frequency agrees.** The curve's shape against the
+   reference — where its features are and how they move — agrees across the
+   band. A single frequency, a band maximum or a band mean is not a verdict.
+3. **Power and magnitude within 2 dB** of the reference, compared after the
+   frequency axis is scaled so the judged feature lines up with the
+   reference's (the frequency error is judged by item 4). Bins where either
+   curve is below −20 dB (a deep null) are judged by position only.
+4. **Frequencies within 1 %**: resonances, cutoffs, notches and nulls. A
+   band edge defined by where a curve crosses a level (a −3 dB corner) is
+   judged by the 2 dB magnitude bar instead: its frequency may move as far as
+   2 dB along the reference curve's own slope there.
+5. **Group delay within 1 %**: the least-squares slope of the unwrapped
+   transmission phase against frequency, over the bins where |S21| is above
+   −20 dB (for a one-port, the reflection phase). On a dispersionless line this
+   equals the electrical length βl; on a microstrip or a waveguide the two
+   differ, and the bar reads the group delay. The phase at a single frequency
+   is not judged.
+6. **Narrow features also against their bandwidth.** For a resonance, passband
+   or notch whose fractional bandwidth is 5 % or less, the frequency error must
+   also be within 10 % of the reference's bandwidth. For a filter with a 2 %
+   bandwidth that means within 0.2 %, because 1 % of the centre frequency is
+   half the passband.
+7. **No verdict from one number.** A pass or a fail names the curve, the mesh
+   statement and the reference together.
+
+The same applies to the checks you make on your own run: whether the
+[simulation time](/rfx/evidence/simulation-time/) is long enough, or the mesh
+fine enough, is read from how the result moves over at least three run lengths
+or meshes, and whether it moves the way the physics predicts.
+
+A result inside the bar that converges with the mesh is not a defect. Some
+structures cannot be judged this way because of what they are: a high-Q
+resonance, a deep null, a phase-only comparison, or a reference that is itself
+good to only a few percent. State that, and the criterion you used instead.
+
 ## What is checked
 
-## What is refused, and the way through
+Items 1, 3, 4 and 5 are written in code, so a check cannot move the bar it is
+judged by. Items 2, 6 and 7 are applied by the person reading the comparison;
+no check implements them yet.
 
-## Accuracy
+- `tests/crossval/_v2_judging.py` holds the frequency bar (1 %), the magnitude
+  bar (2 dB), the deep-null level (−20 dB), the level-crossing rule, and the
+  mesh statement: the last two meshes agree within 1 %, and every step larger
+  than 0.1 % moves the same way. It judges a ladder of two or more meshes; the
+  bar asks you to state the trend over three.
+- `tests/_electrical_length.py` holds the group-delay bar (1 %) and its −20 dB
+  level.
+- The cross-solver cases under `tests/crossval/` compare rfx with frozen
+  reference data from another solver, by this bar.
+
+## How to read an accuracy statement
+
+Pages on this site state accuracy one line at a time: the statement, its
+[status](/rfx/support/) and the file in the repository that checks it. A number
+with no such file is not printed. A clean preflight or a run that completes
+does not move a feature's status.
 
 ## See also
+
+- [Mesh convergence](/rfx/evidence/mesh-convergence/) and
+  [Simulation time](/rfx/evidence/simulation-time/): the two checks a converged
+  result needs.
+- [Support](/rfx/support/): the status of each feature.
+- [Validation](/rfx/validation/): how rfx itself is checked.

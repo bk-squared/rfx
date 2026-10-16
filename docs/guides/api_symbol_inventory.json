@@ -148,6 +148,9 @@
     "MaterialFitResult": {
       "kind": "class"
     },
+    "MatrixPencilMode": {
+      "kind": "class"
+    },
     "MeshIntelligenceReport": {
       "kind": "class"
     },
@@ -1212,7 +1215,10 @@
         "lo2",
         "hi2",
         "pmc_faces",
-        "staggered_area"
+        "staggered_area",
+        "node_coords",
+        "periodic_axes",
+        "normal_h_weights"
       ]
     },
     "init_multimode_waveguide_port": {
@@ -1400,7 +1406,8 @@
         "face_layers",
         "dt",
         "dt_min_cell",
-        "dt_caller"
+        "dt_caller",
+        "nominal_profiles"
       ]
     },
     "make_ntff_box": {
@@ -1440,6 +1447,30 @@
         "n_steps",
         "materials",
         "amplitude_kind"
+      ]
+    },
+    "matrix_pencil": {
+      "kind": "function",
+      "params": [
+        "signal",
+        "dt",
+        "f_min",
+        "f_max",
+        "pencil_parameter",
+        "min_Q",
+        "max_modes",
+        "sv_threshold",
+        "decimate"
+      ]
+    },
+    "matrix_pencil_from_probe": {
+      "kind": "function",
+      "params": [
+        "time_series",
+        "dt",
+        "freq_range",
+        "source_decay_time",
+        "kwargs"
       ]
     },
     "maximize_bandwidth": {
@@ -1764,7 +1795,8 @@
         "checkpoint_every",
         "emit_time_series",
         "n_warmup",
-        "distributed"
+        "distributed",
+        "jit"
       ]
     },
     "quick_convergence": {
@@ -1804,7 +1836,8 @@
         "cell_mask",
         "sheets",
         "wires",
-        "periodic"
+        "periodic",
+        "view"
       ]
     },
     "realized_wall_planes": {
@@ -1903,7 +1936,8 @@
         "design_occupancy",
         "stop_fn",
         "stop_interval",
-        "record_dft"
+        "record_dft",
+        "port_record_specs"
       ]
     },
     "run_adi_2d": {
@@ -2016,6 +2050,7 @@
         "grid",
         "materials",
         "decay_by",
+        "n_end",
         "check_interval",
         "min_steps",
         "max_steps",
@@ -2062,7 +2097,9 @@
         "report_every",
         "report_label",
         "sheet_impedance",
-        "record_dft"
+        "record_dft",
+        "port_record_specs",
+        "advisory"
       ]
     },
     "save_experiment_report": {
@@ -2306,7 +2343,8 @@
         "beta_schedule",
         "init_density",
         "verbose",
-        "skip_preflight"
+        "skip_preflight",
+        "jit"
       ]
     },
     "update_floquet_dft": {

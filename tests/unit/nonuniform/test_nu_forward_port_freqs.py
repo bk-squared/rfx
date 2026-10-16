@@ -39,7 +39,7 @@ def test_requested_port_bins(lumped):
 
 def test_port_bins_subset_matches_default():
     sim = _sim()
-    default = _forward(sim)
+    default = _forward(sim, port_s11_freqs=np.linspace(1e9, 10e9, 50))
     assert default.s_params.shape == (1, 1, 50)
     np.testing.assert_array_equal(default.freqs,
                                   np.linspace(1e9, 10e9, 50).astype(np.float32))
@@ -163,12 +163,12 @@ def test_lumped_before_passive_wire_preserves_wire_index():
     sim = _sim(lumped=True)
     sim.add_port(position=(5e-3, 4e-3, 3e-3), component="ez", impedance=75,
                  extent=2e-3, excite=False)
-    default = _forward(sim)
-    selected = _forward(sim, port_s11_freqs=np.asarray(default.freqs))
+    default = sim.run(n_steps=100, skip_preflight=True)
+    selected = _forward(sim, port_s11_freqs=np.linspace(1e9, 10e9, 50))
     assert default.s_params.shape == (1, 1, 50)
     assert selected.s_params.shape == (2, 2, 50)
     # These ordered specs/accumulators define the matrix's port indices.
-    # The default has only a passive-port diagnostic; explicit bins include
+    # run's default has only a passive-port diagnostic; explicit bins include
     # the driven lumped column, so their S values need not be equal.
     default_spec, default_acc = default.wire_port_sparams[0]
     selected_spec, selected_acc = selected.wire_port_sparams[0]

@@ -62,9 +62,12 @@ def test_adi_2d_all_material_derivative_modes_match_main_fd(which, boundary):
         def f(s):
             return _energy(sim, sigma_override=s)
         x0, h = 0.0, 1e-3
+    # re-pinned 2026-10-12: default pulse onset fix (issue 1668 PR). The 40-step
+    # record lies inside the pulse's first 0.73 tau, where the onset changed.
+    # Old values: eps 1.2000781680399086e-5, sigma -2.254637365695089e-6.
     main_fd = {
-        ("pec", "eps"): 1.2000781680399086e-5,
-        ("pec", "sigma"): -2.254637365695089e-6,
+        ("pec", "eps"): 1.8998889572685584e-5,
+        ("pec", "sigma"): -4.928096586809261e-6,
     }[boundary, which]
     x0 = jnp.float32(x0)
     # Keep forward modes explicit: reverse-mode finiteness alone did not

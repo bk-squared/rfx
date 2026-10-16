@@ -37,7 +37,7 @@ def main() -> None:
                      boundary="cpml", cpml_layers=6)
     sim.add_port(position=(0.0093, 0.0093, 0.0093), component="ez",
                  impedance=50.0, waveform=GaussianPulse(f0=5e9, bandwidth=0.9))
-    got = np.asarray(sim.forward(port_s11_freqs=FREQS_HZ, n_steps=1200).s_params)
+    got = np.asarray(sim.forward(port_s11_freqs=FREQS_HZ, n_steps=1200).s_params[0, 0])
 
     if GOLDEN.exists():
         old = np.load(GOLDEN)

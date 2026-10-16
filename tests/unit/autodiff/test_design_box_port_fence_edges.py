@@ -5,7 +5,7 @@ drives the E edges ``n0 .. n1 - 1``: node ``n1`` is the far terminal, the
 place the current arrives, and the plane through it carries no port cell.
 That is the one spelling in :func:`rfx.sources.sources.wire_port_edge_span`,
 which both runners rasterize with; the step-level fence
-(``rfx.simulation._resolve_design_box``) reads the port's ``live_cells`` on
+(``rfx.model.resolve_design_box``) reads the port's ``live_cells`` on
 the uniform lane and, on the graded lane, the mid cell plus the excited edges
 through its ``sources`` entry.
 

@@ -27,10 +27,12 @@ composition point and the import graph stays acyclic.
 
 from __future__ import annotations
 
+from rfx.stepping.step_count import steps_for_periods
 from rfx._precision import resolve_field_dtype
 from rfx.model.thin_conductors import conductivity_envelope
 
 from rfx.sparams._waveguide_planes import resolve_reported_planes
+import copy
 
 import jax.numpy as jnp
 import numpy as np
@@ -1042,7 +1044,7 @@ def _empty_waveguide_reference(self):
         dx_profile=self._dx_profile, dy_profile=self._dy_profile,
         dz_profile=self._dz_profile, dt=self._dt_pin,
         dt_min_cell=self._dt_min_cell, precision=self._precision,
-        snap=self._snap,
+        snap=self._snap, nominal_profiles=self._nominal_profiles,
     )
 
 
@@ -1165,11 +1167,10 @@ def _compute_waveguide_s_matrix_nu(
         dt=getattr(self, "_dt_pin", None),
         dt_min_cell=getattr(self, "_dt_min_cell", None),
         dt_caller="Simulation",
+        nominal_profiles=getattr(self, "_nominal_profiles", None),
     )
     if n_steps is None:
-        # ``NonUniformGrid`` does not expose ``num_timesteps`` (known
-        # asymmetry vs. ``Grid``); inline the same formula here.
-        n_steps = int(np.ceil(num_periods / self._freq_max / float(grid.dt)))
+        n_steps = steps_for_periods(grid.dt, self._freq_max, num_periods)
 
     reference = _empty_waveguide_reference(self)
 
@@ -1236,8 +1237,11 @@ def _compute_waveguide_s_matrix_nu(
                 _ck = _nearest_divisor(n_steps, max(1, n_steps // int(checkpoint_segments)))
                 if 0 < _ck < n_steps:
                     _ckpt_every = _ck
+            # The #704 warning promises no NTFF accumulation in this calculator.
+            device = copy.copy(self)
+            device._ntff = None
             dev_result = run_nonuniform_path(
-                self, n_steps=n_steps,
+                device, n_steps=n_steps,
                 eps_override=eps_override,
                 sigma_override=sigma_override,
                 attach_waveguide_flux=_flux_mode,

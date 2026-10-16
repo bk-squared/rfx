@@ -126,3 +126,10 @@ def distributed_electric_walls(grid):
     return frozenset(face.name for face in grid_face_depths(grid)
                      if face.kind in (Kind.PEC, Kind.ABSORBER)
                      and face.name[0] not in (getattr(grid, "periodic_axes", "") or ""))
+
+
+def distributed_wall_faces(grid, pmc_faces):
+    """Electric walls without the PMC faces, and the E curl boundary (None without PMC)."""
+    from rfx.core.yee import CurlBoundary
+    e_wall_faces = distributed_electric_walls(grid) - pmc_faces
+    return e_wall_faces, (CurlBoundary(e_wall_faces, pmc_faces) if pmc_faces else None)

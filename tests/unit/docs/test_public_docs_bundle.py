@@ -81,6 +81,7 @@ def test_bundle_tamper_extra_file_and_symlink_are_rejected(tmp_path):
         bundle.validate_bundle(root)
 
 
+@pytest.mark.source_scan
 def test_export_keeps_immutable_releases_but_removes_stale_content(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     public = repo / "docs/public"
@@ -101,6 +102,7 @@ def test_export_keeps_immutable_releases_but_removes_stale_content(tmp_path, mon
     assert not (destination / "untracked-secret.md").exists()
 
 
+@pytest.mark.source_scan
 def test_export_rejects_source_symlink_before_mutation(tmp_path):
     repo = tmp_path / "repo"
     public = repo / "docs/public"
@@ -181,6 +183,7 @@ def test_valid_identity_resolves_within_fixed_parent(tmp_path, url, channel, pre
     assert destination == parent / prefix
 
 
+@pytest.mark.source_scan
 @pytest.mark.parametrize("prefix", ["../rfx", "rfx/../../outside", "/rfx", "rfx/versions/..", "other"])
 def test_export_destination_cannot_escape_fixed_parent(tmp_path, prefix):
     sentinel = tmp_path / "keep.txt"
@@ -190,6 +193,7 @@ def test_export_destination_cannot_escape_fixed_parent(tmp_path, prefix):
     assert sentinel.read_text() == "keep"
 
 
+@pytest.mark.source_scan
 def test_export_destination_rejects_containment_escape_through_symlink(tmp_path):
     parent = tmp_path / "fixed-snapshot"
     parent.mkdir()
@@ -202,6 +206,7 @@ def test_export_destination_rejects_containment_escape_through_symlink(tmp_path)
     assert (outside / "keep.txt").read_text() == "keep"
 
 
+@pytest.mark.source_scan
 def test_direct_export_rejects_traversal_before_reading_or_mutating(tmp_path):
     outside = tmp_path / "outside"
     outside.mkdir()
@@ -349,6 +354,30 @@ def test_export_takes_the_showcase_catalog_from_the_bundle_when_one_is_given(tmp
     source_only = tmp_path / "source-only/rfx"
     export_snapshot(repo, source_only)
     assert (source_only / "showcase/showcase.json").read_text() == '{"authored": true}\n'
+
+
+def test_sync_check_of_a_bundle_export_needs_the_bundle(tmp_path, monkeypatch):
+    repo = _public_repo(tmp_path, monkeypatch)
+    (repo / "docs/public/index.mdx").write_text(
+        "[readme](https://github.com/bk-squared/rfx/blob/main/README.md)\n")
+    root = fixture_bundle(tmp_path)
+    manifest = bundle.validate_bundle(root)
+    monkeypatch.setattr(bundle, "validate_bundle", lambda *args: manifest)
+    deploy = tmp_path / "deploy/rfx"
+    export_snapshot(repo, deploy, root)
+    assert f"blob/{'a' * 40}/README.md" in (deploy / "index.mdx").read_text()
+    # Compared with the bundle, the SHA-pinned page and the generated files are not drift.
+    assert sync.make_report(repo, deploy, root)["has_drift"] is False
+    # Without it, the check refuses and names the flag instead of reporting them as drift.
+    with pytest.raises(SystemExit, match="--bundle-dir"):
+        sync.make_report(repo, deploy)
+    # A real text change still reads as drift with the bundle.
+    (deploy / "index.mdx").write_text("edited by hand\n")
+    assert sync.make_report(repo, deploy, root)["content_drift"] == ["index.mdx"]
+    # A source-only export is still compared without a bundle.
+    source_only = tmp_path / "source-only/rfx"
+    export_snapshot(repo, source_only)
+    assert sync.make_report(repo, source_only)["has_drift"] is False
 
 
 def test_raw_anchors_keep_their_own_text_and_urls():

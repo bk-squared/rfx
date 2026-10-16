@@ -4409,6 +4409,7 @@ def _finalize_call_in_transition_source():
     return calls[0]
 
 
+@pytest.mark.source_scan
 def test_transition_forwards_its_strict_passivity_to_the_guard():
     """The wiring, as a source fact -- no grid, no FDTD, milliseconds.
 

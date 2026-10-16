@@ -672,3 +672,33 @@ def l2_differences(comparison):
             # A known-row xfail must never hide an unclassified root.
             raise CaptureFailure(f'unclassified one-sided observable: {name}')
     return failures
+
+
+def port_s_pair(declaration, path, *, n_steps=150):
+    """Equal bin requests; run is the independent reference for measured columns."""
+    sim = BUILDERS[declaration](path)
+    # One record gives one driven column; independent drive solves make
+    # columns of non-excited ports run-only BY CONSTRUCTION.
+    RUN_ONLY_PORT_COLUMNS = tuple(k for k, port in enumerate(
+        pe for pe in sim._ports if pe.impedance != 0) if not port.excite)
+    run = sim.run(n_steps=n_steps, skip_preflight=True)
+    if run.s_params is None:
+        # Explicit graded lumped S is currently refused by the public API.
+        with pytest.raises(NotImplementedError, match='Single-cell lumped-port S-parameters require the uniform reference lane'):
+            sim.run(n_steps=1, skip_preflight=True, compute_s_params=True,
+                    s_param_freqs=np.array([2e9, 5e9, 8e9]))
+        return None
+    forward = BUILDERS[declaration](path).forward(
+        n_steps=n_steps, skip_preflight=True, checkpoint=False,
+        port_s11_freqs=np.asarray(run.freqs))
+    expected, actual = np.asarray(run.s_params), np.asarray(forward.s_params)
+    assert actual.shape == expected.shape
+    np.testing.assert_array_equal(forward.freqs, run.freqs)
+    np.testing.assert_allclose(actual[:, 0], expected[:, 0], rtol=0,
+                               atol=1e-4 * np.max(np.abs(expected)))
+    for column in RUN_ONLY_PORT_COLUMNS:
+        assert np.isnan(actual[:, column]).all()
+    return {'run': {'outcome': 'admitted', 'result': run},
+            'forward': {'outcome': 'admitted', 'result': forward}}
+
+

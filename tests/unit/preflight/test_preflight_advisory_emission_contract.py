@@ -62,6 +62,7 @@ S2. The per-ENTRY-POINT classification below (``EMISSION_CLASSIFICATION``).
 
 from __future__ import annotations
 
+import pytest
 import ast
 import inspect
 import textwrap
@@ -461,7 +462,14 @@ def _enumerate_emission_sites():
 # and assembly_fault, so a model run() refuses can no longer print a clean
 # preflight.
 # 134 -> 133 (#1624): sheet_gap_bridged removed; drawn sheet gaps now open.
-_FROZEN_TOTAL_SITES = 133
+# 133 -> 134 (issue 1668): one ``PreflightConfigError`` in
+# ``_validate_cfg_unresolved_pulse``, code ``undriven_pulse`` -- a pulse whose
+# sampled drive has no value above 1e-6 of its amplitude (bandwidth given in
+# Hz) is refused instead of running with nothing driven.
+# 134 -> 135 (#1691): ``preflight_wire_port_radius``, one advisory per
+# preflight naming every wire port declared without radius= (its S does not
+# converge with the mesh: each halving adds omega*(mu0*l/2pi)*ln2).
+_FROZEN_TOTAL_SITES = 135
 # 74 -> 73, 2026-09-15 (#1043 / PR #1047): ``conformal_nan`` was the only
 # site emitting that code, and the check was deleted when its own tripwire
 # XPASSed -- see the note on _FROZEN_TOTAL_SITES above.
@@ -494,7 +502,9 @@ _FROZEN_TOTAL_SITES = 133
 # 88 -> 87 (#1603): dc_film_half_sheet_error retired.
 # 87 -> 89 (#1620): assembly_refusal, assembly_fault.
 # 89 -> 88 (#1624): sheet_gap_bridged retired.
-_FROZEN_LITERAL_CODE_COUNT = 88
+# 88 -> 89 (issue 1668): undriven_pulse.
+# 89 -> 90 (#1691): wire_port_no_radius.
+_FROZEN_LITERAL_CODE_COUNT = 90
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site
@@ -518,6 +528,7 @@ _FROZEN_DYNAMIC_SITES_BY_FUNCTION = {
 }
 
 
+@pytest.mark.source_scan
 def test_preflight_emission_site_surface_is_frozen():
     sites = _enumerate_emission_sites()
     assert len(sites) == _FROZEN_TOTAL_SITES, (
@@ -553,6 +564,7 @@ def test_preflight_emission_site_surface_is_frozen():
     )
 
 
+@pytest.mark.source_scan
 def test_finite_flux_emitter_has_a_bounded_explicit_code_surface():
     """A shared constructor must not hide new or dynamically chosen slugs."""
     tree = ast.parse(textwrap.dedent(inspect.getsource(Simulation._collect_flux_regions)))
@@ -746,6 +758,7 @@ def test_every_functional_entry_point_is_emission_classified():
     )
 
 
+@pytest.mark.source_scan
 def test_emission_classification_matches_measured_reachability():
     surface = _exported_surface()
     for name, (category, citation) in EMISSION_CLASSIFICATION.items():

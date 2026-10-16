@@ -78,11 +78,11 @@ def capture(monkeypatch, sim, grid, lane, occupancy=None, topology_box=None, p=.
                 lo, hi = topology_box
                 # Inspect the real topology forward before its first solve, without
                 # introducing tracers into a host-array capture. C5 tests real AD.
-                monkeypatch.setattr(jax, 'value_and_grad', lambda fn: lambda x: (fn(x), jnp.zeros_like(x)))
+                monkeypatch.setattr(jax, 'value_and_grad', lambda fn: lambda x, *args: (fn(x, *args), jnp.zeros_like(x)))
                 region = TopologyDesignRegion(tuple(lo*.001), tuple((hi-1)*.001))
                 topology_optimize(sim, region, lambda r: jnp.sum(r.time_series**2),
                     n_iterations=1, init_density=jnp.full(tuple(hi-lo), p),
-                    verbose=False, skip_preflight=True)
+                    verbose=False, skip_preflight=True, jit=False)
             else:
                 sim.forward(pec_occupancy_override=occupancy, n_steps=2,
                             checkpoint=False, skip_preflight=True)
@@ -317,7 +317,7 @@ def test_c6_other_refusals(monkeypatch,refusal):
         with pytest.raises(TypeError,match="unexpected keyword argument 'pec_occupancy_override'"):
             sim.run(**kwargs)
     elif refusal=='distributed':
-        with pytest.raises(NotImplementedError,match='only for non-uniform meshes'):
+        with pytest.raises(NotImplementedError,match="takes none of forward\\(\\)'s override or design arguments"):
             sim.forward(distributed=True,**kwargs)
     elif refusal=='adi':
         sim._solver='adi'

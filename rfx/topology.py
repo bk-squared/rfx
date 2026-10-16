@@ -47,6 +47,7 @@ import jax
 import jax.numpy as jnp
 
 from rfx._precision import HIGHEST
+from rfx.optimize import _value_and_grad_with_fallback
 
 
 # ---------------------------------------------------------------------------
@@ -355,6 +356,7 @@ def topology_optimize(
     init_density: jnp.ndarray | None = None,
     verbose: bool = True,
     skip_preflight: bool = False,
+    jit: bool = True,
 ) -> TopologyResult:
     """Run density-based topology optimization.
 
@@ -385,6 +387,11 @@ def topology_optimize(
         (uniform mixture of bg and fg materials).
     verbose : bool
         Print progress every 10 iterations.
+
+    jit : bool
+        Default True compiles the loss and gradient once across iterations
+        and beta values. First-call host-read tracing errors fall back with
+        one warning. ``jit=False`` selects the eager loop without that warning.
 
     Returns
     -------
@@ -563,12 +570,13 @@ def topology_optimize(
             return objective(result, ntff_box=result.ntff_box)
         return objective(result)
 
+    grad_fn = _value_and_grad_with_fallback(forward, jit, "topology_optimize")
     last_good = logit  # last design with a confirmed-finite forward+gradient
     for it in range(n_iterations):
         beta = _get_beta(it, beta_schedule)
         beta_history.append(beta)
 
-        loss, grad = jax.value_and_grad(lambda logit_: forward(logit_, beta))(logit)
+        loss, grad = grad_fn(logit, jnp.asarray(beta, dtype=jnp.float32))
 
         # NaN/Inf gradient guard (see optimize() for rationale): a non-finite
         # gradient would silently poison ``logit`` via the optax update and

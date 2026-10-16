@@ -33,7 +33,7 @@ import pytest
 from scipy.optimize import brentq
 
 from rfx import GaussianPulse, Simulation
-from rfx.harminv import harminv
+from rfx.harminv import matrix_pencil
 
 C0 = 299792458.0
 L = 24e-3          # cube side, a = b = d
@@ -94,7 +94,7 @@ def _measure(dx, steps, window, debye_block=False):
         shape)
     res = sim.forward(eps_override=eps, n_steps=steps, skip_preflight=True,
                       checkpoint=False)
-    modes = [m for m in harminv(np.asarray(res.time_series[:, 0])[steps // 4:],
+    modes = [m for m in matrix_pencil(np.asarray(res.time_series[:, 0])[steps // 4:],
                                 dt, *window) if m.Q > 30]
     assert modes, f"no mode with Q > 30 in {window} at dx = {dx}"
     return max(modes, key=lambda m: m.amplitude).freq

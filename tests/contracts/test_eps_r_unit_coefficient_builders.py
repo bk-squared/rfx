@@ -82,8 +82,6 @@ BUILDERS = {
         "a lumped element's D0 = eps/dt + sigma/2 (traced branch)",
     ("rfx/runners/_distributed_common.py", "component_e_coeffs"):
         "both multi-device lanes' slab Ca/Cb (#1303: e_update_coeffs per component)",
-    ("rfx/boundaries/electric_coefficient.py", "face_coefficient"):
-        "the multi-device CPML psi coefficient dt/eps on a face slice (both copies call it)",
     ("rfx/materials/debye.py", "init_debye"): "Debye initialization",
     ("rfx/materials/debye.py", "debye_e_coeffs"):
         "Debye ADE ca/cb/cc, including distributed in-loop builders",
@@ -136,16 +134,13 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
     ("rfx/floquet.py", "extract_floquet_modes"): _C0,
     ("rfx/lumped.py", "setup_rlc_materials"):
         "a capacitor's eps_r stamp C*d/(EPS_0*A): EPS_0 divides a capacitance",
-    ("rfx/lumped.py", "setup_rlc_materials_traced"):
-        "a capacitor's eps_r stamp C*d/(EPS_0*A): EPS_0 divides a capacitance",
     ("rfx/nonuniform.py", "current_source_cb"):
         "the drive Cb: its traced branch is already in eps_r units (#1317), "
         "its float branch is host arithmetic",
     ("rfx/ris.py", "RISUnitCell._build_sim"): _HOST,
-    ("rfx/runners/_distributed_common.py", "cpml_coeff_e_vacuum"): _VACUUM,
     ("rfx/runners/subgridded.py", "_run_subgridded_once"): _C0,
     ("rfx/api/_gradient_witness.py", "conductivity_gradient_record"): _HOST,
-    ("rfx/simulation.py", "_warn_static_remnant_cap_hit"): _ENERGY,
+    ("rfx/measurement/decay.py", "static_remnant_advisory"): _ENERGY,
     ("rfx/sources/coaxial_port.py", "build_coaxial_tem_plane_source_specs"):
         _HOST + " (float(eps_r))",
     ("rfx/sources/coaxial_port.py", "coaxial_tem_capacitance_per_m"): _HOST,
@@ -158,10 +153,10 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
     ("rfx/sources/tfsf_2d.py", "apply_tfsf_2d_e"): _VACUUM,
     ("rfx/sources/tfsf_2d.py", "init_tfsf_2d"): _C0,
     ("rfx/sources/tfsf_oblique_open.py", "apply_methodB_e"): _VACUUM,
-    ("rfx/sources/waveguide_port.py", "_compute_mode_impedance"):
+    ("rfx/model/waveguide_modes.py", "_compute_mode_impedance"):
         "a modal impedance beta/(omega*EPS_0): EPS_0 divides no permittivity",
-    ("rfx/sources/waveguide_port.py", "apply_waveguide_port_e"): _VACUUM,
-    ("rfx/sources/waveguide_port.py", "init_waveguide_port"): _HOST,
+    ("rfx/stepping/waveguide_source.py", "apply_waveguide_port_e"): _VACUUM,
+    ("rfx/model/waveguide_modes.py", "init_waveguide_port"): _HOST,
     ("rfx/sparams/_common.py", "_resolve_msl_auto_offsets"): _C0,
     ("rfx/sparams/mixed.py", "compute_mixed_s_matrix"): _C0,
     ("rfx/sparams/msl.py", "compute_msl_s_matrix"): _C0,

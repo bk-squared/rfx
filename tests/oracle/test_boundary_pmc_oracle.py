@@ -163,7 +163,7 @@ def test_pmc_full_harminv_mode_ladder():
     analytic frequency, and the set of modes must cover the 1:3:5:7
     ladder (not merely 1:3 as the two-peak test pins).
     """
-    from rfx.harminv import harminv as _harminv
+    from rfx.harminv import matrix_pencil as _harminv
 
     spec = BoundarySpec(
         x="periodic", y="periodic",

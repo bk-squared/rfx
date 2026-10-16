@@ -308,14 +308,21 @@ def _seam_gradient(form, frozen_drive=False):
 def _frozen_drive():
     """The drive's Cb read through ``stop_gradient``: what the gradient is
     without the drive's own derivative (a witness of its size)."""
+    from rfx.model import source_coefficients
     real = nu.material_drive_scales
+    columns = source_coefficients.drive_columns
 
     def frozen(eps_r, sigma, mesh, drives, dt, *, ranks=None, grid=None, **film):
         return real(jax.lax.stop_gradient(eps_r), jax.lax.stop_gradient(sigma),
                     mesh, drives, dt, ranks=ranks, grid=grid, **film)
 
+    def frozen_columns(eps, sigma, *args, **kwargs):
+        # The per-slab drive table (rfx #1402 item 4) reads the edge here.
+        return columns(jax.lax.stop_gradient(eps), jax.lax.stop_gradient(sigma), *args, **kwargs)
+
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(nu, "material_drive_scales", frozen)
+        patch.setattr(source_coefficients, "drive_columns", frozen_columns)
         yield
 
 
@@ -444,7 +451,7 @@ def test_the_traced_drive_coefficient_has_a_finite_gradient_under_a_large_cotang
     from rfx.nonuniform import current_source_cb
     dt = float(_board(EPS_LO)._build_nonuniform_grid().dt)
     for cotangent in (1e18, 1e22, 1e26, 1e30):
-        grads = jax.grad(lambda e, s: cotangent * current_source_cb(e, s, dt, traced=True),
+        grads = jax.grad(lambda e, s: cotangent * current_source_cb(e, s, dt),
                          argnums=(0, 1))(jnp.float32(2.0), jnp.float32(0.5))
         assert all(np.isfinite(float(g)) for g in grads), (cotangent, grads)
 
@@ -615,6 +622,7 @@ def _main_tree(tmp_path_factory):
     return tree
 
 
+@pytest.mark.source_scan
 def test_field_sources_and_runs_without_an_override_are_main_bit_for_bit(tmp_path_factory):
     main = _main_tree(tmp_path_factory)
     results = {}

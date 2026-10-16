@@ -206,7 +206,8 @@ def test_step_materials_have_no_cell_or_pole_arrays():
     slim = model.kernel_materials(materials)
     assert slim.eps_r.shape == ()  # dtype token for CPML, not the cell epsilon
     assert slim.sigma is slim.mu_r is None
-    assert slim.components._fields == ("eps_update", "sigma_update", "mu_update")
+    assert slim.components._fields == ("eps_update", "sigma_update", "mu_update", "tensor")
+    assert slim.components.tensor is None
     assert slim.components.eps_update is materials.components.eps_update
     assert slim.components.mu_update is materials.components.mu_update
 

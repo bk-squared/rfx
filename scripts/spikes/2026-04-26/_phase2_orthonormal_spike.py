@@ -49,6 +49,9 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 import rfx.sources.waveguide_port as wg_mod  # noqa: E402
+import rfx.model.waveguide_modes as _wg_move_waveguide_modes
+import rfx.model.waveguide_mode_solver as _wg_move_mode_solver
+import rfx.measurement.waveguide_s as _wg_move_waveguide_s
 from rfx.sources.waveguide_port import WaveguidePort, WaveguidePortConfig  # noqa: E402
 
 
@@ -104,10 +107,10 @@ class SpikeUnavailable(RuntimeError):
     """Raised when an optional benchmark dependency/hook is unavailable."""
 
 
-_ORIG_APERTURE_DA = wg_mod._aperture_dA
-_ORIG_DISCRETE_TE_MODE_PROFILES = wg_mod._discrete_te_mode_profiles
-_ORIG_DISCRETE_TM_MODE_PROFILES = wg_mod._discrete_tm_mode_profiles
-_ORIG_GRAM_SCHMIDT_MODES = wg_mod._gram_schmidt_modes
+_ORIG_APERTURE_DA = _wg_move_waveguide_modes._aperture_dA
+_ORIG_DISCRETE_TE_MODE_PROFILES = _wg_move_waveguide_modes._discrete_te_mode_profiles
+_ORIG_DISCRETE_TM_MODE_PROFILES = _wg_move_waveguide_modes._discrete_tm_mode_profiles
+_ORIG_GRAM_SCHMIDT_MODES = _wg_move_waveguide_modes._gram_schmidt_modes
 _ORIG_INIT_WAVEGUIDE_PORT = wg_mod.init_waveguide_port
 
 
@@ -200,8 +203,8 @@ def _reduced_gevp_te_mode_profiles(
     if nu == 0 or nv == 0:
         raise ValueError("cannot build TE mode profile for an empty aperture")
 
-    d_uu = wg_mod._second_diff_1d(u_w, bc="neumann")
-    d_vv = wg_mod._second_diff_1d(v_w, bc="neumann")
+    d_uu = _wg_move_mode_solver._second_diff_1d(u_w, bc="neumann")
+    d_vv = _wg_move_mode_solver._second_diff_1d(v_w, bc="neumann")
     lap = np.kron(d_uu, np.eye(nv)) + np.kron(np.eye(nu), d_vv)
 
     dA = _partial_dA_np(u_w, v_w)
@@ -238,15 +241,15 @@ def _reduced_gevp_te_mode_profiles(
     if float(np.sum(hx * hx_ana * dA)) < 0.0:
         hx = -hx
 
-    d_hx_du = wg_mod._cell_centred_gradient(hx, u_w, axis=0, bc="neumann")
-    d_hx_dv = wg_mod._cell_centred_gradient(hx, v_w, axis=1, bc="neumann")
+    d_hx_du = _wg_move_mode_solver._cell_centred_gradient(hx, u_w, axis=0, bc="neumann")
+    d_hx_dv = _wg_move_mode_solver._cell_centred_gradient(hx, v_w, axis=1, bc="neumann")
     ey = d_hx_dv
     ez = -d_hx_du
     zero = ~keep.reshape(nu, nv)
     ey[zero] = 0.0
     ez[zero] = 0.0
-    hy = -wg_mod._shift_profile_to_dual(ez, h_offset)
-    hz = wg_mod._shift_profile_to_dual(ey, h_offset)
+    hy = -_wg_move_mode_solver._shift_profile_to_dual(ez, h_offset)
+    hz = _wg_move_mode_solver._shift_profile_to_dual(ey, h_offset)
     hy[zero] = 0.0
     hz[zero] = 0.0
 
@@ -261,7 +264,7 @@ def _reduced_gevp_te_mode_profiles(
     ez /= norm
     hy /= norm
     hz /= norm
-    hy, hz = wg_mod._scale_h_to_unit_cross(ey, ez, hy, hz, dA)
+    hy, hz = _wg_move_mode_solver._scale_h_to_unit_cross(ey, ez, hy, hz, dA)
     return ey, ez, hy, hz, float(np.sqrt(kc2))
 
 
@@ -416,7 +419,7 @@ def _normalize_profile_to_dA(profile: Profile, dA: np.ndarray) -> Profile:
     ez /= scale
     hy /= scale
     hz /= scale
-    hy, hz = wg_mod._scale_h_to_unit_cross(ey, ez, hy, hz, dA)
+    hy, hz = _wg_move_mode_solver._scale_h_to_unit_cross(ey, ez, hy, hz, dA)
     return ey, ez, hy, hz, kc
 
 
@@ -506,7 +509,7 @@ def _vi_consistency(profile: Profile, dA: np.ndarray) -> dict[str, float]:
     voltage = float(wg_mod.modal_voltage(state, cfg, cfg.x_index, cfg.dx))
     current = float(wg_mod.modal_current(state, cfg, cfg.x_index, cfg.dx))
     a_fwd, b_bwd = wg_mod.overlap_modal_amplitude(state, cfg, cfg.x_index, cfg.dx)
-    z_mode_complex = complex(wg_mod._compute_mode_impedance(cfg.freqs[0], cfg.f_cutoff, cfg.mode_type))
+    z_mode_complex = complex(_wg_move_waveguide_modes._compute_mode_impedance(cfg.freqs[0], cfg.f_cutoff, cfg.mode_type))
     return {
         "voltage": voltage,
         "current": current,
@@ -733,11 +736,11 @@ def _biorthogonal_group_waves(
     gram_h = _mode_dot_gram_np(h_profiles, weights)
 
     voltage_raw = np.stack(
-        [np.asarray(wg_mod._rect_dft(cfg.v_ref_t, cfg.freqs, cfg.dt, cfg.n_steps_recorded)) for cfg in mode_cfgs],
+        [np.asarray(_wg_move_waveguide_s._rect_dft(cfg.v_ref_t, cfg.freqs, cfg.dt, cfg.n_steps_recorded)) for cfg in mode_cfgs],
         axis=0,
     )
     current_raw = np.stack(
-        [np.asarray(wg_mod._rect_dft(cfg.i_ref_t, cfg.freqs, cfg.dt, cfg.n_steps_recorded)) for cfg in mode_cfgs],
+        [np.asarray(_wg_move_waveguide_s._rect_dft(cfg.i_ref_t, cfg.freqs, cfg.dt, cfg.n_steps_recorded)) for cfg in mode_cfgs],
         axis=0,
     )
 
@@ -753,7 +756,7 @@ def _biorthogonal_group_waves(
     shift = 0.0 if ref_shift is None else float(ref_shift)
     step_sign = 1 if str(first.direction).startswith("+") else -1
     for idx, cfg in enumerate(mode_cfgs):
-        forward, backward = wg_mod._extract_global_waves(
+        forward, backward = _wg_move_waveguide_s._extract_global_waves(
             cfg,
             jnp.asarray(voltage_coeff[idx]),
             jnp.asarray(current_coeff[idx]),
@@ -763,8 +766,8 @@ def _biorthogonal_group_waves(
         else:
             a_ref, b_ref = backward, forward
         if shift != 0.0:
-            beta = wg_mod._compute_beta(cfg.freqs, cfg.f_cutoff, dt=cfg.dt, dx=cfg.dx)
-            a_ref, b_ref = wg_mod._shift_modal_waves(a_ref, b_ref, beta, shift, step_sign)
+            beta = _wg_move_waveguide_modes._compute_beta(cfg.freqs, cfg.f_cutoff, dt=cfg.dt, dx=cfg.dx)
+            a_ref, b_ref = _wg_move_waveguide_s._shift_modal_waves(a_ref, b_ref, beta, shift, step_sign)
         a_rows.append(np.asarray(a_ref))
         b_rows.append(np.asarray(b_ref))
 
@@ -1236,33 +1239,33 @@ def _run_biortho_physical_benchmarks(
 def patched_waveguide_port(candidate: CandidateSpec) -> Iterator[None]:
     """Patch production hooks enough for expensive benchmark candidates."""
 
-    old_aperture = wg_mod._aperture_dA
-    old_te = wg_mod._discrete_te_mode_profiles
-    old_tm = wg_mod._discrete_tm_mode_profiles
-    old_gs = wg_mod._gram_schmidt_modes
+    old_aperture = _wg_move_waveguide_modes._aperture_dA
+    old_te = _wg_move_waveguide_modes._discrete_te_mode_profiles
+    old_tm = _wg_move_waveguide_modes._discrete_tm_mode_profiles
+    old_gs = _wg_move_waveguide_modes._gram_schmidt_modes
     try:
         if candidate.kind == "uniform_full_yee":
-            wg_mod._aperture_dA = _full_aperture_dA
-            wg_mod._discrete_te_mode_profiles = _uniform_full_yee_te_mode_profiles
+            _wg_move_waveguide_modes._aperture_dA = _full_aperture_dA
+            _wg_move_waveguide_modes._discrete_te_mode_profiles = _uniform_full_yee_te_mode_profiles
         elif candidate.kind == "full_yee_drop_gs":
             # Current production compromise: no patch.
             pass
         elif candidate.kind == "reduced_gevp_drop":
-            wg_mod._aperture_dA = _drop_both_aperture_dA
-            wg_mod._discrete_te_mode_profiles = _reduced_gevp_te_mode_profiles
+            _wg_move_waveguide_modes._aperture_dA = _drop_both_aperture_dA
+            _wg_move_waveguide_modes._discrete_te_mode_profiles = _reduced_gevp_te_mode_profiles
         elif candidate.kind == "biortho_full_yee":
             # Keep the production dropped aperture/source geometry, but disable
             # production Lorentz Gram-Schmidt and defer modal separation to the
             # script-local recorder-matched dot-Gram extraction.
-            wg_mod._discrete_te_mode_profiles = _biortho_full_yee_te_mode_profiles
-            wg_mod._discrete_tm_mode_profiles = _biortho_full_yee_tm_mode_profiles
-            wg_mod._gram_schmidt_modes = lambda cfgs: list(cfgs)
+            _wg_move_waveguide_modes._discrete_te_mode_profiles = _biortho_full_yee_te_mode_profiles
+            _wg_move_waveguide_modes._discrete_tm_mode_profiles = _biortho_full_yee_tm_mode_profiles
+            _wg_move_waveguide_modes._gram_schmidt_modes = lambda cfgs: list(cfgs)
         yield
     finally:
-        wg_mod._aperture_dA = old_aperture
-        wg_mod._discrete_te_mode_profiles = old_te
-        wg_mod._discrete_tm_mode_profiles = old_tm
-        wg_mod._gram_schmidt_modes = old_gs
+        _wg_move_waveguide_modes._aperture_dA = old_aperture
+        _wg_move_waveguide_modes._discrete_te_mode_profiles = old_te
+        _wg_move_waveguide_modes._discrete_tm_mode_profiles = old_tm
+        _wg_move_waveguide_modes._gram_schmidt_modes = old_gs
 
 
 def _run_benchmarks_for_candidate(
@@ -1369,16 +1372,16 @@ def run(args: argparse.Namespace) -> int:
     for candidate in selected:
         status = max(status, _run_candidate(candidate, args))
 
-    if wg_mod._aperture_dA is not _ORIG_APERTURE_DA:
+    if _wg_move_waveguide_modes._aperture_dA is not _ORIG_APERTURE_DA:
         print("ERROR: _aperture_dA monkeypatch leaked after run")
         status = 1
-    if wg_mod._discrete_te_mode_profiles is not _ORIG_DISCRETE_TE_MODE_PROFILES:
+    if _wg_move_waveguide_modes._discrete_te_mode_profiles is not _ORIG_DISCRETE_TE_MODE_PROFILES:
         print("ERROR: _discrete_te_mode_profiles monkeypatch leaked after run")
         status = 1
-    if wg_mod._discrete_tm_mode_profiles is not _ORIG_DISCRETE_TM_MODE_PROFILES:
+    if _wg_move_waveguide_modes._discrete_tm_mode_profiles is not _ORIG_DISCRETE_TM_MODE_PROFILES:
         print("ERROR: _discrete_tm_mode_profiles monkeypatch leaked after run")
         status = 1
-    if wg_mod._gram_schmidt_modes is not _ORIG_GRAM_SCHMIDT_MODES:
+    if _wg_move_waveguide_modes._gram_schmidt_modes is not _ORIG_GRAM_SCHMIDT_MODES:
         print("ERROR: _gram_schmidt_modes monkeypatch leaked after run")
         status = 1
     if wg_mod.init_waveguide_port is not _ORIG_INIT_WAVEGUIDE_PORT:

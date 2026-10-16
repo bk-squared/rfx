@@ -167,7 +167,8 @@ def _plus(add):
 
 def _observer(add, field, **base):
     def build(lane, on, ref=False):
-        options = base | ({"boundary": "pec"} if lane in ADI else {})
+        options = base | ({"boundary": "pec"}
+                          if lane in ADI or (field == "ntff_data" and lane == "run_subgridded") else {})
         return _added(add, **options)(lane, on, ref)
     return Feature(build, observer=field)
 
@@ -421,7 +422,7 @@ FEATURES: dict[tuple[str, str], Feature] = {
     ("_flux_monitors", "flux"): _observer(
         lambda s, _: s.add_flux_monitor(axis="x", coordinate=6e-3, n_freqs=3), "flux_monitors"),
     ("_ntff", "ntff_box"): _observer(
-        lambda s, _: s.add_ntff_box(mm(2, 2, 2), mm(10, 10, 8), n_freqs=3), "ntff_data"),
+        lambda s, _: s.add_ntff_box(mm(2, 2, 2), mm(10, 10, 8), n_freqs=3), "ntff_data", boundary="cpml"),
     ("_current_moments", "block_moments"): _observer(
         lambda s, _: s.add_current_moment_monitor(mm(2, 2, 2), mm(10, 10, 10), block_size=4e-3,
                                                   freqs=np.array([5e9])),
@@ -446,7 +447,7 @@ def _run(sim, lane, feature, *, entry=None):
             kwargs.update(feature.run_kwargs(entry))
             return sim.run(**kwargs)
         kwargs["checkpoint"] = False
-        if entry == "fwd_distributed_nu":
+        if entry in ("fwd_distributed", "fwd_distributed_nu"):
             kwargs.update(distributed=True, devices=_devices())
         return sim.forward(**kwargs)
 
@@ -1052,6 +1053,7 @@ BASE_ROWS = {
     "run_subgridded": _EVERY_BASE | {("_refinement", "slab")},
     "run_adi": _EVERY_BASE | {("_solver", "")},
     "run_distributed": _EVERY_BASE,
+    "fwd_distributed": _EVERY_BASE,
     "run_distributed_nu": _EVERY_BASE | {("_dx_profile", "graded")},
     "fwd_uniform": _EVERY_BASE,
     "fwd_nonuniform": _EVERY_BASE | {("_dx_profile", "graded")},

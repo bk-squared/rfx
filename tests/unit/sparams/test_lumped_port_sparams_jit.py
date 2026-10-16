@@ -60,7 +60,7 @@ def test_pec_cavity_s11_magnitude_near_one():
         skip_preflight=True,
     )
 
-    s11 = np.array(result.s_params)
+    s11 = np.array(result.s_params[0, 0])
     mag = np.abs(s11)
     # Lossless PEC cavity: every frequency must be near full reflection.
     assert np.all(mag > 0.85), f"|S11| dropped below 0.85 in band: {mag}"
@@ -120,7 +120,7 @@ def test_jit_path_matches_python_loop_extractor():
         port_s11_freqs=freqs,
         skip_preflight=True,
     )
-    s11_jit = np.array(result.s_params)
+    s11_jit = np.array(result.s_params[0, 0])
 
     # Both paths use the same V/I wave-decomposition formula on equivalent
     # measurement cells; expect close numerical agreement (tolerance set to

@@ -98,7 +98,7 @@ def run(sim, lane, row, steps=4):
         if row == "conformal":
             kw["conformal_pec"] = True
         return sim.run(**kw)
-    if lane == "fwd_distributed_nu":
+    if lane in ("fwd_distributed", "fwd_distributed_nu"):
         kw.update(distributed=True, devices=jax.devices("cpu")[:2])
     if row == "override_drive":
         kw["eps_override"] = override_epsilon(sim, lane)
@@ -115,7 +115,7 @@ def measured(lane, row):
             jax.block_until_ready(result.time_series)
     if dump.lane != lane:
         raise RuntimeError(f"expected lane {lane}, recorded {dump.lane}")
-    if lane in ("run_distributed", "run_distributed_nu", "fwd_distributed_nu"):
+    if lane in ("run_distributed", "fwd_distributed", "run_distributed_nu", "fwd_distributed_nu"):
         dump.full_materials = cell_materials(sim, lane)
     return dump
 
@@ -133,12 +133,12 @@ def material_pairs(dump, row, axis):
     expected = ({"sat.c", "sat.f"} if row == "sat" else
                 {"aniso.E"} if row == "conformal" else
                 {"adi.E"} if dump.lane in ("run_adi", "fwd_adi") else
-                {"distributed.E"} if row != "mu" and dump.lane == "run_distributed" else
+                {"distributed.E"} if row != "mu" and dump.lane in ("run_distributed", "fwd_distributed") else
                 {"distributed_nu.E"} if row != "mu" and dump.lane in ("run_distributed_nu", "fwd_distributed_nu") else
                 set())
     if expected - sites:
         raise RuntimeError(f"no record at {sorted(expected - sites)}")
-    if row != "mu" and dump.lane in ("run_distributed", "run_distributed_nu", "fwd_distributed_nu"):
+    if row != "mu" and dump.lane in ("run_distributed", "fwd_distributed", "run_distributed_nu", "fwd_distributed_nu"):
         spans = sorted((int(r["owned_start"]), int(r["owned_count"])) for r in records)
         end = 0
         for start, count in spans:
@@ -360,17 +360,28 @@ def test_dump_is_consumed(lane, row):
 @pytest.mark.parametrize("row", ["eps", "sigma"])
 def test_ghost_row_mutation_is_detected(monkeypatch, lane, row):
     from rfx.runners import _distributed_common as dc
+    from rfx.stepping import slab_setup
 
     original = dc._slab_x_lo_view
+    original_view_rows = slab_setup.uniform_from_cut
 
     def broken_ghost(arr, rank):
         view = original(arr, rank)
         # Keep both material helpers; corrupt rank 1's incoming ghost.
         return view.at[0].set(jnp.where(rank == 1, jnp.ones_like(view[0]), view[0]))
 
+    def broken_view_ghost(array, layout, mesh, **kw):
+        # The graded lanes run the wrapped step: its producers read slab views
+        # [extra low | low ghost | owned | high ghost]; corrupt rank 1's ghost.
+        rows = original_view_rows(array, layout, mesh, **kw)
+        if np.ndim(rows) != 4 or not jnp.issubdtype(rows.dtype, jnp.floating):
+            return rows
+        return rows.at[1, 1].set(jnp.ones_like(rows[1, 1]))
+
     measured.cache_clear()
     try:
         monkeypatch.setattr(dc, "_slab_x_lo_view", broken_ghost)
+        monkeypatch.setattr(slab_setup, "uniform_from_cut", broken_view_ghost)
         dump = measured(lane, row)
         for axis in (1, 2):
             with pytest.raises(AssertionError):

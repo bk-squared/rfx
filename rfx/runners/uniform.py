@@ -14,118 +14,14 @@ from rfx import simulation as _simulation
 # resolved at CALL time and always reflects the current attribute. These are
 # setup-time calls (once per port/source registration), not per-timestep.
 from rfx.sources.sources import LumpedPort, setup_lumped_port, WirePort, setup_wire_port
-from rfx.probes.probes import init_dft_plane_probe, init_flux_monitor
-from rfx.sources.waveguide_port import (
-    extract_waveguide_sparams,
-    waveguide_plane_positions,
-)
+from rfx.probes.probes import init_dft_plane_probe
+from rfx.measurement.flux_weights import build_flux_monitor_cfgs
+from rfx.measurement import package_declared_measurements
 from rfx.current_moments import monitor_for_simulation as _cm_for_sim
 from rfx.farfield import make_ntff_box
 from rfx.lumped import setup_rlc_materials, build_rlc_meta
+from rfx.measurement.oblique import reconstruct_oblique_physical
 
-
-def _reconstruct_oblique_physical(sim_result, tfsf_cfg, grid, probes):
-    """#404: convert the complex Bloch envelope P back to the physical real field
-    ``Re(P·exp(-j k_t·x_t))`` for the oblique-periodic path.
-
-    Reconstructs the final ``state`` (per-cell transverse phase ramp along the
-    periodic axis) and point-probe ``time_series`` (fixed phase at each probe's
-    transverse cell). Other outputs are fenced upstream. The sign convention is
-    ``cfg.k_transverse`` — the same one the 2D-aux injection and the hand-rolled
-    acceptance tests use (``exp(-1j·k_transverse·y)``).
-    """
-    import jax.numpy as _jnp
-    k_t = float(tfsf_cfg.k_transverse)
-    taxis = 1 if tfsf_cfg.transverse_axis == "y" else 2
-    d_t = float(getattr(grid, "dy", grid.dx)) if taxis == 1 \
-        else float(getattr(grid, "dz", grid.dx))
-    n_t = grid.shape[taxis]
-    ramp = _jnp.exp(-1j * k_t * _jnp.arange(n_t) * d_t)
-
-    new_state = sim_result.state
-    if new_state is not None and _jnp.iscomplexobj(new_state.ex):
-        shp = [1, 1, 1]
-        shp[taxis] = n_t
-        ramp3 = ramp.reshape(shp)
-        new_state = new_state._replace(**{
-            f: _jnp.real(getattr(new_state, f) * ramp3)
-            for f in ("ex", "ey", "ez", "hx", "hy", "hz")
-        })
-
-    new_ts = sim_result.time_series
-    if new_ts is not None and _jnp.iscomplexobj(new_ts):
-        if probes:  # time_series is (n_steps, n_probes) in probe order
-            idxs = _jnp.array([(p.j if taxis == 1 else p.k) for p in probes])
-            ph = _jnp.exp(-1j * k_t * idxs * d_t)
-            new_ts = _jnp.real(new_ts * ph[None, :])
-        else:
-            new_ts = _jnp.real(new_ts)
-
-    return sim_result._replace(state=new_state, time_series=new_ts)
-
-
-def build_flux_monitor_cfgs(sim, grid, n_steps, entries=None):
-    """Materialize ``sim._flux_monitors`` entries into scan monitor configs.
-
-    Shared extraction of the ``run_uniform`` inline block so
-    the low-level forward lane (``_forward_from_materials``, issue-#488
-    mixed-family flux magnitude channel) can register the SAME monitors
-    the run() lane does. Pure function of (sim registrations, grid,
-    n_steps). Finite regions resolve to interior cells via the same geometry
-    resolver used by preflight; ``size=None`` keeps the legacy full plane.
-
-    ``entries`` overrides the entry list (same ``_FluxMonitorEntry``
-    objects ``add_flux_monitor`` registers) without touching the sim's
-    own registrations — the ``extra_flux_monitors=`` opt-in on the coax
-    extractors (#589 flux-adjudication instrument) passes caller-built
-    entries here while the registered-monitor guard stays intact. ``sim``
-    is still consulted for ``_freq_max``/``_domain``.
-    """
-    axis_to_index = {"x": 0, "y": 1, "z": 2}
-    from rfx.probes.flux_region import resolve_flux_region
-    from rfx.boundaries.pec import resolve_wall_faces
-    flux_monitors = []
-    if entries is None:
-        entries = getattr(sim, '_flux_monitors', [])
-    for pe in entries:
-        axis_idx = axis_to_index[pe.axis]
-        plane_pos = [0.0, 0.0, 0.0]
-        plane_pos[axis_idx] = pe.coordinate
-        grid_index = grid.position_to_index(tuple(plane_pos))[axis_idx]
-        freqs_arr = (
-            pe.freqs
-            if pe.freqs is not None
-            else jnp.linspace(sim._freq_max / 10, sim._freq_max, pe.n_freqs)
-        )
-        # Compute tangential index bounds from size (finite flux region)
-        tangential_axes = [a for a in range(3) if a != axis_idx]
-        grid_ns = [grid.shape[a] for a in tangential_axes]
-        region = resolve_flux_region(grid, pe, sim._domain)
-        if region is not None:
-            (lo1, hi1), (lo2, hi2) = region["cell_slices"]
-            grid_index = region["normal_index"]
-        else:
-            lo1, hi1 = 0, grid_ns[0]
-            lo2, hi2 = 0, grid_ns[1]
-        flux_monitors.append(
-            init_flux_monitor(
-                axis=axis_idx,
-                index=grid_index,
-                freqs=freqs_arr,
-                grid_shape=grid.shape,
-                # Grid is cubic (single dx) — both tangential cell sizes
-                # equal grid.dx. If Grid ever becomes non-cubic, select
-                # the two tangential sizes by axis_idx here.
-                d1=grid.dx,
-                d2=grid.dx,
-                dft_total_steps=n_steps,
-                dft_window=getattr(pe, 'dft_window', 'rect'),
-                dft_window_alpha=getattr(pe, 'dft_window_alpha', 0.25),
-                lo1=lo1, hi1=hi1, lo2=lo2, hi2=hi2,
-                pmc_faces=resolve_wall_faces(grid, sim._periodic_flags())[1],
-            )
-        )
-    return flux_monitors
 
 
 def run_uniform(
@@ -213,7 +109,17 @@ def run_uniform(
     -------
     Result
     """
-    from rfx.api import Result, WaveguideSParamResult
+    from rfx.api import Result
+
+    # Step-count-sized builds (drive tables, DFT and flux accumulators, port
+    # records): on the decay path the loop runs up to decay_max_steps, so they
+    # are sized for it, as the graded runner's sizing_n. Sized by n_steps, a
+    # drive still on at n_steps was cut there while the run went on.
+    sizing_n = int(decay_max_steps) if until_decay is not None else n_steps
+    if until_decay is not None:
+        # The decay loop accumulates flux with rectangular weights only.
+        from rfx.measurement.decay import refuse_windowed_flux
+        refuse_windowed_flux(sim, "uniform")
 
     if conformal_pec is None:
         conformal_pec = bool(sim._boundary_spec.conformal_faces())
@@ -341,12 +247,12 @@ def run_uniform(
         periodic = tuple(axis in sim._periodic_axes for axis in "xyz")
 
     if sim._tfsf is not None:
-        from rfx.sources.tfsf import validate_custom_tfsf_waveform
-        from rfx.sources.tfsf_discrete_plane_wave import init_from_sim
+        from rfx.sources.tfsf import tfsf_from_declaration
 
-        validate_custom_tfsf_waveform(sim._tfsf.waveform, grid.dt, n_steps)
-
-        tfsf = init_from_sim(sim, grid, decay_max_steps if until_decay is not None else n_steps)
+        tfsf = tfsf_from_declaration(
+            sim._tfsf, grid, sim._freq_max, n_steps=n_steps,
+            line_steps=decay_max_steps if until_decay is not None else n_steps,
+        )
         from rfx.boundaries.tfsf import boundary_flags as tfsf_boundary_flags
         periodic, cpml_axes = tfsf_boundary_flags(tfsf[0], grid)
 
@@ -388,18 +294,9 @@ def run_uniform(
     wire_port_excites = []
     for _port_index, pe in enumerate(sim._ports):
         if pe.impedance == 0.0:
-            # Auto-select source type based on boundary conditions:
-            # - CPML (open): Cb/dx normalized (prevents DC on PEC surface)
-            # - PEC (closed): raw field add (broadband, exact cavity modes)
-            # amplitude_kind (issue #571) rides on top: the helper stays
-            # boundary-selected (its native numerics are deliberate); the
-            # KIND only rescales the waveform inside the helper. kind=None
-            # threads through as a no-op (legacy, bit-identical).
-            from rfx.sources.port_drive import soft_source
-            sources.defer(soft_source, grid, pe.position, pe.component,
-                          pe.waveform, n_steps, amplitude_kind=pe.amplitude_kind,
-                          raw=sim._boundary not in ("cpml", "upml"),
-                          field_dtype=field_dtype)
+            # The declared kind alone decides the drive (forward() calls the same).
+            from rfx.sources.port_drive import defer_soft_source
+            defer_soft_source(sources, grid, pe, sizing_n, field_dtype=field_dtype)
             continue
         if pe.extent is not None:
             # Multi-cell wire port
@@ -434,7 +331,7 @@ def run_uniform(
                                         pec_edge_masks=pec_edge_masks)
             if pe.excite:
                 sources.defer(_simulation.make_wire_port_sources,
-                    grid, wp, n_steps=n_steps,
+                    grid, wp, n_steps=sizing_n,
                     pec_edge_masks=pec_edge_masks)
             # No PEC clearing for a wire port (#931 §1.9, corrected):
             # a cell is LIVE exactly when the port component's own edge at
@@ -452,7 +349,7 @@ def run_uniform(
             lumped_ports.append(lp)
             materials = setup_lumped_port(grid, lp, materials)
             if pe.excite:
-                sources.defer(_simulation.make_port_source, grid, lp, n_steps=n_steps)
+                sources.defer(_simulation.make_port_source, grid, lp, n_steps=sizing_n)
             # Release the realized PEC edge the lumped port DRIVES — its
             # own component at its own cell, and nothing else (#931 §1.9,
             # corrected: the three-component form opened the conductor the
@@ -473,6 +370,9 @@ def run_uniform(
             reason_overrides={"s_param_n_steps":
                 "this lane reads S11 from the main run's port record, "
                 "whose length is n_steps"})
+
+    from rfx.measurement.port_registration import uniform_run_specs
+    record_specs = uniform_run_specs(grid, wire_ports, wire_port_live_cells, lumped_ports, sim._ports)
 
     # Build wire port S-param specs for JIT-integrated DFT
     wire_sparam_specs = []
@@ -554,11 +454,11 @@ def run_uniform(
                 if eigenmode_data is not None:
                     # Schelkunoff J+M one-sided launch: both E and H sources
                     sources.defer(deferred_msl_sources_jm, grid, mp,
-                                  n_steps=n_steps, eigenmode_data=eigenmode_data,
+                                  n_steps=sizing_n, eigenmode_data=eigenmode_data,
                                   magnetic_sources=mag_sources)
                 else:
                     sources.defer(make_msl_port_sources,
-                        grid, mp, n_steps=n_steps,
+                        grid, mp, n_steps=sizing_n,
                         mode_profile=mode_profile,
                     )
             # Only the SUBSTRATE-NORMAL component over the
@@ -595,13 +495,10 @@ def run_uniform(
                 component=pe.component,
                 freqs=freqs_arr,
                 grid_shape=grid.shape,
-                dft_total_steps=n_steps,
+                dft_total_steps=sizing_n,
                 region=getattr(sim, "_dft_plane_regions", {}).get(pe.name),
             )
         )
-
-    # Flux monitors (Poynting flux through plane)
-    flux_monitors = build_flux_monitor_cfgs(sim, grid, n_steps)
 
     if sim._waveguide_ports:
         from rfx.preflight.waveguide import resolve_waveguide_port_freqs
@@ -610,7 +507,9 @@ def run_uniform(
         pec_axes = None
         for pe in sim._waveguide_ports:
             freqs_arr = resolve_waveguide_port_freqs(sim, pe)
-            waveguide_ports.append(sim._build_waveguide_port_config(pe, grid, freqs_arr, n_steps))
+            # The port applies its incident table by step index and holds its
+            # last entry past its end: sized by sizing_n (above).
+            waveguide_ports.append(sim._build_waveguide_port_config(pe, grid, freqs_arr, sizing_n))
 
     if sim._tfsf is not None:
         if not sim._tfsf.closed_box:
@@ -688,7 +587,7 @@ def run_uniform(
             else:
                 comp = "ez"
         from rfx.simulation import make_source as _make_src
-        sources.append(_make_src(grid, tuple(center), comp, wf, n_steps))
+        sources.append(_make_src(grid, tuple(center), comp, wf, sizing_n))
 
     from rfx.model.materials import with_components
     materials = with_components(materials, grid,
@@ -723,6 +622,7 @@ def run_uniform(
     # In-loop block current moments (rfx.current_moments). Built here rather
     # than at declaration time so the slab window and the block map come from
     # the grid the solve actually builds, not from the declared corners.
+    flux_monitors = build_flux_monitor_cfgs(sim, grid, sizing_n, periodic=_simulation.resolve_periodic(grid, periodic))
     current_moments = _cm_for_sim(sim, grid, periodic, conductors=conductors)
 
     # Lumped RLC elements
@@ -807,9 +707,17 @@ def run_uniform(
 
     # Main simulation
     if until_decay is not None:
+        # The energy stop reads W only after every drive built above has ended.
+        from rfx.measurement.decay import advisory_inputs, drive_end
+        n_end = (drive_end(grid, decay_max_steps, sources=sources, mag_sources=mag_sources,
+                           tfsf=tfsf, waveguide_ports=waveguide_ports)
+                 if until_decay > 0 and sim._boundary in ("cpml", "upml")
+                 and radiated_flux_box is None else None)
         sim_result = _simulation.run_until_decay(
             grid, materials,
             decay_by=until_decay,
+            n_end=n_end,
+            advisory=advisory_inputs(sim, dt=grid.dt, n_table=decay_max_steps),
             check_interval=decay_check_interval,
             min_steps=decay_min_steps,
             max_steps=decay_max_steps,
@@ -843,6 +751,7 @@ def run_uniform(
             pec_wires=pec_wires,
             conformal_weights=conformal_weights,
             wire_port_sparams=wire_sparam_specs or None,
+            port_record_specs=record_specs,
             lumped_rlc=rlc_metas,
             kerr_chi3=kerr_chi3,
             field_dtype=field_dtype,
@@ -880,6 +789,7 @@ def run_uniform(
             pec_wires=pec_wires,
             conformal_weights=conformal_weights,
             wire_port_sparams=wire_sparam_specs or None,
+            port_record_specs=record_specs,
             lumped_rlc=rlc_metas,
             kerr_chi3=kerr_chi3,
             field_dtype=field_dtype,
@@ -1008,43 +918,11 @@ def run_uniform(
             return_settling=True,
         )
 
-    waveguide_ports_result = (
-        {
-            entry.name: cfg
-            for entry, cfg in zip(sim._waveguide_ports, sim_result.waveguide_ports or ())
-        }
-        if sim._waveguide_ports
-        else None
+    declared_measurements = package_declared_measurements(
+        sim, grid,
+        flux_monitors=sim_result.flux_monitors or (),
+        waveguide_cfgs=sim_result.waveguide_ports or (),
     )
-    from rfx.sparams._waveguide_planes import resolve_reported_planes
-
-    waveguide_sparams_result = None
-    if sim._waveguide_ports:
-        waveguide_sparams_result = {}
-        for entry, cfg in zip(sim._waveguide_ports, sim_result.waveguide_ports or ()):
-            plane_positions = waveguide_plane_positions(cfg)
-            source_plane = plane_positions["source"]
-            measured_reference_plane = plane_positions["reference"]
-            measured_probe_plane = plane_positions["probe"]
-            reference_plane, probe_plane, calibration_preset = resolve_reported_planes(
-                entry, cfg,
-            )
-            s11, s21 = extract_waveguide_sparams(
-                cfg,
-                ref_shift=reference_plane - measured_reference_plane,
-                probe_shift=probe_plane - measured_probe_plane,
-            )
-            waveguide_sparams_result[entry.name] = WaveguideSParamResult(
-                freqs=np.array(cfg.freqs),
-                s11=np.array(s11),
-                s21=np.array(s21),
-                calibration_preset=calibration_preset,
-                source_plane=float(source_plane),
-                measured_reference_plane=measured_reference_plane,
-                measured_probe_plane=measured_probe_plane,
-                reference_plane=reference_plane,
-                probe_plane=probe_plane,
-            )
 
     # #404: oblique 2D-aux TFSF evolved the complex Bloch envelope P; convert the
     # returned state + point probes back to physical real fields (real path and
@@ -1052,10 +930,13 @@ def run_uniform(
     if sim._tfsf is not None:
         from rfx.sources.tfsf import is_tfsf_2d as _is_tfsf_2d_out
         if _is_tfsf_2d_out(tfsf[0]):
-            sim_result = _reconstruct_oblique_physical(sim_result, tfsf[0], grid, probes)
+            sim_result = reconstruct_oblique_physical(sim_result, tfsf[0], grid, probes)
 
+    from rfx.sparams._record_selection import read_ids, SReadPorts
+    # until_decay: one record of what ended the run (rfx.measurement.decay.finish_decay).
+    _stop = getattr(sim_result, "decay_stop", None)
     return Result(
-        diagnostics=diagnostics,
+        diagnostics=tuple(diagnostics) + ((_stop,) if _stop is not None else ()),
         realized_geometry=geometry_record,
         state=sim_result.state,
         time_series=sim_result.time_series,
@@ -1070,19 +951,7 @@ def run_uniform(
             if sim._dft_planes
             else None
         ),
-        flux_monitors=(
-            {
-                entry.name: fm
-                for entry, fm in zip(
-                    getattr(sim, "_flux_monitors", []),
-                    sim_result.flux_monitors or (),
-                )
-            }
-            if getattr(sim, "_flux_monitors", [])
-            else None
-        ),
-        waveguide_ports=waveguide_ports_result,
-        waveguide_sparams=waveguide_sparams_result,
+        **declared_measurements,
         snapshots=sim_result.snapshots,
         snapshot_axes=sim_result.snapshot_axes,
         grid=grid,
@@ -1091,6 +960,7 @@ def run_uniform(
         # (find_resonances, an FFT of time_series) needs the real one.
         dt=sim_result.dt,
         sparam_time_records=sim_result.sparam_time_records,
+        sparam_read_ids=read_ids(sim_result.sparam_time_records) if _single_wire_fastpath else SReadPorts(),
         dft_time_records={
             entry.name: rec for entry, rec in zip(sim._dft_planes, sim_result.dft_time_records or ())
         },

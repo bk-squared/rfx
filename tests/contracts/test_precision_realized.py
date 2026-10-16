@@ -87,11 +87,16 @@ def model(precision, entry):
         sim = _build_thru(reference_plane_cells=3)
         sim._precision = precision
         return sim
+    exterior = ({'boundary': 'cpml', 'cpml_layers': 2}
+                if entry.endswith('_ntff') or entry == 'ntff_sweep' else {'boundary': 'pec'})
     sim = Simulation(freq_max=5e9, domain=(.018, .012, .012), dx=.003,
-                     boundary='pec', precision=precision)
-    for x in (.006, .012)[:1 if 'single' in entry else 2]:
+                     precision=precision, **exterior)
+    for i, x in enumerate((.006, .012)[:1 if 'single' in entry else 2]):
+        # forward S from one record needs one driven port (isolated drives); the
+        # run/distributed entries keep both driven so their own refusal order is tested
         sim.add_port((x, .006, .006), 'ez', impedance=50.,
                      waveform=GaussianPulse(f0=3e9, bandwidth=.8),
+                     excite=i == 0 or not entry.startswith('forward'),
                      **({'extent': .003} if 'wire' in entry else {}))
     sim.add_probe((.009, .006, .006), 'ez')
     if entry.endswith('_adi'):
@@ -326,6 +331,19 @@ def test_realized_field_storage(monkeypatch, entry, precision):
                 else:
                     result = invoke(model(precision, entry), entry)
             output = list(numeric_arrays(result))
+            if entry in ('run_ntff', 'forward_ntff'):
+                from rfx.farfield import compute_far_field, compute_far_field_jax
+                ff = compute_far_field_jax(result.ntff_data, result.ntff_box,
+                                           result.grid, [1.1], [.7])
+                assert ff.E_theta.dtype == ff.E_phi.dtype == expected_complex
+                if precision == 'float64':
+                    reference = compute_far_field(result.ntff_data, result.ntff_box,
+                                                  result.grid, [1.1], [.7])
+                    actual = np.asarray([ff.E_theta, ff.E_phi])
+                    expected = np.asarray([reference.E_theta, reference.E_phi])
+                    relative_error = np.max(np.abs(actual - expected)) / np.max(np.abs(expected))
+                    print(f'{entry} far-field relative_error={relative_error:.17g}')
+                    assert relative_error <= 1e-10
 
             def check_finite_entries(a):
                 if entry == 'compute_mixed_s_matrix':
@@ -333,6 +351,11 @@ def test_realized_field_storage(monkeypatch, entry, precision):
                     # precision still applies to every retained entry.
                     assert np.isnan(a[:, 0]).all(), entry
                     assert np.isfinite(a[:, 1]).all(), entry
+                elif entry.startswith('forward') and a.ndim == 3 and a.shape[:2] == (2, 2):
+                    # forward S-matrix (N, N, F): only port 0 is driven, so the
+                    # column of port 1 is NaN by definition (not measured).
+                    assert np.isfinite(a[:, 0]).all(), entry
+                    assert np.isnan(a[:, 1]).all(), entry
                 else:
                     assert np.isfinite(a).all(), entry
 

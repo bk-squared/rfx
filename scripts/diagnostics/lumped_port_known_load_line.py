@@ -41,7 +41,7 @@ def measure(kind, r_over_zc):
                       declared_separation=1.25e-3)
     result = sim.forward(port_s11_freqs=FREQS, num_periods=NUM_PERIODS, skip_preflight=True)
     assert_solved_ports(result, line, kind)
-    measured = np.asarray(result.s_params).reshape(-1)
+    measured = np.asarray(result.s_params[0, 0]).reshape(-1)
     pure = input_reflection(line, FREQS, r_over_zc * line.zc)
     predicted = input_reflection(line, FREQS, r_over_zc * line.zc,
                                  element_l=element_inductance(line))

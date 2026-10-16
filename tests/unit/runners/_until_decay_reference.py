@@ -1,8 +1,14 @@
-"""Frozen uniform decay loop from origin/main 4725b748, before #1322.
+"""Per-step uniform decay loop, independent of the chunked driver.
 
-Captured with ast.parse/ast.unparse (docstrings/comments removed only).
-The setup and step kernel are shared; the driver and stop checks below
-are the original implementation, independent of the chunked driver.
+Captured from origin/main 4725b748 with ast.parse/ast.unparse (docstrings and
+comments removed only). The setup and step kernel are shared; the driver
+and the stop checks below are this file's own. The energy check is the
+declared design v4 rule with the float32 floor written inline, without
+rfx.measurement: the conserved W from this loop's fields (one ``update_h``
+for H^(n+1/2)) at every count k * I, the drive end from this loop's own
+source tables, below when W < decay_by * ref, or W < 1e-12 * largest W so far
+and W >= 0.95 ** (I / 50) * W at the previous check.
+Point and flux checks keep their decisions at counts k * I.
 Retained DFT and S-parameter records follow the current runner interface.
 """
 
@@ -24,9 +30,10 @@ from rfx.simulation import (
     validate_report_every,
     check_not_traced,
     ProgressReporter,
-    _warn_static_remnant_cap_hit,
 )
+from rfx.measurement.decay import static_remnant_advisory, table_dc
 from rfx.core.drives import Drives, StepDrives
+from rfx.core.yee import component_e_materials, component_h_materials, update_h, MU_0, EPS_0
 
 import numpy as np
 
@@ -53,6 +60,7 @@ def run_until_decay_reference(
     materials: MaterialArrays,
     *,
     decay_by: float = 0.001,
+    n_end=None,
     check_interval: int = 50,
     min_steps: int = 100,
     max_steps: int = 50000,
@@ -100,6 +108,9 @@ def run_until_decay_reference(
     report_label: str = "",
     sheet_impedance: object | None = None,
     record_dft: bool = False,
+    port_record_specs: tuple | None = None,
+    advisory=None,
+    family_peaks: dict | None = None,
 ) -> SimResult:
     if checkpoint_segments is not None:
         raise NotImplementedError(
@@ -155,10 +166,12 @@ def run_until_decay_reference(
         carry["dft_time_records"] = tuple(
             jnp.zeros((max_steps,) + plane.accumulator.shape[1:], dtype=carry["fdtd"].ex.dtype)
             for plane in dft_planes)
-    if wire_port_sparams or lumped_port_sparams:
+    record_kinds = ([spec[2] for spec in port_record_specs] if port_record_specs is not None
+                    else ['wire'] * len(wire_port_sparams) + ['lumped'] * len(lumped_port_sparams))
+    if record_kinds:
         carry["sparam_time_records"] = tuple(
-            jnp.zeros((max_steps, count), dtype=field_dtype)
-            for count in ([4] * len(wire_port_sparams) + [3] * len(lumped_port_sparams)))
+            jnp.zeros((max_steps, 4 if kind == 'wire' else 3), dtype=field_dtype)
+            for kind in record_kinds)
     dx = _setup.dx
     waveguide_meta = _setup.waveguide_meta
     wire_sparam_meta = _setup.wire_sparam_meta
@@ -201,6 +214,7 @@ def run_until_decay_reference(
         mag_src_waveforms = jnp.zeros((max_steps, 0), dtype=jnp.float32)
     _step_ctx = _StepContext(
         **_setup.ctx_kwargs,
+        port_record_specs=port_record_specs,
         drives=StepDrives(
             _reference_drives(_setup.src_meta, src_waveforms.T),
             _reference_drives(_setup.mag_src_meta, mag_src_waveforms.T)),
@@ -233,20 +247,34 @@ def run_until_decay_reference(
     else:
         _iz0, _iz1 = (grid.pad_z_lo, grid.nz - grid.pad_z_hi)
 
+    # Independent operands and drive end, from this loop's own tables; the
+    # caller's n_end is not read.
+    del n_end
+    eps = (materials.components.eps_update if materials.components is not None
+           else component_e_materials(materials, _setup.periodic)[0])
+    mu = (materials.components.mu_update if materials.components is not None
+          else component_h_materials(materials, _setup.periodic))
+    n_end = 0
+    for table in (*np.asarray(src_waveforms).T, *np.asarray(mag_src_waveforms).T):
+        magnitude = np.abs(table.astype(np.float64))
+        on = np.flatnonzero(magnitude > 1e-6 * magnitude.max())
+        off = int(on[-1]) + 1 if on.size else 0
+        if off == max_steps and magnitude.max() > 0:
+            n_end = None
+            break
+        n_end = max(n_end, off)
+
     def _interior_energy(state) -> float:
-        sx, sy, sz = (slice(_ix0, _ix1), slice(_iy0, _iy1), slice(_iz0, _iz1))
-        if grid.is_2d:
-            u = state.ez[sx, sy, sz] ** 2 + state.hx[sx, sy, sz] ** 2 + state.hy[sx, sy, sz] ** 2
-        else:
-            u = (
-                state.ex[sx, sy, sz] ** 2
-                + state.ey[sx, sy, sz] ** 2
-                + state.ez[sx, sy, sz] ** 2
-                + state.hx[sx, sy, sz] ** 2
-                + state.hy[sx, sy, sz] ** 2
-                + state.hz[sx, sy, sz] ** 2
-            )
-        return float(jnp.sum(u))
+        region = (slice(_ix0, _ix1), slice(_iy0, _iy1), slice(_iz0, _iz1))
+        new_h = update_h(state, materials, grid.dt, grid.dx,
+                         _setup.periodic, stencil_order, _step_ctx.bloch)
+        e_axes, h_axes = {"2d_tmz": ((2,), (0, 1)), "2d_tez": ((0, 1), (2,))}.get(
+            getattr(grid, "mode", "3d"), (range(3), range(3)))
+        electric = sum(eps[a][region] * getattr(state, "e" + "xyz"[a])[region] ** 2
+                       for a in e_axes)
+        magnetic = sum(mu[a][region] * getattr(state, "h" + "xyz"[a])[region]
+                       * getattr(new_h, "h" + "xyz"[a])[region] for a in h_axes)
+        return float(jnp.sum((electric + (MU_0 / EPS_0) * magnetic) * grid.dx ** 3))
 
     use_flux_stop = radiated_flux_box is not None and use_absorbing
     if use_flux_stop:
@@ -277,6 +305,8 @@ def run_until_decay_reference(
 
     peak_sq = 0.0
     peak_U = 0.0
+    largest_W = 0.0
+    previous_W = None
     energy_below = 0
     peak_flux = 0.0
     flux_below = 0
@@ -308,6 +338,13 @@ def run_until_decay_reference(
         mag_src_vals = mag_src_waveforms[step]
         carry, probe_out, monitor_val = _single_step(carry, step_idx, src_vals, mag_src_vals)
         all_probes.append(probe_out)
+        if family_peaks is not None:
+            # Largest |E| and |H| over every step: the cross-trace rule's family peak.
+            fields = carry["fdtd"]
+            for family, comps in (("e", ("ex", "ey", "ez")), ("h", ("hx", "hy", "hz"))):
+                peak = max(float(jnp.max(jnp.abs(getattr(fields, c)))) for c in comps)
+                family_peaks[family] = max(family_peaks.get(family, 0.0), peak)
+                family_peaks[family + "_sum"] = family_peaks.get(family + "_sum", 0.0) + peak
         actual_steps = step + 1
         if snapshot is not None and actual_steps % snap_interval == 0:
             snap_frames.append(_take_snapshot(carry["fdtd"]))
@@ -315,7 +352,7 @@ def run_until_decay_reference(
             jax.block_until_ready(carry["fdtd"])
             _reporter.report(actual_steps)
         if use_absorbing and use_flux_stop:
-            if step % check_interval == 0:
+            if actual_steps % check_interval == 0:
                 flux_hist.append(abs(_radiated_power(carry["fdtd"])))
                 env = max(flux_hist[-flux_env_checks:])
                 if env > peak_flux:
@@ -328,30 +365,32 @@ def run_until_decay_reference(
                 else:
                     flux_below = 0
         elif use_absorbing:
-            if decay_by > 0.0 and step % check_interval == 0:
+            if decay_by > 0 and n_end is not None and actual_steps % check_interval == 0:
                 U = _interior_energy(carry["fdtd"])
-                if U > peak_U:
-                    peak_U = U
-            if decay_by > 0.0 and actual_steps >= min_steps and (step % check_interval == 0):
-                if U < decay_by * peak_U:
-                    energy_below += 1
-                    if energy_below >= decay_energy_consecutive:
+                largest_W = max(largest_W, U)
+                last_W, previous_W = previous_W, U
+                if actual_steps >= n_end:
+                    peak_U = max(peak_U, U)
+                    flat = last_W is not None and U >= 0.95 ** (check_interval / 50) * last_W
+                    below = U < decay_by * peak_U or (U < 1e-12 * largest_W and flat)
+                    energy_below = energy_below + 1 if below else 0
+                    if actual_steps >= min_steps and energy_below >= decay_energy_consecutive:
                         decayed_fired = True
                         break
-                else:
-                    energy_below = 0
         else:
             val_sq = float(monitor_val) ** 2
             if val_sq > peak_sq:
                 peak_sq = val_sq
-            if actual_steps >= min_steps and step % check_interval == 0 and (peak_sq > 0.0):
+            if actual_steps >= min_steps and actual_steps % check_interval == 0 and (peak_sq > 0.0):
                 if val_sq < decay_by * peak_sq:
                     break
     if _reporter is not None and _reporter.last_reported != actual_steps:
         jax.block_until_ready(carry["fdtd"])
         _reporter.report(actual_steps)
-    if use_absorbing and (not decayed_fired) and (not use_flux_stop):
-        _warn_static_remnant_cap_hit(carry["fdtd"], materials, grid)
+    if use_absorbing and (not decayed_fired) and (not use_flux_stop) and decay_by > 0:
+        static_remnant_advisory(carry["fdtd"], materials, grid,
+                                *((table_dc(sources), None) if advisory is None
+                                  else (advisory["drives"], advisory["lossy"])))
     time_series = jnp.stack(all_probes, axis=0)
     final_dft_planes = None
     if use_dft_planes:
@@ -410,6 +449,8 @@ def run_until_decay_reference(
                 )
             }
         snap_axes = snapshot_axes(grid, snapshot, actual_steps, dt=_setup.dt)
+    from rfx.measurement import PortTimeRecord
+    record_ids = [spec[4] for spec in port_record_specs] if port_record_specs is not None else range(len(record_kinds))
     return SimResult(
         state=carry["fdtd"] if return_state else None,
         time_series=time_series,
@@ -427,5 +468,8 @@ def run_until_decay_reference(
         current_moment_data=carry.get("current_moments"),
         current_moment_monitor=current_moments,
         dft_time_records=tuple(r[:actual_steps] for r in carry.get("dft_time_records", ())),
-        sparam_time_records=tuple(r[:actual_steps] for r in carry.get("sparam_time_records", ())),
+        sparam_time_records=tuple(PortTimeRecord(f'port:{i}:mode:0', kind, names, r[:actual_steps])
+            for i, r, kind, names in zip(record_ids, carry.get("sparam_time_records", ()),
+                record_kinds,
+                [('V', 'I', 'V_port', 'V_ref') if kind == 'wire' else ('V', 'I', 'V_ref') for kind in record_kinds])),
     )

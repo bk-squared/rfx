@@ -41,7 +41,7 @@ Row = tuple[str, str]
 
 LANES = (
     "run_uniform", "run_nonuniform", "run_subgridded", "run_adi",
-    "run_distributed", "run_distributed_nu", "fwd_uniform", "fwd_nonuniform", "fwd_distributed_nu",
+    "run_distributed", "run_distributed_nu", "fwd_distributed", "fwd_uniform", "fwd_nonuniform", "fwd_distributed_nu",
     "fwd_adi",
 )
 
@@ -73,6 +73,7 @@ LANE_WORDS = {
     "run_distributed_nu": "graded multi-device run(devices=...)",
     "fwd_uniform": "uniform forward()",
     "fwd_nonuniform": "graded forward()",
+    "fwd_distributed": "forward(distributed=True)",
     "fwd_distributed_nu": "forward(distributed=True)",
     "fwd_adi": "ADI forward()",
 }
@@ -274,6 +275,7 @@ DETECTORS: dict[Row, Callable] = {
     ("_dx", ""): _setting("_dx", "dx"),
     ("_dt_pin", ""): _setting("_dt_pin", "dt"),
     ("_dt_min_cell", ""): _setting("_dt_min_cell", "dt_min_cell"),
+    ("_nominal_profiles", ""): _setting("_nominal_profiles", "nominal_profiles"),
     ("_precision", ""): _setting("_precision", "precision"),
     ("_solver", ""): _setting("_solver", "solver"),
     ("_adi_cfl_factor", ""): _setting("_adi_cfl_factor", "adi_cfl_factor"),
@@ -353,6 +355,7 @@ ROW_WORDS: dict[Row, str] = {
     ("_dx", ""): "an explicit dx",
     ("_dt_pin", ""): "a pinned time step (dt=)",
     ("_dt_min_cell", ""): "dt_min_cell=",
+    ("_nominal_profiles", ""): "nominal_profiles=",
     ("_precision", ""): "a precision other than 'float32'",
     ("_solver", ""): "solver='adi'",
     ("_adi_cfl_factor", ""): "adi_cfl_factor",
@@ -432,6 +435,7 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_dx", ""): _OTHER_RUNNERS,
     ("_dt_pin", ""): _MESH_PINNED - _DISTRIBUTED_NU,
     ("_dt_min_cell", ""): _MESH_PINNED - _DISTRIBUTED_NU,
+    ("_nominal_profiles", ""): _MESH_PINNED - _DISTRIBUTED_NU,
     ("_precision", ""): _UNIFORM_YEE,
     ("_solver", ""): _ADI,
     ("_adi_cfl_factor", ""): _OTHER_RUNNERS,
@@ -464,13 +468,13 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_floquet_ports", "scan_angle"): frozenset(),
     ("_lumped_rlc", "R"): _NO_SHEETS,
     ("_lumped_rlc", "series_RL"): _NO_SHEETS,
-    ("_tfsf", "plane_wave"): frozenset({"run_uniform", "run_nonuniform", "fwd_uniform"}),
+    ("_tfsf", "plane_wave"): frozenset({"run_uniform", "run_nonuniform", "fwd_uniform", "fwd_nonuniform"}),
     ("_refinement", "slab"): frozenset(),
     ("_refinement", "relaxed_validation"): frozenset(),
     ("_boundary", "cpml"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},
     ("_boundary", "upml"): _UNIFORM_YEE,
     ("_pec_faces", "pec_face"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},
-    ("_boundary_spec", "pmc_face"): _OTHER_RUNNERS - _ADI - {"run_subgridded", "run_distributed"},
+    ("_boundary_spec", "pmc_face"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},
     ("_boundary_spec", "conformal"): frozenset({"run_uniform"}),
     ("_boundary_spec", "conformal_s_matrix"): frozenset(),
     ("_boundary_spec", "absorbing_lid"): _OTHER_RUNNERS - _ADI,
@@ -485,13 +489,14 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_dft_planes", "dft_plane"): _NO_SHEETS,
     ("_flux_monitors", "flux"): frozenset({"run_uniform", "run_nonuniform", "fwd_uniform",
                                           "fwd_nonuniform", "fwd_adi"}),
-    ("_ntff", "ntff_box"): _OTHER_RUNNERS - _ADI,
+    ("_ntff", "ntff_box"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},  # Its x and y faces are always PEC (only a z lid may absorb).
     ("_current_moments", "block_moments"): _NO_SHEETS,
 }
 
 # Both public entries use distributed_nu.run_nonuniform_distributed_pec.
 # Define that runner's carried rows once; neither entry inherits uniform v2.
 _DISTRIBUTED_NU_ROWS = frozenset({
+    ('_boundary_spec', 'pmc_face'),
     ('_adi_cfl_factor', ''),
     ('_boundary', 'cpml'),
     ('_boundary_spec', 'absorbing_lid'),
@@ -527,6 +532,10 @@ for _row in _DISTRIBUTED_NU_ROWS:
 
 # Calculator memberships are independent of every shared lane set. A new
 # lane capability therefore never silently expands a calculator's contract.
+# waveguide_s_matrix drops NTFF with the #704 warning; material_fit drops it
+# without a warning (pre-existing behaviour, reported for its owner).
+NTFF_UNFORMED_LANES = frozenset({"waveguide_s_matrix", "material_fit"})
+
 # The waveguide extractor assembles these materials and PEC operators and
 # passes them to its device scans; its graded branch uses run_nonuniform_path.
 for _row in (
@@ -792,6 +801,11 @@ for _calculator, _rows in _CALCULATOR_ROWS.items():
     for _row in _rows:
         _ADMITTED_ON[_row] = _ADMITTED_ON[_row] | {_calculator}
 
+# Both uniform distributed entries reach the same runner and admission.
+for _row, _lanes in _ADMITTED_ON.items():
+    _ADMITTED_ON[_row] = (_lanes - {"fwd_distributed"}) | (
+        {"fwd_distributed"} if "run_distributed" in _lanes else set())
+
 ADMITS: dict[str, frozenset] = {
     lane: frozenset(row for row, lanes in _ADMITTED_ON.items() if lane in lanes)
     for lane in LANES + CALCULATORS
@@ -881,7 +895,7 @@ LANE_GATES: dict[str, dict[Row, Callable]] = {
     "run_adi": {row: _adi_homogeneous for row in _ADI_MATERIAL_ROWS},
     "fwd_adi": {row: _adi_homogeneous for row in _ADI_MATERIAL_ROWS},
     "waveguide_s_matrix": {row: _waveguide_profiled for row in (
-        ("_dt_pin", ""), ("_dt_min_cell", ""))},
+        ("_dt_pin", ""), ("_dt_min_cell", ""), ("_nominal_profiles", ""))},
 }
 
 
@@ -1003,11 +1017,35 @@ def message(lane: str, rows, sim, run_args=None) -> str:
             "carries it runs.")
 
 
+class _NoWarnings:
+    """Drops the unresolved-pulse advisory; admission keeps only its refusal."""
+
+    @staticmethod
+    def warn(*_args, **_kwargs):
+        return None
+
+
+def refuse_undriven_drives(sim) -> None:
+    """Issue 1668: refuse a drive whose pulse is not resolved by dt (its
+    table, sampled at dt over the pulse, holds no value above 1e-6 of its
+    amplitude), on entries that run no preflight. The same check preflight
+    runs, ``_validate_cfg_unresolved_pulse``; raises ``PreflightConfigError``
+    (a ``ValueError``)."""
+    from rfx.core.jax_utils import is_tracer
+    from rfx.grid import C0
+    check = getattr(sim, "_validate_cfg_unresolved_pulse", None)
+    if check is None or is_tracer(getattr(sim, "_dx", None)):
+        return
+    check(_NoWarnings, sim._dx or C0 / sim._freq_max / 20.0)
+
+
 def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None:
     """Raise ``NotImplementedError``, as the lanes' own refusals do, if
     ``lane`` does not carry every input ``sim`` declares. ``run_args`` are
     the call's static arguments that ``CALL_GATES`` read; ``grid`` is the
-    grid the lane built, for its ``LANE_GATES``."""
+    grid the lane built, for its ``LANE_GATES``. A drive whose pulse is not
+    resolved by dt is refused first (``refuse_undriven_drives``)."""
+    refuse_undriven_drives(sim)
     from rfx.sources.wire_radius import require_radius_support
     require_radius_support(sim, lane)
     rows = refused(sim, lane, run_args, grid)
@@ -1016,10 +1054,45 @@ def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None
             from rfx._diagnostic_transport import diagnostic_refusal
             raise diagnostic_refusal(NotImplementedError(message(lane, rows, sim, run_args)), diagnostics)
         raise NotImplementedError(message(lane, rows, sim, run_args))
-    from rfx.boundaries.features import admit_waveguide
+    from rfx.boundaries.features import admit_ntff, admit_waveguide
     from rfx.boundaries.tfsf import admit_simulation
+    if lane not in NTFF_UNFORMED_LANES:
+        admit_ntff(sim, lane=lane)
     admit_waveguide(sim, lane=lane)
     admit_simulation(sim, materials=(run_args or {}).get("tfsf_materials"))
+
+
+def require_isolated_s_drive(sim, *, implicit=False, fields_only=False):
+    """Admit S from one record, or omit implicit S when drives are mixed."""
+    excited = [(index, port) for index, port in enumerate(sim._ports)
+               if port.impedance > 0 and port.excite]
+    if len(excited) < 2:
+        return True
+    ports = "; ".join(f"port {index} at {port.position}" for index, port in excited)
+    message = (
+        f"S-parameters from one record require an isolated drive; excited ports: {ports}. "
+        "set excite=False on every port but the driven one and run once per driven port, "
+        "or use the uniform run(compute_s_params=True), which drives one port per run"
+    )
+    if fields_only:
+        message += "; use run(compute_s_params=False) for fields only"
+    if implicit:
+        import sys
+        import warnings
+        stacklevel = 2
+        frame = sys._getframe(1)
+        try:
+            while frame is not None and (
+                frame.f_globals.get("__name__", "") == "rfx"
+                or frame.f_globals.get("__name__", "").startswith("rfx.")
+            ):
+                stacklevel += 1
+                frame = frame.f_back
+        finally:
+            del frame
+        warnings.warn(message + "; returning no S-parameters.", UserWarning, stacklevel=stacklevel)
+        return False
+    raise ValueError(message)
 
 
 def refuse_plain_sources_s_matrix(sim, *, main_record=False):
@@ -1045,6 +1118,12 @@ def refuse_plain_sources_s_matrix(sim, *, main_record=False):
         "Remove the plain source, or call run(compute_s_params=False) "
         "to get raw port waves with the source included."
     )
+
+
+def admit_forward_s_matrix(sim):
+    """Check explicit forward S requests before dispatch or stepping."""
+    refuse_plain_sources_s_matrix(sim, main_record=True)
+    require_isolated_s_drive(sim)
 
 
 def admit_run_s_matrix(sim, *, compute_s_params=None, conformal_pec=None,

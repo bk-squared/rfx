@@ -10,7 +10,8 @@ import numpy as np, jax.numpy as jnp
 from rfx.grid import Grid
 from rfx.materials import init_materials
 from rfx.geometry.csg import Box
-from rfx.sources.waveguide_port import WaveguidePort, init_waveguide_port, _rect_dft
+from rfx.sources.waveguide_port import WaveguidePort, init_waveguide_port
+from rfx.measurement.waveguide_s import _rect_dft
 from rfx.simulation import run as run_sim
 
 ap = argparse.ArgumentParser(); ap.add_argument("--dx_mm", type=float, default=2.0); A = ap.parse_args()

@@ -4,8 +4,8 @@ The scan physics is differentiable w.r.t. a component value (the spike note
 ``docs/design_notes/wp4e_lumped_component_value_ad_spike.md`` established the
 pure-L positive witness, AD-vs-FD 8.3e-6).  What was missing was the plumbing:
 
-  * the traced meta builder in ``rfx/lumped.py`` (``build_rlc_meta_traced`` /
-    ``setup_rlc_materials_traced``) that drops the ``float()`` coercions and
+  * the unified meta builder in ``rfx/lumped.py`` (``build_rlc_meta`` /
+    ``setup_rlc_materials``) that avoids ``float()`` for traced inputs and
     keeps topology decisions static, and
   * ``Simulation.forward()`` iterating ``self._lumped_rlc`` and threading the
     metas into the differentiable ``_run(...)`` driver, plus a
@@ -177,7 +177,7 @@ def test_dS11_dR_dC_ad_matches_fd():
 def test_run_series_rlc_byte_identity():
     """Concrete run() series-RLC path is byte-identical to main (golden).
 
-    The traced lane is a SEPARATE code path; the concrete build_rlc_meta /
+    The unified builders retain concrete arithmetic; build_rlc_meta /
     setup_rlc_materials / run(lumped_rlc=...) numerics must be untouched.
     (On-platform this is exact array_equal; a tight tolerance guards against
     real numeric regressions while tolerating cross-machine float32 noise.)
@@ -194,23 +194,36 @@ def test_run_series_rlc_byte_identity():
     peak, so the golden still has something to hold. Not tighter: the same run
     in float64 fields differs from this float32 golden by 1.1e-7 (#1163
     review), so a cross-platform float32 reorder can reach that scale; the
-    replaced update departs from this golden by more than 1e-5 from step 1
-    and by more than 1e-3 from step 108.
+    replaced update departed from the golden of that time by more than 1e-5
+    from step 1 and by more than 1e-3 from step 108.
+
+    Re-run 2026-10-13 against the driven golden and the current tolerance
+    (issue 1668): the pre-#1163 explicit series update, reinstated, is red.
+    It leaves the tolerance at step 6 (|d| > 1e-5 of the golden's peak),
+    passes 1e-3 of the peak at step 25, has 1494 of 1500 samples outside
+    and grows to 7.5e3x the golden's peak; the current update reads 0.
     """
     # #1373: measured factor 2.3958724e7 equals predicted Cb/dV (2.3958726e7).
+    # Regenerated 2026-10-12 (issue 1668): the pulse took bandwidth=f0*0.5 in
+    # Hz, so its only drive was the old pulse's 7.4e-4 jump at t=0 (golden
+    # sha256 d363c4df..., peak 1.774e4 at n=0). Now fractional 0.8 (sha256
+    # f91d06f6..., peak 3.097e7 at n=105); tolerances unchanged.
     golden = np.load(os.path.join(_FIXTURE_DIR, "golden_lumped_rlc_run_series.npy"))
     R, L, C = 50.0, 10e-9, 1e-12
     f0 = 1 / (2 * np.pi * np.sqrt(L * C))
     sim = Simulation(freq_max=5e9, domain=(0.01, 0.01, 0.01), boundary="pec")
     sim.add_source(position=(0.005, 0.005, 0.005), component="ez",
-                   waveform=GaussianPulse(f0=f0, bandwidth=f0 * 0.5))
+                   waveform=GaussianPulse(f0=f0, bandwidth=0.8))
     sim.add_lumped_rlc(position=(0.005, 0.005, 0.005), component="ez",
                        R=R, L=L, C=C, topology="series")
     sim.add_probe(position=(0.005, 0.005, 0.005), component="ez")
     got = np.asarray(sim.run(n_steps=1500).time_series)
     assert got.shape == golden.shape
-    # Scale the absolute envelope by the same predicted Cb/dV factor (#1373).
-    np.testing.assert_allclose(got, golden, rtol=1e-5, atol=1e-6 * 23958726.427593697)
+    # atol relative to the golden's peak (issue 1668): with the driven pulse the
+    # former 1e-6 * Cb/dV was 7.7e-7 of the peak, below the 1.06e-6-of-peak move
+    # that float64 drive samples alone make; 1e-5 * peak is ten times that move.
+    np.testing.assert_allclose(got, golden, rtol=1e-5,
+                               atol=1e-5 * float(np.max(np.abs(golden))))
 
 
 def test_forward_no_rlc_byte_identity():
@@ -234,7 +247,7 @@ def test_forward_no_rlc_byte_identity():
                  impedance=50.0, waveform=GaussianPulse(f0=5e9, bandwidth=0.9))
     got = np.asarray(sim.forward(
         port_s11_freqs=np.array([3., 4., 5., 6., 7.]) * 1e9, n_steps=1200,
-    ).s_params)
+    ).s_params[0, 0])
     assert got.shape == golden.shape
     np.testing.assert_allclose(got, golden, rtol=1e-5, atol=1e-6)
 

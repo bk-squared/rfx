@@ -39,6 +39,7 @@ from rfx.materials.lorentz import LorentzPole
 
 from rfx.materials.library import MATERIAL_LIBRARY
 from rfx.diagnostic_records import Diagnostic
+from rfx.measurement.msl_planes import MSLFeedPlaneFields
 
 
 def _artifact_to_dict(value: object) -> object:
@@ -580,34 +581,7 @@ class ADCompiledMemoryCertificate(NamedTuple):
         return json.dumps(self.to_dict(), **options)
 
 
-def _nonfinite_fields(result) -> list[tuple[str, int]]:
-    """Return ``[(field_name, nonfinite_count), ...]`` for the numeric array
-    observables on a ``Result`` / ``ForwardResult``.
-
-    Tracer-safe: a value under ``jax.grad`` / ``jax.jit`` tracing is an
-    abstract tracer with no concrete data, so it is skipped (returns ``[]``
-    rather than raising). Never raises — a divergence diagnostic must not
-    itself break the return path.
-    """
-    import jax
-
-    bad: list[tuple[str, int]] = []
-    for name in ("time_series", "s_params"):
-        arr = getattr(result, name, None)
-        if arr is None:
-            continue
-        try:
-            if isinstance(arr, jax.core.Tracer):
-                continue
-            a = np.asarray(arr)
-        except Exception:
-            continue
-        if a.size == 0 or not np.issubdtype(a.dtype, np.number):
-            continue
-        n_bad = int(a.size - np.count_nonzero(np.isfinite(a)))
-        if n_bad:
-            bad.append((name, n_bad))
-    return bad
+from rfx.api._result_health import _nonfinite_fields
 
 
 _NONFINITE_CAUSE_HINT = (
@@ -754,13 +728,14 @@ class Result(NamedTuple):
     #: Also None for traced mesh coordinates; other record errors propagate.
     realized_geometry: object = None
     sparam_time_records: tuple | None = None
+    sparam_read_ids: object = None
     dft_time_records: object = None
     diagnostics: tuple[Diagnostic, ...] = ()
 
     def find_resonances(self, freq_range=None, probe_idx=0,
                          source_decay_time=None, bandpass=None,
                          waveform=None):
-        """Extract resonant modes from probe time series via Harminv.
+        """Extract resonant modes from probe time series via the matrix pencil method.
 
         Parameters
         ----------
@@ -771,9 +746,8 @@ class Result(NamedTuple):
             computed as 2×(3/π/f_center/bandwidth) — skips the Gaussian
             excitation region for clean ring-down analysis.
         bandpass : bool or None
-            Apply FFT bandpass before Harminv. Default: auto (True for
-            CPML results where DC/surface-wave artifacts exist, False
-            for PEC cavities where signal is clean).
+            Ignored; explicit True emits a DeprecationWarning because the
+            band-pass fallback reported modes absent from the record.
         waveform : source waveform or None
             Used only when ``source_decay_time`` is None: when the
             waveform exposes ``t0`` (``GaussianPulse`` /
@@ -785,9 +759,10 @@ class Result(NamedTuple):
 
         Returns
         -------
-        list of HarminvMode
+        list of MatrixPencilMode
         """
-        from rfx.harminv import harminv, harminv_from_probe
+        import warnings
+        from rfx.harminv import _ring_down_modes
         ts = np.asarray(self.time_series)
         if ts.ndim == 2:
             ts = ts[:, probe_idx]
@@ -802,39 +777,20 @@ class Result(NamedTuple):
             fr = self.freq_range
         if fr is None:
             raise ValueError("freq_range not specified")
-        stored_boundary = 'cpml'
-        if self.freq_range is not None and len(self.freq_range) > 2:
-            stored_boundary = self.freq_range[2]
         if len(fr) > 2:
-            stored_boundary = fr[2]
             fr = (fr[0], fr[1])
 
-        if bandpass is None:
-            bandpass = stored_boundary == 'cpml'
+        if bandpass is True:
+            warnings.warn(
+                "bandpass=True is ignored because the band-pass fallback was "
+                "removed after reporting modes absent from the record.",
+                DeprecationWarning, stacklevel=2,
+            )
 
         if source_decay_time is None:
             source_decay_time = _auto_source_decay_time(fr, waveform)
 
-        start = int(np.ceil(source_decay_time / self.dt))
-        start = min(start, max(len(ts) - 20, 0))
-        w = ts[start:] - np.mean(ts[start:])
-
-        max_direct = 10000
-        if len(w) > max_direct:
-            step = len(w) // max_direct
-            w_sub = w[::step][:max_direct]
-            dt_h = self.dt * step
-        else:
-            w_sub = w
-            dt_h = self.dt
-
-        modes = harminv(w_sub, dt_h, fr[0], fr[1])
-
-        if not modes and bandpass:
-            modes = harminv_from_probe(ts, self.dt, fr,
-                                        source_decay_time=source_decay_time)
-
-        return modes
+        return _ring_down_modes(ts, self.dt, fr[0], fr[1], source_decay_time)
 
     def assert_finite(self, *, raise_on_nonfinite: bool = False) -> bool:
         """Check that the result's observables contain no NaN/Inf.
@@ -1078,23 +1034,21 @@ class ForwardResult(NamedTuple):
     inserting strings into a JAX result tree. ``settling_source_end_index``
     carries the first post-source sample, including free-space transit;
     missing timing or insufficient post-source samples yields no witness.
-    These lazy properties are
-    not stored fields in ``_asdict()``. ``wire_port_sparams`` is a tuple of
-    ``(meta, accs)`` pairs on both lanes; the lane-specific type of ``meta``
-    and the accumulator channels are documented on :class:`Result`.
+    These lazy properties are not stored fields in ``_asdict()``.
+    ``wire_port_sparams`` is a tuple of ``(meta, accs)`` pairs on both lanes;
+    the lane-specific type of ``meta`` and the accumulator channels are
+    documented on :class:`Result`, as are ``flux_monitors``,
+    ``waveguide_ports`` and ``waveguide_sparams``, returned here as by run().
 
     ``lumped_port_sparams`` exposes the raw per-port
     ``(V_dft, I_dft, V_ref_dft)`` tuples accumulated inside the JIT scan body
     when ``forward(port_s11_freqs=...)`` is used.  V and I are the
     POST-injection physical channels (I carrying the Yee half-step phase);
-    ``V_ref`` is the PRE-injection drive sample, which only the N-port
-    off-diagonal incident wave consumes.  Single-port objectives can keep
-    using ``s_params`` (per-port S11: the driven terminal reflection
-    :func:`rfx.probes.probes.driven_port_reflection` at an excited port, the
-    port-branch :func:`extract_lumped_s11` at a passive one).  Multi-port AD
-    objectives (e.g. 2-port |S21| topology optimisation) read the raw
-    channels from this field and compose their own wave decomposition, since
-    a diagonal collapses each port to its self-reflection only.
+    ``V_ref`` is the PRE-injection drive sample. ``s_params`` has shape
+    ``(n_ports, n_ports, n_freqs)`` on both meshes: receive port, drive port,
+    frequency. A record with a driven port fills its driven column and
+    returns complex NaN in non-driven columns. With all ports passive,
+    it returns the frozen per-cell diagnostic matrix.
 
     ``dft_planes`` exposes the JIT-scan-accumulated complex DFT plane
     probes registered via :meth:`Simulation.add_dft_plane_probe`.  Each
@@ -1144,8 +1098,13 @@ class ForwardResult(NamedTuple):
     settling_source_end_index: object = None
     settling_freq_max: object = None
     sparam_time_records: tuple | None = None
+    sparam_read_ids: object = None
     dft_time_records: object = None
+    flux_monitors: object = None
+    waveguide_ports: object = None
+    waveguide_sparams: object = None
     diagnostics: tuple[Diagnostic, ...] = ()
+
 
     @property
     def settling_db(self) -> float | None:
@@ -1157,34 +1116,14 @@ class ForwardResult(NamedTuple):
         existing JIT restrictions (for example the host Grid object).
         Use ``settling_verdict`` to judge the diagnostic.
         """
-        from rfx.probes.settling import probe_record_settling_witness
-        from rfx.sparams._tail_witness import result_read_bins
-        bins = result_read_bins(self)
-        if self.sparam_time_records:
-            from rfx.sparams._tail_witness import port_record_witness
-            return port_record_witness(
-                self.sparam_time_records, self.dt, self.settling_source_end_index,
-                bins, freq_max=self.settling_freq_max or getattr(self.grid, "freq_max", None) or (max(bins) if len(bins) else None))[0]
-        return probe_record_settling_witness(
-            self.time_series, self.settling_probe_info, warn=False,
-            source_end_index=self.settling_source_end_index, dt=self.dt,
-            freqs=bins, freq_max=self.settling_freq_max or getattr(self.grid, "freq_max", None) or (max(bins) if len(bins) else None))[0]
+        from rfx.sparams._record_selection import forward_settling_witness
+        return forward_settling_witness(self)[0]
 
     @property
     def settling_witness(self) -> dict:
         """Provenance for ``settling_db``, without string leaves in JAX trees."""
-        from rfx.probes.settling import probe_record_settling_witness
-        from rfx.sparams._tail_witness import result_read_bins
-        bins = result_read_bins(self)
-        if self.sparam_time_records:
-            from rfx.sparams._tail_witness import port_record_witness
-            return port_record_witness(
-                self.sparam_time_records, self.dt, self.settling_source_end_index,
-                bins, freq_max=self.settling_freq_max or getattr(self.grid, "freq_max", None) or (max(bins) if len(bins) else None))[1]
-        return probe_record_settling_witness(
-            self.time_series, self.settling_probe_info, warn=False,
-            source_end_index=self.settling_source_end_index, dt=self.dt,
-            freqs=bins, freq_max=self.settling_freq_max or getattr(self.grid, "freq_max", None) or (max(bins) if len(bins) else None))[1]
+        from rfx.sparams._record_selection import forward_settling_witness
+        return forward_settling_witness(self)[1]
 
 
 # ---------------------------------------------------------------------------
@@ -1601,16 +1540,15 @@ class MSLProbeClearance:
 
 
 @dataclass
-class MSLSMatrixResult:
+class MSLSMatrixResult(MSLFeedPlaneFields):
     """MSL S-matrix result.
 
     Attributes
     ----------
     S : (n_ports, n_ports, n_freqs) complex
-        Power-wave S-matrix at each port's FIRST probe plane, formed from
-        a=(V+R*I)/(2*sqrt(R)), b=(V-R*I)/(2*sqrt(R)) with the positive real
-        analytic Hammerstad-Jensen reference R of each port. There
-        is no translation back to the physical feed planes. Bracketing H
+        Power-wave S (a=(V+R*I)/(2*sqrt(R)), b=(V-R*I)/(2*sqrt(R)), R the
+        positive real analytic Hammerstad-Jensen reference of each port) formed
+        at the first probe plane, shifted to the DECLARED FEED PLANE. Bracketing H
         samples are interpolated to this E-node plane using physical
         coordinates, with the temporal leapfrog offset corrected separately.
         The fitted ``Z0`` below is a diagnostic, not the reference used to form S.
@@ -1778,7 +1716,7 @@ class MSLSMatrixResult:
 
 
 @dataclass
-class MixedSMatrixResult:
+class MixedSMatrixResult(MSLFeedPlaneFields):
     """Mixed-family S-matrix result (issue #488, lumped/wire + MSL v1).
 
     ``S`` here is in the **Kurokawa

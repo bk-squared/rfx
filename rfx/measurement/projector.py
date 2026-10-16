@@ -54,7 +54,8 @@ def gather(state, table):
     """One indexed read per present field component; return samples[n_terms]."""
     dims = jax.lax.GatherDimensionNumbers(offset_dims=(), collapsed_slice_dims=(0, 1, 2),
                                          start_index_map=(0, 1, 2))
-    parts = [jax.lax.gather(getattr(state, t.component), np.stack(t.indices, axis=1),
+    parts = [jax.lax.gather(getattr(state, t.component),
+                            (jnp if any(isinstance(i, jax.core.Tracer) for i in t.indices) else np).stack(t.indices, axis=1),
                             dims, (1, 1, 1), mode='promise_in_bounds')
              for t in table.components]
     return jnp.concatenate(parts) if parts else jnp.empty((0,), dtype=state.ex.dtype)
@@ -68,7 +69,9 @@ def combine(samples, table):
     NumPy samples with concrete weights stay in the samples' dtype on the
     host: np.add.at accumulates reordered terms sequentially by segment id.
     """
-    traced = any(isinstance(t.weights, jax.core.Tracer) for t in table.components)
+    traced = (any(isinstance(t.weights, jax.core.Tracer) for t in table.components)
+              or isinstance(table.order, jax.core.Tracer)
+              or isinstance(table.segment_ids, jax.core.Tracer))
     xp = jnp if traced else np
     weights = xp.concatenate([t.weights for t in table.components]) if table.components else np.empty(0)
     if isinstance(samples, np.ndarray) and not traced:
@@ -88,15 +91,14 @@ def project(state, table):
     return combine(gather(state, table), table)
 
 
-def port_table(grid, specs, *, nu, boundary, dtype):
-    """Compile (component, live cells, kind, midpoint) specs; pin record order."""
-    from dataclasses import replace
+def port_owners(grid, specs, *, nu, boundary):
+    """Compile (component, live cells, kind, midpoint, port index) specs; pin record order."""
     from .ports import lumped_wire_owner
     sampled = []
-    for i, (component, live, kind, mid) in enumerate(specs):
+    for i, (component, live, kind, mid, port_id) in enumerate(specs):
         owner = lumped_wire_owner(grid, component, live, nu=nu,
                     pmc_faces=boundary.pmc_faces, periodic=boundary.periodic,
-                    port_id=i, kind=kind)
+                    port_id=port_id, kind=kind)
         channels = tuple(c for c in owner.channels if c.sample_stage == 'post-injection')
         names = tuple(c.name for c in channels)
         expected = ('V', 'I', 'V_port') if kind == 'wire' else ('V', 'I')
@@ -106,5 +108,14 @@ def port_table(grid, specs, *, nu, boundary, dtype):
         actual = tuple((n.i, n.j, n.k) for n in nodes)
         if actual != (tuple(mid),):
             raise ValueError(f'{owner.id}: owner midpoint {actual}, runner midpoint {tuple(mid)}')
-        sampled.append(replace(owner, channels=channels))
-    return sample_table(sampled, dtype=dtype)
+        sampled.append(owner)
+    return tuple(sampled)
+
+
+def port_table(grid, specs, *, nu, boundary, dtype):
+    """Evaluate owners in order, retaining only completed-field channels."""
+    from dataclasses import replace
+    owners = port_owners(grid, specs, nu=nu, boundary=boundary)
+    return sample_table(tuple(replace(o, channels=tuple(
+        c for c in o.channels if c.sample_stage == 'post-injection')) for o in owners),
+        dtype=dtype)

@@ -204,6 +204,7 @@ def test_reader_accepts_fortran_d_exponents_and_information_block(
     assert data.s_params[1, 1, 0] == 22 + 0j
 
 
+@pytest.mark.source_scan
 def test_v2_writer_roundtrips_information_block(tmp_path: Path):
     s_params = np.eye(2, dtype=np.complex128)[:, :, None] * 0.1
     freqs = np.array([1e9])

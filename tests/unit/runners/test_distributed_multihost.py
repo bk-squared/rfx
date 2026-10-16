@@ -217,6 +217,7 @@ def test_single_and_multi_process_topologies_are_bit_identical(boundary, monkeyp
         assert actual[name].tobytes() == expected[name].tobytes(), f"{boundary} {name}"
 
 
+@pytest.mark.source_scan
 @pytest.mark.skipif(
     sys.platform != "linux",
     reason=("jax.distributed cannot start on macOS: gRPC bind [::] fails"

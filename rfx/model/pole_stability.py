@@ -6,6 +6,8 @@ both conductivity extrema. Traced masks cannot be grouped and are skipped.
 """
 from __future__ import annotations
 
+from typing import NamedTuple
+
 import numpy as np
 
 C0 = 299792458.0
@@ -54,9 +56,14 @@ class CourantBudget(float):
         return self
 
     def local(self, selected):
+        return self.local_axes(tuple(
+            np.any(selected, axis=tuple(a for a in range(selected.ndim) if a != axis))
+            for axis in range(len(self.cells))))
+
+    def local_axes(self, occupied_per_axis):
+        """Budget of global axis projections, including one neighbour."""
         total = 0.0
-        for axis, sizes in enumerate(self.cells):
-            occupied = np.any(selected, axis=tuple(a for a in range(selected.ndim) if a != axis))
+        for occupied, sizes in zip(occupied_per_axis, self.cells):
             if sizes.size == occupied.size - 1:      # cell metrics omit the terminal node
                 sizes = np.append(sizes, sizes[-1])
             if sizes.size != occupied.size or not occupied.any():
@@ -98,26 +105,39 @@ def largest_stable_step(eps_inf, sigma, poles, dt, budget):
     return lo
 
 
-def refuse_unstable_cells(materials, lorentz_spec, dt, budget, *, grid_kind):
-    """Judge each realized pole set at its minimum epsilon and sigma extrema.
+class PoleSetExtremes(NamedTuple):
+    """Exact reductions for one pole pattern, with global axis occupancy."""
 
-    Only static masks are grouped. Traced material/pole values are reduced
-    in JAX and checked by an ordered host callback, including under grad.
-    """
-    import jax
+    code: int
+    poles: tuple
+    eps_low: object
+    sigma_low: object
+    sigma_high: object
+    count: int
+    occupied: tuple
+
+
+def pole_set_extremes(materials, lorentz_spec, *, view=None):
+    """Reduce static pole patterns over owned cells only; never count halos."""
     import jax.numpy as jnp
     from rfx.core.jax_utils import is_tracer
 
-    if lorentz_spec is None or budget is None:
-        return
+    if lorentz_spec is None:
+        return ()
     poles, masks = lorentz_spec
     if not poles:
-        return
+        return ()
     masks = masks if isinstance(masks, (tuple, list)) else [masks] * len(poles)
     if len(masks) != len(poles):
         raise ValueError(f"Expected {len(poles)} Lorentz masks, got {len(masks)}")
     if any(is_tracer(m) for m in masks):
-        return  # D4: traced pole masks cannot be grouped.
+        return ()  # D4: traced pole masks cannot be grouped.
+    if view is not None:
+        from types import SimpleNamespace
+        input_shape = materials.eps_r.shape
+        materials = SimpleNamespace(**{name: view.own(getattr(materials, name))
+                                       for name in ("eps_r", "sigma")})
+        masks = [None if m is None else view.own(np.broadcast_to(m, input_shape)) for m in masks]
     shape = materials.eps_r.shape
     # One integer code per cell, accumulated pole by pole (no cells x poles array).
     wide = len(poles) > 62
@@ -127,9 +147,12 @@ def refuse_unstable_cells(materials, lorentz_spec, dt, budget, *, grid_kind):
         codes = codes + (present.reshape(-1).astype(object if wide else np.int64) * (1 << bit))
     unique_codes, inverse, counts = np.unique(codes, return_inverse=True, return_counts=True)
     patterns = [[bool((int(code) >> bit) & 1) for bit in range(len(poles))] for code in unique_codes]
-    values = [materials.eps_r, materials.sigma, dt] + [v for p in poles for v in p]
+    values = [materials.eps_r, materials.sigma] + [v for p in poles for v in p]
     traced = any(is_tracer(v) for v in values)
-    xp = jnp if traced else np
+    # A global array spread over processes cannot be read on the host.
+    spread = not traced and any(not getattr(v, "is_fully_addressable", True) for v in values)
+    xp = jnp if traced or spread else np
+    records = []
     for index, (pattern, count) in enumerate(zip(patterns, counts)):
         if not np.any(pattern):
             continue
@@ -139,7 +162,61 @@ def refuse_unstable_cells(materials, lorentz_spec, dt, budget, *, grid_kind):
         sigma_low = xp.min(xp.where(selected, materials.sigma, xp.inf))
         sigma_high = xp.max(xp.where(selected, materials.sigma, -xp.inf))
 
-        local = budget.local(selected) if hasattr(budget, "local") else float(budget)
+        occupied = tuple(np.any(selected, axis=tuple(a for a in range(selected.ndim) if a != axis))
+                         for axis in range(selected.ndim))
+        if view is not None:
+            global_x = np.zeros(view.nx, dtype=bool)
+            global_x[view.x0:view.x1] = occupied[0]
+            occupied = (global_x,) + occupied[1:]
+        records.append(PoleSetExtremes(int(unique_codes[index]), chosen, eps_low,
+                                      sigma_low, sigma_high, int(count), occupied))
+    return tuple(records)
+
+
+def combine_pole_extremes(records_from_all_slabs):
+    """Combine exact reductions in pole-code order, without cell arrays."""
+    import jax.numpy as jnp
+    from rfx.core.jax_utils import is_tracer
+
+    combined = {}
+    for records in records_from_all_slabs:
+        for record in records:
+            if record.code not in combined:
+                combined[record.code] = record
+                continue
+            previous = combined[record.code]
+            values = (previous.eps_low, previous.sigma_low, previous.sigma_high,
+                      record.eps_low, record.sigma_low, record.sigma_high)
+            xp = jnp if any(is_tracer(v) for v in values) else np
+            combined[record.code] = previous._replace(
+                eps_low=xp.minimum(previous.eps_low, record.eps_low),
+                sigma_low=xp.minimum(previous.sigma_low, record.sigma_low),
+                sigma_high=xp.maximum(previous.sigma_high, record.sigma_high),
+                count=previous.count + record.count,
+                occupied=tuple(a | b for a, b in zip(previous.occupied, record.occupied)))
+    return tuple(combined[code] for code in sorted(combined))
+
+
+def _concrete(value):
+    """The concrete value under an eager trace (jvp, grad), else the value."""
+    from rfx.core.jax_utils import is_tracer
+
+    if not is_tracer(value):
+        return value
+    concrete = value.to_concrete_value()
+    return value if concrete is None else concrete
+
+
+def judge_pole_sets(records, dt, budget, *, grid_kind):
+    """Apply the existing admission rule and ordered callback to reductions."""
+    import jax
+    from rfx.core.jax_utils import is_tracer
+
+    if budget is None:
+        return
+    for record in records:
+        count = record.count
+        local = budget.local_axes(record.occupied) if hasattr(budget, "local_axes") else float(budget)
 
         def check(eps, low, high, step, *parameters, count=int(count), budget=local):
             pole_values = np.asarray(parameters, dtype=np.float64).reshape(-1, 3)
@@ -170,9 +247,20 @@ def refuse_unstable_cells(materials, lorentz_spec, dt, budget, *, grid_kind):
                 f"sigma_low={low:.6g}, sigma_high={high:.6g}: unstable at this model's time step "
                 f"dt = {step:.6g} s; growth per step = {growth:.9g}; {limit}. To run: {remedy}.")
 
-        args = (eps_low, sigma_low, sigma_high, dt, *(v for p in chosen for v in p))
+        args = (record.eps_low, record.sigma_low, record.sigma_high, dt,
+                *(v for p in record.poles for v in p))
+        # Eager autodiff carries concrete primals: judge them on the host. A
+        # callback would copy a value replicated over processes to one device.
+        args = tuple(_concrete(v) for v in args)
+        traced = any(is_tracer(v) for v in args)
         if traced:
             jax.debug.callback(check, *args, ordered=True)
         else:
             check(*args)
 
+
+def refuse_unstable_cells(materials, lorentz_spec, dt, budget, *, grid_kind):
+    """Judge whole-cell pole patterns, retaining the legacy entry point."""
+    if lorentz_spec is None or budget is None:
+        return
+    judge_pole_sets(pole_set_extremes(materials, lorentz_spec), dt, budget, grid_kind=grid_kind)

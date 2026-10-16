@@ -183,12 +183,19 @@ RECORDS = ('time_series', 'sparam_time_records', 'dft_planes', 'flux_monitors',
            'ntff_data', 'current_moment_data', 'lumped_port_sparams', 'wire_port_sparams', 's_params')
 
 
-def _samples(value, row, lane):
+def _samples(value, row=None, lane=None):
     if value is None:
         return None
-    labels = ('V', 'I', 'V_port', 'V_ref') if row[1] == 'wire_port' or lane == 'fwd_nonuniform' else ('V', 'I', 'V_ref')
-    return tuple({labels[i] if i < len(labels) else f'column_{i}': samples[:, i]
-                  for i in range(samples.shape[1])} for samples in value)
+    return {record.id: {name: record[name] for name in record.channels} for record in value}
+
+
+def _paired_samples(a, b):
+    a, b = _samples(a), _samples(b)
+    if a is None or b is None:
+        return a, b
+    ids = sorted(a.keys() | b.keys())
+    return ({i: a[key] for i, key in enumerate(ids) if key in a},
+            {i: b[key] for i, key in enumerate(ids) if key in b})
 
 
 def _port_dft(value, name):
@@ -324,7 +331,7 @@ def execute(cell):
             if x is None and y is None and not required:
                 continue
             if name == 'sparam_time_records':
-                x, y = _samples(x, cell.row, cell.a), _samples(y, cell.row, cell.b)
+                x, y = _paired_samples(x, y)
             elif name in ('wire_port_sparams', 'lumped_port_sparams'):
                 x, y = _port_dft(x, name), _port_dft(y, name)
             if x is None or y is None:

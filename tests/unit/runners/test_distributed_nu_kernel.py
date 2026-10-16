@@ -1649,7 +1649,9 @@ def test_distributed_mixed_dispersion_grad_no_corner_nan():
 
     nu_grid = sim._build_nonuniform_grid()
     gnx, gny, gnz = int(nu_grid.nx), int(nu_grid.ny), int(nu_grid.nz)
-    eps_init = jnp.ones((gnx, gny, gnz), dtype=jnp.float32)
+    # eps_inf=1 under these Lorentz poles is unstable at this dt; one device and
+    # several both refuse it now (the override is judged), so the test uses 2.
+    eps_init = jnp.full((gnx, gny, gnz), 2.0, dtype=jnp.float32)
 
     def _loss(eps):
         res = sim.forward(
@@ -2386,7 +2388,7 @@ def test_distributed_emit_time_series_false_skips_probe():
 # against analytic / first-principles references (Class F tolerance, see
 # ``tests/_distributed_nu_tolerances.py``).
 
-from rfx.harminv import harminv_from_probe  # noqa: E402
+from rfx.harminv import matrix_pencil_from_probe  # noqa: E402
 from rfx.core.yee import EPS_0 as _EPS_0_F, MU_0 as _MU_0_F  # noqa: E402
 from tests._distributed_nu_tolerances import (  # noqa: E402
     RTOL_ANALYTIC_F,
@@ -2558,7 +2560,7 @@ def test_distributed_pec_cavity_analytic_resonance():
     f_min = 0.85 * f_analytic
     f_max = 1.15 * f_analytic
 
-    modes = harminv_from_probe(
+    modes = matrix_pencil_from_probe(
         ts, dt=float(grid.dt),
         freq_range=(f_min, f_max),
         source_decay_time=source_decay_time,

@@ -340,7 +340,7 @@ def _padx_sim():
     lx = 0.125
     sim = Simulation(freq_max=3e9, domain=(lx, 0.04, 0.04), boundary="cpml")
     sim.add_source(position=(lx / 2, 0.02, 0.02), component="ez",
-                   waveform=GaussianPulse(f0=1.5e9, bandwidth=1.5e9))
+                   waveform=GaussianPulse(f0=1.5e9, bandwidth=0.8))
     sim.add_probe(position=(lx - 0.006, 0.02, 0.02), component="ez")
     return sim
 
@@ -852,10 +852,6 @@ def test_runner_is_bit_identical_to_the_pre_split_baseline(
 #
 # (name in _distributed_common, importing module, attribute it is bound to)
 _SHARED_HELPER_BINDINGS = (
-    ("cpml_coeff_e_vacuum", "rfx.runners.distributed", "cpml_coeff_e_vacuum"),
-    ("cpml_coeff_h_vacuum", "rfx.runners.distributed", "cpml_coeff_h_vacuum"),
-    ("cpml_coeff_e_vacuum", "rfx.runners.distributed_nu", "cpml_coeff_e_vacuum"),
-    ("cpml_coeff_h_vacuum", "rfx.runners.distributed_nu", "cpml_coeff_h_vacuum"),
     ("exchange_component_shmap", "rfx.runners.distributed_v2",
      "_exchange_component_shmap"),
     ("exchange_component_shmap", "rfx.runners.distributed_nu",
@@ -868,8 +864,6 @@ _SHARED_HELPER_BINDINGS = (
     ("shard_stacked", "rfx.runners.distributed_v2", "shard_stacked"),
     ("shard_stacked_poles", "rfx.runners.distributed_nu",
      "shard_stacked_poles"),
-    ("shard_stacked_psi", "rfx.runners.distributed_nu", "shard_stacked_psi"),
-    ("shard_stacked_psi", "rfx.runners.distributed_v2", "shard_stacked_psi"),
     # #1038 leg 1 -- the two shard_map helpers called from inside the jitted
     # step body. These are the leg's real jaxpr-shape change: four locals
     # (mesh, n_{src,prb}, *_local_specs, *_device_ids) became parameters, and
@@ -888,9 +882,7 @@ _SHARED_HELPER_BINDINGS = (
     # closures over (n_devices, n) that differed only in how they spelled the
     # two face-parallel extents (inventory §2.3(b)). Both callers are
     # setup-time, so this row guards a de-duplication with no jaxpr exposure.
-    ("zeros_psi_stacked", "rfx.runners.distributed", "zeros_psi_stacked"),
     # #1350/#1351: NU now imports the complete per-face sizing routine.
-    ("_distributed_cpml_state", "rfx.runners.distributed_nu", "_distributed_cpml_state"),
     ("_distributed_boundary_layers", "rfx.runners.distributed_v2", "_distributed_boundary_layers"),
     ("_distributed_boundary_layers", "rfx.runners.distributed_nu", "_distributed_boundary_layers"),
     # #1038 leg 2 -- the x-slab primitives. Not a de-duplication: these were
@@ -1032,18 +1024,6 @@ _SHARED_HELPER_BINDINGS = (
      "_update_e_local_with_dispersion"),
     ("_update_e_local_with_dispersion", "rfx.runners.distributed",
      "_update_e_local_with_dispersion"),
-    ("_init_cpml_distributed", "rfx.runners.distributed_v2",
-     "_init_cpml_distributed"),
-    ("_init_cpml_distributed", "rfx.runners.distributed",
-     "_init_cpml_distributed"),
-    ("_apply_cpml_e_distributed", "rfx.runners.distributed_v2",
-     "_apply_cpml_e_distributed"),
-    ("_apply_cpml_e_distributed", "rfx.runners.distributed",
-     "_apply_cpml_e_distributed"),
-    ("_apply_cpml_h_distributed", "rfx.runners.distributed_v2",
-     "_apply_cpml_h_distributed"),
-    ("_apply_cpml_h_distributed", "rfx.runners.distributed",
-     "_apply_cpml_h_distributed"),
 )
 
 
@@ -1139,7 +1119,11 @@ _RUNNER_ENTRY_POINTS = (
 #: surface change is the removal; the module itself is untouched and still
 #: importable by full path. Re-adding "run_distributed" here would restore the
 #: collision, so this pin now guards the removal rather than the collision.
-_RUNNERS_ALL = ("run_uniform", "run_nonuniform_path", "run_subgridded_path")
+#:
+#: CHANGED BY the export-only __init__ form (tests/contracts/test_export_init_form.py):
+#: export lists are one name per line, sorted, so two PRs adding names touch
+#: different lines instead of one shared line. Same three names; order only.
+_RUNNERS_ALL = ("run_nonuniform_path", "run_subgridded_path", "run_uniform")
 
 #: The module-level ``from rfx.runners.X import Y`` statements in
 #: rfx/runners/__init__.py, read with ast. §5e: __init__.py eagerly imports
@@ -1157,10 +1141,15 @@ _RUNNERS_ALL = ("run_uniform", "run_nonuniform_path", "run_subgridded_path")
 #: full module path or as ``from rfx.runners import _distributed_common``,
 #: and conftest.py's repair guard walks the loaded set rather than a fixed
 #: list, so a shorter chain gives it less to repair, not more.
+#:
+#: CHANGED BY the export-only __init__ form: import statements are sorted by
+#: module, so nonuniform now loads before uniform. Same three rows, same
+#: chain; each of rfx and its runner submodules imports cleanly in a fresh
+#: process in the new order.
 _RUNNERS_EAGER_IMPORTS = (
-    ("rfx.runners.uniform", "run_uniform"),
     ("rfx.runners.nonuniform", "run_nonuniform_path"),
     ("rfx.runners.subgridded", "run_subgridded_path"),
+    ("rfx.runners.uniform", "run_uniform"),
 )
 
 
@@ -1252,6 +1241,7 @@ def test_the_package_no_longer_exports_run_distributed():
         assert needle in msg, msg
 
 
+@pytest.mark.source_scan
 def test_runners_package_eager_import_list_is_unchanged():
     """Read with ast, so it measures the SOURCE and not a polluted sys.modules."""
     init = Path(importlib.import_module("rfx.runners").__file__)

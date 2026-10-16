@@ -332,28 +332,10 @@ def tfsf_box_indices(sim) -> dict[str, tuple[int, int]]:
     """Realized inclusive bounds for the declared closed box or open slab."""
     if sim._tfsf is None:
         raise ValueError("No TFSF source registered")
-    from rfx.sources.tfsf import tfsf_injection_planes
+    from rfx.sources.tfsf import tfsf_from_declaration, tfsf_injection_planes
     grid = sim._build_grid()
-    cfg, _ = init_from_sim(sim, grid, bounds_only=True)
+    cfg, _ = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, bounds_only=True)
     return tfsf_injection_planes(cfg)
-
-
-def init_from_sim(sim, grid, n_steps=None, *, bounds_only=False):
-    """Shared run/forward setup; metadata queries need no time-record allocation."""
-    from rfx.sources.tfsf import init_tfsf
-    entry = sim._tfsf
-    if bounds_only and entry.closed_box:
-        return box_bounds(grid.shape, grid.cpml_layers, entry.margin), None
-    return init_tfsf(
-        grid.nx, float(grid.cells("x")[0]), grid.dt, ny=grid.ny, nz=grid.nz,
-        cpml_layers=grid.cpml_layers, tfsf_margin=entry.margin,
-        f0=entry.f0 if entry.f0 is not None else sim._freq_max / 2,
-        bandwidth=entry.bandwidth, amplitude=entry.amplitude,
-        polarization=entry.polarization, direction=entry.direction,
-        angle_deg=entry.angle_deg, waveform=entry.waveform, method=entry.method,
-        closed_box=entry.closed_box, n_steps=n_steps, theta_deg=entry.theta_deg,
-        phi_deg=entry.phi_deg, direction_tol_deg=entry.direction_tol_deg,
-        max_component=entry.max_component)
 
 
 def normal_incident_spectrum(cfg, state, n_steps, freqs, dt, reference_index):

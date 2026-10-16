@@ -31,12 +31,12 @@ coarse->fine node AND a locally uniform node.
 
 import numpy as np
 import jax.numpy as jnp
+import jax
 import pytest
 
 from rfx.core.yee import EPS_0
 from rfx.grid import Grid
-from rfx.lumped import (LumpedRLCSpec, build_rlc_meta, setup_rlc_materials,
-                        setup_rlc_materials_traced)
+from rfx.lumped import LumpedRLCSpec, build_rlc_meta, setup_rlc_materials
 from rfx.nonuniform import make_nonuniform_grid
 from rfx.simulation import MaterialArrays
 from rfx.sources.msl_port import MSLPort, msl_cross_section_span, setup_msl_port
@@ -236,7 +236,8 @@ def test_capacitance_fold_on_a_graded_mesh(component, node):
 
 
 def test_traced_rlc_setup_folds_the_same_numbers_as_the_concrete_one():
-    """``forward()``'s traced twin must not drift from ``run()``'s fold."""
+    """The traced branch (materials under jit) folds the same numbers as the
+    concrete branch; both are one function since #1373 D6."""
     grid = _graded_grid()
     node = 3
     pos = (_node_position(DX_PROF, node), _node_position(DY_PROF, node),
@@ -244,12 +245,12 @@ def test_traced_rlc_setup_folds_the_same_numbers_as_the_concrete_one():
     spec = LumpedRLCSpec(R=50.0, L=0.0, C=1e-12, topology="parallel",
                          position=pos, component="ez")
     concrete = setup_rlc_materials(grid, spec, _mats(grid))
-    traced = setup_rlc_materials_traced(grid, spec, _mats(grid))
+    traced = jax.jit(lambda m: setup_rlc_materials(grid, spec, m))(_mats(grid))
     idx = (node, node, node)
     assert float(traced.sigma[idx]) == pytest.approx(
-        float(concrete.sigma[idx]), rel=1e-12)
+        float(concrete.sigma[idx]), rel=1e-6)
     assert float(traced.eps_r[idx]) == pytest.approx(
-        float(concrete.eps_r[idx]), rel=1e-12)
+        float(concrete.eps_r[idx]), rel=1e-6)
 
 
 # ---------------------------------------------------------------------------
@@ -738,22 +739,27 @@ def test_nu_series_element_loads_the_node_through_its_dual_face(
 @pytest.mark.parametrize("node", sorted(NODE_KINDS))
 def test_nu_traced_rlc_meta_carries_the_same_fold_as_the_concrete_twin(
         component, node):
-    """``forward()`` uses ``build_rlc_meta_traced``.  If only the concrete
-    builder were fixed the differentiable lane would keep the cubic-cell
-    inductance and the two lanes would disagree — the failure this repo has
-    hit twice recently."""
-    from rfx.lumped import build_rlc_meta_traced, setup_rlc_materials_traced
+    """``run()`` and ``forward()`` share ``build_rlc_meta``; its traced branch
+    (materials under jit) must carry the same dual-face fold as the concrete
+    branch, or the differentiable lane would keep the cubic-cell inductance."""
+    from rfx.lumped import build_rlc_meta, setup_rlc_materials
 
     grid, pos, idx = _graded_node(component, node)
     spec = LumpedRLCSpec(R=25.0, L=2e-9, C=1e-12, topology="parallel",
                          position=pos, component=component)
     concrete = build_rlc_meta(
         grid, spec, setup_rlc_materials(grid, spec, _mats(grid)))
-    traced = build_rlc_meta_traced(
-        grid, spec, setup_rlc_materials_traced(grid, spec, _mats(grid)))
-    assert float(traced.dual_area) == pytest.approx(
-        float(concrete.dual_area), rel=1e-12)
-    assert float(traced.gamma) == pytest.approx(float(concrete.gamma), rel=1e-12)
+    def _traced(m):
+        meta = build_rlc_meta(grid, spec, setup_rlc_materials(grid, spec, m))
+        return meta.dual_area, meta.gamma, meta.D0
+
+    # Concrete inputs keep run()'s float64 host arithmetic (#1373 D6): a
+    # Python float, not a float32 array, on both entries.
+    assert type(concrete.D0) is float
+    dual_area, gamma, d0 = jax.jit(_traced)(_mats(grid))
+    assert float(dual_area) == pytest.approx(float(concrete.dual_area), rel=1e-6)
+    assert float(gamma) == pytest.approx(float(concrete.gamma), rel=1e-6)
+    assert float(d0) == pytest.approx(float(concrete.D0), rel=1e-6)
     assert float(concrete.dual_area) == pytest.approx(
         _oracle_dual_area(grid, idx, component), rel=1e-12)
 

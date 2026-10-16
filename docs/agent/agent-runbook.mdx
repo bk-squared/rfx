@@ -22,10 +22,11 @@ rather than trusting the figure beside it.
 |---|---|
 | test | `pytest` — live count: `python -m pytest --collect-only -q \| tail -1` |
 | lint | `scripts/ci/lint.sh` — the scope, selector and ignore list CI uses, in one file |
-| preflight | `sim.preflight()` — multi-check suite; grep `def _validate_` in `rfx/preflight/*.py` AND `rfx/api/_preflight.py` for the live set (the check families live in the package; the facade keeps the entry points and the request validators) |
+| preflight | `sim.preflight()` — multi-check suite; grep `def _validate_` in `rfx/preflight/*.py` AND `rfx/api/_preflight.py` for the live set (the check families live in the package; the facade keeps the entry points and the request validators), plus `preflight_line_stubs`, which `rfx/preflight/_registry.py` runs before the registered sequence |
 
-Lint is gated in CI by `.github/workflows/lint.yml` on every push/PR, and that
-workflow does nothing but call `scripts/ci/lint.sh`. The scope is `rfx/ tests/
+Lint is gated in CI by `.github/workflows/lint.yml` on pull requests, merge
+groups and pushes to `main`. Its lint job calls `scripts/ci/lint.sh`; a second
+job runs `scripts/ci/docs_hygiene.sh`. The scope is `rfx/ tests/
 validation/ scripts/ci/ scripts/dev/ scripts/changelog/` — the packages under test
 plus every script that gates a merge. The rest of `scripts/` is out of scope and has
 its own backlog.
@@ -34,14 +35,15 @@ its own backlog.
 
 The configuration checks are data, not a call list: `rfx/preflight/_registry.py` holds
 `CORE_CONFIG_CHECKS`, and `_PreflightMixin._validate_simulation_config` builds the
-shared context once and iterates it. So a new check is three steps in its own family
-module and NO edit to `rfx/api/_preflight.py`: write the function with `self` first,
-bind it on `_PreflightMixin` the way the other families do, then call
+shared context once and iterates it. So a new check is written in its own family
+module: write the function with `self` first, bind it on `_PreflightMixin` the way
+the other families do (they are bound through imports inside
+`rfx/api/_preflight.py`, so that file gains one import line), then call
 `register_config_check(ConfigCheck(name, adapter, family))` at module import. The
 registry docstring carries the worked example.
 
 Registration appends, and extras run after the whole core sequence — which is the
-point, because `PreflightReport` preserves emission order and 65 committed reports in
+point, because `PreflightReport` preserves emission order and the committed reports in
 `tests/locks/test_preflight_split_snapshot.py` pin it. A check that genuinely has to
 speak earlier is a change to `CORE_CONFIG_CHECKS`, and reds both that lock and
 `tests/locks/test_preflight_registry_sequence.py`, which pins the sequence and the
@@ -57,6 +59,9 @@ was 5 min 16 s of it, and everything else together was under ten seconds.
 
 `scripts/ci/local.sh` runs, in order: ruff, docs-hygiene, changelog-fragment, data-budget, file-size-ratchet, pr-body, workflow-yaml, api-reference, contract-tests.
 
+After those it runs the selected tests, and its file-size step also runs the
+layer-structure check.
+
 ```
 scripts/ci/local.sh                   # the local checks; pr-body reports skipped
 scripts/ci/local.sh /tmp/body.md      # also check that PR body
@@ -65,11 +70,16 @@ PYTHON=.venv/bin/python scripts/ci/local.sh
 
 Each gate is a script, not a line of yaml, because a gate you cannot run is one you
 debug by pushing. `scripts/ci/lint.sh` and `scripts/ci/docs_hygiene.sh` are the whole
-of `lint.yml`; `scripts/ci/check_pr_body.py` is the whole of `pr-body.yml`;
-`scripts/ci/check_changelog_fragment.py` is the whole of `changelog-fragment.yml`. The
-local runner calls those same files, so a green local run and a green CI run mean the
-same thing. `tests/contracts/test_ci_workflows_contract.py` fails if a command moves
-back inline, and if this list and `local.sh` stop agreeing.
+of `lint.yml`. `pr-body.yml` runs `scripts/ci/check_pr_body.py` and
+`scripts/ci/check_known_limitations.py`; `changelog-fragment.yml` runs
+`scripts/ci/check_changelog_fragment.py`. On a batch branch both use
+`scripts/ci/check_batch.py` instead, and both pass a merge group without checking. The
+local runner calls the same scripts, with two differences: it does not run the
+known-limitations check, and it adds the selected tests. So a green local run is
+close to, not the same as, a green CI run.
+`tests/contracts/test_ci_workflows_contract.py` fails if a command moves back inline,
+and if this list and `local.sh` stop agreeing (it allows the extra selected-tests
+step; it is a `docs_consistency` test, not part of the required suites).
 
 The changelog step diffs `origin/main...HEAD` and asks the two questions CI asks: is
 there a fragment for a change under `rfx/`, and was `CHANGELOG.md` edited without the
@@ -87,7 +97,7 @@ the diff touches code:
 | the diff touches | the shards run |
 |---|---|
 | `rfx/`, `tests/`, `validation/`, `examples/` | yes |
-| `pyproject.toml`, `setup.*`, any `conftest.py`, any `.test_durations` | yes |
+| `pyproject.toml`, `setup.*`, `MANIFEST.in`, `pytest.ini`, `tox.ini`, `requirements*.txt`, any `conftest.py`, any `*.test_durations` | yes |
 | `pr-tests.yml`, `changed_paths.py`, `classify_changes.sh` — the lane itself | yes |
 | anything else: `docs/`, other workflows, the rest of `scripts/`, `changelog.d/` | no — but `tests/contracts` still does |
 | any push to `main` | always yes |
@@ -111,9 +121,10 @@ classifier calls not-code. `test_the_lint_scope_covers_this_gates_own_script` pi
 `test_support_matrix_parity.py` pins a file under `docs/guides/`. Skipping them on a
 docs or scripts diff would disarm exactly the gates that watch docs and scripts, so a
 later PR could shrink the ruff scope and the test forbidding it would never run. When
-the verdict is false, `guards-and-preflight` runs `pytest tests/contracts` in place of
-the guard suite; when it is true, the twelve shards collect the whole tree and pick them up
-there. Count them yourself rather than trusting a number here:
+the verdict is false, the twelve shards each run a share of `tests/contracts`, and
+`guards-and-preflight` checks that at least 500 contract tests are collected (so a
+marker cannot deselect them silently); when it is true, the twelve shards collect the
+whole tree and pick them up there. Count them yourself rather than trusting a number here:
 `grep -rl 'docs/\|scripts/\|workflows' tests/contracts/*.py | wc -l`.
 
 **`changes` must be a required check too**, alongside `ruff`,
@@ -167,8 +178,9 @@ common case: 32 of the 60 most recently merged PRs would earn two or more. The
 body's `Lane:` line is what names the primary one, and it stays required on every
 PR for exactly that reason.
 
-Not every path is owned. `rfx/` core, `scripts/diagnostics/`,
-`validation/research/` and most of `tests/unit/` map to no lane; a PR confined to
+Not every path is owned. `rfx/` core, much of `scripts/diagnostics/` (files
+matching the waveguide, `msl` and coaxial globs in `.github/labeler.yml`, about a
+third of them, and `gpu_throughput_bench.py` do have lanes), `validation/research/` and most of `tests/unit/` map to no lane; a PR confined to
 them gets no label and carries the `Lane:` line itself. `changelog.d/` is
 deliberately unowned — every PR adds a fragment there, and owning it would put a
 second label on every pull request. `lane:plan` has no paths at all: it marks
@@ -194,8 +206,8 @@ separate rows: an issue can have been filed through the form and still never hav
 a label.
 
 Query a lane from any machine with `gh issue list -l lane:msl-port`. Who currently
-DRIVES each lane is a separate question the labels do not answer — that lives in the
-pinned lane-board issue, which the labeler file replaces as the path mapping.
+DRIVES each lane is a separate question the labels do not answer — that is recorded
+in the private governance appendix, not in an issue.
 
 Every glob in `.github/labeler.yml` is checked against `git ls-files` by
 `tests/contracts/test_governance_intake_contract.py`; a glob that matches nothing is
@@ -203,8 +215,8 @@ a failure, because it is configuration that silently owns nothing.
 
 ## PR body contract
 
-Every PR body carries two lines, each exactly once, outside code fences, HTML
-comments and `pre` blocks:
+Every PR body carries two lines outside code fences, HTML comments and `pre`
+blocks: exactly one `Lane:` line and exactly one `Review:` line, each valid:
 
 - `Lane: lane:<label>` — the owner lane, one of the repository's `lane:*` labels
   (`gh label list | grep '^lane:'`). Required on every PR. The `lane:*` labels
@@ -212,14 +224,18 @@ comments and `pre` blocks:
   measured over the 60 most recently merged PRs, 32 earn two or more lane labels and
   6 earn none, so for 38 of 60 the labels cannot say which lane owns the change. The
   labels are automatic and informational; the line is the claim. When the PR does
-  carry lane labels the line must name one of them, because a line contradicting the
+  carry lane labels the line must name one of them, or the lane of an issue the PR
+closes, because a line contradicting the
   paths means either the line is wrong or a path is missing from
   `.github/labeler.yml`. A lane label the repository no longer has is reported as a
   warning and never fails the check.
 - `Review: <who read it> (separate instance) — ACCEPT` (or `ACCEPT WITH CHANGES`).
   A merged change is read by an agent instance other than the one that wrote it;
   several pods push under one GitHub account, so the body is the only provenance.
-  `REJECT` never passes.
+  A `REJECT` verdict fails. A second `Review:` or `Lane:` line fails too, even next
+  to a valid one, and list markers and bold are stripped before the lines are
+  counted, so `- **Review:** round 1` counts. Keep the line the PR merges on and put
+  earlier rounds on a line such as `Review notes:`.
 
 `<who read it>` names the reviewing instance. A field that is nothing but an
 angle-bracketed span is an unedited stub and fails; a name that merely contains
@@ -348,19 +364,23 @@ python scripts/dev/prune_worktrees.py --apply  # remove what is safe elsewhere
 The script asks `git worktree list` where the worktrees are, so it never scans
 directories and finds them wherever they live. A worktree is removed only when its
 commits survive the removal: the branch is merged into `origin/main` or its pull
-request is merged, or the branch is on origin with no open pull request and its last
-commit is older than `--days` (default 7).
+request is merged, or its pull request is closed and the branch is on origin, or the
+branch is on origin with no open pull request and its last commit is older than
+`--days` (default 7), or it is a detached HEAD that some ref contains and is old
+enough.
 
 The local branch is a separate decision from the worktree. It is deleted only when
 origin already has its tip or the tip is an ancestor of `origin/main`, and only when
-some other ref contains it. This repository squash-merges, so a merged branch is never
-an ancestor of `main`: a commit made after the merge lives on that branch alone, and
+some other ref contains it. Every pull request lands on `main` as a new commit
+(squash-merged, or replayed as a batch member), so a merged branch is never an
+ancestor of `main`: a commit made after the merge lives on that branch alone, and
 the branch stays even though its worktree goes. **No unpushed branch is deleted on any
 path.** `--archive` pushes one to origin first, and only then may its worktree be
 removed.
 
 Nothing else is removed. A worktree is kept, and listed with the reason, when it has
-uncommitted changes, an open pull request, a branch origin does not have, a detached
+uncommitted changes, an open pull request (unless its branch is already merged into
+`origin/main`, which is checked first), a branch origin does not have, a detached
 HEAD no ref contains, or ignored files that are not regenerable caches. That last case
 matters here: `git worktree remove --force` deletes ignored files too, and some of the
 directories this repo ignores hold working notes that exist in no other copy.
@@ -370,7 +390,7 @@ ignored does, until `--remove-ignored` says otherwise.
 Pull-request state comes from `gh`, restricted to pull requests whose head repository
 is this one, since `gh pr list --head` matches a branch name across forks too. If `gh`
 fails, a dry run marks those rows `?` and unreliable, and `--apply` aborts with exit 2
-before touching anything. `--no-gh` runs offline: it prints a banner, treats only an
+before removing any worktree (it has already pruned stale worktree metadata by then). `--no-gh` runs offline: it prints a banner, treats only an
 ancestor of `origin/main` as merged, and removes no pushed-idle worktree, because
 without `gh` an open pull request cannot be ruled out.
 

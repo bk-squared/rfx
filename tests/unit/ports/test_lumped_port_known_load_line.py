@@ -86,7 +86,7 @@ def test_line_on_magnetic_plane_preflight_reports_in_plane_wave(kind):
     assert "magnetic image keeps tangential E" in msg
     assert "coupled to the interior" in msg
     assert "full symmetric object" in msg
-    assert "Distributed kernels refuse magnetic faces" in msg
+    assert "Distributed lumped/wire measurements remain unsupported." in msg
 
 
 

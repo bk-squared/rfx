@@ -82,10 +82,36 @@
         ],
         "severity": "warning",
         "source": "_validate_cfg_thin_absorber"
+      },
+      {
+        "code": "wire_port_no_radius",
+        "loc": "_ports[0]",
+        "numbers": [
+          0.2,
+          2.0,
+          0.0,
+          2.0,
+          2.0,
+          1.4,
+          0.0,
+          1.5,
+          500.0,
+          500.0,
+          0.1985,
+          99.25,
+          5.0,
+          0.0,
+          6.53,
+          0.2,
+          0.2,
+          100.0
+        ],
+        "severity": "warning",
+        "source": "preflight_wire_port_radius"
       }
     ],
     "n_errors": 0,
-    "n_issues": 4,
+    "n_issues": 5,
     "ok": true
   }
 }

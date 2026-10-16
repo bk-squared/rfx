@@ -894,15 +894,20 @@ def test_waveguide_port_rejects_invalid_freq_arrays():
         sim.add_waveguide_port(0.01, freqs=jnp.array([5e9, -1.0]))
 
 
-def test_waveguide_port_rejects_measurement_planes_outside_domain():
+@pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
+def test_waveguide_port_rejects_measurement_planes_outside_domain(graded):
     """Stored ref/probe measurement planes must stay inside the physical domain."""
+    extra = {"dz_profile": np.array([0.003, 0.002, 0.002, 0.002, 0.002,
+                                     0.002, 0.002, 0.002, 0.003])} if graded else {}
     sim = Simulation(
         freq_max=10e9,
         domain=(0.03, 0.04, 0.02),
         boundary="cpml",
         cpml_layers=10,
         dx=0.002,
+        **extra,
     )
+    assert sim._uses_nonuniform_mesh is graded
     with pytest.raises(ValueError, match="measurement planes exceed the physical x-domain after grid snapping"):
         sim.add_waveguide_port(
             0.024,

@@ -11,63 +11,28 @@ import pytest
 
 from tests.contracts.run_forward_census import (
     BUILDERS, SEAMS, capture, compare, compare_l2, l2_differences,
-    normalize_inputs, observables, run_l2,
+    normalize_inputs, observables, run_l2, port_s_pair,
 )
 
 KNOWN_ROWS = (
-    ('B-asym', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
-    ('B-closed', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
-    ('B-closed', 'uniform', 'L1', 'D2', '#1373 D2 (ports): closed-box point-source drive table differs'),
-    ('B-closed', 'uniform', 'L2', 'D2', '#1373 D2 (ports): closed-box point-source drive table differs'),
-    ('B-cpml', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
-    ('B-pecsides', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
-    ('C-film', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
-    ('C-pecbox', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
-    ('C-pinned', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
-    ('C-sheet', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
+    ('P-lumped', 'uniform', 'L2', 'D9', "#1373 D9 (ports): run()'s driver discards each drive run's port records (raw V/I/V_ref accumulators, per-step port records) after forming S; forward(port_s11_freqs) returns them"),
+    ('P-lumped2', 'uniform', 'L2', 'D9', "#1373 D9 (ports): run()'s driver discards each drive run's port records (raw V/I/V_ref accumulators, per-step port records) after forming S; forward(port_s11_freqs) returns them"),
     ('C-smooth', 'graded', 'L1', 'A6', '#1373 A6 (nu): subpixel smoothing is a run() keyword; forward() cannot request it'),
     ('C-smooth', 'graded', 'admission', 'A6', '#1373 A6 (nu): subpixel smoothing is a run() keyword; forward() cannot request it'),
     ('C-smooth', 'uniform', 'L1', 'A6', '#1373 A6 (nu): subpixel smoothing is a run() keyword; forward() cannot request it'),
     ('C-smooth', 'uniform', 'admission', 'A6', '#1373 A6 (nu): subpixel smoothing is a run() keyword; forward() cannot request it'),
-    ('C-wire', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
-    ('M-debye', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
-    ('M-diel', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
-    ('M-drude', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
-    ('M-lorentz', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
-    ('M-lossy', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
-    ('M-mu', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
-    ('O-flux', 'graded', 'L2', 'D4', '#1373 D4 (ports): forward omits the declared flux measurement'),
-    ('O-flux', 'graded', 'L2', 'D5', '#1373 D5 (ports): settling witness arrays differ between entries'),
-    ('O-flux', 'uniform', 'L1', 'D4', '#1373 D4 (ports): forward omits the declared flux measurement'),
-    ('O-flux', 'uniform', 'L2', 'D4', '#1373 D4 (ports): forward omits the declared flux measurement'),
-    ('O-flux', 'uniform', 'L2', 'D5', '#1373 D5 (ports): settling witness arrays differ between entries'),
-    ('O-ntff', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
-    ('O-vector', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
-    ('P-lumped', 'multi-device-graded', 'admission', 'A4', '#1373 A4 (ports): run refusal names the distributed=True forward path'),
-    ('P-lumped', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
+    ('P-lumped', 'multi-device-uniform', 'L2', 'D5', '#1373 D5 (ports): settling witness arrays differ between entries'),
+    ('P-lumped', 'multi-device-uniform', 'L2', 'D8', '#1373 D8 (ports): run computes the port S-matrix by default; forward returns no S without port_s11_freqs'),
     ('P-lumped', 'uniform', 'L2', 'D5', '#1373 D5 (ports): settling witness arrays differ between entries'),
-    ('P-lumped', 'uniform', 'L2', 'D8', '#1373 D8 (ports): run computes the port S-matrix by default; forward returns no S without port_s11_freqs'),
     ('P-lumped2', 'uniform', 'L2', 'D5', '#1373 D5 (ports): settling witness arrays differ between entries'),
-    ('P-lumped2', 'uniform', 'L2', 'D8', '#1373 D8 (ports): run computes the port S-matrix by default; forward returns no S without port_s11_freqs'),
     ('P-waveguide', 'graded', 'L2', 'D5', '#1373 D5 (ports): settling witness arrays differ between entries'),
-    ('P-waveguide', 'graded', 'L2', 'D7', '#1373 D7 (ports): forward() result carries no waveguide port records and S'),
     ('P-waveguide', 'multi-device-graded', 'L1', 'A5', '#1373 A5 (acceleration): run falls back for a waveguide port while distributed forward refuses'),
     ('P-waveguide', 'multi-device-graded', 'admission', 'A5', '#1373 A5 (acceleration): run falls back for a waveguide port while distributed forward refuses'),
-    ('P-waveguide', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
+    ('P-waveguide', 'multi-device-uniform', 'L2', 'D5', '#1373 D5 (ports): settling witness arrays differ between entries'),
     ('P-waveguide', 'uniform', 'L2', 'D5', '#1373 D5 (ports): settling witness arrays differ between entries'),
-    ('P-waveguide', 'uniform', 'L2', 'D7', '#1373 D7 (ports): forward() result carries no waveguide port records and S'),
-    ('P-wire', 'graded', 'admission', 'A2', '#1373 A2 (ports): run refuses the wire port that forward admits'),
-    ('P-wire', 'uniform', 'admission', 'A2', '#1373 A2 (ports): run refuses the wire port that forward admits'),
-    ('PW-A', 'graded', 'L1', 'A3', '#1373 A3 (absorber): forward refuses the graded normal plane wave'),
-    ('PW-A', 'graded', 'admission', 'A3', '#1373 A3 (absorber): forward refuses the graded normal plane wave'),
-    ('PW-A', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
-    ('PW-B', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
-    ('PW-oblique', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
-    ('PW-oblique', 'uniform', 'L2', 'D3', '#1373 D3 (absorber): oblique plane-wave fields differ'),
-    ('R-rlc', 'uniform', 'L1', 'D6', '#1373 D6 (ports): lumped RLC step inputs and fields differ'),
-    ('R-rlc', 'uniform', 'L2', 'D6', '#1373 D6 (ports): lumped RLC step inputs and fields differ'),
-    ('S-field', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
-    ('S-polarized', 'multi-device-uniform', 'admission', 'A1', '#1373 A1 (acceleration): forward refuses the multi-device uniform path'),
+    ('P-wire', 'graded', 'admission', 'A2', 'A2 expected: equal S requests give equal refusals; forward without an S request admits'),
+    ('P-wire', 'multi-device-uniform', 'admission', 'A2', 'A2 expected: equal S requests give equal refusals; forward without an S request admits'),
+    ('P-wire', 'uniform', 'admission', 'A2', 'A2 expected: equal S requests give equal refusals; forward without an S request admits'),
 )
 
 ASSEMBLY_ROWS = (
@@ -85,8 +50,10 @@ ASSEMBLY_ROWS = (
     ('B-pecsides', 'uniform'),
     ('B-periodic', 'uniform'),
     ('B-pmcone', 'graded'),
+    ('B-pmcone', 'multi-device-graded'),
     ('B-pmcone', 'uniform'),
     ('B-pmcpair', 'graded'),
+    ('B-pmcpair', 'multi-device-graded'),
     ('B-pmcpair', 'uniform'),
     ('B-upml', 'uniform'),
     ('C-film', 'graded'),
@@ -163,54 +130,73 @@ ASSEMBLY_ROWS = (
 FIELD_ROWS = (
     ('B-asym', 'graded'),
     ('B-asym', 'multi-device-graded'),
+    ('B-asym', 'multi-device-uniform'),
     ('B-asym', 'uniform'),
     ('B-closed', 'graded'),
     ('B-closed', 'multi-device-graded'),
+    ('B-closed', 'multi-device-uniform'),
     ('B-closed', 'uniform'),
     ('B-cpml', 'graded'),
     ('B-cpml', 'multi-device-graded'),
+    ('B-cpml', 'multi-device-uniform'),
     ('B-cpml', 'uniform'),
     ('B-pecsides', 'graded'),
     ('B-pecsides', 'multi-device-graded'),
+    ('B-pecsides', 'multi-device-uniform'),
     ('B-pecsides', 'uniform'),
     ('B-periodic', 'uniform'),
     ('B-pmcone', 'graded'),
+    ('B-pmcone', 'multi-device-graded'),
+    ('B-pmcone', 'multi-device-uniform'),
     ('B-pmcone', 'uniform'),
     ('B-pmcpair', 'graded'),
+    ('B-pmcpair', 'multi-device-graded'),
+    ('B-pmcpair', 'multi-device-uniform'),
     ('B-pmcpair', 'uniform'),
     ('B-upml', 'uniform'),
     ('C-film', 'graded'),
     ('C-film', 'multi-device-graded'),
+    ('C-film', 'multi-device-uniform'),
     ('C-film', 'uniform'),
     ('C-pecbox', 'graded'),
     ('C-pecbox', 'multi-device-graded'),
+    ('C-pecbox', 'multi-device-uniform'),
     ('C-pecbox', 'uniform'),
     ('C-pinned', 'graded'),
     ('C-pinned', 'multi-device-graded'),
+    ('C-pinned', 'multi-device-uniform'),
     ('C-pinned', 'uniform'),
     ('C-sheet', 'graded'),
     ('C-sheet', 'multi-device-graded'),
+    ('C-sheet', 'multi-device-uniform'),
     ('C-sheet', 'uniform'),
     ('C-wire', 'graded'),
     ('C-wire', 'multi-device-graded'),
+    ('C-wire', 'multi-device-uniform'),
     ('C-wire', 'uniform'),
     ('M-debye', 'graded'),
     ('M-debye', 'multi-device-graded'),
+    ('M-debye', 'multi-device-uniform'),
     ('M-debye', 'uniform'),
     ('M-diel', 'graded'),
     ('M-diel', 'multi-device-graded'),
+    ('M-diel', 'multi-device-uniform'),
     ('M-diel', 'uniform'),
     ('M-drude', 'graded'),
     ('M-drude', 'multi-device-graded'),
+    ('M-drude', 'multi-device-uniform'),
     ('M-drude', 'uniform'),
     ('M-lorentz', 'graded'),
     ('M-lorentz', 'multi-device-graded'),
+    ('M-lorentz', 'multi-device-uniform'),
     ('M-lorentz', 'uniform'),
     ('M-lossy', 'graded'),
     ('M-lossy', 'multi-device-graded'),
+    ('M-lossy', 'multi-device-uniform'),
     ('M-lossy', 'uniform'),
     ('M-mu', 'graded'),
     ('M-mu', 'multi-device-graded'),
+    ('M-mu', 'multi-device-uniform'),
     ('M-mu', 'uniform'),
     ('O-cm', 'graded'),
     ('O-cm', 'uniform'),
@@ -219,30 +205,39 @@ FIELD_ROWS = (
     ('O-flux', 'graded'),
     ('O-flux', 'uniform'),
     ('O-ntff', 'graded'),
+    ('O-ntff', 'multi-device-uniform'),
     ('O-ntff', 'uniform'),
     ('O-vector', 'graded'),
     ('O-vector', 'multi-device-graded'),
+    ('O-vector', 'multi-device-uniform'),
     ('O-vector', 'uniform'),
     ('P-floquet', 'uniform'),
     ('P-lumped', 'graded'),
+    ('P-lumped', 'multi-device-uniform'),
     ('P-lumped', 'uniform'),
     ('P-lumped2', 'graded'),
     ('P-lumped2', 'uniform'),
     ('P-msl', 'graded'),
     ('P-msl', 'uniform'),
     ('P-waveguide', 'graded'),
+    ('P-waveguide', 'multi-device-uniform'),
     ('P-waveguide', 'uniform'),
+    ('PW-A', 'multi-device-uniform'),
     ('PW-A', 'uniform'),
+    ('PW-B', 'multi-device-uniform'),
     ('PW-B', 'uniform'),
     ('PW-closed', 'uniform'),
+    ('PW-oblique', 'multi-device-uniform'),
     ('PW-oblique', 'uniform'),
     ('R-rlc', 'graded'),
     ('R-rlc', 'uniform'),
     ('S-field', 'graded'),
     ('S-field', 'multi-device-graded'),
+    ('S-field', 'multi-device-uniform'),
     ('S-field', 'uniform'),
     ('S-polarized', 'graded'),
     ('S-polarized', 'multi-device-graded'),
+    ('S-polarized', 'multi-device-uniform'),
     ('S-polarized', 'uniform'),
 )
 
@@ -251,6 +246,8 @@ ADMISSION_ROWS = (
     ('B-closed', 'multi-device-uniform'),
     ('B-cpml', 'multi-device-uniform'),
     ('B-pecsides', 'multi-device-uniform'),
+    ('B-pmcone', 'multi-device-uniform'),
+    ('B-pmcpair', 'multi-device-uniform'),
     ('C-film', 'multi-device-uniform'),
     ('C-pecbox', 'multi-device-uniform'),
     ('C-pinned', 'multi-device-uniform'),
@@ -266,11 +263,11 @@ ADMISSION_ROWS = (
     ('M-mu', 'multi-device-uniform'),
     ('O-ntff', 'multi-device-uniform'),
     ('O-vector', 'multi-device-uniform'),
-    ('P-lumped', 'multi-device-graded'),
     ('P-lumped', 'multi-device-uniform'),
     ('P-waveguide', 'multi-device-graded'),
     ('P-waveguide', 'multi-device-uniform'),
     ('P-wire', 'graded'),
+    ('P-wire', 'multi-device-uniform'),
     ('P-wire', 'uniform'),
     ('PW-A', 'graded'),
     ('PW-A', 'multi-device-uniform'),
@@ -285,10 +282,6 @@ BOTH_REFUSE_ROWS = (
     ('B-periodic', 'graded'),
     ('B-periodic', 'multi-device-graded'),
     ('B-periodic', 'multi-device-uniform'),
-    ('B-pmcone', 'multi-device-graded'),
-    ('B-pmcone', 'multi-device-uniform'),
-    ('B-pmcpair', 'multi-device-graded'),
-    ('B-pmcpair', 'multi-device-uniform'),
     ('B-upml', 'graded'),
     ('B-upml', 'multi-device-graded'),
     ('B-upml', 'multi-device-uniform'),
@@ -312,7 +305,6 @@ BOTH_REFUSE_ROWS = (
     ('P-msl', 'multi-device-graded'),
     ('P-msl', 'multi-device-uniform'),
     ('P-wire', 'multi-device-graded'),
-    ('P-wire', 'multi-device-uniform'),
     ('PW-A', 'multi-device-graded'),
     ('PW-B', 'graded'),
     ('PW-B', 'multi-device-graded'),
@@ -325,33 +317,23 @@ BOTH_REFUSE_ROWS = (
     ('R-rlc', 'multi-device-uniform'),
 )
 
-# Item 20: only common time_series differences on these three L2 pairs
+# Item 20: only common time_series differences on this L2 pair
 # are consequences. Other measurements, outcomes, and L1 remain exact;
 # O-flux has equal fields and is not a consequence pair.
 CONSEQUENCE_PAIRS = (
-    ('B-closed', 'uniform', 'D2'), ('R-rlc', 'uniform', 'D6'),
-    ('PW-oblique', 'uniform', 'D3'),
 )
 ID_PATTERNS = {
-    'D2': {'L1': ('/xs/1',), 'L2': ()},
-    'D3': {'L1': (), 'L2': ()},
     'D4': {'L1': ('/carry_init/flux_monitors/*', '/init/flux_monitors/*',
                   '/ctx/flux_meta/*', '/invariants/ctx/flux_meta/*',
                   '/ctx/use_flux_monitors', '/invariants/ctx/use_flux_monitors'),
            'L2': ('flux_monitors/*',)},
     'D5': {'L1': (), 'L2': ('settling_witness/*',)},
-    'D6': {'L1': ('/ctx/rlc_meta/0/D0', '/invariants/ctx/rlc_meta/0/D0'), 'L2': ()},
     'D7': {'L1': (), 'L2': ('waveguide_ports/*', 'waveguide_sparams/*')},
     'D8': {'L1': (), 'L2': ('s_params', 'freqs', 'freqs_hz')},
-    'A1': {'run': ('admitted',), 'forward': ('raised', 'NotImplementedError',
-            'distributed=True on forward() is currently implemented only for non-uniform meshes')},
+    'D9': {'L1': (), 'L2': ('lumped_port_sparams*', 'sparam_time_records*')},
     'A2': {'run': ('raised', 'NotImplementedError',
             'Lumped/wire S-matrix requests do not support plain sources / 0-ohm ports'),
            'forward': ('admitted',)},
-    'A3': {'run': ('admitted',), 'forward': ('raised', 'NotImplementedError',
-            "Differentiable TFSF plane-wave forward is supported only on the uniform single-device forward lane, not 'fwd_nonuniform'")},
-    'A4': {'run': ('raised', 'NotImplementedError', 'distributed=True forward path'),
-           'forward': ('raised', 'NotImplementedError', 'Lumped / wire ports (impedance > 0) are not yet supported')},
     'A5': {'run': ('admitted',), 'forward': ('raised', 'NotImplementedError',
             'Waveguide ports are not supported on the distributed forward path')},
     'A6': {'run': ('admitted',), 'forward': ('raised', 'TypeError',
@@ -404,11 +386,7 @@ def outcomes(declaration, path, level, pair):
                 if not ok:
                     matches = False
                     # The original cause disappearing is reported separately.
-                    wording_fixed = (ident == 'A4' and entry == 'run'
-                                     and record['outcome'] == 'raised'
-                                     and record.get('type') == pattern[1]
-                                     and pattern[2] not in record.get('message', ''))
-                    if record['outcome'] != success and not wording_fixed:
+                    if record['outcome'] != success:
                         unexplained.append({entry: {k: v for k, v in record.items() if k != 'value'}})
             if matches:
                 matched.add(ident)
@@ -472,17 +450,26 @@ def test_assembly(declaration, path):
 
 
 def check_fields(declaration, path):
-    pair = {entry: run_l2(BUILDERS[declaration], entry, path,
-                          entry_options=entry_options(declaration)) for entry in ('run', 'forward')}
+    pair = port_s_pair(declaration, path) if declaration in ('P-lumped', 'P-lumped2') and path == 'uniform' else None
+    if pair is None:
+        pair = {entry: run_l2(BUILDERS[declaration], entry, path,
+                              entry_options=entry_options(declaration)) for entry in ('run', 'forward')}
     ids = outcomes(declaration, path, 'L2', pair)
     values = {entry: observables(value['result']) for entry, value in pair.items()}
+    if declaration in ('P-lumped', 'P-lumped2') and path == 'uniform':
+        # S was checked above on its measured column, with the cross-trace bar.
+        for value in values.values():
+            value['arrays'].pop('s_params', None)
+            value['arrays'].pop('freqs_hz', None)  # run alias of the bins checked above
     comparison = compare_l2(values['run']['arrays'], values['forward']['arrays'],
                             left_raises=values['run']['raises'], right_raises=values['forward']['raises'])
-    classify(declaration, path, 'L2', l2_differences(comparison), ids)
+    differences = l2_differences(comparison)
+    classify(declaration, path, 'L2', differences, ids)
 
 
 ALWAYS_ON_FIELDS = tuple(row for row in FIELD_ROWS if row[0] == 'B-cpml' or row in (
-    ('O-dft', 'uniform'), ('O-ntff', 'uniform'), ('O-cm', 'uniform'), ('P-msl', 'uniform')) or any(
+    ('O-dft', 'uniform'), ('O-ntff', 'uniform'), ('O-cm', 'uniform'), ('P-msl', 'uniform'),
+    ('B-closed', 'uniform')) or any(
     (d, p, level) == (*row, 'L2') for d, p, level, ident, reason in KNOWN_ROWS))
 
 
@@ -500,6 +487,11 @@ def test_fields_slow(declaration, path):
 def test_admission(declaration, path):
     pair = {entry: run_l2(BUILDERS[declaration], entry, path,
                           entry_options=entry_options(declaration)) for entry in ('run', 'forward')}
+    if declaration == 'P-wire' and path in ('uniform', 'graded'):
+        with pytest.raises(NotImplementedError) as exc:
+            BUILDERS[declaration](path).forward(n_steps=1, skip_preflight=True,
+                                               port_s11_freqs=[2e9])
+        assert str(exc.value) == pair['run']['message']
     ids = outcomes(declaration, path, 'admission', pair)
     finish(declaration, path, 'admission', ids, set(), [])
 
@@ -553,3 +545,25 @@ def test_declaration_refusal_does_not_extend_to_unlisted_rows():
             for entry in ('run', 'forward')}
     assert both_refused('PW-closed', 'graded', pair), pair
     assert not both_refused('PW-A', 'graded', pair), pair
+
+
+@pytest.mark.parametrize('declaration', ('P-lumped',))
+def test_multi_device_graded_refusal_names_both_entries(declaration):
+    # One executor refuses for both entries; its text must not send a run()
+    # user to a forward() argument (#1373 A4).
+    pair = {entry: run_l2(BUILDERS[declaration], entry, 'multi-device-graded', n_steps=1,
+                          entry_options=entry_options(declaration))
+            for entry in ('run', 'forward')}
+    messages = {entry: record.get('message', '') for entry, record in pair.items()}
+    assert messages['run'] == messages['forward'], messages
+    assert 'run(devices=...)' in messages['run'] and 'forward(distributed=True)' in messages['run'], messages
+
+
+@pytest.mark.parametrize('declaration', ['P-lumped', 'P-lumped2'])
+@pytest.mark.parametrize('path', ['uniform', 'graded'])
+def test_port_s_equal_requests(declaration, path):
+    pair = port_s_pair(declaration, path)
+    if path == 'graded':
+        assert pair is None  # public explicit lumped run S request is refused
+    else:
+        assert pair is not None

@@ -5,9 +5,9 @@ PolylineWire filament vertex or a PEC sheet plane there goes to the LOWER node
 (#931), and on the non-uniform lane so does a port, source or probe (#1295):
 the model below lands its feed on its conductor. The shared lower-node tie
 rule now holds on both uniform and non-uniform lanes (#1342).
-On either lane, a port end at
-float32(3.5 mm) against a sheet at 3.5 mm straddles the half node and is
-refused the same way.
+On either lane, a port end at float32(3.5 mm) against a sheet at 3.5 mm
+is inside the solver-width band and lands on the sheet's lower node.
+A port end outside the tie but within the pairing window is refused.
 """
 from __future__ import annotations
 
@@ -150,18 +150,37 @@ def test_the_same_model_on_a_node_runs(case, lane):
 
 @pytest.mark.parametrize("h", [3.5e-3, 50.5e-3])
 @pytest.mark.parametrize("lane", ["uniform", "nu"])
-def test_a_float32_port_end_straddling_the_half_node_of_a_sheet_is_refused(
+def test_a_float32_port_end_straddling_the_half_node_of_a_sheet_lands_on_the_sheet_node(
         lane, h):
-    """The port's far end is float32(h), half a float32 step or less above
-    the sheet at h: nearest node above the half node against the sheet's
-    lower node. At 3.5 mm that is 1.08e-10 m, 1e-7 of a cell; at 50.5 mm it is
-    1.76e-6 of a cell, outside a window of 1e-6 of a cell alone."""
+    """The float32 port end stays within the sheet's solver-width tie band."""
     h32 = float(np.float32(h))
     assert 0 < h32 - h <= 2.0 ** -24 * h
+    band = 1e-9 * DX + 4 * float(np.finfo(np.float32).eps) * h
+    assert h32 - h < band
     n = int(round(h / DX + 0.5))                 # the node above the tie
     sim = _sim(lane, dom=(20e-3, 19e-3, (n + 9) * DX))
     sim.add(Box((5e-3, 5e-3, h), (15e-3, 14e-3, h)), material="pec")
     sim.add_port((10e-3, 9e-3, 0.0), component="ez", extent=h32)
+    point, conductor = _nodes(sim, lane)
+    assert (point, conductor) == (n - 1, {n - 1})
+    assert _split_findings(sim) == []
+    assert np.all(np.isfinite(np.asarray(_run(sim, skip_preflight=True).time_series)))
+
+
+@pytest.mark.parametrize("lane", ["uniform", "nu"])
+def test_a_port_end_outside_the_half_node_band_of_a_sheet_is_refused(lane):
+    """A split inside the pairing window is refused on both lanes.
+
+    At 50.5 mm, band/2 exceeds the pairing window, so that scene cannot
+    witness a split: every pair the detector compares takes one node.
+    """
+    h = 3.5e-3
+    band = 1e-9 * DX + 4 * float(np.finfo(np.float32).eps) * h
+    assert band / 2 < 0.95e-9 <= 1e-6 * DX
+    n = int(round(h / DX + 0.5))
+    sim = _sim(lane, dom=(20e-3, 19e-3, (n + 9) * DX))
+    sim.add(Box((5e-3, 5e-3, h), (15e-3, 14e-3, h)), material="pec")
+    sim.add_port((10e-3, 9e-3, 0.0), component="ez", extent=h + 0.95e-9)
     point, conductor = _nodes(sim, lane)
     assert (point, conductor) == (n, {n - 1})
     _refused(sim)
@@ -175,12 +194,14 @@ def test_the_same_declared_coordinate_has_no_split_message():
 def test_the_message_names_both_features_and_both_nodes(lane):
     from dataclasses import replace
     # Keep the original dipole/message witness, with the conductor's
-    # float32 coordinate just above the tie so the refusal still fires.
-    wire_y = float(np.nextafter(np.float32(9.5e-3), np.float32(np.inf)))
+    # coordinate outside the tie but inside the detector's pairing window.
+    band = 1e-9 * DX + 4 * float(np.finfo(np.float32).eps) * 3.5e-3
+    assert band / 2 < 0.95e-9 <= 1e-6 * DX
+    wire_y = 3.5e-3 + 0.95e-9
     sim = _dipole(lane, wire_y)
-    sim._ports[0] = replace(sim._ports[0], position=(10e-3, 9.5e-3, 8e-3))
+    sim._ports[0] = replace(sim._ports[0], position=(10e-3, 3.5e-3, 8e-3))
     text = str(_split_findings(sim)[0])
-    assert "add_port at (0.01, 0.0095, 0.008)" in text
+    assert "add_port at (0.01, 0.0035, 0.008)" in text
     assert "PolylineWire 'pec'" in text
-    assert "y = 9.5 mm" in text
-    assert "y node 9 (9 mm)" in text and "node 10 (10 mm)" in text
+    assert "y = 3.5 mm" in text
+    assert "y node 3 (3 mm)" in text and "node 4 (4 mm)" in text

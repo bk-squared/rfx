@@ -1138,3 +1138,54 @@ def validate_subgrid_setup(
         region=region,
         issues=tuple(issues),
     )
+
+
+def validate_subgrid(self, *, mode: str | None = None):
+    """Return the production-envelope validation report for subgridding.
+
+        Every mode reports the subgridded lane as unsupported because it is
+        unstable and unverified (#1465). Experimental envelope checks remain
+        available for research diagnostics; opting in does not confer support.
+        """
+    self._require_uniform_mesh("validate_subgrid")
+    # #931 §1.9: sheets and wires own no cell, so a validator handed
+    # only pec_mask cannot see them — and this lane cannot realize
+    # them (run(solver='subgridded') refuses). Collect and pass them
+    # so the report refuses the same models the runner does.
+    if self._refinement is None:
+        from rfx.subgridding.validation import validate_subgrid_setup
+        grid = self._build_grid()
+        _vs_sheets: list = []
+        _vs_wires: list = []
+        mats, _, _, pec_mask, *_ = self._assemble_materials(
+            grid, pec_sheets=_vs_sheets, pec_wires=_vs_wires)
+        return validate_subgrid_setup(
+            self, grid, mats, pec_mask, sheets=_vs_sheets,
+            wires=_vs_wires, mode=mode or "production",
+        )
+    grid = self._build_grid()
+    _vs_sheets = []
+    _vs_wires = []
+    mats, _, _, pec_mask, *_ = self._assemble_materials(
+        grid, pec_sheets=_vs_sheets, pec_wires=_vs_wires)
+    from rfx.subgridding.validation import validate_subgrid_setup
+    return validate_subgrid_setup(
+        self,
+        grid,
+        mats,
+        pec_mask,
+        sheets=_vs_sheets,
+        wires=_vs_wires,
+        mode=mode or self._refinement.get("validation", "production"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# ``validate_subgrid`` above was a ``def`` in ``Simulation``'s body in
+# rfx/api/__init__.py (2.0 declaration rule: that file's Simulation methods only
+# record declarations; building the grid and assembling materials belongs here).
+# It returns to ``Simulation`` by a class-body import, so its pre-move
+# ``__qualname__`` is restored explicitly: a module-level ``def`` gets the bare
+# name, and a TypeError would otherwise stop naming ``Simulation.validate_subgrid()``.
+# ---------------------------------------------------------------------------
+validate_subgrid.__qualname__ = "Simulation.validate_subgrid"

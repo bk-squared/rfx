@@ -1,6 +1,6 @@
 ---
 title: "Probes and S-Parameters"
-description: "Extract field data with point, vector, and DFT-plane probes; compute S-parameters per port family; and pull resonances via harmonic inversion."
+description: "Extract field data with point, vector, and DFT-plane probes; compute S-parameters per port family; and pull resonances by a matrix pencil fit."
 sidebar:
   order: 2
 ---
@@ -128,12 +128,12 @@ Two rules for this measurement:
 the [flux regions contract](https://github.com/bk-squared/rfx/blob/main/docs/guides/flux_regions.md)
 explains how that rectangle lands on the grid.
 
-## Resonances (Harminv)
+## Resonances
 
 `result.find_resonances(freq_range=...)` fits the ring-down of a probe record
-as a sum of damped sinusoids (harmonic inversion by the matrix pencil method).
-It returns `HarminvMode` objects, strongest first, with `freq` (Hz), `Q`,
-`decay` (1/s), `amplitude`, `phase` and a relative fit `error`.
+as a sum of damped sinusoids by the matrix pencil method and returns the modes,
+strongest first. [Resonances](/rfx/measure/resonances/) explains the fit, its
+options and when its Q means something.
 
 The example below is a small PEC cavity fed by a 50 Ω wire port. The port's
 resistor loads the cavity, so the modes have a finite Q. The same run is used
@@ -149,7 +149,8 @@ cav.add_port((0.0075, 0.006, 0.0), "ez", impedance=50.0, extent=h)  # floor to c
 cav.add_probe((0.020, 0.016, 0.006), "ez")
 cav_run = cav.run(n_steps=1500, compute_s_params=True)
 
-modes = cav_run.find_resonances(freq_range=(6e9, 10e9))
+port_pulse = GaussianPulse(f0=5e9, bandwidth=0.8)   # the port's default: f0 = freq_max/2
+modes = cav_run.find_resonances(freq_range=(6e9, 10e9), waveform=port_pulse)
 if not modes:
     raise RuntimeError("no mode found: lengthen the run or widen freq_range")
 for m in modes[:3]:
@@ -160,16 +161,6 @@ print(f"analytic TM110: {f_tm110 / 1e9:.3f} GHz")
 The strongest mode need not sit at the empty-cavity TM110 value: the wire
 port is a metal post with a resistor inside the cavity, so this is no longer
 the empty cavity.
-
-Harminv only works on the free ring-down, so it skips the start of the record
-where the source is still on. When `source_decay_time=None`, rfx estimates
-that interval from the centre of `freq_range` and a fixed fractional bandwidth
-of 0.8; it does not inspect your source. Pass `source_decay_time=` (seconds)
-or `waveform=` when your pulse is longer than that estimate.
-
-To pick a physical mode, check its field pattern or compare with an analytic
-value; don't assume the strongest peak is the one you want. The standalone
-`harminv(signal, dt, f_min, f_max)` works on any sampled signal.
 
 ## S-parameters: pick the calculator for your port
 
@@ -502,7 +493,7 @@ For plotting S-parameters, fields and time series, see
   noticeably; end the line at its port instead.
 - **Coax refuses the model with a lateral-absorber message** → the line's
   outer wall is within one cell of a side absorber; widen the domain.
-- **Harminv returns nothing, or a mode you did not expect** → lengthen the
+- **`find_resonances` returns nothing, or a mode you did not expect** → lengthen the
   record, narrow `freq_range`, and identify modes by field pattern.
 - **Ring-down completion refuses the run** → the source is still on in the
   fit window; lengthen the record or raise `window_start`.

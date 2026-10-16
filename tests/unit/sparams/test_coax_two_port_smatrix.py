@@ -834,6 +834,7 @@ def test_nonpassive_result_warns_and_is_not_silently_dropped():
     assert out is result  # advisory only: the (unreliable) result is still returned
 
 
+@pytest.mark.source_scan
 def test_compute_coaxial_two_port_routes_through_finalize_sparam_result():
     """Regression guard for design-note incidental defect 3: greppable proof
     the new method's own source calls the shared passivity-advisory epilogue

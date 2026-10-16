@@ -122,7 +122,7 @@ def test_effect_is_resolved_at_the_production_float32_precision(envelope):
 
 def test_live_functions_reproduce_the_committed_beta(envelope):
     """_compute_beta / _compute_mode_impedance at the JSON's inputs give the JSON's values."""
-    from rfx.sources.waveguide_port import _compute_beta, _compute_mode_impedance
+    from rfx.model.waveguide_modes import _compute_beta, _compute_mode_impedance
     inp = envelope["beta_inputs"]
     with enable_x64():
         for r in envelope["rows"]:

@@ -23,7 +23,7 @@ import jax.numpy as jnp
 import pytest
 
 from rfx import GaussianPulse, Simulation
-from rfx.harminv import harminv
+from rfx.harminv import matrix_pencil
 
 C0 = 299792458.0
 DX, N = 1e-3, 24
@@ -51,7 +51,7 @@ def _fixture(debye_block=False):
 
 
 def _strongest(ts, dt):
-    modes = [m for m in harminv(np.asarray(ts)[STEPS // 4:], dt, 8e9, 12e9)
+    modes = [m for m in matrix_pencil(np.asarray(ts)[STEPS // 4:], dt, 8e9, 12e9)
              if m.Q > 30]
     assert modes, "no mode with Q > 30 in 8-12 GHz -- the fixture rang out"
     return max(modes, key=lambda m: m.amplitude).freq

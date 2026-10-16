@@ -16,62 +16,49 @@ from tests.contracts.test_absorber_curl_coefficients import (
 
 
 def observe_faces(monkeypatch, sim, lane, face, *, expected_layout=None):
-    """Spy the returned face multipliers inside the actual rank-local step."""
-    import rfx.boundaries.cpml as cpml
+    """Observe the same twelve face multipliers through the shared kernel."""
+    import rfx.boundaries.electric_coefficient as coefficients
     import rfx.runners.distributed_v2 as uniform
     import rfx.runners.distributed_nu as graded
+    from rfx.boundaries.depths import grid_face_depths
 
     jax.clear_caches()
-    observed = {}
-    active = {'x_lo': {0: 1, 2: 2}, 'x_hi': {1: 1, 3: 2},
-              'y_lo': {4: 0, 6: 2}}[face]
-    context = {}
-
-    def capture(index, value):
-        if index not in active:
-            return
-        component = active[index]
-
-        def save(rank, array):
-            observed[int(rank), component] = np.asarray(array).copy()
-
-        jax.debug.callback(save, context['rank'], value)
-
-    module, name = (graded, '_apply_cpml_e_local_nu') if 'graded' in lane else (
-        uniform, '_apply_cpml_e_distributed')
-    original_step = getattr(module, name)
+    observed, context = {}, {}
+    components = (1, 2) if face.startswith("x") else (0, 2)
+    module = graded if 'graded' in lane else uniform
+    original_step = module.apply_cpml_e
+    original_coefficient = coefficients.corrected_coefficient
 
     def step(*args, **kwargs):
-        context.update(rank=kwargs['rank'], counter=0)
-        return original_step(*args, **kwargs)
+        frame = kwargs['frame']
+        if expected_layout is not None:
+            assert (frame['x'][0], args[0].ex.shape[0] - frame['x'][0] - frame['x'][1]) == expected_layout, 'actual step ghost/pad_x layout differs'
+        grid = args[3]
+        depth = next(f.realized for f in grid_face_depths(grid) if f.name == face)
+        axis = 'xyz'.index(face[0])
+        lo, hi = frame.get(face[0], (0, args[0].ex.shape[axis]))
+        window = [slice(None)] * 3
+        window[axis] = slice(lo, lo + depth) if face.endswith('lo') else slice(hi - depth, hi)
+        context.update(rank=jax.numpy.where(kwargs['owned']['x_lo'], 0, 1),
+                       component=0, window=tuple(window))
+        try:
+            return original_step(*args, **kwargs)
+        finally:
+            context.clear()
 
-    monkeypatch.setattr(module, name, step)
-    if importlib.util.find_spec('rfx.boundaries.electric_coefficient') is not None:
-        import rfx.boundaries.electric_coefficient as coefficients
-        original_faces = coefficients.slab_face_coefficients
+    def coefficient(*args, **kwargs):
+        out = original_coefficient(*args, **kwargs)
+        if context:
+            c = context['component']
+            context['component'] += 1
+            if c in components:
+                def save(rank, array, component=c):
+                    observed[int(rank), component] = np.asarray(array).copy()
+                jax.debug.callback(save, context['rank'], out[context['window']])
+        return out
 
-        def faces(*args, **kwargs):
-            if expected_layout is not None:
-                assert args[3:5] == expected_layout, 'actual step ghost/pad_x layout differs'
-            out = original_faces(*args, **kwargs)
-            for index in active:
-                capture(index, out[index])
-            return out
-
-        monkeypatch.setattr(coefficients, 'slab_face_coefficients', faces)
-    else:
-        # Exact base tree: the same twelve operands are formed inline.
-        original_ce = cpml._ce_si
-
-        def coefficient(*args):
-            out = original_ce(*args)
-            if 'rank' in context:
-                capture(context['counter'], out)
-                context['counter'] += 1
-            return out
-
-        monkeypatch.setattr(cpml, '_ce_si', coefficient)
-
+    monkeypatch.setattr(module, 'apply_cpml_e', step)
+    monkeypatch.setattr(coefficients, 'corrected_coefficient', coefficient)
     result = sim.run(n_steps=1, skip_preflight=True, devices=jax.devices('cpu')[:2])
     jax.block_until_ready(result.time_series)
     jax.effects_barrier()

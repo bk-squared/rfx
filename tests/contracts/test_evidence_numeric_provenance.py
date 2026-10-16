@@ -760,6 +760,8 @@ CLASSIFICATION: dict[str, str] = {
     "docs/public/showcase/gradient-cost.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/showcase/descent-to-optimum.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/showcase/forward-checks.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/showcase/grin-lens.mdx": NO_ARTIFACT_REFERENCE,
+    "docs/public/showcase/waveguide-filter.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/validation/cross-solver.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/validation/index.mdx": NO_ARTIFACT_REFERENCE,
     "docs/public/validation/recommended-configuration.mdx": NO_ARTIFACT_REFERENCE,
@@ -1009,7 +1011,7 @@ CLASSIFICATION: dict[str, str] = {
     # 2026-09-16 (#873 near-field composition): the pre-declaration was written
     # before any projection coefficient existed and carries no `::` span. Its
     # basis tables are properties of the port code and the grid, computed from
-    # rfx/sources/_waveguide_modes.py rather than read out of any artifact, so
+    # rfx/model/waveguide_modes.py rather than read out of any artifact, so
     # there is nothing here for this gate to resolve.
     "docs/design_notes/waveguide_driven_plane_near_field_composition_predeclaration.md":
         NO_ARTIFACT_REFERENCE,

@@ -40,12 +40,9 @@ import numpy as np
 import pytest
 
 from rfx.api import Simulation
-from rfx.sources.waveguide_port import (
-    _extract_port_waves_from_time_series,
-    extract_waveguide_port_waves,
-    _compute_beta,
-    C0_LOCAL,
-)
+from rfx.measurement.waveguide_s import _extract_port_waves_from_time_series
+from rfx.sources.waveguide_port import extract_waveguide_port_waves, C0_LOCAL
+from rfx.model.waveguide_modes import _compute_beta
 
 # Canonical 40 mm x 20 mm guide (matches the validation battery), but with the
 # port moved interior so the reference/probe planes sit OUTSIDE the CPML, and

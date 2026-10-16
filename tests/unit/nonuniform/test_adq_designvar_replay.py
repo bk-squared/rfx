@@ -35,6 +35,7 @@ def test_missing_required_artifact_is_an_error(tmp_path, monkeypatch):
             pytest.fail("A completed witness must not skip missing evidence")
 
 
+@pytest.mark.source_scan
 def test_main_refuses_existing_evidence_before_measurement(tmp_path, monkeypatch):
     out = tmp_path / "validation/research/multiband_nu/results/adq_stack_l1.json"
     out.parent.mkdir(parents=True)

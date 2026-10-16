@@ -130,12 +130,13 @@ def test_kernel_import(tmp_path, generated):
 
 
 def test_module_attribute_import_is_per_file(tmp_path, generated):
-    name = "rfx.model.conductors:_PreparedSolve"
+    name = "rfx.model.conductors:_same_grid"
     assert name not in generated["files"][SIM]["I"]
-    assert name in generated["files"][EXECUTE]["I"]
+    assert name not in generated["files"][EXECUTE]["I"]
     observed = mutate(tmp_path, SIM, CLEAN,
-                      "from rfx.model import conductors as _c2\n_c2._PreparedSolve")
+                      "from rfx.model import conductors as _c2\n_c2._same_grid")
     assert_new_hit(generated, SIM, ["I"], name, observed)
+    assert name not in gate.count_file(CopiedSources(tmp_path), EXECUTE)["I"]
 
 
 def test_declaration_grid_mutation(tmp_path, generated):
@@ -272,11 +273,14 @@ def test_outside_new_file_with_measurement_hit(tmp_path, generated):
 def test_calibration_from_declaration_and_leader_correction(generated):
     api = generated["files"][API]
     assert "Simulation.add_thin_conductor" not in api["D1"] + api["D2"]
-    assert "Simulation.add_waveguide_port" in api["D1"]
-    # This method still computes/checks values before a final return at this commit.
-    assert "Simulation.mesh_intelligence_report" in api["D2"]
+    # The waveguide port's plane check moved to rfx.measurement.waveguide_planes;
+    # D1 detection itself stays pinned by test_declaration_grid_mutation.
+    assert "Simulation.add_waveguide_port" not in api["D1"]
+    # The report moved to rfx.mesh_planner.mesh_intelligence_report; the method only returns its call.
+    assert "Simulation.mesh_intelligence_report" not in api["D2"]
     node = target_unit(real_tree(API), "Simulation.mesh_intelligence_report")
-    assert len(gate.body_without_docstring(node)) > 1
+    assert len(gate.body_without_docstring(node)) == 1
+    assert "mesh_intelligence_report" in {name for name, _, _ in gate.units(real_tree("rfx/mesh_planner.py"))}
     moved = (
         "_ad_memory_static_accounting", "estimate_ad_memory", "explain_ad_memory",
         "plan_ad_memory", "ad_memory_preflight", "ad_memory_compiled_certificate",
@@ -294,7 +298,7 @@ def test_calibration_from_declaration_and_leader_correction(generated):
     # rfx/model/ in #1643; nonuniform.py now only imports it, counted under I.
     assert "NonUniformGrid.node_of" not in all_units
     assert "rfx.model.graded_grid:make_nonuniform_grid" in nonuniform["I"]
-    assert "rfx.model.materials:_design_box_edge_coeffs" in generated["files"][SIM]["I"]
+    assert "rfx.model.materials:_design_box_edge_coeffs" not in generated["files"][SIM]["I"]
 
 
 def empty_baseline():
@@ -500,7 +504,7 @@ def test_wiring_matches_file_size_gate():
 
 @pytest.mark.parametrize("target,statement,name", [
     (CLEAN, "from rfx.boundaries import apply_cpml_e", "rfx.boundaries:apply_cpml_e"),
-    (CLEAN, "from rfx.model.conductors import _PreparedSolve", "rfx.model.conductors:_PreparedSolve"),
+    (CLEAN, "from rfx.model.conductors import _same_grid", "rfx.model.conductors:_same_grid"),
     ("<module>", "from rfx.model.conductors import *", "rfx.model.conductors:*"),
 ])
 def test_review_import_mutations_on_real_source(tmp_path, generated, target, statement, name):
@@ -607,9 +611,11 @@ _MODULE_PHASE = jnp.exp(1j * angle)
 def test_review_pseudo_unit_calibration(generated):
     # nonuniform.py lost its module-level hit when #1643 moved the grid tables out.
     assert "<module>" not in generated["files"]["rfx/nonuniform.py"]["G"]
+    # waveguide_port.py lost both when its definitions moved to the layer
+    # packages and the file kept only re-exports.
     waveguide = generated["files"]["rfx/sources/waveguide_port.py"]
-    assert "<module>" in waveguide["G"]
-    assert "WaveguidePortConfig.<body>" in waveguide["G"]
+    assert "<module>" not in waveguide["G"]
+    assert "WaveguidePortConfig.<body>" not in waveguide["G"]
 
 
 def test_missing_base_baseline_is_not_adoption_after_checker_exists(synthetic, monkeypatch, capsys):

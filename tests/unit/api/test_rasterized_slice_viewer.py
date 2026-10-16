@@ -456,6 +456,7 @@ def test_stack_profile_falls_back_to_the_column_with_eps_structure_not_the_cpml_
         f"corner; title: {t!r}")
 
 
+@pytest.mark.source_scan
 def test_stack_shading_is_absolute_so_two_columns_compare():
     """Per-column normalisation made a solid eps_r=9 column pixel-identical to
     a vacuum one, while the docstring promises the tint carries permittivity."""

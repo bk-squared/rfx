@@ -1,0 +1,100 @@
+---
+title: "Architecture"
+description: "The three layers every rfx run goes through: the realized model, the time step, and the measurement, and where each lives in the code."
+sidebar:
+  order: 13
+---
+
+Read this before changing how rfx builds, steps or measures a model. It names
+the layers, the package each one lives in, and the checks that keep code in
+its layer. [Where new code goes](./where-new-code-goes) turns this into a
+lookup by task.
+
+## One run, three layers
+
+A `Simulation` is a declaration: materials, conductors, ports, sources,
+boundaries, a mesh and the outputs you asked for. Every run turns it into a
+result in three steps, and each step has one home:
+
+| Layer | What it does | Package |
+|---|---|---|
+| realized model | turns the declaration and the grid into the arrays the time step reads: permittivity and conductivity per edge, PEC edges and sheets, lossy films, dispersive poles, port and source coefficients, occupancy | `rfx/model/` |
+| time step | advances the fields one step in a fixed order of operations | `rfx/stepping/` |
+| measurement | records what the result reports: probe samples, DFT accumulators, port voltages and currents, flux, on the physical clock of each field | `rfx/measurement/` |
+
+Boundaries (absorbers, PEC and PMC faces, periodic seams, plane-wave
+injection) have their own package, `rfx/boundaries/`, used by the model and
+the time step.
+
+The goal of 2.0 is that the solver paths (uniform mesh, graded mesh, several
+devices) differ only in the kernels they plug into the time step: every path
+solves one realized model, steps through one order, and is measured by one
+measurement plan. Not every path is there yet (below). ADI and subgridding stay
+outside 2.0.
+
+## The order of one step
+
+`rfx/stepping/sequence.py` fixes the order of operations within a step; the
+single-device uniform and graded paths follow it:
+
+1. update H, then apply the boundary corrections to H;
+2. update E, then apply the boundary corrections to E;
+3. apply PEC, then the constitutive updates (dispersive and nonlinear media);
+4. add the sources.
+
+Measurements attach at named points between these operations
+(`HookPoint`: after H, after the E update, before and after the sources, at the
+end of the step). A path supplies its own kernel for each operation; it does
+not reorder them. When you add a physical effect, find the operation it
+belongs to and the hook its measurement needs, instead of adding a new pass
+over the fields.
+
+<p data-rfx="note">Pending for 2.0: the multi-device paths step through their
+own step function; making this the one order for every path is tracker 1373.
+ADI (an implicit scheme) and subgridding do not use it.</p>
+
+## Declarations, refusals and the path table
+
+A declaration method on `Simulation` (`add_*`) is meant to record what the user
+declared and check that it is admissible; anything that needs the grid or the
+realized model belongs to `rfx/model/`. Methods that still do more are counted
+by the layer check below. Before the first step, the chosen path either
+carries each declared input, hands the model to another path with a warning,
+or refuses it. That decision for every attribute and every path is one table,
+`tests/contracts/path_disposition.py`, and tests execute its cells: a refused
+cell must raise before any time step, and for the physics and observer rows a
+carried cell must change the result.
+A new input is not finished until it has a row there.
+
+`run()` and `forward()` are meant to be one pipeline: the same assembly and the
+same time step, with `run()` adding only reporting.
+`tests/contracts/test_run_forward_one_pipeline.py` compares their fields over a
+matrix of declarations and paths and lists every known difference.
+
+## The five large files
+
+Five files still hold more than their share of the code:
+`rfx/api/_execute.py`, `rfx/api/__init__.py`, `rfx/simulation.py`,
+`rfx/nonuniform.py` and `rfx/sources/waveguide_port.py`. They are callers:
+they should call the layer packages, not implement a layer themselves.
+
+`scripts/ci/check_layer_structure.py` reads the code's syntax tree and counts,
+per file, the functions that do a layer's work outside its package: stepping
+fields (a time loop or a kernel call), measuring (a Fourier transform),
+building grid arrays with arithmetic or indexed writes, or, in
+`Simulation`, a declaration that reads the grid and other methods with logic.
+It also counts imports, in those five files, of kernel functions or of layer
+functions other than the ones a layer package exports from its root.
+Outside the five files it counts every module outside the layer packages that
+steps fields or takes a Fourier transform, so a new module that does either
+belongs in `rfx/stepping/` or `rfx/measurement/`. The counts are recorded in
+`scripts/ci/layer_baseline.json` (`files` for the five, `outside` for the rest),
+and the check fails a change that raises any of them. Move code into its layer first; then
+the count falls and the baseline is updated.
+
+## Where to look next
+
+- `docs/agent/repo-map.mdx` and `docs/agent/working-on-rfx.mdx` in the repository:
+  the modules by task, and how changes are reviewed and merged.
+- The Overview agent page: the agent workflow.
+- [Refused inputs](/rfx/check/refusals/): what users see when a path refuses.

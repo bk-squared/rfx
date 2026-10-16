@@ -68,18 +68,17 @@ def test_nu_wireport_grad_does_not_crash():
     """jax.grad on a NU sim with a WirePort extent= must NOT raise
     TracerArrayConversionError (issue #70).
 
-    sim.forward auto-enables wire_sparams when a WirePort is registered
-    (rfx/runners/nonuniform.py:436-440 defaults sp_freqs via linspace
-    when compute_s_params is None), so the s_params extractor fires
-    automatically under jax.grad — previously this is the site that
-    called _np.array on a tracer and crashed.
+    Request the wire S bins so the s_params extractor fires under
+    jax.grad — previously this is the site that called _np.array on a
+    tracer and crashed.
     """
 
     def loss(eps_scale: jax.Array) -> jax.Array:
         sim = _build_nu_sim_with_wireport(sub_eps=2.5)
         grid = sim._build_nonuniform_grid()
         eps = jnp.ones(grid.shape, dtype=jnp.float32) * eps_scale
-        fr = sim.forward(eps_override=eps, n_steps=30)
+        fr = sim.forward(eps_override=eps, n_steps=30,
+                         port_s11_freqs=np.linspace(2 * F0 / 10, 2 * F0, 50))
         return jnp.sum(fr.time_series ** 2)
 
     alpha0 = jnp.float32(1.0)

@@ -90,6 +90,46 @@ class PortGeometry:
 
 
 @dataclass(frozen=True)
+class SourceGeometry:
+    """A non-port source: E edges it injects at, or the region it injects on.
+
+    ``label`` names the declaration (a soft source is ``port[i]`` because it
+    is stored in the port list). ``index_box`` is inclusive per axis; None
+    on an axis means unbounded there (a TFSF slab).
+    """
+
+    label: str
+    kind: str
+    component: str | None
+    edges: tuple[tuple[int, int, int], ...] = ()
+    index_box: tuple | None = None
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class ProbeGeometry:
+    """A probe: the Yee index it samples, or the inclusive index box it reads."""
+
+    label: str
+    kind: str
+    components: tuple[str, ...]
+    index: tuple[int, int, int] | None = None
+    index_box: tuple | None = None
+    error: str | None = None
+
+
+@dataclass(frozen=True)
+class CellsPerWavelength:
+    """Interior cells per wavelength at ``freq_hz`` (the declared freq_max)."""
+
+    vacuum: float
+    medium: float | None
+    max_cell_m: float
+    freq_hz: float
+    max_eps_mu: float | None
+
+
+@dataclass(frozen=True)
 class RealizedGeometry:
     """Immutable geometry metadata with optional build-time diagnostic arrays.
 
@@ -103,6 +143,8 @@ class RealizedGeometry:
     summarize the interior solver geometry. Request diagnostic arrays through
     ``Simulation.realized_geometry()``. ``lane`` names the execution lane.
     ``snap`` records the strict or declared sheet-size acceptance policy.
+    ``sources``/``probes`` carry the indices the run places them at, ``dt``
+    the run's time step, ``cells_per_wavelength`` the mesh scale.
     """
 
     entities: tuple[EntityGeometry, ...]
@@ -122,6 +164,10 @@ class RealizedGeometry:
     lane: str = "uniform"
     limitations: tuple[str, ...] = ()
     snap: str = "strict"
+    sources: tuple[SourceGeometry, ...] = ()
+    probes: tuple[ProbeGeometry, ...] = ()
+    dt: float | None = None
+    cells_per_wavelength: CellsPerWavelength | None = None
 
     @property
     def conductors(self):
@@ -316,6 +362,9 @@ def _build_record(sim, ctx, *, compact=False):
     if assembled.stamped_entities:
         from rfx.model.coax import stamped_geometry_entities
         entities.extend(stamped_geometry_entities(assembled, nodes, sizes, compact=compact))
+    from rfx.realized_placement import cells_per_wavelength, placement_rows
+    sources, probes = placement_rows(sim, ctx)
+    scale = cells_per_wavelength(sim, sizes, domain, assembled.materials, assembled.pec_mask)
     record = RealizedGeometry(tuple(entities), _ports(sim, ctx, assembled), tuple(domain),
                             tuple(_readonly(n) for n in nodes), tuple(_readonly(s) for s in sizes),
                             () if compact else tuple(_readonly(m) for m in assembled.edges),
@@ -324,7 +373,8 @@ def _build_record(sim, ctx, *, compact=False):
                             None if compact else _freeze(assembled.materials), tuple(ctx.periodic),
                             tuple(refused.items()), tuple(refused_tc.items()),
                             tuple(tuple(row.items()) for row in pad_findings), ctx.lane,
-                            snap=sim._snap)
+                            snap=sim._snap, sources=sources, probes=probes,
+                            dt=float(ctx.grid.dt), cells_per_wavelength=scale)
     return record if compact else _conductor_view(record, assembled)
 
 
@@ -427,7 +477,11 @@ def realized_geometry(sim):
     """Build once per preflight context and port configuration, without stepping."""
     ctx = sim._campaign_ctx()
     key = (id(ctx), *(tuple(id(p) for p in getattr(sim, attr, ())) for attr in
-                     ("_ports", "_waveguide_ports", "_msl_ports", "_coaxial_ports", "_floquet_ports")))
+                     ("_ports", "_waveguide_ports", "_msl_ports", "_coaxial_ports", "_floquet_ports",
+                      "_probes", "_dft_planes", "_flux_monitors")),
+           *(id(getattr(sim, attr, None)) for attr in ("_tfsf", "_ntff", "_current_moments")),
+           repr(sorted(getattr(sim, "_dft_plane_regions", {}).items())), sim._freq_max,
+           tuple(sorted(getattr(sim, "_internal_probe_indices", ()) or ())))
     cached = getattr(sim, '_realized_geometry_record', None)
     if cached is not None and cached[0] == key:
         return cached[1]
@@ -519,6 +573,11 @@ def _record_from_conductors_impl(sim, conductors, *, lane, compact=True):
     record = _build_record(sim, ctx, compact=compact)
     record = replace(record, lane=lane, limitations=("refined region not represented",)
                      if lane == "run_subgridded" else ())
+    if lane == "run_subgridded":
+        from rfx.realized_placement import unrepresented
+        why = "the subgridded lane places sources and probes on its fine grid"
+        record = replace(record, sources=unrepresented(record.sources, why),
+                         probes=unrepresented(record.probes, why))
     return record if compact else _conductor_view(record, conductors)
 
 

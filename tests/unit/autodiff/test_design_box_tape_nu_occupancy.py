@@ -72,7 +72,7 @@ from rfx.core.yee import (
 )
 from rfx.nonuniform import make_nonuniform_grid, position_to_index
 from rfx.model.materials import electric_cell_sizes
-from rfx.simulation import _design_box_edge_coeffs
+from rfx.model.materials import _design_box_edge_coeffs
 from tests._x64_compat import enable_x64
 
 F0 = 8e9

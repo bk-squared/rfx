@@ -23,6 +23,9 @@ class Fill(NamedTuple):
 
 
 FILL = {
+    'cpml_psi': Fill(0., 0.),  # No auxiliary field outside physical rows.
+    'cpml_zero': Fill(0., 0.),  # Exterior sigma, alpha and c are zero.
+    'cpml_one': Fill(1., 1.),  # Exterior b and kappa retain the identity profile.
     'debye_ca': Fill(1., 1.),  # Vacuum E decay, from init_debye (#1302).
     'debye_cb': Fill('dt/eps0', 'dt/eps0'),  # Vacuum curl coupling at the caller's dt (#1302).
     'debye_cc': Fill('1/eps0', '1/eps0'),  # Vacuum polarization coupling, with initializer rounding.
@@ -41,6 +44,7 @@ FILL = {
     'mu_r': Fill(1., 1.),  # Vacuum permeability; magnetic face means keep their own low-face view.
     'sigma': Fill(0., 0.),  # No conductive material outside the real cells.
     'lumped': Fill(0., 0.),  # No component-owned lumped stamp outside the model (#1236).
+    'edge_keep': Fill(1., 1.),  # Published occupancy is neutral outside owned rows.
     'state': Fill(0., 0.),  # Initial field/state split has zero exterior fields.
     'pec_edge': Fill(True, False),  # Alignment is metal; True physical ghosts short x faces (#689/#931).
     'pec_cell': Fill(True, False),  # Legacy incident-cell PEC rule uses the same ghost-False convention.
@@ -144,6 +148,21 @@ def forward_sharding(arr):
     return sharding if isinstance(sharding, NamedSharding) else None
 
 
+def place(array, sharding):
+    """Place a logical array, allowing batching to insert unpartitioned axes."""
+    tracer = array
+    while isinstance(tracer, jax.core.Tracer):
+        if getattr(tracer, 'batch_dim', None) is not None:
+            return _placement_map(sharding)(array)
+        tracer = getattr(tracer, 'primal', None)
+    return jax.device_put(array, sharding)
+
+
+@lru_cache(maxsize=128)
+def _placement_map(sharding):
+    return jax.jit(lambda a: a, out_shardings=sharding)
+
+
 def source_owner_mask(rank, device_ids):
     """One entry per source, true only on the slab that owns its edge."""
     return rank == np.asarray(device_ids, dtype=np.int32)
@@ -169,6 +188,11 @@ def _halo(arr, layout, mesh, fill):
     """Keep the existing ppermute transpose: ghosts return cotangents to owners."""
     if layout.ghost_width != 1:
         raise NotImplementedError('sharded forward overrides require exchange_interval=1')
+    return _halo_map(layout, mesh, fill)(mesh_ranks(mesh), arr)
+
+
+@lru_cache(maxsize=128)
+def _halo_map(layout, mesh, fill):
     right = [(i, i + 1) for i in range(layout.n_devices - 1)]
     left = [(i + 1, i) for i in range(layout.n_devices - 1)]
 
@@ -178,24 +202,24 @@ def _halo(arr, layout, mesh, fill):
         slab = jnp.concatenate((lo, local, hi), axis=0)
         indices = rank * layout.nx_per_rank + jnp.arange(layout.nx_local) - 1
         real = (indices >= 0) & (indices < layout.nx)
-        shape = (-1,) + (1,) * (arr.ndim - 1)
+        shape = (-1,) + (1,) * (local.ndim - 1)
         if fill.alignment == fill.physical and fill.physical != 'edge':
-            return jnp.where(real.reshape(shape), slab, jnp.asarray(fill.physical, arr.dtype))
+            return jnp.where(real.reshape(shape), slab, jnp.asarray(fill.physical, local.dtype))
         padded = (indices >= layout.nx) & (indices < layout.nx_padded)
         if fill.physical == 'edge':
             # Widths are geometry, but retain a differentiable endpoint policy.
-            low = lax.psum(jnp.where(rank == 0, local[0], 0), 'x')
+            low = lax.all_gather(local[0], 'x')[0]
             owner = (layout.nx - 1) // layout.nx_per_rank
-            high = lax.psum(jnp.where(rank == owner, local[(layout.nx - 1) % layout.nx_per_rank], 0), 'x')
+            high = lax.all_gather(local[(layout.nx - 1) % layout.nx_per_rank], 'x')[owner]
             outside = jnp.where((indices < 0).reshape(shape), low, high)
         else:
             outside = jnp.where(padded.reshape(shape),
-                                jnp.asarray(fill.alignment, arr.dtype),
-                                jnp.asarray(fill.physical, arr.dtype))
+                                jnp.asarray(fill.alignment, local.dtype),
+                                jnp.asarray(fill.physical, local.dtype))
         return jnp.where(real.reshape(shape), slab, outside)
 
     return jax.jit(rank_shard_map(halo, mesh=mesh, in_specs=P('x'),
-        out_specs=P('x'), check_rep=False))(mesh_ranks(mesh), arr)
+        out_specs=P('x'), check_rep=False))
 
 
 def _pad(data, lo, hi, value, xp):
@@ -220,7 +244,7 @@ def _slice(arr, layout, rank, fill, xp):
     return _pad(data, max(0, -want_lo), max(0, want_hi - layout.nx_padded), fill.physical, xp)
 
 
-def cut(array, layout, kind, *, mesh=None, dt=None, host=False):
+def cut(array, layout, kind, *, mesh=None, dt=None, host=False, uniform=False):
     """Place array leaves with the declared alignment and ghost policy.
 
     ``kind`` is a FILL key; pole curl coupling also requires ``dt``.
@@ -232,6 +256,13 @@ def cut(array, layout, kind, *, mesh=None, dt=None, host=False):
     Concrete placement constructs only addressable shards. Local tracers keep
     slice/pad/stack on the tape; x-sharded designs exchange their owned halos.
     """
+    if uniform:
+        from rfx.stepping.slab_view import uniform_slab_rows, stack_and_place
+        if mesh is None or host:
+            raise ValueError('uniform producer inputs require a device mesh')
+        outside = 'replicate' if kind in ('eps_r', 'sigma', 'mu_r', 'width') else 0
+        return jax.tree.map(lambda a: stack_and_place(a, uniform_slab_rows(layout), mesh,
+                                                    outside=outside), array)
     fill = pole_fill(kind, dt) if isinstance(kind, str) else kind
     if array is None:
         return None
@@ -274,16 +305,7 @@ def cut(array, layout, kind, *, mesh=None, dt=None, host=False):
     if mesh is None:
         return slabs
     merged = slabs.reshape((layout.n_devices * layout.nx_local, *array.shape[1:]))
-    tracer = merged
-    while isinstance(tracer, jax.core.Tracer):
-        if getattr(tracer, 'batch_dim', None) is not None:
-            # JIT's batching rule inserts an unpartitioned dimension at each
-            # batch axis. device_put's batching rule keeps P('x') on axis 0.
-            # The logical x axis therefore stays partitioned under vmap;
-            # unbatched calls retain their original device_put program.
-            return jax.jit(lambda a: a, out_shardings=NamedSharding(mesh, P('x')))(merged)
-        tracer = getattr(tracer, 'primal', None)
-    return jax.device_put(merged, NamedSharding(mesh, P('x')))
+    return place(merged, NamedSharding(mesh, P('x')))
 
 
 @lru_cache(maxsize=None)
@@ -338,7 +360,7 @@ def shard_stacked(arr, shd):
     """
     n_dev = arr.shape[0]
     rest = arr.shape[1:]
-    return jax.device_put(arr.reshape(n_dev * rest[0], *rest[1:]), shd)
+    return place(arr.reshape(n_dev * rest[0], *rest[1:]), shd)
 
 
 def shard_stacked_poles(arr, shd):
@@ -350,9 +372,8 @@ def shard_stacked_poles(arr, shd):
 
     """
     n_dev, n_poles, nx_loc, ny_a, nz_a = arr.shape
-    return jax.device_put(
-        arr.reshape(n_dev * n_poles, nx_loc, ny_a, nz_a), shd,
-    )
+    merged = arr.reshape(n_dev * n_poles, nx_loc, ny_a, nz_a)
+    return place(merged, shd)
 
 
 def pole_fill(kind, dt=None, n_poles=1):

@@ -2,6 +2,42 @@
 from rfx._grid_metric import field_index
 from dataclasses import replace
 
+import jax
+import jax.numpy as jnp
+
+
+def drive_columns(eps, sigma, keep, cells, owned, samples, volumes, dt, *, cb=None):
+    """Build graded increments from local realized edges in source order.
+
+    Run eagerly (including eager vmap over ranks): compiling these products
+    may replace division by a constant with reciprocal multiplication.
+    ``cb`` supplies the unchanged ADE coefficients on dispersive edges.
+    A None volume denotes an already resolved field increment.
+    """
+    import jax.numpy as jnp
+    from rfx.nonuniform import current_source_cb
+
+    columns = []
+    for n, ((axis, cell), volume) in enumerate(zip(cells, volumes)):
+        if volume is None:
+            column = jnp.where(owned[n], samples[:, n], 0.)
+        else:
+            if cb is None:
+                e, s = eps[axis][cell], sigma[axis][cell]
+                pole = volume[1] if isinstance(volume, tuple) else 0.
+                coefficient = current_source_cb(jnp.where(owned[n], e, 1.),
+                    jnp.where(owned[n], s + pole, 0.), dt)
+            else:
+                coefficient = cb[n]
+            volume = volume[0] if isinstance(volume, tuple) else volume
+            scale = jnp.where(owned[n], coefficient / volume, 0.)
+            column = scale * samples[:, n]
+        if keep is not None:
+            column = column * jnp.where(owned[n], keep[axis][cell], 0.)
+        columns.append(column)
+    return (jnp.stack(columns, axis=-1) if columns else
+            jnp.zeros((samples.shape[0], 0), dtype=jnp.float32))
+
 
 def drive_table(series, meta, n_steps, *, occupancy=None, periodic=(False,) * 3,
                 sheet_edge_masks=None, design=None, shape=None, pad=False, keep=None):
@@ -53,20 +89,25 @@ def source_table(samples, kind=None, *, native="raw", coefficient=None, volume=1
 
     A field increment has no material operand, including under AD. A callable
     coefficient is read only for a material-dependent drive, after all stamps.
-    ``native`` preserves low-level helpers' historical None contracts and the
-    current-drive product order (open uniform: Cb*w then 1/dV). Distributed
-    slabs may supply their already resolved Cb/dV as a native ``cb`` factor;
-    the same multiplication then builds their table inside the program.
+    On the uniform lanes a named kind decides the table alone: 'current' is
+    ``(1/dV)*(Cb*w)`` whichever uniform helper builds it, so run() and
+    forward() form the same float32 product on every boundary (run()/forward()
+    census row D2). Cb only multiplies: under jit/vmap XLA rewrites a traced
+    Cb divided by a constant dV as a multiply by the reciprocal, so ``Cb/dV``
+    rounds differently per trace. The graded lanes (native ``cb_over_dv``,
+    single and multi-device alike) keep ``(Cb/dV)*w``: their multi-device
+    slabs supply Cb/dV already resolved as a native ``cb`` factor, and the
+    graded single-device table must stay the same product as the slabs'.
     """
     from rfx.api._source_semantics import needs_scale
     needs_scale(kind, native)  # validate Python-level dispatch, never a tracer
     if kind == "field" or (kind is None and native == "raw"):
         return samples
     cb = coefficient() if callable(coefficient) else coefficient
-    if kind == "current" and native == "cb":
-        return (1.0 / volume) * (cb * samples)
-    if kind == "current" or native == "cb_over_dv":
+    if native == "cb_over_dv":
         return (cb / volume) * samples
+    if kind == "current":
+        return (1.0 / volume) * (cb * samples)
     return cb * samples
 
 
@@ -99,6 +140,12 @@ def field_source_samples(waveform, n_steps, dt):
     import jax.numpy as jnp
     return source_table(jax.vmap(waveform)(jnp.arange(n_steps, dtype=jnp.float32) * dt), "field")
 
+
+def current_source_samples(grid, waveform_fn, n_steps):
+    """The current ``I(t)`` in amperes at the ``n_steps`` step times
+    ``t = n*dt`` (float32), before any ``Cb/dV`` normalisation."""
+    times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
+    return jax.vmap(waveform_fn)(times)
 
 def scale_source_columns(xs, scales, columns):
     """Finish distributed current tables from slab-local Cb/dV reads."""

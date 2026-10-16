@@ -48,11 +48,8 @@ cases compare with openEMS.
 ## Resonance
 
 A patch rings down slowly, so run for many periods and check
-`result.settling_db` against a -40 dB bar before you quote a frequency. With a
-soft current source feeding the patch, `run(until_decay=...)` may never stop:
-the source leaves a static charge between patch and ground that neither
-radiates nor decays. Use a fixed `num_periods` and read the settling level
-instead.
+`result.settling_db` against a -40 dB bar before you quote a frequency. The
+example runs a fixed `num_periods` and reads the settling level afterwards.
 
 `result.find_resonances(freq_range=...)` returns several modes. A rectangular
 patch has at least two low-order modes (one along each side). Identify the
@@ -102,7 +99,7 @@ the radiating mode's frequency. See [Far-Field and RCS](/rfx/measure/far-field-a
 - **Coarse meshes shift the resonance, in either direction.** An under-resolved
   substrate tends to read high and a staircased patch edge low, so the error on
   a coarse mesh is not a fixed bias. Refine both and report the spread.
-- **Soft-source runs give no S11 and may never meet `until_decay`.** Use a port
-  for return loss and a fixed record length for ring-down.
+- **Soft-source runs give no S11.** Use a port for return loss and a fixed
+  record length for ring-down.
 - **The wrong mode is easy to pick.** Confirm the radiating mode from the far
   field.

@@ -58,6 +58,7 @@ def compute_lumped_wire_s_matrix_via_scan(
     return_refplane_diagnostics=False, conformal_pec=None, devices=None,
     _main_wire_record=False,
     return_settling=False,
+    _forward_port_s11=False,
 ):
     """Full lumped/wire N-port S-matrix via the production scan.
 
@@ -163,7 +164,8 @@ def compute_lumped_wire_s_matrix_via_scan(
 
     # Ordered sparam-eligible lumped/wire ports (impedance != 0), in
     # registration order — the same order the multi-drive index counts.
-    eligible = [pe for pe in sim._ports if pe.impedance != 0.0]
+    eligible_ids = [i for i, pe in enumerate(sim._ports) if pe.impedance != 0.0]
+    eligible = [sim._ports[i] for i in eligible_ids]
     if not eligible:
         raise ValueError(
             "compute_lumped_wire_s_matrix_via_scan: no sparam-eligible "
@@ -279,7 +281,8 @@ def compute_lumped_wire_s_matrix_via_scan(
             driven_sim = copy(sim)
             driven_sim._ports = [replace(pe, excite=(pe is eligible[j]))
                                  if pe.impedance != 0 else pe for pe in sim._ports]
-            receivers = list(eligible)
+            receivers_by_id = {f"port:{i}:mode:0": pe for i, pe in zip(eligible_ids, eligible)}
+            plane_counts = {}
             for rp, _ in raw.get("wire_refplane") or ():
                 pe = eligible[rp.port_index]
                 position = list(pe.position)
@@ -293,7 +296,11 @@ def compute_lumped_wire_s_matrix_via_scan(
                 span = (widths[i0:i0 + n_out] if rp.outboard_sign > 0
                         else widths[max(i0 - n_out, 0):i0])
                 position[rp.line_axis] += rp.outboard_sign * float(np.sum(span))
-                receivers.append(replace(pe, position=tuple(position)))
+                port_id = f"port:{eligible_ids[rp.port_index]}:mode:0"
+                plane = plane_counts.get(port_id, 0)
+                plane_counts[port_id] = plane + 1
+                receivers_by_id[f"{port_id}/plane{plane}"] = replace(pe, position=tuple(position))
+            receivers = [receivers_by_id[record.id] for record in raw.get("sparam_time_records", ())]
             end = simulation_source_end_step(driven_sim, n_steps, grid.dt, receivers, grid=grid)
             settling_runs.append(port_record_witness(
                 raw.get("sparam_time_records", ()), raw.get("dt", grid.dt),
@@ -350,6 +357,14 @@ def compute_lumped_wire_s_matrix_via_scan(
                 if s == 0:
                     plane_offsets[p] = int(rp_spec.n_cells_outboard)
 
+    def _forward_columns(S):
+        # forward()'s port S is run()'s matrix with each undeclared drive's
+        # column NaN (#1373 decision C), as one-device forward() returns it.
+        if not _forward_port_s11:
+            return S
+        driven = np.asarray([bool(pe.excite) for pe in eligible])
+        return np.where(driven[None, :, None], S, np.asarray(np.nan + 1j * np.nan, dtype=S.dtype))
+
     if wire_mode and plane_v is not None:
         # issue #313 reference-plane path: byte-frozen legacy diagonals +
         # plane-wave off-diagonals where both ports opted in.  The V/I
@@ -385,7 +400,7 @@ def compute_lumped_wire_s_matrix_via_scan(
             worst = missing[0] if missing else max(settling_runs, key=lambda item: item[0])
             return np.asarray(out, dtype=result_dtype), freqs, {
                 **worst[1], "db": worst[0], "per_drive": [d for _, d in settling_runs]}
-        return np.asarray(out, dtype=result_dtype), freqs
+        return _forward_columns(np.asarray(out, dtype=result_dtype)), freqs
 
     if wire_mode:
         # Issue #764 diagonal + issue #770 off-diagonal: the whole-port
@@ -448,7 +463,7 @@ def compute_lumped_wire_s_matrix_via_scan(
         missing = [item for item in settling_runs if not np.isfinite(item[0])]
         worst = missing[0] if missing else max(settling_runs, key=lambda item: item[0])
         return S, freqs, {**worst[1], "db": worst[0], "per_drive": [d for _, d in settling_runs]}
-    return S, freqs
+    return _forward_columns(S), freqs
 
 
 def _lumped_recording_probes(grid, ports, live_cells=None):

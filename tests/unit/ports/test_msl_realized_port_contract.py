@@ -263,7 +263,7 @@ def test_forward_reserves_every_cell_that_owns_the_source_edge(direction, width_
     monkeypatch.setenv("RFX_PEC_OCC_KOTTKE", "0")
     monkeypatch.setattr(stepping, "run", capture)
     with pytest.raises(Captured):
-        sim.forward(n_steps=1, pec_occupancy_override=occupancy, skip_preflight=True)
+        sim.forward(n_steps=4, pec_occupancy_override=occupancy, skip_preflight=True)
 
 
 def test_forward_density_reservation_preserves_derivatives_outside_the_port(monkeypatch):
@@ -330,7 +330,7 @@ def test_kottke_release_preserves_the_nonincident_fringe_neighbour(monkeypatch):
     monkeypatch.setattr(smoothing, "kottke_inv_eps_from_occupancy", observe)
     monkeypatch.setattr(stepping, "run", capture)
     with pytest.raises(Captured):
-        sim.forward(n_steps=1, pec_occupancy_override=density, skip_preflight=True)
+        sim.forward(n_steps=4, pec_occupancy_override=density, skip_preflight=True)
     assert seen == [True]
 
 

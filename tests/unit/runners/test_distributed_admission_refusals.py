@@ -15,7 +15,7 @@ import jax
 import numpy as np
 import pytest
 
-from rfx import Box, DebyePole, GaussianPulse, Simulation
+from rfx import Box, DebyePole, GaussianPulse, Result, Simulation
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.runners import distributed_v2
 
@@ -26,6 +26,55 @@ LANES = {
     "api": "distributed multi-device run()",
     "v2": "distributed (v2) runner",
 }
+
+
+def _mixed_lorentz_admission_scene(eps_r=2.0):
+    """The mixed-dispersion corner-gradient scene, at its model timestep."""
+    from rfx.materials.lorentz import lorentz_pole
+
+    nx, ny, nz = 24, 24, 48
+    dx = 1e-3
+    sim = Simulation(freq_max=5e9, domain=(nx * dx, ny * dx, nz * dx),
+                     dx=dx, boundary="cpml", cpml_layers=8,
+                     dx_profile=np.full(nx, dx), dz_profile=np.full(nz, dx))
+    sim.add_material("disp_slab", eps_r=eps_r,
+                     debye_poles=[DebyePole(delta_eps=2.0, tau=5e-12)],
+                     lorentz_poles=[lorentz_pole(delta_eps=1.5,
+                                                omega_0=2.0 * np.pi * 30e9, delta=1e10)])
+    sim.add(Box((10 * dx, 10 * dx, 6 * dx),
+                (14 * dx, 14 * dx, 42 * dx)), material="disp_slab")
+    sim.add_source(position=(10 * dx, 12 * dx, 24 * dx), component="ez")
+    sim.add_probe(position=(13 * dx, 12 * dx, 24 * dx), component="ez")
+    return sim
+
+
+@pytest.mark.parametrize("entry", ("forward_override", "forward_sharded_override", "run_declared"))
+def test_mixed_lorentz_refusal_matches_one_device(entry):
+    """Distributed admission preserves the public one-device refusal text."""
+    import jax.numpy as jnp
+
+    sim = _mixed_lorentz_admission_scene(1.0 if entry == "run_declared" else 2.0)
+    if entry.startswith("forward"):
+        grid = sim._build_nonuniform_grid()
+        eps = jnp.ones(tuple(int(n) for n in grid.shape), dtype=jnp.float32)
+        sharded = (sim.shard_distributed_override(eps, _devices())
+                   if entry == "forward_sharded_override" else eps)
+        if entry == "forward_sharded_override":
+            # 41 x cells on two devices: the forward layout carries a padding
+            # row (value 0) after the grid's rows, which the judge must not read.
+            assert sharded.shape[0] > grid.shape[0], (sharded.shape, grid.shape)
+        def call(distributed):
+            return sim.forward(eps_override=sharded if distributed else eps, n_steps=30,
+                               emit_time_series=True,
+                               **(dict(distributed=True, devices=_devices()) if distributed else {}))
+    else:
+        def call(distributed):
+            return sim.run(n_steps=30, **(dict(devices=_devices()) if distributed else {}))
+    with pytest.raises(ValueError) as native:
+        call(False)
+    with pytest.raises(ValueError) as distributed:
+        call(True)
+    assert str(distributed.value) == str(native.value)
 
 
 def _devices():
@@ -267,8 +316,8 @@ def test_tfsf_and_waveguide_models_reach_single_device_fallback(monkeypatch):
             sim = Simulation(freq_max=15e9, domain=(24e-3, 12e-3, 12e-3),
                              dx=1e-3, boundary="cpml")
             sim.add_flux_monitor(axis="x", coordinate=12e-3, n_freqs=3)
-            sim.add_ntff_box((4e-3, 4e-3, 4e-3), (20e-3, 8e-3, 8e-3), n_freqs=3)
             if kind == "tfsf":
+                sim.add_ntff_box((4e-3, 4e-3, 4e-3), (20e-3, 8e-3, 8e-3), n_freqs=3)
                 sim.add_tfsf_source(f0=7.5e9, bandwidth=0.5)
             else:
                 sim.add_waveguide_port(
@@ -278,11 +327,11 @@ def test_tfsf_and_waveguide_models_reach_single_device_fallback(monkeypatch):
                 )
             public_run = sim.run
             calls = []
-            sentinel = object()
+            payload = object()
 
             def native_run(**kwargs):
                 calls.append(kwargs)
-                return sentinel
+                return Result(None, payload, None, None, None, diagnostics=())
 
             monkeypatch.setattr(sim, "run", native_run)
             explicit = {"conformal_pec": False, "conformal_min_weight": 0.3,
@@ -291,7 +340,15 @@ def test_tfsf_and_waveguide_models_reach_single_device_fallback(monkeypatch):
                 result = (public_run(n_steps=N_STEPS, devices=_devices(),
                                      skip_preflight=True, **explicit)
                           if entry == "api" else _run(sim, entry))
-            assert result is sentinel
+            assert result.time_series is payload
+            assert len(result.diagnostics) == 1
+            diagnostic = result.diagnostics[0]
+            assert diagnostic.code == "distributed.one_device_fallback"
+            assert diagnostic.severity == "warning"
+            assert diagnostic.subject == (
+                "TFSF plane-wave sources" if kind == "tfsf" else "waveguide ports"
+            )
+            assert diagnostic.values == {"requested_devices": len(_devices()), "devices_used": 1}
             assert len(calls) == 1
             if entry == "api":
                 # Every run() parameter arrives: the caller's values, the
@@ -305,3 +362,23 @@ def test_tfsf_and_waveguide_models_reach_single_device_fallback(monkeypatch):
                 assert calls[0] == expected
             else:
                 assert calls == [{"n_steps": N_STEPS}]
+
+
+def test_waveguide_fallback_refuses_private_record_probes():
+    sim = Simulation(freq_max=15e9, domain=(24e-3, 12e-3, 12e-3),
+                     dx=1e-3, boundary="cpml")
+    sim.add_waveguide_port(
+        x_position=6e-3, y_range=(2e-3, 10e-3),
+        z_range=(2e-3, 10e-3), mode=(1, 0), mode_type="TE",
+        direction="+x", f0=7.5e9, bandwidth=0.5,
+    )
+    with pytest.raises(NotImplementedError, match="waveguide ports.*one-device run cannot honour"):
+        _run(sim, "v2", _record_probes=())
+
+
+def test_tfsf_fallback_refuses_conformal_pec_override():
+    sim = Simulation(freq_max=15e9, domain=(24e-3, 12e-3, 12e-3),
+                     dx=1e-3, boundary="cpml")
+    sim.add_tfsf_source(f0=7.5e9, bandwidth=0.5)
+    with pytest.raises(NotImplementedError, match="TFSF plane-wave sources.*one-device run cannot honour"):
+        _run(sim, "v2", conformal_pec=False)

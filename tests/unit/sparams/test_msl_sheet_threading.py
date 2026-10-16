@@ -445,8 +445,15 @@ def test_o3_loss_ladder_strictly_decreasing():
 #:   plus an x86-versus-Mac offset of the same size on the new tree (below). The test
 #:   stopped there, so that runner's 5 ohm/sq reading was not taken.
 #:   Records: bk-squared/rfx-archive rfx/records/20261010-o3-lock-repin/.
-O3_MEAN_S21 = {"rs_tiny": 0.9992086291313171,
-               "rs1": 0.996432900428772, "rs5": 0.9962421655654907}
+#: - re-pinned 2026-10-12: default pulse onset fix (issue 1668 PR); Mac CPU, a885f8d38.
+#:   Old values 0.9992086291313171 / 0.996432900428772 / 0.9962421655654907
+#:   (moved -6.557e-06 / -7.749e-07 / -5.007e-06).
+#: - centred 2026-10-13 between the two platforms read at 34fc8c26c, tolerance unchanged:
+#:   Mac CPU 0.9992020726203918 / 0.9964321255683899 / 0.9962371587753296, x86 (Ryzen 9 5950X,
+#:   VESSL 369367270798) 0.999201774597168 / 0.9964317083358765 / 0.9962371587753296; the Mac
+#:   pin alone put x86 rs1 at -4.17e-07, outside 4e-7.
+O3_MEAN_S21 = {"rs_tiny": 0.9992019236087799,
+               "rs1": 0.9964319169521332, "rs5": 0.9962371587753296}
 O3_DRIFT_TOL = 4e-7
 
 

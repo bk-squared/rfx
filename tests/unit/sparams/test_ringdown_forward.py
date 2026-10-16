@@ -80,7 +80,8 @@ N_GRAD_SHORT, N_GRAD_LONG = 1500, 4000
 
 
 def _kw(lane):
-    return {"port_s11_freqs": FREQS} if lane == "uniform" else {}
+    return {"port_s11_freqs": FREQS if lane == "uniform" else
+            np.linspace(2e9, 20e9, 50)}
 
 
 def _run_kw(lane):
@@ -89,7 +90,7 @@ def _run_kw(lane):
 
 def _as_run_layout(lane, s):
     s = np.asarray(s)
-    return s.reshape(1, 1, -1) if lane == "uniform" else s
+    return s
 
 
 # ---------------------------------------------------------------------------
@@ -256,7 +257,7 @@ def test_a_jitted_long_record_reads_w0_ok(lane, bins, n):
     sim = _box(lane)
     grid = sim._build_grid() if lane == "uniform" else sim._build_nonuniform_grid()
     eps = jnp.full(tuple(grid.shape), 2.2, jnp.float32)
-    kw = ({} if lane == "graded" else
+    kw = (_kw(lane) if lane == "graded" else
           {"port_s11_freqs": DENSE if bins == "across TM110" else FREQS})
 
     def f(p):
@@ -340,7 +341,8 @@ def _loss_and_grad(sim, n, *, jit, bins=FREQS):
     graded = bool(sim._uses_nonuniform_mesh)
     grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
     eps = jnp.full(tuple(grid.shape), 2.2, jnp.float32)
-    kw = {} if graded else {"port_s11_freqs": bins}
+    kw = {"port_s11_freqs": np.linspace(sim._freq_max / 10, sim._freq_max, 50)
+          if graded else bins}
 
     def loss(p):
         r = sim.forward(n_steps=n, skip_preflight=True, eps_override=eps * p,
@@ -424,7 +426,7 @@ def test_a_weakly_driven_bin_is_completed_as_run_completes_it():
     f = _box("uniform", pulse=pulse).forward(n_steps=3000, skip_preflight=True,
                                              port_s11_freqs=FREQS, ringdown=RingdownSpec())
     c = float(f.ringdown._consistency)
-    S = np.asarray(f.ringdown.s_params).astype(np.complex128)
+    S = np.asarray(f.ringdown.s_params)[0, 0].astype(np.complex128)
     err = np.abs(S - r.ringdown.s_params[0, 0].astype(np.complex128))
     vp, ii = (np.asarray(f.wire_port_sparams[0][1][k]).astype(np.complex128) for k in (3, 1))
     a_rel = np.abs(vp + 50.0 * ii) / np.max(np.abs(vp + 50.0 * ii))
@@ -468,13 +470,13 @@ def test_an_x64_run_weights_the_port_dft_in_complex128():
             n_steps=600, skip_preflight=True, port_s11_freqs=FREQS)
         meta, accs = f.wire_port_sparams[0]
         assert all(np.asarray(accs[k]).dtype == np.complex128 for k in (1, 3))
-        record = np.asarray(f.sparam_time_records[0], dtype=np.float64)
+        record = f.sparam_time_records[0]
         bins = np.asarray(meta.freqs, dtype=np.float64)
         S = np.asarray(f.s_params).ravel()
-    n = np.arange(record.shape[0], dtype=np.float64)
+    n = np.arange(record.samples.shape[0], dtype=np.float64)
     dt = float(f.dt)
-    vp = np.exp(-2j * np.pi * bins[:, None] * (n + 1.0) * dt) @ record[:, 2]
-    ii = np.exp(-2j * np.pi * bins[:, None] * (n + 0.5) * dt) @ record[:, 1]
+    vp = np.exp(-2j * np.pi * bins[:, None] * (n + 1.0) * dt) @ np.asarray(record['V_port'], dtype=np.float64)
+    ii = np.exp(-2j * np.pi * bins[:, None] * (n + 0.5) * dt) @ np.asarray(record['I'], dtype=np.float64)
     ref = (vp - 50.0 * ii) / (vp + 50.0 * ii)
     err = float(np.max(np.abs(S - ref)) / np.max(np.abs(ref)))
     print(f"\n[x64, 600 steps] |S - float64 sum of the record| {err:.3g} of peak")
@@ -520,7 +522,7 @@ def test_the_report_of_a_batched_result_says_to_take_one_element():
                            eps_override=eps * p, ringdown=RingdownSpec()).ringdown
 
     out = jax.vmap(f)(jnp.asarray([1.0, 1.001], jnp.float32))
-    assert np.shape(out.s_params) == (2, FREQS.size)
+    assert np.shape(out.s_params) == (2, 1, 1, FREQS.size)
     with pytest.raises(ValueError, match="batched.*tree_map"):
         out.report
     one = jax.tree_util.tree_map(lambda a: a[1], out)
@@ -640,6 +642,12 @@ def _case_uniform_without_bins():
     return _box("uniform"), {"port_s11_freqs": None}, "needs port_s11_freqs"
 
 
+def _case_graded_without_bins():
+    # forward() computes port S only on request on both meshes (#1373), so the
+    # graded completion has no bins of its own either.
+    return _box("graded"), {"port_s11_freqs": None}, "needs port_s11_freqs"
+
+
 def _case_uniform_two_ports():
     return _box("uniform", second_port=True), {}, "supports one wire port"
 
@@ -667,7 +675,8 @@ def _case_not_a_spec():
 
 
 @pytest.mark.parametrize("case", [_case_distributed, _case_no_time_series,
-                                  _case_uniform_without_bins, _case_uniform_two_ports,
+                                  _case_uniform_without_bins, _case_graded_without_bins,
+                                  _case_uniform_two_ports,
                                   _case_lumped, _case_source_on, _case_stencil_order_4,
                                   _case_not_a_spec])
 def test_what_the_completion_does_not_cover_is_refused(case):
@@ -859,7 +868,7 @@ def test_forward_caps_the_pole_count_for_both_long_windows(monkeypatch):
     monkeypatch.setattr(rj, "host_poles", capture)
     jax.eval_shape(lambda p: sim.forward(
         n_steps=140000, skip_preflight=True, eps_override=eps * p,
-        ringdown=RingdownSpec()).ringdown, jnp.float32(1.0))
+        ringdown=RingdownSpec(), **_kw("graded")).ringdown, jnp.float32(1.0))
     assert [m for m, _k in seen] == [70000, 105000]
     assert all(0 < k <= rd.TRACED_POLE_BUDGET for _m, k in seen), seen
 
@@ -904,7 +913,8 @@ def test_over_budget_reports_the_kept_count_and_each_window_budget(monkeypatch):
     monkeypatch.setattr(rj, "host_poles", over_budget)
     sim = _box("graded")
     out = jax.jit(lambda: sim.forward(
-        n_steps=2500, skip_preflight=True, ringdown=RingdownSpec()).ringdown)()
+        n_steps=2500, skip_preflight=True, ringdown=RingdownSpec(),
+        **_kw("graded")).ringdown)()
     assert np.all(np.asarray(out._status) == rj.STATUS_OVER_BUDGET)
     assert np.asarray(out._pole_counts).tolist() == [kept, kept]
     assert int(out._pole_budgets[0]) == rd.TRACED_POLE_BUDGET

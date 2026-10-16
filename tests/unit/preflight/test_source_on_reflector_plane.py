@@ -167,10 +167,10 @@ def test_tangential_e_on_magnetic_plane_reports_coupling(face, position, compone
     msg = _issue(sim, "source_decoupled")
     assert f"at {position} m (component={component})" in msg
     assert f"sits on the magnetic-wall plane {face}" in msg
-    assert "single-device Yee magnetic image keeps tangential E" in msg
+    assert "Yee magnetic image keeps tangential E" in msg
     assert "on the declared face coupled to the interior" in msg
     assert "Face sources and lumped/wire ports describe the full symmetric object" in msg
-    assert "Distributed kernels refuse magnetic faces" in msg
+    assert "Distributed lumped/wire measurements remain unsupported" in msg
     assert "Waveguide ports refuse them" in msg
     assert "half a cell inside" not in msg
     assert "one cell (1mm) off the plane" not in msg

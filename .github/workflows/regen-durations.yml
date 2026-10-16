@@ -8,10 +8,18 @@ name: regen-durations
 # shard 1 at ~1 min and shards 3-6 at 23-35 min (60-min cap).
 on:
   workflow_dispatch:
+    inputs:
+      lanes:
+        description: "fast, slow or both: which lanes to measure (the slow lane takes up to 6 h per shard)"
+        required: false
+        default: both
+        type: choice
+        options: [both, fast, slow]
 
 jobs:
   fast:
     # Durations are keyed by test, so changing the split count needs no file conversion.
+    if: inputs.lanes != 'slow'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     strategy:
@@ -33,9 +41,15 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -e ".[dev,cad]" "jax==0.10.2" "jaxlib==0.10.2"
+      - name: Runner CPU (durations are runner-dependent; recorded for normalisation)
+        run: lscpu | grep -E '^(Model name|CPU\(s\))'
       - name: Fast selection, shard ${{ matrix.group }} of 12, store durations
         env:
           RFX_WEEKLY_RSS: "1"
+          # Same compilation cache as pr-tests.yml's fast suite (#1779), so the stored durations
+          # are the times the fast lane actually sees: one empty directory per job.
+          JAX_COMPILATION_CACHE_DIR: ${{ runner.temp }}/jax-compilation-cache
+          JAX_PERSISTENT_CACHE_MIN_COMPILE_TIME_SECS: "0"
         run: >
           mkdir -p durations &&
           pytest -v -ra -p no:cacheprovider
@@ -49,6 +63,7 @@ jobs:
           if-no-files-found: error
 
   slow:
+    if: inputs.lanes != 'fast'
     runs-on: ubuntu-latest
     # 360, the hosted maximum, was 180. With no durations file this job splits by test count, so one
     # shard can hold most of the expensive tests: on run 36394962310 slow (5) was cut at 180 min with

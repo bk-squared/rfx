@@ -39,10 +39,13 @@ about its length. Its lock holds:
   holds the thru's reflection to;
 * the electrical length of S21 within 1 % of the record's: the least-squares
   slope of its unwrapped phase against frequency, live over stored (the PI's
-  phase item of 2026-09-24). S sits at the first probe planes, 16.4 mm apart,
-  not at the feed planes (``rfx/sparams/msl.py:163-169``); a live and a stored
-  record of one board share those planes, so the ratio between them does not
-  depend on where they are;
+  phase item of 2026-09-24). The stored record was taken at the first probe
+  planes, 16.4 mm apart. ``compute_msl_s_matrix`` now reports S at the feed
+  planes (20.0 mm apart; rfx-archive MSL-PLANE.md, decision record 14), so
+  the live S is compared at the probe-0 planes the record was taken at:
+  ``tests/_msl_probe0.probe0_s`` undoes the shift with the result's own
+  ``shift_beta`` and ``reference_plane_offsets_m``. Every pin here is a
+  probe-0-plane quantity; read at the feed planes the slope is 22 % longer;
 * the phase direction and the record's verdicts, as for the notch.
 
 The notch's own slope is not read this way: across its transmission zero the
@@ -74,6 +77,7 @@ LOCK_PROVENANCE = {
 import json
 
 import numpy as np
+from tests._msl_probe0 import probe0_s
 import pytest
 
 from tests import _chain_battery_drift as drift
@@ -129,7 +133,9 @@ def _solve_live(fixture, driver, key: str, dut: str):
     freqs = np.asarray(entry["freqs_hz"], dtype=float)
     np.testing.assert_allclose(np.asarray(result.freqs, dtype=float), freqs,
                                rtol=1e-6, atol=0.0)
-    return entry, result, freqs, drift.complex_array(entry["S"]), np.asarray(result.S)
+    # The record is at the probe-0 planes; compare there (see the module
+    # docstring): the live S with the feed-plane shift undone.
+    return entry, result, freqs, drift.complex_array(entry["S"]), np.asarray(probe0_s(result))
 
 
 def _verdict_findings(driver, entry, result, live) -> list[str]:

@@ -20,7 +20,7 @@ cell, and the CPML psi coefficient takes the same per-component permittivity.
 What is checked, and what it measured on Mac arm64, JAX 0.10.2 (differences
 as a fraction of the record's peak):
 
-a. Lane parity. Each model against the same model with its material removed
+a. Non-dispersive lane parity. Each model against the same model with its material removed
    (the vacuum box, or the PEC volume alone): the multi-device record must
    agree with the single-device one as well as that box does, within
    ``FLOOR_FACTOR`` times its agreement (``CONDUCTOR_FLOOR_FACTOR`` for the
@@ -46,7 +46,10 @@ c. Vacuum and homogeneous models (vacuum, and eps_r 4.4 / sigma 0.02 filling
    a CPML box, both lanes): bitwise the records of the same kernels fed the
    cell values, i.e. main's rule. main itself, run out of process on the same
    host, gave the same bytes (measured when this change was made).
-d. A Debye block: both lanes take per-component epsilon/sigma and pole-mask
+d. CPML dispersive parity uses the per-step 9-ULP cross-trace bar (rfx
+   CLAUDE.md), since R15g replaces the vacuum-relative gate that collapsed
+   when one CPML made its reference exact.
+   A Debye block: both lanes take per-component epsilon/sigma and pole-mask
    edge means. CPML reads the same component epsilon as the E update.
 e. The permittivity gradient of forward(distributed=True) through a traced
    eps_override, eps_r 4 block: within ``GRAD_RTOL`` of the single-device
@@ -577,15 +580,16 @@ def test_mutation_the_psi_coefficient_on_the_cell_permittivity_sends_the_faces_c
     grid = sim._build_nonuniform_grid()
     slabs, _ = _staged(sim._assemble_materials_nu(grid)[0], 2)
     eps_cells = jnp.stack([m.eps_r for m in slabs])
-    real_cpml = distributed_nu._apply_cpml_e_local_nu
+    real_cpml = distributed_nu.apply_cpml_e
 
     def cell_cpml(*args, **kwargs):
         # Keep every material helper call and replace only CPML's eps read.
-        kwargs["eps_r"] = lax.dynamic_index_in_dim(
+        cells = lax.dynamic_index_in_dim(
             eps_cells, lax.axis_index("x"), axis=0, keepdims=False)
+        kwargs["inv_eps_r_update"] = (1 / cells,) * 3
         return real_cpml(*args, **kwargs)
 
-    monkeypatch.setattr(distributed_nu, "_apply_cpml_e_local_nu", cell_cpml)
+    monkeypatch.setattr(distributed_nu, "apply_cpml_e", cell_cpml)
     for lane in ("run", "fwd"):
         got, _ = _parity("cpml", lane, "faces", 2)
         gate = _gate(floors[lane])
@@ -669,11 +673,19 @@ def _debye_box(boundary, lane, kind="debye", waveform=WAVEFORM):
 
 @pytest.mark.parametrize("boundary,lane", [
     ("pec", "run"), pytest.param("pec", "fwd", marks=pytest.mark.slow),
-    ("cpml", "fwd"), ("cpml", "run")])
+    ("cpml", "run")])
 @pytest.mark.parametrize("kind", ["debye", "lorentz", "mixed"])
 def test_a_dispersive_model_matches_one_device(boundary, lane, kind):
-    """All ADE models share edge means and PEC-backed CPML faces with one device."""
+    """CPML run rows were bit-identical (0 ULP) on all 230 saved prefixes on
+    both trees when moved (R15e), so a later non-zero snapshot reading is a
+    change, not noise (R15o). The cross-trace bar remains 9 ULP.
+    """
     devices = _devices(2)
+    if boundary == "cpml":
+        from tests._distributed_cpml_cross_trace import PR_PREFIXES, cross_trace
+        cross_trace(lambda: _debye_box(boundary, lane, kind), lane, devices,
+                    f"{kind}/{boundary}/{lane}", prefixes=PR_PREFIXES)
+        return
     n = STEPS[boundary]
 
     def record(dev):
@@ -701,6 +713,16 @@ def test_a_dispersive_model_matches_one_device(boundary, lane, kind):
     got = _rel(actual, expected)
     floor = _rel(_record(boundary, lane, "vacuum", 2, devices), _single(boundary, lane, "vacuum", 2))
     _check(f"{kind}/{boundary}/{lane}", got, floor)
+
+
+@pytest.mark.parametrize("kind", ["debye", "lorentz"])
+def test_cpml_dispersive_pr_snapshots(kind):
+    """Snapshots under-read the per-step maximum by up to 65 % on the saved
+    records; the weekly test is the judge (R15n). The bar remains 9 ULP.
+    """
+    from tests._distributed_cpml_cross_trace import PR_PREFIXES, cross_trace
+    cross_trace(lambda: _debye_box("cpml", "fwd", kind), "fwd", _devices(2),
+                f"pr/{kind}/cpml/fwd", prefixes=PR_PREFIXES)
 
 
 @pytest.mark.parametrize("kind", ["debye", "lorentz", "mixed"])
@@ -765,16 +787,17 @@ def _cpml_1302_record(kind, lane, devices=None):
     return np.asarray(out.time_series, np.float64)
 
 
-@pytest.mark.parametrize("lane", ["run", "fwd", "fwd_graded"])
+@pytest.mark.parametrize("lane", ["run"])
 def test_a_dispersive_cpml_box_stays_finite_and_matches_one_device(lane):
     """#1302: two devices, a Debye or Lorentz block in a CPML box. On main
     4725b748 the two-device run() grew without bound (probe non-finite from
     step 418; the one-device run is finite). Rows outside the domain now take
     the vacuum-cell ADE coefficients and dispersive runs keep the one-device
-    PEC backing of the absorber's outer node planes. Bar: finite, and within
-    FLOOR_FACTOR x the same box's vacuum two-vs-one-device agreement,
-    measured here. (Graded run(devices=) refuses CPML with poles; the graded
-    lane is forward(distributed=True).)"""
+    PEC backing of the absorber's outer node planes. Forward rows live in
+    test_distributed_cpml_dispersive_weekly.py.
+    The run row keeps FLOOR_FACTOR x the vacuum agreement, measured here.
+    (Graded run(devices=) refuses CPML with poles; the graded lane is
+    forward(distributed=True).)"""
     devices = _devices(2)
     floor = _rel(_cpml_1302_record("vacuum", lane, devices),
                  _cpml_1302_record("vacuum", lane))

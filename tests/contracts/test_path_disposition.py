@@ -32,17 +32,19 @@ KERNEL_CALLERS = {
     "rfx/api/_execute.py:_ExecuteMixin.run":
         "internal to run_uniform, run_nonuniform, run_subgridded, run_adi, run_distributed, run_distributed_nu",
     "rfx/api/_execute.py:_ExecuteMixin.forward":
-        "internal to fwd_uniform, fwd_nonuniform, fwd_distributed_nu",
-    "rfx/api/_execute.py:_ExecuteMixin._forward_from_materials":
+        "internal to fwd_uniform, fwd_nonuniform, fwd_distributed, fwd_distributed_nu",
+    "rfx/runners/uniform_forward.py:_forward_from_materials":
         "internal to fwd_uniform, s_matrix_scan, mixed_s_matrix, topology_optimize",
     "rfx/api/_execute.py:_ExecuteMixin._forward_nonuniform_from_materials": "internal to fwd_nonuniform",
     "rfx/api/_execute.py:_ExecuteMixin._forward_distributed_nonuniform_from_materials":
         "internal to fwd_distributed_nu",
     "rfx/api/_execute.py:_ExecuteMixin._execute_distributed_nonuniform_from_materials":
         "internal to run_distributed_nu, fwd_distributed_nu",
-    "rfx/api/_execute.py:_ExecuteMixin._run_adi_from_materials": "internal to run_adi, fwd_adi",
+    "rfx/runners/adi.py:_run_adi_from_materials": "internal to run_adi, fwd_adi",
     "rfx/api/_execute.py:_ExecuteMixin._run_nonuniform": "internal to run_nonuniform",
     "rfx/api/_execute.py:_ExecuteMixin._run_subgridded": "internal to run_subgridded",
+    "rfx/runners/_distributed_entry.py:execute_distributed":
+        "internal to run_distributed, run_distributed_nu, fwd_distributed",
     "rfx/runners/nonuniform.py:run_nonuniform_path":
         "internal to run_nonuniform, fwd_nonuniform, waveguide_s_matrix",
     "rfx/runners/subgridded.py:_run_subgridded_once": "internal to run_subgridded",
@@ -52,7 +54,7 @@ KERNEL_CALLERS = {
     "rfx/sparams/mixed.py:compute_mixed_s_matrix": "mixed_s_matrix",
     "rfx/topology.py:topology_optimize": "topology_optimize",
     "rfx/sparams/waveguide.py:_compute_waveguide_s_matrix_nu": "waveguide_s_matrix",
-    **{f"rfx/sources/waveguide_port.py:{name}": "internal to waveguide_s_matrix" for name in (
+    **{f"rfx/measurement/waveguide_s.py:{name}": "internal to waveguide_s_matrix" for name in (
         "extract_waveguide_s_matrix", "extract_waveguide_s_matrix_flux",
         "extract_waveguide_s_params_normalized", "extract_multimode_s_matrix",
         "extract_multimode_s_matrix_flux")},

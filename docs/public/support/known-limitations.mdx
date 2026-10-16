@@ -5,16 +5,33 @@ sidebar:
   order: 2
 ---
 
-<p data-rfx="note">Being written for 2.0 (tracker 1171).</p>
+[Support](/rfx/support/) says what rfx solves and within what limits. This page
+points to what is known to be wrong, or not yet shown to be right, inside those
+limits. The entries themselves are kept in one place, the
+[known limitations](https://github.com/bk-squared/rfx/blob/main/docs/guides/known_limitations.md)
+file in the repository, so that this site and the repository cannot disagree.
 
-## What it is for
+Each entry there gives the symptom you would see, the mechanism in one line,
+what to do about it now, and the tracker issue that holds the measurements. An
+entry leaves when its defect is fixed and a committed test pins the fix. An
+input that would give a wrong result and is now refused moves to the refused
+inputs of the
+[support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md#refused-inputs).
 
-## How to use it
+A warning's absence is not an accuracy guarantee, and a preflight pass is not a
+convergence study.
 
-## What is checked
+## What the entries cover
 
-## What is refused, and the way through
+| Topic | What is in it |
+|---|---|
+| [General constraints](https://github.com/bk-squared/rfx/blob/main/docs/guides/known_limitations.md#general-constraints) | Partly metal cell edges, metal sheets without thickness, lossy films and sheets not checked against their drawn size, running on CPU in a GPU process, the experimental ADI solver, subpixel smoothing on curved high-contrast dielectrics, the dispersive-material time-step check. |
+| [Ports and extraction](https://github.com/bk-squared/rfx/blob/main/docs/guides/known_limitations.md#ports-and-extraction) | Microstrip stubs behind a port, the default wire port, the coax-to-microstrip transition, a non-passive microstrip S-matrix, the fitted microstrip propagation constant, probes near a reflector, sources on smoothed edges. |
+| [Tail extrapolation and the early stop](https://github.com/bk-squared/rfx/blob/main/docs/guides/known_limitations.md#ring-down-completion-and-the-early-stop) | Completing a short simulation by a matrix pencil fit of its tail (`ringdown=`), stopping a run when the fields have decayed (`until_decay`), and a simulation time shorter than a weakly coupled resonance's decay. |
+| [Absorbing boundaries](https://github.com/bk-squared/rfx/blob/main/docs/guides/known_limitations.md#absorbing-boundaries) | Magnetic (PMC) faces, a ground plane that ends at the absorber, the faces a plane wave needs, oblique plane waves near cutoff, waveguides on a graded mesh. |
+| [Gradients and optimization](https://github.com/bk-squared/rfx/blob/main/docs/guides/known_limitations.md#gradients-and-optimization) | Conductivity gradients on lossless cells, gradients near a weakly coupled resonance, a gradient that is wrong while the value is converged, an optimization that walks into a design the simulation time does not cover. |
+| [Examples and validation coverage](https://github.com/bk-squared/rfx/blob/main/docs/guides/known_limitations.md#examples-and-validation-coverage) | What the shipped examples and the paper example do and do not show. |
 
-## Accuracy
-
-## See also
+To check a value or a gradient against the simulation time, see
+[Is the run long enough?](/rfx/evidence/simulation-time/) and
+[Checking a gradient](/rfx/evidence/gradients/).

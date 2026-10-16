@@ -31,11 +31,13 @@ import numpy as np
 
 
 from rfx.grid import Grid, C0  # noqa: F401
-from rfx.core.jax_utils import is_tracer
 from rfx.geometry.csg import Box, Shape  # noqa: F401
 from rfx.nonuniform import NonUniformGrid  # noqa: F401
 from rfx.sources.sources import GaussianPulse
 from rfx.sources import tfsf_discrete_plane_wave as _discrete_plane_wave
+from rfx.realized_geometry import realized_geometry as _realized_geometry_fn
+from rfx.fidelity import fidelity_report as _fidelity_report
+from rfx.measurement import admit_waveguide_planes as _admit_waveguide_planes
 from rfx.sources.coaxial_port import CoaxialPort
 from rfx.materials.debye import DebyePole
 from rfx.materials.lorentz import LorentzPole
@@ -57,6 +59,7 @@ from rfx.sources.waveguide_port import (
     waveguide_plane_positions,  # noqa: F401
 )
 from rfx.boundaries.spec import BoundarySpec
+from rfx.boundaries import refresh_boundary_model
 from rfx.boundaries.model import DEFAULT_BOUNDARY
 
 # ---------------------------------------------------------------------------
@@ -95,7 +98,7 @@ from rfx.api._spec import (  # noqa: E402
     MSLSMatrixResult,
     MixedSMatrixResult,
 )
-from rfx.mesh_planner import MeshPlan, plan_simulation_mesh  # noqa: E402,F401
+from rfx.mesh_planner import MeshPlan, mesh_intelligence_report, plan_simulation_mesh  # noqa: E402,F401
 
 
 def _bloch_cutoff_level_db(angle_deg: float, bandwidth: float) -> float:
@@ -231,6 +234,10 @@ class Simulation(
         measured from their realized profile; a traced axis is measured
         against this declared floor when the run builds its mesh, and the
         run is refused if the realized cells fall below it.
+    nominal_profiles : dict or None
+        ``{"x" | "y" | "z": concrete cell widths}`` of a TRACED profile at the
+        primal point. Ports, probes and sources given in metres on that axis
+        resolve to nodes of this profile; the run refuses a node it moves.
     precision : str
         ``"float32"`` (default), ``"mixed"``, or ``"float64"``.  When
         ``"mixed"``, field arrays (E, H) use float16 for ~2x memory
@@ -327,6 +334,7 @@ class Simulation(
         dy_profile: np.ndarray | None = None,
         dt: float | None = None,
         dt_min_cell: float | None = None,
+        nominal_profiles: dict | None = None,
         precision: str = "float32",
         solver: str = "yee",
         adi_cfl_factor: float = 2.0,
@@ -385,108 +393,14 @@ class Simulation(
             raise ValueError(f"adi_cfl_factor must be positive, got {adi_cfl_factor}")
         if stencil_order not in (2, 4):
             raise ValueError(f"stencil_order must be 2 or 4, got {stencil_order}")
-        # Synthesize domain extents from axis profiles before validation.
-        # dx_profile / dy_profile set x / y; dz_profile sets z.
-        # Tracer-valued profiles require the caller to supply a concrete
-        # domain extent for that axis since the profile sum cannot be
-        # host-coerced during tracing.
-        if dx_profile is not None:
-            if is_tracer(dx_profile):
-                if len(domain) < 1 or domain[0] <= 0:
-                    raise ValueError(
-                        "dx_profile is a JAX tracer; provide a concrete "
-                        "domain[0] (profile sum cannot be host-coerced)."
-                    )
-            else:
-                domain = (float(np.sum(dx_profile)),
-                          domain[1] if len(domain) >= 2 else 0.0,
-                          domain[2] if len(domain) >= 3 else 0.0)
-        if dy_profile is not None:
-            if is_tracer(dy_profile):
-                if len(domain) < 2 or domain[1] <= 0:
-                    raise ValueError(
-                        "dy_profile is a JAX tracer; provide a concrete "
-                        "domain[1] (profile sum cannot be host-coerced)."
-                    )
-            else:
-                domain = (domain[0],
-                          float(np.sum(dy_profile)),
-                          domain[2] if len(domain) >= 3 else 0.0)
-        if dz_profile is not None:
-            if any(d <= 0 for d in domain[:2]):
-                raise ValueError(f"domain x/y must be positive, got {domain}")
-            if is_tracer(dz_profile):
-                if len(domain) < 3 or domain[2] <= 0:
-                    raise ValueError(
-                        "dz_profile is a JAX tracer; provide a concrete "
-                        "domain=(..., ..., dz_total) extent (the profile "
-                        "sum cannot be host-coerced during tracing)."
-                    )
-            else:
-                dz_total = float(np.sum(dz_profile))
-                if len(domain) < 3 or domain[2] <= 0:
-                    domain = (domain[0], domain[1], dz_total)
-        elif any(d <= 0 for d in domain):
-            raise ValueError(f"domain dimensions must be positive, got {domain}")
-
-        # P2: Warn on abrupt grading in a user-supplied profile. This ran
-        # for dz only, so an in-plane profile with a 2:1 or 4:1 jump was
-        # accepted in silence (#743) — the axes differ in which physics
-        # they carry, not in whether an abrupt ratio reflects.
-        # Tracer profiles skip the warning — adjacent ratios can't be
-        # computed host-side during tracing.
-        # Threshold, PER AXIS. dz: 1.3 -> 1.4 (SPEC-01 WP6, #780).
-        # PROVENANCE for that move: 1.3 was `smooth_grading`'s own per-step
-        # default with no measurement behind it, so ratios in (1.3, 1.4]
-        # warned without evidence that they cost anything. The multi-band
-        # witness battery (validation/research/multiband_nu/,
-        # pre-declaration note
-        # docs/design_notes/20260829_spec01_multiband_predeclaration.md)
-        # measures the r = 1.4 transition directly: reflection inside the
-        # exact discrete chain-model window (-54 dB class at 30
-        # cells/wavelength; the class scales as (dz/lambda)^2), round-trip
-        # amplitude asymmetry under the 3e-4 floor, 1e6-step energy bounded
-        # at the float-accumulation class, and 2nd-order supraconvergence
-        # preserved on a fixture whose graded axis carries ~90 % of the
-        # error budget.
-        # dx/dy STAY AT 1.3: every witness in that battery grades z and
-        # holds the transverse mesh uniform (the harness takes a scalar
-        # transverse cell), so there is no in-plane provenance for moving
-        # an in-plane lock — SPEC-00 0.2-4. The 2026-08-29 adversarial
-        # review found this axis overclaim in the docs; it lived here too.
-        # Beyond the cap this warning still fires, and preflight adds the
-        # richer advisory nu_grading_ratio_beyond_validated_cap with the
-        # accuracy class on both sides.
-        # Caps come from _PreflightMixin (single source of truth — do not
-        # re-type the literals here; _validate_cfg_multiband_grading reads
-        # the same two class attributes).
-        for _axis_name, _profile, _cap, _scope in (
-                ("dz_profile", dz_profile, self._MULTIBAND_RATIO_CAP,
-                 "the validated multi-band grading cap"),
-                ("dx_profile", dx_profile, self._INPLANE_RATIO_CAP,
-                 "the in-plane grading threshold — the validated "
-                 f"{self._MULTIBAND_RATIO_CAP:g} multi-band cap is a "
-                 "z-axis envelope and no witness grades an in-plane axis"),
-                ("dy_profile", dy_profile, self._INPLANE_RATIO_CAP,
-                 "the in-plane grading threshold — the validated "
-                 f"{self._MULTIBAND_RATIO_CAP:g} multi-band cap is a "
-                 "z-axis envelope and no witness grades an in-plane axis")):
-            if (_profile is not None and not is_tracer(_profile)
-                    and len(_profile) > 1):
-                import warnings as _w
-                _p = np.asarray(_profile, dtype=float)
-                ratios = _p[1:] / _p[:-1]
-                max_ratio = float(np.max(np.maximum(ratios, 1.0 / ratios)))
-                if max_ratio > _cap + 1e-6:
-                    _w.warn(
-                        f"{_axis_name} has max adjacent cell ratio "
-                        f"{max_ratio:.3f} (> {_cap:g}, {_scope} — "
-                        "docs/guides/support_matrix.md, "
-                        "'Multi-band graded mesh'). This may cause "
-                        "numerical reflections. Use "
-                        f"rfx.smooth_grading({_axis_name}) to fix.",
-                        stacklevel=2,
-                    )
+        from rfx.model import admit_graded_profiles
+        # Caps come from _PreflightMixin (single source of truth; preflight's
+        # _validate_cfg_multiband_grading reads the same two attributes).
+        domain, self._nominal_profiles = admit_graded_profiles(
+            domain, dx_profile, dy_profile, dz_profile, dt=dt,
+            dt_min_cell=dt_min_cell, nominal_profiles=nominal_profiles,
+            multiband_ratio_cap=self._MULTIBAND_RATIO_CAP,
+            inplane_ratio_cap=self._INPLANE_RATIO_CAP)
 
         if _explicit_spec:
             # BoundarySpec is authoritative; derive the legacy views so
@@ -515,21 +429,7 @@ class Simulation(
         self._dz_profile = dz_profile
         self._dx_profile = dx_profile
         self._dy_profile = dy_profile
-        # Pinned time step (non-uniform lane only). The Courant step is a
-        # function of the smallest cell, so a mesh that is a design variable
-        # moves the step with the deformation and every observable then
-        # carries the step change as well as the geometry change. Pinning one
-        # concrete step makes a deformation sweep one antenna at one step.
-        # None keeps the derived step, byte-identical.
-        if dt is not None and dz_profile is None and dx_profile is None \
-                and dy_profile is None:
-            raise ValueError(
-                "dt= pins the non-uniform lane's time step and needs at least "
-                "one of dz_profile / dx_profile / dy_profile; the uniform "
-                "lane derives its step in Grid.courant_dt."
-            )
-        if dt is None and dt_min_cell is not None:
-            raise ValueError("dt_min_cell= has no effect without dt=")
+        # Pinned time step (non-uniform lane only); admitted above.
         self._dt_pin = dt
         self._dt_min_cell = dt_min_cell
         self._precision = precision
@@ -788,44 +688,7 @@ class Simulation(
         }
         return self
 
-    def validate_subgrid(self, *, mode: str | None = None):
-        """Return the production-envelope validation report for subgridding.
-
-        Every mode reports the subgridded lane as unsupported because it is
-        unstable and unverified (#1465). Experimental envelope checks remain
-        available for research diagnostics; opting in does not confer support.
-        """
-        self._require_uniform_mesh("validate_subgrid")
-        # #931 §1.9: sheets and wires own no cell, so a validator handed
-        # only pec_mask cannot see them — and this lane cannot realize
-        # them (run(solver='subgridded') refuses). Collect and pass them
-        # so the report refuses the same models the runner does.
-        if self._refinement is None:
-            from rfx.subgridding.validation import validate_subgrid_setup
-            grid = self._build_grid()
-            _vs_sheets: list = []
-            _vs_wires: list = []
-            mats, _, _, pec_mask, *_ = self._assemble_materials(
-                grid, pec_sheets=_vs_sheets, pec_wires=_vs_wires)
-            return validate_subgrid_setup(
-                self, grid, mats, pec_mask, sheets=_vs_sheets,
-                wires=_vs_wires, mode=mode or "production",
-            )
-        grid = self._build_grid()
-        _vs_sheets = []
-        _vs_wires = []
-        mats, _, _, pec_mask, *_ = self._assemble_materials(
-            grid, pec_sheets=_vs_sheets, pec_wires=_vs_wires)
-        from rfx.subgridding.validation import validate_subgrid_setup
-        return validate_subgrid_setup(
-            self,
-            grid,
-            mats,
-            pec_mask,
-            sheets=_vs_sheets,
-            wires=_vs_wires,
-            mode=mode or self._refinement.get("validation", "production"),
-        )
+    from rfx.subgridding.validation import validate_subgrid
 
     # ---- material registration ----
 
@@ -912,16 +775,14 @@ class Simulation(
         are built on request here. ``run()`` attaches a compact record built
         independently from its own assembly as ``Result.realized_geometry``.
         """
-        from rfx.realized_geometry import realized_geometry
-        return realized_geometry(self)
+        return _realized_geometry_fn(self)
 
     def fidelity_report(self, print_report: bool = True):
         """Input-fidelity audit: declared vs solved, per entity, in input
         units — run BEFORE any solve. See :func:`rfx.fidelity.fidelity_report`
         (design rule: never predicts result-side impact; rasterization,
         realization class and materialization only)."""
-        from rfx.fidelity import fidelity_report as _fr
-        return _fr(self, print_report=print_report)
+        return _fidelity_report(self, print_report=print_report)
 
     # ---- sources (non-port) ----
 
@@ -1328,91 +1189,11 @@ class Simulation(
         is electromagnetically a half-space — but it is a real limit for
         anything whose loss budget IS the conductor, e.g. resonator Q.
         """
-        from rfx.core.jax_utils import is_tracer
-        from rfx.materials.thin_conductor import sheet_bounds
-        if surface_impedance_f0 is not None:
-            # Concrete-value checks only: traced f0 / sigma_bulk are legal
-            # differentiable DoFs and skip these (documented above).
-            if (not is_tracer(surface_impedance_f0)
-                    and float(surface_impedance_f0) <= 0.0):
-                raise ValueError(
-                    f"add_thin_conductor: surface_impedance_f0="
-                    f"{surface_impedance_f0!r} must be a positive frequency "
-                    f"in Hz (band centre for the Leontovich surface "
-                    f"resistance).")
-            if not is_tracer(sigma_bulk) and float(sigma_bulk) <= 0.0:
-                raise ValueError(
-                    f"add_thin_conductor: sigma_bulk={sigma_bulk!r} must be "
-                    f"> 0 when surface_impedance_f0 is set — Rs0 = "
-                    f"sqrt(pi*f0*mu0/sigma_bulk) is undefined otherwise.")
-            # #674: any shape that can rasterize itself is allowed — the
-            # fold is per occupied cell and shape-agnostic. Two structural
-            # requirements survive, and both fail loud on BOTH lanes rather
-            # than repeat the former NU warn-and-skip (the #369
-            # silently-vaporized-metal class: a sheet that vanishes on one
-            # lane is a wrong answer, not a degraded one).
-            if not callable(getattr(shape, "mask_on_coords", None)):
-                raise ValueError(
-                    f"add_thin_conductor: surface_impedance_f0 requires a "
-                    f"shape that implements mask_on_coords(x, y, z) — the "
-                    f"sheet is rasterized from that mask on both lanes, and "
-                    f"{type(shape).__name__} does not provide it.")
-            if sheet_bounds(shape) == (None, None):
-                raise ValueError(
-                    f"add_thin_conductor: surface_impedance_f0 requires a "
-                    f"shape with an axis-aligned bounding box (Box "
-                    f"corner_lo/corner_hi, or Shape.bounding_box()) — the "
-                    f"sheet NORMAL is read from it, and on a graded mesh that "
-                    f"normal decides which dual spacing normalizes the fold. "
-                    f"{type(shape).__name__} provides neither.")
-        tc = ThinConductor(
-            shape=shape, sigma_bulk=sigma_bulk,
-            thickness=thickness, eps_r=eps_r,
+        from rfx.model import admit_thin_conductor
+        tc = admit_thin_conductor(
+            shape, sigma_bulk=sigma_bulk, thickness=thickness, eps_r=eps_r,
             surface_impedance_f0=surface_impedance_f0,
         )
-        # Tell the caller which model they actually got. The predicate is
-        # sigma_bulk ALONE (materials/thin_conductor.py:60-62) — an earlier
-        # version of this warning printed sigma_bulk*thickness/dx and claimed
-        # it "exceeds 1e6", which was a false statement for ordinary inputs
-        # (e.g. aluminium at 17 um and dx = 1 mm gives 5.95e5, announced as
-        # exceeding 1e6 while the conductor was routed to PEC anyway).
-        if tc.is_pec:
-            import warnings
-            _thin_dflt = 35e-6
-            _asked = (
-                f" You passed thickness={thickness:.3g} m, which is not used"
-                if thickness != _thin_dflt else
-                " thickness is not used"
-            )
-            warnings.warn(
-                f"add_thin_conductor: sigma_bulk={sigma_bulk:.2e} S/m is at or "
-                f"above the {_PEC_SIGMA_THRESHOLD:.0e} S/m PEC threshold, so "
-                f"this is a LOSSLESS PEC sheet.{_asked} here, and neither is "
-                f"eps_r. Every metal is above this threshold — a lower "
-                f"sigma_bulk would be a different material, not thinner "
-                f"copper (issue #504). For conductor loss pass "
-                f"surface_impedance_f0=<band centre Hz> (Leontovich sheet, "
-                f"issue #669).",
-                stacklevel=2,
-            )
-        if surface_impedance_f0 is not None:
-            import warnings
-            if not (is_tracer(surface_impedance_f0) or is_tracer(sigma_bulk)):
-                _rs0 = float(tc.r_s_leontovich)
-                _rs_txt = f"Rs0 = {_rs0:.4g} ohm/sq"
-            else:
-                _rs_txt = ("Rs0 = sqrt(pi*f0*mu0/sigma_bulk) (traced value "
-                           "not evaluated here)")
-            warnings.warn(
-                f"add_thin_conductor: surface_impedance_f0="
-                f"{surface_impedance_f0!r} Hz — Leontovich surface-"
-                f"resistance sheet with {_rs_txt}. Rs is FREQUENCY-FLAT "
-                f"within the run, frozen at f0, with relative band error "
-                f"|sqrt(f/f0)-1|; the reactive part Xs = Rs (internal "
-                f"inductance) is NOT modeled, so resonances read slightly "
-                f"high.",
-                stacklevel=2,
-            )
         self._thin_conductors.append(tc)
         return self
 
@@ -2198,44 +1979,10 @@ class Simulation(
             raise ValueError(
                 "calibration_preset cannot be combined with explicit reference_plane/probe_plane"
             )
-        pos_vec = [0.0, 0.0, 0.0]
-        pos_vec[axis_idx] = x_position
-        step_sign = 1 if direction.startswith("+") else -1
-        if self._uses_nonuniform_mesh:
-            from rfx.nonuniform import position_to_index
-            from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
-            grid = self._build_nonuniform_grid()
-            x_index = position_to_index(grid, tuple(pos_vec))[axis_idx]
-            coords = coords_from_nonuniform_grid(grid)
-            nodes = np.asarray((coords.x, coords.y, coords.z)[axis_idx])
-            snapped_source_plane = float(nodes[x_index])
-            measured_reference_plane = float(nodes[np.clip(
-                x_index + step_sign * ref_offset, 0, len(nodes) - 1)])
-            measured_probe_plane = float(nodes[np.clip(
-                x_index + step_sign * probe_offset, 0, len(nodes) - 1)])
-        else:
-            grid = self._build_grid(extra_waveguide_axes=axis_name)
-            x_index = grid.position_to_index(tuple(pos_vec))[axis_idx]
-            axis_pad = grid.axis_pads[axis_idx]
-            snapped_source_plane = (x_index - axis_pad) * grid.dx
-            measured_reference_plane = snapped_source_plane + step_sign * ref_offset * grid.dx
-            measured_probe_plane = snapped_source_plane + step_sign * probe_offset * grid.dx
+        _admit_waveguide_planes(self, axis_idx=axis_idx, x_position=x_position,
+                                direction=direction, ref_offset=ref_offset,
+                                probe_offset=probe_offset)
         axis_domain = self._domain[axis_idx]
-        if (
-            measured_reference_plane < 0.0
-            or measured_reference_plane > axis_domain
-            or measured_probe_plane < 0.0
-            or measured_probe_plane > axis_domain
-            or x_index + step_sign * ref_offset < 0
-            or x_index + step_sign * ref_offset >= grid.shape[axis_idx]
-            or x_index + step_sign * probe_offset < 0
-            or x_index + step_sign * probe_offset >= grid.shape[axis_idx]
-        ):
-            raise ValueError(
-                "Waveguide port measurement planes exceed the physical "
-                f"{axis_name}-domain after grid snapping; reduce ref_offset/probe_offset, "
-                "flip direction, or move x_position inward"
-            )
         if reference_plane is not None and not (0.0 <= reference_plane <= axis_domain):
             raise ValueError(
                 f"reference_plane {reference_plane} m is outside the {axis_name}-domain [0, {axis_domain}]"
@@ -2310,10 +2057,7 @@ class Simulation(
         No runner consumes this descriptor in B1. ``rcs=True`` collects the
         RCS requirement for a caller preparing that operation.
         """
-        from rfx.boundaries.model import collect_requirements, with_requirements
-        self._boundary_model = with_requirements(
-            self._boundary_model, collect_requirements(self, rcs=rcs))
-        return self._boundary_model
+        return refresh_boundary_model(self, rcs=rcs)
 
     # ---- Floquet ports ----
 
@@ -2595,8 +2339,8 @@ class Simulation(
         n_freqs : int
             Number of frequencies if freqs is None.
         """
-        if freqs is None:
-            freqs = jnp.linspace(self._freq_max / 10, self._freq_max, n_freqs)
+        from rfx.measurement import default_frequency_grid
+        freqs = default_frequency_grid(self._freq_max, n_freqs) if freqs is None else freqs
         self._ntff = (corner_lo, corner_hi, freqs)
         return self
 
@@ -2712,141 +2456,12 @@ class Simulation(
         check_ntff: bool = True,
         check_resolution: bool = True,
     ) -> MeshIntelligenceReport:
-        """Return a consolidated mesh-quality and memory-planning report.
-
-        The report is intentionally advisory: it reuses ``preflight()``
-        for physics/geometry warnings, reuses ``estimate_ad_memory()``
-        when ``n_steps`` is provided, and adds a uniform-fine comparator
-        that estimates how many cells a globally fine mesh would need if
-        it used the minimum cell size present in any non-uniform profile.
-
-        This is the Stage-1 production-near "subgrid-like" planning
-        surface: it helps users decide whether existing non-uniform mesh
-        plus segmented checkpointing is enough before attempting
-        research-only true subgridding.
-
-        ``checkpoint_every`` and ``checkpoint_segments`` are forwarded to the
-        same AD estimator used by :meth:`plan_ad_memory`; they are mutually
-        exclusive. ``n_warmup`` is forwarded as reverse-mode tape metadata
-        only, matching ``estimate_ad_memory``.
-        """
-        import contextlib
-        import io
-
-        if any(
-            p is not None and is_tracer(p)
-            for p in (self._dx_profile, self._dy_profile, self._dz_profile)
-        ):
-            raise ValueError(
-                "mesh_intelligence_report requires concrete mesh profiles; "
-                "tracer-valued mesh-as-design-variable profiles cannot be "
-                "summarized host-side."
-            )
-
-        dx = self._dx or (C0 / self._freq_max / 20.0)
-
-        # #696: one shape source, shared with estimate_ad_memory — the
-        # grid the solve will actually build. This method carried its own
-        # copy of the same ceil(extent/dx)+1+2*cpml re-derivation, so the
-        # report's cell count and its AD estimate could describe two
-        # different grids, neither of them the one that runs.
-        _accounting = self._ad_memory_static_accounting()
-        grid_shape = (
-            _accounting["nx"], _accounting["ny"], _accounting["nz"],
-        )
-        cells = int(_accounting["cells"])
-
-        axis_min = [
-            float(np.min(self._dx_profile)) if self._dx_profile is not None else dx,
-            float(np.min(self._dy_profile)) if self._dy_profile is not None else dx,
-            float(np.min(self._dz_profile)) if self._dz_profile is not None else dx,
-        ]
-        min_cell_size = min(axis_min)
-        uniform_fine_shape = tuple(
-            int(math.ceil(extent / min_cell_size)) + 1 + 2 * self._cpml_layers
-            for extent in self._domain
-        )
-        uniform_fine_cells = int(
-            uniform_fine_shape[0] * uniform_fine_shape[1] * uniform_fine_shape[2]
-        )
-        cell_savings_factor = (
-            float(uniform_fine_cells / cells) if cells > 0 else float("inf")
-        )
-
-        # preflight() prints a summary by design; suppress it so the
-        # report method remains a pure information-returning API.
-        with contextlib.redirect_stdout(io.StringIO()):
-            preflight_issues = tuple(
-                self.preflight(
-                    strict=False,
-                    check_ntff=check_ntff,
-                    check_resolution=check_resolution,
-                    check_ad_memory=False,
-                )
-            )
-
-        ad_memory = None
-        if n_steps is not None:
-            ad_memory = self.estimate_ad_memory(
-                n_steps,
-                available_memory_gb=available_memory_gb,
-                checkpoint_every=checkpoint_every,
-                checkpoint_segments=checkpoint_segments,
-                n_warmup=n_warmup,
-            )
-
-        uses_nonuniform = any(
-            p is not None
-            for p in (self._dx_profile, self._dy_profile, self._dz_profile)
-        )
-        recommendation_parts: list[str] = []
-        if preflight_issues:
-            recommendation_parts.append(
-                f"resolve {len(preflight_issues)} preflight issue(s) before "
-                "trusting physics results"
-            )
-        elif uses_nonuniform and cell_savings_factor >= 2.0:
-            recommendation_parts.append(
-                f"non-uniform mesh is useful here: ~{cell_savings_factor:.1f}x "
-                "fewer cells than a uniform mesh at the finest spacing"
-            )
-        elif uses_nonuniform:
-            recommendation_parts.append(
-                "non-uniform mesh gives limited cell savings; verify that "
-                "the refinement profile is worth the added validation burden"
-            )
-        else:
-            recommendation_parts.append(
-                "uniform mesh: use preflight/memory estimates as baseline; "
-                "consider non-uniform profiles before research-only subgrid"
-            )
-
-        if ad_memory is not None:
-            if ad_memory.warning:
-                recommendation_parts.append(ad_memory.warning)
-            elif (checkpoint_every or checkpoint_segments) and ad_memory.ad_segmented_gb is not None:
-                recommendation_parts.append(
-                    f"use segmented AD estimate ({_format_memory_gb(ad_memory.ad_segmented_gb)}) "
-                    "rather than the legacy step-checkpoint heuristic"
-                )
-            else:
-                recommendation_parts.append(
-                    "estimated full reverse-mode AD memory is "
-                    f"{_format_memory_gb(ad_memory.ad_full_gb)}"
-                )
-
-        return MeshIntelligenceReport(
-            grid_shape=grid_shape,
-            cells=cells,
-            uniform_fine_shape=uniform_fine_shape,
-            uniform_fine_cells=uniform_fine_cells,
-            cell_savings_factor=cell_savings_factor,
-            min_cell_size=float(min_cell_size),
-            nominal_dx=float(dx),
-            uses_nonuniform=uses_nonuniform,
-            preflight_issues=preflight_issues,
-            ad_memory=ad_memory,
-            recommendation="; ".join(recommendation_parts) + ".",
+        """Return a consolidated mesh-quality and memory-planning report."""
+        return mesh_intelligence_report(
+            self, n_steps=n_steps, checkpoint_every=checkpoint_every,
+            checkpoint_segments=checkpoint_segments,
+            available_memory_gb=available_memory_gb, n_warmup=n_warmup,
+            check_ntff=check_ntff, check_resolution=check_resolution,
         )
     def _mesh_planner_state(self) -> dict[str, object]:
         """Return a narrow internal snapshot consumed by ``rfx.mesh_planner``.

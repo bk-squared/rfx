@@ -135,8 +135,8 @@ def simulation_source_end_step(sim, n_steps, dt, records, grid=None,
     if tf is not None:
         if grid is None:
             return None
-        from rfx.sources.tfsf_discrete_plane_wave import init_from_sim
-        cfg, _ = init_from_sim(sim, grid, n_steps)
+        from rfx.sources.tfsf import tfsf_from_declaration
+        cfg, _ = tfsf_from_declaration(tf, grid, sim._freq_max, line_steps=n_steps)
         drives.append(tfsf_source_drive(cfg, grid))
     return source_end_step(drives, n_steps, dt) if drives else None
 

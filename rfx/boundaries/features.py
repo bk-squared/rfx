@@ -11,7 +11,7 @@ import inspect
 from pathlib import Path
 import warnings
 
-from rfx.boundaries.depths import Kind, grid_face_depths, resolve_face_depths
+from rfx.boundaries.depths import Kind, grid_face_depths, resolve_face_depths, simulation_face_depths
 
 
 class WaveguideBoundaryWarning(UserWarning):
@@ -138,6 +138,34 @@ def _warn_caller(message):
                                    frame.f_code.co_filename, frame.f_lineno)
     finally:
         del frame
+
+
+def admit_ntff(sim, *, lane):
+    """Refuse NTFF on reflecting domain faces; periodic axes are undecided."""
+    if sim._ntff is None:
+        return
+    refuse_ntff_reflecting_faces(
+        simulation_face_depths(sim), lane=lane)
+
+
+def refuse_ntff_reflecting_faces(faces, *, lane):
+    """Refuse reflecting faces from the declaration or realized run record."""
+    incompatible = {}
+    for face in faces:
+        if face.kind in (Kind.PEC, Kind.PMC):
+            incompatible[face.name] = face.kind.value.lower()
+        elif face.kind == Kind.ABSORBER and face.realized == 0:
+            incompatible[face.name] = "zero-depth absorber"
+    if incompatible:
+        descriptions = [f"{face} is {kind}" for face, kind in sorted(incompatible.items())]
+        raise ValueError(
+            f"{lane}: an NTFF box radiates its surface currents into free space, but "
+            + "; ".join(descriptions)
+            + ": the far field would miss their images (a symmetry or ground plane is not "
+            "reconstructed). Every face of the realized model must be absorbing: draw a "
+            "finite ground plane as geometry, and note that a waveguide port on the uniform mesh "
+            "solves its transverse faces as PEC walls; a symmetry plane is not supported "
+            "with NTFF yet.")
 
 
 def admit_waveguide(sim, *, lane="dispatch"):

@@ -252,9 +252,7 @@ def test_waveguide_direct_override_writer_uses_cell_stage(keyword, operand):
 
 def _distributed_reference():
     """Fresh-process witness for host, jit and vmap slab inputs, at the seam."""
-    from rfx.core.yee import MaterialArrays
-    from rfx.runners import distributed_nu as nu, _distributed_common as common
-    from rfx.model.electric_metrics import slab_cell_sizes
+    from rfx.runners import distributed_nu as nu
     sim, grid = _model("graded")
     sim._ports = []
     sim._lumped_rlc = []
@@ -264,24 +262,33 @@ def _distributed_reference():
     widths = [np.r_[d, d[-1]] if len(d) < n else d for d, n in zip(widths, grid.shape)]
     point = (5, 4, 6)
     expected, grad = reference(values, widths, 0, point, (False,) * 3)
+    from rfx.stepping import slab_setup
+    run_pec, realize = nu.run_nonuniform_distributed_pec, slab_setup.realize_materials
     for keyword, index in (("eps_override", 0), ("sigma_override", 1)):
         def consume(a):
             def stop(*args, **kw):
-                raise _Captured(args[:2])
-            with patch.object(nu, "run_nonuniform_distributed_pec", stop):
+                if getattr(args[0], "step_kind", None) == "wrapped":
+                    return run_pec(*args, **kw)
+                raise _Captured(("legacy",) + args[:2])
+            def stop_realize(*args, **kw):
+                # The wrapped step's cell stage: realized components per slab,
+                # rank r holding rows r * nx_local + j for global x r * nx_per_rank + j - 1.
+                raise _Captured(("wrapped", args[2], realize(*args, **kw)[0].components))
+            with patch.object(nu, "run_nonuniform_distributed_pec", stop), \
+                    patch.object(slab_setup, "realize_materials", stop_realize):
                 try:
                     sim.forward(n_steps=2, distributed=True, devices=jax.devices(),
                                 skip_preflight=True, **{keyword: a})
                 except _Captured as caught:
-                    sg, staged = caught.value
+                    route, layout, staged = caught.value
                 else:
                     raise AssertionError("slab consumer was not reached")
-            rank = point[0] // sg.nx_per_rank
-            local = MaterialArrays(*(v[rank * sg.nx_local:(rank + 1) * sg.nx_local] for v in staged[:3]))
-            realized = common.slab_e_component_materials(local, sg.nx_per_rank, sg.nx,
-                                                        rank=rank, cell_sizes=slab_cell_sizes(sg, rank))
-            at = (point[0] - rank * sg.nx_per_rank + 1,) + point[1:]
-            return realized[index][0][at]
+            # The graded PEC model runs the wrapped step (select_step); a fall
+            # back to the legacy step would leave the production stage unread.
+            assert route == "wrapped", route
+            rank = point[0] // layout.nx_per_rank
+            at = (rank * layout.nx_local + point[0] - rank * layout.nx_per_rank + 1,) + point[1:]
+            return (staged.eps_update, staged.sigma_update)[index][0][at]
         for f in (consume, jax.jit(consume)):
             actual, tangent = jax.jvp(f, (jnp.asarray(values),), (jnp.asarray(values),))
             np.testing.assert_allclose([actual, tangent], expected, rtol=3e-7)

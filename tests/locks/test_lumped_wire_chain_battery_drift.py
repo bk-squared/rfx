@@ -1,7 +1,7 @@
 """Live locks on internal TEM lines continued through both CPML ends.
 
 The previous internal open-stub curves are historical in commit 2a1053f3;
-the older terminal battery remains in tests/fixtures/lumped_wire_chain_battery/fixture.json. They cannot serve
+the older terminal battery on a magnetic-walled channel was retired (rfx #1221, decision A). They cannot serve
 as baselines for a different circuit. Expectations now come from the exact
 shunt-network formula, not newly pinned measurement records.
 

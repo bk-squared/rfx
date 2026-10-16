@@ -127,6 +127,7 @@ Status: **provisional**.
 
 from __future__ import annotations
 
+from rfx.stepping.step_count import steps_for_periods
 import math
 import textwrap
 from dataclasses import dataclass, field
@@ -1421,9 +1422,8 @@ def plan_openems_projection(
         steps = int(n_timesteps)
         source = f"n_timesteps={steps} passed to the emitter"
     elif num_periods is not None:
-        steps = int(math.ceil(float(num_periods) / freq_max / dt_rfx))
-        source = (
-            f"num_periods={num_periods!r} at freq_max={freq_max:.6e} Hz, "
+        steps = steps_for_periods(dt_rfx, freq_max, num_periods)
+        source = (f"num_periods={num_periods!r} at freq_max={freq_max:.6e} Hz, "
             f"converted with rfx's Courant dt={dt_rfx:.6e} s"
         )
     elif absorbing:
@@ -1435,7 +1435,7 @@ def plan_openems_projection(
         )
     else:
         periods = 60.0
-        steps = int(math.ceil(periods / freq_max / dt_rfx))
+        steps = steps_for_periods(dt_rfx, freq_max, periods)
         source = (
             f"the emitter default for a closed (non-absorbing) domain: "
             f"num_periods={periods} at freq_max={freq_max:.6e} Hz via rfx's "

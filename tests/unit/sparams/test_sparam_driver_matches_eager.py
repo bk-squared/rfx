@@ -37,7 +37,7 @@ _RECIPROCITY_REL = 0.05     # |S21 - S12| / max(|S21|, |S12|)
 
 
 def _waveform():
-    return GaussianPulse(f0=5.5e9, bandwidth=4e9)
+    return GaussianPulse(f0=5.5e9, bandwidth=0.8)
 
 
 def _eager_grid():

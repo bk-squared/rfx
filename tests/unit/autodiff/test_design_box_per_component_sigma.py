@@ -142,11 +142,12 @@ def test_a_single_array_is_its_own_edge_average_handed_as_a_tuple():
 def test_the_box_edge_coefficients_of_a_cell_array_equal_its_averages_as_a_tuple():
     """For a general ``s``: identical on the box's edges, and only there.
 
-    Coefficient level, through ``_resolve_design_box``. Inside the box the two
+    Coefficient level, through ``resolve_design_box``. Inside the box the two
     are the same numbers bit for bit; on the plus-face edge layer outside the
     box the single array differs, because only a cell array reaches it.
     """
-    from rfx.simulation import DesignBoxSpec, _resolve_design_box
+    from rfx.simulation import DesignBoxSpec
+    from rfx.model import resolve_design_box
 
     sim = _sim()
     grid = sim._build_grid()
@@ -163,8 +164,8 @@ def test_the_box_edge_coefficients_of_a_cell_array_equal_its_averages_as_a_tuple
               use_lorentz=False, use_kerr=False, aniso_eps=None,
               aniso_inv_eps=None, stencil_order=2, bloch=None,
               sheet_impedance=None, cell_metas=())
-    one = _resolve_design_box(DesignBoxSpec(bounds, eps, s), **kw)
-    tup = _resolve_design_box(
+    one = resolve_design_box(DesignBoxSpec(bounds, eps, s), **kw)
+    tup = resolve_design_box(
         DesignBoxSpec(bounds, eps, _edge_average_of(sim, s)), **kw)
     assert one.bounds == tup.bounds
     box = tuple(slice(0, n) for n in shape)       # box inside the write window
@@ -187,7 +188,8 @@ def test_a_conductivity_tuple_is_taken_per_edge_not_averaged_again():
     sheet lane's design variable). Averaged again it would spread over the
     four Ex edges around that cell, at a quarter each.
     """
-    from rfx.simulation import DesignBoxSpec, _resolve_design_box
+    from rfx.simulation import DesignBoxSpec
+    from rfx.model import resolve_design_box
 
     sim = _sim()
     grid = sim._build_grid()
@@ -205,9 +207,9 @@ def test_a_conductivity_tuple_is_taken_per_edge_not_averaged_again():
               use_lorentz=False, use_kerr=False, aniso_eps=None,
               aniso_inv_eps=None, stencil_order=2, bloch=None,
               sheet_impedance=None, cell_metas=())
-    base = _resolve_design_box(DesignBoxSpec(bounds, eps, (zero, zero, zero)),
+    base = resolve_design_box(DesignBoxSpec(bounds, eps, (zero, zero, zero)),
                                **kw)
-    one = _resolve_design_box(DesignBoxSpec(bounds, eps, (sx, zero, zero)),
+    one = resolve_design_box(DesignBoxSpec(bounds, eps, (sx, zero, zero)),
                               **kw)
 
     ca_x = np.asarray(one.ca[0])

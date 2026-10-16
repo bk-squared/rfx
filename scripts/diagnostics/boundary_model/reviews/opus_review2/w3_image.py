@@ -48,10 +48,10 @@ for r in (0.5, 2.0):
     gamma = abs((r - 1.0) / (r + 1.0))
     s_fwd = np.abs(np.asarray(T._line(r).forward(
         port_s11_freqs=jnp.asarray(T.FREQS_HZ), num_periods=20.0,
-        skip_preflight=True).s_params).reshape(-1))
+        skip_preflight=True).s_params[0, 0]).reshape(-1))
     s_run = np.abs(np.asarray(T._line(r).run(
         compute_s_params=True, s_param_freqs=T.FREQS_HZ, num_periods=20.0,
-        skip_preflight=True).s_params).reshape(-1))
+        skip_preflight=True).s_params[0, 0]).reshape(-1))
     ok = np.all(np.abs(s_fwd - gamma) < 0.05) and np.all(np.abs(s_run - gamma) < 0.05)
     print(f"{arm} R/Zc={r}: |S11| forward {np.round(s_fwd, 4)} run {np.round(s_run, 4)} "
           f"at {T.FREQS_HZ/1e9} GHz; closed form {gamma:.4f}; test passes: {ok}")

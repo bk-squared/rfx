@@ -2,9 +2,10 @@
 
 Gates (predeclared in the #383 design doc BEFORE implementation):
 
-* **Gate B** — the interior-energy stop actually fires on a small
-  graded-dz CPML NU sim, the per-check ``(step, U, peak_U)`` trace shows
-  ``decay_energy_consecutive`` consecutive sub-threshold checks
+* **Gate B** — the energy stop actually fires on a small graded-dz CPML
+  NU sim at the step the declared rule (design v4) gives on W reduced in
+  this file from captured fields, and the per-check ``(step, W, reference)``
+  trace shows ``decay_energy_consecutive`` consecutive sub-threshold checks
   (workspace rule R5: the stop may not be reported without its trace),
   and a physics witness pins the probe spectrum at the decay stop
   against a 3x-longer fixed run (peak amplitude ratio within 2 percent,
@@ -28,11 +29,13 @@ from __future__ import annotations
 
 import warnings
 
+import jax
+import jax.numpy as jnp
 import numpy as np
 import pytest
 
 from rfx import Simulation
-from rfx.core.yee import init_materials
+from rfx.core.yee import init_materials, component_e_materials, component_h_materials, MU_0, EPS_0
 from rfx.nonuniform import (
     make_nonuniform_grid,
     make_current_source,
@@ -80,7 +83,7 @@ def _build_nu_case(n_table: int, cpml_layers=4):
     return grid, materials, [src], [prb]
 
 
-def test_nu_until_decay_fires_with_trace_and_physics_witness():
+def test_nu_until_decay_fires_with_trace_and_physics_witness(monkeypatch, record_property):
     """Gate B: stop fires, trace proves it, spectrum matches a 3x fixed run."""
     decay_by = 1e-4
     check_interval = 50
@@ -107,23 +110,33 @@ def test_nu_until_decay_fires_with_trace_and_physics_witness():
     steps_taken = ts.shape[0]
     checks = r["decay_checks"]
     trace = "\n".join(
-        f"  step={s:5d}  U={u:.6e}  peak_U={p:.6e}" for s, u, p in checks
+        f"  step={s:5d}  W={u:.6e}  reference={p:.6e}" for s, u, p in checks
     )
 
     # Stop fired strictly between the bounds.
     assert min_steps <= steps_taken < max_steps, (
         f"expected min_steps <= steps < max_steps, got {steps_taken}; "
-        f"U trace:\n{trace}"
+        f"W trace:\n{trace}"
     )
 
-    # R5: the fire condition actually held — the last `consec` checks are
-    # all sub-threshold against the peak recorded AT that check.
-    assert len(checks) >= consec, f"too few checks; U trace:\n{trace}"
-    below = [u < decay_by * p for _, u, p in checks[-consec:]]
-    assert all(below), (
-        f"stop reported but the last {consec} checks are not all "
-        f"sub-threshold; U trace:\n{trace}"
-    )
+    # Here the requested 1e-4 asks for less than float32 holds: the run ends on the
+    # floor. Checked on the loop's own rows (a separately compiled observer run's fields
+    # differ from the loop's by a rounding unit of the peak field there): every boundary
+    # of the final run is under 1e-12 of the largest W and has stopped falling (>= 0.95
+    # of the previous boundary), and no earlier run of rows qualified. The largest W
+    # (the drive's peak, set before the first row) comes from the stop record.
+    stop = dict(r["decay_stop"].values)
+    assert stop["criterion"] == "float32_floor", stop
+    wmax = stop["floor_ratio"] * checks[-1][2] / 1e-12
+    floor_flat = [i > 0 and w < 1e-12 * wmax and w >= 0.95 ** (check_interval / 50) * checks[i - 1][1]
+                  for i, (_, w, _) in enumerate(checks)]
+    below = [flat or w < decay_by * ref for flat, (_, w, ref) in zip(floor_flat, checks)]
+    assert all(floor_flat[-consec:]), f"W trace:\n{trace}"
+    first = next(i for i in range(len(below))
+                 if i + 1 >= consec and all(below[i + 1 - consec:i + 1]))
+    assert first == len(checks) - 1, f"an earlier run qualified at {checks[first][0]}; W trace:\n{trace}"
+    record_property("floor_stop", (steps_taken, stop["reached"], stop["floor_ratio"]))
+
     # The trace is internally consistent with the loop mechanics: the
     # stop step is the last check's step.
     assert checks[-1][0] == steps_taken, (
@@ -155,11 +168,11 @@ def test_nu_until_decay_fires_with_trace_and_physics_witness():
     # gate is the in-band sweep that follows.
     assert abs(k_dec - k_ref) <= 1, (
         f"peak bin moved by {abs(k_dec - k_ref)} bins (> 1); "
-        f"U trace:\n{trace}"
+        f"W trace:\n{trace}"
     )
     assert abs(ratio - 1.0) <= 0.02, (
         f"peak amplitude ratio {ratio:.5f} deviates more than 2% from the "
-        f"3x fixed-run reference; U trace:\n{trace}"
+        f"3x fixed-run reference; W trace:\n{trace}"
     )
 
     # In-band sweep (reviewer-validated, #383 review): over every
@@ -172,7 +185,7 @@ def test_nu_until_decay_fires_with_trace_and_physics_witness():
     inband_err = float(np.max(np.abs(spec_dec[band] / spec_ref[band] - 1.0)))
     assert inband_err <= 1e-2, (
         f"in-band per-bin amplitude error {inband_err:.3e} exceeds 1e-2 "
-        f"vs the 3x fixed-run reference; U trace:\n{trace}"
+        f"vs the 3x fixed-run reference; W trace:\n{trace}"
     )
 
 
@@ -200,10 +213,12 @@ def test_nu_until_decay_forced_n_matches_fixed_run():
         f"decay_by=0.0 must run exactly {n_steps} steps, got "
         f"{ts_decay.shape[0]}"
     )
-    # Every eligible check ran and none fired (U >= 0 on all of them).
-    checks = r_decay["decay_checks"]
-    assert [s for s, _, _ in checks] == [50, 100, 150, 200]
-    assert all(u >= 0.0 for _, u, _ in checks)
+    # Energy rows start at max(min_steps, drive end). This case's pulse is
+    # still above 1e-6 of its peak at the last of its 200 samples, so the
+    # drive has not ended and no energy is read (rows were 50..200 before v4).
+    table = np.abs(np.asarray(sources[0][4], dtype=np.float64))
+    assert table[-1] > 1e-6 * table.max()
+    assert r_decay["decay_checks"] == []
 
     ts_scale = float(np.max(np.abs(ts_fixed)))
     ts_delta = float(np.max(np.abs(ts_fixed - ts_decay)))
@@ -309,6 +324,60 @@ def test_nu_until_decay_public_api_routes_and_stops():
         f"until_decay must be honoured on the absorbing NU lane, got: "
         f"{dropped}"
     )
+
+
+def test_nu_energy_is_conserved_in_a_closed_lossless_graded_box():
+    """A closed PEC box graded on x and z (0.35-0.8 mm cells), no loss: after the drive
+    the loop's W must stay constant. With one primal cell volume for all six components
+    it drifted by 4.2e-3; with each component's Yee control volume, 1.8e-6."""
+    dz = np.array([0.8e-3] * 3 + [0.5e-3] * 2 + [0.35e-3] * 8 + [0.5e-3] * 2 + [0.8e-3] * 3)
+    dxp = np.array([0.8e-3] * 3 + [0.4e-3] * 8 + [0.8e-3] * 3)
+    grid = make_nonuniform_grid((float(dxp.sum()), 0.008), dz, 0.8e-3, cpml_layers=0,
+                                dx_profile=dxp)
+    materials = init_materials((grid.nx, grid.ny, grid.nz))
+    src = make_current_source(grid, position_to_index(grid, (0.0031, 0.0042, 0.0043)), "ez",
+                              GaussianPulse(f0=20e9, bandwidth=0.8), 1200, materials)
+    r = run_nonuniform_until_decay(grid, materials, decay_by=1e-30, check_interval=50,
+                                   min_steps=100, max_steps=1200, sources=[src], probes=[])
+    w = np.array([row[1] for row in r["decay_checks"]])
+    assert len(w) >= 15
+    assert w.max() / w.min() - 1 <= 1e-5, w.max() / w.min() - 1
+
+
+def test_nu_gate_b_case_at_1e_3_stops_before_the_cap():
+    """Gate B's case at 1e-3 ends before its cap, on the threshold or on the float32
+    floor. Here the after-drive reference is so small that the floor level (1e-12 of
+    the run's largest W) is 1.29e-2 of it, above the threshold, so only the flatness
+    test separates the two and rounding decides which fires first: Mac CPU 1800 on
+    the threshold (W/ref 6.6e-4), x86 CPU 1950 on the floor (VESSL 369367271564).
+    That the stop is the declared rule on the loop's own rows is checked by
+    tests/contracts/test_decay_stop_one_rule.py."""
+    grid, materials, sources, probes = _build_nu_case(3000, cpml_layers=12)
+    r = run_nonuniform_until_decay(grid, materials, decay_by=1e-3, check_interval=50, min_steps=100,
+                                   max_steps=3000, decay_energy_consecutive=2,
+                                   sources=sources, probes=probes)
+    stop = dict(r["decay_stop"].values)
+    assert stop["criterion"] in ("threshold", "float32_floor"), r["decay_stop"]
+    assert stop["floor_ratio"] > 1e-3, stop  # the premise above: the floor sits above the threshold
+    assert len(r["time_series"]) < 3000
+
+
+def test_nu_floor_level_does_not_depend_on_the_check_interval():
+    """Gate B's case at 1e-4 with checks every 50, 20, 10 and 5 steps: the floor test
+    reads decay per 50 steps, so every interval ends on the floor at nearly the same
+    level (measured W/ref 7.70e-4, 7.81e-4, 7.88e-4, 7.94e-4; stops 2000, 1940, 1930,
+    1920). A per-check 0.95 would call a 5 % decay per 5 steps flat."""
+    reached = {}
+    for interval in (50, 20, 10, 5):
+        grid, materials, sources, probes = _build_nu_case(4000, cpml_layers=12)
+        r = run_nonuniform_until_decay(grid, materials, decay_by=1e-4, check_interval=interval,
+                                       min_steps=100, max_steps=4000, decay_energy_consecutive=2,
+                                       sources=sources, probes=probes)
+        stop = dict(r["decay_stop"].values)
+        assert stop["criterion"] == "float32_floor", (interval, stop)
+        reached[interval] = stop["reached"]
+    for interval, value in reached.items():
+        assert reached[50] / 1.5 <= value <= reached[50] * 1.5, reached
 
 
 def test_nu_until_decay_rejects_windowed_flux():

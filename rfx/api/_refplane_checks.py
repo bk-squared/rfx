@@ -127,3 +127,58 @@ def _refplane_reject_msl_ladder_in_plane_zone(
                     "line-axis indices only (conservative), so a "
                     "TRANSVERSELY separated MSL port on a different "
                     "parallel trace also trips it.")
+
+
+def _refplane_reject_planes_off_the_uniform_line(
+    grid, port_entry, plane_specs, *, line_axis,
+):
+    """Domain / absorber guard: both reference planes must lie INSIDE the
+    declared domain and clear of the absorber.
+
+    ``grid.pad_{axis}_{lo,hi}`` is the CPML/UPML stack, which pads OUTSIDE
+    the declared domain, so the declared domain occupies indices
+    ``[pad_lo, n-1-pad_hi]`` on this axis. A plane landing outside that
+    span, or within a face's own absorber thickness of it, is not on the
+    uniform line: it reads the open end / absorber-side standing wave
+    instead (measured on the probe-fed microstrip fixture: a ``"+x"`` feed
+    silently built its 2N plane five cells from the trace's open end).
+    This is a DISTINCT message class from "reach past another port" — the
+    two failures have different remedies (move the planes inboard vs.
+    reduce N). Driven off the BUILT specs' own ``plane_index`` so it reads
+    exactly the planes that were registered.
+    """
+    pad_lo = (grid.pad_x_lo, grid.pad_y_lo, grid.pad_z_lo)[line_axis]
+    pad_hi = (grid.pad_x_hi, grid.pad_y_hi, grid.pad_z_hi)[line_axis]
+    n_axis = int(grid.shape[line_axis])
+    dom_lo = int(pad_lo)
+    dom_hi = n_axis - 1 - int(pad_hi)
+    axis_name = "xyz"[line_axis]
+    for plane_spec in plane_specs:
+        slot = int(plane_spec.plane_slot)
+        plane_index = int(plane_spec.plane_index)
+        if plane_index < dom_lo or plane_index > dom_hi:
+            raise ValueError(
+                "reference_plane_cells: reference plane "
+                f"slot {slot} of the port at {port_entry.position} "
+                f"lands at index {plane_index} on axis {line_axis} "
+                f"({axis_name}), OUTSIDE the declared "
+                f"domain (indices {dom_lo}..{dom_hi}; the "
+                "absorber stack pads outside that span). "
+                "Reduce N so both planes stay on the "
+                "uniform line inside the domain.")
+        if (plane_index < dom_lo + int(pad_lo)
+                or plane_index > dom_hi - int(pad_hi)):
+            raise ValueError(
+                "reference_plane_cells: reference plane "
+                f"slot {slot} of the port at {port_entry.position} "
+                f"lands at index {plane_index} on axis {line_axis} "
+                f"({axis_name}), within the absorber "
+                f"thickness of a declared-domain face "
+                f"(domain {dom_lo}..{dom_hi}, absorber "
+                f"{pad_lo}/{pad_hi} cells lo/hi, so the "
+                "clear span is "
+                f"{dom_lo + int(pad_lo)}.."
+                f"{dom_hi - int(pad_hi)}). The plane is "
+                "in the boundary near field, not on the "
+                "uniform line. Reduce N, or point the port "
+                "direction so the planes go INTO the DUT.")

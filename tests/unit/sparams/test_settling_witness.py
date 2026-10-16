@@ -270,6 +270,7 @@ def _producers_in(tree):
     return out
 
 
+@pytest.mark.source_scan
 def test_every_settling_db_producer_routes_through_the_shared_warner():
     """The #662 defect in structural form.
 
@@ -288,6 +289,7 @@ def test_every_settling_db_producer_routes_through_the_shared_warner():
     )
 
 
+@pytest.mark.source_scan
 def test_the_known_lanes_are_all_covered():
     """Companion to the gate above: pins WHICH lanes carry the witness, so a
     lane silently losing its witness entirely (producer disappears -> the gate

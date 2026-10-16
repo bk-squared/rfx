@@ -13,6 +13,8 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.sources import waveguide_port
+import rfx.measurement.waveguide_s as _wg_move_waveguide_s
+import rfx.measurement.waveguide_modal as _wg_move_waveguide_modal
 
 DT = 2.0e-12
 FREQS = np.array([10e9, 20e9, 30e9])
@@ -33,10 +35,10 @@ def test_the_wave_split_stamps_the_recorded_current_as_h(monkeypatch):
     rng = np.random.default_rng(11)
     voltage, current = (rng.normal(size=N).astype(np.float32) for _ in range(2))
     seen = {}
-    monkeypatch.setattr(waveguide_port, "_extract_global_waves",
+    monkeypatch.setattr(_wg_move_waveguide_s, "_extract_global_waves",
                         lambda cfg, v, i: seen.update(v=v, i=i) or (v, i))
     cfg = SimpleNamespace(freqs=jnp.asarray(FREQS, jnp.float32), dt=DT, n_steps_recorded=N)
-    waveguide_port._extract_global_waves_from_time_series(
+    _wg_move_waveguide_s._extract_global_waves_from_time_series(
         cfg, jnp.asarray(voltage), jnp.asarray(current))
     freqs32 = np.asarray(cfg.freqs, dtype=np.float64)
     assert np.allclose(freqs32, FREQS, rtol=1e-6)
@@ -48,7 +50,7 @@ def test_the_overlap_sums_stamp_the_h_channel_as_h(monkeypatch):
     rng = np.random.default_rng(12)
     p1, p2 = rng.normal(size=N), rng.normal(size=N)
     monkeypatch.setattr(
-        waveguide_port, "_overlap_cross_products",
+        _wg_move_waveguide_modal, "_overlap_cross_products",
         lambda state, cfg, x, dx: (jnp.float32(p1[state.step - 1] * x),
                                    jnp.float32(p2[state.step - 1] * x)))
     cfg = SimpleNamespace(freqs=jnp.asarray(FREQS, jnp.float32), ref_x=1, probe_x=2)

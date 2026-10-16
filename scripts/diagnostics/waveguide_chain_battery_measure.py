@@ -70,6 +70,7 @@ import jax.numpy as jnp  # noqa: E402
 
 import rfx  # noqa: E402
 import rfx.sources.waveguide_port as _wp  # noqa: E402
+import rfx.measurement.waveguide_s as _wg_move_waveguide_s
 from rfx.simulation import _nearest_divisor  # noqa: E402
 
 from tests import _waveguide_chain_battery_fixture as F  # noqa: E402
@@ -514,16 +515,16 @@ class _FlippedShift:
     sign of the shift flipped (the 2026-04-22 ``step_sign`` bug class)."""
 
     def __enter__(self):
-        self._orig = _wp._shift_modal_waves
+        self._orig = _wg_move_waveguide_s._shift_modal_waves
 
         def flipped(forward, backward, beta, shift_m, step_sign=1):
             return self._orig(forward, backward, beta, shift_m, -step_sign)
 
-        _wp._shift_modal_waves = flipped
+        _wg_move_waveguide_s._shift_modal_waves = flipped
         return self
 
     def __exit__(self, *exc):
-        _wp._shift_modal_waves = self._orig
+        _wg_move_waveguide_s._shift_modal_waves = self._orig
         return False
 
 

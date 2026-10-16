@@ -53,7 +53,9 @@ def test_run_skip_preflight_suppresses_it():
         warnings.simplefilter("error")  # any preflight UserWarning => failure
         # A genuine numerical warning unrelated to preflight could still fire;
         # this config only trips the preflight surface, so silence == success.
-        sim.run(n_steps=10, skip_preflight=True)
+        # 20 steps: the default pulse starts at zero (issue 1668 PR), so the
+        # probe 8 cells away still reads exactly 0 after 10 steps (#336 warning).
+        sim.run(n_steps=20, skip_preflight=True)
 
 
 def test_run_preflight_warning_is_consolidated_single_warning():

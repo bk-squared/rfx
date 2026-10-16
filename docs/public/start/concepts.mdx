@@ -166,7 +166,7 @@ reference impedance or a reference plane, so they cannot produce S-parameters.
 | a field on a plane at chosen frequencies | `add_dft_plane_probe` |
 | power through a plane (R, T, absorption) | `add_flux_monitor` |
 | radiation pattern, directivity, RCS | `add_ntff_box`, then `compute_far_field` / `compute_rcs` |
-| resonant frequencies and Q | a probe plus `result.find_resonances()` (Harminv) |
+| resonant frequencies and Q | a probe plus `result.find_resonances()` (matrix pencil fit) |
 | S-parameters | a port family and its calculator (table above) |
 
 ## Is the run finished?

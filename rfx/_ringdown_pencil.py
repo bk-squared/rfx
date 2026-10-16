@@ -196,3 +196,25 @@ def _fit_residues(Y_win: np.ndarray, s: np.ndarray, dt: float, *,
     if not column_reference:
         residues[growing] *= np.exp(-m[-1] * s[growing])[:, None]
     return residues
+
+
+def _on_nearest_bin(s, f_bins, record_s: float) -> np.ndarray:
+    """Each pole moved onto the nearest requested bin within ``1 / record_s``.
+
+    A record of length ``T`` places a pole's frequency only to about ``1/T``:
+    an unresolved pair is identified as one pole between its members, which
+    can sit far from every bin while the members sit on bins. For the floor a
+    pole is weighed as if it sat on the nearest bin it could be on; its decay
+    and residue are kept. A pole with no bin within ``1/T`` is left in place.
+    """
+    s = np.asarray(s, dtype=np.complex128)
+    fb = np.asarray(f_bins, dtype=np.float64)
+    if s.size == 0 or fb.size == 0 or not record_s > 0.0:
+        return s
+    f = s.imag / (2.0 * np.pi)
+    j = np.argmin(np.abs(fb[None, :] - f[:, None]), axis=1)
+    # a pole the record cannot tell from DC stays where it is: moved onto a
+    # low bin, a slowly relaxing static field would weigh like a mode there
+    near = ((np.abs(fb[j] - f) <= 1.0 / float(record_s))
+            & (np.abs(f) >= 1.0 / float(record_s)))
+    return np.where(near, s.real + 1j * 2.0 * np.pi * fb[j], s)

@@ -186,6 +186,8 @@ def _forward(sim, box=None, *, eps=None, sigma=None, holds=False,
         # the wire board. They are only ever compared between two
         # formulations of one board.
         kw["port_s11_freqs"] = jnp.asarray(FREQS)
+    elif any(p.extent is not None for p in sim._ports):
+        kw["port_s11_freqs"] = np.linspace(sim._freq_max / 10, sim._freq_max, 50)
     if box is not None:
         kw.update(design_box=box, design_eps_override=eps,
                   design_sigma_override=sigma,
@@ -195,9 +197,11 @@ def _forward(sim, box=None, *, eps=None, sigma=None, holds=False,
 
 @contextmanager
 def _captured_box():
-    """Record every ``_resolve_design_box`` call: its spec, materials, dt
+    """Record every ``resolve_design_box`` call: its spec, materials, dt
     and the coefficients it built."""
-    real = _sim_mod._resolve_design_box
+    from rfx.model import resolve_design_box
+    import rfx.model as model
+    real = resolve_design_box
     seen = []
 
     def _spy(spec, **kw):
@@ -205,7 +209,8 @@ def _captured_box():
         seen.append((spec, kw["materials"], kw["dt"], out))
         return out
 
-    with mock.patch.object(_sim_mod, "_resolve_design_box", _spy):
+    with mock.patch.object(_sim_mod, "resolve_design_box", _spy), \
+            mock.patch.object(model, "resolve_design_box", _spy):
         yield seen
 
 

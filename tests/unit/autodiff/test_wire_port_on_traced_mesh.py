@@ -213,7 +213,7 @@ def test_concrete_s11_is_byte_identical_with_the_tracer_branch_forced_off(
     """
     ship = np.asarray(_s11(delta), dtype=np.complex64)
     monkeypatch.setattr("rfx.nonuniform.port_metric_axes", _host_only_axes)
-    monkeypatch.setattr("rfx.runners.nonuniform.port_metric_axes",
+    monkeypatch.setattr("rfx.model.graded_ports.port_metric_axes",
                         _host_only_axes)
     before = np.asarray(_s11(delta), dtype=np.complex64)
     assert ship.tobytes() == before.tobytes()
@@ -411,7 +411,7 @@ def test_mutation_a_the_tracer_branch_off_refuses_the_traced_run(monkeypatch):
     traced run raises where it used to — so the gate is watching the branch
     it claims to."""
     monkeypatch.setattr("rfx.nonuniform.port_metric_axes", _host_only_axes)
-    monkeypatch.setattr("rfx.runners.nonuniform.port_metric_axes",
+    monkeypatch.setattr("rfx.model.graded_ports.port_metric_axes",
                         _host_only_axes)
     with pytest.raises(jax.errors.TracerArrayConversionError):
         jax.jvp(lambda d: _obs(d, n_steps=8), (jnp.float32(0.25 * DX),),
@@ -442,7 +442,7 @@ def test_mutation_b_a_port_sized_on_the_nominal_cell_goes_red(monkeypatch):
     fd = _fd(d0, DX / 32)
     monkeypatch.setattr("rfx.nonuniform.port_metric_axes",
                         _nominal_when_traced)
-    monkeypatch.setattr("rfx.runners.nonuniform.port_metric_axes",
+    monkeypatch.setattr("rfx.model.graded_ports.port_metric_axes",
                         _nominal_when_traced)
     val, ad = jax.jvp(_obs, (jnp.float32(d0),), (jnp.float32(1.0),))
     assert abs(float(val) - concrete) / abs(concrete) > 1e-2, (
@@ -510,7 +510,7 @@ def test_mutation_b_on_the_z_axis_goes_red(monkeypatch):
     fd = _fd_z(d0, DX / 32)
     monkeypatch.setattr("rfx.nonuniform.port_metric_axes",
                         _nominal_z_when_traced)
-    monkeypatch.setattr("rfx.runners.nonuniform.port_metric_axes",
+    monkeypatch.setattr("rfx.model.graded_ports.port_metric_axes",
                         _nominal_z_when_traced)
     val, ad = jax.jvp(lambda d: _obs(d, axis="z"), (jnp.float32(d0),),
                       (jnp.float32(1.0),))

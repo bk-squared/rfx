@@ -32,6 +32,12 @@ retired pmap version so callers retain the same entry-point arguments.
 from __future__ import annotations
 
 from functools import partial
+from types import SimpleNamespace
+
+from rfx.boundaries.cpml import apply_cpml_e, apply_cpml_h, cpml_grid_metadata
+from rfx.runners._distributed_common import (
+    init_cpml_slabs, cpml_slab_frame, cpml_absorbing_faces, cpml_h_materials,
+)
 
 from rfx.runners._exchange_interval import validate_exchange_interval
 
@@ -78,22 +84,19 @@ from rfx.runners._distributed_common import (  # noqa: F401 -- compatibility re-
     _update_h_local,
     magnetic_low_ghost,
     _update_e_local_with_dispersion,
-    _init_cpml_distributed,
     _distributed_boundary_layers,
-    _apply_cpml_e_distributed,
-    _apply_cpml_h_distributed,
 )
 from rfx.runners._distributed_common import (  # noqa: F401 -- compatibility re-exports
     apply_pec_face_shmap,
     apply_pec_mask_shmap,
     apply_pmc_face_shmap,
+    _slab_curl_kwargs,
     exchange_component_shmap,
     exchange_h_yee_shmap,
     exchange_e_yee_shmap,
     inject_sources_shmap,
     sample_probes_shmap,
     shard_stacked,
-    shard_stacked_psi,
     slab_e_component_materials,
     slab_e_materials_shmap,
     stage_dispersion_slabs,
@@ -197,8 +200,8 @@ _apply_pmc_shmap = apply_pmc_face_shmap
 
 def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
                          mesh, n_devices, ghost=1, materials=None, pad_x=0,
-                         e_slab=None, e_materials=None, separate_x_terms=False,
-                         *, ranks, e_curl_coeff=None):
+                         e_slab=None, e_materials=None,
+                         *, ranks, grid, e_curl_coeff=None, boundary=None):
     """Apply CPML E-field correction using shard_map.
 
     ``materials`` (the x-sharded :class:`MaterialArrays`) is a READ-ONLY
@@ -257,7 +260,6 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
         if mat_slab is not None and means is None:
             means = slab_e_component_materials(mat_slab, *e_slab, rank=rank)
         eps_r_slab = None if means is None else means[0]
-        sigma_slab = None if means is None else means[1]
         _cs = cpml_state._replace(
             psi_ey_xlo=psi_ey_xlo, psi_ey_xhi=psi_ey_xhi,
             psi_ez_xlo=psi_ez_xlo, psi_ez_xhi=psi_ez_xhi,
@@ -266,11 +268,14 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
             psi_ex_zlo=psi_ex_zlo, psi_ex_zhi=psi_ex_zhi,
             psi_ey_zlo=psi_ey_zlo, psi_ey_zhi=psi_ey_zhi,
         )
-        new_st, new_cs = _apply_cpml_e_distributed(
-            _st, cpml_params, _cs, n_cpml, dt, dx,
-            n_devices, ghost=ghost, axis_name="x", eps_r=eps_r_slab,
-            pad_x=pad_x, separate_x_terms=separate_x_terms, rank=rank,
-            e_sigma=sigma_slab, e_curl_coeff=curl)
+        from rfx.boundaries.electric_coefficient import loss_terms
+        loss = loss_terms(means, dt) if means is not None and curl is None else None
+        new_st, new_cs = apply_cpml_e(
+            _st, cpml_params, _cs, grid, materials=mat_slab,
+            inv_eps_r_update=None if eps_r_slab is None else tuple(1 / e for e in eps_r_slab),
+            e_loss=loss, e_curl_coeff=curl, faces=cpml_absorbing_faces(grid), boundary=boundary,
+            frame=cpml_slab_frame(ex.shape, ghost, pad_x),
+            owned={"x_lo": rank == 0, "x_hi": rank == n_devices - 1})
         return (
             new_st.ex, new_st.ey, new_st.ez,
             new_cs.psi_ey_xlo, new_cs.psi_ey_xhi,
@@ -309,7 +314,7 @@ def _apply_cpml_e_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
 
 def _apply_cpml_h_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
                          mesh, n_devices, ghost=1, mu_r=None, pad_x=0,
-                         separate_x_terms=False, *, ranks):
+                         *, ranks, grid):
     """Apply CPML H-field correction using shard_map.
 
     ``mu_r`` (the x-sharded per-cell relative permeability slab) is a new
@@ -362,10 +367,11 @@ def _apply_cpml_h_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
             psi_hx_zlo=psi_hx_zlo, psi_hx_zhi=psi_hx_zhi,
             psi_hy_zlo=psi_hy_zlo, psi_hy_zhi=psi_hy_zhi,
         )
-        new_st, new_cs = _apply_cpml_h_distributed(
-            _st, cpml_params, _cs, n_cpml, dt, dx,
-            n_devices, ghost=ghost, axis_name="x", mu_r=mu_r_slab,
-            pad_x=pad_x, separate_x_terms=separate_x_terms, rank=rank)
+        new_st, new_cs = apply_cpml_h(
+            _st, cpml_params, _cs, grid,
+            materials=cpml_h_materials(mu_r_slab, rank, ghost),
+            faces=cpml_absorbing_faces(grid), frame=cpml_slab_frame(ex.shape, ghost, pad_x),
+            owned={"x_lo": rank == 0, "x_hi": rank == n_devices - 1})
         return (
             new_st.hx, new_st.hy, new_st.hz,
             new_cs.psi_hy_xlo, new_cs.psi_hy_xhi,
@@ -407,57 +413,8 @@ def _apply_cpml_h_shmap(state, cpml_params, cpml_state, n_cpml, dt, dx,
 # ---------------------------------------------------------------------------
 
 def _init_cpml_sharded(grid, nx_local, n_devices, mesh):
-    """Initialize CPML params and per-slab state sharded along x.
-
-    Returns ``(cpml_params, cpml_state)`` where all psi arrays in
-    ``cpml_state`` have been placed on the mesh with x-sharding.
-    Their global leading dim is ``n_devices * n_cpml`` (or ``n_devices *
-    nx_local`` for y/z-indexed faces) but each shard sees the per-device
-    slice.
-    """
-    cpml_params, cpml_state_stacked = _init_cpml_distributed(
-        grid, nx_local, n_devices)
-    shd = _x_sharding(mesh)
-
-    def _shard_psi(arr):
-        # arr: (n_devices, n_cpml, d1, d2) — merge device+cpml dims then shard
-        # Re-interpret as (n_devices * n_cpml, d1, d2) so x-sharding distributes
-        # the first axis across devices correctly.  Each device owns n_cpml rows.
-        return shard_stacked_psi(arr, shd)
-
-    def _shard_psi_field(arr):
-        # arr: (n_devices, n_cpml, d1, d2) same as above
-        return _shard_psi(arr)
-
-    # Build sharded CPMLState
-    from rfx.boundaries.cpml import CPMLState
-    cpml_state_sharded = CPMLState(
-        psi_ex_ylo=_shard_psi(cpml_state_stacked.psi_ex_ylo),
-        psi_ex_yhi=_shard_psi(cpml_state_stacked.psi_ex_yhi),
-        psi_ex_zlo=_shard_psi(cpml_state_stacked.psi_ex_zlo),
-        psi_ex_zhi=_shard_psi(cpml_state_stacked.psi_ex_zhi),
-        psi_ey_xlo=_shard_psi(cpml_state_stacked.psi_ey_xlo),
-        psi_ey_xhi=_shard_psi(cpml_state_stacked.psi_ey_xhi),
-        psi_ey_zlo=_shard_psi(cpml_state_stacked.psi_ey_zlo),
-        psi_ey_zhi=_shard_psi(cpml_state_stacked.psi_ey_zhi),
-        psi_ez_xlo=_shard_psi(cpml_state_stacked.psi_ez_xlo),
-        psi_ez_xhi=_shard_psi(cpml_state_stacked.psi_ez_xhi),
-        psi_ez_ylo=_shard_psi(cpml_state_stacked.psi_ez_ylo),
-        psi_ez_yhi=_shard_psi(cpml_state_stacked.psi_ez_yhi),
-        psi_hx_ylo=_shard_psi(cpml_state_stacked.psi_hx_ylo),
-        psi_hx_yhi=_shard_psi(cpml_state_stacked.psi_hx_yhi),
-        psi_hx_zlo=_shard_psi(cpml_state_stacked.psi_hx_zlo),
-        psi_hx_zhi=_shard_psi(cpml_state_stacked.psi_hx_zhi),
-        psi_hy_xlo=_shard_psi(cpml_state_stacked.psi_hy_xlo),
-        psi_hy_xhi=_shard_psi(cpml_state_stacked.psi_hy_xhi),
-        psi_hy_zlo=_shard_psi(cpml_state_stacked.psi_hy_zlo),
-        psi_hy_zhi=_shard_psi(cpml_state_stacked.psi_hy_zhi),
-        psi_hz_xlo=_shard_psi(cpml_state_stacked.psi_hz_xlo),
-        psi_hz_xhi=_shard_psi(cpml_state_stacked.psi_hz_xhi),
-        psi_hz_ylo=_shard_psi(cpml_state_stacked.psi_hz_ylo),
-        psi_hz_yhi=_shard_psi(cpml_state_stacked.psi_hz_yhi),
-    )
-    return cpml_params, cpml_state_sharded
+    """Place the shared kernel's per-rank state directly on the x mesh."""
+    return init_cpml_slabs(grid, nx_local, n_devices, mesh=mesh)
 
 
 # ---------------------------------------------------------------------------
@@ -491,6 +448,35 @@ def refuse_distributed_periodic(sim, *, lane, bloch=None):
             f"{' and '.join(features)}: periodic / Bloch boundaries are not "
             f"supported on the {lane} path; {reason} {remedy}"
         )
+
+
+def one_device_reason(sim):
+    """Name the feature that needs the full domain on one device."""
+    if sim._tfsf is not None:
+        return "TFSF plane-wave sources"
+    if sim._waveguide_ports:
+        return "waveguide ports"
+    return None
+
+
+def run_on_one_device(sim, run_kwargs, *, reason, requested_devices, diagnostics):
+    """Run the full-domain fallback and record the requested and used devices."""
+    import warnings
+
+    from rfx._diagnostic_transport import result_with_diagnostics
+    from rfx.diagnostic_records import Diagnostic
+
+    message = (
+        f"Distributed runner does not yet support {reason}. "
+        "Falling back to single-device execution with the same arguments."
+    )
+    warnings.warn(message, stacklevel=3)
+    diagnostic = Diagnostic(
+        "distributed.one_device_fallback", "warning", reason, message,
+        {"requested_devices": requested_devices, "devices_used": 1},
+        path="run_distributed",
+    )
+    return result_with_diagnostics(sim.run(**run_kwargs), diagnostics + (diagnostic,))
 
 
 def refuse_unsupported_distributed_features(sim, *, lane, bloch=None, diagnostics=()):
@@ -640,8 +626,6 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     _refuse_extended_tfsf(sim._tfsf, "the distributed runner")
     from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
     _refuse_f0(sim._thin_conductors, "distributed (v2) runner")
-    import warnings
-
     if sim._boundary == "upml":
         raise ValueError("boundary='upml' does not support distributed execution")
 
@@ -649,29 +633,22 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     # Graceful fallback for features that require the full domain on a
     # single device.
     # ------------------------------------------------------------------
-    if sim._tfsf is not None:
-        warnings.warn(
-            "Distributed runner does not yet support TFSF plane-wave "
-            "sources. Falling back to single-device execution.",
-            stacklevel=2,
-        )
+    reason = one_device_reason(sim)
+    if reason is not None:
+        if _source_port_indices is not None or _record_probes is not None or kwargs:
+            raise NotImplementedError(
+                f"Distributed runner does not yet support {reason}; "
+                "the one-device run cannot honour those arguments "
+                "(_source_port_indices, _record_probes, or keyword arguments)."
+            )
         # The nested run builds its own solve product; release the one
         # built for this call's preflight first.
         assembly = None
-        result = sim.run(n_steps=n_steps)
-        return result_with_diagnostics(result, diagnostics)
-
-    if sim._waveguide_ports:
-        warnings.warn(
-            "Distributed runner does not yet support waveguide ports. "
-            "Falling back to single-device execution.",
-            stacklevel=2,
+        return run_on_one_device(
+            sim, {"n_steps": n_steps}, reason=reason,
+            requested_devices=len(jax.devices() if devices is None else devices),
+            diagnostics=diagnostics,
         )
-        # The nested run builds its own solve product; release the one
-        # built for this call's preflight first.
-        assembly = None
-        result = sim.run(n_steps=n_steps)
-        return result_with_diagnostics(result, diagnostics)
 
     refuse_unsupported_distributed_features(
         sim,
@@ -712,6 +689,10 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         if getattr(sim, "_boundary_spec", None) is not None
         else ()
     )
+
+    from rfx.core.yee import CurlBoundary
+    curl_boundary = (CurlBoundary(_pec_faces_frozen, _pmc_faces_frozen, sim._periodic_flags())
+                     if _pmc_faces_frozen else None)
 
     # One device runs the same shard_map path on a one-device mesh (#1296).
     # Until #1296 this call was handed to the pmap runner, which dropped the
@@ -920,7 +901,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     has_debye = debye_spec is not None
     has_lorentz = lorentz_spec is not None
     from rfx.boundaries.depths import distributed_electric_walls
-    e_wall_faces = distributed_electric_walls(grid)
+    e_wall_faces = distributed_electric_walls(grid) - _pmc_faces_frozen
     debye, lorentz = stage_dispersion_slabs(
         materials, grid.dt, debye_spec, lorentz_spec,
         n_devices, nx_per, ghost, shd, nx=nx)
@@ -977,24 +958,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         cpml_params, cpml_state_sharded = _init_cpml_sharded(
             grid, nx_local, n_devices, mesh)
     else:
-        from rfx.boundaries.cpml import CPMLState
-        _total_x = n_devices * nx_local
-        _z = jax.device_put(
-            jnp.zeros((_total_x, 1, 1), dtype=jnp.float32), shd)
-        cpml_state_sharded = CPMLState(
-            psi_ex_ylo=_z, psi_ex_yhi=_z,
-            psi_ex_zlo=_z, psi_ex_zhi=_z,
-            psi_ey_xlo=_z, psi_ey_xhi=_z,
-            psi_ey_zlo=_z, psi_ey_zhi=_z,
-            psi_ez_xlo=_z, psi_ez_xhi=_z,
-            psi_ez_ylo=_z, psi_ez_yhi=_z,
-            psi_hx_ylo=_z, psi_hx_yhi=_z,
-            psi_hx_zlo=_z, psi_hx_zhi=_z,
-            psi_hy_xlo=_z, psi_hy_xhi=_z,
-            psi_hy_zlo=_z, psi_hy_zhi=_z,
-            psi_hz_xlo=_z, psi_hz_xhi=_z,
-            psi_hz_ylo=_z, psi_hz_yhi=_z,
-        )
+        _, cpml_state_sharded = init_cpml_slabs(grid, nx_local, n_devices, mesh=mesh)
         cpml_params = None
 
     # ------------------------------------------------------------------
@@ -1127,7 +1091,8 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
             from rfx.stepping.absorber import local_e_with_absorber
             new_st, new_db, new_lr, absorber = local_e_with_absorber(
                 _st, _mat, dt, dx, debye=_db, lorentz=_lr,
-                slab=(nx_per, nx), e_materials=means, rank=rank)
+                slab=(nx_per, nx), e_materials=means, rank=rank,
+                **_slab_curl_kwargs(curl_boundary, hx.shape, ghost, pad_x, rank, n_devices))
             # Unpack debye
             if new_db is not None:
                 nd_px, nd_py, nd_pz = new_db.px, new_db.py, new_db.pz
@@ -1176,6 +1141,20 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
     # Step function (operates on sharded arrays)
     # ------------------------------------------------------------------
 
+    cpml_grid = cpml_grid_metadata(grid)
+    cpml_spacings = {}
+    magnetic_cpml_spacings = {}
+    if use_cpml:
+        # Face widths are static grid data; only array leaves enter the jit.
+        cpml_spacings = {name: float(getattr(cpml_params, name)) for name in (
+            "dx_x_lo", "dx_x_hi", "dx_y_lo", "dx_y_hi", "dz_lo", "dz_hi")}
+        cpml_params = cpml_params._replace(**dict.fromkeys(cpml_spacings))
+        if cpml_params.magnetic is not None:
+            magnetic_cpml_spacings = {
+                name: float(getattr(cpml_params.magnetic, name)) for name in cpml_spacings}
+            cpml_params = cpml_params._replace(magnetic=cpml_params.magnetic._replace(
+                **dict.fromkeys(magnetic_cpml_spacings)))
+
     def step_fn_cpml(
         carry, xs, materials_arg, debye_coeffs_arg, lorentz_coeffs_arg,
         cpml_params_arg, pec_mask_arg, e_materials,
@@ -1192,13 +1171,16 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         ghost row is always a copy of the owner's FINISHED real row -- a
         row the realized-PEC mask stage has already zeroed where the
         geometry says metal (#1053). This is ``distributed_nu.py``'s order
-        since ``ac782d4f`` (#931 T3) and
-        the mirror of the H half, which applies the PMC face before the H
-        exchange "so the zero propagates via the exchange". Until #1041
+        since ``ac782d4f`` (#931 T3). The PMC image canonicalizes only
+        the global high H ghost, which no exchange sends. Until #1041
         this body exchanged BEFORE injecting, which lagged a seam-cell
         source by one step in the neighbour's copy -- see the comment on
         stage 7 for the measurement that moved it.
         """
+        cpml_params_arg = cpml_params_arg._replace(**cpml_spacings)
+        if magnetic_cpml_spacings:
+            cpml_params_arg = cpml_params_arg._replace(
+                magnetic=cpml_params_arg.magnetic._replace(**magnetic_cpml_spacings))
         _step_idx, src_vals = xs
         st = carry["fdtd"]
         cpml_st = carry["cpml"]
@@ -1212,14 +1194,12 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         st, cpml_st = _apply_cpml_h_shmap(
             st, cpml_params_arg, cpml_st, n_cpml, dt, dx,
             mesh, n_devices, ghost=ghost, mu_r=materials_arg.mu_r,
-            pad_x=pad_x, separate_x_terms=has_debye or has_lorentz, ranks=ranks)
+            pad_x=pad_x, ranks=ranks, grid=cpml_grid)
 
         # 3. Exchange the live H ghosts (entry validates interval == 1)
         st = _exchange(_exchange_h_ghosts_shmap, ("hx", "hy", "hz"), st, _step_idx, ranks=ranks)
 
-        # 3b. PMC face (H-tangential = 0) — T8, 2026-04. H-half hook per
-        #     OQ9: after H ghost exchange, before E update. PMC must
-        #     fire before the next E-update reads H via curl.
+        # Canonicalize PMC high ghosts after the final H update/correction.
         st = _apply_pmc_shmap(
             st, mesh, n_devices, nx_local, _pmc_faces_frozen, pad_x=pad_x, ranks=ranks)
 
@@ -1236,8 +1216,8 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
             mesh, n_devices, ghost=ghost, materials=materials_arg,
             pad_x=pad_x,
             e_slab=(nx_per, nx), e_materials=e_materials,
-            separate_x_terms=has_debye or has_lorentz, ranks=ranks,
-            e_curl_coeff=absorber)
+            ranks=ranks, grid=cpml_grid,
+            e_curl_coeff=absorber, boundary=curl_boundary)
 
         st = _inject_sources_shmap(st, src_vals, ranks=ranks)
 
@@ -1331,8 +1311,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         # 2. Exchange H ghost cells
         st = _exchange(_exchange_h_ghosts_shmap, ("hx", "hy", "hz"), st, _step_idx, ranks=ranks)
 
-        # 2b. PMC face (H-tangential = 0) — T8, 2026-04. H-half hook per
-        #     OQ9: after H ghost exchange, before E update.
+        # Canonicalize PMC high ghosts after the final H update/correction.
         st = _apply_pmc_shmap(
             st, mesh, n_devices, nx_local, _pmc_faces_frozen, pad_x=pad_x, ranks=ranks)
 
@@ -1353,7 +1332,7 @@ def run_distributed(sim, *, diagnostics=(), n_steps, devices=None, exchange_inte
         #    is injected. #1041 measured no such fixture and did not change
         #    it -- a source on a PEC face is its own question.
         st = _apply_pec_shmap(
-            st, mesh, n_devices, nx_local, pad_x=pad_x, ranks=ranks)
+            st, mesh, n_devices, nx_local, pad_x=pad_x, pec_faces=e_wall_faces, ranks=ranks)
 
         # 5b. Realized-PEC cell mask (#1053), AFTER the domain faces and
         #     immediately before the E ghost exchange -- distributed_nu's

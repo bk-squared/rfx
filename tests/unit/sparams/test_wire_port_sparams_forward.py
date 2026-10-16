@@ -67,7 +67,7 @@ def test_forward_wire_port_sparams_populated():
     assert i_dft.shape == (7,), i_dft.shape
     assert result.s_params is not None, (
         "s_params still None — wire-port wave-decomp extraction did not run")
-    s11 = np.asarray(result.s_params)
+    s11 = np.asarray(result.s_params[0, 0])
     assert s11.shape == (7,), s11.shape
     # Closed PEC cavity → energy reflects → |S11| should be near 1 in band
     mag = np.abs(s11)
@@ -101,7 +101,7 @@ def test_forward_wire_port_grad_flows():
             skip_preflight=True,
         )
         # Mean |S11|² across the band — exercises the wave-decomp formula
-        s11 = result.s_params
+        s11 = result.s_params[0, 0]
         return jnp.mean(jnp.abs(s11) ** 2)
 
     g = jax.grad(loss)(eps_base)

@@ -35,8 +35,9 @@ MU_0 = 4.0 * np.pi * 1e-7
 VARIANT = sys.argv[1] if len(sys.argv) > 1 else "UNIFORM"
 
 import rfx.sources.waveguide_port as wg_mod  # noqa: E402
+import rfx.model.waveguide_modes as _wg_move_waveguide_modes
 
-_orig_aperture_dA = wg_mod._aperture_dA
+_orig_aperture_dA = _wg_move_waveguide_modes._aperture_dA
 
 
 def _aperture_dA_trap_both(cfg):
@@ -75,7 +76,7 @@ variants = {
     "TRAP_U": _aperture_dA_trap_u,
     "TRAP_V": _aperture_dA_trap_v,
 }
-wg_mod._aperture_dA = variants[VARIANT]
+_wg_move_waveguide_modes._aperture_dA = variants[VARIANT]
 print(f"[runner] variant {VARIANT}", flush=True)
 
 # Now also need to capture the cfg time series — same as before.

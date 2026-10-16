@@ -15,9 +15,16 @@ from tests.contracts.path_equivalence.comparison import array_peak, component_pe
 
 
 def per_cell(state, drives, wave_t):
-    # Test-only old algorithm. Retains the original source order.
-    ordered = sorted((int(w), c, n) for c in drives.nodes
-                     for n, w in enumerate(np.asarray(drives.wave_id[c])))
+    # Test-only old algorithm. Retains the original source order. The wrapped
+    # multi-device step passes each slab's table into shard_map, so its wave ids
+    # are traced there; it then keeps table order, which gives the same sums
+    # because run_case puts every source on its own cell.
+    if any(isinstance(w, jax.core.Tracer) for w in drives.wave_id.values()):
+        ordered = [(n, c, n) for c in drives.nodes
+                   for n in range(drives.wave_id[c].shape[0])]
+    else:
+        ordered = sorted((int(w), c, n) for c in drives.nodes
+                         for n, w in enumerate(np.asarray(drives.wave_id[c])))
     for _, c, n in ordered:
         field = getattr(state, c)
         idx = tuple(axis[n] for axis in drives.nodes[c])
@@ -196,7 +203,7 @@ def port_scene(kind, lane):
     options = dict(dx_profile=profile, dy_profile=profile, dz_profile=profile) if lane == 'graded' else {}
     sim = Simulation(freq_max=3e9, domain=(float(profile.sum()),)*3,
                      dx=.001, boundary='pec', cpml_layers=0, snap='declared', **options)
-    wave = GaussianPulse(f0=2e9, bandwidth=1.2, cutoff=1.)
+    wave = GaussianPulse(f0=2e9, bandwidth=1.2, cutoff=2.5)  # >= 2.5 (issue 1668)
     if kind == 'wire':
         sim.add_port(position=(.012, .012, .012), component='ez', extent=.003,
                      impedance=50., waveform=wave)

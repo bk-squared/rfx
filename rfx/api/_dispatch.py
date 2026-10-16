@@ -1,10 +1,12 @@
 """Shared run/forward lane admission, before execution or sharding."""
 from __future__ import annotations
 
+import functools
+import jax.numpy as jnp
+
 from typing import NamedTuple
 import numpy as np
 
-from rfx._diagnostic_transport import diagnostic_refusal
 
 
 class _DispatchPlan(NamedTuple):
@@ -75,7 +77,7 @@ def _dispatch_plan(
     ``is_nonuniform`` boolean and the NU ``n_steps`` formula but have
     disjoint lane-token sets:
 
-    - forward: ``fwd_distributed_nu`` / ``fwd_nonuniform`` / ``fwd_uniform``
+    - forward: ``fwd_distributed`` / ``fwd_distributed_nu`` / ``fwd_nonuniform`` / ``fwd_uniform``
     - run: ``run_distributed`` / ``run_distributed_nu`` / ``run_nonuniform`` / ``run_adi`` /
       ``run_subgridded`` / ``run_uniform``
 
@@ -83,8 +85,11 @@ def _dispatch_plan(
     step count comes from a throwaway grid) and ``None`` for lanes that
     build-and-reuse a grid (the caller resolves it there).
     """
-    from rfx.boundaries.features import admit_waveguide
+    from rfx.boundaries.features import admit_ntff, admit_waveguide
     admit_waveguide(self, lane=f"{mode} dispatch")
+    # ADI must first report that it does not support NTFF accumulation.
+    if self._solver != "adi":
+        admit_ntff(self, lane=f"{mode} dispatch")
     from rfx.boundaries.tfsf import admit_simulation
     admit_simulation(self, material_overrides=tfsf_material_overrides)
     # Constructor checks cover explicit profiles only. Geometry can make
@@ -148,15 +153,10 @@ def _dispatch_plan(
 
     if mode == "forward":
         def _fwd_nu_n_steps() -> int:
-            # Throwaway NU grid build for the step count; mirrors the
-            # original forward() inline form (period = 1/freq_max).
-            grid_probe = self._build_nonuniform_grid()
-            period = 1.0 / float(self._freq_max)
-            return int(np.ceil(
-                num_periods * period / float(grid_probe.dt)))
+            return self._nu_n_steps(num_periods)
 
-        # Distributed runners do not carry port S-parameter accumulators.
-        if port_s11_freqs is not None and distributed:
+        # The graded distributed runner has no port S-parameter accumulators.
+        if port_s11_freqs is not None and distributed and is_nonuniform:
             raise NotImplementedError(
                 "forward(port_s11_freqs=...) is supported only on "
                 "single-device forward paths (issue #72). Drop "
@@ -169,7 +169,7 @@ def _dispatch_plan(
         # get a silent fall-back to the linear-memory scan that this kwarg
         # was meant to fix. NU follow-up will mirror the pattern in
         # run_nonuniform; track on issue #73.
-        if checkpoint_segments is not None and (distributed or is_nonuniform):
+        if checkpoint_segments is not None and is_nonuniform:
             raise NotImplementedError(
                 "forward(checkpoint_segments=...) is currently wired only "
                 "on the uniform single-device forward path (issue #73). "
@@ -179,13 +179,14 @@ def _dispatch_plan(
 
         # Phase 3: distributed dispatch (V3 lines 842-847).
         if distributed:
-            # NU-only in v1.6.2 (DP3 locked decision).
             if not is_nonuniform:
-                raise diagnostic_refusal(NotImplementedError(
-                    "distributed=True on forward() is currently implemented "
-                    "only for non-uniform meshes; use run(..., devices=...) "
-                    "for the uniform distributed path."
-                ), diagnostics)
+                if self._solver == "adi":
+                    raise ValueError("solver='adi' does not support distributed execution")
+                if self._boundary == "upml":
+                    raise ValueError("boundary='upml' does not support distributed execution")
+                _n = n_steps if n_steps is not None else self._build_grid().num_timesteps(num_periods=num_periods)
+                _reject_lane_precision("run_distributed")
+                return _DispatchPlan(lane="fwd_distributed", n_steps=_n)
             # Reject TFSF / waveguide ports up front (V3 §3 unsupported).
             if self._tfsf is not None:
                 raise NotImplementedError(
@@ -331,3 +332,74 @@ def _dispatch_plan(
 
     # ---- Uniform lane (n_steps resolved by caller from the reused grid) ----
     return _DispatchPlan(lane="run_uniform", n_steps=n_steps)
+
+
+def _staged_by_an_outer_trace() -> bool:
+    """Whether ``forward()`` is being recorded into a compiled program (#1225).
+
+    Under ``jax.jit`` — and ``jax.checkpoint``, ``lax.scan`` or
+    ``jax.eval_shape`` — JAX records every array operation instead of running
+    it, including the ones that read only the model: the grid, the realized
+    materials and PEC edge masks, the port cells. Under ``jax.grad``,
+    ``jax.jvp`` or ``jax.vmap`` alone, an operation that does not touch the
+    traced inputs still runs at once. The probe asks exactly that: is an array
+    built from a constant a tracer here?
+    """
+    from rfx.core.jax_utils import is_tracer
+    return is_tracer(jnp.zeros(()))
+
+
+def _setup_evaluated_at_trace_time(*, distributed: bool) -> bool:
+    """Whether a forward entry evaluates its set-up while being traced (#1367).
+
+    The rule: set-up that reads only the declaration is always concrete, and
+    the time stepping is always recorded (``rfx.core.jax_utils``). Under an
+    outer ``jax.jit`` every operation is recorded, including the ones that
+    read only the model, and set-up reads the model on the host in many
+    places: a wire port's live edges and an MSL port's geometry check read
+    the realized PEC edge mask, a graded-lane port takes its cell sizes as
+    Python floats, the far-field transform reads an NTFF box's frequency
+    count. #1225 answered True for a whitelist of ports and missed the rest
+    (MSL ports, #1367; the NTFF box, #1364), so the answer no longer depends
+    on the model: staged by an outer trace, and not distributed.
+
+    Operations that read a traced input stay recorded, so a gradient is
+    unchanged. The distributed lane is excluded: its ``shard_map`` step
+    cannot run its constant-operand collectives outside the mesh.
+    """
+    return not distributed and _staged_by_an_outer_trace()
+
+
+def _declaration_setup_at_trace_time(entry):
+    """Give a shared forward entry the set-up / time-stepping boundary.
+
+    ``forward()`` and the entries its single-device lanes share with the
+    calculators (``_forward_from_materials``,
+    ``_forward_nonuniform_from_materials``) carry it, so the rule holds
+    wherever one of them is staged. The calculators that call
+    ``_forward_from_materials`` directly (``topology_optimize``,
+    ``compute_mixed_s_matrix``, the S-matrix driver) run it without an outer
+    trace, where the rule is inactive: ``topology_optimize`` differentiates
+    with an un-jitted ``jax.value_and_grad`` and still compiles the solve on
+    every iteration. When :func:`_setup_evaluated_at_trace_time` holds, the
+    entry runs inside
+    ``rfx.core.jax_utils.declaration_setup()``; a nested entry then sees no
+    staging and runs its body directly. The time-stepping scans inside leave
+    that region through ``rfx.core.jax_utils.recorded_scan``.
+
+    The body runs in the region only if the region really made constants
+    concrete: inside an eager ``jax.shard_map`` the probe still reads True
+    there, and the entry then runs its body outside the region, exactly as
+    before #1225, instead of re-entering without end.
+    """
+    @functools.wraps(entry)
+    def staged_entry(self, *args, **kwargs):
+        self._resolve_field_dtype()
+        if _setup_evaluated_at_trace_time(
+                distributed=bool(kwargs.get("distributed", False))):
+            from rfx.core.jax_utils import declaration_setup
+            with declaration_setup():
+                if not _staged_by_an_outer_trace():
+                    return entry(self, *args, **kwargs)
+        return entry(self, *args, **kwargs)
+    return staged_entry

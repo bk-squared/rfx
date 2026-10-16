@@ -99,6 +99,7 @@ from rfx._ringdown_pencil import (
     _decimate,
     _fit_residues,
     _pencil,
+    _on_nearest_bin,
     _to_original_rate,
     decimation_plan,
 )
@@ -118,7 +119,7 @@ _harminv = import_module("rfx.harminv")
 # harminv's own defaults, read from its signature rather than re-typed, so the
 # decimation plan and pencil shape here follow the estimator they came from.
 _HARMINV_DEFAULTS = {
-    k: v.default for k, v in inspect.signature(_harminv.harminv).parameters.items()
+    k: v.default for k, v in inspect.signature(_harminv.matrix_pencil).parameters.items()
     if v.default is not inspect.Parameter.empty
 }
 PENCIL_PARAMETER = float(_HARMINV_DEFAULTS["pencil_parameter"])
@@ -915,11 +916,11 @@ def refuse_forward_lane(lane: str, n_wire_ports: int, *, port_s11_freqs) -> None
                 "forward(ringdown=...) on the uniform lane supports one wire port, "
                 "as run(ringdown=...) does. Use a graded mesh (any dx/dy/dz "
                 "profile), where one run fills the driven column.")
-        if port_s11_freqs is None:
-            raise ValueError(
-                "forward(ringdown=...) on the uniform lane needs port_s11_freqs=: "
-                "the completed S-parameters are evaluated at those bins, like "
-                "forward()'s own s_params there.")
+    if port_s11_freqs is None:
+        raise ValueError(
+            "forward(ringdown=...) needs port_s11_freqs=: the completed "
+            "S-parameters are evaluated at those bins, like forward()'s own "
+            "s_params, which forward() computes only on request.")
 
 
 def _lane_resolver(lane: str, grid):
@@ -928,6 +929,22 @@ def _lane_resolver(lane: str, grid):
         return grid.position_to_index
     from rfx.runners.nonuniform import pos_to_nu_index
     return lambda pos: pos_to_nu_index(grid, pos)
+
+
+def _user_geometry(result, n_user: int, n_int: int):
+    """Drop the realized-geometry rows of the channel probes this run attached.
+
+    A point-probe row is labelled by its index in ``sim._probes``; the attached
+    ones are indices ``[n_user, n_user + n_int)``, the columns the time series drops.
+    """
+    import dataclasses
+    record = getattr(result, "realized_geometry", None)
+    probes = getattr(record, "probes", None)
+    if not probes or not n_int:
+        return result
+    attached = {f"probe[{i}]" for i in range(n_user, n_user + n_int)}
+    kept = tuple(p for p in probes if not (p.kind == "point" and p.label in attached))
+    return result._replace(realized_geometry=dataclasses.replace(record, probes=kept))
 
 
 def _node_position(grid, idx) -> tuple:
@@ -951,7 +968,7 @@ class _PortMeta(NamedTuple):
     owner: object        # shared realized sampling owner
 
 
-def _read_port_metas(lane: str, result, grid, boundary=None) -> list:
+def _read_port_metas(lane: str, result, grid, boundary=None, port_ids=None) -> list:
     """Realized cells, metrics and accumulators of every wire port, from the run."""
     import jax.numpy as jnp
 
@@ -961,7 +978,7 @@ def _read_port_metas(lane: str, result, grid, boundary=None) -> list:
             "run(ringdown=...) found no wire-port accumulators on the run's "
             "result; the port metadata it needs is missing.")
     out = []
-    for port_id, (meta, accs) in enumerate(wps):
+    for port_id, (meta, accs) in zip(range(len(wps)) if port_ids is None else port_ids, wps, strict=True):
         if lane == "uniform":
             mid = (int(meta.mid_i), int(meta.mid_j), int(meta.mid_k))
             comp = str(meta.component)
@@ -1103,92 +1120,9 @@ def _emulate_accumulators(lane: str, pm: _PortMeta, e32, h32, dt):
     return tuple(np.asarray(a) for a in final), tuple(np.asarray(a) for a in per_step)
 
 
-def _assemble(lane: str, pms, spectra_vp, spectra_i, freqs32, dt, v_mid=None):
-    """The lane's own S-matrix assembly on given (V_port, I) spectra per port.
-
-    ``spectra_vp[p]`` and ``spectra_i[p]`` are the accumulator-convention
-    spectra (the current already carries its half-step phase). They enter the
-    assembly in the dtype of the run's own accumulators, as the run's do.
-    Returns a numpy array shaped and typed like ``Result.s_params``.
-    """
-    import jax.numpy as jnp
-
-    nf = int(np.asarray(freqs32).shape[0])
-    acc_dtype = np.asarray(pms[0].accs[2]).dtype
-
-    def as_acc(a):
-        return jnp.asarray(np.asarray(a), dtype=acc_dtype)
-
-    S_lane = _assemble_core(
-        lane, pms, [as_acc(a) for a in spectra_vp], [as_acc(a) for a in spectra_i],
-        freqs32, dt, v_mid=None if v_mid is None else [as_acc(a) for a in v_mid])
-    if lane == "uniform":
-        # the runner's container (rfx/runners/uniform.py, single-port wire path)
-        S = np.zeros((1, 1, nf), dtype=np.complex64)
-        S[0, 0, :] = np.array(S_lane)
-        return S
-    return np.asarray(S_lane)
-
-
-def _assemble_core(lane: str, pms, vp, ii, freqs32, dt, v_mid=None):
-    """The lane's S assembly as JAX operations (traceable).
-
-    ``vp[p]`` and ``ii[p]`` are the port's V_port and I spectra in the dtype
-    of the run's accumulators, the current carrying its half-step phase. The
-    uniform lane returns the driven port's reflection ``(nf,)`` (``forward()``'s
-    ``s_params`` there); the graded lane the ``(P, P, nf)`` matrix
-    ``rfx.nonuniform._assemble_nu_result`` builds.
-    """
-    import jax.numpy as jnp
-
-    if lane == "uniform":
-        from rfx.probes.probes import driven_port_reflection
-        (pm,) = pms
-        return driven_port_reflection(vp[0], ii[0], pm.z0)
-    from types import SimpleNamespace
-
-    from rfx.nonuniform import _assemble_nu_result
-    nf = int(np.asarray(freqs32).shape[0])
-    zeros = jnp.zeros(nf, dtype=vp[0].dtype)
-    accs = tuple(
-        (zeros if v_mid is None else v_mid[p], ii[p], zeros, vp[p])
-        for p in range(len(pms)))
-    metas = [pm.meta for pm in pms]
-    setup = SimpleNamespace(
-        dt=float(dt), dft_planes=None, flux_monitors=None, wire_ports=metas,
-        waveguide_meta=None, wp_meta=metas,
-        sp_freqs=jnp.asarray(np.asarray(freqs32), dtype=jnp.float32),
-        use_wire_ports=True, use_dft_planes=False, use_flux_monitors=False,
-        use_lumped_rlc=False, use_ntff=False, use_waveguide_ports=False)
-    r = _assemble_nu_result(setup, {"fdtd": None, "wire_sparams": accs}, None)
-    return r["s_params"]
-
-
-def _s_observable(lane: str, pms, freqs32, dt):
-    """``(f_bins, to_s)``: the float64 bins and the map from completed port
-    spectra ``(nf, 2P)`` (``V_port, I`` per port) to the lane's S-matrix.
-
-    The current's half-step phase is applied here, as the run's accumulators
-    carry it. :meth:`RingdownRun._complete` and the early stop's check
-    (:class:`RingdownStop`) both judge ``WE`` through this one map.
-    """
-    from rfx.core.dft_utils import half_step_current_phase
-
-    f_bins = np.asarray(freqs32, dtype=np.float32).astype(np.float64)
-    half = np.asarray(half_step_current_phase(f_bins, dt)).astype(np.complex128)
-    nf = int(f_bins.size)
-
-    def to_s(spectra):
-        # ``spectra`` may hold several copies of the bins stacked along its
-        # first axis (``_tail_influence``); the S axis then holds them in turn.
-        reps = int(np.shape(spectra)[0]) // nf
-        h = half if reps == 1 else np.tile(half, reps)
-        fq = freqs32 if reps == 1 else np.tile(np.asarray(freqs32), reps)
-        vp = [spectra[:, 2 * p] for p in range(len(pms))]
-        ii = [_cmul(spectra[:, 2 * p + 1], h) for p in range(len(pms))]
-        return _assemble(lane, pms, vp, ii, fq, dt)
-
-    return f_bins, to_s
+from rfx.measurement.ringdown_port_s import (
+    _assemble, _assemble_core, _s_observable, measured_s,
+)
 
 
 def _passivity_value(S, driven) -> float:
@@ -1275,6 +1209,18 @@ class _NotCompleted(Exception):
         self.name, self.value, self.bar, self.message = name, value, bar, message
 
 
+def host_bins(bins, dtype):
+    """Keep pole identification and its host report on concrete frequencies."""
+    import jax
+
+    if isinstance(bins, jax.core.Tracer):
+        raise jax.errors.ConcretizationTypeError(
+            bins, "forward(ringdown=...) identifies poles on the host and needs "
+            "port_s11_freqs as concrete values; pass a numpy array built outside "
+            "the traced function")
+    return np.asarray(bins, dtype)
+
+
 class RingdownRun:
     """One ``run(..., ringdown=spec)``: probes in, run, probes out, complete.
 
@@ -1294,7 +1240,7 @@ class RingdownRun:
         if lane not in ("uniform", "graded"):
             raise ValueError(f"lane must be 'uniform' or 'graded', got {lane!r}")
         self.sim, self.spec, self.lane = sim, spec, lane
-        self.bins = None if bins is None else np.asarray(bins, dtype=np.float64)
+        self.bins = None if bins is None else host_bins(bins, np.float64)
         from rfx.core.yee import CurlBoundary
         self.port_boundary = CurlBoundary(pmc_faces=sim._boundary_spec.pmc_faces(),
                                           periodic=sim._periodic_flags())
@@ -1310,8 +1256,9 @@ class RingdownRun:
                 f"[{self.n_start}, {self.n_steps}) and [{self.n_start}, {self.n_split})")
         self.freq_max = float(spec.freq_max if spec.freq_max is not None
                               else sim._freq_max)
-        self.wire_entries = [pe for pe in sim._ports
-                             if float(pe.impedance) > 0.0 and pe.extent is not None]
+        self.wire_port_ids = tuple(i for i, pe in enumerate(sim._ports)
+                                   if float(pe.impedance) > 0.0 and pe.extent is not None)
+        self.wire_entries = [sim._ports[i] for i in self.wire_port_ids]
         self.source_off, self.source_ratio_long = self._check_sources_off()
         self.probe_keys = self._plan_probes()
 
@@ -1458,9 +1405,10 @@ class RingdownRun:
                 f"run(ringdown=...): the run returned a time series of shape "
                 f"{ts_all.shape}, expected ({self.n_steps}, {n_user} user + "
                 f"{n_int} port-channel probes)")
-        stripped = result._replace(
+        stripped = _user_geometry(result._replace(
             time_series=full[:, :n_user],
-            **({"wire_port_sparams": None} if self.lane == "uniform" else {}))
+            **({"wire_port_sparams": None} if self.lane == "uniform" else {})),
+            n_user, n_int)
         S, report, nc = self._host_report(result, ts_all, n_user)
         if nc is not None:
             warnings.warn(
@@ -1547,7 +1495,8 @@ class RingdownRun:
     def _read_metas_checked(self, result, run_grid) -> list:
         """The wire ports as the run realized them, or ``_NotCompleted`` (W0)."""
         try:
-            pms = _read_port_metas(self.lane, result, run_grid, self.port_boundary)
+            pms = _read_port_metas(self.lane, result, run_grid, self.port_boundary,
+                self.wire_port_ids)
         except RuntimeError as exc:
             raise _NotCompleted("W0", math.nan, W0_REL_BAR, str(exc)) from None
         if len(pms) != len(self.wire_entries):
@@ -1587,7 +1536,7 @@ class RingdownRun:
             h_cols.append(h)
         return pms, e_cols, h_cols
 
-    def _error_witnesses(self, Y, dt, f_bins, ref_hz, to_s, plain, w2, state) -> list:
+    def _error_witnesses(self, Y, dt, f_bins, ref_hz, observable, plain, w2, state) -> list:
         """``WE`` judged and ``W2`` reported, or ``W2`` judged when ``WE`` cannot be formed.
 
         ``WE`` compares the completion from ``[ws T, T]`` with the one from
@@ -1618,7 +1567,7 @@ class RingdownRun:
         try:
             we = early_start_witness(
                 Y, dt, f_bins, self.n_steps, ws, freq_max=ref_hz, guard=spec.guard,
-                sv_rel=spec.sv_rel, unit_tol=spec.unit_tol, observable=to_s,
+                sv_rel=spec.sv_rel, unit_tol=spec.unit_tol, observable=observable,
                 plain=plain, spectra=w2.spectra)
             we_value, we_note = we.value, ""
             state["long_rank"] = we.model_long.rank
@@ -1656,7 +1605,7 @@ class RingdownRun:
                             [pm.accs[1] for pm in pms], freqs32, dt,
                             v_mid=[pm.accs[0] for pm in pms])
         for j in range(S_run.shape[0]):
-            for k in range(S_run.shape[1]):
+            for k in [p for p, pm in enumerate(pms) if pm.excite]:
                 ulps[f"S[{j},{k}]"] = _ulps(S_check[j, k], S_run[j, k])
                 rel[f"S[{j},{k}]"] = _relative_at_peak(S_check[j, k], S_run[j, k])
         state["w0_ulps"], state["w0_relative"] = ulps, rel
@@ -1688,12 +1637,12 @@ class RingdownRun:
         plain = plain_dft(Y, dt, f_bins)
         Y32 = np.stack([np.asarray(c, dtype=np.float64)
                         for per_step in replayed for c in per_step], axis=1)
-        S_plain = to_s(plain).astype(np.complex128)
-        w1 = float(np.max(np.abs(S_plain - to_s(plain_dft(Y32, dt, f_bins))
+        S_plain = to_s.measured(plain).astype(np.complex128)
+        w1 = float(np.max(np.abs(S_plain - to_s.measured(plain_dft(Y32, dt, f_bins))
                                  .astype(np.complex128))))
         # information, not a check: the run's own complex64 accumulator
         # round-off in Result.s_params, which grows with the record
-        roundoff = float(np.max(np.abs(S_plain - S_run.astype(np.complex128))))
+        roundoff = float(np.max(np.abs(S_plain - measured_s(pms, S_run).astype(np.complex128))))
         state["s_accumulator_roundoff"] = roundoff
         w1_rule = ("max |S of the float64 DFT of the float64 rebuild of the port "
                    "V/I - S of the float64 DFT of the float32 per-step V/I the W0 "
@@ -1712,7 +1661,7 @@ class RingdownRun:
             w2 = two_window_witness(
                 Y, dt, f_bins, self.n_steps, self.n_start, freq_max=ref_hz,
                 split=spec.split, guard=spec.guard, sv_rel=spec.sv_rel,
-                unit_tol=spec.unit_tol, observable=to_s, plain=plain)
+                unit_tol=spec.unit_tol, observable=to_s.measured, plain=plain)
         except IdentificationMemoryRefused:
             raise
         except (ValueError, np.linalg.LinAlgError) as exc:
@@ -1738,7 +1687,7 @@ class RingdownRun:
                   + ("; the plain record reads non-passive without the completion (the board or port itself, or a record cut while it still rings)"
                      if s_plain > p_bar else ""))
         src_ratio = max((r for _l, r in self.source_off), default=0.0)
-        witnesses += self._error_witnesses(Y, dt, f_bins, ref_hz, to_s, plain, w2, state)
+        witnesses += self._error_witnesses(Y, dt, f_bins, ref_hz, to_s.measured, plain, w2, state)
         witnesses += [
             RingdownWitness("growing_poles", float(len(grow)), 0.0, len(grow) == 0,
                             GROWING_POLE_RULE + ". Poles the pencil discarded as "
@@ -1903,28 +1852,6 @@ def _pole_tails(model: RingdownModel, n_last: int, freqs) -> np.ndarray:
     zn1 = np.exp(-1j * wdt * n1)
     one_minus = -np.expm1(s[None, :] * dt - 1j * wdt[:, None])          # (nf, K)
     return dt * _cmul((zn1[:, None] / one_minus)[:, :, None], amp[None, :, :])
-
-
-def _on_nearest_bin(s, f_bins, record_s: float) -> np.ndarray:
-    """Each pole moved onto the nearest requested bin within ``1 / record_s``.
-
-    A record of length ``T`` places a pole's frequency only to about ``1/T``:
-    an unresolved pair is identified as one pole between its members, which
-    can sit far from every bin while the members sit on bins. For the floor a
-    pole is weighed as if it sat on the nearest bin it could be on; its decay
-    and residue are kept. A pole with no bin within ``1/T`` is left in place.
-    """
-    s = np.asarray(s, dtype=np.complex128)
-    fb = np.asarray(f_bins, dtype=np.float64)
-    if s.size == 0 or fb.size == 0 or not record_s > 0.0:
-        return s
-    f = s.imag / (2.0 * np.pi)
-    j = np.argmin(np.abs(fb[None, :] - f[:, None]), axis=1)
-    # a pole the record cannot tell from DC stays where it is: moved onto a
-    # low bin, a slowly relaxing static field would weigh like a mode there
-    near = ((np.abs(fb[j] - f) <= 1.0 / float(record_s))
-            & (np.abs(f) >= 1.0 / float(record_s)))
-    return np.where(near, s.real + 1j * 2.0 * np.pi * fb[j], s)
 
 
 def _tail_influence(model: RingdownModel, n_record: int, f_bins, spectra,
@@ -2374,7 +2301,7 @@ class RingdownStop:
         driven = [p for p, pm in enumerate(pms) if pm.excite]
         return finish(sources_off=True, source_ratio_long=ratio_long,
                       **_judge_record(Y, dt, f_bins, T, rr.n_start, spec,
-                                      ref_hz=ref_hz, observable=to_s,
+                                      ref_hz=ref_hz, observable=to_s.measured,
                                       driven=driven))
 
     def _report(self, n_rec: int) -> RingdownStopReport:
@@ -2511,7 +2438,8 @@ def gradient_witness(grad, grad_other, *, against: str = "early_start",
     One forward pass serves both gradients of the early-start form::
 
         def both(p):
-            r = sim.forward(eps_override=p, n_steps=n, ringdown=RingdownSpec())
+            r = sim.forward(eps_override=p, n_steps=n, port_s11_freqs=bins,
+                            ringdown=RingdownSpec())
             return (loss(r.ringdown.s_params), loss(r.ringdown.s_params_long)), r.ringdown
 
         (l, l_long), pullback, rd_out = jax.vjp(both, p, has_aux=True)
@@ -2642,7 +2570,9 @@ class _ForwardReportContext:
             wire_port_sparams=tuple(zip(self.metas, res._accs)), s_params=s_plain,
             grid=self.grid, freqs=self.bins, dt=self.step)
         S_host, report, nc = plan._host_report(result_like, np.asarray(res._channels), 0)
-        S_traced = np.asarray(res.s_params).astype(np.complex128)
+        from rfx.measurement.port_s import observed_port_s
+        pairs = tuple(zip(self.metas, res._accs))
+        S_traced = np.asarray(observed_port_s(res.s_params, pairs)).astype(np.complex128)
         c_now = np.asarray(res._consistency)
         status = np.asarray(res._status).ravel()
         nan_note = ""
@@ -2663,9 +2593,7 @@ class _ForwardReportContext:
                                 f"completion to compare: {nc.name} failed on the host",
                                 judged=False)
         else:
-            S_ref = np.asarray(S_host).astype(np.complex128)
-            if plan.lane == "uniform":
-                S_ref = S_ref[0, 0]
+            S_ref = np.asarray(observed_port_s(S_host, pairs)).astype(np.complex128)
             d = float(np.max(np.abs(S_traced - S_ref)))
             w = RingdownWitness("traced", d, tol, d <= tol, rule, nan_note)
         c = float(c_now)
@@ -2813,7 +2741,7 @@ class RingdownForward(RingdownRun):
                 f"{tuple(full.shape)}, expected ({self.n_steps}, {n_user} user + "
                 f"{n_int} port-channel probes)")
         channels = full[:, n_user:]
-        stripped = result._replace(time_series=full[:, :n_user])
+        stripped = _user_geometry(result._replace(time_series=full[:, :n_user]), n_user, n_int)
         return stripped._replace(ringdown=self._traced(result, channels))
 
     def _traced(self, result, channels) -> RingdownForwardResult:

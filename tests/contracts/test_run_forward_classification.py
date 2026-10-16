@@ -4,6 +4,15 @@ import pytest
 from tests.contracts import test_run_forward_one_pipeline as contract
 
 
+@pytest.fixture
+def synthetic_consequence(monkeypatch):
+    """A consequence pair for the classifier itself: the census has none left
+    (PW-oblique D3 and R-rlc D6 are closed), but the rule must keep working."""
+    monkeypatch.setattr(contract, 'CONSEQUENCE_PAIRS', (('X-field', 'uniform', 'D0'),))
+    monkeypatch.setitem(contract.ID_PATTERNS, 'D0', {'L1': (), 'L2': ()})
+    return 'X-field', 'D0'
+
+
 def test_d4_fixed_while_d5_open():
     with pytest.raises(pytest.fail.Exception, match='D4 no longer applies to O-flux/uniform/L2'):
         contract.classify('O-flux', 'uniform', 'L2', [
@@ -11,8 +20,8 @@ def test_d4_fixed_while_d5_open():
         ], {'D4': 'flux absent', 'D5': 'witness shape'})
 
 
-@pytest.mark.parametrize('declaration,ident', [('B-closed', 'D2'), ('R-rlc', 'D6'), ('PW-oblique', 'D3')])
-def test_consequences_do_not_explain_witness(declaration, ident):
+def test_consequences_do_not_explain_witness(synthetic_consequence):
+    declaration, ident = synthetic_consequence
     with pytest.raises(pytest.fail.Exception, match='unexplained.*settling_witness/residual'):
         contract.classify(declaration, 'uniform', 'L2', [
             {'path': 'settling_witness/residual', 'bytes_equal': False, 'shape': [[1], [2]]},
@@ -71,25 +80,12 @@ def test_unmeasured_waveguide_flux_is_unexplained():
         ], {'D7': 'waveguide records'})
 
 
-@pytest.mark.parametrize('declaration,ident', [('B-closed', 'D2'), ('R-rlc', 'D6'), ('PW-oblique', 'D3')])
-def test_time_series_consequence_still_applies(declaration, ident):
+def test_time_series_consequence_still_applies(synthetic_consequence):
+    declaration, ident = synthetic_consequence
     with pytest.raises(pytest.xfail.Exception):
         contract.classify(declaration, 'uniform', 'L2', [
             {'path': 'time_series', 'bytes_equal': False, 'shape': [[2], [2]]},
         ], {ident: 'time series consequence'})
-
-
-def test_a4_fixed_wording_and_wrong_exception():
-    pair = {
-        'run': {'outcome': 'raised', 'type': 'NotImplementedError', 'message': 'Ports unsupported on run path'},
-        'forward': {'outcome': 'raised', 'type': 'NotImplementedError',
-                    'message': 'Lumped / wire ports (impedance > 0) are not yet supported'},
-    }
-    with pytest.raises(pytest.fail.Exception, match='A4 no longer applies'):
-        contract.outcomes('P-lumped', 'multi-device-graded', 'admission', pair)
-    pair['run']['type'] = 'RuntimeError'
-    with pytest.raises(pytest.fail.Exception, match='unexplained'):
-        contract.outcomes('P-lumped', 'multi-device-graded', 'admission', pair)
 
 
 def test_per_drive_same_shape_value_is_unexplained():

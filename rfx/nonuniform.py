@@ -18,6 +18,9 @@ per-axis inverse spacing arrays. Fully JIT-compiled via jax.lax.scan.
 
 from __future__ import annotations
 
+from rfx.measurement import (graded_acc_indices, graded_accumulators, graded_s_ports, graded_specs,
+                             init_graded_records)
+
 from functools import partial
 from types import SimpleNamespace
 
@@ -31,8 +34,10 @@ import jax
 import jax.numpy as jnp
 
 from rfx.core.drives import drive_layout
+from rfx.measurement import AUTO_END, finish_decay, make_decay_stop, one_step_xs
 from rfx.model.source_coefficients import drive_table
-from rfx.model.occupancy import with_edge_keep
+from rfx.measurement import assemble_graded_result as _assemble_nu_result
+from rfx.model import current_source_samples, with_edge_keep
 import numpy as np
 
 from rfx.core.yee import (
@@ -43,6 +48,7 @@ from rfx.boundaries.pec import (
     realized_pec_edge_masks,
 )
 from rfx.core.jax_utils import is_tracer, recorded_scan
+from rfx.stepping import segmented_scan
 from rfx._grid_metric import (
     DECLARED_SPAN_TOL_M,
     axis_name as _axis_name,
@@ -216,17 +222,8 @@ def make_current_source(grid: NonUniformGrid, position_ijk, component,
     """
     i, j, k = position_ijk
 
-    # GEO-C3: on the differentiable-material path ``materials.eps_r`` /
-    # ``materials.sigma`` are tracers — ``float()`` raised
-    # TracerArrayConversionError. Stay in jnp when traced so the gradient
-    # propagates into the waveform normalisation; keep the exact ``float()``
-    # path otherwise so non-traced output stays bit-identical (both branches
-    # live in ``current_source_cb``).
-    # #1210: the drive coefficient is the update's own PER-COMPONENT Cb --
-    # ``update_e_nu`` multiplies each component by the mean of eps and sigma
-    # over the four cells its edge touches, and this coefficient exists to
-    # equal it. ``cell_component_e_materials`` indexes four cells, so the
-    # tracer branch is the same branch it always was.
+    # Read the edge's own eps and sigma, averaged over its four cells
+    # (#1210), with the same differentiable drive formula on every trace.
     from rfx.model.materials import e_update_coefficient_at
     if str(component).lower() not in ("ex", "ey", "ez"):
         raise ValueError(
@@ -247,40 +244,23 @@ def make_current_source(grid: NonUniformGrid, position_ijk, component,
     return (i, j, k, component, waveform_out)
 
 
-def current_source_cb(eps_r_c, sigma_c, dt, *, traced):
+def current_source_cb(eps_r_c, sigma_c, dt):
     """``Cb = (dt/eps) / (1 + sigma*dt/(2*eps))`` of the edge a current
     source feeds, from that edge's ``(eps_r, sigma)``.
 
     ``eps_r_c`` / ``sigma_c`` are the edge's own values -- the mean over the
     four cells incident to it, :func:`rfx.core.yee.cell_component_e_materials`
-    (#1210). ``traced=True`` keeps the arithmetic in jnp so a traced
-    permittivity stays on the tape (GEO-C3); ``traced=False`` takes
-    ``float()`` of both and computes in Python floats, the historical path.
+    (#1210). Concrete and traced inputs use the same jnp arithmetic,
+    keeping a traced permittivity on the tape (GEO-C3).
     The one spelling of the drive coefficient: :func:`make_current_source`
     and the distributed graded forward, which builds it inside its jitted
     program from the slabs its E update receives (#1279), both call it.
     """
-    if traced:
-        # The same Cb written in eps_r units, dt/(eps0*(eps_r + sigma*dt/(2*eps0))):
-        # with eps = eps_r*eps0 ~ 1e-11, the reverse pass squares eps and a
-        # float32 cotangent above ~1e15 overflowed to a NaN gradient at the
-        # source's four cells (#1279 review). In eps_r units it stays finite.
-        eps_r = jnp.asarray(eps_r_c)
-        sigma = jnp.asarray(sigma_c)
-        return (dt / EPS_0) / (eps_r + sigma * (dt / (2.0 * EPS_0)))
-    eps = float(eps_r_c) * EPS_0
-    sigma = float(sigma_c)
-    loss = sigma * dt / (2.0 * eps)
-
-    # Cb = dt / (eps * (1 + loss))
-    return (dt / eps) / (1.0 + loss)
-
-
-def current_source_samples(grid, waveform_fn, n_steps):
-    """The current ``I(t)`` in amperes at the ``n_steps`` step times
-    ``t = n*dt`` (float32), before any ``Cb/dV`` normalisation."""
-    times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
-    return jax.vmap(waveform_fn)(times)
+    # In eps_r units the reverse pass avoids squaring eps ~ 1e-11,
+    # which overflowed float32 cotangents into NaN gradients (#1279).
+    eps_r = jnp.asarray(eps_r_c)
+    sigma = jnp.asarray(sigma_c)
+    return (dt / EPS_0) / (eps_r + sigma * (dt / (2.0 * EPS_0)))
 
 
 def current_source_volume(grid, position_ijk, component):
@@ -490,11 +470,11 @@ def wire_port_current(hx, hy, hz, comp, mi, mj, mk,
     raise ValueError(f"wire_port_current: unknown component {comp!r}")
 
 
-def _curl_h_nu(state, inv_dx, inv_dy, inv_dz, *, boundary=None):
+def _curl_h_nu(state, inv_dx, inv_dy, inv_dz, *, boundary=None, frame=None, owned=None):
     """ADE adapter to the shared graded E-update curl (no dtype change)."""
     from rfx.core.yee import curl_h_nu
     return curl_h_nu(state.hx, state.hy, state.hz, inv_dx, inv_dy, inv_dz,
-                     boundary=boundary)
+                     boundary=boundary, frame=frame, owned=owned)
 
 
 def _update_e_nu_dispersive(
@@ -508,7 +488,7 @@ def _update_e_nu_dispersive(
     debye: tuple | None = None,
     lorentz: tuple | None = None,
     e_old: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray] | None = None,
-    boundary=None,
+    boundary=None, frame=None, owned=None,
 ) -> tuple[FDTDState, object | None, object | None]:
     """E-field update with ADE dispersion on non-uniform grid.
 
@@ -538,7 +518,7 @@ def _update_e_nu_dispersive(
     from rfx.materials.debye import DebyeState
     from rfx.materials.lorentz import LorentzState
 
-    curl_x, curl_y, curl_z = _curl_h_nu(state, inv_dx, inv_dy, inv_dz, boundary=boundary)
+    curl_x, curl_y, curl_z = _curl_h_nu(state, inv_dx, inv_dy, inv_dz, boundary=boundary, frame=frame, owned=owned)
     if e_old is not None:
         ex_old, ey_old, ez_old = e_old
     else:
@@ -832,8 +812,8 @@ def _build_nu_scan(
     # fourth-order stencil, no Bloch phase, no Stage-2 inverse-eps tensor.
     design_box_coeffs = None
     if design_box is not None:
-        from rfx.simulation import _resolve_design_box
-        design_box_coeffs = _resolve_design_box(
+        from rfx.model import resolve_design_box
+        design_box_coeffs = resolve_design_box(
             design_box,
             grid=grid,
             materials=materials,
@@ -874,24 +854,7 @@ def _build_nu_scan(
         lorentz_coeffs, lorentz_state = lorentz
         carry_init["lorentz"] = lorentz_state
 
-    # Wire port S-param DFT accumulators
-    # (defaults bound unconditionally so _NUScanSetup can carry them;
-    # both stay unused unless the branch below runs — no behavior change)
-    sp_freqs = None
-    wp_meta: list = []
-    if use_wire_ports and s_param_freqs is not None:
-        sp_freqs = jnp.asarray(s_param_freqs, dtype=jnp.float32)
-        nf = len(sp_freqs)
-        carry_init["wire_sparams"] = tuple(
-            (jnp.zeros(nf, dtype=jnp.complex64),  # v_dft
-             jnp.zeros(nf, dtype=jnp.complex64),  # i_dft
-             jnp.zeros(nf, dtype=jnp.complex64),  # v_inc_dft
-             jnp.zeros(nf, dtype=jnp.complex64))  # v_port_dft (issue #764)
-            for _ in wire_ports
-        )
-        wp_meta = _build_wp_meta(wire_ports, grid)
-    else:
-        use_wire_ports = False
+    sp_freqs, wp_meta, use_wire_ports = graded_accumulators(wire_ports, grid, s_param_freqs, carry_init)
 
     # DFT plane probe carry + static metadata
     if use_dft_planes:
@@ -1041,6 +1004,8 @@ def _build_nu_scan(
         use_pec_occupancy=use_pec_occupancy,
         use_wire_ports=use_wire_ports,
         wp_meta=wp_meta,
+        port_record_specs=graded_specs(wire_ports),
+        port_acc_indices=graded_acc_indices(wire_ports),
         sp_freqs=sp_freqs,
         use_dft_planes=use_dft_planes,
         dft_meta=dft_meta,
@@ -1062,7 +1027,7 @@ def _build_nu_scan(
         dt=dt,
         sources=sources,
         probes=probes,
-        wire_ports=wire_ports,
+        wire_ports=graded_s_ports(wire_ports),
         dft_planes=dft_planes,
         flux_monitors=flux_monitors,
         waveguide_meta=waveguide_meta,
@@ -1170,9 +1135,7 @@ def run_nonuniform(
         carry_init["dft_time_records"] = tuple(
             jnp.zeros((n_steps,) + p.accumulator.shape[1:], dtype=carry_init["fdtd"].ex.dtype)
             for p in dft_planes)
-    if "wire_sparams" in carry_init:
-        carry_init["sparam_time_records"] = tuple(
-            jnp.zeros((n_steps, 3), dtype=carry_init["fdtd"].ex.dtype) for _ in carry_init["wire_sparams"])
+    init_graded_records(carry_init, n_steps, setup)
     src_waveforms = setup.src_waveforms
 
     xs = (jnp.arange(n_steps, dtype=jnp.int32), src_waveforms)
@@ -1272,40 +1235,9 @@ def run_nonuniform(
         and 0 < int(checkpoint_every) < n_steps_opt
     )
     if use_segmented:
-        # Scan-of-scan: outer scan over segments wrapped in jax.checkpoint
-        # forces XLA to remat the inner scan during backward, so the AD
-        # tape only stores carry at segment boundaries (≈ sqrt(n_steps)
-        # × carry_size when checkpoint_every ≈ sqrt(n_steps)).
-        chunk = int(checkpoint_every)
-        n_segments = (n_steps_opt + chunk - 1) // chunk
-        pad = n_segments * chunk - n_steps_opt
-        opt_steps = xs[0]
-        opt_src = xs[1]
-        if pad > 0:
-            steps_padded = jnp.arange(
-                int(opt_steps[0]),
-                int(opt_steps[0]) + n_segments * chunk,
-                dtype=jnp.int32,
-            )
-            n_sources = opt_src.shape[1]
-            src_pad = jnp.zeros((pad, n_sources), dtype=opt_src.dtype)
-            src_padded = jnp.concatenate([opt_src, src_pad], axis=0)
-        else:
-            steps_padded = opt_steps
-            src_padded = opt_src
-
-        seg_steps = steps_padded.reshape(n_segments, chunk)
-        seg_src = src_padded.reshape(n_segments, chunk, src_padded.shape[1])
-
-        def segment_body(carry, segment_xs):
-            return jax.lax.scan(step_fn, carry, segment_xs)
-
-        seg_body = jax.checkpoint(segment_body)
-        final, segment_ys = recorded_scan(
-            seg_body, carry_init, (seg_steps, seg_src)
+        final, opt_ys = segmented_scan(
+            step_fn, carry_init, xs, int(checkpoint_every), scan=recorded_scan
         )
-        flat = segment_ys.reshape((n_segments * chunk,) + segment_ys.shape[2:])
-        opt_ys = flat[:n_steps_opt]
     else:
         body = jax.checkpoint(step_fn) if checkpoint else step_fn
         final, opt_ys = recorded_scan(body, carry_init, xs)
@@ -1319,292 +1251,13 @@ def run_nonuniform(
     return _assemble_nu_result(setup, final, time_series)
 
 
-def _assemble_nu_result(setup: _NUScanSetup, final: dict, time_series, n_record=None) -> dict:
-    """Assemble the NU result dict (pure code motion from run_nonuniform,
-    #383). Shared by :func:`run_nonuniform` and
-    :func:`run_nonuniform_until_decay` so the two paths return the exact
-    same schema (state, time_series, dt, conditional dft_planes /
-    flux_monitors / ntff_data / waveguide_ports / s_params...)."""
-    dt = setup.dt
-    dft_planes = setup.dft_planes
-    flux_monitors = setup.flux_monitors
-    wire_ports = setup.wire_ports
-    waveguide_meta = setup.waveguide_meta
-    wp_meta = setup.wp_meta
-    sp_freqs = setup.sp_freqs
-    use_wire_ports = setup.use_wire_ports
-    use_dft_planes = setup.use_dft_planes
-    use_flux_monitors = setup.use_flux_monitors
-    use_lumped_rlc = setup.use_lumped_rlc
-    use_ntff = setup.use_ntff
-    use_waveguide_ports = setup.use_waveguide_ports
-
-    result = {
-        "dft_time_records": tuple(r[:n_record] for r in final.get("dft_time_records", ())),
-        "state": final["fdtd"],
-        "time_series": time_series,
-        "dt": dt,
-    }
-
-    # Surface final RLC ADE states (per element).
-    if use_lumped_rlc:
-        result["rlc_states"] = tuple(final["rlc_states"])
-
-    # Repack DFT plane probes with their final accumulators.
-    if use_dft_planes:
-        result["dft_planes"] = tuple(
-            probe._replace(accumulator=acc)
-            for probe, acc in zip(dft_planes, final["dft_planes"])
-        )
-
-    # Repack flux monitors with their final E/H DFT accumulators so the
-    # caller can call flux_spectrum() on them (same schema as uniform).
-    if use_flux_monitors:
-        result["flux_monitors"] = tuple(
-            mon._replace(e1_dft=e1, e2_dft=e2, h1_dft=h1, h2_dft=h2)
-            for mon, (e1, e2, h1, h2) in zip(
-                flux_monitors, final["flux_monitors"]
-            )
-        )
-
-    # Surface final NTFF DFT accumulators
-    if use_ntff:
-        result["ntff_data"] = final["ntff"]
-
-    # Surface the in-loop block current moments and the slab they belong to.
-    # getattr: run(ringdown=) assembles S through here with a stand-in setup
-    # (rfx.ringdown._assemble) that carries no monitor.
-    if getattr(setup, "use_current_moments", False):
-        result["current_moment_data"] = final["current_moments"]
-        result["current_moment_monitor"] = setup.current_moments
-
-    # Surface final waveguide-port configs (with recorded modal V/I
-    # time series; spectra are extracted post-scan via rect-DFT).
-    if use_waveguide_ports:
-        result["waveguide_ports"] = tuple(
-            cfg_meta._replace(
-                v_probe_t=accs[0],
-                v_ref_t=accs[1],
-                i_probe_t=accs[2],
-                i_ref_t=accs[3],
-                v_inc_t=accs[4],
-                n_steps_recorded=accs[5],
-            )
-            for cfg_meta, accs in zip(
-                waveguide_meta, final["waveguide_port_accs"]
-            )
-        )
-
-    # ---- Extract full S-matrix column from wire port DFTs ----
-    #
-    # Each port has a V/I DFT pair. The wave decomposition below is
-    # DIRECTION-FREE, and that is a physics statement, not a shortcut
-    # (issue #673). The port's outward normal is not a degree of freedom
-    # for a lumped gap V/I pair:
-    #
-    #   V = -E_comp * d_parallel      (the E edge's own length)
-    #   I = (curl H)_comp * A_perp    (right-hand loop about the SAME axis)
-    #
-    # Neither expression contains the port's position or an outward
-    # normal, so their RELATIVE sign is fixed by the sampling code and no
-    # port placement can flip it. The E update at that edge enforces
-    # eps*dE/dt + sigma*E = (curl H)_comp, so in phasor form, with
-    # C = eps*A/d and the runner's sigma = n_live*d/(Z0*dp1*dp2),
-    #
-    #       V / I = -1 / (n_live/Z0 + j*w*C + Y_ext)
-    #
-    # for any passive Y_ext attached across the gap (Re Y_ext >= 0), at a
-    # port that is NOT itself driven. Hence Z_in = -V/I sits in the right
-    # half plane and
-    #
-    #       S = (Z_in - Z0)/(Z_in + Z0) = (V + Z0*I)/(V - Z0*I),
-    #
-    # which is the same ratio as a = (-V + Z0*I)/2, b = (-V - Z0*I)/2.
-    # The reciprocal form maps that passive disk to its EXTERIOR, i.e. it
-    # returns |S| >= 1 at EVERY bin on ANY passive structure — which is
-    # what the pre-#673 direction switch did on "-x"/"-y". That is what
-    # fixes the CONVENTION; the convention is then applied unconditionally,
-    # exactly as the uniform lane does.
-    # Scope note, measured: the |S| <= 1 consequence is a statement about an
-    # UNDRIVEN port, and it is a property of the port CELL rather than of the
-    # structure across the gap (vacuum, PEC plates shorting the gap and an
-    # eps_r=10 slab filling it all read S11 = -0.600000 at n_live = 4).
-    # That is exactly why the all-passive fallback below is INTENTIONALLY
-    # frozen on this per-cell convention: no physical falsifier can gate a
-    # load-independent reading, so it is a diagnostic/self-consistency
-    # channel, not S_jj (S_jj requires driving port j) — and the
-    # excite=False locks (lane-parity closed forms, sigma ORACLE 1/2) keep
-    # their n_live sensitivity as witnesses. Do not "unify" it with the
-    # driven diagonal below.
-    #
-    # DRIVEN diagonal (issue #764). At a genuinely excited port the per-cell
-    # convention above stops tracking the load entirely — PROVENANCE, all
-    # measured before the #764 fix: one geometry with only `excite` flipped
-    # read S11(0.2 GHz) = -0.600000 passive against +0.999670-0.022145j
-    # driven though the quasi-static input impedance is identical; the
-    # 2-port MSL stub in tests/unit/sparams/test_twoport_wire_port.py reached
-    # max|S11| = 4.648 (the reciprocal class that (-V - Z0*I)/(-V + Z0*I)
-    # applied to a driven port yields); a matched 50 ohm load read
-    # S11 = +0.35426 and a PEC short +0.26780. Root cause was the #313/#318
-    # frame mismatch: V and I sampled at ONE cell measure the per-cell
-    # Z0/n_live while the reflection formula references the whole-port Z0.
-    # The fix is frame-consistent terminal quantities:
-    #
-    #   V_port = sum_live(-E_c * d_par,c)   (whole-gap line integral,
-    #                                        PRIMAL metric per cell, #672)
-    #   I      = Ampere loop at the LIVE-run midpoint cell (DUAL metrics)
-    #   S_kk   = (V_port - Z0*I) / (V_port + Z0*I)
-    #
-    # where Z0 is the whole-port port.impedance — the impedance #318
-    # physically realizes as the series termination (n_live cells of
-    # sigma-folded Z0/n_live in series). Sense: from the pinned per-cell law
-    # with equal per-cell injection I0, V_port + Z0*I = Z0*I0 is a
-    # drive-only constant (the incident wave), and closing the loop through
-    # the external DUT gives V_port = +Z_L*I and I = Z0*I0/(Z0+Z_L) — the
-    # measured #683 circuit law. The opposite branch sign (V_port = -Z_L*I)
-    # would put I = Z0*I0/(Z0-Z_L), divergent at a matched load — refuted.
-    # Only the SUM is KVL/Faraday-constrained on the staggered grid; a
-    # single cell is not (a PEC short forces sum V_c = 0 while V_mid stays
-    # finite — why the short used to read +0.268: a structural error, not a
-    # scale factor).
-    # Quasi-static check on the PASSIVE path: with Y_ext -> 0 and
-    # w*C*Z0/n_live << 1 the per-cell convention gives
-    # S11 -> (1 - n_live)/(1 + n_live), measured to 5 decimals on both
-    # lanes (tests/unit/nonuniform/test_nu_wire_port_lane_parity.py).
-    #
-    # `direction` is still carried on the port spec — the reference-plane
-    # path (add_port(reference_plane_cells=...)) needs it for the outboard
-    # sign — but it must NOT enter this wave split.
-    #
-    # Given these, with ONE excited port `k` the full k-th column of
-    # the S-matrix is
-    #       S[j, k] = b_j / a_k          (j = every port)
-    # which reduces to the familiar S11 = b_k/a_k for j==k (reflection)
-    # and to S21 = b_2/a_1 for j != k (transmission). Other columns of
-    # the S matrix stay zero — callers need to run additional sims
-    # with different excited ports to fill them (reciprocity lets us
-    # infer S12 from S21 for passive networks).
-    #
-    # Which (a, b) pair fills a GENUINELY excited column is the issue
-    # #770 whole-port pair (see the in-loop derivation below); the
-    # per-cell `_ab` split above survives only in the all-passive
-    # diagnostic fallback.
-    if use_wire_ports and "wire_sparams" in final:
-        import numpy as _np
-        n_wp = len(wire_ports)
-        nf = len(sp_freqs)
-        # Tracer-safe accumulation (issue #70): build S with jnp + .at[].set
-        # so jax.grad on an objective that pulls through the wire_sparams
-        # extractor does not hit TracerArrayConversionError. Concrete-path
-        # callers still get a jnp.ndarray that numpy consumers accept via
-        # np.asarray(...) (jnp arrays implement __array__).
-        S = jnp.zeros((n_wp, n_wp, nf), dtype=jnp.complex64)
-
-        # Pick the excited ports as the filled columns. If no port is
-        # excited (all passive), fall back to the legacy diagnostic
-        # extraction (no meaningful S-matrix in that case).
-        # ``genuinely_excited`` (issues #764 + #770) keys the whole-port
-        # wave pair to meta[7] ONLY — the all-passive fallback stays on
-        # the frozen per-cell convention (see the scope note above).
-        genuinely_excited = [
-            idx for idx, meta in enumerate(wp_meta) if meta[7]]
-        excited_idx = genuinely_excited
-        if not excited_idx:
-            excited_idx = list(range(n_wp))   # legacy: treat all as self-excited
-
-        def _ab(v_dft, i_dft, z0):
-            """Return (a_incoming, b_outgoing) at one port.
-
-            Direction-free, written in the uniform lane's sign so it reads
-            line-for-line against rfx/runners/uniform.py (the overall -1
-            cancels in the ratio b/a). See the derivation above (#673).
-            """
-            zi = z0 * i_dft
-            return (-v_dft + zi) / 2.0, (-v_dft - zi) / 2.0
-
-        ab_per_port = []
-        for (v_dft, i_dft, _, _vp), meta in zip(final["wire_sparams"],
-                                                wp_meta):
-            z0 = meta[4]
-            a, b = _ab(v_dft, i_dft, z0)
-            ab_per_port.append((a, b))
-
-        # All-passive fallback ONLY: the frozen per-cell diagnostic
-        # convention (see the scope note above — no physical falsifier
-        # can gate a load-independent reading; do not "unify").
-        if not genuinely_excited:
-            for k in excited_idx:
-                a_k = ab_per_port[k][0]
-                safe_a_k = jnp.where(jnp.abs(a_k) > 0, a_k,
-                                     jnp.ones_like(a_k))
-                for j in range(n_wp):
-                    b_j = ab_per_port[j][1]
-                    S = S.at[j, k, :].set(b_j / safe_a_k)
-
-        # Issue #764 + #770: every GENUINELY excited column is the
-        # whole-port wave pair, frame-consistent across diagonal and
-        # off-diagonal (adjudicated against external physics 2026-08-29,
-        # docs/design_notes/issue770_offdiag_adjudication_predeclaration.md
-        # + results note):
-        #
-        #   a_k = (V_port,k + Z0*I_k) / (2*sqrt(Z0))   # measured drive-only
-        #                                              # constant Z0*I0 (#683)
-        #   b_j = (V_port,j - Z0*I_j) / (2*sqrt(Z0))   # outgoing at port j
-        #   S[j, k] = b_j / a_k    (diagonal reduces to the #764
-        #                           (V_port - Z0*I)/(V_port + Z0*I))
-        #
-        # The old mixed split (per-cell midpoint v against the whole-port
-        # Z0, the open defect #764 section 6 named) measured neither
-        # frame on the canonical thru (|S21| 0.65-0.97, drifting); the
-        # whole-port pair measured |S21| = 0.934-0.995 vs the external
-        # flux referee 0.971-0.997, power closure deficit 0.9-4.4% vs
-        # the 0.2-4.0% flux gap, reciprocity 2.67e-4, and lane parity
-        # 3.97e-6 against the uniform decomposer (#770 harness).
-        # Global receive sign: +1, DC-witness pinned (S21(DC) -> +1,
-        # dev -0.058/-0.115 rad at 0.5/1 GHz; flipped channel at ~pi).
-        for k in genuinely_excited:
-            v_port_k = final["wire_sparams"][k][3]
-            i_k = final["wire_sparams"][k][1]
-            z0_k = wp_meta[k][4]
-            a_k = v_port_k + z0_k * i_k
-            safe_a_k = jnp.where(jnp.abs(a_k) > 0, a_k, jnp.ones_like(a_k))
-            sqrt_z0_k = jnp.sqrt(z0_k)
-            for j in range(n_wp):
-                v_port_j = final["wire_sparams"][j][3]
-                i_j = final["wire_sparams"][j][1]
-                z0_j = wp_meta[j][4]
-                b_j = (v_port_j - z0_j * i_j) * (
-                    sqrt_z0_k / jnp.sqrt(z0_j))
-                S = S.at[j, k, :].set(b_j / safe_a_k)
-
-        result["s_params"] = S
-        result["s_param_freqs"] = _np.array(sp_freqs)
-        # Raw per-port DFT accumulators (v_dft, i_dft, v_inc_dft,
-        # v_port_dft), surfaced for diagnostics/validation harnesses
-        # (issue #764; mirrors the uniform lane's raw-acc access via
-        # forward()'s wire_port_sparams).
-        result["sparam_time_records"] = tuple(
-            record[:n_record] for record in final.get("sparam_time_records", ()))
-        result["wire_sparams_raw"] = final["wire_sparams"]
-        # The static per-port metadata those accumulators were recorded
-        # with, in the same order (:func:`_build_wp_meta` slots). The
-        # accumulators alone say nothing about which port they came from
-        # or at what impedance; ``run_nonuniform_path`` zips the two into
-        # the ``(meta, accs)`` pairs the uniform lane's
-        # ``Result.wire_port_sparams`` already carries. The existing
-        # ``wire_sparams_raw`` shape is unchanged — validation harnesses
-        # index it per port.
-        result["wire_sparams_meta"] = tuple(wp_meta)
-
-    return result
-
-
 def run_nonuniform_until_decay(
     grid: NonUniformGrid,
     materials: MaterialArrays,
     *,
     cpml_axes: str | None = None,
     decay_by: float = 1e-3,
+    n_end: int | None = AUTO_END,
     check_interval: int = 50,
     min_steps: int = 100,
     max_steps: int = 50_000,
@@ -1642,11 +1295,11 @@ def run_nonuniform_until_decay(
     design_box=None,
     stop_fn=None,
     record_dft: bool = False,
+    advisory: dict | None = None,
 ) -> dict:
-    """Run non-uniform FDTD until the interior-domain energy decays (#383).
+    """Run non-uniform FDTD until the field energy left after the drive decays.
 
-    NU port of the issue #169 total-domain-energy stop criterion: a
-    Python loop drives constant-length jitted chunks (``chunk =
+    A Python loop drives constant-length jitted chunks (``chunk =
     check_interval`` steps) of the SAME ``step_fn`` that
     :func:`run_nonuniform` scans, threading the SAME carry (NTFF Kahan
     compensation arrays included) across chunks. Per-chunk ``xs``
@@ -1654,50 +1307,24 @@ def run_nonuniform_until_decay(
     split in :func:`run_nonuniform`, so source waveforms / DFT phases
     are identical to a fixed-step run of the same length.
 
-    Stop criterion (absorbing boundaries — the ONLY supported class on
-    this entry point; the routing layer in ``rfx/api/_execute.py`` gates
-    on ``boundary in ('cpml', 'upml')``):
+    Stop rule: ``rfx.measurement.decay`` (shared with the uniform loop; the
+    leapfrog-conserved interior energy W after the drive end ``n_end``, per-cell
+    dV, the float32 floor ``KAPPA = 1e-12``); ``result["decay_stop"]`` is the
+    ``until_decay.stop`` Diagnostic of what ended the run. ``decay_by = 0`` runs
+    exactly ``max_steps``. On a high-Q structure whose mode reaches the absorber,
+    the stop can move by about 170 steps with the check phase while the spectra
+    stay within 1e-2 of the band peak. In a lossy dielectric the run can last
+    longer than the field's ringing: charge moved onto the dielectric's surfaces
+    during the drive relaxes with the time constant eps/sigma after it. That
+    field is quasi-static (out of band), the record stays correct, and the stop
+    record and the cap advisory say what ended the run.
 
-    * At each chunk boundary (after ``k * check_interval`` steps), once
-      ``steps_done >= min_steps``, compute the host-side dV-weighted
-      interior energy ``U = sum((Ex^2 + ... + Hz^2) * dV)`` over the
-      non-CPML interior slice, with ``dV = dx[i] * dy[j] * dz[k]`` the
-      per-cell primal volume (all six components weighted by the primal
-      cell dV — the same staggering simplification the uniform path
-      makes; on a uniform mesh this reduces to the uniform criterion up
-      to the constant dV factor).
-    * ``peak_U`` is updated at checks only, BEFORE the compare.
-    * The stop fires after ``decay_energy_consecutive`` CONSECUTIVE
-      sub-threshold checks (``U < decay_by * peak_U``); any
-      above-threshold check resets the counter. ``>= 2`` is mandatory
-      for the same reason as the uniform path: the interior energy is
-      not null-free (transient inter-packet minima recover).
-    * ``decay_by = 0.0`` preserves the forced-N escape (``U < 0`` is
-      never true for ``U >= 0``), so the loop runs exactly
-      ``max_steps`` steps.
-    * The loop is hard-bounded by ``max_steps``; a final partial chunk
-      (shorter than ``check_interval``) is allowed so the bound is
-      exact.
+    On a closed domain (no absorbing pads) the interior energy does not decay
+    and this runs to ``max_steps``; ``run()`` refuses ``until_decay`` there.
 
-    Check cadence note: the uniform ``run_until_decay`` checks after
-    steps ``k * interval + 1`` (its 0-based ``step % interval == 0``
-    fires at step index ``k * interval``); the chunked NU loop checks
-    after ``k * interval`` steps. The <= 1-step cadence difference is
-    deliberate (one XLA program per chunk length) — cross-lane stop-step
-    equality is NOT a contract (host/device float order already differs
-    between the lanes).
-
-    On a closed domain (no absorbing pads) the interior energy does not
-    decay and this function runs to ``max_steps``; there is NO
-    point-field fallback on the NU lane (no legacy behavior to
-    preserve). The routing layer warn-and-drops ``until_decay`` for
-    non-absorbing NU boundaries instead of calling this.
-
-    Forward-only: this is a host loop (not ``lax.scan``); it is not
-    reachable from ``forward()``/``optimize()`` and carries no AD tape
-    contract. ``checkpoint`` / ``checkpoint_every`` / ``n_warmup`` are
-    deliberately absent from the signature (the caller raises before
-    dispatching here).
+    Forward-only: a host loop, not reachable from ``forward()``/``optimize()``,
+    no AD tape contract; ``checkpoint`` / ``checkpoint_every`` / ``n_warmup``
+    are absent from the signature (the caller raises before dispatching here).
 
     ``stop_fn`` (issue #1254, ``run(..., until_identified=True)``), when
     given, is called at every chunk boundary after the energy check as
@@ -1708,14 +1335,10 @@ def run_nonuniform_until_decay(
     Returns
     -------
     dict
-        Same schema as :func:`run_nonuniform` (assembled by the shared
-        :func:`_assemble_nu_result`), plus a ``"decay_checks"``
-        diagnostic: a list of ``(step, U, peak_U)`` host-float tuples,
-        one per eligible energy check. The trace exists only on THIS
-        runner-dict return — ``run_nonuniform_path`` does not copy it
-        onto the public ``Result`` — so consumers that need to verify
-        the fire condition actually held (workspace rule R5) must call
-        this module function directly.
+        Same schema as :func:`run_nonuniform` (:func:`_assemble_nu_result`),
+        plus ``"decay_checks"``: ``(step, W, reference)`` per energy check from
+        ``max(min_steps, n_end)`` on, on this dict only (not on ``Result``),
+        for a caller verifying the fire condition (rule R5).
     """
     if check_interval < 1:
         raise ValueError(
@@ -1758,9 +1381,7 @@ def run_nonuniform_until_decay(
         carry["dft_time_records"] = tuple(
             jnp.zeros((max_steps,) + p.accumulator.shape[1:], dtype=carry["fdtd"].ex.dtype)
             for p in dft_planes)
-    if "wire_sparams" in carry:
-        carry["sparam_time_records"] = tuple(
-            jnp.zeros((max_steps, 3), dtype=carry["fdtd"].ex.dtype) for _ in carry["wire_sparams"])
+    init_graded_records(carry, max_steps, setup)
 
     # Source table: pad/truncate to max_steps so every chunk slice is
     # full-length (mirrors the uniform run_until_decay pad/truncate).
@@ -1784,26 +1405,6 @@ def run_nonuniform_until_decay(
     def _run_chunk(carry_in, xs, inv_args):
         step = partial(step_fn_inv, invariants=inv_rebuild(inv_args))
         return jax.lax.scan(step, carry_in, xs)
-
-    # Non-CPML interior slice bounds + per-cell primal volume dV
-    # (Python ints / concrete arrays — the reduction below is host-side;
-    # NonUniformGrid is always 3D).
-    _ix0, _ix1 = grid.pad_x_lo, grid.nx - grid.pad_x_hi
-    _iy0, _iy1 = grid.pad_y_lo, grid.ny - grid.pad_y_hi
-    _iz0, _iz1 = grid.pad_z_lo, grid.nz - grid.pad_z_hi
-    _dV = (
-        jnp.asarray(grid.dx_arr)[_ix0:_ix1, None, None]
-        * jnp.asarray(grid.dy_arr)[None, _iy0:_iy1, None]
-        * jnp.asarray(grid.dz)[None, None, _iz0:_iz1]
-    )
-
-    def _interior_energy(state) -> float:
-        """dV-weighted interior field energy (host float)."""
-        sx, sy, sz = (slice(_ix0, _ix1), slice(_iy0, _iy1), slice(_iz0, _iz1))
-        u = (state.ex[sx, sy, sz] ** 2 + state.ey[sx, sy, sz] ** 2
-             + state.ez[sx, sy, sz] ** 2 + state.hx[sx, sy, sz] ** 2
-             + state.hy[sx, sy, sz] ** 2 + state.hz[sx, sy, sz] ** 2)
-        return float(jnp.sum(u * _dV))
 
     # #388 opt-in RADIATED-FLUX stop (NU lane; mirrors the uniform run_until_decay path):
     # stop on the outgoing Poynting flux through a Huygens box instead of the interior energy,
@@ -1833,13 +1434,16 @@ def run_nonuniform_until_decay(
         p -= jnp.sum(ex[ii, jj, kl] * hy[ii, jj, kl] - ey[ii, jj, kl] * hx[ii, jj, kl])
         return float(p)
 
-    peak_U = 0.0           # running peak, updated at checks only
-    energy_below = 0       # consecutive sub-threshold energy checks
+    energy_stop, energy = make_decay_stop(
+        grid, materials, thr=decay_by, min_steps=min_steps, interval=check_interval,
+        consecutive=decay_energy_consecutive, n_end=n_end, criterion=not use_flux_stop,
+        rows=True, max_steps=max_steps, sources=sources, tfsf=tfsf,
+        waveguide_ports=waveguide_ports, side_step=(lambda c, xs, inv: _run_chunk(c, xs, inv)[0],
+                                                    lambda n: one_step_xs(n, src_waveforms), inv_args))
     peak_flux = 0.0        # #388 flux-stop: running peak of the |P| envelope (from first check)
     flux_below = 0         # #388 flux-stop: consecutive sub-threshold checks
     flux_hist: list = []   # recent |P| samples for the max-envelope
     decayed_fired = False  # #388: did the energy criterion fire (vs cap-hit)?
-    decay_checks: list = []
     ys_chunks = []
     steps_done = 0
     reporter = None
@@ -1884,29 +1488,9 @@ def run_nonuniform_until_decay(
                     break
             else:
                 flux_below = 0
-        elif decay_by > 0.0 or steps_done >= min_steps:
-            # Track the PEAK from the first chunk boundary, like the flux
-            # branch above; only the STOP (and the recorded check trace) waits
-            # for min_steps. Gating the peak on min_steps too reads the
-            # RESIDUAL as the reference on a domain that empties before
-            # min_steps, and no residual falls another ``decay_by`` below
-            # itself, so such a run reaches max_steps without firing (#1078;
-            # the uniform lane carried the same defect). ``decay_by == 0.0``
-            # is the forced-N escape and keeps the pre-min_steps chunks
-            # uncomputed, so its recorded trace is unchanged.
-            U = _interior_energy(carry["fdtd"])
-            if U > peak_U:
-                peak_U = U
-            if steps_done >= min_steps:
-                decay_checks.append((steps_done, U, peak_U))
-                # decay_by=0.0 forced-N escape: U >= 0 so U < 0 never fires.
-                if U < decay_by * peak_U:
-                    energy_below += 1
-                    if energy_below >= decay_energy_consecutive:
-                        decayed_fired = True
-                        break
-                else:
-                    energy_below = 0
+        elif energy_stop.check(steps_done, lambda: energy(carry, steps_done)) is not None:
+            decayed_fired = True
+            break
 
         # #1254: the caller's stop check at the chunk boundary.
         if stop_fn is not None:
@@ -1917,16 +1501,13 @@ def run_nonuniform_until_decay(
                     reporter.report(steps_done)
                 break
 
-    # #388: measured static-remnant advisory on cap-hit (until_decay is absorbing-only on
-    # the NU lane too, so a cap-hit without firing means the energy criterion could not
-    # self-terminate — warn if the remnant is electrostatic). Function-local import avoids
-    # a module-level simulation<->nonuniform cycle.
-    # decay_by == 0.0 is the forced-N escape (fixed-step progress route):
-    # running to max_steps is the DESIGN there, not a failed stop — the
-    # static-remnant advisory would be a false alarm.
-    if not decayed_fired and not use_flux_stop and decay_by > 0.0:
-        from rfx.simulation import _warn_static_remnant_cap_hit
-        _warn_static_remnant_cap_hit(carry["fdtd"], materials, grid)
+    # What ended the run (one Diagnostic; the static-remnant advisory on an energy cap).
+    # decay_by == 0.0 is the forced-N escape (fixed-step progress route): none.
+    decay_stop = finish_decay(
+        energy_stop, steps_done, fired=decayed_fired, reporter=reporter,
+        flux=(flux_hist, flux_env_checks, peak_flux) if use_flux_stop else None,
+        state=carry["fdtd"], materials=materials, grid=grid, advisory=advisory,
+        sources=sources)
 
     # Per-chunk ys concatenate to exactly steps_done rows; the
     # emit_time_series=False convention ((steps, 0)) is preserved
@@ -1934,5 +1515,6 @@ def run_nonuniform_until_decay(
     time_series = jnp.concatenate(ys_chunks, axis=0)
 
     result = _assemble_nu_result(setup, carry, time_series, n_record=steps_done)
-    result["decay_checks"] = decay_checks
+    result["decay_checks"] = energy_stop.decay_checks
+    result["decay_stop"] = decay_stop
     return result

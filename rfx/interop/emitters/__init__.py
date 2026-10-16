@@ -22,15 +22,15 @@ Status: **provisional**.  See ``openems.py`` for the supported/refused fence.
 from __future__ import annotations
 
 from rfx.interop.emitters.openems import (
+    emit_openems_script,
     OPENEMS_EMITTER_VERSION,
     OpenEMSPlan,
-    emit_openems_script,
     plan_openems_projection,
 )
 
 __all__ = [
+    "emit_openems_script",
     "OPENEMS_EMITTER_VERSION",
     "OpenEMSPlan",
-    "emit_openems_script",
     "plan_openems_projection",
 ]
