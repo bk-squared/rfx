@@ -84,10 +84,9 @@ def test_segment_remat_independent_of_checkpoint(path):
                   gradient=True, time_series=True)), file=sys.stderr, flush=True)
             jax.clear_caches()
     elif path == "graded":
-        baseline = _compile(800, box=True, checkpoint=False, graded=True)[0]
         off = _compile(800, box=True, checkpoint=False, k=40, graded=True)[0]
         on = _compile(800, box=True, checkpoint=True, k=40, graded=True)[0]
-        assert abs(off - on) <= .01 * on, (baseline, off, on)
+        assert abs(off - on) <= .01 * on, (off, on)
         # Boundary storage can outweigh a small box's window-tape saving.
         # This row pins flag independence, not an unconditional memory saving.
         sim, _, _, _ = _scene(graded=True)
