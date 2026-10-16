@@ -129,3 +129,18 @@ def test_equal_smallest_cell_keeps_the_unpaired_profile(monkeypatch):
     expected = edge_aware_profile(0., .03711581947841022, DX, **kwargs)
     for a, b in zip(actual, expected):
         assert np.asarray(a).tobytes() == np.asarray(b).tobytes()
+
+
+def test_paired_profile_with_a_smaller_cell_is_not_used(monkeypatch):
+    # Here the paired profile has one cell fewer per smallest cell but a
+    # smaller smallest cell (0.5207 vs 0.5267 of a 2.5 mm cell): the time
+    # step would shrink, so it is not used.
+    edges = [SheetEdge(.024281894731, 1), SheetEdge(.02762771539, 1),
+             SheetEdge(.030269626333, -1), SheetEdge(.038522909468, -1)]
+    kwargs = dict(sheet_edges=edges, faces=(.012444978249126602, .03274230881937341),
+                  edge_offset=.3)
+    actual = edge_aware_profile(0., .09001548760046064, .0025, **kwargs)
+    _disable_pairing(monkeypatch)
+    expected = edge_aware_profile(0., .09001548760046064, .0025, **kwargs)
+    for a, b in zip(actual, expected):
+        assert np.asarray(a).tobytes() == np.asarray(b).tobytes()
