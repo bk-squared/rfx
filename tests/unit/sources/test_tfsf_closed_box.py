@@ -405,7 +405,7 @@ def test_transform_guard_uses_older_public_jax_exports(monkeypatch, public_api):
     """0.6 exports the pair from core; the 0.4.20 floor exports a predicate."""
     import sys
     from types import ModuleType
-    from rfx.api._execute import _refuse_transformed_extended_tfsf
+    from rfx.runners._admission import _refuse_transformed_extended_tfsf
 
     # Keep the real installed trace semantics while presenting each older
     # public export layout. Actual 0.6 execution is a separate runtime gate.

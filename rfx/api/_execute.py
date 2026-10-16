@@ -32,6 +32,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
+from rfx.runners._admission import _refuse_transformed_extended_tfsf
 from rfx.runners._exchange_interval import validate_exchange_interval
 from rfx.sources.sources import GaussianPulse  # noqa: F401  (local import in moved bodies)
 
@@ -55,34 +56,6 @@ from rfx.api._spec import (
 # module; the ``global`` statement binds to this module's namespace.
 # ---------------------------------------------------------------------------
 _DISTRIBUTED_FIRST_CALL_WARNED: bool = False
-
-
-
-
-def _under_external_jax_transform() -> bool:
-    """Read the public trace-state API across the supported JAX versions."""
-    try:
-        from jax.extend.core import get_opaque_trace_state, take_current_trace
-    except ImportError:
-        try:  # JAX 0.6, including the Python 3.10 CI environment.
-            from jax.core import get_opaque_trace_state, take_current_trace
-        except ImportError:  # The declared JAX 0.4.20 floor.
-            from jax.core import trace_state_clean
-            return not trace_state_clean()
-    caller = get_opaque_trace_state()
-    with take_current_trace():
-        eager = get_opaque_trace_state()
-    return caller != eager
-
-
-def _refuse_transformed_extended_tfsf(entry, until_decay=None, decay_max_steps=None) -> None:
-    """Keep run()'s source fence before setup can hide caller tracing."""
-    from rfx.sources.tfsf_discrete_plane_wave import validate_run
-    validate_run(entry, until_decay, decay_max_steps, _under_external_jax_transform)
-
-
-
-
 
 
 from rfx.api._refplane_checks import _refplane_conductor_mask, _refplane_reject_msl_ladder_in_plane_zone
