@@ -253,8 +253,9 @@ weekly step seeds that file with `.test_durations` and the budget check prunes
 it to the entries the shard measured before the upload.
 
 1. Dispatch `.github/workflows/regen-durations.yml` and download the artifacts. Read each job's CPU from its
-   "Runner CPU" step and multiply that job's artifact values by its factor to the EPYC 7763 (table in the header;
-   a CPU model with no measured factor is an assumption, named in the header). Merge the scaled maps.
+   "Runner CPU" step and multiply each FAST job's artifact values by its factor to the EPYC 7763 (table in the
+   header; a CPU model with no measured factor is an assumption, named in the header); slow artifacts stay raw.
+   Merge the scaled maps. The log-gap check in step 2 compares a gap with the RAW artifact value of its own job.
 2. `python scripts/ci/merge_test_durations.py .test_durations <slow shards...> <fast shards...>`.
    Later inputs win: slow first, fast last — the required lane must be priced by its own runs.
    A shard cut before the session ends uploads nothing; price what it finished from its job log
