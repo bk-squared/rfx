@@ -20,11 +20,11 @@ from __future__ import annotations
 LOCK_PROVENANCE = {
     "fixture": "none",
     "generator": "hand-derived",
-    "commit": "e36fd8e",
-    "date": "2026-04-18",
-    "run_id": "unknown",
-    "host": "unknown",
-    "pinned_until": "2026-10-15",
+    "commit": "2202b0565",
+    "date": "2026-10-16",
+    "run_id": "local",
+    "host": "macOS jax 0.10.2 cpu",
+    "pinned_until": "2027-04-16",
 }
 
 import numpy as np
