@@ -849,6 +849,14 @@ def distributed_kernel_inputs(sim, root, grid, materials, cells, sheets, wires, 
     return root.pec_edges, record
 
 
+def stage_distributed_occupancy(override, grid, mesh):
+    """Cut a PEC occupancy override in the layout of the step ``grid`` recorded; None stays None."""
+    from rfx.stepping.slab import cut
+    if override is None:
+        return None
+    return cut(override, grid.layout, "pec_occupancy", mesh=mesh, uniform=grid.step_kind == 'wrapped')
+
+
 def stage_distributed_edges(edges, grid, mesh, multiprocess, *, inputs=None):
     """Stage final edge components; traced geometry remains single-process."""
     import jax
