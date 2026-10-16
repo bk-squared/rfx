@@ -254,15 +254,17 @@ def admit_setup(*, grid, tfsf, materials, waveguide_ports, ntff, updates,
         from rfx.sources.tfsf import tfsf_injection_planes
         require_box_encloses_injected_region(
             ntff, tfsf_injection_planes(cfg), shape=grid.shape)
-    if getattr(cfg, "closed_box", False) or not feature_owned or nonuniform:
+    if getattr(cfg, "closed_box", False) or not feature_owned:
         # Explicit low-level periodic flags are the caller's declaration,
         # not a feature rewrite (Addendum 5c(5)).
-        # Graded plane waves with a periodic axis are refused at admission.
         return
     check_arrays(cfg, grid, dict(materials=materials, **updates),
                  # The low-level RCS path does not install the slab wrap.
-                 # Its open transverse operator is unchanged in PR3a.
-                 active_axes=tuple(
+                 # Its open transverse operator is unchanged in PR3a. The
+                 # graded mesh keeps its transverse absorbers (a periodic
+                 # axis is refused at admission), so it judges the axes
+                 # admit_simulation judges.
+                 active_axes=None if nonuniform else tuple(
                      axis for axis, wraps in zip("xyz", periodic) if wraps),
                  records=grid_face_depths(grid, pec_faces=pec_faces, pmc_faces=pmc_faces),
-                 localized=localized)
+                 localized=localized, nonuniform=nonuniform)

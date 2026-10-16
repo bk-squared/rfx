@@ -91,10 +91,15 @@ def test_graded_design_box_vacuum_planes(crossing):
             sim.forward(n_steps=120, design_box=box, design_eps_override=eps)
         assert str(caught.value) == VACUUM_MESSAGE
     else:
-        result = sim.forward(n_steps=120, design_box=box, design_eps_override=eps)
-        values = np.asarray(result.time_series)
-        assert np.isfinite(values).all()
-        assert np.max(np.abs(values)) > 0
+        # The vacuum rule admits an interior box; the plane wave's invariance
+        # admission then refuses the finite box, as on the uniform mesh (#1794).
+        with pytest.raises(ValueError) as caught:
+            sim.forward(n_steps=120, design_box=box, design_eps_override=eps)
+        assert str(caught.value) == (
+            "TF/SF y_lo, y_hi: design_box prevents an invariant periodic "
+            "replacement; on the graded mesh a finite scatterer or an array "
+            "under a plane wave is not available: run it on the uniform mesh "
+            "(closed_box=True, or y='periodic')")
 
 
 def test_traced_x_cell_sizes_refused():

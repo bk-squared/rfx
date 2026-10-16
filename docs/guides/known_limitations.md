@@ -356,9 +356,11 @@ and period do not change. Traced material overrides retain the legacy operator
 with a warning when invariance cannot be judged. At oblique incidence the tilt
 axis keeps its operator and is reported as not judged for invariance.
 The graded mesh keeps its transverse absorbers under a plane wave (no wrap) but
-applies the same rule: a laterally invariant structure runs, and the probe record equals the uniform mesh's within
-2×10⁻⁶ of its peak (`tests/contracts/test_plane_wave_admission_both_meshes.py`). A finite scatterer or an array is
-refused there with the uniform mesh named as the remedy, since a closed box and a plane wave with periodic axes are
+applies the same rule: a laterally invariant structure runs, and on a graded profile with the uniform mesh's cells
+its probe record equals the uniform mesh's within 2×10⁻⁶ of its peak
+(`tests/contracts/test_plane_wave_admission_both_meshes.py`). Traced overrides keep the existing graded operator
+with the same warning. A finite scatterer or an array, also one given to `forward()` as an override or a design
+box, is refused there with the uniform mesh named as the remedy, since a closed box and a plane wave with periodic axes are
 refused on the graded mesh (the experimental operator remains a PR3b item).
 → [#1221](https://github.com/bk-squared/rfx/issues/1221)
 

@@ -7,18 +7,20 @@ import pytest
 from rfx import Box, Simulation
 
 
-FIRST_SENTENCE = (
-    "TF/SF y_lo, y_hi: update.materials.eps_r prevents an invariant periodic replacement"
-)
-UNIFORM_MESSAGE = (
-    FIRST_SENTENCE + "; declare boundary with y='periodic' to solve an array, "
+UNIFORM_REMEDY = (
+    "; declare boundary with y='periodic' to solve an array, "
     "or use closed_box=True for a finite scatterer."
 )
-GRADED_MESSAGE = (
-    FIRST_SENTENCE + "; on the graded mesh a finite scatterer or an array under a "
+GRADED_REMEDY = (
+    "; on the graded mesh a finite scatterer or an array under a "
     "plane wave is not available: run it on the uniform mesh (closed_box=True, "
     "or y='periodic')"
 )
+
+
+def refusal(feature, graded):
+    return (f"TF/SF y_lo, y_hi: {feature} prevents an invariant periodic replacement"
+            + (GRADED_REMEDY if graded else UNIFORM_REMEDY))
 
 
 def scene(graded, *, finite):
@@ -45,8 +47,35 @@ def test_finite_cube_refused(graded, entry):
     """
     with pytest.raises(ValueError) as caught:
         getattr(scene(graded, finite=True), entry)(n_steps=20, skip_preflight=True)
-    assert str(caught.value) == (GRADED_MESSAGE if graded else UNIFORM_MESSAGE)
+    assert str(caught.value) == refusal("update.materials.eps_r", graded)
 
+
+
+@pytest.mark.parametrize("override", ["pec_mask", "pec_occupancy", "design_box"])
+@pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
+def test_finite_forward_override_refused(graded, override):
+    """forward() inputs that place a finite block on the slab break the same invariance.
+
+    The block (x 9-12 mm, y and z 5-9 mm) is away from the injection planes.
+    """
+    import jax.numpy as jnp
+    sim = scene(graded, finite=False)
+    grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
+    block = (slice(15, 18), slice(11, 15), slice(11, 15))
+    if override == "design_box":
+        corners = ((.009, .005, .005), (.012, .009, .009))
+        bounds = sim._design_box_bounds_from_corners(grid, corners)
+        shape = tuple(bounds[2 * d + 1] - bounds[2 * d] for d in range(3))
+        options = dict(design_box=corners, design_eps_override=jnp.full(shape, 4.))
+        feature = "design_box"
+    else:
+        array = np.zeros(grid.shape, bool if override == "pec_mask" else np.float32)
+        array[block] = 1
+        options = {f"{override}_override": jnp.asarray(array)}
+        feature = f"update.{override}"
+    with pytest.raises(ValueError) as caught:
+        sim.forward(n_steps=5, skip_preflight=True, **options)
+    assert str(caught.value) == refusal(feature, graded)
 
 @pytest.mark.parametrize("entry", ["run", "forward"])
 def test_full_span_slab_equal_fields(entry):
