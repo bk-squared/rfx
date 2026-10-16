@@ -188,8 +188,10 @@ When the train cannot land a pull request, it adds `merge-train-blocked` and com
 with the reason: most often a rebase conflict with `main`, otherwise the failing
 required check. Rebase onto `main` and resolve the conflict, then push with
 `--force-with-lease` (the train did not rebase this time, so your rewrite is the one to
-keep), or fix the check and push; then remove `merge-train-blocked` to put the same pull request back in line;
-`merge-train` stays.
+keep), or fix the check and push. Never merge `main` into the branch: the train's
+rebase fails on the merge commit. Then ask the maintainer who applied `merge-train`
+to lift `merge-train-blocked`; they re-read the change before it goes back in line.
+Do not remove the label yourself. `merge-train` stays.
 
 The train can also land several pull requests together through a batch pull request
 from a `merge-train/batch-*` branch, labelled `merge-train-batch`. Its body lists each
