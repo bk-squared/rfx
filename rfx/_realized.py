@@ -120,6 +120,10 @@ def electric(materials, eps, sigma, site, *, periodic=(False,) * 3,
     # The NU run entry shares the forward runner's traced material site.
     if site == "distributed.E" and ACTIVE.lane == "run_distributed_nu":
         site = "distributed_nu.E"
+    # The wrapped multi-device step consumes the one-device producer per slab.
+    if (site == "yee.E" and OWNED is not None
+            and ACTIVE.lane in ("run_distributed_nu", "fwd_distributed_nu")):
+        site = "distributed_nu.E"
     eps = ACTIVE.apply(site, "eps_e", eps)
     sigma = ACTIVE.apply(site, "sigma_e", sigma)
     # Keep the legacy cell-view payload; eps/sigma above are the consumed arrays.
