@@ -28,10 +28,7 @@ once and names the new one.
 | 1.x | 2.0 |
 |---|---|
 | `compute_s_matrix(lane=...)`, `s_matrix_lane(lane=...)` | `method=...`, with the same values. Passing both raises `TypeError`. |
-
-<p data-rfx="note">Pending for 2.0: the resonance functions exported as
-`harminv` are being renamed for the matrix pencil method they implement, with
-the old names kept as deprecated aliases (PR 1661).</p>
+| `harminv`, `harminv_from_probe`, `HarminvMode` | `matrix_pencil`, `matrix_pencil_from_probe`, `MatrixPencilMode`: named for the method they implement, with the same arguments and results. The old names are no longer brought in by `from rfx import *`, and `HarminvMode` is a plain alias that does not warn. |
 
 ## Removed
 
@@ -63,11 +60,8 @@ the component first: `coeffs.ca[0]` is the Ex coefficient, where 1.x read
 | Touchstone files written by rfx | rfx's own port order | the standard order, with a layout marker | Nothing: old rfx files are detected and read correctly. |
 | `maximize_directivity(log_ratio=False)` | ran | raises, because its gradient can have the wrong sign | Use the default `log_ratio=True`. |
 | ADI (`solver="adi"`) | CFL factor 5 | CFL factor 2, and the default run honours `num_periods` | With an explicit `n_steps`, multiply it by 2.5 for the same simulation time. ADI is experimental in 2.0. |
-
-<p data-rfx="note">Pending for 2.0: the default source pulse and the rule that
-stops a run when the fields have decayed (`until_decay`) are being made one
-implementation for every solver path. Their lines are added here when those
-changes land.</p>
+| `GaussianPulse`, the default waveform of `add_source` and of lumped, wire, microstrip and coaxial ports | started with a small jump and had a nonzero time integral, so a soft source left a static field behind | starts from zero and integrates to zero, with the same peak time | No switch. Before the pulse peak the drive differs by a small fraction of its amplitude; after it, a soft source's field no longer carries the static offset. Spectra change slightly at low frequency. `GaussianPulse(cutoff=...)` below 2.5 raises. Waveguide ports, plane waves and Floquet ports have their own pulses and did not change. |
+| `run(until_decay=...)` with absorbing boundaries and no `radiated_flux_box` | the source's own near field could set the energy reference, so a run could stop while a resonance still held energy | stops on the field energy left in the box after the source has ended, against its largest value after that, on uniform and graded meshes; `Result.diagnostics` gets one `until_decay.stop` entry saying what ended the run | No switch. Open resonant structures that stopped early now run until the threshold is met, and spectra and S-parameters read from them change. A closed PEC box on the uniform mesh still stops on a field sample, as before. |
 
 ## Inputs now refused
 
@@ -100,6 +94,8 @@ through. [Refusals](/rfx/check/refusals/) explains how they read, and the
 | `eps_override` together with subpixel smoothing in a waveguide calculator | Use declared materials with smoothing, or `eps_override` without it. |
 | A Drude or Lorentz material above its own time-step limit | The message gives the stable time step and its cost. |
 | A plain source in a lumped or wire S-parameter run, or a zero-ohm port | Remove the source, or `run(compute_s_params=False)` for the raw port waves. |
+| A pulse that samples to zero at every time step, which happens when `bandwidth` is given in Hz instead of as a fraction | Pass a fractional `bandwidth`, e.g. `GaussianPulse(f0=5e9, bandwidth=0.8)`. |
+| `until_decay` on the uniform mesh with a flux monitor whose DFT window is Hann or Tukey (the graded mesh already refused it), or `decay_energy_consecutive` below 2 with the energy stop | `dft_window="rect"` (the default) or a fixed `n_steps`; `decay_energy_consecutive` of 2 or more. |
 
 **Solver paths and precision**
 
@@ -184,10 +180,14 @@ size of each change and the test that pins it.
   ends, and ignores a static field the source leaves behind. A run that passed
   in 1.x can fail now, and the reverse. See
   [Simulation time](/rfx/evidence/simulation-time/).
-
-<p data-rfx="note">Pending for 2.0: a rectangular waveguide port reports S at
-the port's own position in both `run()` and `compute_waveguide_s_matrix()`,
-with `calibration_preset="measured"` for the earlier plane (PR 1669).</p>
+- **Rectangular waveguide ports** in `run()` report S at the port's own plane,
+  the plane `compute_waveguide_s_matrix()` uses; S11 used to sit `ref_offset`
+  cells inside the port. Magnitudes above cutoff do not change; the phases of
+  S11 and S21 do. `calibration_preset="measured"` gives the earlier `run()`
+  plane, now in both functions. On a graded mesh, `run()` now raises when the
+  default shift would cross a change of cell size: place the port and its
+  `ref_offset` cells inside one uniform zone, or pass
+  `calibration_preset="measured"`.
 
 ## See also
 

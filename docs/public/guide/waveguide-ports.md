@@ -102,7 +102,7 @@ cal = Simulation(freq_max=10e9, domain=(0.12, 0.04, 0.02),
                  boundary={"x": "cpml", "y": "pec", "z": "pec"},
                  cpml_layers=10, dx=0.002)
 
-# Report at the snapped measurement planes (the default).
+# Report at the snapped measurement planes (without a preset, S sits at the port plane).
 cal.add_waveguide_port(0.01, calibration_preset="measured", name="a")
 # S11 at the source plane, S21 from source to probe plane.
 cal.add_waveguide_port(0.01, calibration_preset="source_to_probe", name="b")
