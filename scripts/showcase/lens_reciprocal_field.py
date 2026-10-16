@@ -35,12 +35,8 @@ def physical_bounds(sim,grid):
 
 
 def incident_spectrum(sim,grid,n):
-    from rfx.sources.tfsf import init_tfsf,measure_normal_incident_spectrum
-    e=sim._tfsf
-    cfg,aux=init_tfsf(grid.nx,grid.dx,grid.dt,ny=grid.ny,nz=grid.nz,
-                      cpml_layers=grid.cpml_layers,tfsf_margin=e.margin,
-                      polarization=e.polarization,direction=e.direction,f0=e.f0,
-                      bandwidth=e.bandwidth,waveform=e.waveform,closed_box=True)
+    from rfx.sources.tfsf import tfsf_from_declaration,measure_normal_incident_spectrum
+    cfg,aux=tfsf_from_declaration(sim._tfsf,grid,sim._freq_max,line_steps=n)
     index=(cfg.x_lo+cfg.x_hi)//2
     spectrum=measure_normal_incident_spectrum(cfg,aux,n,np.array([1e10]),grid.dt,reference_index=index)
     return float(abs(np.asarray(spectrum)[0])),float(grid.node_of(0,index))
