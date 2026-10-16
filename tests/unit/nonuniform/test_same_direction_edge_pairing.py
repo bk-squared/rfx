@@ -104,3 +104,28 @@ def test_paired_build_failure_keeps_unpaired_profile(monkeypatch):
     actual = edge_aware_profile(0., .030, DX, sheet_edges=edges)
     for a, b in zip(actual, expected):
         assert np.asarray(a).tobytes() == np.asarray(b).tobytes()
+
+
+def test_paired_profile_not_used_when_it_adds_cells(monkeypatch):
+    # Pairing the two steps joins every strip into one chain sharing one
+    # edge cell: the smallest cell rises by under 1 % (0.0379 -> 0.0382 mm)
+    # but the axis gets 318 cells instead of 110, so the run would cost more.
+    edges = _edges((9.4, 1), (10.7, 1), (15.5, -1), (18.1, -1), (18.15, 1), (20.3, -1))
+    kwargs = dict(sheet_edges=edges, boundary_cell=DX)
+    actual = edge_aware_profile(0., .0257, DX, **kwargs)
+    _disable_pairing(monkeypatch)
+    expected = edge_aware_profile(0., .0257, DX, **kwargs)
+    for a, b in zip(actual, expected):
+        assert np.asarray(a).tobytes() == np.asarray(b).tobytes()
+
+
+def test_equal_smallest_cell_keeps_the_unpaired_profile(monkeypatch):
+    # Both profiles have 41 cells and the same smallest cell, but different
+    # nodes: a tie keeps the profile without pairing, bit for bit.
+    edges = _edges((11.680410395, 1), (15.250706531, 1), (19.287643817, -1), (23.738570959, -1))
+    kwargs = dict(sheet_edges=edges, faces=(.030272982073, .035701041445))
+    actual = edge_aware_profile(0., .03711581947841022, DX, **kwargs)
+    _disable_pairing(monkeypatch)
+    expected = edge_aware_profile(0., .03711581947841022, DX, **kwargs)
+    for a, b in zip(actual, expected):
+        assert np.asarray(a).tobytes() == np.asarray(b).tobytes()

@@ -323,7 +323,8 @@ def edge_aware_profile(
 
     Consecutive same-direction edges (two sheet ends facing the same way)
     are also paired, and that profile is used only when it raises the
-    smallest cell; otherwise the profile without them is kept.
+    smallest cell and lowers the cell count per smallest cell; otherwise
+    the profile without them is kept.
 
     Raises
     ------
@@ -456,7 +457,12 @@ def edge_aware_profile(
             paired = _select(same_direction=True)
         except (ValueError, RuntimeError):
             return old
-        if paired.cells.min() > old.cells.min() + 1e-9 * dx:
+        # Used only when the run gets cheaper: a larger smallest cell (a
+        # longer time step) and fewer cells per smallest cell. Pairing joins
+        # chains that share one edge cell, so it can also add many cells.
+        p_min, o_min = float(paired.cells.min()), float(old.cells.min())
+        if (p_min > o_min + 1e-9 * dx
+                and paired.cells.size / p_min < old.cells.size / o_min):
             return paired
     return old
 
