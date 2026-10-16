@@ -233,6 +233,6 @@ def _run_adi_from_materials(
 # rewrites exactly ``<mixin>.<name>`` -> ``Simulation.<name>`` at class
 # composition and skips a bare name, so without this line a TypeError would no
 # longer name ``Simulation._run_adi_from_materials()``.
-# ``tests/locks/test_execute_split_qualnames.py`` pins it.
+# ``tests/contracts/test_execute_split_qualnames.py`` pins it.
 # ---------------------------------------------------------------------------
 _run_adi_from_materials.__qualname__ = "_ExecuteMixin._run_adi_from_materials"

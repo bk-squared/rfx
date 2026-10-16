@@ -838,7 +838,7 @@ def _forward_from_materials(
 # ``Simulation.<name>`` on the wrapper at class composition and skips a bare
 # name. The wrapped function keeps ``_ExecuteMixin._forward_from_materials``,
 # which is what a TypeError for a bad keyword reports, as before the move.
-# ``tests/locks/test_execute_split_qualnames.py`` pins both.
+# ``tests/contracts/test_execute_split_qualnames.py`` pins both.
 # ---------------------------------------------------------------------------
 _forward_from_materials.__qualname__ = "_ExecuteMixin._forward_from_materials"
 _forward_from_materials.__wrapped__.__qualname__ = "_ExecuteMixin._forward_from_materials"
