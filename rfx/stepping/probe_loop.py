@@ -54,7 +54,7 @@ def make_probe_step(grid, materials, ports, driven, *, use_cpml,
 
     ctx = _StepContext(
         grid=grid, materials=materials, dt=grid.dt, dx=float(grid.cells('x')[0]),
-        periodic=curl_boundary.periodic, pec_axes="xyz", stencil_order=2,
+        periodic=(False, False, False), pec_axes="xyz", stencil_order=2,
         use_fast_he=False, use_upml=False, use_cpml=use_cpml, use_tfsf=False,
         use_debye=debye is not None, use_lorentz=lorentz is not None,
         use_ntff=False, use_dft_planes=False, use_flux_monitors=False,
