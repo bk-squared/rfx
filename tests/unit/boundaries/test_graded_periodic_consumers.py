@@ -193,3 +193,26 @@ def test_dc_film_crossing_the_seam_matches_uniform():
     for u, g in zip(uniform, graded):
         if u is not None:
             np.testing.assert_allclose(g, u, rtol=1e-6, atol=0)
+
+
+@pytest.mark.parametrize("film", ["box", "cylinder"])
+def test_dc_film_on_a_traced_periodic_mesh_refuses(film):
+    """A traced graded mesh has no seam-image sampler for a lossy film: refused, never folded without its image
+    (review A: a cylinder film on the seam kept a third of its conductance; a Box film crashed)."""
+    import jax
+    from rfx import Cylinder
+
+    shape = (Box((.002, .005, .004), (.006, .010, .004)) if film == "box" else
+             Cylinder(center=(.004, .010, .004), radius=.0015, height=1e-4, axis="z"))
+    dz = np.array([1e-3] * 3 + [.5e-3] * 4 + [1e-3] * 3, dtype=np.float32)
+
+    def fold(profile):
+        sim = Simulation(20e9, (.008, .010, float(np.sum(dz.astype(np.float64)))), dx=1e-3, cpml_layers=0,
+                         boundary=BoundarySpec(x="pec", y="periodic", z="pec"), snap="declared",
+                         dz_profile=profile)
+        sim.add_thin_conductor(shape, sigma_bulk=1e3, thickness=1e-4)
+        grid = sim._build_nonuniform_grid()
+        return sim._assemble_materials_nu(grid, pec_sheets=[], pec_wires=[])[0].sigma_film
+
+    with pytest.raises(NotImplementedError, match="lossy thin-conductor film on a traced graded mesh with periodic"):
+        jax.jit(fold)(jnp.asarray(dz))

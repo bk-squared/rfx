@@ -464,6 +464,10 @@ def fold_thin_conductor(grid, conductor, materials, pec_mask=None, *,
             drawn = spec.drawn
         check_sheet_occupancy(mask, normal, lane=lane)
     else:
+        if getattr(grid, 'periodic_axes', '') and any(is_tracer(c) for c in coords[:3]):
+            raise NotImplementedError(
+                f"a lossy thin-conductor film on a traced graded mesh with periodic axes {grid.periodic_axes!r} "
+                "is not implemented (its footprint would get no seam image); use a concrete mesh profile")
         admit_dc_plane(conductor, grid)
         if not isinstance(conductor.shape, Box):
             film = admit_dc_film(conductor.shape, grid, snap=snap)
