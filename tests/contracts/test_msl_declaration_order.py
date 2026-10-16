@@ -72,6 +72,20 @@ def test_t1_full_declaration_sets_automatic_probe_planes():
     with pytest.raises(ValueError, match="MSL ports use compute_msl_s_matrix"):
         direct._validate_forward_sparameter_request()
     assert _automatic_rows(direct) == first_rows
+    # preflight() admits once before any check reads the automatic counts.
+    checked = _repro("ports-first")
+    real_check = Simulation._check_msl_port_geometry
+    seen = []
+
+    def spy(self, *args, **kwargs):
+        seen.append(_automatic_rows(self))
+        return real_check(self, *args, **kwargs)
+
+    with pytest.MonkeyPatch.context() as mp, warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        mp.setattr(Simulation, "_check_msl_port_geometry", spy)
+        checked.preflight()
+    assert seen == [first_rows]
 
 
 def _box_board(*, sideways=0.0, normal=0.0, second_trace=False):
