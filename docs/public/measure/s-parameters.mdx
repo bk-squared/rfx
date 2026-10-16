@@ -149,7 +149,8 @@ cav.add_port((0.0075, 0.006, 0.0), "ez", impedance=50.0, extent=h)  # floor to c
 cav.add_probe((0.020, 0.016, 0.006), "ez")
 cav_run = cav.run(n_steps=1500, compute_s_params=True)
 
-modes = cav_run.find_resonances(freq_range=(6e9, 10e9))
+port_pulse = GaussianPulse(f0=5e9, bandwidth=0.8)   # the port's default: f0 = freq_max/2
+modes = cav_run.find_resonances(freq_range=(6e9, 10e9), waveform=port_pulse)
 if not modes:
     raise RuntimeError("no mode found: lengthen the run or widen freq_range")
 for m in modes[:3]:
