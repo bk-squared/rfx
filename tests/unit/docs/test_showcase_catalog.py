@@ -25,7 +25,7 @@ import pytest
 REPO = Path(__file__).resolve().parents[3]
 PUBLIC = REPO / "docs" / "public"
 CATALOG = PUBLIC / "showcase" / "showcase.json"
-SHARE = "https://remilab.cnu.ac.kr/share/7c02ad43c580/"
+SHARE = "https://remilab.cnu.ac.kr/share/f3a80981ec4b/"
 SUPERSCRIPT = str.maketrans("⁻⁰¹²³⁴⁵⁶⁷⁸⁹", "-0123456789")
 #: A printed number: 20,592 / 0.097 / 2×10⁻⁵.  Not a digit inside a word
 #: (RTX A6000, float64, TM010) or a date.
@@ -38,6 +38,7 @@ PAGES = {
     "/rfx/showcase/sensitivity-map/": "showcase/sensitivity-map.mdx",
     "/rfx/showcase/gradient-cost/": "showcase/gradient-cost.mdx",
     "/rfx/showcase/descent-to-optimum/": "showcase/descent-to-optimum.mdx",
+    "/rfx/showcase/grin-lens/": "showcase/grin-lens.mdx",
     "/rfx/showcase/forward-checks/": "showcase/forward-checks.mdx",
 }
 
@@ -52,12 +53,18 @@ def headlines() -> list[dict]:
 
 def printed_bounds(text: str) -> tuple[Decimal, Decimal]:
     """The interval of values that print as ``text``: 1.4 -> [1.35, 1.45]."""
+    text = text.replace("−", "-")
+    if " of " in text:
+        text = text.split(" of ")[0]
+    sign = -1 if text.startswith("-") else 1
+    text = text.lstrip("+-")
     match = NUMBER.fullmatch(text)
     if match is None:
         raise ValueError(f"not a printed number: {text!r}")
     mantissa = Decimal(match.group(1).replace(",", ""))
     scale = Decimal(10) ** int(match.group(2).translate(SUPERSCRIPT)) if match.group(2) else Decimal(1)
     half = Decimal(5) * Decimal(10) ** (mantissa.as_tuple().exponent - 1)
+    mantissa *= sign
     return (mantissa - half) * scale, (mantissa + half) * scale
 
 
@@ -101,6 +108,8 @@ def test_the_catalog_has_one_case_per_showcase_page():
 
 
 @pytest.mark.parametrize("text,value,ok", [
+    ("−16.6", -16.64912986755371, True), ("+1.8", 1.775552749633789, True),
+    ("+11", 11, True), ("3 of 3", 3, True),
     ("1.4", 1.4499, True), ("1.4", 1.451, False), ("1.4", 1.349, False),
     ("20,592", 20592.4, True), ("20,592", 20591.4, False),
     ("2×10⁻⁵", 1.9536e-05, True), ("2×10⁻⁵", 2.6e-05, False),
@@ -152,7 +161,16 @@ def page_numbers(route: str) -> list[str]:
     # The cost table's rows (a Markdown table: header and delimiter rows skipped).
     rows = [line for line in text.splitlines() if line.startswith("|")]
     chunks += [cell for row in rows[2:] for cell in row.split("|")]
-    return [m.group(0) for chunk in chunks for m in NUMBER.finditer(chunk)]
+    if route == "/rfx/showcase/grin-lens/":
+        values = [re.sub(r" (?:dBi|dB)$", "", v) for v in re.findall(r"<strong>(.*?)</strong>", text)]
+        return values + re.findall(r"feed alone ([0-9.]+) dBi", text)
+    values = []
+    for chunk in chunks:
+        counts = re.findall(r"\b\d+ of \d+\b", chunk)
+        values.extend(counts)
+        chunk = re.sub(r"\b\d+ of \d+\b", "", chunk)
+        values.extend(m.group(0) for m in NUMBER.finditer(chunk))
+    return values
 
 
 @pytest.mark.docs_consistency

@@ -44,7 +44,7 @@ import yaml
 
 REPO = Path(__file__).resolve().parents[2]
 CATALOG = REPO / "docs/public/showcase/showcase.json"
-SHARE = "https://remilab.cnu.ac.kr/share/7c02ad43c580/"
+SHARE = "https://remilab.cnu.ac.kr/share/f3a80981ec4b/"
 SCHEMA = "rfx-showcase-catalog/1"
 SUPERSCRIPT = str.maketrans("-0123456789", "⁻⁰¹²³⁴⁵⁶⁷⁸⁹")
 
@@ -59,6 +59,9 @@ CASES = {
     "descent-to-optimum": ("docs/public/showcase/descent-to-optimum.mdx", ("ar-coating",)),
     "forward-checks": ("docs/public/showcase/forward-checks.mdx", ("forward-patch", "forward-notch")),
 }
+CASES.update({
+    "grin-lens": ("docs/public/showcase/grin-lens.mdx", ("grin-lens", "grin-lens-fan")),
+})
 BOXES = ("patch", "design", "layer")
 
 
@@ -221,6 +224,24 @@ def headlines(share: Share) -> dict[str, list[dict]]:
     # they are withdrawn until the cases are re-measured under the current one (#1471).
     # Restore with: out["forward-checks"] = forward_headlines(share, h)
     out["forward-checks"] = []
+    lens = share.json("grin-lens", "mesh_trend.json")
+    designed = lens["reported"]["boresight_dbi"][-1]
+    feed = lens["no_lens"]["boresight_dbi"][-1]
+    grin = lens["grin"]["boresight_dbi"][-1]
+    route = "/rfx/showcase/grin-lens/"
+    src = "grin-lens/mesh_trend.json "
+    out["grin-lens"] = [
+        h("reported boresight directivity at 10 GHz, 0.75 mm mesh", designed[1], "dBi",
+          fixed(1), (route, INDEX), src + "reported.boresight_dbi[-1][1]"),
+        h("feed boresight directivity at 10 GHz, 0.75 mm mesh", feed[1], "dBi",
+          fixed(1), (route,), src + "no_lens.boresight_dbi[-1][1]"),
+        h("minimum designed minus feed directivity, floored", math.floor(min(
+            d - f for d, f in zip(designed, feed))), "dB", lambda v: f"+{v:d}", (route,),
+          src + "floor(min(reported.boresight_dbi[-1] - no_lens.boresight_dbi[-1]))"),
+        h("designed minus textbook GRIN directivity at 10 GHz", designed[1] - grin[1],
+          "dB", lambda v: f"+{v:.1f}", (route,),
+          src + "reported.boresight_dbi[-1][1] - grin.boresight_dbi[-1][1]"),
+    ]
     return out
 
 

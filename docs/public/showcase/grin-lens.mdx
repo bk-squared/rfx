@@ -1,0 +1,122 @@
+---
+title: "A 3-D-printable lens, designed by gradient"
+description: "Gradient descent through the FDTD solve and the far-field transform grows a graded-index flat lens of printable permittivity (1 ≤ εr ≤ 2.7) that raises a small feed's boresight directivity from 7.5 to 19.0 dBi at 10 GHz, 1.8 dB above the textbook GRIN lens of the same size."
+sidebar:
+  order: 7
+---
+
+A dipole above a 30 mm ground plate has a broad beam: 7.5 dBi toward boresight at
+10 GHz. A flat lens in front of it narrows the beam when its refractive index is
+highest on the axis and falls toward the rim, so that the central rays are delayed
+more than the edge rays and the phase front leaving the lens is flat. Here the lens
+is 90 × 90 × 30 mm, 45 mm above the dipole, and its permittivity is limited to what
+PLA at variable infill can print, 1 ≤ εr ≤ 2.7, in 3 mm pixels: 9,000 cells, 2,250 free
+variables after the feed's two mirror symmetries. Adam raises the boresight directivity
+averaged over 9.5, 10 and 10.5 GHz, with the gradient taken through the FDTD solve
+and the near-to-far-field transform.
+
+<figure data-rfx="media">
+  <video controls playsInline preload="metadata" poster="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens_film_poster.png" aria-label="A narrated film of the design: how rfx computes a gradient through the simulation, the lens cells changing over 150 iterations with their gradient colour and the radiation lobe, and the same block optimised again for a fan beam">
+    <source src="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens_film.mp4" type="video/mp4" />
+    <a href="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens_film.mp4">Download the film (MP4, 1920×1080, 99 s)</a>.
+  </video>
+  <figcaption>The design in 99 seconds, with narration. Music: Haydn, String Quartet Op. 64 No. 5 “The Lark”, II. Adagio cantabile, Musopen String Quartet (public domain).</figcaption>
+</figure>
+
+<div data-rfx="tiles">
+  <div><strong>19.0 dBi</strong> <span>boresight directivity at 10 GHz (feed alone 7.5 dBi)</span></div>
+  <div><strong>+11 dB</strong> <span>over the bare feed, 9.5–10.5 GHz</span></div>
+  <div><strong>+1.8 dB</strong> <span>over the textbook GRIN lens of the same size and material, 10 GHz</span></div>
+</div>
+
+## What happened
+
+At the start, every pixel has εr = 1.85; this uniform block gives 12.2 dBi at
+10 GHz on the 1.0 mm mesh the optimiser runs on. The gradient already says where to
+change: raising the permittivity near the axis raises boresight directivity, and
+raising it near the rim lowers it. The descent grows that profile into a
+graded-index lens, εr 2.6 on the axis falling to about 1 at the corners, with a
+ring structure in the layer nearest the feed.
+
+<figure data-rfx="media">
+  <img src="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens_start.png" loading="lazy" alt="The uniform block cut open above the dipole at the start, 12.2 dBi: cells coloured by the gradient, red where more permittivity would raise boresight directivity (near the axis) and blue where it would lower it (toward the rim)" />
+</figure>
+
+Solved again without the optimiser on 1.5, 1.0 and 0.75 mm meshes, the lens gives
+18.5 / 19.0 / 18.8 dBi at 9.5 / 10 / 10.5 GHz on the finest mesh. The feed alone
+gives 7.5 / 7.5 / 7.4 dBi. The textbook flat GRIN lens of the same size and
+permittivity range (path-length equalization from the feed point) gives
+16.4 / 17.2 / 17.0 dBi, and the best uniform slab 16.1 / 15.0 / 13.7 dBi. The
+uniform-aperture bound 4πA/λ² is 20.1 / 20.5 / 21.0 dBi.
+
+<figure data-rfx="media">
+  <img src="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/lens_cuts.png" loading="lazy" alt="E-plane and H-plane directivity at 10 GHz of the feed alone, the textbook GRIN lens, a uniform slab and the designed lens, with the aperture bound" />
+</figure>
+
+## How it was checked
+
+The checks and their thresholds were fixed in a
+[pre-declaration](https://github.com/bk-squared/rfx/blob/main/docs/design_notes/20261004_showcase_lens_filter_predeclaration.md)
+before any run.
+
+- **Gradient against central differences** at the start: 6.5×10⁻⁴ and 4.9×10⁻³ on
+  the two judged pixels.
+- **Gradient against a 1.5× longer simulation time**: 3.3×10⁻⁵ at the start and
+  1.5×10⁻⁴ at the final design.
+- **End of the simulation**: the response still arriving after the simulation ends
+  would change every frequency value read by less than 1 % in amplitude (−40 dB),
+  on every mesh. rfx calls this check settling; CST's time-domain solver instead
+  stops on the decay of the total field energy.
+- **Three meshes**: the designed lens moves 0.07–0.13 dB from 1.5 to 1.0 mm and
+  0.03–0.05 dB from 1.0 to 0.75 mm, falling monotonically. Part of that trend is the
+  ground plate's solved size converging to its drawn 30 mm.
+
+<figure data-rfx="media">
+  <img src="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/lens_mesh.png" loading="lazy" alt="Boresight directivity of each design on the 1.5, 1.0 and 0.75 mm meshes" />
+</figure>
+
+## A second goal: a fan beam
+
+The same block, feed and permittivity range can serve another pattern. The second
+design asks for a fan beam, wide in the plane across the dipole and narrow in the
+other, the kind of coverage an automotive radar uses for its detection region. The
+objective is the ripple of directivity over a ±30° strip along the wide plane (within
+5° of it) minus its lowest value there, averaged over the three frequencies; 300 iterations start from the same
+uniform block.
+
+<figure data-rfx="media">
+  <img src="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens_fan.png" loading="lazy" alt="The block after the fan-beam design, with its radiation lobe wide in one plane: the lowest directivity over the ±30° strip along that plane is 10.6 dBi at 10 GHz" />
+</figure>
+
+Solved again on the 1.5, 1.0 and 0.75 mm meshes, the directivity over that strip
+varies by 0.98 / 0.66 / 0.64 dB at 9.5 / 10 / 10.5 GHz on the finest mesh, and
+less as the mesh is refined (1.14, 1.02 and 0.98 dB at 9.5 GHz). On the finest mesh its
+lowest value is 10.0 / 10.6 / 10.7 dBi, and the half-power beamwidth in the narrow
+plane is 26.9° / 26.1° / 24.8°. The targets declared before the run were 2 dB ripple, 11.0 dBi
+and 23°: the ripple target is met, the level is 0.3–0.95 dB short and the narrow
+plane 1.8–3.9° wider than asked. The same gradient, simulation-time and mesh checks
+as for the lens passed.
+
+<p data-rfx="note">Computed with rfx main 4705f69e (2026-10-04); the numbers will be recomputed after rfx 2.0. The feed is a soft source, so these are directivities, not realized gains; the lens is a lossless dielectric. The fan-beam design was computed with rfx
+main 9ed83eb8 (2026-10-05). The film is rendered with Blender
+(Cycles) from the stored iterates; every number in it comes from the records below.</p>
+
+## Downloads
+
+<ul data-rfx="downloads">
+  <li><a href="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens_film.mp4">grin_lens_film.mp4</a></li>
+  <li><a href="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/result.json">result.json</a></li>
+  <li><a href="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/iterations.npz">iterations.npz</a></li>
+  <li><a href="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/mesh_trend.json">mesh_trend.json</a></li>
+  <li><a href="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens-fan/result.json">fan beam: result.json</a></li>
+  <li><a href="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens-fan/mesh_trend.json">fan beam: mesh_trend.json</a></li>
+  <li><a href="https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens-fan/iterations.npz">fan beam: iterations.npz</a></li>
+</ul>
+
+## Run it
+
+```bash
+python scripts/showcase/design_lens.py --stage describe --out out/lens   # builds the three meshes, no solve
+```
+
+The full stages (trial, main, resolve) run on a GPU: `scripts/vessl_showcase_lens.yaml`.

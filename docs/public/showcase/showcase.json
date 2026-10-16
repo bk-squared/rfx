@@ -2,17 +2,16 @@
   "schema": "rfx-showcase-catalog/1",
   "generator": "scripts/showcase/build_catalog.py",
   "share": {
-    "base_url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/",
-    "manifest_url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/manifest.json",
-    "manifest_sha256": "34b284ec637a99f1a2c4350c4b51b223db426b0595e5a1eceb912070c0c46661",
-    "created": "2026-09-28",
+    "base_url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/",
+    "manifest_url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/manifest.json",
+    "manifest_sha256": "49e7550bdf951c7cde5d38f2985979b851d73e40517699cf75e9a812856477fe",
+    "created": "2026-10-16",
     "cite": "B. Kim, \"rfx: An End-to-End Differentiable 3-D FDTD Simulator for RF and Microwave Engineering,\" IEEE Trans. Microw. Theory Techn., 2026, doi:10.1109/TMTT.2026.3729863",
     "supersedes": {
-      "batch": "16243f5edb1d",
-      "replaced": ["patch-sensitivity/patch_sensitivity.mp4"],
-      "added": ["patch-sensitivity/patch_sensitivity_poster.png"],
-      "note": "the 720x720 loop re-rendered from the same record so its y label is inside the frame, and its final frame as a poster; every other file is byte-identical to 16243f5edb1d",
-      "renderer": "scripts/showcase/render.py at f1f7487a6840caf24d6854f14469c053939b37a3 (bk-squared/rfx#1348)"
+      "batch": "7c02ad43c580",
+      "added": ["grin-lens/eligibility.json", "grin-lens/fd_float32.json", "grin-lens/grin_lens_fan.png", "grin-lens/grin_lens_film.mp4", "grin-lens/grin_lens_film_poster.png", "grin-lens/grin_lens_start.png", "grin-lens/iterations.npz", "grin-lens/lens_cuts.png", "grin-lens/lens_iterations.png", "grin-lens/lens_mesh.png", "grin-lens/lens_slices.png", "grin-lens/mesh_trend.json", "grin-lens/result.json", "grin-lens/rlw_reported.json", "grin-lens/rlw_start.json", "grin-lens-fan/eligibility.json", "grin-lens-fan/fd_float32.json", "grin-lens-fan/fd_float64.json", "grin-lens-fan/iterations.npz", "grin-lens-fan/mesh_trend.json", "grin-lens-fan/result.json", "grin-lens-fan/rlw_reported.json", "grin-lens-fan/rlw_start.json"],
+      "replaced": [],
+      "note": "every file of 7c02ad43c580 byte-identical; one new case (issue 1359): the printable lens with its narrated film and three of its frames (grin-lens/), and the fan-beam design on the same block (grin-lens-fan/, computed on a later rfx main)"
     }
   },
   "cases": [
@@ -26,25 +25,25 @@
       "sources": [
         {
           "folder": "patch-sensitivity",
-          "base_url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/",
+          "base_url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/patch-sensitivity/",
           "rfx_commit": "655b1fc6c1989fed88fe80ffbeb19ffa0bcf1277",
           "question": "Which substrate cells of a probe-fed RT/Duroid 5880 patch move |S11(f_t)|^2 at f_t = 1.01 f_r, from one reverse-mode pass, checked against central finite differences on pre-declared cell blocks; and what the gradient costs in time and device memory.",
-          "result_json": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/result.json",
+          "result_json": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/patch-sensitivity/result.json",
           "files": [
-            {"name": "baseline_h4.s1p", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/baseline_h4.s1p", "bytes": 43984, "sha256": "ee85162836f34614034218ee037578f51c51981d34d91554f109e0502cc08745"},
-            {"name": "ez2_mid.npz", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/ez2_mid.npz", "bytes": 458540, "sha256": "cf9475fe03bb87f97e50995f28d6e8117b41b7633666bf188324d4f3dcb66472"},
-            {"name": "fd_float64.json", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/fd_float64.json", "bytes": 8133, "sha256": "230fa5961fc76c06073558eca584eec1980e6f48a7d9b28f798b3943f5526da1"},
-            {"name": "flank.json", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/flank.json", "bytes": 868, "sha256": "633464af841b4131c2834ccd5d0b9e5400e2733ea2882d4b8a005fb22b4f7523"},
-            {"name": "gradient_cost_site.png", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/gradient_cost_site.png", "bytes": 172504, "sha256": "a2cdde7cd1c9fb3f1b7cc6747e665b44a96d97f905c436b1aea8e8b4cb3cc882"},
-            {"name": "gradient_cost_social.png", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/gradient_cost_social.png", "bytes": 123623, "sha256": "824a73148fc99da57d1c9f0cf83c934c87f12b7bf4e5ffa155d96764d4889913"},
-            {"name": "gradient_full.npz", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/gradient_full.npz", "bytes": 168214, "sha256": "de872252446273d532a8630da84ee116eecf67503b49c0a112c186b3e446e967"},
-            {"name": "patch_sensitivity.mp4", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/patch_sensitivity.mp4", "bytes": 111512, "sha256": "8235d1876a28125bdf701fb9ab542f4b48375e4356a44599797ff13b204899e2"},
-            {"name": "patch_sensitivity_poster.png", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/patch_sensitivity_poster.png", "bytes": 51342, "sha256": "c119fc75820d04e0063ea0d488521e9aa21f124e160f229294b28cd9855c3f7b"},
-            {"name": "patch_sensitivity_site.png", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/patch_sensitivity_site.png", "bytes": 180360, "sha256": "2ad86efe14ca0bd1e69206b1da3eb8c9652b03c69f306b915c083549c15f5bed"},
-            {"name": "patch_sensitivity_social.mp4", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/patch_sensitivity_social.mp4", "bytes": 256551, "sha256": "bf6859117a8370358292f17c3f750c9c8989fe01c6558c82ba2f1d9e6f8c460f"},
-            {"name": "patch_sensitivity_social.png", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/patch_sensitivity_social.png", "bytes": 115479, "sha256": "b3ebfe2f2d4afcc97bbfaaddfe3ed3113b420dc2bf0cba9bf8011927fdcdddd2"},
-            {"name": "record_length_witness.json", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/record_length_witness.json", "bytes": 2622, "sha256": "d8404d850dcee0ae360fb19a2632c2ca901a01dd610dc352c4567d9f5441c417"},
-            {"name": "result.json", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/result.json", "bytes": 23694, "sha256": "5481f97990977d896f26ece86b8f12e05b315005267db009a83020ec52d79285"}
+            {"name": "baseline_h4.s1p", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/patch-sensitivity/baseline_h4.s1p", "bytes": 43984, "sha256": "ee85162836f34614034218ee037578f51c51981d34d91554f109e0502cc08745"},
+            {"name": "ez2_mid.npz", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/patch-sensitivity/ez2_mid.npz", "bytes": 458540, "sha256": "cf9475fe03bb87f97e50995f28d6e8117b41b7633666bf188324d4f3dcb66472"},
+            {"name": "fd_float64.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/patch-sensitivity/fd_float64.json", "bytes": 8133, "sha256": "230fa5961fc76c06073558eca584eec1980e6f48a7d9b28f798b3943f5526da1"},
+            {"name": "flank.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/patch-sensitivity/flank.json", "bytes": 868, "sha256": "633464af841b4131c2834ccd5d0b9e5400e2733ea2882d4b8a005fb22b4f7523"},
+            {"name": "gradient_cost_site.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/patch-sensitivity/gradient_cost_site.png", "bytes": 172504, "sha256": "a2cdde7cd1c9fb3f1b7cc6747e665b44a96d97f905c436b1aea8e8b4cb3cc882"},
+            {"name": "gradient_cost_social.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/patch-sensitivity/gradient_cost_social.png", "bytes": 123623, "sha256": "824a73148fc99da57d1c9f0cf83c934c87f12b7bf4e5ffa155d96764d4889913"},
+            {"name": "gradient_full.npz", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/patch-sensitivity/gradient_full.npz", "bytes": 168214, "sha256": "de872252446273d532a8630da84ee116eecf67503b49c0a112c186b3e446e967"},
+            {"name": "patch_sensitivity.mp4", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/patch-sensitivity/patch_sensitivity.mp4", "bytes": 111512, "sha256": "8235d1876a28125bdf701fb9ab542f4b48375e4356a44599797ff13b204899e2"},
+            {"name": "patch_sensitivity_poster.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/patch-sensitivity/patch_sensitivity_poster.png", "bytes": 51342, "sha256": "c119fc75820d04e0063ea0d488521e9aa21f124e160f229294b28cd9855c3f7b"},
+            {"name": "patch_sensitivity_site.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/patch-sensitivity/patch_sensitivity_site.png", "bytes": 180360, "sha256": "2ad86efe14ca0bd1e69206b1da3eb8c9652b03c69f306b915c083549c15f5bed"},
+            {"name": "patch_sensitivity_social.mp4", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/patch-sensitivity/patch_sensitivity_social.mp4", "bytes": 256551, "sha256": "bf6859117a8370358292f17c3f750c9c8989fe01c6558c82ba2f1d9e6f8c460f"},
+            {"name": "patch_sensitivity_social.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/patch-sensitivity/patch_sensitivity_social.png", "bytes": 115479, "sha256": "b3ebfe2f2d4afcc97bbfaaddfe3ed3113b420dc2bf0cba9bf8011927fdcdddd2"},
+            {"name": "record_length_witness.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/patch-sensitivity/record_length_witness.json", "bytes": 2622, "sha256": "d8404d850dcee0ae360fb19a2632c2ca901a01dd610dc352c4567d9f5441c417"},
+            {"name": "result.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/patch-sensitivity/result.json", "bytes": 23694, "sha256": "5481f97990977d896f26ece86b8f12e05b315005267db009a83020ec52d79285"}
           ]
         }
       ],
@@ -65,25 +64,25 @@
       "sources": [
         {
           "folder": "patch-sensitivity",
-          "base_url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/",
+          "base_url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/patch-sensitivity/",
           "rfx_commit": "655b1fc6c1989fed88fe80ffbeb19ffa0bcf1277",
           "question": "Which substrate cells of a probe-fed RT/Duroid 5880 patch move |S11(f_t)|^2 at f_t = 1.01 f_r, from one reverse-mode pass, checked against central finite differences on pre-declared cell blocks; and what the gradient costs in time and device memory.",
-          "result_json": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/result.json",
+          "result_json": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/patch-sensitivity/result.json",
           "files": [
-            {"name": "baseline_h4.s1p", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/baseline_h4.s1p", "bytes": 43984, "sha256": "ee85162836f34614034218ee037578f51c51981d34d91554f109e0502cc08745"},
-            {"name": "ez2_mid.npz", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/ez2_mid.npz", "bytes": 458540, "sha256": "cf9475fe03bb87f97e50995f28d6e8117b41b7633666bf188324d4f3dcb66472"},
-            {"name": "fd_float64.json", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/fd_float64.json", "bytes": 8133, "sha256": "230fa5961fc76c06073558eca584eec1980e6f48a7d9b28f798b3943f5526da1"},
-            {"name": "flank.json", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/flank.json", "bytes": 868, "sha256": "633464af841b4131c2834ccd5d0b9e5400e2733ea2882d4b8a005fb22b4f7523"},
-            {"name": "gradient_cost_site.png", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/gradient_cost_site.png", "bytes": 172504, "sha256": "a2cdde7cd1c9fb3f1b7cc6747e665b44a96d97f905c436b1aea8e8b4cb3cc882"},
-            {"name": "gradient_cost_social.png", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/gradient_cost_social.png", "bytes": 123623, "sha256": "824a73148fc99da57d1c9f0cf83c934c87f12b7bf4e5ffa155d96764d4889913"},
-            {"name": "gradient_full.npz", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/gradient_full.npz", "bytes": 168214, "sha256": "de872252446273d532a8630da84ee116eecf67503b49c0a112c186b3e446e967"},
-            {"name": "patch_sensitivity.mp4", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/patch_sensitivity.mp4", "bytes": 111512, "sha256": "8235d1876a28125bdf701fb9ab542f4b48375e4356a44599797ff13b204899e2"},
-            {"name": "patch_sensitivity_poster.png", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/patch_sensitivity_poster.png", "bytes": 51342, "sha256": "c119fc75820d04e0063ea0d488521e9aa21f124e160f229294b28cd9855c3f7b"},
-            {"name": "patch_sensitivity_site.png", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/patch_sensitivity_site.png", "bytes": 180360, "sha256": "2ad86efe14ca0bd1e69206b1da3eb8c9652b03c69f306b915c083549c15f5bed"},
-            {"name": "patch_sensitivity_social.mp4", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/patch_sensitivity_social.mp4", "bytes": 256551, "sha256": "bf6859117a8370358292f17c3f750c9c8989fe01c6558c82ba2f1d9e6f8c460f"},
-            {"name": "patch_sensitivity_social.png", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/patch_sensitivity_social.png", "bytes": 115479, "sha256": "b3ebfe2f2d4afcc97bbfaaddfe3ed3113b420dc2bf0cba9bf8011927fdcdddd2"},
-            {"name": "record_length_witness.json", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/record_length_witness.json", "bytes": 2622, "sha256": "d8404d850dcee0ae360fb19a2632c2ca901a01dd610dc352c4567d9f5441c417"},
-            {"name": "result.json", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/patch-sensitivity/result.json", "bytes": 23694, "sha256": "5481f97990977d896f26ece86b8f12e05b315005267db009a83020ec52d79285"}
+            {"name": "baseline_h4.s1p", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/patch-sensitivity/baseline_h4.s1p", "bytes": 43984, "sha256": "ee85162836f34614034218ee037578f51c51981d34d91554f109e0502cc08745"},
+            {"name": "ez2_mid.npz", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/patch-sensitivity/ez2_mid.npz", "bytes": 458540, "sha256": "cf9475fe03bb87f97e50995f28d6e8117b41b7633666bf188324d4f3dcb66472"},
+            {"name": "fd_float64.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/patch-sensitivity/fd_float64.json", "bytes": 8133, "sha256": "230fa5961fc76c06073558eca584eec1980e6f48a7d9b28f798b3943f5526da1"},
+            {"name": "flank.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/patch-sensitivity/flank.json", "bytes": 868, "sha256": "633464af841b4131c2834ccd5d0b9e5400e2733ea2882d4b8a005fb22b4f7523"},
+            {"name": "gradient_cost_site.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/patch-sensitivity/gradient_cost_site.png", "bytes": 172504, "sha256": "a2cdde7cd1c9fb3f1b7cc6747e665b44a96d97f905c436b1aea8e8b4cb3cc882"},
+            {"name": "gradient_cost_social.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/patch-sensitivity/gradient_cost_social.png", "bytes": 123623, "sha256": "824a73148fc99da57d1c9f0cf83c934c87f12b7bf4e5ffa155d96764d4889913"},
+            {"name": "gradient_full.npz", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/patch-sensitivity/gradient_full.npz", "bytes": 168214, "sha256": "de872252446273d532a8630da84ee116eecf67503b49c0a112c186b3e446e967"},
+            {"name": "patch_sensitivity.mp4", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/patch-sensitivity/patch_sensitivity.mp4", "bytes": 111512, "sha256": "8235d1876a28125bdf701fb9ab542f4b48375e4356a44599797ff13b204899e2"},
+            {"name": "patch_sensitivity_poster.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/patch-sensitivity/patch_sensitivity_poster.png", "bytes": 51342, "sha256": "c119fc75820d04e0063ea0d488521e9aa21f124e160f229294b28cd9855c3f7b"},
+            {"name": "patch_sensitivity_site.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/patch-sensitivity/patch_sensitivity_site.png", "bytes": 180360, "sha256": "2ad86efe14ca0bd1e69206b1da3eb8c9652b03c69f306b915c083549c15f5bed"},
+            {"name": "patch_sensitivity_social.mp4", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/patch-sensitivity/patch_sensitivity_social.mp4", "bytes": 256551, "sha256": "bf6859117a8370358292f17c3f750c9c8989fe01c6558c82ba2f1d9e6f8c460f"},
+            {"name": "patch_sensitivity_social.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/patch-sensitivity/patch_sensitivity_social.png", "bytes": 115479, "sha256": "b3ebfe2f2d4afcc97bbfaaddfe3ed3113b420dc2bf0cba9bf8011927fdcdddd2"},
+            {"name": "record_length_witness.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/patch-sensitivity/record_length_witness.json", "bytes": 2622, "sha256": "d8404d850dcee0ae360fb19a2632c2ca901a01dd610dc352c4567d9f5441c417"},
+            {"name": "result.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/patch-sensitivity/result.json", "bytes": 23694, "sha256": "5481f97990977d896f26ece86b8f12e05b315005267db009a83020ec52d79285"}
           ]
         }
       ],
@@ -118,22 +117,22 @@
       "sources": [
         {
           "folder": "ar-coating",
-          "base_url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/",
+          "base_url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/ar-coating/",
           "rfx_commit": "655b1fc6c1989fed88fe80ffbeb19ffa0bcf1277",
           "question": "Does Adam through the differentiable FDTD solve reach the transfer-matrix optimum's X-band mean reflection for a three-layer coating on eps_r = 12, with the gradient checked against central differences?",
-          "result_json": "https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/result.json",
+          "result_json": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/ar-coating/result.json",
           "files": [
-            {"name": "ar_coating.mp4", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/ar_coating.mp4", "bytes": 495402, "sha256": "4f4fdde1087ca7a0450e879a0031b6730ff764daffba9c43d439d7f86cfcedf1"},
-            {"name": "ar_coating_site.png", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/ar_coating_site.png", "bytes": 172823, "sha256": "84af71294b07643f7b52eeb0eca8c338ba2e2c4b75201df975e356c3208c0050"},
-            {"name": "ar_coating_social.mp4", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/ar_coating_social.mp4", "bytes": 498211, "sha256": "ac73488a7c48780b2a2730a127dc9852c91f59e3d25900245a8b16a4784d50b8"},
-            {"name": "ar_coating_social.png", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/ar_coating_social.png", "bytes": 121020, "sha256": "7602d4b8795b381e0e8437affea06d4478e8c74bb1720e0dd677987d4d8a174f"},
-            {"name": "fd_start.json", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/fd_start.json", "bytes": 2169, "sha256": "190bfc8d492d13d1073c35aab855c6a575a4f3f3c7903aa095a668f73fff8436"},
-            {"name": "gates.json", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/gates.json", "bytes": 481, "sha256": "5bc03716f9f986744e73bc7d7de6a78a8c4bdddc0db5d323e81af27a0e1c84bf"},
-            {"name": "iterations.npz", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/iterations.npz", "bytes": 24580, "sha256": "8966c1f73035fd67764679ce0fce2504dfe9894b1c525422b03512dd9260d142"},
-            {"name": "record_length_witness.json", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/record_length_witness.json", "bytes": 797, "sha256": "a471078c39b061287e7669793060c4c8647e4ef8ccbadf2807d68a10c5218884"},
-            {"name": "result.json", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/result.json", "bytes": 8485, "sha256": "eb8c87fb975c612e2ac78205f7787c27277cc3cd04f9574b873be6b5fb6dc9a6"},
-            {"name": "tmm.json", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/tmm.json", "bytes": 1411, "sha256": "a5b18f875c833581597ccf635c86253fa39200afc632c68165b8c95fe1518415"},
-            {"name": "tmm_curves.npz", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/ar-coating/tmm_curves.npz", "bytes": 3658, "sha256": "8a92096760179ac83c0423248f3b884c78a7dd776f50a07fe2ea992a0423ea81"}
+            {"name": "ar_coating.mp4", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/ar-coating/ar_coating.mp4", "bytes": 495402, "sha256": "4f4fdde1087ca7a0450e879a0031b6730ff764daffba9c43d439d7f86cfcedf1"},
+            {"name": "ar_coating_site.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/ar-coating/ar_coating_site.png", "bytes": 172823, "sha256": "84af71294b07643f7b52eeb0eca8c338ba2e2c4b75201df975e356c3208c0050"},
+            {"name": "ar_coating_social.mp4", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/ar-coating/ar_coating_social.mp4", "bytes": 498211, "sha256": "ac73488a7c48780b2a2730a127dc9852c91f59e3d25900245a8b16a4784d50b8"},
+            {"name": "ar_coating_social.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/ar-coating/ar_coating_social.png", "bytes": 121020, "sha256": "7602d4b8795b381e0e8437affea06d4478e8c74bb1720e0dd677987d4d8a174f"},
+            {"name": "fd_start.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/ar-coating/fd_start.json", "bytes": 2169, "sha256": "190bfc8d492d13d1073c35aab855c6a575a4f3f3c7903aa095a668f73fff8436"},
+            {"name": "gates.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/ar-coating/gates.json", "bytes": 481, "sha256": "5bc03716f9f986744e73bc7d7de6a78a8c4bdddc0db5d323e81af27a0e1c84bf"},
+            {"name": "iterations.npz", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/ar-coating/iterations.npz", "bytes": 24580, "sha256": "8966c1f73035fd67764679ce0fce2504dfe9894b1c525422b03512dd9260d142"},
+            {"name": "record_length_witness.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/ar-coating/record_length_witness.json", "bytes": 797, "sha256": "a471078c39b061287e7669793060c4c8647e4ef8ccbadf2807d68a10c5218884"},
+            {"name": "result.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/ar-coating/result.json", "bytes": 8485, "sha256": "eb8c87fb975c612e2ac78205f7787c27277cc3cd04f9574b873be6b5fb6dc9a6"},
+            {"name": "tmm.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/ar-coating/tmm.json", "bytes": 1411, "sha256": "a5b18f875c833581597ccf635c86253fa39200afc632c68165b8c95fe1518415"},
+            {"name": "tmm_curves.npz", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/ar-coating/tmm_curves.npz", "bytes": 3658, "sha256": "8a92096760179ac83c0423248f3b884c78a7dd776f50a07fe2ea992a0423ea81"}
           ]
         }
       ],
@@ -153,34 +152,91 @@
       "sources": [
         {
           "folder": "forward-patch",
-          "base_url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-patch/",
+          "base_url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/forward-patch/",
           "rfx_commit": "b46a8220775b67f8720fb13c3e256c01cf7d6883",
           "question": "The rfx curves of the RT/Duroid 5880 probe-fed patch antenna, one 50 ohm wire port at the rung its cross-validation test judges, beside the reference records it reads.",
-          "result_json": "https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-patch/result.json",
+          "result_json": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/forward-patch/result.json",
           "files": [
-            {"name": "forward_curves_rt5880_patch_site.png", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-patch/forward_curves_rt5880_patch_site.png", "bytes": 172912, "sha256": "1dbdc7e03cbf45bc87d21a9d9d9b7d578b293481151078fe530e4896d3731965"},
-            {"name": "forward_curves_rt5880_patch_social.png", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-patch/forward_curves_rt5880_patch_social.png", "bytes": 140722, "sha256": "76c298ca842366ca841a0adaec07ddf723aa440524b44a466af7fa9633243c9d"},
-            {"name": "reference_curves.npz", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-patch/reference_curves.npz", "bytes": 112514, "sha256": "2be9b4ff1263bc452ebf6c82551ad3d2ef47a68f98d62683ac8b88ab58e31968"},
-            {"name": "result.json", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-patch/result.json", "bytes": 4802, "sha256": "f9fb4e7d70262cc84701046566a75bfdb4b2444ce8001d7fbd27062a766d4113"},
-            {"name": "rfx_curves.npz", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-patch/rfx_curves.npz", "bytes": 36794, "sha256": "80f7190b7e0ecaf0ec57e1297f7539afa57f7c13a7e1d055d281cd21e4f355d5"}
+            {"name": "forward_curves_rt5880_patch_site.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/forward-patch/forward_curves_rt5880_patch_site.png", "bytes": 172912, "sha256": "1dbdc7e03cbf45bc87d21a9d9d9b7d578b293481151078fe530e4896d3731965"},
+            {"name": "forward_curves_rt5880_patch_social.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/forward-patch/forward_curves_rt5880_patch_social.png", "bytes": 140722, "sha256": "76c298ca842366ca841a0adaec07ddf723aa440524b44a466af7fa9633243c9d"},
+            {"name": "reference_curves.npz", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/forward-patch/reference_curves.npz", "bytes": 112514, "sha256": "2be9b4ff1263bc452ebf6c82551ad3d2ef47a68f98d62683ac8b88ab58e31968"},
+            {"name": "result.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/forward-patch/result.json", "bytes": 4802, "sha256": "f9fb4e7d70262cc84701046566a75bfdb4b2444ce8001d7fbd27062a766d4113"},
+            {"name": "rfx_curves.npz", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/forward-patch/rfx_curves.npz", "bytes": 36794, "sha256": "80f7190b7e0ecaf0ec57e1297f7539afa57f7c13a7e1d055d281cd21e4f355d5"}
           ]
         },
         {
           "folder": "forward-notch",
-          "base_url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-notch/",
+          "base_url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/forward-notch/",
           "rfx_commit": "b46a8220775b67f8720fb13c3e256c01cf7d6883",
           "question": "The rfx curves of the microstrip open-stub notch filter, two MSL ports at the rung its cross-validation test judges, beside the reference records it reads.",
-          "result_json": "https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-notch/result.json",
+          "result_json": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/forward-notch/result.json",
           "files": [
-            {"name": "forward_curves_msl_notch_filter_site.png", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-notch/forward_curves_msl_notch_filter_site.png", "bytes": 132517, "sha256": "490723c1fe6e037851bde19fcdd07c4b0d5fb0ae1216cb8f38bd0b580de85939"},
-            {"name": "forward_curves_msl_notch_filter_social.png", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-notch/forward_curves_msl_notch_filter_social.png", "bytes": 114321, "sha256": "12870e7025ba52baf4260b5e6c2df5f5d4bafc6688717b6f7c3f8eb1685df5b7"},
-            {"name": "reference_curves.npz", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-notch/reference_curves.npz", "bytes": 201324, "sha256": "e3c89521fc9d778feb0d1c09417686c1e8d336f970af7abde2f813a54be44ad9"},
-            {"name": "result.json", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-notch/result.json", "bytes": 4651, "sha256": "7bbb01e9ecdbc47f1001dacd011c72f8a8758d3fa058177920182e1f5b2e207e"},
-            {"name": "rfx_curves.npz", "url": "https://remilab.cnu.ac.kr/share/7c02ad43c580/forward-notch/rfx_curves.npz", "bytes": 26854, "sha256": "f47c451b5799c3454c021a6c18dffb13ce97e81f9d4b692f6fd6d782d2b0b167"}
+            {"name": "forward_curves_msl_notch_filter_site.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/forward-notch/forward_curves_msl_notch_filter_site.png", "bytes": 132517, "sha256": "490723c1fe6e037851bde19fcdd07c4b0d5fb0ae1216cb8f38bd0b580de85939"},
+            {"name": "forward_curves_msl_notch_filter_social.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/forward-notch/forward_curves_msl_notch_filter_social.png", "bytes": 114321, "sha256": "12870e7025ba52baf4260b5e6c2df5f5d4bafc6688717b6f7c3f8eb1685df5b7"},
+            {"name": "reference_curves.npz", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/forward-notch/reference_curves.npz", "bytes": 201324, "sha256": "e3c89521fc9d778feb0d1c09417686c1e8d336f970af7abde2f813a54be44ad9"},
+            {"name": "result.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/forward-notch/result.json", "bytes": 4651, "sha256": "7bbb01e9ecdbc47f1001dacd011c72f8a8758d3fa058177920182e1f5b2e207e"},
+            {"name": "rfx_curves.npz", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/forward-notch/rfx_curves.npz", "bytes": 26854, "sha256": "f47c451b5799c3454c021a6c18dffb13ce97e81f9d4b692f6fd6d782d2b0b167"}
           ]
         }
       ],
       "headlines": []
+    },
+    {
+      "id": "grin-lens",
+      "title": "A 3-D-printable lens, designed by gradient",
+      "question": "Gradient descent through the FDTD solve and the far-field transform grows a graded-index flat lens of printable permittivity (1 ≤ εr ≤ 2.7) that raises a small feed's boresight directivity from 7.5 to 19.0 dBi at 10 GHz, 1.8 dB above the textbook GRIN lens of the same size.",
+      "route": "/rfx/showcase/grin-lens/",
+      "markdown": "/rfx/markdown/showcase/grin-lens.md",
+      "rfx_commits": ["4705f69e90602e52168eb9d37079a1a0ab3f919b", "9ed83eb804874feec1f05f0cee75992c05da2182"],
+      "sources": [
+        {
+          "folder": "grin-lens",
+          "base_url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/",
+          "rfx_commit": "4705f69e90602e52168eb9d37079a1a0ab3f919b",
+          "question": "Boresight directivity",
+          "result_json": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/result.json",
+          "files": [
+            {"name": "eligibility.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/eligibility.json", "bytes": 150, "sha256": "02fc7b2f6b6dccad62f81ea79a51d5e23f058e5b573220b5984555a2ba755bd9"},
+            {"name": "fd_float32.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/fd_float32.json", "bytes": 66368, "sha256": "c04372af01520c1c48920f0b98672319428bc82f663d8a5d1bf6151ae8907d4d"},
+            {"name": "grin_lens_fan.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens_fan.png", "bytes": 448886, "sha256": "90eaff418643db35b5cefcc8a6c7dd9c69aa824cd4a2f8c4e0197625b33e5b83"},
+            {"name": "grin_lens_film.mp4", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens_film.mp4", "bytes": 16919740, "sha256": "8b87491c6d68ca14940a1484e1d466336f9df823140bd9fec6967e7ac61bfc97"},
+            {"name": "grin_lens_film_poster.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens_film_poster.png", "bytes": 567380, "sha256": "852495efabe08da474cae4973406e5d65770d51b6e30eea28ddc97248cb57895"},
+            {"name": "grin_lens_start.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/grin_lens_start.png", "bytes": 573486, "sha256": "beafb8023943cf9f29bc6436bacf0ac343885713b056f3d555c13c33012b0f6c"},
+            {"name": "iterations.npz", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/iterations.npz", "bytes": 16458366, "sha256": "a821633d8b04ed21b29829fcfc548d5ca1c20f98b564275814cb0670d9ef7449"},
+            {"name": "lens_cuts.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/lens_cuts.png", "bytes": 402686, "sha256": "5e0665e487a09b8bb7157c7efc0de39cc1ab08858d38c7265456c3d0c68b972a"},
+            {"name": "lens_iterations.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/lens_iterations.png", "bytes": 190886, "sha256": "cab5ae2c3b89396487f7940800c7771bc8f54b42d1e28fe580cf847cd003d6dc"},
+            {"name": "lens_mesh.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/lens_mesh.png", "bytes": 196449, "sha256": "17ea66fd33cf2b1349f6ac5a8e2cb6b1e2afa0c855c0a0b668416c575cdd255b"},
+            {"name": "lens_slices.png", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/lens_slices.png", "bytes": 135886, "sha256": "3d6c5c30c851f45d349dc73e0c88dc24a5ff9a6cb0177be55d625da69cda327d"},
+            {"name": "mesh_trend.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/mesh_trend.json", "bytes": 3592, "sha256": "c01cd664b0f561af0dfb2ff35763404aef269be5ff0a23697688d9d4dc783155"},
+            {"name": "result.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/result.json", "bytes": 9327, "sha256": "299c70d52910a63292a9ce3ddb141ac86f67d63677d1d9d3e124f8c59d8d6b6d"},
+            {"name": "rlw_reported.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/rlw_reported.json", "bytes": 211642, "sha256": "41053fc5eb3b5dd4554d50781ea2623c64375d58d76730debef5cc92dd47f8c9"},
+            {"name": "rlw_start.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens/rlw_start.json", "bytes": 208266, "sha256": "52fb2310733a942de1f0ad1fe6f00302abc948a074a5f58ac5bd506d5b7610a7"}
+          ]
+        },
+        {
+          "folder": "grin-lens-fan",
+          "base_url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens-fan/",
+          "rfx_commit": "9ed83eb804874feec1f05f0cee75992c05da2182",
+          "question": "Fan beam (flat over ±30° in one plane, narrow in the other)",
+          "result_json": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens-fan/result.json",
+          "files": [
+            {"name": "eligibility.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens-fan/eligibility.json", "bytes": 839, "sha256": "1ab3d75199471551af827a86f889a4648ad989f30611185164d2514b0d69fa15"},
+            {"name": "fd_float32.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens-fan/fd_float32.json", "bytes": 63317, "sha256": "ca690d5d54a3c5d899c661190750b00174e0edb0148ed1eb8b194db5f535d6c1"},
+            {"name": "fd_float64.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens-fan/fd_float64.json", "bytes": 63422, "sha256": "6a3e719f6e506fcdc7c8df1e50e9d3b6d5fcc024798a543328fa925fc6f9d2fb"},
+            {"name": "iterations.npz", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens-fan/iterations.npz", "bytes": 32804766, "sha256": "d2ae9afffe08da0f5ac04741b2b4046abfeb85fb2a15c56ad16754d22ad03167"},
+            {"name": "mesh_trend.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens-fan/mesh_trend.json", "bytes": 3665, "sha256": "a54aaf140a53d009837fef77ff4ea6df23c13339890c1253065f797481ee7944"},
+            {"name": "result.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens-fan/result.json", "bytes": 10708, "sha256": "5d2b2496bb7097f075e95d034be62fa27dda4be128d220246145f1af40615625"},
+            {"name": "rlw_reported.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens-fan/rlw_reported.json", "bytes": 207918, "sha256": "456296e7b4a7d8662b886b246d13860417e50b74e3e621037f9172ad455833cf"},
+            {"name": "rlw_start.json", "url": "https://remilab.cnu.ac.kr/share/f3a80981ec4b/grin-lens-fan/rlw_start.json", "bytes": 202290, "sha256": "9132b0541770aa308c13b1fd8905ccc8cabe31e484fae13c6e5be22e80db6a3f"}
+          ]
+        }
+      ],
+      "headlines": [
+        {"quantity": "reported boresight directivity at 10 GHz, 0.75 mm mesh", "printed": "19.0", "value": 19.00765037536621, "unit": "dBi", "routes": ["/rfx/showcase/grin-lens/", "/rfx/showcase/"], "from": "grin-lens/mesh_trend.json reported.boresight_dbi[-1][1]"},
+        {"quantity": "feed boresight directivity at 10 GHz, 0.75 mm mesh", "printed": "7.5", "value": 7.4537224769592285, "unit": "dBi", "routes": ["/rfx/showcase/grin-lens/"], "from": "grin-lens/mesh_trend.json no_lens.boresight_dbi[-1][1]"},
+        {"quantity": "minimum designed minus feed directivity, floored", "printed": "+11", "value": 11, "unit": "dB", "routes": ["/rfx/showcase/grin-lens/"], "from": "grin-lens/mesh_trend.json floor(min(reported.boresight_dbi[-1] - no_lens.boresight_dbi[-1]))"},
+        {"quantity": "designed minus textbook GRIN directivity at 10 GHz", "printed": "+1.8", "value": 1.775552749633789, "unit": "dB", "routes": ["/rfx/showcase/grin-lens/"], "from": "grin-lens/mesh_trend.json reported.boresight_dbi[-1][1] - grin.boresight_dbi[-1][1]"}
+      ]
     }
   ]
 }

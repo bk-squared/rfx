@@ -76,7 +76,7 @@ def summary(response):
 
 
 class Model(common.ModelBase):
-    def __init__(self, dx=DESIGN_DX, precision="float32", smoke=False):
+    def __init__(self, dx=DESIGN_DX, precision="float32", smoke=False, *, field_drive=False):
         from rfx import Simulation
         from rfx.boundaries.spec import Boundary, BoundarySpec
         from validation.crossval.comparators import realized_conductors as RC
@@ -93,7 +93,8 @@ class Model(common.ModelBase):
                                          (.17018, "-x", .16002, "right")):
             self.sim.add_waveguide_port(x, direction=direction, reference_plane=ref, name=name,
                                         freqs=FREQS, f0=float(FREQS.mean()), bandwidth=.45,
-                                        waveform="modulated_gaussian")
+                                        waveform="modulated_gaussian",
+                                        amplitude=0. if field_drive and name == "right" else 1.)
         self.grid = self.sim._build_grid()
         RC.assert_no_conductor(self.sim, label="WR-90 filter (domain PEC)")
         built = [(self.grid.shape[ax] - 1 - self.grid.face_pads[2 * ax]

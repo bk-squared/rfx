@@ -9,6 +9,7 @@ import argparse
 import dataclasses
 import math
 import os
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -61,6 +62,189 @@ def best_iterate(values):
     return int(np.argmin(values))  # numpy chooses the first occurrence
 
 
+def frame_progress(objectives, kind):
+    """Amendment 3 progress; reversals are allowed, no net improvement is not."""
+    values = np.asarray(objectives, dtype=float)
+    if values.ndim != 1 or values.size < 2 or not np.isfinite(values).all():
+        raise ValueError("expected a finite, one-dimensional objective history")
+    if kind not in ("lens", "filter", "mask", "flattop", "wide", "fan"):
+        raise ValueError(f"unknown frame kind {kind}")
+    if kind == "filter" and np.any(values <= 0):
+        raise ValueError("filter log progress requires strictly positive objectives")
+    transformed = np.log(values) if kind == "filter" else values
+    if kind in ("mask", "flattop"):
+        if np.any(values < 0):
+            raise ValueError("mask progress requires nonnegative objectives")
+        transformed = np.log(values + 1e-3)
+    improvement = transformed[0] - np.min(transformed)
+    if improvement <= 0:
+        raise ValueError("objective history does not improve")
+    return (transformed[0] - transformed) / improvement
+
+
+def frame_iterate(objectives, kind):
+    """Return the earliest iterate at half of the progress to the best."""
+    return int(np.flatnonzero(frame_progress(objectives, kind) >= .5)[0])
+
+
+def reuse_start_witnesses(source, name, out):
+    """Copy the overridden start's trial evidence without re-running it."""
+    origin = source / name
+    filenames = ["fd_float32.json", "rlw_start.json"]
+    for optional in ("x64_needed.json", "fd_float64.json"):
+        if (origin / optional).exists():
+            filenames.append(optional)
+    if "x64_needed.json" in filenames and "fd_float64.json" not in filenames:
+        raise RuntimeError("trial start requires its float64 FD witness")
+    for filename in filenames:
+        if not (origin / filename).is_file():
+            raise FileNotFoundError(origin / filename)
+    out.mkdir(parents=True, exist_ok=True)
+    for filename in filenames:
+        shutil.copy2(origin / filename, out / filename)
+    provenance = {"reused": True, "start": name, "source": str(origin.resolve()),
+                  "files": filenames, "reason": "Amendment 3: trial start witnesses reused, not re-run"}
+    dc.save_json(out / "start_witness_reuse.json", provenance)
+    return dc.load_json(out / "rlw_start.json")
+
+
+def frame(case, args, source):
+    """Witness a stored frame at the descent's mesh and record length."""
+    with np.load(source / "iterations.npz") as data:
+        objectives = np.asarray(data["objective"])
+        designs = np.asarray(data["eps"])
+    kind = getattr(case, "OBJECTIVE", "boresight")
+    kind = case.CASE if kind == "boresight" else kind
+    k_star = frame_iterate(objectives, kind)
+    progress = frame_progress(objectives, kind)
+    length = dc.load_json(source / "record_length.json")
+    model = setup(case, args.out, case.DESIGN_DX, args.precision, False)
+    if not math.isclose(length["dt_s"], model.grid.dt, rel_tol=1e-12):
+        raise ValueError("frame model timestep differs from the source record")
+    n = int(length["n_steps"])
+    candidates = list(range(k_star, -1, -10))
+    if candidates[-1] != 0:
+        candidates.append(0)
+    details = {"source": str(source.resolve()), "n_steps": n, "k_star": k_star,
+               "k_used": None, "progress": progress, "objective_values": objectives,
+               "witnesses": {}}
+    for k in candidates:
+        witness = rlw(case, model, designs[k], n, args.out, f"frame_{k}")
+        details["witnesses"][str(k)] = witness
+        # Amendment 3 judges the full-vector norm, not the per-FD-pixel ratios.
+        if witness["passed"]:
+            details["k_used"] = k
+            gradient = next(iter(witness["grad"].values()))[0]
+            dc.save_npz(args.out / "frame_gradient.npz", iteration=k, eps=designs[k],
+                        grad_eps=gradient, objective=objectives[k], n_steps=n)
+        dc.save_json(args.out / "frame.json", details)
+        if details["k_used"] is not None:
+            break
+    # Every further iterate a film shows gets the same record-length witness;
+    # failures are recorded, not raised, so the film can hold an earlier frame.
+    if getattr(args, "iterates", None):
+        details["video_witnesses"] = {}
+        for k in args.iterates:
+            if str(k) in details["witnesses"]:
+                w = details["witnesses"][str(k)]
+            else:
+                w = rlw(case, model, designs[k], n, args.out, f"frame_{k}")
+            details["video_witnesses"][str(k)] = {"passed": bool(w["passed"]), "worst": w["worst"]}
+            dc.save_json(args.out / "frame.json", details)
+    record(args.out, case, model, "frame", details)
+    if details["k_used"] is None:
+        raise RuntimeError("frame gradient witness failed through iterate 0")
+
+
+def field(case, args, source):
+    """Display-only raw pulse DFTs; one forward solve per stored iterate."""
+    if getattr(args, "drive", "feed") == "reciprocal":
+        from lens_reciprocal_field import run
+        return run(case, args, source)
+    metadata = dc.load_json(source / "result.json")
+    if metadata["id"] != f"design-{case.CASE}":
+        raise ValueError("field record belongs to a different case")
+    saved = metadata["model"]
+    if saved["precision"] != args.precision or bool(saved["smoke"]) != args.smoke:
+        raise ValueError("field precision/smoke must match the stored model")
+    length = dc.load_json(source / "record_length.json")
+    n = int(length["n_steps"])
+    if n <= 0 or n != length["n_steps"]:
+        raise ValueError("field requires a positive integer record length")
+    with np.load(source / "iterations.npz") as data:
+        designs = np.asarray(data["eps"])
+    if designs.shape[1:] != case.SHAPE or any(k >= len(designs) for k in args.iterates):
+        raise ValueError("field iterate outside stored designs or incompatible design shape")
+    freqs = np.asarray(saved["freqs_hz"], dtype=float)
+    if freqs.ndim != 1 or not np.isfinite(freqs).all():
+        raise ValueError("invalid record frequencies")
+    bands = [(1e10, 1e10)] if case.CASE == "lens" else [
+        (10e9, 10.6e9), (8.2e9, 9e9), (11.6e9, 12.4e9)]
+    selected = []
+    for lo, hi in bands:
+        bins = freqs[(freqs >= lo) & (freqs <= hi)]
+        if not bins.size:
+            raise ValueError("record has no field frequency in a required band")
+        selected.append(bins[np.argmin(abs(bins - (lo + hi) / 2))])
+    freqs = np.asarray(selected, dtype=np.float32)
+    model = setup(case, args.out, saved["dx_m"], args.precision, args.smoke,
+                  **({"field_drive": True} if case.CASE == "filter" else {}))
+    if (not math.isclose(length["dt_s"], model.grid.dt, rel_tol=1e-12)
+            or tuple(saved["grid_shape"]) != tuple(model.grid.shape)):
+        raise ValueError("field grid/timestep differs from source record")
+    planes = [("xz", "y", .063), ("yz", "x", .063)] if case.CASE == "lens" else [("xy", "z", .00508)]
+    for name, normal, offset in planes:
+        for component in ("ex", "ey", "ez"):
+            model.sim.add_dft_plane_probe(axis=normal, coordinate=offset, component=component,
+                                          freqs=freqs, name=f"{name}_{component}")
+    drive = ("Ex current dipole at (0.063, 0.063, 0.027) m; default source pulse"
+             if case.CASE == "lens" else
+             "left TE10 port, +x, amplitude=1 modulated_gaussian; right port amplitude=0")
+    drive += "; raw rectangular DFT sum E(t)*exp(-2j*pi*f*t)*dt; no incident/source or peak normalization; native Yee components"
+    details = {"source": str(source.resolve()), "n_steps": n, "files": [],
+               "planes": [p[0] for p in planes], "freqs_hz": freqs,
+               "drive": drive, "display_only": True, "iterates": {},
+               "settling": {"field_monitor_tail_judged": False,
+                            "note": "The field monitor's own tail was not judged. Response settling witnesses do not certify these plane fields."}}
+    import jax.numpy as jnp
+    for k in dict.fromkeys(args.iterates):
+        eps = np.ones(model.grid.shape, dtype=np.float32)
+        block = case.expand_pixels(designs[k], model.dx).astype(np.float32)
+        hi = model.hi
+        if case.CASE == "filter":
+            block = np.pad(block, ((0, 0), (0, 1), (0, 1)), mode="edge")
+            hi = (hi[0], hi[1] + 1, hi[2] + 1)
+        eps[tuple(slice(a, b) for a, b in zip(model.lo, hi))] = block
+        result = model.sim.forward(eps_override=jnp.asarray(eps), n_steps=n,
+                                   checkpoint=False, skip_preflight=True)
+        arrays = {"iterate": np.int64(k), "freqs_hz": freqs,
+                  "planes": np.asarray(details["planes"]), "drive": np.asarray(drive),
+                  "n_steps": np.int64(n), "dx_m": np.float32(model.dx)}
+        peaks = {}
+        for name, normal, _ in planes:
+            probes = [result.dft_planes[f"{name}_{c}"] for c in ("ex", "ey", "ez")]
+            axis = "xyz".index(normal)
+            index = int(probes[0].index)
+            if any(int(p.index) != index for p in probes):
+                raise ValueError("field component planes have different indices")
+            efield = np.stack([np.asarray(p.accumulator) for p in probes], axis=1).astype(np.complex64)
+            uv = [a for a in range(3) if a != axis]
+            arrays.update({f"{name}_u_m": np.asarray([model.grid.node_of(uv[0], i) for i in range(model.grid.shape[uv[0]])], dtype=np.float32),
+                           f"{name}_v_m": np.asarray([model.grid.node_of(uv[1], i) for i in range(model.grid.shape[uv[1]])], dtype=np.float32),
+                           f"{name}_axes": np.asarray(name),
+                           f"{name}_offset_m": np.float32(model.grid.node_of(axis, index)),
+                           f"{name}_E": efield, f"{name}_eps": np.take(eps, index, axis=axis)})
+            if not np.isfinite(efield).all():
+                raise ValueError("non-finite field monitor output")
+            peaks[name] = np.sqrt(np.sum(abs(efield.astype(np.complex128)) ** 2, axis=1)).max(axis=(1, 2))
+        filename = f"field_{k}.npz"
+        dc.save_npz(args.out / filename, **arrays)
+        details["files"].append(filename)
+        details["iterates"][str(k)] = {"peak_abs_E": peaks}
+        dc.save_json(args.out / "field.json", details)
+        record(args.out, case, model, "field", details)
+
+
 class ModelBase:
     def preflight(self):
         with warnings.catch_warnings(record=True) as caught:
@@ -87,7 +271,8 @@ class ModelBase:
 
 def record(out, case, model, stage, details):
     """Rewrite a schema-validated result after every iterate and every stage."""
-    dc.save_json(out / "stage.json", {"stage": stage, **details})
+    metadata = getattr(case, "objective_metadata", {})
+    dc.save_json(out / "stage.json", {"stage": stage, **details, **metadata})
     source_path = out / f"source_{model.precision}.json"
     if not source_path.exists():
         dc.save_json(source_path, _record.source_block(case.REPO, model.precision))
@@ -100,13 +285,16 @@ def record(out, case, model, stage, details):
                _record.claim("record length", details.get("n_steps", model.default_steps), "steps", "stage.json"),
                _record.claim("stage measurements", details, "1", "stage.json")],
            "derived": [], "out_of_scope": ["realized gain"] if case.CASE == "lens" else []}
+    rec.update(metadata)
+    if metadata.get("objective_words"):
+        rec["question"] = metadata["objective_words"]
     if model.smoke:
         rec["out_of_scope"].append("scientific or promotional numbers: CPU smoke only")
     _record.write_result(out, rec, _record.data_files(out))
 
 
-def setup(case, out, dx, precision, smoke):
-    model = case.Model(dx, precision, smoke)
+def setup(case, out, dx, precision, smoke, **kwargs):
+    model = case.Model(dx, precision, smoke, **kwargs)
     description = model.describe()
     print(f"MESH {case.CASE}: {description}", flush=True)
     messages = model.preflight()
@@ -194,7 +382,18 @@ def prepare(case, model, names, n, out, allow_extension=True):
     raise RuntimeError("start/baseline settling failed at the permitted record; descent stopped")
 
 
-def optimize(case, model, e, n, count, out, stage):
+def validate_y_uniform_start(e):
+    if np.shape(e) != (32, 5) or not np.all(np.asarray(e) == np.asarray(e)[:, :1]):
+        raise ValueError("--y-uniform requires each pixel row to be uniform across the guide width and height")
+
+
+def optimize(case, model, e, n, count, out, stage, *, y_uniform=False):
+    # With y_uniform, Adam holds 32 latents. Stored psi is their (32, 5)
+    # broadcast, so eps and psi retain the existing free-pixel array layout.
+    if y_uniform:
+        if case.CASE != "filter" or stage != "main":
+            raise ValueError("--y-uniform requires filter --stage main")
+        validate_y_uniform_start(e)
     import jax
     import jax.numpy as jnp
     import optax
@@ -211,43 +410,108 @@ def optimize(case, model, e, n, count, out, stage):
     # ~2e-9 and Adam never moved those pixels (PR 1477 review: 420 of 2250).
     p = np.clip(fraction0, 1e-3, 1 - 1e-3)
     latent = np.log(p / (1 - p))
+    if y_uniform:
+        latent = latent[:, 0]
     psi = jnp.asarray(latent, dtype=jnp.float32)
-    schedule = lambda i: cosine_schedule(i, *case.LR, case.ITERATIONS, xp=jnp)
+    def schedule(i):
+        return cosine_schedule(i, *case.LR, (count if stage == "main" else case.ITERATIONS), xp=jnp)
     opt = optax.adam(schedule)
     state = opt.init(psi)
     store = dc.IterateStore(out / "iterations.npz", {"freqs_hz": case.FREQS})
     for it in range(count + 1):
         t0 = time.perf_counter()
         fraction = jax.nn.sigmoid(psi)
+        stored_psi = psi
+        if y_uniform:
+            fraction = jnp.broadcast_to(fraction[:, None], np.shape(e))
+            stored_psi = jnp.broadcast_to(psi[:, None], np.shape(e))
         eps = 1 + (case.UPPER - 1) * fraction
         (value, r), g = vg(eps)
         jax.block_until_ready(g)
         if not np.isfinite(float(value)) or not np.isfinite(np.asarray(g)).all() or not np.isfinite(np.asarray(r)).all():
             dc.save_json(out / "nonfinite.json", {"iteration": it})
             raise RuntimeError(f"non-finite iterate {it}; descent stopped")
-        store.append(iteration=it, eps=eps, psi=psi, response=r, grad_eps=g, objective=value,
+        store.append(iteration=it, eps=eps, psi=stored_psi, response=r, grad_eps=g, objective=value,
                      lr=schedule(it), wall_s=time.perf_counter() - t0, **dc.adam_state_arrays(state))
         store.persist()
         best = best_iterate(store.rows["objective"])
         details = {"n_steps": n, "iteration": it, "best_iteration": best, "last_iteration": it,
                    "best_objective": float(store.rows["objective"][best]), "last_objective": float(value)}
+        if y_uniform:
+            details["y_uniform"] = True
         dc.save_json(out / "selection.json", details)
         record(out, case, model, stage, details)
         print(f"ITERATE {it}: objective={float(value):.9g} best={best} wall_s={store.rows['wall_s'][-1]}", flush=True)
         if it != count:
-            updates, state = opt.update(g * (case.UPPER - 1) * fraction * (1 - fraction), state)
+            grad_psi = g * (case.UPPER - 1) * fraction * (1 - fraction)
+            if y_uniform:
+                grad_psi = jnp.sum(grad_psi, axis=1)
+            updates, state = opt.update(grad_psi, state)
             psi = optax.apply_updates(psi, updates)
     return store
 
 
 def trial_pass(case, store):
     objective = np.asarray(store.rows["objective"])
-    if case.CASE == "lens":
+    if case.CASE == "lens" and getattr(case, "OBJECTIVE", "boresight") in ("wide", "fan"):
+        drop = 3. if case.OBJECTIVE == "fan" else 2.
+        return {"passed": bool(np.isfinite(objective).all() and objective[-1] <= objective[0] - drop),
+                "initial_objective": float(objective[0]), "iteration30_objective": float(objective[-1])}
+    # Amendment 5 clarification: the boresight gate belongs to the boresight objective;
+    # the mask objectives use the J gate (J at iteration 30 <= half its start value).
+    if case.CASE == "lens" and getattr(case, "OBJECTIVE", "boresight") == "boresight":
         first = case.summary(store.rows["response"][0])["mean_boresight_dbi"]
         last = case.summary(store.rows["response"][-1])["mean_boresight_dbi"]
         return {"passed": bool(last - first >= 2), "improvement_db": last - first}
     return {"passed": bool(objective[-1] <= .5 * objective[0]),
             "initial_objective": float(objective[0]), "iteration30_objective": float(objective[-1])}
+
+
+def synchronized_wall_times(function, argument, *, block, clock=time.perf_counter):
+    """One excluded warm-up followed by three completed, synchronised calls."""
+    block(argument)
+    block(function(argument))
+    samples = []
+    for _ in range(3):
+        block(argument)  # exclude any pending input work from the clock
+        start = clock()
+        result = function(argument)
+        block(result)
+        samples.append(float(clock() - start))
+    return samples
+
+
+def timing_summary(case, model, design, n_steps, gradient_times, forward_iteration):
+    """Jitted forward objective + response, matching value_and_grad(has_aux=True)."""
+    import jax
+    import jax.numpy as jnp
+    response = model.response_fn(n_steps)
+    def objective(eps):
+        r = response(eps)
+        return case.loss(r), r
+    function = jax.jit(objective)
+    design = jnp.asarray(design, dtype=jnp.float32)
+    forward = synchronized_wall_times(function, design, block=jax.block_until_ready)
+    gradient = [float(x) for x in gradient_times]
+    if not gradient or not np.isfinite(forward + gradient).all():
+        raise ValueError("timing samples must be finite and include post-compilation gradient entries")
+    devices = sorted(design.devices(), key=lambda device: device.id)
+    return {"forward_wall_s": forward, "forward_wall_s_median": float(np.median(forward)),
+            "value_and_grad_wall_s": gradient,
+            "value_and_grad_wall_s_median": float(np.median(gradient)),
+            "device_name": ", ".join(device.device_kind for device in devices),
+            "device_platform": devices[0].platform,
+            "mesh": {"dx_m": float(model.dx), "grid_shape": list(model.grid.shape)},
+            "n_steps": int(n_steps), "dt_s": float(model.grid.dt),
+            "checkpointed_reverse_mode": "yes" if case.CASE == "filter" else "no",
+            "checkpoint_segments": sqrt_segments(n_steps) if case.CASE == "filter" else None,
+            "checkpoint_scope": "FDTD time stepping; lens uses uncheckpointed design-box reverse mode",
+            "far_field_row_rematerialization": case.CASE == "lens",
+            "forward_iteration": int(forward_iteration),
+            "value_and_grad_iterations": list(range(1, len(gradient) + 1)),
+            "forward_warmup_calls_excluded": 1,
+            "forward_definition": "jitted objective value and auxiliary response, no differentiation; includes observable transforms, excludes host checks and file I/O",
+            "value_and_grad_definition": "existing iterations.npz wall_s[1:]; includes latent conversion, synchronisation and host finite checks; compilation entry excluded"}
 
 
 def selected_design(directory):
@@ -262,7 +526,8 @@ def resolved(case, args, source):
     length = dc.load_json(length_path if length_path.exists() else source / "record_length.json")
     duration = length["n_steps"] * length["dt_s"]
     designs = {"reported": e}
-    if case.CASE == "lens":
+    new_objective = getattr(case, "OBJECTIVE", "boresight") != "boresight"
+    if case.CASE == "lens" and not new_objective:
         bas = dc.load_json(source / "baselines.json")
         designs.update(no_lens=case.baselines()["no_lens"], grin=case.baselines()["grin"],
                        best_uniform=case.baselines()[bas["best_uniform"]])
@@ -284,7 +549,24 @@ def resolved(case, args, source):
         all_rows.append(rows)
         record(directory, case, model, "resolve", {"n_steps": n, "best_iteration": best, "measurements": rows})
     trend = {}
-    if case.CASE == "lens":
+    if new_objective:
+        limits = {"boresight_dbi": .3, "outer_max_dbi": 1.}
+        if case.OBJECTIVE == "wide":
+            limits = {"sector_min_dbi": .3, "sector_max_dbi": .3, "outside_max_dbi": 1.}
+        if case.OBJECTIVE == "fan":
+            limits = {"strip_min_dbi": .3, "strip_max_dbi": .3, "narrow_hpbw_deg": 1., "outside_max_dbi": 1.}
+        if case.OBJECTIVE == "flattop":
+            limits.update(window_min_dbi=.3, window_max_dbi=.3)
+        for key, limit in limits.items():
+            values = np.asarray([r["reported"][key] for r in all_rows])
+            changes = np.abs(np.diff(values, axis=0))
+            trend[key] = {"values_dbi": values, "limit_db": limit,
+                          "signed_changes_db": np.diff(values, axis=0),
+                          "absolute_changes_db": changes,
+                          "passed_per_bin": (changes[1] <= limit) & (changes[1] <= changes[0]),
+                          "settled_each_mesh": [r["reported"]["settled"] for r in all_rows],
+                          "fine_value_dbi": values[-1]}
+    elif case.CASE == "lens":
         for name in designs:
             values = np.asarray([row[name]["boresight_dbi"] for row in all_rows])
             changes = np.abs(np.diff(values, axis=0))
@@ -327,20 +609,87 @@ def resolved(case, args, source):
     eligibility = {"fd_passed": bool(fd_passed), "rlw_passed": witness_passes,
                    "mesh_witnesses_passed": bool(mesh_passed),
                    "promotional_number_eligible": bool(fd_passed and all(witness_passes.values()) and mesh_passed)}
+    if new_objective:
+        start_path = source / "record_length.json"
+        start_settled = dc.load_json(start_path).get("passed", False)
+        # Per-start files overwrite record_length without a verdict; use the
+        # concrete preparation measurements in that case.
+        attempts = sorted(source.glob("settling_start_attempt*.json"))
+        if attempts:
+            rows = dc.load_json(attempts[-1])
+            start_settled = all(row["settled"] for row in rows.values() if isinstance(row, dict))
+        reported_path = source / "reported.json"
+        reported_settled = (reported_path.exists() and
+                            dc.load_json(reported_path)["reported"]["settled"])
+        witnesses = bool(eligibility["promotional_number_eligible"] and start_settled and reported_settled)
+        eligibility.update(objective=case.OBJECTIVE, meshes_m=case.MESHES, freqs_hz=case.FREQS,
+                           start_settled=bool(start_settled), reported_settled=bool(reported_settled),
+                           witnesses_passed=witnesses, promotional_number_eligible=witnesses,
+                           fine_mesh_m=case.MESHES[-1])
+        if case.OBJECTIVE == "wide":
+            fine = all_rows[-1]["reported"]
+            eligibility.update(
+                meets_ripple_each_mesh=[r["reported"]["meets_ripple"] for r in all_rows],
+                meets_level_each_mesh=[r["reported"]["meets_level"] for r in all_rows],
+                meets_wide=bool(witnesses and np.all(fine["meets_ripple"]) and np.all(fine["meets_level"])))
+        elif case.OBJECTIVE == "fan":
+            fine = all_rows[-1]["reported"]
+            eligibility.update(
+                meets_ripple_each_mesh=[r["reported"]["meets_ripple"] for r in all_rows],
+                meets_level_each_mesh=[r["reported"]["meets_level"] for r in all_rows],
+                meets_narrow_each_mesh=[r["reported"]["meets_narrow"] for r in all_rows],
+                meets_fan=bool(witnesses and np.all(fine["meets_ripple"]) and
+                               np.all(fine["meets_level"]) and np.all(fine["meets_narrow"])))
+        else:
+            eligibility.update(mask_met_each_mesh=[r["reported"]["mask_met_per_frequency"] for r in all_rows],
+                               meets_mask=bool(witnesses and all_rows[-1]["reported"]["mask_met"]))
     dc.save_json(args.out / "eligibility.json", eligibility)
     record(args.out, case, model, "resolve", {"best_iteration": best, "trend": trend, **eligibility})
 
 
 def main(case, argv=None):
     parser = argparse.ArgumentParser(description=case.__doc__)
-    parser.add_argument("--stage", choices=("timing", "fd", "rlw", "trial", "main", "resolve", "baselines", "describe"), required=True)
+    parser.add_argument("--stage", choices=("timing", "fd", "rlw", "trial", "main", "resolve", "baselines", "describe", "frame", "field"), required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--record", type=Path, help="source trial/main record; never modified")
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--precision", choices=("float32", "float64"), default="float32")
-    parser.add_argument("--start", help="lens: primary or grin; filter: S1 or S2 for standalone checks")
+    parser.add_argument("--start", help="lens: primary or grin; filter: S1 or S2 (also overrides main trial selection)")
+    parser.add_argument("--iterations", type=int, help="main updates and cosine schedule length (at least 2)")
+    parser.add_argument("--y-uniform", action="store_true",
+                        help="filter main: each pixel row is uniform across the guide width and height")
+    parser.add_argument("--iterates", type=lambda text: [int(k) for k in text.replace(",", " ").split()],
+                        help="frame/field: stored iterations, comma-separated (required for field)")
     parser.add_argument("--reported", action="store_true", help="FD/RLW: use best stored design")
+    parser.add_argument("--drive", choices=("feed", "reciprocal"), default="feed")
+    parser.add_argument("--empty", action="store_true", help="reciprocal field: remove lens, feed and reflector")
+    if case.CASE == "lens":
+        parser.add_argument("--objective", choices=("boresight", "mask", "flattop", "wide", "fan"), default="boresight")
     args = parser.parse_args(argv)
+    if case.CASE == "lens":
+        case = case.with_objective(args.objective)
+        if args.record is not None:
+            path = args.record / "result.json"
+            if not path.exists():
+                path = args.record / "stage.json"
+            saved = dc.load_json(path).get("objective", "boresight") if path.exists() else "boresight"
+            if saved != args.objective:
+                parser.error(f"record objective {saved} differs from requested {args.objective}")
+    if args.drive != "feed" and (args.stage != "field" or case.CASE != "lens"):
+        parser.error("--drive reciprocal requires lens --stage field")
+    if args.empty and not (args.stage == "field" and args.drive == "reciprocal"):
+        parser.error("--empty requires --stage field --drive reciprocal")
+    if args.iterates is not None and (args.stage not in ("frame", "field") or not args.iterates or any(k < 0 for k in args.iterates)):
+        parser.error("--iterates requires --stage frame/field and nonnegative iterations")
+    if args.stage == "field":
+        if not args.iterates or args.record is None or args.record.resolve() == args.out.resolve():
+            parser.error("field requires --iterates, --record and a distinct --out")
+        if args.start is not None or args.reported or args.precision != "float32":
+            parser.error("field does not support --start, --reported or float64")
+    if args.y_uniform and (case.CASE != "filter" or args.stage != "main"):
+        parser.error("--y-uniform requires filter --stage main")
+    if args.iterations is not None and (args.stage != "main" or args.iterations < 2):
+        parser.error("--iterations requires --stage main and N >= 2")
     args.out.mkdir(parents=True, exist_ok=True)
     import jax
     jax.config.update("jax_default_matmul_precision", "highest")
@@ -350,18 +699,24 @@ def main(case, argv=None):
         raise SystemExit("float32 stages require JAX_ENABLE_X64=0")
     if not args.smoke and args.stage != "describe" and jax.default_backend() == "cpu":
         raise SystemExit("full solves are VESSL GPU only; use --smoke on the Mac")
-    if args.smoke and args.stage not in ("timing", "fd"):
-        raise SystemExit("--smoke supports --stage timing only; it cannot create trial admission")
+    if args.smoke and args.stage not in ("timing", "fd", "field"):
+        raise SystemExit("--smoke supports timing, fd and stored smoke field records; it cannot create trial admission")
     if args.stage == "describe":
         for dx in case.MESHES:
             model = setup(case, args.out, dx, args.precision, False)
         record(args.out, case, model, args.stage, {"build_only": True})
         return 0
     source = args.record or args.out
-    if args.stage in ("main", "resolve") and source.resolve() == args.out.resolve():
-        raise SystemExit("--main/--resolve require --record and a distinct --out to preserve the source run")
+    if args.stage in ("main", "resolve", "frame") and source.resolve() == args.out.resolve():
+        raise SystemExit("--main/--resolve/--frame require --record and a distinct --out to preserve the source run")
     if args.stage == "trial" and case.CASE == "lens" and args.start not in (None, "primary"):
         raise SystemExit("the admission trial uses the primary start; GRIN is a reported secondary main run")
+    if args.stage == "field":
+        field(case, args, source)
+        return 0
+    if args.stage == "frame":
+        frame(case, args, source)
+        return 0
     if args.stage == "resolve":
         resolved(case, args, source)
         return 0
@@ -374,7 +729,7 @@ def main(case, argv=None):
     name = args.start or ("primary" if case.CASE == "lens" else "S1")
     if name not in case.starts():
         raise SystemExit(f"unknown start {name}")
-    if case.CASE == "filter" and (source / "trial_selection.json").exists():
+    if case.CASE == "filter" and args.start is None and (source / "trial_selection.json").exists():
         name = dc.load_json(source / "trial_selection.json")["chosen_start"]
     e = case.starts()[name]
     if args.reported:
@@ -382,10 +737,13 @@ def main(case, argv=None):
     details = {"n_steps": n}
     if args.stage == "timing":
         t0 = time.perf_counter()
-        optimize(case, model, e, n, 2, args.out, "timing")
-        best, _ = selected_design(args.out)
+        store = optimize(case, model, e, n, 2, args.out, "timing")
+        best, best_index = selected_design(args.out)
         details["eager_check"] = evaluate(case, model, {"reported": best}, n, args.out, "timing_eager")
         details.update(wall_s=time.perf_counter() - t0, smoke=args.smoke)
+        summary = timing_summary(case, model, best, n, store.rows["wall_s"][1:], best_index)
+        dc.save_json(args.out / "timing_summary.json", summary)
+        details.update(summary)
     elif args.stage == "fd":
         # Observe all actual solver field dtypes, not just design-array dtype.
         import rfx.simulation as simulation
@@ -418,11 +776,15 @@ def main(case, argv=None):
             admission = dc.load_json(source / "trial_selection.json")
             if not admission["passed"]:
                 raise RuntimeError("trial did not meet the declared continuation rule; amendment required")
-            name = admission["chosen_start"] if case.CASE == "filter" else name
+            name = (args.start or admission["chosen_start"]) if case.CASE == "filter" else name
         names = list(case.starts()) if args.stage == "trial" and case.CASE == "filter" else [name]
-        if args.stage == "main" and case.CASE == "lens" and args.start is None:
+        if (args.stage == "main" and case.CASE == "lens" and args.start is None
+                and getattr(case, "OBJECTIVE", "boresight") == "boresight"):
             names = ["primary", "grin"]
         chosen_name = name
+        if args.y_uniform:
+            for start_name in names:
+                validate_y_uniform_start(case.starts()[start_name])
         # The trial already fixed the case record. A main job may not apply
         # another 1.5x start extension to that admitted record.
         n = prepare(case, model, names, n, args.out, allow_extension=args.stage == "trial")
@@ -433,12 +795,16 @@ def main(case, argv=None):
             directory.mkdir(parents=True, exist_ok=True)
             dc.save_json(directory / "record_length.json", {"n_steps": n, "dt_s": model.grid.dt})
             e = case.starts()[name]
-            check = rlw(case, model, e, n, directory, "start")
+            reuse = (args.stage == "main" and case.CASE == "filter"
+                     and name != admission["chosen_start"])
+            check = (reuse_start_witnesses(source, name, directory) if reuse
+                     else rlw(case, model, e, n, directory, "start"))
             if not check["all_passed"]:
-                record(directory, case, model, args.stage, {"stopped": "start RLW", "witness": check})
+                record(directory, case, model, args.stage, {"stopped": "start RLW", "witness": check,
+                       **({"y_uniform": True} if args.y_uniform else {})})
                 raise RuntimeError("start gradient record-length witness failed; descent stopped")
             fd_data = (fd(case, model, e, n, directory, "float32")
-                       if case.CASE == "filter" or name == "primary" else None)
+                       if not reuse and (case.CASE == "filter" or name == "primary") else None)
             if fd_data is not None and fd_data["judgement"]["roundoff"]:
                 # Release compiled tapes before the independent x64 process
                 # uses this job's GPU. The model rebuilds its functions later.
@@ -447,11 +813,14 @@ def main(case, argv=None):
                 jax.clear_caches()
                 gc.collect()
                 env = {**os.environ, "JAX_ENABLE_X64": "1"}
+                if case.CASE == "lens" and case.OBJECTIVE != "boresight":
+                    record(directory, case, model, args.stage, {"n_steps": n})
                 subprocess.run([sys.executable, str(Path(case.__file__)), "--stage", "fd", "--out", str(directory),
                                 "--start", name, "--precision", "float64", "--record", str(directory)]
+                               + (["--objective", case.OBJECTIVE] if case.CASE == "lens" else [])
                                + (["--smoke"] if args.smoke else []), env=env, check=True)
-            store = optimize(case, model, e, n, 30 if args.stage == "trial" else case.ITERATIONS,
-                             directory, args.stage)
+            store = optimize(case, model, e, n, 30 if args.stage == "trial" else (args.iterations or case.ITERATIONS),
+                             directory, args.stage, **({"y_uniform": True} if args.y_uniform else {}))
             results[name] = trial_pass(case, store)
             best, _ = selected_design(directory)
             evaluate(case, model, case.baselines(), n, directory, "baselines")
@@ -470,6 +839,7 @@ def main(case, argv=None):
             dc.save_json(directory / "gradient_panel.json", {"colour_scale": witness["all_passed"],
                          "label": "gradient" if witness["all_passed"] else "not witnessed"})
             record(directory, case, model, args.stage, {"n_steps": n, "reported": end,
+                                                        **({"y_uniform": True} if args.y_uniform else {}),
                                                         "reported_rlw_passed": witness["all_passed"]})
         if args.stage == "trial":
             chosen = min(names, key=lambda k: results[k].get("iteration30_objective", 0))
@@ -477,6 +847,10 @@ def main(case, argv=None):
                        "n_steps": n}
             dc.save_json(args.out / "trial_selection.json", details)
         else:
-            details = {"chosen_start": chosen_name, "starts_run": names, "n_steps": n}
+            details = {"chosen_start": chosen_name, "starts_run": names, "n_steps": n,
+                       "iterations": args.iterations or case.ITERATIONS,
+                       "start_witnesses_reused": case.CASE == "filter" and chosen_name != admission["chosen_start"]}
+    if args.y_uniform:
+        details["y_uniform"] = True
     record(args.out, case, model, args.stage, details)
     return 3 if args.stage == "trial" and not details["passed"] else 0
