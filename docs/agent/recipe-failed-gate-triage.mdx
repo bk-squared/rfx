@@ -1,115 +1,122 @@
 ---
-title: "Recipe: Failed-Gate Triage"
-description: "Decision tree for diagnosing a failed S-parameter or physics gate in rfx, with closed dead-end paths marked so agents do not re-attempt falsified fixes."
+title: "Recipe: When a Result Looks Wrong"
+description: "Where to look when an rfx result fails a check (a non-passive S, a misplaced resonance, an R/T mismatch, a mesh series that does not converge), in the order of the five steps, with fixes already tried and rejected."
 sidebar:
   order: 10
 ---
 
-Use this recipe when a validation gate fails — non-passive `|S11| > 1`, a
-resonance that looks wrong, an R/T mismatch, or a mesh-convergence miss.
-Walk the tree before designing a fix. Terminal **STOP** nodes mark paths
-already implemented and falsified — do not re-attempt one without new
-evidence. Symptoms of this kind have consistently resolved to a comparator
-or extractor bug, not an FDTD solver residual.
+Use this recipe when a result fails a check: a non-passive `|S11| > 1`, a
+resonance in the wrong place, a reflection or transmission that does not match
+its reference, or a mesh series that does not converge. Go through the five
+steps of the [overview](./overview) (declare, check on the grid, run, measure,
+show the evidence) as checks: look at the result, the run and the model
+before you change the model. The **STOP** entries are fixes that
+were built and measured, and did not work; do not try one again without new
+evidence. In this project, results of this kind have most often turned out to
+be a mistake in the comparison or the extraction, not in the solver.
 
-## Step 0 — never triage from the headline metric
+## First: look at the whole curve
 
-Dump the full per-frequency curve and at least one independent witness
-(signs, magnitudes vs an analytic expectation, a sibling run) before
-believing a scalar pass/fail.
+Plot the full curve over frequency and compare it with something independent:
+the expected sign, a closed-form magnitude, or a second run. A single pass or
+fail number is not enough to start from.
 
-Canonical trap: the `|S11|` magnitude dip of a directly edge-fed patch is
-easy to read as "the resonance". It is not — for a high-impedance edge-fed
-patch the dip is the off-resonance match point. The true resonance comes
-from a source-off probe trace
-(`Result.find_resonances()`, see the
-[resonance extraction recipe](./recipe-resonance-extraction)) and agreed
-with the analytic value all along. The gate was re-specified, not the
-solver fixed.
+A common trap: the dip in `|S11|` of a directly edge-fed patch looks like the
+resonance. It is not; for a high-impedance edge feed the dip is the frequency
+where the patch happens to match the feed. Read the resonance from a probe
+after the source has stopped (`Result.find_resonances()`, see the
+[resonance extraction recipe](./recipe-resonance-extraction)).
 
-## Step 1 — validate the metric, not the physics
+## Was the intended model solved? (step 2)
 
-1. Run `rfx.validate_port_smatrix(result)` — passivity, reciprocity, and
-   shape sanity on any port result.
-2. If raw V/I dumps exist, replay them through the production assembly with
-   `rfx.replay_smatrix_from_vi_dump(...)`. If the replay disagrees with the
-   production number, the bug is in a diagnostic or comparator, not in the
-   solver.
-3. Quote every preflight warning verbatim before reporting numbers —
-   `sim.preflight()` surfaces real setup mistakes.
+Read `sim.preflight()` and `sim.fidelity_report()` and quote every warning
+before you report a number. A sheet solved wider than drawn, a port off its
+metal or a structure in the absorber gives a wrong answer that looks like
+physics ([Check the model on the grid](/rfx/check/model-on-grid/)).
 
-## Step 2 — branch by symptom
+## Was the run long enough? (steps 3 and 5)
 
-### A. Microstrip `|S11| > 1` (non-passive)
+Read the settling status of every result that reads frequencies:
+`result.settling_witness["status"]` for a `run()` result, and each entry's
+`["status"]` for an S-matrix result, which holds one per port. Anything other than `pass` means the run is not known to be long
+enough ([Is the run long enough?](/rfx/evidence/simulation-time/)).
 
-`compute_msl_s_matrix` returns the raw extraction, so a bound violation
-reaches you instead of being clipped. Read `result.sigma_max_excess` —
-`max(σ_max(S(f)) − 1, 0)` per bin — to see how far over and where, then
-`settling_db` and `reliable` for the cause. `enforce_passivity=True` bounds
-the matrix as a post-process; it does not make the touched bins measurements.
+## Is the measurement right? (step 4)
 
-Check probe placement first: the default probe offset is floored to clear
-the source fringing transient; with the floor the reference patch device is
-passive at every tested mesh.
+1. `rfx.validate_port_smatrix(result)` checks passivity, reciprocity and the
+   shape of any port result.
+2. If you saved the port voltage and current records, replay them through the
+   production assembly with `rfx.replay_smatrix_from_vi_dump(...)`. If the
+   replay disagrees with your number, the mistake is in your comparison, not in
+   the solver.
 
-**STOP — swapping in a voltage-only spatial-fit (γ/α) extractor.** The fit
-is ill-conditioned at high-SWR resonant loads — the forward-wave amplitude
-collapses at resonance, so the extracted `|S11|` blows up non-passively and
-gets *worse* with mesh refinement. The matched-line regime is a separate
-question and is not addressed by this extractor.
+### A. Microstrip `|S11| > 1`
 
-### B. Resonance / dip location looks wrong
+`compute_msl_s_matrix` returns the extracted S without clipping it, so an
+excess reaches you. `result.sigma_max_excess` gives how far over 1 the largest
+singular value goes at each frequency; `settling_db` and `reliable` point to the
+cause. `enforce_passivity=True` bounds the matrix afterwards; it does not make
+the corrected frequencies measurements. Check the probe placement first: the
+default probe offset keeps clear of the field close to the source.
 
-Measure the resonance with a source-off probe trace first (Step 0). Then:
+**STOP: a voltage-only fit of the wave amplitudes along the line.** At a
+strongly mismatched resonant load the forward wave nearly vanishes at
+resonance, the fit becomes ill-conditioned, and the extracted `|S11|` goes
+above 1 and gets worse as the mesh is refined. A matched line is a separate
+question that this does not answer.
 
-**STOP — refining the mesh to move the microstrip patch dip.** The dip
-location decelerates toward an asymptote outside the expected band; pushing
-it in-band needs a cell count far beyond practical GPU budgets, and the dip
-is the wrong observable anyway (match point, not resonance — see Step 0).
+### B. A resonance or dip in the wrong place
 
-**STOP — Zin-rotation de-embedding** (rotating V/I to the device edge via
-`tan(βd)`). The rotation amplifies the feed-line propagation-constant
-error and yields incoherent device impedances across `+βd`/`−βd`. Use the
-de-embedding built into the production extractors instead.
+Measure the resonance from a probe after the source has stopped (see above).
 
-### C. Waveguide per-frequency `|S11|` oscillation or magnitude deficit
+**STOP: refining the mesh to move the dip of a microstrip patch.** The dip
+moves towards a limit outside the expected band, and it is the matching
+frequency, not the resonance.
 
-**STOP — redesigning the waveguide port extractor for this symptom.** The
-WR-90 PEC-short per-frequency oscillation traces to a missing Yee leapfrog
-half-step correction in a *diagnostic script*, not in production;
-`compute_waveguide_s_matrix` is accurate. The remaining magnitude floor is
-Yee grid dispersion, which no extractor change removes.
-Cross-solver *phase* disagreements at single frequencies are usually
-solver-convention mismatches — Meep, OpenEMS, and Palace can disagree with
-each other by 100°+ on the same slab.
+**STOP: rotating the port voltage and current to the device edge with
+tan(βd).** The rotation magnifies the error in the feed line's propagation
+constant and gives inconsistent device impedances. Use the reference-plane
+handling built into the S-parameter calculators.
 
-### D. Curved-PEC / staircase accuracy miss
+### C. A rectangular waveguide `|S11|` that oscillates over frequency
 
-**STOP — implementing a conformal-PEC scheme.** Four standard methods
-(Dey–Mittra, Kottke tensor, and two contour-FIT variants) were implemented
-and falsified under the production PEC + CPML configuration — none was both
-stable and better than staircase. **Staircase is the supported floor**; see
-the [conformal PEC guide](/rfx/guide/conformal-pec/) for the honest
-envelope. Use a finer mesh or `NonUniformGrid` instead.
+**STOP: redesigning the waveguide port extraction for this.** The oscillation
+seen on a PEC short came from a missing half-step time correction in a
+diagnostic script, not in `compute_waveguide_s_matrix`. A phase disagreement
+with another solver at a single frequency is usually a difference in
+conventions; compare the trend over frequency. The magnitude error that remains is the grid's
+own dispersion, which no change to the extraction removes.
+
+## Does it converge with the mesh? (step 5)
+
+### D. A curved metal body that does not converge
+
+`conformal_pec=True` exists, but it currently makes a curved metal body
+electrically larger and less accurate than the staircase: it gives cut edges a
+raised permittivity instead of cut H-face areas. The update with cut H-face
+areas (Dey–Mittra) is planned under tracker 1651. Until it lands, use the
+staircase and a mesh series of at least three meshes, refined locally with a
+graded mesh.
 
 ### E. "We need subgridding"
 
-**STOP — SBP-SAT subgridding.** The SBP-SAT boundary stencil loses closure
-under FDTD leapfrog and is incompatible with CPML. The supported
-alternative is `NonUniformGrid` (see the
-[non-uniform mesh guide](/rfx/model/domain-mesh/)).
+Subgridding is refused by default because it is not yet stable and verified.
 
-## Step 3 — none of the branches match
+**STOP: an SBP-SAT subgrid boundary.** Its boundary stencil does not close
+under the leapfrog time step and does not work with CPML. Use a graded mesh for
+local resolution
+([Domain and mesh](/rfx/model/domain-mesh/)).
 
-You may have a genuinely new failure. Open an issue with the full
-per-frequency dump, the `validate_port_smatrix` output, every preflight
-warning, and the independent witness from Step 0 attached. Budget one fix
-attempt; if it does not close the gap, stop and redesign rather than
-iterating parameter tweaks.
+## None of the branches match
+
+You may have found something new. Open an issue with the full curve over
+frequency, the `validate_port_smatrix` output, every preflight warning and the
+independent comparison from the first section. Try one fix; if it does not
+close the gap, stop and rethink the approach instead of adjusting parameters.
 
 ## Related
 
-- [Port & source selection](./port-selection) — choose the right primitive
-  before debugging the wrong one.
-- [Support matrix](../guides/sparameter_support_matrix.md) — per-family
-  validation envelopes and AD-traceability.
+- [Port and source selection](./port-selection): choose the right port before
+  debugging the wrong one.
+- [Support](/rfx/support/): what each feature is documented for, and what is
+  refused.

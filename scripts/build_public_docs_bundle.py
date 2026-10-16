@@ -35,7 +35,7 @@ SHOWCASE_CATALOG = "showcase/showcase.json"
 FORBIDDEN_PARTS = {"agent", "agent-memory", "agent_memory", "research_notes", ".env", ".omx", ".omc"}
 # Explicitly reviewed external-agent guidance; new files are private by default.
 PUBLIC_AGENT_PAGES = frozenset({
-    "overview.mdx", "auto-config.mdx", "design-workflows.mdx",
+    "overview.mdx", "architecture.mdx", "where-new-code-goes.mdx", "auto-config.mdx", "design-workflows.mdx",
     "port-selection.mdx", "prompt-templates.mdx", "recipe-design-loop.mdx",
     "recipe-failed-gate-triage.mdx", "recipe-parameter-sweeps.mdx",
     "recipe-resonance-extraction.mdx", "recipe-rt-measurement.mdx",
