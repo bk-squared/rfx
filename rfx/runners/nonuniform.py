@@ -1291,6 +1291,7 @@ def build_flux_monitor_cfgs_nu(sim, grid, sizing_n):
     flux_monitor_objs = []
     if getattr(sim, "_flux_monitors", None):
         from rfx.measurement.flux_weights import grid_flux_monitor
+        from rfx.measurement import default_frequency_grid
         from rfx.boundaries.pmc import magnetic_image_faces
         axis_to_index = {"x": 0, "y": 1, "z": 2}
         from rfx.probes.flux_region import resolve_flux_region
@@ -1302,7 +1303,7 @@ def build_flux_monitor_cfgs_nu(sim, grid, sizing_n):
             freqs_arr = (
                 pe.freqs
                 if pe.freqs is not None
-                else jnp.linspace(sim._freq_max / 10, sim._freq_max, pe.n_freqs)
+                else default_frequency_grid(sim._freq_max, pe.n_freqs)
             )
             # Finite-region window (B1): physical size/center -> CELL slice on
             # each tangential axis against the graded cumulative edges. Full
