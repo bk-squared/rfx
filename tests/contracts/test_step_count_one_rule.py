@@ -13,7 +13,7 @@ RULE = "rfx/stepping/step_count.py"
 
 
 def scan_step_counts(source: str, path: str) -> list[str]:
-    """Find ceil calls with both a period identifier and a dt identifier."""
+    """Find ceil calls whose argument names a period quantity and a dt quantity."""
     hits = []
     for node in ast.walk(ast.parse(source, filename=path)):
         if not isinstance(node, ast.Call):
@@ -27,7 +27,7 @@ def scan_step_counts(source: str, path: str) -> list[str]:
             for child in ast.walk(argument)
             if isinstance(child, (ast.Name, ast.Attribute))
         }
-        if identifiers & {"num_periods", "periods", "period"} and any(
+        if any("period" in identifier for identifier in identifiers) and any(
             "dt" in identifier for identifier in identifiers
         ):
             hits.append(f"{path}:{node.lineno}")
@@ -51,7 +51,7 @@ def _simulation(**kwargs):
     return sim
 
 
-def test_graded_run_forward_preflight_same_step_count_at_boundary():
+def test_graded_run_forward_same_step_count_at_boundary():
     sim = _simulation(dz_profile=np.full(4, 0.003), dt=4e-12)
     assert sim._build_nonuniform_grid().dt == 4e-12
     # This point-source request's preflight carries no record length or count;
