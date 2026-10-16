@@ -746,10 +746,10 @@ def _build_nu_scan(
      curl_boundary, _pec_faces_frozen, _pmc_faces_frozen, use_pmc_faces) = nonuniform_boundaries(
          grid, cpml_axes, pec_faces, pmc_faces)
 
-    # #931 §1.7: realize the PEC edges ONCE here.  The NU stepper installs
-    # no periodic BC at all and NU grids are 3-D, so the non-periodic #689
-    # convention is the right one; a lane that pre-realized (and
-    # port-cleared) its masks passes them in instead.
+    # #931 §1.7: realize the PEC edges ONCE here, using the NU grid's
+    # periodic flags for the same seam convention as its 3-D stepper.
+    # A lane that pre-realized (and port-cleared) its masks passes
+    # them in instead.
     pec_sheets = tuple(pec_sheets or ())
     pec_wires = tuple(pec_wires or ())
     if pec_edge_masks is None and (
@@ -1411,28 +1411,9 @@ def run_nonuniform_until_decay(
     # so the non-radiating static soft-source charge (which FLOORS the energy criterion) and
     # near-Nyquist buzz do not stall the stop. Opt-in; default keeps the energy criterion.
     use_flux_stop = radiated_flux_box is not None
+    from rfx.measurement import flux_box_bounds, radiated_power
     if use_flux_stop:
-        _flo = position_to_index(grid, radiated_flux_box[0])
-        _fhi = position_to_index(grid, radiated_flux_box[1])
-        _bl = (min(_flo[0], _fhi[0]), max(_flo[0], _fhi[0]),
-               min(_flo[1], _fhi[1]), max(_flo[1], _fhi[1]),
-               min(_flo[2], _fhi[2]), max(_flo[2], _fhi[2]))
-
-    def _radiated_power(state) -> float:
-        """Net outgoing Poynting flux ∮ (E×H)·n̂ over the box (co-located approx; a stop
-        criterion needs only the DECAY, so the half-cell stagger and per-cell dA are neglected
-        — they are fixed weightings that do not change the decay rate)."""
-        ex, ey, ez = state.ex, state.ey, state.ez
-        hx, hy, hz = state.hx, state.hy, state.hz
-        il, ih, jl, jh, kl, kh = _bl
-        jj, kk, ii = slice(jl, jh), slice(kl, kh), slice(il, ih)
-        p = jnp.sum(ey[ih, jj, kk] * hz[ih, jj, kk] - ez[ih, jj, kk] * hy[ih, jj, kk])
-        p -= jnp.sum(ey[il, jj, kk] * hz[il, jj, kk] - ez[il, jj, kk] * hy[il, jj, kk])
-        p += jnp.sum(ez[ii, jh, kk] * hx[ii, jh, kk] - ex[ii, jh, kk] * hz[ii, jh, kk])
-        p -= jnp.sum(ez[ii, jl, kk] * hx[ii, jl, kk] - ex[ii, jl, kk] * hz[ii, jl, kk])
-        p += jnp.sum(ex[ii, jj, kh] * hy[ii, jj, kh] - ey[ii, jj, kh] * hx[ii, jj, kh])
-        p -= jnp.sum(ex[ii, jj, kl] * hy[ii, jj, kl] - ey[ii, jj, kl] * hx[ii, jj, kl])
-        return float(p)
+        _bl = flux_box_bounds(grid, radiated_flux_box)
 
     energy_stop, energy = make_decay_stop(
         grid, materials, thr=decay_by, min_steps=min_steps, interval=check_interval,
@@ -1477,7 +1458,7 @@ def run_nonuniform_until_decay(
         if use_flux_stop:
             # RADIATED-FLUX stop: track the flux peak from the FIRST check (radiation peaks
             # during the source drive), gate only the STOP on min_steps.
-            flux_hist.append(abs(_radiated_power(carry["fdtd"])))
+            flux_hist.append(abs(radiated_power(carry["fdtd"], _bl, grid.shape)))
             env = max(flux_hist[-flux_env_checks:])
             if env > peak_flux:
                 peak_flux = env

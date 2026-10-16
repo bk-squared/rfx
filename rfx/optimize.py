@@ -430,9 +430,8 @@ def optimize(
     )
     if is_nonuniform:
         grid = sim._build_nonuniform_grid()
-        from rfx.nonuniform import position_to_index as _nu_pos_to_idx
-        lo_idx = list(_nu_pos_to_idx(grid, region.corner_lo))
-        hi_idx = list(_nu_pos_to_idx(grid, region.corner_hi))
+        from rfx._periodic import interval_indices
+        lo_idx, hi_idx = map(list, interval_indices(grid, region.corner_lo, region.corner_hi))
         from rfx.materials.thin_conductor import refuse_f0_sheets as _refuse_f0
         _refuse_f0(sim._thin_conductors, "optimize() non-uniform design")
         # #931 §1.9: this assembly is BOOKKEEPING — it supplies base eps_r
@@ -826,9 +825,8 @@ def progressive_optimize(
         # Compute this stage's design-region shape using the same logic
         # as optimize() so upsample target is exact.
         if is_nonuniform:
-            from rfx.nonuniform import position_to_index as _nu_pos_to_idx
-            lo_idx = list(_nu_pos_to_idx(grid, region.corner_lo))
-            hi_idx = list(_nu_pos_to_idx(grid, region.corner_hi))
+            from rfx._periodic import interval_indices
+            lo_idx, hi_idx = map(list, interval_indices(grid, region.corner_lo, region.corner_hi))
         else:
             from rfx._periodic import interval_indices
             lo_idx, hi_idx = map(list, interval_indices(grid, region.corner_lo, region.corner_hi))

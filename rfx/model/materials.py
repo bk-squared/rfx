@@ -291,12 +291,12 @@ def assemble_cells(
             for pole in mat.lorentz_poles:
                 _accumulate_pole_mask(lorentz_masks_by_pole, pole, pole_mask)
 
-    # The NU stepper installs no periodic BC and NU grids are 3-D, so the
-    # non-periodic #689 convention is the one this lane's step function
-    # uses; the guard must ask
-    # with the SAME flags or it judges a seam the solve never has.
-    # NU's geometry-sheet guard precedes pads and thin sheets. Its stepper
-    # installs no periodic boundary; preserve both the timing and those flags.
+    # The NU stepper uses the grid's periodic axes in its 3-D curl and
+    # conductor convention. The guard must ask with the SAME flags
+    # or it judges a different seam from the one the solve uses.
+    # Geometry-sheet admission still precedes pads and thin sheets;
+    # preserve that ordering while carrying the realized grid flags
+    # through the guard on both periodic and non-periodic meshes.
     if nonuniform:
         pec_mask = _optional_pec_mask(pec_mask, has_pec_cells)
         refuse_vaporized_sheets(_pec_sheets, lane=lane, periodic=tuple(a in grid.periodic_axes for a in "xyz"))

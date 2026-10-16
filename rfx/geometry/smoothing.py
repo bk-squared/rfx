@@ -1354,7 +1354,7 @@ def compute_smoothed_eps_nonuniform(
     acc_dtype = np.float64 if host else jnp.float32
     eps = tuple(xp.full(tuple(nu_grid.shape), background_eps, dtype=acc_dtype)
                 for _ in range(3))
-    eps = _kottke_smooth(xp, shapes, sample, dx_loc, eps, masks)
+    eps = _kottke_smooth(xp, shapes, sample, dx_loc, eps, masks, grid=nu_grid)
     return _to_jax(eps, host=host, promoted=any(_has_sdf(s) for s, _ in shapes))
 
 

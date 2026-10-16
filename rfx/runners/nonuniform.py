@@ -135,7 +135,7 @@ def build_nonuniform_grid(
     automatic = dx is None
     if dx is None:
         dx = C0 / freq_max / 20.0
-    from rfx.grid import _periodic_resolution
+    from rfx.grid import _periodic_resolution, cells_spanning
     profiles = dict(zip("xyz", (dx_profile, dy_profile, dz_profile)))
     # Unsupported profiles retain their old grid until the lane's refusal.
     periodic_axes = "".join(a for a in periodic_axes if profiles[a] is None or (
@@ -146,6 +146,11 @@ def build_nonuniform_grid(
         profile = profiles[axis]
         if profile is not None:
             _periodic_resolution(domain, axis, float(profile[0]), automatic=False)
+            length, spacing = domain["xyz".index(axis)], float(profile[0])
+            if len(profile) != cells_spanning(length, spacing):
+                raise ValueError(
+                    f"periodic axis {axis!r}: declared period {length:.12g} m differs "
+                    f"from realized period {len(profile) * spacing:.12g} m")
     if dz_profile is None:
         # Synthesise the uniform dz profile LOCALLY (pure) when only
         # dx/dy are non-uniform. This used to be done at every
@@ -730,10 +735,10 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     if pec_mask_override is not None:
         pec_mask = pec_mask_override if pec_mask is None else (pec_mask | pec_mask_override)
 
-    # #931 §1.7: realize (Mx, My, Mz) ONCE here.  The NU stepper installs no
-    # periodic BC and NU grids are 3-D, so the non-periodic #689 convention
-    # is the one the step function uses.  Port clearing, wire-port liveness
-    # and the sheet ctx all read THIS object from here on.
+    # #931 §1.7: realize (Mx, My, Mz) ONCE here with the grid's periodic
+    # flags, matching the seam convention of the 3-D NU step function.
+    # Port clearing, wire-port liveness and the sheet ctx all read
+    # THIS object from here on.
     _pec_sheets = tuple(_pec_sheets)
     _pec_wires = tuple(_pec_wires)
     conductors = kernel_conductors(sim, grid, materials, pec_mask,
@@ -1006,27 +1011,13 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         sim._validate_tfsf_vacuum_boundary(
             materials, tfsf_pair[0], nonvacuum_masks=tuple(nonvacuum))
 
-    # NTFF box: build once (indices are Python-static) + zero-init
-    # DFT accumulators that will be threaded through the scan carry.
-    # NonUniformGrid is a NamedTuple without ``position_to_index``, so
-    # we build the box directly via ``pos_to_nu_index`` (which uses
-    # the cumulative dx_arr/dy_arr/dz lookup) and skip make_ntff_box.
+    # Share the box builder with the realized-geometry record, including
+    # periodic extent endpoints and the face-centre sampling margin.
     ntff_box = None
     ntff_data_init = None
     if sim._ntff is not None:
-        from rfx.farfield import NTFFBox, init_ntff_data
-        corner_lo, corner_hi, ntff_freqs = sim._ntff
-        lo_idx = pos_to_nu_index(grid, corner_lo)
-        hi_idx = pos_to_nu_index(grid, corner_hi)
-        # Share realized padding and graded face-centre weights with the
-        # uniform and RCS constructors, including zero-cell PEC/PMC faces.
-        ntff_box = NTFFBox.from_grid(
-            grid,
-            i_lo=lo_idx[0], i_hi=hi_idx[0],
-            j_lo=lo_idx[1], j_hi=hi_idx[1],
-            k_lo=lo_idx[2], k_hi=hi_idx[2],
-            freqs=jnp.asarray(ntff_freqs, dtype=jnp.float32),
-        )
+        from rfx.farfield import make_ntff_box, init_ntff_data
+        ntff_box = make_ntff_box(grid, *sim._ntff)
         ntff_data_init = init_ntff_data(ntff_box)
 
     # In-loop block current moments (rfx.current_moments), realized against

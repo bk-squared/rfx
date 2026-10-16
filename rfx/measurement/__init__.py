@@ -44,6 +44,10 @@ from rfx.measurement.port_s import (
 from rfx.measurement.port_time import (
     PortTimeRecord,
 )
+from rfx.measurement.radiated_flux import (
+    flux_box_bounds,
+    radiated_power,
+)
 from rfx.measurement.settling import (
     settling_db_from_named_records,
     settling_db_from_port_records,
@@ -99,6 +103,7 @@ __all__ = [
     "extract_waveguide_sparams",
     "extract_waveguide_sparams_overlap",
     "finish_decay",
+    "flux_box_bounds",
     "graded_acc_indices",
     "graded_accumulators",
     "graded_s_ports",
@@ -121,6 +126,7 @@ __all__ = [
     "package_declared_measurements",
     "port_s_from_record",
     "PortTimeRecord",
+    "radiated_power",
     "reconstruct_oblique_physical",
     "register_lumped",
     "register_wire",

@@ -65,7 +65,7 @@ def make_probe_step(grid, materials, ports, driven, *, use_cpml,
         use_lumped_rlc=False, use_kerr=False, use_snapshot=False,
         use_monitor=False, use_flux_window=False,
         drives=StepDrives(layout, None), pec_edge_masks=pec_edge_masks,
-        pec_faces_frozen=frozenset(f"{a}_{s}" for a in "xyz" if a not in grid.periodic_axes for s in ("lo", "hi")),
+        pec_faces_frozen=frozenset(f"{a}_{s}" for a in "xyz" for s in ("lo", "hi")),
         cpml_params=cpml_params, cpml_axes=cpml_axes,
         apply_cpml_h=apply_cpml_h, apply_cpml_e=apply_cpml_e,
         debye_coeffs=debye[0] if debye is not None else None,
@@ -77,3 +77,11 @@ def make_probe_step(grid, materials, ports, driven, *, use_cpml,
         HookPoint.AFTER_SOURCES: (after_sources,),
         HookPoint.STEP_END: (step_end,),
     }), source_values
+
+
+def resolve_extractor_axes(grid, cpml_axes):
+    """The eager extractors have only the non-periodic curl operator."""
+    from rfx.boundaries.axes import resolve_cpml_axes
+    if getattr(grid, "periodic_axes", ""):
+        raise NotImplementedError("the S-parameter extractors do not wrap periodic axes")
+    return resolve_cpml_axes(grid, cpml_axes)
