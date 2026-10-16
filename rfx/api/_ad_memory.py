@@ -275,6 +275,7 @@ class _AdMemoryMixin:
             warning = " ".join(filter(None, (budget_warning, warning)))
         return AD_MemoryEstimate(
             saved=tuple(model["saved"]), excluded_linear=tuple(model["excluded_linear"]),
+            carry_warnings=tuple(model["carry_warnings"]),
             modelled=model["modelled"], unmodelled_features=tuple(model["unmodelled_features"]),
             checkpoint=checkpoint, design=design,
             carry_bytes=model["carry_bytes"],
@@ -410,8 +411,7 @@ class _AdMemoryMixin:
                                       n_warmup=n_warmup, checkpoint=checkpoint, **options)
         window_full = self.estimate_ad_memory(n_steps, available_memory_gb=available,
                                              n_warmup=n_warmup, checkpoint=False, **options)
-        estimate_warning = " ".join(dict.fromkeys(
-            warning for warning in (full.warning, window_full.warning) if warning)) or None
+        estimate_warning = " ".join(window_full.carry_warnings) or None
         if window_full.ad_full_gb < full.ad_full_gb:
             full = window_full
         target = available * fraction

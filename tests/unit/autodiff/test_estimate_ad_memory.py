@@ -322,7 +322,7 @@ def test_public_imports_and_json_roundtrip():
         "saved", "excluded_linear", "modelled", "unmodelled_features",
         "checkpoint", "design", "carry_bytes", "tape_step_bytes",
         "tape_window_cells", "design_box_bounds", "ad_fixed_gb",
-        "tape_is_bound", "calibration",
+        "tape_is_bound", "calibration", "carry_warnings",
         "evidence_class",
         "forward_gb",
         "ad_checkpointed_gb",
@@ -1246,24 +1246,24 @@ def test_checkpoint_every_none_leaves_segmented_null():
     assert est.checkpoint_every is None
 
 
-def test_segmented_plan_preserves_estimate_warnings(monkeypatch):
-    sim = _uniform_sim()
-    original = sim.estimate_ad_memory
-    feature_warning = "Linear accumulator flux monitors on the graded path could not be initialized."
-    bound_warning = "The checkpoint=True box tape is a bound."
-    segment_warning = "rfx#1789: Segments without checkpoint=True do not reduce memory."
-
-    def warned(*args, **kwargs):
-        estimate = original(*args, **kwargs)
-        return estimate._replace(warning=feature_warning + " " + (
-            bound_warning if kwargs["checkpoint"] else segment_warning))
-
-    monkeypatch.setattr(sim, "estimate_ad_memory", warned)
-    plan = sim.plan_ad_memory(120, available_memory_gb=.006)
-    assert plan.segmented_fits
+@pytest.mark.parametrize("box,budget", ((False, .006), (True, 1e-6)))
+def test_segmented_plan_preserves_only_carry_warnings(box, budget):
+    sim = _graded_uniform_sim()
+    sim.add_flux_monitor(axis="x", coordinate=.005, freqs=np.array([5e9]))
+    options = dict(design_box=((.001,) * 3, (.003,) * 3)) if box else {}
+    full = sim.estimate_ad_memory(120, available_memory_gb=budget, **options)
+    assert "exceeds 85%" in full.warning
+    if box:
+        assert "box tape is a bound" in full.warning
+    plan = sim.plan_ad_memory(120, available_memory_gb=budget, **options)
+    assert plan.checkpoint_mode == "checkpoint_every"
     assert plan.checkpoint is True
-    for text in (feature_warning, bound_warning, segment_warning):
+    for text in ("flux monitors", "graded", "AttributeError", "position_to_index"):
         assert text in plan.selected_estimate.warning
+    assert "exceeds 85%" not in plan.selected_estimate.warning
+    assert "box tape is a bound" not in plan.selected_estimate.warning
+    assert plan.selected_estimate.warning == " ".join(plan.selected_estimate.carry_warnings)
+    assert plan.selected_estimate.carry_warnings == full.carry_warnings
 
 
 def test_u_shaped_in_chunk_with_minimum_near_balanced_size():

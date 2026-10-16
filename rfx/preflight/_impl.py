@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import jax
 
+from rfx.api._ad_memory_types import ADMemoryUnavailable
 from rfx.preflight._common import (
     PreflightErrorWarning, PreflightIssue, PreflightReport, PreflightWarning,
 )
@@ -148,7 +149,7 @@ def _preflight_impl(
                 n_steps_for_memory,
                 available_memory_gb=available_memory_gb,
             )
-        except ValueError as error:
+        except ADMemoryUnavailable as error:
             issues.append(PreflightIssue(str(error), severity="error", code="ad_memory"))
         else:
             if est.warning:

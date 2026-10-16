@@ -12,6 +12,7 @@ import jax.numpy as jnp
 import numpy as np
 
 from rfx.api import Simulation
+from rfx.api._ad_memory_types import ADMemoryUnavailable
 from rfx.farfield import compute_far_field
 from rfx.geometry import Sphere
 
@@ -85,24 +86,16 @@ def _assert_slope(label, estimated, compiled):
     assert .999 <= ratio <= 1.6, f"B1 {label}: est slope={estimated}, compiled slope={compiled}, ratio={ratio}"
 
 
-def test_mixed_box_slope():
-    a, b = (_measure(n, box=True, checkpoint=False, precision="mixed") for n in (800, 1600))
-    estimated = (b["estimate_bytes"] - a["estimate_bytes"]) / 800
-    compiled = (b["compiled_bytes"] - a["compiled_bytes"]) / 800
-    ratio = estimated / compiled
-    print("AD_TAPE_MIXED " + json.dumps(dict(est_slope=estimated, compiled_slope=compiled,
-                                             ratio=ratio)), file=sys.stderr, flush=True)
-    assert ratio >= .999, f"mixed box: est slope={estimated}, compiled slope={compiled}, ratio={ratio}"
-    jax.clear_caches()
-
-
+# Prior mixed box measurement, n=800/1600: estimated 17,496 B/step,
+# compiled 12,320 B/step. Mixed whole-grid tape and c0 remain uncalibrated.
+@pytest.mark.parametrize("precision", ("mixed", "float64"))
 @pytest.mark.parametrize("box", (False, True))
-def test_float64_fixed_term_refused(box):
-    sim, _, corners, _ = _scene(precision="float64")
+def test_uncalibrated_precision_refused(box, precision):
+    sim, _, corners, _ = _scene(precision=precision)
     options = dict(design_box=corners if box else None)
-    with pytest.raises(ValueError, match="fixed per-cell term is calibrated on float32 only"):
+    with pytest.raises(ADMemoryUnavailable, match="fixed term and tape are calibrated on float32 only"):
         sim.estimate_ad_memory(800, **options)
-    with pytest.raises(ValueError, match="fixed per-cell term is calibrated on float32 only"):
+    with pytest.raises(ADMemoryUnavailable, match="fixed term and tape are calibrated on float32 only"):
         sim.plan_ad_memory(800, available_memory_gb=1., **options)
 
 
@@ -175,7 +168,7 @@ def test_carry_contract(feature, graded):
     try:
         traced = jax.make_jaxpr(observations)(*inputs)
     except Exception as cause:
-        with pytest.raises(ValueError, match="carry could not be read") as error:
+        with pytest.raises(ADMemoryUnavailable, match="carry could not be read") as error:
             sim.estimate_ad_memory(4, checkpoint=False)
         assert type(error.value.__cause__) is type(cause)
         assert str(cause).splitlines()[0] in str(error.value)

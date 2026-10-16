@@ -7,6 +7,8 @@ import math
 import jax
 import jax.numpy as jnp
 
+from rfx.api._ad_memory_types import ADMemoryUnavailable
+
 
 def linear_accumulators(sim, grid, n_steps):
     """Abstract shapes from the features' own linear-accumulator initializers.
@@ -96,4 +98,4 @@ def read_carry(sim, grid, n_steps, *, design_box, design, shape, checkpoint,
                                   carry_index=index))
         return saved, excluded, warnings
     except Exception as error:
-        raise ValueError(f"AD memory carry could not be read: {error}") from error
+        raise ADMemoryUnavailable(f"AD memory carry could not be read: {error}") from error

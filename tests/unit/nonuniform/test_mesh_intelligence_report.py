@@ -9,8 +9,10 @@ from __future__ import annotations
 import json
 
 import numpy as np
+import pytest
 
 from rfx import MeshIntelligenceReport, Simulation, Box
+from rfx.api._ad_memory_types import ADMemoryUnavailable
 
 
 def _patch_like_nonuniform_sim():
@@ -36,7 +38,7 @@ def test_mesh_report_retains_ad_memory_trace_error(monkeypatch):
     cause = "AD memory carry could not be read: request trace failed"
 
     def refuse(*args, **kwargs):
-        raise ValueError(cause)
+        raise ADMemoryUnavailable(cause)
 
     monkeypatch.setattr(sim, "estimate_ad_memory", refuse)
     report = sim.mesh_intelligence_report(n_steps=1000)
@@ -45,6 +47,12 @@ def test_mesh_report_retains_ad_memory_trace_error(monkeypatch):
     issue = report.preflight_issues[-1]
     assert (issue.severity, issue.code, str(issue)) == ("error", "ad_memory", cause)
     assert "resolve" in report.recommendation
+
+
+def test_mesh_report_ad_memory_argument_error_propagates():
+    with pytest.raises(ValueError, match="does not divide") as error:
+        _patch_like_nonuniform_sim().mesh_intelligence_report(n_steps=120, checkpoint_segments=7)
+    assert type(error.value) is ValueError
 
 
 def test_mesh_intelligence_report_compares_uniform_fine_cells(capsys):

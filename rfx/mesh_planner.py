@@ -20,6 +20,7 @@ import numpy as np
 
 from rfx.auto_config import C0, SimConfig, analyze_features, auto_configure
 from rfx.api._ad_memory import _format_memory_gb
+from rfx.api._ad_memory_types import ADMemoryUnavailable
 from rfx.api._spec import MeshIntelligenceReport
 from rfx.core.jax_utils import is_tracer
 
@@ -122,7 +123,7 @@ def mesh_intelligence_report(
                 n_warmup=n_warmup,
                 **(ad_memory_options or {}),
             )
-        except ValueError as error:
+        except ADMemoryUnavailable as error:
             from rfx.preflight._common import PreflightIssue
             preflight_issues += (PreflightIssue(str(error), severity="error", code="ad_memory"),)
 

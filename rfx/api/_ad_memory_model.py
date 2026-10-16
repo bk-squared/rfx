@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import math
 
+from rfx.api._ad_memory_types import ADMemoryUnavailable
 from rfx.model.design_box import design_box_bounds, design_box_window
 
 
@@ -19,11 +20,12 @@ def tape_accounting(sim, accounting, *, design_box, design, checkpoint, segmente
         raise ValueError("design must be 'permittivity' or 'occupancy'")
     if not isinstance(checkpoint, bool):
         raise ValueError("checkpoint must be a bool")
-    if sim._precision == "float64":
-        raise ValueError("AD memory's fixed per-cell term is calibrated on float32 only; precision='float64' is not supported")
+    if sim._precision != "float32":
+        raise ADMemoryUnavailable("AD memory's fixed term and tape are calibrated on float32 only; "
+                                  f"precision={sim._precision!r} is not supported")
     grid = accounting.get("grid")
     if distributed:
-        raise ValueError("AD memory carry could not be read: distributed forward is not supported by this trace")
+        raise ADMemoryUnavailable("AD memory carry could not be read: distributed forward is not supported by this trace")
     window = None
     bounds = None
     if design_box is not None:
@@ -43,15 +45,13 @@ def tape_accounting(sim, accounting, *, design_box, design, checkpoint, segmente
         shape=shape, checkpoint=checkpoint, checkpoint_every=checkpoint_every,
         checkpoint_segments=checkpoint_segments, n_warmup=n_warmup)
     carry = sum(x["bytes"] for x in saved)
-    # Box residuals hold compute values: mixed uses float32, despite its
-    # float16 field storage. Float64 remains refused until c0 is calibrated.
-    compute_itemsize = 8 if sim._precision == "float64" else 4
-    tape = carry if window is None else (6 if design == "permittivity" else 3) * window * compute_itemsize
+    # Only the float32 fixed term and tape have been calibrated.
+    tape = carry if window is None else (6 if design == "permittivity" else 3) * window * 4
     bounded = window is not None and checkpoint and not segmented
     if bounded:
         # The rematted box's no-segment mechanism is not identified: bound
         # it by the carry plus six window arrays, rather than claiming a fit.
-        tape = carry + 6 * window * compute_itemsize
+        tape = carry + 6 * window * 4
     return dict(saved=saved, excluded_linear=excluded, carry_warnings=carry_warnings,
                 modelled=True, unmodelled_features=[],
                 carry_bytes=carry,

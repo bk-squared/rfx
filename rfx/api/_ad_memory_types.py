@@ -5,6 +5,10 @@ import json
 from typing import NamedTuple
 
 
+class ADMemoryUnavailable(ValueError):
+    """AD memory cannot be estimated for this precision or forward trace."""
+
+
 class AD_MemoryEstimate(NamedTuple):
     """Reverse-mode tape estimate, calibrated on GPU with JAX 0.10.2.
 
@@ -54,6 +58,7 @@ class AD_MemoryEstimate(NamedTuple):
     ad_fixed_gb: float | None = None
     tape_is_bound: bool = False
     calibration: str = "calibrated (GPU, jax 0.10.2)"
+    carry_warnings: tuple[str, ...] = ()
     @property
     def evidence_class(self) -> str:
         """Evidence class label serialized with this static estimate."""
@@ -85,6 +90,7 @@ class AD_MemoryEstimate(NamedTuple):
                 None if self.available_gb is None else float(self.available_gb)
             ),
             "warning": self.warning,
+            "carry_warnings": list(self.carry_warnings),
             "ad_segmented_gb": (
                 None if self.ad_segmented_gb is None else float(self.ad_segmented_gb)
             ),
@@ -109,4 +115,3 @@ class AD_MemoryEstimate(NamedTuple):
         options.update(kwargs)
         options["allow_nan"] = False
         return json.dumps(self.to_dict(), **options)
-
