@@ -25,12 +25,12 @@ EXPECTED_FAMILY_LEVELS = {
 
 CURRENT_DOC_REQUIRED_SNIPPETS = {
     "README.md": [
-        "docs/guides/sparameter_support_matrix.md",
+        "docs/guides/support_matrix.md#s-parameters",
         "compute_coaxial_line_reflection",
     ],
-    "docs/guides/sparameter_support_matrix.md": [
-        "broad magnitude evidence",
-        "raw voltage/current replay",
+    "docs/guides/support_matrix.md": [
+        "compute_coaxial_line_reflection(...)",
+        "sparameter_support_matrix.json",
     ],
     "docs/public/validation/recommended-configuration.mdx": [
         "uniform Cartesian Yee",

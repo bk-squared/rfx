@@ -1407,7 +1407,9 @@
         "dt",
         "dt_min_cell",
         "dt_caller",
-        "nominal_profiles"
+        "nominal_profiles",
+        "periodic_axes",
+        "domain"
       ]
     },
     "make_ntff_box": {

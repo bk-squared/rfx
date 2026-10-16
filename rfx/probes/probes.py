@@ -17,7 +17,7 @@ from rfx.core.dft_utils import dft_window_weight as _dft_window_weight
 from rfx.measurement.dft import phase as _dft_phase, accumulate as _accumulate
 from rfx.measurement.plan import field_channel
 from rfx.grid import Grid
-from rfx.boundaries.axes import resolve_cpml_axes
+from rfx.stepping.probe_loop import resolve_extractor_axes
 from rfx.boundaries.cpml import apply_cpml_e, apply_cpml_h, init_cpml
 from rfx.sources.sources import LumpedPort, _wire_port_live_cells, _wire_port_cells
 
@@ -1593,7 +1593,7 @@ def extract_s_matrix(
         when exciting port *j*). With ``return_vi_dump=True``, the bundle also
         carries replayable raw phasors.
     """
-    cpml_axes = resolve_cpml_axes(grid, cpml_axes)
+    cpml_axes = resolve_extractor_axes(grid, cpml_axes)
     import numpy as np
     from rfx.core.yee import init_state
     from rfx.materials.debye import init_debye
@@ -1890,7 +1890,7 @@ def extract_s_matrix_wire(
         By default, returns an S-matrix. With ``return_vi_dump=True``, the
         bundle also carries raw phasors and per-port wire cell counts.
     """
-    cpml_axes = resolve_cpml_axes(grid, cpml_axes)
+    cpml_axes = resolve_extractor_axes(grid, cpml_axes)
     import numpy as np
     from rfx.core.yee import init_state
     from rfx.materials.debye import init_debye

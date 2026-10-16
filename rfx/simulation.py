@@ -2711,36 +2711,9 @@ def run_until_decay(
     # It is the right stop for radiation / S-parameter measurements; it is opt-in (default
     # keeps the energy criterion, unchanged) because its semantics differ from energy-decay.
     use_flux_stop = radiated_flux_box is not None and use_absorbing
+    from rfx.measurement import flux_box_bounds, radiated_power
     if use_flux_stop:
-        from rfx._periodic import interval_indices
-        _flo, _fhi = interval_indices(grid, *radiated_flux_box)
-        _bl = (min(_flo[0], _fhi[0]), max(_flo[0], _fhi[0]),
-               min(_flo[1], _fhi[1]), max(_flo[1], _fhi[1]),
-               min(_flo[2], _fhi[2]), max(_flo[2], _fhi[2]))
-
-    def _radiated_power(state) -> float:
-        """Net outgoing Poynting flux P = ∮ (E×H)·n̂ dA over the box (co-located approx; a stop
-        criterion needs only the DECAY, so the half-cell Yee stagger is neglected). The dA=dx²
-        factor is a constant that cancels in P/peak_P."""
-        ex, ey, ez = state.ex, state.ey, state.ez
-        hx, hy, hz = state.hx, state.hy, state.hz
-        il, ih, jl, jh, kl, kh = _bl
-        jj, kk = slice(jl, jh), slice(kl, kh)
-        ii = slice(il, ih)
-        # Normal planes wrap; the tangential cell slices keep endpoint N.
-        il, ih = il % grid.nx, ih % grid.nx
-        jl, jh = jl % grid.ny, jh % grid.ny
-        kl, kh = kl % grid.nz, kh % grid.nz
-        # +x/-x faces: S_x = Ey·Hz - Ez·Hy
-        p = jnp.sum(ey[ih, jj, kk] * hz[ih, jj, kk] - ez[ih, jj, kk] * hy[ih, jj, kk])
-        p -= jnp.sum(ey[il, jj, kk] * hz[il, jj, kk] - ez[il, jj, kk] * hy[il, jj, kk])
-        # +y/-y faces: S_y = Ez·Hx - Ex·Hz
-        p += jnp.sum(ez[ii, jh, kk] * hx[ii, jh, kk] - ex[ii, jh, kk] * hz[ii, jh, kk])
-        p -= jnp.sum(ez[ii, jl, kk] * hx[ii, jl, kk] - ex[ii, jl, kk] * hz[ii, jl, kk])
-        # +z/-z faces: S_z = Ex·Hy - Ey·Hx
-        p += jnp.sum(ex[ii, jj, kh] * hy[ii, jj, kh] - ey[ii, jj, kh] * hx[ii, jj, kh])
-        p -= jnp.sum(ex[ii, jj, kl] * hy[ii, jj, kl] - ey[ii, jj, kl] * hx[ii, jj, kl])
-        return float(p)
+        _bl = flux_box_bounds(grid, radiated_flux_box)
 
     peak_sq = 0.0          # closed/PEC point-field running peak
     # The absorbing-boundary energy stop (rfx.measurement.decay), read at k * check_interval.
@@ -2828,7 +2801,7 @@ def run_until_decay(
             # the interior energy, whose peak is post-source); only the STOP check waits for
             # min_steps.
             if actual_steps % check_interval == 0:
-                flux_hist.append(abs(_radiated_power(carry["fdtd"])))
+                flux_hist.append(abs(radiated_power(carry["fdtd"], _bl, grid.shape)))
                 env = max(flux_hist[-flux_env_checks:])
                 if env > peak_flux:
                     peak_flux = env

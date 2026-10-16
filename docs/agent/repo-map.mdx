@@ -62,7 +62,7 @@ command is verified to return at least one hit on the current tree.
 | Materials / dispersion | `grep "def add_material" rfx/api/__init__.py` | `rfx/materials/` |
 | Boundaries | `grep -rl "cpml\|upml\|pec\|floquet" rfx/boundaries/` | `rfx/boundaries/` |
 | Post-processing (flux, Harminv) | `grep "def flux_spectrum\|def subtract_flux_monitors\|def harminv" rfx/probes/probes.py rfx/harminv.py` | `rfx/probes/probes.py`, `rfx/harminv.py` |
-| **Which S-parameter method do my ports need? Start here.** | `sim.s_matrix_lane()` — returns the method name, runs no FDTD; `sim.compute_s_matrix(**kw)` routes there and forwards `**kw` unchanged | `rfx/sparams/dispatch.py`, `docs/guides/sparameter_support_matrix.md` ("Which method should I call?"). It refuses rather than guesses on two rows: a single coaxial port (two calculators share that registration — pass `method=`), and lumped/wire only (use `run(compute_s_params=True)`) |
+| **Which S-parameter method do my ports need? Start here.** | `sim.s_matrix_lane()` — returns the method name, runs no FDTD; `sim.compute_s_matrix(**kw)` routes there and forwards `**kw` unchanged | `rfx/sparams/dispatch.py`, `docs/guides/support_matrix.md` (S-parameters section, "Which calculator"). It refuses rather than guesses on two rows: a single coaxial port (two calculators share that registration — pass `method=`), and lumped/wire only (use `run(compute_s_params=True)`) |
 | S-parameters and port-family calculators (high-level, use these first) | `grep -rn "def compute_.*_s_matrix\|def compute_coaxial_line_reflection\|def compute_coaxial_two_port\|def compute_coax_msl_transition" rfx/api/ rfx/sparams/` | `rfx/sparams/{coax,waveguide,mixed,msl}.py` (bodies), `rfx/api/_sparams.py` (class bindings), `rfx/sources/`, `rfx/probes/sparam_driver.py` |
 | S-parameter module-level helpers shared by those calculators (MSL modal voltage / wave solve, settling, passivity, reciprocity and geometry advisories, mixed and coaxial power-wave assemblers) | `grep -rn "^def " rfx/sparams/_common.py` | `rfx/sparams/` — re-exported from `rfx.api._sparams` for backward compatibility, so import either spelling |
 | S-parameter low-level helpers | `grep "extract_waveguide_s_matrix\|extract_s_matrix\|extract_s11" rfx/sources/waveguide_port.py rfx/probes/probes.py` | `rfx/sources/waveguide_port.py`, `rfx/probes/probes.py` |
@@ -128,6 +128,6 @@ This is a window/metadata contract, not a general RF-accuracy claim. See
 
 - [Support Boundaries](/rfx/support/)
 - `docs/guides/support_matrix.md`
-- `docs/guides/sparameter_support_matrix.md`
+- `docs/guides/support_matrix.md` (S-parameters section)
 - `tests/` — canonical usage for every `add_*` method
 - `tests/crossval/` — cross-solver comparisons; each docstring states what is judged and what is only reported

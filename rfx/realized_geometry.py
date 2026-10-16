@@ -436,7 +436,8 @@ def _ports(sim, ctx, assembled):
                     grid, WirePort(start=pe.position, end=tuple(end), component=pe.component,
                                    impedance=pe.impedance)))
             else:
-                start_idx, end_idx = locate(pe.position), locate(tuple(end))
+                from rfx._periodic import interval_indices
+                start_idx, end_idx = interval_indices(grid, pe.position, tuple(end))
                 lo, hi = sorted((start_idx[a], end_idx[a]))
                 first, last = wire_port_edge_span(grid, a, lo, hi, pe.position[a], end[a])
                 cells = tuple(tuple(k if j == a else int(start_idx[j]) for j in range(3))

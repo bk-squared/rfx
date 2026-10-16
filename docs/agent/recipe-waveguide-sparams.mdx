@@ -124,7 +124,7 @@ reflection and transmission accuracy, use `normalize="flux"`.
 Current evidence status for `add_waveguide_port` / `compute_waveguide_s_matrix`
 is **E5-narrow** (single-mode rectangular waveguide, validated against analytic
 Airy, Meep, OpenEMS, and Palace references). See
-[docs/guides/sparameter_support_matrix.md](../guides/sparameter_support_matrix.md)
+[docs/guides/support_matrix.md (S-parameters section)](../guides/support_matrix.md#s-parameters)
 for the full artifact and envelope table.
 
 That status is about magnitude and phase accuracy on the documented setups. The
@@ -207,4 +207,4 @@ two-port contract the dielectric slab.
   `rfx/sources/` waveguide port implementations
 - rfx tests: `tests/unit/sparams/test_normalization.py` (baseline accuracy),
   `tests/oracle/test_conservation_laws.py` (reciprocity, unitarity)
-- Evidence and envelope: `docs/guides/sparameter_support_matrix.md`
+- Evidence and envelope: `docs/guides/support_matrix.md` (S-parameters section)

@@ -247,7 +247,7 @@ def admit_setup(*, grid, tfsf, materials, waveguide_ports, ntff, updates,
     if getattr(cfg, "closed_box", False) or not feature_owned or nonuniform:
         # Explicit low-level periodic flags are the caller's declaration,
         # not a feature rewrite (Addendum 5c(5)).
-        # The graded operator installs no periodic wrap (Addendum 5e).
+        # Graded plane waves with a periodic axis are refused at admission.
         return
     check_arrays(cfg, grid, dict(materials=materials, **updates),
                  # The low-level RCS path does not install the slab wrap.

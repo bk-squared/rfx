@@ -7,14 +7,14 @@ sidebar:
 
 Use this page as the decision layer before choosing a primitive. The full primitive reference lives in the [sources and ports guide](/rfx/model/ports/); this page adds the device-class decision layer on top of it.
 
-For evidence status and normative envelopes, the [S-parameter support matrix](../guides/sparameter_support_matrix.md) is the support contract; this guide does not supersede it.
+For evidence status and normative envelopes, the [S-parameter section of the support matrix](../guides/support_matrix.md#s-parameters) is the support contract; this guide does not supersede it.
 
 ## Selection Table
 
 | Device class | Primitive | Compute path | Status | Hard limit / envelope |
 |---|---|---|---|---|
 | Rectangular waveguide | `add_waveguide_port` | `compute_waveguide_s_matrix` | E5-narrow (current port) | Multi-port S-matrix; requires at least two waveguide ports. Single-mode; validated empty-guide, PEC-short, slab analytic + external references including Meep/OpenEMS/Palace. Chain closure (theta to S to objective) is **chain-closed (v1.8)** for the uniform single-mode guide on the `normalize=False` and `normalize="flux"` lanes, after three pre-declared WR-90 runs of the chain battery — with contract criterion 1 (forward identity: the reverse-mode-traced result equals the untraced one) and 3(a) (AD-vs-FD) read with JAX 64-bit mode enabled on the flux lane, the forward default still float32. A float32 gradient pipeline on the flux lane, junctions, multimode and nonuniform meshes are outside that declaration; "chain-closed" is not "supported". See the waveguide row of the [support matrix](../guides/support_matrix.md) for the numbers and fences before relying on this path for a differentiable chain. |
-| Microstrip / MSL | `add_msl_port` | `compute_msl_s_matrix` | E5-narrow / eigenmode-blocked | Use only within the characterized-not-tight MSL envelope in the [support contract](../guides/sparameter_support_matrix.md). The MSL open-stub notch filter is compared with frozen external solver data by `tests/crossval/msl_notch_filter/test_msl_notch_filter.py`; the retired script's committed run logs and the numbers quoted from them left with it on 2026-09-22. Eigenmode is unsupported (fenced); the non-uniform graded-mesh lane runs via the laplace feed (internally gated, external validation still owed). |
+| Microstrip / MSL | `add_msl_port` | `compute_msl_s_matrix` | E5-narrow / eigenmode-blocked | Use only within the characterized-not-tight MSL envelope in the [support contract](../guides/support_matrix.md#s-parameters). The MSL open-stub notch filter is compared with frozen external solver data by `tests/crossval/msl_notch_filter/test_msl_notch_filter.py`; the retired script's committed run logs and the numbers quoted from them left with it on 2026-09-22. Eigenmode is unsupported (fenced); the non-uniform graded-mesh lane runs via the laplace feed (internally gated, external validation still owed). |
 | Coaxial (promoted path) | `add_coaxial_port` | `compute_coaxial_line_reflection` | **broad_e5_passed** | One-port transmission-line reflection path (forward AND `jax.grad` optimization via `eps_scale`). Broad-E5 physics (analytic Γ envelope over short/open/matched and resistive loads 25 Ω / 100 Ω, two characteristic impedances, mesh-resolution sweep; `max \|Γ\|` dev 0.037 ≤ 0.05) + independent Meep broad-E4 cross-check 4–12 GHz, both committed under `tests/fixtures/`, + end-to-end differentiable (composition AD-vs-FD gate). Clean-checkout auditor returns `coaxial_port` PASSED. |
 | Lumped / RLC excitation | `add_lumped_rlc` / `add_port` | `Simulation.run(compute_s_params=True, ...)` or `Simulation.forward(port_s11_freqs=...)` | E2/E3 partial (lumped), E0/E1 (forward S11) | Lumped-port envelope for V/I extraction. Nonuniform lumped-port S-parameter extraction is not within the current validated envelope. `compute_s_params` path is only for `add_port` simulations. |
 | Free-space scattering | `add_tfsf_source` | Field, flux, or NTFF observables (where separately supported) | Not a port | Plane-wave total-field/scattered-field drive. Not a port calibration path; no promoted S-parameter compute path. |
@@ -33,7 +33,7 @@ For evidence status and normative envelopes, the [S-parameter support matrix](..
 
 ## Coaxial Compute Path Caveat
 
-`compute_coaxial_line_reflection` is the coaxial transmission-line reflection path and is `broad_e5_passed`: broad-E5 physics (analytic Γ envelope) + independent Meep broad-E4 short/open, both with committed evidence (`tests/fixtures/coax_broad_e5/`, `tests/fixtures/coax_broad_e4/`), plus an end-to-end differentiable path (`grad(S11)` w.r.t. the dielectric via `eps_scale`; composition AD-vs-FD gate `tests/unit/autodiff/test_coax_end_to_end_ad.py`). The clean-checkout auditor returns `coaxial_port` PASSED. The [support matrix](../guides/sparameter_support_matrix.md) coaxial rows document the current lanes.
+`compute_coaxial_line_reflection` is the coaxial transmission-line reflection path and is `broad_e5_passed`: broad-E5 physics (analytic Γ envelope) + independent Meep broad-E4 short/open, both with committed evidence (`tests/fixtures/coax_broad_e5/`, `tests/fixtures/coax_broad_e4/`), plus an end-to-end differentiable path (`grad(S11)` w.r.t. the dielectric via `eps_scale`; composition AD-vs-FD gate `tests/unit/autodiff/test_coax_end_to_end_ad.py`). The clean-checkout auditor returns `coaxial_port` PASSED. The [support matrix](../guides/support_matrix.md#s-parameters) coaxial rows document the current lanes.
 
 ## Compute-Path/Port Pairing Rules
 
@@ -47,9 +47,9 @@ Keep these pairings exact. Most mispairings raise a `ValueError`; treat any comb
 
 ## When No Port Family Fits
 
-Stop before improvising. If no row in the [S-parameter support matrix](../guides/sparameter_support_matrix.md) covers the geometry, boundary conditions, source normalization, and observable you need:
+Stop before improvising. If no row in the [S-parameter section of the support matrix](../guides/support_matrix.md#s-parameters) covers the geometry, boundary conditions, source normalization, and observable you need:
 
-1. Check the full [support matrix](../guides/sparameter_support_matrix.md) and [support matrix JSON](../guides/sparameter_support_matrix.json) for any partial or experimental row that covers part of the envelope.
+1. Check the full [support matrix](../guides/support_matrix.md#s-parameters) and [support matrix JSON](../guides/sparameter_support_matrix.json) for any partial or experimental row that covers part of the envelope.
 2. Check [docs/guides/](../guides/) for evidence rules and methodology notes.
 3. Do not invent a new extraction scheme and label it validated. Add an explicit evidence row first.
 4. If the structure is close to a supported family (e.g., a variant waveguide geometry), confirm it is within the documented envelope before claiming the family's status.

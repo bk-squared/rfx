@@ -165,7 +165,7 @@ def make_graded_step(
     def h_update(frame: GradedFrame):
         # H update (non-uniform)
         frame.st = update_h_nu(frame.st, frame.materials, ctx.dt, frame.invariants["inv_dx_h"], ctx.inv_dy_h, ctx.inv_dz_h,
-                         cell_sizes=(frame.invariants["dx_arr"], ctx.grid.dy_arr, ctx.grid.dz))
+                         cell_sizes=(frame.invariants["dx_arr"], ctx.grid.dy_arr, ctx.grid.dz), periodic=ctx.curl_boundary.periodic)
 
     def h_boundary(frame: GradedFrame):
         frame.tfsf_h_state = None
