@@ -881,6 +881,18 @@ def _validate_cfg_congruent_rasterization_parity(self, _w, ctx) -> None:
         source="_validate_cfg_congruent_rasterization_parity",
     ))
 
+def _sheet_solved_plane(ctx, a, e, k) -> float:
+    """Coordinate of sheet ``e``'s solved plane ``k`` along its normal ``a``.
+    On a periodic axis node k stands for every copy k + n*L; the sheet is
+    solved on the copy nearest its drawn mid-plane."""
+    z = float(ctx.nodes[a][k])
+    if ctx.periodic[a]:
+        period = float(ctx.sim._domain[a])
+        mid = 0.5 * (float(e.lo[a]) + float(e.hi[a]))
+        z += period * round((mid - z) / period)
+    return z
+
+
 def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
     """Judge drawn-order sheet adjacency independently of electrical columns."""
     sheets = [e for e in entries if e.kind == "sheet"]
@@ -904,18 +916,24 @@ def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
                 overlap = foot1 & foot2 & ~covered
                 if not overlap.any():
                     continue
+                g_lo, g_hi = float(e1.hi[a]), float(e2.lo[a])
+                drawn = g_hi - g_lo
+                z1 = _sheet_solved_plane(ctx, a, e1, k1)
+                z2 = _sheet_solved_plane(ctx, a, e2, k2)
+                solved = z2 - z1
+                if drawn <= 0 and solved <= 0:
+                    # Metal merged on one plane: no cavity, and it does not
+                    # stand between e1 and the next sheet.
+                    continue
                 covered |= foot1 & foot2
                 # A post blocks some columns, not the whole cavity. Same-node
                 # sheets have no intervening cells and must still be judged.
-                between = [slice(None)] * 3
-                between[a] = slice(k1, k2)
-                blocked = np.any(pec_np[tuple(between)], axis=a)
+                # On a periodic axis the cells run k1 .. N-1 and on from 0.
+                cells = (np.arange(k1, k2) if k2 >= k1
+                         else np.r_[k1:pec_np.shape[a], 0:k2])
+                blocked = np.any(np.take(pec_np, cells, axis=a), axis=a)
                 if np.all(blocked[overlap]):
                     continue
-                g_lo, g_hi = float(e1.hi[a]), float(e2.lo[a])
-                drawn = g_hi - g_lo
-                z1, z2 = float(ctx.nodes[a][k1]), float(ctx.nodes[a][k2])
-                solved = z2 - z1
                 if drawn > 0:
                     rel = solved / drawn - 1.0
                     if abs(rel) <= _CAVITY_THICKNESS_TOL:

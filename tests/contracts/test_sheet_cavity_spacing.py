@@ -340,3 +340,55 @@ def test_named_xyz_profile_remedy_preserves_thin_substrate_planes(monkeypatch):
     with pytest.raises(_ReachedRunner):
         aligned.run(n_steps=1, compute_s_params=False)
     assert calls == [True]
+
+
+def _periodic_x_walls(far):
+    from rfx.boundaries.spec import BoundarySpec
+
+    sim = Simulation(10e9, DOMAIN, dx=MM, snap="strict",
+                     boundary=BoundarySpec(x="periodic", y="pec", z="pec"))
+    sim.add_material("lower", sigma=1e10)
+    sim.add_material("upper", sigma=1e10)
+    sim.add(Box((5 * MM, 2.65 * MM, 2.65 * MM), (5 * MM, 14.35 * MM, 16.35 * MM)), material="lower")
+    sim.add(Box((far * MM, 4.65 * MM, 4.65 * MM), (far * MM, 10.35 * MM, 12.35 * MM)), material="upper")
+    sim.add_source((MM, MM, MM), component="ez")
+    return sim
+
+
+@pytest.mark.parametrize("far", [19.99, 20.0])
+def test_periodic_wall_at_the_far_boundary_is_judged_on_its_own_copy(far):
+    # Periodic x, 20 mm cell, 1 mm cells: a wall drawn at 19.99 or 20 mm is
+    # solved on the node at 20 mm (the copy of x = 0); from the wall at 5 mm
+    # that is 15 mm against 14.99 or 15 mm drawn, within 1 %.
+    assert not _periodic_x_walls(far).preflight().by_code(CODE)
+
+
+def test_periodic_wall_off_its_node_reports_the_unwrapped_spacing():
+    # Drawn at 19.6 mm, solved on the node at 20 mm: 15 mm against 14.6 mm.
+    row, = _periodic_x_walls(19.6).preflight().by_code(CODE)
+    assert row.severity == "error"
+    assert f"drawn spacing {_fmt_len(14.6 * MM)}, solved spacing {_fmt_len(15 * MM)}" in str(row)
+
+
+@pytest.mark.parametrize("order", ["ground_first", "pad_first"])
+def test_a_foil_merged_with_the_ground_plane_still_bounds_the_cavity(order):
+    # Ground (zero thickness) at 4 mm; a 0.8 mm thin-conductor pad centred on
+    # it (3.6..4.4 mm, solved on the 4 mm plane too) under a patch at 6 mm.
+    # Ground and pad are one plane of metal, not a cavity; the pad's top face
+    # to the patch is drawn 1.6 mm and solved 2 mm.
+    sim = Simulation(10e9, DOMAIN, dx=MM, boundary="pec")
+    sim.add_material("ground", sigma=1e10)
+    sim.add_material("patch", sigma=1e10)
+    ground = Box((2.65 * MM, 2.65 * MM, 4 * MM), (16.35 * MM, 14.35 * MM, 4 * MM))
+    pad = Box((5.65 * MM, 5.65 * MM, 3.6 * MM), (11.35 * MM, 9.35 * MM, 4.4 * MM))
+    if order == "ground_first":
+        sim.add(ground, material="ground")
+        sim.add_thin_conductor(pad)
+    else:
+        sim.add_thin_conductor(pad)
+        sim.add(ground, material="ground")
+    sim.add(Box((4.65 * MM, 4.65 * MM, 6 * MM), (12.35 * MM, 10.35 * MM, 6 * MM)), material="patch")
+    sim.add_source((MM, MM, MM), component="ez")
+    row, = sim.preflight().by_code(CODE)
+    assert row.severity == "error"
+    assert "drawn spacing 1.6mm, solved spacing 2mm (+25.00%)" in str(row)
