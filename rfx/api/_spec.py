@@ -65,100 +65,7 @@ def _artifact_to_dict(value: object) -> object:
 # Result container
 # ---------------------------------------------------------------------------
 
-class AD_MemoryEstimate(NamedTuple):
-    """Reverse-mode AD memory estimate (issue #30 CHECK 4 / #39).
-
-    All sizes are in gigabytes. ``warning`` is populated when the
-    selected estimate exceeds 85% of ``available_gb``.
-
-    ``ad_checkpointed_gb`` is the legacy ``jax.checkpoint(step_fn)``
-    estimate; for FDTD on the non-uniform path this is *not* a
-    realistic memory number because the scan carry itself is not
-    rematerialised (see issue #31 VESSL 369367233490). Use
-    ``ad_segmented_gb`` for the runner-supported segmented paths:
-    ``checkpoint_every`` on the non-uniform scan-of-scan path and
-    ``checkpoint_segments`` on the uniform segmented-scan path. The
-    segmented model counts segment-boundary storage (carry + cotangent,
-    ``2 × active_segments``) PLUS the live-segment rematerialization tape
-    (one segment's per-step field tape resident during backward replay,
-    issue #277); it is minimized near ``sqrt(2 × n_steps)`` steps per
-    segment. When present,
-    ``ad_segmented_active_segments`` is the actual number of active segment
-    boundaries/carry snapshots used by the segmented estimate after warmup.
-    ``evidence_class`` labels this artifact as a static estimate so downstream
-    tooling does not confuse it with observed profiler evidence or a bounded
-    compiled-executable certificate.
-    """
-    forward_gb: float
-    ad_checkpointed_gb: float
-    ad_full_gb: float
-    ntff_dft_gb: float
-    available_gb: float | None
-    warning: str | None
-    ad_segmented_gb: float | None = None
-    checkpoint_every: int | None = None
-    checkpoint_segments: int | None = None
-    ad_active_steps: int | None = None
-    ad_segmented_active_segments: int | None = None
-    #: Which grid the numbers describe (#696): ``"uniform"`` or
-    #: ``"nonuniform"``. The estimate used to be derived from a private
-    #: re-derivation of the shape that matched NEITHER grid wherever
-    #: per-face pads or 2-D mode changed it, and nothing in the artifact
-    #: said which grid it meant — a uniform-lane ``dt`` has already been
-    #: mistaken for the NU one in this repo.
-    grid_kind: str | None = None
-    #: ``"built"`` when the shape came from the grid the solve will
-    #: build, ``"estimated_from_domain"`` when the grid build failed and
-    #: the legacy domain arithmetic was used as a fallback.
-    grid_source: str | None = None
-    grid_shape: tuple[int, int, int] | None = None
-    #: Surface-impedance (f0) sheet operator state — three boolean
-    #: tangential edge masks plus ``sigma_sheet`` (#677). Zero when no f0
-    #: sheet is registered. It was counted NOWHERE before #696, so a
-    #: lossy board estimated identically to the same board without loss.
-    sheet_gb: float | None = None
-    @property
-    def evidence_class(self) -> str:
-        """Evidence class label serialized with this static estimate."""
-        return "static_estimate"
-
-
-    def to_dict(self) -> dict[str, float | int | None | str]:
-        """Return a stable JSON-serializable AD memory artifact."""
-        return {
-            "evidence_class": self.evidence_class,
-            "forward_gb": float(self.forward_gb),
-            "ad_checkpointed_gb": float(self.ad_checkpointed_gb),
-            "ad_full_gb": float(self.ad_full_gb),
-            "ntff_dft_gb": float(self.ntff_dft_gb),
-            "available_gb": (
-                None if self.available_gb is None else float(self.available_gb)
-            ),
-            "warning": self.warning,
-            "ad_segmented_gb": (
-                None if self.ad_segmented_gb is None else float(self.ad_segmented_gb)
-            ),
-            "checkpoint_every": self.checkpoint_every,
-            "checkpoint_segments": self.checkpoint_segments,
-            "ad_active_steps": self.ad_active_steps,
-            "ad_segmented_active_segments": self.ad_segmented_active_segments,
-            "grid_kind": self.grid_kind,
-            "grid_source": self.grid_source,
-            "grid_shape": (
-                None if self.grid_shape is None
-                else [int(v) for v in self.grid_shape]
-            ),
-            "sheet_gb": (
-                None if self.sheet_gb is None else float(self.sheet_gb)
-            ),
-        }
-
-    def to_json(self, **kwargs: object) -> str:
-        """Serialize the estimate for research-note and CI artifacts."""
-        options = {"indent": 2, "sort_keys": True}
-        options.update(kwargs)
-        options["allow_nan"] = False
-        return json.dumps(self.to_dict(), **options)
+from rfx.api._ad_memory_types import AD_MemoryEstimate
 
 
 class ADMemoryComponent(NamedTuple):
@@ -302,6 +209,7 @@ class ADMemoryPlan(NamedTuple):
     checkpoint_segments: int | None = None
     checkpoint_mode: str | None = None
     fit_safety_factor: float = 1.0
+    checkpoint: bool = True
     @property
     def evidence_class(self) -> str:
         """Evidence class label serialized with this conservative plan."""
@@ -316,6 +224,7 @@ class ADMemoryPlan(NamedTuple):
             "target_fraction": float(self.target_fraction),
             "target_memory_gb": float(self.target_memory_gb),
             "fit_safety_factor": float(self.fit_safety_factor),
+            "checkpoint": self.checkpoint,
             "checkpoint_every": self.checkpoint_every,
             "checkpoint_segments": self.checkpoint_segments,
             "checkpoint_mode": self.checkpoint_mode,

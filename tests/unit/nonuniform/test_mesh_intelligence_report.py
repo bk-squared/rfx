@@ -57,8 +57,8 @@ def test_mesh_intelligence_report_uses_segmented_ad_estimate():
     assert report.ad_memory is not None
     assert report.ad_memory.checkpoint_every == 1000
     assert report.ad_memory.ad_segmented_gb is not None
-    assert "segmented AD estimate" in report.recommendation
-    assert "legacy step-checkpoint" in report.recommendation
+    assert "K_active*carry_bytes = s*tape_step_bytes" in report.recommendation
+    assert "checkpoint=True" in report.recommendation
 
 
 def test_mesh_intelligence_report_forwards_ad_tape_metadata():
@@ -95,7 +95,7 @@ def test_mesh_intelligence_report_uses_uniform_checkpoint_segments():
     assert report.ad_memory.checkpoint_segments == 10
     assert report.ad_memory.checkpoint_every is None
     assert report.ad_memory.ad_segmented_gb is not None
-    assert "segmented AD estimate" in report.recommendation
+    assert "K_active*carry_bytes = s*tape_step_bytes" in report.recommendation
 
 
 def test_mesh_intelligence_report_serializes_artifact():

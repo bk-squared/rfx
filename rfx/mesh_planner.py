@@ -36,6 +36,7 @@ def mesh_intelligence_report(
     n_warmup: int = 0,
     check_ntff: bool = True,
     check_resolution: bool = True,
+    ad_memory_options: dict | None = None,
 ) -> MeshIntelligenceReport:
     """Return a consolidated mesh-quality and memory-planning report.
 
@@ -118,6 +119,7 @@ def mesh_intelligence_report(
             checkpoint_every=checkpoint_every,
             checkpoint_segments=checkpoint_segments,
             n_warmup=n_warmup,
+            **(ad_memory_options or {}),
         )
 
     uses_nonuniform = any(
