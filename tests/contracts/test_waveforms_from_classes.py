@@ -64,7 +64,8 @@ KNOWN = (
      "issue 1668"),
     ("rfx/rcs.py", "_incident_spectrum_amplitude", "lane:absorber",
      "issue 1668"),
-    ("rfx/sources/tfsf.py", "update_tfsf_1d_e", "lane:absorber", "issue 1668"),
+    # One formula for the legacy line and the closed box's discrete-plane-wave line.
+    ("rfx/sources/tfsf.py", "line_source_value", "lane:absorber", "issue 1668"),
     ("rfx/sources/tfsf_2d.py", "_update_e_tez", "lane:absorber", "issue 1668"),
     ("rfx/sources/tfsf_2d.py", "_update_e_tmz", "lane:absorber", "issue 1668"),
     ("rfx/stepping/waveguide_source.py", "apply_waveguide_port_e",

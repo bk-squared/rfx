@@ -438,6 +438,7 @@ def assert_v1_v2(summary):
     # paired line-inclusive scale; the archived-program comparison is V3.
 
 
+@pytest.mark.source_scan
 @pytest.mark.parametrize('theta,phi,pol', ((0, 0, 's'), (0, 0, 'p'), (30, 0, 'p'), (45, 30, 's')))
 def test_v1_v2_l1(theta, phi, pol, record_property):
     summary, _ = measure_scene(theta, phi, pol)
@@ -458,6 +459,7 @@ def measure_line_mutation(kind):
         return measure_scene(45, 30, 'p')
 
 
+@pytest.mark.source_scan
 @pytest.mark.parametrize('kind', ('drop_h_half_step', 'flip_curl_term'))
 def test_v1_line_mutation_is_red(kind, record_property):
     summary, _ = measure_line_mutation(kind)
@@ -583,6 +585,7 @@ def table_defect_record(entry=None, epsilon=0.):
     return summary, arrays, captured['cfg'], reads
 
 
+@pytest.mark.source_scan
 def test_record10_scale_mutations(record_property):
     """Record 12: switch step 27; measured corner eps=3e-5 first goes red
     per-step at step 20 and on the law at step 18. At eps=1e-5 the corner's

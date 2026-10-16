@@ -656,29 +656,36 @@ def update_tfsf_1d_e(cfg: TFSFConfig, st: TFSFState, dx: float,
     psi_e_hi = b_hi * st.psi_e_hi + c_hi * dh[-n:]
     e1d = e1d.at[-n:].add(cfg.curl_sign * (dt / EPS_0) * psi_e_hi)
 
-    # Inject source pulse. waveform selection (baked into cfg at init):
-    #   differentiated_gaussian (legacy): s = -2·arg · exp(-arg²)
-    #   modulated_gaussian (Meep-equivalent):
-    #       s = cos(2π·fcen·(t-t0)) · exp(-arg²)
-    arg = (t - cfg.src_t0) / cfg.src_tau
-    env = jnp.exp(-(arg ** 2))
-    # MethodBConfig also uses this auxiliary kernel and keeps the original
-    # waveform fields; absent opt-in fields retain that legacy behavior.
-    custom_waveform = getattr(cfg, "custom_waveform", None)
-    if custom_waveform is not None:
-        src_val = cfg.src_amp * custom_waveform(t)
-    elif cfg.src_waveform == "modulated_gaussian":
-        carrier = jnp.cos(2.0 * jnp.pi * cfg.src_fcen * (t - cfg.src_t0))
-        src_val = cfg.src_amp * env * carrier
-    elif cfg.src_waveform == "continuous_wave":
-        # raised-cosine ramp 0->1 over src_t0, then constant amplitude
-        ramp = 0.5 * (1.0 - jnp.cos(jnp.pi * jnp.clip(t / cfg.src_t0, 0.0, 1.0)))
-        src_val = cfg.src_amp * ramp * jnp.sin(2.0 * jnp.pi * cfg.src_fcen * t)
-    else:
-        src_val = cfg.src_amp * (-2.0 * arg) * env
-    e1d = e1d.at[cfg.src_idx].add(src_val)
+    e1d = e1d.at[cfg.src_idx].add(line_source_value(cfg, t, cfg.src_amp))
 
     return st._replace(e1d=e1d, psi_e_lo=psi_e_lo, psi_e_hi=psi_e_hi, step=st.step + 1)
+
+
+def line_source_value(cfg, t, amplitude):
+    """The soft-source sample an auxiliary line adds at time ``t``.
+
+    One formula for the legacy 1-D line (``update_tfsf_1d_e``) and the closed
+    box's discrete-plane-wave line (``tfsf_discrete_plane_wave.update_line_e``),
+    which passes its amplitude already scaled by the polarization weight.
+    Waveform selection (baked into cfg at init):
+      differentiated_gaussian (legacy): s = -2·arg · exp(-arg²)
+      modulated_gaussian (Meep-equivalent): s = cos(2π·fcen·(t-t0)) · exp(-arg²)
+    MethodBConfig also uses the legacy kernel and keeps the original waveform
+    fields; absent opt-in fields retain that legacy behavior.
+    """
+    arg = (t - cfg.src_t0) / cfg.src_tau
+    env = jnp.exp(-(arg ** 2))
+    custom_waveform = getattr(cfg, "custom_waveform", None)
+    if custom_waveform is not None:
+        return amplitude * custom_waveform(t)
+    if cfg.src_waveform == "modulated_gaussian":
+        carrier = jnp.cos(2.0 * jnp.pi * cfg.src_fcen * (t - cfg.src_t0))
+        return amplitude * env * carrier
+    if cfg.src_waveform == "continuous_wave":
+        # raised-cosine ramp 0->1 over src_t0, then constant amplitude
+        ramp = 0.5 * (1.0 - jnp.cos(jnp.pi * jnp.clip(t / cfg.src_t0, 0.0, 1.0)))
+        return amplitude * ramp * jnp.sin(2.0 * jnp.pi * cfg.src_fcen * t)
+    return amplitude * (-2.0 * arg) * env
 
 
 def measure_normal_incident_spectrum(

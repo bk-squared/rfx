@@ -294,19 +294,8 @@ def update_line_e(cfg, state, dx, dt, t=None):
             window = cfg.source_windows[target] if cfg.source_windows else None
             delay = window.delays if window is not None else cfg.delays[target]
             time = (state.step.astype(jnp.float32) - jnp.float32(delay)) * dt
-            arg = (time - cfg.src_t0) / cfg.src_tau
-            env = jnp.exp(-(arg ** 2))
-            amplitude = cfg.src_amp * float(weight)
-            if cfg.custom_waveform is not None:
-                value = amplitude * cfg.custom_waveform(time)
-            elif cfg.src_waveform == "modulated_gaussian":
-                carrier = jnp.cos(2. * jnp.pi * cfg.src_fcen * (time - cfg.src_t0))
-                value = amplitude * env * carrier
-            elif cfg.src_waveform == "continuous_wave":
-                ramp = .5 * (1. - jnp.cos(jnp.pi * jnp.clip(time / cfg.src_t0, 0., 1.)))
-                value = amplitude * ramp * jnp.sin(2. * jnp.pi * cfg.src_fcen * time)
-            else:
-                value = amplitude * (-2. * arg) * env
+            from rfx.sources.tfsf import line_source_value
+            value = line_source_value(cfg, time, cfg.src_amp * float(weight))
             if window is not None:
                 value = value * jnp.asarray(window.weights, jnp.float32)
                 field = field.at[jnp.asarray(window.nodes, jnp.int32)].add(value)
