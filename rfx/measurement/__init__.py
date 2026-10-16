@@ -133,7 +133,7 @@ __all__ = [
     "update_overlap_dft",
     "update_waveguide_port_probe",
     "warn_dc_floor",
-    "waveguide_plane_positions",
     "warn_postrun_energy_witness",
+    "waveguide_plane_positions",
     "with_graded_records",
 ]
