@@ -92,14 +92,20 @@ def invariant(value, axis, shape):
     return (None, unjudged) if unjudged else (True, "")
 
 
-def _refuse(axis, feature):
+def _refuse(axis, feature, *, nonuniform=False):
+    if nonuniform:
+        raise ValueError(
+            f"TF/SF {axis}_lo, {axis}_hi: {feature} prevents an invariant periodic "
+            "replacement; on the graded mesh a finite scatterer or an array under "
+            "a plane wave is not available: run it on the uniform mesh "
+            f"(closed_box=True, or {axis}='periodic')")
     raise ValueError(
         f"TF/SF {axis}_lo, {axis}_hi: {feature} prevents an invariant periodic "
         f"replacement; declare boundary with {axis}='periodic' to solve an array, "
         "or use closed_box=True for a finite scatterer.")
 
 
-def replacement_axes(cfg, grid, *, requirements=(), records=None):
+def replacement_axes(cfg, grid, *, requirements=(), records=None, nonuniform=False):
     """Validate admissible face pairs and return absorber axes to check."""
     if getattr(cfg, "closed_box", False):
         return ()
@@ -121,7 +127,7 @@ def replacement_axes(cfg, grid, *, requirements=(), records=None):
             for requirement in requirements:
                 if any(face.startswith(axis + "_") for face in requirement.faces):
                     if Kind.PERIODIC not in requirement.admissible:
-                        _refuse(axis, requirement.feature)
+                        _refuse(axis, requirement.feature, nonuniform=nonuniform)
             result.append(axis)
         elif pair != (Kind.PERIODIC,) * 2:
             raise ValueError(
@@ -131,8 +137,10 @@ def replacement_axes(cfg, grid, *, requirements=(), records=None):
     return tuple(result)
 
 
-def check_arrays(cfg, grid, values, *, localized=(), requirements=(), records=None, active_axes=None):
-    axes = replacement_axes(cfg, grid, requirements=requirements, records=records)
+def check_arrays(cfg, grid, values, *, localized=(), requirements=(), records=None,
+                 active_axes=None, nonuniform=False):
+    axes = replacement_axes(cfg, grid, requirements=requirements, records=records,
+                            nonuniform=nonuniform)
     if active_axes is not None:
         axes = tuple(axis for axis in axes if axis in active_axes)
     for axis in axes:
@@ -142,29 +150,30 @@ def check_arrays(cfg, grid, values, *, localized=(), requirements=(), records=No
                 if box is not None:
                     index = "xyz".index(axis)
                     if tuple(box.bounds[2*index:2*index+2]) != (0, grid.shape[index]):
-                        _refuse(axis, name)
+                        _refuse(axis, name, nonuniform=nonuniform)
                     shape = tuple(box.bounds[2*i+1] - box.bounds[2*i] for i in range(3))
                     okay, feature = invariant(box, index, shape)
                     if okay is False:
-                        _refuse(axis, feature)
+                        _refuse(axis, feature, nonuniform=nonuniform)
         for name, updates in localized:
             if updates is not None and len(updates):
-                _refuse(axis, name)
+                _refuse(axis, name, nonuniform=nonuniform)
         okay, feature = invariant(values, "xyz".index(axis), grid.shape)
         if okay is None:
+            operator = "existing graded" if nonuniform else "legacy periodic"
             warnings.warn(
                 f"TF/SF {axis}_lo, {axis}_hi: invariance was not judged for traced "
-                f"{feature}; the legacy periodic operator is retained (Addendum 5c).",
+                f"{feature}; the {operator} operator is retained (Addendum 5c).",
                 UnjudgedTFSFInvarianceWarning, stacklevel=2)
         elif not okay:
-            _refuse(axis, feature)
+            _refuse(axis, feature, nonuniform=nonuniform)
     return axes
 
 
 def admit_simulation(sim, *, root=None, materials=None, material_overrides=()):
     """Dispatch and preflight use the production rasterization, never shapes."""
-    # Addendum 5e: the graded operator retains absorbers, with no wrap to admit.
-    if sim._tfsf is None or sim._tfsf.closed_box or sim._uses_nonuniform_mesh:
+    # Both meshes require invariance; the graded operator retains its absorbers.
+    if sim._tfsf is None or sim._tfsf.closed_box:
         return ()
     import jax
     from rfx.boundaries.model import collect_requirements
@@ -192,6 +201,7 @@ def admit_simulation(sim, *, root=None, materials=None, material_overrides=()):
             values["materials"] = values["materials"]._replace(**replacements)
         values.update(pec_edge_masks=root.pec_edges, sheet_impedance=root.sheet_impedance)
         return check_arrays(sim._tfsf, root.grid, values,
+                            nonuniform=sim._uses_nonuniform_mesh,
                             localized=tuple((name, getattr(sim, name, ())) for name in
                                             ("_ports", "_lumped_rlc", "_waveguide_ports",
                                              "_msl_ports", "_coaxial_ports", "_floquet_ports")),
