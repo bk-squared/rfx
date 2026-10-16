@@ -42,7 +42,8 @@ def run_wrapped(sg, materials, pec_mask, n_steps, sources, probes, *,
     cpml_state = None
     if cpml:
         from rfx.stepping.slab_cpml import export_state
-        cpml_state = export_state(final['cpml'], setup.step_fn_inv.context.cpml_grid, layout)
+        cpml_state = export_state(final['cpml'], setup.step_fn_inv.context.cpml_grid, layout,
+                                  native=True)
     return dict(time_series=ts if emit_time_series else None, final_state=state,
                 final_state_sharded=final['fdtd'], cpml_state_sharded=cpml_state,
                 debye_state_sharded=final.get('debye'), lorentz_state_sharded=final.get('lorentz'))

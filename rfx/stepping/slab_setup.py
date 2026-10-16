@@ -319,14 +319,28 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
     if cpml:
         # rfx #1402 item 5 (absorber)
         from rfx.stepping.slab_cpml import publish, import_state
-        if cpml_state is not None:
-            psi = import_state(cpml_state, psi, layout)
+        # Retain raw slab mu only for the legacy-form CPML H correction.
+        # The runner input has already been staged, with an extra low row
+        # for uniform component realization. Recover its physical cell rows
+        # without arithmetic before the amendment's explicit mu_r cut.
+        raw_mu = materials.mu_r
+        if raw_mu.ndim == 4:
+            low = raw_mu.shape[1] - layout.nx_per_rank - layout.ghost_width
+            whole_mu = raw_mu[:, low:low + layout.nx_per_rank]
+            whole_mu = whole_mu.reshape((-1,) + raw_mu.shape[-2:])[:layout.nx]
+        else:
+            from rfx.runners._distributed_common import unstack_and_gather
+            whole_mu = unstack_and_gather(raw_mu, layout.n_devices, layout.nx_local,
+                                         layout.ghost_width, layout.pad_x, layout.nx)
+        inv['cpml_mu_r'] = cut(whole_mu, layout, 'mu_r', mesh=mesh)
         shell = SimpleNamespace(step_fn_inv=SimpleNamespace(context=ctx), invariants={}, carry_init={'cpml': psi})
-        ctx, profiles, initial = publish(shell)
-        inv['cpml_x'] = {name: cut(a, layout, 'width' if 'dx_x_' in name else
-            'cpml_one' if name.rsplit('.', 1)[-1] in ('b', 'kappa') else 'cpml_zero', mesh=mesh)
-            for name, a in profiles['cpml_x'].items()}
-        carry['cpml'] = cut(initial['cpml'], layout, 'cpml_psi', mesh=mesh)
+        ctx, profiles, initial = publish(shell, layout, mesh)
+        inv['cpml_x'] = profiles['cpml_x']
+        # Native x faces retain the full one-device depth on every rank.
+        # The y/z faces already contain the slab's x rows and ghosts.
+        carry['cpml'] = initial['cpml']
+        if cpml_state is not None:
+            carry['cpml'] = import_state(cpml_state, psi, layout, native=True)
     return SimpleNamespace(invariants=inv, carry_init=carry, src_waveforms=waves,
                             step_fn_inv=make_graded_step(ctx))
 

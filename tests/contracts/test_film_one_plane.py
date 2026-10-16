@@ -285,6 +285,7 @@ def test_c6_graded_sigma_gradient():
 # Constructors that intentionally omit an explicit carrier keyword. Counts also
 # catch a new unclassified construction added inside an already reviewed function.
 CONSTRUCTOR_EXCEPTIONS = {
+    ('rfx/stepping/slab_cpml.py', 'h_materials'): (1, 'H-only local means passed to the shared CPML kernel; no conductivity consumed'),
     ('rfx/runners/_distributed_common.py', 'cpml_h_materials'): (2, 'H-only local/vacuum means passed to the shared CPML kernel; no conductivity consumed'),
     ('rfx/runners/distributed_nu.py', 'run_nonuniform_distributed_pec._apply_cpml_h_shmap._h'): (1, 'H-only local means passed to the shared CPML kernel; no conductivity consumed'),
     ('rfx/adi.py', 'adi_step_2d'): (1, 'ADI refuses thin-conductor declarations before stepping'),
@@ -499,9 +500,11 @@ def test_c6_two_device_graded_source():
     with _realized.capture() as capture:
         sim.forward(n_steps=3, distributed=True)
     source = next(r for r in capture.records if r['site'] == 'distributed_nu.sources')
-    edge = next(r for r in capture.records if 'owned_start' in r and int(r['owned_start']) == 9)
-    eps = edge['eps_e'][2][1, 4, 4]
-    sigma = edge['sigma_e'][2][1, 4, 4]
+    edge = next(r for r in capture.records if 'eps_e' in r and 'owned_start' in r
+                and int(r['owned_start']) <= 9 < int(r['owned_start']) + int(r['owned_count']))
+    local_x = 9 - int(edge['owned_start']) + 1  # E records include one low ghost.
+    eps = edge['eps_e'][2][local_x, 4, 4]
+    sigma = edge['sigma_e'][2][local_x, 4, 4]
     cb = float(e_update_coeffs(eps, sigma, grid.dt)[1])
     dual = (widths[8] + widths[9]) / 2
     assert float(source['drive_scale'][0]) == pytest.approx(cb / (dual * H * H), rel=1e-6)
