@@ -462,16 +462,6 @@ def _assert_nu_shift_span_in_one_grading_zone(grid, cfg, desired_plane_m: float,
 from rfx.sparams._grid_metrics import _msl_axis_spacing, _msl_axis_cell_f64
 
 
-def _admitted_scalar(sim, pe):
-    """``pe`` with its automatic counts from the full declaration (#1584)."""
-    import dataclasses
-    from rfx.preflight._msl_probe_rules import msl_admitted_scalar_counts
-    off, sp = msl_admitted_scalar_counts(sim, pe)
-    if (off, sp) == (pe.n_probe_offset, pe.n_probe_spacing):
-        return pe
-    return dataclasses.replace(pe, n_probe_offset=off, n_probe_spacing=sp)
-
-
 def _resolve_msl_auto_offsets(sim, entries, grid):
     """Issue #469: solve the probe-offset interval for AUTO-offset ports.
 
@@ -569,9 +559,8 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
     matters where that cell is not the scalar: a uniform ``dy_profile`` finer
     than ``dx``, or an auto mesh that chose ``dx`` after the port.
     """
-    from rfx.preflight._msl_probe_rules import admit_msl_auto_probes
-    admit_msl_auto_probes(sim)
-    _auto_spacing = getattr(sim, "_msl_auto_probe_spacing", {}) or {}
+    from rfx.preflight._msl_probe_rules import admitted_msl_entries
+    entries, _auto_spacing, _auto_lengths = admitted_msl_entries(sim, entries)
     if not sim._msl_auto_offset_min and not _auto_spacing:
         return entries
 
@@ -595,7 +584,6 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
     )
 
     clear = msl_min_probe_clearance(float(sim._freq_max))
-    _auto_lengths = getattr(sim, "_msl_auto_probe_lengths", {}) or {}
     resolved: list = []
     _graded_skips: list[str] = []
     for pe in entries:
@@ -620,10 +608,9 @@ def _resolve_msl_auto_offsets(sim, entries, grid):
                     axis=_prop_ax if not _evaluable else _width_ax,
                 )
             )
-            resolved.append(_admitted_scalar(sim, pe))
+            resolved.append(pe)
             continue
         if _graded:
-            pe = _admitted_scalar(sim, pe)
             # Issue #810: count the automatic LENGTHS in the runway cell at
             # the source node, where the whole ladder lies in one zone.
             _lengths = _auto_lengths.get(pe.name)

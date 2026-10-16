@@ -680,8 +680,6 @@ def _check_msl_port_geometry(
     import warnings as _w
     if not self._msl_ports:
         return
-    from rfx.preflight._msl_probe_rules import admit_msl_auto_probes
-    admit_msl_auto_probes(self)
     domain = self._domain
 
     # Issue #510 review (BLOCKING 2): the deepest-probe coordinate

@@ -250,6 +250,27 @@ def msl_admitted_scalar_counts(sim, pe):
             int(spacing) if auto_spacing else pe.n_probe_spacing)
 
 
+def admitted_msl_entries(sim, entries):
+    """Admit, then return ``entries`` with their admitted scalar counts and
+    the admitted spacing and length tables (#1584).
+
+    An entry with no bookkeeping row (explicit counts, hand-appended) is
+    returned as given.
+    """
+    import dataclasses
+    admit_msl_auto_probes(sim)
+    offsets = getattr(sim, "_msl_auto_offset_min", {})
+    spacings = getattr(sim, "_msl_auto_probe_spacing", {}) or {}
+    admitted = []
+    for pe in entries:
+        if pe.name in offsets or pe.name in spacings:
+            off, sp = msl_admitted_scalar_counts(sim, pe)
+            if (off, sp) != (pe.n_probe_offset, pe.n_probe_spacing):
+                pe = dataclasses.replace(pe, n_probe_offset=off, n_probe_spacing=sp)
+        admitted.append(pe)
+    return admitted, spacings, getattr(sim, "_msl_auto_probe_lengths", {}) or {}
+
+
 def msl_auto_probe_offset_term(near_field_m: float, h_sub_m: float,
                                cell_m: float) -> str:
     """Name the term that sets :func:`msl_auto_probe_offset_cells`, with its
