@@ -32,7 +32,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from rfx.runners._admission import _refuse_transformed_extended_tfsf
+from rfx.runners._admission import _refuse_transformed_extended_tfsf, refuse_forward_smoothing
 from rfx.runners._exchange_interval import validate_exchange_interval
 from rfx.sources.sources import GaussianPulse  # noqa: F401  (local import in moved bodies)
 
@@ -659,6 +659,7 @@ class _ExecuteMixin:
     def _forward_nonuniform_from_materials(
         self,
         *,
+        subpixel_smoothing=False,
         diagnostics=(),
         preflight=None,
         conductors=None,
@@ -719,6 +720,7 @@ class _ExecuteMixin:
 
         result = run_nonuniform_path(
             self,
+            subpixel_smoothing=subpixel_smoothing,
             preflight=preflight,
             conductors=conductors,
             diagnostics=diagnostics,
@@ -1103,6 +1105,7 @@ class _ExecuteMixin:
         design_box_holds_ports: bool = False,
         pec_mask_override: jnp.ndarray | None = None,
         pec_occupancy_override: jnp.ndarray | None = None,
+        subpixel_smoothing: bool | str = False,
         n_steps: int | None = None,
         num_periods: float = 20.0,
         checkpoint: bool | None = None,
@@ -1128,6 +1131,10 @@ class _ExecuteMixin:
 
         Parameters
         ----------
+        subpixel_smoothing : bool or str
+            Kottke dielectric interface smoothing; "kottke_pec" also forms
+            the unified PEC inverse tensor on a uniform single-device mesh.
+            False (default) keeps staircase interfaces.
         gradient : {"autodiff", "adjoint"}
             Opt-in settled-spectrum reciprocity design eps adjoint.
             Design sigma overrides are refused (#1424): on lossless design cells the conductivity gradient has no settled value in a finite record
@@ -1494,6 +1501,9 @@ class _ExecuteMixin:
         so the jitted value and gradient agree with a plain call to float32
         rounding, not necessarily bit for bit.
         """
+        refuse_forward_smoothing(self, subpixel_smoothing=subpixel_smoothing,
+            eps_override=eps_override,
+            pec_occupancy=pec_occupancy_override, design_occupancy=design_occupancy_override)
         if gradient not in ("autodiff", "adjoint"):
             raise ValueError("gradient must be 'autodiff' or 'adjoint'")
         if gradient == "adjoint":
@@ -1588,7 +1598,7 @@ class _ExecuteMixin:
                 design_eps_override=design_eps_override, design_sigma_override=design_sigma_override,
                 design_occupancy_override=design_occupancy_override,
                 design_box_holds_ports=design_box_holds_ports, rlc_values_override=rlc_values_override,
-                checkpoint=checkpoint, checkpoint_every=checkpoint_every,
+                subpixel_smoothing=subpixel_smoothing, checkpoint=checkpoint, checkpoint_every=checkpoint_every,
                 checkpoint_segments=checkpoint_segments, n_warmup=n_warmup,
                 emit_time_series=emit_time_series, ringdown=ringdown)
         checkpoint = True if checkpoint is None else checkpoint
@@ -1688,7 +1698,7 @@ class _ExecuteMixin:
         if plan.lane == "fwd_distributed_nu":
             from rfx.runners._distributed_nu_execute import dispatch_forward
             return dispatch_forward(self,
-                plan=plan,
+                plan=plan, subpixel_smoothing=subpixel_smoothing,
                 _solve_assembly=_solve_assembly,
                 eps_override=eps_override,
                 sigma_override=sigma_override,
@@ -1732,6 +1742,7 @@ class _ExecuteMixin:
                 )
             _nu_fwd_call = functools.partial(
                 self._forward_nonuniform_from_materials,
+                subpixel_smoothing=subpixel_smoothing,
                 port_s11_freqs=port_s11_freqs,
                 eps_override=eps_override,
                 sigma_override=sigma_override,
@@ -1762,7 +1773,7 @@ class _ExecuteMixin:
         # ---- Uniform forward lane (plan.lane == "fwd_uniform") ----
         n_steps = plan.n_steps
         conductors, grid, assembly_inputs, _fwd_sheet_specs, _fwd_pec_sheets, _fwd_pec_wires = _conductors.uniform_solve_inputs(_solve_assembly)
-        materials, debye_spec, lorentz_spec, pec_mask, _, _, kerr_chi3 = assembly_inputs
+        materials, debye_spec, lorentz_spec, pec_mask, pec_shapes, _, kerr_chi3 = assembly_inputs
 
         if eps_override is not None or sigma_override is not None or mu_r_override is not None:
             materials = apply_material_overrides(
@@ -1856,11 +1867,12 @@ class _ExecuteMixin:
             materials,
             debye_spec,
             lorentz_spec,
+            subpixel_smoothing=subpixel_smoothing,
             conductors=conductors,
             n_steps=n_steps,
             checkpoint=checkpoint,
             checkpoint_segments=checkpoint_segments,
-            pec_mask=pec_mask,
+            pec_mask=pec_mask, pec_shapes=pec_shapes,
             pec_sheets=tuple(_fwd_pec_sheets),
             pec_wires=tuple(_fwd_pec_wires),
             pec_occupancy=pec_occupancy_override,

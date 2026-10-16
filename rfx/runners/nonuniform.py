@@ -582,6 +582,9 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     sim._require_no_refinement_on_the_nonuniform_lane()
     from rfx.api import Result
 
+    from rfx.runners._admission import refuse_smoothing_overrides
+    refuse_smoothing_overrides(subpixel_smoothing=subpixel_smoothing,
+        eps_override=eps_override, pec_occupancy=pec_occupancy_override)
     _validate_interface_eps_nu(sim, subpixel_smoothing=subpixel_smoothing,
                                eps_override=eps_override)
 

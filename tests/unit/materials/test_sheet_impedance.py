@@ -1144,6 +1144,10 @@ def test_vmap_sweep_fallback_still_applies_the_sheet():
 #: ``discriminant`` is the lane string for ``refuse_f0_sheets`` sites, and a
 #: distinctive message fragment for the inline ``(#677 v1)`` fences.
 FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
+    ("rfx/runners/uniform_forward.py", "_forward_from_materials",
+     "subpixel_smoothing / conformal_pec"):
+        ("tests.unit.runners.test_forward_subpixel_smoothing",
+         "test_surface_impedance_smoothing_refusal_matches_run"),
     # --- refuse_f0_sheets(...) call sites ---
     ("rfx/runners/uniform_forward.py", "_forward_from_materials", "ADI forward"):
         (__name__, "test_fence_adi_forward"),

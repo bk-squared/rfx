@@ -30,6 +30,8 @@ def _forward_from_materials(
     debye_spec: tuple | None,
     lorentz_spec: tuple | None,
     *,
+    subpixel_smoothing: bool | str = False,
+    pec_shapes=None,
     diagnostics=(),
     n_steps: int,
     conductors=None,
@@ -89,6 +91,18 @@ def _forward_from_materials(
         refused before the first step; an explicit ``False`` asks for
         staircase PEC and passes (#1299).
         """
+    if subpixel_smoothing and sheet_impedance is not None:
+        raise ValueError(
+            "surface-impedance (surface_impedance_f0) sheets are not "
+            "supported with subpixel_smoothing / conformal_pec "
+            "(#677 v1): the sheet operator assumes the plain isotropic "
+            "E update at its edges (Stage-1/2 conformal and Kottke "
+            "lanes are untouched by #677).")
+    from rfx.model.tensor_operands import (
+        refuse_tensor_conflicts, form_tensor_operands, finish_tensor_operands)
+    refuse_tensor_conflicts(self, grid, subpixel_smoothing=subpixel_smoothing,
+        conformal_pec=False, debye_spec=debye_spec, lorentz_spec=lorentz_spec,
+        pec_shapes=pec_shapes, kerr_chi3=kerr_chi3)
     _conformal = (bool(self._boundary_spec.conformal_faces())
                   if conformal_pec is None else bool(conformal_pec))
     if _conformal and self._has_pec_to_conform():
@@ -180,6 +194,13 @@ def _forward_from_materials(
                 grid, _rlc_spec, materials,
                 r_val=_v.get("R"), c_val=_v.get("C"),
             )
+
+    aniso_eps, aniso_inv_eps, _, unextendable = form_tensor_operands(
+        self, grid, materials, subpixel_smoothing=subpixel_smoothing,
+        conformal=False, conformal_min_weight=0.1, pec_shapes=pec_shapes)
+    if subpixel_smoothing:
+        from rfx.geometry.smoothing import warn_unextendable_shapes
+        warn_unextendable_shapes([u for u in unextendable if not u.conductor])
 
     from rfx.sources.port_drive import PortSourceQueue
     sources = PortSourceQueue()
@@ -549,7 +570,9 @@ def _forward_from_materials(
         debye_spec=debye_spec, lorentz_spec=lorentz_spec)
     from rfx.model.source_coefficients import resolve_run_sources
     sources = resolve_run_sources(sources, materials, self, grid,
-        tensor=pec_occupancy_local is not None and os.environ.get("RFX_PEC_OCC_KOTTKE", "0") not in ("0", "", "false", "False"))
+        tensor=(pec_occupancy_local is not None and os.environ.get("RFX_PEC_OCC_KOTTKE", "0") not in ("0", "", "false", "False"))
+            or aniso_eps is not None or aniso_inv_eps is not None)
+    aniso_eps = finish_tensor_operands(materials, aniso_eps, None)
     _, debye, lorentz = self._init_dispersion(
         materials, grid.dt, debye_spec, lorentz_spec,
         periodic=periodic_bool,
@@ -626,6 +649,9 @@ def _forward_from_materials(
     # this branch — the two would double-correct at sigmoid edges.
     pec_occupancy_for_run, aniso_inv_eps_run = _occupancy.select_occupancy_operator(
         self, grid, materials, pec_occupancy_local, periodic_bool, design_occupancy)
+
+    if aniso_inv_eps is not None:
+        aniso_inv_eps_run = aniso_inv_eps
 
     # Build the RLC metas now that all material folding (RLC + ports)
     # is complete — build_rlc_meta reads the final eps/sigma at each
@@ -725,6 +751,7 @@ def _forward_from_materials(
         pec_sheets=pec_sheets,
         pec_wires=pec_wires,
         pec_occupancy=pec_occupancy_for_run,
+        aniso_eps=aniso_eps,
         aniso_inv_eps=aniso_inv_eps_run,
         aniso_inv_eps_smooth=(aniso_inv_eps_run is not None),
         port_record_specs=ordered_specs(port_record_specs),

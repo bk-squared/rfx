@@ -1173,3 +1173,40 @@ def _refuse_transformed_extended_tfsf(entry, until_decay=None, decay_max_steps=N
     """Keep run()'s source fence before setup can hide caller tracing."""
     from rfx.sources.tfsf_discrete_plane_wave import validate_run
     validate_run(entry, until_decay, decay_max_steps, _under_external_jax_transform)
+
+
+def refuse_smoothing_overrides(*, subpixel_smoothing, eps_override=None,
+                               pec_occupancy=None, design_occupancy=None):
+    """A geometry tensor cannot be combined with another eps operator."""
+    if not subpixel_smoothing:
+        return
+    if eps_override is not None:
+        raise NotImplementedError(
+            "subpixel_smoothing builds the permittivity tensor from declared shapes; "
+            "eps_override would not reach the solve. Omit smoothing or eps_override.")
+    if pec_occupancy is not None or design_occupancy is not None:
+        raise NotImplementedError(
+            "subpixel_smoothing cannot combine with pec_occupancy / design_occupancy: "
+            "they supply a second inverse-permittivity operator.")
+
+
+def refuse_forward_smoothing(sim, *, subpixel_smoothing,
+                             eps_override, pec_occupancy, design_occupancy):
+    """Admit smoothing only on forward lanes that carry the tensor."""
+    if not subpixel_smoothing:
+        return
+    if sim._solver == "adi":
+        sim._refuse_unsupported_run_kwargs("ADI (solver='adi')", {
+            "subpixel_smoothing": subpixel_smoothing},
+            instead="use the default solver='yee'")
+    if sim._uses_nonuniform_mesh and subpixel_smoothing == "kottke_pec":
+        raise NotImplementedError(
+            "subpixel_smoothing='kottke_pec' (Stage 2 unified PEC) "
+            "is not supported on the non-uniform mesh path. "
+            "Drop the dx/dy/dz profile or use the legacy "
+            "``Boundary(conformal=True)`` Stage 1 path on a "
+            "uniform mesh. Tracked at "
+            "https://github.com/bk-squared/rfx/issues.")
+    refuse_smoothing_overrides(subpixel_smoothing=subpixel_smoothing,
+        eps_override=eps_override, pec_occupancy=pec_occupancy,
+        design_occupancy=design_occupancy)

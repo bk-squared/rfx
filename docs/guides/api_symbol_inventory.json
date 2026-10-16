@@ -2863,6 +2863,7 @@
       "design_box_holds_ports",
       "pec_mask_override",
       "pec_occupancy_override",
+      "subpixel_smoothing",
       "n_steps",
       "num_periods",
       "checkpoint",

@@ -189,3 +189,58 @@ def form_reference_operands(grid, materials, *, subpixel_smoothing,
         ref_aniso_eps = (ref_ex, ref_ey, ref_ez)
 
     return ref_aniso_eps, ref_aniso_inv_eps
+
+
+def refuse_tensor_conflicts(sim, grid, *, subpixel_smoothing, conformal_pec,
+                            debye_spec, lorentz_spec, pec_shapes, kerr_chi3=None):
+    """Refuse updates that cannot read geometry tensors, in run entry order."""
+    if subpixel_smoothing:
+        from rfx.geometry.smoothing import refuse_pmc_smoothing
+        refuse_pmc_smoothing(sim, grid)
+
+    # A Debye/Lorentz E update reads neither the smoothed permittivity
+    # tensor nor the Dey-Mittra eps correction
+    # (``_update_e_with_optional_dispersion``); running on would drop them.
+    if debye_spec is not None or lorentz_spec is not None:
+        sim._refuse_unsupported_run_kwargs(
+            "uniform mesh with Debye/Lorentz materials", {
+                "subpixel_smoothing": subpixel_smoothing,
+                "conformal_pec": bool(conformal_pec and pec_shapes),
+            },
+            instead="remove the Debye/Lorentz poles",
+            reason_overrides={
+                "subpixel_smoothing":
+                    "the dispersive E update does not read the smoothed "
+                    "per-component permittivity tensor, so interfaces "
+                    "would get scalar eps",
+                "conformal_pec":
+                    "the dispersive E update does not read the Dey-Mittra "
+                    "eps correction, so PEC would be staircased",
+            })
+
+    # The UPML E update is built from the Stage-1 per-component eps
+    # (``init_upml(aniso_eps=...)``) and never reads the Stage-2 inverse
+    # tensor ``kottke_pec`` builds, so that tensor would be dropped.
+    if sim._boundary == "upml" and grid.cpml_layers > 0:
+        sim._refuse_unsupported_run_kwargs(
+            "uniform mesh with boundary='upml'", {
+                "subpixel_smoothing": (subpixel_smoothing
+                                       if subpixel_smoothing == "kottke_pec"
+                                       else False),
+            },
+            instead="use boundary='cpml'",
+            reason_overrides={"subpixel_smoothing":
+                "the UPML E update never reads the Stage-2 inverse-"
+                "permittivity tensor, so dielectric interfaces would get "
+                "unsmoothed eps and PEC the staircase mask"},
+            remedy_overrides={"subpixel_smoothing":
+                "use subpixel_smoothing=True (Stage 1, which UPML reads)"})
+
+    use_kottke_pec = (subpixel_smoothing == "kottke_pec")
+    if use_kottke_pec:
+        from rfx.current_moments import refuse_h_side_conductor
+        refuse_h_side_conductor(sim, 'subpixel_smoothing="kottke_pec"')
+    if subpixel_smoothing and kerr_chi3 is not None:
+        raise NotImplementedError(
+            "subpixel_smoothing cannot combine with kerr_chi3: "
+            "the Kerr E update does not read the permittivity tensor.")

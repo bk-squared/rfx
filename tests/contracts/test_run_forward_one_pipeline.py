@@ -17,10 +17,6 @@ from tests.contracts.run_forward_census import (
 KNOWN_ROWS = (
     ('P-lumped', 'uniform', 'L2', 'D9', "#1373 D9 (ports): run()'s driver discards each drive run's port records (raw V/I/V_ref accumulators, per-step port records) after forming S; forward(port_s11_freqs) returns them"),
     ('P-lumped2', 'uniform', 'L2', 'D9', "#1373 D9 (ports): run()'s driver discards each drive run's port records (raw V/I/V_ref accumulators, per-step port records) after forming S; forward(port_s11_freqs) returns them"),
-    ('C-smooth', 'graded', 'L1', 'A6', '#1373 A6 (nu): subpixel smoothing is a run() keyword; forward() cannot request it'),
-    ('C-smooth', 'graded', 'admission', 'A6', '#1373 A6 (nu): subpixel smoothing is a run() keyword; forward() cannot request it'),
-    ('C-smooth', 'uniform', 'L1', 'A6', '#1373 A6 (nu): subpixel smoothing is a run() keyword; forward() cannot request it'),
-    ('C-smooth', 'uniform', 'admission', 'A6', '#1373 A6 (nu): subpixel smoothing is a run() keyword; forward() cannot request it'),
     ('P-lumped', 'multi-device-uniform', 'L2', 'D5', '#1373 D5 (ports): settling witness arrays differ between entries'),
     ('P-lumped', 'multi-device-uniform', 'L2', 'D8', '#1373 D8 (ports): run computes the port S-matrix by default; forward returns no S without port_s11_freqs'),
     ('P-lumped', 'uniform', 'L2', 'D5', '#1373 D5 (ports): settling witness arrays differ between entries'),
@@ -336,8 +332,6 @@ ID_PATTERNS = {
            'forward': ('admitted',)},
     'A5': {'run': ('admitted',), 'forward': ('raised', 'NotImplementedError',
             'Waveguide ports are not supported on the distributed forward path')},
-    'A6': {'run': ('admitted',), 'forward': ('raised', 'TypeError',
-            "'subpixel_smoothing' is not a recognised forward() keyword argument")},
 }
 DISTRIBUTED_L1_SLOW = False
 

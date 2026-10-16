@@ -137,12 +137,18 @@ def warn_postrun_energy_witness(
     fixed_num_periods: bool,
     until_decay: float | None,
 ) -> None:
-    """Warn about measured late energy or an exactly zero excitation."""
+    """Warn about measured late energy or an exactly zero excitation.
+
+    Tracer-safe: a no-op under a JAX transformation.
+    """
+    from rfx.core.jax_utils import is_tracer
     from rfx.sources.sources import GaussianPulse
 
     import warnings
 
     time_series = getattr(result, "time_series", None)
+    if is_tracer(time_series):
+        return
     series = None if time_series is None else np.asarray(time_series)
     # Issue #470: exclude library-internal witness probes (the MSL
     # settling witnesses) — their record is judged by the MSL driver's

@@ -6,6 +6,26 @@ import numpy as np
 from rfx.api._spec import Result, _warn_if_nonfinite_result
 
 
+def refuse_distributed_options(self, *, subpixel_smoothing=False, **options):
+    """Use the same option refusal on imperative and differentiable entries."""
+    # One device on a graded mesh is the non-uniform lane, which
+    # carries neither snapshot nor conformal_pec, nor until_decay on
+    # closed boundaries.
+    _one_device = "omit devices= to run on one device"
+    _dist_instead = _one_device
+    if self._uses_nonuniform_mesh:
+        _one_uniform = ("omit devices= and run on a uniform mesh "
+                        "(no dx/dy/dz profile)")
+        _dist_instead = {"*": _one_device,
+                         "snapshot": _one_uniform,
+                         "conformal_pec": _one_uniform}
+        if self._boundary not in ("cpml", "upml"):
+            _dist_instead["until_decay"] = _one_uniform
+    self._refuse_unsupported_run_kwargs("distributed multi-device", {
+        "subpixel_smoothing": subpixel_smoothing, **options,
+    }, instead=_dist_instead)
+
+
 def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args,
                         n_steps, num_periods, devices, exchange_interval=1,
                         skip_preflight=False, compute_s_params=False,
@@ -42,19 +62,6 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args
         diagnostics=_diagnostics,
     )
     _dist_conformal = bool(conformal_pec and self._has_pec_to_conform())
-    # One device on a graded mesh is the non-uniform lane, which
-    # carries neither snapshot nor conformal_pec, nor until_decay on
-    # closed boundaries.
-    _one_device = "omit devices= to run on one device"
-    _dist_instead = _one_device
-    if self._uses_nonuniform_mesh:
-        _one_uniform = ("omit devices= and run on a uniform mesh "
-                        "(no dx/dy/dz profile)")
-        _dist_instead = {"*": _one_device,
-                         "snapshot": _one_uniform,
-                         "conformal_pec": _one_uniform}
-        if self._boundary not in ("cpml", "upml"):
-            _dist_instead["until_decay"] = _one_uniform
     # Resolve the default as the one-device lane of this mesh does: the
     # uniform runner computes S for every impedance port, the non-uniform
     # runner only for wire ports (extent set).
@@ -86,14 +93,10 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args
         from rfx.probes.sparam_driver import refuse_distributed_lumped_s_pmc
         refuse_distributed_lumped_s_pmc(self)
 
-    self._refuse_unsupported_run_kwargs("distributed multi-device", {
-        "subpixel_smoothing": subpixel_smoothing,
-        "checkpoint": checkpoint,
-        "snapshot": snapshot,
-        "until_decay": until_decay,
-        "conformal_pec": _dist_conformal,
-        **({} if report_every is None else {"report_every": report_every}),
-    }, instead=_dist_instead)
+    refuse_distributed_options(self, subpixel_smoothing=subpixel_smoothing,
+        checkpoint=checkpoint, snapshot=snapshot, until_decay=until_decay,
+        conformal_pec=_dist_conformal,
+        **({} if report_every is None else {"report_every": report_every}))
     from rfx.materials.thin_conductor import refuse_f0_sheets
     refuse_f0_sheets(self._thin_conductors, "distributed multi-device run()")
     from rfx.runners._admission import admit_run_s_matrix
@@ -204,7 +207,7 @@ FORWARD_REMEDIES = {
 def forward_distributed(sim, *, plan, assembly, devices, exchange_interval,
                         num_periods, port_s11_freqs, skip_preflight,
                         checkpoint, emit_time_series, n_warmup,
-                        design_box_holds_ports, **overrides):
+                        design_box_holds_ports, subpixel_smoothing=False, **overrides):
     """Admit the fixed-model forward request, execute once, and pack observables."""
     import jax
     from rfx.api._forward_result import pack_nu_forward_result
@@ -229,6 +232,7 @@ def forward_distributed(sim, *, plan, assembly, devices, exchange_interval,
         remedy_overrides=FORWARD_REMEDIES, entry="Simulation.forward()")
     devices = jax.devices() if devices is None else devices
     call_args = dict(n_steps=plan.n_steps, num_periods=num_periods,
+                     subpixel_smoothing=subpixel_smoothing,
                      compute_s_params=port_s11_freqs is not None,
                      s_param_freqs=port_s11_freqs, skip_preflight=skip_preflight)
     try:

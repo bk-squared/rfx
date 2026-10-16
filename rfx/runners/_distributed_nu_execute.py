@@ -12,7 +12,7 @@ from rfx.api._spec import ForwardResult
 
 def execute_from_materials(
     self,
-    *, lane: str = "fwd_distributed_nu",
+    *, lane: str = "fwd_distributed_nu", subpixel_smoothing=False,
     diagnostics=(),
     assembly=None,
     eps_override: jnp.ndarray | None = None,
@@ -36,6 +36,8 @@ def execute_from_materials(
     Run requests gathered fields and an assembly record; forward keeps the
     fields sharded. Sources, materials, ADE, CPML and PEC staging are shared.
     """
+    from rfx.runners._distributed_entry import refuse_distributed_options
+    refuse_distributed_options(self, subpixel_smoothing=subpixel_smoothing)
     from rfx.runners.distributed_v2 import refuse_distributed_periodic
     refuse_distributed_periodic(self, lane="distributed non-uniform forward()")
     if self._interface_eps == "dual_average":
@@ -335,12 +337,13 @@ def forward_from_materials(
         dft_planes=result.get('dft_planes'))
 
 
-def dispatch_forward(self, *, plan, _solve_assembly, eps_override, sigma_override, pec_mask_override, pec_occupancy_override, checkpoint, emit_time_series, checkpoint_every, n_warmup, devices, exchange_interval, skip_preflight, port_s11_freqs, num_periods, design_sigma_override, design_eps_override):
+def dispatch_forward(self, *, plan, _solve_assembly, subpixel_smoothing=False, eps_override, sigma_override, pec_mask_override, pec_occupancy_override, checkpoint, emit_time_series, checkpoint_every, n_warmup, devices, exchange_interval, skip_preflight, port_s11_freqs, num_periods, design_sigma_override, design_eps_override):
     from rfx.api._gradient_witness import with_conductivity_record
     from rfx.materials.thin_conductor import refuse_f0_sheets
     refuse_f0_sheets(self._thin_conductors,
                      "distributed non-uniform forward()")
     result = self._forward_distributed_nonuniform_from_materials(
+        subpixel_smoothing=subpixel_smoothing,
         diagnostics=_solve_assembly.diagnostics,
         assembly=_solve_assembly,
         eps_override=eps_override,

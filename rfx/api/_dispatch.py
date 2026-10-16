@@ -104,6 +104,8 @@ def _dispatch_plan(
     self._require_no_refinement_on_the_nonuniform_lane()
     # A point feature one cell off a conductor drawn at the same half
     # node (#1295, #1342); run() and forward(), both lanes.
+    from rfx.geometry.rasterize_grid import refuse_traced_shapes
+    refuse_traced_shapes(self._geometry)
     self._require_no_half_node_split()
     is_nonuniform = self._uses_nonuniform_mesh
 
