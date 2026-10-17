@@ -222,6 +222,27 @@ def test_override_pole_edge_refuses_before_staging(kind, monkeypatch):
         evaluate(sim, 'forward', 8, jax.devices(), jnp.ones(sim._build_nonuniform_grid().shape))
 
 
+def test_two_excited_wire_ports_refuse_run_s_before_staging(monkeypatch):
+    from rfx.model import electric_metrics
+    def two_excited():
+        sim = scene('C2', len(jax.devices()))
+        grid = sim._build_nonuniform_grid()
+        cell = (4, grid.ny // 2 - 1, grid.nz // 2 - 1)
+        pos = tuple(_axis_node_position(grid, a, i) for a, i in enumerate(cell))
+        sim.add_port(pos, 'ex', impedance=50., extent=_axis_node_position(grid, 0, 7) - pos[0],
+            waveform=GaussianPulse(f0=20e9, bandwidth=.9))
+        return sim
+    with pytest.raises(ValueError, match='isolated drive') as one:
+        two_excited().run(n_steps=8, compute_s_params=True, s_param_freqs=BINS, skip_preflight=True)
+    def staging(*args, **kwargs):
+        pytest.fail('refusal reached material staging')
+    monkeypatch.setattr(electric_metrics, 'stage_forward_materials', staging)
+    with pytest.raises(ValueError, match='isolated drive') as multi:
+        two_excited().run(n_steps=8, devices=jax.devices(), compute_s_params=True,
+            s_param_freqs=BINS, skip_preflight=True)
+    assert str(multi.value) == str(one.value)
+
+
 @pytest.mark.parametrize('entry', ['run', 'forward'])
 @pytest.mark.parametrize('n', [128, 192, 288])
 @pytest.mark.parametrize('case', ['C1-mid', 'C1-seam', 'C1b', 'C2', 'C3', 'C4-mid', 'C4-wire', 'C5'])

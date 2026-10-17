@@ -100,6 +100,11 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args
     admit_run_s_matrix(self, compute_s_params=compute_s_params,
                        conformal_pec=conformal_pec, distributed=True)
     if plan.lane == "run_distributed_nu":
+        # Same drive-isolation refusal as one-device run_nonuniform, before the solve.
+        if (compute_s_params is not False
+                and any(p.impedance > 0 and p.extent is not None for p in self._ports)):
+            from rfx.runners._admission import require_isolated_s_drive
+            require_isolated_s_drive(self, fields_only=True)
         from rfx.runners.distributed_v2 import _spans_other_processes
         if devices is not None and _spans_other_processes(devices):
             # The graded runner does not gather the final fields
