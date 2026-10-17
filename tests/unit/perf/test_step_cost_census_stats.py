@@ -333,3 +333,41 @@ def test_a5_ignored_witness_does_not_override_primary():
     assert result["b"] is True
     assert result["disagree"] is False
     assert result["flag"] == "flagged"
+
+
+def test_amendment6_shard_threshold_and_single_device_counts():
+    from scripts.perf.step_cost_census import domain_size_threshold, field_shard_record
+    # Synthetic shard: 3*4*5=60; global C=100. No division by device count:
+    # the compiled shard includes its allocated cells. One 60-cell copy,
+    # one 100-cell fusion, one 59-cell add. Parameters never count.
+    params = '\n'.join(
+        f'  %p{i} = f32[3,4,5] parameter({i}), metadata={{op_name="carry.fdtd.{field}"}}'
+        for i, field in enumerate(('ex', 'ey', 'ez', 'hx', 'hy', 'hz')))
+    hlo = 'HloModule test, num_partitions=2\nENTRY main {\n' + params + '''
+  %copy = f32[3,4,5] copy(%p0)
+  %large = f32[100] fusion(%p0)
+  %small = f32[59] add(%p0, %p1)
+}'''
+    assert field_shard_record(hlo)['shape'] == [3, 4, 5]
+    assert domain_size_threshold(hlo, 100) == 100
+    assert domain_size_threshold(hlo, 100, distributed=True) == 60
+    assert compiled_opcode_counts(hlo, domain_size_threshold(hlo, 100)) == {'fusion': 1}
+    assert compiled_opcode_counts(hlo, domain_size_threshold(hlo, 100, distributed=True)) == {'copy': 1, 'fusion': 1}
+    # Single-device input needs no field metadata and remains exactly C.
+    assert domain_size_threshold('no field metadata', 100) == 100
+    with pytest.raises(RuntimeError, match='all six'):
+        domain_size_threshold('no field metadata', 100, distributed=True)
+
+
+def test_distributed_fallback_is_not_a_refusal_or_timed_record():
+    from types import SimpleNamespace
+    from scripts.perf.step_cost_census import OneDeviceFallback, check_distributed_result, fallback_record
+    warning = 'Distributed runner does not yet support waveguide ports. Falling back to single-device execution with the same arguments.'
+    result = SimpleNamespace(diagnostics=(SimpleNamespace(values={'devices_used': 1}, message=warning),))
+    with pytest.raises(OneDeviceFallback) as caught:
+        check_distributed_result(result)
+    assert fallback_record(caught.value) == {
+        'status': 'falls back (one device)', 'devices_used': 1,
+        'warning': warning, 'message': warning, 'conclusion': '리더가 채움'}
+    assert check_distributed_result(SimpleNamespace(diagnostics=())) is None
+    assert check_distributed_result(SimpleNamespace(diagnostics=(SimpleNamespace(values={'devices_used': 2}),))) is None

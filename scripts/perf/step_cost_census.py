@@ -1,4 +1,4 @@
-"""Per-feature CPU step-cost census, Design 20261017, Amendments 1–5.
+"""Per-feature CPU step-cost census, Design 20261017, Amendments 1–6.
 
 Quantities (seconds unless explicitly ns; MAD is median absolute deviation):
 S = 200; R = 7; t_step = median / S. Compile once, discard one warm run
@@ -28,6 +28,11 @@ get-tuple-element, bitcast and constant. Inspect every computation,
 including fusion bodies; count a tuple-producing instruction once if any
 of its output arrays has at least C elements. Report absolute counts and
 feature minus base counts. Only outputs are inspected, not input operands.
+Amendment 6, multi-device only: replace C in the domain-sized threshold
+with the per-device field shard's cell count, read from the compiled
+program's field-shard shape. Single-device thresholds remain C.
+A distributed result with devices_used=1 is labelled "falls back (one device)";
+quote its diagnostic warning and record no timing samples.
 The former four-op rule is retained as a diagnostic, not used for (b).
 (c): XLA cost_analysis()["bytes accessed"] of the compiled step.
 ΔB(N) = feature − base; s_c = least-squares slope of log ΔB against log C;
@@ -197,6 +202,54 @@ def compiled_opcode_counts(compiled, cells):
     return dict(sorted(counts.items()))
 
 
+def field_shard_record(compiled_text):
+    """Read all six field parameters in partitioned, optimized entry HLO."""
+    entry = False
+    fields = {}
+    evidence = []
+    for line in compiled_text.splitlines():
+        if line.startswith("ENTRY "):
+            entry = True
+        if not entry:
+            continue
+        match = re.search(r"= (?:f|bf|c)\d+\[([0-9,]+)\].*?parameter\(\d+\).*?op_name=\"([^\"]+)\"", line)
+        if not match:
+            continue
+        component = re.search(r"\.(ex|ey|ez|hx|hy|hz)$", match[2])
+        if component:
+            shape = tuple(map(int, match[1].split(",")))
+            if len(shape) != 3:
+                raise RuntimeError(f"field shard must have rank three: {line}")
+            fields.setdefault(component[1], set()).add(shape)
+            evidence.append(line.strip())
+    if set(fields) != {"ex", "ey", "ez", "hx", "hy", "hz"}:
+        raise RuntimeError("compiled entry does not identify all six field-shard parameters")
+    shapes = set().union(*fields.values())
+    if len(shapes) != 1:
+        raise RuntimeError(f"compiled field-shard shapes disagree: {shapes}")
+    shape = next(iter(shapes))
+    return {"shape": list(shape), "cells": math.prod(shape), "parameter_instructions": evidence}
+
+
+def domain_size_threshold(compiled_text, cells, *, distributed=False):
+    return field_shard_record(compiled_text)["cells"] if distributed else cells
+
+
+class OneDeviceFallback(Exception):
+    """A returned product fallback, distinct from refusal or a timed row."""
+
+
+def check_distributed_result(result):
+    for diagnostic in getattr(result, "diagnostics", ()):
+        if diagnostic.values.get("devices_used") == 1:
+            raise OneDeviceFallback(diagnostic.message)
+
+
+def fallback_record(exc):
+    return {"status": "falls back (one device)", "devices_used": 1,
+            "warning": str(exc), "message": str(exc), "conclusion": "리더가 채움"}
+
+
 def cost_record(compiled):
     raw = compiled.cost_analysis()
     # Older JAX releases return a singleton list. Never sum per-device
@@ -298,12 +351,17 @@ class Program:
 
     def _record_executable(self, lowered, executable, seconds):
         lt, ct = lowered.as_text(), executable.as_text()
-        return {"compile_seconds": seconds, "memory_analysis": memory_record(executable),
-                "counts": compiled_opcode_counts(ct, self.cells),
+        threshold = domain_size_threshold(ct, self.cells, distributed=self.distributed)
+        record = {"compile_seconds": seconds, "memory_analysis": memory_record(executable),
+                "counts": compiled_opcode_counts(ct, threshold),
                 "legacy_counts": structural_counts(lt, ct, self.cells),
                 "cost_analysis": cost_record(executable),
                 "lowered_sha256": hashlib.sha256(lt.encode()).hexdigest(),
                 "compiled_sha256": hashlib.sha256(ct.encode()).hexdigest()}
+        if self.distributed:
+            record["field_shard"] = field_shard_record(ct)
+            record["domain_size_threshold"] = threshold
+        return record
 
     def _capture_jit(self, fun=None, **kwargs):
         if fun is None:
@@ -357,6 +415,7 @@ class Program:
                 result = self.scene.sim.forward(n_steps=S, skip_preflight=True,
                                                 distributed=True, devices=jax.devices("cpu")[:2],
                                                 **self.scene.forward_kwargs)
+            check_distributed_result(result)
         else:
             result = self.compiled()
         jax.block_until_ready(result)
@@ -440,6 +499,8 @@ def run_pair(row, n, path):
                                 "minus_base": subtract_counts(p2.record["counts"], base_program.record["counts"]),
                                 "program": p2.record}
             del p2, doubled
+        except OneDeviceFallback as exc:
+            structural["2F"] = fallback_record(exc)
         except (ValueError, NotImplementedError, TypeError) as exc:
             if not is_api_refusal(exc):
                 raise
@@ -537,7 +598,7 @@ def main(argv=None):
         parser.error(f"unknown rows {sorted(unknown)} or sizes outside {SIZES}")
     if args.path.startswith("multi") and len(jax.devices("cpu")) != 2:
         parser.error("multi-device path needs exactly two virtual CPU devices")
-    report = {"schema": 3, "design_amendments": [1, 2, 3, 4, 5], "path": args.path, "steps": S, "repeats": R,
+    report = {"schema": 3, "design_amendments": [1, 2, 3, 4, 5] + ([6] if args.path.startswith("multi") else []), "path": args.path, "steps": S, "repeats": R,
               "job": os.environ.get("REMI_JOB"), "jax_version": jax.__version__,
               "python": sys.version, "rfx_import": rfx.__file__, "cpu_affinity": sorted(os.sched_getaffinity(0)),
               "hostname": platform.node(), "platform": platform.platform(),
@@ -572,6 +633,11 @@ def main(argv=None):
             for n in sorted(set(args.sizes)):
                 try:
                     result = run_pair(row, n, args.path)
+                except OneDeviceFallback as exc:
+                    result = dict(N=n, C=(n+16)**3, **fallback_record(exc))
+                    print("FALLBACK " + json.dumps(result, ensure_ascii=False), flush=True)
+                    jax.clear_caches()
+                    gc.collect()
                 except (ValueError, NotImplementedError, TypeError) as exc:
                     if not is_api_refusal(exc):
                         raise
