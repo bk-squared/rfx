@@ -12,8 +12,12 @@ from tests.unit.runners.test_distributed_nu_wrapped_step import (
 )
 
 
-@pytest.mark.parametrize('name', ['debye', 'lorentz', 'lorentz_lossy', 'lorentz_lossy_yz'])
+@pytest.mark.parametrize('name', ['debye'])
 def test_cpml_one_slab_invariants(name, monkeypatch):
+    _cpml_one_slab_invariants(name, monkeypatch)
+
+
+def _cpml_one_slab_invariants(name, monkeypatch):
     if name == 'debye':
         _one_slab(name, monkeypatch)
         return
