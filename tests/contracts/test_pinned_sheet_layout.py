@@ -531,7 +531,20 @@ def test_all_release_record_kinds_refused(kind):
         refuse_layout_port_releases(layout, root)
 
 
-@pytest.mark.parametrize('stage', ['parallel_rc', 'tfsf', 'wire_away'])
+@pytest.mark.parametrize('value', [0., 1.])
+def test_tfsf_layout_refused(value):
+    # The drawn sheet under an open plane wave on the graded mesh is refused by
+    # the TF/SF invariance admission (#1816), which reads only the static metal;
+    # the switched sheet must not slip past it at any layout value.
+    sim = board((FULL,))
+    sim._ports.clear()
+    sim.add_tfsf_source(f0=3e9, margin=3, direction='+x', polarization='ez')
+    with pytest.raises(ValueError, match=r"sheet 0 \('patch'\): the TF/SF invariance admission"):
+        sim.forward(n_steps=4, skip_preflight=True,
+                    pinned_sheet_layout=(edge_arrays((FULL,) if value else ()),))
+
+
+@pytest.mark.parametrize('stage', ['parallel_rc', 'wire_away'])
 @pytest.mark.parametrize('value', [0., 1.])
 def test_other_stages_layout_bytes(stage, value):
     def build(rectangles):
@@ -539,9 +552,6 @@ def test_other_stages_layout_bytes(stage, value):
         if stage == 'parallel_rc':
             sim.add_lumped_rlc((.0045, .005, float(DZ[:4].sum())), 'ex',
                                R=50., C=1e-13, topology='parallel')
-        elif stage == 'tfsf':
-            sim._ports.clear()
-            sim.add_tfsf_source(f0=3e9, margin=3, direction='+x', polarization='ez')
         else:
             sim._ports.clear()
             sim.add_port((.002, .005, float(DZ[:2].sum())), 'ez',
@@ -554,10 +564,9 @@ def test_other_stages_layout_bytes(stage, value):
     def run(sim, pair=None):
         result = sim.forward(n_steps=60, skip_preflight=True,
                              pinned_sheet_layout=None if pair is None else (pair,),
-                             **({} if stage == 'tfsf' else {'port_s11_freqs': BINS}))
-        # TFSF has no port S matrix. A port record contains only its driven column.
-        return ((result.time_series,) if stage == 'tfsf' else
-                (result.time_series, result.s_params[:, :1, :]))
+                             port_s11_freqs=BINS)
+        # A port record contains only its driven column.
+        return result.time_series, result.s_params[:, :1, :]
     assert_bytes(run(build((FULL,)), edge_arrays((FULL,) if value else ())),
                  run(build((FULL,) if value else ())))
 
