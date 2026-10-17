@@ -87,11 +87,11 @@ def check(row, *, spectral_only=False):
     assert row['spectral'] <= 1e-6, f"bar S: {row}"
 
 
-def snapshot_parity(kind, lengths, monkeypatch, *, entry):
+def snapshot_parity(kind, lengths, monkeypatch, *, entry, scene_builder=None):
     """Measure the existing x-lo pole box with lawS.py's probe arrangement."""
     from rfx.runners import _distributed_nu_wrapped as runner
     from tests.unit.runners.test_distributed_edge_averaged_materials import _debye_box, _devices
-    sim = _debye_box('cpml', 'fwd', kind)
+    sim = (scene_builder or _debye_box)('cpml', 'fwd', kind)
     assert len(sim._probes) == 2
     sim.add_probe(_mm(12, 6, 6), 'ez')
     sim.add_probe(_mm(14, 5, 7), 'hy')

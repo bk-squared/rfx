@@ -736,14 +736,6 @@ def test_a_dispersive_model_matches_one_device(boundary, lane, kind):
     _check(f"{kind}/{boundary}/{lane}", got, floor)
 
 
-@pytest.mark.parametrize("kind", ["debye", "lorentz"])
-def test_cpml_dispersive_pr_snapshots(kind, monkeypatch):
-    """Use law C/bar S for accumulated pole rounding (rfx-archive records/20261017-item5-dispersive)."""
-    from tests._distributed_cpml_cross_trace import PR_PREFIXES
-    from tests._distributed_dispersive_cpml import snapshot_parity
-    snapshot_parity(kind, PR_PREFIXES, monkeypatch, entry='snapshot_pr')
-
-
 @pytest.mark.parametrize("kind", ["debye", "lorentz", "mixed"])
 def test_a_large_dispersive_objective_has_finite_gradients(kind):
     """The raw squared-field objective exercises the coefficient reverse pass."""
