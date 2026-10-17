@@ -57,7 +57,7 @@ def test_config_interop_and_polarized_declarations_resolve():
 @pytest.mark.parametrize("entry", ["run", "forward"])
 def test_adi_requires_explicit_field_before_stepping(mode, entry, monkeypatch):
     import rfx.adi as adi
-    import rfx.api._execute as execute
+    import rfx.runners.adi as adi_runner
 
     def make(kind):
         sim = Simulation(freq_max=1e10,
@@ -79,7 +79,7 @@ def test_adi_requires_explicit_field_before_stepping(mode, entry, monkeypatch):
         with monkeypatch.context() as patch:
             patch.setattr(adi, "run_adi_3d", premature_step)
             patch.setattr(adi, "run_adi_2d", premature_step)
-            patch.setattr(execute, "run_adi_2d", premature_step)
+            patch.setattr(adi_runner, "run_adi_2d", premature_step)
             with pytest.raises(NotImplementedError) as caught:
                 getattr(sim, entry)(n_steps=4, skip_preflight=True)
         message = str(caught.value)

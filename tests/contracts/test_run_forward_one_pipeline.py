@@ -47,6 +47,7 @@ ASSEMBLY_ROWS = (
     ('B-pecsides', 'graded'),
     ('B-pecsides', 'multi-device-graded'),
     ('B-pecsides', 'uniform'),
+    ('B-periodic', 'graded'),
     ('B-periodic', 'uniform'),
     ('B-pmcone', 'graded'),
     ('B-pmcone', 'multi-device-graded'),
@@ -143,6 +144,7 @@ FIELD_ROWS = (
     ('B-pecsides', 'multi-device-graded'),
     ('B-pecsides', 'multi-device-uniform'),
     ('B-pecsides', 'uniform'),
+    ('B-periodic', 'graded'),
     ('B-periodic', 'uniform'),
     ('B-pmcone', 'graded'),
     ('B-pmcone', 'multi-device-graded'),
@@ -278,7 +280,6 @@ ADMISSION_ROWS = (
 
 
 BOTH_REFUSE_ROWS = (
-    ('B-periodic', 'graded'),
     ('B-periodic', 'multi-device-graded'),
     ('B-periodic', 'multi-device-uniform'),
     ('B-upml', 'graded'),

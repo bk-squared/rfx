@@ -128,7 +128,7 @@ once per new setup, not every iteration. Pair it with the settling check in
   `forward(rlc_values_override=...)`, and the waveguide and microstrip
   S-matrix calculators where they accept `eps_override`. Each is
   differentiable only within its own support entry; see the
-  [S-parameter support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/sparameter_support_matrix.md).
+  [S-parameter section of the support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md#s-parameters).
 
 ## What is noisy or stiff
 

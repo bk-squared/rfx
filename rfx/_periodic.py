@@ -44,7 +44,17 @@ def interval_indices(grid, start, end):
     if hasattr(grid, "interval_to_indices"):
         return grid.interval_to_indices(start, end)
     from rfx.nonuniform import position_to_index
-    return position_to_index(grid, start), position_to_index(grid, end)
+    if not getattr(grid, "periodic_axes", ""):
+        return position_to_index(grid, start), position_to_index(grid, end)
+    from rfx._grid_metric import nearest_uniform_index
+    corners = [list(start), list(end)]
+    spans = {a: interval_coordinates(grid, a, start[a], end[a])
+             for a in range(3) if "xyz"[a] in grid.periodic_axes and start[a] != end[a]}
+    indices = [list(position_to_index(grid, point)) for point in corners]
+    for axis, span in spans.items():
+        for result, value in zip(indices, span):
+            result[axis] = nearest_uniform_index(value / float(grid.cells(axis)[0]))
+    return tuple(tuple(result) for result in indices)
 
 
 def periodic_shape(grid, shape):

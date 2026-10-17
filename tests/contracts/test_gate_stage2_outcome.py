@@ -530,7 +530,8 @@ def test_real_collection_skip_recording(tmp_path):
 
 
 def test_plugin_clears_jax_caches_only_when_a_module_ends(monkeypatch):
-    """The gate's memory plugin frees compiled programs between modules, never inside one (#1528)."""
+    """The gate's memory plugin frees compiled programs, then returns freed memory to the system,
+    between modules, never inside one (#1528)."""
     import types
 
     import jax
@@ -541,6 +542,7 @@ def test_plugin_clears_jax_caches_only_when_a_module_ends(monkeypatch):
     spec.loader.exec_module(plugin)
     calls = []
     monkeypatch.setattr(jax, "clear_caches", lambda: calls.append("cleared"))
+    monkeypatch.setattr(plugin, "_release_freed_memory", lambda: calls.append("trimmed"))
     module_a, module_b = object(), object()
     first = types.SimpleNamespace(module=module_a)
     second = types.SimpleNamespace(module=module_a)
@@ -549,9 +551,9 @@ def test_plugin_clears_jax_caches_only_when_a_module_ends(monkeypatch):
     plugin.pytest_runtest_teardown(first, second)
     assert calls == []
     plugin.pytest_runtest_teardown(second, third)
-    assert calls == ["cleared"]
+    assert calls == ["cleared", "trimmed"]
     plugin.pytest_runtest_teardown(third, None)
-    assert calls == ["cleared", "cleared"]
+    assert calls == ["cleared", "trimmed", "cleared", "trimmed"]
 
 
 def test_both_gate_pytest_steps_load_the_memory_plugin():

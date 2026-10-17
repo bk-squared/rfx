@@ -1135,8 +1135,8 @@ def update_e_box(state: FDTDState, prev: FDTDState, box: tuple,
     :func:`curl_h_nu` instead, the curl :func:`update_e_nu` uses — so the box
     reproduces the non-uniform update the same way it reproduces the uniform
     one. ``dx``, ``periodic``, ``stencil_order`` and ``bloch`` are then
-    unused: the non-uniform lane installs no periodic BC, has no
-    fourth-order stencil and no Bloch phase.
+    unused: ``boundary`` supplies periodic flags to the graded curl,
+    which has no fourth-order stencil or Bloch phase.
 
     Cost: one extra whole-grid ``curl_h`` per step, the same shared stencil
     helper the E update and the #677 sheet operator use. Slicing H to the box
@@ -1253,7 +1253,7 @@ def update_e(state: FDTDState, materials: MaterialArrays, dt: float, dx: float,
 
 def update_h_nu(state: FDTDState, materials: MaterialArrays, dt: float,
                 inv_dx_h: jnp.ndarray, inv_dy_h: jnp.ndarray, inv_dz_h: jnp.ndarray,
-                *, cell_sizes=None,
+                *, cell_sizes=None, periodic=(False, False, False),
                 ) -> FDTDState:
     """H update for non-uniform Yee grid.
 
@@ -1264,7 +1264,8 @@ def update_h_nu(state: FDTDState, materials: MaterialArrays, dt: float,
     ----------
     inv_dx_h, inv_dy_h, inv_dz_h : (N,) arrays
         H-update inverse spacing ``inv_d_h[k] = 1/d[k]`` for k<N-1,
-        ``inv_d_h[N-1] = 0``. Built by
+        ``inv_d_h[N-1] = 0`` on non-periodic axes; periodic axes use 1/d
+        everywhere. Built by
         ``rfx.nonuniform._profile_to_inv_arrays`` (second return value).
     """
     # Compute dtype: max(state dtype, float32) -- byte-identical for float32
@@ -1281,24 +1282,24 @@ def update_h_nu(state: FDTDState, materials: MaterialArrays, dt: float,
                            for v in (inv_dx_h, inv_dy_h, inv_dz_h))
     mu = (materials.components.mu_update
           if materials.components is not None
-          else component_h_materials(materials, cell_sizes=cell_sizes))
+          else component_h_materials(materials, periodic, cell_sizes=cell_sizes))
     if _realized.ACTIVE is not None:
-        mu = _realized.magnetic(materials, mu, "yee.H", cell_sizes=cell_sizes)
+        mu = _realized.magnetic(materials, mu, "yee.H", periodic=periodic, cell_sizes=cell_sizes)
     mu_x, mu_y, mu_z = (m * MU_0 for m in mu)
     ch_x, ch_y, ch_z = dt / mu_x, dt / mu_y, dt / mu_z
 
-    # Forward differences with same shape (zero-pad via _shift_fwd)
+    # Forward differences wrap periodic axes; other axes keep zero padding.
     curl_x = (
-        (_shift_fwd(ez, 1) - ez) * inv_dy_h[None, :, None]
-        - (_shift_fwd(ey, 2) - ey) * inv_dz_h[None, None, :]
+        _diff_fwd_o(ez, 1, periodic, 2) * inv_dy_h[None, :, None]
+        - _diff_fwd_o(ey, 2, periodic, 2) * inv_dz_h[None, None, :]
     )
     curl_y = (
-        (_shift_fwd(ex, 2) - ex) * inv_dz_h[None, None, :]
-        - (_shift_fwd(ez, 0) - ez) * inv_dx_h[:, None, None]
+        _diff_fwd_o(ex, 2, periodic, 2) * inv_dz_h[None, None, :]
+        - _diff_fwd_o(ez, 0, periodic, 2) * inv_dx_h[:, None, None]
     )
     curl_z = (
-        (_shift_fwd(ey, 0) - ey) * inv_dx_h[:, None, None]
-        - (_shift_fwd(ex, 1) - ex) * inv_dy_h[None, :, None]
+        _diff_fwd_o(ey, 0, periodic, 2) * inv_dx_h[:, None, None]
+        - _diff_fwd_o(ex, 1, periodic, 2) * inv_dy_h[None, :, None]
     )
 
     hx = (state.hx.astype(_cdtype) - ch_x * curl_x).astype(_fdtype)
@@ -1349,11 +1350,9 @@ def update_e_nu(state: FDTDState, materials: MaterialArrays, dt: float,
     # One spelling with the uniform lane and with update_e_box, so a design
     # box on a graded mesh builds the SAME Ca/Cb from its own permittivity
     # (#1183). #1210: per component, from the mean over the four cells
-    # incident to the edge. Non-periodic: the graded-mesh lane installs no
-    # periodic BC (the NU boundary carries no periodic axes), the same assumption
-    # ``update_e_box``'s ``inv_d`` branch documents.
+    # incident to the edge, with periodic flags from the NU boundary.
     (ca_x, ca_y, ca_z), (cb_x, cb_y, cb_z) = e_component_coeffs(
-        materials, dt, (False, False, False),
+        materials, dt, boundary.periodic if boundary is not None else (False,) * 3,
         **_nu_e_metric_kwargs(materials, (inv_dx, inv_dy, inv_dz), cell_sizes))
 
     # Backward differences with same shape (zero-pad via _shift_bwd)
@@ -1634,9 +1633,9 @@ def update_e_nu_aniso(state: FDTDState, materials: MaterialArrays,
     # permittivity here stays the Kottke/subpixel tensor, which is already
     # per-component by construction. Where sigma is uniform (every lossless
     # subpixel fixture) the mean of four equal floats is that float, so those
-    # runs keep their bytes. The graded-mesh lane installs no periodic BC.
+    # runs keep their bytes. Periodic axes use the boundary's seam average.
     sigma_ex, sigma_ey, sigma_ez = (materials.components.sigma_update if materials.components is not None
-        else component_e_materials(materials, (False, False, False),
+        else component_e_materials(materials, boundary.periodic if boundary is not None else (False,) * 3,
             **({} if cell_sizes is None else dict(cell_sizes=cell_sizes)))[1])
 
     # The same arithmetic as update_e's, so one spelling (and its #1357

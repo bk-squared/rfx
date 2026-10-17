@@ -13,7 +13,7 @@ radiated pulse reached a probe 4 cm away.
     their own; both import the rule from rfx.measurement.decay;
 (b) a far probe in an open box sees its whole pulse before the stop;
 (c) the loop's stop equals the declared rule applied in this file to W
-    reduced from captured fields, with no rfx.measurement import;
+    reduced from captured fields, including a graded periodic seam, with no rfx.measurement import;
 (d) a stopped record is the forced-length record's prefix;
 (e) fewer than two consecutive boundaries is refused;
 (f) a driven waveguide port's drive end is read from the table it applies,
@@ -73,11 +73,20 @@ def _cube(mesh):
     ("uniform-upml": the same cube in a UPML box)."""
     graded = {} if mesh.startswith("uniform") else {
         "dz_profile": np.array([1.5e-3] * 8 + [1e-3] * 10 + [1.5e-3] * 8)}
+    boundary = ({"x": "periodic", "y": "cpml", "z": "cpml"} if mesh == "graded-periodic"
+                else "upml" if mesh == "uniform-upml" else "cpml")
     sim = Simulation(freq_max=14e9, domain=(24e-3, 22e-3, 34e-3),
-                     boundary="upml" if mesh == "uniform-upml" else "cpml",
+                     boundary=boundary,
                      dx=1e-3, **graded)
-    sim.add_material("cube_eps6", eps_r=6)
-    sim.add(Box((8e-3, 7e-3, 14e-3), (14e-3, 13e-3, 20e-3)), material="cube_eps6")
+    sigma = 0.0
+    if mesh == "graded-periodic":
+        from rfx.core.yee import EPS_0
+        sigma = EPS_0 * 4e10
+        sim.add_material("lossy_background", eps_r=1, sigma=sigma)
+        sim.add(Box((0, 0, 0), (24e-3, 22e-3, 34e-3)), material="lossy_background")
+    sim.add_material("cube_eps6", eps_r=6, sigma=6 * sigma)
+    xlo, xhi = (18e-3, 24e-3) if mesh == "graded-periodic" else (8e-3, 14e-3)
+    sim.add(Box((xlo, 7e-3, 14e-3), (xhi, 13e-3, 20e-3)), material="cube_eps6")
     sim.add_source((6.5e-3, 10.5e-3, 17.5e-3), "ez", waveform=GaussianPulse(**PULSE),
                    amplitude_kind="current")
     sim.add_probe((17.5e-3, 15.5e-3, 18.5e-3), "ez")
@@ -138,9 +147,10 @@ def _inline_history(mesh, cap, monkeypatch):
         materials = kwargs["materials"] if "materials" in kwargs else args[1]
         widths = None if uniform else (grid.dx_arr, grid.dy_arr, grid.dz)
         kw = {} if widths is None else dict(cell_sizes=widths)
+        flags = tuple(a in grid.periodic_axes for a in "xyz")
         built.update(grid=grid, widths=widths,
-                     eps=component_e_materials(materials, **kw)[0],
-                     mu=component_h_materials(materials, **kw))
+                     eps=component_e_materials(materials, flags, **kw)[0],
+                     mu=component_h_materials(materials, flags, **kw))
         ends = []
         for src in kwargs["sources"]:
             table = np.abs(np.asarray(src.waveform if hasattr(src, "waveform") else src[4],
@@ -216,7 +226,7 @@ def _declared_stop(w, n_end, *, interval, thr, min_steps, consecutive=2):
     return None, rows
 
 
-@pytest.mark.parametrize("mesh", ["uniform", "graded", "uniform-upml"])
+@pytest.mark.parametrize("mesh", ["uniform", "graded", "uniform-upml", "graded-periodic"])
 def test_stop_is_the_declared_rule_on_an_independent_history(mesh, monkeypatch,
                                                               record_property):
     from rfx.runners import nonuniform as nu_runner
@@ -239,7 +249,7 @@ def test_stop_is_the_declared_rule_on_an_independent_history(mesh, monkeypatch,
         got = len(result.time_series)
         record_property(f"stop_I{interval}", (n_end, expected, got))
         assert expected is not None and got == expected, (interval, n_end, expected, got)
-        if mesh == "graded":
+        if mesh.startswith("graded"):
             # The loop's own rows: same boundaries, W and reference to 1e-4.
             checks = returned["decay_checks"]
             assert [c for c, _, _ in checks] == [c for c, _, _ in rows]

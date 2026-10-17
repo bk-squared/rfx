@@ -2,9 +2,9 @@
 
 Every index here comes from the function the runners call to place the same
 declaration: ``field_index`` for soft point sources and point probes (all
-five paths), the lane's own ``position_to_index`` for DFT planes, flux planes
-and the graded NTFF box, ``resolve_flux_region`` for finite flux windows,
-``make_ntff_box`` for the uniform NTFF box and ``init_tfsf`` for the TFSF
+five paths), the lane's own ``position_to_index`` for DFT and flux planes,
+``resolve_flux_region`` for finite flux windows, ``make_ntff_box`` for NTFF
+on both meshes and ``init_tfsf`` for the TFSF
 planes. Index boxes are inclusive ``(lo, hi)`` per axis on the padded grid;
 ``None`` on an axis means the region is not bounded there.
 """
@@ -138,12 +138,9 @@ def _ntff_row(sim, ctx, locate):
     corner_lo, corner_hi, freqs = sim._ntff
     components = ("ex", "ey", "ez", "hx", "hy", "hz")
     try:
-        if ctx.lane == "nonuniform":
-            lo, hi = locate(corner_lo), locate(corner_hi)
-        else:
-            from rfx.farfield import make_ntff_box
-            b = make_ntff_box(ctx.grid, corner_lo, corner_hi, freqs)
-            lo, hi = (b.i_lo, b.j_lo, b.k_lo), (b.i_hi, b.j_hi, b.k_hi)
+        from rfx.farfield import make_ntff_box
+        b = make_ntff_box(ctx.grid, corner_lo, corner_hi, freqs)
+        lo, hi = (b.i_lo, b.j_lo, b.k_lo), (b.i_hi, b.j_hi, b.k_hi)
         box = tuple((int(lo[a]), int(hi[a])) for a in range(3))
         return ProbeGeometry("ntff", "ntff", components, index_box=box)
     except Exception as exc:

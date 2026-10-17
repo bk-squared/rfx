@@ -21,6 +21,7 @@ from rfx.model.conductors import (
     prepare_port_occupancy,
     PreparedSolve,
     stage_distributed_edges,
+    stage_distributed_occupancy,
     uniform_solve_inputs,
 )
 from rfx.model.design_box import (
@@ -85,6 +86,7 @@ __all__ = [
     "select_occupancy_operator",
     "solve_rectangular_modes",
     "stage_distributed_edges",
+    "stage_distributed_occupancy",
     "traced_cell_mask",
     "uniform_solve_inputs",
     "WaveguidePort",

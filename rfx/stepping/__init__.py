@@ -25,6 +25,9 @@ from .slab import (
     Fill,
     Slab,
 )
+from .step_count import (
+    steps_for_periods,
+)
 
 __all__ = [
     "apply_waveguide_port_e",
@@ -42,4 +45,5 @@ __all__ = [
     "segmented_scan",
     "Slab",
     "STEP_SEQUENCE",
+    "steps_for_periods",
 ]

@@ -11,6 +11,7 @@ PATH = 'tests/contracts/test_backing_wall_one_rule.py'
 def main(mode):
     if mode in ('forward-unbacked', 'plane-unbacked'):
         import rfx.api._execute as execute
+        import rfx.runners.uniform_forward as uniform_forward
         original = execute._ExecuteMixin._forward_from_materials
         source = textwrap.dedent(inspect.getsource(original))
         needle = 'pec_axes_run = None'
@@ -25,8 +26,8 @@ def main(mode):
             second = source.index(needle, first+len(needle))
             source = source[:second]+source[second:].replace(needle, 'pec_axes_run = ""', 1)
             nodes = [f'{PATH}::test_wall_matrix[uniform-forward-plane]']
-        namespace = dict(execute.__dict__)
-        exec(compile(source, execute.__file__, 'exec'), namespace)
+        namespace = dict(uniform_forward.__dict__)
+        exec(compile(source, uniform_forward.__file__, 'exec'), namespace)
         execute._ExecuteMixin._forward_from_materials = namespace['_forward_from_materials']
     elif mode == 'distributed-unbacked':
         import rfx.boundaries.depths as depths

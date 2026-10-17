@@ -102,7 +102,7 @@ cal = Simulation(freq_max=10e9, domain=(0.12, 0.04, 0.02),
                  boundary={"x": "cpml", "y": "pec", "z": "pec"},
                  cpml_layers=10, dx=0.002)
 
-# Report at the snapped measurement planes (the default).
+# Report at the snapped measurement planes (without a preset, S sits at the port plane).
 cal.add_waveguide_port(0.01, calibration_preset="measured", name="a")
 # S11 at the source plane, S21 from source to probe plane.
 cal.add_waveguide_port(0.01, calibration_preset="source_to_probe", name="b")
@@ -227,4 +227,4 @@ graded mesh it is a target segment count.
 - **`port_reference_sims`** needs `normalize="flux"`, single-mode ports, a
   uniform mesh and no material override.
 - Full scope, with the comparisons behind it, is in the
-  [S-parameter support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/sparameter_support_matrix.md).
+  [S-parameter section of the support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md#s-parameters).

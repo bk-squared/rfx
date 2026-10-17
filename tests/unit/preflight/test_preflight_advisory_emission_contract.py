@@ -469,7 +469,16 @@ def _enumerate_emission_sites():
 # 134 -> 135 (#1691): ``preflight_wire_port_radius``, one advisory per
 # preflight naming every wire port declared without radius= (its S does not
 # converge with the mesh: each halving adds omega*(mu0*l/2pi)*ln2).
-_FROZEN_TOTAL_SITES = 135
+# 135 -> 136 (#1786): one ``PreflightIssue`` error in ``_preflight_impl``
+# (rfx/preflight/_impl.py), existing code ``ad_memory`` -- an AD memory
+# estimate the solve cannot give (float64 or mixed precision, a request that
+# cannot be traced) is reported as an error finding instead of aborting
+# preflight. The literal-code count holds.
+# 136 -> 137 (#1800): ``_warn_sheet_cavity_spacing`` (rfx/preflight/pec_geometry.py),
+# new code ``sheet_cavity_spacing`` -- two parallel PEC sheets solved more than
+# 1 % off their drawn spacing: an error under snap='strict', a warning under
+# snap='declared'.
+_FROZEN_TOTAL_SITES = 137
 # 74 -> 73, 2026-09-15 (#1043 / PR #1047): ``conformal_nan`` was the only
 # site emitting that code, and the check was deleted when its own tripwire
 # XPASSed -- see the note on _FROZEN_TOTAL_SITES above.
@@ -504,7 +513,8 @@ _FROZEN_TOTAL_SITES = 135
 # 89 -> 88 (#1624): sheet_gap_bridged retired.
 # 88 -> 89 (issue 1668): undriven_pulse.
 # 89 -> 90 (#1691): wire_port_no_radius.
-_FROZEN_LITERAL_CODE_COUNT = 90
+# 90 -> 91 (#1800): sheet_cavity_spacing.
+_FROZEN_LITERAL_CODE_COUNT = 91
 # Dynamic sites are frozen by ENCLOSING FUNCTION and count, not by line
 # number. What this test exists to catch is a new bare ``except`` path
 # emitting PreflightIssue(code=getattr(exc, "code", "uncoded")) — a site

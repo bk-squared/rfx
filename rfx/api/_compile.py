@@ -451,7 +451,7 @@ class _CompileMixin:
         # (pure — sim state is never mutated by a grid build).
         return build_nonuniform_grid(
             self._freq_max, self._domain, self._dx, self._cpml_layers,
-            self._dz_profile,
+            self._dz_profile, periodic_axes=self._periodic_axes or "",
             dx_profile=self._dx_profile,
             dy_profile=self._dy_profile,
             face_layers=self._resolve_face_layers(),

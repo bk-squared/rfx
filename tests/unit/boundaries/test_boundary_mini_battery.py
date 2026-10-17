@@ -100,19 +100,25 @@ def resonance(structure, entry, dx):
         boundary = BoundarySpec(x="periodic", y="periodic", z="pec")
         source, probe = (.005, .001, .001), (.017, .001, .001)
         band = (8e9, 16e9)
-    sim = Simulation(freq_max=20e9, domain=domain, dx=dx, boundary=boundary, cpml_layers=0)
+    mesh = {}
+    if structure == "ring-graded":
+        from tests.unit.boundaries.graded_periodic_cases import profiles
+        mesh = profiles(domain, dx, "xy")
+    sim = Simulation(freq_max=20e9, domain=domain, dx=dx, boundary=boundary, cpml_layers=0, **mesh)
     sim.add_source(source, "ez", waveform=GaussianPulse(f0=8.5e9, bandwidth=.8), amplitude_kind="field")
     sim.add_probe(probe, "ez")
     steps = round(2048 * .001 / dx)
     result = execute(sim, entry, steps)
     trace = np.asarray(result.time_series)[:, 0]
-    dt = sim._build_grid().dt
+    dt = (sim._build_nonuniform_grid() if structure == "ring-graded" else sim._build_grid()).dt
     modes = matrix_pencil(trace[steps // 4:], dt, *band, min_Q=1, max_modes=24,
                     sv_threshold=1e-3, decimate="auto")
     data = dict(structure=structure, entry=entry, dx_m=dx, steps=steps,
                 frequencies_Hz=[float(m.freq) for m in modes],
                 amplitudes=[float(abs(m.amplitude)) for m in modes],
                 trace_peak_V_per_m=float(np.max(np.abs(trace))))
+    if structure == "ring-graded":
+        data["dt"] = dt
     record(f"{structure}-{entry}-{dx}", data)
     assert data["trace_peak_V_per_m"] > 0
     return data

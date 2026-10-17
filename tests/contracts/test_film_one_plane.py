@@ -326,7 +326,7 @@ SIGMA_READS = {
     ('rfx/api/_compile.py', '_CompileMixin._has_pec_to_conform', 'self._resolve_material(e.material_name)'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
     ('rfx/api/_compile.py', '_CompileMixin.conductor_mask', 'materials'): (1, 'threshold / conductor cell footprint'),
     ('rfx/api/_execute.py', '_ExecuteMixin._auto_configure_mesh', 'spec'): (1, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
-    ('rfx/api/_execute.py', '_ExecuteMixin._run_adi_from_materials', 'materials'): (5, 'interface/refusal test, tracer test, broadcasting and slicing to ADI'),
+    ('rfx/runners/adi.py', '_run_adi_from_materials', 'materials'): (5, 'interface/refusal test, tracer test, broadcasting and slicing to ADI'),
     ('rfx/artifacts.py', '_material_summary', 'material'): (1, 'report text / safe scalar conversion'),
     ('rfx/auto_config.py', 'analyze_features', 'mat'): (1, 'documented dict of MaterialSpec or dict at :136; no assembled grid input'),
     ('rfx/boundaries/cpml.py', '_flip_profile', 'p'): (1, 'CPMLParams profile record, returned explicitly as CPMLParams in this function'),
@@ -348,7 +348,7 @@ SIGMA_READS = {
     ('rfx/boundaries/cpml.py', 'apply_cpml_e', 'materials'): (3, 'fallback when a caller passes no step loss: the subgridded lanes, which refuse thin conductors; the uniform and graded steps pass the component loss'),
     ('rfx/measurement/decay.py', 'advisory_inputs', 'spec'): (2, 'declared material returned by _resolve_material; names lossy materials in the until_decay cap advisory (text only, no result reads it)'),
     ('rfx/measurement/decay.py', 'array_lossy', 'materials'): (1, 'names lossy cells in the until_decay cap advisory for direct loop calls (text only); a film sheet loss is not named'),
-    ('rfx/model/pole_stability.py', 'refuse_unstable_cells', 'materials'): (3, 'refusal only: pole-medium time-step judgement at the cell conductivity extremes; a film on a pole-medium face is not included (not measured; reported to the materials lane)'),
+    ('rfx/model/pole_stability.py', 'pole_set_extremes', 'materials'): (3, 'refusal only: pole-medium time-step judgement at the cell conductivity extremes; a film on a pole-medium face is not included (not measured; reported to the materials lane)'),
     ('rfx/runners/distributed_nu.py', 'run_nonuniform_distributed_pec.run_fn', 'invariants[0]'): (1, 'carrier staged or passed alongside volume sigma to the shared edge reader'),
     ('rfx/model/materials.py', '_design_box_edge_coeffs', 'materials'): (1, 'slicing/passing on to window MaterialArrays'),
     ('rfx/model/materials.py', 'assemble_cells', 'mat'): (4, 'declared material returned by _resolve_material / specification mapping in this file; not assembled cells'),
@@ -356,6 +356,7 @@ SIGMA_READS = {
     ('rfx/model/materials.py', 'electric_materials_traced', 'materials'): (1, 'source trace detection includes the film record'),
     ('rfx/model/materials.py', 'realize_components', 'materials'): (1, 'arithmetic: volume sigma / lumped subtraction and edge averaging'),
     ('rfx/model/overrides.py', 'apply_material_overrides', 'materials'): (2, 'slicing/passing on or retaining unoverridden cell sigma'),
+    ('rfx/model/overrides.py', 'apply_material_overrides', 'out'): (1, 'slicing the grid rows of a padded override for the pole-stability judge, which reads no film carrier'),
     ('rfx/model/thin_conductors.py', '_fold_dc_plane', 'materials'): (2, 'film fold shapes or diagnostic envelope / carrier-preserving junction splice'),
     ('rfx/model/thin_conductors.py', 'conductivity_envelope', 'materials'): (1, 'film fold shapes or diagnostic envelope / carrier-preserving junction splice'),
     ('rfx/model/thin_conductors.py', 'fold_thin_conductor', 'materials'): (1, 'passing on: ones_like shape for f0, where overwrite for DC'),
@@ -498,9 +499,11 @@ def test_c6_two_device_graded_source():
     with _realized.capture() as capture:
         sim.forward(n_steps=3, distributed=True)
     source = next(r for r in capture.records if r['site'] == 'distributed_nu.sources')
-    edge = next(r for r in capture.records if 'owned_start' in r and int(r['owned_start']) == 9)
-    eps = edge['eps_e'][2][1, 4, 4]
-    sigma = edge['sigma_e'][2][1, 4, 4]
+    edge = next(r for r in capture.records if 'eps_e' in r and 'owned_start' in r
+                and int(r['owned_start']) <= 9 < int(r['owned_start']) + int(r['owned_count']))
+    local_x = 9 - int(edge['owned_start']) + 1  # E records include one low ghost.
+    eps = edge['eps_e'][2][local_x, 4, 4]
+    sigma = edge['sigma_e'][2][local_x, 4, 4]
     cb = float(e_update_coeffs(eps, sigma, grid.dt)[1])
     dual = (widths[8] + widths[9]) / 2
     assert float(source['drive_scale'][0]) == pytest.approx(cb / (dual * H * H), rel=1e-6)

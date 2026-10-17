@@ -31,19 +31,12 @@ CLOSED_GRADED = (
     "CustomWaveform and closed_box TFSF require a uniform, single-device, "
     "3D second-order Yee run/forward with no subgrids"
 )
-PERIODIC_GRADED = (
-    "The graded {entry}() lane would solve this Simulation as if this input was "
-    "not declared, so it is refused before the first time step:\n"
-    "  - a periodic axis is not carried by the graded {entry}() lane.\n"
-    "Lanes that carry every input of this model apart from the ones that choose "
-    "the lane (solver, mesh profiles, refinement): uniform run(), uniform forward().\n"
-    "Remove the input, or declare the model so that a lane that carries it runs."
-)
+
 
 # Literal expected table: no expected outcomes are derived from production.
 # Existing UPML refusal: rfx/api/_execute.py:1154 (_reject_upml_on_nonuniform).
 # Existing graded closed-box refusal: rfx/api/_dispatch.py:115.
-# Existing graded periodic refusal: rfx/runners/_admission.py:477,1018.
+# Periodic axes are carried by both single-device Yee lanes (#1221).
 EXPECTED_TABLE = (
     ("uniform", "cpml", "admitted", None),
     ("uniform", "upml", "admitted", None),
@@ -56,7 +49,7 @@ EXPECTED_TABLE = (
     ("graded", "upml", "refused", UPML),
     ("graded", "pmc", "refused", EXTERIOR.format(faces="y_lo is pmc")),
     ("graded", "pec", "refused", EXTERIOR.format(faces="y_lo is pec")),
-    ("graded", "periodic", "refused", PERIODIC_GRADED),
+    ("graded", "periodic", "admitted", None),
     ("graded", "zero", "refused", EXTERIOR.format(faces="y_lo is zero-depth absorber")),
     ("graded", "closed", "refused", CLOSED_GRADED),
 )

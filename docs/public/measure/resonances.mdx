@@ -5,16 +5,191 @@ sidebar:
   order: 4
 ---
 
-<p data-rfx="note">Being written for 2.0 (tracker 1171).</p>
-
 ## What it is for
+
+After the source has ended, the field at a probe inside a resonant structure
+rings down as a sum of damped sinusoids, one per mode. Fitting that ring-down
+gives each mode's frequency f and amplitude decay rate α, and from them its
+quality factor Q = πf/α. rfx fits the ring-down with the matrix pencil method
+(Hua and Sarkar 1990; Sarkar and Pereira, *IEEE AP Magazine*, 1995). It finds a
+mode's frequency far more finely than the bin spacing of an FFT of the same
+record, and it gives Q without fitting a peak's width. Use it for cavity
+modes and for filter and antenna resonances. For the frequency response
+between ports, see [S-parameters](/rfx/measure/s-parameters/).
 
 ## How to use it
 
+A closed cavity filled with a lossy dielectric has a closed-form answer for
+both quantities. The TM110 frequency is c/(2√εr)·√(1/a² + 1/b²); with perfectly
+conducting walls, all of the loss is in the fill, so Q = ωε/σ. The fill's
+conductivity below is chosen so that Q = 200:
+
+```python
+import numpy as np
+from rfx import Box, GaussianPulse, Simulation
+
+C0, EPS0 = 299_792_458.0, 8.8541878128e-12
+a, b, h = 0.030, 0.024, 0.012          # cavity (m)
+eps_r, q_fill = 2.2, 200.0             # fill permittivity and the Q it should give
+f110 = C0 / (2 * np.sqrt(eps_r)) * np.hypot(1 / a, 1 / b)
+sigma = 2 * np.pi * f110 * EPS0 * eps_r / q_fill    # Q = omega * eps / sigma
+
+sim = Simulation(freq_max=10e9, domain=(a, b, h), dx=1e-3, boundary="pec")
+sim.add_material("fill", eps_r=eps_r, sigma=sigma)
+sim.add(Box((0, 0, 0), (a, b, h)), material="fill")
+pulse = GaussianPulse(f0=f110, bandwidth=0.8)
+sim.add_source((0.009, 0.007, 0.006), "ez", waveform=pulse, amplitude_kind="current")
+sim.add_probe((0.021, 0.016, 0.006), "ez")
+result = sim.run(n_steps=3000)
+
+modes = result.find_resonances(freq_range=(4e9, 7e9), waveform=pulse)
+best = min(modes, key=lambda m: abs(m.freq - f110))
+print(f"TM110  rfx {best.freq / 1e9:.3f} GHz   closed form {f110 / 1e9:.3f} GHz")
+print(f"Q      rfx {best.Q:.0f}          closed form {q_fill:.0f}")
+```
+
+After the preflight summary it prints:
+
+```text
+TM110  rfx 5.390 GHz   closed form 5.392 GHz
+Q      rfx 200          closed form 200
+```
+
+The record is 5.7 ns, about half of this mode's amplitude decay time
+1/α = Q/(πf): the fit does not need the field to have died away, only to have
+rung freely for a while.
+
+`result.find_resonances(freq_range=(f_min, f_max))` fits one probe's record,
+the first unless you pass `probe_idx=`, and returns a list of
+`MatrixPencilMode`, strongest first:
+
+| Field | Meaning |
+|---|---|
+| `freq` | frequency (Hz) |
+| `decay` | amplitude decay rate α (1/s); positive when the mode decays |
+| `Q` | πf/\|α\| |
+| `amplitude`, `phase` | the mode's coefficient at the first sample fitted; for a real cosine of peak A, `amplitude` is A/2. These are not modal energies. |
+| `error` | 1 − min(\|z\|, 1/\|z\|) for the fitted pole z per sample of the fitted (possibly resampled) record, so it grows with the decay per sample and changes with `decimate`; despite its name it is not an uncertainty on `freq` or `Q` |
+
+- **Skipping the drive.** The fit uses only the record after the source.
+  Pass `waveform=` with a `GaussianPulse` or `ModulatedGaussian` (as above)
+  and rfx skips twice the pulse's peak time `t0`; another waveform object
+  falls back to the estimate below. Pass
+  `source_decay_time=` in seconds to set it yourself. With neither, rfx
+  assumes a `GaussianPulse` with fractional bandwidth 0.8 centred in
+  `freq_range`; it does not look at your source, so a longer pulse is fitted
+  while it is still driving.
+- **The band.** `freq_range` defaults to the range the run stored (a tenth of
+  `freq_max` to `freq_max`). Modes up to 10 % outside it can be reported, and
+  modes with Q below 1 are dropped.
+- **Close modes.** Two fitted modes within 1 % of each other in frequency come
+  back as one, the stronger.
+- **Noise returns modes too.** A record of noise alone still gives poles in
+  the band. Confirm a mode on a second probe or a second window before you
+  trust it.
+- **Picking the mode.** The strongest mode is the one the probe sees best,
+  which depends on where the source and probe sit in each mode's field
+  pattern. Pick by physics, as the example does: the mode nearest a
+  closed-form or expected frequency, or the one whose field pattern matches.
+
+For any sampled signal, including the `time_series` of a `forward()` result
+(which has no `find_resonances`), call the fit directly. On the record above:
+
+```python
+from rfx import matrix_pencil, matrix_pencil_from_probe
+
+series, dt = np.asarray(result.time_series)[:, 0], float(result.dt)
+skip = 2 * pulse.t0                                   # what waveform= skipped
+probe_modes = matrix_pencil_from_probe(series, dt, (4e9, 7e9), source_decay_time=skip)
+
+ring = series[int(np.ceil(skip / dt)):]               # the free ring-down
+fit = matrix_pencil(ring - ring.mean(), dt, 4e9, 7e9)
+for m in (probe_modes[0], fit[0]):
+    print(f"{m.freq / 1e9:.3f} GHz   Q = {m.Q:.0f}")
+```
+
+```text
+5.390 GHz   Q = 200
+5.390 GHz   Q = 200
+```
+
+Both give the mode `find_resonances` found: it is the same fit on the same
+window.
+
+`matrix_pencil` takes `min_Q` (default 1), `max_modes` (50), `sv_threshold`
+(1e-3, a relative singular-value cut, not a calibrated noise bound),
+`pencil_parameter` (0.33) and `decimate` (`"auto"`: an oversampled record is
+filtered and resampled before the fit, which shortens the span it uses;
+`False` keeps every sample). The older `harminv` names still work as
+deprecated aliases (see [Upgrading](/rfx/start/upgrading/)).
+
 ## What is checked
+
+- **Frequency against closed forms.** The TE101 mode of a WR-90-sized PEC
+  cavity, and the TM110 mode of a PEC cavity filled with εr = 2.2 and driven
+  through a high-impedance port, each within 0.5 %
+  (`tests/oracle/test_cavity_harminv_oracles.py`). `find_resonances` on a PEC
+  cavity with the second- and fourth-order stencils finds TM110 within 1 %
+  (`tests/unit/grid/test_fourth_order_result_dt.py`).
+- **Q against a closed form.** A two-dimensional PEC cavity filled with a
+  lossy dielectric (εr = 4, tan δ = 0.1): the fitted Q within 5 % of 1/tan δ
+  at the fitted frequency
+  (`tests/oracle/test_lossy_material_validation.py::test_lossy_cavity_Q_vs_tandelta`).
+- **The fit on known signals.** Three synthetic tones: frequencies within
+  0.05 GHz, the dominant tone also with 1 % noise, and its Q within 30 %
+  (`tests/unit/misc/test_harminv_estimator.py`); amplitudes and phases
+  (`tests/unit/misc/test_harminv_amplitudes.py`); automatic resampling keeps
+  the poles of an exact sum of decaying tones to 10⁻⁷, and on a test record
+  moves frequency by at most 0.2 % and Q by at most 10 % against a fit of
+  every sample
+  (`tests/unit/misc/test_harminv_decimation.py`).
+- **No modes the record does not hold.** A record of zeros returns no modes,
+  nor does a short window holding only a tone outside the band, and
+  `find_resonances` returns the same modes as a direct `matrix_pencil` call on
+  the same window
+  (`tests/contracts/test_find_resonances_window_adds_no_modes.py`).
+- **Graded meshes.** Stored records of PEC cavities graded along z return
+  exactly the modes in the band
+  (`tests/oracle/test_harminv_retained_cavity_records.py`).
 
 ## What is refused, and the way through
 
+| Input | What happens | Way through |
+|---|---|---|
+| A `Result` with no `dt` (built by hand) | `ValueError` | `run()` fills it; otherwise pass `dt` when you build the `Result`. |
+| No `freq_range` and none stored on the result | `ValueError` | Pass `freq_range=(f_min, f_max)`. |
+| `find_resonances(bandpass=True)` | ignored, with a `DeprecationWarning` | Nothing: the band-pass fallback was removed because it reported modes the record did not hold. |
+| `matrix_pencil(decimate=...)` other than `"auto"` or `False` | `ValueError` | One of the two. |
+| `source_decay_time` beyond the end of the record | no error: `find_resonances` fits the last 20 samples | Keep the skip shorter than the record, `n_steps × result.dt`. |
+| `matrix_pencil` on fewer than ten samples | no error: an empty list | A longer signal. |
+
+The fit runs in NumPy on a finished record, so it has no gradient. To
+optimize a resonance, use an objective that `forward()` can differentiate,
+such as a DFT-plane or S-parameter quantity at the frequencies you care about
+(see [Inverse design](/rfx/design/optimization/)).
+
 ## Accuracy
 
+- **The frequency carries the mesh's error.** The fit reads the frequency the
+  simulated structure has; staircased edges and numerical dispersion move it
+  from the drawn structure's. Judge it over at least three meshes, as the
+  [accuracy bar](/rfx/evidence/accuracy-bar/) asks. For resonances the bar is
+  1 %, and for a resonance narrower than 5 % of its frequency (Q above 20) the
+  error must also stay within 10 % of its bandwidth f/Q: 0.05 % for Q = 200.
+- **Q needs a loss.** In a lossless closed cavity a mode never decays: its
+  physical Q is infinite, and the fitted Q depends on the record length, not on
+  the structure. The frequency is still right. For a Q that means something,
+  give the structure its real loss: a lossy fill, a load, or an open boundary
+  that lets it radiate.
+- **Record length.** A longer record separates modes that lie close together
+  and fits a slowly decaying mode better. The fit does not need the field to
+  have died away. `find_resonances` fits at most about 10,000 samples after
+  resampling, the earliest ones, so beyond that a longer record adds nothing
+  to its fit; call `matrix_pencil` yourself on the part you want.
+
 ## See also
+
+- [Probes and fields](/rfx/measure/probes-and-fields/): the probe record the fit reads.
+- [Simulation time](/rfx/evidence/simulation-time/): record length and the settling check.
+- [rfx terms](/rfx/start/terms/): matrix pencil fit and ring-down.
+- [Results](/rfx/api/results/): `Result` and `ForwardResult`.

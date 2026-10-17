@@ -81,10 +81,10 @@ def test_t2_single_device_series(kind, seam, devices):
     for steps in (1, 12):
         single = _forward(sim, eps, 1, steps)
         slabs = _forward(sim, eps, devices, steps)
-        if kind == 'field':
-            _bits(slabs, single)
-        else:
-            assert _ulp(slabs, single) <= 9
+        # Since W1 (lead decision D:f05aa5) the wrapped single-device step rounds differently inside
+        # shard_map with bit-equal operands, so a field source is judged by the cross-trace bar too;
+        # the drive table itself is pinned bit for bit by the one-slab model-identity test.
+        assert _ulp(slabs, single) <= 9
 
 
 def test_t2_nonowner_series_are_zero(monkeypatch):
@@ -124,22 +124,41 @@ def test_t3_local_material_read():
     assert not re.search(r'\s(?:all-reduce|all-gather|all-to-all|collective-permute)(?:-start|-done)?\(', hlo)
 
 
-@pytest.mark.parametrize('steps', [12, 13])
+@pytest.mark.parametrize('steps', [12, 13, 48, 500])
 def test_t4_warmup_checkpoint(steps):
+    """The warmup split is bit for bit; remat against plain is a cross-trace pair.
+
+    The canonical step rounds by compile context (flat scan against the nested
+    checkpointed scan) with byte-identical loop operands, as it does on one
+    device (test_nonuniform_segmented.py). 48 and 500 steps are lengths where
+    the two records do differ (2 ULP of the peak measured), so the bar is
+    exercised; lead decision L:01b7c7, rfx #1402.
+    """
+    from tests.contracts.path_equivalence.comparison import compare
     sim, eps = _scene('current')
     plain = _forward(sim, eps, 2, steps)
     _bits(_forward(sim, eps, 2, steps, n_warmup=2), plain)
-    _bits(_forward(sim, eps, 2, steps, checkpoint_every=2), plain)
-    _bits(_forward(sim, eps, 2, steps, n_warmup=2, checkpoint_every=2), plain)
+    measurements = []
+    compare(plain, _forward(sim, eps, 2, steps, checkpoint_every=2),
+            record='slab.checkpoint_probe', kind='step', measurements=measurements)
+    compare(plain, _forward(sim, eps, 2, steps, n_warmup=2, checkpoint_every=2),
+            record='slab.warmup_checkpoint_probe', kind='step', measurements=measurements)
     def loss(e, checkpoint):
         return jnp.sum(_forward(sim, e, 2, steps, checkpoint_every=checkpoint) ** 2)
-    _bits(loss(eps, 2), loss(eps, None))
+    compare(loss(eps, None), loss(eps, 2), record='slab.checkpoint_loss',
+            kind='accumulated', measurements=measurements)
     g0 = jax.grad(partial(loss, checkpoint=None))(eps)
     g2 = jax.grad(partial(loss, checkpoint=2))(eps)
     # Same Class A relative-gradient bar as test_distributed_nu_kernel.py's
     # test_distributed_checkpoint_every_grad_matches_no_segment.
     from tests._distributed_nu_tolerances import assert_class_a_grad
-    assert_class_a_grad(g0, g2, label='slab_drive_checkpoint')
+    if steps <= 13:
+        assert_class_a_grad(g0, g2, label='slab_drive_checkpoint')
+    # Class A divides each element by its own magnitude; on the longer rows
+    # the gradient is judged as a summed quantity, 1e-4 of its peak
+    # (measured 0.7e-7 to 3.3e-7 at 500, 1500 and 2400 steps).
+    compare(g0, g2, record='slab.checkpoint_gradient', kind='accumulated',
+            measurements=measurements)
 
 
 @pytest.mark.parametrize('kind', ['field', 'current'])

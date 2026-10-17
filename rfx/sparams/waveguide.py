@@ -27,6 +27,7 @@ composition point and the import graph stays acyclic.
 
 from __future__ import annotations
 
+from rfx.stepping.step_count import steps_for_periods
 from rfx._precision import resolve_field_dtype
 from rfx.model.thin_conductors import conductivity_envelope
 
@@ -1169,9 +1170,7 @@ def _compute_waveguide_s_matrix_nu(
         nominal_profiles=getattr(self, "_nominal_profiles", None),
     )
     if n_steps is None:
-        # ``NonUniformGrid`` does not expose ``num_timesteps`` (known
-        # asymmetry vs. ``Grid``); inline the same formula here.
-        n_steps = int(np.ceil(num_periods / self._freq_max / float(grid.dt)))
+        n_steps = steps_for_periods(grid.dt, self._freq_max, num_periods)
 
     reference = _empty_waveguide_reference(self)
 

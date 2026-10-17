@@ -356,6 +356,30 @@ def test_export_takes_the_showcase_catalog_from_the_bundle_when_one_is_given(tmp
     assert (source_only / "showcase/showcase.json").read_text() == '{"authored": true}\n'
 
 
+def test_sync_check_of_a_bundle_export_needs_the_bundle(tmp_path, monkeypatch):
+    repo = _public_repo(tmp_path, monkeypatch)
+    (repo / "docs/public/index.mdx").write_text(
+        "[readme](https://github.com/bk-squared/rfx/blob/main/README.md)\n")
+    root = fixture_bundle(tmp_path)
+    manifest = bundle.validate_bundle(root)
+    monkeypatch.setattr(bundle, "validate_bundle", lambda *args: manifest)
+    deploy = tmp_path / "deploy/rfx"
+    export_snapshot(repo, deploy, root)
+    assert f"blob/{'a' * 40}/README.md" in (deploy / "index.mdx").read_text()
+    # Compared with the bundle, the SHA-pinned page and the generated files are not drift.
+    assert sync.make_report(repo, deploy, root)["has_drift"] is False
+    # Without it, the check refuses and names the flag instead of reporting them as drift.
+    with pytest.raises(SystemExit, match="--bundle-dir"):
+        sync.make_report(repo, deploy)
+    # A real text change still reads as drift with the bundle.
+    (deploy / "index.mdx").write_text("edited by hand\n")
+    assert sync.make_report(repo, deploy, root)["content_drift"] == ["index.mdx"]
+    # A source-only export is still compared without a bundle.
+    source_only = tmp_path / "source-only/rfx"
+    export_snapshot(repo, source_only)
+    assert sync.make_report(repo, source_only)["has_drift"] is False
+
+
 def test_raw_anchors_keep_their_own_text_and_urls():
     source = ('<a href="/rfx/showcase/">See the showcase →</a>'
               '<a href="https://github.com/bk-squared/rfx">Repository</a>'

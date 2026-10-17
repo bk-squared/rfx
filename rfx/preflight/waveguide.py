@@ -55,6 +55,7 @@ the path, and a pure code-motion leg touches one fewer file.
 
 from __future__ import annotations
 
+from rfx.stepping.step_count import steps_for_periods
 import math
 
 import jax.numpy as jnp
@@ -1217,13 +1218,7 @@ def _waveguide_setup_planes(self, _w, freqs, num_periods, n_steps):
         dt = float(grid.dt)
         freq_max = float(getattr(grid, "freq_max", None) or self._freq_max)
         if n_steps is None:
-            if hasattr(grid, "num_timesteps"):
-                n_steps = int(grid.num_timesteps(num_periods))
-            else:
-                # NonUniformGrid carries no num_timesteps; this is Grid's
-                # own rule (period = 1/freq_max,
-                # ceil(num_periods*period/dt)).
-                n_steps = int(math.ceil(num_periods / freq_max / dt))
+            n_steps = steps_for_periods(dt, freq_max, num_periods)
         f = jnp.asarray(freqs)
         if nonuniform:
             from rfx.runners.nonuniform import (
@@ -1424,9 +1419,7 @@ def _validate_cfg_record_vs_far_boundary(
         dt = float(grid.dt)
         freq_max = float(getattr(grid, "freq_max", None) or self._freq_max)
         if n_steps is None:
-            n_steps = (int(grid.num_timesteps(num_periods))
-                       if hasattr(grid, "num_timesteps")
-                       else int(math.ceil(num_periods / freq_max / dt)))
+            n_steps = steps_for_periods(dt, freq_max, num_periods)
         cfgs = [min(c, key=lambda m: float(m.f_cutoff)) if isinstance(c, list) else c
                 for c in cfgs]
     f_arr = np.asarray(freqs, dtype=float).ravel()

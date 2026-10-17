@@ -16,15 +16,17 @@ from rfx.grid import Grid
 from rfx.probes.probes import flux_spectrum, update_flux_monitor
 from rfx.runners.uniform import build_flux_monitor_cfgs
 from tests.unit.boundaries.test_boundary_mini_battery import nearest, resonance
+from tests.unit.boundaries.graded_periodic_cases import grid as periodic_grid, simulation as periodic_sim
 
 
-def _check_ring(frequencies):
+def _check_ring(frequencies, realized_dt=None):
     target = 299792458.0 / .024
     errors = []
     for dx, frequency in zip((.001, .0005, .00025), frequencies):
         errors.append(abs(frequency / target - 1))
         # From the 1-D Yee dispersion relation, with the 3-D Courant dt.
-        dt = .99 * dx / (299792458.0 * np.sqrt(3))
+        dt = (.99 * dx / (299792458.0 * np.sqrt(3)) if realized_dt is None
+              else realized_dt[len(errors) - 1])
         yee_frequency = np.arcsin(299792458.0 * dt / dx * np.sin(np.pi * dx / .024)) / (np.pi * dt)
         assert frequency == pytest.approx(yee_frequency, rel=2e-5)
     assert errors[0] < .003  # Yee dispersion is 0.193% at 24 cells/period.
@@ -32,7 +34,7 @@ def _check_ring(frequencies):
     assert 3.8 < errors[1] / errors[2] < 4.2
 
 
-def _check_index(g, axis):
+def _check_index(g, axis, lookup=None):
     n = 'xyz'.index(axis)
     length = g.domain[n]
     assert g.shape[n] == round(length / .001)
@@ -45,7 +47,7 @@ def _check_index(g, axis):
         g.index_of(axis, -.001)
     position = [0., 0., 0.]
     position[n] = length
-    assert g.position_to_index(position)[n] == 0
+    assert (g.position_to_index if lookup is None else lookup)(position)[n] == 0
     assert sum(g.cells(axis)) == pytest.approx(length, abs=1e-14)
 
 
@@ -118,41 +120,54 @@ def test_nonperiodic_traced_coordinate_keeps_concretization_refusal(entry):
 
 
 @pytest.mark.parametrize('entry', ['run', 'forward'])
-def test_ring_frequency_converges_at_second_order(entry):
-    _check_ring([nearest(resonance('ring', entry, dx), 299792458.0 / .024, (8e9, 16e9))
-                 for dx in (.001, .0005, .00025)])
+@pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
+def test_ring_frequency_converges_at_second_order(graded, entry):
+    records = [resonance('ring-graded' if graded else 'ring', entry, dx)
+               for dx in (.001, .0005, .00025)]
+    _check_ring([nearest(record, 299792458.0 / .024, (8e9, 16e9)) for record in records],
+                [record['dt'] for record in records] if graded else None)
 
 
 @pytest.mark.parametrize('axis', ['x', 'y', 'z'])
-def test_periodic_index_wrap_and_full_cell_measure(axis):
-    _check_index(Grid(20e9, (.024, .020, .016), dx=.001, periodic_axes=axis), axis)
+@pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
+def test_periodic_index_wrap_and_full_cell_measure(graded, axis):
+    g = periodic_grid(graded, 20e9, (.024, .020, .016), dx=.001, periodic_axes=axis)
+    from functools import partial
+    from rfx.model.graded_grid import position_to_index
+    _check_index(g, axis, partial(position_to_index, g) if graded else None)
+    if graded:
+        n = round((.024, .020, .016)['xyz'.index(axis)] / .001)
+        for suffix in ('', '_h'):
+            np.testing.assert_array_equal(getattr(g, f'inv_d{axis}{suffix}'), np.full(n, np.float32(1 / .001)))
     boundaries = {a: 'periodic' if a == axis else 'pec' for a in 'xyz'}
-    sim = Simulation(20e9, (.024, .020, .016), dx=.001,
+    sim = periodic_sim(graded, 20e9, (.024, .020, .016), dx=.001,
                      boundary=BoundarySpec(**boundaries))
     box = sim.fidelity_report(print_report=False)[0]['axes']['xyz'.index(axis)]
     assert box['n_cells'] == round(sim._domain['xyz'.index(axis)] / .001)
     assert box['realized_extent_um'] == pytest.approx(sim._domain['xyz'.index(axis)] * 1e6)
 
 
-def test_period_snap_and_explicit_refusal():
+@pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
+def test_period_snap_and_explicit_refusal(graded):
     # lambda/20 requests 1 mm; 10.3 mm is deliberately noncommensurate.
     with pytest.warns(UserWarning, match='snapped'):
-        g = Grid(299792458.0 / .020, (.0103, .008, .006), periodic_axes='x')
+        g = periodic_grid(graded, 299792458.0 / .020, (.0103, .008, .006), periodic_axes='x')
     _check_snap(g)
     with pytest.raises(ValueError, match='axis x: L=0.0103 m, dx=0.001 m.*nearest dividing dx=0.00103 m'):
-        Grid(20e9, (.0103, .008, .006), dx=.001, periodic_axes='x')
+        periodic_grid(graded, 20e9, (.0103, .008, .006), dx=.001, periodic_axes='x')
     with pytest.raises(ValueError, match='common.*axis x.*axis y.*nearest common dividing dx=0.0001 m'):
-        Grid(20e9, (.0103, .008, .006), dx=.001, periodic_axes='xy')
+        periodic_grid(graded, 20e9, (.0103, .008, .006), dx=.001, periodic_axes='xy')
     # Their 0.1 mm common spacing is below the automatic cost bound.
     with pytest.raises(ValueError, match='common.*nearest common dividing dx=0.0001 m'):
-        Grid(299792458.0 / .020, (.0103, .008, .006), periodic_axes='xy')
-    common = Grid(20e9, (.0103, .008, .006), dx=.0001, periodic_axes='xy')
+        periodic_grid(graded, 299792458.0 / .020, (.0103, .008, .006), periodic_axes='xy')
+    common = periodic_grid(graded, 20e9, (.0103, .008, .006), dx=.0001, periodic_axes='xy')
     assert common.shape[:2] == (103, 80)
 
 
 @pytest.mark.parametrize('entry', ['run', 'forward'])
-def test_seam_probe_and_dft_plane(entry):
-    sim = Simulation(20e9, (.024, .003, .002), dx=.001, cpml_layers=0,
+@pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
+def test_seam_probe_and_dft_plane(graded, entry):
+    sim = periodic_sim(graded, 20e9, (.024, .003, .002), dx=.001, cpml_layers=0,
                      boundary=BoundarySpec(x='periodic', y='periodic', z='pec'))
     sim.add_source((.021, .001, .001), 'ez', amplitude_kind='field')
     for x in (0., .024):
@@ -172,14 +187,16 @@ def test_seam_probe_and_dft_plane(entry):
 
 
 @pytest.mark.parametrize('finite', [False, True])
-def test_seam_flux_counts_every_periodic_cell(finite):
-    sim = Simulation(20e9, (.024, .003, .005), dx=.001, cpml_layers=0,
+@pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
+def test_seam_flux_counts_every_periodic_cell(graded, finite):
+    sim = periodic_sim(graded, 20e9, (.024, .003, .005), dx=.001, cpml_layers=0,
                      boundary=BoundarySpec.uniform('periodic'))
     for x in (0., .024):
         sim.add_flux_monitor(axis='x', coordinate=x, freqs=jnp.array([0.]),
                              size=(.003, .005) if finite else None, name=str(x))
-    grid = sim._build_grid()
-    monitors = build_flux_monitor_cfgs(sim, grid, 1)
+    grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
+    from rfx.runners.nonuniform import build_flux_monitor_cfgs_nu
+    monitors = (build_flux_monitor_cfgs_nu if graded else build_flux_monitor_cfgs)(sim, grid, 1)
     state = init_state(grid.shape)
     # A 2 V/m, 1 A/m plane carries 2 W/m² through exactly 15 mm².
     # Deliberately mark the last cell: losing it is visible in the flux.
@@ -213,27 +230,33 @@ def test_invariant_axis_is_not_a_period(mode):
 
 
 @pytest.mark.parametrize('entry', ['run', 'forward'])
-def test_public_auto_resolution_snaps_and_explicit_resolution_refuses(entry):
+@pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
+def test_public_auto_resolution_snaps_and_explicit_resolution_refuses(graded, entry):
     boundary = BoundarySpec(x='periodic', y='pec', z='pec')
-    sim = Simulation(299792458.0 / .020, (.0103, .008, .006), boundary=boundary, cpml_layers=0)
+    sim = periodic_sim(graded, 299792458.0 / .020, (.0103, .008, .006), boundary=boundary, cpml_layers=0)
     sim.add_source((.002, .003, .003), 'ez')
     sim.add_probe((.007, .004, .003), 'ez')
     with pytest.warns(UserWarning, match='snapped'):
         getattr(sim, entry)(n_steps=4, skip_preflight=True)
-    bad = Simulation(20e9, (.0103, .008, .006), dx=.001, boundary=boundary, cpml_layers=0)
+    bad = periodic_sim(graded, 20e9, (.0103, .008, .006), dx=.001, boundary=boundary, cpml_layers=0)
     with pytest.raises(ValueError, match='nearest dividing dx'):
         getattr(bad, entry)(n_steps=4, skip_preflight=True)
 
 
-def test_material_averaging_uses_last_physical_cell_at_the_seam():
+@pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
+def test_material_averaging_uses_last_physical_cell_at_the_seam(graded):
     from rfx.core.yee import component_e_materials
-    sim = Simulation(20e9, (.010, .006, .004), dx=.001, cpml_layers=0,
+    sim = periodic_sim(graded, 20e9, (.010, .006, .004), dx=.001, cpml_layers=0,
                      boundary=BoundarySpec(x='periodic', y='pec', z='pec'))
     sim.add_material('seam', eps_r=9.)
     sim.add(Box((.009, 0., 0.), (.010, .006, .004)), material='seam')
-    grid = sim._build_grid()
-    materials = sim._build_materials(grid)[0]
-    eps, _ = component_e_materials(materials, sim._periodic_flags())
+    grid = sim._build_nonuniform_grid() if graded else sim._build_grid()
+    materials = (sim._assemble_materials_nu(grid) if graded else sim._build_materials(grid))[0]
+    if graded:
+        from rfx.model.materials import with_components
+        eps = with_components(materials, grid, periodic=tuple(a in grid.periodic_axes for a in 'xyz')).components.eps_update
+    else:
+        eps, _ = component_e_materials(materials, sim._periodic_flags())
     # Ez at x=0 lies between eps=1 at x=0 and eps=9 at x=L-dx.
     _check_material(float(eps[2][0, 3, 2]))
 

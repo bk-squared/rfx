@@ -1,4 +1,5 @@
-"""Structural parity gate between the two S-parameter support-matrix carriers.
+"""Structural parity gate between the S-parameter support-matrix carriers: the prose
+carrier is the ``## S-parameters`` part of ``docs/guides/support_matrix.md``.
 
 ``docs/guides/sparameter_support_matrix.md`` (prose) and
 ``docs/guides/sparameter_support_matrix.json`` (machine-readable, consumed by
@@ -131,7 +132,7 @@ from pathlib import Path
 import pytest
 
 MATRIX_JSON_PATH = Path("docs/guides/sparameter_support_matrix.json")
-MATRIX_MD_PATH = Path("docs/guides/sparameter_support_matrix.md")
+MATRIX_MD_PATH = Path("docs/guides/support_matrix.md")
 
 
 # ---------------------------------------------------------------------------
@@ -148,16 +149,16 @@ MATRIX_MD_PATH = Path("docs/guides/sparameter_support_matrix.md")
 # tokens absent from the .md), fixed doc-side from the json in the same
 # change -- the #584 experience repeating on first contact.
 LANE_SECTION_MAP: dict[str, str] = {
-    "add_port(extent=None)": "## Lumped port",
-    "add_port(extent=...)": "## Wire port",
-    "add_msl_port(...)": "## Microstrip-line port",
-    "add_waveguide_port(...)": "## Rectangular-waveguide port",
-    "add_coaxial_port(...)": "## Coaxial port",
+    "add_port(extent=None)": "### Lumped port",
+    "add_port(extent=...)": "### Wire port",
+    "add_msl_port(...)": "### Microstrip-line port",
+    "add_waveguide_port(...)": "### Rectangular-waveguide port",
+    "add_coaxial_port(...)": "### Coaxial port",
     "add_coaxial_port(...) + add_msl_port(...) driven by compute_coax_msl_transition(...)":
-        "## Coax<->MSL transition — EXPERIMENTAL, diagnostic-only (issue #489 leg 4)",
-    "add_floquet_port(...)": "## Floquet/Bloch and non-port observables",
+        "### Coax-to-microstrip transition — experimental, diagnostic only",
+    "add_floquet_port(...)": "### Floquet/Bloch and non-port observables",
     "add_port(...) + add_msl_port(...) driven by compute_mixed_s_matrix(...)":
-        "## Mixed port families — EXPERIMENTAL, not in the validated set",
+        "### Mixed port families — experimental",
 }
 
 # json port_families primitives NOT mapped above, each with a short reason.
@@ -181,12 +182,18 @@ UNMAPPED_LANES_TODO: dict[str, str] = {
 
 # Lanes explicitly exempt from the "numeric_metrics must extract at least one
 # token" floor in test_json_numeric_claims_appear_in_markdown (PR #584
-# review, L4). Empty on purpose: every currently-mapped lane has real
-# numeric_metrics content: an empty allowlist means the floor is live on all
-# 8 mapped lanes today. Add a primitive here only with a comment naming why
+# review, L4). The floor is live on the other 6 mapped lanes. Add a
+# primitive here only with a comment naming why
 # its numeric_metrics is genuinely number-free (not merely emptied by a
 # careless edit, which is exactly the silent-vacuous-pass class L4 closes).
-NUMBER_FREE_LANES: frozenset[str] = frozenset()
+NUMBER_FREE_LANES: frozenset[str] = frozenset({
+    # #1171 (2026-10-12): the JSON was trimmed to numbers with an in-repo
+    # witness. The thresholds in Floquet's tests bound synthetic inputs, and
+    # those in the transition's tests bound a different fixture, not the
+    # result the matrix describes; both families state their status in words.
+    "add_floquet_port(...)",
+    "add_coaxial_port(...) + add_msl_port(...) driven by compute_coax_msl_transition(...)",
+})
 
 # Per-lane, hand-identified .md status anchors for test_status_token_polarity_agrees
 # (PR #584 review, M1). Each anchor is a literal substring that must appear
@@ -230,7 +237,7 @@ LANE_STATUS_ANCHORS_MD: dict[str, tuple[str, ...]] = {
         "every DUT it can currently gate against",
     ),
     "add_coaxial_port(...) + add_msl_port(...) driven by compute_coax_msl_transition(...)": (
-        "the junction's own physical reflection also contributes is genuinely",
+        "drives a coaxial port and a microstrip port",
     ),
     "add_floquet_port(...)": (
         # the section's opening paragraph, which states the lane's own
@@ -290,7 +297,7 @@ LANE_STATUS_ANCHORS_MD: dict[str, tuple[str, ...]] = {
 LANE_STATUS_ANCHORS_JSON: dict[str, tuple[str, ...]] = {
     "add_coaxial_port(...)": (
         "compute_coaxial_line_reflection(...) is not a general multi-port coaxial network solver",
-        "an external openEMS referee (VESSL run-3 369367251629",
+        "compute_coaxial_two_port(...) drives each end of one through line",
     ),
 }
 
@@ -316,7 +323,7 @@ LANE_STATUS_ANCHORS_JSON: dict[str, tuple[str, ...]] = {
 # independently evolving sub-API statuses, and a union over them would be
 # constant-True for either token regardless of which sub-API's own cell
 # changed.
-API_SUMMARY_HEADER = "## API summary"
+API_SUMMARY_HEADER = "### API summary"
 API_SUMMARY_EXPECTED_COLUMNS = ("Primitive", "Calculation API", "Result", "Current status")
 
 API_SUMMARY_ROW_ANCHORS: dict[str, tuple[str, ...]] = {
@@ -434,19 +441,24 @@ def _extract_vessl_run_ids(text: str) -> set[str]:
 
 
 def _md_sections(md_text: str) -> dict[str, str]:
-    """Split the matrix markdown into {'## Header text': 'header\\nbody'}.
-
-    The header line is included in the section text (not just the body):
-    several sections carry their loudest status marker directly in the
-    header (e.g. "## Coax<->MSL transition -- EXPERIMENTAL, diagnostic-only"),
-    and excluding it produced a false-positive status-token mismatch during
-    this gate's construction.
+    """Split only the unique ``## S-parameters`` part on ``### `` headers.
+    Include each stripped header in its section text and use it as the key.
     """
+    lines = md_text.splitlines()
+    starts = [i for i, line in enumerate(lines) if line == "## S-parameters"]
+    assert len(starts) == 1, (
+        f"expected exactly one '## S-parameters' heading, found {len(starts)}"
+    )
+    start = starts[0]
+    end = next(
+        (i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")),
+        len(lines),
+    )
     sections: dict[str, str] = {}
     header: str | None = None
     body_lines: list[str] = []
-    for line in md_text.splitlines():
-        if line.startswith("## "):
+    for line in lines[start:end]:
+        if line.startswith("### "):
             if header is not None:
                 sections[header] = header + "\n" + "\n".join(body_lines)
             header = line.strip()

@@ -125,7 +125,7 @@ print(result.time_series.shape, f"settling {result.settling_db:.1f} dB")
 |---|---|
 | `n_steps=N` | exactly N steps |
 | `num_periods=P` | P periods at `freq_max` (default 20, used when nothing else is given) |
-| `until_decay=1e-3` | step until the interior field energy falls to that fraction of its peak, up to `decay_max_steps` |
+| `until_decay=1e-3` | step until the interior field energy falls to that fraction of its largest value after the source ended, up to `decay_max_steps` |
 
 `until_decay` works on absorbing boundaries, on uniform and graded meshes. It
 watches the total energy in the interior, so it is a sound stop for spectra,

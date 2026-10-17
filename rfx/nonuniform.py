@@ -238,7 +238,7 @@ def make_current_source(grid: NonUniformGrid, position_ijk, component,
         current_source_samples(grid, waveform_fn, n_steps), amplitude_kind,
         native="cb_over_dv", volume=dV,
         coefficient=lambda: e_update_coefficient_at(
-            materials, (i, j, k), component, grid.dt, host=True, grid=grid))
+            materials, (i, j, k), component, grid.dt, periodic=tuple(a in grid.periodic_axes for a in "xyz"), host=True, grid=grid))
 
     waveform_out = waveform if any_traced or is_tracer(waveform) else np.array(waveform)
     return (i, j, k, component, waveform_out)
@@ -709,7 +709,7 @@ def _build_nu_scan(
     """
     cpml_axes = resolve_cpml_axes(grid, cpml_axes)
     from rfx.model.materials import kernel_materials, with_components
-    materials = with_components(materials, grid, periodic=(False, False, False))
+    materials = with_components(materials, grid, periodic=tuple(a in grid.periodic_axes for a in "xyz"))
     from rfx.sources.wire_radius import require_radius_update
     require_radius_update(
         materials, lane="non-uniform Yee with dispersion/tensor or design-box updates",
@@ -746,16 +746,16 @@ def _build_nu_scan(
      curl_boundary, _pec_faces_frozen, _pmc_faces_frozen, use_pmc_faces) = nonuniform_boundaries(
          grid, cpml_axes, pec_faces, pmc_faces)
 
-    # #931 §1.7: realize the PEC edges ONCE here.  The NU stepper installs
-    # no periodic BC at all and NU grids are 3-D, so the non-periodic #689
-    # convention is the right one; a lane that pre-realized (and
-    # port-cleared) its masks passes them in instead.
+    # #931 §1.7: realize the PEC edges ONCE here, using the NU grid's
+    # periodic flags for the same seam convention as its 3-D stepper.
+    # A lane that pre-realized (and port-cleared) its masks passes
+    # them in instead.
     pec_sheets = tuple(pec_sheets or ())
     pec_wires = tuple(pec_wires or ())
     if pec_edge_masks is None and (
             pec_mask is not None or pec_sheets or pec_wires):
         pec_edge_masks = realized_pec_edge_masks(
-            pec_mask, sheets=pec_sheets, wires=pec_wires)
+            pec_mask, sheets=pec_sheets, wires=pec_wires, periodic=tuple(a in grid.periodic_axes for a in "xyz"))
     use_pec_edges = pec_edge_masks is not None
     use_pec_occupancy = pec_occupancy is not None
     # Same as the uniform lane (§1.6/§1.9): the static sheet/wire masks are
@@ -765,13 +765,13 @@ def _build_nu_scan(
     pec_static_edge_masks = None
     if use_pec_occupancy and (pec_sheets or pec_wires):
         pec_static_edge_masks = realized_pec_edge_masks(
-            None, sheets=pec_sheets, wires=pec_wires)
+            None, sheets=pec_sheets, wires=pec_wires, periodic=tuple(a in grid.periodic_axes for a in "xyz"))
         if pec_edge_masks is not None:
             pec_static_edge_masks = tuple(
                 s & m for s, m in zip(pec_static_edge_masks, pec_edge_masks))
 
     admit_setup(grid=grid, tfsf=tfsf, materials=materials, waveguide_ports=waveguide_ports,
-                ntff=ntff_box if use_ntff else None, periodic=(False, False, False),
+                ntff=ntff_box if use_ntff else None, periodic=tuple(a in grid.periodic_axes for a in "xyz"),
                 pec_faces=pec_faces, pmc_faces=pmc_faces, feature_owned=_feature_tfsf, nonuniform=True,
                 updates=dict(debye=debye, lorentz=lorentz, aniso_eps=aniso_eps, pec_mask=pec_mask,
                              pec_edge_masks=pec_edge_masks, pec_occupancy=pec_occupancy,
@@ -790,9 +790,9 @@ def _build_nu_scan(
 
     state = init_state((grid.nx, grid.ny, grid.nz))
     src_meta = [(s[0], s[1], s[2], s[3]) for s in sources]
-    materials = with_edge_keep(materials, pec_occupancy, dtype=state.ex.dtype, sheet_edge_masks=pec_static_edge_masks)
+    materials = with_edge_keep(materials, pec_occupancy, dtype=state.ex.dtype, sheet_edge_masks=pec_static_edge_masks, periodic=tuple(a in grid.periodic_axes for a in "xyz"))
     src_waveforms = drive_table([jnp.array(s[4]) for s in sources], src_meta, n_steps,
-        occupancy=pec_occupancy, sheet_edge_masks=pec_static_edge_masks, keep=materials.edge_keep)
+        occupancy=pec_occupancy, sheet_edge_masks=pec_static_edge_masks, keep=materials.edge_keep, periodic=tuple(a in grid.periodic_axes for a in "xyz"))
     prb_meta = [(p[0], p[1], p[2], p[3]) for p in probes]
 
 
@@ -827,7 +827,7 @@ def _build_nu_scan(
             aniso_eps=aniso_eps,
             aniso_inv_eps=None,
             stencil_order=2,
-            bloch=None,
+            bloch=None, periodic=tuple(a in grid.periodic_axes for a in "xyz"),
             sheet_impedance=sheet_impedance,
             cell_metas=(
                 ("source", [(s[0], s[1], s[2], s[3]) for s in sources]),
@@ -1411,28 +1411,9 @@ def run_nonuniform_until_decay(
     # so the non-radiating static soft-source charge (which FLOORS the energy criterion) and
     # near-Nyquist buzz do not stall the stop. Opt-in; default keeps the energy criterion.
     use_flux_stop = radiated_flux_box is not None
+    from rfx.measurement import flux_box_bounds, radiated_power
     if use_flux_stop:
-        _flo = position_to_index(grid, radiated_flux_box[0])
-        _fhi = position_to_index(grid, radiated_flux_box[1])
-        _bl = (min(_flo[0], _fhi[0]), max(_flo[0], _fhi[0]),
-               min(_flo[1], _fhi[1]), max(_flo[1], _fhi[1]),
-               min(_flo[2], _fhi[2]), max(_flo[2], _fhi[2]))
-
-    def _radiated_power(state) -> float:
-        """Net outgoing Poynting flux ∮ (E×H)·n̂ over the box (co-located approx; a stop
-        criterion needs only the DECAY, so the half-cell stagger and per-cell dA are neglected
-        — they are fixed weightings that do not change the decay rate)."""
-        ex, ey, ez = state.ex, state.ey, state.ez
-        hx, hy, hz = state.hx, state.hy, state.hz
-        il, ih, jl, jh, kl, kh = _bl
-        jj, kk, ii = slice(jl, jh), slice(kl, kh), slice(il, ih)
-        p = jnp.sum(ey[ih, jj, kk] * hz[ih, jj, kk] - ez[ih, jj, kk] * hy[ih, jj, kk])
-        p -= jnp.sum(ey[il, jj, kk] * hz[il, jj, kk] - ez[il, jj, kk] * hy[il, jj, kk])
-        p += jnp.sum(ez[ii, jh, kk] * hx[ii, jh, kk] - ex[ii, jh, kk] * hz[ii, jh, kk])
-        p -= jnp.sum(ez[ii, jl, kk] * hx[ii, jl, kk] - ex[ii, jl, kk] * hz[ii, jl, kk])
-        p += jnp.sum(ex[ii, jj, kh] * hy[ii, jj, kh] - ey[ii, jj, kh] * hx[ii, jj, kh])
-        p -= jnp.sum(ex[ii, jj, kl] * hy[ii, jj, kl] - ey[ii, jj, kl] * hx[ii, jj, kl])
-        return float(p)
+        _bl = flux_box_bounds(grid, radiated_flux_box)
 
     energy_stop, energy = make_decay_stop(
         grid, materials, thr=decay_by, min_steps=min_steps, interval=check_interval,
@@ -1477,7 +1458,7 @@ def run_nonuniform_until_decay(
         if use_flux_stop:
             # RADIATED-FLUX stop: track the flux peak from the FIRST check (radiation peaks
             # during the source drive), gate only the STOP on min_steps.
-            flux_hist.append(abs(_radiated_power(carry["fdtd"])))
+            flux_hist.append(abs(radiated_power(carry["fdtd"], _bl, grid.shape)))
             env = max(flux_hist[-flux_env_checks:])
             if env > peak_flux:
                 peak_flux = env

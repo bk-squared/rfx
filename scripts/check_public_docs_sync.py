@@ -18,7 +18,18 @@ def file_map(root: Path) -> dict[str, bytes]:
             if p.is_file() and p.relative_to(root).parts[0] not in {"versions", "dev"}}
 
 
+def require_bundle_for_bundled_snapshot(deploy_root: Path, bundle_dir: Path | None) -> None:
+    # A snapshot exported with a bundle pins GitHub links to its source SHA and carries the
+    # generated files; compared source-only, every pinned page and generated file reads as drift.
+    if bundle_dir is None and (deploy_root / "docs-manifest.json").is_file():
+        raise SystemExit(
+            f"{deploy_root} holds a bundle export (docs-manifest.json): pass --bundle-dir with a "
+            "bundle built from the same commit (scripts/build_public_docs_bundle.py). Without it "
+            "every SHA-pinned page and every generated file reads as drift.")
+
+
 def make_report(repo_root: Path, deploy_root: Path, bundle_dir: Path | None = None) -> dict:
+    require_bundle_for_bundled_snapshot(deploy_root, bundle_dir)
     # Never derive a deletion-capable export destination from unvalidated JSON.
     prefix = "rfx"
     if bundle_dir:

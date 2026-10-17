@@ -331,6 +331,19 @@ def test_realized_field_storage(monkeypatch, entry, precision):
                 else:
                     result = invoke(model(precision, entry), entry)
             output = list(numeric_arrays(result))
+            if entry in ('run_ntff', 'forward_ntff'):
+                from rfx.farfield import compute_far_field, compute_far_field_jax
+                ff = compute_far_field_jax(result.ntff_data, result.ntff_box,
+                                           result.grid, [1.1], [.7])
+                assert ff.E_theta.dtype == ff.E_phi.dtype == expected_complex
+                if precision == 'float64':
+                    reference = compute_far_field(result.ntff_data, result.ntff_box,
+                                                  result.grid, [1.1], [.7])
+                    actual = np.asarray([ff.E_theta, ff.E_phi])
+                    expected = np.asarray([reference.E_theta, reference.E_phi])
+                    relative_error = np.max(np.abs(actual - expected)) / np.max(np.abs(expected))
+                    print(f'{entry} far-field relative_error={relative_error:.17g}')
+                    assert relative_error <= 1e-10
 
             def check_finite_entries(a):
                 if entry == 'compute_mixed_s_matrix':

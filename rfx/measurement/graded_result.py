@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import jax
+
 from rfx.measurement.time_records import with_graded_records
 
 if TYPE_CHECKING:
@@ -185,7 +187,7 @@ def assemble_graded_result(setup: _NUScanSetup, final: dict, time_series, n_reco
         S = port_s_from_record(final["wire_sparams"], wp_meta, wire_mode=True)
 
         result["s_params"] = S
-        result["s_param_freqs"] = _np.array(sp_freqs)
+        result["s_param_freqs"] = sp_freqs if isinstance(sp_freqs, jax.core.Tracer) else _np.array(sp_freqs)
         # Raw per-port DFT accumulators (v_dft, i_dft, v_inc_dft,
         # v_port_dft), surfaced for diagnostics/validation harnesses
         # (issue #764; mirrors the uniform lane's raw-acc access via

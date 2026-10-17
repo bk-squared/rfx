@@ -21,7 +21,7 @@ S-parameter calculator when the result must be impedance referenced. A field
 peak from a soft-source run is not return loss.
 
 The current port-specific restrictions are listed in
-[S-parameter support](sparameter_support_matrix.md). The broader solver and mesh
+[S-parameter support](support_matrix.md#s-parameters). The broader solver and mesh
 restrictions are listed in [support boundaries](support_matrix.md).
 
 ## 2. Choose and inspect the mesh

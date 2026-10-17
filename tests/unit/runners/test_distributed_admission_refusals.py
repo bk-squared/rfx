@@ -28,6 +28,55 @@ LANES = {
 }
 
 
+def _mixed_lorentz_admission_scene(eps_r=2.0):
+    """The mixed-dispersion corner-gradient scene, at its model timestep."""
+    from rfx.materials.lorentz import lorentz_pole
+
+    nx, ny, nz = 24, 24, 48
+    dx = 1e-3
+    sim = Simulation(freq_max=5e9, domain=(nx * dx, ny * dx, nz * dx),
+                     dx=dx, boundary="cpml", cpml_layers=8,
+                     dx_profile=np.full(nx, dx), dz_profile=np.full(nz, dx))
+    sim.add_material("disp_slab", eps_r=eps_r,
+                     debye_poles=[DebyePole(delta_eps=2.0, tau=5e-12)],
+                     lorentz_poles=[lorentz_pole(delta_eps=1.5,
+                                                omega_0=2.0 * np.pi * 30e9, delta=1e10)])
+    sim.add(Box((10 * dx, 10 * dx, 6 * dx),
+                (14 * dx, 14 * dx, 42 * dx)), material="disp_slab")
+    sim.add_source(position=(10 * dx, 12 * dx, 24 * dx), component="ez")
+    sim.add_probe(position=(13 * dx, 12 * dx, 24 * dx), component="ez")
+    return sim
+
+
+@pytest.mark.parametrize("entry", ("forward_override", "forward_sharded_override", "run_declared"))
+def test_mixed_lorentz_refusal_matches_one_device(entry):
+    """Distributed admission preserves the public one-device refusal text."""
+    import jax.numpy as jnp
+
+    sim = _mixed_lorentz_admission_scene(1.0 if entry == "run_declared" else 2.0)
+    if entry.startswith("forward"):
+        grid = sim._build_nonuniform_grid()
+        eps = jnp.ones(tuple(int(n) for n in grid.shape), dtype=jnp.float32)
+        sharded = (sim.shard_distributed_override(eps, _devices())
+                   if entry == "forward_sharded_override" else eps)
+        if entry == "forward_sharded_override":
+            # 41 x cells on two devices: the forward layout carries a padding
+            # row (value 0) after the grid's rows, which the judge must not read.
+            assert sharded.shape[0] > grid.shape[0], (sharded.shape, grid.shape)
+        def call(distributed):
+            return sim.forward(eps_override=sharded if distributed else eps, n_steps=30,
+                               emit_time_series=True,
+                               **(dict(distributed=True, devices=_devices()) if distributed else {}))
+    else:
+        def call(distributed):
+            return sim.run(n_steps=30, **(dict(devices=_devices()) if distributed else {}))
+    with pytest.raises(ValueError) as native:
+        call(False)
+    with pytest.raises(ValueError) as distributed:
+        call(True)
+    assert str(distributed.value) == str(native.value)
+
+
 def _devices():
     devices = jax.devices("cpu")
     assert len(devices) >= 2, "requires the root conftest's two CPU devices"

@@ -63,7 +63,7 @@ def test_repeated_forward_keeps_no_grid_arrays(lane, boundary):
 
 @pytest.mark.parametrize('lane, boundary', [('graded', 'pec'), ('uniform', 'cpml')])
 def test_repeated_eager_gradient_keeps_no_grid_arrays(lane, boundary):
-    """What ``optimize()`` does by default: an eager value_and_grad per iteration."""
+    """The explicit ``optimize(jit=False)`` path: eager value_and_grad per iteration."""
     shape = _grid_shape(lane, boundary)
     occupancy = jnp.zeros(shape, jnp.float32).at[4:6, 4:6, 3:5].set(0.2)
 
@@ -127,7 +127,7 @@ def test_repeated_two_device_forward_keeps_no_grid_arrays():
 
 
 def test_optimize_iterations_keep_no_grid_arrays():
-    """The default (eager) optimize() loop: more iterations leave no more arrays than one."""
+    """The default compiled optimize() loop: more iterations leave no more arrays than one."""
     from rfx.optimize import DesignRegion, optimize
     domain = (.011, .013, .009)
 

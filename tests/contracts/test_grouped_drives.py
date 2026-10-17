@@ -15,9 +15,16 @@ from tests.contracts.path_equivalence.comparison import array_peak, component_pe
 
 
 def per_cell(state, drives, wave_t):
-    # Test-only old algorithm. Retains the original source order.
-    ordered = sorted((int(w), c, n) for c in drives.nodes
-                     for n, w in enumerate(np.asarray(drives.wave_id[c])))
+    # Test-only old algorithm. Retains the original source order. The wrapped
+    # multi-device step passes each slab's table into shard_map, so its wave ids
+    # are traced there; it then keeps table order, which gives the same sums
+    # because run_case puts every source on its own cell.
+    if any(isinstance(w, jax.core.Tracer) for w in drives.wave_id.values()):
+        ordered = [(n, c, n) for c in drives.nodes
+                   for n in range(drives.wave_id[c].shape[0])]
+    else:
+        ordered = sorted((int(w), c, n) for c in drives.nodes
+                         for n, w in enumerate(np.asarray(drives.wave_id[c])))
     for _, c, n in ordered:
         field = getattr(state, c)
         idx = tuple(axis[n] for axis in drives.nodes[c])
