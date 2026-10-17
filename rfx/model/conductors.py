@@ -944,3 +944,149 @@ def _f0_solved_bounds(mask, axis, nodes, sizes, end_rows, pad_lo, pad_hi, period
         w = END_ROW_WEIGHT if marked[i1 % n] else 1.0
         hi += w * 0.5 * float(sizes[(i1 - 1) % n] + sizes[i1 % n]) - 0.5 * float(sizes[(i1 - 1) % n])
     return i0, i1, lo, hi
+
+
+_SHEET_LAYOUT_REPORTS = (
+    "sheet span report", "sheet preflight advisories", "dead soft-source check",
+    "line-stub admission", "sheet-in-dielectric warning",
+)
+
+
+def prepare_sheet_layout(sim, layout, *, distributed):
+    """Make an execution-local static declaration with addressed sheets removed.
+
+    Static assembly and host reports see only fixed sheets. The addressed
+    declarations and their traced values travel separately to the graded keep.
+    The caller's declaration and its cached reports are never mutated.
+    """
+    if layout is None:
+        return sim, None
+    from copy import copy
+    from rfx.runners._admission import admit_sheet_layout_lane
+    from rfx.model.occupancy import admit_sheet_layout
+    admit_sheet_layout_lane(sim, distributed=distributed)
+    addressed = admit_sheet_layout(sim._pinned_sheets, layout)
+    if not addressed:
+        return sim, addressed
+    fixed = copy(sim)
+    indices = {index for index, _, _ in addressed}
+    fixed._pinned_sheets = [sheet for index, sheet in enumerate(sim._pinned_sheets)
+                            if index not in indices]
+    fixed._pf_campaign_ctx = None
+    return fixed, addressed
+
+
+def with_sheet_layout_reports(result, layout):
+    """Name each excluded declared-footprint report once in the forward result."""
+    skipped = tuple((index, report) for index, _, _ in (layout or ())
+                    for report in _SHEET_LAYOUT_REPORTS)
+    return result._replace(sheet_reports_skipped=skipped or None)
+
+
+def refuse_layout_drives(edge_sets, sources, waveguide_ports):
+    """An addressed E edge cannot own a source/port, even at layout value zero."""
+    from rfx.preflight._common import _H_LOOP
+    driven = set()
+    for i, j, k, component, *_ in sources:
+        if component.startswith('e'):
+            driven.add(('xyz'.index(component[1]), int(i), int(j), int(k)))
+        else:
+            for c, di, dj, dk in _H_LOOP[component]:
+                driven.add((c, int(i) + di, int(j) + dj, int(k) + dk))
+    configs = [mode for config in (waveguide_ports or ())
+               for mode in (config if isinstance(config, list) else (config,))]
+    for config in configs:
+        normal = 'xyz'.index(config.normal_axis)
+        axes = [a for a in range(3) if a != normal]
+        for plane in (config.x_index, config.x_index + 1):
+            for u in range(config.u_lo, config.u_hi):
+                for v in range(config.v_lo, config.v_hi):
+                    cell = [0, 0, 0]
+                    cell[normal], cell[axes[0]], cell[axes[1]] = plane, u, v
+                    for component in (config.e_u_component, config.e_v_component):
+                        driven.add(('xyz'.index(component[1]), *cell))
+    for index, sheet, _tangent, axis, indices, _values in edge_sets:
+        edges = {(axis, *cell) for cell in zip(*(v.ravel().tolist() for v in indices))}
+        overlap = sorted(edges & driven)
+        if overlap:
+            raise ValueError(f"pinned_sheet_layout sheet {index} ({sheet.name!r}): "
+                             f"source or port drives addressed edge {overlap[0]}; "
+                             "move the drive off the layout switch on the graded lane")
+
+
+def _layout_edges(layout, grid):
+    from rfx.model.occupancy import layout_edge_indices
+    for index, sheet, _ in layout or ():
+        for tangent in (0, 1):
+            axis, indices = layout_edge_indices(grid, sheet, tangent)
+            yield index, sheet, axis, indices
+
+
+def _layout_stage_error(index, sheet, stage, axis, edge):
+    raise ValueError(
+        f"pinned_sheet_layout sheet {index} ({sheet.name!r}): "
+        f"{stage} conflicts with addressed edge e{'xyz'[axis]}{tuple(edge)} "
+        "on the graded lane; move the stage or the layout switch off that edge")
+
+
+def refuse_layout_port_releases(layout, conductors):
+    """Every published port release matters, including passive loads (R12.2)."""
+    details = {(component, tuple(edge)): f"{kind} port-release stage ({entity})"
+               for entity, kind, component, edge, _ in conductors._released_port_details}
+    for entity, component, edge in conductors.released_port_edges:
+        details.setdefault((component, tuple(edge)), f"port-release stage ({entity})")
+    for index, sheet, axis, indices in _layout_edges(layout, conductors.grid):
+        for edge in zip(*(v.ravel().tolist() for v in indices)):
+            stage = details.get((f"e{'xyz'[axis]}", edge))
+            if stage is not None:
+                _layout_stage_error(index, sheet, stage, axis, edge)
+
+
+def refuse_layout_sheet_impedance(layout, conductors):
+    """Check the full operator edge set, before PEC exclusions (R12.3)."""
+    if not layout or not conductors.sheet_impedance:
+        return
+    from rfx.materials.thin_conductor import build_sheet_impedance_ctx
+    import jax
+    with jax.ensure_compile_time_eval():
+        ctx = build_sheet_impedance_ctx(conductors.sheet_impedance,
+                                        periodic=conductors.periodic)
+        for index, sheet, axis, indices in _layout_edges(layout, conductors.grid):
+            mask = np.asarray(getattr(ctx, f"mask_e{'xyz'[axis]}"))
+            hits = np.flatnonzero(mask[indices])
+            if len(hits):
+                edge = tuple(int(v.flat[hits[0]]) for v in indices)
+                _layout_stage_error(index, sheet, "finite-impedance sheet operator", axis, edge)
+
+
+def refuse_layout_metal_consumers(layout, sim, grid):
+    """Admission for other readers of metal and post-keep writers (R12.4)."""
+    if not layout:
+        return
+    if getattr(sim, '_tfsf', None) is not None:
+        # The TF/SF invariance admission (#1816) judges the static metal only.
+        index, sheet, _ = layout[0]
+        raise ValueError(
+            f"pinned_sheet_layout sheet {index} ({sheet.name!r}): the TF/SF invariance "
+            "admission reads the static metal, so it cannot judge a switched sheet, and an "
+            "open plane wave on the graded mesh admits no finite scatterer, drawn or switched; "
+            "excite the switched layout with a port, or draw each layout and run it on the "
+            "uniform mesh (closed_box=True)")
+    from rfx._grid_metric import field_index
+    from rfx.sources.msl_port import msl_cross_section_span, msl_port_from_entry
+    solved = {(spec.component, tuple(field_index(grid, spec.position, spec.component)))
+              for spec in sim._lumped_rlc if spec.topology == 'series' or spec.L > 0}
+    spans = [msl_cross_section_span(grid, msl_port_from_entry(port))
+             for port in sim._msl_ports]
+    for index, sheet, axis, indices in _layout_edges(layout, grid):
+        for edge in zip(*(v.ravel().tolist() for v in indices)):
+            if (f"e{'xyz'[axis]}", edge) in solved:
+                _layout_stage_error(index, sheet, "lumped RLC post-keep solve", axis, edge)
+            if getattr(sim, '_current_moments', None) is not None:
+                _layout_stage_error(index, sheet, "current-moment metal census", axis, edge)
+            for span in spans:
+                ip, iw = span['prop_idx'], span['width_idx']
+                at_feed = edge[ip] in (span['i_feed'], (span['i_feed'] - 1) % grid.shape[ip])
+                if (at_feed and edge[iw] in span['width_nodes'] and
+                        span['n_lo'] <= edge[2] <= span['n_hi']):
+                    _layout_stage_error(index, sheet, "MSL geometry-edge admission", axis, edge)

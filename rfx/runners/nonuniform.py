@@ -476,6 +476,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
                         preflight=None, conductors=None,
                         eps_override=None, sigma_override=None,
                         pec_mask_override=None, pec_occupancy_override=None,
+                        pinned_sheet_layout=None,
                         checkpoint=False,
                         emit_time_series=True, checkpoint_every=None,
                         n_warmup=0,
@@ -748,6 +749,12 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         _pec_sheets, _pec_wires, periodic=tuple(a in grid.periodic_axes for a in "xyz"), sheet_specs=_sheet_specs, root=conductors)
     pec_edge_masks = conductors.pec_edges
     _msl_geometry_edges = pec_edge_masks  # before ANY port clearing
+    from rfx.model.conductors import (
+        refuse_layout_metal_consumers, refuse_layout_port_releases,
+        refuse_layout_sheet_impedance,
+    )
+    refuse_layout_metal_consumers(pinned_sheet_layout, sim, grid)
+    refuse_layout_sheet_impedance(pinned_sheet_layout, conductors)
 
     if subpixel_smoothing:
         from rfx.geometry.smoothing import refuse_pmc_smoothing
@@ -1073,6 +1080,14 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
 
     conductors, pec_occupancy_override = prepare_port_occupancy(
         conductors, waveguide_port_cfgs, pec_occupancy_override, None, sim=sim, sheet_operator=sheet_ctx)
+    if pinned_sheet_layout:
+        # The waveguide entries are published on a copy for this check only, so
+        # the solved product is the one the same drawing gets without a layout.
+        from rfx.model.conductors import waveguide_port_stage
+        released = conductors
+        for index, config in enumerate(waveguide_port_cfgs):
+            released = waveguide_port_stage(released, config, f'waveguide_port[{index}]')
+        refuse_layout_port_releases(pinned_sheet_layout, released)
     conductors, geometry_record = at_kernel(sim, conductors, lane=lane, pec_edges=pec_edge_masks, sheet_operator=sheet_ctx)
     pec_edge_masks = conductors.pec_edges
     sheet_ctx = conductors.sheet_operator
@@ -1085,6 +1100,7 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         pec_sheets=_pec_sheets,
         pec_wires=_pec_wires,
         pec_occupancy=pec_occupancy_override,
+        pinned_sheet_layout=pinned_sheet_layout,
         sources=sources,
         probes=probes,
         wire_ports=wire_port_specs if wire_port_specs else None,

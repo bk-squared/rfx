@@ -511,29 +511,7 @@ class _ExecuteMixin:
                 UserWarning, stacklevel=3,
             )
 
-    def _refuse_conformal_boundary(self, path_name: str, *, entry: str,
-                                   instead: str) -> None:
-        """Refuse ``Boundary(conformal=True)`` on a path with no Dey-Mittra update.
-
-        ``run()`` on the uniform lane and the uniform waveguide S-matrix
-        lane turn a conformal axis into Dey-Mittra weights on every PEC
-        shape; a path without that update solves staircased PEC instead.
-        A conformal axis always has PEC shapes to act on: both of its faces
-        are PEC, and the hi face's half-space wall is always one of the
-        uniform assembler's ``pec_shapes`` (``rfx/api/_compile.py``).
-        """
-        self._refuse_unsupported_run_kwargs(
-            path_name,
-            {"conformal_pec": bool(self._boundary_spec.conformal_faces())},
-            instead=instead,
-            entry=entry,
-            reason_overrides={"conformal_pec":
-                "Boundary(conformal=True) asks for Dey-Mittra conformal "
-                "PEC, and this path has no conformal update, so the walls "
-                "and PEC shapes would be staircased"},
-            remedy_overrides={"conformal_pec":
-                "drop Boundary(conformal=True) (staircase PEC)"},
-        )
+    from rfx.runners._admission import _refuse_conformal_boundary
 
     @staticmethod
     def _s_param_n_steps_off_record(s_param_n_steps, n_steps, until_decay):
@@ -607,36 +585,7 @@ class _ExecuteMixin:
 
         return config
 
-    def _reject_upml_on_nonuniform(self, lane: str) -> None:
-        """Refuse ``boundary='upml'`` on a non-uniform lane (#680).
-
-        ``rfx/nonuniform.py`` has no UPML implementation at all: its
-        absorber dispatch is ``use_cpml = grid.cpml_layers > 0``, which
-        keys on the layer COUNT and never reads ``sim._boundary``. So a
-        non-uniform run asked for UPML silently got CPML instead —
-        measured on a 4x4x3 mm ez-dipole domain, otherwise identical
-        configs: ``apply_upml_e`` called 1x on the uniform lane and 0x on
-        the NU lane, with ``sim._boundary`` still reading ``'upml'``
-        afterwards, so even a post-hoc audit reported the wrong absorber.
-
-        Refuse at lane entry, in the style of the sibling distributed
-        guard, rather than substituting: the two absorbers have different
-        reflection and different material-in-pad semantics, and a silently
-        swapped one is exactly the class that made a "UPML + non-uniform"
-        regression test pass while never touching UPML.
-        """
-        if self._boundary != "upml" or self._cpml_layers <= 0:
-            return
-        raise ValueError(
-            f"boundary='upml' does not support the {lane} lane: the "
-            "non-uniform runner implements CPML only (rfx/nonuniform.py "
-            "dispatches on cpml_layers > 0 and never reads the boundary "
-            "type), so this configuration used to run CPML while "
-            "sim._boundary kept reporting 'upml' (issue #680). Pass "
-            "boundary='cpml' to run the absorber that is actually "
-            "implemented here, or drop the mesh profile(s) to use the "
-            "uniform lane, which does implement UPML."
-        )
+    from rfx.runners._admission import _reject_upml_on_nonuniform
 
     def _auto_preflight(
         self, *, skip: bool = False, context: str = "forward",
@@ -667,6 +616,7 @@ class _ExecuteMixin:
         sigma_override: jnp.ndarray | None = None,
         pec_mask_override: jnp.ndarray | None = None,
         pec_occupancy_override: jnp.ndarray | None = None,
+        pinned_sheet_layout: tuple | None = None,
         design_box: object | None = None,
         n_steps: int,
         port_s11_freqs: object | None = None,
@@ -732,6 +682,7 @@ class _ExecuteMixin:
             sigma_override=sigma_override,
             pec_mask_override=pec_mask_override,
             pec_occupancy_override=pec_occupancy_override,
+            pinned_sheet_layout=pinned_sheet_layout,
             design_box=design_box,
             checkpoint=checkpoint,
             emit_time_series=emit_time_series,
@@ -1106,6 +1057,7 @@ class _ExecuteMixin:
         pec_mask_override: jnp.ndarray | None = None,
         pec_occupancy_override: jnp.ndarray | None = None,
         subpixel_smoothing: bool | str = False,
+        pinned_sheet_layout: tuple | None = None,
         n_steps: int | None = None,
         num_periods: float = 20.0,
         checkpoint: bool | None = None,
@@ -1285,6 +1237,12 @@ class _ExecuteMixin:
             still raise; an MSL port's termination is not held.
         pec_mask_override : jnp.ndarray or None
             Additional hard PEC mask to merge with geometry-defined PEC.
+        pinned_sheet_layout : tuple or None
+            Compile-once layout switch on the graded single-device lane. One
+            entry per add_pinned_sheet call: None or two binary edge arrays in
+            increasing tangential-axis order. For normal z their shapes are
+            (i1-i0, j1-j0+1) and (i1-i0+1, j1-j0). Concrete nonbinary values
+            and differentiation with respect to this layout are refused.
         pec_occupancy_override : jnp.ndarray or None
             Relaxed conductor occupancy field in ``[0, 1]`` for
             differentiable PEC-style optimisation.
@@ -1501,6 +1459,8 @@ class _ExecuteMixin:
         so the jitted value and gradient agree with a plain call to float32
         rounding, not necessarily bit for bit.
         """
+        self, pinned_sheet_layout = _conductors.prepare_sheet_layout(
+            self, pinned_sheet_layout, distributed=distributed)
         refuse_forward_smoothing(self, subpixel_smoothing=subpixel_smoothing,
             eps_override=eps_override,
             pec_occupancy=pec_occupancy_override, design_occupancy=design_occupancy_override)
@@ -1748,6 +1708,7 @@ class _ExecuteMixin:
                 sigma_override=sigma_override,
                 pec_mask_override=pec_mask_override,
                 pec_occupancy_override=pec_occupancy_override,
+                pinned_sheet_layout=pinned_sheet_layout,
                 design_box=_nu_design_spec,
                 n_steps=plan.n_steps,
                 checkpoint=checkpoint,
@@ -1763,6 +1724,7 @@ class _ExecuteMixin:
                 result = RingdownForward(
                     self, ringdown, lane="graded", n_steps=plan.n_steps,
                     grid=_nu_grid, bins=None if port_s11_freqs is None else host_bins(port_s11_freqs, np.float32)).run(_nu_fwd_call)
+            result = _conductors.with_sheet_layout_reports(result, pinned_sheet_layout)
             if _nu_design_spec is not None:
                 result = result._replace(
                     design_box_held_edges=_nu_design_spec.held_edges)
