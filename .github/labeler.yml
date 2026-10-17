@@ -6,9 +6,9 @@
 # `.github/workflows/labeler.yml` applies it to every pull request.
 #
 # Read with `actions/labeler@v5` syntax. Globs are minimatch: `**` spans path
-# segments, `*` does not. `sync-labels: true` in the workflow means a lane label
-# is REMOVED once the paths that justified it leave the diff, so the labels
-# track the diff rather than accumulating over a branch's life.
+# segments, `*` does not. `sync-labels: false` in the workflow means labels are
+# only ADDED: a lane label the author applied by hand survives later pushes, and
+# a lane earned by an earlier commit stays for the branch's life.
 #
 # Two lane labels on one PR is information, not an error: a change that touches
 # the waveguide extractor and the MSL extractor really does belong to both.

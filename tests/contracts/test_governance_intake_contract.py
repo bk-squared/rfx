@@ -291,12 +291,17 @@ def test_the_pinned_labeler_still_says_which_version_it_is() -> None:
     assert re.search(r"uses: actions/labeler@[0-9a-f]{40} # v\d+\.\d+\.\d+", text), text
 
 
-def test_the_labeler_workflow_syncs_labels() -> None:
-    """Without `sync-labels` a lane picked up by one commit never leaves."""
+def test_the_labeler_workflow_keeps_hand_applied_lanes() -> None:
+    """With `sync-labels: true` the labeler removed the author's own lane on every push.
+
+    actions/labeler v5 removes every configured label the diff does not match, whoever
+    added it; the train's update-branch is a push, so the `Lane:` line then failed
+    pr-body-contract (2026-10-17, three PRs). The labeler must only add labels.
+    """
     steps = load(WORKFLOWS / "labeler.yml")["jobs"]["lane-label"]["steps"]
     labeler = [s for s in steps if str(s.get("uses", "")).startswith("actions/labeler@")]
     assert len(labeler) == 1, steps
-    assert labeler[0]["with"]["sync-labels"] is True
+    assert labeler[0]["with"]["sync-labels"] is False
     assert labeler[0]["with"]["configuration-path"] == ".github/labeler.yml"
 
 

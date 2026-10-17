@@ -169,8 +169,9 @@ and refiled; the problem does not.
 
 A lane is a set of PATHS, and `.github/labeler.yml` is the map. Change a file under
 `rfx/boundaries/`, and `.github/workflows/labeler.yml` puts `lane:absorber` on the
-pull request; stop changing it, and the label comes off, because the job runs with
-`sync-labels: true` on every push.
+pull request. The job runs with `sync-labels: false`: it only adds labels, so a lane
+you add by hand survives later pushes (the merge train's update included), and a lane
+an earlier commit earned stays until someone removes it.
 
 Two lane labels on one PR is information, not an error — a change touching the
 waveguide extractor and the MSL extractor really is in both lanes. It is also the
