@@ -68,38 +68,41 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
                     masks = masks if isinstance(masks, (tuple, list)) else [masks] * len(poles)
                     if any(m is None or np.any(np.asarray(m)[window]) for m in masks):
                         raise NotImplementedError('Graded multi-device port overrides on Debye/Lorentz live edges are not measured by the step2-graded-port-s design (D3b).')
-    queue, material_drive = PortSourceQueue(), []
-    for index, pe in enumerate(sim._ports):
-        if pe.impedance == 0:
-            cell = _grid_metric.field_index(grid, pe.position, pe.component)
-            if overridden and not needs_scale(pe.amplitude_kind, 'cb_over_dv'):
-                volume, _ = current_source_volume(grid, cell, pe.component)
-                queue.append((*cell, pe.component, current_source_samples(grid, pe.waveform, n_steps)))
-                material_drive.append((float(volume), sc.debye_pole_term(drive_model, cell, pe.component, grid.dt)))
-            elif ports_present and not overridden:
-                queue.defer(make_current_source, grid, cell, pe.component, pe.waveform,
-                    n_steps, amplitude_kind=pe.amplitude_kind)
-                material_drive.append(None)
-            else:
-                queue.append(make_current_source(grid, cell, pe.component, pe.waveform,
-                    n_steps, drive_model, amplitude_kind=pe.amplitude_kind))
-                material_drive.append(None)
-        for cell, component, waveform, sigma_port, unit_field in drives.get(index, ()):
-            if overridden:
-                queue.append((*cell, component, current_source_samples(grid, waveform, n_steps)))
-                material_drive.append((None, 0., sigma_port, unit_field))
-            else:
-                queue.defer(_port_drive_source, grid, cell, component, waveform, n_steps,
-                    sigma_port=sigma_port, unit_field=unit_field)
-                material_drive.append(None)
-    if ports_present and not overridden:
-        from rfx.model.materials import with_components
-        final_drive_model = with_components(materials, grid, periodic=(False,) * 3,
-            debye_spec=debye_spec, lorentz_spec=lorentz_spec)
-    else:
-        final_drive_model = materials
-    sources = [SourceSpec(int(i), int(j), int(k), component, jnp.asarray(waveform))
-               for i, j, k, component, waveform in queue.resolve(final_drive_model)]
+    # Drive samples and scales are host constants, as declaration_setup makes
+    # them on one device: a user jit must not stage them (rfx #1840).
+    with jax.ensure_compile_time_eval():
+        queue, material_drive = PortSourceQueue(), []
+        for index, pe in enumerate(sim._ports):
+            if pe.impedance == 0:
+                cell = _grid_metric.field_index(grid, pe.position, pe.component)
+                if overridden and not needs_scale(pe.amplitude_kind, 'cb_over_dv'):
+                    volume, _ = current_source_volume(grid, cell, pe.component)
+                    queue.append((*cell, pe.component, current_source_samples(grid, pe.waveform, n_steps)))
+                    material_drive.append((float(volume), sc.debye_pole_term(drive_model, cell, pe.component, grid.dt)))
+                elif ports_present and not overridden:
+                    queue.defer(make_current_source, grid, cell, pe.component, pe.waveform,
+                        n_steps, amplitude_kind=pe.amplitude_kind)
+                    material_drive.append(None)
+                else:
+                    queue.append(make_current_source(grid, cell, pe.component, pe.waveform,
+                        n_steps, drive_model, amplitude_kind=pe.amplitude_kind))
+                    material_drive.append(None)
+            for cell, component, waveform, sigma_port, unit_field in drives.get(index, ()):
+                if overridden:
+                    queue.append((*cell, component, current_source_samples(grid, waveform, n_steps)))
+                    material_drive.append((None, 0., sigma_port, unit_field))
+                else:
+                    queue.defer(_port_drive_source, grid, cell, component, waveform, n_steps,
+                        sigma_port=sigma_port, unit_field=unit_field)
+                    material_drive.append(None)
+        if ports_present and not overridden:
+            from rfx.model.materials import with_components
+            final_drive_model = with_components(materials, grid, periodic=(False,) * 3,
+                debye_spec=debye_spec, lorentz_spec=lorentz_spec)
+        else:
+            final_drive_model = materials
+        sources = [SourceSpec(int(i), int(j), int(k), component, jnp.asarray(waveform))
+                   for i, j, k, component, waveform in queue.resolve(final_drive_model)]
     if ports_present:
         conductors, pec_occupancy_override = conductor_model.prepare_port_occupancy(
             conductors, (), pec_occupancy_override, None, sim=sim)
