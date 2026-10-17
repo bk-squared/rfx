@@ -13,6 +13,7 @@ from rfx._uniform_specs import (
     resolve_periodic,
 )
 
+from rfx.backend import backend_class
 from rfx.measurement import init_uniform_records, uniform_records
 from dataclasses import replace
 from typing import Callable, NamedTuple
@@ -325,7 +326,7 @@ def run(
     # per-step scatter operations.  This is always beneficial on GPU
     # (scatter ops launch separate kernels) and beneficial on CPU for
     # grids above ~500K cells where the scatter ops cause cache eviction.
-    _on_gpu = jax.default_backend() != "cpu"
+    _on_gpu = backend_class().accelerator
     _ctx = _setup.ctx_kwargs
     _fast_eligible = (
         not _ctx["use_cpml"]

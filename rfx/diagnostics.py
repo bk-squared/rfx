@@ -22,6 +22,7 @@ import sys
 from importlib import metadata
 
 from rfx._runtime_floor import MIN_PYTHON, check
+from rfx.backend import backend_class
 
 # ---------------------------------------------------------------------------
 # Report primitives
@@ -128,7 +129,7 @@ def _check_jax(report: _Report) -> None:
         devices = jax.devices()
         platforms = sorted({d.platform for d in devices})
         device_repr = ", ".join(str(d) for d in devices)
-        if any(p in ("gpu", "cuda", "rocm") for p in platforms):
+        if any(backend_class(p).accelerator for p in platforms):
             report.record(
                 PASS,
                 "jax backend",
