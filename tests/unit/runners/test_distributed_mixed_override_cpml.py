@@ -6,4 +6,4 @@ pytestmark = pytest.mark.distributed
 
 
 def test_mixed_override_matches_one_device():
-    override_parity('cpml')
+    override_parity()

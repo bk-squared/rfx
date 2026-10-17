@@ -14,6 +14,7 @@ from tests.unit.runners.test_distributed_edge_averaged_materials import GRADED_1
 
 
 def scene(kind, *, tau_factor=1., cells=True, port=False):
+    """Scene T: the pole block continues through both x CPML faces."""
     sim = Simulation(freq_max=10e9, domain=(24e-3, 12e-3, 12e-3), dx=1e-3,
                      boundary='cpml', cpml_layers=6, dx_profile=GRADED_1302)
     if port:
@@ -30,7 +31,7 @@ def scene(kind, *, tau_factor=1., cells=True, port=False):
         poles['lorentz_poles'] = [LorentzPole(omega_0=2*np.pi*8e9, delta=2*np.pi*1e9,
                                             kappa=(2*np.pi*8e9)**2)]
     sim.add_material('m', eps_r=4., **poles)
-    sim.add(Box(_mm(10, 3, 3), _mm(16, 9, 9)), material='m')
+    sim.add(Box((-1., 3e-3, 3e-3), (1., 9e-3, 9e-3)), material='m')
     if cells:
         for pos, comp in all_e_cells(sim):
             sim.add_probe(pos, comp)
@@ -80,8 +81,9 @@ def record(row):
             stream.write(json.dumps(row) + '\n')
 
 
-def check(row):
-    assert row['law_ratio'] <= 1., f"law C: {row}"
+def check(row, *, spectral_only=False):
+    if not spectral_only:
+        assert row['law_ratio'] <= 1., f"law C: {row}"
     assert row['spectral'] <= 1e-6, f"bar S: {row}"
 
 
@@ -110,19 +112,10 @@ def parity(kind, n, monkeypatch):
             check(row)
 
 
-def override_parity(boundary):
-    """#1834: the drawn-epsilon override, against actual one-device solves."""
+def override_parity():
+    """Scene T mixed override, against actual one-device solves (#1834)."""
     import jax.numpy as jnp
-    from tests.unit.runners.test_distributed_nu_wrapped_step import pole_scene
-
-    def build(cells):
-        sim = pole_scene('mixed') if boundary == 'pec' else scene('mixed', cells=False)
-        if cells:
-            for pos, comp in all_e_cells(sim):
-                sim.add_probe(pos, comp)
-        return sim
-
-    sim = build(True)
+    sim = scene('mixed')
     grid = sim._build_nonuniform_grid()
     eps = jnp.asarray(sim._assemble_materials_nu(grid)[0].eps_r)
     def forward(model, e, devices=None):
@@ -132,14 +125,14 @@ def override_parity(boundary):
     one = np.asarray(forward(sim, eps))
     for devices in (1, 2, 3):
         multi = np.asarray(forward(sim, eps, devices))
-        row = dict(kind='mixed', boundary=boundary, entry='override_forward', n=400,
+        row = dict(kind='mixed', boundary='cpml', entry='override_forward', n=400,
                    devices=devices, **measure(one, multi, float(grid.dt)))
         record(row)
         check(row)
 
     # These four declared probes define the gradient objective; the added
     # all-cell probes above only observe law C and do not change the model.
-    sim = build(False)
+    sim = scene('mixed', cells=False)
     def objective(e, devices=None):
         return jnp.sum(forward(sim, e, devices)**2)
     one = np.asarray(jax.grad(objective)(eps), np.float64)
@@ -147,7 +140,7 @@ def override_parity(boundary):
         multi = np.asarray(jax.grad(lambda e: objective(e, devices))(eps), np.float64)
         assert np.isfinite(one).all() and np.isfinite(multi).all() and np.any(one)
         relative = float(np.abs(multi - one).max() / np.abs(one).max())
-        row = dict(kind='mixed', boundary=boundary, entry='override_gradient', n=400,
+        row = dict(kind='mixed', boundary='cpml', entry='override_gradient', n=400,
                    devices=devices, relative=relative)
         record(row)
         assert relative <= 1e-4, row

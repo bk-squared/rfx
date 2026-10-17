@@ -16,5 +16,5 @@ def test_tau_negative_control():
                **measure(one, multi, float(sim._build_nonuniform_grid().dt)))
     record(row)
     with pytest.raises(AssertionError, match='bar S') as failure:
-        check(row)
+        check(row, spectral_only=True)
     record(dict(entry='M2', assertion=str(failure.value), spectral=row['spectral']))
