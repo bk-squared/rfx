@@ -108,3 +108,46 @@ def parity(kind, n, monkeypatch):
             row = dict(kind=kind, entry=entry, devices=devices, n=n, **measure(one, multi, dt))
             record(row)
             check(row)
+
+
+def override_parity(boundary):
+    """#1834: the drawn-epsilon override, against actual one-device solves."""
+    import jax.numpy as jnp
+    from tests.unit.runners.test_distributed_nu_wrapped_step import pole_scene
+
+    def build(cells):
+        sim = pole_scene('mixed') if boundary == 'pec' else scene('mixed', cells=False)
+        if cells:
+            for pos, comp in all_e_cells(sim):
+                sim.add_probe(pos, comp)
+        return sim
+
+    sim = build(True)
+    grid = sim._build_nonuniform_grid()
+    eps = jnp.asarray(sim._assemble_materials_nu(grid)[0].eps_r)
+    def forward(model, e, devices=None):
+        kw = {} if devices is None else dict(distributed=True, devices=jax.devices('cpu')[:devices])
+        return model.forward(eps_override=e, n_steps=400, checkpoint=False,
+                             skip_preflight=True, **kw).time_series
+    one = np.asarray(forward(sim, eps))
+    for devices in (1, 2, 3):
+        multi = np.asarray(forward(sim, eps, devices))
+        row = dict(kind='mixed', boundary=boundary, entry='override_forward', n=400,
+                   devices=devices, **measure(one, multi, float(grid.dt)))
+        record(row)
+        check(row)
+
+    # These four declared probes define the gradient objective; the added
+    # all-cell probes above only observe law C and do not change the model.
+    sim = build(False)
+    def objective(e, devices=None):
+        return jnp.sum(forward(sim, e, devices)**2)
+    one = np.asarray(jax.grad(objective)(eps), np.float64)
+    for devices in (1, 2, 3):
+        multi = np.asarray(jax.grad(lambda e: objective(e, devices))(eps), np.float64)
+        assert np.isfinite(one).all() and np.isfinite(multi).all() and np.any(one)
+        relative = float(np.abs(multi - one).max() / np.abs(one).max())
+        row = dict(kind='mixed', boundary=boundary, entry='override_gradient', n=400,
+                   devices=devices, relative=relative)
+        record(row)
+        assert relative <= 1e-4, row
