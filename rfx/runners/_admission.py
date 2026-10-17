@@ -31,8 +31,10 @@ from __future__ import annotations
 
 import functools
 import inspect
+from dataclasses import fields, is_dataclass, replace
 from typing import Callable
 
+import jax
 import numpy as np
 
 from rfx.core.jax_utils import is_tracer
@@ -1173,6 +1175,59 @@ def _refuse_transformed_extended_tfsf(entry, until_decay=None, decay_max_steps=N
     """Keep run()'s source fence before setup can hide caller tracing."""
     from rfx.sources.tfsf_discrete_plane_wave import validate_run
     validate_run(entry, until_decay, decay_max_steps, _under_external_jax_transform)
+
+
+@jax.custom_jvp
+def _no_shape_tangent(value):
+    """Preserve jit/vmap values while refusing differentiation of a shape."""
+    return value
+
+
+@_no_shape_tangent.defjvp
+def _no_shape_tangent_jvp(primals, tangents):
+    raise NotImplementedError(
+        "A gradient with respect to a declared shape dimension (a size or position "
+        "of a shape added with Simulation.add) is not supported: run() and "
+        "forward() draw shapes onto grid cells, so the result is a step function "
+        "of that dimension and its gradient would be zero almost everywhere. "
+        "Differentiate a material value through eps_override, or use a design "
+        "region (design_box / design_eps_override) for shape optimisation. "
+        "jax.jit and jax.vmap over a Sphere or Cylinder dimension are supported.")
+
+
+def guard_shape_tangents(sim):
+    """Attach the tangent refusal before any lane realizes declared shapes.
+
+    Concrete leaves and entries retain their identity. Dataclass fields and
+    tuples (centres, corners) are walked; other shape classes are left as they are.
+    """
+    def guard(value):
+        if is_tracer(value):
+            return _no_shape_tangent(value)
+        if is_dataclass(value) and not isinstance(value, type):
+            changes = {}
+            for field in fields(value):
+                leaf = getattr(value, field.name)
+                guarded = guard(leaf)
+                if guarded is not leaf:
+                    changes[field.name] = guarded
+            return replace(value, **changes) if changes else value
+        if isinstance(value, tuple):
+            guarded = tuple(guard(leaf) for leaf in value)
+            return guarded if any(a is not b for a, b in zip(value, guarded)) else value
+        return value
+
+    for index, entry in enumerate(sim._geometry):
+        if is_dataclass(entry.shape):
+            shape = guard(entry.shape)
+            if shape is not entry.shape:
+                sim._geometry[index] = replace(entry, shape=shape)
+
+
+def admit_traced_run(sim, until_decay=None, decay_max_steps=None):
+    """Preserve the source fence, then guard shapes before run dispatch."""
+    _refuse_transformed_extended_tfsf(sim._tfsf, until_decay, decay_max_steps)
+    guard_shape_tangents(sim)
 
 
 def refuse_smoothing_overrides(*, subpixel_smoothing, eps_override=None,
