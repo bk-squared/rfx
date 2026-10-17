@@ -522,6 +522,26 @@ def test_the_whole_matrix_agrees_with_one_device(n_dev):
 # b. mutations: the defect restored, the helper calls kept
 # --------------------------------------------------------------------------
 
+def _fwd_never_reaches(patch, boundary, case, watched):
+    """The graded forward runs the wrapped step (W1 for PEC, #1813 for CPML), which
+    never calls the legacy helpers these mutations patch, so its rows check that
+    exclusion instead of a mutation that cannot reach it (#1847). On the wrapped
+    step the three defects are caught by this file's always-on fwd parity rows
+    (each restored inside the wrapped step goes red; review of #1847)."""
+    from rfx.runners import _distributed_nu_wrapped as wrapped
+    calls, setups = [], []
+    for module, name in watched:
+        real = getattr(module, name)
+        patch.setattr(module, name, lambda *a, _real=real, _name=name, **k: (calls.append(_name), _real(*a, **k))[1])
+    build = wrapped.build_setup
+    patch.setattr(wrapped, "build_setup", lambda *a, **k: (setups.append(1), build(*a, **k))[1])
+    _parity(boundary, "fwd", case, 2)
+    assert setups and not calls, (boundary, case, len(setups), calls)
+
+
+_SLAB_HELPER = tuple((m, "slab_e_component_materials") for m in (common, distributed_v2, distributed_nu))
+
+
 @pytest.mark.slow
 def test_mutation_the_cell_owned_coefficient_sends_every_material_case_red(monkeypatch):
     _devices(2)
@@ -533,11 +553,11 @@ def test_mutation_the_cell_owned_coefficient_sends_every_material_case_red(monke
             # guard it: "the film helper returns its input" sends them red.
             if case == "sheet":
                 continue
-            for lane in ("run", "fwd"):
-                got, floor = _parity(boundary, lane, case, 2)
-                gate = _gate(floor, case)
-                print(f"[mutation cell {boundary}/{case}/{lane}] {['%.2e' % g for g in got]}")
-                assert max(g / t for g, t in zip(got, gate)) > MUTATION_MARGIN, (case, got, gate)
+            got, floor = _parity(boundary, "run", case, 2)
+            gate = _gate(floor, case)
+            print(f"[mutation cell {boundary}/{case}/run] {['%.2e' % g for g in got]}")
+            assert max(g / t for g, t in zip(got, gate)) > MUTATION_MARGIN, (case, got, gate)
+            _fwd_never_reaches(monkeypatch, boundary, case, _SLAB_HELPER)
 
 
 @pytest.mark.slow
@@ -545,11 +565,11 @@ def test_mutation_a_seam_row_reading_its_own_row_sends_the_cut_case_red(monkeypa
     _devices(2)
     _install(monkeypatch, "seam_own_row")
     for boundary in ("pec", "cpml"):
-        for lane in ("run", "fwd"):
-            got, floor = _parity(boundary, lane, "cut", 2)
-            gate = _gate(floor)
-            print(f"[mutation seam {boundary}/cut/{lane}] {['%.2e' % g for g in got]}")
-            assert max(g / t for g, t in zip(got, gate)) > MUTATION_MARGIN, (got, gate)
+        got, floor = _parity(boundary, "run", "cut", 2)
+        gate = _gate(floor)
+        print(f"[mutation seam {boundary}/cut/run] {['%.2e' % g for g in got]}")
+        assert max(g / t for g, t in zip(got, gate)) > MUTATION_MARGIN, (got, gate)
+        _fwd_never_reaches(monkeypatch, boundary, "cut", _SLAB_HELPER)
     # an interface off the cut does not see it
     got, floor = _parity("pec", "run", "faces", 2)
     assert all(g <= t for g, t in zip(got, _gate(floor))), got
@@ -590,11 +610,12 @@ def test_mutation_the_psi_coefficient_on_the_cell_permittivity_sends_the_faces_c
         return real_cpml(*args, **kwargs)
 
     monkeypatch.setattr(distributed_nu, "apply_cpml_e", cell_cpml)
-    for lane in ("run", "fwd"):
-        got, _ = _parity("cpml", lane, "faces", 2)
-        gate = _gate(floors[lane])
-        print(f"[mutation psi cpml/faces/{lane}] {['%.2e' % g for g in got]}")
-        assert max(g / t for g, t in zip(got, gate)) > MUTATION_MARGIN, (lane, got, gate)
+    got, _ = _parity("cpml", "run", "faces", 2)
+    gate = _gate(floors["run"])
+    print(f"[mutation psi cpml/faces/run] {['%.2e' % g for g in got]}")
+    assert max(g / t for g, t in zip(got, gate)) > MUTATION_MARGIN, ("run", got, gate)
+    _fwd_never_reaches(monkeypatch, "cpml", "faces",
+                       ((distributed_nu, "apply_cpml_e"), (distributed_v2, "slab_e_component_materials")))
 
 
 # --------------------------------------------------------------------------
