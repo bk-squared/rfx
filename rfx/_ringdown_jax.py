@@ -270,7 +270,7 @@ def _solve_qr(Q, R, norms, mask, b):
     """Least-squares solution for the factorised system against ``[b; 0]``, masked."""
     import jax.numpy as jnp
     from rfx._precision import HIGHEST
-    from rfx.linalg_backend import complex_solve_triangular
+    from rfx.core.jax_utils import complex_solve_triangular
     K = R.shape[0]
     b = b.astype(Q.dtype)
     b_aug = jnp.concatenate([b, jnp.zeros((K, b.shape[1]), dtype=b.dtype)], axis=0)

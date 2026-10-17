@@ -30,7 +30,7 @@ import jax
 import jax.numpy as jnp
 
 from rfx._precision import HIGHEST
-from rfx.linalg_backend import complex_inv
+from rfx.core.jax_utils import complex_inv
 import numpy as np
 
 from rfx.grid import Grid

@@ -57,7 +57,7 @@ import jax
 import jax.numpy as jnp
 
 from rfx._precision import HIGHEST
-from rfx.linalg_backend import complex_solve
+from rfx.core.jax_utils import complex_solve
 
 
 def admit_forward_adjoint(sim, *, distributed, ringdown, design_box, design_eps,

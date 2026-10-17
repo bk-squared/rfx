@@ -11,7 +11,7 @@ import pytest
 from rfx import adjoint
 from rfx import _ringdown_jax as ringdown
 from rfx._precision import HIGHEST
-from rfx import linalg_backend as lb
+from rfx.core import jax_utils as lb
 from rfx.sources.coaxial_port import _solve_two_port_from_wave_amplitudes_jnp
 from rfx.sparams._common import msl_solve_s_from_waves
 
