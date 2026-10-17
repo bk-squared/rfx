@@ -250,6 +250,8 @@ def test_other_loop_branches_have_no_concrete_arrays(case):
 
 
 def test_forward_does_not_gather_final_state(monkeypatch):
+    _select_legacy_poles_cpml(monkeypatch)
+
     def forbidden(*args, **kwargs):
         raise AssertionError("forward gathered the final fields")
 
