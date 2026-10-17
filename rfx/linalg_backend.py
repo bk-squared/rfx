@@ -13,7 +13,7 @@ def _block_solve(a, b):
     """Solve complex matrix RHSs (or an unbatched vector) in the real dtype."""
     if not _is_complex(a, b):
         return jnp.linalg.solve(a, b)
-    dtype = jnp.result_type(a, b)
+    dtype = jnp.asarray(a).dtype if jnp.iscomplexobj(a) else jnp.result_type(a, b)
     a, b = jnp.asarray(a, dtype=dtype), jnp.asarray(b, dtype=dtype)
     vector = b.ndim == 1
     if vector:

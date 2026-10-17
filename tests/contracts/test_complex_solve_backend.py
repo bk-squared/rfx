@@ -190,3 +190,14 @@ def test_jit_and_jvp(monkeypatch):
     actual, derivative = jax.jit(lambda x, y: jax.jvp(lb.complex_solve, (x, y), (da, db)))(a, b)
     np.testing.assert_allclose(actual, value, rtol=8 * 10 * 2**-23)
     np.testing.assert_allclose(derivative, tangent, rtol=8 * 10 * 2**-23)
+
+
+def test_block_preserves_complex_matrix_dtype():
+    with jax.enable_x64():
+        a, b = _system(2, 1, 10., np.complex64)
+        b = b.astype(jnp.complex128)
+        expected = jnp.linalg.solve(a, b.astype(a.dtype))
+        actual = lb._block_solve(a, b)
+        assert actual.dtype == a.dtype
+        cond = np.linalg.cond(np.asarray(a).astype(np.complex128))
+        assert _ratio(actual, expected, cond, np.finfo(np.float32).eps) <= 8.
