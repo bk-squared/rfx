@@ -1,4 +1,4 @@
-"""Public Simulation declarations for the step-cost census (Design amendments 1–3).
+"""Public Simulation declarations for the step-cost census (Design amendments 1–4).
 
 No private Simulation methods or product monkey patches belong in this module.
 N is the interior cell count; C=(N+16)**3 includes eight CPML cells per face.
@@ -99,7 +99,7 @@ def pec_base(n, path="uniform", scale=1):
 
 def control(n, path="uniform", scale=1):
     scene = base(n, path)
-    scene.footprint, scene.footprint_kind = scale, "injected_copy_cells"
+    scene.footprint, scene.footprint_kind = 8 * scale, "injected_copy_cells"
     return scene
 
 

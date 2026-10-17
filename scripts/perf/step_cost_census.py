@@ -1,4 +1,4 @@
-"""Per-feature CPU step-cost census, Design 20261017, Amendments 1, 2 and 3.
+"""Per-feature CPU step-cost census, Design 20261017, Amendments 1–4.
 
 Quantities (seconds unless explicitly ns; MAD is median absolute deviation):
 S = 200; R = 7; t_step = median / S. Compile once, discard one warm run
@@ -18,15 +18,28 @@ Excess e = s − s_F.
 N = 56, 88, 144 interior cells; C = (N+16)³ = 373248, 1124864, 4096000.
 For the CPML row, F = C − N³; its base is the same interior PEC box.
 (a): e > 0.3, and Δt(144) − Δt(56)·(F(144)/F(56)) > 3σ_Δ(144).
-Below noise: Δt is below 3σ_Δ at every size; judged by (b) only.
+Below noise: Δt is below 3σ_Δ at every size; timing (a) is ignored.
 Trust: if σ_base(144) > 5 % of t_step(base, 144) on any row, report the
-table on (b) alone, without re-running with other settings.
+table on (b)/(c), without re-running with other settings.
 (b): for any op kind, the domain-sized op count at 2F exceeds the count
-at F (at N = 88). Count ops whose output has at least C elements:
-scatter and dynamic-update-slice from lower().as_text(); copy and fusion
-from compile().as_text(). Report feature count minus base count at F and
-2F. The scatter block regex follows test_grouped_drives.full_field_scatters;
-only result types are inspected (not large input operands).
+at F (at N = 88). Count EVERY compiled-HLO instruction whose output has
+at least C elements, by opcode. Excluded opcodes: parameter, tuple,
+get-tuple-element, bitcast and constant. Inspect every computation,
+including fusion bodies; count a tuple-producing instruction once if any
+of its output arrays has at least C elements. Report absolute counts and
+feature minus base counts. Only outputs are inspected, not input operands.
+The former four-op rule is retained as a diagnostic, not used for (b).
+(c): XLA cost_analysis()["bytes accessed"] of the compiled step.
+ΔB(N) = feature − base; s_c = least-squares slope of log ΔB against log C;
+e_c = s_c − s_F. The flag is e_c > 0.3; no σ clause.
+Nonpositive ΔB has no logarithm: report s_c/e_c as null, without a floor
+or an invented epsilon. (c) is primary; timing (a) is a witness.
+The scan counting convention is measured by compiling the same scan body
+at 2 and 200 trips and also compiling its body alone. Raw cost dictionaries,
+body counts and differences are retained. B is the compiler's whole-program
+estimate, including setup/condition/output costs; it is not hardware traffic
+and is not divided by S. Scan multiplicity is reported from the calibration,
+not assumed. The control footprint is 8 cells (2F = 16).
 Memory total = argument_size_in_bytes + output_size_in_bytes +
 temp_size_in_bytes − alias_size_in_bytes, plus the same four host terms.
 Compile seconds and memory_analysis total are records, not statistics.
@@ -66,6 +79,7 @@ S = 200
 R = 7
 SIZES = (56, 88, 144)
 KINDS = ("scatter", "dynamic-update-slice", "copy", "fusion")
+EXCLUDED_OPCODES = frozenset(("parameter", "tuple", "get-tuple-element", "bitcast", "constant"))
 
 
 def mad_sigma(values):
@@ -115,12 +129,19 @@ def classify(points, counts_f, counts_2f, *, timing_trusted=True):
     growth = large["delta_seconds"] - small["delta_seconds"] * large["F"] / small["F"]
     a_raw = bool(not below and excess is not None and excess > .3 and
                  growth > 3 * large["sigma_delta_seconds"])
-    b = None if counts_f is None or counts_2f is None else any(counts_2f[k] > counts_f[k] for k in KINDS)
+    growing = None if counts_f is None or counts_2f is None else sorted(
+        k for k in counts_f.keys() | counts_2f.keys() if counts_2f.get(k, 0) > counts_f.get(k, 0))
+    b = None if growing is None else bool(growing)
+    byte_deltas = [p.get("delta_bytes_accessed") for p in points]
+    sc = None if any(x is None for x in byte_deltas) else log_slope([p["C"] for p in points], byte_deltas)
+    ec = None if sc is None or sf is None else sc - sf
+    c = ec is not None and ec > .3
     a = a_raw and timing_trusted
     return dict(s=s, s_F=sf, e=excess, below_noise=below,
                 growth_seconds=growth, timing_trusted=timing_trusted,
-                timing_clause_raw=a_raw, a=a, b=b,
-                flag="a/b" if a and b else "a" if a else "b" if b else "none",
+                timing_clause_raw=a_raw, a=a, b=b, growing_opcodes=growing,
+                s_c=sc, e_c=ec, c=c,
+                flag="/".join(k for k, flagged in (("a", a), ("b", b), ("c", c)) if flagged) or "none",
                 conclusion="리더가 채움")
 
 
@@ -152,7 +173,65 @@ def structural_counts(lowered, compiled, cells):
 
 
 def subtract_counts(feature, base):
-    return {k: feature[k] - base[k] for k in KINDS}
+    return {k: feature.get(k, 0) - base.get(k, 0) for k in sorted(feature.keys() | base.keys())}
+
+
+def compiled_opcode_counts(compiled, cells):
+    """Count instruction definitions, including nested computation bodies."""
+    counts = {}
+    for line in compiled.splitlines():
+        match = re.match(r"\s*(?:ROOT\s+)?%?[\w.-]+\s*=\s*(.*?)\s+([a-z][a-z0-9-]*)\(", line)
+        if not match or match[2] in EXCLUDED_OPCODES:
+            continue
+        dims = re.findall(r"\b(?:[a-z]+\d*|pred)\[([\d,]*)\]", match[1])
+        if any(math.prod(int(x) for x in d.split(",") if x) >= cells for d in dims):
+            counts[match[2]] = counts.get(match[2], 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def cost_record(compiled):
+    raw = compiled.cost_analysis()
+    # Older JAX releases return a singleton list. Never sum per-device
+    # dictionaries, which may describe replicated rather than distinct work.
+    if isinstance(raw, (list, tuple)):
+        if len(raw) != 1:
+            raise ValueError("cost_analysis must expose one executable cost dictionary")
+        raw = raw[0]
+    raw = {str(k): float(v) for k, v in raw.items()}
+    value = raw["bytes accessed"]
+    if not math.isfinite(value) or value < 0:
+        raise ValueError("bytes accessed must be finite and nonnegative")
+    return {"bytes_accessed": value, "raw": raw}
+
+
+def scan_cost_calibration():
+    """Measure this compiler's scan accounting, without executing a timing run."""
+    import jax
+    import jax.numpy as jnp
+
+    def body(x):
+        return jax.lax.optimization_barrier(x) + jnp.float32(1)
+
+    shape = jax.ShapeDtypeStruct((4096,), jnp.float32)
+    body_executable = jax.jit(body).lower(shape).compile()
+    body_record = cost_record(body_executable)
+    scans = []
+    for trips in (2, S):
+        def scanned(x):
+            return jax.lax.scan(lambda carry, _: (body(carry), None), x, None, length=trips)[0]
+        executable = jax.jit(scanned).lower(shape).compile()
+        counts = compiled_opcode_counts(executable.as_text(), 4096)
+        record = cost_record(executable)
+        scans.append(dict(trips=trips, **record, counts=counts,
+                          bytes_minus_standalone_body=record["bytes_accessed"] - body_record["bytes_accessed"]))
+    independent = scans[0]["bytes_accessed"] == scans[1]["bytes_accessed"]
+    one_body = all(r["counts"].get("while") == 1 and r["counts"].get("add") == 1 for r in scans)
+    return {"array_elements": 4096, "body": body_record, "scans": scans,
+            "trip_count_independent": independent, "one_body_definition": one_body,
+            "scan_body_counted_once_observed": independent and one_body,
+            "interpretation": "Costs include one body plus loop overhead; no division by trip count."
+            if independent and one_body else "Calibration did not establish once-per-body accounting.",
+            "conclusion": "리더가 채움"}
 
 
 def memory_record(compiled):
@@ -212,7 +291,9 @@ class Program:
     def _record_executable(self, lowered, executable, seconds):
         lt, ct = lowered.as_text(), executable.as_text()
         return {"compile_seconds": seconds, "memory_analysis": memory_record(executable),
-                "counts": structural_counts(lt, ct, self.cells),
+                "counts": compiled_opcode_counts(ct, self.cells),
+                "legacy_counts": structural_counts(lt, ct, self.cells),
+                "cost_analysis": cost_record(executable),
                 "lowered_sha256": hashlib.sha256(lt.encode()).hexdigest(),
                 "compiled_sha256": hashlib.sha256(ct.encode()).hexdigest()}
 
@@ -330,6 +411,8 @@ def run_pair(row, n, path):
                   base_warm_seconds=base_warm_seconds, row_warm_seconds=row_warm_seconds,
                   row_compile_plus_warm_and_7_seconds=program.record["compile_seconds"] + row_warm_seconds + sum(row_runs))
     result["ns_per_step_per_footprint_cell"] = result["delta_seconds"] * 1e9 / scene.footprint
+    result["delta_bytes_accessed"] = (program.record["cost_analysis"]["bytes_accessed"]
+                                     - base_program.record["cost_analysis"]["bytes_accessed"])
     if n == 88:
         f_delta = subtract_counts(program.record["counts"], base_program.record["counts"])
         structural = {"F": {"footprint": scene.footprint, "absolute": program.record["counts"], "minus_base": f_delta},
@@ -379,6 +462,7 @@ def finish_report(report):
     control = report["rows"].get("control", {}).get("statistics")
     if control:
         report["control_flagged"] = control["flag"] != "none"
+        report["control_flagged_both_b_c"] = bool(control["b"] and control["c"])
 
 
 def save_report(report, path):
@@ -417,7 +501,7 @@ def main(argv=None):
         parser.error(f"unknown rows {sorted(unknown)} or sizes outside {SIZES}")
     if args.path.startswith("multi") and len(jax.devices("cpu")) != 2:
         parser.error("multi-device path needs exactly two virtual CPU devices")
-    report = {"schema": 1, "design_amendments": [1, 2, 3], "path": args.path, "steps": S, "repeats": R,
+    report = {"schema": 2, "design_amendments": [1, 2, 3, 4], "path": args.path, "steps": S, "repeats": R,
               "job": os.environ.get("REMI_JOB"), "jax_version": jax.__version__,
               "python": sys.version, "rfx_import": rfx.__file__, "cpu_affinity": sorted(os.sched_getaffinity(0)),
               "hostname": platform.node(), "platform": platform.platform(),
@@ -440,6 +524,8 @@ def main(argv=None):
                            "t_step_seconds": seconds / S, "program": program.record}
         print("SMOKE " + json.dumps(report["smoke"]), flush=True)
     else:
+        report["scan_cost_calibration"] = scan_cost_calibration()
+        print("SCAN_COST_CALIBRATION " + json.dumps(report["scan_cost_calibration"], ensure_ascii=False), flush=True)
         for row in args.rows:
             report["rows"][row] = {"sizes": []}
             for n in sorted(set(args.sizes)):
@@ -458,7 +544,8 @@ def main(argv=None):
     report["total_wall_seconds"] = time.perf_counter() - t0
     save_report(report, args.output)
     print("COMPLETE " + json.dumps({"output": args.output, "seconds": report["total_wall_seconds"],
-                                    "control_flagged": report.get("control_flagged")}), flush=True)
+                                    "control_flagged": report.get("control_flagged"),
+                                    "control_flagged_both_b_c": report.get("control_flagged_both_b_c")}), flush=True)
     return 0
 
 

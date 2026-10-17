@@ -5,7 +5,7 @@ import math
 import pytest
 
 from scripts.perf.step_cost_census import (
-    classify, finish_report, log_slope, mad_sigma, pair_statistics,
+    classify, compiled_opcode_counts, cost_record, finish_report, log_slope, mad_sigma, pair_statistics,
     structural_counts, subtract_counts,
 )
 
@@ -181,3 +181,107 @@ def test_invalid_times_rejected():
 def test_missing_size_is_not_silently_classified():
     with pytest.raises(ValueError, match="three Design sizes"):
         classify(_points()[:2], ZERO, ZERO)
+
+
+def test_all_compiled_opcodes_outputs_exclusions_and_nested_bodies():
+    compiled = '''
+    %fused_computation (x: f32[8,8]) -> f32[8,8] {
+      %x = f32[8,8]{1,0} parameter(0)
+      %c = f32[8,8]{1,0} constant({...})
+      %b = f32[8,8]{1,0} bitcast(%x)
+      %g = f32[8,8]{1,0} get-tuple-element(%tuple), index=0
+      %t = (f32[8,8], f32[8,8]) tuple(%x, %c)
+      %small = f32[2,2]{1,0} gather(%x, %index)
+      %large = f32[8,8]{1,0} gather(%x, %index)
+      %larger = f32[9,8]{1,0} gather(%x, %index)
+      %slice = f32[8,8]{1,0} dynamic-update-slice(%x, %small, %i)
+      ROOT %result = f32[8,8]{1,0} add(%large, %x)
+    }
+    ENTRY %main {
+      %fusion = f32[8,8]{1,0} fusion(%input), kind=kLoop, calls=%fused_computation
+      %loop = (s32[], f32[8,8]{1,0}) while(%init), body=%body, condition=%cond
+      %small_tuple = (f32[4,8], f32[4,8]) custom-call(%input), custom_call_target="small"
+      ROOT %out = f32[8,8]{1,0} optimization-barrier(%fusion)
+    }
+    '''
+    # Two large gathers, one each of add/DUS/fusion/while/barrier.
+    # Small outputs (even when their tuple sum is 64) and five excluded
+    # opcodes contribute zero. The fused body's add counts separately.
+    assert compiled_opcode_counts(compiled, 64) == {
+        "add": 1, "dynamic-update-slice": 1, "fusion": 1, "gather": 2,
+        "optimization-barrier": 1, "while": 1,
+    }
+
+
+def test_new_opcode_and_disappearing_opcode_are_zero_filled():
+    assert subtract_counts({"gather": 5, "add": 2}, {"gather": 3, "copy": 1}) == {
+        "add": 2, "copy": -1, "gather": 2}
+    result = classify(_points(deltas=(1, 1, 1)), {"copy": 5}, {"gather": 1})
+    assert result["growing_opcodes"] == ["gather"]
+    assert result["flag"] == "b"
+
+
+def test_c_domain_bytes_are_primary_even_when_timing_is_untrusted_and_below_noise():
+    points = _points(deltas=(0, 0, 0), noise=100)
+    # B_feature=116,132,164 minus B_base=100 -> ΔB=16,32,64.
+    # C=1,2,4 and F=8,8,8 -> s_c=1, s_F=0, e_c=1.
+    for p, feature in zip(points, (116, 132, 164)):
+        p.update(F=8, delta_bytes_accessed=feature - 100)
+    result = classify(points, {}, {"gather": 24}, timing_trusted=False)
+    assert result["s_c"] == pytest.approx(1)
+    assert result["e_c"] == pytest.approx(1)
+    assert result["s_F"] == pytest.approx(0)
+    assert result["below_noise"] is True
+    assert result["a"] is False
+    assert result["flag"] == "b/c"
+
+
+def test_c_uses_fitted_footprint_slope_and_least_squares():
+    points = _points(deltas=(1, 1, 1), footprints=(1, 2, 8))
+    for p, cells, value in zip(points, (1, 2, 8), (1, 4, 4)):
+        p.update(C=cells, delta_bytes_accessed=value)
+    # log C=0,1,3; log ΔB=0,2,2 -> slope=(8/3)/(14/3)=4/7.
+    # F=C -> s_F=1; e_c=-3/7.
+    result = classify(points, {}, {})
+    assert result["s_c"] == pytest.approx(4 / 7)
+    assert result["e_c"] == pytest.approx(-3 / 7)
+    assert result["c"] is False
+
+
+@pytest.mark.parametrize("deltas", [(0, 0, 0), (-1, 1, 2), (1, 0, 4)])
+def test_c_nonpositive_byte_deltas_have_no_log_floor(deltas):
+    points = _points(deltas=(1, 1, 1))
+    for p, delta in zip(points, deltas):
+        p["delta_bytes_accessed"] = delta
+    result = classify(points, {}, {})
+    assert result["s_c"] is None
+    assert result["e_c"] is None
+    assert result["c"] is False
+
+
+def test_c_constant_bytes_and_excess_below_threshold_are_not_flagged():
+    for values, expected in (((16, 16, 16), 0), ((1, 2**.25, 4**.25), .25)):
+        points = _points(deltas=(1, 1, 1))
+        for p, value in zip(points, values):
+            p["delta_bytes_accessed"] = value
+        result = classify(points, {}, {})
+        assert result["e_c"] == pytest.approx(expected)
+        assert result["flag"] == "none"
+
+
+@pytest.mark.parametrize("wrapped", [False, True])
+def test_cost_record_retains_bytes_without_dividing_by_scan_length(wrapped):
+    class Executable:
+        def cost_analysis(self):
+            record = {"bytes accessed": 32768, "flops": 4096}
+            return [record] if wrapped else record
+    assert cost_record(Executable()) == {
+        "bytes_accessed": 32768, "raw": {"bytes accessed": 32768, "flops": 4096}}
+
+
+def test_cost_record_refuses_ambiguous_multiple_device_dictionaries():
+    class Executable:
+        def cost_analysis(self):
+            return [{"bytes accessed": 16}, {"bytes accessed": 16}]
+    with pytest.raises(ValueError, match="one executable"):
+        cost_record(Executable())
