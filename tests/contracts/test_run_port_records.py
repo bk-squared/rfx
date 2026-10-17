@@ -43,3 +43,16 @@ def test_main_port_records_match_forward(kind, path):
         assert (got_record.id, got_record.kind, got_record.channels) == (
             want_record.id, want_record.kind, want_record.channels)
         np.testing.assert_array_equal(got_record.samples, want_record.samples)
+
+
+@pytest.mark.parametrize('kind', ['lumped', 'wire'])
+def test_run_settling_bins_follow_float64_request(kind):
+    # The port records hold the requested bins in float32; settling must still
+    # judge one value per requested bin.
+    sim = base_scene('uniform', source=False)
+    sim.add_port(SOURCE, 'ez', impedance=50., **({'extent': .003} if kind == 'wire' else {}))
+    bins = np.linspace(2.1e9, 19.7e9, 37)
+    result = sim.run(n_steps=150, skip_preflight=True, s_param_freqs=bins)
+    assert len(result.freqs) == 37
+    for key in ('share_per_bin', 'error_per_bin'):
+        assert len(result.settling_witness[key]) == len(result.freqs), key

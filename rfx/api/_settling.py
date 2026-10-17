@@ -21,7 +21,10 @@ def run_settling_witness(self, result):
     if prior and prior.get("run_records_scored"):
         return result.settling_db, prior
 
-    bins = result_read_bins(result)
+    # run()'s port records repeat its S bins in float32; reading them again
+    # would split each bin of a float64 request in two.
+    bins = result_read_bins(result if isinstance(result, ForwardResult) else
+                            result._replace(wire_port_sparams=None, lumped_port_sparams=None))
     dt = getattr(result, "dt", None) or getattr(getattr(result, "grid", None), "dt", None)
     rows = []
     if prior:
