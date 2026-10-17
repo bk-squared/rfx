@@ -7,6 +7,7 @@ import jax.numpy as jnp
 from typing import NamedTuple
 import numpy as np
 
+from rfx.runners._admission import guard_shape_tangents
 
 
 class _DispatchPlan(NamedTuple):
@@ -389,6 +390,7 @@ def _declaration_setup_at_trace_time(entry):
     @functools.wraps(entry)
     def staged_entry(self, *args, **kwargs):
         self._resolve_field_dtype()
+        guard_shape_tangents(self)
         if _setup_evaluated_at_trace_time(
                 distributed=bool(kwargs.get("distributed", False))):
             from rfx.core.jax_utils import declaration_setup
