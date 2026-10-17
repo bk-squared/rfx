@@ -1001,7 +1001,7 @@ class ForwardResult(NamedTuple):
     dt: object = None
     ringdown: object = None
     design_box_held_edges: object = None
-    #: (pinned-sheet index, report name) pairs skipped for a layout switch.
+    #: (pinned-sheet index, user-facing report name): not run on that addressed sheet.
     sheet_reports_skipped: tuple | None = None
     current_moment_data: object = None
     current_moment_monitor: object = None

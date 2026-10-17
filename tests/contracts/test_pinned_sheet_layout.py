@@ -81,30 +81,49 @@ def test_declared_layout_bytes(name, compiled):
     assert_bytes(actual, expected)
 
 
-def test_two_layouts_one_backend_compile():
-    sim = board()
-    fn = jax.jit(lambda m: observe(sim, m))
-    # Lowering performs declaration setup; only the one executable compile is counted.
-    ones = tuple(jnp.asarray(a) for a in edge_arrays(LAYOUTS['ones']))
-    zeros = tuple(jnp.asarray(a) for a in edge_arrays(LAYOUTS['zeros']))
-    lowered = fn.lower(ones)
-    events = []
-    counting = [True]
+_COMPILE_COUNTER = {'on': False, 'n': 0}
+_LISTENING = []
 
-    def listener(event, duration, **kwargs):
-        if counting[0] and event == '/jax/core/compile/backend_compile_duration':
-            events.append(event)
 
-    jax.monitoring.register_event_duration_secs_listener(listener)
+def _compile_listener(event, duration, **kwargs):
+    if _COMPILE_COUNTER['on'] and event == '/jax/core/compile/backend_compile_duration':
+        _COMPILE_COUNTER['n'] += 1
+
+
+def _compiles(fn, *args):
+    if not _LISTENING:
+        jax.monitoring.register_event_duration_secs_listener(_compile_listener)
+        _LISTENING.append(True)
+    _COMPILE_COUNTER.update(on=True, n=0)
     try:
-        executable = lowered.compile()
-        first = jax.block_until_ready(executable(ones))
-        second = jax.block_until_ready(executable(zeros))
+        result = jax.block_until_ready(fn(*args))
     finally:
-        counting[0] = False
-    assert len(events) == 1
-    assert np.asarray(first[0]).tobytes() != np.asarray(second[0]).tobytes()
-    assert_bytes(second, jax.jit(lambda: observe(board(())))())
+        _COMPILE_COUNTER['on'] = False
+    return result, _COMPILE_COUNTER['n']
+
+
+@pytest.mark.parametrize('count', [2, 3])
+def test_two_layouts_one_backend_compile(count):
+    sim = board()
+    names = ('ones', 'zeros', 'rectangle')[:count]
+    pairs = [tuple(jnp.asarray(a) for a in edge_arrays(LAYOUTS[name])) for name in names]
+    def forward_wrapper(m):
+        return observe(sim, m)
+    # Initialize trace-time declaration primitives independently of test order.
+    # This traces without compiling a solve or calling the measured user jit.
+    jax.make_jaxpr(forward_wrapper)(pairs[0])
+    fn = jax.jit(forward_wrapper)
+    assert fn._cache_size() == 0
+    measured = [_compiles(fn, pair) for pair in pairs]
+    counts = [n for _, n in measured]
+    print(f'user jit backend compiles across {count} layouts: {counts}')
+    assert counts == [1] + [0] * (count - 1)
+    assert sum(counts) == 1
+    assert fn._cache_size() == 1  # The user jit was called, not just lowered/compiled.
+    for (actual, _), name in zip(measured, names):
+        expected = jax.jit(lambda: observe(board(LAYOUTS[name])))()
+        assert_bytes(actual, expected)
+    assert np.asarray(measured[0][0][0]).tobytes() != np.asarray(measured[1][0][0]).tobytes()
 
 
 def test_nonbinary_admission_names_sheet_and_edge():
@@ -127,8 +146,8 @@ def test_reports_and_original_declaration():
     result = sim.forward(n_steps=2, skip_preflight=True,
                          pinned_sheet_layout=(edge_arrays(()),))
     assert result.sheet_reports_skipped == tuple((0, report) for report in (
-        '_with_sheet_spans', 'sheet_preflight', 'refuse_dead_soft_sources',
-        'line_stub_admission', 'warn_sheet_planes_inside_dielectric'))
+        'sheet span report', 'sheet preflight advisories', 'dead soft-source check',
+        'line-stub admission', 'sheet-in-dielectric warning'))
     assert tuple(sim._pinned_sheets) == original
     assert sim.forward(n_steps=2, skip_preflight=True,
                        pinned_sheet_layout=(None,)).sheet_reports_skipped is None
@@ -304,3 +323,256 @@ def test_one_empty_node_between_sheets_accepted(compiled):
 
     result = (jax.jit(run) if compiled else run)(pair)
     assert all(np.isfinite(np.asarray(a)).all() for a in result)
+
+
+@pytest.mark.parametrize('compiled', [False, True], ids=['eager', 'jit'])
+def test_length_one_normal_refused(compiled):
+    from rfx.boundaries.spec import BoundarySpec
+    sim = Simulation(10e9, (.010, .010, .001), dx=DX, cpml_layers=2,
+                     boundary=BoundarySpec(x='cpml', y='cpml', z='periodic'),
+                     dx_profile=np.array([.001, .0009, .0011, .001, .0009,
+                                          .0011, .001, .0009, .0011, .001]))
+    sim.add_pinned_sheet(plane_index=0, i_range=(3, 7), j_range=(3, 7), name='patch')
+    sim.add_source((.002, .005, 0.), 'ez', amplitude_kind='current')
+    sim.add_probe((.005, .005, 0.), 'ez')
+    def run(m):
+        return sim.forward(n_steps=2, skip_preflight=True, pinned_sheet_layout=(m,)).time_series
+    with pytest.raises(ValueError, match=r"sheet 0 \('patch'\).*length-1 normal PEC stage.*ez\(5, 5, 0\)"):
+        (jax.jit(run) if compiled else run)(edge_arrays(LAYOUTS['ones']))
+
+
+@pytest.mark.parametrize('kind', ['lumped', 'wire'])
+@pytest.mark.parametrize('excite', [False, True], ids=['passive', 'excited'])
+@pytest.mark.parametrize('compiled', [False, True], ids=['eager', 'jit'])
+def test_port_release_refused(kind, excite, compiled):
+    sim = board()
+    if excite:
+        sim._ports.clear()  # One driven port per record; the addressed port is that drive.
+    # Lumped physical Ex centre (4.5,5,plane4) mm -> padded edge (6,7,6).
+    # Wire starts at node 4 and spans edges 4,5,6 in the sheet plane.
+    sim.add_port((.0045 if kind == 'lumped' else .004, .005, float(DZ[:4].sum())),
+                 'ex', impedance=50, excite=excite,
+                 **({'extent': .003} if kind == 'wire' else {}))
+    def run(m):
+        return observe(sim, m)
+    with pytest.raises(ValueError, match=rf"sheet 0 \('patch'\).*{kind} port-release stage.*ex\(6, 7, 6\)"):
+        (jax.jit(run) if compiled else run)(edge_arrays(LAYOUTS['ones']))
+
+
+@pytest.mark.parametrize('coverage', ['cover', 'one_node'])
+@pytest.mark.parametrize('compiled', [False, True], ids=['eager', 'jit'])
+def test_finite_impedance_overlap_refused(coverage, compiled):
+    from rfx import Box
+    sim = board()
+    z = float(DZ[:4].sum())
+    # Cover: nodes 2..9. One-node overlap: f0 nodes x=7..9, y=3..7;
+    # shared Ey edges at x=7, starting y=3..6, first padded (9,5,6).
+    lo, hi = ((.002, .002, z), (.009, .009, z)) if coverage == 'cover' else (
+        (.007, .003, z), (.009, .007, z))
+    sim.add_thin_conductor(Box(lo, hi), sigma_bulk=1e5,
+                           thickness=35e-6, surface_impedance_f0=3e9)
+    edge = r'ex\(5, 5, 6\)' if coverage == 'cover' else r'ey\(9, 5, 6\)'
+    def run(m):
+        return observe(sim, m)
+    with pytest.raises(ValueError, match=rf"sheet 0 \('patch'\).*finite-impedance sheet operator.*{edge}"):
+        (jax.jit(run) if compiled else run)(edge_arrays(LAYOUTS['ones']))
+
+
+def oriented_board(normal, rectangles=(FULL,), *, periodic=False):
+    from rfx.boundaries.spec import BoundarySpec
+    sim = Simulation(10e9, (.010, .010, float(DZ.sum())), dx=DX, cpml_layers=2,
+                     dz_profile=DZ, boundary=(BoundarySpec(x='periodic', y='cpml', z='cpml')
+                                              if periodic else 'cpml'))
+    for ir, jr in rectangles:
+        sim.add_pinned_sheet(normal_axis=normal, plane_index=4, i_range=ir, j_range=jr, name='patch')
+    sim.add_port((.002, .002, float(DZ[:2].sum())), 'ez', impedance=50,
+                 waveform=GaussianPulse(f0=3e9, bandwidth=.9))
+    tangents = [a for a in range(3) if a != normal]
+    pos = [.005, .005, float(DZ[:5].sum())]
+    pos[normal] = .004 if normal != 2 else float(DZ[:4].sum())
+    sim.add_probe(tuple(pos), 'e' + 'xyz'[tangents[0]])
+    sim.add_probe((0., .0045, float(DZ[:4].sum())), 'ey')
+    sim.add_probe((.0095, .005, float(DZ[:4].sum())), 'ex')
+    return sim
+
+
+def range_pair(ir, jr, value):
+    di, dj = ir[1]-ir[0], jr[1]-jr[0]
+    return (np.full((di, dj+1), value, np.float32), np.full((di+1, dj), value, np.float32))
+
+
+@pytest.mark.parametrize('normal', [0, 1])
+@pytest.mark.parametrize('value', [0., 1.])
+@pytest.mark.parametrize('compiled', [False, True], ids=['eager', 'jit'])
+def test_normal_xy_layout_bytes(normal, value, compiled):
+    switched = oriented_board(normal)
+    declared = oriented_board(normal, (FULL,) if value else ())
+    run = lambda m: observe(switched, m)
+    fixed = lambda: observe(declared)
+    actual = (jax.jit(run) if compiled else run)(range_pair(*FULL, value))
+    assert_bytes(actual, (jax.jit(fixed) if compiled else fixed)())
+
+
+@pytest.mark.parametrize('value', [0., 1.])
+@pytest.mark.parametrize('compiled', [False, True], ids=['eager', 'jit'])
+def test_periodic_virtual_node_bytes(value, compiled):
+    rect = ((6, 10), (3, 7))
+    switched = oriented_board(2, (rect,), periodic=True)
+    declared = oriented_board(2, (rect,) if value else (), periodic=True)
+    run = lambda m: observe(switched, m)
+    fixed = lambda: observe(declared)
+    assert_bytes((jax.jit(run) if compiled else run)(range_pair(*rect, value)),
+                 (jax.jit(fixed) if compiled else fixed)())
+
+
+@pytest.mark.parametrize('axis', [0, 1], ids=['x', 'y'])
+@pytest.mark.parametrize('high', [False, True], ids=['addressed-low', 'addressed-high'])
+@pytest.mark.parametrize('periodic', [False, True])
+def test_seam_orientations_refused(axis, high, periodic):
+    low = ((3, 5), (3, 7)) if axis == 0 else ((3, 7), (3, 5))
+    upper = ((6, 8), (3, 7)) if axis == 0 else ((3, 7), (6, 8))
+    fixed, addressed = (low, upper) if high else (upper, low)
+    sim = oriented_board(2, (fixed, addressed), periodic=periodic)
+    pair = range_pair(*addressed, 1.)
+    # Cross edge starts at node 5 on the split axis and 3 on the other.
+    edge = (5 if axis == 0 else 3, 3 if axis == 0 else 5, 4)
+    pads = (0, 2, 2) if periodic else (2, 2, 2)
+    padded = tuple(a+b for a, b in zip(edge, pads))
+    with pytest.raises(ValueError) as error:
+        seam_observe(sim, (None, pair))
+    assert "sheet 1 ('patch')" in str(error.value)
+    assert f"seam edge e{'xy'[axis]}{padded}" in str(error.value)
+
+
+def test_periodic_endpoint_disagreement_refused():
+    sim = oriented_board(2, (((0, 10), (3, 7)),), periodic=True)
+    x, y = range_pair((0, 10), (3, 7), 0.)
+    y[-1, 1] = 1
+    with pytest.raises(ValueError, match=r"sheet 0 \('patch'\).*node-0/node-N.*ey\(0, 6, 6\)"):
+        observe(sim, (x, y))
+
+
+def test_periodic_traced_endpoint_product():
+    # At x=0==10 the two Ey rows multiply: either row being 1 zeros the edge.
+    from rfx.model.occupancy import admit_sheet_layout
+    sim = oriented_board(2, (((0, 10), (3, 7)),), periodic=True)
+    grid = sim._build_nonuniform_grid()
+    materials = sim._assemble_materials_nu(grid, pec_sheets=[], pec_wires=[])[0]
+    def keep(pair):
+        layout = admit_sheet_layout(sim._pinned_sheets, (pair,))
+        return with_graded_edge_keep(materials, None, layout, grid=grid, sources=[],
+                                    waveguide_ports=[], dtype=jnp.float32, sheet_edge_masks=None,
+                                    periodic=(True, False, False)).edge_keep[1]
+    x, y = range_pair((0, 10), (3, 7), 0.)
+    y[-1, 1] = 1
+    actual = np.asarray(jax.jit(keep)((x, y)))
+    expected = np.ones(grid.shape, np.float32)
+    expected[0, 6, 6] = 0
+    assert actual.tobytes() == expected.tobytes()
+    # Also exercise the full forward under jit with the differing traced rows.
+    assert all(np.isfinite(np.asarray(v)).all() for v in jax.jit(lambda m: observe(sim, m))((x, y)))
+
+
+def test_traced_cells_layout_bytes_and_seam_refusal():
+    pair = edge_arrays(LAYOUTS['ones'])
+    sim = board()
+    cells = np.zeros(sim._build_nonuniform_grid().shape, bool)
+    actual = jax.jit(lambda c, m: observe(sim, m, pec_mask_override=c))(cells, pair)
+    expected = jax.jit(lambda c: observe(board(), pec_mask_override=c))(cells)
+    assert_bytes(actual, expected)
+    adjacent = seam_board(((3, 5), (6, 8)), ('fixed', 'design'))
+    # Even an all-true traced cell mask cannot prove that the seam is covered.
+    with pytest.raises(ValueError, match=r"sheet 1 \('design'\).*seam edge ex\(7, 5, 6\)"):
+        jax.jit(lambda c: adjacent.forward(n_steps=2, skip_preflight=True,
+                    pinned_sheet_layout=(None, sheet_pair_values((6, 8), 1.)),
+                    pec_mask_override=c).time_series)(np.ones(cells.shape, bool))
+
+
+@pytest.mark.parametrize('stage', ['series', 'parallel_inductor', 'current_moments', 'msl_geometry'])
+def test_other_metal_consumers_refused(stage):
+    sim = board()
+    position = (.0045, .005, float(DZ[:4].sum()))
+    if stage in ('series', 'parallel_inductor'):
+        sim.add_lumped_rlc(position, 'ex', R=50., L=1e-9,
+                           topology='series' if stage == 'series' else 'parallel')
+        message, edge = 'lumped RLC post-keep solve', 'ex(6, 7, 6)'
+    elif stage == 'current_moments':
+        sim.add_current_moment_monitor((.001, .001, .001), (.009, .009, .008),
+                                       .002, BINS)
+        message, edge = 'current-moment metal census', 'ex(5, 5, 6)'
+    else:
+        sim._ports.clear()
+        sim.add_msl_port((.005, .005, 0), width=.002, height=float(DZ[:4].sum()),
+                         direction='+x', eps_r_sub=1., excite=False)
+        # Feed x=5 reads trace edge x=4; width .002 centred at y=5
+        # starts at y=4, on plane 4. Pads (2,2,2) give (6,6,6).
+        message, edge = 'MSL geometry-edge admission', 'ex(6, 6, 6)'
+    with pytest.raises(ValueError) as error:
+        sim.forward(n_steps=2, skip_preflight=True,
+                    pinned_sheet_layout=(edge_arrays(LAYOUTS['ones']),))
+    assert "sheet 0 ('patch')" in str(error.value)
+    assert message in str(error.value)
+    assert edge in str(error.value)
+
+
+@pytest.mark.parametrize('kind', ['lumped', 'wire', 'waveguide', 'microstrip'])
+def test_all_release_record_kinds_refused(kind):
+    from types import SimpleNamespace
+    from rfx.model.conductors import refuse_layout_port_releases
+    from rfx.model.occupancy import admit_sheet_layout
+    sim = board()
+    grid = sim._build_nonuniform_grid()
+    # Hand-declared Ex edge from node (4,5,4), with CPML pads (2,2,2).
+    edge = (6, 7, 6)
+    root = SimpleNamespace(grid=grid, released_port_edges=(('p', 'ex', edge),),
+                           _released_port_details=(('p', kind, 'ex', edge, ()),))
+    layout = admit_sheet_layout(sim._pinned_sheets, (edge_arrays(()),))
+    with pytest.raises(ValueError, match=rf"{kind} port-release stage.*ex\(6, 7, 6\)"):
+        refuse_layout_port_releases(layout, root)
+
+
+@pytest.mark.parametrize('stage', ['parallel_rc', 'tfsf', 'wire_away'])
+@pytest.mark.parametrize('value', [0., 1.])
+def test_other_stages_layout_bytes(stage, value):
+    def build(rectangles):
+        sim = board(rectangles)
+        if stage == 'parallel_rc':
+            sim.add_lumped_rlc((.0045, .005, float(DZ[:4].sum())), 'ex',
+                               R=50., C=1e-13, topology='parallel')
+        elif stage == 'tfsf':
+            sim._ports.clear()
+            sim.add_tfsf_source(f0=3e9, margin=3, direction='+x', polarization='ez')
+        else:
+            sim._ports.clear()
+            sim.add_port((.002, .005, float(DZ[:2].sum())), 'ez',
+                         extent=.001, impedance=50.,
+                         waveform=GaussianPulse(f0=3e9, bandwidth=.9))
+            sim.add_port((.008, .008, float(DZ[:2].sum())), 'ez',
+                         extent=.002, impedance=50., excite=False)
+        return sim
+
+    def run(sim, pair=None):
+        result = sim.forward(n_steps=60, skip_preflight=True,
+                             pinned_sheet_layout=None if pair is None else (pair,),
+                             **({} if stage == 'tfsf' else {'port_s11_freqs': BINS}))
+        # TFSF has no port S matrix. A port record contains only its driven column.
+        return ((result.time_series,) if stage == 'tfsf' else
+                (result.time_series, result.s_params[:, :1, :]))
+    assert_bytes(run(build((FULL,)), edge_arrays((FULL,) if value else ())),
+                 run(build((FULL,) if value else ())))
+
+
+def test_waveguide_forward_release_refused():
+    # Full PEC-walled aperture: no y/z CPML pads. Feed x=10mm on 2mm
+    # cells is node 5; eight x CPML cells place it at x=13. Ey edges
+    # on the declared yz sheet start at (13,3,1), inside the aperture.
+    sim = Simulation(12e9, (.05, .02286, .01016), dx=.002, cpml_layers=8,
+                     boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'},
+                     dx_profile=np.array([.002]*8 + [.0019, .0021]*4 + [.002]*9))
+    sim.add_waveguide_port(x_position=.01, direction='+x',
+                           y_range=(0., .02286), z_range=(0., .01016), n_modes=1)
+    sim.add_pinned_sheet(normal_axis=0, plane_index=5, i_range=(3, 7),
+                         j_range=(1, 3), name='aperture')
+    with pytest.raises(ValueError, match=r"sheet 0 \('aperture'\).*waveguide port-release stage.*ey\(13, 3, 1\)"):
+        sim.forward(n_steps=2, skip_preflight=True,
+                    pinned_sheet_layout=(range_pair((3, 7), (1, 3), 1.),))

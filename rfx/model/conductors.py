@@ -947,8 +947,8 @@ def _f0_solved_bounds(mask, axis, nodes, sizes, end_rows, pad_lo, pad_hi, period
 
 
 _SHEET_LAYOUT_REPORTS = (
-    "_with_sheet_spans", "sheet_preflight", "refuse_dead_soft_sources",
-    "line_stub_admission", "warn_sheet_planes_inside_dielectric",
+    "sheet span report", "sheet preflight advisories", "dead soft-source check",
+    "line-stub admission", "sheet-in-dielectric warning",
 )
 
 
@@ -1012,3 +1012,72 @@ def refuse_layout_drives(edge_sets, sources, waveguide_ports):
             raise ValueError(f"pinned_sheet_layout sheet {index} ({sheet.name!r}): "
                              f"source or port drives addressed edge {overlap[0]}; "
                              "move the drive off the layout switch on the graded lane")
+
+
+def _layout_edges(layout, grid):
+    from rfx.model.occupancy import layout_edge_indices
+    for index, sheet, _ in layout or ():
+        for tangent in (0, 1):
+            axis, indices = layout_edge_indices(grid, sheet, tangent)
+            yield index, sheet, axis, indices
+
+
+def _layout_stage_error(index, sheet, stage, axis, edge):
+    raise ValueError(
+        f"pinned_sheet_layout sheet {index} ({sheet.name!r}): "
+        f"{stage} conflicts with addressed edge e{'xyz'[axis]}{tuple(edge)} "
+        "on the graded lane; move the stage or the layout switch off that edge")
+
+
+def refuse_layout_port_releases(layout, conductors):
+    """Every published port release matters, including passive loads (R12.2)."""
+    details = {(component, tuple(edge)): f"{kind} port-release stage ({entity})"
+               for entity, kind, component, edge, _ in conductors._released_port_details}
+    for entity, component, edge in conductors.released_port_edges:
+        details.setdefault((component, tuple(edge)), f"port-release stage ({entity})")
+    for index, sheet, axis, indices in _layout_edges(layout, conductors.grid):
+        for edge in zip(*(v.ravel().tolist() for v in indices)):
+            stage = details.get((f"e{'xyz'[axis]}", edge))
+            if stage is not None:
+                _layout_stage_error(index, sheet, stage, axis, edge)
+
+
+def refuse_layout_sheet_impedance(layout, conductors):
+    """Check the full operator edge set, before PEC exclusions (R12.3)."""
+    if not layout or not conductors.sheet_impedance:
+        return
+    from rfx.materials.thin_conductor import build_sheet_impedance_ctx
+    import jax
+    with jax.ensure_compile_time_eval():
+        ctx = build_sheet_impedance_ctx(conductors.sheet_impedance,
+                                        periodic=conductors.periodic)
+        for index, sheet, axis, indices in _layout_edges(layout, conductors.grid):
+            mask = np.asarray(getattr(ctx, f"mask_e{'xyz'[axis]}"))
+            hits = np.flatnonzero(mask[indices])
+            if len(hits):
+                edge = tuple(int(v.flat[hits[0]]) for v in indices)
+                _layout_stage_error(index, sheet, "finite-impedance sheet operator", axis, edge)
+
+
+def refuse_layout_metal_consumers(layout, sim, grid):
+    """Admission for other readers of metal and post-keep writers (R12.4)."""
+    if not layout:
+        return
+    from rfx._grid_metric import field_index
+    from rfx.sources.msl_port import msl_cross_section_span, msl_port_from_entry
+    solved = {(spec.component, tuple(field_index(grid, spec.position, spec.component)))
+              for spec in sim._lumped_rlc if spec.topology == 'series' or spec.L > 0}
+    spans = [msl_cross_section_span(grid, msl_port_from_entry(port))
+             for port in sim._msl_ports]
+    for index, sheet, axis, indices in _layout_edges(layout, grid):
+        for edge in zip(*(v.ravel().tolist() for v in indices)):
+            if (f"e{'xyz'[axis]}", edge) in solved:
+                _layout_stage_error(index, sheet, "lumped RLC post-keep solve", axis, edge)
+            if getattr(sim, '_current_moments', None) is not None:
+                _layout_stage_error(index, sheet, "current-moment metal census", axis, edge)
+            for span in spans:
+                ip, iw = span['prop_idx'], span['width_idx']
+                at_feed = edge[ip] in (span['i_feed'], (span['i_feed'] - 1) % grid.shape[ip])
+                if (at_feed and edge[iw] in span['width_nodes'] and
+                        span['n_lo'] <= edge[2] <= span['n_hi']):
+                    _layout_stage_error(index, sheet, "MSL geometry-edge admission", axis, edge)
