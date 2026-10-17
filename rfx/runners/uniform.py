@@ -337,9 +337,9 @@ def run_uniform(
     # Main-record lumped spectra use the same bins as run's S driver.
     lumped_sparam_specs = []
     if lumped_ports and (compute_s_params is None or compute_s_params):
-        from rfx.measurement import register_lumped
+        from rfx.measurement import register_lumped, default_frequency_grid
         sp_freqs = jnp.asarray(s_param_freqs if s_param_freqs is not None else
-                              jnp.linspace(sim._freq_max / 10, sim._freq_max, 50), dtype=jnp.float32)
+                              default_frequency_grid(sim._freq_max, 50), dtype=jnp.float32)
         for component, _cells, kind, mid, port_id in record_specs:
             if kind == 'lumped':
                 pe = sim._ports[port_id]
