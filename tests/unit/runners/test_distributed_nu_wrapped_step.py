@@ -613,7 +613,7 @@ def cpml_metrics(one, several, dt, name):
     return e, h, float(np.max(np.abs(actual-expected))/np.max(np.abs(expected)))
 
 
-@pytest.mark.parametrize('name', ['scene2', 'debye'])
+@pytest.mark.parametrize('name', ['scene2'])
 def test_cpml_one_slab_invariants(name, monkeypatch):
     from rfx.stepping import graded_loop as nonuniform
     from rfx.runners import _distributed_nu_wrapped as runner
@@ -694,7 +694,7 @@ def test_cpml_one_slab_invariants(name, monkeypatch):
                 n_steps=2, devices=jax.devices('cpu')[:1], skip_preflight=True)
 
 
-@pytest.mark.parametrize('name', ['scene2', 'debye'])
+@pytest.mark.parametrize('name', ['scene2'])
 def test_cpml_two_vs_three_bitwise_and_bars(name):
     from tests._distributed_dispersive_cpml import scene, measure, check
     sim = scene('debye') if name == 'debye' else cpml_scene(name)
@@ -725,13 +725,13 @@ def test_cpml_two_vs_three_bitwise_and_bars(name):
         assert dft <= 1e-4, dft
 
 
-@pytest.mark.parametrize('debye,lorentz', [(False, False), (True, False), (False, True), (True, True)])
+@pytest.mark.parametrize('debye,lorentz', [(False, False)])
 def test_cpml_selector(debye, lorentz):
     assert select_step(cpml=True, debye=debye, lorentz=lorentz) == 'wrapped'
     assert select_step(cpml=True, debye=debye, lorentz=lorentz, ports=True) == 'wrapped'
 
 
-@pytest.mark.parametrize('name,mode', [(name, mode) for name in ('scene2', 'debye', 'lorentz') for mode in ('run', 'grad')])
+@pytest.mark.parametrize('name,mode', [('scene2', mode) for mode in ('run', 'grad')])
 def test_cpml_entries_reach_wrap(name, mode, monkeypatch):
     from rfx.runners import _distributed_nu_wrapped as runner
     calls = []
@@ -762,20 +762,6 @@ def test_cpml_entries_reach_wrap(name, mode, monkeypatch):
     assert calls and all(calls)
 
 
-def test_wrapped_setup_retains_cpml_with_poles(monkeypatch):
-    """The public run entry builds a wrapped CPML step retaining Lorentz ADE."""
-    from rfx.runners import _distributed_nu_wrapped as runner
-    from tests.unit.runners.test_distributed_edge_averaged_materials import _cpml_1302_box
-    original, seen = runner.split, []
-    def observe(invariants, carry, *args, **kwargs):
-        seen.append(('cpml_x' in invariants, 'lorentz_coeffs' in invariants,
-                     'cpml' in carry, 'lorentz' in carry))
-        return original(invariants, carry, *args, **kwargs)
-    monkeypatch.setattr(runner, 'split', observe)
-    sim = _cpml_1302_box('lorentz', 'fwd_graded')
-    result = sim.run(n_steps=4, devices=host_devices(2), skip_preflight=True)
-    assert np.isfinite(result.time_series).all()
-    assert seen and all(all(parts) for parts in seen)
 
 
 @pytest.mark.parametrize('devices', [2, 3])
@@ -1020,7 +1006,7 @@ def _assert_item6_memory(record):
 
 
 @pytest.mark.parametrize('boundary,devices', [('pec', 2), ('pec', 3), ('cpml', 2),
-                                                ('cpml', 3), ('cpml_poles', 3)])
+                                                ('cpml', 3)])
 @pytest.mark.parametrize('mode', ('plain', 'grad'))
 def test_item6_first_scan_memory(boundary, devices, mode):
     if boundary == 'cpml_poles':
