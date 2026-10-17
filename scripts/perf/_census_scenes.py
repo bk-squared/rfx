@@ -13,6 +13,7 @@ import math
 import numpy as np
 
 from rfx import Simulation, Box, Sphere
+from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.materials.debye import DebyePole
 from rfx.materials.lorentz import LorentzPole
 from rfx.sources import GaussianPulse
@@ -28,11 +29,16 @@ class Scene:
     footprint: int
     footprint_kind: str
     forward_kwargs: dict = field(default_factory=dict)
+    notes: list = field(default_factory=list)
 
     def realized(self):
         """Read public build records; count actual port edges/material cells."""
         record = self.sim.realized_geometry()
-        errors = [p.error for p in record.ports if p.error]
+        # This public audit omits family-specific port assembly; it is not
+        # a solver refusal. Keep that limitation visible and let forward()
+        # decide whether the declared port is supported.
+        unrepresented = "not represented: family-specific aperture/drive assembly"
+        errors = [p.error for p in record.ports if p.error and p.error != unrepresented]
         errors += [e.error for e in record.entities if e.error]
         if errors:
             raise ValueError("; ".join(errors))
@@ -55,6 +61,9 @@ class Scene:
             "footprint_kind": self.footprint_kind,
             "port_edge_counts": [len(p.edges) for p in record.ports],
             "entity_cell_counts": [e.n_cells for e in record.entities],
+            "entity_node_counts": [e.node_count for e in record.entities],
+            "port_geometry_messages": [p.error for p in record.ports if p.error],
+            "notes": self.notes,
         }
 
 
@@ -76,7 +85,7 @@ def _box(n, path, lengths):
     return Box(tuple(c - half), tuple(c + half))
 
 
-def base(n, path="uniform", scale=1, *, pec=False):
+def base(n, path="uniform", scale=1, *, pec=False, point_source=True, boundary=None):
     kwargs = {}
     domain = (n * DX,) * 3
     if "graded" in path:
@@ -84,13 +93,17 @@ def base(n, path="uniform", scale=1, *, pec=False):
         kwargs["dz_profile"] = profile
         domain = (n * DX, n * DX, float(profile.sum()))
     sim = Simulation(freq_max=3e9, domain=domain, dx=DX,
-                     boundary="pec" if pec else "cpml", cpml_layers=8,
+                     boundary=boundary if boundary is not None else ("pec" if pec else "cpml"), cpml_layers=8,
                      precision="float32", **kwargs)
     c = _centre(n, path)
-    sim.add_source(tuple(c + np.array((-5, -4, -3)) * DX),
-                   waveform=GaussianPulse(f0=2e9, bandwidth=.8), amplitude_kind="field")
+    if point_source:
+        sim.add_source(tuple(c + np.array((-5, -4, -3)) * DX),
+                       waveform=GaussianPulse(f0=2e9, bandwidth=.8), amplitude_kind="field")
     sim.add_probe(tuple(c + np.array((5, 4, 3)) * DX))
-    return Scene(sim, 1, "reference")
+    scene = Scene(sim, 1, "reference")
+    if not point_source:
+        scene.notes.append("Feature is the source: base point source omitted; point probe retained. Paired base is unchanged.")
+    return scene
 
 
 def pec_base(n, path="uniform", scale=1):
@@ -134,9 +147,8 @@ def coax(n, path="uniform", scale=1):
 
 
 def waveguide(n, path="uniform", scale=1):
-    scene = base(n, path)
+    scene = base(n, path, point_source=False)
     c = _centre(n, path)
-    # The public API may refuse the point-source base plus waveguide port.
     scene.sim.add_waveguide_port(c[0], y_range=(c[1] - 11 * DX, c[1] + 11 * DX),
                                 z_range=(c[2] - 5 * scale * DX, c[2] + 5 * scale * DX),
                                 freqs=np.array(FREQS), f0=10e9)
@@ -155,14 +167,20 @@ def msl(n, path="uniform", scale=1):
         scene.sim.add(Box(lo, (hi[0], hi[1], z)), material="pec")
         scene.sim.add(Box((lo[0], c[1]-DX, z+2*DX), (hi[0], c[1]+DX, z+2*DX)), material="pec")
         scene.sim.add_msl_port((c[0]-8*DX, c[1], z), width=2*DX, height=2*DX,
-                              eps_r_sub=2.2, n_probe_offset=2, n_probe_spacing=2, n_probes=3)
+                              eps_r_sub=2.2, n_probe_offset=3, n_probe_spacing=2, n_probes=3)
     scene.footprint, scene.footprint_kind = 24 * 12 * scale, "board_cells"
     return scene
 
 
 def pec_sheet(n, path="uniform", scale=1):
     scene = base(n, path)
-    scene.sim.add_thin_conductor(_box(n, path, (16 * scale, 16, 0)))
+    # Inclusive public node ranges: 16 x 16 at F, 32 x 16 at 2F.
+    # The midpoint is a half node from the former metric-sheet centre.
+    c = n // 2 + 3
+    scene.sim.add_pinned_sheet(plane_index=n // 2,
+                               i_range=(c - 8 * scale, c + 8 * scale - 1),
+                               j_range=(c - 8, c + 7))
+    scene.notes.append("Pinned sheet footprint counts owned nodes: 16x16 at F, 32x16 at 2F; inclusive interior node ranges.")
     scene.footprint, scene.footprint_kind = 256 * scale, "material_cells"
     return scene
 
@@ -263,38 +281,41 @@ def probes(n, path="uniform", scale=1):
     return scene
 
 
-def _sphere(n, path, scale, material, keyword):
-    scene = base(n, path)
+def _sphere(n, path, scale, material, keyword=None, boundary=None):
+    scene = base(n, path, boundary=boundary)
     scene.sim.add_material("sphere", eps_r=4., sigma=5.8e7 if material == "pec" else 0.)
     # Two equal spheres double the realized volume exactly on the 2F grid.
     for i in range(scale):
         scene.sim.add(Sphere(tuple(_centre(n, path) + np.array((18*i, 0, 0))*DX), 8*DX), material="sphere")
     scene.footprint_kind = "material_cells"
-    scene.forward_kwargs[keyword] = True
+    if keyword is not None:
+        scene.forward_kwargs[keyword] = True
     return scene
 
 
 def subpixel(n, path="uniform", scale=1):
+    # There is no constructor/material/shape declaration for this feature.
+    # Only run(subpixel_smoothing=...) consumes it. This unsupported request
+    # obtains forward's own refusal; it must never become a timed run() row.
     return _sphere(n, path, scale, "dielectric", "subpixel_smoothing")
 
 
 def conformal_pec(n, path="uniform", scale=1):
-    return _sphere(n, path, scale, "pec", "conformal_pec")
+    boundary = BoundarySpec(x=Boundary("pec", "pec", conformal=True), y="cpml", z="cpml")
+    return _sphere(n, path, scale, "pec", boundary=boundary)
 
 
 def tfsf_closed(n, path="uniform", scale=1):
     if scale != 1:
         raise NotImplementedError("closed TF/SF 2F: this single-box builder cannot realize exactly twice the surface footprint")
-    scene = base(n, path)
-    # Keep the point-source base: if that combination is unsupported, record
-    # the public API's refusal instead of silently dropping the point source.
+    scene = base(n, path, point_source=False)
     scene.sim.add_tfsf_source(closed_box=True, margin=(n-24)//2, f0=2e9)
     scene.footprint, scene.footprint_kind = 6 * 24**2, "surface_cells"
     return scene
 
 
 def tfsf_open(n, path="uniform", scale=1):
-    scene = base(n, path)
+    scene = base(n, path, point_source=False)
     scene.sim.add_tfsf_source(closed_box=False, margin=10, f0=2e9)
     scene.footprint_kind = "injection_plane"
     return scene
