@@ -7,6 +7,9 @@ def refuse_forward_smoothing(sim, *, subpixel_smoothing,
     """Admit smoothing only on forward lanes that carry the tensor."""
     from rfx.runners._admission import refuse_smoothing_overrides
     admit_full_tensor(sim, subpixel_smoothing)
+    from rfx.model.tensor_operands import refuse_full_tensor_conformal
+    faces = sim._boundary_spec.conformal_faces()
+    refuse_full_tensor_conformal(subpixel_smoothing, bool(faces), faces)
     if not subpixel_smoothing:
         return
     if sim._solver == "adi":

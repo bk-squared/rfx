@@ -105,6 +105,8 @@ def _forward_from_materials(
         pec_shapes=pec_shapes, kerr_chi3=kerr_chi3)
     _conformal = (bool(self._boundary_spec.conformal_faces())
                   if conformal_pec is None else bool(conformal_pec))
+    from rfx.model.tensor_operands import refuse_full_tensor_conformal
+    refuse_full_tensor_conformal(subpixel_smoothing, _conformal, pec_shapes)
     if _conformal and self._has_pec_to_conform():
         raise NotImplementedError(
             "Conformal PEC (Boundary(conformal=True) or conformal_pec=True) "

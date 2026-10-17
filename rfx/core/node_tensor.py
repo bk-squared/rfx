@@ -6,6 +6,9 @@ from rfx.core.yee import EPS_0, _shift_fwd, h_neighbor
 
 def off_diagonal(curls, nodes, *, periodic, boundary=None):
     """Apply Eq. 10 pair coefficients at each of an edge's two endpoints."""
+    if nodes.pec_keep is not None:
+        curls = tuple(jnp.where(keep, curl, 0.0)
+                      for curl, keep in zip(curls, nodes.pec_keep))
     if boundary is not None:
         periodic = boundary.periodic
         if boundary.pec_faces:

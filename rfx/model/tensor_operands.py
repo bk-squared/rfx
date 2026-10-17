@@ -114,7 +114,8 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
                 from rfx.geometry.node_tensor import compute_node_tensor_eps
                 aniso_eps = compute_node_tensor_eps(
                     grid, shape_eps_pairs, background_eps=1.0,
-                    field_dtype=sim._resolve_field_dtype())
+                    field_dtype=(jnp.float64 if sim._precision == 'float64'
+                                 else materials.eps_r.dtype))
             else:
                 from rfx.geometry.smoothing import compute_smoothed_eps
                 aniso_eps = compute_smoothed_eps(grid, shape_eps_pairs, background_eps=1.0)
@@ -152,9 +153,6 @@ def finish_tensor_operands(materials, aniso_eps, conformal_weights):
     nodes = aniso_eps.nodes if isinstance(aniso_eps, SmoothedEps) else None
     if nodes is not None:
         aniso_eps = aniso_eps.diagonal
-        if conformal_weights is not None:
-            nodes = replace(nodes, active=tuple(a & (w >= 1.0)
-                            for a, w in zip(nodes.active, conformal_weights)))
     # Conformal PEC (Stage 1) permittivity, #1373: the same four-cell
     # edge mean of the volume permittivity the plain E update uses, on the
     # run's final periodic flags (after the TFSF / 2-D overrides), divided
@@ -212,9 +210,17 @@ def form_reference_operands(grid, materials, *, subpixel_smoothing,
     return ref_aniso_eps, ref_aniso_inv_eps
 
 
+def refuse_full_tensor_conformal(smoothing, conformal, pec_shapes):
+    """Partial PEC edges have no free-edge node coupling model."""
+    if smoothing == 'full_tensor' and conformal and pec_shapes:
+        from rfx.model.smoothing_admission import FULL_TENSOR_MESSAGE
+        raise NotImplementedError(FULL_TENSOR_MESSAGE + '; conformal PEC is not supported')
+
+
 def refuse_tensor_conflicts(sim, grid, *, subpixel_smoothing, conformal_pec,
                             debye_spec, lorentz_spec, pec_shapes, kerr_chi3=None):
     """Refuse updates that cannot read geometry tensors, in run entry order."""
+    refuse_full_tensor_conformal(subpixel_smoothing, conformal_pec, pec_shapes)
     if subpixel_smoothing:
         from rfx.geometry.smoothing import refuse_pmc_smoothing
         refuse_pmc_smoothing(sim, grid)

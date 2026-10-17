@@ -24,6 +24,7 @@ class NodeTensor:
     triplets: object
     cross: tuple
     guard_count: object
+    pec_keep: tuple | None = None
 
 
 @jax.tree_util.register_dataclass
