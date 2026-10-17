@@ -1062,6 +1062,8 @@ def admit(sim, lane: str, *, run_args=None, grid=None, diagnostics=None) -> None
     if lane not in NTFF_UNFORMED_LANES:
         admit_ntff(sim, lane=lane)
     admit_waveguide(sim, lane=lane)
+    from rfx.measurement import admit_waveguide_entries
+    admit_waveguide_entries(sim)
     admit_simulation(sim, materials=(run_args or {}).get("tfsf_materials"))
 
 
@@ -1128,6 +1130,8 @@ def admit_forward_s_matrix(sim):
     from rfx.preflight._msl_probe_rules import admit_msl_auto_probes
     # MSL automatic probe counts from the full declaration (#1584).
     admit_msl_auto_probes(sim)
+    from rfx.measurement import admit_waveguide_entries
+    admit_waveguide_entries(sim)
     refuse_plain_sources_s_matrix(sim, main_record=True)
     require_isolated_s_drive(sim)
 

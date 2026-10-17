@@ -1668,6 +1668,8 @@ def _preflight_waveguide_setup(
     keeps a builder failure to a single ``waveguide_setup_audit_skipped``
     issue instead of one per audit.
     """
+    from rfx.measurement import admit_waveguide_entries
+    admit_waveguide_entries(self)
     if grid is None or cfgs is None:
         built = self._waveguide_setup_planes(_w, freqs, num_periods, n_steps)
         if built is None:

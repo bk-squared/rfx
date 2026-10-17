@@ -37,7 +37,6 @@ from rfx.sources.sources import GaussianPulse
 from rfx.sources import tfsf_discrete_plane_wave as _discrete_plane_wave
 from rfx.realized_geometry import realized_geometry as _realized_geometry_fn
 from rfx.fidelity import fidelity_report as _fidelity_report
-from rfx.measurement import admit_waveguide_planes as _admit_waveguide_planes
 from rfx.sources.coaxial_port import CoaxialPort
 from rfx.materials.debye import DebyePole
 from rfx.materials.lorentz import LorentzPole
@@ -1894,9 +1893,6 @@ class Simulation(
             raise ValueError(
                 "calibration_preset cannot be combined with explicit reference_plane/probe_plane"
             )
-        _admit_waveguide_planes(self, axis_idx=axis_idx, x_position=x_position,
-                                direction=direction, ref_offset=ref_offset,
-                                probe_offset=probe_offset)
         axis_domain = self._domain[axis_idx]
         if reference_plane is not None and not (0.0 <= reference_plane <= axis_domain):
             raise ValueError(

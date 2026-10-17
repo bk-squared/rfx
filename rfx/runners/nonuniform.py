@@ -284,6 +284,8 @@ def _build_waveguide_port_config_nu(sim, entry, grid: NonUniformGrid,
         init_multimode_waveguide_port,
     )
 
+    from rfx.measurement import admit_waveguide_entries
+    admit_waveguide_entries(sim)
     normal_axis = entry.direction[1]
     axis_idx = {"x": 0, "y": 1, "z": 2}[normal_axis]
     pos_vec = [0.0, 0.0, 0.0]

@@ -72,6 +72,7 @@ from rfx.measurement.waveguide_modal import (
     update_waveguide_port_probe,
 )
 from rfx.measurement.waveguide_planes import (
+    admit_waveguide_entries,
     admit_waveguide_planes,
 )
 from rfx.measurement.waveguide_s import (
@@ -88,6 +89,7 @@ from rfx.measurement.waveguide_s import (
 )
 
 __all__ = [
+    "admit_waveguide_entries",
     "admit_waveguide_planes",
     "assemble_graded_result",
     "attach_run_settling_witness",

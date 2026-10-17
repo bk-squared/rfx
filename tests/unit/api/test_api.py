@@ -908,12 +908,17 @@ def test_waveguide_port_rejects_measurement_planes_outside_domain(graded):
         **extra,
     )
     assert sim._uses_nonuniform_mesh is graded
-    with pytest.raises(ValueError, match="measurement planes exceed the physical x-domain after grid snapping"):
-        sim.add_waveguide_port(
-            0.024,
-            probe_offset=6,
-            ref_offset=3,
-        )
+    sim.add_waveguide_port(0.024, probe_offset=6, ref_offset=3)
+    message = ("Waveguide port measurement planes exceed the physical x-domain "
+               "after grid snapping; reduce ref_offset/probe_offset, "
+               "flip direction, or move x_position inward")
+    with pytest.raises(ValueError) as caught:
+        sim.preflight()
+    assert str(caught.value) == message
+    for skip in (False, True):
+        with pytest.raises(ValueError) as caught:
+            sim.run(n_steps=1, compute_s_params=False, skip_preflight=skip)
+        assert str(caught.value) == message
 
 
 def test_periodic_axes_reject_specialized_source_conflicts():

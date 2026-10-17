@@ -59,6 +59,8 @@ def _preflight_impl(
         # before any check reads them.
         from rfx.preflight._msl_probe_rules import admit_msl_auto_probes
         admit_msl_auto_probes(self)
+        from rfx.measurement import admit_waveguide_entries
+        admit_waveguide_entries(self)
         self._collect_flux_regions(issues)
         try:
             from rfx.model.thin_conductors import warn_dc_films

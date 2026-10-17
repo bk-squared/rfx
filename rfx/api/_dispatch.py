@@ -86,6 +86,8 @@ def _dispatch_plan(
     build-and-reuse a grid (the caller resolves it there).
     """
     from rfx.boundaries.features import admit_ntff, admit_waveguide
+    from rfx.measurement import admit_waveguide_entries
+    admit_waveguide_entries(self)
     admit_waveguide(self, lane=f"{mode} dispatch")
     # ADI must first report that it does not support NTFF accumulation.
     if self._solver != "adi":

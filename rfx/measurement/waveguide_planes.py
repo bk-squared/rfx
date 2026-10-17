@@ -53,3 +53,13 @@ def admit_waveguide_planes(sim, *, axis_idx, x_position, direction,
             f"{axis_name}-domain after grid snapping; reduce ref_offset/probe_offset, "
             "flip direction, or move x_position inward"
         )
+
+
+def admit_waveguide_entries(sim):
+    """Admit every declared waveguide port against the completed mesh."""
+    for entry in sim._waveguide_ports:
+        admit_waveguide_planes(
+            sim, axis_idx="xyz".index(entry.direction[1]),
+            x_position=entry.x_position, direction=entry.direction,
+            ref_offset=entry.ref_offset, probe_offset=entry.probe_offset,
+        )
