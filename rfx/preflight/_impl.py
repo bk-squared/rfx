@@ -55,6 +55,10 @@ def _preflight_impl(
     from rfx.preflight.realization import assembly_warning_scope
     with warnings.catch_warnings(record=True) as caught, jax.ensure_compile_time_eval(), assembly_warning_scope():
         warnings.simplefilter("always")
+        # MSL automatic probe counts from the full declaration (#1584),
+        # before any check reads them.
+        from rfx.preflight._msl_probe_rules import admit_msl_auto_probes
+        admit_msl_auto_probes(self)
         self._collect_flux_regions(issues)
         try:
             from rfx.model.thin_conductors import warn_dc_films

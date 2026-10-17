@@ -1125,6 +1125,9 @@ def refuse_plain_sources_s_matrix(sim, *, main_record=False):
 
 def admit_forward_s_matrix(sim):
     """Check explicit forward S requests before dispatch or stepping."""
+    from rfx.preflight._msl_probe_rules import admit_msl_auto_probes
+    # MSL automatic probe counts from the full declaration (#1584).
+    admit_msl_auto_probes(sim)
     refuse_plain_sources_s_matrix(sim, main_record=True)
     require_isolated_s_drive(sim)
 

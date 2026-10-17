@@ -219,7 +219,8 @@ def test_run_checks_kottke_surfaces_after_fractional_edges_are_released(trace_ki
 
     monkeypatch.setattr(stepping, "run", capture)
     if trace_kind == "sphere":
-        with pytest.raises(ValueError, match="no longitudinal conductor edge"):
+        # The released sphere cap meets the port only at its centre width node.
+        with pytest.raises(ValueError, match="past the realized conductor width"):
             sim.run(n_steps=1, subpixel_smoothing="kottke_pec", skip_preflight=True)
     else:
         with pytest.raises(Captured):

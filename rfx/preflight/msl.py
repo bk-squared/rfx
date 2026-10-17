@@ -400,7 +400,9 @@ def _msl_assemble_once(self):
         # realized ground (a sheet owns no cell) is known here.
         realized = self._assemble_realized(grid, nonuniform=bool(nonuniform))
         return grid, realized.materials, sizes, bool(nonuniform), realized
-    except Exception:
+    except (ValueError, NotImplementedError):
+        # A refused or unplaceable shape is a geometry verdict; any other
+        # error (MemoryError, a bug) propagates (#1433).
         return None
 
 def _msl_declared_face_geometry(self, pe, grid):
@@ -537,7 +539,7 @@ def _msl_realized_substrate(self, pe, inr, assembled=None):
                     declared_n_above=face.get("declared_n_above"),
                     d_iface=face.get("d_iface"), nonuniform=bool(nonuniform),
                     ground_cells=int(ground_cells))
-    except Exception:
+    except (ValueError, NotImplementedError):
         return None
 
 def _msl_conductor_gap(self, pe, assembled):
@@ -1196,7 +1198,7 @@ def _check_msl_port_geometry(
                 _probe_ladder = _sampled_node_coordinates(_msl_grid, _mp, _probe_ladder)
                 _src_node = float(
                     _sampled_node_coordinates(_msl_grid, _mp, (x_feed,))[0])
-            except Exception:
+            except (ValueError, IndexError):
                 _probe_ladder = None
                 _src_node = _feed_node
         if _probe_ladder is not None:

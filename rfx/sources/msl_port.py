@@ -396,6 +396,33 @@ def validate_msl_port_geometry(grid, port, *, pec_edge_masks=None,
     for w in widths:
         for role, k, declared in (("ground", lower, port.z_lo), ("trace", upper, port.z_hi)):
             if not along_trace(w, k):
+                # Only the conductor run under the port's centre node counts;
+                # another trace on the same plane is not this port's. A
+                # periodic width axis keeps the node-level message.
+                if (span["width_axis"] not in getattr(grid, "periodic_axes", "")
+                        and along_trace(span["w_centre"], k)):
+                    lo_j = hi_j = span["w_centre"]
+                    while lo_j > 0 and along_trace(lo_j - 1, k):
+                        lo_j -= 1
+                    while hi_j < len(nodes[iw]) - 1 and along_trace(hi_j + 1, k):
+                        hi_j += 1
+                    found_lo, found_hi = float(nodes[iw][lo_j]), float(nodes[iw][hi_j])
+                    overhang = (found_lo - port.y_lo if w < span["w_centre"]
+                                else port.y_hi - found_hi)
+                    raise msl_geometry_error(
+                        msl_text(
+                            "attachment_width_overhang",
+                            owner=label,
+                            role=role,
+                            width_axis=span["width_axis"],
+                            width_lo_m=port.y_lo,
+                            width_hi_m=port.y_hi,
+                            found_lo_m=found_lo,
+                            found_hi_m=found_hi,
+                            overhang_m=max(0.0, overhang),
+                        ),
+                        subject=name,
+                    )
                 ij = msl_cell(port.direction, p, w, k)[:2]
                 alternatives = sorted(set(realized_wall_planes(
                     observed, 2, ij=ij, periodic=periodic)) | domain_planes)

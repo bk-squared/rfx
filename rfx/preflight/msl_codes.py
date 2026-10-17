@@ -409,6 +409,10 @@ TEMPLATES.update(
         "conductor edge meets it at width node {width_node}. Observed conductor "
         "planes on this column are {observed_plane_m} m. Make the port "
         "ground/trace declarations agree with the realized conductor surfaces.",
+        "attachment_width_overhang": "{owner}: declared {role} width along {width_axis} "
+        "[{width_lo_m:.9g}, {width_hi_m:.9g}] m extends {overhang_m:um|.9g} um past "
+        "the realized conductor width nodes [{found_lo_m:.9g}, {found_hi_m:.9g}] m. "
+        "Make the port width and centre agree with the realized trace.",
         "attachment_occupied": "{owner}: substrate interval [{lower_node}, {upper_node}) intersects "
         "PEC normal edges {occupied_node} at width node {width_node}; use the "
         "substrate-facing surfaces, not a plane inside the ground/trace "
@@ -494,6 +498,7 @@ VARIANTS = {
         "attachment_width",
         "attachment_wall",
         "attachment_missing",
+        "attachment_width_overhang",
         "attachment_occupied",
         "attachment_loaded",
         "attachment_intervening",

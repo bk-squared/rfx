@@ -159,6 +159,118 @@ def msl_auto_probe_spacing_cells(span_m: float, n_probes: int,
                int(round(float(span_m) / (int(n_probes) - 1) / float(cell_m))))
 
 
+def msl_auto_probe_declaration(sim, *, position, width, height, n_probes,
+                               eps_r_sub):
+    """Estimate automatic probe lengths and scalar counts from a declaration.
+
+    Keep the bounding-box estimate used at registration; admission calls this
+    again after all geometry has been declared. Explicit permittivity wins.
+    """
+    from rfx.grid import C0
+    from rfx.sources.msl_eigenmode import hammerstad_jensen_z0_eps_eff
+
+    _dx = float(sim._dx or (C0 / sim._freq_max / 10))
+    # Resolve the substrate permittivity for the wavelength estimate.
+    # Precedence: explicit eps_r_sub kwarg > the dielectric registered
+    # under the port (a shape containing the substrate mid-point whose
+    # material has eps_r > 1) > conservative 1.0 fallback (largest
+    # lam_min_eff, hence largest offset — safe but coarse).
+    if eps_r_sub is not None:
+        eps_r_sub_estimate = float(eps_r_sub)
+    else:
+        eps_r_sub_estimate = 1.0
+        # ``position`` is physical and ``height`` is always along z
+        # (the substrate normal), so the substrate mid-point probe is
+        # direction-independent (issue #661).
+        probe_pt = (
+            float(position[0]), float(position[1]),
+            float(position[2]) + height / 2.0,
+        )
+        for ge in sim._geometry:
+            try:
+                (lo0, lo1, lo2), (hi0, hi1, hi2) = ge.shape.bounding_box()
+            except Exception:
+                # Shape without a bounding_box() (or a degenerate one):
+                # skip it for the estimate rather than fail port setup.
+                continue
+            if not (
+                lo0 <= probe_pt[0] <= hi0
+                and lo1 <= probe_pt[1] <= hi1
+                and lo2 <= probe_pt[2] <= hi2
+            ):
+                continue
+            mat_eps = float(sim._resolve_material(ge.material_name).eps_r)
+            if mat_eps > 1.0:
+                eps_r_sub_estimate = max(eps_r_sub_estimate, mat_eps)
+    lam_min_eff = C0 / sim._freq_max / math.sqrt(eps_r_sub_estimate)
+    near_field_m = 0.5 * lam_min_eff / (2.0 * math.pi)
+    span_total = lam_min_eff / 8.0
+    _, eps_eff = hammerstad_jensen_z0_eps_eff(width, height, eps_r_sub_estimate)
+    offset = msl_auto_probe_offset_cells(near_field_m, height, _dx)
+    spacing = msl_auto_probe_spacing_cells(span_total, n_probes, _dx)
+    return eps_r_sub_estimate, near_field_m, span_total, eps_eff, offset, spacing
+
+
+def admit_msl_auto_probes(sim):
+    """Refresh registered automatic values from the full current declaration.
+
+    Dictionary membership preserves automatic versus explicit choices. Raw
+    entries remain the add-time declarations; repeated admission is idempotent.
+    Hand-appended entries without bookkeeping rows are left alone.
+    """
+    offsets = getattr(sim, "_msl_auto_offset_min", {})
+    spacings = getattr(sim, "_msl_auto_probe_spacing", {})
+    lengths = getattr(sim, "_msl_auto_probe_lengths", {})
+    for pe in getattr(sim, "_msl_ports", ()):
+        if pe.name not in lengths and pe.name not in offsets and pe.name not in spacings:
+            continue
+        _, near_field_m, span_total, eps_eff, offset, _ = msl_auto_probe_declaration(
+            sim, position=pe.position, width=pe.width, height=pe.height,
+            n_probes=pe.n_probes, eps_r_sub=pe.eps_r_sub)
+        lengths[pe.name] = (float(near_field_m), float(span_total))
+        if pe.name in offsets:
+            offsets[pe.name] = int(offset)
+        if pe.name in spacings:
+            spacings[pe.name] = float(eps_eff)
+
+
+def msl_admitted_scalar_counts(sim, pe):
+    """The port's probe counts in the scalar cell from the full declaration.
+
+    What a path that cannot recount on the runway (a traced axis, a ladder
+    crossing a grading ramp) keeps: the automatic counts re-derived at
+    admission, an explicit count as declared (#1584).
+    """
+    _, _, _, _, offset, spacing = msl_auto_probe_declaration(
+        sim, position=pe.position, width=pe.width, height=pe.height,
+        n_probes=pe.n_probes, eps_r_sub=pe.eps_r_sub)
+    auto_offset = pe.name in getattr(sim, "_msl_auto_offset_min", {})
+    auto_spacing = pe.name in getattr(sim, "_msl_auto_probe_spacing", {})
+    return (int(offset) if auto_offset else pe.n_probe_offset,
+            int(spacing) if auto_spacing else pe.n_probe_spacing)
+
+
+def admitted_msl_entries(sim, entries):
+    """Admit, then return ``entries`` with their admitted scalar counts and
+    the admitted spacing and length tables (#1584).
+
+    An entry with no bookkeeping row (explicit counts, hand-appended) is
+    returned as given.
+    """
+    import dataclasses
+    admit_msl_auto_probes(sim)
+    offsets = getattr(sim, "_msl_auto_offset_min", {})
+    spacings = getattr(sim, "_msl_auto_probe_spacing", {}) or {}
+    admitted = []
+    for pe in entries:
+        if pe.name in offsets or pe.name in spacings:
+            off, sp = msl_admitted_scalar_counts(sim, pe)
+            if (off, sp) != (pe.n_probe_offset, pe.n_probe_spacing):
+                pe = dataclasses.replace(pe, n_probe_offset=off, n_probe_spacing=sp)
+        admitted.append(pe)
+    return admitted, spacings, getattr(sim, "_msl_auto_probe_lengths", {}) or {}
+
+
 def msl_auto_probe_offset_term(near_field_m: float, h_sub_m: float,
                                cell_m: float) -> str:
     """Name the term that sets :func:`msl_auto_probe_offset_cells`, with its

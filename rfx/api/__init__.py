@@ -1490,7 +1490,8 @@ class Simulation(
             → passive matched termination only.
         n_probe_offset : int, optional
             Distance (cells) from the feed plane to the first probe plane.
-            Automatic offset and spacing counts are recomputed at driver time
+            Automatic values are estimated from the full declaration when
+            S, run, forward, preflight or export resolves the port. Counts are recomputed
             in the cells under the port, including graded runways, uniform
             ``dy_profile`` different from ``dx``, and auto meshes. A ladder
             crossing a grading ramp retains counts based on scalar ``dx``.
@@ -1549,8 +1550,9 @@ class Simulation(
             Substrate relative permittivity. Used both for the eigenmode
             source and as ``eps_r_sub_estimate`` for the wavelength-bound
             probe-placement defaults (issue #80 Fix B). When ``None`` the
-            estimate is resolved from the dielectric geometry already
-            registered under the port (a shape whose bounding box contains
+            estimate is resolved from the full dielectric declaration when
+            S, run, forward, preflight or export resolves the port (a shape
+            under the port whose bounding box contains
             the substrate mid-point and whose material has ``eps_r > 1``);
             if no such dielectric is found it falls back to 1.0, which is
             conservative (largest ``lam_min_eff`` → largest offset).
@@ -1576,100 +1578,17 @@ class Simulation(
                 "xfail. Use mode='laplace' (the default) for a y-directed "
                 "port (issue #661)."
             )
-        # Wavelength-bound probe-placement defaults (issue #80 Fix B).
-        # Cell-counted and fixed-µm defaults both placed probe 1 inside the
-        # source reactive zone and the 3-probe quadratic at the q→1
-        # singularity. Bind the defaults to the shortest in-substrate
-        # wavelength so β·Δ stays ≈ π/8 and probe 1 sits in the far-field.
-        # An explicit user-supplied value is always honoured.
-        _dx = float(self._dx or (C0 / self._freq_max / 10))
-        # Resolve the substrate permittivity for the wavelength estimate.
-        # Precedence: explicit eps_r_sub kwarg > the dielectric registered
-        # under the port (a shape containing the substrate mid-point whose
-        # material has eps_r > 1) > conservative 1.0 fallback (largest
-        # lam_min_eff, hence largest offset — safe but coarse).
-        if eps_r_sub is not None:
-            eps_r_sub_estimate = float(eps_r_sub)
-        else:
-            eps_r_sub_estimate = 1.0
-            # ``position`` is physical and ``height`` is always along z
-            # (the substrate normal), so the substrate mid-point probe is
-            # direction-independent (issue #661).
-            probe_pt = (
-                float(position[0]), float(position[1]),
-                float(position[2]) + height / 2.0,
-            )
-            for ge in self._geometry:
-                try:
-                    (lo0, lo1, lo2), (hi0, hi1, hi2) = ge.shape.bounding_box()
-                except Exception:
-                    # Shape without a bounding_box() (or a degenerate one):
-                    # skip it for the estimate rather than fail port setup.
-                    continue
-                if not (
-                    lo0 <= probe_pt[0] <= hi0
-                    and lo1 <= probe_pt[1] <= hi1
-                    and lo2 <= probe_pt[2] <= hi2
-                ):
-                    continue
-                mat_eps = float(self._resolve_material(ge.material_name).eps_r)
-                if mat_eps > 1.0:
-                    eps_r_sub_estimate = max(eps_r_sub_estimate, mat_eps)
-        lam_min_eff = C0 / self._freq_max / math.sqrt(eps_r_sub_estimate)
-        # Probe 0 must clear BOTH near-field scales of the MSL launch:
-        #  (a) λ/(4π) reactive far-field of the quasi-TEM mode, and
-        #  (b) the SOURCE FRINGING transient, which decays over a few
-        #      substrate thicknesses (~5·h_sub), NOT over λ.  For a thin
-        #      high-εr substrate (b) dominates; clearing only (a) leaves
-        #      probe 0 inside the fringing transient and corrupts the
-        #      V·I-split S11 of a high-Q resonant load — the issue #80
-        #      edge-fed patch read |S11|=8.94/1.11 at the (a)-only offset
-        #      (~5 cells) and a passive ~0.99 once cleared to ~5·h_sub.
-        #      ``height`` is the port cross-section height = substrate h_sub.
-        # Both are LENGTHS, and so is the ladder span below. They are counted
-        # in the scalar cell here; on a graded propagation axis the driver
-        # counts the same lengths in the runway cell at the port (#810), so
-        # they are stored with the port.
-        from rfx.preflight.msl import (
-            msl_auto_probe_offset_cells as _auto_offset_cells,
-            msl_auto_probe_spacing_cells as _auto_spacing_cells,
-        )
-        _near_field_m = 0.5 * lam_min_eff / (2.0 * math.pi)
-        span_total = lam_min_eff / 8.0
+        from rfx.preflight._msl_probe_rules import msl_auto_probe_declaration
+        (_, _near_field_m, span_total, _eps_eff_hj,
+         _auto_offset, _auto_spacing) = msl_auto_probe_declaration(
+            self, position=position, width=width, height=height,
+            n_probes=n_probes, eps_r_sub=eps_r_sub)
         _offset_is_auto = n_probe_offset is None
-        if n_probe_offset is None:
-            # This is the UPSTREAM-only lower edge (offset_min). It has no
-            # notion of what sits downstream, and geometry registered after
-            # this call is invisible here — so the downstream (reflector
-            # λ_g/4) term of issue #469 is solved at compute_msl_s_matrix
-            # time, where the full geometry exists: auto ports get the
-            # midpoint of [offset_min, offset_max] when a downstream
-            # reflector bounds the interval, keep offset_min when none
-            # does (byte-identical to the pre-#469 default), and warn
-            # loudly when the interval is empty (feed too short for a
-            # clean measurement). Explicit offsets are never touched.
-            n_probe_offset = _auto_offset_cells(_near_field_m, height, _dx)
+        if _offset_is_auto:
+            n_probe_offset = _auto_offset
         _spacing_is_auto = n_probe_spacing is None
-        if n_probe_spacing is None:
-            # Bind the default so the TOTAL N-probe array span stays
-            # ~lam/8 (the original Fix B 3-probe span of 2*lam/16),
-            # independent of n_probes. For n_probes=3 this is exactly
-            # lam/16 — bit-identical to Fix B. As n_probes grows the
-            # adjacent spacing shrinks so the probe array does not run
-            # off short lines (issue #80 Fix C).
-            #
-            # Issue #681: this registration-time value is deliberately
-            # CONSERVATIVE (short). A ~0.1·λ_g span makes the N-probe
-            # β fit noise-fragile (measured: median β error 5.5% at
-            # 0.10 λ_g vs 0.8% at 0.30 λ_g under 1% probe noise), so
-            # the driver-time interval solve (_resolve_msl_auto_offsets)
-            # WIDENS an auto spacing toward span = (N−1)·λ_g(f_max)/4
-            # wherever the registered geometry allows — it has the full
-            # geometry (downstream reflector, absorber) that this method
-            # cannot see. The short value stored here is what
-            # resolver-skip paths (a ladder crossing a grading ramp) fall
-            # back to, so they can never overrun a short feed.
-            n_probe_spacing = _auto_spacing_cells(span_total, n_probes, _dx)
+        if _spacing_is_auto:
+            n_probe_spacing = _auto_spacing
         if n_probe_offset < 3:
             raise ValueError(
                 f"n_probe_offset must be >= 3 to avoid near-field, got {n_probe_offset}"
@@ -1705,10 +1624,6 @@ class Simulation(
             # span solve can size λ_g(f_max)/4 per probe step from the
             # SAME permittivity estimate every call (idempotent, and the
             # design-IR dump resolves through the same function).
-            from rfx.sources.msl_eigenmode import (
-                hammerstad_jensen_z0_eps_eff as _hj,
-            )
-            _, _eps_eff_hj = _hj(width, height, eps_r_sub_estimate)
             self._msl_auto_probe_spacing[name] = float(_eps_eff_hj)
         # The two lengths the automatic defaults were counted from, for every
         # port: the resolver recounts an automatic offset or spacing in the
