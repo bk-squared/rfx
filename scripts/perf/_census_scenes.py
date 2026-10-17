@@ -110,6 +110,16 @@ def pec_base(n, path="uniform", scale=1):
     return base(n, path, pec=True)
 
 
+def base_no_source(n, path="uniform", scale=1):
+    """Diagnostic: remove the base's one point source, retaining its probe."""
+    if scale != 1:
+        raise NotImplementedError("base_no_source 2F: removing the base's one source has no exact doubled footprint")
+    scene = base(n, path, point_source=False)
+    scene.footprint, scene.footprint_kind = 1, "removed_point_source_cells"
+    scene.notes = ["Diagnostic: no source; base point probe retained. F=1 is the removed point-source cell; exact 2F is unavailable."]
+    return scene
+
+
 def control(n, path="uniform", scale=1):
     scene = base(n, path)
     scene.footprint, scene.footprint_kind = 8 * scale, "injected_copy_cells"
@@ -332,7 +342,7 @@ def cpml(n, path="uniform", scale=1):
 
 
 BUILDERS = {fn.__name__: fn for fn in (
-    base, control, lumped, wire, coax, waveguide, msl, pec_sheet, lossy_film,
+    base, base_no_source, control, lumped, wire, coax, waveguide, msl, pec_sheet, lossy_film,
     debye, lorentz, drude, rlc_series, rlc_parallel, line_conductor, ntff,
     flux, dft_plane, probes, subpixel, conformal_pec, tfsf_closed, tfsf_open, cpml,
 )}
