@@ -13,9 +13,13 @@ import numpy as np
 from .plan import Channel, Node, Owner
 
 
-def default_frequency_grid(freq_max, n_freqs):
-    """The default DFT frequency grid: ``n_freqs`` points from ``freq_max/10`` to ``freq_max``."""
-    return jnp.linspace(freq_max / 10, freq_max, n_freqs)
+def default_frequency_grid(freq_max, n_freqs, *, host=False):
+    """The default DFT frequency grid: ``n_freqs`` points from ``freq_max/10`` to ``freq_max``.
+
+    ``host=True`` gives the float64 numpy grid the graded run's S default has
+    always used; it differs from the float32 device grid by up to 2 ULP.
+    """
+    return (np if host else jnp).linspace(freq_max / 10, freq_max, n_freqs)
 
 
 def monitor_owners(sim, grid):

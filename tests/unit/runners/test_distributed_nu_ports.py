@@ -146,6 +146,22 @@ def test_c5_gradient(n):
     assert row['gradient']['relative'] <= 1e-4, row
 
 
+def test_run_default_s_grid_equals_one_device():
+    """run() with no s_param_freqs: the same 50 default bins and S as one device."""
+    devices = jax.devices('cpu')
+    if len(devices) < 2:
+        pytest.skip('requires multiple devices')
+    sim = scene('C2', len(devices))
+    one = sim.run(n_steps=128, skip_preflight=True)
+    multi = sim.run(n_steps=128, devices=devices, skip_preflight=True)
+    assert np.asarray(one.freqs).shape == (50,)
+    np.testing.assert_array_equal(np.asarray(multi.freqs), np.asarray(one.freqs))
+    row = dict(case='C2-default-bins', devices=len(devices), entry='run', n=128,
+               S=measure(one.s_params, multi.s_params))
+    record(row)
+    assert row['S']['relative'] <= 1e-4, row
+
+
 def test_c5_gradient_under_user_jit():
     """Port assembly reads host cell sizes; an outer jit must not trace them."""
     devices = jax.devices('cpu')

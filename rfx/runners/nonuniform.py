@@ -880,8 +880,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
     ):
         sp_freqs = s_param_freqs
         if sp_freqs is None:
-            sp_freqs = np.linspace(
-                sim._freq_max / 10, sim._freq_max, 50)
+            from rfx.measurement.monitors import default_frequency_grid
+            sp_freqs = default_frequency_grid(sim._freq_max, 50, host=True)
 
     # Waveguide ports: build per-port config via NU-aware
     # init_waveguide_port (duck-types on grid for per-axis widths).
