@@ -1406,8 +1406,7 @@ class RingdownRun:
                 f"{ts_all.shape}, expected ({self.n_steps}, {n_user} user + "
                 f"{n_int} port-channel probes)")
         stripped = _user_geometry(result._replace(
-            time_series=full[:, :n_user],
-            **({"wire_port_sparams": None} if self.lane == "uniform" else {})),
+            time_series=full[:, :n_user]),
             n_user, n_int)
         S, report, nc = self._host_report(result, ts_all, n_user)
         if nc is not None:

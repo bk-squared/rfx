@@ -95,7 +95,7 @@ def run_uniform(
         Hand back the scan's per-wire-port ``(spec, accumulators)`` pairs as
         ``Result.wire_port_sparams`` (default ``True``). Internal callers
         can request ``False``. ``run(..., ringdown=...)`` reads the realized port cells and
-        accumulators from them (issue #1254) and removes them again.
+        accumulators from them (issue #1254) and preserves them in Result.
     stop_fn, stop_interval
         ``run(..., ringdown=..., until_identified=True)`` (issue #1254): the
         fixed-length scan runs in chunks of ``stop_interval`` steps and
