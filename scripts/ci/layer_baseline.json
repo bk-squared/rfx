@@ -6,7 +6,6 @@
         "rfx.boundaries.model:resolve_kinds",
         "rfx.boundaries.serialization:legacy_spec",
         "rfx.boundaries.spec:normalize_boundary",
-        "rfx.boundaries.tfsf:validate_source_boundary",
         "rfx.measurement.setup:register_plane"
       ],
       "S": [],
@@ -15,8 +14,7 @@
       "G": [],
       "D1": [],
       "D2": [
-        "Simulation.auto",
-        "Simulation.tfsf_box_indices"
+        "Simulation.auto"
       ]
     },
     "rfx/api/_execute.py": {
@@ -418,8 +416,6 @@
     },
     "rfx/sources/tfsf.py": {
       "S": [
-        "_apply_closed_box_e",
-        "_apply_closed_box_h",
         "apply_tfsf_e",
         "apply_tfsf_h",
         "measure_normal_incident_spectrum",

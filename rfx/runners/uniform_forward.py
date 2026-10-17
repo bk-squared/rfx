@@ -211,6 +211,11 @@ def _forward_from_materials(
         tfsf_run = tfsf_from_declaration(
             self._tfsf, grid, self._freq_max, n_steps=n_steps,
         )
+        from dataclasses import replace
+        from rfx.api._ad_memory_model import face_record_pays
+        if face_record_pays(tfsf_run[0], n_steps, checkpoint=checkpoint,
+                            checkpoint_segments=checkpoint_segments):
+            tfsf_run = (replace(tfsf_run[0], record_faces=True), tfsf_run[1])
         # The slab's vacuum check uses the final materials below.
         # The closed box also checks the final realized operators below,
         # after material overrides and port setup (including AD values).

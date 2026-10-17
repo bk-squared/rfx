@@ -2673,7 +2673,11 @@
       "angle_deg",
       "waveform",
       "method",
-      "closed_box"
+      "closed_box",
+      "theta_deg",
+      "phi_deg",
+      "direction_tol_deg",
+      "max_component"
     ],
     "add_thin_conductor": [
       "shape",
@@ -2957,6 +2961,7 @@
       "pad_value"
     ],
     "tfsf_box_indices": [],
+    "tfsf_incidence": [],
     "validate_subgrid": [
       "mode"
     ]

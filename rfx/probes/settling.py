@@ -136,7 +136,7 @@ def simulation_source_end_step(sim, n_steps, dt, records, grid=None,
         if grid is None:
             return None
         from rfx.sources.tfsf import tfsf_from_declaration
-        cfg, _ = tfsf_from_declaration(tf, grid, sim._freq_max)
+        cfg, _ = tfsf_from_declaration(tf, grid, sim._freq_max, line_steps=n_steps)
         drives.append(tfsf_source_drive(cfg, grid))
     return source_end_step(drives, n_steps, dt) if drives else None
 

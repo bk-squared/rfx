@@ -75,17 +75,10 @@ def _under_external_jax_transform() -> bool:
     return caller != eager
 
 
-def _refuse_transformed_extended_tfsf(entry) -> None:
+def _refuse_transformed_extended_tfsf(entry, until_decay=None, decay_max_steps=None) -> None:
     """Keep run()'s source fence before setup can hide caller tracing."""
-    if entry is None:
-        return
-    from rfx.sources.sources import CustomWaveform
-    if not (entry.closed_box or isinstance(entry.waveform, CustomWaveform)):
-        return
-    if _under_external_jax_transform():
-        raise NotImplementedError(
-            "CustomWaveform and closed_box TFSF cannot be passed through run() "
-            "under external JAX transformations; differentiate forward() instead.")
+    from rfx.sources.tfsf_discrete_plane_wave import validate_run
+    validate_run(entry, until_decay, decay_max_steps, _under_external_jax_transform)
 
 
 
@@ -2673,7 +2666,7 @@ class _ExecuteMixin:
         self._resolve_field_dtype()
         _call_args = dict(locals())
         del _call_args["self"]
-        _refuse_transformed_extended_tfsf(self._tfsf)
+        _refuse_transformed_extended_tfsf(self._tfsf, until_decay, decay_max_steps)
         validate_exchange_interval(exchange_interval)
         fixed_num_periods = n_steps is None
         if until_decay is not None and self._tfsf is not None:

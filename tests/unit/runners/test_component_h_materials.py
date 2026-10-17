@@ -186,7 +186,7 @@ def test_h_builder_inventory_reads_the_shared_owner():
              sg._z_slab_material_coupling_h_3d, sg._z_slab_material_coupling_e_3d,
              sbp_sat_1d._update_h_1d,
              sbp_sat_2d._update_hx_2d, sbp_sat_2d._update_hy_2d,
-             tfsf.update_tfsf_1d_h, tfsf.apply_tfsf_h, tfsf._apply_closed_box_h,
+             tfsf.update_tfsf_1d_h, tfsf.apply_tfsf_h,
              tfsf_2d._update_h_tmz, tfsf_2d._update_h_tez, tfsf_2d.apply_tfsf_2d_h,
              tfsf_oblique_open.apply_methodB_h, waveguide_port.apply_waveguide_port_h,
              msl_port.make_msl_port_sources_jm,

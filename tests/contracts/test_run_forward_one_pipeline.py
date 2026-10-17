@@ -5,6 +5,7 @@ No solver helper supplies an expected value: the other fresh entry does.
 """
 import json
 from fnmatch import fnmatchcase
+from pathlib import Path
 
 import pytest
 
@@ -496,14 +497,55 @@ def test_admission(declaration, path):
     finish(declaration, path, 'admission', ids, set(), [])
 
 
+# Appendix I: these full-suite rows refuse while declaring the closed box.
+DECLARATION_REFUSAL_ROWS = (
+    ('PW-closed', 'graded'),
+    ('PW-closed', 'multi-device-graded'),
+)
+
+
+def both_refused(declaration, path, pair):
+    if all(record['outcome'] == 'raised' for record in pair.values()):
+        return True
+    if (declaration, path) not in DECLARATION_REFUSAL_ROWS:
+        return False
+    if not all(record['outcome'] == 'not_called' for record in pair.values()):
+        return False
+    construction = pair['run']['construction']
+    if construction != pair['forward']['construction']:
+        return False
+    source_root = Path(__file__).resolve().parents[2] / 'rfx'
+    raising_path = Path(construction['raising_site'].rsplit(':', 1)[0]).resolve()
+    return (construction['outcome'] == 'raised'
+            and construction['type'] in ('NotImplementedError', 'ValueError')
+            and 'closed_box TFSF require a uniform' in construction['message']
+            and raising_path.is_relative_to(source_root))
+
+
 @pytest.mark.parametrize('declaration,path', parameters(BOTH_REFUSE_ROWS, 'refusal'))
 def test_both_refuse(declaration, path):
     # Refusals occur before stepping; one step bounds an unexpectedly admitted call.
     pair = {entry: run_l2(BUILDERS[declaration], entry, path, n_steps=1,
                           entry_options=entry_options(declaration))
             for entry in ('run', 'forward')}
-    assert all(record['outcome'] == 'raised' for record in pair.values()), {
-        entry: record['outcome'] for entry, record in pair.items()}
+    assert both_refused(declaration, path, pair), pair
+
+
+@pytest.mark.parametrize('error', (TypeError, ValueError, NotImplementedError))
+@pytest.mark.parametrize('declaration,path', DECLARATION_REFUSAL_ROWS)
+def test_declaration_refusal_rejects_test_builder_defect(error, declaration, path):
+    def broken_builder(path):
+        raise error('defect raised by the test builder')
+    pair = {entry: run_l2(broken_builder, entry, path, n_steps=1)
+            for entry in ('run', 'forward')}
+    assert not both_refused(declaration, path, pair), pair
+
+
+def test_declaration_refusal_does_not_extend_to_unlisted_rows():
+    pair = {entry: run_l2(BUILDERS['PW-closed'], entry, 'graded', n_steps=1)
+            for entry in ('run', 'forward')}
+    assert both_refused('PW-closed', 'graded', pair), pair
+    assert not both_refused('PW-A', 'graded', pair), pair
 
 
 @pytest.mark.parametrize('declaration', ('P-lumped',))

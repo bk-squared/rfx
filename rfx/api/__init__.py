@@ -34,6 +34,7 @@ from rfx.grid import Grid, C0  # noqa: F401
 from rfx.geometry.csg import Box, Shape  # noqa: F401
 from rfx.nonuniform import NonUniformGrid  # noqa: F401
 from rfx.sources.sources import GaussianPulse
+from rfx.sources import tfsf_discrete_plane_wave as _discrete_plane_wave
 from rfx.realized_geometry import realized_geometry as _realized_geometry_fn
 from rfx.fidelity import fidelity_report as _fidelity_report
 from rfx.measurement import admit_waveguide_planes as _admit_waveguide_planes
@@ -1804,167 +1805,7 @@ class Simulation(
         ))
         return self
 
-    def add_tfsf_source(
-        self,
-        *,
-        f0: float | None = None,
-        bandwidth: float = 0.5,
-        amplitude: float = 1.0,
-        margin: int = 3,
-        polarization: str = "ez",
-        direction: str = "+x",
-        angle_deg: float = 0.0,
-        waveform: object = "differentiated_gaussian",
-        method: str = "bloch",
-        closed_box: bool = False,
-    ) -> "Simulation":
-        """Add a normal-incidence plane-wave TFSF source.
-
-        Current scope is intentionally narrow: x-directed propagation,
-        ``ez``/``ey`` polarization, 3D mode, and CPML boundaries. For
-        oblique incidence, only the single transverse-axis plane implied
-        by the chosen polarization is supported.
-
-        Parameters
-        ----------
-        closed_box : bool
-            Use a finite six-face total-field box with CPML on all three
-            axes. Normal incidence, uniform 3D Yee only. The default keeps
-            the historical x slab with periodic y/z. Read the realized
-            inclusive node bounds with :meth:`tfsf_box_indices`.
-        waveform : {"differentiated_gaussian", "modulated_gaussian", "continuous_wave"}
-            Pulse shape injected into the 1D auxiliary grid. (``continuous_wave``
-            is only supported at normal incidence — ``angle_deg == 0``.)
-
-            ``differentiated_gaussian`` (default, legacy rfx): baseband
-            pulse with no carrier, DC-free, spectrum peaks near
-            ``f0·bandwidth``. Good for broadband measurements but
-            spectrum extends well below ``f0``.
-
-            ``continuous_wave``: a single-frequency sinusoid at ``f0`` with a
-            raised-cosine turn-on (~8 periods), then constant amplitude. Use for
-            steady-state / narrowband measurements that need a well-defined
-            time-average ``⟨E²⟩ = A²/2`` (e.g. the quantitative Kerr SPM oracle,
-            #446). Not for broadband S-parameters — it excites only ``f0``.
-
-            ``modulated_gaussian``: carrier-modulated Gaussian matching
-            Meep's ``GaussianSource(frequency=f0, fwidth=f0·bandwidth)``.
-            Spectrum is a Gaussian centered at ``f0`` with 1/e
-            half-width ``f0·bandwidth``. Use this for matched rfx-vs-Meep
-            crossval comparisons.
-
-            A ``CustomWaveform`` may supply a fixed, JAX-compatible real
-            scalar function of time, multiplied by ``amplitude``. It is
-            added to the auxiliary E node at ``t=n*dt``; it is not the
-            launched E amplitude. Normal incidence only; use a fixed
-            record length (``until_decay`` has no source-off contract).
-            These source inputs support ``forward`` and its internal
-            checkpoints, including external JAX transformations through
-            grad/value_and_grad/JVP/vmap/jit/checkpoint/scan. ``run`` refuses
-            external transforms; differentiate ``forward`` instead.
-        method : {"bloch", "methodB"}
-            Oblique-incidence engine (ignored for ``angle_deg=0``, which always
-            uses the normal 1D-aux path). ``"bloch"`` (default) is the narrowband
-            complex-Bloch 2D-aux path (fields go complex64; frequency-domain
-            monitors are not transform-aware — see ``tfsf_2d.py``). ``"methodB"``
-            is the open-domain oblique path (real ``float32``, 1D-aux-along-k̂ +
-            4-edge box): the transverse axis becomes OPEN/CPML, z stays thin
-            periodic (2.5-D, z-invariant far field), and NTFF/DFT/flux monitors
-            read physical fields. ``"methodB"`` currently requires
-            ``polarization='ez'`` and a single-device uniform grid.
-        """
-        from rfx.boundaries.tfsf import validate_source_boundary
-        validate_source_boundary(self, closed_box=closed_box)
-        if self._cpml_layers <= 0:
-            raise ValueError("TFSF plane-wave source requires cpml_layers > 0")
-        if self._mode not in ("3d", "2d_tmz", "2d_tez"):
-            raise ValueError(
-                f"TFSF plane-wave source requires mode='3d', '2d_tmz', or '2d_tez', got {self._mode!r}"
-            )
-        transverse = "" if closed_box else (
-            "z" if method == "methodB" and abs(angle_deg) > .01 else "yz")
-        if any(axis not in transverse for axis in self._periodic_axes):
-            raise ValueError(
-                "TFSF plane-wave source conflicts with periodic-axis overrides "
-                f"{self._periodic_axes!r}; this source permits declared periodic "
-                f"axes only in {transverse!r}")
-        if self._ports:
-            raise ValueError(
-                "TFSF plane-wave source is not supported together with lumped ports"
-            )
-        if f0 is not None and f0 <= 0:
-            raise ValueError(f"f0 must be positive when provided, got {f0}")
-        if bandwidth <= 0:
-            raise ValueError(f"bandwidth must be positive, got {bandwidth}")
-        if margin < 1:
-            raise ValueError(f"margin must be >= 1, got {margin}")
-        if polarization not in ("ez", "ey"):
-            raise ValueError(f"polarization must be 'ez' or 'ey', got {polarization!r}")
-        if direction not in ("+x", "-x"):
-            raise ValueError(f"direction must be '+x' or '-x', got {direction!r}")
-        if abs(angle_deg) >= 90.0:
-            raise ValueError(f"abs(angle_deg) must be < 90, got {angle_deg}")
-        if waveform == "continuous_wave" and abs(angle_deg) != 0.0:
-            raise ValueError(
-                "waveform='continuous_wave' is only supported at normal incidence "
-                f"(angle_deg=0); got angle_deg={angle_deg}"
-            )
-        from rfx.sources.sources import CustomWaveform
-        custom = isinstance(waveform, CustomWaveform)
-        if not custom and waveform not in ("differentiated_gaussian", "modulated_gaussian", "continuous_wave"):
-            raise ValueError(
-                "waveform must be 'differentiated_gaussian', 'modulated_gaussian', "
-                f"'continuous_wave', or CustomWaveform, got {waveform!r}"
-            )
-        if (custom or closed_box) and angle_deg != 0.0:
-            raise NotImplementedError("CustomWaveform and closed_box require normal incidence (angle_deg=0)")
-        if (custom or closed_box) and self._mode != "3d":
-            raise NotImplementedError("CustomWaveform and closed_box require mode='3d'")
-        if method not in ("bloch", "methodB"):
-            raise ValueError(f"method must be 'bloch' or 'methodB', got {method!r}")
-        if method == "methodB":
-            if abs(angle_deg) <= 0.01:
-                raise ValueError(
-                    "method='methodB' is the open-domain OBLIQUE path; use a "
-                    "non-zero angle_deg (angle_deg=0 uses the normal 1D-aux path)"
-                )
-            if polarization != "ez":
-                raise NotImplementedError(
-                    "method='methodB' currently supports polarization='ez' "
-                    "(transverse=y) only; 'ey' is future work"
-                )
-
-        if method == "bloch" and abs(angle_deg) > 0.01:  # the 2D-aux dispatch test in tfsf.py
-            cutoff_db = _bloch_cutoff_level_db(angle_deg, bandwidth)
-            if cutoff_db > -60.0:
-                import warnings
-
-                source_f0 = f0 if f0 is not None else self._freq_max / 2
-                cutoff_ghz = source_f0 * abs(math.sin(math.radians(angle_deg))) / 1e9
-                warnings.warn(
-                    f"Bloch TF/SF angle={angle_deg:g} deg, bandwidth={bandwidth:g}: "
-                    f"{cutoff_db:.2f} dB relative to f0 at f_c={cutoff_ghz:.6g} GHz; "
-                    "a rectangular-window DFT of this path's probe time series picks up "
-                    "the non-decaying component at f_c = f0·sinθ, so a value at f0 "
-                    "depends on the record length. Narrow the bandwidth, or taper "
-                    "the tail of the time series before the DFT.",
-                    UserWarning,
-                    stacklevel=2,
-                )
-
-        self._tfsf = _TFSFEntry(
-            f0=f0,
-            bandwidth=bandwidth,
-            amplitude=amplitude,
-            margin=margin,
-            polarization=polarization,
-            direction=direction,
-            angle_deg=angle_deg,
-            waveform=waveform,
-            method=method,
-            closed_box=closed_box,
-        )
-        return self
+    from rfx.sources.tfsf_discrete_plane_wave import add_tfsf_source, tfsf_incidence
 
     def tfsf_box_indices(self) -> dict[str, tuple[int, int]]:
         """Realized inclusive total-field node bounds on the padded grid.
@@ -1973,13 +1814,7 @@ class Simulation(
         NTFF cell-centre interpolation must clear these bounds, including
         the adjacent Yee samples (the NTFF placement check enforces this).
         """
-        if self._tfsf is None:
-            raise ValueError("No TFSF source registered")
-        from rfx.sources.tfsf import tfsf_from_declaration, tfsf_injection_planes
-        grid = self._build_grid()
-        entry = self._tfsf
-        cfg, _ = tfsf_from_declaration(entry, grid, self._freq_max)
-        return tfsf_injection_planes(cfg)
+        return _discrete_plane_wave.tfsf_box_indices(self)
 
     def add_waveguide_port(
         self,

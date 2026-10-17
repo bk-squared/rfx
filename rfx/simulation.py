@@ -1059,9 +1059,9 @@ def _build_step_setup(
             update_tfsf_1d_h,
             apply_tfsf_e,
             apply_tfsf_h,
-            is_tfsf_2d,
+            is_tfsf_2d, prepare_tfsf_for_scan,
         )
-        tfsf_cfg, tfsf_state = tfsf
+        tfsf_cfg, tfsf_state = prepare_tfsf_for_scan(tfsf, dx, dt)
         carry_init["tfsf"] = tfsf_state
         _tfsf_is_2d = is_tfsf_2d(tfsf_cfg)
         if _tfsf_is_2d:

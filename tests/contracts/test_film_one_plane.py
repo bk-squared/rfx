@@ -303,7 +303,6 @@ CONSTRUCTOR_EXCEPTIONS = {
     ('rfx/runners/distributed_v2.py', '_shard_materials'): (1, 'refuses a non-None film before constructing'),
     ('rfx/sources/coaxial_port.py', 'build_coaxial_tem_plane_source_specs'): (1, 'H-only operand: no electric conductivity consumed'),
     ('rfx/sources/msl_port.py', 'make_msl_port_sources_jm'): (1, 'H-only operand: no electric conductivity consumed'),
-    ('rfx/sources/tfsf.py', '_apply_closed_box_h'): (1, 'H-only operand: no electric conductivity consumed'),
     ('rfx/sources/tfsf.py', 'apply_tfsf_h'): (1, 'H-only operand: no electric conductivity consumed'),
     ('rfx/sources/tfsf.py', 'update_tfsf_1d_h'): (1, 'H-only operand: no electric conductivity consumed'),
     ('rfx/sources/tfsf_2d.py', '_update_h_tez'): (1, 'H-only operand: no electric conductivity consumed'),
