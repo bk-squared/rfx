@@ -146,6 +146,25 @@ def test_c5_gradient(n):
     assert row['gradient']['relative'] <= 1e-4, row
 
 
+def test_c5_gradient_under_user_jit():
+    """Port assembly reads host cell sizes; an outer jit must not trace them."""
+    devices = jax.devices('cpu')
+    if len(devices) < 2:
+        pytest.skip('requires multiple devices')
+    sim = scene('C5', len(devices))
+    eps = jnp.full(sim._build_nonuniform_grid().shape, 1.7, jnp.float32)
+    def objective(e, selected):
+        result = evaluate(sim, 'forward', 128, selected, e)
+        return jnp.sum(jnp.abs(result.s_params[:, 0]) ** 2), result.s_params
+    (_, one), g_one = jax.value_and_grad(lambda e: objective(e, None), has_aux=True)(eps)
+    (_, multi), g_multi = jax.jit(jax.value_and_grad(lambda e: objective(e, devices), has_aux=True))(eps)
+    row = dict(case='C5-jit', devices=len(devices), entry='forward', n=128,
+               S=measure(one, multi), gradient=measure(g_one, g_multi))
+    record(row)
+    assert row['S']['relative'] <= 1e-4, row
+    assert row['gradient']['relative'] <= 1e-4, row
+
+
 def test_c2_vmap(monkeypatch):
     devices = jax.devices('cpu')[:2]
     if len(devices) < 2:

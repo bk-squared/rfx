@@ -31,7 +31,8 @@ def global_plan(sim, grid, specs, lane, freqs, compute_s_params):
         elif freqs is None:
             freqs = np.linspace(sim._freq_max / 10, sim._freq_max, 50)
     initial = {}
-    bins, meta, use = graded_accumulators(specs, grid, freqs, initial)
+    with jax.ensure_compile_time_eval():
+        bins, meta, use = graded_accumulators(specs, grid, freqs, initial)
     return PortPlan(graded_specs(specs), graded_acc_indices(specs), meta, bins, use, initial)
 
 

@@ -199,8 +199,9 @@ def test_port_bins(kind, path, ringdown):
         assert ('waveguide ports use compute_waveguide_s_matrix()' if kind == 'waveguide'
                 else 'MSL ports use compute_msl_s_matrix()') in str(eager[1])
     elif path == 'multi-graded':
-        _same_refusal(eager, actual, NotImplementedError,
-                      'forward(port_s11_freqs=...) is supported only on single-device forward paths')
+        # Graded multi-device ports run the one-device step per slab (#1402 step 2).
+        _equal(eager, actual)
+        _equal(_evaluate(lambda: _call(sim, 'graded', False, REQUEST)), eager)
     elif path == 'multi-uniform' and actual[2]:
         _success(eager)
         _refusal(actual, NotImplementedError,

@@ -42,10 +42,13 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
         cells = pec_mask_override if cells is None else cells | pec_mask_override
     conductors = conductor_model.kernel_conductors(sim, grid, materials, cells,
         sheets, wires, periodic=(False,) * 3, root=conductors)
-    ports = assemble_graded_ports(sim, grid, materials, materials, conductors,
-        pec_edge_masks=conductors.pec_edges, sizing_n=n_steps,
-        lane='fwd_nonuniform' if lane == 'fwd_distributed_nu' else 'run_nonuniform',
-        s_param_freqs=s_param_freqs)
+    # The distributed lane is outside declaration_setup (_dispatch.py), so an
+    # outer jit would trace the port's host cell sizes; traced inputs stay recorded.
+    with jax.ensure_compile_time_eval():
+        ports = assemble_graded_ports(sim, grid, materials, materials, conductors,
+            pec_edge_masks=conductors.pec_edges, sizing_n=n_steps,
+            lane='fwd_nonuniform' if lane == 'fwd_distributed_nu' else 'run_nonuniform',
+            s_param_freqs=s_param_freqs)
     materials, conductors = ports.materials, ports.conductors
     drives = {}
     for index, drive in ports.drives:

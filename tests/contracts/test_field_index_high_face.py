@@ -141,7 +141,7 @@ def solve(lane, axis, boundary, row, d, side):
                 if back:
                     index[back_axis] -= 1
                 sim.add_probe(tuple(grid.node_of(a, index[a]) for a in range(3)), comp)
-    result = execute(sim, lane, port=row == 'iii' and not recorded_vi and lane not in ('adi_run', 'two_graded_forward'))
+    result = execute(sim, lane, port=row == 'iii' and not recorded_vi and lane != 'adi_run')
     data = np.array(result.time_series)
     spectrum = None
     if row == 'iii':
@@ -185,7 +185,7 @@ def test_c2_c2b(lane, boundary, axis, row, record_property):
     refusal = None
     if lane == 'subgrid_run':
         refusal = 'subgridd|production|unstable'
-    elif row == 'iii' and lane in ('two_graded_forward', 'adi_run'):
+    elif row == 'iii' and lane == 'adi_run':
         refusal = 'port|impedance|ADI|adi|distributed|PMC|magnetic'
     elif boundary == 'pmc' and (lane == 'adi_run' or (row == 'iii' and lane.startswith('two_'))):
         refusal = 'PMC|pmc|magnetic'

@@ -188,11 +188,6 @@
       "kind": "boundary"
     },
     {
-      "file": "rfx/api/_execute.py",
-      "function": "_ExecuteMixin._execute_distributed_nonuniform_from_materials",
-      "kind": "boundary"
-    },
-    {
       "file": "rfx/auto_config.py",
       "function": "_make_dz_profile",
       "kind": "difference"
@@ -719,6 +714,11 @@
     {
       "file": "rfx/runners/_distributed_common.py",
       "function": "init_cpml_slabs",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/runners/_distributed_nu_execute.py",
+      "function": "execute_from_materials",
       "kind": "boundary"
     },
     {
