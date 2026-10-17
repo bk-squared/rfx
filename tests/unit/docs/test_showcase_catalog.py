@@ -25,7 +25,7 @@ import pytest
 REPO = Path(__file__).resolve().parents[3]
 PUBLIC = REPO / "docs" / "public"
 CATALOG = PUBLIC / "showcase" / "showcase.json"
-SHARE = "https://remilab.cnu.ac.kr/share/ca3dd98f4722/"
+SHARE = "https://remilab.cnu.ac.kr/share/52f0a897c27d/"
 SUPERSCRIPT = str.maketrans("⁻⁰¹²³⁴⁵⁶⁷⁸⁹", "-0123456789")
 #: A printed number: 20,592 / 0.097 / 2×10⁻⁵.  Not a digit inside a word
 #: (RTX A6000, float64, TM010) or a date.
@@ -203,8 +203,11 @@ def test_every_share_host_file_a_page_links_is_a_catalog_file():
     known = {f["url"] for case in catalog()["cases"] for s in case["sources"] for f in s["files"]}
     linked = {}
     for path in sorted(PUBLIC.rglob("*.md*")):
-        for url in re.findall(re.escape(SHARE) + r"[^\s\"'()<>]+", path.read_text()):
+        for url in re.findall(r"https://remilab\.cnu\.ac\.kr/share/[^\s\"'()<>]+", path.read_text()):
             linked.setdefault(url, path.relative_to(REPO).as_posix())
+    # A page left on an earlier batch id would otherwise pass: every share-host link is in the catalog's batch.
+    other = {url: page for url, page in linked.items() if not url.startswith(SHARE)}
+    assert not other, f"share-host links outside the catalog's batch {SHARE}: {other}"
     assert len(linked) >= 20, f"only {len(linked)} share-host links found"
     unknown = {url: page for url, page in linked.items() if url not in known}
     assert not unknown, f"share-host links that are not catalog files: {unknown}"

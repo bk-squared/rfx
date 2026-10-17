@@ -44,7 +44,7 @@ import yaml
 
 REPO = Path(__file__).resolve().parents[2]
 CATALOG = REPO / "docs/public/showcase/showcase.json"
-SHARE = "https://remilab.cnu.ac.kr/share/ca3dd98f4722/"
+SHARE = "https://remilab.cnu.ac.kr/share/52f0a897c27d/"
 SCHEMA = "rfx-showcase-catalog/1"
 SUPERSCRIPT = str.maketrans("-0123456789", "⁻⁰¹²³⁴⁵⁶⁷⁸⁹")
 
