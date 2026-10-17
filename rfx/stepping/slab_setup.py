@@ -52,7 +52,8 @@ def slab_drive_columns(materials, debye, lorentz, sources, volumes, dt, layout, 
     if debye is not None and lorentz is not None:
         from rfx.materials.lorentz import mixed_e_component_coeffs
         def coefficients(d, l):
-            d, l = device_rows(d, mesh, unpack=True), device_rows(l, mesh, unpack=True)
+            # Staging packs each device's pole-first leaves along axis zero.
+            d, l = jax.tree.map(lambda a: a.reshape((mesh.size, -1) + a.shape[1:]), (d, l))
             values = tuple(jax.vmap(lambda d, l: mixed_e_component_coeffs(d, l, axis, dt)[1])(d, l)
                            for axis in range(3))
             return device_rows(values, mesh, unpack=False)
@@ -277,8 +278,11 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
             def local(eps, sigma, *terms):
                 return (debye_e_coeffs if i == 0 else lorentz_e_coeffs)((eps, sigma), grid.dt, *terms)
             def stage(eps, sigma, *terms):
-                arrays = device_rows((eps, sigma, *terms), mesh, unpack=True)
-                return device_rows(jax.vmap(local)(*arrays), mesh, unpack=False)
+                # Fixed pole terms use the same pole-first packing as the step.
+                arrays = jax.tree.map(lambda a: a.reshape((mesh.size, -1) + a.shape[1:]),
+                                      (eps, sigma, *terms))
+                coeffs = jax.vmap(local)(*arrays)
+                return jax.tree.map(lambda a: a.reshape((-1,) + a.shape[2:]), coeffs)
             coeffs = jax.checkpoint(stage)(staged.components.eps_update,
                                            staged.components.sigma_update, *terms)
             bundles[i] = (coeffs, state)

@@ -326,30 +326,29 @@ def _product_map(mesh, row_axis, pole_rows, alignment_fill, physical_fill):
 
 
 @lru_cache(maxsize=128)
-def _axis_map(mesh, unpack, pole_rows):
+def _axis_map(mesh, unpack):
     """Only copies: expose or merge the device axis inside each shard."""
     def local(a):
         if unpack:
-            return (jnp.moveaxis(a, 1, 0) if pole_rows else a)[None]
-        if pole_rows:
-            a = jnp.moveaxis(a, 2, 1)
+            return a[None]
         return a.reshape((a.shape[0] * a.shape[1],) + a.shape[2:])
     return jax.jit(jax.shard_map(local, mesh=mesh, in_specs=P('x'),
                                 out_specs=P('x'), check_vma=False))
 
 
 def device_rows(value, mesh, *, unpack):
-    """Convert packed field/pole leaves without a cross-device reshape.
+    """Convert packed field leaves without a cross-device reshape.
 
     A leaf is a field array (packed ``(rows, ny, nz)``, unpacked
-    ``(device, rows, ny, nz)``) or a pole array with one more axis; the
-    rank alone tells them apart, so any other rank is refused.
+    ``(device, rows, ny, nz)``). Pole coefficients are staged pole-first and
+    are split by their leading axis instead (rfx #1834), so any other rank
+    is refused.
     """
     field = 3 if unpack else 4
     def convert(a):
-        if a.ndim not in (field, field + 1):
+        if a.ndim != field:
             raise ValueError(
-                f"device_rows takes field ({field}-D) or pole ({field + 1}-D) "
-                f"leaves when unpack={unpack}; got shape {a.shape}")
-        return _axis_map(mesh, unpack, a.ndim == field + 1)(a)
+                f"device_rows takes field ({field}-D) leaves when unpack={unpack}; "
+                f"got shape {a.shape} (pole coefficients are pole-first, rfx #1834)")
+        return _axis_map(mesh, unpack)(a)
     return jax.tree.map(convert, value)
