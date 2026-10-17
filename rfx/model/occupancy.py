@@ -318,7 +318,12 @@ def layout_edge_indices(grid, sheet, tangent):
 def with_graded_edge_keep(materials, occupancy, layout, *, grid, sources,
                           waveguide_ports, dtype, sheet_edge_masks, periodic,
                           cells=None, sheets=(), wires=()):
-    """Fold addressed sheet edges into the cell keep without reading layout values."""
+    """Fold the layout switch into the cell keep.
+
+    Full-period node 0 and node N rows address the same physical edges.
+    Concrete rows must agree; traced rows multiply their keep factors,
+    so either row being metal (1) makes the shared edge metal.
+    """
     materials = with_edge_keep(materials, occupancy, dtype=dtype,
                               sheet_edge_masks=sheet_edge_masks, periodic=periodic)
     if not layout:
@@ -326,6 +331,8 @@ def with_graded_edge_keep(materials, occupancy, layout, *, grid, sources,
     from rfx.model.conductors import refuse_layout_drives
     edge_sets = [(index, sheet, tangent, *layout_edge_indices(grid, sheet, tangent), values)
                  for index, sheet, pair in layout for tangent, values in enumerate(pair)]
+    refuse_degenerate_layout(layout, grid)
+    admit_periodic_layout(layout, grid)
     refuse_layout_seams(layout, grid, cells, sheets, wires, periodic)
     refuse_layout_drives(edge_sets, sources, waveguide_ports)
     keep = list(materials.edge_keep if materials.edge_keep is not None else
@@ -343,11 +350,13 @@ def refuse_layout_seams(layout, grid, cells, sheets, wires, periodic):
     the layout values do not participate in admission.
     """
     import numpy as np
+    from rfx.core.jax_utils import is_tracer
     from rfx.materials.thin_conductor import pinned_sheet_spec
     with jax.ensure_compile_time_eval():
         specs = tuple(pinned_sheet_spec(grid, sheet) for _, sheet, _ in layout)
         sheets, wires = tuple(sheets or ()), tuple(wires or ())
-        cells = np.zeros(grid.shape, dtype=bool) if cells is None else cells
+        # Traced cells cannot prove a seam covered: omit them, conservatively.
+        cells = np.zeros(grid.shape, dtype=bool) if cells is None or is_tracer(cells) else cells
         full = realized_pec_edge_masks(cells, sheets=sheets + specs, wires=wires, periodic=periodic)
         covered = [np.asarray(mask).copy() for mask in
                    realized_pec_edge_masks(cells, sheets=sheets, wires=wires, periodic=periodic)]
@@ -362,17 +371,56 @@ def refuse_layout_seams(layout, grid, cells, sheets, wires, periodic):
             edge = tuple(int(v) for v in seam[0])
             neighbour = list(edge)
             neighbour[axis] = (neighbour[axis] + 1) % grid.shape[axis]
+            owner = "pinned_sheet_layout"
             for (index, sheet, _), spec in zip(layout, specs):
                 if axis == spec.normal_axis and grid.shape[axis] != 1:
                     continue
                 footprint = np.asarray(spec.footprint)
                 if footprint[edge] or footprint[tuple(neighbour)]:
-                    raise ValueError(
-                        f"pinned_sheet_layout sheet {index} ({sheet.name!r}): "
-                        f"seam edge e{'xyz'[axis]}{edge} is outside the layout arrays; "
-                        "overlap the addressed sheet with its neighbour by one node, "
-                        "leave at least one empty node between them, "
-                        "or declare both as one addressed sheet")
+                    owner = f"pinned_sheet_layout sheet {index} ({sheet.name!r})"
+                    break
+            raise ValueError(
+                f"{owner}: seam edge e{'xyz'[axis]}{edge} is outside the layout arrays; "
+                "overlap the addressed sheet with its neighbour by one node, "
+                "leave at least one empty node between them, "
+                "or declare both as one addressed sheet")
+
+
+def refuse_degenerate_layout(layout, grid):
+    """The length-one normal's PEC component has no layout array (R12.1)."""
+    for index, sheet, _ in layout:
+        if grid.shape[sheet.normal_axis] == 1:
+            _, indices = layout_edge_indices(grid, sheet, 0)
+            edge = tuple(int(v.flat[0]) for v in indices)
+            raise ValueError(
+                f"pinned_sheet_layout sheet {index} ({sheet.name!r}): "
+                f"length-1 normal PEC stage owns edge e{'xyz'[sheet.normal_axis]}{edge}; "
+                "the graded lane layout switch needs more than one cell along the sheet normal")
+
+
+def admit_periodic_layout(layout, grid):
+    """Check duplicate concrete endpoint rows without concretizing traced M."""
+    import numpy as np
+    from rfx.core.jax_utils import is_tracer
+    for index, sheet, pair in layout:
+        axes = tuple(a for a in range(3) if a != sheet.normal_axis)
+        for local_axis, (axis, span) in enumerate(zip(axes, (sheet.i_range, sheet.j_range))):
+            if 'xyz'[axis] not in grid.periodic_axes or span != (0, grid.shape[axis]):
+                continue
+            tangent = 1 - local_axis
+            values = pair[tangent]
+            if is_tracer(values):
+                continue
+            values = np.asarray(values)
+            bad = np.flatnonzero(np.take(values, 0, axis=local_axis) !=
+                                 np.take(values, -1, axis=local_axis))
+            if len(bad):
+                component, indices = layout_edge_indices(grid, sheet, tangent)
+                local = (0, int(bad[0])) if local_axis == 0 else (int(bad[0]), 0)
+                edge = tuple(int(v[local]) for v in indices)
+                raise ValueError(
+                    f"pinned_sheet_layout sheet {index} ({sheet.name!r}): periodic "
+                    f"node-0/node-N rows disagree at edge e{'xyz'[component]}{edge}")
 
 
 def graded_conductor_masks(cells, occupancy, sheets, wires, edge_masks, *, periodic):
