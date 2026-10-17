@@ -322,7 +322,7 @@ def _vacuum_dispersion_values(kind, n_poles, dt):
     from rfx.core.yee import MaterialArrays
     from rfx.materials.debye import DebyePole, init_debye
     from rfx.materials.lorentz import LorentzPole, init_lorentz
-    with jax.ensure_compile_time_eval():
+    with jax.core.eval_context():
         one = jnp.ones((1, 1, 1))
         vacuum = MaterialArrays(eps_r=one, sigma=jnp.zeros((1, 1, 1)), mu_r=one)
         masks = [jnp.zeros((1, 1, 1), dtype=bool)] * n_poles

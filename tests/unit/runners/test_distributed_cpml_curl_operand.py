@@ -95,8 +95,10 @@ def test_wrapped_cpml_receives_one_device_curl(kind, devices, monkeypatch):
             return next(s.data for s in a.addressable_shards
                         if s.device == jax.devices('cpu')[rank])
         inv = jax.tree.map(local, {key: staged['invariants'][key] for key in (
-            'materials', 'debye_coeffs', 'lorentz_coeffs', 'cpml_inv_eps_r', 'cpml_x', 'owns_x')})
+            'materials', 'debye_coeffs', 'lorentz_coeffs', 'cpml_inv_eps_r', 'e_loss', 'cpml_x', 'owns_x')})
         inv['owns_x'] = jax.tree.map(lambda a: a[0], inv['owns_x'])
+        if inv['e_loss'] is not None:
+            inv['e_loss'] = (*inv['e_loss'], False)
         carry = jax.tree.map(local, {key: staged['carry'][key] for key in ('fdtd', 'cpml')})
         def inspect_slab(state, profiles, psi, metadata, **kwargs):
             got, want = kwargs['e_curl_coeff'], expected['curl']

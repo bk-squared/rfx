@@ -645,9 +645,16 @@ def test_cpml_one_slab_invariants(name, monkeypatch):
                        'cpml_inv_eps_r'):
                 continue
             assert_same_tree(inv[key], actual[key], key, owned=owned)
-        # The wrapped CPML call forms 1/eps and the loss from the staged
-        # components (compared above); no unused legacy-layout copy is staged.
-        assert actual['e_loss'] is None and actual['cpml_inv_eps_r'] is None
+        if name == 'scene2':
+            # Plain CPML keeps its existing in-loop component arithmetic.
+            assert actual['e_loss'] is None and actual['cpml_inv_eps_r'] is None
+        else:
+            assert_same_tree(inv['cpml_inv_eps_r'], actual['cpml_inv_eps_r'],
+                             'cpml_inv_eps_r', owned=owned)
+            loss = actual['e_loss']
+            # wrap() restores the static relative-epsilon flag per device.
+            assert_same_tree(inv['e_loss'], None if loss is None else (*loss, False),
+                             'e_loss', owned=owned)
         for family in ('debye', 'lorentz'):
             coeffs = inv[family + '_coeffs']
             if coeffs is None:

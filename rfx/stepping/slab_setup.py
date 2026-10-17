@@ -258,10 +258,11 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
     from rfx.stepping.absorber import apply_cpml_h, apply_cpml_e_step
     from rfx.stepping.graded import GradedStepContext, make_graded_step, graded_probe_table
     from rfx.core.drives import drive_layout
-    # The wrapped CPML call forms its loss and 1/eps from the staged components
-    # (graded.e_boundary); the legacy-layout operands would be unused copies.
+    # Pole kernels drop their electric material components, just as one device
+    # does; retain the absorber's operands separately in the native slab layout.
     staged, inverse, loss = realize_materials(materials, grid, layout, mesh, occupancy,
-        cpml=False, debye=debye is not None, lorentz=lorentz is not None)
+        cpml=cpml and (debye is not None or lorentz is not None),
+        debye=debye is not None, lorentz=lorentz is not None)
     bundles = [debye, lorentz]
     for i, bundle in enumerate(bundles):
         if bundle is not None and bundle[0].ca is None:
@@ -307,7 +308,7 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
         inv_dx_h=cut(grid.inv_dx_h, layout, 'inv_dx_h', mesh=mesh), dx_arr=cut(grid.dx_arr, layout, 'width', mesh=mesh),
         drives=drive_layout([(s.i, s.j, s.k, s.component) for s in sources], waves.dtype),
         probe_table=graded_probe_table([(p.i, p.j, p.k, p.component) for p in probes], grid.shape, dtype=zeros.dtype),
-        materials=kernel_materials(staged, electric=cpml or not (debye or lorentz)), pec_edge_masks=pec_mask,
+        materials=kernel_materials(staged, electric=not (debye or lorentz)), pec_edge_masks=pec_mask,
         pec_occupancy=(product_rows(occupancy, layout, mesh, 'pec_occupancy')
                        if occupancy is not None and occupancy.ndim == 4 else occupancy), pec_static_edge_masks=None, cpml_inv_eps_r=inverse, e_loss=loss,
         debye_coeffs=None if debye is None else debye[0], lorentz_coeffs=None if lorentz is None else lorentz[0],

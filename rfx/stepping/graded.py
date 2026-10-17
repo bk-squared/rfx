@@ -272,13 +272,18 @@ def make_graded_step(
         if ctx.use_cpml and 'cpml_x' in frame.invariants:
             from rfx.stepping.slab_cpml import apply
             from rfx.boundaries.cpml import apply_cpml_e
-            from rfx.boundaries.electric_coefficient import loss_terms, dispersive_curl
+            from rfx.boundaries.electric_coefficient import loss_terms, dispersive_curl, in_loop_loss
             means = (frame.materials.components.eps_update,
                      frame.materials.components.sigma_update)
+            if frame._cpml_inv_eps_r is not None:
+                loss = in_loop_loss(frame.invariants['e_loss'], ctx.dt)
+                inverse = frame._cpml_inv_eps_r
+            else:
+                loss = loss_terms(means, ctx.dt) if means[0] else None
+                inverse = tuple(1 / e for e in means[0]) or None
             frame.st, frame.cpml_new = apply(apply_cpml_e, ctx, frame.invariants,
                 frame.st, frame.cpml_new, materials=frame.materials,
-                e_loss=loss_terms(means, ctx.dt) if means[0] else None,
-                inv_eps_r_update=tuple(1 / e for e in means[0]) or None,
+                e_loss=loss, inv_eps_r_update=inverse,
                 boundary=ctx.curl_boundary,
                 e_curl_coeff=dispersive_curl(frame.debye_coeffs, frame.lorentz_coeffs, ctx.dt))
         elif ctx.use_cpml:
