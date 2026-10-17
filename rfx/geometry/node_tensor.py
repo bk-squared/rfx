@@ -45,6 +45,14 @@ class SmoothedEps:
         return self.diagonal[index]
 
 
+def uniform_cell(grid):
+    """The one cell width of a grid whose three axes are constant (full_tensor is uniform-only)."""
+    widths = {float(grid.cells(a)[0]) for a in range(3)}
+    if not all(grid.is_constant(a) for a in range(3)) or len(widths) != 1:
+        raise NotImplementedError("the node/triplet tensor needs equal constant cells on every axis")
+    return widths.pop()
+
+
 def _union(xp, grid, shapes, coords, *, distance=False):
     from rfx._periodic import periodic_sdf
 
@@ -60,7 +68,7 @@ def _union(xp, grid, shapes, coords, *, distance=False):
             normal = tuple(xp.where(closer, n, old) for n, old in zip(ns, normal))
             nearest = xp.minimum(nearest, xp.abs(sdf))
             union = xp.minimum(union, sdf)
-    result = (xp.clip(0.5 - union / grid.dx, 0.0, 1.0), normal)
+    result = (xp.clip(0.5 - union / uniform_cell(grid), 0.0, 1.0), normal)
     return result + (union,) if distance else result
 
 
@@ -83,7 +91,7 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
 
     coords = coords_from_uniform_grid(grid)
     masks = smooth._fallback_masks([s for s, _ in shapes], lambda s: s.mask(grid))
-    host = smooth._host_path(*coords[:3], grid.dx, background_eps,
+    host = smooth._host_path(*coords[:3], uniform_cell(grid), background_eps,
                             *(e for _, e in shapes),
                             *(p for s, _ in shapes for p in smooth._shape_parameters(s)),
                             *masks.values())
@@ -91,7 +99,7 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=Non
     field_dtype = jnp.float32 if field_dtype is None else field_dtype
     acc_dtype = np.float64 if host else field_dtype
     midpoint = smooth._smoothed_eps_uniform(xp, grid, coords, shapes, background_eps, masks)
-    samples = smooth._uniform_sample_coords(xp, coords, grid.dx)
+    samples = smooth._uniform_sample_coords(xp, coords, uniform_cell(grid))
     x, y, z = (xp.asarray(a, dtype=acc_dtype) for a in coords[:3])
     nodes = (x[:, None, None], y[None, :, None], z[None, None, :])
     xi = [xp.full(grid.shape, 1.0 / background_eps, dtype=acc_dtype) for _ in range(3)]

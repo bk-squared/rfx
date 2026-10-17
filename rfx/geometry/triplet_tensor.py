@@ -42,6 +42,8 @@ def fractions(xp, grid, shapes, nodes, *, signed_distance=None, normal=None):
 
         _, normal, signed_distance = _union(xp, grid, shapes, nodes, distance=True)
     dtype = np.float64 if xp is np else getattr(signed_distance, 'dtype', jnp.float32)
+    from rfx.geometry.node_tensor import uniform_cell
+    h = uniform_cell(grid)
     s, *ns = xp.broadcast_arrays(xp.asarray(signed_distance, dtype=dtype),
                                  *(xp.asarray(n, dtype=dtype) for n in normal))
     corners = xp.asarray([[-.5, -.5], [.5, -.5], [.5, .5], [-.5, .5]], dtype=dtype)
@@ -51,14 +53,14 @@ def fractions(xp, grid, shapes, nodes, *, signed_distance=None, normal=None):
         other = [a for a in range(3) if a != axis]
         ls, ars = [], []
         for sign in (1, -1):
-            d1 = s + sign * grid.dx * ns[axis]
+            d1 = s + sign * h * ns[axis]
             crossing = (s < 0) != (d1 < 0)
             # Double-where keeps parallel and unused intersections finite in AD.
             t = xp.where(crossing, s, 0) / xp.where(crossing, s - d1, 1)
             ls.append(xp.where(crossing, xp.where(s < 0, t, 1 - t),
                                (s < 0).astype(dtype)))
-            mid = s + sign * grid.dx * ns[axis] / 2
-            d = mid[..., None] + grid.dx * (
+            mid = s + sign * h * ns[axis] / 2
+            d = mid[..., None] + h * (
                 ns[other[0]][..., None] * corners[:, 0]
                 + ns[other[1]][..., None] * corners[:, 1])
             dn = xp.roll(d, -1, axis=-1)
