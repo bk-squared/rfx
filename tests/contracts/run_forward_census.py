@@ -17,7 +17,6 @@ import numpy as np
 import pytest
 
 from rfx import Simulation, Box, PolylineWire, DebyePole, LorentzPole, drude_pole
-from rfx.stepping.incident_line import record_face_values
 from rfx.boundaries.spec import Boundary, BoundarySpec
 
 # Every patched module/attribute is named here once. The contract passes this
@@ -490,9 +489,6 @@ def capture(builder, entry, path, level, n_steps=150, *, entry_options=None, sea
         return stopped
     scan = original('scan')
     def forbid_step(*args, **kwargs):
-        if inspect.currentframe().f_back.f_code is record_face_values.__code__:
-            # The closed box's face record: the line's own scan, before any field step.
-            return scan(*args, **kwargs)
         if path == 'uniform' and level == 'b' and 'ctx' in captured:
             # Addendum 12: the drive table lives in xs, outside the ctx.
             scan_inputs = bound_arguments(scan, args, kwargs)

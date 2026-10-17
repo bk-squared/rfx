@@ -549,9 +549,9 @@ def tfsf_from_declaration(entry, grid, freq_max, *, n_steps=None, line_steps=Non
     With ``n_steps``, a CustomWaveform is checked over that record first.
     ``line_steps`` independently sizes the closed-box line; ``bounds_only``
     returns closed-box metadata without allocating that line.
-    ``record_faces`` marks a closed box whose loop runs exactly ``line_steps``
-    (fixed-step run, forward): the field scan then reads a precomputed face
-    record instead of carrying the line. until_decay keeps the line.
+    ``record_faces`` marks a closed box selected by forward's static memory
+    rule: the field scan reads a face record instead of carrying the line.
+    Runs and forward requests that do not save memory keep the line.
     """
     if n_steps is not None:
         validate_custom_tfsf_waveform(entry.waveform, grid.dt, n_steps)

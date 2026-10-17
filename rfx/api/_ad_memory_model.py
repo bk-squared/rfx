@@ -55,6 +55,8 @@ def tape_accounting(sim, accounting, *, design_box, design, checkpoint, segmente
     return dict(saved=saved, excluded_linear=excluded, carry_warnings=carry_warnings,
                 modelled=True, unmodelled_features=[],
                 carry_bytes=carry,
+                resident_bytes=face_record_resident_bytes(sim, grid, n_steps, checkpoint=checkpoint,
+                    checkpoint_every=checkpoint_every, checkpoint_segments=checkpoint_segments, n_warmup=n_warmup),
                 tape_step_bytes=tape, tape_window_cells=window,
                 design_box_bounds=bounds, tape_is_bound=bounded,
                 c0_bytes=AD_MEMORY_C0_PER_CELL["box" if window is not None else "whole-grid"] * accounting["cells"])
@@ -71,6 +73,70 @@ def segment_counts(n, warmup, every, segments):
         length = effective_chunk(active, every) or every
         return math.ceil(active / length), min(length, active)
     return None, None
+
+
+def face_record_bytes(cfg, n_steps):
+    """Float32 storage for the unique H and E table operands at every step."""
+    from rfx.stepping.incident_line import _face_reads
+    return 4 * n_steps * sum(len(indices) for tables in (cfg.tables_h, cfg.tables_e)
+                             for indices in _face_reads(tables)[0])
+
+
+def face_record_pays(cfg, n_steps, *, checkpoint, checkpoint_segments=None,
+                     checkpoint_every=None, n_warmup=0):
+    """Choose a record only when it costs less than the saved incident lines.
+
+    record_bytes = 4 x steps x (unique H reads + unique E reads). The reads
+    grow with the box's face area for oblique incidence. A checkpointed
+    gradient saves the six float32 line arrays once per saved boundary B:
+    segment_counts(...)[0] for segments/intervals, steps - warmup for
+    per-step remat, and zero without checkpoint. Choose B * line_bytes >
+    record_bytes. The resident record is not itself a saved carry.
+
+    Review measurements (theta=30 deg; decimal MB; cells, phi, steps,
+    H/E reads, record MB, one line MB, record/line):
+      43   0  1000    835/835       6.7   4.76    1.4
+      43   0  4000    835/835      26.7  18.73    1.4
+      43  45  1000   2240/2240     17.9   2.41    7.4
+      43  45  4000   2240/2240     71.7   9.46    7.6
+      83   0  1000   7315/7315     58.5   4.91   11.9
+      83   0  4000   7315/7315    234.1  18.87   12.4
+      83  45  1000  12909/12909   103.3   2.49   41.4
+      83  45  4000  12909/12909   413.1   9.55   43.3
+     163   0  1000  32376/32376   259.0   5.20   49.8
+     163   0  4000  32376/32376  1036.0  19.17   54.1
+     163  45  1000  34269/34269   274.2   2.66  102.9
+     163  45  4000  34269/34269  1096.6   9.72  112.8
+
+    A trace-time constant is invisible to memory_analysis: the selected
+    record must be built with recorded_scan so the compiled program counts it.
+    """
+    if not getattr(cfg, "closed_box", False):
+        return False
+    boundaries = 0
+    if checkpoint:
+        boundaries = (segment_counts(n_steps, n_warmup, checkpoint_every, checkpoint_segments)[0]
+                      if checkpoint_segments is not None or checkpoint_every is not None
+                      else n_steps - n_warmup)
+    line_bytes = 6 * cfg.n_nodes * 4
+    return boundaries * line_bytes > face_record_bytes(cfg, n_steps)
+
+
+def face_record_resident_bytes(sim, grid, n_steps, **knobs):
+    """Read the selected record's static cost without allocating the line."""
+    if sim._tfsf is None or not sim._tfsf.closed_box:
+        return 0
+    import jax
+    from rfx.sources.tfsf import tfsf_from_declaration
+    resident = []
+
+    def abstract_cost():
+        cfg, _ = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=n_steps)
+        resident.append(face_record_bytes(cfg, n_steps) if face_record_pays(cfg, n_steps, **knobs) else 0)
+        return ()
+
+    jax.eval_shape(abstract_cost)
+    return resident[0]
 
 
 def tape_warning(model, *, checkpoint, segments, live, active):

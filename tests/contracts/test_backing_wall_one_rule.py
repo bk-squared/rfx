@@ -13,7 +13,6 @@ from rfx import Box, GaussianPulse, Simulation
 from rfx.boundaries.depths import Kind
 from rfx.boundaries.model import realize
 from rfx.boundaries.spec import Boundary, BoundarySpec
-from rfx.stepping.incident_line import record_face_values
 
 # Classes W/R remain separate rows so a leader can explicitly defer either.
 NAMED_EXCEPTIONS = {}
@@ -207,12 +206,7 @@ def capture(sim, entry, path, invoke=None):
             raise AssertionError('distributed wall factory was not observed')
         return jit_original(fun, *args, **kwargs)
 
-    scan = jax.lax.scan
-
     def forbidden(*args, **kwargs):
-        if inspect.currentframe().f_back.f_code is record_face_values.__code__:
-            # The closed box's face record: the line's own scan, before any field step.
-            return scan(*args, **kwargs)
         raise AssertionError('backing-wall factory judge reached a field scan')
 
     with ExitStack() as stack:

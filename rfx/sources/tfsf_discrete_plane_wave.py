@@ -317,7 +317,9 @@ def table_operands(cfg, incident, table, ti, magnetic):
     if cfg.face_record is None:
         return getattr(incident, COMPONENTS[table.source_component])[table.source_index]
     side = 0 if magnetic else 1
-    return cfg.face_record[side][incident.step][cfg.face_gathers[side][ti]]
+    row = jnp.take(cfg.face_record[side], incident.step, axis=0,
+                   mode="fill", fill_value=jnp.nan)
+    return row[cfg.face_gathers[side][ti]]
 
 
 def apply_tables(state, cfg, incident, *, magnetic):
