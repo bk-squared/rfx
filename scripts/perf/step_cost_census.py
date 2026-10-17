@@ -60,6 +60,8 @@ must remain visible in the evidence, never be assumed away.
 CLI defaults to STAGE 0 only. No timings are allowed on macOS. No gradient
 or full-table run is implicit. Multi-device uses direct forward calls and
 captures/reuses the runners' own compiled executables; no enclosing jit.
+Optional start/end reference bases retain seven runs per size at each end.
+They do not replace the interleaved bases or enter the Amendment 1 noise.
 """
 
 from __future__ import annotations
@@ -471,6 +473,32 @@ def finish_report(report):
         report["control_b"] = control["b"]
 
 
+def run_reference(n, path, phase):
+    """Record the Design's start/end base; never pool it into row noise."""
+    import jax
+    scene = _scenes().base(n, path)
+    geometry = scene.realized()
+    program = Program(scene, path, (n + 16)**3)
+    program.compile()
+    program.call()
+    runs = []
+    for i in range(R):
+        started = time.perf_counter()
+        program.call()
+        runs.append(time.perf_counter() - started)
+        print(f"REFERENCE phase={phase} N={n} run={i} seconds={runs[-1]:.9f}", flush=True)
+    t_step = median(runs) / S
+    sigma = mad_sigma(runs) / S
+    result = dict(N=n, C=(n + 16)**3, phase=phase, status="ok", geometry=geometry,
+                  runs_seconds=runs, median_seconds=median(runs), t_step_seconds=t_step,
+                  sigma_seconds=sigma, sigma_fraction_of_t_step=sigma / t_step,
+                  program=program.record, conclusion="리더가 채움")
+    del program, scene
+    jax.clear_caches()
+    gc.collect()
+    return result
+
+
 def save_report(report, path):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -486,6 +514,8 @@ def main(argv=None):
     parser.add_argument("--sizes", nargs="+", type=int, default=list(SIZES))
     parser.add_argument("--output", required=True)
     parser.add_argument("--smoke", action="store_true", help="compile, warm and time base at N=56 once")
+    parser.add_argument("--reference-bases", action="store_true",
+                        help="record seven start/end base runs per size; row noise remains interleaved")
     args = parser.parse_args(argv)
     if platform.system() == "Darwin":
         parser.error("timing is cluster-only; macOS may run the synthetic unit tests")
@@ -532,6 +562,11 @@ def main(argv=None):
     else:
         report["scan_cost_calibration"] = scan_cost_calibration()
         print("SCAN_COST_CALIBRATION " + json.dumps(report["scan_cost_calibration"], ensure_ascii=False), flush=True)
+        if args.reference_bases:
+            report["reference_bases"] = {"start": [], "end": []}
+            for n in sorted(set(args.sizes)):
+                report["reference_bases"]["start"].append(run_reference(n, args.path, "start"))
+                save_report(report, args.output)
         for row in args.rows:
             report["rows"][row] = {"sizes": []}
             for n in sorted(set(args.sizes)):
@@ -545,6 +580,10 @@ def main(argv=None):
                     jax.clear_caches()
                     gc.collect()
                 report["rows"][row]["sizes"].append(result)
+                save_report(report, args.output)
+        if args.reference_bases:
+            for n in sorted(set(args.sizes)):
+                report["reference_bases"]["end"].append(run_reference(n, args.path, "end"))
                 save_report(report, args.output)
         finish_report(report)
     report["total_wall_seconds"] = time.perf_counter() - t0
