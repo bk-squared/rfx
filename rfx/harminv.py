@@ -202,6 +202,12 @@ def matrix_pencil(
         positive-frequency coefficient has magnitude A/2; its conjugate is
         fitted too, then omitted from the returned list. Relative weights
         depend on source/probe placement and are not modal energies.
+        Distinct poles are kept regardless of frequency spacing; for complex
+        signals, only negative-frequency conjugate partners within 1e-9 in
+        relative frequency and 1e-9 * 2*pi*f in decay are omitted.
+        A complex record that is real up to noise can therefore list a mode
+        twice; pass the real part. Check each mode's ``error``: weak
+        neighbouring poles with a large error may be fitting artefacts.
     """
     y = np.asarray(signal, dtype=np.complex128).ravel()
     real_signal = not np.any(y.imag)
@@ -274,6 +280,7 @@ def matrix_pencil(
         return []
 
     modes = []
+    mode_poles = []
     for lam, s, amp_complex in zip(eigenvalues, poles, amplitudes):
         # Real records have conjugate poles. Fit both, then report the
         # positive-frequency coefficient with a deterministic phase.
@@ -311,23 +318,26 @@ def matrix_pencil(
             phase=float(phase),
             error=float(abs(err)),
         ))
+        mode_poles.append(s)
 
-    # Deduplicate conjugate pairs (keep positive frequency, merge close modes)
+    # Real signals already omit negative frequencies. For complex signals,
+    # omit only a negative pole whose positive conjugate is also reported.
+    if not real_signal:
+        positive_modes = [m for m, s in zip(modes, mode_poles) if s.imag > 0]
+        modes = [
+            m for m, s in zip(modes, mode_poles)
+            if s.imag >= 0 or not any(
+                abs(m.freq - partner.freq) <= 1e-9 * partner.freq
+                and abs(m.decay - partner.decay) <= 1e-9 * 2 * np.pi * partner.freq
+                for partner in positive_modes
+            )
+        ]
+
     modes.sort(key=lambda m: m.freq)
-    deduped = []
-    for m in modes:
-        if m.freq < 0:
-            continue
-        if deduped and abs(m.freq - deduped[-1].freq) / max(m.freq, 1) < 0.01:
-            # Merge: keep the one with higher amplitude
-            if m.amplitude > deduped[-1].amplitude:
-                deduped[-1] = m
-        else:
-            deduped.append(m)
 
     # Sort by amplitude
-    deduped.sort(key=lambda m: m.amplitude, reverse=True)
-    return deduped[:max_modes]
+    modes.sort(key=lambda m: m.amplitude, reverse=True)
+    return modes[:max_modes]
 
 
 def _decimation_factors(target: int) -> list[int]:
