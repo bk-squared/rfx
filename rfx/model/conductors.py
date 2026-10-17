@@ -1063,6 +1063,13 @@ def refuse_layout_metal_consumers(layout, sim, grid):
     """Admission for other readers of metal and post-keep writers (R12.4)."""
     if not layout:
         return
+    if getattr(sim, '_tfsf', None) is not None:
+        # The TF/SF invariance admission (#1816) judges the static metal only.
+        index, sheet, _ = layout[0]
+        raise ValueError(
+            f"pinned_sheet_layout sheet {index} ({sheet.name!r}): the TF/SF invariance "
+            "admission reads the static metal, so it cannot judge a switched sheet; "
+            "draw the layout with add_pinned_sheet to run it under a plane wave")
     from rfx._grid_metric import field_index
     from rfx.sources.msl_port import msl_cross_section_span, msl_port_from_entry
     solved = {(spec.component, tuple(field_index(grid, spec.position, spec.component)))
