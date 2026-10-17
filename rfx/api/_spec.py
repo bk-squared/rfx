@@ -17,6 +17,8 @@ the method body) — do not hoist it to module scope.
 
 from __future__ import annotations
 
+from rfx.sources.tfsf_discrete_plane_wave import _TFSFEntry
+
 from dataclasses import dataclass
 import json
 from typing import Literal, Mapping, NamedTuple
@@ -1104,18 +1106,6 @@ class _ProbeEntry:
     component: str
 
 
-@dataclass(frozen=True)
-class _TFSFEntry:
-    f0: float | None
-    bandwidth: float
-    amplitude: float
-    margin: int
-    polarization: str
-    direction: str
-    angle_deg: float
-    waveform: object = "differentiated_gaussian"
-    method: str = "bloch"
-    closed_box: bool = False
 
 
 @dataclass(frozen=True)

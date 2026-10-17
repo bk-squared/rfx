@@ -4,7 +4,7 @@ Every index here comes from the function the runners call to place the same
 declaration: ``field_index`` for soft point sources and point probes (all
 five paths), the lane's own ``position_to_index`` for DFT and flux planes,
 ``resolve_flux_region`` for finite flux windows, ``make_ntff_box`` for NTFF
-on both meshes and ``init_tfsf`` for the TFSF
+on both meshes and ``tfsf_from_declaration`` for the TFSF
 planes. Index boxes are inclusive ``(lo, hi)`` per axis on the padded grid;
 ``None`` on an axis means the region is not bounded there.
 """
@@ -51,20 +51,11 @@ def _sources(sim, ctx):
 
 def _tfsf_row(sim, ctx):
     from rfx.realized_geometry import SourceGeometry
-    from rfx.sources.tfsf import init_tfsf, tfsf_injection_planes
+    from rfx.sources.tfsf import tfsf_from_declaration, tfsf_injection_planes
     entry, grid = sim._tfsf, ctx.grid
     try:
         if ctx.lane == "nonuniform":
-            # The non-uniform runner's own call (no method / closed_box). Its
-            # scalar ``grid.dx`` is the x boundary cell on this grid.
-            cfg, _ = init_tfsf(
-                grid.nx, grid.boundary_cell("x", "lo"), grid.dt, cpml_layers=grid.cpml_layers,
-                tfsf_margin=entry.margin,
-                f0=entry.f0 if entry.f0 is not None else sim._freq_max / 2,
-                bandwidth=entry.bandwidth, amplitude=entry.amplitude,
-                polarization=entry.polarization, direction=entry.direction,
-                angle_deg=entry.angle_deg, ny=grid.ny, nz=grid.nz,
-                waveform=getattr(entry, "waveform", "differentiated_gaussian"))
+            cfg, _ = tfsf_from_declaration(entry, grid, sim._freq_max)
             planes = tfsf_injection_planes(cfg)
         else:
             planes = sim.tfsf_box_indices()

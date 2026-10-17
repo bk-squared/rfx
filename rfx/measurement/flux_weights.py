@@ -95,19 +95,10 @@ def monitor_periodic_flags(sim, grid):
         return tuple(a in grid.periodic_axes for a in "xyz")
     if sim._tfsf is None:
         return sim._periodic_flags()
-    from rfx.sources.tfsf import init_tfsf
+    from rfx.sources.tfsf import tfsf_from_declaration
     from rfx.boundaries.tfsf import boundary_flags
     entry = sim._tfsf
-    cfg, _ = init_tfsf(
-        grid.nx, float(grid.cells('x')[0]), grid.dt,
-        ny=grid.ny, nz=grid.nz, cpml_layers=grid.cpml_layers,
-        tfsf_margin=entry.margin,
-        f0=entry.f0 if entry.f0 is not None else sim._freq_max / 2,
-        bandwidth=entry.bandwidth, amplitude=entry.amplitude,
-        polarization=entry.polarization, direction=entry.direction,
-        angle_deg=entry.angle_deg, waveform=entry.waveform,
-        method=entry.method, closed_box=entry.closed_box,
-    )
+    cfg, _ = tfsf_from_declaration(entry, grid, sim._freq_max, bounds_only=True)
     return boundary_flags(cfg, grid)[0]
 
 

@@ -275,3 +275,21 @@ def test_ad_memory_tape_terms():
         a, b = pairs[box, 8], pairs[box, 16]
         _assert_slope(f"boundary box={box}, K=8..16", (b[0] - a[0]) / 8, (b[1] - a[1]) / 8)
     print(f"AD_TAPE_RUNTIME {time.monotonic() - started:.6f}", file=sys.stderr, flush=True)
+
+
+@pytest.mark.parametrize("segments,record_chosen", ((16, True), (1, False)),
+                         ids=("record-chosen", "line-carried"))
+def test_closed_box_record_memory_slope(segments, record_chosen):
+    """The resident record counts only when it replaces more saved line bytes."""
+    from rfx.api._ad_memory_model import face_record_pays
+    from rfx.sources.tfsf import tfsf_from_declaration
+    sim, grid, _, _ = _scene()
+    rows = []
+    for n in (800, 1600):
+        cfg, _ = tfsf_from_declaration(sim._tfsf, grid, sim._freq_max, n_steps=n)
+        assert face_record_pays(cfg, n, checkpoint=True, checkpoint_segments=segments) == record_chosen
+        rows.append(_measure(n, box=False, checkpoint=True, k=segments))
+        jax.clear_caches()
+    _assert_slope(f"closed box record chosen={record_chosen}",
+                  (rows[1]["estimate_bytes"] - rows[0]["estimate_bytes"]) / 800,
+                  (rows[1]["compiled_bytes"] - rows[0]["compiled_bytes"]) / 800)

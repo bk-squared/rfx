@@ -145,7 +145,7 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
         _HOST + " (float(eps_r))",
     ("rfx/sources/coaxial_port.py", "coaxial_tem_capacitance_per_m"): _HOST,
     ("rfx/sources/msl_port.py", "compute_msl_mode_profile._cap_per_metre"): _HOST,
-    ("rfx/sources/tfsf.py", "_apply_closed_box_e"): _VACUUM,
+    ("rfx/sources/tfsf_discrete_plane_wave.py", "_tables"): _VACUUM,
     ("rfx/sources/tfsf.py", "apply_tfsf_e"): _VACUUM,
     ("rfx/sources/tfsf.py", "update_tfsf_1d_e"): _VACUUM + " (the 1-D auxiliary line)",
     ("rfx/sources/tfsf_2d.py", "_update_e_tez"): _VACUUM + " (the 1-D auxiliary line)",

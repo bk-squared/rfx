@@ -251,6 +251,7 @@ def run_uniform(
 
         tfsf = tfsf_from_declaration(
             sim._tfsf, grid, sim._freq_max, n_steps=n_steps,
+            line_steps=decay_max_steps if until_decay is not None else n_steps,
         )
         from rfx.boundaries.tfsf import boundary_flags as tfsf_boundary_flags
         periodic, cpml_axes = tfsf_boundary_flags(tfsf[0], grid)

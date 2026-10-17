@@ -8,7 +8,9 @@ from typing import Any
 
 import jax
 
-from rfx.api._ad_memory_model import tape_accounting, segment_counts, tape_warning, validate_counts
+from rfx.api._ad_memory_model import (
+    tape_accounting, segment_counts, tape_warning, validate_counts, face_record_resident_bytes,
+)
 from rfx.grid import C0
 from rfx.materials.thin_conductor import has_f0_sheets
 from rfx.api._spec import (
@@ -234,7 +236,7 @@ class _AdMemoryMixin:
         ntff_bytes = accounting["ntff_bytes"]
         ad_ckpt_bytes = 4 * forward_bytes + ntff_bytes  # legacy heuristic
         active_steps = n_steps_i - n_warmup_i
-        fixed_bytes = model["c0_bytes"] + accounting["sheet_bytes"]
+        fixed_bytes = model["c0_bytes"] + accounting["sheet_bytes"] + model["resident_bytes"]
         ad_full_bytes = fixed_bytes + active_steps * model["tape_step_bytes"] + ntff_bytes
         segmented_active_segments, segmented_live_tape_steps = segment_counts(
             n_steps_i, n_warmup_i, checkpoint_every_i, checkpoint_segments_i)
@@ -333,8 +335,14 @@ class _AdMemoryMixin:
             component(name, accounting[key], "forward_working_set", count=count,
                       per=array if count else None,
                       explanation="Forward working-set component within the calibrated fixed AD term.")
+        resident = face_record_resident_bytes(self, accounting["grid"], int(n_steps),
+            checkpoint=checkpoint, checkpoint_segments=checkpoint_segments,
+            checkpoint_every=checkpoint_every, n_warmup=n_warmup)
+        if resident:
+            component("closed_box_face_record", resident, "forward_working_set",
+                      explanation="One resident record of the incident operands read by the faces.")
         component("calibrated_ad_workspace",
-                  round(estimate.ad_fixed_gb * 1e9) - accounting["forward_bytes"],
+                  round(estimate.ad_fixed_gb * 1e9) - accounting["forward_bytes"] - resident,
                   "calibrated_working_set",
                   explanation="GPU, jax 0.10.2 calibrated fixed term minus the listed forward working set.")
         count, live = segment_counts(int(n_steps), int(n_warmup), checkpoint_every, checkpoint_segments)
@@ -395,7 +403,8 @@ class _AdMemoryMixin:
         Reading the real carry costs about 90 bytes of host memory per cell
         and a few seconds, measured on 4.3e7 cells.
         The fixed term is GPU-calibrated, so a CPU plan is not a fit guarantee;
-        plan_ad_memory traces twice and ad_memory_preflight up to four times.
+        plan_ad_memory traces twice and ad_memory_preflight up to four times;
+        closed-box plans additionally trace each candidate's representation.
         """
         available = _require_positive_finite_scalar("available_memory_gb", available_memory_gb)
         fraction = _require_positive_finite_scalar("target_fraction", target_fraction)
@@ -454,6 +463,12 @@ class _AdMemoryMixin:
             estimate = window_full._replace(
                 checkpoint=True, checkpoint_every=every, checkpoint_segments=segments,
                 ad_segmented_active_segments=count, ad_segmented_gb=memory, warning=estimate_warning)
+            if self._tfsf is not None and self._tfsf.closed_box:
+                # Each candidate can choose a different representation and carry.
+                estimate = self.estimate_ad_memory(n, available_memory_gb=available,
+                    n_warmup=warmup, checkpoint=True, checkpoint_every=every,
+                    checkpoint_segments=segments, **options)
+                memory = estimate.ad_segmented_gb
             if least is None or memory < least.ad_segmented_gb:
                 least = estimate
             if memory * safety <= target:

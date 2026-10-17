@@ -35,7 +35,9 @@ CLOSED_GRADED = (
 
 # Literal expected table: no expected outcomes are derived from production.
 # Existing UPML refusal: rfx/api/_execute.py:1154 (_reject_upml_on_nonuniform).
-# Existing graded closed-box refusal: rfx/api/_dispatch.py:115.
+# Existing graded closed-box refusal: at declaration, add_tfsf_source ->
+# rfx/sources/tfsf_discrete_plane_wave.py validate_declaration (same text as
+# the run-time refusal in rfx/api/_dispatch.py, which it now precedes).
 # Periodic axes are carried by both single-device Yee lanes (#1221).
 EXPECTED_TABLE = (
     ("uniform", "cpml", "admitted", None),
@@ -94,13 +96,12 @@ def forbid_field_loops(monkeypatch):
 @pytest.mark.parametrize("mesh,case,outcome,message", EXPECTED_TABLE,
                          ids=[f"{row[0]}-{row[1]}" for row in EXPECTED_TABLE])
 def test_ntff_boundary_table(mesh, case, outcome, message, entry, monkeypatch):
-    sim = scene(mesh, case)
     method = "run" if entry == "run_skip" else entry
     kwargs = {"n_steps": 1}
     if entry == "run_skip":
         kwargs["skip_preflight"] = True
     if outcome == "admitted":
-        result = getattr(sim, method)(**kwargs)
+        result = getattr(scene(mesh, case), method)(**kwargs)
         assert result.ntff_data is not None
         return
     forbid_field_loops(monkeypatch)
@@ -110,8 +111,10 @@ def test_ntff_boundary_table(mesh, case, outcome, message, entry, monkeypatch):
         expected = message
     else:
         expected = f"{method} dispatch: {message}"
+    # The scene is built inside the check: a graded closed box is refused when
+    # it is declared, before any entry runs.
     with pytest.raises(NotImplementedError if case in ("closed", "periodic") else ValueError) as caught:
-        getattr(sim, method)(**kwargs)
+        getattr(scene(mesh, case), method)(**kwargs)
     assert str(caught.value) == expected
 
 

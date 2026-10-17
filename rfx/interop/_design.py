@@ -105,6 +105,8 @@ Status: **provisional**.  Round-trip fidelity is gated by
 
 from __future__ import annotations
 
+from rfx.sources.tfsf_discrete_plane_wave import document_fields
+
 import dataclasses
 import json
 from typing import Any, Callable, NamedTuple
@@ -607,26 +609,7 @@ _COAXIAL_PORT_FIELDS: dict[str, _F] = {
     "excitation": _WAVEFORM,
 }
 
-_TFSF_FIELDS: dict[str, _F] = {
-    "f0": _opt(_NUM),
-    "bandwidth": _NUM,
-    "amplitude": _NUM,
-    "margin": _INT,
-    "polarization": _STR,
-    "direction": _STR,
-    "angle_deg": _NUM,
-    "waveform": _STR,
-    # PR #461: transverse boundary-value-problem selector — 'bloch' runs
-    # periodic=(F,T,T)/cpml_axes="x" (laterally periodic: infinite array),
-    # 'methodB' runs periodic=(F,F,T)/cpml_axes="xy" (open transverse
-    # boundary: compact isolated scatterer). Design state, not run control:
-    # the two lanes describe different physical structures. The labels are
-    # rfx-internal; a future TFSF emitter should translate the semantic
-    # (transverse boundary = periodic vs absorbing), not hunt for another
-    # solver's "method B".
-    "method": _STR,
-    "closed_box": _BOOL,
-}
+_TFSF_FIELDS = document_fields(_NUM, _INT, _STR, _BOOL, _opt)
 
 _DFT_PLANE_FIELDS: dict[str, _F] = {
     "name": _STR,

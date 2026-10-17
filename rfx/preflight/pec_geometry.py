@@ -881,6 +881,106 @@ def _validate_cfg_congruent_rasterization_parity(self, _w, ctx) -> None:
         source="_validate_cfg_congruent_rasterization_parity",
     ))
 
+def _sheet_solved_plane(ctx, a, e, k) -> float:
+    """Coordinate of sheet ``e``'s solved plane ``k`` along its normal ``a``.
+    On a periodic axis node k stands for every copy k + n*L; the sheet is
+    solved on the copy nearest its drawn mid-plane."""
+    z = float(ctx.nodes[a][k])
+    if ctx.periodic[a]:
+        period = float(ctx.sim._domain[a])
+        mid = 0.5 * (float(e.lo[a]) + float(e.hi[a]))
+        z += period * round((mid - z) / period)
+    return z
+
+
+def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
+    """Judge drawn-order sheet adjacency independently of electrical columns."""
+    sheets = [e for e in entries if e.kind == "sheet"]
+    if len(sheets) < 2:
+        return
+    shape = tuple(ctx.grid.shape)
+    pec_np = np.asarray(pec_np, dtype=bool)
+    results = []
+    for a in range(3):
+        planes = []
+        for e in sheets:
+            if int(e.sheet.normal_axis) != a:
+                continue
+            k = int(e.sheet.plane)
+            planes.append((e, k, e.footprint_on_plane(a, k, ctx.periodic, shape)))
+        planes.sort(key=lambda p: (0.5 * (float(p[0].lo[a]) + float(p[0].hi[a])),
+                                   float(p[0].lo[a])))
+        for si, (e1, k1, foot1) in enumerate(planes):
+            covered = np.zeros(foot1.shape, dtype=bool)
+            for e2, k2, foot2 in planes[si + 1:]:
+                overlap = foot1 & foot2 & ~covered
+                if not overlap.any():
+                    continue
+                g_lo, g_hi = float(e1.hi[a]), float(e2.lo[a])
+                drawn = g_hi - g_lo
+                z1 = _sheet_solved_plane(ctx, a, e1, k1)
+                z2 = _sheet_solved_plane(ctx, a, e2, k2)
+                solved = z2 - z1
+                if drawn <= 0 and solved <= 0:
+                    # Metal merged on one plane: no cavity, and it does not
+                    # stand between e1 and the next sheet.
+                    continue
+                covered |= foot1 & foot2
+                # A post blocks some columns, not the whole cavity. Same-node
+                # sheets have no intervening cells and must still be judged.
+                # On a periodic axis the cells run k1 .. N-1 and on from 0.
+                cells = (np.arange(k1, k2) if k2 >= k1
+                         else np.r_[k1:pec_np.shape[a], 0:k2])
+                blocked = np.any(np.take(pec_np, cells, axis=a), axis=a)
+                if np.all(blocked[overlap]):
+                    continue
+                if drawn > 0:
+                    rel = solved / drawn - 1.0
+                    if abs(rel) <= _CAVITY_THICKNESS_TOL:
+                        continue
+                    score = abs(rel)
+                    spacing = (f"drawn spacing {_fmt_len(drawn)}, solved spacing "
+                               f"{_fmt_len(solved)} ({rel:+.2%})")
+                elif solved > 0:
+                    # There is no finite relative error for a nonpositive gap.
+                    score = math.inf
+                    spacing = ("drawn touching/overlapping, solved spacing "
+                               f"{_fmt_len(solved)}")
+                else:
+                    continue
+                thickness = (
+                    ". A sheet is solved on one plane, so its drawn "
+                    "thickness counts into the spacing; draw it as a "
+                    "zero-thickness sheet on the interface it bounds"
+                    if e1.lo[a] != e1.hi[a] or e2.lo[a] != e2.hi[a]
+                    else "")
+                results.append((score, (
+                    f"[{'xyz'[a]}] {e1.label} '{e1.name}' plane at "
+                    f"{_fmt_len(z1)} (drawn {_fmt_len(g_lo)}) / "
+                    f"{e2.label} '{e2.name}' plane at {_fmt_len(z2)} "
+                    f"(drawn {_fmt_len(g_hi)}): {spacing}{thickness}")))
+    if not results:
+        return
+    results.sort(key=lambda t: -t[0])
+    lines = " | ".join(r[1] for r in results[:_CAMPAIGN_MAX_OFFENDERS])
+    _w.warn(PreflightWarning(
+        f"{len(results)} pair(s) of parallel PEC sheets are solved "
+        "more than 1% off their drawn spacing. "
+        f"{lines}. WHY: a cavity resonance follows its spacing. "
+        "REMEDY: put both planes on mesh nodes: use a cell size that "
+        "divides the heights, or build a graded profile whose nodes include "
+        "both planes with rfx.mesh_edges.edge_aware_profiles(domain, dx, "
+        'sheets=[...], axes="xyz") and pass it as Simulation(dx_profile=..., '
+        "dy_profile=..., dz_profile=...). To accept the solved spacing "
+        'knowingly, use Simulation(..., snap="declared"). '
+        "STALE IF: the named sheets or mesh change; the printed planes "
+        "are this run's node coordinates.",
+        code="sheet_cavity_spacing",
+        severity="warning" if ctx.sim._snap == "declared" else "error",
+        source="_validate_cfg_sheet_cavity_thickness",
+    ))
+
+
 def _validate_cfg_sheet_cavity_thickness(self, _w, ctx) -> None:
     """#703 check 3: each conductor-bounded cavity's electrical thickness.
 
@@ -1083,48 +1183,49 @@ def _validate_cfg_sheet_cavity_thickness(self, _w, ctx) -> None:
                         f"({d_phase:+.1%}); plane-to-plane "
                         f"{_fmt_len(z2 - z1)} vs face-to-face "
                         f"{_fmt_len(gap)}; {governs}{vac_clause}")))
-    if not results:
-        return
-    results.sort(key=lambda t: -t[0])
-    lines = " | ".join(r[1] for r in results[:_CAMPAIGN_MAX_OFFENDERS])
-    _w.warn(PreflightWarning(
-        f"{len(results)} conductor-bounded cavit(y/ies) differ from the "
-        "physical stack by more than "
-        f"{_CAVITY_THICKNESS_TOL:.0%} in electrical thickness: {lines}. "
-        "OBSERVED: mesh sums run over the cells strictly between two "
-        "adjacent REALIZED wall planes (rfx.boundaries.pec"
-        ".realized_wall_planes on each conductor's own edges) on the "
-        "run's own spacings and assembled eps_r; physical sums run "
-        "between the DECLARED faces through the geometry Box spans at "
-        "the pair's shared column. The difference is exactly the "
-        "printed per-plane snap (a declared face that is not on a "
-        "node realizes on the nearest node plane; a sheet realizes on "
-        "one plane, so a foil declared with two faces reads its "
-        "thickness as cavity — the sheet model's honest cost) plus any "
-        "vacuum cell the drawing left at a sheet plane. WHY BOTH "
-        "MEASURES: the same defect class measured 17.3% as a series "
-        "capacitance and 3.2% as phase length (#703) — a bare "
-        "percentage invites 'correcting' a right number into a wrong "
-        "one, so both are printed and the governing one is named. "
-        "REMEDY: put the declared faces on mesh nodes (dx = h/N, or "
-        "preserved regions on the non-uniform lane) and, for a foil, "
-        "declare the sheet ON the interface it bounds so no snap is "
-        "resolved for you; a vacuum cell is fixed by extending the "
-        "dielectric to the sheet plane. Nothing else is a defect: "
-        "a plane-to-plane cavity that equals the declared stack is "
-        "what the contract promises. COVERAGE: examined "
-        f"{n_pairs} adjacent plane pair(s) from {len(entries)} "
-        f"conductor(s) on the {ctx.lane} lane (a sheet's normal plane, "
-        "a volume's two faces per axis; coplanar sheet rims are not "
-        "paired); physical stack computed from Box entries only — "
-        f"{nonbox_diel} non-Box dielectric entr(y/ies) ignored (said "
-        f"so, per #703); {n_skipped_pec_between} pair(s) skipped "
-        "(conductor cell between). STALE IF: re-summing the printed "
-        "column disagrees with these numbers, or realized_wall_planes "
-        "on the named entries does not return the printed planes.",
-        code="sheet_cavity_electrical_thickness",
-        source="_validate_cfg_sheet_cavity_thickness",
-    ))
+    if results:
+        results.sort(key=lambda t: -t[0])
+        lines = " | ".join(r[1] for r in results[:_CAMPAIGN_MAX_OFFENDERS])
+        _w.warn(PreflightWarning(
+            f"{len(results)} conductor-bounded cavit(y/ies) differ from the "
+            "physical stack by more than "
+            f"{_CAVITY_THICKNESS_TOL:.0%} in electrical thickness: {lines}. "
+            "OBSERVED: mesh sums run over the cells strictly between two "
+            "adjacent REALIZED wall planes (rfx.boundaries.pec"
+            ".realized_wall_planes on each conductor's own edges) on the "
+            "run's own spacings and assembled eps_r; physical sums run "
+            "between the DECLARED faces through the geometry Box spans at "
+            "the pair's shared column. The difference is exactly the "
+            "printed per-plane snap (a declared face that is not on a "
+            "node realizes on the nearest node plane; a sheet realizes on "
+            "one plane, so a foil declared with two faces reads its "
+            "thickness as cavity — the sheet model's honest cost) plus any "
+            "vacuum cell the drawing left at a sheet plane. WHY BOTH "
+            "MEASURES: the same defect class measured 17.3% as a series "
+            "capacitance and 3.2% as phase length (#703) — a bare "
+            "percentage invites 'correcting' a right number into a wrong "
+            "one, so both are printed and the governing one is named. "
+            "REMEDY: put the declared faces on mesh nodes (dx = h/N, or "
+            "preserved regions on the non-uniform lane) and, for a foil, "
+            "declare the sheet ON the interface it bounds so no snap is "
+            "resolved for you; a vacuum cell is fixed by extending the "
+            "dielectric to the sheet plane. Nothing else is a defect: "
+            "a plane-to-plane cavity that equals the declared stack is "
+            "what the contract promises. COVERAGE: examined "
+            f"{n_pairs} adjacent plane pair(s) from {len(entries)} "
+            f"conductor(s) on the {ctx.lane} lane (a sheet's normal plane, "
+            "a volume's two faces per axis; coplanar sheet rims are not "
+            "paired); physical stack computed from Box entries only — "
+            f"{nonbox_diel} non-Box dielectric entr(y/ies) ignored (said "
+            f"so, per #703); {n_skipped_pec_between} pair(s) skipped "
+            "(conductor cell between). STALE IF: re-summing the printed "
+            "column disagrees with these numbers, or realized_wall_planes "
+            "on the named entries does not return the printed planes.",
+            code="sheet_cavity_electrical_thickness",
+            source="_validate_cfg_sheet_cavity_thickness",
+        ))
+
+    _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np)
 
 #: A sheet's electrical size differing from its drawing by more than this is
 #: reported. 1 % is the frequency tolerance the project judges results by; a
