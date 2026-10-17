@@ -1,0 +1,149 @@
+"""Werner--Bauer--Cary Sec. 7, scalar materials (Eqs. 15--20).
+
+Triplet signs are ordered +++, ++-, +-+, +--, -++, -+-, --+, ---.
+Fractions analytically clip edges and dual faces against one local plane.
+Concrete inputs accumulate in host float64; tracers use float32.
+"""
+from itertools import product
+
+import jax.numpy as jnp
+import numpy as np
+
+SIGNS = tuple(product((0, 1), repeat=3))  # 0 positive, 1 negative
+PAIRS = ((0, 1), (0, 2), (1, 2))
+
+
+def fractions(xp, grid, shapes, nodes, *, signed_distance=None, normal=None):
+    """Planar length/area fractions indexed [axis][sign] (decision record 6).
+
+    The optional plane reuses the union SDF and nearest normal from the node
+    builder. Direct callers construct that same plane, never sample the shape.
+    """
+    if signed_distance is None:
+        from rfx.geometry.node_tensor import _union
+
+        _, normal, signed_distance = _union(xp, grid, shapes, nodes, distance=True)
+    dtype = np.float64 if xp is np else jnp.float32
+    s, *ns = xp.broadcast_arrays(xp.asarray(signed_distance, dtype=dtype),
+                                 *(xp.asarray(n, dtype=dtype) for n in normal))
+    corners = xp.asarray([[-.5, -.5], [.5, -.5], [.5, .5], [-.5, .5]], dtype=dtype)
+    following = xp.roll(corners, -1, axis=0)
+    lengths, areas = [], []
+    for axis in range(3):
+        other = [a for a in range(3) if a != axis]
+        ls, ars = [], []
+        for sign in (1, -1):
+            d1 = s + sign * grid.dx * ns[axis]
+            crossing = (s < 0) != (d1 < 0)
+            # Double-where keeps parallel and unused intersections finite in AD.
+            t = xp.where(crossing, s, 0) / xp.where(crossing, s - d1, 1)
+            ls.append(xp.where(crossing, xp.where(s < 0, t, 1 - t),
+                               (s < 0).astype(dtype)))
+            mid = s + sign * grid.dx * ns[axis] / 2
+            d = mid[..., None] + grid.dx * (
+                ns[other[0]][..., None] * corners[:, 0]
+                + ns[other[1]][..., None] * corners[:, 1])
+            dn = xp.roll(d, -1, axis=-1)
+            inside = d < 0
+            cross = inside != (dn < 0)
+            t = xp.where(cross, d, 0) / xp.where(cross, d - dn, 1)
+            intersections = corners + t[..., None] * (following - corners)
+            # One Sutherland-Hodgman half-plane pass: emit each inside corner,
+            # then its outgoing intersection. Compact into at most 5 vertices.
+            candidates = xp.stack((xp.broadcast_to(corners, intersections.shape),
+                                   intersections), axis=-2).reshape(s.shape + (8, 2))
+            valid = xp.stack((inside, cross), axis=-1).reshape(s.shape + (8,))
+            slots = xp.cumsum(valid, axis=-1) - 1
+            select = valid[..., :, None] & (slots[..., :, None] == xp.arange(5))
+            polygon = xp.sum(xp.where(select[..., None], candidates[..., :, None, :], 0),
+                             axis=-3)
+            count = xp.sum(valid, axis=-1)
+            successor = xp.where(xp.arange(5) + 1 < count[..., None], xp.arange(5) + 1, 0)
+            q = xp.take_along_axis(polygon, successor[..., None], axis=-2)
+            terms = polygon[..., 0] * q[..., 1] - polygon[..., 1] * q[..., 0]
+            area = xp.abs(xp.sum(xp.where(xp.arange(5) < count[..., None], terms, 0),
+                                 axis=-1)) / 2
+            # Coordinates are normalized to the square: its area is exactly 1.
+            ars.append(area)
+        lengths.append(tuple(ls))
+        areas.append(tuple(ars))
+    return tuple(lengths), tuple(areas)
+
+
+def accurate_tensor(xp, normal, lengths, areas, eps1, eps2):
+    """Eqs. 15--19, with vector/matrix dimensions last; also return singular mask."""
+    eye = xp.eye(3, dtype=lengths.dtype)
+    nn = normal[..., :, None] * normal[..., None, :]
+    e1, e2 = xp.asarray(eps1)[..., None, None], xp.asarray(eps2)[..., None, None]
+    g1, g2 = eye + (1 / e1 - 1) * nn, eye + (1 / e2 - 1) * nn
+    gamma = lengths[..., :, None] * g1 + (1 - lengths[..., :, None]) * g2
+    pi = areas[..., :, None] * e1 * g1 + (1 - areas[..., :, None]) * e2 * g2
+    singular = xp.linalg.det(pi) == 0
+    safe_pi = xp.where(singular[..., None, None], eye, pi)
+    return gamma @ xp.linalg.inv(safe_pi), singular
+
+
+def guarded_tensor(xp, normal, lengths, areas, eps1, eps2, fallback):
+    """Bound Eq. 20 to the material pair; only singular Pi uses the fallback.
+
+    The returned guard mask counts singular fallbacks, not spectral clips.
+    In-range and bulk tensors retain their bits (decision record 3).
+    """
+    acc, singular = accurate_tensor(xp, normal, lengths, areas, eps1, eps2)
+    tensor = (acc + xp.swapaxes(acc, -1, -2)) * .5
+    bulk_any = xp.zeros_like(singular)
+    for fraction, eps in ((0, eps2), (1, eps1)):
+        bulk = xp.all(lengths == fraction, axis=-1) & xp.all(areas == fraction, axis=-1)
+        tensor = xp.where(bulk[..., None, None],
+                          xp.eye(3) / xp.asarray(eps)[..., None, None], tensor)
+        bulk_any = bulk_any | bulk
+    guard = singular & ~bulk_any
+    lo = 1 / xp.maximum(eps1, eps2)
+    hi = 1 / xp.minimum(eps1, eps2)
+    w = xp.linalg.eigvalsh(tensor)
+    clip = ((w[..., 0] < lo) | (w[..., -1] > hi)) & ~bulk_any & ~singular
+    # Double-where: no repeated bulk/in-range eigenvalues enter the eigh
+    # derivative. The mask's eigvalsh is used only for boolean selection.
+    dummy = xp.diag(xp.asarray([1., 2., 3.], dtype=tensor.dtype))
+    w, v = xp.linalg.eigh(xp.where(clip[..., None, None], tensor, dummy))
+    w = xp.clip(w, lo[..., None], hi[..., None])
+    # Sum weighted outer products to preserve exact entrywise symmetry.
+    clipped = xp.sum(v[..., :, None, :] * v[..., None, :, :]
+                     * w[..., None, None, :], axis=-1)
+    tensor = xp.where(clip[..., None, None], clipped, tensor)
+    tensor = xp.where(guard[..., None, None], fallback, tensor)
+    return tensor, guard
+
+
+def matrices(xp, entries):
+    xx, yy, zz, xy, xz, yz = entries
+    return xp.stack([xp.stack(row, axis=-1) for row in
+                     ((xx, xy, xz), (xy, yy, yz), (xz, yz, zz))], axis=-2)
+
+
+def build_triplets(xp, grid, shapes, nodes, normal, eps, outside, fallback,
+                   *, signed_distance=None):
+    lengths, areas = fractions(xp, grid, shapes, nodes,
+                               signed_distance=signed_distance, normal=normal)
+    ns = xp.stack(xp.broadcast_arrays(*normal), axis=-1)
+    tensors, guards, touched = [], [], []
+    for signs in SIGNS:
+        ls = xp.stack([lengths[a][s] for a, s in enumerate(signs)], axis=-1)
+        ars = xp.stack([areas[a][s] for a, s in enumerate(signs)], axis=-1)
+        tensor, guard = guarded_tensor(xp, ns, ls, ars, eps, outside, fallback)
+        tensors.append(tensor)
+        guards.append(guard)
+        touched.append(xp.any(ls > 0, axis=-1) | xp.any(ars > 0, axis=-1))
+    return xp.stack(tensors), xp.stack(guards), xp.stack(touched)
+
+
+def coefficients(xp, triplets):
+    """Eq. 10: node-end diagonals (four triplets) and pair couplings (two)."""
+    diagonal = tuple(tuple(sum(triplets[t, ..., a, a]
+                              for t, signs in enumerate(SIGNS) if signs[a] == s) / 8
+                           for s in (0, 1)) for a in range(3))
+    cross = tuple(xp.stack([xp.stack([
+        sum(triplets[t, ..., a, b] for t, signs in enumerate(SIGNS)
+            if signs[a] == sa and signs[b] == sb) / 8
+        for sb in (0, 1)]) for sa in (0, 1)]) for a, b in PAIRS)
+    return diagonal, cross

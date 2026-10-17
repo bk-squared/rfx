@@ -238,8 +238,23 @@ def make_uniform_step(
             if ctx.use_upml:
                 if ctx.use_debye or ctx.use_lorentz:
                     raise ValueError("boundary='upml' does not yet support dispersion")
+                before_upml = frame.st
                 frame.st = ctx.apply_upml_e(frame.st, ctx.upml_coeffs, periodic=periodic,
                                       boundary=ctx.curl_boundary)
+                if tensor is not None and tensor.node_smoothing is not None:
+                    from rfx.core.yee import EPS_0, curl_h
+                    from rfx.core.node_tensor import off_diagonal
+                    curls = curl_h(before_upml.hx, before_upml.hy, before_upml.hz,
+                                   dx, periodic, boundary=ctx.curl_boundary)
+                    cross = off_diagonal(curls, tensor.node_smoothing,
+                                         periodic=periodic, boundary=ctx.curl_boundary)
+                    updated = tuple(jnp.where(active, old + (dt / EPS_0) * value *
+                                              ((1.0 + ca) * 0.5), old).astype(old.dtype)
+                                    for old, value, ca, active in zip(
+                                        (frame.st.ex, frame.st.ey, frame.st.ez), cross,
+                                        (ctx.upml_coeffs.ca_ex, ctx.upml_coeffs.ca_ey,
+                                         ctx.upml_coeffs.ca_ez), tensor.node_smoothing.active))
+                    frame.st = frame.st._replace(ex=updated[0], ey=updated[1], ez=updated[2])
                 frame.debye_new = None
                 frame.lorentz_new = None
             else:
