@@ -135,6 +135,18 @@ places a PEC sheet by interior node indices (not counting the absorber) instead 
 same nodes when the mesh itself is a design variable and its spacings move,
 which is what it is for. It is PEC only.
 
+On a graded mesh, `forward(pinned_sheet_layout=...)` switches a pinned sheet's
+metal edge by edge without compiling the solve again: one entry per
+`add_pinned_sheet` call, `None` or two arrays of 0 and 1 over the sheet's
+edges (1 metal, 0 empty). Each layout gives the same probe records and S11, bit
+for bit, as the same metal drawn with `add_pinned_sheet`
+(`tests/contracts/test_pinned_sheet_layout.py::test_declared_layout_bytes`), so
+one compile serves a search over layouts. It is a switch, not a sensitivity:
+values between 0 and 1 are refused, and a gradient with respect to it raises
+`TypeError`. Other solver paths refuse it, and so does a port, source, lumped
+element, surface-impedance sheet, microstrip feed or plane wave on a switched
+sheet.
+
 ### Gaps between conductors
 
 Two sheets whose drawn edges touch are joined. Two sheets with any drawn gap
@@ -212,6 +224,12 @@ the foil as a one-cell `Box` is also wrong: it becomes a volume that takes the
 laminate's bottom cell, and the report flags that 25 % of the dielectric's
 cells are also PEC.
 
+Drawing the foil with its 35 µm thickness centred on the laminate face is wrong
+in a third way: a sheet is solved on one node plane, so the drawn thickness
+counts into the spacing between the foil and the next metal plane. When that
+cavity is solved more than 1 % off its drawn spacing, the default
+`snap="strict"` refuses the run (`sheet_cavity_spacing`).
+
 ### Worked example: a plate is a volume
 
 A 2 mm iris in a WR-90 guide at `dx = 1 mm`:
@@ -237,6 +255,7 @@ Preflight checks every conductor against the grid before the first step:
 | `pec_box_subcell` | error | a PEC shape thicker than zero but thinner than one cell on some axis |
 | `pec_zero_cells` | error | a PEC shape or sheet that reaches no cell or node |
 | `sheet_effective_size` | error, or warning with `snap="declared"` | a sheet solved more than 1 % off its drawn size; see [Check the model on the grid](/rfx/check/model-on-grid/) |
+| `sheet_cavity_spacing` | error, or warning with `snap="declared"` | a cavity between parallel PEC faces solved more than 1 % off its drawn spacing; see [Check the model on the grid](/rfx/check/model-on-grid/) |
 | `mesh_resolution` | warning | a gap between `material="pec"` volumes under three cells |
 | `thin_conductor_leontovich_thin_film` | warning | a surface-impedance sheet thinner than about three skin depths |
 
@@ -270,11 +289,13 @@ The solver paths refuse what they do not implement:
 |---|---|---|
 | any PEC inside the domain, or a sheet | ADI | the default solver |
 | a sheet, a wire, or a lossy film | subgridded | a graded mesh |
-| a surface-impedance sheet (`surface_impedance_f0`) | multi-device, subgridded, ADI, UPML, most S-parameter calculators | one device, uniform or graded mesh; the support page lists the calculators |
+| a surface-impedance sheet (`surface_impedance_f0`) | multi-device, subgridded, ADI, UPML; the calculators `compute_mixed_s_matrix`, `topology_optimize` and `differentiable_material_fit` | one device, uniform or graded mesh, `run()` or `forward()` |
+| a design box that reaches a surface-impedance sheet or a lumped element | uniform and graded mesh | keep the box clear of it; under a whole-domain design occupancy rfx keeps the sheet's edges free of design metal, with a warning |
 | a surface-impedance sheet with `subpixel_smoothing` or `conformal_pec` | all | one or the other |
 | a surface-impedance sheet with a Debye or Lorentz material | uniform and graded mesh, `run()` and `forward()` | a non-dispersive material, or a lossy film |
 | `conformal_pec=True` | every path except `run()` on a uniform mesh | a finer mesh near the curved metal |
-| a lossy film (`sigma_bulk < 1e6`) with `eps_r` other than 1, normal to a 2-D model's invariant axis, on a PMC face, or under a design region | all | the message names which |
+| a lossy film (`sigma_bulk < 1e6`) with `eps_r` other than 1, normal to a 2-D model's invariant axis, on a PMC face, sharing edges with a surface-impedance sheet, or with an edge inside a design box | all | the message names which |
+| a lossy film that is not a `Box` and spans more than one cell layer, misses its drawn area by more than 1 % in equivalent length, or cannot state its area | every mesh | refine the in-plane mesh or draw a `Box`; `snap="declared"` accepts the declared geometry |
 
 [Refused inputs](/rfx/check/refusals/) explains how refusals read; the
 [support page](/rfx/support/) lists them per solver path.
@@ -285,7 +306,9 @@ The solver paths refuse what they do not implement:
   measured on a thin PEC fin against a fine-mesh reference for both
   polarizations and two cell sizes (`scripts/diagnostics/pec_sheet_edge_offset.py`);
   the size check built on it is pinned in
-  `tests/contracts/test_sheet_solved_edge_reports.py`.
+  `tests/contracts/test_sheet_solved_edge_reports.py`. An end that lies on
+  other metal over its whole width, such as a patch edge on a shorting wall,
+  is joined, not free, and gets no offset.
 - A lossy film on one node plane with sheet resistance η₀/2 reflects,
   transmits and absorbs 0.25, 0.25 and 0.5 of a normally incident wave at
   8–12 GHz, within 0.001 of the closed form for an ideal resistive sheet
