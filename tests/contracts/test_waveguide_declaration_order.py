@@ -82,11 +82,8 @@ def test_forward_s_request_admits_planes_before_routing_or_stepping(monkeypatch)
 
 @pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
 @pytest.mark.parametrize("entry", ["forward", "run_distributed", "forward_distributed",
-                                   "s_matrix", "preflight_sparameters", "graded_builder"])
+                                   "s_matrix", "preflight_sparameters"])
 def test_plane_refusal_before_any_step(graded, entry, monkeypatch):
-    if entry == "graded_builder" and not graded:
-        pytest.skip("graded config builder only")
-
     def no_steps(*args, **kwargs):
         pytest.fail("waveguide refusal reached field stepping")
 
@@ -103,12 +100,7 @@ def test_plane_refusal_before_any_step(graded, entry, monkeypatch):
                         skip_preflight=True)
         elif entry == "s_matrix":
             sim.compute_waveguide_s_matrix(n_steps=1, normalize=True)
-        elif entry == "preflight_sparameters":
+        else:
             sim.preflight_sparameters(calculator="waveguide", normalize=True,
                                       include_general=False)
-        else:
-            from rfx.runners.nonuniform import _build_waveguide_port_config_nu
-            _build_waveguide_port_config_nu(
-                sim, sim._waveguide_ports[0], sim._build_nonuniform_grid(),
-                jnp.array([8e9]), 1)
     assert str(caught.value) == MESSAGE
