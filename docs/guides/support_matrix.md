@@ -186,7 +186,7 @@ Left out of these tables, each for one reason:
 | A Floquet port scanned off normal, `scan_theta != 0` | `_floquet_ports/scan_angle` | refused | refused | refused | refused (s_matrix_scan, mixed_s_matrix, topology_optimize, waveguide_s_matrix, material_fit) | Only normal incidence (`scan_theta=0`) is solved. |
 | A lumped resistor, inductor or capacitor (`add_lumped_rlc`) | `_lumped_rlc/R` | supported | supported | refused | refused (waveguide_s_matrix, material_fit) | Run it on one device. |
 | A series R–L element (`add_lumped_rlc`) | `_lumped_rlc/series_RL` | supported | supported | refused | refused (waveguide_s_matrix, material_fit) | Run it on one device. |
-| A plane wave (`add_tfsf_source`) | `_tfsf/plane_wave` | supported | supported (run); refused (forward) | falls back (uniform); refused (graded) | refused (mixed_s_matrix, waveguide_s_matrix, material_fit) | On a graded mesh use `run()`, not `forward()`, on one device. A uniform multi-device `run()` hands the model to one device with a warning. |
+| A plane wave (`add_tfsf_source`) | `_tfsf/plane_wave` | supported | supported (run, forward) | falls back (uniform); refused (graded) | refused (mixed_s_matrix, waveguide_s_matrix, material_fit) | An open plane wave refuses finite transverse structures on both meshes. On a graded mesh use one device; finite scatterers (`closed_box=True`) and arrays (explicit periodic boundaries) require the uniform mesh. A uniform multi-device `run()` hands the model to one device with a warning. |
 
 #### Boundaries
 
@@ -248,7 +248,7 @@ error message tells you to do; the last names the test that pins the refusal.
 | A full-aperture waveguide port on a graded mesh with `boundary` omitted | `admission:waveguide-faces-graded` | `run()`, `forward()`, multi-device runs, `compute_waveguide_s_matrix` | Declare the walls, e.g. `boundary={'x': 'cpml', 'y': 'pec', 'z': 'pec'}` for an x-directed guide. | `tests/contracts/test_graded_guide_default.py::test_default_graded_refuses_before_field_step` |
 | A waveguide port in a model with a PMC face | `admission:waveguide-pmc` | `run()`, `compute_waveguide_s_matrix` | Use a full PEC-walled guide (the aperture mode solver has PEC walls only). | `tests/unit/sparams/test_pmc_waveguide_refusal.py::test_pmc_waveguide_mode_solver_refuses` |
 | `eps_override` together with `subpixel_smoothing`. Pending for 2.0 — tracker 1524. | `admission:waveguide-override-smoothing` | `compute_waveguide_s_matrix` | Declare the permittivity as a material instead of `eps_override`, or switch smoothing off. | `tests/unit/sparams/test_waveguide_override_with_smoothing_refused.py::test_eps_override_with_smoothing_is_refused_before_the_solve` |
-| A TF/SF plane wave on a uniform mesh whose absorbing transverse faces see structure that varies along that axis; a transverse wall pair that does not suit the polarization or mixes a PMC face with an absorber | `admission:plane-wave-faces` | `run()`, `forward()`, also with `skip_preflight=True` | Declare the axis periodic to solve an array, or use `closed_box=True` for a finite scatterer. | `tests/contracts/test_tfsf_boundary_admission.py::test_finite_box_is_refused`, `::test_inadmissible_electric_wall_is_refused` |
+| A TF/SF plane wave whose absorbing transverse faces see structure that varies along that axis, on the uniform or the graded mesh, including a finite block given to `forward()` as an override or a design box; a transverse wall pair that does not suit the polarization or mixes a PMC face with an absorber | `admission:plane-wave-faces` | `run()`, `forward()`, also with `skip_preflight=True` | Uniform mesh: declare the axis periodic to solve an array, or use `closed_box=True` for a finite scatterer. Graded mesh: run it on the uniform mesh. | `tests/contracts/test_tfsf_boundary_admission.py::test_finite_box_is_refused`, `::test_inadmissible_electric_wall_is_refused`, `tests/contracts/test_plane_wave_admission_both_meshes.py::test_finite_cube_refused`, `::test_finite_forward_override_refused` |
 | A soft source on an edge the grid realizes as PEC (inside a PEC volume, on a sheet or wire, or an H source whose whole curl loop is PEC) | `admission:source-on-pec` | uniform, graded and multi-device runs, also with `skip_preflight=True` | Move the source off the conductor, or use a port. | `tests/contracts/path_equivalence/test_source_on_pec.py::test_dead_e_source_refused` |
 | A soft source or one-cell lumped port whose E edge lies tangential in a declared PEC wall face; a wire port lying entirely in such a wall | `admission:source-on-pec-wall` | every path | Move it at least one cell inside the domain, off the wall. | `tests/contracts/test_source_on_pec_wall.py::test_b3_soft_wall`, `::test_b3_port_wall` |
 | A lumped/wire S-matrix request on a model that also has a plain source (`add_source`, `add_polarized_source`) or a 0-ohm port | `admission:plain-source-s-request` | `run(compute_s_params=...)`, `run(devices=...)`, `compute_lumped_wire_s_matrix_via_scan`, `forward(port_s11_freqs=...)` | Remove the plain source, or call `run(compute_s_params=False)` to get raw port waves with the source included. | `tests/unit/sparams/test_plain_source_refusal.py::test_plain_source_s_request_refused` |
@@ -347,9 +347,9 @@ define an S-parameter port.
   low end of the band; the residual near the top of the band fits one effective
   reference impedance and is not characterized. The fixture cannot be refined
   (the port must bridge a one-cell gap), so its convergence is not shown.
-- A two-port line matched at both ends is checked against `S11 = 0` and
-  `|S21| = 1`, and the lumped and wire calculators give the same complex
-  matrix on the same cells (`tests/unit/ports/test_lumped_two_port_matched_line.py`).
+- A two-port line with a shunt port at each end is checked against its
+  closed form (`|S11|` within 0.05, `|S21|` within 0.01), and the lumped and
+  wire calculators give the same complex matrix on the same cells (to 1e-6) (`tests/unit/ports/test_lumped_two_port_matched_line.py`).
 - The extractor's algebra and its replay from stored voltages and currents are
   checked (`tests/unit/sparams/test_sparam.py`,
   `tests/unit/sparams/test_port_dump_replay.py`). Algebra and replay checks do
@@ -367,8 +367,8 @@ calculation.
 A feed spread along `extent`. Use `add_msl_port(...)` when the model is a
 distributed microstrip line.
 
-- The same matched-line closed form as the lumped port, and the same replay
-  checks (`tests/unit/sparams/test_twoport_wire_port.py`,
+- The same shunt-port line closed form as the lumped port, the same matrix as
+  the lumped port on one cell (to 1e-6), and the same replay checks (`tests/unit/sparams/test_twoport_wire_port.py`,
   `tests/unit/sparams/test_wire_port_sparams_forward.py`).
 - Absolute calibration is limited by the feed model; a replay check is not a
   modal-port calibration.
@@ -404,6 +404,9 @@ probes downstream of each feed.
   move the reference plane; raising `n_probe_offset` alone moves the probes
   toward the reflector. `preflight()` and
   `preflight_sparameters(calculator="msl")` report the condition before a run.
+- **Thru line.** A uniform thru line is held to a mean `|S21|` in
+  (0.90, 1.05) and a mean `Re(Z0)` in (40, 65) Ω
+  (`tests/unit/sparams/test_msl_port_integration.py`).
 - **Cross-validation.** The open-stub notch filter is compared with frozen data
   from another solver in `tests/crossval/msl_notch_filter/`.
 
@@ -426,7 +429,8 @@ matched reference run per port (`2 * n_ports` simulations).
   (WR-340, WR-62, WR-28, WR-15, WR-10) against the closed form, and the WR-90
   empty guide, PEC short and slab against frozen data from another solver
   (`tests/fixtures/waveguide_broad_e5/`). The port validation battery and the
-  two-port contract are the authoritative checks
+  two-port contract are the authoritative checks: column power with a
+  reflecting obstacle below 1.02, a PEC short's `|S11|` at least 0.99
   (`tests/oracle/test_waveguide_port_validation_battery.py`,
   `tests/unit/sparams/test_waveguide_twoport_contract_v1.py`).
 - **Phase and group delay** are checked on the same slab cases and on an empty
@@ -475,11 +479,13 @@ line the calculator builds. Use `feed_impedance=` for the feed and `dut_impedanc
 `termination="matched"`. `probe_count` must be at least three and every plane
 must fit between the load and the source.
 
-- Checked against the closed form over 4–12 GHz for short, open, matched and
-  resistive loads at two line impedances, and against frozen data from another
-  solver for short and open (`tests/fixtures/coax_broad_e5/`,
-  `tests/fixtures/coax_broad_e4/`). This evidence was taken before 2.0 changed
-  the absorber to all three axes and was not taken again.
+- A short and an open are held to `|Γ|` within 0.05 of 1 on the current code
+  (`tests/unit/sparams/test_coaxial_line_reflection.py`).
+- Recorded fixtures compare it with the closed form over 4–12 GHz for short,
+  open, matched and resistive loads at two line impedances, and with frozen
+  data from another solver for short and open (`tests/fixtures/coax_broad_e5/`,
+  `tests/fixtures/coax_broad_e4/`). These were taken before 2.0 changed the
+  absorber to all three axes and were not taken again.
 - Use about four or more cells across the annulus; below 3.5 the result is
   reported as under-resolved.
 - Gradients through `eps_scale` are checked against finite differences
@@ -500,9 +506,11 @@ stays small; the four-cell rule above applies to transmission too.
 
 ### Floquet/Bloch and non-port observables
 
-`add_floquet_port(...)` has broadside modal bookkeeping, field-dump replay and
-diagnostic checks against the closed form for empty space and a homogeneous
-slab (`tests/unit/ports/test_floquet_s_params_contract.py`). These are not a
+`add_floquet_port(...)` has broadside modal bookkeeping, field-dump replay, and
+a test that recovers a planted reflection and transmission from synthetic waves
+(`tests/unit/ports/test_floquet_s_params_contract.py`); the comparisons with the
+closed form for empty space and a homogeneous slab are diagnostic scripts
+(`scripts/diagnostics/build_floquet_*_analytic_comparison.py`). These are not a
 comparison with RCWA or another full-wave solver, and there is no documented
 high-level Floquet S-parameter API. Treat the result as experimental. A graded `dz`
 and a plane wave are refused with it.
@@ -545,7 +553,7 @@ Poynting flux.
 
 | Aspect | Status |
 |---|---|
-| off-diagonal magnitude | experimental; its only independent internal check is reciprocity, which warns above `reciprocity_tol` |
+| off-diagonal magnitude | experimental; its only independent internal check is reciprocity, which warns above `reciprocity_tol` (default 0.06) |
 | absolute magnitude | not compared with another solver |
 | off-diagonal phase | provisional: it mixes two reference-plane conventions |
 | column power | an identity of the flux normalization, not a passivity check |
@@ -563,10 +571,12 @@ lumped or wire ports.
 ### Coax-to-microstrip transition — experimental, diagnostic only
 
 `compute_coax_msl_transition(...)` drives a coaxial port and a microstrip port
-in turn. The returned matrix is not passive: the microstrip side's power-wave
-normalization reads about three times the power that a Poynting flux box
-measures on the same run, and the mechanism is unresolved
-(`tests/unit/sparams/test_coax_msl_transition.py`). The calculator therefore
+in turn. The returned matrix is not passive: on the same run, a Poynting flux
+box measures about three times the microstrip-side power that the power-wave
+extraction reports, and the mechanism is unresolved (run record in
+`scripts/diagnostics/_coax_msl_transition_settled_run_logs/`; readings from
+earlier attempts in that directory were taken through instrument defects since
+fixed and must not be cited). The calculator therefore
 refuses the matrix by default (`strict_passivity=True` raises `ValueError`);
 `strict_passivity=False` returns it with a warning. Cross-family transitions
 are not pursued before 2.0. For a result you can report, use the single-family

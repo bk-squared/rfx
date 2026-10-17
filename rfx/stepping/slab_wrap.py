@@ -19,15 +19,14 @@ from rfx.stepping.slab import cut, cut_pole_coeffs, cut_poles, place
 def select_step(*, cpml=False, debye=False, lorentz=False, ports=False,
                 dft=False, flux=False, ntff=False, pmc=False, periodic_x=False,
                 point_sources=True, point_probes=True, pec=True):
-    """The W1 PEC and pole admission decision (upstream refusals still apply).
+    """Wrap PEC and plain CPML; keep dispersive CPML on the legacy step.
 
-    Every CPML model stays on the legacy step, which matches one device bit for
-    bit there. On the wrapped step a graded CPML box leaves one device by 63-92
-    float32 ULP of the probe peak over 100-200 steps, growing, and holds 2.5x the
-    legacy per-device memory (rfx #1402 item 5).
+    The legacy-form CPML call is bit-equal to one device on four graded CPML
+    boxes up to 1600 steps on two and three devices (rfx-archive
+    records/20261017-item5-first-divergence). Upstream refusals still apply.
     """
     return "wrapped" if (pec and point_sources and point_probes and not any((
-        ports, dft, flux, ntff, pmc, periodic_x, cpml))) else "legacy"
+        ports, dft, flux, ntff, pmc, periodic_x, cpml and (debye or lorentz)))) else "legacy"
 
 
 def record_step_kind(grid, debye_spec, lorentz_spec, boundary_spec):
@@ -159,10 +158,6 @@ def split(invariants, carry, layout, mesh, *, waveforms, dt=None):
     for key, value in invariants.items():
         if key in tags:
             result[key] = cut(value, layout, tags[key], mesh=mesh)
-        elif key == 'cpml_x':
-            result[key] = {name: cut(a, layout, 'width' if 'dx_x_' in name else
-                ('cpml_one' if name.rsplit('.', 1)[-1] in ('b', 'kappa') else 'cpml_zero'), mesh=mesh)
-                for name, a in value.items()}
         elif key == 'e_loss' and value is not None:
             eps, sigma, inverse = value
             result[key] = (cut(eps, layout, 'eps_r', mesh=mesh),

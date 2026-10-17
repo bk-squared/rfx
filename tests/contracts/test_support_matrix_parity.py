@@ -182,12 +182,18 @@ UNMAPPED_LANES_TODO: dict[str, str] = {
 
 # Lanes explicitly exempt from the "numeric_metrics must extract at least one
 # token" floor in test_json_numeric_claims_appear_in_markdown (PR #584
-# review, L4). Empty on purpose: every currently-mapped lane has real
-# numeric_metrics content: an empty allowlist means the floor is live on all
-# 8 mapped lanes today. Add a primitive here only with a comment naming why
+# review, L4). The floor is live on the other 6 mapped lanes. Add a
+# primitive here only with a comment naming why
 # its numeric_metrics is genuinely number-free (not merely emptied by a
 # careless edit, which is exactly the silent-vacuous-pass class L4 closes).
-NUMBER_FREE_LANES: frozenset[str] = frozenset()
+NUMBER_FREE_LANES: frozenset[str] = frozenset({
+    # #1171 (2026-10-12): the JSON was trimmed to numbers with an in-repo
+    # witness. The thresholds in Floquet's tests bound synthetic inputs, and
+    # those in the transition's tests bound a different fixture, not the
+    # result the matrix describes; both families state their status in words.
+    "add_floquet_port(...)",
+    "add_coaxial_port(...) + add_msl_port(...) driven by compute_coax_msl_transition(...)",
+})
 
 # Per-lane, hand-identified .md status anchors for test_status_token_polarity_agrees
 # (PR #584 review, M1). Each anchor is a literal substring that must appear
@@ -291,7 +297,7 @@ LANE_STATUS_ANCHORS_MD: dict[str, tuple[str, ...]] = {
 LANE_STATUS_ANCHORS_JSON: dict[str, tuple[str, ...]] = {
     "add_coaxial_port(...)": (
         "compute_coaxial_line_reflection(...) is not a general multi-port coaxial network solver",
-        "an external openEMS referee (VESSL run-3 369367251629",
+        "compute_coaxial_two_port(...) drives each end of one through line",
     ),
 }
 
@@ -704,29 +710,7 @@ def test_json_status_anchors_reference_mapped_primitives_with_matching_arity():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "primitive,header",
-    [
-        pytest.param(
-            primitive,
-            header,
-            marks=pytest.mark.xfail(
-                strict=True,
-                reason="#1171 the folded support matrix keeps only statements with an in-repo witness; the JSON evidence record is trimmed to match in a follow-up",
-            ) if primitive in {
-                'add_coaxial_port(...)',
-                'add_coaxial_port(...) + add_msl_port(...) driven by compute_coax_msl_transition(...)',
-                'add_floquet_port(...)',
-                'add_msl_port(...)',
-                'add_port(...) + add_msl_port(...) driven by compute_mixed_s_matrix(...)',
-                'add_port(extent=...)',
-                'add_port(extent=None)',
-                'add_waveguide_port(...)',
-            } else (),
-        )
-        for primitive, header in sorted(LANE_SECTION_MAP.items())
-    ],
-)
+@pytest.mark.parametrize("primitive,header", sorted(LANE_SECTION_MAP.items()))
 @pytest.mark.docs_consistency
 def test_json_numeric_claims_appear_in_markdown(
     primitive, header, matrix_json_by_primitive, matrix_md_sections

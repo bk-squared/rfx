@@ -69,8 +69,16 @@ def _measure(n, *, box, checkpoint, k=None, occupancy=False, graded=False, preci
                                      design_box=corners if box else None,
                                      design="occupancy" if occupancy else "permittivity", **knobs)
     if k and not checkpoint:
-        assert "rfx#1789" in estimate.warning
-        assert "Segments without checkpoint=True do not reduce memory" in estimate.warning
+        assert "rfx#1789" not in estimate.warning
+        assert not estimate.tape_is_bound
+        report = sim.explain_ad_memory(n, checkpoint=checkpoint,
+                                      design_box=corners if box else None,
+                                      design="occupancy" if occupancy else "permittivity", **knobs)
+        components = {part.name: part for part in report.components}
+        boundary = components["segmented_boundary_field_tape"]
+        assert boundary.memory_gb * 1e9 == pytest.approx(
+            estimate.ad_segmented_active_segments * estimate.carry_bytes)
+        assert "full_reverse_field_tape" not in components
     estimated = (estimate.ad_segmented_gb if k else estimate.ad_full_gb) * 1e9
     row = dict(n=n, box=box, checkpoint=checkpoint, K=k, occupancy=occupancy,
                graded=graded, precision=precision, compiled_bytes=compiled, estimate_bytes=estimated)
@@ -248,7 +256,8 @@ def test_ad_memory_tape_terms():
                      for checkpoint, k in ((False, None), (True, 8), (True, 16), (False, 8)))
     cases.extend((dict(box=True, checkpoint=False, occupancy=True),
                   dict(box=True, checkpoint=True), dict(box=False, checkpoint=True),
-                  dict(box=True, checkpoint=True, k=40, graded=True)))
+                  dict(box=True, checkpoint=True, k=40, graded=True),
+                  dict(box=True, checkpoint=False, k=40, graded=True)))
     for case in cases:
         label = json.dumps(case, sort_keys=True)
         a, b = (_measure(n, **case) for n in (800, 1600))

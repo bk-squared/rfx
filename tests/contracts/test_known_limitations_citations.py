@@ -100,7 +100,10 @@ SUPPORT_MATRIX = REPO_ROOT / "docs" / "guides" / "support_matrix.md"
 # occupancy entry, whose Tracker is the same open issue. #1501 left with the
 # weekly-lane entry: a red scheduled lane is not a defect a user meets (lead
 # decision 2026-10-11); #1501 was still OPEN that day.
-CITED_ISSUES = frozenset({737, 1221, 1230, 1373, 1512})
+# #1812 (an open oblique method-B plane wave launches a modulated Gaussian whatever
+# pulse is declared) joined on 2026-10-17; OPEN, checked with
+# `gh issue view 1812 --repo bk-squared/rfx --json number,state`.
+CITED_ISSUES = frozenset({737, 1221, 1230, 1373, 1512, 1812})
 
 # Numbers the prose names for provenance rather than as open work: a CLOSED
 # issue or PR recording a fix, measurement or settled decision. These are

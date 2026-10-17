@@ -81,6 +81,7 @@ class GradedStepContext:
     x_face_frame: Mapping[str, tuple[int, int]] | None = None  # Axis -> static (lo, hi) physical rows.
     port_record_specs: tuple | None = None
     port_acc_indices: tuple = ()
+    cpml_spacings: tuple | None = None
 
 
 @dataclass
@@ -247,10 +248,14 @@ def make_graded_step(
                 frame.st = _apply_wg_e_nu(frame.st, cfg_meta, frame.step_idx, ctx.dt, _m[1])
         if ctx.use_cpml and 'cpml_x' in frame.invariants:
             from rfx.stepping.slab_cpml import apply
-            frame.st, frame.cpml_new = apply(ctx.apply_cpml_e, ctx, frame.invariants,
+            from rfx.boundaries.cpml import apply_cpml_e
+            from rfx.boundaries.electric_coefficient import loss_terms
+            means = (frame.materials.components.eps_update,
+                     frame.materials.components.sigma_update)
+            frame.st, frame.cpml_new = apply(apply_cpml_e, ctx, frame.invariants,
                 frame.st, frame.cpml_new, materials=frame.materials,
-                e_loss=frame.invariants['e_loss'], inv_eps_r_update=frame._cpml_inv_eps_r,
-                boundary=ctx.curl_boundary, debye=frame.debye_coeffs, lorentz=frame.lorentz_coeffs)
+                e_loss=loss_terms(means, ctx.dt), inv_eps_r_update=tuple(1 / e for e in means[0]),
+                boundary=ctx.curl_boundary, e_curl_coeff=None)
         elif ctx.use_cpml:
             frame.st, frame.cpml_new = ctx.apply_cpml_e(frame.st, ctx.cpml_params, frame.cpml_new,
                                          ctx.cpml_grid, ctx.cpml_axes_eff,

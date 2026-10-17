@@ -1,115 +1,37 @@
-"""Place canonical CPML x operands; the boundary owner retains all arithmetic."""
+"""Place native CPML operands; the boundary owner retains all arithmetic."""
 from dataclasses import replace
 from types import SimpleNamespace
 
+import jax
 import jax.numpy as jnp
-
-from rfx.boundaries.cpml import _axis_buffer_depths, _clip_lo, _clip_hi
-
-
-def publish(setup):
-    """Expand compact physical faces to global x rows before the common cut."""
-    ctx = setup.step_fn_inv.context
-    grid, params = ctx.cpml_grid, ctx.cpml_params
-    nx = grid.nx
-    depth = _axis_buffer_depths(grid, grid.cpml_layers)[0]
-    payload = {}
-
-    def expand(a, side, fill=0):
-        pads = [(0, nx - a.shape[0]) if side == 'lo' else (nx - a.shape[0], 0)]
-        return jnp.pad(a, pads + [(0, 0)] * (a.ndim - 1), constant_values=fill)
-
-    def profiles(p, prefix=''):
-        if p is None:
-            return None
-        for side in ('lo', 'hi'):
-            profile = getattr(p, 'x_' + side)
-            clip = _clip_lo if side == 'lo' else _clip_hi
-            for name in profile._fields:
-                a = clip(getattr(profile, name), depth, grid.cpml_layers)
-                payload[prefix + 'x_' + side + '.' + name] = expand(a, side, int(name in ('b', 'kappa')))
-            payload[prefix + 'dx_x_' + side] = jnp.full((nx,), getattr(p, 'dx_x_' + side))
-        return p._replace(x_lo=None, x_hi=None, dx_x_lo=None, dx_x_hi=None,
-                          magnetic=profiles(p.magnetic, 'magnetic.'))
-
-    static = profiles(params)
-    psi = setup.carry_init['cpml']
-    psi = type(psi)(*(expand(a, name[-2:]) if name.split('_')[-1][0] == 'x' else a
-                      for name, a in zip(psi._fields, psi)))
-    # Static geometry retains y/z data and face depths, but no x vector.
-    view = SimpleNamespace(**grid._asdict())
-    for axis in 'xyz':
-        for side in ('lo', 'hi'):
-            setattr(view, f'pad_{axis}_{side}', getattr(grid, f'pad_{axis}_{side}'))
-    view.cpml_axes = getattr(grid, 'cpml_axes', 'xyz')
-    view.dx_arr = None
-    view.inv_dx = view.inv_dx_h = None
-    context = replace(ctx, cpml_params=static, cpml_grid=view)
-    return context, {**setup.invariants, 'cpml_x': payload}, {**setup.carry_init, 'cpml': psi}
-
-
-def operands(ctx, invariants, psi):
-    """Recover compact face views from this rank's cut x rows."""
-    from rfx.boundaries.cpml import CPMLParams
-    grid = SimpleNamespace(**vars(ctx.cpml_grid))
-    grid.dx_arr = invariants['dx_arr']
-    grid.nx = grid.dx_arr.shape[0]
-    depths = {side: max(1, getattr(grid, 'pad_x_' + side)) for side in ('lo', 'hi')}
-    lo, hi = ctx.x_face_frame['x']
-    windows = {'lo': slice(lo, lo + depths['lo']), 'hi': slice(hi - depths['hi'], hi)}
-    payload = invariants['cpml_x']
-
-    def profiles(p, prefix=''):
-        if p is None:
-            return None
-        values = {}
-        for side, window in windows.items():
-            def profile_row(name):
-                row = payload[prefix + 'x_' + side + '.' + name][window]
-                pad = grid.cpml_layers - depths[side]
-                return jnp.pad(row, (0, pad) if side == 'lo' else (pad, 0),
-                               constant_values=int(name in ('b', 'kappa')))
-            values['x_' + side] = CPMLParams(*(profile_row(name) for name in CPMLParams._fields))
-            values['dx_x_' + side] = payload[prefix + 'dx_x_' + side][window, None, None]
-        return p._replace(**values, magnetic=profiles(p.magnetic, 'magnetic.'))
-
-    compact = type(psi)(*(a[windows[name[-2:]]] if name.split('_')[-1][0] == 'x' else a
-                          for name, a in zip(psi._fields, psi)))
-    return profiles(ctx.cpml_params), grid, compact, windows
 
 
 def apply(kernel, ctx, invariants, state, psi, **kwargs):
-    """Call the canonical boundary kernel and restore its cut psi layout."""
-    params, grid, compact, windows = operands(ctx, invariants, psi)
-    # The kernel keeps x psi at the one-device depth and reads each framed
-    # face's realized rows (lo: first rows, hi: last rows); pad to that depth.
-    full = grid.cpml_layers
+    """Call the canonical boundary kernel in the legacy slab argument form."""
+    from rfx.runners._distributed_common import cpml_slab_frame, cpml_absorbing_faces
 
-    def pad(a, side):
-        extra = full - a.shape[0]
-        return jnp.pad(a, [(0, extra) if side == 'lo' else (extra, 0)] + [(0, 0)] * (a.ndim - 1))
-
-    def active(a, side, depth):
-        return a[:depth] if side == 'lo' else a[full - depth:]
-
-    x_psi = lambda name: name.split('_')[-1][0] == 'x'
-    padded = type(psi)(*(pad(a, name[-2:]) if x_psi(name) else a for name, a in zip(psi._fields, compact)))
-    state, updated = kernel(state, params, padded, grid, ctx.cpml_axes_eff,
-                           frame=ctx.x_face_frame, owned=invariants['owns_x'], **kwargs)
-    updated = type(psi)(*(a.at[windows[name[-2:]]].set(
-                              active(b, name[-2:], windows[name[-2:]].stop - windows[name[-2:]].start))
-                          if x_psi(name) else b
-                          for name, a, b in zip(psi._fields, psi, updated)))
-    return state, updated
+    params = jax.tree.map(lambda a: a[0], invariants['cpml_x'])
+    electric, magnetic = ctx.cpml_spacings
+    params = params._replace(**electric)
+    if magnetic:
+        params = params._replace(magnetic=params.magnetic._replace(**magnetic))
+    ghost, end = ctx.x_face_frame['x']
+    pad_x = state.ex.shape[0] - ghost - end
+    return kernel(state, params, psi, ctx.cpml_grid,
+                  frame=cpml_slab_frame(state.ex.shape, ghost, pad_x),
+                  faces=cpml_absorbing_faces(ctx.cpml_grid),
+                  owned=invariants['owns_x'], **kwargs)
 
 
-def export_state(psi, grid, layout):
+def export_state(psi, grid, layout, *, native=False):
     """Return psi in the runner's ``init_cpml_slabs`` layout (#1745).
 
     Field order with the rank merged into x: y/z faces keep this rank's x rows;
     x faces hold the one-device depth, real only on the owning end rank (rank 0
     for x_lo, the last rank for x_hi) and zero elsewhere.
     """
+    if native:
+        return psi
     from rfx.boundaries.cpml import _axis_buffer_depths
     full = _axis_buffer_depths(grid, grid.cpml_layers)[0]
     fields = {}
@@ -130,13 +52,16 @@ def export_state(psi, grid, layout):
     return type(psi)(**fields)
 
 
-def import_state(psi, canonical, layout):
+def import_state(psi, canonical, layout, *, native=False):
     """Recover one-device psi from the runner's per-rank input.
 
     ``init_cpml_slabs`` layout (#1745): field order on every rank, x faces
     (s_x, Ny, Nz) at the one-device depth, y/z faces over the rank's local x
     rows; the rank axis is leading or merged into x.
     """
+    if native:
+        import jax
+        return jax.tree.map(lambda a: a.reshape((-1,) + a.shape[-2:]), psi)
     from rfx.runners._distributed_common import unstack_and_gather
     fields = {}
     for name, a in zip(psi._fields, psi):
@@ -155,3 +80,53 @@ def import_state(psi, canonical, layout):
         pads['xyz'.index(axis)] = (0, extra) if side == 'lo' else (extra, 0)
         fields[name] = jnp.pad(whole, pads)
     return type(psi)(**fields)
+
+
+def publish(setup, layout, mesh):
+    """Publish dynamic whole profiles and rank-local ``init_cpml_slabs`` psi.
+
+    X faces retain one-device depth on each rank; y/z faces use local x rows.
+    The step restores the original widths without compact slicing or scatter.
+    """
+    import jax
+    from jax.sharding import NamedSharding, PartitionSpec as P
+    from rfx.boundaries._cpml_slab import cpml_grid_metadata
+    from rfx.stepping.slab import cut, place
+
+    ctx = setup.step_fn_inv.context
+    grid = ctx.cpml_grid
+    spacing_names = ('dx_x_lo', 'dx_x_hi', 'dx_y_lo', 'dx_y_hi', 'dz_lo', 'dz_hi')
+    # Capture the original objects before stripping, exactly as the legacy
+    # runner does. No dtype conversion or grid-metadata reconstruction.
+    electric = {name: getattr(ctx.cpml_params, name) for name in spacing_names}
+    magnetic = ({name: getattr(ctx.cpml_params.magnetic, name) for name in spacing_names}
+                if ctx.cpml_params.magnetic is not None else {})
+
+    def profiles(params):
+        if params is None:
+            return None
+        return params._replace(**dict.fromkeys(spacing_names),
+                               magnetic=profiles(params.magnetic))
+
+    params = profiles(ctx.cpml_params)
+    # A leading rank dimension makes every profile a dynamic shard input.
+    # apply removes that singleton rank dimension inside the local step.
+    params = jax.tree.map(lambda a: place(jnp.broadcast_to(a, (layout.n_devices,) + a.shape),
+                             NamedSharding(mesh, P('x'))), params)
+    fields = {}
+    psi = setup.carry_init['cpml']
+    for name, value in zip(psi._fields, psi):
+        face = name.split('_')[-1]
+        if face[0] == 'x':
+            owner = 0 if face.endswith('lo') else layout.n_devices - 1
+            rows = jnp.zeros((layout.n_devices,) + value.shape, value.dtype)
+            rows = rows.at[owner].set(value)
+            value = rows.reshape((-1,) + value.shape[1:])
+            fields[name] = place(value, NamedSharding(mesh, P('x')))
+        else:
+            fields[name] = cut(value, layout, 'cpml_psi', mesh=mesh)
+    context = replace(ctx, cpml_params=None, cpml_grid=cpml_grid_metadata(grid),
+                      cpml_spacings=(electric, magnetic))
+    return context, {**setup.invariants, 'cpml_x': params}, {
+        **setup.carry_init, 'cpml': type(psi)(**fields)}
+

@@ -255,8 +255,14 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
     from rfx.stepping.absorber import apply_cpml_h, apply_cpml_e_step
     from rfx.stepping.graded import GradedStepContext, make_graded_step, graded_probe_table
     from rfx.core.drives import drive_layout
+    if cpml and (debye is not None or lorentz is not None):
+        # select_step keeps dispersive CPML on the legacy step; the wrapped
+        # CPML call carries no pole coefficients (rfx #1402 item 5).
+        raise ValueError("the wrapped graded step does not take CPML with Debye/Lorentz poles")
+    # The wrapped CPML call forms its loss and 1/eps from the staged components
+    # (graded.e_boundary); the legacy-layout operands would be unused copies.
     staged, inverse, loss = realize_materials(materials, grid, layout, mesh, occupancy,
-        cpml=cpml, debye=debye is not None, lorentz=lorentz is not None)
+        cpml=False, debye=debye is not None, lorentz=lorentz is not None)
     bundles = [debye, lorentz]
     for i, bundle in enumerate(bundles):
         if bundle is not None and bundle[0].ca is None:
@@ -319,14 +325,14 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
     if cpml:
         # rfx #1402 item 5 (absorber)
         from rfx.stepping.slab_cpml import publish, import_state
-        if cpml_state is not None:
-            psi = import_state(cpml_state, psi, layout)
         shell = SimpleNamespace(step_fn_inv=SimpleNamespace(context=ctx), invariants={}, carry_init={'cpml': psi})
-        ctx, profiles, initial = publish(shell)
-        inv['cpml_x'] = {name: cut(a, layout, 'width' if 'dx_x_' in name else
-            'cpml_one' if name.rsplit('.', 1)[-1] in ('b', 'kappa') else 'cpml_zero', mesh=mesh)
-            for name, a in profiles['cpml_x'].items()}
-        carry['cpml'] = cut(initial['cpml'], layout, 'cpml_psi', mesh=mesh)
+        ctx, profiles, initial = publish(shell, layout, mesh)
+        inv['cpml_x'] = profiles['cpml_x']
+        # Native x faces retain the full one-device depth on every rank.
+        # The y/z faces already contain the slab's x rows and ghosts.
+        carry['cpml'] = initial['cpml']
+        if cpml_state is not None:
+            carry['cpml'] = import_state(cpml_state, psi, layout, native=True)
     return SimpleNamespace(invariants=inv, carry_init=carry, src_waveforms=waves,
                             step_fn_inv=make_graded_step(ctx))
 

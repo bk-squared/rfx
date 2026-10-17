@@ -498,9 +498,11 @@ def test_c6_two_device_graded_source():
     with _realized.capture() as capture:
         sim.forward(n_steps=3, distributed=True)
     source = next(r for r in capture.records if r['site'] == 'distributed_nu.sources')
-    edge = next(r for r in capture.records if 'owned_start' in r and int(r['owned_start']) == 9)
-    eps = edge['eps_e'][2][1, 4, 4]
-    sigma = edge['sigma_e'][2][1, 4, 4]
+    edge = next(r for r in capture.records if 'eps_e' in r and 'owned_start' in r
+                and int(r['owned_start']) <= 9 < int(r['owned_start']) + int(r['owned_count']))
+    local_x = 9 - int(edge['owned_start']) + 1  # E records include one low ghost.
+    eps = edge['eps_e'][2][local_x, 4, 4]
+    sigma = edge['sigma_e'][2][local_x, 4, 4]
     cb = float(e_update_coeffs(eps, sigma, grid.dt)[1])
     dual = (widths[8] + widths[9]) / 2
     assert float(source['drive_scale'][0]) == pytest.approx(cb / (dual * H * H), rel=1e-6)
