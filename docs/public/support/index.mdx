@@ -105,7 +105,7 @@ accurate.
 | Lumped R/L/C + graded mesh | **limited** | The elements take part in the update. Component-value gradients are not documented. |
 | Lumped and wire-port S11 + graded mesh | **limited** | `forward(port_s11_freqs=...)` on one device. |
 | DFT plane or flux monitor + graded mesh | **experimental** | Runs; no general accuracy statement. |
-| Plane wave + graded mesh | **experimental** | Normal incidence along ±x with x uniform, through `run()`. Oblique incidence, incidence along ±z, and `forward()` are refused. |
+| Plane wave + graded mesh | **experimental** | Normal incidence along ±x with x uniform, through `run()` and `forward()`. Oblique incidence, incidence along ±z, a closed box and a `CustomWaveform` are refused. |
 | Waveguide S-matrix + graded mesh | **experimental** | Single mode, `normalize=True` or `"flux"`. With `boundary` omitted a full-aperture guide is refused; declare the walls. A reference-plane shift across cells of more than one size is refused. |
 | Microstrip S-matrix + graded mesh | **experimental** | `mode="laplace"` / `"uniform"`; regression checks only. `mode="eigenmode"` is refused. |
 | Coaxial port + graded mesh | **unsupported** | Refused. |

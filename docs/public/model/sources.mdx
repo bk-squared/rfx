@@ -89,30 +89,34 @@ outside is the structure's response alone.
 | Argument | Default | Meaning |
 |---|---|---|
 | `direction` | `"+x"` | `"+x"` or `"-x"` |
-| `polarization` | `"ez"` | `"ez"` or `"ey"`, the E component of the incident wave |
-| `angle_deg` | 0 | angle from the x axis, below 90° |
+| `polarization` | `"ez"` | `"ez"` or `"ey"`, the E component of the incident wave; `"s"` or `"p"` for an oblique closed box |
+| `angle_deg` | 0 | angle from the x axis, below 90°, for the plane wave without a closed box |
+| `theta_deg`, `phi_deg` | 0, 0 | the direction of an oblique wave in a closed box (`closed_box=True`), about x; rfx takes the nearest lattice direction within `direction_tol_deg` (0.1°), and `sim.tfsf_incidence()` reports the direction it realized |
 | `method` | `"bloch"` | for oblique incidence: `"bloch"` makes the side axis periodic with the matching phase; `"methodB"` absorbs on it |
 | `closed_box` | `False` | `True`: a finite box with six faces around the structure, for a single scatterer; `False`: two planes across the domain |
 | `f0`, `bandwidth`, `amplitude` | `freq_max/2`, 0.5, 1 | the pulse |
-| `waveform` | `"differentiated_gaussian"` | also `"modulated_gaussian"`, `"continuous_wave"`, or a `CustomWaveform` |
+| `waveform` | `"differentiated_gaussian"` at normal incidence, in a closed box and with `method="methodB"`; `"modulated_gaussian"` at an angle with `method="bloch"` | also `"continuous_wave"` (normal incidence) or a `CustomWaveform` (normal incidence, 3-D). An explicit `"differentiated_gaussian"` at an angle with `method="bloch"` is refused: that method carries one transverse wavenumber, which only a pulse around `f0` matches |
 | `margin` | 3 | cells between the injection planes and the absorber |
 
 The injection planes must lie in vacuum. With `closed_box=False` the planes
 span the domain, and the faces across the beam are solved as periodic, so the
-structure is repeated along them; see [Boundaries](/rfx/model/boundaries/#rules-that-ports-and-plane-waves-put-on-the-boundary)
-for the rule and its warning. For a single scatterer use `closed_box=True`.
+structure is repeated along them; a structure that is not uniform across them
+is refused unless you declare those faces periodic. See
+[Boundaries](/rfx/model/boundaries/#rules-that-ports-and-plane-waves-put-on-the-boundary)
+for the rule. For a single scatterer use `closed_box=True`.
 
 ### Waveforms
 
 | Waveform | What it is | Parameters (defaults) |
 |---|---|---|
-| `GaussianPulse` | derivative of a Gaussian, no carrier | `f0`, `bandwidth=0.5`, `amplitude=1.0`, `cutoff=3.0` |
+| `GaussianPulse` | derivative of a Gaussian, no carrier, corrected so that it starts at exactly zero and its time integral is zero | `f0`, `bandwidth=0.5`, `amplitude=1.0`, `cutoff=3.0` (at least 2.5) |
 | `ModulatedGaussian` | a carrier at `f0` under a Gaussian envelope | `f0`, `bandwidth=0.5`, `amplitude=1.0`, `cutoff=5.0` |
 | `CWSource` | a sine at `f0`, switched on over `ramp_steps` cycles of `f0` (not time steps) | `f0`, `amplitude=1.0`, `ramp_steps=50` |
 | `CustomWaveform` | your function of time, `func(t)` with t in seconds | `func` |
 
 `bandwidth` is a fraction of `f0`; the pulse peaks `cutoff` envelope widths
-after t = 0, so it starts near zero. `add_source` and `add_port` use
+after t = 0. A `bandwidth` given in Hz makes a pulse about 10⁻²⁰ s long that
+drives nothing, and the run refuses it. `add_source` and `add_port` use
 `GaussianPulse(f0=freq_max/2, bandwidth=0.8)` when you give no waveform.
 
 A pulse gives the response over its whole band from one run. A `CWSource` gives
@@ -120,19 +124,23 @@ one frequency and never switches off, so the
 [settling check](/rfx/evidence/simulation-time/), which needs the source to be
 off before the end of the run, cannot judge it.
 
-<p data-rfx="note">Pending for 2.0: the default pulse is being changed so that
-its time integral is zero; the truncated pulse today leaves a small static
-charge at a current source (tracker 1668, PR 1684). This section is updated
-when it lands.</p>
+Because the default pulse has a zero time integral, a soft current source
+driven by it leaves no static charge, and so no static field, behind. The correction that makes this so changes the plain
+differentiated Gaussian only before its peak, by at most 1.7×10⁻³ of its
+amplitude at `cutoff=3`
+(`tests/unit/sources/test_source_dc_floor_guards.py`). A `ModulatedGaussian`
+has no such correction; its time integral is small but not zero.
 
 ## What is checked
 
 When you declare a source: the component, `amplitude_kind`, and for a plane
 wave every argument in the table above against its allowed values and the
-faces across the beam. Before the first step on a uniform mesh, the run refuses
-a plane wave whose injection planes are not in vacuum; this check does not
-depend on preflight. The solver path then checks that it implements the source
-(below).
+faces across the beam. Before the first step, `run()` and `forward()` refuse,
+on either mesh and without depending on preflight, a dielectric or a design
+region on or next to a plane wave's injection planes, and a soft source on an
+edge the grid realizes as metal. Every excited drive's pulse, sampled at the
+time step, must exceed 10⁻⁶ of its amplitude somewhere. The solver path then
+checks that it implements the source (below).
 
 ## What is refused, and the way through
 
@@ -142,12 +150,18 @@ depend on preflight. The solver path then checks that it implements the source
 | a plane wave together with a lumped port | all | refused | drive the port alone, or use a probe for the response |
 | a plane wave with `boundary="upml"`, or in a closed (all-metal) domain | all | refused | `boundary="cpml"` |
 | `waveform="continuous_wave"` at an angle | all | refused | a pulse waveform |
-| a `CustomWaveform` plane wave, or `closed_box=True`, at an angle or in 2-D | all | refused | normal incidence in 3-D |
-| `method="methodB"` at normal incidence, with `"ey"`, or along `"-x"` | all | refused | `method="bloch"` |
-| an injection plane inside a material | uniform mesh, `run()` and `forward()` | refused before the first step | move the structure clear of the planes |
+| an explicit `waveform="differentiated_gaussian"` at an angle with `method="bloch"`, in Python or in a saved interop document | all | refused | `"modulated_gaussian"` or no `waveform`; for one scatterer in an open domain, `method="methodB"` takes the differentiated Gaussian |
+| a `CustomWaveform` plane wave at an angle or in 2-D | all | refused | normal incidence in 3-D |
+| `closed_box=True` with `angle_deg`, in 2-D, with a face that is not CPML, on cells that are not cubic, or in a run with no fixed step count | uniform mesh | refused | `theta_deg`/`phi_deg` for the angle, CPML on all six faces, `dx=dy=dz`, `n_steps` |
+| `method="methodB"` at normal incidence, with `"ey"`, along `"-x"`, or with a waveform other than the two Gaussians | all | refused | `method="bloch"` |
+| a structure that is not uniform across the faces across the beam (`closed_box=False`) | uniform and graded mesh | refused | declare those faces periodic for an array; `closed_box=True` on a uniform mesh for one object |
+| a dielectric or a design region on or next to an injection plane | uniform and graded mesh, `run()` and `forward()` | refused before the first step | move the structure clear of the planes |
 | a plane wave at an angle, with `closed_box=True`, or with a `CustomWaveform` | graded mesh | refused | use a uniform mesh |
-| a plane wave | graded mesh with `forward()`, graded mesh on several devices | refused | use a uniform mesh, or `run()` |
-| a plane wave | uniform mesh on several devices | runs on one device, with a warning | — |
+| a plane wave | graded mesh on several devices | refused | run on one device |
+| a plane wave | uniform mesh on several devices | runs on one device, with a warning; `Result.diagnostics` records it | — |
+| a soft source on an edge the grid realizes as PEC (inside a PEC volume, on a sheet or wire), or tangential in a declared PEC wall face | all | refused | move the source off the metal and at least one cell inside the domain, or use a port |
+| a drive whose pulse samples to zero at every time step (usually `bandwidth` given in Hz) | all, and `preflight()` | refused | give `bandwidth` as a fraction of `f0` |
+| `GaussianPulse(cutoff=...)` below 2.5 | when the pulse is created | refused | keep the default `cutoff=3` |
 
 [Refused inputs](/rfx/check/refusals/) explains how refusals read; the
 [support page](/rfx/support/) lists them per solver path.
