@@ -643,3 +643,13 @@ def test_periodic_box_on_the_seam_with_an_off_node_face_is_refused():
     row, = _periodic_x_blocks((4, 8), (16.4, 20)).preflight().by_code(CODE)
     assert row.severity == "error"
     assert f"drawn spacing {_fmt_len(8.4 * MM)}, solved spacing {_fmt_len(8 * MM)} (-4.76%)" in str(row)
+
+
+def test_periodic_box_face_at_a_half_cell_tie_is_its_realized_plane():
+    # Periodic x, 1 mm cells: a block drawn from 19.5 mm fills cells 19, 0, 1
+    # (a tie resolves lower), so its lower face is the node at 19 mm, equally
+    # far from 19.5 mm as the interior plane at 20 mm (node 0). From the block
+    # [4, 8]: 11 mm solved against 11.5 mm drawn, 11/11.5 - 1 = -4.35 %.
+    row, = _periodic_x_blocks((4, 8), (19.5, 22)).preflight().by_code(CODE)
+    assert f"plane at {_fmt_len(19 * MM)} (drawn {_fmt_len(19.5 * MM)})" in str(row)
+    assert f"drawn spacing {_fmt_len(11.5 * MM)}, solved spacing {_fmt_len(11 * MM)} (-4.35%)" in str(row)

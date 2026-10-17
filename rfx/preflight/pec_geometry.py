@@ -894,12 +894,15 @@ def _sheet_solved_plane(ctx, a, e, k, drawn=None) -> float:
 def _box_face_planes(ctx, a, e, shape):
     """Lower and upper wall planes of Box ``e`` along ``a``. On a periodic axis
     a face at or past L lies on a wrapped node, so the lowest and highest index
-    are not its faces: each face takes the plane nearest it once unwrapped."""
+    are not its faces: each face takes the plane nearest it once unwrapped, a
+    half-cell tie going lower as the rasterizer resolves it."""
     wall = e.wall_planes(a, ctx.periodic, shape)
     if not wall or not ctx.periodic[a]:
         return (min(wall), max(wall)) if wall else None
-    return tuple(min(wall, key=lambda k: abs(_sheet_solved_plane(ctx, a, e, k, face) - face))
-                 for face in (float(e.lo[a]), float(e.hi[a])))
+    def nearest(face):
+        z = {k: _sheet_solved_plane(ctx, a, e, k, face) for k in wall}
+        return min(wall, key=lambda k: (abs(z[k] - face), z[k]))
+    return nearest(float(e.lo[a])), nearest(float(e.hi[a]))
 
 
 def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
