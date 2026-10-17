@@ -31,10 +31,26 @@ FLOAT64_MODE_ERROR = (
 )
 
 
+# The jax-mps plugin (Apple-silicon GPUs) has no float64: a float64 transfer
+# fails, a float64 value inside jit is cast to float32, and a complex128
+# transfer returns wrong values without an error (#1824). Under JAX 64-bit
+# mode a float32 run also forms complex128 spectra (DFT accumulators, S), so
+# the mode itself is refused there, whatever the precision.
+FLOAT64_MPS_ERROR = (
+    "precision='float64' and JAX 64-bit mode are not available on the "
+    "Apple-silicon 'mps' JAX backend: the device has no float64, so rfx would "
+    "compute in float32 or return wrong complex128 values. Use "
+    "precision='float32' with 64-bit mode off on this backend, or run float64 "
+    "on the CPU with JAX_PLATFORMS=cpu."
+)
+
+
 def resolve_field_dtype(precision):
     """Resolve storage without allocating or changing the caller's JAX mode."""
     import jax.numpy as jnp
 
+    if (precision == "float64" or jax.config.x64_enabled) and jax.default_backend() == "mps":
+        raise ValueError(FLOAT64_MPS_ERROR)
     if precision == "float64":
         if not jax.config.x64_enabled:
             raise ValueError(FLOAT64_MODE_ERROR)

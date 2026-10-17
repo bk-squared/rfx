@@ -227,6 +227,46 @@ def test_off_refuses_before_allocation(monkeypatch, entry):
         assert str(caught.value) == FLOAT64_MODE_ERROR
 
 
+@pytest.mark.parametrize('entry', HONOURS)
+def test_mps_backend_refuses_float64_before_allocation(monkeypatch, entry):
+    # Tracker 1824. CI has no Apple GPU, so the real jax-mps plugin cannot run
+    # here; the backend name the refusal reads is faked instead.
+    with jax.enable_x64():
+        sim = model('float64', entry)
+        monkeypatch.setattr(jax, 'default_backend', lambda: 'mps')
+        for name in ('zeros','ones','empty','array','asarray','arange','full'):
+            monkeypatch.setattr(jnp, name, _forbid)
+        monkeypatch.setattr(sim, '_build_grid', _forbid)
+        from rfx._precision import FLOAT64_MPS_ERROR
+        with pytest.raises(ValueError, match='mps') as caught:
+            if entry == 'adjoint':
+                sim.forward(gradient='adjoint')
+            else:
+                invoke(sim, entry)
+        assert str(caught.value) == FLOAT64_MPS_ERROR
+
+
+def test_mps_backend_admits_float32(monkeypatch):
+    monkeypatch.setattr(jax, 'default_backend', lambda: 'mps')
+    with jax.enable_x64(False):
+        assert model('float32', 'run_lumped')._resolve_field_dtype() is None
+
+
+def test_mps_backend_refuses_float32_under_x64(monkeypatch):
+    # A float32 run under 64-bit mode forms complex128 spectra, which the
+    # plugin returns with wrong values.
+    monkeypatch.setattr(jax, 'default_backend', lambda: 'mps')
+    with jax.enable_x64():
+        sim = model('float32', 'run_lumped')
+        for name in ('zeros','ones','empty','array','asarray','arange','full'):
+            monkeypatch.setattr(jnp, name, _forbid)
+        monkeypatch.setattr(sim, '_build_grid', _forbid)
+        from rfx._precision import FLOAT64_MPS_ERROR
+        with pytest.raises(ValueError) as caught:
+            invoke(sim, 'run_lumped')
+        assert str(caught.value) == FLOAT64_MPS_ERROR
+
+
 @pytest.mark.parametrize('entry', REFUSES)
 def test_on_preserves_main_refusal(entry):
     with jax.enable_x64():
