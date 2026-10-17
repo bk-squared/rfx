@@ -56,3 +56,25 @@ def test_run_settling_bins_follow_float64_request(kind):
     assert len(result.freqs) == 37
     for key in ('share_per_bin', 'error_per_bin'):
         assert len(result.settling_witness[key]) == len(result.freqs), key
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError,
+                   reason='#1373 D9 (graded): run() does not yet return lumped_port_sparams')
+def test_graded_run_returns_lumped_main_record():
+    sim = base_scene('graded', source=False)
+    sim.add_port(SOURCE, 'ez', impedance=50.)
+    result = sim.run(n_steps=150, skip_preflight=True)
+    assert result.lumped_port_sparams is not None
+
+
+@pytest.mark.xfail(strict=True, raises=AssertionError,
+                   reason='#1402: the uniform multi-device path does not join S')
+def test_two_device_uniform_run_returns_lumped_main_record():
+    devices = jax.devices('cpu')
+    if len(devices) < 2:
+        pytest.skip('Need >=2 JAX devices. Set XLA_FLAGS=--xla_force_host_platform_device_count=2 before importing jax.')
+    sim = base_scene('uniform', source=False)
+    sim.add_port(SOURCE, 'ez', impedance=50.)
+    bins = np.linspace(2e9, 20e9, 50, dtype=np.float32)
+    result = sim.run(n_steps=150, skip_preflight=True, s_param_freqs=bins, devices=devices[:2])
+    assert result.lumped_port_sparams is not None
