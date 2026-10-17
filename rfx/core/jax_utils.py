@@ -372,7 +372,7 @@ def _block_solve(a, b):
     rhs = jnp.concatenate([jnp.real(b), jnp.imag(b)], axis=-2)
     y = jnp.linalg.solve(matrix, rhs)
     x = (y[..., :n, :] + 1j * y[..., n:, :]).astype(dtype)
-    return x[:, 0] if vector else x
+    return x[..., 0] if vector else x
 
 
 def complex_solve(a, b):
@@ -392,5 +392,6 @@ def complex_inv(a):
 def complex_solve_triangular(r, b, *, lower):
     """The real block form is general, even when the complex input is triangular."""
     if jax.default_backend() == "mps" and _is_complex(r, b):
-        return _block_solve(r, b)
+        # The native op reads only one triangle; so must the block form.
+        return _block_solve(jnp.tril(r) if lower else jnp.triu(r), b)
     return jax.scipy.linalg.solve_triangular(r, b, lower=lower)

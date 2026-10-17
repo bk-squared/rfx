@@ -201,3 +201,31 @@ def test_block_preserves_complex_matrix_dtype():
         assert actual.dtype == a.dtype
         cond = np.linalg.cond(np.asarray(a).astype(np.complex128))
         assert _ratio(actual, expected, cond, np.finfo(np.float32).eps) <= 8.
+
+
+def test_block_solve_batched_matrix_vector_rhs_matches_native():
+    rng = np.random.default_rng(1829)
+    a = jnp.asarray(rng.normal(size=(5, 3, 3)) + 1j * rng.normal(size=(5, 3, 3)) + 4 * np.eye(3),
+                    dtype=jnp.complex64)
+    b = jnp.asarray(rng.normal(size=3) + 1j * rng.normal(size=3), dtype=jnp.complex64)
+    expected = jnp.linalg.solve(a, b)
+    actual = lb._block_solve(a, b)
+    assert actual.shape == expected.shape
+    np.testing.assert_allclose(actual, expected, rtol=0, atol=8 * 10 * 2**-23 * float(jnp.max(jnp.abs(expected))))
+
+
+@pytest.mark.parametrize("lower", [False, True])
+def test_mps_triangular_solve_reads_only_its_triangle(monkeypatch, lower):
+    # The native op ignores the other triangle; a full matrix must give the
+    # same answer and a zero gradient there.
+    rng = np.random.default_rng(1830)
+    full = jnp.asarray(rng.normal(size=(4, 4)) + 1j * rng.normal(size=(4, 4)) + 5 * np.eye(4),
+                       dtype=jnp.complex64)
+    b = jnp.asarray(rng.normal(size=(4, 2)) + 1j * rng.normal(size=(4, 2)), dtype=jnp.complex64)
+    expected = jsp_linalg.solve_triangular(full, b, lower=lower)
+    monkeypatch.setattr(jax, "default_backend", lambda: "mps")
+    actual = lb.complex_solve_triangular(full, b, lower=lower)
+    np.testing.assert_allclose(actual, expected, rtol=0, atol=8 * 10 * 2**-23 * float(jnp.max(jnp.abs(expected))))
+    grad = jax.grad(lambda r: jnp.sum(jnp.abs(lb.complex_solve_triangular(r, b, lower=lower)) ** 2))(full)
+    ignored = jnp.triu(grad, 1) if lower else jnp.tril(grad, -1)
+    assert float(jnp.max(jnp.abs(ignored))) == 0.0
