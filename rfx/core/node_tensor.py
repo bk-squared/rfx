@@ -34,5 +34,5 @@ def add_node_increment(updated, curls, nodes, eps, sigma, dt, *, periodic, bound
     """R-b: own-edge semi-implicit loss; R-e: lumped C leaves cross terms alone."""
     cross = off_diagonal(curls, nodes, periodic=periodic, boundary=boundary)
     return tuple(jnp.where(active, old + (dt / EPS_0) * value / (
-        1.0 + sig * dt / (2.0 * e * EPS_0)), old).astype(old.dtype)
+        1.0 + sig * (dt / (2.0 * EPS_0)) / e), old).astype(old.dtype)
         for old, value, e, sig, active in zip(updated, cross, eps, sigma, nodes.active))

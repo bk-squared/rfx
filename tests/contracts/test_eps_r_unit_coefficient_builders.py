@@ -109,7 +109,7 @@ _SUBGRID = ("the SBP-SAT coupling takes SI eps, but no traced permittivity "
 NOT_A_TRACED_EPS_COEFFICIENT = {
     ("rfx/core/node_tensor.py", "add_node_increment"):
         "the full-tensor cross increment (#1632) is written in eps_r units: EPS_0 groups with dt as a "
-        "Python float (dt/EPS_0) and the loss term divides the relative eps_r, so no SI permittivity "
+        "Python float (dt/EPS_0, dt/(2 EPS_0)) and the loss term divides only the relative eps_r, so no SI permittivity "
         "is divided and the reverse pass stays in range",
     ("rfx/model/pole_stability.py", "largest_growth"):
         "host-only admission predicate on concrete floats (tracker 1590): sigma*dt/(2 EPS_0) enters a "
