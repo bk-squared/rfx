@@ -29,10 +29,7 @@
       "S": [],
       "M": [],
       "A": [],
-      "G": [
-        "_ExecuteMixin._attach_run_settling_witness",
-        "_ExecuteMixin._warn_postrun_energy_witness"
-      ],
+      "G": [],
       "D1": [],
       "D2": []
     },

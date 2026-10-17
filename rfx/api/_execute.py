@@ -297,71 +297,8 @@ class _ExecuteMixin:
         fixed_num_periods: bool,
         until_decay: float | None,
     ) -> None:
-        """Warn about measured late energy or an exactly zero excitation."""
-        import warnings
-
-        time_series = getattr(result, "time_series", None)
-        series = None if time_series is None else np.asarray(time_series)
-        # Issue #470: exclude library-internal witness probes (the MSL
-        # settling witnesses) — their record is judged by the MSL driver's
-        # own settling_db witness, so #332/#336 here speak for USER probes
-        # only and the two differently-defined witnesses never double-fire
-        # on the same columns. With only internal probes present this
-        # behaves as if no probe series was recorded (the pre-#468 state).
-        # Time-series columns are in probe registration order (the same
-        # convention the MSL driver's witness slice relies on).
-        _internal = getattr(self, "_internal_probe_indices", None)
-        if series is not None and series.ndim == 2 and _internal:
-            _keep = [i for i in range(series.shape[1]) if i not in _internal]
-            series = series[:, _keep] if _keep else None
-        has_probe_series = series is not None and series.size > 0
-
-        if has_probe_series:
-            magnitude = np.abs(series)
-            peak = float(np.max(magnitude))
-            if peak == 0.0:
-                warnings.warn(
-                    "no field energy was recorded — the source may not have "
-                    "coupled (position off-grid, wrong component, or zero "
-                    "amplitude) (issue #336)",
-                    stacklevel=3,
-                )
-                return
-
-            pulsed = any(
-                isinstance(getattr(source, "waveform", None), GaussianPulse)
-                for source in (*self._ports, *self._msl_ports)
-            )
-            open_boundary = self._boundary_spec.absorber_type in ("cpml", "upml")
-            if open_boundary and pulsed and fixed_num_periods and until_decay is None:
-                tail_samples = max(1, math.ceil(magnitude.shape[0] * 0.05))
-                tail = float(np.max(magnitude[-tail_samples:]))
-                tail_db = -math.inf if tail == 0.0 else 20.0 * math.log10(tail / peak)
-                from rfx.api._sparams import settling_verdict as _verdict
-                if _verdict(tail_db) == "fail":
-                    warnings.warn(
-                        f"run ended at {tail_db:.1f} dB of peak — ring-down "
-                        "truncated; Harminv/DFT/NTFF quantities may carry "
-                        "transient error; consider until_decay or more periods "
-                        "(issue #332)",
-                        stacklevel=3,
-                    )
-            return
-
-        state = getattr(result, "state", None)
-        fields = [
-            np.asarray(field)
-            for name in ("ex", "ey", "ez", "hx", "hy", "hz")
-            if (field := getattr(state, name, None)) is not None
-        ]
-        if fields and all(field.size > 0 and float(np.max(np.abs(field))) == 0.0
-                          for field in fields):
-            warnings.warn(
-                "no field energy was recorded — the source may not have "
-                "coupled (position off-grid, wrong component, or zero "
-                "amplitude) (issue #336)",
-                stacklevel=3,
-            )
+        from rfx.measurement import warn_postrun_energy_witness
+        return warn_postrun_energy_witness(self, result, fixed_num_periods=fixed_num_periods, until_decay=until_decay)
 
     def _run_settling_witness(self, result):
         from rfx.api._settling import run_settling_witness
@@ -399,97 +336,8 @@ class _ExecuteMixin:
 
     def _attach_run_settling_witness(self, result, *, n_steps=None,
                                      num_periods=None, context="run"):
-        """Attach the value witness and warn for requested spectral outputs."""
-        forward_result = isinstance(result, ForwardResult)
-        if forward_result:
-            from rfx.core.jax_utils import is_tracer
-            from rfx.sparams._record_selection import s_read_records
-            result = result._replace(
-                settling_probe_info=self._settling_probe_selection(result),
-                settling_freq_max=self._freq_max,
-                settling_source_end_index=self._settling_source_end(
-                    result, records=self._ports if s_read_records(result) else None))
-            if is_tracer(result.time_series):
-                return result
-        elif not hasattr(result, "_replace") or not hasattr(result, "settling_witness"):
-            return result
-        from rfx.measurement import decay_stop_first
-        settling_db, witness = decay_stop_first(result, *self._run_settling_witness(result))
-        if not forward_result:
-            result = result._replace(settling_db=settling_db,
-                                     settling_witness=witness)
-        if getattr(self, "_internal_probe_indices", None):
-            return result
-
-        from rfx.api._sparams import (
-            _warn_if_ringdown_truncated,
-            settling_verdict,
-        )
-
-        has_s = (getattr(result, 's_params', None) is not None
-                  or bool(getattr(result, 'waveguide_sparams', None)))
-        if self._ntff is None and not self._dft_planes and not has_s:
-            return result
-
-        if has_s and witness['status'] in {'fail', 'undetermined'}:
-            worst = witness['worst_freq_hz']
-            bin_label = (f"worst bin {worst:.9g} Hz" if np.isfinite(worst)
-                         else "worst bin undetermined")
-            shares = np.asarray(witness["share_per_bin"])
-            peak = float(np.max(shares)) if shares.size else float("nan")
-            warning_witness = {**witness, "reason": witness["reason"] if "rfx.ringdown.IDENTIFY_MEMORY_BOUND_BYTES" in witness["reason"] else f"share {peak:.9g}"}
-            _warn_if_ringdown_truncated(
-                [settling_db], (), witnesses=[warning_witness],
-                n_steps=n_steps, num_periods=None if n_steps is not None else num_periods,
-                drive_labels=(f"S-channel {bin_label}, share {peak:.9g}",),
-                consequence="S-parameter truncation is suspect")
-            return result
-
-        operation = "forward() call" if context == "forward" else "run"
-        verdict = settling_verdict(settling_db)
-        if verdict == "fail":
-            _warn_if_ringdown_truncated(
-                np.array([float(settling_db)]),
-                (),
-                n_steps=None if n_steps is None else int(n_steps),
-                num_periods=None if n_steps is not None else num_periods,
-                drive_labels=(
-                    f"worst probe record {witness['worst_record']}",),
-                consequence=(
-                    f"every DFT-derived quantity of this {operation} — NTFF far "
-                    "fields, field-DFT planes, Harminv modes — integrates a "
-                    "cut transient"),
-                quoted_thing="any of them",
-            )
-        elif verdict == "absent":
-            import warnings
-            warnings.warn(
-                f"no ring-down settling witness on this {operation}: "
-                f"{witness['reason']}. This {operation} requests NTFF and/or "
-                "field-DFT output, so its truncation is unguarded (#885); "
-                "settling_db is None, which is not a pass.",
-                stacklevel=3,
-            )
-        elif witness.get("source_dominated"):
-            # A RUNTIME warning, not a preflight advisory: the emission
-            # contract (113 sites / 74 codes) is frozen, and this is a
-            # fact about the finished record, not about the declared
-            # inputs. Scoped exactly like the two above -- NTFF/field-DFT
-            # runs only, silent on library-internal driver runs -- so it
-            # cannot flood (#470). It fires only where the verdict PASSED
-            # on a dominated record, which is the #1090 vacuous pass; a
-            # dominated FAIL already warns above, in the safe direction.
-            import warnings
-            warnings.warn(
-                f"ring-down settling witness on this {operation} is "
-                f"source-dominated: {witness['qualifier']} Reported "
-                f"{witness['worst_record']} = {float(settling_db):+.1f} dB "
-                "is a source turn-off measurement, so this "
-                f"{operation}'s NTFF/field-DFT output is effectively "
-                "unguarded.",
-                stacklevel=3,
-            )
-        return result
+        from rfx.measurement import attach_run_settling_witness
+        return attach_run_settling_witness(self, result, n_steps=n_steps, num_periods=num_periods, context=context)
 
     def _warn_decay_param_sanity(self, *, until_decay, decay_min_steps,
                                  decay_max_steps) -> None:

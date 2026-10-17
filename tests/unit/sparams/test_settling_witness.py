@@ -115,6 +115,10 @@ _SPARAMS_SRC = pathlib.Path(
 _EXECUTE_SRC = pathlib.Path(
     __import__("rfx.api._execute", fromlist=["_execute"]).__file__
 )
+# Block B moved the run() lane's witness out of the mixin.
+_MEASUREMENT_SETTLING_SRC = pathlib.Path(
+    __import__("rfx.measurement.settling", fromlist=["settling"]).__file__
+)
 # #980 Phase 2 moves the ``compute_*`` bodies verbatim out of
 # ``rfx/api/_sparams.py`` into per-family modules under ``rfx/sparams/``, one
 # leg per PR. The scan follows the code by globbing that package rather than
@@ -235,7 +239,7 @@ def _functions_producing_settling_db():
 
     Three places do so: ``_sparams.py`` (the S-matrix lanes still in the
     mixin), since #885 ``_execute.py`` (the ``run()`` lane, which attaches the
-    witness to ``Result``), and since the #980 split every module under
+    witness to ``Result``; in ``rfx/measurement/settling.py`` since block B), and since the #980 split every module under
     ``rfx/sparams/`` (the lane bodies moved verbatim out of ``_sparams.py``,
     globbed so a later leg needs no edit here). ``_spec.py`` only declares the
     field. The scan was widened with each further module the moment it
@@ -243,7 +247,7 @@ def _functions_producing_settling_db():
     for exactly that case.
     """
     out = []
-    for src in (_SPARAMS_SRC, _EXECUTE_SRC, *_SPARAMS_PKG_SRCS):
+    for src in (_SPARAMS_SRC, _EXECUTE_SRC, _MEASUREMENT_SETTLING_SRC, *_SPARAMS_PKG_SRCS):
         out.extend(_producers_in(ast.parse(src.read_text(encoding="utf-8"))))
     return out
 
@@ -301,7 +305,7 @@ def test_the_known_lanes_are_all_covered():
         "compute_mixed_s_matrix",
         "compute_coaxial_two_port",
         "compute_coax_msl_transition",
-        "_attach_run_settling_witness",
+        "attach_run_settling_witness",
     } <= names, sorted(names)
 
 
