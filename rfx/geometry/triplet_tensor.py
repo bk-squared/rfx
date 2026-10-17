@@ -2,15 +2,33 @@
 
 Triplet signs are ordered +++, ++-, +-+, +--, -++, -+-, --+, ---.
 Fractions analytically clip edges and dual faces against one local plane.
-Concrete inputs accumulate in host float64; tracers use float32.
+Concrete inputs accumulate in host float64; tracers use the field dtype.
 """
 from itertools import product
 
+import jax
 import jax.numpy as jnp
 import numpy as np
 
 SIGNS = tuple(product((0, 1), repeat=3))  # 0 positive, 1 negative
 PAIRS = ((0, 1), (0, 2), (1, 2))
+MATRIX_BATCH_SIZE = 2**20
+
+
+def _linalg(xp, operation, matrix):
+    """Bound traced solver batches without changing individual matrix solves."""
+    solve = getattr(xp.linalg, operation)
+    if xp is np:
+        return solve(matrix)
+    flat = matrix.reshape((-1, 3, 3))
+    pieces = [solve(flat[start:start + MATRIX_BATCH_SIZE])
+              for start in range(0, flat.shape[0], MATRIX_BATCH_SIZE)]
+    if operation == "eigh":
+        w, v = zip(*pieces)
+        return (jnp.concatenate(w).reshape(matrix.shape[:-1]),
+                jnp.concatenate(v).reshape(matrix.shape))
+    tail = (3,) if operation == "eigvalsh" else (3, 3)
+    return jnp.concatenate(pieces).reshape(matrix.shape[:-2] + tail)
 
 
 def fractions(xp, grid, shapes, nodes, *, signed_distance=None, normal=None):
@@ -23,7 +41,7 @@ def fractions(xp, grid, shapes, nodes, *, signed_distance=None, normal=None):
         from rfx.geometry.node_tensor import _union
 
         _, normal, signed_distance = _union(xp, grid, shapes, nodes, distance=True)
-    dtype = np.float64 if xp is np else jnp.float32
+    dtype = np.float64 if xp is np else getattr(signed_distance, 'dtype', jnp.float32)
     s, *ns = xp.broadcast_arrays(xp.asarray(signed_distance, dtype=dtype),
                                  *(xp.asarray(n, dtype=dtype) for n in normal))
     corners = xp.asarray([[-.5, -.5], [.5, -.5], [.5, .5], [-.5, .5]], dtype=dtype)
@@ -74,13 +92,49 @@ def accurate_tensor(xp, normal, lengths, areas, eps1, eps2):
     """Eqs. 15--19, with vector/matrix dimensions last; also return singular mask."""
     eye = xp.eye(3, dtype=lengths.dtype)
     nn = normal[..., :, None] * normal[..., None, :]
-    e1, e2 = xp.asarray(eps1)[..., None, None], xp.asarray(eps2)[..., None, None]
+    e1, e2 = xp.asarray(eps1, dtype=lengths.dtype)[..., None, None], xp.asarray(eps2, dtype=lengths.dtype)[..., None, None]
     g1, g2 = eye + (1 / e1 - 1) * nn, eye + (1 / e2 - 1) * nn
     gamma = lengths[..., :, None] * g1 + (1 - lengths[..., :, None]) * g2
     pi = areas[..., :, None] * e1 * g1 + (1 - areas[..., :, None]) * e2 * g2
     singular = xp.linalg.det(pi) == 0
     safe_pi = xp.where(singular[..., None, None], eye, pi)
-    return gamma @ xp.linalg.inv(safe_pi), singular
+    return gamma @ _linalg(xp, "inv", safe_pi), singular
+
+
+def _clip_primal(xp, tensor, lo, hi):
+    w, v = _linalg(xp, "eigh", tensor)
+    w = xp.clip(w, lo[..., None], hi[..., None])
+    return xp.sum(v[..., :, None, :] * v[..., None, :, :]
+                  * w[..., None, None, :], axis=-1)
+
+
+@jax.custom_jvp
+def _spectral_clip(tensor, lo, hi):
+    return _clip_primal(jnp, tensor, lo, hi)
+
+
+@_spectral_clip.defjvp
+def _spectral_clip_jvp(primals, tangents):
+    tensor, lo, hi = primals
+    dt, dlo, dhi = tangents
+    result = _spectral_clip(tensor, lo, hi)
+    w, v = _linalg(jnp, "eigh", tensor)
+    f = jnp.clip(w, lo[..., None], hi[..., None])
+    inside = (w >= lo[..., None]) & (w <= hi[..., None])
+    gap = w[..., :, None] - w[..., None, :]
+    # One relative machine epsilon resolves ties at the eigensolve precision.
+    tol = jnp.finfo(w.dtype).eps * jnp.max(jnp.abs(w), axis=-1)[..., None, None]
+    separated = jnp.abs(gap) > tol
+    divided = jnp.where(separated, f[..., :, None] - f[..., None, :], 0) / jnp.where(separated, gap, 1)
+    L = jnp.where(separated, divided, inside[..., :, None].astype(w.dtype))
+    vt = jnp.swapaxes(v, -1, -2)
+    tangent = v @ (L * (vt @ dt @ v)) @ vt
+    bound_tangent = jnp.where(w < lo[..., None], dlo[..., None],
+                             jnp.where(w > hi[..., None], dhi[..., None], 0))
+    tangent = tangent + jnp.sum(v[..., :, None, :] * v[..., None, :, :]
+                               * bound_tangent[..., None, None, :], axis=-1)
+    return result, tangent
+
 
 
 def guarded_tensor(xp, normal, lengths, areas, eps1, eps2, fallback):
@@ -95,21 +149,19 @@ def guarded_tensor(xp, normal, lengths, areas, eps1, eps2, fallback):
     for fraction, eps in ((0, eps2), (1, eps1)):
         bulk = xp.all(lengths == fraction, axis=-1) & xp.all(areas == fraction, axis=-1)
         tensor = xp.where(bulk[..., None, None],
-                          xp.eye(3) / xp.asarray(eps)[..., None, None], tensor)
+                          xp.eye(3, dtype=tensor.dtype) / xp.asarray(eps, dtype=tensor.dtype)[..., None, None], tensor)
         bulk_any = bulk_any | bulk
     guard = singular & ~bulk_any
-    lo = 1 / xp.maximum(eps1, eps2)
-    hi = 1 / xp.minimum(eps1, eps2)
-    w = xp.linalg.eigvalsh(tensor)
+    lo = xp.asarray(1 / xp.maximum(eps1, eps2), dtype=tensor.dtype)
+    hi = xp.asarray(1 / xp.minimum(eps1, eps2), dtype=tensor.dtype)
+    w = _linalg(xp, "eigvalsh", tensor)
     clip = ((w[..., 0] < lo) | (w[..., -1] > hi)) & ~bulk_any & ~singular
     # Double-where: no repeated bulk/in-range eigenvalues enter the eigh
     # derivative. The mask's eigvalsh is used only for boolean selection.
     dummy = xp.diag(xp.asarray([1., 2., 3.], dtype=tensor.dtype))
-    w, v = xp.linalg.eigh(xp.where(clip[..., None, None], tensor, dummy))
-    w = xp.clip(w, lo[..., None], hi[..., None])
-    # Sum weighted outer products to preserve exact entrywise symmetry.
-    clipped = xp.sum(v[..., :, None, :] * v[..., None, :, :]
-                     * w[..., None, None, :], axis=-1)
+    safe_tensor = xp.where(clip[..., None, None], tensor, dummy)
+    clipped = (_clip_primal(xp, safe_tensor, lo, hi) if xp is np else
+               _spectral_clip(safe_tensor, lo, hi))
     tensor = xp.where(clip[..., None, None], clipped, tensor)
     tensor = xp.where(guard[..., None, None], fallback, tensor)
     return tensor, guard

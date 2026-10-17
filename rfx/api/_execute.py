@@ -1084,9 +1084,9 @@ class _ExecuteMixin:
         Parameters
         ----------
         subpixel_smoothing : bool or str
-            Kottke dielectric interface smoothing; "kottke_pec" also forms
-            the unified PEC inverse tensor on a uniform single-device mesh.
-            False (default) keeps staircase interfaces.
+            False: staircase; True: diagonal, first order on curved interfaces (worst at eps ~30+).
+            "full_tensor": full anisotropic averaging, uniform single-device; synthetic eps-4 sphere extinction measured second order over three meshes.
+            Farjadpour 2006; Oskooi 2009; Werner-Bauer-Cary 2013 node form. "kottke_pec": unified PEC inverse tensor.
         gradient : {"autodiff", "adjoint"}
             Opt-in settled-spectrum reciprocity design eps adjoint.
             Design sigma overrides are refused (#1424): on lossless design cells the conductivity gradient has no settled value in a finite record
@@ -1533,7 +1533,7 @@ class _ExecuteMixin:
 
         # ---- W6.3 unified lane dispatch: one place decides + rejects ----
         plan = self._dispatch_plan(
-            mode="forward",
+            mode="forward", subpixel_smoothing=subpixel_smoothing,
             diagnostics=_solve_assembly.diagnostics,
             n_steps=n_steps,
             num_periods=num_periods,
@@ -1970,9 +1970,9 @@ class _ExecuteMixin:
         snapshot : SnapshotSpec or None
             Field snapshot schedule and selection; None disables snapshots.
         subpixel_smoothing : bool or str
-            Material-interface smoothing rule; False disables smoothing.
-            True enables dielectric smoothing; "kottke_pec" selects the
-            unified PEC occupancy rule on supported lanes.
+            False: staircase; True: diagonal, first order on curved interfaces (worst at eps ~30+).
+            "full_tensor": full anisotropic averaging, uniform single-device; synthetic eps-4 sphere extinction measured second order over three meshes.
+            Farjadpour 2006; Oskooi 2009; Werner-Bauer-Cary 2013 node form. "kottke_pec": unified PEC occupancy rule.
         skip_preflight : bool
             Skip advisory preflight checks. Runtime admission guards still apply.
         decay_monitor_component : str
@@ -2150,7 +2150,7 @@ class _ExecuteMixin:
         # NU/distributed lanes (the uniform/adi/subgridded lanes resolve it
         # below from the grid they build and reuse).
         plan = self._dispatch_plan(
-            mode="run",
+            mode="run", subpixel_smoothing=subpixel_smoothing,
             diagnostics=_diagnostics,
             n_steps=n_steps,
             num_periods=num_periods,

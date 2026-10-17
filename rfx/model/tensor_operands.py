@@ -107,10 +107,17 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
         )
         # #1043 stage B: same pad continuation as the Stage-2 site above.
         shape_eps_pairs, _unextendable = smoothed_shape_pairs(sim, grid)
-        warn_curved_high_contrast(shape_eps_pairs, sim=sim)
+        if subpixel_smoothing != "full_tensor":
+            warn_curved_high_contrast(shape_eps_pairs, sim=sim)
         if shape_eps_pairs:
-            from rfx.geometry.node_tensor import compute_node_tensor_eps
-            aniso_eps = compute_node_tensor_eps(grid, shape_eps_pairs, background_eps=1.0)
+            if subpixel_smoothing == "full_tensor":
+                from rfx.geometry.node_tensor import compute_node_tensor_eps
+                aniso_eps = compute_node_tensor_eps(
+                    grid, shape_eps_pairs, background_eps=1.0,
+                    field_dtype=sim._resolve_field_dtype())
+            else:
+                from rfx.geometry.smoothing import compute_smoothed_eps
+                aniso_eps = compute_smoothed_eps(grid, shape_eps_pairs, background_eps=1.0)
 
     # Conformal PEC (Stage 1): compute weights and produce anisotropic
     # eps. Skipped when Stage 2 unified path is active (use_kottke_pec)

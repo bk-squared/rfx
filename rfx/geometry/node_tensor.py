@@ -69,7 +69,7 @@ def _next(xp, a, axis, periodic):
     return xp.take(a, xp.minimum(xp.arange(a.shape[axis]) + 1, a.shape[axis] - 1), axis)
 
 
-def compute_node_tensor_eps(grid, shapes, background_eps=1.0):
+def compute_node_tensor_eps(grid, shapes, background_eps=1.0, *, field_dtype=None):
     """Host-float64 concrete geometry, or the smoother's traced JAX path (#833).
 
     Same-material groups use the existing union, nearest analytic normal and
@@ -87,7 +87,8 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0):
                             *(p for s, _ in shapes for p in smooth._shape_parameters(s)),
                             *masks.values())
     xp = np if host else jnp
-    acc_dtype = np.float64 if host else jnp.float32
+    field_dtype = jnp.float32 if field_dtype is None else field_dtype
+    acc_dtype = np.float64 if host else field_dtype
     midpoint = smooth._smoothed_eps_uniform(xp, grid, coords, shapes, background_eps, masks)
     samples = smooth._uniform_sample_coords(xp, coords, grid.dx)
     x, y, z = (xp.asarray(a, dtype=acc_dtype) for a in coords[:3])
@@ -155,9 +156,10 @@ def compute_node_tensor_eps(grid, shapes, background_eps=1.0):
     diagonal = tuple(xp.where(edge_bulk[a] | pad, midpoint[a],
                              1.0 / (ends[a][0] + _next(xp, ends[a][1], a, periodic)))
                      for a in range(3))
-    cast = dict(host=host, promoted=any(smooth._has_sdf(s) for s, _ in shapes))
-    return SmoothedEps(smooth._to_jax(diagonal, **cast), NodeTensor(
-        smooth._to_jax(xi, **cast), tuple(jnp.asarray(b) for b in edge_bulk),
+    def cast_arrays(arrays):
+        return tuple(jnp.asarray(a, dtype=field_dtype) for a in arrays)
+    return SmoothedEps(cast_arrays(diagonal), NodeTensor(
+        cast_arrays(xi), tuple(jnp.asarray(b) for b in edge_bulk),
         tuple(jnp.asarray(~(b | pad)) for b in edge_bulk),
-        smooth._to_jax((triplets,), **cast)[0], smooth._to_jax(cross, **cast),
+        cast_arrays((triplets,))[0], cast_arrays(cross),
         jnp.asarray(guard_count)))

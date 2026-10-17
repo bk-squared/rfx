@@ -8,6 +8,12 @@ def off_diagonal(curls, nodes, *, periodic, boundary=None):
     """Apply Eq. 10 pair coefficients at each of an edge's two endpoints."""
     if boundary is not None:
         periodic = boundary.periodic
+        if boundary.pec_faces:
+            from rfx.boundaries.pec import wall_edge_masks
+
+            masks = wall_edge_masks(curls[0].shape, boundary.pec_faces)
+            curls = tuple(jnp.where(mask, 0.0, curl)
+                          for curl, mask in zip(curls, masks))
     incident = tuple((c, h_neighbor(c, a, periodic=periodic, boundary=boundary))
                      for a, c in enumerate(curls))
     ends = [[jnp.zeros_like(c), jnp.zeros_like(c)] for c in curls]

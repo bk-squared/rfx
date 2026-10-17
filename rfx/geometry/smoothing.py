@@ -874,7 +874,8 @@ def warn_curved_high_contrast(pairs, background_eps=1.0, *, contrast=10.0, sim=N
                 + "; 10x or more from vacuum or another declared dielectric): the smoothed "
                 "permittivity keeps only its diagonal, so a resonance converges first order and "
                 "can be further off than with subpixel_smoothing=False. Check a mesh series "
-                "against the unsmoothed run; see docs/guides/known_limitations.md (rfx #1632).",
+                "against the unsmoothed run, or use subpixel_smoothing='full_tensor' on a uniform "
+                "single-device mesh; see docs/guides/known_limitations.md (rfx #1632).",
                 CurvedSmoothingWarning, stacklevel=3)
 
 
