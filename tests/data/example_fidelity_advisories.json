@@ -625,6 +625,14 @@
    "ref": "validation/tmtt_paper/lumped_port_gradient_check.py:1-60 | scripts/diagnostics/lumped_wire_chain_battery_measure.py:559-592",
    "rows": 1,
    "variant": "validation/tmtt_paper/lumped_port_gradient_check.py::build::default"
+  },
+  {
+   "code": "sheet_cavity_spacing",
+   "disposition": "intended",
+   "reason": "The short-load variant deliberately uses four adjoining half-millimetre PEC Box columns (build_fix_a's load == 'short' branch). Their floating-point corner arithmetic leaves four positive drawn gaps of 8.674e-19 m that solve to zero on shared nodes. The strict spacing rule judges positive gaps even on the same node and therefore emits one aggregated error; this is a numerical drawing effect, not evidence of a physical cavity. The existing assembly_refusal already prevents this shorted-port variant from solving. Its strict snapshot now records both refusals without changing the fixture or relaxing the spacing rule.",
+   "ref": "validation/research/issue764_wireport_norm_falsifiers.py:106-111",
+   "rows": 1,
+   "variant": "validation/research/issue764_wireport_norm_falsifiers.py::build_fix_a::short"
   }
  ]
 }

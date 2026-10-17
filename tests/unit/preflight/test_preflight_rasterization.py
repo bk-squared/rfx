@@ -84,7 +84,7 @@ UNAVAILABLE_CODE = "campaign_statics_unavailable"
 # Fixtures (builders, so each test gets a fresh Simulation)
 # ---------------------------------------------------------------------------
 
-def _congruence_sim(off_lattice_mirror: bool, dz_profile=None):
+def _congruence_sim(off_lattice_mirror: bool, dz_profile=None, *, snap="strict"):
     """Mirror pair of PEC VOLUMES, 3.5 x 3.0 x 1.0 mm, dx = 1 mm.
 
     ``off_lattice_mirror=True`` (the incident class): the pair is mirrored
@@ -106,7 +106,7 @@ def _congruence_sim(off_lattice_mirror: bool, dz_profile=None):
     "sheet" version of this fixture cannot be built as a volume any more.
     """
     sim = Simulation(domain=(12 * MM, 6 * MM, 6 * MM), dx=1 * MM,
-                     freq_max=10e9, boundary="cpml", dz_profile=dz_profile)
+                     freq_max=10e9, boundary="cpml", dz_profile=dz_profile, snap=snap)
     if off_lattice_mirror:
         sim.add(Box((1.0 * MM, 1.0 * MM, 2.0 * MM),
                     (4.5 * MM, 4.0 * MM, 3.0 * MM)), material="pec")
@@ -371,6 +371,8 @@ class TestCongruenceParity:
         coverage clause and the falsifier.
         """
         rep = _congruence_sim(True).preflight()
+        # Strict now also refuses this off-node Box-Box cavity.
+        assert rep.by_code("sheet_cavity_spacing")[0].severity == "error"
         hits = rep.by_code(CONGRUENCE_CODE)
         assert len(hits) == 1  # aggregated: one message per class per run
         msg = str(hits[0])
@@ -388,6 +390,8 @@ class TestCongruenceParity:
         Observed: counts equal, no advisory.
         """
         rep = _congruence_sim(False).preflight()
+        # Equal edge counts do not make the off-node cavity spacing exact.
+        assert rep.by_code("sheet_cavity_spacing")[0].severity == "error"
         assert rep.by_code(CONGRUENCE_CODE) == []
 
     def test_fires_on_nonuniform_lane_too(self):
@@ -400,6 +404,8 @@ class TestCongruenceParity:
         """
         dz = np.array([1.2, 0.8, 1.0, 1.0, 0.8, 1.2]) * MM
         rep = _congruence_sim(True, dz_profile=dz).preflight()
+        # Strict now also refuses this off-node Box-Box cavity.
+        assert rep.by_code("sheet_cavity_spacing")[0].severity == "error"
         hits = rep.by_code(CONGRUENCE_CODE)
         assert len(hits) == 1
         assert "nonuniform lane" in str(hits[0])
@@ -414,6 +420,9 @@ class TestCongruenceParity:
         - tightened (tol 1 -> -1): silent fixture (spread 0) emitted 1
           advisory -> the comparison is live in both directions.
         """
+        # Both parity controls retain their independent strict spacing refusal.
+        for off in (True, False):
+            assert _congruence_sim(off).preflight().by_code("sheet_cavity_spacing")[0].severity == "error"
         monkeypatch.setattr(_pec, "_CONGRUENCE_SPREAD_TOL_EDGES", 100)
         assert _congruence_sim(True).preflight().by_code(
             CONGRUENCE_CODE) == []
@@ -433,6 +442,8 @@ class TestCongruenceParity:
                 ((x0 + 3.5) * MM, 4.0 * MM, 4.6 * MM),
                 ((x0 + 1.0) * MM, 2.0 * MM, 4.2 * MM),
                 ((x0 + 2.0) * MM, 3.0 * MM, 4.6 * MM)), material="pec")
+        # Unbounded entries do not exempt the two bounded Boxes from strict.
+        assert sim.preflight().by_code("sheet_cavity_spacing")[0].severity == "error"
         hits = sim.preflight().by_code(CONGRUENCE_CODE)
         assert len(hits) == 1
         msg = str(hits[0])
@@ -609,7 +620,10 @@ class TestSheetCavityThickness:
         2 mm against a declared 2.3 mm, -13.0% on both measures, and the
         message attributes it to the printed snap (-300 um) — the
         difference IS the snap, nothing else."""
-        hits = _stack_sim(5.3).preflight().by_code(CAVITY_CODE)
+        # This row measures the electrical advisory; accept the off-node spacing.
+        sim = _stack_sim(5.3)
+        sim._snap = "declared"
+        hits = sim.preflight().by_code(CAVITY_CODE)
         assert len(hits) == 1
         msg = str(hits[0])
         assert "-13.0%" in msg
@@ -879,7 +893,8 @@ class TestWiring:
     def test_advisory_findings_do_not_block(self):
         """The campaign checks and the one-cell/slot findings are
         warning-severity and do not block declared sheet models."""
-        rep = _congruence_sim(True).preflight()
+        # Warning-path test: declared accepts this off-node Box-Box spacing.
+        rep = _congruence_sim(True, snap="declared").preflight()
         hits = rep.by_code(CONGRUENCE_CODE)
         assert hits and all(h.severity == "warning" for h in hits)
         assert rep.ok

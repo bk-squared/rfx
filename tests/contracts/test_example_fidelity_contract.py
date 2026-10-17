@@ -382,6 +382,10 @@ def test_example_matches_snapshot(
     # way, only its Python container types are normalized for comparison.
     import json
     actual = json.loads(json.dumps(lib.digest_variant(sim)))
+    if key == "validation/research/issue764_wireport_norm_falsifiers.py::build_fix_a::short":
+        # Strict retains the positive roundoff gaps between the short-load Boxes.
+        spacing, = [r for r in actual["preflight"] if r["code"] == "sheet_cavity_spacing"]
+        assert spacing["severity"] == "error"
     expected = snapshot[key]
     assert_structured_close(without_prose(actual), without_prose(expected), key)
 
