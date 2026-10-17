@@ -21,6 +21,9 @@ from rfx.sources.tfsf_2d import (
 
 _DOMAIN = (0.6, 0.12, 0.006)
 _DX = 0.002
+# The Bloch pulse peaks at 5 tau since #1831, 2 tau later than when the oblique step
+# counts below were set: 223 steps = 2 tau at f0 5 GHz, bw 0.15, dt 3.81 ps.
+_BLOCH_DELAY_STEPS = 223
 
 
 def _build(angle):
@@ -42,7 +45,7 @@ def test_run_normal_incidence_stays_real():
 def test_run_oblique_returns_real_physical_field():
     """An oblique run() returns a real (reconstructed) physical field, not the
     complex envelope — the run drove the complex path but the user sees fields."""
-    res = _build(30.0).run(n_steps=150)
+    res = _build(30.0).run(n_steps=150 + _BLOCH_DELAY_STEPS)
     assert res.state.ez.dtype == jnp.float32
     assert float(jnp.max(jnp.abs(res.state.ez))) > 1e-4
 
@@ -69,7 +72,7 @@ def test_run_oblique_matches_handrolled_and_low_leakage():
     """run() oblique reproduces the VALIDATED hand-rolled complex loop to ~1e-6
     (same kernel/injection/order) AND yields <1% TFSF leakage — proof the high-
     level API drives the identical #404 physics, not a re-derivation."""
-    angle, ns = 30.0, 250
+    angle, ns = 30.0, 250 + _BLOCH_DELAY_STEPS
     res = _build(angle).run(n_steps=ns)
     assert res.state.ez.dtype == jnp.float32
     ez_run = np.asarray(res.state.ez)

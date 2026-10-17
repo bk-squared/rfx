@@ -36,7 +36,9 @@ def _build(theta):
     xprobes = np.arange(PLATEAU[0], PLATEAU[1], DX)
     n_slab = np.sqrt(EPS_R)
     t_back = (2 * (X_IFACE - PLATEAU[1]) / C0) + (2 * (X_SLAB_END - X_IFACE) / (C0 / n_slab))
-    ns = min(int(0.9 * t_back / grid.dt), 1700)
+    # + 223 steps = 2 tau (f0 5 GHz, bw 0.15, dt 3.81 ps): the Bloch pulse, and its back-face echo,
+    # arrive 2 tau later since #1831, when the pulse began to peak at 5 tau.
+    ns = min(int(0.9 * t_back / grid.dt), 1700) + 223
     sim = Simulation(freq_max=10e9, domain=DOMAIN, dx=DX, boundary="cpml", cpml_layers=10, mode="3d")
     sim.add_tfsf_source(f0=F0, bandwidth=BW, polarization="ez", direction="+x",
                         angle_deg=theta, waveform="modulated_gaussian")

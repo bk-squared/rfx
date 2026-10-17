@@ -18,8 +18,10 @@ from rfx.core.yee import init_state, init_materials, update_h, update_e
 # the wrong single-f0 k_y and breaks TFSF cancellation) which in turn needs a long
 # run (~1700 steps) for the pulse to fully develop — hence @pytest.mark.slow. See
 # docs/research_notes/2026-07-21_issue404_phaseB_session_findings.md.
+# The Bloch pulse peaks at 5 tau since #1831, 2 tau later than when 1700 was set; the
+# 509 steps (2 tau at f0 5 GHz, bw 0.15, dt 1.667 ps) keep the snapshot 3.7 tau after the peak.
 _OBLIQUE_BW = 0.15
-_OBLIQUE_STEPS = 1700
+_OBLIQUE_STEPS = 1700 + 509
 
 
 # ---------------------------------------------------------------------------

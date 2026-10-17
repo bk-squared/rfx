@@ -92,7 +92,8 @@ FAST_MEASURED = {
     # against 2.98e-07), it does not follow the absorber depth from 200 down to 50 cells
     # (3.3e-07 .. 3.9e-07), and it moves with the rounding path -- 3.7855e-07 as pinned,
     # 3.3575e-07 on Apple silicon at the pinning commit dce96837e and at main alike (the
-    # code did not drift), 3.71e-07 with x64 enabled, 4.12e-07 with a longer record. A real
+    # code did not drift), 3.71e-07 with x64 enabled, 4.12e-07 with a longer record, 4.68e-07
+    # with Bloch at t0 = 5 tau (#1831; 100 and 50 cells then read 2.6e-07). A real
     # reflection shows: 30 cells read 1.5e-06, R_asymptotic 1e-6 reads 6.6e-07. So this
     # row ("floor") is held to its bar only and is not reproduced to 5 %.
     0.0:  {"max": 3.7855e-07, "quantum": 1e7, "floor": True},
