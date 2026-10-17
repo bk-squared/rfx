@@ -1,6 +1,6 @@
 ---
 title: "A 3-D-printable lens, designed by gradient"
-description: "Gradient descent through the FDTD solve and the far-field transform grows a graded-index flat lens of printable permittivity (1 ≤ εr ≤ 2.7) that raises a small feed's boresight directivity from 7.5 to 19.0 dBi at 10 GHz, 1.8 dB above the textbook GRIN lens of the same size."
+description: "Gradient descent through the FDTD solve and the far-field transform shapes a graded-index flat lens of printable permittivity (1 ≤ εr ≤ 2.7) from a uniform block, raising a small feed's boresight directivity from 7.5 to 19.0 dBi at 10 GHz."
 sidebar:
   order: 7
 ---
@@ -13,7 +13,8 @@ is 90 × 90 × 30 mm, 45 mm above the dipole, and its permittivity is limited to
 PLA at variable infill can print, 1 ≤ εr ≤ 2.7, in 3 mm pixels: 9,000 cells, 2,250 free
 variables after the feed's two mirror symmetries. Adam raises the boresight directivity
 averaged over 9.5, 10 and 10.5 GHz, with the gradient taken through the FDTD solve
-and the near-to-far-field transform.
+and the near-to-far-field transform. The case shows that this gradient is enough to
+shape a printable lens from a uniform block, pixel by pixel.
 
 <figure data-rfx="media">
   <video controls playsInline preload="metadata" poster="https://remilab.cnu.ac.kr/share/ca3dd98f4722/grin-lens/grin_lens_film_poster.png" aria-label="A narrated film of the design: how rfx computes a gradient through the simulation, the lens cells changing over 150 iterations with their gradient colour and the radiation lobe, and the same block optimised again for a fan beam">
@@ -26,7 +27,6 @@ and the near-to-far-field transform.
 <div data-rfx="tiles">
   <div><strong>19.0 dBi</strong> <span>boresight directivity at 10 GHz (feed alone 7.5 dBi)</span></div>
   <div><strong>+11 dB</strong> <span>over the bare feed, 9.5–10.5 GHz</span></div>
-  <div><strong>+1.8 dB</strong> <span>over the textbook GRIN lens of the same size and material, 10 GHz</span></div>
 </div>
 
 ## What happened
@@ -44,10 +44,10 @@ ring structure in the layer nearest the feed.
 
 Solved again without the optimiser on 1.5, 1.0 and 0.75 mm meshes, the lens gives
 18.5 / 19.0 / 18.8 dBi at 9.5 / 10 / 10.5 GHz on the finest mesh. The feed alone
-gives 7.5 / 7.5 / 7.4 dBi. The textbook flat GRIN lens of the same size and
-permittivity range (path-length equalization from the feed point) gives
-16.4 / 17.2 / 17.0 dBi, and the best uniform slab 16.1 / 15.0 / 13.7 dBi. The
-uniform-aperture bound 4πA/λ² is 20.1 / 20.5 / 21.0 dBi.
+gives 7.5 / 7.5 / 7.4 dBi. The uniform-aperture bound 4πA/λ² for the lens's
+90 × 90 mm face is 20.1 / 20.5 / 21.0 dBi. The cuts below also show, for context, a
+uniform slab and a graded-index lens laid out by path-length equalization from the
+feed point.
 
 <figure data-rfx="media">
   <img src="https://remilab.cnu.ac.kr/share/ca3dd98f4722/grin-lens/lens_cuts.png" loading="lazy" alt="E-plane and H-plane directivity at 10 GHz of the feed alone, the textbook GRIN lens, a uniform slab and the designed lens, with the aperture bound" />

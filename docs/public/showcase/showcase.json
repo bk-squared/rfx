@@ -184,7 +184,7 @@
     {
       "id": "grin-lens",
       "title": "A 3-D-printable lens, designed by gradient",
-      "question": "Gradient descent through the FDTD solve and the far-field transform grows a graded-index flat lens of printable permittivity (1 ≤ εr ≤ 2.7) that raises a small feed's boresight directivity from 7.5 to 19.0 dBi at 10 GHz, 1.8 dB above the textbook GRIN lens of the same size.",
+      "question": "Gradient descent through the FDTD solve and the far-field transform shapes a graded-index flat lens of printable permittivity (1 ≤ εr ≤ 2.7) from a uniform block, raising a small feed's boresight directivity from 7.5 to 19.0 dBi at 10 GHz.",
       "route": "/rfx/showcase/grin-lens/",
       "markdown": "/rfx/markdown/showcase/grin-lens.md",
       "rfx_commits": ["4705f69e90602e52168eb9d37079a1a0ab3f919b", "9ed83eb804874feec1f05f0cee75992c05da2182"],
@@ -234,8 +234,7 @@
       "headlines": [
         {"quantity": "reported boresight directivity at 10 GHz, 0.75 mm mesh", "printed": "19.0", "value": 19.00765037536621, "unit": "dBi", "routes": ["/rfx/showcase/grin-lens/", "/rfx/showcase/"], "from": "grin-lens/mesh_trend.json reported.boresight_dbi[-1][1]"},
         {"quantity": "feed boresight directivity at 10 GHz, 0.75 mm mesh", "printed": "7.5", "value": 7.4537224769592285, "unit": "dBi", "routes": ["/rfx/showcase/grin-lens/"], "from": "grin-lens/mesh_trend.json no_lens.boresight_dbi[-1][1]"},
-        {"quantity": "minimum designed minus feed directivity, floored", "printed": "+11", "value": 11, "unit": "dB", "routes": ["/rfx/showcase/grin-lens/"], "from": "grin-lens/mesh_trend.json floor(min(reported.boresight_dbi[-1] - no_lens.boresight_dbi[-1]))"},
-        {"quantity": "designed minus textbook GRIN directivity at 10 GHz", "printed": "+1.8", "value": 1.775552749633789, "unit": "dB", "routes": ["/rfx/showcase/grin-lens/"], "from": "grin-lens/mesh_trend.json reported.boresight_dbi[-1][1] - grin.boresight_dbi[-1][1]"}
+        {"quantity": "minimum designed minus feed directivity, floored", "printed": "+11", "value": 11, "unit": "dB", "routes": ["/rfx/showcase/grin-lens/"], "from": "grin-lens/mesh_trend.json floor(min(reported.boresight_dbi[-1] - no_lens.boresight_dbi[-1]))"}
       ]
     },
     {

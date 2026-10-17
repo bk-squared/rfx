@@ -228,7 +228,6 @@ def headlines(share: Share) -> dict[str, list[dict]]:
     lens = share.json("grin-lens", "mesh_trend.json")
     designed = lens["reported"]["boresight_dbi"][-1]
     feed = lens["no_lens"]["boresight_dbi"][-1]
-    grin = lens["grin"]["boresight_dbi"][-1]
     route = "/rfx/showcase/grin-lens/"
     src = "grin-lens/mesh_trend.json "
     out["grin-lens"] = [
@@ -239,9 +238,6 @@ def headlines(share: Share) -> dict[str, list[dict]]:
         h("minimum designed minus feed directivity, floored", math.floor(min(
             d - f for d, f in zip(designed, feed))), "dB", lambda v: f"+{v:d}", (route,),
           src + "floor(min(reported.boresight_dbi[-1] - no_lens.boresight_dbi[-1]))"),
-        h("designed minus textbook GRIN directivity at 10 GHz", designed[1] - grin[1],
-          "dB", lambda v: f"+{v:.1f}", (route,),
-          src + "reported.boresight_dbi[-1][1] - grin.boresight_dbi[-1][1]"),
     ]
     trend = share.json("waveguide-filter", "mesh_trend.json")
     route = "/rfx/showcase/waveguide-filter/"
