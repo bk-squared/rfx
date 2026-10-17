@@ -124,8 +124,8 @@ def test_graded_run_empty_probes_and_resolved_steps(two_devices):
     assert int(result.state.step) == expected
 
 
+# Ports are carried since #1402 step 2 (tests/unit/runners/test_distributed_nu_ports.py).
 @pytest.mark.parametrize("feature, message", [
-    ("port", "Lumped / wire ports"),
     ("ntff", "NTFF box"),
     ("cpml_kappa", "cpml_kappa_max"),
     ("s_params", "compute_s_params"),
@@ -133,10 +133,7 @@ def test_graded_run_empty_probes_and_resolved_steps(two_devices):
 def test_graded_run_refuses_unimplemented_inputs(feature, message, two_devices):
     sim = model("cpml")
     kwargs = {}
-    if feature == "port":
-        sim.add_port((6e-3, 3e-3, 3e-3), "ez", impedance=50.)
-        kwargs["compute_s_params"] = False
-    elif feature == "ntff":
+    if feature == "ntff":
         sim.add_ntff_box((3e-3, 2e-3, 2e-3), (12e-3, 6e-3, 6e-3), freqs=[5e9])
     elif feature == "cpml_kappa":
         sim._cpml_kappa_max = 2.

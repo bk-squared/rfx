@@ -1147,7 +1147,8 @@ FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
     # --- refuse_f0_sheets(...) call sites ---
     ("rfx/runners/uniform_forward.py", "_forward_from_materials", "ADI forward"):
         (__name__, "test_fence_adi_forward"),
-    ("rfx/api/_execute.py", "forward", "distributed non-uniform forward()"):
+    ("rfx/runners/_distributed_nu_execute.py", "dispatch_forward",
+     "distributed non-uniform forward()"):
         (__name__, "test_fence_distributed_nonuniform_forward"),
     ("rfx/runners/_distributed_entry.py", "execute_distributed",
      "distributed multi-device run()"):

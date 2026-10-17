@@ -147,8 +147,7 @@ def test_other_components(component):
 
 
 @pytest.mark.parametrize("kind, message", [("wire", "reference_plane_cells"),
-                                            ("passive", "passive port"),
-                                            ("graded", "[Ll]umped / wire ports")])
+                                            ("passive", "passive port")])
 @pytest.mark.parametrize("explicit", [False, True])
 def test_refusals(kind, message, explicit):
     kwargs = {"dz_profile": np.array([1e-3] * 3 + [0.5e-3] * 6)} if kind == "graded" else {}
@@ -159,6 +158,23 @@ def test_refusals(kind, message, explicit):
     with pytest.raises(NotImplementedError, match=message):
         sim.run(n_steps=8, devices=jax.devices("cpu")[:2],
                 **({"compute_s_params": True} if explicit else {}))
+
+
+def test_graded_lumped_s_request_refuses_as_one_device():
+    """Graded lumped ports run on several devices (#1402 step 2); an explicit
+    S request is refused with the one-device graded lane's own error."""
+    def graded():
+        sim = Simulation(freq_max=10e9, domain=(16e-3, 6e-3, 6e-3), dx=1e-3,
+                         boundary="pec", dz_profile=np.array([1e-3] * 3 + [0.5e-3] * 6))
+        sim.add_port((8e-3, 3e-3, 3e-3), "ez", impedance=50)
+        return sim
+    with pytest.raises(Exception) as one:
+        graded().run(n_steps=8, compute_s_params=True)
+    with pytest.raises(Exception) as multi:
+        graded().run(n_steps=8, devices=jax.devices("cpu")[:2], compute_s_params=True)
+    assert type(multi.value) is type(one.value)
+    assert str(multi.value) == str(one.value)
+    assert "wired only for add_port(..., extent=...)" in str(one.value)
 
 
 @pytest.mark.skipif(os.environ.get("RFX_LOCAL_DISTRIBUTED") != "1",

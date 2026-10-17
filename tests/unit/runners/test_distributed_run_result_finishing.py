@@ -41,8 +41,8 @@ def test_default_lumped_port_s_request_matches_explicit():
 def test_graded_lumped_port_default_is_no_s_request():
     """On a graded mesh one device (the non-uniform lane) computes S by default
     only for wire ports, so a single-cell port's default is no S request. The
-    graded multi-device runner refuses the port itself, and that refusal, not
-    the S-request one, is what the user must see."""
+    graded multi-device runner carries the port (#1402 step 2) with the same
+    default."""
     def graded():
         sim = Simulation(freq_max=15e9, domain=(24e-3, 12e-3, 0.0),
                          dx=1e-3, boundary="pec",
@@ -50,11 +50,11 @@ def test_graded_lumped_port_default_is_no_s_request():
         sim.add_port((6e-3, 6e-3, 6e-3), "ez", impedance=50.0)
         sim.add_probe((12e-3, 6e-3, 6e-3), "ez")
         return sim
-    assert graded().run(n_steps=N_STEPS).s_params is None
-    with pytest.raises(NotImplementedError) as exc:
-        graded().run(n_steps=N_STEPS, devices=_devices())
-    assert "lumped / wire ports" in str(exc.value).lower()
-    assert "compute_s_params" not in str(exc.value)
+    one = graded().run(n_steps=N_STEPS)
+    multi = graded().run(n_steps=N_STEPS, devices=_devices())
+    assert one.s_params is None and multi.s_params is None
+    assert np.max(np.abs(np.asarray(multi.time_series))) > 0
+    np.testing.assert_array_equal(np.asarray(multi.time_series), np.asarray(one.time_series))
 
 
 def test_lumped_port_can_opt_out_of_s_params():

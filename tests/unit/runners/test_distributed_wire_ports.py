@@ -200,7 +200,7 @@ def test_single_wire_zero_wave():
 
 @pytest.mark.parametrize("kind,message", [
     ("planes", "reference_plane_cells"), ("radius", "radius"),
-    ("passive", "passive port"), ("graded", "(?i)lumped / wire ports"), ("pmc", "PMC")])
+    ("passive", "passive port"), ("pmc", "PMC")])
 @pytest.mark.parametrize("compute_s", [None, True, False])
 def test_refusals(kind, message, compute_s):
     from rfx.boundaries.spec import Boundary, BoundarySpec
@@ -218,6 +218,26 @@ def test_refusals(kind, message, compute_s):
     with pytest.raises(NotImplementedError, match=message):
         sim.run(n_steps=8, devices=jax.devices("cpu")[:2], skip_preflight=True,
                 compute_s_params=compute_s)
+
+
+@pytest.mark.parametrize("compute_s", [None, True, False])
+def test_graded_wire_s_follows_one_device(compute_s):
+    """Graded wire ports run on several devices (#1402 step 2): S is returned
+    exactly when one device returns it, within 1e-4 of its peak."""
+    def graded():
+        sim = Simulation(freq_max=10e9, domain=(.016, .006, .006), dx=.001,
+                         boundary="pec", dz_profile=np.array([.001]*3 + [.0005]*6))
+        sim.add_port((.008, .003, .003), "ez", impedance=50, extent=.002)
+        return sim
+    kwargs = dict(n_steps=64, skip_preflight=True, compute_s_params=compute_s)
+    one = graded().run(**kwargs)
+    multi = graded().run(devices=jax.devices("cpu")[:2], **kwargs)
+    assert (multi.s_params is None) == (one.s_params is None) == (compute_s is False)
+    if one.s_params is not None:
+        np.testing.assert_array_equal(np.asarray(multi.freqs), np.asarray(one.freqs))
+        peak = float(np.max(np.abs(np.asarray(one.s_params))))
+        assert peak > 0
+        assert float(np.max(np.abs(np.asarray(multi.s_params) - np.asarray(one.s_params)))) <= 1e-4 * peak
 
 
 @pytest.mark.parametrize("mutation", ["no_stamps", "seam_stamp", "own_slab", "half_step"])
