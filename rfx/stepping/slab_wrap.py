@@ -26,9 +26,9 @@ def select_step(*, cpml=False, debye=False, lorentz=False, ports=False,
     records/20261017-item5-first-divergence). Upstream refusals still apply.
     """
     kind = "wrapped" if (pec and point_sources and point_probes and not any((
-        dft, flux, ntff, pmc, periodic_x, cpml and (debye or lorentz)))) else "legacy"
+        dft, flux, ntff, pmc, periodic_x))) else "legacy"
     if ports and kind != 'wrapped':
-        raise NotImplementedError('Graded multi-device ports require the wrapped step; CPML with poles requires rfx #1402 item 5 dispersive; PMC and periodic x are not supported.')
+        raise NotImplementedError('Graded multi-device ports require the wrapped step; PMC and periodic x are not supported.')
     return kind
 
 

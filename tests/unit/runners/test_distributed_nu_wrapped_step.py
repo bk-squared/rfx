@@ -613,8 +613,7 @@ def cpml_metrics(one, several, dt, name):
     return e, h, float(np.max(np.abs(actual-expected))/np.max(np.abs(expected)))
 
 
-@pytest.mark.parametrize('name', ['scene2', pytest.param('debye', marks=pytest.mark.skip(
-    reason='CPML with poles: the wrapped setup is not built for poles until rfx #1402 item 5'))])
+@pytest.mark.parametrize('name', ['scene2', 'debye'])
 def test_cpml_one_slab_invariants(name, monkeypatch):
     from rfx.stepping import graded_loop as nonuniform
     from rfx.runners import _distributed_nu_wrapped as runner
