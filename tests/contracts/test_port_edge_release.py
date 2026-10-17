@@ -297,13 +297,29 @@ def test_c6_coax_refusal(monkeypatch):
 
 
 @pytest.mark.parametrize('kind',['ex','ey','ez','wire','msl'])
-def test_c6_graded_distributed_refusal(monkeypatch,kind):
+def test_c6_graded_distributed_port_occupancy(monkeypatch,kind):
     sim,grid,_,_=model('graded',kind)
     import rfx.runners.distributed_nu as kernel
-    monkeypatch.setattr(kernel,'run_nonuniform_distributed_pec',lambda *a,**k:pytest.fail('stepped'))
-    message='microstrip port' if kind=='msl' else 'Lumped / wire ports'
-    with pytest.raises(NotImplementedError,match=message):
-        sim.forward(pec_occupancy_override=jnp.ones(grid.shape)*.5,n_steps=2,
+    occupancy = jnp.ones(grid.shape)*.5
+    if kind == 'msl':
+        monkeypatch.setattr(kernel,'run_nonuniform_distributed_pec',lambda *a,**k:pytest.fail('stepped'))
+        with pytest.raises(NotImplementedError,match='microstrip port'):
+            sim.forward(pec_occupancy_override=occupancy,n_steps=2,
+                        distributed=True,devices=jax.devices(),skip_preflight=True)
+        return
+    with monkeypatch.context() as patch:
+        one = capture(patch, sim, grid, 'graded', occupancy)
+    from jax.sharding import Mesh
+    from rfx.stepping.slab import cut
+    def observed(sg, *args, **kwargs):
+        expected = cut(one['occupancy'], sg.layout, 'pec_occupancy',
+            mesh=Mesh(np.asarray(jax.devices()), ('x',)), uniform=sg.step_kind == 'wrapped')
+        np.testing.assert_array_equal(np.asarray(kwargs['sharded_pec_occupancy']), np.asarray(expected))
+        assert np.any(np.asarray(one['occupancy']) == 0)
+        raise Captured
+    monkeypatch.setattr(kernel,'run_nonuniform_distributed_pec',observed)
+    with pytest.raises(Captured):
+        sim.forward(pec_occupancy_override=occupancy,n_steps=2,
                     distributed=True,devices=jax.devices(),skip_preflight=True)
 
 

@@ -29,6 +29,7 @@ KNOWN_ROWS = (
     ('P-waveguide', 'multi-device-graded', 'admission', 'A5', '#1373 A5 (acceleration): run falls back for a waveguide port while distributed forward refuses'),
     ('P-waveguide', 'multi-device-uniform', 'L2', 'D5', '#1373 D5 (ports): settling witness arrays differ between entries'),
     ('P-waveguide', 'uniform', 'L2', 'D5', '#1373 D5 (ports): settling witness arrays differ between entries'),
+    ('P-wire', 'multi-device-graded', 'admission', 'A2', 'A2 expected: equal S requests refuse the extra source; forward without an S request admits'),
     ('P-wire', 'graded', 'admission', 'A2', 'A2 expected: equal S requests give equal refusals; forward without an S request admits'),
     ('P-wire', 'multi-device-uniform', 'admission', 'A2', 'A2 expected: equal S requests give equal refusals; forward without an S request admits'),
     ('P-wire', 'uniform', 'admission', 'A2', 'A2 expected: equal S requests give equal refusals; forward without an S request admits'),
@@ -276,6 +277,7 @@ ADMISSION_ROWS = (
     ('PW-oblique', 'multi-device-uniform'),
     ('S-field', 'multi-device-uniform'),
     ('S-polarized', 'multi-device-uniform'),
+    ('P-wire', 'multi-device-graded'),
 )
 
 
@@ -299,12 +301,9 @@ BOTH_REFUSE_ROWS = (
     ('P-coax', 'multi-device-uniform'),
     ('P-coax', 'uniform'),
     ('P-floquet', 'multi-device-uniform'),
-    ('P-lumped', 'multi-device-graded'),
-    ('P-lumped2', 'multi-device-graded'),
     ('P-lumped2', 'multi-device-uniform'),
     ('P-msl', 'multi-device-graded'),
     ('P-msl', 'multi-device-uniform'),
-    ('P-wire', 'multi-device-graded'),
     ('PW-A', 'multi-device-graded'),
     ('PW-B', 'graded'),
     ('PW-B', 'multi-device-graded'),
@@ -506,23 +505,22 @@ def test_both_refuse(declaration, path):
         entry: record['outcome'] for entry, record in pair.items()}
 
 
-@pytest.mark.parametrize('declaration', ('P-lumped',))
-def test_multi_device_graded_refusal_names_both_entries(declaration):
-    # One executor refuses for both entries; its text must not send a run()
-    # user to a forward() argument (#1373 A4).
-    pair = {entry: run_l2(BUILDERS[declaration], entry, 'multi-device-graded', n_steps=1,
-                          entry_options=entry_options(declaration))
+@pytest.mark.parametrize('declaration', ('P-lumped', 'P-lumped2'))
+def test_multi_device_graded_ports_reach_both_entries(declaration):
+    pair = {entry: run_l2(BUILDERS[declaration], entry, 'multi-device-graded', n_steps=16)
             for entry in ('run', 'forward')}
-    messages = {entry: record.get('message', '') for entry, record in pair.items()}
-    assert messages['run'] == messages['forward'], messages
-    assert 'run(devices=...)' in messages['run'] and 'forward(distributed=True)' in messages['run'], messages
+    assert all(item['outcome'] == 'admitted' for item in pair.values()), pair
+    import numpy as np
+    for a, b in zip(pair['run']['result'].sparam_time_records,
+                    pair['forward']['result'].sparam_time_records, strict=True):
+        np.testing.assert_array_equal(a.samples, b.samples)
 
 
 @pytest.mark.parametrize('declaration', ['P-lumped', 'P-lumped2'])
-@pytest.mark.parametrize('path', ['uniform', 'graded'])
+@pytest.mark.parametrize('path', ['uniform', 'graded', 'multi-device-graded'])
 def test_port_s_equal_requests(declaration, path):
     pair = port_s_pair(declaration, path)
-    if path == 'graded':
+    if path in ('graded', 'multi-device-graded'):
         assert pair is None  # public explicit lumped run S request is refused
     else:
         assert pair is not None

@@ -528,15 +528,23 @@ def test_c6_two_device_graded_override_drive_reads_the_film():
 
 
 @pytest.mark.parametrize('forward', [False, True])
-def test_c6_two_device_graded_port_existing_refusal(forward):
+def test_c6_two_device_graded_port_records(forward):
     from dataclasses import replace
     sim, _ = model('up')
     sim._ports[0] = replace(sim._ports[0], impedance=50.)
-    with pytest.raises((ValueError, NotImplementedError), match='[Pp]ort|lumped'):
-        if forward:
-            sim.forward(n_steps=2, distributed=True)
-        else:
-            sim.run(n_steps=2, devices=jax.devices()[:2], compute_s_params=False)
+    if forward:
+        one = sim.forward(n_steps=16, checkpoint=False, skip_preflight=True)
+        multi = sim.forward(n_steps=16, distributed=True, devices=jax.devices()[:2],
+                            checkpoint=False, skip_preflight=True)
+    else:
+        one = sim.run(n_steps=16, compute_s_params=False, skip_preflight=True)
+        multi = sim.run(n_steps=16, devices=jax.devices()[:2], compute_s_params=False, skip_preflight=True)
+    a, b = (np.asarray(r.sparam_time_records[0].samples) for r in (one, multi))
+    assert np.any(a != 0)
+    for channel in range(a.shape[-1]):
+        peak = np.max(np.abs(a[:, channel]))
+        delta = np.max(np.abs(a[:, channel].astype(np.float64) - b[:, channel]))
+        assert delta <= 9 * np.spacing(np.float32(peak))
 
 
 @pytest.mark.parametrize('lane', ['adi', 'subgrid'])

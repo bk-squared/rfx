@@ -23,8 +23,6 @@ def assemble_graded_result(setup: _NUScanSetup, final: dict, time_series, n_reco
     flux_monitors = setup.flux_monitors
     waveguide_meta = setup.waveguide_meta
     wp_meta = setup.wp_meta
-    sp_freqs = setup.sp_freqs
-    use_wire_ports = setup.use_wire_ports
     use_dft_planes = setup.use_dft_planes
     use_flux_monitors = setup.use_flux_monitors
     use_lumped_rlc = setup.use_lumped_rlc
@@ -87,120 +85,10 @@ def assemble_graded_result(setup: _NUScanSetup, final: dict, time_series, n_reco
             )
         )
 
-    # ---- Extract full S-matrix column from wire port DFTs ----
-    #
-    # Each port has a V/I DFT pair. The wave decomposition below is
-    # DIRECTION-FREE, and that is a physics statement, not a shortcut
-    # (issue #673). The port's outward normal is not a degree of freedom
-    # for a lumped gap V/I pair:
-    #
-    #   V = -E_comp * d_parallel      (the E edge's own length)
-    #   I = (curl H)_comp * A_perp    (right-hand loop about the SAME axis)
-    #
-    # Neither expression contains the port's position or an outward
-    # normal, so their RELATIVE sign is fixed by the sampling code and no
-    # port placement can flip it. The E update at that edge enforces
-    # eps*dE/dt + sigma*E = (curl H)_comp, so in phasor form, with
-    # C = eps*A/d and the runner's sigma = n_live*d/(Z0*dp1*dp2),
-    #
-    #       V / I = -1 / (n_live/Z0 + j*w*C + Y_ext)
-    #
-    # for any passive Y_ext attached across the gap (Re Y_ext >= 0), at a
-    # port that is NOT itself driven. Hence Z_in = -V/I sits in the right
-    # half plane and
-    #
-    #       S = (Z_in - Z0)/(Z_in + Z0) = (V + Z0*I)/(V - Z0*I),
-    #
-    # which is the same ratio as a = (-V + Z0*I)/2, b = (-V - Z0*I)/2.
-    # The reciprocal form maps that passive disk to its EXTERIOR, i.e. it
-    # returns |S| >= 1 at EVERY bin on ANY passive structure — which is
-    # what the pre-#673 direction switch did on "-x"/"-y". That is what
-    # fixes the CONVENTION; the convention is then applied unconditionally,
-    # exactly as the uniform lane does.
-    # Scope note, measured: the |S| <= 1 consequence is a statement about an
-    # UNDRIVEN port, and it is a property of the port CELL rather than of the
-    # structure across the gap (vacuum, PEC plates shorting the gap and an
-    # eps_r=10 slab filling it all read S11 = -0.600000 at n_live = 4).
-    # That is exactly why the all-passive fallback below is INTENTIONALLY
-    # frozen on this per-cell convention: no physical falsifier can gate a
-    # load-independent reading, so it is a diagnostic/self-consistency
-    # channel, not S_jj (S_jj requires driving port j) — and the
-    # excite=False locks (lane-parity closed forms, sigma ORACLE 1/2) keep
-    # their n_live sensitivity as witnesses. Do not "unify" it with the
-    # driven diagonal below.
-    #
-    # DRIVEN diagonal (issue #764). At a genuinely excited port the per-cell
-    # convention above stops tracking the load entirely — PROVENANCE, all
-    # measured before the #764 fix: one geometry with only `excite` flipped
-    # read S11(0.2 GHz) = -0.600000 passive against +0.999670-0.022145j
-    # driven though the quasi-static input impedance is identical; the
-    # 2-port MSL stub in tests/unit/sparams/test_twoport_wire_port.py reached
-    # max|S11| = 4.648 (the reciprocal class that (-V - Z0*I)/(-V + Z0*I)
-    # applied to a driven port yields); a matched 50 ohm load read
-    # S11 = +0.35426 and a PEC short +0.26780. Root cause was the #313/#318
-    # frame mismatch: V and I sampled at ONE cell measure the per-cell
-    # Z0/n_live while the reflection formula references the whole-port Z0.
-    # The fix is frame-consistent terminal quantities:
-    #
-    #   V_port = sum_live(-E_c * d_par,c)   (whole-gap line integral,
-    #                                        PRIMAL metric per cell, #672)
-    #   I      = Ampere loop at the LIVE-run midpoint cell (DUAL metrics)
-    #   S_kk   = (V_port - Z0*I) / (V_port + Z0*I)
-    #
-    # where Z0 is the whole-port port.impedance — the impedance #318
-    # physically realizes as the series termination (n_live cells of
-    # sigma-folded Z0/n_live in series). Sense: from the pinned per-cell law
-    # with equal per-cell injection I0, V_port + Z0*I = Z0*I0 is a
-    # drive-only constant (the incident wave), and closing the loop through
-    # the external DUT gives V_port = +Z_L*I and I = Z0*I0/(Z0+Z_L) — the
-    # measured #683 circuit law. The opposite branch sign (V_port = -Z_L*I)
-    # would put I = Z0*I0/(Z0-Z_L), divergent at a matched load — refuted.
-    # Only the SUM is KVL/Faraday-constrained on the staggered grid; a
-    # single cell is not (a PEC short forces sum V_c = 0 while V_mid stays
-    # finite — why the short used to read +0.268: a structural error, not a
-    # scale factor).
-    # Quasi-static check on the PASSIVE path: with Y_ext -> 0 and
-    # w*C*Z0/n_live << 1 the per-cell convention gives
-    # S11 -> (1 - n_live)/(1 + n_live), measured to 5 decimals on both
-    # lanes (tests/unit/nonuniform/test_nu_wire_port_lane_parity.py).
-    #
-    # `direction` is still carried on the port spec — the reference-plane
-    # path (add_port(reference_plane_cells=...)) needs it for the outboard
-    # sign — but it must NOT enter this wave split.
-    #
-    # Given these, with ONE excited port `k` the full k-th column of
-    # the S-matrix is
-    #       S[j, k] = b_j / a_k          (j = every port)
-    # which reduces to the familiar S11 = b_k/a_k for j==k (reflection)
-    # and to S21 = b_2/a_1 for j != k (transmission). Other columns of
-    # the S matrix stay NaN — callers need to run additional sims
-    # with different excited ports to fill them (reciprocity lets us
-    # infer S12 from S21 for passive networks).
-    #
-    # Which (a, b) pair fills a GENUINELY excited column is the issue
-    # #770 whole-port pair (see the in-loop derivation below); the
-    # per-cell `_ab` split above survives only in the all-passive
-    # diagnostic fallback.
-    if use_wire_ports and "wire_sparams" in final:
-        import numpy as _np
-        from rfx.measurement.port_s import port_s_from_record
-        S = port_s_from_record(final["wire_sparams"], wp_meta, wire_mode=True)
-
-        result["s_params"] = S
-        result["s_param_freqs"] = sp_freqs if isinstance(sp_freqs, jax.core.Tracer) else _np.array(sp_freqs)
-        # Raw per-port DFT accumulators (v_dft, i_dft, v_inc_dft,
-        # v_port_dft), surfaced for diagnostics/validation harnesses
-        # (issue #764; mirrors the uniform lane's raw-acc access via
-        # forward()'s wire_port_sparams).
-        result["wire_sparams_raw"] = final["wire_sparams"]
-        # The static per-port metadata those accumulators were recorded
-        # with, in the same order (:func:`_build_wp_meta` slots). The
-        # accumulators alone say nothing about which port they came from
-        # or at what impedance; ``run_nonuniform_path`` zips the two into
-        # the ``(meta, accs)`` pairs the uniform lane's
-        # ``Result.wire_port_sparams`` already carries. The existing
-        # ``wire_sparams_raw`` shape is unchanged — validation harnesses
-        # index it per port.
-        result["wire_sparams_meta"] = tuple(wp_meta)
-
-    return with_graded_records(result, setup, final, n_record)
+    from rfx.measurement.port_s import assemble_graded_ports_result
+    from types import SimpleNamespace
+    request = SimpleNamespace(context=setup, port_owners=setup.step_fn_inv.port_owners,
+                              port_acc_indices=setup.step_fn_inv.port_acc_indices)
+    result.update(assemble_graded_ports_result(final.get('wire_sparams'), wp_meta,
+        tuple(r[:n_record] for r in final.get('sparam_time_records', ())), request))
+    return result

@@ -34,7 +34,6 @@ def test_distributed_nu_entries_share_runner_carriers():
 
 
 @pytest.mark.parametrize('row', (
-    ('_ports', 'lumped_port'), ('_ports', 'wire_port'),
     ('_ntff', 'ntff_box'), ('_cpml_kappa_max', 'kappa'),
 ))
 def test_uniform_distributed_carriers_do_not_leak_to_graded(row):

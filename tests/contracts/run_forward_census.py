@@ -29,7 +29,7 @@ SEAMS = {
     'invariants': ('rfx.simulation', 'core_step_invariants'),
     'graded': ('rfx.runners.nonuniform', 'run_nonuniform_path'),
     'graded_step': ('rfx.nonuniform', '_build_nu_scan'),
-    'distributed': ('rfx.api._execute', '_ExecuteMixin._execute_distributed_nonuniform_from_materials'),
+    'distributed': ('rfx.runners._distributed_nu_execute', 'execute_from_materials'),
     'distributed_step': ('rfx.runners.distributed_nu', 'run_nonuniform_distributed_pec'),
 }
 
@@ -681,16 +681,15 @@ def port_s_pair(declaration, path, *, n_steps=150):
     # columns of non-excited ports run-only BY CONSTRUCTION.
     RUN_ONLY_PORT_COLUMNS = tuple(k for k, port in enumerate(
         pe for pe in sim._ports if pe.impedance != 0) if not port.excite)
-    run = sim.run(n_steps=n_steps, skip_preflight=True)
+    run = invoke(sim, 'run', path, n_steps)
     if run.s_params is None:
         # Explicit graded lumped S is currently refused by the public API.
         with pytest.raises(NotImplementedError, match='Single-cell lumped-port S-parameters require the uniform reference lane'):
-            sim.run(n_steps=1, skip_preflight=True, compute_s_params=True,
-                    s_param_freqs=np.array([2e9, 5e9, 8e9]))
+            invoke(sim, 'run', path, 1, dict(compute_s_params=True,
+                    s_param_freqs=np.array([2e9, 5e9, 8e9])))
         return None
-    forward = BUILDERS[declaration](path).forward(
-        n_steps=n_steps, skip_preflight=True, checkpoint=False,
-        port_s11_freqs=np.asarray(run.freqs))
+    forward = invoke(BUILDERS[declaration](path), 'forward', path, n_steps,
+                     dict(port_s11_freqs=np.asarray(run.freqs)))
     expected, actual = np.asarray(run.s_params), np.asarray(forward.s_params)
     assert actual.shape == expected.shape
     np.testing.assert_array_equal(forward.freqs, run.freqs)

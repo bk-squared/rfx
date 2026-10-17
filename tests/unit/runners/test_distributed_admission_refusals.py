@@ -382,3 +382,15 @@ def test_tfsf_fallback_refuses_conformal_pec_override():
     sim.add_tfsf_source(f0=7.5e9, bandwidth=0.5)
     with pytest.raises(NotImplementedError, match="TFSF plane-wave sources.*one-device run cannot honour"):
         _run(sim, "v2", conformal_pec=False)
+
+
+@pytest.mark.parametrize('entry', ['run', 'forward'])
+def test_graded_passive_port_is_carried(entry):
+    from tests.unit.runners.test_distributed_nu_ports import scene, evaluate
+    devices = _devices()
+    sim = scene('C3', len(devices))
+    one = evaluate(sim, entry, 32)
+    multi = evaluate(sim, entry, 32, devices)
+    assert len(multi.sparam_time_records) == 2
+    for a, b in zip(one.sparam_time_records, multi.sparam_time_records):
+        np.testing.assert_array_equal(a.samples, b.samples)

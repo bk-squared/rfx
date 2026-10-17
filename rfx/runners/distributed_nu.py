@@ -48,7 +48,7 @@ from rfx.runners._distributed_common import (
 
 from rfx import _realized
 from rfx.stepping import segmented_scan
-from rfx.stepping.slab_wrap import record_step_kind, runner_step_kind
+from rfx.stepping.slab_wrap import record_step_kind, runner_step_kind, validate_scan_controls
 from rfx.stepping.slab import (
     Slab, Fill, cut, cut_poles, cut_pole_coeffs, owned_values, forward_sharding as _forward_sharding,
 )
@@ -618,6 +618,8 @@ def run_nonuniform_distributed_pec(
     pmc_faces: frozenset = frozenset(),
     gather_final_state: bool = True,
     material_drive=None,
+    port_plan=None,
+    prepare_only=False,
 ) -> dict:
     """Phase 2B/2C/2D sharded NU scan body — hard PEC, ghost exchange,
     optional CPML, and optional Debye/Lorentz dispersion on x-slabs.
@@ -886,18 +888,7 @@ def run_nonuniform_distributed_pec(
             "rebuild the grid with a non-zero CPML layer count."
         )
 
-    # Phase 2F validation
-    if n_warmup < 0:
-        raise ValueError(f"n_warmup must be >= 0; got {n_warmup}")
-    if n_warmup >= n_steps:
-        raise ValueError(
-            f"n_warmup ({n_warmup}) must be < n_steps ({n_steps})"
-        )
-    if checkpoint_every is not None and int(checkpoint_every) <= 0:
-        raise ValueError(
-            f"checkpoint_every must be a positive int or None; "
-            f"got {checkpoint_every}"
-        )
+    validate_scan_controls(n_steps, n_warmup, checkpoint_every)
 
     sources = list(sources) if sources is not None else []
     for source in sources:
@@ -905,13 +896,14 @@ def run_nonuniform_distributed_pec(
             raise ValueError(f"distributed_nu: unsupported source component {source.component}")
     probes = list(probes) if probes is not None else []
 
-    if runner_step_kind(sharded_grid, cpml=use_cpml, debye=use_debye, lorentz=use_lorentz, pmc=bool(pmc_faces)) == "wrapped":
+    if runner_step_kind(sharded_grid, cpml=use_cpml, debye=use_debye, lorentz=use_lorentz, pmc=bool(pmc_faces), ports=port_plan is not None) == "wrapped":
         from rfx.runners._distributed_nu_wrapped import run_wrapped
         return run_wrapped(sharded_grid, sharded_materials, sharded_pec_mask,
             n_steps, sources, probes, devices=devices, occupancy=sharded_pec_occupancy,
             checkpoint_every=checkpoint_every, n_warmup=n_warmup,
             emit_time_series=emit_time_series, gather_final_state=gather_final_state,
-            material_drive=material_drive, debye=debye, lorentz=lorentz, cpml=use_cpml, cpml_state=cpml_state)
+            material_drive=material_drive, debye=debye, lorentz=lorentz, cpml=use_cpml, cpml_state=cpml_state, port_plan=port_plan,
+            prepare_only=prepare_only)
 
     # Defer the `Mesh` import to runtime so module import remains
     # lightweight (matches distributed_v2.py's pattern).

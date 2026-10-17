@@ -523,6 +523,9 @@ _DISTRIBUTED_NU_ROWS = frozenset({
     ('_pec_faces', 'pec_face'),
     ('_ports', 'amplitude_kind'),
     ('_ports', 'source'),
+    ('_ports', 'lumped_port'),
+    ('_ports', 'wire_port'),
+    ('_ports', 'passive_port'),
     ('_probes', 'probe'),
     ('_thin_conductors', 'lossy_sheet'),
 })
@@ -1129,8 +1132,8 @@ def admit_forward_s_matrix(sim):
 def admit_run_s_matrix(sim, *, compute_s_params=None, conformal_pec=None,
                        distributed=False):
     """Check the requested scan extraction before run() starts its field solve."""
-    uses_scan = (any(p.impedance != 0.0 for p in sim._ports)
-                 if distributed else _s_matrix_ports(sim))
+    uses_scan = (False if distributed and sim._uses_nonuniform_mesh else
+                 any(p.impedance != 0.0 for p in sim._ports) if distributed else _s_matrix_ports(sim))
     if compute_s_params is not False:
         # Without the scan, S is read from the main run's own record.
         refuse_plain_sources_s_matrix(sim, main_record=not uses_scan)

@@ -373,14 +373,15 @@ def make_graded_step(
             frame.new_wire_sp = []
             frame.port_samples = []
             dtype = frame.st.ex.dtype
-            if dtype not in port_tables:
+            table = frame.invariants.get('port_table')
+            if table is None and dtype not in port_tables:
                 # Graded widths are JAX arrays: evaluate the weights once, outside
                 # the traced step, as they were before the table (a coefficient
                 # formed inside the loop is rounded by its context).
                 with jax.ensure_compile_time_eval():
                     port_tables[dtype] = port_table(ctx.grid, port_specs, nu=True,
                                                     boundary=ctx.curl_boundary, dtype=dtype)
-            port_values = project(frame.st, port_tables[dtype])
+            port_values = project(frame.st, port_tables[dtype] if table is None else table)
             frame.port_samples = [jnp.stack(tuple(port_values[offset:offset+width]))
                                   for offset, width in zip(offsets, widths)]
             for p, (v_dft, i_dft, vinc_dft, v_port_dft) in enumerate(frame.carry.get("wire_sparams", ())):

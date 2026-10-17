@@ -23,12 +23,9 @@ def _scene(*, distributed=False):
     sim = Simulation(freq_max=20e9, domain=(float(profile.sum()), 24*dx, 24*dx),
                      dx=dx, boundary='cpml', cpml_layers=6, dx_profile=profile)
     pulse = GaussianPulse(f0=8e9, bandwidth=0.8)
-    if distributed:
-        # This lane refuses wire ports; exercise its supported point drive.
-        sim.add_source((6*dx, 12*dx, 12*dx), 'ez', waveform=pulse)
-    else:
-        sim.add_port(position=(6*dx, 12*dx, 12*dx), component='ez',
-                     impedance=50., extent=2*dx, waveform=pulse)
+    sim.add_port(position=(6*dx, 12*dx, 12*dx), component='ez',
+                 impedance=50., extent=2*dx, waveform=pulse)
+    if not distributed:
         sim.add_dft_plane_probe(axis='x', coordinate=8*dx, component='ez',
                                freqs=jnp.asarray([6e9, 8e9, 10e9]))
         sim.add_flux_monitor(axis='x', coordinate=8*dx,
@@ -38,8 +35,8 @@ def _scene(*, distributed=False):
 
 
 def _forward(sim, chunk, *, distributed=False, eps=None):
-    kwargs = dict(distributed=True, devices=jax.devices('cpu')[:2]) if distributed else dict(
-        port_s11_freqs=jnp.asarray([6e9, 8e9, 10e9]))
+    kwargs = dict(distributed=True, devices=jax.devices('cpu')[:2]) if distributed else {}
+    kwargs['port_s11_freqs'] = jnp.asarray([6e9, 8e9, 10e9])
     return sim.forward(n_steps=STEPS, checkpoint=True, checkpoint_every=chunk,
                        eps_override=eps, skip_preflight=True, **kwargs)
 
@@ -50,8 +47,8 @@ def records(request):
     if distributed and len(jax.devices('cpu')) < 2:
         pytest.skip('requires two host CPU devices, as configured by root conftest')
     if distributed:
-        import rfx.runners.distributed_nu as runner
-        name = 'run_nonuniform_distributed_pec'
+        import rfx.runners._distributed_nu_wrapped as runner
+        name = 'run_prepared'
     else:
         import rfx.runners.nonuniform as runner
         name = 'run_nonuniform'
@@ -71,13 +68,12 @@ def records(request):
             public = _forward(sim, chunk, distributed=distributed)
             raw = captured.pop()
             state = raw['final_state_sharded' if distributed else 'state']
-            values = dict(probe=np.asarray(public.time_series),
+            values = dict(probe=np.asarray(public.time_series), s11=np.asarray(public.s_params),
                           E=np.stack([np.asarray(getattr(state, k)) for k in ('ex', 'ey', 'ez')]),
                           H=np.stack([np.asarray(getattr(state, k)) for k in ('hx', 'hy', 'hz')]))
             if not distributed:
                 mon = raw['flux_monitors'][0]
-                values.update(s11=np.asarray(public.s_params),
-                              dft=np.asarray(raw['dft_planes'][0].accumulator),
+                values.update(dft=np.asarray(raw['dft_planes'][0].accumulator),
                               flux=np.asarray(flux_spectrum(mon)),
                               flux_dfts=np.stack([np.asarray(getattr(mon, k)) for k in
                                                   ('e1_dft', 'e2_dft', 'h1_dft', 'h2_dft')]))
@@ -91,7 +87,7 @@ def records(request):
 def test_forward_record_length(records, chunk, quantity, record_property):
     lane, values = records
     if quantity not in values[None]:
-        pytest.skip('distributed NU forward explicitly refuses wire ports, DFT planes and flux monitors')
+        pytest.skip('distributed NU forward refuses DFT planes and flux monitors')
     reference, actual = values[None][quantity], values[chunk][quantity]
     assert reference.shape == actual.shape
     assert np.all(np.isfinite(reference)) and np.all(np.isfinite(actual))
@@ -132,8 +128,19 @@ def test_s11_gradient_record_length(record_property):
     jax.clear_caches()
 
 
-def test_distributed_s11_gradient_not_reached():
-    pytest.skip('distributed NU forward refuses wire ports; S11 gradient is not reached')
+def test_distributed_s11_gradient_record_length():
+    if len(jax.devices('cpu')) < 2:
+        pytest.skip('requires two host devices')
+    sim = _scene(distributed=True)
+    base = jnp.ones(sim._build_nonuniform_grid().shape, dtype=jnp.float32)
+    def loss(eps, chunk):
+        result = _forward(sim, chunk, eps=eps, distributed=True)
+        return jnp.sum(jnp.abs(result.s_params) ** 2)
+    one = np.asarray(jax.grad(lambda e: loss(e, None))(base))
+    multi = np.asarray(jax.grad(lambda e: loss(e, 40))(base))
+    assert np.max(np.abs(one)) > 0
+    assert np.max(np.abs(multi - one)) / np.max(np.abs(one)) <= 1e-4
+    jax.clear_caches()
 
 
 def test_a_chunk_above_half_the_record_still_leaves_two_full_segments():

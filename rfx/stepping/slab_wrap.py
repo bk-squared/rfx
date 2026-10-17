@@ -25,17 +25,20 @@ def select_step(*, cpml=False, debye=False, lorentz=False, ports=False,
     boxes up to 1600 steps on two and three devices (rfx-archive
     records/20261017-item5-first-divergence). Upstream refusals still apply.
     """
-    return "wrapped" if (pec and point_sources and point_probes and not any((
-        ports, dft, flux, ntff, pmc, periodic_x, cpml and (debye or lorentz)))) else "legacy"
+    kind = "wrapped" if (pec and point_sources and point_probes and not any((
+        dft, flux, ntff, pmc, periodic_x, cpml and (debye or lorentz)))) else "legacy"
+    if ports and kind != 'wrapped':
+        raise NotImplementedError('Graded multi-device ports require the wrapped step; CPML with poles requires rfx #1402 item 5 dispersive; PMC and periodic x are not supported.')
+    return kind
 
 
-def record_step_kind(grid, debye_spec, lorentz_spec, boundary_spec):
+def record_step_kind(grid, debye_spec, lorentz_spec, boundary_spec, *, ports=False):
     """Record the runner's choice before any slab operands are staged."""
     if grid.step_kind is not None:
         return grid
     return grid._replace(step_kind=select_step(
         cpml=bool(grid.cpml_layers), debye=debye_spec is not None,
-        lorentz=lorentz_spec is not None, pmc=bool(boundary_spec.pmc_faces())))
+        lorentz=lorentz_spec is not None, pmc=bool(boundary_spec.pmc_faces()), ports=ports))
 
 
 def runner_step_kind(grid, **flags):
@@ -43,6 +46,8 @@ def runner_step_kind(grid, **flags):
     step_kind = grid.step_kind
     if step_kind is None:
         step_kind = select_step(**flags)
+    if flags.get('ports') and step_kind != 'wrapped':
+        raise NotImplementedError('Graded multi-device ports require the wrapped step (rfx #1402 item 5 dispersive for CPML with poles).')
     return step_kind
 
 
@@ -196,7 +201,7 @@ def split(invariants, carry, layout, mesh, *, waveforms, dt=None):
                                           dt=dt, mesh=mesh)
         elif key == 'drives':
             result[key] = cut_drives(value, layout, mesh, waveforms=waveforms)
-        elif key == 'probe_table':
+        elif key in ('probe_table', 'port_table'):
             result[key] = cut_probe_table(value, layout, mesh)
         elif value is None:
             result[key] = None
@@ -213,10 +218,14 @@ def split(invariants, carry, layout, mesh, *, waveforms, dt=None):
     for family in ('debye', 'lorentz'):
         if family in carry:
             local_carry[family] = cut_poles(carry[family], layout, family + '_state', mesh=mesh)
+    for key in ('wire_sparams', 'sparam_time_records'):
+        if key in carry:
+            local_carry[key] = jax.tree.map(lambda a: _place(
+                jnp.broadcast_to(a, (layout.n_devices,) + a.shape), mesh), carry[key])
     return result, local_carry
 
 
-def wrap(step, layout, mesh, *, table):
+def wrap(step, layout, mesh, *, table, port_table=None):
     """Execute the supplied graded step on each slab, attaching two copies."""
     from rfx.runners.distributed_nu import _exchange_h_ghosts_nu, _exchange_e_ghosts_nu
     components = tuple(term.component for term in table.components)
@@ -240,6 +249,15 @@ def wrap(step, layout, mesh, *, table):
         inputs['probe_table'] = SampleTable(tuple(
             ComponentTerms(component, *part) for component, part in zip(components, terms)),
             n_channels, channel_names, order, ids)
+        if port_table is not None:
+            parts, port_order, port_ids = jax.tree.map(lambda a: a[0], inputs['port_table'])
+            inputs['port_table'] = SampleTable(tuple(
+                ComponentTerms(term.component, *part) for term, part in zip(port_table.components, parts)),
+                port_table.n_channels, port_table.channel_names, port_order, port_ids)
+            carry = dict(carry)
+            for key in ('wire_sparams', 'sparam_time_records'):
+                if key in carry:
+                    carry[key] = jax.tree.map(lambda a: a[0], carry[key])
         inputs['owns_x'] = jax.tree.map(lambda a: a[0], inputs['owns_x'])
         advance = make_graded_step(context, hooks={HookPoint.AFTER_H: (h,), HookPoint.STEP_END: (e,)})
         from rfx import _realized
@@ -252,6 +270,10 @@ def wrap(step, layout, mesh, *, table):
         # Owner-masked samples summed here, as the legacy step does: a record
         # leaving per device would make its replicated cotangent be sliced by
         # device identity in the backward program (#1441).
+        if port_table is not None:
+            for key in ('wire_sparams', 'sparam_time_records'):
+                if key in carry:
+                    carry[key] = jax.tree.map(lambda a: a[None], carry[key])
         return carry, jax.lax.psum(record, 'x')
 
     def mapped(carry, xs, invariants, *, ranks):
@@ -294,3 +316,18 @@ def run_steps(carry, invariants, waves, ranks, advance, *, n_steps, n_warmup, ch
         return carry, records
 
     return run_fn(carry, invariants, waves, ranks)
+
+
+def validate_scan_controls(n_steps, n_warmup, checkpoint_every):
+    """Validate warmup and checkpoint controls before selecting a runner."""
+    if n_warmup < 0:
+        raise ValueError(f"n_warmup must be >= 0; got {n_warmup}")
+    if n_warmup >= n_steps:
+        raise ValueError(
+            f"n_warmup ({n_warmup}) must be < n_steps ({n_steps})"
+        )
+    if checkpoint_every is not None and int(checkpoint_every) <= 0:
+        raise ValueError(
+            f"checkpoint_every must be a positive int or None; "
+            f"got {checkpoint_every}"
+        )

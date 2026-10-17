@@ -155,14 +155,6 @@ def _dispatch_plan(
         def _fwd_nu_n_steps() -> int:
             return self._nu_n_steps(num_periods)
 
-        # The graded distributed runner has no port S-parameter accumulators.
-        if port_s11_freqs is not None and distributed and is_nonuniform:
-            raise NotImplementedError(
-                "forward(port_s11_freqs=...) is supported only on "
-                "single-device forward paths (issue #72). Drop "
-                "distributed=True to request port S-parameter frequencies."
-            )
-
         # Issue #73: forward(checkpoint_segments=...) is currently wired only
         # on the uniform single-device path. Reject loudly elsewhere — both
         # for distributed=True and for non-uniform meshes — so users don't

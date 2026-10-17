@@ -222,10 +222,13 @@ def test_two_vs_three_bitwise(row, on):
                               np.asarray(getattr(three[1], field))), field
 
 
-@pytest.mark.parametrize('feature', ['ports', 'dft', 'flux', 'ntff', 'pmc', 'periodic_x'])
+@pytest.mark.parametrize('feature', ['dft', 'flux', 'ntff', 'pmc', 'periodic_x'])
 def test_selector(feature):
     assert select_step() == 'wrapped'
+    assert select_step(ports=True) == 'wrapped'
     assert select_step(**{feature: True}) == 'legacy'
+    with pytest.raises(NotImplementedError, match='ports require the wrapped step'):
+        select_step(ports=True, **{feature: True})
 
 
 @pytest.mark.parametrize('devices', [1, 2, 3])
@@ -399,8 +402,10 @@ def test_localized_operands(row, on, monkeypatch):
 @pytest.mark.parametrize('debye,lorentz', [(True, False), (False, True), (True, True)])
 def test_pole_selector(debye, lorentz):
     assert select_step(debye=debye, lorentz=lorentz) == 'wrapped'
-    for feature in ('ports', 'pmc'):
-        assert select_step(debye=debye, lorentz=lorentz, **{feature: True}) == 'legacy'
+    assert select_step(debye=debye, lorentz=lorentz, ports=True) == 'wrapped'
+    assert select_step(debye=debye, lorentz=lorentz, pmc=True) == 'legacy'
+    with pytest.raises(NotImplementedError, match='ports require the wrapped step'):
+        select_step(debye=debye, lorentz=lorentz, ports=True, pmc=True)
 
 
 # Scenes S1 and S2 of rfx-archive records/20261011-debye-one-vs-two (deb_scene.py, copied):
@@ -714,6 +719,11 @@ def test_cpml_two_vs_three_bitwise_and_bars(name):
 def test_cpml_selector(debye, lorentz):
     expected = 'legacy' if debye or lorentz else 'wrapped'
     assert select_step(cpml=True, debye=debye, lorentz=lorentz) == expected
+    if debye or lorentz:
+        with pytest.raises(NotImplementedError, match='item 5 dispersive'):
+            select_step(cpml=True, debye=debye, lorentz=lorentz, ports=True)
+    else:
+        assert select_step(cpml=True, ports=True) == 'wrapped'
 
 
 @pytest.mark.parametrize('name,mode', [('scene2', 'run'), ('scene2', 'grad'), ('debye', 'grad'), ('lorentz', 'grad')])

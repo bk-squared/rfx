@@ -64,7 +64,7 @@ for lane in LANES:
         TABLE["open_" + kind]["run_subgridded"] = Cell("refuses",
             note="all-face absorber outside subgrid production envelope")
     for port in ("lumped", "wire"):
-        if lane in ("run_adi", "fwd_adi", "run_distributed_nu", "fwd_distributed_nu"):
+        if lane in ("run_adi", "fwd_adi"):
             TABLE[port + "_none"][lane] = Cell("refuses")
         for kind in ("field", "current"):
             TABLE[port + "_" + kind][lane] = Cell("not reachable",

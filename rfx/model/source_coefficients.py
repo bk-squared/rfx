@@ -29,8 +29,11 @@ def drive_columns(eps, sigma, keep, cells, owned, samples, volumes, dt, *, cb=No
                     jnp.where(owned[n], s + pole, 0.), dt)
             else:
                 coefficient = cb[n]
-            volume = volume[0] if isinstance(volume, tuple) else volume
-            scale = jnp.where(owned[n], coefficient / volume, 0.)
+            if isinstance(volume, tuple) and len(volume) == 4:
+                scale = jnp.where(owned[n], coefficient * volume[2] * volume[3], 0.)
+            else:
+                volume = volume[0] if isinstance(volume, tuple) else volume
+                scale = jnp.where(owned[n], coefficient / volume, 0.)
             column = scale * samples[:, n]
         if keep is not None:
             column = column * jnp.where(owned[n], keep[axis][cell], 0.)

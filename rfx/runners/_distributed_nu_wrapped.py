@@ -1,4 +1,6 @@
 """Adapt the graded distributed entry to per-slab setup and stepping."""
+from functools import partial
+
 import jax
 import numpy as np
 from jax.sharding import Mesh
@@ -13,8 +15,9 @@ from rfx.stepping.slab_wrap import wrap, reduce, run_steps
 def run_wrapped(sg, materials, pec_mask, n_steps, sources, probes, *,
                 devices, occupancy, checkpoint_every, n_warmup,
                 emit_time_series, gather_final_state, material_drive,
-                debye=None, lorentz=None, cpml=False, cpml_state=None):
-    """Prepare local invariants and call the stepping-owned scan driver."""
+                debye=None, lorentz=None, cpml=False, cpml_state=None, port_plan=None,
+                prepare_only=False):
+    """Prepare local invariants; optionally defer steps until cell inputs die."""
     devices = jax.devices()[:sg.n_devices] if devices is None else devices
     if len(devices) != sg.n_devices:
         raise ValueError(f'need {sg.n_devices} devices, got {len(devices)}')
@@ -28,12 +31,23 @@ def run_wrapped(sg, materials, pec_mask, n_steps, sources, probes, *,
     setup = build_setup(grid, materials, layout, mesh, n_steps, sources, probes,
         pec_mask=pec_mask, occupancy=occupancy, debye=debye, lorentz=lorentz,
         cpml=cpml, cpml_state=cpml_state, emit_time_series=emit_time_series,
-        material_drive=material_drive)
+        material_drive=material_drive, port_plan=port_plan)
     invariants, carry = split(setup.invariants, setup.carry_init, layout, mesh,
                                waveforms=setup.src_waveforms, dt=grid.dt)
     waves = invariants['drives'].waves
     invariants['drives'] = invariants['drives']._replace(waves=None)
-    advance = wrap(setup.step_fn_inv, layout, mesh, table=setup.invariants['probe_table'])
+    advance = wrap(setup.step_fn_inv, layout, mesh, table=setup.invariants['probe_table'],
+                   port_table=setup.invariants.get('port_table'))
+    run = partial(run_prepared, setup, layout, mesh, invariants, carry, waves, advance,
+        n_steps=n_steps, n_warmup=n_warmup, checkpoint_every=checkpoint_every,
+        gather_final_state=gather_final_state, emit_time_series=emit_time_series, cpml=cpml)
+    return run if prepare_only else run()
+
+
+def run_prepared(setup, layout, mesh, invariants, carry, waves, advance, *,
+                 n_steps, n_warmup, checkpoint_every, gather_final_state,
+                 emit_time_series, cpml):
+    """Run after callers have released the stamped cell inputs (D6)."""
     from rfx.runners import distributed_nu as nu
     final, records = run_steps(carry, invariants, waves, mesh_ranks(mesh), advance,
         n_steps=n_steps, n_warmup=n_warmup, checkpoint_every=checkpoint_every,
@@ -44,6 +58,11 @@ def run_wrapped(sg, materials, pec_mask, n_steps, sources, probes, *,
         from rfx.stepping.slab_cpml import export_state
         cpml_state = export_state(final['cpml'], setup.step_fn_inv.context.cpml_grid, layout,
                                   native=True)
-    return dict(time_series=ts if emit_time_series else None, final_state=state,
+    from rfx.stepping.slab_ports import sum_partials
+    from rfx.measurement.port_s import assemble_graded_ports_result
+    final = sum_partials(final, mesh, mesh_ranks(mesh))
+    port_result = assemble_graded_ports_result(final.get('wire_sparams'),
+        setup.step_fn_inv.context.wp_meta, final.get('sparam_time_records', ()), setup.step_fn_inv)
+    return dict(**port_result, time_series=ts if emit_time_series else None, final_state=state,
                 final_state_sharded=final['fdtd'], cpml_state_sharded=cpml_state,
                 debye_state_sharded=final.get('debye'), lorentz_state_sharded=final.get('lorentz'))

@@ -38,14 +38,15 @@ def use_per_cell_reference(monkeypatch):
     from tests.unit.runners._until_decay_reference import _reference_drives
     def layout(meta, dtype, **_kwargs):
         return _reference_drives(meta, np.empty(0, dtype=dtype))
-    for name in ('rfx.simulation', 'rfx.nonuniform', 'rfx.vmap_sweep',
+    for name in ('rfx.core.drives', 'rfx.simulation', 'rfx.nonuniform', 'rfx.vmap_sweep',
                  'rfx.subgridding.jit_runner', 'rfx.runners.distributed_v2',
                  'rfx.runners.distributed_nu', 'rfx.runners._distributed_common'):
         module = importlib.import_module(name)
         monkeypatch.setattr(module, 'drive_layout', layout)
         if hasattr(module, 'inject_drives'):
             monkeypatch.setattr(module, 'inject_drives', per_cell)
-    # The single-device steps: a missing name must fail, not skip the reference.
+    # Both one-device and wrapped graded steps import this injector.
+    # Slab setup imports core.drive_layout at call time, covered above.
     for name in ('rfx.simulation', 'rfx.stepping.graded'):
         monkeypatch.setattr(importlib.import_module(name), 'inject_drives', per_cell)
 
@@ -104,13 +105,16 @@ def test_production_step_scatter_count(lane, monkeypatch):
     module = importlib.import_module({
         'uniform': 'rfx.simulation', 'graded': 'rfx.stepping.graded',
         'distributed': 'rfx.runners._distributed_common',
-        'distributed_graded': 'rfx.runners._distributed_common',
+        'distributed_graded': 'rfx.stepping.graded',
         'vmap': 'rfx.vmap_sweep', 'subgridded': 'rfx.subgridding.jit_runner',
     }[lane])
     inject = module.inject_drives
+    seen = []
     def checked_inject(state, drives, values):
         assert drives.waves is None
-        assert all(isinstance(a, np.ndarray) for a in jax.tree.leaves(drives))
+        array_types = (jax.Array, jax.core.Tracer) if lane == 'distributed_graded' else (np.ndarray,)
+        assert all(isinstance(a, array_types) for a in jax.tree.leaves(drives))
+        seen.append(True)
         return inject(state, drives, values)
     monkeypatch.setattr(module, 'inject_drives', checked_inject)
     original = jax.lax.scan
@@ -142,6 +146,8 @@ def test_production_step_scatter_count(lane, monkeypatch):
             subgrid_case(n)
         else:
             run_case(lane, n)
+    if lane == 'distributed_graded':
+        assert seen, 'wrapped graded injection was not observed'
     assert len(counts) == 2 and counts[0] > 0, counts
     checked_counts(counts)
     print(lane, 'full-field scatters (1, 64):', counts)

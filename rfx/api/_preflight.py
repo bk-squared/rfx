@@ -450,14 +450,9 @@ class _PreflightMixin:
                 "solver='adi'; use the uniform Yee solver."
             )
         if devices is not None and len(devices) > 1:
-            from rfx.runners.distributed_v2 import refuse_unsupported_distributed_features
+            from rfx.model.distributed_ports import refuse_unsupported_distributed_features
             refuse_unsupported_distributed_features(
                 self, lane="distributed multi-device run()")
-            if self._uses_nonuniform_mesh:
-                raise NotImplementedError(
-                    "Phase B distributed+NU does not support lumped / wire "
-                    "ports yet. Use single-device for ports on NU meshes."
-                )
         if self._refinement is not None:
             if any(pe.waveform is None for pe in port_entries):
                 raise ValueError(

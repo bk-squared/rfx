@@ -202,8 +202,7 @@ ADI_PER_FACE = ADI_ABSORBER
 ADI_GRADED = refuses("ADI requires a uniform mesh", raises="solver='adi' does not support nonuniform",
                      declared=True)
 F0 = "surface_impedance_f0) thin conductors are not supported"
-DIST_FWD_PORTS = refuses("lumped and wire ports are refused on distributed forward()",
-                         raises="Lumped / wire ports (impedance > 0) are not yet supported")
+DIST_FWD_PORTS = carries("shared graded load, voltage drive and wrapped in-loop V/I/S; passive ports carry a load only")
 RUN_COAX = refuses("run() refuses add_coaxial_port(); the coax calculators solve it",
                    raises="add_coaxial_port() is not wired into Simulation.run()")
 FWD_COAX = refuses("forward() refuses add_coaxial_port()",
@@ -612,7 +611,7 @@ TABLE: dict[str, dict[str, dict[str, Cell]]] = {
             run_subgridded=carries("inside the refined slab"),
             run_adi=ADI_SOFT_SOURCES,
             run_distributed=carries("uniform single-cell excited ports: fields and full S-matrix; "
-                                    "owning-cell recordings feed the shared extractor; graded run refuses ports (#1461)"),
+                                    "owning-cell recordings feed the shared extractor"),
             fwd_uniform=carries(),
             fwd_nonuniform=carries("shared voltage drive agrees with run_uniform"),
             fwd_distributed_nu=DIST_FWD_PORTS,
@@ -1684,7 +1683,7 @@ LANE_GATES.update({
 # distributed runner. The NU carrier set is shared with forward(), while
 # these messages belong to run().
 for _attr, _feature in (
-    ("_materials", "kerr"), ("_ports", "passive_port"),
+    ("_materials", "kerr"),
     ("_msl_ports", "msl_port"), ("_coaxial_ports", "coax_port"),
     ("_floquet_ports", "floquet_port"), ("_floquet_ports", "scan_angle"),
     ("_lumped_rlc", "R"), ("_lumped_rlc", "series_RL"),

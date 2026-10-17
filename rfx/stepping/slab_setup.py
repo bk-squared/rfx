@@ -241,6 +241,8 @@ def finish(invariants, carry, layout, mesh, *, waveforms, dt=None):
     result['drives'] = cut_drives(invariants['drives'], layout, mesh, waveforms=waveforms,
                                   per_rank=True)
     result['probe_table'] = cut_probe_table(invariants['probe_table'], layout, mesh)
+    if 'port_table' in invariants:
+        result['port_table'] = cut_probe_table(invariants['port_table'], layout, mesh)
     result['owns_x'] = {face: place(jnp.asarray([p[side] for p in layout.faces]),
         NamedSharding(mesh, P('x'))) for side, face in enumerate(('x_lo', 'x_hi'))}
     return result, carry
@@ -248,7 +250,7 @@ def finish(invariants, carry, layout, mesh, *, waveforms, dt=None):
 
 def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
                 pec_mask=None, occupancy=None, debye=None, lorentz=None,
-                cpml=False, cpml_state=None, emit_time_series=True, material_drive=None):
+                cpml=False, cpml_state=None, emit_time_series=True, material_drive=None, port_plan=None):
     """Build the wrapped setup without a whole-domain _build_nu_scan."""
     from rfx.boundaries.setup import nonuniform_boundaries
     from rfx.nonuniform import resolve_cpml_axes
@@ -322,6 +324,8 @@ def build_setup(grid, materials, layout, mesh, n_steps, sources, probes, *,
         use_wire_ports=False, wp_meta=[], sp_freqs=None, use_dft_planes=False, dft_meta=(),
         use_flux_monitors=False, flux_meta=(), use_ntff=False, ntff_box=None, _accumulate_cm=None,
         emit_time_series=emit_time_series)
+    from rfx.stepping.slab_ports import setup_ports
+    ctx = setup_ports(ctx, carry, inv, port_plan, layout, mesh, n_steps)
     if cpml:
         # rfx #1402 item 5 (absorber)
         from rfx.stepping.slab_cpml import publish, import_state

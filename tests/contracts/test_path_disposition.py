@@ -36,10 +36,11 @@ KERNEL_CALLERS = {
     "rfx/runners/uniform_forward.py:_forward_from_materials":
         "internal to fwd_uniform, s_matrix_scan, mixed_s_matrix, topology_optimize",
     "rfx/api/_execute.py:_ExecuteMixin._forward_nonuniform_from_materials": "internal to fwd_nonuniform",
-    "rfx/api/_execute.py:_ExecuteMixin._forward_distributed_nonuniform_from_materials":
+    "rfx/runners/_distributed_nu_execute.py:forward_from_materials":
         "internal to fwd_distributed_nu",
-    "rfx/api/_execute.py:_ExecuteMixin._execute_distributed_nonuniform_from_materials":
+    "rfx/runners/_distributed_nu_execute.py:execute_from_materials":
         "internal to run_distributed_nu, fwd_distributed_nu",
+    "rfx/runners/_distributed_nu_execute.py:dispatch_forward": "internal to fwd_distributed_nu",
     "rfx/runners/adi.py:_run_adi_from_materials": "internal to run_adi, fwd_adi",
     "rfx/api/_execute.py:_ExecuteMixin._run_nonuniform": "internal to run_nonuniform",
     "rfx/api/_execute.py:_ExecuteMixin._run_subgridded": "internal to run_subgridded",

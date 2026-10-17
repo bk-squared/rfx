@@ -976,11 +976,11 @@ FORWARD_CALL_ARGUMENTS = {
         "uniform": "carries",
         "graded": "carries",
         "distributed_uniform": "carries",
-        "distributed_graded": "refuses",
+        "distributed_graded": "carries",
     },
 }
 FORWARD_LANES = {"uniform": "fwd_uniform", "graded": "fwd_nonuniform",
-                 "distributed_uniform": "fwd_distributed"}
+                 "distributed_uniform": "fwd_distributed", "distributed_graded": "fwd_distributed_nu"}
 
 
 @pytest.mark.parametrize("lane,disposition", FORWARD_CALL_ARGUMENTS["port_s11_freqs"].items())
