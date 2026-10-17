@@ -172,7 +172,7 @@ only that calculator gives S-parameters for it:
 |---|---|---|
 | lumped `add_port(...)` (one cell) | `run(compute_s_params=True)` | `result.s_params`, `result.freqs` |
 | wire `add_port(..., extent=...)` | `run(compute_s_params=True)` | `result.s_params`, `result.freqs` |
-| lumped or wire, inside `jax.grad` | `forward(port_s11_freqs=...)` | S11 per port in `ForwardResult.s_params` |
+| lumped or wire, inside `jax.grad` | `forward(port_s11_freqs=...)` | the port S-matrix in `ForwardResult.s_params`; columns of ports not driven are NaN |
 | microstrip `add_msl_port(...)` | `compute_msl_s_matrix()` | `MSLSMatrixResult` (`.S`, `.freqs`, `.reliable`, …) |
 | rectangular waveguide `add_waveguide_port(...)` | `compute_waveguide_s_matrix()` | `WaveguideSMatrixResult` (`.s_params`, `.freqs`, …) |
 | coaxial `add_coaxial_port(...)` | `compute_coaxial_line_reflection()` (one-port) or `compute_coaxial_two_port()` | their own result objects |
@@ -210,6 +210,12 @@ s21_db = 20 * np.log10(np.abs(S[1, 0]) + 1e-30)
 
 rfx runs one simulation per driven port to fill the matrix. Use
 `s_param_freqs=` to choose the frequencies.
+
+`forward(port_s11_freqs=...)`, and `run()` on a graded mesh, form S from one
+record, so they fill only the column of the port driven in it; the other
+columns are NaN, and a record with two or more driven ports is refused (each
+entry would be a sum over the drives). Drive one port per call, with the
+others passive (`excite=False`). S11 is `s_params[0, 0]`, S21 `s_params[1, 0]`.
 
 For one-port S11, aim for about **60 cells per wavelength** at the highest
 frequency you care about. At 30 cells per wavelength, magnitudes can be off
@@ -354,6 +360,12 @@ The fitted `msl.Z0` and `msl.beta` are diagnostics. S is formed from the
 measured voltages and currents with the analytic line impedance as reference,
 so a warning that the fitted Z0 deviates from Hammerstad–Jensen does not by
 itself change S. Refine the mesh before quoting Z0.
+
+S is referred to the feed plane you declared with `add_msl_port`, not to the
+first voltage probe further in. rfx moves the phase over the realized distance
+from the feed to that probe (`msl.reference_plane_offsets_m`) with the
+closed-form β of the line (`msl.shift_beta`, Hammerstad–Jensen with
+Kirschning–Jansen dispersion); magnitudes do not change.
 
 ### Waveguide and coaxial ports
 
