@@ -897,6 +897,8 @@ def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
                   or (e.kind == "volume" and isinstance(e.shape, Box))]
     if len(conductors) < 2:
         return
+    from rfx._grid_metric import node_tie_tol
+    from rfx.geometry.rasterize_grid import _local_cell as _rasterize_local_cell
     shape = tuple(ctx.grid.shape)
     pec_np = np.asarray(pec_np, dtype=bool)
     results = []
@@ -928,7 +930,11 @@ def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
                 z1 = _sheet_solved_plane(ctx, a, e1, k1, 0.5 * (lo1 + g_lo))
                 z2 = _sheet_solved_plane(ctx, a, e2, k2, 0.5 * (g_hi + hi2))
                 solved = z2 - z1
-                if drawn <= 0 and solved <= 0:
+                # A gap inside the rasterizer's on-lattice band is float dust
+                # (11*dx - 10*dx), not a cavity: faces drawn touching.
+                touching = drawn <= node_tie_tol(g_hi, _rasterize_local_cell(
+                    ctx.nodes[a], ctx.cell_sizes[a], g_hi))
+                if touching and solved <= 0:
                     # Metal merged on one plane: no cavity, and it does not
                     # stand between e1 and the next sheet.
                     continue
@@ -943,7 +949,7 @@ def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
                 blocked = np.any(np.take(pec_np, cells, axis=a), axis=a)
                 if np.all(blocked[overlap]):
                     continue
-                if drawn > 0:
+                if not touching:
                     rel = solved / drawn - 1.0
                     if abs(rel) <= _CAVITY_THICKNESS_TOL:
                         continue

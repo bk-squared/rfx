@@ -560,3 +560,33 @@ def test_box_solids_profile_remedy_reaches_runner_unchanged(monkeypatch):
     with pytest.raises(_ReachedRunner):
         aligned.run(n_steps=1, compute_s_params=False)
     assert seen == [True]
+
+
+def _stacked_blocks(mesh, upper_lo):
+    # Lower block top at 4 mm (a node on both meshes); upper block from upper_lo.
+    sim = _review_base(mesh, "strict")
+    sim.add(Box((2 * MM, 2 * MM, MM), (17 * MM, 15 * MM, 4 * MM)), material="lower")
+    sim.add(Box((4.65 * MM, 4.65 * MM, upper_lo), (12.35 * MM, 10.35 * MM, 7 * MM)),
+            material="upper")
+    return sim
+
+
+@pytest.mark.parametrize("mesh", NODES)
+def test_box_faces_one_ulp_apart_are_touching(monkeypatch, mesh):
+    # Float dust from the user's arithmetic (one float64 step, ~1e-18 m) is
+    # far inside the rasterizer's on-lattice band: both faces sit on node 4,
+    # no cavity exists, and the run proceeds.
+    sim = _stacked_blocks(mesh, np.nextafter(4 * MM, 1.0))
+    calls = _stub_runners(monkeypatch)
+    assert not sim.preflight().by_code(CODE)
+    with pytest.raises(_ReachedRunner):
+        sim.run(n_steps=1, compute_s_params=False)
+    assert calls == [True]
+
+
+@pytest.mark.parametrize("mesh", NODES)
+def test_box_faces_a_micron_apart_are_a_collapsed_cavity(monkeypatch, mesh):
+    # 1 um = 1e-3 of a 1 mm cell, far above float dust: a drawn gap that
+    # both faces' node (4 mm) solves as 0, so -100% and refused.
+    _assert_review_verdict(monkeypatch, _stacked_blocks(mesh, 4.001 * MM), "run",
+                           "strict", "drawn spacing 1µm, solved spacing 0mm (-100.00%)")
