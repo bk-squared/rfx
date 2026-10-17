@@ -21,7 +21,7 @@ sheet_cavity_spacing warning row under declared. Parallel sheet spacing
 more than 1% off the drawing now refuses strict solves and warns under
 declared; the existing electrical-thickness rows are unchanged.
 
-SNAPSHOT CHANGE, 2026-10-18 (#1857). Strict Box-face spacing now refuses
+SNAPSHOT CHANGE, 2026-10-18 (#1858). Strict Box-face spacing now refuses
 congruence_off_lattice and congruence_on_lattice; the already-declared
 stack_snapped_patch gains a spacing warning. The existing sheet spacing
 messages name conductor kinds and the solids remedy.
