@@ -281,8 +281,7 @@ def init_tfsf_2d(
     b_prof, c_prof, kappa_prof = prof.b, prof.c, prof.kappa
 
     # Source waveform
-    tau, _ = pulse_timing(waveform, f0, bandwidth)
-    t0 = 3.0 * tau  # t0 = 3τ: the one exception to pulse_timing; see #1831
+    tau, t0 = pulse_timing(waveform, f0, bandwidth)
 
     if polarization == "ez":
         electric_component = "ez"

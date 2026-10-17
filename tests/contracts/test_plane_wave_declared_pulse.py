@@ -47,12 +47,12 @@ def _scene(path, **kwargs):
     ("normal", "continuous_wave", 1e-9, 1e-9),
     ("closed", DG, TAU, DG_T0), ("closed", MG, TAU, MG_T0),
     ("methodB", DG, TAU, DG_T0), ("methodB", MG, TAU, MG_T0),
-    ("bloch", MG, TAU, DG_T0),
+    ("bloch", MG, TAU, MG_T0),
 ])
 def test_p1_launched_source_fields(path, waveform, tau, t0):
     """Pulse width sets spectral width and its delay sets phase.
 
-    Bloch retains the analytic MG at 3τ, the timing exception tracked by #1831.
+    Bloch launches the analytic MG with the same 5τ delay as every other MG path (#1831).
     """
     cfg, _ = _build(path, waveform=waveform)
     assert cfg.src_tau == tau
@@ -72,7 +72,7 @@ MG_T0_BW02 = 9.947183943243459e-10
     ("normal", DG, DG_T0_BW02), ("normal", MG, MG_T0_BW02),
     ("closed", DG, DG_T0_BW02), ("closed", MG, MG_T0_BW02),
     ("methodB", DG, DG_T0_BW02), ("methodB", MG, MG_T0_BW02),
-    ("bloch", MG, DG_T0_BW02),
+    ("bloch", MG, MG_T0_BW02),
 ])
 def test_p1_declared_bandwidth_sets_pulse_width(path, waveform, t0):
     """A narrower declared band means a longer pulse: τ = 1/(π f0 bandwidth) at bandwidth 0.2.
@@ -96,7 +96,7 @@ def test_p1_declared_bandwidth_reaches_methodb_through_the_declaration():
 
 @pytest.mark.parametrize("path,expected,t0", [
     ("normal", DG, DG_T0), ("closed", DG, DG_T0),
-    ("methodB", DG, DG_T0), ("bloch", MG, DG_T0),
+    ("methodB", DG, DG_T0), ("bloch", MG, MG_T0),
 ])
 def test_p2_default_is_declared_and_launched(path, expected, t0):
     """The default is DG except on Bloch's single transverse-wavenumber path.

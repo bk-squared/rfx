@@ -62,7 +62,7 @@
         },
         "tfsf": {
           "status": "experimental",
-          "limits": "default pulse DG (normal, closed box, method B), MG (oblique Bloch); explicit DG on oblique Bloch refused; method B honours pulse and bandwidth; Bloch keeps 3 tau (#1831); supported (run, forward) on one device for normal +/-x incidence with a fixed, uniform x axis; experimental accuracy scope; oblique and +/-z incidence hard_fail; an open plane wave refuses finite transverse structures on both meshes; finite scatterers (closed_box=True) and arrays (explicit periodic boundaries) require the uniform mesh"
+          "limits": "default pulse DG (normal, closed box, method B), MG (oblique Bloch); explicit DG on oblique Bloch refused; method B honours pulse and bandwidth; every modulated Gaussian peaks at 5 tau; supported (run, forward) on one device for normal +/-x incidence with a fixed, uniform x axis; experimental accuracy scope; oblique and +/-z incidence hard_fail; an open plane wave refuses finite transverse structures on both meshes; finite scatterers (closed_box=True) and arrays (explicit periodic boundaries) require the uniform mesh"
         },
         "waveguide_port": {
           "status": "experimental",

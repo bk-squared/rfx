@@ -131,7 +131,7 @@ Method B honours the declared pulse and bandwidth. Explicit
 `waveform="differentiated_gaussian"` on oblique Bloch is refused: its fixed
 transverse wavenumber carries an MG around `f0`. Declare
 `waveform="modulated_gaussian"`, leave it unset, or use `method="methodB"`
-for an open domain. Bloch keeps its delay of 3τ (#1831); other MG paths use 5τ.
+for an open domain. Every modulated Gaussian peaks at t0 = 5τ, oblique Bloch included.
 
 TFSF cannot share a simulation with any port. It is not a port and gives no
 S-parameters. For RCS, see [Far-Field and RCS](/rfx/measure/far-field-and-rcs/).

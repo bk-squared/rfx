@@ -543,7 +543,6 @@ def add_tfsf_source(
         DG on oblique Bloch is refused: its fixed transverse wavenumber
         carries only an MG around f0. Use ``modulated_gaussian``, leave
         the waveform unset, or use ``method="methodB"`` for an open domain.
-        Bloch retains t0 = 3τ (#1831); other MG paths use 5τ.
 
         ``differentiated_gaussian`` (legacy rfx): baseband
         pulse with no carrier, DC-free, spectrum peaks near
