@@ -46,9 +46,9 @@ c. Vacuum and homogeneous models (vacuum, and eps_r 4.4 / sigma 0.02 filling
    a CPML box, both lanes): bitwise the records of the same kernels fed the
    cell values, i.e. main's rule. main itself, run out of process on the same
    host, gave the same bytes (measured when this change was made).
-d. CPML dispersive parity uses the per-step 9-ULP cross-trace bar (rfx
-   CLAUDE.md), since R15g replaces the vacuum-relative gate that collapsed
-   when one CPML made its reference exact.
+d. Debye/Lorentz CPML forward snapshots use law C and bar S for accumulated
+   pole rounding (rfx-archive records/20261017-item5-dispersive); the other
+   rows retain their existing gates.
    A Debye block: both lanes take per-component epsilon/sigma and pole-mask
    edge means. CPML reads the same component epsilon as the E update.
 e. The permittivity gradient of forward(distributed=True) through a traced
@@ -737,13 +737,11 @@ def test_a_dispersive_model_matches_one_device(boundary, lane, kind):
 
 
 @pytest.mark.parametrize("kind", ["debye", "lorentz"])
-def test_cpml_dispersive_pr_snapshots(kind):
-    """Snapshots under-read the per-step maximum by up to 65 % on the saved
-    records; the weekly test is the judge (R15n). The bar remains 9 ULP.
-    """
-    from tests._distributed_cpml_cross_trace import PR_PREFIXES, cross_trace
-    cross_trace(lambda: _debye_box("cpml", "fwd", kind), "fwd", _devices(2),
-                f"pr/{kind}/cpml/fwd", prefixes=PR_PREFIXES)
+def test_cpml_dispersive_pr_snapshots(kind, monkeypatch):
+    """Use law C/bar S for accumulated pole rounding (rfx-archive records/20261017-item5-dispersive)."""
+    from tests._distributed_cpml_cross_trace import PR_PREFIXES
+    from tests._distributed_dispersive_cpml import snapshot_parity
+    snapshot_parity(kind, PR_PREFIXES, monkeypatch, entry='snapshot_pr')
 
 
 @pytest.mark.parametrize("kind", ["debye", "lorentz", "mixed"])

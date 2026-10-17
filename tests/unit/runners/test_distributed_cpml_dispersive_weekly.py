@@ -13,15 +13,18 @@ pytestmark = [pytest.mark.distributed, pytest.mark.slow]
 
 @pytest.mark.parametrize("boundary,lane", [("cpml", "fwd")])
 @pytest.mark.parametrize("kind", ["debye", "lorentz", "mixed"])
-def test_a_dispersive_model_matches_one_device(boundary, lane, kind):
-    """Use the per-step 9-ULP cross-trace bar (rfx CLAUDE.md), since R15g
-    replaces the vacuum-relative gate that collapsed with an exact reference.
+def test_a_dispersive_model_matches_one_device(boundary, lane, kind, monkeypatch):
+    """Debye/Lorentz use law C/bar S for accumulated pole rounding (rfx-archive records/20261017-item5-dispersive).
 
     The mixed (Debye+Lorentz) row is not bit-equal (#1535): the slab path forms
     the ADE coefficients inside the loop, one device before it. It read
     1.92/7.25/7.25 ULP at 200/400/800 steps on Linux x86 (Mac 6.04), a 1.75-ULP
     margin; a red here is answered by forming them before the loop, not a mark.
     """
+    if kind in ('debye', 'lorentz'):
+        from tests._distributed_dispersive_cpml import snapshot_parity
+        snapshot_parity(kind, WEEKLY_PREFIXES, monkeypatch, entry='snapshot_weekly')
+        return
     cross_trace(lambda: _debye_box(boundary, lane, kind), lane, _devices(2),
                 f"{kind}/{boundary}/{lane}", prefixes=WEEKLY_PREFIXES)
 

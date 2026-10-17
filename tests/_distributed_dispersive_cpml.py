@@ -87,6 +87,34 @@ def check(row, *, spectral_only=False):
     assert row['spectral'] <= 1e-6, f"bar S: {row}"
 
 
+def snapshot_parity(kind, lengths, monkeypatch, *, entry):
+    """Measure the existing x-lo pole box with lawS.py's probe arrangement."""
+    from rfx.runners import _distributed_nu_wrapped as runner
+    from tests.unit.runners.test_distributed_edge_averaged_materials import _debye_box, _devices
+    sim = _debye_box('cpml', 'fwd', kind)
+    while len(sim._probes) < 4:
+        sim.add_probe(_mm(12, 6, 6), 'ez')
+    assert len(sim._probes) == 4
+    for position, component in all_e_cells(sim):
+        sim.add_probe(position, component)
+    dt = float(sim._build_nonuniform_grid().dt)
+    original, calls = runner.build_setup, []
+    def observe(*args, **kwargs):
+        calls.append(True)
+        return original(*args, **kwargs)
+    monkeypatch.setattr(runner, 'build_setup', observe)
+    for n in lengths:
+        one = np.asarray(sim.forward(n_steps=n, skip_preflight=True, checkpoint=False).time_series)
+        calls.clear()
+        multi = np.asarray(sim.forward(n_steps=n, skip_preflight=True, checkpoint=False,
+            distributed=True, devices=_devices(2)).time_series)
+        assert calls, (kind, entry, n, 'wrapped setup not reached')
+        row = dict(box='debye_box_cpml_fwd', kind=kind, entry=entry, devices=2,
+                   n=n, **measure(one, multi, dt))
+        record(row)
+        check(row)
+
+
 def parity(kind, n, monkeypatch):
     from rfx.runners import _distributed_nu_wrapped as runner
     sim = scene(kind)
