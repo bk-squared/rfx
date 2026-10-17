@@ -386,3 +386,35 @@ def test_capture_recognises_wrapped_graded_run_fn():
     captured = program._capture_jit(run_fn)
     assert callable(captured)
     assert captured is not sentinel
+
+
+@pytest.mark.parametrize("path,target", [
+    ("uniform", "rfx.simulation"),
+    ("graded", "rfx.stepping.graded"),
+    ("multi-uniform", "rfx.runners._distributed_common"),
+    ("multi-graded", "rfx.stepping.graded"),
+])
+def test_control_injection_targets_only_multi_graded_change(monkeypatch, path, target):
+    import sys
+    from types import ModuleType, SimpleNamespace
+    from scripts.perf import step_cost_census as census
+
+    # Fake JAX modules: inspect routing without compiling or executing anything.
+    jax = ModuleType("jax")
+    numpy = ModuleType("jax.numpy")
+    jax.numpy = numpy
+    monkeypatch.setitem(sys.modules, "jax", jax)
+    monkeypatch.setitem(sys.modules, "jax.numpy", numpy)
+    original = lambda *args: None
+    module = SimpleNamespace(inject_drives=original)
+    imported = []
+
+    def import_module(name):
+        imported.append(name)
+        return module
+
+    monkeypatch.setattr(census.importlib, "import_module", import_module)
+    with census.injected_control(8, path):
+        assert imported == [target]
+        assert module.inject_drives is not original
+    assert module.inject_drives is original

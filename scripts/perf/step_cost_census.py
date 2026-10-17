@@ -316,6 +316,7 @@ def injected_control(footprint, path):
     import jax
     import jax.numpy as jnp
     module = importlib.import_module(
+        "rfx.stepping.graded" if path == "multi-graded" else
         "rfx.runners._distributed_common" if path.startswith("multi") else
         "rfx.stepping.graded" if "graded" in path else "rfx.simulation")
     original = module.inject_drives
