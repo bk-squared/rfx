@@ -67,13 +67,13 @@ def _points(deltas=(1, 2, 4), footprints=(1, 1, 1), noise=.01):
 ZERO = {"scatter": 0, "dynamic-update-slice": 0, "copy": 0, "fusion": 0}
 
 
-def test_domain_cost_is_flagged_by_a():
+def test_positive_timing_and_negative_structure_disagree():
     result = classify(_points(), ZERO, ZERO)
     assert result["s"] == pytest.approx(1)
     assert result["s_F"] == pytest.approx(0)
     assert result["e"] == pytest.approx(1)
     assert result["growth_seconds"] == 3
-    assert result["flag"] == "a"
+    assert result["flag"] == "disagree"
 
 
 def test_realized_footprint_slope_is_fitted_not_forced_to_two_thirds():
@@ -106,8 +106,8 @@ def test_excess_below_threshold_is_not_flagged():
 def test_below_noise_is_judged_only_by_structure():
     result = classify(_points(deltas=(-2, 0, 1), noise=1), ZERO, {**ZERO, "copy": 1})
     assert result["below_noise"] is True
-    assert result["a"] is False
-    assert result["flag"] == "b"
+    assert result["a"] is None
+    assert result["flag"] == "flagged"
 
 
 def test_constant_positive_structure_is_listed_not_flagged():
@@ -120,7 +120,7 @@ def test_constant_positive_structure_is_listed_not_flagged():
 @pytest.mark.parametrize("kind", tuple(ZERO))
 def test_each_structure_kind_can_flag_and_negative_base_deltas_are_valid(kind):
     f, f2 = {**ZERO, kind: -2}, {**ZERO, kind: -1}
-    assert classify(_points(), f, f2)["flag"] == "a/b"
+    assert classify(_points(), f, f2)["flag"] == "flagged"
 
 
 def test_untrusted_timing_is_disabled_table_wide():
@@ -218,10 +218,10 @@ def test_new_opcode_and_disappearing_opcode_are_zero_filled():
         "add": 2, "copy": -1, "gather": 2}
     result = classify(_points(deltas=(1, 1, 1)), {"copy": 5}, {"gather": 1})
     assert result["growing_opcodes"] == ["gather"]
-    assert result["flag"] == "b"
+    assert result["flag"] == "disagree"
 
 
-def test_c_domain_bytes_are_primary_even_when_timing_is_untrusted_and_below_noise():
+def test_c_is_report_only_when_timing_is_untrusted_and_below_noise():
     points = _points(deltas=(0, 0, 0), noise=100)
     # B_feature=116,132,164 minus B_base=100 -> ΔB=16,32,64.
     # C=1,2,4 and F=8,8,8 -> s_c=1, s_F=0, e_c=1.
@@ -232,8 +232,8 @@ def test_c_domain_bytes_are_primary_even_when_timing_is_untrusted_and_below_nois
     assert result["e_c"] == pytest.approx(1)
     assert result["s_F"] == pytest.approx(0)
     assert result["below_noise"] is True
-    assert result["a"] is False
-    assert result["flag"] == "b/c"
+    assert result["a"] is None
+    assert result["flag"] == "flagged"
 
 
 def test_c_uses_fitted_footprint_slope_and_least_squares():
@@ -245,7 +245,7 @@ def test_c_uses_fitted_footprint_slope_and_least_squares():
     result = classify(points, {}, {})
     assert result["s_c"] == pytest.approx(4 / 7)
     assert result["e_c"] == pytest.approx(-3 / 7)
-    assert result["c"] is False
+    assert result["c_report_only"] is True
 
 
 @pytest.mark.parametrize("deltas", [(0, 0, 0), (-1, 1, 2), (1, 0, 4)])
@@ -256,7 +256,7 @@ def test_c_nonpositive_byte_deltas_have_no_log_floor(deltas):
     result = classify(points, {}, {})
     assert result["s_c"] is None
     assert result["e_c"] is None
-    assert result["c"] is False
+    assert result["c_report_only"] is True
 
 
 def test_c_constant_bytes_and_excess_below_threshold_are_not_flagged():
@@ -285,3 +285,51 @@ def test_cost_record_refuses_ambiguous_multiple_device_dictionaries():
             return [{"bytes accessed": 16}, {"bytes accessed": 16}]
     with pytest.raises(ValueError, match="one executable"):
         cost_record(Executable())
+
+
+def test_a5_both_positive_are_flagged():
+    # C=1,2,4; delta=1,2,4; F=1 -> e=1 and growth=3 > .03.
+    # Gather=24 -> 48, so both primary and witness are positive.
+    result = classify(_points(), {"gather": 24}, {"gather": 48})
+    assert result["a"] is True
+    assert result["b"] is True
+    assert result["disagree"] is False
+    assert result["flag"] == "flagged"
+
+
+def test_a5_cannot_flag_from_bytes_even_with_domain_slope():
+    points = _points(deltas=(1, 1, 1))
+    for p, delta in zip(points, (16, 32, 64)):
+        p["delta_bytes_accessed"] = delta
+    # Timing s=0, structure 1 -> 1; byte slope=1 is report-only.
+    result = classify(points, {"copy": 1}, {"copy": 1})
+    assert result["a"] is False
+    assert result["b"] is False
+    assert result["e_c"] == pytest.approx(1)
+    assert result["flag"] == "none"
+    assert "c" not in result
+
+
+def test_a5_positive_primary_negative_witness_disagree():
+    # Visible constant delta has e=0, growth=0; gather count grows.
+    result = classify(_points(deltas=(1, 1, 1)), {"gather": 24}, {"gather": 48})
+    assert result["a"] is False
+    assert result["b"] is True
+    assert result["disagree"] is True
+    assert result["flag"] == "disagree"
+
+
+def test_a5_missing_exact_double_is_not_a_negative_primary():
+    result = classify(_points(), {"copy": 1}, None)
+    assert result["a"] is True
+    assert result["b"] is None
+    assert result["disagree"] is False
+    assert result["flag"] == "unavailable"
+
+
+def test_a5_ignored_witness_does_not_override_primary():
+    result = classify(_points(deltas=(1, 1, 1)), {"gather": 24}, {"gather": 48}, timing_trusted=False)
+    assert result["a"] is None
+    assert result["b"] is True
+    assert result["disagree"] is False
+    assert result["flag"] == "flagged"

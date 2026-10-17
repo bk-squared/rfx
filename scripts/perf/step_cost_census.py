@@ -1,4 +1,4 @@
-"""Per-feature CPU step-cost census, Design 20261017, Amendments 1–4.
+"""Per-feature CPU step-cost census, Design 20261017, Amendments 1–5.
 
 Quantities (seconds unless explicitly ns; MAD is median absolute deviation):
 S = 200; R = 7; t_step = median / S. Compile once, discard one warm run
@@ -20,7 +20,7 @@ For the CPML row, F = C − N³; its base is the same interior PEC box.
 (a): e > 0.3, and Δt(144) − Δt(56)·(F(144)/F(56)) > 3σ_Δ(144).
 Below noise: Δt is below 3σ_Δ at every size; timing (a) is ignored.
 Trust: if σ_base(144) > 5 % of t_step(base, 144) on any row, report the
-table on (b)/(c), without re-running with other settings.
+table on (b), without re-running with other settings; (c) is reported only.
 (b): for any op kind, the domain-sized op count at 2F exceeds the count
 at F (at N = 88). Count EVERY compiled-HLO instruction whose output has
 at least C elements, by opcode. Excluded opcodes: parameter, tuple,
@@ -31,9 +31,14 @@ feature minus base counts. Only outputs are inspected, not input operands.
 The former four-op rule is retained as a diagnostic, not used for (b).
 (c): XLA cost_analysis()["bytes accessed"] of the compiled step.
 ΔB(N) = feature − base; s_c = least-squares slope of log ΔB against log C;
-e_c = s_c − s_F. The flag is e_c > 0.3; no σ clause.
+e_c = s_c − s_F. (c) is reported in every row, never flags.
 Nonpositive ΔB has no logarithm: report s_c/e_c as null, without a floor
-or an invented epsilon. (c) is primary; timing (a) is a witness.
+or an invented epsilon. (b) is PRIMARY; timing (a) is WITNESS.
+A row where (b) and (a) disagree is listed as "disagree"; neither rule
+resolves it alone. Otherwise (b) true is "flagged", (b) false is "none".
+Ignored timing (below noise or untrusted) is null, not a negative witness.
+An unavailable exact-2F comparison leaves (b) and the flag unavailable;
+its refusal message is retained. No footprint is invented.
 The scan counting convention is measured by compiling the same scan body
 at 2 and 200 trips and also compiling its body alone. Raw cost dictionaries,
 body counts and differences are retained. B is the compiler's whole-program
@@ -135,13 +140,14 @@ def classify(points, counts_f, counts_2f, *, timing_trusted=True):
     byte_deltas = [p.get("delta_bytes_accessed") for p in points]
     sc = None if any(x is None for x in byte_deltas) else log_slope([p["C"] for p in points], byte_deltas)
     ec = None if sc is None or sf is None else sc - sf
-    c = ec is not None and ec > .3
-    a = a_raw and timing_trusted
+    a = a_raw if timing_trusted and not below else None
+    disagree = b is not None and a is not None and b != a
+    flag = "unavailable" if b is None else "disagree" if disagree else "flagged" if b else "none"
     return dict(s=s, s_F=sf, e=excess, below_noise=below,
                 growth_seconds=growth, timing_trusted=timing_trusted,
                 timing_clause_raw=a_raw, a=a, b=b, growing_opcodes=growing,
-                s_c=sc, e_c=ec, c=c,
-                flag="/".join(k for k, flagged in (("a", a), ("b", b), ("c", c)) if flagged) or "none",
+                s_c=sc, e_c=ec, c_report_only=True, disagree=disagree,
+                flag=flag,
                 conclusion="리더가 채움")
 
 
@@ -461,8 +467,8 @@ def finish_report(report):
             p["sigma_base_fraction_of_t_base"] = p["sigma_base_seconds"] / p["t_base_seconds"]
     control = report["rows"].get("control", {}).get("statistics")
     if control:
-        report["control_flagged"] = control["flag"] != "none"
-        report["control_flagged_both_b_c"] = bool(control["b"] and control["c"])
+        report["control_flagged"] = control["flag"] == "flagged"
+        report["control_b"] = control["b"]
 
 
 def save_report(report, path):
@@ -501,7 +507,7 @@ def main(argv=None):
         parser.error(f"unknown rows {sorted(unknown)} or sizes outside {SIZES}")
     if args.path.startswith("multi") and len(jax.devices("cpu")) != 2:
         parser.error("multi-device path needs exactly two virtual CPU devices")
-    report = {"schema": 2, "design_amendments": [1, 2, 3, 4], "path": args.path, "steps": S, "repeats": R,
+    report = {"schema": 3, "design_amendments": [1, 2, 3, 4, 5], "path": args.path, "steps": S, "repeats": R,
               "job": os.environ.get("REMI_JOB"), "jax_version": jax.__version__,
               "python": sys.version, "rfx_import": rfx.__file__, "cpu_affinity": sorted(os.sched_getaffinity(0)),
               "hostname": platform.node(), "platform": platform.platform(),
@@ -545,7 +551,7 @@ def main(argv=None):
     save_report(report, args.output)
     print("COMPLETE " + json.dumps({"output": args.output, "seconds": report["total_wall_seconds"],
                                     "control_flagged": report.get("control_flagged"),
-                                    "control_flagged_both_b_c": report.get("control_flagged_both_b_c")}), flush=True)
+                                    "control_b": report.get("control_b")}), flush=True)
     return 0
 
 

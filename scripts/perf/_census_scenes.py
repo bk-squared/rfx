@@ -1,4 +1,4 @@
-"""Public Simulation declarations for the step-cost census (Design amendments 1–4).
+"""Public Simulation declarations for the step-cost census (Design amendments 1–5).
 
 No private Simulation methods or product monkey patches belong in this module.
 N is the interior cell count; C=(N+16)**3 includes eight CPML cells per face.
@@ -45,7 +45,7 @@ class Scene:
             bounds = self.sim.tfsf_box_indices()
             planes = 2  # the public open TF/SF slab has two x injection faces
             self.footprint = planes * record.domain[1].n_cells * record.domain[2].n_cells
-            if len(bounds) != 2:
+            if set(bounds) != {"x"} or len(bounds["x"]) != 2:
                 raise ValueError(f"unexpected open TF/SF bounds: {bounds}")
         return {
             "interior_cells": [a.n_cells for a in record.domain],
@@ -283,11 +283,13 @@ def conformal_pec(n, path="uniform", scale=1):
 
 
 def tfsf_closed(n, path="uniform", scale=1):
+    if scale != 1:
+        raise NotImplementedError("closed TF/SF 2F: this single-box builder cannot realize exactly twice the surface footprint")
     scene = base(n, path)
     # Keep the point-source base: if that combination is unsupported, record
     # the public API's refusal instead of silently dropping the point source.
     scene.sim.add_tfsf_source(closed_box=True, margin=(n-24)//2, f0=2e9)
-    scene.footprint, scene.footprint_kind = 6 * 24**2 * scale, "surface_cells"
+    scene.footprint, scene.footprint_kind = 6 * 24**2, "surface_cells"
     return scene
 
 
