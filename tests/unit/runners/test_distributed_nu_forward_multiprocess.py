@@ -456,8 +456,7 @@ if __name__ == "__main__":
     elif mode == "mutation":
         kind, gate, error = args
         with pytest.MonkeyPatch.context() as patch:
-            if kind == "spacing":
-                _select_legacy_poles_cpml(patch)
+            _select_legacy_poles_cpml(patch)
             _mutate(kind)
             try:
                 if gate == "parity":

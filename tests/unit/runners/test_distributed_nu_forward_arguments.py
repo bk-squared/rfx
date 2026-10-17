@@ -12,6 +12,7 @@ import pytest
 from rfx import Box, DebyePole, Simulation
 from rfx.materials.lorentz import lorentz_pole
 from rfx.runners import distributed_nu
+from tests.unit.runners.test_distributed_nu_forward_staging import _select_legacy_poles_cpml
 
 pytestmark = pytest.mark.distributed
 
@@ -111,6 +112,7 @@ def loop_program(request):
         return run
 
     with pytest.MonkeyPatch.context() as patch:
+        _select_legacy_poles_cpml(patch)
         patch.setattr(distributed_nu, "jax", SimpleNamespace(**{**vars(jax), "jit": traced_jit}))
         patch.setattr(distributed_nu, "lax", SimpleNamespace(**{**vars(distributed_nu.lax),
                                                             "scan": traced_scan}))
