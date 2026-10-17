@@ -118,9 +118,11 @@ def face_record_pays(cfg, n_steps, *, checkpoint, checkpoint_segments=None,
     record_bytes = 4 x steps x (unique H reads + unique E reads). The reads
     grow with the box's face area for oblique incidence. A checkpointed
     gradient saves the six float32 line arrays once per saved boundary B:
-    segment_counts(...)[0] for segments/intervals, steps - warmup for
-    per-step remat, and zero without checkpoint. Choose B * line_bytes >
-    record_bytes. The resident record is not itself a saved carry.
+    segment_counts(...)[0] for segments/intervals (every segment is
+    rematerialised, whatever ``checkpoint`` says, #1815), steps - warmup
+    for per-step remat (checkpoint=True alone), and zero otherwise.
+    Choose B * line_bytes > record_bytes. The resident record is not
+    itself a saved carry.
 
     Review measurements (theta=30 deg; decimal MB; cells, phi, steps,
     H/E reads, record MB, one line MB, record/line):
@@ -142,11 +144,10 @@ def face_record_pays(cfg, n_steps, *, checkpoint, checkpoint_segments=None,
     """
     if not getattr(cfg, "closed_box", False):
         return False
-    boundaries = 0
-    if checkpoint:
-        boundaries = (segment_counts(n_steps, n_warmup, checkpoint_every, checkpoint_segments)[0]
-                      if checkpoint_segments is not None or checkpoint_every is not None
-                      else n_steps - n_warmup)
+    if checkpoint_segments is not None or checkpoint_every is not None:
+        boundaries = segment_counts(n_steps, n_warmup, checkpoint_every, checkpoint_segments)[0]
+    else:
+        boundaries = n_steps - n_warmup if checkpoint else 0
     line_bytes = 6 * cfg.n_nodes * 4
     return boundaries * line_bytes > face_record_bytes(cfg, n_steps)
 
