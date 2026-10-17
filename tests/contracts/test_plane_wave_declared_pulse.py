@@ -37,7 +37,8 @@ def _scene(path, **kwargs):
         options.update(angle_deg=30, method=path)
     if path == "closed":
         options["closed_box"] = True
-    sim.add_tfsf_source(**options, **kwargs)
+    options.update(kwargs)
+    sim.add_tfsf_source(**options)
     return sim
 
 
@@ -60,6 +61,37 @@ def test_p1_launched_source_fields(path, waveform, tau, t0):
         assert not hasattr(cfg, "src_waveform")
     else:
         assert cfg.src_waveform == waveform
+
+
+TAU_BW02 = 1.989436788648692e-10
+DG_T0_BW02 = 5.968310365946076e-10
+MG_T0_BW02 = 9.947183943243459e-10
+
+
+@pytest.mark.parametrize("path,waveform,t0", [
+    ("normal", DG, DG_T0_BW02), ("normal", MG, MG_T0_BW02),
+    ("closed", DG, DG_T0_BW02), ("closed", MG, MG_T0_BW02),
+    ("methodB", DG, DG_T0_BW02), ("methodB", MG, MG_T0_BW02),
+    ("bloch", MG, DG_T0_BW02),
+])
+def test_p1_declared_bandwidth_sets_pulse_width(path, waveform, t0):
+    """A narrower declared band means a longer pulse: τ = 1/(π f0 bandwidth) at bandwidth 0.2.
+
+    The other pins use the builders' default bandwidth 0.5, which cannot tell a declared
+    bandwidth from a dropped one.
+    """
+    cfg, _ = _build(path, waveform=waveform, bandwidth=0.2)
+    assert cfg.src_tau == TAU_BW02
+    assert cfg.src_t0 == t0
+
+
+def test_p1_declared_bandwidth_reaches_methodb_through_the_declaration():
+    """The declaration's bandwidth reaches method B's auxiliary line through the one builder."""
+    sim = _scene("methodB", bandwidth=0.2)
+    cfg, _ = tfsf_from_declaration(sim._tfsf, sim._build_grid(), sim._freq_max, n_steps=16)
+    assert cfg.src_waveform == DG
+    assert cfg.src_tau == TAU_BW02
+    assert cfg.src_t0 == DG_T0_BW02
 
 
 @pytest.mark.parametrize("path,expected,t0", [
