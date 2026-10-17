@@ -301,6 +301,21 @@ def test_every_overlap_column_blocked_is_skipped(mesh):
 
 
 @pytest.mark.parametrize("mesh", NODES)
+def test_every_overlap_column_blocked_by_a_non_box_post_is_skipped(mesh):
+    # Same sheets (4 and 6.1 mm, solved 2 mm apart: -4.76 % if judged). A
+    # Cylinder (r 5.5 mm about (8.5, 7.5) mm, z 4..6 mm) fills every overlap
+    # column x=5..12, y=5..10 (farthest cell centre 5 mm off its axis) and,
+    # not being a Box, adds no judged face: the pair is skipped, no row.
+    from rfx.geometry.csg import Cylinder
+
+    sim = _review_base(mesh, "strict")
+    _review_sheet(sim, _LO_XY, 4, 4, "lower")
+    _review_sheet(sim, _HI_XY, 6.1, 6.1, "upper")
+    sim.add(Cylinder((8.5 * MM, 7.5 * MM, 5 * MM), 5.5 * MM, 2 * MM), material="via")
+    assert not sim.preflight().by_code(CODE)
+
+
+@pytest.mark.parametrize("mesh", NODES)
 @pytest.mark.parametrize("upper_lo", [4.4, 4.3], ids=["touching", "overlapping"])
 @pytest.mark.parametrize("snap", ["strict", "declared"])
 @pytest.mark.parametrize("entry", ["run", "forward"])
@@ -476,6 +491,9 @@ def test_lone_box_has_no_cavity(mesh):
     sim = _review_base(mesh, "strict")
     sim.add(Box((2 * MM, 2 * MM, 1.1 * MM), (17 * MM, 15 * MM, 4.3 * MM)),
             material="lower")
+    # A second conductor beside it (no shared footprint) so the pairing runs.
+    sim.add(Box((18 * MM, 16 * MM, 10 * MM), (19.5 * MM, 17.5 * MM, 10 * MM)),
+            material="upper")
     # Its own 3.2 mm drawn thickness solves to 3 mm, but is metal, not a gap.
     assert not sim.preflight().by_code(CODE)
 
@@ -590,3 +608,38 @@ def test_box_faces_a_micron_apart_are_a_collapsed_cavity(monkeypatch, mesh):
     # both faces' node (4 mm) solves as 0, so -100% and refused.
     _assert_review_verdict(monkeypatch, _stacked_blocks(mesh, 4.001 * MM), "run",
                            "strict", "drawn spacing 1µm, solved spacing 0mm (-100.00%)")
+
+
+def _periodic_x_blocks(*spans):
+    from rfx.boundaries.spec import BoundarySpec
+
+    sim = Simulation(10e9, DOMAIN, dx=MM, snap="strict",
+                     boundary=BoundarySpec(x="periodic", y="pec", z="pec"))
+    for i, (xlo, xhi) in enumerate(spans):
+        sim.add_material(f"m{i}", sigma=1e10)
+        sim.add(Box((xlo * MM, 4.65 * MM, 4.65 * MM), (xhi * MM, 10.35 * MM, 12.35 * MM)),
+                material=f"m{i}")
+    sim.add_source((MM, MM, MM), component="ez")
+    return sim
+
+
+@pytest.mark.parametrize("spans", [((4, 8), (16, 20)), ((0, 3), (16, 20)), ((4, 8), (16, 22))],
+                         ids=["face_on_seam", "split_strip", "crossing_seam"])
+def test_periodic_box_at_or_across_the_seam_is_judged_on_its_drawn_faces(monkeypatch, spans):
+    # Periodic x, L = 20 mm, 1 mm cells, every face on a node. A face at 20 or
+    # 22 mm is stored on node 0 or 2; read by index it would be the LOWER face.
+    # Drawn gaps 16 - 8 = 8 and 16 - 3 = 13 mm, solved the same: accepted.
+    sim = _periodic_x_blocks(*spans)
+    calls = _stub_runners(monkeypatch)
+    assert not sim.preflight().by_code(CODE)
+    with pytest.raises(_ReachedRunner):
+        sim.run(n_steps=1, compute_s_params=False)
+    assert calls == [True]
+
+
+def test_periodic_box_on_the_seam_with_an_off_node_face_is_refused():
+    # Same as face_on_seam with the far block's lower face at 16.4 mm: solved
+    # on 16, so 8 mm against 8.4 mm drawn, 8/8.4 - 1 = -4.76 %.
+    row, = _periodic_x_blocks((4, 8), (16.4, 20)).preflight().by_code(CODE)
+    assert row.severity == "error"
+    assert f"drawn spacing {_fmt_len(8.4 * MM)}, solved spacing {_fmt_len(8 * MM)} (-4.76%)" in str(row)

@@ -891,6 +891,17 @@ def _sheet_solved_plane(ctx, a, e, k, drawn=None) -> float:
     return z
 
 
+def _box_face_planes(ctx, a, e, shape):
+    """Lower and upper wall planes of Box ``e`` along ``a``. On a periodic axis
+    a face at or past L lies on a wrapped node, so the lowest and highest index
+    are not its faces: each face takes the plane nearest it once unwrapped."""
+    wall = e.wall_planes(a, ctx.periodic, shape)
+    if not wall or not ctx.periodic[a]:
+        return (min(wall), max(wall)) if wall else None
+    return tuple(min(wall, key=lambda k: abs(_sheet_solved_plane(ctx, a, e, k, face) - face))
+                 for face in (float(e.lo[a]), float(e.hi[a])))
+
+
 def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
     """Judge adjacent sheet/Box cavity faces independently of electrical columns."""
     conductors = [e for e in entries if e.kind == "sheet"
@@ -910,11 +921,11 @@ def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
                     continue
                 faces = [(int(e.sheet.plane), float(e.lo[a]), float(e.hi[a]), "sheet")]
             else:
-                wall = e.wall_planes(a, ctx.periodic, shape)
-                if not wall:
+                wall = _box_face_planes(ctx, a, e, shape)
+                if wall is None:
                     continue
-                faces = [(min(wall), float(e.lo[a]), float(e.lo[a]), "PEC Box face lower"),
-                         (max(wall), float(e.hi[a]), float(e.hi[a]), "PEC Box face upper")]
+                faces = [(wall[0], float(e.lo[a]), float(e.lo[a]), "PEC Box face lower"),
+                         (wall[1], float(e.hi[a]), float(e.hi[a]), "PEC Box face upper")]
             for k, lo, hi, kind in faces:
                 planes.append((e, k, e.footprint_on_plane(a, k, ctx.periodic, shape), lo, hi, kind))
         planes.sort(key=lambda p: (0.5 * (p[3] + p[4]), p[3]))

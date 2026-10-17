@@ -363,7 +363,7 @@ LOCK_PROVENANCE = {
         "tests/locks/test_preflight_split_snapshot.py "
         "(RFX_PREFLIGHT_SNAPSHOT_UPDATE=1)"
     ),
-    "commit": "6905879de",
+    "commit": "f51f03c9c",
     "date": "2026-10-18",
     "run_id": "local",
     "host": "Darwin arm64, CPU, python 3.11.2, jax 0.10.2",
