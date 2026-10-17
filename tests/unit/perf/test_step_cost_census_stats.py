@@ -324,7 +324,7 @@ def test_a5_missing_exact_double_is_not_a_negative_primary():
     assert result["a"] is True
     assert result["b"] is None
     assert result["disagree"] is False
-    assert result["flag"] == "unavailable"
+    assert result["flag"] == "unavailable 2F"
 
 
 def test_a5_ignored_witness_does_not_override_primary():
@@ -349,12 +349,8 @@ def test_amendment6_shard_threshold_and_single_device_counts():
   %small = f32[59] add(%p0, %p1)
 }'''
     assert field_shard_record(hlo)['shape'] == [3, 4, 5]
-    assert domain_size_threshold(hlo, 100) == 100
     assert domain_size_threshold(hlo, 100, distributed=True) == 60
-    assert compiled_opcode_counts(hlo, domain_size_threshold(hlo, 100)) == {'fusion': 1}
     assert compiled_opcode_counts(hlo, domain_size_threshold(hlo, 100, distributed=True)) == {'copy': 1, 'fusion': 1}
-    # Single-device input needs no field metadata and remains exactly C.
-    assert domain_size_threshold('no field metadata', 100) == 100
     with pytest.raises(RuntimeError, match='all six'):
         domain_size_threshold('no field metadata', 100, distributed=True)
 
@@ -418,3 +414,97 @@ def test_control_injection_targets_only_multi_graded_change(monkeypatch, path, t
         assert imported == [target]
         assert module.inject_drives is not original
     assert module.inject_drives is original
+
+
+@pytest.mark.parametrize("shape,expected", [((105, 105, 105), 1124864), ((105, 89, 89), 805376)])
+def test_realized_single_device_cells(shape, expected):
+    from scripts.perf.step_cost_census import domain_size_threshold
+    # By hand: 104^3=1124864; 104*88*88=805376.
+    field = "f32[" + ",".join(map(str, shape)) + "]"
+    hlo = "%loop = (" + ", ".join([field]*6) + ") while(%init)"
+    assert domain_size_threshold(hlo, 1124864) == expected
+    ops = "%a = f32[805376] copy(%x)\n%b = f32[1124864] fusion(%x)"
+    expected_counts = {"fusion": 1} if expected == 1124864 else {"copy": 1, "fusion": 1}
+    assert compiled_opcode_counts(ops, domain_size_threshold(hlo, 1124864)) == expected_counts
+
+
+def test_witness_uses_delta_noise_not_base_noise():
+    points = _points(deltas=(1, 2, 4), noise=.01)
+    points[-1]["sigma_delta_seconds"] = 1.1
+    # Growth=4-1=3; 3*sigma_delta=3.3, but 3*sigma_base=.03.
+    result = classify(points, ZERO, ZERO)
+    assert result["growth_seconds"] == 3
+    assert result["a"] is False
+
+
+def test_witness_growth_uses_raw_delta_with_small_size_floored():
+    points = _points(deltas=(1, 3, 5), noise=1)
+    # Floors=3,3,5. s=ln(5/3)/ln(4)>.3. Raw growth=5-1=4>3;
+    # replacing raw small delta with floor gives 5-3=2 and fails the clause.
+    result = classify(points, ZERO, ZERO)
+    assert result["s"] == pytest.approx(math.log(5/3)/math.log(4))
+    assert result["growth_seconds"] == 4
+    assert result["a"] is True
+
+
+def test_builder_unavailable_is_not_product_refusal():
+    from scripts.perf.step_cost_census import build_scene, is_api_refusal, Unavailable2F, unavailable_2f_record
+
+    def builder():
+        raise NotImplementedError("no exact double")
+
+    with pytest.raises(Unavailable2F) as caught:
+        build_scene(builder)
+    assert not is_api_refusal(caught.value)
+    assert not is_api_refusal(caught.value.__cause__)
+    assert unavailable_2f_record(caught.value)["status"] == "unavailable 2F"
+
+
+def test_product_refusal_origin_is_required():
+    from pathlib import Path
+    from scripts.perf import step_cost_census as census
+    namespace = {}
+    filename = str(Path(census.__file__).resolve().parents[2] / "rfx" / "synthetic_test_only.py")
+    exec(compile("def product():\n    raise NotImplementedError('unsupported')", filename, "exec"), namespace)
+    try:
+        namespace["product"]()
+    except NotImplementedError as exc:
+        assert census.is_api_refusal(exc)
+    assert not census.is_api_refusal(ValueError("2F mismatch"))
+
+
+def test_cached_executable_records_blocked_time_and_runner(monkeypatch):
+    import sys
+    from types import SimpleNamespace
+    from scripts.perf import step_cost_census as census
+    events = []
+    monkeypatch.setitem(sys.modules, "jax", SimpleNamespace(block_until_ready=lambda result: events.append("blocked")))
+    ticks = iter([0, 2, 3, 7, 8, 10])
+    monkeypatch.setattr(census.time, "perf_counter", lambda: next(ticks))
+    def run_fn(): pass
+    run_fn.__module__ = "rfx.stepping.slab_wrap"
+    def executable():
+        events.append("called")
+        return 42
+    lowered = SimpleNamespace(compile=lambda: executable)
+    program = census.Program.__new__(census.Program)
+    program.original_jit = lambda fun: SimpleNamespace(lower=lambda: lowered)
+    program.cache = {}
+    program._record_executable = lambda *args: {}
+    call = program._capture_jit(run_fn)
+    assert call() == call() == 42
+    assert events == ["called", "blocked", "called", "blocked"]
+    assert program.record["executable_call_seconds"] == [4, 2]
+    assert program.record["runner"] == {"module": "rfx.stepping.slab_wrap", "function": "run_fn"}
+
+
+def test_open_tfsf_rejects_double_before_building_scene():
+    import ast
+    from pathlib import Path
+    from scripts.perf import step_cost_census as census
+    source = Path(census.__file__).with_name("_census_scenes.py").read_text()
+    function = next(n for n in ast.parse(source).body if isinstance(n, ast.FunctionDef) and n.name == "tfsf_open")
+    namespace = {}
+    exec(compile(ast.Module(body=[function], type_ignores=[]), "builder-test", "exec"), namespace)
+    with pytest.raises(NotImplementedError, match="open TF/SF 2F"):
+        namespace["tfsf_open"](88, scale=2)

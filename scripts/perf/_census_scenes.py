@@ -325,6 +325,8 @@ def tfsf_closed(n, path="uniform", scale=1):
 
 
 def tfsf_open(n, path="uniform", scale=1):
+    if scale != 1:
+        raise NotImplementedError("open TF/SF 2F: this single-plane builder cannot realize exactly twice the footprint")
     scene = base(n, path, point_source=False)
     scene.sim.add_tfsf_source(closed_box=False, margin=10, f0=2e9)
     scene.footprint_kind = "injection_plane"

@@ -1,4 +1,4 @@
-"""Per-feature CPU step-cost census, Design 20261017, Amendments 1–6.
+"""Per-feature CPU step-cost census, Design 20261017, Amendments 1-6.
 
 Quantities (seconds unless explicitly ns; MAD is median absolute deviation):
 S = 200; R = 7; t_step = median / S. Compile once, discard one warm run
@@ -30,7 +30,9 @@ of its output arrays has at least C elements. Report absolute counts and
 feature minus base counts. Only outputs are inspected, not input operands.
 Amendment 6, multi-device only: replace C in the domain-sized threshold
 with the per-device field shard's cell count, read from the compiled
-program's field-shard shape. Single-device thresholds remain C.
+program's field-shard shape. Review correction: single-device threshold
+is the product of (compiled field dimension - 1), the realized cell count;
+it equals C for full-grid scenes. C in the slopes remains unchanged.
 A distributed result with devices_used=1 is labelled "falls back (one device)";
 quote its diagnostic warning and record no timing samples.
 The former four-op rule is retained as a diagnostic, not used for (b).
@@ -43,7 +45,7 @@ A row where (b) and (a) disagree is listed as "disagree"; neither rule
 resolves it alone. Otherwise (b) true is "flagged", (b) false is "none".
 Ignored timing (below noise or untrusted) is null, not a negative witness.
 An unavailable exact-2F comparison leaves (b) and the flag unavailable;
-its refusal message is retained. No footprint is invented.
+its message is retained under "unavailable 2F". No footprint is invented.
 The scan counting convention is measured by compiling the same scan body
 at 2 and 200 trips and also compiling its body alone. Raw cost dictionaries,
 body counts and differences are retained. B is the compiler's whole-program
@@ -53,6 +55,10 @@ not assumed. The control footprint is 8 cells (2F = 16).
 Memory total = argument_size_in_bytes + output_size_in_bytes +
 temp_size_in_bytes − alias_size_in_bytes, plus the same four host terms.
 Compile seconds and memory_analysis total are records, not statistics.
+Multi-device executable_call_seconds records each cached executable call
+through block_until_ready separately (including compile-entry and warm calls);
+interleaved executable_seconds identifies the seven timed samples per side.
+Existing t_step still measures the whole public forward entry.
 
 The injected control is test-only: per footprint cell and per E component,
 an identity gather copies the full field, with optimization barriers on
@@ -149,7 +155,7 @@ def classify(points, counts_f, counts_2f, *, timing_trusted=True):
     ec = None if sc is None or sf is None else sc - sf
     a = a_raw if timing_trusted and not below else None
     disagree = b is not None and a is not None and b != a
-    flag = "unavailable" if b is None else "disagree" if disagree else "flagged" if b else "none"
+    flag = "unavailable 2F" if b is None else "disagree" if disagree else "flagged" if b else "none"
     return dict(s=s, s_F=sf, e=excess, below_noise=below,
                 growth_seconds=growth, timing_trusted=timing_trusted,
                 timing_clause_raw=a_raw, a=a, b=b, growing_opcodes=growing,
@@ -231,8 +237,38 @@ def field_shard_record(compiled_text):
     return {"shape": list(shape), "cells": math.prod(shape), "parameter_instructions": evidence}
 
 
+def single_device_field_record(compiled_text):
+    """Read the full-field shape from the optimized scan carry.
+
+    The six Yee fields share a rank-three shape dominating the CPML slabs.
+    Require six occurrences and a unique componentwise maximal shape; never
+    infer a field from an arbitrary largest temporary or from nominal N.
+    """
+    candidates, evidence = set(), []
+    for line in compiled_text.splitlines():
+        if " while(" not in line:
+            continue
+        signature = line.split(" while(", 1)[0].split("=", 1)[-1]
+        shapes = [tuple(map(int, d.split(","))) for d in
+                  re.findall(r"\b(?:f|bf|c)\d+\[(\d+,\d+,\d+)\]", signature)]
+        for shape in set(shapes):
+            if shapes.count(shape) >= 6 and all(
+                    all(a >= b for a, b in zip(shape, other)) for other in shapes):
+                candidates.add(shape)
+                evidence.append(line.strip())
+    if len(candidates) != 1:
+        raise RuntimeError(f"compiled scan does not identify one six-field shape: {candidates}")
+    shape = next(iter(candidates))
+    if min(shape) <= 1:
+        raise RuntimeError(f"field dimensions must exceed one: {shape}")
+    return {"shape": list(shape), "cells": math.prod(d - 1 for d in shape),
+            "carry_instructions": evidence}
+
+
 def domain_size_threshold(compiled_text, cells, *, distributed=False):
-    return field_shard_record(compiled_text)["cells"] if distributed else cells
+    # cells remains the nominal C used by callers for slopes, not this count.
+    record = field_shard_record if distributed else single_device_field_record
+    return record(compiled_text)["cells"]
 
 
 class OneDeviceFallback(Exception):
@@ -355,13 +391,15 @@ class Program:
         threshold = domain_size_threshold(ct, self.cells, distributed=self.distributed)
         record = {"compile_seconds": seconds, "memory_analysis": memory_record(executable),
                 "counts": compiled_opcode_counts(ct, threshold),
-                "legacy_counts": structural_counts(lt, ct, self.cells),
+                "legacy_counts": structural_counts(lt, ct, threshold),
                 "cost_analysis": cost_record(executable),
                 "lowered_sha256": hashlib.sha256(lt.encode()).hexdigest(),
                 "compiled_sha256": hashlib.sha256(ct.encode()).hexdigest()}
         if self.distributed:
             record["field_shard"] = field_shard_record(ct)
-            record["domain_size_threshold"] = threshold
+        else:
+            record["realized_field"] = single_device_field_record(ct)
+        record["domain_size_threshold"] = threshold
         return record
 
     def _capture_jit(self, fun=None, **kwargs):
@@ -383,7 +421,15 @@ class Program:
                 elapsed = time.perf_counter() - t0
                 self.cache[key] = executable
                 self.record = self._record_executable(lowered, executable, elapsed)
-            return self.cache[key](*args, **kw)
+                self.record["runner"] = {"module": fun.__module__, "function": fun.__name__}
+            import jax
+            started = time.perf_counter()
+            result = self.cache[key](*args, **kw)
+            jax.block_until_ready(result)
+            seconds = time.perf_counter() - started
+            self.last_executable_seconds = seconds
+            self.record.setdefault("executable_call_seconds", []).append(seconds)
+            return result
         return call
 
     def compile(self):
@@ -437,9 +483,35 @@ def _refusal(exc):
             "conclusion": "리더가 채움"}
 
 
+class Unavailable2F(Exception):
+    """Harness builder/footprint limitation, never a product refusal."""
+
+
+def unavailable_2f_record(exc):
+    return {"status": "unavailable 2F", "exception": type(exc).__name__,
+            "message": str(exc), "conclusion": "리더가 채움"}
+
+
 def is_api_refusal(exc):
-    return isinstance(exc, (ValueError, NotImplementedError)) or (
-        isinstance(exc, TypeError) and "Simulation.forward() got unexpected keyword" in str(exc))
+    if not (isinstance(exc, (ValueError, NotImplementedError)) or (
+            isinstance(exc, TypeError) and "Simulation.forward() got unexpected keyword" in str(exc))):
+        return False
+    tb = exc.__traceback__
+    if tb is None:
+        return False
+    while tb.tb_next is not None:
+        tb = tb.tb_next
+    return Path(tb.tb_frame.f_code.co_filename).resolve().is_relative_to(
+        Path(__file__).resolve().parents[2] / "rfx")
+
+
+def build_scene(builder, *args, **kwargs):
+    try:
+        return builder(*args, **kwargs)
+    except NotImplementedError as exc:
+        if is_api_refusal(exc):
+            raise
+        raise Unavailable2F(str(exc)) from exc
 
 
 def run_pair(row, n, path):
@@ -449,7 +521,7 @@ def run_pair(row, n, path):
     cells = (n + 16)**3
     print(f"BEGIN row={row} N={n} C={cells}", flush=True)
     base_scene = scenes.pec_base(n, path) if row == "cpml" else scenes.base(n, path)
-    scene = scenes.BUILDERS[row](n, path)
+    scene = build_scene(scenes.BUILDERS[row], n, path)
     geometry, base_geometry = scene.realized(), base_scene.realized()
     if geometry["interior_cells"] != [n] * 3:
         raise RuntimeError(f"unexpected interior realization: {geometry}")
@@ -470,7 +542,10 @@ def run_pair(row, n, path):
             runner.call()
             elapsed = time.perf_counter() - t0
             runs.append(elapsed)
-            interleaved.append({"pair": i, "side": label, "seconds": elapsed})
+            sample = {"pair": i, "side": label, "seconds": elapsed}
+            if runner.distributed:
+                sample["executable_seconds"] = runner.last_executable_seconds
+            interleaved.append(sample)
             print(f"RUN row={row} N={n} pair={i} side={label} seconds={elapsed:.9f}", flush=True)
     pair_wall = time.perf_counter() - started
     result = dict(N=n, C=cells, F=scene.footprint, status="ok", geometry=geometry,
@@ -487,13 +562,13 @@ def run_pair(row, n, path):
         structural = {"F": {"footprint": scene.footprint, "absolute": program.record["counts"], "minus_base": f_delta},
                       "base": base_program.record["counts"]}
         try:
-            doubled = scenes.BUILDERS[row](n, path, scale=2)
+            doubled = build_scene(scenes.BUILDERS[row], n, path, scale=2)
             doubled_geometry = doubled.realized()
             if row == "base":
                 # A reference has no feature to double; both comparisons are 0.
                 doubled.footprint = 2 * scene.footprint
             elif doubled.footprint != 2 * scene.footprint:
-                raise ValueError(f"2F realization is {doubled.footprint}, expected {2 * scene.footprint}")
+                raise Unavailable2F(f"2F realization is {doubled.footprint}, expected {2 * scene.footprint}")
             p2 = Program(doubled, path, cells, doubled.footprint if row == "control" else 0)
             p2.compile()
             structural["2F"] = {"footprint": doubled.footprint, "geometry": doubled_geometry,
@@ -501,6 +576,8 @@ def run_pair(row, n, path):
                                 "minus_base": subtract_counts(p2.record["counts"], base_program.record["counts"]),
                                 "program": p2.record}
             del p2, doubled
+        except Unavailable2F as exc:
+            structural["2F"] = unavailable_2f_record(exc)
         except OneDeviceFallback as exc:
             structural["2F"] = fallback_record(exc)
         except (ValueError, NotImplementedError, TypeError) as exc:
@@ -635,6 +712,8 @@ def main(argv=None):
             for n in sorted(set(args.sizes)):
                 try:
                     result = run_pair(row, n, args.path)
+                except Unavailable2F as exc:
+                    result = dict(N=n, C=(n+16)**3, **unavailable_2f_record(exc))
                 except OneDeviceFallback as exc:
                     result = dict(N=n, C=(n+16)**3, **fallback_record(exc))
                     print("FALLBACK " + json.dumps(result, ensure_ascii=False), flush=True)
