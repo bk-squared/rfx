@@ -817,8 +817,8 @@ def test_a_dispersive_cpml_box_stays_finite_and_matches_one_device(lane):
     PEC backing of the absorber's outer node planes. Forward rows live in
     test_distributed_cpml_dispersive_weekly.py.
     The run row keeps FLOOR_FACTOR x the vacuum agreement, measured here.
-    (Graded run(devices=) refuses CPML with poles; the graded lane is
-    forward(distributed=True).)"""
+    Graded run(devices=) and forward(distributed=True) pole rows use law C
+    and bar S in test_distributed_dispersive_cpml.py."""
     devices = _devices(2)
     floor = _rel(_cpml_1302_record("vacuum", lane, devices),
                  _cpml_1302_record("vacuum", lane))

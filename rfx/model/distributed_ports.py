@@ -30,7 +30,7 @@ def assemble(sim, grid, materials, conductors, cells, sheets, wires, *,
             raise NotImplementedError('Wire ports with reference_plane_cells are not supported with devices=...; the V_ref path needs pre-injection recordings. Use one device.')
         if select_step(cpml=bool(grid.cpml_layers), debye=debye_spec is not None,
                        lorentz=lorentz_spec is not None, pmc=bool(sim._boundary_spec.pmc_faces())) != 'wrapped':
-            raise NotImplementedError('Graded multi-device ports require the wrapped step; CPML with Debye/Lorentz poles requires rfx #1402 item 5 dispersive; PMC port faces are not supported.')
+            raise NotImplementedError('Graded multi-device ports require the wrapped step; PMC port faces are not supported.')
     admit(sim, lane, diagnostics=diagnostics)
     overridden = eps_override is not None or sigma_override is not None
     # Current-source pole terms are independent of the override, as before.

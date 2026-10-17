@@ -26,13 +26,9 @@ def test_a_dispersive_model_matches_one_device(boundary, lane, kind):
                 f"{kind}/{boundary}/{lane}", prefixes=WEEKLY_PREFIXES)
 
 
-@pytest.mark.parametrize("lane,kind", [
-    pytest.param(lane, kind, id=f"{kind}-{lane}")
-    for lane in ("fwd", "fwd_graded") for kind in ("debye", "lorentz")
-])
-def test_a_dispersive_cpml_box_stays_finite_and_matches_one_device(lane, kind):
-    """Use the per-step 9-ULP cross-trace bar (rfx CLAUDE.md), since R15g
-    replaces the vacuum-relative gate that collapsed with an exact reference.
-    """
-    cross_trace(lambda: _cpml_1302_box(kind, lane), lane, _devices(2),
-                f"cpml1302/{kind}/{lane}", prefixes=WEEKLY_PREFIXES)
+# Graded law C + bar S rows (800/1600) live in the box/length-specific
+# test_distributed_dispersive_cpml_*_weekly.py files to bound CPU file time.
+@pytest.mark.parametrize('kind', ['debye', 'lorentz'])
+def test_uniform_dispersive_cpml_box_matches_one_device(kind):
+    cross_trace(lambda: _cpml_1302_box(kind, 'fwd'), 'fwd', _devices(2),
+                f'cpml1302/{kind}/fwd', prefixes=WEEKLY_PREFIXES)

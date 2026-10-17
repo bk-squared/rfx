@@ -19,12 +19,7 @@ from rfx.stepping.slab import cut, cut_pole_coeffs, cut_poles, place
 def select_step(*, cpml=False, debye=False, lorentz=False, ports=False,
                 dft=False, flux=False, ntff=False, pmc=False, periodic_x=False,
                 point_sources=True, point_probes=True, pec=True):
-    """Wrap PEC and plain CPML; keep dispersive CPML on the legacy step.
-
-    The legacy-form CPML call is bit-equal to one device on four graded CPML
-    boxes up to 1600 steps on two and three devices (rfx-archive
-    records/20261017-item5-first-divergence). Upstream refusals still apply.
-    """
+    """Wrap graded PEC and CPML, including Debye/Lorentz pole media."""
     kind = "wrapped" if (pec and point_sources and point_probes and not any((
         dft, flux, ntff, pmc, periodic_x))) else "legacy"
     if ports and kind != 'wrapped':
@@ -47,7 +42,7 @@ def runner_step_kind(grid, **flags):
     if step_kind is None:
         step_kind = select_step(**flags)
     if flags.get('ports') and step_kind != 'wrapped':
-        raise NotImplementedError('Graded multi-device ports require the wrapped step (rfx #1402 item 5 dispersive for CPML with poles).')
+        raise NotImplementedError('Graded multi-device ports require the wrapped step; PMC and periodic x are not supported.')
     return step_kind
 
 

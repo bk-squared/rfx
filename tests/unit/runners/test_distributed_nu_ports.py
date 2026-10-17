@@ -238,17 +238,12 @@ def test_c2_vmap(monkeypatch):
 
 
 @pytest.mark.parametrize('entry', ['run', 'forward'])
-@pytest.mark.parametrize('kind', ['cpml_poles', 'pmc', 'reference_plane'])
+@pytest.mark.parametrize('kind', ['pmc', 'reference_plane'])
 def test_refuses_before_staging(entry, kind, monkeypatch):
-    from rfx import Box, LorentzPole
     from rfx.boundaries.spec import BoundarySpec
     from rfx.model import electric_metrics
-    sim = scene('C2', len(jax.devices()), boundary='cpml' if kind == 'cpml_poles' else 'pec')
-    if kind == 'cpml_poles':
-        sim.add_material('pole', eps_r=3., lorentz_poles=[LorentzPole(1., 2*np.pi*3e9, 1e9)])
-        sim.add(Box((.002, .002, .002), (.004, .004, .004)), material='pole')
-        message = 'item 5 dispersive'
-    elif kind == 'pmc':
+    sim = scene('C2', len(jax.devices()))
+    if kind == 'pmc':
         sim._boundary_spec = BoundarySpec(x='pec', y='pmc', z='pec')
         message = 'PMC'
     else:
