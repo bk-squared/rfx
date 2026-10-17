@@ -17,11 +17,14 @@ def test_closed_box_carry_shapes_do_not_depend_on_step_bound():
 
 
 def test_only_a_paying_forward_builds_a_face_record(monkeypatch):
-    """A checkpointed forward builds one face record; until_decay keeps the line.
+    """A paying checkpointed forward builds one face record; until_decay keeps the line.
 
-    A record over until_decay's whole step bound would cost (bound) x (line
-    nodes), and the line grows with the bound too: an early-stopping oblique
-    box at the default bound took 50 times longer (#1814).
+    Segments save one line per boundary whatever ``checkpoint`` says (#1815),
+    so eight segments without checkpoint pay here too (8 x 1,392 B of lines
+    against a 5,696 B record). A record over until_decay's whole step bound
+    would cost (bound) x (line nodes), and the line grows with the bound too:
+    an early-stopping oblique box at the default bound took 50 times longer
+    (#1814).
     """
     import rfx.stepping.incident_line as line
     from rfx import Simulation
@@ -39,8 +42,9 @@ def test_only_a_paying_forward_builds_a_face_record(monkeypatch):
                         closed_box=True)
     sim.add_probe((.0215, .0135, .0105), "ez")
     sim.forward(n_steps=8, checkpoint=True, skip_preflight=True)
+    sim.forward(n_steps=8, checkpoint=False, checkpoint_segments=8, skip_preflight=True)
     sim.run(until_decay=1e-3, decay_max_steps=100, skip_preflight=True)
-    assert calls == [8]
+    assert calls == [8, 8]
 
 
 def test_nonpaying_requests_build_no_face_record(monkeypatch):
