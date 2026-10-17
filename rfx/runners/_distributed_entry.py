@@ -267,3 +267,9 @@ def forward_distributed(sim, *, plan, assembly, devices, exchange_interval,
         from rfx.runners._uniform_forward_result import pack_port_result
         packed = pack_port_result(packed, wire=ports[0].extent is not None)
     return packed
+
+
+def refuse_sheet_layout():
+    raise NotImplementedError(
+        "pinned_sheet_layout requires the single-device graded lane; "
+        "distributed_nu and distributed_v2 do not carry this layout switch")
