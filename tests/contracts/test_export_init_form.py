@@ -37,6 +37,20 @@ def is_all_assignment(node):
             and node.targets[0].id == "__all__" and isinstance(node.value, ast.List))
 
 
+def is_lazy_assignment(node):
+    return (isinstance(node, ast.Assign) and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and node.targets[0].id == "_LAZY_EXPORTS" and isinstance(node.value, ast.Dict))
+
+
+LAZY_GETATTR = 'def __getattr__(name):\n    from importlib import import_module\n\n    if name not in _LAZY_EXPORTS:\n        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")\n    value = getattr(import_module(_LAZY_EXPORTS[name]), name)\n    globals()[name] = value\n    return value\n'
+
+
+def is_lazy_getattr(node):
+    return (isinstance(node, ast.FunctionDef) and node.name == "__getattr__"
+            and ast.dump(node) == ast.dump(ast.parse(LAZY_GETATTR).body[0]))
+
+
 def discover():
     found = {}
     for path in sorted((REPO / "rfx").rglob("__init__.py")):
@@ -45,6 +59,7 @@ def discover():
         body = tree.body[1:] if tree.body and is_docstring(tree.body[0]) else tree.body
         if (sum(is_all_assignment(node) for node in body) == 1
                 and all(isinstance(node, ast.ImportFrom) or is_all_assignment(node)
+                        or is_lazy_assignment(node) or is_lazy_getattr(node)
                         for node in body)):
             found[path.relative_to(REPO).as_posix()] = source, tree
     return found
@@ -114,6 +129,19 @@ def render(source, tree, comments):
     emit([all_node], ["__all__ = ["]
          + [f"    {json.dumps(name, ensure_ascii=False)},"
             for name in sorted(set(exports), key=sort_name)] + ["]"])
+    lazy = [node for node in tree.body if is_lazy_assignment(node)]
+    getters = [node for node in tree.body if is_lazy_getattr(node)]
+    assert len(lazy) == len(getters) <= 1, "Lazy mapping and resolver must occur together"
+    if lazy:
+        mapping = ast.literal_eval(lazy[0].value)
+        assert all(isinstance(k, str) and isinstance(v, str) for k, v in mapping.items())
+        assert len(mapping) == len(lazy[0].value.keys), "Duplicate lazy export"
+        lines.append("")
+        emit(lazy, ["_LAZY_EXPORTS = {"]
+             + [f"    {json.dumps(k)}: {json.dumps(mapping[k])},"
+                for k in sorted(mapping, key=sort_name)] + ["}"])
+        lines.extend(["", ""])
+        emit(getters, LAZY_GETATTR.rstrip().splitlines())
     return "\n".join(lines) + "\n"
 
 
@@ -134,6 +162,18 @@ def test_export_init_form(path):
         and not (node.level == 0 and node.module == "__future__")
         for alias in node.names
     }
+    lazy = [node for node in tree.body if is_lazy_assignment(node)]
+    if lazy:
+        mapping = ast.literal_eval(lazy[0].value)
+        assert not (imports & mapping.keys()), "Lazy/eager names overlap"
+        if path == "rfx/stepping/__init__.py":
+            assert mapping == {
+                "core_step_invariants": "rfx.stepping.uniform_setup",
+                "make_core_step": "rfx.stepping.uniform_setup",
+                "run_uniform_loop": "rfx.stepping.uniform_loop",
+                "run_uniform_until_decay": "rfx.stepping.uniform_loop",
+            }
+        imports |= mapping.keys()
     all_node = next(node for node in tree.body if is_all_assignment(node))
     exports = set(ast.literal_eval(all_node.value))
     if path in NAME_SET_EXEMPTIONS:

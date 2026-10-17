@@ -5,6 +5,8 @@ inspect the six field arrays initialized by the real core for every drive,
 including reference runs; the S-matrix's complex dtype is not that check.
 """
 
+import rfx.stepping.uniform_loop as uniform_loop
+import rfx.stepping.uniform_setup as uniform_setup
 import warnings
 
 import jax
@@ -57,7 +59,7 @@ def test_adi_refused_before_fields(monkeypatch, nonuniform):
     sim = _guide(nonuniform=nonuniform, solver="yee" if nonuniform else "adi")
     if nonuniform:
         sim._solver = "adi"
-    monkeypatch.setattr(uniform_core, "init_state", _forbid_field_initialization)
+    monkeypatch.setattr(uniform_setup, "init_state", _forbid_field_initialization)
     monkeypatch.setattr(nonuniform_core, "init_state", _forbid_field_initialization)
     with pytest.raises(NotImplementedError, match=r"solver='adi'.*#1300.*solver='yee'"):
         sim.compute_waveguide_s_matrix(n_steps=4, normalize=True)
@@ -107,9 +109,9 @@ def test_preflight_reports_adi_refusal():
 def test_core_field_dtype(monkeypatch, normalize, n_modes, expected_runs,
                           precision, expected_dtype):
     initialized = []
-    initialize = uniform_core.init_state
+    initialize = uniform_setup.init_state
     run = uniform_core.run
-    make_step = uniform_core.make_core_step
+    make_step = uniform_loop.make_core_step
     extract_waves = _wg_move_waveguide_s._s_matrix_port_waves
     # With x64 on, even explicit float32 frequencies keep extraction at
     # least as wide as main, independently of the core field-storage dtype.
@@ -155,9 +157,9 @@ def test_core_field_dtype(monkeypatch, normalize, n_modes, expected_runs,
         )
         return state
 
-    monkeypatch.setattr(uniform_core, "init_state", observe_fields)
+    monkeypatch.setattr(uniform_setup, "init_state", observe_fields)
     monkeypatch.setattr(uniform_core, "run", observe_run)
-    monkeypatch.setattr(uniform_core, "make_core_step", observe_step)
+    monkeypatch.setattr(uniform_loop, "make_core_step", observe_step)
     monkeypatch.setattr(_wg_move_waveguide_s, "_s_matrix_port_waves", observe_waves)
     try:
         with enable_x64(True), warnings.catch_warnings():

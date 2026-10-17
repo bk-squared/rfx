@@ -178,7 +178,9 @@ def test_graded_stage2_refusal_matches_run():
 @pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
 def test_design_box_smoothing_reaches_tensor_refusal(monkeypatch, graded):
     import rfx.simulation
+    import rfx.stepping.uniform_loop
     monkeypatch.setattr(rfx.simulation, "make_core_step", no_step)
+    monkeypatch.setattr(rfx.stepping.uniform_loop, "make_core_step", no_step)
     with pytest.raises(NotImplementedError, match=r"design-box.*aniso_eps") as info:
         sphere_sim(graded).forward(n_steps=1, skip_preflight=True,
             subpixel_smoothing=True, design_box=((.004,) * 3, (.006,) * 3),

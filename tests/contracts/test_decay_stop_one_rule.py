@@ -34,6 +34,7 @@ radiated pulse reached a probe 4 cm away.
     not as compiled constants.
 """
 
+import rfx.stepping.uniform_loop as uniform_loop
 import ast
 from pathlib import Path
 
@@ -137,7 +138,7 @@ def _inline_history(mesh, cap, monkeypatch):
     from rfx.core.yee import EPS_0, MU_0, component_e_materials, component_h_materials
 
     uniform = mesh.startswith("uniform")
-    owner, name = ((simulation, "_build_step_setup") if uniform
+    owner, name = ((uniform_loop, "_build_step_setup") if uniform
                    else (nonuniform, "_build_nu_scan"))
     original_setup, original_scan = getattr(owner, name), jax.lax.scan
     built, history = {}, []

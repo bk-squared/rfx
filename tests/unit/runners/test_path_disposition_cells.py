@@ -68,7 +68,7 @@ GRADED = ("run_nonuniform", "run_distributed_nu", "fwd_nonuniform", "fwd_distrib
 ADI = ("run_adi", "fwd_adi")
 WAVEFORM = GaussianPulse(f0=5e9, bandwidth=0.8)
 # Modules whose lax.scan is a time loop; a refusal must come before any of them.
-_KERNEL_MODULES = ("rfx/simulation.py", "rfx/nonuniform.py", "rfx/runners/",
+_KERNEL_MODULES = ("rfx/stepping/uniform_loop.py", "rfx/stepping/uniform_setup.py", "rfx/nonuniform.py", "rfx/runners/",
                    "rfx/adi.py", "rfx/subgridding/", "rfx/vmap_sweep.py",
                    "rfx/progress.py")
 

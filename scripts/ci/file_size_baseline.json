@@ -14,7 +14,7 @@
     "rfx/ringdown.py": 2420,
     "rfx/runners/_distributed_common.py": 1114,
     "rfx/runners/distributed_nu.py": 1375,
-    "rfx/simulation.py": 2298,
+    "rfx/simulation.py": 267,
     "rfx/sources/waveguide_port.py": 126,
     "rfx/sparams/_common.py": 2291,
     "rfx/sparams/coax.py": 1808,

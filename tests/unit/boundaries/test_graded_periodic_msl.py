@@ -1,4 +1,5 @@
 """A periodic MSL feed sees the conductor immediately across its seam."""
+import rfx.stepping.uniform_loop as uniform_loop
 import numpy as np
 import pytest
 
@@ -26,7 +27,7 @@ def test_msl_seam_geometry_reaches_step_builder(graded, monkeypatch):
         raise StepBuilderReached
 
     owner, name = ((nonuniform, "_build_nu_scan") if graded
-                   else (simulation, "_build_step_setup"))
+                   else (uniform_loop, "_build_step_setup"))
     monkeypatch.setattr(owner, name, reached)
     with pytest.raises(StepBuilderReached):
         sim.run(n_steps=1, skip_preflight=True)

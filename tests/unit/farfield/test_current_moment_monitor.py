@@ -1262,7 +1262,8 @@ def _load_mutated(path: Path, name: str, replacements):
     return mod
 
 
-UNIFORM_RUNNER_SRC = REPO_ROOT / "rfx" / "simulation.py"
+UNIFORM_RUNNER_SRC = REPO_ROOT / "rfx" / "stepping" / "uniform_loop.py"
+UNIFORM_SETUP_SRC = REPO_ROOT / "rfx" / "stepping" / "uniform_setup.py"
 UNIFORM_SRC = REPO_ROOT / "rfx" / "stepping" / "uniform.py"
 GRADED_RUNNER_SRC = REPO_ROOT / "rfx" / "nonuniform.py"
 GRADED_SRC = REPO_ROOT / "rfx" / "stepping" / "graded.py"
@@ -1359,10 +1360,15 @@ def _slot_case(kind, edits):
                 return observed_core
 
             step.make_uniform_step = observed_step
-            name = "rfx._current_moment_runner_copy"
-            mod = _load_mutated(UNIFORM_RUNNER_SRC, name, [(
+            setup_name = "rfx.stepping._current_moment_setup_copy"
+            _load_mutated(UNIFORM_SETUP_SRC, setup_name, [(
                 "    from rfx.stepping.uniform import make_uniform_step",
                 f"    from {step_name} import make_uniform_step")])
+            names.append(setup_name)
+            name = "rfx._current_moment_runner_copy"
+            mod = _load_mutated(UNIFORM_RUNNER_SRC, name, [(
+                "from rfx.stepping.uniform_setup import (",
+                f"from {setup_name} import (")])
             names.append(name)
             case = CASE_BUILDERS[kind](with_planes=False, runner=mod.run)
             assert executed, "the copied runner never executed the copied step"

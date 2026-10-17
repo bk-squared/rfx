@@ -1,4 +1,5 @@
 """1549: independently declared backing faces and run/forward kernel identity."""
+import rfx.stepping.uniform_loop as uniform_loop
 from contextlib import ExitStack
 from dataclasses import fields, is_dataclass
 import gc
@@ -132,7 +133,7 @@ def capture(sim, entry, path, invoke=None):
     import rfx.simulation as kernel
     import rfx.nonuniform as nu
     captured = {}
-    setup_original = kernel._build_step_setup
+    setup_original = uniform_loop._build_step_setup
     nu_original = nu._build_nu_scan
     jit_original = jax.jit
     grid_original = sim._build_nonuniform_grid
@@ -162,7 +163,7 @@ def capture(sim, entry, path, invoke=None):
                                 for name in BOUNDARY_INPUTS}
         # Capture the shared factory's derived absorber/material boundary
         # coefficients too; this builds invariants, never advances fields.
-        invariants = kernel.core_step_invariants(ctx)
+        invariants = uniform_loop.core_step_invariants(ctx)
         captured['invariants'] = {k: freeze(v) for k, v in invariants.items() if k != 'ctx'}
         raise Captured
 
@@ -235,8 +236,8 @@ def capture(sim, entry, path, invoke=None):
 
     with ExitStack() as stack:
         for obj, name, replacement in ((sim, '_build_nonuniform_grid', built_grid),
-                                       (kernel, '_build_step_setup', setup),
-                                       (kernel, 'make_core_step', factory),
+                                       (uniform_loop, '_build_step_setup', setup),
+                                       (uniform_loop, 'make_core_step', factory),
                                        (nu, '_build_nu_scan', nu_factory),
                                        (wrapped, 'wrap', wrapped_factory),
                                        (jax, 'jit', distributed_factory),

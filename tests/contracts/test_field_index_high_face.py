@@ -533,7 +533,7 @@ def test_c8_consumers(consumer, monkeypatch):
                                 debye=None, lorentz=None, pec_edge_masks=None, curl_boundary=None)
         assert tuple(int(a[0]) for a in ctx.drives.electric.nodes['ex']) == cell
     elif consumer == 'decay_monitor':
-        import rfx.simulation as stepping
+        import rfx.stepping.uniform_loop as stepping
 
         class Captured(Exception):
             pass

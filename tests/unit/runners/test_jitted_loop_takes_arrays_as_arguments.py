@@ -40,7 +40,7 @@ import pytest
 from rfx import Box, DebyePole, GaussianPulse, Simulation
 from rfx.materials.lorentz import lorentz_pole
 import rfx.nonuniform as nonuniform_mod
-import rfx.simulation as simulation_mod
+import rfx.stepping.uniform_loop as simulation_mod
 
 _LOOPS = {nonuniform_mod: "_run_chunk", simulation_mod: "_single_step"}
 

@@ -33,6 +33,7 @@ __all__ = [
     "apply_waveguide_port_e",
     "apply_waveguide_port_h",
     "compose",
+    "core_step_invariants",
     "cut",
     "FILL",
     "Fill",
@@ -41,9 +42,33 @@ __all__ = [
     "HookPoint",
     "inject_waveguide_port",
     "Kernel",
+    "make_core_step",
     "make_graded_step",
+    "run_uniform_loop",
+    "run_uniform_until_decay",
     "segmented_scan",
     "Slab",
     "STEP_SEQUENCE",
     "steps_for_periods",
 ]
+
+# rfx.measurement → rfx.model → rfx.nonuniform → rfx.stepping loads this package
+# before the uniform runner is ready (rfx#1818):
+# https://github.com/bk-squared/rfx/issues/1818
+# Remove this lazy export when that import chain is removed.
+_LAZY_EXPORTS = {
+    "core_step_invariants": "rfx.stepping.uniform_setup",
+    "make_core_step": "rfx.stepping.uniform_setup",
+    "run_uniform_loop": "rfx.stepping.uniform_loop",
+    "run_uniform_until_decay": "rfx.stepping.uniform_loop",
+}
+
+
+def __getattr__(name):
+    from importlib import import_module
+
+    if name not in _LAZY_EXPORTS:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(import_module(_LAZY_EXPORTS[name]), name)
+    globals()[name] = value
+    return value

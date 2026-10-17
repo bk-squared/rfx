@@ -3,6 +3,8 @@
 Materials, coefficients and intermediate spectra retain main's precision.
 Only the changed final lumped/wire S casts promise complex128 here.
 """
+import rfx.stepping.uniform_loop as uniform_loop
+import rfx.stepping.uniform_setup as uniform_setup
 import warnings
 
 import jax
@@ -329,7 +331,7 @@ def test_realized_field_storage(monkeypatch, entry, precision):
         pytest.importorskip('optax')  # optional dependency of topology_optimize's optimizer
     import rfx.simulation as core
     fields, accumulators, records = [], [], []
-    initialize, make_step = core.init_state, core.make_core_step
+    initialize, make_step = uniform_setup.init_state, uniform_loop.make_core_step
     assert FREQS[1] != np.float32(FREQS[1])
     expected_real = np.dtype(precision)
     expected_complex = np.dtype('complex128' if precision == 'float64' else 'complex64')
@@ -356,7 +358,8 @@ def test_realized_field_storage(monkeypatch, entry, precision):
             return carry, probes, extras
         return checked
 
-    monkeypatch.setattr(core, 'init_state', observe_fields)
+    monkeypatch.setattr(uniform_setup, 'init_state', observe_fields)
+    monkeypatch.setattr(uniform_loop, 'make_core_step', observe_step)
     monkeypatch.setattr(core, 'make_core_step', observe_step)
     try:
         with jax.enable_x64() if precision == 'float64' else jax.enable_x64(False):

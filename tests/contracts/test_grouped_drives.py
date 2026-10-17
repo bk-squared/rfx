@@ -38,7 +38,7 @@ def use_per_cell_reference(monkeypatch):
     from tests.unit.runners._until_decay_reference import _reference_drives
     def layout(meta, dtype, **_kwargs):
         return _reference_drives(meta, np.empty(0, dtype=dtype))
-    for name in ('rfx.core.drives', 'rfx.simulation', 'rfx.nonuniform', 'rfx.vmap_sweep',
+    for name in ('rfx.core.drives', 'rfx.simulation', 'rfx.stepping.uniform_loop', 'rfx.nonuniform', 'rfx.vmap_sweep',
                  'rfx.subgridding.jit_runner', 'rfx.runners.distributed_v2',
                  'rfx.runners.distributed_nu', 'rfx.runners._distributed_common'):
         module = importlib.import_module(name)

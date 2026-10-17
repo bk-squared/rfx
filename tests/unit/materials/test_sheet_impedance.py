@@ -1220,10 +1220,10 @@ FENCE_REGISTRY: dict[tuple[str, str, str], tuple[str, str]] = {
 }
 
 #: The GPU baked fast path excludes sheets through a ctx flag rather than a
-#: call the AST scan can see (``rfx/simulation.py``'s ``_fast_eligible``
+#: call the AST scan can see (``rfx/stepping/uniform_loop.py``'s ``_fast_eligible``
 #: reads ``not _ctx["use_sheet_impedance"]``), so it is registered by hand.
 _MANUAL_FENCES: dict[tuple[str, str, str], tuple[str, str]] = {
-    ("rfx/simulation.py", "run", "use_sheet_impedance"):
+    ("rfx/stepping/uniform_loop.py", "run", "use_sheet_impedance"):
         ("tests.unit.materials.test_sheet_impedance",
          "test_g9_fast_path_excludes_sheets"),
 }

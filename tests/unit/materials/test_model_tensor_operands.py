@@ -1,4 +1,5 @@
 """One realized model owns at most one tensor operand set (M4b P2)."""
+import rfx.stepping.uniform_loop as uniform_loop
 from unittest.mock import patch
 
 import jax.numpy as jnp
@@ -31,13 +32,13 @@ def test_one_tensor_set_per_model_and_raw_run_without_tensor():
     assert TensorOperands.of(inv_eps_smooth=True) is None
 
     captured = []
-    setup = simulation._build_step_setup
+    setup = uniform_loop._build_step_setup
 
     def record(*args, **kwargs):
         result = setup(*args, **kwargs)
         captured.append(result.ctx_kwargs["materials"].components.tensor)
         return result
 
-    with patch.object(simulation, "_build_step_setup", record):
+    with patch.object(uniform_loop, "_build_step_setup", record):
         simulation.run(grid, cells, 2, boundary="pec")
     assert captured == [None]

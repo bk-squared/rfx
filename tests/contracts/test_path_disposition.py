@@ -77,7 +77,7 @@ FIELD_STEPPERS = {
     "rfx/runners/_distributed_common.py:_update_e_local_with_dispersion":
         "internal to run_distributed, run_distributed_nu, fwd_distributed_nu",
     "rfx/runners/distributed_v2.py:run_distributed": "internal to run_distributed",
-    "rfx/simulation.py:_update_e_with_optional_dispersion":
+    "rfx/stepping/uniform_setup.py:_update_e_with_optional_dispersion":
         "internal to run_uniform, fwd_uniform, s_matrix_scan, mixed_s_matrix, topology_optimize, "
         "waveguide_s_matrix, coaxial_line_reflection, coaxial_two_port, coax_msl_transition, material_fit",
     # The one uniform-mesh step (S3-2): the scan step, the material sweep and the

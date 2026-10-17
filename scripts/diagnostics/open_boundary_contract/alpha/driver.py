@@ -9,11 +9,12 @@ import time
 import traceback
 
 import measure_base as m
+import rfx.stepping.uniform_loop as uniform_loop
 from rfx.boundaries import cpml
 
 np, jax = m.np, m.jax
 ORIGINAL_PROFILE = cpml._cpml_profile
-ORIGINAL_CORE = m.lowlevel.make_core_step
+ORIGINAL_CORE = uniform_loop.make_core_step
 FACES = ('x_lo', 'x_hi', 'y_lo', 'y_hi', 'z_lo', 'z_hi')
 
 
@@ -60,7 +61,7 @@ def capture_core(out, dry, factor, label, lane):
         if dry:
             raise m.Captured()
         return ORIGINAL_CORE(ctx)
-    m.lowlevel.make_core_step = observe
+    uniform_loop.make_core_step = observe
     return counter
 
 

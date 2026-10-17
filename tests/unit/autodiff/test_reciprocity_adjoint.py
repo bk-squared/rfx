@@ -1,4 +1,5 @@
 """#1424 F2 gates: CPU fixtures; measurements use record_property, never stdout."""
+import rfx.stepping.uniform_loop as uniform_loop
 from contextlib import contextmanager, nullcontext
 from dataclasses import replace
 from unittest.mock import patch
@@ -49,7 +50,7 @@ def objective(sim, steps=STEPS, mode="autodiff"):
 def decay(sim, eps, sigma, steps=STEPS):
     """Full-domain peak E and impedance-scaled H, including CPML, every step."""
     import rfx.simulation as runner
-    original = runner.make_core_step
+    original = uniform_loop.make_core_step
     def diagnostic(*args, **kwargs):
         core = original(*args, **kwargs)
         def step(*args):
@@ -60,7 +61,7 @@ def decay(sim, eps, sigma, steps=STEPS):
                                     (1, 1, 1, 376.730313, 376.730313, 376.730313))]))
             return carry, jnp.reshape(norm, (1,)), extras
         return step
-    with patch.object(runner, "make_core_step", diagnostic):
+    with patch.object(uniform_loop, "make_core_step", diagnostic):
         def measure(e, s):
             return sim.forward(design_box=(BOX_LO, BOX_HI), design_eps_override=e,
                 design_sigma_override=s, n_steps=steps, checkpoint=False,
@@ -456,11 +457,11 @@ def test_clearing_drives_suppresses_electric_and_magnetic_sources(monkeypatch):
     from rfx.grid import Grid
 
     contexts = []
-    original = runner.make_core_step
+    original = uniform_loop.make_core_step
     def capture(ctx, *args, **kwargs):
         contexts.append(ctx)
         return original(ctx, *args, **kwargs)
-    monkeypatch.setattr(runner, "make_core_step", capture)
+    monkeypatch.setattr(uniform_loop, "make_core_step", capture)
     grid = Grid(freq_max=1e9, domain=(.012,)*3, dx=.001,
                 cpml_layers=0, cpml_axes="")
     runner.run(grid, init_materials(grid.shape), 1,

@@ -32,6 +32,7 @@ from rfx import Simulation, Box
 from rfx.boundaries import cpml
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx import simulation as lowlevel
+import rfx.stepping.uniform_loop as uniform_loop
 from rfx.sources.sources import GaussianPulse
 from rfx.sources.msl_port import msl_port_from_entry, msl_cross_section_span, msl_probe_x_coords_n
 from rfx.geometry.rasterize_grid import coords_from_uniform_grid
@@ -41,7 +42,7 @@ LAYERS = (4, 8, 16)
 EXPECTED_SHA = 'e7f7e02704fd46ea7e21f127b19fc81cb66d6148'
 ORIGINAL_PROFILE = cpml._cpml_profile
 ORIGINAL_RUN = lowlevel.run
-ORIGINAL_CORE = lowlevel.make_core_step
+ORIGINAL_CORE = uniform_loop.make_core_step
 FACES = tuple(a + '_' + side for a in 'xyz' for side in ('lo', 'hi'))
 EPS0, MU0 = 8.8541878128e-12, 1.25663706212e-6
 
@@ -162,7 +163,7 @@ class Recorder:
         self.active = None
     def install(self):
         lowlevel.run = self.run
-        lowlevel.make_core_step = self.core
+        uniform_loop.make_core_step = self.core
     def core(self, ctx):
         record = self.active
         record['received_grid'] = grid_record(ctx.grid)

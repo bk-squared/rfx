@@ -1,5 +1,6 @@
 """The uniform step receives the four-incident-cell design-box coefficients."""
 
+import rfx.stepping.uniform_loop as uniform_loop
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -32,7 +33,7 @@ def test_design_box_step_coefficients(monkeypatch, design_sigma):
         seen.append(ctx)
         raise ContextCaptured
 
-    monkeypatch.setattr(simulation, "make_core_step", capture)
+    monkeypatch.setattr(uniform_loop, "make_core_step", capture)
     # Stop after run() has built the exact context handed to its step.
     with pytest.raises(ContextCaptured):
         simulation.run(

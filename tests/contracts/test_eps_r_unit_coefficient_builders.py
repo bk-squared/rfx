@@ -90,7 +90,7 @@ BUILDERS = {
         "Lorentz ADE ca/cb/cc, including distributed in-loop builders",
     ("rfx/materials/lorentz.py", "mixed_e_component_coeffs"):
         "mixed Debye+Lorentz ca/cb/cc on every supported lane",
-    ("rfx/simulation.py", "_update_e_with_optional_dispersion"):
+    ("rfx/stepping/uniform_setup.py", "_update_e_with_optional_dispersion"):
         "uniform mixed Debye+Lorentz update",
     ("rfx/nonuniform.py", "_update_e_nu_dispersive"):
         "graded mixed Debye+Lorentz update",

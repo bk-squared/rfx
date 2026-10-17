@@ -109,7 +109,7 @@
       "function": "_update_h_local_nu"
     },
     {
-      "file": "rfx/simulation.py",
+      "file": "rfx/stepping/uniform_setup.py",
       "function": "_update_e_with_optional_dispersion"
     },
     {
@@ -772,16 +772,6 @@
       "kind": "boundary"
     },
     {
-      "file": "rfx/simulation.py",
-      "function": "_build_step_setup",
-      "kind": "boundary"
-    },
-    {
-      "file": "rfx/simulation.py",
-      "function": "run",
-      "kind": "boundary"
-    },
-    {
       "file": "rfx/sources/coaxial_port.py",
       "function": "_coaxial_tem_edge_profile",
       "kind": "roll/diff"
@@ -894,6 +884,16 @@
     {
       "file": "rfx/stepping/uniform.py",
       "function": "make_uniform_step.pec",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/uniform_loop.py",
+      "function": "run",
+      "kind": "boundary"
+    },
+    {
+      "file": "rfx/stepping/uniform_setup.py",
+      "function": "_build_step_setup",
       "kind": "boundary"
     },
     {

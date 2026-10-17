@@ -16,6 +16,7 @@ from rfx.core import yee
 from rfx.materials import debye, lorentz
 from rfx.boundaries import upml
 import rfx.simulation as uniform
+import rfx.stepping.uniform_setup as uniform_setup
 import rfx.nonuniform as nu
 from tests.contracts.curl_cases import model
 
@@ -54,7 +55,7 @@ def require_shared(call, *, helper="curl_h", indexed=False, expected_calls=1):
 
     jax.clear_caches()
     with ExitStack() as stack:
-        for module in (yee, uniform, debye, lorentz, upml):
+        for module in (yee, uniform_setup, debye, lorentz, upml):
             if hasattr(module, helper):
                 stack.enter_context(patch.object(module, helper, witness))
         call()
@@ -142,7 +143,7 @@ def test_scan_port_table_uses_the_steps_realized_boundary(mesh, feature):
     jax.clear_caches()
     with ExitStack() as stack:
         stack.enter_context(patch.object(projector, "port_table", table_spy))
-        for module in (yee, uniform, debye, lorentz, upml):
+        for module in (yee, uniform_setup, debye, lorentz, upml):
             if hasattr(module, helper):
                 stack.enter_context(patch.object(module, helper, curl_spy))
         if mesh == "graded":

@@ -6,6 +6,7 @@ own negative control, so deleting the assertion path does not turn this test
 silently green. No stored solver response is used as the physics oracle.
 """
 
+import rfx.stepping.uniform_loop as uniform_loop
 import jax
 import jax.numpy as jnp
 import numpy as np
@@ -122,8 +123,8 @@ def test_radius_none_full_field_history_is_bit_identical(lane, monkeypatch):
         return body
 
     if lane == "uniform":
-        original = uniform.make_core_step
-        monkeypatch.setattr(uniform, "make_core_step", lambda ctx: wrap(original(ctx)))
+        original = uniform_loop.make_core_step
+        monkeypatch.setattr(uniform_loop, "make_core_step", lambda ctx: wrap(original(ctx)))
     else:
         original = nu._build_nu_scan
 

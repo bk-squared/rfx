@@ -24,9 +24,9 @@ from rfx.boundaries.spec import Boundary, BoundarySpec
 SEAMS = {
     'scan': ('jax.lax', 'scan'),
     'uniform': ('rfx.simulation', 'run'),
-    'setup': ('rfx.simulation', '_build_step_setup'),
-    'core': ('rfx.simulation', 'make_core_step'),
-    'invariants': ('rfx.simulation', 'core_step_invariants'),
+    'setup': ('rfx.stepping.uniform_loop', '_build_step_setup'),
+    'core': ('rfx.stepping.uniform_loop', 'make_core_step'),
+    'invariants': ('rfx.stepping.uniform_loop', 'core_step_invariants'),
     'graded': ('rfx.runners.nonuniform', 'run_nonuniform_path'),
     'graded_step': ('rfx.nonuniform', '_build_nu_scan'),
     'distributed': ('rfx.runners._distributed_nu_execute', 'execute_from_materials'),

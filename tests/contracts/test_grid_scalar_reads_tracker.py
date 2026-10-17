@@ -130,7 +130,7 @@ ALLOWED_SCALAR_READS: dict[str, int] = {
     "rfx/runners/adi.py": 5,  # moved, not new: rfx/api/_execute.py's 5 reads moved with _run_adi_from_materials (Block E1; total unchanged)
     "rfx/runners/distributed_v2.py": 1,
     "rfx/runners/subgridded.py": 1,
-    "rfx/simulation.py": 6,
+    "rfx/simulation.py": 4,
     "rfx/sources/coaxial_port.py": 14,  # #1356 replaces two radial-grid reads with one Laplace spacing
     "rfx/sources/msl_eigenmode.py": 2,
     "rfx/sources/msl_port.py": 5,
@@ -141,6 +141,7 @@ ALLOWED_SCALAR_READS: dict[str, int] = {
     "rfx/sparams/msl.py": 1,
     "rfx/sparams/waveguide.py": 4,
     "rfx/stepping/graded.py": 5,  # moved, not new: the graded step's plane-wave and design-box reads (total unchanged)
+    "rfx/stepping/uniform_setup.py": 2,  # moved, not new: rfx/simulation.py's 2 reads moved with _build_step_setup (Block U; total unchanged)
     "rfx/subgridding/validation.py": 3,
     "rfx/topology.py": 1,
     "rfx/visualize.py": 2,

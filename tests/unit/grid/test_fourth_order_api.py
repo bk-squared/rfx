@@ -144,7 +144,8 @@ def test_order4_cfl_derated():
     bound). Inspect the dt resolved inside ``_build_step_setup`` directly."""
     from rfx.grid import Grid
     from rfx.core.yee import init_materials
-    from rfx.simulation import _build_step_setup, _ORDER4_CFL_FACTOR
+    from rfx.simulation import _ORDER4_CFL_FACTOR
+    from rfx.stepping.uniform_loop import _build_step_setup
 
     grid = Grid(freq_max=10e9, domain=(0.016, 0.016, 0.016), dx=0.001)
     mats = init_materials(grid.shape)

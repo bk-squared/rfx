@@ -1,4 +1,5 @@
 """Realized TF/SF transverse invariance, before stepping any fields."""
+import rfx.stepping.uniform_loop as uniform_loop
 import gc
 
 import numpy as np
@@ -173,7 +174,7 @@ def test_low_level_explicit_wrap_keeps_caller_declaration(monkeypatch, broadcast
     def stop(*args, **kwargs):
         raise Admitted
 
-    monkeypatch.setattr(kernel, "make_core_step", stop)
+    monkeypatch.setattr(uniform_loop, "make_core_step", stop)
     with pytest.raises(Admitted):
         kernel.run(grid, materials, 1, tfsf=source, cpml_axes="x",
                    periodic=(False, True, True), pec_axes="")
@@ -299,7 +300,7 @@ def test_oblique_method_b_finding_names_only_the_wrapped_axis(monkeypatch):
         seen.append(tuple(kwargs["periodic"]))
         raise Admitted
 
-    monkeypatch.setattr(kernel, "_build_step_setup", stop)
+    monkeypatch.setattr(uniform_loop, "_build_step_setup", stop)
     with pytest.raises(Admitted):
         sim.run(n_steps=1, skip_preflight=True)
     assert seen == [(False, False, True)]

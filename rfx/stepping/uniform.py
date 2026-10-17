@@ -93,7 +93,8 @@ def make_uniform_step(
     point. The returned callable retains the simulation runner's signature.
     """
     from rfx import simulation
-    from rfx.simulation import update_h, update_e_box, _update_e_with_optional_dispersion
+    from rfx.simulation import update_h, update_e_box
+    from rfx.stepping.uniform_loop import _update_e_with_optional_dispersion
     drives = None if ctx.drives is None else ctx.drives.electric
     mag_drives = None if ctx.drives is None else ctx.drives.magnetic
     if mag_drives is not None and not mag_drives.nodes:

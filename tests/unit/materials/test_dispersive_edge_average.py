@@ -255,7 +255,7 @@ def test_the_distributed_mixed_update_is_the_single_device_one():
     combined update 1/(gamma_Lorentz + sum beta). With the old body restored
     this test's random state gives E up to 4.2 % apart (330 of 336 values)."""
     from rfx.runners._distributed_common import _update_e_local_with_dispersion
-    from rfx.simulation import _update_e_with_optional_dispersion
+    from rfx.stepping.uniform_loop import _update_e_with_optional_dispersion
 
     rng = np.random.default_rng(12601)
     mats = _background()

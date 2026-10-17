@@ -5,6 +5,7 @@ Edge comparisons stop at the uniform step's own input, before compilation;
 the independent transmission check evolves two 700-step probe records.
 """
 
+import rfx.stepping.uniform_loop as uniform_loop
 import numpy as np
 import pytest
 
@@ -71,13 +72,13 @@ def test_plane_wave_decay_step_edges(monkeypatch):
     """run(until_decay=) steps through its own host loop; its step input carries the same edges."""
     import rfx.simulation as kernel
     captured = []
-    original = kernel.core_step_invariants
+    original = uniform_loop.core_step_invariants
 
     def capture(ctx):
         captured.append(tuple(np.asarray(mask).copy() for mask in ctx.pec_edge_masks))
         return original(ctx)
 
-    monkeypatch.setattr(kernel, "core_step_invariants", capture)
+    monkeypatch.setattr(uniform_loop, "core_step_invariants", capture)
     _scene().run(n_steps=40, until_decay=1e-3, decay_monitor_component="ez",
                  decay_monitor_position=(0.030, 0.005, 0.005))
     assert captured

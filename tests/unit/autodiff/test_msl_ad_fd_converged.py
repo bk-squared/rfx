@@ -792,7 +792,7 @@ def test_referee_precision_reaches_the_actual_field_state(referee, expected, mon
     negative control for the old assumption that this alone makes a
     double-precision finite-difference reference.
     """
-    import rfx.simulation as simulation_core
+    import rfx.stepping.uniform_setup as simulation_core
 
     original = simulation_core.init_state
     seen = []

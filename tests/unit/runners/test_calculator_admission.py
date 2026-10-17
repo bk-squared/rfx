@@ -177,7 +177,7 @@ def test_fit_hands_declared_faces_to_the_kernel(monkeypatch, wall):
     def factory(eps, debye, lorentz):
         return _acceptance_fixture(eps, debye, lorentz, boundary=boundary, cpml_layers=2)
 
-    monkeypatch.setattr("rfx.simulation.make_core_step", inspect)
+    monkeypatch.setattr('rfx.stepping.uniform_loop.make_core_step', inspect)
     with pytest.raises(ReachedCore):
         differentiable_material_fit(factory, np.zeros((1, 1, 3), complex),
                                     np.array([2e9, 3e9, 4e9]), n_iterations=1, verbose=False)

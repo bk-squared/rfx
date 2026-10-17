@@ -9,6 +9,7 @@ the steps' own in-loop formers (``1 - M``, whose rounding depends on where
 they are compiled) the bar is one float32 ULP of 1.0. Ghost values are not
 part of the slab contract.
 """
+import rfx.stepping.uniform_loop as uniform_loop
 import inspect
 from unittest.mock import patch
 
@@ -174,7 +175,7 @@ def test_published_matches_lane_operator(lane, sheet, monkeypatch):
         lane, boundary = 'uniform', BoundarySpec(x='pec', y='periodic', z='pec')
     import rfx.simulation as sm
     import rfx.nonuniform as nu
-    module, setup = (sm, '_build_step_setup') if lane == 'uniform' else (nu, '_build_nu_scan')
+    module, setup = (uniform_loop, '_build_step_setup') if lane == 'uniform' else (nu, '_build_nu_scan')
     kw = {} if lane == 'uniform' else dict(dy_profile=np.array([.001, .0009, .0011, .001, .001, .001]))
     sim = Simulation(freq_max=15e9, domain=(.008, .006, .004), dx=.001, boundary=boundary, **kw)
     if sheet:

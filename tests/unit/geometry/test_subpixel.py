@@ -314,7 +314,7 @@ class TestBackwardCompatibility:
         We verify this by running the simulation runner with aniso_eps=None
         and comparing against a direct update_e loop.
         """
-        from rfx.simulation import _update_e_with_optional_dispersion
+        from rfx.stepping.uniform_loop import _update_e_with_optional_dispersion
 
         cavity_size = 0.04
         freq_max = 5e9

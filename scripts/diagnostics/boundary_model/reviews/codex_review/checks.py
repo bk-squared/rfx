@@ -12,6 +12,7 @@ import jax.numpy as jnp
 import rfx
 import rfx.core.yee as y
 import rfx.simulation as sim
+import rfx.stepping.uniform_loop as uniform_loop
 import rfx.materials.debye as de
 import rfx.materials.lorentz as lo
 from rfx.grid import Grid
@@ -58,8 +59,8 @@ for name in ['debye','lorentz','mixed']:
   l=lo.init_lorentz([lo.lorentz_pole(1.,2*np.pi*1e10,1e9)],m,dt) if name!='debye' else None
   return d,l
  dh,lh=setup(mh); df,lf=setup(mf)
- expected=sim._update_e_with_optional_dispersion(sf,mf,dt,dx,debye=df,lorentz=lf,periodic=p_full)[0].ez[:N+1]
- got=sim._update_e_with_optional_dispersion(sh_material,mh,dt,dx,debye=dh,lorentz=lh,periodic=p_half)[0].ez
+ expected=uniform_loop._update_e_with_optional_dispersion(sf,mf,dt,dx,debye=df,lorentz=lf,periodic=p_full)[0].ez[:N+1]
+ got=uniform_loop._update_e_with_optional_dispersion(sh_material,mh,dt,dx,debye=dh,lorentz=lh,periodic=p_half)[0].ez
  # Demonstrate the design is viable when every material derivative is migrated.
  def bwd_with_image(a,axis):
   prev=y._shift_bwd(a,axis)
@@ -69,7 +70,7 @@ for name in ['debye','lorentz','mixed']:
   return prev
  originals=(de._shift_bwd,lo._shift_bwd,sim._shift_bwd)
  de._shift_bwd=lo._shift_bwd=sim._shift_bwd=bwd_with_image
- repaired=sim._update_e_with_optional_dispersion(sh_material,mh,dt,dx,debye=dh,lorentz=lh,periodic=p_half)[0].ez
+ repaired=uniform_loop._update_e_with_optional_dispersion(sh_material,mh,dt,dx,debye=dh,lorentz=lh,periodic=p_half)[0].ez
  de._shift_bwd,lo._shift_bwd,sim._shift_bwd=originals
  family.append({'family':name,'helper_only_error_lo_V_per_m':float(got[0,1,1]-expected[0,1,1]),'helper_only_error_hi_V_per_m':float(got[-1,1,1]-expected[-1,1,1]),'all_consumers_migrated_max_error_V_per_m':float(jnp.max(abs(repaired-expected)))})
 res['unmigrated_material_consumers']=family

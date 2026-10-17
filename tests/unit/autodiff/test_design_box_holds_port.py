@@ -75,6 +75,7 @@ import jax.numpy as jnp
 import pytest
 
 import rfx.simulation as _sim_mod
+import rfx.stepping.uniform_setup as _uniform_setup
 from rfx import Box, GaussianPulse, Simulation
 from rfx.core.yee import cell_component_e_coeffs, e_component_coeffs
 from tests._x64_compat import enable_x64
@@ -209,7 +210,7 @@ def _captured_box():
         seen.append((spec, kw["materials"], kw["dt"], out))
         return out
 
-    with mock.patch.object(_sim_mod, "resolve_design_box", _spy), \
+    with mock.patch.object(_uniform_setup, "resolve_design_box", _spy), \
             mock.patch.object(model, "resolve_design_box", _spy):
         yield seen
 

@@ -1,4 +1,5 @@
 """Addendum 5c admissions and provenance, without a field update."""
+import rfx.stepping.uniform_loop as uniform_loop
 import gc
 import warnings
 
@@ -35,7 +36,7 @@ def stop_kernel(monkeypatch, *, periodic=None):
             assert args[0].periodic == periodic
         raise Admitted
 
-    monkeypatch.setattr(kernel, "make_core_step", stop)
+    monkeypatch.setattr(uniform_loop, "make_core_step", stop)
 
 
 @pytest.mark.parametrize("skip", [False, True])

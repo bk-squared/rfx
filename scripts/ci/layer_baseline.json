@@ -109,21 +109,12 @@
       "I": [
         "rfx.boundaries.axes:drop_periodic_axes",
         "rfx.boundaries.axes:resolve_cpml_axes",
-        "rfx.boundaries.cpml:apply_cpml_e",
-        "rfx.boundaries.cpml:apply_cpml_h",
-        "rfx.boundaries.cpml:init_cpml",
         "rfx.boundaries.pec:apply_pec",
         "rfx.boundaries.pec:apply_pec_edges",
         "rfx.boundaries.pec:apply_pec_faces",
         "rfx.boundaries.pec:kottke_fenced_edge_masks",
-        "rfx.boundaries.pec:pec_occupancy_box_keep",
         "rfx.boundaries.pec:realized_pec_edge_masks",
         "rfx.boundaries.pec:resolve_wall_faces",
-        "rfx.boundaries.setup:oblique_bloch",
-        "rfx.boundaries.tfsf:admit_setup",
-        "rfx.boundaries.upml:apply_upml_e",
-        "rfx.boundaries.upml:apply_upml_h",
-        "rfx.boundaries.upml:init_upml",
         "rfx.core.yee:component_e_materials",
         "rfx.core.yee:curl_h",
         "rfx.core.yee:e_update_coeffs",
@@ -137,32 +128,15 @@
         "rfx.core.yee:update_e_box",
         "rfx.core.yee:update_h",
         "rfx.core.yee:update_he_fast",
-        "rfx.measurement.accumulators:flux_metadata",
-        "rfx.measurement.accumulators:plane_metadata",
         "rfx.model.materials:e_update_coefficient_at",
         "rfx.model.materials:electric_grid_kwargs",
-        "rfx.model.materials:with_components",
         "rfx.model.source_coefficients:drive_table",
-        "rfx.model.source_coefficients:uniform_source_table",
-        "rfx.stepping.absorber:cpml_context",
-        "rfx.stepping.uniform:make_uniform_step"
+        "rfx.model.source_coefficients:uniform_source_table"
       ],
-      "S": [
-        "_update_e_with_optional_dispersion",
-        "make_core_step",
-        "run",
-        "run_until_decay"
-      ],
+      "S": [],
       "M": [],
-      "A": [
-        "run_until_decay"
-      ],
-      "G": [
-        "_build_step_setup",
-        "_update_e_with_optional_dispersion",
-        "run",
-        "run_until_decay"
-      ],
+      "A": [],
+      "G": [],
       "D1": [],
       "D2": []
     },

@@ -62,7 +62,7 @@ def test_the_baked_fast_path_is_not_taken_with_an_inverse_tensor(monkeypatch):
     trace bit for bit.
     """
     import jax
-    import rfx.simulation as simulation
+    import rfx.stepping.uniform_loop as simulation
     built = []
     original = simulation.precompute_coeffs
 
@@ -84,7 +84,7 @@ def test_the_baked_fast_path_is_not_taken_with_an_inverse_tensor(monkeypatch):
 
 def _told_it_is_on_a_gpu(monkeypatch):
     import jax
-    import rfx.simulation as simulation
+    import rfx.stepping.uniform_loop as simulation
     built = []
     original = simulation.precompute_coeffs
 

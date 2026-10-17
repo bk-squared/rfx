@@ -336,7 +336,7 @@ def measure_scene(theta, phi, pol, n_steps=300, direction='+x', _line_peaks=None
         exec(compile(source, '<actual line-return tap>', 'exec'), namespace)
         with patch.object(plane, 'update_line_e', namespace['update_line_e']):
             return measure_scene(theta, phi, pol, n_steps, direction, peaks)
-    import rfx.simulation as engine
+    import rfx.stepping.uniform_loop as engine
     sim = scene(theta, phi, pol, direction)
     grid = sim._build_grid()
     bounds = sim.tfsf_box_indices()

@@ -21,7 +21,6 @@ from rfx.simulation import (
     ProbeSpec,
     SnapshotSpec,
     SimResult,
-    _build_step_setup,
     _StepContext,
     make_core_step,
     validate_snapshot_spec,
@@ -31,6 +30,7 @@ from rfx.simulation import (
     check_not_traced,
     ProgressReporter,
 )
+from rfx.stepping.uniform_loop import _build_step_setup
 from rfx.measurement.decay import static_remnant_advisory, table_dc
 from rfx.core.drives import Drives, StepDrives
 from rfx.core.yee import component_e_materials, component_h_materials, update_h, MU_0, EPS_0
