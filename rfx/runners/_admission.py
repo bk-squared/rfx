@@ -1196,14 +1196,14 @@ def _no_shape_tangent_jvp(primals, tangents):
         "of that dimension and its gradient would be zero almost everywhere. "
         "Differentiate a material value through eps_override, or use a design "
         "region (design_box / design_eps_override) for shape optimisation. "
-        "jax.jit and jax.vmap over a shape dimension are supported.")
+        "jax.jit and jax.vmap over a Sphere or Cylinder dimension are supported.")
 
 
 def guard_shape_tangents(sim):
     """Attach the tangent refusal before any lane realizes declared shapes.
 
-    Concrete leaves and entries retain their identity. Dataclass and tuple
-    traversal also covers positions and shapes nested in CSG declarations.
+    Concrete leaves and entries retain their identity. Dataclass fields and
+    tuples (centres, corners) are walked; other shape classes are left as they are.
     """
     def guard(value):
         if is_tracer(value):
