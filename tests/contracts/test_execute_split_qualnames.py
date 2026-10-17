@@ -5,6 +5,9 @@
 module's foot a bad keyword would stop naming ``Simulation...()`` in its
 TypeError. The expected strings below were measured on the pre-move tree
 (origin/main aa2137118) and are written here as literals.
+
+The admission move expected strings were measured on the pre-move tree
+(origin/main 1310cae617ef8989b67c027647a31edcd6dd711e).
 """
 import pytest
 
@@ -18,6 +21,10 @@ def test_moved_methods_keep_their_pre_move_qualnames():
         "Simulation._forward_from_materials")
     assert Simulation._forward_from_materials.__wrapped__.__qualname__ == (
         "_ExecuteMixin._forward_from_materials")
+    assert Simulation._refuse_conformal_boundary.__qualname__ == (
+        "Simulation._refuse_conformal_boundary")
+    assert Simulation._reject_upml_on_nonuniform.__qualname__ == (
+        "Simulation._reject_upml_on_nonuniform")
 
 
 @pytest.mark.parametrize("name, expected", [
@@ -26,6 +33,12 @@ def test_moved_methods_keep_their_pre_move_qualnames():
      "'no_such_keyword'"),
     ("_forward_from_materials",
      "_ExecuteMixin._forward_from_materials() got an unexpected keyword argument "
+     "'no_such_keyword'"),
+    ("_refuse_conformal_boundary",
+     "Simulation._refuse_conformal_boundary() got an unexpected keyword argument "
+     "'no_such_keyword'"),
+    ("_reject_upml_on_nonuniform",
+     "Simulation._reject_upml_on_nonuniform() got an unexpected keyword argument "
      "'no_such_keyword'"),
 ])
 def test_a_bad_keyword_reports_the_pre_move_name(name, expected):

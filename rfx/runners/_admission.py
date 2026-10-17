@@ -1269,3 +1269,73 @@ def refuse_forward_smoothing(sim, *, subpixel_smoothing,
     refuse_smoothing_overrides(subpixel_smoothing=subpixel_smoothing,
         eps_override=eps_override, pec_occupancy=pec_occupancy,
         design_occupancy=design_occupancy)
+
+
+def _refuse_conformal_boundary(self, path_name: str, *, entry: str,
+                               instead: str) -> None:
+    """Refuse ``Boundary(conformal=True)`` on a path with no Dey-Mittra update.
+
+        ``run()`` on the uniform lane and the uniform waveguide S-matrix
+        lane turn a conformal axis into Dey-Mittra weights on every PEC
+        shape; a path without that update solves staircased PEC instead.
+        A conformal axis always has PEC shapes to act on: both of its faces
+        are PEC, and the hi face's half-space wall is always one of the
+        uniform assembler's ``pec_shapes`` (``rfx/api/_compile.py``).
+        """
+    self._refuse_unsupported_run_kwargs(
+        path_name,
+        {"conformal_pec": bool(self._boundary_spec.conformal_faces())},
+        instead=instead,
+        entry=entry,
+        reason_overrides={"conformal_pec":
+            "Boundary(conformal=True) asks for Dey-Mittra conformal "
+            "PEC, and this path has no conformal update, so the walls "
+            "and PEC shapes would be staircased"},
+        remedy_overrides={"conformal_pec":
+            "drop Boundary(conformal=True) (staircase PEC)"},
+    )
+
+
+def _reject_upml_on_nonuniform(self, lane: str) -> None:
+    """Refuse ``boundary='upml'`` on a non-uniform lane (#680).
+
+        ``rfx/nonuniform.py`` has no UPML implementation at all: its
+        absorber dispatch is ``use_cpml = grid.cpml_layers > 0``, which
+        keys on the layer COUNT and never reads ``sim._boundary``. So a
+        non-uniform run asked for UPML silently got CPML instead —
+        measured on a 4x4x3 mm ez-dipole domain, otherwise identical
+        configs: ``apply_upml_e`` called 1x on the uniform lane and 0x on
+        the NU lane, with ``sim._boundary`` still reading ``'upml'``
+        afterwards, so even a post-hoc audit reported the wrong absorber.
+
+        Refuse at lane entry, in the style of the sibling distributed
+        guard, rather than substituting: the two absorbers have different
+        reflection and different material-in-pad semantics, and a silently
+        swapped one is exactly the class that made a "UPML + non-uniform"
+        regression test pass while never touching UPML.
+        """
+    if self._boundary != "upml" or self._cpml_layers <= 0:
+        return
+    raise ValueError(
+        f"boundary='upml' does not support the {lane} lane: the "
+        "non-uniform runner implements CPML only (rfx/nonuniform.py "
+        "dispatches on cpml_layers > 0 and never reads the boundary "
+        "type), so this configuration used to run CPML while "
+        "sim._boundary kept reporting 'upml' (issue #680). Pass "
+        "boundary='cpml' to run the absorber that is actually "
+        "implemented here, or drop the mesh profile(s) to use the "
+        "uniform lane, which does implement UPML."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Pre-move ``__qualname__``, restored explicitly (as rfx/preflight/sources.py
+# does). The functions above were ``def``s in ``_ExecuteMixin``'s body, so their
+# qualnames read ``_ExecuteMixin.<name>``; ``rfx/api/__init__.py``
+# rewrites exactly ``<mixin>.<name>`` -> ``Simulation.<name>`` at class
+# composition and skips a bare name, so without these lines a TypeError would no
+# longer name ``Simulation.<name>()``.
+# ``tests/contracts/test_execute_split_qualnames.py`` pins them.
+# ---------------------------------------------------------------------------
+_refuse_conformal_boundary.__qualname__ = "_ExecuteMixin._refuse_conformal_boundary"
+_reject_upml_on_nonuniform.__qualname__ = "_ExecuteMixin._reject_upml_on_nonuniform"
