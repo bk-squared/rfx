@@ -525,14 +525,14 @@ def test_the_whole_matrix_agrees_with_one_device(n_dev):
 def _fwd_never_reaches(patch, boundary, case, watched):
     """The graded forward runs the wrapped step (W1 for PEC, #1813 for CPML), which
     never calls the legacy helpers these mutations patch, so its rows check that
-    exclusion instead of a mutation that cannot reach it (#1847). The wrapped
-    step's per-edge materials are guarded by test_distributed_nu_wrapped_step.py
-    (test_cpml_one_slab_invariants and the PEC one-slab identity tests)."""
+    exclusion instead of a mutation that cannot reach it (#1847). On the wrapped
+    step the three defects are caught by this file's always-on fwd parity rows
+    (each restored inside the wrapped step goes red; review of #1847)."""
     from rfx.runners import _distributed_nu_wrapped as wrapped
     calls, setups = [], []
     for module, name in watched:
         real = getattr(module, name)
-        patch.setattr(module, name, lambda *a, _real=real, **k: (calls.append(name), _real(*a, **k))[1])
+        patch.setattr(module, name, lambda *a, _real=real, _name=name, **k: (calls.append(_name), _real(*a, **k))[1])
     build = wrapped.build_setup
     patch.setattr(wrapped, "build_setup", lambda *a, **k: (setups.append(1), build(*a, **k))[1])
     _parity(boundary, "fwd", case, 2)
