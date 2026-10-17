@@ -104,3 +104,22 @@ def test_plane_refusal_before_any_step(graded, entry, monkeypatch):
             sim.preflight_sparameters(calculator="waveguide", normalize=True,
                                       include_general=False)
     assert str(caught.value) == MESSAGE
+
+
+@pytest.mark.parametrize("entry", ["graded_runner", "measurement_plan"])
+def test_graded_routes_without_dispatch_admit_planes(entry, monkeypatch):
+    # The graded config builder does not check planes itself; the lane
+    # admission (direct runner) and the measurement plan must.
+    def no_steps(*args, **kwargs):
+        pytest.fail("waveguide refusal reached field stepping")
+
+    monkeypatch.setattr(jax.lax, "scan", no_steps)
+    sim = _invalid(graded=True)
+    with pytest.raises(ValueError) as caught:
+        if entry == "graded_runner":
+            from rfx.runners.nonuniform import run_nonuniform_path
+            run_nonuniform_path(sim, n_steps=1, compute_s_params=False)
+        else:
+            from rfx.measurement.plan import measurement_plan
+            measurement_plan(sim, n_steps=1)
+    assert str(caught.value) == MESSAGE
