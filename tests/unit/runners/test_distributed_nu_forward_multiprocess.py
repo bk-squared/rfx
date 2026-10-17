@@ -30,7 +30,7 @@ import pytest
 from rfx.runners import distributed_nu as nu
 from rfx.stepping import slab as slab_placement
 from tests.unit.runners.test_distributed_nu_forward_arguments import loop_program as _loop_program
-from tests.unit.runners.test_distributed_nu_forward_staging import _model
+from tests.unit.runners.test_distributed_nu_forward_staging import _model, _select_legacy_poles_cpml
 
 pytestmark = pytest.mark.distributed
 ROOT = Path(__file__).resolve().parents[3]
@@ -453,19 +453,22 @@ if __name__ == "__main__":
         _worker(*args)
     elif mode == "mutation":
         kind, gate, error = args
-        _mutate(kind)
-        try:
-            if gate == "parity":
-                _parity()
-            elif gate == "memory":
-                _memory("plain")
+        with pytest.MonkeyPatch.context() as patch:
+            if kind == "spacing":
+                _select_legacy_poles_cpml(patch)
+            _mutate(kind)
+            try:
+                if gate == "parity":
+                    _parity()
+                elif gate == "memory":
+                    _memory("plain")
+                else:
+                    records = _loop_program.__wrapped__(SimpleNamespace(param=("mixed", None, 0)))
+                    assert not records["captures"], f"captures: {records['captures']}"
+            except AssertionError as failure:
+                assert error in str(failure), str(failure)
+                print(f"MUTATION_RED {kind}: {failure}; process-local mutation discarded on exit")
             else:
-                records = _loop_program.__wrapped__(SimpleNamespace(param=("mixed", None, 0)))
-                assert not records["captures"], f"captures: {records['captures']}"
-        except AssertionError as failure:
-            assert error in str(failure), str(failure)
-            print(f"MUTATION_RED {kind}: {failure}; process-local mutation discarded on exit")
-        else:
-            raise AssertionError(f"mutation {kind} survived gate {gate}")
+                raise AssertionError(f"mutation {kind} survived gate {gate}")
     else:
         raise AssertionError(mode)

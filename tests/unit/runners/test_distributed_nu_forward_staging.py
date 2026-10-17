@@ -39,6 +39,19 @@ pytestmark = pytest.mark.distributed
 ROOT = Path(__file__).resolve().parents[3]
 
 
+def _select_legacy_poles_cpml(patch):
+    from rfx.stepping import slab_wrap
+    select = slab_wrap.select_step
+
+    def legacy(**flags):
+        # rfx #1402 item 5 routes poles + CPML to wrapped; these pins inspect legacy internals.
+        if flags.get("cpml") and (flags.get("debye") or flags.get("lorentz")):
+            return "legacy"
+        return select(**flags)
+
+    patch.setattr(slab_wrap, "select_step", legacy)
+
+
 def _model(case="mixed", large=False):
     # CPML plus the endpoint adds five cells on each axis: the memory gate's
     # actual grid is (45, 29, 29), including uneven two-device x padding.
@@ -593,20 +606,19 @@ def test_vmap_local_eps_matches_both_single_calls(devices):
 
 if __name__ == "__main__":
     command, *args = sys.argv[1:]
-    if command == "vmap_local":
-        _vmap_local_bits()
-    elif command == "memory":
-        _memory(*args)
-    elif command == "before":
-        _memory(args[0], legacy=True)
-    elif command in ("shards", "multipole"):
-        # These assertions pin the fixed-term staging consumed by the legacy step.
-        from unittest.mock import patch
-        with patch("rfx.stepping.slab_wrap.select_step", return_value="legacy"):
+    with pytest.MonkeyPatch.context() as patch:
+        _select_legacy_poles_cpml(patch)
+        if command == "vmap_local":
+            _vmap_local_bits()
+        elif command == "memory":
+            _memory(*args)
+        elif command == "before":
+            _memory(args[0], legacy=True)
+        elif command in ("shards", "multipole"):
             (_per_shard if command == "shards" else _multipole_shards)()
-    elif command == "cc":
-        _mutation_cc()
-    elif command == "bits":
-        _bit_case(args[0], None if args[1] == "None" else int(args[1]), int(args[2]), args[3])
-    else:
-        raise AssertionError(command)
+        elif command == "cc":
+            _mutation_cc()
+        elif command == "bits":
+            _bit_case(args[0], None if args[1] == "None" else int(args[1]), int(args[2]), args[3])
+        else:
+            raise AssertionError(command)

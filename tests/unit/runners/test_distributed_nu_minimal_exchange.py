@@ -40,11 +40,17 @@ from rfx.runners import distributed_nu as runner
 from tests.unit.runners.test_distributed_minimal_exchange import (
     _FIELDS, _full_e, _full_h, _full_sample, _poison,
 )
+from tests.unit.runners.test_distributed_nu_forward_staging import _select_legacy_poles_cpml
 
 pytestmark = pytest.mark.distributed
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = Path(__file__).resolve()
 N_STEPS = 8
+
+
+@pytest.fixture(autouse=True)
+def legacy_poles_cpml(monkeypatch):
+    _select_legacy_poles_cpml(monkeypatch)
 
 
 def _model(source_kind="field"):
@@ -531,6 +537,7 @@ def test_two_process_plain_and_grad(tmp_path):
 if __name__ == "__main__":
     mode, *args = sys.argv[1:]
     with pytest.MonkeyPatch.context() as patch:
+        _select_legacy_poles_cpml(patch)
         if mode == "matrix":
             for sharded in (False, True):
                 for checkpoint, warmup in ((None, 0), (3, 1)):
