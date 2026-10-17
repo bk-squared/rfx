@@ -425,10 +425,19 @@ def test_assembly(declaration, path):
     # Uniform seam spelling resolves before the step. Compare the complete ctx,
     # effective invariants, setup carry, actual scan init and xs. Graded compares
     # its scan builder, not the outer seam's conductor maps.
+    def options(entry):
+        requested = entry_options(declaration)
+        if entry == 'forward' and path == 'uniform' and declaration in ('P-lumped', 'P-lumped2'):
+            from rfx.measurement import default_frequency_grid
+            # run's main scan now registers its default S bins. Compare equal
+            # requests here too, as port_s_pair already does for L2.
+            requested = {**requested, 'port_s11_freqs': default_frequency_grid(20e9, 50)}
+        return requested
+
     differences = []
     for level in (('a', 'b') if path == 'multi-device-graded' else ('b',)):
         pair = {entry: capture(BUILDERS[declaration], entry, path, level,
-                               entry_options=entry_options(declaration), seams=SEAMS)
+                               entry_options=options(entry), seams=SEAMS)
                 for entry in ('run', 'forward')}
         ids = outcomes(declaration, path, 'L1', pair)
         required = {'ctx', 'invariants', 'carry_init', 'init', 'xs'} if path == 'uniform' else (
