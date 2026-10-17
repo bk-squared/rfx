@@ -35,7 +35,7 @@ except ImportError:
     from jax.experimental import enable_x64 as _enable_x64
 
 from rfx._grid_metric import cells_crossed, distinct_cell_sizes
-from rfx.core.jax_utils import is_tracer
+from rfx.core.jax_utils import complex_solve, is_tracer
 from rfx.sparams._mixed_checks import _mixed_reciprocity_deviation, _warn_partial_nonpassive
 from rfx.sparams._grid_metrics import absorber_depth, junction_absorber_depth, node_distance
 
@@ -190,7 +190,7 @@ def msl_solve_s_from_waves(wave_a, wave_b):
     ], axis=-2)
     # S = B A⁻¹  <=>  Sᵀ = (Aᵀ)⁻¹ Bᵀ, batched over frequency.
     S_solved = jnp.swapaxes(
-        jnp.linalg.solve(jnp.swapaxes(A, -1, -2), jnp.swapaxes(B, -1, -2)),
+        complex_solve(jnp.swapaxes(A, -1, -2), jnp.swapaxes(B, -1, -2)),
         -1, -2,
     )
     cond_a = None

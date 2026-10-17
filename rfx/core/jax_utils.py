@@ -6,6 +6,8 @@ import functools
 import jax
 import jax.numpy as jnp
 
+from rfx.linalg_backend import complex_solve as complex_solve
+
 
 def is_tracer(x: object) -> bool:
     """Return True if *x* is a JAX abstract tracer value.
