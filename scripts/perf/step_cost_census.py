@@ -367,9 +367,10 @@ class Program:
         if fun is None:
             return lambda f: self._capture_jit(f, **kwargs)
         compiled_fn = self.original_jit(fun, **kwargs)
-        if fun.__module__ not in ("rfx.runners.distributed_v2", "rfx.runners.distributed_nu"):
-            return compiled_fn
-        if fun.__name__ not in ("_run_cpml", "_run_pec", "run_fn"):
+        legacy_runner = (fun.__module__ in ("rfx.runners.distributed_v2", "rfx.runners.distributed_nu")
+                         and fun.__name__ in ("_run_cpml", "_run_pec", "run_fn"))
+        wrapped_graded_runner = (fun.__module__, fun.__name__) == ("rfx.stepping.slab_wrap", "run_fn")
+        if not (legacy_runner or wrapped_graded_runner):
             return compiled_fn
 
         def call(*args, **kw):

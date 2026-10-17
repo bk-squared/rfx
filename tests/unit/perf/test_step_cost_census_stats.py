@@ -371,3 +371,18 @@ def test_distributed_fallback_is_not_a_refusal_or_timed_record():
         'warning': warning, 'message': warning, 'conclusion': '리더가 채움'}
     assert check_distributed_result(SimpleNamespace(diagnostics=())) is None
     assert check_distributed_result(SimpleNamespace(diagnostics=(SimpleNamespace(values={'devices_used': 2}),))) is None
+
+
+def test_capture_recognises_wrapped_graded_run_fn():
+    from scripts.perf.step_cost_census import Program
+
+    def run_fn():
+        raise AssertionError("No simulation execution in recognition test")
+
+    run_fn.__module__ = "rfx.stepping.slab_wrap"
+    sentinel = object()
+    program = Program.__new__(Program)
+    program.original_jit = lambda fun, **kwargs: sentinel
+    captured = program._capture_jit(run_fn)
+    assert callable(captured)
+    assert captured is not sentinel
