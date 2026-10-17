@@ -200,9 +200,11 @@ def test_tfsf_oblique_incidence_through_api():
     )
     sim.add_probe((0.04, 0.06, 0.003), "ez")
 
-    result = sim.run(n_steps=120, compute_s_params=False)
+    # + 83 steps = 2 tau (f0 5 GHz, bw 0.2, dt 7.63 ps): the Bloch pulse peaks at 5 tau since #1831.
+    n_steps = 120 + 83
+    result = sim.run(n_steps=n_steps, compute_s_params=False)
 
-    assert result.time_series.shape == (120, 1)
+    assert result.time_series.shape == (n_steps, 1)
     peak = float(jnp.max(jnp.abs(result.time_series[:, 0])))
     assert peak > 0.0, "Probe should detect the obliquely incident plane wave"
 

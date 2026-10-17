@@ -432,7 +432,9 @@ def test_compiled_runner_tfsf_oblique_matches_manual_loop():
     grid = Grid(freq_max=5e9, domain=(0.12, 0.12, 0.006), dx=0.004, cpml_layers=8)
     materials = init_materials(grid.shape)
     periodic = (False, True, True)
-    n_steps = 120
+    # + 83 steps = 2 tau (f0 5 GHz, bw 0.2, dt 7.63 ps): the Bloch pulse peaks at 5 tau since
+    # #1831; without them the record holds 1e-5 of the pulse and the 1e-5 bar cannot fail.
+    n_steps = 120 + 83
 
     tfsf_cfg, tfsf_state0 = init_tfsf(
         grid.nx,

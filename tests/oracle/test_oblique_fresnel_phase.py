@@ -101,7 +101,11 @@ def _build(theta):
 
 def _build_lean(theta):
     """Small oblique cell for the GRADIENT test only (AD=FD is config-independent). The
-    full-size reverse tape OOMs the GPU (~5.6GB); this keeps the AD peak under GPU memory."""
+    full-size reverse tape OOMs the GPU (~5.6GB); this keeps the AD peak under GPU memory.
+    Its count is not lengthened for the Bloch pulse peaking 2 tau later since #1831 (that would
+    grow the tape by a third): the record ends 0.4 ns after the source peak and holds about the
+    leading half of the reflected pulse, so AD = FD is checked on that truncated quantity, not on
+    the reflection coefficient."""
     dom = (0.40, 0.08, 0.006)
     xif, xend, plat = 0.10, 0.30, (0.04, 0.08)
     yc, zc = dom[1] / 2, dom[2] / 2

@@ -55,7 +55,11 @@ def _eps_slab(shape, xi, xe, eps):
 def _build_lean(theta):
     """Small oblique cell for the GRADIENT test only. AD=FD is config-independent, and the
     reverse tape of the full-size config OOMs the GPU (~5.6GB alloc on rtx4090); this lean
-    domain/step-count keeps the AD peak well under GPU memory for the pre-release gate."""
+    domain/step-count keeps the AD peak well under GPU memory for the pre-release gate.
+    Its count is not lengthened for the Bloch pulse peaking 2 tau later since #1831 (that would
+    grow the tape by a third): the record ends 0.4 ns after the source peak and holds about the
+    leading half of the reflected pulse, so AD = FD is checked on that truncated quantity, not on
+    the reflection coefficient."""
     dom = (0.40, 0.08, 0.006)
     xif, xend, plat = 0.10, 0.30, (0.04, 0.08)
     yc, zc = dom[1] / 2, dom[2] / 2

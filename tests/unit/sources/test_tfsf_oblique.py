@@ -127,7 +127,8 @@ class TestObliqueTFSF:
         assert isinstance(cfg, TFSF2DConfig)
         assert cfg.n2y == 60, "2D grid y should match 3D ny (periodic)"
 
-        for step in range(200):
+        # + 153 steps = 2 tau (f0 5 GHz, bw 0.5, dt 1.667 ps): the Bloch pulse peaks at 5 tau since #1831.
+        for step in range(200 + 153):
             t = step * dt
             state = update_tfsf_2d_h(cfg, state, dx, dt)
             state = update_tfsf_2d_e(cfg, state, dx, dt, t)
