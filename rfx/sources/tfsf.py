@@ -65,6 +65,35 @@ AUX_N_MARGIN_1D = 10
 AUX_SRC_OFFSET_1D = 3       # source sits this many cells inside the absorber's inner edge
 
 
+def pulse_timing(waveform, f0, bandwidth):
+    """Return (tau, t0) without coercing traced source parameters."""
+    if waveform == "continuous_wave":
+        t0 = 8.0 / f0
+        tau = t0
+    else:
+        tau = 1.0 / (f0 * bandwidth * np.pi)
+        if waveform == "modulated_gaussian":
+            t0 = 5.0 * tau
+        else:
+            t0 = 3.0 * tau
+    return tau, t0
+
+
+def resolve_waveform(waveform, angle_deg, method):
+    """Resolve the declared default, preserving CustomWaveform identity."""
+    bloch = abs(angle_deg) > 0.01 and method == "bloch"
+    if waveform is None:
+        return "modulated_gaussian" if bloch else "differentiated_gaussian"
+    if bloch and waveform == "differentiated_gaussian":
+        raise ValueError(
+            "The Bloch oblique plane wave holds one transverse wavenumber "
+            "k_y = k0(f0)·sin θ, so it carries only a modulated Gaussian around f0; "
+            'declare waveform="modulated_gaussian" or leave it unset, or use '
+            'method="methodB" for an open domain.'
+        )
+    return waveform
+
+
 def is_tfsf_2d(cfg) -> bool:
     """Check if TFSF config uses 2D auxiliary grid (for oblique incidence)."""
     from rfx.sources.tfsf_2d import TFSF2DConfig
@@ -222,7 +251,7 @@ def init_tfsf(
     angle_deg: float = 0.0,
     ny: int | None = None,
     nz: int | None = None,
-    waveform: str | CustomWaveform = "differentiated_gaussian",
+    waveform: str | CustomWaveform | None = None,
     method: str = "bloch",
     aux_n_cpml: int | None = None,
     aux_cpml_order: int | None = None,
@@ -270,7 +299,8 @@ def init_tfsf(
         with ey polarization (2D TEz auxiliary grid).  Ignored for
         normal incidence and ez polarization.
     waveform : {"differentiated_gaussian", "modulated_gaussian", "continuous_wave"}
-        Pulse shape. ``differentiated_gaussian`` (default) is a
+        None selects DG except on oblique Bloch, where it selects MG.
+        Explicit DG on oblique Bloch is refused. ``differentiated_gaussian`` is a
         baseband differentiated Gaussian with no carrier (legacy rfx
         behaviour). ``modulated_gaussian`` matches Meep's
         ``GaussianSource``:
@@ -297,13 +327,14 @@ def init_tfsf(
     (TFSF2DConfig, TFSF2DState) for oblique incidence (|angle_deg| > 0.01).
     """
     custom = isinstance(waveform, CustomWaveform)
+    if (custom or closed_box) and angle_deg != 0.0:
+        raise NotImplementedError("CustomWaveform and closed_box require normal incidence (angle_deg=0)")
+    waveform = resolve_waveform(waveform, angle_deg, method)
     if not custom and waveform not in ("differentiated_gaussian", "modulated_gaussian", "continuous_wave"):
         raise ValueError(
             f"waveform must be 'differentiated_gaussian', "
             f"'modulated_gaussian', 'continuous_wave', or CustomWaveform, got {waveform!r}"
         )
-    if (custom or closed_box) and angle_deg != 0.0:
-        raise NotImplementedError("CustomWaveform and closed_box require normal incidence (angle_deg=0)")
     if custom:
         import jax
         value = jax.eval_shape(waveform, jnp.asarray(0.0))
@@ -319,7 +350,7 @@ def init_tfsf(
             phi_deg=phi_deg, direction_tol_deg=direction_tol_deg,
             max_component=max_component, waveform=waveform, n_steps=n_steps)
     # continuous_wave lives only in the 1D-auxiliary (normal-incidence) injector; the 2D
-    # oblique grid (init_tfsf_2d) has no waveform parameter, so reject it here rather than
+    # oblique grid carries only an analytic MG, so reject it here rather than
     # silently drop it (fail-loud, not right-guard-mis-gated).
     if waveform == "continuous_wave" and abs(angle_deg) > 0.01:
         raise ValueError(
@@ -366,6 +397,7 @@ def init_tfsf(
             polarization=polarization,
             direction=direction,
             theta_deg=angle_deg,
+            waveform=waveform,
         )
     # Dispatch to 2D auxiliary grid for oblique angles (Bloch field-transform).
     # The 2D grid naturally matches the 3D numerical dispersion at any angle.
@@ -384,6 +416,7 @@ def init_tfsf(
             polarization=polarization,
             direction=direction,
             theta_deg=angle_deg,
+            waveform=waveform,
             # forwarded, not dropped: the reflection gate measures the oblique
             # absorber through this entry point (#888)
             aux_n_cpml=aux_n_cpml,
@@ -462,23 +495,7 @@ def init_tfsf(
         n_cpml_1d, dt, dx_1d, sample_offset=-0.5, **profile_options)
     b_prof, c_prof = _prof.b, _prof.c
 
-    # Source waveform parameters.
-    # For differentiated Gaussian (legacy rfx): tau = 1/(π·f0·bandwidth),
-    # t0 = 3·tau. For modulated Gaussian (Meep): fwidth = f0·bandwidth,
-    # tau = 1/(π·fwidth), t0 = 5·tau (Meep default cutoff).
-    if waveform == "modulated_gaussian":
-        fwidth = f0 * bandwidth
-        tau = 1.0 / (np.pi * fwidth)
-        t0 = 5.0 * tau
-    elif waveform == "continuous_wave":
-        # Ramped CW: a raised-cosine turn-on over t0, then constant amplitude — for
-        # steady-state / narrowband measurements where a well-defined ⟨E²⟩=A²/2 is needed
-        # (e.g. the quantitative Kerr SPM oracle, #446). t0 is the ramp duration.
-        t0 = 8.0 / f0        # ~8-period smooth turn-on
-        tau = t0             # unused by the CW branch; kept finite for the config
-    else:
-        tau = 1.0 / (f0 * bandwidth * np.pi)
-        t0 = 3.0 * tau
+    tau, t0 = pulse_timing(waveform, f0, bandwidth)
 
     if polarization == "ez":
         electric_component = "ez"

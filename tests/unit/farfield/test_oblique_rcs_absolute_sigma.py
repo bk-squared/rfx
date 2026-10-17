@@ -127,37 +127,32 @@ def test_po_oracle_matches_closed_form():
 # ---------------------------------------------------------------------------
 
 def test_measured_incident_spectrum_captures_mismatch_and_launch():
-    """Envelope pins around the measured facts (gate grid, f0):
+    """The measured field includes the auxiliary line's angle-dependent launch response.
 
-    * assumed-vs-measured mismatch 6.58 dB at theta=20 (pinned 4..9) and
-      4.51 dB at theta=40 (pinned 2.5..7) — nonzero mismatch IS the F7 bug
-      class; a normalization that just re-DFTs the assumed pulse fails the
-      lower bound (falsifier);
-    * measured vs the analytic ACTUAL waveform (launch response) is a mild
-    attenuation, -2.25 dB at theta=20 (pinned -4..+0.5) — the term the
-      #471 review neglected.
+    Against the actual declared pulse, the 20° response remains in [-4, +0.5] dB
+    and the 40° response is strictly lower; re-DFTing the pulse alone fails this ordering.
     """
     grid = Grid(freq_max=F0 * 3, domain=DOMAIN, dx=DX, cpml_layers=CPML)
     nx, ny, nz = grid.shape
     dt = grid.dt
     freqs = np.array([F0])
-    bands = {20.0: (4.0, 9.0), 40.0: (2.5, 7.0)}
-    for theta, (lo, hi) in bands.items():
+    launch_db = {}
+    for theta in (20.0, 40.0):
         cfg, st = init_tfsf_methodB(nx, ny, DX, dt, nz=nz, cpml_layers=CPML,
                                     tfsf_margin=MARGIN, f0=F0,
                                     polarization="ez", direction="+x",
                                     theta_deg=theta)
         S_meas = measure_incident_spectrum(cfg, st, N_STEPS, freqs, DX)
-        S_ass = _incident_spectrum_amplitude(F0, 0.5, freqs, dt, N_STEPS)
-        mismatch_db = 20 * np.log10(np.abs(S_meas[0]) / np.abs(S_ass[0]))
-        assert lo <= mismatch_db <= hi, (theta, mismatch_db)
-        if theta == 20.0:
-            times = np.arange(N_STEPS) * dt
-            arg = (times - cfg.src_t0) / cfg.src_tau
+        times = np.arange(N_STEPS) * dt
+        arg = (times - cfg.src_t0) / cfg.src_tau
+        if cfg.src_waveform == "differentiated_gaussian":
+            s_act = -2 * arg * np.exp(-arg ** 2)
+        else:
             s_act = np.cos(2 * np.pi * F0 * (times - cfg.src_t0)) * np.exp(-arg ** 2)
-            S_act = np.sum(s_act * np.exp(-1j * 2 * np.pi * F0 * times)) * dt
-            launch_db = 20 * np.log10(np.abs(S_meas[0]) / np.abs(S_act))
-            assert -4.0 <= launch_db <= 0.5, launch_db
+        S_act = np.sum(s_act * np.exp(-1j * 2 * np.pi * F0 * times)) * dt
+        launch_db[theta] = 20 * np.log10(np.abs(S_meas[0]) / np.abs(S_act))
+    assert -4.0 <= launch_db[20.0] <= 0.5, launch_db[20.0]
+    assert launch_db[40.0] < launch_db[20.0], launch_db
 
 
 # ---------------------------------------------------------------------------

@@ -364,18 +364,6 @@ box, is refused there with the uniform mesh named as the remedy, since a closed 
 refused on the graded mesh (the experimental operator remains a PR3b item).
 → [#1221](https://github.com/bk-squared/rfx/issues/1221)
 
-### An open oblique plane wave with `method="methodB"` launches a modulated Gaussian whatever pulse is declared.
-
-Tracker: #1812
-
-`add_tfsf_source(angle_deg=θ, method="methodB")` builds its auxiliary line with a modulated Gaussian centred at `f0`
-(`rfx/sources/tfsf_oblique_open.py`); the default `waveform="differentiated_gaussian"` is replaced without a
-refusal. The probe record is bit-identical for both declarations (θ = 30°, f0 = 8 GHz). Normalising a result by the
-declared pulse's spectrum is wrong by their ratio (+20.5 dB at f0 = 8 GHz, bandwidth 0.5, each pulse to its own peak).
-`rfx.rcs.compute_rcs` is not affected: it normalises by the incident spectrum it measures. Normalise by the
-launched pulse, or measure the incident field in an empty run.
-→ [#1812](https://github.com/bk-squared/rfx/issues/1812)
-
 ### An oblique Bloch plane wave rings at its cutoff along the source plane, so a value read at f0 depends on the simulation time.
 
 Tracker: none — accepted limitation (warns at default: tests/unit/sources/test_tfsf_bloch_cutoff_warning.py::test_bloch_cutoff_warning)

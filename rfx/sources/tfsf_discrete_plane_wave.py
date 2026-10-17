@@ -237,10 +237,8 @@ def init_plane_wave(nx, dx, dt, *, ny, nz, cpml_layers=0, tfsf_margin=3,
         raise NotImplementedError("closed_box CustomWaveform requires theta_deg=0")
     if custom is None and waveform not in ("differentiated_gaussian", "modulated_gaussian", "continuous_wave"):
         raise ValueError("unsupported closed_box waveform")
-    tau = 1. / (f0 * bandwidth * np.pi)
-    t0 = (5. if waveform == "modulated_gaussian" else 3.) * tau
-    if waveform == "continuous_wave":
-        tau = t0 = 8. / f0
+    from rfx.sources.tfsf import pulse_timing
+    tau, t0 = pulse_timing(waveform, f0, bandwidth)
     tau = source_scalar("tau", tau)
     t0 = source_scalar("t0", t0)
     dtype = jnp.result_type(float)
@@ -509,7 +507,7 @@ def add_tfsf_source(
     polarization: str = "ez",
     direction: str = "+x",
     angle_deg: float = 0.0,
-    waveform: object = "differentiated_gaussian",
+    waveform: object = None,
     method: str = "bloch",
     closed_box: bool = False,
     theta_deg: float = 0.0,
@@ -540,7 +538,14 @@ def add_tfsf_source(
         Pulse shape injected into the 1D auxiliary grid. (``continuous_wave``
         is only supported at normal incidence — ``angle_deg == 0``.)
 
-        ``differentiated_gaussian`` (default, legacy rfx): baseband
+        The default ``None`` resolves at declaration to DG on normal,
+        closed-box and method-B paths, and MG on oblique Bloch. Explicit
+        DG on oblique Bloch is refused: its fixed transverse wavenumber
+        carries only an MG around f0. Use ``modulated_gaussian``, leave
+        the waveform unset, or use ``method="methodB"`` for an open domain.
+        Bloch retains t0 = 3τ (#1831); other MG paths use 5τ.
+
+        ``differentiated_gaussian`` (legacy rfx): baseband
         pulse with no carrier, DC-free, spectrum peaks near
         ``f0·bandwidth``. Good for broadband measurements but
         spectrum extends well below ``f0``.
@@ -578,11 +583,13 @@ def add_tfsf_source(
         ``polarization='ez'`` and a single-device uniform grid.
     """
     from rfx.api import _bloch_cutoff_level_db
+    from rfx.sources.tfsf import resolve_waveform
     if closed_box:
         validate_declaration(self, theta_deg, phi_deg, direction_tol_deg,
                              max_component, polarization, direction, angle_deg, waveform, margin)
     elif (theta_deg, phi_deg, direction_tol_deg, max_component) != (0.0, 0.0, 0.1, 100):
         raise ValueError("theta_deg/phi_deg/direction_tol_deg/max_component require closed_box=True")
+    waveform = resolve_waveform(waveform, angle_deg, method)
     from rfx.boundaries.tfsf import validate_source_boundary
     validate_source_boundary(self, closed_box=closed_box)
     if self._cpml_layers <= 0:

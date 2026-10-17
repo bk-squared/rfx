@@ -21,7 +21,7 @@ box indices are static Python ints; gather bases/weights are precomputed jnp
 arrays), so they drop straight into ``lax.scan`` in Stage 2.  This module does
 NOT touch rfx's scan / simulation.py.
 
-ONE deliberate deviation from the prototype: the transverse face extents are
+The transverse face extents differ from the prototype: they are
 INCLUSIVE (``[y_lo, y_hi]`` / ``[x_lo, x_hi]``), not the prototype's exclusive
 ``yl:yh`` / ``xl:xh``.  The exclusive slicing left the box corner nodes at
 ``x_hi`` / ``y_hi`` uncorrected — 8 nodes per z-plane acting as coherent
@@ -30,8 +30,8 @@ floor (PR #461 review, F1).  With inclusive slices the through-run leakage
 drops to the linear-interp gather error (-59..-132 dB, exact cancellation at
 the symmetric 45 deg case); the injection angle is unchanged.
 
-Ported sign/staggering/timing verbatim from the prototype (the authoritative
-physics source):
+Pulse timing follows the declared waveform through ``pulse_timing`` (#1812).
+Signs, staggering and leapfrog order retain the prototype physics:
   * H_inc decomposition ``Hy_inc = +cosθ·h1d``, ``Hx_inc = -sinθ·h1d`` — enters
     the E-face corrections as the ``±ce·ct`` / ``±ce·st`` factors below.
   * H-face (Hy/Hx) corrections read Ez_inc (``e1d``) with NO angle factor.
@@ -179,8 +179,8 @@ def init_tfsf_methodB(
     cpml_layers: int = 10,
     tfsf_margin: int = 10,
     f0: float = 5e9,
-    bandwidth: float = 0.5,        # accepted for signature parity; Stage-1 uses
-                                   # the prototype's fixed t0=40·dt, tau=12·dt.
+    bandwidth: float = 0.5,
+    waveform: str = "differentiated_gaussian",
     amplitude: float = 1.0,
     polarization: str = "ez",
     direction: str = "+x",
@@ -192,14 +192,13 @@ def init_tfsf_methodB(
     Box spans x in ``[off, nx-off)`` and y in ``[off, ny-off)``.  ``d_aux`` is
     the dispersion-matched 1D cell size along k̂ at ``ω = 2π f0``.
 
-    Source timing reproduces the prototype exactly: ``t0 = 40·dt``,
-    ``tau = 12·dt``, modulated Gaussian at carrier ``f0``.  NOTE the injected
-    SOURCE spectrum is therefore resolution-dependent (``tau ∝ dt``) and its
-    launch response is angle-dependent (``d_aux`` is dispersion-matched per
-    theta); ``compute_rcs`` normalizes absolute sigma by the MEASURED aux
-    spectrum (:func:`measure_incident_spectrum`), which tracks both per run
-    (issue #471 F7).
+    Source timing follows ``pulse_timing`` for the declared Gaussian pulse.
+    ``compute_rcs`` normalizes absolute sigma by the measured auxiliary
+    spectrum, including the angle-dependent launch response (#471 F7).
     """
+    from rfx.sources.tfsf import pulse_timing
+    if waveform not in ("differentiated_gaussian", "modulated_gaussian"):
+        raise ValueError("Method B supports differentiated_gaussian or modulated_gaussian")
     if polarization != "ez":
         raise NotImplementedError(
             "Method B currently supports polarization='ez' (transverse=y) only; "
@@ -260,9 +259,7 @@ def init_tfsf_methodB(
     magnetic_hi = _cpml_profile(
         n_cpml_1d, dt, d_aux, sample_offset=-0.5, **profile_options)
 
-    # --- source params: reproduce the prototype (t0=40·dt, w=12·dt, carrier f0) ---
-    src_t0 = 40.0 * dt
-    src_tau = 12.0 * dt
+    src_tau, src_t0 = pulse_timing(waveform, f0, bandwidth)
 
     # --- gather tables ---------------------------------------------------------
     # aux index for an E-node projection (read by H-correction, gathers e1d):
@@ -307,7 +304,7 @@ def init_tfsf_methodB(
         src_t0=float(src_t0),
         src_tau=float(src_tau),
         src_fcen=float(f0),
-        src_waveform="modulated_gaussian",
+        src_waveform=waveform,
         curl_sign=1.0,
         electric_component="ez",
         magnetic_component="hy",
@@ -499,10 +496,11 @@ def measure_incident_spectrum(
     ``n_steps`` and DFTs the recorded ``e1d`` at the aux index onto which the
     box centre projects.  This is the incident spectral amplitude the 4-edge
     box actually injects, so using it as the RCS normalization captures what an
-    analytic waveform DFT cannot (all MEASURED, issue #471 F7 audit, gate grid
+    analytic waveform DFT cannot. Historical measurements below predate #1812
+    and its declared-pulse timing (issue #471 F7 audit, gate grid
     f0=5 GHz, dx=2 mm):
 
-    * the hardcoded ``t0=40·dt, tau=12·dt`` modulated Gaussian instead of the
+    * the then-hardcoded ``t0=40·dt, tau=12·dt`` modulated Gaussian instead of the
       normal path's assumed differentiated Gaussian (+8.83 dB at f0 — the
       review's number, reproduced exactly), AND
     * the source->aux launch/absorption response the review neglected

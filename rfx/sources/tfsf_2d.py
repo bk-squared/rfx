@@ -183,6 +183,7 @@ def init_tfsf_2d(
     polarization: str = "ez",
     direction: str = "+x",
     theta_deg: float = 0.0,
+    waveform: str = "modulated_gaussian",
     aux_n_cpml: int | None = None,
     aux_cpml_order: int | None = None,
     aux_cpml_kappa_max: float | None = None,
@@ -200,6 +201,10 @@ def init_tfsf_2d(
         Number of cells in z (3D grid).  Required for ey oblique
         (TEz mode).  Ignored for ez polarization.
     """
+    from rfx.sources.tfsf import pulse_timing, resolve_waveform
+    resolve_waveform(waveform, theta_deg, "bloch")
+    if waveform != "modulated_gaussian":
+        raise ValueError('Bloch requires waveform="modulated_gaussian"')
     if polarization not in ("ez", "ey"):
         raise ValueError(f"polarization must be 'ez' or 'ey', got {polarization!r}")
     if direction not in ("+x", "-x"):
@@ -276,8 +281,8 @@ def init_tfsf_2d(
     b_prof, c_prof, kappa_prof = prof.b, prof.c, prof.kappa
 
     # Source waveform
-    tau = 1.0 / (f0 * bandwidth * np.pi)
-    t0 = 3.0 * tau
+    tau, _ = pulse_timing(waveform, f0, bandwidth)
+    t0 = 3.0 * tau  # t0 = 3τ: the one exception to pulse_timing; see #1831
 
     if polarization == "ez":
         electric_component = "ez"

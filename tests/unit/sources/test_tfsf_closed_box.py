@@ -169,7 +169,8 @@ def test_custom_gaussian_preserves_legacy_slab(polarization, direction):
 def test_methodb_auxiliary_keeps_its_original_waveform(angle):
     from rfx.sources.tfsf_oblique_open import init_tfsf_methodB
     cfg, aux = init_tfsf_methodB(33, 31, 0.001, 1e-12, nz=3,
-                                cpml_layers=3, tfsf_margin=3, theta_deg=angle)
+                                cpml_layers=3, tfsf_margin=3, theta_deg=angle,
+                                waveform="modulated_gaussian")
     # Method B shares this E kernel, but has no new optional source fields.
     # From zero fields its Gaussian peak is exactly the source amplitude.
     out = update_tfsf_1d_e(cfg, aux, 0.001, 1e-12, cfg.src_t0)

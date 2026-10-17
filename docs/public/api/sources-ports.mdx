@@ -48,7 +48,7 @@ sim.add_polarized_source((0.010, 0.020, 0.015), polarization="slant45",
 |---|---|---|
 | `add_source` | `add_source(position, component="ez", *, waveform=None, amplitude_kind=None)` | soft point source in one cell; no load, so it suits resonance work (`find_resonances`) |
 | `add_polarized_source` | `add_polarized_source(position, *, polarization="ez", waveform=None, amplitude_kind=None)` | linear polarization: `"ex"`, `"ey"`, `"ez"`, `"slant45"` or a real `(Ex, Ey)` tuple |
-| `add_tfsf_source` | `add_tfsf_source(*, f0=None, bandwidth=0.5, amplitude=1.0, margin=3, polarization="ez", direction="+x", angle_deg=0.0, waveform="differentiated_gaussian", method="bloch")` | plane wave travelling along x, for scattering; 3-D or 2-D (`mode="2d_tmz"`/`"2d_tez"`), with CPML |
+| `add_tfsf_source` | `add_tfsf_source(*, f0=None, bandwidth=0.5, amplitude=1.0, margin=3, polarization="ez", direction="+x", angle_deg=0.0, waveform=None, method="bloch")` | plane wave travelling along x, for scattering; 3-D or 2-D (`mode="2d_tmz"`/`"2d_tez"`), with CPML |
 | `add_floquet_port` | see the [generated reference](/rfx/api/generated/) | experimental; no documented S-parameter API |
 
 **`amplitude_kind`.** The default is `"current"`: the waveform amplitude is

@@ -51,6 +51,7 @@ the component first: `coeffs.ca[0]` is the Ex coefficient, where 1.x read
 
 | What | 1.x | 2.0 | To keep the 1.x behaviour |
 |---|---|---|---|
+| Oblique Bloch TF/SF with explicit `waveform="differentiated_gaussian"`, including saved interop documents | silently launched a modulated Gaussian | refused before launch or on document load | Declare `waveform="modulated_gaussian"` or omit the Python argument. In an interop document, replace the required waveform string with `"modulated_gaussian"`; do not remove the field. |
 | `add_source(amplitude_kind=None)` | meant different things on different solver paths | a current moment in A·m on every path | Uniform `run()` with PEC walls: `amplitude_kind="field"`. Uniform `run()` with an absorber, and uniform `forward()`: `amplitude_kind="current"` with the waveform amplitude multiplied by the cell volume. Graded meshes: unchanged. Field values change; S-parameters and ratios of probes do not. |
 | a port's `waveform` (lumped, wire, microstrip) | scaled with the mesh and the load | the port's open-circuit source voltage, on every mesh | S-parameters do not change. Absolute fields, flux power and far fields of port-driven models do: divide the waveform by the ratio the [changelog](/rfx/project/changelog/) gives for your port. |
 | `compute_msl_s_matrix(enforce_passivity=...)` | `True` | `False`: S is the extracted matrix | `enforce_passivity=True`. |
