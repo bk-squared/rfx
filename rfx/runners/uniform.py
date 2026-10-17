@@ -61,7 +61,7 @@ def run_uniform(
     sheet_specs=None,
     pec_sheets=None,
     pec_wires=None,
-    keep_wire_port_sparams: bool = False,
+    keep_wire_port_sparams: bool = True,
     stop_fn=None,
     stop_interval: int = 250,
 ):
@@ -93,8 +93,8 @@ def run_uniform(
         List of PEC Shape objects (needed for conformal weights).
     keep_wire_port_sparams : bool
         Hand back the scan's per-wire-port ``(spec, accumulators)`` pairs as
-        ``Result.wire_port_sparams`` (default ``False``: left ``None``, as
-        before). ``run(..., ringdown=...)`` reads the realized port cells and
+        ``Result.wire_port_sparams`` (default ``True``). Internal callers
+        can request ``False``. ``run(..., ringdown=...)`` reads the realized port cells and
         accumulators from them (issue #1254) and removes them again.
     stop_fn, stop_interval
         ``run(..., ringdown=..., until_identified=True)`` (issue #1254): the
@@ -333,6 +333,18 @@ def run_uniform(
 
     from rfx.measurement.port_registration import uniform_run_specs
     record_specs = uniform_run_specs(grid, wire_ports, wire_port_live_cells, lumped_ports, sim._ports)
+
+    # Main-record lumped spectra use the same bins as run's S driver.
+    lumped_sparam_specs = []
+    if lumped_ports and (compute_s_params is None or compute_s_params):
+        from rfx.measurement import register_lumped
+        sp_freqs = jnp.asarray(s_param_freqs if s_param_freqs is not None else
+                              jnp.linspace(sim._freq_max / 10, sim._freq_max, 50), dtype=jnp.float32)
+        for component, _cells, kind, mid, port_id in record_specs:
+            if kind == 'lumped':
+                pe = sim._ports[port_id]
+                register_lumped([], lumped_sparam_specs, component, mid,
+                                sp_freqs, pe.impedance, pe.excite, port_id)
 
     # Build wire port S-param specs for JIT-integrated DFT
     wire_sparam_specs = []
@@ -711,6 +723,7 @@ def run_uniform(
             pec_wires=pec_wires,
             conformal_weights=conformal_weights,
             wire_port_sparams=wire_sparam_specs or None,
+            lumped_port_sparams=lumped_sparam_specs or None,
             port_record_specs=record_specs,
             lumped_rlc=rlc_metas,
             kerr_chi3=kerr_chi3,
@@ -749,6 +762,7 @@ def run_uniform(
             pec_wires=pec_wires,
             conformal_weights=conformal_weights,
             wire_port_sparams=wire_sparam_specs or None,
+            lumped_port_sparams=lumped_sparam_specs or None,
             port_record_specs=record_specs,
             lumped_rlc=rlc_metas,
             kerr_chi3=kerr_chi3,
@@ -928,4 +942,5 @@ def run_uniform(
         settling_witness=s_settling,
         freq_range=(sim._freq_max / 10, sim._freq_max, sim._boundary),
         wire_port_sparams=(sim_result.wire_port_sparams if keep_wire_port_sparams else None),
+        lumped_port_sparams=sim_result.lumped_port_sparams,
     )

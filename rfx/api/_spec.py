@@ -612,6 +612,8 @@ class Result(NamedTuple):
     #: reference ``v_ref`` (#683), on the uniform lane only; the first four
     #: are the same channels on both.
     wire_port_sparams: tuple | None = None
+    #: Main-record lumped ``(spec, (V, I, V_ref))`` pairs; None on graded meshes or without spectra.
+    lumped_port_sparams: tuple | None = None
     #: ``run(..., ringdown=RingdownSpec(...))`` only (issue #1254): a
     #: :class:`rfx.ringdown.RingdownResult` holding the wire-port S-matrix
     #: with the record's unrecorded ring-down added in closed form

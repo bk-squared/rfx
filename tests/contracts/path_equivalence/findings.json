@@ -9,7 +9,7 @@
     "nu-missing-vref": {
       "fingerprints": {
         "f1": {"value": "sparam_time_records.0.V_ref: record missing on B", "records": ["port_samples"]},
-        "f2": {"value": "wire_port_sparams.0.V_ref: record missing on B", "cells": ["_ports:wire_port:fwd_uniform:fwd_nonuniform:constant:12", "_ports:wire_port:fwd_uniform:fwd_nonuniform:constant:36"], "records": ["port_dft"]}
+        "f2": {"value": "wire_port_sparams.0.V_ref: record missing on B", "cells": ["_ports:wire_port:fwd_uniform:fwd_nonuniform:constant:12", "_ports:wire_port:fwd_uniform:fwd_nonuniform:constant:36", "_ports:wire_port:run_uniform:run_nonuniform:constant:12", "_ports:wire_port:run_uniform:run_nonuniform:constant:36"], "records": ["port_dft"]}
       },
       "witnesses": {}
     },
@@ -21,7 +21,8 @@
     },
     "uniform-wire-dft-record-missing": {
       "fingerprints": {
-        "f1": {"value": "wire_port_sparams: record missing on A"}
+        "f1": {"value": "wire_port_sparams: record missing on A", "cells": ["_ports:lumped_port:fwd_uniform:fwd_nonuniform:constant:12", "_ports:passive_port:fwd_uniform:fwd_nonuniform:constant:12"]},
+        "f2": {"value": "wire_port_sparams: record missing on B", "cells": ["_ports:wire_port:run_uniform:run_distributed:constant:12", "_ports:wire_port:run_uniform:run_distributed:constant:36"]}
       },
       "witnesses": {}
     }
@@ -53,17 +54,19 @@
       "port_samples": ["nu-missing-vref"]
     },
     "_ports:wire_port:run_uniform:run_distributed:constant:12": {
+      "port_dft": ["uniform-wire-dft-record-missing"],
       "port_samples": ["port-time-record-missing"]
     },
     "_ports:wire_port:run_uniform:run_distributed:constant:36": {
+      "port_dft": ["uniform-wire-dft-record-missing"],
       "port_samples": ["port-time-record-missing"]
     },
     "_ports:wire_port:run_uniform:run_nonuniform:constant:12": {
-      "port_dft": ["uniform-wire-dft-record-missing"],
+      "port_dft": ["nu-missing-vref"],
       "port_samples": ["nu-missing-vref"]
     },
     "_ports:wire_port:run_uniform:run_nonuniform:constant:36": {
-      "port_dft": ["uniform-wire-dft-record-missing"],
+      "port_dft": ["nu-missing-vref"],
       "port_samples": ["nu-missing-vref"]
     }
   }

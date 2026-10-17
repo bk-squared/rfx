@@ -15,9 +15,13 @@ non-uniform path, or the two-device uniform path where stated.
 | `nu-lumped-dft-record-missing` | `lumped_port_sparams` is absent on B | lumped and passive port, `forward()`, uniform vs non-uniform |
 | `nu-missing-vref` | `V_ref` is absent on B, in the per-step port record and in the wire-port DFT record | lumped, passive and wire port, uniform vs non-uniform |
 | `port-time-record-missing` | the per-step port record is absent on A and B, or on B only, or its `V_port` is absent on A, depending on the cell | lumped, passive and wire port; uniform vs non-uniform and vs two-device |
-| `uniform-wire-dft-record-missing` | `wire_port_sparams` is absent on A | lumped, passive and wire port, uniform vs non-uniform |
+| `uniform-wire-dft-record-missing` | `wire_port_sparams` is absent on A or B, depending on the cell | lumped and passive forward, uniform vs non-uniform; wire run, uniform vs two-device |
 
 The exact text per cell and record is in `findings.json` (`causes.*.fingerprints`, `cells`).
+
+`nu-missing-vref` remains an open counted row owned by **ports**: graded wire
+records retain four accumulators and three time columns; uniform retains five
+and four. Graded record structure is outside the run main-record return change.
 
 Geometry keys that start with `declared_` are excluded from the realized-geometry
 equality: they record what the script declared, not what the grid built.
