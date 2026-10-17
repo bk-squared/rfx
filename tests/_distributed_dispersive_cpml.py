@@ -13,7 +13,7 @@ from rfx.materials.lorentz import LorentzPole
 from tests.unit.runners.test_distributed_edge_averaged_materials import GRADED_1302, WAVEFORM, _mm
 
 
-def scene(kind, *, tau_factor=1., cells=True, port=False):
+def scene(kind, *, tau_factor=1., cells=True, port=False, sigma=0.):
     """Scene T: the pole block continues through both x CPML faces."""
     sim = Simulation(freq_max=10e9, domain=(24e-3, 12e-3, 12e-3), dx=1e-3,
                      boundary='cpml', cpml_layers=6, dx_profile=GRADED_1302)
@@ -30,7 +30,7 @@ def scene(kind, *, tau_factor=1., cells=True, port=False):
     if kind in ('lorentz', 'mixed'):
         poles['lorentz_poles'] = [LorentzPole(omega_0=2*np.pi*8e9, delta=2*np.pi*1e9,
                                             kappa=(2*np.pi*8e9)**2)]
-    sim.add_material('m', eps_r=4., **poles)
+    sim.add_material('m', eps_r=4., sigma=sigma, **poles)
     sim.add(Box((-1., 3e-3, 3e-3), (1., 9e-3, 9e-3)), material='m')
     if cells:
         for pos, comp in all_e_cells(sim):
@@ -92,9 +92,11 @@ def snapshot_parity(kind, lengths, monkeypatch, *, entry):
     from rfx.runners import _distributed_nu_wrapped as runner
     from tests.unit.runners.test_distributed_edge_averaged_materials import _debye_box, _devices
     sim = _debye_box('cpml', 'fwd', kind)
-    while len(sim._probes) < 4:
-        sim.add_probe(_mm(12, 6, 6), 'ez')
+    assert len(sim._probes) == 2
+    sim.add_probe(_mm(12, 6, 6), 'ez')
+    sim.add_probe(_mm(14, 5, 7), 'hy')
     assert len(sim._probes) == 4
+    assert len({(p.component, tuple(p.position)) for p in sim._probes}) == 4
     for position, component in all_e_cells(sim):
         sim.add_probe(position, component)
     dt = float(sim._build_nonuniform_grid().dt)

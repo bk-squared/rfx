@@ -1,4 +1,9 @@
-"""Judge 2: observe actual distributed face multipliers on both active copies."""
+"""Judge 2: observe actual distributed face multipliers on both active copies.
+
+Pole owners on the graded distributed lane observe legacy (production reaches
+it only with PMC); test_distributed_cpml_curl_operand.py pins the shipped
+wrapped route's coefficient byte-equal.
+"""
 import importlib.util
 import json
 
