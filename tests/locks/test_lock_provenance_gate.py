@@ -36,6 +36,18 @@ REQUIRED_KEYS = (
     "fixture", "generator", "commit", "date", "run_id", "host", "pinned_until",
 )
 
+#: Lock dates are written in the lab's time zone (KST, UTC+9, no daylight saving); CI runners report UTC.
+#: Comparing a KST date with the runner's date.today() refused every lock blessed between 00:00 and
+#: 09:00 KST as "in the future" (rfx PR 1858, 2026-10-18 KST at 21:23 UTC).
+LAB_TZ = _dt.timezone(_dt.timedelta(hours=9), "KST")
+
+
+def _lab_today(now: _dt.datetime | None = None) -> _dt.date:
+    """Today's date in the lab's time zone, whatever the runner's clock zone."""
+    now = now if now is not None else _dt.datetime.now(_dt.timezone.utc)
+    return now.astimezone(LAB_TZ).date()
+
+
 #: Deleting every lock module would make this gate vacuously green, so require
 #: the population it was written for (the 2026-09-02 tier-1 move) to be there.
 #: #931 retired ``test_two_plane_pec_slab.py`` — it pinned the ``two_plane``
@@ -161,7 +173,7 @@ def test_lock_is_not_expired(path: Path):
     prov = _read_provenance(path)
     pinned_until = _parse_date(prov["pinned_until"], "pinned_until", path)
     date = _parse_date(prov["date"], "date", path)
-    today = _dt.date.today()
+    today = _lab_today()
     assert date <= today, (
         f"{_rel(path)}: LOCK_PROVENANCE['date'] {date} is in the future"
     )
@@ -175,3 +187,11 @@ def test_lock_is_not_expired(path: Path):
         f"generator={prov['generator']!r}, update commit/date/run_id/host, "
         "and extend pinned_until -- do not just move the date."
     )
+
+
+def test_lab_today_is_the_kst_date() -> None:
+    """A lock blessed at 06:23 KST must not read as tomorrow on a UTC runner."""
+    utc = _dt.timezone.utc
+    assert _lab_today(_dt.datetime(2026, 10, 17, 21, 23, tzinfo=utc)) == _dt.date(2026, 10, 18)
+    assert _lab_today(_dt.datetime(2026, 10, 17, 14, 59, tzinfo=utc)) == _dt.date(2026, 10, 17)
+    assert _lab_today(_dt.datetime(2026, 10, 17, 15, 0, tzinfo=utc)) == _dt.date(2026, 10, 18)
