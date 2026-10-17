@@ -23,8 +23,10 @@ def run_settling_witness(self, result):
 
     # run()'s port records repeat its S bins in float32; reading them again
     # would split each bin of a float64 request in two.
-    bins = result_read_bins(result if isinstance(result, ForwardResult) else
-                            result._replace(wire_port_sparams=None, lumped_port_sparams=None))
+    read = result
+    if not isinstance(result, ForwardResult) and hasattr(result, "_replace"):
+        read = result._replace(wire_port_sparams=None, lumped_port_sparams=None)
+    bins = result_read_bins(read)
     dt = getattr(result, "dt", None) or getattr(getattr(result, "grid", None), "dt", None)
     rows = []
     if prior:
