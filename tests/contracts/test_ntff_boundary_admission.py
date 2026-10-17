@@ -34,7 +34,7 @@ CLOSED_GRADED = (
 
 
 # Literal expected table: no expected outcomes are derived from production.
-# Existing UPML refusal: rfx/api/_execute.py:1154 (_reject_upml_on_nonuniform).
+# Existing UPML refusal: rfx/runners/_admission.py (_reject_upml_on_nonuniform).
 # Existing graded closed-box refusal: at declaration, add_tfsf_source ->
 # rfx/sources/tfsf_discrete_plane_wave.py validate_declaration (same text as
 # the run-time refusal in rfx/api/_dispatch.py, which it now precedes).

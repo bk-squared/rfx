@@ -616,6 +616,7 @@ class _ExecuteMixin:
         sigma_override: jnp.ndarray | None = None,
         pec_mask_override: jnp.ndarray | None = None,
         pec_occupancy_override: jnp.ndarray | None = None,
+        pinned_sheet_layout: tuple | None = None,
         design_box: object | None = None,
         n_steps: int,
         port_s11_freqs: object | None = None,
@@ -681,6 +682,7 @@ class _ExecuteMixin:
             sigma_override=sigma_override,
             pec_mask_override=pec_mask_override,
             pec_occupancy_override=pec_occupancy_override,
+            pinned_sheet_layout=pinned_sheet_layout,
             design_box=design_box,
             checkpoint=checkpoint,
             emit_time_series=emit_time_series,
@@ -1055,6 +1057,7 @@ class _ExecuteMixin:
         pec_mask_override: jnp.ndarray | None = None,
         pec_occupancy_override: jnp.ndarray | None = None,
         subpixel_smoothing: bool | str = False,
+        pinned_sheet_layout: tuple | None = None,
         n_steps: int | None = None,
         num_periods: float = 20.0,
         checkpoint: bool | None = None,
@@ -1234,6 +1237,12 @@ class _ExecuteMixin:
             still raise; an MSL port's termination is not held.
         pec_mask_override : jnp.ndarray or None
             Additional hard PEC mask to merge with geometry-defined PEC.
+        pinned_sheet_layout : tuple or None
+            Compile-once layout switch on the graded single-device lane. One
+            entry per add_pinned_sheet call: None or two binary edge arrays in
+            increasing tangential-axis order. For normal z their shapes are
+            (i1-i0, j1-j0+1) and (i1-i0+1, j1-j0). Concrete nonbinary values
+            and differentiation with respect to this layout are refused.
         pec_occupancy_override : jnp.ndarray or None
             Relaxed conductor occupancy field in ``[0, 1]`` for
             differentiable PEC-style optimisation.
@@ -1450,6 +1459,8 @@ class _ExecuteMixin:
         so the jitted value and gradient agree with a plain call to float32
         rounding, not necessarily bit for bit.
         """
+        self, pinned_sheet_layout = _conductors.prepare_sheet_layout(
+            self, pinned_sheet_layout, distributed=distributed)
         refuse_forward_smoothing(self, subpixel_smoothing=subpixel_smoothing,
             eps_override=eps_override,
             pec_occupancy=pec_occupancy_override, design_occupancy=design_occupancy_override)
@@ -1697,6 +1708,7 @@ class _ExecuteMixin:
                 sigma_override=sigma_override,
                 pec_mask_override=pec_mask_override,
                 pec_occupancy_override=pec_occupancy_override,
+                pinned_sheet_layout=pinned_sheet_layout,
                 design_box=_nu_design_spec,
                 n_steps=plan.n_steps,
                 checkpoint=checkpoint,
@@ -1712,6 +1724,7 @@ class _ExecuteMixin:
                 result = RingdownForward(
                     self, ringdown, lane="graded", n_steps=plan.n_steps,
                     grid=_nu_grid, bins=None if port_s11_freqs is None else host_bins(port_s11_freqs, np.float32)).run(_nu_fwd_call)
+            result = _conductors.with_sheet_layout_reports(result, pinned_sheet_layout)
             if _nu_design_spec is not None:
                 result = result._replace(
                     design_box_held_edges=_nu_design_spec.held_edges)

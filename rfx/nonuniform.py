@@ -37,15 +37,13 @@ from rfx.core.drives import drive_layout
 from rfx.measurement import AUTO_END, finish_decay, make_decay_stop, one_step_xs
 from rfx.model.source_coefficients import drive_table
 from rfx.measurement import assemble_graded_result as _assemble_nu_result
-from rfx.model import current_source_samples, with_edge_keep
+from rfx.model import current_source_samples
+from rfx.model import graded_conductor_masks, with_graded_edge_keep
 import numpy as np
 
 from rfx.core.yee import (
     FDTDState, MaterialArrays, init_state,
     EPS_0, MU_0,
-)
-from rfx.boundaries.pec import (
-    realized_pec_edge_masks,
 )
 from rfx.core.jax_utils import is_tracer, recorded_scan
 from rfx.stepping import segmented_scan
@@ -676,6 +674,7 @@ def _build_nu_scan(
     pec_wires=(),
     pec_edge_masks=None,
     pec_occupancy=None,
+    pinned_sheet_layout=None,
     sources: list = None,
     probes: list = None,
     wire_ports: list = None,
@@ -746,29 +745,11 @@ def _build_nu_scan(
      curl_boundary, _pec_faces_frozen, _pmc_faces_frozen, use_pmc_faces) = nonuniform_boundaries(
          grid, cpml_axes, pec_faces, pmc_faces)
 
-    # #931 §1.7: realize the PEC edges ONCE here, using the NU grid's
-    # periodic flags for the same seam convention as its 3-D stepper.
-    # A lane that pre-realized (and port-cleared) its masks passes
-    # them in instead.
-    pec_sheets = tuple(pec_sheets or ())
-    pec_wires = tuple(pec_wires or ())
-    if pec_edge_masks is None and (
-            pec_mask is not None or pec_sheets or pec_wires):
-        pec_edge_masks = realized_pec_edge_masks(
-            pec_mask, sheets=pec_sheets, wires=pec_wires, periodic=tuple(a in grid.periodic_axes for a in "xyz"))
+    pec_edge_masks, pec_static_edge_masks = graded_conductor_masks(
+        pec_mask, pec_occupancy, pec_sheets, pec_wires, pec_edge_masks,
+        periodic=tuple(a in grid.periodic_axes for a in "xyz"))
     use_pec_edges = pec_edge_masks is not None
-    use_pec_occupancy = pec_occupancy is not None
-    # Same as the uniform lane (§1.6/§1.9): the static sheet/wire masks are
-    # intersected with the masks handed in, so a port that cleared its own
-    # edge before the run is not put back inside the conductor by a
-    # re-realization from the declarations.
-    pec_static_edge_masks = None
-    if use_pec_occupancy and (pec_sheets or pec_wires):
-        pec_static_edge_masks = realized_pec_edge_masks(
-            None, sheets=pec_sheets, wires=pec_wires, periodic=tuple(a in grid.periodic_axes for a in "xyz"))
-        if pec_edge_masks is not None:
-            pec_static_edge_masks = tuple(
-                s & m for s, m in zip(pec_static_edge_masks, pec_edge_masks))
+    use_pec_occupancy = pec_occupancy is not None or bool(pinned_sheet_layout)
 
     admit_setup(grid=grid, tfsf=tfsf, materials=materials, waveguide_ports=waveguide_ports,
                 ntff=ntff_box if use_ntff else None, periodic=tuple(a in grid.periodic_axes for a in "xyz"),
@@ -790,7 +771,7 @@ def _build_nu_scan(
 
     state = init_state((grid.nx, grid.ny, grid.nz))
     src_meta = [(s[0], s[1], s[2], s[3]) for s in sources]
-    materials = with_edge_keep(materials, pec_occupancy, dtype=state.ex.dtype, sheet_edge_masks=pec_static_edge_masks, periodic=tuple(a in grid.periodic_axes for a in "xyz"))
+    materials = with_graded_edge_keep(materials, pec_occupancy, pinned_sheet_layout, grid=grid, sources=sources, waveguide_ports=waveguide_ports, dtype=state.ex.dtype, sheet_edge_masks=pec_static_edge_masks, periodic=tuple(a in grid.periodic_axes for a in "xyz"), cells=pec_mask, sheets=pec_sheets, wires=pec_wires)
     src_waveforms = drive_table([jnp.array(s[4]) for s in sources], src_meta, n_steps,
         occupancy=pec_occupancy, sheet_edge_masks=pec_static_edge_masks, keep=materials.edge_keep, periodic=tuple(a in grid.periodic_axes for a in "xyz"))
     prb_meta = [(p[0], p[1], p[2], p[3]) for p in probes]
@@ -1055,6 +1036,7 @@ def run_nonuniform(
     pec_wires=(),
     pec_edge_masks=None,
     pec_occupancy=None,
+    pinned_sheet_layout=None,
     sources: list = None,
     probes: list = None,
     wire_ports: list = None,
@@ -1107,6 +1089,7 @@ def run_nonuniform(
         pec_wires=pec_wires,
         pec_edge_masks=pec_edge_masks,
         pec_occupancy=pec_occupancy,
+        pinned_sheet_layout=pinned_sheet_layout,
         sources=sources,
         probes=probes,
         wire_ports=wire_ports,
@@ -1271,6 +1254,7 @@ def run_nonuniform_until_decay(
     pec_wires=(),
     pec_edge_masks=None,
     pec_occupancy=None,
+    pinned_sheet_layout=None,
     sources: list = None,
     probes: list = None,
     wire_ports: list = None,
@@ -1354,6 +1338,7 @@ def run_nonuniform_until_decay(
         pec_wires=pec_wires,
         pec_edge_masks=pec_edge_masks,
         pec_occupancy=pec_occupancy,
+        pinned_sheet_layout=pinned_sheet_layout,
         sources=sources,
         probes=probes,
         wire_ports=wire_ports,

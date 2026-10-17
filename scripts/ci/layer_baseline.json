@@ -38,7 +38,6 @@
         "rfx.boundaries.axes:padded_axes",
         "rfx.boundaries.axes:resolve_cpml_axes",
         "rfx.boundaries.depths:resolve_face_depths",
-        "rfx.boundaries.pec:realized_pec_edge_masks",
         "rfx.boundaries.setup:nonuniform_boundaries",
         "rfx.boundaries.tfsf:admit_setup",
         "rfx.core.yee:curl_h_nu",

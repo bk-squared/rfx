@@ -944,3 +944,71 @@ def _f0_solved_bounds(mask, axis, nodes, sizes, end_rows, pad_lo, pad_hi, period
         w = END_ROW_WEIGHT if marked[i1 % n] else 1.0
         hi += w * 0.5 * float(sizes[(i1 - 1) % n] + sizes[i1 % n]) - 0.5 * float(sizes[(i1 - 1) % n])
     return i0, i1, lo, hi
+
+
+_SHEET_LAYOUT_REPORTS = (
+    "_with_sheet_spans", "sheet_preflight", "refuse_dead_soft_sources",
+    "line_stub_admission", "warn_sheet_planes_inside_dielectric",
+)
+
+
+def prepare_sheet_layout(sim, layout, *, distributed):
+    """Make an execution-local static declaration with addressed sheets removed.
+
+    Static assembly and host reports see only fixed sheets. The addressed
+    declarations and their traced values travel separately to the graded keep.
+    The caller's declaration and its cached reports are never mutated.
+    """
+    if layout is None:
+        return sim, None
+    from copy import copy
+    from rfx.runners._admission import admit_sheet_layout_lane
+    from rfx.model.occupancy import admit_sheet_layout
+    admit_sheet_layout_lane(sim, distributed=distributed)
+    addressed = admit_sheet_layout(sim._pinned_sheets, layout)
+    if not addressed:
+        return sim, addressed
+    fixed = copy(sim)
+    indices = {index for index, _, _ in addressed}
+    fixed._pinned_sheets = [sheet for index, sheet in enumerate(sim._pinned_sheets)
+                            if index not in indices]
+    fixed._pf_campaign_ctx = None
+    return fixed, addressed
+
+
+def with_sheet_layout_reports(result, layout):
+    """Name each excluded declared-footprint report once in the forward result."""
+    skipped = tuple((index, report) for index, _, _ in (layout or ())
+                    for report in _SHEET_LAYOUT_REPORTS)
+    return result._replace(sheet_reports_skipped=skipped or None)
+
+
+def refuse_layout_drives(edge_sets, sources, waveguide_ports):
+    """An addressed E edge cannot own a source/port, even at layout value zero."""
+    from rfx.preflight._common import _H_LOOP
+    driven = set()
+    for i, j, k, component, *_ in sources:
+        if component.startswith('e'):
+            driven.add(('xyz'.index(component[1]), int(i), int(j), int(k)))
+        else:
+            for c, di, dj, dk in _H_LOOP[component]:
+                driven.add((c, int(i) + di, int(j) + dj, int(k) + dk))
+    configs = [mode for config in (waveguide_ports or ())
+               for mode in (config if isinstance(config, list) else (config,))]
+    for config in configs:
+        normal = 'xyz'.index(config.normal_axis)
+        axes = [a for a in range(3) if a != normal]
+        for plane in (config.x_index, config.x_index + 1):
+            for u in range(config.u_lo, config.u_hi):
+                for v in range(config.v_lo, config.v_hi):
+                    cell = [0, 0, 0]
+                    cell[normal], cell[axes[0]], cell[axes[1]] = plane, u, v
+                    for component in (config.e_u_component, config.e_v_component):
+                        driven.add(('xyz'.index(component[1]), *cell))
+    for index, sheet, _tangent, axis, indices, _values in edge_sets:
+        edges = {(axis, *cell) for cell in zip(*(v.ravel().tolist() for v in indices))}
+        overlap = sorted(edges & driven)
+        if overlap:
+            raise ValueError(f"pinned_sheet_layout sheet {index} ({sheet.name!r}): "
+                             f"source or port drives addressed edge {overlap[0]}; "
+                             "move the drive off the layout switch on the graded lane")

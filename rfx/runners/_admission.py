@@ -1339,3 +1339,13 @@ def _reject_upml_on_nonuniform(self, lane: str) -> None:
 # ---------------------------------------------------------------------------
 _refuse_conformal_boundary.__qualname__ = "_ExecuteMixin._refuse_conformal_boundary"
 _reject_upml_on_nonuniform.__qualname__ = "_ExecuteMixin._reject_upml_on_nonuniform"
+
+
+def admit_sheet_layout_lane(sim, *, distributed):
+    """Refuse before static assembly can mistake a switch for fixed metal."""
+    if distributed:
+        from rfx.runners._distributed_entry import refuse_sheet_layout
+        refuse_sheet_layout()
+    if not sim._uses_nonuniform_mesh or sim._solver == 'adi' or sim._refinement is not None:
+        from rfx.runners.uniform_forward import refuse_sheet_layout
+        refuse_sheet_layout()

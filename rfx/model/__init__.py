@@ -19,10 +19,12 @@ from rfx.model.conductors import (
     forward_products,
     forward_sheet_context,
     prepare_port_occupancy,
+    prepare_sheet_layout,
     PreparedSolve,
     stage_distributed_edges,
     stage_distributed_occupancy,
     uniform_solve_inputs,
+    with_sheet_layout_reports,
 )
 from rfx.model.design_box import (
     design_box_bounds,
@@ -37,8 +39,10 @@ from rfx.model.graded_admission import (
     traced_cell_mask,
 )
 from rfx.model.occupancy import (
+    graded_conductor_masks,
     select_occupancy_operator,
     with_edge_keep,
+    with_graded_edge_keep,
 )
 from rfx.model.source_coefficients import (
     current_source_samples,
@@ -75,11 +79,13 @@ __all__ = [
     "forward_port_stage",
     "forward_products",
     "forward_sheet_context",
+    "graded_conductor_masks",
     "held_edge_masks",
     "init_multimode_waveguide_port",
     "init_waveguide_port",
     "NominalProfile",
     "prepare_port_occupancy",
+    "prepare_sheet_layout",
     "PreparedSolve",
     "refuse_design_films",
     "resolve_design_box",
@@ -92,4 +98,6 @@ __all__ = [
     "WaveguidePort",
     "WaveguidePortConfig",
     "with_edge_keep",
+    "with_graded_edge_keep",
+    "with_sheet_layout_reports",
 ]

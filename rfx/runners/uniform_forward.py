@@ -876,3 +876,9 @@ def _forward_from_materials(
 # ---------------------------------------------------------------------------
 _forward_from_materials.__qualname__ = "_ExecuteMixin._forward_from_materials"
 _forward_from_materials.__wrapped__.__qualname__ = "_ExecuteMixin._forward_from_materials"
+
+
+def refuse_sheet_layout():
+    raise NotImplementedError(
+        "pinned_sheet_layout requires the single-device graded lane; "
+        "a uniform mesh can be passed as a graded profile")

@@ -243,3 +243,141 @@ def select_occupancy_operator(self, grid, materials, pec_occupancy_local,
             print(f"[kottke debug] sigma min={float(jnp.min(conductivity_envelope(materials))):.3e} "
                   f"max={float(jnp.max(conductivity_envelope(materials))):.3e}", file=_sys.stderr, flush=True)
     return pec_occupancy_for_run, aniso_inv_eps_run
+
+
+@jax.custom_jvp
+def _layout_switch(value):
+    """Binary layout identity; its derivative is not a physical sensitivity."""
+    return value
+
+
+@_layout_switch.defjvp
+def _layout_switch_jvp(primals, tangents):
+    raise TypeError(
+        "pinned_sheet_layout is a layout switch: its derivative is not a physical "
+        "sensitivity (the per-step multiply is an exponential decay); "
+        "differentiate a resolved design instead")
+
+
+def admit_sheet_layout(sheets, layout):
+    """Validate concrete binary entries and always install the AD refusal."""
+    import numpy as np
+    from rfx.core.jax_utils import is_tracer
+    if not isinstance(layout, tuple) or len(layout) != len(sheets):
+        raise ValueError("pinned_sheet_layout must be a tuple aligned with add_pinned_sheet calls")
+    addressed = []
+    for index, (sheet, pair) in enumerate(zip(sheets, layout, strict=True)):
+        if pair is None:
+            continue
+        label = f"pinned_sheet_layout sheet {index} ({sheet.name!r})"
+        if not isinstance(pair, (tuple, list)) or len(pair) != 2:
+            raise ValueError(f"{label}: expected two tangential edge arrays")
+        lengths = (sheet.i_range[1] - sheet.i_range[0], sheet.j_range[1] - sheet.j_range[0])
+        arrays = []
+        axes = tuple(a for a in range(3) if a != sheet.normal_axis)
+        for t, value in enumerate(pair):
+            value = jnp.asarray(value)
+            shape = tuple(n + (axis != t) for axis, n in enumerate(lengths))
+            if value.shape != shape:
+                raise ValueError(f"{label}: edge {'xyz'[axes[t]]} shape {value.shape}, expected {shape}")
+            if not is_tracer(value):
+                bad = np.argwhere((np.asarray(value) != 0) & (np.asarray(value) != 1))
+                if len(bad):
+                    edge = tuple(int(v) for v in bad[0])
+                    raise ValueError(f"{label}: edge {'xyz'[axes[t]]}{edge} must be exactly 0 or 1")
+            arrays.append(_layout_switch(value))
+        addressed.append((index, sheet, tuple(arrays)))
+    return tuple(addressed)
+
+
+def graded_sheet_masks(occupancy, sheets, wires, edge_masks, *, periodic):
+    """Static sheet/wire fold, intersected with the port-released hard mask."""
+    if occupancy is None or not (sheets or wires):
+        return None
+    static = realized_pec_edge_masks(None, sheets=sheets, wires=wires, periodic=periodic)
+    if edge_masks is not None:
+        static = tuple(s & m for s, m in zip(static, edge_masks))
+    return static
+
+
+def layout_edge_indices(grid, sheet, tangent):
+    """Declared local edge coordinates mapped to padded (and periodic) nodes."""
+    import numpy as np
+    from rfx.materials.thin_conductor import pinned_sheet_spec
+    spec = pinned_sheet_spec(grid, sheet)  # retain declaration range/plane validation
+    axes = tuple(a for a in range(3) if a != sheet.normal_axis)
+    ranges = (sheet.i_range, sheet.j_range)
+    local = np.meshgrid(*(np.arange(lo, hi + (t != tangent)) + grid.axis_pads[a]
+                          for t, (a, (lo, hi)) in enumerate(zip(axes, ranges))), indexing='ij')
+    indices = [np.full(local[0].shape, int(spec.plane), dtype=int) for _ in range(3)]
+    for a, values in zip(axes, local):
+        indices[a] = values % grid.shape[a] if 'xyz'[a] in grid.periodic_axes else values
+    return axes[tangent], tuple(indices)
+
+
+def with_graded_edge_keep(materials, occupancy, layout, *, grid, sources,
+                          waveguide_ports, dtype, sheet_edge_masks, periodic,
+                          cells=None, sheets=(), wires=()):
+    """Fold addressed sheet edges into the cell keep without reading layout values."""
+    materials = with_edge_keep(materials, occupancy, dtype=dtype,
+                              sheet_edge_masks=sheet_edge_masks, periodic=periodic)
+    if not layout:
+        return materials
+    from rfx.model.conductors import refuse_layout_drives
+    edge_sets = [(index, sheet, tangent, *layout_edge_indices(grid, sheet, tangent), values)
+                 for index, sheet, pair in layout for tangent, values in enumerate(pair)]
+    refuse_layout_seams(layout, grid, cells, sheets, wires, periodic)
+    refuse_layout_drives(edge_sets, sources, waveguide_ports)
+    keep = list(materials.edge_keep if materials.edge_keep is not None else
+                (jnp.ones(grid.shape, dtype=dtype),) * 3)
+    for _index, _sheet, _tangent, axis, indices, values in edge_sets:
+        keep[axis] = keep[axis].at[indices].multiply(1 - values.astype(keep[axis].dtype))
+    return materials._replace(edge_keep=tuple(keep))
+
+
+def refuse_layout_seams(layout, grid, cells, sheets, wires, periodic):
+    """Reject declared cross-sheet edges that no layout array can address.
+
+    Compare the production masks: full(C, F+A, W) minus fixed(C, F, W)
+    and each addressed sheet's own mask. Only static declarations are read;
+    the layout values do not participate in admission.
+    """
+    import numpy as np
+    from rfx.materials.thin_conductor import pinned_sheet_spec
+    with jax.ensure_compile_time_eval():
+        specs = tuple(pinned_sheet_spec(grid, sheet) for _, sheet, _ in layout)
+        sheets, wires = tuple(sheets or ()), tuple(wires or ())
+        cells = np.zeros(grid.shape, dtype=bool) if cells is None else cells
+        full = realized_pec_edge_masks(cells, sheets=sheets + specs, wires=wires, periodic=periodic)
+        covered = [np.asarray(mask).copy() for mask in
+                   realized_pec_edge_masks(cells, sheets=sheets, wires=wires, periodic=periodic)]
+        for spec in specs:
+            own = realized_pec_edge_masks(None, sheets=(spec,), periodic=periodic)
+            for axis in range(3):
+                covered[axis] |= np.asarray(own[axis])
+        for axis, mask in enumerate(full):
+            seam = np.argwhere(np.asarray(mask) & ~covered[axis])
+            if not len(seam):
+                continue
+            edge = tuple(int(v) for v in seam[0])
+            neighbour = list(edge)
+            neighbour[axis] = (neighbour[axis] + 1) % grid.shape[axis]
+            for (index, sheet, _), spec in zip(layout, specs):
+                if axis == spec.normal_axis and grid.shape[axis] != 1:
+                    continue
+                footprint = np.asarray(spec.footprint)
+                if footprint[edge] or footprint[tuple(neighbour)]:
+                    raise ValueError(
+                        f"pinned_sheet_layout sheet {index} ({sheet.name!r}): "
+                        f"seam edge e{'xyz'[axis]}{edge} is outside the layout arrays; "
+                        "overlap the addressed sheet with its neighbour by one node, "
+                        "leave at least one empty node between them, "
+                        "or declare both as one addressed sheet")
+
+
+def graded_conductor_masks(cells, occupancy, sheets, wires, edge_masks, *, periodic):
+    """Realize hard masks once, retaining masks already released by ports."""
+    sheets, wires = tuple(sheets or ()), tuple(wires or ())
+    if edge_masks is None and (cells is not None or sheets or wires):
+        edge_masks = realized_pec_edge_masks(cells, sheets=sheets, wires=wires, periodic=periodic)
+    return edge_masks, graded_sheet_masks(occupancy, sheets, wires, edge_masks, periodic=periodic)
