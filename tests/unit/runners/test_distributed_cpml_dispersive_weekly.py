@@ -1,4 +1,4 @@
-"""Weekly CPML dispersive forward parity on the R15l thinned prefix set."""
+"""Weekly pole law C/bar S records and unchanged R15l prefix sweeps."""
 import pytest
 
 from tests._distributed_cpml_cross_trace import WEEKLY_PREFIXES, cross_trace
@@ -23,7 +23,7 @@ def test_a_dispersive_model_matches_one_device(boundary, lane, kind, monkeypatch
     """
     if kind in ('debye', 'lorentz'):
         from tests._distributed_dispersive_cpml import snapshot_parity
-        snapshot_parity(kind, WEEKLY_PREFIXES, monkeypatch, entry='snapshot_weekly')
+        snapshot_parity(kind, (400, 800, 1600), monkeypatch, entry='snapshot_weekly')
         return
     cross_trace(lambda: _debye_box(boundary, lane, kind), lane, _devices(2),
                 f"{kind}/{boundary}/{lane}", prefixes=WEEKLY_PREFIXES)
