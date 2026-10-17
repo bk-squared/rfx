@@ -32,7 +32,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 
-from rfx.runners._admission import _refuse_transformed_extended_tfsf, refuse_forward_smoothing
+from rfx.runners._admission import admit_traced_run, refuse_forward_smoothing
 from rfx.runners._exchange_interval import validate_exchange_interval
 from rfx.sources.sources import GaussianPulse  # noqa: F401  (local import in moved bodies)
 
@@ -2117,7 +2117,7 @@ class _ExecuteMixin:
         self._resolve_field_dtype()
         _call_args = dict(locals())
         del _call_args["self"]
-        _refuse_transformed_extended_tfsf(self._tfsf, until_decay, decay_max_steps)
+        admit_traced_run(self, until_decay, decay_max_steps)
         validate_exchange_interval(exchange_interval)
         fixed_num_periods = n_steps is None
         if until_decay is not None and self._tfsf is not None:
