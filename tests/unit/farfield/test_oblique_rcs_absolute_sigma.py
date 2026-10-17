@@ -8,7 +8,10 @@ record (2026-07-27 session, scratchpad ``f7_falsifier_declaration.md`` +
 * pre-fix inflation +6.58 dB (theta=20 deg) / +4.51 dB (40 deg) on the gate
   grid = waveform mismatch +8.83 dB (the #471 review's analytic numbers,
   reproduced exactly) + a theta-dependent source->aux launch/absorption
-  response (-2.25 / -4.32 dB) the review neglected;
+  response (-2.25 / -4.32 dB) the review neglected; since #1812 method B
+  launches the declared pulse, so the waveform term is gone and the launch
+  response alone reads -2.13 / -4.02 dB (same for DG and MG; re-measured on
+  the same gate grid, 2026-10-17);
 * post-fix specular-peak Delta vs the PO uniform-aperture oracle:
   +0.86 dB (20 deg) / +0.85 dB (40 deg), lobe-flat over +/-12 deg,
   settling witness -60.7 / -50.1 dB (R5);
