@@ -45,8 +45,14 @@ def tape_accounting(sim, accounting, *, design_box, design, checkpoint, segmente
         shape=shape, checkpoint=checkpoint, checkpoint_every=checkpoint_every,
         checkpoint_segments=checkpoint_segments, n_warmup=n_warmup)
     carry = sum(x["bytes"] for x in saved)
+    resident = face_record_resident_bytes(sim, grid, n_steps, checkpoint=checkpoint,
+        checkpoint_every=checkpoint_every, checkpoint_segments=checkpoint_segments, n_warmup=n_warmup)
     # Only the float32 fixed term and tape have been calibrated.
     tape = carry if window is None else (6 if design == "permittivity" else 3) * window * 4
+    if window is None and not resident and not (checkpoint and not segmented):
+        # Plain AD saves no per-step residual of the stop_gradient line.
+        # Saved boundaries and per-step remat still retain all six leaves.
+        tape -= carried_closed_box_line_bytes(sim, grid, n_steps, saved)
     bounded = window is not None and checkpoint and not segmented
     if bounded:
         # The rematted box's no-segment mechanism is not identified: bound
@@ -55,11 +61,34 @@ def tape_accounting(sim, accounting, *, design_box, design, checkpoint, segmente
     return dict(saved=saved, excluded_linear=excluded, carry_warnings=carry_warnings,
                 modelled=True, unmodelled_features=[],
                 carry_bytes=carry,
-                resident_bytes=face_record_resident_bytes(sim, grid, n_steps, checkpoint=checkpoint,
-                    checkpoint_every=checkpoint_every, checkpoint_segments=checkpoint_segments, n_warmup=n_warmup),
+                resident_bytes=resident,
                 tape_step_bytes=tape, tape_window_cells=window,
                 design_box_bounds=bounds, tape_is_bound=bounded,
                 c0_bytes=AD_MEMORY_C0_PER_CELL["box" if window is not None else "whole-grid"] * accounting["cells"])
+
+
+def carried_closed_box_line_bytes(sim, grid, n_steps, saved):
+    """Identify six carried line leaves by the one builder's shapes and dtypes.
+
+    Closed boxes use 3D Yee fields and CPML slabs; their rank-three leaves
+    cannot match the rank-one line arrays. Require the exact multiplicity
+    rather than silently subtracting ambiguous or missing carry leaves.
+    """
+    if sim._tfsf is None or not sim._tfsf.closed_box:
+        return 0
+    from collections import Counter
+    import jax
+    from rfx.sources.tfsf import tfsf_from_declaration
+    from rfx.sources.tfsf_discrete_plane_wave import COMPONENTS
+
+    state = jax.eval_shape(lambda: tfsf_from_declaration(
+        sim._tfsf, grid, sim._freq_max, n_steps=n_steps)[1])
+    signatures = Counter((tuple(getattr(state, name).shape), str(getattr(state, name).dtype))
+                         for name in COMPONENTS)
+    matching = [leaf for leaf in saved if (tuple(leaf["shape"]), leaf["dtype"]) in signatures]
+    if Counter((tuple(leaf["shape"]), leaf["dtype"]) for leaf in matching) != signatures:
+        raise ADMemoryUnavailable("AD memory could not uniquely identify the six carried closed-box line leaves")
+    return sum(leaf["bytes"] for leaf in matching)
 
 
 def segment_counts(n, warmup, every, segments):
