@@ -21,7 +21,7 @@ sheet_cavity_spacing warning row under declared. Parallel sheet spacing
 more than 1% off the drawing now refuses strict solves and warns under
 declared; the existing electrical-thickness rows are unchanged.
 
-SNAPSHOT CHANGE, 2026-10-18 (#9999). Strict Box-face spacing now refuses
+SNAPSHOT CHANGE, 2026-10-18 (#1857). Strict Box-face spacing now refuses
 congruence_off_lattice and congruence_on_lattice; the already-declared
 stack_snapped_patch gains a spacing warning. The existing sheet spacing
 messages name conductor kinds and the solids remedy.
@@ -363,7 +363,7 @@ LOCK_PROVENANCE = {
         "tests/locks/test_preflight_split_snapshot.py "
         "(RFX_PREFLIGHT_SNAPSHOT_UPDATE=1)"
     ),
-    "commit": "f51f03c9c",
+    "commit": "fee1781b6",
     "date": "2026-10-18",
     "run_id": "local",
     "host": "Darwin arm64, CPU, python 3.11.2, jax 0.10.2",
