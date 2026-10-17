@@ -1,12 +1,9 @@
 """``rfx.optimize(jit=True)`` compiles the loss and its gradient once per call (#1225).
 
-Without ``jit=True`` each iteration of ``optimize()`` calls an un-jitted
-``jax.value_and_grad`` over ``forward()``, which compiles the whole FDTD solve
-again every time — on a board-sized model most of the iteration's wall time.
-With it, the first iteration compiles and the rest reuse the program. The
-default stays eager (an objective that reads a traced value on the host cannot
-run under ``jax.jit``); ``test_optimize_multistart.py``'s legacy-loop
-bit-identity gate covers that default.
+With ``jit=False`` each iteration calls an eager ``jax.value_and_grad`` over
+``forward()``, compiling the whole FDTD solve again. The default compiles
+once; this file also covers the explicit ``jit=True`` option. The legacy
+bit-identity gate covers explicit eager execution.
 
 The model is a 15 mm PEC-walled box with a port, a probe, a small permittivity
 design region and 20 steps: the physics is incidental, the compile count is

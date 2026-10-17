@@ -89,10 +89,10 @@ def flux_regions(mon):
 
 
 def monitor_periodic_flags(sim, grid):
-    """Use the uniform stepper's TF/SF override; graded stepping does not wrap."""
+    """Use the graded topology or the uniform stepper's TF/SF override."""
     from rfx.nonuniform import NonUniformGrid
     if isinstance(grid, NonUniformGrid):
-        return (False, False, False)
+        return tuple(a in grid.periodic_axes for a in "xyz")
     if sim._tfsf is None:
         return sim._periodic_flags()
     from rfx.sources.tfsf import init_tfsf

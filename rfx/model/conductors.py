@@ -69,7 +69,7 @@ def conductor_width_axes(root, sim, mask, *, kind, sheet, node_based,
             span = (sheet.solved_spans[a] if hasattr(sheet, 'solved_spans') else
                     solved_sheet_span(mask, a, nodes[a], float(bounds[0][a]),
                         float(bounds[1][a]), float(sim._domain[a]), union=union,
-                        volume_edges=volume_edges, periodic=periodic, fed=fed))
+                        volume_edges=volume_edges, periodic=periodic, fed=fed, normal_axis=sheet.normal_axis))
             if span is not None:
                 lo, hi = span.lo, span.hi
                 comparison = span.comparison_bounds(bounds[0][a], bounds[1][a], sim._domain[a])
@@ -565,16 +565,6 @@ def _with_sheet_spans(sim, conductors):
                 owners[id(sheet)] = label
     interior = ctx.interior_pec_entries()
     union, volume_edges = sheet_continuation_masks(interior, ctx.periodic, grid.shape)
-    fed = port_fed_nodes(sim, conductors)
-    spans = {}
-    for entry in interior:
-        bounds = _shape_bounds(entry.shape)
-        if entry.sheet is None or bounds is None:
-            continue
-        spans[entry.label] = tuple(None if a == entry.sheet.normal_axis else solved_sheet_span(
-            entry.sheet.footprint, a, nodes[a], float(bounds[0][a]), float(bounds[1][a]),
-            float(sim._domain[a]), union=union, volume_edges=volume_edges, fed=fed,
-            periodic='xyz'[a] in getattr(grid, 'periodic_axes', '')) for a in range(3))
     pinned = getattr(sim, '_pinned_sheets', ())
     if pinned:
         from rfx.geometry.rasterize_grid import interior_lattice_mask
@@ -584,7 +574,19 @@ def _with_sheet_spans(sim, conductors):
         report_sheets = [entry.sheet for entry in interior if entry.sheet is not None]
         report_sheets += [replace(sheet, footprint=mask)
                           for sheet, mask in zip(pin_specs, pin_masks, strict=True)]
-        pin_union = _sheet_edge_masks(report_sheets, grid.shape, ctx.periodic)
+        union = _sheet_edge_masks(report_sheets, grid.shape, ctx.periodic)
+    fed = port_fed_nodes(sim, conductors)
+    spans = {}
+    for entry in interior:
+        bounds = _shape_bounds(entry.shape)
+        if entry.sheet is None or bounds is None:
+            continue
+        spans[entry.label] = tuple(None if a == entry.sheet.normal_axis else solved_sheet_span(
+            entry.sheet.footprint, a, nodes[a], float(bounds[0][a]), float(bounds[1][a]),
+            float(sim._domain[a]), union=union, volume_edges=volume_edges, fed=fed,
+            normal_axis=entry.sheet.normal_axis,
+            periodic='xyz'[a] in getattr(grid, 'periodic_axes', '')) for a in range(3))
+    if pinned:
         for i, (sheet, footprint) in enumerate(zip(pin_specs, pin_masks, strict=True)):
             label = f'pinned_sheet[{i}]'
             owners[id(sheet)] = label
@@ -594,7 +596,8 @@ def _with_sheet_spans(sim, conductors):
                 spans[label] = tuple(None if a == sheet.normal_axis else solved_sheet_span(
                     footprint, a, nodes[a], float(nodes[a][occupied[a].min()]),
                     float(nodes[a][occupied[a].max()]), float(sim._domain[a]),
-                    union=pin_union, volume_edges=volume_edges, fed=fed,
+                    union=union, volume_edges=volume_edges, fed=fed,
+                    normal_axis=sheet.normal_axis,
                     periodic='xyz'[a] in getattr(grid, 'periodic_axes', '')) for a in range(3))
     replacements = {}
     for sheet in conductors.sheets:
@@ -846,7 +849,15 @@ def distributed_kernel_inputs(sim, root, grid, materials, cells, sheets, wires, 
     return root.pec_edges, record
 
 
-def stage_distributed_edges(edges, grid, mesh, multiprocess):
+def stage_distributed_occupancy(override, grid, mesh):
+    """Cut a PEC occupancy override in the layout of the step ``grid`` recorded; None stays None."""
+    from rfx.stepping.slab import cut
+    if override is None:
+        return None
+    return cut(override, grid.layout, "pec_occupancy", mesh=mesh, uniform=grid.step_kind == 'wrapped')
+
+
+def stage_distributed_edges(edges, grid, mesh, multiprocess, *, inputs=None):
     """Stage final edge components; traced geometry remains single-process."""
     import jax
     from rfx.stepping.slab import Slab, cut
@@ -854,6 +865,11 @@ def stage_distributed_edges(edges, grid, mesh, multiprocess):
         return None
     if multiprocess and any(isinstance(edge, jax.core.Tracer) for edge in edges):
         raise ValueError("a traced pec_mask_override is supported in one process only")
+    from rfx import _realized
+    if inputs is not None and _realized.ACTIVE is None and grid.step_kind != 'legacy':
+        from rfx.stepping.slab_setup import stage_pec
+        cells, sheets, wires = inputs
+        return stage_pec(cells, sheets, wires, grid.global_grid, Slab.from_grid(grid), mesh)
     return cut(edges, Slab.from_grid(grid), "pec_edge", mesh=mesh)
 
 

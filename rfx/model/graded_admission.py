@@ -311,7 +311,8 @@ def traced_cell_mask(grid, axis, padded: bool = True):
     window = (getattr(grid, "traced_cells", None) or {}).get(_axis_name(ax))
     if window is None:
         return None
-    interior = window_mask(window, n - pad_lo - pad_hi - 1)
+    duplicate = int(_axis_name(ax) not in getattr(grid, "periodic_axes", ""))
+    interior = window_mask(window, n - pad_lo - pad_hi - duplicate)
     if not padded:
         return interior
-    return np.pad(interior, (pad_lo, pad_hi + 1), mode="edge")
+    return np.pad(interior, (pad_lo, pad_hi + duplicate), mode="edge")

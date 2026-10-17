@@ -478,7 +478,7 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_boundary_spec", "conformal"): frozenset({"run_uniform"}),
     ("_boundary_spec", "conformal_s_matrix"): frozenset(),
     ("_boundary_spec", "absorbing_lid"): _OTHER_RUNNERS - _ADI,
-    ("_periodic_axes", "periodic"): _UNIFORM_YEE,
+    ("_periodic_axes", "periodic"): _UNIFORM_YEE | {"run_nonuniform", "fwd_nonuniform"},
     ("_cpml_layers", "layers"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},
     ("_cpml_kappa_max", "kappa"): frozenset({"run_uniform", "run_distributed", "fwd_uniform"}),
     ("_interface_eps", "dual_average"): frozenset({"run_nonuniform", "fwd_nonuniform"}),

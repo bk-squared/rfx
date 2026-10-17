@@ -146,7 +146,7 @@ print(f"spectral peak at {f_fft[np.argmax(np.abs(spectrum[1:])) + 1] / 1e9:.2f} 
 
 A plain FFT of a record that has not decayed smears the spectrum. For
 resonant frequencies and Q, use `result.find_resonances()`; see
-[Probes and S-Parameters](/rfx/measure/s-parameters/#resonances-harminv).
+[Resonances](/rfx/measure/resonances/).
 
 ### S-parameter quantities
 
@@ -218,6 +218,6 @@ the result can be reproduced.
 - **Snapshots of full 3-D fields run out of memory** → record a slice
   (`slice_axis`, `slice_index`), fewer components or a larger `interval`.
 - **FFT peaks don't match `find_resonances`** → the record hasn't decayed;
-  run longer or use Harminv.
+  run longer or use `find_resonances`.
 - **Energy estimate looks low in a dielectric** → the estimate ignores
   `eps_r`; weight by the per-cell permittivity for a better number.

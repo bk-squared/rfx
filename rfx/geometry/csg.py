@@ -454,10 +454,6 @@ class OrientedBox:
         return jnp.asarray(inside)
 
     def mask(self, grid: Grid) -> jnp.ndarray:
-        if hasattr(grid, "dx_arr"):
-            from rfx.geometry.rasterize_grid import coords_from_nonuniform_grid
-            coords = coords_from_nonuniform_grid(grid)
-            return self.mask_on_coords(*coords[:3])
         return _periodic_grid_mask(self, grid)
 
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Assemble the local f3a80981ec4b share batch; never upload anything.
+"""Assemble the local ca3dd98f4722 share batch; never upload anything.
 
-Run with --archive-root, --assets-dir, --lens-film-dir and --fan-iterations. All output is restricted
+Run with --archive-root, --assets-dir, --filter-composed-dir. All output is restricted
 to .local_checks. Old assets are downloaded serially with curl and
 accepted only after matching both the old manifest's size and SHA-256.
 """
@@ -17,19 +17,16 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[2]
 LOCAL = REPO / '.local_checks'
-OLD = 'https://remilab.cnu.ac.kr/share/7c02ad43c580/'
+OLD = 'https://remilab.cnu.ac.kr/share/f3a80981ec4b/'
+NEW = 'ca3dd98f4722'
 RUNS = {
-    'grin-lens': ('lens', '20261004T182324Z-b184fc8e-main', '20261004T205610Z-b184fc8e-resolve', '4705f69e'),
-    # The fan-beam objective on the same lens (amendment 7), computed on a later rfx main.
-    'grin-lens-fan': ('lens', '20261010T162447Z-dbf41692-main-fan', '20261010T170039Z-dbf41692-resolve-fan', '9ed83eb8'),
+    'waveguide-filter': ('filter', '20261006T162805Z-b8119151-main',
+                         '20261006T191443Z-b8119151-resolve', '9ed83eb8'),
 }
-#: The waveguide filter waits for visuals in the site tone (rfx-lead, 2026-10-15); its page is on the
-#: branch showcase/site-filter-held.
-#: The lens page shows the narrated film (rfx-research ``showcase/film``, composed at 9b87e97ce by remi
-#: job showcase-lens-final-compose-h2zrb) and three of its output frames: published name -> name in --lens-film-dir.
-LENS_FILM = {'grin_lens_film.mp4': 'lens_film.mp4', 'grin_lens_film_poster.png': 'frame_2291.png',
-             'grin_lens_start.png': 'frame_1920.png', 'grin_lens_fan.png': 'frame_2760.png'}
-LENS_FILM_SHA256 = '8b87491c6d68ca14940a1484e1d466336f9df823140bd9fec6967e7ac61bfc97'
+FILTER_COMPOSED = (
+    'waveguide_filter.mp4', 'waveguide_filter_social.mp4', 'waveguide_filter_site.png',
+    'waveguide_filter_social.png', 'waveguide_filter_hero_4k.png', 'waveguide_filter_poster.png',
+)
 
 
 def digest(path):
@@ -50,7 +47,7 @@ def assemble(args):
     output.mkdir(parents=True, exist_ok=True)
     # Invalidate any previous manifest before changing its inputs.
     (output / 'manifest.json').unlink(missing_ok=True)
-    cache = LOCAL / 'share/7c02ad43c580'
+    cache = LOCAL / 'share/f3a80981ec4b'
     fetch('manifest.json', cache / 'manifest.json')
     old = json.loads((cache / 'manifest.json').read_text())
     if old['schema'] != 'rfx-showcase-share/1':
@@ -75,33 +72,33 @@ def assemble(args):
         sources = {name: runs / main / name for name in
                    ('result.json', 'iterations.npz', 'fd_float32.json', 'rlw_start.json', 'rlw_reported.json')}
         sources.update({name: runs / resolve / name for name in ('mesh_trend.json', 'eligibility.json')})
-        if folder == 'grin-lens':
-            sources.update({f'{short}_{name}.png': args.assets_dir / 'figures' / f'{short}_{name}.png'
-                            for name in ('cuts', 'mesh', 'slices', 'iterations')})
-            sources.update({name: args.lens_film_dir / source for name, source in LENS_FILM.items()})
-        else:
-            # The fan run's iterates (the film's fan counters) are not in the archive: 32 MB, kept on NFS.
-            sources['iterations.npz'] = args.fan_iterations
-            # Its central-difference check passed on the float64 repeat (the float32 ladder is kept too).
-            sources['fd_float64.json'] = runs / main / 'fd_float64.json'
+        sources.update({f'filter_{name}.png': args.assets_dir / 'figures' / f'filter_{name}.png'
+                        for name in ('mesh', 'sparams', 'maps', 'objective')})
+        checksums = {}
+        for line in (args.filter_composed_dir / 'SHA256SUMS').read_text().splitlines():
+            checksum, name = line.split(maxsplit=1)
+            checksums[name.lstrip('*')] = checksum
+        sources.update({name: args.filter_composed_dir / name for name in FILTER_COMPOSED})
         for name, source in sources.items():
+            if name in FILTER_COMPOSED and digest(source)['sha256'] != checksums[name]:
+                raise ValueError(f'{name}: SHA-256 differs from composed SHA256SUMS')
             shutil.copyfile(source, dest / name)
-        if folder == 'grin-lens' and digest(dest / 'grin_lens_film.mp4')['sha256'] != LENS_FILM_SHA256:
-            raise ValueError('grin_lens_film.mp4 is not the composed final film')
+            if name in FILTER_COMPOSED and digest(dest / name)['sha256'] != checksums[name]:
+                raise ValueError(f'{name}: copied SHA-256 differs from composed SHA256SUMS')
         files = list(sources)
         manifest['cases'][folder] = {'rfx_commit': commit,
                                      'files': {name: digest(dest / name) for name in sorted(files)}}
         added.extend(f'{folder}/{name}' for name in sorted(files))
     manifest['supersedes'] = {
-        'batch': '7c02ad43c580', 'added': added, 'replaced': [],
-        'note': 'every file of 7c02ad43c580 byte-identical; one new case (issue 1359): the printable lens with its '
-                'narrated film and three of its frames (grin-lens/), and the fan-beam design on the same block '
-                '(grin-lens-fan/, computed on a later rfx main)',
+        'batch': 'f3a80981ec4b', 'added': added, 'replaced': [],
+        'note': 'every file of f3a80981ec4b byte-identical; one new case, the printed waveguide filter in the site tone',
     }
     fetch('index.html', cache / 'index.html')
     index = (cache / 'index.html').read_text()
     rows = ''.join(f'<li><a href="{name}">{name}</a></li>' for name in added)
     section = '<section><h2>New cases: ' + ', '.join(RUNS) + '</h2><ul>' + rows + '</ul></section>'
+    if index.count('</main>') != 1:
+        raise ValueError('old index.html has no single </main> to extend')
     (output / 'index.html').write_text(index.replace('</main>', section + '</main>'))
     (output / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
     print(f'{output}: {sum(len(c["files"]) for c in manifest["cases"].values())} files')
@@ -110,15 +107,13 @@ def assemble(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--archive-root', type=Path, required=True,
-                        help='records directory holding 20261004-showcase-lens/runs')
+                        help='records directory holding 20261004-showcase-filter/runs')
     parser.add_argument('--assets-dir', type=Path, required=True,
-                        help='directory with figures/ (lens_{cuts,mesh,slices,iterations}.png)')
-    parser.add_argument('--lens-film-dir', type=Path, required=True,
-                        help='directory with lens_film.mp4 and output frames 1920, 2291 and 2760 as PNG')
-    parser.add_argument('--fan-iterations', type=Path, required=True,
-                        help='iterations.npz of the fan main run 20261010T162447Z-dbf41692-main-fan')
+                        help='directory with figures/ (filter_{mesh,sparams,maps,objective}.png)')
+    parser.add_argument('--filter-composed-dir', type=Path, required=True,
+                        help='directory with the six composed filter outputs and SHA256SUMS')
     parser.add_argument('--created', required=True, help='upload date, YYYY-MM-DD')
-    parser.add_argument('--output-dir', type=Path, default=LOCAL / 'share/f3a80981ec4b')
+    parser.add_argument('--output-dir', type=Path, default=LOCAL / 'share' / NEW)
     assemble(parser.parse_args())
 
 

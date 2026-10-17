@@ -16,7 +16,7 @@ The website identifies its source version; select the release matching your inst
 | Run a first model | [First run](https://remilab.ai/rfx/guide/first-run/) · [runnable examples](https://github.com/bk-squared/rfx/blob/main/examples/README.md) |
 | Look up an argument or result | [API reference](https://remilab.ai/rfx/api/) |
 | Use rfx with a coding assistant | [Machine-readable documentation](https://remilab.ai/rfx/llms.txt) |
-| Check whether a result is supported | [Support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md) · [S-parameter limits](https://github.com/bk-squared/rfx/blob/main/docs/guides/sparameter_support_matrix.md) · [known limitations](https://github.com/bk-squared/rfx/blob/main/docs/guides/known_limitations.md) |
+| Check whether a result is supported | [Support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md) · [S-parameter limits](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md#s-parameters) · [known limitations](https://github.com/bk-squared/rfx/blob/main/docs/guides/known_limitations.md) |
 
 ## Release status: 2.0 release candidate
 
@@ -28,7 +28,7 @@ The website identifies its source version; select the release matching your inst
   a dispersive material, a solver or precision request), it raises before the first time
   step and names the input. It does not run a different model silently.
 - **Validation cases are judged against a stated accuracy bar** on a converged mesh:
-  magnitudes within 2 dB, resonances and cutoffs within 1 %, electrical length within 1 %
+  magnitudes within 2 dB, resonances and cutoffs within 1 %, group delay within 1 %
   of the reference. This is the bar the project tests against, not a guarantee for every
   model. What is supported, and within which limits, is in the
   [support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md); what is currently wrong is in

@@ -85,6 +85,7 @@ PR_CHOICES = {
     "_msl_ports": "_msl_ports:msl_port:run_uniform:run_nonuniform:constant:12",
     "_ntff": "_ntff:ntff_box:run_uniform:run_nonuniform:constant:12",
     "_pec_faces": "_pec_faces:pec_face:run_nonuniform:run_distributed_nu:graded:12",
+    "_periodic_axes": "_periodic_axes:periodic:run_uniform:run_nonuniform:constant:12",
     "_pinned_sheets": "_pinned_sheets:pec_sheet:run_uniform:run_nonuniform:constant:12",
     "_ports": "_ports:amplitude_kind:run_uniform:run_distributed:constant:12",
     "_probes": "_probes:probe:run_uniform:run_nonuniform:constant:12",

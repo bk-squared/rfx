@@ -1285,7 +1285,13 @@ def compute_far_field_jax(
     # tests/unit/farfield/test_farfield_chunking.py). max_phase_bytes bounds that array;
     # raise it to trade memory for fewer passes, or set it to inf to force
     # the single-shot path.
-    theta = jnp.asarray(theta)
+    # The DFT accumulators carry the simulation's realized precision.
+    faces = [getattr(ntff_data, name) for name in
+             ("x_lo", "x_hi", "y_lo", "y_hi", "z_lo", "z_hi")
+             if getattr(ntff_data, name, None) is not None]
+    cdtype = jnp.result_type(*faces, 1j)
+    rdtype = jnp.finfo(cdtype).dtype
+    theta = jnp.asarray(theta, dtype=rdtype)
     n_th_total = int(theta.shape[0])
     if n_th_total > 1 and np.isfinite(max_phase_bytes):
         # Size from the actual face arrays. The first version of this
@@ -1328,9 +1334,9 @@ def compute_far_field_jax(
                     phi=parts[0].phi,
                     freqs=parts[0].freqs,
                 )
-    theta = jnp.asarray(theta, dtype=jnp.float32)
-    phi = jnp.asarray(phi, dtype=jnp.float32)
-    freqs = jnp.asarray(box.freqs, dtype=jnp.float32)
+    theta = jnp.asarray(theta, dtype=rdtype)
+    phi = jnp.asarray(phi, dtype=rdtype)
+    freqs = jnp.asarray(box.freqs, dtype=rdtype)
     nf = freqs.shape[0]
     k_arr = 2 * jnp.pi * freqs / C0
 
@@ -1352,11 +1358,11 @@ def compute_far_field_jax(
     def _edges_j(d_arr, cpml_lo):
         if d_arr is None:
             return None
-        dj = jnp.asarray(d_arr, dtype=jnp.float32)
-        e = jnp.concatenate([jnp.zeros(1), jnp.cumsum(dj)])
+        dj = jnp.asarray(d_arr, dtype=rdtype)
+        e = jnp.concatenate([jnp.zeros(1, dtype=rdtype), jnp.cumsum(dj)])
         return e - e[cpml_lo]
 
-    dz_jnp = jnp.asarray(dz_arr, dtype=jnp.float32) if dz_arr is not None else None
+    dz_jnp = jnp.asarray(dz_arr, dtype=rdtype) if dz_arr is not None else None
     z_edges = _edges_j(dz_arr, cpml_lo_z)
     x_edges = _edges_j(dx_arr, cpml_lo_x)
     y_edges = _edges_j(dy_arr, cpml_lo_y)
@@ -1364,8 +1370,8 @@ def compute_far_field_jax(
 
     def _cells_j(d_arr, scalar, lo, hi):
         if d_arr is None:
-            return jnp.full((hi - lo,), float(scalar))
-        return jnp.asarray(d_arr, dtype=jnp.float32)[lo:hi]
+            return jnp.full((hi - lo,), float(scalar), dtype=rdtype)
+        return jnp.asarray(d_arr, dtype=rdtype)[lo:hi]
 
     def _face_dS_full_j(axis, other_ranges):
         (a0, a1), (b0, b1) = other_ranges
@@ -1397,8 +1403,8 @@ def compute_far_field_jax(
     r_flat = r_hat.reshape(-1, 3)
     n_dir = r_flat.shape[0]
 
-    N_total = jnp.zeros((nf, n_dir, 3), dtype=jnp.complex64)
-    L_total = jnp.zeros((nf, n_dir, 3), dtype=jnp.complex64)
+    N_total = jnp.zeros((nf, n_dir, 3), dtype=cdtype)
+    L_total = jnp.zeros((nf, n_dir, 3), dtype=cdtype)
 
     face_specs = [
         (ntff_data.x_lo, 0, -1, i0, ((j0, j1), (k0, k1))),
@@ -1431,7 +1437,7 @@ def compute_far_field_jax(
             # Per-cell dS for non-uniform z on x/y faces
             k_range = other_ranges[1] if axis in (0, 1) else None
             if k_range is not None:
-                dS_k = jnp.asarray(_face_dS_jax(axis, k_range[0], k_range[1]))
+                dS_k = jnp.asarray(_face_dS_jax(axis, k_range[0], k_range[1]), dtype=rdtype)
                 if dS_k.ndim > 0:
                     dS_flat = jnp.tile(dS_k, n1)  # (n1*nk,) = (nc,)
                 else:
@@ -1442,7 +1448,7 @@ def compute_far_field_jax(
         dot = jnp.matmul(r_flat, pos_flat.T, precision=HIGHEST)  # (n_dir, nc)
 
         phase = jnp.exp(1j * k_arr[:, None, None] * dot[None, :, :])
-        dS_flat = jnp.asarray(dS_flat)  # ensure JAX array (may be Python float)
+        dS_flat = jnp.asarray(dS_flat, dtype=rdtype)  # may be Python float
         if jnp.ndim(dS_flat) > 0:
             J_w = J * dS_flat[None, :, None]
             M_w = M * dS_flat[None, :, None]

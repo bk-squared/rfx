@@ -81,6 +81,7 @@ class GradedStepContext:
     x_face_frame: Mapping[str, tuple[int, int]] | None = None  # Axis -> static (lo, hi) physical rows.
     port_record_specs: tuple | None = None
     port_acc_indices: tuple = ()
+    cpml_spacings: tuple | None = None
 
 
 @dataclass
@@ -165,7 +166,7 @@ def make_graded_step(
     def h_update(frame: GradedFrame):
         # H update (non-uniform)
         frame.st = update_h_nu(frame.st, frame.materials, ctx.dt, frame.invariants["inv_dx_h"], ctx.inv_dy_h, ctx.inv_dz_h,
-                         cell_sizes=(frame.invariants["dx_arr"], ctx.grid.dy_arr, ctx.grid.dz))
+                         cell_sizes=(frame.invariants["dx_arr"], ctx.grid.dy_arr, ctx.grid.dz), periodic=ctx.curl_boundary.periodic)
 
     def h_boundary(frame: GradedFrame):
         frame.tfsf_h_state = None
@@ -177,7 +178,11 @@ def make_graded_step(
             for cfg_meta, _m in zip(ctx.waveguide_meta,
                                     ctx.waveguide_port_metrics):
                 frame.st = _apply_wg_h_nu(frame.st, cfg_meta, frame.step_idx, ctx.dt, _m[0])
-        if ctx.use_cpml:
+        if ctx.use_cpml and 'cpml_x' in frame.invariants:
+            from rfx.stepping.slab_cpml import apply
+            frame.st, frame.cpml_new = apply(ctx.apply_cpml_h, ctx, frame.invariants,
+                frame.st, frame.carry['cpml'], materials=frame.materials)
+        elif ctx.use_cpml:
             frame.st, frame.cpml_new = ctx.apply_cpml_h(frame.st, ctx.cpml_params, frame.carry["cpml"],
                                          ctx.cpml_grid, ctx.cpml_axes_eff,
                                          materials=frame.materials)
@@ -241,7 +246,17 @@ def make_graded_step(
             for cfg_meta, _m in zip(ctx.waveguide_meta,
                                     ctx.waveguide_port_metrics):
                 frame.st = _apply_wg_e_nu(frame.st, cfg_meta, frame.step_idx, ctx.dt, _m[1])
-        if ctx.use_cpml:
+        if ctx.use_cpml and 'cpml_x' in frame.invariants:
+            from rfx.stepping.slab_cpml import apply
+            from rfx.boundaries.cpml import apply_cpml_e
+            from rfx.boundaries.electric_coefficient import loss_terms
+            means = (frame.materials.components.eps_update,
+                     frame.materials.components.sigma_update)
+            frame.st, frame.cpml_new = apply(apply_cpml_e, ctx, frame.invariants,
+                frame.st, frame.cpml_new, materials=frame.materials,
+                e_loss=loss_terms(means, ctx.dt), inv_eps_r_update=tuple(1 / e for e in means[0]),
+                boundary=ctx.curl_boundary, e_curl_coeff=None)
+        elif ctx.use_cpml:
             frame.st, frame.cpml_new = ctx.apply_cpml_e(frame.st, ctx.cpml_params, frame.cpml_new,
                                          ctx.cpml_grid, ctx.cpml_axes_eff,
                                          materials=frame.materials, e_loss=frame.invariants["e_loss"],
@@ -478,6 +493,7 @@ def make_graded_step(
         advance(frame)
         return finish(frame)
 
+    step_fn.context = ctx
     step_fn.port_owners = port_owners(ctx.grid, port_specs, nu=True, boundary=ctx.curl_boundary)
     step_fn.port_acc_indices = acc_indices
     return step_fn

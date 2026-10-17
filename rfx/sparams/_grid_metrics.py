@@ -77,7 +77,7 @@ def _msl_axis_spacing(grid, axis: int):
     pad_hi = (grid.pad_x_hi, grid.pad_y_hi, grid.pad_z_hi)[axis]
     if is_tracer(arr):
         return None, None, False
-    cells = np.asarray(interior_cells(np.asarray(arr), pad_lo, pad_hi),
+    cells = np.asarray(interior_cells(np.asarray(arr), pad_lo, pad_hi, periodic="xyz"[axis] in grid.periodic_axes),
                        dtype=np.float64)
     if cells.size == 0:
         return None, None, False

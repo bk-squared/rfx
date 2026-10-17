@@ -50,7 +50,16 @@ def magnetic_distributed(cell):
     return cell
 
 
-CELLS = [backed(magnetic_distributed(c)) for c in CELLS]
+def periodic_graded(cell):
+    """#1221 (b) supersedes B1's refused graded periodic cell with the uniform run's record: the graded single-device
+    lane now carries periodic axes, so it must realize the same faces as run() on the uniform mesh."""
+    if cell["case"] == "periodic-xy" and cell["entry"] == "nonuniform" and cell["status"] == "REFUSED":
+        reference = next(c for c in CELLS if c["case"] == cell["case"] and c["entry"] == "run")
+        return dict(cell, **{key: reference[key] for key in ("status", "faces", "departures")})
+    return cell
+
+
+CELLS = [backed(magnetic_distributed(periodic_graded(c))) for c in CELLS]
 BY_CELL = {(c["case"], c["entry"]): c for c in CELLS}
 
 

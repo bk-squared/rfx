@@ -44,7 +44,7 @@ import yaml
 
 REPO = Path(__file__).resolve().parents[2]
 CATALOG = REPO / "docs/public/showcase/showcase.json"
-SHARE = "https://remilab.cnu.ac.kr/share/f3a80981ec4b/"
+SHARE = "https://remilab.cnu.ac.kr/share/ca3dd98f4722/"
 SCHEMA = "rfx-showcase-catalog/1"
 SUPERSCRIPT = str.maketrans("-0123456789", "⁻⁰¹²³⁴⁵⁶⁷⁸⁹")
 
@@ -61,6 +61,7 @@ CASES = {
 }
 CASES.update({
     "grin-lens": ("docs/public/showcase/grin-lens.mdx", ("grin-lens", "grin-lens-fan")),
+    "waveguide-filter": ("docs/public/showcase/waveguide-filter.mdx", ("waveguide-filter",)),
 })
 BOXES = ("patch", "design", "layer")
 
@@ -241,6 +242,21 @@ def headlines(share: Share) -> dict[str, list[dict]]:
         h("designed minus textbook GRIN directivity at 10 GHz", designed[1] - grin[1],
           "dB", lambda v: f"+{v:.1f}", (route,),
           src + "reported.boresight_dbi[-1][1] - grin.boresight_dbi[-1][1]"),
+    ]
+    trend = share.json("waveguide-filter", "mesh_trend.json")
+    route = "/rfx/showcase/waveguide-filter/"
+    src = "waveguide-filter/mesh_trend.json "
+    def minus(v):
+        return f"{v:.1f}".replace("-", "−")
+
+    out["waveguide-filter"] = [
+        h("meshes with the response inside the mask", sum(trend["mask_each_mesh"]), "",
+          lambda v: f"{v:d} of {len(trend['mask_each_mesh'])}", (route, INDEX),
+          src + "sum(mask_each_mesh)"),
+        h("worst |S11| over 10.0–10.6 GHz, 0.318 mm mesh", trend["worst_passband_S11_db"][-1],
+          "dB", minus, (route,), src + "worst_passband_S11_db[-1]"),
+        h("worst |S21| in the stopbands, 0.318 mm mesh", trend["worst_stopband_S21_db"][-1],
+          "dB", minus, (route,), src + "worst_stopband_S21_db[-1]"),
     ]
     return out
 

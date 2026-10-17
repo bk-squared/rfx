@@ -145,7 +145,7 @@ reference run without the slab. The
 |---|---|
 | `n_steps=N` | exactly N time steps |
 | `num_periods=P` | P periods at `freq_max` (default 20) |
-| `until_decay=1e-3` | step until the field energy has decayed to that fraction of its peak, up to `decay_max_steps` |
+| `until_decay=1e-3` | step until the field energy has decayed to that fraction of its largest value after the source ended, up to `decay_max_steps` |
 
 With absorbing boundaries, `until_decay` watches the total energy inside the
 domain, which is a reliable stop for spectra, flux and S-parameters. A closed

@@ -14,6 +14,7 @@ import warnings
 import pytest
 
 from rfx.api import Simulation, AD_MemoryEstimate
+from rfx.api._ad_memory_types import ADMemoryUnavailable
 from rfx.geometry.csg import Box
 
 
@@ -26,6 +27,29 @@ def _sane_sim(freq_max=5e9, domain=(0.04, 0.04, 0.04)):
     sim.add_port((domain[0] / 2, domain[1] / 2, domain[2] / 2), "ez")
     sim.add_probe((domain[0] / 2 + 2e-3, domain[1] / 2, domain[2] / 2), "ez")
     return sim
+
+
+def test_ad_memory_trace_error_is_an_aggregated_issue(monkeypatch):
+    sim = _sane_sim()
+    baseline = sim.preflight(strict=False)
+    cause = "AD memory carry could not be read: request trace failed"
+
+    def refuse(*args, **kwargs):
+        raise ADMemoryUnavailable(cause)
+
+    monkeypatch.setattr(sim, "estimate_ad_memory", refuse)
+    report = sim.preflight(strict=False, check_ad_memory=True, n_steps_for_memory=1000)
+    assert list(report[:-1]) == list(baseline)
+    issue = report[-1]
+    assert (issue.severity, issue.code, str(issue)) == ("error", "ad_memory", cause)
+    with pytest.raises(ValueError, match=cause):
+        sim.preflight(strict=True, check_ad_memory=True, n_steps_for_memory=1000)
+
+
+def test_ad_memory_argument_error_propagates():
+    with pytest.raises(ValueError, match="n_steps must be positive") as error:
+        _sane_sim().preflight(strict=False, check_ad_memory=True, n_steps_for_memory=0)
+    assert type(error.value) is ValueError
 
 
 def test_ntff_pec_overlap_rejects():

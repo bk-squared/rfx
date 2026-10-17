@@ -49,7 +49,7 @@ def slab_metric_kwargs(grid, rank):
 
 
 def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks, grid=None,
-                          reduce_devices=True, sigma_film=None):
+                          reduce_devices=True, sigma_film=None, realized=False, eager=False):
     """``Cb/dV`` of each material-driven current source, read from the slabs
     the E update receives (#1279). Called inside the runner's jitted program.
 
@@ -89,6 +89,9 @@ def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks, grid=None,
     sharded) permittivity stays on the tape and the gradient flows back to
     the design's owning slabs through the staging transpose.
     """
+    if eager and realized:
+        from rfx.stepping.slab_setup import eager_drive_scales
+        return eager_drive_scales(eps_r, sigma, mesh, drives, dt, ranks, reduce_devices)
     from functools import partial
     from jax import lax
     from jax.sharding import PartitionSpec as P
@@ -103,14 +106,18 @@ def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks, grid=None,
         device = rank
         out = []
         for dev_id, row0, cell, component, dV, pole in drives:
-            view = MaterialArrays(eps_r=eps_local[row0:],
-                                  sigma=sigma_local[row0:], mu_r=None,
-                                  sigma_film=map_lumped(film_local, lambda a: a[row0:]))
-            widths = slab_cell_sizes(grid, rank)
-            if widths is not None:
-                widths = (None if widths[0] is None else widths[0][row0:], *widths[1:])
-            eps_c, sigma_c = e_update_material_at(view, cell, component,
-                                                       cell_sizes=widths)
+            if realized:
+                axis = ('ex', 'ey', 'ez').index(component)
+                eps_c, sigma_c = eps_local[axis][cell], sigma_local[axis][cell]
+            else:
+                view = MaterialArrays(eps_r=eps_local[row0:],
+                                      sigma=sigma_local[row0:], mu_r=None,
+                                      sigma_film=map_lumped(film_local, lambda a: a[row0:]))
+                widths = slab_cell_sizes(grid, rank)
+                if widths is not None:
+                    widths = (None if widths[0] is None else widths[0][row0:], *widths[1:])
+                eps_c, sigma_c = e_update_material_at(view, cell, component,
+                                                           cell_sizes=widths)
             owner = device == dev_id
             # A non-owner read someone else's cells; keep its masked branch
             # finite so the cotangent through the mask stays zero, not NaN.
@@ -124,31 +131,39 @@ def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks, grid=None,
 
 
 def stage_forward_dispersion_x_slab(materials, dt, spec, sharded_grid, mesh, kind):
-    """Stage fixed pole terms; epsilon/sigma E coefficients wait for the loop.
-
-    Pole masks take the same slab halo and boundary replication as the shared
-    material means. No differentiable coefficients pass through eager
-    shard_map setup, and no whole-domain ADE arrays are allocated.
-    """
-    import jax
-    from rfx.runners._distributed_common import stage_slab_pole_coeffs
-    from rfx.stepping.slab import Slab, cut
-
+    """Stage canonical ADE operands from local material and pole-mask rows."""
+    from rfx.stepping.slab import Slab
+    from rfx.stepping.slab_wrap import select_step
     if spec is None:
         return None
-    poles, masks = spec
-    masks = jax.tree.map(
-        lambda mask: cut(mask, Slab.from_grid(sharded_grid), "pole_mask", mesh=mesh),
-        masks)
-    return stage_slab_pole_coeffs(
-        poles, masks, dt, kind, mesh, sharded_grid.nx_per_rank,
-        sharded_grid.nx, materials.eps_r.shape, grid=sharded_grid)
+    step_kind = sharded_grid.step_kind
+    if step_kind is None:
+        step_kind = select_step(cpml=bool(sharded_grid.cpml_layers), **{kind: True})
+    if step_kind == 'legacy':
+        import jax
+        from rfx.stepping.slab import cut
+        from rfx.runners._distributed_common import stage_slab_pole_coeffs
+        poles, masks = spec
+        masks = jax.tree.map(lambda mask: cut(mask, Slab.from_grid(sharded_grid),
+                                             'pole_mask', mesh=mesh), masks)
+        return stage_slab_pole_coeffs(poles, masks, dt, kind, mesh,
+            sharded_grid.nx_per_rank, sharded_grid.nx, materials.eps_r.shape, grid=sharded_grid)
+    from rfx.stepping.slab_setup import stage_dispersion
+    return stage_dispersion(materials, dt, spec, sharded_grid.global_grid,
+                            Slab.from_grid(sharded_grid), mesh, kind)
 
 
-def stage_forward_materials(materials, layout, mesh):
+def stage_forward_materials(materials, layout, mesh, *, uniform=False):
     """Release each whole-grid field after its graded forward slab staging."""
     from rfx.core.yee import MaterialArrays, map_lumped
     from rfx.stepping.slab import cut
+    if uniform:
+        import jax
+        from rfx.stepping.slab_view import uniform_slab_rows, stack_and_place
+        rows = uniform_slab_rows(layout)
+        return jax.tree.map(lambda a: stack_and_place(a, rows, mesh)
+            if a is not None and getattr(a, 'ndim', 0) else a,
+            materials._replace(components=None, edge_keep=None))
     staged = {}
     for name, kind in (("eps_r", "eps_r"), ("sigma", "sigma"),
                        ("mu_r", "mu_r"), ("sigma_film", "lumped")):

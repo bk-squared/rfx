@@ -27,8 +27,8 @@ PR #1112: of the 90 pull requests merged since 2026-09-11, 35 carried no review 
 at all, and all 17 open pull requests lacked one. Several sessions in several pods,
 some Claude and some Codex, commit under a single account, so neither the author field
 nor the assignee says who did what, and no session's memory reaches another. The
-tracker and the pull-request body are the only shared store, and everything below is a
-CI check, a repository setting, or a row in a weekly report.
+tracker and the pull-request body are the only shared store, and most of what follows
+is a CI check, a repository setting, or a row in a weekly report.
 
 ## Before you start
 
@@ -39,19 +39,20 @@ otherwise:
 gh api repos/bk-squared/rfx/milestones --jq '.[] | select(.state=="open") | "\(.number) \(.title)"'
 ```
 
-On 2026-09-19 that returns two, and `port/S-param basic support` is the campaign in
-progress with its eleven open issues. Not every open issue carries a milestone yet —
-12 of the 31 open today do — so the milestone is not a census of the work. It is where
-the pull requests are going.
+Not every open issue carries a milestone, so the milestone is not a census of the
+work. It is where the pull requests are going.
 
-Then find who owns the lane. `gh issue list -l lane:msl-port` answers that from any
+Then find the lane's open work. `gh issue list -l lane:msl-port` answers that from any
 machine, and [Lanes](./agent-runbook.mdx#lanes) explains where a lane comes from and
-what the labels can and cannot say. Ten `lane:*` labels exist and nine are mapped to
-paths; `lane:plan` has none on purpose, because it marks trackers and deferred
-decisions that nobody implements from. The labels name the lane that owns a change,
+what the labels can and cannot say. `.github/labeler.yml` maps every `lane:*` label
+to paths except two: `lane:plan` has none on purpose, because it marks plans, trackers
+and deferred decisions that nobody implements from, and `lane:research`, for
+exploratory research tracks, has none either. The labels name the lane that owns a change,
 never the session driving it; which session drives a lane is recorded in the private
-governance appendix that the engineering standard points at, not in an issue. Do not pick
-up an issue in another lane without a comment on that issue from its owner or from the PI. The convention this replaced was a lock emoji in a comment, and
+governance appendix that the engineering standard points at, not in an issue. Before
+starting an issue, look for a `Taken by <session>` comment on it; if there is none,
+post one. Do not pick up an issue in another lane without a comment on that issue from
+its owner or from the PI. The convention this replaced was a lock emoji in a comment, and
 under it an issue was closed on 2026-09-16 under another session's claim.
 
 ## One task, one worktree, one branch
@@ -62,14 +63,15 @@ worktrees, so a stash is another session's lost work.
 
 ```
 git fetch -q origin
-git worktree add -b fix/1041-seam-source /path/to/rfx-wt-seam origin/main
+git worktree add -b nu/seam-source /path/to/rfx-worktrees/nu--seam-source origin/main
 ```
 
-Branch-name prefixes follow the kind of change. In use: `fix/`, `feat/`, `refactor/`,
-`ci/`, `docs/`, `test/`, `dev/` and `agent/`, plus a few one-off prefixes such as
-`governance/`, `gate/`, `evidence/` and `diag/`. The prefix is a convention and nothing
-reads it — the `Lane:` line in the pull-request body is the record of which lane the
-work belongs to.
+Branches are mostly named `<session>/<topic>`, after the session doing the work;
+others carry a kind prefix instead (`fix/`, `feat/`, `refactor/`, `docs/`, …). The
+prefix is a convention and no check reads it, with one exception: `merge-train/batch-*`
+belongs to the [merge train](#landing-the-merge-train), and the body and changelog
+checks treat a branch of that name in this repository as a batch. The `Lane:` line in the pull-request
+body is the record of which lane the work belongs to.
 
 **Removing the worktree is the last step of the task, after the merge.** Sessions
 rarely do it, which is why `python scripts/dev/prune_worktrees.py` exists. It removes a
@@ -92,25 +94,23 @@ refiled; the problem does not.
 
 ## Before every push
 
-Run every short gate locally first. `bash scripts/ci/local.sh` is the six of them in
-the order CI runs them, stopping at the first failure, and it calls the same scripts
-the workflows call; pass a file path to check a pull-request body too. It does not run
-the twelve simulator shards or the guard suite, so a green local run is a pass on the
-short gates only. The step list and what each one costs are in [What runs on a PR, and
+Run every short gate locally first. `bash scripts/ci/local.sh` runs them in the order
+CI runs them, stopping at the first failure, then the tests the diff selects; it calls
+the same scripts the workflows call, and a file path argument checks a pull-request
+body too. It does not run the twelve simulator shards or the guard suite in full, so a
+green local run is a pass on the short gates and the selected tests only. The step list
+and what each one costs are in [What runs on a PR, and
 how to run it
 locally](./agent-runbook.mdx#what-runs-on-a-pr-and-how-to-run-it-locally).
 
 **One push per review round.** Every push to a pull request cancels that branch's
-in-flight CI lane and starts a new one; a push to `main` is never cancelled. Measured with `gh run list --workflow=pr-tests.yml` on 2026-09-18, across the
-three pull requests that touched no simulator code: 13 `pr-tests` runs, 8 of them
-cancelled by a newer push.
+in-flight CI run and starts a new one; a push to `main` is never cancelled.
 
 The heavy lane is path-aware, so what a push costs depends on what it touches. A diff
 confined to docs, most of `scripts/` or `changelog.d/` skips the twelve simulator shards
 and runs the contract tests in their place; anything touching `rfx/`, `tests/`,
 `validation/`, `examples/` or the lane configuration runs everything, as does any push
-to `main`. This page's own pull request is the docs-only case: run 35416500768 finished
-in 5m13s, of which `guards-and-preflight` was 4m52s. What the shards cost when they do
+to `main`. What the shards cost when they do
 run is in the runbook. Ask the classifier before pushing, in the NUL-separated form
 its own usage gives, since a path containing a quote or a newline cannot be recovered
 from line-split output:
@@ -134,13 +134,15 @@ from the changed paths, because most pull requests touch more than one lane's pa
 (measured over the 60 pull requests merged before 2026-09-18) and some touch none, so
 the labels cannot say which lane owns the change. `Review:`
 takes four accepted forms and no others; `REJECT` never passes, and neither does an
-unedited angle-bracketed placeholder. The forms, the accepted separators and what the
-check does with the labels are in [PR body
+unedited angle-bracketed placeholder or a second `Review:` line. The forms, the
+accepted separators and what the check does with the labels are in [PR body
 contract](./agent-runbook.mdx#pr-body-contract).
 
-Two conventions the check does not read. Rounds of review go on a separate `Review
-history:` line naming each round's verdict, its findings in short, and the commits
-that closed them. `Fixes #N` links the issue the work closes.
+One convention the check does not read: rounds of review go on a separate `Review
+notes:` line naming each round's verdict, its findings in short, and the commits that
+closed them. To close an issue, start a line with the keyword (`Closes #N.`). The check
+fails a closing keyword inside a sentence, because GitHub closes the issue even when the
+sentence negates it.
 
 A changelog entry is a file, never an edit to `CHANGELOG.md`: add
 `changelog.d/<number>.<type>.md` whenever the change touches `rfx/`, and say in the
@@ -171,9 +173,36 @@ Two exceptions, and only two: (a) an easily reverted pure docs or comment change
 (b) the PI said to skip. Either one is recorded on the `Review: skipped` line with its
 literal `(a)` or `(b)`, so the weekly audit can say which was claimed.
 
+## Landing: the merge train
+
+Pull requests land through the merge train, not by hand. Once a pull request is
+reviewed, green and approved for merge, it gets the `merge-train` label
+(`merge-priority` moves it up the line). The train takes labelled pull requests one at
+a time: when `main` has moved it rebases the branch onto it, because the ruleset
+requires a branch to be up to date before it lands, then waits for the required checks
+on that head and squash-merges exactly that commit. The rebase is a force-push to your
+branch, so before you push to it again run `git pull --rebase` to build on the train's
+rebase, and never force-push over it; any push of yours restarts the checks.
+
+When the train cannot land a pull request, it adds `merge-train-blocked` and comments
+with the reason: most often a rebase conflict with `main`, otherwise the failing
+required check. Rebase onto `main` and resolve the conflict, then push with
+`--force-with-lease` (the train did not rebase this time, so your rewrite is the one to
+keep), or fix the check and push. Never merge `main` into the branch: the train's
+rebase fails on the merge commit. Then ask the maintainer who applied `merge-train`
+to lift `merge-train-blocked`; they re-read the change before it goes back in line.
+Do not remove the label yourself. `merge-train` stays.
+
+The train can also land several pull requests together through a batch pull request
+from a `merge-train/batch-*` branch, labelled `merge-train-batch`. Its body lists each
+member as `Merge-train-member: #N <head sha>`, and on that branch the body and changelog
+checks run `scripts/ci/check_batch.py`, which applies the member rules to each member
+and checks that the batch carries each member's change faithfully. A member that lands
+this way is closed rather than merged, with a comment `Landed in batch #M as <sha>`.
+
 ## After merge
 
-The repository squash-merges and keeps the remote branch. Then:
+The repository keeps the remote branch after a pull request lands. Then:
 
 - Remove the worktree, and let `prune_worktrees.py` decide about the local branch.
 - Land the always-on check with the fix, not after it: the smallest test or preflight
@@ -190,8 +219,8 @@ The repository squash-merges and keeps the remote branch. Then:
 | layer | what it covers |
 |---|---|
 | CI checks | the two body lines, changelog fragments, lint, contract tests, and the physics shards whenever the diff touches code |
-| repository settings | a pull request is required and GitHub asks for zero approvals on it, squash is the only merge method, history stays linear, force-push and deleting `main` are off |
-| weekly governance audit | skipped reviews, issues with no lane label or filed outside the forms, merged pull requests closing an issue outside every open milestone |
+| repository settings | a pull request is required and GitHub asks for zero approvals on it, squash and rebase are the merge methods allowed, a branch must be up to date with `main`, history stays linear, force-push and deleting `main` are off |
+| weekly governance audit | skipped reviews, issues with no lane label or filed outside the forms, merged pull requests labelled `data-budget-exception`, merged pull requests closing an issue outside every open milestone |
 
 Read all of this rather than trusting the page. Which contexts are required:
 
@@ -200,7 +229,7 @@ gh api repos/bk-squared/rfx/rules/branches/main \
   --jq '.[]|select(.type=="required_status_checks")|.parameters.required_status_checks[].context'
 ```
 
-The 2026-10-06 PI decision expects seventeen required contexts after the ruleset update: `ruff`, `guards-and-preflight`,
+Seventeen contexts are required: `ruff`, `guards-and-preflight`,
 `fast-suite (1)`…`(12)`, `changes`, `pr-body-contract` and `changelog-fragment`. That
 they bind, and that nothing older binds instead:
 
@@ -214,27 +243,31 @@ on 2026-09-19, which is why the first command reads the rules endpoint and not
 `branches/main/protection`. All three run on a token that can only read the repository,
 which is the point of listing them. The ruleset's bypass list is the exception: it is
 reported empty, but GitHub does not return that field to a non-administrator, so no
-agent can confirm it and checking it stays the PI's to do. Branches need not be up to
-date before merging, and no merge queue is in use.
+agent can confirm it and checking it stays the PI's to do. A branch must be up to date
+with `main` before it merges, which the merge train takes care of; GitHub's own merge
+queue is not in use.
 
-A pull request sees more than the eleven. Every context reported on this page's own
-pull request, and whether it blocks a merge:
+A pull request sees more than the seventeen. Every context a pull request reports, and
+whether it blocks a merge:
 
 | context | required |
 |---|---|
 | `ruff`, `guards-and-preflight`, `fast-suite (1)`…`(12)` | yes |
 | `changes` | yes, for the reason below |
 | `pr-body-contract`, `changelog-fragment` | yes |
-| `lane-label`, `agent-docs-hygiene`, `public-docs-source`, `api-reference` | no |
+| `lane-label`, `agent-docs-hygiene`, `public-docs-source`, `api-reference`, `docs-consistency` | no |
 
 A first documentation pull request runs under `agent-docs-hygiene`, which greps for a
 fixed list of known internal paths that a public clone does not carry, and
 `public-docs-source`, which checks that the published site still resolves to its
-source pages. Both are fast, and `bash scripts/ci/local.sh` runs the hygiene one.
+source pages and that the generated code excerpts match their scripts. Both are fast,
+and `bash scripts/ci/local.sh` runs the hygiene one. `docs-consistency` runs the tests
+that compare documentation with the code, a committed record or a script's output; it
+is not required on purpose, because a documentation mismatch never holds a merge.
 
-The checks in the bottom row of that table are outside the eleven, so a red run on
+The checks in the bottom row of that table are outside the seventeen, so a red run on
 one of them is visible and blocks nothing. **`changes` is required for a reason the
-other ten do not share.** The heavy jobs declare `needs: changes`, so if that job dies
+other sixteen do not share.** The heavy jobs declare `needs: changes`, so if that job dies
 of a runner fault they are skipped by dependency instead of failing, and a skipped
 required context does not block anything — the merge would proceed with no tests having
 run. Requiring `changes` is what closes that, so do not drop it from the ruleset; the

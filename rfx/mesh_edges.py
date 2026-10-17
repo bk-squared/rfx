@@ -469,7 +469,9 @@ def edge_aware_profiles(
         sheet edges; a sheet edge that coincides with the domain boundary is
         a wall and is skipped, and so is an end that butts against another
         sheet in the same plane over its whole width (a seam inside one
-        conductor). Two free ends of opposite sense at one coordinate -- on
+        conductor), and an end that lies on a perpendicular sheet over its
+        whole width (a junction: a shorting wall on its patch or ground).
+        Two free ends of opposite sense at one coordinate -- on
         one plane or on different planes of a multilayer board -- cannot
         share a mesh line and are refused. The sheet's own plane becomes a
         face on its normal axis.
@@ -477,6 +479,8 @@ def edge_aware_profiles(
         Volumes -- dielectric slabs, PEC blocks. Every face goes ON a node,
         except a face that coincides with a sheet edge: the edge rule wins
         there and the face lands ``edge_offset`` of a cell off the node.
+        Solids carry no material here, so a PEC block at a sheet end is
+        not recognised as a junction.
     faces : dict, optional
         Extra node planes per axis, ``{"x": [...], "z": [...]}``: port
         planes, probe planes, the faces of a shape that is not a Box. A
@@ -518,7 +522,7 @@ def edge_aware_profiles(
         for sh in solids:
             lo, hi = _box_corners(sh)
             axis_faces += [lo[k], hi[k]]
-        ends = []          # (position, metal_side, plane key, transverse span)
+        ends = []          # (position, metal_side, plane key, transverse span, plane coordinate)
         for sh in sheets:
             lo, hi = _box_corners(sh)
             thin = [i for i in range(3) if abs(hi[i] - lo[i]) <= tol]
@@ -534,16 +538,23 @@ def edge_aware_profiles(
             plane = (n, round(lo[n] / tol))
             for pos, side in ((lo[k], +1), (hi[k], -1)):
                 if tol < pos < hi_dom - tol:
-                    ends.append((pos, side, plane, (lo[t], hi[t])))
+                    ends.append((pos, side, plane, (lo[t], hi[t]), lo[n]))
         axis_edges = {}
-        for pos, side, plane, (t0, t1) in ends:
+        for pos, side, plane, (t0, t1), c in ends:
             # An end that butts against another sheet in the same plane, over
             # its whole width, is interior metal (a seam), not a free edge.
             seam = any(
                 abs(p2 - pos) <= tol and s2 == -side and pl2 == plane
                 and u0 <= t0 + tol and u1 >= t1 - tol
-                for p2, s2, pl2, (u0, u1) in ends)
-            if not seam:
+                for p2, s2, pl2, (u0, u1), _ in ends)
+            n = plane[0]
+            t = 3 - k - n
+            junction = any(
+                abs(hi[k] - lo[k]) <= tol and abs(lo[k] - pos) <= tol
+                and lo[n] - tol <= c <= hi[n] + tol
+                and lo[t] <= t0 + tol and hi[t] >= t1 - tol
+                for lo, hi in map(_box_corners, sheets))
+            if not seam and not junction:
                 axis_edges[(round(pos / tol), side)] = SheetEdge(pos, side)
         edge_pos = {}
         for (key, side), e in axis_edges.items():
@@ -628,7 +639,7 @@ def sheet_continuation_masks(entries, periodic, shape):
 def solved_sheet_span(footprint, axis: int, nodes, declared_lo: float,
                       declared_hi: float, domain_hi: float, *, union=None, volume_edges=None,
                       edge_offset: float = EDGE_OFFSET, periodic: bool = False,
-                      fed=None):
+                      fed=None, normal_axis: int | None = None):
     """The solved extent of a PEC sheet along one of its in-plane axes.
 
     The one place the solved-edge model is written. Three reports read it:
@@ -641,8 +652,15 @@ def solved_sheet_span(footprint, axis: int, nodes, declared_lo: float,
     or past the domain boundary (a wall, or a continuation into the absorber
     pad), and an end whose whole row continues into other sheet metal in
     ``union`` (the realized sheet edge tuple, a seam inside one conductor), or into realized PEC volume
-    edges in ``volume_edges``. An end row whose every node is in the optional
-    grid-shaped boolean ``fed`` mask is also not free: a port drives that end.
+    edges in ``volume_edges``. At each end node, continuation, touching PEC
+    metal along the sheet's normal axis, or the optional grid-shaped ``fed``
+    mask joins that node. The end is joined only when every end node is
+    joined; partial contact leaves a free edge. Normal-axis metal is skipped
+    on the 2-D lane (normal size one), is inspected only on the end rows,
+    and never wraps across a periodic
+    normal boundary. If ``normal_axis`` is omitted, infer the uniquely
+    singleton occupied transverse axis; ambiguous footprints retain the
+    continuation/fed rule alone.
 
     ``footprint`` is the sheet's node mask restricted to the domain interior
     (``interior_lattice_mask``), ``nodes`` the axis node coordinates in domain
@@ -668,36 +686,51 @@ def solved_sheet_span(footprint, axis: int, nodes, declared_lo: float,
         nodes = np.append(nodes, float(domain_hi))
     i0, i1 = int(idx[0]), int(idx[-1])
 
-    def _continues(i_end, i_next):
+    if normal_axis is None:
+        occupied = np.where(fp)
+        candidates = [a for a in other if np.unique(occupied[a]).size == 1]
+        if len(candidates) == 1 and all(
+                np.unique(occupied[a]).size > 1 for a in other if a != candidates[0]):
+            normal_axis = candidates[0]
+
+    def _joined(i_end, i_next):
         edge_index = min(i_end, i_next)
         if periodic:
             i_end, i_next = i_end % fp.shape[axis], i_next % fp.shape[axis]
             edge_index %= fp.shape[axis]
         end = np.take(fp, i_end, axis=axis)
-        continuation = np.zeros_like(end)
+        joined = np.zeros_like(end)
+        if normal_axis is not None and fp.shape[normal_axis] > 1:
+            n = normal_axis
+            row_index = [slice(None)] * fp.ndim
+            row_index[axis] = i_end
+            row_normal = n - (axis < n)
+            lower = [slice(None)] * end.ndim
+            upper = [slice(None)] * end.ndim
+            lower[row_normal], upper[row_normal] = slice(None, -1), slice(1, None)
+            lower, upper = tuple(lower), tuple(upper)
+            for edges in (union if isinstance(union, (tuple, list)) else None, volume_edges):
+                if edges is not None and edges[n] is not None:
+                    metal = np.asarray(edges[n][tuple(row_index)], dtype=bool)
+                    joined[lower] |= metal[lower]
+                    joined[upper] |= metal[lower]
         if union is not None:
             if isinstance(union, (tuple, list)):
                 if union[axis] is not None:
-                    continuation |= np.take(np.asarray(union[axis], dtype=bool), edge_index, axis=axis)
+                    joined |= np.take(np.asarray(union[axis], dtype=bool), edge_index, axis=axis)
             else:
-                continuation |= np.take(np.asarray(union, dtype=bool), i_next, axis=axis)
+                joined |= np.take(np.asarray(union, dtype=bool), i_next, axis=axis)
         if volume_edges is not None:
-            continuation |= np.take(volume_edges[axis], edge_index, axis=axis)
-        return bool(end.any()) and bool(continuation[end].all())
-
-    def _fed(i_end):
-        if fed is None:
-            return False
-        if periodic:
-            i_end %= fp.shape[axis]
-        end = np.take(fp, i_end, axis=axis)
-        return bool(end.any()) and bool(np.take(fed, i_end, axis=axis)[end].all())
+            joined |= np.take(volume_edges[axis], edge_index, axis=axis)
+        if fed is not None:
+            joined |= np.take(fed, i_end, axis=axis)
+        return bool(end.any()) and bool(joined[end].all())
 
     free_lo = bool(i0 > 0 and float(declared_lo) > tol
-                   and not _continues(i0, i0 - 1) and not _fed(i0))
+                   and not _joined(i0, i0 - 1))
     free_hi = bool(i1 + 1 < nodes.size
                    and float(declared_hi) < float(domain_hi) - tol
-                   and not _continues(i1, i1 + 1) and not _fed(i1))
+                   and not _joined(i1, i1 + 1))
     lo = float(nodes[i0])
     hi = float(nodes[i1])
     if free_lo:

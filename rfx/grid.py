@@ -329,8 +329,8 @@ class Grid:
 
     def num_timesteps(self, num_periods: float = 20.0) -> int:
         """Estimate timesteps for given number of periods at freq_max."""
-        period = 1.0 / self.freq_max
-        return int(np.ceil(num_periods * period / self.dt))
+        from rfx.stepping.step_count import steps_for_periods
+        return steps_for_periods(self.dt, self.freq_max, num_periods)
 
     def position_to_index(self, pos: tuple[float, float, float]) -> tuple[int, int, int]:
         """Convert physical position to grid index (accounting for the

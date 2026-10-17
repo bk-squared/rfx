@@ -640,13 +640,13 @@ def _wire_port_realized_cells(grid, pe):
     from rfx.sources.sources import (
         WirePort, _wire_port_cells, wire_port_edge_span,
     )
-    from rfx.nonuniform import NonUniformGrid, position_to_index
+    from rfx.nonuniform import NonUniformGrid
+    from rfx._periodic import interval_indices
     axis = {"ex": 0, "ey": 1, "ez": 2}[pe.component]
     end = list(pe.position)
     end[axis] += pe.extent
     if isinstance(grid, NonUniformGrid):
-        start_idx = position_to_index(grid, pe.position)
-        end_idx = position_to_index(grid, tuple(end))
+        start_idx, end_idx = interval_indices(grid, pe.position, tuple(end))
         lo, hi = sorted((start_idx[axis], end_idx[axis]))
         first, last = wire_port_edge_span(
             grid, axis, lo, hi, float(pe.position[axis]),

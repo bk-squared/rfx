@@ -77,3 +77,11 @@ def make_probe_step(grid, materials, ports, driven, *, use_cpml,
         HookPoint.AFTER_SOURCES: (after_sources,),
         HookPoint.STEP_END: (step_end,),
     }), source_values
+
+
+def resolve_extractor_axes(grid, cpml_axes):
+    """The eager extractors have only the non-periodic curl operator."""
+    from rfx.boundaries.axes import resolve_cpml_axes
+    if getattr(grid, "periodic_axes", ""):
+        raise NotImplementedError("the S-parameter extractors do not wrap periodic axes")
+    return resolve_cpml_axes(grid, cpml_axes)

@@ -94,6 +94,22 @@ def capture(*, transform=None):
             jax.clear_caches()
 
 
+#: (start, count) of the x slab whose step is being traced, set by the
+#: multi-device wrapper so a record from the one-device kernels says which
+#: global rows its local rows (after one low ghost) are.
+OWNED = None
+
+
+@contextmanager
+def owned(start, count):
+    global OWNED
+    previous, OWNED = OWNED, (start, count)
+    try:
+        yield
+    finally:
+        OWNED = previous
+
+
 def enter(sim, lane):
     ACTIVE.sim = sim
     ACTIVE.lane = "fwd_adi" if lane == "fwd_uniform" and sim._solver == "adi" else lane
@@ -104,10 +120,16 @@ def electric(materials, eps, sigma, site, *, periodic=(False,) * 3,
     # The NU run entry shares the forward runner's traced material site.
     if site == "distributed.E" and ACTIVE.lane == "run_distributed_nu":
         site = "distributed_nu.E"
+    # The wrapped multi-device step consumes the one-device producer per slab.
+    if (site == "yee.E" and OWNED is not None
+            and ACTIVE.lane in ("run_distributed_nu", "fwd_distributed_nu")):
+        site = "distributed_nu.E"
     eps = ACTIVE.apply(site, "eps_e", eps)
     sigma = ACTIVE.apply(site, "sigma_e", sigma)
     # Keep the legacy cell-view payload; eps/sigma above are the consumed arrays.
     payload = dict(eps_e=eps, sigma_e=sigma, materials=materials._replace(components=None))
+    if owned_start is None and OWNED is not None:
+        owned_start, owned_count = OWNED
     if owned_start is not None:
         payload.update(owned_start=owned_start, owned_count=owned_count)
     ACTIVE.observe(site, payload, region=region, periodic=periodic)

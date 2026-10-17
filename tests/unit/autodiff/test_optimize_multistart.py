@@ -72,10 +72,10 @@ def _bowl_cost(z):
 # ---------------------------------------------------------------------------
 # 1. BIT-IDENTITY GATE (load-bearing) — synthetic, portable
 # ---------------------------------------------------------------------------
-def test_bit_identity_default_matches_legacy_loop():
-    """`_adam_multistart` at defaults == the legacy inline Adam loop, bit-for-bit.
+def test_bit_identity_eager_matches_legacy_loop():
+    """`_adam_multistart(jit=False)` matches the legacy Adam loop bit-for-bit.
 
-    This is the committed form of the WP-4-C falsifier: the default path
+    This is the committed form of the WP-4-C falsifier: the eager path
     (single start, no best-iterate, no clamp) must be byte-identical to the
     algorithm that shipped before the knobs existed.
     """
@@ -84,7 +84,7 @@ def test_bit_identity_default_matches_legacy_loop():
 
     legacy_lh, legacy_latent = _legacy_single_start_adam(_bowl_cost, init, n_iters, lr)
     best_latent, lh, all_h, best_start = _adam_multistart(
-        _bowl_cost, [init], n_iters=n_iters, lr=lr,
+        _bowl_cost, [init], n_iters=n_iters, lr=lr, jit=False,
     )
 
     assert best_start == 0

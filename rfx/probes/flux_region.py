@@ -116,6 +116,11 @@ def resolve_flux_region(grid, entry, domain, *, warn=True):
             # solver-facing float32 spacings can select a different boundary
             # and disagree with the coordinates that preflight reports.
             edges = np.asarray(getattr(coords, letter))[pad_lo:grid.shape[t] - pad_hi]
+            if letter in grid.periodic_axes:
+                from rfx._periodic import interval_coordinates
+                edges = np.r_[edges, grid.domain[t]]
+                c = grid.domain[t] / 2 if c is None else c
+                interval_coordinates(grid, t, c - size[n] / 2, c + size[n] / 2)
         else:
             # The collapsed z direction in 2D is one extruded integration
             # cell, not a pair of stored bounding nodes.

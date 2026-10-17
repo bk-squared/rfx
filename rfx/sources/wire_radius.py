@@ -156,7 +156,8 @@ def stamp_wire_radius(grid, materials, component, radius, cells):
     # modified H edge outside its pads, including along the port axis.
     pad_lo = getattr(grid, f"pad_{'xyz'[axis]}_lo", 0)
     pad_hi = getattr(grid, f"pad_{'xyz'[axis]}_hi", 0)
-    if any(c[axis] < pad_lo or c[axis] >= grid.shape[axis]-pad_hi-1 for c in cells):
+    duplicate = int('xyz'[axis] not in getattr(grid, "periodic_axes", ""))
+    if any(c[axis] < pad_lo or c[axis] >= grid.shape[axis]-pad_hi-duplicate for c in cells):
         raise ValueError("wire-port radius must occupy live axial cells outside axial CPML")
     axial = np.asarray([widths[axis][c[axis]] for c in cells])
     if len(axial) and not np.allclose(axial, axial[0], rtol=2e-6, atol=0):

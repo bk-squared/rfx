@@ -170,7 +170,7 @@ obj_bw = maximize_bandwidth(f_center=5e9, f_bw=2e9, s11_threshold=-10)
 
 An objective is only as good as the S-parameter extraction behind it. Check the
 port's status in the
-[S-parameter support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/sparameter_support_matrix.md)
+[S-parameter section of the support matrix](https://github.com/bk-squared/rfx/blob/main/docs/guides/support_matrix.md#s-parameters)
 before you treat an optimized number as a physical result.
 
 ## Write your own gradient loop

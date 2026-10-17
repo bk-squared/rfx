@@ -356,8 +356,8 @@ def is_one_cell_size(sizes) -> bool:
 def field_index(grid, position, component):
     """Resolve one Yee component, keeping displaced high-face entries inside.
 
-    Node lookup and interior rounding stay unchanged. A graded grid has no
-    periodic axes; a uniform grid owns its periodic-axis record.
+    Node lookup and interior rounding stay unchanged. Both mesh types
+    carry their periodic-axis record on the grid.
     """
     if hasattr(grid, "position_to_index"):
         index = list(grid.position_to_index(position))

@@ -338,7 +338,7 @@ cell except the outermost row on the +x and +y faces.
 
 Tracker: #1221
 
-On the uniform mesh at normal incidence, dispatch refuses absorbing transverse faces for a TF/SF plane wave when
+At normal incidence, on the uniform and the graded mesh alike, dispatch refuses absorbing transverse faces for an open TF/SF plane wave when
 materials on the grid, conductors or localized field updates vary along that axis,
 including in the pads. The refusal also applies with `skip_preflight=True`.
 For an array, declare its axes periodic; for a finite scatterer use
@@ -355,9 +355,26 @@ invariant absorber pair and reports the affected faces in preflight. Its grid
 and period do not change. Traced material overrides retain the legacy operator
 with a warning when invariance cannot be judged. At oblique incidence the tilt
 axis keeps its operator and is reported as not judged for invariance.
-The graded mesh keeps its transverse absorbers under a plane wave: no wrap and
-no refusal from this rule (the experimental operator remains a PR3b item).
+The graded mesh keeps its transverse absorbers under a plane wave (no wrap) but
+applies the same rule: a laterally invariant structure runs, and on a graded profile with the uniform mesh's cells
+its probe record equals the uniform mesh's within 2×10⁻⁶ of its peak
+(`tests/contracts/test_plane_wave_admission_both_meshes.py`). Traced overrides keep the existing graded operator
+with the same warning. A finite scatterer or an array, also one given to `forward()` as an override or a design
+box, is refused there with the uniform mesh named as the remedy, since a closed box and a plane wave with periodic axes are
+refused on the graded mesh (the experimental operator remains a PR3b item).
 → [#1221](https://github.com/bk-squared/rfx/issues/1221)
+
+### An open oblique plane wave with `method="methodB"` launches a modulated Gaussian whatever pulse is declared.
+
+Tracker: #1812
+
+`add_tfsf_source(angle_deg=θ, method="methodB")` builds its auxiliary line with a modulated Gaussian centred at `f0`
+(`rfx/sources/tfsf_oblique_open.py`); the default `waveform="differentiated_gaussian"` is replaced without a
+refusal. The probe record is bit-identical for both declarations (θ = 30°, f0 = 8 GHz). Normalising a result by the
+declared pulse's spectrum is wrong by their ratio (+20.5 dB at f0 = 8 GHz, bandwidth 0.5, each pulse to its own peak).
+`rfx.rcs.compute_rcs` is not affected: it normalises by the incident spectrum it measures. Normalise by the
+launched pulse, or measure the incident field in an empty run.
+→ [#1812](https://github.com/bk-squared/rfx/issues/1812)
 
 ### An oblique Bloch plane wave rings at its cutoff along the source plane, so a value read at f0 depends on the simulation time.
 

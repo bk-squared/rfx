@@ -492,6 +492,7 @@ def _canonicalize_exact_scope(
     memory_analysis_fields: tuple[str, ...] | None,
     preflight: object | None,
     scope_context: Mapping[str, object] | None,
+    ad_memory_scope: Mapping[str, object] | None = None,
 ) -> CanonicalScope:
     """Build canonical exact scope and fail closed on incomplete/mismatched data."""
     missing: list[str] = []
@@ -584,6 +585,8 @@ def _canonicalize_exact_scope(
                 None if memory_analysis_fields is None else list(memory_analysis_fields)
             ),
         }
+        if ad_memory_scope is not None:
+            exact_scope["ad_memory"] = _json_safe(ad_memory_scope, path="ad_memory")
         if preflight_safe is not None:
             exact_scope["source_preflight_digest"] = _stable_digest(preflight_safe)
         if scope_context_safe is not None:
@@ -623,6 +626,7 @@ def _canonicalize_exact_scope(
             scope_digest=_stable_digest(exact_scope),
             config_digest=_stable_digest(
                 {
+                    "ad_memory": ad_memory_scope,
                     "n_steps": n_steps,
                     "n_warmup": n_warmup,
                     "checkpoint_mode": checkpoint_mode,
@@ -648,6 +652,7 @@ def _canonicalize_exact_scope(
         scope_digest=_stable_digest(exact_scope),
         config_digest=_stable_digest(
             {
+                "ad_memory": ad_memory_scope,
                 "n_steps": n_steps,
                 "n_warmup": n_warmup,
                 "checkpoint_mode": checkpoint_mode,

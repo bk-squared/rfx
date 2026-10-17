@@ -1407,7 +1407,9 @@
         "dt",
         "dt_min_cell",
         "dt_caller",
-        "nominal_profiles"
+        "nominal_profiles",
+        "periodic_axes",
+        "domain"
       ]
     },
     "make_ntff_box": {
@@ -1795,7 +1797,8 @@
         "checkpoint_every",
         "emit_time_series",
         "n_warmup",
-        "distributed"
+        "distributed",
+        "jit"
       ]
     },
     "quick_convergence": {
@@ -1835,7 +1838,8 @@
         "cell_mask",
         "sheets",
         "wires",
-        "periodic"
+        "periodic",
+        "view"
       ]
     },
     "realized_wall_planes": {
@@ -2341,7 +2345,8 @@
         "beta_schedule",
         "init_density",
         "verbose",
-        "skip_preflight"
+        "skip_preflight",
+        "jit"
       ]
     },
     "update_floquet_dft": {
@@ -2483,6 +2488,10 @@
       "checkpoint_every",
       "checkpoint_segments",
       "n_warmup",
+      "design_box",
+      "design",
+      "checkpoint",
+      "distributed",
       "precision",
       "input_signature",
       "static_signature",
@@ -2496,6 +2505,10 @@
       "available_memory_gb",
       "target_fraction",
       "n_warmup",
+      "design_box",
+      "design",
+      "checkpoint",
+      "distributed",
       "safety_factor",
       "include_mesh_report",
       "check_ntff",
@@ -2806,14 +2819,22 @@
       "available_memory_gb",
       "checkpoint_every",
       "checkpoint_segments",
-      "n_warmup"
+      "n_warmup",
+      "design_box",
+      "design",
+      "checkpoint",
+      "distributed"
     ],
     "explain_ad_memory": [
       "n_steps",
       "available_memory_gb",
       "checkpoint_every",
       "checkpoint_segments",
-      "n_warmup"
+      "n_warmup",
+      "design_box",
+      "design",
+      "checkpoint",
+      "distributed"
     ],
     "export_artifact_bundle": [
       "path",
@@ -2870,7 +2891,11 @@
       "available_memory_gb",
       "target_fraction",
       "n_warmup",
-      "safety_factor"
+      "safety_factor",
+      "design_box",
+      "design",
+      "checkpoint",
+      "distributed"
     ],
     "plan_mesh": [
       "n_steps",

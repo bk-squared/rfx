@@ -1,0 +1,88 @@
+---
+title: "A printed waveguide filter, designed by gradient"
+description: "Gradient descent through the FDTD solve and the waveguide S-matrix shapes an 81 mm ceramic-filled insert (1 ≤ εr ≤ 10) in WR-90, starting from a uniform fill, into a 10.0–10.6 GHz bandpass filter that meets a −15 dB return-loss and −25 dB rejection mask on three meshes."
+sidebar:
+  order: 8
+---
+
+Dielectric blocks in a waveguide reflect part of the wave; spaced right, the
+reflections add up to resonances that pass one band and reject the rest. Here an
+81 mm insert in WR-90 (22.86 × 10.16 mm) is the design: its permittivity, limited to
+what ceramic-filled filament can print, 1 ≤ εr ≤ 10, in 2.54 mm pixels along the guide,
+each uniform across the guide height and width, so that the insert cannot convert
+the TE10 wave into any other mode. The specification is a mask: |S11| ≤ −15 dB over 10.0–10.6 GHz, and
+|S21| ≤ −25 dB over 8.2–9.0 GHz and 11.6–12.4 GHz. Adam lowers how far |S11| and
+|S21| stand outside the mask, with the gradient taken through the FDTD solve and the
+waveguide S-matrix.
+
+<figure data-rfx="media">
+  <img src="https://remilab.cnu.ac.kr/share/ca3dd98f4722/waveguide-filter/waveguide_filter_site.png" alt="A printed insert in a cut-open WR-90 guide at iteration 39 of 400: each cell is more opaque where its permittivity is higher and coloured by how the mask violation would change with more permittivity (red helps, blue hurts); beside it the worst stopband |S21| of −23.6 dB on the design mesh (a/36), |S11| and |S21| against the mask with the start and the final design, and the worst stopband |S21| over the iterations" />
+</figure>
+
+<div data-rfx="tiles">
+  <div><strong>3 of 3</strong> <span>meshes with the response inside the mask</span></div>
+  <div><strong>−16.6 dB</strong> <span>worst |S11| over 10.0–10.6 GHz on the finest mesh (mask −15 dB)</span></div>
+  <div><strong>−25.5 dB</strong> <span>worst |S21| in the stopbands on the finest mesh (mask −25 dB)</span></div>
+</div>
+
+<figure data-rfx="media">
+  <video data-rfx="loop" autoplay muted loop playsInline preload="metadata" poster="https://remilab.cnu.ac.kr/share/ca3dd98f4722/waveguide-filter/waveguide_filter_poster.png" aria-label="The same frame over the descent: the insert cells and their gradient colour, |S11| and |S21| against the mask, and the worst stopband |S21| from the start to the final design">
+    <source src="https://remilab.cnu.ac.kr/share/ca3dd98f4722/waveguide-filter/waveguide_filter.mp4" type="video/mp4" />
+    <a href="https://remilab.cnu.ac.kr/share/ca3dd98f4722/waveguide-filter/waveguide_filter.mp4">Download the loop (MP4)</a>.
+  </video>
+</figure>
+
+## What happened
+
+The descent starts from the insert filled uniformly with εr = 1.5, which passes the whole
+band. Over 400 iterations it grows two high-permittivity slabs and lower steps near the
+ends and between them, a stepped-impedance filter along the guide. The descent runs on
+a mesh of a/36 (0.635 mm), where the final design's worst stopband |S21| is −25.2 dB,
+as the picture and the loop show. Solved again without
+the optimiser on meshes of a/36, a/54 and a/72 (0.635, 0.423 and 0.318 mm), the response
+stays inside the mask on all three. On the finest mesh the worst passband |S11| is
+−16.6 dB and the worst stopband |S21| is −25.5 dB, 0.5 dB inside the mask.
+
+<figure data-rfx="media">
+  <img src="https://remilab.cnu.ac.kr/share/ca3dd98f4722/waveguide-filter/filter_mesh.png" loading="lazy" alt="|S11| and |S21| of the designed insert on the three meshes, with the mask" />
+</figure>
+
+## How it was checked
+
+The checks below and their thresholds were fixed before any run, in §2.5 of the
+[pre-declaration](https://github.com/bk-squared/rfx/blob/main/docs/design_notes/20261004_showcase_lens_filter_predeclaration.md).
+
+- **Gradient against central differences** at the start: 4.8×10⁻³, 2.3×10⁻³ and
+  9×10⁻⁵ on the three judged pixels.
+- **Gradient against a 1.5× longer simulation time**: 1.6×10⁻⁶ at the start,
+  9.3×10⁻⁴ at the final design, and below 2×10⁻³ at every iterate the loop shows.
+- **End of the simulation**: the response still arriving after the simulation ends
+  would change every frequency value read by less than 1 % in amplitude (−40 dB),
+  for both drives, on every mesh. rfx calls this check settling; CST's time-domain
+  solver instead stops on the decay of the total field energy.
+- **Power**: the insert is lossless; |S11|² + |S21|² stays within 4×10⁻⁵ of 1 on every
+  mesh (the check allowed 0.98–1.01).
+- **Three meshes**: from a/36 to a/54 to a/72 the worst passband |S11| moves 0.15 then
+  0.06 dB and the worst stopband |S21| 0.25 then 0.09 dB.
+
+<p data-rfx="note">Computed with rfx main 9ed83eb8 (2026-10-05); the numbers will be recomputed after rfx 2.0. The walls are perfect conductors and the insert is lossless, so the filter has no insertion loss here.</p>
+
+## Downloads
+
+<ul data-rfx="downloads">
+  <li><a href="https://remilab.cnu.ac.kr/share/ca3dd98f4722/waveguide-filter/result.json">result.json</a></li>
+  <li><a href="https://remilab.cnu.ac.kr/share/ca3dd98f4722/waveguide-filter/iterations.npz">iterations.npz</a></li>
+  <li><a href="https://remilab.cnu.ac.kr/share/ca3dd98f4722/waveguide-filter/mesh_trend.json">mesh_trend.json</a></li>
+  <li><a href="https://remilab.cnu.ac.kr/share/ca3dd98f4722/waveguide-filter/waveguide_filter_social.mp4">waveguide_filter_social.mp4</a></li>
+  <li><a href="https://remilab.cnu.ac.kr/share/ca3dd98f4722/waveguide-filter/waveguide_filter_social.png">waveguide_filter_social.png</a></li>
+</ul>
+
+## Run it
+
+```bash
+python scripts/showcase/design_filter.py --stage describe --out out/filter   # builds the three meshes, no solve
+```
+
+The full stages run on a GPU with `scripts/vessl_showcase_filter.yaml`: the descent is
+`--stage main --start S1 --iterations 400 --y-uniform` on the record of a trial stage,
+and `--stage resolve` solves its final design again on the three meshes.

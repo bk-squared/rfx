@@ -62,7 +62,7 @@
         },
         "tfsf": {
           "status": "experimental",
-          "limits": "experimental for normal +/-x incidence only; oblique and +/-z incidence hard_fail"
+          "limits": "supported (run, forward) on one device for normal +/-x incidence with a fixed, uniform x axis; experimental accuracy scope; oblique and +/-z incidence hard_fail; an open plane wave refuses finite transverse structures on both meshes; finite scatterers (closed_box=True) and arrays (explicit periodic boundaries) require the uniform mesh"
         },
         "waveguide_port": {
           "status": "experimental",

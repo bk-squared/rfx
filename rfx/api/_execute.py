@@ -13,6 +13,7 @@ LEAF mixin module — it must NEVER do ``from rfx.api import ...`` or
 """
 from __future__ import annotations
 
+from rfx.stepping import steps_for_periods
 from rfx.preflight.line_stub import line_stub_admission as _line_stub_admit
 from rfx.api._removed_kwargs import _reject_removed_forward_kwargs
 from rfx.api._forward_result import pack_nu_forward_result
@@ -1256,7 +1257,7 @@ class _ExecuteMixin:
 
         if eps_override is not None or sigma_override is not None:
             materials = apply_material_overrides(
-                materials, eps_override=eps_override, sigma_override=sigma_override)
+                materials, eps_override=eps_override, sigma_override=sigma_override, judge=(lorentz_spec, grid))
         if pec_mask_override is not None:
             pec_mask = (
                 pec_mask_override if pec_mask is None
@@ -1274,16 +1275,15 @@ class _ExecuteMixin:
         if _realized.ACTIVE is not None:
             _realized.sources(grid, materials, sources, "distributed_nu.sources")
         from rfx.model.electric_metrics import stage_forward_materials
-        from rfx.stepping.slab import cut
-        sharded_materials = stage_forward_materials(materials, sharded_grid.layout, mesh)
+        sharded_grid = sharded_grid.select_step(debye_spec, lorentz_spec, self._boundary_spec)
+        sharded_materials = stage_forward_materials(materials, sharded_grid.layout, mesh, uniform=sharded_grid.step_kind == 'wrapped')
         del materials
 
-        sharded_pec_mask = _conductors.stage_distributed_edges(pec_edges, sharded_grid, mesh, multiprocess)
+        sharded_pec_mask = _conductors.stage_distributed_edges(
+            pec_edges, sharded_grid, mesh, multiprocess,
+            inputs=(pec_mask, _dnu_pec_sheets, _dnu_pec_wires))
         del pec_mask, pec_edges
-        sharded_pec_occupancy = None
-        if pec_occupancy_override is not None:
-            sharded_pec_occupancy = cut(
-                pec_occupancy_override, sharded_grid.layout, "pec_occupancy", mesh=mesh)
+        sharded_pec_occupancy = _conductors.stage_distributed_occupancy(pec_occupancy_override, sharded_grid, mesh)
 
         sharded_debye = stage_forward_dispersion_x_slab(
             sharded_materials, grid.dt, debye_spec, sharded_grid, mesh, "debye",
@@ -1382,11 +1382,10 @@ class _ExecuteMixin:
 
         Pure: ``_build_nonuniform_grid()`` synthesises any missing dz/dx/dy
         profile internally without mutating sim state (W1.3). The single
-        formula, now :meth:`NonUniformGrid.steps_for_periods`, replaces the four byte-identical
-        ``int(np.ceil(num_periods / (freq_max * grid.dt)))`` snippets that
-        used to live at each NU/distributed dispatch site.
+        rule is :func:`rfx.stepping.step_count.steps_for_periods`.
         """
-        return self._build_nonuniform_grid().steps_for_periods(self._freq_max, num_periods)
+        grid = self._build_nonuniform_grid()
+        return steps_for_periods(grid.dt, self._freq_max, num_periods)
 
     from rfx.api._dispatch import _dispatch_plan
 
@@ -2317,10 +2316,10 @@ class _ExecuteMixin:
             if ringdown is None:
                 result = _nu_fwd_call()
             else:
-                from rfx.ringdown import RingdownForward
+                from rfx.ringdown import RingdownForward, host_bins
                 result = RingdownForward(
                     self, ringdown, lane="graded", n_steps=plan.n_steps,
-                    grid=_nu_grid, bins=None if port_s11_freqs is None else np.asarray(port_s11_freqs, dtype=np.float32)).run(_nu_fwd_call)
+                    grid=_nu_grid, bins=None if port_s11_freqs is None else host_bins(port_s11_freqs, np.float32)).run(_nu_fwd_call)
             if _nu_design_spec is not None:
                 result = result._replace(
                     design_box_held_edges=_nu_design_spec.held_edges)
@@ -2344,7 +2343,7 @@ class _ExecuteMixin:
         if n_steps is None:
             if self._solver == "adi":
                 dt_adi = float(grid.dt * self._adi_cfl_factor)
-                n_steps = int(np.ceil(num_periods / grid.freq_max / dt_adi))
+                n_steps = steps_for_periods(dt_adi, grid.freq_max, num_periods)
             else:
                 n_steps = grid.num_timesteps(num_periods=num_periods)
 
@@ -2895,7 +2894,7 @@ class _ExecuteMixin:
             }, instead="use the default solver='yee'")
             if n_steps is None:
                 dt_adi = float(grid.dt * self._adi_cfl_factor)
-                n_steps = int(np.ceil(num_periods / grid.freq_max / dt_adi))
+                n_steps = steps_for_periods(dt_adi, grid.freq_max, num_periods)
             _res = self._run_adi_from_materials(
                 grid,
                 base_materials,

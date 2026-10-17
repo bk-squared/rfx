@@ -28,6 +28,8 @@ POLICIES = {
     'pec_edge': (True, False), 'pec_cell': (True, False),
     'pec_occupancy': (0., 0.), 'inv_dx': (0., 1.),
     'inv_dx_h': (0., 0.), 'width': ('edge', 'edge'),
+    'cpml_psi': (0., 0.), 'cpml_zero': (0., 0.), 'cpml_one': (1., 1.),
+    'edge_keep': (1., 1.),
 }
 
 

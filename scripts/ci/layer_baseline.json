@@ -16,8 +16,7 @@
       "D1": [],
       "D2": [
         "Simulation.auto",
-        "Simulation.tfsf_box_indices",
-        "Simulation.validate_subgrid"
+        "Simulation.tfsf_box_indices"
       ]
     },
     "rfx/api/_execute.py": {
@@ -37,9 +36,7 @@
       "A": [],
       "G": [
         "_ExecuteMixin._attach_run_settling_witness",
-        "_ExecuteMixin._warn_postrun_energy_witness",
-        "_ExecuteMixin.forward",
-        "_ExecuteMixin.run"
+        "_ExecuteMixin._warn_postrun_energy_witness"
       ],
       "D1": [],
       "D2": []
@@ -407,8 +404,6 @@
     },
     "rfx/runners/distributed_nu.py": {
       "S": [
-        "_exchange_e_ghosts_nu",
-        "_exchange_h_ghosts_nu",
         "run_nonuniform_distributed_pec"
       ],
       "M": []

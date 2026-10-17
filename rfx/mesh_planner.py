@@ -20,6 +20,7 @@ import numpy as np
 
 from rfx.auto_config import C0, SimConfig, analyze_features, auto_configure
 from rfx.api._ad_memory import _format_memory_gb
+from rfx.api._ad_memory_types import ADMemoryUnavailable
 from rfx.api._spec import MeshIntelligenceReport
 from rfx.core.jax_utils import is_tracer
 
@@ -36,6 +37,7 @@ def mesh_intelligence_report(
     n_warmup: int = 0,
     check_ntff: bool = True,
     check_resolution: bool = True,
+    ad_memory_options: dict | None = None,
 ) -> MeshIntelligenceReport:
     """Return a consolidated mesh-quality and memory-planning report.
 
@@ -112,13 +114,18 @@ def mesh_intelligence_report(
 
     ad_memory = None
     if n_steps is not None:
-        ad_memory = sim.estimate_ad_memory(
-            n_steps,
-            available_memory_gb=available_memory_gb,
-            checkpoint_every=checkpoint_every,
-            checkpoint_segments=checkpoint_segments,
-            n_warmup=n_warmup,
-        )
+        try:
+            ad_memory = sim.estimate_ad_memory(
+                n_steps,
+                available_memory_gb=available_memory_gb,
+                checkpoint_every=checkpoint_every,
+                checkpoint_segments=checkpoint_segments,
+                n_warmup=n_warmup,
+                **(ad_memory_options or {}),
+            )
+        except ADMemoryUnavailable as error:
+            from rfx.preflight._common import PreflightIssue
+            preflight_issues += (PreflightIssue(str(error), severity="error", code="ad_memory"),)
 
     uses_nonuniform = any(
         p is not None

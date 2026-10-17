@@ -48,6 +48,7 @@ from rfx.runners._distributed_common import (
 
 from rfx import _realized
 from rfx.stepping import segmented_scan
+from rfx.stepping.slab_wrap import record_step_kind, runner_step_kind
 from rfx.stepping.slab import (
     Slab, Fill, cut, cut_poles, cut_pole_coeffs, owned_values, forward_sharding as _forward_sharding,
 )
@@ -286,6 +287,9 @@ class ShardedNUGrid(_NamedTuple):
     e_cell_sizes: object = None
     layout: Slab | None = None
     global_grid: object = None
+    step_kind: str | None = None
+
+    select_step = record_step_kind  # Record the runner's choice before any slab operands are staged.
 
 
 def split_1d_with_ghost(arr: "np.ndarray", n_devices: int, nx_per: int,
@@ -418,22 +422,10 @@ def shard_pec_mask_x_slab(global_mask, sharded_grid: ShardedNUGrid):
 _exchange_component_nu_shmap = exchange_component_shmap
 
 
-def _exchange_h_ghosts_nu(state: FDTDState, mesh, n_devices: int, *, ranks) -> FDTDState:
-    """Refill only the Hy/Hz left ghosts consumed by the E curl."""
-    return exchange_h_yee_shmap(state, mesh, n_devices, ranks=ranks)
-
-
-def _exchange_e_ghosts_nu(state: FDTDState, mesh, n_devices: int, *, ranks) -> FDTDState:
-    """Refill only Ey/Ez right ghosts from the neighbour ranks' real rows.
-
-    Placement contract: this is the LAST stage of the E half-step in
-    :func:`run_nonuniform_distributed_pec` — after sources and after every
-    PEC stage — so a ghost row is a copy of the owner's FINISHED real row.
-    The H update at a rank's last real cell reads ``Ey``/``Ez`` on the
-    right ghost plane; a copy taken before the owner zeroed its PEC edges
-    there is stale (#931 seam-cell divergence).
-    """
-    return exchange_e_yee_shmap(state, mesh, n_devices, ranks=ranks)
+# Module-local aliases of the shared exchanges (placement contract on exchange_e_yee_shmap);
+# tests patch these names on this module.
+_exchange_h_ghosts_nu = exchange_h_yee_shmap
+_exchange_e_ghosts_nu = exchange_e_yee_shmap
 
 
 # #1038 leg 3. ``_apply_pec_face_nu_shmap``'s body now lives as
@@ -912,6 +904,14 @@ def run_nonuniform_distributed_pec(
         if source.component not in ("ex", "ey", "ez"):
             raise ValueError(f"distributed_nu: unsupported source component {source.component}")
     probes = list(probes) if probes is not None else []
+
+    if runner_step_kind(sharded_grid, cpml=use_cpml, debye=use_debye, lorentz=use_lorentz, pmc=bool(pmc_faces)) == "wrapped":
+        from rfx.runners._distributed_nu_wrapped import run_wrapped
+        return run_wrapped(sharded_grid, sharded_materials, sharded_pec_mask,
+            n_steps, sources, probes, devices=devices, occupancy=sharded_pec_occupancy,
+            checkpoint_every=checkpoint_every, n_warmup=n_warmup,
+            emit_time_series=emit_time_series, gather_final_state=gather_final_state,
+            material_drive=material_drive, debye=debye, lorentz=lorentz, cpml=use_cpml, cpml_state=cpml_state)
 
     # Defer the `Mesh` import to runtime so module import remains
     # lightweight (matches distributed_v2.py's pattern).

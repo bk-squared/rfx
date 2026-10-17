@@ -23,7 +23,7 @@ import jax.numpy as jnp
 
 from rfx.core.drives import drive_layout, inject_drives
 from jax import lax
-from rfx.runners._rank import mesh_ranks, rank_shard_map
+from rfx.stepping.rank import mesh_ranks, rank_pair_exchange, rank_shard_map
 from jax.sharding import Mesh, PartitionSpec as P
 
 from rfx.model.conductors import distributed_mask_edges, distributed_mask_spec
@@ -349,17 +349,16 @@ def exchange_component_shmap(field, mesh, n_devices, *, ranks):
     return _exchange(ranks, field)
 
 
-def exchange_h_yee_shmap(state, mesh, n_devices, *, ranks):
+def exchange_h_yee_shmap(state, mesh, n_devices, *, ranks, local=False):
     """Send packed Hy/Hz last-real rows right into the live LEFT ghosts.
 
     The second-order Yee E curl reads only these two x-neighbours. Keep
     physical-boundary ghosts verbatim; there is no wraparound on this lane.
+    Refill only the Hy/Hz left ghosts consumed by the E curl.
     """
     if n_devices == 1:
         return state
 
-    @partial(rank_shard_map, mesh=mesh, in_specs=(P("x"), P("x")),
-             out_specs=(P("x"), P("x")), check_rep=False)
     def _exchange(hy, hz, *, rank):
         packed = jnp.stack((hy[-2], hz[-2]))
         received = lax.ppermute(
@@ -369,22 +368,29 @@ def exchange_h_yee_shmap(state, mesh, n_devices, *, ranks):
         hz = hz.at[0].set(jnp.where(interior, received[1], hz[0]))
         return hy, hz
 
-    hy, hz = _exchange(ranks, state.hy, state.hz)
+    hy, hz = rank_pair_exchange(_exchange, mesh, ranks, state.hy, state.hz, local=local)
     return state._replace(hy=hy, hz=hz)
 
 
-def exchange_e_yee_shmap(state, mesh, n_devices, *, ranks):
+def exchange_e_yee_shmap(state, mesh, n_devices, *, ranks, local=False):
     """Send packed Ey/Ez first-real rows left into the live RIGHT ghosts.
 
     The second-order Yee H curl reads only these two x-neighbours. Ex/Hx
     and the opposite ghosts are dead: local ghost updates are overwritten
     by the next live exchange before a real cell can consume them.
+
+    Refill only Ey/Ez right ghosts from the neighbour ranks' real rows.
+
+    Placement contract: this is the LAST stage of the E half-step in
+    :func:`run_nonuniform_distributed_pec` — after sources and after every
+    PEC stage — so a ghost row is a copy of the owner's FINISHED real row.
+    The H update at a rank's last real cell reads ``Ey``/``Ez`` on the
+    right ghost plane; a copy taken before the owner zeroed its PEC edges
+    there is stale (#931 seam-cell divergence).
     """
     if n_devices == 1:
         return state
 
-    @partial(rank_shard_map, mesh=mesh, in_specs=(P("x"), P("x")),
-             out_specs=(P("x"), P("x")), check_rep=False)
     def _exchange(ey, ez, *, rank):
         packed = jnp.stack((ey[1], ez[1]))
         received = lax.ppermute(
@@ -394,7 +400,7 @@ def exchange_e_yee_shmap(state, mesh, n_devices, *, ranks):
         ez = ez.at[-1].set(jnp.where(interior, received[1], ez[-1]))
         return ey, ez
 
-    ey, ez = _exchange(ranks, state.ey, state.ez)
+    ey, ez = rank_pair_exchange(_exchange, mesh, ranks, state.ey, state.ez, local=local)
     return state._replace(ey=ey, ez=ez)
 
 

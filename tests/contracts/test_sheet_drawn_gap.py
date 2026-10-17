@@ -172,8 +172,6 @@ def test_k2_three_sheets(graded, cover):
 @pytest.mark.parametrize('graded', [False, True])
 @pytest.mark.parametrize('kind', ['volume', 'wire', 'lumped', 'stack', 'crossing', 'indices'])
 def test_k3_unchanged(graded, kind):
-    if graded and kind == 'crossing':
-        pytest.skip('graded periodic run is an existing refused lane')
     sim = model(graded, kind == 'crossing')
     grid = sim._build_realized_grid()
     y = lambda j: grid.node_of(1, j)

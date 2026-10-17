@@ -1,62 +1,94 @@
 ---
 title: "AI Agent Overview"
-description: "How to use rfx public docs and support boundaries when asking an AI agent to build or review simulations."
+description: "The five steps of an rfx simulation, the page for each, and the rules for reporting a result, for an AI agent building or reviewing one."
 sidebar:
   order: 1
 ---
 
-rfx is useful with AI coding agents, but public RF/FDTD claims still need the
-same support-boundary checks as human-authored code. Treat this page as the
-agent-facing entry point for safe, reproducible rfx work.
-The reviewed external-agent pages are available as Markdown alternates in the
-[LLM index](/rfx/llms.txt), alongside the typed API inventory and support contracts.
+This is the entry point for an AI agent that builds, runs or reviews an rfx
+simulation. The reviewed agent pages are also available as Markdown in the
+[LLM index](/rfx/llms.txt), next to the typed API inventory and the support
+contracts.
 
-## Agent operating rules
+## The five steps
 
-1. **Start from the supported lane.** Prefer uniform Cartesian Yee RF workflows
-   unless the task explicitly requires a shadow or experimental feature.
-2. **Check support before claiming physics.** Use the support matrix and
-   S-parameter matrix before describing a feature as validated.
-3. **Use examples before inventing loops.** Start with the closest file in
-   `examples/` or the public guide page, then adapt it.
-4. **Keep generated artifacts separate.** Store plots, Touchstone files, HDF5
-   snapshots, and reports in an output directory rather than committing runtime
-   artifacts.
-5. **Record uncertainty.** If a workflow uses non-uniform mesh, subgridding,
-   distributed execution, Floquet/Bloch, coaxial-line reflection, older coaxial
-   S-matrix paths, or advanced inverse design, say whether it is supported,
-   shadow, experimental, deprecated, or blocked.
+Every rfx result goes through the same five steps. Do them in order, and do not
+report a number until step 5 is done.
 
-## Core references
+1. **Declare the model.** Domain and mesh, boundaries, materials, conductors,
+   sources and ports, and the outputs you need, all before the run.
+   Pages: [Domain and mesh](/rfx/model/domain-mesh/),
+   [Boundaries](/rfx/model/boundaries/), [Materials](/rfx/model/materials/),
+   [Conductors](/rfx/model/conductors/), [Sources](/rfx/model/sources/),
+   [Ports](/rfx/model/ports/), and [which port or source to use](./port-selection).
+2. **Check the model on the grid.** Read what the grid built against what you
+   drew (`sim.preflight()`, `sim.fidelity_report()`), and expect a refusal for
+   any input the solver path does not implement.
+   Pages: [Check the model on the grid](/rfx/check/model-on-grid/),
+   [Refused inputs](/rfx/check/refusals/).
+3. **Run.** `run()` for analysis, `forward()` for gradients; a fixed number of
+   steps in closed structures and convergence studies.
+   Pages: [run() and forward()](/rfx/run/run-and-forward/),
+   [Memory and speed](/rfx/run/memory-and-speed/),
+   [Multi-device runs](/rfx/run/multi-device/).
+4. **Measure.** S-parameters, probes and fields, far field, resonances.
+   Pages: [S-parameters](/rfx/measure/s-parameters/),
+   [Probes and fields](/rfx/measure/probes-and-fields/),
+   [Far field and RCS](/rfx/measure/far-field-and-rcs/),
+   [Resonances](/rfx/measure/resonances/).
+5. **Show the evidence.** Was the run long enough for every frequency you read,
+   is the mesh converged over at least three meshes, and does the result
+   meet the accuracy bar. A gradient needs its own check from a longer run.
+   Pages: [Is the run long enough?](/rfx/evidence/simulation-time/),
+   [Mesh convergence](/rfx/evidence/mesh-convergence/),
+   [The accuracy bar](/rfx/evidence/accuracy-bar/),
+   [Checking a gradient](/rfx/evidence/gradients/).
 
-- [Quick Start](/rfx/start/first-simulation/)
-- [Sources and Ports](/rfx/model/ports/)
-- [Port and source selection](./port-selection)
-- [Design loop](./recipe-design-loop)
-- [Probes and S-Parameters](/rfx/measure/s-parameters/)
-- [Support Boundaries](/rfx/support/)
-- [Validation](/rfx/validation/)
-- `docs/guides/support_matrix.md`
-- `docs/guides/sparameter_support_matrix.md`
-- `docs/guides/physics_validation_evidence_rule.md`
+For design work, [Design regions](/rfx/design/design-regions/) says what
+`forward()` can differentiate with respect to.
 
-## Safe prompt skeleton
+## Rules for an agent
+
+1. **Check support before you claim physics.** The
+   [support page](/rfx/support/) gives each feature one status: supported,
+   limited, experimental, not documented or unsupported. Say which one applies
+   to every feature your result uses.
+2. **Start from an example.** Adapt the closest file in `examples/` or the code
+   on the relevant page before writing your own loop.
+3. **Read the refusal.** A refused input raises before the first step with the
+   reason and the way through. Follow it; do not work around it with a
+   lower-level call that skips the check.
+4. **Judge a trend, not one number.** A result is reported with the curve over
+   frequency, how it moves over at least three meshes or simulation times, and
+   the reference it is compared with.
+5. **Keep outputs out of the repository.** Plots, Touchstone files, snapshots
+   and reports go in an output directory.
+
+## A safe prompt
 
 ```text
-Use rfx for a uniform Cartesian Yee RF/FDTD workflow unless the support matrix
-says another lane is supported. Build from the closest public example, run the
-smallest smoke check, and report support status, commands, and artifacts. Do not
-claim broad validation for experimental lanes.
+Use rfx. Declare the model, read preflight and the fidelity report, and run the
+smallest case first. Report each feature's status from the support page, the
+check of whether each run was long enough for every frequency it reads, and
+how the result moves over three meshes.
+Do not report a number whose run or mesh has not been checked.
 ```
 
 ## Current API defaults
 
-Source amplitude defaults to `amplitude_kind="current"`; specify it explicitly
+Source amplitude defaults to `amplitude_kind="current"`; pass it explicitly
 when adapting older examples (witness: `tests/unit/sources/test_source_amplitude_kind.py`).
 `write_touchstone` uses standard Touchstone ordering
 (witness: `tests/unit/api/test_touchstone_interop.py`).
-The ADI default is `adi_cfl_factor=2.0`
-(source: `rfx/api/__init__.py::Simulation.__init__`).
 Matrix products use `jax.lax.Precision.HIGHEST`
 (witness: `tests/contracts/test_matmul_precision.py`).
-Use `BoundarySpec` (`from rfx.boundaries.spec import BoundarySpec, Boundary`) through `Simulation(boundary=...)` to select boundary faces.
+Boundaries per face: `BoundarySpec` and `Boundary` from `rfx.boundaries.spec`,
+passed as `Simulation(boundary=...)`.
+
+## For contributors
+
+[Architecture](./architecture) and [Where new code goes](./where-new-code-goes)
+describe the layers and where a change belongs; the recipes
+([design loop](./recipe-design-loop), [parameter sweeps](./recipe-parameter-sweeps),
+[resonance extraction](./recipe-resonance-extraction),
+[R/T measurement](./recipe-rt-measurement)) are worked examples.

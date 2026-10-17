@@ -99,6 +99,7 @@ from rfx._ringdown_pencil import (
     _decimate,
     _fit_residues,
     _pencil,
+    _on_nearest_bin,
     _to_original_rate,
     decimation_plan,
 )
@@ -1208,6 +1209,18 @@ class _NotCompleted(Exception):
         self.name, self.value, self.bar, self.message = name, value, bar, message
 
 
+def host_bins(bins, dtype):
+    """Keep pole identification and its host report on concrete frequencies."""
+    import jax
+
+    if isinstance(bins, jax.core.Tracer):
+        raise jax.errors.ConcretizationTypeError(
+            bins, "forward(ringdown=...) identifies poles on the host and needs "
+            "port_s11_freqs as concrete values; pass a numpy array built outside "
+            "the traced function")
+    return np.asarray(bins, dtype)
+
+
 class RingdownRun:
     """One ``run(..., ringdown=spec)``: probes in, run, probes out, complete.
 
@@ -1227,7 +1240,7 @@ class RingdownRun:
         if lane not in ("uniform", "graded"):
             raise ValueError(f"lane must be 'uniform' or 'graded', got {lane!r}")
         self.sim, self.spec, self.lane = sim, spec, lane
-        self.bins = None if bins is None else np.asarray(bins, dtype=np.float64)
+        self.bins = None if bins is None else host_bins(bins, np.float64)
         from rfx.core.yee import CurlBoundary
         self.port_boundary = CurlBoundary(pmc_faces=sim._boundary_spec.pmc_faces(),
                                           periodic=sim._periodic_flags())
@@ -1839,28 +1852,6 @@ def _pole_tails(model: RingdownModel, n_last: int, freqs) -> np.ndarray:
     zn1 = np.exp(-1j * wdt * n1)
     one_minus = -np.expm1(s[None, :] * dt - 1j * wdt[:, None])          # (nf, K)
     return dt * _cmul((zn1[:, None] / one_minus)[:, :, None], amp[None, :, :])
-
-
-def _on_nearest_bin(s, f_bins, record_s: float) -> np.ndarray:
-    """Each pole moved onto the nearest requested bin within ``1 / record_s``.
-
-    A record of length ``T`` places a pole's frequency only to about ``1/T``:
-    an unresolved pair is identified as one pole between its members, which
-    can sit far from every bin while the members sit on bins. For the floor a
-    pole is weighed as if it sat on the nearest bin it could be on; its decay
-    and residue are kept. A pole with no bin within ``1/T`` is left in place.
-    """
-    s = np.asarray(s, dtype=np.complex128)
-    fb = np.asarray(f_bins, dtype=np.float64)
-    if s.size == 0 or fb.size == 0 or not record_s > 0.0:
-        return s
-    f = s.imag / (2.0 * np.pi)
-    j = np.argmin(np.abs(fb[None, :] - f[:, None]), axis=1)
-    # a pole the record cannot tell from DC stays where it is: moved onto a
-    # low bin, a slowly relaxing static field would weigh like a mode there
-    near = ((np.abs(fb[j] - f) <= 1.0 / float(record_s))
-            & (np.abs(f) >= 1.0 / float(record_s)))
-    return np.where(near, s.real + 1j * 2.0 * np.pi * fb[j], s)
 
 
 def _tail_influence(model: RingdownModel, n_record: int, f_bins, spectra,

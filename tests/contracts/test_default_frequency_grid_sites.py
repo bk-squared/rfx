@@ -11,7 +11,7 @@ ALLOWLIST = {
     ('rfx/measurement/plan.py', 'build_measurement_plan'): 1,
     ('rfx/measurement/setup.py', 'build_planes'): 1,
     ('rfx/preflight/waveguide.py', 'resolve_waveguide_port_freqs'): 1,
-    ('rfx/runners/nonuniform.py', 'run_nonuniform_path'): 3,
+    ('rfx/runners/nonuniform.py', 'run_nonuniform_path'): 2,
     ('rfx/runners/subgridded.py', 'run_subgridded_path'): 1,
     ('rfx/runners/uniform.py', 'run_uniform'): 5,
     ('rfx/sparams/coax.py', 'compute_coax_msl_transition'): 1,

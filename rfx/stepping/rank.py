@@ -73,3 +73,16 @@ def rank_shard_map(fun, *, mesh, in_specs, out_specs, check_rep=False):
     # shard_map(check_rep=) calls, argument for argument (JAX 0.10.2).
     return jax.shard_map(local, mesh=mesh, in_specs=(P("x"), *specs),
                          out_specs=out_specs, check_vma=check_rep)
+
+
+def rank_pair_exchange(fun, mesh, ranks, a, b, *, local):
+    """Run a two-array ghost exchange ``fun(a, b, rank=)`` on x-slabs.
+
+    ``local=True``: the caller is already inside a per-rank map and ``ranks`` is
+    its scalar rank. Otherwise ``ranks`` is ``mesh_ranks(mesh)`` and the exchange
+    runs under its own rank_shard_map.
+    """
+    if local:
+        return fun(a, b, rank=ranks)
+    return rank_shard_map(fun, mesh=mesh, in_specs=(P("x"), P("x")),
+                          out_specs=(P("x"), P("x")), check_rep=False)(ranks, a, b)

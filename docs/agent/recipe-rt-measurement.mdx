@@ -38,7 +38,7 @@ sim.add_flux_monitor(axis="x", coordinate=trans_x, freqs=freqs_rt, name="trans")
 ### `run(until_decay=...)`
 
 Decay-adaptive termination (see the `Simulation.run()` docstring for the
-authoritative lane-by-lane description). The stop criterion depends on the
+authoritative description per solver path). The stop criterion depends on the
 boundary: on absorbing (CPML/UPML) boundaries — including the non-uniform
 `dx/dy/dz`-profile runner — the run stops when the total interior-domain
 energy decays to `until_decay * peak` (issue #169); on closed/PEC boundaries
@@ -149,11 +149,11 @@ exactly `hi - lo`. No nudge is needed or wanted.
 
 What DOES bite is the float route to the corner. `center + d/2` can land one
 ulp above the node that `hi` is meant to be, the half-open test then keeps
-that node, and the slab realizes one cell too many against an oracle
+that node, and the slab realizes one cell too many against a closed form
 evaluated at `d`. Spell on-lattice corners in lattice arithmetic —
 `i_lo = round((center - d/2)/dx)`, `x_lo = i_lo*dx`,
 `x_hi = (i_lo + round(d/dx))*dx` — and assert the realized extent from
-`sim.fidelity_report()` before quoting anything against a Fresnel oracle.
+`sim.fidelity_report()` before quoting anything against the Fresnel closed form.
 `examples/tutorials/slab_rt_flux_monitor.py` does both.
 
 ### (e) dtype-truncation warnings are expected, not errors
@@ -195,9 +195,9 @@ shape error, and with mean gates alone that case passed while the true slab
 permittivity was 12.33% away from what the FDTD built (issue #812). If you need
 an accuracy figure for a slab, quote per-fringe deviations, not band means.
 
-For dispersive media there is currently **no tracked R(f)/T(f) accuracy oracle**
+For dispersive media there is currently **no tracked R(f)/T(f) check against a closed form**
 in this repository — treat dispersive R/T results as unvalidated against
-analytic references until such a gate exists. Two source-verifiable facts to
+analytic references until such a check exists. Two source-verifiable facts to
 keep in mind when comparing against other solvers: rfx discretizes
 Lorentz/Debye poles with a second-order central-difference ADE
 (`rfx/materials/lorentz.py`), while some other FDTD solvers use
@@ -210,7 +210,7 @@ necessarily a usage error in either tool.
 
 - `examples/tutorials/slab_rt_flux_monitor.py` — **the recommended path**: `add_flux_monitor`
   + two-run field-level reference subtraction via the `Simulation` API, with an
-  analytic Fresnel witness and an energy-conservation readout (on the coarse demo
+  analytic Fresnel comparison and an energy-conservation readout (on the coarse demo
   grid R+T sits slightly above 1; refine `dx` to tighten it). Start here.
 
 ## Companion primitives
