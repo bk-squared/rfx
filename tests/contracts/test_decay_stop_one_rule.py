@@ -251,11 +251,17 @@ def test_stop_is_the_declared_rule_on_an_independent_history(mesh, monkeypatch,
         record_property(f"stop_I{interval}", (n_end, expected, got))
         assert expected is not None and got == expected, (interval, n_end, expected, got)
         if mesh.startswith("graded"):
-            # The loop's own rows: same boundaries, W and reference to 1e-4.
+            # The loop's own rows: same boundaries, W and reference to 1e-4, or
+            # within 9 float32 ULP of the largest W (the cross-trace per-step
+            # bar). W is a float32 sum whose leapfrog H^(n-1/2).H^(n+1/2) cross
+            # term cancels as W decays, so its relative rounding grows as W falls:
+            # graded-periodic on arm64 measured 1.26e-4 relative at W_peak/1.5e4
+            # after #1882's drive change (5.6e-5 before), 1.1e-5 absolute, below
+            # one float32 ULP of W_peak.
             checks = returned["decay_checks"]
             assert [c for c, _, _ in checks] == [c for c, _, _ in rows]
             np.testing.assert_allclose(np.asarray(checks)[:, 1:], np.asarray(rows)[:, 1:],
-                                       rtol=1e-4)
+                                       rtol=1e-4, atol=9 * float(np.spacing(np.float32(w.max()))))
 
 
 # --- (d) ---------------------------------------------------------------------
