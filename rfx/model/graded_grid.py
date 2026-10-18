@@ -747,7 +747,8 @@ def _assert_declared_floor_at_runtime(profile_full, declared_min, axis,
                 "deformation family actually reaches, or shorten dt."
             )
 
-    jax.debug.callback(_check, jnp.min(jnp.asarray(profile_full)))
+    from rfx._traced_check import traced_check
+    traced_check("graded mesh", "declared cell floor", _check, jnp.min(jnp.asarray(profile_full)))
 
 
 def _warn_float32_width_resolution(profile, axis):
@@ -1013,7 +1014,8 @@ def _assert_traced_cells_match_nominal(profile, nominal, window, axis):
                 f"width {float(width)!r}, nominal width {float(expected)!r}; "
                 f"outside declared traced_cells window {window!r}.")
 
-    jax.debug.callback(_check, jnp.any(bad), first, realized[first], nominal32[first])
+    from rfx._traced_check import traced_check
+    traced_check("graded mesh", "fixed cells", _check, jnp.any(bad), first, realized[first], nominal32[first])
 
 
 def _assert_traced_index_matches_realized(
@@ -1085,7 +1087,8 @@ def _assert_traced_index_matches_realized(
                 "or give the position by node index." + hint
             )
 
-    jax.debug.callback(_check, nearest, agrees)
+    from rfx._traced_check import traced_check
+    traced_check("graded mesh", "node index", _check, nearest, agrees)
 
 
 def z_position_to_index(grid: NonUniformGrid, z_phys: float) -> int:

@@ -97,7 +97,7 @@ class SheetConductors:
         materials = getattr(self, 'materials', None)
         if ctx is not None and materials is not None:
             from rfx.core.yee import lumped_components
-            import jax
+            from rfx._traced_check import traced_check
             import jax.numpy as jnp
             for axis, (mask, film) in enumerate(zip(
                     (ctx.mask_ex, ctx.mask_ey, ctx.mask_ez),
@@ -111,10 +111,7 @@ class SheetConductors:
                             "an f0 sheet and a lossy film share edges "
                             f"on {'xyz'[axis]} at {edges.tolist()}")
                 overlap = jnp.asarray(mask) & (film != 0)
-                if isinstance(overlap, jax.core.Tracer):
-                    jax.debug.callback(check, overlap, ordered=True)
-                else:
-                    check(overlap)
+                traced_check("thin conductors", "sheet/film overlap", check, overlap, ordered=True)
         return ctx
 
 

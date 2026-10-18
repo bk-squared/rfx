@@ -21,7 +21,8 @@ from rfx.backend import BackendClass, backend_class
     ("tpu-unknown", False, "slab", "unknown"),
 ])
 def test_faked_platform_table(monkeypatch, platform, accelerator, writeback, memory):
-    expected = BackendClass(platform, accelerator, writeback, memory)
+    expected = BackendClass(platform, accelerator, writeback, memory,
+                            platform in ("cpu", "gpu", "cuda", "rocm"))
     monkeypatch.setattr(jax, "default_backend", lambda: platform)
     assert backend_class() == expected
     # Explicit classification must not query the process's backend.
