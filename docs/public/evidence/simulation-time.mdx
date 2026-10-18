@@ -1,20 +1,224 @@
 ---
 title: Is the run long enough?
-description: The per-frequency decay check and tail extrapolation.
+description: The per-frequency settling check, the decay stop, and tail extrapolation by matrix pencil.
 sidebar:
   order: 1
 ---
 
-<p data-rfx="note">Being written for 2.0 (tracker 1171).</p>
-
 ## What it is for
+
+Every frequency-domain result rfx gives you is a Fourier transform of a time
+signal of finite length: S-parameters, DFT planes, flux, far fields and
+resonances. If the run ends while the structure is still ringing, each of them
+misses the part of the signal beyond the end, and nothing in the curve says so.
+A resonator with quality factor Q at frequency f decays over roughly
+Q / (π f) seconds, so a high-Q structure needs a long run.
+
+This page is the check that the simulation time was long enough for the
+frequencies you read. Run it on every result you intend to report, after the
+[check of the model on the grid](/rfx/check/model-on-grid/) and before the
+[mesh convergence study](/rfx/evidence/mesh-convergence/).
 
 ## How to use it
 
+Set the simulation time with one of three `run()` arguments:
+
+| Argument | Meaning |
+|---|---|
+| `n_steps=N` | exactly N time steps |
+| `num_periods=P` | P periods at `freq_max` (default 20, used when nothing else is given) |
+| `until_decay=1e-3` | step until the field energy left in the domain outside the absorbers after the source has ended falls to that fraction of its largest value since then, up to `decay_max_steps` (see [The decay stop](#the-decay-stop)) |
+
+After the run, read `result.settling_witness["status"]`. The model below is a
+lossy dielectric slab between a 50 Ω lumped port and a probe, on a coarse 2 mm
+mesh so it runs in seconds. It is run for three simulation times:
+
+```python
+import numpy as np
+from rfx import Box, GaussianPulse, Simulation
+
+
+def build():
+    sim = Simulation(freq_max=4e9, domain=(0.06, 0.05, 0.04), dx=2e-3,
+                     boundary="cpml", cpml_layers=8)
+    sim.add_material("slab", eps_r=4.0, sigma=0.01)
+    sim.add(Box((0.024, 0.019, 0.014), (0.036, 0.031, 0.026)), material="slab")
+    sim.add_port((0.018, 0.025, 0.020), "ez", impedance=50.0,
+                 waveform=GaussianPulse(f0=3e9, bandwidth=0.8))
+    sim.add_probe((0.044, 0.025, 0.020), "ez")
+    return sim
+
+
+for n in (200, 300, 400):
+    result = build().run(n_steps=n, s_param_freqs=np.linspace(2e9, 4e9, 11),
+                         skip_preflight=True)
+    check = result.settling_witness
+    print(n, check["status"], f"{result.settling_db:.1f} dB")
+```
+
+```text
+200 undetermined nan dB
+300 pass -118.9 dB
+400 pass -98.0 dB
+```
+
+At 200 steps the source pulse has not ended inside the run, so the check
+cannot be formed and says `undetermined` (its `reason` says the source end is
+unavailable, once for each signal judged). From 300 steps on it passes. Both values are far below the bar,
+and the second is not lower than the first: the dB figure is not a convergence
+measure. The status is the verdict.
+
+The four states:
+
+| `status` | Meaning | What to do |
+|---|---|---|
+| `pass` | At every frequency the result reads, the estimated part of the value beyond the end of the run is at most 1 % of the value (−40 dB). | Nothing for the simulation time. Check the mesh next. |
+| `fail` | At some frequency that share is above 1 %. `worst_freq_hz` names it. | Run longer, or use [tail extrapolation](#tail-extrapolation-by-matrix-pencil). |
+| `undetermined` | The check could not be formed: the source was still on at the end of the run, the part of the run after the source is too short to fit, no decaying term was found, the two fits disagree on whether a frequency passes, a growing term was found, or the fit would exceed its memory bound. `reason` says which. | Not a pass. Run longer; if the reason is a growing term, look for an instability first. |
+| `absent` | Nothing was recorded to judge, or a far-field box or DFT plane is read with no probe recording the fields it comes from. | Not a pass. Add a probe away from every source and port, somewhere the field is live. |
+
+`result.settling_db` is the worst share in dB; it is NaN or `None` when the
+check was not formed. One run's status is a statement about that run. When the simulation
+time matters to a result you report, read the result itself over at least three
+simulation times and say how it moves, as the
+[accuracy bar](/rfx/evidence/accuracy-bar/) asks.
+
+### The decay stop
+
+`run(until_decay=1e-3)` steps in chunks. Once the source has ended, it reads
+the field energy stored in every cell outside the absorbers every
+`decay_check_interval` steps, and stops when that energy is below the given
+fraction of the largest value it has had since the source ended, at two checks
+in a row (`decay_energy_consecutive`, at least 2), or at `decay_max_steps`. The
+source's own near field does not set the reference, so a resonant structure
+runs as long as the threshold asks. Each run records what ended it in
+`result.diagnostics` (`until_decay.stop`): the threshold, `decay_max_steps`,
+or the float32 floor. When the energy stops falling at about 10⁻¹² of the
+source's peak energy (single-precision rounding), the run stops there and
+warns.
+
+In a lossy dielectric the run can last longer than the field rings: charge
+moved onto the dielectric's surfaces during the drive relaxes with the time
+constant ε/σ afterwards. That field is quasi-static, outside the band, and the
+record stays correct; the stop record says what ended the run.
+
+In a closed PEC box the energy does not decay. There the uniform-mesh path
+watches a single field sample instead, which is sound only for a lossy or
+radiating structure, and the graded mesh refuses `until_decay`. Use a fixed
+`n_steps` in closed structures and in convergence studies. Read the settling
+check after a run stopped by `until_decay`, as after any other.
+
+On absorbing boundaries, `run(until_decay=..., radiated_flux_box=((x0, y0, z0),
+(x1, y1, z1)))` stops on the power flowing out through a box around the
+structure instead of the energy inside. Field that does not radiate does not
+hold it back. The default pulse leaves no static charge at a current source,
+so its field does not hold back either stop.
+
+### Tail extrapolation by matrix pencil
+
+When a run was cut while a resonance still rings, rfx can add the missing tail
+instead of running longer. After the source is off, every port voltage and
+current is a sum of damped oscillations. rfx fits their poles to the late part
+of the time signal by the matrix pencil method and adds each spectrum's part
+beyond the end of the run in closed form. rfx calls this ring-down completion;
+it is the same idea as Prony or matrix-pencil extrapolation of a time signal,
+or the AR filter of the CST transient solver.
+
+It applies to wire ports (`add_port(..., extent=...)`) and runs a fixed
+simulation time:
+
+```text
+from rfx.ringdown import RingdownSpec
+
+result = sim.run(n_steps=n, ringdown=RingdownSpec())
+s_completed = result.ringdown.s_params      # same frequencies as result.s_params
+print(result.ringdown.report.summary())     # fitted poles and the checks
+```
+
+`report.ok` tells you whether the completion is usable. `s_params` is `None`
+when no completion was produced, and the plain result is returned with the
+failed check named in the report and a warning. The options you are most
+likely to change, all on `RingdownSpec`:
+
+| Option | Default | Meaning |
+|---|---|---|
+| `window_start` | 0.5 | The fit uses the last part of the run, from `window_start × T` to the end. The source must be off there. |
+| `witness_tol` | 1e-3 | The largest difference in \|S\| between the two fits (below) that still counts as agreement. |
+| `identification_probes` | none | Extra field probes, `((x, y, z), "ez")` pairs, used only to find the poles. Add one inside a weakly coupled high-Q resonator, which the port alone may not see. |
+
+`run(..., ringdown=RingdownSpec(), until_identified=True)` treats `n_steps` as
+the longest run. It stops at the first simulation time where the source is off
+over the fit windows, the two fits (below) agree within `witness_tol` at
+two checks in a row, the run is long enough for the slowest pole that can
+still move S, and the completed S is passive with no growing pole. `result.ringdown.stop` says where
+it stopped, or which condition failed when it reached `n_steps`.
+
 ## What is checked
+
+**The settling check** (`settling_witness`). For each frequency the result reads,
+rfx fits the poles still present in the time signal after the source ends, on
+the second half of the run (or from the source's end if that is later), and
+computes the part of the value that lies beyond the end of the run. It does the
+same fit on a second window and requires the two to agree on which frequencies
+pass. A term that does not change with time (a static field left by the source)
+is exempt, because it does not ring. A growing term above 1 % of a frequency's
+value makes the result `undetermined`. The frequencies read are those every
+spectral output of the result stores: S-parameter frequencies, DFT planes, flux
+monitors and the far-field box.
+
+The signals judged are the port voltages and currents behind `run()`'s
+S-parameters, the waveguide port signals, and your probes. A probe on a source
+or port cell measures how the source turns off, not how the structure rings, so
+rfx uses the other probes when there are any and marks the result
+`source_dominated` when there are not. The microstrip, waveguide and coaxial S-parameter calculators run the
+same check on their own port signals, per drive, and warn when a drive does not
+pass.
+
+**Tail extrapolation** (`result.ringdown.report`). Before completing, rfx
+rebuilds the port voltages and currents from the run's field samples and checks
+that they reproduce the run's own frequency-domain accumulators. After
+completing, it fits the poles a second time on a window that starts twice as
+early and completes the same run with them; the largest difference of the two
+answers is the check, judged against `witness_tol`. When the source is still
+on in that earlier window, a shorter second window is compared instead. The
+report also checks that no completed |S| exceeds 1 by more than
+`passivity_tol` and that no growing pole was kept. None of these checks is an
+error bound.
 
 ## What is refused, and the way through
 
+| Input | Solver path | What happens | Instead |
+|---|---|---|---|
+| `until_decay` | multi-device (`devices=`), ADI, subgridded | refused before the first step: these paths run exactly `n_steps` | set `n_steps` or `num_periods` |
+| `until_decay` with a plane-wave source driven by a `CustomWaveform` | all | refused: the waveform has no time at which it is off | set `n_steps` |
+| `until_decay` | graded mesh with closed boundaries | refused: a closed domain's energy does not decay and the graded path has no single-sample fallback | set `n_steps`, or use absorbing boundaries |
+| a flux monitor with `dft_window="hann"` or `"tukey"`, with `until_decay` | uniform and graded mesh | refused: a window needs the run's length in advance | the default `dft_window="rect"`, or `n_steps` |
+| `decay_energy_consecutive` below 2 | uniform and graded mesh | refused | 2 or more |
+| `ringdown=` with `until_decay` | all | refused: the completion needs a run of fixed length | pass `n_steps` or `num_periods` |
+| `ringdown=` with `devices=` | multi-device | refused | run on one device |
+| `ringdown=` | ADI, subgridded, periodic axes, a plane-wave source, a Kerr (χ³) material, `mode` other than `"3d"`, `stencil_order=4` | refused, with the reason | run without `ringdown=` and lengthen the run |
+| `ringdown=` with a microstrip, waveguide, coaxial or Floquet port, or a one-cell lumped port (`add_port` without `extent=`) | all | refused: only wire ports are completed | declare a wire port, or lengthen the run |
+| `ringdown=` with `reference_plane_cells=` on a port | all | refused | drop `reference_plane_cells` |
+| `ringdown=` with no driven wire port | all | `ValueError` | declare and drive a wire port |
+| `ringdown=` with more than one wire port | uniform mesh | refused: the uniform path builds the S-matrix from separate per-port runs | use a graded mesh, where one run fills the driven column |
+| `ringdown=` with `compute_s_params=False` | all | refused: there is nothing to complete | drop one of the two |
+| `ringdown=` when a source is on in the fit window | all | refused before the run | delay `window_start`, or run longer |
+
 ## Accuracy
 
+- The −40 dB bar is `_SETTLING_WITNESS_DB` in `rfx/sparams/_common.py`, pinned
+  by `tests/unit/sparams/test_settling_witness.py`; the per-frequency check is
+  `rfx/sparams/_tail_witness.py`.
+- On signals built from known damped oscillations, the completion reproduces
+  the DFT of the infinitely long signal from a run that stops while they are
+  still large, and finds the poles they were made of
+  (`tests/unit/sparams/test_ringdown_oracles.py`).
+
 ## See also
+
+- [The accuracy bar](/rfx/evidence/accuracy-bar/): judging a result over three
+  simulation times.
+- [Gradients](/rfx/evidence/gradients/): a gradient needs its own check of the
+  simulation time.
+- [Simulation API](/rfx/api/simulation/): `run()` arguments.
+- [rfx terms](/rfx/start/terms/): settling check, ring-down completion.
