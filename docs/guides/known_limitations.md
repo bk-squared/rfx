@@ -115,15 +115,18 @@ Until this is fixed, centre a flux box on its source and keep it off magnetic fa
 
 ### Subpixel smoothing makes a curved high-contrast dielectric's resonance converge slowly, and can be worse than no smoothing.
 
-Every `subpixel_smoothing` setting (`True` and `"kottke_pec"`, on uniform and graded meshes) keeps only the diagonal of the
-smoothed inverse-permittivity tensor, so a field component oblique to an interface that is not grid-aligned sees the wrong
-permittivity in the boundary cells. On a curved high-contrast body (an eps_r 38 rod or cylinder, a dielectric resonator)
-the resonant frequency is off by 1-2 % on practical meshes and closes only first order with refinement; on the measured
-case it was further off than the same model without smoothing at every mesh, by up to 8x (uniform `True` setting, against
-an independent solver; the other settings share the code).
-Grid-aligned faces are not affected. Until the fix lands, judge such a resonance by a mesh series of at least three
-refinements and compare it with `subpixel_smoothing=False`; if the two series disagree, neither has converged — refine
-further, and do not take the unsmoothed series as the reference.
+`subpixel_smoothing=True` and `"kottke_pec"` keep only the diagonal of the smoothed inverse-permittivity tensor.
+True gives first-order convergence at curved dielectric interfaces, worst at high contrast (eps ~30 and above).
+A measured eps-38 rod resonance was off by 1–2% on practical meshes, and up to 8x further off than without smoothing.
+Grid-aligned faces are not affected. Judge such resonances by at least three refinements and compare against
+`subpixel_smoothing=False`; disagreement means neither series has converged.
+
+`subpixel_smoothing="full_tensor"` uses full anisotropic averaging (Farjadpour 2006; Oskooi 2009;
+Werner–Bauer–Cary 2013 node form) on uniform single-device meshes. Extinction cross section on a synthetic eps-4
+sphere measured second-order convergence over three meshes. This is not a convergence-order claim for high-contrast rods.
+Graded meshes, multiple devices, ADI, subgrids, UPML, and the waveguide S driver refuse this option.
+Kerr and declared-shape gradients remain refused for every smoothing option.
+The full_tensor diagonal can jump where an interface enters an absorber pad (triplet interior, Kottke midpoint pad); oblique TFSF refuses a noninvariant padded periodic axis; use a closed box (#1632).
 Tracker: #1632
 
 ### Conformal PEC makes a curved metal body electrically larger, and is less accurate than the staircase.

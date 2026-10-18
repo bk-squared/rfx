@@ -19,12 +19,18 @@ class TensorOperands:
     conformal_weights: tuple | None = None
     inv_eps_smooth: bool = field(default=False, metadata={"static": True})
 
+    node_smoothing: object = field(default=None, kw_only=True)
+
     @classmethod
-    def of(cls, eps=None, inv_eps=None, conformal_weights=None, inv_eps_smooth=False):
+    def of(cls, eps=None, inv_eps=None, conformal_weights=None, inv_eps_smooth=False,
+           *, node_smoothing=None):
         """Represent an absent tensor by None, never an empty operand set."""
-        if eps is None and inv_eps is None and conformal_weights is None:
+        from rfx.geometry.node_tensor import SmoothedEps
+        if isinstance(eps, SmoothedEps):
+            node_smoothing, eps = eps.nodes, eps.diagonal
+        if eps is None and inv_eps is None and conformal_weights is None and node_smoothing is None:
             return None
-        return cls(eps, inv_eps, conformal_weights, inv_eps_smooth)
+        return cls(eps, inv_eps, conformal_weights, inv_eps_smooth, node_smoothing=node_smoothing)
 
 
 def attach_tensor(materials, operands):
@@ -97,13 +103,22 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
             # becomes identical to the device and S11 = 0.
     elif subpixel_smoothing:
         from rfx.geometry.smoothing import (
-            compute_smoothed_eps, smoothed_shape_pairs, warn_curved_high_contrast,
+            smoothed_shape_pairs, warn_curved_high_contrast,
         )
         # #1043 stage B: same pad continuation as the Stage-2 site above.
         shape_eps_pairs, _unextendable = smoothed_shape_pairs(sim, grid)
-        warn_curved_high_contrast(shape_eps_pairs, sim=sim)
+        if subpixel_smoothing != "full_tensor":
+            warn_curved_high_contrast(shape_eps_pairs, sim=sim)
         if shape_eps_pairs:
-            aniso_eps = compute_smoothed_eps(grid, shape_eps_pairs, background_eps=1.0)
+            if subpixel_smoothing == "full_tensor":
+                from rfx.geometry.node_tensor import compute_node_tensor_eps
+                aniso_eps = compute_node_tensor_eps(
+                    grid, shape_eps_pairs, background_eps=1.0,
+                    field_dtype=(jnp.float64 if sim._precision == 'float64'
+                                 else materials.eps_r.dtype))
+            else:
+                from rfx.geometry.smoothing import compute_smoothed_eps
+                aniso_eps = compute_smoothed_eps(grid, shape_eps_pairs, background_eps=1.0)
 
     # Conformal PEC (Stage 1): compute weights and produce anisotropic
     # eps. Skipped when Stage 2 unified path is active (use_kottke_pec)
@@ -134,6 +149,10 @@ def form_tensor_operands(sim, grid, materials, *, subpixel_smoothing,
 
 def finish_tensor_operands(materials, aniso_eps, conformal_weights):
     """Merge conformal volume eps, then add edge-owned lumped capacitors."""
+    from rfx.geometry.node_tensor import SmoothedEps
+    nodes = aniso_eps.nodes if isinstance(aniso_eps, SmoothedEps) else None
+    if nodes is not None:
+        aniso_eps = aniso_eps.diagonal
     # Conformal PEC (Stage 1) permittivity, #1373: the same four-cell
     # edge mean of the volume permittivity the plain E update uses, on the
     # run's final periodic flags (after the TFSF / 2-D overrides), divided
@@ -156,7 +175,7 @@ def finish_tensor_operands(materials, aniso_eps, conformal_weights):
     # conformal weights must act on the volume, never on a lumped C.
     aniso_eps = add_lumped_eps(aniso_eps, materials.eps_r_lumped)
 
-    return aniso_eps
+    return SmoothedEps(aniso_eps, nodes) if nodes is not None else aniso_eps
 
 
 def form_reference_operands(grid, materials, *, subpixel_smoothing,
@@ -191,9 +210,17 @@ def form_reference_operands(grid, materials, *, subpixel_smoothing,
     return ref_aniso_eps, ref_aniso_inv_eps
 
 
+def refuse_full_tensor_conformal(smoothing, conformal, pec_shapes):
+    """Partial PEC edges have no free-edge node coupling model."""
+    if smoothing == 'full_tensor' and conformal and pec_shapes:
+        from rfx.model.smoothing_admission import FULL_TENSOR_MESSAGE
+        raise NotImplementedError(FULL_TENSOR_MESSAGE + '; conformal PEC is not supported')
+
+
 def refuse_tensor_conflicts(sim, grid, *, subpixel_smoothing, conformal_pec,
                             debye_spec, lorentz_spec, pec_shapes, kerr_chi3=None):
     """Refuse updates that cannot read geometry tensors, in run entry order."""
+    refuse_full_tensor_conformal(subpixel_smoothing, conformal_pec, pec_shapes)
     if subpixel_smoothing:
         from rfx.geometry.smoothing import refuse_pmc_smoothing
         refuse_pmc_smoothing(sim, grid)

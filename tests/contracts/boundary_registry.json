@@ -300,6 +300,16 @@
       "kind": "roll/diff"
     },
     {
+      "file": "rfx/core/node_tensor.py",
+      "function": "off_diagonal",
+      "kind": "neighbour"
+    },
+    {
+      "file": "rfx/core/node_tensor.py",
+      "function": "off_diagonal",
+      "kind": "roll/diff"
+    },
+    {
       "file": "rfx/core/yee.py",
       "function": "_diff_bwd_o",
       "kind": "neighbour",
@@ -426,6 +436,16 @@
       "kind": "difference"
     },
     {
+      "file": "rfx/geometry/node_tensor.py",
+      "function": "_next",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/geometry/node_tensor.py",
+      "function": "compute_node_tensor_eps",
+      "kind": "neighbour"
+    },
+    {
       "file": "rfx/geometry/port_termination.py",
       "function": "lattice_intersects_aperture",
       "kind": "roll/diff"
@@ -448,6 +468,16 @@
     {
       "file": "rfx/geometry/rasterize_grid.py",
       "function": "sheet_footprint_traced",
+      "kind": "roll/diff"
+    },
+    {
+      "file": "rfx/geometry/triplet_tensor.py",
+      "function": "fractions",
+      "kind": "difference"
+    },
+    {
+      "file": "rfx/geometry/triplet_tensor.py",
+      "function": "fractions",
       "kind": "roll/diff"
     },
     {

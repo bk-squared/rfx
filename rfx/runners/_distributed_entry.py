@@ -8,6 +8,8 @@ from rfx.api._spec import Result, _warn_if_nonfinite_result
 
 def refuse_distributed_options(self, *, subpixel_smoothing=False, **options):
     """Use the same option refusal on imperative and differentiable entries."""
+    from rfx.model.smoothing_admission import admit_full_tensor
+    admit_full_tensor(self, subpixel_smoothing, distributed=True)
     # One device on a graded mesh is the non-uniform lane, which
     # carries neither snapshot nor conformal_pec, nor until_decay on
     # closed boundaries.
