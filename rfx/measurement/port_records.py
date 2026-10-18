@@ -17,7 +17,7 @@ def pack_port_records(kinds, accumulators, metadata, *, graded=False, freqs=None
             wire.append((meta, accs))
         elif kind == 'lumped':
             if graded:
-                meta = LumpedPortSParamSpec(*meta[:4], freqs, meta[4], meta[7])
+                meta = LumpedPortSParamSpec(*meta[:4], freqs, float(meta[4]), bool(meta[7]))
                 accs = (accs[0], accs[1], accs[4])
             lumped.append((meta, accs))
         else:
