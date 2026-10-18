@@ -124,7 +124,7 @@ def eager_drive_scales(eps, sigma, mesh, drives, dt, ranks, reduce_devices):
         for i, (owner, _, _, _, volume, pole) in enumerate(drives):
             cb = current_source_cb(jnp.where(rank == owner, eps[i], 1.),
                 jnp.where(rank == owner, sigma[i] + pole, 0.), dt)
-            values.append(jnp.where(rank == owner, cb / volume, 0.))
+            values.append(jnp.where(rank == owner, cb * (jnp.float32(1) / volume), 0.))
         return jnp.stack(values)
     values = jax.vmap(local)(*means, ranks)
     return _gather_drive_map(mesh, tuple(d[0] for d in drives))(values) if reduce_devices else values

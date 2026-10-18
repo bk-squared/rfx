@@ -123,7 +123,7 @@ def material_drive_scales(eps_r, sigma, mesh, drives, dt, *, ranks, grid=None,
             # finite so the cotangent through the mask stays zero, not NaN.
             cb = current_source_cb(jnp.where(owner, eps_c, 1.0),
                                    jnp.where(owner, sigma_c + pole, 0.0), dt)
-            out.append(jnp.where(owner, cb / dV, 0.0))
+            out.append(jnp.where(owner, cb * (jnp.float32(1) / dV), 0.0))
         values = jnp.stack(out)
         return lax.psum(values, "x") if reduce_devices else values[None, :]
 
