@@ -293,7 +293,9 @@ def test_calibration_from_declaration_and_leader_correction(generated):
         assert f"_AdMemoryMixin.{name}" in definitions
     nonuniform = generated["files"]["rfx/nonuniform.py"]
     all_units = set().union(*(nonuniform[r] for r in "SMAG"))
-    assert "run_nonuniform" in all_units
+    assert "run_nonuniform" not in all_units
+    assert "run_nonuniform" in {name for name, _, _ in gate.units(real_tree("rfx/stepping/graded_loop.py"))}
+    assert "run_nonuniform" in gate.public_names(gate.Sources(REPO), "rfx.stepping")
     # Graded-grid construction (NonUniformGrid, its module-level tables) moved to
     # rfx/model/ in #1643; nonuniform.py now only imports it, counted under I.
     assert "NonUniformGrid.node_of" not in all_units

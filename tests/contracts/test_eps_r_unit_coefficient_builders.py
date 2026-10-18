@@ -92,7 +92,7 @@ BUILDERS = {
         "mixed Debye+Lorentz ca/cb/cc on every supported lane",
     ("rfx/stepping/uniform_setup.py", "_update_e_with_optional_dispersion"):
         "uniform mixed Debye+Lorentz update",
-    ("rfx/nonuniform.py", "_update_e_nu_dispersive"):
+    ("rfx/stepping/graded_setup.py", "_update_e_nu_dispersive"):
         "graded mixed Debye+Lorentz update",
 }
 

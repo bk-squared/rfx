@@ -65,11 +65,11 @@
       "function": "update_e_lorentz"
     },
     {
-      "file": "rfx/nonuniform.py",
+      "file": "rfx/stepping/graded_setup.py",
       "function": "_curl_h_nu"
     },
     {
-      "file": "rfx/nonuniform.py",
+      "file": "rfx/stepping/graded_setup.py",
       "function": "_update_e_nu_dispersive"
     },
     {

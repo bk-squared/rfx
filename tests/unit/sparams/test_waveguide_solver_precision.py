@@ -15,7 +15,7 @@ import numpy as np
 import pytest
 
 from rfx import Simulation
-import rfx.nonuniform as nonuniform_core
+import rfx.stepping.graded_setup as nonuniform_core
 import rfx.simulation as uniform_core
 import rfx.sources.waveguide_port as waveguide_port
 import rfx.measurement.waveguide_s as _wg_move_waveguide_s

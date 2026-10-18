@@ -170,6 +170,8 @@ def test_export_init_form(path):
             assert mapping == {
                 "core_step_invariants": "rfx.stepping.uniform_setup",
                 "make_core_step": "rfx.stepping.uniform_setup",
+                "run_nonuniform": "rfx.stepping.graded_loop",
+                "run_nonuniform_until_decay": "rfx.stepping.graded_loop",
                 "run_uniform_loop": "rfx.stepping.uniform_loop",
                 "run_uniform_until_decay": "rfx.stepping.uniform_loop",
             }

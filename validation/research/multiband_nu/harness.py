@@ -16,7 +16,8 @@ import jax
 import jax.numpy as jnp
 
 from rfx.core.yee import MaterialArrays
-from rfx.nonuniform import _build_nu_scan, make_nonuniform_grid
+from rfx.stepping.graded_setup import _build_nu_scan
+from rfx.nonuniform import make_nonuniform_grid
 
 from .remis_energy import energy_weights, remis_energy
 

@@ -7,7 +7,8 @@ import numpy as np
 import pytest
 
 from rfx.core.yee import init_materials
-from rfx.nonuniform import _build_nu_scan, make_nonuniform_grid
+from rfx.stepping.graded_setup import _build_nu_scan
+from rfx.nonuniform import make_nonuniform_grid
 from rfx.stepping import HookPoint
 from rfx.stepping import graded
 
