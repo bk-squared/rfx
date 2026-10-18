@@ -1,20 +1,164 @@
 ---
 title: Probes and fields
-description: Probes, time series, frequency-domain planes and flux monitors.
+description: Point probes and time series, DFT planes, flux monitors, snapshots and the final fields.
 sidebar:
   order: 1
 ---
 
-<p data-rfx="note">Being written for 2.0 (tracker 1171).</p>
-
 ## What it is for
+
+FDTD computes every field component in every cell at every step, but keeping
+all of that is rarely possible. You choose what to record before the run: the
+time signal at a few points, the spectrum of one component over a plane at a
+few frequencies, the power crossing a plane, or occasional pictures of the
+field. This page is each of those, what it returns and in which units, and
+where each one runs. S-parameters, far fields and resonances have their own
+pages.
 
 ## How to use it
 
+One point source, a probe, a DFT plane and two flux planes, one on each side
+of the source:
+
+```python
+import numpy as np
+from rfx import GaussianPulse, Simulation, flux_spectrum
+
+sim = Simulation(freq_max=6e9, domain=(0.06, 0.04, 0.04), dx=2e-3,
+                 boundary="cpml", cpml_layers=8)
+sim.add_source((0.03, 0.02, 0.02), "ez", amplitude_kind="current",
+               waveform=GaussianPulse(f0=3e9, bandwidth=0.8))
+sim.add_probe((0.045, 0.02, 0.02), "ez")
+sim.add_dft_plane_probe(axis="x", coordinate=0.045, component="ez",
+                        freqs=np.array([2e9, 3e9, 4e9]))
+for x in (0.012, 0.048):
+    sim.add_flux_monitor(axis="x", coordinate=x, freqs=np.array([2e9, 3e9, 4e9]))
+
+result = sim.run(n_steps=600, skip_preflight=True)
+print(result.time_series.shape)
+for name, plane in result.dft_planes.items():
+    print(name, plane.accumulator.shape)
+for name, mon in result.flux_monitors.items():
+    print(name, np.sign(np.asarray(flux_spectrum(mon))))
+```
+
+```text
+(600, 1)
+ez_x_0 (3, 37, 37)
+flux_x_0 [-1. -1. -1.]
+flux_x_1 [1. 1. 1.]
+```
+
+The flux plane at x = 12 mm reads negative and the one at x = 48 mm positive:
+flux is positive along +x, so power leaving the source towards −x counts
+negative. The DFT plane covers the whole cross-section of the grid, absorber
+included (21 nodes across the domain plus 8 absorber cells on each side).
+
+### Point probes
+
+`sim.add_probe(position, component)` records one component, `"ex"` … `"hz"`,
+at one point every step. `sim.add_vector_probe(position)` adds all six.
+`result.time_series` has one row per step and one column per probe, in the
+order you declared them.
+
+- A probe reads the component stored at the index of the nearest grid node;
+  it does not interpolate. That component sits half a cell from the node along
+  its own axis (E) or across it (H), as on any Yee grid.
+- Each row is taken after the step completes: E at (n + 1)·dt and H at
+  (n + ½)·dt for row n.
+- A probe at a point source or a lumped or wire port measures the source, not
+  the structure. The [settling check](/rfx/evidence/simulation-time/) ignores it
+  when other probes exist.
+
+### DFT planes
+
+`sim.add_dft_plane_probe(axis=, coordinate=, component=, freqs=, region=)`
+accumulates the Fourier transform of one component over a plane, at the
+frequencies you give (default: 50 from `freq_max/10` to `freq_max`), without
+storing the time history. `result.dft_planes[name].accumulator` is complex,
+shaped (frequencies, n1, n2), and holds Σ x(t)·e^(−j2πft)·dt over the run: a
+spectral density in field units times seconds, not a phasor amplitude.
+`region=` crops the plane to an index range. Name it with `name=`; the default
+is `{component}_{axis}_{index}`.
+
+### Flux monitors
+
+`sim.add_flux_monitor(axis=, coordinate=, freqs=, size=, center=)` accumulates
+the tangential E and H over a plane; `flux_spectrum(monitor)` turns them into
+one real number per frequency, Σ Re(E × H*)·dA over the plane. It is positive
+along the plus direction of `axis`. A box is six planes; add the outward
+signs yourself. Without `size`, the plane covers the whole cross-section of
+the grid, absorber included, as the DFT plane does. `size` and `center`
+restrict it, snapped to cell edges and kept out of the absorber; pass them
+before you take a ratio of two fluxes. A finite box closes on both meshes:
+its net flux around a source does not depend on where the box sits or how
+large it is, and a plane on a magnetic (PMC) face reads zero
+(`tests/contracts/test_flux_box_closure.py`).
+
+`forward()` accumulates the flux monitors you declare as well, with the same
+values as `run()` bit for bit, and returns them in
+`ForwardResult.flux_monitors`; they add to the autodiff tape, so a gradient
+can be taken through a flux
+(`tests/unit/api/test_forward_declared_measurements.py`).
+
+The number is a product of two raw spectra, so it is not a power in watts by
+itself. Use it as a ratio: transmitted over incident flux from two runs or two
+planes with the same source, which cancels the source spectrum.
+
+### Snapshots and final fields
+
+`run(snapshot=SnapshotSpec(interval=, components=, slice_axis=, slice_index=))`
+keeps fields every `interval` steps in `result.snapshots`. `slice_index` counts
+grid nodes including the absorber; convert a coordinate with
+`result.grid.position_to_index(position)[axis]`. `result.state` holds the
+fields at the end of the run.
+
+### What runs where
+
+| Output | `run()` | `forward()` | Not available on |
+|---|---|---|---|
+| point probes | yes | yes | — |
+| DFT planes | yes | yes | multi-device, ADI, subgridded |
+| flux monitors | yes | yes | multi-device, ADI, subgridded |
+| snapshots | yes | no | graded mesh, multi-device, ADI, subgridded |
+| final fields (`state`) | yes | no | — |
+
 ## What is checked
+
+When you declare an output: the component name and the axis. On a solver path
+that does not implement an output, the run is refused before the first step.
 
 ## What is refused, and the way through
 
+| Input | Solver path | Instead |
+|---|---|---|
+| a DFT plane | multi-device, ADI, subgridded | one device on a uniform or graded mesh |
+| a flux monitor | multi-device, ADI, subgridded | one device on a uniform or graded mesh |
+| `snapshot=` | graded mesh, multi-device, ADI, subgridded | a uniform mesh on one device |
+| a flux monitor with `dft_window="hann"` or `"tukey"` in a run stopped by `until_decay` | uniform and graded mesh | the default `dft_window="rect"`, or a fixed `n_steps`: a window needs the run's length in advance |
+
+[Refused inputs](/rfx/check/refusals/) explains how refusals read; the
+[support page](/rfx/support/) lists them per solver path.
+
 ## Accuracy
 
+- A DFT plane and a point probe at the same node give the same spectrum
+  within 1 % in magnitude, in a 30 mm PEC cavity over ten frequencies at
+  2–5 GHz (`tests/unit/misc/test_dft_probes.py`). This checks the plane's
+  indexing, not the physics.
+- A flux monitor across a graded-mesh rectangular waveguide agrees with the
+  integral of the fitted TE10 mode profile within 1 % at 9–12 GHz
+  (`tests/unit/nonuniform/test_flux_te10_integral.py`).
+- The attenuation of a plane wave in a lossy dielectric, read from DFT planes
+  deep inside it, agrees with the closed form within 5 % on average at
+  6–14 GHz
+  (`tests/oracle/test_lossy_material_validation.py`).
+
+Every spectral output is a transform of a record of finite length; read the
+[settling check](/rfx/evidence/simulation-time/) before reporting one.
+
 ## See also
+
+- [S-parameters](/rfx/measure/s-parameters/), [Far field and RCS](/rfx/measure/far-field-and-rcs/), [Resonances](/rfx/measure/resonances/).
+- [Plots and export](/rfx/measure/plots-and-export/): plotting these outputs.
+- [Results API](/rfx/api/results/): every field of the result.
