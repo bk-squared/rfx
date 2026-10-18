@@ -418,6 +418,7 @@ def _board(domain, direction, feed, lat_c, *, trace_len_axis, dx=DX):
     ``dx`` defaults to the module DX (80 um); the substrate-cell test passes
     100 um, where the run grid really has fewer than 4 substrate cells."""
     sim = Simulation(freq_max=F_MAX, domain=domain, dx=dx, cpml_layers=8,
+                     snap="declared",  # Keep the substrate-resolution witness.
                      boundary=BoundarySpec(x="cpml", y="cpml",
                                            z=Boundary(lo="pec", hi="cpml")))
     sim.add_material("ro4350b", eps_r=EPS_R)

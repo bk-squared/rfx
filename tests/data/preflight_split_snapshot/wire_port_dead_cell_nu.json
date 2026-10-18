@@ -120,6 +120,24 @@
         "source": "_validate_cfg_off_lattice_design_edges"
       },
       {
+        "code": "sheet_cavity_spacing",
+        "loc": null,
+        "numbers": [
+          1.0,
+          1.0,
+          0.0,
+          0.0,
+          1.0,
+          226.2,
+          254.0,
+          254.0,
+          226.2,
+          -10.94
+        ],
+        "severity": "warning",
+        "source": "_validate_cfg_sheet_cavity_thickness"
+      },
+      {
         "code": "wire_port_no_radius",
         "loc": "_ports[0]",
         "numbers": [
@@ -148,7 +166,7 @@
       }
     ],
     "n_errors": 0,
-    "n_issues": 8,
+    "n_issues": 9,
     "ok": true
   }
 }

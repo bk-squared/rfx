@@ -33,7 +33,7 @@ def _build_patch(*, feed_extent: float | None, add_pec_pin: bool = False):
     # warning and avoids CPML-proximity noise on a small test domain.
     domain = (0.02, 0.015, 0.02)
     sim = Simulation(
-        freq_max=2 * F0, domain=domain, dx=DX,
+        freq_max=2 * F0, domain=domain, dx=DX, snap="declared",
         boundary="pec",
     )
     sim.add_material("sub", eps_r=EPS_R)

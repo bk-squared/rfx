@@ -82,6 +82,7 @@ def test_sheet_plane_reported_is_the_plane_zeroed_and_its_normal_edge_lives():
     over the footprint, the normal Ez THROUGH the plane non-zero, and the
     planes on either side live."""
     sim = _sim()
+    sim._snap = "declared"  # The 4.3 -> 4 mm snap is the measured witness.
     sim.add(Box((2 * MM, 2 * MM, 4.3 * MM), (8 * MM, 8 * MM, 4.3 * MM)),
             material="pec")
     sim.add_source((5 * MM, 5 * MM, 6 * MM), "ez")

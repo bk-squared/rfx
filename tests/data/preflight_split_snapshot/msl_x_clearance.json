@@ -108,6 +108,24 @@
         "source": "_validate_cfg_off_lattice_design_edges"
       },
       {
+        "code": "sheet_cavity_spacing",
+        "loc": null,
+        "numbers": [
+          1.0,
+          1.0,
+          0.0,
+          0.0,
+          1.0,
+          240.0,
+          254.0,
+          254.0,
+          240.0,
+          -5.51
+        ],
+        "severity": "warning",
+        "source": "_validate_cfg_sheet_cavity_thickness"
+      },
+      {
         "code": "msl_port_geometry",
         "loc": null,
         "numbers": [
@@ -222,7 +240,7 @@
       }
     ],
     "n_errors": 0,
-    "n_issues": 11,
+    "n_issues": 12,
     "ok": true
   },
   "preflight_sparameters": {

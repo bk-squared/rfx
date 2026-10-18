@@ -2136,7 +2136,14 @@ def _render(fixture_id, build, kwargs, calculator) -> str:
         sim = build()
         # #1138: these fixtures pin other advisory codes, not sheet-size refusal.
         # Residuals below are the strict audit's free-end span differences.
+        # Electric-wall spacing now judges single conductors too. These
+        # deliberate off-node fixtures retain their geometry and gain one
+        # sheet_cavity_spacing warning; wire_port_dead_cell_nu already opts in.
+        # Regenerate only those four cases with this module's update generator.
         declared_advisories = {
+            "msl_x_clearance": "trace-to-floor spacing on the ledger's coarse grid",
+            "msl_y_clearance": "trace-to-floor spacing on the ledger's coarse grid",
+            "pec_face_short_of_wall": "plug drawn touching the lid but solved one cell open",
             "coax_msl_instrument": "signal x +5.83%, arms y +2.69%, trace y +11.67%",
             "stack_snapped_patch": "patch x/y +11.67%",
             "tie_stack": "sheets x/y +5.83%",

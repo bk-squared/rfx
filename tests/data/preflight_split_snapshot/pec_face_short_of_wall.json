@@ -77,6 +77,22 @@
         "source": "_validate_cfg_pec_face_short_of_domain_wall"
       },
       {
+        "code": "sheet_cavity_spacing",
+        "loc": null,
+        "numbers": [
+          1.0,
+          1.0,
+          0.0,
+          10.0,
+          10.16,
+          11.0,
+          10.16,
+          1000.0
+        ],
+        "severity": "warning",
+        "source": "_validate_cfg_sheet_cavity_thickness"
+      },
+      {
         "code": "thin_absorber",
         "loc": "x_lo, x_hi",
         "numbers": [
@@ -102,7 +118,7 @@
       }
     ],
     "n_errors": 0,
-    "n_issues": 5,
+    "n_issues": 6,
     "ok": true
   }
 }

@@ -37,7 +37,7 @@ def _build_sim(*, dx: float, ly: float, port_x: float = 2e-3,
     kw = {} if dz_profile is None else dict(dz_profile=np.asarray(dz_profile))
     sim = Simulation(
         freq_max=5e9, domain=(LX, ly, lz), dx=dx,
-        cpml_layers=8,
+        cpml_layers=8, snap="declared",  # Preserve the unresolved substrate.
         boundary=BoundarySpec(
             x="cpml", y="cpml", z=Boundary(lo="pec", hi="cpml"),
         ),

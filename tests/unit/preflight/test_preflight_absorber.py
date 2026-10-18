@@ -645,6 +645,7 @@ def _msl_x_clearance_sim(dx: float, port_x: float, cpml_layers: int = 8) -> Simu
     ly = _W_TRACE + 8 * _H_SUB
     sim = Simulation(
         freq_max=5e9, domain=(_LX, ly, _H_SUB + 1.5e-3), dx=dx, cpml_layers=cpml_layers,
+        snap="declared",  # Preserve the ledger's off-node clearance geometry.
         boundary=BoundarySpec(x="cpml", y="cpml", z=Boundary(lo="pec", hi="cpml")),
     )
     sim.add_material("ro4350b", eps_r=_EPS_R)
@@ -662,6 +663,7 @@ def _msl_y_clearance_sim(dx: float, ly: float, cpml_layers: int = 8) -> Simulati
     fixture (LY parametrized, port_x fixed comfortably clear of x-CPML)."""
     sim = Simulation(
         freq_max=5e9, domain=(_LX, ly, _H_SUB + 1.5e-3), dx=dx, cpml_layers=cpml_layers,
+        snap="declared",  # Preserve the ledger's off-node clearance geometry.
         boundary=BoundarySpec(x="cpml", y="cpml", z=Boundary(lo="pec", hi="cpml")),
     )
     sim.add_material("ro4350b", eps_r=_EPS_R)

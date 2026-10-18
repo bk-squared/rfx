@@ -183,6 +183,7 @@ def _sim_with_msl_port(*, dx: float = 80e-6, n_probe_offset=None) -> Simulation:
     lz = _H_SUB + 1.5e-3
     sim = Simulation(
         freq_max=5e9, domain=(_LX, ly, lz), dx=dx, cpml_layers=8,
+        snap="declared",  # Keep the measured off-node ladder geometry.
         boundary=BoundarySpec(x="cpml", y="cpml",
                               z=Boundary(lo="pec", hi="cpml")),
     )

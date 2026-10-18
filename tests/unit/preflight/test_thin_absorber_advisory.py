@@ -220,6 +220,7 @@ def test_unavailable_grid_does_not_guess_depth(monkeypatch, error):
 @pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
 def test_conductor_overlap_is_referenced_once_without_repeating_its_evidence(graded):
     sim = _vacuum(graded=graded, depths=(6, 16, 8, 16))
+    sim._snap = "declared"  # Keep the off-node domain used to measure absorber depth.
     # Two conductors reach just the thin x_lo face. Existing per-conductor
     # findings stay separate; their overlap with the depth warning is named once.
     for y in (0.003, 0.006):

@@ -44,6 +44,7 @@ def _sim(guide_y: float, guide_z: float) -> Simulation:
     """A 2 mm PEC plug across a WR-90 guide, y/z closed by PEC faces."""
     sim = Simulation(
         freq_max=12.4e9, domain=(20 * MM, A_WG, B_WG), dx=DX,
+        snap="declared",  # The drawn plug's open wall slot is intentional.
         boundary=BoundarySpec(x=Boundary(lo="cpml", hi="cpml"),
                               y=Boundary(lo="pec", hi="pec"),
                               z=Boundary(lo="pec", hi="pec")),

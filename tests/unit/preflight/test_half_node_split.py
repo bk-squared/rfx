@@ -23,7 +23,8 @@ DOM = (20e-3, 19e-3, 17e-3)      # 19 cells in y: 9.5 mm is a half node, 9 odd
 
 
 def _sim(lane, dom=DOM):
-    kw = dict(freq_max=10e9, domain=dom, dx=DX, boundary="pec")
+    kw = dict(freq_max=10e9, domain=dom, dx=DX, boundary="pec",
+              snap="declared")  # Half-node placement is this test's witness.
     if lane == "nu":
         kw.update(**{f"d{a}_profile": np.full(int(round(d / DX)), DX)
                      for a, d in zip("xyz", dom)})

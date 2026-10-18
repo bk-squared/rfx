@@ -288,14 +288,16 @@ def test_realized_volume_join_and_vacuum_gap(monkeypatch, side, gap, face_shift)
     assert (span.lo, span.hi) == axis.bounds_m
     assert span.comparison_bounds(lo, hi, DOMAIN[0]) == axis.comparison_bounds_m
     assert bool(sim.preflight().by_code(CODE)) == bool(gap)
+    spacing, = sim.preflight().by_code("sheet_cavity_spacing")
+    assert spacing.severity == "error"  # The joined Box is off its electric walls.
     if gap:
         with pytest.raises(ValueError, match="conductor sheet dimension"):
             sim.run(n_steps=1, compute_s_params=False)
         assert not calls
     else:
-        with pytest.raises(_ReachedRunner):
+        with pytest.raises(ValueError, match="parallel PEC cavity faces"):
             sim.run(n_steps=1, compute_s_params=False)
-        assert calls == [True]
+        assert not calls
 
 
 def test_vertical_sheet_refusal_names_z_profile_remedy():
