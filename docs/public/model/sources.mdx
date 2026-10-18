@@ -1,20 +1,185 @@
 ---
 title: Sources
-description: Point sources, plane waves and waveforms.
+description: Point sources and what their amplitude means, polarized sources, plane waves, and waveforms.
 sidebar:
   order: 5
 ---
 
-<p data-rfx="note">Being written for 2.0 (tracker 1171).</p>
-
 ## What it is for
+
+A source puts energy into the model without being part of the structure. rfx
+has two kinds: a point source, which drives one field component at one cell
+(a short current element), and a plane wave, which illuminates the structure
+from one side. A source has no impedance and absorbs nothing, so it gives no
+S-parameters; for those, use a [port](/rfx/model/ports/). This page is how to
+declare each source, what its amplitude means, and which time signal drives
+it.
 
 ## How to use it
 
+### Point source
+
+`sim.add_source(position, component, waveform=..., amplitude_kind=...)` drives
+`"ex"`, `"ey"` or `"ez"` at the cell nearest `position` (metres). The source is
+soft: it adds to the field there and leaves the field free to pass through.
+
+`amplitude_kind` says what the waveform's amplitude is:
+
+| `amplitude_kind` | The amplitude is | Use it when |
+|---|---|---|
+| `"current"` | a current moment I·l in A·m, the strength of a short current element | you want the radiated field to stay the same when you change the mesh |
+| `"field"` | an increment of E added at the cell every time step | you need a raw field kick, or the solver path takes only this (ADI) |
+
+Leaving `amplitude_kind` out means `"current"` and gives one
+`DeprecationWarning` per simulation. Pass it explicitly.
+
+The difference shows when the mesh changes. The same source and probe on three
+cell sizes:
+
+```python
+import numpy as np
+from rfx import ModulatedGaussian, Simulation
+
+
+def peak(dx, kind):
+    sim = Simulation(freq_max=6e9, domain=(0.06, 0.06, 0.06), dx=dx,
+                     boundary="cpml", cpml_layers=8)
+    sim.add_source((0.03, 0.03, 0.03), "ez", amplitude_kind=kind,
+                   waveform=ModulatedGaussian(f0=3e9, bandwidth=0.5))
+    sim.add_probe((0.048, 0.03, 0.03), "ez")
+    n = int(round(400 * 2e-3 / dx))          # the same simulation time
+    result = sim.run(n_steps=n, skip_preflight=True)
+    return float(np.max(np.abs(np.asarray(result.time_series))))
+
+
+for kind in ("current", "field"):
+    print(kind, " ".join(f"{peak(dx, kind):.4g}" for dx in (2e-3, 1.5e-3, 1e-3)))
+```
+
+```text
+current 1.055e+05 1.043e+05 1.035e+05
+field 0.00196 0.00109 0.0004805
+```
+
+With `"current"`, the peak field at the probe 18 mm away moves by 1.1 % from
+2 mm to 1.5 mm cells and by 0.8 % from 1.5 mm to 1 mm: it converges, as a
+physical source should. With `"field"`, adding a fixed E increment to one cell
+every step is a current moment proportional to the cell volume over the time
+step, so it scales as dx². The peaks follow that: ratios of 0.556 and 0.441
+against 0.5625 and 0.444 predicted. The result then depends on the cell size
+you happened to choose.
+
+### Polarized source
+
+`sim.add_polarized_source(position, polarization=..., waveform=...,
+amplitude_kind=...)` drives Ex and Ey at one point with fixed weights; a single
+component (`"ez"`) is the same as `add_source` with that component.
+`polarization` is a component (`"ez"`), a name (`"slant45"`, `"rhcp"`,
+`"lhcp"`, `"circular"`), or a Jones vector `(Ex, Ey)`, normalized for you. A
+complex weight sets the phase of Ey relative to Ex. Circular polarization is
+not checked by any test; treat it as unchecked.
+
+### Plane wave
+
+`sim.add_tfsf_source(...)` launches a plane wave along x with the
+total-field/scattered-field method: inside a box the field is incident plus
+scattered, outside it only the scattered field remains, so what you measure
+outside is the structure's response alone.
+
+| Argument | Default | Meaning |
+|---|---|---|
+| `direction` | `"+x"` | `"+x"` or `"-x"` |
+| `polarization` | `"ez"` | `"ez"` or `"ey"`, the E component of the incident wave; `"s"` or `"p"` for an oblique closed box |
+| `angle_deg` | 0 | angle from the x axis, below 90°, for the plane wave without a closed box |
+| `theta_deg`, `phi_deg` | 0, 0 | the direction of an oblique wave in a closed box (`closed_box=True`), about x; rfx takes the nearest lattice direction within `direction_tol_deg` (0.1°), and `sim.tfsf_incidence()` reports the direction it realized |
+| `method` | `"bloch"` | for oblique incidence: `"bloch"` makes the side axis periodic with the matching phase; `"methodB"` absorbs on it |
+| `closed_box` | `False` | `True`: a finite box with six faces around the structure, for a single scatterer; `False`: two planes across the domain |
+| `f0`, `bandwidth`, `amplitude` | `freq_max/2`, 0.5, 1 | the pulse |
+| `waveform` | `"differentiated_gaussian"` at normal incidence, in a closed box and with `method="methodB"`; `"modulated_gaussian"` at an angle with `method="bloch"` | also `"continuous_wave"` (normal incidence) or a `CustomWaveform` (normal incidence, 3-D). An explicit `"differentiated_gaussian"` at an angle with `method="bloch"` is refused: that method carries one transverse wavenumber, which only a pulse around `f0` matches |
+| `margin` | 3 | cells between the injection planes and the absorber |
+
+The injection planes must lie in vacuum. With `closed_box=False` the planes
+span the domain, and the faces across the beam are solved as periodic, so the
+structure is repeated along them; a structure that is not uniform across them
+is refused unless you declare those faces periodic. See
+[Boundaries](/rfx/model/boundaries/#rules-that-ports-and-plane-waves-put-on-the-boundary)
+for the rule. For a single scatterer use `closed_box=True`.
+
+### Waveforms
+
+| Waveform | What it is | Parameters (defaults) |
+|---|---|---|
+| `GaussianPulse` | derivative of a Gaussian, no carrier, corrected so that it starts at exactly zero and its time integral is zero | `f0`, `bandwidth=0.5`, `amplitude=1.0`, `cutoff=3.0` (at least 2.5) |
+| `ModulatedGaussian` | a carrier at `f0` under a Gaussian envelope | `f0`, `bandwidth=0.5`, `amplitude=1.0`, `cutoff=5.0` |
+| `CWSource` | a sine at `f0`, switched on over `ramp_steps` cycles of `f0` (not time steps) | `f0`, `amplitude=1.0`, `ramp_steps=50` |
+| `CustomWaveform` | your function of time, `func(t)` with t in seconds | `func` |
+
+`bandwidth` is a fraction of `f0`; the pulse peaks `cutoff` envelope widths
+after t = 0. A `bandwidth` given in Hz makes a pulse about 10⁻²⁰ s long that
+drives nothing, and the run refuses it. `add_source` and `add_port` use
+`GaussianPulse(f0=freq_max/2, bandwidth=0.8)` when you give no waveform.
+
+A pulse gives the response over its whole band from one run. A `CWSource` gives
+one frequency and never switches off, so the
+[settling check](/rfx/evidence/simulation-time/), which needs the source to be
+off before the end of the run, cannot judge it.
+
+Because the default pulse has a zero time integral, a soft current source
+driven by it leaves no static charge, and so no static field, behind. The correction that makes this so changes the plain
+differentiated Gaussian only before its peak, by at most 1.7×10⁻³ of its
+amplitude at `cutoff=3`
+(`tests/unit/sources/test_source_dc_floor_guards.py`). A `ModulatedGaussian`
+has no such correction; its time integral is small but not zero.
+
 ## What is checked
+
+When you declare a source: the component, `amplitude_kind`, and for a plane
+wave every argument in the table above against its allowed values and the
+faces across the beam. Before the first step, `run()` and `forward()` refuse,
+on either mesh and without depending on preflight, a dielectric or a design
+region on or next to a plane wave's injection planes, and a soft source on an
+edge the grid realizes as metal. Every excited drive's pulse, sampled at the
+time step, must exceed 10⁻⁶ of its amplitude somewhere. The solver path then
+checks that it implements the source (below).
 
 ## What is refused, and the way through
 
+| Input | Solver path | What happens | Instead |
+|---|---|---|---|
+| `amplitude_kind="current"` | ADI | refused | pass `amplitude_kind="field"` |
+| a plane wave together with a lumped port | all | refused | drive the port alone, or use a probe for the response |
+| a plane wave with `boundary="upml"`, or in a closed (all-metal) domain | all | refused | `boundary="cpml"` |
+| `waveform="continuous_wave"` at an angle | all | refused | a pulse waveform |
+| an explicit `waveform="differentiated_gaussian"` at an angle with `method="bloch"`, in Python or in a saved interop document | all | refused | `"modulated_gaussian"` or no `waveform`; for one scatterer in an open domain, `method="methodB"` takes the differentiated Gaussian |
+| a `CustomWaveform` plane wave at an angle or in 2-D | all | refused | normal incidence in 3-D |
+| `closed_box=True` with `angle_deg`, in 2-D, with a face that is not CPML, on cells that are not cubic, or in a run with no fixed step count | uniform mesh | refused | `theta_deg`/`phi_deg` for the angle, CPML on all six faces, `dx=dy=dz`, `n_steps` |
+| `method="methodB"` at normal incidence, with `"ey"`, along `"-x"`, or with a waveform other than the two Gaussians | all | refused | `method="bloch"` |
+| a structure that is not uniform across the faces across the beam (`closed_box=False`) | uniform and graded mesh | refused | declare those faces periodic for an array; `closed_box=True` on a uniform mesh for one object |
+| a dielectric or a design region on or next to an injection plane | uniform and graded mesh, `run()` and `forward()` | refused before the first step | move the structure clear of the planes |
+| a plane wave at an angle, with `closed_box=True`, or with a `CustomWaveform` | graded mesh | refused | use a uniform mesh |
+| a plane wave | graded mesh on several devices | refused | run on one device |
+| a plane wave | uniform mesh on several devices | runs on one device, with a warning; `Result.diagnostics` records it | — |
+| a soft source on an edge the grid realizes as PEC (inside a PEC volume, on a sheet or wire), or tangential in a declared PEC wall face | all | refused | move the source off the metal and at least one cell inside the domain, or use a port |
+| a drive whose pulse samples to zero at every time step (usually `bandwidth` given in Hz) | all, and `preflight()` | refused | give `bandwidth` as a fraction of `f0` |
+| `GaussianPulse(cutoff=...)` below 2.5 | when the pulse is created | refused | keep the default `cutoff=3` |
+
+[Refused inputs](/rfx/check/refusals/) explains how refusals read; the
+[support page](/rfx/support/) lists them per solver path.
+
 ## Accuracy
 
+- A plane wave at 30° and at 45° leaks less than 1 % of its energy outside
+  the total-field region, and less than 0.1 % at normal incidence, in vacuum on
+  a 1 mm mesh at 5 GHz (`tests/unit/sources/test_tfsf_oblique.py`).
+- Oblique plane-wave reflection from an εr = 4 slab agrees with the Fresnel
+  coefficient within 10 % at 30° and within 8 % at 45°, on a 2 mm mesh at 5 GHz
+  (`tests/oracle/test_oblique_fresnel_magnitude.py`).
+- A closed-box plane wave in vacuum reproduces the incident pulse inside the
+  box, and outside it the field stays below 9 float32 rounding steps of the
+  pulse peak (`tests/unit/sources/test_tfsf_closed_box.py`).
+
 ## See also
+
+- [Ports](/rfx/model/ports/): sources with an impedance, for S-parameters.
+- [Boundaries](/rfx/model/boundaries/): the faces a plane wave needs.
+- [Is the run long enough?](/rfx/evidence/simulation-time/): the source must end inside the run.
