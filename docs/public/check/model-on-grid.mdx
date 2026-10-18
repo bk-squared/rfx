@@ -99,8 +99,8 @@ for span in sim.realized_geometry().sheets[0].solved_spans[:2]:
 
 Two options change what the check does:
 
-- `Simulation(..., snap="declared")` accepts a sheet solved off its drawn size
-  as a warning instead of an error, and records that choice in
+- `Simulation(..., snap="declared")` accepts a sheet, or a cavity between PEC
+  faces, solved off its drawn size as a warning instead of an error, and records that choice in
   `realized_geometry().snap`. It changes neither the mesh nor the result; you
   are telling rfx you know the solved size differs.
 - `preflight(strict=True)` raises on the first finding instead of collecting
@@ -116,6 +116,7 @@ Preflight's findings that compare the drawing with the grid:
 | Finding | What it means | What to do |
 |---|---|---|
 | a sheet solved more than 1 % off its drawn size (`sheet_effective_size`, error) | The sheet's free edges are solved about 0.35 of a cell past its last node. An edge fed over its whole width by a port is solved where it is drawn. | Build the in-plane mesh with `edge_aware_profiles`, or pass `snap="declared"`. |
+| a cavity between adjacent parallel PEC faces solved more than 1 % off its drawn spacing (`sheet_cavity_spacing`, error) | Two sheets, a sheet and a PEC `Box` face, or two PEC `Box` faces sit on node planes whose spacing differs from the drawing, and a cavity resonance follows that spacing. A non-Box volume and the domain wall are not checked. | Put both faces on mesh nodes: a `dx` that divides the heights, or `edge_aware_profiles(..., sheets=[...], solids=[...], axes="xyz")` with the PEC Boxes in `solids`. Or pass `snap="declared"`. |
 | a conductor face off the grid (`off_lattice_design_edges`, warning) | A metal face sits more than 0.5 % of its extent away from the nearest node. | Choose `dx` commensurate with the shape, or place a node on the face with a graded profile. |
 | a PEC shape thinner than one cell but not zero (error) | It is neither a sheet nor a resolved volume. | Declare a sheet, or resolve the thickness. See [Conductors](/rfx/model/conductors/). |
 | a PEC shape that covers no cell (error) | Metal would vanish. | Make it larger than a cell, or use a wire. |
