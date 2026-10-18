@@ -202,7 +202,7 @@ def current_source_volume(grid, position_ijk, component):
     grid_traced = (
         is_tracer(grid.dx_arr) or is_tracer(grid.dy_arr) or is_tracer(grid.dz)
     )
-    _profiles = (grid.dx_arr, grid.dy_arr, grid.dz)
+    _profiles = tuple(store if grid_traced or exact is None else exact for store, exact in zip((grid.dx_arr, grid.dy_arr, grid.dz), (grid.dx_arr_f64, grid.dy_arr_f64, grid.dz_f64)))
     _idx = (i, j, k)
     _widths = []
     for _a in range(3):

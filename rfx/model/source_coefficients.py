@@ -31,10 +31,10 @@ def drive_columns(eps, sigma, keep, cells, owned, samples, volumes, dt, *, cb=No
                 coefficient = cb[n]
             if isinstance(volume, tuple) and len(volume) == 4:
                 scale = jnp.where(owned[n], coefficient * volume[2] * volume[3], 0.)
+                column = scale * samples[:, n]
             else:
                 volume = volume[0] if isinstance(volume, tuple) else volume
-                scale = jnp.where(owned[n], coefficient * (jnp.float32(1) / volume), 0.)
-            column = scale * samples[:, n]
+                column = jnp.where(owned[n], (1.0 / volume) * (coefficient * samples[:, n]), 0.)
         if keep is not None:
             column = column * jnp.where(owned[n], keep[axis][cell], 0.)
         columns.append(column)
@@ -92,16 +92,11 @@ def source_table(samples, kind=None, *, native="raw", coefficient=None, volume=1
 
     A field increment has no material operand, including under AD. A callable
     coefficient is read only for a material-dependent drive, after all stamps.
-    On the uniform lanes a named kind decides the table alone: 'current' is
-    ``(1/dV)*(Cb*w)`` whichever uniform helper builds it, so run() and
-    forward() form the same float32 product on every boundary (run()/forward()
-    census row D2). Cb only multiplies: under jit/vmap XLA rewrites a traced
-    Cb divided by a constant dV as a multiply by the reciprocal, so ``Cb/dV``
-    rounds differently per trace. The graded lanes (native ``cb_over_dv``,
-    single and multi-device alike) form ``(Cb*(1/dV))*w`` with the reciprocal
-    as its own division: that is the product XLA compiles under a user jit, so
-    eager and jit agree bit for bit with a traced Cb (#1856), and
-    :func:`drive_columns` forms the same product for the multi-device slabs.
+    Every current path forms ``(1/dV)*(Cb*w)``, including native
+    ``cb_over_dv`` and multi-device slabs in :func:`drive_columns`.
+    On concrete profiles dV comes from declared float64 widths, multiplied
+    in x*y*z order; traced profiles retain their float32 volume. Keeping Cb
+    in the waveform product also makes eager and jit agree with traced Cb.
     """
     from rfx.api._source_semantics import needs_scale
     needs_scale(kind, native)  # validate Python-level dispatch, never a tracer
@@ -109,7 +104,7 @@ def source_table(samples, kind=None, *, native="raw", coefficient=None, volume=1
         return samples
     cb = coefficient() if callable(coefficient) else coefficient
     if native == "cb_over_dv":
-        return (cb * (jnp.float32(1) / volume)) * samples
+        return (1.0 / volume) * (cb * samples)
     if kind == "current":
         return (1.0 / volume) * (cb * samples)
     return cb * samples
@@ -151,17 +146,17 @@ def current_source_samples(grid, waveform_fn, n_steps):
     times = jnp.arange(n_steps, dtype=jnp.float32) * grid.dt
     return jax.vmap(waveform_fn)(times)
 
-def scale_source_columns(xs, scales, columns):
-    """Finish distributed current tables from slab-local Cb/dV reads."""
+def scale_source_columns(xs, scales, columns, volumes=()):
+    """Finish distributed current tables from slab-local Cb and each dV."""
     steps, table = xs
     for n, col in enumerate(columns):
         table = table.at[:, col].set(source_table(
-            table[:, col], native="cb", coefficient=scales[n]))
+            table[:, col], 'current', coefficient=scales[n], volume=volumes[n]))
     return steps, table
 
 
 def slab_drive_table(xs, mesh, device_ids, meta, *, ranks, scales=None,
-                     columns=(), weights=None):
+                     columns=(), volumes=(), weights=None):
     """Store (step, slab, source) increments before any time scan.
 
     Material products precede per-column weights. The local owner mask
@@ -183,7 +178,7 @@ def slab_drive_table(xs, mesh, device_ids, meta, *, ranks, scales=None,
     @partial(rank_shard_map, mesh=mesh, in_specs=(P(), P('x'), P('x')),
              out_specs=P(None, 'x'), check_rep=False)
     def build(samples, material, weight, *, rank):
-        _, samples = scale_source_columns((steps, samples), material[0], columns)
+        _, samples = scale_source_columns((steps, samples), material[0], columns, volumes)
         weight = jnp.where(source_owner_mask(rank, device_ids), weight[0], 0)
         samples = weight_drive_columns(samples, weight, meta)
         return samples[:, None, :]

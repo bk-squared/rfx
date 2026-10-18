@@ -74,14 +74,14 @@ def slab_drive_columns(materials, debye, lorentz, sources, volumes, dt, layout, 
         table = jax.vmap(local)(eps, sigma, keep, cb, ranks)
     else:
         columns = tuple(n for n, v in enumerate(volumes) if v is not None)
+        unit_volumes = tuple(None if v is None else (1., v[1]) if isinstance(v, tuple) else 1. for v in volumes)
         def scales(e, s, c, rank):
-            return local(e, s, None, c, rank, samples=jnp.ones((1, len(sources)), samples.dtype))[0]
+            return local(e, s, None, c, rank, samples=jnp.ones((1, len(sources)), samples.dtype), volumes=unit_volumes)[0]
         scales = jax.vmap(scales)(eps, sigma, cb, ranks)
-        observed = _realized.runtime_drive(jnp.sum(scales[:, jnp.asarray(columns, dtype=jnp.int32)], axis=0), columns)
-        # Publish the observed scales only to their source owners. A unit
-        # volume preserves those already divided scalars exactly.
+        observed = _realized.runtime_drive(jnp.sum(scales[:, jnp.asarray(columns, dtype=jnp.int32)], axis=0), columns,
+                                           volumes=tuple(volumes[n] for n in columns))
+        # Publish Cb only to its owner; the local finisher retains each dV.
         factors = jnp.ones((len(sources),), samples.dtype).at[jnp.asarray(columns, dtype=jnp.int32)].set(observed)
-        volumes = tuple(None if v is None else 1. for v in volumes)
         table = jax.vmap(lambda e, s, k, rank: local(e, s, k, factors, rank, volumes=volumes))(
             eps, sigma, keep, ranks)
     table = jnp.transpose(table, (1, 0, 2)).reshape(n_steps, layout.n_devices * len(sources))
@@ -124,7 +124,7 @@ def eager_drive_scales(eps, sigma, mesh, drives, dt, ranks, reduce_devices):
         for i, (owner, _, _, _, volume, pole) in enumerate(drives):
             cb = current_source_cb(jnp.where(rank == owner, eps[i], 1.),
                 jnp.where(rank == owner, sigma[i] + pole, 0.), dt)
-            values.append(jnp.where(rank == owner, cb * (jnp.float32(1) / volume), 0.))
+            values.append(jnp.where(rank == owner, cb, 0.))
         return jnp.stack(values)
     values = jax.vmap(local)(*means, ranks)
     return _gather_drive_map(mesh, tuple(d[0] for d in drives))(values) if reduce_devices else values

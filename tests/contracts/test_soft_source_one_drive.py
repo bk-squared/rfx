@@ -58,14 +58,13 @@ def test_current_drive_is_the_same_under_jit_and_vmap(native):
 
 
 @pytest.mark.parametrize('kind', ('current', None))
-def test_graded_drive_keeps_the_slab_product(kind):
-    # The graded single-device table and the multi-device slabs (which supply
-    # Cb/dV already resolved) form the same product, so the graded helper keeps
-    # (Cb/dV)*w; changing it alone splits single- from multi-device graded runs.
+def test_graded_drive_is_the_uniform_product(kind):
+    # The graded single-device table and the multi-device slabs form the
+    # uniform product (1/dV)*(Cb*w) with Cb and dV kept apart (#1856, #1881).
     w = _samples()
     cb = np.float32(0.0216839)
     got = np.asarray(source_table(w, kind, native='cb_over_dv', coefficient=cb, volume=DV))
-    np.testing.assert_array_equal(got, (cb / np.float32(DV)) * w)
+    np.testing.assert_array_equal(got, np.float32(1.0 / DV) * (cb * w))
 
 
 def test_forward_with_traced_permittivity_is_the_same_under_jit():

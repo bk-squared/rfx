@@ -990,7 +990,7 @@ def run_nonuniform_distributed_pec(
     n_prb = len(probes)
 
     # #1279: material-driven sources. Their table column is the current
-    # I(t); run_fn scales it by Cb/dV read from the staged materials.
+    # I(t); run_fn reads Cb from staged materials and finishes (1/dV)*(Cb*I).
     material_drive = (tuple(material_drive) if material_drive is not None
                       else (None,) * n_src)
     if len(material_drive) != n_src:
@@ -1007,7 +1007,7 @@ def run_nonuniform_distributed_pec(
         row0 = ghost if s.i == 0 else 0
         drives.append((src_device_ids[col], row0,
                        (src_local_specs[col][0] - row0, int(s.j), int(s.k)),
-                       s.component, *(dV if isinstance(dV, tuple) else (float(dV), 0.0))))
+                       s.component, *(dV if isinstance(dV, tuple) else (dV, 0.0))))
         drive_columns.append(col)
     drives = tuple(drives)
 
@@ -1667,7 +1667,7 @@ def run_nonuniform_distributed_pec(
         from rfx.model.source_coefficients import slab_drive_table
         return slab_drive_table(xs, mesh, src_device_ids, src_local_specs,
                                 ranks=ranks, scales=scales, columns=drive_columns,
-                                weights=weights)
+                                volumes=tuple(d[4] for d in drives), weights=weights)
 
     edge_keep = None
     if sharded_pec_occupancy is not None:
@@ -1684,7 +1684,7 @@ def run_nonuniform_distributed_pec(
             scales = material_drive_scales(invariants[0].eps_r, invariants[0].sigma, mesh, drives, dt,
                 ranks=ranks, grid=electric_grid, sigma_film=invariants[0].sigma_film)
             if _realized.ACTIVE is not None:
-                scales = jnp.broadcast_to(_realized.runtime_drive(jnp.sum(scales, axis=0), tuple(drive_columns)), scales.shape)
+                scales = jnp.broadcast_to(_realized.runtime_drive(jnp.sum(scales, axis=0), tuple(drive_columns), volumes=tuple(d[4] for d in drives)), scales.shape)
         # Occupancy is the last float32 drive factor, read slab-locally on the
         # source's owner; scans only add the stored samples.
         weights = None

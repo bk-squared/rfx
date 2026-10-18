@@ -184,8 +184,16 @@ def face(materials, region, eps, mu, site):
     return eps, mu
 
 
-def runtime_drive(scales, columns):
+def runtime_drive(scales, columns, *, volumes=()):
+    """Return Cb operands; record the realized increment for unit samples."""
     scales = ACTIVE.apply("distributed_nu.drive", "drive_scale", scales)
-    ACTIVE.observe("distributed_nu.drive", dict(runtime_scale=scales),
+    normalized = scales
+    if volumes:
+        import jax.numpy as jnp
+        normalized = jnp.stack([
+            scale * volume[2] * volume[3] if isinstance(volume, tuple) and len(volume) == 4
+            else (1.0 / (volume[0] if isinstance(volume, tuple) else volume)) * (scale * 1.0)
+            for scale, volume in zip(scales, volumes)])
+    ACTIVE.observe("distributed_nu.drive", dict(runtime_scale=normalized),
                    metadata=dict(columns=columns))
     return scales
