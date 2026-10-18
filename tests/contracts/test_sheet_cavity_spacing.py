@@ -230,7 +230,8 @@ def test_collapsed_sheets_are_not_skipped(monkeypatch, mesh, heights, snap, entr
     message = _assert_review_verdict(
         monkeypatch, sim, entry, snap,
         f"drawn spacing {_fmt_len(drawn)}, solved spacing 0mm (-100.00%)")
-    assert message.count(f"plane at {_fmt_len(expected_node)}") == 2
+    assert message.split(" | ")[0].count(f"plane at {_fmt_len(expected_node)}") == 2
+    assert "domain wall" in message
     assert message.index("'lower'") < message.index("'upper'")
 
 
@@ -261,7 +262,8 @@ def test_thin_substrate_collapses_to_ground(monkeypatch, mesh, snap, entry):
     sim = _thin_substrate(mesh, snap)
     message = _assert_review_verdict(monkeypatch, sim, entry, snap,
                                     "drawn spacing 200µm, solved spacing 0mm (-100.00%)")
-    assert message.count("plane at 2mm") == 2
+    assert message.split(" | ")[0].count("plane at 2mm") == 2
+    assert "domain wall z_hi" in message
 
 
 @pytest.mark.parametrize("mesh", NODES)
@@ -338,7 +340,10 @@ def test_overlapping_foils_on_same_node_have_no_cavity(mesh):
     _review_sheet(sim, _LO_XY, 4.0, 4.2, "lower")
     _review_sheet(sim, _HI_XY, 4.1, 4.3, "upper")
     # Midpoints 4.1 and 4.2 both resolve to 4; drawn gap=-0.1, solved gap=0.
-    assert not sim.preflight().by_code(CODE)
+    # Only their off-node wall spacings are refused, not the merged foils.
+    row, = sim.preflight().by_code(CODE)
+    assert row.severity == "error"
+    assert all("domain wall" in pair for pair in str(row).split(". WHY:")[0].split(" | "))
 
 
 def test_named_xyz_profile_remedy_preserves_thin_substrate_planes(monkeypatch):
@@ -495,7 +500,10 @@ def test_lone_box_has_no_cavity(mesh):
     sim.add(Box((18 * MM, 16 * MM, 10 * MM), (19.5 * MM, 17.5 * MM, 10 * MM)),
             material="upper")
     # Its own 3.2 mm drawn thickness solves to 3 mm, but is metal, not a gap.
-    assert not sim.preflight().by_code(CODE)
+    # The off-node Box faces do bound cavities against the floor and lid.
+    row, = sim.preflight().by_code(CODE)
+    assert row.severity == "error"
+    assert all("domain wall" in pair for pair in str(row).split(". WHY:")[0].split(" | "))
 
 
 @pytest.mark.parametrize("mesh", NODES)
@@ -503,11 +511,14 @@ def test_cylinder_extreme_stays_electrical_warning(mesh):
     # Cylinder top 4.1 -> 4, sheet 6.2 -> 6: 2/2.1 - 1 = -4.7619%.
     # Even its planar end is excluded: this rule judges only Box volumes.
     report = _sheet_over_block(mesh, 2.1, 0.1, cylinder=True).preflight()
-    assert not report.by_code(CODE)
+    spacing, = report.by_code(CODE)
+    assert spacing.severity == "error"
+    assert "domain wall z_hi" in str(spacing)
+    assert "PEC Box face" not in str(spacing)
     row, = report.by_code("sheet_cavity_electrical_thickness")
     assert row.severity == "warning"
     assert "plane-to-plane 2mm vs face-to-face 2.1mm" in str(row)
-    assert report.ok
+    assert not report.ok
 
 
 BOX_DOMAIN = (30 * MM, 30 * MM, 5 * MM)
@@ -584,7 +595,8 @@ def _stacked_blocks(mesh, upper_lo):
     # Lower block top at 4 mm (a node on both meshes); upper block from upper_lo.
     sim = _review_base(mesh, "strict")
     sim.add(Box((2 * MM, 2 * MM, MM), (17 * MM, 15 * MM, 4 * MM)), material="lower")
-    sim.add(Box((4.65 * MM, 4.65 * MM, upper_lo), (12.35 * MM, 10.35 * MM, 7 * MM)),
+    # Incidental transverse Box faces are on their existing nearest nodes.
+    sim.add(Box((5 * MM, 5 * MM, upper_lo), (12 * MM, 10 * MM, 7 * MM)),
             material="upper")
     return sim
 
@@ -617,7 +629,8 @@ def _periodic_x_blocks(*spans):
                      boundary=BoundarySpec(x="periodic", y="pec", z="pec"))
     for i, (xlo, xhi) in enumerate(spans):
         sim.add_material(f"m{i}", sigma=1e10)
-        sim.add(Box((xlo * MM, 4.65 * MM, 4.65 * MM), (xhi * MM, 10.35 * MM, 12.35 * MM)),
+        # Keep the periodic-x witness; transverse Box faces use their existing nodes.
+        sim.add(Box((xlo * MM, 5 * MM, 5 * MM), (xhi * MM, 10 * MM, 12 * MM)),
                 material=f"m{i}")
     sim.add_source((MM, MM, MM), component="ez")
     return sim
@@ -653,3 +666,168 @@ def test_periodic_box_face_at_a_half_cell_tie_is_its_realized_plane():
     row, = _periodic_x_blocks((4, 8), (19.5, 22)).preflight().by_code(CODE)
     assert f"plane at {_fmt_len(19 * MM)} (drawn {_fmt_len(19.5 * MM)})" in str(row)
     assert f"drawn spacing {_fmt_len(11.5 * MM)}, solved spacing {_fmt_len(11 * MM)} (-4.35%)" in str(row)
+
+
+# Domain-wall witnesses: all expected coordinates below are from the drawing
+# and the explicit 1 mm node arrays, never from the geometry census.
+def _wall_sheet(mesh="uniform", height=2.1, extent=20.0, *, snap="strict", z="pec", dx=MM):
+    from rfx.boundaries.spec import BoundarySpec
+
+    profiles = {"dz_profile": np.diff(NODES[mesh])} if mesh == "graded" else {}
+    sim = Simulation(10e9, (20 * MM, 18 * MM, extent * MM), dx=dx,
+                     boundary=BoundarySpec(x="pec", y="pec", z=z), cpml_layers=3,
+                     snap=snap, **profiles)
+    sim.add(Box((0, 0, height * MM), (20 * MM, 18 * MM, height * MM)), material="pec")
+    sim.add_source((MM, MM, MM), component="ez")
+    return sim
+
+
+@pytest.mark.parametrize("entry", ["run", "forward"])
+@pytest.mark.parametrize("snap", ["strict", "declared"])
+def test_wall_snap_verdict_before_runner(monkeypatch, entry, snap):
+    # ceil(5.5/1) = 6: lid 5.5 -> 6, sheet 2 -> 2.
+    # Drawn 5.5-2 = 3.5 mm; solved 6-2 = 4 mm; 4/3.5-1 = +14.29%.
+    sim = _wall_sheet(height=2, extent=5.5, snap=snap)
+    message = _assert_review_verdict(monkeypatch, sim, entry, snap,
+                                    "drawn spacing 3.5mm, solved spacing 4mm (+14.29%)")
+    assert "domain wall z_hi (electric) plane at 6mm (drawn 5.5mm)" in message
+    assert "divides the heights and the domain extent" in message
+
+
+def test_on_node_lid_has_no_wall_cavity_error():
+    # 6-2 = 4 mm in both the drawing and the explicit uniform nodes.
+    assert not _wall_sheet(height=2, extent=6).preflight().by_code(CODE)
+
+
+@pytest.mark.parametrize("mesh", NODES)
+@pytest.mark.parametrize("entry", ["run", "forward"])
+def test_sheet_to_floor_refuses_before_runner(monkeypatch, mesh, entry):
+    # Floor 0 -> 0, sheet 2.1 -> 2: 2/2.1-1 = -4.76%.
+    # Lid gap 20-2.1 = 17.9 -> 18: 18/17.9-1 = +0.56%, below 1%.
+    message = _assert_review_verdict(monkeypatch, _wall_sheet(mesh), entry, "strict",
+                                    "drawn spacing 2.1mm, solved spacing 2mm (-4.76%)")
+    assert "domain wall z_lo (electric) plane at 0mm (drawn 0mm)" in message
+    assert "domain wall z_hi" not in message
+    assert "1 pair(s)" in message
+
+
+@pytest.mark.parametrize("mesh", NODES)
+@pytest.mark.parametrize("height,refused", [
+    (2.0, False), (2 / (1 - 0.0099), False), (2 / (1 + 0.0099), False),
+    (2 / (1 - 0.0101), True), (2 / (1 + 0.0101), True),
+])
+def test_floor_spacing_one_percent_boundary(mesh, height, refused):
+    # Node 2 mm / [2/(1 +/- p)] - 1 = +/- p, either side of 1%.
+    rows = _wall_sheet(mesh, height).preflight().by_code(CODE)
+    assert bool(rows) == refused
+    if refused:
+        assert rows[0].severity == "error"
+        assert "domain wall z_lo" in str(rows[0])
+
+
+def test_box_touching_off_node_lid_is_solved_open(monkeypatch):
+    sim = Simulation(10e9, (20 * MM, 18 * MM, 5.5 * MM), dx=MM, boundary="pec")
+    sim.add(Box((2 * MM, 2 * MM, 0), (17 * MM, 15 * MM, 5.5 * MM)), material="pec")
+    sim.add_source((MM, MM, MM), component="ez")
+    # Box upper tie 5.5 -> 5; ceil domain lid 5.5 -> 6; touching -> 1 mm.
+    message = _assert_review_verdict(monkeypatch, sim, "run", "strict",
+                                    "drawn touching/overlapping, solved spacing 1mm")
+    assert "domain wall z_hi (electric) plane at 6mm (drawn 5.5mm)" in message
+    assert "domain wall z_lo" not in message  # Box bottom 0 -> 0, touching shut.
+
+
+@pytest.mark.parametrize("mesh", NODES)
+@pytest.mark.parametrize("boundary", ["cpml", "pmc", "periodic"])
+def test_non_electric_or_absorbing_faces_are_not_judged(mesh, boundary):
+    # Same 2.1 -> 2 mm face; no electric wall cavity exists along z.
+    assert not _wall_sheet(mesh, z=boundary).preflight().by_code(CODE)
+
+
+@pytest.mark.parametrize("mesh", NODES)
+@pytest.mark.parametrize("full", [True, False], ids=["full_box", "partial_post"])
+def test_box_blocks_all_or_only_some_floor_columns(mesh, full):
+    sim = _wall_sheet(mesh)
+    lo, hi = ((0, 0, 0), (20 * MM, 18 * MM, MM)) if full else (
+        (8 * MM, 7 * MM, 0), (9 * MM, 8 * MM, MM))
+    sim.add(Box(lo, hi), material="pec")
+    # Box top 1 -> 1; sheet 2.1 -> 2. Full box covers the floor-sheet
+    # cavity, leaving 1/1.1-1 = -9.09% above the box. A post leaves floor
+    # columns open, so the 2/2.1-1 = -4.76% floor cavity is still judged.
+    row, = sim.preflight().by_code(CODE)
+    assert ("domain wall z_lo" in str(row)) == (not full)
+    assert "drawn spacing 1.1mm, solved spacing 1mm (-9.09%)" in str(row)
+
+
+@pytest.mark.parametrize("absorbing_side", ["lo", "hi"])
+def test_graded_axis_with_one_absorbing_side_keeps_its_electric_wall(absorbing_side):
+    from rfx.boundaries.spec import Boundary
+
+    z = Boundary("cpml", "pec") if absorbing_side == "lo" else Boundary("pec", "cpml")
+    height = 17.9 if absorbing_side == "lo" else 2.1
+    # Non-absorbing endpoint is 20 or 0 despite padding on the other end.
+    # Both drawings leave 2.1 mm to that endpoint; explicit nodes leave 2 mm.
+    row, = _wall_sheet("graded", height, z=z).preflight().by_code(CODE)
+    assert "drawn spacing 2.1mm, solved spacing 2mm (-4.76%)" in str(row)
+    face = "z_hi" if absorbing_side == "lo" else "z_lo"
+    assert f"domain wall {face} (electric)" in str(row)
+    assert f"domain wall z_{absorbing_side}" not in str(row)
+
+
+@pytest.mark.parametrize("height,extent", [(2.1, 20), (2, 5.5)])
+@pytest.mark.parametrize("dx", [0.5 * MM, 0.25 * MM])
+def test_wall_cavity_edge_aware_remedy_is_flush(height, extent, dx):
+    from rfx.mesh_edges import edge_aware_profiles
+
+    domain = (20 * MM, 18 * MM, extent * MM)
+    sheet = Box((0, 0, height * MM), (domain[0], domain[1], height * MM))
+    profiles = edge_aware_profiles(domain, dx, sheets=[sheet], solids=[], axes="xyz")
+    sim = Simulation(10e9, domain, dx=dx, boundary="pec", **profiles)
+    sim.add(sheet, material="pec")
+    # Drawn sheet and both domain endpoints must be actual nodes. Expected
+    # values are the input drawing: 2.1/20 mm or 2/5.5 mm, not helper output.
+    for a, axis in enumerate("xyz"):
+        assert sum(profiles[f"d{axis}_profile"]) == pytest.approx(domain[a], abs=1e-15)
+    nodes = sim._campaign_ctx().nodes[2]
+    assert min(abs(nodes - height * MM)) < 1e-15
+    assert nodes[0] == pytest.approx(0.0, abs=1e-15)
+    assert nodes[-1] == pytest.approx(extent * MM, abs=1e-15)
+    assert not sim.preflight().by_code(CODE)
+
+
+def test_uniform_cell_dividing_wall_extent_is_flush():
+    # 5.5/.5 = 11 cells, sheet 2/.5 = node 4: gap 3.5 mm on both drawings.
+    assert not _wall_sheet(height=2, extent=5.5, dx=0.5 * MM).preflight().by_code(CODE)
+
+
+@pytest.mark.parametrize("boundary", ["pec", "pmc", "cpml", "periodic"])
+def test_spacing_guard_does_not_assemble_without_a_possible_pair(monkeypatch, boundary):
+    from rfx.preflight.pec_geometry import _validate_cfg_sheet_cavity_thickness
+
+    sim = _wall_sheet(z=boundary)
+    if boundary == "pec":
+        sim._geometry.clear()  # Only two walls: they are not a cavity pair.
+    ctx = sim._campaign_ctx()
+
+    # The shared census already assembles; spy only on this validator's
+    # additional realized() access after that census is available.
+    ctx.interior_pec_entries()
+
+    def unexpected(**kwargs):
+        pytest.fail("no possible conductor pair: realized() must not be called")
+
+    monkeypatch.setattr(ctx, "realized", unexpected)
+    _validate_cfg_sheet_cavity_thickness(sim, None, ctx)
+
+
+def test_uniform_wall_kinds_match_the_grid_resolver():
+    from rfx.boundaries.pec import resolve_wall_faces
+    from rfx.boundaries.spec import Boundary, BoundarySpec
+    from rfx.preflight.pec_geometry import _cavity_wall_faces
+
+    sim = Simulation(10e9, DOMAIN, dx=MM, boundary=BoundarySpec(
+        x="periodic", y=Boundary("pec", "pmc"), z=Boundary("pmc", "pec")))
+    ctx = sim._campaign_ctx()
+    electric, magnetic = resolve_wall_faces(ctx.grid, ctx.periodic)
+    # Drawing: periodic x, electric y_lo/z_hi, magnetic y_hi/z_lo.
+    assert _cavity_wall_faces(ctx) == electric == {"y_lo", "z_hi"}
+    assert sim._boundary_spec.pmc_faces() == magnetic == {"y_hi", "z_lo"}

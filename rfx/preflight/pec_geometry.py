@@ -905,16 +905,27 @@ def _box_face_planes(ctx, a, e, shape):
     return nearest(float(e.lo[a])), nearest(float(e.hi[a]))
 
 
+def _cavity_wall_faces(ctx):
+    """Only non-absorbing electric faces bound a drawn cavity."""
+    from rfx.boundaries.pec import resolve_wall_faces
+
+    electric, _ = resolve_wall_faces(ctx.grid, ctx.periodic)
+    magnetic = ctx.sim._boundary_spec.pmc_faces()
+    depths = ctx.sim._preflight_face_layers()
+    return {face for face in electric - magnetic if depths.get(face, 0) == 0}
+
+
 def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
-    """Judge adjacent sheet/Box cavity faces independently of electrical columns."""
+    """Judge adjacent sheet/Box/wall faces independently of electrical columns."""
     conductors = [e for e in entries if e.kind == "sheet"
                   or (e.kind == "volume" and isinstance(e.shape, Box))]
-    if len(conductors) < 2:
+    if not conductors:
         return
     from rfx._grid_metric import node_tie_tol
     from rfx.geometry.rasterize_grid import _local_cell as _rasterize_local_cell
     shape = tuple(ctx.grid.shape)
     pec_np = np.asarray(pec_np, dtype=bool)
+    wall_faces = _cavity_wall_faces(ctx)
     results = []
     for a in range(3):
         planes = []
@@ -931,12 +942,27 @@ def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
                          (wall[1], float(e.hi[a]), float(e.hi[a]), "PEC Box face upper")]
             for k, lo, hi, kind in faces:
                 planes.append((e, k, e.footprint_on_plane(a, k, ctx.periodic, shape), lo, hi, kind))
+        if not ctx.periodic[a]:
+            for side in ("lo", "hi"):
+                face = f"{'xyz'[a]}_{side}"
+                if face not in wall_faces:
+                    continue
+                drawn = 0.0 if side == "lo" else float(ctx.sim._domain[a])
+                if ctx.lane == "uniform":
+                    interior = ctx.grid.interior[a]
+                    k = int(interior.start if side == "lo" else interior.stop - 1)
+                else:
+                    k = 0 if side == "lo" else len(ctx.nodes[a]) - 1
+                foot = np.ones(tuple(shape[b] for b in range(3) if b != a), dtype=bool)
+                planes.append((None, k, foot, drawn, drawn, f"domain wall {face} (electric)"))
         planes.sort(key=lambda p: (0.5 * (p[3] + p[4]), p[3]))
         for si, (e1, k1, foot1, lo1, g_lo, kind1) in enumerate(planes):
-            if kind1 == "PEC Box face lower":
+            if kind1 == "PEC Box face lower" or (e1 is None and "_hi" in kind1):
                 continue
             covered = np.zeros(foot1.shape, dtype=bool)
             for e2, k2, foot2, g_hi, hi2, kind2 in planes[si + 1:]:
+                if e1 is None and e2 is None:
+                    continue  # The domain itself is not a drawn cavity or a cover.
                 overlap = foot1 & foot2 & ~covered
                 if not overlap.any():
                     continue
@@ -953,7 +979,7 @@ def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
                     # stand between e1 and the next sheet.
                     continue
                 covered |= foot1 & foot2
-                if e1 is e2 or kind2 == "PEC Box face upper":
+                if e1 is e2 or kind2 == "PEC Box face upper" or (e2 is None and "_lo" in kind2):
                     continue
                 # A post blocks some columns, not the whole cavity. Same-node
                 # sheets have no intervening cells and must still be judged.
@@ -983,10 +1009,12 @@ def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
                     "zero-thickness sheet on the interface it bounds"
                     if lo1 != g_lo or g_hi != hi2
                     else "")
+                label1 = kind1 if e1 is None else f"{e1.label} '{e1.name}' ({kind1})"
+                label2 = kind2 if e2 is None else f"{e2.label} '{e2.name}' ({kind2})"
                 results.append((score, (
-                    f"[{'xyz'[a]}] {e1.label} '{e1.name}' ({kind1}) plane at "
+                    f"[{'xyz'[a]}] {label1} plane at "
                     f"{_fmt_len(z1)} (drawn {_fmt_len(g_lo)}) / "
-                    f"{e2.label} '{e2.name}' ({kind2}) plane at {_fmt_len(z2)} "
+                    f"{label2} plane at {_fmt_len(z2)} "
                     f"(drawn {_fmt_len(g_hi)}): {spacing}{thickness}")))
     if not results:
         return
@@ -997,7 +1025,7 @@ def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
         "more than 1% off their drawn spacing. "
         f"{lines}. WHY: a cavity resonance follows its spacing. "
         "REMEDY: put both planes on mesh nodes: use a cell size that "
-        "divides the heights, or build a graded profile whose nodes include "
+        "divides the heights and the domain extent, or build a graded profile whose nodes include "
         "both planes with rfx.mesh_edges.edge_aware_profiles(domain, dx, "
         'sheets=[...], solids=[...], axes="xyz") and pass it as Simulation(dx_profile=..., '
         "dy_profile=..., dz_profile=...). Include the PEC Boxes in solids; if the gap "
@@ -1040,8 +1068,16 @@ def _validate_cfg_sheet_cavity_thickness(self, _w, ctx) -> None:
     """
     entries = [e for e in ctx.interior_pec_entries()
                if e.kind in ("volume", "sheet") and e.lo is not None]
-    if len(entries) < 2:
+    if not entries:
         return
+    if len(entries) < 2:
+        e = entries[0]
+        axes = (int(e.sheet.normal_axis),) if e.kind == "sheet" else range(3)
+        wall_faces = _cavity_wall_faces(ctx)
+        if (e.kind != "sheet" and not isinstance(e.shape, Box)) or not any(
+                f"{'xyz'[a]}_{side}" in wall_faces
+                for a in axes for side in ("lo", "hi")):
+            return
     realized = ctx.realized()
     if realized is None:
         return
@@ -1049,6 +1085,9 @@ def _validate_cfg_sheet_cavity_thickness(self, _w, ctx) -> None:
     eps_arr = np.asarray(realized.materials.eps_r, dtype=np.float64)
     pec_np = (realized.pec_mask if realized.pec_mask is not None
               else np.zeros(shape, dtype=bool))
+    if len(entries) < 2:
+        _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np)
+        return  # Electrical thickness still needs two conductor entries.
 
     # plane census: (entry, axis, k, footprint2d, declared face coord)
     planes_by_axis: dict[int, list] = {0: [], 1: [], 2: []}
