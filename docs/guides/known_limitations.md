@@ -125,7 +125,7 @@ Grid-aligned faces are not affected. Judge such resonances by at least three ref
 Werner–Bauer–Cary 2013 node form) on uniform single-device meshes. Extinction cross section on a synthetic eps-4
 sphere measured second-order convergence over three meshes. This is not a convergence-order claim for high-contrast rods.
 Graded meshes, multiple devices, ADI, subgrids, UPML, and the waveguide S driver refuse this option.
-Kerr and declared-shape gradients remain refused for every smoothing option (#1849).
+Kerr and declared-shape gradients remain refused for every smoothing option.
 The full_tensor diagonal can jump where an interface enters an absorber pad (triplet interior, Kottke midpoint pad); oblique TFSF refuses a noninvariant padded periodic axis; use a closed box (#1632).
 Tracker: #1632
 
