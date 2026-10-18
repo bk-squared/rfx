@@ -104,10 +104,8 @@ PR_REFUSAL_LANES = frozenset((
 
 # Cheapest measured 12-step witness per cause (cold solve cost, including failures).
 PR_FINDING_CHOICES = {
-    "nu-lumped-dft-record-missing": "_ports:lumped_port:fwd_uniform:fwd_nonuniform:constant:12",
     "nu-missing-vref": "_ports:wire_port:run_uniform:run_nonuniform:constant:12",
     "port-time-record-missing": "_ports:lumped_port:run_uniform:run_distributed:constant:12",
-    "uniform-wire-dft-record-missing": "_ports:lumped_port:fwd_uniform:fwd_nonuniform:constant:12",
     "distributed-wire-dft-record-missing": "_ports:wire_port:run_uniform:run_distributed:constant:12"
 }
 

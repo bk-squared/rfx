@@ -1,5 +1,34 @@
-"""Arrange the ring-down probe columns for the shared point reduction."""
+"""Publish port spectra by kind and arrange ring-down probe columns."""
 import numpy as np
+
+
+def pack_port_records(kinds, accumulators, metadata, *, graded=False, freqs=None):
+    """Publish each kind in declaration order, without changing spectral bits.
+
+    Uniform specs and accumulator tuples pass through unchanged. Graded wire
+    metadata retain their static tuple schema; lumped records select slots
+    0, 1 and 4 from the joint five-channel carry used internally for S.
+    """
+    from rfx.simulation import LumpedPortSParamSpec
+
+    wire, lumped = [], []
+    for kind, accs, meta in zip(kinds, accumulators, metadata, strict=True):
+        if kind == 'wire':
+            wire.append((meta, accs))
+        elif kind == 'lumped':
+            if graded:
+                meta = LumpedPortSParamSpec(*meta[:4], freqs, meta[4], meta[7])
+                accs = (accs[0], accs[1], accs[4])
+            lumped.append((meta, accs))
+        else:
+            raise ValueError(f'Unknown port record kind: {kind}')
+    return tuple(wire) or None, tuple(lumped) or None
+
+
+def graded_record_pairs(result):
+    """Restore the joint wire-then-lumped order for graded S diagnostics."""
+    return ((getattr(result, 'wire_port_sparams', None) or ())
+            + (getattr(result, 'lumped_port_sparams', None) or ()))
 
 
 def recorded_port_vi(pm, e, hx, hy, hz):

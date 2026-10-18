@@ -212,6 +212,12 @@ def assemble_graded_ports_result(wire_sparams, wp_meta, records, request):
         result['s_param_freqs'] = freqs if isinstance(freqs, jax.core.Tracer) else np.array(freqs)
         result['wire_sparams_raw'] = wire_sparams
         result['wire_sparams_meta'] = tuple(wp_meta)
+        from rfx.measurement.port_records import pack_port_records
+        # Ringdown's synthetic completion has only wire metadata and no owners.
+        kinds = (tuple(request.port_owners[i].kind for i in request.port_acc_indices)
+                 if request.port_acc_indices else tuple(p['kind'] for p in context.wire_ports))
+        result['wire_port_sparams'], result['lumped_port_sparams'] = pack_port_records(
+            kinds, wire_sparams, wp_meta, graded=True, freqs=context.sp_freqs)
     result['sparam_time_records'] = from_owners(records, request.port_owners)
     result['sparam_read_ids'] = SReadPorts(tuple(
         request.port_owners[i].id for i in request.port_acc_indices)

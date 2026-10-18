@@ -311,7 +311,6 @@ def run(
     use_snapshot = snapshot is not None
     use_flux_monitors = len(flux_monitors) > 0
     use_wire_sparams = len(wire_port_sparams) > 0
-    use_lumped_sparams = len(lumped_port_sparams) > 0
     use_wire_refplanes = len(wire_refplane_sparams) > 0
     use_dft_planes = len(dft_planes) > 0
     use_waveguide_ports = len(waveguide_ports) > 0
@@ -740,19 +739,11 @@ def run(
             for cfg_meta, accs in zip(waveguide_meta, final_carry["waveguide_port_accs"])
         )
 
-    final_wire_sparams = None
-    if use_wire_sparams:
-        final_wire_sparams = tuple(
-            (wp_meta, accs)
-            for wp_meta, accs in zip(wire_sparam_meta, final_carry["wire_sparam_accs"])
-        )
-
-    final_lumped_sparams = None
-    if use_lumped_sparams:
-        final_lumped_sparams = tuple(
-            (lp_meta, accs)
-            for lp_meta, accs in zip(lumped_sparam_meta, final_carry["lumped_sparam_accs"])
-        )
+    from rfx.measurement.port_records import pack_port_records
+    final_wire_sparams, final_lumped_sparams = pack_port_records(
+        ('wire',) * len(wire_sparam_meta) + ('lumped',) * len(lumped_sparam_meta),
+        final_carry.get("wire_sparam_accs", ()) + final_carry.get("lumped_sparam_accs", ()),
+        wire_sparam_meta + lumped_sparam_meta)
 
     final_wire_refplanes = None
     if use_wire_refplanes:
@@ -1026,8 +1017,6 @@ def run_until_decay(
     lumped_sparam_meta = _setup.lumped_sparam_meta
     flux_meta_decay = _setup.flux_meta_8   # 8-field: no streaming DFT window
     use_flux_monitors = len(flux_monitors) > 0
-    use_wire_sparams = len(wire_port_sparams) > 0
-    use_lumped_sparams = len(lumped_port_sparams) > 0
     use_dft_planes = len(dft_planes) > 0
     use_waveguide_ports = len(waveguide_ports) > 0
 
@@ -1326,19 +1315,11 @@ def run_until_decay(
             for cfg_meta, accs in zip(waveguide_meta, carry["waveguide_port_accs"])
         )
 
-    final_wire_sparams = None
-    if use_wire_sparams:
-        final_wire_sparams = tuple(
-            (wp_meta, accs)
-            for wp_meta, accs in zip(wire_sparam_meta, carry["wire_sparam_accs"])
-        )
-
-    final_lumped_sparams = None
-    if use_lumped_sparams:
-        final_lumped_sparams = tuple(
-            (lp_meta, accs)
-            for lp_meta, accs in zip(lumped_sparam_meta, carry["lumped_sparam_accs"])
-        )
+    from rfx.measurement.port_records import pack_port_records
+    final_wire_sparams, final_lumped_sparams = pack_port_records(
+        ('wire',) * len(wire_sparam_meta) + ('lumped',) * len(lumped_sparam_meta),
+        carry.get("wire_sparam_accs", ()) + carry.get("lumped_sparam_accs", ()),
+        wire_sparam_meta + lumped_sparam_meta)
 
     final_flux_monitors = None
     if use_flux_monitors:

@@ -1140,10 +1140,9 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         def _stop_with_result(steps_done, peek):
             def partial():
                 d = peek()
-                raw = d.get("wire_sparams_raw")
-                wps = (None if raw is None else
-                       tuple(zip(d.get("wire_sparams_meta", ()), raw)))
-                return _NS(time_series=d["time_series"], wire_port_sparams=wps,
+                return _NS(time_series=d["time_series"],
+                           wire_port_sparams=d.get("wire_port_sparams"),
+                           lumped_port_sparams=d.get("lumped_port_sparams"),
                            freqs=d.get("s_param_freqs"), grid=grid, dt=grid.dt)
             return stop_fn(steps_done, partial)
 
@@ -1257,25 +1256,6 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
             flux_spectrum(m) for m in wg_final
         )
 
-    # The per-port raw DFT accumulators (v, i, v_inc, v_port), the same
-    # diagnostic channel the uniform lane fills. ``run_nonuniform`` already
-    # builds them (#764); dropping them here left a caller that needs the
-    # port's INCIDENT wave -- absorbed power as a fraction of what the port
-    # delivered, say -- with only the S-parameter RATIO, which is
-    # load-independent by construction and carries no level.
-    #
-    # Paired with the port metadata so the field has the SAME shape as the
-    # uniform lane's (rfx/simulation.py, ``final_wire_sparams``): a tuple of
-    # ``(meta, accs)``, so ``for spec, accs in result.wire_port_sparams``
-    # runs unchanged on either lane. The first entry differs in TYPE between
-    # the lanes -- see ``Result.wire_port_sparams`` in rfx/api/_spec.py.
-    wire_port_sparams_result = None
-    _wire_raw = r.get("wire_sparams_raw")
-    if _wire_raw is not None:
-        wire_port_sparams_result = tuple(
-            zip(r.get("wire_sparams_meta", ()), _wire_raw)
-        )
-
     # until_decay: one record of what ended the run (rfx.measurement.decay.finish_decay).
     _stop = r.get("decay_stop")
     from rfx.model.design_admission import with_design_diagnostics
@@ -1291,7 +1271,8 @@ def run_nonuniform_path(sim, *, diagnostics=(), n_steps, compute_s_params=None, 
         current_moment_data=r.get("current_moment_data"),
         current_moment_monitor=current_moments,
         dft_planes=dft_planes_dict,
-        wire_port_sparams=wire_port_sparams_result,
+        wire_port_sparams=r.get("wire_port_sparams"),
+        lumped_port_sparams=r.get("lumped_port_sparams"),
         sparam_time_records=r.get("sparam_time_records"),
         sparam_read_ids=r.get("sparam_read_ids"),
         dft_time_records={

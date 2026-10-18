@@ -24,15 +24,26 @@ def _forward(sim, **kwargs):
 
 
 @pytest.mark.parametrize("lumped", [False, True], ids=["wire", "lumped"])
-def test_requested_port_bins(lumped):
+def test_requested_port_bins(lumped, monkeypatch):
+    from rfx.measurement import port_s
+    assemble, captured = port_s.assemble_graded_ports_result, []
+
+    def capture(*args, **kwargs):
+        result = assemble(*args, **kwargs)
+        captured.append(result['wire_sparams_raw'])
+        return result
+
+    monkeypatch.setattr(port_s, 'assemble_graded_ports_result', capture)
     request = np.array([1.1e9, 1.7e9, 2.3e9], dtype=np.float64)
     result = _forward(_sim(lumped=lumped), port_s11_freqs=request)
     np.testing.assert_array_equal(result.freqs, request.astype(np.float32))
     assert result.freqs.dtype == jnp.float32
     assert result.s_params.shape == (1, 1, len(request))
     assert np.isfinite(result.s_params).all()
-    assert len(result.wire_port_sparams) == 1
-    for accumulator in result.wire_port_sparams[0][1]:
+    pairs = result.lumped_port_sparams if lumped else result.wire_port_sparams
+    assert len(pairs) == 1
+    # Retain all five original numeric witnesses, including unpublished slots.
+    for accumulator in captured[-1][0]:
         assert accumulator.shape == (len(request),)
         assert np.isfinite(accumulator).all()
 
@@ -175,7 +186,7 @@ def test_lumped_before_passive_wire_preserves_wire_index():
     assert selected_spec == default_spec
     assert selected_spec[4] == 75
     assert not selected_spec[7]
-    assert selected.wire_port_sparams[1][0][7]
+    assert selected.lumped_port_sparams[0][0].excite
     for actual, expected in zip(selected_acc, default_acc):
         np.testing.assert_allclose(actual, expected, rtol=0, atol=0)
 

@@ -612,7 +612,7 @@ class Result(NamedTuple):
     #: reference ``v_ref`` (#683), on both lanes; the first four
     #: are the same channels on both.
     wire_port_sparams: tuple | None = None
-    #: Main-record lumped ``(spec, (V, I, V_ref))`` pairs; None on graded meshes or without spectra.
+    #: Lumped ``(spec, (V, I, V_ref))`` pairs on both meshes when spectra exist; None otherwise.
     lumped_port_sparams: tuple | None = None
     #: ``run(..., ringdown=RingdownSpec(...))`` only (issue #1254): a
     #: :class:`rfx.ringdown.RingdownResult` holding the wire-port S-matrix
@@ -946,13 +946,13 @@ class ForwardResult(NamedTuple):
     carries the first post-source sample, including free-space transit;
     missing timing or insufficient post-source samples yields no witness.
     These lazy properties are not stored fields in ``_asdict()``.
-    ``wire_port_sparams`` is a tuple of ``(meta, accs)`` pairs on both lanes;
+    ``wire_port_sparams`` contains only wire ``(meta, accs)`` pairs on both meshes;
     the lane-specific type of ``meta`` and the accumulator channels are
     documented on :class:`Result`, as are ``flux_monitors``,
     ``waveguide_ports`` and ``waveguide_sparams``, returned here as by run().
 
-    ``lumped_port_sparams`` exposes the raw per-port
-    ``(V_dft, I_dft, V_ref_dft)`` tuples accumulated inside the JIT scan body
+    ``lumped_port_sparams`` exposes ``(LumpedPortSParamSpec,
+    (V_dft, I_dft, V_ref_dft))`` pairs on both meshes, accumulated inside the JIT scan body
     when ``forward(port_s11_freqs=...)`` is used.  V and I are the
     POST-injection physical channels (I carrying the Yee half-step phase);
     ``V_ref`` is the PRE-injection drive sample. ``s_params`` has shape

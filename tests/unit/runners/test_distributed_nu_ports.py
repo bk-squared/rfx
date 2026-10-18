@@ -83,6 +83,27 @@ def evaluate(sim, entry, n, devices=None, eps=None):
         checkpoint=False, skip_preflight=True, port_s11_freqs=BINS, eps_override=eps)
 
 
+def evaluate_with_raw_spectra(sim, entry, n, devices=None):
+    """Keep the existing five-channel comparisons on the same internal values.
+
+    Lumped publication now selects three channels; the joint S accumulator
+    still carries all five, including the old V_inc and V_port witnesses.
+    """
+    from unittest.mock import patch
+    from rfx.measurement import port_s
+    assemble, captured = port_s.assemble_graded_ports_result, []
+
+    def capture(*args, **kwargs):
+        result = assemble(*args, **kwargs)
+        captured.append(tuple(zip(result.get('wire_sparams_meta', ()),
+                                  result.get('wire_sparams_raw', ()))))
+        return result
+
+    with patch.object(port_s, 'assemble_graded_ports_result', capture):
+        result = evaluate(sim, entry, n, devices)
+    return result, captured[-1]
+
+
 @pytest.mark.parametrize('entry', ['run', 'forward'])
 @pytest.mark.parametrize('n', [128, 192, 288])
 @pytest.mark.parametrize('case', ['C1-mid', 'C1-seam', 'C1b', 'C2', 'C3', 'C4-mid', 'C4-wire'])
@@ -91,8 +112,8 @@ def test_port_records_and_s(case, n, entry):
     if len(devices) < 2:
         pytest.skip('requires 2 or 3 host devices')
     sim = scene(case, len(devices))
-    one = evaluate(sim, entry, n)
-    multi = evaluate(sim, entry, n, devices)
+    one, raw_one = evaluate_with_raw_spectra(sim, entry, n)
+    multi, raw_multi = evaluate_with_raw_spectra(sim, entry, n, devices)
     row = dict(case=case, devices=len(devices), entry=entry, n=n, records={}, accumulators={}, S=None)
     if entry == 'run':
         row['final_fields'] = {field: measure(getattr(one.state, field), getattr(multi.state, field))
@@ -106,7 +127,7 @@ def test_port_records_and_s(case, n, entry):
     if one.s_params is not None:
         row['S'] = measure(one.s_params, multi.s_params)
         row['S_entries'] = {str(i): measure(one.s_params[i], multi.s_params[i]) for i in np.ndindex(one.s_params.shape[:-1])}
-        for port, ((_, a), (_, b)) in enumerate(zip(one.wire_port_sparams, multi.wire_port_sparams, strict=True)):
+        for port, ((_, a), (_, b)) in enumerate(zip(raw_one, raw_multi, strict=True)):
             for name, aa, bb in zip(('v_dft', 'i_dft', 'v_inc_dft', 'v_port_dft', 'v_ref_dft'), a, b, strict=True):
                 row['accumulators'][f'{port}/{name}'] = measure(aa, bb)
     record(row)
@@ -533,11 +554,11 @@ def test_port_first_scan_memory(mode):
 @pytest.mark.parametrize('case', ['C1-seam', 'C2', 'C3'])
 def test_summed_spectrum(case):
     sim = scene(case, len(jax.devices()))
-    one = evaluate(sim, 'forward', 128)
-    multi = evaluate(sim, 'forward', 128, jax.devices())
+    one, raw_one = evaluate_with_raw_spectra(sim, 'forward', 128)
+    multi, raw_multi = evaluate_with_raw_spectra(sim, 'forward', 128, jax.devices())
     metric = measure(one.s_params, multi.s_params)
     assert metric['relative'] <= 1e-4, ('S', metric)
-    for port, ((_, a), (_, b)) in enumerate(zip(one.wire_port_sparams, multi.wire_port_sparams)):
+    for port, ((_, a), (_, b)) in enumerate(zip(raw_one, raw_multi)):
         for name, aa, bb in zip(('v_dft', 'i_dft', 'v_inc_dft', 'v_port_dft', 'v_ref_dft'), a, b, strict=True):
             metric = measure(aa, bb)
             assert metric['relative'] <= 1e-4, (port, name, metric)

@@ -330,8 +330,8 @@ def forward_from_materials(
         diagnostics=result.get('diagnostics', diagnostics),
         time_series=result.get('time_series'), grid=grid, dt=grid.dt,
         s_params=result.get('s_params'), freqs=result.get('s_param_freqs'),
-        wire_port_sparams=(tuple(zip(result['wire_sparams_meta'], result['wire_sparams_raw']))
-                           if 'wire_sparams_raw' in result else None),
+        wire_port_sparams=result.get('wire_port_sparams'),
+        lumped_port_sparams=result.get('lumped_port_sparams'),
         sparam_time_records=result.get('sparam_time_records'),
         sparam_read_ids=result.get('sparam_read_ids'),
         dft_planes=result.get('dft_planes'))

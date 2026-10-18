@@ -32,13 +32,13 @@ def test_constant_profile_reference_identity(kind):
     assert not np.array_equal(b['V_ref'], b['V'])  # A driven pre/post swap must be visible.
     np.testing.assert_array_equal(a['V_ref'], b['V_ref'])
     assert np.asarray(a['V_ref']).tobytes() == np.asarray(b['V_ref']).tobytes()
-    ga = graded.wire_port_sparams[0][1]
+    ga = (graded.wire_port_sparams if kind == 'wire' else graded.lumped_port_sparams)[0][1]
     ua = (uniform.wire_port_sparams[0][1][4] if kind == 'wire'
           else uniform.lumped_port_sparams[0][1][2])
-    assert len(ga) == 5
-    assert ua.dtype == ga[4].dtype == np.complex64
-    np.testing.assert_array_equal(ua, ga[4])
-    assert np.asarray(ua).tobytes() == np.asarray(ga[4]).tobytes()
+    assert len(ga) == (5 if kind == 'wire' else 3)
+    assert ua.dtype == ga[-1].dtype == np.complex64
+    np.testing.assert_array_equal(ua, ga[-1])
+    assert np.asarray(ua).tobytes() == np.asarray(ga[-1]).tobytes()
 
 
 @pytest.mark.parametrize('entry', ['run', 'forward'])
@@ -86,4 +86,5 @@ def test_passive_reference_reads_the_local_edge_on_a_graded_profile(kind):
     passive = result.sparam_time_records[1]
     assert np.any(np.asarray(passive['V']) != 0)
     np.testing.assert_array_equal(passive['V_ref'], passive['V'])
-    assert np.all(np.abs(np.asarray(result.wire_port_sparams[1][1][4])) > 0)
+    pairs = result.wire_port_sparams if kind == 'wire' else result.lumped_port_sparams
+    assert np.all(np.abs(np.asarray(pairs[1][1][-1])) > 0)

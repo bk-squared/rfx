@@ -138,8 +138,8 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args
             time_series=result["time_series"],
             s_params=result.get('s_params'),
             freqs=result.get('s_param_freqs'),
-            wire_port_sparams=(tuple(zip(result['wire_sparams_meta'], result['wire_sparams_raw']))
-                               if 'wire_sparams_raw' in result else None),
+            wire_port_sparams=result.get('wire_port_sparams'),
+            lumped_port_sparams=result.get('lumped_port_sparams'),
             sparam_time_records=result.get('sparam_time_records'),
             sparam_read_ids=result.get('sparam_read_ids'),
             grid=grid,

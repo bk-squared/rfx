@@ -15,6 +15,7 @@ def pack_nu_forward_result(
     waveguide_ports=None,
     waveguide_sparams=None,
     wire_port_sparams=None,
+    lumped_port_sparams=None,
     sparam_time_records=None,
     sparam_read_ids=None,
     dft_time_records=None,
@@ -35,9 +36,8 @@ def pack_nu_forward_result(
     the W6.1 ``_StepContext`` / W6.6 builder precedents. Centralising the
     constructor keeps the two lanes' output schema from drifting apart.
 
-    ``wire_port_sparams`` is the per-port ``(meta, accs)`` pair tuple
-    the single-device lane's ``Result`` carries; the distributed lane
-    has no wire-port accumulators and leaves it ``None``.
+    Both device paths publish wire and lumped ``(meta, accs)`` pairs in
+    separate fields, or ``None`` for a kind with no spectra.
     """
     from rfx.api._spec import ForwardResult
     return ForwardResult(
@@ -53,6 +53,7 @@ def pack_nu_forward_result(
         waveguide_ports=waveguide_ports,
         waveguide_sparams=waveguide_sparams,
         wire_port_sparams=wire_port_sparams,
+        lumped_port_sparams=lumped_port_sparams,
         sparam_time_records=sparam_time_records,
         sparam_read_ids=sparam_read_ids,
         dft_time_records=dft_time_records,

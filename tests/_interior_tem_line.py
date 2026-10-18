@@ -282,8 +282,6 @@ def assert_solved_ports(result, line, kind="lumped", *, two=False):
         entries = result[kind]
     else:
         entries = getattr(result, f"{kind}_port_sparams", None)
-        if entries is None:
-            entries = result.wire_port_sparams  # graded lumped lane uses wire metadata
     assert entries and len(entries) == (2 if two else 1), "missing solved port specs"
     expected = (line.port, line.load) if two else (line.port,)
     for (spec, _), cell in zip(entries, expected):

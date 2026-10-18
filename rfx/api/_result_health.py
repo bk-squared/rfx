@@ -21,12 +21,15 @@ def _nonfinite_fields(result) -> list[tuple[str, int]]:
         try:
             if isinstance(arr, jax.core.Tracer):
                 continue
-            pairs = (getattr(result, "lumped_port_sparams", None)
-                     or getattr(result, "wire_port_sparams", None))
+            from rfx.measurement.port_records import graded_record_pairs
+            graded = hasattr(getattr(result, "grid", None), "dx_arr")
+            pairs = (graded_record_pairs(result) if graded else
+                     (getattr(result, "lumped_port_sparams", None)
+                      or getattr(result, "wire_port_sparams", None)))
             if name == "s_params" and pairs:
                 from rfx.api._spec import ForwardResult
                 from rfx.measurement.port_s import observed_port_s
-                if isinstance(result, ForwardResult) or not hasattr(pairs[0][0], "impedance"):
+                if isinstance(result, ForwardResult) or graded or not hasattr(pairs[0][0], "impedance"):
                     arr = observed_port_s(arr, pairs)
             a = np.asarray(arr)
         except Exception:
