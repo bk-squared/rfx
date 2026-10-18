@@ -64,7 +64,10 @@ def forward_settling_witness(result):
     return build_settling_witness(
         result, bins=bins, dt=result.dt, freq_max=freq_max,
         probe_info=result.settling_probe_info,
-        source_end=result.settling_source_end_index,
+        # Transit is to the records judged: probes for the probe row, ports for the port row.
+        source_end=(result.settling_probe_source_end_index
+                    if result.settling_probe_source_end_index is not None
+                    else result.settling_source_end_index),
         port_source_end=result.settling_source_end_index, warn=False)
 
 

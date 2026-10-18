@@ -226,7 +226,8 @@ def attach_run_settling_witness(sim, result, *, n_steps=None,
             settling_probe_info=sim._settling_probe_selection(result),
             settling_freq_max=sim._freq_max,
             settling_source_end_index=sim._settling_source_end(
-                result, records=sim._ports if s_read_records(result) else None))
+                result, records=sim._ports if s_read_records(result) else None),
+            settling_probe_source_end_index=sim._settling_source_end(result))
         if is_tracer(result.time_series):
             return result
     elif not hasattr(result, "_replace") or not hasattr(result, "settling_witness"):

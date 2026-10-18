@@ -77,3 +77,23 @@ def test_other_lumped_s_requests_keep_their_drive_scans(monkeypatch, mode, drive
                      **({'compute_s_params': False} if mode == 'no_s' else {}))
     assert len(calls) == 1 + drives
     assert (result.s_params is None) == (mode == 'no_s')
+
+
+@pytest.mark.parametrize('n_steps', [150, 900])
+def test_run_and_forward_judge_each_row_alike(n_steps):
+    # Each row's tail starts after the drive plus transit to the records it
+    # judges (probes for the probe row, ports for the port row) on both entries.
+    # 150 steps: the rows stop at different gates if the starts differ;
+    # 900 steps: every row reaches a verdict.
+    run = invoke(BUILDERS['P-lumped']('uniform'), 'run', 'uniform', n_steps)
+    forward = invoke(BUILDERS['P-lumped']('uniform'), 'forward', 'uniform', n_steps,
+                     dict(port_s11_freqs=np.asarray(run.freqs)))
+    a, b = run.settling_witness, forward.settling_witness
+    assert a['status'] == b['status']
+    if n_steps == 900:
+        assert a['status'] != 'undetermined'
+    assert len(a['runs']) == len(b['runs']) >= 2
+    for row_a, row_b in zip(a['runs'], b['runs']):
+        assert (row_a['status'], row_a['reason']) == (row_b['status'], row_b['reason'])
+        for key in ('share_per_bin', 'error_per_bin'):
+            np.testing.assert_array_equal(np.asarray(row_a[key]), np.asarray(row_b[key]))

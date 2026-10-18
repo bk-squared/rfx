@@ -117,14 +117,14 @@ def test_forward_records_cross_grad_and_vmap(graded):
     assert batch[0].id == 'port:0:mode:0'
 
 
-def test_uniform_lumped_main_records_are_not_scored_for_driver_s():
+def test_uniform_single_lumped_s_scores_the_main_record():
+    # One excited lumped port: S comes from the main record (#1373 D5), so the
+    # settling witness scores that record and no separate drive scan exists.
     with warnings.catch_warnings():
         warnings.simplefilter('ignore')
         result = model().run(n_steps=16, skip_preflight=True, compute_s_params=True,
                              s_param_freqs=np.array([2e9]))
     assert len(result.sparam_time_records) == 1
-    assert result.settling_witness['scored_port_record_ids'] == []
-    assert result.settling_witness['skipped_port_records'] == [
-        {'id': 'port:0:mode:0', 'reason': 'S not read'}]
-    # The driver still scores the record of its own driven scan.
-    assert result.settling_witness['runs'][0]['per_drive'][0]['scored_port_record_ids'] == ['port:0:mode:0']
+    assert result.settling_witness['scored_port_record_ids'] == ['port:0:mode:0']
+    assert result.settling_witness['skipped_port_records'] == []
+    assert 'per_drive' not in result.settling_witness

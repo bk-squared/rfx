@@ -1009,6 +1009,8 @@ class ForwardResult(NamedTuple):
     current_moment_monitor: object = None
     adjoint_settling: object = None
     settling_source_end_index: object = None
+    #: First post-source sample at the user probes (None: settling_source_end_index).
+    settling_probe_source_end_index: object = None
     settling_freq_max: object = None
     sparam_time_records: tuple | None = None
     sparam_read_ids: object = None
