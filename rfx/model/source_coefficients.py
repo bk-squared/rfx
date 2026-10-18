@@ -33,7 +33,7 @@ def drive_columns(eps, sigma, keep, cells, owned, samples, volumes, dt, *, cb=No
                 scale = jnp.where(owned[n], coefficient * volume[2] * volume[3], 0.)
             else:
                 volume = volume[0] if isinstance(volume, tuple) else volume
-                scale = jnp.where(owned[n], coefficient / volume, 0.)
+                scale = jnp.where(owned[n], coefficient * (jnp.float32(1) / volume), 0.)
             column = scale * samples[:, n]
         if keep is not None:
             column = column * jnp.where(owned[n], keep[axis][cell], 0.)
@@ -98,9 +98,10 @@ def source_table(samples, kind=None, *, native="raw", coefficient=None, volume=1
     census row D2). Cb only multiplies: under jit/vmap XLA rewrites a traced
     Cb divided by a constant dV as a multiply by the reciprocal, so ``Cb/dV``
     rounds differently per trace. The graded lanes (native ``cb_over_dv``,
-    single and multi-device alike) keep ``(Cb/dV)*w``: their multi-device
-    slabs supply Cb/dV already resolved as a native ``cb`` factor, and the
-    graded single-device table must stay the same product as the slabs'.
+    single and multi-device alike) form ``(Cb*(1/dV))*w`` with the reciprocal
+    as its own division: that is the product XLA compiles under a user jit, so
+    eager and jit agree bit for bit with a traced Cb (#1856), and
+    :func:`drive_columns` forms the same product for the multi-device slabs.
     """
     from rfx.api._source_semantics import needs_scale
     needs_scale(kind, native)  # validate Python-level dispatch, never a tracer
@@ -108,7 +109,7 @@ def source_table(samples, kind=None, *, native="raw", coefficient=None, volume=1
         return samples
     cb = coefficient() if callable(coefficient) else coefficient
     if native == "cb_over_dv":
-        return (cb / volume) * samples
+        return (cb * (jnp.float32(1) / volume)) * samples
     if kind == "current":
         return (1.0 / volume) * (cb * samples)
     return cb * samples
