@@ -252,16 +252,18 @@ def test_stop_is_the_declared_rule_on_an_independent_history(mesh, monkeypatch,
         assert expected is not None and got == expected, (interval, n_end, expected, got)
         if mesh.startswith("graded"):
             # The loop's own rows: same boundaries, W and reference to 1e-4, or
-            # within 9 float32 ULP of the largest W (the cross-trace per-step
-            # bar). W is a float32 sum whose leapfrog H^(n-1/2).H^(n+1/2) cross
-            # term cancels as W decays, so its relative rounding grows as W falls:
-            # graded-periodic on arm64 measured 1.26e-4 relative at W_peak/1.5e4
+            # within 9 float32 ULP of the largest post-drive reference W_ref (the
+            # cross-trace per-step bar; not the drive-time peak of W, which is the
+            # source cell's near field and would make the bar exceed thr*ref).
+            # W is a float32 sum whose leapfrog H^(n-1/2).H^(n+1/2) cross term
+            # cancels as W decays, so its relative rounding grows as W falls:
+            # graded-periodic on arm64 measured 1.26e-4 relative at W_ref/1.5e4
             # after #1882's drive change (5.6e-5 before), 1.1e-5 absolute, below
-            # one float32 ULP of W_peak.
+            # one float32 ULP of W_ref.
             checks = returned["decay_checks"]
             assert [c for c, _, _ in checks] == [c for c, _, _ in rows]
             np.testing.assert_allclose(np.asarray(checks)[:, 1:], np.asarray(rows)[:, 1:],
-                                       rtol=1e-4, atol=9 * float(np.spacing(np.float32(w.max()))))
+                                       rtol=1e-4, atol=9 * float(np.spacing(np.float32(np.asarray(rows)[:, 2].max()))))
 
 
 # --- (d) ---------------------------------------------------------------------
