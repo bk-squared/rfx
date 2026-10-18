@@ -348,6 +348,9 @@ GATE_OPT_OUTS = {
     "test_sections_0_to_7_are_the_pre_declaration_as_committed":
         "pre-declaration hash: sections 0-7 hold the windows and bars fixed "
         "before any arm ran; editing them after the result would loosen the gate",
+    "tests/contracts/test_docs_frontmatter.py::test_page_frontmatter_parses":
+        "Parses the YAML frontmatter the site build parses; a page that does not parse blocks the merge train "
+        "(PR 1704). It checks syntax and the presence of a title, never the prose.",
 }
 
 #: Every test function with at least one docs_consistency case. Marking a test
