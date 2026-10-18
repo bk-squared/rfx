@@ -37,7 +37,14 @@ def s_read_records(result):
     ids = getattr(result, 'sparam_read_ids', None)
     if getattr(result, 's_params', None) is None or ids is None:
         return ()
-    return tuple(r for r in getattr(result, 'sparam_time_records', None) or () if r.id in ids.ids)
+    records = tuple(r for r in getattr(result, 'sparam_time_records', None) or () if r.id in ids.ids)
+    if hasattr(getattr(result, 'grid', None), 'dx_arr'):
+        # Graded S still reads only the physical channels. Its new reference
+        # is retained for record parity, not as another settling-fit input.
+        from dataclasses import replace
+        records = tuple(replace(r, channels=r.channels[:-1], samples=r.samples[..., :-1])
+                        if r.channels[-1:] == ('V_ref',) else r for r in records)
+    return records
 
 
 def record_selection_detail(result):

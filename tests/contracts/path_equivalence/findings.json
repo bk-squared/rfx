@@ -6,13 +6,6 @@
       },
       "witnesses": {}
     },
-    "nu-missing-vref": {
-      "fingerprints": {
-        "f1": {"value": "sparam_time_records.0.V_ref: record missing on B", "records": ["port_samples"]},
-        "f2": {"value": "wire_port_sparams.0.V_ref: record missing on B", "cells": ["_ports:wire_port:fwd_uniform:fwd_nonuniform:constant:12", "_ports:wire_port:fwd_uniform:fwd_nonuniform:constant:36", "_ports:wire_port:run_uniform:run_nonuniform:constant:12", "_ports:wire_port:run_uniform:run_nonuniform:constant:36"], "records": ["port_dft"]}
-      },
-      "witnesses": {}
-    },
     "port-time-record-missing": {
       "fingerprints": {
         "f3": {"value": "sparam_time_records: record missing on B", "cells": ["_ports:lumped_port:run_uniform:run_distributed:constant:12", "_ports:wire_port:run_uniform:run_distributed:constant:12", "_ports:wire_port:run_uniform:run_distributed:constant:36"]}
@@ -35,28 +28,28 @@
   "cells": {
     "_ports:lumped_port:fwd_uniform:fwd_nonuniform:constant:12": {
       "port_dft": ["nu-lumped-dft-record-missing", "uniform-wire-dft-record-missing"],
-      "port_samples": ["nu-missing-vref"]
+      "port_samples": []
     },
     "_ports:lumped_port:run_uniform:run_distributed:constant:12": {
       "port_samples": ["port-time-record-missing"]
     },
     "_ports:lumped_port:run_uniform:run_nonuniform:constant:12": {
-      "port_samples": ["nu-missing-vref"]
+      "port_samples": []
     },
     "_ports:passive_port:fwd_uniform:fwd_nonuniform:constant:12": {
       "port_dft": ["nu-lumped-dft-record-missing", "uniform-wire-dft-record-missing"],
-      "port_samples": ["nu-missing-vref"]
+      "port_samples": []
     },
     "_ports:passive_port:run_uniform:run_nonuniform:constant:12": {
-      "port_samples": ["nu-missing-vref"]
+      "port_samples": []
     },
     "_ports:wire_port:fwd_uniform:fwd_nonuniform:constant:12": {
-      "port_dft": ["nu-missing-vref"],
-      "port_samples": ["nu-missing-vref"]
+      "port_dft": [],
+      "port_samples": []
     },
     "_ports:wire_port:fwd_uniform:fwd_nonuniform:constant:36": {
-      "port_dft": ["nu-missing-vref"],
-      "port_samples": ["nu-missing-vref"]
+      "port_dft": [],
+      "port_samples": []
     },
     "_ports:wire_port:run_uniform:run_distributed:constant:12": {
       "port_dft": ["distributed-wire-dft-record-missing"],
@@ -67,12 +60,12 @@
       "port_samples": ["port-time-record-missing"]
     },
     "_ports:wire_port:run_uniform:run_nonuniform:constant:12": {
-      "port_dft": ["nu-missing-vref"],
-      "port_samples": ["nu-missing-vref"]
+      "port_dft": [],
+      "port_samples": []
     },
     "_ports:wire_port:run_uniform:run_nonuniform:constant:36": {
-      "port_dft": ["nu-missing-vref"],
-      "port_samples": ["nu-missing-vref"]
+      "port_dft": [],
+      "port_samples": []
     }
   }
 }

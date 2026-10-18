@@ -79,8 +79,7 @@ def lumped_wire_owner(grid, component, live_cells, *, nu, pmc_faces, periodic,
     channels = [Channel('V', 'E', v), Channel('I', 'H', tuple(current))]
     if kind == 'wire':
         channels.append(Channel('V_port', 'E', voltage))
-    if not nu:
-        channels.append(Channel('V_ref', 'E', v, sample_stage='pre-injection'))
+    channels.append(Channel('V_ref', 'E', v, sample_stage='pre-injection'))
     channels = [replace(c, nodes=tuple(n for n in c.nodes
                 if isinstance(n.weight, Tracer) or n.weight != 0)) for c in channels]
     return Owner(f'port:{port_id}:mode:0', kind, tuple(channels),

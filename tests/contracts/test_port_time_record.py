@@ -68,7 +68,7 @@ def test_owner_channel_set_depends_only_on_kind(graded, kind):
     assert owner.id == 'port:7:mode:0'
     names = tuple(c.name for c in owner.channels)
     expected = ('V', 'I', 'V_port') if kind == 'wire' else ('V', 'I')
-    assert names == expected + (() if graded else ('V_ref',))
+    assert names == expected + ('V_ref',)
 
 
 def test_records_hash_and_compare_by_identity():

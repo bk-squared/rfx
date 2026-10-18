@@ -270,8 +270,7 @@ def build_measurement_plan(sim, grid, *, n_steps, path=None, frequencies=None,
                             frequencies=_frequencies(sim, freqs=(np.asarray(frequencies, dtype=np.float32)
                                                     if frequencies is not None else None)),
                             reference_planes=references,
-                            known_differences=(('NU missing pre-injection V_ref',
-                                                'NU port weights retain solver-store float32 rounding') if nu else ())
+                            known_differences=(('NU port weights retain solver-store float32 rounding',) if nu else ())
                             + (('wire reference planes belong to multi-drive scan, not diagonal forward',)
                                if references else ()),
                             availability=(('V/I unavailable in main scan; sampled in second scan when compute_s_params is on'

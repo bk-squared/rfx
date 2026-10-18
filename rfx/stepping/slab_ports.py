@@ -67,6 +67,20 @@ def sum_partials(final, mesh, ranks):
     if not partials:
         return final
     def local(values, *, rank):
-        return jax.tree.map(lambda a: jax.lax.psum(a[0], 'x'), values)
+        totals = jax.tree.map(lambda a: jax.lax.psum(a[0], 'x'), values)
+        if 'sparam_time_records' in values:
+            records = []
+            for partial, total in zip(values['sparam_time_records'], totals['sparam_time_records']):
+                ref = partial[0, :, -1]
+                # Only the midpoint owner contributes a reference; other
+                # ranks contribute +0. Preserve its signed zero in the
+                # stop-gradient time record, which ordinary psum erases.
+                negative_zero = jax.lax.psum(((ref == 0) & jnp.signbit(ref)).astype(jnp.int32), 'x') > 0
+                ref_total = total[:, -1]
+                ref_total = jnp.where((ref_total == 0) & negative_zero,
+                                      jnp.asarray(-0., dtype=ref.dtype), ref_total)
+                records.append(jnp.concatenate((total[:, :-1], ref_total[:, None]), axis=-1))
+            totals['sparam_time_records'] = tuple(records)
+        return totals
     totals = rank_shard_map(local, mesh=mesh, in_specs=P('x'), out_specs=P(), check_rep=False)(ranks, partials)
     return dict(final, **totals)

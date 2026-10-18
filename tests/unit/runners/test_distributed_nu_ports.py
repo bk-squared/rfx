@@ -107,7 +107,7 @@ def test_port_records_and_s(case, n, entry):
         row['S'] = measure(one.s_params, multi.s_params)
         row['S_entries'] = {str(i): measure(one.s_params[i], multi.s_params[i]) for i in np.ndindex(one.s_params.shape[:-1])}
         for port, ((_, a), (_, b)) in enumerate(zip(one.wire_port_sparams, multi.wire_port_sparams, strict=True)):
-            for name, aa, bb in zip(('v_dft', 'i_dft', 'v_inc_dft', 'v_port_dft'), a, b):
+            for name, aa, bb in zip(('v_dft', 'i_dft', 'v_inc_dft', 'v_port_dft', 'v_ref_dft'), a, b, strict=True):
                 row['accumulators'][f'{port}/{name}'] = measure(aa, bb)
     record(row)
     p1 = case in ('C1-mid', 'C3', 'C4-mid')
@@ -538,7 +538,7 @@ def test_summed_spectrum(case):
     metric = measure(one.s_params, multi.s_params)
     assert metric['relative'] <= 1e-4, ('S', metric)
     for port, ((_, a), (_, b)) in enumerate(zip(one.wire_port_sparams, multi.wire_port_sparams)):
-        for name, aa, bb in zip(('v_dft', 'i_dft', 'v_inc_dft', 'v_port_dft'), a, b):
+        for name, aa, bb in zip(('v_dft', 'i_dft', 'v_inc_dft', 'v_port_dft', 'v_ref_dft'), a, b, strict=True):
             metric = measure(aa, bb)
             assert metric['relative'] <= 1e-4, (port, name, metric)
 

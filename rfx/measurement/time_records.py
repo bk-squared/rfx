@@ -65,14 +65,3 @@ def with_graded_records(result, setup, carry, n_steps=None):
         setup.step_fn_inv.port_owners[i].id for i in setup.step_fn_inv.port_acc_indices)
         if result.get('s_params') is not None else ())
     return result
-
-
-def uniform_samples(values, specs, wire_refs, lumped_refs):
-    import jax.numpy as jnp
-    refs = iter((*wire_refs, *lumped_refs))
-    samples, offset = [], 0
-    for _, _, kind, _, _ in specs:
-        width = 3 if kind == 'wire' else 2
-        samples.append(jnp.stack((*values[offset:offset+width], next(refs))))
-        offset += width
-    return samples

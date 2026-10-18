@@ -23,7 +23,6 @@ from rfx.boundaries.pec import (
     apply_pec_occupancy_box,
 )
 from rfx.probes import probes as observers
-from rfx.probes.probes import _port_voltage_value
 from rfx.core.dft_utils import port_dft_phase
 from .sequence import HookPoint, Kernel, compose
 
@@ -399,16 +398,14 @@ def make_uniform_step(
         # off-diagonal incident-wave denominator and the byte-frozen
         # legacy diagonal in decompose_wire_s_matrix. The physical
         # channels (v, i, v_port) are accumulated POST-injection below.
-        frame.wire_ref_samples = [-getattr(frame.st, component)[mid] * dx
-                                  for component, _, kind, mid, _ in port_specs if kind == 'wire']
-        frame.lumped_ref_samples = [_port_voltage_value(getattr(frame.st, component)[mid], dx)
-                                    for component, _, kind, mid, _ in port_specs if kind == 'lumped']
+        refs = pre_injection_samples(frame.st, port_specs, lambda component, mid: dx)
+        frame.wire_ref_samples = [ref for spec, ref in zip(port_specs, refs) if spec[2] == 'wire']
+        frame.lumped_ref_samples = [ref for spec, ref in zip(port_specs, refs) if spec[2] == 'lumped']
         if ctx.use_wire_sparams:
             frame.new_wire_refs = []
             for accs, wp_meta, v_ref in zip(frame.carry["wire_sparam_accs"], ctx.wire_sparam_meta, frame.wire_ref_samples):
-                v_ref_dft = accs[4]
-                phase = port_dft_phase(frame.step_idx, wp_meta.freqs, dt, dtype=v_ref_dft.dtype)
-                frame.new_wire_refs.append((v_ref_dft + v_ref * phase, phase))
+                frame.new_wire_refs.append(ref_dft_update(
+                    accs[4], v_ref, frame.step_idx, wp_meta.freqs, dt))
 
         # Lumped-port DRIVE-REFERENCE DFT accumulation at the historical
         # PRE-injection slot (issue #72): the #308 off-diagonal incident
@@ -420,9 +417,8 @@ def make_uniform_step(
         if ctx.use_lumped_sparams:
             frame.new_lumped_refs = []
             for accs, lp_meta, v_ref_l in zip(frame.carry["lumped_sparam_accs"], ctx.lumped_sparam_meta, frame.lumped_ref_samples):
-                v_ref_dft_l = accs[2]
-                phase_l = port_dft_phase(frame.step_idx, lp_meta.freqs, dt, dtype=v_ref_dft_l.dtype)
-                frame.new_lumped_refs.append((v_ref_dft_l + v_ref_l * phase_l, phase_l))
+                frame.new_lumped_refs.append(ref_dft_update(
+                    accs[2], v_ref_l, frame.step_idx, lp_meta.freqs, dt))
 
         # Reference-plane V/I DFT accumulation (issue #313 opt-in) — same
         # rect-DFT kernel as the port-cell channels.  This slot is before
@@ -455,7 +451,9 @@ def make_uniform_step(
             frame.st = inject(frame.st, drives, frame.src_vals)
 
     from rfx.measurement.projector import port_table, project
-    from rfx.measurement.time_records import uniform_specs, uniform_samples
+    from rfx.measurement.time_records import uniform_specs
+    from rfx.measurement.port_sampler import (
+        pre_injection_samples, ref_dft_update, wire_dft_update, lumped_dft_update, stack_samples)
     port_specs = uniform_specs(ctx)
     port_tables = {}
 
@@ -468,23 +466,16 @@ def make_uniform_step(
                 port_tables[dtype] = port_table(grid, port_specs, nu=False,
                                                boundary=ctx.curl_boundary, dtype=dtype)
             port_values = project(frame.st, port_tables[dtype])
-            frame.port_samples = uniform_samples(port_values, port_specs, frame.wire_ref_samples, frame.lumped_ref_samples)
+            frame.port_samples = stack_samples(port_values, port_specs, (*frame.wire_ref_samples, *frame.lumped_ref_samples))
         if ctx.use_wire_sparams:
             frame.new_wire_accs = []
             for accs, wp_meta, (v_ref_new, phase) in zip(
                     frame.carry["wire_sparam_accs"], ctx.wire_sparam_meta,
                     frame.new_wire_refs):
-                v_dft, i_dft, vinc_dft, v_port_dft = accs[0], accs[1], accs[2], accs[3]
                 offset = 3 * len(frame.new_wire_accs)
-                v, i_val, v_port = port_values[offset:offset + 3]
-                i_phase = port_dft_phase(frame.step_idx, wp_meta.freqs, dt, 'H', dtype=i_dft.dtype)
-                frame.new_wire_accs.append((
-                    v_dft + v * phase,
-                    i_dft + i_val * i_phase,
-                    vinc_dft,
-                    v_port_dft + v_port * phase,
-                    v_ref_new,
-                ))
+                frame.new_wire_accs.append((*wire_dft_update(
+                    accs, port_values[offset:offset + 3], frame.step_idx, wp_meta.freqs, dt, phase),
+                    v_ref_new))
 
         # Lumped-port PHYSICAL V/I DFT accumulation AFTER source injection.
         # Decided by the lumped known-load decision run
@@ -505,15 +496,10 @@ def make_uniform_step(
             for accs, lp_meta, (v_ref_new_l, phase_l) in zip(
                     frame.carry["lumped_sparam_accs"], ctx.lumped_sparam_meta,
                     frame.new_lumped_refs):
-                v_dft_l, i_dft_l = accs[0], accs[1]
                 offset = 3 * sum(p[2] == 'wire' for p in port_specs) + 2 * len(frame.new_lumped_accs)
-                v_l, i_val_l = port_values[offset:offset + 2]
-                i_phase_l = port_dft_phase(frame.step_idx, lp_meta.freqs, dt, 'H', dtype=i_dft_l.dtype)
-                frame.new_lumped_accs.append((
-                    v_dft_l + v_l * phase_l,
-                    i_dft_l + i_val_l * i_phase_l,
-                    v_ref_new_l,
-                ))
+                frame.new_lumped_accs.append((*lumped_dft_update(
+                    accs, port_values[offset:offset + 2], frame.step_idx, lp_meta.freqs, dt, phase_l),
+                    v_ref_new_l))
 
         if ctx.use_waveguide_ports:
             from rfx.sources.waveguide_port import (

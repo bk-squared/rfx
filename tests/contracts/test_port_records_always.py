@@ -34,8 +34,8 @@ def test_every_port_records_without_s_request(graded, wire, entry):
     assert record.samples.shape[0] == 16
     assert record.kind == ('wire' if wire else 'lumped')
     expected = ('V', 'I', 'V_port') if wire else ('V', 'I')
-    assert record.channels == expected + (() if graded else ('V_ref',))
-    assert ('V_ref' in record.channels) == (not graded)
+    assert record.channels == expected + ('V_ref',)
+    assert 'V_ref' in record.channels
     # Graded wire forward historically computes default-bin S without an explicit request.
     if not (graded and wire and entry == 'forward'):
         assert result.s_params is None
@@ -72,7 +72,7 @@ def test_until_decay_keeps_unread_records(graded, wire):
     assert len(result.sparam_time_records) == 1
     record = result.sparam_time_records[0]
     expected = ('V', 'I', 'V_port') if wire else ('V', 'I')
-    assert record.channels == expected + (() if graded else ('V_ref',))
+    assert record.channels == expected + ('V_ref',)
     assert record.samples.shape == (16, len(record.channels))
     assert result.settling_witness['scored_port_record_ids'] == []
     assert result.settling_witness['skipped_port_records'] == [

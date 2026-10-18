@@ -13,7 +13,6 @@ non-uniform path, or the two-device uniform path where stated.
 | Tag | Observed record difference | Cells |
 |---|---|---|
 | `nu-lumped-dft-record-missing` | `lumped_port_sparams` is absent on B | lumped and passive port, `forward()`, uniform vs non-uniform |
-| `nu-missing-vref` | `V_ref` is absent on B, in the per-step port record and in the wire-port DFT record | lumped, passive and wire port, uniform vs non-uniform |
 | `port-time-record-missing` | the per-step port record is absent on A and B, or on B only, or its `V_port` is absent on A, depending on the cell | lumped, passive and wire port; uniform vs non-uniform and vs two-device |
 | `uniform-wire-dft-record-missing` | `wire_port_sparams` is absent on A | lumped and passive port, `forward()`, uniform vs non-uniform |
 | `distributed-wire-dft-record-missing` | `wire_port_sparams` is absent on B | wire port, `run()`, uniform vs two-device |

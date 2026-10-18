@@ -114,11 +114,11 @@ def judge_metadata(plan, actual):
                                'v_dft', 'i_dft', 'v_ref_dft', 'v_ref_dft_l', 'i_dft_l')})
                 env['frame'] = SimpleNamespace(step_idx=env['step_idx'])
                 env['ctx'] = SimpleNamespace(dt=1., sp_freqs=bins)
-                lumped_uniform = owner.kind == 'lumped' and not nu
-                phase = eval(assignment(nu, 'phase_l' if lumped_uniform else 'phase',
-                                        'lp_meta' if lumped_uniform else 'sp_freqs' if nu else 'wp_meta'), env)
-                env['phase_l' if lumped_uniform else 'phase'] = phase
-                current_phase = eval(assignment(nu, 'i_phase_l' if lumped_uniform else 'i_phase'), env)
+                # Both steppers now execute the sampler's phase statements.
+                env.update(freqs=bins, acc=SimpleNamespace(dtype=jnp.complex64))
+                sampler = 'rfx/measurement/port_sampler.py'
+                phase = eval(assignment(sampler, 'phase'), env)
+                current_phase = eval(assignment(sampler, 'i_phase'), env)
                 e = float(-jnp.angle(phase[0])/(2*jnp.pi*.01))
                 h = float(-jnp.angle(current_phase[0])/(2*jnp.pi*.01))
             elif owner.kind == 'waveguide':
@@ -157,7 +157,7 @@ def judge_metadata(plan, actual):
                 expected = ('V/I unavailable in run without wire extent' if nu else
                             'V/I unavailable in main scan; sampled in second scan when compute_s_params is on')
             assert owner.availability == expected
-            assert ('NU missing pre-injection V_ref' in owner.known_differences) == nu
+            assert 'NU missing pre-injection V_ref' not in owner.known_differences
         elif owner.kind == 'flux':
             assert owner.availability == ('result missing' if plan.path.startswith('fwd') else 'sampled')
         elif owner.kind in ('msl', 'coax') and not owner.channels:

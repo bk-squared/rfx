@@ -609,7 +609,7 @@ class Result(NamedTuple):
     #: runner's static metadata tuple on the graded-mesh one
     #: (``rfx.nonuniform._build_wp_meta`` — impedance at slot 4, ``excite``
     #: at slot 7). ``accs`` carries a fifth slot, the pre-injection drive
-    #: reference ``v_ref`` (#683), on the uniform lane only; the first four
+    #: reference ``v_ref`` (#683), on both lanes; the first four
     #: are the same channels on both.
     wire_port_sparams: tuple | None = None
     #: Main-record lumped ``(spec, (V, I, V_ref))`` pairs; None on graded meshes or without spectra.

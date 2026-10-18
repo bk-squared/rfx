@@ -18,6 +18,7 @@ def coefficients(channel):
 
 def judge_v_ref(owner, spec, grid):
     from rfx.probes.probes import _port_voltage_value
+    from rfx.measurement.port_sampler import pre_injection_samples
     channel = next(c for c in owner.channels if c.name == 'V_ref')
     wire = owner.kind == 'wire'
     name = 'wire_ref_samples' if wire else 'lumped_ref_samples'
@@ -31,7 +32,11 @@ def judge_v_ref(owner, spec, grid):
     def sample(fields):
         env = dict(frame=SimpleNamespace(st=fields), dx=grid.dx,
                    port_specs=((spec.component, (), owner.kind, idx, 0),),
-                   _port_voltage_value=_port_voltage_value)
+                   _port_voltage_value=_port_voltage_value,
+                   pre_injection_samples=pre_injection_samples)
+        refs = next(n.value for n in statements if isinstance(n, ast.Assign)
+                    and any(isinstance(t, ast.Name) and t.id == 'refs' for t in n.targets))
+        env['refs'] = eval(compile(ast.Expression(refs), '<production references>', 'eval'), env)
         return eval(expression, env)[0]
     assert coefficients(channel) == jacobian_nodes(sample, grid.shape)
     containing = [n for n in statements if isinstance(n, ast.FunctionDef)

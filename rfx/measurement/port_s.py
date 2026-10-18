@@ -7,8 +7,8 @@ def port_s_from_record(channels, metas, *, wire_mode):
     """Return (receive, drive, frequency); unmeasured drive columns are NaN.
 
     Uniform metadata are port specs; graded metadata use _build_wp_meta's
-    slots. Graded wire records have no pre-injection reference channel; the
-    whole-port wire decomposition does not consume that reference.
+    slots. The graded pre-injection reference is a record-only channel;
+    its whole-port wire decomposition continues to receive vr=None.
     """
     from rfx.probes.probes import (
         decompose_lumped_s_matrix, decompose_wire_s_matrix, driven_port_reflection,
