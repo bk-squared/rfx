@@ -5,16 +5,138 @@ sidebar:
   order: 2
 ---
 
-<p data-rfx="note">Being written for 2.0 (tracker 1171).</p>
-
 ## What it is for
+
+rfx steps a model in time on one of several solver paths: a uniform mesh, a
+graded mesh, several devices, ADI, or a subgridded mesh. Each path implements
+part of what `Simulation` can declare. An input a path does not implement would,
+if it were simply skipped, give a result for a different structure: a Kerr
+block solved as linear, a port that launches nothing, a periodic wall solved as
+metal. Nothing in the curve would say so.
+
+Other refusals are about the result asked for, not the path: S-parameters
+read from one record in which several ports are driven (each entry would be a
+sum over the drives), a far field computed through a PEC, PMC or zero-depth
+absorbing face (the transform rebuilds no mirror image), a pulse that samples
+to zero at every time step (it drives nothing).
+
+So rfx refuses such an input. The run stops with an error before the first time
+step, and the error says what was refused, why, and what to do instead. A
+refusal is never a warning after which a different model runs. This page
+explains how a refusal reads and where to look up what is refused.
 
 ## How to use it
 
+Declare the model and run it. If the solver path cannot solve something you
+declared, `run()` or `forward()` raises before it steps. A grid refined in one
+region by subgridding is refused by default, because that path is not yet
+validated:
+
+```python
+from rfx import Box, GaussianPulse, Simulation
+
+sim = Simulation(freq_max=4e9, domain=(0.04, 0.04, 0.04), dx=2e-3,
+                 boundary="cpml", cpml_layers=8)
+sim.add_material("d", eps_r=4.0)
+sim.add(Box((0.016, 0.016, 0.016), (0.024, 0.024, 0.024)), material="d")
+sim.add_port((0.010, 0.020, 0.020), "ez", impedance=50.0,
+             waveform=GaussianPulse(f0=3e9, bandwidth=0.8))
+sim.add_refinement(z_range=(0.016, 0.024), ratio=2)
+
+try:
+    sim.run(n_steps=50, skip_preflight=True)
+except (NotImplementedError, ValueError) as err:
+    print(type(err).__name__)
+    print(err)
+```
+
+```text
+NotImplementedError
+The subgridded lane is unstable and unverified: an empty lossless PEC cavity's first resonance is 8 % high at a 1.5 mm coarse mesh and its field grows exponentially (#1465). Use a graded mesh (dx/dy/dz profiles) for local resolution. Or pass validation="research" to run it anyway.
+```
+
+Every refusal message has the same three parts: what is refused on which path,
+the reason, and the way through. Some inputs are refused as soon as you
+declare them. Asking for ADI with an absorbing boundary raises when the
+`Simulation` is created, with this message (abridged):
+
+```text
+ValueError
+solver="adi" refuses absorbing boundaries: this boundary is not a CPML but an unmatched graded-conductivity sponge (electric loss only, no magnetic loss). ... Use solver="yee" with boundary="cpml" for open structures, or solver="adi" with boundary="pec" for closed cavities.
+```
+
+What to expect:
+
+- The error is a `NotImplementedError` or a `ValueError`. Catch both if your
+  script handles refusals. A gradient taken through `pinned_sheet_layout`,
+  which is a switch and not a sensitivity, raises a `TypeError`.
+- It is raised before any time step. Some inputs are refused already when
+  you declare them: the `Simulation(...)` or `add_*` call raises.
+- `forward()` is checked the same way as `run()`. The two do not always agree
+  on a path, so look up the one you call.
+- A few inputs are not refused but handed to another path, with a warning
+  that names it. For example, a waveguide port in a multi-device run on a
+  uniform mesh runs on one device, with every argument you gave, and
+  `Result.diagnostics` records the reason and the device counts asked for and
+  used. The result is the one you asked for; only the path differs.
+- An option that only prints (`report_every`) is ignored with a warning, not
+  refused, because it does not change the result.
+
+Some refusals carry an explicit way to run anyway, such as
+`validation="research"` above. Such a run is outside what rfx validates, and
+its result is yours to check.
+
 ## What is checked
+
+The refusals come from one table that records, for every attribute of a
+`Simulation` and every solver path, whether that path solves it, refuses it,
+hands it to another path, does not need it, or never sees it. Tests build a model for each
+refused cell and check that the path raises a message naming the input
+before any time step starts, and for each solved cell that the input changes
+the result. This covers the physics inputs, the observers and two settings
+(`mode` and `precision`); the other settings are recorded in the table only. Arguments to `run()` and `forward()` that a path does not
+implement (`until_decay`, `conformal_pec`, `subpixel_smoothing`, `snapshot`,
+`checkpoint`, `s_param_n_steps`) are pinned the same way, per path.
+
+A refusal is not a finding about the grid. [Check the model on the
+grid](/rfx/check/model-on-grid/) is a separate step: preflight compares what
+the grid built with what you drew, and also stops the run on an error.
 
 ## What is refused, and the way through
 
+The [support page](/rfx/support/) links the support matrix's refused-input
+tables: one per topic with the answer on each solver path, and one of refused
+combinations with what to do instead and the test that pins each refusal.
+The pages for each input (sources, ports, boundaries,
+materials, solver paths) give the same refusals next to the input they concern.
+
+Most refusals have the same few ways through:
+
+| Refused because | Usually |
+|---|---|
+| the input is not implemented on a graded mesh or on several devices | run it on a uniform mesh, or on one device |
+| subgridding is not validated | use a graded mesh for local resolution |
+| ADI does not implement ports, dispersive materials, lumped elements or absorbers | use the default solver; ADI is experimental |
+| a `run()` argument the path does not implement | drop the argument, or run on a path that has it (the message names one) |
+| S-parameters asked from one run with several lumped or wire ports excited | run once per driven port with the others passive (`excite=False`), or use `run(compute_s_params=True)` on a uniform mesh, which drives one port per run |
+| a far-field box in a model with a PEC, PMC or zero-depth absorbing face (a symmetry plane, an infinite ground plane) | draw a finite ground plane as geometry and keep every face absorbing |
+| a pulse with no value above 10⁻⁶ of its amplitude at any time step, usually `bandwidth` given in Hz | give `bandwidth` as a fraction of `f0`, e.g. `GaussianPulse(f0=5e9, bandwidth=0.8)` |
+| a gradient with respect to a declared shape's size or position | differentiate through material overrides or a design region |
+
+<p data-rfx="note">Pending for 2.0: a check that compares the support
+matrix's per-path tables cell by cell with the table the tests execute
+(PR 1716).</p>
+
 ## Accuracy
 
+This page makes no accuracy statement. The table of dispositions is
+`tests/contracts/path_disposition.py`; its refused cells are executed by
+`tests/unit/runners/test_path_disposition_cells.py`, and the per-path refusal of
+`run()` arguments by `tests/unit/runners/test_silent_drop_warnings.py`. Each
+row of the support matrix's refused combinations names the test that pins it.
+
 ## See also
+
+- [Support](/rfx/support/): the refused inputs per solver path.
+- [Check the model on the grid](/rfx/check/model-on-grid/): preflight.
+- [rfx terms](/rfx/start/terms/): solver path, refused.
