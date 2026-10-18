@@ -168,6 +168,14 @@ faces declared with `Boundary(..., conformal=True)`. `subpixel_smoothing="kottke
 dielectric the same way. The known-limitations list says what the conformal
 correction does not yet cover.
 
+A rotated box (`OrientedBox`) has no conformal or smoothed form. A run with
+`conformal_pec=True`, or with a `Boundary(..., conformal=True)` face that turns
+it on, or with `subpixel_smoothing`, refuses a model that holds one, so a
+rotated metal body is solved as a staircase: the cells whose centres fall
+inside it. Where several PEC shapes cut the same edge, rfx combines their
+conformal weights by taking the smaller one at each edge, the weight of the
+shape that covers more of it, not a weight computed for their union.
+
 ### Metal that is not a declared conductor
 
 Three things put metal in a domain outside this rule. Know which one a result
@@ -294,6 +302,7 @@ The solver paths refuse what they do not implement:
 | a surface-impedance sheet with `subpixel_smoothing` or `conformal_pec` | all | one or the other |
 | a surface-impedance sheet with a Debye or Lorentz material | uniform and graded mesh, `run()` and `forward()` | a non-dispersive material, or a lossy film |
 | `conformal_pec=True` | every path except `run()` on a uniform mesh | a finer mesh near the curved metal |
+| an `OrientedBox` with `conformal_pec=True` (also when a conformal boundary face turns it on), with `subpixel_smoothing`, or in `add_thin_conductor` | all | leave `conformal_pec` and smoothing off, so the rotated body is staircased; or draw it axis-aligned as a `Box` |
 | a lossy film (`sigma_bulk < 1e6`) with `eps_r` other than 1, normal to a 2-D model's invariant axis, on a PMC face, sharing edges with a surface-impedance sheet, or with an edge inside a design box | all | the message names which |
 | a lossy film that is not a `Box` and spans more than one cell layer, misses its drawn area by more than 1 % in equivalent length, or cannot state its area | every mesh | refine the in-plane mesh or draw a `Box`; `snap="declared"` accepts the declared geometry |
 
