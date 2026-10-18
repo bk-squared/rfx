@@ -18,11 +18,14 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from typing import NamedTuple
+from typing import TYPE_CHECKING, NamedTuple
 
 import numpy as np
 
 from rfx.core.yee import EPS_0  # canonical 8.854187817e-12 (Stage 3.5b)
+
+if TYPE_CHECKING:
+    from rfx.api import Simulation
 
 C0 = 299792458.0
 
@@ -646,6 +649,68 @@ def auto_configure(
         dz_profile=dz_profile,
         boundary=boundary,
     )
+
+
+def simulation_auto(
+    cls,
+    freq_range: tuple[float, float],
+    *,
+    accuracy: str = "standard",
+    **kwargs,
+) -> "Simulation":
+    """Create a Simulation with auto-derived parameters.
+
+        Parameters
+        ----------
+        freq_range : (f_min, f_max) in Hz
+            Analysis frequency range. All parameters (dx, domain, CPML,
+            n_steps) are derived from this.
+        accuracy : "draft", "standard", or "high"
+        **kwargs : additional Simulation constructor args (override auto values)
+
+        Returns
+        -------
+        Simulation with optimal configuration for the frequency range.
+
+        Example
+        -------
+        >>> sim = Simulation.auto(freq_range=(1.5e9, 3.5e9))
+        >>> sim.add(Box(...), material="pec")
+        >>> result = sim.run(until_decay=1e-5)
+        >>> modes = result.find_resonances()
+        """
+    import warnings
+    warnings.warn(
+        "Simulation.auto() called without geometry — the auto-derived "
+        "domain and grid may not match your intended structure. "
+        "Add geometry after construction or pass domain/dx overrides.",
+        stacklevel=2,
+    )
+
+    from rfx.auto_config import auto_configure
+    config = auto_configure([], freq_range, accuracy=accuracy)
+
+    if config.warnings:
+        for w in config.warnings:
+            warnings.warn(f"auto_config: {w}")
+
+    sim_kwargs = config.to_sim_kwargs()
+    sim_kwargs.update(kwargs)
+    return cls(**sim_kwargs)
+
+
+# ---------------------------------------------------------------------------
+# ``simulation_auto`` above was ``Simulation.auto``, a classmethod defined in
+# ``Simulation``'s body in rfx/api/__init__.py (2.0 declaration rule: that file's
+# Simulation methods only record declarations; deriving a configuration belongs
+# here, beside ``auto_configure``). It returns to ``Simulation`` as
+# ``auto = classmethod(simulation_auto)``, so its pre-move ``__qualname__`` and
+# ``__name__`` are restored explicitly: a module-level ``def`` gets its own bare
+# name, a TypeError would otherwise stop naming ``Simulation.auto()``, and pickle
+# finds a bound classmethod on its class by ``__name__``.
+# ---------------------------------------------------------------------------
+simulation_auto.__qualname__ = "Simulation.auto"
+simulation_auto.__name__ = "auto"
 
 
 # A cut this close to an existing mesh line is that line (#931): splitting
