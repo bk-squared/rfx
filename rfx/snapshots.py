@@ -44,9 +44,9 @@ Times
     ``int(state.step)`` steps; a snapshot frame is the state after the step
     count in :attr:`SnapshotAxes.steps`.
 
-Uniform grids only: the non-uniform, distributed and subgridded lanes do not
-record snapshots (they warn and return ``snapshots=None``), and ADI refuses
-them.
+Uniform-grid runs, including multi-device runs, record snapshots. The graded
+multi-device run refuses snapshots. Non-uniform and subgridded lanes do not
+record snapshots, and ADI refuses them.
 """
 
 from __future__ import annotations
@@ -152,8 +152,9 @@ def _check_uniform_grid(grid) -> None:
     if not isinstance(grid, Grid):
         raise NotImplementedError(
             f"snapshot sample positions are defined for a uniform rfx.Grid "
-            f"only, got {type(grid).__name__}. The non-uniform, distributed "
-            f"and subgridded lanes do not record field snapshots.")
+            f"only, got {type(grid).__name__}. Uniform multi-device runs record "
+            f"field snapshots; graded multi-device runs refuse them. "
+            f"Non-uniform and subgridded lanes do not record field snapshots.")
 
 
 def validate_snapshot_spec(snapshot) -> int:

@@ -71,3 +71,36 @@ def test_plane_mutations(mutation, monkeypatch, tmp_path):
     measured = json.loads((tmp_path / "measurements.json").read_text())["planes"]
     assert any(not row["equal"] for name, row in measured.items() if name.startswith("1_")), "y-normal plane must turn red"
     print(f"mutation={mutation}: RED {failure.value}")
+
+
+def finite_model(boundary, n_devices):
+    """Off-centre finite regions and unequal Yee products, following review B."""
+    from rfx.geometry import Box
+    sim = Simulation(freq_max=14e9, domain=(16e-3, 10e-3, 8e-3), dx=1e-3,
+                     boundary=boundary, cpml_layers=3)
+    sim.add_material("diel", eps_r=3.3, sigma=0.02)
+    sim.add(Box((5.4e-3, 2.1e-3, 2.6e-3), (11.3e-3, 6.6e-3, 4.1e-3)), material="diel")
+    for position, component in (((4.3e-3, 6.7e-3, 3.6e-3), "ez"),
+                                 ((9.6e-3, 3.4e-3, 3.9e-3), "ex"),
+                                 ((12.2e-3, 7.3e-3, 3.1e-3), "ey")):
+        sim.add_source(position, component, amplitude_kind="field")
+    grid = sim._build_grid()
+    return sim, grid, (grid.shape[0] + n_devices - 1) // n_devices
+
+
+@pytest.mark.parametrize("n_devices", [2, 3])
+@pytest.mark.parametrize("boundary", ["pec", "cpml"])
+def test_plane_explicit_region(boundary, n_devices, tmp_path):
+    sim, grid, seam = finite_model(boundary, n_devices)
+    region = (2, grid.shape[0] - 3, 1, grid.shape[2] - 2)
+    assert region[0] < seam < region[1]
+    sim.add_dft_plane_probe(axis="y", coordinate=3.1e-3, component="hz",
+                            freqs=[2.5e9, 6.1e9, 11.7e9], region=region, name="finite_y")
+    start = perf_counter()
+    reference = sim.run(n_steps=47, skip_preflight=True)
+    actual = sim.run(n_steps=47, devices=jax.devices("cpu")[:n_devices], skip_preflight=True)
+    jax.block_until_ready(actual.dft_planes)
+    assert np.max(np.abs(reference.dft_planes["finite_y"].accumulator)) > 0
+    compare(actual, reference, tmp_path,
+            dict(boundary=boundary, devices=n_devices, grid_shape=grid.shape,
+                 n_steps=47, region=region, seam=seam), perf_counter() - start)

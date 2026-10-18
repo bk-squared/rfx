@@ -63,8 +63,10 @@ def test_record_storage(n_devices, monkeypatch, tmp_path):
         measured = {**buffers, "moment_previous_e": previous}
         live_ids = {id(array) for array in jax.live_arrays()}
         for kind, buffer in measured.items():
-            assert id(buffer) in live_ids, ("record missing from live_arrays", kind)
-            actual = [shard.data.nbytes for shard in buffer.addressable_shards]
+            leaves = jax.tree.leaves(buffer)
+            assert all(id(a) in live_ids for a in leaves), ("record missing from live_arrays", kind)
+            actual = [sum(a.addressable_shards[rank].data.nbytes for a in leaves)
+                      for rank in range(n_devices)]
             rows[kind] = dict(per_device_bytes=actual, owner_bytes=shares[kind],
                               largest_owner_bytes=max(shares[kind]))
             assert actual == [max(shares[kind])] * n_devices, ("record owner byte bound", kind, rows[kind])

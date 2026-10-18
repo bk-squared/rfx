@@ -159,7 +159,8 @@ class PlaneRecords(Packed):
                      for t, values in zip(self.templates, result))
 
 
-class SnapshotRecords(Packed):
+class SnapshotRecords:
+    """Separate component histories; only one frame is written per step."""
     def __init__(self, mesh, grid, nx_per, spec, n_steps, dtype):
         from rfx.snapshots import snapshot_axes
         self.axes = snapshot_axes(grid, spec, n_steps)
@@ -167,44 +168,70 @@ class SnapshotRecords(Packed):
         sample = next(iter(self.axes.values()))
         self.axis = None if sample.slice_axis is None else "xyz".index(sample.slice_axis)
         self.index = sample.slice_index
-        self.parts, shapes = [], []
+        self.mesh, self.dtype = mesh, dtype
+        self.parts = []
         self.full_shape = tuple(n for a, n in enumerate(grid.shape) if a != self.axis)
         for rank in range(mesh.size):
             start, end = rank * nx_per, min((rank + 1) * nx_per, grid.shape[0])
             owned = self.axis != 0 or self.index // nx_per == rank
-            local_shape = (self.full_shape if self.axis == 0 else (max(0, end - start),) + self.full_shape[1:])
             self.parts.append((start, end, owned))
-            shapes.append([(self.frames,) + local_shape for _ in spec.components] if owned else [])
-        super().__init__(mesh, shapes, dtype)
+        self.frame_shape = (self.full_shape if self.axis == 0 else
+                            (min(nx_per, grid.shape[0]),) + self.full_shape[1:])
+
+    def initial(self):
+        shape = (self.mesh.size, self.frames) + self.frame_shape
+        return tuple(jax.device_put(np.zeros(shape, self.dtype), NamedSharding(self.mesh, P("x")))
+                     for _ in self.spec.components)
 
     def update(self, buffer, state, dt, step, *, ranks):
+        if not self.frames:
+            return buffer
+        # The rank branches return only the new frame. The history never
+        # enters the conditional: passed through it, XLA copies the whole
+        # history every step (cost grows with frames x steps).
         branches = []
-        for rank, (start, end, owned) in enumerate(self.parts):
-            def branch(args, rank=rank, start=start, end=end, owned=owned):
-                local, fields, n = args
-                arrays = self.unpack(local[0], rank)
-                if owned and self.frames:
-                    for k, component in enumerate(self.spec.components):
-                        slices = [slice(1, 1 + max(0, end - start)), slice(None), slice(None)]
-                        if self.axis is not None:
-                            slices[self.axis] = self.index - (start - 1) if self.axis == 0 else self.index
-                        value = getattr(fields, component)[tuple(slices)]
-                        row = n // self.spec.interval
-                        old = arrays[k][jnp.minimum(row, self.frames - 1)]
-                        value = jnp.where((n + 1) % self.spec.interval == 0, value, old)
-                        arrays[k] = arrays[k].at[row].set(value, mode="drop")
-                return self.pack(arrays)
+        for start, end, owned in self.parts:
+            def branch(fields, start=start, end=end, owned=owned):
+                if not owned:
+                    return (jnp.zeros((), bool),
+                            tuple(jnp.zeros(self.frame_shape, self.dtype) for _ in self.spec.components))
+                frames = []
+                for component in self.spec.components:
+                    slices = [slice(1, 1 + max(0, end - start)), slice(None), slice(None)]
+                    if self.axis is not None:
+                        slices[self.axis] = self.index - (start - 1) if self.axis == 0 else self.index
+                    value = getattr(fields, component)[tuple(slices)]
+                    # Pad the new frame only, never the history in the carry.
+                    frames.append(jnp.pad(value, tuple((0, cap - size) for cap, size in
+                                                       zip(self.frame_shape, value.shape))).astype(self.dtype))
+                return jnp.ones((), bool), tuple(frames)
             branches.append(branch)
-        return self.mapped(buffer, state, step, branches, ranks=ranks)
+
+        @partial(rank_shard_map, mesh=self.mesh,
+                 in_specs=(P("x"), _field_specs(state), P()), out_specs=P("x"), check_rep=False)
+        def apply(local, fields, n, *, rank):
+            owned, frames = lax.switch(rank, branches, fields)
+            write = owned & ((n + 1) % self.spec.interval == 0)
+            row = jnp.minimum(n // self.spec.interval, self.frames - 1)
+            arrays = []
+            for history, value in zip(local, frames):
+                old = lax.dynamic_index_in_dim(history[0], row, 0, keepdims=False)
+                value = jnp.where(write, value, old)
+                arrays.append(lax.dynamic_update_slice(
+                    history, value[None, None], (0, row) + (0,) * value.ndim))
+            return tuple(arrays)
+        return apply(ranks, buffer, state, step)
 
     def assemble(self, buffer):
-        buffer = self.replicated(buffer)
+        buffer = jax.tree.map(lambda a: (jax.device_put(a, NamedSharding(self.mesh, P()))
+                                        if isinstance(a, jax.Array) else a), buffer)
         result = {c: jnp.zeros((self.frames,) + self.full_shape, self.dtype) for c in self.spec.components}
         for rank, (start, end, owned) in enumerate(self.parts):
             if owned:
-                for component, value in zip(self.spec.components, self.unpack(buffer[rank], rank)):
+                for component, history in zip(self.spec.components, buffer):
+                    value = history[rank]
                     result[component] = (value if self.axis == 0 else
-                                         result[component].at[:, start:end].set(value))
+                                         result[component].at[:, start:end].set(value[:, :end - start]))
         return result
 
 

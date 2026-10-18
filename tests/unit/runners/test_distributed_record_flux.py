@@ -73,3 +73,41 @@ def test_flux_mutations(mutation, monkeypatch, tmp_path):
     assert any(not row["equal"] for name, row in measured.items() if name.startswith("0_7/")), "seam flux must turn red"
     (tmp_path / "mutation.json").write_text(json.dumps(dict(mutation=mutation, assertion=str(failure.value))))
     print(f"mutation={mutation}: RED {failure.value}")
+
+
+@pytest.mark.parametrize("n_devices", [2, 3])
+@pytest.mark.parametrize("boundary", ["pec", "cpml"])
+def test_finite_flux(boundary, n_devices, tmp_path):
+    from tests.unit.runners.test_distributed_record_planes import finite_model
+    sim, grid, seam = finite_model(boundary, n_devices)
+    freqs = [2.5e9, 6.1e9, 11.7e9]
+    # At the first owned row, x-normal H sampling crosses the seam via the ghost.
+    sim.add_flux_monitor(axis="x", coordinate=(seam - grid.pad_x_lo) * grid.dx,
+                         freqs=freqs, size=(5.2e-3, 3.3e-3), center=(6.1e-3, 3.9e-3), name="finite_x")
+    sim.add_flux_monitor(axis="z", coordinate=1.4e-3, freqs=freqs,
+                         size=(11.1e-3, 6.2e-3), center=(7.9e-3, 5.3e-3),
+                         name="finite_z", dft_window="hann")
+    start = perf_counter()
+    reference = sim.run(n_steps=47, skip_preflight=True)
+    actual = sim.run(n_steps=47, devices=jax.devices("cpu")[:n_devices], skip_preflight=True)
+    jax.block_until_ready(actual.flux_monitors)
+    differences = {}
+    for name, mon in reference.flux_monitors.items():
+        if name == "finite_x":
+            assert mon.index == seam
+        else:
+            for array in mon[:4]:
+                assert mon.lo1 < seam < mon.lo1 + array.shape[1]
+        other = actual.flux_monitors[name]
+        for component in ("e1_dft", "e2_dft", "h1_dft", "h2_dft", "power"):
+            a, b = ((flux_spectrum(other), flux_spectrum(mon)) if component == "power" else
+                    (getattr(other, component), getattr(mon, component)))
+            a, b = np.asarray(a), np.asarray(b)
+            differences[f"{name}/{component}"] = dict(equal=bool(np.array_equal(a, b)),
+                max_abs=float(np.max(np.abs(a - b))), peak=float(np.max(np.abs(b))))
+        assert np.max(np.abs(mon.e1_dft)) + np.max(np.abs(mon.e2_dft)) > 0
+    report = dict(boundary=boundary, devices=n_devices, grid_shape=grid.shape, n_steps=47,
+                  seam=seam, seconds=perf_counter() - start, flux=differences)
+    (tmp_path / "measurements.json").write_text(json.dumps(report))
+    print(report)
+    assert all(v["equal"] for v in differences.values()), ("finite flux array_equal", differences)
