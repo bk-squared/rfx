@@ -331,18 +331,6 @@ def run_uniform(
                 "this lane reads S11 from the main run's port record, "
                 "whose length is n_steps"})
 
-    if (len(sim._ports) == 1 and len(lumped_ports) == 1
-            and sim._ports[0].excite and compute_s_params is not False):
-        sim._refuse_unsupported_run_kwargs(
-            "uniform single-lumped-port S-parameter", {
-                "s_param_n_steps": sim._s_param_n_steps_off_record(
-                    s_param_n_steps, n_steps, until_decay),
-            },
-            instead=None,
-            reason_overrides={"s_param_n_steps":
-                "this lane reads S from the main run's port record; "
-                "set n_steps to choose its length, or use until_decay"})
-
     from rfx.measurement.port_registration import uniform_run_specs
     record_specs = uniform_run_specs(grid, wire_ports, wire_port_live_cells, lumped_ports, sim._ports)
 
@@ -811,12 +799,15 @@ def run_uniform(
     freqs_out = None
     s_settling = None
 
+    # One excited lumped port reads S from the main record unless the user
+    # asked for another record length; that request keeps its drive scan.
     _single_lumped_main_record = (
         compute_s_params
         and len(sim._ports) == 1
         and len(lumped_ports) == 1
         and sim._ports[0].excite
-        and bool(sim_result.lumped_port_sparams)
+        and sim._s_param_n_steps_off_record(s_param_n_steps, n_steps, until_decay) is None
+        and bool(getattr(sim_result, 'lumped_port_sparams', None))
     )
 
     _single_wire_fastpath = (

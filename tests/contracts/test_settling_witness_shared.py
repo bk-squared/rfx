@@ -52,13 +52,10 @@ def test_d5_census_disposition(declaration, path):
     check_fields(declaration, path)
 
 
-def test_single_lumped_refuses_a_separate_record_length():
-    sim = BUILDERS['P-lumped']('uniform')
-    with pytest.raises(NotImplementedError, match='main run.*port record'):
-        sim.run(n_steps=150, s_param_n_steps=200, skip_preflight=True)
 
 
-@pytest.mark.parametrize('mode,drives', [('passive', 1), ('two_ports', 2), ('no_s', 0)])
+@pytest.mark.parametrize('mode,drives', [('passive', 1), ('two_ports', 2), ('no_s', 0),
+                                         ('other_length', 1)])
 def test_other_lumped_s_requests_keep_their_drive_scans(monkeypatch, mode, drives):
     from rfx import simulation
     step, calls = simulation.run, []
@@ -73,8 +70,9 @@ def test_other_lumped_s_requests_keep_their_drive_scans(monkeypatch, mode, drive
         sim = base_scene('uniform', source=False).add_port(SOURCE, 'ez', impedance=50., excite=False)
     else:
         sim = BUILDERS['P-lumped2' if mode == 'two_ports' else 'P-lumped']('uniform')
-    result = sim.run(n_steps=150, skip_preflight=True,
-                     **({'compute_s_params': False} if mode == 'no_s' else {}))
+    # A single lumped port asking S for another record length keeps its drive scan.
+    options = {'no_s': {'compute_s_params': False}, 'other_length': {'s_param_n_steps': 200}}
+    result = sim.run(n_steps=150, skip_preflight=True, **options.get(mode, {}))
     assert len(calls) == 1 + drives
     assert (result.s_params is None) == (mode == 'no_s')
 
