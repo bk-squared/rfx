@@ -166,6 +166,15 @@ def check_arrays(cfg, grid, values, *, localized=(), requirements=(), records=No
                 f"{feature}; the {operator} operator is retained (Addendum 5c).",
                 UnjudgedTFSFInvarianceWarning, stacklevel=2)
         elif not okay:
+            materials = values.get('materials') if isinstance(values, dict) else None
+            tensor = getattr(getattr(materials, 'components', None), 'tensor', None)
+            if (getattr(tensor, 'node_smoothing', None) is not None
+                    and ('tensor.eps.' in feature or 'aniso_eps.' in feature)
+                    and getattr(cfg, 'angle_deg', 0) != 0
+                    and any(getattr(grid, f'pad_{axis}_{side}') for side in ('lo', 'hi'))):
+                raise ValueError(
+                    "full_tensor's diagonal is not invariant along a padded periodic axis "
+                    f"({axis}); use closed_box=True for a finite scatterer")
             _refuse(axis, feature, nonuniform=nonuniform)
     return axes
 

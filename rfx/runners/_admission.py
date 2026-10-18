@@ -1249,26 +1249,7 @@ def refuse_smoothing_overrides(*, subpixel_smoothing, eps_override=None,
             "they supply a second inverse-permittivity operator.")
 
 
-def refuse_forward_smoothing(sim, *, subpixel_smoothing,
-                             eps_override, pec_occupancy, design_occupancy):
-    """Admit smoothing only on forward lanes that carry the tensor."""
-    if not subpixel_smoothing:
-        return
-    if sim._solver == "adi":
-        sim._refuse_unsupported_run_kwargs("ADI (solver='adi')", {
-            "subpixel_smoothing": subpixel_smoothing},
-            instead="use the default solver='yee'")
-    if sim._uses_nonuniform_mesh and subpixel_smoothing == "kottke_pec":
-        raise NotImplementedError(
-            "subpixel_smoothing='kottke_pec' (Stage 2 unified PEC) "
-            "is not supported on the non-uniform mesh path. "
-            "Drop the dx/dy/dz profile or use the legacy "
-            "``Boundary(conformal=True)`` Stage 1 path on a "
-            "uniform mesh. Tracked at "
-            "https://github.com/bk-squared/rfx/issues.")
-    refuse_smoothing_overrides(subpixel_smoothing=subpixel_smoothing,
-        eps_override=eps_override, pec_occupancy=pec_occupancy,
-        design_occupancy=design_occupancy)
+from rfx.runners._smoothing_admission import refuse_forward_smoothing
 
 
 def _refuse_conformal_boundary(self, path_name: str, *, entry: str,
