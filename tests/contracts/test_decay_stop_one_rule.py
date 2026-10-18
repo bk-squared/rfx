@@ -53,7 +53,7 @@ PULSE = dict(f0=10e9, bandwidth=1.0, cutoff=5)
 # --- (a) ---------------------------------------------------------------------
 
 def test_large_loop_files_hold_no_energy_rule():
-    for module in ("simulation", "nonuniform"):
+    for module in ("simulation", "stepping/graded_loop"):
         tree = ast.parse((ROOT / "rfx" / f"{module}.py").read_text())
         imported = {a.name for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
                     and node.module in ("rfx.measurement", "rfx.measurement.decay")
@@ -134,7 +134,7 @@ def _inline_history(mesh, cap, monkeypatch):
     read from the materials handed to this run's setup, n_end from the
     source tables it builds (last sample above 1e-6 of the peak, plus one).
     """
-    from rfx import nonuniform, simulation
+    from rfx.stepping import graded_loop as nonuniform
     from rfx.core.yee import EPS_0, MU_0, component_e_materials, component_h_materials
 
     uniform = mesh.startswith("uniform")

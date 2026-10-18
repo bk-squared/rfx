@@ -284,7 +284,7 @@ def test_two_excited_wire_ports_refuse_run_s_before_staging(monkeypatch):
 def test_model_drives_and_cut(case, n, entry, monkeypatch):
     if case == 'C5' and entry == 'run':
         pytest.skip('C5 specifies traced forward overrides')
-    import rfx.nonuniform as nu
+    import rfx.stepping.graded_loop as nu
     from rfx.runners import _distributed_nu_wrapped as wrapped
     from rfx.stepping import slab_setup
     from rfx.stepping.slab import cut

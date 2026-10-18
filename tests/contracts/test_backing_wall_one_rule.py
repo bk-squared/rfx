@@ -131,7 +131,7 @@ def stage(fun, name):
 
 def capture(sim, entry, path, invoke=None):
     import rfx.simulation as kernel
-    import rfx.nonuniform as nu
+    import rfx.stepping.graded_loop as nu
     captured = {}
     setup_original = uniform_loop._build_step_setup
     nu_original = nu._build_nu_scan

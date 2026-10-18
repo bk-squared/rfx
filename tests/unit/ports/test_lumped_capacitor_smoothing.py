@@ -16,7 +16,7 @@ import pytest
 
 from rfx import Box, GaussianPulse, Simulation
 from rfx import simulation
-from rfx.stepping import uniform_setup
+from rfx.stepping import graded_setup, uniform_setup
 from rfx import nonuniform as nu_core
 from rfx.boundaries.spec import Boundary, BoundarySpec
 from rfx.core.yee import EPS_0, component_e_materials, init_state
@@ -101,7 +101,7 @@ def _run_case(lane, component=None, *, fractional=False, seeded=False):
         stack.enter_context(patch.object(module, name, capture))
         if seeded:
             stack.enter_context(patch.object(uniform_setup, "init_state", _seed_h))
-            stack.enter_context(patch.object(nu_core, "init_state", _seed_h))
+            stack.enter_context(patch.object(graded_setup, "init_state", _seed_h))
         n_steps = 1 if seeded else 240
         if lane in ("forward", "forward_occ", "materials_occ"):
             stack.enter_context(patch.dict(os.environ, RFX_PEC_OCC_KOTTKE="1"))

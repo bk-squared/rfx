@@ -174,7 +174,7 @@ def test_published_matches_lane_operator(lane, sheet, monkeypatch):
         # The factor wraps across the periodic seam; the setup must pass the flags.
         lane, boundary = 'uniform', BoundarySpec(x='pec', y='periodic', z='pec')
     import rfx.simulation as sm
-    import rfx.nonuniform as nu
+    import rfx.stepping.graded_loop as nu
     module, setup = (uniform_loop, '_build_step_setup') if lane == 'uniform' else (nu, '_build_nu_scan')
     kw = {} if lane == 'uniform' else dict(dy_profile=np.array([.001, .0009, .0011, .001, .001, .001]))
     sim = Simulation(freq_max=15e9, domain=(.008, .006, .004), dx=.001, boundary=boundary, **kw)

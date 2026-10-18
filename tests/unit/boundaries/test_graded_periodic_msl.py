@@ -8,7 +8,7 @@ from rfx import Box, Simulation
 
 @pytest.mark.parametrize("graded", [False, True], ids=["uniform", "graded"])
 def test_msl_seam_geometry_reaches_step_builder(graded, monkeypatch):
-    from rfx import nonuniform, simulation
+    from rfx.stepping import graded_loop as nonuniform
 
     profile = {"dz_profile": np.array([.001] * 4 + [.0005] * 8 + [.0015] * 12)} if graded else {}
     sim = Simulation(freq_max=5e9, domain=(.024, .024, .026), dx=.001,

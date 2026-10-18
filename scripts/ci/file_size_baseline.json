@@ -8,7 +8,7 @@
     "rfx/api/_spec.py": 1866,
     "rfx/interop/_design.py": 1643,
     "rfx/interop/emitters/openems.py": 1668,
-    "rfx/nonuniform.py": 1186,
+    "rfx/nonuniform.py": 309,
     "rfx/preflight/msl.py": 1359,
     "rfx/probes/probes.py": 1597,
     "rfx/ringdown.py": 2420,
