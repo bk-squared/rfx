@@ -98,6 +98,7 @@ from rfx.api._spec import (  # noqa: E402
     MixedSMatrixResult,
 )
 from rfx.mesh_planner import MeshPlan, mesh_intelligence_report, plan_simulation_mesh  # noqa: E402,F401
+from rfx.auto_config import simulation_auto  # noqa: E402
 
 
 def _bloch_cutoff_level_db(angle_deg: float, bandwidth: float) -> float:
@@ -2434,53 +2435,7 @@ class Simulation(
             f")"
         )
 
-    @classmethod
-    def auto(
-        cls,
-        freq_range: tuple[float, float],
-        *,
-        accuracy: str = "standard",
-        **kwargs,
-    ) -> "Simulation":
-        """Create a Simulation with auto-derived parameters.
-
-        Parameters
-        ----------
-        freq_range : (f_min, f_max) in Hz
-            Analysis frequency range. All parameters (dx, domain, CPML,
-            n_steps) are derived from this.
-        accuracy : "draft", "standard", or "high"
-        **kwargs : additional Simulation constructor args (override auto values)
-
-        Returns
-        -------
-        Simulation with optimal configuration for the frequency range.
-
-        Example
-        -------
-        >>> sim = Simulation.auto(freq_range=(1.5e9, 3.5e9))
-        >>> sim.add(Box(...), material="pec")
-        >>> result = sim.run(until_decay=1e-5)
-        >>> modes = result.find_resonances()
-        """
-        import warnings
-        warnings.warn(
-            "Simulation.auto() called without geometry — the auto-derived "
-            "domain and grid may not match your intended structure. "
-            "Add geometry after construction or pass domain/dx overrides.",
-            stacklevel=2,
-        )
-
-        from rfx.auto_config import auto_configure
-        config = auto_configure([], freq_range, accuracy=accuracy)
-
-        if config.warnings:
-            for w in config.warnings:
-                warnings.warn(f"auto_config: {w}")
-
-        sim_kwargs = config.to_sim_kwargs()
-        sim_kwargs.update(kwargs)
-        return cls(**sim_kwargs)
+    auto = classmethod(simulation_auto)
 
 
 # ---------------------------------------------------------------------------
