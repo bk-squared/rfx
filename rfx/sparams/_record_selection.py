@@ -56,20 +56,74 @@ def record_selection_detail(result):
 
 
 def forward_settling_witness(result):
-    from rfx.probes.settling import probe_record_settling_witness
-    from rfx.sparams._tail_witness import port_record_witness, result_read_bins
+    from rfx.sparams._tail_witness import result_read_bins
 
     bins = result_read_bins(result)
     freq_max = (result.settling_freq_max or getattr(result.grid, 'freq_max', None)
                 or (max(bins) if len(bins) else None))
+    return build_settling_witness(
+        result, bins=bins, dt=result.dt, freq_max=freq_max,
+        probe_info=result.settling_probe_info,
+        source_end=result.settling_source_end_index,
+        port_source_end=result.settling_source_end_index, warn=False)
+
+
+def build_settling_witness(result, *, bins, dt, freq_max, probe_info,
+                           source_end, port_source_end, prior_rows=(), warn=True):
+    """Judge selected records once, retaining each contributing witness row.
+
+    The caller supplies timing and any verdict from separately driven scans;
+    record selection and aggregation are shared by both public entries.
+    """
+    import numpy as np
+    from rfx.probes.settling import probe_record_settling_witness
+    from rfx.sparams._tail_witness import combine_witness_details, port_record_witness
+    from rfx.measurement.settling import settling_db_from_port_records
+
+    rows = list(prior_rows)
+    db = rows[0]['db'] if rows else None
     records = s_read_records(result)
     if records:
         db, detail = port_record_witness(
-            records, result.dt, result.settling_source_end_index,
-            bins, freq_max=freq_max)
-    else:
-        db, detail = probe_record_settling_witness(
-            result.time_series, result.settling_probe_info, warn=False,
-            source_end_index=result.settling_source_end_index, dt=result.dt,
-            freqs=bins, freq_max=freq_max)
+            records, dt, port_source_end, bins, freq_max=freq_max)
+        rows.append(detail)
+    if getattr(result, 'waveguide_ports', None):
+        db, detail = settling_db_from_port_records(
+            result.waveguide_ports.values(), freqs=bins,
+            freq_max=freq_max, return_detail=True)
+        rows.append(detail)
+    probe_db, probe_detail = probe_record_settling_witness(
+        getattr(result, 'time_series', None), probe_info, warn=warn,
+        source_end_index=source_end, dt=dt, freqs=bins, freq_max=freq_max)
+    if probe_info:
+        db = probe_db
+        rows.append(probe_detail)
+    elif rows and _reads_unrecorded_fields(result):
+        rows.append({**probe_detail, 'status': 'absent', 'db': None,
+                     'worst_freq_hz': None, 'floor_amplitude': None,
+                     'share_per_bin': np.zeros(bins.size),
+                     'error_per_bin': np.zeros(bins.size),
+                     'reason': 'far-field or DFT-plane frequencies are read but no '
+                               'probe records the fields they come from'})
+    if not rows:
+        return probe_db, {**probe_detail, **record_selection_detail(result)}
+    detail = combine_witness_details(*rows) if len(rows) > 1 else rows[0]
+    if len(rows) > 1:
+        db = detail['db']
+        if bins.size:
+            shares = np.maximum.reduce([row['share_per_bin'] for row in rows])
+            errors = np.maximum.reduce([row['error_per_bin'] for row in rows])
+            detail = {**detail, 'share_per_bin': shares, 'error_per_bin': errors,
+                      'worst_freq_hz': (float(bins[np.argmax(shares)])
+                                        if np.any(shares) or detail['status'] == 'pass'
+                                        else float('nan'))}
     return db, {**detail, **record_selection_detail(result)}
+
+
+def _reads_unrecorded_fields(result):
+    """True when NTFF, DFT-plane, flux or current-moment outputs are read."""
+    if getattr(result, 'ntff_box', None) is not None:
+        return True
+    if getattr(result, 'current_moment_monitor', None) is not None:
+        return True
+    return any(getattr(result, f, None) for f in ('dft_planes', 'flux_monitors'))

@@ -331,6 +331,18 @@ def run_uniform(
                 "this lane reads S11 from the main run's port record, "
                 "whose length is n_steps"})
 
+    if (len(sim._ports) == 1 and len(lumped_ports) == 1
+            and sim._ports[0].excite and compute_s_params is not False):
+        sim._refuse_unsupported_run_kwargs(
+            "uniform single-lumped-port S-parameter", {
+                "s_param_n_steps": sim._s_param_n_steps_off_record(
+                    s_param_n_steps, n_steps, until_decay),
+            },
+            instead=None,
+            reason_overrides={"s_param_n_steps":
+                "this lane reads S from the main run's port record; "
+                "set n_steps to choose its length, or use until_decay"})
+
     from rfx.measurement.port_registration import uniform_run_specs
     record_specs = uniform_run_specs(grid, wire_ports, wire_port_live_cells, lumped_ports, sim._ports)
 
@@ -799,6 +811,14 @@ def run_uniform(
     freqs_out = None
     s_settling = None
 
+    _single_lumped_main_record = (
+        compute_s_params
+        and len(sim._ports) == 1
+        and len(lumped_ports) == 1
+        and sim._ports[0].excite
+        and bool(sim_result.lumped_port_sparams)
+    )
+
     _single_wire_fastpath = (
         compute_s_params
         and wire_ports
@@ -807,7 +827,15 @@ def run_uniform(
         and bool(sim_result.wire_port_sparams)
     )
 
-    if _single_wire_fastpath:
+    if _single_lumped_main_record:
+        from rfx.measurement.port_s import port_s_from_record
+        pairs = sim_result.lumped_port_sparams
+        s_params = np.asarray(port_s_from_record(
+            [channels for _, channels in pairs], [meta for meta, _ in pairs],
+            wire_mode=False))
+        freqs_out = np.asarray(s_param_freqs if s_param_freqs is not None
+                               else pairs[0][0].freqs)
+    elif _single_wire_fastpath:
         # SINGLE-port wire fast-path: the JIT main-scan V/I accumulators give
         # the complete 1-port S-matrix (diagonal IS the full matrix), and this
         # path is BETTER-CONDITIONED than the per-drive driver on lossless PEC
@@ -934,7 +962,7 @@ def run_uniform(
         # (find_resonances, an FFT of time_series) needs the real one.
         dt=sim_result.dt,
         sparam_time_records=sim_result.sparam_time_records,
-        sparam_read_ids=read_ids(sim_result.sparam_time_records) if _single_wire_fastpath else SReadPorts(),
+        sparam_read_ids=read_ids(sim_result.sparam_time_records) if (_single_wire_fastpath or _single_lumped_main_record) else SReadPorts(),
         dft_time_records={
             entry.name: rec for entry, rec in zip(sim._dft_planes, sim_result.dft_time_records or ())
         },

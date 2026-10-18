@@ -214,7 +214,7 @@ Left out of these tables, each for one reason:
 | Input | Row key | Uniform | Graded | Multi-device | Calculators | What to do instead |
 |---|---|---|---|---|---|---|
 | A frequency-domain plane (`add_dft_plane_probe`) | `_dft_planes/dft_plane` | supported | supported | refused | — | Run it on one device. |
-| A flux monitor (`add_flux_monitor`) | `_flux_monitors/flux` | supported (run); n/a (forward) | supported (run); n/a (forward) | refused | — | Run it on one device. |
+| A flux monitor (`add_flux_monitor`) | `_flux_monitors/flux` | supported | supported | refused | — | Run it on one device. |
 | A far-field box (`add_ntff_box`) | `_ntff/ntff_box` | supported | supported | supported (uniform); refused (graded) | — | On a graded mesh, run it on one device. |
 | A current-moment monitor (`add_current_moment_monitor`) | `_current_moments/block_moments` | supported | supported | refused | refused (vmap_sweep_batched) | Run it on one device. The batched `vmap_material_sweep` refuses it. |
 

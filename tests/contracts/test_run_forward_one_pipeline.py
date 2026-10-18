@@ -15,15 +15,11 @@ from tests.contracts.run_forward_census import (
 )
 
 KNOWN_ROWS = (
-    ('P-lumped', 'multi-device-uniform', 'L2', 'D5', '#1373 D5 (ports): settling witness arrays differ between entries'),
+    ('P-lumped', 'multi-device-uniform', 'L2', 'D5', "#1402: forward's distributed path has no port records yet"),
     ('P-lumped', 'multi-device-uniform', 'L2', 'D8', '#1373 D8 (ports): run computes the port S-matrix by default; forward returns no S without port_s11_freqs'),
-    ('P-lumped', 'uniform', 'L2', 'D5', '#1373 D5 (ports): settling witness arrays differ between entries'),
-    ('P-lumped2', 'uniform', 'L2', 'D5', '#1373 D5 (ports): settling witness arrays differ between entries'),
-    ('P-waveguide', 'graded', 'L2', 'D5', '#1373 D5 (ports): settling witness arrays differ between entries'),
+    ('P-lumped2', 'uniform', 'L2', 'D5', '#1373 D8: per_drive witnesses remain for the separate S drives, including the passive port column'),
     ('P-waveguide', 'multi-device-graded', 'L1', 'A5', '#1373 A5 (acceleration): run falls back for a waveguide port while distributed forward refuses'),
     ('P-waveguide', 'multi-device-graded', 'admission', 'A5', '#1373 A5 (acceleration): run falls back for a waveguide port while distributed forward refuses'),
-    ('P-waveguide', 'multi-device-uniform', 'L2', 'D5', '#1373 D5 (ports): settling witness arrays differ between entries'),
-    ('P-waveguide', 'uniform', 'L2', 'D5', '#1373 D5 (ports): settling witness arrays differ between entries'),
     ('P-wire', 'multi-device-graded', 'admission', 'A2', 'A2 expected: equal S requests refuse the extra source; forward without an S request admits'),
     ('P-wire', 'graded', 'admission', 'A2', 'A2 expected: equal S requests give equal refusals; forward without an S request admits'),
     ('P-wire', 'multi-device-uniform', 'admission', 'A2', 'A2 expected: equal S requests give equal refusals; forward without an S request admits'),
