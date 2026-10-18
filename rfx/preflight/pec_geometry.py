@@ -881,51 +881,80 @@ def _validate_cfg_congruent_rasterization_parity(self, _w, ctx) -> None:
         source="_validate_cfg_congruent_rasterization_parity",
     ))
 
-def _sheet_solved_plane(ctx, a, e, k) -> float:
-    """Coordinate of sheet ``e``'s solved plane ``k`` along its normal ``a``.
-    On a periodic axis node k stands for every copy k + n*L; the sheet is
-    solved on the copy nearest its drawn mid-plane."""
+def _sheet_solved_plane(ctx, a, e, k, drawn=None) -> float:
+    """Solved node coordinate, unwrapped nearest the drawn sheet or Box face."""
     z = float(ctx.nodes[a][k])
     if ctx.periodic[a]:
         period = float(ctx.sim._domain[a])
-        mid = 0.5 * (float(e.lo[a]) + float(e.hi[a]))
+        mid = 0.5 * (float(e.lo[a]) + float(e.hi[a])) if drawn is None else drawn
         z += period * round((mid - z) / period)
     return z
 
 
+def _box_face_planes(ctx, a, e, shape):
+    """Lower and upper wall planes of Box ``e`` along ``a``. On a periodic axis
+    a face at or past L lies on a wrapped node, so the lowest and highest index
+    are not its faces: each face takes the plane nearest it once unwrapped, a
+    half-cell tie going lower as the rasterizer resolves it."""
+    wall = e.wall_planes(a, ctx.periodic, shape)
+    if not wall or not ctx.periodic[a]:
+        return (min(wall), max(wall)) if wall else None
+    def nearest(face):
+        z = {k: _sheet_solved_plane(ctx, a, e, k, face) for k in wall}
+        return min(wall, key=lambda k: (abs(z[k] - face), z[k]))
+    return nearest(float(e.lo[a])), nearest(float(e.hi[a]))
+
+
 def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
-    """Judge drawn-order sheet adjacency independently of electrical columns."""
-    sheets = [e for e in entries if e.kind == "sheet"]
-    if len(sheets) < 2:
+    """Judge adjacent sheet/Box cavity faces independently of electrical columns."""
+    conductors = [e for e in entries if e.kind == "sheet"
+                  or (e.kind == "volume" and isinstance(e.shape, Box))]
+    if len(conductors) < 2:
         return
+    from rfx._grid_metric import node_tie_tol
+    from rfx.geometry.rasterize_grid import _local_cell as _rasterize_local_cell
     shape = tuple(ctx.grid.shape)
     pec_np = np.asarray(pec_np, dtype=bool)
     results = []
     for a in range(3):
         planes = []
-        for e in sheets:
-            if int(e.sheet.normal_axis) != a:
+        for e in conductors:
+            if e.kind == "sheet":
+                if int(e.sheet.normal_axis) != a:
+                    continue
+                faces = [(int(e.sheet.plane), float(e.lo[a]), float(e.hi[a]), "sheet")]
+            else:
+                wall = _box_face_planes(ctx, a, e, shape)
+                if wall is None:
+                    continue
+                faces = [(wall[0], float(e.lo[a]), float(e.lo[a]), "PEC Box face lower"),
+                         (wall[1], float(e.hi[a]), float(e.hi[a]), "PEC Box face upper")]
+            for k, lo, hi, kind in faces:
+                planes.append((e, k, e.footprint_on_plane(a, k, ctx.periodic, shape), lo, hi, kind))
+        planes.sort(key=lambda p: (0.5 * (p[3] + p[4]), p[3]))
+        for si, (e1, k1, foot1, lo1, g_lo, kind1) in enumerate(planes):
+            if kind1 == "PEC Box face lower":
                 continue
-            k = int(e.sheet.plane)
-            planes.append((e, k, e.footprint_on_plane(a, k, ctx.periodic, shape)))
-        planes.sort(key=lambda p: (0.5 * (float(p[0].lo[a]) + float(p[0].hi[a])),
-                                   float(p[0].lo[a])))
-        for si, (e1, k1, foot1) in enumerate(planes):
             covered = np.zeros(foot1.shape, dtype=bool)
-            for e2, k2, foot2 in planes[si + 1:]:
+            for e2, k2, foot2, g_hi, hi2, kind2 in planes[si + 1:]:
                 overlap = foot1 & foot2 & ~covered
                 if not overlap.any():
                     continue
-                g_lo, g_hi = float(e1.hi[a]), float(e2.lo[a])
                 drawn = g_hi - g_lo
-                z1 = _sheet_solved_plane(ctx, a, e1, k1)
-                z2 = _sheet_solved_plane(ctx, a, e2, k2)
+                z1 = _sheet_solved_plane(ctx, a, e1, k1, 0.5 * (lo1 + g_lo))
+                z2 = _sheet_solved_plane(ctx, a, e2, k2, 0.5 * (g_hi + hi2))
                 solved = z2 - z1
-                if drawn <= 0 and solved <= 0:
+                # A gap inside the rasterizer's on-lattice band is float dust
+                # (11*dx - 10*dx), not a cavity: faces drawn touching.
+                touching = drawn <= node_tie_tol(g_hi, _rasterize_local_cell(
+                    ctx.nodes[a], ctx.cell_sizes[a], g_hi))
+                if touching and solved <= 0:
                     # Metal merged on one plane: no cavity, and it does not
                     # stand between e1 and the next sheet.
                     continue
                 covered |= foot1 & foot2
+                if e1 is e2 or kind2 == "PEC Box face upper":
+                    continue
                 # A post blocks some columns, not the whole cavity. Same-node
                 # sheets have no intervening cells and must still be judged.
                 # On a periodic axis the cells run k1 .. N-1 and on from 0.
@@ -934,7 +963,7 @@ def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
                 blocked = np.any(np.take(pec_np, cells, axis=a), axis=a)
                 if np.all(blocked[overlap]):
                     continue
-                if drawn > 0:
+                if not touching:
                     rel = solved / drawn - 1.0
                     if abs(rel) <= _CAVITY_THICKNESS_TOL:
                         continue
@@ -952,28 +981,29 @@ def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
                     ". A sheet is solved on one plane, so its drawn "
                     "thickness counts into the spacing; draw it as a "
                     "zero-thickness sheet on the interface it bounds"
-                    if e1.lo[a] != e1.hi[a] or e2.lo[a] != e2.hi[a]
+                    if lo1 != g_lo or g_hi != hi2
                     else "")
                 results.append((score, (
-                    f"[{'xyz'[a]}] {e1.label} '{e1.name}' plane at "
+                    f"[{'xyz'[a]}] {e1.label} '{e1.name}' ({kind1}) plane at "
                     f"{_fmt_len(z1)} (drawn {_fmt_len(g_lo)}) / "
-                    f"{e2.label} '{e2.name}' plane at {_fmt_len(z2)} "
+                    f"{e2.label} '{e2.name}' ({kind2}) plane at {_fmt_len(z2)} "
                     f"(drawn {_fmt_len(g_hi)}): {spacing}{thickness}")))
     if not results:
         return
     results.sort(key=lambda t: -t[0])
     lines = " | ".join(r[1] for r in results[:_CAMPAIGN_MAX_OFFENDERS])
     _w.warn(PreflightWarning(
-        f"{len(results)} pair(s) of parallel PEC sheets are solved "
+        f"{len(results)} pair(s) of parallel PEC cavity faces are solved "
         "more than 1% off their drawn spacing. "
         f"{lines}. WHY: a cavity resonance follows its spacing. "
         "REMEDY: put both planes on mesh nodes: use a cell size that "
         "divides the heights, or build a graded profile whose nodes include "
         "both planes with rfx.mesh_edges.edge_aware_profiles(domain, dx, "
-        'sheets=[...], axes="xyz") and pass it as Simulation(dx_profile=..., '
-        "dy_profile=..., dz_profile=...). To accept the solved spacing "
+        'sheets=[...], solids=[...], axes="xyz") and pass it as Simulation(dx_profile=..., '
+        "dy_profile=..., dz_profile=...). Include the PEC Boxes in solids; if the gap "
+        "cannot hold its ramps, use a smaller dx. To accept the solved spacing "
         'knowingly, use Simulation(..., snap="declared"). '
-        "STALE IF: the named sheets or mesh change; the printed planes "
+        "STALE IF: the named conductors or mesh change; the printed planes "
         "are this run's node coordinates.",
         code="sheet_cavity_spacing",
         severity="warning" if ctx.sim._snap == "declared" else "error",

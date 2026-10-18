@@ -146,10 +146,29 @@
         ],
         "severity": "warning",
         "source": "_validate_cfg_sheet_cavity_thickness"
+      },
+      {
+        "code": "sheet_cavity_spacing",
+        "loc": null,
+        "numbers": [
+          1.0,
+          1.0,
+          0.0,
+          4.0,
+          4.5,
+          1.0,
+          6.0,
+          6.02,
+          1.52,
+          2.0,
+          31.58
+        ],
+        "severity": "error",
+        "source": "_validate_cfg_sheet_cavity_thickness"
       }
     ],
-    "n_errors": 0,
-    "n_issues": 6,
-    "ok": true
+    "n_errors": 1,
+    "n_issues": 7,
+    "ok": false
   }
 }
