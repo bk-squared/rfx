@@ -1,20 +1,191 @@
 ---
 title: Design regions
-description: The parts of a model a gradient can change.
+description: "What forward() can differentiate with respect to: material arrays, a design box, conductor occupancy, lumped element values and the mesh."
 sidebar:
   order: 2
 ---
 
-<p data-rfx="note">Being written for 2.0 (tracker 1171).</p>
-
 ## What it is for
+
+An optimizer needs the derivative of an objective with respect to the
+parameters it changes. In rfx those parameters enter `forward()` as arrays
+that replace part of the declared model: the permittivity or conductivity of
+some cells, how much metal a cell holds, the values of a lumped element, or the
+cell sizes themselves. This page says which inputs there are, what shape each
+one takes, and on which solver path it is differentiable. How to build an
+optimization from them is on [Optimization](/rfx/design/optimization/).
 
 ## How to use it
 
+A design box replaces the permittivity of a block of cells. It gives the same
+gradient as replacing the whole grid, but keeps only the box's cells for the
+backward pass:
+
+```python
+import jax
+import jax.numpy as jnp
+import numpy as np
+from rfx import GaussianPulse, Simulation
+
+BOX_LO, BOX_HI = (10e-3, 8e-3, 6e-3), (14e-3, 12e-3, 10e-3)
+
+sim = Simulation(freq_max=16e9, domain=(24e-3, 20e-3, 16e-3), dx=2e-3,
+                 boundary="cpml", cpml_layers=8)
+sim.add_source((4e-3, 10e-3, 8e-3), "ez", amplitude_kind="field",
+               waveform=GaussianPulse(f0=8e9, bandwidth=0.8))
+sim.add_probe((20e-3, 10e-3, 8e-3), "ez")
+
+grid = sim.freeze_mesh()
+lo, hi = grid.position_to_index(BOX_LO), grid.position_to_index(BOX_HI)
+box = tuple(slice(lo[d], hi[d] + 1) for d in range(3))
+shape = tuple(hi[d] - lo[d] + 1 for d in range(3))
+print("design cells", shape)
+
+
+def loss_box(eps_design):
+    out = sim.forward(design_box=(BOX_LO, BOX_HI), design_eps_override=eps_design,
+                      n_steps=120, checkpoint=False, skip_preflight=True)
+    return jnp.sum(out.time_series ** 2)
+
+
+def loss_full(eps_design):
+    eps = jnp.ones(grid.shape).at[box].set(eps_design)
+    out = sim.forward(eps_override=eps, n_steps=120, skip_preflight=True)
+    return jnp.sum(out.time_series ** 2)
+
+
+eps0 = jnp.full(shape, 3.0)
+g_box = jax.grad(loss_box)(eps0)
+g_full = jax.grad(loss_full)(eps0)
+print(g_box.shape, float(jnp.max(jnp.abs(g_box - g_full)) / jnp.max(jnp.abs(g_full))))
+```
+
+```text
+design cells (3, 3, 3)
+(3, 3, 3) 3.289985954779695e-07
+```
+
+The two gradients agree to float32 rounding. Both corners of the box are
+inclusive, so the design array has one entry per realized cell from the cell
+at `BOX_LO` to the cell at `BOX_HI`; compute its shape from the grid as above.
+Pass `checkpoint=False` with a design box: the default checkpointing saves the
+whole grid's fields every step and hides the memory the box saves.
+
+### The inputs
+
+| Argument | Shape and meaning | Differentiable on |
+|---|---|---|
+| `eps_override` | the whole grid's relative permittivity, absorber included (`grid.shape`) | uniform, graded, multi-device graded |
+| `sigma_override` | the whole grid's conductivity in S/m | uniform, graded, multi-device graded |
+| `mu_r_override` | the whole grid's relative permeability | uniform mesh on one device only |
+| `design_box` with `design_eps_override` | `design_box=(corner_lo, corner_hi)` in metres; the box's relative permittivity, one entry per realized cell | uniform, graded |
+| `design_sigma_override` | the box's conductivity in S/m, one array, or three (x, y, z) for edge conductivities; needs `design_eps_override` | uniform, graded |
+| `design_occupancy_override` | how much of each box cell is metal, 0 to 1 | uniform mesh on one device |
+| `pec_occupancy_override` | the same for the whole grid | uniform, graded, multi-device graded |
+| `pec_mask_override` | a boolean mask added to the declared metal; not differentiable | uniform, graded, multi-device graded |
+| `rlc_values_override` | `{element_index: {"R": ..., "L": ..., "C": ...}}` in Ω, H, F, replacing the declared values of those lumped elements | uniform mesh on one device |
+
+On a graded mesh a whole-grid array has one entry per node of the padded grid
+(`grid.shape`), not per cell of the profile.
+
+### Ports inside a design box
+
+A lumped or wire port inside a permittivity box is refused by default: its load and drive
+were built from the background permittivity, and changing the cells around it
+would change them silently. `design_box_holds_ports=True` keeps those port
+edges at their declared values and gives them zero gradient; the edges it
+held come back in the result (`design_box_held_edges`). Soft and magnetic
+sources and lumped RLC elements inside the box are still refused.
+
+### Conductor occupancy
+
+An occupancy of 0 is no metal and 1 is a PEC cell; each edge field is
+multiplied by the product of (1 − occupancy) of the four cells around it. An
+occupancy box combines with `eps_override` and `pec_occupancy_override`.
+Values in between are a smooth path for the optimizer, not a physical
+material: an edge of partial occupancy behaves as an artificial loss. Drive
+the design to 0 and 1 before you read its performance; `rfx.topology` has a
+density filter and a smooth threshold projection for that. See the known
+limitation "Intermediate conductor occupancy is an artificial loss".
+
+Design metal never covers what was declared at a cell edge. Under a
+whole-grid occupancy, the edges of lumped RLC elements and of
+surface-impedance sheets are kept free of design metal, as port edges are,
+with one warning; a plain source under it gets an advisory and runs
+unchanged. A design box that reaches such an element or sheet is refused.
+
+### The mesh as a design variable
+
+On a graded mesh, `dx_profile`, `dy_profile` and `dz_profile` can be traced:
+stretching the cells changes the physical size of what sits on them while the
+grid topology stays fixed. A metal sheet on such a mesh is declared with
+`sim.add_pinned_sheet(plane_index=, i_range=, j_range=)` so that it stays on
+its nodes as they move. With a traced mesh axis, a ground plane is not
+continued into the absorber and rfx warns; use at least 8 absorber layers.
+
+Ports, probes and sources given in metres on a traced axis need the concrete
+cell widths at the point being differentiated:
+`Simulation(nominal_profiles={"x": widths, ...})`. Positions resolve to the
+nodes of that profile, and a run whose mesh puts one on a different node is
+refused. To say which cells move, pass a
+`rfx.model.NominalProfile(cells, traced_cells=(i0, i1))` instead of plain
+widths; several windows, `traced_cells=((i0, i1), (j0, j1))`, let the cells on
+both sides of a feed move while the feed's own cells keep their width. A cell
+that moves outside every window is refused. A wire port with a radius runs on
+such a mesh only when a moving range is declared and keeps off the pin and the
+cell next to it.
+
+`forward(pinned_sheet_layout=...)` switches a pinned sheet's metal edge by edge
+without compiling again. It is a switch for searching layouts, not a
+sensitivity: it cannot be differentiated (see
+[Conductors](/rfx/model/conductors/#pinned-sheets)).
+
 ## What is checked
+
+The shape of each array against the grid or the realized box, the inputs a
+design box cannot be combined with, and the solver path, before the first
+step. A gradient is the exact derivative of the run you set up; whether the
+run is long enough for it is a separate check
+([Checking a gradient](/rfx/evidence/gradients/)).
 
 ## What is refused, and the way through
 
+| Input | Solver path | Instead |
+|---|---|---|
+| `forward(distributed=True)` on a uniform mesh with any override or design input (`eps_override`, `sigma_override`, `mu_r_override`, the PEC overrides, `design_box`, `rlc_values_override`) | multi-device | one device, or a graded mesh; without overrides it runs |
+| `mu_r_override`, `rlc_values_override`, `design_occupancy_override` | graded mesh, multi-device | a uniform mesh on one device |
+| `design_box` | multi-device, ADI | one device |
+| a permittivity box (`design_eps_override`) with a dispersive or Kerr material, anisotropy or subpixel smoothing, UPML, `stencil_order=4`, oblique periodic incidence, `eps_override`, `sigma_override`, `mu_r_override` or `pec_occupancy_override` | all | the box alone, or the whole-grid overrides alone |
+| a permittivity box touching a periodic face, or reaching the absorber (counting one cell past its upper corner) | all | move the box inside the domain |
+| a port in a permittivity box without `design_box_holds_ports=True`; a soft or magnetic source, an RLC element or a surface-impedance sheet in the box | all | hold the ports, or move the source out |
+| a design box, occupancy or whole-grid override that puts a dielectric or a finite block on or next to a plane wave's injection planes, or a finite block under an open plane wave (not uniform across its side faces) | uniform and graded mesh | keep the design clear of the planes; `closed_box=True` on a uniform mesh for one object |
+| a gradient with respect to a declared shape's size or position (a sphere radius, a box corner) | all | put the shape's material in a design box or a whole-grid override and differentiate that |
+| an occupancy box (`design_occupancy_override`) with any periodic axis, with `design_eps_override` in the same call, over a port cell or its neighbours, or with the opt-in Kottke occupancy tensor (`RFX_PEC_OCC_KOTTKE=1`) | all | one kind of box per call, clear of ports |
+
+[Refused inputs](/rfx/check/refusals/) explains how refusals read.
+
 ## Accuracy
 
+Gradients are checked against finite differences or against another route to
+the same derivative:
+
+- permittivity in a loaded PEC cavity, against finite differences within 5 %
+  (`tests/unit/autodiff/test_gradient_simple.py`);
+- the design-box gradient against the whole-grid one within 10⁻¹⁰ in float64
+  (`tests/unit/autodiff/test_design_box_tape.py`), and the box occupancy
+  against the whole-grid occupancy the same way
+  (`tests/unit/autodiff/test_design_box_tape_nu_occupancy.py`);
+- permeability of a lossy magnetic absorber slab, against finite differences
+  of the reflection within 5 %
+  (`tests/oracle/test_ram_magnetic_mu_r_design.py`);
+- R and C of a series RC element against finite differences of S11 within 5 %
+  (`tests/unit/autodiff/test_lumped_rlc_ad.py`);
+- a pinned patch edge on a traced mesh against a central difference within
+  1.5 % (`tests/unit/autodiff/test_pinned_sheet_on_traced_mesh.py`).
+
 ## See also
+
+- [Checking a gradient](/rfx/evidence/gradients/): whether the run is long enough for the gradient.
+- [Optimization](/rfx/design/optimization/): optimizers built on these inputs.
+- [Autodiff and adjoint background](/rfx/design/gradients/).
+- [Memory and speed](/rfx/run/memory-and-speed/): checkpointing and the design box.
