@@ -7,6 +7,8 @@ import jax
 import jax.numpy as jnp
 import jax.scipy.linalg
 
+from rfx.backend import backend_class
+
 def is_tracer(x: object) -> bool:
     """Return True if *x* is a JAX abstract tracer value.
 
@@ -377,21 +379,21 @@ def _block_solve(a, b):
 
 def complex_solve(a, b):
     """Use the native solve except for complex operands on mps at trace time."""
-    if jax.default_backend() == "mps" and _is_complex(a, b):
+    if backend_class().name == "mps" and _is_complex(a, b):
         return _block_solve(a, b)
     return jnp.linalg.solve(a, b)
 
 
 def complex_inv(a):
     """Use a real block solve for a complex inverse on mps."""
-    if jax.default_backend() == "mps" and _is_complex(a):
+    if backend_class().name == "mps" and _is_complex(a):
         return _block_solve(a, jnp.eye(a.shape[-1], dtype=a.dtype))
     return jnp.linalg.inv(a)
 
 
 def complex_solve_triangular(r, b, *, lower):
     """The real block form is general, even when the complex input is triangular."""
-    if jax.default_backend() == "mps" and _is_complex(r, b):
+    if backend_class().name == "mps" and _is_complex(r, b):
         # The native op reads only one triangle; so must the block form.
         return _block_solve(jnp.tril(r) if lower else jnp.triu(r), b)
     return jax.scipy.linalg.solve_triangular(r, b, lower=lower)

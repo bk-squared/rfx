@@ -5,6 +5,7 @@ from typing import NamedTuple
 import jax
 import jax.numpy as jnp
 
+from rfx.backend import backend_class
 from rfx.core.yee import h_neighbor
 
 ALL_FACES = tuple(f"{axis}_{side}" for axis in "xyz" for side in ("lo", "hi"))
@@ -160,7 +161,7 @@ def store_psi(old, new, window, owner):
 
 def writeback_form():
     """Choose the write-back with a Python value when the caller is traced."""
-    return "padded" if jax.default_backend() == "gpu" else "slab"
+    return backend_class().cpml_writeback
 
 
 def apply_ordered(field, terms):

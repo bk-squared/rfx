@@ -11,6 +11,7 @@ import jax
 from rfx.api._ad_memory_model import (
     tape_accounting, segment_counts, tape_warning, validate_counts, face_record_resident_bytes,
 )
+from rfx.backend import backend_class
 from rfx.grid import C0
 from rfx.materials.thin_conductor import has_f0_sheets
 from rfx.api._spec import (
@@ -246,16 +247,32 @@ class _AdMemoryMixin:
             ad_seg_bytes = (fixed_bytes + saved
                             + segmented_live_tape_steps * model["tape_step_bytes"] + ntff_bytes)
 
-        # VRAM detection (best effort)
+        # Device memory detection (best effort). CPU has no device budget.
+        memory_limit_unknown = False
         if avail_gb is None:
             try:
+                memory_limit_unknown = backend_class().device_memory == "memory_stats_if_available"
                 devs = jax.local_devices()
                 for d in devs:
-                    if d.platform == "gpu":
+                    policy = backend_class(d.platform).device_memory
+                    if policy not in ("memory_stats", "memory_stats_if_available"):
+                        continue
+                    if policy == "memory_stats":
                         stats = d.memory_stats() if hasattr(d, "memory_stats") else None
                         if stats and "bytes_limit" in stats:
                             avail_gb = stats["bytes_limit"] / 1e9
                             break
+                        continue
+                    memory_limit_unknown |= policy == "memory_stats_if_available"
+                    try:
+                        stats = d.memory_stats() if hasattr(d, "memory_stats") else None
+                        limit = stats.get("bytes_limit") if stats else None
+                        if (not isinstance(limit, bool) and limit is not None
+                                and math.isfinite(limit) and limit > 0):
+                            avail_gb = limit / 1e9
+                            break
+                    except Exception:
+                        continue
             except Exception:
                 avail_gb = None
 
@@ -267,6 +284,11 @@ class _AdMemoryMixin:
         warning = tape_warning(model, checkpoint=checkpoint,
                                segments=segmented_active_segments,
                                live=segmented_live_tape_steps, active=active_steps)
+        if memory_limit_unknown and avail_gb is None:
+            warning = " ".join(filter(None, (
+                "The device memory limit cannot be read on this backend; "
+                "AD memory fit cannot be judged. Supply available_memory_gb explicitly.",
+                warning)))
         if avail_gb is not None and primary_bytes * to_gb > avail_gb * 0.85:
             budget_warning = (
                 f"AD memory estimate {_format_memory_gb(primary_bytes * to_gb)} "

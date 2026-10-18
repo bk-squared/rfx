@@ -13,6 +13,8 @@ import jax
 import numpy as np
 from jax.sharding import NamedSharding, PartitionSpec as P
 
+from rfx.backend import backend_class
+
 
 OUTER_JIT_REFUSAL = (
     "rfx: a multi-device run on GPUs cannot be compiled inside an enclosing jax.jit "
@@ -30,9 +32,14 @@ def _is_multi_device(mesh):
 
 
 def _is_gpu_mesh(mesh):
-    """Unknown or mixed platforms conservatively count as GPU."""
-    platforms = {getattr(device, "platform", None) for device in mesh.devices.flat}
-    return None in platforms or len(platforms) != 1 or platforms == {"gpu"}
+    """Missing platform metadata or mixed meshes conservatively count as GPU."""
+    platforms = {
+        None if isinstance(platform, type(None)) else backend_class(platform)
+        for device in mesh.devices.flat
+        for platform in (getattr(device, "platform", None),)
+    }
+    return (None in platforms or len(platforms) != 1
+            or next(iter(platforms)).name in ("gpu", "cuda", "rocm"))
 
 
 def _staged_by_enclosing_program():

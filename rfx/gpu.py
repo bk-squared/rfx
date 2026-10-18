@@ -12,6 +12,7 @@ from typing import NamedTuple
 
 import jax
 
+from rfx.backend import backend_class
 from rfx.grid import Grid
 from rfx.core.yee import init_materials
 from rfx.sources.sources import GaussianPulse
@@ -34,7 +35,7 @@ def device_info() -> DeviceInfo:
     devices = jax.devices()
     return DeviceInfo(
         backend=jax.default_backend(),
-        gpu_available=any(d.platform == "gpu" for d in devices),
+        gpu_available=any(backend_class(d.platform).accelerator for d in devices),
         devices=[
             {"id": d.id, "kind": d.device_kind, "platform": d.platform}
             for d in devices

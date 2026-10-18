@@ -21,6 +21,8 @@ from __future__ import annotations
 
 import jax
 
+from rfx.backend import backend_class
+
 HIGHEST = jax.lax.Precision.HIGHEST
 
 
@@ -49,7 +51,7 @@ def resolve_field_dtype(precision):
     """Resolve storage without allocating or changing the caller's JAX mode."""
     import jax.numpy as jnp
 
-    if (precision == "float64" or jax.config.x64_enabled) and jax.default_backend() == "mps":
+    if (precision == "float64" or jax.config.x64_enabled) and backend_class().name == "mps":
         raise ValueError(FLOAT64_MPS_ERROR)
     if precision == "float64":
         if not jax.config.x64_enabled:
