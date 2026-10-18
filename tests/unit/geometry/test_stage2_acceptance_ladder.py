@@ -213,6 +213,9 @@ def test_kottke_pec_90_corner_finite_and_convergent_signal():
             dx=dx,
             boundary={"x": "cpml", "y": "pec", "z": "pec"},
             cpml_layers=4,
+            # At dx=1.5 mm the corner's y face (20 mm) is solved at 19.5 mm
+            # against the y_lo wall; the off-node corner is this test's point.
+            snap="declared",
         )
         # PEC L-shape: a Box that has one corner inside the domain.
         sim.add(Box((0.030, 0.020, -0.001), (0.061, 0.041, 0.021)),
