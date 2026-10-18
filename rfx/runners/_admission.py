@@ -488,11 +488,11 @@ _ADMITTED_ON: dict[Row, frozenset] = {
     ("_dy_profile", "graded"): _MESH_PINNED - _DISTRIBUTED_NU,
     ("_dz_profile", "graded"): _MESH_PINNED - _DISTRIBUTED_NU,
     ("_probes", "probe"): _OTHER_RUNNERS,
-    ("_dft_planes", "dft_plane"): _NO_SHEETS,
+    ("_dft_planes", "dft_plane"): _NO_SHEETS | {"run_distributed"},
     ("_flux_monitors", "flux"): frozenset({"run_uniform", "run_nonuniform", "fwd_uniform",
-                                          "fwd_nonuniform"}),
+                                          "fwd_nonuniform", "run_distributed"}),
     ("_ntff", "ntff_box"): _OTHER_RUNNERS - _ADI - {"run_subgridded"},  # Its x and y faces are always PEC (only a z lid may absorb).
-    ("_current_moments", "block_moments"): _NO_SHEETS,
+    ("_current_moments", "block_moments"): _NO_SHEETS | {"run_distributed"},
 }
 
 # Both public entries use distributed_nu.run_nonuniform_distributed_pec.

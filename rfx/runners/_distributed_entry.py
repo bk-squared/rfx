@@ -46,7 +46,7 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args
                                  "exchange_interval": 1, "skip_preflight": True},
                                  reason=reason, requested_devices=len(devices),
                                  diagnostics=_diagnostics)
-    if self._dft_planes:
+    if self._dft_planes and plan.lane == "run_distributed_nu":
         raise NotImplementedError(
             "add_dft_plane_probe() is not supported on the "
             "distributed multi-device run() path (issue #579); "
@@ -96,7 +96,9 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args
         refuse_distributed_lumped_s_pmc(self)
 
     refuse_distributed_options(self, subpixel_smoothing=subpixel_smoothing,
-        checkpoint=checkpoint, snapshot=snapshot, until_decay=until_decay,
+        checkpoint=checkpoint,
+        snapshot=snapshot if plan.lane == "run_distributed_nu" else None,
+        until_decay=until_decay,
         conformal_pec=_dist_conformal,
         **({} if report_every is None else {"report_every": report_every}))
     from rfx.materials.thin_conductor import refuse_f0_sheets
@@ -157,6 +159,7 @@ def execute_distributed(self, *, plan, _solve_assembly, _diagnostics, _call_args
             exchange_interval=exchange_interval,
             assembly=_solve_assembly,
             conformal_pec=conformal_pec,
+            snapshot=snapshot,
         )
     if compute_s_params and plan.lane != "run_distributed_nu":
         from rfx.measurement import default_frequency_grid

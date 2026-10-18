@@ -192,10 +192,15 @@ def test_passive_port_is_refused(entry, waveform):
 @pytest.mark.parametrize("monitor,feature", (
     ("flux", "add_flux_monitor()"),
 ))
-def test_surface_monitor_is_refused(entry, monitor, feature):
-    """Flux planes remain refused on this lane."""
+def test_surface_monitor_is_carried(entry, monitor, feature):
+    """Uniform flux records use the shared one-device arithmetic."""
     sim = _build(entry=entry, **{monitor: True})
-    _assert_refused(sim, entry, feature, "would be None")
+    reference = sim.run(n_steps=N_STEPS, skip_preflight=True)
+    actual = _run(sim, entry, skip_preflight=True)
+    for name, expected in reference.flux_monitors.items():
+        for component in ("e1_dft", "e2_dft", "h1_dft", "h2_dft"):
+            np.testing.assert_array_equal(getattr(actual.flux_monitors[name], component),
+                                          getattr(expected, component))
 
 
 def test_explicit_bloch_phase_is_refused():
@@ -257,10 +262,13 @@ def test_msl_port_is_refused(entry):
 
 
 @pytest.mark.parametrize("entry", ENTRIES)
-def test_dft_plane_probe_is_refused(entry):
-    """run() refused these in its dispatch; a direct runner call did not."""
+def test_dft_plane_probe_is_carried(entry):
+    """Public and direct uniform entries return the plane records."""
     sim = _build(entry=entry, dft=True)
-    _assert_refused(sim, entry, "add_dft_plane_probe()")
+    reference = sim.run(n_steps=N_STEPS, skip_preflight=True)
+    actual = _run(sim, entry, skip_preflight=True)
+    for name, expected in reference.dft_planes.items():
+        np.testing.assert_array_equal(actual.dft_planes[name].accumulator, expected.accumulator)
 
 
 @pytest.mark.parametrize("entry", ("api", "v2"))

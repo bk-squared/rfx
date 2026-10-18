@@ -127,7 +127,7 @@ REFUSED = [
     ("non-uniform", "until_decay"),      # closed boundary: no decay stop
     ("non-uniform", "conformal_pec"),
     *[(lane, kw) for lane in ("distributed", "subgridded", "adi")
-      for kw in ASKS],
+      for kw in ASKS if (lane, kw) != ("distributed", "snapshot")],
 ]
 
 

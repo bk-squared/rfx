@@ -576,7 +576,7 @@ def test_dft_field_and_field_energy_accept_raw_array_planes():
 
 
 # ---------------------------------------------------------------------------
-# (4) Fail-loud distributed fences (issue #579 item 2) — regression pins.
+# (4) Graded refusal and uniform distributed record parity.
 # ---------------------------------------------------------------------------
 
 def _nu_sim_with_dft_plane() -> Simulation:
@@ -604,8 +604,13 @@ def test_forward_distributed_nu_dft_planes_fence_raises():
         sim.forward(distributed=True, n_steps=2, skip_preflight=True)
 
 
-def test_run_distributed_dft_planes_fence_raises():
+def test_run_distributed_dft_planes_match_native():
     sim = _build_sim()
-    devices = [jax.devices()[0], jax.devices()[0]]
-    with pytest.raises(NotImplementedError, match="add_dft_plane_probe"):
-        sim.run(devices=devices, n_steps=2, skip_preflight=True)
+    devices = jax.devices("cpu")[:2]
+    assert len(devices) == 2
+    reference = sim.run(n_steps=_N_STEPS, skip_preflight=True)
+    actual = sim.run(devices=devices, n_steps=_N_STEPS, skip_preflight=True)
+    for name, expected in reference.dft_planes.items():
+        a, b = np.asarray(actual.dft_planes[name].accumulator), np.asarray(expected.accumulator)
+        assert np.any(b), "DFT plane must contain a signal"
+        assert np.array_equal(a, b), (name, float(np.max(np.abs(a - b))), float(np.max(np.abs(b))))

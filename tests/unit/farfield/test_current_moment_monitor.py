@@ -2323,17 +2323,9 @@ def _sim_with_monitor(**kw):
     return sim
 
 
-@pytest.mark.parametrize("lane", ["subgridded", "disjoint", "distributed_v2",
-                                  "distributed_v2_one_device", "vmap"])
+@pytest.mark.parametrize("lane", ["subgridded", "disjoint", "vmap"])
 def test_lanes_that_do_not_accumulate_it_refuse_it(lane):
-    """A declared monitor must not come back silently empty.
-
-    Four entry points never read the declaration; each says so. The shard_map
-    runner refuses AFTER its single-device fallbacks (TFSF, waveguide port),
-    because those return through ``sim.run()``, which does accumulate it, and
-    before it looks at the devices: a one-device call runs the same shard_map
-    path (#1296).
-    """
+    """A declared monitor must not come back silently empty."""
     sim = _sim_with_monitor()
     with pytest.raises(NotImplementedError, match="add_current_moment_monitor"):
         if lane == "subgridded":
@@ -2342,27 +2334,36 @@ def test_lanes_that_do_not_accumulate_it_refuse_it(lane):
         elif lane == "disjoint":
             from rfx.runners.disjoint import run_disjoint_stage2_path
             run_disjoint_stage2_path(sim, None, 4)
-        elif lane == "distributed_v2":
-            from rfx.runners.distributed_v2 import run_distributed
-            run_distributed(sim, n_steps=4)
-        elif lane == "distributed_v2_one_device":
-            from rfx.runners.distributed_v2 import run_distributed
-            run_distributed(sim, n_steps=4, devices=jax.devices()[:1])
         else:
             from rfx.vmap_sweep import vmap_material_sweep
             vmap_material_sweep(sim, "eps_r", [1.0, 2.0], n_steps=4)
 
 
-def test_a_multi_device_run_refuses_it():
+@pytest.mark.parametrize("n_devices", [1, 2, 3])
+def test_uniform_distributed_moments_match_native(n_devices):
+    from rfx.runners.distributed_v2 import run_distributed
+    sim = _sim_with_monitor()
+    devices = jax.devices("cpu")[:n_devices]
+    assert len(devices) == n_devices
+    reference = sim.run(n_steps=4, skip_preflight=True)
+    actual = run_distributed(sim, n_steps=4, devices=devices)
+    assert np.any(np.asarray(reference.current_moment_data[0]))
+    for index, (value, expected) in enumerate(zip(actual.current_moment_data, reference.current_moment_data)):
+        a, b = np.asarray(value), np.asarray(expected)
+        delta = float(np.max(np.abs(a.astype(np.complex128) - b.astype(np.complex128))))
+        peak = float(np.max(np.abs(b)))
+        assert delta <= 1e-4 * peak, (n_devices, index, delta, peak)
+
+
+def test_a_multi_device_run_carries_it():
     """``run(devices=...)`` across two devices goes to the sharded runner."""
     if len(jax.devices()) < 2:
         pytest.skip("needs two JAX devices (the repo conftest makes two CPUs)")
     sim = _sim_with_monitor()
-    # The runner's own refusal, before any step: the backstop in run() would
-    # also raise, but only after the whole run.
-    with pytest.raises(NotImplementedError,
-                       match="not supported on the distributed \\(v2\\) runner"):
-        sim.run(n_steps=4, devices=jax.devices()[:2], skip_preflight=True)
+    result = sim.run(n_steps=4, devices=jax.devices()[:2], skip_preflight=True)
+    assert result.current_moment_data is not None
+    assert result.current_moment_monitor is not None
+    assert np.any(np.asarray(result.current_moment_data[0]))
 
 
 def test_the_distributed_nu_forward_lane_refuses_it():
