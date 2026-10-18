@@ -13,6 +13,7 @@ class BackendClass:
     accelerator: bool
     cpml_writeback: str
     device_memory: str
+    host_callbacks: bool
 
 
 def backend_class(platform: str | None = None) -> BackendClass:
@@ -23,7 +24,7 @@ def backend_class(platform: str | None = None) -> BackendClass:
     """
     name = jax.default_backend() if platform is None else platform
     if name in ("gpu", "cuda", "rocm"):
-        return BackendClass(name, True, "padded", "memory_stats")
+        return BackendClass(name, True, "padded", "memory_stats", True)
     if name == "mps":
-        return BackendClass(name, True, "slab", "memory_stats_if_available")
-    return BackendClass(name, False, "slab", "none" if name == "cpu" else "unknown")
+        return BackendClass(name, True, "slab", "memory_stats_if_available", False)
+    return BackendClass(name, False, "slab", "none" if name == "cpu" else "unknown", name == "cpu")

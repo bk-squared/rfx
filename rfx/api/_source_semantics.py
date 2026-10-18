@@ -158,6 +158,8 @@ def guard_float16_source_increment(waveform, field_dtype, amplitude_kind=None):
     import jax
     import jax.numpy as jnp
 
+    from rfx._traced_check import traced_check
+
     # Refuse only an increment that overflows float16 on its own, in one
     # step: an explicit 'current' source with a one-step increment of ~4e4
     # ran finite before this guard existed and must still run (#1442).
@@ -174,9 +176,9 @@ def guard_float16_source_increment(waveform, field_dtype, amplitude_kind=None):
         return np.int32(0)
 
     if isinstance(waveform, jax.core.Tracer):
-        from jax.experimental import io_callback
-        token = io_callback(check, jax.ShapeDtypeStruct((), jnp.int32),
-                            jax.lax.stop_gradient(waveform), ordered=False)
+        token = traced_check("float16 soft source", "one-step increment", check,
+                             jax.lax.stop_gradient(waveform), ordered=False,
+                             result_shape=jax.ShapeDtypeStruct((), jnp.int32))
         return waveform + token.astype(waveform.dtype)
-    check(waveform)
+    traced_check("float16 soft source", "one-step increment", check, waveform)
     return waveform

@@ -17,6 +17,8 @@ existing update. With no transform the observer returns the same objects.
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 
+from rfx._traced_check import traced_check
+
 ACTIVE = None
 
 
@@ -64,10 +66,7 @@ class Capture:
                             source["drive_scale"][list(record["columns"])] *= values["runtime_scale"]
                 self.records.append(record)
 
-        if traced:
-            jax.debug.callback(save, payload)
-        else:
-            save(payload)
+        traced_check("realized geometry", "record operands", save, payload)
 
     def apply(self, site, quantity, values):
         return values if self.transform is None else self.transform(site, quantity, values)
