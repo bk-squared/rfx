@@ -831,3 +831,20 @@ def test_uniform_wall_kinds_match_the_grid_resolver():
     # Drawing: periodic x, electric y_lo/z_hi, magnetic y_hi/z_lo.
     assert _cavity_wall_faces(ctx) == electric == {"y_lo", "z_hi"}
     assert sim._boundary_spec.pmc_faces() == magnetic == {"y_hi", "z_lo"}
+
+
+@pytest.mark.parametrize("conformal", [False, True])
+def test_conformal_wall_is_not_judged_at_its_node(conformal):
+    from rfx.boundaries.spec import Boundary, BoundarySpec
+    # Lid declared 5.5 mm on 1 mm cells: node 6 mm. Sheet 2 -> 2 mm.
+    # Plain PEC: 4/3.5-1 = +14.29% refused. Conformal z: the lid is a
+    # Dey-Mittra half-space at 5.5 mm, so the node is not the wall.
+    sim = Simulation(10e9, (20 * MM, 18 * MM, 5.5 * MM), dx=MM,
+                     boundary=BoundarySpec(x="pec", y="pec",
+                                           z=Boundary("pec", "pec", conformal=conformal)))
+    sim.add(Box((0, 0, 2 * MM), (20 * MM, 18 * MM, 2 * MM)), material="pec")
+    sim.add_source((MM, MM, MM), component="ez")
+    rows = sim.preflight().by_code(CODE)
+    assert bool(rows) == (not conformal)
+    if rows:
+        assert "drawn spacing 3.5mm, solved spacing 4mm (+14.29%)" in str(rows[0])

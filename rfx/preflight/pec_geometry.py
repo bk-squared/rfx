@@ -906,13 +906,18 @@ def _box_face_planes(ctx, a, e, shape):
 
 
 def _cavity_wall_faces(ctx):
-    """Only non-absorbing electric faces bound a drawn cavity."""
+    """Only non-absorbing, non-conformal electric faces bound a drawn cavity.
+
+    A conformal face is solved as a Dey-Mittra half-space at the declared
+    extent (or a port's transverse range), not on the node plane, so its
+    node is not where the wall stands."""
     from rfx.boundaries.pec import resolve_wall_faces
 
     electric, _ = resolve_wall_faces(ctx.grid, ctx.periodic)
-    magnetic = ctx.sim._boundary_spec.pmc_faces()
+    spec = ctx.sim._boundary_spec
+    excluded = spec.pmc_faces() | spec.conformal_faces()
     depths = ctx.sim._preflight_face_layers()
-    return {face for face in electric - magnetic if depths.get(face, 0) == 0}
+    return {face for face in electric - excluded if depths.get(face, 0) == 0}
 
 
 def _warn_sheet_cavity_spacing(_w, ctx, entries, pec_np) -> None:
