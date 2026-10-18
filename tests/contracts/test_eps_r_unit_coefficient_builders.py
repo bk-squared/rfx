@@ -107,6 +107,10 @@ _SUBGRID = ("the SBP-SAT coupling takes SI eps, but no traced permittivity "
 # (file, qualified function) -> why no traced permittivity is divided through
 # EPS_0 here. May only shrink (ALLOWLIST_CEILING).
 NOT_A_TRACED_EPS_COEFFICIENT = {
+    ("rfx/core/node_tensor.py", "add_node_increment"):
+        "the full-tensor cross increment (#1632) is written in eps_r units: EPS_0 groups with dt as a "
+        "Python float (dt/EPS_0, dt/(2 EPS_0)) and the loss term divides only the relative eps_r, so no SI permittivity "
+        "is divided and the reverse pass stays in range",
     ("rfx/model/pole_stability.py", "largest_growth"):
         "host-only admission predicate on concrete floats (tracker 1590): sigma*dt/(2 EPS_0) enters a "
         "stability matrix; traced values reach this host predicate through an ordered callback",
@@ -176,7 +180,7 @@ NOT_A_TRACED_EPS_COEFFICIENT = {
 
 # The allow-list's length when it was written. Lower it when a row goes; a PR
 # that raises it is adding an EPS_0 reader it says is not a coefficient.
-ALLOWLIST_CEILING = 50  # 47 -> 48: rfx/measurement/monitors.py current_moment_owner (S2 M1, vacuum constant); 48 -> 49: rfx/api/_gradient_witness.py conductivity_gradient_record (advisory record: record time over eps/sigma on concrete values only); 49 -> 50: rfx/model/pole_stability.py largest_growth (host-only stability predicate)
+ALLOWLIST_CEILING = 51  # 50 -> 51: rfx/core/node_tensor.py add_node_increment (eps_r units, #1632); 47 -> 48: rfx/measurement/monitors.py current_moment_owner (S2 M1, vacuum constant); 48 -> 49: rfx/api/_gradient_witness.py conductivity_gradient_record (advisory record: record time over eps/sigma on concrete values only); 49 -> 50: rfx/model/pole_stability.py largest_growth (host-only stability predicate)
 
 HELPER = "si_value_eps_r_grad"
 SHARED_ROUTES = {

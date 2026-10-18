@@ -390,6 +390,9 @@ def _build_step_setup(
         pec_edge_masks = kottke_fenced_edge_masks(
             pec_edge_masks, aniso_inv_eps,
             sheets=pec_sheets, wires=pec_wires, periodic=periodic)
+    from rfx.model.node_pec import restrict_node_pec
+    materials = restrict_node_pec(materials, pec_edge_masks, _pec_faces_frozen)
+    tensor = materials.components.tensor
     use_wire_sparams = len(wire_port_sparams) > 0
     use_lumped_sparams = len(lumped_port_sparams) > 0
     wire_refplane_sparams = wire_refplane_sparams or []

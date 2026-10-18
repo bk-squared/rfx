@@ -459,3 +459,36 @@ def test_lumped_two_port_really_uses_float64():
     assert delta > rounding
     assert s32.dtype == np.complex64 and s64.dtype == np.complex128
     jax.clear_caches()
+
+
+def test_full_tensor_realized_float64(monkeypatch):
+    """T6: inspect the host-built tensor handed to the actual timestep.
+
+    Public eps_r tracing is blocked by material grouping in _kottke_smooth;
+    traced radius admission is PR B scope. Keep this realized-storage judge.
+    """
+    import rfx.simulation as core
+    from tests.unit.runners.test_forward_subpixel_smoothing import sphere_sim
+    observed = []
+    make_step = uniform_loop.make_core_step
+
+    def observe(ctx, *args, **kwargs):
+        tensor = ctx.materials.components.tensor
+        assert tensor is not None and tensor.node_smoothing is not None
+        arrays = jax.tree.leaves((tensor.eps, tensor.node_smoothing))
+        observed.extend(a.dtype for a in arrays if np.issubdtype(a.dtype, np.floating))
+        assert observed and set(observed) == {np.dtype('float64')}, observed
+        return make_step(ctx, *args, **kwargs)
+
+    monkeypatch.setattr(uniform_loop, 'make_core_step', observe)
+    monkeypatch.setattr(core, 'make_core_step', observe)
+    with jax.enable_x64():
+        def solve(eps_r):
+            sim = sphere_sim(radius=.0023)
+            sim.add_material('sphere', eps_r=eps_r)
+            sim._precision = 'float64'
+            return sim.forward(n_steps=2, skip_preflight=True,
+                               subpixel_smoothing='full_tensor').time_series
+        result = solve(4.)
+        jax.block_until_ready(result)
+    assert observed

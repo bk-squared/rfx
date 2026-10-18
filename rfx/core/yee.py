@@ -1814,6 +1814,14 @@ def update_e_aniso(state: FDTDState, materials: MaterialArrays,
     ey = (ca_ey * state.ey.astype(_cdtype) + cb_ey * curl_y).astype(_fdtype)
     ez = (ca_ez * state.ez.astype(_cdtype) + cb_ez * curl_z).astype(_fdtype)
 
+    tensor = materials.components.tensor if materials.components is not None else None
+    if tensor is not None and tensor.node_smoothing is not None:
+        from rfx.core.node_tensor import add_node_increment
+        ex, ey, ez = add_node_increment(
+            (ex, ey, ez), (curl_x, curl_y, curl_z), tensor.node_smoothing,
+            (eps_ex, eps_ey, eps_ez), (sigma_ex, sigma_ey, sigma_ez), dt,
+            periodic=periodic, boundary=boundary)
+
     return state._replace(
         ex=ex, ey=ey, ez=ez,
         step=state.step + 1,

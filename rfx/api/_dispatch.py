@@ -48,6 +48,7 @@ def _dispatch_plan(
     self,
     *,
     mode: str,
+    subpixel_smoothing=False,
     diagnostics=(),
     n_steps: int | None,
     num_periods: float,
@@ -86,6 +87,8 @@ def _dispatch_plan(
     step count comes from a throwaway grid) and ``None`` for lanes that
     build-and-reuse a grid (the caller resolves it there).
     """
+    from rfx.model.smoothing_admission import admit_full_tensor
+    admit_full_tensor(self, subpixel_smoothing, distributed=distributed, devices=devices)
     from rfx.boundaries.features import admit_ntff, admit_waveguide
     from rfx.measurement import admit_waveguide_entries
     admit_waveguide_entries(self)

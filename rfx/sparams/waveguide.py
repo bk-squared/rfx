@@ -248,6 +248,8 @@ def compute_waveguide_s_matrix(
         the current waveguide evidence and scope.
     """
     resolve_field_dtype(self._precision)
+    from rfx.model.smoothing_admission import admit_full_tensor
+    admit_full_tensor(self, subpixel_smoothing, unsupported=True)
     if not normalize:
         import warnings
         warnings.warn(
