@@ -13,9 +13,7 @@
       "A": [],
       "G": [],
       "D1": [],
-      "D2": [
-        "Simulation.auto"
-      ]
+      "D2": []
     },
     "rfx/api/_execute.py": {
       "I": [
